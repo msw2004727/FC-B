@@ -53,6 +53,7 @@ paths:
 
 - **L-29**：非同步競態測試要用可控制完成順序的 Promise，覆蓋快速連續切換、快取命中與網路請求交錯。理由：正常路徑測試無法涵蓋競態與失敗復原。
 - **L-30**：失敗復原測試要模擬「第一次拒絕、第二次成功」並驗證重新呼叫 loader。理由：僅驗快取參照相等不能證明去重與重試行為。
+- **L-42**：頁面載入 `preact/compat`（例如 Modal 的 `createPortal`）後，`@testing-library/preact` 的 `fireEvent.change` 會改送 `input` 事件；`<select>`、checkbox 的 onChange 仍聽原生 change，必須在 `act` 內以 `element.dispatchEvent(new Event('change', { bubbles: true }))` 派送（checkbox 可用 `fireEvent.click`）。理由：否則 handler 從未執行，測試誤判為元件 state 錯誤。
 
 ## 資料完整性與權限
 

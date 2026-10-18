@@ -1,7 +1,6 @@
 /**
  * 純函式權限層，依附件 A config.js / api-service.js 移植。
  * 缺少角色文件與 permissions: [] 不同：前者使用 defaults，後者明確關閉。
- * 本次未執行編譯或測試；驗證狀態不得視為通過。
  */
 
 export const INHERENT_ROLE_PERMISSIONS: Readonly<Record<string, readonly string[]>> =

@@ -1,48 +1,46 @@
 // 個人頁寫入。
-//
-// 契約：
-// - A29：`users/{uid}.update({...patch, updatedAt: serverTimestamp()})`。
-//   B 以明確白名單寫入（S02），禁寫 role／exp 等同步欄位。
-// - A31 / A32：`{ companions | eduChildren, updatedAt }`。
-// - A30：身分設定與次身分頭像全部走 Callable，B 不得直寫。
-//
-// L-32／L-33：逐動作白名單；serverTimestamp 僅套用於各動作清單中的 updatedAt。
+// A29：users/{uid} 明確白名單 patch + updatedAt。
+// A31 / A32：companions／eduChildren + updatedAt。
+// A30：身分設定與次身分頭像走 Callable，不直寫。
+// L-32／L-33：逐動作白名單；serverTimestamp 僅用於 updatedAt。
 
 import type { Firestore } from 'firebase/firestore';
 import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { callFn } from '@/data/callables';
+import type { CommitIdentitySettingsRequest } from '@/data/contract/callables';
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
 import { assertAllowedFields, assertNoDerivedFields } from '@/data/write-guard';
 
-/**
- * A29 個人資料白名單（來源逐欄標註）。
- * 不含 role / exp / level / totalGames 等同步或衍生統計。
- */
 export const PROFILE_FIELD_ALLOWLIST = [
-  // A `saveFirstLoginProfile`（首次登入表單）：必填 / 選填
   'gender',
   'birthday',
   'region',
   'email',
-  // A 個人資料編輯表單（gender / phone / sports 由 `renderProfileData` 顯示為可編輯欄位）
   'phone',
   'sports',
-  // A `profile-card.js#saveSocialLink`（社交連結）
   'socialLinks',
 ] as const;
 
 export type ProfileField = (typeof PROFILE_FIELD_ALLOWLIST)[number];
 
-/** A31：companions 直寫，含 updatedAt。 */
 const COMPANIONS_ALLOWLIST = ['companions', 'updatedAt'] as const;
-
-/** A32：eduChildren 直寫，含 updatedAt。 */
 const EDU_CHILDREN_ALLOWLIST = ['eduChildren', 'updatedAt'] as const;
 
-/** A 首次登入表單提交的欄位子集（gender / birthday / region / email）。 */
-const FIRST_LOGIN_ALLOWLIST = ['gender', 'birthday', 'region', 'email'] as const;
+// A HTML 的三個生日 select 合成既有 birthday 字串，不新增年月日儲存欄位。
+// 法律同意欄位照 A `_buildFirstLoginLegalUpdates`（profile-form.js），Rules 限定版本值。
+const FIRST_LOGIN_ALLOWLIST = [
+  'gender', 'birthday', 'region', 'email', 'updatedAt',
+  'termsVersion', 'privacyVersion', 'legalAcceptedSource', 'termsAcceptedAt', 'privacyAcceptedAt',
+] as const;
+
+/** 必須與 A `_legalTermsVersion`／`_legalPrivacyVersion` 及 firestore.rules 一致。 */
+export const LEGAL_TERMS_VERSION = '2026-05-19';
+export const LEGAL_PRIVACY_VERSION = '2026-05-19';
+
+// legalConsent 是提交條件本身不落地；落地的是上方的法律同意欄位。
+const FIRST_LOGIN_INPUT_ALLOWLIST = ['gender', 'birthday', 'region', 'email', 'legalConsent'] as const;
 
 function assertValidUid(uid: string): string {
   const safe = String(uid || '').trim();
@@ -55,14 +53,6 @@ async function getUsersDb(): Promise<Firestore> {
   return firebase.db as unknown as Firestore;
 }
 
-// ── 社交連結正規化（A `_normalizeLineContactUrl`） ─────
-
-/**
- * A `profile-card.js#_normalizeLineContactUrl`：
- *   - 空字串 → ''
- *   - 已是 http(s):// 或 line:// → 原樣
- *   - 其他 → `https://line.me/ti/p/{encodeURIComponent(raw.replace(/^@/, ''))}`
- */
 export function normalizeLineContactUrl(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -77,12 +67,6 @@ function normalizeSocialLinkValue(platform: string, raw: unknown): string {
   return trimmed;
 }
 
-// ── A29 ───────────────────────────────────────────────
-
-/**
- * A29：寫入個人資料（明確欄位白名單；updatedAt 由 serverTimestamp 覆寫）。
- * 呼叫前會先 `assertAllowedFields` + `assertNoDerivedFields`。
- */
 export async function updateProfileFields(
   uid: string,
   patch: Record<string, unknown>,
@@ -103,41 +87,97 @@ export interface FirstLoginInput {
   birthday: string;
   region: string;
   email?: string;
+  legalConsent: boolean;
+}
+
+function assertFirstLoginInput(input: FirstLoginInput): void {
+  assertAllowedFields('saveFirstLoginProfile.input', { ...input }, FIRST_LOGIN_INPUT_ALLOWLIST);
+  assertNoDerivedFields({ ...input });
+
+  if (input.legalConsent !== true) {
+    throw new Error('[profile-writes] legal consent is required');
+  }
+  if (!['男', '女', '其他'].includes(input.gender)) {
+    throw new Error('[profile-writes] invalid gender');
+  }
+  if (typeof input.region !== 'string' || !input.region.trim()) {
+    throw new Error('[profile-writes] region is required');
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.birthday);
+  if (!match) throw new Error('[profile-writes] invalid birthday');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  const now = new Date();
+  if (
+    year < 1900
+    || date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+    || date.getTime() > new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  ) throw new Error('[profile-writes] invalid birthday');
+
+  const email = input.email?.trim() ?? '';
+  if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(email))) {
+    throw new Error('[profile-writes] invalid email');
+  }
 }
 
 /**
- * A `saveFirstLoginProfile`（首次登入表單）：
- * 只寫 gender / birthday / region（必填）；email 僅於有值時寫入。
- *
- * 注意：A 版還包含 `_buildFirstLoginLegalUpdates('profile_completion_submit')`，
- * 本 B 資料層未移植該函式，法律同意欄位屬 UI 端另一個提交路徑，這裡不寫入。
+ * 對應 A `_buildFirstLoginLegalUpdates(source)`：一律寫版本與來源；
+ * 只有尚未同意當前版本時才寫入同意時間（不覆蓋既有同意時間）。
+ */
+export function buildFirstLoginLegalUpdates(
+  current: Record<string, unknown> | null | undefined,
+  source: string,
+  nowIso: string,
+): Record<string, string> {
+  const updates: Record<string, string> = {
+    termsVersion: LEGAL_TERMS_VERSION,
+    privacyVersion: LEGAL_PRIVACY_VERSION,
+    legalAcceptedSource: source,
+  };
+  if (!(current && current['termsVersion'] === LEGAL_TERMS_VERSION && current['termsAcceptedAt'])) {
+    updates['termsAcceptedAt'] = nowIso;
+  }
+  if (!(current && current['privacyVersion'] === LEGAL_PRIVACY_VERSION && current['privacyAcceptedAt'])) {
+    updates['privacyAcceptedAt'] = nowIso;
+  }
+  return updates;
+}
+
+/**
+ * 首次登入：gender／birthday／region／選填 email，加上 A 同款法律同意欄位（來源 'profile_completion_submit'）。
+ * 生日年／月／日合成既有 birthday，沒有另造儲存格式。
  */
 export async function saveFirstLoginProfile(
   uid: string,
   input: FirstLoginInput,
 ): Promise<void> {
   const safeUid = assertValidUid(uid);
+  assertFirstLoginInput(input);
+
   const patch: Record<string, unknown> = {
     gender: input.gender,
     birthday: input.birthday,
-    region: input.region,
+    region: input.region.trim(),
   };
-  const email = typeof input.email === 'string' ? input.email.trim() : '';
+  const email = input.email?.trim() ?? '';
   if (email) patch['email'] = email;
 
-  assertAllowedFields('saveFirstLoginProfile', patch, FIRST_LOGIN_ALLOWLIST);
   assertNoDerivedFields(patch);
-
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
-    ...patch,
-    updatedAt: serverTimestamp(),
-  });
+  // A 以記憶體中的 currentUser 判斷是否已同意；B 讀一次自己的文件（只在送出首次資料時）。
+  const currentSnap = await getDoc(doc(db, users, safeUid));
+  const current = currentSnap.exists() ? (currentSnap.data() as Record<string, unknown>) : null;
+  const legal = buildFirstLoginLegalUpdates(current, 'profile_completion_submit', new Date().toISOString());
+  const payload = { ...legal, ...patch, updatedAt: serverTimestamp() };
+  assertAllowedFields('saveFirstLoginProfile', payload, FIRST_LOGIN_ALLOWLIST);
+  await updateDoc(doc(db, users, safeUid), payload);
 }
 
-// ── A31 / A32 ─────────────────────────────────────────
-
-/** A31：`{ companions, updatedAt }`。 */
 export async function saveCompanions(
   uid: string,
   companions: readonly unknown[],
@@ -154,7 +194,6 @@ export async function saveCompanions(
   });
 }
 
-/** A32：`{ eduChildren, updatedAt }`。 */
 export async function saveEduChildren(
   uid: string,
   children: readonly unknown[],
@@ -171,34 +210,22 @@ export async function saveEduChildren(
   });
 }
 
-// ── 社交連結（A profile-card） ────────────────────────
-
 async function readExistingSocialLinks(
   db: Firestore,
   uid: string,
 ): Promise<Record<string, string>> {
-  try {
-    const snap = await getDoc(doc(db, users, uid));
-    if (!snap.exists()) return {};
-    const data = snap.data() as Record<string, unknown>;
-    const raw = data['socialLinks'];
-    if (!raw || typeof raw !== 'object') return {};
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof v === 'string') out[k] = v;
-    }
-    return out;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[profile-writes] read socialLinks failed', err);
-    return {};
+  const snap = await getDoc(doc(db, users, uid));
+  if (!snap.exists()) return {};
+  const data = snap.data() as Record<string, unknown>;
+  const raw = data['socialLinks'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') out[key] = value;
   }
+  return out;
 }
 
-/**
- * A `saveSocialLink`：整個 `socialLinks` 物件覆寫，platform 值寫 `normalized || ''`。
- * 保留其他平台值。
- */
 export async function saveSocialLink(
   uid: string,
   platform: string,
@@ -209,6 +236,7 @@ export async function saveSocialLink(
   if (!safePlatform) throw new Error('[profile-writes] platform is required');
 
   const db = await getUsersDb();
+  // 讀取失敗直接拒絕，避免把既有其他平台連結以空物件覆寫。
   const existing = await readExistingSocialLinks(db, safeUid);
   const normalized = normalizeSocialLinkValue(safePlatform, url);
   const next: Record<string, string> = { ...existing, [safePlatform]: normalized || '' };
@@ -223,27 +251,67 @@ export async function saveSocialLink(
   });
 }
 
-/** A `clearSocialLink`：把該平台值覆寫成 ''。 */
 export async function clearSocialLink(uid: string, platform: string): Promise<void> {
   await saveSocialLink(uid, platform, '');
 }
 
-// ── A30：Callable ─────────────────────────────────────
+// Callable 型別以 P1 契約為單一來源。
+export type {
+  CommitIdentitySettingsRequest,
+  CommitIdentitySettingsResponse,
+  CommitSecondaryIdentityAvatarRequest,
+  CommitSecondaryIdentityAvatarResponse,
+} from '@/data/contract/callables';
 
+/** UI 表單值；送出時轉成 A 的 Callable wire payload（見 buildIdentitySettingsRequest）。 */
 export interface CommitIdentitySettingsInput {
-  [field: string]: unknown;
+  secondaryEnabled: boolean;
+  secondaryDisplayName: string;
 }
 
-/**
- * A30 `updateCurrentIdentitySettings`：以 Callable 送出。
- * B 端不直寫 identity 設定欄位；input 由呼叫端依 A 的 form 值組好。
- */
+const IDENTITY_SETTINGS_ALLOWLIST = ['secondaryEnabled', 'secondaryDisplayName'] as const;
+
+/** A 的預設值（profile-data-render.js saveIdentitySettings／_getResolvedSecondaryDisplayName），照存避免 A、B 顯示不一致。 */
+const SECONDARY_DEFAULT_NAME = '次身份';
+const SECONDARY_ROLE_LABEL = '一般用戶';
+
+/** 對應 A `saveIdentitySettings` → `_buildIdentitySettingsCallablePayload`（updatedAt 由伺服器補）。 */
+export function buildIdentitySettingsRequest(
+  input: CommitIdentitySettingsInput,
+): CommitIdentitySettingsRequest {
+  return {
+    profileActiveIdentityId: input.secondaryEnabled ? 'secondary' : 'main',
+    identities: {
+      secondary: {
+        identityId: 'secondary',
+        enabled: input.secondaryEnabled,
+        displayName: input.secondaryDisplayName.trim() || SECONDARY_DEFAULT_NAME,
+        displayRoleLabel: SECONDARY_ROLE_LABEL,
+        isPrimary: false,
+        editable: true,
+      },
+    },
+  };
+}
+
 export async function commitIdentitySettings(
   input: CommitIdentitySettingsInput,
 ): Promise<void> {
-  await callFn('commitIdentitySettings', input);
+  assertAllowedFields('commitIdentitySettings', { ...input }, IDENTITY_SETTINGS_ALLOWLIST);
+  assertNoDerivedFields({ ...input });
+  // B 比 A 嚴格：啟用時不接受空白名稱（A 會補預設名稱）。
+  if (
+    typeof input.secondaryEnabled !== 'boolean'
+    || typeof input.secondaryDisplayName !== 'string'
+    || input.secondaryDisplayName.trim().length > 40
+    || (input.secondaryEnabled && !input.secondaryDisplayName.trim())
+  ) throw new Error('[profile-writes] invalid identity settings');
+
+  await callFn('commitIdentitySettings', buildIdentitySettingsRequest(input));
 }
 
+// 保留原資料層 API 相容性；本批 UI 不使用上傳或清除頭像方法。
+// 欄位已對照 A firebase-crud.js uploadSecondaryIdentityAvatar／clearSecondaryIdentityAvatar。
 export interface SecondaryAvatarUploadInput {
   avatarUrl: string;
   avatarStoragePath: string;
@@ -254,12 +322,12 @@ export interface SecondaryAvatarClearInput {
   clear: true;
 }
 
-/**
- * A30 `uploadSecondaryIdentityAvatar` / `clearSecondaryIdentityAvatar`：
- * 以 Callable 送出（upload 需先完成 Storage 上傳；此處僅負責送 metadata）。
- */
 export async function commitSecondaryIdentityAvatar(
   input: SecondaryAvatarUploadInput | SecondaryAvatarClearInput,
 ): Promise<void> {
+  const allowed = 'clear' in input
+    ? ['clear'] as const
+    : ['avatarUrl', 'avatarStoragePath', 'avatarStorageBucket'] as const;
+  assertAllowedFields('commitSecondaryIdentityAvatar', { ...input }, allowed);
   await callFn('commitSecondaryIdentityAvatar', input);
 }

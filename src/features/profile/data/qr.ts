@@ -60,4 +60,9 @@ export async function renderQrToCanvas(
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
+
+  // qrcode 會寫入 inline width/height（400px），蓋過 CSS 的 100%，窄螢幕會把 QR 裁掉而無法掃描；
+  // 清掉讓外框 CSS 控制顯示尺寸（canvas 解析度仍是 400）。
+  canvas.style.removeProperty('width');
+  canvas.style.removeProperty('height');
 }

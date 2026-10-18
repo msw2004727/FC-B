@@ -230,7 +230,21 @@ export interface CancelRegistrationResponse {
   event?: unknown;
 }
 
+/** 照 functions/index.js normalizeIdentitySettingsCommit 與 A firebase-crud.js _buildIdentitySettingsCallablePayload；伺服器拒絕未列欄位。 */
+export interface CommitIdentitySettingsSecondaryInput {
+  identityId?: 'secondary';
+  enabled?: boolean;
+  /** 最多 40 字；enabled 時不得為空 */
+  displayName?: string;
+  displayRoleLabel?: string;
+  isPrimary?: boolean;
+  editable?: boolean;
+}
+
 export interface CommitIdentitySettingsRequest {
+  /** 'secondary' 需 secondary.enabled === true */
+  profileActiveIdentityId: 'main' | 'secondary';
+  identities: { secondary: CommitIdentitySettingsSecondaryInput };
 }
 
 export interface CommitIdentitySettingsResponse {
@@ -240,8 +254,10 @@ export interface CommitIdentitySettingsResponse {
   profileActiveIdentityId?: unknown;
 }
 
-export interface CommitSecondaryIdentityAvatarRequest {
-}
+/** 照 functions/index.js normalizeSecondaryIdentityAvatarCommit：clear 或上傳後的 metadata 二擇一。 */
+export type CommitSecondaryIdentityAvatarRequest =
+  | { clear: true }
+  | { avatarUrl: string; avatarStoragePath: string; avatarStorageBucket: string };
 
 export interface CommitSecondaryIdentityAvatarResponse {
   /** @when 成功 */

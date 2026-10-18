@@ -40,6 +40,19 @@ describe('renderQrToCanvas（R-SHARE-013：本機、無網路）', () => {
     vi.clearAllMocks();
   });
 
+  it('清除 qrcode 寫入的 inline 尺寸，讓外框 CSS 控制顯示大小（窄螢幕不裁切）', async () => {
+    const qr = await import('qrcode');
+    vi.mocked(qr.toCanvas).mockImplementationOnce(((canvas: HTMLCanvasElement, _t: string, _o: unknown, cb: (e: Error | null) => void) => {
+      canvas.style.width = '400px';
+      canvas.style.height = '400px';
+      cb(null);
+    }) as never);
+    const canvas = document.createElement('canvas');
+    await renderQrToCanvas(canvas, 'U123');
+    expect(canvas.style.width).toBe('');
+    expect(canvas.style.height).toBe('');
+  });
+
   it('呼叫本機 qrcode.toCanvas；不觸發 fetch 或 Image', async () => {
     const qr = await import('qrcode');
     const fetchSpy = vi.fn((): never => {
