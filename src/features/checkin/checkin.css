@@ -1,0 +1,361 @@
+.checkin-page {
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.checkin-page button,
+.checkin-page input,
+.checkin-page select,
+.scan-modal-actions button,
+.scan-result-close {
+  box-sizing: border-box;
+  min-height: 44px;
+  font: inherit;
+}
+
+.checkin-page button,
+.scan-modal-actions button,
+.scan-result-close {
+  min-width: 44px;
+  padding: .45rem .75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.checkin-page button:disabled,
+.scan-modal-actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.checkin-page :focus-visible,
+.scan-modal-actions button:focus-visible,
+.scan-result-close:focus-visible,
+.scan-family-row input:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+.scan-page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.scan-page-header h1 {
+  margin: 0;
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+}
+
+.scan-content {
+  padding: .5rem;
+}
+
+.scan-select-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-body-sm);
+}
+
+.scan-event-select {
+  width: 100%;
+  padding: .55rem .75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: .85rem;
+  margin-bottom: .75rem;
+  appearance: auto;
+}
+
+.scan-mode-toggle,
+.scan-date-filter {
+  display: flex;
+  gap: .3rem;
+  padding: .25rem;
+  margin-bottom: .75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+
+.scan-mode-toggle button,
+.scan-date-filter button {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-semibold);
+  font-size: .85rem;
+  transition: background var(--ui-dur-fast) var(--ui-ease);
+}
+
+.scan-date-filter button {
+  font-size: .78rem;
+}
+
+.scan-mode-toggle button[aria-pressed="true"],
+.scan-date-filter button[aria-pressed="true"] {
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  box-shadow: var(--shadow-xs);
+}
+
+.scan-camera {
+  margin-bottom: .75rem;
+}
+
+.scan-qr-reader {
+  box-sizing: border-box;
+  width: min(300px, 100%);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  padding: var(--space-2);
+  background: var(--color-bg-elevated);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  color: var(--color-text-muted);
+  font-size: .85rem;
+  text-align: center;
+}
+
+.scan-qr-reader video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.checkin-page .scan-camera-btn,
+.scan-result-close {
+  width: 100%;
+  background: var(--color-brand);
+  color: var(--color-brand-fg);
+  border: none;
+  font-weight: var(--font-weight-semibold);
+}
+
+.scan-camera-btn {
+  margin-top: .4rem;
+  font-size: .85rem;
+}
+
+.scan-manual-section {
+  margin: .8rem 0;
+  padding: .6rem .8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+}
+
+.scan-manual-section label {
+  display: block;
+  margin-bottom: .4rem;
+  color: var(--color-text-muted);
+  font-size: .78rem;
+}
+
+.scan-manual-row {
+  display: flex;
+  gap: .4rem;
+}
+
+.scan-manual-row input {
+  flex: 1;
+  min-width: 0;
+  padding: .35rem .5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+}
+
+.scan-results {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin: .75rem 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.scan-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: .5rem .75rem;
+  border-radius: var(--radius-sm);
+  font-size: .82rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.scan-result button {
+  margin-inline-start: auto;
+}
+
+.scan-result.success {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.scan-result.error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
+
+.scan-stats {
+  display: flex;
+  gap: .5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: .55rem;
+  margin-bottom: .5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+}
+
+.scan-section {
+  padding: .65rem .75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  margin-bottom: .5rem;
+}
+
+.scan-section h2 {
+  margin: 0 0 .4rem;
+  font-size: .82rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.scan-section-registered {
+  background: var(--color-info-bg);
+  color: var(--color-info-fg);
+  border-color: var(--color-info);
+}
+
+.scan-section-unregistered {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  border-color: var(--color-warning);
+}
+
+.scan-user-tags,
+.scan-person-tag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .3rem;
+}
+
+.scan-person-tag {
+  padding: .2rem .55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: .75rem;
+}
+
+.scan-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-sm);
+}
+
+.scan-result-box {
+  box-sizing: border-box;
+  width: min(280px, 100%);
+  padding: 1.8rem 1.5rem 1.3rem;
+  margin: auto;
+  text-align: center;
+  border-radius: var(--radius-modal);
+  background: var(--color-bg-surface);
+  animation: ui-fade-in var(--ui-dur-base) var(--ui-ease);
+}
+
+.scan-result-icon {
+  font-size: 2.8rem;
+  margin-bottom: .5rem;
+}
+
+.scan-result-name {
+  font-size: .82rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}
+
+.scan-result-box.success {
+  color: var(--color-success-fg);
+}
+
+.scan-result-box.warning {
+  color: var(--color-warning-fg);
+}
+
+.scan-result-box.error {
+  color: var(--color-danger-fg);
+}
+
+.scan-family-list {
+  max-width: 360px;
+}
+
+.scan-family-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  min-height: 44px;
+  padding: .3rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: .82rem;
+  cursor: pointer;
+}
+
+.scan-family-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-brand);
+}
+
+.scan-modal-actions {
+  display: flex;
+  gap: .5rem;
+  margin-top: .6rem;
+}
+
+.scan-modal-actions button {
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-result-box {
+    animation: none;
+  }
+
+  .scan-mode-toggle button,
+  .scan-date-filter button {
+    transition: none;
+  }
+}

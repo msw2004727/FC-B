@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@line/liff": "^2.31.2",
+    "barcode-detector": "^3.2.2",
     "firebase": "^12.19.0",
     "preact": "^10.29.8",
     "preact-iso": "^2.12.2",

@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import type { FeatureManifest } from '@/core/feature-types';
 
 export const manifest: FeatureManifest = {
@@ -9,11 +8,7 @@ export const manifest: FeatureManifest = {
     {
       path: '/checkin',
       titleKey: 'checkin.title',
-      load: () =>
-        import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'checkin.title' }),
-        })),
+      load: () => import('./CheckinPage'),
     },
   ],
-  // 由 BottomNav 的中央 QR 拱起入口呈現，不重複佔用一般導覽格。
 };
