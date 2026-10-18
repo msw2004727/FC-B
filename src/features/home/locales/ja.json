@@ -2,5 +2,26 @@
   "title": "ホーム",
   "nav": "ホーム",
   "demo": "ToosterX へようこそ。台北マラソンの申し込みは今週末に開始され、クラブ会員は先行チェックインとキャンセル待ちやコース情報の確認ができます。",
-  "meta": "言語：{locale} ・ テーマ：{theme}"
+  "meta": "言語：{locale} ・ テーマ：{theme}",
+  "heroTitle": "仕事帰りに、みんなでスポーツ",
+  "heroBody": "イベントを見つけて、同じスポーツを楽しむ仲間に出会おう。",
+  "findActivities": "イベントを探す",
+  "findClubs": "クラブを探す",
+  "nextTitle": "次に参加するイベント",
+  "viewAll": "すべて見る",
+  "signedOutTitle": "ログインして次のイベントを確認",
+  "signedOutBody": "画面上部の LINE ログインボタンから参加予定を確認できます。",
+  "loading": "次のイベントを読み込み中…",
+  "loadError": "次のイベントを読み込めませんでした。",
+  "retry": "再試行",
+  "emptyTitle": "まだ参加予定のイベントはありません",
+  "emptyBody": "イベントを探して、一緒にスポーツを楽しみましょう。",
+  "sportsTitle": "スポーツから探す",
+  "activityCount": {
+    "one": "{count}件",
+    "other": "{count}件"
+  },
+  "countUnavailable": "件数不明",
+  "more": "もっと見る",
+  "recentTitle": "最近のイベント"
 }

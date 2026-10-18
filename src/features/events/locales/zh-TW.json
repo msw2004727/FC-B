@@ -1,4 +1,56 @@
 {
   "title": "活動",
-  "nav": "活動"
+  "nav": "活動",
+  "detail": "活動詳情",
+  "pageTitle": "活動列表",
+  "backHome": "返回首頁",
+  "search": "搜尋",
+  "filter": "篩選",
+  "searchPlaceholder": "搜尋活動名稱或地點",
+  "tabsLabel": "活動列表分頁",
+  "normal": "報名中",
+  "chooseSport": "選擇運動",
+  "loading": "活動資料載入中…",
+  "loadError": "無法載入活動，請重試。",
+  "retry": "重試",
+  "emptyTitle": "目前沒有符合條件的活動",
+  "emptyBody": "試試其他運動項目或搜尋詞。",
+  "sport": {
+    "all": "全部運動",
+    "football": "足球",
+    "basketball": "籃球",
+    "pickleball": "匹克球",
+    "dodgeball": "美式躲避球",
+    "restaurant": "餐廳(觀賽)",
+    "escape_room": "密室逃脫",
+    "esports": "電玩電競",
+    "baseball_softball": "棒壘球",
+    "volleyball": "排球",
+    "table_tennis": "桌球",
+    "tennis": "網球",
+    "badminton": "羽球",
+    "hiking": "登山",
+    "running": "慢跑",
+    "cycling": "單車",
+    "motorcycle": "重機",
+    "skateboard": "滑板",
+    "dance": "舞蹈",
+    "yoga": "瑜伽",
+    "martial_arts": "武術",
+    "other": "其他"
+  },
+  "status": {
+    "open": "報名中",
+    "full": "已額滿",
+    "upcoming": "即將開始",
+    "ended": "已結束",
+    "cancelled": "已取消",
+    "unknown": "狀態待確認"
+  },
+  "card": {
+    "untitled": "未命名活動",
+    "dateUnknown": "時間待確認",
+    "locationUnknown": "地點待確認",
+    "capacity": "{current}/{max}人"
+  }
 }

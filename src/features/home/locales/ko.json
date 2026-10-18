@@ -2,5 +2,26 @@
   "title": "홈",
   "nav": "홈",
   "demo": "ToosterX에 오신 것을 환영합니다. 타이베이 마라톤 신청이 이번 주말에 시작되며, 클럽 회원은 미리 체크인하고 대기자 명단과 강좌 정보를 확인할 수 있습니다.",
-  "meta": "언어: {locale} · 테마: {theme}"
+  "meta": "언어: {locale} · 테마: {theme}",
+  "heroTitle": "퇴근 후 함께 운동해요",
+  "heroBody": "활동을 찾고 같은 스포츠를 즐기는 사람들을 만나세요.",
+  "findActivities": "활동 찾기",
+  "findClubs": "클럽 찾기",
+  "nextTitle": "나의 다음 활동",
+  "viewAll": "모두 보기",
+  "signedOutTitle": "로그인하고 다음 활동을 확인하세요",
+  "signedOutBody": "상단 LINE 로그인 버튼으로 참가 신청 내역을 확인하세요.",
+  "loading": "다음 활동을 불러오는 중…",
+  "loadError": "다음 활동을 불러오지 못했습니다.",
+  "retry": "다시 시도",
+  "emptyTitle": "아직 신청한 활동이 없습니다",
+  "emptyBody": "활동을 찾아 함께 스포츠를 즐겨 보세요.",
+  "sportsTitle": "스포츠 바로가기",
+  "activityCount": {
+    "one": "활동 {count}개",
+    "other": "활동 {count}개"
+  },
+  "countUnavailable": "개수 확인 불가",
+  "more": "더 보기",
+  "recentTitle": "최근 활동"
 }

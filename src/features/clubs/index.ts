@@ -6,13 +6,21 @@ export const manifest: FeatureManifest = {
   status: 'enabled',
   routes: [
     {
-      path: '/clubs',
+      path: '/teams',
       titleKey: 'clubs.title',
       load: () =>
         import('@/ui/PlaceholderPage').then((m) => ({
           default: () => h(m.PlaceholderPage, { titleKey: 'clubs.title' }),
         })),
     },
+    {
+      path: '/teams/:id',
+      titleKey: 'clubs.detail',
+      load: () =>
+        import('@/ui/PlaceholderPage').then((m) => ({
+          default: () => h(m.PlaceholderPage, { titleKey: 'clubs.detail' }),
+        })),
+    },
   ],
-  nav: [{ path: '/clubs', labelKey: 'nav.clubs', icon: 'users', order: 1 }],
+  nav: [{ path: '/teams', labelKey: 'nav.clubs', icon: 'users', order: 1 }],
 };

@@ -2,5 +2,26 @@
   "title": "首页",
   "nav": "首页",
   "demo": "欢迎使用 ToosterX，台北马拉松周末开放报名，俱乐部会员可先行签到并查看候补与课程信息。",
-  "meta": "语言：{locale} ・ 主题：{theme}"
+  "meta": "语言：{locale} ・ 主题：{theme}",
+  "heroTitle": "下班约人一起动",
+  "heroBody": "找活动、认识球友，一起享受运动。",
+  "findActivities": "找活动",
+  "findClubs": "找俱乐部",
+  "nextTitle": "我的下一场活动",
+  "viewAll": "查看全部",
+  "signedOutTitle": "登录后查看你的下一场活动",
+  "signedOutBody": "点击上方 LINE 登录，即可查看你的报名活动。",
+  "loading": "正在载入下一场活动…",
+  "loadError": "无法载入下一场活动，请重试。",
+  "retry": "重试",
+  "emptyTitle": "你目前还没有报名活动",
+  "emptyBody": "找一场活动，和伙伴一起运动。",
+  "sportsTitle": "运动快速入口",
+  "activityCount": {
+    "one": "{count} 活动",
+    "other": "{count} 活动"
+  },
+  "countUnavailable": "数量暂不可用",
+  "more": "查看更多",
+  "recentTitle": "近期活动"
 }

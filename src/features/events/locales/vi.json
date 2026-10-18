@@ -1,4 +1,56 @@
 {
   "title": "Sự kiện",
-  "nav": "Sự kiện"
+  "nav": "Sự kiện",
+  "detail": "Chi tiết sự kiện",
+  "pageTitle": "Danh sách hoạt động",
+  "backHome": "Về trang chủ",
+  "search": "Tìm kiếm",
+  "filter": "Bộ lọc",
+  "searchPlaceholder": "Tìm theo tên hoạt động hoặc địa điểm",
+  "tabsLabel": "Danh sách hoạt động",
+  "normal": "Đang nhận đăng ký",
+  "chooseSport": "Chọn môn thể thao",
+  "loading": "Đang tải hoạt động…",
+  "loadError": "Không thể tải hoạt động.",
+  "retry": "Thử lại",
+  "emptyTitle": "Không có hoạt động phù hợp",
+  "emptyBody": "Hãy chọn môn thể thao hoặc từ khóa khác.",
+  "sport": {
+    "all": "Tất cả môn",
+    "football": "Bóng đá",
+    "basketball": "Bóng rổ",
+    "pickleball": "Pickleball",
+    "dodgeball": "Bóng né kiểu Mỹ",
+    "restaurant": "Nhà hàng (xem thi đấu)",
+    "escape_room": "Phòng thoát hiểm",
+    "esports": "Thể thao điện tử",
+    "baseball_softball": "Bóng chày/bóng mềm",
+    "volleyball": "Bóng chuyền",
+    "table_tennis": "Bóng bàn",
+    "tennis": "Quần vợt",
+    "badminton": "Cầu lông",
+    "hiking": "Leo núi",
+    "running": "Chạy bộ",
+    "cycling": "Đạp xe",
+    "motorcycle": "Mô tô",
+    "skateboard": "Trượt ván",
+    "dance": "Khiêu vũ",
+    "yoga": "Yoga",
+    "martial_arts": "Võ thuật",
+    "other": "Khác"
+  },
+  "status": {
+    "open": "Đang đăng ký",
+    "full": "Đã đủ người",
+    "upcoming": "Sắp diễn ra",
+    "ended": "Đã kết thúc",
+    "cancelled": "Đã hủy",
+    "unknown": "Chưa rõ trạng thái"
+  },
+  "card": {
+    "untitled": "Hoạt động chưa có tên",
+    "dateUnknown": "Chưa xác định thời gian",
+    "locationUnknown": "Chưa xác định địa điểm",
+    "capacity": "{current}/{max} người"
+  }
 }

@@ -1,4 +1,56 @@
 {
   "title": "イベント",
-  "nav": "イベント"
+  "nav": "イベント",
+  "detail": "イベント詳細",
+  "pageTitle": "イベント一覧",
+  "backHome": "ホームへ戻る",
+  "search": "検索",
+  "filter": "絞り込み",
+  "searchPlaceholder": "イベント名・場所で検索",
+  "tabsLabel": "イベント一覧の切り替え",
+  "normal": "参加受付中",
+  "chooseSport": "スポーツを選択",
+  "loading": "イベントを読み込み中…",
+  "loadError": "イベントを読み込めませんでした。",
+  "retry": "再試行",
+  "emptyTitle": "該当するイベントはありません",
+  "emptyBody": "別のスポーツや検索語をお試しください。",
+  "sport": {
+    "all": "すべて",
+    "football": "サッカー",
+    "basketball": "バスケットボール",
+    "pickleball": "ピックルボール",
+    "dodgeball": "アメリカンドッジボール",
+    "restaurant": "レストラン（観戦）",
+    "escape_room": "脱出ゲーム",
+    "esports": "eスポーツ",
+    "baseball_softball": "野球・ソフトボール",
+    "volleyball": "バレーボール",
+    "table_tennis": "卓球",
+    "tennis": "テニス",
+    "badminton": "バドミントン",
+    "hiking": "登山",
+    "running": "ジョギング",
+    "cycling": "サイクリング",
+    "motorcycle": "バイク",
+    "skateboard": "スケートボード",
+    "dance": "ダンス",
+    "yoga": "ヨガ",
+    "martial_arts": "武道",
+    "other": "その他"
+  },
+  "status": {
+    "open": "受付中",
+    "full": "満員",
+    "upcoming": "開催予定",
+    "ended": "終了",
+    "cancelled": "中止",
+    "unknown": "状態不明"
+  },
+  "card": {
+    "untitled": "名称未設定のイベント",
+    "dateUnknown": "日時未定",
+    "locationUnknown": "場所未定",
+    "capacity": "{current}/{max}人"
+  }
 }

@@ -1,253 +1,293 @@
-/**
- * 移植自 tests/unit/activity-terminal-events-loading.test.js 的可移植行為案例。
- *
- * 略過清單（並說明原因）：
- *   - 'front activity page removes ended tab but keeps fallback normalization'（僅讀原始碼字串）
- *   - 'FirebaseService keeps a small terminal preview ...'（比對原始碼字串及 _myActivityPageSize 等字串）
- *   - 任何 `readProjectFile(...)` 字串 contains 檢查：B 以 mock Firestore 驗證實際查詢參數 / 分頁 / 序號，
- *     不以原始碼字串代替行為。
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(async () => ({
-    db: { kind: 'fake-db' },
-    app: {},
-    auth: {},
-    functions: {},
-  })),
+  getFirebase: vi.fn(async () => ({ db: {} })),
 }));
 
-vi.mock('firebase/firestore', () => {
-  return {
-    collection: vi.fn((_db: unknown, path: string) => ({ kind: 'collection', path })),
-    collectionGroup: vi.fn((_db: unknown, id: string) => ({ kind: 'collectionGroup', id })),
-    query: vi.fn((base: unknown, ...constraints: unknown[]) => ({ kind: 'query', base, constraints })),
-    where: vi.fn((field: string, op: string, value: unknown) => ({ kind: 'where', field, op, value })),
-    orderBy: vi.fn((field: string, direction: 'asc' | 'desc') => ({ kind: 'orderBy', field, direction })),
-    limit: vi.fn((n: number) => ({ kind: 'limit', n })),
-    startAfter: vi.fn((cursor: unknown) => ({ kind: 'startAfter', cursor })),
-    getDocs: vi.fn(),
-    doc: vi.fn(),
-    getDoc: vi.fn(),
-  };
-});
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn((_db: unknown, path: string) => ({ kind: 'collection', path })),
+  collectionGroup: vi.fn((_db: unknown, id: string) => ({ kind: 'collectionGroup', id })),
+  query: vi.fn((base: unknown, ...constraints: unknown[]) => ({ base, constraints })),
+  where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+  orderBy: vi.fn((field: string, direction: string) => ({ field, direction })),
+  limit: vi.fn((n: number) => ({ n })),
+  startAfter: vi.fn((cursor: unknown) => ({ cursor })),
+  getDocs: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn(),
+}));
 
-import {
-  getDocs,
-  limit,
-  orderBy,
-  startAfter,
-  where,
-} from 'firebase/firestore';
+import { getDocs, limit, orderBy, startAfter, where } from 'firebase/firestore';
 import {
   ACTIVE_EVENTS_LIMIT,
   ACTIVE_EVENT_STATUSES,
   TERMINAL_EVENT_STATUSES,
   TERMINAL_HISTORY_LIMIT,
   TERMINAL_PREVIEW_LIMIT,
+  EventsLoadError,
   createEventsRepo,
 } from './events-repo';
 
-type FakeDoc = { id: string; data: () => Record<string, unknown>; ref: { id: string } };
+type FakeDoc = {
+  id: string;
+  data: () => Record<string, unknown>;
+  ref: { id: string };
+};
 type FakeSnap = { docs: FakeDoc[] };
 
 function makeDoc(id: string, data: Record<string, unknown> = {}): FakeDoc {
   return { id, data: () => data, ref: { id } };
 }
 
-function makeSnap(docs: FakeDoc[]): FakeSnap {
+function snap(docs: FakeDoc[] = []): FakeSnap {
   return { docs };
 }
 
-const mockedGetDocs = vi.mocked(getDocs);
-const mockedWhere = vi.mocked(where);
-const mockedLimit = vi.mocked(limit);
-const mockedOrderBy = vi.mocked(orderBy);
-const mockedStartAfter = vi.mocked(startAfter);
-
-function makeRepo() {
-  return createEventsRepo({
-    getFirebase: async () => ({ db: {} as never }),
-    logger: { warn: () => {}, error: () => {} },
-  });
-}
-
-function defer<T>() {
-  let resolve!: (v: T) => void;
-  let reject!: (e: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+function defer<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
   });
   return { promise, resolve, reject };
 }
 
-describe('createEventsRepo — active events', () => {
-  beforeEach(() => vi.clearAllMocks());
+function makeRepo() {
+  return createEventsRepo({
+    getFirebase: async () => ({ db: {} as never }),
+    logger: { warn: vi.fn(), error: vi.fn() },
+  });
+}
 
-  test('loadEventsStatic queries active events with status in [open,full,upcoming] and limit 200', async () => {
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never)
-      .mockResolvedValueOnce(makeSnap([]) as never);
+const docs = vi.mocked(getDocs);
 
+beforeEach(() => {
+  vi.resetAllMocks();
+  docs.mockResolvedValue(snap() as never);
+});
+
+describe('active events', () => {
+  test('queries active statuses with limit 200 and stores document IDs', async () => {
+    docs.mockResolvedValueOnce(snap([
+      makeDoc('a1', { id: 'public-a1', status: 'open' }),
+      makeDoc('a2', { status: 'full' }),
+    ]) as never);
     const repo = makeRepo();
-    await repo.loadEventsStatic();
-
-    expect(mockedWhere).toHaveBeenCalledWith('status', 'in', [...ACTIVE_EVENT_STATUSES]);
-    expect(mockedLimit).toHaveBeenCalledWith(ACTIVE_EVENTS_LIMIT);
+    await expect(repo.loadEventsStatic()).resolves.toEqual(['events']);
+    expect(where).toHaveBeenCalledWith('status', 'in', [...ACTIVE_EVENT_STATUSES]);
+    expect(limit).toHaveBeenCalledWith(ACTIVE_EVENTS_LIMIT);
+    expect(repo.getSnapshot().active.map((event) => event._docId)).toEqual(['a1', 'a2']);
+    expect(repo.getSnapshot().active[0]?.id).toBe('public-a1');
   });
 
-  test('loadEventsStatic stores active docs from snapshot', async () => {
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([makeDoc('a1', { status: 'open' }), makeDoc('a2', { status: 'full' })]) as never)
-      .mockResolvedValueOnce(makeSnap([]) as never);
-
+  test('none mode skips terminal and rejects active failure, then retries', async () => {
+    docs
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce(snap([makeDoc('a')]) as never);
     const repo = makeRepo();
-    await repo.loadEventsStatic();
-    const snap = repo.getSnapshot();
-    expect(snap.active.map((e) => e._docId)).toEqual(['a1', 'a2']);
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' }))
+      .rejects.toMatchObject({ activeFailed: true, terminalFailed: false });
+    expect(docs).toHaveBeenCalledTimes(1);
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' }))
+      .resolves.toEqual(['events']);
+    expect(docs).toHaveBeenCalledTimes(2);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('a');
+  });
+
+  test('failed active refresh retains the preceding active snapshot', async () => {
+    const repo = makeRepo();
+    docs.mockResolvedValueOnce(snap([makeDoc('saved')]) as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+
+    docs.mockRejectedValueOnce(new Error('network'));
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' })).rejects.toBeInstanceOf(EventsLoadError);
+    expect(repo.getSnapshot().active.map((event) => event._docId)).toEqual(['saved']);
+  });
+
+  test('Firebase initialization failures are observable and retryable', async () => {
+    const getFirebase = vi.fn()
+      .mockRejectedValueOnce(new Error('initialization'))
+      .mockResolvedValueOnce({ db: {} });
+    const repo = createEventsRepo({ getFirebase });
+    await expect(repo.loadEventsStatic()).rejects.toBeInstanceOf(EventsLoadError);
+    await expect(repo.loadEventsStatic()).resolves.toEqual(['events']);
+    expect(getFirebase).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('createEventsRepo — terminal events (preview / history)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  test('preview mode queries terminal events with orderBy(date,desc) and limit 50', async () => {
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never) // active
-      .mockResolvedValueOnce(makeSnap([]) as never); // terminal
-
-    const repo = makeRepo();
-    await repo.loadEventsStatic({ terminalMode: 'preview' });
-
-    expect(mockedWhere).toHaveBeenCalledWith('status', 'in', [...TERMINAL_EVENT_STATUSES]);
-    expect(mockedOrderBy).toHaveBeenCalledWith('date', 'desc');
-    expect(mockedLimit).toHaveBeenCalledWith(TERMINAL_PREVIEW_LIMIT);
+describe('terminal preview and history', () => {
+  test('preview uses ordered query with limit 50', async () => {
+    await makeRepo().loadEventsStatic({ terminalMode: 'preview' });
+    expect(where).toHaveBeenCalledWith('status', 'in', [...TERMINAL_EVENT_STATUSES]);
+    expect(orderBy).toHaveBeenCalledWith('date', 'desc');
+    expect(limit).toHaveBeenCalledWith(TERMINAL_PREVIEW_LIMIT);
     expect(TERMINAL_PREVIEW_LIMIT).toBe(50);
   });
 
-  test('history mode queries terminal events with limit 10', async () => {
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never)
-      .mockResolvedValueOnce(makeSnap([]) as never);
-
-    const repo = makeRepo();
-    await repo.loadEventsStatic({ terminalMode: 'history' });
-
-    expect(mockedLimit).toHaveBeenCalledWith(TERMINAL_HISTORY_LIMIT);
+  test('history uses limit 10', async () => {
+    await makeRepo().loadEventsStatic({ terminalMode: 'history' });
+    expect(limit).toHaveBeenCalledWith(TERMINAL_HISTORY_LIMIT);
     expect(TERMINAL_HISTORY_LIMIT).toBe(10);
   });
 
-  test('terminal event ordered-result failure falls back to un-ordered query with min(limit,100)', async () => {
-    // active ok；terminal ordered 失敗；terminal fallback 成功
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never) // active
-      .mockRejectedValueOnce(new Error('index missing') as never) // terminal:recent
-      .mockResolvedValueOnce(makeSnap([]) as never); // terminal:fallback
-
+  test('ordered query failure falls back without failing a successful load', async () => {
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockRejectedValueOnce(new Error('index'))
+      .mockResolvedValueOnce(snap([makeDoc('fallback')]) as never);
     const repo = makeRepo();
-    await repo.loadEventsStatic({ terminalMode: 'history' });
-
-    const limits = mockedLimit.mock.calls.map((c) => c[0]);
-    // 最後一次 limit 應為 min(10, 100) = 10
-    expect(limits[limits.length - 1]).toBe(10);
+    await expect(repo.loadEventsStatic({ terminalMode: 'history' }))
+      .resolves.toEqual(['events']);
+    expect(vi.mocked(limit).mock.calls.at(-1)?.[0]).toBe(10);
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('fallback');
   });
 
-  test('ensureTerminalEventsLoaded preview/history are idempotent unless forced', async () => {
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never)
-      .mockResolvedValueOnce(makeSnap([]) as never);
+  test('both terminal query failures reject while retaining old terminal data', async () => {
+    const repo = makeRepo();
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockResolvedValueOnce(snap([makeDoc('saved-terminal')]) as never);
+    await repo.loadEventsStatic();
 
+    docs
+      .mockResolvedValueOnce(snap([makeDoc('fresh-active')]) as never)
+      .mockRejectedValueOnce(new Error('ordered failure'))
+      .mockRejectedValueOnce(new Error('fallback failure'));
+
+    await expect(repo.loadEventsStatic())
+      .rejects.toMatchObject({ activeFailed: false, terminalFailed: true });
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('saved-terminal');
+    expect(repo.getSnapshot().active[0]?._docId).toBe('fresh-active');
+  });
+
+  test('all query failures preserve both snapshots', async () => {
+    const repo = makeRepo();
+    docs
+      .mockResolvedValueOnce(snap([makeDoc('saved-active')]) as never)
+      .mockResolvedValueOnce(snap([makeDoc('saved-terminal')]) as never);
+    await repo.loadEventsStatic();
+
+    docs.mockRejectedValue(new Error('offline'));
+    await expect(repo.loadEventsStatic())
+      .rejects.toMatchObject({ activeFailed: true, terminalFailed: true });
+    expect(repo.getSnapshot().active[0]?._docId).toBe('saved-active');
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('saved-terminal');
+  });
+
+  test('preview/history are idempotent unless forced and history is not downgraded', async () => {
     const repo = makeRepo();
     await repo.loadEventsStatic({ terminalMode: 'preview' });
-    const before = mockedGetDocs.mock.calls.length;
-
+    const previewCalls = docs.mock.calls.length;
     await repo.ensureTerminalEventsLoaded({ mode: 'preview' });
-    expect(mockedGetDocs.mock.calls.length).toBe(before);
+    expect(docs.mock.calls.length).toBe(previewCalls);
 
     await repo.ensureTerminalEventsLoaded({ mode: 'history', force: true });
-    expect(mockedGetDocs.mock.calls.length).toBeGreaterThan(before);
+    expect(docs.mock.calls.length).toBe(previewCalls + 2);
+    const historyCalls = docs.mock.calls.length;
+    await repo.ensureTerminalEventsLoaded({ mode: 'history' });
+    expect(docs.mock.calls.length).toBe(historyCalls);
+
+    await repo.loadEventsStatic({ terminalMode: 'preview' });
+    expect(docs.mock.calls.length).toBe(historyCalls + 1);
   });
 });
 
-describe('createEventsRepo — loadMoreTerminalEvents', () => {
-  beforeEach(() => vi.clearAllMocks());
+describe('terminal pagination', () => {
+  function fullPreview(): FakeDoc[] {
+    return Array.from({ length: TERMINAL_PREVIEW_LIMIT }, (_, i) => makeDoc(`t${i}`));
+  }
 
-  test('uses startAfter cursor and current page size', async () => {
-    const previewDocs = Array.from({ length: TERMINAL_PREVIEW_LIMIT }, (_, i) =>
-      makeDoc(`t${i}`, { status: 'ended' }),
-    );
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never) // active
-      .mockResolvedValueOnce(makeSnap(previewDocs) as never) // terminal preview
-      .mockResolvedValueOnce(makeSnap([]) as never); // loadMore
-
+  test('uses the last cursor and current page size', async () => {
+    const preview = fullPreview();
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockResolvedValueOnce(snap(preview) as never);
     const repo = makeRepo();
-    await repo.loadEventsStatic({ terminalMode: 'preview' });
-    const count = await repo.loadMoreTerminalEvents();
-
-    expect(count).toBe(0);
-    expect(mockedStartAfter).toHaveBeenCalledTimes(1);
-    const lastDoc = previewDocs[previewDocs.length - 1];
-    expect(mockedStartAfter).toHaveBeenCalledWith(lastDoc);
-    const limits = mockedLimit.mock.calls.map((c) => c[0]);
-    expect(limits[limits.length - 1]).toBe(TERMINAL_PREVIEW_LIMIT);
+    await repo.loadEventsStatic();
+    expect(await repo.loadMoreTerminalEvents()).toBe(0);
+    expect(startAfter).toHaveBeenCalledWith(preview.at(-1));
+    expect(vi.mocked(limit).mock.calls.at(-1)?.[0]).toBe(TERMINAL_PREVIEW_LIMIT);
   });
 
-  test('appends docs and marks terminalAllLoaded when page not full', async () => {
-    const previewDocs = Array.from({ length: TERMINAL_PREVIEW_LIMIT }, (_, i) =>
-      makeDoc(`t${i}`, { status: 'ended' }),
-    );
-    const moreDocs = [makeDoc('t-extra-1', { status: 'ended' })];
-    mockedGetDocs
-      .mockResolvedValueOnce(makeSnap([]) as never)
-      .mockResolvedValueOnce(makeSnap(previewDocs) as never)
-      .mockResolvedValueOnce(makeSnap(moreDocs) as never);
-
+  test('appends documents and stops after a short page', async () => {
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockResolvedValueOnce(snap(fullPreview()) as never)
+      .mockResolvedValueOnce(snap([makeDoc('extra')]) as never);
     const repo = makeRepo();
-    await repo.loadEventsStatic({ terminalMode: 'preview' });
-    const count = await repo.loadMoreTerminalEvents();
+    await repo.loadEventsStatic();
+    expect(await repo.loadMoreTerminalEvents()).toBe(1);
+    expect(repo.getSnapshot().terminal.at(-1)?._docId).toBe('extra');
+    const calls = docs.mock.calls.length;
+    expect(await repo.loadMoreTerminalEvents()).toBe(0);
+    expect(docs.mock.calls.length).toBe(calls);
+  });
 
-    expect(count).toBe(1);
-    const snap = repo.getSnapshot();
-    expect(snap.terminal.map((e) => e._docId)).toContain('t-extra-1');
+  test('a failed page releases the loading lock for retry', async () => {
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockResolvedValueOnce(snap(fullPreview()) as never)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(snap([makeDoc('recovered')]) as never);
+    const repo = makeRepo();
+    await repo.loadEventsStatic();
+    await expect(repo.loadMoreTerminalEvents()).rejects.toBeInstanceOf(EventsLoadError);
+    await expect(repo.loadMoreTerminalEvents()).resolves.toBe(1);
+    expect(repo.getSnapshot().terminal.at(-1)?._docId).toBe('recovered');
   });
 });
 
-describe('createEventsRepo — request sequence (L-02)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  test('stale loadEventsStatic responses are discarded', async () => {
-    const d1Active = defer<FakeSnap>();
-    const d1Terminal = defer<FakeSnap>();
-    const d2Active = defer<FakeSnap>();
-    const d2Terminal = defer<FakeSnap>();
-
-    let call = 0;
-    mockedGetDocs.mockImplementation((() => {
-      call += 1;
-      if (call === 1) return d1Active.promise as never;
-      if (call === 2) return d1Terminal.promise as never;
-      if (call === 3) return d2Active.promise as never;
-      if (call === 4) return d2Terminal.promise as never;
-      return Promise.resolve(makeSnap([])) as never;
-    }) as never);
+describe('request sequence L-02', () => {
+  test('stale responses cannot overwrite newer documents or terminal metadata', async () => {
+    const oldActive = defer<FakeSnap>();
+    const oldTerminal = defer<FakeSnap>();
+    const newActive = defer<FakeSnap>();
+    const newTerminal = defer<FakeSnap>();
+    docs
+      .mockImplementationOnce(() => oldActive.promise as never)
+      .mockImplementationOnce(() => oldTerminal.promise as never)
+      .mockImplementationOnce(() => newActive.promise as never)
+      .mockImplementationOnce(() => newTerminal.promise as never);
 
     const repo = makeRepo();
-    const p1 = repo.loadEventsStatic();
-    const p2 = repo.loadEventsStatic();
+    const first = repo.loadEventsStatic({ terminalMode: 'history' });
+    // 讓第一批實際發出查詢，再發第二批；避免只測到初始化前就被取消。
+    await Promise.resolve();
+    const second = repo.loadEventsStatic({ terminalMode: 'preview' });
+    await Promise.resolve();
 
-    // p2 先完成
-    d2Active.resolve(makeSnap([makeDoc('new-a', { status: 'open' })]));
-    d2Terminal.resolve(makeSnap([]));
-    await p2;
-    // p1 後完成，應被丟棄
-    d1Active.resolve(makeSnap([makeDoc('old-a', { status: 'open' })]));
-    d1Terminal.resolve(makeSnap([]));
-    await p1;
+    const preview = Array.from({ length: 50 }, (_, index) => makeDoc(`new-${index}`));
+    newActive.resolve(snap([makeDoc('new-active')]));
+    newTerminal.resolve(snap(preview));
+    await second;
 
-    expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['new-a']);
+    oldActive.resolve(snap([makeDoc('old-active')]));
+    oldTerminal.resolve(snap([makeDoc('old-terminal')]));
+    await first;
+
+    expect(repo.getSnapshot().active[0]?._docId).toBe('new-active');
+    expect(repo.getSnapshot().terminal).toHaveLength(50);
+    await repo.loadMoreTerminalEvents();
+    expect(startAfter).toHaveBeenCalledWith(preview.at(-1));
+    expect(vi.mocked(limit).mock.calls.at(-1)?.[0]).toBe(50);
+  });
+
+  test('an obsolete failure does not reject or replace the newer result', async () => {
+    const old = defer<FakeSnap>();
+    docs.mockImplementationOnce(() => old.promise as never);
+    const repo = makeRepo();
+    const first = repo.loadEventsStatic({ terminalMode: 'none' });
+    await Promise.resolve();
+
+    docs.mockResolvedValueOnce(snap([makeDoc('latest')]) as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+    old.reject(new Error('obsolete'));
+    await expect(first).resolves.toEqual([]);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('latest');
   });
 });

@@ -1,16 +1,8 @@
 /**
- * 活動列表的 Firestore 存取層。
- *
- * 移植 A 的：
- *   - firebase-service.js::_loadEventsStatic
- *   - firebase-service.js::_fetchTerminalEventsSnapshot
- *   - firebase-service.js::ensureTerminalEventsLoaded
- *   - firebase-service.js::loadMoreTerminalEvents
- *
- * 本檔是 events feature 唯一直接呼叫 Firestore API 的地方。
- * 以「請求序號」避免舊請求覆蓋新結果（review-lessons L-02）。
+ * 唯一直接存取活動 Firestore 的模組。
+ * 保留 preview/history、fallback、分頁與過期回應丟棄語意。
+ * 查詢失敗會 reject；成功分支仍更新自己的快取，失敗分支保留舊快取。
  */
-
 import {
   collection,
   getDocs,
@@ -29,23 +21,14 @@ import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath } from '@/data/paths';
 import type { EventDoc } from './types';
 
-// ── 常數（與 A 對齊） ─────────────────────────────────
-
 export const ACTIVE_EVENT_STATUSES = ['open', 'full', 'upcoming'] as const;
 export const TERMINAL_EVENT_STATUSES = ['ended', 'cancelled'] as const;
-
-/** A 的 _terminalPreviewLimit */
 export const TERMINAL_PREVIEW_LIMIT = 50;
-/** A 的 _terminalHistoryLimit */
 export const TERMINAL_HISTORY_LIMIT = 10;
-/** A 的 _terminalPageSize 預設 */
 export const TERMINAL_PAGE_SIZE_DEFAULT = 100;
-/** A 的 active events limit */
 export const ACTIVE_EVENTS_LIMIT = 200;
 
 export type TerminalMode = 'preview' | 'history' | 'none';
-
-// ── 公開型別 ────────────────────────────────────────
 
 export interface EventsRepoLogger {
   warn: (...args: unknown[]) => void;
@@ -83,7 +66,11 @@ type SnapshotResult =
   | { ok: true; docs: QueryDocumentSnapshot<DocumentData>[] }
   | { ok: false; docs: QueryDocumentSnapshot<DocumentData>[] };
 
-// ── 內部狀態 ────────────────────────────────────────
+interface TerminalResult {
+  result: SnapshotResult;
+  ordered: boolean;
+  pageSize: number;
+}
 
 interface InternalState {
   active: EventDoc[];
@@ -92,52 +79,62 @@ interface InternalState {
   terminalLastDoc: QueryDocumentSnapshot<DocumentData> | null;
   terminalPageSize: number;
   terminalAllLoaded: boolean;
-  loadingMoreTerminal: boolean;
   terminalOrderedByDate: boolean | null;
+  loadingMoreTerminal: boolean;
   loadSeq: number;
   moreSeq: number;
 }
 
-function createInitialState(): InternalState {
-  return {
+export class EventsLoadError extends Error {
+  constructor(
+    readonly activeFailed: boolean,
+    readonly terminalFailed: boolean,
+  ) {
+    super('Events could not be loaded.');
+    this.name = 'EventsLoadError';
+  }
+}
+
+export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
+  const logger = deps.logger ?? console;
+  const state: InternalState = {
     active: [],
     terminal: [],
     terminalLoadedMode: 'none',
     terminalLastDoc: null,
     terminalPageSize: TERMINAL_PAGE_SIZE_DEFAULT,
     terminalAllLoaded: false,
-    loadingMoreTerminal: false,
     terminalOrderedByDate: null,
+    loadingMoreTerminal: false,
     loadSeq: 0,
     moreSeq: 0,
   };
-}
-
-// ── 工廠 ────────────────────────────────────────────
-
-export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
-  const logger: EventsRepoLogger = deps.logger ?? console;
-  const state = createInitialState();
 
   function mapDoc(snapshot: QueryDocumentSnapshot<DocumentData>): EventDoc {
-    const data = snapshot.data() as Record<string, unknown>;
-    return { ...data, _docId: snapshot.id } as EventDoc;
+    return {
+      ...(snapshot.data() as Record<string, unknown>),
+      _docId: snapshot.id,
+    } as EventDoc;
   }
 
-  async function fetchQuerySnapshot(label: string, q: Query<DocumentData>): Promise<SnapshotResult> {
+  async function fetchSnapshot(
+    label: string,
+    request: Query<DocumentData>,
+  ): Promise<SnapshotResult> {
     try {
-      const snap = await getDocs(q);
-      return { ok: true, docs: snap.docs };
-    } catch (err) {
-      logger.warn(`[EventsRepo] ${label} query skipped:`, err);
+      const snapshot = await getDocs(request);
+      return { ok: true, docs: snapshot.docs };
+    } catch {
+      // 不輸出 SDK 原始錯誤、查詢內容或使用者資料。
+      logger.warn(`[EventsRepo] ${label} query failed.`);
       return { ok: false, docs: [] };
     }
   }
 
-  async function fetchTerminalEventsSnapshot(db: Firestore, limitCount: number): Promise<SnapshotResult> {
-    const safeLimit = Math.max(1, Number(limitCount) || 200);
-    const ordered = await fetchQuerySnapshot(
-      'events:terminal:recent',
+  async function fetchTerminal(db: Firestore, count: number): Promise<TerminalResult> {
+    const safeLimit = Math.max(1, Number(count) || 200);
+    const ordered = await fetchSnapshot(
+      'terminal:recent',
       query(
         collection(db, eventsCollectionPath),
         where('status', 'in', [...TERMINAL_EVENT_STATUSES]),
@@ -146,40 +143,48 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
       ),
     );
     if (ordered.ok) {
-      state.terminalOrderedByDate = true;
-      state.terminalPageSize = safeLimit;
-      return ordered;
+      return { result: ordered, ordered: true, pageSize: safeLimit };
     }
-    state.terminalOrderedByDate = false;
-    state.terminalPageSize = Math.min(safeLimit, TERMINAL_PAGE_SIZE_DEFAULT);
-    return fetchQuerySnapshot(
-      'events:terminal:fallback',
+
+    const pageSize = Math.min(safeLimit, TERMINAL_PAGE_SIZE_DEFAULT);
+    const fallback = await fetchSnapshot(
+      'terminal:fallback',
       query(
         collection(db, eventsCollectionPath),
         where('status', 'in', [...TERMINAL_EVENT_STATUSES]),
-        limit(state.terminalPageSize),
+        limit(pageSize),
       ),
     );
+    // Metadata 同樣須經 loadSeq 驗證後才能提交（L-02）。
+    return { result: fallback, ordered: false, pageSize };
   }
 
-  async function loadEventsStatic(options: LoadEventsStaticOptions = {}): Promise<string[]> {
-    const requestedTerminalMode: TerminalMode = options.terminalMode ?? 'preview';
-    const shouldLoadTerminal =
-      requestedTerminalMode !== 'none'
-      && !(
-        requestedTerminalMode === 'preview'
-        && state.terminalLoadedMode === 'history'
-        && !options.forceTerminalRefresh
-      );
-    const terminalLimit = requestedTerminalMode === 'history'
+  async function loadEventsStatic(
+    options: LoadEventsStaticOptions = {},
+  ): Promise<string[]> {
+    const mode = options.terminalMode ?? 'preview';
+    const shouldLoadTerminal = mode !== 'none' && !(
+      mode === 'preview' &&
+      state.terminalLoadedMode === 'history' &&
+      !options.forceTerminalRefresh
+    );
+    const terminalLimit = mode === 'history'
       ? TERMINAL_HISTORY_LIMIT
       : TERMINAL_PREVIEW_LIMIT;
-    const seq = ++state.loadSeq;
+    const sequence = ++state.loadSeq;
 
-    const { db } = await deps.getFirebase();
-    const [activeResult, terminalResult] = await Promise.all([
-      fetchQuerySnapshot(
-        'events:active',
+    let db: Firestore;
+    try {
+      ({ db } = await deps.getFirebase());
+    } catch {
+      if (sequence !== state.loadSeq) return [];
+      throw new EventsLoadError(true, shouldLoadTerminal);
+    }
+    if (sequence !== state.loadSeq) return [];
+
+    const [active, terminal] = await Promise.all([
+      fetchSnapshot(
+        'active',
         query(
           collection(db, eventsCollectionPath),
           where('status', 'in', [...ACTIVE_EVENT_STATUSES]),
@@ -187,33 +192,28 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
         ),
       ),
       shouldLoadTerminal
-        ? fetchTerminalEventsSnapshot(db, terminalLimit)
-        : Promise.resolve<SnapshotResult>({ ok: true, docs: [] }),
+        ? fetchTerminal(db, terminalLimit)
+        : Promise.resolve<TerminalResult | null>(null),
     ]);
 
-    // L-02：舊請求回來時直接丟棄，不寫任何狀態。
-    if (seq !== state.loadSeq) return [];
+    if (sequence !== state.loadSeq) return [];
 
-    if (!activeResult.ok && shouldLoadTerminal && !terminalResult.ok) {
-      logger.warn('[EventsRepo] Skip cache overwrite for "events" due to load failure.');
-      return [];
+    if (active.ok) state.active = active.docs.map(mapDoc);
+    if (terminal?.result.ok) {
+      state.terminal = terminal.result.docs.map(mapDoc);
+      state.terminalLoadedMode = mode === 'history' ? 'history' : 'preview';
+      state.terminalOrderedByDate = terminal.ordered;
+      state.terminalPageSize = terminal.pageSize;
+      state.terminalLastDoc = terminal.result.docs.at(-1) ?? null;
+      state.terminalAllLoaded = terminal.result.docs.length < terminal.pageSize;
+      // 已替換分頁基準，舊分頁結果不得再追加進來。
+      state.moreSeq += 1;
     }
 
-    if (activeResult.ok) {
-      state.active = activeResult.docs.map(mapDoc);
+    const terminalFailed = terminal !== null && !terminal.result.ok;
+    if (!active.ok || terminalFailed) {
+      throw new EventsLoadError(!active.ok, terminalFailed);
     }
-
-    if (shouldLoadTerminal && terminalResult.ok) {
-      state.terminal = terminalResult.docs.map(mapDoc);
-      state.terminalLoadedMode = requestedTerminalMode === 'history' ? 'history' : 'preview';
-      const lastDoc = terminalResult.docs.length > 0
-        ? terminalResult.docs[terminalResult.docs.length - 1]
-        : undefined;
-      state.terminalLastDoc = lastDoc ?? null;
-      state.terminalAllLoaded =
-        terminalResult.docs.length < (state.terminalPageSize || terminalLimit);
-    }
-
     return ['events'];
   }
 
@@ -221,8 +221,12 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     options: EnsureTerminalEventsLoadedOptions = {},
   ): Promise<string[]> {
     const mode = options.mode ?? 'history';
-    if (mode === 'history' && state.terminalLoadedMode === 'history' && !options.force) return ['events'];
-    if (mode === 'preview' && state.terminalLoadedMode !== 'none' && !options.force) return ['events'];
+    if (!options.force && (
+      (mode === 'history' && state.terminalLoadedMode === 'history') ||
+      (mode === 'preview' && state.terminalLoadedMode !== 'none')
+    )) {
+      return ['events'];
+    }
     return loadEventsStatic({ terminalMode: mode, forceTerminalRefresh: true });
   }
 
@@ -234,42 +238,34 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     if (state.loadingMoreTerminal) return -1;
 
     state.loadingMoreTerminal = true;
-    const seq = ++state.moreSeq;
+    const sequence = ++state.moreSeq;
     try {
-      const lastDoc = state.terminalLastDoc;
-      if (!lastDoc) return 0;
-
+      const cursor = state.terminalLastDoc;
+      const pageSize = state.terminalPageSize || TERMINAL_PAGE_SIZE_DEFAULT;
+      const ordered = state.terminalOrderedByDate;
       const { db } = await deps.getFirebase();
       const constraints: QueryConstraint[] = [
         where('status', 'in', [...TERMINAL_EVENT_STATUSES]),
       ];
-      if (state.terminalOrderedByDate !== false) {
-        constraints.push(orderBy('date', 'desc'));
-      }
-      constraints.push(
-        startAfter(lastDoc),
-        limit(state.terminalPageSize || TERMINAL_PAGE_SIZE_DEFAULT),
+      if (ordered !== false) constraints.push(orderBy('date', 'desc'));
+      constraints.push(startAfter(cursor), limit(pageSize));
+
+      const snapshot = await getDocs(
+        query(collection(db, eventsCollectionPath), ...constraints),
       );
-      const q = query(collection(db, eventsCollectionPath), ...constraints);
-      const snap = await getDocs(q);
+      if (sequence !== state.moreSeq) return 0;
 
-      if (seq !== state.moreSeq) return 0;
-
-      const newDocs = snap.docs.map(mapDoc);
-      if (newDocs.length > 0) {
-        state.terminal = state.terminal.concat(newDocs);
-        const newLast = snap.docs.length > 0
-          ? snap.docs[snap.docs.length - 1]
-          : undefined;
-        state.terminalLastDoc = newLast ?? null;
+      const docs = snapshot.docs.map(mapDoc);
+      if (docs.length > 0) {
+        state.terminal = state.terminal.concat(docs);
+        state.terminalLastDoc = snapshot.docs.at(-1) ?? null;
       }
-      if (newDocs.length < (state.terminalPageSize || TERMINAL_PAGE_SIZE_DEFAULT)) {
-        state.terminalAllLoaded = true;
-      }
-      return newDocs.length;
-    } catch (err) {
-      logger.error('[loadMoreTerminalEvents]', err);
-      throw err;
+      if (docs.length < pageSize) state.terminalAllLoaded = true;
+      return docs.length;
+    } catch {
+      if (sequence !== state.moreSeq) return 0;
+      logger.error('[EventsRepo] terminal pagination failed.');
+      throw new EventsLoadError(false, true);
     } finally {
       state.loadingMoreTerminal = false;
     }
@@ -279,17 +275,16 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     loadEventsStatic,
     ensureTerminalEventsLoaded,
     loadMoreTerminalEvents,
-    getSnapshot: () => ({ active: [...state.active], terminal: [...state.terminal] }),
+    getSnapshot: () => ({
+      active: [...state.active],
+      terminal: [...state.terminal],
+    }),
   };
 }
-
-// ── 預設 singleton（UI 端使用） ─────────────────────
 
 let singleton: EventsRepo | null = null;
 
 export function getEventsRepo(): EventsRepo {
-  if (!singleton) {
-    singleton = createEventsRepo({ getFirebase: defaultGetFirebase });
-  }
+  singleton ??= createEventsRepo({ getFirebase: defaultGetFirebase });
   return singleton;
 }

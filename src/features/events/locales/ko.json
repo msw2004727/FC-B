@@ -1,4 +1,56 @@
 {
   "title": "이벤트",
-  "nav": "이벤트"
+  "nav": "이벤트",
+  "detail": "이벤트 상세",
+  "pageTitle": "활동 목록",
+  "backHome": "홈으로 돌아가기",
+  "search": "검색",
+  "filter": "필터",
+  "searchPlaceholder": "활동 이름 또는 장소 검색",
+  "tabsLabel": "활동 목록 선택",
+  "normal": "모집 중",
+  "chooseSport": "스포츠 선택",
+  "loading": "활동을 불러오는 중…",
+  "loadError": "활동을 불러오지 못했습니다.",
+  "retry": "다시 시도",
+  "emptyTitle": "일치하는 활동이 없습니다",
+  "emptyBody": "다른 스포츠나 검색어를 선택해 보세요.",
+  "sport": {
+    "all": "모든 스포츠",
+    "football": "축구",
+    "basketball": "농구",
+    "pickleball": "피클볼",
+    "dodgeball": "미국식 피구",
+    "restaurant": "식당(관전)",
+    "escape_room": "방탈출",
+    "esports": "e스포츠",
+    "baseball_softball": "야구·소프트볼",
+    "volleyball": "배구",
+    "table_tennis": "탁구",
+    "tennis": "테니스",
+    "badminton": "배드민턴",
+    "hiking": "등산",
+    "running": "조깅",
+    "cycling": "자전거",
+    "motorcycle": "오토바이",
+    "skateboard": "스케이트보드",
+    "dance": "댄스",
+    "yoga": "요가",
+    "martial_arts": "무술",
+    "other": "기타"
+  },
+  "status": {
+    "open": "모집 중",
+    "full": "정원 마감",
+    "upcoming": "예정",
+    "ended": "종료",
+    "cancelled": "취소",
+    "unknown": "상태 확인 필요"
+  },
+  "card": {
+    "untitled": "이름 없는 활동",
+    "dateUnknown": "일시 미정",
+    "locationUnknown": "장소 미정",
+    "capacity": "{current}/{max}명"
+  }
 }

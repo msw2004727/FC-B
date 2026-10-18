@@ -1,4 +1,56 @@
 {
   "title": "活动",
-  "nav": "活动"
+  "nav": "活动",
+  "detail": "活动详情",
+  "pageTitle": "活动列表",
+  "backHome": "返回首页",
+  "search": "搜索",
+  "filter": "筛选",
+  "searchPlaceholder": "搜索活动名称或地点",
+  "tabsLabel": "活动列表分页",
+  "normal": "报名中",
+  "chooseSport": "选择运动",
+  "loading": "活动资料载入中…",
+  "loadError": "无法载入活动，请重试。",
+  "retry": "重试",
+  "emptyTitle": "目前没有符合条件的活动",
+  "emptyBody": "试试其他运动项目或搜索词。",
+  "sport": {
+    "all": "全部运动",
+    "football": "足球",
+    "basketball": "篮球",
+    "pickleball": "匹克球",
+    "dodgeball": "美式躲避球",
+    "restaurant": "餐厅(观赛)",
+    "escape_room": "密室逃脱",
+    "esports": "电玩电竞",
+    "baseball_softball": "棒垒球",
+    "volleyball": "排球",
+    "table_tennis": "乒乓球",
+    "tennis": "网球",
+    "badminton": "羽毛球",
+    "hiking": "登山",
+    "running": "慢跑",
+    "cycling": "自行车",
+    "motorcycle": "摩托车",
+    "skateboard": "滑板",
+    "dance": "舞蹈",
+    "yoga": "瑜伽",
+    "martial_arts": "武术",
+    "other": "其他"
+  },
+  "status": {
+    "open": "报名中",
+    "full": "已满员",
+    "upcoming": "即将开始",
+    "ended": "已结束",
+    "cancelled": "已取消",
+    "unknown": "状态待确认"
+  },
+  "card": {
+    "untitled": "未命名活动",
+    "dateUnknown": "时间待确认",
+    "locationUnknown": "地点待确认",
+    "capacity": "{current}/{max}人"
+  }
 }

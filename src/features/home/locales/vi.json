@@ -2,5 +2,26 @@
   "title": "Trang chủ",
   "nav": "Trang chủ",
   "demo": "Chào mừng bạn đến với ToosterX. Đăng ký Marathon Đài Bắc mở vào cuối tuần này, thành viên câu lạc bộ có thể check-in sớm và xem danh sách chờ cùng thông tin khóa học.",
-  "meta": "Ngôn ngữ: {locale} · Giao diện: {theme}"
+  "meta": "Ngôn ngữ: {locale} · Giao diện: {theme}",
+  "heroTitle": "Cùng vận động sau giờ làm",
+  "heroBody": "Tìm hoạt động và gặp những người cùng yêu thích thể thao.",
+  "findActivities": "Tìm hoạt động",
+  "findClubs": "Tìm câu lạc bộ",
+  "nextTitle": "Hoạt động tiếp theo của tôi",
+  "viewAll": "Xem tất cả",
+  "signedOutTitle": "Đăng nhập để xem hoạt động tiếp theo",
+  "signedOutBody": "Dùng nút đăng nhập LINE ở phía trên để xem các đăng ký của bạn.",
+  "loading": "Đang tải hoạt động tiếp theo…",
+  "loadError": "Không thể tải hoạt động tiếp theo.",
+  "retry": "Thử lại",
+  "emptyTitle": "Bạn chưa đăng ký hoạt động nào",
+  "emptyBody": "Tìm hoạt động và cùng mọi người chơi thể thao.",
+  "sportsTitle": "Khám phá môn thể thao",
+  "activityCount": {
+    "one": "{count} hoạt động",
+    "other": "{count} hoạt động"
+  },
+  "countUnavailable": "Chưa rõ số lượng",
+  "more": "Xem thêm",
+  "recentTitle": "Hoạt động gần đây"
 }

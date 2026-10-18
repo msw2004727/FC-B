@@ -2,5 +2,26 @@
   "title": "Home",
   "nav": "Home",
   "demo": "Welcome to ToosterX. Registration for the Taipei Marathon opens this weekend, and club members can check in early and view waitlist and course information.",
-  "meta": "Language: {locale} · Theme: {theme}"
+  "meta": "Language: {locale} · Theme: {theme}",
+  "heroTitle": "Get moving together after work",
+  "heroBody": "Discover activities and meet people who share your sport.",
+  "findActivities": "Find activities",
+  "findClubs": "Find clubs",
+  "nextTitle": "My next activity",
+  "viewAll": "View all",
+  "signedOutTitle": "Sign in to see your next activity",
+  "signedOutBody": "Use the LINE sign-in button at the top to see your registrations.",
+  "loading": "Loading your next activity…",
+  "loadError": "Your next activity could not be loaded.",
+  "retry": "Retry",
+  "emptyTitle": "You have not joined an activity yet",
+  "emptyBody": "Find an activity and join others who enjoy your sport.",
+  "sportsTitle": "Explore sports",
+  "activityCount": {
+    "one": "{count} activity",
+    "other": "{count} activities"
+  },
+  "countUnavailable": "Count unavailable",
+  "more": "See more",
+  "recentTitle": "Recent activities"
 }

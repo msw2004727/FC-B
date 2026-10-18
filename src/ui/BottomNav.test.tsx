@@ -27,13 +27,11 @@ afterEach(() => {
 });
 
 describe('BottomNav', () => {
-  it('uses actual manifests with home in the third slot and one QR check-in entry', () => {
+  it('uses compatible list routes with home in the third slot and one QR entry', () => {
     const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
-    const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(
-      '.ui-bottom-nav__item',
-    ));
+    const links = Array.from(container.querySelectorAll<HTMLAnchorElement>('.ui-bottom-nav__item'));
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/inbox', '/clubs', '/', '/events', '/profile',
+      '/inbox', '/teams', '/', '/activities', '/profile',
     ]);
     expect(links[2]?.style.gridColumn).toBe('3');
     expect(screen.getByRole('navigation', { name: t('ui.bottomNav.label') })).toBeTruthy();
@@ -60,12 +58,27 @@ describe('BottomNav', () => {
       .getAttribute('aria-current')).toBe('page');
   });
 
+  it.each(['/activities', '/events/public-event'])('marks activities current on %s', (path) => {
+    history.replaceState(null, '', path);
+    const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
+    expect(container.querySelectorAll('[aria-current="page"]').length).toBe(1);
+    expect(screen.getByRole('link', { name: t('nav.events') })
+      .getAttribute('aria-current')).toBe('page');
+  });
+
+  it('marks clubs current on a shared club detail URL', () => {
+    history.replaceState(null, '', '/teams/public-team');
+    render(<LocationProvider><BottomNav /></LocationProvider>);
+    expect(screen.getByRole('link', { name: t('nav.clubs') })
+      .getAttribute('aria-current')).toBe('page');
+  });
+
   it('keeps home centered when a preceding feature is disabled', async () => {
     render(<LocationProvider><BottomNav /></LocationProvider>);
     await act(() => setRemoteFlags({ inbox: false }));
     expect(screen.queryByRole('link', { name: t('nav.inbox') })).toBeNull();
-    const homeLink = screen.getByRole('link', { name: t('nav.home') });
-    expect((homeLink as HTMLElement).style.gridColumn).toBe('3');
+    expect((screen.getByRole('link', { name: t('nav.home') }) as HTMLElement)
+      .style.gridColumn).toBe('3');
   });
 
   it('hides QR when check-in or its events dependency is disabled', async () => {

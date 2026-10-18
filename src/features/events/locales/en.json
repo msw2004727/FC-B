@@ -1,4 +1,56 @@
 {
   "title": "Events",
-  "nav": "Events"
+  "nav": "Events",
+  "detail": "Event details",
+  "pageTitle": "Activities",
+  "backHome": "Back to home",
+  "search": "Search",
+  "filter": "Filter",
+  "searchPlaceholder": "Search by event or location",
+  "tabsLabel": "Activity lists",
+  "normal": "Registration open",
+  "chooseSport": "Choose a sport",
+  "loading": "Loading activities…",
+  "loadError": "Activities could not be loaded.",
+  "retry": "Retry",
+  "emptyTitle": "No matching activities",
+  "emptyBody": "Try another sport or search term.",
+  "sport": {
+    "all": "All sports",
+    "football": "Football",
+    "basketball": "Basketball",
+    "pickleball": "Pickleball",
+    "dodgeball": "Dodgeball",
+    "restaurant": "Restaurant (watch party)",
+    "escape_room": "Escape room",
+    "esports": "Esports",
+    "baseball_softball": "Baseball/softball",
+    "volleyball": "Volleyball",
+    "table_tennis": "Table tennis",
+    "tennis": "Tennis",
+    "badminton": "Badminton",
+    "hiking": "Hiking",
+    "running": "Running",
+    "cycling": "Cycling",
+    "motorcycle": "Motorcycle",
+    "skateboard": "Skateboarding",
+    "dance": "Dance",
+    "yoga": "Yoga",
+    "martial_arts": "Martial arts",
+    "other": "Other"
+  },
+  "status": {
+    "open": "Open",
+    "full": "Full",
+    "upcoming": "Upcoming",
+    "ended": "Ended",
+    "cancelled": "Cancelled",
+    "unknown": "Status unavailable"
+  },
+  "card": {
+    "untitled": "Untitled activity",
+    "dateUnknown": "Date to be confirmed",
+    "locationUnknown": "Location to be confirmed",
+    "capacity": "{current}/{max} people"
+  }
 }

@@ -6,13 +6,18 @@ export const manifest: FeatureManifest = {
   status: 'enabled',
   routes: [
     {
-      path: '/events',
+      path: '/activities',
       titleKey: 'events.title',
+      load: () => import('./pages/ActivitiesPage'),
+    },
+    {
+      path: '/events/:id',
+      titleKey: 'events.detail',
       load: () =>
         import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'events.title' }),
+          default: () => h(m.PlaceholderPage, { titleKey: 'events.detail' }),
         })),
     },
   ],
-  nav: [{ path: '/events', labelKey: 'nav.events', icon: 'calendar', order: 3 }],
+  nav: [{ path: '/activities', labelKey: 'nav.events', icon: 'calendar', order: 3 }],
 };

@@ -1,4 +1,56 @@
 {
   "title": "กิจกรรม",
-  "nav": "กิจกรรม"
+  "nav": "กิจกรรม",
+  "detail": "รายละเอียดกิจกรรม",
+  "pageTitle": "รายการกิจกรรม",
+  "backHome": "กลับหน้าหลัก",
+  "search": "ค้นหา",
+  "filter": "ตัวกรอง",
+  "searchPlaceholder": "ค้นหาชื่อกิจกรรมหรือสถานที่",
+  "tabsLabel": "หมวดรายการกิจกรรม",
+  "normal": "เปิดรับสมัคร",
+  "chooseSport": "เลือกกีฬา",
+  "loading": "กำลังโหลดกิจกรรม…",
+  "loadError": "ไม่สามารถโหลดกิจกรรมได้",
+  "retry": "ลองอีกครั้ง",
+  "emptyTitle": "ไม่พบกิจกรรมที่ตรงกัน",
+  "emptyBody": "ลองเลือกกีฬาอื่นหรือเปลี่ยนคำค้นหา",
+  "sport": {
+    "all": "กีฬาทั้งหมด",
+    "football": "ฟุตบอล",
+    "basketball": "บาสเกตบอล",
+    "pickleball": "พิคเคิลบอล",
+    "dodgeball": "ดอดจ์บอลแบบอเมริกัน",
+    "restaurant": "ร้านอาหาร (ชมการแข่งขัน)",
+    "escape_room": "เกมหนีห้อง",
+    "esports": "อีสปอร์ต",
+    "baseball_softball": "เบสบอล/ซอฟต์บอล",
+    "volleyball": "วอลเลย์บอล",
+    "table_tennis": "เทเบิลเทนนิส",
+    "tennis": "เทนนิส",
+    "badminton": "แบดมินตัน",
+    "hiking": "เดินป่า",
+    "running": "วิ่ง",
+    "cycling": "ปั่นจักรยาน",
+    "motorcycle": "มอเตอร์ไซค์",
+    "skateboard": "สเก็ตบอร์ด",
+    "dance": "เต้นรำ",
+    "yoga": "โยคะ",
+    "martial_arts": "ศิลปะการต่อสู้",
+    "other": "อื่น ๆ"
+  },
+  "status": {
+    "open": "รับสมัคร",
+    "full": "เต็มแล้ว",
+    "upcoming": "เร็ว ๆ นี้",
+    "ended": "จบแล้ว",
+    "cancelled": "ยกเลิก",
+    "unknown": "ไม่ทราบสถานะ"
+  },
+  "card": {
+    "untitled": "กิจกรรมไม่มีชื่อ",
+    "dateUnknown": "รอยืนยันวันและเวลา",
+    "locationUnknown": "รอยืนยันสถานที่",
+    "capacity": "{current}/{max} คน"
+  }
 }

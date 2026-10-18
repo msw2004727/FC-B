@@ -20,13 +20,9 @@ const knownIcons = new Set<string>([
 ]);
 
 /**
- * A：賽事、俱樂部、首頁、活動、我的。
- * B 第一版沒有賽事；活動與俱樂部保留 A 的原位，
- * 剩餘功能中以訊息作為賽事／活動資訊通知的替代入口，
- * 使用真實「訊息」名稱及 inbox 圖示，不冒充已實作賽事。
- * 簽到改由首頁正上方的 QR 入口進入，不在一般導覽重複呈現。
- *
- * order 由 manifest 決定。保留五格位置，功能停用時不讓首頁偏離中央。
+ * A 原位：賽事、俱樂部、首頁、活動、我的。
+ * B 以真實訊息功能佔第一格；簽到使用獨立 QR 入口。
+ * order 由 manifest 決定，停用前面的功能仍保留首頁中央位置。
  */
 export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Element {
   const t = useT();
@@ -39,9 +35,11 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
 
   const qrActive = hasCheckin &&
     (path === '/checkin' || path.startsWith('/checkin/'));
+  // A 的列表與詳情不共用 prefix；詳情仍選中「活動」入口。
+  const navigationPath = path.startsWith('/events/') ? '/activities' : path;
   const activePath = items
-    .filter((item) => item.path === '/' ? path === '/' :
-      path === item.path || path.startsWith(`${item.path}/`))
+    .filter((item) => item.path === '/' ? navigationPath === '/' :
+      navigationPath === item.path || navigationPath.startsWith(`${item.path}/`))
     .sort((a, b) => b.path.length - a.path.length)[0]?.path;
 
   return (
@@ -64,9 +62,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
       <div class="ui-bottom-nav__items">
         {items.map((item) => {
           const active = !qrActive && item.path === activePath;
-          const column = item.order >= 0 && item.order <= 4
-            ? item.order + 1
-            : undefined;
+          const column = item.order >= 0 && item.order <= 4 ? item.order + 1 : undefined;
           return (
             <a
               key={item.path}
