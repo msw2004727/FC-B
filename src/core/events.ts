@@ -11,6 +11,8 @@ export interface AppEvents {
   'theme:changed': { theme: 'light' | 'dark' | 'system' };
   /** Firebase Auth 登入狀態變更；uid 為 null 代表登出。 */
   'auth:changed': { uid: string | null };
+  /** 重讀目前使用者的身分與權限；不改變登入帳號。 */
+  'viewer:refresh': Record<string, never>;
   /** 頂部列運動項目切換鈕被點擊（功能待活動模組實作）。 */
   'sport:picker-open': Record<string, never>;
 }

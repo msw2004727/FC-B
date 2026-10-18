@@ -239,27 +239,54 @@ export function buildSeedData(now = Date.now()) {
   ];
 
   // ── teams ─────────────────────────────────────────────────────
+  // 欄位形狀照 A：id 與文件 ID 相同（R-ID-004）、active 為真才會出現在列表、members 是 A 寫入的人數快取（數字）。
   const teams = [
     {
       id: TEAM_IDS.a,
       data: {
+        id: TEAM_IDS.a,
         name: '種子俱樂部 A',
+        type: 'competitive',
         sportTag: 'football',
-        members: [UIDS.user1, UIDS.coach],
+        region: '台北市',
+        active: true,
+        members: 2,
+        teamExp: 1200,
         ownerUid: UIDS.coach,
+        creatorUid: UIDS.coach,
         captainUid: UIDS.coach,
+        captain: '種子教練',
         createdAt: new Date(now - 60 * DAY_MS),
       },
     },
     {
       id: TEAM_IDS.b,
       data: {
+        id: TEAM_IDS.b,
         name: '種子俱樂部 B',
+        type: 'education',
         sportTag: 'basketball',
-        members: [],
+        region: '新北市',
+        active: true,
+        members: 0,
         ownerUid: UIDS.admin,
+        creatorUid: UIDS.admin,
         captainUid: UIDS.admin,
         createdAt: new Date(now - 60 * DAY_MS),
+      },
+    },
+    {
+      // 停用俱樂部：列表不應顯示（A getActiveTeams）
+      id: 'tm_seed_team_inactive',
+      data: {
+        id: 'tm_seed_team_inactive',
+        name: '種子俱樂部（停用）',
+        type: 'leisure',
+        sportTag: 'football',
+        active: false,
+        members: 0,
+        captainUid: UIDS.admin,
+        createdAt: new Date(now - 90 * DAY_MS),
       },
     },
   ];

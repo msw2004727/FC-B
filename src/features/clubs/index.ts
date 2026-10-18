@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import type { FeatureManifest } from '@/core/feature-types';
 
 export const manifest: FeatureManifest = {
@@ -8,18 +7,12 @@ export const manifest: FeatureManifest = {
     {
       path: '/teams',
       titleKey: 'clubs.title',
-      load: () =>
-        import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'clubs.title' }),
-        })),
+      load: () => import('./pages/TeamsPage'),
     },
     {
       path: '/teams/:id',
       titleKey: 'clubs.detail',
-      load: () =>
-        import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'clubs.detail' }),
-        })),
+      load: () => import('./pages/TeamDetailPage'),
     },
   ],
   nav: [{ path: '/teams', labelKey: 'nav.clubs', icon: 'users', order: 1 }],

@@ -17,7 +17,7 @@ import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firesto
 
 import { getFirebase } from '@/data/firebase';
 import { getCurrentUser } from '@/data/auth';
-import { on } from '@/core/events';
+import { emit, on } from '@/core/events';
 import type { ViewerContext } from '@/features/events/data/types';
 
 import { createPermissionChecker, normalizePermissionCode } from './permissions';
@@ -350,6 +350,11 @@ export function createViewerLoader(
   };
 }
 
+/** 通知所有 useViewer 重讀目前使用者（例如加入／退出俱樂部後更新 teamIds）。 */
+export function requestViewerRefresh(): void {
+  emit('viewer:refresh', {});
+}
+
 /** 先訂閱再補讀；舊補讀結果不得覆蓋新登入事件。 */
 export function useViewer(): ViewerView {
   const [viewer, setViewer] = useState<ViewerView>(() => createGuestViewer());
@@ -357,9 +362,12 @@ export function useViewer(): ViewerView {
   useEffect(() => {
     const loader = createViewerLoader(loadViewer, setViewer);
     let authVersion = 0;
+    // 最後已知的登入 uid（undefined = 尚未確定），供 viewer:refresh 重讀同一帳號。
+    let knownUid: string | null | undefined;
 
     const off = on('auth:changed', ({ uid }) => {
       authVersion += 1;
+      knownUid = uid;
       loader(uid);
     });
 
@@ -367,15 +375,24 @@ export function useViewer(): ViewerView {
     getCurrentUser()
       .then((current) => {
         if (authVersion !== initialVersion) return;
-        loader(current ? current.uid : null);
+        knownUid = current ? current.uid : null;
+        loader(knownUid);
       })
       .catch(() => {
         if (authVersion !== initialVersion) return;
+        knownUid = null;
         loader(null);
       });
 
+    // 重讀目前登入者；同一個 loader 的序號保護確保較舊的結果不會覆蓋較新的。
+    // 登入狀態尚未確定時忽略（初次讀取完成後自然會載入）。
+    const offRefresh = on('viewer:refresh', () => {
+      if (knownUid !== undefined) loader(knownUid);
+    });
+
     return () => {
       off();
+      offRefresh();
     };
   }, []);
 
