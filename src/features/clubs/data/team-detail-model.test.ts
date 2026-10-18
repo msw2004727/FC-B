@@ -206,16 +206,16 @@ describe('getTeamDetailVisibility / isTeamDetailSectionVisible', () => {
 });
 
 describe('isTeamEventForTeam / isTeamEventInFuture / getTeamFutureEvents', () => {
-  it('creatorTeamId 精確比對', () => {
-    expect(isTeamEventForTeam({ creatorTeamId: 't1' }, 't1')).toBe(true);
-    expect(isTeamEventForTeam({ creatorTeamId: 't1' }, 't2')).toBe(false);
+  it('照 A：只有 teamOnly 的活動才算該隊活動', () => {
+    expect(isTeamEventForTeam({ teamOnly: true, creatorTeamId: 't1' }, 't1')).toBe(true);
+    expect(isTeamEventForTeam({ creatorTeamId: 't1' }, 't1')).toBe(false);
+    expect(isTeamEventForTeam({ teamOnly: false, creatorTeamIds: ['t1'] }, 't1')).toBe(false);
   });
 
-  it('creatorTeamIds 陣列任一命中即可', () => {
-    expect(
-      isTeamEventForTeam({ creatorTeamIds: ['x', 't1'] }, 't1'),
-    ).toBe(true);
-    expect(isTeamEventForTeam({ creatorTeamIds: 't1' }, 't1')).toBe(false);
+  it('creatorTeamId 精確比對；creatorTeamIds 陣列任一命中即可', () => {
+    expect(isTeamEventForTeam({ teamOnly: true, creatorTeamId: 't1' }, 't2')).toBe(false);
+    expect(isTeamEventForTeam({ teamOnly: true, creatorTeamIds: ['x', 't1'] }, 't1')).toBe(true);
+    expect(isTeamEventForTeam({ teamOnly: true, creatorTeamIds: 't1' } as never, 't1')).toBe(false);
   });
 
   it('null teamId/event 一律 false', () => {
@@ -236,10 +236,11 @@ describe('isTeamEventForTeam / isTeamEventInFuture / getTeamFutureEvents', () =>
   it('getTeamFutureEvents 過濾 team + future，依起始時間升冪', () => {
     const now = new Date(2026, 0, 1);
     const events = [
-      { id: 'e-later', date: '2026/06/01 10:00~12:00', creatorTeamId: 't1' },
-      { id: 'e-past', date: '2025/12/01 10:00~12:00', creatorTeamId: 't1' },
-      { id: 'e-other', date: '2026/06/01 10:00~12:00', creatorTeamId: 't2' },
-      { id: 'e-soon', date: '2026/02/01 09:00~10:00', creatorTeamIds: ['t1'] },
+      { id: 'e-later', date: '2026/06/01 10:00~12:00', teamOnly: true, creatorTeamId: 't1' },
+      { id: 'e-past', date: '2025/12/01 10:00~12:00', teamOnly: true, creatorTeamId: 't1' },
+      { id: 'e-other', date: '2026/06/01 10:00~12:00', teamOnly: true, creatorTeamId: 't2' },
+      { id: 'e-soon', date: '2026/02/01 09:00~10:00', teamOnly: true, creatorTeamIds: ['t1'] },
+      { id: 'e-public', date: '2026/03/01 09:00~10:00', creatorTeamId: 't1' },
     ];
     const result = getTeamFutureEvents('t1', events, now);
     expect(result.map((e) => e.id)).toEqual(['e-soon', 'e-later']);

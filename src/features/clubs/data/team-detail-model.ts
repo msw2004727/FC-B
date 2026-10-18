@@ -9,6 +9,7 @@
  */
 
 import type { EventDoc } from '@/features/events/data/types';
+import { getEventLimitedTeamIds } from '@/features/events/data/visibility';
 
 import {
   isTeamTeachingTagged,
@@ -266,30 +267,18 @@ export function isTeamDetailSectionVisible(
 
 /* ── 未來活動 ────────────────────────────────────── */
 
-function toTeamIdList(event: EventDoc): string[] {
-  const ids: string[] = [];
-  const single = event.creatorTeamId;
-  if (single != null && String(single).trim() !== '') {
-    ids.push(String(single).trim());
-  }
-  if (Array.isArray(event.creatorTeamIds)) {
-    for (const id of event.creatorTeamIds) {
-      const value = String(id ?? '').trim();
-      if (value) ids.push(value);
-    }
-  }
-  return ids;
-}
-
-/** A `_isTeamEventForTeam`（team-detail-render.js:96-118 前置過濾）。 */
+/**
+ * A `_isTeamEventForTeam`（team-detail-render.js）：只有 `teamOnly` 的俱樂部限定活動才算該隊活動；
+ * 隊伍 ID 來源用與 A `_getEventLimitedTeamIds` 相同的 `getEventLimitedTeamIds`。
+ */
 export function isTeamEventForTeam(
   event: EventDoc | null | undefined,
   teamId: string | null | undefined,
 ): boolean {
-  if (!event || !teamId) return false;
-  const target = String(teamId).trim();
+  if (!event || !event.teamOnly) return false;
+  const target = String(teamId ?? '').trim();
   if (!target) return false;
-  return toTeamIdList(event).includes(target);
+  return getEventLimitedTeamIds(event).includes(target);
 }
 
 function parseEventStartDate(value: unknown): Date | null {
