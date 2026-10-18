@@ -1,0 +1,159 @@
+import { describe, it, expect } from 'vitest';
+
+import {
+  INHERENT_ROLE_PERMISSIONS,
+  BASE_ROLE_LEVEL_MAP,
+  getRoleLevel,
+  createPermissionChecker,
+} from './permissions';
+
+describe('INHERENT_ROLE_PERMISSIONS', () => {
+  it('逐字等於 A js/config.js 與 functions/index.js 的內容', () => {
+    expect(INHERENT_ROLE_PERMISSIONS).toEqual({
+      coach: [],
+      captain: [],
+      venue_owner: [],
+      super_admin: ['admin.repair.event_blocklist', 'admin.seo.entry'],
+    });
+  });
+
+  it('為 frozen 常數', () => {
+    expect(Object.isFrozen(INHERENT_ROLE_PERMISSIONS)).toBe(true);
+  });
+});
+
+describe('BASE_ROLE_LEVEL_MAP', () => {
+  it('逐字等於 A _BASE_ROLE_LEVEL_MAP', () => {
+    expect({ ...BASE_ROLE_LEVEL_MAP }).toEqual({
+      user: 0,
+      coach: 1,
+      captain: 2,
+      venue_owner: 3,
+      admin: 4,
+      super_admin: 5,
+    });
+  });
+});
+
+describe('getRoleLevel', () => {
+  it('回傳內建角色 level', () => {
+    expect(getRoleLevel('user')).toBe(0);
+    expect(getRoleLevel('coach')).toBe(1);
+    expect(getRoleLevel('captain')).toBe(2);
+    expect(getRoleLevel('venue_owner')).toBe(3);
+    expect(getRoleLevel('admin')).toBe(4);
+    expect(getRoleLevel('super_admin')).toBe(5);
+  });
+
+  it('空白、null、undefined、未知角色皆回 0（沿用 A 的 fallback）', () => {
+    expect(getRoleLevel('')).toBe(0);
+    expect(getRoleLevel(null)).toBe(0);
+    expect(getRoleLevel(undefined)).toBe(0);
+    expect(getRoleLevel('unknown_role')).toBe(0);
+  });
+
+  it('單一自訂角色插值：captain 與 venue_owner 之間', () => {
+    const customRoles = [{ key: 'judge', afterRole: 'captain' }];
+    // captain=2, venue_owner=3；中間 1 個角色 → step = (3-2)/2 = 0.5
+    expect(getRoleLevel('judge', customRoles)).toBeCloseTo(2.5, 10);
+  });
+
+  it('兩個連續自訂角色插值：captain → a → b → venue_owner', () => {
+    const customRoles = [
+      { key: 'a', afterRole: 'captain' },
+      { key: 'b', afterRole: 'a' },
+    ];
+    // 中間 2 個角色 → step = 1/3
+    expect(getRoleLevel('a', customRoles)).toBeCloseTo(2 + 1 / 3, 10);
+    expect(getRoleLevel('b', customRoles)).toBeCloseTo(2 + 2 / 3, 10);
+  });
+
+  it('自訂角色預設 afterRole 為 captain', () => {
+    const customRoles = [{ key: 'defaulted' }];
+    expect(getRoleLevel('defaulted', customRoles)).toBeCloseTo(2.5, 10);
+  });
+
+  it('afterRole=super_admin 的自訂角色，落於 admin 與 super_admin 之間（照 A 的 deferred 邏輯）', () => {
+    const customRoles = [{ key: 'post_super', afterRole: 'super_admin' }];
+    // A 對 super_admin 之後的 deferred 角色：step = (5-4)/2 = 0.5，位於 4.5
+    expect(getRoleLevel('post_super', customRoles)).toBeCloseTo(4.5, 10);
+  });
+});
+
+describe('createPermissionChecker', () => {
+  it('未帶 role 一律 false', () => {
+    const check = createPermissionChecker({ role: null });
+    expect(check('anything')).toBe(false);
+    expect(check('admin.repair.event_blocklist')).toBe(false);
+  });
+
+  it('空字串或空 code 一律 false', () => {
+    const check = createPermissionChecker({ role: 'super_admin' });
+    expect(check('')).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(check(null as any)).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(check(undefined as any)).toBe(false);
+  });
+
+  it('super_admin 具有 INHERENT_ROLE_PERMISSIONS 的兩條固有權限', () => {
+    const check = createPermissionChecker({ role: 'super_admin' });
+    expect(check('admin.repair.event_blocklist')).toBe(true);
+    expect(check('admin.seo.entry')).toBe(true);
+    expect(check('some.other.code')).toBe(false);
+  });
+
+  it('coach / captain / venue_owner 固有陣列為空 → 不因角色給權限', () => {
+    for (const role of ['coach', 'captain', 'venue_owner']) {
+      const check = createPermissionChecker({ role });
+      expect(check('any.code')).toBe(false);
+    }
+  });
+
+  it('rolePermissions 授予角色權限', () => {
+    const check = createPermissionChecker({
+      role: 'coach',
+      rolePermissions: {
+        coach: ['event.create', 'event.manage'],
+      },
+    });
+    expect(check('event.create')).toBe(true);
+    expect(check('event.manage')).toBe(true);
+    expect(check('event.delete')).toBe(false);
+  });
+
+  it('userGrants 授予個別權限（不受角色限制）', () => {
+    const check = createPermissionChecker({
+      role: 'user',
+      rolePermissions: { user: [] },
+      userGrants: ['admin.logs.audit_read'],
+    });
+    expect(check('admin.logs.audit_read')).toBe(true);
+    expect(check('admin.logs.error_read')).toBe(false);
+  });
+
+  it('三種來源合併：inherent + rolePermissions + userGrants', () => {
+    const check = createPermissionChecker({
+      role: 'super_admin',
+      rolePermissions: { super_admin: ['custom.code'] },
+      userGrants: ['user.extra'],
+    });
+    expect(check('admin.repair.event_blocklist')).toBe(true); // inherent
+    expect(check('admin.seo.entry')).toBe(true); // inherent
+    expect(check('custom.code')).toBe(true); // rolePermissions
+    expect(check('user.extra')).toBe(true); // userGrants
+    expect(check('nope')).toBe(false);
+  });
+
+  it('code 前後空白視為相同', () => {
+    const check = createPermissionChecker({
+      role: 'super_admin',
+    });
+    expect(check('  admin.seo.entry  ')).toBe(true);
+  });
+
+  it('rolePermissions 文件缺失時視同空', () => {
+    const check = createPermissionChecker({ role: 'coach' });
+    expect(check('event.create')).toBe(false);
+  });
+});

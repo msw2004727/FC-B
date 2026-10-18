@@ -16,7 +16,8 @@
     "check": "npm run typecheck && npm run test && npm run check:i18n",
     "emulators": "firebase emulators:start --only firestore,auth --config emulator/firebase.json",
     "sync:rules": "node scripts/sync-rules.mjs",
-    "check:rules-sync": "node scripts/check-rules-sync.mjs"
+    "check:rules-sync": "node scripts/check-rules-sync.mjs",
+    "check:parity": "node scripts/check-permission-parity.mjs ../FC"
   },
   "dependencies": {
     "@line/liff": "^2.31.2",
