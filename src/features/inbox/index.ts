@@ -14,5 +14,5 @@ export const manifest: FeatureManifest = {
         })),
     },
   ],
-  nav: [{ path: '/inbox', labelKey: 'inbox.nav', icon: 'inbox', order: 3 }],
+  nav: [{ path: '/inbox', labelKey: 'nav.inbox', icon: 'inbox', order: 0 }],
 };

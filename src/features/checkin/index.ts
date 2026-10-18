@@ -15,5 +15,5 @@ export const manifest: FeatureManifest = {
         })),
     },
   ],
-  nav: [{ path: '/checkin', labelKey: 'checkin.nav', icon: 'qr', order: 2 }],
+  // 由 BottomNav 的中央 QR 拱起入口呈現，不重複佔用一般導覽格。
 };

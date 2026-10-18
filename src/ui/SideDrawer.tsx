@@ -3,18 +3,25 @@ import type { RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { Avatar } from '@/ui/Avatar';
 import { Icon, type IconName } from '@/ui/Icon';
 import { Text } from '@/ui/Text';
 import { getCurrentLocale, setLocale, useT } from '@/i18n/i18n';
 import { LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
+import { nextFontSize, setFontSize, useFontSize } from '@/core/font-size';
 import { getActiveRoutes, getNavItems, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
+import type { AuthUser } from '@/data/auth';
 
 export interface SideDrawerProps {
   open: boolean;
   onClose: () => void;
   returnFocusRef?: RefObject<HTMLButtonElement>;
+  user?: AuthUser | null;
+  onLogin?: (() => void) | undefined;
+  loginPending?: boolean;
+  loginError?: boolean;
 }
 
 function drawerOrder(titleKey: string): number {
@@ -71,7 +78,6 @@ function lockBody(body: HTMLElement): () => void {
     body.style.setProperty('overflow', 'hidden');
   }
   lock.count += 1;
-
   return () => {
     const current = bodyLocks.get(body);
     if (!current) return;
@@ -86,22 +92,22 @@ function lockBody(body: HTMLElement): () => void {
   };
 }
 
-/**
- * Portal 與自訂 modal 行為不依賴 HTMLDialogElement 或 inert。
- * touchmove 僅在可消耗該方向捲動的面板內放行，避免舊 iOS 捲動鏈穿透。
- */
 export function SideDrawer({
   open,
   onClose,
   returnFocusRef,
+  user = null,
+  onLogin,
+  loginPending = false,
+  loginError = false,
 }: SideDrawerProps): preact.JSX.Element | null {
   const t = useT();
   const theme = useTheme();
+  const fontSize = useFontSize();
   const { path } = useLocation();
   const registryVersion = useRegistryVersion();
   const dialogRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   const returnRef = useRef(returnFocusRef);
   onCloseRef.current = onClose;
@@ -110,20 +116,23 @@ export function SideDrawer({
   const [locale, setLocaleState] = useState<Locale>(getCurrentLocale());
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const loadingRef = useRef(false);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const request = useRef(0);
   const previousPath = useRef(path);
 
-  const groups = useMemo(() => {
+  const routes = useMemo(() => {
     const navPaths = new Set(getNavItems().map((item) => item.path));
-    const routes = getActiveRoutes().filter((route) =>
-      !navPaths.has(route.path) && !/[:*]/.test(route.path),
-    );
-    return {
-      general: routes.filter((route) => !route.path.startsWith('/admin/'))
-        .sort((a, b) => drawerOrder(a.titleKey) - drawerOrder(b.titleKey)),
-      admin: routes.filter((route) => route.path.startsWith('/admin/')),
-    };
+    // A 採無分組列表；保留 B 已啟用的真實入口，不捏造未實作的 A 功能。
+    // 管理入口仍受 registry 控制，放在列表尾端，不再使用管理分組標題。
+    return getActiveRoutes()
+      .filter((route) =>
+        !navPaths.has(route.path) &&
+        route.path !== '/checkin' &&
+        !/[:*]/.test(route.path))
+      .sort((a, b) =>
+        Number(a.path.startsWith('/admin/')) - Number(b.path.startsWith('/admin/')) ||
+        drawerOrder(a.titleKey) - drawerOrder(b.titleKey));
   }, [registryVersion]);
 
   useEffect(() => {
@@ -153,11 +162,12 @@ export function SideDrawer({
     const unlock = lockBody(document.body);
     activeDrawers.push(dialog);
     const isTop = () => activeDrawers[activeDrawers.length - 1] === dialog;
-
-    const focusFirst = () => {
+    const focusFirst = (): void => {
       (focusableElements(panel)[0] ?? panel).focus({ preventScroll: true });
     };
-    (closeRef.current ?? panel).focus({ preventScroll: true });
+
+    // A 頂列沒有關閉鈕；初始焦點落在面板，Escape／遮罩可關閉。
+    panel.focus({ preventScroll: true });
 
     const keepFocus = (event: FocusEvent): void => {
       if (isTop() && event.target instanceof Node && !panel.contains(event.target)) {
@@ -174,7 +184,6 @@ export function SideDrawer({
         return;
       }
       if (event.key !== 'Tab') return;
-
       const elements = focusableElements(panel);
       const first = elements[0];
       const last = elements[elements.length - 1];
@@ -193,7 +202,6 @@ export function SideDrawer({
       }
     };
 
-    // 阻擋 Portal 外的背景互動；面板與遮罩本身仍可正常接收事件。
     const preventOutsideInteraction = (event: Event): void => {
       if (!isTop() || (event.target instanceof Node && dialog.contains(event.target))) return;
       if (event.cancelable) event.preventDefault();
@@ -210,20 +218,16 @@ export function SideDrawer({
       const y = event.touches[0]?.clientY;
       const delta = y !== undefined && touchY !== undefined ? y - touchY : 0;
       touchY = y;
-
-      // 面板內的多指縮放保持可用。
       if (target instanceof Node && panel.contains(target) && event.touches.length > 1) {
         return;
       }
-
       if (target instanceof Element && panel.contains(target) && delta !== 0) {
         let element: Element | null = target;
         while (element && panel.contains(element)) {
           if (element instanceof HTMLElement) {
             const overflow = getComputedStyle(element).overflowY;
-            const scrollable = /^(auto|scroll)$/.test(overflow);
             const available = element.scrollHeight - element.clientHeight;
-            if (scrollable && available > 0 &&
+            if (/^(auto|scroll)$/.test(overflow) && available > 0 &&
               ((delta < 0 && element.scrollTop < available - 1) ||
                (delta > 0 && element.scrollTop > 0))) {
               return;
@@ -233,7 +237,6 @@ export function SideDrawer({
           element = element.parentElement;
         }
       }
-
       if (event.cancelable) event.preventDefault();
       event.stopPropagation();
     };
@@ -267,16 +270,15 @@ export function SideDrawer({
   const handleLocale = async (event: Event): Promise<void> => {
     const select = event.currentTarget as HTMLSelectElement;
     const value = select.value;
-    if (loading || !(LOCALES as readonly string[]).includes(value)) return;
-
+    if (loadingRef.current || !(LOCALES as readonly string[]).includes(value)) return;
     const sequence = ++request.current;
+    loadingRef.current = true;
     setLoading(true);
     setLoadError(false);
     if (errorTimer.current !== null) {
       clearTimeout(errorTimer.current);
       errorTimer.current = null;
     }
-
     try {
       await setLocale(value as Locale);
     } catch {
@@ -289,6 +291,7 @@ export function SideDrawer({
       }, 3000);
     } finally {
       if (sequence === request.current) {
+        loadingRef.current = false;
         setLocaleState(getCurrentLocale());
         setLoading(false);
       }
@@ -305,84 +308,58 @@ export function SideDrawer({
       role="dialog"
       aria-label={t('ui.sideDrawer.label')}
       aria-modal="true"
-      style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        display: 'block',
-        width: '100%',
-        height: '100%',
-        maxWidth: 'none',
-        maxHeight: 'none',
-        margin: 0,
-        padding: 0,
-        border: 0,
-        overflow: 'hidden',
-        pointerEvents: 'auto',
-        touchAction: 'auto',
-      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCloseRef.current();
       }}
     >
-      <style>{`
-        #side-drawer .ui-side-drawer__panel {
-          max-width: 100%;
-          height: 100%;
-          max-height: 100%;
-          overflow-y: auto;
-          overscroll-behavior-y: contain;
-          -webkit-overflow-scrolling: touch;
-          touch-action: auto;
-        }
-        #side-drawer button,
-        #side-drawer select,
-        #side-drawer a {
-          min-width: 44px;
-          min-height: 44px;
-        }
-        #side-drawer a {
-          display: flex;
-          align-items: center;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          #side-drawer,
-          #side-drawer *,
-          #side-drawer *::before,
-          #side-drawer *::after {
-            animation: none !important;
-            transition: none !important;
-            scroll-behavior: auto !important;
-          }
-        }
-      `}</style>
       <div ref={panelRef} class="ui-side-drawer__panel" tabIndex={-1}>
         <div class="ui-side-drawer__header">
-          <span class="ui-side-drawer__avatar" aria-hidden="true">
-            <Icon name="user" size={24} />
-          </span>
-          <Text as="h2" class="ui-side-drawer__title">{t('ui.sideDrawer.label')}</Text>
-          <button
-            ref={closeRef}
-            type="button"
-            class="ui-side-drawer__close"
-            aria-label={t('ui.sideDrawer.close')}
-            title={t('ui.sideDrawer.close')}
-            onClick={() => onCloseRef.current()}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-              aria-hidden="true" focusable="false">
-              <path d="m6 6 12 12M18 6 6 18" />
-            </svg>
-          </button>
+          <Avatar
+            name={user?.displayName ?? t('ui.shell.guestAvatar')}
+            pictureUrl={user?.pictureUrl ?? null}
+            size="lg"
+            decorative
+          />
+          <div class="ui-side-drawer__identity">
+            {user?.displayName && (
+              <Text class="ui-side-drawer__name">{user.displayName}</Text>
+            )}
+            <Text class="ui-side-drawer__role">
+              {t(user ? 'ui.userTag.role.user' : 'ui.shell.signedOut')}
+            </Text>
+          </div>
+          {!user && onLogin && (
+            <button
+              type="button"
+              class="ui-side-drawer__login"
+              disabled={loginPending}
+              aria-label={t('ui.topBar.login')}
+              aria-busy={loginPending || undefined}
+              onClick={onLogin}
+            >
+              <span class="ui-side-drawer__login-face">
+                {loginPending && (
+                  <svg class="ui-side-drawer__spinner" width="16" height="16"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" aria-hidden="true" focusable="false">
+                    <path d="M12 3a9 9 0 1 1-9 9" />
+                  </svg>
+                )}
+                <Text>{t('ui.topBar.login')}</Text>
+              </span>
+            </button>
+          )}
         </div>
+
+        {loginError && (
+          <div class="ui-side-drawer__error" role="alert">
+            <Text>{t('ui.shell.loginError')}</Text>
+          </div>
+        )}
 
         <nav class="ui-side-drawer__navigation" aria-label={t('ui.sideDrawer.navigation')}>
           <ul class="ui-side-drawer__list">
-            {groups.general.map((route) => (
+            {routes.map((route) => (
               <li key={route.path}>
                 <a
                   href={route.path}
@@ -395,63 +372,72 @@ export function SideDrawer({
               </li>
             ))}
           </ul>
-          {groups.admin.length > 0 && (
-            <section class="ui-side-drawer__admin" aria-labelledby="drawer-admin-title">
-              <h3 id="drawer-admin-title" class="ui-side-drawer__group-title">
-                <Text>{t('ui.sideDrawer.admin')}</Text>
-              </h3>
-              <ul class="ui-side-drawer__list">
-                {groups.admin.map((route) => (
-                  <li key={route.path}>
-                    <a
-                      href={route.path}
-                      class="ui-side-drawer__link"
-                      aria-current={path === route.path ? 'page' : undefined}
-                      onClick={() => onCloseRef.current()}
-                    >
-                      <Text>{t(route.titleKey)}</Text>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
         </nav>
 
         <div class="ui-side-drawer__tools">
-          <button
-            type="button"
-            class="ui-side-drawer__theme"
-            aria-label={t('ui.sideDrawer.themeAction', {
-              current: t(`ui.sideDrawer.theme_${theme}`),
-              next: t(`ui.sideDrawer.theme_${nextTheme(theme)}`),
-            })}
-            title={t(`ui.sideDrawer.theme_${theme}`)}
-            onClick={() => setTheme(nextTheme(theme))}
-          >
-            <Text>{t('ui.sideDrawer.theme')}</Text>
-            <span class="ui-side-drawer__theme-state">
-              <Icon name={themeIcon(theme)} size={18} />
-              <Text>{t(`ui.sideDrawer.theme_${theme}`)}</Text>
-            </span>
-          </button>
-
-          <div class="ui-side-drawer__locale">
-            <label for="drawer-locale"><Text>{t('ui.sideDrawer.language')}</Text></label>
-            <select
-              id="drawer-locale"
-              value={locale}
-              disabled={loading}
-              aria-busy={loading || undefined}
-              aria-describedby={loadError ? 'drawer-locale-error' : undefined}
-              aria-invalid={loadError || undefined}
-              onChange={handleLocale}
+          <div class="ui-side-drawer__tools-row">
+            <button
+              id="theme-toggle"
+              type="button"
+              class="ui-side-drawer__theme"
+              aria-label={t('ui.sideDrawer.themeAction', {
+                current: t(`ui.sideDrawer.theme_${theme}`),
+                next: t(`ui.sideDrawer.theme_${nextTheme(theme)}`),
+              })}
+              title={t(`ui.sideDrawer.theme_${theme}`)}
+              onClick={() => setTheme(nextTheme(theme))}
             >
-              {LOCALES.map((language) => (
-                <option key={language} value={language} label={LOCALE_LABELS[language]} />
-              ))}
-            </select>
+              <Text>{t('ui.sideDrawer.theme')}</Text>
+              <span
+                class={`ui-side-drawer__theme-track ui-side-drawer__theme-track--${theme}`}
+                aria-hidden="true"
+              >
+                <span class="ui-side-drawer__theme-thumb">
+                  <Icon name={themeIcon(theme)} size={18} />
+                </span>
+              </span>
+            </button>
+            <Text class="ui-side-drawer__theme-label">
+              {t(`ui.sideDrawer.theme_${theme}`)}
+            </Text>
           </div>
+
+          <div class="ui-side-drawer__tools-row">
+            <div class="ui-side-drawer__locale">
+              <label for="drawer-locale">
+                <Text>{t('ui.sideDrawer.language')}</Text>
+              </label>
+              <select
+                id="drawer-locale"
+                value={locale}
+                disabled={loading}
+                aria-busy={loading || undefined}
+                aria-describedby={loadError ? 'drawer-locale-error' : undefined}
+                aria-invalid={loadError || undefined}
+                onChange={handleLocale}
+              >
+                {LOCALES.map((language) => (
+                  <option key={language} value={language} label={LOCALE_LABELS[language]} />
+                ))}
+              </select>
+            </div>
+            <button
+              id="drawer-font-btn"
+              type="button"
+              class="ui-side-drawer__font"
+              aria-label={t('ui.shell.fontAction', {
+                current: t(`ui.shell.font_${fontSize}`),
+                next: t(`ui.shell.font_${nextFontSize(fontSize)}`),
+              })}
+              title={t(`ui.shell.font_${fontSize}`)}
+              onClick={() => setFontSize(nextFontSize(fontSize))}
+            >
+              <span class="ui-side-drawer__font-face" aria-hidden="true">
+                <Text>{t('ui.shell.fontSample')}</Text>
+              </span>
+            </button>
+          </div>
+
           {loading && <div role="status"><Text>{t('ui.sideDrawer.loading')}</Text></div>}
           {loadError && (
             <div id="drawer-locale-error" class="ui-side-drawer__error" role="alert">

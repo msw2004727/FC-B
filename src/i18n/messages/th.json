@@ -5,6 +5,7 @@
   "nav.checkin": "เช็คอิน",
   "nav.inbox": "กล่องข้อความ",
   "nav.profile": "โปรไฟล์",
+  "nav.clubs": "ชมรม",
   "theme.light": "สว่าง",
   "theme.dark": "มืด",
   "theme.system": "ตามระบบ",
@@ -23,6 +24,18 @@
   "feature.reserved": "ฟีเจอร์นี้จะเปิดให้ใช้เร็วๆ นี้",
   "feature.external": "กำลังเชื่อมต่อระบบภายนอก",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "เปิดการเช็คอินด้วยคิวอาร์โค้ด",
+      "signedOut": "ยังไม่ได้เข้าสู่ระบบ",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "เล็ก",
+      "font_medium": "กลาง",
+      "font_large": "ใหญ่",
+      "fontAction": "ขนาดตัวอักษรปัจจุบัน: {current} เปลี่ยนเป็น{next}",
+      "loginError": "เข้าสู่ระบบ LINE ไม่สำเร็จ โปรดลองอีกครั้ง"
+    },
     "topBar": {
       "label": "การนำทางด้านบน",
       "menu": "เปิดเมนู",
@@ -32,10 +45,7 @@
       "notifications": "ดูการแจ้งเตือน",
       "login": "เข้าสู่ระบบ LINE"
     },
-    "bottomNav": {
-      "label": "การนำทางหลัก",
-      "qr": "เปิดคิวอาร์โค้ดของฉัน"
-    },
+    "bottomNav": { "label": "การนำทางหลัก", "qr": "เปิดคิวอาร์โค้ดของฉัน" },
     "sideDrawer": {
       "label": "เมนู",
       "close": "ปิดเมนู",
@@ -50,20 +60,13 @@
       "theme_system": "ตามระบบ",
       "themeAction": "โหมดปัจจุบัน: {current} เปลี่ยนเป็น{next}"
     },
-    "badge": {
-      "empty": "ยังไม่ได้ตั้งค่า"
-    },
-    "chip": {
-      "empty": "ยังไม่ได้จัดหมวดหมู่",
-      "remove": "ลบ “{label}”"
-    },
+    "badge": { "empty": "ยังไม่ได้ตั้งค่า" },
+    "chip": { "empty": "ยังไม่ได้จัดหมวดหมู่", "remove": "ลบ “{label}”" },
     "emptyState": {
       "title": "คุณยังไม่ได้สมัครเข้าร่วมกิจกรรม",
       "body": "ค้นหากิจกรรมหรือสร้างกิจกรรมแรกของคุณ"
     },
-    "avatar": {
-      "unknown": "ไม่ได้ระบุชื่อ"
-    },
+    "avatar": { "unknown": "ไม่ได้ระบุชื่อ" },
     "userTag": {
       "unknown": "ไม่ได้ระบุชื่อ",
       "openProfile": "ดูโปรไฟล์ของ {name}",
@@ -83,11 +86,7 @@
         "super_admin": "ผู้ดูแลระบบสูงสุด"
       }
     },
-    "input": {
-      "required": "* จำเป็น",
-      "loading": "กำลังโหลด",
-      "success": "ข้อมูลถูกต้อง"
-    },
+    "input": { "required": "* จำเป็น", "loading": "กำลังโหลด", "success": "ข้อมูลถูกต้อง" },
     "select": {
       "required": "* จำเป็น",
       "loading": "กำลังโหลด",
@@ -101,42 +100,19 @@
       "count": "{current} / {max}",
       "tooLong": "เนื้อหาเกินขีดจำกัด โปรดย่อให้สั้นลงก่อนส่ง"
     },
-    "checkbox": {
-      "required": "* จำเป็น",
-      "loading": "กำลังโหลด"
-    },
-    "radio": {
-      "required": "* จำเป็น",
-      "loading": "กำลังโหลด"
-    },
-    "radioGroup": {
-      "required": "* จำเป็น",
-      "loading": "กำลังโหลด"
-    },
-    "switch": {
-      "on": "เปิด",
-      "off": "ปิด",
-      "loading": "กำลังโหลด"
-    },
+    "checkbox": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+    "radio": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+    "radioGroup": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+    "switch": { "on": "เปิด", "off": "ปิด", "loading": "กำลังโหลด" },
     "stepper": {
       "decrease": "ลด{label}",
       "increase": "เพิ่ม{label}",
       "loading": "กำลังโหลด"
     },
-    "dateTime": {
-      "invalid": "ยังไม่ได้ระบุวันที่ที่ถูกต้อง"
-    },
-    "tabs": {
-      "loading": "กำลังโหลด"
-    },
-    "modal": {
-      "close": "ปิด",
-      "loading": "กำลังโหลด"
-    },
-    "bottomSheet": {
-      "close": "ปิด",
-      "loading": "กำลังโหลด"
-    },
+    "dateTime": { "invalid": "ยังไม่ได้ระบุวันที่ที่ถูกต้อง" },
+    "tabs": { "loading": "กำลังโหลด" },
+    "modal": { "close": "ปิด", "loading": "กำลังโหลด" },
+    "bottomSheet": { "close": "ปิด", "loading": "กำลังโหลด" },
     "toast": {
       "close": "ปิดการแจ้งเตือน",
       "region": "การแจ้งเตือน",

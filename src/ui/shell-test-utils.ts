@@ -1,15 +1,34 @@
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import type { Locale } from '@/i18n/locales';
-import additions from './i18n-additions/shell.json';
+import zhTW from '@/i18n/messages/zh-TW.json';
+import zhCN from '@/i18n/messages/zh-CN.json';
+import en from '@/i18n/messages/en.json';
+import ja from '@/i18n/messages/ja.json';
+import vi from '@/i18n/messages/vi.json';
+import th from '@/i18n/messages/th.json';
+import ko from '@/i18n/messages/ko.json';
 
-function flatten(value: Record<string, unknown>, prefix = ''): Record<string, string> {
+const dictionaries: Record<Locale, Record<string, unknown>> = {
+  'zh-TW': zhTW,
+  'zh-CN': zhCN,
+  en,
+  ja,
+  vi,
+  th,
+  ko,
+};
+
+export function flattenMessages(
+  value: Record<string, unknown>,
+  prefix = '',
+): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, child] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (child && typeof child === 'object' && !Array.isArray(child)) {
-      Object.assign(result, flatten(child as Record<string, unknown>, path));
-    } else {
-      result[path] = String(child);
+    if (typeof child === 'string') {
+      result[path] = child;
+    } else if (child && typeof child === 'object' && !Array.isArray(child)) {
+      Object.assign(result, flattenMessages(child as Record<string, unknown>, path));
     }
   }
   return result;
@@ -17,8 +36,8 @@ function flatten(value: Record<string, unknown>, prefix = ''): Record<string, st
 
 export function shellDictionary(locale: Locale): Record<string, string> {
   return {
-    ...flatten(additions[locale]),
-    'app.title': 'ToosterX',
+    ...flattenMessages(dictionaries[locale]),
+    // 僅供 registry 測試的虛構 route；正式 UI 文案全部來自正式字典。
     'test.home': '首頁',
     'test.events': '活動',
     'test.teams': '俱樂部',

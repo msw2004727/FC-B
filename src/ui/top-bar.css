@@ -1,17 +1,14 @@
 .ui-top-bar {
-  --comp-top-bar-surface-default: var(--color-bg-surface);
-  --comp-top-bar-text-default: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  background: var(--comp-top-bar-surface-default);
-  color: var(--comp-top-bar-text-default);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
   border-bottom: var(--border-hairline) solid var(--color-border);
 }
 
 .ui-top-bar__button,
 .ui-top-bar__login {
-  /* 依 A 微調：視覺 36px／27px，獨立觸控盒提升到至少 44px。 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -30,7 +27,6 @@
 
 .ui-top-bar__button:hover {
   background: var(--color-bg-hover);
-  color: var(--comp-top-bar-text-default);
 }
 
 .ui-top-bar__button:active,
@@ -39,39 +35,54 @@
 }
 
 .ui-top-bar__brand {
+  display: flex;
+  align-items: center;
   flex: 1 1 auto;
-  min-width: 0;
-  color: var(--comp-top-bar-text-default);
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--color-text-primary);
   font-size: var(--font-size-display);
   line-height: var(--line-height-display);
   font-weight: var(--font-weight-semibold);
   font-style: italic;
   letter-spacing: -.04em;
-  overflow-wrap: anywhere;
 }
 
 .ui-top-bar__brand:hover {
-  color: var(--comp-top-bar-text-default);
+  color: var(--color-text-primary);
 }
 
 .ui-top-bar__actions {
   display: flex;
   align-items: center;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: var(--space-1);
 }
 
 .ui-top-bar__sport-face {
+  position: relative;
   width: 36px;
   min-height: 36px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding-bottom: var(--space-1);
   border: var(--border-hairline) solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-brand);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
+}
+
+.ui-top-bar__sport-face svg {
+  position: absolute;
+  right: var(--space-1);
+  bottom: 0;
+}
+
+.ui-top-bar__login {
+  flex-shrink: 1;
 }
 
 .ui-top-bar__login-face {
@@ -87,6 +98,11 @@
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
   font-weight: var(--font-weight-semibold);
+  text-align: center;
+}
+
+.ui-top-bar__login-face svg {
+  flex-shrink: 0;
 }
 
 .ui-top-bar__login:hover:not(:disabled) .ui-top-bar__login-face {
@@ -94,24 +110,31 @@
 }
 
 .ui-top-bar__login:disabled {
-  cursor: not-allowed;
-  opacity: .6;
+  cursor: progress;
 }
 
-.ui-top-bar__login:disabled .ui-top-bar__login-face {
-  background: var(--color-brand-disabled);
-  color: var(--color-text-primary);
+.ui-top-bar__spinner {
+  animation: ui-spin var(--ui-spin-dur) linear infinite;
 }
 
 .ui-top-bar :is(button, a):focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
-@media (max-width: 360px) {
+/* 長語系或大字可換列；app-shell 會量測實際高度補足內容留白。 */
+@media (max-width: 479px) {
+  .ui-top-bar {
+    flex-wrap: wrap;
+  }
+
   .ui-top-bar__brand {
-    font-size: var(--font-size-title);
-    line-height: var(--line-height-title);
+    font-size: var(--font-size-title-lg);
+    line-height: var(--line-height-title-lg);
+  }
+
+  .ui-top-bar__actions {
+    margin-left: auto;
   }
 }
 
@@ -119,5 +142,9 @@
   .ui-top-bar__button,
   .ui-top-bar__login {
     transition: none;
+  }
+
+  .ui-top-bar__spinner {
+    animation: none;
   }
 }

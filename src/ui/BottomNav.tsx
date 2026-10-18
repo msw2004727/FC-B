@@ -4,27 +4,14 @@ import { useLocation } from 'preact-iso';
 import { Icon, type IconName } from '@/ui/Icon';
 import { Text } from '@/ui/Text';
 import { useT } from '@/i18n/i18n';
-import { getNavItems, useRegistryVersion } from '@/core/feature-registry';
-import type { FeatureNavItem } from '@/core/feature-types';
+import {
+  getActiveRoutes,
+  getNavItems,
+  useRegistryVersion,
+} from '@/core/feature-registry';
 
 export interface BottomNavProps {
   class?: string;
-}
-
-/**
- * A 順序：賽事、俱樂部、首頁、活動、我的。
- * 以已知圖示識別既有功能，未知擴充項目保留 registry order。
- * 不新增、啟用或猜測任何功能路由。
- */
-function visualOrder(item: FeatureNavItem): number {
-  switch (item.icon) {
-    case 'trophy': return 0;
-    case 'users': return 1;
-    case 'home': return 2;
-    case 'calendar': return 3;
-    case 'user': return 4;
-    default: return 5;
-  }
 }
 
 const knownIcons = new Set<string>([
@@ -32,30 +19,26 @@ const knownIcons = new Set<string>([
   'inbox', 'settings', 'sun', 'moon', 'globe',
 ]);
 
-function navIcon(name: string): preact.JSX.Element {
-  if (name === 'trophy') {
-    // Icon 尚未提供 trophy，不修改共用 Icon。
-    return (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-        stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <path d="M7 3h10v6a5 5 0 0 1-10 0zM7 5H3v3a4 4 0 0 0 4 4M17 5h4v3a4 4 0 0 1-4 4M12 14v6M8 21h8" />
-      </svg>
-    );
-  }
-  return <Icon name={knownIcons.has(name) ? name as IconName : 'globe'} size={24} />;
-}
-
+/**
+ * A：賽事、俱樂部、首頁、活動、我的。
+ * B 第一版沒有賽事；活動與俱樂部保留 A 的原位，
+ * 剩餘功能中以訊息作為賽事／活動資訊通知的替代入口，
+ * 使用真實「訊息」名稱及 inbox 圖示，不冒充已實作賽事。
+ * 簽到改由首頁正上方的 QR 入口進入，不在一般導覽重複呈現。
+ *
+ * order 由 manifest 決定。保留五格位置，功能停用時不讓首頁偏離中央。
+ */
 export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Element {
   const t = useT();
   const { path } = useLocation();
   const registryVersion = useRegistryVersion();
-  const items = useMemo(
-    () => [...getNavItems()].sort((a, b) => visualOrder(a) - visualOrder(b) || a.order - b.order),
-    [registryVersion],
-  );
+  const { items, hasCheckin } = useMemo(() => ({
+    items: getNavItems(),
+    hasCheckin: getActiveRoutes().some((route) => route.path === '/checkin'),
+  }), [registryVersion]);
 
-  // 最長匹配避免巢狀 nav 同時具有 aria-current。
+  const qrActive = hasCheckin &&
+    (path === '/checkin' || path.startsWith('/checkin/'));
   const activePath = items
     .filter((item) => item.path === '/' ? path === '/' :
       path === item.path || path.startsWith(`${item.path}/`))
@@ -63,31 +46,41 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
 
   return (
     <nav
+      id="bottom-tabs"
       class={['ui-bottom-nav', className].filter(Boolean).join(' ')}
       aria-label={t('ui.bottomNav.label')}
     >
-      <a
-        href="/profile/qr"
-        class="ui-bottom-nav__qr"
-        aria-label={t('ui.bottomNav.qr')}
-        title={t('ui.bottomNav.qr')}
-        aria-current={path === '/profile/qr' ? 'page' : undefined}
-      >
-        <Icon name="qr" size={24} />
-      </a>
+      {hasCheckin && (
+        <a
+          href="/checkin"
+          class="ui-bottom-nav__qr"
+          aria-label={t('ui.shell.qrCheckin')}
+          title={t('ui.shell.qrCheckin')}
+          aria-current={qrActive ? 'page' : undefined}
+        >
+          <Icon name="qr" size={24} />
+        </a>
+      )}
       <div class="ui-bottom-nav__items">
         {items.map((item) => {
-          const active = item.path === activePath && path !== '/profile/qr';
+          const active = !qrActive && item.path === activePath;
+          const column = item.order >= 0 && item.order <= 4
+            ? item.order + 1
+            : undefined;
           return (
             <a
               key={item.path}
               href={item.path}
+              style={{ gridColumn: column }}
               class={`ui-bottom-nav__item${active ? ' ui-bottom-nav__item--active' : ''}`}
               aria-current={active ? 'page' : undefined}
               aria-label={t(item.labelKey)}
               title={t(item.labelKey)}
             >
-              {navIcon(item.icon)}
+              <Icon
+                name={knownIcons.has(item.icon) ? item.icon as IconName : 'globe'}
+                size={24}
+              />
               <Text class="ui-bottom-nav__label">{t(item.labelKey)}</Text>
             </a>
           );

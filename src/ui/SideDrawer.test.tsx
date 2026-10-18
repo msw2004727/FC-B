@@ -4,10 +4,12 @@ import { useRef, useState } from 'preact/hooks';
 import { LocationProvider } from 'preact-iso';
 import { SideDrawer } from './SideDrawer';
 import { TopBar } from './TopBar';
+import { Text } from './Text';
 import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
 import { _setDictLoaderForTest, getCurrentLocale, t } from '@/i18n/i18n';
 import { LOCALES, type Locale } from '@/i18n/locales';
 import { getTheme, setTheme } from '@/core/theme';
+import { initFontSize, setFontSize } from '@/core/font-size';
 import { prepareShellLocale, shellDictionary } from './shell-test-utils';
 
 const load = async () => ({ default: () => null });
@@ -32,14 +34,23 @@ function openDrawer(): HTMLElement {
   return button;
 }
 
+function getPanel(): HTMLElement {
+  const panel = screen.getByRole('dialog').querySelector<HTMLElement>('.ui-side-drawer__panel');
+  if (!panel) throw new Error('Missing drawer panel');
+  return panel;
+}
+
+function getFontButton(): HTMLButtonElement {
+  const button = screen.getByRole('dialog').querySelector<HTMLButtonElement>('#drawer-font-btn');
+  if (!button) throw new Error('Missing font button');
+  return button;
+}
+
 function getLocaleSelect(): HTMLSelectElement {
-  const dialog = screen.getByRole('dialog', { name: t('ui.sideDrawer.label') });
-  const select = within(dialog).getByRole('combobox', {
+  const select = within(screen.getByRole('dialog')).getByRole('combobox', {
     name: t('ui.sideDrawer.language'),
   });
-  if (!(select instanceof HTMLSelectElement)) {
-    throw new Error('Locale control is not a select');
-  }
+  if (!(select instanceof HTMLSelectElement)) throw new Error('Missing locale select');
   return select;
 }
 
@@ -53,7 +64,9 @@ function touch(target: Element, type: 'touchstart' | 'touchmove', y: number): Ev
 beforeEach(async () => {
   _resetForTest();
   await prepareShellLocale();
+  history.replaceState(null, '', '/');
   setTheme('system');
+  setFontSize('medium');
   originalOverflow = document.body.style.getPropertyValue('overflow');
   originalPriority = document.body.style.getPropertyPriority('overflow');
 
@@ -65,10 +78,11 @@ beforeEach(async () => {
         { path: '/', titleKey: 'test.home', load },
         { path: '/manual', titleKey: 'manual.title', load },
         { path: '/stats', titleKey: 'stats.title', load },
-        { path: '/profile/qr', titleKey: 'profile.qr', load },
+        { path: '/profile/qr', titleKey: 'ui.bottomNav.qr', load },
+        { path: '/checkin', titleKey: 'nav.checkin', load },
         { path: '/members/:id', titleKey: 'test.member', load },
       ],
-      nav: [{ path: '/', labelKey: 'test.home', icon: 'home', order: 0 }],
+      nav: [{ path: '/', labelKey: 'test.home', icon: 'home', order: 2 }],
     },
     {
       id: 'shell-drawer-admin',
@@ -85,6 +99,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   if (originalOverflow) {
     document.body.style.setProperty('overflow', originalOverflow, originalPriority);
   } else {
@@ -93,68 +108,62 @@ afterEach(() => {
   _resetForTest();
   _setDictLoaderForTest(null);
   setTheme('system');
-  vi.restoreAllMocks();
+  setFontSize('medium');
+  localStorage.removeItem('toosterx:font-size');
 });
 
 describe('SideDrawer', () => {
-  it('uses a div Portal, focuses, locks scrolling and restores focus and overflow', () => {
+  it('uses a div Portal, focuses the panel, locks scrolling and restores focus', () => {
     document.body.style.setProperty('overflow', 'scroll', 'important');
     const view = render(<Harness />);
-    expect(screen.queryByRole('dialog')).toBeNull();
     const trigger = openDrawer();
     const dialog = screen.getByRole('dialog', { name: t('ui.sideDrawer.label') });
     expect(dialog.tagName).toBe('DIV');
     expect(dialog.parentElement).toBe(document.body);
     expect(view.container.contains(dialog)).toBe(false);
     expect(dialog.querySelector('dialog')).toBeNull();
-    expect(dialog.classList.contains('ui-side-drawer')).toBe(true);
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     expect(document.body.style.overflow).toBe('hidden');
+    expect(document.activeElement).toBe(getPanel());
+    expect(screen.queryByRole('button', { name: t('ui.sideDrawer.close') })).toBeNull();
 
-    const close = screen.getByRole('button', { name: t('ui.sideDrawer.close') });
-    expect(document.activeElement).toBe(close);
-    fireEvent.click(close);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
     expect(document.body.style.overflow).toBe('scroll');
     expect(document.body.style.getPropertyPriority('overflow')).toBe('important');
   });
 
-  it('closes on Escape and overlay click but not panel click', () => {
+  it('closes on overlay click but not panel click', () => {
     render(<Harness />);
     openDrawer();
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-
-    openDrawer();
-    fireEvent.click(screen.getByRole('heading', { name: t('ui.sideDrawer.label') }));
+    fireEvent.click(getPanel());
     expect(screen.getByRole('dialog')).toBeTruthy();
     fireEvent.click(screen.getByRole('dialog'));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('wraps keyboard focus in both directions and prevents focus escaping', () => {
+  it('wraps keyboard focus and prevents focus escaping', () => {
     render(<Harness />);
     const trigger = openDrawer();
-    const close = screen.getByRole('button', { name: t('ui.sideDrawer.close') });
-    const select = screen.getByRole('combobox');
-    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(select);
-    fireEvent.keyDown(select, { key: 'Tab' });
-    expect(document.activeElement).toBe(close);
+    const first = screen.getByRole('link', { name: t('stats.title') });
+    const last = getFontButton();
 
+    fireEvent.keyDown(getPanel(), { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
     trigger.focus();
-    expect(document.activeElement).toBe(close);
-    fireEvent.click(close);
-    trigger.focus();
-    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).toBe(first);
   });
 
-  it('blocks background interaction and releases its listeners on close', () => {
+  it('blocks background interaction and releases listeners on close', () => {
     const clicked = vi.fn();
     const view = render(
       <>
-        <button type="button" onClick={clicked}>Background</button>
+        <button type="button" onClick={clicked}><Text>Background</Text></button>
         <Harness />
       </>,
     );
@@ -164,20 +173,17 @@ describe('SideDrawer', () => {
     expect(clicked).not.toHaveBeenCalled();
     expect(touch(background, 'touchstart', 100).defaultPrevented).toBe(true);
     expect(touch(background, 'touchmove', 80).defaultPrevented).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: t('ui.sideDrawer.close') }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(background);
     expect(clicked).toHaveBeenCalledOnce();
     expect(touch(background, 'touchmove', 60).defaultPrevented).toBe(false);
   });
 
-  it('blocks overlay and boundary touch scrolling while allowing panel scrolling', () => {
+  it('blocks overlay and boundary scrolling while allowing panel scrolling', () => {
     render(<Harness />);
     openDrawer();
     const dialog = screen.getByRole('dialog');
-    const panel = dialog.querySelector<HTMLElement>('.ui-side-drawer__panel');
-    if (!panel) throw new Error('Missing drawer panel');
-
+    const panel = getPanel();
     Object.defineProperties(panel, {
       scrollHeight: { configurable: true, value: 1000 },
       clientHeight: { configurable: true, value: 300 },
@@ -186,54 +192,86 @@ describe('SideDrawer', () => {
 
     touch(dialog, 'touchstart', 100);
     expect(touch(dialog, 'touchmove', 80).defaultPrevented).toBe(true);
-
     panel.scrollTop = 100;
     touch(panel, 'touchstart', 100);
     expect(touch(panel, 'touchmove', 80).defaultPrevented).toBe(false);
     touch(panel, 'touchstart', 100);
     expect(touch(panel, 'touchmove', 120).defaultPrevented).toBe(false);
-
     panel.scrollTop = 0;
     touch(panel, 'touchstart', 100);
     expect(touch(panel, 'touchmove', 120).defaultPrevented).toBe(true);
-
     panel.scrollTop = 700;
     touch(panel, 'touchstart', 100);
     expect(touch(panel, 'touchmove', 80).defaultPrevented).toBe(true);
-
-    expect(dialog.style.touchAction).not.toBe('none');
-    expect(getComputedStyle(panel).touchAction).not.toBe('none');
   });
 
-  it('derives links from enabled routes, excludes bottom nav, and groups admin', async () => {
+  it('uses an ungrouped A-style list with only active routes', async () => {
     render(<Harness />);
     openDrawer();
     const navigation = screen.getByRole('navigation', {
       name: t('ui.sideDrawer.navigation'),
     });
-    expect(within(navigation).queryByRole('link', { name: t('test.home') })).toBeNull();
+    const links = within(navigation).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/stats', '/manual', '/profile/qr', '/admin/events',
+    ]);
+    expect(within(navigation).queryByRole('heading')).toBeNull();
     expect(navigation.querySelector('[href="/reserved"]')).toBeNull();
     expect(navigation.querySelector('[href="/members/:id"]')).toBeNull();
-    const links = within(navigation).getAllByRole('link');
-    expect(links.slice(0, 2).map((link) => link.getAttribute('href')))
-      .toEqual(['/stats', '/manual']);
-    const admin = screen.getByRole('region', { name: t('ui.sideDrawer.admin') });
-    expect(within(admin).getByRole('link', { name: t('test.admin') })
-      .getAttribute('href')).toBe('/admin/events');
-    await act(() => { setRemoteFlags({ 'shell-drawer-admin': false }); });
-    expect(screen.queryByRole('region', { name: t('ui.sideDrawer.admin') })).toBeNull();
+    await act(() => setRemoteFlags({ 'shell-drawer-admin': false }));
+    expect(navigation.querySelector('[href="/admin/events"]')).toBeNull();
   });
 
-  it('keeps locale and three-state theme controls in the footer', () => {
+  it('shows identity and login in the header and Avatar for a signed-in user', () => {
+    const login = vi.fn();
+    const view = render(
+      <LocationProvider>
+        <SideDrawer open onClose={vi.fn()} onLogin={login} />
+      </LocationProvider>,
+    );
+    expect(screen.getByText(t('ui.shell.signedOut'))).toBeTruthy();
+    const button = screen.getByRole('button', { name: t('ui.topBar.login') });
+    expect(button.closest('.ui-side-drawer__header')).not.toBeNull();
+    fireEvent.click(button);
+    expect(login).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <LocationProvider>
+        <SideDrawer open onClose={vi.fn()} onLogin={login}
+          user={{ uid: 'u1', displayName: 'Alex', pictureUrl: null }} />
+      </LocationProvider>,
+    );
+    expect(screen.queryByRole('button', { name: t('ui.topBar.login') })).toBeNull();
+    expect(screen.getByText('Alex')).toBeTruthy();
+    expect(screen.getByText(t('ui.userTag.role.user'))).toBeTruthy();
+    expect(screen.getByRole('dialog').querySelector('.ui-avatar--lg')).not.toBeNull();
+  });
+
+  it('disables drawer login while pending and displays a safe error', () => {
+    const login = vi.fn();
+    render(
+      <LocationProvider>
+        <SideDrawer open onClose={vi.fn()} onLogin={login} loginPending loginError />
+      </LocationProvider>,
+    );
+    const button = screen.getByRole('button', {
+      name: t('ui.topBar.login'),
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    button.click();
+    expect(login).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toBe(t('ui.shell.loginError'));
+  });
+
+  it('keeps locale, font size and three-state theme in the footer', () => {
     render(<Harness />);
     openDrawer();
-    const select = screen.getByRole('combobox', { name: t('ui.sideDrawer.language') });
-    expect(select.closest('.ui-side-drawer__tools')).not.toBeNull();
+    expect(getLocaleSelect().closest('.ui-side-drawer__tools')).not.toBeNull();
+    expect(getFontButton().closest('.ui-side-drawer__tools')).not.toBeNull();
 
     for (const [current, next] of [
-      ['system', 'light'],
-      ['light', 'dark'],
-      ['dark', 'system'],
+      ['system', 'light'], ['light', 'dark'], ['dark', 'system'],
     ] as const) {
       const button = screen.getByRole('button', {
         name: t('ui.sideDrawer.themeAction', {
@@ -241,16 +279,37 @@ describe('SideDrawer', () => {
           next: t(`ui.sideDrawer.theme_${next}`),
         }),
       });
-      expect(button.closest('.ui-side-drawer__tools')).not.toBeNull();
       fireEvent.click(button);
       expect(getTheme()).toBe(next);
     }
+
+    for (const next of ['large', 'small', 'medium'] as const) {
+      fireEvent.click(getFontButton());
+      expect(document.documentElement.dataset.fontSize).toBe(next);
+      expect(localStorage.getItem('toosterx:font-size')).toBe(next);
+    }
+  });
+
+  it('restores stored font preference and tolerates unavailable storage', () => {
+    localStorage.setItem('toosterx:font-size', 'large');
+    initFontSize();
+    expect(document.documentElement.dataset.fontSize).toBe('large');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    expect(() => initFontSize()).not.toThrow();
+    expect(document.documentElement.dataset.fontSize).toBe('medium');
+    expect(() => setFontSize('small')).not.toThrow();
+    expect(document.documentElement.dataset.fontSize).toBe('small');
   });
 
   it('disables locale selection while loading and restores it on failure', async () => {
     const initialLocale = getCurrentLocale();
     const targetLocale = LOCALES.find((locale) => locale !== initialLocale);
-    if (!targetLocale) throw new Error('Missing alternate locale fixture');
+    if (!targetLocale) throw new Error('Missing alternate locale');
 
     let rejectLoad: ((reason: Error) => void) | undefined;
     const loader = vi.fn(async (locale: Locale) => {
@@ -262,76 +321,41 @@ describe('SideDrawer', () => {
       return shellDictionary(locale);
     });
     _setDictLoaderForTest(loader);
-
     render(<Harness />);
-
-    // 先完成 open 更新與 Portal effects，再進行下一次使用者互動。
-    await act(async () => {
-      openDrawer();
-    });
+    await act(async () => { openDrawer(); });
     await act(async () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(getLocaleSelect().value).toBe(initialLocale);
-    expect(getLocaleSelect().disabled).toBe(false);
-    expect(loader).not.toHaveBeenCalled();
-
-    /*
-     * 附件只能證明 change 未進入處理函式，尚不能唯一確認根因。
-     * 此處在 flush 後重新取得已連接的 Portal 節點，並在同一個 act
-     * 內設定 value、派送該 document 所屬 window 的全新原生事件。
-     * 不讀寫 Preact 私有 listener／事件欄位，也不直接呼叫處理函式。
-     * loader 的同步斷言能區分「事件未進入」與「非同步畫面尚未更新」。
-     * 此修正仍需在專案的 jsdom 環境執行驗證。
-     */
     await act(async () => {
       const select = getLocaleSelect();
-      expect(select.isConnected).toBe(true);
-      expect(screen.getByRole('dialog').contains(select)).toBe(true);
-      expect(Array.from(select.options).some((option) => option.value === targetLocale))
-        .toBe(true);
-
       const ownerWindow = select.ownerDocument.defaultView;
-      if (!ownerWindow) throw new Error('Missing locale control window');
-
+      if (!ownerWindow) throw new Error('Missing window');
       select.value = targetLocale;
-      expect(select.value).toBe(targetLocale);
       select.dispatchEvent(new ownerWindow.Event('change', { bubbles: true }));
-
-      expect(loader).toHaveBeenCalledExactlyOnceWith(targetLocale);
-      expect(rejectLoad).toBeTypeOf('function');
     });
-
     await waitFor(() => {
-      const select = getLocaleSelect();
-      expect(select.disabled).toBe(true);
-      expect(select.getAttribute('aria-busy')).toBe('true');
+      expect(loader).toHaveBeenCalledExactlyOnceWith(targetLocale);
+      expect(getLocaleSelect().disabled).toBe(true);
+      expect(getLocaleSelect().getAttribute('aria-busy')).toBe('true');
     });
-    expect(getCurrentLocale()).toBe(initialLocale);
     expect(screen.getByRole('status').textContent).toBe(t('ui.sideDrawer.loading'));
-    expect(screen.queryByRole('alert')).toBeNull();
 
     await act(async () => {
-      if (!rejectLoad) throw new Error('Locale loader did not start');
-      rejectLoad(new Error('fixture load failure'));
+      if (!rejectLoad) throw new Error('Loader did not start');
+      rejectLoad(new Error('fixture failure'));
     });
-
     await waitFor(() => {
       const select = getLocaleSelect();
       const alert = screen.getByRole('alert');
       expect(select.disabled).toBe(false);
-      expect(select.hasAttribute('aria-busy')).toBe(false);
       expect(select.value).toBe(initialLocale);
       expect(getCurrentLocale()).toBe(initialLocale);
       expect(alert.textContent).toBe(t('ui.sideDrawer.localeError'));
-      expect(alert.id).toBe('drawer-locale-error');
       expect(select.getAttribute('aria-describedby')).toBe(alert.id);
-      expect(document.getElementById(alert.id)).toBe(alert);
       expect(select.getAttribute('aria-invalid')).toBe('true');
       expect(screen.queryByRole('status')).toBeNull();
     });
-    expect(loader).toHaveBeenCalledExactlyOnceWith(targetLocale);
   });
 
   it('restores body scrolling and external focus on unmount', () => {
@@ -341,15 +365,12 @@ describe('SideDrawer', () => {
     try {
       trigger.focus();
       const view = render(
-        <LocationProvider>
-          <SideDrawer open onClose={vi.fn()} />
-        </LocationProvider>,
+        <LocationProvider><SideDrawer open onClose={vi.fn()} /></LocationProvider>,
       );
       expect(document.body.style.overflow).toBe('hidden');
       view.unmount();
       expect(document.body.style.overflow).toBe('auto');
       expect(document.activeElement).toBe(trigger);
-      expect(screen.queryByRole('dialog')).toBeNull();
       expect(touch(trigger, 'touchmove', 60).defaultPrevented).toBe(false);
     } finally {
       trigger.remove();

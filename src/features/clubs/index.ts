@@ -14,4 +14,5 @@ export const manifest: FeatureManifest = {
         })),
     },
   ],
+  nav: [{ path: '/clubs', labelKey: 'nav.clubs', icon: 'users', order: 1 }],
 };

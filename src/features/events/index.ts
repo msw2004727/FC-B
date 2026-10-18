@@ -14,5 +14,5 @@ export const manifest: FeatureManifest = {
         })),
     },
   ],
-  nav: [{ path: '/events', labelKey: 'events.nav', icon: 'calendar', order: 1 }],
+  nav: [{ path: '/events', labelKey: 'nav.events', icon: 'calendar', order: 3 }],
 };

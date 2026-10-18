@@ -5,6 +5,7 @@
   "nav.checkin": "簽到",
   "nav.inbox": "訊息",
   "nav.profile": "我的",
+  "nav.clubs": "俱樂部",
   "theme.light": "淺色",
   "theme.dark": "深色",
   "theme.system": "跟隨系統",
@@ -23,6 +24,18 @@
   "feature.reserved": "此功能即將推出",
   "feature.external": "即將接入外部系統",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "開啟 QR Code 簽到",
+      "signedOut": "未登入",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "小",
+      "font_medium": "中",
+      "font_large": "大",
+      "fontAction": "目前字級為{current}，切換為{next}",
+      "loginError": "無法完成 LINE 登入，請重新嘗試。"
+    },
     "topBar": {
       "label": "頂部導覽",
       "menu": "開啟選單",
@@ -32,10 +45,7 @@
       "notifications": "查看通知",
       "login": "LINE 登入"
     },
-    "bottomNav": {
-      "label": "主要導覽",
-      "qr": "開啟我的 QR Code"
-    },
+    "bottomNav": { "label": "主要導覽", "qr": "開啟我的 QR Code" },
     "sideDrawer": {
       "label": "選單",
       "close": "關閉選單",
@@ -50,20 +60,13 @@
       "theme_system": "跟隨系統",
       "themeAction": "目前為{current}，切換為{next}"
     },
-    "badge": {
-      "empty": "未設定"
-    },
-    "chip": {
-      "empty": "未分類",
-      "remove": "移除「{label}」"
-    },
+    "badge": { "empty": "未設定" },
+    "chip": { "empty": "未分類", "remove": "移除「{label}」" },
     "emptyState": {
       "title": "你目前還沒有報名活動",
       "body": "找一場活動，或建立你的第一場活動"
     },
-    "avatar": {
-      "unknown": "未提供名稱"
-    },
+    "avatar": { "unknown": "未提供名稱" },
     "userTag": {
       "unknown": "未提供名稱",
       "openProfile": "查看「{name}」的個人資料",
@@ -83,11 +86,7 @@
         "super_admin": "超級管理員"
       }
     },
-    "input": {
-      "required": "* 必填",
-      "loading": "載入中",
-      "success": "輸入有效"
-    },
+    "input": { "required": "* 必填", "loading": "載入中", "success": "輸入有效" },
     "select": {
       "required": "* 必填",
       "loading": "載入中",
@@ -101,42 +100,15 @@
       "count": "{current}／{max}",
       "tooLong": "內容超過上限，請縮短後再送出"
     },
-    "checkbox": {
-      "required": "* 必填",
-      "loading": "載入中"
-    },
-    "radio": {
-      "required": "* 必填",
-      "loading": "載入中"
-    },
-    "radioGroup": {
-      "required": "* 必填",
-      "loading": "載入中"
-    },
-    "switch": {
-      "on": "開啟",
-      "off": "關閉",
-      "loading": "載入中"
-    },
-    "stepper": {
-      "decrease": "減少{label}",
-      "increase": "增加{label}",
-      "loading": "載入中"
-    },
-    "dateTime": {
-      "invalid": "未提供有效日期"
-    },
-    "tabs": {
-      "loading": "載入中"
-    },
-    "modal": {
-      "close": "關閉",
-      "loading": "載入中"
-    },
-    "bottomSheet": {
-      "close": "關閉",
-      "loading": "載入中"
-    },
+    "checkbox": { "required": "* 必填", "loading": "載入中" },
+    "radio": { "required": "* 必填", "loading": "載入中" },
+    "radioGroup": { "required": "* 必填", "loading": "載入中" },
+    "switch": { "on": "開啟", "off": "關閉", "loading": "載入中" },
+    "stepper": { "decrease": "減少{label}", "increase": "增加{label}", "loading": "載入中" },
+    "dateTime": { "invalid": "未提供有效日期" },
+    "tabs": { "loading": "載入中" },
+    "modal": { "close": "關閉", "loading": "載入中" },
+    "bottomSheet": { "close": "關閉", "loading": "載入中" },
     "toast": {
       "close": "關閉通知",
       "region": "通知",

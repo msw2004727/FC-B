@@ -10,5 +10,5 @@ export const manifest: FeatureManifest = {
       load: () => import('./pages/HomePage'),
     },
   ],
-  nav: [{ path: '/', labelKey: 'home.nav', icon: 'home', order: 0 }],
+  nav: [{ path: '/', labelKey: 'nav.home', icon: 'home', order: 2 }],
 };

@@ -22,5 +22,5 @@ export const manifest: FeatureManifest = {
         })),
     },
   ],
-  nav: [{ path: '/profile', labelKey: 'profile.nav', icon: 'user', order: 4 }],
+  nav: [{ path: '/profile', labelKey: 'nav.profile', icon: 'user', order: 4 }],
 };

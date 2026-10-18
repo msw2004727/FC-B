@@ -1,41 +1,31 @@
 .ui-side-drawer {
-  --comp-side-drawer-surface-default: var(--color-bg-surface);
-  --comp-side-drawer-text-default: var(--color-text-primary);
-  --comp-side-drawer-overlay-default: var(--color-overlay);
   position: fixed;
   inset: 0;
   width: 100%;
-  max-width: none;
   height: 100%;
-  max-height: none;
   margin: 0;
   padding: 0;
   border: 0;
-  background: var(--comp-side-drawer-overlay-default);
-  color: var(--comp-side-drawer-text-default);
+  background: var(--color-overlay);
+  color: var(--color-text-primary);
   overflow: hidden;
+  touch-action: auto;
   z-index: var(--z-modal);
-}
-
-.ui-side-drawer::backdrop {
-  background: none;
-}
-
-.ui-side-drawer[open] {
-  display: flex;
-  animation: ui-side-drawer-fade var(--ui-dur-base) var(--ui-ease);
 }
 
 .ui-side-drawer__panel {
   width: min(280px, 100%);
+  max-width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--comp-side-drawer-surface-default);
+  background: var(--color-bg-surface);
   box-shadow: var(--shadow-md);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: auto;
   animation: ui-side-drawer-enter var(--ui-dur-base) var(--ui-ease);
 }
 
@@ -49,38 +39,72 @@
   border-bottom: var(--border-hairline) solid var(--color-border);
 }
 
-.ui-side-drawer__avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
+.ui-side-drawer__header > .ui-avatar {
   flex-shrink: 0;
-  border-radius: var(--radius-full);
-  color: var(--color-brand-fg);
-  background: var(--color-brand);
 }
 
-.ui-side-drawer__title {
-  margin: 0;
-  flex: 1;
+.ui-side-drawer__identity {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.ui-side-drawer__name {
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
-  font-weight: var(--font-weight-medium);
 }
 
-.ui-side-drawer__close {
-  /* 依 A 微調：新增明確關閉控制與 44px 觸控區。 */
+.ui-side-drawer__role {
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-role-user-bg);
+  color: var(--color-role-user);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.ui-side-drawer__login {
+  flex: 0 1 96px;
+  min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-full);
   background: none;
   cursor: pointer;
+}
+
+.ui-side-drawer__login-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  min-height: 27px;
+  border-radius: var(--radius-full);
+  background: var(--color-brand);
+  color: var(--color-brand-fg);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+}
+
+.ui-side-drawer__login-face svg {
+  flex-shrink: 0;
+}
+
+.ui-side-drawer__login:disabled {
+  cursor: progress;
+}
+
+.ui-side-drawer__spinner {
+  animation: ui-spin var(--ui-spin-dur) linear infinite;
 }
 
 .ui-side-drawer__navigation {
@@ -97,31 +121,19 @@
 .ui-side-drawer__link {
   display: flex;
   align-items: center;
+  min-width: 44px;
   min-height: 44px;
   padding: var(--space-2) var(--space-4);
   color: var(--color-text-secondary);
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
+  text-decoration: none;
 }
 
 .ui-side-drawer__link[aria-current="page"] {
   color: var(--color-brand-soft-fg);
   background: var(--color-bg-selected);
   font-weight: var(--font-weight-semibold);
-}
-
-.ui-side-drawer__admin {
-  margin-top: var(--space-3);
-  border-top: var(--border-hairline) solid var(--color-border-subtle);
-}
-
-.ui-side-drawer__group-title {
-  margin: 0;
-  padding: var(--space-3) var(--space-4) var(--space-1);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-muted);
 }
 
 .ui-side-drawer__tools {
@@ -134,63 +146,139 @@
   line-height: var(--line-height-body-sm);
 }
 
-.ui-side-drawer__theme {
+.ui-side-drawer__tools-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
   min-height: 44px;
-  width: 100%;
+}
+
+.ui-side-drawer__theme {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 44px;
+  min-height: 44px;
   border: 0;
-  padding: var(--space-1);
+  padding: 0;
   border-radius: var(--radius-sm);
   background: none;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
-.ui-side-drawer__theme-state {
+.ui-side-drawer__theme-track {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-bg-elevated);
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  padding: 2px;
+  border: var(--border-hairline) solid var(--color-border);
   border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+}
+
+.ui-side-drawer__theme-track--light {
+  justify-content: flex-start;
+}
+
+.ui-side-drawer__theme-track--system {
+  justify-content: center;
+}
+
+.ui-side-drawer__theme-track--dark {
+  justify-content: flex-end;
+  background: var(--color-brand-soft-bg);
+}
+
+.ui-side-drawer__theme-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-surface);
   color: var(--color-text-secondary);
+}
+
+.ui-side-drawer__theme-label {
+  min-width: 0;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-text-muted);
+  text-align: end;
 }
 
 .ui-side-drawer__locale {
   display: flex;
   align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
   gap: var(--space-2);
 }
 
 .ui-side-drawer__locale label {
-  flex-shrink: 0;
+  flex: 0 1 auto;
 }
 
 .ui-side-drawer__locale select {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 100px;
+  width: 100px;
+  min-width: 44px;
+  max-width: 128px;
   min-height: 44px;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1);
   border: var(--border-hairline) solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-bg-input);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
 }
 
 .ui-side-drawer__locale select:disabled {
-  cursor: not-allowed;
-  opacity: .6;
+  cursor: progress;
+}
+
+.ui-side-drawer__font {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  cursor: pointer;
+}
+
+.ui-side-drawer__font-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 30px;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
 }
 
 .ui-side-drawer__error {
-  margin-top: var(--space-2);
+  padding: var(--space-2);
   color: var(--color-danger-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
 }
 
 .ui-side-drawer :is(button, a):hover {
   background: var(--color-bg-hover);
-  color: var(--color-text-primary);
 }
 
 .ui-side-drawer :is(button, a):active {
@@ -207,14 +295,9 @@
   to { transform: translateX(0); }
 }
 
-@keyframes ui-side-drawer-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ui-side-drawer[open],
-  .ui-side-drawer__panel {
+  .ui-side-drawer__panel,
+  .ui-side-drawer__spinner {
     animation: none;
   }
 }

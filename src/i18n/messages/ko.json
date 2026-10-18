@@ -5,6 +5,7 @@
   "nav.checkin": "체크인",
   "nav.inbox": "받은편지함",
   "nav.profile": "내 프로필",
+  "nav.clubs": "클럽",
   "theme.light": "라이트",
   "theme.dark": "다크",
   "theme.system": "시스템 설정 따르기",
@@ -23,6 +24,18 @@
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
   "feature.external": "외부 시스템 연동 준비 중",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "QR 체크인 열기",
+      "signedOut": "로그인 안 됨",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "작게",
+      "font_medium": "보통",
+      "font_large": "크게",
+      "fontAction": "현재 글자 크기: {current}. {next}(으)로 변경",
+      "loginError": "LINE 로그인을 완료하지 못했습니다. 다시 시도해 주세요."
+    },
     "topBar": {
       "label": "상단 탐색",
       "menu": "메뉴 열기",
@@ -32,10 +45,7 @@
       "notifications": "알림 보기",
       "login": "LINE 로그인"
     },
-    "bottomNav": {
-      "label": "주요 탐색",
-      "qr": "내 QR 코드 열기"
-    },
+    "bottomNav": { "label": "주요 탐색", "qr": "내 QR 코드 열기" },
     "sideDrawer": {
       "label": "메뉴",
       "close": "메뉴 닫기",
@@ -50,20 +60,13 @@
       "theme_system": "시스템 설정",
       "themeAction": "현재 모드: {current}. {next}(으)로 전환"
     },
-    "badge": {
-      "empty": "미설정"
-    },
-    "chip": {
-      "empty": "미분류",
-      "remove": "“{label}” 삭제"
-    },
+    "badge": { "empty": "미설정" },
+    "chip": { "empty": "미분류", "remove": "“{label}” 삭제" },
     "emptyState": {
       "title": "아직 신청한 활동이 없습니다",
       "body": "활동을 찾거나 첫 활동을 만들어 보세요"
     },
-    "avatar": {
-      "unknown": "이름 미제공"
-    },
+    "avatar": { "unknown": "이름 미제공" },
     "userTag": {
       "unknown": "이름 미제공",
       "openProfile": "{name}님의 프로필 보기",
@@ -83,11 +86,7 @@
         "super_admin": "최고 관리자"
       }
     },
-    "input": {
-      "required": "* 필수",
-      "loading": "불러오는 중",
-      "success": "유효한 입력입니다"
-    },
+    "input": { "required": "* 필수", "loading": "불러오는 중", "success": "유효한 입력입니다" },
     "select": {
       "required": "* 필수",
       "loading": "불러오는 중",
@@ -101,42 +100,19 @@
       "count": "{current} / {max}",
       "tooLong": "입력 한도를 초과했습니다. 내용을 줄인 후 제출해 주세요."
     },
-    "checkbox": {
-      "required": "* 필수",
-      "loading": "불러오는 중"
-    },
-    "radio": {
-      "required": "* 필수",
-      "loading": "불러오는 중"
-    },
-    "radioGroup": {
-      "required": "* 필수",
-      "loading": "불러오는 중"
-    },
-    "switch": {
-      "on": "켜짐",
-      "off": "꺼짐",
-      "loading": "불러오는 중"
-    },
+    "checkbox": { "required": "* 필수", "loading": "불러오는 중" },
+    "radio": { "required": "* 필수", "loading": "불러오는 중" },
+    "radioGroup": { "required": "* 필수", "loading": "불러오는 중" },
+    "switch": { "on": "켜짐", "off": "꺼짐", "loading": "불러오는 중" },
     "stepper": {
       "decrease": "{label} 줄이기",
       "increase": "{label} 늘리기",
       "loading": "불러오는 중"
     },
-    "dateTime": {
-      "invalid": "유효한 날짜가 제공되지 않았습니다"
-    },
-    "tabs": {
-      "loading": "불러오는 중"
-    },
-    "modal": {
-      "close": "닫기",
-      "loading": "불러오는 중"
-    },
-    "bottomSheet": {
-      "close": "닫기",
-      "loading": "불러오는 중"
-    },
+    "dateTime": { "invalid": "유효한 날짜가 제공되지 않았습니다" },
+    "tabs": { "loading": "불러오는 중" },
+    "modal": { "close": "닫기", "loading": "불러오는 중" },
+    "bottomSheet": { "close": "닫기", "loading": "불러오는 중" },
     "toast": {
       "close": "알림 닫기",
       "region": "알림",

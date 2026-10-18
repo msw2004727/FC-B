@@ -1,8 +1,10 @@
 import './top-bar.css';
 import type { RefObject } from 'preact';
+import { Avatar } from '@/ui/Avatar';
 import { Text } from '@/ui/Text';
 import { useT } from '@/i18n/i18n';
 import { emit } from '@/core/events';
+import type { AuthUser } from '@/data/auth';
 
 export interface TopBarProps {
   onMenuClick: () => void;
@@ -10,6 +12,7 @@ export interface TopBarProps {
   menuRef?: RefObject<HTMLButtonElement>;
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
+  user?: AuthUser | null;
 }
 
 export function TopBar({
@@ -18,12 +21,14 @@ export function TopBar({
   menuRef,
   onLogin,
   loginPending = false,
+  user = null,
 }: TopBarProps): preact.JSX.Element {
   const t = useT();
 
   return (
-    <header class="ui-top-bar" aria-label={t('ui.topBar.label')}>
+    <header id="top-bar" class="ui-top-bar" aria-label={t('ui.topBar.label')}>
       <button
+        id="menu-toggle"
         ref={menuRef}
         type="button"
         class="ui-top-bar__button"
@@ -34,7 +39,6 @@ export function TopBar({
         aria-haspopup="dialog"
         onClick={onMenuClick}
       >
-        {/* Icon 尚未提供 menu、bell、chevron、LINE，使用裝飾性 inline SVG。 */}
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
           aria-hidden="true" focusable="false">
@@ -42,19 +46,14 @@ export function TopBar({
         </svg>
       </button>
 
-      {/* 依 A 微調：字標使用語意文字色，確保暗色對比。未附品牌向量素材，採文字字標。 */}
-      {/* 依 A 微調：觸控目標；增加連結高度並保持字標垂直置中，不調整字級。 */}
-      <a
-        class="ui-top-bar__brand"
-        href="/"
-        aria-label={t('ui.topBar.home')}
-        style={{ minHeight: '44px', display: 'flex', alignItems: 'center' }}
-      >
+      <a class="ui-top-bar__brand" href="/" aria-label={t('ui.topBar.home')}>
         <Text>{t('app.title')}</Text>
       </a>
 
+      {/* 刻意偏離 A：B 第一版經驗值僅預留，不顯示積分膠囊或虛構積分。 */}
       <div class="ui-top-bar__actions">
         <button
+          id="sport-picker-btn"
           type="button"
           class="ui-top-bar__button ui-top-bar__sport"
           aria-label={t('ui.topBar.sport')}
@@ -62,7 +61,7 @@ export function TopBar({
           onClick={() => emit('sport:picker-open', {})}
         >
           <span class="ui-top-bar__sport-face">
-            <Text>{t('ui.topBar.all')}</Text>
+            <Text>{t('ui.shell.sportAll')}</Text>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2"
               aria-hidden="true" focusable="false">
@@ -71,6 +70,7 @@ export function TopBar({
           </span>
         </button>
         <a
+          id="notif-btn"
           href="/inbox"
           class="ui-top-bar__button"
           aria-label={t('ui.topBar.notifications')}
@@ -82,23 +82,41 @@ export function TopBar({
             <path d="M4 17h16l-2-3V9a6 6 0 0 0-12 0v5zM10 21h4" />
           </svg>
         </a>
-        {onLogin && (
+        {user ? (
+          <a
+            href="/profile"
+            class="ui-top-bar__button"
+            aria-label={t('nav.profile')}
+          >
+            <Avatar name={user.displayName} pictureUrl={user.pictureUrl} decorative />
+          </a>
+        ) : onLogin ? (
           <button
+            id="line-login-btn"
             type="button"
             class="ui-top-bar__login"
             disabled={loginPending}
+            aria-label={t('ui.topBar.login')}
             aria-busy={loginPending || undefined}
             onClick={onLogin}
           >
             <span class="ui-top-bar__login-face">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
-                aria-hidden="true" focusable="false">
-                <path d="M12 3C6.5 3 2 6.4 2 10.6c0 3.7 3.5 6.8 8.2 7.5L10 22l5.1-4.2C19.1 16.8 22 14 22 10.6 22 6.4 17.5 3 12 3Z" />
-              </svg>
+              {loginPending ? (
+                <svg class="ui-top-bar__spinner" width="16" height="16"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" aria-hidden="true" focusable="false">
+                  <path d="M12 3a9 9 0 1 1-9 9" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
+                  aria-hidden="true" focusable="false">
+                  <path d="M12 3C6.5 3 2 6.4 2 10.6c0 3.7 3.5 6.8 8.2 7.5L10 22l5.1-4.2C19.1 16.8 22 14 22 10.6 22 6.4 17.5 3 12 3Z" />
+                </svg>
+              )}
               <Text>{t('ui.topBar.login')}</Text>
             </span>
           </button>
-        )}
+        ) : null}
       </div>
     </header>
   );

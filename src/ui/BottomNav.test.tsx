@@ -3,29 +3,20 @@ import { act, cleanup, render, screen } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { BottomNav } from './BottomNav';
 import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
-import { _setDictLoaderForTest, t } from '@/i18n/i18n';
-import { prepareShellLocale } from './shell-test-utils';
-
-const load = async () => ({ default: () => null });
+import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
+import { manifest as home } from '@/features/home';
+import { manifest as events } from '@/features/events';
+import { manifest as clubs } from '@/features/clubs';
+import { manifest as inbox } from '@/features/inbox';
+import { manifest as profile } from '@/features/profile';
+import { manifest as checkin } from '@/features/checkin';
 
 beforeEach(async () => {
   _resetForTest();
-  await prepareShellLocale();
+  _setDictLoaderForTest(null);
+  await setLocale('zh-TW');
   history.replaceState(null, '', '/');
-  registerFeatures([
-    {
-      id: 'shell-nav-fixture',
-      status: 'enabled',
-      routes: [{ path: '/', titleKey: 'test.home', load }],
-      nav: [
-        { path: '/', labelKey: 'test.home', icon: 'home', order: 0 },
-        { path: '/events', labelKey: 'test.events', icon: 'calendar', order: 1 },
-        { path: '/teams', labelKey: 'test.teams', icon: 'users', order: 2 },
-        { path: '/tournaments', labelKey: 'test.tournaments', icon: 'trophy', order: 3 },
-        { path: '/profile', labelKey: 'test.profile', icon: 'user', order: 4 },
-      ],
-    },
-  ]);
+  registerFeatures([home, events, clubs, inbox, profile, checkin]);
 });
 
 afterEach(() => {
@@ -36,32 +27,54 @@ afterEach(() => {
 });
 
 describe('BottomNav', () => {
-  it('renders registry items in A order and a separate QR link', () => {
+  it('uses actual manifests with home in the third slot and one QR check-in entry', () => {
     const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
-    const links = Array.from(container.querySelectorAll('.ui-bottom-nav__item'));
+    const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(
+      '.ui-bottom-nav__item',
+    ));
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/tournaments', '/teams', '/', '/events', '/profile',
+      '/inbox', '/clubs', '/', '/events', '/profile',
     ]);
+    expect(links[2]?.style.gridColumn).toBe('3');
     expect(screen.getByRole('navigation', { name: t('ui.bottomNav.label') })).toBeTruthy();
-    const qr = screen.getByRole('link', { name: t('ui.bottomNav.qr') });
-    expect(qr.getAttribute('href')).toBe('/profile/qr');
-    expect(qr.classList.contains('ui-bottom-nav__qr')).toBe(true);
-    expect(screen.getByRole('link', { name: t('test.home') })
+    expect(screen.getByRole('link', { name: t('ui.shell.qrCheckin') })
+      .getAttribute('href')).toBe('/checkin');
+    expect(container.querySelectorAll('a[href="/checkin"]').length).toBe(1);
+    expect(screen.getByRole('link', { name: t('nav.home') })
       .getAttribute('aria-current')).toBe('page');
   });
 
-  it('marks QR alone current on the QR page', () => {
+  it('marks only QR current on nested check-in routes', () => {
+    history.replaceState(null, '', '/checkin/session');
+    const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
+    expect(container.querySelectorAll('[aria-current="page"]').length).toBe(1);
+    expect(screen.getByRole('link', { name: t('ui.shell.qrCheckin') })
+      .getAttribute('aria-current')).toBe('page');
+  });
+
+  it('marks profile current for the separate personal QR page', () => {
     history.replaceState(null, '', '/profile/qr');
     const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
     expect(container.querySelectorAll('[aria-current="page"]').length).toBe(1);
-    expect(screen.getByRole('link', { name: t('ui.bottomNav.qr') })
+    expect(screen.getByRole('link', { name: t('nav.profile') })
       .getAttribute('aria-current')).toBe('page');
   });
 
-  it('reacts to disabled features without removing the fixed QR control', async () => {
+  it('keeps home centered when a preceding feature is disabled', async () => {
     render(<LocationProvider><BottomNav /></LocationProvider>);
-    await act(() => setRemoteFlags({ 'shell-nav-fixture': false }));
-    expect(screen.queryByRole('link', { name: t('test.home') })).toBeNull();
-    expect(screen.getByRole('link', { name: t('ui.bottomNav.qr') })).toBeTruthy();
+    await act(() => setRemoteFlags({ inbox: false }));
+    expect(screen.queryByRole('link', { name: t('nav.inbox') })).toBeNull();
+    const homeLink = screen.getByRole('link', { name: t('nav.home') });
+    expect((homeLink as HTMLElement).style.gridColumn).toBe('3');
+  });
+
+  it('hides QR when check-in or its events dependency is disabled', async () => {
+    render(<LocationProvider><BottomNav /></LocationProvider>);
+    await act(() => setRemoteFlags({ checkin: false }));
+    expect(screen.queryByRole('link', { name: t('ui.shell.qrCheckin') })).toBeNull();
+    await act(() => setRemoteFlags({ events: false }));
+    expect(screen.queryByRole('link', { name: t('ui.shell.qrCheckin') })).toBeNull();
+    await act(() => setRemoteFlags({}));
+    expect(screen.getByRole('link', { name: t('ui.shell.qrCheckin') })).toBeTruthy();
   });
 });

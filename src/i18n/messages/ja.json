@@ -5,6 +5,7 @@
   "nav.checkin": "チェックイン",
   "nav.inbox": "受信箱",
   "nav.profile": "マイページ",
+  "nav.clubs": "クラブ",
   "theme.light": "ライト",
   "theme.dark": "ダーク",
   "theme.system": "システムに従う",
@@ -23,6 +24,18 @@
   "feature.reserved": "この機能は近日公開予定です",
   "feature.external": "外部システム連携準備中",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "QRチェックインを開く",
+      "signedOut": "未ログイン",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "小",
+      "font_medium": "中",
+      "font_large": "大",
+      "fontAction": "文字サイズ：{current}。{next}に切り替える",
+      "loginError": "LINEログインを完了できませんでした。もう一度お試しください。"
+    },
     "topBar": {
       "label": "上部ナビゲーション",
       "menu": "メニューを開く",
@@ -32,10 +45,7 @@
       "notifications": "通知を見る",
       "login": "LINEログイン"
     },
-    "bottomNav": {
-      "label": "メインナビゲーション",
-      "qr": "自分のQRコードを開く"
-    },
+    "bottomNav": { "label": "メインナビゲーション", "qr": "自分のQRコードを開く" },
     "sideDrawer": {
       "label": "メニュー",
       "close": "メニューを閉じる",
@@ -50,20 +60,13 @@
       "theme_system": "システム設定",
       "themeAction": "現在は{current}です。{next}に切り替える"
     },
-    "badge": {
-      "empty": "未設定"
-    },
-    "chip": {
-      "empty": "未分類",
-      "remove": "「{label}」を削除"
-    },
+    "badge": { "empty": "未設定" },
+    "chip": { "empty": "未分類", "remove": "「{label}」を削除" },
     "emptyState": {
       "title": "まだアクティビティに申し込んでいません",
       "body": "アクティビティを探すか、初めてのアクティビティを作成しましょう"
     },
-    "avatar": {
-      "unknown": "名前未登録"
-    },
+    "avatar": { "unknown": "名前未登録" },
     "userTag": {
       "unknown": "名前未登録",
       "openProfile": "{name}さんのプロフィールを表示",
@@ -83,11 +86,7 @@
         "super_admin": "最高管理者"
       }
     },
-    "input": {
-      "required": "* 必須",
-      "loading": "読み込み中",
-      "success": "有効な入力です"
-    },
+    "input": { "required": "* 必須", "loading": "読み込み中", "success": "有効な入力です" },
     "select": {
       "required": "* 必須",
       "loading": "読み込み中",
@@ -101,42 +100,19 @@
       "count": "{current}／{max}",
       "tooLong": "上限を超えています。内容を短くしてから送信してください。"
     },
-    "checkbox": {
-      "required": "* 必須",
-      "loading": "読み込み中"
-    },
-    "radio": {
-      "required": "* 必須",
-      "loading": "読み込み中"
-    },
-    "radioGroup": {
-      "required": "* 必須",
-      "loading": "読み込み中"
-    },
-    "switch": {
-      "on": "オン",
-      "off": "オフ",
-      "loading": "読み込み中"
-    },
+    "checkbox": { "required": "* 必須", "loading": "読み込み中" },
+    "radio": { "required": "* 必須", "loading": "読み込み中" },
+    "radioGroup": { "required": "* 必須", "loading": "読み込み中" },
+    "switch": { "on": "オン", "off": "オフ", "loading": "読み込み中" },
     "stepper": {
       "decrease": "{label}を減らす",
       "increase": "{label}を増やす",
       "loading": "読み込み中"
     },
-    "dateTime": {
-      "invalid": "有効な日付が指定されていません"
-    },
-    "tabs": {
-      "loading": "読み込み中"
-    },
-    "modal": {
-      "close": "閉じる",
-      "loading": "読み込み中"
-    },
-    "bottomSheet": {
-      "close": "閉じる",
-      "loading": "読み込み中"
-    },
+    "dateTime": { "invalid": "有効な日付が指定されていません" },
+    "tabs": { "loading": "読み込み中" },
+    "modal": { "close": "閉じる", "loading": "読み込み中" },
+    "bottomSheet": { "close": "閉じる", "loading": "読み込み中" },
     "toast": {
       "close": "通知を閉じる",
       "region": "通知",

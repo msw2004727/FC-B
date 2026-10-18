@@ -5,6 +5,7 @@
   "nav.checkin": "Điểm danh",
   "nav.inbox": "Hộp thư",
   "nav.profile": "Hồ sơ",
+  "nav.clubs": "Câu lạc bộ",
   "theme.light": "Sáng",
   "theme.dark": "Tối",
   "theme.system": "Theo hệ thống",
@@ -23,6 +24,18 @@
   "feature.reserved": "Tính năng này sắp ra mắt",
   "feature.external": "Sắp kết nối hệ thống bên ngoài",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "Mở điểm danh bằng mã QR",
+      "signedOut": "Chưa đăng nhập",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "Nhỏ",
+      "font_medium": "Vừa",
+      "font_large": "Lớn",
+      "fontAction": "Cỡ chữ hiện tại: {current}. Chuyển sang {next}",
+      "loginError": "Không thể hoàn tất đăng nhập LINE. Vui lòng thử lại."
+    },
     "topBar": {
       "label": "Điều hướng phía trên",
       "menu": "Mở trình đơn",
@@ -32,10 +45,7 @@
       "notifications": "Xem thông báo",
       "login": "Đăng nhập LINE"
     },
-    "bottomNav": {
-      "label": "Điều hướng chính",
-      "qr": "Mở mã QR của tôi"
-    },
+    "bottomNav": { "label": "Điều hướng chính", "qr": "Mở mã QR của tôi" },
     "sideDrawer": {
       "label": "Trình đơn",
       "close": "Đóng trình đơn",
@@ -50,20 +60,13 @@
       "theme_system": "Theo hệ thống",
       "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}"
     },
-    "badge": {
-      "empty": "Chưa thiết lập"
-    },
-    "chip": {
-      "empty": "Chưa phân loại",
-      "remove": "Xóa “{label}”"
-    },
+    "badge": { "empty": "Chưa thiết lập" },
+    "chip": { "empty": "Chưa phân loại", "remove": "Xóa “{label}”" },
     "emptyState": {
       "title": "Bạn chưa đăng ký hoạt động nào",
       "body": "Tìm một hoạt động hoặc tạo hoạt động đầu tiên của bạn"
     },
-    "avatar": {
-      "unknown": "Chưa cung cấp tên"
-    },
+    "avatar": { "unknown": "Chưa cung cấp tên" },
     "userTag": {
       "unknown": "Chưa cung cấp tên",
       "openProfile": "Xem hồ sơ của {name}",
@@ -83,11 +86,7 @@
         "super_admin": "Quản trị viên cấp cao"
       }
     },
-    "input": {
-      "required": "* Bắt buộc",
-      "loading": "Đang tải",
-      "success": "Dữ liệu hợp lệ"
-    },
+    "input": { "required": "* Bắt buộc", "loading": "Đang tải", "success": "Dữ liệu hợp lệ" },
     "select": {
       "required": "* Bắt buộc",
       "loading": "Đang tải",
@@ -101,42 +100,19 @@
       "count": "{current} / {max}",
       "tooLong": "Nội dung vượt quá giới hạn. Vui lòng rút ngắn trước khi gửi."
     },
-    "checkbox": {
-      "required": "* Bắt buộc",
-      "loading": "Đang tải"
-    },
-    "radio": {
-      "required": "* Bắt buộc",
-      "loading": "Đang tải"
-    },
-    "radioGroup": {
-      "required": "* Bắt buộc",
-      "loading": "Đang tải"
-    },
-    "switch": {
-      "on": "Bật",
-      "off": "Tắt",
-      "loading": "Đang tải"
-    },
+    "checkbox": { "required": "* Bắt buộc", "loading": "Đang tải" },
+    "radio": { "required": "* Bắt buộc", "loading": "Đang tải" },
+    "radioGroup": { "required": "* Bắt buộc", "loading": "Đang tải" },
+    "switch": { "on": "Bật", "off": "Tắt", "loading": "Đang tải" },
     "stepper": {
       "decrease": "Giảm {label}",
       "increase": "Tăng {label}",
       "loading": "Đang tải"
     },
-    "dateTime": {
-      "invalid": "Chưa cung cấp ngày hợp lệ"
-    },
-    "tabs": {
-      "loading": "Đang tải"
-    },
-    "modal": {
-      "close": "Đóng",
-      "loading": "Đang tải"
-    },
-    "bottomSheet": {
-      "close": "Đóng",
-      "loading": "Đang tải"
-    },
+    "dateTime": { "invalid": "Chưa cung cấp ngày hợp lệ" },
+    "tabs": { "loading": "Đang tải" },
+    "modal": { "close": "Đóng", "loading": "Đang tải" },
+    "bottomSheet": { "close": "Đóng", "loading": "Đang tải" },
     "toast": {
       "close": "Đóng thông báo",
       "region": "Thông báo",

@@ -5,6 +5,7 @@
   "nav.checkin": "Check-in",
   "nav.inbox": "Inbox",
   "nav.profile": "Profile",
+  "nav.clubs": "Clubs",
   "theme.light": "Light",
   "theme.dark": "Dark",
   "theme.system": "Follow system",
@@ -23,6 +24,18 @@
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
   "ui": {
+    "shell": {
+      "sportAll": "All",
+      "qrCheckin": "Open QR check-in",
+      "signedOut": "Signed out",
+      "guestAvatar": "?",
+      "fontSample": "A A",
+      "font_small": "Small",
+      "font_medium": "Medium",
+      "font_large": "Large",
+      "fontAction": "Text size: {current}. Switch to {next}",
+      "loginError": "Unable to complete LINE login. Please try again."
+    },
     "topBar": {
       "label": "Top navigation",
       "menu": "Open menu",
@@ -50,20 +63,13 @@
       "theme_system": "System",
       "themeAction": "Current mode: {current}. Switch to {next}"
     },
-    "badge": {
-      "empty": "Not set"
-    },
-    "chip": {
-      "empty": "Uncategorized",
-      "remove": "Remove “{label}”"
-    },
+    "badge": { "empty": "Not set" },
+    "chip": { "empty": "Uncategorized", "remove": "Remove “{label}”" },
     "emptyState": {
       "title": "You haven't joined any activities yet",
       "body": "Find an activity or create your first one"
     },
-    "avatar": {
-      "unknown": "Name not provided"
-    },
+    "avatar": { "unknown": "Name not provided" },
     "userTag": {
       "unknown": "Name not provided",
       "openProfile": "View {name}'s profile",
@@ -83,11 +89,7 @@
         "super_admin": "Super administrator"
       }
     },
-    "input": {
-      "required": "* Required",
-      "loading": "Loading",
-      "success": "Valid input"
-    },
+    "input": { "required": "* Required", "loading": "Loading", "success": "Valid input" },
     "select": {
       "required": "* Required",
       "loading": "Loading",
@@ -101,42 +103,19 @@
       "count": "{current} / {max}",
       "tooLong": "The content exceeds the limit. Please shorten it before submitting."
     },
-    "checkbox": {
-      "required": "* Required",
-      "loading": "Loading"
-    },
-    "radio": {
-      "required": "* Required",
-      "loading": "Loading"
-    },
-    "radioGroup": {
-      "required": "* Required",
-      "loading": "Loading"
-    },
-    "switch": {
-      "on": "On",
-      "off": "Off",
-      "loading": "Loading"
-    },
+    "checkbox": { "required": "* Required", "loading": "Loading" },
+    "radio": { "required": "* Required", "loading": "Loading" },
+    "radioGroup": { "required": "* Required", "loading": "Loading" },
+    "switch": { "on": "On", "off": "Off", "loading": "Loading" },
     "stepper": {
       "decrease": "Decrease {label}",
       "increase": "Increase {label}",
       "loading": "Loading"
     },
-    "dateTime": {
-      "invalid": "No valid date provided"
-    },
-    "tabs": {
-      "loading": "Loading"
-    },
-    "modal": {
-      "close": "Close",
-      "loading": "Loading"
-    },
-    "bottomSheet": {
-      "close": "Close",
-      "loading": "Loading"
-    },
+    "dateTime": { "invalid": "No valid date provided" },
+    "tabs": { "loading": "Loading" },
+    "modal": { "close": "Close", "loading": "Loading" },
+    "bottomSheet": { "close": "Close", "loading": "Loading" },
     "toast": {
       "close": "Dismiss notification",
       "region": "Notifications",

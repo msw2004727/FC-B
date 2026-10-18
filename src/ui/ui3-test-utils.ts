@@ -1,13 +1,14 @@
 import { afterEach, beforeEach } from 'vitest';
 import { cleanup } from '@testing-library/preact';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
-import type { Locale } from '@/i18n/locales';
+import { LOCALES, type Locale } from '@/i18n/locales';
 
-type Additions = Record<Locale, Record<string, unknown>>;
+type Messages = Record<Locale, Record<string, unknown>>;
 
-const loaders = import.meta.glob<Additions>('./i18n-additions/ui3.json', {
-  import: 'default',
-});
+const loaders = import.meta.glob<Record<string, unknown>>(
+  '../i18n/messages/*.json',
+  { import: 'default' },
+);
 
 export function flattenMessages(
   source: Record<string, unknown>,
@@ -25,17 +26,19 @@ export function flattenMessages(
   return result;
 }
 
-export async function loadUi3Messages(): Promise<Additions> {
-  const loader = loaders['./i18n-additions/ui3.json'];
-  if (!loader) throw new Error('Missing ui3.json fixture.');
-  return loader();
+/** 保留既有測試 API，來源改為七語正式核心字典。 */
+export async function loadUi3Messages(): Promise<Messages> {
+  const entries = await Promise.all(LOCALES.map(async (locale) => {
+    const loader = loaders[`../i18n/messages/${locale}.json`];
+    if (!loader) throw new Error(`Missing official dictionary: ${locale}`);
+    return [locale, await loader()] as const;
+  }));
+  return Object.fromEntries(entries) as Messages;
 }
 
-/** 測試使用真實 t/useT，只替換字典來源；不模擬翻譯函式。 */
 export function setupUi3Tests(): void {
   beforeEach(async () => {
-    const additions = await loadUi3Messages();
-    _setDictLoaderForTest(async (locale) => flattenMessages(additions[locale]));
+    _setDictLoaderForTest(null);
     await setLocale('zh-TW');
   });
 
