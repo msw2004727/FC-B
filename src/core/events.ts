@@ -9,6 +9,8 @@ export interface AppEvents {
   'checkin:recorded': { eventId: string; uid: string };
   'locale:changed': { locale: Locale };
   'theme:changed': { theme: 'light' | 'dark' | 'system' };
+  /** Firebase Auth 登入狀態變更；uid 為 null 代表登出。 */
+  'auth:changed': { uid: string | null };
 }
 
 type Handler<K extends keyof AppEvents> = (payload: AppEvents[K]) => void;

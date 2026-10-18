@@ -1,0 +1,3456 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SportHub Firestore Security Rules
+    //  更新：2026-03-13（Step 5：所有可下放功能改用 hasPerm 落實權限開關）
+    //
+    //  安全策略：
+    //  1. hasPerm() 即時讀取 rolePermissions collection，前台改權限自動生效
+    //  2. 非 owner 的寫入受欄位白名單限制（isSignupFieldsOnly 等）
+    //  3. 管理類集合（公告/廣告/徽章等）仍用 isAdmin() 靜態控制
+    //  4. 禁止刪除 users / attendanceRecords（審計軌跡）
+    //  5. isRestricted 帳號限制移至前端層面處理
+    // ═══════════════════════════════════════════════════════════════
+
+    // ── 共用函式 ──
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(docId) {
+      return request.auth != null && request.auth.uid == docId;
+    }
+
+    function userDocRoleOrEmpty(uid) {
+      let userPath = /databases/$(database)/documents/users/$(uid);
+      return (exists(userPath) && get(userPath).data.role is string)
+        ? get(userPath).data.role
+        : '';
+    }
+
+    function roleFromUserDoc(uid) {
+      let docRole = userDocRoleOrEmpty(uid);
+      return docRole != ''
+        ? docRole
+        : 'user';
+    }
+
+    function authRole() {
+      let docRole = request.auth != null
+        ? userDocRoleOrEmpty(request.auth.uid)
+        : '';
+      return request.auth == null
+        ? 'user'
+        : (docRole != ''
+          ? docRole
+          : ((('role' in request.auth.token) && request.auth.token.role is string)
+            ? request.auth.token.role
+            : 'user'));
+    }
+
+    function isAdmin() {
+      return request.auth != null
+        && authRole() in ['admin', 'super_admin'];
+    }
+
+    function isSuperAdmin() {
+      return request.auth != null
+        && authRole() == 'super_admin';
+    }
+
+
+    function hasUserPermissionGrantForUid(uid, perm) {
+      let grantPath = /databases/$(database)/documents/userPermissionGrants/$(uid);
+      let grantData = exists(grantPath) ? get(grantPath).data : {};
+      return uid != ''
+        && grantData.permissions is list
+        && (!('enabled' in grantData) || grantData.enabled == true)
+        && perm in grantData.permissions;
+    }
+
+    function hasUserPermissionGrant(perm) {
+      return request.auth != null
+        && hasUserPermissionGrantForUid(request.auth.uid, perm);
+    }
+
+    function hasAllUserPermissionGrantsForUid(uid, perms) {
+      let grantPath = /databases/$(database)/documents/userPermissionGrants/$(uid);
+      let grantData = exists(grantPath) ? get(grantPath).data : {};
+      return uid != ''
+        && grantData.permissions is list
+        && (!('enabled' in grantData) || grantData.enabled == true)
+        && grantData.permissions.hasAll(perms);
+    }
+
+    function hasAllUserPermissionGrants(perms) {
+      return request.auth != null
+        && hasAllUserPermissionGrantsForUid(request.auth.uid, perms);
+    }
+
+    function hasPerm(perm) {
+      let role = authRole();
+      let rpPath = /databases/$(database)/documents/rolePermissions/$(role);
+      return role != 'user'
+        && exists(rpPath)
+        && get(rpPath).data.permissions is list
+        && perm in get(rpPath).data.permissions;
+    }
+
+    function hasEffectivePerm(perm) {
+      return hasPerm(perm) || hasUserPermissionGrant(perm);
+    }
+
+    function canUseSecondaryIdentity() {
+      return isSuperAdmin() || hasEffectivePerm('profile.secondary_identity');
+    }
+
+    function userRootPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function identityPrivateSettingsPath(uid) {
+      return /databases/$(database)/documents/users/$(uid)/identityPrivate/settings;
+    }
+
+    function isPublicIdentitySnapshotShape(snapshot) {
+      return snapshot is map
+        && snapshot.keys().hasOnly(['identityId', 'displayName', 'avatarUrl'])
+        && snapshot.identityId in ['main', 'secondary']
+        && snapshot.displayName is string
+        && snapshot.displayName.size() > 0
+        && snapshot.displayName.size() <= 80
+        && (!('avatarUrl' in snapshot)
+          || snapshot.avatarUrl == null
+          || (snapshot.avatarUrl is string && snapshot.avatarUrl.size() <= 1200));
+    }
+
+    function publicIdentitySnapshotMatchesMain(uid, snapshot) {
+      let path = userRootPath(uid);
+      let data = get(path).data;
+      return exists(path)
+        && snapshot.identityId == 'main'
+        && snapshot.displayName == data.get('displayName', data.get('name', uid))
+        && snapshot.get('avatarUrl', '') == data.get('pictureUrl', data.get('photoURL', ''));
+    }
+
+    function publicIdentitySnapshotMatchesSecondary(uid, snapshot) {
+      let path = identityPrivateSettingsPath(uid);
+      let data = get(path).data;
+      let secondary = data.get('identities', {}).get('secondary', {});
+      return exists(path)
+        && canUseSecondaryIdentity()
+        && snapshot.identityId == 'secondary'
+        && secondary is map
+        && secondary.get('enabled', false) == true
+        && snapshot.displayName == secondary.get('displayName', '')
+        && snapshot.get('avatarUrl', '') == secondary.get('avatarUrl', '');
+    }
+
+    function isValidPublicIdentitySnapshotFor(uid, snapshot) {
+      return isPublicIdentitySnapshotShape(snapshot)
+        && (
+          publicIdentitySnapshotMatchesMain(uid, snapshot)
+          || publicIdentitySnapshotMatchesSecondary(uid, snapshot)
+        );
+    }
+
+    function identitySnapshotImmutable() {
+      return request.resource.data.get('identitySnapshot', null) == resource.data.get('identitySnapshot', null);
+    }
+
+    function isPublicParticipantQueryShareData(data) {
+      return ('reportType' in data)
+        && data.reportType is string
+        && data.reportType == 'event_participant_query'
+        && ('publicRead' in data)
+        && data.publicRead == true
+        && ('status' in data)
+        && data.status is string
+        && data.status == 'ready'
+        && ('expiresAt' in data)
+        && data.expiresAt is timestamp
+        && request.time < data.expiresAt;
+    }
+
+    function canReadPublicParticipantQueryShare(shareId) {
+      let sharePath = /databases/$(database)/documents/participantQueryShares/$(shareId);
+      return exists(sharePath)
+        && isPublicParticipantQueryShareData(get(sharePath).data);
+    }
+
+    // ── 動態權限檢查（即時讀取 rolePermissions collection）──
+    function canRunTeamJoinRepair() {
+      return isSuperAdmin() || hasEffectivePerm('admin.repair.team_join_repair');
+    }
+
+    function canManageNoShowCorrections() {
+      return isSuperAdmin() || hasEffectivePerm('admin.repair.no_show_adjust');
+    }
+
+    function canManageEventBlocklist() {
+      return isSuperAdmin() || hasEffectivePerm('admin.repair.event_blocklist');
+    }
+
+    function notificationToggleAllowedKeys() {
+      return [
+        'category_activity',
+        'category_system',
+        'category_tournament',
+        'type_signup_success',
+        'type_cancel_signup',
+        'type_waitlist_demoted',
+        'type_event_relisted',
+        'type_role_upgrade',
+        'type_welcome'
+      ];
+    }
+
+    function isValidNotificationTogglesMap(mapData) {
+      return mapData is map
+        && mapData.keys().hasOnly(notificationToggleAllowedKeys())
+        && (!mapData.keys().hasAny(['category_activity']) || mapData.category_activity is bool)
+        && (!mapData.keys().hasAny(['category_system']) || mapData.category_system is bool)
+        && (!mapData.keys().hasAny(['category_tournament']) || mapData.category_tournament is bool)
+        && (!mapData.keys().hasAny(['type_signup_success']) || mapData.type_signup_success is bool)
+        && (!mapData.keys().hasAny(['type_cancel_signup']) || mapData.type_cancel_signup is bool)
+        && (!mapData.keys().hasAny(['type_waitlist_demoted']) || mapData.type_waitlist_demoted is bool)
+        && (!mapData.keys().hasAny(['type_event_relisted']) || mapData.type_event_relisted is bool)
+        && (!mapData.keys().hasAny(['type_role_upgrade']) || mapData.type_role_upgrade is bool)
+        && (!mapData.keys().hasAny(['type_welcome']) || mapData.type_welcome is bool);
+    }
+
+    function canCreateNotificationFeatureFlags(docId) {
+      return hasEffectivePerm('admin.notif.toggle')
+        && docId == 'featureFlags'
+        && request.resource.data.keys().hasOnly(['notificationToggles'])
+        && ('notificationToggles' in request.resource.data)
+        && isValidNotificationTogglesMap(request.resource.data.notificationToggles);
+    }
+
+    function canUpdateNotificationFeatureFlags(docId) {
+      return hasEffectivePerm('admin.notif.toggle')
+        && docId == 'featureFlags'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notificationToggles'])
+        && ('notificationToggles' in request.resource.data)
+        && isValidNotificationTogglesMap(request.resource.data.notificationToggles);
+    }
+
+    function canManageAutoExpSiteConfig(docId) {
+      return hasEffectivePerm('admin.auto_exp.entry')
+        && docId == 'autoExpRules';
+    }
+
+    function isCoachPlus() {
+      return request.auth != null
+        && authRole() in ['coach', 'captain', 'venue_owner', 'admin', 'super_admin'];
+    }
+
+    function hasActivityCap(cap) {
+      let capPath = /databases/$(database)/documents/roleActivityCapabilities/user;
+      return request.auth != null
+        && authRole() == 'user'
+        && (
+          (
+            exists(capPath)
+            && get(capPath).data.capabilities is list
+            && cap in get(capPath).data.capabilities
+          )
+          || (
+            !exists(capPath)
+            && cap in [
+              'user.activity.basic_create',
+              'user.activity.external_create',
+              'user.activity.own_manage_entry',
+              'user.activity.own_edit_basic',
+              'user.activity.own_cancel',
+              'user.activity.site_operate',
+              'user.activity.delegate_assign'
+            ]
+          )
+        );
+    }
+
+    function hasActivityManageEntry() {
+      return isCoachPlus()
+        || hasPerm('activity.manage.entry')
+        || hasPerm('event.edit_all')
+        || hasUserPermissionGrant('activity.manage.entry')
+        || hasUserPermissionGrant('event.edit_all');
+    }
+
+    function eventDataHasDelegateUid(eventData, uid) {
+      return eventData.delegateUids is list && uid in eventData.delegateUids;
+    }
+
+    function isEventOwnerOrDelegateForData(eventData) {
+      return isAuth()
+        && eventData != null
+        && (
+          eventData.creatorUid == request.auth.uid
+          || eventData.ownerUid == request.auth.uid
+          || eventData.captainUid == request.auth.uid
+          || eventDataHasDelegateUid(eventData, request.auth.uid)
+        );
+    }
+
+    function isEventOwnerForData(eventData) {
+      return isAuth()
+        && eventData != null
+        && (
+          eventData.creatorUid == request.auth.uid
+          || eventData.ownerUid == request.auth.uid
+          || eventData.captainUid == request.auth.uid
+        );
+    }
+
+    function canUserManageTeamSplitData(eventData) {
+      return authRole() == 'user'
+        && hasActivityCap('user.activity.addons_use')
+        && isEventOwnerForData(eventData)
+        && eventData.get('teamSplit', null) is map
+        && eventData.get('teamSplit', {}).get('enabled', false) == true;
+    }
+
+    function isPrivateEventData(eventData) {
+      return eventData != null
+        && ('privateEvent' in eventData)
+        && eventData.privateEvent == true;
+    }
+
+    function isCourseLinkedEventData(eventData) {
+      return eventData != null
+        && eventData.get('courseLinked', false) == true;
+    }
+
+    function hasCourseLinkedEventRootFields(data) {
+      return data != null
+        && (data.get('courseLinked', false) == true || data.get('courseLinkId', '') != '');
+    }
+
+    function isPrivateCourseLinkedEventData(eventData) {
+      return isPrivateEventData(eventData)
+        && isCourseLinkedEventData(eventData);
+    }
+
+
+
+    function courseLinkedRegistrationFieldKeys() {
+      return [
+        'courseLinkState', 'coursePriority', 'courseLinkSource', 'courseLinkId',
+        'courseTeamId', 'coursePlanId', 'courseSessionId', 'courseStudentId',
+        'courseStudentDocId', 'courseOwnerUids', 'courseAttendanceId', 'courseAttendanceKind',
+        'courseRosterOverride', 'courseRosterOverrideSource', 'courseSyncSource',
+        'coursePriorityAppliedAt', 'manualRegistrationPreserved',
+        'manualStatusBeforeCoursePriority', 'coursePriorityDisplacedBy',
+        'displacedByCoursePriority', 'linkedAttendanceKey'
+      ];
+    }
+
+    function hasCourseLinkedRegistrationData(data) {
+      return data != null
+        && (
+          data.get('source', '') == 'eduCourseLesson'
+          || data.get('courseLinkSource', '') == 'eduCourseLesson'
+          || data.keys().hasAny(courseLinkedRegistrationFieldKeys())
+        );
+    }
+
+    function hasCourseLinkedSideEffectData(data) {
+      return hasCourseLinkedRegistrationData(data);
+    }
+
+    function eventDataForDataEventId(data) {
+      let eventIdValue = data.get('eventId', '');
+      let eventPath = /databases/$(database)/documents/events/$(eventIdValue);
+      return eventIdValue is string && eventIdValue.size() > 0 && exists(eventPath)
+        ? get(eventPath).data
+        : null;
+    }
+
+    function canOperatePrivateEventData(eventData) {
+      return !isPrivateEventData(eventData)
+        || isEventOwnerOrDelegateForData(eventData)
+        || isAdmin();
+    }
+
+    function canBroadManageEventData(eventData) {
+      return canOperatePrivateEventData(eventData)
+        && (isSuperAdmin() || hasPerm('event.edit_all') || hasUserPermissionGrant('event.edit_all'));
+    }
+
+    function canScopedManageEventData(eventData) {
+      return isEventOwnerOrDelegateForData(eventData)
+        && hasActivityManageEntry();
+    }
+
+    function canBroadManageEventUpdate() {
+      return canBroadManageEventData(resource.data)
+        && canOperatePrivateEventData(request.resource.data)
+        && !('courseLinkId' in request.resource.data);
+    }
+
+    function isEventOperatorForData(eventData) {
+      let role = authRole();
+      return isAuth()
+        && eventData != null
+        && (
+          (
+            role == 'super_admin'
+            || (
+              role == 'admin'
+              && (hasPerm('event.edit_all') || hasUserPermissionGrant('event.edit_all'))
+            )
+          )
+          || (
+            role == 'user'
+            && hasActivityCap('user.activity.site_operate')
+            && isEventOwnerOrDelegateForData(eventData)
+          )
+          || (
+            role in ['coach', 'captain', 'venue_owner', 'admin', 'super_admin']
+            && isEventOwnerOrDelegateForData(eventData)
+          )
+          || (
+            isEventOwnerOrDelegateForData(eventData)
+            && (
+              hasEffectivePerm('event.scan')
+              || hasEffectivePerm('event.manual_checkin')
+            )
+          )
+          || canScopedManageEventData(eventData)
+          || canBroadManageEventData(eventData)
+        );
+    }
+
+    function isEventSiteOperatorForData(eventData) {
+      return (
+          isAuth()
+          && eventData != null
+          && eventDataHasDelegateUid(eventData, request.auth.uid)
+          && authRole() in ['user', 'coach', 'captain', 'venue_owner', 'admin', 'super_admin']
+        )
+        || isEventOperatorForData(eventData);
+    }
+
+    function pathEventData(eventDocId) {
+      return get(/databases/$(database)/documents/events/$(eventDocId)).data;
+    }
+
+    function isEventOperatorForPath(eventDocId) {
+      return isEventOperatorForData(pathEventData(eventDocId));
+    }
+
+    function isEventSiteOperatorForPath(eventDocId) {
+      return isEventSiteOperatorForData(pathEventData(eventDocId));
+    }
+
+    function requestEventIdMatchesPath(eventDocId) {
+      let eventData = pathEventData(eventDocId);
+      return eventData != null
+        && request.resource.data.eventId is string
+        && (request.resource.data.eventId == eventDocId || request.resource.data.eventId == eventData.id);
+    }
+
+    function hasString(field) {
+      return field in request.resource.data
+        && request.resource.data[field] is string
+        && request.resource.data[field].size() > 0;
+    }
+
+    function isRequestOwnerByField(field) {
+      return isAuth()
+        && (field in request.resource.data)
+        && request.resource.data[field] is string
+        && request.resource.data[field] == request.auth.uid;
+    }
+
+    function requestFieldEqualsAuthOrAbsent(field) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is string
+          && request.resource.data[field] == request.auth.uid);
+    }
+
+    function isResourceOwnerByField(field) {
+      return isAuth()
+        && (field in resource.data)
+        && resource.data[field] is string
+        && resource.data[field] == request.auth.uid;
+    }
+
+    function isTeamOwner() {
+      return isResourceOwnerByField('captainUid')
+        || isResourceOwnerByField('creatorUid')
+        || isResourceOwnerByField('ownerUid');
+    }
+
+    function isEventOwner() {
+      return isResourceOwnerByField('captainUid')
+        || isResourceOwnerByField('creatorUid')
+        || isResourceOwnerByField('ownerUid');
+    }
+
+    function isShopItemOwner() {
+      return isResourceOwnerByField('sellerUid')
+        || isResourceOwnerByField('ownerUid')
+        || isResourceOwnerByField('creatorUid')
+        || isResourceOwnerByField('uid')
+        || isResourceOwnerByField('userId');
+    }
+
+    function isTradeOwner() {
+      return isResourceOwnerByField('fromUid')
+        || isResourceOwnerByField('toUid')
+        || isResourceOwnerByField('buyerUid')
+        || isResourceOwnerByField('sellerUid')
+        || isResourceOwnerByField('ownerUid')
+        || isResourceOwnerByField('creatorUid')
+        || isResourceOwnerByField('uid')
+        || isResourceOwnerByField('userId');
+    }
+
+    function isTradeRequestOwner() {
+      return isRequestOwnerByField('fromUid')
+        || isRequestOwnerByField('sellerUid')
+        || isRequestOwnerByField('ownerUid')
+        || isRequestOwnerByField('creatorUid')
+        || isRequestOwnerByField('uid')
+        || isRequestOwnerByField('userId');
+    }
+
+    function isTradeRequestOwnerConsistent() {
+      return requestFieldEqualsAuthOrAbsent('fromUid')
+        && requestFieldEqualsAuthOrAbsent('sellerUid')
+        && requestFieldEqualsAuthOrAbsent('ownerUid')
+        && requestFieldEqualsAuthOrAbsent('creatorUid')
+        && requestFieldEqualsAuthOrAbsent('uid')
+        && requestFieldEqualsAuthOrAbsent('userId');
+    }
+
+    function isRegistrationOwnerResource() {
+      return isResourceOwnerByField('userId')
+        || isResourceOwnerByField('uid');
+    }
+
+    function isRegistrationOwnerRequest() {
+      return isRequestOwnerByField('userId')
+        || isRequestOwnerByField('uid');
+    }
+
+    function hasNonEmptyStringInMap(data, field) {
+      return (field in data)
+        && data[field] is string
+        && data[field].size() > 0;
+    }
+
+    function stringOrNullInMap(data, field) {
+      return !(field in data)
+        || data[field] == null
+        || data[field] is string;
+    }
+
+    function listOrNullInMap(data, field) {
+      return !(field in data)
+        || data[field] == null
+        || data[field] is list;
+    }
+
+    function currentUserHasTeamKey(teamKey) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuth()
+        && exists(userPath)
+        && teamKey is string
+        && (
+          ((get(userPath).data.teamId is string) && get(userPath).data.teamId == teamKey)
+          || ((get(userPath).data.teamIds is list) && teamKey in get(userPath).data.teamIds)
+        );
+    }
+
+    function isCurrentUserInTeam(teamId) {
+      let teamPath = /databases/$(database)/documents/teams/$(teamId);
+      return isAuth()
+        && teamId is string
+        && (
+          currentUserHasTeamKey(teamId)
+          || (
+            exists(teamPath)
+            && get(teamPath).data.id is string
+            && currentUserHasTeamKey(get(teamPath).data.id)
+          )
+        );
+    }
+
+    function isCurrentUserTeamCaptainOrLeader(teamId) {
+      let teamPath = /databases/$(database)/documents/teams/$(teamId);
+      return isAuth()
+        && teamId is string
+        && exists(teamPath)
+        && (
+          (get(teamPath).data.keys().hasAny(['captainUid']) && (get(teamPath).data.captainUid is string) && get(teamPath).data.captainUid == request.auth.uid)
+          || (get(teamPath).data.keys().hasAny(['creatorUid']) && (get(teamPath).data.creatorUid is string) && get(teamPath).data.creatorUid == request.auth.uid)
+          || (get(teamPath).data.keys().hasAny(['ownerUid']) && (get(teamPath).data.ownerUid is string) && get(teamPath).data.ownerUid == request.auth.uid)
+          || (get(teamPath).data.keys().hasAny(['leaderUid']) && (get(teamPath).data.leaderUid is string) && get(teamPath).data.leaderUid == request.auth.uid)
+          || (get(teamPath).data.keys().hasAny(['leaderUids']) && (get(teamPath).data.leaderUids is list) && request.auth.uid in get(teamPath).data.leaderUids)
+        );
+    }
+
+    // Phase 3: 幹部超集（隊長 + 領隊 + 教練），用於 feed 管理等教練可參與的操作
+    // 不改名 isCurrentUserTeamCaptainOrLeader（11 處引用不變，教練不應獲得賽事建立等權限）
+    function isCurrentUserTeamStaff(teamId) {
+      return isCurrentUserTeamCaptainOrLeader(teamId)
+        || (isAuth()
+          && teamId is string
+          && exists(/databases/$(database)/documents/teams/$(teamId))
+          && get(/databases/$(database)/documents/teams/$(teamId)).data.keys().hasAny(['coachUids'])
+          && (get(/databases/$(database)/documents/teams/$(teamId)).data.coachUids is list)
+          && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.coachUids
+        );
+    }
+
+    function isMessageSenderResource() {
+      return isAuth()
+        && (
+          (hasNonEmptyStringInMap(resource.data, 'fromUid') && resource.data.fromUid == request.auth.uid)
+          || (hasNonEmptyStringInMap(resource.data, 'senderUid') && resource.data.senderUid == request.auth.uid)
+        );
+    }
+
+    function isMessageDirectRecipientResource() {
+      return isAuth()
+        && (
+          (hasNonEmptyStringInMap(resource.data, 'toUid') && resource.data.toUid == request.auth.uid)
+          || (hasNonEmptyStringInMap(resource.data, 'targetUid') && resource.data.targetUid == request.auth.uid)
+        );
+    }
+
+    function isMessageRoleRecipientResource() {
+      return isAuth()
+        && (resource.data.targetRoles is list)
+        && (authRole() in resource.data.targetRoles);
+    }
+
+    function isMessageTeamRecipientResource() {
+      return isAuth()
+        && hasNonEmptyStringInMap(resource.data, 'targetTeamId')
+        && isCurrentUserInTeam(resource.data.targetTeamId);
+    }
+
+    function isMessageBroadcastResource() {
+      return !hasNonEmptyStringInMap(resource.data, 'toUid')
+        && !hasNonEmptyStringInMap(resource.data, 'targetUid')
+        && !hasNonEmptyStringInMap(resource.data, 'targetTeamId')
+        && !(resource.data.targetRoles is list && resource.data.targetRoles.size() > 0);
+    }
+
+    function isMessageRecipientResource() {
+      return isMessageDirectRecipientResource()
+        || isMessageRoleRecipientResource()
+        || isMessageTeamRecipientResource()
+        || isMessageBroadcastResource();
+    }
+
+    function isMessageSenderRequest() {
+      return !(('fromUid' in request.resource.data))
+        || request.resource.data.fromUid == null
+        || (
+          request.resource.data.fromUid is string
+          && request.resource.data.fromUid == request.auth.uid
+        )
+        || isAdmin();
+    }
+
+    function isMessageActionStatusValid() {
+      return request.resource.data.actionStatus is string
+        && request.resource.data.actionStatus in ['pending', 'approved', 'rejected', 'ignored'];
+    }
+
+    function hasValidMessageShapeRequest() {
+      return stringOrNullInMap(request.resource.data, 'fromUid')
+        && stringOrNullInMap(request.resource.data, 'senderUid')
+        && stringOrNullInMap(request.resource.data, 'toUid')
+        && stringOrNullInMap(request.resource.data, 'targetUid')
+        && stringOrNullInMap(request.resource.data, 'targetTeamId')
+        && stringOrNullInMap(request.resource.data, 'title')
+        && stringOrNullInMap(request.resource.data, 'preview')
+        && stringOrNullInMap(request.resource.data, 'type')
+        && stringOrNullInMap(request.resource.data, 'typeName')
+        && stringOrNullInMap(request.resource.data, 'senderName')
+        && stringOrNullInMap(request.resource.data, 'reviewerName')
+        && listOrNullInMap(request.resource.data, 'readBy')
+        && listOrNullInMap(request.resource.data, 'hiddenBy')
+        && listOrNullInMap(request.resource.data, 'targetRoles')
+        && (
+          !('unread' in request.resource.data)
+          || request.resource.data.unread is bool
+        )
+        && (
+          !('actionStatus' in request.resource.data)
+          || request.resource.data.actionStatus == null
+          || isMessageActionStatusValid()
+        );
+    }
+
+    function canMessageParticipantUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return (isMessageSenderResource() || isMessageRecipientResource())
+        && changed.hasOnly([
+          'unread', 'readAt', 'updatedAt',
+          'readBy', 'actionStatus', 'reviewerName', 'rejectedAt', 'hiddenBy'
+        ])
+        && (!changed.hasAny(['unread']) || request.resource.data.unread is bool)
+        && (!changed.hasAny(['readAt']) || request.resource.data.readAt == null || request.resource.data.readAt is timestamp)
+        && (!changed.hasAny(['updatedAt']) || request.resource.data.updatedAt is timestamp)
+        && (!changed.hasAny(['readBy']) || (
+            request.resource.data.readBy is list
+            && request.auth.uid in request.resource.data.readBy
+        ))
+        && (!changed.hasAny(['actionStatus']) || isMessageActionStatusValid())
+        && (!changed.hasAny(['reviewerName']) || request.resource.data.reviewerName == null || request.resource.data.reviewerName is string)
+        && (!changed.hasAny(['rejectedAt']) || (
+            request.resource.data.rejectedAt == null
+            || request.resource.data.rejectedAt is int
+            || request.resource.data.rejectedAt is float
+            || request.resource.data.rejectedAt is timestamp
+        ))
+        && (!changed.hasAny(['hiddenBy']) || (
+            request.resource.data.hiddenBy is list
+            && request.auth.uid in request.resource.data.hiddenBy
+        ));
+    }
+
+    function isUserFieldOwnerResource() {
+      return isResourceOwnerByField('uid')
+        || isResourceOwnerByField('userId');
+    }
+
+    function isUserFieldOwnerRequest() {
+      return isRequestOwnerByField('uid')
+        || isRequestOwnerByField('userId');
+    }
+
+    function isOpLogOwnerResource() {
+      return isResourceOwnerByField('actorUid')
+        || isResourceOwnerByField('uid')
+        || isResourceOwnerByField('userId');
+    }
+
+    function isOpLogOwnerRequest() {
+      return isRequestOwnerByField('actorUid')
+        || isRequestOwnerByField('uid')
+        || isRequestOwnerByField('userId');
+    }
+
+    // ═══════════════════════════════════════════
+    //  Events（活動）
+    //  公開可讀；update 依 owner / hasPerm / 報名欄位白名單
+    // ═══════════════════════════════════════════
+    match /events/{eventId} {
+      function isSignupFieldsOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly([
+          'current', 'realCurrent', 'waitlist', 'participants', 'waitlistNames', 'status', 'updatedAt',
+          'participantsWithUid', 'waitlistWithUid', 'teamReservationSummaries', 'schemaVersion'
+        ])
+        && (
+          !changed.hasAny(['status'])
+          || (
+            resource.data.status in ['open', 'full']
+            && request.resource.data.status in ['open', 'full']
+            && (
+              (
+                request.resource.data.current is number
+                && request.resource.data.max is number
+                && request.resource.data.status == (request.resource.data.current >= request.resource.data.max ? 'full' : 'open')
+              )
+              || (
+                !(request.resource.data.max is number)
+                && request.resource.data.status == 'open'
+              )
+            )
+          )
+        );
+      }
+
+      function isBlocklistFieldsOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['blockedUids', 'blockedUidsLog']);
+      }
+
+      function isEmptyOptionalString(value) {
+        return value == null || value == '';
+      }
+
+      function isEmptyOptionalList(value) {
+        return value is list && value.size() == 0;
+      }
+
+      function eventCreateHasNoAddons() {
+        return request.resource.data.get('feeEnabled', false) == false
+          && request.resource.data.get('fee', 0) == 0
+          && request.resource.data.get('isPublic', false) == false
+          && request.resource.data.get('teamOnly', false) == false
+          && isEmptyOptionalString(request.resource.data.get('creatorTeamId', null))
+          && isEmptyOptionalString(request.resource.data.get('creatorTeamName', null))
+          && isEmptyOptionalList(request.resource.data.get('creatorTeamIds', []))
+          && isEmptyOptionalList(request.resource.data.get('creatorTeamNames', []))
+          && request.resource.data.get('genderRestrictionEnabled', false) == false
+          && isEmptyOptionalString(request.resource.data.get('allowedGender', null))
+          && request.resource.data.get('privateEvent', false) == false
+          && request.resource.data.get('teamSplit', null) == null
+          && request.resource.data.get('socialLinksEnabled', false) == false
+          && isEmptyOptionalList(request.resource.data.get('socialLinks', []))
+          && request.resource.data.get('earlyBirdEnabled', false) == false
+          && request.resource.data.get('earlyBirdCost', 0) == 0
+          && request.resource.data.get('gpsEnabled', false) == false
+          && request.resource.data.get('lat', null) == null
+          && request.resource.data.get('lng', null) == null
+          && request.resource.data.get('mapAddress', null) == null
+          && request.resource.data.get('mapPlaceId', null) == null
+          && request.resource.data.get('mapProvider', null) == null
+          && request.resource.data.get('mapLocationConfirmed', false) == false
+          && request.resource.data.get('mapLocationUpdatedAt', null) == null;
+      }
+
+      function eventEarlyBirdFieldsValid(data) {
+        return (!data.keys().hasAny(['earlyBirdEnabled']) || data.earlyBirdEnabled is bool)
+          && (!data.keys().hasAny(['earlyBirdPolicyVersion']) || data.earlyBirdPolicyVersion == null || data.earlyBirdPolicyVersion is number)
+          && (
+            data.get('earlyBirdEnabled', false) == false
+            || (
+              data.get('earlyBirdCost', 0) is int
+              && data.get('earlyBirdCost', 0) >= 10
+              && data.get('earlyBirdCost', 0) <= 500
+            )
+          );
+      }
+
+      function eventCreateHasTeamScopedAddon() {
+        return request.resource.data.get('teamOnly', false) == true
+          || request.resource.data.get('isPublic', false) == true
+          || !isEmptyOptionalString(request.resource.data.get('creatorTeamId', null))
+          || !isEmptyOptionalString(request.resource.data.get('creatorTeamName', null))
+          || !isEmptyOptionalList(request.resource.data.get('creatorTeamIds', []))
+          || !isEmptyOptionalList(request.resource.data.get('creatorTeamNames', []));
+      }
+
+      function eventCreateHasOnlyTeamScopedAddon() {
+        return eventCreateHasTeamScopedAddon()
+          && request.resource.data.get('feeEnabled', false) == false
+          && request.resource.data.get('fee', 0) == 0
+          && request.resource.data.get('genderRestrictionEnabled', false) == false
+          && isEmptyOptionalString(request.resource.data.get('allowedGender', null))
+          && request.resource.data.get('privateEvent', false) == false
+          && request.resource.data.get('teamSplit', null) == null
+          && request.resource.data.get('socialLinksEnabled', false) == false
+          && isEmptyOptionalList(request.resource.data.get('socialLinks', []))
+          && request.resource.data.get('earlyBirdEnabled', false) == false
+          && request.resource.data.get('earlyBirdCost', 0) == 0
+          && request.resource.data.get('gpsEnabled', false) == false
+          && request.resource.data.get('lat', null) == null
+          && request.resource.data.get('lng', null) == null
+          && request.resource.data.get('mapAddress', null) == null
+          && request.resource.data.get('mapPlaceId', null) == null
+          && request.resource.data.get('mapProvider', null) == null
+          && request.resource.data.get('mapLocationConfirmed', false) == false
+          && request.resource.data.get('mapLocationUpdatedAt', null) == null;
+      }
+
+      function eventCreateHasAuthorizedCreatorTeamScope() {
+        let creatorTeamId = request.resource.data.get('creatorTeamId', '');
+        let creatorTeamIds = request.resource.data.get('creatorTeamIds', []);
+        return request.resource.data.get('teamOnly', false) == true
+          && creatorTeamId is string
+          && creatorTeamId.size() > 0
+          && creatorTeamIds is list
+          && creatorTeamIds.size() == 1
+          && creatorTeamIds[0] == creatorTeamId
+          && isCurrentUserTeamStaff(creatorTeamId);
+      }
+
+      function canCreateEventForAnyTeamScope() {
+        return isSuperAdmin() || hasEffectivePerm('event.edit_all');
+      }
+
+      function eventCreateAddonsAllowed() {
+        return hasActivityCap('user.activity.addons_use')
+          ? (
+              !eventCreateHasTeamScopedAddon()
+              || (
+                hasUserPermissionGrant('team.create_event')
+                && eventCreateHasAuthorizedCreatorTeamScope()
+              )
+              || canCreateEventForAnyTeamScope()
+            )
+          : eventCreateHasNoAddons();
+      }
+
+      function eventCreateHasSafeInitialProjection() {
+        return (
+            request.resource.data.get('status', 'open') == 'open'
+            || (
+              request.resource.data.get('status', '') == 'upcoming'
+              && request.resource.data.get('regOpenTime', '') is string
+              && request.resource.data.get('regOpenTime', '').size() > 0
+            )
+          )
+          && request.resource.data.get('current', 0) == 0
+          && request.resource.data.get('realCurrent', 0) == 0
+          && request.resource.data.get('waitlist', 0) == 0
+          && isEmptyOptionalList(request.resource.data.get('participants', []))
+          && isEmptyOptionalList(request.resource.data.get('waitlistNames', []))
+          && isEmptyOptionalList(request.resource.data.get('participantsWithUid', []))
+          && isEmptyOptionalList(request.resource.data.get('waitlistWithUid', []));
+      }
+
+      function eventCreateDelegateFieldsAllowed() {
+        return (!request.resource.data.keys().hasAny(['delegates']) || (
+            request.resource.data.delegates is list
+            && (request.resource.data.delegates.size() == 0 || hasActivityCap('user.activity.delegate_assign'))
+          ))
+          && (!request.resource.data.keys().hasAny(['delegateUids']) || (
+            request.resource.data.delegateUids is list
+            && (request.resource.data.delegateUids.size() == 0 || hasActivityCap('user.activity.delegate_assign'))
+          ));
+      }
+
+      function hasValidEventMapPoint(data) {
+        return data.keys().hasAll(['lat', 'lng'])
+          && data.lat is number
+          && data.lat >= -90
+          && data.lat <= 90
+          && data.lng is number
+          && data.lng >= -180
+          && data.lng <= 180;
+      }
+
+      function isValidEventMapFields(data) {
+        return (!data.keys().hasAny(['lat']) || data.lat == null || (data.lat is number && data.lat >= -90 && data.lat <= 90))
+          && (!data.keys().hasAny(['lng']) || data.lng == null || (data.lng is number && data.lng >= -180 && data.lng <= 180))
+          && (!data.keys().hasAny(['gpsEnabled']) || data.gpsEnabled is bool)
+          && (!data.keys().hasAny(['mapAddress']) || data.mapAddress == null || (data.mapAddress is string && data.mapAddress.size() <= 240))
+          && (!data.keys().hasAny(['mapPlaceId']) || data.mapPlaceId == null || (data.mapPlaceId is string && data.mapPlaceId.size() <= 180))
+          && (!data.keys().hasAny(['mapProvider']) || data.mapProvider == null || data.mapProvider in ['google', 'manual'])
+          && (!data.keys().hasAny(['mapLocationConfirmed']) || data.mapLocationConfirmed is bool)
+          && (!data.keys().hasAny(['mapLocationUpdatedAt']) || data.mapLocationUpdatedAt == null || data.mapLocationUpdatedAt is string)
+          && (data.get('mapLocationConfirmed', false) != true || hasValidEventMapPoint(data))
+          && (data.get('mapLocationConfirmed', false) != true || data.get('gpsEnabled', true) == true);
+      }
+
+      function eventValidatedAddonFieldsValidForUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return !changed.hasAny(['viewCount'])
+          && (
+            !changed.hasAny(['earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion'])
+            || eventEarlyBirdFieldsValid(request.resource.data)
+          )
+          && (
+            !changed.hasAny(['gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt'])
+            || isValidEventMapFields(request.resource.data)
+          );
+      }
+
+      function isUserCreateOwner() {
+        let data = request.resource.data;
+        return eventId.matches('^ce_[A-Za-z0-9_-]{1,117}$')
+          && data.id == eventId
+          && data.creatorUid == request.auth.uid
+          && (
+            !('clientRequestId' in data)
+            || data.clientRequestId == eventId
+          )
+          && (
+            (
+              !('payloadRevision' in data)
+              && !('payloadDigest' in data)
+            )
+            || (
+              data.payloadRevision is int
+              && data.payloadRevision >= 1
+              && data.payloadDigest is string
+              && data.payloadDigest.matches('^v1-[0-9a-f]{32}$')
+            )
+          );
+      }
+
+      function isUserActivityCapEventCreate() {
+        let isExternal = request.resource.data.get('type', '') == 'external';
+        return eventCreateHasSafeInitialProjection()
+          && eventCreateDelegateFieldsAllowed()
+          && (
+            request.resource.data.get('teamOnly', false) == true
+              ? (
+                  (
+                    hasAllUserPermissionGrants(['event.create', 'team.create_event'])
+                    && eventCreateHasAuthorizedCreatorTeamScope()
+                    && eventCreateHasOnlyTeamScopedAddon()
+                  )
+                  || (
+                    eventCreateAddonsAllowed()
+                    && (
+                      (isExternal && hasActivityCap('user.activity.external_create'))
+                      || (!isExternal && hasActivityCap('user.activity.basic_create'))
+                      || hasUserPermissionGrant('event.create')
+                    )
+                  )
+                )
+              : (
+                  eventCreateAddonsAllowed()
+                  && (
+                    (isExternal && hasActivityCap('user.activity.external_create'))
+                    || (!isExternal && hasActivityCap('user.activity.basic_create'))
+                    || hasUserPermissionGrant('event.create')
+                  )
+                )
+          );
+      }
+
+      function canCreateEventRoot() {
+        let role = authRole();
+        return role == 'user'
+          ? isUserActivityCapEventCreate()
+          : (
+              (hasActivityManageEntry() || hasPerm('event.create') || hasUserPermissionGrant('event.create'))
+              && (
+                !eventCreateHasTeamScopedAddon()
+                || canCreateEventForAnyTeamScope()
+                || eventCreateHasAuthorizedCreatorTeamScope()
+              )
+            );
+      }
+
+      function eventUpdateChangedAddonFields(changed) {
+        return changed.hasAny([
+          'fee', 'feeEnabled',
+          'genderRestrictionEnabled', 'allowedGender',
+          'privateEvent',
+          'teamSplit',
+          'socialLinksEnabled', 'socialLinks',
+          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion',
+          'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt'
+        ]);
+      }
+
+      function eventUpdateAddonFieldsAllowed(changed) {
+        return !eventUpdateChangedAddonFields(changed)
+          || (
+            isEventOwner()
+            && hasActivityCap('user.activity.addons_use')
+          );
+      }
+
+      function eventUpdateBasicFieldsOnly(changed) {
+        return changed.hasOnly([
+          'title', 'type', 'location', 'date', 'startTimestamp', 'endTimestamp', 'externalUrl', 'max', 'minAge', 'notes', 'image', 'imageVariants',
+          'sportTag', 'regOpenTime', 'gradient', 'icon', 'countdown',
+          'regionEnabled', 'region', 'cities', 'delegates', 'delegateUids',
+          'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt',
+          'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
+          'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
+          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion',
+          'updatedAt'
+        ]);
+      }
+
+      function eventScopedRoleFieldsOnly(changed) {
+        return changed.hasOnly([
+          'title', 'type', 'location', 'date', 'startTimestamp', 'endTimestamp', 'externalUrl', 'max', 'minAge', 'notes', 'image', 'imageVariants',
+          'sportTag', 'regOpenTime', 'gradient', 'icon', 'countdown',
+          'regionEnabled', 'region', 'cities', 'delegates', 'delegateUids',
+          'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt',
+          'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
+          'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
+          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion',
+          'status', 'updatedAt'
+        ]);
+      }
+
+      function eventUpdateCapacityAllowed(changed) {
+        return !changed.hasAny(['max']) || (
+          request.resource.data.max is number
+          && (!(resource.data.current is number) || request.resource.data.max >= resource.data.current)
+        );
+      }
+
+      function eventCourseLinkRootFieldsUnchanged() {
+        return !('courseLinkId' in request.resource.data);
+      }
+
+      function isCourseLinkedVisibilityUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.resource.data.get('courseLinked', false) == true
+          && changed.hasOnly(['isPublic', 'privateEvent', 'updatedAt'])
+          && (!changed.hasAny(['isPublic']) || request.resource.data.isPublic is bool)
+          && (!changed.hasAny(['privateEvent']) || request.resource.data.privateEvent is bool)
+          && (canScopedManageEventData(resource.data) || canBroadManageEventData(resource.data));
+      }
+
+      function isCourseLinkedDelegateUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.resource.data.get('courseLinked', false) == true
+          && changed.hasAny(['delegates', 'delegateUids'])
+          && changed.hasOnly(['delegates', 'delegateUids', 'isPublic', 'privateEvent', 'updatedAt'])
+          && request.resource.data.delegates is list
+          && request.resource.data.delegateUids is list
+          && request.resource.data.delegates.size() <= 3
+          && request.resource.data.delegateUids.size() <= 3
+          && (!changed.hasAny(['isPublic']) || request.resource.data.isPublic is bool)
+          && (!changed.hasAny(['privateEvent']) || request.resource.data.privateEvent is bool)
+          && (!changed.hasAny(['isPublic', 'privateEvent']) || (canScopedManageEventData(resource.data) || canBroadManageEventData(resource.data)))
+          && (isEventOwner() || canBroadManageEventData(resource.data));
+      }
+
+      function isCourseLinkedManagerCancelUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.resource.data.get('courseLinked', false) == true
+          && changed.hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status == 'cancelled'
+          && (canScopedManageEventData(resource.data) || canBroadManageEventData(resource.data));
+      }
+
+      function isUserOwnerBasicUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return authRole() == 'user'
+          && (isEventOwner() || eventDataHasDelegateUid(resource.data, request.auth.uid))
+          && (
+            (
+              hasActivityCap('user.activity.own_edit_basic')
+              && eventUpdateBasicFieldsOnly(changed)
+              && eventUpdateCapacityAllowed(changed)
+              && eventUpdateAddonFieldsAllowed(changed)
+              && (!changed.hasAny(['delegates', 'delegateUids']) || (isEventOwner() && hasActivityCap('user.activity.delegate_assign')))
+            )
+            || (
+              hasActivityCap('user.activity.delegate_assign')
+              && isEventOwner()
+              && changed.hasOnly(['delegates', 'delegateUids', 'updatedAt'])
+            )
+            || (
+              hasActivityCap('user.activity.own_cancel')
+              && changed.hasOnly(['status', 'updatedAt'])
+              && request.resource.data.status == 'cancelled'
+            )
+          );
+      }
+
+      function isScopedRoleBasicUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return authRole() != 'user'
+          && canScopedManageEventData(resource.data)
+          && canOperatePrivateEventData(request.resource.data)
+          && eventScopedRoleFieldsOnly(changed)
+          && eventUpdateCapacityAllowed(changed)
+          && (!changed.hasAny(['status']) || request.resource.data.status in ['upcoming', 'open', 'full', 'ended', 'cancelled'])
+          && (!changed.hasAny(['delegates', 'delegateUids']) || isEventOwner());
+      }
+
+      allow read: if true;
+      allow create: if request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && isUserCreateOwner()
+        && request.resource.data.get('courseLinked', false) != true
+        && !('courseLinkId' in request.resource.data)
+        && canCreateEventRoot()
+        && eventEarlyBirdFieldsValid(request.resource.data)
+        && isValidEventMapFields(request.resource.data)
+        && request.resource.data.get('viewCount', 0) == 0;
+      allow update: if isAuth()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'viewCount', 'id', 'clientRequestId', 'creatorUid', 'payloadRevision', 'payloadDigest'
+        ])
+        && eventValidatedAddonFieldsValidForUpdate()
+        && (
+          (
+            resource.data.get('courseLinked', false) != true
+            && request.resource.data.get('courseLinked', false) != true
+            && (
+              isScopedRoleBasicUpdate()
+              || isUserOwnerBasicUpdate()
+              || canBroadManageEventUpdate()
+              || (isEventOwner() && hasEffectivePerm('event.edit_self') && eventCourseLinkRootFieldsUnchanged())
+              || isSignupFieldsOnly()
+              || (isBlocklistFieldsOnly() && canManageEventBlocklist())
+            )
+          )
+          || (
+            resource.data.get('courseLinked', false) == true
+            && isCourseLinkedVisibilityUpdate()
+          )
+          || (
+            resource.data.get('courseLinked', false) == true
+            && isCourseLinkedDelegateUpdate()
+          )
+          || (
+            resource.data.get('courseLinked', false) == true
+            && isCourseLinkedManagerCancelUpdate()
+          )
+          || (
+            resource.data.get('courseLinked', false) == true
+            && isSignupFieldsOnly()
+          )
+        );
+      allow delete: if isAdmin()
+        || hasEffectivePerm('event.delete')
+        || (isEventOwner() && hasEffectivePerm('event.delete_self'));
+    }
+
+    match /eventTemplates/{templateId} {
+      allow read: if isAuth()
+        && ((resource.data.ownerUid is string && resource.data.ownerUid == request.auth.uid) || isAdmin());
+      allow create: if isAuth()
+        && hasString('name')
+        && hasString('ownerUid')
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAuth()
+        && (
+          isAdmin()
+          || (
+            resource.data.ownerUid is string
+            && resource.data.ownerUid == request.auth.uid
+            && request.resource.data.ownerUid == resource.data.ownerUid
+          )
+        );
+      allow delete: if isAuth()
+        && (isAdmin() || (resource.data.ownerUid is string && resource.data.ownerUid == request.auth.uid));
+    }
+
+    // ═══════════════════════════════════════════
+    //  Users（用戶）
+    //  登入可讀寫（與 events / teams / attendanceRecords 同級）
+    //  敏感操作（角色變更等）由前端 ACL 控制
+    //  禁止前端刪除（審計軌跡）
+    // ═══════════════════════════════════════════
+    match /users/{userId} {
+      function forbiddenUserRootCreateKeys() {
+        return [
+          'identities',
+          'profileActiveIdentityId',
+          'identityPrivate',
+          'activeIdentity',
+          'selectedIdentity',
+          'permissions',
+          'permissionCodes',
+          'rolePermissions',
+          'claims',
+          'manualRole',
+          'isAdmin',
+          'isSuperAdmin',
+          'admin',
+          'super_admin',
+          'customClaims'
+        ];
+      }
+
+      function userRootCreateAllowedKeys() {
+        return [
+          'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl', 'phone', 'email',
+          'role', 'exp', 'level',
+          'gender', 'birthday', 'region', 'sports',
+          'teamId', 'teamName', 'teamIds', 'teamNames',
+          'titleBig', 'titleNormal',
+          'totalGames', 'completedGames', 'attendanceRate', 'badgeCount',
+          'profileCompleted',
+          'createdAt', 'lastLogin', 'updatedAt',
+          'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
+          'favorites', 'socialLinks', 'lineNotify', 'companions', 'eduChildren', 'stealth'
+        ];
+      }
+
+      function isSafeUserRootCreate() {
+        return isOwner(userId)
+          && hasString('uid')
+          && request.resource.data.uid == userId
+          && hasString('displayName')
+          && request.resource.data.keys().hasOnly(userRootCreateAllowedKeys())
+          && !request.resource.data.keys().hasAny(forbiddenUserRootCreateKeys())
+          && (!('lineUserId' in request.resource.data) || request.resource.data.lineUserId == userId)
+          && (!('role' in request.resource.data) || request.resource.data.role == 'user')
+          && (!('exp' in request.resource.data) || request.resource.data.exp == 0)
+          && (!('level' in request.resource.data) || request.resource.data.level == 1)
+          && (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null || request.resource.data.photoURL is string)
+          && (!('pictureUrl' in request.resource.data) || request.resource.data.pictureUrl == null || request.resource.data.pictureUrl is string)
+          && (!('phone' in request.resource.data) || request.resource.data.phone == null || request.resource.data.phone is string)
+          && (!('email' in request.resource.data) || request.resource.data.email == null || request.resource.data.email is string)
+          && (!('gender' in request.resource.data) || request.resource.data.gender == null || request.resource.data.gender is string)
+          && (!('birthday' in request.resource.data) || request.resource.data.birthday == null || request.resource.data.birthday is string)
+          && (!('region' in request.resource.data) || request.resource.data.region == null || request.resource.data.region is string)
+          && (!('sports' in request.resource.data) || request.resource.data.sports == null || request.resource.data.sports is string)
+          && (!('teamId' in request.resource.data) || request.resource.data.teamId == null || request.resource.data.teamId is string)
+          && (!('teamName' in request.resource.data) || request.resource.data.teamName == null || request.resource.data.teamName is string)
+          && (!('teamIds' in request.resource.data) || request.resource.data.teamIds == null || request.resource.data.teamIds is list)
+          && (!('teamNames' in request.resource.data) || request.resource.data.teamNames == null || request.resource.data.teamNames is list)
+          && (!('titleBig' in request.resource.data) || request.resource.data.titleBig == null || request.resource.data.titleBig is string)
+          && (!('titleNormal' in request.resource.data) || request.resource.data.titleNormal == null || request.resource.data.titleNormal is string)
+          && (!('totalGames' in request.resource.data) || request.resource.data.totalGames is int)
+          && (!('completedGames' in request.resource.data) || request.resource.data.completedGames is int)
+          && (!('attendanceRate' in request.resource.data) || request.resource.data.attendanceRate is number)
+          && (!('badgeCount' in request.resource.data) || request.resource.data.badgeCount is int)
+          && (!('profileCompleted' in request.resource.data) || request.resource.data.profileCompleted is bool)
+          && (!('favorites' in request.resource.data) || request.resource.data.favorites == null || request.resource.data.favorites is map || request.resource.data.favorites is list)
+          && (!('socialLinks' in request.resource.data) || request.resource.data.socialLinks == null || request.resource.data.socialLinks is map)
+          && (!('lineNotify' in request.resource.data) || request.resource.data.lineNotify == null || request.resource.data.lineNotify is map)
+          && (!('companions' in request.resource.data) || request.resource.data.companions == null || request.resource.data.companions is list)
+          && (!('eduChildren' in request.resource.data) || request.resource.data.eduChildren == null || request.resource.data.eduChildren is list)
+          && (!('stealth' in request.resource.data) || request.resource.data.stealth == null || request.resource.data.stealth is bool)
+          && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time)
+          && (!('lastLogin' in request.resource.data) || request.resource.data.lastLogin == request.time)
+          && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt == request.time);
+      }
+
+      function existingSecondaryAvatarUrlMatches(value) {
+        let secondary = resource.data.get('identities', {}).get('secondary', {});
+        return secondary is map && secondary.get('avatarUrl', null) == value;
+      }
+
+      function existingSecondaryAvatarStoragePathMatches(value) {
+        let secondary = resource.data.get('identities', {}).get('secondary', {});
+        return secondary is map && secondary.get('avatarStoragePath', null) == value;
+      }
+
+      function existingSecondaryAvatarStorageBucketMatches(value) {
+        let secondary = resource.data.get('identities', {}).get('secondary', {});
+        return secondary is map && secondary.get('avatarStorageBucket', null) == value;
+      }
+
+      function isValidSecondaryIdentityClientData(secondary, allowExistingAvatarMetadata) {
+        return secondary is map
+          && secondary.keys().hasOnly([
+            'identityId',
+            'enabled',
+            'displayName',
+            'avatarUrl',
+            'avatarStoragePath',
+            'avatarStorageBucket',
+            'displayRoleLabel',
+            'isPrimary',
+            'editable',
+            'updatedAt'
+          ])
+          && (!('identityId' in secondary) || secondary.identityId == 'secondary')
+          && (!('enabled' in secondary) || secondary.enabled is bool)
+          && (!('displayName' in secondary) || (
+            secondary.displayName is string
+            && secondary.displayName.size() > 0
+            && secondary.displayName.size() <= 40
+          ))
+          && (!('avatarUrl' in secondary)
+            || secondary.avatarUrl == null
+            || (allowExistingAvatarMetadata && existingSecondaryAvatarUrlMatches(secondary.avatarUrl)))
+          && (!('avatarStoragePath' in secondary)
+            || secondary.avatarStoragePath == null
+            || (allowExistingAvatarMetadata && existingSecondaryAvatarStoragePathMatches(secondary.avatarStoragePath)))
+          && (!('avatarStorageBucket' in secondary)
+            || secondary.avatarStorageBucket == null
+            || (allowExistingAvatarMetadata && existingSecondaryAvatarStorageBucketMatches(secondary.avatarStorageBucket)))
+          && (!('displayRoleLabel' in secondary) || (
+            secondary.displayRoleLabel is string
+            && secondary.displayRoleLabel.size() <= 40
+          ))
+          && (!('isPrimary' in secondary) || secondary.isPrimary == false)
+          && (!('editable' in secondary) || secondary.editable == true)
+          && (!('updatedAt' in secondary) || secondary.updatedAt is timestamp);
+      }
+
+      function isValidIdentityPrivateMap(identities, allowExistingAvatarMetadata) {
+        return identities is map
+          && identities.keys().hasOnly(['secondary'])
+          && (!identities.keys().hasAny(['secondary'])
+            || isValidSecondaryIdentityClientData(identities.secondary, allowExistingAvatarMetadata));
+      }
+
+      function requestHasEnabledSecondaryIdentity() {
+        let identities = request.resource.data.get('identities', {});
+        return identities is map
+          && identities.keys().hasAny(['secondary'])
+          && identities.secondary is map
+          && identities.secondary.enabled == true;
+      }
+
+      function isSafeIdentityPrivateSettingsWrite(settingsId, allowExistingAvatarMetadata) {
+        return settingsId == 'settings'
+          && request.resource.data.keys().hasOnly(['profileActiveIdentityId', 'identities', 'createdAt', 'updatedAt'])
+          && ('updatedAt' in request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time)
+          && (!('profileActiveIdentityId' in request.resource.data)
+            || request.resource.data.profileActiveIdentityId in ['main', 'secondary'])
+          && (!('identities' in request.resource.data)
+            || isValidIdentityPrivateMap(request.resource.data.identities, allowExistingAvatarMetadata))
+          && (!('profileActiveIdentityId' in request.resource.data)
+            || request.resource.data.profileActiveIdentityId != 'secondary'
+            || requestHasEnabledSecondaryIdentity());
+      }
+
+      function isSafeSelfProfileUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly([
+            'displayName', 'photoURL', 'pictureUrl', 'phone', 'email', 'updatedAt',
+            'gender', 'birthday', 'region', 'sports',
+            'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
+            'favorites', 'socialLinks',
+            'titleBig', 'titleNormal',
+            'lineNotify',
+            'companions',
+            'eduChildren',
+            'stealth'
+          ])
+          && !changed.hasAny(['uid', 'lineUserId', 'role', 'claims', 'isAdmin', 'exp', 'level', 'createdAt', 'manualRole'])
+          && (!changed.hasAny(['stealth']) || (
+              request.resource.data.stealth == null
+              || request.resource.data.stealth is bool
+          ))
+          && (!changed.hasAny(['displayName']) || (
+              request.resource.data.displayName is string
+              && request.resource.data.displayName.size() > 0
+          ))
+          && (!changed.hasAny(['photoURL']) || (
+              request.resource.data.photoURL == null
+              || request.resource.data.photoURL is string
+          ))
+          && (!changed.hasAny(['pictureUrl']) || (
+              request.resource.data.pictureUrl == null
+              || request.resource.data.pictureUrl is string
+          ))
+          && (!changed.hasAny(['phone']) || (
+              request.resource.data.phone == null
+              || request.resource.data.phone is string
+          ))
+          && (!changed.hasAny(['email']) || (
+              request.resource.data.email == null
+              || (
+                request.resource.data.email is string
+                && request.resource.data.email.size() > 0
+                && request.resource.data.email.size() <= 254
+              )
+          ))
+          && (!changed.hasAny(['termsAcceptedAt']) || (
+              request.resource.data.termsAcceptedAt is string
+              && request.resource.data.termsAcceptedAt.size() > 0
+              && request.resource.data.termsAcceptedAt.size() <= 40
+          ))
+          && (!changed.hasAny(['privacyAcceptedAt']) || (
+              request.resource.data.privacyAcceptedAt is string
+              && request.resource.data.privacyAcceptedAt.size() > 0
+              && request.resource.data.privacyAcceptedAt.size() <= 40
+          ))
+          && (!changed.hasAny(['termsVersion']) || (
+              request.resource.data.termsVersion == '2026-05-19'
+          ))
+          && (!changed.hasAny(['privacyVersion']) || (
+              request.resource.data.privacyVersion == '2026-05-19'
+          ))
+          && (!changed.hasAny(['legalAcceptedSource']) || (
+              request.resource.data.legalAcceptedSource is string
+              && request.resource.data.legalAcceptedSource.size() > 0
+              && request.resource.data.legalAcceptedSource.size() <= 64
+          ))
+          && (!changed.hasAny(['gender']) || (
+              request.resource.data.gender == null
+              || request.resource.data.gender is string
+          ))
+          && (!changed.hasAny(['birthday']) || (
+              request.resource.data.birthday == null
+              || request.resource.data.birthday is string
+          ))
+          && (!changed.hasAny(['region']) || (
+              request.resource.data.region == null
+              || request.resource.data.region is string
+          ))
+          && (!changed.hasAny(['sports']) || (
+              request.resource.data.sports == null
+              || request.resource.data.sports is string
+          ))
+          && (!changed.hasAny(['favorites']) || (
+              request.resource.data.favorites == null
+              || request.resource.data.favorites is map
+              || request.resource.data.favorites is list
+          ))
+          && (!changed.hasAny(['socialLinks']) || (
+              request.resource.data.socialLinks == null
+              || request.resource.data.socialLinks is map
+          ))
+          && (!changed.hasAny(['titleBig']) || (
+              request.resource.data.titleBig == null
+              || request.resource.data.titleBig is string
+          ))
+          && (!changed.hasAny(['titleNormal']) || (
+              request.resource.data.titleNormal == null
+              || request.resource.data.titleNormal is string
+          ))
+          && (!changed.hasAny(['lineNotify']) || (
+              request.resource.data.lineNotify == null
+              || request.resource.data.lineNotify is map
+          ))
+          && (!changed.hasAny(['companions']) || (
+              request.resource.data.companions == null
+              || request.resource.data.companions is list
+          ))
+          && (!changed.hasAny(['eduChildren']) || (
+              request.resource.data.eduChildren == null
+              || request.resource.data.eduChildren is list
+          ))
+          && (!changed.hasAny(['updatedAt']) || (
+              request.resource.data.updatedAt == request.time
+          ));
+      }
+
+      function isSafeLoginUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['displayName', 'pictureUrl', 'lastLogin'])
+          && (!changed.hasAny(['displayName']) || (
+              request.resource.data.displayName is string
+              && request.resource.data.displayName.size() > 0
+          ))
+          && (!changed.hasAny(['pictureUrl']) || (
+              request.resource.data.pictureUrl == null
+              || request.resource.data.pictureUrl is string
+          ))
+          && (!changed.hasAny(['lastLogin']) || (
+              request.resource.data.lastLogin == request.time
+          ));
+      }
+
+      function isTeamFieldShrinkOrClear() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let newData = request.resource.data;
+        let oldData = resource.data;
+        let oldTeamIds = (oldData.teamIds is list && oldData.teamIds.size() > 0)
+          ? oldData.teamIds
+          : (oldData.teamId == null ? [] : [oldData.teamId]);
+
+        return changed.hasOnly(['teamId', 'teamName', 'teamIds', 'teamNames', 'updatedAt'])
+          && (
+            (
+              newData.teamId == null
+              && newData.teamName == null
+              && (newData.teamIds == null || (newData.teamIds is list && newData.teamIds.size() == 0))
+              && (newData.teamNames == null || (newData.teamNames is list && newData.teamNames.size() == 0))
+            )
+            ||
+            (
+              oldTeamIds.size() > 0
+              && newData.teamIds is list
+              && newData.teamNames is list
+              && newData.teamIds.size() > 0
+              && newData.teamIds.size() < oldTeamIds.size()
+              && oldTeamIds.hasAll(newData.teamIds)
+              && newData.teamNames.size() == newData.teamIds.size()
+              && newData.teamId is string
+              && newData.teamId == newData.teamIds[0]
+              && newData.teamName is string
+              && newData.teamName == newData.teamNames[0]
+            )
+          )
+          && (!changed.hasAny(['updatedAt']) || newData.updatedAt == request.time);
+      }
+
+      function isSafeSuperAdminUserUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return !changed.hasAny(['uid', 'lineUserId', 'createdAt']);
+      }
+
+      function isSafeTeamMembershipUpdateByStaff() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['teamId', 'teamName', 'teamIds', 'teamNames', 'updatedAt'])
+          && (!changed.hasAny(['teamId']) || request.resource.data.teamId == null || request.resource.data.teamId is string)
+          && (!changed.hasAny(['teamName']) || request.resource.data.teamName == null || request.resource.data.teamName is string)
+          && (!changed.hasAny(['teamIds']) || request.resource.data.teamIds == null || request.resource.data.teamIds is list)
+          && (!changed.hasAny(['teamNames']) || request.resource.data.teamNames == null || request.resource.data.teamNames is list)
+          && (!changed.hasAny(['updatedAt']) || request.resource.data.updatedAt == request.time);
+      }
+
+      function isManagedAddedTeamAt(oldTeamIds, newTeamIds, index) {
+        return newTeamIds.size() > index
+          && newTeamIds[index] is string
+          && !(newTeamIds[index] in oldTeamIds)
+          && isCurrentUserTeamStaff(newTeamIds[index]);
+      }
+
+      function isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, index) {
+        return oldTeamIds.size() <= index
+          || (
+            newTeamIds.size() > index
+            && newTeamIds[index] == oldTeamIds[index]
+            && (
+              oldTeamNames.size() <= index
+              || (newTeamNames.size() > index && newTeamNames[index] == oldTeamNames[index])
+            )
+          );
+      }
+
+      function isTeamMembershipPrefixUnchanged(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames) {
+        return isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 0)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 1)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 2)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 3)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 4)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 5)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 6)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 7)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 8)
+          && isTeamMembershipPrefixUnchangedAt(oldTeamIds, oldTeamNames, newTeamIds, newTeamNames, 9);
+      }
+
+      function isSafeGrantedTeamReviewJoinUpdate() {
+        let oldData = resource.data;
+        let newData = request.resource.data;
+        let oldTeamIds = (oldData.teamIds is list && oldData.teamIds.size() > 0)
+          ? oldData.teamIds
+          : (oldData.teamId == null ? [] : [oldData.teamId]);
+        let oldTeamNames = (oldData.teamNames is list && oldData.teamNames.size() > 0)
+          ? oldData.teamNames
+          : (oldData.teamName == null ? [] : [oldData.teamName]);
+        return !isOwner(userId)
+          && hasUserPermissionGrant('team.review_join')
+          && isSafeTeamMembershipUpdateByStaff()
+          && newData.teamId is string
+          && newData.teamName is string
+          && newData.teamIds is list
+          && newData.teamNames is list
+          && oldTeamIds.size() <= 10
+          && newData.teamIds.size() == oldTeamIds.size() + 1
+          && newData.teamIds.hasAll(oldTeamIds)
+          && newData.teamNames.size() == newData.teamIds.size()
+          && newData.teamId == newData.teamIds[0]
+          && newData.teamName == newData.teamNames[0]
+          && isTeamMembershipPrefixUnchanged(oldTeamIds, oldTeamNames, newData.teamIds, newData.teamNames)
+          && isManagedAddedTeamAt(oldTeamIds, newData.teamIds, oldTeamIds.size());
+      }
+
+      function canWriteIdentityPrivateSettings() {
+        return (isOwner(userId) && canUseSecondaryIdentity())
+          || isSuperAdmin()
+          || (isAdmin() && hasEffectivePerm('profile.secondary_identity'));
+      }
+
+      allow read: if isAuth();
+      allow create: if isSafeUserRootCreate();
+      allow update: if (isOwner(userId) && isSafeSelfProfileUpdate())
+        || (isOwner(userId) && isSafeLoginUpdate())
+        || (isOwner(userId) && isTeamFieldShrinkOrClear())
+        || (isSuperAdmin() && isSafeSuperAdminUserUpdate())
+        || (canRunTeamJoinRepair() && isSafeTeamMembershipUpdateByStaff())
+        || (isCoachPlus() && !isOwner(userId) && isSafeTeamMembershipUpdateByStaff())
+        || isSafeGrantedTeamReviewJoinUpdate();
+      allow delete: if false;
+
+      match /identityPrivate/{settingsId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if canWriteIdentityPrivateSettings()
+          && isSafeIdentityPrivateSettingsWrite(settingsId, false);
+        allow update: if canWriteIdentityPrivateSettings()
+          && isSafeIdentityPrivateSettingsWrite(settingsId, true);
+        allow delete: if false;
+      }
+
+      // Per-user achievement progress subcollection
+      match /achievements/{achId} {
+        allow read: if isAuth();
+        allow write: if isOwner(userId) || isAdmin();
+      }
+
+      // Auto EXP reconciliation tracking subcollection
+      match /autoExpTracking/{ruleKey} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
+      }
+
+      // ── GrowthGames 遊戲存檔（私有，僅自己可讀寫） ──
+      match /game/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['version', 'savedAt', 'character', 'lifetime', 'scene'])
+          && request.resource.data.version is int
+          && request.resource.data.version > 0
+          && request.resource.data.savedAt is timestamp
+          && request.resource.data.character is map
+          && request.resource.data.lifetime is map
+          && request.resource.data.scene is map;
+      }
+
+      // ── GrowthGames 公開檔案（任何已登入用戶可讀，僅自己可寫） ──
+      match /gamePublic/{docId} {
+        allow read: if isAuth();
+        allow write: if isOwner(userId);
+      }
+
+      // ── GrowthGames 互動收件匣（任何已登入用戶可建立，自己可讀刪） ──
+      match /gameInbox/{msgId} {
+        allow read: if isOwner(userId);
+        allow create: if isAuth();
+        allow delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      // ── Per-user 站內信收件匣（只有 Admin SDK/CF 可建立；擁有者可讀/更新已讀/刪除） ──
+      match /inbox/{msgId} {
+        allow create: if false;  // 所有寫入透過 Cloud Function (Admin SDK)
+        allow read: if isOwner(userId);
+        allow update: if (isOwner(userId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']))
+          || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // ── Private Messages（私訊）──
+      // 所有寫入、已讀、編輯、撤回都透過 Cloud Functions；Client 只能讀自己的副本。
+      match /pmThreads/{threadId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if false;
+
+        match /messages/{messageId} {
+          allow read: if isOwner(userId);
+          allow create, update, delete: if false;
+        }
+      }
+
+      match /pmMeta/{metaId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Registrations（報名）
+    //  登入可讀寫（報名、取消報名、管理員代報名）
+    //  候補遞補：取消正取時需同 batch 更新他人的 waitlisted→confirmed
+    // ═══════════════════════════════════════════
+    match /registrations/{regId} {
+      // 候補遞補：waitlisted→confirmed（純 status 或 status+teamKey 組合寫入）
+      function isWaitlistPromotion() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let baseValid = resource.data.status == 'waitlisted'
+          && request.resource.data.status == 'confirmed';
+        return baseValid && (
+          changed.hasOnly(['status'])
+          || (changed.hasOnly(['status', 'teamSeatSource'])
+              && request.resource.data.teamSeatSource in ['reserved', 'overflow', 'waitlist'])
+          || (changed.hasOnly(['status', 'teamKey'])
+              && (request.resource.data.teamKey == null
+                  || request.resource.data.teamKey in ['A', 'B', 'C', 'D']))
+          || (changed.hasOnly(['status', 'teamKey', 'teamSeatSource'])
+              && (request.resource.data.teamKey == null
+                  || request.resource.data.teamKey in ['A', 'B', 'C', 'D'])
+              && request.resource.data.teamSeatSource in ['reserved', 'overflow', 'waitlist'])
+        );
+      }
+
+      function isWaitlistDemotion() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return resource.data.status == 'confirmed'
+          && request.resource.data.status == 'waitlisted'
+          && changed.hasOnly(['status']);
+      }
+
+      function isManagerRegistrationRemoval() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return resource.data.status in ['confirmed', 'registered', 'waitlisted']
+          && request.resource.data.status == 'removed'
+          && changed.hasOnly(['status', 'removedAt', 'updatedAt']);
+      }
+
+      // owner 更新白名單：只允許取消報名 + 徽章更新
+      function isRegistrationOwnerSafeUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'cancelledAt', 'updatedAt', 'displayBadges'])
+          && request.resource.data.userId == resource.data.userId
+          && (!changed.hasAny(['status']) || request.resource.data.status == 'cancelled');
+      }
+
+      // 徽章更新（僅限自己的報名）
+      function isBadgeOnlyUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayBadges']);
+      }
+
+      // ── team-split Rules ──
+
+      // teamKey 欄位白名單 + 值驗證
+      function isTeamKeyOnlyUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['teamKey', 'updatedAt'])
+          && (request.resource.data.teamKey == null
+              || request.resource.data.teamKey in ['A', 'B', 'C', 'D']);
+      }
+
+      // 僅 active 報名可被修改 teamKey
+      function isActiveRegistration() {
+        return resource.data.status in ['confirmed', 'waitlisted'];
+      }
+
+      // 讀取關聯 event（供 team-split 判斷）
+      function getRegEventData() {
+        return eventDataForDataEventId(resource.data);
+      }
+
+      function getRequestRegEventData() {
+        return eventDataForDataEventId(request.resource.data);
+      }
+
+      // 主辦/委託人改 teamKey
+      function isEventManagerTeamKeyUpdate() {
+        let eventData = getRegEventData();
+        return eventData != null
+          && isAuth()
+          && isTeamKeyOnlyUpdate()
+          && (
+            canUserManageTeamSplitData(eventData)
+            || (
+              hasActivityManageEntry()
+              && (eventData.creatorUid == request.auth.uid
+                  || (eventData.delegateUids is list && request.auth.uid in eventData.delegateUids))
+            )
+          );
+      }
+
+      // 用戶自選隊伍（self-select 模式 + 未鎖定）
+      function isSelfSelectTeamKeyUpdate() {
+        let eventData = getRegEventData();
+        return eventData != null
+          && isRegistrationOwnerResource()
+          && isTeamKeyOnlyUpdate()
+          && eventData.teamSplit is map
+          && eventData.teamSplit.mode == 'self-select'
+          && (eventData.teamSplit.lockAt == null || request.time < eventData.teamSplit.lockAt)
+          && eventData.startTimestamp is timestamp
+          && request.time < eventData.startTimestamp;
+      }
+
+      allow read: if isAuth();
+      allow create: if !hasCourseLinkedRegistrationData(request.resource.data)
+        && (isAdmin() || isRegistrationOwnerRequest());
+      allow update: if !hasCourseLinkedRegistrationData(resource.data)
+        && !hasCourseLinkedRegistrationData(request.resource.data)
+        && (
+          isAdmin()
+          || (isRegistrationOwnerResource() && isRegistrationOwnerRequest() && isRegistrationOwnerSafeUpdate())
+          || (isWaitlistPromotion() && isEventSiteOperatorForData(getRegEventData()))
+          || (isWaitlistDemotion() && isEventOperatorForData(getRegEventData()))
+          || (isManagerRegistrationRemoval() && isEventOperatorForData(getRegEventData()))
+          || (isRegistrationOwnerResource() && isBadgeOnlyUpdate())
+          || (isActiveRegistration() && isSelfSelectTeamKeyUpdate())
+          || (isActiveRegistration() && isEventManagerTeamKeyUpdate())
+        );
+      allow delete: if !hasCourseLinkedRegistrationData(resource.data)
+        && (isAdmin() || isRegistrationOwnerResource());
+    }
+
+    // ═══════════════════════════════════════════
+    //  Teams（俱樂部）
+    //  公開可讀；update 依 owner / hasPerm / 成員欄位白名單
+    // ═══════════════════════════════════════════
+    match /teams/{teamId} {
+      function isTeamMemberCountOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['members', 'updatedAt']);
+      }
+
+      function isTeamStaffFieldsOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly([
+          'members', 'feed', 'coaches',
+          'memberActivityData', 'memberCourseData', 'memberMatchData',
+          'updatedAt'
+        ]);
+      }
+
+      function canManageAnyTeam() {
+        return isSuperAdmin() || hasPerm('team.manage_all') || hasUserPermissionGrant('team.manage_all');
+      }
+
+      function isTeamViewCountIncrementOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['viewCount'])
+          && request.resource.data.viewCount == resource.data.get('viewCount', 0) + 1;
+      }
+
+      allow read: if true;
+      allow create: if isAuth()
+        && hasString('name')
+        && (hasEffectivePerm('team.create') || canManageAnyTeam());
+      allow update: if isAuth()
+        && (isTeamOwner()
+          || canManageAnyTeam()
+          || (isCurrentUserTeamStaff(teamId) && isTeamStaffFieldsOnly())
+          || (isCurrentUserInTeam(teamId) && isTeamMemberCountOnly())
+          || isTeamViewCountIncrementOnly());
+      allow delete: if canManageAnyTeam() || isTeamOwner();
+
+      // ── Feed（留言板）──
+      // Phase 3: create 收緊為成員才可發文；update/delete 限作者本人或幹部（含教練）
+      match /feed/{postId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && isCurrentUserInTeam(teamId);
+        allow update: if request.auth != null
+          && (resource.data.uid == request.auth.uid
+              || isCurrentUserTeamStaff(teamId));
+        allow delete: if request.auth != null
+          && (resource.data.uid == request.auth.uid
+              || isCurrentUserTeamStaff(teamId));
+      }
+
+      // ── Education: Groups（分組）──
+      // 公開可讀；俱樂部幹部可 CUD
+      match /groups/{groupId} {
+        allow read: if true;
+        allow create, update, delete: if isCurrentUserTeamCaptainOrLeader(teamId);
+      }
+
+      // ── Education: Course Plans（課程方案）──
+      // 公開可讀；俱樂部幹部（含教練）或管理員可 CUD
+      match /coursePlans/{planId} {
+        allow read: if true;
+        allow create, update, delete: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+
+        // ── 堂數制課堂卡片（每一堂課）──
+        function forbiddenCourseSessionLinkFields() {
+          return [
+            'convertedEventId', 'linkedEventId', 'courseLinkId', 'courseLinkKey',
+            'courseLinked', 'courseLinkSource',
+            'courseTeamId', 'coursePlanId', 'courseSessionId'
+          ];
+        }
+
+        function hasNoCourseSessionLinkFields(data) {
+          return data != null
+            && !data.keys().hasAny(forbiddenCourseSessionLinkFields());
+        }
+
+        function courseSessionHasLinkedEvent(sessionId) {
+          return exists(/databases/$(database)/documents/teams/$(teamId)/coursePlans/$(planId)/sessionEventLinks/$(sessionId));
+        }
+
+        match /sessions/{sessionId} {
+          allow read: if true;
+          allow create: if (isCurrentUserTeamStaff(teamId) || canManageAnyTeam())
+            && hasNoCourseSessionLinkFields(request.resource.data);
+          allow update: if (isCurrentUserTeamStaff(teamId) || canManageAnyTeam())
+            && hasNoCourseSessionLinkFields(request.resource.data)
+            && !courseSessionHasLinkedEvent(sessionId);
+          allow delete: if (isCurrentUserTeamStaff(teamId) || canManageAnyTeam())
+            && !courseSessionHasLinkedEvent(sessionId);
+
+          match /rosterSnapshots/{snapshotId} {
+            allow read, write: if false;
+          }
+        }
+
+        match /sessionEventLinks/{sessionId} {
+          allow read: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+          allow create, update, delete: if false;
+        }
+
+        function isCourseEnrollmentNullableString(data, field) {
+          return !(field in data) || data[field] == null || data[field] is string;
+        }
+
+        function isCourseEnrollmentOwnedByAuth(data) {
+          return isAuth()
+            && (
+              (data.keys().hasAny(['selfUid']) && data.selfUid is string && data.selfUid == request.auth.uid)
+              || (data.keys().hasAny(['parentUid']) && data.parentUid is string && data.parentUid == request.auth.uid)
+              || (
+                data.keys().hasAny(['studentId'])
+                && data.studentId is string
+                && exists(/databases/$(database)/documents/teams/$(teamId)/students/$(data.studentId))
+                && (
+                  get(/databases/$(database)/documents/teams/$(teamId)/students/$(data.studentId)).data.selfUid == request.auth.uid
+                  || get(/databases/$(database)/documents/teams/$(teamId)/students/$(data.studentId)).data.parentUid == request.auth.uid
+                )
+              )
+            );
+        }
+
+        function isValidCourseEnrollmentCreate() {
+          let data = request.resource.data;
+          return data.keys().hasAll(['studentId', 'status'])
+            && data.keys().hasOnly([
+              'id',
+              'studentId',
+              'studentName',
+              'selfUid',
+              'parentUid',
+              'status',
+              'paidAt',
+              'coachNotes',
+              'reviewerName',
+              'reviewerUid',
+              'reviewedAt',
+              'createdByUid',
+              'createdAt',
+              'updatedAt',
+              'appliedAt',
+              'appliedAtIso',
+              'enrollmentType',
+              'migrationSource',
+              'sourceGroupId',
+              'migratedAt'
+            ])
+            && data.studentId is string
+            && data.studentId.size() > 0
+            && data.status in ['pending', 'approved', 'rejected', 'cancelled', 'removed']
+            && isCourseEnrollmentNullableString(data, 'id')
+            && isCourseEnrollmentNullableString(data, 'studentName')
+            && isCourseEnrollmentNullableString(data, 'selfUid')
+            && isCourseEnrollmentNullableString(data, 'parentUid')
+            && isCourseEnrollmentNullableString(data, 'paidAt')
+            && isCourseEnrollmentNullableString(data, 'coachNotes')
+            && isCourseEnrollmentNullableString(data, 'reviewerName')
+            && isCourseEnrollmentNullableString(data, 'reviewerUid')
+            && isCourseEnrollmentNullableString(data, 'createdByUid')
+            && isCourseEnrollmentNullableString(data, 'appliedAtIso')
+            && isCourseEnrollmentNullableString(data, 'enrollmentType')
+            && isCourseEnrollmentNullableString(data, 'migrationSource')
+            && isCourseEnrollmentNullableString(data, 'sourceGroupId');
+        }
+
+        // ── 課程方案報名（一般學員走 callable；直寫限幹部 / 管理員）──
+        match /enrollments/{enrollId} {
+          allow read: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam() || isCourseEnrollmentOwnedByAuth(resource.data);
+          allow create: if (isCurrentUserTeamStaff(teamId) || canManageAnyTeam()) && isValidCourseEnrollmentCreate();
+          allow update: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+          allow delete: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+        }
+      }
+
+      // ── Education: Students（學員）──
+      // 認證可讀；一般用戶只能建 pending 學員；幹部（含教練）可建任意狀態+改刪
+      // 學員本人/代理人可退學（僅限 enrollStatus → inactive）
+      match /students/{studentId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+          && hasString('name')
+          && (
+            request.resource.data.enrollStatus == 'pending'
+            || isCurrentUserTeamStaff(teamId)
+          );
+        allow update: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam()
+          || (isAuth()
+              && request.resource.data.enrollStatus == 'inactive'
+              && (resource.data.selfUid == request.auth.uid
+                  || resource.data.parentUid == request.auth.uid));
+        allow delete: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Tournaments（錦標賽）
+    //  公開可讀；管理員可寫
+    // ═══════════════════════════════════════════
+    match /tournaments/{tournamentId} {
+      function tournamentExists() {
+        return exists(/databases/$(database)/documents/tournaments/$(tournamentId));
+      }
+
+      function canCreateTournamentRoot() {
+        return isAuth()
+          && hasString('hostTeamId')
+          && requestFieldEqualsAuthOrAbsent('creatorUid')
+          && (isAdmin() || isCurrentUserTeamCaptainOrLeader(request.resource.data.hostTeamId));
+      }
+
+      function tournamentRootImmutableFieldsSafe() {
+        return request.resource.data.hostTeamId == resource.data.hostTeamId
+          && request.resource.data.creatorUid == resource.data.creatorUid
+          && request.resource.data.mode == resource.data.mode;
+      }
+
+      // Phase 0: delegateUids 只允許建立者或管理員修改（防委託人自我擴權）
+      function delegateUidsUnchangedOrCreator() {
+        return request.resource.data.delegateUids == resource.data.delegateUids
+          || resource.data.creatorUid == request.auth.uid;
+      }
+
+      function isTournamentDelegate() {
+        return isAuth()
+          && tournamentExists()
+          && (get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.delegateUids is list)
+          && request.auth.uid in get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.delegateUids;
+      }
+
+      function isTournamentHostManager() {
+        return tournamentExists()
+          && hasNonEmptyStringInMap(get(/databases/$(database)/documents/tournaments/$(tournamentId)).data, 'hostTeamId')
+          && isCurrentUserTeamCaptainOrLeader(get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.hostTeamId);
+      }
+
+      // Phase 2A：建立者本人可管理(對齊前端 _canManageTournamentRecord 的 creator UID 判定)
+      function isTournamentCreator() {
+        return isAuth()
+          && tournamentExists()
+          && hasNonEmptyStringInMap(get(/databases/$(database)/documents/tournaments/$(tournamentId)).data, 'creatorUid')
+          && get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorUid == request.auth.uid;
+      }
+
+      function canManageAllTournaments() {
+        return isSuperAdmin() || hasPerm('admin.tournaments.manage_all') || hasUserPermissionGrant('admin.tournaments.manage_all');
+      }
+
+      function canManageTournamentScope() {
+        return isTournamentCreator() || isTournamentDelegate() || isTournamentHostManager();
+      }
+
+      function tournamentEntryExists(teamId) {
+        return teamId is string
+          && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/entries/$(teamId));
+      }
+
+      allow read: if true;
+      allow create: if false;
+      allow update: if (tournamentExists()
+          && canManageTournamentScope()
+          && tournamentRootImmutableFieldsSafe()
+          && delegateUidsUnchangedOrCreator())
+        || canManageAllTournaments();
+      allow delete: if false;
+
+      match /applications/{applicationId} {
+        function optionalStringInApplication(data, field) {
+          return !(field in data)
+            || data[field] == null
+            || data[field] is string;
+        }
+
+        function isValidTournamentApplicationCreate() {
+          let data = request.resource.data;
+          return data.status == 'pending'
+            && data.requestedByUid == request.auth.uid
+            && data.teamId is string
+            && data.teamId.size() > 0
+            && applicationId == ('ta_' + data.teamId)
+            && data.id == applicationId
+            && optionalStringInApplication(data, 'teamName')
+            && optionalStringInApplication(data, 'teamImage')
+            && optionalStringInApplication(data, 'requestedByName')
+            && data.appliedAt is string
+            && data.appliedAt.size() > 0
+            && optionalStringInApplication(data, 'messageGroupId')
+            && data.createdAt == request.time
+            && data.updatedAt == request.time
+            && data.keys().hasOnly([
+              'id', 'teamId', 'teamName', 'teamImage', 'status',
+              'requestedByUid', 'requestedByName', 'appliedAt',
+              'messageGroupId', 'createdAt', 'updatedAt'
+            ]);
+        }
+
+        allow read: if canManageTournamentScope()
+          || canManageAllTournaments()
+          || ((resource.data.requestedByUid is string) && resource.data.requestedByUid == request.auth.uid)
+          || ((resource.data.teamId is string) && isCurrentUserInTeam(resource.data.teamId))
+          || ((resource.data.teamId is string) && isCurrentUserTeamCaptainOrLeader(resource.data.teamId));
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      match /entries/{teamId} {
+        allow read: if isAuth();
+        allow create: if tournamentExists() && canManageAllTournaments();
+        allow update: if tournamentExists() && canManageAllTournaments();
+        allow delete: if false;
+
+        match /members/{memberUid} {
+          function isTournamentEntryMemberProfileUpdate() {
+            let changed = request.resource.data.diff(resource.data).affectedKeys();
+            return changed.hasOnly(['jerseyNumber', 'position', 'note', 'updatedAt'])
+              && (!('jerseyNumber' in request.resource.data)
+                || request.resource.data.jerseyNumber == null
+                || (request.resource.data.jerseyNumber is string
+                  && request.resource.data.jerseyNumber.matches('^[0-9]{0,3}$')))
+              && (!('position' in request.resource.data)
+                || request.resource.data.position == null
+                || (request.resource.data.position is string
+                  && request.resource.data.position.size() <= 20))
+              && (!('note' in request.resource.data)
+                || request.resource.data.note == null
+                || (request.resource.data.note is string
+                  && request.resource.data.note.size() <= 30));
+          }
+
+          allow read: if isAuth();
+          allow create: if tournamentExists() && canManageAllTournaments();
+          allow update: if tournamentExists()
+            && ((isCurrentUserTeamStaff(teamId) && isTournamentEntryMemberProfileUpdate())
+              || canManageAllTournaments());
+          allow delete: if tournamentExists()
+            && (isCurrentUserTeamStaff(teamId) || canManageAllTournaments());
+        }
+      }
+
+      // ═══ 2026-06-12 盃賽/聯賽：比賽（賽程 + 比分）═══
+      // 賽程建立 / 編輯 / 刪除：賽事管理範圍（主辦/委託/主辦隊幹部）或全域管理。
+      // 比分記錄：裁判長可記錄全部場次；裁判僅能更新比分相關欄位，
+      // 且僅限被指派場次（該場未指派裁判時開放賽事裁判名單）；賽事結束後裁判鎖定。
+      match /matches/{matchId} {
+        function tournamentRootData() {
+          return get(/databases/$(database)/documents/tournaments/$(tournamentId)).data;
+        }
+
+        function isTournamentRefereeHead() {
+          return isAuth()
+            && tournamentExists()
+            && hasNonEmptyStringInMap(tournamentRootData(), 'refereeHeadUid')
+            && tournamentRootData().refereeHeadUid == request.auth.uid;
+        }
+
+        function isTournamentListedReferee() {
+          return isAuth()
+            && tournamentExists()
+            && (tournamentRootData().refereeUids is list)
+            && request.auth.uid in tournamentRootData().refereeUids;
+        }
+
+        function matchHasAssignedReferees() {
+          return (resource.data.refereeUids is list)
+            && resource.data.refereeUids.size() > 0;
+        }
+
+        function isAllowedMatchReferee() {
+          return matchHasAssignedReferees()
+            ? (isAuth() && (request.auth.uid in resource.data.refereeUids))
+            : isTournamentListedReferee();
+        }
+
+        function tournamentNotEnded() {
+          return tournamentExists() && tournamentRootData().ended != true;
+        }
+
+        function isRefereeScoreOnlyUpdate() {
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'scoreHome', 'scoreAway', 'pkHome', 'pkAway',
+            'walkoverWinnerTeamId', 'events', 'liveUrl',
+            'recordedByUid', 'recordedByName', 'recordedAt', 'updatedAt'
+          ]);
+        }
+
+        allow read: if true;
+        allow create: if (tournamentExists() && canManageTournamentScope())
+          || canManageAllTournaments();
+        allow update: if (tournamentExists() && canManageTournamentScope())
+          || canManageAllTournaments()
+          || (tournamentNotEnded()
+            && isRefereeScoreOnlyUpdate()
+            && (isTournamentRefereeHead() || isAllowedMatchReferee()));
+        allow delete: if (tournamentExists() && canManageTournamentScope())
+          || canManageAllTournaments();
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Messages（訊息）
+    //  登入可讀寫
+    // ═══════════════════════════════════════════
+    match /messages/{msgId} {
+      function isTeamJoinRepairMessage() {
+        return ('actionType' in resource.data)
+          && resource.data.actionType is string
+          && resource.data.actionType == 'team_join_request';
+      }
+
+      allow read: if isAdmin()
+        || (canRunTeamJoinRepair() && isTeamJoinRepairMessage())
+        || isMessageSenderResource()
+        || isMessageRecipientResource();
+      allow create: if isAuth()
+        && hasString('body')
+        && isMessageSenderRequest()
+        && hasValidMessageShapeRequest();
+      allow update: if isAdmin()
+        || canMessageParticipantUpdate();
+      allow delete: if isAdmin()
+        || isMessageSenderResource()
+        || hasPerm('admin.messages.delete');
+    }
+    // ═══════════════════════════════════════════
+    //  Activity Records（活動紀錄）
+    //  登入可讀可建立；update 限 status 欄位或 admin
+    // ═══════════════════════════════════════════
+    match /activityRecords/{recordId} {
+      function isActivityStatusOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'updatedAt']);
+      }
+
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && !hasCourseLinkedSideEffectData(request.resource.data);
+      allow update: if isAuth()
+        && !hasCourseLinkedSideEffectData(resource.data)
+        && !hasCourseLinkedSideEffectData(request.resource.data)
+        && (isUserFieldOwnerResource() || isAdmin() || isActivityStatusOnly());
+      allow delete: if !hasCourseLinkedSideEffectData(resource.data)
+        && isAdmin();
+    }
+
+    // ═══════════════════════════════════════════
+    //  Attendance Records（簽到簽退）
+    //  登入可讀可建立；update 限狀態欄位或 admin；禁止刪除（審計軌跡）
+    // ═══════════════════════════════════════════
+    match /attendanceRecords/{recordId} {
+      function isAttendanceStatusUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly([
+          'status', 'checkOutTime', 'removedAt', 'removedByUid', 'updatedAt'
+        ]);
+      }
+
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && !hasCourseLinkedSideEffectData(request.resource.data)
+        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(request.resource.data));
+      allow update: if isAuth()
+        && !hasCourseLinkedSideEffectData(resource.data)
+        && !hasCourseLinkedSideEffectData(request.resource.data)
+        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(resource.data))
+        && (isAdmin() || isAttendanceStatusUpdate());
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Shop Items（二手商品）
+    //  公開可讀；登入可建立；owner/admin/hasPerm 可改刪
+    // ═══════════════════════════════════════════
+    match /shopItems/{itemId} {
+      allow read: if true;
+      allow create: if isAuth();
+      allow update: if isAuth()
+        && (isShopItemOwner() || isAdmin() || hasEffectivePerm('admin.shop.entry'));
+      allow delete: if isAdmin() || isShopItemOwner() || hasEffectivePerm('admin.shop.entry');
+    }
+
+    // ═══════════════════════════════════════════
+    //  Announcements（公告）
+    //  公開可讀；admin 或持有 admin.announcements.entry 可寫
+    // ═══════════════════════════════════════════
+    match /announcements/{annId} {
+      allow read: if true;
+      allow create: if isAdmin() || hasEffectivePerm('admin.announcements.entry');
+      allow update: if isAdmin() || hasEffectivePerm('admin.announcements.entry');
+      allow delete: if isAdmin() || hasEffectivePerm('admin.announcements.entry');
+    }
+
+    // ═══════════════════════════════════════════
+    //  Achievements & Badges（成就與徽章）
+    //  公開可讀；admin 或持有 admin.achievements.entry 可寫
+    // ═══════════════════════════════════════════
+    match /achievements/{achId} {
+      allow read: if true;
+      allow write: if isAdmin() || hasEffectivePerm('admin.achievements.entry');
+    }
+    match /badges/{badgeId} {
+      allow read: if true;
+      allow write: if isAdmin() || hasEffectivePerm('admin.achievements.entry');
+    }
+
+    // ═══════════════════════════════════════════
+    //  廣告系統（banners / floatingAds / sponsors）
+    //  公開可讀；admin 或持有 admin.banners.entry 可寫
+    // ═══════════════════════════════════════════
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || hasEffectivePerm('admin.banners.entry');
+      allow delete: if false;
+    }
+    match /floatingAds/{adId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || hasEffectivePerm('admin.banners.entry');
+      allow delete: if false;
+    }
+    match /sponsors/{sponsorId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || hasEffectivePerm('admin.banners.entry');
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Popup Ads（彈窗廣告）
+    //  公開可讀；admin 或持有 admin.banners.entry 可寫
+    // ═══════════════════════════════════════════
+    match /popupAds/{adId} {
+      allow read: if true;
+      allow write: if isAdmin() || hasEffectivePerm('admin.banners.entry');
+    }
+
+    // ═══════════════════════════════════════════
+    //  News Articles（每日體育新聞）
+    //  公開可讀；僅 Cloud Function 可寫（admin-sdk 繞過規則）
+    // ═══════════════════════════════════════════
+    match /newsArticles/{articleId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Site Themes（佈景主題）
+    //  公開可讀；admin 或持有 admin.themes.entry 可寫
+    // ═══════════════════════════════════════════
+    match /siteThemes/{themeId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || hasEffectivePerm('admin.themes.entry');
+      allow delete: if false;
+    }
+    // ═══════════════════════════════════════════
+    //  Site Config（站台設定，含 Auto-EXP / 推播開關）
+    //  登入可讀；admin、受限的 admin.auto_exp.entry 或 admin.notif.toggle 可寫
+    // ═══════════════════════════════════════════
+    match /siteConfig/{docId} {
+      allow read: if isAuth();
+      allow create: if docId != 'realtimeConfig' && (isAdmin()
+        || canManageAutoExpSiteConfig(docId)
+        || canCreateNotificationFeatureFlags(docId));
+      allow update: if docId != 'realtimeConfig' && (isAdmin()
+        || canManageAutoExpSiteConfig(docId)
+        || canUpdateNotificationFeatureFlags(docId));
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Home Game Config（首頁小遊戲設定）
+    //  公開可讀；admin 或持有 admin.games.entry 可寫
+    // ═══════════════════════════════════════════
+
+    match /gameConfigs/{configId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || hasEffectivePerm('admin.games.entry');
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Notification Templates（通知模板）
+    //  登入可讀；管理員可寫
+    // ═══════════════════════════════════════════
+    match /notifTemplates/{templateId} {
+      allow read: if isAuth();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Logs（日誌）— 登入可讀可新增
+    //  放寬 create 給所有登入用戶（auto-exp 等功能需要）
+    // ═══════════════════════════════════════════
+    match /expLogs/{logId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+    match /teamExpLogs/{logId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+    match /operationLogs/{logId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && isOpLogOwnerRequest();
+      allow update: if isAdmin()
+        || (isAuth() && isOpLogOwnerResource() && isOpLogOwnerRequest());
+      allow delete: if false;
+    }
+    match /errorLogs/{docId} {
+      allow read: if isSuperAdmin() || hasEffectivePerm('admin.logs.error_read');
+      allow create: if isAuth();
+      allow update: if false;
+      allow delete: if isSuperAdmin() || hasEffectivePerm('admin.logs.error_delete');
+    }
+    match /userCorrections/{uid} {
+      allow read: if isAuth();
+      allow create, update, delete: if canManageNoShowCorrections();
+    }
+    match /auditLogsByDay/{dayKey}/auditEntries/{logId} {
+      allow read: if isSuperAdmin() || hasEffectivePerm('admin.logs.audit_read');
+      allow create, update, delete: if false;
+    }
+
+    // ── PM audit copies/logs（聊天室稽核）──
+    // 高敏感資料，固定只透過 super_admin callable 讀取；Client SDK 全拒。
+    match /pmAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+    match /pmAuditConversations/{conversationId} {
+      allow read, write: if false;
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /participantQueryShares/{shareId} {
+      allow get: if isPublicParticipantQueryShareData(resource.data);
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+    match /participantQueryShares/{shareId}/shareItems/{itemId} {
+      allow get, list: if canReadPublicParticipantQueryShare(shareId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════
+    //  Roles & Permissions（角色與權限設定）
+    //  登入可讀；super_admin 可寫
+    // ═══════════════════════════════════════════
+    match /customRoles/{roleId} {
+      allow read: if isAuth();
+      allow write: if isSuperAdmin();
+    }
+    match /rolePermissions/{roleId} {
+      allow read: if isAuth();
+      allow write: if isSuperAdmin();
+    }
+    function allowedUserPermissionGrantCodes() {
+      return [
+        'activity.manage.entry',
+        'admin.tournaments.entry',
+        'team.manage.entry',
+        'admin.games.entry',
+        'admin.users.entry',
+        'admin.banners.entry',
+        'admin.shop.entry',
+        'admin.messages.entry',
+        'admin.dashboard.entry',
+        'admin.seo.entry',
+        'admin.themes.entry',
+        'admin.exp.entry',
+        'admin.auto_exp.entry',
+        'admin.notif.entry',
+        'admin.announcements.entry',
+        'admin.achievements.entry',
+        'admin.logs.entry',
+        'admin.repair.entry',
+        'admin.inactive.entry',
+        'event.create',
+        'event.edit_self',
+        'event.edit_all',
+        'event.delete_self',
+        'event.delete',
+        'event.publish',
+        'event.scan',
+        'event.manual_checkin',
+        'event.view_registrations',
+        'admin.tournaments.create',
+        'admin.tournaments.manage_all',
+        'admin.tournaments.review',
+        'admin.tournaments.end',
+        'admin.tournaments.reopen',
+        'admin.tournaments.delete',
+        'team.create',
+        'team.manage_all',
+        'team.manage_self',
+        'team.review_join',
+        'team.assign_coach',
+        'team.create_event',
+        'team.toggle_event_visibility',
+        'admin.users.edit_profile',
+        'admin.users.change_role',
+        'admin.users.restrict',
+        'admin.messages.compose',
+        'admin.messages.delete',
+        'admin.repair.team_join_repair',
+        'admin.repair.no_show_adjust',
+        'admin.repair.data_sync',
+        'admin.repair.event_blocklist',
+        'activity.view_noshow',
+        'admin.logs.error_read',
+        'admin.logs.error_delete',
+        'admin.logs.audit_read',
+        'admin.notif.toggle',
+        'profile.secondary_identity',
+      ];
+    }
+    function isSafeUserPermissionGrantWrite(uid) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['uid', 'permissions', 'enabled', 'updatedAt'])
+        && data.keys().hasAll(['uid', 'permissions'])
+        && data.uid == uid
+        && data.permissions is list
+        && data.permissions.size() <= 500
+        && data.permissions.hasOnly(allowedUserPermissionGrantCodes())
+        && (!('enabled' in data) || data.enabled is bool)
+        && (!('updatedAt' in data) || data.updatedAt == request.time);
+    }
+    match /userPermissionGrants/{uid} {
+      allow read: if isOwner(uid) || isSuperAdmin();
+      allow create, update: if isSuperAdmin()
+        && isSafeUserPermissionGrantWrite(uid);
+      allow delete: if isSuperAdmin();
+    }
+    match /userPermissionGrantAudit/{uid} {
+      allow read, write: if false;
+      match /entries/{entryId} {
+        allow read, write: if isSuperAdmin();
+      }
+    }
+    match /roleActivityCapabilities/{roleId} {
+      allow read: if isAuth();
+      allow write: if isSuperAdmin();
+    }
+    match /permissions/{permId} {
+      allow read: if isAuth();
+      allow write: if isSuperAdmin();
+    }
+
+    // ═══════════════════════════════════════════
+    //  Admin Messages（管理員廣播）
+    //  登入可讀；admin 或持有 admin.messages.entry 可寫
+    // ═══════════════════════════════════════════
+    match /adminMessages/{msgId} {
+      function isAdminMessageDeleteStatusOnlyUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status'])
+          && request.resource.data.status is string
+          && request.resource.data.status == 'deleted';
+      }
+
+      allow read: if isAuth();
+      allow create: if isAdmin()
+        || hasEffectivePerm('admin.messages.entry')
+        || hasEffectivePerm('admin.messages.compose');
+      allow update: if isAdmin()
+        || hasEffectivePerm('admin.messages.entry')
+        || (hasEffectivePerm('admin.messages.delete') && isAdminMessageDeleteStatusOnlyUpdate());
+      allow delete: if isAdmin() || hasEffectivePerm('admin.messages.entry');
+    }
+
+    // ═══════════════════════════════════════════
+    //  Matches / Standings（賽事數據）
+    //  公開可讀；管理員可寫
+    // ═══════════════════════════════════════════
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /standings/{standingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════
+    //  Trades（交易紀錄）
+    //  登入可讀寫
+    // ═══════════════════════════════════════════
+    match /trades/{tradeId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if isAdmin() || isTradeOwner();
+    }
+
+    // ═══════════════════════════════════════════
+    //  LINE Push Queue（推播佇列）
+    //  登入用戶可新增；後端 Admin SDK 消費（讀取/更新/刪除）
+    // ═══════════════════════════════════════════
+    match /linePushQueue/{docId} {
+      allow read: if false;
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Shot Game — 射門小遊戲
+    //  shotGameScores：本人可讀自己紀錄；前端不可寫（Cloud Function Admin SDK 寫入）
+    //  shotGameRankings：登入可讀榜單；前端不可寫（Cloud Function Admin SDK 寫入）
+    //  更新：2026-03-05（Phase 1 新增）
+    // ═══════════════════════════════════════════
+    match /shotGameScores/{uid}/attempts/{attemptId} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    match /shotGameRankings/{periodBucket}/entries/{entryUid} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Kick Game — 開球小遊戲
+    //  kickGameScores：本人可讀自己紀錄；前端不可寫（Cloud Function Admin SDK 寫入）
+    //  kickGameRankings：登入可讀榜單；前端不可寫（Cloud Function Admin SDK 寫入）
+    //  更新：2026-03-15（新增）
+    // ═══════════════════════════════════════════
+    match /kickGameScores/{uid}/attempts/{attemptId} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    match /kickGameRankings/{periodBucket}/entries/{entryUid} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Education Attendance（教育簽到）
+    //  認證可讀；職員可寫；本人/家長僅可建立與移除自己的請假
+    // ═══════════════════════════════════════════
+    match /eduAttendance/{recordId} {
+      function canManageEduAttendance(data) {
+        return hasNonEmptyStringInMap(data, 'teamId')
+          && (
+            isCurrentUserTeamStaff(data.teamId)
+            || isEduCourseRosterAgent(data)
+            || isSuperAdmin()
+            || hasEffectivePerm('team.manage_all')
+          );
+      }
+
+      function isEduCourseRosterAgent(data) {
+        let planPath = /databases/$(database)/documents/teams/$(data.teamId)/coursePlans/$(data.coursePlanId);
+        return isAuth()
+          && hasNonEmptyStringInMap(data, 'teamId')
+          && hasNonEmptyStringInMap(data, 'coursePlanId')
+          && exists(planPath)
+          && (
+            get(planPath).data.rosterAgentUid == request.auth.uid
+            || get(planPath).data.responsibleAgentUid == request.auth.uid
+            || (get(planPath).data.rosterAgentUids is list && request.auth.uid in get(planPath).data.rosterAgentUids)
+            || (get(planPath).data.responsibleAgentUids is list && request.auth.uid in get(planPath).data.responsibleAgentUids)
+          );
+      }
+
+      function isEduAttendanceOwnedByAuth(data) {
+        return isAuth()
+          && (
+            (data.keys().hasAny(['selfUid']) && data.selfUid is string && data.selfUid == request.auth.uid)
+            || (data.keys().hasAny(['parentUid']) && data.parentUid is string && data.parentUid == request.auth.uid)
+          );
+      }
+
+      function isEduAttendanceStudentOwnedByAuth(data) {
+        let studentPath = /databases/$(database)/documents/teams/$(data.teamId)/students/$(data.studentId);
+        return hasNonEmptyStringInMap(data, 'teamId')
+          && hasNonEmptyStringInMap(data, 'studentId')
+          && exists(studentPath)
+          && (
+            get(studentPath).data.selfUid == request.auth.uid
+            || get(studentPath).data.parentUid == request.auth.uid
+          );
+      }
+
+      function isOwnEduLeaveCreate() {
+        return hasNonEmptyStringInMap(request.resource.data, 'teamId')
+          && hasNonEmptyStringInMap(request.resource.data, 'studentId')
+          && hasNonEmptyStringInMap(request.resource.data, 'date')
+          && request.resource.data.kind == 'leave'
+          && isEduAttendanceOwnedByAuth(request.resource.data)
+          && isEduAttendanceStudentOwnedByAuth(request.resource.data);
+      }
+
+      function isOwnEduLeaveStatusUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return resource.data.kind == 'leave'
+          && request.resource.data.kind == 'leave'
+          && isEduAttendanceOwnedByAuth(resource.data)
+          && isEduAttendanceOwnedByAuth(request.resource.data)
+          && isEduAttendanceStudentOwnedByAuth(resource.data)
+          && request.resource.data.teamId == resource.data.teamId
+          && request.resource.data.studentId == resource.data.studentId
+          && changed.hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status in ['active', 'removed'];
+      }
+
+      allow read: if isAuth();
+      allow create: if canManageEduAttendance(request.resource.data) || isOwnEduLeaveCreate();
+      allow update: if canManageEduAttendance(resource.data) || isOwnEduLeaveStatusUpdate();
+      allow delete: if canManageEduAttendance(resource.data);
+    }
+
+    // ═══════════════════════════════════════════
+    //  Usage Metrics（雲端用量指標）
+    //  僅 super_admin 可讀；寫入由 Cloud Function 執行（client 禁寫）
+    // ═══════════════════════════════════════════
+    match /usageMetrics/{dateKey} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Translate Usage（翻譯 API 用量追蹤）
+    //  僅 super_admin 可讀；寫入由 Cloud Function 執行（client 禁寫）
+    // ═══════════════════════════════════════════
+    match /translateUsage/{monthKey} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Changelog（更新日誌）
+    //  user 以上（不含一般 user）可讀；寫入由 sync-changelog.js（Admin SDK）執行
+    // ═══════════════════════════════════════════
+    match /changelog/{docId} {
+      allow read: if isAuth()
+        && authRole() in ['coach', 'captain', 'venue_owner', 'admin', 'super_admin'];
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  SEO Snapshots — 每日 Google Search Console 快照
+    //  由 GitHub Actions (scripts/gsc-snapshot.js) 透過 Admin SDK 寫入
+    //  admin / super_admin / 持有 admin.seo.entry 權限者可讀
+    // ═══════════════════════════════════════════
+    match /seoSnapshots/{dateId} {
+      allow read: if isAuth() && (isAdmin() || isSuperAdmin() || hasEffectivePerm('admin.seo.entry'));
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  CI Usage Snapshots（GitHub Actions 用量統計）
+    //  由 GitHub Actions (scripts/snapshot-ci-usage.js) 透過 Service Account 寫入
+    //  admin / super_admin 可讀（顯示在數據儀表板）
+    // ═══════════════════════════════════════════
+    match /ciUsageSnapshots/{dateId} {
+      allow read: if isAuth() && (isAdmin() || isSuperAdmin());
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Inventory System（庫存管理系統，inv_ 前綴）
+    //  獨立於 SportHub，共用 Firebase 專案
+    // ═══════════════════════════════════════════
+    function isInventoryAdmin() {
+      return request.auth != null
+        && (
+          get(/databases/$(database)/documents/inv_settings/config).data.adminUids.hasAny([request.auth.uid])
+          || isSuperAdmin()
+        );
+    }
+    // inv_settings — 全域設定（auth、權限），不分庫存
+    match /inv_settings/{docId} {
+      allow get: if request.auth != null;
+      allow list: if isInventoryAdmin();
+      allow write: if isInventoryAdmin();
+    }
+    // inv_stores/{storeId} — 多庫存子集合結構
+    match /inv_stores/{storeId} {
+      allow read, write: if isInventoryAdmin();
+      match /products/{docId} {
+        allow read, write: if isInventoryAdmin();
+      }
+      match /transactions/{docId} {
+        allow read: if isInventoryAdmin();
+        allow create: if isInventoryAdmin()
+          && request.resource.data.type in ['in', 'out', 'return', 'adjust', 'void', 'waste', 'gift', 'correction', 'split_out', 'split_in', 'merge', 'transfer_out', 'transfer_in']
+          && (request.resource.data.delta is int || request.resource.data.quantity is int)
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if isInventoryAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['productName']);
+        allow delete: if false;
+      }
+      match /stocktakes/{docId} {
+        allow read, write: if isInventoryAdmin();
+      }
+      match /announcements/{docId} {
+        allow read: if request.auth != null;
+        allow create, update, delete: if isInventoryAdmin();
+      }
+      match /logs/{docId} {
+        allow read: if isInventoryAdmin();
+        allow create: if isInventoryAdmin()
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+    // inv_transfers — 跨倉庫調撥主記錄
+    match /inv_transfers/{transferId} {
+      allow read: if isInventoryAdmin();
+      allow create: if isInventoryAdmin()
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+    // 保留舊的頂層集合規則（資料遷移過渡期）
+    match /inv_products/{docId} {
+      allow read, write: if isInventoryAdmin();
+    }
+    match /inv_transactions/{docId} {
+      allow read: if isInventoryAdmin();
+      allow create: if isInventoryAdmin()
+        && request.resource.data.type in ['in', 'out', 'return', 'adjust', 'void', 'waste', 'gift', 'correction']
+        && (request.resource.data.delta is int || request.resource.data.quantity is int)
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if isInventoryAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['productName']);
+      allow delete: if false;
+    }
+    match /inv_stocktakes/{docId} {
+      allow read, write: if isInventoryAdmin();
+    }
+    match /inv_announcements/{docId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isInventoryAdmin();
+    }
+    match /inv_logs/{docId} {
+      allow read: if isInventoryAdmin();
+      allow create: if isInventoryAdmin()
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  [Migration] Subcollection Rules — events/{eventId}/ 下的子集合
+    //  Phase 0 部署，Phase 1 雙寫使用
+    //  完整移植自根集合 registrations/attendanceRecords/activityRecords
+    // ═══════════════════════════════════════════════════════════════
+    match /events/{eventId}/management/{managementDocId} {
+      allow read: if isEventOperatorForPath(eventId) || isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /events/{eventId}/registrations/{regId} {
+
+      // ── 所有權檢查 ──
+      function isSubRegOwner() {
+        return request.auth != null
+          && (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid);
+      }
+      function isSubRegOwnerRequest() {
+        return request.auth != null
+          && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      }
+
+      // ── owner 安全更新（含 request.resource 防禦）──
+      function isSubRegOwnerSafeUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'cancelledAt', 'updatedAt', 'displayBadges'])
+          && isSubRegOwner()
+          && isSubRegOwnerRequest()
+          && (!changed.hasAny(['status']) || request.resource.data.status == 'cancelled');
+      }
+
+      // ── 候補遞補（含 teamKey 值驗證）──
+      function isSubWaitlistPromotion() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let baseValid = resource.data.status == 'waitlisted'
+          && request.resource.data.status == 'confirmed';
+        return baseValid && (
+          changed.hasOnly(['status'])
+          || (changed.hasOnly(['status', 'teamSeatSource'])
+              && request.resource.data.teamSeatSource in ['reserved', 'overflow', 'waitlist'])
+          || (changed.hasOnly(['status', 'teamKey'])
+              && (request.resource.data.teamKey == null
+                  || request.resource.data.teamKey in ['A', 'B', 'C', 'D']))
+          || (changed.hasOnly(['status', 'teamKey', 'teamSeatSource'])
+              && (request.resource.data.teamKey == null
+                  || request.resource.data.teamKey in ['A', 'B', 'C', 'D'])
+              && request.resource.data.teamSeatSource in ['reserved', 'overflow', 'waitlist'])
+        );
+      }
+
+      function isSubWaitlistDemotion() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return resource.data.status == 'confirmed'
+          && request.resource.data.status == 'waitlisted'
+          && changed.hasOnly(['status']);
+      }
+
+      function isSubManagerRegistrationRemoval() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return resource.data.status in ['confirmed', 'registered', 'waitlisted']
+          && request.resource.data.status == 'removed'
+          && changed.hasOnly(['status', 'removedAt', 'updatedAt']);
+      }
+
+      // ── 徽章更新 ──
+      function isSubBadgeOnlyUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayBadges']);
+      }
+
+      // ── team-split Rules ──
+
+      function isSubTeamKeyOnlyUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['teamKey', 'updatedAt'])
+          && (request.resource.data.teamKey == null
+              || request.resource.data.teamKey in ['A', 'B', 'C', 'D']);
+      }
+
+      function isSubActiveRegistration() {
+        return resource.data.status in ['confirmed', 'waitlisted'];
+      }
+
+      // 子集合版：直接用 $(eventId)（父文件 doc.id），比根集合的 resource.data.eventId 更正確
+      function getSubRegEventData() {
+        return get(/databases/$(database)/documents/events/$(eventId)).data;
+      }
+
+      function isSubEventManagerTeamKeyUpdate() {
+        let eventData = getSubRegEventData();
+        return eventData != null
+          && isAuth()
+          && isSubTeamKeyOnlyUpdate()
+          && (
+            canUserManageTeamSplitData(eventData)
+            || (
+              hasActivityManageEntry()
+              && (eventData.creatorUid == request.auth.uid
+                  || (eventData.delegateUids is list && request.auth.uid in eventData.delegateUids))
+            )
+          );
+      }
+
+      function isSubSelfSelectTeamKeyUpdate() {
+        let eventData = getSubRegEventData();
+        return eventData != null
+          && isSubRegOwner()
+          && isSubTeamKeyOnlyUpdate()
+          && eventData.teamSplit is map
+          && eventData.teamSplit.mode == 'self-select'
+          && (eventData.teamSplit.lockAt == null || request.time < eventData.teamSplit.lockAt)
+          && eventData.startTimestamp is timestamp
+          && request.time < eventData.startTimestamp;
+      }
+
+      allow read: if isAuth();
+      allow create: if !hasCourseLinkedRegistrationData(request.resource.data)
+        && (isAdmin() || isSubRegOwnerRequest());
+      allow update: if !hasCourseLinkedRegistrationData(resource.data)
+        && !hasCourseLinkedRegistrationData(request.resource.data)
+        && (
+          isAdmin()
+          || (isSubRegOwner() && isSubRegOwnerRequest() && isSubRegOwnerSafeUpdate())
+          || (isSubWaitlistPromotion() && isEventSiteOperatorForData(getSubRegEventData()))
+          || (isSubWaitlistDemotion() && isEventOperatorForData(getSubRegEventData()))
+          || (isSubManagerRegistrationRemoval() && isEventOperatorForData(getSubRegEventData()))
+          || (isSubRegOwner() && isSubBadgeOnlyUpdate())
+          || (isSubActiveRegistration() && isSubSelfSelectTeamKeyUpdate())
+          || (isSubActiveRegistration() && isSubEventManagerTeamKeyUpdate())
+        );
+      allow delete: if !hasCourseLinkedRegistrationData(resource.data)
+        && (isAdmin() || isSubRegOwner());
+    }
+
+    match /events/{eventId}/teamReservations/{reservationId} {
+      allow read: if isAuth();
+      allow create, update, delete: if false;
+    }
+
+    match /events/{eventId}/registrationLocks/{lockId} {
+      function isLockOwnerRequest() {
+        return request.auth != null
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.key == lockId
+          && request.resource.data.eventId is string
+          && request.resource.data.registrationDocId is string
+          && request.resource.data.status == 'active';
+      }
+      function isLockOwnerResource() {
+        return request.auth != null && resource.data.userId == request.auth.uid;
+      }
+
+      allow read: if isAuth();
+      allow create: if isAdmin() || isLockOwnerRequest();
+      allow update: if false;
+      allow delete: if isAdmin() || isLockOwnerResource();
+    }
+
+    match /events/{eventId}/attendanceRecords/{recId} {
+      function attendanceEventData() {
+        return get(/databases/$(database)/documents/events/$(eventId)).data;
+      }
+
+      function isSubAttendanceStatusUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'checkOutTime', 'removedAt', 'removedByUid', 'updatedAt']);
+      }
+
+      function isSubAttendanceCreateAllowed() {
+        let eventData = attendanceEventData();
+        return !hasCourseLinkedSideEffectData(request.resource.data)
+          && eventData != null
+          && request.resource.data.eventId is string
+          && (
+            request.resource.data.eventId == eventId
+            || request.resource.data.eventId == eventData.id
+          )
+          && isEventSiteOperatorForData(eventData);
+      }
+
+      function isSubAttendanceUpdateAllowed() {
+        let eventData = attendanceEventData();
+        return !hasCourseLinkedSideEffectData(resource.data)
+          && !hasCourseLinkedSideEffectData(request.resource.data)
+          && eventData != null
+          && isEventSiteOperatorForData(eventData)
+          && isSubAttendanceStatusUpdate();
+      }
+
+      allow read: if isAuth();
+      allow create: if isSubAttendanceCreateAllowed();
+      allow update: if isSubAttendanceUpdateAllowed();
+      allow delete: if false;
+    }
+
+    match /events/{eventId}/activityRecords/{recId} {
+      function isSubActivityStatusOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'updatedAt']);
+      }
+
+      allow read: if isAuth();
+      allow create: if !hasCourseLinkedSideEffectData(request.resource.data)
+        && requestEventIdMatchesPath(eventId)
+        && (isUserFieldOwnerRequest() || isEventSiteOperatorForPath(eventId));
+      allow update: if isAuth()
+        && !hasCourseLinkedSideEffectData(resource.data)
+        && !hasCourseLinkedSideEffectData(request.resource.data)
+        && (isUserFieldOwnerResource() || isAdmin() || (isSubActivityStatusOnly() && isEventSiteOperatorForPath(eventId)));
+      allow delete: if !hasCourseLinkedSideEffectData(resource.data)
+        && isAdmin();
+    }
+
+    match /events/{eventId}/comments/{commentId} {
+      function eventData() {
+        return pathEventData(eventId);
+      }
+      function isCommentManager() {
+        let data = eventData();
+        return isAuth()
+          && data != null
+          && (
+            isAdmin()
+            || data.creatorUid == request.auth.uid
+            || data.ownerUid == request.auth.uid
+            || data.captainUid == request.auth.uid
+            || eventDataHasDelegateUid(data, request.auth.uid)
+          );
+      }
+      function eventAcceptsCommentWrites() {
+        let data = eventData();
+        return data != null
+          && (!('status' in data) || data.status != 'cancelled')
+          && (!('endTimestamp' in data) || !(data.endTimestamp is timestamp) || request.time < data.endTimestamp);
+      }
+      function canReadCommentData(data) {
+        return isAuth()
+          && data != null
+          && (
+            data.visibility == 'public'
+            || data.authorUid == request.auth.uid
+            || isCommentManager()
+          );
+      }
+      function commentCreateIsSafe() {
+        return request.resource.data.keys().hasOnly([
+            'eventId', 'authorUid', 'authorName', 'authorPhoto', 'body', 'visibility',
+            'replyLocked', 'deleted', 'replyCount', 'likeCount', 'recentLikers',
+            'identitySnapshot', 'createdAt', 'updatedAt'
+          ])
+          && requestEventIdMatchesPath(eventId)
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName is string
+          && request.resource.data.authorName.size() > 0
+          && request.resource.data.authorName.size() <= 80
+          && request.resource.data.authorPhoto is string
+          && request.resource.data.authorPhoto.size() <= 1200
+          && (!('identitySnapshot' in request.resource.data)
+            || isValidPublicIdentitySnapshotFor(request.auth.uid, request.resource.data.identitySnapshot))
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 300
+          && request.resource.data.visibility in ['public', 'private']
+          && request.resource.data.replyLocked == false
+          && request.resource.data.deleted == false
+          && (!('replyCount' in request.resource.data) || request.resource.data.replyCount == 0)
+          && (!('likeCount' in request.resource.data) || request.resource.data.likeCount == 0)
+          && (!('recentLikers' in request.resource.data)
+            || (request.resource.data.recentLikers is list
+              && request.resource.data.recentLikers.size() == 0))
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+      }
+      function commentManagerUpdateIsSafe() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['replyLocked', 'deleted', 'deletedAt', 'deletedByUid', 'updatedAt'])
+          && request.resource.data.eventId == resource.data.eventId
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.authorName == resource.data.authorName
+          && request.resource.data.authorPhoto == resource.data.authorPhoto
+          && identitySnapshotImmutable()
+          && request.resource.data.body == resource.data.body
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time
+          && (!changed.hasAny(['replyLocked']) || request.resource.data.replyLocked is bool)
+          && (!changed.hasAny(['deleted']) || request.resource.data.deleted == true)
+          && (!changed.hasAny(['deletedAt']) || request.resource.data.deletedAt == request.time)
+          && (!changed.hasAny(['deletedByUid']) || request.resource.data.deletedByUid == request.auth.uid);
+      }
+      function commentCoreFieldsUnchanged() {
+        return request.resource.data.eventId == resource.data.eventId
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.authorName == resource.data.authorName
+          && request.resource.data.authorPhoto == resource.data.authorPhoto
+          && identitySnapshotImmutable()
+          && request.resource.data.body == resource.data.body
+          && request.resource.data.visibility == resource.data.visibility
+          && request.resource.data.replyLocked == resource.data.replyLocked
+          && request.resource.data.deleted == resource.data.deleted
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+      }
+      function commentLikeSummaryUpdateIsSafe() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let oldLikeCount = ('likeCount' in resource.data && resource.data.likeCount is int) ? resource.data.likeCount : 0;
+        let selfLikePath = /databases/$(database)/documents/events/$(eventId)/comments/$(commentId)/likes/$(request.auth.uid);
+        return isAuth()
+          && canReadCommentData(resource.data)
+          && changed.hasOnly(['likeCount', 'recentLikers', 'updatedAt'])
+          && commentCoreFieldsUnchanged()
+          && request.resource.data.likeCount is int
+          && request.resource.data.likeCount >= 0
+          && request.resource.data.likeCount <= 100000
+          && request.resource.data.recentLikers is list
+          && request.resource.data.recentLikers.size() <= 32
+          && (
+            (!exists(selfLikePath)
+              && existsAfter(selfLikePath)
+              && request.resource.data.likeCount == oldLikeCount + 1)
+            || (exists(selfLikePath)
+              && !existsAfter(selfLikePath)
+              && ((oldLikeCount > 0 && request.resource.data.likeCount == oldLikeCount - 1)
+                || (oldLikeCount == 0 && request.resource.data.likeCount == 0)))
+            || (exists(selfLikePath)
+              && existsAfter(selfLikePath)
+              && ((oldLikeCount == 0 && request.resource.data.likeCount == 1)
+                || request.resource.data.likeCount == oldLikeCount))
+          );
+      }
+
+      allow read: if canReadCommentData(resource.data);
+      allow create: if isAuth()
+        && eventAcceptsCommentWrites()
+        && commentCreateIsSafe();
+      allow update: if isAuth()
+        && ((isCommentManager()
+            && commentManagerUpdateIsSafe())
+          || commentLikeSummaryUpdateIsSafe());
+      allow delete: if isCommentManager();
+
+      match /replies/{replyId} {
+        function parentCommentData() {
+          return get(/databases/$(database)/documents/events/$(eventId)/comments/$(commentId)).data;
+        }
+        function canReadParentComment() {
+          let data = parentCommentData();
+          return isAuth()
+            && data != null
+            && (
+              data.visibility == 'public'
+              || data.authorUid == request.auth.uid
+              || isCommentManager()
+            );
+        }
+        function replyCreateIsSafe() {
+          let parent = parentCommentData();
+          return request.resource.data.keys().hasOnly([
+              'eventId', 'commentId', 'authorUid', 'authorName', 'authorPhoto',
+              'identitySnapshot', 'body', 'deleted', 'likeCount', 'recentLikers',
+              'createdAt', 'updatedAt'
+            ])
+            && requestEventIdMatchesPath(eventId)
+            && request.resource.data.commentId == commentId
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorName is string
+            && request.resource.data.authorName.size() > 0
+            && request.resource.data.authorName.size() <= 80
+            && request.resource.data.authorPhoto is string
+            && request.resource.data.authorPhoto.size() <= 1200
+            && (!('identitySnapshot' in request.resource.data)
+              || isValidPublicIdentitySnapshotFor(request.auth.uid, request.resource.data.identitySnapshot))
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 100
+            && request.resource.data.deleted == false
+            && (!('likeCount' in request.resource.data) || request.resource.data.likeCount == 0)
+            && (!('recentLikers' in request.resource.data)
+              || (request.resource.data.recentLikers is list
+                && request.resource.data.recentLikers.size() == 0))
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time
+            && parent != null
+            && parent.deleted != true
+            && parent.replyLocked != true;
+        }
+        function replyManagerUpdateIsSafe() {
+          let changed = request.resource.data.diff(resource.data).affectedKeys();
+          return changed.hasOnly(['deleted', 'deletedAt', 'deletedByUid', 'updatedAt'])
+            && request.resource.data.eventId == resource.data.eventId
+            && request.resource.data.commentId == resource.data.commentId
+            && request.resource.data.authorUid == resource.data.authorUid
+            && request.resource.data.authorName == resource.data.authorName
+            && request.resource.data.authorPhoto == resource.data.authorPhoto
+            && identitySnapshotImmutable()
+            && request.resource.data.body == resource.data.body
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.updatedAt == request.time
+            && (!changed.hasAny(['deleted']) || request.resource.data.deleted == true)
+            && (!changed.hasAny(['deletedAt']) || request.resource.data.deletedAt == request.time)
+            && (!changed.hasAny(['deletedByUid']) || request.resource.data.deletedByUid == request.auth.uid);
+        }
+        function replyCoreFieldsUnchanged() {
+          return request.resource.data.eventId == resource.data.eventId
+            && request.resource.data.commentId == resource.data.commentId
+            && request.resource.data.authorUid == resource.data.authorUid
+            && request.resource.data.authorName == resource.data.authorName
+            && request.resource.data.authorPhoto == resource.data.authorPhoto
+            && identitySnapshotImmutable()
+            && request.resource.data.body == resource.data.body
+            && request.resource.data.deleted == resource.data.deleted
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.updatedAt == request.time;
+        }
+        function replyLikeSummaryUpdateIsSafe() {
+          let changed = request.resource.data.diff(resource.data).affectedKeys();
+          let oldLikeCount = ('likeCount' in resource.data && resource.data.likeCount is int) ? resource.data.likeCount : 0;
+          let selfLikePath = /databases/$(database)/documents/events/$(eventId)/comments/$(commentId)/replies/$(replyId)/likes/$(request.auth.uid);
+          return isAuth()
+            && canReadParentComment()
+            && changed.hasOnly(['likeCount', 'recentLikers', 'updatedAt'])
+            && replyCoreFieldsUnchanged()
+            && request.resource.data.likeCount is int
+            && request.resource.data.likeCount >= 0
+            && request.resource.data.likeCount <= 100000
+            && request.resource.data.recentLikers is list
+            && request.resource.data.recentLikers.size() <= 32
+            && (
+              (!exists(selfLikePath)
+                && existsAfter(selfLikePath)
+                && request.resource.data.likeCount == oldLikeCount + 1)
+              || (exists(selfLikePath)
+                && !existsAfter(selfLikePath)
+                && ((oldLikeCount > 0 && request.resource.data.likeCount == oldLikeCount - 1)
+                  || (oldLikeCount == 0 && request.resource.data.likeCount == 0)))
+              || (exists(selfLikePath)
+                && existsAfter(selfLikePath)
+                && ((oldLikeCount == 0 && request.resource.data.likeCount == 1)
+                  || request.resource.data.likeCount == oldLikeCount))
+            );
+        }
+
+        allow read: if canReadParentComment();
+        allow create: if isAuth()
+          && eventAcceptsCommentWrites()
+          && canReadParentComment()
+          && replyCreateIsSafe();
+        allow update: if isAuth()
+          && ((isCommentManager()
+              && replyManagerUpdateIsSafe())
+            || replyLikeSummaryUpdateIsSafe());
+        allow delete: if isCommentManager();
+
+        match /likes/{uid} {
+          function replyLikeParentCommentData() {
+            return get(/databases/$(database)/documents/events/$(eventId)/comments/$(commentId)).data;
+          }
+          function replyLikeParentData() {
+            return get(/databases/$(database)/documents/events/$(eventId)/comments/$(commentId)/replies/$(replyId)).data;
+          }
+          function canReadReplyLikeParentComment() {
+            let data = replyLikeParentCommentData();
+            return isAuth()
+              && data != null
+              && (
+                data.visibility == 'public'
+                || data.authorUid == request.auth.uid
+                || isCommentManager()
+              );
+          }
+          function likeCreateIsSafe() {
+            let parent = replyLikeParentCommentData();
+            let reply = replyLikeParentData();
+            return uid == request.auth.uid
+              && request.resource.data.keys().hasOnly(['eventId', 'commentId', 'replyId', 'uid', 'authorName', 'authorPhoto', 'createdAt'])
+              && requestEventIdMatchesPath(eventId)
+              && request.resource.data.commentId == commentId
+              && request.resource.data.replyId == replyId
+              && request.resource.data.uid == request.auth.uid
+              && (!('authorName' in request.resource.data)
+                || (request.resource.data.authorName is string
+                  && request.resource.data.authorName.size() > 0
+                  && request.resource.data.authorName.size() <= 80))
+              && (!('authorPhoto' in request.resource.data)
+                || (request.resource.data.authorPhoto is string
+                  && request.resource.data.authorPhoto.size() <= 1200))
+              && request.resource.data.createdAt == request.time
+              && parent != null
+              && parent.deleted != true
+              && reply != null
+              && reply.deleted != true;
+          }
+
+          allow read: if canReadReplyLikeParentComment();
+          allow create: if isAuth()
+            && canReadReplyLikeParentComment()
+            && likeCreateIsSafe();
+          allow update: if false;
+          allow delete: if isAuth()
+            && uid == request.auth.uid;
+        }
+      }
+
+      match /likes/{uid} {
+        function parentCommentData() {
+          return get(/databases/$(database)/documents/events/$(eventId)/comments/$(commentId)).data;
+        }
+        function canReadParentComment() {
+          let data = parentCommentData();
+          return isAuth()
+            && data != null
+            && (
+              data.visibility == 'public'
+              || data.authorUid == request.auth.uid
+              || isCommentManager()
+            );
+        }
+        function likeCreateIsSafe() {
+          let parent = parentCommentData();
+          return uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['eventId', 'commentId', 'uid', 'authorName', 'authorPhoto', 'createdAt'])
+            && requestEventIdMatchesPath(eventId)
+            && request.resource.data.commentId == commentId
+            && request.resource.data.uid == request.auth.uid
+            && (!('authorName' in request.resource.data)
+              || (request.resource.data.authorName is string
+                && request.resource.data.authorName.size() > 0
+                && request.resource.data.authorName.size() <= 80))
+            && (!('authorPhoto' in request.resource.data)
+              || (request.resource.data.authorPhoto is string
+                && request.resource.data.authorPhoto.size() <= 1200))
+            && request.resource.data.createdAt == request.time
+            && parent != null
+            && parent.deleted != true;
+        }
+
+        allow read: if canReadParentComment();
+        allow create: if isAuth()
+          && canReadParentComment()
+          && likeCreateIsSafe();
+        allow update: if false;
+        allow delete: if isAuth()
+          && uid == request.auth.uid;
+      }
+    }
+
+    // Materialized attendance summaries are server-owned and readable on authenticated profile cards.
+    match /userAttendanceStats/{uid} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+    match /userAttendanceStatsQueue/{uid} {
+      allow read, write: if false;
+    }
+    // collectionGroup wildcard rules（僅 read，供 Phase 3 collectionGroup 查詢使用）
+    match /{path=**}/registrations/{regId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/attendanceRecords/{recId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/activityRecords/{recId} {
+      allow read: if request.auth != null;
+    }
+
+    // ═══════════════════════════════════════════
+    //  Catch-all：未列出的集合一律拒絕
+    // ═══════════════════════════════════════════
+    match /{collection}/{docId} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}
