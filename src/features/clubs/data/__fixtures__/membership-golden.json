@@ -1,0 +1,177 @@
+{
+  "normalizeMembership": [
+    {
+      "name": "combinedMembership",
+      "input": {
+        "teamIds": ["team_a", "team_b"],
+        "teamNames": ["Team A", "Team B"],
+        "teamId": "team_a",
+        "teamName": "Team A"
+      },
+      "output": {
+        "ids": ["team_a", "team_b"],
+        "names": ["Team A", "Team B"]
+      }
+    },
+    {
+      "name": "legacyTeamIdOnly",
+      "input": {
+        "teamId": "team_a",
+        "teamName": "Team A"
+      },
+      "output": {
+        "ids": ["team_a"],
+        "names": ["Team A"]
+      }
+    },
+    {
+      "name": "missingTeamNames",
+      "input": {
+        "teamIds": ["team_a", "team_b"],
+        "teamId": "team_a"
+      },
+      "output": {
+        "ids": ["team_a", "team_b"],
+        "names": ["", ""]
+      }
+    }
+  ],
+  "buildApproveMembershipUpdate": [
+    {
+      "name": "appendNewTeam",
+      "input": {
+        "applicantLiveDoc": {
+          "teamIds": ["team_a"],
+          "teamNames": ["Team A"],
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_b",
+        "teamName": "Team B"
+      },
+      "output": {
+        "changed": true,
+        "update": {
+          "teamId": "team_a",
+          "teamName": "Team A",
+          "teamIds": ["team_a", "team_b"],
+          "teamNames": ["Team A", "Team B"]
+        }
+      }
+    },
+    {
+      "name": "alreadyInTeam",
+      "input": {
+        "applicantLiveDoc": {
+          "teamIds": ["team_a"],
+          "teamNames": ["Team A"],
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_a",
+        "teamName": "Team A"
+      },
+      "output": {
+        "changed": false,
+        "update": {
+          "teamId": "team_a",
+          "teamName": "Team A",
+          "teamIds": ["team_a"],
+          "teamNames": ["Team A"]
+        }
+      }
+    },
+    {
+      "name": "legacyAppendNewTeam",
+      "input": {
+        "applicantLiveDoc": {
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_b",
+        "teamName": "Team B"
+      },
+      "output": {
+        "changed": true,
+        "update": {
+          "teamId": "team_a",
+          "teamName": "Team A",
+          "teamIds": ["team_a", "team_b"],
+          "teamNames": ["Team A", "Team B"]
+        }
+      }
+    }
+  ],
+  "buildLeaveMembershipUpdate": [
+    {
+      "name": "remainingTeam",
+      "input": {
+        "selfDoc": {
+          "teamIds": ["team_a", "team_b"],
+          "teamNames": ["Team A", "Team B"],
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_a"
+      },
+      "output": {
+        "teamId": "team_b",
+        "teamName": "Team B",
+        "teamIds": ["team_b"],
+        "teamNames": ["Team B"]
+      }
+    },
+    {
+      "name": "lastTeamClearsAll",
+      "input": {
+        "selfDoc": {
+          "teamIds": ["team_a"],
+          "teamNames": ["Team A"],
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_a"
+      },
+      "output": {
+        "teamId": null,
+        "teamName": null,
+        "teamIds": [],
+        "teamNames": []
+      }
+    },
+    {
+      "name": "nonFirstRemoval",
+      "input": {
+        "selfDoc": {
+          "teamIds": ["team_a", "team_b", "team_c"],
+          "teamNames": ["Team A", "Team B", "Team C"],
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_b"
+      },
+      "output": {
+        "teamId": "team_a",
+        "teamName": "Team A",
+        "teamIds": ["team_a", "team_c"],
+        "teamNames": ["Team A", "Team C"]
+      }
+    },
+    {
+      "name": "legacyOnlyTeamIdClearsAll",
+      "input": {
+        "selfDoc": {
+          "teamId": "team_a",
+          "teamName": "Team A"
+        },
+        "teamId": "team_a"
+      },
+      "output": {
+        "teamId": null,
+        "teamName": null,
+        "teamIds": [],
+        "teamNames": []
+      }
+    }
+  ]
+}

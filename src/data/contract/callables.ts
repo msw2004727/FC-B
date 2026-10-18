@@ -1317,7 +1317,29 @@ export interface VerifyDataSyncPasswordResponse {
   success?: true;
 }
 
+/** 照 functions/index.js writeAuditLog → writeAuditEntry 的白名單（ALLOWED_AUDIT_*）；不在白名單的值會被伺服器拒絕或丟棄。 */
+export type AuditAction =
+  | 'login_success' | 'login_failure' | 'logout'
+  | 'event_signup' | 'event_cancel_signup'
+  | 'team_join_request' | 'team_join_approve' | 'team_join_reject'
+  | 'role_change' | 'admin_user_edit' | 'course_linked_event_edit'
+  | 'event_waitlist_promote' | 'event_waitlist_demote';
+
+export type AuditMetaKey =
+  | 'eventId' | 'teamId' | 'messageId' | 'reasonCode' | 'statusFrom' | 'statusTo' | 'reason'
+  | 'cancelledCount' | 'promotedCount' | 'earlyBird' | 'earlyBirdCost' | 'pointsSpent'
+  | 'refundPolicy' | 'refundedCount' | 'refundedPoints' | 'appliedFields' | 'demotedCount'
+  | 'registrationId' | 'courseStudentId';
+
 export interface WriteAuditLogRequest {
+  action: AuditAction;
+  targetType: 'system' | 'user' | 'event' | 'team' | 'message';
+  targetId?: string;
+  targetLabel?: string;
+  result: 'success' | 'failure';
+  /** 預設 'web' */
+  source?: 'web' | 'liff' | 'system' | 'cloud_function';
+  meta?: Partial<Record<AuditMetaKey, unknown>>;
 }
 
 export interface WriteAuditLogResponse {
