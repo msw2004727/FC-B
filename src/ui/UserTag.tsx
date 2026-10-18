@@ -9,6 +9,7 @@ export interface UserTagProps {
   uid: string;
   name?: string | null;
   role?: UserRole;
+  /** undefined 不顯示；null 或無效值顯示「未設定等級」。 */
   level?: number | null;
   disabled?: boolean;
   loading?: boolean;
@@ -46,9 +47,12 @@ export function UserTag({
   const t = useT();
   const displayName = name?.trim() || t('ui.userTag.unknown');
   const roleName = t(roleKeys[role]);
-  const levelText = level != null && Number.isFinite(level) && level >= 0
-    ? t('ui.userTag.level', { level: formatNumber(level) })
-    : t('ui.userTag.levelUnset');
+  // 比照 jersey：undefined 不顯示（經驗值為預留功能，多數呼叫端沒有等級），null 或無效值顯示「未設定」。
+  const levelText = level === undefined
+    ? ''
+    : level != null && Number.isFinite(level) && level >= 0
+      ? t('ui.userTag.level', { level: formatNumber(level) })
+      : t('ui.userTag.levelUnset');
   const jerseyValue = typeof jersey === 'number'
     ? (Number.isFinite(jersey) ? formatNumber(jersey) : '')
     : jersey?.trim();
@@ -88,7 +92,7 @@ export function UserTag({
         <Text class="ui-user-tag__name">{displayName}</Text>
         <Text class="ui-user-tag__role">{roleName}</Text>
       </span>
-      <Text class="ui-user-tag__level">{levelText}</Text>
+      {levelText && <Text class="ui-user-tag__level">{levelText}</Text>}
       {attendanceWarning && (
         <Badge tone="warning" label={t('ui.userTag.attendanceWarning')} />
       )}

@@ -78,11 +78,21 @@ describe('UserTag', () => {
     expect(onOpenProfile).toHaveBeenCalledExactlyOnceWith('stable-id');
   });
 
+  it('omits the level when none is provided (EXP is a reserved feature)', () => {
+    const { container, getByRole } = render(
+      <UserTag uid="id" name="Amy" onOpenProfile={vi.fn()} />,
+    );
+    expect(container.querySelector('.ui-user-tag__level')).toBeNull();
+    expect(getByRole('button').getAttribute('aria-label'))
+      .not.toContain(t('ui.userTag.levelUnset'));
+  });
+
   it('renders translated empty values and optional status badges', () => {
     const { container, getByRole } = render(
       <UserTag
         uid="id"
         name=""
+        level={null}
         jersey={null}
         attendanceWarning
         recentNoShow
