@@ -1,49 +1,58 @@
-/**
- * 移植自 tests/unit/event-ended-tab-delay.test.js，並補 +6 小時邊界（5:59 / 6:00 / 6:01）。
- */
+import { describe, it, expect } from 'vitest';
 
-import { describe, expect, test } from 'vitest';
-import { isEventInEndedTab, normalizeListTab, TERMINAL_DELAY_MS } from './terminal';
+import {
+  TERMINAL_DELAY_MS,
+  isEventInEndedTab,
+  normalizeListTab,
+} from './terminal';
 
-describe('activity ended tab delay', () => {
-  const endedEvent = { status: 'ended', date: '2026/05/09 15:00~17:00' };
-  const cancelledEvent = { status: 'cancelled', date: '2026/05/09 15:00~17:00' };
-  const endMs = new Date(2026, 4, 9, 17, 0).getTime();
-
-  test('keeps ended events in the active activity tab until six hours after end time', () => {
-    // 對照 A 的 22:59 / 23:00 斷言
-    expect(isEventInEndedTab(endedEvent, new Date(2026, 4, 9, 22, 59).getTime())).toBe(false);
-    expect(isEventInEndedTab(endedEvent, new Date(2026, 4, 9, 23, 0).getTime())).toBe(true);
+describe('isEventInEndedTab', () => {
+  it('!event → true（照 A _isEventInActivityEndedTab）', () => {
+    expect(isEventInEndedTab(null, Date.now())).toBe(true);
+    expect(isEventInEndedTab(undefined, Date.now())).toBe(true);
   });
 
-  test('keeps cancelled events in the active activity tab until six hours after end time', () => {
-    expect(isEventInEndedTab(cancelledEvent, new Date(2026, 4, 9, 22, 59).getTime())).toBe(false);
-    expect(isEventInEndedTab(cancelledEvent, new Date(2026, 4, 9, 23, 0).getTime())).toBe(true);
+  it('結束時間 +6 小時前仍非 terminal', () => {
+    const event = { status: 'ended', date: '2026/05/09 15:00~17:00' };
+    const moveAt = new Date(2026, 4, 9, 17, 0, 0).getTime() + TERMINAL_DELAY_MS;
+    expect(isEventInEndedTab(event, moveAt - 1)).toBe(false);
   });
 
-  test('+6h boundary: 5:59 → active, 6:00 → terminal, 6:01 → terminal', () => {
-    expect(isEventInEndedTab(endedEvent, endMs + TERMINAL_DELAY_MS - 1)).toBe(false);
-    expect(isEventInEndedTab(endedEvent, endMs + TERMINAL_DELAY_MS)).toBe(true);
-    expect(isEventInEndedTab(endedEvent, endMs + TERMINAL_DELAY_MS + 1)).toBe(true);
-
-    expect(isEventInEndedTab(cancelledEvent, endMs + TERMINAL_DELAY_MS - 1)).toBe(false);
-    expect(isEventInEndedTab(cancelledEvent, endMs + TERMINAL_DELAY_MS)).toBe(true);
-    expect(isEventInEndedTab(cancelledEvent, endMs + TERMINAL_DELAY_MS + 1)).toBe(true);
+  it('結束時間 +6 小時當下為 terminal', () => {
+    const event = { status: 'ended', date: '2026/05/09 15:00~17:00' };
+    const moveAt = new Date(2026, 4, 9, 17, 0, 0).getTime() + TERMINAL_DELAY_MS;
+    expect(isEventInEndedTab(event, moveAt)).toBe(true);
   });
 
-  test('non-terminal statuses are never in ended tab', () => {
-    expect(isEventInEndedTab({ status: 'open', date: endedEvent.date }, endMs + TERMINAL_DELAY_MS + 1)).toBe(false);
-    expect(isEventInEndedTab({ status: 'full', date: endedEvent.date }, endMs + TERMINAL_DELAY_MS + 1)).toBe(false);
-    expect(isEventInEndedTab(null, endMs)).toBe(false);
+  it('結束時間 +6 小時後為 terminal', () => {
+    const event = { status: 'ended', date: '2026/05/09 15:00~17:00' };
+    const moveAt = new Date(2026, 4, 9, 17, 0, 0).getTime() + TERMINAL_DELAY_MS;
+    expect(isEventInEndedTab(event, moveAt + 1)).toBe(true);
   });
 
-  test('normalizeListTab maps legacy ended tab to normal', () => {
+  it('無有效日期時照 status：ended / cancelled 為 terminal', () => {
+    expect(isEventInEndedTab({ status: 'ended' }, Date.now())).toBe(true);
+    expect(isEventInEndedTab({ status: 'cancelled' }, Date.now())).toBe(true);
+    expect(isEventInEndedTab({ status: 'open' }, Date.now())).toBe(false);
+  });
+
+  it('有有效日期時照日期門檻，不另看 status（逐條照 A）', () => {
+    const event = { status: 'open', date: '2026/05/09 15:00~17:00' };
+    const moveAt = new Date(2026, 4, 9, 17, 0, 0).getTime() + TERMINAL_DELAY_MS;
+    expect(isEventInEndedTab(event, moveAt)).toBe(true);
+    expect(isEventInEndedTab(event, moveAt - 1)).toBe(false);
+  });
+});
+
+describe('normalizeListTab', () => {
+  it("'ended' 舊值 normalize 為 'normal'", () => {
     expect(normalizeListTab('ended')).toBe('normal');
-    expect(normalizeListTab('normal')).toBe('normal');
-    expect(normalizeListTab('calendar')).toBe('calendar');
-    expect(normalizeListTab('female')).toBe('female');
+  });
+
+  it('空值為 normal，其他值原樣回傳', () => {
     expect(normalizeListTab(null)).toBe('normal');
     expect(normalizeListTab(undefined)).toBe('normal');
     expect(normalizeListTab('')).toBe('normal');
+    expect(normalizeListTab('upcoming')).toBe('upcoming');
   });
 });

@@ -54,7 +54,6 @@ describe('getRoleLevel', () => {
 
   it('單一自訂角色插值：captain 與 venue_owner 之間', () => {
     const customRoles = [{ key: 'judge', afterRole: 'captain' }];
-    // captain=2, venue_owner=3；中間 1 個角色 → step = (3-2)/2 = 0.5
     expect(getRoleLevel('judge', customRoles)).toBeCloseTo(2.5, 10);
   });
 
@@ -63,7 +62,6 @@ describe('getRoleLevel', () => {
       { key: 'a', afterRole: 'captain' },
       { key: 'b', afterRole: 'a' },
     ];
-    // 中間 2 個角色 → step = 1/3
     expect(getRoleLevel('a', customRoles)).toBeCloseTo(2 + 1 / 3, 10);
     expect(getRoleLevel('b', customRoles)).toBeCloseTo(2 + 2 / 3, 10);
   });
@@ -73,10 +71,25 @@ describe('getRoleLevel', () => {
     expect(getRoleLevel('defaulted', customRoles)).toBeCloseTo(2.5, 10);
   });
 
+  it('自訂角色插在 admin 後、super_admin 前', () => {
+    const customRoles = [{ key: 'post_admin', afterRole: 'admin' }];
+    expect(getRoleLevel('post_admin', customRoles)).toBeCloseTo(4.5, 10);
+  });
+
   it('afterRole=super_admin 的自訂角色，落於 admin 與 super_admin 之間（照 A 的 deferred 邏輯）', () => {
     const customRoles = [{ key: 'post_super', afterRole: 'super_admin' }];
-    // A 對 super_admin 之後的 deferred 角色：step = (5-4)/2 = 0.5，位於 4.5
     expect(getRoleLevel('post_super', customRoles)).toBeCloseTo(4.5, 10);
+  });
+
+  it('未知父角色的自訂角色照 A deferred 邏輯處理', () => {
+    const customRoles = [{ key: 'orphan', afterRole: 'not_builtin' }];
+    expect(getRoleLevel('orphan', customRoles)).toBeCloseTo(4.5, 10);
+  });
+
+  it('自訂角色 key 不自行 trim：含空白 key 與原 key 是不同角色', () => {
+    const customRoles = [{ key: ' judge ', afterRole: 'captain' }];
+    expect(getRoleLevel(' judge ', customRoles)).toBeCloseTo(2.5, 10);
+    expect(getRoleLevel('judge', customRoles)).toBe(0);
   });
 });
 
@@ -122,7 +135,34 @@ describe('createPermissionChecker', () => {
     expect(check('event.delete')).toBe(false);
   });
 
-  it('userGrants 授予個別權限（不受角色限制）', () => {
+  it('rolePermissions/user 固定不授予任何權限（含 admin.repair.event_blocklist）', () => {
+    const check = createPermissionChecker({
+      role: 'user',
+      rolePermissions: { user: ['admin.repair.event_blocklist', 'event.create'] },
+    });
+    expect(check('admin.repair.event_blocklist')).toBe(false);
+    expect(check('event.create')).toBe(false);
+  });
+
+  it('一般 user 可由有效個別授權取得 admin.repair.event_blocklist', () => {
+    const check = createPermissionChecker({
+      role: 'user',
+      rolePermissions: { user: [] },
+      userGrants: ['admin.repair.event_blocklist'],
+    });
+    expect(check('admin.repair.event_blocklist')).toBe(true);
+  });
+
+  it('停用個別授權後 admin.repair.event_blocklist 為 false（資料層不傳入 grant）', () => {
+    const check = createPermissionChecker({
+      role: 'user',
+      rolePermissions: { user: [] },
+      userGrants: [],
+    });
+    expect(check('admin.repair.event_blocklist')).toBe(false);
+  });
+
+  it('userGrants 授予其他個別權限', () => {
     const check = createPermissionChecker({
       role: 'user',
       rolePermissions: { user: [] },
@@ -132,23 +172,30 @@ describe('createPermissionChecker', () => {
     expect(check('admin.logs.error_read')).toBe(false);
   });
 
+  it('super_admin 不併入個別授權（照 A getCurrentUserEffectivePermissions）', () => {
+    const check = createPermissionChecker({
+      role: 'super_admin',
+      userGrants: ['user.extra'],
+    });
+    expect(check('admin.repair.event_blocklist')).toBe(true);
+    expect(check('user.extra')).toBe(false);
+  });
+
   it('三種來源合併：inherent + rolePermissions + userGrants', () => {
     const check = createPermissionChecker({
       role: 'super_admin',
       rolePermissions: { super_admin: ['custom.code'] },
       userGrants: ['user.extra'],
     });
-    expect(check('admin.repair.event_blocklist')).toBe(true); // inherent
-    expect(check('admin.seo.entry')).toBe(true); // inherent
-    expect(check('custom.code')).toBe(true); // rolePermissions
-    expect(check('user.extra')).toBe(true); // userGrants
+    expect(check('admin.repair.event_blocklist')).toBe(true);
+    expect(check('admin.seo.entry')).toBe(true);
+    expect(check('custom.code')).toBe(true);
+    expect(check('user.extra')).toBe(false);
     expect(check('nope')).toBe(false);
   });
 
   it('code 前後空白視為相同', () => {
-    const check = createPermissionChecker({
-      role: 'super_admin',
-    });
+    const check = createPermissionChecker({ role: 'super_admin' });
     expect(check('  admin.seo.entry  ')).toBe(true);
   });
 

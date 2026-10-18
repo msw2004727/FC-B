@@ -4,11 +4,12 @@
  * 規則對照：
  *  - R-IAM-008：INHERENT_ROLE_PERMISSIONS 必須逐字與 A 的 js/config.js、functions/index.js 同步。
  *  - R-CAP-006～008：capabilities 儲存格式不得改寫；本檔只負責正規化結果，不寫回 storage。
+ *  - R-EVT-018：rolePermissions/user 不得授予 admin.repair.event_blocklist；個別授權可授予。
  *
- * 邏輯與 A 的 js/config.js#hasPermission 逐條對齊：
- *  1. 空字串 code 一律 false。
- *  2. 有效權限集合 = inherent[role] ∪ rolePermissions[role] ∪ userPermissionGrants effective。
- *  3. 判斷方式比對 normalize 後的 code。
+ * 權限來源逐條照 A：
+ *  - getCurrentUserEffectivePermissions：rolePermissions ∪ userPermissionGrants（super_admin 不併入個別授權）。
+ *  - getRolePermissions：role === 'user' 時固定回空陣列。
+ *  - normalizePermissionCode：type 檢查、trim、停用 code、legacy replacement。
  */
 
 /** A 版 INHERENT_ROLE_PERMISSIONS 之逐字鏡像（含鍵順序）。 */
@@ -38,6 +39,13 @@ const BUILTIN_ROLE_KEYS = Object.freeze([
   'super_admin',
 ] as const);
 
+/**
+ * A 附件未提供 DISABLED_PERMISSION_CODES／LEGACY_PERMISSION_CODE_REPLACEMENTS 的常數內容。
+ * 本檔保留 A normalizePermissionCode 的完整結構；若 A 常數有值，必須同步補入，不得另寫一套規則。
+ */
+const DISABLED_PERMISSION_CODES: ReadonlySet<string> = new Set<string>();
+const LEGACY_PERMISSION_CODE_REPLACEMENTS: Readonly<Record<string, string>> = Object.freeze({});
+
 export interface CustomRole {
   key: string;
   label?: string;
@@ -46,16 +54,16 @@ export interface CustomRole {
   afterRole?: string;
 }
 
+/** 照 A：保留 role.key 原值，不自行 trim。 */
 function normalizeCustomRoles(customRoles?: readonly CustomRole[] | null): CustomRole[] {
   if (!customRoles || customRoles.length === 0) return [];
   const result: CustomRole[] = [];
   for (const role of customRoles) {
     if (!role || typeof role.key !== 'string') continue;
-    const key = role.key.trim();
-    if (!key) continue;
+    if (!role.key) continue;
     result.push({
-      key,
-      label: role.label || key,
+      key: role.key,
+      label: role.label || role.key,
       color: role.color || '#6366f1',
       afterRole: role.afterRole || 'captain',
     });
@@ -146,8 +154,15 @@ export function getRoleLevel(
   return levels[role] ?? 0;
 }
 
-function normalizePermissionCode(code: string): string {
-  return String(code).trim();
+/** 逐條照 A js/config.js#normalizePermissionCode。 */
+export function normalizePermissionCode(code: unknown): string {
+  if (typeof code !== 'string') return '';
+  const trimmed = code.trim();
+  if (!trimmed || DISABLED_PERMISSION_CODES.has(trimmed)) return '';
+  if (Object.prototype.hasOwnProperty.call(LEGACY_PERMISSION_CODE_REPLACEMENTS, trimmed)) {
+    return LEGACY_PERMISSION_CODE_REPLACEMENTS[trimmed] ?? '';
+  }
+  return trimmed;
 }
 
 export interface PermissionCheckerInput {
@@ -165,6 +180,8 @@ export interface PermissionCheckerInput {
  * 建立權限檢查函式。回傳的 `(code) => boolean` 與 A `hasPermission(code, role)` 等價。
  *
  * 有效權限集合 = INHERENT_ROLE_PERMISSIONS[role] ∪ rolePermissions[role] ∪ userGrants。
+ * 其中 role === 'user' 時 rolePermissions 固定不納入（A getRolePermissions('user') 回 []）。
+ * super_admin 不併入 userGrants（A getCurrentUserEffectivePermissions 的 isCurrentUser && roleKey !== 'super_admin'）。
  */
 export function createPermissionChecker(input: PermissionCheckerInput): (code: string) => boolean {
   const role = input.role;
@@ -174,14 +191,26 @@ export function createPermissionChecker(input: PermissionCheckerInput): (code: s
   const inherentList: readonly string[] = role
     ? INHERENT_ROLE_PERMISSIONS[role] ?? []
     : [];
-  const rolePermList: readonly string[] = role ? rolePermissions[role] ?? [] : [];
+  const rolePermList: readonly string[] = role && role !== 'user'
+    ? rolePermissions[role] ?? []
+    : [];
+  const grantList: readonly string[] = role && role !== 'super_admin' ? grants : [];
 
   const inherentSet = new Set<string>();
-  for (const c of inherentList) inherentSet.add(normalizePermissionCode(c));
+  for (const c of inherentList) {
+    const normalized = normalizePermissionCode(c);
+    if (normalized) inherentSet.add(normalized);
+  }
   const roleSet = new Set<string>();
-  for (const c of rolePermList) roleSet.add(normalizePermissionCode(c));
+  for (const c of rolePermList) {
+    const normalized = normalizePermissionCode(c);
+    if (normalized) roleSet.add(normalized);
+  }
   const grantSet = new Set<string>();
-  for (const c of grants) grantSet.add(normalizePermissionCode(String(c)));
+  for (const c of grantList) {
+    const normalized = normalizePermissionCode(String(c));
+    if (normalized) grantSet.add(normalized);
+  }
 
   return (code: string): boolean => {
     if (!code) return false;

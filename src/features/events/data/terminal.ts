@@ -3,7 +3,8 @@
  *
  * 對應 A：
  *   - event-list.js::_normalizeActivityTab（_hiddenActivityTabs = ['ended']）
- *   - event-list-stats.js::_isEventInActivityEndedTab（R-EVT-002：結束時間 +6h 後才 terminal）
+ *   - event-list-stats.js::_isEventInActivityEndedTab / _getActivityEndedTabDate
+ *     / _parseEventEndDate / _parseEventStartDate（R-EVT-002：結束時間 +6h 後才 terminal）
  *   - home-next-activity.js::parseEventDateRange / eventStartMs（純解析）
  */
 
@@ -105,19 +106,70 @@ export function eventStartMs(event: { date?: unknown; startAt?: unknown; startTi
   return range?.startMs ?? 0;
 }
 
+/* ── A event-list-stats.js 的日期解析（terminal 判定專用） ── */
+
+function parseEventStartDate(dateStr: unknown): Date | null {
+  if (typeof dateStr !== 'string' || !dateStr) return null;
+  const parts = dateStr.split(' ');
+  const dateParts = (parts[0] ?? '').split('/');
+  if (dateParts.length < 3) return null;
+  const y = parseInt(dateParts[0] ?? '', 10);
+  const m = parseInt(dateParts[1] ?? '', 10) - 1;
+  const d = parseInt(dateParts[2] ?? '', 10);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+
+  const timePartRaw = parts[1];
+  if (timePartRaw) {
+    const timePart = timePartRaw.split('~')[0] ?? '';
+    const [hh, mm] = timePart.split(':').map(Number);
+    return new Date(y, m, d, hh || 0, mm || 0);
+  }
+  return new Date(y, m, d);
+}
+
+function parseEventEndDate(dateStr: unknown): Date | null {
+  if (typeof dateStr !== 'string' || !dateStr) return null;
+  const parts = dateStr.split(' ');
+  const dateParts = (parts[0] ?? '').split('/');
+  if (dateParts.length < 3) return null;
+  const y = parseInt(dateParts[0] ?? '', 10);
+  const m = parseInt(dateParts[1] ?? '', 10) - 1;
+  const d = parseInt(dateParts[2] ?? '', 10);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+
+  const timePartRaw = parts[1];
+  if (!timePartRaw) return new Date(y, m, d, 23, 59, 59);
+
+  const endRaw = timePartRaw.includes('~')
+    ? (timePartRaw.split('~')[1] ?? '')
+    : (timePartRaw.split('~')[0] ?? '');
+  const [hh, mm] = (endRaw || '').split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
+    return parseEventStartDate(dateStr);
+  }
+  return new Date(y, m, d, hh, mm);
+}
+
+function getActivityEndedTabDate(event: { date?: unknown } | null | undefined): Date | null {
+  const end = parseEventEndDate(event?.date) || parseEventStartDate(event?.date);
+  if (!(end instanceof Date) || Number.isNaN(end.getTime())) return null;
+  return new Date(end.getTime() + TERMINAL_DELAY_MS);
+}
+
 /**
- * R-EVT-002：ended / cancelled 在「結束時間 +6 小時」後才 terminal。
- * 6 小時內仍屬報名中；未達門檻回 false（前端停留在 active tab）。
+ * R-EVT-002：逐條照 A _isEventInActivityEndedTab。
+ *  - !event → true
+ *  - 無有效日期 → status === 'ended' || status === 'cancelled'
+ *  - 有有效日期 → 結束時間 +6h <= now
  */
 export function isEventInEndedTab(
   event: { status?: string; date?: unknown } | null | undefined,
   now: number,
 ): boolean {
-  if (!event) return false;
-  if (event.status !== 'ended' && event.status !== 'cancelled') return false;
-  const range = parseEventDateRange(event.date);
-  if (!range) return false;
-  return now >= range.endMs + TERMINAL_DELAY_MS;
+  if (!event) return true;
+  const moveAt = getActivityEndedTabDate(event);
+  if (!moveAt) return event.status === 'ended' || event.status === 'cancelled';
+  return moveAt.getTime() <= now;
 }
 
 /**
