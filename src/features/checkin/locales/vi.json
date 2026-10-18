@@ -5,6 +5,7 @@
   "back": "Quay lại",
   "event": "Sự kiện",
   "selectEvent": "Chọn sự kiện",
+  "selectEventHint": "Chọn một hoạt động ở trên để bắt đầu quét mã hoặc điểm danh thủ công.",
   "today": "Hôm nay",
   "future": "Sắp tới",
   "past": "Khác",

@@ -5,6 +5,7 @@
   "back": "Back",
   "event": "Event",
   "selectEvent": "Select an event",
+  "selectEventHint": "Choose an event above to start scanning or checking in manually.",
   "today": "Today",
   "future": "Upcoming",
   "past": "Other",

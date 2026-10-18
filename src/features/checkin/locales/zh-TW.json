@@ -5,6 +5,7 @@
   "back": "返回",
   "event": "活動",
   "selectEvent": "請選擇活動",
+  "selectEventHint": "從上方選擇活動後，即可開始掃碼或手動簽到。",
   "today": "今天",
   "future": "即將",
   "past": "其他",

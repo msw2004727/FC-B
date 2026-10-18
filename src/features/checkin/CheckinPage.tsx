@@ -199,7 +199,7 @@ export default function CheckinPage() {
               mode={mode}
             />
           ) : (
-            <EmptyState title={t('selectEvent')} />
+            <EmptyState title={t('selectEvent')} body={t('selectEventHint')} />
           )}
         </div>
       )}

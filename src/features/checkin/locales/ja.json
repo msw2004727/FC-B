@@ -5,6 +5,7 @@
   "back": "戻る",
   "event": "イベント",
   "selectEvent": "イベントを選択",
+  "selectEventHint": "上で活動を選ぶと、スキャンまたは手動でチェックインできます。",
   "today": "今日",
   "future": "今後",
   "past": "その他",
