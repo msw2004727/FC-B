@@ -7,3 +7,5 @@ coverage/
 .env.*
 docs/local/
 !.env.example
+*-debug.log
+e2e-out/

@@ -4,12 +4,16 @@ import { LocationProvider } from 'preact-iso';
 import { emit } from '@/core/events';
 import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
 import { getEventsRepo, type EventsRepo } from '../data/events-repo';
+import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { useViewer } from '@/features/profile/data/viewer';
 import type { EventDoc } from '../data/types';
 import ActivitiesPage from './ActivitiesPage';
 
 vi.mock('@/features/events/data/events-repo', () => ({
   getEventsRepo: vi.fn(),
+}));
+vi.mock('../data/viewer-registrations', () => ({
+  loadViewerRegistrations: vi.fn(),
 }));
 vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: vi.fn(),
@@ -54,6 +58,7 @@ beforeEach(async () => {
     loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
     getSnapshot: () => ({ active, terminal: [] }),
   });
+  vi.mocked(loadViewerRegistrations).mockResolvedValue([]);
   vi.mocked(useViewer).mockReturnValue({
     uid: 'viewer',
     teamIds: new Set(),
@@ -93,6 +98,28 @@ describe('ActivitiesPage', () => {
     expect(screen.queryByText('Hidden team')).toBeNull();
     expect(screen.queryByText('Hidden blocked')).toBeNull();
     expect(load).toHaveBeenCalledWith({ terminalMode: 'preview' });
+  });
+
+  it('shows a blocked event when the viewer only has a cancelled registration', async () => {
+    active.push({
+      ...football,
+      id: 'blocked-with-cancelled-registration',
+      _docId: 'document-blocked-with-cancelled-registration',
+      title: 'Visible blocked after cancelled',
+      blockedUids: ['viewer'],
+    });
+    vi.mocked(loadViewerRegistrations).mockResolvedValue([
+      {
+        eventId: 'blocked-with-cancelled-registration',
+        userId: 'viewer',
+        status: 'cancelled',
+      },
+    ]);
+
+    mount();
+
+    expect(await screen.findByRole('link', { name: 'Visible blocked after cancelled' })).toBeTruthy();
+    expect(loadViewerRegistrations).toHaveBeenCalledWith('viewer');
   });
 
   it('preselects the sport query and links with public id', async () => {

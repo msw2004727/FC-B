@@ -17,7 +17,9 @@
     "emulators": "firebase emulators:start --only firestore,auth --config emulator/firebase.json",
     "sync:rules": "node scripts/sync-rules.mjs",
     "check:rules-sync": "node scripts/check-rules-sync.mjs",
-    "check:parity": "node scripts/check-permission-parity.mjs ../FC"
+    "check:parity": "node scripts/check-permission-parity.mjs ../FC",
+    "seed:emulator": "node scripts/seed-emulator.mjs --reset",
+    "e2e:shots": "node scripts/e2e-shots.mjs e2e-out"
   },
   "dependencies": {
     "@line/liff": "^2.31.2",
@@ -26,6 +28,7 @@
     "preact-iso": "^2.12.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@preact/preset-vite": "^2.10.6",
     "@testing-library/preact": "^3.2.4",
     "@types/node": "^24.19.2",

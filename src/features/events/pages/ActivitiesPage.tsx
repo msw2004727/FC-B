@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { on } from '@/core/events';
 import { useT } from '@/i18n/i18n';
@@ -13,8 +13,15 @@ import { getVisibleEvents } from '../data/visibility';
 import { normalizeListTab } from '../data/terminal';
 import { SPORTS, eventSportTag } from '../data/sports';
 import { useEvents } from '../data/use-events';
+import { loadViewerRegistrations } from '../data/viewer-registrations';
+import type { RegistrationDoc } from '../data/types';
 import { EventList } from '../components/EventList';
 import '../events.css';
+
+interface ViewerRegistrationsState {
+  uid: string | null;
+  docs: RegistrationDoc[];
+}
 
 export default function ActivitiesPage(): JSX.Element {
   const t = useT();
@@ -24,6 +31,11 @@ export default function ActivitiesPage(): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [viewerRegistrations, setViewerRegistrations] = useState<ViewerRegistrationsState>({
+    uid: null,
+    docs: [],
+  });
+  const registrationRequestSeq = useRef(0);
 
   const url = new URL(location.url, 'https://toosterx.invalid');
   const sport = url.searchParams.get('sport')?.trim() ?? '';
@@ -35,6 +47,34 @@ export default function ActivitiesPage(): JSX.Element {
   useEffect(() => {
     return on('sport:picker-open', () => setPickerOpen(true));
   }, []);
+
+  useEffect(() => {
+    const sequence = ++registrationRequestSeq.current;
+    const uid = viewer.uid;
+
+    if (!uid) {
+      setViewerRegistrations({ uid: null, docs: [] });
+      return;
+    }
+
+    setViewerRegistrations({ uid, docs: [] });
+    let cancelled = false;
+
+    loadViewerRegistrations(uid)
+      .then((docs) => {
+        if (cancelled || sequence !== registrationRequestSeq.current) return;
+        setViewerRegistrations({ uid, docs });
+      })
+      .catch(() => {
+        if (cancelled || sequence !== registrationRequestSeq.current) return;
+        setViewerRegistrations({ uid, docs: [] });
+        console.warn('[ActivitiesPage] viewer registrations could not be loaded.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewer.uid]);
 
   useEffect(() => {
     const current = new URL(location.url, 'https://toosterx.invalid');
@@ -55,8 +95,10 @@ export default function ActivitiesPage(): JSX.Element {
     setPickerOpen(false);
   }
 
-  // TODO(P4.2) 載入使用者報名以支援黑名單第 3 態
-  const visible = getVisibleEvents(data.events, viewer, []);
+  const registrations = viewerRegistrations.uid === viewer.uid
+    ? viewerRegistrations.docs
+    : [];
+  const visible = getVisibleEvents(data.events, viewer, registrations);
   const searchText = search.trim().toLocaleLowerCase();
   const filtered = visible.filter((event) =>
     (!sport || eventSportTag(event) === sport) &&
