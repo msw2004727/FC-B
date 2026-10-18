@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { LoadedEventDetail } from '../data/event-detail';
@@ -127,15 +127,169 @@ describe('EventDetailPage', () => {
     ]);
     const view = mount();
     await screen.findByText('青埔五人制');
+    await screen.findByText('小華');
     expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
-    expect(screen.getByText('小華')).toBeTruthy();
     expect(screen.queryByText('不可顯示')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
     expect(view.container.querySelector('img[src="x"]')).toBeNull();
     expect(screen.getByRole('link', { name: '在地圖開啟' }).getAttribute('rel'))
       .toContain('noopener');
     expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+  });
+
+  it('訪客：不讀 registrations，主要資訊與報名按鈕顯示，名單依 A 使用活動文件', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.registrations.mockRejectedValue(new Error('permission-denied'));
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        isPublic: true,
+        current: 3,
+        max: 10,
+        waitlist: 1,
+        notes: '請攜帶飲水',
+        participantsWithUid: [
+          { uid: 'public-user', name: '公開正取' },
+          { uid: '', name: '無效資料' },
+        ],
+        participants: ['舊正取不應混入'],
+        waitlistWithUid: [{ uid: 'wait-user', name: '公開候補' }],
+        waitlistNames: ['舊候補不應混入'],
+      },
+    });
+
+    mount();
+    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(screen.getByText('Neo')).toBeTruthy();
+    expect(screen.getByText('請攜帶飲水')).toBeTruthy();
+    expect(screen.getByText('3/10人')).toBeTruthy();
+    expect(screen.getByText('公開正取')).toBeTruthy();
+    expect(screen.getByText('公開候補')).toBeTruthy();
+    expect(screen.queryByText('無效資料')).toBeNull();
+    expect(screen.queryByText('舊正取不應混入')).toBeNull();
+    expect(screen.queryByText('舊候補不應混入')).toBeNull();
+    expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
+
+    const signup = screen.getByRole('button', { name: '立即報名' });
+    expect((signup as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(signup);
+    await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it('訪客：WithUid 陣列為空時依 A 回退舊名稱陣列，姓名只呈現文字', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        isPublic: true,
+        max: 10,
+        participantsWithUid: [],
+        participants: ['舊正取', '', '   ', null, '<img src=x onerror=alert(1)>'],
+        waitlistWithUid: [],
+        waitlistNames: ['舊候補'],
+      },
+    });
+
+    const view = mount();
+    await screen.findByText('舊正取');
+    expect(screen.getByText('舊候補')).toBeTruthy();
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
+    expect(view.container.querySelector('img[src="x"]')).toBeNull();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+  });
+
+  it('登入但名單讀取失敗：主資訊與報名按鈕仍顯示，名單區塊可重試', async () => {
+    let resolveRetry!: (registrations: DetailRegistration[]) => void;
+    const retryRegistrations = new Promise<DetailRegistration[]>((resolve) => {
+      resolveRetry = resolve;
+    });
+    mocks.registrations
+      .mockRejectedValueOnce(new Error('private permission detail'))
+      .mockReturnValueOnce(retryRegistrations);
+
+    mount();
+    const title = await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    const region = screen.getByRole('region', { name: '參加名單' });
+    await within(region).findByText('無法載入參加名單，請重試。');
+
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(screen.getByText('Neo')).toBeTruthy();
+    expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
+    expect(screen.queryByText('private permission detail')).toBeNull();
+    expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
+      .toBe(false);
+    expect((screen.getByRole('button', { name: '幫夥伴報名' }) as HTMLButtonElement).disabled)
+      .toBe(false);
+
+    const retry = within(region).getByRole('button', { name: '重試' });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await within(region).findByText('參加名單載入中…');
+    expect(screen.getByRole('heading', { name: '青埔五人制', level: 1 })).toBe(title);
+    expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
+      .toBe(false);
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(mocks.registrations).toHaveBeenNthCalledWith(2, 'firestore-doc-a');
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.history).toHaveBeenCalledTimes(1);
+    expect(mocks.register).not.toHaveBeenCalled();
+
+    resolveRetry([
+      { ...self, userId: 'u2', userName: '重試後參加者' },
+    ]);
+    await within(region).findByText('重試後參加者');
+    expect(within(region).queryByRole('button', { name: '重試' })).toBeNull();
+    expect(screen.getByRole('heading', { name: '青埔五人制', level: 1 })).toBe(title);
+  });
+
+  it('名單尚未回應時主資訊先顯示，登出後舊名單回應不能進入訪客頁', async () => {
+    let resolveOld!: (registrations: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveOld = resolve;
+    }));
+    const view = mount();
+    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    await screen.findByText('參加名單載入中…');
+    expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
+
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    resolveOld([{ ...self, userName: '舊登入名單不可顯示' }]);
+    await waitFor(() => {
+      expect(screen.queryByText('舊登入名單不可顯示')).toBeNull();
+      expect(screen.queryByText('參加名單載入中…')).toBeNull();
+    });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+  });
+
+  it('活動文件讀取失敗才顯示整頁錯誤', async () => {
+    mocks.detail.mockRejectedValue(new Error('offline'));
+    mount();
+    await screen.findByRole('heading', { name: '無法載入活動詳情，請重試。' });
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
+  });
+
+  it('本人歷史讀取失敗不顯示活動整頁錯誤，也不繞過報名前置檢查', async () => {
+    mocks.history.mockRejectedValue(new Error('offline'));
+    mount();
+    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    await screen.findByText('無法同步你的報名狀態，請重試後再報名。');
+    expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(mocks.register).not.toHaveBeenCalled();
+    expect(mocks.companions).not.toHaveBeenCalled();
   });
 
   it('報名成功只更新名單、計數與按鈕，不重載活動', async () => {
@@ -179,6 +333,7 @@ describe('EventDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
     expect(mocks.register).not.toHaveBeenCalled();
+    expect(mocks.registrations).not.toHaveBeenCalled();
   });
 
   it('有同行者時先選擇，未確認不送出', async () => {
@@ -209,11 +364,8 @@ describe('EventDetailPage', () => {
   });
 
   it('寫入成功但刷新失敗，重試只刷新不重送報名', async () => {
-    // 附件中 registerForEvent 已被 mock，新版 context／payload 守衛不會執行；
-    // signup-state 對 confirmed 本人紀錄會直接提供取消入口。
-    // 因此附件本身不足以重現或確定 fail2 的根因，不據此更改正式邏輯。
-    // 固定 Date（保留真實 timers），並讓名單與本人歷史反映同一次成功寫入。
-    // 本測試驗證頁面重試契約，不代表新版 signup 寫入整合已通過驗證。
+    // registerForEvent 已被 mock，本測試驗證頁面重試契約，
+    // 不代表 signup 寫入整合已通過驗證。
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-19T04:00:00+08:00'));
 
@@ -242,9 +394,7 @@ describe('EventDetailPage', () => {
     expect(mocks.history).toHaveBeenCalledTimes(2);
     expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
       .toBe(true);
-    // 不變條件：刷新失敗期間不得有可按的報名動作。同行者報名鈕依報名狀態可能不顯示，
-    // 存在時必須停用（測試同步更新：原斷言要求按鈕必定存在，與 signup-state 依狀態隱藏的設計不符）。
-    const companionButton = screen.queryByRole('button', { name: '同行者報名' }) as HTMLButtonElement | null;
+    const companionButton = screen.queryByRole('button', { name: '幫夥伴報名' }) as HTMLButtonElement | null;
     expect(companionButton === null || companionButton.disabled).toBe(true);
 
     fireEvent.click(retry);

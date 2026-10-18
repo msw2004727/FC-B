@@ -20,6 +20,8 @@ import { getSignupButtonState } from '../data/signup-state';
 import {
   count,
   eventDateRange,
+  guestConfirmedCount,
+  guestEventPeople,
   isActiveRegistration,
   isCompanion,
   registrationId,
@@ -45,6 +47,7 @@ interface Notice {
 }
 
 type Sheet = 'signup' | 'cancel' | null;
+type RosterPhase = 'loading' | 'ready' | 'error';
 
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
@@ -67,6 +70,8 @@ function EventDetailSession({
   const location = useLocation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [rosterPhase, setRosterPhase] = useState<RosterPhase>('loading');
+  const [historyFailed, setHistoryFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -77,6 +82,8 @@ function EventDetailSession({
   const [now, setNow] = useState(() => Date.now());
   const alive = useRef(true);
   const sequence = useRef(0);
+  const rosterSequence = useRef(0);
+  const rosterPending = useRef(false);
   const operation = useRef(false);
   const noticeSequence = useRef(0);
   const currentViewer = useRef(viewer);
@@ -88,6 +95,7 @@ function EventDetailSession({
     return () => {
       alive.current = false;
       sequence.current += 1;
+      rosterSequence.current += 1;
       window.clearInterval(timer);
     };
   }, []);
@@ -106,50 +114,118 @@ function EventDetailSession({
 
   useEffect(() => {
     const request = ++sequence.current;
+    const rosterRequest = ++rosterSequence.current;
+    let disposed = false;
+    const current = (): boolean =>
+      !disposed && alive.current && request === sequence.current;
+
     setPhase('loading');
+    setRosterPhase('loading');
+    setHistoryFailed(false);
+    setSnapshot(null);
 
-    (async () => {
-      try {
-        if (!/^[A-Za-z0-9_-]{1,120}$/.test(publicId)) {
-          if (alive.current && request === sequence.current) setPhase('missing');
-          return;
-        }
-        const [detail, history] = await Promise.all([
-          loadEventDetail(publicId),
-          viewer.uid ? loadViewerRegistrations(viewer.uid) : Promise.resolve([]),
-        ]);
-        if (!alive.current || request !== sequence.current) return;
-        if (!detail || !isEventVisibleToUser(detail.event, currentViewer.current, history)) {
-          setSnapshot(null);
-          setPhase('missing');
-          return;
-        }
-
-        // 權限確認前不載入參加名單。
-        const registrations = await loadEventRegistrations(detail.eventDocId);
-        if (!alive.current || request !== sequence.current) return;
-        if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
-          setSnapshot(null);
-          setPhase('missing');
-          return;
-        }
-
-        setSnapshot({
-          event: { ...detail.event, id: detail.event.id ?? publicId },
-          eventDocId: detail.eventDocId,
-          viewerRegistrations: history,
-          registrations,
-        });
-        setPhase('ready');
-      } catch (error) {
-        if (!alive.current || request !== sequence.current) return;
-        setPhase('error');
-        show(errorKey(error, 'events.detailPage.loadError'));
+    async function load(): Promise<void> {
+      if (!/^[A-Za-z0-9_-]{1,120}$/.test(publicId)) {
+        if (current()) setPhase('missing');
+        return;
       }
-    })().catch(() => {
-      if (alive.current && request === sequence.current) setPhase('error');
-    });
+
+      // 整頁 error 僅由活動文件讀取失敗觸發。
+      let detail: Awaited<ReturnType<typeof loadEventDetail>>;
+      try {
+        detail = await loadEventDetail(publicId);
+      } catch {
+        if (current()) setPhase('error');
+        return;
+      }
+      if (!current()) return;
+      if (!detail) {
+        setPhase('missing');
+        return;
+      }
+
+      let history: RegistrationDoc[] = [];
+      let failedHistory = false;
+      if (viewer.uid) {
+        try {
+          history = await loadViewerRegistrations(viewer.uid);
+        } catch {
+          failedHistory = true;
+        }
+      }
+      if (!current()) return;
+
+      // 歷史失敗不捏造參加紀錄；可見性仍使用既有守衛，不能放寬私密活動權限。
+      if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
+        setPhase('missing');
+        return;
+      }
+
+      const next: Snapshot = {
+        event: { ...detail.event, id: detail.event.id ?? publicId },
+        eventDocId: detail.eventDocId,
+        viewerRegistrations: history,
+        registrations: [],
+      };
+      setSnapshot(next);
+      setHistoryFailed(failedHistory);
+      setPhase('ready');
+
+      // A 的 showEventDetail、_renderGuestAttendanceTable、
+      // _renderGuestWaitlistSection 透過 _buildGuestEventPeople 顯示活動文件上的公開名單。
+      // 訪客不讀 registrations，公開名單也不作為報名／取消的身分證據。
+      if (!viewer.uid) {
+        setRosterPhase('ready');
+        return;
+      }
+
+      try {
+        const registrations = await loadEventRegistrations(detail.eventDocId);
+        if (!current() || rosterRequest !== rosterSequence.current) return;
+        setSnapshot((previous) => previous && ({
+          ...previous,
+          registrations,
+        }));
+        setRosterPhase('ready');
+      } catch {
+        if (current() && rosterRequest === rosterSequence.current) {
+          setRosterPhase('error');
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      disposed = true;
+    };
   }, [publicId, viewer.uid, reload]);
+
+  async function retryRoster(): Promise<void> {
+    const current = snapshot;
+    if (!current || !currentViewer.current.uid || rosterPending.current ||
+      operation.current || refreshFailed ||
+      !isEventVisibleToUser(current.event, currentViewer.current, current.viewerRegistrations)) {
+      return;
+    }
+    rosterPending.current = true;
+    const request = ++rosterSequence.current;
+    setRosterPhase('loading');
+    try {
+      const registrations = await loadEventRegistrations(current.eventDocId);
+      if (!alive.current || request !== rosterSequence.current) return;
+      setSnapshot((previous) => previous && ({
+        ...previous,
+        registrations,
+      }));
+      setRosterPhase('ready');
+    } catch {
+      if (alive.current && request === rosterSequence.current) {
+        setRosterPhase('error');
+      }
+    } finally {
+      rosterPending.current = false;
+    }
+  }
 
   async function run(work: () => Promise<void>): Promise<void> {
     if (operation.current || !alive.current) return;
@@ -175,12 +251,16 @@ function EventDetailSession({
   }
 
   async function refresh(current: Snapshot): Promise<void> {
+    // 包含寫入後刷新在內，所有 registrations 入口都必須有登入身分。
+    const uid = currentViewer.current.uid;
+    if (!uid) return;
+    const request = ++rosterSequence.current;
     try {
       const [registrations, history] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
-        viewer.uid ? loadViewerRegistrations(viewer.uid) : Promise.resolve([]),
+        loadViewerRegistrations(uid),
       ]);
-      if (!alive.current) return;
+      if (!alive.current || request !== rosterSequence.current) return;
       const active = registrations.filter(isActiveRegistration);
       setSnapshot({
         ...current,
@@ -192,10 +272,13 @@ function EventDetailSession({
         registrations,
         viewerRegistrations: history,
       });
+      setRosterPhase('ready');
+      setHistoryFailed(false);
       setRefreshFailed(false);
     } catch (error) {
-      if (!alive.current) return;
-      // 寫入可能已成功，禁止再次送出；重試只讀名單，不重送 mutation。
+      if (!alive.current || request !== rosterSequence.current) return;
+      // 寫入可能已成功，保留原有防重送契約；不同於首次唯讀名單失敗。
+      setRosterPhase('error');
       setRefreshFailed(true);
       show(errorKey(error, 'events.detailPage.refreshError'));
     }
@@ -205,14 +288,26 @@ function EventDetailSession({
     isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
   const event = snapshot?.event;
   const active = sortRegistrations(snapshot?.registrations ?? []);
-  const owned = active.filter((reg) => registrationOwner(reg) === viewer.uid);
+  const eventId = event?.id ?? publicId;
+  // 名單載入中或失敗時，可用已讀到的本人歷史維持原本報名按鈕狀態。
+  // 不使用活動文件的公開姓名陣列推導本人報名。
+  const actionRegistrations = !viewer.uid ? [] : rosterPhase === 'ready'
+    ? active
+    : sortRegistrations(
+      snapshot?.viewerRegistrations.filter((reg) => reg.eventId === eventId) ?? [],
+    );
+  const owned = actionRegistrations.filter((reg) => registrationOwner(reg) === viewer.uid);
   const selfRegistered = owned.some((reg) => !isCompanion(reg));
   const signedCompanions = new Set(owned.map((reg) => reg.companionId).filter(Boolean));
 
   function check(current: Snapshot, includeSelf: boolean): boolean {
-    const eventId = current.event.id ?? publicId;
+    if (historyFailed) {
+      show('events.detailPage.historyError');
+      return false;
+    }
+    const currentEventId = current.event.id ?? publicId;
     // precheckSignup 不自行按 eventId 篩選，禁止將其他活動的紀錄直接傳入。
-    const history = current.viewerRegistrations.filter((reg) => reg.eventId === eventId);
+    const history = current.viewerRegistrations.filter((reg) => reg.eventId === currentEventId);
     const result = precheckSignup(current.event, currentViewer.current, history, new Date());
     if (result.ok) return true;
 
@@ -303,6 +398,31 @@ function EventDetailSession({
     return reg.companionName || reg.userName || t('events.detailPage.unnamed');
   }
 
+  function guestRoster(status: 'confirmed' | 'waitlisted'): JSX.Element | null {
+    if (!event) return null;
+    const people = guestEventPeople(
+      event,
+      status === 'confirmed' ? 'participants' : 'waitlistNames',
+    );
+    // A 的 _renderGuestWaitlistSection 在無候補姓名時不顯示候補名單區塊。
+    if (status === 'waitlisted' && people.length === 0) return null;
+    return (
+      <section class="event-detail__section">
+        <Text as="h2">{t(`events.detailPage.${status}`)} {people.length}</Text>
+        {people.length === 0 ? <Text>{t('events.detailPage.emptyRoster')}</Text> : (
+          <ul class="event-detail__roster">
+            {people.map((person, index) => (
+              <li key={`${status}:${index}:${person.uid}`}>
+                <UserTag uid={person.uid} name={person.name}
+                  disabled={!person.uid} onOpenProfile={profile} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    );
+  }
+
   function roster(status: 'confirmed' | 'waitlisted'): JSX.Element {
     const rows = active.filter((reg) => reg.status === status);
     return (
@@ -359,16 +479,19 @@ function EventDetailSession({
     </section>;
   }
 
+  const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
+  const waitlistCount = !viewer.uid && Array.isArray(event.waitlistNames)
+    ? event.waitlistNames.length : count(event.waitlist);
   const state = getSignupButtonState({
-    event,
+    event: viewer.uid ? event : { ...event, current: confirmedCount },
     viewer,
-    registrations: active,
+    registrations: actionRegistrations,
     now: new Date(now),
   });
   const cover = safeImageUrl(event.imageVariants?.cover || event.image);
   const range = eventDateRange(event.date);
   const maximum = count(event.max);
-  const remaining = maximum > 0 ? Math.max(0, maximum - count(event.current)) : null;
+  const remaining = maximum > 0 ? Math.max(0, maximum - confirmedCount) : null;
   const fee = count(event.fee);
   const selectedCount = selected.length;
   const waitlistedEstimate = remaining === null ? 0 : Math.max(0, selectedCount - remaining);
@@ -436,13 +559,13 @@ function EventDetailSession({
           <div>
             <Text class="event-detail__label">{t('events.detailPage.people')}</Text>
             <Text>{t('events.card.capacity', {
-              current: count(event.current),
+              current: confirmedCount,
               max: maximum,
             })}</Text>
           </div>
           <div>
             <Text class="event-detail__label">{t('events.detailPage.waitlisted')}</Text>
-            <Text>{count(event.waitlist)}</Text>
+            <Text>{waitlistCount}</Text>
           </div>
         </div>
 
@@ -485,6 +608,15 @@ function EventDetailSession({
           >
             {t(state.labelKey)}
           </Button>
+          {historyFailed && !refreshFailed && (
+            <div role="alert">
+              <Text>{t('events.detailPage.historyError')}</Text>
+              <Button disabled={busy}
+                onClick={() => setReload((value) => value + 1)}>
+                {t('events.retry')}
+              </Button>
+            </div>
+          )}
           {refreshFailed && (
             <div role="alert">
               <Text>{t('events.detailPage.refreshError')}</Text>
@@ -496,8 +628,30 @@ function EventDetailSession({
           )}
         </div>
 
-        {roster('confirmed')}
-        {roster('waitlisted')}
+        {!viewer.uid ? <>
+          {guestRoster('confirmed')}
+          {guestRoster('waitlisted')}
+        </> : (
+          <section class="event-detail__section"
+            aria-label={t('events.detailPage.roster')}
+            aria-busy={rosterPhase === 'loading'}>
+            {rosterPhase === 'loading' ? (
+              <Text>{t('events.detailPage.rosterLoading')}</Text>
+            ) : rosterPhase === 'error' ? (
+              <div role="alert">
+                <Text>{t('events.detailPage.rosterError')}</Text>
+                {!refreshFailed && (
+                  <Button disabled={busy} onClick={() => { void retryRoster(); }}>
+                    {t('events.retry')}
+                  </Button>
+                )}
+              </div>
+            ) : <>
+              {roster('confirmed')}
+              {roster('waitlisted')}
+            </>}
+          </section>
+        )}
         {/* A 名單下方留言區延後。 */}
       </div>
 

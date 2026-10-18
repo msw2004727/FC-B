@@ -12,6 +12,11 @@ export interface DetailEvent extends EventDoc {
   fee?: number;
   feeEnabled?: boolean;
   regOpenTime?: string;
+  /** A：_buildGuestEventPeople 會先檢查 Array.isArray。 */
+  participantsWithUid?: unknown;
+  waitlistWithUid?: unknown;
+  participants?: unknown;
+  waitlistNames?: unknown;
 }
 
 export interface DetailRegistration extends RegistrationDoc {
@@ -20,6 +25,53 @@ export interface DetailRegistration extends RegistrationDoc {
   companionName?: string;
   registeredAt?: unknown;
   promotionOrder?: number;
+}
+
+export interface GuestEventPerson {
+  uid: string;
+  name: string;
+}
+
+/**
+ * 依據 A 的 _buildGuestEventPeople：
+ * 優先使用活動文件的非空 WithUid 陣列，否則使用舊名稱陣列。
+ * 非空 WithUid 陣列即使全部無效，也不混入舊陣列。
+ * 舊名稱陣列保留 A 的 uid=name 行為，不據此推導報名身分。
+ * 此資料只供訪客名單顯示，不能傳入報名／取消判斷。
+ */
+export function guestEventPeople(
+  event: DetailEvent,
+  field: 'participants' | 'waitlistNames',
+): GuestEventPerson[] {
+  const raw = field === 'participants'
+    ? event.participantsWithUid
+    : event.waitlistWithUid;
+
+  if (Array.isArray(raw) && raw.length > 0) {
+    const result: GuestEventPerson[] = [];
+    for (const item of raw as unknown[]) {
+      if (!item || typeof item !== 'object' ||
+        !('uid' in item) || typeof item.uid !== 'string' || !item.uid ||
+        !('name' in item) || typeof item.name !== 'string' || !item.name) {
+        continue;
+      }
+      result.push({ uid: item.uid, name: item.name });
+    }
+    return result;
+  }
+
+  const names = event[field];
+  if (!Array.isArray(names)) return [];
+  return (names as unknown[])
+    .filter((name): name is string => typeof name === 'string' && Boolean(name.trim()))
+    .map((name) => ({ uid: name, name }));
+}
+
+/** 依據 A 的 showEventDetail 訪客 confirmedSummary 計數回退順序。 */
+export function guestConfirmedCount(event: DetailEvent): number {
+  return count(event.current) ||
+    (Array.isArray(event.participantsWithUid) ? event.participantsWithUid.length : 0) ||
+    (Array.isArray(event.participants) ? event.participants.length : 0);
 }
 
 export function isActiveRegistration(reg: RegistrationDoc): boolean {
