@@ -6,3 +6,4 @@ coverage/
 .env
 .env.*
 docs/local/
+!.env.example
