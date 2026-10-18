@@ -1,0 +1,523 @@
+/* =========================================================
+   ToosterX — Design Tokens (B version)
+   Layer 1 palette (internal use only)
+   Layer 2 semantic tokens (light default + dark override)
+   Layer 3 component tokens are NOT defined here — they live in
+   each component's own CSS module (e.g. components/modal/modal.css
+   defines --comp-modal-*). See design-spec.md §2.1.
+   Only tokens + ui- animation keyframes. No component classes.
+   ========================================================= */
+
+:root {
+  /* ── Layer 1: Palette (internal use only) ── */
+  --palette-emerald-50:  #E6F4EF;
+  --palette-emerald-100: #B9D9CE;
+  --palette-emerald-150: #A7F3D0;
+  --palette-emerald-200: #6EE7B7;
+  --palette-emerald-300: #34D399;
+  --palette-emerald-400: #0C8564;
+  --palette-emerald-500: #0A7357;
+  --palette-emerald-600: #086049;
+  --palette-emerald-700: #0B6B4E;
+  --palette-emerald-800: #0E2C24;
+  --palette-emerald-900: #04150F;
+
+  --palette-slate-25:  #F4F6F9;
+  --palette-slate-50:  #F0F2F5;
+  --palette-slate-100: #ECEEF2;
+  --palette-slate-150: #E9EDF2;
+  --palette-slate-200: #DFE5EC;
+  --palette-slate-300: #DFE3EA;
+  --palette-slate-400: #C6CCD8;
+  --palette-slate-500: #A8B0BF;
+  --palette-slate-600: #666D7B;
+  --palette-slate-650: #6B7486;
+  --palette-slate-700: #5A6478;
+  --palette-slate-800: #414B62;
+  --palette-slate-850: #323A4E;
+  --palette-slate-900: #222838;
+  --palette-slate-925: #181D27;
+  --palette-slate-950: #0D1017;
+  --palette-slate-975: #1A1D24;
+  --palette-slate-light: #F5F7FA;
+  --palette-slate-lighter: #E8ECF2;
+  --palette-slate-mid: #CDD3DE;
+
+  --palette-neutral-dark: #262D3E;
+  --palette-neutral-darker: #2A3143;
+  --palette-neutral-mid: #323A4E;
+
+  /* Status */
+  --palette-green-light-bg: #E4F5EE;
+  --palette-green-light-fg: #0B6B4E;
+  --palette-green-base: #0E855C;
+  --palette-green-dark-bg: #0E2C24;
+  --palette-green-dark-fg: #6EE7B7;
+
+  --palette-amber-light-bg: #FDF2E4;
+  --palette-amber-light-fg: #8A4308;
+  --palette-amber-base: #B45309;
+  --palette-amber-dark-bg: #3A2B0F;
+  --palette-amber-dark-fg: #FCD34D;
+  --palette-amber-strong: #FBBF24;
+
+  --palette-red-light-bg: #FCE9E9;
+  --palette-red-light-fg: #B91C1C;
+  --palette-red-base: #DC2626;
+  --palette-red-dark-bg: #3B1B1B;
+  --palette-red-dark-fg: #FCA5A5;
+  --palette-red-soft: #F87171;
+
+  --palette-blue-light-bg: #E7EEFC;
+  --palette-blue-light-fg: #1D4ED8;
+  --palette-blue-base: #2563EB;
+  --palette-blue-dark-bg: #12254A;
+  --palette-blue-dark-fg: #93C5FD;
+  --palette-blue-soft: #60A5FA;
+
+  /* Role palettes */
+  --palette-role-user-light-bg: #ECEEF2;
+  --palette-role-user-light-fg: #5A6478;
+  --palette-role-user-dark-bg:  #262D3E;
+  --palette-role-user-dark-fg:  #CDD3DE;
+
+  --palette-role-coach-light-bg: #FBF0DD;
+  --palette-role-coach-light-fg: #92400E;
+  --palette-role-coach-dark-bg:  #3A2B0F;
+  --palette-role-coach-dark-fg:  #FCD34D;
+
+  --palette-role-captain-light-bg: #EDE7FB;
+  --palette-role-captain-light-fg: #6D28D9;
+  --palette-role-captain-dark-bg:  #2A1F4A;
+  --palette-role-captain-dark-fg:  #C4B5FD;
+
+  --palette-role-lead-light-bg: #E7EEFC;
+  --palette-role-lead-light-fg: #1D4ED8;
+  --palette-role-lead-dark-bg:  #12254A;
+  --palette-role-lead-dark-fg:  #93C5FD;
+
+  --palette-role-venue-light-bg: #FBEBDD;
+  --palette-role-venue-light-fg: #C2410C;
+  --palette-role-venue-dark-bg:  #3B2110;
+  --palette-role-venue-dark-fg:  #FDBA74;
+
+  --palette-role-admin-light-bg: #E0F0F8;
+  --palette-role-admin-light-fg: #0369A1;
+  --palette-role-admin-dark-bg:  #0C2B3D;
+  --palette-role-admin-dark-fg:  #7DD3FC;
+
+  --palette-role-super-light-bg: #FCE9E9;
+  --palette-role-super-light-fg: #B91C1C;
+  --palette-role-super-dark-bg:  #3B1B1B;
+  --palette-role-super-dark-fg:  #FCA5A5;
+
+  /* ── Layer 2: Semantic colors (LIGHT default) ── */
+  --color-bg-root:        var(--palette-slate-25);
+  --color-bg-surface:     #FFFFFF;
+  --color-bg-elevated:    var(--palette-slate-50);
+  --color-bg-input:       var(--palette-slate-50);
+  --color-bg-hover:       var(--palette-slate-150);
+  --color-bg-active:      var(--palette-slate-200);
+  --color-bg-selected:    var(--palette-emerald-50);
+  --color-bg-skeleton-base: var(--palette-slate-50);
+  --color-bg-skeleton-glow: var(--palette-slate-25);
+
+  --color-text-primary:   var(--palette-slate-975);
+  --color-text-secondary: var(--palette-slate-700);
+  --color-text-muted:     var(--palette-slate-600);
+  --color-text-inverse:   #FFFFFF;
+  --color-text-disabled:  var(--palette-slate-500);
+
+  --color-border:         var(--palette-slate-300);
+  --color-border-strong:  var(--palette-slate-400);
+  --color-border-subtle:  var(--palette-slate-100);
+
+  --color-brand:          var(--palette-emerald-400);
+  --color-brand-hover:    var(--palette-emerald-500);
+  --color-brand-active:   var(--palette-emerald-600);
+  --color-brand-disabled: var(--palette-emerald-100);
+  --color-brand-fg:       #FFFFFF;
+  --color-brand-soft-bg:  var(--palette-emerald-50);
+  --color-brand-soft-fg:  var(--palette-emerald-700);
+
+  --color-success:     var(--palette-green-base);
+  --color-success-bg:  var(--palette-green-light-bg);
+  --color-success-fg:  var(--palette-green-light-fg);
+
+  --color-warning:     var(--palette-amber-base);
+  --color-warning-bg:  var(--palette-amber-light-bg);
+  --color-warning-fg:  var(--palette-amber-light-fg);
+
+  --color-danger:      var(--palette-red-base);
+  --color-danger-bg:   var(--palette-red-light-bg);
+  --color-danger-fg:   var(--palette-red-light-fg);
+
+  --color-info:        var(--palette-blue-base);
+  --color-info-bg:     var(--palette-blue-light-bg);
+  --color-info-fg:     var(--palette-blue-light-fg);
+
+  --color-overlay:      rgba(0,0,0,.35);
+  --color-overlay-heavy: rgba(0,0,0,.65);
+  --color-focus-ring:   var(--palette-emerald-400);
+
+  /* Role semantic (LIGHT) */
+  --color-role-user:        var(--palette-role-user-light-fg);
+  --color-role-user-bg:     var(--palette-role-user-light-bg);
+  --color-role-coach:       var(--palette-role-coach-light-fg);
+  --color-role-coach-bg:    var(--palette-role-coach-light-bg);
+  --color-role-captain:     var(--palette-role-captain-light-fg);
+  --color-role-captain-bg:  var(--palette-role-captain-light-bg);
+  --color-role-lead:        var(--palette-role-lead-light-fg);
+  --color-role-lead-bg:     var(--palette-role-lead-light-bg);
+  --color-role-venue:       var(--palette-role-venue-light-fg);
+  --color-role-venue-bg:    var(--palette-role-venue-light-bg);
+  --color-role-admin:       var(--palette-role-admin-light-fg);
+  --color-role-admin-bg:    var(--palette-role-admin-light-bg);
+  --color-role-super:       var(--palette-role-super-light-fg);
+  --color-role-super-bg:    var(--palette-role-super-light-bg);
+
+  /* ── Spacing (4 / 8 / 12 / 16 / 20 / 24 / 32 rhythm) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── Radius ── */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-chip: 9px;
+  --radius-md: 12px;
+  --radius-card: 14px;
+  --radius-card-lg: 18px;
+  --radius-modal: 16px;
+  --radius-panel: 22px;
+  --radius-full: 999px;
+
+  /* ── Border ── */
+  --border-hairline: 1px;
+
+  /* ── Shadow (LIGHT) ── */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.06);
+  --shadow-sm: 0 2px 12px rgba(0,0,0,.12);
+  --shadow-md: 0 4px 24px rgba(0,0,0,.12);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.15);
+
+  /* ── Typography ── */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "PingFang TC", "PingFang SC", "PingFang HK",
+    "Noto Sans TC", "Noto Sans SC", "Noto Sans KR",
+    "Microsoft JhengHei", "Microsoft YaHei",
+    "Malgun Gothic",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-numeric: tabular-nums;
+
+  --font-size-caption: 11px;
+  --font-size-body-sm: 13px;
+  --font-size-body: 15px;
+  --font-size-body-lg: 17px;
+  --font-size-title: 19px;
+  --font-size-title-lg: 22px;
+  --font-size-display: 28px;
+
+  --line-height-caption: 16px;
+  --line-height-body-sm: 20px;
+  --line-height-body: 24px;
+  --line-height-body-lg: 28px;
+  --line-height-title: 28px;
+  --line-height-title-lg: 32px;
+  --line-height-display: 38px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* ── Layout ── */
+  --topbar-h: 56px;
+  --bottomnav-h: 64px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* ── Motion ── */
+  --ui-dur-fast: 150ms;
+  --ui-dur-base: 220ms;
+  --ui-dur: var(--ui-dur-base); /* canonical alias per contract */
+  --ui-dur-slow: 400ms;
+  --ui-ease: cubic-bezier(.2,.8,.2,1);
+  --ui-spin-dur: .9s;
+  --ui-shimmer-dur: 1.2s;
+  --ui-fade-dur: 220ms;
+  --ui-slide-dur: 260ms;
+
+  /* ── Z-index ── */
+  --z-base: 0;
+  --z-sticky: 100;
+  --z-topbar: 200;
+  --z-bottomnav: 200;
+  --z-dropdown: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+}
+
+/* ── Layer 2 (DARK) — explicit :root[data-theme="dark"] ── */
+:root[data-theme="dark"] {
+  --color-bg-root:        var(--palette-slate-950);
+  --color-bg-surface:     var(--palette-slate-925);
+  --color-bg-elevated:    var(--palette-slate-900);
+  --color-bg-input:       var(--palette-slate-900);
+  --color-bg-hover:       var(--palette-neutral-darker);
+  --color-bg-active:      var(--palette-neutral-mid);
+  --color-bg-selected:    var(--palette-emerald-800);
+  --color-bg-skeleton-base: var(--palette-slate-900);
+  --color-bg-skeleton-glow: var(--palette-slate-925);
+
+  --color-text-primary:   var(--palette-slate-light);
+  --color-text-secondary: var(--palette-slate-lighter);
+  --color-text-muted:     var(--palette-slate-mid);
+  --color-text-inverse:   var(--palette-slate-950);
+  --color-text-disabled:  var(--palette-slate-650);
+
+  --color-border:         var(--palette-slate-850);
+  --color-border-strong:  var(--palette-slate-800);
+  --color-border-subtle:  var(--palette-neutral-dark);
+
+  --color-brand:          var(--palette-emerald-300);
+  --color-brand-hover:    var(--palette-emerald-200);
+  --color-brand-active:   var(--palette-emerald-150);
+  --color-brand-disabled: var(--palette-emerald-800);
+  --color-brand-fg:       var(--palette-emerald-900);
+  --color-brand-soft-bg:  var(--palette-emerald-800);
+  --color-brand-soft-fg:  var(--palette-emerald-200);
+
+  --color-success:     var(--palette-green-dark-fg);
+  --color-success-bg:  var(--palette-green-dark-bg);
+  --color-success-fg:  var(--palette-green-dark-fg);
+
+  --color-warning:     var(--palette-amber-strong);
+  --color-warning-bg:  var(--palette-amber-dark-bg);
+  --color-warning-fg:  var(--palette-amber-dark-fg);
+
+  --color-danger:      var(--palette-red-soft);
+  --color-danger-bg:   var(--palette-red-dark-bg);
+  --color-danger-fg:   var(--palette-red-dark-fg);
+
+  --color-info:        var(--palette-blue-soft);
+  --color-info-bg:     var(--palette-blue-dark-bg);
+  --color-info-fg:     var(--palette-blue-dark-fg);
+
+  --color-overlay:      rgba(0,0,0,.65);
+  --color-overlay-heavy: rgba(0,0,0,.65);
+  --color-focus-ring:   var(--palette-emerald-200);
+
+  /* Role semantic (DARK) */
+  --color-role-user:        var(--palette-role-user-dark-fg);
+  --color-role-user-bg:     var(--palette-role-user-dark-bg);
+  --color-role-coach:       var(--palette-role-coach-dark-fg);
+  --color-role-coach-bg:    var(--palette-role-coach-dark-bg);
+  --color-role-captain:     var(--palette-role-captain-dark-fg);
+  --color-role-captain-bg:  var(--palette-role-captain-dark-bg);
+  --color-role-lead:        var(--palette-role-lead-dark-fg);
+  --color-role-lead-bg:     var(--palette-role-lead-dark-bg);
+  --color-role-venue:       var(--palette-role-venue-dark-fg);
+  --color-role-venue-bg:    var(--palette-role-venue-dark-bg);
+  --color-role-admin:       var(--palette-role-admin-dark-fg);
+  --color-role-admin-bg:    var(--palette-role-admin-dark-bg);
+  --color-role-super:       var(--palette-role-super-dark-fg);
+  --color-role-super-bg:    var(--palette-role-super-dark-bg);
+
+  /* Shadow (DARK) — 覆寫 --shadow-xs ~ --shadow-lg 透明度（不另建 --shadow-dark-*） */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-sm: 0 2px 12px rgba(0,0,0,.4);
+  --shadow-md: 0 4px 24px rgba(0,0,0,.45);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.5);
+}
+
+/* ── DARK via system preference (when user has not explicitly chosen) ── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg-root:        var(--palette-slate-950);
+    --color-bg-surface:     var(--palette-slate-925);
+    --color-bg-elevated:    var(--palette-slate-900);
+    --color-bg-input:       var(--palette-slate-900);
+    --color-bg-hover:       var(--palette-neutral-darker);
+    --color-bg-active:      var(--palette-neutral-mid);
+    --color-bg-selected:    var(--palette-emerald-800);
+    --color-bg-skeleton-base: var(--palette-slate-900);
+    --color-bg-skeleton-glow: var(--palette-slate-925);
+
+    --color-text-primary:   var(--palette-slate-light);
+    --color-text-secondary: var(--palette-slate-lighter);
+    --color-text-muted:     var(--palette-slate-mid);
+    --color-text-inverse:   var(--palette-slate-950);
+    --color-text-disabled:  var(--palette-slate-650);
+
+    --color-border:         var(--palette-slate-850);
+    --color-border-strong:  var(--palette-slate-800);
+    --color-border-subtle:  var(--palette-neutral-dark);
+
+    --color-brand:          var(--palette-emerald-300);
+    --color-brand-hover:    var(--palette-emerald-200);
+    --color-brand-active:   var(--palette-emerald-150);
+    --color-brand-disabled: var(--palette-emerald-800);
+    --color-brand-fg:       var(--palette-emerald-900);
+    --color-brand-soft-bg:  var(--palette-emerald-800);
+    --color-brand-soft-fg:  var(--palette-emerald-200);
+
+    --color-success:     var(--palette-green-dark-fg);
+    --color-success-bg:  var(--palette-green-dark-bg);
+    --color-success-fg:  var(--palette-green-dark-fg);
+
+    --color-warning:     var(--palette-amber-strong);
+    --color-warning-bg:  var(--palette-amber-dark-bg);
+    --color-warning-fg:  var(--palette-amber-dark-fg);
+
+    --color-danger:      var(--palette-red-soft);
+    --color-danger-bg:   var(--palette-red-dark-bg);
+    --color-danger-fg:   var(--palette-red-dark-fg);
+
+    --color-info:        var(--palette-blue-soft);
+    --color-info-bg:     var(--palette-blue-dark-bg);
+    --color-info-fg:     var(--palette-blue-dark-fg);
+
+    --color-overlay:      rgba(0,0,0,.65);
+    --color-overlay-heavy: rgba(0,0,0,.65);
+    --color-focus-ring:   var(--palette-emerald-200);
+
+    --color-role-user:        var(--palette-role-user-dark-fg);
+    --color-role-user-bg:     var(--palette-role-user-dark-bg);
+    --color-role-coach:       var(--palette-role-coach-dark-fg);
+    --color-role-coach-bg:    var(--palette-role-coach-dark-bg);
+    --color-role-captain:     var(--palette-role-captain-dark-fg);
+    --color-role-captain-bg:  var(--palette-role-captain-dark-bg);
+    --color-role-lead:        var(--palette-role-lead-dark-fg);
+    --color-role-lead-bg:     var(--palette-role-lead-dark-bg);
+    --color-role-venue:       var(--palette-role-venue-dark-fg);
+    --color-role-venue-bg:    var(--palette-role-venue-dark-bg);
+    --color-role-admin:       var(--palette-role-admin-dark-fg);
+    --color-role-admin-bg:    var(--palette-role-admin-dark-bg);
+    --color-role-super:       var(--palette-role-super-dark-fg);
+    --color-role-super-bg:    var(--palette-role-super-dark-bg);
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,.35);
+    --shadow-sm: 0 2px 12px rgba(0,0,0,.4);
+    --shadow-md: 0 4px 24px rgba(0,0,0,.45);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,.5);
+  }
+}
+
+/* ── Language-specific line-height & font stacks (:lang() handles zh-Hans / zh-Hant variants) ── */
+
+/* Thai: extra headroom for upper/lower vowels & tone marks */
+:root:lang(th) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "Noto Sans Thai", "Leelawadee UI", "Thonburi", "Tahoma",
+    "Sarabun", "Prompt",
+    "Segoe UI", Roboto, sans-serif;
+
+  --line-height-caption: 18px;
+  --line-height-body-sm: 22px;
+  --line-height-body: 26px;
+  --line-height-body-lg: 30px;
+  --line-height-title: 31px;
+  --line-height-title-lg: 35px;
+  --line-height-display: 42px;
+}
+
+/* Vietnamese: diacritics need extra line height */
+:root:lang(vi) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto,
+    "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+
+  --line-height-caption: 17px;
+  --line-height-body-sm: 21px;
+  --line-height-body: 25px;
+  --line-height-body-lg: 29px;
+  --line-height-title: 30px;
+  --line-height-title-lg: 34px;
+  --line-height-display: 40px;
+}
+
+/* Japanese */
+:root:lang(ja) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", "Yu Gothic", Meiryo,
+    "Segoe UI", Roboto, sans-serif;
+}
+
+/* Korean */
+:root:lang(ko) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Malgun Gothic",
+    "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+}
+
+/* Simplified Chinese (zh-CN / zh-Hans): SC-specific stack */
+:root:lang(zh-CN), :root:lang(zh-Hans) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Traditional Chinese (zh-TW / zh-Hant / zh-HK): TC-specific stack */
+:root:lang(zh-TW), :root:lang(zh-Hant), :root:lang(zh-HK) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont,
+    "PingFang TC", "Noto Sans TC", "Microsoft JhengHei",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ── UI animation keyframes (design-system owned) ── */
+
+@keyframes ui-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ui-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+@keyframes ui-shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+/* Canonical alias per contract (same effect as ui-shimmer) */
+@keyframes ui-skeleton {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ui-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Reduced motion (hard requirement) ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
