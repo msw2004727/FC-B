@@ -401,6 +401,33 @@ describe('rejectTeamJoin', () => {
     },
   };
 
+  it('syncGroupActionStatus 是主要寫入：失敗時往外拋，且不通知申請人、不寫 audit', async () => {
+    callFnMock.mockImplementation((async (name: string) => {
+      if (name === 'syncGroupActionStatus') throw new Error('sync down');
+      return { success: true };
+    }) as never);
+    await expect(
+      rejectTeamJoin({ team, applicantUid: 'applicant_uid', message, reviewer }),
+    ).rejects.toThrow('sync down');
+    const names = callFnMock.mock.calls.map((c) => c[0]);
+    expect(names).toEqual(['syncGroupActionStatus']);
+  });
+
+  it('訊息沒有 groupId 時拒絕操作，不呼叫任何 Callable', async () => {
+    const legacy = { ...message, meta: { ...message.meta, groupId: undefined } };
+    await expect(
+      rejectTeamJoin({ team, applicantUid: 'applicant_uid', message: legacy as never, reviewer }),
+    ).rejects.toThrow(/groupId/);
+    expect(callFnMock).not.toHaveBeenCalled();
+  });
+
+  it('先同步審核狀態，再通知申請人', async () => {
+    await rejectTeamJoin({ team, applicantUid: 'applicant_uid', message, reviewer });
+    const names = callFnMock.mock.calls.map((c) => c[0]);
+    expect(names[0]).toBe('syncGroupActionStatus');
+    expect(names.indexOf('deliverToInbox')).toBeGreaterThan(0);
+  });
+
   it('不寫 users、不直寫收件匣，只用 syncGroupActionStatus 更新審核狀態', async () => {
     await rejectTeamJoin({ team, applicantUid: 'applicant_uid', message, reviewer });
 

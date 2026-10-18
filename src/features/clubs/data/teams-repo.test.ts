@@ -23,6 +23,7 @@ vi.mock('firebase/firestore', () => ({
     wheres: constraints,
   }),
   where: (field: string, op: string, value: unknown) => ({ type: 'where', field, op, value }),
+  limit: (n: number) => ({ type: 'limit', n }),
   getDocs: getDocsMock,
   getDoc: getDocMock,
 }));
@@ -119,9 +120,23 @@ describe('loadTeam', () => {
     expect(ref?.path).toBe('teams/t1');
   });
 
-  it('不存在回 null', async () => {
+  it('文件 ID 找不到也查不到 id 欄位時回 null', async () => {
     getDocMock.mockResolvedValueOnce({ exists: () => false, id: 't404', data: () => ({}) });
+    getDocsMock.mockResolvedValueOnce({ docs: [] });
     expect(await loadTeam('t404')).toBeNull();
+  });
+
+  it('public id 與文件 ID 不同的舊資料：以 where id == 補查並回傳實際 _docId', async () => {
+    getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'tm_public', data: () => ({}) });
+    getDocsMock.mockResolvedValueOnce({
+      docs: [{ id: 'legacyDocId', data: () => ({ id: 'tm_public', name: 'Legacy' }) }],
+    });
+    expect(await loadTeam('tm_public')).toEqual({ id: 'tm_public', name: 'Legacy', _docId: 'legacyDocId' });
+    const q = getDocsMock.mock.calls[0]?.[0] as { wheres?: unknown[] } | undefined;
+    expect(q?.wheres).toEqual([
+      { type: 'where', field: 'id', op: '==', value: 'tm_public' },
+      { type: 'limit', n: 1 },
+    ]);
   });
 
   it('空 teamId 直接回 null（不打 Firestore）', async () => {

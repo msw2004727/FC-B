@@ -46,23 +46,29 @@ export async function loadTeams(): Promise<TeamDoc[]> {
 }
 
 /**
- * 讀取 `teams/{teamId}`。
+ * 以路由上的俱樂部 ID 讀取。R-ID-004 新建俱樂部的文件 ID 等於 `id`，先讀 `teams/{teamId}`；
+ * 找不到時照活動 `resolveEventDocId` 的做法以 `where('id','==',teamId)` 補查，涵蓋 public id 與文件 ID 不同的舊資料。
  *
- * @returns `null` 表示文件不存在。
+ * @returns `null` 表示兩種方式都找不到。
  */
 export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
   if (!teamId) return null;
 
-  const [{ doc, getDoc }, ctx] = await Promise.all([
+  const [{ doc, getDoc, collection, query, where, limit, getDocs }, ctx] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
   ]);
 
   const snap = await getDoc(doc(ctx.db, teamsCollection, teamId));
-  if (!snap.exists()) return null;
+  if (snap.exists()) {
+    const data = snap.data() as TeamDoc;
+    return { ...data, _docId: snap.id };
+  }
 
-  const data = snap.data() as TeamDoc;
-  return { ...data, _docId: snap.id };
+  const byId = await getDocs(query(collection(ctx.db, teamsCollection), where('id', '==', teamId), limit(1)));
+  const found = byId.docs[0];
+  if (!found) return null;
+  return { ...(found.data() as TeamDoc), _docId: found.id };
 }
 
 /**

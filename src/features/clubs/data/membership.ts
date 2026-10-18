@@ -615,8 +615,19 @@ export async function rejectTeamJoin({
   if (!targetApplicantUid) {
     throw new Error('[membership] rejectTeamJoin: applicantUid is required');
   }
+  // 拒絕沒有其他持久化寫入，審核狀態只能經 syncGroupActionStatus 落地；沒有 groupId 的舊訊息無法更新，直接拒絕操作。
+  if (!groupId) {
+    throw new Error('[membership] rejectTeamJoin: message.meta.groupId is required');
+  }
 
-  // 1. 通知 applicant
+  // 1. 主要寫入：先把同 groupId 的申請訊息改為 rejected，失敗往外拋（避免已通知申請人但訊息仍是 pending）。
+  await callFn('syncGroupActionStatus', {
+    groupId,
+    newStatus: 'rejected',
+    reviewerName,
+  });
+
+  // 2. 通知 applicant（best-effort，文案照 A）
   const body = `很抱歉，您申請加入「${teamName}」俱樂部未獲通過。如有疑問，請聯繫俱樂部職員。`;
   await runBestEffort(
     () =>
@@ -640,7 +651,7 @@ export async function rejectTeamJoin({
     teamId,
   );
 
-  // 2. audit log（best-effort）
+  // 3. audit log（best-effort）
   await runBestEffort(
     () =>
       writeAudit({
@@ -655,31 +666,15 @@ export async function rejectTeamJoin({
     teamId,
   );
 
-  // 審核者自己的訊息由 syncGroupActionStatus 更新（同 approve 說明；A 的 rejectedAt 直寫對非 admin 會被 Rules 拒絕）。
-
-
-  // 4. syncGroupActionStatus（best-effort）
-  if (groupId) {
-    await runBestEffort(
-      () =>
-        callFn('syncGroupActionStatus', {
-          groupId,
-          newStatus: 'rejected',
-          reviewerName,
-        }),
-      'rejectTeamJoin.syncGroupActionStatus',
-      teamId,
-    );
-
-    await broadcastToOtherStaff(
-      team,
-      teamId,
-      reviewerUid,
-      `「${reviewerName}」已拒絕「${applicantName}」加入「${teamName}」的申請。`,
-      'reject',
-      'rejectTeamJoin',
-    );
-  }
+  // 4. 通知其他幹部（best-effort）
+  await broadcastToOtherStaff(
+    team,
+    teamId,
+    reviewerUid,
+    `「${reviewerName}」已拒絕「${applicantName}」加入「${teamName}」的申請。`,
+    'reject',
+    'rejectTeamJoin',
+  );
 }
 
 /* ── 非同步：退出 ─────────────────────────────────── */
