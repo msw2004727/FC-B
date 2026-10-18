@@ -331,7 +331,8 @@ describe('loadViewer', () => {
     expect(v.capabilities).toEqual(['user.activity.basic_create']);
   });
 
-  it('自訂角色由 customRoles 載入並傳入 getRoleLevel', async () => {
+  it('V 階段不讀 customRoles，自訂角色的私密列表 level 保守退回 0', async () => {
+    // 測試同步更新：V 階段不載入 customRoles，P 階段再補（R-QA-005）
     mockFirestore({
       users: { role: 'judge' },
       rolePermissions: { permissions: [] },
@@ -339,8 +340,18 @@ describe('loadViewer', () => {
       roleActivityCapabilities: null,
       customRoles: [{ id: 'cr1', key: 'judge', afterRole: 'captain' }],
     });
+
     const v = await loadViewer('uid-judge');
-    expect(v.roleLevel).toBeCloseTo(2.5, 10);
+
+    expect(v.uid).toBe('uid-judge');
+    expect(v.role).toBe('judge');
+    expect(v.roleLevel).toBe(0);
+    expect(getDoc).not.toHaveBeenCalledWith(
+      expect.objectContaining({ _collection: 'customRoles' }),
+    );
+    expect(getDocs).not.toHaveBeenCalledWith(
+      expect.objectContaining({ _collection: 'customRoles' }),
+    );
   });
 
   it('俱樂部範圍以 UID 補齊 captain / leaderUid / leaderUids / coachUids', async () => {

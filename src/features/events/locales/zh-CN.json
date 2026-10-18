@@ -1,56 +1,74 @@
 {
-  "title": "活动",
-  "nav": "活动",
-  "detail": "活动详情",
-  "pageTitle": "活动列表",
-  "backHome": "返回首页",
-  "search": "搜索",
-  "filter": "筛选",
-  "searchPlaceholder": "搜索活动名称或地点",
-  "tabsLabel": "活动列表分页",
-  "normal": "报名中",
-  "chooseSport": "选择运动",
-  "loading": "活动资料载入中…",
-  "loadError": "无法载入活动，请重试。",
-  "retry": "重试",
-  "emptyTitle": "目前没有符合条件的活动",
-  "emptyBody": "试试其他运动项目或搜索词。",
+  "title": "活动", "nav": "活动", "detail": "活动详情", "pageTitle": "活动列表",
+  "backHome": "返回首页", "search": "搜索", "filter": "筛选",
+  "searchPlaceholder": "搜索活动名称或地点", "tabsLabel": "活动列表分页",
+  "normal": "报名中", "chooseSport": "选择运动", "loading": "活动资料载入中…",
+  "loadError": "无法载入活动，请重试。", "retry": "重试",
+  "emptyTitle": "目前没有符合条件的活动", "emptyBody": "试试其他运动项目或搜索词。",
   "sport": {
-    "all": "全部运动",
-    "football": "足球",
-    "basketball": "篮球",
-    "pickleball": "匹克球",
-    "dodgeball": "美式躲避球",
-    "restaurant": "餐厅(观赛)",
-    "escape_room": "密室逃脱",
-    "esports": "电玩电竞",
-    "baseball_softball": "棒垒球",
-    "volleyball": "排球",
-    "table_tennis": "乒乓球",
-    "tennis": "网球",
-    "badminton": "羽毛球",
-    "hiking": "登山",
-    "running": "慢跑",
-    "cycling": "自行车",
-    "motorcycle": "摩托车",
-    "skateboard": "滑板",
-    "dance": "舞蹈",
-    "yoga": "瑜伽",
-    "martial_arts": "武术",
-    "other": "其他"
+    "all": "全部运动", "football": "足球", "basketball": "篮球",
+    "pickleball": "匹克球", "dodgeball": "美式躲避球", "restaurant": "餐厅(观赛)",
+    "escape_room": "密室逃脱", "esports": "电玩电竞", "baseball_softball": "棒垒球",
+    "volleyball": "排球", "table_tennis": "乒乓球", "tennis": "网球",
+    "badminton": "羽毛球", "hiking": "登山", "running": "慢跑",
+    "cycling": "自行车", "motorcycle": "摩托车", "skateboard": "滑板",
+    "dance": "舞蹈", "yoga": "瑜伽", "martial_arts": "武术", "other": "其他"
   },
   "status": {
-    "open": "报名中",
-    "full": "已满员",
-    "upcoming": "即将开始",
-    "ended": "已结束",
-    "cancelled": "已取消",
-    "unknown": "状态待确认"
+    "open": "报名中", "full": "已满员", "upcoming": "即将开始",
+    "ended": "已结束", "cancelled": "已取消", "unknown": "状态待确认"
   },
   "card": {
-    "untitled": "未命名活动",
-    "dateUnknown": "时间待确认",
-    "locationUnknown": "地点待确认",
-    "capacity": "{current}/{max}人"
+    "untitled": "未命名活动", "dateUnknown": "时间待确认",
+    "locationUnknown": "地点待确认", "capacity": "{current}/{max}人"
+  },
+  "detailPage": {
+    "notFound": "找不到此活动", "loading": "活动详情载入中…",
+    "loadError": "无法载入活动详情，请重试。", "actionError": "操作失败，请稍后重试。",
+    "refreshError": "名单尚未同步，请重试更新。为避免重复操作，报名暂时停用。",
+    "location": "地点", "map": "在地图打开", "time": "时间", "opens": "开放报名",
+    "fee": "费用", "free": "免费", "people": "人数", "host": "主办",
+    "notes": "注意事项", "noNotes": "暂无说明", "noCover": "暂无活动图片",
+    "confirmed": "正取名单", "waitlisted": "候补名单", "emptyRoster": "尚无报名",
+    "unnamed": "用户", "companion": "同行者", "self": "（本人）",
+    "registered": "（已报名）", "companionSignup": "帮伙伴报名",
+    "chooseParticipants": "选择报名对象", "confirmSignup": "确认报名",
+    "cancelTitle": "取消报名", "cancelHint": "请选择要取消的对象，确认后才会取消。",
+    "confirmCancel": "确认取消", "selectSomeone": "请至少选择一位参加者",
+    "noCompanions": "尚无已保存的同行者", "selected": "已选 {count} 人",
+    "remaining": "剩余名额 {count}", "totalFee": "预计费用 NT${fee}",
+    "waitlistEstimate": "预计 {count} 人将列入候补，以提交结果为准。",
+    "signupSuccess": "报名已提交", "cancelSuccess": "已取消所选报名",
+    "button": {
+      "ended": "已结束", "cancelWaitlist": "取消候补", "cancel": "取消报名",
+      "notOpen": "报名尚未开放", "teamOnly": "球队限定", "restricted": "报名限制",
+      "waitlist": "报名候补", "signup": "立即报名"
+    }
+  },
+  "signup": {
+    "unavailable": "此活动目前无法报名", "ended": "活动已开始，报名已结束",
+    "notOpen": "报名尚未开放，请稍后再试",
+    "teamOnlyRestricted": "俱乐部限定活动，仅限该队成员报名",
+    "alreadyRegistered": "你已经报名这场活动",
+    "error": {
+      "alreadyRegistered": "所选对象已报名", "eventNotFound": "找不到此活动",
+      "eventEnded": "活动已结束", "eventCancelled": "活动已取消",
+      "regNotOpen": "报名尚未开放", "earlyBirdNotAvailable": "目前无法早鸟报名",
+      "earlyBirdConfirmRequired": "请先确认早鸟报名", "earlyBirdSelfOnly": "早鸟报名仅限本人",
+      "earlyBirdCostChanged": "早鸟费用已变更", "earlyBirdInsufficientExp": "早鸟报名积分不足",
+      "earlyBirdFull": "早鸟名额已满", "genderRestricted": "不符合活动性别限制",
+      "teamRestricted": "不符合活动球队限制", "courseLinkedPrivate": "此课程活动不开放个别报名",
+      "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完成个人资料",
+      "teamReservationDenied": "无法使用此球队预留名额",
+      "teamReservationUnavailable": "球队预留名额目前不可用",
+      "unknown": "报名失败，请稍后重试"
+    }
+  },
+  "cancel": {
+    "error": {
+      "alreadyCancelled": "报名已取消", "regNotFound": "找不到此报名",
+      "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
+      "unknown": "取消失败，请稍后重试"
+    }
   }
 }

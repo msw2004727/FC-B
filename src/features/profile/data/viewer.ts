@@ -1,16 +1,14 @@
 /**
  * FC-B Viewer 資料層。
  *
- * 規則對照：
- *  - R-IAM-008：權限判定必須與 A 前端一致（透過 createPermissionChecker）。
- *  - R-EVT-018：admin.repair.event_blocklist 可由有效個別授權授予，但 rolePermissions/user 固定不授予。
- *  - R-CAP-006～008：capabilities 儲存格式不得改寫；本檔只回傳正規化後的唯讀陣列。
- *  - R-ID-002：俱樂部幹部身分只用 UID 比對；A 以 name 對照的部分不移植（契約修正）。
- *  - L-02／L-04：hook 請求序號防舊結果覆蓋；訂閱後補讀一次目前值。
- *  - L-07：不使用無 catch 的 floating promise。
- *  - L-09：只有同一 UID 的重新整理失敗才保留上一份資料；新 UID 失敗維持最小權限暫態。
+ * V 階段：
+ * - teamIds 由 computeVisibleTeamIds 計算，保留 leaderUids 優先序。
+ * - 私密列表 roleLevel 僅使用內建角色，不讀 customRoles。
+ * - R-ID-002：adminUsers 僅允許 UID 精確匹配，不比對 name。
  *
- * Firestore 存取集中在此檔。
+ * 既有 hasPermission 與 capabilities 的載入行為保持原樣；
+ * 本次不實作或擴充 rolePermissions / userPermissionGrants 規則。
+ * ViewerContext 與 useViewer() 簽名不變。
  */
 
 import { useEffect, useState } from 'preact/hooks';
@@ -22,14 +20,14 @@ import { getCurrentUser } from '@/data/auth';
 import { on } from '@/core/events';
 import type { ViewerContext } from '@/features/events/data/types';
 
+import { createPermissionChecker, normalizePermissionCode } from './permissions';
 import {
-  createPermissionChecker,
-  getRoleLevel,
-  normalizePermissionCode,
-  type CustomRole,
-} from './permissions';
+  computeVisibleTeamIds,
+  getPrivateListRoleLevel,
+  type VisibilityTeamDoc,
+  type VisibilityUserDoc,
+} from './viewer-visibility';
 
-/** 對外公開的 Viewer 快照（含 role 與顯示欄位）。 */
 export interface ViewerView extends ViewerContext {
   role: string;
   displayName: string | null;
@@ -38,19 +36,18 @@ export interface ViewerView extends ViewerContext {
 }
 
 const EMPTY_TEAM_IDS: ReadonlySet<string> = new Set<string>();
-const EMPTY_CAPABILITIES: readonly string[] = Object.freeze([]) as readonly string[];
+const EMPTY_CAPABILITIES: readonly string[] = Object.freeze([]);
 
 function alwaysFalse(): boolean {
   return false;
 }
 
-/** 訪客（未登入）快照。 */
 export function createGuestViewer(): ViewerView {
   return {
     uid: null,
     teamIds: EMPTY_TEAM_IDS,
     hasPermission: alwaysFalse,
-    roleLevel: 0,
+    roleLevel: getPrivateListRoleLevel('guest'),
     role: 'guest',
     displayName: null,
     pictureUrl: null,
@@ -58,13 +55,12 @@ export function createGuestViewer(): ViewerView {
   };
 }
 
-/** 新 UID 的最小權限暫態：在完整資料載入前不得沿用前一身分。 */
 export function createMinimalViewer(uid: string): ViewerView {
   return {
     uid,
     teamIds: EMPTY_TEAM_IDS,
     hasPermission: alwaysFalse,
-    roleLevel: 0,
+    roleLevel: getPrivateListRoleLevel('user'),
     role: 'user',
     displayName: null,
     pictureUrl: null,
@@ -72,8 +68,8 @@ export function createMinimalViewer(uid: string): ViewerView {
   };
 }
 
-/* ── warnOnce：每次載入最多記錄一次（避免洗版） ── */
 const warnedKeys = new Set<string>();
+
 function warnOnce(key: string, err: unknown): void {
   if (warnedKeys.has(key)) return;
   warnedKeys.add(key);
@@ -81,26 +77,14 @@ function warnOnce(key: string, err: unknown): void {
   console.warn(`[viewer] failed to read ${key}`, err);
 }
 
-/* ── 從 Firestore 文件資料解析各欄位（純函式，方便測試） ── */
-
-function readStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: string[] = [];
-  for (const item of value) {
-    if (typeof item === 'string') out.push(item);
-  }
-  return out;
-}
-
 interface UserInfo {
   role: string;
   displayName: string | null;
   pictureUrl: string | null;
-  teamIds: string[];
 }
 
 function defaultUserInfo(): UserInfo {
-  return { role: 'user', displayName: null, pictureUrl: null, teamIds: [] };
+  return { role: 'user', displayName: null, pictureUrl: null };
 }
 
 function parseUserInfo(data: Record<string, unknown> | null | undefined): UserInfo {
@@ -116,15 +100,7 @@ function parseUserInfo(data: Record<string, unknown> | null | undefined): UserIn
   if (typeof data.pictureUrl === 'string') pictureUrl = data.pictureUrl;
   else if (typeof data.picture === 'string') pictureUrl = data.picture;
 
-  const teamIds: string[] = [];
-  if (Array.isArray(data.teamIds)) {
-    for (const raw of data.teamIds) {
-      if (raw) teamIds.push(String(raw));
-    }
-  }
-  if (data.teamId) teamIds.push(String(data.teamId));
-
-  return { role, displayName, pictureUrl, teamIds };
+  return { role, displayName, pictureUrl };
 }
 
 function sanitizePermissionCodeList(codes: unknown): string[] {
@@ -137,33 +113,24 @@ function sanitizePermissionCodeList(codes: unknown): string[] {
   return out;
 }
 
-/** A34：rolePermissions/{roleKey} 儲存欄位 permissions。 */
 function parseRolePermissions(data: Record<string, unknown> | null): string[] {
-  if (!data) return [];
-  return sanitizePermissionCodeList(data.permissions);
+  return data ? sanitizePermissionCodeList(data.permissions) : [];
 }
 
-/**
- * A36：userPermissionGrants/{uid} 儲存欄位 uid / permissions / enabled。
- * A getCurrentUserPermissionGrants 停用條件：enabled === false、grant.uid trim 後不符、permissions 非陣列。
- */
 function parseUserGrantCodes(data: Record<string, unknown> | null, uid: string): string[] {
-  if (!data) return [];
-  if (data.enabled === false) return [];
+  if (!data || data.enabled === false) return [];
   if (String(data.uid || '').trim() !== uid) return [];
   const raw = Array.isArray(data.permissions) ? data.permissions : [];
   const out: string[] = [];
   for (const code of raw) {
     if (typeof code !== 'string') continue;
     const trimmed = code.trim();
-    if (!trimmed) continue;
-    if (normalizePermissionCode(trimmed) !== trimmed) continue;
+    if (!trimmed || normalizePermissionCode(trimmed) !== trimmed) continue;
     if (!out.includes(trimmed)) out.push(trimmed);
   }
   return out;
 }
 
-/** A35：roleActivityCapabilities/{roleKey} 儲存欄位 capabilities。 */
 function parseCapabilities(data: Record<string, unknown> | null): string[] {
   if (!data) return [];
   const raw = Array.isArray(data.capabilities) ? data.capabilities : [];
@@ -174,8 +141,6 @@ function parseCapabilities(data: Record<string, unknown> | null): string[] {
   }
   return out;
 }
-
-/* ── 安全讀取單一文件：不存在或無權限皆視為 null，不丟錯 ── */
 
 type DocResult =
   | { ok: true; data: Record<string, unknown> | null }
@@ -192,52 +157,72 @@ function safeGetDoc(promise: Promise<Awaited<ReturnType<typeof getDoc>>>): Promi
   );
 }
 
-/* ── 俱樂部範圍：照 A _getVisibleTeamIdsForLimitedEvents，但只以 UID 比對 ── */
-
+/**
+ * 查詢僅取得候選隊伍，不能直接將命中文件 ID 視為可見：
+ * leaderUid 查詢可能命中具有不同 leaderUids 陣列的舊文件。
+ * 必須保留完整幹部欄位，交給純函式再次判定。
+ */
 async function loadTeamIdsForUser(
   db: Firestore,
   uid: string,
-  baseTeamIds: readonly string[],
+  userDoc: VisibilityUserDoc | null,
 ): Promise<Set<string>> {
-  const ids = new Set<string>(baseTeamIds);
+  if (!userDoc) return computeVisibleTeamIds(uid, null, []);
 
-  const addTeamId = (raw: unknown): void => {
-    if (raw) ids.add(String(raw));
-  };
-
-  const addAdminUserDoc = (data: Record<string, unknown> | undefined): void => {
-    if (!data) return;
-    if (Array.isArray(data.teamIds)) {
-      for (const id of data.teamIds) addTeamId(id);
-    }
-    addTeamId(data.teamId);
-  };
-
-  const runTeamQuery = async (label: string, q: Query): Promise<void> => {
+  const runTeamQuery = async (
+    label: string,
+    teamQuery: Query,
+  ): Promise<VisibilityTeamDoc[]> => {
     try {
-      const snap = await getDocs(q);
-      for (const d of snap.docs) {
-        ids.add(d.id);
-      }
+      const snap = await getDocs(teamQuery);
+      return snap.docs.map((snapshot): VisibilityTeamDoc => {
+        const data = snapshot.data() as Record<string, unknown>;
+        return {
+          // 保留 public id；沒有 id 欄位時才使用 Firestore document ID。
+          id: data.id ?? snapshot.id,
+          captainUid: data.captainUid,
+          leaderUids: data.leaderUids,
+          leaderUid: data.leaderUid,
+          coachUids: data.coachUids,
+        };
+      });
     } catch (err) {
       warnOnce(label, err);
+      return [];
     }
   };
 
-  const runAdminUserQuery = async (): Promise<void> => {
+  const loadAdminUser = async (): Promise<VisibilityUserDoc | null> => {
     try {
-      const snap = await getDocs(query(collection(db, 'adminUsers'), where('uid', '==', uid)));
-      for (const d of snap.docs) {
-        addAdminUserDoc(d.data() as Record<string, unknown> | undefined);
+      const snap = await getDocs(
+        query(collection(db, 'adminUsers'), where('uid', '==', uid)),
+      );
+      // A 使用 find，只取第一個相符文件；不得聯集所有重複 UID 文件。
+      for (const snapshot of snap.docs) {
+        const data = snapshot.data() as Record<string, unknown>;
+        if (data.uid !== uid) continue;
+        return {
+          uid: data.uid,
+          teamIds: data.teamIds,
+          teamId: data.teamId,
+        };
       }
+      return null;
     } catch (err) {
       warnOnce('adminUsers', err);
+      return null;
     }
   };
 
-  await Promise.all([
-    runTeamQuery('teams.captainUid', query(collection(db, 'teams'), where('captainUid', '==', uid))),
-    runTeamQuery('teams.leaderUid', query(collection(db, 'teams'), where('leaderUid', '==', uid))),
+  const [captains, legacyLeaders, leaders, coaches, adminUser] = await Promise.all([
+    runTeamQuery(
+      'teams.captainUid',
+      query(collection(db, 'teams'), where('captainUid', '==', uid)),
+    ),
+    runTeamQuery(
+      'teams.leaderUid',
+      query(collection(db, 'teams'), where('leaderUid', '==', uid)),
+    ),
     runTeamQuery(
       'teams.leaderUids',
       query(collection(db, 'teams'), where('leaderUids', 'array-contains', uid)),
@@ -246,42 +231,24 @@ async function loadTeamIdsForUser(
       'teams.coachUids',
       query(collection(db, 'teams'), where('coachUids', 'array-contains', uid)),
     ),
-    runAdminUserQuery(),
+    loadAdminUser(),
   ]);
 
+  const ids = computeVisibleTeamIds(
+    uid,
+    userDoc,
+    [...captains, ...legacyLeaders, ...leaders, ...coaches],
+  );
+
+  // R-ID-002：僅補入 UID 精確匹配的 adminUsers 文件，不比對名稱。
+  for (const id of computeVisibleTeamIds(uid, adminUser, [])) ids.add(id);
   return ids;
 }
 
-/* ── 自訂角色：A _getCustomRoles() 的 cache.customRoles 來源 ── */
-
-async function loadCustomRoles(db: Firestore): Promise<CustomRole[]> {
-  try {
-    const snap = await getDocs(collection(db, 'customRoles'));
-    const roles: CustomRole[] = [];
-    for (const d of snap.docs) {
-      const data = d.data() as Record<string, unknown>;
-      const key = data.key;
-      if (typeof key !== 'string' || !key) continue;
-      roles.push({
-        key,
-        afterRole: typeof data.afterRole === 'string' ? data.afterRole : undefined,
-        label: typeof data.label === 'string' ? data.label : undefined,
-        color: typeof data.color === 'string' ? data.color : undefined,
-      });
-    }
-    return roles;
-  } catch (err) {
-    warnOnce('customRoles', err);
-    return [];
-  }
-}
-
-/* ── 主入口 ── */
-
 /**
- * 依 uid 載入 Viewer。uid 為空字串視同訪客。
- * rolePermissions 路徑：role === 'user' 時不讀取（A getRolePermissions('user') 固定回 []）。
- * roleActivityCapabilities 路徑：A35 的 docId 是 roleKey，使用者 capability 固定讀 roleActivityCapabilities/user。
+ * uid 為空時視為訪客。
+ * 既有 permission / capability 載入維持原行為。
+ * 可見性不使用 customRoles，因此不再為 roleLevel 讀取 customRoles。
  */
 export async function loadViewer(uid: string): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
@@ -289,20 +256,22 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
   const firebase = await getFirebase();
   const db = firebase.db as unknown as Firestore;
 
-  // 1. users/{uid}（找不到或失敗都以預設處理；不擋瀏覽）
-  let userInfo = defaultUserInfo();
+  let userData: Record<string, unknown> | null = null;
   try {
     const userSnap = await getDoc(doc(db, 'users', uid));
     if (userSnap.exists()) {
-      userInfo = parseUserInfo(userSnap.data() as Record<string, unknown> | undefined);
+      userData = (userSnap.data() as Record<string, unknown> | undefined) ?? null;
     }
   } catch (err) {
     warnOnce('users', err);
   }
 
+  const userInfo = parseUserInfo(userData);
+  const visibilityUser: VisibilityUserDoc | null = userData
+    ? { uid, teamIds: userData.teamIds, teamId: userData.teamId }
+    : null;
   const role = userInfo.role;
 
-  // 2~5. rolePermissions / userPermissionGrants / roleActivityCapabilities / customRoles / teams
   const roleDocPromise: Promise<DocResult> = role === 'user'
     ? Promise.resolve({ ok: true, data: null })
     : safeGetDoc(getDoc(doc(db, 'rolePermissions', role)));
@@ -311,12 +280,11 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     ? safeGetDoc(getDoc(doc(db, 'roleActivityCapabilities', 'user')))
     : Promise.resolve({ ok: true, data: null });
 
-  const [roleRes, grantRes, capRes, customRoles, teamIds] = await Promise.all([
+  const [roleRes, grantRes, capRes, teamIds] = await Promise.all([
     roleDocPromise,
     safeGetDoc(getDoc(doc(db, 'userPermissionGrants', uid))),
     capDocPromise,
-    loadCustomRoles(db),
-    loadTeamIdsForUser(db, uid, userInfo.teamIds),
+    loadTeamIdsForUser(db, uid, visibilityUser),
   ]);
 
   if (!roleRes.ok) warnOnce('rolePermissions', roleRes.error);
@@ -332,13 +300,12 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     rolePermissions: { [role]: rolePermList },
     userGrants: grants,
   });
-  const roleLevel = getRoleLevel(role, customRoles);
 
   return {
     uid,
     teamIds,
     hasPermission,
-    roleLevel,
+    roleLevel: getPrivateListRoleLevel(role),
     role,
     displayName: userInfo.displayName,
     pictureUrl: userInfo.pictureUrl,
@@ -346,13 +313,9 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
   };
 }
 
-/* ── 可測試的請求序號防護 ── */
-
 /**
- * 建立依序號守衛的載入器。回傳的函式可重複呼叫，只有最新一次呼叫的結果會被 `onChange`。
- *
- * UID 改變：立即送出 createMinimalViewer(nextUid)，再載入完整資料；新 UID 失敗時維持最小權限暫態。
- * 同一 UID 重新整理：不先清空，失敗時保留上一份完整資料。
+ * 只有最新請求可以提交。
+ * UID 改變立即送出最小權限；同 UID 載入失敗保留上一份快照。
  */
 export function createViewerLoader(
   load: (uid: string) => Promise<ViewerView>,
@@ -376,25 +339,18 @@ export function createViewerLoader(
 
     load(uid)
       .then((next) => {
-        if (current !== seq) return; // stale：舊結果直接丟棄
+        if (current !== seq) return;
         onChange(next);
       })
       .catch((err: unknown) => {
         if (current !== seq) return;
-        // 新 UID：最小權限暫態已送出，維持不動。
-        // 同一 UID：保留上一份完整資料。
         // eslint-disable-next-line no-console
         console.warn('[viewer] load failed', err);
       });
   };
 }
 
-/* ── Preact hook ── */
-
-/**
- * 訂閱 `auth:changed` 並依序號防護載入 Viewer。
- * 初始化補讀 getCurrentUser 與 auth:changed 共用 authVersion；較舊的補讀回應不得覆蓋較新事件。
- */
+/** 先訂閱再補讀；舊補讀結果不得覆蓋新登入事件。 */
 export function useViewer(): ViewerView {
   const [viewer, setViewer] = useState<ViewerView>(() => createGuestViewer());
 
@@ -402,13 +358,11 @@ export function useViewer(): ViewerView {
     const loader = createViewerLoader(loadViewer, setViewer);
     let authVersion = 0;
 
-    // L-04：先訂閱，避免 render→effect 之間的 auth 變更漏接。
     const off = on('auth:changed', ({ uid }) => {
       authVersion += 1;
       loader(uid);
     });
 
-    // L-04：訂閱後補讀一次目前值；若補讀期間已有較新 auth 事件，忽略本次回應。
     const initialVersion = authVersion;
     getCurrentUser()
       .then((current) => {

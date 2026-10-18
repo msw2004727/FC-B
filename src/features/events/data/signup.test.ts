@@ -1,14 +1,10 @@
 /**
- * golden payload 與行為測試。
- *
- * - payload 期望值依 A07/A08/A09/A10 的組法**手算**，並在註解標明對應行號／變數。
- * - Callable 一律走 `@/data/callables` 的 mock 模式與 recorder。
- * - 直寫 fallback 不存在：透過 mock `firebase/firestore` 斷言「成功／失敗」皆未觸發任何寫入。
+ * A07～A10 / Functions 契約回歸測試。
+ * 本次環境無法啟動命令工具，以下測試尚未執行。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock firebase/firestore（若 signup.ts 誤引入直寫，測試會抓到）。
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   setDoc: vi.fn(),
@@ -31,22 +27,22 @@ vi.mock('@/data/firebase', () => ({
   getFirebase: vi.fn(async () => ({ db: {}, auth: null, functions: null })),
 }));
 
-// visibility 由外部控制，專測 precheck 的各分支；可見性本身的細節不在本層職責。
 vi.mock('./visibility', () => ({
   isEventVisibleToUser: vi.fn(),
 }));
 
 import * as firestore from 'firebase/firestore';
-
 import {
   CallableError,
   clearMocks,
   registerMock,
   startRecording,
   stopRecording,
-  type RecordedCall,
 } from '@/data/callables';
-import type { RegisterForEventResponse } from '@/data/contract/callables';
+import type {
+  CancelRegistrationResponse,
+  RegisterForEventResponse,
+} from '@/data/contract/callables';
 import { on } from '@/core/events';
 
 import {
@@ -56,169 +52,18 @@ import {
   precheckSignup,
   registerForEvent,
   SignupError,
-  type BuildCancelPayloadInput,
-  type BuildRegisterPayloadInput,
-  type CancelRegistrationInput,
-  type RegisterForEventInput,
+  type CancelOperationContext,
+  type OperationAuth,
+  type SignupOperationContext,
+  type SignupParticipant,
+  type SignupSnapshot,
 } from './signup';
 import type { EventDoc, RegistrationDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
 
 const mockedVisible = vi.mocked(isEventVisibleToUser);
-
 const FIXED_MS = 1_700_000_000_000;
-
-beforeEach(() => {
-  vi.stubEnv('VITE_CALLABLE_MODE', 'mock');
-  clearMocks();
-  startRecording();
-  mockedVisible.mockReset();
-  mockedVisible.mockReturnValue(true);
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  stopRecording();
-  clearMocks();
-});
-
-// ── golden payload（純函式） ──────────────────────────
-
-describe('buildRegisterPayload（golden，對照 A 前端 cfPayload）', () => {
-  it('本人報名：A07 line ~1966 signupRequestId / line ~1968 cfPayload', () => {
-    const input: BuildRegisterPayloadInput = {
-      eventId: 'evt1',
-      user: { uid: 'u1', displayName: 'Alice' },
-      now: FIXED_MS,
-      randomSuffix: 'abc',
-    };
-    const payload = buildRegisterPayload(input);
-
-    // A07:
-    //   signupRequestId = `${userId}_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
-    //   cfPayload = { eventId: id, participants: [{ userId, userName }], requestId: signupRequestId }
-    //   userName = user.displayName || user.name || '用戶'
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      participants: [{ userId: 'u1', userName: 'Alice' }],
-      requestId: `u1_evt1_${FIXED_MS}_abc`,
-    });
-  });
-
-  it('本人 + 2 位同行者：A09 line ~365 requestId / cfParticipants（companion userId 同主報名人）', () => {
-    const input: BuildRegisterPayloadInput = {
-      eventId: 'evt1',
-      user: { uid: 'u1', displayName: 'Alice' },
-      companions: [
-        { companionId: 'c1', companionName: 'Bob' },
-        { companionId: 'c2', companionName: 'Carol' },
-      ],
-      now: FIXED_MS,
-      randomSuffix: 'xyz',
-    };
-    const payload = buildRegisterPayload(input);
-
-    // A09:
-    //   companionSignupRequestId = `${userId}_${eventId}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
-    //   cfParticipants = participantList.map(p => { if self → { userId, userName }; else →
-    //     { userId, userName, companionId, companionName } })  // userId 皆為主報名人 uid
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      participants: [
-        { userId: 'u1', userName: 'Alice' },
-        { userId: 'u1', userName: 'Alice', companionId: 'c1', companionName: 'Bob' },
-        { userId: 'u1', userName: 'Alice', companionId: 'c2', companionName: 'Carol' },
-      ],
-      requestId: `u1_evt1_${FIXED_MS}_xyz`,
-    });
-  });
-
-  it('候補：payload 與本人報名相同（候補為 server 判定，A 沒有候補專屬欄位）', () => {
-    const payload = buildRegisterPayload({
-      eventId: 'evt1',
-      user: { uid: 'u1', name: 'Alice' },
-      now: FIXED_MS,
-      randomSuffix: 'abc',
-    });
-    // A07：確認前端 cfPayload 只有 eventId/participants/requestId（+earlyBird/teamKey/preferred…），
-    // 沒有 `waitlisted` 等欄位——正取／候補由 CF 依餘額判定。
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      participants: [{ userId: 'u1', userName: 'Alice' }],
-      requestId: `u1_evt1_${FIXED_MS}_abc`,
-    });
-  });
-
-  it('早鳥（earlyBirdAccepted）與 teamReservation：payload 多帶對應欄位', () => {
-    const payload = buildRegisterPayload({
-      eventId: 'evt1',
-      user: { uid: 'u1', displayName: 'Alice' },
-      earlyBirdAccepted: true,
-      earlyBirdExpectedCost: 120,
-      preferredTeamReservationTeamId: 'teamRsv1',
-      now: FIXED_MS,
-      randomSuffix: 'abc',
-    });
-    // A07：
-    //   if (isEarlyBirdSignup) { cfPayload.earlyBirdAccepted = true; cfPayload.earlyBirdExpectedCost = earlyBirdCost; }
-    //   if (selectedTeamReservationTeamId) cfPayload.preferredTeamReservationTeamId = selectedTeamReservationTeamId;
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      participants: [{ userId: 'u1', userName: 'Alice' }],
-      requestId: `u1_evt1_${FIXED_MS}_abc`,
-      earlyBirdAccepted: true,
-      earlyBirdExpectedCost: 120,
-      preferredTeamReservationTeamId: 'teamRsv1',
-    });
-  });
-});
-
-describe('buildCancelPayload（golden，對照 A 前端 cfPayload）', () => {
-  it('取消本人：A08 line ~2618 cancelRequestId', () => {
-    const input: BuildCancelPayloadInput = {
-      eventId: 'evt1',
-      userId: 'u1',
-      registrationIds: ['reg1'],
-      kind: 'self',
-      now: FIXED_MS,
-      randomSuffix: 'ab',
-    };
-    const payload = buildCancelPayload(input);
-
-    // A08:
-    //   cancelRequestId = `cancel_${userId}_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
-    //   cfPayload = { eventId: id, registrationIds, reason: 'user_cancel', requestId: cancelRequestId }
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      registrationIds: ['reg1'],
-      reason: 'user_cancel',
-      requestId: `cancel_u1_evt1_${FIXED_MS}_ab`,
-    });
-  });
-
-  it('取消同行者：A10 line ~621 cancel_companion requestId（無 random 尾碼）', () => {
-    const input: BuildCancelPayloadInput = {
-      eventId: 'evt1',
-      userId: 'u1',
-      registrationIds: ['reg2', 'reg3'],
-      kind: 'companion',
-      now: FIXED_MS,
-    };
-    const payload = buildCancelPayload(input);
-
-    // A10：
-    //   companionCancelRequestId = `cancel_companion_${userId}_${eventId}_${Date.now()}`
-    //   cfPayload = { eventId, registrationIds: checked, reason: 'user_cancel', requestId }
-    expect(payload).toEqual({
-      eventId: 'evt1',
-      registrationIds: ['reg2', 'reg3'],
-      reason: 'user_cancel',
-      requestId: `cancel_companion_u1_evt1_${FIXED_MS}`,
-    });
-  });
-});
-
-// ── precheckSignup 每個拒絕分支 ────────────────────────
+const START_MS = new Date(2030, 4, 9, 15, 0).getTime();
 
 function makeViewer(overrides: Partial<ViewerContext> = {}): ViewerContext {
   return {
@@ -230,294 +75,929 @@ function makeViewer(overrides: Partial<ViewerContext> = {}): ViewerContext {
   };
 }
 
-const activeSelfReg: RegistrationDoc = {
+function makeSnapshot(eventId: string, uid = 'u1'): SignupSnapshot {
+  return {
+    event: { id: eventId, status: 'open' },
+    viewer: makeViewer({ uid }),
+    registrations: [],
+    profileComplete: true,
+    participantCheck: { ok: true },
+    earlyBirdWindow: false,
+    teamSignupAllowed: true,
+    requiresTeamSelection: false,
+  };
+}
+
+function signupContext(
+  overrides: Partial<SignupSnapshot> = {},
+  initialUid = 'u1',
+) {
+  let auth: OperationAuth = { uid: initialUid, generation: 1 };
+  const load = vi.fn(async (eventId: string, _participants: readonly SignupParticipant[]) => ({
+    ...makeSnapshot(eventId, auth.uid ?? ''),
+    ...overrides,
+  }));
+  const context: SignupOperationContext = {
+    getAuth: () => ({ ...auth }),
+    load,
+  };
+  return {
+    context,
+    load,
+    setAuth(uid: string | null) {
+      auth = { uid, generation: auth.generation + 1 };
+    },
+  };
+}
+
+function cancelContext(event: Partial<EventDoc> = {}, initialUid = 'u1') {
+  let auth: OperationAuth = { uid: initialUid, generation: 1 };
+  const load = vi.fn(async (eventId: string) => ({
+    event: { id: eventId, status: 'open', ...event },
+  }));
+  const context: CancelOperationContext = {
+    getAuth: () => ({ ...auth }),
+    load,
+  };
+  return {
+    context,
+    load,
+    setAuth(uid: string | null) {
+      auth = { uid, generation: auth.generation + 1 };
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function recorded(name: string) {
+  return stopRecording().filter((call) => call.name === name);
+}
+
+beforeEach(() => {
+  vi.stubEnv('VITE_CALLABLE_MODE', 'mock');
+  vi.clearAllMocks();
+  clearMocks();
+  startRecording();
+  mockedVisible.mockReset();
+  mockedVisible.mockReturnValue(true);
+});
+
+afterEach(() => {
+  expect(firestore.setDoc).not.toHaveBeenCalled();
+  expect(firestore.updateDoc).not.toHaveBeenCalled();
+  expect(firestore.addDoc).not.toHaveBeenCalled();
+  expect(firestore.deleteDoc).not.toHaveBeenCalled();
+  expect(firestore.writeBatch).not.toHaveBeenCalled();
+  expect(firestore.runTransaction).not.toHaveBeenCalled();
+  vi.unstubAllEnvs();
+  stopRecording();
+  clearMocks();
+});
+
+describe('buildRegisterPayload：A07/A09 golden payload', () => {
+  it('A07 本人，public eventId 原樣傳入', () => {
+    expect(buildRegisterPayload({
+      eventId: 'public-event',
+      user: { uid: 'u1', displayName: 'Alice' },
+      now: FIXED_MS,
+      randomSuffix: 'abc',
+    })).toEqual({
+      eventId: 'public-event',
+      participants: [{ userId: 'u1', userName: 'Alice' }],
+      requestId: `u1_public-event_${FIXED_MS}_abc`,
+    });
+  });
+
+  it('舊 companions 介面維持本人加同行者', () => {
+    expect(buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      companions: [
+        { companionId: 'c1', companionName: 'Bob' },
+        { companionId: 'c2', companionName: 'Carol' },
+      ],
+      now: FIXED_MS,
+      randomSuffix: 'xyz',
+    })).toEqual({
+      eventId: 'evt1',
+      participants: [
+        { userId: 'u1', userName: 'Alice' },
+        { userId: 'u1', userName: 'Alice', companionId: 'c1', companionName: 'Bob' },
+        { userId: 'u1', userName: 'Alice', companionId: 'c2', companionName: 'Carol' },
+      ],
+      requestId: `u1_evt1_${FIXED_MS}_xyz`,
+    });
+  });
+
+  it('A09 只替同行者報名，不補本人並保留選取順序', () => {
+    expect(buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      participants: [
+        { type: 'companion', companionId: 'c2', companionName: 'Carol' },
+        { type: 'companion', companionId: 'c1', companionName: 'Bob' },
+      ],
+      now: FIXED_MS,
+      randomSuffix: 'abc',
+    })).toEqual({
+      eventId: 'evt1',
+      participants: [
+        { userId: 'u1', userName: 'Alice', companionId: 'c2', companionName: 'Carol' },
+        { userId: 'u1', userName: 'Alice', companionId: 'c1', companionName: 'Bob' },
+      ],
+      requestId: `u1_evt1_${FIXED_MS}_abc`,
+    });
+  });
+
+  it('A09 明確選本人及同行者', () => {
+    expect(buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1', name: 'Alice' },
+      participants: [
+        { type: 'self' },
+        { type: 'companion', companionId: 'c1', companionName: 'Bob' },
+      ],
+      now: FIXED_MS,
+      randomSuffix: 'abc',
+    })).toEqual({
+      eventId: 'evt1',
+      participants: [
+        { userId: 'u1', userName: 'Alice' },
+        { userId: 'u1', userName: 'Alice', companionId: 'c1', companionName: 'Bob' },
+      ],
+      requestId: `u1_evt1_${FIXED_MS}_abc`,
+    });
+  });
+
+  it.each([
+    [{ uid: 'u1', displayName: '   ', name: 'Alice' }, '   '],
+    [{ uid: 'u1', displayName: '', name: ' Alice ' }, ' Alice '],
+    [{ uid: 'u1', displayName: null, name: '' }, '用戶'],
+  ])('名稱使用 A 的 || 語意：%j', (user, expected) => {
+    expect(buildRegisterPayload({ eventId: 'evt1', user }).participants[0]?.userName).toBe(expected);
+  });
+
+  it('早鳥、teamKey 與 trim 後的席位 ID', () => {
+    expect(buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      earlyBirdAccepted: true,
+      earlyBirdExpectedCost: 120,
+      teamKey: 'red',
+      preferredTeamReservationTeamId: ' teamA ',
+      now: FIXED_MS,
+      randomSuffix: 'abc',
+    })).toEqual({
+      eventId: 'evt1',
+      participants: [{ userId: 'u1', userName: 'Alice' }],
+      requestId: `u1_evt1_${FIXED_MS}_abc`,
+      earlyBirdAccepted: true,
+      earlyBirdExpectedCost: 120,
+      teamKey: 'red',
+      preferredTeamReservationTeamId: 'teamA',
+    });
+  });
+
+  it('空白席位 ID 不送出；未確認早鳥不帶早鳥欄位', () => {
+    const payload = buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      earlyBirdAccepted: false,
+      earlyBirdExpectedCost: 120,
+      preferredTeamReservationTeamId: '   ',
+    });
+    expect(payload).not.toHaveProperty('preferredTeamReservationTeamId');
+    expect(payload).not.toHaveProperty('earlyBirdAccepted');
+    expect(payload).not.toHaveProperty('earlyBirdExpectedCost');
+  });
+
+  it('10 位同行者合法，11 人或零人拒絕', () => {
+    const participants: SignupParticipant[] = Array.from({ length: 10 }, (_, index) => ({
+      type: 'companion',
+      companionId: `c${index}`,
+      companionName: `同行者 ${index}`,
+    }));
+    const base = { eventId: 'evt1', user: { uid: 'u1' } };
+    expect(buildRegisterPayload({ ...base, participants }).participants).toHaveLength(10);
+    expect(() => buildRegisterPayload({ ...base, participants: [] })).toThrow(SignupError);
+    expect(() => buildRegisterPayload({
+      ...base,
+      participants: [{ type: 'self' }, ...participants],
+    })).toThrow(SignupError);
+  });
+
+  it('拒絕後端會誤判為同行者的非首位本人', () => {
+    expect(() => buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      participants: [
+        { type: 'companion', companionId: 'c1', companionName: 'Bob' },
+        { type: 'self' },
+      ],
+    })).toThrow('Functions 僅將第一筆');
+  });
+
+  it('拒絕混用新舊選人欄位及空 eventId／UID', () => {
+    expect(() => buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      participants: [{ type: 'self' }],
+      companions: [],
+    })).toThrow(SignupError);
+    expect(() => buildRegisterPayload({
+      eventId: ' ',
+      user: { uid: 'u1' },
+    })).toThrow(SignupError);
+    expect(() => buildRegisterPayload({
+      eventId: 'evt1',
+      user: { uid: '' },
+    })).toThrow(SignupError);
+  });
+});
+
+describe('buildCancelPayload：A08/A10 golden payload', () => {
+  it('A08 本人取消', () => {
+    expect(buildCancelPayload({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['reg1'],
+      kind: 'self',
+      now: FIXED_MS,
+      randomSuffix: 'ab',
+    })).toEqual({
+      eventId: 'evt1',
+      registrationIds: ['reg1'],
+      reason: 'user_cancel',
+      requestId: `cancel_u1_evt1_${FIXED_MS}_ab`,
+    });
+  });
+
+  it('A10 同行者取消，沒有 random 尾碼', () => {
+    expect(buildCancelPayload({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['reg2', 'reg3'],
+      kind: 'companion',
+      now: FIXED_MS,
+    })).toEqual({
+      eventId: 'evt1',
+      registrationIds: ['reg2', 'reg3'],
+      reason: 'user_cancel',
+      requestId: `cancel_companion_u1_evt1_${FIXED_MS}`,
+    });
+  });
+
+  it('A08 選取結果去空值、最多 20 筆，不修改輸入', () => {
+    const ids = ['', ...Array.from({ length: 21 }, (_, index) => `r${index}`)];
+    const payload = buildCancelPayload({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ids,
+      kind: 'self',
+    });
+    expect(payload.registrationIds).toEqual(Array.from({ length: 20 }, (_, index) => `r${index}`));
+    expect(ids).toHaveLength(22);
+  });
+
+  it('A10 超過 20 筆拒絕，不默默截斷；空選取亦拒絕', () => {
+    const base = { eventId: 'evt1', userId: 'u1', kind: 'companion' as const };
+    expect(() => buildCancelPayload({
+      ...base,
+      registrationIds: Array.from({ length: 21 }, (_, index) => `r${index}`),
+    })).toThrow(SignupError);
+    expect(() => buildCancelPayload({ ...base, registrationIds: [] })).toThrow(SignupError);
+  });
+});
+
+const activeSelf: RegistrationDoc = {
+  eventId: 'evt1',
   userId: 'u1',
   status: 'confirmed',
   participantType: 'self',
 };
 
 describe('precheckSignup', () => {
-  it('可見性失敗（黑名單／私密）→ event.signup.unavailable（A07 line ~1802）', () => {
-    mockedVisible.mockReturnValueOnce(false);
-    const r = precheckSignup({ id: 'evt1', status: 'open' }, makeViewer(), [], new Date());
-    expect(r).toEqual({
-      ok: false,
-      reason: 'event_unavailable',
-      messageKey: 'event.signup.unavailable',
-    });
+  it('未登入拒絕', () => {
+    expect(precheckSignup(
+      { id: 'evt1', status: 'open' },
+      makeViewer({ uid: null }),
+      [],
+      new Date(FIXED_MS),
+    )).toMatchObject({ ok: false, reason: 'login_required' });
   });
 
-  it('status=ended → event.signup.ended（A07 line ~1810）', () => {
-    const r = precheckSignup({ id: 'evt1', status: 'ended' }, makeViewer(), [], new Date());
-    expect(r).toEqual({
-      ok: false,
-      reason: 'event_ended',
-      messageKey: 'event.signup.ended',
-    });
+  it('可見性只收到目標活動歷史及 operator', () => {
+    mockedVisible.mockReturnValue(false);
+    const viewer = makeViewer();
+    const other = { ...activeSelf, eventId: 'other' };
+    const result = precheckSignup(
+      { id: 'evt1', status: 'open' },
+      viewer,
+      [activeSelf, other],
+      new Date(FIXED_MS),
+    );
+    expect(result).toMatchObject({ ok: false, messageKey: 'event.signup.unavailable' });
+    expect(mockedVisible).toHaveBeenCalledWith(
+      { id: 'evt1', status: 'open' },
+      viewer,
+      [activeSelf],
+    );
   });
 
-  it('status=cancelled → event.signup.ended（A07 line ~1810）', () => {
-    const r = precheckSignup({ id: 'evt1', status: 'cancelled' }, makeViewer(), [], new Date());
-    expect(r).toEqual({
-      ok: false,
-      reason: 'event_ended',
-      messageKey: 'event.signup.ended',
-    });
+  it.each(['ended', 'cancelled'])('%s 狀態拒絕', (status) => {
+    expect(precheckSignup(
+      { id: 'evt1', status },
+      makeViewer(),
+      [],
+      new Date(FIXED_MS),
+    )).toMatchObject({ ok: false, reason: 'event_ended' });
   });
 
-  it('status=upcoming → event.signup.notOpen（A07 line ~1820）', () => {
-    const r = precheckSignup({ id: 'evt1', status: 'upcoming' }, makeViewer(), [], new Date());
-    expect(r).toEqual({
+  it('一般 upcoming 拒絕，合法且確認的 A07 早鳥通過', () => {
+    const event = { id: 'evt1', status: 'upcoming' };
+    expect(precheckSignup(event, makeViewer(), [], new Date(FIXED_MS))).toMatchObject({
       ok: false,
       reason: 'event_not_open',
-      messageKey: 'event.signup.notOpen',
     });
+    expect(precheckSignup(event, makeViewer(), [], new Date(FIXED_MS), {
+      earlyBirdWindow: true,
+      earlyBirdAccepted: true,
+    })).toEqual({ ok: true });
+    expect(precheckSignup(event, makeViewer(), [], new Date(FIXED_MS), {
+      earlyBirdWindow: true,
+    })).toMatchObject({ ok: false, reason: 'early_bird_confirm_required' });
   });
 
-  it('teamOnly 且無隊伍交集 → event.signup.teamOnlyRestricted（A07 line ~1823）', () => {
-    const event: EventDoc = {
-      id: 'evt1',
-      status: 'open',
-      teamOnly: true,
-      creatorTeamId: 'teamA',
-    };
-    const r = precheckSignup(event, makeViewer(), [], new Date());
-    expect(r).toEqual({
-      ok: false,
-      reason: 'event_team_only_restricted',
-      messageKey: 'event.signup.teamOnlyRestricted',
-    });
-  });
-
-  it('teamOnly 且 viewer.teamIds 有交集 → ok', () => {
-    const event: EventDoc = {
-      id: 'evt1',
-      status: 'open',
-      teamOnly: true,
-      creatorTeamId: 'teamA',
-    };
-    const viewer = makeViewer({ teamIds: new Set(['teamA']) });
-    expect(precheckSignup(event, viewer, [], new Date())).toEqual({ ok: true });
-  });
-
-  it('已有 active self registration → event.signup.alreadyRegistered（A07 line ~1878）', () => {
-    const r = precheckSignup(
-      { id: 'evt1', status: 'open' },
+  it('A09 選人流程不因早鳥旗標而放行 upcoming', () => {
+    expect(precheckSignup(
+      { id: 'evt1', status: 'upcoming' },
       makeViewer(),
-      [activeSelfReg],
-      new Date(),
-    );
-    expect(r).toEqual({
+      [],
+      new Date(FIXED_MS),
+      {
+        participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+        earlyBirdWindow: true,
+        earlyBirdAccepted: true,
+      },
+    )).toMatchObject({ ok: false, reason: 'event_not_open' });
+  });
+
+  it('不同活動歷史不阻擋，當場 active self 才阻擋', () => {
+    const event = { id: 'evt1', status: 'open' };
+    expect(precheckSignup(
+      event,
+      makeViewer(),
+      [{ ...activeSelf, eventId: 'other' }],
+      new Date(FIXED_MS),
+    )).toEqual({ ok: true });
+    expect(precheckSignup(event, makeViewer(), [activeSelf], new Date(FIXED_MS))).toMatchObject({
       ok: false,
       reason: 'already_registered',
-      messageKey: 'event.signup.alreadyRegistered',
     });
   });
 
-  it('已取消的 self registration 不擋 → ok', () => {
-    const cancelled: RegistrationDoc = {
-      userId: 'u1',
-      status: 'cancelled',
-      participantType: 'self',
-    };
-    expect(
-      precheckSignup({ id: 'evt1', status: 'open' }, makeViewer(), [cancelled], new Date()),
-    ).toEqual({ ok: true });
+  it('本人已報名仍可單獨加同行者', () => {
+    expect(precheckSignup(
+      { id: 'evt1', status: 'open' },
+      makeViewer(),
+      [activeSelf],
+      new Date(FIXED_MS),
+      { participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }] },
+    )).toEqual({ ok: true });
+  });
+
+  it.each(['cancelled', 'removed'])('%s 本人紀錄不阻擋', (status) => {
+    expect(precheckSignup(
+      { id: 'evt1', status: 'open' },
+      makeViewer(),
+      [{ ...activeSelf, status }],
+      new Date(FIXED_MS),
+    )).toEqual({ ok: true });
+  });
+
+  it('有 companionId 的 legacy 紀錄不當成本人', () => {
+    const legacy = { ...activeSelf, participantType: undefined, companionId: 'c1' };
+    expect(precheckSignup(
+      { id: 'evt1', status: 'open' },
+      makeViewer(),
+      [legacy],
+      new Date(FIXED_MS),
+    )).toEqual({ ok: true });
+  });
+
+  it('teamOnly 不以 owner/admin 可見性權限推論報名資格', () => {
+    const event = { id: 'evt1', status: 'open', teamOnly: true, ownerUid: 'u1' };
+    const viewer = makeViewer({ roleLevel: 4, hasPermission: () => true });
+    expect(precheckSignup(event, viewer, [], new Date(FIXED_MS))).toMatchObject({
+      ok: false,
+      reason: 'event_team_only_restricted',
+    });
+    expect(precheckSignup(event, viewer, [], new Date(FIXED_MS), {
+      teamSignupAllowed: true,
+    })).toEqual({ ok: true });
+  });
+
+  it.each([
+    [START_MS - 1, true],
+    [START_MS, false],
+    [START_MS + 1, false],
+  ])('報名開始時間邊界 %s', (now, allowed) => {
+    expect(precheckSignup(
+      { id: 'evt1', status: 'open', date: '2030/05/09 15:00~17:00' },
+      makeViewer(),
+      [],
+      new Date(now),
+    ).ok).toBe(allowed);
+  });
+
+  it('不使用首頁 parser 的連字號日期或 startAt fallback', () => {
+    expect(precheckSignup(
+      {
+        id: 'evt1',
+        status: 'open',
+        date: '2000-01-01 00:00',
+        startAt: 1,
+      },
+      makeViewer(),
+      [],
+      new Date(FIXED_MS),
+    )).toEqual({ ok: true });
   });
 });
 
-// ── registerForEvent / cancelRegistration 行為 ───────
+describe('registerForEvent：正式入口守衛', () => {
+  it('缺 context 拒絕，不走未檢查 Callable', async () => {
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+    })).rejects.toMatchObject({ originalCode: 'CONTEXT_REQUIRED' });
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
 
-function findCalls(calls: RecordedCall[], name: string): RecordedCall[] {
-  return calls.filter((c) => c.name === name);
-}
-
-describe('registerForEvent', () => {
-  it('只呼叫 Callable：成功 emit registration:created，無任何 Firestore 寫入', async () => {
-    registerMock('registerForEvent', async () => ({
-      success: true,
-      registrations: [],
-      confirmed: 1,
-      waitlisted: 0,
-    }));
-
+  it('成功只送 Callable，並發布成功事件', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext();
     const listener = vi.fn();
     const off = on('registration:created', listener);
     try {
-      const input: RegisterForEventInput = {
-        eventId: 'evtA',
+      await registerForEvent({
+        eventId: 'evt1',
         user: { uid: 'u1', displayName: 'Alice' },
-        now: FIXED_MS,
-        randomSuffix: 'abc',
-      };
-      const res = await registerForEvent(input);
-      expect(res.success).toBe(true);
-
-      const calls = stopRecording();
-      const registerCalls = findCalls(calls, 'registerForEvent');
-      expect(registerCalls).toHaveLength(1);
-      expect(registerCalls[0]?.request).toEqual({
-        eventId: 'evtA',
-        participants: [{ userId: 'u1', userName: 'Alice' }],
-        requestId: `u1_evtA_${FIXED_MS}_abc`,
+        context: harness.context,
       });
-
-      expect(listener).toHaveBeenCalledWith({ eventId: 'evtA', userId: 'u1' });
-
-      // 直寫 fallback 必須不存在（L-35；p1-data-contract 總則 1）
-      expect(firestore.setDoc).not.toHaveBeenCalled();
-      expect(firestore.updateDoc).not.toHaveBeenCalled();
-      expect(firestore.addDoc).not.toHaveBeenCalled();
-      expect(firestore.deleteDoc).not.toHaveBeenCalled();
-      expect(firestore.writeBatch).not.toHaveBeenCalled();
-      expect(firestore.runTransaction).not.toHaveBeenCalled();
+      expect(harness.load).toHaveBeenCalledWith('evt1', [{ type: 'self' }]);
+      expect(recorded('registerForEvent')).toHaveLength(1);
+      expect(listener).toHaveBeenCalledWith({ eventId: 'evt1', userId: 'u1' });
     } finally {
       off();
     }
   });
 
-  it('Callable 失敗時轉成 SignupError，且不做任何 Firestore 寫入', async () => {
+  it('本人已報名後只加同行者，實際 payload 仍只有同行者', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({ registrations: [activeSelf] });
+    await registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+      context: harness.context,
+    });
+    expect(recorded('registerForEvent')[0]?.request).toMatchObject({
+      participants: [
+        { userId: 'u1', userName: 'Alice', companionId: 'c1', companionName: 'Bob' },
+      ],
+    });
+  });
+
+  it('黑名單／私密守衛拒絕時不送 Callable，文案逐字一致', async () => {
+    mockedVisible.mockReturnValue(false);
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext().context,
+    })).rejects.toMatchObject({
+      messageKey: 'event.signup.unavailable',
+      message: '此活動目前無法報名',
+    });
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
+
+  it('同行者流程只對 operator 呼叫可見性守衛', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({
+      event: { id: 'evt1', status: 'open', blockedUids: ['c1'] },
+    });
+    await registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+      context: harness.context,
+    });
+    expect(mockedVisible).toHaveBeenCalledTimes(1);
+    expect(mockedVisible.mock.calls[0]?.[1].uid).toBe('u1');
+  });
+
+  it.each([
+    ['profile', { profileComplete: false }, 'profile_incomplete'],
+    [
+      'gender',
+      {
+        participantCheck: {
+          ok: false,
+          reason: 'gender_restricted',
+          messageKey: 'event.signup.error.genderRestricted',
+        },
+      },
+      'gender_restricted',
+    ],
+    [
+      'age',
+      {
+        participantCheck: {
+          ok: false,
+          reason: 'age_restricted',
+          messageKey: 'event.signup.ageRestricted',
+        },
+      },
+      'age_restricted',
+    ],
+    ['team', { requiresTeamSelection: true }, 'team_selection_required'],
+  ] as const)('%s 守衛失敗不送 Callable', async (_name, overrides, reason) => {
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext(overrides).context,
+    })).rejects.toMatchObject({ originalCode: reason });
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
+
+  it('upcoming 合法早鳥可經正式入口送出', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({
+      event: { id: 'evt1', status: 'upcoming' },
+      earlyBirdWindow: true,
+    });
+    await registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      earlyBirdAccepted: true,
+      earlyBirdExpectedCost: 120,
+      context: harness.context,
+    });
+    expect(recorded('registerForEvent')[0]?.request).toMatchObject({
+      earlyBirdAccepted: true,
+      earlyBirdExpectedCost: 120,
+    });
+  });
+
+  it('載入期間切換身分：送出前拒絕', async () => {
+    const snapshot = deferred<SignupSnapshot>();
+    const entered = deferred<void>();
+    const harness = signupContext();
+    harness.load.mockImplementation(async () => {
+      entered.resolve();
+      return snapshot.promise;
+    });
+    const operation = registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: harness.context,
+    });
+    await entered.promise;
+    harness.setAuth('u2');
+    const assertion = expect(operation).rejects.toMatchObject({ originalCode: 'AUTH_CHANGED' });
+    snapshot.resolve(makeSnapshot('evt1'));
+    await assertion;
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
+
+  it('Callable 錯誤轉成 SignupError', async () => {
     registerMock('registerForEvent', async () => {
-      // A07：errCode 從 `err.details || err.message` 取，這裡以 details 帶 `PROFILE_INCOMPLETE`
       throw new CallableError('failed-precondition', 'PROFILE_INCOMPLETE', 'PROFILE_INCOMPLETE');
     });
-
-    await expect(
-      registerForEvent({ eventId: 'evtB', user: { uid: 'u1' } }),
-    ).rejects.toMatchObject({
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext().context,
+    })).rejects.toMatchObject({
       name: 'SignupError',
       code: 'failed-precondition',
       originalCode: 'PROFILE_INCOMPLETE',
       messageKey: 'event.signup.error.profileIncomplete',
     });
-
-    expect(firestore.setDoc).not.toHaveBeenCalled();
-    expect(firestore.updateDoc).not.toHaveBeenCalled();
-    expect(firestore.addDoc).not.toHaveBeenCalled();
-    expect(firestore.deleteDoc).not.toHaveBeenCalled();
-    expect(firestore.runTransaction).not.toHaveBeenCalled();
   });
 
-  it('錯誤物件是 SignupError instance', async () => {
-    registerMock('registerForEvent', async () => {
-      throw new CallableError('not-found', 'EVENT_NOT_FOUND', 'EVENT_NOT_FOUND');
-    });
+  it('deduplicated 回應不發布 created', async () => {
+    registerMock('registerForEvent', async () => ({ success: true, deduplicated: true }));
+    const listener = vi.fn();
+    const off = on('registration:created', listener);
     try {
-      await registerForEvent({ eventId: 'evtC', user: { uid: 'u1' } });
-      throw new Error('should have rejected');
-    } catch (err) {
-      expect(err).toBeInstanceOf(SignupError);
+      await registerForEvent({
+        eventId: 'evt1',
+        user: { uid: 'u1' },
+        context: signupContext().context,
+      });
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      off();
     }
-  });
-
-  it('防連點：同活動併發只發一次 Callable，第二次回傳同一 Promise；完成後可再發', async () => {
-    let resolveInner: ((v: RegisterForEventResponse) => void) | null = null;
-    const pending = new Promise<RegisterForEventResponse>((resolve) => {
-      resolveInner = resolve;
-    });
-    registerMock('registerForEvent', () => pending);
-
-    const p1 = registerForEvent({ eventId: 'evtD', user: { uid: 'u1' } });
-    const p2 = registerForEvent({ eventId: 'evtD', user: { uid: 'u1' } });
-    expect(p1).toBe(p2);
-
-    if (!resolveInner) throw new Error('resolveInner 未初始化');
-    (resolveInner as (v: RegisterForEventResponse) => void)({ success: true });
-    await p1;
-
-    const firstCalls = stopRecording();
-    expect(findCalls(firstCalls, 'registerForEvent')).toHaveLength(1);
-
-    // 完成後 Map 應清除（L-08），可再次發起
-    startRecording();
-    registerMock('registerForEvent', async () => ({ success: true }));
-    await registerForEvent({ eventId: 'evtD', user: { uid: 'u1' } });
-    const secondCalls = stopRecording();
-    expect(findCalls(secondCalls, 'registerForEvent')).toHaveLength(1);
-  });
-
-  it('防連點：失敗後 Map 清除，重試能再發（L-08 / L-30）', async () => {
-    let attempt = 0;
-    registerMock('registerForEvent', async () => {
-      attempt += 1;
-      if (attempt === 1) {
-        throw new CallableError('failed-precondition', 'EVENT_ENDED', 'EVENT_ENDED');
-      }
-      return { success: true };
-    });
-
-    await expect(
-      registerForEvent({ eventId: 'evtE', user: { uid: 'u1' } }),
-    ).rejects.toBeInstanceOf(SignupError);
-
-    const res = await registerForEvent({ eventId: 'evtE', user: { uid: 'u1' } });
-    expect(res.success).toBe(true);
-    const calls = stopRecording();
-    expect(findCalls(calls, 'registerForEvent')).toHaveLength(2);
   });
 });
 
-describe('cancelRegistration', () => {
-  it('只呼叫 Callable：成功 emit registration:cancelled，無任何 Firestore 寫入', async () => {
-    registerMock('cancelRegistration', async () => ({
-      success: true,
-      cancelled: ['reg1'],
-      alreadyCancelled: [],
-      promoted: [],
-    }));
+describe('防連點及認證世代', () => {
+  it('同內容共用 Promise；成功清除後重新載入最新資料', async () => {
+    const pending = deferred<RegisterForEventResponse>();
+    registerMock('registerForEvent', () => pending.promise);
+    const harness = signupContext();
+    const input = { eventId: 'evt1', user: { uid: 'u1' }, context: harness.context };
 
+    const first = registerForEvent(input);
+    const second = registerForEvent(input);
+    expect(first).toBe(second);
+    pending.resolve({ success: true });
+    await first;
+    expect(recorded('registerForEvent')).toHaveLength(1);
+
+    startRecording();
+    await registerForEvent(input);
+    expect(harness.load).toHaveBeenCalledTimes(2);
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it('失敗也清除，重試重新檢查並送出', async () => {
+    let attempts = 0;
+    registerMock('registerForEvent', async () => {
+      attempts += 1;
+      if (attempts === 1) throw new CallableError('unavailable', 'temporary', '');
+      return { success: true };
+    });
+    const harness = signupContext();
+    const input = { eventId: 'evt1', user: { uid: 'u1' }, context: harness.context };
+    await expect(registerForEvent(input)).rejects.toBeInstanceOf(SignupError);
+    await expect(registerForEvent(input)).resolves.toMatchObject({ success: true });
+    expect(harness.load).toHaveBeenCalledTimes(2);
+    expect(recorded('registerForEvent')).toHaveLength(2);
+  });
+
+  it('同活動不同同行者選取不合併', async () => {
+    const pending = deferred<RegisterForEventResponse>();
+    registerMock('registerForEvent', () => pending.promise);
+    const harness = signupContext();
+    const base = { eventId: 'evt1', user: { uid: 'u1' }, context: harness.context };
+    const first = registerForEvent({
+      ...base,
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+    });
+    const second = registerForEvent({
+      ...base,
+      participants: [{ type: 'companion', companionId: 'c2', companionName: 'Carol' }],
+    });
+    expect(first).not.toBe(second);
+    pending.resolve({ success: true });
+    await Promise.all([first, second]);
+    expect(recorded('registerForEvent')).toHaveLength(2);
+  });
+
+  it('切換帳號不共用舊 Promise，舊請求完成不發布事件', async () => {
+    const pending = deferred<RegisterForEventResponse>();
+    const entered = deferred<void>();
+    let count = 0;
+    registerMock('registerForEvent', async () => {
+      count += 1;
+      if (count === 1) {
+        entered.resolve();
+        return pending.promise;
+      }
+      return { success: true };
+    });
+    const harness = signupContext();
     const listener = vi.fn();
-    const off = on('registration:cancelled', listener);
+    const off = on('registration:created', listener);
     try {
-      const input: CancelRegistrationInput = {
-        eventId: 'evtF',
-        userId: 'u1',
-        registrationIds: ['reg1'],
-        kind: 'self',
-        now: FIXED_MS,
-        randomSuffix: 'ab',
-      };
-      const res = await cancelRegistration(input);
-      expect(res.success).toBe(true);
-
-      const calls = stopRecording();
-      const cancelCalls = findCalls(calls, 'cancelRegistration');
-      expect(cancelCalls).toHaveLength(1);
-      expect(cancelCalls[0]?.request).toEqual({
-        eventId: 'evtF',
-        registrationIds: ['reg1'],
-        reason: 'user_cancel',
-        requestId: `cancel_u1_evtF_${FIXED_MS}_ab`,
+      const first = registerForEvent({
+        eventId: 'evt1',
+        user: { uid: 'u1' },
+        context: harness.context,
       });
-
-      expect(listener).toHaveBeenCalledWith({ eventId: 'evtF', userId: 'u1' });
-
-      expect(firestore.setDoc).not.toHaveBeenCalled();
-      expect(firestore.updateDoc).not.toHaveBeenCalled();
-      expect(firestore.addDoc).not.toHaveBeenCalled();
-      expect(firestore.deleteDoc).not.toHaveBeenCalled();
-      expect(firestore.runTransaction).not.toHaveBeenCalled();
+      await entered.promise;
+      harness.setAuth('u2');
+      const second = registerForEvent({
+        eventId: 'evt1',
+        user: { uid: 'u2' },
+        context: harness.context,
+      });
+      expect(first).not.toBe(second);
+      await second;
+      const assertion = expect(first).rejects.toMatchObject({ originalCode: 'AUTH_CHANGED' });
+      pending.resolve({ success: true });
+      await assertion;
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({ eventId: 'evt1', userId: 'u2' });
+      expect(recorded('registerForEvent')).toHaveLength(2);
     } finally {
       off();
     }
   });
 
-  it('取消失敗轉 SignupError（A08 cfMsg 對應）', async () => {
-    registerMock('cancelRegistration', async () => {
-      throw new CallableError('permission-denied', 'PERMISSION_DENIED', 'PERMISSION_DENIED');
+  it('A → B → A 仍以世代拒絕舊完成事件', async () => {
+    const pending = deferred<RegisterForEventResponse>();
+    const entered = deferred<void>();
+    registerMock('registerForEvent', async () => {
+      entered.resolve();
+      return pending.promise;
     });
+    const harness = signupContext();
+    const listener = vi.fn();
+    const off = on('registration:created', listener);
+    try {
+      const first = registerForEvent({
+        eventId: 'evt1',
+        user: { uid: 'u1' },
+        context: harness.context,
+      });
+      await entered.promise;
+      harness.setAuth('u2');
+      harness.setAuth('u1');
+      const assertion = expect(first).rejects.toMatchObject({ originalCode: 'AUTH_CHANGED' });
+      pending.resolve({ success: true });
+      await assertion;
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      off();
+    }
+  });
+});
 
-    await expect(
-      cancelRegistration({
-        eventId: 'evtG',
-        userId: 'u1',
-        registrationIds: ['reg1'],
-        kind: 'self',
-      }),
-    ).rejects.toMatchObject({
+describe('cancelRegistration：時間守衛與不同操作', () => {
+  it.each([
+    [START_MS - 1, true],
+    [START_MS, false],
+    [START_MS + 1, false],
+  ])('A08 開始時間邊界 %s', async (now, allowed) => {
+    registerMock('cancelRegistration', async () => ({ success: true }));
+    const harness = cancelContext({ date: '2030/05/09 15:00~17:00' });
+    const operation = cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self',
+      now,
+      context: harness.context,
+    });
+    if (allowed) {
+      await expect(operation).resolves.toMatchObject({ success: true });
+    } else {
+      await expect(operation).rejects.toMatchObject({
+        originalCode: 'EVENT_STARTED',
+        message: '活動已於開始時間結束，無法取消報名',
+      });
+    }
+    expect(recorded('cancelRegistration')).toHaveLength(allowed ? 1 : 0);
+  });
+
+  it.each(['ended', 'cancelled'])('A08 %s 狀態即使日期在未來仍拒絕', async (status) => {
+    await expect(cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self',
+      now: FIXED_MS,
+      context: cancelContext({ status, date: '2030/05/09 15:00~17:00' }).context,
+    })).rejects.toMatchObject({
+      originalCode: 'EVENT_ENDED',
+      message: '活動已開始，無法再取消報名',
+    });
+    expect(recorded('cancelRegistration')).toHaveLength(0);
+  });
+
+  it('A10 不擅自加入 A08 時間限制', async () => {
+    registerMock('cancelRegistration', async () => ({ success: true }));
+    await expect(cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'companion',
+      context: cancelContext({ status: 'ended', date: '2000/01/01 00:00' }).context,
+    })).resolves.toMatchObject({ success: true });
+    expect(recorded('cancelRegistration')).toHaveLength(1);
+  });
+
+  it('相同取消內容共用 Promise，不同目標分別送出且 requestId 不碰撞', async () => {
+    const pending = deferred<CancelRegistrationResponse>();
+    registerMock('cancelRegistration', () => pending.promise);
+    const harness = cancelContext();
+    const base = {
+      eventId: 'evt1',
+      userId: 'u1',
+      kind: 'companion' as const,
+      now: FIXED_MS,
+      context: harness.context,
+    };
+    const first = cancelRegistration({ ...base, registrationIds: ['r1'] });
+    const duplicate = cancelRegistration({ ...base, registrationIds: ['r1'] });
+    const second = cancelRegistration({ ...base, registrationIds: ['r2'] });
+    expect(first).toBe(duplicate);
+    expect(first).not.toBe(second);
+    pending.resolve({ success: true });
+    await Promise.all([first, second]);
+
+    const calls = recorded('cancelRegistration');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.request).toMatchObject({ registrationIds: ['r1'] });
+    expect(calls[1]?.request).toMatchObject({ registrationIds: ['r2'] });
+    const firstRequest = calls[0]?.request as { requestId?: string } | undefined;
+    const secondRequest = calls[1]?.request as { requestId?: string } | undefined;
+    expect(firstRequest?.requestId).toMatch(/^cancel_companion_u1_evt1_\d+$/);
+    expect(secondRequest?.requestId).not.toBe(firstRequest?.requestId);
+  });
+
+  it('取消失敗清除進行中狀態並保留錯誤映射', async () => {
+    let attempts = 0;
+    registerMock('cancelRegistration', async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new CallableError('permission-denied', 'PERMISSION_DENIED', 'PERMISSION_DENIED');
+      }
+      return { success: true };
+    });
+    const input = {
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self' as const,
+      context: cancelContext().context,
+    };
+    await expect(cancelRegistration(input)).rejects.toMatchObject({
       name: 'SignupError',
       originalCode: 'PERMISSION_DENIED',
       messageKey: 'event.cancel.error.permissionDenied',
     });
+    await expect(cancelRegistration(input)).resolves.toMatchObject({ success: true });
+    expect(recorded('cancelRegistration')).toHaveLength(2);
+  });
+
+  it('取消完成時身分已改變，不發布 cancelled', async () => {
+    const pending = deferred<CancelRegistrationResponse>();
+    const entered = deferred<void>();
+    registerMock('cancelRegistration', async () => {
+      entered.resolve();
+      return pending.promise;
+    });
+    const harness = cancelContext();
+    const listener = vi.fn();
+    const off = on('registration:cancelled', listener);
+    try {
+      const operation = cancelRegistration({
+        eventId: 'evt1',
+        userId: 'u1',
+        registrationIds: ['r1'],
+        kind: 'self',
+        context: harness.context,
+      });
+      await entered.promise;
+      harness.setAuth('u2');
+      const assertion = expect(operation).rejects.toMatchObject({ originalCode: 'AUTH_CHANGED' });
+      pending.resolve({ success: true });
+      await assertion;
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      off();
+    }
+  });
+
+  it('成功取消發布事件，deduplicated 不重複發布', async () => {
+    let attempts = 0;
+    registerMock('cancelRegistration', async () => {
+      attempts += 1;
+      return { success: true, deduplicated: attempts > 1 };
+    });
+    const listener = vi.fn();
+    const off = on('registration:cancelled', listener);
+    const input = {
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self' as const,
+      context: cancelContext().context,
+    };
+    try {
+      await cancelRegistration(input);
+      await cancelRegistration(input);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({ eventId: 'evt1', userId: 'u1' });
+    } finally {
+      off();
+    }
   });
 });
+
+// 第 6 項若解讀為 A10 同樣要求取消時間守衛則不成立：附件 A10 的 _confirmCompanionCancelUnlocked 未檢查活動狀態或開始時間，故只為 A08 本人取消補上該守衛。

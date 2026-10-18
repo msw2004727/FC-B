@@ -436,6 +436,220 @@ async function runHomeNextActivityCheck(browser) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// 五之二、活動詳情頁驗收（R-EVT-011 / 黑名單四態 / 深連結）
+//   本段僅導覽與檢視頁面，不點擊任何報名按鈕（emulator 無 Functions）。
+// ─────────────────────────────────────────────────────────────────────
+async function runEventDetailChecks(browser) {
+  const findEvent = (title) =>
+    seedData.events.find((e) => e.data && e.data.title === title) || null;
+
+  const publicEvt = findEvent('週末足球公開賽');
+  const blockNoRegEvt = findEvent('黑名單驗證（無報名）');
+  const blockCancelEvt = findEvent('黑名單驗證（有取消報名）');
+
+  const publicId = publicEvt?.id || '';
+  const publicTitle = publicEvt?.data.title || '';
+  const blockNoRegId = blockNoRegEvt?.id || '';
+  const blockNoRegTitle = blockNoRegEvt?.data.title || '';
+  const blockCancelId = blockCancelEvt?.id || '';
+  const blockCancelTitle = blockCancelEvt?.data.title || '';
+  const missingFixture = !publicId || !blockNoRegId || !blockCancelId;
+
+  const result = {
+    missingFixture,
+    publicId,
+    blockNoRegId,
+    blockCancelId,
+    publicGuest: null,
+    blockedNoReg: null,
+    blockedCancel: null,
+    deepLink: null,
+  };
+
+  if (missingFixture) {
+    return result;
+  }
+
+  const readBodyText = async (page) =>
+    page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' '));
+
+  const hasSignupButton = async (page) =>
+    page.evaluate(() => {
+      const nodes = document.querySelectorAll('[role="button"], button');
+      for (const b of nodes) {
+        const label = (b.getAttribute('aria-label') || b.textContent || '').trim();
+        if (label.includes('報名') || label.includes('报名')) return true;
+      }
+      return false;
+    });
+
+  // 1. 訪客打開公開報名中活動：標題 + 報名按鈕
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const { consoleErrors, pageErrors } = attachListeners(page);
+    let loadError = null;
+    let titleFound = false;
+    let buttonFound = false;
+    try {
+      await page.goto(`${BASE}/events/${publicId}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(1500);
+      const bodyText = await readBodyText(page);
+      titleFound = bodyText.includes(publicTitle);
+      buttonFound = await hasSignupButton(page);
+    } catch (err) {
+      loadError = err?.message || String(err);
+    }
+    await context.close();
+    result.publicGuest = {
+      eventId: publicId,
+      expectedTitle: publicTitle,
+      titleFound,
+      buttonFound,
+      passed: !loadError && titleFound && buttonFound,
+      loadError,
+      consoleErrors,
+      pageErrors,
+    };
+  }
+
+  // 2. 黑名單擋且無報名的 U0004 打開 → 找不到此活動且不得出現標題
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const { consoleErrors, pageErrors } = attachListeners(page);
+    let loadError = null;
+    let notFoundShown = false;
+    let titleAbsent = true;
+    try {
+      await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+      await page.evaluate(async (u) => {
+        const m = await import('/src/data/auth.ts');
+        await m.devSignIn(u);
+      }, UIDS.blocked);
+      await page.waitForTimeout(400);
+      await page.goto(`${BASE}/events/${blockNoRegId}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(1500);
+      const bodyText = await readBodyText(page);
+      notFoundShown = bodyText.includes('找不到此活動');
+      titleAbsent = !bodyText.includes(blockNoRegTitle);
+    } catch (err) {
+      loadError = err?.message || String(err);
+    }
+    await context.close();
+    result.blockedNoReg = {
+      eventId: blockNoRegId,
+      expectedTitle: blockNoRegTitle,
+      viewer: UIDS.blocked,
+      notFoundShown,
+      titleAbsent,
+      passed: !loadError && notFoundShown && titleAbsent,
+      loadError,
+      consoleErrors,
+      pageErrors,
+    };
+  }
+
+  // 3. 同一使用者打開黑名單擋但有 cancelled 報名 → 正常顯示標題
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const { consoleErrors, pageErrors } = attachListeners(page);
+    let loadError = null;
+    let titleFound = false;
+    try {
+      await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+      await page.evaluate(async (u) => {
+        const m = await import('/src/data/auth.ts');
+        await m.devSignIn(u);
+      }, UIDS.blocked);
+      await page.waitForTimeout(400);
+      await page.goto(`${BASE}/events/${blockCancelId}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(1500);
+      const bodyText = await readBodyText(page);
+      titleFound = bodyText.includes(blockCancelTitle);
+    } catch (err) {
+      loadError = err?.message || String(err);
+    }
+    await context.close();
+    result.blockedCancel = {
+      eventId: blockCancelId,
+      expectedTitle: blockCancelTitle,
+      viewer: UIDS.blocked,
+      titleFound,
+      passed: !loadError && titleFound,
+      loadError,
+      consoleErrors,
+      pageErrors,
+    };
+  }
+
+  // 4. 深連結：/?event=<id> → /events/<id>；/?event=bad id! 不得導向
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const { consoleErrors, pageErrors } = attachListeners(page);
+    let loadError = null;
+    let validRedirectOk = false;
+    let validActualPath = '';
+    let invalidStayOk = false;
+    let invalidActualPath = '';
+    try {
+      // 有效
+      await page.goto(`${BASE}/?event=${encodeURIComponent(publicId)}`, {
+        waitUntil: 'domcontentloaded',
+      });
+      try {
+        await page.waitForFunction(
+          (id) => {
+            try {
+              return location.pathname === `/events/${id}`;
+            } catch {
+              return false;
+            }
+          },
+          publicId,
+          { timeout: 6000 },
+        );
+        validRedirectOk = true;
+      } catch {
+        validRedirectOk = false;
+      }
+      const url = new URL(page.url());
+      validActualPath = url.pathname;
+
+      // 非法
+      await page.goto(`${BASE}/?event=${encodeURIComponent('bad id!')}`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForTimeout(1500);
+      const url2 = new URL(page.url());
+      invalidActualPath = url2.pathname;
+      invalidStayOk = !url2.pathname.startsWith('/events/');
+    } catch (err) {
+      loadError = err?.message || String(err);
+    }
+    await context.close();
+    result.deepLink = {
+      publicId,
+      validRedirectOk,
+      validActualPath,
+      invalidStayOk,
+      invalidActualPath,
+      passed: !loadError && validRedirectOk && invalidStayOk,
+      loadError,
+      consoleErrors,
+      pageErrors,
+    };
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // 六、截圖
 // ─────────────────────────────────────────────────────────────────────
 const VIEWPORTS = {
@@ -444,7 +658,7 @@ const VIEWPORTS = {
 };
 
 async function takeShot(browser, cfg) {
-  const { pageName, viewportName, theme, locale, uid, outDir } = cfg;
+  const { pageName, viewportName, theme, locale, uid, outDir, eventId } = cfg;
   const viewport = VIEWPORTS[viewportName];
   const identity = uid ? 'user' : 'guest';
 
@@ -469,7 +683,12 @@ async function takeShot(browser, cfg) {
       }, uid);
       await page.waitForTimeout(400);
     }
-    const target = pageName === 'home' ? '/' : '/activities';
+    const target =
+      pageName === 'home'
+        ? '/'
+        : pageName === 'detail' && eventId
+          ? `/events/${eventId}`
+          : '/activities';
     await page.goto(`${BASE}${target}`, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(1200);
@@ -497,6 +716,7 @@ async function takeShot(browser, cfg) {
     theme,
     locale,
     identity,
+    eventId: eventId || null,
     loadError,
     consoleErrors,
     pageErrors,
@@ -528,6 +748,7 @@ async function main() {
     uids: UIDS,
     visibility: [],
     home: null,
+    eventDetail: null,
     screenshots: [],
     summary: {},
   };
@@ -561,9 +782,54 @@ async function main() {
         `titleOnPage=${report.home.titleOnPage}`,
     );
 
-    // ── 3. 截圖 ─────────────────────────────────────────────
+    // ── 3. 活動詳情頁驗收 ─────────────────────────────────────
+    printLine();
+    console.log('[e2e] 活動詳情頁驗收');
+    report.eventDetail = await runEventDetailChecks(browser);
+    {
+      const ed = report.eventDetail;
+      if (ed.missingFixture) {
+        console.log('[e2e] 種子資料缺少預期活動 fixture，詳情驗收將視為 FAIL');
+      }
+      console.log(
+        `[e2e] detail.publicGuest     ${ed.publicGuest?.passed ? 'PASS' : 'FAIL'}  ` +
+          `titleFound=${ed.publicGuest?.titleFound} buttonFound=${ed.publicGuest?.buttonFound}` +
+          (ed.publicGuest?.loadError
+            ? `  loadError=${ed.publicGuest.loadError.slice(0, 80)}`
+            : ''),
+      );
+      console.log(
+        `[e2e] detail.blockedNoReg    ${ed.blockedNoReg?.passed ? 'PASS' : 'FAIL'}  ` +
+          `notFoundShown=${ed.blockedNoReg?.notFoundShown} titleAbsent=${ed.blockedNoReg?.titleAbsent}` +
+          (ed.blockedNoReg?.loadError
+            ? `  loadError=${ed.blockedNoReg.loadError.slice(0, 80)}`
+            : ''),
+      );
+      console.log(
+        `[e2e] detail.blockedCancel   ${ed.blockedCancel?.passed ? 'PASS' : 'FAIL'}  ` +
+          `titleFound=${ed.blockedCancel?.titleFound}` +
+          (ed.blockedCancel?.loadError
+            ? `  loadError=${ed.blockedCancel.loadError.slice(0, 80)}`
+            : ''),
+      );
+      console.log(
+        `[e2e] detail.deepLink        ${ed.deepLink?.passed ? 'PASS' : 'FAIL'}  ` +
+          `validRedirectOk=${ed.deepLink?.validRedirectOk} invalidStayOk=${ed.deepLink?.invalidStayOk} ` +
+          `validPath=${ed.deepLink?.validActualPath} invalidPath=${ed.deepLink?.invalidActualPath}` +
+          (ed.deepLink?.loadError
+            ? `  loadError=${ed.deepLink.loadError.slice(0, 80)}`
+            : ''),
+      );
+    }
+
+    // ── 4. 截圖 ─────────────────────────────────────────────
     printLine();
     console.log('[e2e] 截圖開始');
+    const publicEventForShots = seedData.events.find(
+      (e) => e.data && e.data.title === '週末足球公開賽',
+    );
+    const detailShotId = publicEventForShots?.id || '';
+
     const shotCfgs = [
       { pageName: 'home', viewportName: 'mobile', theme: 'light', locale: 'zh-TW', uid: null },
       { pageName: 'home', viewportName: 'mobile', theme: 'dark', locale: 'zh-TW', uid: null },
@@ -580,6 +846,30 @@ async function main() {
       { pageName: 'activities', viewportName: 'mobile', theme: 'light', locale: 'en', uid: null },
       { pageName: 'activities', viewportName: 'mobile', theme: 'light', locale: 'th', uid: null },
       { pageName: 'activities', viewportName: 'mobile', theme: 'light', locale: 'vi', uid: null },
+      {
+        pageName: 'detail',
+        viewportName: 'mobile',
+        theme: 'light',
+        locale: 'zh-TW',
+        uid: null,
+        eventId: detailShotId,
+      },
+      {
+        pageName: 'detail',
+        viewportName: 'mobile',
+        theme: 'dark',
+        locale: 'zh-TW',
+        uid: null,
+        eventId: detailShotId,
+      },
+      {
+        pageName: 'detail',
+        viewportName: 'mobile',
+        theme: 'light',
+        locale: 'th',
+        uid: null,
+        eventId: detailShotId,
+      },
     ];
 
     for (const cfg of shotCfgs) {
@@ -596,22 +886,38 @@ async function main() {
     await browser.close();
   }
 
-  // ── 4. 彙總 ─────────────────────────────────────────────────
+  // ── 5. 彙總 ─────────────────────────────────────────────────
   const visibilityPassed = report.visibility.every((r) => r.passed);
+  const eventDetailPassed =
+    !report.eventDetail?.missingFixture &&
+    report.eventDetail?.publicGuest?.passed === true &&
+    report.eventDetail?.blockedNoReg?.passed === true &&
+    report.eventDetail?.blockedCancel?.passed === true &&
+    report.eventDetail?.deepLink?.passed === true;
+
   const allPageErrors = [
     ...report.visibility.flatMap((r) => r.pageErrors),
     ...(report.home?.pageErrors || []),
+    ...(report.eventDetail?.publicGuest?.pageErrors || []),
+    ...(report.eventDetail?.blockedNoReg?.pageErrors || []),
+    ...(report.eventDetail?.blockedCancel?.pageErrors || []),
+    ...(report.eventDetail?.deepLink?.pageErrors || []),
     ...report.screenshots.flatMap((s) => s.pageErrors),
   ];
   const allConsoleErrors = [
     ...report.visibility.flatMap((r) => r.consoleErrors),
     ...(report.home?.consoleErrors || []),
+    ...(report.eventDetail?.publicGuest?.consoleErrors || []),
+    ...(report.eventDetail?.blockedNoReg?.consoleErrors || []),
+    ...(report.eventDetail?.blockedCancel?.consoleErrors || []),
+    ...(report.eventDetail?.deepLink?.consoleErrors || []),
     ...report.screenshots.flatMap((s) => s.consoleErrors),
   ];
 
   report.summary = {
     visibilityPassed,
     homeNextActivityPassed: Boolean(report.home?.passed),
+    eventDetailPassed,
     pageErrorCount: allPageErrors.length,
     consoleErrorCount: allConsoleErrors.length,
     screenshotCount: report.screenshots.length,
@@ -619,7 +925,8 @@ async function main() {
       (n, s) => n + s.smallTapTargets.length,
       0,
     ),
-    exitCode: !visibilityPassed || allPageErrors.length > 0 ? 1 : 0,
+    exitCode:
+      !visibilityPassed || !eventDetailPassed || allPageErrors.length > 0 ? 1 : 0,
   };
 
   const reportPath = join(OUT_DIR, 'e2e-report.json');
@@ -634,14 +941,17 @@ async function main() {
     );
   }
   console.log(
-    `[e2e]   首頁下一場活動                     ${report.home?.passed ? 'PASS' : 'FAIL'}`,
+    `[e2e]   首頁下一場活動                 ${report.home?.passed ? 'PASS' : 'FAIL'}`,
   );
-  console.log(`[e2e]   pageerror 總數                  ${allPageErrors.length}`);
-  console.log(`[e2e]   console error 總數              ${allConsoleErrors.length}`);
-  console.log(`[e2e]   截圖張數                        ${report.screenshots.length}`);
-  console.log(`[e2e]   小尺寸可點元素總數              ${report.summary.smallTapTargetsTotal}`);
-  console.log(`[e2e]   報告                            ${reportPath}`);
-  console.log(`[e2e]   exitCode                        ${report.summary.exitCode}`);
+  console.log(
+    `[e2e]   活動詳情頁                     ${eventDetailPassed ? 'PASS' : 'FAIL'}`,
+  );
+  console.log(`[e2e]   pageerror 總數                ${allPageErrors.length}`);
+  console.log(`[e2e]   console error 總數            ${allConsoleErrors.length}`);
+  console.log(`[e2e]   截圖張數                      ${report.screenshots.length}`);
+  console.log(`[e2e]   小尺寸可點元素總數            ${report.summary.smallTapTargetsTotal}`);
+  console.log(`[e2e]   報告                          ${reportPath}`);
+  console.log(`[e2e]   exitCode                      ${report.summary.exitCode}`);
   printLine('═');
 
   process.exit(report.summary.exitCode);

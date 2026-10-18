@@ -16,41 +16,74 @@
   "emptyTitle": "目前沒有符合條件的活動",
   "emptyBody": "試試其他運動項目或搜尋詞。",
   "sport": {
-    "all": "全部運動",
-    "football": "足球",
-    "basketball": "籃球",
-    "pickleball": "匹克球",
-    "dodgeball": "美式躲避球",
-    "restaurant": "餐廳(觀賽)",
-    "escape_room": "密室逃脫",
-    "esports": "電玩電競",
-    "baseball_softball": "棒壘球",
-    "volleyball": "排球",
-    "table_tennis": "桌球",
-    "tennis": "網球",
-    "badminton": "羽球",
-    "hiking": "登山",
-    "running": "慢跑",
-    "cycling": "單車",
-    "motorcycle": "重機",
-    "skateboard": "滑板",
-    "dance": "舞蹈",
-    "yoga": "瑜伽",
-    "martial_arts": "武術",
-    "other": "其他"
+    "all": "全部運動", "football": "足球", "basketball": "籃球",
+    "pickleball": "匹克球", "dodgeball": "美式躲避球",
+    "restaurant": "餐廳(觀賽)", "escape_room": "密室逃脫",
+    "esports": "電玩電競", "baseball_softball": "棒壘球",
+    "volleyball": "排球", "table_tennis": "桌球", "tennis": "網球",
+    "badminton": "羽球", "hiking": "登山", "running": "慢跑",
+    "cycling": "單車", "motorcycle": "重機", "skateboard": "滑板",
+    "dance": "舞蹈", "yoga": "瑜伽", "martial_arts": "武術", "other": "其他"
   },
   "status": {
-    "open": "報名中",
-    "full": "已額滿",
-    "upcoming": "即將開始",
-    "ended": "已結束",
-    "cancelled": "已取消",
-    "unknown": "狀態待確認"
+    "open": "報名中", "full": "已額滿", "upcoming": "即將開始",
+    "ended": "已結束", "cancelled": "已取消", "unknown": "狀態待確認"
   },
   "card": {
-    "untitled": "未命名活動",
-    "dateUnknown": "時間待確認",
-    "locationUnknown": "地點待確認",
-    "capacity": "{current}/{max}人"
+    "untitled": "未命名活動", "dateUnknown": "時間待確認",
+    "locationUnknown": "地點待確認", "capacity": "{current}/{max}人"
+  },
+  "detailPage": {
+    "notFound": "找不到此活動",
+    "loading": "活動詳情載入中…",
+    "loadError": "無法載入活動詳情，請重試。",
+    "actionError": "操作失敗，請稍後重試。",
+    "refreshError": "名單尚未同步，請重試更新。為避免重複操作，報名暫時停用。",
+    "location": "地點", "map": "在地圖開啟", "time": "時間",
+    "opens": "開放報名", "fee": "費用", "free": "免費", "people": "人數",
+    "host": "主辦", "notes": "注意事項", "noNotes": "暫無說明",
+    "noCover": "暫無活動圖片", "confirmed": "正取名單", "waitlisted": "候補名單",
+    "emptyRoster": "尚無報名", "unnamed": "用戶", "companion": "同行者",
+    "self": "（本人）", "registered": "（已報名）", "companionSignup": "幫夥伴報名",
+    "chooseParticipants": "選擇報名對象", "confirmSignup": "確認報名",
+    "cancelTitle": "取消報名", "cancelHint": "請選擇要取消的對象，確認後才會取消。",
+    "confirmCancel": "確認取消", "selectSomeone": "請至少選擇一位參加者",
+    "noCompanions": "尚無已儲存的同行者",
+    "selected": "已選 {count} 人", "remaining": "剩餘名額 {count}",
+    "totalFee": "預計費用 NT${fee}", "waitlistEstimate": "預估 {count} 人將列入候補，以送出結果為準。",
+    "signupSuccess": "報名已送出", "cancelSuccess": "已取消所選報名",
+    "button": {
+      "ended": "已結束", "cancelWaitlist": "取消候補", "cancel": "取消報名",
+      "notOpen": "報名尚未開放", "teamOnly": "球隊限定", "restricted": "報名限制",
+      "waitlist": "報名候補", "signup": "立即報名"
+    }
+  },
+  "signup": {
+    "unavailable": "此活動目前無法報名", "ended": "活動已開始，報名已結束",
+    "notOpen": "報名尚未開放，請稍後再試",
+    "teamOnlyRestricted": "俱樂部限定活動，僅限該隊成員報名",
+    "alreadyRegistered": "你已經報名這場活動",
+    "error": {
+      "alreadyRegistered": "所選對象已報名", "eventNotFound": "找不到此活動",
+      "eventEnded": "活動已結束", "eventCancelled": "活動已取消",
+      "regNotOpen": "報名尚未開放", "earlyBirdNotAvailable": "目前無法早鳥報名",
+      "earlyBirdConfirmRequired": "請先確認早鳥報名",
+      "earlyBirdSelfOnly": "早鳥報名僅限本人", "earlyBirdCostChanged": "早鳥費用已變更",
+      "earlyBirdInsufficientExp": "早鳥報名積分不足", "earlyBirdFull": "早鳥名額已滿",
+      "genderRestricted": "不符合活動性別限制", "teamRestricted": "不符合活動球隊限制",
+      "courseLinkedPrivate": "此課程活動不開放個別報名",
+      "courseLinkedManaged": "請透過課程管理此報名",
+      "profileIncomplete": "請先完成個人資料",
+      "teamReservationDenied": "無法使用此球隊預留名額",
+      "teamReservationUnavailable": "球隊預留名額目前不可用",
+      "unknown": "報名失敗，請稍後重試"
+    }
+  },
+  "cancel": {
+    "error": {
+      "alreadyCancelled": "報名已取消", "regNotFound": "找不到此報名",
+      "eventNotFound": "找不到此活動", "permissionDenied": "無法取消此報名",
+      "unknown": "取消失敗，請稍後重試"
+    }
   }
 }

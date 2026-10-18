@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import type { FeatureManifest } from '@/core/feature-types';
 
 export const manifest: FeatureManifest = {
@@ -13,10 +12,7 @@ export const manifest: FeatureManifest = {
     {
       path: '/events/:id',
       titleKey: 'events.detail',
-      load: () =>
-        import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'events.detail' }),
-        })),
+      load: () => import('./pages/EventDetailPage'),
     },
   ],
   nav: [{ path: '/activities', labelKey: 'nav.events', icon: 'calendar', order: 3 }],

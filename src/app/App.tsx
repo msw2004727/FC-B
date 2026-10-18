@@ -22,6 +22,7 @@ import { on } from '@/core/events';
 import { initFontSize } from '@/core/font-size';
 import type { FeatureRoute } from '@/core/feature-types';
 import type { AuthUser } from '@/data/auth';
+import { resolveShareLink } from './share-link';
 
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
 
@@ -34,7 +35,6 @@ function getRouteComponent(load: FeatureRoute['load']): ComponentType<any> {
 }
 
 export interface AppProps {
-  /** 可選測試／宿主整合；未提供時使用正式 lazy signIn。 */
   onLogin?: () => void | Promise<void>;
   loginPending?: boolean;
 }
@@ -67,7 +67,6 @@ export function App({
     let cancelled = false;
     let stopAuth: (() => void) | undefined;
 
-    // uid 事件為登入狀態來源；立即清除舊身份，詳細資料非同步補讀。
     const stopEvents = on('auth:changed', ({ uid }) => {
       const revision = ++authRevision.current;
       currentUid.current = uid;
@@ -77,7 +76,7 @@ export function App({
           { uid, displayName: null, pictureUrl: null });
 
       if (uid === null) return;
-      void import('@/data/auth')
+      import('@/data/auth')
         .then((auth) => auth.getCurrentUser())
         .then((next) => {
           if (!cancelled && revision === authRevision.current && next?.uid === uid) {
@@ -89,18 +88,19 @@ export function App({
           }
         })
         .catch(() => {
-          // uid 已知時保留登入狀態與 Avatar fallback，不暴露原始錯誤。
+          if (!cancelled && revision === authRevision.current) {
+            setLoginError(true);
+          }
         });
     });
 
-    // 建立 Firebase 狀態橋接，讓頁面重載與登出也發出 auth:changed。
-    void import('@/data/auth').then((auth) => {
+    import('@/data/auth').then((auth) => {
       if (cancelled) return;
       stopAuth = auth.onAuthChanged(() => {
-        // onAuthChanged 內部會 emit auth:changed；狀態統一由上面的事件處理。
+        // onAuthChanged 內部發出 auth:changed。
       });
     }).catch(() => {
-      // 初始化失敗仍可使用未登入介面。
+      if (!cancelled) setLoginError(true);
     });
 
     return () => {
@@ -152,7 +152,7 @@ export function App({
     setLoginPending(true);
     setLoginError(false);
 
-    void (async () => {
+    (async () => {
       try {
         if (onLogin) {
           await onLogin();
@@ -162,7 +162,6 @@ export function App({
           const next = await auth.signIn();
           if (!mounted.current || sequence !== loginSequence.current) return;
 
-          // signIn 自身會發事件；保留其 LINE profile，避免被較晚的登出覆蓋。
           if (authRevision.current === revision || currentUid.current === next.uid) {
             currentUid.current = next.uid;
             setUser(next);
@@ -179,7 +178,9 @@ export function App({
           if (mounted.current) setLoginPending(false);
         }
       }
-    })();
+    })().catch(() => {
+      if (mounted.current) setLoginError(true);
+    });
   }, [externalPending, onLogin]);
 
   const pending = loginPending || externalPending;
@@ -217,9 +218,18 @@ export function App({
 }
 
 function RouteArea({ routes }: { routes: FeatureRoute[] }): preact.JSX.Element {
-  const { path } = useLocation();
+  const location = useLocation();
+  const redirect = resolveShareLink(location.url);
+
+  useLayoutEffect(() => {
+    if (redirect !== null) location.route(redirect, true);
+  }, [redirect, location.route]);
+
+  // 先處理分享入口，避免短暫掛載首頁並觸發首頁資料請求。
+  if (redirect !== null) return <Fragment />;
+
   return (
-    <RouteErrorBoundary path={path} onReset={() => lazyCache.clear()}>
+    <RouteErrorBoundary path={location.path} onReset={() => lazyCache.clear()}>
       <Router>
         {routes.map((route) => (
           <Route key={route.path} path={route.path}
