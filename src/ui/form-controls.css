@@ -1,0 +1,100 @@
+/* A 未提供表單內頁量測；採規範的輸入框尺寸與既有語意色。 */
+:where(.ui-input, .ui-select, .ui-textarea) {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: baseline;
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) label > small {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) :is(input, select, textarea) {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) :is(input, textarea)::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+:where(.ui-input, .ui-select, .ui-textarea)
+  :is(input, select, textarea):not(:disabled):not([readonly]):hover {
+  background: var(--color-bg-hover);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea)
+  :is(input, select, textarea):not(:disabled):not([readonly]):active {
+  background: var(--color-bg-active);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea)
+  :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+:where(.ui-input, .ui-select, .ui-textarea)
+  :is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [readonly] {
+  cursor: default;
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [data-field-hint],
+:where(.ui-input, .ui-select, .ui-textarea) [data-field-status] {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [data-field-error] {
+  color: var(--color-danger-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [data-field-status] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+:where(.ui-input, .ui-select, .ui-textarea) [data-field-spinner] {
+  flex: none;
+  animation: ui-spin var(--ui-dur-slow) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.ui-input, .ui-select, .ui-textarea) [data-field-spinner] {
+    animation: none;
+  }
+}

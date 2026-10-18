@@ -21,5 +21,153 @@
   "notFound.body": "您要查找的页面不存在或已被移除。",
   "notFound.home": "回到首页",
   "feature.reserved": "此功能即将推出",
-  "feature.external": "即将接入外部系统"
+  "feature.external": "即将接入外部系统",
+  "ui": {
+    "topBar": {
+      "label": "顶部导航",
+      "menu": "打开菜单",
+      "home": "返回首页",
+      "sport": "选择运动项目",
+      "all": "全部",
+      "notifications": "查看通知",
+      "login": "LINE 登录"
+    },
+    "bottomNav": {
+      "label": "主要导航",
+      "qr": "打开我的二维码"
+    },
+    "sideDrawer": {
+      "label": "菜单",
+      "close": "关闭菜单",
+      "navigation": "其他功能",
+      "admin": "管理",
+      "language": "语言",
+      "loading": "正在加载语言",
+      "localeError": "目前无法切换语言，请稍后重试。",
+      "theme": "显示模式",
+      "theme_light": "浅色",
+      "theme_dark": "深色",
+      "theme_system": "跟随系统",
+      "themeAction": "当前为{current}，切换为{next}"
+    },
+    "badge": {
+      "empty": "未设置"
+    },
+    "chip": {
+      "empty": "未分类",
+      "remove": "移除“{label}”"
+    },
+    "emptyState": {
+      "title": "你目前还没有报名活动",
+      "body": "找一场活动，或创建你的第一场活动"
+    },
+    "avatar": {
+      "unknown": "未提供名称"
+    },
+    "userTag": {
+      "unknown": "未提供名称",
+      "openProfile": "查看“{name}”的个人资料",
+      "level": "Lv {level}",
+      "levelUnset": "未设置等级",
+      "jersey": "球衣号码 {number}",
+      "jerseyUnset": "未设置球衣号码",
+      "attendanceWarning": "出勤提醒",
+      "recentNoShow": "近期缺席",
+      "role": {
+        "user": "普通用户",
+        "coach": "教练",
+        "captain": "队长",
+        "team_leader": "领队",
+        "venue_owner": "场主",
+        "admin": "管理员",
+        "super_admin": "超级管理员"
+      }
+    },
+    "input": {
+      "required": "* 必填",
+      "loading": "加载中",
+      "success": "输入有效"
+    },
+    "select": {
+      "required": "* 必填",
+      "loading": "加载中",
+      "success": "选项有效",
+      "readonly": "只读"
+    },
+    "textarea": {
+      "required": "* 必填",
+      "loading": "加载中",
+      "success": "输入有效",
+      "count": "{current}／{max}",
+      "tooLong": "内容超过上限，请缩短后再提交"
+    },
+    "checkbox": {
+      "required": "* 必填",
+      "loading": "加载中"
+    },
+    "radio": {
+      "required": "* 必填",
+      "loading": "加载中"
+    },
+    "radioGroup": {
+      "required": "* 必填",
+      "loading": "加载中"
+    },
+    "switch": {
+      "on": "开启",
+      "off": "关闭",
+      "loading": "加载中"
+    },
+    "stepper": {
+      "decrease": "减少{label}",
+      "increase": "增加{label}",
+      "loading": "加载中"
+    },
+    "dateTime": {
+      "invalid": "未提供有效日期"
+    },
+    "tabs": {
+      "loading": "加载中"
+    },
+    "modal": {
+      "close": "关闭",
+      "loading": "加载中"
+    },
+    "bottomSheet": {
+      "close": "关闭",
+      "loading": "加载中"
+    },
+    "toast": {
+      "close": "关闭通知",
+      "region": "通知",
+      "success": "成功",
+      "error": "无法完成",
+      "info": "提示",
+      "warning": "请留意"
+    },
+    "dataTable": {
+      "loading": "加载中",
+      "emptyTitle": "目前没有数据",
+      "emptyDescription": "有新数据时会显示在这里。",
+      "notProvided": "未提供",
+      "selectAll": "选择所有可选数据",
+      "selectRow": "选择 {name}"
+    },
+    "gallery": {
+      "title": "UI 组件展示",
+      "sample": "示例内容",
+      "action": "查看详情",
+      "field": "名称",
+      "option": "选项",
+      "empty": "目前没有数据",
+      "openModal": "打开对话框",
+      "openSheet": "打开底部面板",
+      "showToast": "显示通知",
+      "close": "关闭",
+      "error": "目前无法完成操作，请稍后再试。",
+      "count": "人数",
+      "firstTab": "活动",
+      "secondTab": "名单"
+    }
+  }
 }

@@ -21,5 +21,153 @@
   "notFound.body": "The page you are looking for does not exist or has been removed.",
   "notFound.home": "Back to home",
   "feature.reserved": "This feature is coming soon",
-  "feature.external": "External system coming soon"
+  "feature.external": "External system coming soon",
+  "ui": {
+    "topBar": {
+      "label": "Top navigation",
+      "menu": "Open menu",
+      "home": "Go to home",
+      "sport": "Choose a sport",
+      "all": "All",
+      "notifications": "View notifications",
+      "login": "LINE login"
+    },
+    "bottomNav": {
+      "label": "Main navigation",
+      "qr": "Open my QR code"
+    },
+    "sideDrawer": {
+      "label": "Menu",
+      "close": "Close menu",
+      "navigation": "More features",
+      "admin": "Administration",
+      "language": "Language",
+      "loading": "Loading language",
+      "localeError": "Unable to change language right now. Please try again later.",
+      "theme": "Appearance",
+      "theme_light": "Light",
+      "theme_dark": "Dark",
+      "theme_system": "System",
+      "themeAction": "Current mode: {current}. Switch to {next}"
+    },
+    "badge": {
+      "empty": "Not set"
+    },
+    "chip": {
+      "empty": "Uncategorized",
+      "remove": "Remove “{label}”"
+    },
+    "emptyState": {
+      "title": "You haven't joined any activities yet",
+      "body": "Find an activity or create your first one"
+    },
+    "avatar": {
+      "unknown": "Name not provided"
+    },
+    "userTag": {
+      "unknown": "Name not provided",
+      "openProfile": "View {name}'s profile",
+      "level": "Lv {level}",
+      "levelUnset": "Level not set",
+      "jersey": "Jersey {number}",
+      "jerseyUnset": "Jersey number not set",
+      "attendanceWarning": "Attendance reminder",
+      "recentNoShow": "Recent absence",
+      "role": {
+        "user": "Member",
+        "coach": "Coach",
+        "captain": "Captain",
+        "team_leader": "Team leader",
+        "venue_owner": "Venue owner",
+        "admin": "Administrator",
+        "super_admin": "Super administrator"
+      }
+    },
+    "input": {
+      "required": "* Required",
+      "loading": "Loading",
+      "success": "Valid input"
+    },
+    "select": {
+      "required": "* Required",
+      "loading": "Loading",
+      "success": "Valid selection",
+      "readonly": "Read only"
+    },
+    "textarea": {
+      "required": "* Required",
+      "loading": "Loading",
+      "success": "Valid input",
+      "count": "{current} / {max}",
+      "tooLong": "The content exceeds the limit. Please shorten it before submitting."
+    },
+    "checkbox": {
+      "required": "* Required",
+      "loading": "Loading"
+    },
+    "radio": {
+      "required": "* Required",
+      "loading": "Loading"
+    },
+    "radioGroup": {
+      "required": "* Required",
+      "loading": "Loading"
+    },
+    "switch": {
+      "on": "On",
+      "off": "Off",
+      "loading": "Loading"
+    },
+    "stepper": {
+      "decrease": "Decrease {label}",
+      "increase": "Increase {label}",
+      "loading": "Loading"
+    },
+    "dateTime": {
+      "invalid": "No valid date provided"
+    },
+    "tabs": {
+      "loading": "Loading"
+    },
+    "modal": {
+      "close": "Close",
+      "loading": "Loading"
+    },
+    "bottomSheet": {
+      "close": "Close",
+      "loading": "Loading"
+    },
+    "toast": {
+      "close": "Dismiss notification",
+      "region": "Notifications",
+      "success": "Success",
+      "error": "Unable to complete",
+      "info": "Information",
+      "warning": "Please note"
+    },
+    "dataTable": {
+      "loading": "Loading",
+      "emptyTitle": "No data yet",
+      "emptyDescription": "New data will appear here.",
+      "notProvided": "Not provided",
+      "selectAll": "Select all available rows",
+      "selectRow": "Select {name}"
+    },
+    "gallery": {
+      "title": "UI component gallery",
+      "sample": "Sample content",
+      "action": "View details",
+      "field": "Name",
+      "option": "Option",
+      "empty": "No data yet",
+      "openModal": "Open dialog",
+      "openSheet": "Open bottom sheet",
+      "showToast": "Show notification",
+      "close": "Close",
+      "error": "We cannot complete this action right now. Please try again later.",
+      "count": "Participants",
+      "firstTab": "Activities",
+      "secondTab": "Roster"
+    }
+  }
 }

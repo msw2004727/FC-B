@@ -1,0 +1,55 @@
+@import './form-controls.css';
+
+.ui-textarea {
+  --comp-textarea-border-success: var(--color-success);
+  --comp-textarea-counter-default: var(--color-text-secondary);
+}
+
+.ui-textarea__grow {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.ui-textarea__grow > textarea,
+.ui-textarea__mirror {
+  grid-area: 1 / 1;
+  min-inline-size: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  tab-size: 4;
+}
+
+.ui-textarea__mirror {
+  visibility: hidden;
+  pointer-events: none;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border-strong);
+  font: inherit;
+}
+
+/* 鏡像只負責排版，不顯示使用者文字。 */
+.ui-textarea__mirror::after {
+  content: attr(data-value);
+}
+
+.ui-textarea--auto-grow textarea {
+  resize: none;
+  overflow: hidden;
+}
+
+.ui-textarea--fixed textarea {
+  resize: vertical;
+}
+
+.ui-textarea--success textarea {
+  border-color: var(--comp-textarea-border-success);
+}
+
+.ui-textarea__count {
+  color: var(--comp-textarea-counter-default);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-variant-numeric: var(--font-numeric);
+  text-align: end;
+}

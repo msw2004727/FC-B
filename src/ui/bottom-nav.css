@@ -1,0 +1,113 @@
+.ui-bottom-nav {
+  --comp-bottom-nav-surface-default: var(--color-bg-surface);
+  --comp-bottom-nav-text-default: var(--color-text-muted);
+  --comp-bottom-nav-text-active: var(--color-brand);
+  background: var(--comp-bottom-nav-surface-default);
+  border-top: var(--border-hairline) solid var(--color-border);
+}
+
+.ui-bottom-nav__items {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(44px, 1fr);
+  align-items: stretch;
+  min-height: var(--bottomnav-h);
+  overflow-x: auto;
+}
+
+.ui-bottom-nav__item {
+  min-height: 48px;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  color: var(--comp-bottom-nav-text-default);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-bottom-nav__item:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.ui-bottom-nav__item--active,
+.ui-bottom-nav__item--active:hover {
+  color: var(--comp-bottom-nav-text-active);
+}
+
+.ui-bottom-nav__item--active svg {
+  stroke-width: 2.5;
+}
+
+.ui-bottom-nav__item:active,
+.ui-bottom-nav__qr:active {
+  transform: scale(.98);
+}
+
+.ui-bottom-nav__label {
+  /* 依 A 微調：9.75px 提升至既有 caption 11px；不裁字、不省略。 */
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-bottom-nav__item svg {
+  flex-shrink: 0;
+}
+
+.ui-bottom-nav__qr {
+  position: absolute;
+  bottom: 100%;
+  left: calc(50% - 64px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 60px;
+  padding-top: var(--space-3);
+  border: var(--border-hairline) solid var(--color-border);
+  border-bottom: 0;
+  border-radius: var(--radius-full) var(--radius-full) 0 0;
+  background: var(--comp-bottom-nav-surface-default);
+  color: var(--color-text-primary);
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-bottom-nav__qr:hover {
+  color: var(--color-brand);
+  background: var(--color-bg-hover);
+}
+
+.ui-bottom-nav__qr[aria-current="page"] {
+  color: var(--comp-bottom-nav-text-active);
+}
+
+.ui-bottom-nav a:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -3px;
+}
+
+/* 泰文使用圖示與 tooltip；aria-label 提供完整可存取名稱。 */
+:root:lang(th) .ui-bottom-nav__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-bottom-nav__item,
+  .ui-bottom-nav__qr {
+    transition: none;
+  }
+}

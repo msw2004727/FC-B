@@ -1,0 +1,80 @@
+.ui-avatar {
+  --comp-avatar-background-default: var(--color-role-user-bg);
+  --comp-avatar-foreground-default: var(--color-role-user);
+
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--comp-avatar-background-default);
+  color: var(--comp-avatar-foreground-default);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-sm);
+  vertical-align: middle;
+}
+
+.ui-avatar--sm {
+  width: 24px;
+  height: 24px;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.ui-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+}
+
+.ui-avatar--coach {
+  background: var(--color-role-coach-bg);
+  color: var(--color-role-coach);
+}
+
+.ui-avatar--captain {
+  background: var(--color-role-captain-bg);
+  color: var(--color-role-captain);
+}
+
+.ui-avatar--team_leader {
+  background: var(--color-role-lead-bg);
+  color: var(--color-role-lead);
+}
+
+.ui-avatar--venue_owner {
+  background: var(--color-role-venue-bg);
+  color: var(--color-role-venue);
+}
+
+.ui-avatar--admin {
+  background: var(--color-role-admin-bg);
+  color: var(--color-role-admin);
+}
+
+.ui-avatar--super_admin {
+  background: var(--color-role-super-bg);
+  color: var(--color-role-super);
+}
+
+.ui-avatar__image,
+.ui-avatar__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.ui-avatar__image { object-fit: cover; }
+
+.ui-avatar__initial {
+  max-width: 100%;
+  overflow: hidden;
+}

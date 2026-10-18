@@ -1,0 +1,100 @@
+{
+  "zh-TW": {
+    "ui": {
+      "input": { "required": "* 必填", "loading": "載入中", "success": "輸入有效" },
+      "select": { "required": "* 必填", "loading": "載入中", "success": "選項有效", "readonly": "唯讀" },
+      "textarea": { "required": "* 必填", "loading": "載入中", "success": "輸入有效", "count": "{current}／{max}", "tooLong": "內容超過上限，請縮短後再送出" },
+      "checkbox": { "required": "* 必填", "loading": "載入中" },
+      "radio": { "required": "* 必填", "loading": "載入中" },
+      "radioGroup": { "required": "* 必填", "loading": "載入中" },
+      "switch": { "on": "開啟", "off": "關閉", "loading": "載入中" },
+      "stepper": { "decrease": "減少{label}", "increase": "增加{label}", "loading": "載入中" },
+      "dateTime": { "invalid": "未提供有效日期" },
+      "tabs": { "loading": "載入中" }
+    }
+  },
+  "zh-CN": {
+    "ui": {
+      "input": { "required": "* 必填", "loading": "加载中", "success": "输入有效" },
+      "select": { "required": "* 必填", "loading": "加载中", "success": "选项有效", "readonly": "只读" },
+      "textarea": { "required": "* 必填", "loading": "加载中", "success": "输入有效", "count": "{current}／{max}", "tooLong": "内容超过上限，请缩短后再提交" },
+      "checkbox": { "required": "* 必填", "loading": "加载中" },
+      "radio": { "required": "* 必填", "loading": "加载中" },
+      "radioGroup": { "required": "* 必填", "loading": "加载中" },
+      "switch": { "on": "开启", "off": "关闭", "loading": "加载中" },
+      "stepper": { "decrease": "减少{label}", "increase": "增加{label}", "loading": "加载中" },
+      "dateTime": { "invalid": "未提供有效日期" },
+      "tabs": { "loading": "加载中" }
+    }
+  },
+  "en": {
+    "ui": {
+      "input": { "required": "* Required", "loading": "Loading", "success": "Valid input" },
+      "select": { "required": "* Required", "loading": "Loading", "success": "Valid selection", "readonly": "Read only" },
+      "textarea": { "required": "* Required", "loading": "Loading", "success": "Valid input", "count": "{current} / {max}", "tooLong": "The content exceeds the limit. Please shorten it before submitting." },
+      "checkbox": { "required": "* Required", "loading": "Loading" },
+      "radio": { "required": "* Required", "loading": "Loading" },
+      "radioGroup": { "required": "* Required", "loading": "Loading" },
+      "switch": { "on": "On", "off": "Off", "loading": "Loading" },
+      "stepper": { "decrease": "Decrease {label}", "increase": "Increase {label}", "loading": "Loading" },
+      "dateTime": { "invalid": "No valid date provided" },
+      "tabs": { "loading": "Loading" }
+    }
+  },
+  "ja": {
+    "ui": {
+      "input": { "required": "* 必須", "loading": "読み込み中", "success": "有効な入力です" },
+      "select": { "required": "* 必須", "loading": "読み込み中", "success": "有効な選択です", "readonly": "読み取り専用" },
+      "textarea": { "required": "* 必須", "loading": "読み込み中", "success": "有効な入力です", "count": "{current}／{max}", "tooLong": "上限を超えています。内容を短くしてから送信してください。" },
+      "checkbox": { "required": "* 必須", "loading": "読み込み中" },
+      "radio": { "required": "* 必須", "loading": "読み込み中" },
+      "radioGroup": { "required": "* 必須", "loading": "読み込み中" },
+      "switch": { "on": "オン", "off": "オフ", "loading": "読み込み中" },
+      "stepper": { "decrease": "{label}を減らす", "increase": "{label}を増やす", "loading": "読み込み中" },
+      "dateTime": { "invalid": "有効な日付が指定されていません" },
+      "tabs": { "loading": "読み込み中" }
+    }
+  },
+  "vi": {
+    "ui": {
+      "input": { "required": "* Bắt buộc", "loading": "Đang tải", "success": "Dữ liệu hợp lệ" },
+      "select": { "required": "* Bắt buộc", "loading": "Đang tải", "success": "Lựa chọn hợp lệ", "readonly": "Chỉ đọc" },
+      "textarea": { "required": "* Bắt buộc", "loading": "Đang tải", "success": "Dữ liệu hợp lệ", "count": "{current} / {max}", "tooLong": "Nội dung vượt quá giới hạn. Vui lòng rút ngắn trước khi gửi." },
+      "checkbox": { "required": "* Bắt buộc", "loading": "Đang tải" },
+      "radio": { "required": "* Bắt buộc", "loading": "Đang tải" },
+      "radioGroup": { "required": "* Bắt buộc", "loading": "Đang tải" },
+      "switch": { "on": "Bật", "off": "Tắt", "loading": "Đang tải" },
+      "stepper": { "decrease": "Giảm {label}", "increase": "Tăng {label}", "loading": "Đang tải" },
+      "dateTime": { "invalid": "Chưa cung cấp ngày hợp lệ" },
+      "tabs": { "loading": "Đang tải" }
+    }
+  },
+  "th": {
+    "ui": {
+      "input": { "required": "* จำเป็น", "loading": "กำลังโหลด", "success": "ข้อมูลถูกต้อง" },
+      "select": { "required": "* จำเป็น", "loading": "กำลังโหลด", "success": "ตัวเลือกถูกต้อง", "readonly": "อ่านอย่างเดียว" },
+      "textarea": { "required": "* จำเป็น", "loading": "กำลังโหลด", "success": "ข้อมูลถูกต้อง", "count": "{current} / {max}", "tooLong": "เนื้อหาเกินขีดจำกัด โปรดย่อให้สั้นลงก่อนส่ง" },
+      "checkbox": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+      "radio": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+      "radioGroup": { "required": "* จำเป็น", "loading": "กำลังโหลด" },
+      "switch": { "on": "เปิด", "off": "ปิด", "loading": "กำลังโหลด" },
+      "stepper": { "decrease": "ลด{label}", "increase": "เพิ่ม{label}", "loading": "กำลังโหลด" },
+      "dateTime": { "invalid": "ยังไม่ได้ระบุวันที่ที่ถูกต้อง" },
+      "tabs": { "loading": "กำลังโหลด" }
+    }
+  },
+  "ko": {
+    "ui": {
+      "input": { "required": "* 필수", "loading": "불러오는 중", "success": "유효한 입력입니다" },
+      "select": { "required": "* 필수", "loading": "불러오는 중", "success": "유효한 선택입니다", "readonly": "읽기 전용" },
+      "textarea": { "required": "* 필수", "loading": "불러오는 중", "success": "유효한 입력입니다", "count": "{current} / {max}", "tooLong": "입력 한도를 초과했습니다. 내용을 줄인 후 제출해 주세요." },
+      "checkbox": { "required": "* 필수", "loading": "불러오는 중" },
+      "radio": { "required": "* 필수", "loading": "불러오는 중" },
+      "radioGroup": { "required": "* 필수", "loading": "불러오는 중" },
+      "switch": { "on": "켜짐", "off": "꺼짐", "loading": "불러오는 중" },
+      "stepper": { "decrease": "{label} 줄이기", "increase": "{label} 늘리기", "loading": "불러오는 중" },
+      "dateTime": { "invalid": "유효한 날짜가 제공되지 않았습니다" },
+      "tabs": { "loading": "불러오는 중" }
+    }
+  }
+}

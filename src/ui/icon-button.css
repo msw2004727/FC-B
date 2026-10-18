@@ -1,0 +1,64 @@
+/* 雙 class 提高 specificity，避免既有 base.css 的同名規則覆蓋。 */
+.ui-icon-button {
+  --comp-icon-button-foreground-default: var(--color-text-primary);
+}
+
+.ui-icon-button.ui-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  inline-size: 44px;
+  block-size: 44px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-icon-button.ui-button:hover {
+  background: transparent;
+}
+
+.ui-icon-button.ui-button::before {
+  /* 依 A 微調：保留 36×36 視覺框，以 44×44 原生控制項擴大觸控區。 */
+  inset: var(--space-1);
+  box-shadow: none;
+}
+
+.ui-icon-button--ghost.ui-button {
+  color: var(--comp-icon-button-foreground-default);
+}
+
+.ui-icon-button--sm.ui-button::before {
+  /* 依 A 微調：30×30 視覺框保留，原生觸控區仍為 44×44。 */
+  inset: 7px;
+  border-radius: var(--radius-full);
+}
+
+.ui-icon-button--lg.ui-button {
+  inline-size: 48px;
+  block-size: 48px;
+}
+
+.ui-icon-button--lg.ui-button::before {
+  inset: 0;
+}
+
+.ui-icon-button__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ui-icon-button__icon svg {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-icon-button.ui-button {
+    transition: none;
+  }
+}

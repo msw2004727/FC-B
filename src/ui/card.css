@@ -1,0 +1,93 @@
+.ui-card {
+  --comp-card-background-default: var(--color-bg-surface);
+  --comp-card-foreground-default: var(--color-text-primary);
+  --comp-card-border-default: var(--color-border);
+  --comp-card-shadow-default: var(--shadow-xs);
+
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  margin: 0;
+  border: var(--border-hairline) solid var(--comp-card-border-default);
+  /* A 首頁實測約 16px；使用既有的 16px radius token。 */
+  border-radius: var(--radius-modal);
+  background: var(--comp-card-background-default);
+  color: var(--comp-card-foreground-default);
+  box-shadow: var(--comp-card-shadow-default);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  text-align: start;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-card--padding-none { padding: 0; }
+.ui-card--padding-sm { padding: var(--space-3); }
+.ui-card--padding-md { padding: var(--space-4); }
+.ui-card--padding-lg { padding: var(--space-5); }
+
+.ui-card--outlined {
+  box-shadow: none;
+}
+
+.ui-card--elevated {
+  --comp-card-shadow-default: var(--shadow-md);
+}
+
+.ui-card--interactive {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-card--interactive:hover {
+  color: var(--comp-card-foreground-default);
+}
+
+@media (hover: hover) {
+  .ui-card--interactive:not([aria-disabled="true"]):hover {
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-2px);
+  }
+}
+
+.ui-card--interactive:not([aria-disabled="true"]):active {
+  background: var(--color-bg-active);
+  transform: scale(.98);
+}
+
+.ui-card--interactive:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-card[aria-disabled="true"] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+/* 可選的卡片標題 class；使用時需提供完整 title 屬性。 */
+.ui-card__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-card--interactive {
+    transition: none;
+  }
+
+  .ui-card--interactive:not([aria-disabled="true"]):hover,
+  .ui-card--interactive:not([aria-disabled="true"]):active {
+    transform: none;
+  }
+}

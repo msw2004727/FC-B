@@ -1,0 +1,139 @@
+.ui-list-row {
+  --comp-list-row-background-default: var(--color-bg-surface);
+  --comp-list-row-foreground-default: var(--color-text-primary);
+  --comp-list-row-divider-default: var(--color-border-subtle);
+
+  position: relative;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+  list-style: none;
+  border-block-end: var(--border-hairline) solid var(--comp-list-row-divider-default);
+  background: var(--comp-list-row-background-default);
+  color: var(--comp-list-row-foreground-default);
+}
+
+.ui-list-row__body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: start;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  /*
+   * 依 A 微調：A 的 36px 列不足觸控下限，原生列至少 44px，
+   * 長副標與多語系內容可自然增高，維持既有單欄排列。
+   */
+}
+
+.ui-list-row--interactive .ui-list-row__body {
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-list-row__body:hover {
+  color: inherit;
+}
+
+@media (hover: hover) {
+  .ui-list-row--interactive:not(.ui-list-row--disabled) .ui-list-row__body:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.ui-list-row--interactive:not(.ui-list-row--disabled) .ui-list-row__body:active {
+  background: var(--color-bg-active);
+  transform: scale(.98);
+}
+
+.ui-list-row__body:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-list-row--selected {
+  --comp-list-row-background-default: var(--color-bg-selected);
+  --comp-list-row-foreground-default: var(--color-brand-soft-fg);
+}
+
+/* 2px 選取指示器使用裝飾偽元素，不違反 hairline 邊框上限。 */
+.ui-list-row--selected::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  background: var(--color-brand);
+  pointer-events: none;
+}
+
+.ui-list-row--disabled {
+  opacity: .5;
+}
+
+.ui-list-row--disabled .ui-list-row__body {
+  cursor: not-allowed;
+}
+
+.ui-list-row__leading,
+.ui-list-row__trailing {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.ui-list-row__trailing {
+  max-inline-size: 50%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-list-row__content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-inline-size: 0;
+  gap: var(--space-1);
+}
+
+.ui-list-row__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+}
+
+.ui-list-row__subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-list-row--interactive .ui-list-row__body {
+    transition: none;
+  }
+
+  .ui-list-row--interactive:not(.ui-list-row--disabled) .ui-list-row__body:active {
+    transform: none;
+  }
+}

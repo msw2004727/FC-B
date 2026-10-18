@@ -1,0 +1,101 @@
+.ui-switch {
+  --comp-switch-track-default: var(--color-bg-elevated);
+  --comp-switch-track-checked: var(--color-brand);
+  --comp-switch-thumb-default: var(--color-bg-surface);
+  --comp-switch-icon-default: var(--color-text-primary);
+  color: var(--color-text-secondary);
+}
+
+.ui-switch__button {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* 依 A 微調：維持右側膠囊外觀，整列觸控區由約 22px 增至至少 44px。 */
+.ui-switch__track {
+  position: relative;
+  flex: none;
+  inline-size: 44px;
+  block-size: 24px;
+  border: var(--border-hairline) solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: var(--comp-switch-track-default);
+}
+
+.ui-switch__thumb {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline-start: 1px;
+  display: grid;
+  place-items: center;
+  inline-size: 20px;
+  block-size: 20px;
+  border-radius: var(--radius-full);
+  background: var(--comp-switch-thumb-default);
+  color: var(--comp-switch-icon-default);
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-switch--checked .ui-switch__track {
+  background: var(--comp-switch-track-checked);
+  border-color: var(--comp-switch-track-checked);
+}
+
+.ui-switch--checked .ui-switch__thumb {
+  transform: translateX(20px);
+}
+
+.ui-switch--checked:dir(rtl) .ui-switch__thumb {
+  transform: translateX(-20px);
+}
+
+.ui-switch__button:not(:disabled):hover {
+  background: var(--color-bg-hover);
+}
+
+.ui-switch__button:not(:disabled):active {
+  background: var(--color-bg-active);
+}
+
+.ui-switch__button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-switch__button:disabled {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+}
+
+.ui-switch__button:disabled .ui-switch__track {
+  opacity: .6;
+}
+
+.ui-switch__state {
+  font-size: var(--font-size-body-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-switch__thumb {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .ui-switch__thumb {
+    outline: 1px solid;
+  }
+}

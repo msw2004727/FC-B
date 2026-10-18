@@ -1,0 +1,56 @@
+.ui-app-shell {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--color-bg-root);
+}
+
+.ui-app-shell .app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: calc(var(--topbar-h) + var(--safe-top) + var(--space-2));
+  /* 預留 QR 拱起與長語系雙行導覽的空間，避免遮住最後一個控制項。 */
+  padding-bottom: calc(
+    var(--bottomnav-h) + var(--safe-bottom) + 64px +
+    var(--line-height-caption) + var(--space-4)
+  );
+  padding-left: calc(var(--space-2) + var(--safe-left));
+  padding-right: calc(var(--space-2) + var(--safe-right));
+}
+
+.ui-top-bar,
+.ui-bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.ui-top-bar {
+  top: 0;
+  min-height: calc(var(--topbar-h) + var(--safe-top));
+  padding-top: var(--safe-top);
+  padding-left: calc(var(--space-3) + var(--safe-left));
+  padding-right: calc(var(--space-3) + var(--safe-right));
+  z-index: var(--z-topbar);
+}
+
+.ui-bottom-nav {
+  bottom: 0;
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  z-index: var(--z-bottomnav);
+}
+
+@media (min-width: 640px) {
+  .ui-app-shell .app-main {
+    padding-left: calc(var(--space-4) + var(--safe-left));
+    padding-right: calc(var(--space-4) + var(--safe-right));
+  }
+}

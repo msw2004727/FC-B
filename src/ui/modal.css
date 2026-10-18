@@ -1,0 +1,178 @@
+.ui-modal {
+  --comp-modal-surface-default: var(--color-bg-surface);
+  --comp-modal-text-default: var(--color-text-primary);
+  --comp-modal-overlay-default: var(--color-overlay);
+  --comp-modal-shadow-default: var(--shadow-lg);
+
+  position: fixed;
+  inset: 0;
+  display: none;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: calc(var(--space-4) + var(--safe-top))
+    calc(var(--space-4) + var(--safe-right))
+    calc(var(--space-4) + var(--safe-bottom))
+    calc(var(--space-4) + var(--safe-left));
+  border: 0;
+  background: var(--comp-modal-overlay-default);
+  color: var(--comp-modal-text-default);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  z-index: var(--z-modal);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: ui-fade-in var(--ui-dur-base) var(--ui-ease);
+}
+
+.ui-modal[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-modal::backdrop {
+  background: transparent;
+}
+
+.ui-modal__panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: min(480px, calc(100vw - var(--space-8)));
+  max-height: 80vh;
+  max-height: 80dvh;
+  border-radius: var(--radius-modal);
+  background: var(--comp-modal-surface-default);
+  box-shadow: var(--comp-modal-shadow-default);
+  overflow: hidden;
+  animation: ui-slide-up var(--ui-slide-dur) var(--ui-ease);
+}
+
+.ui-modal--sm .ui-modal__panel {
+  max-width: min(360px, calc(100vw - var(--space-8)));
+}
+
+.ui-modal--lg .ui-modal__panel {
+  max-width: min(720px, calc(100vw - var(--space-8)));
+}
+
+.ui-modal__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  flex: 0 0 auto;
+}
+
+.ui-modal__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* 標題通常為兩行；超長翻譯保留全文，不截去可見的 dialog 名稱。 */
+.ui-modal__title .ui-text {
+  overflow-wrap: anywhere;
+}
+
+.ui-modal__close {
+  /* 依 A 微調：維持右上圓形關閉圖示，30px 觸控區擴大至 44px。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--comp-modal-text-default);
+  cursor: pointer;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-modal__close:hover {
+  background: var(--color-bg-hover);
+}
+
+.ui-modal__close:active {
+  background: var(--color-bg-active);
+  transform: scale(.98);
+}
+
+.ui-modal__close:focus-visible,
+.ui-modal__panel:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-modal__body {
+  min-height: 0;
+  padding: 0 var(--space-5) var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+
+.ui-modal__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-5);
+  border-top: var(--border-hairline) solid var(--color-border);
+}
+
+.ui-modal__footer > * {
+  min-width: 0;
+}
+
+.ui-modal__error {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
+
+.ui-modal__loading {
+  display: grid;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+}
+
+.ui-modal__skeleton {
+  height: var(--space-6);
+  background: var(--color-bg-skeleton-base);
+  border-radius: var(--radius-xs);
+  animation: ui-pulse var(--ui-shimmer-dur) var(--ui-ease) infinite;
+}
+
+@media (min-width: 640px) {
+  .ui-modal__footer {
+    flex-direction: row;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-modal,
+  .ui-modal__panel,
+  .ui-modal__skeleton {
+    animation: none;
+  }
+
+  .ui-modal__close {
+    transition: none;
+  }
+}

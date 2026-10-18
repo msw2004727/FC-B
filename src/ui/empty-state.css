@@ -1,0 +1,78 @@
+.ui-empty-state {
+  --comp-empty-state-foreground-default: var(--color-text-primary);
+  --comp-empty-state-description-default: var(--color-text-secondary);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-4);
+  color: var(--comp-empty-state-foreground-default);
+  text-align: center;
+}
+
+.ui-empty-state__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-2);
+  color: var(--color-info-fg);
+}
+
+/* 沿用 A 首頁日曆的尺寸與位置；一般自訂圖示仍為 48px。 */
+.ui-empty-state__icon--calendar {
+  width: 128px;
+  height: 88px;
+}
+
+.ui-empty-state__icon > svg {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.ui-empty-state__calendar {
+  fill: var(--color-info-bg);
+  stroke: var(--color-border-strong);
+}
+
+.ui-empty-state__binding { fill: var(--color-info-fg); }
+.ui-empty-state__cell { fill: var(--color-bg-surface); }
+.ui-empty-state__add { fill: var(--color-brand); }
+.ui-empty-state__plus { stroke: var(--color-brand-fg); }
+
+.ui-empty-state__title {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.ui-empty-state__body {
+  margin: 0;
+  color: var(--comp-empty-state-description-default);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  overflow-wrap: anywhere;
+}
+
+.ui-empty-state__action {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 340px;
+  margin-top: var(--space-2);
+}
+
+.ui-empty-state__action > * {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 44px;
+}

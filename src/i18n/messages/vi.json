@@ -21,5 +21,153 @@
   "notFound.body": "Trang bạn tìm không tồn tại hoặc đã bị xóa.",
   "notFound.home": "Về trang chủ",
   "feature.reserved": "Tính năng này sắp ra mắt",
-  "feature.external": "Sắp kết nối hệ thống bên ngoài"
+  "feature.external": "Sắp kết nối hệ thống bên ngoài",
+  "ui": {
+    "topBar": {
+      "label": "Điều hướng phía trên",
+      "menu": "Mở trình đơn",
+      "home": "Về trang chủ",
+      "sport": "Chọn môn thể thao",
+      "all": "Tất cả",
+      "notifications": "Xem thông báo",
+      "login": "Đăng nhập LINE"
+    },
+    "bottomNav": {
+      "label": "Điều hướng chính",
+      "qr": "Mở mã QR của tôi"
+    },
+    "sideDrawer": {
+      "label": "Trình đơn",
+      "close": "Đóng trình đơn",
+      "navigation": "Tính năng khác",
+      "admin": "Quản trị",
+      "language": "Ngôn ngữ",
+      "loading": "Đang tải ngôn ngữ",
+      "localeError": "Hiện không thể đổi ngôn ngữ. Vui lòng thử lại sau.",
+      "theme": "Giao diện",
+      "theme_light": "Sáng",
+      "theme_dark": "Tối",
+      "theme_system": "Theo hệ thống",
+      "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}"
+    },
+    "badge": {
+      "empty": "Chưa thiết lập"
+    },
+    "chip": {
+      "empty": "Chưa phân loại",
+      "remove": "Xóa “{label}”"
+    },
+    "emptyState": {
+      "title": "Bạn chưa đăng ký hoạt động nào",
+      "body": "Tìm một hoạt động hoặc tạo hoạt động đầu tiên của bạn"
+    },
+    "avatar": {
+      "unknown": "Chưa cung cấp tên"
+    },
+    "userTag": {
+      "unknown": "Chưa cung cấp tên",
+      "openProfile": "Xem hồ sơ của {name}",
+      "level": "Lv {level}",
+      "levelUnset": "Chưa thiết lập cấp độ",
+      "jersey": "Số áo {number}",
+      "jerseyUnset": "Chưa đặt số áo",
+      "attendanceWarning": "Nhắc nhở chuyên cần",
+      "recentNoShow": "Vắng mặt gần đây",
+      "role": {
+        "user": "Thành viên",
+        "coach": "Huấn luyện viên",
+        "captain": "Đội trưởng",
+        "team_leader": "Trưởng đoàn",
+        "venue_owner": "Chủ sân",
+        "admin": "Quản trị viên",
+        "super_admin": "Quản trị viên cấp cao"
+      }
+    },
+    "input": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải",
+      "success": "Dữ liệu hợp lệ"
+    },
+    "select": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải",
+      "success": "Lựa chọn hợp lệ",
+      "readonly": "Chỉ đọc"
+    },
+    "textarea": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải",
+      "success": "Dữ liệu hợp lệ",
+      "count": "{current} / {max}",
+      "tooLong": "Nội dung vượt quá giới hạn. Vui lòng rút ngắn trước khi gửi."
+    },
+    "checkbox": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải"
+    },
+    "radio": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải"
+    },
+    "radioGroup": {
+      "required": "* Bắt buộc",
+      "loading": "Đang tải"
+    },
+    "switch": {
+      "on": "Bật",
+      "off": "Tắt",
+      "loading": "Đang tải"
+    },
+    "stepper": {
+      "decrease": "Giảm {label}",
+      "increase": "Tăng {label}",
+      "loading": "Đang tải"
+    },
+    "dateTime": {
+      "invalid": "Chưa cung cấp ngày hợp lệ"
+    },
+    "tabs": {
+      "loading": "Đang tải"
+    },
+    "modal": {
+      "close": "Đóng",
+      "loading": "Đang tải"
+    },
+    "bottomSheet": {
+      "close": "Đóng",
+      "loading": "Đang tải"
+    },
+    "toast": {
+      "close": "Đóng thông báo",
+      "region": "Thông báo",
+      "success": "Thành công",
+      "error": "Không thể hoàn tất",
+      "info": "Thông tin",
+      "warning": "Lưu ý"
+    },
+    "dataTable": {
+      "loading": "Đang tải",
+      "emptyTitle": "Chưa có dữ liệu",
+      "emptyDescription": "Dữ liệu mới sẽ xuất hiện tại đây.",
+      "notProvided": "Chưa cung cấp",
+      "selectAll": "Chọn tất cả các hàng có thể chọn",
+      "selectRow": "Chọn {name}"
+    },
+    "gallery": {
+      "title": "Thư viện thành phần UI",
+      "sample": "Nội dung mẫu",
+      "action": "Xem chi tiết",
+      "field": "Tên",
+      "option": "Lựa chọn",
+      "empty": "Chưa có dữ liệu",
+      "openModal": "Mở hộp thoại",
+      "openSheet": "Mở bảng phía dưới",
+      "showToast": "Hiển thị thông báo",
+      "close": "Đóng",
+      "error": "Hiện không thể hoàn tất thao tác này. Vui lòng thử lại sau.",
+      "count": "Số người tham gia",
+      "firstTab": "Hoạt động",
+      "secondTab": "Danh sách"
+    }
+  }
 }

@@ -1,0 +1,268 @@
+{
+  "zh-TW": {
+    "ui": {
+      "modal": { "close": "關閉", "loading": "載入中" },
+      "bottomSheet": { "close": "關閉", "loading": "載入中" },
+      "toast": {
+        "close": "關閉通知",
+        "region": "通知",
+        "success": "成功",
+        "error": "無法完成",
+        "info": "提示",
+        "warning": "請留意"
+      },
+      "dataTable": {
+        "loading": "載入中",
+        "emptyTitle": "目前沒有資料",
+        "emptyDescription": "有新資料時會顯示在這裡。",
+        "notProvided": "未提供",
+        "selectAll": "選取所有可選資料",
+        "selectRow": "選取 {name}"
+      },
+      "gallery": {
+        "title": "UI 元件展示",
+        "sample": "範例內容",
+        "action": "查看詳情",
+        "field": "名稱",
+        "option": "選項",
+        "empty": "目前沒有資料",
+        "openModal": "開啟對話框",
+        "openSheet": "開啟底部面板",
+        "showToast": "顯示通知",
+        "close": "關閉",
+        "error": "目前無法完成操作，請稍後再試。",
+        "count": "人數",
+        "firstTab": "活動",
+        "secondTab": "名單"
+      }
+    }
+  },
+  "zh-CN": {
+    "ui": {
+      "modal": { "close": "关闭", "loading": "加载中" },
+      "bottomSheet": { "close": "关闭", "loading": "加载中" },
+      "toast": {
+        "close": "关闭通知",
+        "region": "通知",
+        "success": "成功",
+        "error": "无法完成",
+        "info": "提示",
+        "warning": "请留意"
+      },
+      "dataTable": {
+        "loading": "加载中",
+        "emptyTitle": "目前没有数据",
+        "emptyDescription": "有新数据时会显示在这里。",
+        "notProvided": "未提供",
+        "selectAll": "选择所有可选数据",
+        "selectRow": "选择 {name}"
+      },
+      "gallery": {
+        "title": "UI 组件展示",
+        "sample": "示例内容",
+        "action": "查看详情",
+        "field": "名称",
+        "option": "选项",
+        "empty": "目前没有数据",
+        "openModal": "打开对话框",
+        "openSheet": "打开底部面板",
+        "showToast": "显示通知",
+        "close": "关闭",
+        "error": "目前无法完成操作，请稍后再试。",
+        "count": "人数",
+        "firstTab": "活动",
+        "secondTab": "名单"
+      }
+    }
+  },
+  "en": {
+    "ui": {
+      "modal": { "close": "Close", "loading": "Loading" },
+      "bottomSheet": { "close": "Close", "loading": "Loading" },
+      "toast": {
+        "close": "Dismiss notification",
+        "region": "Notifications",
+        "success": "Success",
+        "error": "Unable to complete",
+        "info": "Information",
+        "warning": "Please note"
+      },
+      "dataTable": {
+        "loading": "Loading",
+        "emptyTitle": "No data yet",
+        "emptyDescription": "New data will appear here.",
+        "notProvided": "Not provided",
+        "selectAll": "Select all available rows",
+        "selectRow": "Select {name}"
+      },
+      "gallery": {
+        "title": "UI component gallery",
+        "sample": "Sample content",
+        "action": "View details",
+        "field": "Name",
+        "option": "Option",
+        "empty": "No data yet",
+        "openModal": "Open dialog",
+        "openSheet": "Open bottom sheet",
+        "showToast": "Show notification",
+        "close": "Close",
+        "error": "We cannot complete this action right now. Please try again later.",
+        "count": "Participants",
+        "firstTab": "Activities",
+        "secondTab": "Roster"
+      }
+    }
+  },
+  "ja": {
+    "ui": {
+      "modal": { "close": "閉じる", "loading": "読み込み中" },
+      "bottomSheet": { "close": "閉じる", "loading": "読み込み中" },
+      "toast": {
+        "close": "通知を閉じる",
+        "region": "通知",
+        "success": "完了",
+        "error": "完了できませんでした",
+        "info": "お知らせ",
+        "warning": "ご確認ください"
+      },
+      "dataTable": {
+        "loading": "読み込み中",
+        "emptyTitle": "データはまだありません",
+        "emptyDescription": "新しいデータはここに表示されます。",
+        "notProvided": "未提供",
+        "selectAll": "選択可能な行をすべて選択",
+        "selectRow": "{name} を選択"
+      },
+      "gallery": {
+        "title": "UI コンポーネント一覧",
+        "sample": "サンプル内容",
+        "action": "詳細を見る",
+        "field": "名前",
+        "option": "選択肢",
+        "empty": "データはまだありません",
+        "openModal": "ダイアログを開く",
+        "openSheet": "ボトムシートを開く",
+        "showToast": "通知を表示",
+        "close": "閉じる",
+        "error": "現在この操作を完了できません。しばらくしてから再度お試しください。",
+        "count": "参加人数",
+        "firstTab": "イベント",
+        "secondTab": "名簿"
+      }
+    }
+  },
+  "vi": {
+    "ui": {
+      "modal": { "close": "Đóng", "loading": "Đang tải" },
+      "bottomSheet": { "close": "Đóng", "loading": "Đang tải" },
+      "toast": {
+        "close": "Đóng thông báo",
+        "region": "Thông báo",
+        "success": "Thành công",
+        "error": "Không thể hoàn tất",
+        "info": "Thông tin",
+        "warning": "Lưu ý"
+      },
+      "dataTable": {
+        "loading": "Đang tải",
+        "emptyTitle": "Chưa có dữ liệu",
+        "emptyDescription": "Dữ liệu mới sẽ xuất hiện tại đây.",
+        "notProvided": "Chưa cung cấp",
+        "selectAll": "Chọn tất cả các hàng có thể chọn",
+        "selectRow": "Chọn {name}"
+      },
+      "gallery": {
+        "title": "Thư viện thành phần UI",
+        "sample": "Nội dung mẫu",
+        "action": "Xem chi tiết",
+        "field": "Tên",
+        "option": "Lựa chọn",
+        "empty": "Chưa có dữ liệu",
+        "openModal": "Mở hộp thoại",
+        "openSheet": "Mở bảng phía dưới",
+        "showToast": "Hiển thị thông báo",
+        "close": "Đóng",
+        "error": "Hiện không thể hoàn tất thao tác này. Vui lòng thử lại sau.",
+        "count": "Số người tham gia",
+        "firstTab": "Hoạt động",
+        "secondTab": "Danh sách"
+      }
+    }
+  },
+  "th": {
+    "ui": {
+      "modal": { "close": "ปิด", "loading": "กำลังโหลด" },
+      "bottomSheet": { "close": "ปิด", "loading": "กำลังโหลด" },
+      "toast": {
+        "close": "ปิดการแจ้งเตือน",
+        "region": "การแจ้งเตือน",
+        "success": "สำเร็จ",
+        "error": "ไม่สามารถดำเนินการให้เสร็จสิ้นได้",
+        "info": "ข้อมูล",
+        "warning": "โปรดทราบ"
+      },
+      "dataTable": {
+        "loading": "กำลังโหลด",
+        "emptyTitle": "ยังไม่มีข้อมูล",
+        "emptyDescription": "ข้อมูลใหม่จะแสดงที่นี่",
+        "notProvided": "ไม่ได้ระบุ",
+        "selectAll": "เลือกแถวทั้งหมดที่สามารถเลือกได้",
+        "selectRow": "เลือก {name}"
+      },
+      "gallery": {
+        "title": "แกลเลอรีคอมโพเนนต์ UI",
+        "sample": "เนื้อหาตัวอย่าง",
+        "action": "ดูรายละเอียด",
+        "field": "ชื่อ",
+        "option": "ตัวเลือก",
+        "empty": "ยังไม่มีข้อมูล",
+        "openModal": "เปิดกล่องโต้ตอบ",
+        "openSheet": "เปิดแผงด้านล่าง",
+        "showToast": "แสดงการแจ้งเตือน",
+        "close": "ปิด",
+        "error": "ขณะนี้ไม่สามารถดำเนินการได้ โปรดลองอีกครั้งในภายหลัง",
+        "count": "จำนวนผู้เข้าร่วม",
+        "firstTab": "กิจกรรม",
+        "secondTab": "รายชื่อ"
+      }
+    }
+  },
+  "ko": {
+    "ui": {
+      "modal": { "close": "닫기", "loading": "불러오는 중" },
+      "bottomSheet": { "close": "닫기", "loading": "불러오는 중" },
+      "toast": {
+        "close": "알림 닫기",
+        "region": "알림",
+        "success": "완료",
+        "error": "완료할 수 없습니다",
+        "info": "안내",
+        "warning": "확인해 주세요"
+      },
+      "dataTable": {
+        "loading": "불러오는 중",
+        "emptyTitle": "아직 데이터가 없습니다",
+        "emptyDescription": "새 데이터가 여기에 표시됩니다.",
+        "notProvided": "미제공",
+        "selectAll": "선택 가능한 모든 행 선택",
+        "selectRow": "{name} 선택"
+      },
+      "gallery": {
+        "title": "UI 컴포넌트 갤러리",
+        "sample": "예시 내용",
+        "action": "상세 보기",
+        "field": "이름",
+        "option": "옵션",
+        "empty": "아직 데이터가 없습니다",
+        "openModal": "대화 상자 열기",
+        "openSheet": "하단 패널 열기",
+        "showToast": "알림 표시",
+        "close": "닫기",
+        "error": "현재 작업을 완료할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        "count": "참가 인원",
+        "firstTab": "활동",
+        "secondTab": "명단"
+      }
+    }
+  }
+}

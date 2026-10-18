@@ -21,5 +21,153 @@
   "notFound.body": "您要找的頁面不存在或已移除。",
   "notFound.home": "回到首頁",
   "feature.reserved": "此功能即將推出",
-  "feature.external": "即將接入外部系統"
+  "feature.external": "即將接入外部系統",
+  "ui": {
+    "topBar": {
+      "label": "頂部導覽",
+      "menu": "開啟選單",
+      "home": "回首頁",
+      "sport": "選擇運動項目",
+      "all": "全部",
+      "notifications": "查看通知",
+      "login": "LINE 登入"
+    },
+    "bottomNav": {
+      "label": "主要導覽",
+      "qr": "開啟我的 QR Code"
+    },
+    "sideDrawer": {
+      "label": "選單",
+      "close": "關閉選單",
+      "navigation": "其他功能",
+      "admin": "管理",
+      "language": "語言",
+      "loading": "正在載入語言",
+      "localeError": "目前無法切換語言，請稍後再試。",
+      "theme": "顯示模式",
+      "theme_light": "淺色",
+      "theme_dark": "深色",
+      "theme_system": "跟隨系統",
+      "themeAction": "目前為{current}，切換為{next}"
+    },
+    "badge": {
+      "empty": "未設定"
+    },
+    "chip": {
+      "empty": "未分類",
+      "remove": "移除「{label}」"
+    },
+    "emptyState": {
+      "title": "你目前還沒有報名活動",
+      "body": "找一場活動，或建立你的第一場活動"
+    },
+    "avatar": {
+      "unknown": "未提供名稱"
+    },
+    "userTag": {
+      "unknown": "未提供名稱",
+      "openProfile": "查看「{name}」的個人資料",
+      "level": "Lv {level}",
+      "levelUnset": "未設定等級",
+      "jersey": "背號 {number}",
+      "jerseyUnset": "未設背號",
+      "attendanceWarning": "出勤提醒",
+      "recentNoShow": "近期缺席",
+      "role": {
+        "user": "一般用戶",
+        "coach": "教練",
+        "captain": "隊長",
+        "team_leader": "領隊",
+        "venue_owner": "場主",
+        "admin": "管理員",
+        "super_admin": "超級管理員"
+      }
+    },
+    "input": {
+      "required": "* 必填",
+      "loading": "載入中",
+      "success": "輸入有效"
+    },
+    "select": {
+      "required": "* 必填",
+      "loading": "載入中",
+      "success": "選項有效",
+      "readonly": "唯讀"
+    },
+    "textarea": {
+      "required": "* 必填",
+      "loading": "載入中",
+      "success": "輸入有效",
+      "count": "{current}／{max}",
+      "tooLong": "內容超過上限，請縮短後再送出"
+    },
+    "checkbox": {
+      "required": "* 必填",
+      "loading": "載入中"
+    },
+    "radio": {
+      "required": "* 必填",
+      "loading": "載入中"
+    },
+    "radioGroup": {
+      "required": "* 必填",
+      "loading": "載入中"
+    },
+    "switch": {
+      "on": "開啟",
+      "off": "關閉",
+      "loading": "載入中"
+    },
+    "stepper": {
+      "decrease": "減少{label}",
+      "increase": "增加{label}",
+      "loading": "載入中"
+    },
+    "dateTime": {
+      "invalid": "未提供有效日期"
+    },
+    "tabs": {
+      "loading": "載入中"
+    },
+    "modal": {
+      "close": "關閉",
+      "loading": "載入中"
+    },
+    "bottomSheet": {
+      "close": "關閉",
+      "loading": "載入中"
+    },
+    "toast": {
+      "close": "關閉通知",
+      "region": "通知",
+      "success": "成功",
+      "error": "無法完成",
+      "info": "提示",
+      "warning": "請留意"
+    },
+    "dataTable": {
+      "loading": "載入中",
+      "emptyTitle": "目前沒有資料",
+      "emptyDescription": "有新資料時會顯示在這裡。",
+      "notProvided": "未提供",
+      "selectAll": "選取所有可選資料",
+      "selectRow": "選取 {name}"
+    },
+    "gallery": {
+      "title": "UI 元件展示",
+      "sample": "範例內容",
+      "action": "查看詳情",
+      "field": "名稱",
+      "option": "選項",
+      "empty": "目前沒有資料",
+      "openModal": "開啟對話框",
+      "openSheet": "開啟底部面板",
+      "showToast": "顯示通知",
+      "close": "關閉",
+      "error": "目前無法完成操作，請稍後再試。",
+      "count": "人數",
+      "firstTab": "活動",
+      "secondTab": "名單"
+    }
+  }
 }

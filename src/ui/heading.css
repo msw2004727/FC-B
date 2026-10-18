@@ -1,0 +1,26 @@
+.ui-heading {
+  --comp-heading-foreground-default: var(--color-text-primary);
+
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--comp-heading-foreground-default);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-semibold);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-heading--title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+}
+
+.ui-heading--title-lg {
+  font-size: var(--font-size-title-lg);
+  line-height: var(--line-height-title-lg);
+}
+
+.ui-heading--display {
+  font-size: var(--font-size-display);
+  line-height: var(--line-height-display);
+}

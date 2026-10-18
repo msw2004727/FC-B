@@ -1,0 +1,67 @@
+.ui-skeleton {
+  --comp-skeleton-background-default: var(--color-bg-skeleton-base);
+  --comp-skeleton-highlight-default: var(--color-bg-skeleton-glow);
+
+  display: inline-grid;
+  width: 100%;
+  height: var(--line-height-body);
+  gap: var(--space-1);
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+.ui-skeleton--lines-2 {
+  height: calc(var(--line-height-body) * 2 + var(--space-1));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.ui-skeleton--rect { height: 120px; }
+
+.ui-skeleton--circle {
+  width: 44px;
+  height: 44px;
+  aspect-ratio: 1;
+}
+
+.ui-skeleton__surface {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--comp-skeleton-background-default);
+}
+
+.ui-skeleton--rect .ui-skeleton__surface {
+  border-radius: var(--radius-card);
+}
+
+.ui-skeleton--circle .ui-skeleton__surface {
+  border-radius: var(--radius-full);
+}
+
+.ui-skeleton__surface::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: var(--comp-skeleton-highlight-default);
+  animation: ui-skeleton var(--ui-shimmer-dur) var(--ui-ease) infinite;
+}
+
+/*
+ * 保留契約名稱 ui-skeleton。
+ * 用合成層 opacity 取代 tokens.css 同名動畫的 background-position。
+ * 此樣式需在 tokens.css 後載入；不修改 tokens.css。
+ */
+@keyframes ui-skeleton {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton__surface::after {
+    animation: none;
+    opacity: 0;
+  }
+}

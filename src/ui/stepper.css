@@ -1,0 +1,70 @@
+.ui-stepper {
+  --comp-stepper-surface-default: var(--color-bg-surface);
+  --comp-stepper-border-default: var(--color-border);
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+}
+
+.ui-stepper__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: var(--border-hairline) solid var(--comp-stepper-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--comp-stepper-surface-default);
+}
+
+.ui-stepper__controls > button {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  /* 基底 IconButton 不得把背景色加入 transition。 */
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-stepper__controls > button:not(:disabled):hover {
+  background: var(--color-bg-hover);
+}
+
+.ui-stepper__controls > button:not(:disabled):active {
+  background: var(--color-bg-active);
+  transform: scale(.98);
+}
+
+.ui-stepper__controls > button:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.ui-stepper__value {
+  display: grid;
+  place-items: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.ui-stepper--lg .ui-stepper__controls > button,
+.ui-stepper--lg .ui-stepper__value {
+  min-block-size: 52px;
+}
+
+.ui-stepper__value:focus-visible,
+.ui-stepper__controls > button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-stepper__value[aria-disabled="true"] {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-stepper__controls > button {
+    transition: none;
+  }
+}

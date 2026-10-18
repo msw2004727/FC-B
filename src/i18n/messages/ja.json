@@ -21,5 +21,153 @@
   "notFound.body": "お探しのページは存在しないか、削除されました。",
   "notFound.home": "ホームに戻る",
   "feature.reserved": "この機能は近日公開予定です",
-  "feature.external": "外部システム連携準備中"
+  "feature.external": "外部システム連携準備中",
+  "ui": {
+    "topBar": {
+      "label": "上部ナビゲーション",
+      "menu": "メニューを開く",
+      "home": "ホームに戻る",
+      "sport": "スポーツを選ぶ",
+      "all": "すべて",
+      "notifications": "通知を見る",
+      "login": "LINEログイン"
+    },
+    "bottomNav": {
+      "label": "メインナビゲーション",
+      "qr": "自分のQRコードを開く"
+    },
+    "sideDrawer": {
+      "label": "メニュー",
+      "close": "メニューを閉じる",
+      "navigation": "その他の機能",
+      "admin": "管理",
+      "language": "言語",
+      "loading": "言語を読み込み中",
+      "localeError": "現在、言語を変更できません。しばらくしてからもう一度お試しください。",
+      "theme": "表示モード",
+      "theme_light": "ライト",
+      "theme_dark": "ダーク",
+      "theme_system": "システム設定",
+      "themeAction": "現在は{current}です。{next}に切り替える"
+    },
+    "badge": {
+      "empty": "未設定"
+    },
+    "chip": {
+      "empty": "未分類",
+      "remove": "「{label}」を削除"
+    },
+    "emptyState": {
+      "title": "まだアクティビティに申し込んでいません",
+      "body": "アクティビティを探すか、初めてのアクティビティを作成しましょう"
+    },
+    "avatar": {
+      "unknown": "名前未登録"
+    },
+    "userTag": {
+      "unknown": "名前未登録",
+      "openProfile": "{name}さんのプロフィールを表示",
+      "level": "Lv {level}",
+      "levelUnset": "レベル未設定",
+      "jersey": "背番号 {number}",
+      "jerseyUnset": "背番号未設定",
+      "attendanceWarning": "出席状況のお知らせ",
+      "recentNoShow": "最近の欠席",
+      "role": {
+        "user": "一般ユーザー",
+        "coach": "コーチ",
+        "captain": "キャプテン",
+        "team_leader": "チーム代表",
+        "venue_owner": "施設オーナー",
+        "admin": "管理者",
+        "super_admin": "最高管理者"
+      }
+    },
+    "input": {
+      "required": "* 必須",
+      "loading": "読み込み中",
+      "success": "有効な入力です"
+    },
+    "select": {
+      "required": "* 必須",
+      "loading": "読み込み中",
+      "success": "有効な選択です",
+      "readonly": "読み取り専用"
+    },
+    "textarea": {
+      "required": "* 必須",
+      "loading": "読み込み中",
+      "success": "有効な入力です",
+      "count": "{current}／{max}",
+      "tooLong": "上限を超えています。内容を短くしてから送信してください。"
+    },
+    "checkbox": {
+      "required": "* 必須",
+      "loading": "読み込み中"
+    },
+    "radio": {
+      "required": "* 必須",
+      "loading": "読み込み中"
+    },
+    "radioGroup": {
+      "required": "* 必須",
+      "loading": "読み込み中"
+    },
+    "switch": {
+      "on": "オン",
+      "off": "オフ",
+      "loading": "読み込み中"
+    },
+    "stepper": {
+      "decrease": "{label}を減らす",
+      "increase": "{label}を増やす",
+      "loading": "読み込み中"
+    },
+    "dateTime": {
+      "invalid": "有効な日付が指定されていません"
+    },
+    "tabs": {
+      "loading": "読み込み中"
+    },
+    "modal": {
+      "close": "閉じる",
+      "loading": "読み込み中"
+    },
+    "bottomSheet": {
+      "close": "閉じる",
+      "loading": "読み込み中"
+    },
+    "toast": {
+      "close": "通知を閉じる",
+      "region": "通知",
+      "success": "完了",
+      "error": "完了できませんでした",
+      "info": "お知らせ",
+      "warning": "ご確認ください"
+    },
+    "dataTable": {
+      "loading": "読み込み中",
+      "emptyTitle": "データはまだありません",
+      "emptyDescription": "新しいデータはここに表示されます。",
+      "notProvided": "未提供",
+      "selectAll": "選択可能な行をすべて選択",
+      "selectRow": "{name} を選択"
+    },
+    "gallery": {
+      "title": "UI コンポーネント一覧",
+      "sample": "サンプル内容",
+      "action": "詳細を見る",
+      "field": "名前",
+      "option": "選択肢",
+      "empty": "データはまだありません",
+      "openModal": "ダイアログを開く",
+      "openSheet": "ボトムシートを開く",
+      "showToast": "通知を表示",
+      "close": "閉じる",
+      "error": "現在この操作を完了できません。しばらくしてから再度お試しください。",
+      "count": "参加人数",
+      "firstTab": "イベント",
+      "secondTab": "名簿"
+    }
+  }
 }

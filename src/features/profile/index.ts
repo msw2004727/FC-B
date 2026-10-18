@@ -13,6 +13,14 @@ export const manifest: FeatureManifest = {
           default: () => h(m.PlaceholderPage, { titleKey: 'profile.title' }),
         })),
     },
+    {
+      path: '/profile/qr',
+      titleKey: 'profile.qr',
+      load: () =>
+        import('@/ui/PlaceholderPage').then((m) => ({
+          default: () => h(m.PlaceholderPage, { titleKey: 'profile.qr' }),
+        })),
+    },
   ],
   nav: [{ path: '/profile', labelKey: 'profile.nav', icon: 'user', order: 4 }],
 };

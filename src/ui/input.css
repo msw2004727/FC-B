@@ -1,0 +1,9 @@
+@import './form-controls.css';
+
+.ui-input {
+  --comp-input-border-success: var(--color-success);
+}
+
+.ui-input--success input {
+  border-color: var(--comp-input-border-success);
+}

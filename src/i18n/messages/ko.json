@@ -21,5 +21,153 @@
   "notFound.body": "찾으시는 페이지가 존재하지 않거나 삭제되었습니다.",
   "notFound.home": "홈으로 돌아가기",
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
-  "feature.external": "외부 시스템 연동 준비 중"
+  "feature.external": "외부 시스템 연동 준비 중",
+  "ui": {
+    "topBar": {
+      "label": "상단 탐색",
+      "menu": "메뉴 열기",
+      "home": "홈으로 이동",
+      "sport": "스포츠 선택",
+      "all": "전체",
+      "notifications": "알림 보기",
+      "login": "LINE 로그인"
+    },
+    "bottomNav": {
+      "label": "주요 탐색",
+      "qr": "내 QR 코드 열기"
+    },
+    "sideDrawer": {
+      "label": "메뉴",
+      "close": "메뉴 닫기",
+      "navigation": "기타 기능",
+      "admin": "관리",
+      "language": "언어",
+      "loading": "언어 불러오는 중",
+      "localeError": "지금은 언어를 변경할 수 없습니다. 나중에 다시 시도해 주세요.",
+      "theme": "화면 모드",
+      "theme_light": "라이트",
+      "theme_dark": "다크",
+      "theme_system": "시스템 설정",
+      "themeAction": "현재 모드: {current}. {next}(으)로 전환"
+    },
+    "badge": {
+      "empty": "미설정"
+    },
+    "chip": {
+      "empty": "미분류",
+      "remove": "“{label}” 삭제"
+    },
+    "emptyState": {
+      "title": "아직 신청한 활동이 없습니다",
+      "body": "활동을 찾거나 첫 활동을 만들어 보세요"
+    },
+    "avatar": {
+      "unknown": "이름 미제공"
+    },
+    "userTag": {
+      "unknown": "이름 미제공",
+      "openProfile": "{name}님의 프로필 보기",
+      "level": "Lv {level}",
+      "levelUnset": "레벨 미설정",
+      "jersey": "등번호 {number}",
+      "jerseyUnset": "등번호 미설정",
+      "attendanceWarning": "출석 알림",
+      "recentNoShow": "최근 결석",
+      "role": {
+        "user": "일반 회원",
+        "coach": "코치",
+        "captain": "주장",
+        "team_leader": "팀 대표",
+        "venue_owner": "시설 소유자",
+        "admin": "관리자",
+        "super_admin": "최고 관리자"
+      }
+    },
+    "input": {
+      "required": "* 필수",
+      "loading": "불러오는 중",
+      "success": "유효한 입력입니다"
+    },
+    "select": {
+      "required": "* 필수",
+      "loading": "불러오는 중",
+      "success": "유효한 선택입니다",
+      "readonly": "읽기 전용"
+    },
+    "textarea": {
+      "required": "* 필수",
+      "loading": "불러오는 중",
+      "success": "유효한 입력입니다",
+      "count": "{current} / {max}",
+      "tooLong": "입력 한도를 초과했습니다. 내용을 줄인 후 제출해 주세요."
+    },
+    "checkbox": {
+      "required": "* 필수",
+      "loading": "불러오는 중"
+    },
+    "radio": {
+      "required": "* 필수",
+      "loading": "불러오는 중"
+    },
+    "radioGroup": {
+      "required": "* 필수",
+      "loading": "불러오는 중"
+    },
+    "switch": {
+      "on": "켜짐",
+      "off": "꺼짐",
+      "loading": "불러오는 중"
+    },
+    "stepper": {
+      "decrease": "{label} 줄이기",
+      "increase": "{label} 늘리기",
+      "loading": "불러오는 중"
+    },
+    "dateTime": {
+      "invalid": "유효한 날짜가 제공되지 않았습니다"
+    },
+    "tabs": {
+      "loading": "불러오는 중"
+    },
+    "modal": {
+      "close": "닫기",
+      "loading": "불러오는 중"
+    },
+    "bottomSheet": {
+      "close": "닫기",
+      "loading": "불러오는 중"
+    },
+    "toast": {
+      "close": "알림 닫기",
+      "region": "알림",
+      "success": "완료",
+      "error": "완료할 수 없습니다",
+      "info": "안내",
+      "warning": "확인해 주세요"
+    },
+    "dataTable": {
+      "loading": "불러오는 중",
+      "emptyTitle": "아직 데이터가 없습니다",
+      "emptyDescription": "새 데이터가 여기에 표시됩니다.",
+      "notProvided": "미제공",
+      "selectAll": "선택 가능한 모든 행 선택",
+      "selectRow": "{name} 선택"
+    },
+    "gallery": {
+      "title": "UI 컴포넌트 갤러리",
+      "sample": "예시 내용",
+      "action": "상세 보기",
+      "field": "이름",
+      "option": "옵션",
+      "empty": "아직 데이터가 없습니다",
+      "openModal": "대화 상자 열기",
+      "openSheet": "하단 패널 열기",
+      "showToast": "알림 표시",
+      "close": "닫기",
+      "error": "현재 작업을 완료할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      "count": "참가 인원",
+      "firstTab": "활동",
+      "secondTab": "명단"
+    }
+  }
 }

@@ -1,0 +1,25 @@
+.ui-bottom-sheet {
+  --comp-bottom-sheet-surface-default: var(--color-bg-surface);
+  --comp-bottom-sheet-shadow-default: var(--shadow-md);
+}
+
+@media (max-width: 639px) {
+  .ui-bottom-sheet[open] {
+    align-items: flex-end;
+    padding-bottom: 0;
+  }
+
+  .ui-bottom-sheet .ui-modal__panel {
+    background: var(--comp-bottom-sheet-surface-default);
+    box-shadow: var(--comp-bottom-sheet-shadow-default);
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    padding-bottom: var(--safe-bottom);
+    animation: ui-slide-up var(--ui-slide-dur) var(--ui-ease);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-bottom-sheet .ui-modal__panel {
+    animation: none;
+  }
+}

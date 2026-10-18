@@ -1,0 +1,124 @@
+.ui-tabs {
+  --comp-tabs-background-selected: var(--color-brand);
+  --comp-tabs-text-selected: var(--color-brand-fg);
+  --comp-tabs-line-selected: var(--color-brand);
+  color: var(--color-text-primary);
+  min-inline-size: 0;
+}
+
+.ui-tabs__list {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: var(--space-1);
+  scrollbar-width: thin;
+}
+
+.ui-tabs__tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  max-inline-size: 18rem;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  white-space: normal;
+}
+
+.ui-tabs__label {
+  display: block;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+/*
+ * 超過兩行時擴展該 tab 的自然寬度，由 tablist 水平捲動承接。
+ * 不截斷、不省略、不使用 nowrap；長標籤完整保留。
+ */
+.ui-tabs__tab--wide {
+  inline-size: max-content;
+  max-inline-size: none;
+}
+
+.ui-tabs__tab--wide .ui-tabs__label {
+  inline-size: max-content;
+}
+
+.ui-tabs__tab:not(:disabled):hover {
+  background: var(--color-bg-hover);
+}
+
+.ui-tabs__tab:not(:disabled):active {
+  background: var(--color-bg-active);
+}
+
+.ui-tabs__tab:focus-visible,
+.ui-tabs__panel:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-tabs__tab:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.ui-tabs--underline .ui-tabs__tab {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+}
+
+.ui-tabs--underline .ui-tabs__tab[aria-selected="true"] {
+  color: var(--color-brand-soft-fg);
+}
+
+.ui-tabs--underline .ui-tabs__tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  inset-inline: var(--space-3);
+  inset-block-end: 0;
+  block-size: var(--border-hairline);
+  background: var(--comp-tabs-line-selected);
+}
+
+.ui-tabs--pill .ui-tabs__tab {
+  border-radius: var(--radius-full);
+}
+
+.ui-tabs--segmented .ui-tabs__list {
+  gap: var(--space-1);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+}
+
+.ui-tabs--pill .ui-tabs__tab[aria-selected="true"],
+.ui-tabs--segmented .ui-tabs__tab[aria-selected="true"] {
+  background: var(--comp-tabs-background-selected);
+  color: var(--comp-tabs-text-selected);
+  border-color: var(--comp-tabs-background-selected);
+}
+
+.ui-tabs__panel {
+  margin-block-start: var(--space-3);
+  min-inline-size: 0;
+}
+
+.ui-tabs__panel[hidden] {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .ui-tabs__tab[aria-selected="true"] {
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
+  }
+}

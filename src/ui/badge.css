@@ -1,0 +1,107 @@
+.ui-badge {
+  --comp-badge-background-default: var(--color-bg-elevated);
+  --comp-badge-foreground-default: var(--color-text-secondary);
+  --comp-badge-background-solid: var(--color-text-secondary);
+  --comp-badge-foreground-solid: var(--color-bg-surface);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-chip);
+  background: var(--comp-badge-background-default);
+  color: var(--comp-badge-foreground-default);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-caption);
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.ui-badge--brand {
+  background: var(--color-brand-soft-bg);
+  color: var(--color-brand-soft-fg);
+}
+
+.ui-badge--success {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.ui-badge--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+
+.ui-badge--danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
+
+.ui-badge--info {
+  background: var(--color-info-bg);
+  color: var(--color-info-fg);
+}
+
+.ui-badge--solid {
+  background: var(--comp-badge-background-solid);
+  color: var(--comp-badge-foreground-solid);
+}
+
+.ui-badge--brand.ui-badge--solid {
+  background: var(--color-brand);
+  color: var(--color-brand-fg);
+}
+
+/* 狀態 solid 使用對應深色文字 token 作底，避免淺色主題白字對比不足。 */
+.ui-badge--success.ui-badge--solid {
+  background: var(--color-success-fg);
+  color: var(--color-success-bg);
+}
+
+.ui-badge--warning.ui-badge--solid {
+  background: var(--color-warning-fg);
+  color: var(--color-warning-bg);
+}
+
+.ui-badge--danger.ui-badge--solid {
+  background: var(--color-danger-fg);
+  color: var(--color-danger-bg);
+}
+
+.ui-badge--info.ui-badge--solid {
+  background: var(--color-info-fg);
+  color: var(--color-info-bg);
+}
+
+.ui-badge--outline {
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-strong);
+}
+
+.ui-badge--sm { min-height: 18px; }
+.ui-badge--md { min-height: 22px; }
+.ui-badge--lg { min-height: 26px; }
+
+.ui-badge--disabled { opacity: .5; }
+
+.ui-badge__label {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 覆寫 Text 的代碼保護；Chip / Badge 契約要求可換行。 */
+.ui-badge__label .ui-nobr {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,14 @@
+@import './form-controls.css';
+
+.ui-select {
+  --comp-select-border-success: var(--color-success);
+}
+
+.ui-select--success select {
+  border-color: var(--comp-select-border-success);
+}
+
+/* 保留平台原生箭頭、鍵盤、選項清單與高對比模式。 */
+.ui-select select {
+  cursor: pointer;
+}

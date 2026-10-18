@@ -1,0 +1,10 @@
+.ui-date-time {
+  --comp-date-time-text-default: var(--color-text-secondary);
+  color: var(--comp-date-time-text-default);
+  font-variant-numeric: var(--font-numeric);
+  overflow-wrap: break-word;
+}
+
+.ui-date-time--invalid {
+  color: var(--color-text-muted);
+}

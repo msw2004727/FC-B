@@ -1,0 +1,171 @@
+.ui-chip {
+  --comp-chip-background-default: var(--color-bg-surface);
+  --comp-chip-foreground-default: var(--color-brand-soft-fg);
+  --comp-chip-background-hover: var(--color-bg-hover);
+  --comp-chip-background-active: var(--color-bg-active);
+
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-chip);
+  background: var(--comp-chip-background-default);
+  color: var(--comp-chip-foreground-default);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-sm);
+  vertical-align: middle;
+  white-space: normal;
+}
+
+/* 依 A 微調：使用會隨主題切換的前景 token，改善暗色青綠文字對比。 */
+.ui-chip--soft {
+  background: var(--color-brand-soft-bg);
+  color: var(--color-brand-soft-fg);
+}
+
+.ui-chip--solid {
+  background: var(--color-brand);
+  color: var(--color-brand-fg);
+}
+
+.ui-chip--selected {
+  background: var(--color-bg-selected);
+  color: var(--color-brand-soft-fg);
+  border-color: var(--color-border-strong);
+}
+
+.ui-chip__select,
+.ui-chip__display {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  white-space: normal;
+}
+
+.ui-chip--sm .ui-chip__display { min-height: 18px; }
+.ui-chip--md .ui-chip__display { min-height: 22px; }
+.ui-chip--lg .ui-chip__display { min-height: 26px; }
+
+/* 依 A 微調：42px 運動入口增至至少 44px，維持 9px 圓角與雙行排版。 */
+.ui-chip__select,
+.ui-chip__remove,
+.ui-chip--interactive .ui-chip__display {
+  min-height: 44px;
+}
+
+.ui-chip__select,
+.ui-chip__remove {
+  min-width: 44px;
+  cursor: pointer;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ui-chip__remove {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-inline-start: var(--border-hairline) solid var(--color-border);
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
+  background: transparent;
+  color: inherit;
+}
+
+.ui-chip__select:not(:disabled):hover,
+.ui-chip__remove:not(:disabled):hover {
+  background: var(--comp-chip-background-hover);
+  color: var(--color-brand-soft-fg);
+}
+
+.ui-chip__select:not(:disabled):active,
+.ui-chip__remove:not(:disabled):active {
+  background: var(--comp-chip-background-active);
+  color: var(--color-brand-soft-fg);
+  transform: scale(.98);
+}
+
+.ui-chip__select:focus-visible,
+.ui-chip__remove:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-chip--disabled { opacity: .5; }
+
+.ui-chip button:disabled { cursor: not-allowed; }
+
+.ui-chip--loading { cursor: progress; }
+
+.ui-chip__icon,
+.ui-chip__spinner {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.ui-chip__spinner {
+  animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite;
+}
+
+.ui-chip__content {
+  display: block;
+  min-width: 0;
+}
+
+.ui-chip__label,
+.ui-chip__description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-chip__content--detail .ui-chip__label,
+.ui-chip__description {
+  -webkit-line-clamp: 1;
+}
+
+.ui-chip__description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-caption);
+}
+
+.ui-chip--solid:not(.ui-chip--selected) .ui-chip__description {
+  color: inherit;
+}
+
+.ui-chip__content .ui-nobr {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-chip__select,
+  .ui-chip__remove {
+    transition: none;
+  }
+
+  .ui-chip__spinner {
+    animation: none;
+  }
+}
