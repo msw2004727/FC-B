@@ -1166,6 +1166,10 @@ export interface SendPrivateMessageRequest {
 export interface SendPrivateMessageResponse {
   /** @when 成功 */
   ok?: boolean;
+  /** @when 成功（functions/index.js：return { ok: true, conversationId, messageId }） */
+  conversationId?: string;
+  /** @when 成功 */
+  messageId?: string;
 }
 
 export interface SyncGroupActionStatusRequest {
