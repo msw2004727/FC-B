@@ -12,11 +12,8 @@
  * - 任何以名字比對身分的分支（R-ID-002 刻意不移植）
  */
 
-import './attendance-roster.css';
 import type { JSX } from 'preact';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
-import { useT } from '@/i18n/i18n';
-import { Text } from '@/ui/Text';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
 import {
@@ -61,6 +58,8 @@ export interface AttendanceRosterTableProps {
 }
 
 const LEGACY_SETTLE_URL = 'https://toosterx.com/';
+const PROXY_ROW_STYLE =
+  'border-bottom:1px solid var(--border);background:linear-gradient(90deg, rgba(148,163,184,.16), rgba(148,163,184,.04) 55%, transparent)';
 
 export function AttendanceRosterTable({
   event,
@@ -81,39 +80,43 @@ export function AttendanceRosterTable({
   onToggleCheckbox,
   onChangeNote,
 }: AttendanceRosterTableProps): JSX.Element {
-  const t = useT();
   const { people, count: renderedRosterCount } = buildConfirmedRoster(event, registrations);
   const maxCount = Number(event.max || 0) || 0;
-  const tableEditing = Boolean(canManage && !publicRosterOnly && editing);
-  const isSubmitting = Boolean(canManage && !publicRosterOnly && submitting);
-  const tableColSpan = publicRosterOnly ? 1 : 4; // 姓名 (+ 簽到 + 簽退 + 備註)
+  const showManage = Boolean(canManage && !publicRosterOnly);
+  const tableEditing = Boolean(showManage && editing);
+  const isSubmitting = Boolean(showManage && submitting);
+  const showAttendanceRecordColumns = !publicRosterOnly;
+  const tableColSpan = showAttendanceRecordColumns ? 4 : 1; // 姓名 (+ 簽到 + 簽退 + 備註)
+  const noteInputStyle =
+    'width:100%;font-size:.72rem;padding:.15rem .3rem;border:1px solid var(--border);border-radius:3px;box-sizing:border-box'
+    + (isSubmitting ? ';opacity:.7;cursor:not-allowed' : '');
 
   function renderManageButton(): JSX.Element | null {
-    if (!canManage || publicRosterOnly) return null;
+    if (!showManage) return null;
     if (tableEditing) {
       // CALLABLES_DEPLOYED === true 的伺服器結算路徑於下一批實作；
-      // 本批旗標為 false，按鈕文字固定為「關閉編輯」（送出中顯示「儲存中...」）。
-      const label = isSubmitting
-        ? t('events.roster.saving')
-        : t('events.roster.closeEdit');
+      // 本批旗標為 false，按鈕文字固定為「關閉編輯」（送出中顯示「儲存中...」），按鈕外觀照 A 綠底樣式。
+      const finishStyle = `font-size:.75rem;padding:.25rem .6rem;background:#2e7d32;color:#fff;border:none;border-radius:var(--radius-sm);${
+        isSubmitting ? 'cursor:not-allowed;opacity:.72' : 'cursor:pointer'
+      }`;
       return (
         <button
           type="button"
-          class="att-roster-manage-btn att-roster-manage-btn--finish"
+          style={finishStyle}
           disabled={isSubmitting}
           onClick={() => onCloseEdit?.()}
         >
-          <Text>{label}</Text>
+          {isSubmitting ? '儲存中...' : '關閉編輯'}
         </button>
       );
     }
     return (
       <button
         type="button"
-        class="att-roster-manage-btn att-roster-manage-btn--start"
+        style="font-size:.75rem;padding:.25rem .6rem;background:#1565c0;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer"
         onClick={() => onStartEdit?.()}
       >
-        <Text>{t('events.roster.manage')}</Text>
+        管理名單
       </button>
     );
   }
@@ -121,38 +124,37 @@ export function AttendanceRosterTable({
   function renderLegacySettleBanner(): JSX.Element | null {
     if (!tableEditing || CALLABLES_DEPLOYED) return null;
     return (
-      <div class="att-roster-legacy-hint" role="note">
-        <Text>{t('events.roster.settleInLegacy')}</Text>
+      <div
+        role="note"
+        style="display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.25rem 0 .45rem;padding:.25rem .5rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.14);color:var(--text-primary);font-size:.75rem;line-height:1.4"
+      >
+        <span>請在舊版按完成以結算經驗值與放鴿子</span>
         <a
-          class="att-roster-legacy-link"
           href={LEGACY_SETTLE_URL}
           target="_blank"
           rel="noopener noreferrer"
+          style="color:var(--primary, #1565c0);font-weight:600;text-decoration:underline;white-space:nowrap"
         >
-          <Text>{t('events.roster.goLegacy')}</Text>
+          前往舊版
         </a>
       </div>
     );
   }
 
   if (people.length === 0) {
-    if (!canManage || publicRosterOnly) {
+    if (!showManage) {
       return (
-        <div class="att-roster-empty">
-          <Text>{t('events.roster.empty')}</Text>
-        </div>
+        <div style="font-size:.8rem;color:var(--text-muted);padding:.3rem 0">尚無報名</div>
       );
     }
     return (
       <div>
-        <div class="att-roster-empty-header">
-          <Text>{t('events.roster.title', { count: 0, max: maxCount })}</Text>
+        <div style="display:flex;align-items:center;gap:.4rem;white-space:nowrap;margin:.2rem 0 .4rem;font-size:.8rem;font-weight:600">
+          {`報名名單（0/${maxCount}）`}
           {renderManageButton()}
         </div>
         {renderLegacySettleBanner()}
-        <div class="att-roster-empty">
-          <Text>{t('events.roster.empty')}</Text>
-        </div>
+        <div style="font-size:.8rem;color:var(--text-muted);padding:.3rem 0">尚無報名</div>
       </div>
     );
   }
@@ -163,20 +165,20 @@ export function AttendanceRosterTable({
 
     if (isProxyOnly) {
       nameInner = (
-        <span class="reg-name-text reg-name-text--proxy">
-          <Text>{p.displayName}</Text>
+        <span class="reg-name-text" style="color:var(--text-muted);font-weight:600">
+          {p.displayName}
         </span>
       );
     } else if (p.isCompanion) {
       nameInner = (
-        <span class="reg-name-text reg-name-text--companion">
-          <Text>{`↳ ${p.displayName}`}</Text>
+        <span class="reg-name-text" style="padding-left:1.2rem;color:var(--text-secondary)">
+          {`↳ ${p.displayName}`}
         </span>
       );
     } else if (p.isTeamPlaceholder) {
       nameInner = (
         <span class="reg-name-text team-reservation-placeholder-name">
-          <Text>{p.displayName}</Text>
+          {p.displayName}
         </span>
       );
     } else if (p.hasSelfReg) {
@@ -192,11 +194,7 @@ export function AttendanceRosterTable({
         </span>
       );
     } else {
-      nameInner = (
-        <span class="reg-name-text">
-          <Text>{p.displayName}</Text>
-        </span>
-      );
+      nameInner = <span class="reg-name-text">{p.displayName}</span>;
     }
 
     const badges = p.displayBadges.filter((b) => Boolean(b.image));
@@ -225,12 +223,12 @@ export function AttendanceRosterTable({
   }
 
   function renderEmptyAttendanceCells(label: string): JSX.Element | null {
-    if (publicRosterOnly) return null;
+    if (!showAttendanceRecordColumns) return null;
     return (
       <>
-        <td class="att-roster-td-dash"><Text>--</Text></td>
-        <td class="att-roster-td-dash"><Text>--</Text></td>
-        <td class="att-roster-td-note"><Text>{label}</Text></td>
+        <td style="padding:.35rem .2rem;text-align:center;color:var(--text-muted)">--</td>
+        <td style="padding:.35rem .2rem;text-align:center;color:var(--text-muted)">--</td>
+        <td style="padding:.35rem .3rem;font-size:.72rem;color:var(--text-muted)">{label}</td>
       </>
     );
   }
@@ -239,7 +237,8 @@ export function AttendanceRosterTable({
     p: ConfirmedRosterPerson,
     attendanceKey: string,
     fallbackState: { hasCheckin: boolean; hasCheckout: boolean; noteText: string },
-  ): JSX.Element {
+  ): JSX.Element | null {
+    if (!showAttendanceRecordColumns) return null;
     const sel = getRowSelection
       ? getRowSelection(p)
       : {
@@ -254,14 +253,14 @@ export function AttendanceRosterTable({
 
     return (
       <>
-        <td class="att-roster-td-check">
+        <td style="padding:.35rem .2rem;text-align:center">
           <input
             type="checkbox"
             id={checkinId}
             class="att-cb"
             checked={sel.checkin}
             disabled={rowBusy}
-            aria-label={`${p.displayName} ${t('events.roster.checkin')}`}
+            aria-label={`${p.displayName} 簽到`}
             onChange={(e) => {
               onToggleCheckbox?.(p, 'checkin', e.currentTarget.checked);
             }}
@@ -270,14 +269,14 @@ export function AttendanceRosterTable({
             <span class="att-box" />
           </label>
         </td>
-        <td class="att-roster-td-check">
+        <td style="padding:.35rem .2rem;text-align:center">
           <input
             type="checkbox"
             id={checkoutId}
             class="att-cb"
             checked={sel.checkout}
             disabled={rowBusy}
-            aria-label={`${p.displayName} ${t('events.roster.checkout')}`}
+            aria-label={`${p.displayName} 簽退`}
             onChange={(e) => {
               onToggleCheckbox?.(p, 'checkout', e.currentTarget.checked);
             }}
@@ -286,16 +285,16 @@ export function AttendanceRosterTable({
             <span class="att-box" />
           </label>
         </td>
-        <td class="att-roster-td-note">
+        <td style="padding:.35rem .3rem">
           <input
             type="text"
-            id={noteId}
-            class="att-roster-note-input"
             maxLength={20}
             value={sel.note}
-            placeholder={t('events.roster.note')}
+            id={noteId}
+            placeholder="備註"
             disabled={isSubmitting}
-            aria-label={`${p.displayName} ${t('events.roster.note')}`}
+            style={noteInputStyle}
+            aria-label={`${p.displayName} 備註`}
             onInput={(e) => {
               onChangeNote?.(p, e.currentTarget.value);
             }}
@@ -306,24 +305,22 @@ export function AttendanceRosterTable({
   }
 
   return (
-    <div class="att-roster-scroll">
+    <div style="overflow-x:auto">
       {renderLegacySettleBanner()}
-      <table class="att-roster-table">
+      <table style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed">
         <thead>
-          <tr class="att-roster-thead-row">
-            <th class="att-roster-th-name">
-              <div class="att-roster-th-name-inner">
-                <Text>
-                  {t('events.roster.title', { count: renderedRosterCount, max: maxCount })}
-                </Text>
+          <tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:.4rem .3rem;font-weight:600">
+              <div style="display:flex;align-items:center;gap:.4rem;white-space:nowrap">
+                {`報名名單（${renderedRosterCount}/${maxCount}）`}
                 {renderManageButton()}
               </div>
             </th>
-            {!publicRosterOnly && (
+            {showAttendanceRecordColumns && (
               <>
-                <th class="att-roster-th-check"><Text>{t('events.roster.checkin')}</Text></th>
-                <th class="att-roster-th-check"><Text>{t('events.roster.checkout')}</Text></th>
-                <th class="att-roster-th-note"><Text>{t('events.roster.note')}</Text></th>
+                <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2.5rem">簽到</th>
+                <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2.5rem">簽退</th>
+                <th style="text-align:left;padding:.4rem .3rem;font-weight:600;width:4.5rem">備註</th>
               </>
             )}
           </tr>
@@ -337,7 +334,7 @@ export function AttendanceRosterTable({
                 <tr key={rowKey} class="team-reservation-general-row">
                   <td colSpan={tableColSpan}>
                     <div class="team-reservation-general-divider">
-                      <Text>{t('events.roster.generalSection')}</Text>
+                      <span>一般報名</span>
                     </div>
                   </td>
                 </tr>
@@ -351,22 +348,16 @@ export function AttendanceRosterTable({
                     <div class="team-reservation-section-title">
                       <div class="team-reservation-section-main">
                         <span class="team-reservation-section-avatar" aria-hidden="true">
-                          <Text>{t('events.roster.clubBadge')}</Text>
+                          俱
                         </span>
                         <strong class="team-reservation-section-name">
-                          <Text>{p.teamReservationTeamName || p.displayName}</Text>
+                          {p.teamReservationTeamName || p.displayName}
                         </strong>
                       </div>
                       <span class="team-reservation-summary">
-                        <Text>
-                          {t('events.roster.reservedSlots', { count: Number(p.reservedSlots || 0) })}
-                        </Text>
-                        <Text>
-                          {t('events.roster.usedSlots', { count: Number(p.usedSlots || 0) })}
-                        </Text>
-                        <Text>
-                          {t('events.roster.remainingSlots', { count: Number(p.remainingSlots || 0) })}
-                        </Text>
+                        <span>{`佔位: ${Number(p.reservedSlots || 0)}`}</span>
+                        <span>{`已使用: ${Number(p.usedSlots || 0)}`}</span>
+                        <span>{`剩餘: ${Number(p.remainingSlots || 0)}`}</span>
                       </span>
                     </div>
                   </td>
@@ -375,67 +366,75 @@ export function AttendanceRosterTable({
             }
 
             const attendanceKey = getAttendancePersonKey(p);
-
-            if (p.isTeamPlaceholder) {
-              return (
-                <tr
-                  key={rowKey}
-                  data-attendance-key={tableEditing ? attendanceKey : undefined}
-                  class="team-reservation-placeholder-row att-roster-row--placeholder"
-                >
-                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
-                  {renderEmptyAttendanceCells(t('events.roster.reservedSeat'))}
-                </tr>
-              );
-            }
-
             const isProxyOnly = Boolean(p.proxyOnly || p.isProxyOnly);
-            if (isProxyOnly) {
-              return (
-                <tr
-                  key={rowKey}
-                  data-attendance-key={tableEditing ? attendanceKey : undefined}
-                  class="att-roster-row--proxy"
-                >
-                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
-                  {renderEmptyAttendanceCells(t('events.roster.proxyOnly'))}
-                </tr>
-              );
+
+            if (tableEditing) {
+              if (isProxyOnly) {
+                return (
+                  <tr
+                    key={rowKey}
+                    data-attendance-key={attendanceKey}
+                    style={PROXY_ROW_STYLE}
+                  >
+                    <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderEmptyAttendanceCells('僅代報')}
+                  </tr>
+                );
+              }
+              if (p.isTeamPlaceholder) {
+                return (
+                  <tr
+                    key={rowKey}
+                    data-attendance-key={attendanceKey}
+                    class="team-reservation-placeholder-row"
+                  >
+                    <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderEmptyAttendanceCells('保留席位')}
+                  </tr>
+                );
+              }
+            } else {
+              if (p.isTeamPlaceholder) {
+                return (
+                  <tr key={rowKey} class="team-reservation-placeholder-row">
+                    <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderEmptyAttendanceCells('保留席位')}
+                  </tr>
+                );
+              }
+              if (isProxyOnly) {
+                return (
+                  <tr key={rowKey} style={PROXY_ROW_STYLE}>
+                    <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderEmptyAttendanceCells('僅代報')}
+                  </tr>
+                );
+              }
             }
 
-            const state = attendanceStateFor(
-              p,
-              attendanceRecords,
-              t('events.roster.proxyOnly'),
-            );
+            const state = attendanceStateFor(p, attendanceRecords, '僅代報');
             const flashClass = savedFlashKeys?.[attendanceKey]
-              ? ' att-row-saved'
+              ? 'att-row-saved'
               : failedFlashKeys?.[attendanceKey]
-                ? ' att-row-failed'
+                ? 'att-row-failed'
                 : '';
-            const memberRowClass = `${
-              p.teamReservationTeamId
-                ? 'team-reservation-member-row att-roster-row'
-                : 'att-roster-row'
-            }${flashClass}`;
-
-            if (publicRosterOnly) {
-              return (
-                <tr key={rowKey} class={memberRowClass}>
-                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
-                </tr>
-              );
-            }
+            const rowClasses = [
+              p.teamReservationTeamId ? 'team-reservation-member-row' : '',
+              flashClass,
+            ]
+              .filter(Boolean)
+              .join(' ');
 
             if (state.ambiguous) {
               return (
                 <tr
                   key={rowKey}
                   data-attendance-key={tableEditing ? attendanceKey : undefined}
-                  class={memberRowClass}
+                  class={rowClasses || undefined}
+                  style="border-bottom:1px solid var(--border)"
                 >
-                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
-                  {renderEmptyAttendanceCells(t('events.roster.courseRollcall'))}
+                  <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                  {renderEmptyAttendanceCells('請至課程點名')}
                 </tr>
               );
             }
@@ -445,30 +444,39 @@ export function AttendanceRosterTable({
                 <tr
                   key={rowKey}
                   data-attendance-key={attendanceKey}
-                  class={memberRowClass}
+                  class={rowClasses || undefined}
+                  style="border-bottom:1px solid var(--border)"
                 >
-                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
+                  <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                   {renderEditableAttendanceCells(p, attendanceKey, state)}
                 </tr>
               );
             }
 
             return (
-              <tr key={rowKey} class={memberRowClass}>
-                <td class="att-roster-td-name">{renderNameCell(p)}</td>
-                <td class="att-roster-td-check">
-                  {state.hasCheckin ? (
-                    <span class="att-roster-check-mark"><Text>✓</Text></span>
-                  ) : null}
-                </td>
-                <td class="att-roster-td-check">
-                  {state.hasCheckout ? (
-                    <span class="att-roster-check-mark"><Text>✓</Text></span>
-                  ) : null}
-                </td>
-                <td class="att-roster-td-note">
-                  {state.combinedNote ? <Text>{state.combinedNote}</Text> : null}
-                </td>
+              <tr
+                key={rowKey}
+                class={rowClasses || undefined}
+                style="border-bottom:1px solid var(--border)"
+              >
+                <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                {showAttendanceRecordColumns && (
+                  <>
+                    <td style="padding:.35rem .2rem;text-align:center">
+                      {state.hasCheckin ? (
+                        <span style="color:var(--success);font-size:1rem">✓</span>
+                      ) : null}
+                    </td>
+                    <td style="padding:.35rem .2rem;text-align:center">
+                      {state.hasCheckout ? (
+                        <span style="color:var(--success);font-size:1rem">✓</span>
+                      ) : null}
+                    </td>
+                    <td style="padding:.35rem .3rem;font-size:.72rem;color:var(--text-muted)">
+                      {state.combinedNote}
+                    </td>
+                  </>
+                )}
               </tr>
             );
           })}

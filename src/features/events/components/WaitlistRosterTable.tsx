@@ -1,18 +1,15 @@
 /**
  * 活動詳情「候補名單」唯讀檢視元件。
  *
- * 對照舊版 A `event-manage-waitlist.js#_renderWaitlistSection`（`tableEditing === false`）。
+ * 對照舊版 A `event-detail.js#_renderGroupedWaitlistSection` 與 `event-manage-waitlist.js#_renderWaitlistSection`（非編輯模式表格）。
  *
  * 本批不做（之後的批次補）：
  * - 編輯模式（「正取」升正取按鈕）
  * - 以名字比對或重排（R-ID-002 刻意不移植）
  */
 
-import './attendance-roster.css';
 import type { JSX } from 'preact';
 import { Fragment } from 'preact';
-import { useT } from '@/i18n/i18n';
-import { Text } from '@/ui/Text';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
 import {
@@ -34,23 +31,25 @@ export function WaitlistRosterTable({
   roles,
   onOpenProfile,
 }: WaitlistRosterTableProps): JSX.Element | null {
-  const t = useT();
   const { items, totalCount } = buildWaitlistRoster(event, registrations);
 
   // 對照 A：if (items.length === 0) { container.innerHTML = ''; return; }
   if (items.length === 0) return null;
 
   return (
-    <div>
-      <div class="wl-roster-header">
-        <Text>{t('events.roster.waitlistTitle', { count: totalCount })}</Text>
+    <div class="detail-section">
+      <div
+        class="detail-section-title"
+        style="display:flex;align-items:center;gap:.5rem"
+      >
+        <span>{`候補名單（${totalCount}）`}</span>
       </div>
-      <div class="att-roster-scroll">
-        <table class="wl-roster-table">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.8rem">
           <thead>
-            <tr class="att-roster-thead-row">
-              <th class="wl-roster-th-pos"><Text>{t('events.roster.waitlistNumber')}</Text></th>
-              <th class="wl-roster-th-name"><Text>{t('events.roster.waitlistName')}</Text></th>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="text-align:center;padding:.4rem .3rem;font-weight:600;width:2rem">#</th>
+              <th style="text-align:left;padding:.4rem .3rem;font-weight:600">姓名</th>
             </tr>
           </thead>
           <tbody>
@@ -58,11 +57,11 @@ export function WaitlistRosterTable({
               const rowKey = `${item.registrationId || item.userId || item.name}:${idx}`;
               return (
                 <Fragment key={rowKey}>
-                  <tr class="att-roster-row">
-                    <td class="wl-roster-td-pos">
-                      <span class="wl-pos"><Text>{String(idx + 1)}</Text></span>
+                  <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:.35rem .3rem;text-align:center;width:2rem">
+                      <span class="wl-pos">{idx + 1}</span>
                     </td>
-                    <td class="wl-roster-td-name">
+                    <td style="padding:.35rem .3rem;text-align:left">
                       <UserTag
                         uid={item.userId}
                         name={item.name}
@@ -73,34 +72,39 @@ export function WaitlistRosterTable({
                     </td>
                   </tr>
                   {item.selfOrphanInfo ? (
-                    <tr>
+                    <tr style="border-bottom:1px solid var(--border)">
                       <td />
-                      <td class="wl-roster-orphan-cell" data-no-translate>
-                        <Text>{t('events.roster.orphanPrefix', { name: item.selfOrphanInfo })}</Text>
-                        <span class="wl-roster-orphan-confirmed">
-                          <Text>{t('events.roster.orphanConfirmed')}</Text>
-                        </span>
-                        <Text>{t('events.roster.orphanSuffix')}</Text>
+                      <td
+                        style="padding:.1rem .3rem .1rem 1.8rem;font-size:.72rem;color:var(--text-muted)"
+                        data-no-translate
+                      >
+                        {`↳ 報名人：${item.selfOrphanInfo}（`}
+                        <span style="color:var(--success)">已正取</span>
+                        {'）'}
                       </td>
                     </tr>
                   ) : null}
                   {item.companions.map((c, cIdx) => (
                     <Fragment key={`${rowKey}:comp:${c.companionId || cIdx}`}>
-                      <tr class="att-roster-row">
-                        <td class="wl-roster-td-companion-empty" />
-                        <td class="wl-roster-td-companion" data-no-translate>
-                          <Text>{`↳ ${c.name}`}</Text>
+                      <tr style="border-bottom:1px solid var(--border)">
+                        <td />
+                        <td
+                          style="padding:.3rem .3rem;text-align:left;padding-left:1.2rem"
+                          data-no-translate
+                        >
+                          <span style="color:var(--text-secondary)">{`↳ ${c.name}`}</span>
                         </td>
                       </tr>
                       {c.orphanInfo ? (
-                        <tr>
+                        <tr style="border-bottom:1px solid var(--border)">
                           <td />
-                          <td class="wl-roster-orphan-cell--companion" data-no-translate>
-                            <Text>{t('events.roster.orphanPrefix', { name: c.orphanInfo })}</Text>
-                            <span class="wl-roster-orphan-confirmed">
-                              <Text>{t('events.roster.orphanConfirmed')}</Text>
-                            </span>
-                            <Text>{t('events.roster.orphanSuffix')}</Text>
+                          <td
+                            style="padding:.1rem .3rem .1rem 2.4rem;font-size:.72rem;color:var(--text-muted)"
+                            data-no-translate
+                          >
+                            {`↳ 報名人：${c.orphanInfo}（`}
+                            <span style="color:var(--success)">已正取</span>
+                            {'）'}
                           </td>
                         </tr>
                       ) : null}

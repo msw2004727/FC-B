@@ -1,29 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { AttendanceRosterTable } from './AttendanceRosterTable';
 import { WaitlistRosterTable } from './WaitlistRosterTable';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => {
   const dict: Record<string, string> = {
-    'events.roster.title': '報名名單（{count}/{max}）',
-    'events.roster.checkin': '簽到',
-    'events.roster.checkout': '簽退',
-    'events.roster.note': '備註',
-    'events.roster.empty': '尚無報名',
-    'events.roster.reservedSeat': '保留席位',
-    'events.roster.proxyOnly': '僅代報',
-    'events.roster.courseRollcall': '請至課程點名',
-    'events.roster.generalSection': '一般報名',
-    'events.roster.clubBadge': '俱',
-    'events.roster.reservedSlots': '佔位: {count}',
-    'events.roster.usedSlots': '已使用: {count}',
-    'events.roster.remainingSlots': '剩餘: {count}',
-    'events.roster.waitlistTitle': '候補名單（{count}）',
-    'events.roster.waitlistNumber': '#',
-    'events.roster.waitlistName': '姓名',
-    'events.roster.orphanPrefix': '↳ 報名人：{name}（',
-    'events.roster.orphanConfirmed': '已正取',
-    'events.roster.orphanSuffix': '）',
     'ui.userTag.role.user': '一般用戶',
     'ui.userTag.role.coach': '教練',
     'ui.userTag.openProfile': '檢視 {name}',
@@ -41,6 +22,10 @@ vi.mock('@/i18n/i18n', async (importOriginal) => {
       return tmpl;
     },
   };
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 describe('AttendanceRosterTable', () => {
@@ -152,6 +137,41 @@ describe('AttendanceRosterTable', () => {
     fireEvent.click(userTagBtn);
     expect(onOpenProfile).toHaveBeenCalledWith('u1');
   });
+
+  it('hides checkin/checkout/note columns when publicRosterOnly is true', () => {
+    render(
+      <AttendanceRosterTable
+        event={{ id: 'e1', max: 10 }}
+        registrations={[
+          {
+            _docId: 'r1',
+            userId: 'u1',
+            userName: 'Alice',
+            status: 'confirmed',
+            participantType: 'self',
+          },
+        ]}
+        attendanceRecords={[
+          {
+            _docId: 'a1',
+            uid: 'u1',
+            userName: 'Alice',
+            type: 'checkin',
+            status: 'active',
+          },
+        ]}
+        roles={{ u1: 'user' }}
+        onOpenProfile={vi.fn()}
+        publicRosterOnly={true}
+      />,
+    );
+
+    expect(screen.getByText('報名名單（1/10）')).toBeTruthy();
+    expect(screen.queryByText('簽到')).toBeNull();
+    expect(screen.queryByText('簽退')).toBeNull();
+    expect(screen.queryByText('備註')).toBeNull();
+    expect(screen.queryByText('✓')).toBeNull();
+  });
 });
 
 describe('WaitlistRosterTable', () => {
@@ -205,5 +225,6 @@ describe('WaitlistRosterTable', () => {
     expect(screen.getByText('1')).toBeTruthy();
     expect(screen.getByText('↳ Alice Jr')).toBeTruthy();
     expect(screen.getAllByText('已正取').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/↳ 報名人：Alice/).length).toBeGreaterThanOrEqual(1);
   });
 });

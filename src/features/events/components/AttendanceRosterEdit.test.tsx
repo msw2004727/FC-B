@@ -19,26 +19,8 @@ vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/i18n/i18n')>()),
   useT: () => (key: string, params?: Record<string, unknown>) => {
     const dict: Record<string, string> = {
-      'events.roster.title': `報名名單（${params?.count ?? 0}/${params?.max ?? 0}）`,
-      'events.roster.checkin': '簽到',
-      'events.roster.checkout': '簽退',
-      'events.roster.note': '備註',
-      'events.roster.empty': '尚無報名',
-      'events.roster.proxyOnly': '僅代報',
-      'events.roster.reservedSeat': '保留席位',
-      'events.roster.courseRollcall': '請至課程點名',
-      'events.roster.generalSection': '一般報名',
-      'events.roster.clubBadge': '俱',
-      'events.roster.reservedSlots': `佔位: ${params?.count ?? 0}`,
-      'events.roster.usedSlots': `已使用: ${params?.count ?? 0}`,
-      'events.roster.remainingSlots': `剩餘: ${params?.count ?? 0}`,
-      'events.roster.manage': '管理名單',
-      'events.roster.closeEdit': '關閉編輯',
-      'events.roster.saving': '儲存中...',
-      'events.roster.saveFailed': `${params?.name ?? ''} 儲存失敗，已還原`,
-      'events.roster.noPermission': '權限不足',
-      'events.roster.settleInLegacy': '請在舊版按完成以結算經驗值與放鴿子',
-      'events.roster.goLegacy': '前往舊版',
+      'ui.userTag.openProfile': `檢視 ${params?.name ?? ''}`,
+      'ui.userTag.unknown': '未知用戶',
     };
     return dict[key] ?? key;
   },
@@ -151,7 +133,7 @@ function Harness({
       submitting={submitting}
       onStartEdit={() => setEditing(true)}
       onCloseEdit={() => {
-        void handleClose();
+        handleClose().catch(() => {});
       }}
       getRowSelection={instant.getRowSelection}
       inFlightKeys={instant.inFlightKeys}
