@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
 import { on } from '@/core/events';
-import { useT } from '@/i18n/i18n';
+import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { EventFormModal } from '../components/EventFormModal';
@@ -278,7 +278,7 @@ export default function ActivitiesPage(): JSX.Element {
           <button
             class="back-btn"
             type="button"
-            aria-label="返回"
+            aria-label={lt('返回', '返回')}
             data-i18n-aria-label="返回"
             onClick={() => location.route('/')}
           >
@@ -295,13 +295,13 @@ export default function ActivitiesPage(): JSX.Element {
           </button>
           <div class="activity-page-heading">
             <h2 class="page-header-title" data-i18n="活動行事曆">
-              活動行事曆
+              {lt('活動行事曆', '活動行事曆')}
             </h2>
             <button
               type="button"
               class="page-search-toggle-btn activity-filter-toggle-btn"
               id="filter-toggle"
-              aria-label="搜尋與篩選活動"
+              aria-label={lt('搜尋與篩選活動', '搜尋與篩選活動')}
               aria-expanded={searchOpen ? 'true' : 'false'}
               aria-controls="filter-bar"
               data-i18n-aria-label="搜尋與篩選活動"
@@ -325,8 +325,8 @@ export default function ActivitiesPage(): JSX.Element {
               type="button"
               class="page-search-toggle-btn activity-share-url-btn"
               id="activity-share-url-btn"
-              aria-label="分享當前活動分類網址"
-              title="分享當前活動分類網址"
+              aria-label={lt('分享當前活動分類網址', '分享當前活動分類網址')}
+              title={lt('分享當前活動分類網址', '分享當前活動分類網址')}
               data-i18n-aria-label="分享當前活動分類網址"
               data-i18n-title="分享當前活動分類網址"
               onClick={handleUnavailableFeature}
@@ -352,7 +352,7 @@ export default function ActivitiesPage(): JSX.Element {
             <button
               type="button"
               class="page-header-doc-btn"
-              title="主辦方排行"
+              title={lt('主辦方排行', '主辦方排行')}
               style="display:none;"
               data-i18n-title="主辦方排行"
               onClick={handleUnavailableFeature}
@@ -376,7 +376,7 @@ export default function ActivitiesPage(): JSX.Element {
               class="primary-btn small"
               id="activity-create-btn"
               style={showCreateButton ? undefined : 'display:none'}
-              aria-label="＋我要開團"
+              aria-label={lt('＋我要開團', '＋我要開團')}
               data-i18n-aria-label="＋我要開團"
               onClick={() => setCreateModalOpen(true)}
             >
@@ -391,7 +391,7 @@ export default function ActivitiesPage(): JSX.Element {
                 <path d="M12 5v14" />
                 <path d="M5 12h14" />
               </svg>
-              <span data-i18n="我要開團">我要開團</span>
+              <span data-i18n="我要開團">{lt('我要開團', '我要開團')}</span>
             </button>
           </div>
         </div>
@@ -407,18 +407,18 @@ export default function ActivitiesPage(): JSX.Element {
             value={filterType}
             onChange={(e) => setFilterType(e.currentTarget.value)}
           >
-            <option value="" data-i18n="全部類別">全部類別</option>
+            <option value="" data-i18n="全部類別">{lt('全部類別', '全部類別')}</option>
             <option value="play">PLAY</option>
-            <option value="camp" data-i18n="教學">教學</option>
-            <option value="watch" data-i18n="觀賽">觀賽</option>
-            <option value="external" data-i18n="外部">外部</option>
+            <option value="camp" data-i18n="教學">{lt('教學', '教學')}</option>
+            <option value="watch" data-i18n="觀賽">{lt('觀賽', '觀賽')}</option>
+            <option value="external" data-i18n="外部">{lt('外部', '外部')}</option>
           </select>
           <input
             type="text"
             id="activity-filter-keyword"
             value={filterKeyword}
             onInput={(e) => setFilterKeyword(e.currentTarget.value)}
-            placeholder="模糊搜尋名稱 / 地點 / 主辦 / 日期..."
+            placeholder={lt('模糊搜尋名稱 / 地點 / 主辦 / 日期...', '模糊搜尋名稱 / 地點 / 主辦 / 日期...')}
             autocomplete="off"
             data-i18n-placeholder="模糊搜尋名稱 / 地點 / 主辦 / 日期..."
           />
@@ -432,7 +432,7 @@ export default function ActivitiesPage(): JSX.Element {
               data-i18n="活動管理"
               onClick={() => location.route('/my-activities')}
             >
-              活動管理
+              {lt('活動管理', '活動管理')}
             </button>
           </div>
         )}
@@ -460,7 +460,7 @@ export default function ActivitiesPage(): JSX.Element {
               <path d="M16 2.8v4" />
               <path d="M3.8 9h16.4" />
             </svg>
-            <span data-i18n="月曆">月曆</span>
+            <span data-i18n="月曆">{lt('月曆', '月曆')}</span>
           </button>
           <button
             type="button"
@@ -485,7 +485,7 @@ export default function ActivitiesPage(): JSX.Element {
               <path d="m3.8 12 .9 .9 1.7-1.9" />
               <path d="m3.8 18 .9 .9 1.7-1.9" />
             </svg>
-            <span data-i18n="報名中">報名中</span>
+            <span data-i18n="報名中">{lt('報名中', '報名中')}</span>
           </button>
           <span class="activity-tab-separator" aria-hidden="true">|</span>
           <button
@@ -495,7 +495,7 @@ export default function ActivitiesPage(): JSX.Element {
             data-i18n="女生專屬"
             onClick={(e) => switchActivityTab('female', e)}
           >
-            女生專屬
+            {lt('女生專屬', '女生專屬')}
           </button>
           {/* 下一批補：新手友善 */}
           <button
@@ -503,12 +503,12 @@ export default function ActivitiesPage(): JSX.Element {
             class="tab activity-tab-unavailable"
             data-atab="beginner"
             aria-disabled="true"
-            title="功能未開放"
+            title={lt('功能未開放', '功能未開放')}
             data-i18n-title="功能未開放"
             data-i18n="新手友善"
             onClick={(e) => switchActivityTab('beginner', e)}
           >
-            新手友善
+            {lt('新手友善', '新手友善')}
           </button>
           {/* 下一批補：高強度 */}
           <button
@@ -516,12 +516,12 @@ export default function ActivitiesPage(): JSX.Element {
             class="tab activity-tab-unavailable"
             data-atab="high-intensity"
             aria-disabled="true"
-            title="功能未開放"
+            title={lt('功能未開放', '功能未開放')}
             data-i18n-title="功能未開放"
             data-i18n="高強度"
             onClick={(e) => switchActivityTab('high-intensity', e)}
           >
-            高強度
+            {lt('高強度', '高強度')}
           </button>
         </div>
 
@@ -544,7 +544,7 @@ export default function ActivitiesPage(): JSX.Element {
             class="region-tab region-tab-nearby region-tab-disabled"
             id="region-tab-nearby-activity"
             aria-disabled="true"
-            title="尋找附近活動"
+            title={lt('尋找附近活動', '尋找附近活動')}
             data-i18n-title="尋找附近活動"
             onClick={handleUnavailableFeature}
           >
@@ -584,7 +584,7 @@ export default function ActivitiesPage(): JSX.Element {
             >
               <div class="activity-list-loading-bar" aria-hidden="true"><span /></div>
               <div class="reg-loading" data-i18n="活動資料載入中...">
-                活動資料載入中...
+                {lt('活動資料載入中...', '活動資料載入中...')}
               </div>
               <div class="reg-loading-skeleton">
                 <div class="reg-loading-skeleton-row" />

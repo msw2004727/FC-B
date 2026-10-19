@@ -1,80 +1,123 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { TopBar } from './TopBar';
 import { on } from '@/core/events';
-import { _setDictLoaderForTest, t } from '@/i18n/i18n';
-import { prepareShellLocale } from './shell-test-utils';
+import { setTheme } from '@/core/theme';
+import { toast } from '@/ui/Toast';
 
-beforeEach(prepareShellLocale);
+vi.mock('@/i18n/i18n', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useT: () => (key: string) => key,
+}));
+
+beforeEach(() => {
+  setTheme('light');
+});
 
 afterEach(() => {
   cleanup();
-  _setDictLoaderForTest(null);
+  setTheme('light');
+  vi.restoreAllMocks();
 });
 
-describe('TopBar', () => {
-  it('renders sport, notifications and signed-out login in A order', () => {
+describe('TopBar (legacy A DOM & CSS)', () => {
+  it('wraps #top-bar in .legacy-ui.legacy-chrome and renders A structure in order', () => {
     const login = vi.fn();
     const { container } = render(
       <TopBar drawerOpen={false} onMenuClick={() => undefined} onLogin={login} />,
     );
-    expect(screen.getByRole('banner').classList.contains('ui-top-bar')).toBe(true);
-    const menu = screen.getByRole('button', { name: t('ui.topBar.menu') });
-    expect(menu.getAttribute('aria-expanded')).toBe('false');
-    expect(menu.getAttribute('aria-controls')).toBe('side-drawer');
-    const actions = container.querySelector('.ui-top-bar__actions');
-    expect(Array.from(actions?.children ?? []).map((node) => node.id)).toEqual([
-      'sport-picker-btn', 'notif-btn', 'line-login-btn',
+    const wrapper = container.querySelector('.legacy-ui.legacy-chrome');
+    expect(wrapper).not.toBeNull();
+    const header = wrapper?.querySelector('header#top-bar');
+    expect(header).not.toBeNull();
+
+    const menu = container.querySelector<HTMLButtonElement>('#menu-toggle');
+    expect(menu).not.toBeNull();
+    expect(menu?.querySelectorAll('span').length).toBe(3);
+    expect(menu?.getAttribute('aria-expanded')).toBe('false');
+
+    const right = container.querySelector('.top-bar-right');
+    expect(Array.from(right?.children ?? []).map((node) => node.id)).toEqual([
+      'points-display',
+      'sport-picker-wrapper',
+      'notif-btn',
+      'line-login-wrapper',
     ]);
-    expect(screen.getByRole('button', { name: t('ui.topBar.sport') }).textContent)
-      .toBe(t('ui.shell.sportAll'));
-    expect(screen.getByRole('link', { name: t('ui.topBar.notifications') })
-      .getAttribute('href')).toBe('/inbox');
-    fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.login') }));
+
+    expect(container.querySelector('#points-value')?.textContent).toBe('-'); // A updatePointsDisplay：未接 EXP 前顯示「-」
+    expect(container.querySelector('#sport-picker-btn .sp-all-label')?.textContent).toBe('All');
+    expect(container.querySelector('#notif-btn')?.getAttribute('href')).toBe('/inbox');
+
+    const loginBtn = container.querySelector<HTMLButtonElement>('#line-login-btn');
+    expect(loginBtn).not.toBeNull();
+    fireEvent.click(loginBtn!);
     expect(login).toHaveBeenCalledOnce();
   });
 
-  it('opens the drawer and emits the sport event', () => {
+  it('switches #top-logo-img src between light and dark theme and falls back to png on error', () => {
+    setTheme('light');
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} />,
+    );
+    const img = container.querySelector<HTMLImageElement>('#top-logo-img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe('/assets/logo-black.webp');
+
+    act(() => {
+      setTheme('dark');
+    });
+    expect(img?.getAttribute('src')).toBe('/assets/logo-white.webp');
+
+    fireEvent.error(img!);
+    expect(img?.getAttribute('src')).toBe('/assets/logo-white.png');
+  });
+
+  it('shows unavailable toast when clicking points display', () => {
+    const spy = vi.spyOn(toast, 'show');
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} />,
+    );
+    const points = container.querySelector<HTMLElement>('#points-display');
+    expect(points).not.toBeNull();
+    fireEvent.click(points!);
+    expect(spy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+  });
+
+  it('opens the drawer and emits sport:picker-open', () => {
     const menu = vi.fn();
     const sport = vi.fn();
     const unsubscribe = on('sport:picker-open', sport);
     try {
       render(<TopBar drawerOpen onMenuClick={menu} />);
-      fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.menu') }));
-      fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.sport') }));
+      fireEvent.click(screen.getByRole('button', { name: '選單' }));
+      fireEvent.click(screen.getByRole('button', { name: '切換運動項目' }));
       expect(menu).toHaveBeenCalledOnce();
       expect(sport).toHaveBeenCalledWith({});
-      expect(screen.getByRole('button', { name: t('ui.topBar.menu') })
-        .getAttribute('aria-expanded')).toBe('true');
     } finally {
       unsubscribe();
     }
   });
 
-  it('disables pending login and displays loading without changing its accessible name', () => {
+  it('disables pending login and replaces with #line-user-topbar for signed-in user', () => {
     const login = vi.fn();
-    const { container } = render(
-      <TopBar drawerOpen={false} onMenuClick={() => undefined}
-        onLogin={login} loginPending />,
+    const view = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} onLogin={login} loginPending />,
     );
-    const button = screen.getByRole('button', {
-      name: t('ui.topBar.login'),
-    }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.getAttribute('aria-busy')).toBe('true');
-    expect(container.querySelector('.ui-top-bar__spinner')).not.toBeNull();
-    button.click();
+    const btn = view.container.querySelector<HTMLButtonElement>('#line-login-btn');
+    expect(btn?.disabled).toBe(true);
+    btn?.click();
     expect(login).not.toHaveBeenCalled();
-  });
 
-  it('replaces login with Avatar for an authenticated user', () => {
-    const { container } = render(
-      <TopBar drawerOpen={false} onMenuClick={() => undefined} onLogin={vi.fn()}
-        user={{ uid: 'member-1', displayName: 'Alex', pictureUrl: null }} />,
+    view.rerender(
+      <TopBar
+        drawerOpen={false}
+        onMenuClick={() => undefined}
+        onLogin={login}
+        user={{ uid: 'member-1', displayName: 'Alex', pictureUrl: null }}
+      />,
     );
-    expect(screen.queryByRole('button', { name: t('ui.topBar.login') })).toBeNull();
-    expect(screen.getByRole('link', { name: t('nav.profile') })
-      .getAttribute('href')).toBe('/profile');
-    expect(container.querySelector('.ui-avatar')).not.toBeNull();
+    expect(view.container.querySelector('#line-login-btn')).toBeNull();
+    expect(view.container.querySelector('#line-user-topbar')).not.toBeNull();
+    expect(view.container.querySelector('#line-avatar-topbar')?.textContent).toBe('A');
   });
 });

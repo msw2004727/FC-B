@@ -40,7 +40,9 @@ describe('App 路由錯誤復原', () => {
     expect(container.querySelector('nav')).not.toBeNull();
 
     // 點底部導覽回首頁
-    const homeLink = container.querySelector('nav a[href="/"]');
+    // 測試同步更新（R-QA-005）：底部導覽改照 A，項目是按鈕（#bottom-tabs .bot-tab）。
+    const homeLink = Array.from(container.querySelectorAll('#bottom-tabs .bot-tab'))
+      .find((el) => el.textContent?.includes('首頁')) ?? null;
     expect(homeLink).not.toBeNull();
     fireEvent.click(homeLink as Element);
 

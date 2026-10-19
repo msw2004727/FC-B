@@ -65,7 +65,8 @@ describe('App authentication', () => {
     });
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: t('ui.topBar.login') })).toBeNull();
-      expect(screen.getByRole('link', { name: t('nav.profile') })).toBeTruthy();
+      // 測試同步更新（R-QA-005）：頂部列改照 A，登入後頭像連到個人檔案。
+      expect(screen.getByRole('link', { name: '個人檔案' })).toBeTruthy();
     });
   });
 

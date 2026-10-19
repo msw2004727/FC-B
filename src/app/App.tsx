@@ -30,8 +30,10 @@ import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { useViewer } from '@/features/profile/data/viewer';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getRouteComponent(load: FeatureRoute['load']): ComponentType<any> {
   const cached = lazyCache.get(load);
   if (cached) return cached;
@@ -119,37 +121,6 @@ export function App({
       loginSequence.current += 1;
       stopEvents();
       stopAuth?.();
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const shell = shellRef.current;
-    const top = shell?.querySelector<HTMLElement>('.ui-top-bar');
-    const bottom = shell?.querySelector<HTMLElement>('.ui-bottom-nav');
-    const main = shell?.querySelector<HTMLElement>('.app-main');
-    if (!top || !bottom || !main) return;
-
-    const update = (): void => {
-      const topHeight = top.getBoundingClientRect().height;
-      const bottomHeight = bottom.getBoundingClientRect().height;
-      if (topHeight > 0) {
-        main.style.paddingTop = `calc(${topHeight}px + var(--space-2))`;
-      }
-      if (bottomHeight > 0) {
-        main.style.paddingBottom =
-          `calc(${bottomHeight}px + 64px + var(--line-height-caption) + var(--space-4))`;
-      }
-    };
-    update();
-    window.addEventListener('resize', update);
-    const observer = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(update);
-    observer?.observe(top);
-    observer?.observe(bottom);
-    return () => {
-      window.removeEventListener('resize', update);
-      observer?.disconnect();
     };
   }, []);
 

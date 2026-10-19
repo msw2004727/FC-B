@@ -24,6 +24,23 @@
         document.documentElement.setAttribute('data-theme', theme || 'light');
       })();
     </script>
+    <script>
+      /* 照 A index.html「全局圖片預解碼淡入」：A 的 base.css 讓圖片預設透明（改版頁面在 .legacy-ui 內生效），
+         load 後 decode() 完成才加 img-loaded 顯示；載入失敗也加，避免永遠透明。 */
+      document.addEventListener('load', function (e) {
+        if (!e.target || e.target.tagName !== 'IMG') return;
+        var img = e.target;
+        if (typeof img.decode === 'function') {
+          img.decode().then(function () { img.classList.add('img-loaded'); })
+            .catch(function () { img.classList.add('img-loaded'); });
+        } else {
+          img.classList.add('img-loaded');
+        }
+      }, true);
+      document.addEventListener('error', function (e) {
+        if (e.target && e.target.tagName === 'IMG') e.target.classList.add('img-loaded');
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>

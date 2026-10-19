@@ -1,21 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { useRef, useState } from 'preact/hooks';
 import { LocationProvider } from 'preact-iso';
 import { SideDrawer } from './SideDrawer';
 import { TopBar } from './TopBar';
-import { Text } from './Text';
 import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
 import type { RouteAccessContext } from '@/core/feature-types';
-import { _setDictLoaderForTest, getCurrentLocale, t } from '@/i18n/i18n';
-import { LOCALES, type Locale } from '@/i18n/locales';
 import { getTheme, setTheme } from '@/core/theme';
-import { initFontSize, setFontSize } from '@/core/font-size';
-import { prepareShellLocale, shellDictionary } from './shell-test-utils';
+
+vi.mock('@/i18n/i18n', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useT: () => (key: string) => key,
+}));
 
 const load = async () => ({ default: () => null });
-let originalOverflow = '';
-let originalPriority = '';
 
 function Harness({ routeAccess = null }: { routeAccess?: RouteAccessContext | null } = {}): preact.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -29,47 +27,18 @@ function Harness({ routeAccess = null }: { routeAccess?: RouteAccessContext | nu
 }
 
 function openDrawer(): HTMLElement {
-  const button = screen.getByRole('button', { name: t('ui.topBar.menu') });
+  const button = screen.getByRole('button', { name: '選單' });
   button.focus();
   fireEvent.click(button);
   return button;
 }
 
-function getPanel(): HTMLElement {
-  const panel = screen.getByRole('dialog').querySelector<HTMLElement>('.ui-side-drawer__panel');
-  if (!panel) throw new Error('Missing drawer panel');
-  return panel;
-}
-
-function getFontButton(): HTMLButtonElement {
-  const button = screen.getByRole('dialog').querySelector<HTMLButtonElement>('#drawer-font-btn');
-  if (!button) throw new Error('Missing font button');
-  return button;
-}
-
-function getLocaleSelect(): HTMLSelectElement {
-  const select = within(screen.getByRole('dialog')).getByRole('combobox', {
-    name: t('ui.sideDrawer.language'),
-  });
-  if (!(select instanceof HTMLSelectElement)) throw new Error('Missing locale select');
-  return select;
-}
-
-function touch(target: Element, type: 'touchstart' | 'touchmove', y: number): Event {
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'touches', { value: [{ clientY: y }] });
-  fireEvent(target, event);
-  return event;
-}
-
-beforeEach(async () => {
+beforeEach(() => {
   _resetForTest();
-  await prepareShellLocale();
   history.replaceState(null, '', '/');
-  setTheme('system');
-  setFontSize('medium');
-  originalOverflow = document.body.style.getPropertyValue('overflow');
-  originalPriority = document.body.style.getPropertyPriority('overflow');
+  setTheme('light');
+  document.documentElement.style.fontSize = '';
+  localStorage.removeItem('sporthub_font_size');
 
   registerFeatures([
     {
@@ -111,19 +80,25 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  if (originalOverflow) {
-    document.body.style.setProperty('overflow', originalOverflow, originalPriority);
-  } else {
-    document.body.style.removeProperty('overflow');
-  }
   _resetForTest();
-  _setDictLoaderForTest(null);
-  setTheme('system');
-  setFontSize('medium');
-  localStorage.removeItem('toosterx:font-size');
+  setTheme('light');
+  document.documentElement.style.fontSize = '';
+  localStorage.removeItem('sporthub_font_size');
 });
 
-describe('SideDrawer', () => {
+describe('SideDrawer (legacy A DOM & CSS)', () => {
+  it('wraps #drawer-overlay and #side-drawer in .legacy-ui.legacy-chrome', () => {
+    render(<Harness />);
+    openDrawer();
+    const overlay = document.getElementById('drawer-overlay');
+    const drawer = document.getElementById('side-drawer');
+    expect(overlay).not.toBeNull();
+    expect(drawer).not.toBeNull();
+    expect(overlay?.classList.contains('open')).toBe(true);
+    expect(drawer?.classList.contains('open')).toBe(true);
+    expect(drawer?.closest('.legacy-ui.legacy-chrome')).not.toBeNull();
+  });
+
   it('有權限條件的入口：沒有登入者權限時不顯示，有權限才顯示（照 A DRAWER_MENUS）', () => {
     const base: RouteAccessContext = {
       uid: 'U_x', role: 'admin', roleLevel: 4, capabilities: [], hasPermission: () => false,
@@ -143,267 +118,74 @@ describe('SideDrawer', () => {
     expect(document.querySelector('[href="/admin/logs"]')).not.toBeNull();
   });
 
-  it('uses a div Portal, focuses the panel, locks scrolling and restores focus', () => {
-    document.body.style.setProperty('overflow', 'scroll', 'important');
-    const view = render(<Harness />);
-    const trigger = openDrawer();
-    const dialog = screen.getByRole('dialog', { name: t('ui.sideDrawer.label') });
-    expect(dialog.tagName).toBe('DIV');
-    expect(dialog.parentElement).toBe(document.body);
-    expect(view.container.contains(dialog)).toBe(false);
-    expect(dialog.querySelector('dialog')).toBeNull();
-    expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(document.body.style.overflow).toBe('hidden');
-    expect(document.activeElement).toBe(getPanel());
-    expect(screen.queryByRole('button', { name: t('ui.sideDrawer.close') })).toBeNull();
-
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-    expect(document.body.style.overflow).toBe('scroll');
-    expect(document.body.style.getPropertyPriority('overflow')).toBe('important');
-  });
-
-  it('closes on overlay click but not panel click', () => {
+  it('closes on #drawer-overlay click and Escape', () => {
     render(<Harness />);
     openDrawer();
-    fireEvent.click(getPanel());
-    expect(screen.getByRole('dialog')).toBeTruthy();
-    fireEvent.click(screen.getByRole('dialog'));
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
+    const overlay = document.getElementById('drawer-overlay')!;
+    fireEvent.click(overlay);
+    expect(document.getElementById('side-drawer')).toBeNull();
 
-  it('wraps keyboard focus and prevents focus escaping', () => {
-    render(<Harness />);
-    const trigger = openDrawer();
-    const first = screen.getByRole('link', { name: t('stats.title') });
-    const last = getFontButton();
-
-    fireEvent.keyDown(getPanel(), { key: 'Tab' });
-    expect(document.activeElement).toBe(first);
-    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(last);
-    fireEvent.keyDown(last, { key: 'Tab' });
-    expect(document.activeElement).toBe(first);
-    trigger.focus();
-    expect(document.activeElement).toBe(first);
-  });
-
-  it('blocks background interaction and releases listeners on close', () => {
-    const clicked = vi.fn();
-    const view = render(
-      <>
-        <button type="button" onClick={clicked}><Text>Background</Text></button>
-        <Harness />
-      </>,
-    );
-    const background = within(view.container as HTMLElement).getByRole('button', { name: 'Background' });
     openDrawer();
-    fireEvent.click(background);
-    expect(clicked).not.toHaveBeenCalled();
-    expect(touch(background, 'touchstart', 100).defaultPrevented).toBe(true);
-    expect(touch(background, 'touchmove', 80).defaultPrevented).toBe(true);
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    fireEvent.click(background);
-    expect(clicked).toHaveBeenCalledOnce();
-    expect(touch(background, 'touchmove', 60).defaultPrevented).toBe(false);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.getElementById('side-drawer')).toBeNull();
   });
 
-  it('blocks overlay and boundary scrolling while allowing panel scrolling', () => {
+  it('renders drawer items in #drawer-menu with A classes and hides disabled features', async () => {
     render(<Harness />);
     openDrawer();
-    const dialog = screen.getByRole('dialog');
-    const panel = getPanel();
-    Object.defineProperties(panel, {
-      scrollHeight: { configurable: true, value: 1000 },
-      clientHeight: { configurable: true, value: 300 },
-    });
-    panel.style.overflowY = 'auto';
-
-    touch(dialog, 'touchstart', 100);
-    expect(touch(dialog, 'touchmove', 80).defaultPrevented).toBe(true);
-    panel.scrollTop = 100;
-    touch(panel, 'touchstart', 100);
-    expect(touch(panel, 'touchmove', 80).defaultPrevented).toBe(false);
-    touch(panel, 'touchstart', 100);
-    expect(touch(panel, 'touchmove', 120).defaultPrevented).toBe(false);
-    panel.scrollTop = 0;
-    touch(panel, 'touchstart', 100);
-    expect(touch(panel, 'touchmove', 120).defaultPrevented).toBe(true);
-    panel.scrollTop = 700;
-    touch(panel, 'touchstart', 100);
-    expect(touch(panel, 'touchmove', 80).defaultPrevented).toBe(true);
-  });
-
-  it('uses an ungrouped A-style list with only active routes', async () => {
-    render(<Harness />);
-    openDrawer();
-    const navigation = screen.getByRole('navigation', {
-      name: t('ui.sideDrawer.navigation'),
-    });
-    const links = within(navigation).getAllByRole('link');
-    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    const menu = document.getElementById('drawer-menu')!;
+    const items = Array.from(menu.querySelectorAll<HTMLAnchorElement>('a.drawer-item'));
+    expect(items.map((a) => a.getAttribute('href'))).toEqual([
       '/stats', '/manual', '/profile/qr', '/admin/events',
     ]);
-    expect(within(navigation).queryByRole('heading')).toBeNull();
-    expect(navigation.querySelector('[href="/reserved"]')).toBeNull();
-    expect(navigation.querySelector('[href="/members/:id"]')).toBeNull();
+    expect(menu.querySelector('.drawer-divider')).not.toBeNull();
     await act(() => setRemoteFlags({ 'shell-drawer-admin': false }));
-    expect(navigation.querySelector('[href="/admin/events"]')).toBeNull();
+    expect(menu.querySelector('[href="/admin/events"]')).toBeNull();
   });
 
-  it('shows identity and login in the header and Avatar for a signed-in user', () => {
-    const login = vi.fn();
-    const view = render(
-      <LocationProvider>
-        <SideDrawer open onClose={vi.fn()} onLogin={login} />
-      </LocationProvider>,
-    );
-    expect(screen.getByText(t('ui.shell.signedOut'))).toBeTruthy();
-    const button = screen.getByRole('button', { name: t('ui.topBar.login') });
-    expect(button.closest('.ui-side-drawer__header')).not.toBeNull();
-    fireEvent.click(button);
-    expect(login).toHaveBeenCalledOnce();
-
-    view.rerender(
-      <LocationProvider>
-        <SideDrawer open onClose={vi.fn()} onLogin={login}
-          user={{ uid: 'u1', displayName: 'Alex', pictureUrl: null }} />
-      </LocationProvider>,
-    );
-    expect(screen.queryByRole('button', { name: t('ui.topBar.login') })).toBeNull();
-    expect(screen.getByText('Alex')).toBeTruthy();
-    expect(screen.getByText(t('ui.userTag.role.user'))).toBeTruthy();
-    expect(screen.getByRole('dialog').querySelector('.ui-avatar--lg')).not.toBeNull();
-  });
-
-  it('disables drawer login while pending and displays a safe error', () => {
-    const login = vi.fn();
-    render(
-      <LocationProvider>
-        <SideDrawer open onClose={vi.fn()} onLogin={login} loginPending loginError />
-      </LocationProvider>,
-    );
-    const button = screen.getByRole('button', {
-      name: t('ui.topBar.login'),
-    }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.getAttribute('aria-busy')).toBe('true');
-    button.click();
-    expect(login).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toBe(t('ui.shell.loginError'));
-  });
-
-  it('keeps locale, font size and three-state theme in the footer', () => {
+  it('cycles font size 15px -> 16.5px -> 18px on html style and localStorage sporthub_font_size', () => {
     render(<Harness />);
     openDrawer();
-    expect(getLocaleSelect().closest('.ui-side-drawer__tools')).not.toBeNull();
-    expect(getFontButton().closest('.ui-side-drawer__tools')).not.toBeNull();
+    const btn = document.getElementById('drawer-font-btn') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
 
-    for (const [current, next] of [
-      ['system', 'light'], ['light', 'dark'], ['dark', 'system'],
-    ] as const) {
-      const button = screen.getByRole('button', {
-        name: t('ui.sideDrawer.themeAction', {
-          current: t(`ui.sideDrawer.theme_${current}`),
-          next: t(`ui.sideDrawer.theme_${next}`),
-        }),
-      });
-      fireEvent.click(button);
-      expect(getTheme()).toBe(next);
-    }
+    fireEvent.click(btn);
+    expect(document.documentElement.style.fontSize).toBe('16.5px');
+    expect(localStorage.getItem('sporthub_font_size')).toBe('16.5px');
+    expect(btn.classList.contains('font-m')).toBe(true);
 
-    for (const next of ['large', 'small', 'medium'] as const) {
-      fireEvent.click(getFontButton());
-      expect(document.documentElement.dataset.fontSize).toBe(next);
-      expect(localStorage.getItem('toosterx:font-size')).toBe(next);
-    }
+    fireEvent.click(btn);
+    expect(document.documentElement.style.fontSize).toBe('18px');
+    expect(localStorage.getItem('sporthub_font_size')).toBe('18px');
+    expect(btn.classList.contains('font-l')).toBe(true);
+
+    fireEvent.click(btn);
+    expect(document.documentElement.style.fontSize).toBe('15px');
+    expect(localStorage.getItem('sporthub_font_size')).toBe('15px');
   });
 
-  it('restores stored font preference and tolerates unavailable storage', () => {
-    localStorage.setItem('toosterx:font-size', 'large');
-    initFontSize();
-    expect(document.documentElement.dataset.fontSize).toBe('large');
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('storage unavailable');
-    });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('storage unavailable');
-    });
-    expect(() => initFontSize()).not.toThrow();
-    expect(document.documentElement.dataset.fontSize).toBe('medium');
-    expect(() => setFontSize('small')).not.toThrow();
-    expect(document.documentElement.dataset.fontSize).toBe('small');
-  });
-
-  it('disables locale selection while loading and restores it on failure', async () => {
-    const initialLocale = getCurrentLocale();
-    const targetLocale = LOCALES.find((locale) => locale !== initialLocale);
-    if (!targetLocale) throw new Error('Missing alternate locale');
-
-    let rejectLoad: ((reason: Error) => void) | undefined;
-    const loader = vi.fn(async (locale: Locale) => {
-      if (locale === targetLocale) {
-        return new Promise<Record<string, string>>((_resolve, reject) => {
-          rejectLoad = reject;
-        });
-      }
-      return shellDictionary(locale);
-    });
-    _setDictLoaderForTest(loader);
+  it('toggles theme via #theme-toggle', () => {
+    setTheme('light');
     render(<Harness />);
-    await act(async () => { openDrawer(); });
-    await act(async () => {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    });
-
-    await act(async () => {
-      const select = getLocaleSelect();
-      const ownerWindow = select.ownerDocument.defaultView;
-      if (!ownerWindow) throw new Error('Missing window');
-      select.value = targetLocale;
-      select.dispatchEvent(new ownerWindow.Event('change', { bubbles: true }));
-    });
-    await waitFor(() => {
-      expect(loader).toHaveBeenCalledExactlyOnceWith(targetLocale);
-      expect(getLocaleSelect().disabled).toBe(true);
-      expect(getLocaleSelect().getAttribute('aria-busy')).toBe('true');
-    });
-    expect(screen.getByRole('status').textContent).toBe(t('ui.sideDrawer.loading'));
-
-    await act(async () => {
-      if (!rejectLoad) throw new Error('Loader did not start');
-      rejectLoad(new Error('fixture failure'));
-    });
-    await waitFor(() => {
-      const select = getLocaleSelect();
-      const alert = screen.getByRole('alert');
-      expect(select.disabled).toBe(false);
-      expect(select.value).toBe(initialLocale);
-      expect(getCurrentLocale()).toBe(initialLocale);
-      expect(alert.textContent).toBe(t('ui.sideDrawer.localeError'));
-      expect(select.getAttribute('aria-describedby')).toBe(alert.id);
-      expect(select.getAttribute('aria-invalid')).toBe('true');
-      expect(screen.queryByRole('status')).toBeNull();
-    });
+    openDrawer();
+    const toggle = document.getElementById('theme-toggle')!;
+    fireEvent.click(toggle);
+    expect(getTheme()).toBe('dark');
+    fireEvent.click(toggle);
+    expect(getTheme()).toBe('light');
   });
 
-  it('restores body scrolling and external focus on unmount', () => {
-    document.body.style.overflow = 'auto';
-    const trigger = document.createElement('button');
-    document.body.appendChild(trigger);
-    try {
-      trigger.focus();
-      const view = render(
-        <LocationProvider><SideDrawer open onClose={vi.fn()} /></LocationProvider>,
-      );
-      expect(document.body.style.overflow).toBe('hidden');
-      view.unmount();
-      expect(document.body.style.overflow).toBe('auto');
-      expect(document.activeElement).toBe(trigger);
-      expect(touch(trigger, 'touchmove', 60).defaultPrevented).toBe(false);
-    } finally {
-      trigger.remove();
-    }
+  it('displays user name and role tag in #drawer-name and #drawer-role-tag', () => {
+    render(
+      <LocationProvider>
+        <SideDrawer
+          open
+          onClose={vi.fn()}
+          user={{ uid: 'u1', displayName: 'Alex', pictureUrl: null }}
+        />
+      </LocationProvider>,
+    );
+    expect(document.getElementById('drawer-name')?.textContent).toBe('Alex');
+    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('一般會員');
   });
 });

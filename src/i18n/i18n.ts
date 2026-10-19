@@ -20,6 +20,12 @@ const featureLoaders = import.meta.glob<Record<string, unknown>>(
   { import: 'default' },
 );
 
+// 舊版 A 的翻譯包（scripts/import-legacy-i18n.mjs 生成），給改版頁面的 lt() 用；key 加上 `legacy:` 前綴。
+const legacyLoaders = import.meta.glob<Record<string, string>>('./legacy/*.json', {
+  import: 'default',
+});
+const LEGACY_PREFIX = 'legacy:';
+
 // ── 狀態 ────────────────────────────────────────────────
 
 const STORAGE_KEY = 'toosterx:locale';
@@ -162,6 +168,16 @@ async function loadDict(locale: Locale): Promise<Record<string, string>> {
       }),
     );
   }
+  const legacyLoader = legacyLoaders[`./legacy/${locale}.json`];
+  if (legacyLoader) {
+    tasks.push(
+      legacyLoader().then((data) => {
+        for (const [k, v] of Object.entries(data)) {
+          if (typeof v === 'string') result[`${LEGACY_PREFIX}${k}`] = v;
+        }
+      }),
+    );
+  }
   await Promise.all(tasks);
 
   return result;
@@ -270,6 +286,21 @@ export function t(key: string, params?: Record<string, string | number>): string
     return key;
   }
   return params ? interpolate(raw, params) : raw;
+}
+
+/**
+ * 改版頁面（照 A 的 DOM）用的翻譯：照 A `_applyStaticI18n`——以 data-i18n 的 key（中文原文或語意 key）
+ * 查 A 的翻譯包，查不到就用原文（fallback；沒給時用 key）。簡體中文 A 沒有翻譯包，會顯示原文。
+ */
+export function lt(key: string, fallback?: string, params?: Record<string, string | number>): string {
+  const raw = currentDict[`${LEGACY_PREFIX}${key}`] ?? fallback ?? key;
+  return params ? interpolate(raw, params) : raw;
+}
+
+/** 同 useT，回傳 lt；語系切換時重新 render。 */
+export function useLegacyT(): typeof lt {
+  useT();
+  return useCallback(lt, []);
 }
 
 /** 訂閱語系切換；回傳的 t 為穩定函式，元件會在語系變更時重新 render。 */

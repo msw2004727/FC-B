@@ -1,10 +1,10 @@
-import './top-bar.css';
 import type { RefObject } from 'preact';
-import { Avatar } from '@/ui/Avatar';
-import { Text } from '@/ui/Text';
-import { useT } from '@/i18n/i18n';
+import { useEffect, useState } from 'preact/hooks';
 import { emit } from '@/core/events';
+import { useTheme, type ThemeMode } from '@/core/theme';
 import type { AuthUser } from '@/data/auth';
+import { toast } from '@/ui/Toast';
+import { lt } from '@/i18n/i18n';
 
 export interface TopBarProps {
   onMenuClick: () => void;
@@ -15,6 +15,30 @@ export interface TopBarProps {
   user?: AuthUser | null;
 }
 
+const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+
+const LIGHT_WEBP = '/assets/logo-black.webp';
+const LIGHT_PNG = '/assets/logo-black.png';
+const DARK_WEBP = '/assets/logo-white.webp';
+const DARK_PNG = '/assets/logo-white.png';
+
+function isEffectiveDark(mode: ThemeMode): boolean {
+  if (typeof document !== 'undefined') {
+    const attr = document.documentElement.getAttribute('data-theme');
+    if (attr === 'dark') return true;
+    if (attr === 'light') return false;
+  }
+  if (mode === 'dark') return true;
+  if (mode === 'light') return false;
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
+}
+
 export function TopBar({
   onMenuClick,
   drawerOpen,
@@ -23,101 +47,174 @@ export function TopBar({
   loginPending = false,
   user = null,
 }: TopBarProps): preact.JSX.Element {
-  const t = useT();
+  const theme = useTheme();
+  const isDark = isEffectiveDark(theme);
+  const primaryLogo = isDark ? DARK_WEBP : LIGHT_WEBP;
+  const fallbackLogo = isDark ? DARK_PNG : LIGHT_PNG;
+  const [logoSrc, setLogoSrc] = useState<string>(primaryLogo);
+
+  useEffect(() => {
+    setLogoSrc(isDark ? DARK_WEBP : LIGHT_WEBP);
+  }, [isDark]);
+
+  const handleUnavailable = (): void => {
+    toast.show({ message: UNAVAILABLE_MSG });
+  };
+
+  const handleLogoError = (): void => {
+    if (logoSrc !== fallbackLogo) {
+      setLogoSrc(fallbackLogo);
+    }
+  };
+
+  const initial = (user?.displayName?.trim()?.[0] ?? '?').toUpperCase();
 
   return (
-    <header id="top-bar" class="ui-top-bar" aria-label={t('ui.topBar.label')}>
-      <button
-        id="menu-toggle"
-        ref={menuRef}
-        type="button"
-        class="ui-top-bar__button"
-        aria-label={t('ui.topBar.menu')}
-        title={t('ui.topBar.menu')}
-        aria-controls="side-drawer"
-        aria-expanded={drawerOpen}
-        aria-haspopup="dialog"
-        onClick={onMenuClick}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-          aria-hidden="true" focusable="false">
-          <path d="M3 5h18M3 12h18M3 19h18" />
-        </svg>
-      </button>
-
-      <a class="ui-top-bar__brand" href="/" aria-label={t('ui.topBar.home')}>
-        <Text>{t('app.title')}</Text>
-      </a>
-
-      {/* 刻意偏離 A：B 第一版經驗值僅預留，不顯示積分膠囊或虛構積分。 */}
-      <div class="ui-top-bar__actions">
+    <div class="legacy-ui legacy-chrome">
+      <header id="top-bar">
         <button
-          id="sport-picker-btn"
+          id="menu-toggle"
+          ref={menuRef}
           type="button"
-          class="ui-top-bar__button ui-top-bar__sport"
-          aria-label={t('ui.topBar.sport')}
-          title={t('ui.topBar.sport')}
-          onClick={() => emit('sport:picker-open', {})}
+          aria-label={lt('選單', '選單')}
+          data-i18n-aria-label="選單"
+          aria-controls="side-drawer"
+          aria-expanded={drawerOpen ? 'true' : 'false'}
+          onClick={onMenuClick}
         >
-          <span class="ui-top-bar__sport-face">
-            <Text>{t('ui.shell.sportAll')}</Text>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2"
-              aria-hidden="true" focusable="false">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </span>
+          <span />
+          <span />
+          <span />
         </button>
-        <a
-          id="notif-btn"
-          href="/inbox"
-          class="ui-top-bar__button"
-          aria-label={t('ui.topBar.notifications')}
-          title={t('ui.topBar.notifications')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-            stroke-linejoin="round" aria-hidden="true" focusable="false">
-            <path d="M4 17h16l-2-3V9a6 6 0 0 0-12 0v5zM10 21h4" />
-          </svg>
-        </a>
-        {user ? (
-          <a
-            href="/profile"
-            class="ui-top-bar__button"
-            aria-label={t('nav.profile')}
-          >
-            <Avatar name={user.displayName} pictureUrl={user.pictureUrl} decorative />
+
+        <div class="logo">
+          <a href="/" aria-label="首頁" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img
+              id="top-logo-img"
+              alt="ToosterX"
+              class="logo-img"
+              width={473}
+              height={96}
+              decoding="async"
+              src={logoSrc}
+              data-logo-light-webp={LIGHT_WEBP}
+              data-logo-light-png={LIGHT_PNG}
+              data-logo-dark-webp={DARK_WEBP}
+              data-logo-dark-png={DARK_PNG}
+              data-logo-fallback={fallbackLogo}
+              onError={handleLogoError}
+            />
           </a>
-        ) : onLogin ? (
-          <button
-            id="line-login-btn"
-            type="button"
-            class="ui-top-bar__login"
-            disabled={loginPending}
-            aria-label={t('ui.topBar.login')}
-            aria-busy={loginPending || undefined}
-            onClick={onLogin}
+        </div>
+
+        <div class="top-bar-right">
+          <div
+            id="points-display"
+            class="points-display"
+            title={lt('我的 EXP', '我的 EXP')}
+            data-i18n-title="我的 EXP"
+            role="button"
+            tabIndex={0}
+            onClick={handleUnavailable}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleUnavailable();
+              }
+            }}
           >
-            <span class="ui-top-bar__login-face">
-              {loginPending ? (
-                <svg class="ui-top-bar__spinner" width="16" height="16"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2" aria-hidden="true" focusable="false">
-                  <path d="M12 3a9 9 0 1 1-9 9" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
-                  aria-hidden="true" focusable="false">
-                  <path d="M12 3C6.5 3 2 6.4 2 10.6c0 3.7 3.5 6.8 8.2 7.5L10 22l5.1-4.2C19.1 16.8 22 14 22 10.6 22 6.4 17.5 3 12 3Z" />
-                </svg>
-              )}
-              <Text>{t('ui.topBar.login')}</Text>
+            <span class="points-icon">P</span>
+            {/* A updatePointsDisplay：訪客顯示「-」，登入顯示 users.exp；B 的 EXP 資料下一批接上，先一律「-」不顯示錯誤的 0 */}
+            <span class="points-value" id="points-value">-</span>
+          </div>
+
+          <div class="sport-picker-wrapper" id="sport-picker-wrapper">
+            <button
+              type="button"
+              class="sport-picker-btn"
+              id="sport-picker-btn"
+              aria-label={lt('切換運動項目', '切換運動項目')}
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="sport-picker-dropdown"
+              data-i18n-aria-label="切換運動項目"
+              onClick={() => emit('sport:picker-open', {})}
+            >
+              <span class="sport-picker-icon">
+                <span class="sp-all-label" aria-hidden="true">All</span>
+              </span>
+            </button>
+            <div class="sport-picker-dropdown" id="sport-picker-dropdown" role="listbox">
+              <div class="sport-picker-header" data-i18n="切換運動項目">{lt('切換運動項目', '切換運動項目')}</div>
+              <div id="sport-picker-list" />
+            </div>
+          </div>
+
+          <a
+            id="notif-btn"
+            href="/inbox"
+            aria-label={lt('通知', '通知')}
+            data-i18n-aria-label="通知"
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 01-3.46 0" />
+            </svg>
+            <span class="notif-badge" id="notif-badge" style="display:none" />
+            <span class="pm-notif-hint" id="pm-notif-hint" aria-hidden="true" hidden>
+              <img src="img/chat.png" alt="" />
             </span>
-          </button>
-        ) : null}
-      </div>
-    </header>
+          </a>
+
+          <div id="line-login-wrapper" class="line-login-wrapper">
+            {user ? (
+              <div id="line-user-topbar" class="line-user-topbar">
+                <a
+                  href="/profile"
+                  aria-label="個人檔案"
+                  title={user.displayName ?? '個人檔案'}
+                  style={{ display: 'inline-flex', textDecoration: 'none' }}
+                >
+                  {user.pictureUrl ? (
+                    <img
+                      id="line-avatar-topbar"
+                      class="line-avatar-topbar"
+                      src={user.pictureUrl}
+                      alt={user.displayName ?? ''}
+                    />
+                  ) : (
+                    <div
+                      id="line-avatar-topbar"
+                      class="line-avatar-topbar line-avatar-fallback"
+                    >
+                      {initial}
+                    </div>
+                  )}
+                </a>
+              </div>
+            ) : onLogin ? (
+              <button
+                id="line-login-btn"
+                type="button"
+                class="line-login-btn"
+                disabled={loginPending}
+                aria-label="LINE 登入"
+                aria-busy={loginPending ? 'true' : undefined}
+                onClick={onLogin}
+              >
+                {loginPending ? (
+                  <span class="line-avatar-spinner" aria-hidden="true" />
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+                    <path d="M12 2C6.48 2 2 5.83 2 10.5c0 4.18 3.66 7.68 8.58 8.38.33.07.78.22.9.5.1.26.07.66.03.92l-.15.86c-.04.26-.2 1.01.88.55s5.88-3.47 8.03-5.93C22.08 13.79 22 12.18 22 10.5 22 5.83 17.52 2 12 2z" />
+                  </svg>
+                )}
+                LINE 登入
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </header>
+    </div>
   );
 }
