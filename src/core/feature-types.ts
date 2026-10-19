@@ -26,4 +26,6 @@ export interface FeatureManifest {
   nav?: FeatureNavItem[];
   /** status 為 external 時使用 */
   externalUrl?: string;
+  /** 可操作訊息動態登錄器（actionType -> 載入登錄檔的函式） */
+  messageActions?: Record<string, () => Promise<unknown>>;
 }

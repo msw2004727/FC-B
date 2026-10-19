@@ -154,6 +154,15 @@ export function setRemoteFlags(flags: Record<string, boolean>): void {
   notifyRegistry();
 }
 
+/** 已啟用功能的 Manifest 清單。 */
+export function getActiveManifests(): FeatureManifest[] {
+  const out: FeatureManifest[] = [];
+  for (const m of manifests.values()) {
+    if (isFeatureEnabled(m.id)) out.push(m);
+  }
+  return out;
+}
+
 /** 已啟用功能的 Route 清單。 */
 export function getActiveRoutes(): FeatureRoute[] {
   const out: FeatureRoute[] = [];

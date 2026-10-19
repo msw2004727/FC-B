@@ -16,4 +16,7 @@ export const manifest: FeatureManifest = {
     },
   ],
   nav: [{ path: '/teams', labelKey: 'nav.clubs', icon: 'users', order: 1 }],
+  messageActions: {
+    team_join_request: () => import('./register-actions'),
+  },
 };

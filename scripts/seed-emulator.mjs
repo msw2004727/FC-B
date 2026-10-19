@@ -149,7 +149,7 @@ if (shouldReset) {
   await resetEmulator();
 }
 
-const counts = { users: 0, teams: 0, events: 0, registrations: 0, legacy: 0 };
+const counts = { users: 0, teams: 0, events: 0, registrations: 0, legacy: 0, inbox: 0 };
 
 try {
   for (const doc of seedData.users) {
@@ -176,6 +176,12 @@ try {
     console.log(`[seed]   + ${reg.path}`);
   }
 
+  for (const msg of seedData.inbox ?? []) {
+    await patchDocument(msg.path, msg.data);
+    counts.inbox += 1;
+    console.log(`[seed]   + ${msg.path}`);
+  }
+
   for (const reg of seedData.legacy) {
     await patchDocument(reg.path, reg.data);
     counts.legacy += 1;
@@ -186,7 +192,7 @@ try {
   process.exit(1);
 }
 
-const total = counts.users + counts.teams + counts.events + counts.registrations + counts.legacy;
+const total = counts.users + counts.teams + counts.events + counts.registrations + counts.legacy + counts.inbox;
 console.log('[seed] ───────── 完成 ─────────');
 console.log(`[seed]   users         : ${counts.users}`);
 console.log(`[seed]   teams         : ${counts.teams}`);

@@ -7,6 +7,8 @@
 // 權限檢查需要讀俱樂部檔案（`loadTeam`），本質上非同步。這裡放寬為
 // `boolean | Promise<boolean>`——同步回傳 boolean 仍合法，呼叫端以 `await` 統一處理。
 
+import { getActiveManifests } from './feature-registry';
+
 export interface MessageActionViewer {
   uid: string | null;
   role?: string;
@@ -38,6 +40,8 @@ export interface MessageActionHandler {
 }
 
 const registry = new Map<string, MessageActionHandler>();
+const inflightLoads = new Map<string, Promise<MessageActionHandler | null>>();
+const loadedActionTypes = new Set<string>();
 
 /** 登錄某個 actionType 的可操作訊息處理器。多次登錄同 key 以最後一次為準。 */
 export function registerMessageAction(
@@ -58,7 +62,61 @@ export function getMessageAction(actionType: string): MessageActionHandler | nul
   return registry.get(key) ?? null;
 }
 
-/** 測試用：清空登錄表。 */
+/**
+ * 確保 actionType 已載入並回傳 handler：
+ * - 若已登錄直接回傳；
+ * - 若未登錄，從已啟用功能的 manifest 尋找 `messageActions[actionType]` 動態載入（同 key 只載一次）；
+ * - 失敗或找不到時回傳 `null`，不拋出例外。
+ */
+export async function ensureMessageAction(
+  actionType: string,
+): Promise<MessageActionHandler | null> {
+  const key = String(actionType ?? '').trim();
+  if (!key) return null;
+
+  const existing = registry.get(key);
+  if (existing) return existing;
+
+  // ASSUMPTION: 依規格「只載一次，失敗回 null，不拋錯」，同一 actionType 嘗試載入過後不再重試動態載入。
+  if (loadedActionTypes.has(key)) {
+    return registry.get(key) ?? null;
+  }
+
+  const inflight = inflightLoads.get(key);
+  if (inflight) return inflight;
+
+  let loader: (() => Promise<unknown>) | undefined;
+  for (const manifest of getActiveManifests()) {
+    const candidate = manifest.messageActions?.[key];
+    if (typeof candidate === 'function') {
+      loader = candidate;
+      break;
+    }
+  }
+
+  if (!loader) {
+    return null;
+  }
+
+  const promise = (async (): Promise<MessageActionHandler | null> => {
+    loadedActionTypes.add(key);
+    try {
+      await loader();
+      return registry.get(key) ?? null;
+    } catch {
+      return null;
+    } finally {
+      inflightLoads.delete(key);
+    }
+  })();
+
+  inflightLoads.set(key, promise);
+  return promise;
+}
+
+/** 測試用：清空登錄表與載入快取。 */
 export function clearMessageActions(): void {
   registry.clear();
+  inflightLoads.clear();
+  loadedActionTypes.clear();
 }

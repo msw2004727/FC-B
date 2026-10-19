@@ -345,7 +345,65 @@ export function buildSeedData(now = Date.now()) {
     },
   ];
 
-  return { users, teams, events, registrations, legacy };
+  // ── inbox（users/{uid}/inbox/{msgId}）：欄位形狀照 A _deliverMessageToInbox ─────
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtTime = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const inboxMsg = (uid, id, minutesAgo, fields) => ({
+    path: `users/${uid}/inbox/${id}`,
+    data: {
+      id,
+      type: 'system',
+      typeName: '系統',
+      time: fmtTime(now - minutesAgo * 60 * 1000),
+      unread: true,
+      read: false,
+      readBy: [],
+      hiddenBy: [],
+      senderName: '系統',
+      fromUid: null,
+      toUid: uid,
+      targetUid: uid,
+      targetTeamId: null,
+      targetRoles: null,
+      targetType: 'individual',
+      ...fields,
+    },
+  });
+  const inbox = [
+    inboxMsg(UIDS.user1, 'msg_seed_welcome', 300, {
+      title: '歡迎使用 ToosterX',
+      body: '這是一則系統通知，用來驗證收件匣的未讀與已讀。',
+      preview: '這是一則系統通知，用來驗證收件匣的未讀與已讀。',
+    }),
+    // 俱樂部 B 的隊長（admin 帳號）收到的入隊申請：待審核。
+    // 註：依 A 預設權限，純 coach 角色沒有 team.manage.entry／team.review_join，不能審核（A 的 handleTeamJoinAction 第一道檢查）。
+    inboxMsg(UIDS.admin, 'msg_seed_join_pending', 30, {
+      title: '俱樂部加入申請',
+      body: '種子用戶 0001 申請加入「種子俱樂部 B」俱樂部，請審核此申請。',
+      preview: '種子用戶 0001 申請加入「種子俱樂部 B」俱樂部，請審核此申請。',
+      senderName: '種子用戶 0001',
+      actionType: 'team_join_request',
+      actionStatus: 'pending',
+      meta: { teamId: TEAM_IDS.b, teamName: '種子俱樂部 B', applicantUid: UIDS.user1, applicantName: '種子用戶 0001', groupId: 'tjr_seed_pending' },
+    }),
+    // 已處理的申請
+    inboxMsg(UIDS.coach, 'msg_seed_join_done', 600, {
+      title: '俱樂部加入申請',
+      body: '種子用戶 0001 申請加入「種子俱樂部 A」俱樂部，請審核此申請。',
+      preview: '種子用戶 0001 申請加入「種子俱樂部 A」俱樂部，請審核此申請。',
+      read: true,
+      unread: false,
+      actionType: 'team_join_request',
+      actionStatus: 'approved',
+      reviewerName: '種子教練',
+      meta: { teamId: TEAM_IDS.a, teamName: '種子俱樂部 A', applicantUid: UIDS.user1, applicantName: '種子用戶 0001', groupId: 'tjr_seed_done' },
+    }),
+  ];
+
+  return { users, teams, events, registrations, legacy, inbox };
 }
 
 /** 匯出的種子資料物件（於 import 時以此當下時間產生一次）。 */
