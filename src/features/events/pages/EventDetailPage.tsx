@@ -4,7 +4,7 @@ import { useLocation } from 'preact-iso';
 import { lt, useT } from '@/i18n/i18n';
 import { UserTag } from '@/ui/UserTag';
 import { Toast, toast } from '@/ui/Toast';
-import { useViewer } from '@/features/profile/data/viewer';
+import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
 import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
@@ -29,9 +29,14 @@ import {
   type DetailEvent,
   type DetailRegistration,
 } from '../data/detail-model';
+import { buildConfirmedRoster } from '../data/attendance-roster-model';
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
 import { WaitlistRosterTable } from '../components/WaitlistRosterTable';
+import {
+  DetailAttendanceLoading,
+  DetailAttendanceSummary,
+} from '../components/legacy/DetailAttendanceSummary';
 import {
   CompanionSelectModal,
   EventDetailCover,
@@ -58,9 +63,34 @@ interface Notice {
 }
 
 type Sheet = 'signup' | 'cancel' | null;
-type RosterPhase = 'loading' | 'ready' | 'error';
+type RosterPhase = 'idle' | 'loading' | 'ready' | 'error';
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+
+/**
+ * 照舊版 A `event-detail.js#_canManageDetailAttendanceRecords`（第 129～134 行）。
+ */
+function canManageDetailAttendanceRecords(
+  viewer: ViewerView,
+  event: DetailEvent | null | undefined,
+): boolean {
+  if (!event) return false;
+  return canOperateEventSite(operateContextFromViewer(viewer), event) === true;
+}
+
+/**
+ * 照舊版 A `event-detail.js#_canViewDetailAttendanceRecordDetails`（第 136～140 行）。
+ */
+function canViewDetailAttendanceRecordDetails(
+  viewer: ViewerView,
+  event: DetailEvent | null | undefined,
+): boolean {
+  if (canManageDetailAttendanceRecords(viewer, event)) return true;
+  return (
+    viewer.hasPermission('activity.view_noshow')
+    || viewer.hasPermission('admin.repair.no_show_adjust')
+  );
+}
 
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
@@ -88,7 +118,8 @@ function EventDetailSession({
   const location = useLocation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
-  const [rosterPhase, setRosterPhase] = useState<RosterPhase>('loading');
+  const [rosterPhase, setRosterPhase] = useState<RosterPhase>('idle');
+  const [rosterExpanded, setRosterExpanded] = useState(false);
   const [historyFailed, setHistoryFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -139,13 +170,15 @@ function EventDetailSession({
 
   useEffect(() => {
     const request = ++sequence.current;
-    const rosterRequest = ++rosterSequence.current;
+    rosterSequence.current += 1;
+    rosterPending.current = false;
     let disposed = false;
     const current = (): boolean =>
       !disposed && alive.current && request === sequence.current;
 
     setPhase('loading');
-    setRosterPhase('loading');
+    setRosterPhase('idle');
+    setRosterExpanded(false);
     setHistoryFailed(false);
     setSnapshot(null);
 
@@ -197,25 +230,6 @@ function EventDetailSession({
 
       if (!viewer.uid) {
         setRosterPhase('ready');
-        return;
-      }
-
-      try {
-        const [registrations, attendanceRecords] = await Promise.all([
-          loadEventRegistrations(detail.eventDocId),
-          loadEventAttendance(detail.eventDocId).catch(() => [] as EventAttendanceEntry[]),
-        ]);
-        if (!current() || rosterRequest !== rosterSequence.current) return;
-        setSnapshot((previous) => previous && ({
-          ...previous,
-          registrations,
-          attendanceRecords,
-        }));
-        setRosterPhase('ready');
-      } catch {
-        if (current() && rosterRequest === rosterSequence.current) {
-          setRosterPhase('error');
-        }
       }
     }
 
@@ -227,20 +241,29 @@ function EventDetailSession({
     };
   }, [publicId, viewer.uid, reload]);
 
-  async function retryRoster(): Promise<void> {
-    const current = snapshot;
-    if (!current || !currentViewer.current.uid || rosterPending.current ||
-      operation.current || refreshFailed ||
-      !isEventVisibleToUser(current.event, currentViewer.current, current.viewerRegistrations)) {
+  async function fetchRosterForSnapshot(current: Snapshot): Promise<void> {
+    if (
+      !currentViewer.current.uid
+      || rosterPending.current
+      || operation.current
+      || refreshFailed
+      || !isEventVisibleToUser(current.event, currentViewer.current, current.viewerRegistrations)
+    ) {
       return;
     }
     rosterPending.current = true;
     const request = ++rosterSequence.current;
     setRosterPhase('loading');
+    const canViewDetails = canViewDetailAttendanceRecordDetails(
+      currentViewer.current,
+      current.event,
+    );
     try {
       const [registrations, attendanceRecords] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
-        loadEventAttendance(current.eventDocId).catch(() => [] as EventAttendanceEntry[]),
+        canViewDetails
+          ? loadEventAttendance(current.eventDocId).catch(() => [] as EventAttendanceEntry[])
+          : Promise.resolve([] as EventAttendanceEntry[]),
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
       setSnapshot((previous) => previous && ({
@@ -256,6 +279,20 @@ function EventDetailSession({
     } finally {
       rosterPending.current = false;
     }
+  }
+
+  function handleOpenDetailAttendanceRecords(): void {
+    const current = snapshot;
+    if (!current || !currentViewer.current.uid) return;
+    setRosterExpanded(true);
+    if (rosterPhase === 'ready' || rosterPhase === 'loading') return;
+    fetchRosterForSnapshot(current).catch(() => {});
+  }
+
+  async function retryRoster(): Promise<void> {
+    const current = snapshot;
+    if (!current) return;
+    await fetchRosterForSnapshot(current);
   }
 
   async function run(work: () => Promise<void>): Promise<void> {
@@ -285,11 +322,17 @@ function EventDetailSession({
     const uid = currentViewer.current.uid;
     if (!uid) return;
     const request = ++rosterSequence.current;
+    const canViewDetails = canViewDetailAttendanceRecordDetails(
+      currentViewer.current,
+      current.event,
+    );
     try {
       const [registrations, history, attendanceRecords] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
         loadViewerRegistrations(uid),
-        loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords),
+        rosterExpanded && canViewDetails
+          ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
+          : Promise.resolve(current.attendanceRecords),
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
       const active = registrations.filter(isActiveRegistration);
@@ -304,12 +347,16 @@ function EventDetailSession({
         viewerRegistrations: history,
         attendanceRecords,
       });
-      setRosterPhase('ready');
+      if (rosterExpanded) {
+        setRosterPhase('ready');
+      }
       setHistoryFailed(false);
       setRefreshFailed(false);
     } catch (error) {
       if (!alive.current || request !== rosterSequence.current) return;
-      setRosterPhase('error');
+      if (rosterExpanded) {
+        setRosterPhase('error');
+      }
       setRefreshFailed(true);
       show(errorKey(error, 'events.detailPage.refreshError'));
     }
@@ -342,9 +389,9 @@ function EventDetailSession({
   const roles = useUserRoles(viewer.uid ? roleUids : []);
 
   const eventId = event?.id ?? publicId;
-  const canManageRoster = Boolean(
-    event && canOperateEventSite(operateContextFromViewer(viewer), event),
-  );
+  const canManageRoster = canManageDetailAttendanceRecords(viewer, event);
+  const canViewAttendanceDetails = canViewDetailAttendanceRecordDetails(viewer, event);
+  const publicRosterOnly = !canViewAttendanceDetails;
 
   const instantSave = useAttendanceInstantSave({
     event,
@@ -355,7 +402,9 @@ function EventDetailSession({
     attendanceRecords: snapshot?.attendanceRecords ?? [],
     onReloadAttendance: async () => {
       const docId = snapshot?.eventDocId;
-      if (!docId) return snapshot?.attendanceRecords ?? [];
+      if (!docId || !canViewDetailAttendanceRecordDetails(currentViewer.current, snapshot?.event)) {
+        return snapshot?.attendanceRecords ?? [];
+      }
       const records = await loadEventAttendance(docId);
       if (alive.current) {
         setSnapshot((prev) => (prev && prev.eventDocId === docId
@@ -591,6 +640,17 @@ function EventDetailSession({
   const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
   const waitlistCount = !viewer.uid && Array.isArray(event.waitlistNames)
     ? event.waitlistNames.length : count(event.waitlist);
+
+  // 照舊版 A `_getDetailAttendanceSummaryCounts`（第 103～123 行）：
+  // 尚未展開讀取 registrations 時，`canUseRegistrationRows = false`，以權威計數與 `participantsWithUid` 取大者。
+  const summaryConfirmedResult = buildConfirmedRoster(event, snapshot.registrations, {
+    canUseRegistrationRows: rosterPhase === 'ready',
+  });
+  const summaryConfirmedCount = Number.isFinite(summaryConfirmedResult.count)
+    ? summaryConfirmedResult.count
+    : confirmedCount;
+  const summaryWaitlistCount = Math.max(0, count(event.waitlist));
+
   const state = getSignupButtonState({
     event: viewer.uid ? event : { ...event, current: confirmedCount },
     viewer,
@@ -859,12 +919,25 @@ function EventDetailSession({
           ) : (
             <section
               aria-label={t('events.detailPage.roster')}
-              aria-busy={rosterPhase === 'loading'}
+              aria-busy={rosterExpanded && rosterPhase === 'loading'}
             >
               <div class="detail-section">
                 <div id="detail-attendance-table">
-                  {rosterPhase === 'loading' ? (
-                    <div class="reg-loading">{t('events.detailPage.rosterLoading')}</div>
+                  {!rosterExpanded ? (
+                    <DetailAttendanceSummary
+                      eventId={eventId}
+                      confirmedCount={summaryConfirmedCount}
+                      waitlistCount={summaryWaitlistCount}
+                      max={maximum}
+                      canManage={canManageRoster}
+                      canViewRecords={canViewAttendanceDetails}
+                      onOpen={handleOpenDetailAttendanceRecords}
+                    />
+                  ) : rosterPhase === 'loading' ? (
+                    <DetailAttendanceLoading
+                      canManage={canManageRoster}
+                      canViewRecords={canViewAttendanceDetails}
+                    />
                   ) : rosterPhase === 'error' ? (
                     <div role="alert">
                       <div>{t('events.detailPage.rosterError')}</div>
@@ -887,6 +960,7 @@ function EventDetailSession({
                       roles={roles}
                       onOpenProfile={profile}
                       canManage={canManageRoster}
+                      publicRosterOnly={publicRosterOnly}
                       editing={rosterEditing}
                       submitting={rosterSubmitting}
                       onStartEdit={handleStartRosterEdit}
@@ -905,7 +979,7 @@ function EventDetailSession({
                 <div id="detail-unreg-table" />
               </div>
               <div id="detail-waitlist-container">
-                {rosterPhase === 'ready' && (
+                {rosterExpanded && rosterPhase === 'ready' && (
                   <WaitlistRosterTable
                     event={event}
                     registrations={snapshot.registrations}

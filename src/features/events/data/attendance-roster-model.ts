@@ -5,10 +5,10 @@
  * - `_buildConfirmedParticipantSummary`（`event-manage-noshow.js`）
  * - `_decorateAttendanceRosterPeople`（`event-manage-attendance.js`）
  * - `_matchAttendanceRecord`、`_getLatestAttendanceRecord`、`_attendanceRecordMs`（`event-manage-attendance.js`）
- * - `_renderWaitlistSection`（`event-manage-waitlist.js`）
+ * - `_renderGroupedWaitlistSection`（`event-detail.js`）
  *
  * 本批不做（之後的批次補）：
- * - 編輯模式（「編輯／完成」按鈕、勾選簽到、踢掉、降候補、即時儲存）
+ * - 編輯模式（「踢」「候」欄、候補升正取）
  * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
  * - 載入防抖、效能 log、快速預覽、延遲補畫
@@ -89,6 +89,19 @@ export interface RosterAttendanceRecordInput {
   note?: unknown;
   createdAt?: unknown;
   data?: Record<string, unknown>;
+}
+
+export interface BuildConfirmedRosterOptions {
+  /**
+   * 對應 A `canUseRegistrationRows`（預設 `true`，代表呼叫端傳入完整 registrations）。
+   * 當設為 `false`（例如僅有快取或不完整快照）時，只採用 `participantsWithUid` fallback，
+   * 且 `count` 取 `Math.max(countablePeople.length, fallbackCount)`。
+   */
+  canUseRegistrationRows?: boolean;
+  /**
+   * 對應 A `this._eventBadgeCache?.[eventId]`，依 uid 補充徽章。
+   */
+  badgeCache?: Readonly<Record<string, readonly RosterDisplayBadge[]>>;
 }
 
 export interface ConfirmedRosterPerson {
@@ -222,6 +235,10 @@ function isCompanionReg(reg: RosterRegistrationInput): boolean {
   return str(reg.participantType) === 'companion';
 }
 
+function isSelfReg(reg: RosterRegistrationInput): boolean {
+  return str(reg.participantType) === 'self';
+}
+
 function regOwnerUid(reg: RosterRegistrationInput): string {
   // R-ID-003: canonical userId, legacy uid / ownerUid
   return str(reg.userId) || str(reg.uid) || str(reg.ownerUid);
@@ -248,6 +265,34 @@ function normalizeTeamSummaries(event: RosterEventInput): NormalizedTeamSummary[
     });
   }
   return out;
+}
+
+/**
+ * 對應 A `_getEventActualConfirmedCount` / `_getEventProjectedConfirmedCount` 計算出的權威 fallback 正取人數。
+ */
+function getEventFallbackConfirmedCount(
+  event: RosterEventInput,
+  remainingReservedSlots: number,
+): number {
+  const realCurrentNum = Number(event.realCurrent);
+  if (event.realCurrent != null && event.realCurrent !== '' && Number.isFinite(realCurrentNum) && realCurrentNum >= 0) {
+    return Math.max(0, realCurrentNum);
+  }
+  const projected = Math.max(0, num(event.current));
+  return Math.max(0, projected - remainingReservedSlots);
+}
+
+/**
+ * 對應 A `_projectionUidForReg`（第 132～140 行）。
+ */
+function projectionUidForReg(reg: RosterRegistrationInput): string {
+  const isCompanion = str(reg.participantType) === 'companion' || Boolean(str(reg.companionId));
+  if (isCompanion) {
+    const ownerUid = regOwnerUid(reg);
+    const companionName = str(reg.companionName) || str(reg.userName) || str(reg.name);
+    return str(reg.companionId) || (ownerUid && companionName ? `${ownerUid}_${companionName}` : '');
+  }
+  return regOwnerUid(reg);
 }
 
 /**
@@ -341,17 +386,26 @@ export function decorateAttendanceRosterPeople(
  *
  * R-ID-002 刻意不移植：
  * - A 在 fallback 時用 `_userByName` 依名字反查 `users` 的 UID，以及 `_lookupProjectedRegistration` 以名字匹配；
- *   B 只信任 `participantsWithUid` 的真 UID，純名字字串（`event.participants`）只保留空 uid（不查人、不冒充 UID）。
+ *   B 只信任 `participantsWithUid` 的真 UID（且通過 `wuValid` 長度守衛），純名字字串（`event.participants`）不做身分反查。
  */
 export function buildConfirmedRoster(
   event: RosterEventInput | null | undefined,
   registrations: readonly RosterRegistrationInput[] = [],
+  options?: BuildConfirmedRosterOptions,
 ): ConfirmedRosterResult {
   if (!event) {
     return { people: [], count: 0, realCount: 0, teamSummaries: [] };
   }
 
-  const confirmedRegs = registrations
+  const canUseRegistrationRows = options?.canUseRegistrationRows ?? true;
+  const badgeCache = options?.badgeCache ?? {};
+
+  const cachedConfirmedRegs = registrations.filter(
+    (r) => (str(r?.status) || 'confirmed').toLowerCase() === 'confirmed',
+  );
+
+  const allActiveRegs = canUseRegistrationRows ? registrations : [];
+  const confirmedRegs = allActiveRegs
     .filter((r) => str(r?.status) === 'confirmed')
     .slice()
     .sort((a, b) => {
@@ -384,7 +438,8 @@ export function buildConfirmedRoster(
     });
 
     groups.forEach((regs) => {
-      const selfReg = regs.find((r) => str(r.participantType) === 'self' || (!isCompanionReg(r) && !r.companionId));
+      // 對照 A `event-manage-noshow.js:68`：嚴格以 participantType === 'self' 判定本人報名
+      const selfReg = regs.find((r) => isSelfReg(r));
       const isCourseLinked = regs.some((r) => isCourseLinkedRegistrationForRoster(r));
       const companions = regs.filter((r) => isCompanionReg(r));
       const firstReg = regs[0];
@@ -457,15 +512,38 @@ export function buildConfirmedRoster(
         if (cUid) addedUids.add(cUid);
       }
     });
-  } else {
-    // Fallback：當尚無 confirmed registrations 時，僅使用 participantsWithUid 的真 UID（R-ID-002 刻意不移植名字反查 UID）。
-    const wu = Array.isArray(event.participantsWithUid) ? event.participantsWithUid : [];
+  }
+
+  const teamSummaries = normalizeTeamSummaries(event);
+  const remainingReservedSlots = teamSummaries.reduce(
+    (sum, s) => sum + Math.max(0, s.remainingSlots),
+    0,
+  );
+
+  // 對照 A `event-manage-noshow.js:126-178`：`wuValid` 長度一致性守衛 + UID 反查 enrichment（R-ID-002 不移植名字匹配）
+  const wu = Array.isArray(event.participantsWithUid) ? event.participantsWithUid : [];
+  const expectedLen = num(event.realCurrent) || (num(event.current) - remainingReservedSlots);
+  const wuValid = wu.length > 0 && wu.length === expectedLen;
+  const useProjectedFallbackPeople = !canUseRegistrationRows || confirmedRegs.length === 0;
+
+  function lookupProjectedRegistrationByUid(uid: string): RosterRegistrationInput | null {
+    if (!uid) return null;
+    const uidMatches = cachedConfirmedRegs.filter((r) => projectionUidForReg(r) === uid);
+    return uidMatches.length === 1 ? (uidMatches[0] ?? null) : null;
+  }
+
+  if (useProjectedFallbackPeople && wuValid) {
     for (const raw of wu) {
       if (!raw || typeof raw !== 'object') continue;
       const entry = raw as RosterParticipantWithUid;
       const uid = str(entry.uid);
       const name = str(entry.name) || str(entry.displayName);
       if (!uid || !name || addedUids.has(uid)) continue;
+      const matchedReg = lookupProjectedRegistrationByUid(uid);
+      const cachedBadges = badgeCache[uid];
+      const badges = cachedBadges && cachedBadges.length > 0
+        ? cachedBadges.map((b) => ({ name: str(b.name), image: str(b.image) }))
+        : parseBadges(matchedReg?.displayBadges);
       basePeople.push({
         name,
         uid,
@@ -475,18 +553,20 @@ export function buildConfirmedRoster(
         hasSelfReg: true,
         proxyOnly: false,
         uidResolved: true,
-        displayBadges: [],
-        teamKey: str(entry.teamKey) || null,
-        regDocId: null,
-        teamReservationTeamId: str(entry.teamReservationTeamId) || null,
-        teamReservationTeamName: str(entry.teamReservationTeamName) || null,
-        teamSeatSource: str(entry.teamSeatSource) || null,
+        displayBadges: badges,
+        teamKey: str(entry.teamKey) || str(matchedReg?.teamKey) || null,
+        regDocId: matchedReg ? (regDocIdOf(matchedReg) || null) : null,
+        teamReservationTeamId:
+          str(entry.teamReservationTeamId) || str(matchedReg?.teamReservationTeamId) || null,
+        teamReservationTeamName:
+          str(entry.teamReservationTeamName) || str(matchedReg?.teamReservationTeamName) || null,
+        teamSeatSource:
+          str(entry.teamSeatSource) || str(matchedReg?.teamSeatSource) || null,
       });
       addedUids.add(uid);
     }
   }
 
-  const teamSummaries = normalizeTeamSummaries(event);
   const teamRows: ConfirmedRosterPerson[] = [];
   const groupedTeamIds = new Set<string>();
 
@@ -564,7 +644,10 @@ export function buildConfirmedRoster(
         ]
       : [...teamRows, ...normalRows];
 
-  const decoratedPeople = decorateAttendanceRosterPeople(orderedPeople, registrations);
+  const decoratedPeople = decorateAttendanceRosterPeople(
+    orderedPeople,
+    canUseRegistrationRows ? registrations : [],
+  );
 
   const countablePeople = decoratedPeople.filter(
     (p) =>
@@ -575,19 +658,15 @@ export function buildConfirmedRoster(
       && !p.isProxyOnly,
   );
 
-  const remainingReservedSlots = teamSummaries.reduce(
-    (sum, s) => sum + Math.max(0, s.remainingSlots),
-    0,
-  );
-  const fallbackCount = Math.max(
-    0,
-    num(event.realCurrent ?? (num(event.current) - remainingReservedSlots)),
-  );
+  // 對照 A `event-manage-noshow.js:258-271`
+  const fallbackCount = getEventFallbackConfirmedCount(event, remainingReservedSlots);
   const hasCountSource =
     decoratedPeople.length > 0
     || (Array.isArray(event.participantsWithUid) && event.participantsWithUid.length > 0)
     || (Array.isArray(event.participants) && event.participants.length > 0);
-  const count = hasCountSource ? countablePeople.length : fallbackCount;
+  const count = canUseRegistrationRows
+    ? (hasCountSource ? countablePeople.length : fallbackCount)
+    : Math.max(countablePeople.length, fallbackCount);
   const realCount = basePeople.filter((p) => !p.proxyOnly && !p.isProxyOnly).length;
 
   return {
@@ -641,9 +720,13 @@ export function attendanceRecordMs(
   return fallbackOrder;
 }
 
+/**
+ * 對照 A `api-service.js#getAttendanceRecords`（第 2077 行）：
+ * `r.status !== 'removed' && r.status !== 'cancelled'`。
+ */
 function isActiveAttendanceRecord(record: RosterAttendanceRecordInput): boolean {
   const status = str(record.status ?? record.data?.status) || 'active';
-  return status !== 'removed';
+  return status !== 'removed' && status !== 'cancelled';
 }
 
 /**
@@ -741,11 +824,11 @@ export function attendanceStateFor(
 }
 
 /**
- * 對應 A `_renderWaitlistSection`（`event-manage-waitlist.js` 第 154～251 行）。
+ * 對照 A `event-detail.js#_renderGroupedWaitlistSection`（第 1726～1772 行）。
  *
- * R-ID-002 刻意不移植：
- * - A 會用 `event.waitlistNames`（名字字串陣列）補齊 fallback 列並依名字重排；
- *   B 為登入者檢視且已有完整 `registrations` 子集合，只依 `registrations` 的 UID 與時間排序建立候補名單，不以名字比對或重排。
+ * 排序：`registeredAt` → `promotionOrder` → `_docId/id` → `userName`。
+ * 分組：依 `userId`（`regOwnerUid`）分組。
+ * R-ID-002 刻意不移植：不移植 `_getWaitlistFallbackNames` 與 `event.waitlistNames` 名字重排。
  */
 export function buildWaitlistRoster(
   _event: RosterEventInput | null | undefined,
@@ -763,7 +846,13 @@ export function buildWaitlistRoster(
       const ta = regTimeMs(a);
       const tb = regTimeMs(b);
       if (ta !== tb) return ta - tb;
-      return regDocIdOf(a).localeCompare(regDocIdOf(b));
+      const pa = num(a.promotionOrder);
+      const pb = num(b.promotionOrder);
+      if (pa !== pb) return pa - pb;
+      const ida = regDocIdOf(a);
+      const idb = regDocIdOf(b);
+      if (ida !== idb) return ida.localeCompare(idb);
+      return str(a.userName).localeCompare(str(b.userName));
     });
 
   const items: WaitlistRosterItem[] = [];
@@ -771,34 +860,32 @@ export function buildWaitlistRoster(
   if (waitlistedRegs.length > 0) {
     const groups = new Map<string, RosterRegistrationInput[]>();
     for (const r of waitlistedRegs) {
-      const isCourseLinked = isCourseLinkedRegistrationForRoster(r);
-      const groupKey = isCourseLinked
-        ? `course:${str(r.courseStudentId) || regDocIdOf(r)}`
-        : `user:${regOwnerUid(r)}`;
-      const bucket = groups.get(groupKey);
+      const userId = regOwnerUid(r);
+      const bucket = groups.get(userId);
       if (bucket) {
         bucket.push(r);
       } else {
-        groups.set(groupKey, [r]);
+        groups.set(userId, [r]);
       }
     }
 
-    groups.forEach((regs) => {
-      const selfReg = regs.find((r) => str(r.participantType) === 'self' || (!isCompanionReg(r) && !r.companionId));
+    groups.forEach((regs, userId) => {
+      const selfReg = regs.find((r) => isSelfReg(r));
       const isCourseLinked = regs.some((r) => isCourseLinkedRegistrationForRoster(r));
       const firstReg = regs[0];
       if (!firstReg) return;
-      const userId = regOwnerUid(selfReg ?? firstReg);
       const companions = regs.filter((r) => isCompanionReg(r));
       const mainName = str((selfReg ?? firstReg).userName) || str((selfReg ?? firstReg).name);
 
       const selfConfirmed = activeRegs.find(
         (r) =>
           regOwnerUid(r) === userId
-          && (str(r.participantType) === 'self' || (!isCompanionReg(r) && !r.companionId))
+          && isSelfReg(r)
           && str(r.status) === 'confirmed',
       );
-      const selfConfirmedName = selfConfirmed ? (str(selfConfirmed.userName) || str(selfConfirmed.name) || null) : null;
+      const selfConfirmedName = selfConfirmed
+        ? (str(selfConfirmed.userName) || str(selfConfirmed.name) || null)
+        : null;
 
       const companionItems: WaitlistCompanionItem[] = companions.map((c) => {
         const cName = str(c.companionName) || str(c.userName) || str(c.name);
@@ -815,7 +902,7 @@ export function buildWaitlistRoster(
         name: mainName,
         userId,
         courseLinked: isCourseLinked,
-        registrationId: isCourseLinked && selfReg ? regDocIdOf(selfReg) : '',
+        registrationId: selfReg ? regDocIdOf(selfReg) : '',
         companions: companionItems,
         selfOrphanInfo,
       });

@@ -31,6 +31,46 @@ const RIBBON_CONFIG: Record<string, string> = {
   course: '課程',
 };
 
+type HeatPredictionKey = 'hot' | 'warm' | 'normal' | 'cold';
+
+const HEAT_COLORS: Record<HeatPredictionKey, string> = {
+  hot: '#dc2626',
+  warm: '#f59e0b',
+  normal: '#3b82f6',
+  cold: '#059669',
+};
+
+const HEAT_LABELS: Record<HeatPredictionKey, string> = {
+  hot: '高人氣即將額滿',
+  warm: '報名熱烈增加中',
+  normal: '穩定開放報名中',
+  cold: '潛力場次招募中',
+};
+
+/**
+ * 照舊版 A `event-list.js#_calcHeatPrediction`（第 317～331 行）。
+ */
+export function calcHeatPrediction(
+  event: LegacyDetailEvent,
+  nowMs: number = Date.now(),
+): HeatPredictionKey | null {
+  const max = Number(event.max || 0);
+  if (!max || max === 0) return null;
+  const current = Number(event.current || 0);
+  const fillRate = current / max;
+  const startMs = eventStartMs(event);
+  if (!startMs || startMs <= 0) {
+    return fillRate >= 0.8 ? 'hot' : fillRate >= 0.5 ? 'warm' : 'normal';
+  }
+  const daysLeft = Math.max(0, (startMs - nowMs) / 86400000);
+  if (fillRate >= 0.9) return 'hot';
+  if (fillRate >= 0.7 && daysLeft > 3) return 'hot';
+  if (fillRate >= 0.5) return 'warm';
+  if (fillRate >= 0.3 && daysLeft > 7) return 'warm';
+  if (fillRate < 0.15 && daysLeft < 3) return 'cold';
+  return 'normal';
+}
+
 function getCoverRibbonMeta(event: LegacyDetailEvent): { typeKey: string; label: string } {
   const raw = event.type || 'friendly';
   const typeKey = RIBBON_CONFIG[raw] ? raw : 'friendly';
@@ -232,6 +272,7 @@ export function EventDetailInfoSection({
   const countdown = calcCountdown(event, nowMs);
   const minAge = count(event.minAge);
   const allowedGender = getAllowedGender(event);
+  const heatPrediction = isEnded ? null : calcHeatPrediction(event, nowMs);
 
   const hostUid = (event.creatorUid ?? '').trim();
   const hostName = (event.creator || event.creatorName || hostUid).trim();
@@ -304,6 +345,14 @@ export function EventDetailInfoSection({
             <span class="detail-label">性別</span>
             <span style="color:#dc2626;font-weight:700">
               {getGenderDetailText(allowedGender)}
+            </span>
+          </div>
+        )}
+        {heatPrediction && (
+          <div class="detail-row" data-detail-field="heat">
+            <span class="detail-label">熱度</span>
+            <span style={`color:${HEAT_COLORS[heatPrediction]};font-weight:600;white-space:nowrap`}>
+              {HEAT_LABELS[heatPrediction]}
             </span>
           </div>
         )}

@@ -40,6 +40,8 @@ export interface AttendanceRosterTableProps {
   onOpenProfile: (uid: string) => void;
   /** 目前使用者是否具備現場操作權限 `canOperateEventSite === true`。 */
   canManage?: boolean;
+  /** 僅顯示公開名單（隱藏簽到／簽退／備註三欄）。 */
+  publicRosterOnly?: boolean;
   /** 是否處於「管理名單」編輯模式。 */
   editing?: boolean;
   /** 是否正在 flush／送出中（顯示「儲存中...」並 disabled）。 */
@@ -58,7 +60,6 @@ export interface AttendanceRosterTableProps {
   onChangeNote?: (person: ConfirmedRosterPerson, noteValue: string) => void;
 }
 
-const TABLE_COLSPAN = 4; // 姓名 + 簽到 + 簽退 + 備註（本批不含踢／候／放鴿子欄）
 const LEGACY_SETTLE_URL = 'https://toosterx.com/';
 
 export function AttendanceRosterTable({
@@ -68,6 +69,7 @@ export function AttendanceRosterTable({
   roles,
   onOpenProfile,
   canManage = false,
+  publicRosterOnly = false,
   editing = false,
   submitting = false,
   onStartEdit,
@@ -82,11 +84,12 @@ export function AttendanceRosterTable({
   const t = useT();
   const { people, count: renderedRosterCount } = buildConfirmedRoster(event, registrations);
   const maxCount = Number(event.max || 0) || 0;
-  const tableEditing = Boolean(canManage && editing);
-  const isSubmitting = Boolean(canManage && submitting);
+  const tableEditing = Boolean(canManage && !publicRosterOnly && editing);
+  const isSubmitting = Boolean(canManage && !publicRosterOnly && submitting);
+  const tableColSpan = publicRosterOnly ? 1 : 4; // 姓名 (+ 簽到 + 簽退 + 備註)
 
   function renderManageButton(): JSX.Element | null {
-    if (!canManage) return null;
+    if (!canManage || publicRosterOnly) return null;
     if (tableEditing) {
       // CALLABLES_DEPLOYED === true 的伺服器結算路徑於下一批實作；
       // 本批旗標為 false，按鈕文字固定為「關閉編輯」（送出中顯示「儲存中...」）。
@@ -133,7 +136,7 @@ export function AttendanceRosterTable({
   }
 
   if (people.length === 0) {
-    if (!canManage) {
+    if (!canManage || publicRosterOnly) {
       return (
         <div class="att-roster-empty">
           <Text>{t('events.roster.empty')}</Text>
@@ -221,7 +224,8 @@ export function AttendanceRosterTable({
     );
   }
 
-  function renderEmptyAttendanceCells(label: string): JSX.Element {
+  function renderEmptyAttendanceCells(label: string): JSX.Element | null {
+    if (publicRosterOnly) return null;
     return (
       <>
         <td class="att-roster-td-dash"><Text>--</Text></td>
@@ -315,9 +319,13 @@ export function AttendanceRosterTable({
                 {renderManageButton()}
               </div>
             </th>
-            <th class="att-roster-th-check"><Text>{t('events.roster.checkin')}</Text></th>
-            <th class="att-roster-th-check"><Text>{t('events.roster.checkout')}</Text></th>
-            <th class="att-roster-th-note"><Text>{t('events.roster.note')}</Text></th>
+            {!publicRosterOnly && (
+              <>
+                <th class="att-roster-th-check"><Text>{t('events.roster.checkin')}</Text></th>
+                <th class="att-roster-th-check"><Text>{t('events.roster.checkout')}</Text></th>
+                <th class="att-roster-th-note"><Text>{t('events.roster.note')}</Text></th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -327,7 +335,7 @@ export function AttendanceRosterTable({
             if (p.isTeamGeneralSeparator) {
               return (
                 <tr key={rowKey} class="team-reservation-general-row">
-                  <td colSpan={TABLE_COLSPAN}>
+                  <td colSpan={tableColSpan}>
                     <div class="team-reservation-general-divider">
                       <Text>{t('events.roster.generalSection')}</Text>
                     </div>
@@ -339,7 +347,7 @@ export function AttendanceRosterTable({
             if (p.isTeamHeader) {
               return (
                 <tr key={rowKey} class="team-reservation-header-row">
-                  <td colSpan={TABLE_COLSPAN} class="team-reservation-header-cell">
+                  <td colSpan={tableColSpan} class="team-reservation-header-cell">
                     <div class="team-reservation-section-title">
                       <div class="team-reservation-section-main">
                         <span class="team-reservation-section-avatar" aria-hidden="true">
@@ -410,6 +418,14 @@ export function AttendanceRosterTable({
                 ? 'team-reservation-member-row att-roster-row'
                 : 'att-roster-row'
             }${flashClass}`;
+
+            if (publicRosterOnly) {
+              return (
+                <tr key={rowKey} class={memberRowClass}>
+                  <td class="att-roster-td-name">{renderNameCell(p)}</td>
+                </tr>
+              );
+            }
 
             if (state.ambiguous) {
               return (

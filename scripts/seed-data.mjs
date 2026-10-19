@@ -292,6 +292,7 @@ export function buildSeedData(now = Date.now()) {
   ];
 
   // ── registrations（events/{eventId}/registrations/{regId}）────
+  // 照 A firebase-crud.js#registerForEvent：本人報名 participantType 'self' 並帶 userName（2026-10-19 修正，原為 'player' 且無名字）。
   const registrations = [
     // 事件 0（足球公開）— U0001 報名（驗證「下一場活動」）
     {
@@ -301,7 +302,8 @@ export function buildSeedData(now = Date.now()) {
         eventId: IDS.football,
         userId: UIDS.user1,
         status: 'confirmed',
-        participantType: 'player',
+        participantType: 'self',
+        userName: '種子用戶 0001',
         registeredAt: new Date(now - 2 * HOUR_MS),
       },
     },
@@ -313,7 +315,8 @@ export function buildSeedData(now = Date.now()) {
         eventId: IDS.football,
         userId: UIDS.coach,
         status: 'confirmed',
-        participantType: 'player',
+        participantType: 'self',
+        userName: '種子教練 0002',
         registeredAt: new Date(now - 3 * HOUR_MS),
       },
     },
@@ -325,7 +328,8 @@ export function buildSeedData(now = Date.now()) {
         eventId: IDS.blockCancel,
         userId: UIDS.blocked,
         status: 'cancelled',
-        participantType: 'player',
+        participantType: 'self',
+        userName: '種子被黑名單 0004',
         registeredAt: new Date(now - 1 * DAY_MS),
       },
     },

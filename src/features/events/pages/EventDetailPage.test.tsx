@@ -8,6 +8,7 @@ import type { DetailRegistration } from '../data/detail-model';
 const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   registrations: vi.fn(),
+  attendance: vi.fn(),
   history: vi.fn(),
   register: vi.fn(),
   cancel: vi.fn(),
@@ -57,6 +58,12 @@ const ZH_DICT: Record<string, string> = {
   'events.detailPage.button.restricted': '性別限定',
   'events.detailPage.button.waitlist': '報名候補',
   'events.detailPage.button.signup': '立即報名',
+  'events.roster.title': '正取名單 ({count}/{max})',
+  'events.roster.checkin': '簽到',
+  'events.roster.checkout': '簽退',
+  'events.roster.note': '備註',
+  'events.roster.empty': '尚無正取名單',
+  'events.roster.manage': '管理名單',
   'events.signup.error.profileIncomplete': '請先完成個人資料',
 };
 
@@ -85,6 +92,9 @@ vi.mock('@/ui/Toast', async (importOriginal) => {
 vi.mock('@/features/events/data/event-detail', () => ({
   loadEventDetail: mocks.detail,
   loadEventRegistrations: mocks.registrations,
+}));
+vi.mock('@/features/checkin/data/attendance', () => ({
+  loadEventAttendance: mocks.attendance,
 }));
 vi.mock('@/features/events/data/viewer-registrations', () => ({
   loadViewerRegistrations: mocks.history,
@@ -147,6 +157,7 @@ beforeEach(async () => {
   mocks.viewer.mockReturnValue(viewer);
   mocks.detail.mockResolvedValue(detail);
   mocks.registrations.mockResolvedValue([]);
+  mocks.attendance.mockResolvedValue([]);
   mocks.history.mockResolvedValue([]);
   mocks.companions.mockResolvedValue([]);
   mocks.register.mockResolvedValue({ deduplicated: false });
@@ -160,12 +171,12 @@ afterEach(() => {
 });
 
 describe('EventDetailPage', () => {
-  it('輸出舊版 A 的主要 DOM 結構、id、class 與資訊格欄位文字', async () => {
+  it('輸出舊版 A 的主要 DOM 結構、id、class 與資訊格欄位文字（含熱度欄）', async () => {
     mocks.detail.mockResolvedValue({
       ...detail,
       event: {
         ...detail.event,
-        current: 2,
+        current: 8,
         max: 10,
         waitlist: 1,
         fee: 150,
@@ -205,19 +216,162 @@ describe('EventDetailPage', () => {
     expect(view.container.querySelector('[data-detail-field="fee"]')?.textContent)
       .toBe('費用NT$150');
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
-      .toBe('人數已報 2/10 候補 1');
+      .toBe('人數已報 8/10 候補 1');
     expect(view.container.querySelector('[data-detail-field="countdown"]')?.textContent)
       .toContain('倒數');
     expect(view.container.querySelector('[data-detail-field="age-limit"]')?.textContent)
       .toBe('年齡18 歲以上');
     expect(view.container.querySelector('[data-detail-field="gender-limit"]')?.textContent)
       .toBe('性別限女生');
+    const heatEl = view.container.querySelector('[data-detail-field="heat"]');
+    expect(heatEl?.textContent).toBe('熱度高人氣即將額滿');
+    expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(220, 38, 38)'); // jsdom 把 A 的 #dc2626 轉成 rgb
     expect(view.container.querySelector('[data-detail-field="delegates"]')?.textContent)
       .toContain('小幫手');
     expect(view.container.querySelector('[data-detail-field="contact"]')?.textContent)
       .toBe('聯繫LINE: @sporthub');
     expect(view.container.querySelector('[data-detail-field="team-limit"]')?.textContent)
       .toContain('閃電隊 專屬活動');
+  });
+
+  it('熱度欄依條件顯示不同顏色與文字，且已結束或無上限時不顯示', async () => {
+    // 1. warm (#f59e0b 報名熱烈增加中)
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, current: 5, max: 10 },
+    });
+    let view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    let heatEl = view.container.querySelector('[data-detail-field="heat"]');
+    expect(heatEl?.textContent).toBe('熱度報名熱烈增加中');
+    expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(245, 158, 11)'); // #f59e0b
+    view.unmount();
+
+    // 2. normal (#3b82f6 穩定開放報名中)
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, current: 1, max: 10 },
+    });
+    view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    heatEl = view.container.querySelector('[data-detail-field="heat"]');
+    expect(heatEl?.textContent).toBe('熱度穩定開放報名中');
+    expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(59, 130, 246)'); // #3b82f6
+    view.unmount();
+
+    // 3. ended -> hidden
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, current: 8, max: 10, status: 'ended' },
+    });
+    view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(view.container.querySelector('[data-detail-field="heat"]')).toBeNull();
+    view.unmount();
+  });
+
+  it('名單摘要列（on-demand）：依三種權限顯示對應標題與按鈕，點擊前不載入名單', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        current: 3,
+        max: 10,
+        waitlist: 2,
+      },
+    });
+
+    // 1. 一般使用者（無管理與檢視紀錄權限）→「出席名單」＋「查看出席名單」
+    let view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    let summary = view.container.querySelector('.detail-attendance-summary');
+    expect(summary).toBeTruthy();
+    expect(summary?.textContent).toContain('出席名單');
+    expect(summary?.textContent).toContain('3/10');
+    expect(summary?.textContent).toContain('候補 2');
+    expect(screen.getByRole('button', { name: '查看出席名單' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.attendance).not.toHaveBeenCalled();
+    view.unmount();
+
+    // 2. 可看紀錄（activity.view_noshow）→「出席管理」＋「查看出席紀錄」
+    mocks.viewer.mockReturnValue({
+      ...viewer,
+      uid: 'u-noshow',
+      hasPermission: (code: string) => code === 'activity.view_noshow',
+    });
+    view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    summary = view.container.querySelector('.detail-attendance-summary');
+    expect(summary?.textContent).toContain('出席管理');
+    expect(screen.getByRole('button', { name: '查看出席紀錄' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    view.unmount();
+
+    // 3. 可管理（主辦人 host1 + site_operate）→「出席管理」＋「管理名單 / 出席紀錄」
+    mocks.viewer.mockReturnValue({
+      ...viewer,
+      uid: 'host1',
+      capabilities: ['user.activity.site_operate'],
+    });
+    view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    summary = view.container.querySelector('.detail-attendance-summary');
+    expect(summary?.textContent).toContain('出席管理');
+    expect(screen.getByRole('button', { name: '管理名單 / 出席紀錄' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('publicRosterOnly 權限：一般登入者點擊展開後不讀簽到紀錄且不顯示簽到／簽退／備註三欄；有權限者才讀取並顯示', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        current: 1,
+        max: 10,
+        waitlist: 1,
+      },
+    });
+    mocks.registrations.mockResolvedValue([
+      self,
+      { ...self, _docId: 'wait', userId: 'u2', userName: '小華', status: 'waitlisted' },
+      { ...self, _docId: 'removed', userId: 'u3', userName: '不可顯示', status: 'removed' },
+    ]);
+    mocks.attendance.mockResolvedValue([
+      { _docId: 'att1', uid: 'u1', userName: '小明', type: 'checkin', status: 'active' },
+    ]);
+
+    // 1. 一般登入者（publicRosterOnly = true）
+    let view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+    await screen.findByText('小華');
+    expect(screen.getByText('小明')).toBeTruthy();
+    expect(screen.queryByText('不可顯示')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+    expect(mocks.attendance).not.toHaveBeenCalled();
+    expect(screen.queryByText('簽到')).toBeNull();
+    expect(screen.queryByText('簽退')).toBeNull();
+    expect(screen.queryByText('備註')).toBeNull();
+    view.unmount();
+
+    // 2. 具 activity.view_noshow 權限者（publicRosterOnly = false）
+    mocks.viewer.mockReturnValue({
+      ...viewer,
+      uid: 'u-viewer',
+      hasPermission: (code: string) => code === 'activity.view_noshow',
+    });
+    view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    fireEvent.click(screen.getByRole('button', { name: '查看出席紀錄' }));
+    await screen.findByText('小華');
+    expect(mocks.attendance).toHaveBeenCalledWith('firestore-doc-a');
+    expect(screen.getByText('簽到')).toBeTruthy();
+    expect(screen.getByText('簽退')).toBeTruthy();
+    expect(screen.getByText('備註')).toBeTruthy();
+    expect(screen.getByText('✓')).toBeTruthy();
+    view.unmount();
   });
 
   it('點擊未開放功能顯示「此功能尚未開放，請先使用舊版」提示', async () => {
@@ -332,6 +486,7 @@ describe('EventDetailPage', () => {
     ]);
     const view = mount();
     await screen.findByRole('heading', { level: 2 });
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
     await screen.findByText('小華', undefined, { timeout: 3000 });
     expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
@@ -412,7 +567,7 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).not.toHaveBeenCalled();
   });
 
-  it('登入但名單讀取失敗：主資訊與報名按鈕仍顯示，名單區塊可重試', async () => {
+  it('登入點擊載入名單失敗：主資訊與報名按鈕仍顯示，名單區塊可重試', async () => {
     let resolveRetry!: (registrations: DetailRegistration[]) => void;
     const retryRegistrations = new Promise<DetailRegistration[]>((resolve) => {
       resolveRetry = resolve;
@@ -424,6 +579,7 @@ describe('EventDetailPage', () => {
     mount();
     const title = await screen.findByRole('heading', { level: 2 });
     const region = screen.getByRole('region', { name: '參加名單' });
+    fireEvent.click(within(region).getByRole('button', { name: '查看出席名單' }));
     await within(region).findByText('無法載入參加名單，請重試。');
 
     expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
@@ -438,7 +594,7 @@ describe('EventDetailPage', () => {
     const retry = within(region).getByRole('button', { name: '重試' });
     fireEvent.click(retry);
     fireEvent.click(retry);
-    await within(region).findByText('參加名單載入中…');
+    await within(region).findByText('名單載入中...');
     expect(screen.getByRole('heading', { level: 2 })).toBe(title);
     expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
       .toBe(false);
@@ -456,14 +612,15 @@ describe('EventDetailPage', () => {
     expect(screen.getByRole('heading', { level: 2 })).toBe(title);
   });
 
-  it('名單尚未回應時主資訊先顯示，登出後舊名單回應不能進入訪客頁', async () => {
+  it('點擊展開名單尚未回應時顯示載入中，登出後舊名單回應不能進入訪客頁', async () => {
     let resolveOld!: (registrations: DetailRegistration[]) => void;
     mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
       resolveOld = resolve;
     }));
     const view = mount();
     await screen.findByRole('heading', { level: 2 });
-    await screen.findByText('參加名單載入中…');
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+    await screen.findByText('名單載入中...');
     expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
 
     mocks.viewer.mockReturnValue({ ...viewer, uid: null });
@@ -472,7 +629,7 @@ describe('EventDetailPage', () => {
     resolveOld([{ ...self, userName: '舊登入名單不可顯示' }]);
     await waitFor(() => {
       expect(screen.queryByText('舊登入名單不可顯示')).toBeNull();
-      expect(screen.queryByText('參加名單載入中…')).toBeNull();
+      expect(screen.queryByText('名單載入中...')).toBeNull();
     });
     expect(mocks.registrations).toHaveBeenCalledTimes(1);
   });
@@ -493,13 +650,12 @@ describe('EventDetailPage', () => {
     await screen.findByText('無法同步你的報名狀態，請重試後再報名。');
     expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
-    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
     expect(mocks.register).not.toHaveBeenCalled();
     expect(mocks.companions).not.toHaveBeenCalled();
   });
 
   it('報名成功只更新名單、計數與按鈕，不重載活動', async () => {
-    mocks.registrations.mockResolvedValueOnce([]).mockResolvedValue([self]);
+    mocks.registrations.mockResolvedValue([self]);
     mocks.history.mockResolvedValueOnce([]).mockResolvedValue([self]);
     const view = mount();
     const title = await screen.findByRole('heading', { level: 2 });
@@ -512,13 +668,13 @@ describe('EventDetailPage', () => {
     }));
     expect(screen.getByRole('heading', { level: 2 })).toBe(title);
     expect(mocks.detail).toHaveBeenCalledTimes(1);
-    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
       .toContain('已報 1/0');
   });
 
   it('確認選取後才取消，payload 使用子文件 ID', async () => {
-    mocks.registrations.mockResolvedValueOnce([self]).mockResolvedValue([]);
+    mocks.registrations.mockResolvedValue([]);
     mocks.history.mockResolvedValueOnce([self]).mockResolvedValue([]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
@@ -580,7 +736,6 @@ describe('EventDetailPage', () => {
     });
 
     mocks.registrations
-      .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('offline'))
       .mockReturnValueOnce(retryRegistrations);
     mocks.history
@@ -595,7 +750,7 @@ describe('EventDetailPage', () => {
       expect((retry as HTMLButtonElement).disabled).toBe(false);
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
-    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
     expect(mocks.history).toHaveBeenCalledTimes(2);
     expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
       .toBe(true);
@@ -605,12 +760,12 @@ describe('EventDetailPage', () => {
     fireEvent.click(retry);
 
     await waitFor(() => {
-      expect(mocks.registrations).toHaveBeenCalledTimes(3);
+      expect(mocks.registrations).toHaveBeenCalledTimes(2);
       expect(mocks.history).toHaveBeenCalledTimes(3);
       expect((retry as HTMLButtonElement).disabled).toBe(true);
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
-    expect(mocks.registrations).toHaveBeenNthCalledWith(3, 'firestore-doc-a');
+    expect(mocks.registrations).toHaveBeenNthCalledWith(2, 'firestore-doc-a');
     expect(mocks.history).toHaveBeenNthCalledWith(3, 'u1');
 
     resolveRetry([self]);
@@ -626,7 +781,7 @@ describe('EventDetailPage', () => {
     expect(mocks.cancel).not.toHaveBeenCalled();
     expect(mocks.companions).toHaveBeenCalledTimes(1);
     expect(mocks.detail).toHaveBeenCalledTimes(1);
-    expect(mocks.registrations).toHaveBeenCalledTimes(3);
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
     expect(mocks.history).toHaveBeenCalledTimes(3);
   });
 
@@ -639,7 +794,7 @@ describe('EventDetailPage', () => {
     fireEvent.click(button);
     await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
     resolve({ deduplicated: false });
-    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
   });
 
   it('快速切換活動時舊請求不能覆蓋新頁', async () => {
