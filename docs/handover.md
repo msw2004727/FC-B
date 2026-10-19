@@ -15,7 +15,7 @@
 | Firebase 專案 | `fc-football-6c8dc` | 前端公開設定在 `src/data/firebase-config.ts`（公開 client 設定，不是秘密） |
 | Cloud Functions region | `asia-east1` | 所有 Callable 都在這個 region |
 | B 內測網域 | `next.toosterx.com` | 已加入 Firebase Auth 授權網域（2026-10-19） |
-| B 部署平台 | Cloudflare Pages（規劃） | 從本 repo 自動建置；專案與 DNS 尚未建立 |
+| B 部署平台 | Cloudflare Pages 專案 `fc-b`（`fc-b.pages.dev`） | 2026-10-19 建立；連本 repo `main` 自動建置（push 即部署）。建置 `npm run build`、輸出 `dist`、環境變數 `NODE_VERSION=22`、`VITE_LIFF_ID`、`VITE_CALLABLE_MODE=live`、`VITE_INTERNAL_TEST_UID_HASHES`（站長自己填）。自訂網域 `next.toosterx.com`（CNAME → `fc-b.pages.dev`，Cloudflare 代理） |
 | **B 的 LIFF ID** | `2009084941-3WHCMLLn` | LIFF app「ToosterX Next」，Endpoint `https://next.toosterx.com/`，Full，scopes `openid`＋`profile`，加好友 On (aggressive) |
 | B 的 LIFF 所屬 channel | `2009084941`（LINE Login「FC 足球報名系統」） | |
 | A 的 LIFF ID | `2009525300-AuPGQ0sh` | A 是 **LINE MINI App**（MINI App 不能另加 LIFF，所以 B 的 LIFF 建在同 provider 的 Login channel） |
@@ -54,7 +54,7 @@ npm run check              # 型別＋完整測試＋i18n
 - **白名單閘門**：登入後比對 SHA-256(uid)，不在名單（含未登入）只看到「內測中」頁，不載入任何功能。這是**資料污染防護與體驗閘門，不是安全邊界**；權限仍由 Firestore Rules 與 Callable 把關，與舊版相同。
 - **搜尋引擎隔離**：建置時注入 `noindex` meta，輸出 `robots.txt`（全站 Disallow）與 Cloudflare `_headers`（`X-Robots-Tag`、HTML `no-store`、`/assets/*` 長快取）。不提交 sitemap。
 - **寫入限制**：活動相關寫入（報名、取消、簽到、建立、編輯、名額）只限標題以「[內測]」開頭的活動；建立 [內測] 活動時，有加值權限就自動設為私密（舊版公開列表看不到），沒有則回傳 `visibleInLegacyList` 讓 UI 提示。俱樂部、私訊、收件匣投遞、LINE 通知：影響到的所有人（自己、對方、申請人、幹部、收件人）都在白名單才放行，真實使用者不會被改到資料、也不會收到任何內測通知。俱樂部不因名稱帶「[內測]」而豁免（避免改到真人的 users 文件卻沒通知）。只動自己的資料（個人資料、身分設定、自己收件匣已讀／刪除）不擋。
-- **版本角標**：畫面左上角顯示「內測版 · 短 commit」（Cloudflare 建置用 `CF_PAGES_COMMIT_SHA`）。
+- **版本角標**：畫面右下角顯示「內測版 · 短 commit」（Cloudflare 建置用 `CF_PAGES_COMMIT_SHA`）。
 - **計算白名單雜湊**（只在自己的電腦算，不要把 UID 貼到任何網站）：
 
   ```bash
@@ -90,7 +90,7 @@ npm run check              # 型別＋完整測試＋i18n
 - 後台完整權限（P 階段）→ 收件匣的入隊核准按鈕要等它。
 - 建立與編輯活動、活動管理、教育課程、通知、個人儀表板、後台功能。
 - FC 待部署的 Cloud Functions（一次部署，需站長授權）：資料同步密碼改用 Secret Manager（Secret 名稱 `DATA_SYNC_SETTINGS_PASSWORD`，部署前須先建立）、`adjustEventCapacity`、名單確認出席、俱樂部人數重算。
-- Cloudflare Pages 專案、DNS、Firestore 複合索引（若 B 有新查詢）。內測部署前三道防護已完成（見 4.1）；建專案、設 DNS、推送都要站長逐項授權。
+- 內測已上線（2026-10-19，`next.toosterx.com`）；白名單雜湊待站長在 Cloudflare Pages 環境變數填入並重新部署。**之後每次 push 到 `main` 都會自動部署內測站**，推送仍要站長授權。Firestore 複合索引（若 B 有新查詢）另計。
 
 ## 8. 進度
 
