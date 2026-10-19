@@ -116,7 +116,7 @@ import type {
   WriteAuditLogResponse,
 } from './contract/callables';
 import { CALLABLES, type CallableName } from './contract/callables';
-import { getFirebase } from './firebase';
+import { getFirebase, shouldUseEmulator } from './firebase';
 
 // ── 名稱 → request/response 型別映射 ─────────────────
 
@@ -353,6 +353,12 @@ export async function callFn<N extends CallableName>(
     } catch (err) {
       throw toCallableError(err);
     }
+  }
+
+  // 資料庫與登入指向本機 emulator 時，Callable 不得打到正式環境的 Functions（開發不連正式環境）。
+  // 需要時改用 VITE_CALLABLE_MODE=mock，或另外接上 Functions emulator 後再放寬這裡。
+  if (shouldUseEmulator()) {
+    throw new Error(`[callFn] emulator 模式下禁止呼叫正式環境的 Functions：${name}（請改用 VITE_CALLABLE_MODE=mock）`);
   }
 
   const [{ httpsCallable }, ctx] = await Promise.all([
