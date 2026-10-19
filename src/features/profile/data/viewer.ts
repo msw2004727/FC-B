@@ -250,7 +250,7 @@ async function loadTeamIdsForUser(
  * uid 為空時視為訪客。
  * 角色非 user 時讀 rolePermissions/{role}（含 defaultPermissions）；
  * 角色非內建角色時讀 customRoles。
- * 可見性 roleLevel 維持使用內建角色 getPrivateListRoleLevel(role)。
+ * 可見性 roleLevel 用 getPrivateListRoleLevel(role, customRoles)，與 A 的 ROLE_LEVEL_MAP Proxy 一致。
  */
 export async function loadViewer(uid: string): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
@@ -320,7 +320,7 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     uid,
     teamIds,
     hasPermission,
-    roleLevel: getPrivateListRoleLevel(role),
+    roleLevel: getPrivateListRoleLevel(role, checkerInput.customRoles),
     role,
     displayName: userInfo.displayName,
     pictureUrl: userInfo.pictureUrl,

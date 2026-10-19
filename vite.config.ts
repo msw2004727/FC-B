@@ -49,7 +49,11 @@ function internalTestNoIndex(): Plugin {
     },
     transformIndexHtml(html) {
       if (!isBuild || !enabled) return html;
-      return html.replace('</title>', '</title>\n    <meta name="robots" content="noindex, nofollow" />');
+      const meta = '<meta name="robots" content="noindex, nofollow" />';
+      // 先放在 </title> 後；index.html 改版沒有 title 時退回 </head> 前，不靜默失效。
+      return html.includes('</title>')
+        ? html.replace('</title>', `</title>\n    ${meta}`)
+        : html.replace('</head>', `  ${meta}\n  </head>`);
     },
     generateBundle() {
       if (!isBuild || !enabled) return;

@@ -23,7 +23,7 @@
 import type { Firestore } from 'firebase/firestore';
 
 import { callFn } from '@/data/callables';
-import { assertInternalTestWritable, isInternalTestLabel } from '@/data/internal-test';
+import { assertInternalTestWritable } from '@/data/internal-test';
 import type {
   EnqueuePrivilegedLineNotificationRequest,
   WriteAuditLogRequest,
@@ -420,7 +420,6 @@ export async function requestTeamJoin({
   }
   await assertInternalTestWritable({
     kind: 'team',
-    labeled: isInternalTestLabel(team?.name),
     affectedUids: [applicantUid, ...staffUids],
   });
 
@@ -445,9 +444,9 @@ export async function requestTeamJoin({
       successCount += 1;
     } catch (err) {
       // eslint-disable-next-line no-console
+      // R-SAFE-012：log 不印收件人 UID。
       console.warn('[membership] requestTeamJoin.deliverToInbox failed', {
         teamId,
-        staffUid,
         error: err,
       });
     }
@@ -509,7 +508,6 @@ export async function approveTeamJoin({
   }
   await assertInternalTestWritable({
     kind: 'team',
-    labeled: isInternalTestLabel(team?.name),
     affectedUids: [targetApplicantUid, reviewerUid, ...collectStaffUids(team)],
   });
 
@@ -633,7 +631,6 @@ export async function rejectTeamJoin({
   }
   await assertInternalTestWritable({
     kind: 'team',
-    labeled: isInternalTestLabel(team?.name),
     affectedUids: [targetApplicantUid, reviewerUid, ...collectStaffUids(team)],
   });
 
@@ -706,7 +703,6 @@ export async function leaveTeam({
   if (!uid) throw new Error('[membership] leaveTeam: self.uid is required');
   await assertInternalTestWritable({
     kind: 'team',
-    labeled: isInternalTestLabel(team?.name),
     affectedUids: [uid, ...collectStaffUids(team)],
   });
 

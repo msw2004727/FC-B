@@ -331,9 +331,9 @@ describe('loadViewer', () => {
     expect(v.capabilities).toEqual(['user.activity.basic_create']);
   });
 
-  it('P 階段：自訂角色會讀 customRoles 供權限判斷；私密列表 level 仍保守用內建角色（V 階段決定）', async () => {
-    // 測試同步更新（R-QA-005）：P 階段為了讓 hasPermission 與 A 一致而載入 customRoles；
-    // 私密活動列表的 roleLevel 仍只用內建角色，自訂角色退回 0，待可見性 oracle 擴充自訂角色後再調整。
+  it('自訂角色會讀 customRoles；私密列表 level 照 A 的 ROLE_LEVEL_MAP Proxy 插值', async () => {
+    // 測試同步更新（R-QA-005）：可見性 oracle case-301／302 證實 A 的 ROLE_LEVEL_MAP 會解析自訂角色等級，
+    // 取代原本「自訂角色退回 0」的保守決定。排在 captain 之後的自訂角色介於 captain(2) 與 venue_owner(3)。
     mockFirestore({
       users: { role: 'judge' },
       rolePermissions: { permissions: [] },
@@ -346,7 +346,7 @@ describe('loadViewer', () => {
 
     expect(v.uid).toBe('uid-judge');
     expect(v.role).toBe('judge');
-    expect(v.roleLevel).toBe(0);
+    expect(v.roleLevel).toBe(2.5);
     expect(getDocs).toHaveBeenCalledWith(
       expect.objectContaining({ _collection: 'customRoles' }),
     );

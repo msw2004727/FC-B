@@ -608,13 +608,28 @@ describe('內測模式守衛', () => {
     expect(callFn).toHaveBeenCalledWith('deliverToInbox', expect.anything());
   });
 
-  it('[內測] 俱樂部仍不會通知名單外的幹部（收件匣守衛）', async () => {
+  it('名稱帶 [內測] 不豁免：幹部不在名單照樣擋，不呼叫任何 Callable', async () => {
     vi.stubEnv('VITE_INTERNAL_TEST', '1');
     vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', await sha256Hex('applicant_uid'));
     await expect(requestTeamJoin({
       team: { ...realTeam, name: '[內測] 測試隊' },
       applicant: { uid: 'applicant_uid', displayName: '申請者' },
-    })).rejects.toThrow();
-    expect(callFn).not.toHaveBeenCalledWith('deliverToInbox', expect.anything());
+    })).rejects.toBeInstanceOf(InternalTestBlockedError);
+    expect(callFn).not.toHaveBeenCalled();
+  });
+
+  it('核准名單外的申請人：寫入任何資料前就擋下（不留半套資料）', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    const hashes = await Promise.all(['cap_uid', 'leader_uid', 'coach_uid'].map((uid) => sha256Hex(uid)));
+    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', hashes.join(','));
+    await expect(approveTeamJoin({
+      team: { ...realTeam, name: '[內測] 測試隊' },
+      applicantUid: 'real_applicant',
+      message: { meta: { groupId: 'tjr_1', teamName: '[內測] 測試隊', applicantName: '路人' } },
+      reviewer: { uid: 'cap_uid', displayName: '隊長' },
+    } as Parameters<typeof approveTeamJoin>[0])).rejects.toBeInstanceOf(InternalTestBlockedError);
+    expect(fsGetDoc).not.toHaveBeenCalled();
+    expect(fsUpdateDoc).not.toHaveBeenCalled();
+    expect(callFn).not.toHaveBeenCalled();
   });
 });

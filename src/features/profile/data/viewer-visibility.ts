@@ -7,6 +7,8 @@
  * R-ID-002：不移植 A 依 name 比對 adminUsers 的行為。
  * 本函式不讀 adminUsers；資料層僅可補入 UID 精確相符文件的隊伍。
  */
+import { getActivityRoleLevel, type CustomRole } from './permissions';
+
 export interface VisibilityUserDoc {
   uid?: unknown;
   teamIds?: unknown;
@@ -66,17 +68,13 @@ export function computeVisibleTeamIds(
 }
 
 /**
- * 私密活動列表僅使用內建 ROLE_LEVEL_MAP。
- * 不使用 customRoles 插值，不推導任何 permission。
- * switch 避免以任意角色字串命中 Object.prototype 屬性。
+ * 私密活動列表的角色等級：A `_canListPrivateEvent` 查 `ROLE_LEVEL_MAP[roleKey]`，而 A 的
+ * ROLE_LEVEL_MAP 是 Proxy，會解析自訂角色插值等級（js/config.js），所以排在 admin 之後的自訂角色可看私密活動。
+ * （2026-10-19 依 A 真實函式 oracle case-301／302 修正：取代原本「只用內建角色、自訂角色一律 0」。）
  */
-export function getPrivateListRoleLevel(role: string | null | undefined): number {
-  switch (role) {
-    case 'coach': return 1;
-    case 'captain': return 2;
-    case 'venue_owner': return 3;
-    case 'admin': return 4;
-    case 'super_admin': return 5;
-    default: return 0;
-  }
+export function getPrivateListRoleLevel(
+  role: string | null | undefined,
+  customRoles?: readonly CustomRole[] | null,
+): number {
+  return getActivityRoleLevel(role, customRoles);
 }

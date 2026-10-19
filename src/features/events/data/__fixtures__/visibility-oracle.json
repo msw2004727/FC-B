@@ -1,7 +1,7 @@
 {
   "meta": {
-    "generatedAt": "2026-10-18T18:08:30.502Z",
-    "fcHead": "be06f1e464bc2ec40449faf986173ca22a7ba0f8",
+    "generatedAt": "2026-10-19T03:36:31.794Z",
+    "fcHead": "912daaf147b375b7f9da852c6b53031a853de8ed",
     "sources": [
       {
         "path": "js/config.js",
@@ -20,7 +20,7 @@
         "sha256": "83dcfc669bc78feca757765ad0a54ccca410754fa46c0de71681ce78f1fd9132"
       }
     ],
-    "caseCount": 300
+    "caseCount": 302
   },
   "cases": [
     {
@@ -14828,6 +14828,116 @@
         "isEventVisibleToUser": true,
         "visibleTeamIds": [
           "t1"
+        ],
+        "canListPrivateEvent": true,
+        "visibleInList": true
+      }
+    },
+    {
+      "id": "case-301",
+      "input": {
+        "viewer": {
+          "uid": "u1"
+        },
+        "role": "custom_vip",
+        "customRoles": [
+          {
+            "key": "custom_vip",
+            "label": "VIP",
+            "afterRole": "admin"
+          }
+        ],
+        "userDoc": {
+          "uid": "u1",
+          "role": "custom_vip",
+          "teamIds": [
+            "t1",
+            "t9"
+          ]
+        },
+        "teams": [
+          {
+            "id": "t1",
+            "captainUid": "u1",
+            "coachUids": []
+          }
+        ],
+        "event": {
+          "id": "e1",
+          "blockedUids": [],
+          "privateEvent": true,
+          "teamOnly": false,
+          "creatorTeamIds": [],
+          "creatorTeamId": null,
+          "isPublic": true,
+          "creatorUid": "other-owner",
+          "ownerUid": null,
+          "captainUid": null,
+          "delegateUids": [
+            "other-delegate"
+          ]
+        },
+        "viewerRegistrations": []
+      },
+      "expected": {
+        "isEventVisibleToUser": true,
+        "visibleTeamIds": [
+          "t1",
+          "t9"
+        ],
+        "canListPrivateEvent": true,
+        "visibleInList": true
+      }
+    },
+    {
+      "id": "case-302",
+      "input": {
+        "viewer": {
+          "uid": "u1"
+        },
+        "role": "custom_vip",
+        "customRoles": [
+          {
+            "key": "custom_vip",
+            "label": "VIP",
+            "afterRole": "admin"
+          }
+        ],
+        "userDoc": {
+          "uid": "u1",
+          "role": "custom_vip",
+          "teamIds": [
+            "t1",
+            "t9"
+          ]
+        },
+        "teams": [
+          {
+            "id": "t1",
+            "captainUid": "u1",
+            "coachUids": []
+          }
+        ],
+        "event": {
+          "id": "e1",
+          "blockedUids": [],
+          "privateEvent": true,
+          "teamOnly": false,
+          "creatorTeamIds": [],
+          "creatorTeamId": null,
+          "isPublic": true,
+          "creatorUid": "u1",
+          "ownerUid": null,
+          "captainUid": null,
+          "delegateUids": []
+        },
+        "viewerRegistrations": []
+      },
+      "expected": {
+        "isEventVisibleToUser": true,
+        "visibleTeamIds": [
+          "t1",
+          "t9"
         ],
         "canListPrivateEvent": true,
         "visibleInList": true

@@ -39,6 +39,7 @@ interface OracleEvent {
 interface OracleInput {
   viewer: { uid: string | null };
   role: string;
+  customRoles?: { key: string; label: string; afterRole: string }[];
   userDoc: (VisibilityUserDoc & { role?: string }) | null;
   teams: VisibilityTeamDoc[];
   event: OracleEvent;
@@ -98,8 +99,8 @@ function oracleHasPermission(role: string, code: string): boolean {
 }
 
 describe('FC visibility oracle', () => {
-  it('包含完整且 ID 唯一的 300 案', () => {
-    expect(fixture.meta.caseCount).toBe(300);
+  it('包含完整且 ID 唯一的 302 案（含自訂角色私密列表 2 案）', () => {
+    expect(fixture.meta.caseCount).toBe(302);
     expect(cases).toHaveLength(fixture.meta.caseCount);
     expect(new Set(cases.map((entry) => entry.id)).size).toBe(cases.length);
   });
@@ -126,7 +127,7 @@ describe('FC visibility oracle', () => {
       const viewer: ViewerContext = {
         uid: currentUserUid,
         teamIds,
-        roleLevel: getPrivateListRoleLevel(privateRole),
+        roleLevel: getPrivateListRoleLevel(privateRole, input.customRoles),
         hasPermission: (code) => oracleHasPermission(input.role, code),
       };
 
