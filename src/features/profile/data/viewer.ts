@@ -6,8 +6,10 @@
  * - 私密列表 roleLevel 僅使用內建角色，不讀 customRoles。
  * - R-ID-002：adminUsers 僅允許 UID 精確匹配，不比對 name。
  *
- * 既有 hasPermission 與 capabilities 的載入行為保持原樣；
- * 本次不實作或擴充 rolePermissions / userPermissionGrants 規則。
+ * P 階段：
+ * - 透過 buildPermissionCheckerInput + createPermissionChecker 對齊 A 的完整後台權限語意。
+ * - 角色非 user 時讀 rolePermissions/{role}（meta 的 defaultPermissions 也在同一份文件）；文件不存在時用預設，有文件且 permissions: [] 為明確全關。
+ * - 角色非內建角色時讀 customRoles。
  * ViewerContext 與 useViewer() 簽名不變。
  */
 
@@ -20,7 +22,11 @@ import { getCurrentUser } from '@/data/auth';
 import { emit, on } from '@/core/events';
 import type { ViewerContext } from '@/features/events/data/types';
 
-import { createPermissionChecker, normalizePermissionCode } from './permissions';
+import {
+  buildPermissionCheckerInput,
+  createPermissionChecker,
+  isBuiltinRole,
+} from './permissions';
 import {
   computeVisibleTeamIds,
   getPrivateListRoleLevel,
@@ -103,34 +109,6 @@ function parseUserInfo(data: Record<string, unknown> | null | undefined): UserIn
   return { role, displayName, pictureUrl };
 }
 
-function sanitizePermissionCodeList(codes: unknown): string[] {
-  const out: string[] = [];
-  if (!Array.isArray(codes)) return out;
-  for (const code of codes) {
-    const normalized = normalizePermissionCode(code);
-    if (normalized && !out.includes(normalized)) out.push(normalized);
-  }
-  return out;
-}
-
-function parseRolePermissions(data: Record<string, unknown> | null): string[] {
-  return data ? sanitizePermissionCodeList(data.permissions) : [];
-}
-
-function parseUserGrantCodes(data: Record<string, unknown> | null, uid: string): string[] {
-  if (!data || data.enabled === false) return [];
-  if (String(data.uid || '').trim() !== uid) return [];
-  const raw = Array.isArray(data.permissions) ? data.permissions : [];
-  const out: string[] = [];
-  for (const code of raw) {
-    if (typeof code !== 'string') continue;
-    const trimmed = code.trim();
-    if (!trimmed || normalizePermissionCode(trimmed) !== trimmed) continue;
-    if (!out.includes(trimmed)) out.push(trimmed);
-  }
-  return out;
-}
-
 function parseCapabilities(data: Record<string, unknown> | null): string[] {
   if (!data) return [];
   const raw = Array.isArray(data.capabilities) ? data.capabilities : [];
@@ -155,6 +133,29 @@ function safeGetDoc(promise: Promise<Awaited<ReturnType<typeof getDoc>>>): Promi
     },
     (error: unknown): DocResult => ({ ok: false, error }),
   );
+}
+
+// ASSUMPTION: A 的 FirebaseService 讀取 customRoles 集合路徑為 'customRoles'（與 _cache.customRoles 對應）。
+async function loadCustomRolesForRole(
+  db: Firestore,
+  role: string,
+): Promise<Record<string, unknown>[]> {
+  if (isBuiltinRole(role)) return [];
+  try {
+    const snap = await getDocs(collection(db, 'customRoles'));
+    return snap.docs.map((snapshot): Record<string, unknown> => {
+      const data = snapshot.data() as Record<string, unknown>;
+      return {
+        _docId: snapshot.id,
+        id: data.id ?? snapshot.id,
+        key: data.key ?? data.roleKey ?? snapshot.id,
+        ...data,
+      };
+    });
+  } catch (err) {
+    warnOnce('customRoles', err);
+    return [];
+  }
 }
 
 /**
@@ -247,8 +248,9 @@ async function loadTeamIdsForUser(
 
 /**
  * uid 為空時視為訪客。
- * 既有 permission / capability 載入維持原行為。
- * 可見性不使用 customRoles，因此不再為 roleLevel 讀取 customRoles。
+ * 角色非 user 時讀 rolePermissions/{role}（含 defaultPermissions）；
+ * 角色非內建角色時讀 customRoles。
+ * 可見性 roleLevel 維持使用內建角色 getPrivateListRoleLevel(role)。
  */
 export async function loadViewer(uid: string): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
@@ -280,10 +282,15 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     ? safeGetDoc(getDoc(doc(db, 'roleActivityCapabilities', 'user')))
     : Promise.resolve({ ok: true, data: null });
 
-  const [roleRes, grantRes, capRes, teamIds] = await Promise.all([
+  const customRolesPromise: Promise<Record<string, unknown>[]> = isBuiltinRole(role)
+    ? Promise.resolve([])
+    : loadCustomRolesForRole(db, role);
+
+  const [roleRes, grantRes, capRes, customRoles, teamIds] = await Promise.all([
     roleDocPromise,
     safeGetDoc(getDoc(doc(db, 'userPermissionGrants', uid))),
     capDocPromise,
+    customRolesPromise,
     loadTeamIdsForUser(db, uid, visibilityUser),
   ]);
 
@@ -291,15 +298,23 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
   if (!grantRes.ok) warnOnce('userPermissionGrants', grantRes.error);
   if (!capRes.ok) warnOnce('roleActivityCapabilities', capRes.error);
 
-  const rolePermList = parseRolePermissions(roleRes.ok ? roleRes.data : null);
-  const grants = parseUserGrantCodes(grantRes.ok ? grantRes.data : null, uid);
+  const rolePermissionDocs = roleRes.ok && roleRes.data !== null
+    ? { [role]: roleRes.data }
+    : {};
+  // A 沒有獨立的 rolePermissionMeta 集合：FirebaseService 從 rolePermissions 文件（defaultPermissions 欄位）整理出 meta，這裡沿用同一份文件。
+  const rolePermissionMetaDocs = rolePermissionDocs;
+  const grantDoc = grantRes.ok ? grantRes.data : null;
   const capabilities = parseCapabilities(capRes.ok ? capRes.data : null);
 
-  const hasPermission = createPermissionChecker({
+  const checkerInput = buildPermissionCheckerInput({
     role,
-    rolePermissions: { [role]: rolePermList },
-    userGrants: grants,
+    rolePermissionDocs,
+    rolePermissionMetaDocs,
+    grantDoc,
+    uid,
+    customRoles,
   });
+  const hasPermission = createPermissionChecker(checkerInput);
 
   return {
     uid,

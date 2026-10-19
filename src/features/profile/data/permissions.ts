@@ -20,9 +20,13 @@ export const BASE_ROLE_LEVEL_MAP: Readonly<Record<string, number>> = Object.free
   super_admin: 5,
 });
 
-const BUILTIN_ROLE_KEYS = [
+export const BUILTIN_ROLE_KEYS = [
   'user', 'coach', 'captain', 'venue_owner', 'admin', 'super_admin',
 ] as const;
+
+export function isBuiltinRole(role: string): boolean {
+  return BUILTIN_ROLE_KEYS.some(key => key === role);
+}
 
 const DISABLED_PERMISSION_CODES: ReadonlySet<string> = new Set(['admin.roles.entry']);
 const LEGACY_PERMISSION_CODE_REPLACEMENTS: Readonly<Record<string, string>> =
@@ -286,7 +290,7 @@ export function getDefaultRolePermissions(
   role: string,
   customRoles?: readonly CustomRole[] | null,
 ): string[] | null {
-  if (!BUILTIN_ROLE_KEYS.some(key => key === role)) return null;
+  if (!isBuiltinRole(role)) return null;
   if (role === 'user') return [];
 
   const level = getRoleLevel(role, customRoles);
@@ -311,11 +315,150 @@ export interface PermissionCheckerInput {
   role: string | null | undefined;
   /** own key 缺失使用 defaults；own key 存在且 [] 表示明確全關。 */
   rolePermissions?: Record<string, readonly string[]> | null;
+  /** rolePermissionMeta 的 defaultPermissions（已解析為 role -> defaultPermissions）。 */
+  rolePermissionMeta?: Record<string, readonly string[]> | null;
   /** 已驗證 UID/enabled 的 effective grant；仍套用 A allowlist。 */
   userGrants?: readonly string[] | null;
   customRoles?: readonly CustomRole[] | null;
   /** A permissions cache；oracle 未提供此 cache，因此預設空。 */
   permissionCatalog?: readonly PermissionCategory[];
+}
+
+export interface RawPermissionCheckerSources {
+  role: string | null | undefined;
+  rolePermissionDocs?: unknown;
+  rolePermissionMetaDocs?: unknown;
+  grantDoc?: unknown;
+  uid?: string | null;
+  customRoles?: unknown;
+}
+
+function isPlainRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
+
+function extractDocRoleKey(item: Record<string, unknown>): string {
+  const raw = item._docId || item.roleKey || item.role || item.id || '';
+  return String(raw);
+}
+
+function extractStringArray(arr: unknown): string[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter((x): x is string => typeof x === 'string');
+}
+
+function parseRawCustomRoles(raw: unknown): CustomRole[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CustomRole[] = [];
+  for (const item of raw) {
+    if (!isPlainRecord(item)) continue;
+    const rawKey = item.key ?? item.roleKey ?? item._docId ?? item.id;
+    if (typeof rawKey !== 'string' || !rawKey.trim()) continue;
+    const afterRole = typeof item.afterRole === 'string' && item.afterRole
+      ? item.afterRole
+      : typeof item.baseRole === 'string' && item.baseRole
+      ? item.baseRole
+      : typeof item.minRole === 'string' && item.minRole
+      ? item.minRole
+      : undefined;
+    out.push({
+      key: rawKey,
+      ...(typeof item.label === 'string' ? { label: item.label } : {}),
+      ...(typeof item.color === 'string' ? { color: item.color } : {}),
+      ...(afterRole !== undefined ? { afterRole } : {}),
+    });
+  }
+  return out;
+}
+
+function parseRawRolePermissionDocs(
+  source: unknown,
+  role: string,
+): Record<string, readonly string[]> {
+  if (!role || role === 'user') return {};
+  if (Array.isArray(source)) {
+    const doc = source.find(
+      (item): item is Record<string, unknown> =>
+        isPlainRecord(item) && extractDocRoleKey(item) === role,
+    );
+    const hasStored = !!doc && Object.prototype.hasOwnProperty.call(doc, 'permissions');
+    if (!hasStored) return {};
+    const rawPerms = doc.permissions;
+    return { [role]: extractStringArray(rawPerms) };
+  }
+  if (isPlainRecord(source)) {
+    const hasStored = Object.prototype.hasOwnProperty.call(source, role);
+    if (!hasStored) return {};
+    const rawStored = source[role];
+    if (Array.isArray(rawStored)) {
+      return { [role]: extractStringArray(rawStored) };
+    }
+    if (isPlainRecord(rawStored) && Array.isArray(rawStored.permissions)) {
+      return { [role]: extractStringArray(rawStored.permissions) };
+    }
+    return { [role]: [] };
+  }
+  return {};
+}
+
+function parseRawRolePermissionMetaDocs(
+  meta: unknown,
+  role: string,
+): Record<string, readonly string[]> {
+  if (!role || role === 'user') return {};
+  let metaEntry: unknown;
+  if (Array.isArray(meta)) {
+    metaEntry = meta.find(
+      (item): item is Record<string, unknown> =>
+        isPlainRecord(item) && extractDocRoleKey(item) === role,
+    );
+  } else if (isPlainRecord(meta)) {
+    metaEntry = meta[role];
+  }
+  if (isPlainRecord(metaEntry) && Array.isArray(metaEntry.defaultPermissions)) {
+    return { [role]: extractStringArray(metaEntry.defaultPermissions) };
+  }
+  return {};
+}
+
+function parseRawGrantDoc(
+  grantDoc: unknown,
+  uid: string,
+  role: string,
+): string[] {
+  if (!uid || role === 'super_admin' || !isPlainRecord(grantDoc)) return [];
+  if (grantDoc.enabled === false) return [];
+  if (String(grantDoc.uid ?? '').trim() !== uid) return [];
+  const rawPerms = Array.isArray(grantDoc.permissions) ? grantDoc.permissions : [];
+  return sanitizeUserPermissionGrantCodeList(rawPerms);
+}
+
+/**
+ * 把 Firestore / 快取原始資料轉成 PermissionCheckerInput，語意對齊 A：
+ * - rolePermissions 支援 array-docs、object-array、object-wrapped
+ * - rolePermissionMeta 支援 present-array、present-object、absent
+ * - grantDoc 支援 absent、enabled: true/false、無 enabled 欄位，且比對 uid；super_admin 不計個別授權
+ */
+export function buildPermissionCheckerInput(
+  sources: RawPermissionCheckerSources,
+): PermissionCheckerInput {
+  if (sources.role === null || sources.role === undefined || sources.role === '') {
+    return { role: sources.role };
+  }
+  const role = sources.role.trim() || 'user';
+  const uid = typeof sources.uid === 'string' ? sources.uid.trim() : '';
+  const customRoles = parseRawCustomRoles(sources.customRoles);
+  const rolePermissions = parseRawRolePermissionDocs(sources.rolePermissionDocs, role);
+  const rolePermissionMeta = parseRawRolePermissionMetaDocs(sources.rolePermissionMetaDocs, role);
+  const userGrants = parseRawGrantDoc(sources.grantDoc, uid, role);
+
+  return {
+    role,
+    rolePermissions,
+    rolePermissionMeta,
+    userGrants,
+    customRoles,
+  };
 }
 
 export function createPermissionChecker(
@@ -328,7 +471,10 @@ export function createPermissionChecker(
   const role = input.role.trim() || 'user';
   const source = input.rolePermissions ?? {};
   const hasStored = Object.prototype.hasOwnProperty.call(source, role);
-  const stored = hasStored ? source[role] ?? [] : getDefaultRolePermissions(role, input.customRoles) ?? [];
+  // ASSUMPTION: A 的 ApiService.getRolePermissions 在無 stored 時呼叫全域 getDefaultRolePermissions(role)（不讀 rolePermissionMeta，自訂角色回 null 退回 []）。
+  const stored = hasStored
+    ? source[role] ?? []
+    : getDefaultRolePermissions(role, input.customRoles) ?? [];
   const roleCodes = role === 'user'
     ? []
     : [

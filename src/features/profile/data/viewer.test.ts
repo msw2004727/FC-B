@@ -331,8 +331,9 @@ describe('loadViewer', () => {
     expect(v.capabilities).toEqual(['user.activity.basic_create']);
   });
 
-  it('V 階段不讀 customRoles，自訂角色的私密列表 level 保守退回 0', async () => {
-    // 測試同步更新：V 階段不載入 customRoles，P 階段再補（R-QA-005）
+  it('P 階段：自訂角色會讀 customRoles 供權限判斷；私密列表 level 仍保守用內建角色（V 階段決定）', async () => {
+    // 測試同步更新（R-QA-005）：P 階段為了讓 hasPermission 與 A 一致而載入 customRoles；
+    // 私密活動列表的 roleLevel 仍只用內建角色，自訂角色退回 0，待可見性 oracle 擴充自訂角色後再調整。
     mockFirestore({
       users: { role: 'judge' },
       rolePermissions: { permissions: [] },
@@ -346,10 +347,7 @@ describe('loadViewer', () => {
     expect(v.uid).toBe('uid-judge');
     expect(v.role).toBe('judge');
     expect(v.roleLevel).toBe(0);
-    expect(getDoc).not.toHaveBeenCalledWith(
-      expect.objectContaining({ _collection: 'customRoles' }),
-    );
-    expect(getDocs).not.toHaveBeenCalledWith(
+    expect(getDocs).toHaveBeenCalledWith(
       expect.objectContaining({ _collection: 'customRoles' }),
     );
   });

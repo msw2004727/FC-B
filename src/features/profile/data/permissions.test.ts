@@ -5,6 +5,7 @@ import {
   BASE_ROLE_LEVEL_MAP,
   getRoleLevel,
   createPermissionChecker,
+  buildPermissionCheckerInput,
 } from './permissions';
 
 describe('INHERENT_ROLE_PERMISSIONS', () => {
@@ -116,22 +117,25 @@ describe('createPermissionChecker', () => {
     expect(check('some.other.code')).toBe(false);
   });
 
-  it('coach / captain / venue_owner 固有陣列為空 → 不因角色給權限', () => {
+  it('coach / captain / venue_owner 固有陣列為空 → 不因角色給未知權限，照 A：無文件用預設', () => {
     for (const role of ['coach', 'captain', 'venue_owner']) {
       const check = createPermissionChecker({ role });
       expect(check('any.code')).toBe(false);
+      // 照 A：無文件用預設
+      expect(check('activity.manage.entry')).toBe(true);
+      expect(check('activity.view_noshow')).toBe(true);
     }
   });
 
-  it('rolePermissions 授予角色權限', () => {
+  it('rolePermissions 授予角色權限（legacy 轉新碼、保留明確設定）', () => {
     const check = createPermissionChecker({
       role: 'coach',
       rolePermissions: {
-        coach: ['event.create', 'event.manage'],
+        coach: ['event.create', 'event.edit_own'],
       },
     });
     expect(check('event.create')).toBe(true);
-    expect(check('event.manage')).toBe(true);
+    expect(check('event.edit_self')).toBe(true);
     expect(check('event.delete')).toBe(false);
   });
 
@@ -199,8 +203,36 @@ describe('createPermissionChecker', () => {
     expect(check('  admin.seo.entry  ')).toBe(true);
   });
 
-  it('rolePermissions 文件缺失時視同空', () => {
-    const check = createPermissionChecker({ role: 'coach' });
-    expect(check('event.create')).toBe(false);
+  it('rolePermissions 文件缺失時，照 A：無文件用預設；空陣列才明確全關', () => {
+    // 照 A：無文件用預設
+    const checkAbsent = createPermissionChecker({ role: 'coach' });
+    expect(checkAbsent('activity.manage.entry')).toBe(true);
+    expect(checkAbsent('event.create')).toBe(false);
+
+    const checkEmpty = createPermissionChecker({
+      role: 'coach',
+      rolePermissions: { coach: [] },
+    });
+    expect(checkEmpty('activity.manage.entry')).toBe(false);
+  });
+});
+
+describe('buildPermissionCheckerInput', () => {
+  it('無文件時不產生 own key（照 A：無文件用預設），空陣列時保留 own key（明確全關）', () => {
+    const absentInput = buildPermissionCheckerInput({
+      role: 'coach',
+      rolePermissionDocs: {},
+      uid: 'u1',
+    });
+    expect(Object.prototype.hasOwnProperty.call(absentInput.rolePermissions, 'coach')).toBe(false);
+    expect(createPermissionChecker(absentInput)('activity.manage.entry')).toBe(true);
+
+    const emptyInput = buildPermissionCheckerInput({
+      role: 'coach',
+      rolePermissionDocs: { coach: { permissions: [] } },
+      uid: 'u1',
+    });
+    expect(Object.prototype.hasOwnProperty.call(emptyInput.rolePermissions, 'coach')).toBe(true);
+    expect(createPermissionChecker(emptyInput)('activity.manage.entry')).toBe(false);
   });
 });
