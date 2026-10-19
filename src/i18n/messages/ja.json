@@ -32,7 +32,7 @@
   "internalTest.goOld": "現行版 ToosterX へ",
   "internalTest.eventOnly": "テスト期間中は、タイトルが「[內測]」で始まるイベントのみ操作できます。",
   "internalTest.blocked": "テスト期間中はテスト対象外のユーザーに操作できません。現行版をご利用ください。",
-  "internalTest.badge": "社内テスト版 · {sha}",
+  "internalTest.badge": "社内テスト版 · {sha} · {target}",
   "ui": {
     "shell": {
       "sportAll": "All",

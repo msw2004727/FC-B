@@ -32,7 +32,7 @@
   "internalTest.goOld": "ไปที่ ToosterX เวอร์ชันปัจจุบัน",
   "internalTest.eventOnly": "ระหว่างทดสอบภายใน ทำรายการได้เฉพาะกิจกรรมที่ชื่อขึ้นต้นด้วย \"[內測]\"",
   "internalTest.blocked": "ระหว่างทดสอบภายใน ไม่สามารถทำรายการกับผู้ใช้นอกรายชื่อทดสอบได้ โปรดใช้เวอร์ชันปัจจุบัน",
-  "internalTest.badge": "รุ่นทดสอบภายใน · {sha}",
+  "internalTest.badge": "รุ่นทดสอบภายใน · {sha} · {target}",
   "ui": {
     "shell": {
       "sportAll": "All",

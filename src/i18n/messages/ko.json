@@ -32,7 +32,7 @@
   "internalTest.goOld": "현재 ToosterX로 이동",
   "internalTest.eventOnly": "내부 테스트 기간에는 제목이 \"[內測]\"로 시작하는 이벤트만 처리할 수 있습니다.",
   "internalTest.blocked": "내부 테스트 기간에는 테스트 명단 밖의 사용자에게 작업할 수 없습니다. 현재 버전을 이용해 주세요.",
-  "internalTest.badge": "내부 테스트판 · {sha}",
+  "internalTest.badge": "내부 테스트판 · {sha} · {target}",
   "ui": {
     "shell": {
       "sportAll": "All",

@@ -32,7 +32,7 @@
   "internalTest.goOld": "前往 ToosterX 旧版",
   "internalTest.eventOnly": "内测期间只能操作标题以「[內測]」开头的活动。",
   "internalTest.blocked": "内测期间不能对内测名单以外的用户操作，请到旧版进行。",
-  "internalTest.badge": "内测版 · {sha}",
+  "internalTest.badge": "内测版 · {sha} · {target}",
   "ui": {
     "shell": {
       "sportAll": "All",

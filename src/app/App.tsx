@@ -26,6 +26,7 @@ import type { FeatureRoute } from '@/core/feature-types';
 import type { AuthUser } from '@/data/auth';
 import { resolveShareLink } from './share-link';
 import { InternalTestGate } from './InternalTestGate';
+import { firebaseTargetLabel } from '@/data/firebase';
 import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -201,7 +202,11 @@ export function App({
         {gateState === true && <BottomNav />}
         {internalTest && (
           <div class="internal-test-badge" aria-hidden="true">
-            {t('internalTest.badge', { sha: import.meta.env.VITE_BUILD_SHA || 'dev' })}
+            {t('internalTest.badge', {
+              sha: import.meta.env.VITE_BUILD_SHA || 'dev',
+              // 顯示實際連線目標（專案 · emulator／prod），連錯資料庫能被看見（Fable 2026-10-19）
+              target: firebaseTargetLabel(),
+            })}
           </div>
         )}
       </div>

@@ -32,7 +32,7 @@
   "internalTest.goOld": "Đến ToosterX phiên bản hiện tại",
   "internalTest.eventOnly": "Trong thời gian thử nghiệm, chỉ thao tác được với sự kiện có tiêu đề bắt đầu bằng \"[內測]\".",
   "internalTest.blocked": "Trong thời gian thử nghiệm, không thể thao tác với người dùng ngoài danh sách thử nghiệm. Vui lòng dùng phiên bản hiện tại.",
-  "internalTest.badge": "Bản thử nghiệm · {sha}",
+  "internalTest.badge": "Bản thử nghiệm · {sha} · {target}",
   "ui": {
     "shell": {
       "sportAll": "All",
