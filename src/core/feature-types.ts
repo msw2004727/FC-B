@@ -2,10 +2,25 @@
 
 export type FeatureStatus = 'enabled' | 'reserved' | 'external';
 
+/** 側邊選單判斷用的登入者權限摘要（結構與 useViewer() 相容，core 不依賴功能模組）。 */
+export interface RouteAccessContext {
+  uid: string | null;
+  role: string;
+  /** A 的活動角色等級（含自訂角色插值）。 */
+  roleLevel: number;
+  capabilities: readonly string[];
+  hasPermission: (code: string) => boolean;
+}
+
 export interface FeatureRoute {
   path: string;
   load: () => Promise<{ default: import('preact').ComponentType<any> }>;
   titleKey: string;
+  /**
+   * 側邊選單是否顯示此入口（照 A 的 DRAWER_MENUS 權限）。未設定＝一律顯示。
+   * 只控制選單顯示；頁面本身仍要自行擋權限。
+   */
+  drawerVisibleIf?: (access: RouteAccessContext) => boolean;
 }
 
 export interface FeatureNavItem {

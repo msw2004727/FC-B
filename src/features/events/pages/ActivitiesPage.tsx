@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { on } from '@/core/events';
 import { useT } from '@/i18n/i18n';
@@ -14,8 +14,11 @@ import { normalizeListTab } from '../data/terminal';
 import { SPORTS, eventSportTag } from '../data/sports';
 import { useEvents } from '../data/use-events';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
+import { canCreateEvent } from '../data/event-create';
+import { createEventContextFromViewer } from '../data/event-create-context';
 import type { RegistrationDoc } from '../data/types';
 import { EventList } from '../components/EventList';
+import { EventFormModal } from '../components/EventFormModal';
 import '../events.css';
 
 interface ViewerRegistrationsState {
@@ -30,12 +33,19 @@ export default function ActivitiesPage(): JSX.Element {
   const data = useEvents();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [viewerRegistrations, setViewerRegistrations] = useState<ViewerRegistrationsState>({
     uid: null,
     docs: [],
   });
   const registrationRequestSeq = useRef(0);
+
+  const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
+  const showCreateButton = useMemo(
+    () => (createCtx ? canCreateEvent(createCtx) : false),
+    [createCtx],
+  );
 
   const url = new URL(location.url, 'https://toosterx.invalid');
   const sport = url.searchParams.get('sport')?.trim() ?? '';
@@ -128,6 +138,34 @@ export default function ActivitiesPage(): JSX.Element {
           </svg>
         </button>
         <Button onClick={() => setPickerOpen(true)}>{t('events.filter')}</Button>
+        {showCreateButton && (
+          <div class="activity-page-actions">
+            <Button
+              variant="primary"
+              size="sm"
+              class="primary-btn small"
+              leading={
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              }
+              onClick={() => setCreateModalOpen(true)}
+            >
+              {t('events.form.openCreateBtn')}
+            </Button>
+          </div>
+        )}
       </header>
 
       {searchOpen && (
@@ -216,6 +254,17 @@ export default function ActivitiesPage(): JSX.Element {
           ))}
         </div>
       </BottomSheet>
+
+      <EventFormModal
+        open={createModalOpen}
+        mode="create"
+        viewer={viewer}
+        onClose={() => setCreateModalOpen(false)}
+        onSaved={(eventId) => {
+          setCreateModalOpen(false);
+          location.route('/events/' + eventId);
+        }}
+      />
     </section>
   );
 }

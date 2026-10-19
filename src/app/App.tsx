@@ -16,6 +16,7 @@ import { BottomNav } from '@/ui/BottomNav';
 import { SideDrawer } from '@/ui/SideDrawer';
 import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
+import { ToastHost } from '@/ui/ToastHost';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
@@ -25,6 +26,8 @@ import type { AuthUser } from '@/data/auth';
 import { resolveShareLink } from './share-link';
 import { InternalTestGate } from './InternalTestGate';
 import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
+import type { RouteAccessContext } from '@/core/feature-types';
+import { useViewer } from '@/features/profile/data/viewer';
 
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
 
@@ -198,6 +201,7 @@ export function App({
     return () => { alive = false; };
   }, [internalTest, user?.uid]);
 
+  const [routeAccess, setRouteAccess] = useState<RouteAccessContext | null>(null);
   const pending = loginPending || externalPending;
   const gateState: boolean | null | undefined = !internalTest ? true
     : user === null ? null
@@ -237,9 +241,24 @@ export function App({
         onLogin={handleLogin}
         loginPending={pending}
         loginError={loginError}
+        routeAccess={gateState === true ? routeAccess : null}
       />
+      {gateState === true && <ViewerAccessBridge onChange={setRouteAccess} />}
+      <ToastHost />
     </LocationProvider>
   );
+}
+
+/**
+ * 只在通過內測閘門後掛載：讀登入者權限交給側邊選單篩選入口。
+ * 放成獨立元件，是為了讓閘門前完全不觸發 viewer 的 Firestore 讀取。
+ */
+function ViewerAccessBridge({ onChange }: { onChange: (access: RouteAccessContext) => void }): null {
+  const viewer = useViewer();
+  useEffect(() => {
+    onChange(viewer);
+  }, [viewer, onChange]);
+  return null;
 }
 
 function RouteArea({ routes }: { routes: FeatureRoute[] }): preact.JSX.Element {

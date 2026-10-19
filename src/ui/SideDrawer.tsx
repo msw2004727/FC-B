@@ -11,6 +11,7 @@ import { LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
 import { nextFontSize, setFontSize, useFontSize } from '@/core/font-size';
 import { getActiveRoutes, getNavItems, useRegistryVersion } from '@/core/feature-registry';
+import type { RouteAccessContext } from '@/core/feature-types';
 import { on } from '@/core/events';
 import type { AuthUser } from '@/data/auth';
 
@@ -22,6 +23,8 @@ export interface SideDrawerProps {
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
   loginError?: boolean;
+  /** 登入者權限摘要；用來篩選有 drawerVisibleIf 的入口。 */
+  routeAccess?: RouteAccessContext | null;
 }
 
 function drawerOrder(titleKey: string): number {
@@ -100,6 +103,7 @@ export function SideDrawer({
   onLogin,
   loginPending = false,
   loginError = false,
+  routeAccess = null,
 }: SideDrawerProps): preact.JSX.Element | null {
   const t = useT();
   const theme = useTheme();
@@ -129,11 +133,13 @@ export function SideDrawer({
       .filter((route) =>
         !navPaths.has(route.path) &&
         route.path !== '/checkin' &&
-        !/[:*]/.test(route.path))
+        !/[:*]/.test(route.path) &&
+        // 有權限條件的入口：還沒有登入者權限（未登入、內測閘門前、載入中）時一律不顯示。
+        (!route.drawerVisibleIf || (!!routeAccess && route.drawerVisibleIf(routeAccess))))
       .sort((a, b) =>
         Number(a.path.startsWith('/admin/')) - Number(b.path.startsWith('/admin/')) ||
         drawerOrder(a.titleKey) - drawerOrder(b.titleKey));
-  }, [registryVersion]);
+  }, [registryVersion, routeAccess]);
 
   useEffect(() => {
     const unsubscribe = on('locale:changed', ({ locale: next }) => setLocaleState(next));

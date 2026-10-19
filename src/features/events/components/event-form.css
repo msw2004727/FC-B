@@ -1,0 +1,464 @@
+/* FC-B 新增／編輯活動表單樣式（對齊舊版 A .ce-*，僅使用 tokens.css 已定義的變數） */
+
+.ce-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ce-form-v2 {
+  gap: var(--space-3);
+}
+
+.ce-form-v2 > .ce-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  padding: var(--space-3);
+}
+
+.ce-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.ce-label-row label,
+.ce-field-label {
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.ce-label-suffix {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.ce-required {
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+/* 覆寫共用 Input / Select / Textarea 在 .ce-row 內的隱藏重複合標籤與緊湊視覺 */
+.ce-row .ui-input > label,
+.ce-row .ui-select > label,
+.ce-row .ui-textarea > label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ce-row .ui-input,
+.ce-row .ui-select,
+.ce-row .ui-textarea {
+  gap: var(--space-1);
+}
+
+.ce-row :is(input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea) {
+  width: 100%;
+  box-sizing: border-box;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Switch 覆寫為舊版 A toggle-switch 橫排外觀 */
+.ce-toggle-control,
+.ce-age-limit-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ce-toggle-control .ui-switch__label,
+.ce-age-limit-header .ui-switch__label,
+.ce-toggle-control .ui-switch__state,
+.ce-age-limit-header .ui-switch__state {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ce-toggle-status {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-muted);
+}
+
+/* 活動地區 */
+.ce-region-options {
+  margin-top: var(--space-2);
+}
+
+.ce-region-radios .ui-radio-group__label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ce-region-radios .ui-radio-group__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ce-region-radios .ui-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-body-sm);
+  cursor: pointer;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: var(--border-hairline) solid var(--color-border);
+  background: var(--color-bg-surface);
+  white-space: nowrap;
+}
+
+.ce-region-radios .ui-radio--checked {
+  border-color: var(--color-brand);
+  background: var(--color-bg-selected);
+}
+
+.ce-region-cities {
+  margin-top: var(--space-2);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-surface);
+}
+
+.ce-region-cities-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.ce-city-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-body-sm);
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  border: var(--border-hairline) solid var(--color-border);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.ce-city-chip.ui-checkbox--checked {
+  border-color: var(--color-role-captain);
+  background: var(--color-role-captain-bg);
+}
+
+/* 活動時間與報名開放時間 */
+.ce-time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "date start sep end";
+  align-items: end;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+}
+
+.ce-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+}
+
+.ce-time-field-date {
+  grid-area: date;
+}
+
+.ce-time-field-start {
+  grid-area: start;
+}
+
+.ce-time-field-end {
+  grid-area: end;
+}
+
+.ce-time-field-label {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-caption);
+}
+
+.ce-time-separator {
+  grid-area: sep;
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-2);
+}
+
+.ce-time-summary {
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-soft-bg);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-sm);
+}
+
+.ce-time-summary-muted {
+  border-color: var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+}
+
+.ce-reg-open-fields {
+  margin-top: var(--space-2);
+}
+
+.ce-reg-open-fields[hidden] {
+  display: none !important;
+}
+
+.ce-reg-open-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+}
+
+.ce-reg-open-hint,
+.ce-early-bird-reg-hint,
+.ce-field-note {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.ce-early-bird-reg-hint {
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--color-warning);
+}
+
+.ce-age-limit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.ce-age-limit-input-wrap {
+  width: 100%;
+}
+
+/* 運動 / 場景標籤選擇器 */
+.ce-sport-picker {
+  position: relative;
+  width: 100%;
+}
+
+.ce-sport-selected {
+  width: 100%;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+}
+
+.ce-sport-selected:hover,
+.ce-sport-selected.open {
+  border-color: var(--color-brand);
+}
+
+.ce-sport-selected-inner {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ce-sport-placeholder {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-muted);
+}
+
+.ce-sport-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ce-sport-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ce-sport-arrow svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--ui-dur-fast) var(--ui-ease);
+}
+
+.ce-sport-selected.open .ce-sport-arrow svg {
+  transform: rotate(180deg);
+}
+
+.ce-sport-dropdown {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--space-1));
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+}
+
+.ce-sport-dropdown.open {
+  display: block;
+}
+
+.ce-sport-search {
+  margin: 0;
+  width: 100%;
+  border: none !important;
+  border-bottom: var(--border-hairline) solid var(--color-border) !important;
+  border-radius: 0 !important;
+  background: var(--color-bg-elevated);
+  font-size: var(--font-size-body-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.ce-sport-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ce-sport-option {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+}
+
+.ce-sport-option:hover,
+.ce-sport-option.active {
+  background: var(--color-brand-soft-bg);
+  color: var(--color-brand-soft-fg);
+}
+
+.ce-sport-option.active {
+  font-weight: var(--font-weight-semibold);
+}
+
+.ce-sport-empty {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-3);
+}
+
+.ce-sport-required-tip {
+  color: var(--color-danger);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+/* 底部按鈕列 */
+.ce-modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.ce-modal-actions .outline-btn {
+  flex: 1;
+}
+
+/* A `.outline-btn`：灰框、次要文字色，滑過才轉主色（共用 secondary 是藍框／暗色黃底，這裡照 A 覆寫）。 */
+.ce-modal-actions .outline-btn.ui-button--secondary,
+.ce-modal-actions .outline-btn.ui-button--secondary:hover {
+  --comp-button-background-default: transparent;
+  --comp-button-background-hover: transparent;
+  --comp-button-background-active: var(--color-bg-hover);
+  --comp-button-foreground-default: var(--color-text-secondary);
+  --comp-button-border-default: var(--color-border);
+}
+
+.ce-modal-actions .outline-btn.ui-button--secondary:hover {
+  --comp-button-foreground-default: var(--color-brand);
+  --comp-button-border-default: var(--color-brand);
+}
+
+.ce-modal-actions .primary-btn {
+  flex: 1.25;
+}
+
+/* 活動列表頁首「我要開團」按鈕 */
+.activity-page-actions {
+  display: inline-flex;
+  align-items: center;
+}

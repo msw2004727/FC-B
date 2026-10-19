@@ -6,6 +6,7 @@ import { SideDrawer } from './SideDrawer';
 import { TopBar } from './TopBar';
 import { Text } from './Text';
 import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
+import type { RouteAccessContext } from '@/core/feature-types';
 import { _setDictLoaderForTest, getCurrentLocale, t } from '@/i18n/i18n';
 import { LOCALES, type Locale } from '@/i18n/locales';
 import { getTheme, setTheme } from '@/core/theme';
@@ -16,13 +17,13 @@ const load = async () => ({ default: () => null });
 let originalOverflow = '';
 let originalPriority = '';
 
-function Harness(): preact.JSX.Element {
+function Harness({ routeAccess = null }: { routeAccess?: RouteAccessContext | null } = {}): preact.JSX.Element {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
     <LocationProvider>
       <TopBar menuRef={trigger} drawerOpen={open} onMenuClick={() => setOpen(true)} />
-      <SideDrawer open={open} onClose={() => setOpen(false)} returnFocusRef={trigger} />
+      <SideDrawer open={open} onClose={() => setOpen(false)} returnFocusRef={trigger} routeAccess={routeAccess} />
     </LocationProvider>
   );
 }
@@ -90,6 +91,16 @@ beforeEach(async () => {
       routes: [{ path: '/admin/events', titleKey: 'test.admin', load }],
     },
     {
+      id: 'shell-drawer-gated',
+      status: 'enabled',
+      routes: [{
+        path: '/admin/logs',
+        titleKey: 'test.gated',
+        load,
+        drawerVisibleIf: (access) => access.hasPermission('admin.logs.entry'),
+      }],
+    },
+    {
       id: 'shell-drawer-reserved',
       status: 'reserved',
       routes: [{ path: '/reserved', titleKey: 'test.reserved', load }],
@@ -113,6 +124,25 @@ afterEach(() => {
 });
 
 describe('SideDrawer', () => {
+  it('有權限條件的入口：沒有登入者權限時不顯示，有權限才顯示（照 A DRAWER_MENUS）', () => {
+    const base: RouteAccessContext = {
+      uid: 'U_x', role: 'admin', roleLevel: 4, capabilities: [], hasPermission: () => false,
+    };
+    const view = render(<Harness />);
+    openDrawer();
+    expect(document.querySelector('[href="/admin/logs"]')).toBeNull();
+    view.unmount();
+
+    const denied = render(<Harness routeAccess={base} />);
+    openDrawer();
+    expect(document.querySelector('[href="/admin/logs"]')).toBeNull();
+    denied.unmount();
+
+    render(<Harness routeAccess={{ ...base, hasPermission: (c) => c === 'admin.logs.entry' }} />);
+    openDrawer();
+    expect(document.querySelector('[href="/admin/logs"]')).not.toBeNull();
+  });
+
   it('uses a div Portal, focuses the panel, locks scrolling and restores focus', () => {
     document.body.style.setProperty('overflow', 'scroll', 'important');
     const view = render(<Harness />);

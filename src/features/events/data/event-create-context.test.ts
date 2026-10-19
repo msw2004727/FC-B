@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGuestViewer, createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { canCreateEvent } from './event-create';
-import { createEventContextFromViewer } from './event-create-context';
+import { createEventContextFromViewer, operateContextFromViewer } from './event-create-context';
+import { canEditOwnActivityBasic } from './operate-permissions';
 
 function viewer(overrides: Partial<ViewerView>): ViewerView {
   return { ...createMinimalViewer('U_user'), ...overrides };
@@ -35,3 +36,15 @@ describe('createEventContextFromViewer', () => {
     expect(canCreateEvent(granted)).toBe(true);
   });
 });
+
+describe('operateContextFromViewer', () => {
+  it('訪客 role 為 null，所有操作拒絕；owner 有 own_edit_basic 可編輯自己的活動', () => {
+    const guest = operateContextFromViewer(createGuestViewer());
+    expect(guest.role).toBeNull();
+    expect(canEditOwnActivityBasic(guest, { creatorUid: 'U_user' })).toBe(false);
+    const owner = operateContextFromViewer(viewer({ capabilities: ['user.activity.own_edit_basic'] }));
+    expect(canEditOwnActivityBasic(owner, { creatorUid: 'U_user' })).toBe(true);
+    expect(canEditOwnActivityBasic(owner, { creatorUid: 'U_other' })).toBe(false);
+  });
+});
+
