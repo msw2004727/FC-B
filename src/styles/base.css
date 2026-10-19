@@ -16,6 +16,8 @@ body {
 }
 
 html {
+  /* 照 A css/base.css：根字級 15px（A 的 rem 都以此為基準；2026-10-19 改版沿用 A 外觀） */
+  font-size: 15px;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }

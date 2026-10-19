@@ -3,6 +3,8 @@ import preact from '@preact/preset-vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
 import type { Plugin } from 'vite';
+// @ts-expect-error 純 JS 建置工具，無型別宣告
+import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 
 /** 版本角標用的短 commit：Cloudflare Pages 建置提供 CF_PAGES_COMMIT_SHA，本機退回 git。 */
 function buildSha(): string {
@@ -65,6 +67,10 @@ function internalTestNoIndex(): Plugin {
 
 export default defineConfig({
   plugins: [preact(), internalTestNoIndex()],
+  css: {
+    // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
+    postcss: { plugins: [legacyCssScope()] },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

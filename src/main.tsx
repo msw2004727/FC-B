@@ -1,6 +1,9 @@
 import { render } from 'preact';
 import './styles/tokens.css';
 import './styles/base.css';
+// 舊版 A 的樣式（原檔照搬，打包時限定在 .legacy-ui 內，見 styles/legacy/README.md）
+import './styles/legacy/base.css';
+import './styles/legacy/layout.css';
 import { App } from './app/App';
 import { ErrorFallback } from './ui/ErrorFallback';
 import { registerFeatures } from './core/feature-registry';
