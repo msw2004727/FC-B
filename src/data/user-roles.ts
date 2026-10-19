@@ -38,7 +38,14 @@ function isUserRole(value: unknown): value is UserRole {
 
 interface CacheEntry {
   role: UserRole;
+  /** users.exp，給使用者膠囊算等級（A `_calcLevelFromExp`）。 */
+  exp: number;
   expiresAt: number;
+}
+
+interface UserSummary {
+  role: UserRole;
+  exp: number;
 }
 
 interface FetchOutcome {
@@ -70,13 +77,39 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return result;
 }
 
+/**
+ * 角色：照 A `profile-core.js#_stealthRole`——管理員／總管開啟隱身（users.stealth === true）時顯示為一般用戶。
+ * （2026-10-19 補上：B 原本沒有，會讓隱身管理員的身分外露。）
+ */
 function readRole(data: Record<string, unknown> | undefined): UserRole {
-  return isUserRole(data?.role) ? data.role : DEFAULT_ROLE;
+  const role = isUserRole(data?.role) ? data.role : DEFAULT_ROLE;
+  if ((role === 'admin' || role === 'super_admin') && data?.stealth === true) return DEFAULT_ROLE;
+  return role;
 }
 
-async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserRole>> {
+function readExp(data: Record<string, unknown> | undefined): number {
+  return Math.max(0, Number(data?.exp || 0) || 0);
+}
+
+/** A `profile-core.js#_calcLevelFromExp` 的等級。 */
+export function userLevelFromExp(totalExp: number): number {
+  if (!(totalExp > 0)) return 0;
+  let level = Math.floor((-1 + Math.sqrt(1 + (4 * totalExp) / 50)) / 2);
+  if (level < 0) level = 0;
+  if (level > 999) level = 999;
+  return level;
+}
+
+/** 已載入（未過期）的使用者等級；沒有快取回 undefined。 */
+export function getCachedUserLevel(uid: string): number | undefined {
+  const entry = cache.get(String(uid || '').trim());
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  return userLevelFromExp(entry.exp);
+}
+
+async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserSummary>> {
   const { db } = await getFirebase();
-  const result: Record<string, UserRole> = {};
+  const result: Record<string, UserSummary> = {};
 
   for (const batch of chunk(uids, MAX_UIDS_PER_QUERY)) {
     // 只依 UID 精確匹配（R-ID-002），不依名字。
@@ -87,7 +120,7 @@ async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserR
     const snapshot = await getDocs(ref);
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as Record<string, unknown> | undefined;
-      result[docSnap.id] = readRole(data);
+      result[docSnap.id] = { role: readRole(data), exp: readExp(data) };
     }
   }
 
@@ -104,7 +137,11 @@ function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
       const fetched = await fetchRoles(uidsToFetch);
       const expiresAt = Date.now() + CACHE_TTL_MS;
       for (const uid of uidsToFetch) {
-        cache.set(uid, { role: fetched[uid] ?? DEFAULT_ROLE, expiresAt });
+        cache.set(uid, {
+          role: fetched[uid]?.role ?? DEFAULT_ROLE,
+          exp: fetched[uid]?.exp ?? 0,
+          expiresAt,
+        });
       }
       return { failed: false };
     } catch (error) {

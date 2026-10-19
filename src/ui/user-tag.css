@@ -1,116 +1,19 @@
-.ui-user-tag {
-  --comp-user-tag-background-default: var(--color-role-user-bg);
-  --comp-user-tag-foreground-default: var(--color-role-user);
-  --comp-user-tag-level-background: var(--color-brand-soft-bg);
-  --comp-user-tag-level-foreground: var(--color-brand-soft-fg);
-
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 44px;
-  min-height: 44px;
-  max-width: 100%;
-  padding: var(--space-1);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  text-align: start;
-  white-space: normal;
-  cursor: pointer;
-  transition: transform var(--ui-dur-fast) var(--ui-ease);
+/*
+ * UserTag 照 A 以 <span class="user-capsule"> 輸出（外觀見 user-capsule.css，A 原樣）。
+ * 這裡只補 B 的狀態：停用不顯示手指與 hover 效果、鍵盤焦點外框。
+ * 2026-10-19 取代 B 原本的 .ui-user-tag 樣式（站長要求膠囊照舊版）。
+ */
+.user-capsule[aria-disabled='true'] {
+  cursor: default;
 }
 
-/* 依 A 微調：保持小膠囊外觀，外層增加至 44px 可點區域。 */
-.ui-user-tag__identity {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-  max-width: 100%;
-  padding: calc(var(--space-1) / 2) var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--comp-user-tag-background-default);
-  color: var(--comp-user-tag-foreground-default);
+.user-capsule[aria-disabled='true']:hover {
+  filter: none;
+  transform: none;
+  box-shadow: none;
 }
 
-.ui-user-tag--coach .ui-user-tag__identity {
-  background: var(--color-role-coach-bg);
-  color: var(--color-role-coach);
-}
-
-.ui-user-tag--captain .ui-user-tag__identity {
-  background: var(--color-role-captain-bg);
-  color: var(--color-role-captain);
-}
-
-.ui-user-tag--team_leader .ui-user-tag__identity {
-  background: var(--color-role-lead-bg);
-  color: var(--color-role-lead);
-}
-
-.ui-user-tag--venue_owner .ui-user-tag__identity {
-  background: var(--color-role-venue-bg);
-  color: var(--color-role-venue);
-}
-
-.ui-user-tag--admin .ui-user-tag__identity {
-  background: var(--color-role-admin-bg);
-  color: var(--color-role-admin);
-}
-
-.ui-user-tag--super_admin .ui-user-tag__identity {
-  background: var(--color-role-super-bg);
-  color: var(--color-role-super);
-}
-
-.ui-user-tag__name,
-.ui-user-tag__role {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.ui-user-tag__name { font-weight: var(--font-weight-semibold); }
-
-.ui-user-tag__level {
-  padding: calc(var(--space-1) / 2) calc(var(--space-3) / 2);
-  border-radius: var(--radius-xs);
-  background: var(--comp-user-tag-level-background);
-  color: var(--comp-user-tag-level-foreground);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-caption);
-  font-variant-numeric: var(--font-numeric);
-  overflow-wrap: anywhere;
-}
-
-.ui-user-tag:not(:disabled):hover { background: var(--color-bg-hover); }
-
-.ui-user-tag:not(:disabled):active {
-  background: var(--color-bg-active);
-  transform: scale(.98);
-}
-
-.ui-user-tag:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+.user-capsule:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
   outline-offset: 2px;
-}
-
-.ui-user-tag:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-.ui-user-tag .ui-nobr {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ui-user-tag { transition: none; }
 }

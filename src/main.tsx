@@ -1,4 +1,6 @@
 import { render } from 'preact';
+// 舊版 A 的色票變數（全域；名稱重疊者由後面的 B tokens 覆蓋），給全站共用的 A 外觀元件用
+import './styles/legacy-vars.css';
 import './styles/tokens.css';
 import './styles/base.css';
 // 舊版 A 的樣式（原檔照搬，打包時限定在 .legacy-ui 內，見 styles/legacy/README.md）

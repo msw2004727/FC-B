@@ -34,7 +34,7 @@ vi.mock('@/features/profile/data/viewer', async () => {
   return { ...actual, useViewer: () => mockViewer };
 });
 
-vi.mock('@/data/user-roles', () => ({ useUserRoles: () => ({}) }));
+vi.mock('@/data/user-roles', () => ({ useUserRoles: () => ({}), getCachedUserLevel: () => undefined }));
 
 vi.mock('@/ui/Toast', async () => {
   const actual = await vi.importActual<typeof import('@/ui/Toast')>('@/ui/Toast');

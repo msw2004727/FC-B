@@ -460,7 +460,6 @@ export default function UiGallery() {
               name={long}
               role={role}
               level={1}
-              jersey={10}
               onOpenProfile={setProfile}
             />
           </div>
@@ -474,9 +473,8 @@ export default function UiGallery() {
         <UserTag uid="ui-gallery-loading" name={sample} loading onOpenProfile={setProfile} />
         <UserTag
           uid="ui-gallery-warning"
-          attendanceWarning
+          attendanceFill={{ pct: 40, color: 'rgba(239,68,68,.45)', noShow: 2, ended: 5 }}
           recentNoShow
-          jersey={null}
           onOpenProfile={setProfile}
         />
         <Modal open={profile !== null} title={sample} onClose={() => setProfile(null)}>

@@ -1,120 +1,75 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/preact';
-import { t } from '@/i18n/i18n';
-import type { UserRole } from './Avatar';
-import { UserTag } from './UserTag';
-import { prepareUi2Locale, resetUi2Locale } from './ui2-test-utils';
+import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-beforeEach(prepareUi2Locale);
-afterEach(() => {
-  cleanup();
-  resetUi2Locale();
-});
+vi.mock('@/data/user-roles', () => ({
+  getCachedUserLevel: (uid: string) => (uid === 'u-cached' ? 12 : undefined),
+}));
 
-describe('UserTag', () => {
-  it('uses uid for identity even when names are identical', () => {
-    const onOpenProfile = vi.fn();
-    const { getAllByRole } = render(
-      <>
-        <UserTag uid="uid-a" name="同名" onOpenProfile={onOpenProfile} />
-        <UserTag uid="uid-b" name="同名" onOpenProfile={onOpenProfile} />
-      </>,
-    );
-    for (const button of getAllByRole('button')) {
-      fireEvent.click(button);
-    }
-    expect(onOpenProfile.mock.calls).toEqual([['uid-a'], ['uid-b']]);
-    expect(getAllByRole('button').map((button) => button.getAttribute('data-uid')))
-      .toEqual(['uid-a', 'uid-b']);
+const { UserTag } = await import('./UserTag');
+
+// 測試同步更新（R-QA-005）：2026-10-19 膠囊改照 A `_userTag`（user-capsule uc-{role}、Lv、角色名稱在 title）。
+describe('UserTag（照 A 使用者膠囊）', () => {
+  afterEach(() => cleanup());
+
+  it('輸出 A 的 class、Lv 與名字，角色名稱放在 title', () => {
+    render(<UserTag uid="u1" name="小明" role="coach" level={3} onOpenProfile={() => undefined} />);
+    const btn = screen.getByRole('button');
+    expect(btn.classList.contains('user-capsule')).toBe(true);
+    expect(btn.classList.contains('uc-coach')).toBe(true);
+    expect(btn.getAttribute('title')).toBe('教練');
+    expect(btn.querySelector('.uc-lv')?.textContent).toBe('Lv3');
+    expect(btn.textContent).toContain('小明');
   });
 
-  it.each<UserRole>([
-    'user', 'coach', 'captain', 'team_leader', 'venue_owner', 'admin', 'super_admin',
-  ])('renders role %s and independent level', (role) => {
-    const { getByRole, container } = render(
-      <UserTag uid="id" name="Alice" role={role} level={3} onOpenProfile={vi.fn()} />,
-    );
-    expect(getByRole('button').classList.contains(`ui-user-tag--${role}`)).toBe(true);
-    expect(container.querySelector('.ui-user-tag__role')?.textContent)
-      .toBe(t(`ui.userTag.role.${role}`));
-    expect(container.querySelector('.ui-user-tag__level')?.textContent).toBe('Lv 3');
-    expect(container.querySelector('.ui-user-tag__identity .ui-user-tag__level')).toBeNull();
+  it('沒給等級時用快取，仍沒有則 Lv0', () => {
+    render(<UserTag uid="u-cached" name="A" onOpenProfile={() => undefined} />);
+    expect(screen.getByRole('button').querySelector('.uc-lv')?.textContent).toBe('Lv12');
+    cleanup();
+    render(<UserTag uid="u-none" name="B" onOpenProfile={() => undefined} />);
+    expect(screen.getByRole('button').querySelector('.uc-lv')?.textContent).toBe('Lv0');
   });
 
-  it.each([{ disabled: true }, { loading: true }])('blocks opening: %o', (state) => {
-    const onOpenProfile = vi.fn();
-    const { getByRole } = render(
-      <UserTag uid="id" name="Alice" {...state} onOpenProfile={onOpenProfile} />,
-    );
-    const button = getByRole('button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    fireEvent.click(button);
-    expect(onOpenProfile).not.toHaveBeenCalled();
-    if ('loading' in state) expect(button.getAttribute('aria-busy')).toBe('true');
+  it('team_leader 用 A 的 uc-team-leader；總管 title 為「總管」', () => {
+    render(<UserTag uid="u1" name="甲" role="team_leader" onOpenProfile={() => undefined} />);
+    expect(screen.getByRole('button').classList.contains('uc-team-leader')).toBe(true);
+    cleanup();
+    render(<UserTag uid="u2" name="乙" role="super_admin" onOpenProfile={() => undefined} />);
+    expect(screen.getByRole('button').getAttribute('title')).toBe('總管');
   });
 
-  it('does not open a profile without a usable uid', () => {
-    const onOpenProfile = vi.fn();
-    const { getByRole } = render(<UserTag uid=" " onOpenProfile={onOpenProfile} />);
-    fireEvent.click(getByRole('button'));
-    expect((getByRole('button') as HTMLButtonElement).disabled).toBe(true);
-    expect(onOpenProfile).not.toHaveBeenCalled();
+  it('點擊以 uid 開個人名片；沒有 uid 或停用時不可點', () => {
+    const open = vi.fn();
+    render(<UserTag uid="u9" name="丙" onOpenProfile={open} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(open).toHaveBeenCalledWith('u9');
+    cleanup();
+    render(<UserTag uid="" name="丁" onOpenProfile={open} />);
+    const disabled = screen.getByRole('button');
+    expect(disabled.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(disabled);
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
-  it('supports native keyboard activation without duplicate key handlers', () => {
-    const onOpenProfile = vi.fn();
-    const { getByRole } = render(
-      <UserTag uid="stable-id" name="Alice" onOpenProfile={onOpenProfile} />,
-    );
-    const button = getByRole('button') as HTMLButtonElement;
-    button.focus();
-    expect(document.activeElement).toBe(button);
-    expect(button.type).toBe('button');
-
-    // jsdom 無原生 Space → click；模擬瀏覽器產生的 detail=0 click。
-    fireEvent.keyDown(button, { key: ' ' });
-    fireEvent.keyUp(button, { key: ' ' });
-    fireEvent.click(button, { detail: 0 });
-    expect(onOpenProfile).toHaveBeenCalledExactlyOnceWith('stable-id');
+  it('鍵盤 Enter 也能開名片', () => {
+    const open = vi.fn();
+    render(<UserTag uid="u7" name="己" onOpenProfile={open} />);
+    fireEvent.keyDown(screen.getByRole('button'), { key: 'Enter' });
+    expect(open).toHaveBeenCalledWith('u7');
   });
 
-  it('omits the level when none is provided (EXP is a reserved feature)', () => {
-    const { container, getByRole } = render(
-      <UserTag uid="id" name="Amy" onOpenProfile={vi.fn()} />,
-    );
-    expect(container.querySelector('.ui-user-tag__level')).toBeNull();
-    expect(getByRole('button').getAttribute('aria-label'))
-      .not.toContain(t('ui.userTag.levelUnset'));
-  });
-
-  it('renders translated empty values and optional status badges', () => {
-    const { container, getByRole } = render(
+  it('出席率染色照 A：uc-att-warn、CSS 變數與放鴿子 title', () => {
+    render(
       <UserTag
-        uid="id"
-        name=""
-        level={null}
-        jersey={null}
-        attendanceWarning
+        uid="u1"
+        name="戊"
+        attendanceFill={{ pct: 40, color: 'red', noShow: 2, ended: 5 }}
         recentNoShow
-        onOpenProfile={vi.fn()}
+        onOpenProfile={() => undefined}
       />,
     );
-    expect(container.querySelector('.ui-user-tag__name')?.textContent)
-      .toBe(t('ui.userTag.unknown'));
-    expect(container.querySelector('.ui-user-tag__level')?.textContent)
-      .toBe(t('ui.userTag.levelUnset'));
-    expect(container.textContent).toContain(t('ui.userTag.jerseyUnset'));
-    expect(container.textContent).toContain(t('ui.userTag.attendanceWarning'));
-    expect(container.textContent).toContain(t('ui.userTag.recentNoShow'));
-    expect(getByRole('button').getAttribute('aria-label'))
-      .toContain(t('ui.userTag.openProfile', { name: t('ui.userTag.unknown') }));
-  });
-
-  it('preserves zero level and jersey number', () => {
-    const { container } = render(
-      <UserTag uid="id" level={0} jersey={0} onOpenProfile={vi.fn()} />,
-    );
-    expect(container.querySelector('.ui-user-tag__level')?.textContent).toBe('Lv 0');
-    expect(container.textContent).toContain('背號 0');
+    const btn = screen.getByRole('button');
+    expect(btn.classList.contains('uc-att-warn')).toBe(true);
+    expect(btn.getAttribute('title')).toBe('放鴿子 2/5 場 (40%)');
+    expect(btn.querySelector('.uc-recent-noshow')).not.toBeNull();
   });
 });

@@ -17,6 +17,7 @@ vi.mock('@/features/profile/data/viewer', () => ({
 const mockUseUserRoles = vi.fn<(uids: readonly string[]) => Record<string, string>>();
 vi.mock('@/data/user-roles', () => ({
   useUserRoles: (uids: readonly string[]) => mockUseUserRoles(uids),
+  getCachedUserLevel: () => undefined,
 }));
 
 const mockFetchOperationLogs = vi.fn<() => Promise<OperationLogDoc[]>>();

@@ -1,0 +1,71 @@
+/*
+ * 舊版 A 的色票變數（A css/base.css 開頭的 :root 與 [data-theme] 三段，原樣），全域載入。
+ * 在 B 的 tokens.css 之前載入：名稱重疊者（--radius-full、--radius-sm、--shadow-lg、--topbar-h）以 B 為準；
+ * 改版頁面在 .legacy-ui 內另有 A 的完整定義（legacy-css-scope），不受影響。
+ * 用途：全站共用但照 A 外觀的元件（使用者膠囊）在未改版頁面也拿得到 A 變數。
+ */
+
+:root {
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, "PingFang TC",
+    "Noto Sans CJK TC", "Microsoft JhengHei", "Segoe UI", sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "PingFang TC",
+    "Noto Sans CJK TC", "Microsoft JhengHei", "Segoe UI", sans-serif;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-full: 999px;
+  --shadow: 0 2px 12px rgba(0,0,0,.12);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.18);
+  --transition: .25s cubic-bezier(.4,0,.2,1);
+  --topbar-h: 56px;
+  --bottombar-h: 64px;
+  --role-bar-h: 52px;
+}
+
+[data-theme="dark"] {
+  --bg-root: #0d1017;
+  --bg-card: #181d27;
+  --bg-elevated: #222838;
+  --bg-input: #222838;
+  --border: #323a4e;
+  --text-primary: #f5f7fa;
+  --text-secondary: #e8ecf2;
+  --text-muted: #cdd3de;
+  --primary: #3b82f6;
+  --accent: #34d399;
+  --accent-hover: #6ee7b7;
+  --accent-bg: rgba(52,211,153,.16);
+  --primary-btn-bg: #10b981;
+  --primary-btn-hover: #059669;
+  --primary-btn-active: #047857;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --success: #34d399;
+  --overlay: rgba(0,0,0,.65);
+  --banner-shadow: 0 4px 24px rgba(0,0,0,.5);
+  --skeleton-base: var(--bg-elevated);
+  --skeleton-glow: var(--bg-card);
+}
+
+[data-theme="light"] {
+  --bg-root: #f4f6f9;
+  --bg-card: #ffffff;
+  --bg-elevated: #f0f2f5;
+  --bg-input: #f0f2f5;
+  --border: #dfe3ea;
+  --text-primary: #1a1d24;
+  --text-secondary: #5a6478;
+  --text-muted: #8892a4;
+  --primary: #2563eb;
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
+  --accent-bg: rgba(13,148,136,.1);
+  --danger: #dc2626;
+  --warning: #d97706;
+  --info: #2563eb;
+  --success: #059669;
+  --overlay: rgba(0,0,0,.35);
+  --banner-shadow: 0 4px 24px rgba(0,0,0,.12);
+  --skeleton-base: var(--bg-elevated);
+  --skeleton-glow: var(--bg-card);
+}

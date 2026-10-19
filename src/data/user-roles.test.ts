@@ -18,8 +18,10 @@ vi.mock('@/data/firebase', () => ({
 import { getDocs } from 'firebase/firestore';
 import {
   _resetUserRolesCacheForTest,
+  getCachedUserLevel,
   loadUserRoles,
   useUserRoles,
+  userLevelFromExp,
 } from './user-roles';
 
 const getDocsMock = vi.mocked(getDocs);
@@ -150,5 +152,36 @@ describe('useUserRoles', () => {
     await waitFor(() => {
       expect(getDocsMock).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('隱身與等級（照 A _stealthRole、_calcLevelFromExp）', () => {
+  beforeEach(() => {
+    _resetUserRolesCacheForTest();
+    getDocsMock.mockReset();
+  });
+
+  it('管理員／總管開啟隱身時顯示為一般用戶；其他角色不受影響', async () => {
+    getDocsMock.mockResolvedValue({
+      docs: [
+        { id: 'a1', data: () => ({ role: 'admin', stealth: true }) },
+        { id: 's1', data: () => ({ role: 'super_admin', stealth: true }) },
+        { id: 'a2', data: () => ({ role: 'admin', stealth: false }) },
+        { id: 'c1', data: () => ({ role: 'coach', stealth: true }) },
+      ],
+    } as never);
+    const roles = await loadUserRoles(['a1', 's1', 'a2', 'c1']);
+    expect(roles).toEqual({ a1: 'user', s1: 'user', a2: 'admin', c1: 'coach' });
+  });
+
+  it('快取 EXP 算出 A 的等級；沒有快取回 undefined', async () => {
+    expect(userLevelFromExp(0)).toBe(0);
+    expect(userLevelFromExp(99)).toBe(0);
+    expect(userLevelFromExp(100)).toBe(1);
+    expect(userLevelFromExp(300)).toBe(2);
+    getDocsMock.mockResolvedValue({ docs: [{ id: 'u1', data: () => ({ role: 'user', exp: 300 }) }] } as never);
+    expect(getCachedUserLevel('u1')).toBeUndefined();
+    await loadUserRoles(['u1']);
+    expect(getCachedUserLevel('u1')).toBe(2);
   });
 });
