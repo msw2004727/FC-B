@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-TW" data-theme="">
+<html lang="zh-TW" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -8,6 +8,22 @@
     />
     <meta name="color-scheme" content="light dark" />
     <title>ToosterX</title>
+    <script>
+      /* 照 A index.html 開頁腳本：在畫面出現前設定 data-theme，避免顏色閃爍（邏輯同 src/core/theme.ts）。 */
+      (function () {
+        var theme = '';
+        try {
+          var saved = localStorage.getItem('sporthub_theme');
+          if (saved === 'dark' || saved === 'light') theme = saved;
+        } catch (_) {}
+        if (!theme) {
+          try {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
+          } catch (_) {}
+        }
+        document.documentElement.setAttribute('data-theme', theme || 'light');
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

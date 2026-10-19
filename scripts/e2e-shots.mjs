@@ -672,7 +672,7 @@ async function takeShot(browser, cfg) {
     await page.evaluate(
       ({ loc, th }) => {
         localStorage.setItem('toosterx:locale', loc);
-        localStorage.setItem('toosterx:theme', th);
+        localStorage.setItem('sporthub_theme', th);
       },
       { loc: locale, th: theme },
     );

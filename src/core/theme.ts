@@ -3,7 +3,16 @@ import { emit, on } from './events';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-const STORAGE_KEY = 'toosterx:theme';
+/**
+ * 照 A `js/core/theme.js#bindTheme` 與 `index.html` 開頁腳本：
+ * - 偏好存在 `localStorage['sporthub_theme']`，只存 'dark'／'light'；沒存＝跟隨系統。
+ * - `<html data-theme>` 一律設成 'dark' 或 'light'（A 的 CSS 只掛在這兩個屬性值上，不能拿掉）。
+ * - 跟隨系統時於套用當下讀 `prefers-color-scheme`（A 不監聽之後的系統變更）。
+ * 2026-10-19 改版沿用 A 外觀時改寫，取代原本 B 自訂的 'toosterx:theme' 與「system 移除屬性」。
+ */
+const STORAGE_KEY = 'sporthub_theme';
+/** B 早期使用的 key，讀到時搬到 A 的 key 後刪除。 */
+const LEGACY_B_STORAGE_KEY = 'toosterx:theme';
 
 let current: ThemeMode = 'system';
 
@@ -12,18 +21,35 @@ export function getTheme(): ThemeMode {
   return current;
 }
 
-/** 套用主題：data-theme 只設在 documentElement；system 時移除屬性。 */
+function systemPrefersDark(): boolean {
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** 套用主題：data-theme 只設在 documentElement，一律是 'dark' 或 'light'。 */
 function applyTheme(mode: ThemeMode): void {
   if (typeof document === 'undefined') return;
-  const root = document.documentElement;
-  if (mode === 'system') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', mode);
+  const resolved = mode === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : mode;
+  document.documentElement.setAttribute('data-theme', resolved);
 }
 
 function readPref(): ThemeMode {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v === 'light' || v === 'dark' || v === 'system') return v;
+    if (v === 'light' || v === 'dark') return v;
+    const legacy = localStorage.getItem(LEGACY_B_STORAGE_KEY);
+    if (legacy !== null) {
+      localStorage.removeItem(LEGACY_B_STORAGE_KEY);
+      if (legacy === 'light' || legacy === 'dark') {
+        localStorage.setItem(STORAGE_KEY, legacy);
+        return legacy;
+      }
+    }
   } catch {
     /* 忽略 */
   }
@@ -32,7 +58,8 @@ function readPref(): ThemeMode {
 
 function writePref(mode: ThemeMode): void {
   try {
-    localStorage.setItem(STORAGE_KEY, mode);
+    if (mode === 'system') localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, mode);
   } catch {
     /* 忽略 */
   }
