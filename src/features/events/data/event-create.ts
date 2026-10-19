@@ -1,0 +1,782 @@
+/**
+ * FC-B 活動建立／編輯資料層（A01 / A02 契約對齊）。
+ *
+ * 決策依據：
+ *   - `docs/specs/lite-convergence/p50-event-create/out/analysis2.gemini.md` 第 2、4、5 節。
+ *   - `docs/specs/lite-convergence/p50-event-create/mimo-verify.result.md`（衝突以此為準）。
+ *   - 卡片決議：單日一般活動；`payloadRevision`/`payloadDigest` 不寫；`clientRequestId = id`；
+ *     已有報名/候補時 max 改走 `adjustEventCapacity` Callable。
+ *
+ * 本檔只做資料層，不碰 UI。Callable 一律經 `@/data/callables.callFn`，不自建
+ * `httpsCallable`；`getFirebase()` 只提供 `db`，不得取用 `functions`。
+ */
+
+import { getFirebase } from '@/data/firebase';
+import { callFn } from '@/data/callables';
+import type {
+  AdjustEventCapacityRequest,
+  AdjustEventCapacityResponse,
+} from '@/data/contract/callables';
+import {
+  createPermissionChecker,
+  type CustomRole,
+} from '@/features/profile/data/permissions';
+import {
+  canEditOwnActivityBasic,
+  canManageAllActivities,
+  canManageEventDelegates,
+  canUseActivityAddons,
+  hasActivityManageEntry,
+  type OperateContext,
+} from './operate-permissions';
+
+// 供呼叫端由本模組取得 Callable 契約型別（與 `src/data/contract/callables.ts` 同源）。
+export type {
+  AdjustEventCapacityRequest,
+  AdjustEventCapacityResponse,
+} from '@/data/contract/callables';
+
+// ── 可注入的型別 ─────────────────────────────────────
+
+export type EventType = 'friendly' | 'single' | 'camp' | 'play' | 'watch';
+export type EventStatus = 'upcoming' | 'open' | 'full' | 'ended' | 'cancelled';
+export type AllowedGender = '' | '男' | '女';
+
+export interface DelegationEntry {
+  uid: string;
+  name: string;
+}
+
+export interface SocialLink {
+  url: string;
+  platform: string;
+  label: string;
+  host: string;
+}
+
+export interface TeamSplitTeam {
+  key: string;
+  color: string;
+  name: string;
+}
+
+/** 對齊 A `_tsGetFormData()` 回傳形狀（lockAt 由 buildTeamSplit 依開始時間算）。 */
+export interface TeamSplitForm {
+  enabled: boolean;
+  mode: string;
+  balanceCap: boolean;
+  /** A：self-select 時為表單小時數（預設 2），其他模式為 0。 */
+  selfSelectLockHours: number;
+  teams: TeamSplitTeam[];
+}
+
+export interface TeamSplitPayload extends TeamSplitForm {
+  lockAt: Date | null;
+}
+
+export interface EventImageVariants {
+  cover?: string;
+  homeNext?: string;
+}
+
+/**
+ * 表單／ctx 對齊 A `handleCreateEvent` 之送表輸入。
+ * `mapPickerEnabled` 對應 `isActivityMapLocationPickerEnabled()`（false 時 8 個地圖欄位皆不寫）。
+ */
+export interface CreateEventForm {
+  title: string;
+  type: EventType;
+  location: string;
+  dateVal: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  max: number;
+  minAge: number;
+  notes: string;
+  sportTag: string;
+  regOpenTime: string | null;
+  image: string;
+  imageVariants?: EventImageVariants;
+  creatorName: string;
+  delegates: DelegationEntry[];
+  regionEnabled: boolean;
+  region: string;
+  cities: string[];
+  feeEnabled: boolean;
+  fee: number;
+  teamOnly: boolean;
+  creatorTeamId: string | null;
+  creatorTeamName: string | null;
+  creatorTeamIds: string[];
+  creatorTeamNames: string[];
+  genderRestrictionEnabled: boolean;
+  allowedGender: AllowedGender;
+  privateEvent: boolean;
+  socialLinksEnabled: boolean;
+  socialLinks: SocialLink[];
+  earlyBirdEnabled: boolean;
+  earlyBirdCost: number;
+  earlyBirdPolicyVersion: 1 | null;
+  teamSplit?: TeamSplitForm;
+  mapPickerEnabled?: boolean;
+  gpsEnabled?: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  mapAddress?: string | null;
+  mapPlaceId?: string | null;
+  mapProvider?: 'google' | 'manual' | null;
+  mapLocationConfirmed?: boolean;
+  mapLocationUpdatedAt?: string | null;
+}
+
+export interface CreateEventContext {
+  uid: string;
+  role: string;
+  capabilities: readonly string[];
+  rolePermissions: readonly string[] | null;
+  userGrants: { uid?: string; enabled?: boolean; permissions?: string[] } | null;
+  customRoles?: readonly CustomRole[];
+  now: Date;
+  generateId: (prefix: string) => string;
+}
+
+export interface EventForEdit {
+  id: string;
+  creatorUid?: string;
+  ownerUid?: string;
+  captainUid?: string;
+  delegateUids?: string[];
+  privateEvent?: boolean;
+  status?: EventStatus;
+  current?: number;
+  waitlist?: number;
+  max?: number;
+}
+
+export interface EventCreatePayload {
+  id: string;
+  clientRequestId: string;
+  title: string;
+  type: string;
+  status: 'open' | 'upcoming';
+  location: string;
+  date: string;
+  startTimestamp: Date;
+  endTimestamp: Date;
+  max: number;
+  minAge: number;
+  notes: string;
+  sportTag: string;
+  regOpenTime: string | null;
+  image: string;
+  imageVariants?: EventImageVariants;
+  gradient: string;
+  current: number;
+  waitlist: number;
+  participants: string[];
+  waitlistNames: string[];
+  contact: string;
+  icon: string;
+  countdown: string;
+  creator: string;
+  creatorUid: string;
+  delegates: DelegationEntry[];
+  delegateUids: string[];
+  regionEnabled: boolean;
+  region: string;
+  cities: string[];
+  feeEnabled: boolean;
+  fee: number;
+  teamOnly: boolean;
+  isPublic: boolean;
+  creatorTeamId: string | null;
+  creatorTeamName: string | null;
+  creatorTeamIds: string[];
+  creatorTeamNames: string[];
+  genderRestrictionEnabled: boolean;
+  allowedGender: AllowedGender;
+  privateEvent: boolean;
+  socialLinksEnabled: boolean;
+  socialLinks: SocialLink[];
+  earlyBirdEnabled: boolean;
+  earlyBirdCost: number;
+  earlyBirdPolicyVersion: 1 | null;
+  teamSplit?: TeamSplitPayload;
+  gpsEnabled?: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  mapAddress?: string | null;
+  mapPlaceId?: string | null;
+  mapProvider?: 'google' | 'manual' | null;
+  mapLocationConfirmed?: boolean;
+  mapLocationUpdatedAt?: string | null;
+}
+
+export interface EventEditUpdates {
+  title?: string;
+  type?: string;
+  status?: EventStatus;
+  location?: string;
+  date?: string;
+  startTimestamp?: Date;
+  endTimestamp?: Date;
+  max?: number;
+  minAge?: number;
+  notes?: string;
+  sportTag?: string;
+  regOpenTime?: string | null;
+  image?: string;
+  imageVariants?: EventImageVariants;
+  gradient?: string;
+  regionEnabled?: boolean;
+  region?: string;
+  cities?: string[];
+  teamOnly?: boolean;
+  creatorTeamId?: string | null;
+  creatorTeamName?: string | null;
+  creatorTeamIds?: string[];
+  creatorTeamNames?: string[];
+  delegates?: DelegationEntry[];
+  delegateUids?: string[];
+  feeEnabled?: boolean;
+  fee?: number;
+  genderRestrictionEnabled?: boolean;
+  allowedGender?: AllowedGender;
+  privateEvent?: boolean;
+  socialLinksEnabled?: boolean;
+  socialLinks?: SocialLink[];
+  earlyBirdEnabled?: boolean;
+  earlyBirdCost?: number;
+  earlyBirdPolicyVersion?: 1 | null;
+  teamSplit?: TeamSplitPayload;
+  gpsEnabled?: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  mapAddress?: string | null;
+  mapPlaceId?: string | null;
+  mapProvider?: 'google' | 'manual' | null;
+  mapLocationConfirmed?: boolean;
+  mapLocationUpdatedAt?: string | null;
+}
+
+export interface EditResult {
+  updates: EventEditUpdates;
+  capacityChange: number | null;
+  /** true＝無加值權限而略過加值欄位；UI 應顯示 ADDON_UPSELL_MESSAGE（A 同樣照常送出）。 */
+  addonsStripped: boolean;
+}
+
+/** 可辨識錯誤（供呼叫端 switch code 顯示／降級）。 */
+export class EventCreateError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = 'EventCreateError';
+  }
+}
+
+// ── 常數與小工具 ─────────────────────────────────────
+
+/** A `_showActivityAddonUpsellToast()` 文案（R-CAP-004）。 */
+export const ADDON_UPSELL_MESSAGE = '如需更多功能請聯繫官方Line@';
+
+/** A `js/config.js#GRADIENT_MAP`；gradient 一律由 type 推導，不吃表單。 */
+const GRADIENT_MAP: Record<string, string> = {
+  friendly: 'linear-gradient(135deg,#0d9488,#065f46)',
+  single: 'linear-gradient(135deg,#0f766e,#115e59)',
+  camp: 'linear-gradient(135deg,#ec4899,#be185d)',
+  play: 'linear-gradient(135deg,#7c3aed,#4338ca)',
+  watch: 'linear-gradient(135deg,#f59e0b,#d97706)',
+  external: 'linear-gradient(135deg,#6b7280,#4b5563)',
+};
+
+function gradientFor(type: string): string {
+  return GRADIENT_MAP[type] || GRADIENT_MAP.friendly!;
+}
+
+/** Rules `isUserCreateOwner()` 強制的資料 id 樣式。 */
+const EVENT_ID_PATTERN = /^ce_[A-Za-z0-9_-]{1,117}$/;
+
+/** 6 個「全角色禁改」欄位（verify 第 4 條）。 */
+const FORBIDDEN_EDIT_FIELDS = [
+  'viewCount',
+  'id',
+  'clientRequestId',
+  'creatorUid',
+  'payloadRevision',
+  'payloadDigest',
+] as const;
+
+function toOperateContext(ctx: CreateEventContext): OperateContext {
+  return {
+    uid: ctx.uid,
+    role: ctx.role,
+    rolePermissions: ctx.rolePermissions,
+    userGrants: ctx.userGrants,
+    capabilities: ctx.capabilities,
+    customRoles: (ctx.customRoles as readonly CustomRole[]) || [],
+  };
+}
+
+function hasCapability(ctx: CreateEventContext, code: string): boolean {
+  return ctx.capabilities.includes(code);
+}
+
+/**
+ * A `_isEventTrulyFull` 的等價判斷。
+ * // ASSUMPTION: 附件未給出 `_getEventProjectedConfirmedCount` 完整實作；以 current >= max 近似。
+ */
+function isEventTrulyFull(existing: EventForEdit): boolean {
+  const maxCount = Math.max(0, Number(existing.max ?? 0));
+  const current = typeof existing.current === 'number' ? existing.current : 0;
+  return maxCount > 0 && current >= maxCount;
+}
+
+function buildStartEnd(form: CreateEventForm): { startTimestamp: Date; endTimestamp: Date } {
+  // 對齊 A：`new Date(`${dateVal}T${time}`)`，走本地時區。
+  // ASSUMPTION: 測試需在 TZ=UTC 下跑、或使用與 golden 同 TZ 之環境。
+  const startTimestamp = new Date(`${form.dateVal}T${form.startTime}`);
+  const endTimestamp = new Date(`${form.dateVal}T${form.endTime}`);
+  return { startTimestamp, endTimestamp };
+}
+
+function buildDateString(form: CreateEventForm): string {
+  // A: `${dateVal.replace(/-/g, '/')} ${tStart}~${tEnd}`
+  return `${form.dateVal.replace(/-/g, '/')} ${form.startTime}~${form.endTime}`;
+}
+
+function buildTeamSplit(
+  form: CreateEventForm,
+  startTimestamp: Date,
+): TeamSplitPayload | undefined {
+  if (!form.teamSplit || !form.teamSplit.enabled) return undefined;
+  const ts = form.teamSplit;
+  // A `_recalcTeamSplitTimestamps`：self-select 鎖定時間＝開始前 (selfSelectLockHours || 2) 小時。
+  return {
+    enabled: true,
+    mode: ts.mode,
+    balanceCap: !!ts.balanceCap,
+    selfSelectLockHours: ts.selfSelectLockHours,
+    teams: ts.teams.map((t) => ({ key: t.key, color: t.color, name: t.name })),
+    lockAt:
+      ts.mode === 'self-select'
+        ? new Date(startTimestamp.getTime() - (ts.selfSelectLockHours || 2) * 3_600_000)
+        : null,
+  };
+}
+
+/** A `_buildEventLocationPayload('ce')`：GPS 關閉時座標類欄位一律寫 null／false。 */
+function buildLocationPayload(form: CreateEventForm): Pick<
+  EventCreatePayload,
+  'gpsEnabled' | 'lat' | 'lng' | 'mapAddress' | 'mapPlaceId' | 'mapProvider'
+  | 'mapLocationConfirmed' | 'mapLocationUpdatedAt'
+> {
+  if (!form.gpsEnabled) {
+    return {
+      gpsEnabled: false, lat: null, lng: null, mapAddress: null, mapPlaceId: null,
+      mapProvider: null, mapLocationConfirmed: false, mapLocationUpdatedAt: null,
+    };
+  }
+  return {
+    gpsEnabled: true,
+    lat: form.lat ?? null,
+    lng: form.lng ?? null,
+    mapAddress: form.mapAddress ?? null,
+    mapPlaceId: form.mapPlaceId ?? null,
+    mapProvider: form.mapProvider ?? null,
+    mapLocationConfirmed: !!form.mapLocationConfirmed,
+    mapLocationUpdatedAt: form.mapLocationUpdatedAt ?? null,
+  };
+}
+
+function buildImageVariants(form: CreateEventForm): EventImageVariants | undefined {
+  if (!form.imageVariants) return undefined;
+  const variants: EventImageVariants = {};
+  if (form.imageVariants.cover) variants.cover = form.imageVariants.cover;
+  if (form.imageVariants.homeNext) variants.homeNext = form.imageVariants.homeNext;
+  return Object.keys(variants).length > 0 ? variants : undefined;
+}
+
+function hasAnyAddon(form: CreateEventForm): boolean {
+  return form.feeEnabled || form.teamOnly || form.genderRestrictionEnabled || form.privateEvent
+    || !!(form.teamSplit && form.teamSplit.enabled) || form.socialLinksEnabled
+    || form.earlyBirdEnabled || !!form.gpsEnabled;
+}
+
+/**
+ * A `handleCreateEvent` 的加值閘門（R-CAP-004）：無權限卻有勾加值時，清掉加值欄位、
+ * 提示 ADDON_UPSELL_MESSAGE，活動照常送出（不是整筆拒絕）。
+ */
+export function applyAddonGate(
+  form: CreateEventForm,
+  ctx: CreateEventContext,
+  existing: EventForEdit | null,
+): { form: CreateEventForm; stripped: boolean } {
+  if (canUseActivityAddons(toOperateContext(ctx), existing) || !hasAnyAddon(form)) {
+    return { form, stripped: false };
+  }
+  return {
+    stripped: true,
+    form: {
+      ...form,
+      feeEnabled: false,
+      fee: 0,
+      teamOnly: false,
+      genderRestrictionEnabled: false,
+      allowedGender: '',
+      privateEvent: false,
+      teamSplit: undefined,
+      socialLinksEnabled: false,
+      socialLinks: [],
+      earlyBirdEnabled: false,
+      earlyBirdCost: 0,
+      gpsEnabled: false,
+    },
+  };
+}
+
+function assertCreateAllowed(ctx: CreateEventContext): void {
+  const checker = createPermissionChecker({
+    role: ctx.role,
+    rolePermissions: ctx.rolePermissions ? { [ctx.role]: ctx.rolePermissions } : {},
+    userGrants:
+      ctx.userGrants && ctx.userGrants.enabled !== false &&
+      String(ctx.userGrants.uid || '').trim() === ctx.uid
+        ? (ctx.userGrants.permissions ?? [])
+        : [],
+    customRoles: (ctx.customRoles as readonly CustomRole[]) || [],
+  });
+  if (ctx.role === 'user') {
+    const hasBasicCreate = hasCapability(ctx, 'user.activity.basic_create');
+    const hasCreateGrant = checker('event.create');
+    if (!hasBasicCreate && !hasCreateGrant) {
+      throw new EventCreateError(
+        'BASIC_CREATE_REQUIRED',
+        'User lacks user.activity.basic_create capability or event.create grant.',
+      );
+    }
+    return;
+  }
+  // coach+ / manage entry / event.create grant
+  const hasManageEntry = hasActivityManageEntry(toOperateContext(ctx));
+  if (!hasManageEntry && !checker('event.create')) {
+    throw new EventCreateError(
+      'CREATE_NOT_ALLOWED',
+      'User lacks activity manage entry or event.create permission.',
+    );
+  }
+}
+
+// ── 純函式：建立 payload ──────────────────────────────
+
+export function buildCreateEventPayload(
+  form: CreateEventForm,
+  ctx: CreateEventContext,
+  eventId: string,
+): EventCreatePayload {
+  if (!EVENT_ID_PATTERN.test(eventId)) {
+    throw new EventCreateError(
+      'INVALID_ID',
+      `Event ID does not match Rules pattern ^ce_[A-Za-z0-9_-]{1,117}$: ${eventId}`,
+    );
+  }
+  assertCreateAllowed(ctx);
+  form = applyAddonGate(form, ctx, null).form;
+  // A：沒有委託人管理權時建立一律寫空委託人。
+  const delegates = canManageEventDelegates(toOperateContext(ctx), null) ? form.delegates : [];
+
+  const { startTimestamp, endTimestamp } = buildStartEnd(form);
+  const dateStr = buildDateString(form);
+  const nowMs = ctx.now.getTime();
+  const regOpenMs = form.regOpenTime ? new Date(form.regOpenTime).getTime() : 0;
+  const status: 'open' | 'upcoming' = regOpenMs > nowMs ? 'upcoming' : 'open';
+
+  const payload: EventCreatePayload = {
+    id: eventId,
+    clientRequestId: eventId,
+    title: form.title,
+    type: form.type,
+    status,
+    location: form.location,
+    date: dateStr,
+    startTimestamp,
+    endTimestamp,
+    max: form.max,
+    minAge: form.minAge,
+    notes: form.notes,
+    sportTag: form.sportTag,
+    regOpenTime: form.regOpenTime,
+    image: form.image,
+    gradient: gradientFor(form.type),
+    // 初始常數（verify 第 5 條；與 Rules 安全投影一致）
+    current: 0,
+    waitlist: 0,
+    participants: [],
+    waitlistNames: [],
+    contact: '',
+    icon: '',
+    countdown: '即將開始',
+    // 建立者欄位（creatorUid 必須等於 uid）
+    creator: form.creatorName,
+    creatorUid: ctx.uid,
+    delegates: delegates.map((d) => ({ ...d })),
+    delegateUids: delegates.map((d) => d.uid),
+    regionEnabled: form.regionEnabled,
+    region: form.region,
+    cities: [...form.cities],
+    // 俱樂部／Addons（未授權時全關）
+    feeEnabled: form.feeEnabled,
+    fee: form.fee,
+    teamOnly: form.teamOnly,
+    isPublic: !!form.teamOnly,
+    creatorTeamId: form.teamOnly ? form.creatorTeamId : null,
+    creatorTeamName: form.teamOnly ? form.creatorTeamName : null,
+    creatorTeamIds: form.teamOnly ? [...form.creatorTeamIds] : [],
+    creatorTeamNames: form.teamOnly ? [...form.creatorTeamNames] : [],
+    genderRestrictionEnabled: form.genderRestrictionEnabled,
+    allowedGender: form.genderRestrictionEnabled ? form.allowedGender : '',
+    privateEvent: form.privateEvent,
+    socialLinksEnabled: form.socialLinksEnabled,
+    socialLinks: form.socialLinksEnabled ? [...form.socialLinks] : [],
+    earlyBirdEnabled: form.earlyBirdEnabled,
+    earlyBirdCost: form.earlyBirdEnabled ? form.earlyBirdCost : 0,
+    earlyBirdPolicyVersion: form.earlyBirdEnabled ? form.earlyBirdPolicyVersion : null,
+  };
+
+  const variants = buildImageVariants(form);
+  if (variants) payload.imageVariants = variants;
+
+  const teamSplit = buildTeamSplit(form, startTimestamp);
+  if (teamSplit) payload.teamSplit = teamSplit;
+
+  if (form.mapPickerEnabled) Object.assign(payload, buildLocationPayload(form));
+
+  return payload;
+}
+
+// ── 純函式：編輯 updates ──────────────────────────────
+
+export function buildEditEventUpdates(
+  existing: EventForEdit,
+  form: CreateEventForm,
+  ctx: CreateEventContext,
+): EditResult {
+  if (!canEditOwnActivityBasic(toOperateContext(ctx), existing)) {
+    throw new EventCreateError(
+      'EDIT_NOT_ALLOWED',
+      'User lacks permission to edit this event (canEditOwnActivityBasic=false).',
+    );
+  }
+
+  const opCtx = toOperateContext(ctx);
+  const gate = applyAddonGate(form, ctx, existing);
+  form = gate.form;
+  // 對齊 A 編輯分支：加值欄位只在 _canUseActivityAddons(e) 時寫；限定俱樂部另需 event.edit_all；
+  // 委託人只在 _canManageEventDelegates(e) 時寫。
+  const canUseAddons = canUseActivityAddons(opCtx, existing);
+  const canChangeTeamOnly = canUseAddons && canManageAllActivities(opCtx);
+  const canChangeDelegates = canManageEventDelegates(opCtx, existing);
+
+  const { startTimestamp, endTimestamp } = buildStartEnd(form);
+  const dateStr = buildDateString(form);
+
+  // 基礎欄位（白名單 35/36 個都對應到）
+  const updates: EventEditUpdates = {
+    title: form.title,
+    type: form.type,
+    location: form.location,
+    date: dateStr,
+    startTimestamp,
+    endTimestamp,
+    minAge: form.minAge,
+    notes: form.notes,
+    image: form.image,
+    sportTag: form.sportTag,
+    regOpenTime: form.regOpenTime,
+    gradient: gradientFor(form.type),
+    regionEnabled: form.regionEnabled,
+    region: form.region,
+    cities: [...form.cities],
+  };
+
+  const variants = buildImageVariants(form);
+  if (variants) updates.imageVariants = variants;
+
+  if (canUseAddons) {
+    updates.feeEnabled = form.feeEnabled;
+    updates.fee = form.fee;
+    updates.genderRestrictionEnabled = form.genderRestrictionEnabled;
+    updates.allowedGender = form.genderRestrictionEnabled ? form.allowedGender : '';
+    updates.privateEvent = form.privateEvent;
+    updates.socialLinksEnabled = form.socialLinksEnabled;
+    updates.socialLinks = form.socialLinksEnabled ? [...form.socialLinks] : [];
+    updates.earlyBirdEnabled = form.earlyBirdEnabled;
+    updates.earlyBirdCost = form.earlyBirdEnabled ? form.earlyBirdCost : 0;
+    updates.earlyBirdPolicyVersion = form.earlyBirdEnabled ? form.earlyBirdPolicyVersion : null;
+
+    if (form.mapPickerEnabled) Object.assign(updates, buildLocationPayload(form));
+
+    const teamSplit = buildTeamSplit(form, startTimestamp);
+    if (teamSplit) updates.teamSplit = teamSplit;
+  }
+
+  if (canChangeTeamOnly) {
+    updates.teamOnly = form.teamOnly;
+    updates.creatorTeamId = form.teamOnly ? form.creatorTeamId : null;
+    updates.creatorTeamName = form.teamOnly ? form.creatorTeamName : null;
+    updates.creatorTeamIds = form.teamOnly ? [...form.creatorTeamIds] : [];
+    updates.creatorTeamNames = form.teamOnly ? [...form.creatorTeamNames] : [];
+  }
+
+  if (canChangeDelegates) {
+    updates.delegates = form.delegates.map((d) => ({ ...d }));
+    updates.delegateUids = form.delegates.map((d) => d.uid);
+  }
+
+  // 名額：有報名/候補時不得直寫 max；改回傳 capacityChange 由呼叫端走 Callable。
+  const hasCapacity = (existing.current ?? 0) > 0 || (existing.waitlist ?? 0) > 0;
+  let capacityChange: number | null = null;
+  if (hasCapacity) {
+    if (form.max !== (existing.max ?? 0)) {
+      capacityChange = form.max;
+    }
+  } else {
+    updates.max = form.max;
+  }
+
+  // status：照 verify 第 7 條四段規則，但先檢查活動管理入口。
+  const hasManageEntry = hasActivityManageEntry(toOperateContext(ctx));
+  if (
+    hasManageEntry &&
+    existing.status !== 'ended' &&
+    existing.status !== 'cancelled'
+  ) {
+    const nowMs = ctx.now.getTime();
+    const regOpenMs = form.regOpenTime ? new Date(form.regOpenTime).getTime() : 0;
+    if (regOpenMs > nowMs) {
+      updates.status = 'upcoming';
+    } else if (existing.status === 'upcoming') {
+      updates.status = isEventTrulyFull(existing) ? 'full' : 'open';
+    }
+  }
+
+  // 雙重保險：即使以上邏輯誤帶，也不寫入 6 個禁改欄位。
+  for (const field of FORBIDDEN_EDIT_FIELDS) {
+    if (field in (updates as Record<string, unknown>)) {
+      delete (updates as Record<string, unknown>)[field];
+    }
+  }
+
+  return { updates, capacityChange, addonsStripped: gate.stripped };
+}
+
+// ── 動作（I/O）────────────────────────────────────────
+
+/**
+ * 全部走 `@/data/callables.callFn`：
+ *   - 統一 region、mock 模式、emulator 防護與記錄；
+ *   - 不在本檔自行 `httpsCallable`，也不從 `getFirebase()` 取 `functions`。
+ */
+async function callAdjustEventCapacity(
+  req: AdjustEventCapacityRequest,
+): Promise<AdjustEventCapacityResponse> {
+  try {
+    return await callFn('adjustEventCapacity', req);
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : String(err);
+    throw new EventCreateError('CAPACITY_ADJUST_FAILED', message);
+  }
+}
+
+/**
+ * 產生新活動 ID。UI 在表單開啟時呼叫一次並存在表單狀態，送出與重試都用同一個 id。
+ * B 不寫 A 的 payloadRevision／payloadDigest（Rules 允許兩者都不帶）；冪等改由「id 固定＋已存在即視為成功」保證
+ * （2026-10-19 Fable 建議：取代 A 用雜湊偵測重試的做法）。
+ */
+export function newEventId(ctx: CreateEventContext): string {
+  const eventId = ctx.generateId('ce_');
+  if (!EVENT_ID_PATTERN.test(eventId)) {
+    throw new EventCreateError('INVALID_ID', `Generated ID does not match Rules pattern: ${eventId}`);
+  }
+  return eventId;
+}
+
+/**
+ * 建立活動（R-ID-007：events.doc(eventId)，不用 add）。以 transaction 做 create 語意：
+ * 文件不存在才寫入；已存在且是本人建立的（前一次送出其實成功、只是回應沒收到）→ 視為成功，回傳既有文件。
+ */
+export async function createEvent(
+  form: CreateEventForm,
+  ctx: CreateEventContext,
+  eventId: string,
+): Promise<{
+  eventId: string;
+  payload: EventCreatePayload;
+  alreadyExisted: boolean;
+  addonsStripped: boolean;
+}> {
+  if (!EVENT_ID_PATTERN.test(eventId)) {
+    throw new EventCreateError('INVALID_ID', `Event ID does not match Rules pattern: ${eventId}`);
+  }
+  const payload = buildCreateEventPayload(form, ctx, eventId);
+  const [{ doc, runTransaction, serverTimestamp }, { db }] = await Promise.all([
+    import('firebase/firestore'),
+    getFirebase(),
+  ]);
+  const ref = doc(db, 'events', eventId);
+  const alreadyExisted = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists()) {
+      const existing = snap.data() as { creatorUid?: unknown };
+      if (existing.creatorUid !== ctx.uid) {
+        throw new EventCreateError('ID_TAKEN', `Event ID already used by another creator: ${eventId}`);
+      }
+      return true;
+    }
+    tx.set(ref, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    return false;
+  });
+  return {
+    eventId,
+    payload,
+    alreadyExisted,
+    addonsStripped: applyAddonGate(form, ctx, null).stripped,
+  };
+}
+
+export async function updateEventBasics(
+  existing: EventForEdit,
+  form: CreateEventForm,
+  ctx: CreateEventContext,
+): Promise<EditResult> {
+  const result = buildEditEventUpdates(existing, form, ctx);
+  const { updates, capacityChange } = result;
+
+  if (Object.keys(updates).length > 0) {
+    const [{ doc, updateDoc, serverTimestamp }, { db }] = await Promise.all([
+      import('firebase/firestore'),
+      getFirebase(),
+    ]);
+    await updateDoc(doc(db, 'events', existing.id), {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  if (capacityChange !== null) {
+    await callAdjustEventCapacity({ eventId: existing.id, newMax: capacityChange });
+  }
+
+  return result;
+}
+
+export async function changeEventCapacity(
+  eventId: string,
+  newMax: number,
+): Promise<AdjustEventCapacityResponse> {
+  return callAdjustEventCapacity({ eventId, newMax });
+}
+
+// TODO(B-1)：課程連結活動編輯（updateCourseLinkedEvent Callable）本版不做。

@@ -191,3 +191,33 @@ export function canManageEvent(context: OperateContext, event: EventInput): bool
   // A 在 event 為空時仍可能因 edit_all 回 true，刻意保留。
   return canManageAll(context) || isScoped(context, event);
 }
+
+/** A `_canManageAllActivities`：跨全活動總開關（R-IAM-004）。 */
+export function canManageAllActivities(context: OperateContext): boolean {
+  return ready(context) && canManageAll(context);
+}
+
+/** A `_canManageEventDelegates(e)`；event 為 null 代表建立中的新活動。 */
+export function canManageEventDelegates(context: OperateContext, event: EventInput): boolean {
+  if (!ready(context)) return false;
+  if (event && !canOperatePrivate(context, event)) return false;
+  if (event && !isOwner(context, event) && !canManageAll(context)) return false;
+  if (canManageAll(context) || hasActivityManageEntry(context)) return true;
+  return roleKey(context) === 'user'
+    && (!event || isOwner(context, event))
+    && hasUserActivityCapability(context, 'user.activity.delegate_assign');
+}
+
+/** A `_canUseActivityAddons(e)`；event 為 null 代表建立中的新活動。 */
+export function canUseActivityAddons(context: OperateContext, event: EventInput): boolean {
+  if (!ready(context)) return false;
+  if (event && !canOperatePrivate(context, event)) return false;
+  if (canManageAll(context)) return true;
+  const entryOrTeamCreate = hasActivityManageEntry(context)
+    || permissionChecker(context)('team.create_event');
+  if (event && entryOrTeamCreate) return isScoped(context, event);
+  if (!event && entryOrTeamCreate) return true;
+  if (roleKey(context) !== 'user') return false;
+  if (!hasUserActivityCapability(context, 'user.activity.addons_use')) return false;
+  return !event || isOwner(context, event);
+}

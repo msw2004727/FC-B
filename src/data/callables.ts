@@ -12,6 +12,8 @@
 import type { Functions } from 'firebase/functions';
 
 import type {
+  AdjustEventCapacityRequest,
+  AdjustEventCapacityResponse,
   AdjustTeamReservationRequest,
   AdjustTeamReservationResponse,
   AdminManageUserRequest,
@@ -121,6 +123,7 @@ import { getFirebase, shouldUseEmulator } from './firebase';
 // ── 名稱 → request/response 型別映射 ─────────────────
 
 export interface CallableMap {
+  adjustEventCapacity: { req: AdjustEventCapacityRequest; res: AdjustEventCapacityResponse };
   adjustTeamReservation: { req: AdjustTeamReservationRequest; res: AdjustTeamReservationResponse };
   adminManageUser: { req: AdminManageUserRequest; res: AdminManageUserResponse };
   approveCourseEnrollment: { req: ApproveCourseEnrollmentRequest; res: ApproveCourseEnrollmentResponse };
