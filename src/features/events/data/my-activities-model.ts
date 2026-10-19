@@ -5,7 +5,7 @@ import type { ViewerView } from '@/features/profile/data/viewer';
 import { operateContextFromViewer } from './event-create-context';
 import { canManageAllActivities } from './operate-permissions';
 import { parseEventDateRange } from './terminal';
-import { eventCapacity } from './presentation';
+import { isEventTrulyFull } from './participant-stats';
 import type { EventDoc } from './types';
 import { canListPrivateEvent, isEventDelegate, isEventOwner } from './visibility';
 
@@ -64,7 +64,7 @@ export function filterManageableEvents(
  * A `renderMyActivities` 先跑 `_autoEndExpiredEvents()`（只改本機快取、不寫資料庫），
  * 分頁再用同步後的 status。這裡照 A `_getEventEffectiveStatus` 算出畫面用的有效狀態：
  * 已取消／已結束照舊；開始時間已過＝已結束；報名開放時間在未來＝即將開放；否則看是否額滿。
- * 額滿判斷用 `eventCapacity`（current ≥ max），與 A `_isEventTrulyFull` 的報名投影計算可能略有差異。
+ * 額滿判斷照 A `_isEventTrulyFull`（共用 participant-stats）。
  */
 export function effectiveEventStatus(event: EventDoc, nowMs: number = Date.now()): string {
   if (event.status === 'cancelled') return 'cancelled';
@@ -76,10 +76,8 @@ export function effectiveEventStatus(event: EventDoc, nowMs: number = Date.now()
     const regOpenMs = new Date(regOpenRaw).getTime();
     if (!Number.isNaN(regOpenMs) && regOpenMs > nowMs) return 'upcoming';
   }
-  const capacity = eventCapacity(event);
-  return capacity.max !== null && capacity.max > 0 && capacity.current !== null && capacity.current >= capacity.max
-    ? 'full'
-    : 'open';
+  // A `_isEventTrulyFull(event)`：列表沒有該活動的報名名單，等同 A 未從伺服器抓過名單時的投影計算（realCurrent／current＋保留席）。
+  return isEventTrulyFull(event, []) ? 'full' : 'open';
 }
 
 // A `_parseEventStartDate(e?.date)`：只讀 `date`；無法解析回傳 `Number.MAX_SAFE_INTEGER`。

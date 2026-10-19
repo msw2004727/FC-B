@@ -196,6 +196,47 @@
     "loadError": "활동을 불러올 수 없습니다. 다시 시도해 주세요.",
     "retry": "다시 시도",
     "permissionDenied": "권한 부족",
-    "permissionDeniedBody": "활동 관리 페이지에 접근할 권한이 없습니다."
+    "permissionDeniedBody": "활동 관리 페이지에 접근할 권한이 없습니다.",
+    "cancelBtn": "취소",
+    "reopenBtn": "다시 열기",
+    "relistBtn": "재게시",
+    "deleteBtn": "삭제",
+    "lifecycle": {
+      "confirmCancel": "이 활동을 취소하시겠습니까?",
+      "confirmReopen": "이 활동을 다시 여시겠습니까?",
+      "confirmRelist": "이 활동을 재게시하시겠습니까?\n신청 명단과 대기 명단은 유지됩니다.",
+      "doneCancel": "활동이 취소되었습니다",
+      "doneReopen": "활동이 다시 열렸습니다",
+      "doneRelist": "활동이 재게시되었습니다",
+      "courseLinked": "강좌에서 만든 활동은 강좌 관리에서 처리하세요. 여기서는 취소, 종료, 삭제, 다시 열기를 할 수 없습니다.",
+      "notAllowed": "본인의 활동만 관리할 수 있습니다",
+      "startPassedReopen": "활동 시간이 지났습니다. 활동을 수정해 시간을 바꾼 뒤 다시 여세요.",
+      "startPassedRelist": "활동 시간이 지났습니다. 활동을 수정해 시간을 바꾼 뒤 재게시하세요.",
+      "failCancel": "취소에 실패했습니다. 다시 시도하세요",
+      "failReopen": "다시 열기에 실패했습니다. 다시 시도하세요",
+      "failRelist": "재게시에 실패했습니다. 다시 시도하세요",
+      "deleteInLegacy": "새 버전에서는 아직 활동을 삭제할 수 없습니다. 이전 버전에서 삭제하시겠습니까?"
+    }
+  },
+  "roster": {
+    "title": "신청 명단（{count}/{max}）",
+    "checkin": "체크인",
+    "checkout": "체크아웃",
+    "note": "비고",
+    "empty": "아직 신청자가 없습니다",
+    "reservedSeat": "예약석",
+    "proxyOnly": "대리 신청만",
+    "courseRollcall": "수업에서 출석 확인",
+    "generalSection": "일반 신청",
+    "clubBadge": "클",
+    "reservedSlots": "배정: {count}",
+    "usedSlots": "사용: {count}",
+    "remainingSlots": "잔여: {count}",
+    "waitlistTitle": "대기 명단（{count}）",
+    "waitlistNumber": "#",
+    "waitlistName": "이름",
+    "orphanPrefix": "↳ 신청자: {name}（",
+    "orphanConfirmed": "확정됨",
+    "orphanSuffix": "）"
   }
 }

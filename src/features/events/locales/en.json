@@ -199,6 +199,47 @@
     "loadError": "Unable to load activities. Please try again.",
     "retry": "Retry",
     "permissionDenied": "Insufficient Permissions",
-    "permissionDeniedBody": "You do not have permission to access the activity management page."
+    "permissionDeniedBody": "You do not have permission to access the activity management page.",
+    "cancelBtn": "Cancel",
+    "reopenBtn": "Reopen",
+    "relistBtn": "Relist",
+    "deleteBtn": "Delete",
+    "lifecycle": {
+      "confirmCancel": "Cancel this activity?",
+      "confirmReopen": "Reopen this activity?",
+      "confirmRelist": "Relist this activity?\nThe registration and waitlist will be kept.",
+      "doneCancel": "Activity cancelled",
+      "doneReopen": "Activity reopened",
+      "doneRelist": "Activity relisted",
+      "courseLinked": "Activities created from a course must be managed in course management; they cannot be cancelled, ended, deleted or reopened here.",
+      "notAllowed": "You can only manage your own activities",
+      "startPassedReopen": "The activity time has passed. Edit the activity and update its time before reopening.",
+      "startPassedRelist": "The activity time has passed. Edit the activity and update its time before relisting.",
+      "failCancel": "Cancel failed, please try again",
+      "failReopen": "Reopen failed, please try again",
+      "failRelist": "Relist failed, please try again",
+      "deleteInLegacy": "Deleting activities is not available in the new version yet. Go to the old version to delete it?"
+    }
+  },
+  "roster": {
+    "title": "Registered ({count}/{max})",
+    "checkin": "Check in",
+    "checkout": "Check out",
+    "note": "Note",
+    "empty": "No registrations yet",
+    "reservedSeat": "Reserved seat",
+    "proxyOnly": "Proxy only",
+    "courseRollcall": "Check in via course",
+    "generalSection": "General registration",
+    "clubBadge": "C",
+    "reservedSlots": "Reserved: {count}",
+    "usedSlots": "Used: {count}",
+    "remainingSlots": "Remaining: {count}",
+    "waitlistTitle": "Waitlist ({count})",
+    "waitlistNumber": "#",
+    "waitlistName": "Name",
+    "orphanPrefix": "↳ Registrant: {name} (",
+    "orphanConfirmed": "Confirmed",
+    "orphanSuffix": ")"
   }
 }

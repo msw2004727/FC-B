@@ -256,6 +256,47 @@
     "loadError": "無法載入活動，請重試。",
     "retry": "重試",
     "permissionDenied": "權限不足",
-    "permissionDeniedBody": "您沒有權限存取活動管理頁面。"
+    "permissionDeniedBody": "您沒有權限存取活動管理頁面。",
+    "cancelBtn": "取消",
+    "reopenBtn": "重新開放",
+    "relistBtn": "上架",
+    "deleteBtn": "刪除",
+    "lifecycle": {
+      "confirmCancel": "確定要取消此活動？",
+      "confirmReopen": "確定要重新開放此活動？",
+      "confirmRelist": "確定要重新上架此活動？\n報名名單與候補名單將會保留。",
+      "doneCancel": "活動已取消",
+      "doneReopen": "活動已重新開放",
+      "doneRelist": "活動已重新上架",
+      "courseLinked": "課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放",
+      "notAllowed": "您只能管理自己的活動",
+      "startPassedReopen": "活動時間已過，請先編輯活動並更新時間後再重新開放。",
+      "startPassedRelist": "活動時間已過，請先編輯活動並更新時間後再上架。",
+      "failCancel": "取消失敗，請重試",
+      "failReopen": "重新開放失敗，請重試",
+      "failRelist": "重新上架失敗，請重試",
+      "deleteInLegacy": "新版暫不提供刪除活動，要前往舊版刪除嗎？"
+    }
+  },
+  "roster": {
+    "title": "報名名單（{count}/{max}）",
+    "checkin": "簽到",
+    "checkout": "簽退",
+    "note": "備註",
+    "empty": "尚無報名",
+    "reservedSeat": "保留席位",
+    "proxyOnly": "僅代報",
+    "courseRollcall": "請至課程點名",
+    "generalSection": "一般報名",
+    "clubBadge": "俱",
+    "reservedSlots": "佔位: {count}",
+    "usedSlots": "已使用: {count}",
+    "remainingSlots": "剩餘: {count}",
+    "waitlistTitle": "候補名單（{count}）",
+    "waitlistNumber": "#",
+    "waitlistName": "姓名",
+    "orphanPrefix": "↳ 報名人：{name}（",
+    "orphanConfirmed": "已正取",
+    "orphanSuffix": "）"
   }
 }

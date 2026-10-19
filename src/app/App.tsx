@@ -16,6 +16,7 @@ import { BottomNav } from '@/ui/BottomNav';
 import { SideDrawer } from '@/ui/SideDrawer';
 import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
+import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
@@ -245,6 +246,7 @@ export function App({
       />
       {gateState === true && <ViewerAccessBridge onChange={setRouteAccess} />}
       <ToastHost />
+      <AppConfirmHost />
     </LocationProvider>
   );
 }

@@ -1,0 +1,70 @@
+/* 照 A css/base.css 的 .app-confirm-*（數值照搬，色彩對應 tokens） */
+.app-confirm-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  z-index: 1300;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-confirm-overlay.open {
+  display: flex;
+}
+
+.app-confirm-box {
+  background: var(--color-bg-surface);
+  border-radius: 14px;
+  padding: 1.5rem 1.3rem 1.2rem;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  animation: app-confirm-pop-in 0.2s ease;
+}
+
+.app-confirm-msg {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 1.2rem;
+  color: var(--color-text-primary);
+  white-space: pre-line;
+}
+
+.app-confirm-btns {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.app-confirm-btns button {
+  flex: 1;
+  min-height: 44px;
+  padding: 0.55rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.app-confirm-cancel {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.app-confirm-ok {
+  background: var(--color-brand);
+  color: var(--color-brand-fg);
+}
+
+@keyframes app-confirm-pop-in {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-confirm-box { animation: none; }
+}

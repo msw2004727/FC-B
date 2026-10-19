@@ -241,6 +241,15 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/* A：取消／刪除用 var(--danger)，重新開放／上架用 var(--success) */
+.my-activity-btn--danger.ui-button {
+  color: var(--color-danger);
+}
+
+.my-activity-btn--success.ui-button {
+  color: var(--color-success);
+}
+
 .my-activity-empty {
   padding: var(--space-4);
   font-size: var(--font-size-body-sm);

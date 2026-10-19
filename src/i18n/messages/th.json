@@ -14,6 +14,7 @@
   "common.loading": "กำลังโหลด…",
   "common.retry": "ลองอีกครั้ง",
   "common.cancel": "ยกเลิก",
+  "common.ok": "ตกลง",
   "common.error": "เกิดข้อผิดพลาด",
   "common.count": "{count} รายการ",
   "common.count.one": "{count} รายการ",

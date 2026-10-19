@@ -14,6 +14,7 @@
   "common.loading": "載入中…",
   "common.retry": "重新嘗試",
   "common.cancel": "取消",
+  "common.ok": "確定",
   "common.error": "發生錯誤",
   "common.count": "共 {count} 項",
   "common.count.one": "共 {count} 項",

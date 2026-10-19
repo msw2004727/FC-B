@@ -198,6 +198,47 @@
     "loadError": "Không thể tải hoạt động, vui lòng thử lại.",
     "retry": "Thử lại",
     "permissionDenied": "Không đủ quyền",
-    "permissionDeniedBody": "Bạn không có quyền truy cập trang quản lý hoạt động."
+    "permissionDeniedBody": "Bạn không có quyền truy cập trang quản lý hoạt động.",
+    "cancelBtn": "Hủy",
+    "reopenBtn": "Mở lại",
+    "relistBtn": "Đăng lại",
+    "deleteBtn": "Xóa",
+    "lifecycle": {
+      "confirmCancel": "Hủy hoạt động này?",
+      "confirmReopen": "Mở lại hoạt động này?",
+      "confirmRelist": "Đăng lại hoạt động này?\nDanh sách đăng ký và danh sách chờ sẽ được giữ nguyên.",
+      "doneCancel": "Đã hủy hoạt động",
+      "doneReopen": "Đã mở lại hoạt động",
+      "doneRelist": "Đã đăng lại hoạt động",
+      "courseLinked": "Hoạt động tạo từ khóa học phải quản lý trong phần khóa học; không thể hủy, kết thúc, xóa hay mở lại tại đây.",
+      "notAllowed": "Bạn chỉ có thể quản lý hoạt động của mình",
+      "startPassedReopen": "Đã qua thời gian hoạt động. Hãy sửa hoạt động và cập nhật thời gian trước khi mở lại.",
+      "startPassedRelist": "Đã qua thời gian hoạt động. Hãy sửa hoạt động và cập nhật thời gian trước khi đăng lại.",
+      "failCancel": "Hủy thất bại, vui lòng thử lại",
+      "failReopen": "Mở lại thất bại, vui lòng thử lại",
+      "failRelist": "Đăng lại thất bại, vui lòng thử lại",
+      "deleteInLegacy": "Phiên bản mới chưa hỗ trợ xóa hoạt động. Chuyển sang phiên bản cũ để xóa?"
+    }
+  },
+  "roster": {
+    "title": "Danh sách đăng ký ({count}/{max})",
+    "checkin": "Điểm danh",
+    "checkout": "Ra về",
+    "note": "Ghi chú",
+    "empty": "Chưa có đăng ký",
+    "reservedSeat": "Chỗ giữ trước",
+    "proxyOnly": "Chỉ đăng ký hộ",
+    "courseRollcall": "Điểm danh tại khóa học",
+    "generalSection": "Đăng ký chung",
+    "clubBadge": "CLB",
+    "reservedSlots": "Giữ chỗ: {count}",
+    "usedSlots": "Đã dùng: {count}",
+    "remainingSlots": "Còn lại: {count}",
+    "waitlistTitle": "Danh sách chờ ({count})",
+    "waitlistNumber": "#",
+    "waitlistName": "Họ tên",
+    "orphanPrefix": "↳ Người đăng ký: {name} (",
+    "orphanConfirmed": "Đã chính thức",
+    "orphanSuffix": ")"
   }
 }

@@ -33,11 +33,16 @@ export function resolveCreatorName(
 ): string {
   // A：`if (user && user.displayName) return user.displayName;`（不 trim）
   if (displayName) return displayName;
+  return roleLabelOf(role, customRoles) ?? '一般用戶';
+}
+
+/** A `ROLES[role]?.label`：內建角色中文名，或自訂角色 label（缺時用 key）；找不到回 null。 */
+export function roleLabelOf(role: string, customRoles: readonly CustomRole[] = []): string | null {
   if (Object.prototype.hasOwnProperty.call(BASE_ROLE_LABELS, role)) return BASE_ROLE_LABELS[role]!;
   // A 的 ROLES Proxy：自訂角色 label 缺時用 key（normalizeCustomRoles）
   const custom = customRoles.find((item) => item.key === role);
   if (custom) return custom.label || custom.key;
-  return '一般用戶';
+  return null;
 }
 
 /** A `bindRegionToggle`：只有後台用戶管理／後台入口權限者看得到地區開關，其他人一律開啟。 */
