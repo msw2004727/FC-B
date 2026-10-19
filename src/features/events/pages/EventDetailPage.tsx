@@ -10,6 +10,7 @@ import { DateTime } from '@/ui/DateTime';
 import { UserTag } from '@/ui/UserTag';
 import { Toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
+import { useUserRoles } from '@/data/user-roles';
 import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
@@ -288,6 +289,22 @@ function EventDetailSession({
     isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
   const event = snapshot?.event;
   const active = sortRegistrations(snapshot?.registrations ?? []);
+
+  // 收集頁面上會出現的所有 UserTag uid，一次查角色（R-ID-002：只用 UID）。
+  const roleUids: string[] = [];
+  if (event) {
+    if (event.creatorUid) roleUids.push(event.creatorUid);
+    for (const person of guestEventPeople(event, 'participants')) roleUids.push(person.uid);
+    for (const person of guestEventPeople(event, 'waitlistNames')) roleUids.push(person.uid);
+  }
+  for (const reg of active) {
+    if (isCompanion(reg)) continue;
+    const owner = registrationOwner(reg);
+    if (owner) roleUids.push(owner);
+  }
+  // 訪客不能讀 users（Rules isAuth），不查。
+  const roles = useUserRoles(viewer.uid ? roleUids : []);
+
   const eventId = event?.id ?? publicId;
   // 名單載入中或失敗時，可用已讀到的本人歷史維持原本報名按鈕狀態。
   // 不使用活動文件的公開姓名陣列推導本人報名。
@@ -413,7 +430,7 @@ function EventDetailSession({
           <ul class="event-detail__roster">
             {people.map((person, index) => (
               <li key={`${status}:${index}:${person.uid}`}>
-                <UserTag uid={person.uid} name={person.name}
+                <UserTag uid={person.uid} name={person.name} role={roles[person.uid]}
                   disabled={!person.uid} onOpenProfile={profile} />
               </li>
             ))}
@@ -437,6 +454,7 @@ function EventDetailSession({
                 {status === 'waitlisted' && <Text>{index + 1}</Text>}
                 <UserTag
                   uid={isCompanion(reg) ? '' : registrationOwner(reg)}
+                  role={roles[isCompanion(reg) ? '' : registrationOwner(reg)]}
                   name={name(reg)}
                   disabled={isCompanion(reg) || !registrationOwner(reg)}
                   onOpenProfile={profile}
@@ -571,7 +589,7 @@ function EventDetailSession({
 
         <div class="event-detail__row event-detail__host">
           <Text class="event-detail__label">{t('events.detailPage.host')}</Text>
-          <UserTag uid={hostUid}
+          <UserTag uid={hostUid} role={roles[hostUid]}
             name={event.creator || event.creatorName || t('events.detailPage.unnamed')}
             disabled={!hostUid} onOpenProfile={profile} />
         </div>

@@ -462,3 +462,20 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* A `region-shake`：取消最後一個縣市時晃動提示（至少保留一個）。 */
+@keyframes ce-region-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.ce-region-cities--shake {
+  animation: ce-region-shake 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ce-region-cities--shake {
+    animation: none;
+  }
+}

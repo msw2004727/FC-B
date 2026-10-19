@@ -118,21 +118,20 @@
     "timeSummaryWithDate": "選択した時間：{date} {start} ～ {end}",
     "regOpenLabel": "申込開始時間",
     "regOpenImmediateStatus": "作成後すぐに受付開始",
-    "regOpenScheduledStatus": "申込開始時間を指定",
+    "regOpenScheduledStatus": "受付開始時刻を指定",
     "regOpenDateLabel": "開始日",
     "regOpenDatePlaceholder": "申込開始日",
     "regOpenTimeLabel": "開始時間",
     "regOpenTimePlaceholder": "申込開始時間",
     "regOpenSummaryImmediate": "申込開始：作成後すぐに受付開始",
-    "regOpenSummaryScheduled": "申込開始：{date} {time}",
-    "regOpenSummaryPending": "申込開始：開始日時を選択してください",
+    "regOpenSummaryScheduled": "受付開始：{date} {time} 以降に申込可能",
+    "regOpenSummaryPending": "受付開始：日付と時刻をすべて選んでください",
     "regOpenHint": "オフの場合は作成後すぐ受付開始、オンにすると開始日時を指定できます。",
     "regOpenEarlyBirdHint": "正式開始前に早期申込を提供するには、「高度な機能」で早期申込を有効にしてください。",
     "maxLabel": "定員",
     "ageLimitLabel": "年齢制限",
     "ageLimitSuffix": "（歳以上、0は無制限）",
     "ageLimitDisabledStatus": "オフ — 年齢制限なし",
-    "ageLimitEnabledStatus": "オン — 最低年齢を制限",
     "ageLimitNote": "オンの場合は最低年齢を入力；オフの場合は0（無制限）として送信されます。",
     "notesLabel": "注意事項",
     "notesSuffix": "（最大500文字）",
@@ -148,7 +147,7 @@
     "visibleInLegacy": "この内部テストイベントは旧版の公開一覧に表示されます",
     "error": {
       "titleRequired": "イベント名を入力してください",
-      "titleTooLong": "イベント名は16文字以内で入力してください",
+      "titleTooLong": "イベント名は {limit} 文字以内で入力してください",
       "locationRequired": "場所を入力してください",
       "dateRequired": "開催日を選択してください",
       "timeRequired": "開始時間と終了時間を選択してください",
@@ -160,7 +159,45 @@
       "regionRequired": "開催地域を選択してください",
       "createNotAllowed": "権限不足：イベント作成権限が必要です",
       "editNotAllowed": "権限不足",
-      "submitFailed": "作成に失敗しました。しばらくしてから再試行してください"
-    }
+      "submitFailed": "作成に失敗しました。しばらくしてから再試行してください",
+      "maxBelowConfirmed": "定員は確定済みの参加者数より少なくできません"
+    },
+    "timeSummaryUnselected": "選択時間：開始と終了の時刻を選んでください（24 時間表記）",
+    "ageLimitEnabledWithAge": "オン — {age} 歳以上",
+    "ageLimitEnabledPending": "オン — 最低年齢を入力してください"
+  },
+  "manage": {
+    "title": "イベント管理",
+    "back": "戻る",
+    "tabsLabel": "イベント管理タブ",
+    "tab": {
+      "all": "すべて",
+      "upcoming": "公開予定",
+      "open": "受付中",
+      "full": "満員",
+      "ended": "終了",
+      "cancelled": "中止"
+    },
+    "status": {
+      "open": "受付中",
+      "full": "満員",
+      "ended": "終了",
+      "upcoming": "公開予定",
+      "cancelled": "中止"
+    },
+    "editBtn": "編集",
+    "pinnedBadge": "固定",
+    "teamOnlyBadge": "限定",
+    "externalLinkLabel": "🔗 外部イベントリンク",
+    "participants": "{current}/{max} 人",
+    "participantsWithWaitlist": "{current}/{max} 人 ・ キャンセル待ち {waitlist}",
+    "emptyCategory": "このカテゴリにはイベントがありません",
+    "loadMoreNote": "{displayed} / {total} 件を表示中",
+    "loadMoreBtn": "もっと見る",
+    "loading": "データ読み込み中",
+    "loadError": "イベントを読み込めませんでした。再試行してください。",
+    "retry": "再試行",
+    "permissionDenied": "権限が不足しています",
+    "permissionDeniedBody": "イベント管理ページにアクセスする権限がありません。"
   }
 }

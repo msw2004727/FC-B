@@ -117,21 +117,20 @@
     "timeSummaryWithDate": "เวลาที่เลือก: {date} {start} ～ {end}",
     "regOpenLabel": "เวลาเปิดรับสมัคร",
     "regOpenImmediateStatus": "เปิดรับสมัครทันที",
-    "regOpenScheduledStatus": "กำหนดเวลาเปิดรับสมัคร",
+    "regOpenScheduledStatus": "กำหนดเวลาเปิด",
     "regOpenDateLabel": "วันที่เปิด",
     "regOpenDatePlaceholder": "วันที่เปิดรับสมัคร",
     "regOpenTimeLabel": "เวลาเปิด",
     "regOpenTimePlaceholder": "เวลาเปิดรับสมัคร",
     "regOpenSummaryImmediate": "การรับสมัคร: เปิดรับสมัครทันทีหลังสร้าง",
-    "regOpenSummaryScheduled": "การรับสมัคร: {date} {time}",
-    "regOpenSummaryPending": "การรับสมัคร: กรุณาเลือกวันและเวลาเปิดรับสมัคร",
+    "regOpenSummaryScheduled": "เปิดรับสมัคร: ตั้งแต่ {date} {time}",
+    "regOpenSummaryPending": "เปิดรับสมัคร: โปรดเลือกวันและเวลาให้ครบ",
     "regOpenHint": "เมื่อปิดจะเปิดรับสมัครทันทีหลังสร้าง เมื่อเปิดสามารถกำหนดวันและเวลาเปิดได้",
     "regOpenEarlyBirdHint": "หากต้องการเปิดรับสมัครล่วงหน้าก่อนเวลาจริง โปรดไปที่ฟีเจอร์ขั้นสูงเพื่อตั้งค่า",
     "maxLabel": "จำนวนคนสูงสุด",
     "ageLimitLabel": "จำกัดอายุ",
     "ageLimitSuffix": " (ปีขึ้นไป, 0 คือไม่จำกัด)",
     "ageLimitDisabledStatus": "ปิด — ไม่จำกัดอายุ",
-    "ageLimitEnabledStatus": "เปิด — จำกัดอายุขั้นต่ำ",
     "ageLimitNote": "เมื่อเปิดให้กรอกอายุขั้นต่ำ เมื่อปิดจะส่งค่า 0 เพื่อไม่จำกัด",
     "notesLabel": "หมายเหตุ",
     "notesSuffix": " (สูงสุด 500 ตัวอักษร)",
@@ -147,7 +146,7 @@
     "visibleInLegacy": "กิจกรรมทดสอบภายในนี้สามารถมองเห็นได้ในรายการสาธารณะของเวอร์ชันเก่า",
     "error": {
       "titleRequired": "กรุณากรอกชื่อกิจกรรม",
-      "titleTooLong": "ชื่อต้องไม่เกิน 16 ตัวอักษร",
+      "titleTooLong": "ชื่อกิจกรรมต้องไม่เกิน {limit} ตัวอักษร",
       "locationRequired": "กรุณากรอกสถานที่",
       "dateRequired": "กรุณาเลือกวันที่จัดกิจกรรม",
       "timeRequired": "กรุณาเลือกเวลาเริ่มและเวลาสิ้นสุด",
@@ -159,7 +158,45 @@
       "regionRequired": "กรุณาเลือกภูมิภาคกิจกรรม",
       "createNotAllowed": "สิทธิ์ไม่เพียงพอ: ต้องมีสิทธิ์สร้างกิจกรรม",
       "editNotAllowed": "สิทธิ์ไม่เพียงพอ",
-      "submitFailed": "สร้างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
-    }
+      "submitFailed": "สร้างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      "maxBelowConfirmed": "จำนวนที่รับต้องไม่น้อยกว่าจำนวนผู้ที่ยืนยันแล้ว"
+    },
+    "timeSummaryUnselected": "เวลาที่เลือก: โปรดเลือกเวลาเริ่มและเวลาสิ้นสุด (แบบ 24 ชั่วโมง)",
+    "ageLimitEnabledWithAge": "เปิด — อายุ {age} ปีขึ้นไป",
+    "ageLimitEnabledPending": "เปิด — โปรดกรอกอายุขั้นต่ำ"
+  },
+  "manage": {
+    "title": "จัดการกิจกรรม",
+    "back": "ย้อนกลับ",
+    "tabsLabel": "แท็บจัดการกิจกรรม",
+    "tab": {
+      "all": "ทั้งหมด",
+      "upcoming": "กำลังจะเปิด",
+      "open": "เปิดรับสมัคร",
+      "full": "เต็มแล้ว",
+      "ended": "สิ้นสุดแล้ว",
+      "cancelled": "ยกเลิกแล้ว"
+    },
+    "status": {
+      "open": "เปิดรับสมัคร",
+      "full": "เต็มแล้ว",
+      "ended": "สิ้นสุดแล้ว",
+      "upcoming": "กำลังจะเปิด",
+      "cancelled": "ยกเลิกแล้ว"
+    },
+    "editBtn": "แก้ไข",
+    "pinnedBadge": "ปักหมุด",
+    "teamOnlyBadge": "จำกัดเฉพาะทีม",
+    "externalLinkLabel": "🔗 ลิงก์กิจกรรมภายนอก",
+    "participants": "{current}/{max} คน",
+    "participantsWithWaitlist": "{current}/{max} คน ・ สำรอง {waitlist}",
+    "emptyCategory": "ไม่มีกิจกรรมในหมวดหมู่นี้",
+    "loadMoreNote": "แสดงแล้ว {displayed} / {total}",
+    "loadMoreBtn": "ดูเพิ่มเติม",
+    "loading": "กำลังโหลดข้อมูล",
+    "loadError": "ไม่สามารถโหลดกิจกรรมได้ โปรดลองอีกครั้ง",
+    "retry": "ลองอีกครั้ง",
+    "permissionDenied": "สิทธิ์ไม่เพียงพอ",
+    "permissionDeniedBody": "คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการกิจกรรม"
   }
 }

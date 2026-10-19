@@ -321,7 +321,7 @@ async function runBestEffort(
 async function deliverInboxMessage(
   targetUid: string,
   input: BuildInboxMessageInput,
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, unknown> | null> {
   const extra: InboxDeliveryExtra = {};
   if (input.actionType != null) extra.actionType = input.actionType;
   if (input.actionStatus != null) extra.actionStatus = input.actionStatus;

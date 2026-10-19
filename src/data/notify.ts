@@ -277,7 +277,7 @@ export async function sendTemplateNotification(
   const categoryName = input.categoryName || '系統';
 
   // 2. 收件匣（A `_deliverMessageToInbox`）：失敗只 warn。
-  let deliveredMsg: Record<string, unknown>;
+  let deliveredMsg: Record<string, unknown> | null;
   try {
     deliveredMsg = await deliverInboxMessage({
       title,
@@ -293,6 +293,14 @@ export async function sendTemplateNotification(
     // eslint-disable-next-line no-console
     console.warn('[notify] deliverInboxMessage failed', err);
     return { delivered: false, linePushed: false };
+  }
+
+  // A `_deliverMessageWithLinePush`：收件匣略過（5 秒內重複）就不推 LINE。
+  if (!deliveredMsg) return { delivered: false, linePushed: false, reason: 'duplicate' };
+
+  // A `_queueLinePush`：uid／category／title／body 任一空白就不推。
+  if (!input.targetUid || !category || !title || !body) {
+    return { delivered: true, linePushed: false, reason: 'line_incomplete' };
   }
 
   // 3. LINE（A `_deliverMessageWithLinePush`＋`_queueLinePush`）：

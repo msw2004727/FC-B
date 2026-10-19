@@ -176,21 +176,20 @@
     "timeSummaryWithDate": "已選時間：{date} {start} ～ {end}",
     "regOpenLabel": "開放報名時間",
     "regOpenImmediateStatus": "立即開放報名",
-    "regOpenScheduledStatus": "指定開放報名時間",
+    "regOpenScheduledStatus": "指定開放時間",
     "regOpenDateLabel": "開放日期",
     "regOpenDatePlaceholder": "報名開放日期",
     "regOpenTimeLabel": "開放時間",
     "regOpenTimePlaceholder": "報名開放時間",
     "regOpenSummaryImmediate": "報名開放：建立後立即開放報名",
-    "regOpenSummaryScheduled": "報名開放：{date} {time}",
-    "regOpenSummaryPending": "報名開放：請選擇開放日期與時間",
+    "regOpenSummaryScheduled": "報名開放：{date} {time} 後可報名",
+    "regOpenSummaryPending": "報名開放：請選擇完整的開放日期與時間",
     "regOpenHint": "關閉時建立後立即開放報名；開啟後可指定開放日期與時間。",
     "regOpenEarlyBirdHint": "如需在正式開放前提供早鳥報名，請到「進階功能」開啟早鳥報名並設定消耗積分。",
     "maxLabel": "人數上限",
     "ageLimitLabel": "年齡限制",
     "ageLimitSuffix": "（歲以上，0 為不限）",
     "ageLimitDisabledStatus": "關閉 — 不限制年齡",
-    "ageLimitEnabledStatus": "開啟 — 限制最低年齡",
     "ageLimitNote": "開啟後填寫最低年齡；關閉送出 0 表示不限。",
     "notesLabel": "注意事項",
     "notesSuffix": "（上限 500 字）",
@@ -206,7 +205,7 @@
     "visibleInLegacy": "此內測活動在舊版公開列表看得到",
     "error": {
       "titleRequired": "請輸入活動名稱",
-      "titleTooLong": "名稱不可超過 16 字",
+      "titleTooLong": "活動名稱不可超過 {limit} 字",
       "locationRequired": "請輸入地點",
       "dateRequired": "請選擇活動日期",
       "timeRequired": "請選擇開始與結束時間",
@@ -218,7 +217,45 @@
       "regionRequired": "請選擇活動地區",
       "createNotAllowed": "權限不足：需要建立活動權限",
       "editNotAllowed": "權限不足",
-      "submitFailed": "建立失敗，請稍後再試"
-    }
+      "submitFailed": "建立失敗，請稍後再試",
+      "maxBelowConfirmed": "名額不可小於已正取人數"
+    },
+    "timeSummaryUnselected": "已選時間：請選擇開始與結束時間（24 小時制）",
+    "ageLimitEnabledWithAge": "已開啟 — {age} 歲以上",
+    "ageLimitEnabledPending": "已開啟 — 請填最低年齡"
+  },
+  "manage": {
+    "title": "活動管理",
+    "back": "返回",
+    "tabsLabel": "活動管理分頁",
+    "tab": {
+      "all": "全部",
+      "upcoming": "即將開放",
+      "open": "報名中",
+      "full": "已額滿",
+      "ended": "已結束",
+      "cancelled": "已取消"
+    },
+    "status": {
+      "open": "報名中",
+      "full": "已額滿",
+      "ended": "已結束",
+      "upcoming": "即將開放",
+      "cancelled": "已取消"
+    },
+    "editBtn": "編輯",
+    "pinnedBadge": "置頂",
+    "teamOnlyBadge": "限定",
+    "externalLinkLabel": "🔗 外部活動連結",
+    "participants": "{current}/{max} 人",
+    "participantsWithWaitlist": "{current}/{max} 人 ・ 候補 {waitlist}",
+    "emptyCategory": "此分類沒有活動",
+    "loadMoreNote": "已顯示 {displayed} / {total}",
+    "loadMoreBtn": "查看更多",
+    "loading": "資料載入中",
+    "loadError": "無法載入活動，請重試。",
+    "retry": "重試",
+    "permissionDenied": "權限不足",
+    "permissionDeniedBody": "您沒有權限存取活動管理頁面。"
   }
 }

@@ -59,7 +59,8 @@ describe('event-form-model', () => {
         makeValidState({ title: '一二三四五六七八九十十一十二十三十四十五十六十七' }),
         FIXED_NOW,
       );
-      expect(res).toEqual({ ok: false, messageKey: 'events.form.error.titleTooLong' });
+      // 測試同步更新（R-QA-005）：照 A「活動名稱不可超過 N 字」帶上限參數。
+      expect(res).toEqual({ ok: false, messageKey: 'events.form.error.titleTooLong', params: { limit: 16 } });
     });
 
     it('3. requires location', () => {
@@ -149,7 +150,8 @@ describe('event-form-model', () => {
     });
   });
 
-  it('defaults cities to all cities in selected region when cities array is empty', () => {
+  // 測試同步更新（R-QA-005）：A `_regionGetFormData` 縣市原樣送出、不回填（空縣市由 UI 至少保留一個避免）。
+  it('sends cities as-is like A (no backfill)', () => {
     const state = makeValidState({
       regionEnabled: true,
       region: '南部',
@@ -158,7 +160,7 @@ describe('event-form-model', () => {
     const form = toCreateEventForm(state, '王小明');
     expect(form.regionEnabled).toBe(true);
     expect(form.region).toBe('南部');
-    expect(form.cities).toEqual([...REGION_MAP['南部']!]);
+    expect(form.cities).toEqual([]);
 
     const disabledForm = toCreateEventForm(
       makeValidState({ regionEnabled: false, region: '南部', cities: ['台南市'] }),
@@ -233,7 +235,10 @@ describe('照 A 修正的項目', () => {
 
   it('建立者名稱：暱稱 → 角色名稱（含自訂角色）→ 一般用戶，絕不用 UID', () => {
     expect(resolveCreatorName('小明', 'user')).toBe('小明');
-    expect(resolveCreatorName('  ', 'coach')).toBe('教練');
+    expect(resolveCreatorName('', 'coach')).toBe('教練');
+    // A：displayName 有值就原樣使用（不 trim）
+    expect(resolveCreatorName('  ', 'coach')).toBe('  ');
+    expect(resolveCreatorName(null, 'judge', [{ key: 'judge' }])).toBe('judge');
     expect(resolveCreatorName(null, 'judge', [{ key: 'judge', label: '裁判' }])).toBe('裁判');
     expect(resolveCreatorName(null, 'unknown_role')).toBe('一般用戶');
   });

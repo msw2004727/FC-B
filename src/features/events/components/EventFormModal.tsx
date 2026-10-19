@@ -24,7 +24,8 @@ import {
   type EventStatus,
   type EventType,
 } from '../data/event-create';
-import { createEventContextFromViewer } from '../data/event-create-context';
+import { createEventContextFromViewer, operateContextFromViewer } from '../data/event-create-context';
+import { canManageAllActivities, hasActivityManageEntry } from '../data/operate-permissions';
 import {
   hasEventChangeNotificationDiff,
   loadEventNotifyRecipientUids,
@@ -41,6 +42,8 @@ import {
   type EventFormState,
   canToggleEventRegion,
   resolveCreatorName,
+  LEGACY_FRIENDLY_TYPE_OPTION,
+  parseMinAge,
 } from '../data/event-form-model';
 import { SPORTS } from '../data/sports';
 import type { EventDoc } from '../data/types';
@@ -103,6 +106,7 @@ export function EventFormModal({
   const [submitting, setSubmitting] = useState(false);
   const submitInFlightRef = useRef(false);
   const canToggleRegion = canToggleEventRegion(viewer.hasPermission);
+  const [cityShake, setCityShake] = useState(0);
   const wasOpenRef = useRef(false);
 
   useEffect(() => {
@@ -141,11 +145,14 @@ export function EventFormModal({
 
   const typeOptions = useMemo(
     () =>
-      EVENT_TYPE_OPTIONS.map((opt) => ({
+      [
+        ...EVENT_TYPE_OPTIONS,
+        ...(formState.type === 'friendly' ? [LEGACY_FRIENDLY_TYPE_OPTION] : []),
+      ].map((opt) => ({
         value: opt.value,
         label: t(opt.labelKey),
       })),
-    [t],
+    [t, formState.type],
   );
 
   const regionRadioOptions = useMemo(
@@ -191,8 +198,9 @@ export function EventFormModal({
         if (prev.cities.includes(city)) return prev;
         return { ...prev, cities: [...prev.cities, city] };
       }
-      // 照 A a-region-form.js：至少保留一個勾選
+      // 照 A a-region-form.js：至少保留一個勾選（取消最後一個時晃動提示）
       if (prev.cities.length <= 1) {
+        setCityShake((n) => n + 1);
         return prev;
       }
       return { ...prev, cities: prev.cities.filter((c) => c !== city) };
@@ -200,8 +208,10 @@ export function EventFormModal({
   }
 
   const timeSummaryText = useMemo(() => {
-    const start = formState.startTime || '14:00';
-    const end = formState.endTime || '16:00';
+    const start = formState.startTime;
+    const end = formState.endTime;
+    // A `_updateCreateTimeSummary`：起訖任一未選就提示選擇。
+    if (!start || !end) return t('events.form.timeSummaryUnselected');
     if (formState.dateVal) {
       return t('events.form.timeSummaryWithDate', {
         date: formState.dateVal.replace(/-/g, '/'),
@@ -235,7 +245,7 @@ export function EventFormModal({
     };
     const validation = validateEventForm(stateForValidation, now);
     if (!validation.ok) {
-      toast.show({ message: t(validation.messageKey), tone: 'error' });
+      toast.show({ message: t(validation.messageKey, validation.params), tone: 'error' });
       return;
     }
 
@@ -260,6 +270,17 @@ export function EventFormModal({
       if (mode === 'edit' && existing) {
         const targetId = formState.eventId ?? existing.id ?? existing._docId ?? existing.docId ?? '';
         const existingForEdit = toEventForEdit(existing, targetId);
+        // A：沒有活動管理入口、也不能管理全部活動的主辦方，名額不可小於已正取人數。
+        const opCtx = operateContextFromViewer(viewer);
+        if (
+          !hasActivityManageEntry(opCtx)
+          && !canManageAllActivities(opCtx)
+          && payloadForm.max > 0
+          && payloadForm.max < (existingForEdit.current ?? 0)
+        ) {
+          toast.show({ message: t('events.form.error.maxBelowConfirmed'), tone: 'error' });
+          return;
+        }
         const result = await updateEventBasics(existingForEdit, payloadForm, ctx);
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
@@ -427,7 +448,11 @@ export function EventFormModal({
                 />
               </div>
               {selectedRegionCities.length > 0 && (
-                <div id="ce-region-cities" class="ce-region-cities">
+                <div
+                  id="ce-region-cities"
+                  key={`cities-${cityShake}`}
+                  class={`ce-region-cities${cityShake > 0 ? ' ce-region-cities--shake' : ''}`}
+                >
                   <div class="ce-region-cities-wrap">
                     {selectedRegionCities.map((city) => (
                       <Checkbox
@@ -638,9 +663,11 @@ export function EventFormModal({
               />
               <span id="ce-age-limit-label" class="ce-toggle-status">
                 <Text>
-                  {formState.ageLimitEnabled
-                    ? t('events.form.ageLimitEnabledStatus')
-                    : t('events.form.ageLimitDisabledStatus')}
+                  {!formState.ageLimitEnabled
+                    ? t('events.form.ageLimitDisabledStatus')
+                    : parseMinAge(formState.minAge) > 0
+                      ? t('events.form.ageLimitEnabledWithAge', { age: parseMinAge(formState.minAge) })
+                      : t('events.form.ageLimitEnabledPending')}
                 </Text>
               </span>
             </div>

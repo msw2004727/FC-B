@@ -119,21 +119,20 @@
     "timeSummaryWithDate": "Selected time: {date} {start} ~ {end}",
     "regOpenLabel": "Registration Open Time",
     "regOpenImmediateStatus": "Open immediately",
-    "regOpenScheduledStatus": "Schedule open time",
+    "regOpenScheduledStatus": "Scheduled opening",
     "regOpenDateLabel": "Open Date",
     "regOpenDatePlaceholder": "Registration open date",
     "regOpenTimeLabel": "Open Time",
     "regOpenTimePlaceholder": "Registration open time",
     "regOpenSummaryImmediate": "Registration: Open immediately after creation",
-    "regOpenSummaryScheduled": "Registration opens: {date} {time}",
-    "regOpenSummaryPending": "Registration: Please select open date and time",
+    "regOpenSummaryScheduled": "Registration opens: from {date} {time}",
+    "regOpenSummaryPending": "Registration opens: choose a complete date and time",
     "regOpenHint": "When off, registration opens immediately; turn on to schedule open date and time.",
     "regOpenEarlyBirdHint": "To offer early bird registration before official opening, enable Early Bird in Advanced Options.",
     "maxLabel": "Capacity",
     "ageLimitLabel": "Age Limit",
     "ageLimitSuffix": " (years and above, 0 for no limit)",
     "ageLimitDisabledStatus": "Off — No age limit",
-    "ageLimitEnabledStatus": "On — Minimum age required",
     "ageLimitNote": "Enter minimum age when enabled; 0 is sent when off.",
     "notesLabel": "Notes",
     "notesSuffix": " (max 500 chars)",
@@ -149,7 +148,7 @@
     "visibleInLegacy": "This internal test event is visible on the legacy public list",
     "error": {
       "titleRequired": "Please enter an event title",
-      "titleTooLong": "Title cannot exceed 16 characters",
+      "titleTooLong": "Event name cannot exceed {limit} characters",
       "locationRequired": "Please enter a location",
       "dateRequired": "Please select an event date",
       "timeRequired": "Please select start and end times",
@@ -161,7 +160,45 @@
       "regionRequired": "Please select an event region",
       "createNotAllowed": "Insufficient permission: event creation permission required",
       "editNotAllowed": "Insufficient permission",
-      "submitFailed": "Failed to save event, please try again later"
-    }
+      "submitFailed": "Failed to save event, please try again later",
+      "maxBelowConfirmed": "Capacity cannot be lower than the number of confirmed participants"
+    },
+    "timeSummaryUnselected": "Selected time: choose a start and end time (24-hour)",
+    "ageLimitEnabledWithAge": "On — ages {age} and up",
+    "ageLimitEnabledPending": "On — enter a minimum age"
+  },
+  "manage": {
+    "title": "Activity Management",
+    "back": "Back",
+    "tabsLabel": "Activity management tabs",
+    "tab": {
+      "all": "All",
+      "upcoming": "Upcoming",
+      "open": "Open",
+      "full": "Full",
+      "ended": "Ended",
+      "cancelled": "Cancelled"
+    },
+    "status": {
+      "open": "Open",
+      "full": "Full",
+      "ended": "Ended",
+      "upcoming": "Upcoming",
+      "cancelled": "Cancelled"
+    },
+    "editBtn": "Edit",
+    "pinnedBadge": "Pinned",
+    "teamOnlyBadge": "Team Only",
+    "externalLinkLabel": "🔗 External Activity Link",
+    "participants": "{current}/{max}",
+    "participantsWithWaitlist": "{current}/{max} ・ Waitlist {waitlist}",
+    "emptyCategory": "No activities in this category",
+    "loadMoreNote": "Showing {displayed} / {total}",
+    "loadMoreBtn": "View More",
+    "loading": "Loading data",
+    "loadError": "Unable to load activities. Please try again.",
+    "retry": "Retry",
+    "permissionDenied": "Insufficient Permissions",
+    "permissionDeniedBody": "You do not have permission to access the activity management page."
   }
 }

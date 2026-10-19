@@ -31,11 +31,13 @@ export function resolveCreatorName(
   role: string,
   customRoles: readonly CustomRole[] = [],
 ): string {
-  const name = String(displayName ?? '').trim();
-  if (name) return name;
+  // A：`if (user && user.displayName) return user.displayName;`（不 trim）
+  if (displayName) return displayName;
   if (Object.prototype.hasOwnProperty.call(BASE_ROLE_LABELS, role)) return BASE_ROLE_LABELS[role]!;
+  // A 的 ROLES Proxy：自訂角色 label 缺時用 key（normalizeCustomRoles）
   const custom = customRoles.find((item) => item.key === role);
-  return (custom?.label || '').trim() || '一般用戶';
+  if (custom) return custom.label || custom.key;
+  return '一般用戶';
 }
 
 /** A `bindRegionToggle`：只有後台用戶管理／後台入口權限者看得到地區開關，其他人一律開啟。 */
@@ -43,12 +45,18 @@ export function canToggleEventRegion(hasPermission: (code: string) => boolean): 
   return hasPermission('admin.users.entry') || hasPermission('admin.entry');
 }
 
+/** A `pages/activity.html#ce-type` 的選項與順序：PLAY、教學、觀賽（新表單沒有「友誼」）。 */
 export const EVENT_TYPE_OPTIONS: readonly { value: EventType; labelKey: string }[] = [
-  { value: 'friendly', labelKey: 'events.form.typeFriendly' },
-  { value: 'camp', labelKey: 'events.form.typeCamp' },
   { value: 'play', labelKey: 'events.form.typePlay' },
+  { value: 'camp', labelKey: 'events.form.typeCamp' },
   { value: 'watch', labelKey: 'events.form.typeWatch' },
 ];
+
+/** 舊活動可能是 friendly：編輯時保留這個選項，避免下拉選單選不到原值。 */
+export const LEGACY_FRIENDLY_TYPE_OPTION = { value: 'friendly' as EventType, labelKey: 'events.form.typeFriendly' };
+
+/** A `_getEventTitleInputLimit` 預設值。 */
+export const EVENT_TITLE_LIMIT = 16;
 
 export interface EventFormState {
   eventId: string | null;
@@ -219,7 +227,7 @@ export function formStateFromEvent(event: EventDoc): EventFormState {
 
 export type ValidateEventFormResult =
   | { ok: true }
-  | { ok: false; messageKey: string };
+  | { ok: false; messageKey: string; params?: Record<string, string | number> };
 
 export function validateEventForm(
   state: EventFormState,
@@ -229,8 +237,8 @@ export function validateEventForm(
   if (!title) {
     return { ok: false, messageKey: 'events.form.error.titleRequired' };
   }
-  if (title.length > 16) {
-    return { ok: false, messageKey: 'events.form.error.titleTooLong' };
+  if (title.length > EVENT_TITLE_LIMIT) {
+    return { ok: false, messageKey: 'events.form.error.titleTooLong', params: { limit: EVENT_TITLE_LIMIT } };
   }
 
   const location = state.location.trim();
@@ -291,6 +299,7 @@ export function validateEventForm(
   return { ok: true };
 }
 
+/** A `_regionGetFormData`：關閉送空值；開啟時縣市原樣送出（A 不回填，空縣市由 UI「至少保留一個」避免）。 */
 export function resolveRegionPayload(
   regionEnabled: boolean,
   region: string,
@@ -299,16 +308,18 @@ export function resolveRegionPayload(
   if (!regionEnabled) {
     return { regionEnabled: false, region: '', cities: [] };
   }
-  const r = region.trim();
-  let c = cities.filter(Boolean);
-  if (r && c.length === 0 && REGION_MAP[r]) {
-    c = [...REGION_MAP[r]!];
-  }
   return {
     regionEnabled: true,
-    region: r,
-    cities: c,
+    region: region.trim(),
+    cities: [...cities],
   };
+}
+
+/** A `_getEventMinAgeFormValue`：Number(value)，有限且 > 0 才取 floor，否則 0。 */
+export function parseMinAge(value: string): number {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized <= 0) return 0;
+  return Math.floor(normalized);
 }
 
 export function toCreateEventForm(
@@ -319,10 +330,7 @@ export function toCreateEventForm(
   const maxParsed = Number.parseInt(state.max, 10);
   const max = Number.isFinite(maxParsed) ? maxParsed : 20;
 
-  const minAgeParsed = Number.parseInt(state.minAge, 10);
-  const minAge = state.ageLimitEnabled && Number.isFinite(minAgeParsed) && minAgeParsed > 0
-    ? minAgeParsed
-    : 0;
+  const minAge = state.ageLimitEnabled ? parseMinAge(state.minAge) : 0;
 
   let regOpenTime: string | null = null;
   if (state.regOpenEnabled && state.regOpenDate.trim() && state.regOpenClock.trim()) {

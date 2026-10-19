@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore';
 
 import { InternalTestBlockedError, sha256Hex } from '@/data/internal-test';
+import { _resetRecentInboxDeliveryForTest } from '@/data/inbox-delivery';
 import golden from './__fixtures__/membership-golden.json';
 import {
   approveTeamJoin,
@@ -101,6 +102,7 @@ const defaultCallFnImpl: CallFnImpl = async (name) => {
 };
 
 beforeEach(() => {
+  _resetRecentInboxDeliveryForTest();
   vi.clearAllMocks();
   getFirebaseMock.mockResolvedValue({ db: mockDb } as never);
   docMock.mockImplementation(((...args: unknown[]) => {

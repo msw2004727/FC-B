@@ -108,21 +108,20 @@
     "timeSummaryWithDate": "已选时间：{date} {start} ～ {end}",
     "regOpenLabel": "开放报名时间",
     "regOpenImmediateStatus": "立即开放报名",
-    "regOpenScheduledStatus": "指定开放报名时间",
+    "regOpenScheduledStatus": "指定开放时间",
     "regOpenDateLabel": "开放日期",
     "regOpenDatePlaceholder": "报名开放日期",
     "regOpenTimeLabel": "开放时间",
     "regOpenTimePlaceholder": "报名开放时间",
     "regOpenSummaryImmediate": "报名开放：建立后立即开放报名",
-    "regOpenSummaryScheduled": "报名开放：{date} {time}",
-    "regOpenSummaryPending": "报名开放：请选择开放日期与时间",
+    "regOpenSummaryScheduled": "报名开放：{date} {time} 后可报名",
+    "regOpenSummaryPending": "报名开放：请选择完整的开放日期与时间",
     "regOpenHint": "关闭时建立后立即开放报名；开启后可指定开放日期与时间。",
     "regOpenEarlyBirdHint": "如需在正式开放前提供早鸟报名，请到「进阶功能」开启早鸟报名并设定消耗积分。",
     "maxLabel": "人数上限",
     "ageLimitLabel": "年龄限制",
     "ageLimitSuffix": "（岁以上，0 为不限）",
     "ageLimitDisabledStatus": "关闭 — 不限制年龄",
-    "ageLimitEnabledStatus": "开启 — 限制最低年龄",
     "ageLimitNote": "开启后填写最低年龄；关闭送出 0 表示不限。",
     "notesLabel": "注意事项",
     "notesSuffix": "（上限 500 字）",
@@ -138,7 +137,7 @@
     "visibleInLegacy": "此内测活动在旧版公开列表看得到",
     "error": {
       "titleRequired": "请输入活动名称",
-      "titleTooLong": "名称不可超过 16 字",
+      "titleTooLong": "活动名称不可超过 {limit} 字",
       "locationRequired": "请输入地点",
       "dateRequired": "请选择活动日期",
       "timeRequired": "请选择开始与结束时间",
@@ -150,7 +149,45 @@
       "regionRequired": "请选择活动地区",
       "createNotAllowed": "权限不足：需要建立活动权限",
       "editNotAllowed": "权限不足",
-      "submitFailed": "建立失败，请稍后再试"
-    }
+      "submitFailed": "建立失败，请稍后再试",
+      "maxBelowConfirmed": "名额不可小于已正取人数"
+    },
+    "timeSummaryUnselected": "已选时间：请选择开始与结束时间（24 小时制）",
+    "ageLimitEnabledWithAge": "已开启 — {age} 岁以上",
+    "ageLimitEnabledPending": "已开启 — 请填最低年龄"
+  },
+  "manage": {
+    "title": "活动管理",
+    "back": "返回",
+    "tabsLabel": "活动管理分页",
+    "tab": {
+      "all": "全部",
+      "upcoming": "即将开放",
+      "open": "报名中",
+      "full": "已额满",
+      "ended": "已结束",
+      "cancelled": "已取消"
+    },
+    "status": {
+      "open": "报名中",
+      "full": "已额满",
+      "ended": "已结束",
+      "upcoming": "即将开放",
+      "cancelled": "已取消"
+    },
+    "editBtn": "编辑",
+    "pinnedBadge": "置顶",
+    "teamOnlyBadge": "限定",
+    "externalLinkLabel": "🔗 外部活动链接",
+    "participants": "{current}/{max} 人",
+    "participantsWithWaitlist": "{current}/{max} 人 ・ 候补 {waitlist}",
+    "emptyCategory": "此分类没有活动",
+    "loadMoreNote": "已显示 {displayed} / {total}",
+    "loadMoreBtn": "查看更多",
+    "loading": "数据加载中",
+    "loadError": "无法加载活动，请重试。",
+    "retry": "重试",
+    "permissionDenied": "权限不足",
+    "permissionDeniedBody": "您没有权限访问活动管理页面。"
   }
 }

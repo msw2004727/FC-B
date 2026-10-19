@@ -110,18 +110,54 @@ export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unk
 
 /**
  * 投遞站內信（A `_deliverToInboxCF` 的 request 形狀）。回傳送出的訊息物件；
- * Callable 失敗會往外拋，由呼叫端決定是否屬 best-effort。
+ * 同一把 dedupeKey 5 秒內重複送出時回傳 null（A `_claimRecentInboxDeliveryKey`），呼叫端應略過後續（例如 LINE）。
+ * Callable 失敗會釋放這把鍵（A `_releaseRecentInboxDeliveryKey`）並往外拋，由呼叫端決定是否屬 best-effort。
  */
-export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Record<string, unknown>> {
+export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Record<string, unknown> | null> {
   const message = buildInboxMessage(input);
   // 內測模式：收件人必須在白名單內；廣播（targetUid 為 null）對象不明，一律擋。
   await assertInternalTestWritable({ kind: 'inbox', affectedUids: [input.targetUid] });
-  await callFn('deliverToInbox', {
-    message,
-    targetUid: message['targetUid'],
-    targetTeamId: message['targetTeamId'],
-    targetRoles: message['targetRoles'],
-    targetType: message['targetType'],
-  } as never);
+  const dedupeKey = typeof message['dedupeKey'] === 'string' ? message['dedupeKey'] : '';
+  const nowMs = (input.now ?? new Date()).getTime();
+  if (!claimRecentInboxDeliveryKey(dedupeKey, nowMs)) {
+    console.warn('[inbox-delivery] skip recent duplicate');
+    return null;
+  }
+  try {
+    await callFn('deliverToInbox', {
+      message,
+      targetUid: message['targetUid'],
+      targetTeamId: message['targetTeamId'],
+      targetRoles: message['targetRoles'],
+      targetType: message['targetType'],
+    } as never);
+  } catch (err) {
+    releaseRecentInboxDeliveryKey(dedupeKey);
+    throw err;
+  }
   return message;
+}
+
+// ── A `_claimRecentInboxDeliveryKey`／`_releaseRecentInboxDeliveryKey`：5 秒內同一把鍵只送一次 ──
+const RECENT_DELIVERY_WINDOW_MS = 5000;
+const recentDeliveryKeys = new Map<string, number>();
+
+function claimRecentInboxDeliveryKey(dedupeKey: string, nowMs: number): boolean {
+  if (!dedupeKey) return true;
+  for (const [key, sentAt] of recentDeliveryKeys) {
+    if (nowMs - sentAt > RECENT_DELIVERY_WINDOW_MS) recentDeliveryKeys.delete(key);
+  }
+  const lastSentAt = recentDeliveryKeys.get(dedupeKey) ?? 0;
+  if (lastSentAt && nowMs - lastSentAt < RECENT_DELIVERY_WINDOW_MS) return false;
+  recentDeliveryKeys.set(dedupeKey, nowMs);
+  return true;
+}
+
+function releaseRecentInboxDeliveryKey(dedupeKey: string): void {
+  if (dedupeKey) recentDeliveryKeys.delete(dedupeKey);
+}
+
+/** 測試用：清空 5 秒重複守衛。 */
+export function _resetRecentInboxDeliveryForTest(): void {
+  recentDeliveryKeys.clear();
 }

@@ -118,21 +118,20 @@
     "timeSummaryWithDate": "Thời gian đã chọn: {date} {start} ～ {end}",
     "regOpenLabel": "Thời gian mở đăng ký",
     "regOpenImmediateStatus": "Mở đăng ký ngay",
-    "regOpenScheduledStatus": "Chỉ định giờ mở đăng ký",
+    "regOpenScheduledStatus": "Chỉ định thời gian mở",
     "regOpenDateLabel": "Ngày mở",
     "regOpenDatePlaceholder": "Ngày mở đăng ký",
     "regOpenTimeLabel": "Giờ mở",
     "regOpenTimePlaceholder": "Giờ mở đăng ký",
     "regOpenSummaryImmediate": "Mở đăng ký: Mở ngay sau khi tạo",
-    "regOpenSummaryScheduled": "Mở đăng ký: {date} {time}",
-    "regOpenSummaryPending": "Mở đăng ký: Vui lòng chọn ngày và giờ mở",
+    "regOpenSummaryScheduled": "Mở đăng ký: từ {date} {time}",
+    "regOpenSummaryPending": "Mở đăng ký: hãy chọn đầy đủ ngày và giờ",
     "regOpenHint": "Khi tắt sẽ mở đăng ký ngay sau khi tạo; bật lên để chọn ngày giờ mở đăng ký.",
     "regOpenEarlyBirdHint": "Nếu muốn mở đăng ký sớm trước giờ chính thức, hãy bật Đăng ký sớm trong phần Tính năng nâng cao.",
     "maxLabel": "Giới hạn số người",
     "ageLimitLabel": "Giới hạn độ tuổi",
     "ageLimitSuffix": " (tuổi trở lên, 0 là không giới hạn)",
     "ageLimitDisabledStatus": "Tắt — Không giới hạn tuổi",
-    "ageLimitEnabledStatus": "Bật — Giới hạn tuổi tối thiểu",
     "ageLimitNote": "Bật để nhập tuổi tối thiểu; tắt sẽ gửi 0 (không giới hạn).",
     "notesLabel": "Lưu ý",
     "notesSuffix": " (tối đa 500 ký tự)",
@@ -148,7 +147,7 @@
     "visibleInLegacy": "Hoạt động thử nghiệm nội bộ này hiển thị trên danh sách công khai bản cũ",
     "error": {
       "titleRequired": "Vui lòng nhập tên hoạt động",
-      "titleTooLong": "Tên không được vượt quá 16 ký tự",
+      "titleTooLong": "Tên sự kiện không được quá {limit} ký tự",
       "locationRequired": "Vui lòng nhập địa điểm",
       "dateRequired": "Vui lòng chọn ngày hoạt động",
       "timeRequired": "Vui lòng chọn giờ bắt đầu và kết thúc",
@@ -160,7 +159,45 @@
       "regionRequired": "Vui lòng chọn khu vực hoạt động",
       "createNotAllowed": "Không đủ quyền: Cần quyền tạo hoạt động",
       "editNotAllowed": "Không đủ quyền",
-      "submitFailed": "Tạo thất bại, vui lòng thử lại sau"
-    }
+      "submitFailed": "Tạo thất bại, vui lòng thử lại sau",
+      "maxBelowConfirmed": "Số chỗ không được ít hơn số người đã xác nhận"
+    },
+    "timeSummaryUnselected": "Thời gian đã chọn: hãy chọn giờ bắt đầu và kết thúc (24 giờ)",
+    "ageLimitEnabledWithAge": "Bật — từ {age} tuổi trở lên",
+    "ageLimitEnabledPending": "Bật — hãy nhập độ tuổi tối thiểu"
+  },
+  "manage": {
+    "title": "Quản lý hoạt động",
+    "back": "Quay lại",
+    "tabsLabel": "Tab quản lý hoạt động",
+    "tab": {
+      "all": "Tất cả",
+      "upcoming": "Sắp mở",
+      "open": "Đang mở",
+      "full": "Đã đủ",
+      "ended": "Đã kết thúc",
+      "cancelled": "Đã hủy"
+    },
+    "status": {
+      "open": "Đang mở",
+      "full": "Đã đủ",
+      "ended": "Đã kết thúc",
+      "upcoming": "Sắp mở",
+      "cancelled": "Đã hủy"
+    },
+    "editBtn": "Chỉnh sửa",
+    "pinnedBadge": "Ghim",
+    "teamOnlyBadge": "Giới hạn",
+    "externalLinkLabel": "🔗 Liên kết hoạt động bên ngoài",
+    "participants": "{current}/{max} người",
+    "participantsWithWaitlist": "{current}/{max} người ・ Dự bị {waitlist}",
+    "emptyCategory": "Không có hoạt độngใน danh mục này",
+    "loadMoreNote": "Đã hiển thị {displayed} / {total}",
+    "loadMoreBtn": "Xem thêm",
+    "loading": "Đang tải dữ liệu",
+    "loadError": "Không thể tải hoạt động, vui lòng thử lại.",
+    "retry": "Thử lại",
+    "permissionDenied": "Không đủ quyền",
+    "permissionDeniedBody": "Bạn không có quyền truy cập trang quản lý hoạt động."
   }
 }

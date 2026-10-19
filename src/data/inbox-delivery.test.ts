@@ -4,7 +4,12 @@ vi.mock('@/data/callables', () => ({ callFn: vi.fn() }));
 
 import { callFn } from '@/data/callables';
 import { InternalTestBlockedError, sha256Hex } from './internal-test';
-import { buildInboxDeliveryDedupeKey, buildInboxMessage, deliverInboxMessage } from './inbox-delivery';
+import {
+  _resetRecentInboxDeliveryForTest,
+  buildInboxDeliveryDedupeKey,
+  buildInboxMessage,
+  deliverInboxMessage,
+} from './inbox-delivery';
 
 // golden 照 A js/modules/message/message-notify.js `_deliverMessageToInbox`／`_buildInboxDeliveryDedupeKey`
 const NOW = new Date(2026, 9, 19, 8, 5, 0);
@@ -21,6 +26,7 @@ const base = {
 };
 
 beforeEach(() => {
+  _resetRecentInboxDeliveryForTest();
   vi.mocked(callFn).mockReset();
   vi.mocked(callFn).mockResolvedValue(undefined as never);
 });
@@ -104,6 +110,21 @@ describe('deliverInboxMessage 內測守衛', () => {
     expect(callFn).not.toHaveBeenCalled();
     await deliverInboxMessage({ ...base, targetUid: 'U-tester' });
     expect(callFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('5 秒內重複投遞守衛（A _claimRecentInboxDeliveryKey）', () => {
+  it('同一把鍵 5 秒內只送一次；超過 5 秒可再送；Callable 失敗會釋放鍵', async () => {
+    const first = await deliverInboxMessage(base);
+    expect(first).not.toBeNull();
+    expect(await deliverInboxMessage(base)).toBeNull();
+    expect(callFn).toHaveBeenCalledTimes(1);
+    expect(await deliverInboxMessage({ ...base, now: new Date(NOW.getTime() + 6000) })).not.toBeNull();
+
+    _resetRecentInboxDeliveryForTest();
+    vi.mocked(callFn).mockRejectedValueOnce(new Error('boom'));
+    await expect(deliverInboxMessage(base)).rejects.toThrow('boom');
+    expect(await deliverInboxMessage(base)).not.toBeNull();
   });
 });
 

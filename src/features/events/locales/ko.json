@@ -116,21 +116,20 @@
     "timeSummaryWithDate": "선택 시간: {date} {start} ～ {end}",
     "regOpenLabel": "신청 오픈 시간",
     "regOpenImmediateStatus": "생성 후 즉시 오픈",
-    "regOpenScheduledStatus": "신청 오픈 시간 지정",
+    "regOpenScheduledStatus": "오픈 시간 지정",
     "regOpenDateLabel": "오픈 날짜",
     "regOpenDatePlaceholder": "신청 오픈 날짜",
     "regOpenTimeLabel": "오픈 시간",
     "regOpenTimePlaceholder": "신청 오픈 시간",
     "regOpenSummaryImmediate": "신청 오픈: 생성 후 즉시 신청 가능",
-    "regOpenSummaryScheduled": "신청 오픈: {date} {time}",
-    "regOpenSummaryPending": "신청 오픈: 오픈 날짜와 시간을 선택하세요",
+    "regOpenSummaryScheduled": "신청 오픈: {date} {time} 이후 신청 가능",
+    "regOpenSummaryPending": "신청 오픈: 날짜와 시간을 모두 선택하세요",
     "regOpenHint": "끄면 생성 즉시 신청이 열리며, 켜면 오픈 날짜와 시간을 지정할 수 있습니다.",
     "regOpenEarlyBirdHint": "정식 오픈 전 얼리버드 신청을 제공하려면 '고급 기능'에서 얼리버드를 켜고 포인트를 설정하세요.",
     "maxLabel": "정원 제한",
     "ageLimitLabel": "연령 제한",
     "ageLimitSuffix": " (세 이상, 0은 제한 없음)",
     "ageLimitDisabledStatus": "꺼짐 — 연령 제한 없음",
-    "ageLimitEnabledStatus": "켜짐 — 최소 연령 제한",
     "ageLimitNote": "켜면 최소 연령을 입력하며, 끄면 0(제한 없음)으로 전송됩니다.",
     "notesLabel": "주의사항",
     "notesSuffix": " (최대 500자)",
@@ -146,7 +145,7 @@
     "visibleInLegacy": "이 내부 테스트 이벤트는 구버전 공개 목록에서 볼 수 있습니다",
     "error": {
       "titleRequired": "이벤트 이름을 입력해주세요",
-      "titleTooLong": "이름은 16자를 초과할 수 없습니다",
+      "titleTooLong": "이벤트 이름은 {limit}자를 넘을 수 없습니다",
       "locationRequired": "장소를 입력해주세요",
       "dateRequired": "활동 날짜를 선택해주세요",
       "timeRequired": "시작 및 종료 시간을 선택해주세요",
@@ -158,7 +157,45 @@
       "regionRequired": "활동 지역을 선택해주세요",
       "createNotAllowed": "권한 부족: 이벤트 생성 권한이 필요합니다",
       "editNotAllowed": "권한 부족",
-      "submitFailed": "생성 실패, 잠시 후 다시 시도해주세요"
-    }
+      "submitFailed": "생성 실패, 잠시 후 다시 시도해주세요",
+      "maxBelowConfirmed": "정원은 확정된 참가자 수보다 적을 수 없습니다"
+    },
+    "timeSummaryUnselected": "선택한 시간: 시작 및 종료 시간을 선택하세요 (24시간제)",
+    "ageLimitEnabledWithAge": "켜짐 — {age}세 이상",
+    "ageLimitEnabledPending": "켜짐 — 최소 나이를 입력하세요"
+  },
+  "manage": {
+    "title": "활동 관리",
+    "back": "뒤로",
+    "tabsLabel": "활동 관리 탭",
+    "tab": {
+      "all": "전체",
+      "upcoming": "오픈 예정",
+      "open": "모집 중",
+      "full": "마감",
+      "ended": "종료됨",
+      "cancelled": "취소됨"
+    },
+    "status": {
+      "open": "모집 중",
+      "full": "마감",
+      "ended": "종료됨",
+      "upcoming": "오픈 예정",
+      "cancelled": "취소됨"
+    },
+    "editBtn": "편집",
+    "pinnedBadge": "고정",
+    "teamOnlyBadge": "한정",
+    "externalLinkLabel": "🔗 외부 활동 링크",
+    "participants": "{current}/{max}명",
+    "participantsWithWaitlist": "{current}/{max}명 ・ 대기 {waitlist}",
+    "emptyCategory": "이 카테고리에 활동이 없습니다",
+    "loadMoreNote": "{displayed} / {total} 표시됨",
+    "loadMoreBtn": "더 보기",
+    "loading": "데이터 불러오는 중",
+    "loadError": "활동을 불러올 수 없습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도",
+    "permissionDenied": "권한 부족",
+    "permissionDeniedBody": "활동 관리 페이지에 접근할 권한이 없습니다."
   }
 }
