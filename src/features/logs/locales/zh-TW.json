@@ -1,4 +1,116 @@
 {
   "title": "日誌",
-  "nav": "日誌"
+  "nav": "日誌",
+  "centerTitle": "日誌中心",
+  "back": "返回",
+  "permissionDenied": "權限不足",
+  "permissionDeniedBody": "您沒有權限檢視日誌中心。",
+  "actions": {
+    "refresh": "重新整理",
+    "info": "功能說明",
+    "closeInfo": "關閉"
+  },
+  "tabs": {
+    "operation": {
+      "title": "操作日誌",
+      "desc": "查看後台與系統操作紀錄，可依類型、UID、活動或文件 ID 篩選，並可複製診斷包。"
+    },
+    "audit": {
+      "title": "稽核日誌",
+      "desc": "查看敏感行為與關鍵操作紀錄，可依日期、時段與動作條件過濾。"
+    },
+    "error": {
+      "title": "錯誤日誌",
+      "desc": "集中查看前端與系統錯誤，可依錯誤代碼與關鍵字過濾。"
+    },
+    "prompt": {
+      "title": "用戶提示",
+      "desc": "集中查看用戶實際看到的登入、session、權限提示，可追蹤受影響用戶並複製診斷包。"
+    },
+    "chat": {
+      "title": "聊天室稽核",
+      "desc": "僅限 super_admin 查看私訊使用紀錄與指定用戶的稽核對話內容。"
+    }
+  },
+  "legacyFallback": {
+    "body": "此分頁將於下一階段開放，請先前往舊版查看。",
+    "linkLabel": "前往舊版查看"
+  },
+  "operation": {
+    "searchPlaceholder": "搜尋操作者、UID、類型、內容、活動或文件 ID",
+    "allTypes": "全部類型",
+    "loading": "載入中...",
+    "empty": "沒有符合條件的紀錄",
+    "uncategorized": "未分類",
+    "unmarked": "未標示",
+    "none": "無",
+    "viewDetails": "查看詳細內容",
+    "copyDiagnostic": "複製診斷包",
+    "copySuccess": "已複製操作日誌診斷包",
+    "copyError": "複製操作日誌診斷包失敗",
+    "copyNotFound": "找不到這筆操作日誌",
+    "refreshSuccess": "已重新整理操作日誌",
+    "refreshError": "重新整理操作日誌失敗",
+    "prevPage": "‹ 上一頁",
+    "nextPage": "下一頁 ›",
+    "pageSummary": "{page} / {totalPages}（共 {total} 筆）",
+    "diagnostic": {
+      "header": "ToosterX 操作日誌診斷包"
+    },
+    "meta": {
+      "operator": "操作者",
+      "uid": "UID",
+      "type": "類型",
+      "event": "活動",
+      "doc": "文件"
+    },
+    "detail": {
+      "time": "時間",
+      "type": "類型",
+      "content": "內容",
+      "operator": "操作者",
+      "eventId": "活動 ID",
+      "docId": "文件 ID"
+    },
+    "typeGroups": {
+      "user": "用戶",
+      "event": "活動",
+      "tournament": "賽事",
+      "team": "俱樂部",
+      "achievement": "成就",
+      "announcement": "公告",
+      "system": "系統"
+    },
+    "types": {
+      "exp": "手動EXP",
+      "team_exp": "俱樂部積分",
+      "role": "角色變更",
+      "event_create": "建立活動",
+      "event_edit": "編輯活動",
+      "event_end": "結束活動",
+      "event_cancel": "取消活動",
+      "event_reopen": "重開活動",
+      "event_delete": "刪除活動",
+      "tourn_create": "建立賽事",
+      "tourn_edit": "編輯賽事",
+      "tourn_end": "結束賽事",
+      "tourn_reopen": "重開賽事",
+      "tourn_delete": "刪除賽事",
+      "tourn_approve": "賽事審批",
+      "team_create": "建立俱樂部",
+      "team_edit": "編輯俱樂部",
+      "team_delete": "刪除俱樂部",
+      "team_position": "職位變更",
+      "team_approve": "入隊審批",
+      "ach_create": "建立成就",
+      "ach_edit": "編輯成就",
+      "ach_toggle": "成就上下架",
+      "ach_delete": "刪除成就",
+      "ann_create": "建立公告",
+      "ann_edit": "編輯公告",
+      "ann_toggle": "公告上下架",
+      "ann_delete": "刪除公告",
+      "system_clear": "系統清除"
+    }
+  }
 }

@@ -1,4 +1,116 @@
 {
   "title": "日志",
-  "nav": "日志"
+  "nav": "日志",
+  "centerTitle": "日志中心",
+  "back": "返回",
+  "permissionDenied": "权限不足",
+  "permissionDeniedBody": "您没有权限查看日志中心。",
+  "actions": {
+    "refresh": "刷新",
+    "info": "功能说明",
+    "closeInfo": "关闭"
+  },
+  "tabs": {
+    "operation": {
+      "title": "操作日志",
+      "desc": "查看后台与系统操作记录，可按类型、UID、活动或文档 ID 筛选，并可复制诊断包。"
+    },
+    "audit": {
+      "title": "稽核日志",
+      "desc": "查看敏感行为与关键操作记录，可按日期、时段与动作条件过滤。"
+    },
+    "error": {
+      "title": "错误日志",
+      "desc": "集中查看前端与系统错误，可按错误代码与关键字过滤。"
+    },
+    "prompt": {
+      "title": "用户提示",
+      "desc": "集中查看用户实际看到的登录、session、权限提示，可追踪受影响用户并复制诊断包。"
+    },
+    "chat": {
+      "title": "聊天室稽核",
+      "desc": "仅限 super_admin 查看私信使用记录与指定用户的稽核对话内容。"
+    }
+  },
+  "legacyFallback": {
+    "body": "此分页将于下一阶段开放，请先前往旧版查看。",
+    "linkLabel": "前往旧版查看"
+  },
+  "operation": {
+    "searchPlaceholder": "搜索操作者、UID、类型、内容、活动或文档 ID",
+    "allTypes": "全部类型",
+    "loading": "加载中...",
+    "empty": "没有符合条件的记录",
+    "uncategorized": "未分类",
+    "unmarked": "未标示",
+    "none": "无",
+    "viewDetails": "查看详细内容",
+    "copyDiagnostic": "复制诊断包",
+    "copySuccess": "已复制操作日志诊断包",
+    "copyError": "复制操作日志诊断包失败",
+    "copyNotFound": "找不到这笔操作日志",
+    "refreshSuccess": "已刷新操作日志",
+    "refreshError": "刷新操作日志失败",
+    "prevPage": "‹ 上一页",
+    "nextPage": "下一页 ›",
+    "pageSummary": "{page} / {totalPages}（共 {total} 笔）",
+    "diagnostic": {
+      "header": "ToosterX 操作日志诊断包"
+    },
+    "meta": {
+      "operator": "操作者",
+      "uid": "UID",
+      "type": "类型",
+      "event": "活动",
+      "doc": "文档"
+    },
+    "detail": {
+      "time": "时间",
+      "type": "类型",
+      "content": "内容",
+      "operator": "操作者",
+      "eventId": "活动 ID",
+      "docId": "文档 ID"
+    },
+    "typeGroups": {
+      "user": "用户",
+      "event": "活动",
+      "tournament": "赛事",
+      "team": "俱乐部",
+      "achievement": "成就",
+      "announcement": "公告",
+      "system": "系统"
+    },
+    "types": {
+      "exp": "手动EXP",
+      "team_exp": "俱乐部积分",
+      "role": "角色变更",
+      "event_create": "创建活动",
+      "event_edit": "编辑活动",
+      "event_end": "结束活动",
+      "event_cancel": "取消活动",
+      "event_reopen": "重开活动",
+      "event_delete": "删除活动",
+      "tourn_create": "创建赛事",
+      "tourn_edit": "编辑赛事",
+      "tourn_end": "结束赛事",
+      "tourn_reopen": "重开赛事",
+      "tourn_delete": "删除赛事",
+      "tourn_approve": "赛事审批",
+      "team_create": "创建俱乐部",
+      "team_edit": "编辑俱乐部",
+      "team_delete": "删除俱乐部",
+      "team_position": "职位变更",
+      "team_approve": "入队审批",
+      "ach_create": "创建成就",
+      "ach_edit": "编辑成就",
+      "ach_toggle": "成就上下架",
+      "ach_delete": "删除成就",
+      "ann_create": "创建公告",
+      "ann_edit": "编辑公告",
+      "ann_toggle": "公告上下架",
+      "ann_delete": "删除公告",
+      "system_clear": "系统清除"
+    }
+  }
 }

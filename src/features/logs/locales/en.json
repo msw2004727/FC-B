@@ -1,4 +1,116 @@
 {
   "title": "Logs",
-  "nav": "Logs"
+  "nav": "Logs",
+  "centerTitle": "Log Center",
+  "back": "Back",
+  "permissionDenied": "Permission Denied",
+  "permissionDeniedBody": "You do not have permission to view the Log Center.",
+  "actions": {
+    "refresh": "Refresh",
+    "info": "Information",
+    "closeInfo": "Close"
+  },
+  "tabs": {
+    "operation": {
+      "title": "Operation Logs",
+      "desc": "View admin and system operation records, filter by type, UID, event, or document ID, and copy diagnostic packages."
+    },
+    "audit": {
+      "title": "Audit Logs",
+      "desc": "View sensitive actions and key operation records, filterable by date, time range, and action criteria."
+    },
+    "error": {
+      "title": "Error Logs",
+      "desc": "View frontend and system errors centrally, filterable by error code and keywords."
+    },
+    "prompt": {
+      "title": "User Prompts",
+      "desc": "View login, session, and permission prompts shown to users, track affected users, and copy diagnostic packages."
+    },
+    "chat": {
+      "title": "Chat Audit",
+      "desc": "Restricted to super_admin to view private message usage records and audit conversations of specified users."
+    }
+  },
+  "legacyFallback": {
+    "body": "This tab will be available in the next phase. Please view it on the legacy site for now.",
+    "linkLabel": "Open Legacy Site"
+  },
+  "operation": {
+    "searchPlaceholder": "Search operator, UID, type, content, event, or doc ID",
+    "allTypes": "All Types",
+    "loading": "Loading...",
+    "empty": "No matching records found",
+    "uncategorized": "Uncategorized",
+    "unmarked": "Unmarked",
+    "none": "None",
+    "viewDetails": "View Details",
+    "copyDiagnostic": "Copy Diagnostic",
+    "copySuccess": "Operation log diagnostic copied",
+    "copyError": "Failed to copy operation log diagnostic",
+    "copyNotFound": "Operation log not found",
+    "refreshSuccess": "Operation logs refreshed",
+    "refreshError": "Failed to refresh operation logs",
+    "prevPage": "‹ Prev",
+    "nextPage": "Next ›",
+    "pageSummary": "{page} / {totalPages} ({total} total)",
+    "diagnostic": {
+      "header": "ToosterX Operation Log Diagnostic"
+    },
+    "meta": {
+      "operator": "Operator",
+      "uid": "UID",
+      "type": "Type",
+      "event": "Event",
+      "doc": "Doc"
+    },
+    "detail": {
+      "time": "Time",
+      "type": "Type",
+      "content": "Content",
+      "operator": "Operator",
+      "eventId": "Event ID",
+      "docId": "Doc ID"
+    },
+    "typeGroups": {
+      "user": "User",
+      "event": "Event",
+      "tournament": "Tournament",
+      "team": "Club",
+      "achievement": "Achievement",
+      "announcement": "Announcement",
+      "system": "System"
+    },
+    "types": {
+      "exp": "Manual EXP",
+      "team_exp": "Club Points",
+      "role": "Role Change",
+      "event_create": "Create Event",
+      "event_edit": "Edit Event",
+      "event_end": "End Event",
+      "event_cancel": "Cancel Event",
+      "event_reopen": "Reopen Event",
+      "event_delete": "Delete Event",
+      "tourn_create": "Create Tournament",
+      "tourn_edit": "Edit Tournament",
+      "tourn_end": "End Tournament",
+      "tourn_reopen": "Reopen Tournament",
+      "tourn_delete": "Delete Tournament",
+      "tourn_approve": "Approve Tournament",
+      "team_create": "Create Club",
+      "team_edit": "Edit Club",
+      "team_delete": "Delete Club",
+      "team_position": "Position Change",
+      "team_approve": "Approve Join",
+      "ach_create": "Create Achievement",
+      "ach_edit": "Edit Achievement",
+      "ach_toggle": "Toggle Achievement",
+      "ach_delete": "Delete Achievement",
+      "ann_create": "Create Announcement",
+      "ann_edit": "Edit Announcement",
+      "ann_toggle": "Toggle Announcement",
+      "ann_delete": "Delete Announcement",
+      "system_clear": "System Clear"
+    }
+  }
 }

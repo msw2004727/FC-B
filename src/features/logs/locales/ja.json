@@ -1,4 +1,116 @@
 {
   "title": "ログ",
-  "nav": "ログ"
+  "nav": "ログ",
+  "centerTitle": "ログセンター",
+  "back": "戻る",
+  "permissionDenied": "権限がありません",
+  "permissionDeniedBody": "ログセンターを閲覧する権限がありません。",
+  "actions": {
+    "refresh": "再読み込み",
+    "info": "機能説明",
+    "closeInfo": "閉じる"
+  },
+  "tabs": {
+    "operation": {
+      "title": "操作ログ",
+      "desc": "管理画面およびシステムの操作記録を確認します。種別、UID、イベント、ドキュメントIDで絞り込み、診断パッケージをコピーできます。"
+    },
+    "audit": {
+      "title": "監査ログ",
+      "desc": "重要な操作や機密性の高い行動記録を日付・時間帯・アクション条件で絞り込んで確認します。"
+    },
+    "error": {
+      "title": "エラーログ",
+      "desc": "フロントエンドとシステムのエラーを一括確認し、エラーコードやキーワードで絞り込みます。"
+    },
+    "prompt": {
+      "title": "ユーザー通知",
+      "desc": "ユーザーに表示されたログイン・セッション・権限通知を確認し、影響を受けたユーザーの追跡や診断パッケージのコピーが可能です。"
+    },
+    "chat": {
+      "title": "チャット監査",
+      "desc": "super_admin専用。DMの利用記録や指定ユーザーの監査対象チャット内容を確認します。"
+    }
+  },
+  "legacyFallback": {
+    "body": "このタブは次期フェーズで公開予定です。現在は旧版サイトでご確認ください。",
+    "linkLabel": "旧版サイトで見る"
+  },
+  "operation": {
+    "searchPlaceholder": "操作者、UID、種別、内容、イベント、ドキュメントIDを検索",
+    "allTypes": "すべての種別",
+    "loading": "読み込み中...",
+    "empty": "条件に一致する記録がありません",
+    "uncategorized": "未分類",
+    "unmarked": "未設定",
+    "none": "なし",
+    "viewDetails": "詳細を表示",
+    "copyDiagnostic": "診断パッケージをコピー",
+    "copySuccess": "操作ログ診断パッケージをコピーしました",
+    "copyError": "操作ログ診断パッケージのコピーに失敗しました",
+    "copyNotFound": "対象の操作ログが見つかりません",
+    "refreshSuccess": "操作ログを更新しました",
+    "refreshError": "操作ログの更新に失敗しました",
+    "prevPage": "‹ 前へ",
+    "nextPage": "次へ ›",
+    "pageSummary": "{page} / {totalPages}（全 {total} 件）",
+    "diagnostic": {
+      "header": "ToosterX 操作ログ診断パッケージ"
+    },
+    "meta": {
+      "operator": "操作者",
+      "uid": "UID",
+      "type": "種別",
+      "event": "イベント",
+      "doc": "ドキュメント"
+    },
+    "detail": {
+      "time": "時間",
+      "type": "種別",
+      "content": "内容",
+      "operator": "操作者",
+      "eventId": "イベント ID",
+      "docId": "ドキュメント ID"
+    },
+    "typeGroups": {
+      "user": "ユーザー",
+      "event": "イベント",
+      "tournament": "大会",
+      "team": "クラブ",
+      "achievement": "実績",
+      "announcement": "お知らせ",
+      "system": "システム"
+    },
+    "types": {
+      "exp": "手動EXP",
+      "team_exp": "クラブポイント",
+      "role": "ロール変更",
+      "event_create": "イベント作成",
+      "event_edit": "イベント編集",
+      "event_end": "イベント終了",
+      "event_cancel": "イベント中止",
+      "event_reopen": "イベント再開",
+      "event_delete": "イベント削除",
+      "tourn_create": "大会作成",
+      "tourn_edit": "大会編集",
+      "tourn_end": "大会終了",
+      "tourn_reopen": "大会再開",
+      "tourn_delete": "大会削除",
+      "tourn_approve": "大会承認",
+      "team_create": "クラブ作成",
+      "team_edit": "クラブ編集",
+      "team_delete": "クラブ削除",
+      "team_position": "役職変更",
+      "team_approve": "入部承認",
+      "ach_create": "実績作成",
+      "ach_edit": "実績編集",
+      "ach_toggle": "実績公開切替",
+      "ach_delete": "実績削除",
+      "ann_create": "お知らせ作成",
+      "ann_edit": "お知らせ編集",
+      "ann_toggle": "お知らせ公開切替",
+      "ann_delete": "お知らせ削除",
+      "system_clear": "システム消去"
+    }
+  }
 }

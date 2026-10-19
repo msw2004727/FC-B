@@ -1,4 +1,116 @@
 {
   "title": "Nhật ký",
-  "nav": "Nhật ký"
+  "nav": "Nhật ký",
+  "centerTitle": "Trung tâm Nhật ký",
+  "back": "Quay lại",
+  "permissionDenied": "Không đủ quyền",
+  "permissionDeniedBody": "Bạn không có quyền xem Trung tâm Nhật ký.",
+  "actions": {
+    "refresh": "Làm mới",
+    "info": "Thông tin",
+    "closeInfo": "Đóng"
+  },
+  "tabs": {
+    "operation": {
+      "title": "Nhật ký thao tác",
+      "desc": "Xem bản ghi thao tác hệ thống và quản trị, lọc theo loại, UID, sự kiện hoặc ID tài liệu và sao chép gói chẩn đoán."
+    },
+    "audit": {
+      "title": "Nhật ký kiểm toán",
+      "desc": "Xem các hành vi nhạy cảm và thao tác quan trọng, lọc theo ngày, khung giờ và điều kiện hành động."
+    },
+    "error": {
+      "title": "Nhật ký lỗi",
+      "desc": "Xem tập trung lỗi giao diện và hệ thống, lọc theo mã lỗi và từ khóa."
+    },
+    "prompt": {
+      "title": "Thông báo người dùng",
+      "desc": "Xem các thông báo đăng nhập, phiên và quyền mà người dùng thực sự thấy, theo dõi người dùng bị ảnh hưởng và sao chép gói chẩn đoán."
+    },
+    "chat": {
+      "title": "Kiểm toán trò chuyện",
+      "desc": "Chỉ dành cho super_admin xem lịch sử tin nhắn riêng và nội dung hội thoại kiểm toán của người dùng chỉ định."
+    }
+  },
+  "legacyFallback": {
+    "body": "Tab này sẽ được mở trong giai đoạn tiếp theo, vui lòng xem trên phiên bản cũ.",
+    "linkLabel": "Xem trên phiên bản cũ"
+  },
+  "operation": {
+    "searchPlaceholder": "Tìm người thao tác, UID, loại, nội dung, sự kiện hoặc ID tài liệu",
+    "allTypes": "Tất cả loại",
+    "loading": "Đang tải...",
+    "empty": "Không có bản ghi phù hợp",
+    "uncategorized": "Chưa phân loại",
+    "unmarked": "Chưa ghi",
+    "none": "Không có",
+    "viewDetails": "Xem chi tiết",
+    "copyDiagnostic": "Sao chép gói chẩn đoán",
+    "copySuccess": "Đã sao chép gói chẩn đoán nhật ký thao tác",
+    "copyError": "Sao chép gói chẩn đoán thất bại",
+    "copyNotFound": "Không tìm thấy nhật ký thao tác này",
+    "refreshSuccess": "Đã làm mới nhật ký thao tác",
+    "refreshError": "Làm mới nhật ký thao tác thất bại",
+    "prevPage": "‹ Trang trước",
+    "nextPage": "Trang sau ›",
+    "pageSummary": "{page} / {totalPages} (tổng {total} mục)",
+    "diagnostic": {
+      "header": "Gói chẩn đoán nhật ký thao tác ToosterX"
+    },
+    "meta": {
+      "operator": "Người thao tác",
+      "uid": "UID",
+      "type": "Loại",
+      "event": "Sự kiện",
+      "doc": "Tài liệu"
+    },
+    "detail": {
+      "time": "Thời gian",
+      "type": "Loại",
+      "content": "Nội dung",
+      "operator": "Người thao tác",
+      "eventId": "ID Sự kiện",
+      "docId": "ID Tài liệu"
+    },
+    "typeGroups": {
+      "user": "Người dùng",
+      "event": "Sự kiện",
+      "tournament": "Giải đấu",
+      "team": "Câu lạc bộ",
+      "achievement": "Thành tựu",
+      "announcement": "Thông báo",
+      "system": "Hệ thống"
+    },
+    "types": {
+      "exp": "EXP thủ công",
+      "team_exp": "Điểm CLB",
+      "role": "Đổi vai trò",
+      "event_create": "Tạo sự kiện",
+      "event_edit": "Sửa sự kiện",
+      "event_end": "Kết thúc sự kiện",
+      "event_cancel": "Hủy sự kiện",
+      "event_reopen": "Mở lại sự kiện",
+      "event_delete": "Xóa sự kiện",
+      "tourn_create": "Tạo giải đấu",
+      "tourn_edit": "Sửa giải đấu",
+      "tourn_end": "Kết thúc giải đấu",
+      "tourn_reopen": "Mở lại giải đấu",
+      "tourn_delete": "Xóa giải đấu",
+      "tourn_approve": "Duyệt giải đấu",
+      "team_create": "Tạo CLB",
+      "team_edit": "Sửa CLB",
+      "team_delete": "Xóa CLB",
+      "team_position": "Đổi chức vụ",
+      "team_approve": "Duyệt vào đội",
+      "ach_create": "Tạo thành tựu",
+      "ach_edit": "Sửa thành tựu",
+      "ach_toggle": "Ẩn/hiện thành tựu",
+      "ach_delete": "Xóa thành tựu",
+      "ann_create": "Tạo thông báo",
+      "ann_edit": "Sửa thông báo",
+      "ann_toggle": "Ẩn/hiện thông báo",
+      "ann_delete": "Xóa thông báo",
+      "system_clear": "Xóa hệ thống"
+    }
+  }
 }

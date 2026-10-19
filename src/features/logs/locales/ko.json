@@ -1,4 +1,116 @@
 {
   "title": "로그",
-  "nav": "로그"
+  "nav": "로그",
+  "centerTitle": "로그 센터",
+  "back": "뒤로",
+  "permissionDenied": "권한 부족",
+  "permissionDeniedBody": "로그 센터를 볼 수 있는 권한이 없습니다.",
+  "actions": {
+    "refresh": "새로고침",
+    "info": "기능 설명",
+    "closeInfo": "닫기"
+  },
+  "tabs": {
+    "operation": {
+      "title": "작업 로그",
+      "desc": "관리자 및 시스템 작업 기록을 확인하고 유형, UID, 활동 또는 문서 ID로 필터링하며 진단 패키지를 복사할 수 있습니다."
+    },
+    "audit": {
+      "title": "감사 로그",
+      "desc": "민감한 행위와 주요 작업 기록을 날짜, 시간대 및 동작 조건으로 필터링하여 확인합니다."
+    },
+    "error": {
+      "title": "오류 로그",
+      "desc": "프론트엔드 및 시스템 오류를 한곳에서 확인하고 오류 코드와 키워드로 필터링합니다."
+    },
+    "prompt": {
+      "title": "사용자 알림",
+      "desc": "사용자에게 실제로 표시된 로그인, 세션, 권한 알림을 확인하고 영향받은 사용자를 추적하며 진단 패키지를 복사합니다."
+    },
+    "chat": {
+      "title": "채팅 감사",
+      "desc": "super_admin 전용. 개인 메시지 사용 기록과 지정된 사용자의 감사 대화 내용을 확인합니다."
+    }
+  },
+  "legacyFallback": {
+    "body": "이 탭은 다음 단계에서 오픈될 예정입니다. 먼저 구버전에서 확인해 주세요.",
+    "linkLabel": "구버전에서 보기"
+  },
+  "operation": {
+    "searchPlaceholder": "작업자, UID, 유형, 내용, 활동 또는 문서 ID 검색",
+    "allTypes": "전체 유형",
+    "loading": "불러오는 중...",
+    "empty": "조건에 맞는 기록이 없습니다",
+    "uncategorized": "미분류",
+    "unmarked": "미표시",
+    "none": "없음",
+    "viewDetails": "상세 내용 보기",
+    "copyDiagnostic": "진단 패키지 복사",
+    "copySuccess": "작업 로그 진단 패키지를 복사했습니다",
+    "copyError": "작업 로그 진단 패키지 복사 실패",
+    "copyNotFound": "해당 작업 로그를 찾을 수 없습니다",
+    "refreshSuccess": "작업 로그를 새로고침했습니다",
+    "refreshError": "작업 로그 새로고침 실패",
+    "prevPage": "‹ 이전",
+    "nextPage": "다음 ›",
+    "pageSummary": "{page} / {totalPages} (총 {total}건)",
+    "diagnostic": {
+      "header": "ToosterX 작업 로그 진단 패키지"
+    },
+    "meta": {
+      "operator": "작업자",
+      "uid": "UID",
+      "type": "유형",
+      "event": "활동",
+      "doc": "문서"
+    },
+    "detail": {
+      "time": "시간",
+      "type": "유형",
+      "content": "내용",
+      "operator": "작업자",
+      "eventId": "활동 ID",
+      "docId": "문서 ID"
+    },
+    "typeGroups": {
+      "user": "사용자",
+      "event": "활동",
+      "tournament": "대회",
+      "team": "클럽",
+      "achievement": "업적",
+      "announcement": "공지",
+      "system": "시스템"
+    },
+    "types": {
+      "exp": "수동 EXP",
+      "team_exp": "클럽 포인트",
+      "role": "역할 변경",
+      "event_create": "활동 생성",
+      "event_edit": "활동 수정",
+      "event_end": "활동 종료",
+      "event_cancel": "활동 취소",
+      "event_reopen": "활동 재개",
+      "event_delete": "활동 삭제",
+      "tourn_create": "대회 생성",
+      "tourn_edit": "대회 수정",
+      "tourn_end": "대회 종료",
+      "tourn_reopen": "대회 재개",
+      "tourn_delete": "대회 삭제",
+      "tourn_approve": "대회 승인",
+      "team_create": "클럽 생성",
+      "team_edit": "클럽 수정",
+      "team_delete": "클럽 삭제",
+      "team_position": "직책 변경",
+      "team_approve": "가입 승인",
+      "ach_create": "업적 생성",
+      "ach_edit": "업적 수정",
+      "ach_toggle": "업적 게시 전환",
+      "ach_delete": "업적 삭제",
+      "ann_create": "공지 생성",
+      "ann_edit": "공지 수정",
+      "ann_toggle": "공지 게시 전환",
+      "ann_delete": "공지 삭제",
+      "system_clear": "시스템 초기화"
+    }
+  }
 }

@@ -1,0 +1,448 @@
+/* 日誌中心與操作日誌樣式，對齊舊版 A `a-admin-logs.css`／`a-page-admin-logs.html`／`a-oplog-chain.js`，
+   顏色與尺寸一律使用 `src/styles/tokens.css` 變數。 */
+
+.admin-logs-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--color-text-primary);
+}
+
+.admin-logs-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.admin-logs-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.admin-logs-back-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.admin-logs-heading {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* ─── Tab Bar ─── */
+.admin-log-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin-bottom: var(--space-2);
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.admin-log-tabs .tab {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-log-tabs .tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.admin-log-tabs .tab.active {
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-xs);
+}
+
+/* 圓形圖示按鈕（重整 + 說明） */
+.admin-log-info-btn {
+  width: var(--space-8);
+  height: var(--space-8);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-log-info-btn:first-of-type {
+  margin-left: auto;
+}
+
+.admin-log-info-btn + .admin-log-info-btn {
+  margin-left: var(--space-1);
+}
+
+.admin-log-info-btn:hover {
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+.admin-log-info-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Panels & Search ─── */
+.admin-log-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-log-panel {
+  background: var(--color-bg-surface);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-2);
+}
+
+.admin-log-panel[hidden] {
+  display: none !important;
+}
+
+.admin-search {
+  padding: var(--space-1) var(--space-1) var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.admin-search input {
+  flex: 1;
+  min-width: 180px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+.admin-filters {
+  display: flex;
+  gap: var(--space-1);
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.admin-filters select {
+  flex: 1;
+  min-width: 100px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+/* ─── Operation Log List & Items ─── */
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.operation-log-empty {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body-sm);
+}
+
+.operation-log-item {
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.operation-log-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.log-time {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-text-muted);
+  font-variant-numeric: var(--font-numeric);
+  white-space: nowrap;
+}
+
+.log-content {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+
+.log-type {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.operation-log-action-text {
+  color: var(--color-text-primary);
+}
+
+.operation-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-text-muted);
+}
+
+.operation-log-operator-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.operation-log-details {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.operation-log-details summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.operation-log-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-xs);
+}
+
+.operation-log-detail-row {
+  display: grid;
+  grid-template-columns: calc(var(--space-8) * 2) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.operation-log-detail-row > span {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+.operation-log-detail-row > pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+
+.operation-log-detail-row > pre.is-mono {
+  font-family: var(--font-mono);
+}
+
+/* ─── Outline Button & Pagination ─── */
+.admin-logs-page .outline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.admin-logs-page .outline-btn:hover:not(:disabled) {
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+.admin-logs-page .outline-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.operation-log-copy-btn {
+  margin-top: var(--space-2);
+}
+
+.operation-log-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  font-size: var(--font-size-caption);
+}
+
+.operation-log-page-info {
+  color: var(--color-text-muted);
+}
+
+/* ─── Row Tone Backgrounds (mapped to semantic tokens) ─── */
+.log-item.oplog-row-log-tone-blue,
+.log-item.oplog-row-log-tone-indigo,
+.log-item.oplog-row-log-tone-sky,
+.log-item.oplog-row-log-tone-cyan {
+  background: var(--color-info-bg);
+}
+
+.log-item.oplog-row-log-tone-green,
+.log-item.oplog-row-log-tone-teal {
+  background: var(--color-success-bg);
+}
+
+.log-item.oplog-row-log-tone-orange,
+.log-item.oplog-row-log-tone-amber {
+  background: var(--color-warning-bg);
+}
+
+.log-item.oplog-row-log-tone-red,
+.log-item.oplog-row-log-tone-rose,
+.log-item.oplog-row-log-tone-pink {
+  background: var(--color-danger-bg);
+}
+
+.log-item.oplog-row-log-tone-violet,
+.log-item.oplog-row-log-tone-purple {
+  background: var(--color-role-captain-bg);
+}
+
+.log-item.oplog-row-log-tone-gray {
+  background: var(--color-bg-elevated);
+}
+
+/* ─── Legacy Fallback Placeholder ─── */
+.admin-log-legacy-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.admin-log-legacy-desc {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+.admin-log-legacy-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+/* ─── Info Modal Overlay ─── */
+.admin-log-info-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-overlay);
+  backdrop-filter: blur(var(--space-2));
+}
+
+.admin-log-info-modal {
+  background: var(--color-bg-surface);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--radius-modal);
+  width: 90%;
+  max-width: calc(var(--space-8) * 11);
+  box-shadow: var(--shadow-md);
+}
+
+.admin-log-info-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-hairline) solid var(--color-border);
+}
+
+.admin-log-info-modal .modal-header h3 {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.admin-log-info-modal .modal-close {
+  background: none;
+  border: none;
+  font-size: var(--font-size-title);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-1);
+}
+
+.admin-log-info-modal .modal-body {
+  padding: var(--space-4);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.admin-log-info-modal .modal-body p {
+  margin: 0;
+}
