@@ -35,7 +35,23 @@ export function shouldUseEmulator(): boolean {
   return import.meta.env.VITE_FIREBASE_EMULATOR === '1';
 }
 
-const LOCAL_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const LOCAL_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
+
+/** 本機或區網網址（含手機連開發機時的私有 IP 與 *.local）。 */
+export function isLocalOrPrivateHostname(hostname: string): boolean {
+  const host = String(hostname || '').trim().toLowerCase();
+  if (!host) return false;
+  if (LOCAL_HOSTNAMES.has(host) || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  return false;
+}
+
+/** 實際連線目標（給 console 與內測角標顯示，讓連錯資料庫能被看見）。 */
+export function firebaseTargetLabel(): string {
+  return `${FIREBASE_CONFIG.projectId} · ${shouldUseEmulator() ? 'emulator' : 'prod'}`;
+}
 
 /** 正式資料庫連線被拒（本機網址開啟了會連正式資料庫的程式）。 */
 export class FirebaseTargetBlockedError extends Error {
@@ -50,7 +66,8 @@ export class FirebaseTargetBlockedError extends Error {
 
 /**
  * 連線目標檢查（2026-10-19 事故後新增：本機預覽 PROD 建置時忽略 emulator 旗標、誤連正式 Firestore）。
- * 不連 emulator 時，若網址是本機（localhost／127.0.0.1／::1／*.localhost）就拒絕初始化。
+ * 不連 emulator 時，若網址是本機或區網（localhost／127.0.0.1／::1／*.localhost／*.local／
+ * 10.x、172.16～31.x、192.168.x 私有 IP）就拒絕初始化（2026-10-19 Fable 補：手機連開發機時是私有 IP）。
  * 單元測試（MODE=test）不檢查，因為測試一律 mock Firebase。
  */
 export function assertFirebaseTargetAllowed(
@@ -59,7 +76,7 @@ export function assertFirebaseTargetAllowed(
 ): void {
   if (useEmulator) return;
   const host = String(hostname || '').trim().toLowerCase();
-  if (LOCAL_HOSTNAMES.has(host) || host.endsWith('.localhost')) {
+  if (isLocalOrPrivateHostname(host)) {
     throw new FirebaseTargetBlockedError(host);
   }
 }
@@ -81,6 +98,7 @@ async function initializeFirebaseContext(): Promise<FirebaseContext> {
       console.error(err);
       throw err;
     }
+    console.info(`[firebase] 連線目標：${firebaseTargetLabel()}`);
   }
   const [appMod, firestoreMod, authMod, functionsMod] = await Promise.all([
     import('firebase/app'),

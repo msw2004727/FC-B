@@ -112,7 +112,7 @@ export default function ActivitiesPage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
-  const data = useEvents();
+  const data = useEvents(viewer.uid);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);

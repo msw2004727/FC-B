@@ -23,7 +23,16 @@ export interface AuthUser {
   pictureUrl: string | null;
 }
 
+/** 最後一次確認的登入帳號；undefined＝登入狀態尚未確定。 */
+let lastKnownAuthUid: string | null | undefined;
+
+/** 同步取得最後確認的登入帳號（undefined＝尚未確定）。給「只用同帳號快照」等判斷用。 */
+export function getLastKnownAuthUid(): string | null | undefined {
+  return lastKnownAuthUid;
+}
+
 function emitAuth(uid: string | null): void {
+  lastKnownAuthUid = uid;
   try {
     emit('auth:changed', { uid });
   } catch (err) {

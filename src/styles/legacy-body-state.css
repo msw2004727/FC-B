@@ -1,0 +1,9 @@
+/*
+ * 舊版 A 掛在 <html>／<body> 上的狀態規則（不經 .legacy-ui 限定外掛，維持全域）。
+ * 原因：legacy-css-scope 會把 html／body 選擇器改寫到 .legacy-ui，捲動鎖等狀態就失效了
+ * （R-UI-011 的觸控穿透防護依賴 body 捲動鎖；技術顧問 Fable 2026-10-19 指出）。
+ * 來源：A css/base.css 第 278 行；A css/layout.css 第 1169～1170 行。只收狀態規則，不收版面規則。
+ */
+body.modal-open { overflow: hidden; }
+html.profile-complete-scroll-lock,
+body.profile-complete-scroll-lock { overscroll-behavior: none; }

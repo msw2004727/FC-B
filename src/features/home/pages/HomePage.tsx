@@ -14,7 +14,7 @@ import '../home.css';
 export default function HomePage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
-  const data = useEvents();
+  const data = useEvents(viewer.uid);
 
   // TODO(P4.2) 載入使用者報名以支援黑名單第 3 態
   const visible = getVisibleEvents(data.events, viewer, []);
