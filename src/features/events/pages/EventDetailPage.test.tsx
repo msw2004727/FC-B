@@ -14,7 +14,73 @@ const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
   viewer: vi.fn(),
   companions: vi.fn(),
+  toastShow: vi.fn(),
 }));
+
+const ZH_DICT: Record<string, string> = {
+  'events.pageTitle': '活動列表',
+  'events.retry': '重試',
+  'events.card.untitled': '未命名活動',
+  'events.detailPage.loading': '活動資料載入中...',
+  'events.detailPage.loadError': '無法載入活動詳情，請重試。',
+  'events.detailPage.notFound': '找不到此活動',
+  'events.detailPage.unnamed': '未命名使用者',
+  'events.detailPage.confirmed': '正取名單',
+  'events.detailPage.waitlisted': '候補名單',
+  'events.detailPage.emptyRoster': '尚無參加者',
+  'events.detailPage.roster': '參加名單',
+  'events.detailPage.rosterLoading': '參加名單載入中…',
+  'events.detailPage.rosterError': '無法載入參加名單，請重試。',
+  'events.detailPage.historyError': '無法同步你的報名狀態，請重試後再報名。',
+  'events.detailPage.refreshError': '無法更新名單，請重試。',
+  'events.detailPage.actionError': '操作失敗，請稍後再試。',
+  'events.detailPage.selectSomeone': '請至少選擇一位參加者',
+  'events.detailPage.signupSuccess': '報名成功',
+  'events.detailPage.cancelSuccess': '已取消報名',
+  'events.detailPage.cancelTitle': '取消報名',
+  'events.detailPage.chooseParticipants': '選擇參加人員',
+  'events.detailPage.confirmCancel': '確認取消',
+  'events.detailPage.confirmSignup': '確認報名',
+  'events.detailPage.cancelHint': '請勾選要取消的人員',
+  'events.detailPage.self': '(本人)',
+  'events.detailPage.registered': '(已報名)',
+  'events.detailPage.noCompanions': '尚無同行者資料',
+  'events.detailPage.selected': '已選 {count} 人',
+  'events.detailPage.totalFee': '總費用 NT${fee}',
+  'events.detailPage.remaining': '剩餘名額 {count} 人',
+  'events.detailPage.waitlistEstimate': '預計候補 {count} 人',
+  'events.detailPage.button.ended': '已結束',
+  'events.detailPage.button.cancelWaitlist': '取消候補',
+  'events.detailPage.button.cancel': '取消報名',
+  'events.detailPage.button.notOpen': '報名尚未開放',
+  'events.detailPage.button.teamOnly': '球隊限定',
+  'events.detailPage.button.restricted': '性別限定',
+  'events.detailPage.button.waitlist': '報名候補',
+  'events.detailPage.button.signup': '立即報名',
+  'events.signup.error.profileIncomplete': '請先完成個人資料',
+};
+
+function translateKey(key: string, params?: Record<string, string | number>): string {
+  const tpl = ZH_DICT[key] ?? key;
+  if (!params) return tpl;
+  return tpl.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? ''));
+}
+
+vi.mock('@/i18n/i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/i18n/i18n')>()),
+  useT: () => translateKey,
+}));
+
+vi.mock('@/ui/Toast', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/ui/Toast')>();
+  return {
+    ...original,
+    toast: {
+      ...original.toast,
+      show: mocks.toastShow,
+    },
+  };
+});
 
 vi.mock('@/features/events/data/event-detail', () => ({
   loadEventDetail: mocks.detail,
@@ -94,6 +160,143 @@ afterEach(() => {
 });
 
 describe('EventDetailPage', () => {
+  it('輸出舊版 A 的主要 DOM 結構、id、class 與資訊格欄位文字', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        current: 2,
+        max: 10,
+        waitlist: 1,
+        fee: 150,
+        feeEnabled: true,
+        minAge: 18,
+        genderRestrictionEnabled: true,
+        allowedGender: '女',
+        regOpenTime: '2026-01-01T12:00:00+08:00',
+        delegates: [{ uid: 'del1', name: '小幫手' }],
+        contact: 'LINE: @sporthub',
+        teamOnly: true,
+        isPublic: true,
+        creatorTeamName: '閃電隊',
+        privateEvent: false,
+      } as LoadedEventDetail['event'],
+    });
+
+    const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+
+    expect(view.container.querySelector('.legacy-ui #page-activity-detail.page.active')).toBeTruthy();
+    expect(view.container.querySelector('#detail-title')?.textContent).toContain('青埔五人制');
+    expect(view.container.querySelector('#detail-view-count-num')?.textContent).toBe('0');
+    expect(view.container.querySelector('#detail-img-placeholder.td-img-placeholder')).toBeTruthy();
+    expect(view.container.querySelector('#detail-body.detail-body')).toBeTruthy();
+    expect(view.container.querySelector('#detail-action-primary.detail-action-primary')).toBeTruthy();
+    expect(view.container.querySelector('#detail-attendance-table')).toBeTruthy();
+    expect(view.container.querySelector('#detail-waitlist-container')).toBeTruthy();
+    expect(view.container.querySelector('#detail-comments-container')).toBeTruthy();
+
+    expect(view.container.querySelector('[data-detail-field="location"]')?.textContent)
+      .toContain('地點青埔籃足球共用球場 📍');
+    expect(view.container.querySelector('[data-detail-field="date"]')?.textContent)
+      .toContain('時間2099/10/19 18:30~21:00');
+    expect(view.container.querySelector('[data-detail-field="registration-open"]')?.textContent)
+      .toContain('開放報名');
+    expect(view.container.querySelector('[data-detail-field="fee"]')?.textContent)
+      .toBe('費用NT$150');
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toBe('人數已報 2/10 候補 1');
+    expect(view.container.querySelector('[data-detail-field="countdown"]')?.textContent)
+      .toContain('倒數');
+    expect(view.container.querySelector('[data-detail-field="age-limit"]')?.textContent)
+      .toBe('年齡18 歲以上');
+    expect(view.container.querySelector('[data-detail-field="gender-limit"]')?.textContent)
+      .toBe('性別限女生');
+    expect(view.container.querySelector('[data-detail-field="delegates"]')?.textContent)
+      .toContain('小幫手');
+    expect(view.container.querySelector('[data-detail-field="contact"]')?.textContent)
+      .toBe('聯繫LINE: @sporthub');
+    expect(view.container.querySelector('[data-detail-field="team-limit"]')?.textContent)
+      .toContain('閃電隊 專屬活動');
+  });
+
+  it('點擊未開放功能顯示「此功能尚未開放，請先使用舊版」提示', async () => {
+    const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+
+    fireEvent.click(screen.getByRole('button', { name: '分享活動' }));
+    expect(mocks.toastShow).toHaveBeenLastCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+
+    fireEvent.click(screen.getByRole('button', { name: '加入行事曆' }));
+    expect(mocks.toastShow).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole('button', { name: '聯繫主辦' }));
+    expect(mocks.toastShow).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(screen.getByRole('button', { name: '報名紀錄' }));
+    expect(mocks.toastShow).toHaveBeenCalledTimes(4);
+
+    const viewCountWrap = view.container.querySelector('#detail-view-count-wrap')!;
+    fireEvent.click(viewCountWrap);
+    expect(mocks.toastShow).toHaveBeenCalledTimes(5);
+  });
+
+  it('支援登入者與訪客的各種主按鈕狀態文字', async () => {
+    // 1. ended
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, status: 'ended' },
+    });
+    let view = mount();
+    expect((await screen.findByRole('button', { name: '已結束' }) as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+
+    // 2. notOpen
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, status: 'upcoming' },
+    });
+    view = mount();
+    expect((await screen.findByRole('button', { name: '報名尚未開放' }) as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+
+    // 3. teamOnly
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, teamOnly: true, isPublic: true, creatorTeamId: 'team-x' },
+    });
+    view = mount();
+    expect((await screen.findByRole('button', { name: '球隊限定' }) as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+
+    // 4. waitlist
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, current: 10, max: 10 },
+    });
+    view = mount();
+    expect((await screen.findByRole('button', { name: '報名候補' }) as HTMLButtonElement).disabled).toBe(false);
+    view.unmount();
+
+    // 5. cancelWaitlist
+    const waitReg: DetailRegistration = { ...self, status: 'waitlisted' };
+    mocks.registrations.mockResolvedValueOnce([waitReg]);
+    mocks.history.mockResolvedValueOnce([waitReg]);
+    view = mount();
+    expect((await screen.findByRole('button', { name: '取消候補' }) as HTMLButtonElement).disabled).toBe(false);
+    view.unmount();
+
+    // 6. Guest ended → 報名已結束
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.detail.mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, status: 'ended', isPublic: true },
+    });
+    view = mount();
+    expect((await screen.findByRole('button', { name: '報名已結束' }) as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+  });
+
   it('找不到與被封鎖具有相同畫面，且不讀取名單', async () => {
     mocks.detail.mockResolvedValueOnce(null);
     const first = mount();
@@ -116,7 +319,9 @@ describe('EventDetailPage', () => {
       ...detail,
       event: {
         ...detail.event,
-        current: 1, max: 10, waitlist: 1,
+        current: 1,
+        max: 10,
+        waitlist: 1,
         notes: '<img src=x onerror=alert(1)>',
       },
     });
@@ -126,14 +331,14 @@ describe('EventDetailPage', () => {
       { ...self, _docId: 'removed', userId: 'u3', userName: '不可顯示', status: 'removed' },
     ]);
     const view = mount();
-    await screen.findByText('青埔五人制', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { level: 2 });
     await screen.findByText('小華', undefined, { timeout: 3000 });
-    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.queryByText('不可顯示')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
     expect(view.container.querySelector('img[src="x"]')).toBeNull();
-    expect(screen.getByRole('link', { name: '在地圖開啟' }).getAttribute('rel'))
+    expect(screen.getByRole('link', { name: /青埔籃足球共用球場/ }).getAttribute('rel'))
       .toContain('noopener');
     expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
   });
@@ -160,12 +365,13 @@ describe('EventDetailPage', () => {
       },
     });
 
-    mount();
-    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
-    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.getByText('請攜帶飲水')).toBeTruthy();
-    expect(screen.getByText('3/10人')).toBeTruthy();
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toContain('已報 3/10');
     expect(screen.getByText('公開正取')).toBeTruthy();
     expect(screen.getByText('公開候補')).toBeTruthy();
     expect(screen.queryByText('無效資料')).toBeNull();
@@ -216,11 +422,11 @@ describe('EventDetailPage', () => {
       .mockReturnValueOnce(retryRegistrations);
 
     mount();
-    const title = await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    const title = await screen.findByRole('heading', { level: 2 });
     const region = screen.getByRole('region', { name: '參加名單' });
     await within(region).findByText('無法載入參加名單，請重試。');
 
-    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
     expect(screen.queryByText('private permission detail')).toBeNull();
@@ -233,7 +439,7 @@ describe('EventDetailPage', () => {
     fireEvent.click(retry);
     fireEvent.click(retry);
     await within(region).findByText('參加名單載入中…');
-    expect(screen.getByRole('heading', { name: '青埔五人制', level: 1 })).toBe(title);
+    expect(screen.getByRole('heading', { level: 2 })).toBe(title);
     expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
       .toBe(false);
     expect(mocks.registrations).toHaveBeenCalledTimes(2);
@@ -247,7 +453,7 @@ describe('EventDetailPage', () => {
     ]);
     await within(region).findByText('重試後參加者');
     expect(within(region).queryByRole('button', { name: '重試' })).toBeNull();
-    expect(screen.getByRole('heading', { name: '青埔五人制', level: 1 })).toBe(title);
+    expect(screen.getByRole('heading', { level: 2 })).toBe(title);
   });
 
   it('名單尚未回應時主資訊先顯示，登出後舊名單回應不能進入訪客頁', async () => {
@@ -256,13 +462,13 @@ describe('EventDetailPage', () => {
       resolveOld = resolve;
     }));
     const view = mount();
-    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    await screen.findByRole('heading', { level: 2 });
     await screen.findByText('參加名單載入中…');
     expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
 
     mocks.viewer.mockReturnValue({ ...viewer, uid: null });
     view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
-    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    await screen.findByRole('heading', { level: 2 });
     resolveOld([{ ...self, userName: '舊登入名單不可顯示' }]);
     await waitFor(() => {
       expect(screen.queryByText('舊登入名單不可顯示')).toBeNull();
@@ -283,7 +489,7 @@ describe('EventDetailPage', () => {
   it('本人歷史讀取失敗不顯示活動整頁錯誤，也不繞過報名前置檢查', async () => {
     mocks.history.mockRejectedValue(new Error('offline'));
     mount();
-    await screen.findByRole('heading', { name: '青埔五人制', level: 1 });
+    await screen.findByRole('heading', { level: 2 });
     await screen.findByText('無法同步你的報名狀態，請重試後再報名。');
     expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
@@ -295,8 +501,8 @@ describe('EventDetailPage', () => {
   it('報名成功只更新名單、計數與按鈕，不重載活動', async () => {
     mocks.registrations.mockResolvedValueOnce([]).mockResolvedValue([self]);
     mocks.history.mockResolvedValueOnce([]).mockResolvedValue([self]);
-    mount();
-    const title = await screen.findByText('青埔五人制');
+    const view = mount();
+    const title = await screen.findByRole('heading', { level: 2 });
     fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
     await screen.findByRole('button', { name: '取消報名' });
     expect(mocks.register).toHaveBeenCalledTimes(1);
@@ -304,10 +510,11 @@ describe('EventDetailPage', () => {
       eventId: 'ce_123_abc',
       user: { uid: 'u1', displayName: '小明' },
     }));
-    expect(screen.getByText('青埔五人制')).toBe(title);
+    expect(screen.getByRole('heading', { level: 2 })).toBe(title);
     expect(mocks.detail).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('1/0人')).toBeTruthy();
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toContain('已報 1/0');
   });
 
   it('確認選取後才取消，payload 使用子文件 ID', async () => {
@@ -364,8 +571,6 @@ describe('EventDetailPage', () => {
   });
 
   it('寫入成功但刷新失敗，重試只刷新不重送報名', async () => {
-    // registerForEvent 已被 mock，本測試驗證頁面重試契約，
-    // 不代表 signup 寫入整合已通過驗證。
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-19T04:00:00+08:00'));
 
@@ -382,7 +587,7 @@ describe('EventDetailPage', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValue([self]);
 
-    mount();
+    const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
 
     const retry = await screen.findByRole('button', { name: '重試' });
@@ -415,7 +620,8 @@ describe('EventDetailPage', () => {
       expect((cancel as HTMLButtonElement).disabled).toBe(false);
       expect(screen.queryByRole('button', { name: '重試' })).toBeNull();
     });
-    expect(screen.getByText('1/0人')).toBeTruthy();
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toContain('已報 1/0');
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.cancel).not.toHaveBeenCalled();
     expect(mocks.companions).toHaveBeenCalledTimes(1);
@@ -445,7 +651,7 @@ describe('EventDetailPage', () => {
     const view = render(<LocationProvider><EventDetailPage id="old" /></LocationProvider>);
     await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith('old'));
     view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
-    await screen.findByText('青埔五人制');
+    await screen.findByRole('heading', { level: 2 });
     resolveOld({ ...detail, event: { ...detail.event, id: 'old', title: '舊活動' } });
     await waitFor(() => expect(screen.queryByText('舊活動')).toBeNull());
   });

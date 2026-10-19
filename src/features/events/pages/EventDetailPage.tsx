@@ -1,14 +1,9 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
-import { Text } from '@/ui/Text';
-import { Button } from '@/ui/Button';
-import { BottomSheet } from '@/ui/BottomSheet';
-import { Checkbox } from '@/ui/Checkbox';
-import { DateTime } from '@/ui/DateTime';
+import { lt, useT } from '@/i18n/i18n';
 import { UserTag } from '@/ui/UserTag';
-import { Toast } from '@/ui/Toast';
+import { Toast, toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
@@ -30,7 +25,6 @@ import {
   isCompanion,
   registrationId,
   registrationOwner,
-  safeImageUrl,
   sortRegistrations,
   type DetailEvent,
   type DetailRegistration,
@@ -38,8 +32,16 @@ import {
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
 import { WaitlistRosterTable } from '../components/WaitlistRosterTable';
+import {
+  CompanionSelectModal,
+  EventDetailCover,
+  EventDetailInfoSection,
+  EventDetailPrimaryButton,
+  type LegacyDetailEvent,
+} from '../components/legacy/EventDetailMainView';
 import type { RegistrationDoc } from '../data/types';
-import './event-detail.css';
+import '../legacy/activity.css';
+import '../legacy/tournament-td-img-placeholder.css';
 
 interface Snapshot {
   event: DetailEvent;
@@ -58,14 +60,21 @@ interface Notice {
 type Sheet = 'signup' | 'cancel' | null;
 type RosterPhase = 'loading' | 'ready' | 'error';
 
+const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
   const routeId = id ?? location.path.split('/')[2] ?? '';
   const viewer = useViewer();
 
   // UID/活動變更立即隔離 DOM 與所有未完成操作，避免 effect 清理前洩漏舊資料。
-  return <EventDetailSession key={`${routeId}:${viewer.uid ?? 'guest'}`}
-    publicId={routeId} viewer={viewer} />;
+  return (
+    <EventDetailSession
+      key={`${routeId}:${viewer.uid ?? 'guest'}`}
+      publicId={routeId}
+      viewer={viewer}
+    />
+  );
 }
 
 function EventDetailSession({
@@ -115,9 +124,14 @@ function EventDetailSession({
     if (alive.current) setNotice({ key, params, serial: ++noticeSequence.current });
   }
 
+  function handleUnavailable(e?: MouseEvent): void {
+    if (e) e.stopPropagation();
+    // 下一批補：瀏覽次數、重新整理、報名紀錄、公開切換、分享、行事曆、留言、收藏、聯繫主辦
+    toast.show({ message: UNAVAILABLE_MSG });
+  }
+
   function errorKey(error: unknown, fallback: string): string {
     if (!(error instanceof SignupError)) return fallback;
-    // 資料層使用 event.*；功能字典由 i18n loader 加 events.* 前綴。
     return error.messageKey.startsWith('event.')
       ? `events.${error.messageKey.slice('event.'.length)}`
       : error.messageKey;
@@ -141,7 +155,6 @@ function EventDetailSession({
         return;
       }
 
-      // 整頁 error 僅由活動文件讀取失敗觸發。
       let detail: Awaited<ReturnType<typeof loadEventDetail>>;
       try {
         detail = await loadEventDetail(publicId);
@@ -166,7 +179,6 @@ function EventDetailSession({
       }
       if (!current()) return;
 
-      // 歷史失敗不捏造參加紀錄；可見性仍使用既有守衛，不能放寬私密活動權限。
       if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
         setPhase('missing');
         return;
@@ -183,9 +195,6 @@ function EventDetailSession({
       setHistoryFailed(failedHistory);
       setPhase('ready');
 
-      // A 的 showEventDetail、_renderGuestAttendanceTable、
-      // _renderGuestWaitlistSection 透過 _buildGuestEventPeople 顯示活動文件上的公開名單。
-      // 訪客不讀 registrations，公開名單也不作為報名／取消的身分證據。
       if (!viewer.uid) {
         setRosterPhase('ready');
         return;
@@ -210,7 +219,9 @@ function EventDetailSession({
       }
     }
 
-    void load();
+    load().catch(() => {
+      if (current()) setPhase('error');
+    });
     return () => {
       disposed = true;
     };
@@ -271,7 +282,6 @@ function EventDetailSession({
   }
 
   async function refresh(current: Snapshot): Promise<void> {
-    // 包含寫入後刷新在內，所有 registrations 入口都必須有登入身分。
     const uid = currentViewer.current.uid;
     if (!uid) return;
     const request = ++rosterSequence.current;
@@ -299,7 +309,6 @@ function EventDetailSession({
       setRefreshFailed(false);
     } catch (error) {
       if (!alive.current || request !== rosterSequence.current) return;
-      // 寫入可能已成功，保留原有防重送契約；不同於首次唯讀名單失敗。
       setRosterPhase('error');
       setRefreshFailed(true);
       show(errorKey(error, 'events.detailPage.refreshError'));
@@ -308,13 +317,20 @@ function EventDetailSession({
 
   const visible = snapshot !== null &&
     isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
-  const event = snapshot?.event;
+  const event = snapshot?.event as LegacyDetailEvent | undefined;
   const active = sortRegistrations(snapshot?.registrations ?? []);
 
   // 收集頁面上會出現的所有 UserTag uid，一次查角色（R-ID-002：只用 UID）。
   const roleUids: string[] = [];
   if (event) {
     if (event.creatorUid) roleUids.push(event.creatorUid);
+    if (Array.isArray(event.delegates)) {
+      for (const d of event.delegates as unknown[]) {
+        if (d && typeof d === 'object' && 'uid' in d && typeof d.uid === 'string' && d.uid) {
+          roleUids.push(d.uid);
+        }
+      }
+    }
     for (const person of guestEventPeople(event, 'participants')) roleUids.push(person.uid);
     for (const person of guestEventPeople(event, 'waitlistNames')) roleUids.push(person.uid);
   }
@@ -323,7 +339,6 @@ function EventDetailSession({
     const owner = registrationOwner(reg);
     if (owner) roleUids.push(owner);
   }
-  // 訪客不能讀 users（Rules isAuth），不查。
   const roles = useUserRoles(viewer.uid ? roleUids : []);
 
   const eventId = event?.id ?? publicId;
@@ -355,7 +370,6 @@ function EventDetailSession({
   });
 
   function handleStartRosterEdit(): void {
-    // 對照 A `_startTableEdit`：按下時再檢查一次權限，不通過 toast「權限不足」。
     const curEvent = snapshot?.event;
     if (
       !curEvent
@@ -382,8 +396,6 @@ function EventDetailSession({
     }
   }
 
-  // 名單載入中或失敗時，可用已讀到的本人歷史維持原本報名按鈕狀態。
-  // 不使用活動文件的公開姓名陣列推導本人報名。
   const actionRegistrations = !viewer.uid ? [] : rosterPhase === 'ready'
     ? active
     : sortRegistrations(
@@ -399,12 +411,10 @@ function EventDetailSession({
       return false;
     }
     const currentEventId = current.event.id ?? publicId;
-    // precheckSignup 不自行按 eventId 篩選，禁止將其他活動的紀錄直接傳入。
     const history = current.viewerRegistrations.filter((reg) => reg.eventId === currentEventId);
     const result = precheckSignup(current.event, currentViewer.current, history, new Date());
     if (result.ok) return true;
 
-    // 只替同行者報名可已有本人報名；其餘前置檢查仍全部執行。
     if (!includeSelf && result.reason === 'already_registered') return true;
     show(result.messageKey.replace(/^event\./, 'events.'));
     return false;
@@ -497,26 +507,34 @@ function EventDetailSession({
       event,
       status === 'confirmed' ? 'participants' : 'waitlistNames',
     );
-    // A 的 _renderGuestWaitlistSection 在無候補姓名時不顯示候補名單區塊。
     if (status === 'waitlisted' && people.length === 0) return null;
     return (
-      <section class="event-detail__section">
-        <Text as="h2">{t(`events.detailPage.${status}`)} {people.length}</Text>
-        {people.length === 0 ? <Text>{t('events.detailPage.emptyRoster')}</Text> : (
-          <ul class="event-detail__roster">
+      <div class="detail-section">
+        <div class="detail-section-title">
+          {`${t(`events.detailPage.${status}`)} ${people.length}`}
+        </div>
+        {people.length === 0 ? (
+          <div>{t('events.detailPage.emptyRoster')}</div>
+        ) : (
+          <ul class="participant-list" style="list-style:none;padding:0;margin:0">
             {people.map((person, index) => (
               <li key={`${status}:${index}:${person.uid}`}>
-                <UserTag uid={person.uid} name={person.name} role={roles[person.uid]}
-                  disabled={!person.uid} onOpenProfile={profile} />
+                <UserTag
+                  uid={person.uid}
+                  name={person.name}
+                  role={roles[person.uid]}
+                  disabled={!person.uid}
+                  onOpenProfile={profile}
+                />
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </div>
     );
   }
 
-  const toast = notice && (
+  const noticeToast = notice && (
     <Toast
       key={notice.serial}
       message={t(notice.key, notice.params)}
@@ -525,24 +543,49 @@ function EventDetailSession({
   );
 
   if (phase === 'loading') {
-    return <section class="event-detail" aria-busy="true">
-      <Text>{t('events.detailPage.loading')}</Text>{toast}
-    </section>;
+    return (
+      <div class="legacy-ui">
+        <section class="page active" id="page-activity-detail" aria-busy="true">
+          <div class="detail-body" id="detail-body">
+            <div class="reg-loading">{t('events.detailPage.loading')}</div>
+          </div>
+          {noticeToast}
+        </section>
+      </div>
+    );
   }
+
   if (phase === 'error') {
-    return <section class="event-detail">
-      <Text as="h1">{t('events.detailPage.loadError')}</Text>
-      <Button onClick={() => setReload((value) => value + 1)}>
-        {t('events.retry')}
-      </Button>
-      {toast}
-    </section>;
+    return (
+      <div class="legacy-ui">
+        <section class="page active" id="page-activity-detail">
+          <div class="detail-body" id="detail-body">
+            <h1>{t('events.detailPage.loadError')}</h1>
+            <button
+              type="button"
+              class="outline-btn"
+              onClick={() => setReload((value) => value + 1)}
+            >
+              {t('events.retry')}
+            </button>
+          </div>
+          {noticeToast}
+        </section>
+      </div>
+    );
   }
+
   if (phase === 'missing' || !snapshot || !event || !visible) {
-    return <section class="event-detail">
-      <Text as="h1">{t('events.detailPage.notFound')}</Text>
-      <a href="/activities"><Text>{t('events.pageTitle')}</Text></a>
-    </section>;
+    return (
+      <div class="legacy-ui">
+        <section class="page active" id="page-activity-detail">
+          <div class="detail-body" id="detail-body">
+            <h1>{t('events.detailPage.notFound')}</h1>
+            <a href="/activities">{t('events.pageTitle')}</a>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
@@ -554,256 +597,363 @@ function EventDetailSession({
     registrations: actionRegistrations,
     now: new Date(now),
   });
-  const cover = safeImageUrl(event.imageVariants?.cover || event.image);
   const range = eventDateRange(event.date);
   const maximum = count(event.max);
   const remaining = maximum > 0 ? Math.max(0, maximum - confirmedCount) : null;
   const fee = count(event.fee);
   const selectedCount = selected.length;
   const waitlistedEstimate = remaining === null ? 0 : Math.max(0, selectedCount - remaining);
-  const hostUid = event.creatorUid ?? '';
   const canAdd = !['ended', 'upcoming', 'cancelled'].includes(event.status ?? '') &&
     !(range && Date.parse(range.start) <= now);
+  const viewCountNum = count(event.viewCount);
 
   return (
-    <section class="event-detail">
-      <header class="event-detail__header">
-        <a href="/activities" aria-label={t('events.pageTitle')}>
-          <Text>‹</Text>
-        </a>
-        <Text as="h1">{event.title || t('events.card.untitled')}</Text>
-        {/* 收藏、編輯／管理按鈕延後。 */}
-      </header>
+    <div class="legacy-ui">
+      <section class="page active" id="page-activity-detail">
+        <div class="page-header">
+          <button
+            type="button"
+            class="back-btn"
+            aria-label={lt('返回', '返回')}
+            data-i18n-aria-label="返回"
+            onClick={() => location.route('/activities')}
+          >
+            <svg class="back-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M15 6l-6 6 6 6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex:1;min-width:0">
+            <h2 id="detail-title" style="margin:0;min-width:0;flex:1" data-i18n="活動名稱">
+              {event.title || t('events.card.untitled')}
+              {' '}
+              {/* 下一批補：收藏愛心 */}
+              <button
+                type="button"
+                class="fav-heart"
+                data-fav-type="Event"
+                data-fav-id={eventId}
+                title="加入收藏"
+                aria-label="加入收藏"
+                onClick={handleUnavailable}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--text-muted)"
+                  stroke-width="2"
+                >
+                  <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+                </svg>
+              </button>
+            </h2>
+            {/* 下一批補：公開／私密活動切換 */}
+            <div
+              id="detail-public-toggle-wrap"
+              style={canManageRoster ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
+            >
+              <button
+                type="button"
+                class="event-reg-log-btn"
+                onClick={handleUnavailable}
+              >
+                {event.privateEvent ? '私密' : '公開'}
+              </button>
+            </div>
+            {/* 下一批補：瀏覽次數累積寫入 */}
+            <div
+              id="detail-view-count-wrap"
+              class="event-view-count"
+              style="flex-shrink:0"
+              aria-label={lt('瀏覽次數', '瀏覽次數')}
+              title={lt('瀏覽次數', '瀏覽次數')}
+              data-i18n-aria-label="瀏覽次數"
+              data-i18n-title="瀏覽次數"
+              onClick={handleUnavailable}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="13"
+                height="13"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span id="detail-view-count-num">{viewCountNum.toLocaleString()}</span>
+            </div>
+            {/* 下一批補：手動重新整理按鈕 */}
+            <div
+              id="detail-refresh-btn-wrap"
+              style={viewer.uid ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
+            >
+              <button
+                type="button"
+                class="event-detail-refresh-btn"
+                title="重新整理"
+                aria-label="重新整理"
+                onClick={handleUnavailable}
+              >
+                ↻
+              </button>
+            </div>
+            {/* 下一批補：報名紀錄彈窗 */}
+            <div
+              id="detail-log-btn-wrap"
+              style={viewer.uid ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
+            >
+              <button
+                type="button"
+                class="event-reg-log-btn"
+                onClick={handleUnavailable}
+              >
+                報名紀錄
+              </button>
+            </div>
+          </div>
+        </div>
 
-      <div class="event-detail__cover">
-        {cover ? (
-          <img src={cover} alt={event.title ?? ''} width="1200" height="450"
-            decoding="async" />
-        ) : <Text>{t('events.detailPage.noCover')}</Text>}
-      </div>
+        <EventDetailCover
+          event={event}
+          canEdit={canManageRoster}
+          onUnavailable={handleUnavailable}
+        />
 
-      <div class="event-detail__body">
-        <div class="event-detail__row">
-          <Text class="event-detail__label">{t('events.detailPage.location')}</Text>
-          <div>
-            <Text>{event.location || t('events.card.locationUnknown')}</Text>
-            {event.location && (
-              <a class="event-detail__map"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
-                target="_blank" rel="noopener noreferrer">
-                <Text>{t('events.detailPage.map')}</Text>
-              </a>
+        <div class="detail-body" id="detail-body">
+          <EventDetailInfoSection
+            event={event}
+            confirmedCount={confirmedCount}
+            waitlistCount={waitlistCount}
+            nowMs={now}
+            roles={roles}
+            onOpenProfile={profile}
+            onUnavailable={handleUnavailable}
+          />
+
+          <div class="detail-action-zone">
+            <div class="detail-action-toolbar">
+              <div
+                class="signup-glow-wrap"
+                style="--glow-c:#2563eb;--glow-c-light:#60a5fa"
+              >
+                <div class="signup-glow-border" />
+                <div class="signup-glow-shadow" />
+                <div class="signup-flipper">
+                  <button
+                    type="button"
+                    class="detail-toolbar-btn companion-signup-toolbar-action"
+                    disabled={busy || refreshFailed || !canAdd}
+                    onClick={() => start(() => beginSignup(true))}
+                  >
+                    幫夥伴報名
+                  </button>
+                </div>
+                <div class="signup-loading-hint">
+                  <div class="mini-spinner" />
+                  <span class="mini-text">寫入中</span>
+                </div>
+              </div>
+              {/* 下一批補：分享活動 */}
+              <button
+                type="button"
+                class="detail-toolbar-btn"
+                onClick={handleUnavailable}
+              >
+                分享活動
+              </button>
+              {/* 下一批補：加入行事曆 */}
+              <button
+                type="button"
+                class="detail-toolbar-btn"
+                onClick={handleUnavailable}
+              >
+                加入行事曆
+              </button>
+              {/* 下一批補：現場簽到導覽 */}
+              {canManageRoster && (
+                <button
+                  type="button"
+                  class="detail-toolbar-btn"
+                  onClick={handleUnavailable}
+                >
+                  現場簽到
+                </button>
+              )}
+            </div>
+
+            <div class="detail-action-primary" id="detail-action-primary">
+              <EventDetailPrimaryButton
+                event={event}
+                isGuest={!viewer.uid}
+                state={state}
+                label={t(state.labelKey)}
+                disabled={state.disabled || busy || refreshFailed}
+                busy={busy}
+                onClick={() => {
+                  if (state.action === 'cancel') {
+                    setSelected(owned.map(registrationId).filter(Boolean));
+                    setSheet('cancel');
+                  } else if (state.action === 'explain') {
+                    show(state.messageKey ?? 'events.detailPage.actionError');
+                  } else if (state.action === 'signup') {
+                    start(() => beginSignup(false));
+                  }
+                }}
+              />
+            </div>
+
+            {historyFailed && !refreshFailed && (
+              <div role="alert" style="margin-top:.5rem">
+                <span>{t('events.detailPage.historyError')}</span>
+                <button
+                  type="button"
+                  class="outline-btn"
+                  disabled={busy}
+                  onClick={() => setReload((value) => value + 1)}
+                >
+                  {t('events.retry')}
+                </button>
+              </div>
+            )}
+
+            {refreshFailed && (
+              <div role="alert" style="margin-top:.5rem">
+                <span>{t('events.detailPage.refreshError')}</span>
+                <button
+                  type="button"
+                  class="outline-btn"
+                  disabled={busy}
+                  onClick={() => start(() => refresh(snapshot))}
+                >
+                  {t('events.retry')}
+                </button>
+              </div>
             )}
           </div>
-        </div>
 
-        <div class="event-detail__row">
-          <Text class="event-detail__label">{t('events.detailPage.time')}</Text>
-          {range ? <div>
-            <DateTime value={range.start} variant="datetime"
-              options={{ timeZone: 'Asia/Taipei' }} />
-            {range.end && <>
-              <Text> – </Text>
-              <DateTime value={range.end} variant="time"
-                options={{ timeZone: 'Asia/Taipei' }} />
-            </>}
-          </div> : <Text>{event.date || t('events.card.dateUnknown')}</Text>}
-        </div>
-
-        {event.regOpenTime && Number.isFinite(Date.parse(event.regOpenTime)) && (
-          <div class="event-detail__row">
-            <Text class="event-detail__label">{t('events.detailPage.opens')}</Text>
-            <DateTime value={event.regOpenTime} options={{ timeZone: 'Asia/Taipei' }} />
-          </div>
-        )}
-
-        <div class="event-detail__stats" aria-live="polite">
-          <div>
-            <Text class="event-detail__label">{t('events.detailPage.fee')}</Text>
-            <Text>{fee > 0 ? `NT$${fee}` : t('events.detailPage.free')}</Text>
-          </div>
-          <div>
-            <Text class="event-detail__label">{t('events.detailPage.people')}</Text>
-            <Text>{t('events.card.capacity', {
-              current: confirmedCount,
-              max: maximum,
-            })}</Text>
-          </div>
-          <div>
-            <Text class="event-detail__label">{t('events.detailPage.waitlisted')}</Text>
-            <Text>{waitlistCount}</Text>
-          </div>
-        </div>
-
-        <div class="event-detail__row event-detail__host">
-          <Text class="event-detail__label">{t('events.detailPage.host')}</Text>
-          <UserTag uid={hostUid} role={roles[hostUid]}
-            name={event.creator || event.creatorName || t('events.detailPage.unnamed')}
-            disabled={!hostUid} onOpenProfile={profile} />
-        </div>
-
-        <section class="event-detail__section">
-          <Text as="h2">{t('events.detailPage.notes')}</Text>
-          <Text as="p" class="event-detail__notes">
-            {event.notes || t('events.detailPage.noNotes')}
-          </Text>
-        </section>
-
-        <div class="event-detail__actions">
-          <div class="event-detail__toolbar">
-            <Button disabled={busy || refreshFailed || !canAdd}
-              onClick={() => start(() => beginSignup(true))}>
-              {t('events.detailPage.companionSignup')}
-            </Button>
-            {/* A 的分享、行事曆位置本批留空，不放不可用按鈕。 */}
-          </div>
-          <Button
-            class={`event-detail__primary event-detail__primary--${state.tone}`}
-            loading={busy}
-            disabled={state.disabled || busy || refreshFailed}
-            onClick={() => {
-              if (state.action === 'cancel') {
-                setSelected(owned.map(registrationId).filter(Boolean));
-                setSheet('cancel');
-              } else if (state.action === 'explain') {
-                show(state.messageKey ?? 'events.detailPage.actionError');
-              } else if (state.action === 'signup') {
-                start(() => beginSignup(false));
-              }
-            }}
-          >
-            {t(state.labelKey)}
-          </Button>
-          {historyFailed && !refreshFailed && (
-            <div role="alert">
-              <Text>{t('events.detailPage.historyError')}</Text>
-              <Button disabled={busy}
-                onClick={() => setReload((value) => value + 1)}>
-                {t('events.retry')}
-              </Button>
-            </div>
-          )}
-          {refreshFailed && (
-            <div role="alert">
-              <Text>{t('events.detailPage.refreshError')}</Text>
-              <Button loading={busy} disabled={busy}
-                onClick={() => start(() => refresh(snapshot))}>
-                {t('events.retry')}
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {!viewer.uid ? <>
-          {guestRoster('confirmed')}
-          {guestRoster('waitlisted')}
-        </> : (
-          <section class="event-detail__section"
-            aria-label={t('events.detailPage.roster')}
-            aria-busy={rosterPhase === 'loading'}>
-            {rosterPhase === 'loading' ? (
-              <Text>{t('events.detailPage.rosterLoading')}</Text>
-            ) : rosterPhase === 'error' ? (
-              <div role="alert">
-                <Text>{t('events.detailPage.rosterError')}</Text>
-                {!refreshFailed && (
-                  <Button disabled={busy} onClick={() => { void retryRoster(); }}>
-                    {t('events.retry')}
-                  </Button>
+          {!viewer.uid ? (
+            <>
+              <div class="detail-section">
+                <div id="detail-attendance-table">
+                  {guestRoster('confirmed')}
+                </div>
+              </div>
+              <div class="detail-section" id="detail-unreg-section" style="display:none">
+                <div id="detail-unreg-table" />
+              </div>
+              <div id="detail-waitlist-container">
+                {guestRoster('waitlisted')}
+              </div>
+            </>
+          ) : (
+            <section
+              aria-label={t('events.detailPage.roster')}
+              aria-busy={rosterPhase === 'loading'}
+            >
+              <div class="detail-section">
+                <div id="detail-attendance-table">
+                  {rosterPhase === 'loading' ? (
+                    <div class="reg-loading">{t('events.detailPage.rosterLoading')}</div>
+                  ) : rosterPhase === 'error' ? (
+                    <div role="alert">
+                      <div>{t('events.detailPage.rosterError')}</div>
+                      {!refreshFailed && (
+                        <button
+                          type="button"
+                          class="outline-btn"
+                          disabled={busy}
+                          onClick={() => { retryRoster().catch(() => {}); }}
+                        >
+                          {t('events.retry')}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <AttendanceRosterTable
+                      event={event}
+                      registrations={snapshot.registrations}
+                      attendanceRecords={snapshot.attendanceRecords}
+                      roles={roles}
+                      onOpenProfile={profile}
+                      canManage={canManageRoster}
+                      editing={rosterEditing}
+                      submitting={rosterSubmitting}
+                      onStartEdit={handleStartRosterEdit}
+                      onCloseEdit={() => { handleCloseRosterEdit().catch(() => {}); }}
+                      getRowSelection={instantSave.getRowSelection}
+                      inFlightKeys={instantSave.inFlightKeys}
+                      savedFlashKeys={instantSave.savedFlashKeys}
+                      failedFlashKeys={instantSave.failedFlashKeys}
+                      onToggleCheckbox={instantSave.onToggleCheckbox}
+                      onChangeNote={instantSave.onChangeNote}
+                    />
+                  )}
+                </div>
+              </div>
+              <div class="detail-section" id="detail-unreg-section" style="display:none">
+                <div id="detail-unreg-table" />
+              </div>
+              <div id="detail-waitlist-container">
+                {rosterPhase === 'ready' && (
+                  <WaitlistRosterTable
+                    event={event}
+                    registrations={snapshot.registrations}
+                    roles={roles}
+                    onOpenProfile={profile}
+                  />
                 )}
               </div>
-            ) : <>
-              <AttendanceRosterTable
-                event={event}
-                registrations={snapshot.registrations}
-                attendanceRecords={snapshot.attendanceRecords}
-                roles={roles}
-                onOpenProfile={profile}
-                canManage={canManageRoster}
-                editing={rosterEditing}
-                submitting={rosterSubmitting}
-                onStartEdit={handleStartRosterEdit}
-                onCloseEdit={() => { void handleCloseRosterEdit(); }}
-                getRowSelection={instantSave.getRowSelection}
-                inFlightKeys={instantSave.inFlightKeys}
-                savedFlashKeys={instantSave.savedFlashKeys}
-                failedFlashKeys={instantSave.failedFlashKeys}
-                onToggleCheckbox={instantSave.onToggleCheckbox}
-                onChangeNote={instantSave.onChangeNote}
-              />
-              <WaitlistRosterTable
-                event={event}
-                registrations={snapshot.registrations}
-                roles={roles}
-                onOpenProfile={profile}
-              />
-            </>}
-          </section>
-        )}
-        {/* A 名單下方留言區延後。 */}
-      </div>
+            </section>
+          )}
 
-      <BottomSheet
-        open={sheet !== null}
-        title={t(sheet === 'cancel'
-          ? 'events.detailPage.cancelTitle' : 'events.detailPage.chooseParticipants')}
-        loading={busy}
-        closeOnEsc={!busy}
-        closeOnOverlay={!busy}
-        onClose={() => { if (!busy) setSheet(null); }}
-        footer={<Button
-          loading={busy}
-          disabled={busy || selected.length === 0}
-          onClick={() => start(() => sheet === 'cancel'
-            ? submitCancel()
-            : submitSignup(snapshot, selected))}
-        >
-          {t(sheet === 'cancel'
-            ? 'events.detailPage.confirmCancel' : 'events.detailPage.confirmSignup')}
-        </Button>}
-      >
-        <div class="event-detail__selection">
-          <Text>{event.title || t('events.card.untitled')}</Text>
-          {sheet === 'cancel' ? <>
-            <Text as="p">{t('events.detailPage.cancelHint')}</Text>
-            {owned.map((reg) => {
-              const key = registrationId(reg);
-              return <Checkbox key={key} label={name(reg)}
-                disabled={busy || !key}
-                checked={selected.includes(key)}
-                onCheckedChange={(checked) => toggle(key, checked)} />;
-            })}
-          </> : <>
-            <Checkbox
-              label={`${viewer.displayName || t('events.detailPage.unnamed')} ${t('events.detailPage.self')}`}
-              disabled={busy || selfRegistered}
-              checked={selfRegistered || selected.includes('self')}
-              onCheckedChange={(checked) => toggle('self', checked)}
-            />
-            {companions.map((item) => {
-              const registered = signedCompanions.has(item.id);
-              const key = `companion:${item.id}`;
-              return <Checkbox key={item.id}
-                label={`${item.name}${registered ? ` ${t('events.detailPage.registered')}` : ''}`}
-                checked={registered || selected.includes(key)}
-                disabled={busy || registered}
-                onCheckedChange={(checked) => toggle(key, checked)} />;
-            })}
-            {companions.length === 0 && <Text>{t('events.detailPage.noCompanions')}</Text>}
-            <div aria-live="polite">
-              <Text as="p">{t('events.detailPage.selected', { count: selectedCount })}</Text>
-              <Text as="p">{t('events.detailPage.totalFee', { fee: fee * selectedCount })}</Text>
-              {remaining !== null && <Text as="p">
-                {t('events.detailPage.remaining', { count: remaining })}
-              </Text>}
-              {waitlistedEstimate > 0 && <Text as="p">
-                {t('events.detailPage.waitlistEstimate', { count: waitlistedEstimate })}
-              </Text>}
+          {/* 下一批補：活動留言區塊 */}
+          <div id="detail-comments-container" onClick={handleUnavailable}>
+            <div class="detail-section event-comments-section">
+              <div class="detail-section-title">留言</div>
+              <div class="event-comments-empty" style="cursor:pointer">
+                留言功能（點擊查看）
+              </div>
             </div>
-          </>}
+          </div>
         </div>
-      </BottomSheet>
-      {toast}
-    </section>
+
+        <CompanionSelectModal
+          open={sheet !== null}
+          mode={sheet}
+          eventTitle={event.title || t('events.card.untitled')}
+          viewerName={viewer.displayName || t('events.detailPage.unnamed')}
+          selfRegistered={selfRegistered}
+          companions={companions}
+          signedCompanions={signedCompanions}
+          ownedItems={owned.map((reg) => ({
+            key: registrationId(reg),
+            label: name(reg),
+          }))}
+          selected={selected}
+          busy={busy}
+          fee={fee}
+          remaining={remaining}
+          waitlistedEstimate={waitlistedEstimate}
+          t={t}
+          onToggle={toggle}
+          onClose={() => { if (!busy) setSheet(null); }}
+          onConfirm={() => start(() => (sheet === 'cancel'
+            ? submitCancel()
+            : submitSignup(snapshot, selected)))}
+        />
+        {noticeToast}
+      </section>
+    </div>
   );
 }

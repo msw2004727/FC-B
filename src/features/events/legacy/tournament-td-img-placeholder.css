@@ -1,0 +1,16 @@
+/* 來源：A css/tournament.css 第 116～130 行（原樣複製） */
+.td-img-placeholder {
+  width: 100%;
+  aspect-ratio: 2.5/1;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: monospace;
+  background: var(--bg-elevated);
+  margin-bottom: .75rem;
+}
