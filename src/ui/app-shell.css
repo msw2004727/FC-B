@@ -77,9 +77,17 @@
 /* 改版頁（舊版 A 外觀）：A 的 body 規則限定到 .legacy-ui 後會帶上頂部列／底部導覽的預留空間，
    但 B 的外框（.app-main）已預留，這裡歸零避免重複空白（2026-10-19）。 */
 .app-main > .legacy-ui {
-  padding-top: 0;
-  padding-bottom: 0;
+  /* 照 A #main-content 的內距（css/base.css）：上下 .5rem；側邊 B 的 .app-main 已有 8px */
+  padding-top: .5rem;
+  padding-bottom: .5rem;
   min-height: auto;
   /* A 的 body 沒設行高（瀏覽器預設），不要繼承 B body 的較大行高 */
   line-height: normal;
+}
+
+@media (min-width: 600px) {
+  /* A：#main-content { padding: .75rem 1rem } */
+  .app-main > .legacy-ui {
+    padding: .75rem calc(1rem - 8px);
+  }
 }
