@@ -442,6 +442,16 @@ export function applyAddonGate(
   };
 }
 
+/** UI 用：是否顯示「我要開團」入口（與送出時的 assertCreateAllowed 同一套規則）。 */
+export function canCreateEvent(ctx: CreateEventContext): boolean {
+  try {
+    assertCreateAllowed(ctx);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function assertCreateAllowed(ctx: CreateEventContext): void {
   const checker = createPermissionChecker({
     role: ctx.role,

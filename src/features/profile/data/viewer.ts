@@ -26,6 +26,7 @@ import {
   buildPermissionCheckerInput,
   createPermissionChecker,
   isBuiltinRole,
+  type CustomRole,
 } from './permissions';
 import {
   computeVisibleTeamIds,
@@ -34,12 +35,29 @@ import {
   type VisibilityUserDoc,
 } from './viewer-visibility';
 
+/** 動作層（例如建立活動）需要的原始權限來源；與 hasPermission 同一份資料。 */
+export interface ViewerPermissionSources {
+  /** null＝角色權限文件不存在（用預設）；[]＝文件存在但全關。 */
+  rolePermissions: readonly string[] | null;
+  /** 已驗證 uid／enabled 的個別授權碼。 */
+  userGrants: readonly string[];
+  customRoles: readonly CustomRole[];
+}
+
 export interface ViewerView extends ViewerContext {
   role: string;
   displayName: string | null;
   pictureUrl: string | null;
   capabilities: readonly string[];
+  /** 選填：測試替身可省略，使用端視為「無任何權限來源」。 */
+  permissionSources?: ViewerPermissionSources;
 }
+
+const EMPTY_PERMISSION_SOURCES: ViewerPermissionSources = Object.freeze({
+  rolePermissions: null,
+  userGrants: Object.freeze([]) as readonly string[],
+  customRoles: Object.freeze([]) as readonly CustomRole[],
+});
 
 const EMPTY_TEAM_IDS: ReadonlySet<string> = new Set<string>();
 const EMPTY_CAPABILITIES: readonly string[] = Object.freeze([]);
@@ -58,6 +76,7 @@ export function createGuestViewer(): ViewerView {
     displayName: null,
     pictureUrl: null,
     capabilities: EMPTY_CAPABILITIES,
+    permissionSources: EMPTY_PERMISSION_SOURCES,
   };
 }
 
@@ -71,6 +90,7 @@ export function createMinimalViewer(uid: string): ViewerView {
     displayName: null,
     pictureUrl: null,
     capabilities: EMPTY_CAPABILITIES,
+    permissionSources: EMPTY_PERMISSION_SOURCES,
   };
 }
 
@@ -325,6 +345,11 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     displayName: userInfo.displayName,
     pictureUrl: userInfo.pictureUrl,
     capabilities,
+    permissionSources: {
+      rolePermissions: checkerInput.rolePermissions?.[role] ?? null,
+      userGrants: checkerInput.userGrants ?? [],
+      customRoles: checkerInput.customRoles ?? [],
+    },
   };
 }
 
