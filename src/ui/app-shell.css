@@ -71,3 +71,13 @@
   pointer-events: none;
   opacity: 0.9;
 }
+
+/* 改版頁（舊版 A 外觀）：A 的 body 規則限定到 .legacy-ui 後會帶上頂部列／底部導覽的預留空間，
+   但 B 的外框（.app-main）已預留，這裡歸零避免重複空白（2026-10-19）。 */
+.app-main > .legacy-ui {
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: auto;
+  /* A 的 body 沒設行高（瀏覽器預設），不要繼承 B body 的較大行高 */
+  line-height: normal;
+}
