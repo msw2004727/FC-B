@@ -23,6 +23,7 @@
 import type { Firestore } from 'firebase/firestore';
 
 import { callFn } from '@/data/callables';
+import { assertInternalTestWritable, isInternalTestLabel } from '@/data/internal-test';
 import type {
   EnqueuePrivilegedLineNotificationRequest,
   WriteAuditLogRequest,
@@ -353,6 +354,7 @@ async function enqueuePrivilegedLine(input: {
     source: input.source,
   };
   if (typeof input.dedupeKey === 'string' && input.dedupeKey) request.dedupeKey = input.dedupeKey;
+  await assertInternalTestWritable({ kind: 'line', affectedUids: [input.uid] });
   return callFn('enqueuePrivilegedLineNotification', request);
 }
 
@@ -416,6 +418,11 @@ export async function requestTeamJoin({
   if (staffUids.length === 0) {
     throw new Error('[membership] requestTeamJoin: no staff to review');
   }
+  await assertInternalTestWritable({
+    kind: 'team',
+    labeled: isInternalTestLabel(team?.name),
+    affectedUids: [applicantUid, ...staffUids],
+  });
 
   const groupId = `tjr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const body = `${applicantName} 申請加入「${teamName}」俱樂部，請審核此申請。`;
@@ -500,6 +507,11 @@ export async function approveTeamJoin({
   if (!targetApplicantUid) {
     throw new Error('[membership] approveTeamJoin: applicantUid is required');
   }
+  await assertInternalTestWritable({
+    kind: 'team',
+    labeled: isInternalTestLabel(team?.name),
+    affectedUids: [targetApplicantUid, reviewerUid, ...collectStaffUids(team)],
+  });
 
   // 1. 讀 applicant live 文件
   const db = await getDb();
@@ -619,6 +631,11 @@ export async function rejectTeamJoin({
   if (!groupId) {
     throw new Error('[membership] rejectTeamJoin: message.meta.groupId is required');
   }
+  await assertInternalTestWritable({
+    kind: 'team',
+    labeled: isInternalTestLabel(team?.name),
+    affectedUids: [targetApplicantUid, reviewerUid, ...collectStaffUids(team)],
+  });
 
   // 1. 主要寫入：先把同 groupId 的申請訊息改為 rejected，失敗往外拋（避免已通知申請人但訊息仍是 pending）。
   await callFn('syncGroupActionStatus', {
@@ -687,6 +704,11 @@ export async function leaveTeam({
   const uid = trimUid(self?.uid ?? self?._docId);
   if (!teamId) throw new Error('[membership] leaveTeam: team.id is required');
   if (!uid) throw new Error('[membership] leaveTeam: self.uid is required');
+  await assertInternalTestWritable({
+    kind: 'team',
+    labeled: isInternalTestLabel(team?.name),
+    affectedUids: [uid, ...collectStaffUids(team)],
+  });
 
   // 讀 live self doc（Rules 以 server 端 oldData 為基準；避免 stale self 造成 rules 拒絕）
   const db = await getDb();

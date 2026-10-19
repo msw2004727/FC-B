@@ -54,3 +54,20 @@
     padding-right: calc(var(--space-4) + var(--safe-right));
   }
 }
+
+/* 內測版角標：只在內測模式出現，不攔點擊，避開底部導覽。 */
+.internal-test-badge {
+  position: fixed;
+  right: calc(var(--space-2) + var(--safe-right));
+  bottom: calc(88px + var(--safe-bottom));
+  z-index: calc(var(--z-bottomnav) + 1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0.9;
+}

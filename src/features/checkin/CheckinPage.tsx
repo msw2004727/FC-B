@@ -35,6 +35,7 @@ import {
   type ScanMode,
   type ScanRegistration,
 } from './data/attendance';
+import { InternalTestBlockedError } from '@/data/internal-test';
 import {
   createQrScanner,
   scannerFailure,
@@ -303,8 +304,12 @@ function ScanSession({ entry, context, mode }: SessionProps) {
     }
   };
 
-  const recoverWriteFailure = async (): Promise<void> => {
+  const recoverWriteFailure = async (error?: unknown): Promise<void> => {
     if (!allowed()) return;
+    if (error instanceof InternalTestBlockedError) {
+      showPopup({ tone: 'error', key: 'internalTestOnly' });
+      return;
+    }
     try {
       await refresh();
     } catch {
@@ -374,8 +379,8 @@ function ScanSession({ entry, context, mode }: SessionProps) {
         key: decision.reasonKey,
         user,
       });
-    } catch {
-      await recoverWriteFailure();
+    } catch (error) {
+      await recoverWriteFailure(error);
     } finally {
       finish();
     }
@@ -467,9 +472,9 @@ function ScanSession({ entry, context, mode }: SessionProps) {
         user: chosen.user,
         count: unique.size,
       });
-    } catch {
+    } catch (error) {
       if (alive.current) setFamily(null);
-      await recoverWriteFailure();
+      await recoverWriteFailure(error);
     } finally {
       finish();
     }
@@ -487,9 +492,9 @@ function ScanSession({ entry, context, mode }: SessionProps) {
       await refresh();
       setRemoveTarget(null);
       showPopup({ tone: 'success', key: 'removed' });
-    } catch {
+    } catch (error) {
       if (alive.current) setRemoveTarget(null);
-      await recoverWriteFailure();
+      await recoverWriteFailure(error);
     } finally {
       finish();
     }

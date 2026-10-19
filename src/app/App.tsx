@@ -23,6 +23,8 @@ import { initFontSize } from '@/core/font-size';
 import type { FeatureRoute } from '@/core/feature-types';
 import type { AuthUser } from '@/data/auth';
 import { resolveShareLink } from './share-link';
+import { InternalTestGate } from './InternalTestGate';
+import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
 
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
 
@@ -57,6 +59,9 @@ export function App({
   const authRevision = useRef(0);
   const loginSequence = useRef(0);
   const currentUid = useRef<string | null>(null);
+  const internalTest = useMemo(() => isInternalTestMode(), []);
+  // 內測模式：undefined＝確認中、true／false＝白名單結果（僅對目前 uid 有效）。
+  const [tester, setTester] = useState<{ uid: string; ok: boolean } | null>(null);
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
@@ -183,7 +188,20 @@ export function App({
     });
   }, [externalPending, onLogin]);
 
+  useEffect(() => {
+    const uid = user?.uid ?? null;
+    if (!internalTest || uid === null) return;
+    let alive = true;
+    isInternalTester(uid)
+      .then((ok) => { if (alive) setTester({ uid, ok }); })
+      .catch(() => { if (alive) setTester({ uid, ok: false }); });
+    return () => { alive = false; };
+  }, [internalTest, user?.uid]);
+
   const pending = loginPending || externalPending;
+  const gateState: boolean | null | undefined = !internalTest ? true
+    : user === null ? null
+      : tester?.uid === user.uid ? tester.ok : undefined;
 
   return (
     <LocationProvider>
@@ -200,9 +218,16 @@ export function App({
           {loginError && !drawerOpen && (
             <div role="alert"><Text>{t('ui.shell.loginError')}</Text></div>
           )}
-          <RouteArea routes={routes} />
+          {gateState === true
+            ? <RouteArea routes={routes} />
+            : <InternalTestGate allowed={gateState} onLogin={handleLogin} loginPending={pending} />}
         </main>
-        <BottomNav />
+        {gateState === true && <BottomNav />}
+        {internalTest && (
+          <div class="internal-test-badge" aria-hidden="true">
+            {t('internalTest.badge', { sha: import.meta.env.VITE_BUILD_SHA || 'dev' })}
+          </div>
+        )}
       </div>
       <SideDrawer
         open={drawerOpen}

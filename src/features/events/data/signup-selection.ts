@@ -1,4 +1,5 @@
 import { CallableError, callFn } from '@/data/callables';
+import { InternalTestBlockedError, assertInternalTestEventDocWritable } from '@/data/internal-test';
 import { emit } from '@/core/events';
 import {
   buildRegisterPayload,
@@ -39,6 +40,8 @@ export function registerSelection(
     }
 
     try {
+      // 內測模式：以 public id 讀活動標題；舊活動 docId 與 id 不同時讀不到，一律擋下（安全方向）。
+      await assertInternalTestEventDocWritable(input.eventId);
       const result = await callFn('registerForEvent', payload);
       if (!result.deduplicated) {
         emit('registration:created', { eventId: input.eventId, userId: input.user.uid });
@@ -46,6 +49,14 @@ export function registerSelection(
       return result;
     } catch (error) {
       if (error instanceof SignupError) throw error;
+      if (error instanceof InternalTestBlockedError) {
+        throw new SignupError({
+          code: 'failed-precondition',
+          originalCode: error.code,
+          messageKey: 'internalTest.eventOnly',
+          message: error.message,
+        });
+      }
       const originalCode = error instanceof CallableError
         ? typeof error.details === 'string' && error.details
           ? error.details : error.message

@@ -29,6 +29,7 @@
   "cancel": "Cancel",
   "unknownUser": "User not found",
   "writeError": "The operation or refresh failed. Some records may have been saved. Retry after refreshing.",
+  "internalTestOnly": "During internal testing, check-in only works for events whose title starts with \"[內測]\".",
   "family": "Family attendance",
   "selectMembers": "Select at least one member.",
   "familyChanged": "Family registrations changed. Cancel and scan again.",

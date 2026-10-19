@@ -23,6 +23,15 @@
   "notFound.home": "回到首頁",
   "feature.reserved": "此功能即將推出",
   "feature.external": "即將接入外部系統",
+  "internalTest.title": "內測中",
+  "internalTest.body": "新版 ToosterX 正在內部測試，目前只開放受邀帳號。一般使用請前往舊版。",
+  "internalTest.notInvited": "這個帳號不在內測名單中，請前往舊版使用。",
+  "internalTest.checking": "正在確認內測資格…",
+  "internalTest.login": "LINE 登入",
+  "internalTest.goOld": "前往 ToosterX 舊版",
+  "internalTest.eventOnly": "內測期間只能操作標題以「[內測]」開頭的活動。",
+  "internalTest.blocked": "內測期間不能對內測名單以外的使用者操作，請到舊版進行。",
+  "internalTest.badge": "內測版 · {sha}",
   "ui": {
     "shell": {
       "sportAll": "All",

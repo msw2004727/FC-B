@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useT } from '@/i18n/i18n';
+import { InternalTestBlockedError } from '@/data/internal-test';
 import { Text } from '@/ui/Text';
 import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
@@ -300,8 +301,14 @@ function TeamDetailContent({
         }
       }
       if (alive.current) setConfirmation(null);
-    } catch {
-      if (alive.current) setActionError(true);
+    } catch (error) {
+      if (!alive.current) return;
+      if (error instanceof InternalTestBlockedError) {
+        setConfirmation(null);
+        setNotice(t(error.messageKey));
+      } else {
+        setActionError(true);
+      }
     } finally {
       actionLock.current = false;
       if (alive.current) setBusy(false);

@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/data/callables', () => ({ callFn: vi.fn() }));
 
 import { callFn } from '@/data/callables';
+import { InternalTestBlockedError, sha256Hex } from './internal-test';
 import { buildInboxDeliveryDedupeKey, buildInboxMessage, deliverInboxMessage } from './inbox-delivery';
 
 // golden 照 A js/modules/message/message-notify.js `_deliverMessageToInbox`／`_buildInboxDeliveryDedupeKey`
@@ -91,3 +92,18 @@ describe('deliverInboxMessage', () => {
     await expect(deliverInboxMessage(base)).rejects.toThrow('boom');
   });
 });
+
+describe('deliverInboxMessage 內測守衛', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('收件人不在名單或是廣播 → 擋下；在名單 → 送出', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', await sha256Hex('U-tester'));
+    await expect(deliverInboxMessage(base)).rejects.toBeInstanceOf(InternalTestBlockedError);
+    await expect(deliverInboxMessage({ ...base, targetUid: null })).rejects.toBeInstanceOf(InternalTestBlockedError);
+    expect(callFn).not.toHaveBeenCalled();
+    await deliverInboxMessage({ ...base, targetUid: 'U-tester' });
+    expect(callFn).toHaveBeenCalledTimes(1);
+  });
+});
+

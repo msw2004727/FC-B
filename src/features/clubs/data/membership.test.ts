@@ -23,6 +23,7 @@ import {
   updateDoc as fsUpdateDoc,
 } from 'firebase/firestore';
 
+import { InternalTestBlockedError, sha256Hex } from '@/data/internal-test';
 import golden from './__fixtures__/membership-golden.json';
 import {
   approveTeamJoin,
@@ -575,5 +576,45 @@ describe('leaveTeam', () => {
     const result = await leaveTeam({ team, self: { uid: 'regular_uid' } });
     expect(result.stillStaff).toBe(false);
     expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+describe('內測模式守衛', () => {
+  const realTeam: TeamDoc = {
+    id: 'team_main',
+    name: 'Main Team',
+    captainUid: 'cap_uid',
+    leaderUids: ['leader_uid'],
+    coachUids: ['coach_uid'],
+  };
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('對真實俱樂部申請加入被擋，不呼叫任何 Callable', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', await sha256Hex('applicant_uid'));
+    await expect(requestTeamJoin({ team: realTeam, applicant: { uid: 'applicant_uid', displayName: '申請者' } }))
+      .rejects.toBeInstanceOf(InternalTestBlockedError);
+    expect(callFn).not.toHaveBeenCalled();
+  });
+
+  it('申請人與幹部全在名單 → 照常送出', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    const hashes = await Promise.all(
+      ['applicant_uid', 'cap_uid', 'leader_uid', 'coach_uid'].map((uid) => sha256Hex(uid)),
+    );
+    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', hashes.join(','));
+    await requestTeamJoin({ team: realTeam, applicant: { uid: 'applicant_uid', displayName: '申請者' } });
+    expect(callFn).toHaveBeenCalledWith('deliverToInbox', expect.anything());
+  });
+
+  it('[內測] 俱樂部仍不會通知名單外的幹部（收件匣守衛）', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', await sha256Hex('applicant_uid'));
+    await expect(requestTeamJoin({
+      team: { ...realTeam, name: '[內測] 測試隊' },
+      applicant: { uid: 'applicant_uid', displayName: '申請者' },
+    })).rejects.toThrow();
+    expect(callFn).not.toHaveBeenCalledWith('deliverToInbox', expect.anything());
   });
 });

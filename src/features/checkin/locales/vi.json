@@ -29,6 +29,7 @@
   "cancel": "Hủy",
   "unknownUser": "Không tìm thấy người dùng",
   "writeError": "Thao tác hoặc tải lại thất bại. Một số bản ghi có thể đã được lưu. Tải lại trước khi thử tiếp.",
+  "internalTestOnly": "Trong thời gian thử nghiệm, chỉ điểm danh được cho sự kiện có tiêu đề bắt đầu bằng \"[內測]\".",
   "family": "Điểm danh gia đình",
   "selectMembers": "Chọn ít nhất một thành viên.",
   "familyChanged": "Đăng ký gia đình đã thay đổi. Hãy hủy và quét lại.",

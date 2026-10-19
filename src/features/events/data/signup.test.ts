@@ -713,6 +713,41 @@ describe('registerForEvent：正式入口守衛', () => {
   });
 });
 
+describe('內測模式：只能操作「[內測]」活動', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('正式活動報名被擋、不送 Callable；[內測] 活動照常送出', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext({ event: { id: 'evt1', status: 'open', title: '週末練球' } }).context,
+    })).rejects.toMatchObject({ messageKey: 'internalTest.eventOnly' });
+    expect(recorded('registerForEvent')).toHaveLength(0);
+
+    startRecording();
+    registerMock('registerForEvent', async () => ({ success: true }));
+    await registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext({ event: { id: 'evt1', status: 'open', title: '[內測]週末練球' } }).context,
+    });
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it('正式活動取消被擋、不送 Callable', async () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    await expect(cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'companion',
+      context: cancelContext({ title: '週末練球' }).context,
+    })).rejects.toMatchObject({ messageKey: 'internalTest.eventOnly' });
+    expect(recorded('cancelRegistration')).toHaveLength(0);
+  });
+});
+
 describe('防連點及認證世代', () => {
   it('同內容共用 Promise；成功清除後重新載入最新資料', async () => {
     const pending = deferred<RegisterForEventResponse>();

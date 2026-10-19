@@ -8,6 +8,7 @@
  */
 
 import { callFn } from '@/data/callables';
+import { assertInternalTestWritable } from '@/data/internal-test';
 
 export interface InboxDeliveryExtra {
   targetTeamId?: string | null;
@@ -113,6 +114,8 @@ export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unk
  */
 export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Record<string, unknown>> {
   const message = buildInboxMessage(input);
+  // 內測模式：收件人必須在白名單內；廣播（targetUid 為 null）對象不明，一律擋。
+  await assertInternalTestWritable({ kind: 'inbox', affectedUids: [input.targetUid] });
   await callFn('deliverToInbox', {
     message,
     targetUid: message['targetUid'],

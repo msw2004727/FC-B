@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useT } from '@/i18n/i18n';
+import { InternalTestBlockedError } from '@/data/internal-test';
 import { useViewer } from '@/features/profile/data/viewer';
 import {
   ensureMessageAction,
@@ -570,7 +571,10 @@ export default function InboxPage(): JSX.Element {
         success: true,
       }));
       setBanner({ tone: 'success', text: t('inbox.action.success') });
-    } catch {
+    } catch (error) {
+      if (error instanceof InternalTestBlockedError) {
+        setBanner({ tone: 'error', text: t(error.messageKey) });
+      }
       setActionUi((prev) => ({
         ...prev,
         runningKey: null,
@@ -639,8 +643,8 @@ export default function InboxPage(): JSX.Element {
     try {
       await sendPrivateMessage(targetUid, composeBody);
       setComposeBody('');
-    } catch {
-      setPmErrorText(t('inbox.pm.sendFailed'));
+    } catch (error) {
+      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.sendFailed'));
     } finally {
       setSendingPm(false);
     }
@@ -667,8 +671,8 @@ export default function InboxPage(): JSX.Element {
       await editPrivateMessage(cId, msgId, editingBody);
       setEditingMessageId(null);
       setEditingBody('');
-    } catch {
-      setPmErrorText(t('inbox.pm.editFailed'));
+    } catch (error) {
+      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.editFailed'));
     } finally {
       setPmBusyMessageId(null);
     }
@@ -684,8 +688,8 @@ export default function InboxPage(): JSX.Element {
     setPmErrorText(null);
     try {
       await recallPrivateMessage(cId, msgId);
-    } catch {
-      setPmErrorText(t('inbox.pm.recallFailed'));
+    } catch (error) {
+      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.recallFailed'));
     } finally {
       setPmBusyMessageId(null);
     }
