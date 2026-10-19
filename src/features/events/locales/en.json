@@ -240,6 +240,13 @@
     "waitlistName": "Name",
     "orphanPrefix": "↳ Registrant: {name} (",
     "orphanConfirmed": "Confirmed",
-    "orphanSuffix": ")"
+    "orphanSuffix": ")",
+    "manage": "Manage Roster",
+    "closeEdit": "Close Edit",
+    "saving": "Saving...",
+    "saveFailed": "Failed to save {name}, reverted",
+    "noPermission": "Insufficient permissions",
+    "settleInLegacy": "Please click Finish in the legacy version to settle EXP and no-shows",
+    "goLegacy": "Open Legacy"
   }
 }

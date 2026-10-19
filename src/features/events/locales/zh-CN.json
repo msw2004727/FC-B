@@ -229,6 +229,13 @@
     "waitlistName": "姓名",
     "orphanPrefix": "↳ 报名人：{name}（",
     "orphanConfirmed": "已正取",
-    "orphanSuffix": "）"
+    "orphanSuffix": "）",
+    "manage": "管理名单",
+    "closeEdit": "关闭编辑",
+    "saving": "保存中...",
+    "saveFailed": "{name} 保存失败，已还原",
+    "noPermission": "权限不足",
+    "settleInLegacy": "请在旧版按完成以结算经验值与放鸽子",
+    "goLegacy": "前往旧版"
   }
 }

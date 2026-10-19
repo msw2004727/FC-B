@@ -11,6 +11,7 @@ import { UserTag } from '@/ui/UserTag';
 import { Toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
+import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
 import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
@@ -18,6 +19,8 @@ import { precheckSignup, cancelRegistration, SignupError } from '../data/signup'
 import { registerSelection } from '../data/signup-selection';
 import { loadSignupCompanions, type SignupCompanion } from '../data/companions';
 import { getSignupButtonState } from '../data/signup-state';
+import { operateContextFromViewer } from '../data/event-create-context';
+import { canOperateEventSite } from '../data/operate-permissions';
 import {
   count,
   eventDateRange,
@@ -32,6 +35,9 @@ import {
   type DetailEvent,
   type DetailRegistration,
 } from '../data/detail-model';
+import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
+import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
+import { WaitlistRosterTable } from '../components/WaitlistRosterTable';
 import type { RegistrationDoc } from '../data/types';
 import './event-detail.css';
 
@@ -40,10 +46,12 @@ interface Snapshot {
   eventDocId: string;
   viewerRegistrations: RegistrationDoc[];
   registrations: DetailRegistration[];
+  attendanceRecords: EventAttendanceEntry[];
 }
 
 interface Notice {
   key: string;
+  params?: Record<string, string | number>;
   serial: number;
 }
 
@@ -81,6 +89,8 @@ function EventDetailSession({
   const [companions, setCompanions] = useState<SignupCompanion[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [rosterEditing, setRosterEditing] = useState(false);
+  const [rosterSubmitting, setRosterSubmitting] = useState(false);
   const alive = useRef(true);
   const sequence = useRef(0);
   const rosterSequence = useRef(0);
@@ -101,8 +111,8 @@ function EventDetailSession({
     };
   }, []);
 
-  function show(key: string): void {
-    if (alive.current) setNotice({ key, serial: ++noticeSequence.current });
+  function show(key: string, params?: Record<string, string | number>): void {
+    if (alive.current) setNotice({ key, params, serial: ++noticeSequence.current });
   }
 
   function errorKey(error: unknown, fallback: string): string {
@@ -167,6 +177,7 @@ function EventDetailSession({
         eventDocId: detail.eventDocId,
         viewerRegistrations: history,
         registrations: [],
+        attendanceRecords: [],
       };
       setSnapshot(next);
       setHistoryFailed(failedHistory);
@@ -181,11 +192,15 @@ function EventDetailSession({
       }
 
       try {
-        const registrations = await loadEventRegistrations(detail.eventDocId);
+        const [registrations, attendanceRecords] = await Promise.all([
+          loadEventRegistrations(detail.eventDocId),
+          loadEventAttendance(detail.eventDocId).catch(() => [] as EventAttendanceEntry[]),
+        ]);
         if (!current() || rosterRequest !== rosterSequence.current) return;
         setSnapshot((previous) => previous && ({
           ...previous,
           registrations,
+          attendanceRecords,
         }));
         setRosterPhase('ready');
       } catch {
@@ -212,11 +227,15 @@ function EventDetailSession({
     const request = ++rosterSequence.current;
     setRosterPhase('loading');
     try {
-      const registrations = await loadEventRegistrations(current.eventDocId);
+      const [registrations, attendanceRecords] = await Promise.all([
+        loadEventRegistrations(current.eventDocId),
+        loadEventAttendance(current.eventDocId).catch(() => [] as EventAttendanceEntry[]),
+      ]);
       if (!alive.current || request !== rosterSequence.current) return;
       setSnapshot((previous) => previous && ({
         ...previous,
         registrations,
+        attendanceRecords,
       }));
       setRosterPhase('ready');
     } catch {
@@ -257,9 +276,10 @@ function EventDetailSession({
     if (!uid) return;
     const request = ++rosterSequence.current;
     try {
-      const [registrations, history] = await Promise.all([
+      const [registrations, history, attendanceRecords] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
         loadViewerRegistrations(uid),
+        loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords),
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
       const active = registrations.filter(isActiveRegistration);
@@ -272,6 +292,7 @@ function EventDetailSession({
         },
         registrations,
         viewerRegistrations: history,
+        attendanceRecords,
       });
       setRosterPhase('ready');
       setHistoryFailed(false);
@@ -306,6 +327,61 @@ function EventDetailSession({
   const roles = useUserRoles(viewer.uid ? roleUids : []);
 
   const eventId = event?.id ?? publicId;
+  const canManageRoster = Boolean(
+    event && canOperateEventSite(operateContextFromViewer(viewer), event),
+  );
+
+  const instantSave = useAttendanceInstantSave({
+    event,
+    eventDocId: snapshot?.eventDocId ?? '',
+    publicEventId: eventId,
+    operatorUid: viewer.uid,
+    registrations: snapshot?.registrations ?? [],
+    attendanceRecords: snapshot?.attendanceRecords ?? [],
+    onReloadAttendance: async () => {
+      const docId = snapshot?.eventDocId;
+      if (!docId) return snapshot?.attendanceRecords ?? [];
+      const records = await loadEventAttendance(docId);
+      if (alive.current) {
+        setSnapshot((prev) => (prev && prev.eventDocId === docId
+          ? { ...prev, attendanceRecords: records }
+          : prev));
+      }
+      return records;
+    },
+    onSaveFailed: (personName) => {
+      show('events.roster.saveFailed', { name: personName });
+    },
+  });
+
+  function handleStartRosterEdit(): void {
+    // 對照 A `_startTableEdit`：按下時再檢查一次權限，不通過 toast「權限不足」。
+    const curEvent = snapshot?.event;
+    if (
+      !curEvent
+      || canOperateEventSite(operateContextFromViewer(currentViewer.current), curEvent) !== true
+    ) {
+      show('events.roster.noPermission');
+      return;
+    }
+    instantSave.resetInstantSave();
+    setRosterEditing(true);
+  }
+
+  async function handleCloseRosterEdit(): Promise<void> {
+    if (rosterSubmitting) return;
+    setRosterSubmitting(true);
+    try {
+      await instantSave.flushInstantSaves();
+    } finally {
+      instantSave.resetInstantSave();
+      if (alive.current) {
+        setRosterSubmitting(false);
+        setRosterEditing(false);
+      }
+    }
+  }
+
   // 名單載入中或失敗時，可用已讀到的本人歷史維持原本報名按鈕狀態。
   // 不使用活動文件的公開姓名陣列推導本人報名。
   const actionRegistrations = !viewer.uid ? [] : rosterPhase === 'ready'
@@ -440,38 +516,10 @@ function EventDetailSession({
     );
   }
 
-  function roster(status: 'confirmed' | 'waitlisted'): JSX.Element {
-    const rows = active.filter((reg) => reg.status === status);
-    return (
-      <section class="event-detail__section">
-        <Text as="h2">
-          {t(`events.detailPage.${status}`)} {rows.length}
-        </Text>
-        {rows.length === 0 ? <Text>{t('events.detailPage.emptyRoster')}</Text> : (
-          <ul class="event-detail__roster">
-            {rows.map((reg, index) => (
-              <li key={registrationId(reg) || `${status}:${index}`}>
-                {status === 'waitlisted' && <Text>{index + 1}</Text>}
-                <UserTag
-                  uid={isCompanion(reg) ? '' : registrationOwner(reg)}
-                  role={roles[isCompanion(reg) ? '' : registrationOwner(reg)]}
-                  name={name(reg)}
-                  disabled={isCompanion(reg) || !registrationOwner(reg)}
-                  onOpenProfile={profile}
-                />
-                {isCompanion(reg) && <Text>{t('events.detailPage.companion')}</Text>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    );
-  }
-
   const toast = notice && (
     <Toast
       key={notice.serial}
-      message={t(notice.key)}
+      message={t(notice.key, notice.params)}
       onClose={() => setNotice(null)}
     />
   );
@@ -665,8 +713,30 @@ function EventDetailSession({
                 )}
               </div>
             ) : <>
-              {roster('confirmed')}
-              {roster('waitlisted')}
+              <AttendanceRosterTable
+                event={event}
+                registrations={snapshot.registrations}
+                attendanceRecords={snapshot.attendanceRecords}
+                roles={roles}
+                onOpenProfile={profile}
+                canManage={canManageRoster}
+                editing={rosterEditing}
+                submitting={rosterSubmitting}
+                onStartEdit={handleStartRosterEdit}
+                onCloseEdit={() => { void handleCloseRosterEdit(); }}
+                getRowSelection={instantSave.getRowSelection}
+                inFlightKeys={instantSave.inFlightKeys}
+                savedFlashKeys={instantSave.savedFlashKeys}
+                failedFlashKeys={instantSave.failedFlashKeys}
+                onToggleCheckbox={instantSave.onToggleCheckbox}
+                onChangeNote={instantSave.onChangeNote}
+              />
+              <WaitlistRosterTable
+                event={event}
+                registrations={snapshot.registrations}
+                roles={roles}
+                onOpenProfile={profile}
+              />
             </>}
           </section>
         )}

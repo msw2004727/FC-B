@@ -239,6 +239,13 @@
     "waitlistName": "氏名",
     "orphanPrefix": "↳ 申込者：{name}（",
     "orphanConfirmed": "参加確定",
-    "orphanSuffix": "）"
+    "orphanSuffix": "）",
+    "manage": "名簿管理",
+    "closeEdit": "編集を閉じる",
+    "saving": "保存中...",
+    "saveFailed": "{name} の保存に失敗したため元に戻しました",
+    "noPermission": "権限がありません",
+    "settleInLegacy": "経験値とドタキャンの精算は旧版で「完了」を押してください",
+    "goLegacy": "旧版へ移動"
   }
 }

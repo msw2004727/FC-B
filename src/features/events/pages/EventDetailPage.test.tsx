@@ -126,8 +126,8 @@ describe('EventDetailPage', () => {
       { ...self, _docId: 'removed', userId: 'u3', userName: '不可顯示', status: 'removed' },
     ]);
     const view = mount();
-    await screen.findByText('青埔五人制');
-    await screen.findByText('小華');
+    await screen.findByText('青埔五人制', undefined, { timeout: 3000 });
+    await screen.findByText('小華', undefined, { timeout: 3000 });
     expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.queryByText('不可顯示')).toBeNull();

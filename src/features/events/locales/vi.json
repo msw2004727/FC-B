@@ -239,6 +239,13 @@
     "waitlistName": "Họ tên",
     "orphanPrefix": "↳ Người đăng ký: {name} (",
     "orphanConfirmed": "Đã chính thức",
-    "orphanSuffix": ")"
+    "orphanSuffix": ")",
+    "manage": "Quản lý danh sách",
+    "closeEdit": "Đóng chỉnh sửa",
+    "saving": "Đang lưu...",
+    "saveFailed": "Lưu {name} thất bại, đã hoàn tác",
+    "noPermission": "Không đủ quyền",
+    "settleInLegacy": "Vui lòng nhấn Hoàn tất ở bản cũ để kết toán EXP và vắng mặt",
+    "goLegacy": "Mở bản cũ"
   }
 }

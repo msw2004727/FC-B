@@ -297,6 +297,13 @@
     "waitlistName": "姓名",
     "orphanPrefix": "↳ 報名人：{name}（",
     "orphanConfirmed": "已正取",
-    "orphanSuffix": "）"
+    "orphanSuffix": "）",
+    "manage": "管理名單",
+    "closeEdit": "關閉編輯",
+    "saving": "儲存中...",
+    "saveFailed": "{name} 儲存失敗，已還原",
+    "noPermission": "權限不足",
+    "settleInLegacy": "請在舊版按完成以結算經驗值與放鴿子",
+    "goLegacy": "前往舊版"
   }
 }
