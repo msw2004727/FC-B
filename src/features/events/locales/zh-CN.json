@@ -76,7 +76,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "我要开团",
     "createTitle": "新增活动",
     "editTitle": "编辑活动",
     "required": "*必填",
@@ -158,8 +157,6 @@
   },
   "manage": {
     "title": "活动管理",
-    "back": "返回",
-    "tabsLabel": "活动管理分页",
     "tab": {
       "all": "全部",
       "upcoming": "即将开放",
@@ -168,45 +165,11 @@
       "ended": "已结束",
       "cancelled": "已取消"
     },
-    "status": {
-      "open": "报名中",
-      "full": "已额满",
-      "ended": "已结束",
-      "upcoming": "即将开放",
-      "cancelled": "已取消"
-    },
-    "editBtn": "编辑",
-    "pinnedBadge": "置顶",
-    "teamOnlyBadge": "限定",
-    "externalLinkLabel": "🔗 外部活动链接",
-    "participants": "{current}/{max} 人",
-    "participantsWithWaitlist": "{current}/{max} 人 ・ 候补 {waitlist}",
-    "emptyCategory": "此分类没有活动",
-    "loadMoreNote": "已显示 {displayed} / {total}",
-    "loadMoreBtn": "查看更多",
-    "loading": "数据加载中",
     "loadError": "无法加载活动，请重试。",
     "retry": "重试",
     "permissionDenied": "权限不足",
     "permissionDeniedBody": "您没有权限访问活动管理页面。",
-    "cancelBtn": "取消",
-    "reopenBtn": "重新开放",
-    "relistBtn": "上架",
-    "deleteBtn": "删除",
     "lifecycle": {
-      "confirmCancel": "确定要取消此活动？",
-      "confirmReopen": "确定要重新开放此活动？",
-      "confirmRelist": "确定要重新上架此活动？\n报名名单与候补名单将会保留。",
-      "doneCancel": "活动已取消",
-      "doneReopen": "活动已重新开放",
-      "doneRelist": "活动已重新上架",
-      "courseLinked": "课程转化的活动请回课堂管理，不能在活动端取消、结束、删除或重新开放",
-      "notAllowed": "您只能管理自己的活动",
-      "startPassedReopen": "活动时间已过，请先编辑活动并更新时间后再重新开放。",
-      "startPassedRelist": "活动时间已过，请先编辑活动并更新时间后再上架。",
-      "failCancel": "取消失败，请重试",
-      "failReopen": "重新开放失败，请重试",
-      "failRelist": "重新上架失败，请重试",
       "deleteInLegacy": "新版暂不提供删除活动，要前往旧版删除吗？"
     }
   },

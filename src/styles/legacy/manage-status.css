@@ -1,0 +1,2 @@
+/* 取自 A css/admin.css 第 333 行（原樣）：管理卡片的狀態標籤外框。狀態顏色 .status-* 在 base.css。 */
+.banner-manage-status { display: inline-block; padding: .1rem .4rem; border-radius: var(--radius-full); font-size: .65rem; font-weight: 600; }

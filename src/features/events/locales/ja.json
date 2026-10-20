@@ -86,7 +86,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "イベント作成",
     "createTitle": "新規イベント",
     "editTitle": "イベント編集",
     "required": "*必須",
@@ -168,8 +167,6 @@
   },
   "manage": {
     "title": "イベント管理",
-    "back": "戻る",
-    "tabsLabel": "イベント管理タブ",
     "tab": {
       "all": "すべて",
       "upcoming": "公開予定",
@@ -178,45 +175,11 @@
       "ended": "終了",
       "cancelled": "中止"
     },
-    "status": {
-      "open": "受付中",
-      "full": "満員",
-      "ended": "終了",
-      "upcoming": "公開予定",
-      "cancelled": "中止"
-    },
-    "editBtn": "編集",
-    "pinnedBadge": "固定",
-    "teamOnlyBadge": "限定",
-    "externalLinkLabel": "🔗 外部イベントリンク",
-    "participants": "{current}/{max} 人",
-    "participantsWithWaitlist": "{current}/{max} 人 ・ キャンセル待ち {waitlist}",
-    "emptyCategory": "このカテゴリにはイベントがありません",
-    "loadMoreNote": "{displayed} / {total} 件を表示中",
-    "loadMoreBtn": "もっと見る",
-    "loading": "データ読み込み中",
     "loadError": "イベントを読み込めませんでした。再試行してください。",
     "retry": "再試行",
     "permissionDenied": "権限が不足しています",
     "permissionDeniedBody": "イベント管理ページにアクセスする権限がありません。",
-    "cancelBtn": "中止",
-    "reopenBtn": "再公開",
-    "relistBtn": "再掲載",
-    "deleteBtn": "削除",
     "lifecycle": {
-      "confirmCancel": "このイベントを中止しますか？",
-      "confirmReopen": "このイベントを再公開しますか？",
-      "confirmRelist": "このイベントを再掲載しますか？\n申込者リストとキャンセル待ちリストは保持されます。",
-      "doneCancel": "イベントを中止しました",
-      "doneReopen": "イベントを再公開しました",
-      "doneRelist": "イベントを再掲載しました",
-      "courseLinked": "コースから作成されたイベントはコース管理で操作してください。ここでは中止・終了・削除・再公開できません。",
-      "notAllowed": "自分のイベントのみ管理できます",
-      "startPassedReopen": "開催時刻を過ぎています。イベントを編集して時刻を更新してから再公開してください。",
-      "startPassedRelist": "開催時刻を過ぎています。イベントを編集して時刻を更新してから再掲載してください。",
-      "failCancel": "中止に失敗しました。もう一度お試しください",
-      "failReopen": "再公開に失敗しました。もう一度お試しください",
-      "failRelist": "再掲載に失敗しました。もう一度お試しください",
       "deleteInLegacy": "新バージョンではまだイベントを削除できません。旧バージョンで削除しますか？"
     }
   },

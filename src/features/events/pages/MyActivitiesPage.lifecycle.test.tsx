@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
-import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import type { EventDoc } from '../data/types';
 import MyActivitiesPage from './MyActivitiesPage';
@@ -23,6 +22,28 @@ const reopenMock = vi.fn(async () => undefined);
 const relistMock = vi.fn(async () => undefined);
 const toastShow = vi.fn();
 
+const testDict: Record<string, string> = {
+  'common.ok': '確定',
+  'common.cancel': '取消',
+  'events.manage.lifecycle.deleteInLegacy': '新版暫不提供刪除活動，要前往舊版刪除嗎？',
+  'ui.userTag.unknown': '用戶',
+  'ui.userTag.role.user': '一般用戶',
+  'ui.userTag.openProfile': '開啟 {name} 的個人頁',
+};
+
+vi.mock('@/i18n/i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/i18n/i18n')>()),
+  useT: () => (key: string, params?: Record<string, unknown>) => {
+    let tmpl = testDict[key] ?? key;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        tmpl = tmpl.replace(`{${k}}`, String(v));
+      }
+    }
+    return tmpl;
+  },
+}));
+
 vi.mock('preact-iso', () => ({
   useLocation: () => ({ url: '/my-activities', path: '/my-activities', query: {}, route: vi.fn() }),
 }));
@@ -34,7 +55,10 @@ vi.mock('@/features/profile/data/viewer', async () => {
   return { ...actual, useViewer: () => mockViewer };
 });
 
-vi.mock('@/data/user-roles', () => ({ useUserRoles: () => ({}), getCachedUserLevel: () => undefined }));
+vi.mock('@/data/user-roles', () => ({
+  useUserRoles: () => ({}),
+  getCachedUserLevel: () => undefined,
+}));
 
 vi.mock('@/ui/Toast', async () => {
   const actual = await vi.importActual<typeof import('@/ui/Toast')>('@/ui/Toast');
@@ -51,7 +75,9 @@ vi.mock('../data/events-repo', () => ({
 }));
 
 vi.mock('../data/event-lifecycle', async () => {
-  const actual = await vi.importActual<typeof import('../data/event-lifecycle')>('../data/event-lifecycle');
+  const actual = await vi.importActual<typeof import('../data/event-lifecycle')>(
+    '../data/event-lifecycle',
+  );
   return {
     ...actual,
     cancelEvent: (...args: unknown[]) => cancelMock(...(args as [])),
@@ -61,24 +87,6 @@ vi.mock('../data/event-lifecycle', async () => {
 });
 
 vi.mock('../components/EventFormModal', () => ({ EventFormModal: () => null }));
-
-const testDict: Record<string, string> = {
-  'common.ok': '確定',
-  'common.cancel': '取消',
-  'events.manage.tab.all': '全部',
-  'events.manage.editBtn': '編輯',
-  'events.manage.cancelBtn': '取消活動鈕',
-  'events.manage.reopenBtn': '重新開放',
-  'events.manage.relistBtn': '上架',
-  'events.manage.deleteBtn': '刪除',
-  'events.manage.lifecycle.confirmCancel': '確定要取消此活動？',
-  'events.manage.lifecycle.confirmReopen': '確定要重新開放此活動？',
-  'events.manage.lifecycle.confirmRelist': '確定要重新上架此活動？\n報名名單與候補名單將會保留。',
-  'events.manage.lifecycle.doneCancel': '活動已取消',
-  'events.manage.lifecycle.startPassedReopen': '活動時間已過，請先編輯活動並更新時間後再重新開放。',
-  'events.manage.lifecycle.courseLinked': '課程轉化的活動請回課堂管理',
-  'events.manage.lifecycle.deleteInLegacy': '新版暫不提供刪除活動，要前往舊版刪除嗎？',
-};
 
 function coachViewer(extra: string[] = []): ViewerView {
   const perms = ['activity.manage.entry', ...extra];
@@ -116,7 +124,7 @@ function renderPage(): void {
 }
 
 describe('MyActivitiesPage 生命週期按鈕', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     cancelMock.mockClear();
     reopenMock.mockClear();
     relistMock.mockClear();
@@ -124,20 +132,17 @@ describe('MyActivitiesPage 生命週期按鈕', () => {
     mockActiveEvents = [];
     mockTerminalEvents = [];
     mockViewer = coachViewer();
-    _setDictLoaderForTest(async () => testDict);
-    await setLocale('zh-TW');
   });
 
   afterEach(() => {
     _resetAppConfirmForTest();
     cleanup();
-    _setDictLoaderForTest(null);
   });
 
   it('報名中：顯示編輯與取消，不顯示重新開放／上架；確認後以文件 ID 取消並提示', async () => {
     mockActiveEvents = [ownEvent({})];
     renderPage();
-    const btn = await screen.findByRole('button', { name: '取消活動鈕' });
+    const btn = await screen.findByRole('button', { name: '取消' });
     expect(screen.queryByRole('button', { name: '重新開放' })).toBeNull();
     expect(screen.queryByRole('button', { name: '上架' })).toBeNull();
 
@@ -156,9 +161,10 @@ describe('MyActivitiesPage 生命週期按鈕', () => {
   it('確認框按取消：不寫入', async () => {
     mockActiveEvents = [ownEvent({})];
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: '取消活動鈕' }));
+    fireEvent.click(await screen.findByRole('button', { name: '取消' }));
     await screen.findByText('確定要取消此活動？');
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    const cancelBtns = screen.getAllByRole('button', { name: '取消' });
+    fireEvent.click(cancelBtns[cancelBtns.length - 1]!);
     await waitFor(() => expect(screen.queryByText('確定要取消此活動？')).toBeNull());
     expect(cancelMock).not.toHaveBeenCalled();
   });
@@ -170,7 +176,7 @@ describe('MyActivitiesPage 生命週期按鈕', () => {
     expect(await screen.findByText('確定要重新開放此活動？')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '確定' }));
     await waitFor(() => expect(reopenMock).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('button', { name: '取消活動鈕' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
   });
 
   it('已取消但時間已過：只顯示 A 的提示，不寫入', async () => {
@@ -206,9 +212,12 @@ describe('MyActivitiesPage 生命週期按鈕', () => {
   it('課程轉化活動：按取消只提示，不開確認框', async () => {
     mockActiveEvents = [ownEvent({ courseLinked: true })];
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: '取消活動鈕' }));
+    fireEvent.click(await screen.findByRole('button', { name: '取消' }));
     await waitFor(() =>
-      expect(toastShow).toHaveBeenCalledWith({ message: '課程轉化的活動請回課堂管理', tone: 'error' }),
+      expect(toastShow).toHaveBeenCalledWith({
+        message: '課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放',
+        tone: 'error',
+      }),
     );
     expect(screen.queryByText('確定要取消此活動？')).toBeNull();
     expect(cancelMock).not.toHaveBeenCalled();

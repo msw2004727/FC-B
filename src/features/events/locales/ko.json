@@ -84,7 +84,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "모임 만들기",
     "createTitle": "이벤트 추가",
     "editTitle": "이벤트 수정",
     "required": "*필수",
@@ -166,8 +165,6 @@
   },
   "manage": {
     "title": "활동 관리",
-    "back": "뒤로",
-    "tabsLabel": "활동 관리 탭",
     "tab": {
       "all": "전체",
       "upcoming": "오픈 예정",
@@ -176,45 +173,11 @@
       "ended": "종료됨",
       "cancelled": "취소됨"
     },
-    "status": {
-      "open": "모집 중",
-      "full": "마감",
-      "ended": "종료됨",
-      "upcoming": "오픈 예정",
-      "cancelled": "취소됨"
-    },
-    "editBtn": "편집",
-    "pinnedBadge": "고정",
-    "teamOnlyBadge": "한정",
-    "externalLinkLabel": "🔗 외부 활동 링크",
-    "participants": "{current}/{max}명",
-    "participantsWithWaitlist": "{current}/{max}명 ・ 대기 {waitlist}",
-    "emptyCategory": "이 카테고리에 활동이 없습니다",
-    "loadMoreNote": "{displayed} / {total} 표시됨",
-    "loadMoreBtn": "더 보기",
-    "loading": "데이터 불러오는 중",
     "loadError": "활동을 불러올 수 없습니다. 다시 시도해 주세요.",
     "retry": "다시 시도",
     "permissionDenied": "권한 부족",
     "permissionDeniedBody": "활동 관리 페이지에 접근할 권한이 없습니다.",
-    "cancelBtn": "취소",
-    "reopenBtn": "다시 열기",
-    "relistBtn": "재게시",
-    "deleteBtn": "삭제",
     "lifecycle": {
-      "confirmCancel": "이 활동을 취소하시겠습니까?",
-      "confirmReopen": "이 활동을 다시 여시겠습니까?",
-      "confirmRelist": "이 활동을 재게시하시겠습니까?\n신청 명단과 대기 명단은 유지됩니다.",
-      "doneCancel": "활동이 취소되었습니다",
-      "doneReopen": "활동이 다시 열렸습니다",
-      "doneRelist": "활동이 재게시되었습니다",
-      "courseLinked": "강좌에서 만든 활동은 강좌 관리에서 처리하세요. 여기서는 취소, 종료, 삭제, 다시 열기를 할 수 없습니다.",
-      "notAllowed": "본인의 활동만 관리할 수 있습니다",
-      "startPassedReopen": "활동 시간이 지났습니다. 활동을 수정해 시간을 바꾼 뒤 다시 여세요.",
-      "startPassedRelist": "활동 시간이 지났습니다. 활동을 수정해 시간을 바꾼 뒤 재게시하세요.",
-      "failCancel": "취소에 실패했습니다. 다시 시도하세요",
-      "failReopen": "다시 열기에 실패했습니다. 다시 시도하세요",
-      "failRelist": "재게시에 실패했습니다. 다시 시도하세요",
       "deleteInLegacy": "새 버전에서는 아직 활동을 삭제할 수 없습니다. 이전 버전에서 삭제하시겠습니까?"
     }
   },

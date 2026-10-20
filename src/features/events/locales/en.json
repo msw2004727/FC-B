@@ -87,7 +87,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "Host Event",
     "createTitle": "Create Event",
     "editTitle": "Edit Event",
     "required": "*Required",
@@ -169,8 +168,6 @@
   },
   "manage": {
     "title": "Activity Management",
-    "back": "Back",
-    "tabsLabel": "Activity management tabs",
     "tab": {
       "all": "All",
       "upcoming": "Upcoming",
@@ -179,45 +176,11 @@
       "ended": "Ended",
       "cancelled": "Cancelled"
     },
-    "status": {
-      "open": "Open",
-      "full": "Full",
-      "ended": "Ended",
-      "upcoming": "Upcoming",
-      "cancelled": "Cancelled"
-    },
-    "editBtn": "Edit",
-    "pinnedBadge": "Pinned",
-    "teamOnlyBadge": "Team Only",
-    "externalLinkLabel": "🔗 External Activity Link",
-    "participants": "{current}/{max}",
-    "participantsWithWaitlist": "{current}/{max} ・ Waitlist {waitlist}",
-    "emptyCategory": "No activities in this category",
-    "loadMoreNote": "Showing {displayed} / {total}",
-    "loadMoreBtn": "View More",
-    "loading": "Loading data",
     "loadError": "Unable to load activities. Please try again.",
     "retry": "Retry",
     "permissionDenied": "Insufficient Permissions",
     "permissionDeniedBody": "You do not have permission to access the activity management page.",
-    "cancelBtn": "Cancel",
-    "reopenBtn": "Reopen",
-    "relistBtn": "Relist",
-    "deleteBtn": "Delete",
     "lifecycle": {
-      "confirmCancel": "Cancel this activity?",
-      "confirmReopen": "Reopen this activity?",
-      "confirmRelist": "Relist this activity?\nThe registration and waitlist will be kept.",
-      "doneCancel": "Activity cancelled",
-      "doneReopen": "Activity reopened",
-      "doneRelist": "Activity relisted",
-      "courseLinked": "Activities created from a course must be managed in course management; they cannot be cancelled, ended, deleted or reopened here.",
-      "notAllowed": "You can only manage your own activities",
-      "startPassedReopen": "The activity time has passed. Edit the activity and update its time before reopening.",
-      "startPassedRelist": "The activity time has passed. Edit the activity and update its time before relisting.",
-      "failCancel": "Cancel failed, please try again",
-      "failReopen": "Reopen failed, please try again",
-      "failRelist": "Relist failed, please try again",
       "deleteInLegacy": "Deleting activities is not available in the new version yet. Go to the old version to delete it?"
     }
   },

@@ -86,7 +86,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "Tạo hoạt động",
     "createTitle": "Tạo hoạt động mới",
     "editTitle": "Chỉnh sửa hoạt động",
     "required": "*Bắt buộc",
@@ -168,8 +167,6 @@
   },
   "manage": {
     "title": "Quản lý hoạt động",
-    "back": "Quay lại",
-    "tabsLabel": "Tab quản lý hoạt động",
     "tab": {
       "all": "Tất cả",
       "upcoming": "Sắp mở",
@@ -178,45 +175,11 @@
       "ended": "Đã kết thúc",
       "cancelled": "Đã hủy"
     },
-    "status": {
-      "open": "Đang mở",
-      "full": "Đã đủ",
-      "ended": "Đã kết thúc",
-      "upcoming": "Sắp mở",
-      "cancelled": "Đã hủy"
-    },
-    "editBtn": "Chỉnh sửa",
-    "pinnedBadge": "Ghim",
-    "teamOnlyBadge": "Giới hạn",
-    "externalLinkLabel": "🔗 Liên kết hoạt động bên ngoài",
-    "participants": "{current}/{max} người",
-    "participantsWithWaitlist": "{current}/{max} người ・ Dự bị {waitlist}",
-    "emptyCategory": "Không có hoạt độngใน danh mục này",
-    "loadMoreNote": "Đã hiển thị {displayed} / {total}",
-    "loadMoreBtn": "Xem thêm",
-    "loading": "Đang tải dữ liệu",
     "loadError": "Không thể tải hoạt động, vui lòng thử lại.",
     "retry": "Thử lại",
     "permissionDenied": "Không đủ quyền",
     "permissionDeniedBody": "Bạn không có quyền truy cập trang quản lý hoạt động.",
-    "cancelBtn": "Hủy",
-    "reopenBtn": "Mở lại",
-    "relistBtn": "Đăng lại",
-    "deleteBtn": "Xóa",
     "lifecycle": {
-      "confirmCancel": "Hủy hoạt động này?",
-      "confirmReopen": "Mở lại hoạt động này?",
-      "confirmRelist": "Đăng lại hoạt động này?\nDanh sách đăng ký và danh sách chờ sẽ được giữ nguyên.",
-      "doneCancel": "Đã hủy hoạt động",
-      "doneReopen": "Đã mở lại hoạt động",
-      "doneRelist": "Đã đăng lại hoạt động",
-      "courseLinked": "Hoạt động tạo từ khóa học phải quản lý trong phần khóa học; không thể hủy, kết thúc, xóa hay mở lại tại đây.",
-      "notAllowed": "Bạn chỉ có thể quản lý hoạt động của mình",
-      "startPassedReopen": "Đã qua thời gian hoạt động. Hãy sửa hoạt động và cập nhật thời gian trước khi mở lại.",
-      "startPassedRelist": "Đã qua thời gian hoạt động. Hãy sửa hoạt động và cập nhật thời gian trước khi đăng lại.",
-      "failCancel": "Hủy thất bại, vui lòng thử lại",
-      "failReopen": "Mở lại thất bại, vui lòng thử lại",
-      "failRelist": "Đăng lại thất bại, vui lòng thử lại",
       "deleteInLegacy": "Phiên bản mới chưa hỗ trợ xóa hoạt động. Chuyển sang phiên bản cũ để xóa?"
     }
   },

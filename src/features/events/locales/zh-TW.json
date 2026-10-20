@@ -144,7 +144,6 @@
     }
   },
   "form": {
-    "openCreateBtn": "我要開團",
     "createTitle": "新增活動",
     "editTitle": "編輯活動",
     "required": "*必填",
@@ -226,8 +225,6 @@
   },
   "manage": {
     "title": "活動管理",
-    "back": "返回",
-    "tabsLabel": "活動管理分頁",
     "tab": {
       "all": "全部",
       "upcoming": "即將開放",
@@ -236,45 +233,11 @@
       "ended": "已結束",
       "cancelled": "已取消"
     },
-    "status": {
-      "open": "報名中",
-      "full": "已額滿",
-      "ended": "已結束",
-      "upcoming": "即將開放",
-      "cancelled": "已取消"
-    },
-    "editBtn": "編輯",
-    "pinnedBadge": "置頂",
-    "teamOnlyBadge": "限定",
-    "externalLinkLabel": "🔗 外部活動連結",
-    "participants": "{current}/{max} 人",
-    "participantsWithWaitlist": "{current}/{max} 人 ・ 候補 {waitlist}",
-    "emptyCategory": "此分類沒有活動",
-    "loadMoreNote": "已顯示 {displayed} / {total}",
-    "loadMoreBtn": "查看更多",
-    "loading": "資料載入中",
     "loadError": "無法載入活動，請重試。",
     "retry": "重試",
     "permissionDenied": "權限不足",
     "permissionDeniedBody": "您沒有權限存取活動管理頁面。",
-    "cancelBtn": "取消",
-    "reopenBtn": "重新開放",
-    "relistBtn": "上架",
-    "deleteBtn": "刪除",
     "lifecycle": {
-      "confirmCancel": "確定要取消此活動？",
-      "confirmReopen": "確定要重新開放此活動？",
-      "confirmRelist": "確定要重新上架此活動？\n報名名單與候補名單將會保留。",
-      "doneCancel": "活動已取消",
-      "doneReopen": "活動已重新開放",
-      "doneRelist": "活動已重新上架",
-      "courseLinked": "課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放",
-      "notAllowed": "您只能管理自己的活動",
-      "startPassedReopen": "活動時間已過，請先編輯活動並更新時間後再重新開放。",
-      "startPassedRelist": "活動時間已過，請先編輯活動並更新時間後再上架。",
-      "failCancel": "取消失敗，請重試",
-      "failReopen": "重新開放失敗，請重試",
-      "failRelist": "重新上架失敗，請重試",
       "deleteInLegacy": "新版暫不提供刪除活動，要前往舊版刪除嗎？"
     }
   },
