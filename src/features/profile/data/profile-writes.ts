@@ -82,6 +82,11 @@ export async function updateProfileFields(
   });
 }
 
+/** A 生日格式：`YYYY/MM/DD`（補零）。驗證通過後才呼叫。 */
+function toLegacyBirthday(value: string): string {
+  return value.replace(/-/g, '/');
+}
+
 export interface FirstLoginInput {
   gender: string;
   birthday: string;
@@ -104,7 +109,8 @@ function assertFirstLoginInput(input: FirstLoginInput): void {
     throw new Error('[profile-writes] region is required');
   }
 
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.birthday);
+  // 舊資料或舊呼叫端可能用「-」；寫入一律照 A `_getBirthdayFromSelects` 的 YYYY/MM/DD。
+  const match = /^(\d{4})[-/](\d{2})[-/](\d{2})$/.exec(input.birthday);
   if (!match) throw new Error('[profile-writes] invalid birthday');
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -161,7 +167,7 @@ export async function saveFirstLoginProfile(
 
   const patch: Record<string, unknown> = {
     gender: input.gender,
-    birthday: input.birthday,
+    birthday: toLegacyBirthday(input.birthday),
     region: input.region.trim(),
   };
   const email = input.email?.trim() ?? '';

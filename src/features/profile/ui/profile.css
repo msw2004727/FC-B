@@ -35,7 +35,6 @@
 
 .profile-page button,
 .profile-page a,
-.profile-page summary,
 .profile-form button,
 .profile-form input:not([type="checkbox"]),
 .profile-form select {
@@ -66,23 +65,17 @@
   background: var(--color-bg-hover);
 }
 
-.profile-page :is(a, button, summary):focus-visible,
+.profile-page :is(a, button):focus-visible,
 .profile-form :is(input, select, button):focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 3px;
 }
 
-.profile-back,
-.profile-qr-entry a {
+.profile-back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding-inline: var(--space-3);
-}
-
-.profile-content {
-  display: grid;
-  gap: var(--space-2);
 }
 
 .profile-header {
@@ -130,10 +123,6 @@
   line-height: 1.5;
 }
 
-.profile-qr-entry {
-  text-align: center;
-}
-
 .profile-socials {
   display: flex;
   justify-content: center;
@@ -164,78 +153,6 @@
   border-color: var(--color-brand);
   background: var(--color-brand-soft-bg);
   color: var(--color-brand-soft-fg);
-}
-
-.profile-page summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
-  font-weight: var(--font-weight-semibold);
-  list-style: none;
-}
-
-.profile-page summary::-webkit-details-marker {
-  display: none;
-}
-
-.profile-page summary::after {
-  content: '›';
-  margin-left: auto;
-  color: var(--color-text-muted);
-}
-
-.profile-page details[open] > summary::after {
-  transform: rotate(90deg);
-}
-
-.profile-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  min-height: 20px;
-  padding-inline: .35rem;
-  border-radius: var(--radius-full);
-  background: var(--color-brand-soft-bg);
-  color: var(--color-brand-soft-fg);
-  font-size: .7rem;
-}
-
-.profile-activity-list {
-  display: grid;
-  gap: .38rem;
-  margin: 0;
-  padding: .55rem 0 0;
-  list-style: none;
-}
-
-.profile-activity-list a {
-  display: flex;
-  align-items: center;
-  min-height: 58px;
-  padding: .38rem .52rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  font-size: .8rem;
-  line-height: 1.4;
-  text-decoration: none;
-}
-
-.profile-activity-list a:hover {
-  background: var(--color-bg-hover);
-}
-
-.profile-page .profile-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  width: 100%;
-  border: 0;
-  text-align: start;
-  font-weight: var(--font-weight-semibold);
 }
 
 .profile-info-row {

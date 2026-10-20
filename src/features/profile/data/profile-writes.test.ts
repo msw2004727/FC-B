@@ -39,7 +39,7 @@ const SERVER_TS = { __sv: 'SERVER_TIMESTAMP' };
 function firstLogin(overrides: Partial<FirstLoginInput> = {}): FirstLoginInput {
   return {
     gender: '女',
-    birthday: '1990-01-01',
+    birthday: '1990/01/01',
     region: 'TW',
     email: 'a@example.com',
     legalConsent: true,
@@ -163,7 +163,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
       {
         ...LEGAL_NEW,
         gender: '女',
-        birthday: '1990-01-01',
+        birthday: '1990/01/01',
         region: 'TW',
         email: 'a@example.com',
         updatedAt: SERVER_TS,
@@ -187,7 +187,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         {
           ...LEGAL_NEW,
           gender: '女',
-          birthday: '1990-01-01',
+          birthday: '1990/01/01',
           region: 'TW',
           updatedAt: SERVER_TS,
         },
@@ -205,7 +205,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
       {
         ...LEGAL_NEW,
         gender: '女',
-        birthday: '1990-01-01',
+        birthday: '1990/01/01',
         region: '臺中市',
         email: 'a@example.com',
         updatedAt: SERVER_TS,
@@ -287,7 +287,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
       {
         ...LEGAL_NEW,
         gender,
-        birthday: '1990-01-01',
+        birthday: '1990/01/01',
         region: 'TW',
         email: 'a@example.com',
         updatedAt: SERVER_TS,
@@ -306,13 +306,13 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
   );
 
   it('接受有效閏日', async () => {
-    await saveFirstLoginProfile('u1', firstLogin({ birthday: '2000-02-29' }));
+    await saveFirstLoginProfile('u1', firstLogin({ birthday: '2000/02/29' }));
     expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         ...LEGAL_NEW,
         gender: '女',
-        birthday: '2000-02-29',
+        birthday: '2000/02/29',
         region: 'TW',
         email: 'a@example.com',
         updatedAt: SERVER_TS,
@@ -351,7 +351,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
       {
         ...LEGAL_NEW,
         gender: '女',
-        birthday: '1990-01-01',
+        birthday: '1990/01/01',
         region: 'TW',
         email: 'a@example.com',
         updatedAt: SERVER_TS,

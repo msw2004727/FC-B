@@ -1,0 +1,9 @@
+/* 取自 A css/education.css 第 5～12 行（原樣）：說明按鈕。個人頁、俱樂部詳情共用。 */
+/* ── 說明按鈕（圓形 ? 圖示）── */
+.edu-info-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--accent);
+  background: transparent; color: var(--accent); font-size: .75rem; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-left: .25rem; padding: 0; line-height: 1;
+}
+.edu-info-btn:hover { background: var(--accent); color: #fff; }

@@ -19,7 +19,8 @@ export type LegacyEventDoc = EventDoc & {
   allowedGender?: string;
 };
 
-const TYPE_CONFIG: Record<string, { label: string }> = {
+/** A `config.js#TYPE_CONFIG`（個人頁活動卡也共用）。 */
+export const TYPE_CONFIG: Record<string, { label: string }> = {
   friendly: { label: '友誼' },
   camp: { label: '教學' },
   play: { label: 'PLAY' },
@@ -28,7 +29,8 @@ const TYPE_CONFIG: Record<string, { label: string }> = {
   external: { label: '外部' },
 };
 
-const STATUS_CONFIG: Record<string, { label: string; css: string }> = {
+/** A `config.js#STATUS_CONFIG`（個人頁活動卡也共用）。 */
+export const STATUS_CONFIG: Record<string, { label: string; css: string }> = {
   open: { label: '報名中', css: 'open' },
   full: { label: '已額滿', css: 'full' },
   ended: { label: '已結束', css: 'ended' },

@@ -144,7 +144,7 @@ export function FirstLoginEditor({
   const t = useT();
   const mutation = useSubmission();
   const [gender, setGender] = useState(stringValue(profile['gender']));
-  const initialBirthday = stringValue(profile['birthday']).split('-');
+  const initialBirthday = stringValue(profile['birthday']).split(/[-/]/);
   const [year, setYear] = useState(initialBirthday[0] ?? '');
   const [month, setMonth] = useState(() => initialBirthday[1] ? String(Number(initialBirthday[1])) : '');
   const [day, setDay] = useState(() => initialBirthday[2] ? String(Number(initialBirthday[2])) : '');
@@ -194,7 +194,7 @@ export function FirstLoginEditor({
 
           const input: FirstLoginInput = {
             gender,
-            birthday: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`,
+            birthday: `${year}/${month.padStart(2, '0')}/${day.padStart(2, '0')}`,
             region: region.trim(),
             ...(email.trim() ? { email: email.trim() } : {}),
             legalConsent: true,
