@@ -580,6 +580,7 @@ export default function MyActivitiesPage(): JSX.Element {
                     }}
                     onPin={handleUnavailable}
                     onUnavailable={handleUnavailable}
+                    showFeeSummary={isSuperAdmin}
                     onNavigate={(href) => location.route(href)}
                   />
                 );

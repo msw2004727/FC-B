@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import type { UserRole } from '@/ui/Avatar';
 import { UserTag } from '@/ui/UserTag';
 import { STATUS_CONFIG } from './TimelineEventCard';
@@ -16,6 +17,11 @@ import { getEventParticipantStats } from '../../data/participant-stats';
 import { publicEventHref } from '../../data/presentation';
 import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
 import type { EventDoc } from '../../data/types';
+import {
+  getEventRecordedFeeAmount,
+  loadManageFeeSummary,
+  type ManageFeeSummary,
+} from '../../data/manage-fee-summary';
 
 export type LifecycleKind = 'cancel' | 'reopen' | 'relist';
 
@@ -30,6 +36,8 @@ export interface MyActivityCardProps {
   onPin: (event: EventDoc) => void;
   onUnavailable: () => void;
   onNavigate: (href: string) => void;
+  /** A：總管（super_admin）才看得到卡片右下角的費用摘要。 */
+  showFeeSummary?: boolean;
 }
 
 const BTN_STYLE = 'font-size:.72rem;padding:.2rem .5rem';
@@ -69,6 +77,7 @@ export function MyActivityCard({
   onPin,
   onUnavailable,
   onNavigate,
+  showFeeSummary = false,
 }: MyActivityCardProps): JSX.Element {
   const ext = e as EventDoc & { pinned?: unknown };
   const isPinned = Boolean(ext.pinned);
@@ -283,7 +292,6 @@ export function MyActivityCard({
     }
   }
 
-  // 下一批補：總管卡片右下角費用摘要 feeBox（需讀取出席簽退紀錄與報名列表，不得新增 Firestore 讀寫）
 
   return (
     <div
@@ -364,7 +372,38 @@ export function MyActivityCard({
             {btn.label}
           </button>
         ))}
+        {showFeeSummary && !isExternal && (
+          <ManageFeeBox event={e} confirmedDisplay={confirmedDisplay} />
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A `renderMyActivities` 的 feeBox（應收／實收／短收）。只在有記錄費用時讀該活動的報名與簽到。
+ * 讀取失敗就不顯示（A 快取沒有資料時也只是顯示 0，這裡不顯示錯誤數字）。
+ */
+function ManageFeeBox({ event, confirmedDisplay }: { event: EventDoc; confirmedDisplay: number }): JSX.Element | null {
+  const [summary, setSummary] = useState<ManageFeeSummary | null>(null);
+  const fee = getEventRecordedFeeAmount(event);
+  const docId = event._docId || event.docId || event.id || '';
+  useEffect(() => {
+    if (fee <= 0 || !docId) return undefined;
+    let alive = true;
+    loadManageFeeSummary(event, docId, confirmedDisplay).then(
+      (next) => { if (alive) setSummary(next); },
+      () => { if (alive) setSummary(null); },
+    );
+    return () => { alive = false; };
+    // 以活動與人數為準重算；event 物件本身每次 render 都可能是新參考。
+  }, [docId, fee, confirmedDisplay]);
+  if (!summary) return null;
+  return (
+    <div style="margin-left:auto;padding:.2rem .45rem;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.68rem;color:var(--text-secondary);display:inline-flex;gap:.5rem;background:var(--bg-elevated);white-space:nowrap">
+      <span>應收<b style="color:var(--text-primary)">{`$${summary.expected}`}</b></span>
+      <span>實收<b style="color:var(--success)">{`$${summary.actual}`}</b></span>
+      <span>短收<b style={`color:${summary.short > 0 ? 'var(--danger)' : 'var(--success)'}`}>{`$${summary.short}`}</b></span>
     </div>
   );
 }
