@@ -162,7 +162,8 @@ export function TopBar({
             </svg>
             <span class="notif-badge" id="notif-badge" style="display:none" />
             <span class="pm-notif-hint" id="pm-notif-hint" aria-hidden="true" hidden>
-              <img src="img/chat.png" alt="" />
+              {/* 絕對路徑：相對路徑在 /teams/xxx 等子路徑會抓錯檔；平常隱藏，lazy 讓它顯示時才下載 */}
+              <img src="/img/chat.png" alt="" loading="lazy" />
             </span>
           </a>
 
