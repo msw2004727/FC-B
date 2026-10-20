@@ -1,27 +1,25 @@
+/* M-040 & M-041：照 A css/base.css:1042-1056
+   底部導覽上方置中單顆膠囊，z-index 10001 高於 modal 與 app-confirm；
+   有開啟中的 <dialog> 時 ToastHost 會掛進該 dialog，才不會被 showModal() 蓋住。 */
 .ui-toast-host {
   --comp-toast-host-text-default: var(--color-text-primary);
 
   position: fixed;
-  z-index: var(--z-toast);
-  top: calc(var(--topbar-h) + var(--safe-top) + var(--space-3));
-  left: calc(var(--space-3) + var(--safe-left));
-  right: calc(var(--space-3) + var(--safe-right));
-  display: grid;
-  gap: var(--space-2);
-  max-height: calc(100vh - var(--topbar-h) - var(--space-8));
-  max-height: calc(100dvh - var(--topbar-h) - var(--space-8));
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  z-index: 10001;
+  inset: auto auto calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px) 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--comp-toast-host-text-default);
   pointer-events: none;
+  overflow: visible;
 }
 
-@media (min-width: 640px) {
-  .ui-toast-host {
-    top: auto;
-    left: auto;
-    right: calc(var(--space-6) + var(--safe-right));
-    bottom: calc(var(--space-6) + var(--safe-bottom));
-    width: min(400px, calc(100vw - var(--space-8)));
-  }
-}

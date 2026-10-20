@@ -3,13 +3,13 @@ import { toChildArray } from 'preact';
 import { Text } from '@/ui/Text';
 
 /**
- * 本批依提供附件編寫；未執行 tsc、vitest 或瀏覽器視覺驗收。
  * 保留原生 button / anchor 鍵盤行為，不以 keydown 重造瀏覽器 activation。
  */
 export interface ActionProps {
   children?: ComponentChildren;
   class?: string;
   id?: string;
+  style?: JSX.CSSProperties | string;
   href?: string;
   target?: '_self' | '_blank' | '_parent' | '_top';
   rel?: string;
@@ -39,6 +39,7 @@ export function Action({
   children,
   class: className,
   id,
+  style,
   href,
   target,
   rel,
@@ -64,7 +65,9 @@ export function Action({
     ...aria,
     id,
     class: className,
+    style,
     title,
+    'data-btn-loading': busy ? '1' : undefined,
     'aria-disabled': blocked || undefined,
     'aria-busy': busy || undefined,
     onClick: handleClick,

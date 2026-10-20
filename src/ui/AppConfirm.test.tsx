@@ -24,7 +24,7 @@ describe('AppConfirm（A appConfirm／appAlert）', () => {
     await waitFor(() => expect(screen.queryByText('確定要取消此活動？')).toBeNull());
   });
 
-  it('取消與 Esc → false', async () => {
+  it('取消、Esc 與實體返回鍵（popstate） → false（U-011）', async () => {
     const first = appConfirm('A');
     await screen.findByText('A');
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
@@ -34,6 +34,25 @@ describe('AppConfirm（A appConfirm／appAlert）', () => {
     await screen.findByText('B');
     fireEvent.keyDown(document, { key: 'Escape' });
     await expect(second).resolves.toBe(false);
+
+    const third = appConfirm('C');
+    await screen.findByText('C');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await expect(third).resolves.toBe(false);
+  });
+
+  it('危險確認（刪除／取消等）預設焦點在「取消」，一般確認預設焦點在「確定」（U-017）', async () => {
+    const dangerPending = appConfirm('確定要刪除此俱樂部嗎？');
+    await screen.findByText('確定要刪除此俱樂部嗎？');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await expect(dangerPending).resolves.toBe(false);
+
+    const safePending = appConfirm('確定要送出報名嗎？');
+    await screen.findByText('確定要送出報名嗎？');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '確定' }));
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    await expect(safePending).resolves.toBe(true);
   });
 
   it('一次只顯示一個，後到的排隊', async () => {

@@ -23,27 +23,11 @@
   color: var(--color-info-fg);
 }
 
-/* 沿用 A 首頁日曆的尺寸與位置；一般自訂圖示仍為 48px。 */
-.ui-empty-state__icon--calendar {
-  width: 128px;
-  height: 88px;
-}
-
 .ui-empty-state__icon > svg {
   display: block;
   max-width: 100%;
   max-height: 100%;
 }
-
-.ui-empty-state__calendar {
-  fill: var(--color-info-bg);
-  stroke: var(--color-border-strong);
-}
-
-.ui-empty-state__binding { fill: var(--color-info-fg); }
-.ui-empty-state__cell { fill: var(--color-bg-surface); }
-.ui-empty-state__add { fill: var(--color-brand); }
-.ui-empty-state__plus { stroke: var(--color-brand-fg); }
 
 .ui-empty-state__title {
   margin: 0;

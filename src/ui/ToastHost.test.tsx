@@ -17,24 +17,18 @@ describe('ToastHost', () => {
     expect(region.classList.contains('ui-toast-host')).toBe(true);
   });
 
-  it('retains at most three notifications and discards the oldest', () => {
+  // 測試同步更新：照 A（M-041）一次只顯示一顆提示，新的取代舊的，沒有關閉鈕。
+  it('shows only the newest notification like A', () => {
     render(<ToastHost />);
     act(() => {
       toast.show({ message: 'One', duration: 0 });
       toast.show({ message: 'Two', duration: 0 });
-      toast.show({ message: 'Three', duration: 0 });
       toast.show({ message: 'Four', tone: 'error', duration: 0 });
     });
     expect(screen.queryByText('One')).toBeNull();
-    expect(screen.getAllByRole('status')).toHaveLength(2);
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(getToasts()).toHaveLength(3);
-    const button = screen.getAllByRole('button', {
-      name: t('ui.toast.close'),
-    })[0];
-    if (!button) throw new Error('Expected a dismiss button');
-    fireEvent.click(button);
-    expect(getToasts()).toHaveLength(2);
+    expect(screen.queryByText('Two')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('Four');
+    expect(screen.queryByRole('button', { name: t('ui.toast.close') })).toBeNull();
   });
 
   it('supports enqueueing before mount and explicit API dismissal', () => {

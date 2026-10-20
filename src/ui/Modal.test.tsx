@@ -1,11 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { Modal } from '@/ui/Modal';
 import { Text } from '@/ui/Text';
+import { getToasts, toast } from '@/ui/Toast';
 import { t } from '@/i18n/i18n';
 import { installUi4TestLocale } from './ui4-test-helpers';
 
 installUi4TestLocale();
+
+afterEach(() => {
+  toast.clear();
+  cleanup();
+});
 
 describe('Modal', () => {
   it('portals, labels the dialog, traps Tab, restores focus and body overflow', () => {
@@ -140,5 +146,46 @@ describe('Modal', () => {
   it('renders nothing when closed', () => {
     render(<Modal open={false} title="Dialog" onClose={vi.fn()} />);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('blocks Esc, close button, overlay, and popstate while busy and shows A toast (M-044, U-011)', () => {
+    const close = vi.fn();
+    const { rerender } = render(
+      <Modal open busy title="建立活動" onClose={close}>
+        <Text>表單</Text>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const closeBtn = screen.getByRole('button', { name: t('ui.modal.close') });
+
+    fireEvent.click(closeBtn);
+    expect(close).not.toHaveBeenCalled();
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+
+    toast.clear();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(close).not.toHaveBeenCalled();
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+
+    toast.clear();
+    fireEvent.pointerDown(dialog);
+    fireEvent.click(dialog);
+    expect(close).not.toHaveBeenCalled();
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+
+    toast.clear();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(close).not.toHaveBeenCalled();
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+
+    // 解除 busy 後按返回鍵先關彈窗（U-011）
+    rerender(
+      <Modal open busy={false} title="建立活動" onClose={close}>
+        <Text>表單</Text>
+      </Modal>,
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });

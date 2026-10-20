@@ -1,8 +1,15 @@
-/* 照 A css/base.css 的 .app-confirm-*（數值照搬，色彩對應 tokens） */
+/* 照 A css/base.css:206-214 的 .app-confirm-*
+   M-042 & U-021：確定鈕改用 var(--primary, #2563eb) 搭配白字（深色模式下 --primary 為 #3b82f6，與白字對比達 WCAG AA）。
+   M-040：支援 popover="manual" 在 showModal() 之上顯示。 */
 .app-confirm-overlay {
   display: none;
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
   background: rgba(0, 0, 0, 0.35);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
@@ -11,12 +18,13 @@
   justify-content: center;
 }
 
-.app-confirm-overlay.open {
+.app-confirm-overlay.open,
+.app-confirm-overlay:popover-open {
   display: flex;
 }
 
 .app-confirm-box {
-  background: var(--color-bg-surface);
+  background: var(--bg-card, var(--color-bg-surface));
   border-radius: 14px;
   padding: 1.5rem 1.3rem 1.2rem;
   width: 280px;
@@ -30,8 +38,15 @@
   font-weight: 600;
   line-height: 1.5;
   margin-bottom: 1.2rem;
-  color: var(--color-text-primary);
+  color: var(--text-primary, var(--color-text-primary));
   white-space: pre-line;
+}
+
+.app-confirm-warning {
+  color: var(--danger, var(--color-danger, #dc2626));
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
 }
 
 .app-confirm-btns {
@@ -51,13 +66,19 @@
 }
 
 .app-confirm-cancel {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-secondary);
+  background: var(--bg-elevated, var(--color-bg-elevated));
+  color: var(--text-secondary, var(--color-text-secondary));
 }
 
+/* M-042 & U-021：照 A css/base.css:214 藍色 --primary＋高對比白字 */
 .app-confirm-ok {
-  background: var(--color-brand);
-  color: var(--color-brand-fg);
+  background: var(--primary, #2563eb);
+  color: var(--color-brand-on-primary, #ffffff);
+}
+
+:root[data-theme="dark"] .app-confirm-ok {
+  background: var(--primary, #2563eb);
+  color: var(--color-brand-on-primary, #ffffff);
 }
 
 @keyframes app-confirm-pop-in {

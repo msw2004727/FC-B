@@ -1,7 +1,11 @@
+/* M-043：照 A css/base.css:217-237, 1403-1407 與 css/activity.css:2640-2665
+   手機為底部滑上面板（上圓角、最高 80vh），桌機（≥800px）置中寬上限 640px；
+   fullScreenOnMobile / #create-event-modal 在 ≤640px 時全螢幕。
+   U-016：統一 :focus-visible 焦點框（手指點擊不顯示，鍵盤操作清楚可見）。 */
 .ui-modal {
-  --comp-modal-surface-default: var(--color-bg-surface);
-  --comp-modal-text-default: var(--color-text-primary);
-  --comp-modal-overlay-default: var(--color-overlay);
+  --comp-modal-surface-default: var(--bg-card, var(--color-bg-surface));
+  --comp-modal-text-default: var(--text-primary, var(--color-text-primary));
+  --comp-modal-overlay-default: var(--overlay, var(--color-overlay));
   --comp-modal-shadow-default: var(--shadow-lg);
 
   position: fixed;
@@ -12,24 +16,19 @@
   max-width: none;
   max-height: none;
   margin: 0;
-  padding: calc(var(--space-4) + var(--safe-top))
-    calc(var(--space-4) + var(--safe-right))
-    calc(var(--space-4) + var(--safe-bottom))
-    calc(var(--space-4) + var(--safe-left));
+  padding: 0;
   border: 0;
   background: var(--comp-modal-overlay-default);
   color: var(--comp-modal-text-default);
   overflow: hidden;
   overscroll-behavior: contain;
-  z-index: var(--z-modal);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  z-index: 1100;
   animation: ui-fade-in var(--ui-dur-base) var(--ui-ease);
 }
 
 .ui-modal[open] {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
 }
 
@@ -38,33 +37,78 @@
 }
 
 .ui-modal__panel {
+  position: relative;
+  z-index: 1110;
   display: flex;
   flex-direction: column;
   width: 100%;
   min-width: 0;
-  max-width: min(480px, calc(100vw - var(--space-8)));
+  max-width: 100%;
   max-height: 80vh;
   max-height: 80dvh;
-  border-radius: var(--radius-modal);
+  border-radius: var(--radius, 14px) var(--radius, 14px) 0 0;
   background: var(--comp-modal-surface-default);
   box-shadow: var(--comp-modal-shadow-default);
   overflow: hidden;
-  animation: ui-slide-up var(--ui-slide-dur) var(--ui-ease);
+  animation: ui-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ui-modal--sm .ui-modal__panel {
-  max-width: min(360px, calc(100vw - var(--space-8)));
+  max-width: 100%;
 }
 
 .ui-modal--lg .ui-modal__panel {
-  max-width: min(720px, calc(100vw - var(--space-8)));
+  max-width: 100%;
+}
+
+/* M-043：桌機（≥800px）照 A css/base.css:1405 寬上限 640px 底部面板置中 */
+@media (min-width: 800px) {
+  .ui-modal__panel,
+  .ui-modal--sm .ui-modal__panel,
+  .ui-modal--md .ui-modal__panel,
+  .ui-modal--lg .ui-modal__panel {
+    max-width: 640px;
+    width: 100%;
+  }
+}
+
+/* M-043：建立活動或 fullScreenOnMobile 在 ≤640px 下全螢幕（照 A css/activity.css:2640-2665） */
+@media (max-width: 640px) {
+  .ui-modal--mobile-fullscreen[open],
+  #create-event-modal.ui-modal[open] {
+    align-items: stretch;
+  }
+
+  .ui-modal--mobile-fullscreen .ui-modal__panel,
+  #create-event-modal .ui-modal__panel {
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .ui-modal--mobile-fullscreen .ui-modal__header,
+  #create-event-modal .ui-modal__header {
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+  }
+
+  .ui-modal--mobile-fullscreen .ui-modal__footer,
+  #create-event-modal .ui-modal__footer {
+    padding: 0.7rem 1.2rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .ui-modal__header {
   display: flex;
-  align-items: flex-start;
+  justify-content: space-between;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-5);
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--border, var(--color-border));
+  background: var(--comp-modal-surface-default);
   flex: 0 0 auto;
 }
 
@@ -72,41 +116,40 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: var(--font-size-title);
-  line-height: var(--line-height-title);
-  font-weight: var(--font-weight-semibold);
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-/* 標題通常為兩行；超長翻譯保留全文，不截去可見的 dialog 名稱。 */
 .ui-modal__title .ui-text {
   overflow-wrap: anywhere;
 }
 
 .ui-modal__close {
-  /* 依 A 微調：維持右上圓形關閉圖示，30px 觸控區擴大至 44px。 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: var(--space-2);
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: 50%;
   background: transparent;
   color: var(--comp-modal-text-default);
+  font-size: 1rem;
   cursor: pointer;
   transition: transform var(--ui-dur-fast) var(--ui-ease);
 }
 
 .ui-modal__close:hover {
-  background: var(--color-bg-hover);
+  background: var(--bg-elevated, var(--color-bg-hover));
 }
 
 .ui-modal__close:active {
   background: var(--color-bg-active);
-  transform: scale(.98);
+  transform: scale(0.98);
 }
 
 .ui-modal__close:focus-visible,
@@ -115,21 +158,37 @@
   outline-offset: 2px;
 }
 
+/* U-016：.legacy-ui 內統一 :focus-visible 焦點框（手指點擊不顯示，鍵盤導覽清晰可見） */
+.legacy-ui :is(button, a[href], input, select, textarea, [ role="button" ], [tabindex]:not([tabindex="-1"])):focus:not(:focus-visible) {
+  outline: none;
+}
+
+.legacy-ui :is(button, a[href], input, select, textarea, [ role="button" ], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--primary, var(--color-focus-ring));
+  outline-offset: 2px;
+}
+
 .ui-modal__body {
+  flex: 1 1 auto;
   min-height: 0;
-  padding: 0 var(--space-5) var(--space-5);
+  padding: 1rem 1.2rem;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--text-secondary, var(--color-text-secondary));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
 
 .ui-modal__footer {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  gap: 0.5rem;
   flex: 0 0 auto;
-  padding: var(--space-5);
-  border-top: var(--border-hairline) solid var(--color-border);
+  padding: 0.75rem 1.2rem;
+  border-top: 1px solid var(--border, var(--color-border));
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .ui-modal__footer > * {
@@ -155,14 +214,6 @@
   background: var(--color-bg-skeleton-base);
   border-radius: var(--radius-xs);
   animation: ui-pulse var(--ui-shimmer-dur) var(--ui-ease) infinite;
-}
-
-@media (min-width: 640px) {
-  .ui-modal__footer {
-    flex-direction: row;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

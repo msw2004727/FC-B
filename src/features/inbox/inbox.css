@@ -1,9 +1,12 @@
 /* =========================================================
    SportHub / ToosterX — Inbox & Private Message Styles (FC-B)
    Colors strictly reference tokens in src/styles/tokens.css
+   U-021：深色模式下按鈕字與灰字對比調整，確保符合 WCAG AA（≥4.5:1），淺色外觀不變。
    ========================================================= */
 
 .inbox-page {
+  --inbox-on-solid-fg: var(--color-brand-on-primary, #ffffff);
+
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -104,7 +107,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   border: var(--border-hairline) solid var(--color-border);
-  color: var(--color-info);
+  color: var(--color-info-fg);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -322,7 +325,7 @@
 
 .msg-time {
   font-size: var(--font-size-caption);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   margin-top: var(--space-1);
 }
 
@@ -360,7 +363,7 @@
   align-items: center;
   gap: var(--space-2);
   font-size: var(--font-size-caption);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   margin-bottom: var(--space-2);
 }
 
@@ -409,7 +412,7 @@
 
 .msg-action-ignore {
   background: var(--color-bg-active);
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
 }
 
 .msg-action-status {
@@ -456,7 +459,7 @@
   border: var(--border-hairline) solid var(--color-danger);
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-danger);
+  color: var(--color-danger-fg);
   font-size: var(--font-size-body-sm);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
@@ -536,7 +539,7 @@
   margin-left: auto;
   flex-shrink: 0;
   font-size: var(--font-size-caption);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .pm-thread-preview {
@@ -643,13 +646,13 @@
 }
 
 .pm-message.is-recalled .pm-message-bubble {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   background: transparent;
   border: var(--border-hairline) dashed var(--color-border);
 }
 
 .pm-message-link {
-  color: var(--color-info);
+  color: var(--color-info-fg);
   font-weight: var(--font-weight-semibold);
   text-decoration: underline;
   overflow-wrap: anywhere;
@@ -662,7 +665,7 @@
 .pm-message-link-safety {
   max-width: 78%;
   margin-top: var(--space-1);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
 }
@@ -674,7 +677,7 @@
   gap: var(--space-2);
   margin-top: var(--space-1);
   font-size: var(--font-size-caption);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .pm-message-actions {
@@ -688,7 +691,7 @@
   border: var(--border-hairline) solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
-  color: var(--color-brand);
+  color: var(--color-brand-soft-fg);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
@@ -747,7 +750,7 @@
 
 .pm-dialog-send:disabled {
   background: var(--color-brand-disabled);
-  color: var(--color-text-disabled);
+  color: var(--color-text-secondary);
   cursor: not-allowed;
 }
 
@@ -757,11 +760,11 @@
   justify-content: space-between;
   gap: var(--space-2);
   font-size: var(--font-size-caption);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .pm-compose-counter--over {
-  color: var(--color-danger);
+  color: var(--color-danger-fg);
   font-weight: var(--font-weight-semibold);
 }
 

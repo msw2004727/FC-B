@@ -41,6 +41,38 @@ describe('theme', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
+  // 測試同步更新：照 A（U-015）——沒手動選主題時監聽系統深淺色即時切換
+  it('U-015：未手動設定主題（system）時，系統深淺色變更會即時切換 data-theme；已手動設定時不覆蓋', () => {
+    let isDark = false;
+    const listeners = new Set<() => void>();
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      get matches() {
+        return isDark;
+      },
+      addEventListener: (_type: string, cb: () => void) => {
+        listeners.add(cb);
+      },
+      removeEventListener: (_type: string, cb: () => void) => {
+        listeners.delete(cb);
+      },
+    })) as unknown as typeof window.matchMedia;
+
+    initTheme();
+    expect(getTheme()).toBe('system');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    isDark = true;
+    for (const cb of listeners) cb();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    // 手動指定為 light 後，系統切回淺色或深色都不應覆蓋手動偏好
+    setTheme('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    isDark = true;
+    for (const cb of listeners) cb();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
   it('舊的 toosterx:theme 偏好會搬到 sporthub_theme', () => {
     localStorage.setItem('toosterx:theme', 'dark');
     initTheme();

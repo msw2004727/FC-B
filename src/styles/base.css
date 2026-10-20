@@ -32,6 +32,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   min-height: 100dvh;
+  /* M-057：照 A css/base.css:94 禁止下拉重新整理與回彈 */
+  overscroll-behavior: none;
 }
 
 #app {

@@ -7,6 +7,7 @@ import './styles/base.css';
 import './styles/legacy/base.css';
 import './styles/legacy/layout.css';
 import './styles/legacy-body-state.css';
+import './styles/legacy-input-zoom.css';
 import { App } from './app/App';
 import { ErrorFallback } from './ui/ErrorFallback';
 import { registerFeatures } from './core/feature-registry';

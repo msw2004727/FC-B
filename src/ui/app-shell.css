@@ -1,6 +1,7 @@
 .ui-app-shell {
   width: 100%;
-  max-width: 640px;
+  /* M-058：照 A css/base.css:129,1401——800px 以下最大寬度 560px，800px 以上 640px */
+  max-width: 560px;
   margin-inline: auto;
   display: flex;
   flex-direction: column;
@@ -29,7 +30,7 @@
   position: fixed;
   inset-inline: 0;
   width: 100%;
-  max-width: 640px;
+  max-width: 560px;
   margin-inline: auto;
 }
 
@@ -54,6 +55,14 @@
   .ui-app-shell .app-main {
     padding-left: calc(var(--space-4) + var(--safe-left));
     padding-right: calc(var(--space-4) + var(--safe-right));
+  }
+}
+
+@media (min-width: 800px) {
+  .ui-app-shell,
+  .ui-top-bar,
+  .ui-bottom-nav {
+    max-width: 640px;
   }
 }
 

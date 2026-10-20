@@ -13,22 +13,22 @@ afterEach(() => {
 });
 
 describe('EmptyState', () => {
-  it('uses translated default title and description', () => {
+  // 測試同步更新：照 A（M-054）拿掉預設說明與預設日曆插圖，只顯示一行標題文字
+  it('uses translated default title without unrelated default body or calendar illustration', () => {
     const { getByRole, container } = render(<EmptyState />);
     const region = getByRole('region', { name: t('ui.emptyState.title') });
     expect(region.textContent).toContain('你目前還沒有報名活動');
-    expect(container.querySelector('.ui-empty-state__body')?.textContent)
-      .toBe(t('ui.emptyState.body'));
-    expect(region.getAttribute('aria-describedby')).toBeTruthy();
-    expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('.ui-empty-state__body')).toBeNull();
+    expect(region.getAttribute('aria-describedby')).toBeNull();
+    expect(container.querySelector('.ui-empty-state__icon')).toBeNull();
   });
 
-  it('replaces empty values with text', () => {
+  // 測試同步更新：照 A（M-054）空白 title 回退預設標題，空白 body 不補預設文案
+  it('replaces empty title with default title and omits empty body', () => {
     const { container } = render(<EmptyState title="" body=" " />);
     expect(container.querySelector('.ui-empty-state__title')?.textContent)
       .toBe(t('ui.emptyState.title'));
-    expect(container.querySelector('.ui-empty-state__body')?.textContent)
-      .toBe(t('ui.emptyState.body'));
+    expect(container.querySelector('.ui-empty-state__body')).toBeNull();
   });
 
   it('renders icon and action slots without converting VNodes to strings', () => {
@@ -42,6 +42,7 @@ describe('EmptyState', () => {
       />,
     );
     expect(container.querySelector('.ui-empty-state__icon svg')).not.toBeNull();
+    expect(container.querySelector('.ui-empty-state__body')?.textContent).toBe('選擇一個分組');
     fireEvent.click(getByRole('button', { name: '選擇分組' }));
     expect(onClick).toHaveBeenCalledOnce();
   });

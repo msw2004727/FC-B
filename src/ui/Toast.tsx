@@ -1,14 +1,13 @@
 import './toast.css';
 import { useEffect, useRef } from 'preact/hooks';
 import { Text } from '@/ui/Text';
-import { useT } from '@/i18n/i18n';
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
 export interface ToastProps {
   message: string;
   tone?: ToastTone;
-  /** 毫秒；0 表示保留到手動關閉。 */
+  /** 毫秒；未傳則照 A 規則依字數／換行計算（2500 / 3500 / 4000），0 表示保留到手動關閉。 */
   duration?: number;
   onClose: () => void;
 }
@@ -30,9 +29,22 @@ let nextId = 0;
 let entries: readonly ToastEntry[] = [];
 const listeners = new Set<() => void>();
 
+/** U-012：相同訊息 2 秒內去重（記住上次顯示的訊息與時間戳） */
+const DEDUPE_WINDOW_MS = 2000;
+let lastShownMessage: string | null = null;
+let lastShownAt = 0;
+let lastShownId = 0;
+
 function publish(next: readonly ToastEntry[]): void {
   entries = next;
-  for (const listener of listeners) listener();
+  // L-15：快照後逐個呼叫並隔離例外
+  for (const listener of [...listeners]) {
+    try {
+      listener();
+    } catch (err) {
+      console.error('[Toast] listener error:', err);
+    }
+  }
 }
 
 export function subscribeToasts(listener: () => void): () => void {
@@ -46,25 +58,54 @@ export function getToasts(): readonly ToastEntry[] {
   return entries;
 }
 
-function normalizeDuration(duration: number | undefined): number {
-  if (duration === undefined || !Number.isFinite(duration)) return 4000;
-  return Math.max(0, duration);
+/**
+ * M-041：照 A `app.js#showToast` 計算預設時長：
+ * - 有傳正數 duration → 直接使用
+ * - 傳 0 → 0（保留至關閉）
+ * - 未傳：含 `\n` → 4000ms；去空白字元數 > 24 → 3500ms；否則 → 2500ms
+ */
+export function computeToastDuration(
+  message: string,
+  duration?: number,
+): number {
+  if (duration !== undefined && Number.isFinite(duration)) {
+    return Math.max(0, duration);
+  }
+  const msg = String(message ?? '');
+  if (msg.includes('\n')) return 4000;
+  const textLen = Array.from(msg.replace(/\s/g, '')).length;
+  return textLen > 24 ? 3500 : 2500;
 }
 
 /**
- * 在應用根節點掛載一個 ToastHost。
- * 未掛載 Host 時暫存最多三則；顯示後才開始計時。
+ * M-041：單顆膠囊，新的取代舊的。
+ * U-012：相同訊息 2 秒內不重複觸發閃爍（若當前仍在場上則直接沿用）。
  */
 export const toast = {
-  show(options: ToastOptions): number {
+  show(options: ToastOptions | string): number {
+    const normalized: ToastOptions =
+      typeof options === 'string' ? { message: options } : options;
+    const now = Date.now();
+    if (
+      lastShownMessage === normalized.message &&
+      now - lastShownAt < DEDUPE_WINDOW_MS &&
+      entries.length > 0
+    ) {
+      return lastShownId;
+    }
+
     const id = ++nextId;
     const entry: ToastEntry = {
       id,
-      message: options.message,
-      tone: options.tone ?? 'info',
-      duration: normalizeDuration(options.duration),
+      message: normalized.message,
+      tone: normalized.tone ?? 'info',
+      duration: computeToastDuration(normalized.message, normalized.duration),
     };
-    publish([...entries, entry].slice(-3));
+    lastShownMessage = normalized.message;
+    lastShownAt = now;
+    lastShownId = id;
+    // M-041：單顆膠囊，新的取代舊的
+    publish([entry]);
     return id;
   },
 
@@ -74,6 +115,8 @@ export const toast = {
   },
 
   clear(): void {
+    lastShownMessage = null;
+    lastShownAt = 0;
     publish([]);
   },
 };
@@ -81,18 +124,19 @@ export const toast = {
 export function Toast({
   message,
   tone = 'info',
-  duration = 4000,
+  duration,
   onClose,
 }: ToastProps) {
-  const t = useT();
   const closeRef = useRef(onClose);
   const pauseRef = useRef<(reason: 'pointer' | 'focus', paused: boolean) => void>(
     () => undefined,
   );
   closeRef.current = onClose;
 
+  const effectiveDuration = computeToastDuration(message, duration);
+
   useEffect(() => {
-    let remaining = normalizeDuration(duration);
+    let remaining = effectiveDuration;
     if (remaining === 0) return;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,13 +175,12 @@ export function Toast({
       stop();
       pauseRef.current = () => undefined;
     };
-  }, [duration]);
-
-  const closeLabel = t('ui.toast.close');
+  }, [effectiveDuration, message]);
 
   return (
     <div
-      class={`ui-toast ui-toast--${tone}`}
+      id="toast"
+      class={`toast show ui-toast ui-toast--${tone}`}
       role={tone === 'error' ? 'alert' : 'status'}
       aria-live={tone === 'error' ? 'assertive' : 'polite'}
       aria-atomic="true"
@@ -152,31 +195,8 @@ export function Toast({
       }}
     >
       <div class="ui-toast__content">
-        <Text class="ui-toast__tone">{t(`ui.toast.${tone}`)}</Text>
         <Text class="ui-toast__message">{message}</Text>
       </div>
-      <button
-        type="button"
-        class="ui-toast__close"
-        aria-label={closeLabel}
-        title={closeLabel}
-        onClick={onClose}
-      >
-        {/* Icon.tsx 尚無 close；使用本地 inline SVG。 */}
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="m6 6 12 12M18 6 6 18" />
-        </svg>
-      </button>
     </div>
   );
 }

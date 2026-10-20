@@ -1,0 +1,10 @@
+/*
+ * M-056（站長決定）：保留 viewport 雙指縮放（無障礙），
+ * 把 .legacy-ui 內的輸入框、select、textarea 字級提到 16px，避免 iPhone Safari 點擊輸入框時自動放大畫面。
+ * 放在獨立檔案並於 legacy CSS 之後載入，不修改 src/styles/legacy/ 底下的 A 原檔。
+ */
+.legacy-ui input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="image"]):not([type="color"]):not([type="hidden"]),
+.legacy-ui select,
+.legacy-ui textarea {
+  font-size: max(16px, 1rem);
+}

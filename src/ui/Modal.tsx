@@ -3,6 +3,8 @@ import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useId, useLayoutEffect, useRef } from 'preact/hooks';
 import { Text } from '@/ui/Text';
+import { toast } from '@/ui/Toast';
+import { pushOverlay } from '@/core/overlay-back';
 import { useT } from '@/i18n/i18n';
 
 export interface ModalProps {
@@ -12,6 +14,14 @@ export interface ModalProps {
   footer?: ComponentChildren;
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
+  /** M-044：送出中鎖定關閉，點 ✕／遮罩／Esc／返回鍵時顯示「資料儲存中，請稍候」 */
+  busy?: boolean;
+  /** M-044：自訂送出中拒絕關閉的提示文字（預設照 A：「資料儲存中，請稍候」） */
+  busyMessage?: string;
+  /** M-043：小螢幕（≤640px）下是否全螢幕（如建立活動表單） */
+  fullScreenOnMobile?: boolean;
+  id?: string;
+  class?: string;
   error?: string;
   closeOnOverlay?: boolean;
   closeOnEsc?: boolean;
@@ -29,6 +39,8 @@ interface BodyLock {
 }
 
 const bodyLocks = new WeakMap<HTMLElement, BodyLock>();
+
+const DEFAULT_BUSY_MESSAGE = '資料儲存中，請稍候';
 
 function lockBody(body: HTMLElement): () => void {
   let lock = bodyLocks.get(body);
@@ -91,6 +103,11 @@ export function DialogFrame({
   footer,
   size = 'md',
   loading = false,
+  busy = false,
+  busyMessage = DEFAULT_BUSY_MESSAGE,
+  fullScreenOnMobile = false,
+  id: modalId,
+  class: extraClass = '',
   error,
   closeOnOverlay = true,
   closeOnEsc = true,
@@ -106,6 +123,22 @@ export function DialogFrame({
   const overlayPointer = useRef(false);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const busyMsgRef = useRef(busyMessage);
+  busyMsgRef.current = busyMessage;
+
+  /** M-044：統一處理關閉請求，busy 時阻擋並顯示 A 的提示「資料儲存中，請稍候」 */
+  const requestClose = (): boolean => {
+    if (busyRef.current) {
+      toast.show({ message: busyMsgRef.current });
+      return false;
+    }
+    closeRef.current();
+    return true;
+  };
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -140,7 +173,11 @@ export function DialogFrame({
       passive: false,
     });
 
+    // U-011：彈窗開著時，實體返回鍵先關彈窗；送出中（busy）則提示並保持開啟。
+    const releaseBack = pushOverlay(() => requestCloseRef.current());
+
     return () => {
+      releaseBack();
       const active = document.activeElement;
       // 外層被提前卸載時，不搶走仍開啟的內層 dialog 的焦點。
       const shouldRestore =
@@ -171,25 +208,48 @@ export function DialogFrame({
     kind === 'modal' ? 'ui.modal.loading' : 'ui.bottomSheet.loading',
   );
 
+  const isMobileFullscreen =
+    fullScreenOnMobile || modalId === 'create-event-modal';
+
   return createPortal(
     <dialog
       ref={dialogRef}
-      class={`ui-modal ui-modal--${size} ui-modal--${kind}${
-        kind === 'bottom-sheet' ? ' ui-bottom-sheet' : ''
-      }${loading ? ' ui-modal--loading' : ''}${error ? ' ui-modal--error' : ''}`}
+      id={modalId}
+      class={[
+        'ui-modal',
+        `ui-modal--${size}`,
+        `ui-modal--${kind}`,
+        kind === 'bottom-sheet' ? 'ui-bottom-sheet' : '',
+        loading ? 'ui-modal--loading' : '',
+        busy ? 'ui-modal--busy' : '',
+        error ? 'ui-modal--error' : '',
+        isMobileFullscreen ? 'ui-modal--mobile-fullscreen' : '',
+        extraClass,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role="dialog"
       aria-modal="true"
+      aria-busy={busy || undefined}
       aria-labelledby={titleId}
       aria-describedby={error ? errorId : undefined}
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (busyRef.current) {
+          toast.show({ message: busyMsgRef.current });
+          return;
+        }
         if (closeOnEsc) closeRef.current();
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
+          if (busyRef.current) {
+            toast.show({ message: busyMsgRef.current });
+            return;
+          }
           if (closeOnEsc) closeRef.current();
           return;
         }
@@ -227,31 +287,31 @@ export function DialogFrame({
         overlayPointer.current = false;
       }}
       onClick={(event) => {
-        if (
-          closeOnOverlay &&
-          overlayPointer.current &&
-          event.target === event.currentTarget
-        ) {
-          closeRef.current();
+        if (overlayPointer.current && event.target === event.currentTarget) {
+          if (busyRef.current) {
+            toast.show({ message: busyMsgRef.current });
+          } else if (closeOnOverlay) {
+            closeRef.current();
+          }
         }
         overlayPointer.current = false;
       }}
     >
       <div
         ref={panelRef}
-        class="ui-modal__panel"
+        class="ui-modal__panel modal open"
         tabIndex={-1}
       >
-        <header class="ui-modal__header">
+        <header class="ui-modal__header modal-header">
           <h2 id={titleId} class="ui-modal__title" title={title}>
             <Text>{title}</Text>
           </h2>
           <button
             type="button"
-            class="ui-modal__close"
+            class="ui-modal__close modal-close"
             aria-label={closeLabel}
             title={closeLabel}
-            onClick={() => closeRef.current()}
+            onClick={() => requestCloseRef.current()}
           >
             {/* Icon.tsx 尚無 close；本地 inline SVG，不修改共用 Icon。 */}
             <svg
@@ -272,8 +332,8 @@ export function DialogFrame({
 
         <div
           ref={bodyRef}
-          class="ui-modal__body"
-          aria-busy={loading}
+          class="ui-modal__body modal-body"
+          aria-busy={loading || busy}
         >
           {error && (
             <div id={errorId} class="ui-modal__error" role="alert">
@@ -291,7 +351,7 @@ export function DialogFrame({
           )}
         </div>
 
-        {footer && <footer class="ui-modal__footer">{footer}</footer>}
+        {footer && <footer class="ui-modal__footer modal-actions">{footer}</footer>}
       </div>
     </dialog>,
     document.body,

@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ToosterX" />
     <script>
-      /* 照 A index.html 開頁腳本：在畫面出現前設定 data-theme，避免顏色閃爍（邏輯同 src/core/theme.ts）。 */
+      /* 照 A index.html 開頁腳本：在畫面出現前設定 data-theme 與字級，避免顏色與字級閃爍（邏輯同 src/core/theme.ts、src/core/font-size.ts）。 */
       (function () {
         var theme = '';
         try {
@@ -29,6 +29,10 @@
           } catch (_) {}
         }
         document.documentElement.setAttribute('data-theme', theme || 'light');
+        try {
+          var s = localStorage.getItem('sporthub_font_size');
+          if (s) document.documentElement.style.fontSize = s + 'px';
+        } catch (_) {}
       })();
     </script>
     <script>

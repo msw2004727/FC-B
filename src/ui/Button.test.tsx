@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/preact';
-import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t, useT, setLocale } from '@/i18n/i18n';
 import { Icon } from '@/ui/Icon';
-import { Button, type ButtonSize, type ButtonVariant } from './Button';
+import { Button, useButtonLoading, type ButtonSize, type ButtonVariant } from './Button';
 import {
   expectBlockedLink,
   expectNativeKeyboard,
@@ -10,6 +10,10 @@ import {
 } from './ui1-test-utils';
 
 installUiTestLocale();
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('Button', () => {
   it('renders translated text through Text and preserves native button semantics', () => {
@@ -64,6 +68,75 @@ describe('Button', () => {
     expect(button.hasAttribute('disabled')).toBe(false);
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces text with loadingText and applies 0.6 opacity like A _withButtonLoading (M-053, U-014)', async () => {
+    let resolveTask!: () => void;
+    const asyncSpy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveTask = resolve;
+        }),
+    );
+
+    function Demo() {
+      const { buttonProps, run } = useButtonLoading('建立中...');
+      return (
+        <Button {...buttonProps} onClick={() => { void run(asyncSpy); }}>
+          建立活動
+        </Button>
+      );
+    }
+
+    render(<Demo />);
+    const btn = screen.getByRole('button', { name: '建立活動' });
+    fireEvent.click(btn);
+    // 防連點：第二次點擊不應觸發 asyncSpy
+    fireEvent.click(btn);
+    expect(asyncSpy).toHaveBeenCalledTimes(1);
+    expect(btn.textContent).toBe('建立中...');
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    expect(btn.getAttribute('data-btn-loading')).toBe('1');
+    expect(btn.style.opacity).toBe('0.6');
+
+    await act(async () => {
+      resolveTask();
+    });
+    expect(btn.textContent).toBe('建立活動');
+    expect(btn.getAttribute('aria-busy')).toBeNull();
+    expect(btn.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('restores button state even when async action rejects (U-014, L-30)', async () => {
+    const failing = vi.fn().mockRejectedValueOnce(new Error('network error')).mockResolvedValueOnce('ok');
+
+    function Demo() {
+      const { buttonProps, run } = useButtonLoading('儲存中...');
+      return (
+        <Button
+          {...buttonProps}
+          onClick={() => {
+            run(failing).catch(() => undefined);
+          }}
+        >
+          儲存
+        </Button>
+      );
+    }
+
+    render(<Demo />);
+    const btn = screen.getByRole('button', { name: '儲存' });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(btn.textContent).toBe('儲存');
+    expect(btn.hasAttribute('disabled')).toBe(false);
+
+    // 失敗後可再次點擊重試
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(failing).toHaveBeenCalledTimes(2);
   });
 
   it('renders an anchor with native Enter handling and safe blank-target rel', () => {

@@ -68,4 +68,10 @@ describe('index.html 開頁骨架', () => {
       expect(topBar).toContain(file);
     }
   });
+
+  // 測試同步更新：照 A（M-055）——index.html head 開頁腳本在畫面出現前讀取 sporthub_font_size 套用字級
+  it('M-055：開頁腳本讀取 sporthub_font_size 並立即套用 documentElement.style.fontSize', () => {
+    expect(html).toContain("localStorage.getItem('sporthub_font_size')");
+    expect(html).toContain('document.documentElement.style.fontSize');
+  });
 });
