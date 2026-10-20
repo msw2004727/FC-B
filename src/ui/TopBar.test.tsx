@@ -5,6 +5,9 @@ import { on } from '@/core/events';
 import { setTheme } from '@/core/theme';
 import { toast } from '@/ui/Toast';
 
+// 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
+vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
+
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal()),
   useT: () => (key: string) => key,

@@ -25,7 +25,6 @@ describe('index.html 開頁骨架', () => {
     ['id="top-logo-img"', topBar],
     ['class="top-bar-right"', topBar],
     ['id="bottom-tabs"', bottomNav],
-    ['id="points-display"', topBar],
     ['id="sport-picker-btn"', topBar],
     ['id="notif-btn"', topBar],
     ['id="line-login-wrapper"', topBar],
@@ -51,6 +50,12 @@ describe('index.html 開頁骨架', () => {
     const hint = read('../data/auth-hint.ts').match(/AUTH_HINT_KEY = '([^']+)'/)?.[1];
     expect(hint).toBeTruthy();
     expect(shell).toContain(`localStorage.getItem('${hint}')`);
+  });
+
+  it('經驗值顯示關閉時，骨架與 TopBar 都不畫 EXP（src/core/exp-display.ts）', () => {
+    const showExp = /SHOW_EXP = true/.test(read('../core/exp-display.ts'));
+    expect(shell.includes('id="points-display"')).toBe(showExp);
+    expect(topBar).toContain('SHOW_EXP &&');
   });
 
   it('骨架不可互動（避免開頁時點了沒反應）', () => {

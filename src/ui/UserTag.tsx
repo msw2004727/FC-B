@@ -3,6 +3,7 @@ import './user-tag.css';
 import type { JSX } from 'preact';
 import type { UserRole } from '@/ui/Avatar';
 import { getCachedUserLevel } from '@/data/user-roles';
+import { SHOW_EXP } from '@/core/exp-display';
 import { useT } from '@/i18n/i18n';
 
 /**
@@ -102,7 +103,8 @@ export function UserTag({
         }
       }}
     >
-      <span class="uc-lv">{`Lv${resolvedLevel}`}</span>
+      {/* 新版關閉經驗值顯示時不畫 Lv（src/core/exp-display.ts） */}
+      {SHOW_EXP && <span class="uc-lv">{`Lv${resolvedLevel}`}</span>}
       {recentNoShow && (
         <span class="uc-recent-noshow" aria-label="最近一場活動未簽到" title="最近一場活動未簽到">🕊</span>
       )}

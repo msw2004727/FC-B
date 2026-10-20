@@ -28,6 +28,9 @@ import {
 import { useViewer, type ViewerView } from './data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 
+// 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
+vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
+
 vi.mock('./data/viewer', () => ({ useViewer: vi.fn() }));
 vi.mock('./data/profile-model', () => ({ loadUserProfile: vi.fn() }));
 vi.mock('./data/related-activities', () => ({ loadRelatedActivities: vi.fn() }));

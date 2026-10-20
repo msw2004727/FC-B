@@ -1,4 +1,5 @@
 import type { RefObject } from 'preact';
+import { SHOW_EXP } from '@/core/exp-display';
 import { useEffect, useState } from 'preact/hooks';
 import { emit } from '@/core/events';
 import { useTheme, type ThemeMode } from '@/core/theme';
@@ -111,7 +112,8 @@ export function TopBar({
         </div>
 
         <div class="top-bar-right">
-          <div
+          {/* 新版關閉經驗值顯示時不畫 EXP（src/core/exp-display.ts）；index.html 骨架同步 */}
+          {SHOW_EXP && (<div
             id="points-display"
             class="points-display"
             title={lt('我的 EXP', '我的 EXP')}
@@ -129,7 +131,7 @@ export function TopBar({
             <span class="points-icon">P</span>
             {/* A updatePointsDisplay：訪客顯示「-」，登入顯示 users.exp；B 的 EXP 資料下一批接上，先一律「-」不顯示錯誤的 0 */}
             <span class="points-value" id="points-value">-</span>
-          </div>
+          </div>)}
 
           <div class="sport-picker-wrapper" id="sport-picker-wrapper">
             <button

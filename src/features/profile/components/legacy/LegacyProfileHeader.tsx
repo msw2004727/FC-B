@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { SHOW_EXP } from '@/core/exp-display';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
@@ -189,19 +190,22 @@ export function LegacyProfileTopSection({
             {roleInfo.label}
           </span>
         </div>
-        <div class="profile-level" id="profile-level">
-          <span id="profile-lv">{`Lv.${level}`}</span>
-          <div class="exp-bar">
-            <div
-              class="exp-fill"
-              id="profile-exp-fill"
-              style={`width:${percent}%`}
-            />
+        {/* 新版關閉經驗值顯示時不畫等級條（src/core/exp-display.ts） */}
+        {SHOW_EXP && (
+          <div class="profile-level" id="profile-level">
+            <span id="profile-lv">{`Lv.${level}`}</span>
+            <div class="exp-bar">
+              <div
+                class="exp-fill"
+                id="profile-exp-fill"
+                style={`width:${percent}%`}
+              />
+            </div>
+            <span class="exp-text" id="profile-exp-text">
+              {`${progress.toLocaleString()} / ${needed.toLocaleString()}`}
+            </span>
           </div>
-          <span class="exp-text" id="profile-exp-text">
-            {`${progress.toLocaleString()} / ${needed.toLocaleString()}`}
-          </span>
-        </div>
+        )}
       </div>
 
       <div id="profile-slot-banner" class="profile-scene-preview">

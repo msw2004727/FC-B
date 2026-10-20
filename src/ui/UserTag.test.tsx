@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
+vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
+
 vi.mock('@/data/user-roles', () => ({
   getCachedUserLevel: (uid: string) => (uid === 'u-cached' ? 12 : undefined),
 }));
