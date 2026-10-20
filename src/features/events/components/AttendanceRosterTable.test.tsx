@@ -172,6 +172,82 @@ describe('AttendanceRosterTable', () => {
     expect(screen.queryByText('備註')).toBeNull();
     expect(screen.queryByText('✓')).toBeNull();
   });
+
+  it('shows 踢 column only in editing mode when canRemoveConfirmed is true, and never renders 候 column', () => {
+    const onKick = vi.fn();
+    const regs = [
+      {
+        _docId: 'r1',
+        userId: 'u1',
+        userName: 'Alice',
+        status: 'confirmed',
+        participantType: 'self',
+      },
+      {
+        _docId: 'r2',
+        userId: 'u2',
+        userName: 'ProxyParent',
+        companionId: 'c2',
+        companionName: 'ProxyKid',
+        status: 'confirmed',
+        participantType: 'companion',
+      },
+    ];
+
+    const { rerender } = render(
+      <AttendanceRosterTable
+        event={{ id: 'e1', max: 10 }}
+        registrations={regs}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+        canManage={true}
+        canRemoveConfirmed={true}
+        editing={false}
+        onKickParticipant={onKick}
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: '踢' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '候' })).toBeNull();
+
+    rerender(
+      <AttendanceRosterTable
+        event={{ id: 'e1', max: 10 }}
+        registrations={regs}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+        canManage={true}
+        canRemoveConfirmed={false}
+        editing={true}
+        onKickParticipant={onKick}
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: '踢' })).toBeNull();
+
+    rerender(
+      <AttendanceRosterTable
+        event={{ id: 'e1', max: 10 }}
+        registrations={regs}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+        canManage={true}
+        canRemoveConfirmed={true}
+        editing={true}
+        onKickParticipant={onKick}
+      />,
+    );
+    expect(screen.getByRole('columnheader', { name: '踢' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: '候' })).toBeNull();
+
+    // Alice and ProxyKid have kick buttons; ProxyParent (proxyOnly) has empty kick cell
+    const kickButtons = screen.getAllByRole('button', { name: '踢' });
+    expect(kickButtons.length).toBe(2);
+    fireEvent.click(kickButtons[0]!);
+    expect(onKick).toHaveBeenCalledTimes(1);
+    expect(onKick.mock.calls[0]?.[0]?.uid).toBe('u1');
+  });
 });
 
 describe('WaitlistRosterTable', () => {

@@ -4,6 +4,7 @@ import { useLocation } from 'preact-iso';
 import { lt, useT } from '@/i18n/i18n';
 import { UserTag } from '@/ui/UserTag';
 import { Toast, toast } from '@/ui/Toast';
+import { appConfirm } from '@/ui/AppConfirm';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
@@ -15,7 +16,11 @@ import { registerSelection } from '../data/signup-selection';
 import { loadSignupCompanions, type SignupCompanion } from '../data/companions';
 import { getSignupButtonState } from '../data/signup-state';
 import { operateContextFromViewer } from '../data/event-create-context';
-import { canOperateEventSite } from '../data/operate-permissions';
+import {
+  canOperateEventSite,
+  canRemoveConfirmedParticipant,
+} from '../data/operate-permissions';
+import { managerRemoveRegistration } from '../data/roster-remove';
 import {
   count,
   eventDateRange,
@@ -29,8 +34,12 @@ import {
   type DetailEvent,
   type DetailRegistration,
 } from '../data/detail-model';
-import { buildConfirmedRoster } from '../data/attendance-roster-model';
+import {
+  buildConfirmedRoster,
+  type ConfirmedRosterPerson,
+} from '../data/attendance-roster-model';
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
+import { UnregRosterTable, buildUnregPeopleList } from '../components/UnregRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
 import { WaitlistRosterTable } from '../components/WaitlistRosterTable';
 import {
@@ -389,9 +398,27 @@ function EventDetailSession({
   const roles = useUserRoles(viewer.uid ? roleUids : []);
 
   const eventId = event?.id ?? publicId;
+  const operateCtx = operateContextFromViewer(viewer);
   const canManageRoster = canManageDetailAttendanceRecords(viewer, event);
+  const canRemoveConfirmed = Boolean(
+    event && canRemoveConfirmedParticipant(operateCtx, event) === true,
+  );
   const canViewAttendanceDetails = canViewDetailAttendanceRecordDetails(viewer, event);
   const publicRosterOnly = !canViewAttendanceDetails;
+
+  const reloadAttendanceOnly = async (): Promise<readonly EventAttendanceEntry[]> => {
+    const docId = snapshot?.eventDocId;
+    if (!docId || !canViewDetailAttendanceRecordDetails(currentViewer.current, snapshot?.event)) {
+      return snapshot?.attendanceRecords ?? [];
+    }
+    const records = await loadEventAttendance(docId);
+    if (alive.current) {
+      setSnapshot((prev) => (prev && prev.eventDocId === docId
+        ? { ...prev, attendanceRecords: records }
+        : prev));
+    }
+    return records;
+  };
 
   const instantSave = useAttendanceInstantSave({
     event,
@@ -400,19 +427,7 @@ function EventDetailSession({
     operatorUid: viewer.uid,
     registrations: snapshot?.registrations ?? [],
     attendanceRecords: snapshot?.attendanceRecords ?? [],
-    onReloadAttendance: async () => {
-      const docId = snapshot?.eventDocId;
-      if (!docId || !canViewDetailAttendanceRecordDetails(currentViewer.current, snapshot?.event)) {
-        return snapshot?.attendanceRecords ?? [];
-      }
-      const records = await loadEventAttendance(docId);
-      if (alive.current) {
-        setSnapshot((prev) => (prev && prev.eventDocId === docId
-          ? { ...prev, attendanceRecords: records }
-          : prev));
-      }
-      return records;
-    },
+    onReloadAttendance: reloadAttendanceOnly,
     onSaveFailed: (personName) => {
       show('events.roster.saveFailed', { name: personName });
     },
@@ -441,6 +456,50 @@ function EventDetailSession({
       if (alive.current) {
         setRosterSubmitting(false);
         setRosterEditing(false);
+      }
+    }
+  }
+
+  async function handleKickParticipant(person: ConfirmedRosterPerson): Promise<void> {
+    if (!snapshot || rosterSubmitting) return;
+    const targetName = person.name || person.displayName || '';
+    const confirmed = await appConfirm(`確定要將 ${targetName} 從報名名單中移除嗎？`);
+    if (!confirmed || !alive.current) return;
+
+    setRosterSubmitting(true);
+    try {
+      await instantSave.flushInstantSaves();
+      if (!alive.current) return;
+
+      const actionRegistrationId = person.courseLinkedRegistration ? (person.regDocId || '') : '';
+      const result = await managerRemoveRegistration({
+        eventId,
+        event: snapshot.event,
+        registration: {
+          uid: person.uid,
+          name: targetName,
+          isCompanion: person.isCompanion,
+          registrationId: actionRegistrationId,
+        },
+        registrations: snapshot.registrations,
+        operatorUid: currentViewer.current.uid,
+        operatorName: currentViewer.current.displayName || undefined,
+        context: operateContextFromViewer(currentViewer.current),
+      });
+
+      if (!alive.current) return;
+      if (result.toastMessage) {
+        toast.show({
+          message: result.toastMessage,
+          tone: result.ok ? 'success' : 'error',
+        });
+      }
+      if (result.ok) {
+        await refresh(snapshot);
+      }
+    } finally {
+      if (alive.current) {
+        setRosterSubmitting(false);
       }
     }
   }
@@ -666,6 +725,10 @@ function EventDetailSession({
   const canAdd = !['ended', 'upcoming', 'cancelled'].includes(event.status ?? '') &&
     !(range && Date.parse(range.start) <= now);
   const viewCountNum = count(event.viewCount);
+  const hasUnregRecords =
+    rosterExpanded
+    && rosterPhase === 'ready'
+    && buildUnregPeopleList(snapshot.attendanceRecords).length > 0;
 
   return (
     <div class="legacy-ui">
@@ -909,11 +972,11 @@ function EventDetailSession({
                   {guestRoster('confirmed')}
                 </div>
               </div>
-              <div class="detail-section" id="detail-unreg-section" style="display:none">
-                <div id="detail-unreg-table" />
-              </div>
               <div id="detail-waitlist-container">
                 {guestRoster('waitlisted')}
+              </div>
+              <div class="detail-section" id="detail-unreg-section" style="display:none">
+                <div id="detail-unreg-table" />
               </div>
             </>
           ) : (
@@ -960,11 +1023,13 @@ function EventDetailSession({
                       roles={roles}
                       onOpenProfile={profile}
                       canManage={canManageRoster}
+                      canRemoveConfirmed={canRemoveConfirmed}
                       publicRosterOnly={publicRosterOnly}
                       editing={rosterEditing}
                       submitting={rosterSubmitting}
                       onStartEdit={handleStartRosterEdit}
                       onCloseEdit={() => { handleCloseRosterEdit().catch(() => {}); }}
+                      onKickParticipant={(person) => { handleKickParticipant(person).catch(() => {}); }}
                       getRowSelection={instantSave.getRowSelection}
                       inFlightKeys={instantSave.inFlightKeys}
                       savedFlashKeys={instantSave.savedFlashKeys}
@@ -975,9 +1040,6 @@ function EventDetailSession({
                   )}
                 </div>
               </div>
-              <div class="detail-section" id="detail-unreg-section" style="display:none">
-                <div id="detail-unreg-table" />
-              </div>
               <div id="detail-waitlist-container">
                 {rosterExpanded && rosterPhase === 'ready' && (
                   <WaitlistRosterTable
@@ -987,6 +1049,29 @@ function EventDetailSession({
                     onOpenProfile={profile}
                   />
                 )}
+              </div>
+              <div
+                class="detail-section"
+                id="detail-unreg-section"
+                style={hasUnregRecords ? '' : 'display:none'}
+              >
+                <div id="detail-unreg-table">
+                  {hasUnregRecords && (
+                    <UnregRosterTable
+                      eventId={eventId}
+                      eventDocId={snapshot.eventDocId}
+                      eventTitle={event.title || t('events.card.untitled')}
+                      attendanceRecords={snapshot.attendanceRecords}
+                      canManage={canManageRoster}
+                      operatorUid={viewer.uid}
+                      operatorName={viewer.displayName || undefined}
+                      onReloadAttendance={reloadAttendanceOnly}
+                      onToast={(message) => {
+                        toast.show({ message });
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             </section>
           )}

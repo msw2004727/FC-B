@@ -166,6 +166,14 @@ export function canOperateEventSite(context: OperateContext, event: EventInput):
   return scoped && hasUserActivityCapability(context, 'user.activity.site_operate');
 }
 
+/** A `_canRemoveWaitlistedParticipant(e)`：直接等同 `_canOperateEventSite(e)`。 */
+export function canRemoveWaitlistedParticipant(
+  context: OperateContext,
+  event: EventInput,
+): boolean {
+  return canOperateEventSite(context, event);
+}
+
 export function canRemoveConfirmedParticipant(
   context: OperateContext,
   event: EventInput,

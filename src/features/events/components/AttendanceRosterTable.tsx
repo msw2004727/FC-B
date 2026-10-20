@@ -4,8 +4,7 @@
  * 對照舊版 A `event-manage-attendance.js#_doRenderAttendanceTable`。
  *
  * 本批不做（下一批補）：
- * - 「踢」「候」欄（移除正取、降為候補）
- * - 未報名掃碼表（`_renderUnregTable`）
+ * - 降候補待新 Callable（「候」欄表頭與欄位都不輸出）
  * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
  * - 伺服器結算 `CALLABLES_DEPLOYED === true` 的「完成」路徑（本批 CALLABLES_DEPLOYED 為 false，只顯示「關閉編輯」與前往舊版提示）
@@ -37,6 +36,8 @@ export interface AttendanceRosterTableProps {
   onOpenProfile: (uid: string) => void;
   /** 目前使用者是否具備現場操作權限 `canOperateEventSite === true`。 */
   canManage?: boolean;
+  /** 目前使用者是否具備移除正取參加者權限 `canRemoveConfirmedParticipant === true`。 */
+  canRemoveConfirmed?: boolean;
   /** 僅顯示公開名單（隱藏簽到／簽退／備註三欄）。 */
   publicRosterOnly?: boolean;
   /** 是否處於「管理名單」編輯模式。 */
@@ -45,6 +46,7 @@ export interface AttendanceRosterTableProps {
   submitting?: boolean;
   onStartEdit?: () => void;
   onCloseEdit?: () => void;
+  onKickParticipant?: (person: ConfirmedRosterPerson) => void;
   getRowSelection?: (person: ConfirmedRosterPerson) => AttendanceSelection;
   inFlightKeys?: Readonly<Record<string, boolean>>;
   savedFlashKeys?: Readonly<Record<string, boolean>>;
@@ -68,11 +70,13 @@ export function AttendanceRosterTable({
   roles,
   onOpenProfile,
   canManage = false,
+  canRemoveConfirmed = false,
   publicRosterOnly = false,
   editing = false,
   submitting = false,
   onStartEdit,
   onCloseEdit,
+  onKickParticipant,
   getRowSelection,
   inFlightKeys,
   savedFlashKeys,
@@ -86,7 +90,13 @@ export function AttendanceRosterTable({
   const tableEditing = Boolean(showManage && editing);
   const isSubmitting = Boolean(showManage && submitting);
   const showAttendanceRecordColumns = !publicRosterOnly;
-  const tableColSpan = showAttendanceRecordColumns ? 4 : 1; // 姓名 (+ 簽到 + 簽退 + 備註)
+  const showKickColumn = Boolean(tableEditing && canRemoveConfirmed);
+  // 降候補待新 Callable（「候」欄表頭與欄位都不輸出）
+  const attendanceRecordColumnCount = showAttendanceRecordColumns ? 3 : 0;
+  const tableColSpan = (tableEditing ? (canRemoveConfirmed ? 1 : 0) + 1 : 1) + attendanceRecordColumnCount;
+  const kickStyle =
+    'font-size:.7rem;padding:.2rem .4rem;border:1px solid var(--danger);color:var(--danger);background:transparent;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap'
+    + (isSubmitting ? ';opacity:.65;cursor:not-allowed' : '');
   const noteInputStyle =
     'width:100%;font-size:.72rem;padding:.15rem .3rem;border:1px solid var(--border);border-radius:3px;box-sizing:border-box'
     + (isSubmitting ? ';opacity:.7;cursor:not-allowed' : '');
@@ -222,6 +232,27 @@ export function AttendanceRosterTable({
     );
   }
 
+  function renderEmptyKickCell(): JSX.Element | null {
+    if (!showKickColumn) return null;
+    return <td style="padding:.35rem .2rem" />;
+  }
+
+  function renderKickCell(p: ConfirmedRosterPerson): JSX.Element | null {
+    if (!showKickColumn) return null;
+    return (
+      <td style="padding:.35rem .2rem;text-align:center">
+        <button
+          type="button"
+          style={kickStyle}
+          disabled={isSubmitting}
+          onClick={() => onKickParticipant?.(p)}
+        >
+          踢
+        </button>
+      </td>
+    );
+  }
+
   function renderEmptyAttendanceCells(label: string): JSX.Element | null {
     if (!showAttendanceRecordColumns) return null;
     return (
@@ -310,6 +341,10 @@ export function AttendanceRosterTable({
       <table style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed">
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
+            {showKickColumn && (
+              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2rem">踢</th>
+            )}
+            {/* 降候補待新 Callable */}
             <th style="text-align:left;padding:.4rem .3rem;font-weight:600">
               <div style="display:flex;align-items:center;gap:.4rem;white-space:nowrap">
                 {`報名名單（${renderedRosterCount}/${maxCount}）`}
@@ -376,6 +411,8 @@ export function AttendanceRosterTable({
                     data-attendance-key={attendanceKey}
                     style={PROXY_ROW_STYLE}
                   >
+                    {renderEmptyKickCell()}
+                    {/* 降候補待新 Callable */}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderEmptyAttendanceCells('僅代報')}
                   </tr>
@@ -388,6 +425,8 @@ export function AttendanceRosterTable({
                     data-attendance-key={attendanceKey}
                     class="team-reservation-placeholder-row"
                   >
+                    {renderEmptyKickCell()}
+                    {/* 降候補待新 Callable */}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderEmptyAttendanceCells('保留席位')}
                   </tr>
@@ -433,6 +472,8 @@ export function AttendanceRosterTable({
                   class={rowClasses || undefined}
                   style="border-bottom:1px solid var(--border)"
                 >
+                  {tableEditing && renderKickCell(p)}
+                  {/* 降候補待新 Callable */}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                   {renderEmptyAttendanceCells('請至課程點名')}
                 </tr>
@@ -447,6 +488,8 @@ export function AttendanceRosterTable({
                   class={rowClasses || undefined}
                   style="border-bottom:1px solid var(--border)"
                 >
+                  {renderKickCell(p)}
+                  {/* 降候補待新 Callable */}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                   {renderEditableAttendanceCells(p, attendanceKey, state)}
                 </tr>
