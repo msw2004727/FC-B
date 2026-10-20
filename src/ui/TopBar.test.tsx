@@ -98,6 +98,12 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     }
   });
 
+  it('登入確認中且上次已登入：顯示頭像位置、不顯示登入按鈕', () => {
+    const { container } = render(<TopBar drawerOpen={false} onMenuClick={() => {}} onLogin={() => {}} authPending />);
+    expect(container.querySelector('#line-avatar-topbar.line-avatar-fallback')).toBeTruthy();
+    expect(container.querySelector('#line-login-btn')).toBeNull();
+  });
+
   it('disables pending login and replaces with #line-user-topbar for signed-in user', () => {
     const login = vi.fn();
     const view = render(

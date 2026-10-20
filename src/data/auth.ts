@@ -13,6 +13,7 @@
 
 import { emit } from '@/core/events';
 
+import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
 
@@ -33,6 +34,7 @@ export function getLastKnownAuthUid(): string | null | undefined {
 
 function emitAuth(uid: string | null): void {
   lastKnownAuthUid = uid;
+  writeAuthHint(uid !== null);
   try {
     emit('auth:changed', { uid });
   } catch (err) {

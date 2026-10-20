@@ -135,3 +135,10 @@ describe('resolveLocale：extension／private-use 子標籤', () => {
     expect(resolveLocale(['zh-Hans-u-nu-latn'])).toBe('zh-CN');
   });
 });
+
+describe('預設語系字典打包方式', () => {
+  it('i18n.ts 以字面字串 eager 打包 zh-TW，DEFAULT_LOCALE 必須仍是 zh-TW', async () => {
+    const { DEFAULT_LOCALE } = await import('./locales');
+    expect(DEFAULT_LOCALE).toBe('zh-TW');
+  });
+});

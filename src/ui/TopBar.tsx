@@ -13,6 +13,8 @@ export interface TopBarProps {
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
   user?: AuthUser | null;
+  /** 登入狀態確認前、且上次是已登入：先畫頭像位置（與 index.html 骨架相同），不顯示登入按鈕。 */
+  authPending?: boolean;
 }
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
@@ -46,6 +48,7 @@ export function TopBar({
   onLogin,
   loginPending = false,
   user = null,
+  authPending = false,
 }: TopBarProps): preact.JSX.Element {
   const theme = useTheme();
   const isDark = isEffectiveDark(theme);
@@ -192,6 +195,10 @@ export function TopBar({
                     </div>
                   )}
                 </a>
+              </div>
+            ) : authPending ? (
+              <div id="line-user-topbar" class="line-user-topbar" aria-hidden="true">
+                <div id="line-avatar-topbar" class="line-avatar-topbar line-avatar-fallback" />
               </div>
             ) : onLogin ? (
               <button

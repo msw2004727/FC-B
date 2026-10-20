@@ -25,6 +25,12 @@ describe('index.html 開頁骨架', () => {
     ['id="top-logo-img"', topBar],
     ['class="top-bar-right"', topBar],
     ['id="bottom-tabs"', bottomNav],
+    ['id="points-display"', topBar],
+    ['id="sport-picker-btn"', topBar],
+    ['id="notif-btn"', topBar],
+    ['id="line-login-wrapper"', topBar],
+    ['id="line-login-btn"', topBar],
+    ['id="line-avatar-topbar"', topBar],
   ])('%s 與元件一致', (needle, componentSource) => {
     expect(shell).toContain(needle);
     expect(componentSource).toContain(needle);
@@ -36,9 +42,19 @@ describe('index.html 開頁骨架', () => {
   });
 
   it('外層 class 與 App 一致，且標記 data-boot-shell 供 main.tsx 清除', () => {
-    expect(html).toContain('<div class="app-shell ui-app-shell" data-boot-shell>');
+    expect(html).toContain('<div class="app-shell ui-app-shell" data-boot-shell');
     expect(read('./App.tsx')).toContain('app-shell');
     expect(read('../main.tsx')).toContain("querySelector('[data-boot-shell]')");
+  });
+
+  it('登入線索的 localStorage 鍵與 auth-hint.ts 一致', () => {
+    const hint = read('../data/auth-hint.ts').match(/AUTH_HINT_KEY = '([^']+)'/)?.[1];
+    expect(hint).toBeTruthy();
+    expect(shell).toContain(`localStorage.getItem('${hint}')`);
+  });
+
+  it('骨架不可互動（避免開頁時點了沒反應）', () => {
+    expect(html).toContain('data-boot-shell style="pointer-events:none"');
   });
 
   it('logo 檔名與 TopBar 相同（才能共用快取）', () => {

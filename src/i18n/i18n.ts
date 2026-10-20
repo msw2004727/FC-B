@@ -9,21 +9,49 @@ import {
 // ── 字典來源 ─────────────────────────────────────────────
 // 核心：src/i18n/messages/<locale>.json
 // 功能：src/features/<id>/locales/<locale>.json（key 加上 `<featureId>.` 前綴）
-// 使用非 eager 的 import.meta.glob：依語系延遲載入。
+// 預設語系 zh-TW 直接打包進主程式（eager），首屏不必另外下載字典；其他語系用非 eager 的 glob 依需要載入。
+// （2026-10-20 Fable 定案，取代原本「全部語系都延遲載入＋HTML 預載 zh-TW」。glob 路徑必須是字面字串，
+// 所以這裡寫死 zh-TW；DEFAULT_LOCALE 若改，這裡要一起改，i18n.test.ts 有檢查。）
 
-const coreLoaders = import.meta.glob<Record<string, unknown>>('./messages/*.json', {
-  import: 'default',
-});
+type Loader<T> = () => Promise<T>;
 
-const featureLoaders = import.meta.glob<Record<string, unknown>>(
-  '../features/*/locales/*.json',
-  { import: 'default' },
-);
+function eagerAsLoaders<T>(mods: Record<string, T>): Record<string, Loader<T>> {
+  return Object.fromEntries(
+    Object.entries(mods).map(([path, data]) => [path, () => Promise.resolve(data)]),
+  );
+}
+
+const coreLoaders: Record<string, Loader<Record<string, unknown>>> = {
+  ...import.meta.glob<Record<string, unknown>>(['./messages/*.json', '!./messages/zh-TW.json'], {
+    import: 'default',
+  }),
+  ...eagerAsLoaders(import.meta.glob<Record<string, unknown>>('./messages/zh-TW.json', {
+    import: 'default',
+    eager: true,
+  })),
+};
+
+const featureLoaders: Record<string, Loader<Record<string, unknown>>> = {
+  ...import.meta.glob<Record<string, unknown>>(
+    ['../features/*/locales/*.json', '!../features/*/locales/zh-TW.json'],
+    { import: 'default' },
+  ),
+  ...eagerAsLoaders(import.meta.glob<Record<string, unknown>>('../features/*/locales/zh-TW.json', {
+    import: 'default',
+    eager: true,
+  })),
+};
 
 // 舊版 A 的翻譯包（scripts/import-legacy-i18n.mjs 生成），給改版頁面的 lt() 用；key 加上 `legacy:` 前綴。
-const legacyLoaders = import.meta.glob<Record<string, string>>('./legacy/*.json', {
-  import: 'default',
-});
+const legacyLoaders: Record<string, Loader<Record<string, string>>> = {
+  ...import.meta.glob<Record<string, string>>(['./legacy/*.json', '!./legacy/zh-TW.json'], {
+    import: 'default',
+  }),
+  ...eagerAsLoaders(import.meta.glob<Record<string, string>>('./legacy/zh-TW.json', {
+    import: 'default',
+    eager: true,
+  })),
+};
 const LEGACY_PREFIX = 'legacy:';
 
 // ── 狀態 ────────────────────────────────────────────────

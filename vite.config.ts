@@ -99,31 +99,6 @@ function internalTestNoIndex(): Plugin {
 }
 
 /**
- * 預設語系字典預載：字典是 import.meta.glob 動態載入，瀏覽器要等主程式執行後才知道要下載。
- * 在 HTML 加上 modulepreload，讓它跟主程式同時下載（語系不是 zh-TW 的使用者多下載一個小檔，可接受）。
- */
-function preloadDefaultLocale(): Plugin {
-  return {
-    name: 'fcb-preload-default-locale',
-    apply: 'build',
-    transformIndexHtml: {
-      order: 'post',
-      handler(_html, ctx) {
-        const chunk = Object.values(ctx.bundle ?? {}).find(
-          (item) => item.type === 'chunk' && item.name === 'i18n-zh-TW',
-        );
-        if (!chunk) return [];
-        return [{
-          tag: 'link',
-          attrs: { rel: 'modulepreload', crossorigin: '', href: `/${chunk.fileName}` },
-          injectTo: 'head',
-        }];
-      },
-    },
-  };
-}
-
-/**
  * Service Worker（vite-plugin-pwa 1.3.0 generateSW，2026-10-20 Fable 定案）：
  * - precache 只含打包產物（不含 sw.js 本身與 runtime-config.json）；QR 掃描的 wasm（1MB）與 PNG 版 logo 不預存。
  * - 導覽請求 network-first：線上一律拿伺服器的 index.html（與現行 chunk 對應），3 秒逾時或離線才退回快取。
@@ -162,7 +137,7 @@ const pwa = VitePWA({
 });
 
 export default defineConfig({
-  plugins: [preact(), internalTestNoIndex(), preloadDefaultLocale(), pwa],
+  plugins: [preact(), internalTestNoIndex(), pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },
@@ -179,10 +154,10 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // 同一語系的核心與各功能字典合併成一個 chunk，切換語系只需一次請求（避免每個功能一個小檔）
-        // 舊版 A 的翻譯（i18n/legacy）也併入同一個 chunk（原本另成一檔，首屏多一個請求）
+        // 同一語系的核心、各功能與舊版 A 字典合併成一個 chunk，切換語系只需一次請求。
+        // 預設語系 zh-TW 不分出去：i18n.ts 以 eager 方式直接打包進主程式（首屏不等字典）。
         manualChunks(id: string) {
-          const m = id.match(/[\\/](?:messages|locales|legacy)[\\/](zh-TW|zh-CN|en|ja|vi|th|ko)\.json$/);
+          const m = id.match(/[\\/](?:messages|locales|legacy)[\\/](zh-CN|en|ja|vi|th|ko)\.json$/);
           return m ? `i18n-${m[1]}` : undefined;
         },
       },

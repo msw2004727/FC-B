@@ -24,6 +24,7 @@ import { on } from '@/core/events';
 import { initFontSize } from '@/core/font-size';
 import type { FeatureRoute } from '@/core/feature-types';
 import type { AuthUser } from '@/data/auth';
+import { readAuthHint } from '@/data/auth-hint';
 import { resolveShareLink } from './share-link';
 import { InternalTestGate } from './InternalTestGate';
 import { firebaseTargetLabel } from '@/data/firebase';
@@ -57,6 +58,9 @@ export function App({
   const routes = useMemo<FeatureRoute[]>(() => getActiveRoutes(), [registryVersion]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  // 登入狀態確認前，上次已登入的人先顯示頭像位置（與 index.html 骨架一致），確認後才換成真頭像或登入按鈕。
+  const [authKnown, setAuthKnown] = useState(false);
+  const expectSignedIn = useMemo(() => readAuthHint(), []);
   const [loginPending, setLoginPending] = useState(false);
   const [loginError, setLoginError] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
@@ -82,6 +86,7 @@ export function App({
     const stopEvents = on('auth:changed', ({ uid }) => {
       const revision = ++authRevision.current;
       currentUid.current = uid;
+      setAuthKnown(true);
       setLoginError(false);
       setUser((previous) => uid === null ? null :
         previous?.uid === uid ? previous :
@@ -112,7 +117,10 @@ export function App({
         // onAuthChanged 內部發出 auth:changed。
       });
     }).catch(() => {
-      if (!cancelled) setLoginError(true);
+      if (!cancelled) {
+        setAuthKnown(true);
+        setLoginError(true);
+      }
     });
 
     return () => {
@@ -190,6 +198,7 @@ export function App({
           onLogin={handleLogin}
           loginPending={pending}
           user={user}
+          authPending={!authKnown && expectSignedIn}
         />
         <main class="app-main">
           {loginError && !drawerOpen && (
