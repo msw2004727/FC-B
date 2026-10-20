@@ -13,6 +13,11 @@ import { registerFeatures } from './core/feature-registry';
 import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
+import { installChunkReloadGuard } from './core/chunk-reload';
+import { initServiceWorker } from './core/sw-control';
+
+// 越早越好：首屏的路由 chunk 載入失敗也要能接住。
+installChunkReloadGuard();
 
 /** index.html 的開頁骨架只負責首屏外觀；第一次 render 前同步清掉（同一個 task 內，不會閃白）。 */
 function clearBootShell(root: HTMLElement): void {
@@ -60,6 +65,9 @@ async function boot(): Promise<void> {
     console.error('[boot] 首次 render 失敗', err);
     renderBootError(root);
   }
+
+  // 首屏之後才處理 Service Worker（遠端開關＋註冊），不和首屏搶網路。
+  initServiceWorker();
 }
 
 void boot();
