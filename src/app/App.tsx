@@ -1,5 +1,4 @@
 import '@/ui/app-shell.css';
-import '@/styles/font-size.css';
 import {
   useCallback,
   useEffect,
@@ -18,29 +17,75 @@ import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
+import { toast } from '@/ui/Toast';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
 import { initFontSize } from '@/core/font-size';
-import type { FeatureRoute } from '@/core/feature-types';
-import type { AuthUser } from '@/data/auth';
+import { initBackGuard, markHistoryRoot, normalizeRoutePath } from '@/core/back-guard';
+import {
+  isScrollRestoreListPath,
+  markListScrollForRestore,
+  resetPageScrollToTop,
+  saveListScrollPosition,
+  scheduleAutoListScrollRestore,
+} from '@/core/scroll-restore';
+import {
+  beginRouteLoading,
+  endRouteLoading,
+  getRouteFailureToast,
+  ROUTE_STEP_TIMEOUT,
+  ROUTE_TIMEOUT_MS,
+} from '@/core/route-loading';
+import { initMultiTabGuard } from '@/core/multi-tab-guard';
+import {
+  markContentReady,
+  setContentStallRetryHandler,
+  startContentStallCheck,
+} from '@/core/content-stall';
+import { installOfflineWriteGuard } from '@/core/sync-status';
+import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
+import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
+import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
+import {
+  acknowledgeMobileLoginHint,
+  isLoginRedirectingError,
+  type AuthUser,
+} from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import { resolveShareLink } from './share-link';
 import { InternalTestGate } from './InternalTestGate';
 import { firebaseTargetLabel } from '@/data/firebase';
 import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
-import type { RouteAccessContext } from '@/core/feature-types';
-import { useViewer } from '@/features/profile/data/viewer';
+import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { LazyUidQrModal } from './LazyUidQrModal';
+import { SyncStatusBar } from './SyncStatusBar';
+import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getRouteComponent(load: FeatureRoute['load']): ComponentType<any> {
+function getRouteComponent(load: FeatureRoute['load'], routePath = ''): ComponentType<any> {
   const cached = lazyCache.get(load);
   if (cached) return cached;
-  const component = lazy(load);
+  // M-047：載入超過 10 秒照 A 提示「網路較慢…」，但不中斷下載（晚到仍會顯示，不把頁面卡在失敗）；
+  // L-08：失敗時從快取移除以便重試。
+  const wrappedLoad = (): ReturnType<FeatureRoute['load']> => {
+    const timer = setTimeout(() => {
+      toast.show({ message: getRouteFailureToast(routePath, { code: ROUTE_STEP_TIMEOUT }) });
+    }, ROUTE_TIMEOUT_MS);
+    const p = Promise.resolve().then(() => load());
+    p.then(
+      () => clearTimeout(timer),
+      () => {
+        clearTimeout(timer);
+        lazyCache.delete(load);
+      },
+    );
+    return p;
+  };
+  const component = lazy(wrappedLoad);
   lazyCache.set(load, component);
   return component;
 }
@@ -64,6 +109,7 @@ export function App({
   const expectSignedIn = useMemo(() => readAuthHint(), []);
   const [loginPending, setLoginPending] = useState(false);
   const [loginError, setLoginError] = useState(false);
+  const [mobileHintOpen, setMobileHintOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
@@ -80,6 +126,10 @@ export function App({
 
   useEffect(() => {
     initFontSize();
+    const stopMultiTab = initMultiTabGuard();
+    const stopOfflineGuard = installOfflineWriteGuard();
+    const stopIdlePrefetch = scheduleIdleRoutePrefetch();
+
     mounted.current = true;
     let cancelled = false;
     let stopAuth: (() => void) | undefined;
@@ -112,6 +162,10 @@ export function App({
         });
     });
 
+    const stopMobileHint = on('auth:mobile-login-hint', () => {
+      if (!cancelled) setMobileHintOpen(true);
+    });
+
     import('@/data/auth').then((auth) => {
       if (cancelled) return;
       stopAuth = auth.onAuthChanged(() => {
@@ -130,7 +184,11 @@ export function App({
       authRevision.current += 1;
       loginSequence.current += 1;
       stopEvents();
+      stopMobileHint();
       stopAuth?.();
+      stopMultiTab();
+      stopOfflineGuard();
+      stopIdlePrefetch();
     };
   }, []);
 
@@ -157,7 +215,11 @@ export function App({
             setUser(next);
           }
         }
-      } catch {
+      } catch (err) {
+        // M-036：觸發 liff.login 重導向或手機外部瀏覽器說明框時不顯示「無法完成 LINE 登入」錯誤
+        if (isLoginRedirectingError(err)) {
+          return;
+        }
         if (mounted.current && sequence === loginSequence.current &&
           currentUid.current === null) {
           setLoginError(true);
@@ -173,6 +235,21 @@ export function App({
     });
   }, [externalPending, onLogin]);
 
+  // M-036：手機外部瀏覽器登入提示框（回呼要穩定，彈窗的返回鍵登記才不會每次重繪重來）。
+  const closeMobileHint = useCallback(() => setMobileHintOpen(false), []);
+  const confirmMobileHint = useCallback(() => {
+    setMobileHintOpen(false);
+    acknowledgeMobileLoginHint();
+    handleLogin();
+  }, [handleLogin]);
+
+  // M-034、M-035：監聽全域登入請求事件（如個人頁未登入 LINE 登入按鈕、底部分頁未登入守門）
+  useEffect(() => {
+    return on('auth:login-request', () => {
+      handleLogin();
+    });
+  }, [handleLogin]);
+
   useEffect(() => {
     const uid = user?.uid ?? null;
     if (!internalTest || uid === null) return;
@@ -183,8 +260,9 @@ export function App({
     return () => { alive = false; };
   }, [internalTest, user?.uid]);
 
-  const [routeAccess, setRouteAccess] = useState<RouteAccessContext | null>(null);
+  const [routeAccess, setRouteAccess] = useState<(RouteAccessContext & Partial<ViewerView>) | null>(null);
   const pending = loginPending || externalPending;
+  const isRestricted = routeAccess?.isRestricted === true;
   const gateState: boolean | null | undefined = !internalTest ? true
     : user === null ? null
       : tester?.uid === user.uid ? tester.ok : undefined;
@@ -201,15 +279,23 @@ export function App({
           user={user}
           authPending={!authKnown && expectSignedIn}
         />
+        <SyncStatusBar />
         <main class="app-main">
           {loginError && !drawerOpen && (
             <div role="alert"><Text>{t('ui.shell.loginError')}</Text></div>
           )}
           {gateState === true
-            ? <RouteArea routes={routes} />
+            ? <RouteArea routes={routes} isRestricted={isRestricted} />
             : <InternalTestGate allowed={gateState} onLogin={handleLogin} loginPending={pending} />}
         </main>
-        {gateState === true && <BottomNav />}
+        {gateState === true && (
+          <BottomNav
+            user={user}
+            onLogin={handleLogin}
+            loginPending={pending}
+            isRestricted={isRestricted}
+          />
+        )}
         {internalTest && (
           <div class="internal-test-badge" aria-hidden="true">
             {t('internalTest.badge', {
@@ -234,6 +320,11 @@ export function App({
       {gateState === true && (
         <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
       )}
+      <MobileLineLoginHintModal
+        open={mobileHintOpen}
+        onCancel={closeMobileHint}
+        onConfirm={confirmMobileHint}
+      />
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>
@@ -244,7 +335,7 @@ export function App({
  * 只在通過內測閘門後掛載：讀登入者權限交給側邊選單篩選入口。
  * 放成獨立元件，是為了讓閘門前完全不觸發 viewer 的 Firestore 讀取。
  */
-function ViewerAccessBridge({ onChange }: { onChange: (access: RouteAccessContext) => void }): null {
+function ViewerAccessBridge({ onChange }: { onChange: (access: ViewerView) => void }): null {
   const viewer = useViewer();
   useEffect(() => {
     onChange(viewer);
@@ -252,23 +343,110 @@ function ViewerAccessBridge({ onChange }: { onChange: (access: RouteAccessContex
   return null;
 }
 
-function RouteArea({ routes }: { routes: FeatureRoute[] }): preact.JSX.Element {
+function RouteArea({
+  routes,
+  isRestricted = false,
+}: {
+  routes: FeatureRoute[];
+  isRestricted?: boolean;
+}): preact.JSX.Element {
   const location = useLocation();
   const redirect = resolveShareLink(location.url);
+  const prevPathRef = useRef<string>(location.path || '/');
+  const loadingSeqRef = useRef<number>(0);
+  const [stallRetryKey, setStallRetryKey] = useState(0);
 
   useLayoutEffect(() => {
     if (redirect !== null) location.route(redirect, true);
   }, [redirect, location.route]);
 
+  // M-045、M-046：標記返回起點；LINE／PWA 裝首頁返回保護哨兵（只在開站時一次）。
+  useEffect(() => initBackGuard(), []);
+
+  // M-038：帳號受限時若不在首頁，提示「帳號限制中」並導回首頁（照 A `_handleRestrictedStateChange`）
+  useEffect(() => {
+    if (!isRestricted) return;
+    const clean = normalizeRoutePath(location.path || '/');
+    if (clean !== '/') {
+      toast.show({ message: RESTRICTED_ACCOUNT_MSG });
+      location.route('/', true);
+      markHistoryRoot();
+    }
+  }, [isRestricted, location]);
+
+  // U-010：在列表頁記錄位置（捲動時，以及點擊當下——點卡片換頁前一定先記到），並於換頁時處理「列表返回保留捲動位置、其他頁回頂」
+  useEffect(() => {
+    const clean = normalizeRoutePath(location.path || '/');
+    if (!isScrollRestoreListPath(clean)) return undefined;
+    const save = (): void => saveListScrollPosition(clean);
+    window.addEventListener('scroll', save, { passive: true });
+    document.addEventListener('click', save, true);
+    return () => {
+      window.removeEventListener('scroll', save);
+      document.removeEventListener('click', save, true);
+    };
+  }, [location.path]);
+
+  useEffect(() => {
+    const prevPath = prevPathRef.current;
+    const nextPath = location.path || '/';
+
+    if (prevPath !== nextPath) {
+      // 列表位置由上面的捲動監聽隨時記錄；這裡不再讀 scrollY，新頁畫出後的值已不是離開前的位置。
+      const shouldRestore = markListScrollForRestore(prevPath, nextPath);
+      prevPathRef.current = nextPath;
+      if (shouldRestore) {
+        return scheduleAutoListScrollRestore(nextPath);
+      }
+      resetPageScrollToTop();
+    }
+    return undefined;
+  }, [location.path]);
+
+  // M-051、U-019：換頁載入程式卡住檢查——只在路由程式下載期間計時，載完即解除；點重試只重載當前路由程式。
+  const stopStallRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    setContentStallRetryHandler(() => {
+      lazyCache.clear();
+      setStallRetryKey((k) => k + 1);
+    });
+    return () => {
+      setContentStallRetryHandler(null);
+      stopStallRef.current?.();
+    };
+  }, []);
+
   // 先處理分享入口，避免短暫掛載首頁並觸發首頁資料請求。
   if (redirect !== null) return <Fragment />;
 
   return (
-    <RouteErrorBoundary path={location.path} onReset={() => lazyCache.clear()}>
-      <Router>
+    <RouteErrorBoundary
+      key={stallRetryKey}
+      path={location.path}
+      previousPath={prevPathRef.current}
+      onReset={() => lazyCache.clear()}
+      onNavigateBack={(fallback) => {
+        endRouteLoading(loadingSeqRef.current);
+        location.route(fallback, true);
+      }}
+    >
+      <Router
+        onLoadStart={(url: string) => {
+          loadingSeqRef.current = beginRouteLoading({ path: url });
+          stopStallRef.current?.();
+          stopStallRef.current = startContentStallCheck({ path: url });
+        }}
+        onLoadEnd={() => {
+          endRouteLoading(loadingSeqRef.current);
+          markContentReady();
+        }}
+      >
         {routes.map((route) => (
-          <Route key={route.path} path={route.path}
-            component={getRouteComponent(route.load)} />
+          <Route
+            key={route.path}
+            path={route.path}
+            component={getRouteComponent(route.load, route.path)}
+          />
         ))}
         <Route default component={NotFound} />
       </Router>
@@ -278,7 +456,9 @@ function RouteArea({ routes }: { routes: FeatureRoute[] }): preact.JSX.Element {
 
 interface RouteErrorBoundaryProps {
   path: string;
+  previousPath?: string;
   onReset: () => void;
+  onNavigateBack?: (targetPath: string) => void;
   children: ComponentChildren;
 }
 
@@ -296,6 +476,16 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 
   componentDidCatch(error: unknown): void {
     console.error('[app] route error', error);
+    // M-047 & M-048：換頁載入失敗時彈出 A 的 Toast（「頁面載入失敗，請稍後再試」或逾時訊息），
+    // 若有上一個站內頁面則留在原頁並自動重設錯誤邊界。
+    const msg = getRouteFailureToast(this.props.path, error);
+    toast.show({ message: msg, tone: 'error' });
+    const prev = this.props.previousPath;
+    if (prev && prev !== this.props.path && this.props.onNavigateBack) {
+      this.props.onReset();
+      this.setState({ error: null, resetKey: this.state.resetKey + 1 });
+      this.props.onNavigateBack(prev);
+    }
   }
 
   componentDidUpdate(previous: RouteErrorBoundaryProps): void {

@@ -1,11 +1,15 @@
-// Service Worker 註冊與遠端開關（2026-10-20 Fable 定案的三道保險之一）。
+// Service Worker 註冊與遠端開關（2026-10-20 Fable 定案的三道保險之一）＋ M-052 新版本更新提示與安全重載。
 //
 // 開機後（首屏 render 之後，不擋畫面）讀 /runtime-config.json（Cloudflare 以 no-store 回應）：
 // - swEnabled === false：解除所有 SW 註冊並清掉快取 → 使用者卡舊版時，改這個檔就能解，不必重新部署程式。
 //   （當下頁面仍由舊 SW 接管，它讀快取時會重建空快取；下一次載入已不受 SW 控制，會再清一次，之後完全乾淨。本機實測如此。）
-// - minBuild 大於目前建置編號：強制重新載入一次（每個 minBuild 值每個分頁只重載一次，避免設錯造成無限重載）。
+// - minBuild 大於目前建置編號：重新載入一次（每個 minBuild 值每個分頁只重載一次，避免設錯造成無限重載）；
+//   照 A（M-052）彈窗開著、編輯中或不在主頁時不直接重載，改彈「有新版本可用」提示框。
 // - 讀不到設定（離線、逾時）：不改變現狀，照常註冊。
+// - Workbox 偵測到 waiting 新版 SW 時，顯示「有新版本可用／現在更新／稍後」提示框。
 // 只在正式打包執行；開發與測試環境不註冊。
+
+import { requestSafeReload, showSwReloadPrompt } from './reload-safety';
 
 const RUNTIME_CONFIG_URL = '/runtime-config.json';
 const SW_URL = '/sw.js';
@@ -102,9 +106,18 @@ export function initServiceWorker(): void {
       cacheStorage: typeof caches === 'undefined' ? null : caches,
       register: async () => {
         const { Workbox } = await import('workbox-window');
-        await new Workbox(SW_URL, { scope: '/' }).register();
+        const wb = new Workbox(SW_URL, { scope: '/' });
+        wb.addEventListener('waiting', () => {
+          showSwReloadPrompt(() => {
+            wb.messageSkipWaiting();
+            location.reload();
+          }, 'sw-waiting');
+        });
+        await wb.register();
       },
-      reload: () => location.reload(),
+      reload: () => {
+        requestSafeReload(() => location.reload());
+      },
       storage: (() => {
         try { return sessionStorage; } catch { return null; }
       })(),

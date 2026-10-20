@@ -1,3 +1,4 @@
+import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -40,7 +41,8 @@ interface DayGroup {
 
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
 const REGIONS = ['中部', '北部', '南部', '東部&外島', '全部'] as const;
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+// U-020：共用 core/unavailable 的提示文字。
+const UNAVAILABLE_MSG = UNAVAILABLE_FEATURE_MSG;
 
 const REGION_SLUGS: Readonly<Record<string, string>> = {
   all: '全部',

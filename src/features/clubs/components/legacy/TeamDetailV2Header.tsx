@@ -7,7 +7,8 @@ import {
   isTeamTeachingTagged,
 } from '../../data/team-list-model';
 
-export const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+// U-020：共用 core/unavailable 的提示文字。
+export { UNAVAILABLE_FEATURE_MSG as UNAVAILABLE_MSG } from '@/core/unavailable';
 
 export type V2TabKey = 'overview' | 'courses' | 'events' | 'members' | 'record' | 'feed';
 

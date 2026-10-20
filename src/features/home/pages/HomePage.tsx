@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
+import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { EventFormModal } from '@/features/events/components/EventFormModal';
 import { canCreateEvent } from '@/features/events/data/event-create';
 import { createEventContextFromViewer } from '@/features/events/data/event-create-context';
@@ -24,7 +25,6 @@ import { loadActiveBanners, type BannerDoc } from '../data/banners';
 import { parseEventDateRange } from '../data/next-activity';
 import '../legacy/home.css';
 
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 const HOME_ACTIVITY_REGION_KEY = 'toosterx_home_activity_region';
 const HOME_ACTIVITY_REGIONS = ['全部', '北部', '中部', '南部', '東部&外島'] as const;
 const HOME_ACTIVITY_TYPES = [
@@ -134,7 +134,7 @@ export default function HomePage(): JSX.Element {
       e.preventDefault();
       e.stopPropagation();
     }
-    toast.show({ message: UNAVAILABLE_MSG });
+    toast.show({ message: UNAVAILABLE_FEATURE_MSG });
   }
 
   function handleOpenCreateEvent(e?: Event): void {

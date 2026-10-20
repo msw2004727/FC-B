@@ -1,3 +1,4 @@
+import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -25,7 +26,8 @@ type ListState =
   | { status: 'error' }
   | { status: 'ready'; teams: TeamDoc[] };
 
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+// U-020：共用 core/unavailable 的提示文字。
+const UNAVAILABLE_MSG = UNAVAILABLE_FEATURE_MSG;
 
 const TAIWAN_REGIONS = [
   '台北市',

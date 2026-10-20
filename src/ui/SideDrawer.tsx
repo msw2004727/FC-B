@@ -7,10 +7,25 @@ import { useLocation } from 'preact-iso';
 import { getCurrentLocale, lt, setLocale, useT } from '@/i18n/i18n';
 import { DRAWER_LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
+import {
+  getFontSize,
+  nextFontSize,
+  setFontSize,
+  useFontSize,
+  type FontSize,
+} from '@/core/font-size';
 import type { RouteAccessContext } from '@/core/feature-types';
-import { on } from '@/core/events';
+import { isAuthRequiredRoute } from '@/core/back-guard';
+import { emit, on } from '@/core/events';
+import { prefetchRouteByPath } from '@/core/route-prefetch';
+import {
+  LOCKED_FEATURE_MSG,
+  LOGIN_PENDING_MSG,
+  UNAVAILABLE_FEATURE_MSG,
+} from '@/core/unavailable';
 import { APP_VERSION } from '@/version';
 import type { AuthUser } from '@/data/auth';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { toast } from '@/ui/Toast';
 import {
   buildDrawerRenderNodes,
@@ -58,51 +73,12 @@ export interface SideDrawerProps {
   identity?: SideDrawerIdentity | null;
 }
 
-const FONT_STORAGE_KEY = 'sporthub_font_size';
-const LEGACY_FONT_STEPS = ['15px', '16.5px', '18px'] as const;
-type LegacyFontStep = (typeof LEGACY_FONT_STEPS)[number];
-
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
-const LOCKED_MSG = '功能尚未開放';
 const SWIPE_MIN_DX = 12;
 
-function readLegacyFontStep(): LegacyFontStep {
-  try {
-    const saved = localStorage.getItem(FONT_STORAGE_KEY);
-    if (saved === '15px' || saved === '16.5px' || saved === '18px') return saved;
-    if (saved === '15' || saved === 's' || saved === 'small') return '15px';
-    if (saved === '16.5' || saved === 'm' || saved === 'medium') return '16.5px';
-    if (saved === '18' || saved === 'l' || saved === 'large') return '18px';
-  } catch {
-    /* ignore */
-  }
-  if (typeof document !== 'undefined') {
-    const current = document.documentElement.style.fontSize;
-    if (current === '16.5px' || current === '18px') return current;
-  }
-  return '15px';
-}
-
-function applyLegacyFontStep(step: LegacyFontStep): void {
-  if (typeof document !== 'undefined') {
-    document.documentElement.style.fontSize = step;
-  }
-  try {
-    localStorage.setItem(FONT_STORAGE_KEY, step);
-  } catch {
-    /* ignore */
-  }
-}
-
-function nextLegacyFontStep(step: LegacyFontStep): LegacyFontStep {
-  if (step === '15px') return '16.5px';
-  if (step === '16.5px') return '18px';
-  return '15px';
-}
-
-function fontBtnClass(step: LegacyFontStep): string {
-  if (step === '16.5px') return 'drawer-font-btn font-m';
-  if (step === '18px') return 'drawer-font-btn font-l';
+// 字級存取統一走 core/font-size（照 A sporthub_font_size 存 15／16.5／18 數字，開站腳本才讀得懂）。
+function fontBtnClass(size: FontSize): string {
+  if (size === 'medium') return 'drawer-font-btn font-m';
+  if (size === 'large') return 'drawer-font-btn font-l';
   return 'drawer-font-btn';
 }
 
@@ -234,6 +210,7 @@ export function SideDrawer({
   onClose,
   returnFocusRef,
   user = null,
+  onLogin,
   loginPending = false,
   loginError = false,
   routeAccess = null,
@@ -249,7 +226,7 @@ export function SideDrawer({
   onCloseRef.current = onClose;
   returnRef.current = returnFocusRef;
 
-  const [fontStep, setFontStep] = useState<LegacyFontStep>(() => readLegacyFontStep());
+  const fontSize = useFontSize();
   const [locale, setLocaleState] = useState<Locale>(() => {
     const cur = getCurrentLocale();
     return cur === 'zh-CN' ? 'zh-TW' : cur;
@@ -274,8 +251,6 @@ export function SideDrawer({
   }, []);
 
   useEffect(() => {
-    const step = readLegacyFontStep();
-    setFontStep(step);
     if (!open) setDragOffsetX(null);
   }, [open]);
 
@@ -361,10 +336,7 @@ export function SideDrawer({
   );
 
   const handleCycleFontSize = (): void => {
-    const current = readLegacyFontStep();
-    const next = nextLegacyFontStep(current);
-    applyLegacyFontStep(next);
-    setFontStep(next);
+    setFontSize(nextFontSize(getFontSize()));
   };
 
   const handleToggleTheme = (): void => {
@@ -395,8 +367,9 @@ export function SideDrawer({
   };
 
   const handleMenuItemClick = (entry: DrawerMenuEntry): void => {
+    // M-039：A 本身就鎖定／停用的項目用 LOCKED_FEATURE_MSG（「功能尚未開放」）
     if (entry.locked || entry.action === 'coming-soon') {
-      toast.show({ message: LOCKED_MSG });
+      toast.show({ message: LOCKED_FEATURE_MSG });
       onCloseRef.current();
       return;
     }
@@ -424,12 +397,32 @@ export function SideDrawer({
       setShowApplyNotice(true);
       return;
     }
+
+    // M-034：與底部分頁共用 AUTH_REQUIRED_PAGES 守門（個人資料、我的信箱）
+    const targetKey = entry.page || entry.routePath || '';
+    if (isAuthRequiredRoute(targetKey)) {
+      const hasAuth = Boolean(signedInUid) || (getLastKnownAuthUid() !== null && !onLogin);
+      if (!hasAuth) {
+        onCloseRef.current();
+        if (loginPending) {
+          toast.show({ message: LOGIN_PENDING_MSG });
+          return;
+        }
+        if (onLogin) {
+          onLogin();
+        } else {
+          emit('auth:login-request', {});
+        }
+        return;
+      }
+    }
+
     if (entry.routePath) {
       location.route(entry.routePath);
       onCloseRef.current();
       return;
     }
-    toast.show({ message: UNAVAILABLE_MSG });
+    toast.show({ message: UNAVAILABLE_FEATURE_MSG });
     onCloseRef.current();
   };
 
@@ -634,7 +627,7 @@ export function SideDrawer({
             </div>
             <div class="drawer-actions">
               <button
-                class={fontBtnClass(fontStep)}
+                class={fontBtnClass(fontSize)}
                 id="drawer-font-btn"
                 type="button"
                 title={lt('字型大小', '字型大小')}
@@ -702,6 +695,9 @@ export function SideDrawer({
                 data-page={entry.page}
                 data-action={entry.action}
                 aria-current={isActive ? 'page' : undefined}
+                onPointerDown={() => {
+                  if (!locked && entry.routePath) prefetchRouteByPath(entry.routePath);
+                }}
                 onClick={() => handleMenuItemClick(entry)}
               >
                 {displayLabel}

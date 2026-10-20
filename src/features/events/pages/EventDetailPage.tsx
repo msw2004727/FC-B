@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { lt, useT } from '@/i18n/i18n';
 import { UserTag } from '@/ui/UserTag';
 import { Toast, toast } from '@/ui/Toast';
@@ -125,6 +126,8 @@ function EventDetailSession({
 }): JSX.Element {
   const t = useT();
   const location = useLocation();
+  // M-045：共用返回（前面有本站頁就退回，否則回活動列表）。
+  const goBack = useGoBack('/activities');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [rosterPhase, setRosterPhase] = useState<RosterPhase>('idle');
@@ -739,7 +742,7 @@ function EventDetailSession({
             class="back-btn"
             aria-label={lt('返回', '返回')}
             data-i18n-aria-label="返回"
-            onClick={() => location.route('/activities')}
+            onClick={goBack}
           >
             <svg class="back-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path

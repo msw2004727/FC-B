@@ -11,6 +11,7 @@
  * - 角色非 user 時讀 rolePermissions/{role}（meta 的 defaultPermissions 也在同一份文件）；文件不存在時用預設，有文件且 permissions: [] 為明確全關。
  * - 角色非內建角色時讀 customRoles。
  * ViewerContext 與 useViewer() 簽名不變。
+ * - M-038：暴露 isRestricted 供底部分頁與換頁攔截「帳號限制中」。
  */
 
 import { useEffect, useState } from 'preact/hooks';
@@ -48,6 +49,8 @@ export interface ViewerView extends ViewerContext {
   displayName: string | null;
   pictureUrl: string | null;
   capabilities: readonly string[];
+  /** M-038：帳號是否受限（照 A `user.isRestricted === true`）。 */
+  isRestricted?: boolean;
   /** 選填：測試替身可省略，使用端視為「無任何權限來源」。 */
   permissionSources?: ViewerPermissionSources;
 }
@@ -75,6 +78,7 @@ export function createGuestViewer(): ViewerView {
     displayName: null,
     pictureUrl: null,
     capabilities: EMPTY_CAPABILITIES,
+    isRestricted: false,
     permissionSources: EMPTY_PERMISSION_SOURCES,
   };
 }
@@ -89,6 +93,7 @@ export function createMinimalViewer(uid: string): ViewerView {
     displayName: null,
     pictureUrl: null,
     capabilities: EMPTY_CAPABILITIES,
+    isRestricted: false,
     permissionSources: EMPTY_PERMISSION_SOURCES,
   };
 }
@@ -106,10 +111,11 @@ interface UserInfo {
   role: string;
   displayName: string | null;
   pictureUrl: string | null;
+  isRestricted: boolean;
 }
 
 function defaultUserInfo(): UserInfo {
-  return { role: 'user', displayName: null, pictureUrl: null };
+  return { role: 'user', displayName: null, pictureUrl: null, isRestricted: false };
 }
 
 function parseUserInfo(data: Record<string, unknown> | null | undefined): UserInfo {
@@ -125,7 +131,9 @@ function parseUserInfo(data: Record<string, unknown> | null | undefined): UserIn
   if (typeof data.pictureUrl === 'string') pictureUrl = data.pictureUrl;
   else if (typeof data.picture === 'string') pictureUrl = data.picture;
 
-  return { role, displayName, pictureUrl };
+  const isRestricted = data.isRestricted === true;
+
+  return { role, displayName, pictureUrl, isRestricted };
 }
 
 function parseCapabilities(data: Record<string, unknown> | null): string[] {
@@ -355,6 +363,7 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     displayName: userInfo.displayName,
     pictureUrl: userInfo.pictureUrl,
     capabilities,
+    isRestricted: userInfo.isRestricted,
     permissionSources: {
       rolePermissions: checkerInput.rolePermissions?.[role] ?? null,
       userGrants: checkerInput.userGrants ?? [],

@@ -2,14 +2,29 @@ import { useMemo } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { emit } from '@/core/events';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
+import {
+  isAuthRequiredRoute,
+  markHistoryRoot,
+  normalizeRoutePath,
+} from '@/core/back-guard';
+import { prefetchRouteByPath } from '@/core/route-prefetch';
+import {
+  LOGIN_PENDING_MSG,
+  RESTRICTED_ACCOUNT_MSG,
+  UNAVAILABLE_FEATURE_MSG,
+} from '@/core/unavailable';
+import type { AuthUser } from '@/data/auth';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { toast } from '@/ui/Toast';
 import { lt } from '@/i18n/i18n';
 
 export interface BottomNavProps {
   class?: string;
+  user?: AuthUser | null;
+  onLogin?: () => void;
+  loginPending?: boolean;
+  isRestricted?: boolean;
 }
-
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 
 function isTabActive(
   currentPath: string,
@@ -30,9 +45,15 @@ function isTabActive(
   }
 }
 
-export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Element {
+export function BottomNav({
+  class: className,
+  user,
+  onLogin,
+  loginPending = false,
+  isRestricted = false,
+}: BottomNavProps): preact.JSX.Element {
   const location = useLocation();
-  const path = location.path;
+  const path = location.path || '/';
   const registryVersion = useRegistryVersion();
 
   const { activePaths, hasCheckin } = useMemo(() => {
@@ -46,12 +67,47 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
   }, [registryVersion]);
 
   const navigateOrToast = (targetPath: string): void => {
-    if (activePaths.has(targetPath)) {
-      location.route(targetPath);
-    } else {
-      // 目標頁尚未在 B 啟用（例如 /tournaments）時提示尚未開放
-      toast.show({ message: UNAVAILABLE_MSG });
+    // M-038：被限制的帳號點首頁以外分頁提示「帳號限制中」並導回首頁（照 A `js/core/navigation.js:485-488`）
+    if (isRestricted && targetPath !== '/') {
+      toast.show({ message: RESTRICTED_ACCOUNT_MSG });
+      if (normalizeRoutePath(path) !== '/') {
+        location.route('/', true);
+        markHistoryRoot();
+      }
+      return;
     }
+
+    // M-034：未登入點 AUTH_REQUIRED_PAGES（「我的」/profile、訊息 /inbox）時直接帶去 LINE 登入，不直接進頁。
+    // 當使用端明確傳入 user === null 或 onLogin 時啟用守門；若獨立掛載未傳 user 則參考 getLastKnownAuthUid()。
+    if (isAuthRequiredRoute(targetPath)) {
+      const signedIn =
+        user !== undefined
+          ? Boolean(user?.uid)
+          : getLastKnownAuthUid() !== null || !onLogin;
+      if (!signedIn) {
+        if (loginPending) {
+          toast.show({ message: LOGIN_PENDING_MSG });
+          return;
+        }
+        if (onLogin) {
+          onLogin();
+        } else {
+          emit('auth:login-request', {});
+        }
+        return;
+      }
+    }
+
+    if (!activePaths.has(targetPath)) {
+      // 目標頁尚未在 B 啟用（例如 /tournaments）時提示尚未開放
+      toast.show({ message: UNAVAILABLE_FEATURE_MSG });
+      return;
+    }
+
+    // M-037：照 A `this.pageHistory = []`，切分頁後的這頁是返回起點（頁內返回鈕回預設頁）；點目前所在分頁不重複推紀錄。
+    if (normalizeRoutePath(path) === normalizeRoutePath(targetPath)) return;
+    location.route(targetPath);
+    markHistoryRoot();
   };
 
   const handleQrClick = (): void => {
@@ -59,11 +115,16 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
       // M-025：照 A `App._openQrPopup()` 在原頁開啟 #uid-qr-modal 彈窗，不換頁。
       emit('qr:open', {});
     } else {
-      toast.show({ message: UNAVAILABLE_MSG });
+      toast.show({ message: UNAVAILABLE_FEATURE_MSG });
     }
   };
 
   // M-025：彈窗不算換頁，中央 QR 鈕不標為 active 分頁；5 個主分頁照目前路徑計算 active。
+  // U-009：手指按下時立即開始預載該分頁程式碼
+  const handlePrefetch = (targetPath: string): void => {
+    prefetchRouteByPath(targetPath);
+  };
+
   const tournamentsActive = isTabActive(path, 'tournaments');
   const teamsActive = isTabActive(path, 'teams');
   const homeActive = isTabActive(path, 'home');
@@ -82,6 +143,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
           class={`bot-tab${tournamentsActive ? ' active' : ''}`}
           data-page="page-tournaments"
           aria-current={tournamentsActive ? 'page' : undefined}
+          onPointerDown={() => handlePrefetch('/tournaments')}
           onClick={() => navigateOrToast('/tournaments')}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -100,6 +162,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
           class={`bot-tab${teamsActive ? ' active' : ''}`}
           data-page="page-teams"
           aria-current={teamsActive ? 'page' : undefined}
+          onPointerDown={() => handlePrefetch('/teams')}
           onClick={() => navigateOrToast('/teams')}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -135,6 +198,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
             class={`bot-tab${homeActive ? ' active' : ''}`}
             data-page="page-home"
             aria-current={homeActive ? 'page' : undefined}
+            onPointerDown={() => handlePrefetch('/')}
             onClick={() => navigateOrToast('/')}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -149,6 +213,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
           class={`bot-tab${activitiesActive ? ' active' : ''}`}
           data-page="page-activities"
           aria-current={activitiesActive ? 'page' : undefined}
+          onPointerDown={() => handlePrefetch('/activities')}
           onClick={() => navigateOrToast('/activities')}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -165,6 +230,7 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
           class={`bot-tab${profileActive ? ' active' : ''}`}
           data-page="page-profile"
           aria-current={profileActive ? 'page' : undefined}
+          onPointerDown={() => handlePrefetch('/profile')}
           onClick={() => navigateOrToast('/profile')}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">

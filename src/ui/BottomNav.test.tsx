@@ -127,4 +127,25 @@ describe('BottomNav (legacy A DOM & CSS)', () => {
     await act(() => setRemoteFlags({}));
     expect(container.querySelector('.bot-tab-qr')).not.toBeNull();
   });
+
+  it('未登入點「我的」照 A 直接帶去 LINE 登入，不進頁（M-034）', () => {
+    const onLogin = vi.fn();
+    const { container } = render(
+      <LocationProvider><BottomNav user={null} onLogin={onLogin} /></LocationProvider>,
+    );
+    fireEvent.click(container.querySelector('[data-page="page-profile"]') as HTMLElement);
+    expect(onLogin).toHaveBeenCalledTimes(1);
+    expect(location.pathname).toBe('/');
+  });
+
+  it('切分頁後那頁標成返回起點（M-037）', () => {
+    const { container } = render(
+      <LocationProvider><BottomNav user={{ uid: 'u1', displayName: null, pictureUrl: null }} /></LocationProvider>,
+    );
+    act(() => {
+      fireEvent.click(container.querySelector('[data-page="page-activities"]') as HTMLElement);
+    });
+    expect(location.pathname).toBe('/activities');
+    expect((history.state as Record<string, unknown> | null)?.['__fcbRoot']).toBe(true);
+  });
 });

@@ -2,7 +2,8 @@ import type { UserRole } from '@/ui/Avatar';
 import { userLevelFromExp } from '@/data/user-roles';
 import type { UserProfile } from '../../data/profile-model';
 
-export const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+// U-020：共用 core/unavailable 的提示文字。
+export { UNAVAILABLE_FEATURE_MSG as UNAVAILABLE_MSG } from '@/core/unavailable';
 
 /** A `js/config.js#TW_REGIONS`（22 縣市）。 */
 export const TW_REGIONS: readonly string[] = [

@@ -1,6 +1,6 @@
 import './topbar-extra.css';
 import type { JSX, RefObject } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { SHOW_EXP } from '@/core/exp-display';
 import {
@@ -9,6 +9,11 @@ import {
   useActiveSport,
 } from '@/core/sport-filter';
 import { useTheme, type ThemeMode } from '@/core/theme';
+import {
+  LOGIN_PENDING_MSG,
+  LOGIN_REQUIRED_MSG,
+  UNAVAILABLE_FEATURE_MSG,
+} from '@/core/unavailable';
 import type { AuthUser } from '@/data/auth';
 import { eventSportTag } from '@/features/events/data/sports';
 import { lt } from '@/i18n/i18n';
@@ -29,8 +34,6 @@ export interface TopBarProps {
   /** 是否正在同步使用者資料且尚無頭像網址（照 A `options.isSyncing`）。 */
   isSyncing?: boolean;
 }
-
-const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 
 const LIGHT_WEBP = '/assets/logo-black.webp';
 const LIGHT_PNG = '/assets/logo-black.png';
@@ -240,7 +243,19 @@ export function TopBar({
   }, [pickerOpen]);
 
   const handleUnavailable = (): void => {
-    toast.show({ message: UNAVAILABLE_MSG });
+    toast.show({ message: UNAVAILABLE_FEATURE_MSG });
+  };
+
+  // M-033：通知鈴未登入時攔下並提示「請先登入LINE帳號」，留在原頁（照 A `js/core/navigation.js:2096-2101`）
+  const handleNotifClick = (e: MouseEvent): void => {
+    if (user?.uid) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (loginPending || authPending) {
+      toast.show({ message: LOGIN_PENDING_MSG });
+      return;
+    }
+    toast.show({ message: LOGIN_REQUIRED_MSG });
   };
 
   const handleLogoError = (): void => {
@@ -486,6 +501,7 @@ export function TopBar({
             href="/inbox"
             aria-label={lt('通知', '通知')}
             data-i18n-aria-label="通知"
+            onClick={handleNotifClick}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />

@@ -1,7 +1,9 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { useLocation } from 'preact-iso';
 
+import { emit } from '@/core/events';
+import { useGoBack } from '@/core/back-guard';
+import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer, type ViewerView } from '../data/viewer';
@@ -33,7 +35,6 @@ import {
   LegacyIdentityCard,
   LegacyProfileInfoCard,
 } from '../components/legacy/LegacyProfileCards';
-import { UNAVAILABLE_MSG } from '../components/legacy/profile-legacy-helpers';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '@/styles/legacy/edu-info-btn.css';
@@ -45,6 +46,11 @@ type Editor =
   | null;
 
 function LegacyLoginPrompt(): JSX.Element {
+  // M-035：接上 App 的 LINE 登入流程（發送 auth:login-request，由 App 統一處理）
+  const handleLoginClick = (): void => {
+    emit('auth:login-request', {});
+  };
+
   return (
     <div id="profile-login-prompt" class="profile-login-prompt">
       <div class="login-prompt-content">
@@ -56,7 +62,7 @@ function LegacyLoginPrompt(): JSX.Element {
           {lt('請先使用 LINE 帳號登入以查看個人資料', '請先使用 LINE 帳號登入以查看個人資料')}
         </p>
         {/* ASSUMPTION: 沿用 B 現有 LoginGuide 契約（不虛構全域 LineAuth API），保留 A 的按鈕結構與 SVG */}
-        <button type="button" class="line-login-btn large">
+        <button type="button" class="line-login-btn large" onClick={handleLoginClick}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
             <path d="M12 2C6.48 2 2 5.83 2 10.5c0 4.18 3.66 7.68 8.58 8.38.33.07.78.22.9.5.1.26.07.66.03.92l-.15.86c-.04.26-.2 1.01.88.55s5.88-3.47 8.03-5.93C22.08 13.79 22 12.18 22 10.5 22 5.83 17.52 2 12 2z" />
           </svg>
@@ -168,7 +174,7 @@ function ProfileContent({
               data-i18n-title="說明"
               onClick={(e) => {
                 e.stopPropagation();
-                toast.show({ message: UNAVAILABLE_MSG });
+                toast.show({ message: UNAVAILABLE_FEATURE_MSG });
               }}
             >
               ?
@@ -272,7 +278,7 @@ function AuthenticatedProfile({
 
 export default function ProfilePage(): JSX.Element {
   const viewer = useViewer();
-  const location = useLocation();
+  const goBack = useGoBack('/');
 
   return (
     <div class="legacy-ui">
@@ -283,7 +289,7 @@ export default function ProfilePage(): JSX.Element {
             type="button"
             aria-label={lt('返回', '返回')}
             data-i18n-aria-label="返回"
-            onClick={() => location.route('/')}
+            onClick={goBack}
           >
             <svg
               class="back-btn-icon"

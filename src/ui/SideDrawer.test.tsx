@@ -226,25 +226,32 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(document.getElementById('app-confirm-modal')).toBeNull();
   });
 
+  // 測試同步更新：照 A（M-055）sporthub_font_size 只存數字 16.5／18，最小級 15 時移除，開站腳本才能補上 px。
   it('cycles font size 15px -> 16.5px -> 18px on html style and localStorage sporthub_font_size', () => {
     render(<Harness />);
     openDrawer();
     const btn = document.getElementById('drawer-font-btn') as HTMLButtonElement;
     expect(btn).not.toBeNull();
 
-    fireEvent.click(btn);
+    act(() => {
+      fireEvent.click(btn);
+    });
     expect(document.documentElement.style.fontSize).toBe('16.5px');
-    expect(localStorage.getItem('sporthub_font_size')).toBe('16.5px');
+    expect(localStorage.getItem('sporthub_font_size')).toBe('16.5');
     expect(btn.classList.contains('font-m')).toBe(true);
 
-    fireEvent.click(btn);
+    act(() => {
+      fireEvent.click(btn);
+    });
     expect(document.documentElement.style.fontSize).toBe('18px');
-    expect(localStorage.getItem('sporthub_font_size')).toBe('18px');
+    expect(localStorage.getItem('sporthub_font_size')).toBe('18');
     expect(btn.classList.contains('font-l')).toBe(true);
 
-    fireEvent.click(btn);
+    act(() => {
+      fireEvent.click(btn);
+    });
     expect(document.documentElement.style.fontSize).toBe('15px');
-    expect(localStorage.getItem('sporthub_font_size')).toBe('15px');
+    expect(localStorage.getItem('sporthub_font_size')).toBeNull();
   });
 
   it('toggles theme via #theme-toggle', () => {

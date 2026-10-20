@@ -1,7 +1,7 @@
 // LINE LIFF → Firebase Auth 登入流程，以及 emulator 專用的 devSignIn。
 //
 // 正式模式：
-//   liff.init → 未登入則 liff.login（LIFF 會重導向）→ 回到頁面後再次初始化
+//   liff.init → 未登入則 liff.login（帶 redirectUri 回到目前網址，M-036）→ 回到頁面後再次初始化
 //   → 取 accessToken → 呼叫 Callable `createCustomToken`（Functions 端驗證 LINE token
 //   並簽發 Firebase custom token） → signInWithCustomToken。
 //
@@ -12,6 +12,7 @@
 // （`a-createCustomToken-guard.js`），B 端不得嘗試繞過——本地開發請一律使用 emulator + devSignIn。
 
 import { emit } from '@/core/events';
+import { toast } from '@/ui/Toast';
 
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
@@ -24,12 +25,59 @@ export interface AuthUser {
   pictureUrl: string | null;
 }
 
+/** M-036：觸發 liff.login 重導向或開啟手機外部瀏覽器說明框時拋出，App 不應把此狀態當成登入失敗。 */
+export class LoginRedirectingError extends Error {
+  readonly isRedirecting = true;
+  constructor(message = '[auth] LINE 登入重導向中') {
+    super(message);
+    this.name = 'LoginRedirectingError';
+  }
+}
+
+export function isLoginRedirectingError(err: unknown): boolean {
+  return (
+    err instanceof LoginRedirectingError ||
+    Boolean(err && typeof err === 'object' && (err as { isRedirecting?: unknown }).isRedirecting === true)
+  );
+}
+
 /** 最後一次確認的登入帳號；undefined＝登入狀態尚未確定。 */
 let lastKnownAuthUid: string | null | undefined;
+let mobileHintAcknowledged = false;
 
 /** 同步取得最後確認的登入帳號（undefined＝尚未確定）。給「只用同帳號快照」等判斷用。 */
 export function getLastKnownAuthUid(): string | null | undefined {
   return lastKnownAuthUid;
+}
+
+/** M-036：照 A `_isMobileExternalBrowser`——不在 LINE App 內、且是手機（含 PWA）。 */
+export function isMobileExternalBrowser(inClient: boolean, userAgent: string): boolean {
+  if (inClient) return false;
+  return /Android|iPhone|iPad|iPod/i.test(userAgent);
+}
+
+export function acknowledgeMobileLoginHint(): void {
+  mobileHintAcknowledged = true;
+}
+
+/** M-036：照 A `js/line-auth.js:595-605` 清理 OAuth 查詢參數並組出回跳網址。 */
+export function buildCleanLoginRedirectUri(href: string): string {
+  try {
+    const url = new URL(href);
+    [
+      'code',
+      'state',
+      'liffClientId',
+      'liffRedirectUri',
+      'error',
+      'error_description',
+    ].forEach((key) => {
+      url.searchParams.delete(key);
+    });
+    return url.toString();
+  } catch {
+    return href;
+  }
 }
 
 function emitAuth(uid: string | null): void {
@@ -61,15 +109,43 @@ export async function signIn(): Promise<AuthUser> {
     throw new Error('[auth] 缺少 VITE_LIFF_ID 設定（請見 .env.example）');
   }
 
-  const liffModule = await import('@line/liff');
-  const liff = liffModule.default;
+  let liff: typeof import('@line/liff').default;
+  try {
+    const liffModule = await import('@line/liff');
+    liff = liffModule.default;
+  } catch (err) {
+    toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
+    throw err;
+  }
 
-  await liff.init({ liffId });
+  try {
+    await liff.init({ liffId });
+  } catch (err) {
+    toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
+    throw err;
+  }
 
   if (!liff.isLoggedIn()) {
+    // M-036：手機外部瀏覽器先顯示 LINE 登入提示框（照 A `js/line-auth.js` login 的同一段檢查）
+    let inClient = false;
+    try {
+      inClient = liff.isInClient();
+    } catch {
+      inClient = false;
+    }
+    if (!mobileHintAcknowledged && isMobileExternalBrowser(inClient, navigator.userAgent)) {
+      emit('auth:mobile-login-hint', {});
+      throw new LoginRedirectingError('[auth] 等待手機外部瀏覽器登入提示確認');
+    }
     // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
-    liff.login();
-    throw new Error('[auth] LINE 登入未完成（已觸發 liff.login 重導向）');
+    // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
+    const redirectUri = buildCleanLoginRedirectUri(location.href);
+    if (redirectUri === new URL('/', location.origin).toString()) {
+      liff.login();
+    } else {
+      liff.login({ redirectUri });
+    }
+    throw new LoginRedirectingError();
   }
 
   const accessToken = liff.getAccessToken();

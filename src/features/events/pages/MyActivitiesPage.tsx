@@ -4,6 +4,7 @@ import '@/styles/legacy/manage-status.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
 import { InternalTestBlockedError } from '@/data/internal-test';
 import { useUserRoles } from '@/data/user-roles';
@@ -114,6 +115,8 @@ export default function MyActivitiesPage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
+  // M-045：A App.goBack()：有上一頁就回上一頁，直接開這頁時回活動列表。
+  const goBack = useGoBack('/activities');
 
   const canAccessPage = drawerOwnActivityManage(viewer);
 
@@ -419,11 +422,7 @@ export default function MyActivitiesPage(): JSX.Element {
             class="back-btn"
             aria-label={lt('返回', '返回')}
             data-i18n-aria-label="返回"
-            onClick={() => {
-              // A App.goBack()：有上一頁就回上一頁，直接開這頁時回活動列表。
-              if (history.length > 1) history.back();
-              else location.route('/activities');
-            }}
+            onClick={goBack}
           >
             <svg class="back-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path

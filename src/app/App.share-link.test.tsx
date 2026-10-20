@@ -61,7 +61,10 @@ describe('App share links', () => {
     await screen.findByText('home-test');
     expect(window.location.pathname).toBe('/');
     expect(push).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
+    // 測試同步更新：照 A（M-045）開站會以同網址 replaceState 標記返回起點，網址不得改變。
+    for (const call of replace.mock.calls) {
+      expect(String(call[2])).toContain('/?event=bad%2Fid');
+    }
   });
 
   it.each([

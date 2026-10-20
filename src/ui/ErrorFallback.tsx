@@ -1,4 +1,5 @@
 import { useT } from '@/i18n/i18n';
+import { ROUTE_LOAD_FAILED_MSG } from '@/core/unavailable';
 
 export interface ErrorFallbackProps {
   onRetry?: () => void;
@@ -19,23 +20,44 @@ export function ErrorFallback({
     return value && value !== key ? value : undefined;
   };
 
-  const title = fixed ? undefined : translated('common.error');
-  const retryLabel = fixed ? undefined : translated('common.retry');
-  const homeLabel = fixed ? undefined : translated('notFound.home');
+  // M-048：非 fixed 時使用 A 的「頁面載入失敗，請稍後再試」與 A 的按鈕結構與樣式（.legacy-ui .outline-btn / .primary-btn）
+  const title = fixed ? '載入失敗 / Failed to load' : (translated('common.error') ?? ROUTE_LOAD_FAILED_MSG);
+  const retryLabel = fixed ? '重新載入 / Reload' : (translated('common.retry') ?? '重新整理');
+  const homeLabel = fixed ? '回首頁 / Home' : (translated('notFound.home') ?? '回首頁');
 
   return (
-    <section class="error-fallback" role="alert">
-      <h1 class="error-fallback__title">{title ?? '載入失敗 / Failed to load'}</h1>
-      {onRetry ? (
-        <button type="button" class="error-fallback__retry" onClick={onRetry}>
-          {retryLabel ?? '重新載入 / Reload'}
-        </button>
-      ) : null}
-      {showHome ? (
-        <a class="error-fallback__home" href="/">
-          {homeLabel ?? '回首頁 / Home'}
-        </a>
-      ) : null}
-    </section>
+    <div class="legacy-ui">
+      <section
+        class="error-fallback"
+        role="alert"
+        style={{
+          padding: '2.5rem 1.25rem',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}
+      >
+        <h1
+          class="error-fallback__title"
+          style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary, inherit)' }}
+        >
+          {title}
+        </h1>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {onRetry ? (
+            <button type="button" class="error-fallback__retry primary-btn small" onClick={onRetry}>
+              {retryLabel}
+            </button>
+          ) : null}
+          {showHome ? (
+            <a class="error-fallback__home outline-btn small" href="/">
+              {homeLabel}
+            </a>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 }

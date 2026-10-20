@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { useT } from '@/i18n/i18n';
 import { InternalTestBlockedError } from '@/data/internal-test';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -221,13 +222,8 @@ function TeamDetailContent({
     }
   }
 
-  function handleBack(): void {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      window.history.back();
-    } else {
-      location.route('/teams');
-    }
-  }
+  // M-045：共用返回（前面有本站頁就退回，否則回俱樂部列表）。
+  const handleBack = useGoBack('/teams');
 
   function handleUnavailable(): void {
     toast.show({ message: UNAVAILABLE_MSG });
