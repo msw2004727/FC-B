@@ -27,6 +27,8 @@ export interface UserTagProps {
   recentNoShow?: boolean;
   onOpenProfile: (uid: string) => void;
   class?: string;
+  /** A 俱樂部成員卡會把名字包成 `<span class="td-member-name-text">`（長名字省略號用）。 */
+  nameClass?: string;
 }
 
 /** A `config.js#_BASE_ROLES` 的 label（title 用，照 A 不翻譯）。 */
@@ -55,6 +57,7 @@ export function UserTag({
   recentNoShow = false,
   onOpenProfile,
   class: className = '',
+  nameClass,
 }: UserTagProps): JSX.Element {
   const t = useT();
   const displayName = name?.trim() || t('ui.userTag.unknown');
@@ -103,7 +106,7 @@ export function UserTag({
       {recentNoShow && (
         <span class="uc-recent-noshow" aria-label="最近一場活動未簽到" title="最近一場活動未簽到">🕊</span>
       )}
-      {displayName}
+      {nameClass ? <span class={nameClass}>{displayName}</span> : displayName}
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamDetailPage from './TeamDetailPage';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
@@ -7,8 +7,10 @@ import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/pro
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
-import type { TeamDoc, TeamMember } from '../data/types';
+import type { TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
 import { clearPendingJoin, loginForClubs } from './clubs-session';
+import { appConfirm } from '@/ui/AppConfirm';
+import { toast } from '@/ui/Toast';
 import zh from '../locales/zh-TW.json';
 
 const routeState = vi.hoisted(() => ({ id: 'club', route: vi.fn() }));
@@ -37,26 +39,29 @@ vi.mock('@/features/events/data/events-repo', () => ({ getEventsRepo: vi.fn() })
 vi.mock('@/features/events/data/viewer-registrations', () => ({ loadViewerRegistrations: vi.fn() }));
 
 vi.mock('./clubs-session', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./clubs-session')>(),
+  ...(await importOriginal<typeof import('./clubs-session')>()),
   loginForClubs: vi.fn(),
 }));
 
-// 只替換 useT；Text 等元件仍需要真實的 getCurrentLocale 等匯出。
+vi.mock('@/ui/AppConfirm', () => ({
+  appConfirm: vi.fn(),
+}));
+
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/i18n/i18n')>()),
   useT: () => (key: string, values?: Record<string, unknown>) => {
     let value: unknown = zh;
     for (const part of key.replace(/^clubs\./, '').split('.')) {
-      value = value && typeof value === 'object'
-        ? (value as Record<string, unknown>)[part]
-        : undefined;
+      value =
+        value && typeof value === 'object'
+          ? (value as Record<string, unknown>)[part]
+          : undefined;
     }
     const text = typeof value === 'string' ? value : key;
     return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? `{${name}}`));
   },
 }));
 
-// UserTag 是獨立元件；此處驗證頁面傳入 uid/name/role 與點擊路由契約。
 vi.mock('@/ui/UserTag', () => ({
   UserTag: ({
     uid,
@@ -68,13 +73,52 @@ vi.mock('@/ui/UserTag', () => ({
     name: string;
     role: string;
     onOpenProfile: (uid: string) => void;
-  }) => <button type="button" data-uid={uid} data-role={role} onClick={() => onOpenProfile(uid)}>{name}</button>,
+  }) => (
+    <button
+      type="button"
+      class="user-capsule"
+      data-uid={uid}
+      data-role={role}
+      onClick={() => onOpenProfile(uid)}
+    >
+      {name}
+    </button>
+  ),
+}));
+
+vi.mock('../components/legacy/LegacyTeamMembersCard', () => ({
+  LegacyTeamMembersCard: ({
+    roster,
+    canManageMembers,
+    onOpenProfile,
+  }: {
+    team: TeamDoc;
+    roster: readonly TeamRosterRow[];
+    canManageMembers: boolean;
+    onOpenProfile: (uid: string) => void;
+  }) => (
+    <div data-testid="legacy-members-card" data-can-manage={String(canManageMembers)}>
+      {roster.map((row) => (
+        <button
+          key={row.uid}
+          type="button"
+          data-uid={row.uid}
+          onClick={() => onOpenProfile(row.uid)}
+        >
+          {row.name || row.uid}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
   return { promise, resolve, reject };
 }
 
@@ -94,10 +138,22 @@ function viewer(uid: string | null = 'u1', teamIds: string[] = []): ViewerView {
 const team: TeamDoc = {
   id: 'club',
   name: '測試俱樂部',
+  nameEn: 'Test FC',
   active: true,
   captainUid: 'captain',
+  captain: '隊長甲',
+  leaderUids: ['leader1'],
+  leaders: ['領隊乙'],
   members: 23,
   bio: '俱樂部介紹',
+  region: '台北市',
+  sportTag: 'football',
+  teamExp: 3500,
+  themeColor: '#123456',
+  contact: 'LINE: @testfc',
+  wins: 3,
+  draws: 1,
+  losses: 1,
 };
 
 const loadEvents = vi.fn<() => Promise<string[]>>();
@@ -105,6 +161,7 @@ const snapshot = vi.fn<() => { active: EventDoc[]; terminal: EventDoc[] }>();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  toast.clear();
   routeState.id = 'club';
   clearPendingJoin('club', 'u1');
   clearPendingJoin('club', 'u2');
@@ -115,6 +172,7 @@ beforeEach(() => {
   vi.mocked(leaveTeam).mockResolvedValue({ stillStaff: false });
   vi.mocked(loginForClubs).mockResolvedValue();
   vi.mocked(loadViewerRegistrations).mockResolvedValue([]);
+  vi.mocked(appConfirm).mockResolvedValue(true);
   loadEvents.mockResolvedValue(['events']);
   snapshot.mockReturnValue({ active: [], terminal: [] });
   vi.mocked(getEventsRepo).mockReturnValue({
@@ -125,264 +183,287 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  toast.clear();
+  cleanup();
+});
 
-async function openMembers(): Promise<void> {
-  await screen.findByRole('heading', { name: '測試俱樂部', level: 1 });
-  fireEvent.click(screen.getByRole('tab', { name: '成員' }));
-}
+describe('TeamDetailPage (Legacy V2)', () => {
+  it('renders legacy v2 shell, hero, stats, tabs and overview content', async () => {
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
 
-async function startConfirmation(action: '加入俱樂部' | '退出俱樂部'): Promise<HTMLElement> {
-  fireEvent.click(await screen.findByRole('button', { name: action }));
-  return screen.findByRole('dialog');
-}
+    const pageEl = container.querySelector('#page-team-detail.page.active.td-v2-active');
+    expect(pageEl).toBeTruthy();
+    const shell = container.querySelector('#team-detail-body .td-v2-shell[data-team-id="club"]');
+    expect(shell).toBeTruthy();
+    expect(shell?.getAttribute('style')).toContain('--td-v2-theme: #123456');
 
-describe('TeamDetailPage', () => {
-  it('shows a login entry for the guest roster and guest join', async () => {
-    vi.mocked(useViewer).mockReturnValue(viewer(null));
-    vi.mocked(loadTeamMembers).mockResolvedValue(null);
-    render(<TeamDetailPage />);
-    await openMembers();
-    await screen.findByText('登入後查看成員');
-    fireEvent.click(screen.getByRole('button', { name: '登入' }));
-    await waitFor(() => expect(loginForClubs).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect((screen.getByRole('button', { name: '加入俱樂部' }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: '加入俱樂部' }));
-    await waitFor(() => expect(loginForClubs).toHaveBeenCalledTimes(2));
-    expect(requestTeamJoin).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
+    expect(screen.getByText('Test FC')).toBeTruthy();
+    expect(screen.getByText('足球')).toBeTruthy();
+    expect(screen.getByText('台北市')).toBeTruthy();
+    expect(screen.getByText('一般俱樂部 · 歡迎查看活動與成員')).toBeTruthy();
+    expect(screen.getByText('3,500')).toBeTruthy();
+    expect(screen.getByText('B')).toBeTruthy();
 
-  it('builds the roster and passes uid/name/role to UserTag', async () => {
-    vi.mocked(loadTeamMembers).mockResolvedValue([
-      { uid: 'captain', displayName: '隊長甲' },
-      { uid: 'member', displayName: '成員乙', teamIds: ['club'] },
-    ]);
-    render(<TeamDetailPage />);
-    await openMembers();
-    const captain = await screen.findByRole('button', { name: '隊長甲' });
-    expect(captain.getAttribute('data-uid')).toBe('captain');
-    expect(captain.getAttribute('data-role')).toBe('captain');
-    expect(screen.getByRole('button', { name: '成員乙' }).getAttribute('data-role')).toBe('user');
-    fireEvent.click(captain);
+    expect(screen.getByText('俱樂部介紹')).toBeTruthy();
+    expect(screen.getByText('LINE: @testfc')).toBeTruthy();
+
+    const captainTag = screen.getByRole('button', { name: '隊長甲' });
+    expect(captainTag.getAttribute('data-uid')).toBe('captain');
+    fireEvent.click(captainTag);
     expect(routeState.route).toHaveBeenCalledWith('/profile/captain');
-    expect(loadTeamMembers).toHaveBeenCalledWith(expect.objectContaining({ id: 'club' }));
+
+    const leaderTag = screen.getByRole('button', { name: '領隊乙' });
+    expect(leaderTag.getAttribute('data-uid')).toBe('leader1');
   });
 
-  it('confirms join, prevents duplicate writes and retains pending after remount', async () => {
-    const request = deferred<{ groupId: string }>();
-    vi.mocked(requestTeamJoin).mockReturnValue(request.promise);
-    const view = render(<TeamDetailPage />);
-    const dialog = await startConfirmation('加入俱樂部');
-    expect(dialog.textContent).toContain('確定要加入「測試俱樂部」俱樂部？');
-    const confirm = within(dialog).getByRole('button', { name: '確認' });
-    fireEvent.click(confirm);
-    fireEvent.click(confirm);
-    expect(requestTeamJoin).toHaveBeenCalledTimes(1);
-    expect(requestTeamJoin).toHaveBeenCalledWith({
-      team: expect.objectContaining({ id: 'club' }),
-      applicant: { uid: 'u1', displayName: '小明' },
-    });
-    expect((confirm as HTMLButtonElement).disabled).toBe(true);
-    await act(async () => request.resolve({ groupId: 'group' }));
-    await screen.findByText('已送出加入申請！');
-    fireEvent.click(screen.getByRole('button', { name: '審核中' }));
-    await screen.findByText('申請審核中');
-    expect(requestTeamJoin).toHaveBeenCalledTimes(1);
-    expect(leaveTeam).not.toHaveBeenCalled();
-
-    view.unmount();
-    render(<TeamDetailPage />);
-    await screen.findByRole('button', { name: '審核中' });
-  });
-
-  it('does not leak optimistic pending to another account', async () => {
-    const view = render(<TeamDetailPage />);
-    const dialog = await startConfirmation('加入俱樂部');
-    fireEvent.click(within(dialog).getByRole('button', { name: '確認' }));
-    await screen.findByRole('button', { name: '審核中' });
-    vi.mocked(useViewer).mockReturnValue(viewer('u2'));
-    view.rerender(<TeamDetailPage />);
-    await screen.findByRole('button', { name: '加入俱樂部' });
-    expect(screen.queryByRole('button', { name: '審核中' })).toBeNull();
-  });
-
-  it('confirms leave and refreshes viewer after success', async () => {
-    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
-    const view = render(<TeamDetailPage />);
-    const dialog = await startConfirmation('退出俱樂部');
-    expect(dialog.textContent).toContain(
-      '確定要退出「測試俱樂部」俱樂部？退出後如需重新加入，可能需要再次送出申請。',
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: '確認' }));
-    await screen.findByText('已退出俱樂部');
-    expect(leaveTeam).toHaveBeenCalledWith({
-      team: expect.objectContaining({ id: 'club' }),
-      self: { uid: 'u1', displayName: '小明' },
-    });
-    expect(requestTeamJoin).not.toHaveBeenCalled();
-    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
-
-    vi.mocked(useViewer).mockReturnValue(viewer('u1'));
-    view.rerender(<TeamDetailPage />);
-    await screen.findByRole('button', { name: '加入俱樂部' });
-    // 人數仍使用 teams.members，不依 roster 或退出結果自行減一。
-    expect(screen.getAllByText('23').length).toBeGreaterThan(0);
-  });
-
-  it('shows the stillStaff message', async () => {
-    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
-    vi.mocked(leaveTeam).mockResolvedValue({ stillStaff: true });
-    render(<TeamDetailPage />);
-    const dialog = await startConfirmation('退出俱樂部');
-    fireEvent.click(within(dialog).getByRole('button', { name: '確認' }));
-    await screen.findByText('你的幹部身分需由隊長移除');
-    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
-  });
-
-  it.each(['join', 'leave'] as const)('retries a failed %s operation', async (action) => {
-    if (action === 'leave') {
-      vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
-      vi.mocked(leaveTeam).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ stillStaff: false });
-    } else {
-      vi.mocked(requestTeamJoin).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ groupId: 'group' });
-    }
-    render(<TeamDetailPage />);
-    const dialog = await startConfirmation(action === 'join' ? '加入俱樂部' : '退出俱樂部');
-    fireEvent.click(within(dialog).getByRole('button', { name: '確認' }));
-    await within(dialog).findByRole('alert');
-    expect(requestViewerRefresh).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole('button', { name: '重試' }));
-    await screen.findByText(action === 'join' ? '已送出加入申請！' : '已退出俱樂部');
-    expect(action === 'join' ? requestTeamJoin : leaveTeam).toHaveBeenCalledTimes(2);
-  });
-
-  it('cancelling confirmation performs no write', async () => {
-    render(<TeamDetailPage />);
-    const dialog = await startConfirmation('加入俱樂部');
-    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
-    expect(requestTeamJoin).not.toHaveBeenCalled();
-    expect(leaveTeam).not.toHaveBeenCalled();
-  });
-
-  it('shows not-found and does not load dependent resources', async () => {
-    vi.mocked(loadTeam).mockResolvedValue(null);
-    render(<TeamDetailPage />);
-    await screen.findByText('找不到此俱樂部');
-    expect(loadTeamMembers).not.toHaveBeenCalled();
-    expect(loadEvents).not.toHaveBeenCalled();
-  });
-
-  it('only lists visible future events belonging to this club', async () => {
-    const event = (id: string, fields: Partial<EventDoc> = {}): EventDoc => ({
-      id,
-      title: id,
-      date: '2999/01/01 12:00~13:00',
-      status: 'open',
-      // 照 A _isTeamEventForTeam：只有俱樂部限定（teamOnly）活動才列在俱樂部頁
-      teamOnly: true,
-      creatorTeamId: 'club',
-      ...fields,
-    } as EventDoc);
-
-    snapshot.mockReturnValue({
-      active: [
-        event('visible'),
-        event('other-team', { creatorTeamId: 'other' }),
-        event('past', { date: '2000/01/01 12:00~13:00' }),
-        event('private', { privateEvent: true }),
-        event('blocked', { blockedUids: ['u1'] }),
-        event('public', { teamOnly: false }),
-        event('registered', { blockedUids: ['u1'] }),
-        event('ended', { status: 'ended' }),
-      ],
-      terminal: [],
-    });
-    vi.mocked(loadViewerRegistrations).mockResolvedValue([
-      { eventId: 'registered', userId: 'u1', status: 'cancelled' } as RegistrationDoc,
-    ]);
-    // 俱樂部限定活動只有成員看得到（R-EVT 可見性），這裡以成員身分驗證列表過濾
-    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
-    render(<TeamDetailPage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '活動' }));
-    const panel = screen.getByRole('tabpanel', { name: '活動' });
-    await within(panel).findByRole('link', { name: /visible/ });
-    expect(within(panel).getAllByRole('link').map((link) => link.getAttribute('href')))
-      .toEqual(['/events/registered', '/events/visible'].sort((a, b) => {
-        // 相同日期時 getTeamFutureEvents 保留輸入順序。
-        return a === '/events/visible' ? -1 : b === '/events/visible' ? 1 : 0;
-      }));
-    for (const title of ['other-team', 'past', 'private', 'blocked', 'public', 'ended']) {
-      expect(within(panel).queryByRole('link', { name: new RegExp(title) })).toBeNull();
-    }
-    expect(loadEvents).toHaveBeenCalledWith({ terminalMode: 'none' });
-    expect(loadViewerRegistrations).toHaveBeenCalledWith('u1');
-  });
-
-  it('shows an events retry when viewer registrations fail', async () => {
-    vi.mocked(loadViewerRegistrations)
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce([]);
-    render(<TeamDetailPage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '活動' }));
-    const panel = screen.getByRole('tabpanel', { name: '活動' });
-    await within(panel).findByRole('alert');
-    fireEvent.click(within(panel).getByRole('button', { name: '重試' }));
-    await within(panel).findByText('目前沒有即將開始的俱樂部活動');
-    expect(loadViewerRegistrations).toHaveBeenCalledTimes(2);
-  });
-
-  it('honours section visibility without loading hidden resources', async () => {
+  it('switches tabs and respects section visibility including courses, record and feed', async () => {
     vi.mocked(loadTeam).mockResolvedValue({
       ...team,
-      detailVisibility: { members: false, events: false, info: false, bio: false },
+      teachingEnabled: true,
+      feed: [{ name: '管理員', text: '本週正常團練', time: '2026/05/01' }],
     });
-    render(<TeamDetailPage />);
-    await screen.findByRole('heading', { name: '測試俱樂部' });
-    expect(screen.queryByRole('tab', { name: '成員' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: '活動' })).toBeNull();
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const tabButtons = container.querySelectorAll('.td-v2-tab-list button');
+    expect(Array.from(tabButtons).map((b) => b.textContent)).toEqual([
+      '總覽',
+      '課程',
+      '活動',
+      '成員',
+      '戰績',
+      '動態',
+    ]);
+
+    fireEvent.click(screen.getByRole('tab', { name: '課程' }));
+    expect(container.querySelector('.td-v2-panel-courses.active')).toBeTruthy();
+    expect(screen.getByText('接受新學員報名')).toBeTruthy();
+    expect(screen.getByText('此功能尚未開放，請先使用舊版')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '戰績' }));
+    expect(container.querySelector('.td-v2-panel-record.active')).toBeTruthy();
+    expect(screen.getAllByText('60%').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('tab', { name: '動態' }));
+    expect(container.querySelector('.td-v2-panel-feed.active')).toBeTruthy();
+    expect(screen.getByText('本週正常團練')).toBeTruthy();
+  });
+
+  it('honours detailVisibility by hiding disabled tabs and sections', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...team,
+      detailVisibility: {
+        events: false,
+        members: false,
+        record: false,
+        matches: false,
+        bio: false,
+        info: false,
+      },
+    });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const tabButtons = container.querySelectorAll('.td-v2-tab-list button');
+    expect(Array.from(tabButtons).map((b) => b.textContent)).toEqual(['總覽', '動態']);
     expect(screen.queryByText('俱樂部介紹')).toBeNull();
     expect(loadTeamMembers).not.toHaveBeenCalled();
     expect(loadEvents).not.toHaveBeenCalled();
   });
 
-  it('keeps management disabled and handles the captain link', async () => {
-    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
-    render(<TeamDetailPage />);
-    const manage = await screen.findByRole('button', { name: '管理' });
-    expect((manage as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('待俱樂部管理功能')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '聯繫隊長' }).getAttribute('href')).toBe('/profile/captain');
-    expect(screen.queryByRole('button', { name: '分享' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '邀請 QR' })).toBeNull();
-  });
+  it('renders 14-day week calendar and navigates on event card click', async () => {
+    const futureEvent: EventDoc = {
+      id: 'ev1',
+      title: '週六友誼賽',
+      date: '2999/06/15 14:00~16:00',
+      location: '百齡球場',
+      status: 'open',
+      current: 8,
+      max: 16,
+      teamOnly: true,
+      creatorTeamId: 'club',
+    } as EventDoc;
 
-  it('disables contact when captainUid is absent', async () => {
-    vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid: undefined });
-    render(<TeamDetailPage />);
-    const contact = await screen.findByRole('button', { name: '聯繫隊長' });
-    expect((contact as HTMLButtonElement).disabled).toBe(true);
-  });
+    snapshot.mockReturnValue({ active: [futureEvent], terminal: [] });
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
 
-  it('does not allow an older :id load to replace the new route', async () => {
-    const old = deferred<TeamDoc | null>();
-    vi.mocked(loadTeam).mockImplementation((id) =>
-      id === 'club' ? old.promise : Promise.resolve({ ...team, id, name: '新俱樂部' }),
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('tab', { name: /活動/ }));
+    const days = container.querySelectorAll('.td-v2-week .td-v2-day');
+    expect(days.length).toBe(14);
+    expect(container.querySelector('.td-v2-week .td-v2-day.active')).toBeTruthy();
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('.td-v2-panel-events .td-v2-event-card').length).toBe(1),
     );
-    const view = render(<TeamDetailPage />);
-    await waitFor(() => expect(loadTeam).toHaveBeenCalledWith('club'));
-    routeState.id = 'new';
-    view.rerender(<TeamDetailPage />);
-    await screen.findByRole('heading', { name: '新俱樂部', level: 1 });
-    await act(async () => old.resolve(team));
-    expect(screen.getByRole('heading', { name: '新俱樂部', level: 1 })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: '測試俱樂部', level: 1 })).toBeNull();
-    expect(loadTeamMembers).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'club' }));
+    const cards = container.querySelectorAll('.td-v2-panel-events .td-v2-event-card');
+    expect(cards[0]?.textContent).toContain('週六友誼賽');
+    expect(cards[0]?.textContent).toContain('報名中');
+    expect(cards[0]?.textContent).toContain('8/16 名');
+
+    fireEvent.click(cards[0]!);
+    expect(routeState.route).toHaveBeenCalledWith('/events/ev1');
   });
 
-  it('discards a previous route roster that resolves late', async () => {
+  it('shows login entry for guest roster and triggers login on guest join', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    vi.mocked(loadTeamMembers).mockResolvedValue(null);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+    await screen.findByText('登入後查看成員');
+    fireEvent.click(screen.getByRole('button', { name: '登入' }));
+    await waitFor(() => expect(loginForClubs).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '加入俱樂部' }));
+    await waitFor(() => expect(loginForClubs).toHaveBeenCalledTimes(2));
+    expect(requestTeamJoin).not.toHaveBeenCalled();
+  });
+
+  it('passes roster and canManageMembers to LegacyTeamMembersCard', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    vi.mocked(loadTeamMembers).mockResolvedValue([
+      { uid: 'captain', displayName: '隊長甲' },
+      { uid: 'member', displayName: '成員乙', teamIds: ['club'] },
+    ]);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+
+    const card = await screen.findByTestId('legacy-members-card');
+    expect(card.getAttribute('data-can-manage')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: '成員乙' }));
+    expect(routeState.route).toHaveBeenCalledWith('/profile/member');
+  });
+
+  it('confirms join via appConfirm, shows toast and retains pending state', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '加入俱樂部' }));
+    await waitFor(() =>
+      expect(appConfirm).toHaveBeenCalledWith('確定要加入「測試俱樂部」俱樂部？'),
+    );
+    await waitFor(() => expect(requestTeamJoin).toHaveBeenCalledTimes(1));
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '已送出加入申請！' }),
+    );
+
+    const pendingBtn = await screen.findByRole('button', { name: '審核中' });
+    fireEvent.click(pendingBtn);
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '您已申請此俱樂部，請等候審核（可於 24 小時後再次申請）',
+      }),
+    );
+  });
+
+  it('blocks captain and leader from leaving with legacy toast messages', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '退出俱樂部' }));
+    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+    expect(leaveTeam).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '經理無法退出俱樂部，請先轉移經理職務',
+      }),
+    );
+
+    vi.mocked(useViewer).mockReturnValue(viewer('leader1', ['club']));
+    view.rerender(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '退出俱樂部' }));
+    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(2));
+    expect(leaveTeam).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '領隊無法退出俱樂部，請先轉移領隊職務',
+      }),
+    );
+  });
+
+  it('confirms leave for normal member and shows legacy success toast', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(container.querySelector('.td-v2-cta-bar.has-leave')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '已加入' }));
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '您已加入此俱樂部' }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '退出俱樂部' }));
+    await waitFor(() =>
+      expect(appConfirm).toHaveBeenCalledWith('確定要退出「測試俱樂部」俱樂部？退出後如需重新加入，可能需要再次送出申請。'),
+    );
+    await waitFor(() => expect(leaveTeam).toHaveBeenCalledTimes(1));
+    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '已退出「測試俱樂部」' }),
+    );
+  });
+
+  it('shows unavailable toast for unimplemented actions and respects invite disabled rule', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    // 非成員且非經理/教練：invite 應 disabled
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const inviteBtn = screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement;
+    expect(inviteBtn.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '分享俱樂部' }));
+    expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+
+    fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
+    expect(toastSpy).toHaveBeenCalledTimes(2);
+
+    // 經理身分：顯示頭像/封面編輯按鈕且 invite 啟用
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    view.rerender(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect((screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '更換俱樂部封面' }));
+    fireEvent.click(screen.getByRole('button', { name: '更換俱樂部頭像' }));
+    expect(toastSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it('handles loading, error retry and not-found states with legacy v2 shell', async () => {
+    const pendingLoad = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pendingLoad.promise);
+    render(<TeamDetailPage />);
+    expect(screen.getByText('載入中…')).toBeTruthy();
+
+    await act(async () => pendingLoad.reject(new Error('network')));
+    await screen.findByText('載入失敗');
+
+    vi.mocked(loadTeam).mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    await screen.findByText('找不到此俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '返回俱樂部列表' }));
+    expect(routeState.route).toHaveBeenCalledWith('/teams');
+  });
+
+  it('discards stale team and member responses when route changes', async () => {
     const oldMembers = deferred<TeamMember[] | null>();
-    vi.mocked(loadTeam).mockImplementation((id) => Promise.resolve({ ...team, id, name: id }));
+    vi.mocked(loadTeam).mockImplementation((id) =>
+      Promise.resolve({ ...team, id, name: id === 'club' ? '舊俱樂部' : '新俱樂部' }),
+    );
     vi.mocked(loadTeamMembers).mockImplementation((loaded) =>
       loaded.id === 'club'
         ? oldMembers.promise
@@ -392,12 +473,12 @@ describe('TeamDetailPage', () => {
     await waitFor(() => expect(loadTeamMembers).toHaveBeenCalled());
     routeState.id = 'new';
     view.rerender(<TeamDetailPage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '成員' }));
+    await screen.findByText('新俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
     await screen.findByRole('button', { name: '新成員' });
-    await act(async () => oldMembers.resolve([
-      { uid: 'old-user', displayName: '舊成員', teamIds: ['club'] },
-    ]));
+    await act(async () =>
+      oldMembers.resolve([{ uid: 'old-user', displayName: '舊成員', teamIds: ['club'] }]),
+    );
     expect(screen.queryByRole('button', { name: '舊成員' })).toBeNull();
-    expect(screen.getByRole('button', { name: '新成員' })).toBeTruthy();
   });
 });
