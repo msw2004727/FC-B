@@ -8,6 +8,8 @@ import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
 import { getActiveRoutes, getNavItems, useRegistryVersion } from '@/core/feature-registry';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import { on } from '@/core/events';
+import { APP_VERSION } from '@/version';
+import '@/styles/legacy/version-tag.css';
 import type { AuthUser } from '@/data/auth';
 import { toast } from '@/ui/Toast';
 
@@ -376,7 +378,8 @@ export function SideDrawer({
                 >
                   <span data-i18n="下載APP">{lt('下載APP', '下載APP')}</span>
                 </button>
-                <div class="home-version-tag" id="home-version-tag" />
+                {/* A `_renderHomeVersionTag`：側邊選單底部顯示 `v{版號}`（版號規則見 src/version.ts）。 */}
+                <div class="home-version-tag" id="home-version-tag">{`v${APP_VERSION}`}</div>
               </div>
             </div>
           </div>

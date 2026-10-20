@@ -1,0 +1,15 @@
+/* 取自 A css/home.css 第 2007～2020 行（原樣）：側邊選單底部版號。A 全站載入 home.css；B 的側邊選單是全站元件，所以單獨抽出全站載入。 */
+/* Version Tag — fixed above bottom tab bar */
+.home-version-tag {
+  position: static;
+  align-self: flex-end;
+  margin-top: .28rem;
+  font-size: .62rem;
+  color: var(--text-muted);
+  opacity: .55;
+  letter-spacing: .02em;
+  user-select: text;
+  pointer-events: auto;
+  line-height: 1;
+  text-align: right;
+}
