@@ -65,8 +65,8 @@ describe('App authentication', () => {
     });
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: t('ui.topBar.login') })).toBeNull();
-      // 測試同步更新（R-QA-005）：頂部列改照 A，登入後頭像連到個人檔案。
-      expect(screen.getByRole('link', { name: '個人檔案' })).toBeTruthy();
+      // 測試同步更新（R-QA-005）：頂部列照 A，登入後顯示頭像（點了開名字／個人檔案／登出選單，M-017）。
+      expect(document.querySelector('#line-user-topbar #line-avatar-topbar')).toBeTruthy();
     });
   });
 

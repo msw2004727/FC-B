@@ -933,7 +933,8 @@ describe('本機 QR', () => {
   it('未登入不產生 QR', () => {
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     render(<QrPage />);
-    expect(screen.getByText(zh.guest)).toBeTruthy();
+    // 測試同步更新（R-QA-005）：站長決定訪客改顯示登入提示（M-029＋U-006）。
+    expect(screen.getByText('登入後即可顯示簽到 QR Code')).toBeTruthy();
     expect(renderQrToCanvas).not.toHaveBeenCalled();
   });
 
@@ -984,14 +985,16 @@ describe('本機 QR', () => {
 
     vi.mocked(useViewer).mockReturnValue(viewer('U-new'));
     result.rerender(<QrPage />);
-    expect(await screen.findByText('U-new')).toBeTruthy();
+    // 測試同步更新（R-QA-005）：照 A，一般用戶不顯示 UID 文字（M-026），改以產生 QR 的呼叫判斷。
+    await waitFor(() =>
+      expect(renderQrToCanvas).toHaveBeenLastCalledWith(expect.any(HTMLCanvasElement), 'U-new'));
 
     await act(async () => {
       oldRender.resolve(undefined);
       await oldRender.promise;
     });
     expect(screen.queryByText('U-old')).toBeNull();
-    expect(screen.getByText('U-new')).toBeTruthy();
+    expect(renderQrToCanvas).toHaveBeenLastCalledWith(expect.any(HTMLCanvasElement), 'U-new');
     expect(document.querySelectorAll('canvas')).toHaveLength(1);
   });
 

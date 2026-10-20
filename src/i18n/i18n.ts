@@ -101,6 +101,8 @@ function notify(): void {
 function readPref(): Locale | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
+    // M-012：站長決定拿掉简体中文選項；使用者原本存的是 zh-CN 時改用 zh-TW。
+    if (v === 'zh-CN') return 'zh-TW';
     if (v && (LOCALES as readonly string[]).includes(v)) return v as Locale;
   } catch {
     /* 忽略 */
@@ -256,7 +258,9 @@ export async function initLocale(): Promise<void> {
   if (typeof navigator !== 'undefined' && Array.isArray(navigator.languages)) {
     candidates.push(...navigator.languages);
   }
-  const locale = resolveLocale(candidates);
+  const resolved = resolveLocale(candidates);
+  // M-012：站長決定選單拿掉简体中文，若初始化解析為 zh-CN 則改用 zh-TW。
+  const locale: Locale = resolved === 'zh-CN' ? 'zh-TW' : resolved;
   await setLocaleInternal(locale, { persist: false });
 }
 

@@ -1,8 +1,8 @@
 import type { JSX } from 'preact';
 import { SHOW_EXP } from '@/core/exp-display';
 import { useEffect, useState } from 'preact/hooks';
-import { useLocation } from 'preact-iso';
 
+import { emit } from '@/core/events';
 import { useUserRoles } from '@/data/user-roles';
 import { lt } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -105,7 +105,6 @@ export function LegacyProfileTopSection({
   viewer: ViewerView;
   summary: UserAttendanceSummary | null;
 }): JSX.Element {
-  const location = useLocation();
   const rolesMap = useUserRoles([uid]);
   const effectiveRole = resolveEffectiveRole(profile, rolesMap[uid]);
   const roleInfo = ROLE_DISPLAY_MAP[effectiveRole] ?? ROLE_DISPLAY_MAP.user;
@@ -158,7 +157,7 @@ export function LegacyProfileTopSection({
           )}
           <button
             type="button"
-            onClick={() => location.route('/profile/qr')}
+            onClick={() => emit('qr:open', {})}
             style="background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center"
             title="顯示簽到 QR Code"
             aria-label="顯示簽到 QR Code"

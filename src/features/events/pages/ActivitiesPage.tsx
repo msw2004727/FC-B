@@ -2,7 +2,11 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
-import { on } from '@/core/events';
+import {
+  getActiveSport,
+  normalizeActiveSport,
+  useActiveSport,
+} from '@/core/sport-filter';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -37,6 +41,60 @@ interface DayGroup {
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
 const REGIONS = ['中部', '北部', '南部', '東部&外島', '全部'] as const;
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+
+const REGION_SLUGS: Readonly<Record<string, string>> = {
+  all: '全部',
+  north: '北部',
+  central: '中部',
+  south: '南部',
+  'east-islands': '東部&外島',
+};
+
+const ACTIVITY_URL_TYPES = ['play', 'camp', 'watch', 'external'] as const;
+const ACTIVITY_URL_FILTER_KEYS = ['region', 'sport', 'tab', 'type'] as const;
+
+function normalizeActivityUrlRegion(value: string | null | undefined): string {
+  const raw = String(value ?? '').trim().replace(/&amp;/g, '&');
+  if (!raw) return '全部';
+  const lower = raw.toLowerCase();
+  if (REGION_SLUGS[lower]) return REGION_SLUGS[lower]!;
+  return Object.values(REGION_SLUGS).includes(raw) ? raw : '全部';
+}
+
+function getActivityRegionSlug(region: string): string {
+  const normalized = normalizeActivityUrlRegion(region);
+  const found = Object.entries(REGION_SLUGS).find(([, label]) => label === normalized);
+  return found ? found[0] : 'all';
+}
+
+function normalizeActivityUrlType(value: string | null | undefined): string {
+  const raw = String(value ?? '').trim();
+  return (ACTIVITY_URL_TYPES as readonly string[]).includes(raw) ? raw : '';
+}
+
+function readUrlFilters(urlStr: string): {
+  hasExplicit: boolean;
+  hasSportParam: boolean;
+  region: string;
+  sport: string;
+  tab: 'normal' | 'female';
+  type: string;
+} {
+  const parsed = new URL(urlStr || '/activities', 'https://toosterx.invalid');
+  const params = parsed.searchParams;
+  const hasExplicit = ACTIVITY_URL_FILTER_KEYS.some((key) => params.has(key));
+  const hasSportParam = params.has('sport');
+  const requestedTab = params.get('tab');
+  const normalizedTab = normalizeListTab(requestedTab);
+  return {
+    hasExplicit,
+    hasSportParam,
+    region: normalizeActivityUrlRegion(params.get('region')),
+    sport: normalizeActiveSport(params.get('sport')),
+    tab: normalizedTab === 'female' ? 'female' : 'normal',
+    type: normalizeActivityUrlType(params.get('type')),
+  };
+}
 
 function normalizeActivitySearchValue(value: unknown): string {
   return String(value || '')
@@ -114,18 +172,21 @@ export default function ActivitiesPage(): JSX.Element {
   const location = useLocation();
   const data = useEvents(viewer.uid);
 
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const initialUrlFilters = useMemo(() => readUrlFilters(location.url), []);
+  const [globalSport, setGlobalSport] = useActiveSport();
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [filterType, setFilterType] = useState('');
+  const [filterType, setFilterType] = useState<string>(() => initialUrlFilters.type);
   const [filterKeyword, setFilterKeyword] = useState('');
-  const [regionTab, setRegionTab] = useState<string>('全部');
+  const [regionTab, setRegionTab] = useState<string>(() => initialUrlFilters.region);
   const [pendingEventId, setPendingEventId] = useState<string | null>(null);
   const [viewerRegistrations, setViewerRegistrations] = useState<ViewerRegistrationsState>({
     uid: null,
     docs: [],
   });
   const registrationRequestSeq = useRef(0);
+  const lastSyncedUrlRef = useRef<string>(location.url);
 
   const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
   const showCreateButton = useMemo(
@@ -137,15 +198,71 @@ export default function ActivitiesPage(): JSX.Element {
     [viewer],
   );
 
-  const url = new URL(location.url, 'https://toosterx.invalid');
-  const sport = url.searchParams.get('sport')?.trim() ?? '';
-  const requestedTab = url.searchParams.get('tab');
-  const normalizedTab = normalizeListTab(requestedTab);
-  const activeTab = normalizedTab === 'female' ? 'female' : 'normal';
+  const urlFilters = readUrlFilters(location.url);
+  const activeTab = urlFilters.tab;
+  // M-024：網址帶 ?sport= 時優先並同步回全站；沒帶時套用全站記憶的 activeSport
+  const effectiveSport = urlFilters.hasSportParam
+    ? urlFilters.sport
+    : (globalSport || getActiveSport() || 'all');
 
+  // 當外部改變 location.url（例如首次進入帶 ?sport=、?region=、?type=、?tab=）時同步進狀態與全站運動
   useEffect(() => {
-    return on('sport:picker-open', () => setPickerOpen(true));
-  }, []);
+    const parsed = readUrlFilters(location.url);
+    const current = new URL(location.url, 'https://toosterx.invalid');
+    const requestedTab = current.searchParams.get('tab');
+    if (requestedTab !== null && requestedTab !== 'normal' && requestedTab !== 'female') {
+      const nextTab = normalizeListTab(requestedTab);
+      current.searchParams.set('tab', nextTab === 'female' ? 'female' : 'normal');
+      location.route(`${current.pathname}${current.search}${current.hash}`, true);
+      return;
+    }
+
+    if (parsed.hasSportParam && parsed.sport !== getActiveSport()) {
+      setGlobalSport(parsed.sport);
+    }
+    if (location.url !== lastSyncedUrlRef.current && parsed.hasExplicit) {
+      setRegionTab(parsed.region);
+      setFilterType(parsed.type);
+      lastSyncedUrlRef.current = location.url;
+    }
+  }, [location.url, location.route, setGlobalSport]);
+
+  // M-024：當運動／地區／類型在活動頁變動時，照 A `_syncActivityUrlFilters` 同步到網址
+  // 全站運動是這次 render 才改的（使用者從頂部下拉選）→ 用全站值寫網址；
+  // 否則（剛進頁、網址帶 ?sport=）保留網址上的值，避免讀網址的同步還沒跑完就把分享連結的運動參數清掉。
+  const prevGlobalSportRef = useRef(globalSport);
+  useEffect(() => {
+    const globalChanged = prevGlobalSportRef.current !== globalSport;
+    prevGlobalSportRef.current = globalSport;
+    const current = new URL(location.url, 'https://toosterx.invalid');
+    if (current.pathname && current.pathname !== '/activities') return;
+
+    const regionSlug = getActivityRegionSlug(regionTab);
+    if (regionSlug !== 'all') {
+      current.searchParams.set('region', regionSlug);
+    } else {
+      current.searchParams.delete('region');
+    }
+
+    const normSport = normalizeActiveSport(globalChanged ? globalSport : effectiveSport);
+    if (normSport !== 'all') {
+      current.searchParams.set('sport', normSport);
+    } else {
+      current.searchParams.delete('sport');
+    }
+
+    if (filterType) {
+      current.searchParams.set('type', filterType);
+    } else {
+      current.searchParams.delete('type');
+    }
+
+    const target = `${current.pathname || '/activities'}${current.search}${current.hash}`;
+    lastSyncedUrlRef.current = target;
+    if (target !== location.url) {
+      location.route(target, true);
+    }
+  }, [regionTab, globalSport, effectiveSport, filterType, location.url, location.route]);
 
   useEffect(() => {
     const sequence = ++registrationRequestSeq.current;
@@ -174,25 +291,6 @@ export default function ActivitiesPage(): JSX.Element {
     };
   }, [viewer.uid]);
 
-  useEffect(() => {
-    const current = new URL(location.url, 'https://toosterx.invalid');
-    const requested = current.searchParams.get('tab');
-    if (requested !== null && requested !== 'normal' && requested !== 'female') {
-      const nextTab = normalizeListTab(requested);
-      current.searchParams.set('tab', nextTab === 'female' ? 'female' : 'normal');
-      location.route(`${current.pathname}${current.search}${current.hash}`, true);
-    }
-  }, [location.url, location.route]);
-
-  function selectSport(value: string): void {
-    const next = new URL(location.url, 'https://toosterx.invalid');
-    if (value) next.searchParams.set('sport', value);
-    else next.searchParams.delete('sport');
-    next.searchParams.set('tab', activeTab);
-    location.route(`${next.pathname}${next.search}${next.hash}`);
-    setPickerOpen(false);
-  }
-
   function switchActivityTab(nextTab: string, e?: MouseEvent): void {
     if (e) e.stopPropagation();
     // 下一批補：月曆檢視、新手友善、高強度篩選
@@ -202,7 +300,9 @@ export default function ActivitiesPage(): JSX.Element {
     }
     const next = new URL(location.url, 'https://toosterx.invalid');
     next.searchParams.set('tab', nextTab);
-    location.route(`${next.pathname}${next.search}${next.hash}`);
+    const target = `${next.pathname}${next.search}${next.hash}`;
+    lastSyncedUrlRef.current = target;
+    location.route(target);
   }
 
   function handleUnavailableFeature(e?: MouseEvent): void {
@@ -218,6 +318,23 @@ export default function ActivitiesPage(): JSX.Element {
     location.route(href);
   }
 
+  // U-026：空狀態一鍵清除地區、運動、類型、關鍵字
+  function handleClearAllFilters(): void {
+    setRegionTab('全部');
+    setFilterType('');
+    setFilterKeyword('');
+    setGlobalSport('all');
+    const next = new URL(location.url, 'https://toosterx.invalid');
+    next.searchParams.delete('region');
+    next.searchParams.delete('sport');
+    next.searchParams.delete('type');
+    const target = `${next.pathname}${next.search}${next.hash}`;
+    lastSyncedUrlRef.current = target;
+    if (target !== location.url) {
+      location.route(target, true);
+    }
+  }
+
   const registrations = viewerRegistrations.uid === viewer.uid
     ? viewerRegistrations.docs
     : [];
@@ -226,7 +343,7 @@ export default function ActivitiesPage(): JSX.Element {
     const nowMs = Date.now();
     let list = getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[];
     list = filterByRegionTab(list, regionTab);
-    list = filterBySportTag(list, sport || 'all');
+    list = filterBySportTag(list, effectiveSport || 'all');
     list = list.filter((e) => !isEventInEndedTab(e, nowMs));
     if (activeTab === 'female') {
       list = list.filter((e) => getEventAllowedGender(e) === '女');
@@ -239,7 +356,7 @@ export default function ActivitiesPage(): JSX.Element {
       list = list.filter((e) => matchesActivityKeyword(e, kw));
     }
     return list;
-  }, [data.events, viewer, registrations, regionTab, sport, activeTab, filterType, filterKeyword]);
+  }, [data.events, viewer, registrations, regionTab, effectiveSport, activeTab, filterType, filterKeyword]);
 
   const monthGroups = useMemo(() => {
     const groups: Record<string, Record<number, DayGroup>> = {};
@@ -609,7 +726,15 @@ export default function ActivitiesPage(): JSX.Element {
             </div>
           ) : sortedMonthKeys.length === 0 ? (
             <div style="padding:1.5rem;font-size:.82rem;color:var(--text-muted);text-align:center">
-              沒有符合條件的活動
+              <div>請確認「右上角」活動類別，當前沒有活動</div>
+              <button
+                type="button"
+                id="activity-clear-filters-btn"
+                style="margin-top:.5rem;background:none;border:none;color:var(--text-muted);font-size:.78rem;text-decoration:underline;cursor:pointer;padding:.25rem .5rem"
+                onClick={handleClearAllFilters}
+              >
+                清除篩選
+              </button>
             </div>
           ) : (
             sortedMonthKeys.map((monthKey) => {
@@ -679,53 +804,6 @@ export default function ActivitiesPage(): JSX.Element {
             <div class="evt-cal-skeleton-cell" />
           </div>
         </div>
-
-        {/* ASSUMPTION: TopBar 觸發 sport:picker-open 時以原生對話框提供運動別切換，不使用 B 的 ui/* 元件 */}
-        {pickerOpen && (
-          <div
-            class="host-list-overlay open"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('events.chooseSport')}
-            onClick={() => setPickerOpen(false)}
-          >
-            <div class="host-list-modal open" onClick={(e) => e.stopPropagation()}>
-              <div class="host-list-header">
-                <h3>{t('events.chooseSport')}</h3>
-                <button
-                  type="button"
-                  class="modal-close"
-                  aria-label="關閉"
-                  onClick={() => setPickerOpen(false)}
-                >
-                  ✕
-                </button>
-              </div>
-              <div class="host-list-body">
-                <button
-                  type="button"
-                  class={`region-tab${!sport ? ' active' : ''}`}
-                  aria-pressed={!sport}
-                  onClick={() => selectSport('')}
-                >
-                  {t('events.sport.all')}
-                </button>
-                {SPORTS.map((item) => (
-                  <button
-                    type="button"
-                    key={item.key}
-                    class={`region-tab${sport === item.sportTag ? ' active' : ''}`}
-                    aria-pressed={sport === item.sportTag}
-                    onClick={() => selectSport(item.sportTag)}
-                  >
-                    <span aria-hidden="true">{item.symbol}</span>
-                    {t(`events.sport.${item.key}`)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         <EventFormModal
           open={createModalOpen}

@@ -1,5 +1,6 @@
 import { useMemo } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { emit } from '@/core/events';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { toast } from '@/ui/Toast';
 import { lt } from '@/i18n/i18n';
@@ -10,8 +11,10 @@ export interface BottomNavProps {
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 
-function isTabActive(currentPath: string, tabKey: 'tournaments' | 'teams' | 'home' | 'activities' | 'profile', qrActive: boolean): boolean {
-  if (qrActive) return false;
+function isTabActive(
+  currentPath: string,
+  tabKey: 'tournaments' | 'teams' | 'home' | 'activities' | 'profile',
+): boolean {
   const normalized = currentPath.startsWith('/events/') ? '/activities' : currentPath;
   switch (tabKey) {
     case 'tournaments':
@@ -37,13 +40,10 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
     const set = new Set(routes.map((r) => r.path));
     return {
       activePaths: set,
-      // A 中央鈕是「我的 QR Code」（App._openQrPopup，顯示本人身分 QR），對到 B 的 /profile/qr，不是掃碼頁。
+      // A 中央鈕是「我的 QR Code」（App._openQrPopup，原頁彈窗顯示本人身分 QR）。
       hasCheckin: set.has('/profile/qr'),
     };
   }, [registryVersion]);
-
-  const qrPath = '/profile/qr';
-  const qrActive = hasCheckin && path === qrPath;
 
   const navigateOrToast = (targetPath: string): void => {
     if (activePaths.has(targetPath)) {
@@ -56,17 +56,19 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
 
   const handleQrClick = (): void => {
     if (hasCheckin) {
-      location.route(qrPath);
+      // M-025：照 A `App._openQrPopup()` 在原頁開啟 #uid-qr-modal 彈窗，不換頁。
+      emit('qr:open', {});
     } else {
       toast.show({ message: UNAVAILABLE_MSG });
     }
   };
 
-  const tournamentsActive = isTabActive(path, 'tournaments', qrActive);
-  const teamsActive = isTabActive(path, 'teams', qrActive);
-  const homeActive = isTabActive(path, 'home', qrActive);
-  const activitiesActive = isTabActive(path, 'activities', qrActive);
-  const profileActive = isTabActive(path, 'profile', qrActive);
+  // M-025：彈窗不算換頁，中央 QR 鈕不標為 active 分頁；5 個主分頁照目前路徑計算 active。
+  const tournamentsActive = isTabActive(path, 'tournaments');
+  const teamsActive = isTabActive(path, 'teams');
+  const homeActive = isTabActive(path, 'home');
+  const activitiesActive = isTabActive(path, 'activities');
+  const profileActive = isTabActive(path, 'profile');
 
   return (
     <div class="legacy-ui legacy-chrome">
@@ -113,10 +115,9 @@ export function BottomNav({ class: className }: BottomNavProps): preact.JSX.Elem
           {hasCheckin && (
             <button
               type="button"
-              class={`bot-tab-qr${qrActive ? ' active' : ''}`}
+              class="bot-tab-qr"
               aria-label={lt('我的 QR Code', '我的 QR Code')}
               data-i18n-aria-label="我的 QR Code"
-              aria-current={qrActive ? 'page' : undefined}
               onClick={handleQrClick}
             >
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">

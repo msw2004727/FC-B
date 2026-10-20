@@ -1,0 +1,27 @@
+/* U-008：頂部列小按鈕（選單鈕、運動鈕、通知鈕、頭像）用透明偽元素把可點範圍擴到 44px，外觀不變且互不重疊 */
+.legacy-ui.legacy-chrome #menu-toggle,
+.legacy-ui.legacy-chrome #sport-picker-btn,
+.legacy-ui.legacy-chrome #notif-btn,
+.legacy-ui.legacy-chrome #line-avatar-topbar {
+  position: relative;
+}
+
+.legacy-ui.legacy-chrome #menu-toggle::before,
+.legacy-ui.legacy-chrome #sport-picker-btn::before,
+.legacy-ui.legacy-chrome #notif-btn::before,
+.legacy-ui.legacy-chrome #line-avatar-topbar::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  background: transparent;
+}
+
+/* U-004：鍵盤焦點在運動下拉項目上的可見提示（不改變滑鼠外觀） */
+.legacy-ui.legacy-chrome .sport-picker-item:focus-visible {
+  outline: 2px solid var(--accent, #0d9488);
+  outline-offset: -2px;
+}

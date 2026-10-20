@@ -31,6 +31,7 @@ import { firebaseTargetLabel } from '@/data/firebase';
 import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { useViewer } from '@/features/profile/data/viewer';
+import { LazyUidQrModal } from './LazyUidQrModal';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
@@ -230,6 +231,9 @@ export function App({
         routeAccess={gateState === true ? routeAccess : null}
       />
       {gateState === true && <ViewerAccessBridge onChange={setRouteAccess} />}
+      {gateState === true && (
+        <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
+      )}
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>

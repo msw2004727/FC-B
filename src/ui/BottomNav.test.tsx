@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { BottomNav } from './BottomNav';
+import { on } from '@/core/events';
 import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
 import { manifest as home } from '@/features/home';
 import { manifest as events } from '@/features/events';
@@ -61,20 +62,46 @@ describe('BottomNav (legacy A DOM & CSS)', () => {
     expect(homeTab?.classList.contains('active')).toBe(true);
   });
 
-  // 測試同步更新（R-QA-005）：照 A，中央鈕是「我的 QR Code」（/profile/qr），不是掃碼頁。
-  it('marks only QR active on /profile/qr', () => {
-    history.replaceState(null, '', '/profile/qr');
-    const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
-    expect(container.querySelectorAll('.bot-tab.active').length).toBe(0);
-    expect(container.querySelector('.bot-tab-qr')?.getAttribute('aria-current')).toBe('page');
+  // M-025：點中央 QR 按鈕發出 qr:open 在原頁彈窗，不換頁，且原分頁維持 active。
+  it('emits qr:open without changing route when clicking center QR button (M-025)', async () => {
+    history.replaceState(null, '', '/activities');
+    const qrOpenListener = vi.fn();
+    const stop = on('qr:open', qrOpenListener);
+
+    try {
+      const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
+      const qrBtn = container.querySelector<HTMLButtonElement>('.bot-tab-qr');
+      expect(qrBtn).not.toBeNull();
+
+      await act(() => {
+        fireEvent.click(qrBtn!);
+      });
+
+      expect(qrOpenListener).toHaveBeenCalledTimes(1);
+      expect(location.pathname).toBe('/activities');
+      expect(qrBtn?.classList.contains('active')).toBe(false);
+
+      const activeTabs = container.querySelectorAll('.bot-tab.active');
+      expect(activeTabs.length).toBe(1);
+      expect(activeTabs[0]?.getAttribute('data-page')).toBe('page-activities');
+    } finally {
+      stop();
+    }
   });
 
-  it('marks profile active for /profile', () => {
+  it('marks profile active for /profile and /profile/qr', () => {
     history.replaceState(null, '', '/profile');
-    const { container } = render(<LocationProvider><BottomNav /></LocationProvider>);
+    const { container, unmount } = render(<LocationProvider><BottomNav /></LocationProvider>);
     const activeTabs = container.querySelectorAll('.bot-tab.active');
     expect(activeTabs.length).toBe(1);
     expect(activeTabs[0]?.getAttribute('data-page')).toBe('page-profile');
+    unmount();
+
+    history.replaceState(null, '', '/profile/qr');
+    const rendered = render(<LocationProvider><BottomNav /></LocationProvider>);
+    const qrActiveTabs = rendered.container.querySelectorAll('.bot-tab.active');
+    expect(qrActiveTabs.length).toBe(1);
+    expect(qrActiveTabs[0]?.getAttribute('data-page')).toBe('page-profile');
   });
 
   it.each(['/activities', '/events/public-event'])('marks activities active on %s', (path) => {

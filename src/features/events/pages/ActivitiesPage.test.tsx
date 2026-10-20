@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
-import { emit } from '@/core/events';
+import { ACTIVE_SPORT_STORAGE_KEY, _resetSportFilterForTest, setActiveSport } from '@/core/sport-filter';
 import { _resetUseEventsForTest } from '../data/use-events';
 import { _clearEventsSnapshotForTest } from '../data/events-snapshot-cache';
 import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
@@ -68,6 +68,9 @@ function mount(): ReturnType<typeof render> {
 }
 
 beforeEach(async () => {
+  // 運動選擇會記在 localStorage（照 A），每案先清掉再重設全站狀態。
+  try { localStorage.removeItem(ACTIVE_SPORT_STORAGE_KEY); } catch { /* ignore */ }
+  _resetSportFilterForTest();
   // stale-first：上一案載入的活動留在記憶體／本機快照，每案先清掉。
   _resetUseEventsForTest();
   _clearEventsSnapshotForTest();
@@ -255,14 +258,13 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeNull();
   });
 
-  it('opens the sport dialog from the app event and updates the URL', async () => {
+  // 測試同步更新（R-QA-005）：照 A，運動改由頂部下拉選（全站共用狀態），活動頁不再有自己的置中彈窗（M-019、M-020）。
+  it('follows the top-bar sport picker and writes the sport into the URL', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
     });
-    await act(() => emit('sport:picker-open', {}));
-    const dialog = screen.getByRole('dialog', { name: t('events.chooseSport') });
-    fireEvent.click(within(dialog).getByRole('button', { name: new RegExp(t('events.sport.pickleball')) }));
+    await act(() => { setActiveSport('pickleball'); });
     await waitFor(() => {
       expect(new URLSearchParams(window.location.search).get('sport')).toBe('pickleball');
       expect(container.querySelector('[data-event-id="public-football"]')).toBeNull();
@@ -288,9 +290,15 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('shows legacy empty text when no events match', async () => {
+  // 測試同步更新（R-QA-005）：空狀態文字照 A，並有站長同意的「清除篩選」（U-026）。
+  it('shows legacy empty text and clears filters when no events match', async () => {
     history.replaceState(null, '', '/activities?sport=dodgeball');
-    mount();
-    expect(await screen.findByText('沒有符合條件的活動')).toBeTruthy();
+    const { container } = mount();
+    expect(await screen.findByText('請確認「右上角」活動類別，當前沒有活動')).toBeTruthy();
+    fireEvent.click(screen.getByText('清除篩選'));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('sport')).toBeNull();
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
   });
 });

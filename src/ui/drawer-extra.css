@@ -1,0 +1,5 @@
+/* U-003：抽屜入口點擊回饋（:active 與 A layout.css 的 :hover 同色，手機點下立即變色） */
+.legacy-ui .drawer-item:active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}

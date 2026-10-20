@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { useActiveSport } from '@/core/sport-filter';
 import { EventFormModal } from '@/features/events/components/EventFormModal';
 import { canCreateEvent } from '@/features/events/data/event-create';
 import { createEventContextFromViewer } from '@/features/events/data/event-create-context';
@@ -10,6 +11,7 @@ import type { EventDoc } from '@/features/events/data/types';
 import { useEvents } from '@/features/events/data/use-events';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import { useViewer } from '@/features/profile/data/viewer';
+import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
 import { HomeBannerCarousel } from '../components/legacy/HomeBannerCarousel';
 import { HomeNextActivity } from '../components/legacy/HomeNextActivity';
@@ -23,7 +25,6 @@ import { parseEventDateRange } from '../data/next-activity';
 import '../legacy/home.css';
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
-const ACTIVE_SPORT_STORAGE_KEY = 'sporthub_active_sport';
 const HOME_ACTIVITY_REGION_KEY = 'toosterx_home_activity_region';
 const HOME_ACTIVITY_REGIONS = ['全部', '北部', '中部', '南部', '東部&外島'] as const;
 const HOME_ACTIVITY_TYPES = [
@@ -38,14 +39,6 @@ function numberText(value: number): string {
   const num = Number(value || 0);
   if (!Number.isFinite(num) || num <= 0) return '0';
   return Math.floor(num).toLocaleString('zh-TW');
-}
-
-function readStoredActiveSport(): string {
-  try {
-    return localStorage.getItem(ACTIVE_SPORT_STORAGE_KEY) || 'all';
-  } catch {
-    return 'all';
-  }
 }
 
 function readStoredRegion(): string {
@@ -75,11 +68,11 @@ export default function HomePage(): JSX.Element {
   const [banners, setBanners] = useState<BannerDoc[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<AnnouncementDoc | null>(null);
-  const [activeSport, setActiveSport] = useState<string>(() => readStoredActiveSport());
+  const [activeSport, setActiveSport] = useActiveSport();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchRegion, setSearchRegion] = useState<string>(() => readStoredRegion());
-  const [searchSport, setSearchSport] = useState<string>(() => readStoredActiveSport());
+  const [searchSport, setSearchSport] = useState<string>(() => activeSport || 'all');
   const [searchType, setSearchType] = useState<string>('');
 
   const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
@@ -161,13 +154,7 @@ export default function HomePage(): JSX.Element {
   }
 
   function handleSelectHomeSport(sportKey: string): void {
-    const safeKey = sportKey || 'all';
-    setActiveSport(safeKey);
-    try {
-      localStorage.setItem(ACTIVE_SPORT_STORAGE_KEY, safeKey);
-    } catch {
-      /* ignore */
-    }
+    const safeKey = setActiveSport(sportKey || 'all');
     if (safeKey && safeKey !== 'all') {
       const found = SPORTS.find((s) => s.key === safeKey);
       toast.show({ message: `已切換到${found?.label ?? '此運動'}` });
@@ -191,15 +178,14 @@ export default function HomePage(): JSX.Element {
   function handleSubmitSearchModal(): void {
     try {
       localStorage.setItem(HOME_ACTIVITY_REGION_KEY, searchRegion);
-      localStorage.setItem(ACTIVE_SPORT_STORAGE_KEY, searchSport || 'all');
     } catch {
       /* ignore */
     }
-    setActiveSport(searchSport || 'all');
+    const safeSport = setActiveSport(searchSport || 'all');
     setSearchModalOpen(false);
     const params = new URLSearchParams();
-    if (searchSport && searchSport !== 'all') {
-      params.set('sport', searchSport);
+    if (safeSport && safeSport !== 'all') {
+      params.set('sport', safeSport);
     }
     const qs = params.toString();
     location.route(qs ? `/activities?${qs}` : '/activities');
@@ -354,9 +340,7 @@ export default function HomePage(): JSX.Element {
                   class={`home-sport-chip-mark home-sport-chip-mark-${item.key}`}
                   aria-hidden="true"
                 >
-                  <span class="sport-emoji" aria-hidden="true">
-                    {item.symbol}
-                  </span>
+                  <SportIcon sportKey={item.key} />
                 </span>
                 <span class="home-sport-chip-text">
                   <span class="home-sport-chip-label">{item.label}</span>

@@ -15,6 +15,8 @@ export interface AppEvents {
   'viewer:refresh': Record<string, never>;
   /** 頂部列運動項目切換鈕被點擊（功能待活動模組實作）。 */
   'sport:picker-open': Record<string, never>;
+  /** 開啟本人簽到／UID QR Code 彈窗（M-025、M-027）。 */
+  'qr:open': Record<string, never>;
 }
 
 type Handler<K extends keyof AppEvents> = (payload: AppEvents[K]) => void;

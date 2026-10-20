@@ -1,17 +1,42 @@
+import './drawer-extra.css';
+import '@/styles/legacy/version-tag.css';
 import type { RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { getCurrentLocale, lt, setLocale, useT } from '@/i18n/i18n';
-import { LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
+import { DRAWER_LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
-import { getActiveRoutes, getNavItems, useRegistryVersion } from '@/core/feature-registry';
-import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
+import type { RouteAccessContext } from '@/core/feature-types';
 import { on } from '@/core/events';
 import { APP_VERSION } from '@/version';
-import '@/styles/legacy/version-tag.css';
 import type { AuthUser } from '@/data/auth';
 import { toast } from '@/ui/Toast';
+import {
+  buildDrawerRenderNodes,
+  getMiniAppShareUrl,
+  resolveDrawerRoleInfo,
+  type CustomRoleInput,
+  type DrawerMenuEntry,
+} from './drawer-menu';
+import {
+  readLocalAdminStealth,
+  syncAdminStealthFromUser,
+  toggleAdminStealth,
+} from '@/data/stealth';
+import {
+  copyTextToClipboard,
+  getDeferredInstallPrompt,
+  initPwaInstallListener,
+  isStandalonePwa,
+} from '@/features/pwa/pwa-install';
+import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
+
+export interface SideDrawerIdentity {
+  readonly identityId?: 'primary' | 'secondary' | string;
+  readonly displayName?: string | null;
+  readonly avatarCandidates?: readonly string[];
+}
 
 export interface SideDrawerProps {
   open: boolean;
@@ -21,8 +46,16 @@ export interface SideDrawerProps {
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
   loginError?: boolean;
-  /** 登入者權限摘要；用來篩選有 drawerVisibleIf 的入口。 */
-  routeAccess?: RouteAccessContext | null;
+  /** 登入者權限與 Viewer 資料（含 Firestore displayName、pictureUrl、permissionSources）。 */
+  routeAccess?: (RouteAccessContext & {
+    displayName?: string | null;
+    pictureUrl?: string | null;
+    permissionSources?: {
+      customRoles?: readonly CustomRoleInput[];
+    };
+  }) | null;
+  /** 選填：第二身份解析（照 A `getCurrentIdentity('chrome')`）。 */
+  identity?: SideDrawerIdentity | null;
 }
 
 const FONT_STORAGE_KEY = 'sporthub_font_size';
@@ -30,6 +63,8 @@ const LEGACY_FONT_STEPS = ['15px', '16.5px', '18px'] as const;
 type LegacyFontStep = (typeof LEGACY_FONT_STEPS)[number];
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+const LOCKED_MSG = '功能尚未開放';
+const SWIPE_MIN_DX = 12;
 
 function readLegacyFontStep(): LegacyFontStep {
   try {
@@ -71,18 +106,6 @@ function fontBtnClass(step: LegacyFontStep): string {
   return 'drawer-font-btn';
 }
 
-function drawerOrder(titleKey: string): number {
-  switch (titleKey.split('.')[0]) {
-    case 'stats': case 'statistics': return 0;
-    case 'market': case 'marketplace': return 1;
-    case 'ranking': case 'leaderboard': return 2;
-    case 'manual': case 'guide': case 'help': return 3;
-    case 'share': return 4;
-    case 'application': case 'apply': return 5;
-    default: return 6;
-  }
-}
-
 function isEffectiveDark(mode: ThemeMode): boolean {
   if (typeof document !== 'undefined') {
     const attr = document.documentElement.getAttribute('data-theme');
@@ -98,28 +121,6 @@ function isEffectiveDark(mode: ThemeMode): boolean {
   } catch {
     return false;
   }
-}
-
-function roleLabel(role: string | undefined, signedIn: boolean): string {
-  if (!signedIn) return '未登入';
-  switch (role) {
-    case 'super_admin': return '最高管理員';
-    case 'admin': return '管理員';
-    case 'captain': return '俱樂部領隊';
-    case 'coach': return '活動主辦';
-    case 'venue_owner': return '場地主';
-    default: return '一般會員';
-  }
-}
-
-function routeRoleBgClass(route: FeatureRoute): string {
-  if (route.path.startsWith('/admin/super') || route.path === '/admin/logs') {
-    return 'drawer-role-super';
-  }
-  if (route.path.startsWith('/admin/')) {
-    return 'drawer-role-admin';
-  }
-  return '';
 }
 
 interface BodyLock {
@@ -156,21 +157,92 @@ function lockBody(body: HTMLElement): () => void {
   };
 }
 
+/** 照 A `confirmClearCache` 清除快取與登出並重載。 */
+async function executeClearCache(): Promise<void> {
+  try {
+    try {
+      const auth = await import('@/data/auth');
+      if (typeof auth.signOut === 'function') await auth.signOut();
+    } catch {
+      /* ignore */
+    }
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((n) => caches.delete(n)));
+      } catch {
+        /* ignore */
+      }
+    }
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      const lsKeys = Object.keys(localStorage);
+      for (const k of lsKeys) {
+        if (
+          k.startsWith('shub_c_')
+          || k.startsWith('shub_ts_')
+          || k.startsWith('shub_cache_')
+          || k.startsWith('LIFF')
+          || k.startsWith('toosterx:auth')
+        ) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.removeItem('sporthub_auto_exp_rules');
+      localStorage.removeItem('sporthub_auto_exp_logs');
+    } catch {
+      /* ignore */
+    }
+    try {
+      const idb = indexedDB as IDBFactory & {
+        databases?: () => Promise<Array<{ name?: string }>>;
+      };
+      if (typeof idb?.databases === 'function') {
+        const dbs = await idb.databases();
+        dbs.forEach((db) => {
+          if (db?.name) indexedDB.deleteDatabase(db.name);
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      sessionStorage.removeItem('_lineLoginRetryCount');
+    } catch {
+      /* ignore */
+    }
+  } finally {
+    if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+      try {
+        window.location.reload();
+      } catch {
+        /* ignore in test environment */
+      }
+    }
+  }
+}
+
 export function SideDrawer({
   open,
   onClose,
   returnFocusRef,
   user = null,
-  onLogin,
   loginPending = false,
   loginError = false,
   routeAccess = null,
+  identity = null,
 }: SideDrawerProps): preact.JSX.Element | null {
   const t = useT();
   const theme = useTheme();
   const location = useLocation();
   const path = location.path;
-  const registryVersion = useRegistryVersion();
   const panelRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   const returnRef = useRef(returnFocusRef);
@@ -178,35 +250,41 @@ export function SideDrawer({
   returnRef.current = returnFocusRef;
 
   const [fontStep, setFontStep] = useState<LegacyFontStep>(() => readLegacyFontStep());
-  const [locale, setLocaleState] = useState<Locale>(getCurrentLocale());
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    const cur = getCurrentLocale();
+    return cur === 'zh-CN' ? 'zh-TW' : cur;
+  });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [stealth, setStealth] = useState<boolean>(() => readLocalAdminStealth());
+  const [brokenUrls, setBrokenUrls] = useState<ReadonlySet<string>>(() => new Set());
+  const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
+  const [showApplyNotice, setShowApplyNotice] = useState(false);
+  const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
+  const [dragOffsetX, setDragOffsetX] = useState<number | null>(null);
+
   const loadingRef = useRef(false);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const request = useRef(0);
   const previousPath = useRef(path);
+  const touchStateRef = useRef<{ startX: number; startY: number; dragging: boolean; lastDx: number } | null>(null);
 
-  const routes = useMemo(() => {
-    const navPaths = new Set(getNavItems().map((item) => item.path));
-    return getActiveRoutes()
-      .filter((route) =>
-        !navPaths.has(route.path) &&
-        route.path !== '/checkin' &&
-        !/[:*]/.test(route.path) &&
-        (!route.drawerVisibleIf || (!!routeAccess && route.drawerVisibleIf(routeAccess))))
-      .sort((a, b) =>
-        Number(a.path.startsWith('/admin/')) - Number(b.path.startsWith('/admin/')) ||
-        drawerOrder(a.titleKey) - drawerOrder(b.titleKey));
-  }, [registryVersion, routeAccess]);
+  useEffect(() => {
+    initPwaInstallListener();
+  }, []);
 
   useEffect(() => {
     const step = readLegacyFontStep();
     setFontStep(step);
+    if (!open) setDragOffsetX(null);
   }, [open]);
 
   useEffect(() => {
-    const unsubscribe = on('locale:changed', ({ locale: next }) => setLocaleState(next));
-    setLocaleState(getCurrentLocale());
+    const unsubscribe = on('locale:changed', ({ locale: next }) => {
+      setLocaleState(next === 'zh-CN' ? 'zh-TW' : next);
+    });
+    const cur = getCurrentLocale();
+    setLocaleState(cur === 'zh-CN' ? 'zh-TW' : cur);
     return unsubscribe;
   }, []);
 
@@ -219,6 +297,34 @@ export function SideDrawer({
     if (previousPath.current !== path && open) onCloseRef.current();
     previousPath.current = path;
   }, [path, open]);
+
+  // 同步管理員隱身狀態
+  const signedInUid = user?.uid || routeAccess?.uid || null;
+  const effectiveRoleKey = routeAccess?.role && routeAccess.role !== 'guest'
+    ? routeAccess.role
+    : 'user';
+  const isAdminOrSuper = Boolean(signedInUid) && (effectiveRoleKey === 'admin' || effectiveRoleKey === 'super_admin');
+
+  useEffect(() => {
+    if (!signedInUid || !isAdminOrSuper) {
+      setStealth(readLocalAdminStealth());
+      return;
+    }
+    let alive = true;
+    syncAdminStealthFromUser(signedInUid)
+      .then((val) => {
+        if (alive) setStealth(val);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [signedInUid, isAdminOrSuper]);
+
+  // 當使用者登入或換帳號時清空壞圖記錄（照 A `App._forgetBrokenAvatarUrl`）
+  useEffect(() => {
+    setBrokenUrls(new Set());
+  }, [signedInUid, routeAccess?.pictureUrl, user?.pictureUrl]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -248,6 +354,12 @@ export function SideDrawer({
     };
   }, [open]);
 
+  const customRoles = routeAccess?.permissionSources?.customRoles ?? null;
+  const renderNodes = useMemo(
+    () => buildDrawerRenderNodes(routeAccess, undefined, customRoles),
+    [routeAccess, customRoles],
+  );
+
   const handleCycleFontSize = (): void => {
     const current = readLegacyFontStep();
     const next = nextLegacyFontStep(current);
@@ -260,14 +372,79 @@ export function SideDrawer({
     setTheme(dark ? 'light' : 'dark');
   };
 
-  const handleClearCache = (): void => {
+  const handleRoleTagClick = (): void => {
+    if (!isAdminOrSuper) return;
+    const next = toggleAdminStealth(signedInUid, stealth);
+    setStealth(next);
+    toast.show({ message: next ? '已開啟隱身模式' : '已關閉隱身模式' });
+  };
+
+  const handlePwaClick = (e: MouseEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    const deferred = getDeferredInstallPrompt();
+    if (deferred) {
+      deferred.prompt().catch(() => undefined);
+      deferred.userChoice.catch(() => undefined);
+      return;
+    }
+    if (isStandalonePwa()) {
+      toast.show({ message: '你已在使用 APP 版' });
+    }
+    setPwaStep('picker');
+  };
+
+  const handleMenuItemClick = (entry: DrawerMenuEntry): void => {
+    if (entry.locked || entry.action === 'coming-soon') {
+      toast.show({ message: LOCKED_MSG });
+      onCloseRef.current();
+      return;
+    }
+    if (entry.action === 'manual') {
+      if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        window.open('/manual.html', '_blank', 'noopener,noreferrer');
+      }
+      onCloseRef.current();
+      return;
+    }
+    if (entry.action === 'share') {
+      const shareUrl = getMiniAppShareUrl();
+      copyTextToClipboard(shareUrl)
+        .then((ok) => {
+          toast.show({ message: ok ? '已複製分享連結！' : '複製失敗，請手動複製' });
+        })
+        .catch(() => {
+          toast.show({ message: '複製失敗，請手動複製' });
+        });
+      onCloseRef.current();
+      return;
+    }
+    if (entry.action === 'apply-role') {
+      onCloseRef.current();
+      setShowApplyNotice(true);
+      return;
+    }
+    if (entry.routePath) {
+      location.route(entry.routePath);
+      onCloseRef.current();
+      return;
+    }
     toast.show({ message: UNAVAILABLE_MSG });
+    onCloseRef.current();
+  };
+
+  const handleConfirmApplyRole = (): void => {
+    setShowApplyNotice(false);
+    if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      window.open('https://toosterx.com/roles', '_blank', 'noopener,noreferrer');
+    }
+    onCloseRef.current();
   };
 
   const handleLocale = async (event: Event): Promise<void> => {
     const select = event.currentTarget as HTMLSelectElement;
     const value = select.value;
-    if (loadingRef.current || !(LOCALES as readonly string[]).includes(value)) return;
+    if (loadingRef.current || !(DRAWER_LOCALES as readonly string[]).includes(value)) return;
     const sequence = ++request.current;
     loadingRef.current = true;
     setLoading(true);
@@ -280,7 +457,8 @@ export function SideDrawer({
       await setLocale(value as Locale);
     } catch {
       if (sequence !== request.current) return;
-      select.value = getCurrentLocale();
+      const fallback = getCurrentLocale();
+      select.value = fallback === 'zh-CN' ? 'zh-TW' : fallback;
       setLoadError(true);
       errorTimer.current = setTimeout(() => {
         setLoadError(false);
@@ -289,66 +467,172 @@ export function SideDrawer({
     } finally {
       if (sequence === request.current) {
         loadingRef.current = false;
-        setLocaleState(getCurrentLocale());
+        const cur = getCurrentLocale();
+        setLocaleState(cur === 'zh-CN' ? 'zh-TW' : cur);
         setLoading(false);
       }
     }
   };
 
-  if (!open || typeof document === 'undefined') return null;
+  // U-001：左滑關閉手勢
+  const handleTouchStart = (e: TouchEvent): void => {
+    if (!open || e.touches.length !== 1) return;
+    const touch = e.touches[0]!;
+    touchStateRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      dragging: false,
+      lastDx: 0,
+    };
+  };
+
+  const handleTouchMove = (e: TouchEvent): void => {
+    const st = touchStateRef.current;
+    if (!st || !open || e.touches.length !== 1) return;
+    const touch = e.touches[0]!;
+    const dx = touch.clientX - st.startX;
+    const dy = touch.clientY - st.startY;
+
+    if (!st.dragging) {
+      if (Math.abs(dx) < SWIPE_MIN_DX) return;
+      if (Math.abs(dy) > Math.abs(dx) || dx >= 0) {
+        touchStateRef.current = null;
+        return;
+      }
+      st.dragging = true;
+    }
+
+    const clamped = Math.min(0, dx);
+    st.lastDx = clamped;
+    setDragOffsetX(clamped);
+  };
+
+  const handleTouchEnd = (): void => {
+    const st = touchStateRef.current;
+    touchStateRef.current = null;
+    if (!st || !st.dragging) return;
+    const width = panelRef.current?.offsetWidth || 280;
+    const shouldClose = Math.abs(st.lastDx) > width / 3;
+    setDragOffsetX(null);
+    if (shouldClose) {
+      onCloseRef.current();
+    }
+  };
+
+  if (typeof document === 'undefined') return null;
 
   const isDark = isEffectiveDark(theme);
-  const avatarInitial = (user?.displayName?.trim()?.[0] ?? '?').toUpperCase();
-  const displayName = user?.displayName || (user ? '會員' : '訪客');
-  const displayRole = roleLabel(routeAccess?.role, Boolean(user));
+  const isSignedIn = Boolean(user || routeAccess?.uid);
 
-  const normalRoutes = routes.filter((r) => !r.path.startsWith('/admin/'));
-  const adminRoutes = routes.filter((r) => r.path.startsWith('/admin/'));
+  // M-009 & M-010：抽屜頭部名字與頭像來源（優先 identity → Firestore viewer → AuthUser）
+  const isSecondaryIdentity = identity?.identityId === 'secondary';
+  const resolvedName = isSignedIn
+    ? (identity?.displayName || routeAccess?.displayName || user?.displayName || '同步中...')
+    : (loginPending ? '登入確認中...' : '未登入');
+
+  const candidateUrls: string[] = [];
+  if (isSignedIn) {
+    if (Array.isArray(identity?.avatarCandidates)) {
+      for (const u of identity.avatarCandidates) {
+        if (typeof u === 'string' && u.trim() && !candidateUrls.includes(u.trim())) {
+          candidateUrls.push(u.trim());
+        }
+      }
+    }
+    if (!isSecondaryIdentity) {
+      for (const u of [routeAccess?.pictureUrl, user?.pictureUrl]) {
+        if (typeof u === 'string' && u.trim() && !candidateUrls.includes(u.trim())) {
+          candidateUrls.push(u.trim());
+        }
+      }
+    }
+  }
+  const activeAvatarUrl = candidateUrls.find((u) => !brokenUrls.has(u)) ?? null;
+  const avatarInitial = isSignedIn
+    ? ((resolvedName.trim()[0] ?? '?').toUpperCase())
+    : '?';
+
+  // M-014 & M-015 & M-016：角色標籤文字、顏色與隱身切換
+  const roleInfo = resolveDrawerRoleInfo(effectiveRoleKey, isSignedIn, customRoles, loginPending);
+  const roleTagStyle: Record<string, string> = {
+    background: `${roleInfo.color}22`,
+    color: roleInfo.color,
+  };
+  if (isAdminOrSuper) {
+    roleTagStyle.cursor = 'pointer';
+    roleTagStyle.opacity = stealth ? '.45' : '1';
+  }
+
+  const drawerStyle: Record<string, string> | undefined = dragOffsetX !== null
+    ? { transform: `translateX(${dragOffsetX}px)`, transition: 'none' }
+    : undefined;
 
   return createPortal(
     <div class="legacy-ui legacy-chrome">
       <div
         id="drawer-overlay"
         class={open ? 'open' : ''}
-        onClick={() => onCloseRef.current()}
+        onClick={() => {
+          if (open) onCloseRef.current();
+        }}
       />
       <nav
         id="side-drawer"
         ref={panelRef}
         class={open ? 'open' : ''}
-        role="dialog"
-        aria-modal="true"
+        style={drawerStyle}
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? 'true' : undefined}
+        aria-hidden={open ? undefined : 'true'}
         aria-label={t('ui.sideDrawer.label')}
         tabIndex={-1}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
       >
         <div class="drawer-header">
           <div class="drawer-user">
-            {user?.pictureUrl ? (
-              <div class="drawer-avatar drawer-avatar-img" id="drawer-avatar">
-                <img src={user.pictureUrl} alt={user.displayName ?? ''} />
+            {activeAvatarUrl ? (
+              <div
+                class={`drawer-avatar drawer-avatar-img${isSecondaryIdentity ? ' avatar-identity-crown' : ''}`}
+                id="drawer-avatar"
+                data-identity-crown={isSecondaryIdentity ? '1' : undefined}
+              >
+                <img
+                  src={activeAvatarUrl}
+                  alt={resolvedName}
+                  onError={() => {
+                    setBrokenUrls((prev) => {
+                      const next = new Set(prev);
+                      next.add(activeAvatarUrl);
+                      return next;
+                    });
+                  }}
+                />
               </div>
             ) : (
-              <div class="drawer-avatar" id="drawer-avatar">
+              <div
+                class={`drawer-avatar${isSecondaryIdentity ? ' avatar-identity-crown' : ''}`}
+                id="drawer-avatar"
+                data-identity-crown={isSecondaryIdentity ? '1' : undefined}
+              >
                 {avatarInitial}
               </div>
             )}
             <div class="drawer-user-info">
-              <div class="drawer-name" id="drawer-name">{displayName}</div>
-              <div class="drawer-role-tag" id="drawer-role-tag">{displayRole}</div>
+              <div class="drawer-name" id="drawer-name">{resolvedName}</div>
+              <div
+                class="drawer-role-tag"
+                id="drawer-role-tag"
+                style={roleTagStyle}
+                title={isAdminOrSuper && stealth ? '隱身模式（點擊恢復）' : undefined}
+                onClick={isAdminOrSuper ? handleRoleTagClick : undefined}
+              >
+                {roleInfo.label}
+              </div>
             </div>
             <div class="drawer-actions">
-              {!user && onLogin && (
-                <button
-                  type="button"
-                  class="line-login-btn"
-                  disabled={loginPending}
-                  aria-label="LINE 登入"
-                  aria-busy={loginPending ? 'true' : undefined}
-                  onClick={onLogin}
-                >
-                  LINE 登入
-                </button>
-              )}
               <button
                 class={fontBtnClass(fontStep)}
                 id="drawer-font-btn"
@@ -373,12 +657,11 @@ export function SideDrawer({
                   class="drawer-pwa-btn"
                   id="pwa-install-btn"
                   title={lt('下載APP', '下載APP')}
-                  style="display:none"
                   data-i18n-title="下載APP"
+                  onClick={handlePwaClick}
                 >
                   <span data-i18n="下載APP">{lt('下載APP', '下載APP')}</span>
                 </button>
-                {/* A `_renderHomeVersionTag`：側邊選單底部顯示 `v{版號}`（版號規則見 src/version.ts）。 */}
                 <div class="home-version-tag" id="home-version-tag">{`v${APP_VERSION}`}</div>
               </div>
             </div>
@@ -391,36 +674,41 @@ export function SideDrawer({
         </div>
 
         <div class="drawer-menu" id="drawer-menu">
-          {normalRoutes.map((route) => {
-            const active = path === route.path;
+          {renderNodes.map((node) => {
+            if (node.kind === 'divider') {
+              return <div key={node.key} class="drawer-divider" />;
+            }
+            if (node.kind === 'section') {
+              const sectionText = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
+              return (
+                <div key={node.key} class="drawer-section-label">
+                  {sectionText}
+                </div>
+              );
+            }
+            const { entry, bgClass, locked } = node;
+            const displayLabel = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
+            const isActive = Boolean(!locked && entry.routePath && path === entry.routePath);
+            const itemClass = `drawer-item${bgClass ? ` ${bgClass}` : ''}${isActive ? ' active' : ''}`;
+            const lockedStyle = locked
+              ? { opacity: '.55', display: 'flex', alignItems: 'center' }
+              : undefined;
+
             return (
-              <a
-                key={route.path}
-                href={route.path}
-                class={`drawer-item${active ? ' active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => onCloseRef.current()}
+              <div
+                key={node.key}
+                class={itemClass}
+                style={lockedStyle}
+                data-page={entry.page}
+                data-action={entry.action}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => handleMenuItemClick(entry)}
               >
-                {t(route.titleKey)}
-              </a>
-            );
-          })}
-          {normalRoutes.length > 0 && adminRoutes.length > 0 && (
-            <div class="drawer-divider" />
-          )}
-          {adminRoutes.map((route) => {
-            const active = path === route.path;
-            const bgClass = routeRoleBgClass(route);
-            return (
-              <a
-                key={route.path}
-                href={route.path}
-                class={`drawer-item${bgClass ? ` ${bgClass}` : ''}${active ? ' active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => onCloseRef.current()}
-              >
-                {t(route.titleKey)}
-              </a>
+                {displayLabel}
+                {locked && (
+                  <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
+                )}
+              </div>
             );
           })}
         </div>
@@ -459,7 +747,7 @@ export function SideDrawer({
                 aria-invalid={loadError ? 'true' : undefined}
                 onChange={handleLocale}
               >
-                {LOCALES.map((language) => (
+                {DRAWER_LOCALES.map((language) => (
                   <option key={language} value={language} label={LOCALE_LABELS[language]}>
                     {LOCALE_LABELS[language]}
                   </option>
@@ -471,7 +759,7 @@ export function SideDrawer({
               class="drawer-clear-btn"
               title={lt('清除快取', '清除快取')}
               data-i18n-title="清除快取"
-              onClick={handleClearCache}
+              onClick={() => setShowClearCacheConfirm(true)}
             >
               <svg
                 width="14"
@@ -500,6 +788,97 @@ export function SideDrawer({
           )}
         </div>
       </nav>
+
+      {/* M-005：申請（俱樂部/場主/教練）說明彈窗（照 A `_showRoleApplicationNotice`） */}
+      {showApplyNotice && (
+        <div
+          id="role-application-notice-overlay"
+          class="role-application-notice-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowApplyNotice(false);
+          }}
+        >
+          <div
+            class="role-application-notice-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="role-application-notice-title"
+          >
+            <div class="role-application-notice-kicker">已全面開放</div>
+            <div class="role-application-notice-title" id="role-application-notice-title">
+              一般用戶都可以自由開團
+            </div>
+            <div class="role-application-notice-hero">
+              <strong>不用申請身分</strong>
+              <span>現在就能建立活動、自由開團、自由使用。</span>
+            </div>
+            <div class="role-application-notice-body">
+              <p>
+                <b>想開一般活動？</b>
+                直接使用即可，不需要先申請俱樂部、場主或教練身分。
+              </p>
+              <p>
+                <b>需要進階功能？</b>
+                如果還需要創立賽事或建立俱樂部，請再前往聯繫申請。
+              </p>
+            </div>
+            <button
+              type="button"
+              class="role-application-notice-confirm"
+              onClick={handleConfirmApplyRole}
+            >
+              了解，前往聯繫
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* M-011：清除快取紅字 Warning 確認框（照 A `confirmClearCache`） */}
+      {showClearCacheConfirm && (
+        <div
+          id="app-confirm-modal"
+          class="app-confirm-overlay open"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowClearCacheConfirm(false);
+          }}
+        >
+          <div class="app-confirm-box" role="alertdialog" aria-modal="true" aria-describedby="app-confirm-msg">
+            <div class="app-confirm-msg" id="app-confirm-msg">
+              <div class="app-confirm-warning">⚠ Warning</div>
+              確定要清除所有快取並重新登入嗎？
+              <br />
+              這會回到最乾淨的狀態，或許可解決白屏或異常問題，但若您的網路狀態與手機性能不佳時可能會讓問題更嚴重。
+              <br />
+              建議您先使用關閉分頁並重新登入的方式試試看。
+            </div>
+            <div class="app-confirm-btns">
+              <button
+                type="button"
+                class="app-confirm-cancel"
+                id="app-confirm-cancel"
+                onClick={() => setShowClearCacheConfirm(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                class="app-confirm-ok"
+                id="app-confirm-ok"
+                onClick={() => {
+                  setShowClearCacheConfirm(false);
+                  executeClearCache().catch(() => undefined);
+                }}
+              >
+                {t('common.ok')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* M-030 / M-031：PWA 系統選擇與教學彈窗 */}
+      <PwaModals step={pwaStep} onChangeStep={setPwaStep} />
     </div>,
     document.body,
   );

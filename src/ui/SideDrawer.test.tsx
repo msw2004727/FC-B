@@ -2,26 +2,40 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { useRef, useState } from 'preact/hooks';
 import { LocationProvider } from 'preact-iso';
-import { SideDrawer } from './SideDrawer';
+import { SideDrawer, type SideDrawerProps } from './SideDrawer';
 import { TopBar } from './TopBar';
-import { _resetForTest, registerFeatures, setRemoteFlags } from '@/core/feature-registry';
+import { _resetForTest } from '@/core/feature-registry';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
+import { getToasts, toast } from './Toast';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal()),
   useT: () => (key: string) => key,
 }));
 
-const load = async () => ({ default: () => null });
-
-function Harness({ routeAccess = null }: { routeAccess?: RouteAccessContext | null } = {}): preact.JSX.Element {
+function Harness({
+  routeAccess = null,
+  user = null,
+  identity = null,
+}: {
+  routeAccess?: SideDrawerProps['routeAccess'];
+  user?: SideDrawerProps['user'];
+  identity?: SideDrawerProps['identity'];
+} = {}): preact.JSX.Element {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
     <LocationProvider>
       <TopBar menuRef={trigger} drawerOpen={open} onMenuClick={() => setOpen(true)} />
-      <SideDrawer open={open} onClose={() => setOpen(false)} returnFocusRef={trigger} routeAccess={routeAccess} />
+      <SideDrawer
+        open={open}
+        onClose={() => setOpen(false)}
+        returnFocusRef={trigger}
+        routeAccess={routeAccess}
+        user={user}
+        identity={identity}
+      />
     </LocationProvider>
   );
 }
@@ -35,112 +49,181 @@ function openDrawer(): HTMLElement {
 
 beforeEach(() => {
   _resetForTest();
+  toast.clear();
   history.replaceState(null, '', '/');
   setTheme('light');
   document.documentElement.style.fontSize = '';
   localStorage.removeItem('sporthub_font_size');
-
-  registerFeatures([
-    {
-      id: 'shell-drawer-main',
-      status: 'enabled',
-      routes: [
-        { path: '/', titleKey: 'test.home', load },
-        { path: '/manual', titleKey: 'manual.title', load },
-        { path: '/stats', titleKey: 'stats.title', load },
-        { path: '/profile/qr', titleKey: 'ui.bottomNav.qr', load },
-        { path: '/checkin', titleKey: 'nav.checkin', load },
-        { path: '/members/:id', titleKey: 'test.member', load },
-      ],
-      nav: [{ path: '/', labelKey: 'test.home', icon: 'home', order: 2 }],
-    },
-    {
-      id: 'shell-drawer-admin',
-      status: 'enabled',
-      routes: [{ path: '/admin/events', titleKey: 'test.admin', load }],
-    },
-    {
-      id: 'shell-drawer-gated',
-      status: 'enabled',
-      routes: [{
-        path: '/admin/logs',
-        titleKey: 'test.gated',
-        load,
-        drawerVisibleIf: (access) => access.hasPermission('admin.logs.entry'),
-      }],
-    },
-    {
-      id: 'shell-drawer-reserved',
-      status: 'reserved',
-      routes: [{ path: '/reserved', titleKey: 'test.reserved', load }],
-    },
-  ]);
+  localStorage.removeItem('admin_stealth');
 });
 
 afterEach(() => {
   cleanup();
+  toast.clear();
   vi.restoreAllMocks();
   _resetForTest();
   setTheme('light');
   document.documentElement.style.fontSize = '';
   localStorage.removeItem('sporthub_font_size');
+  localStorage.removeItem('admin_stealth');
 });
 
 describe('SideDrawer (legacy A DOM & CSS)', () => {
-  it('wraps #drawer-overlay and #side-drawer in .legacy-ui.legacy-chrome', () => {
+  it('M-001：#drawer-overlay 與 #side-drawer 常駐 DOM，開關靠 .open class 切換', () => {
     render(<Harness />);
-    openDrawer();
     const overlay = document.getElementById('drawer-overlay');
     const drawer = document.getElementById('side-drawer');
     expect(overlay).not.toBeNull();
     expect(drawer).not.toBeNull();
+    expect(overlay?.classList.contains('open')).toBe(false);
+    expect(drawer?.classList.contains('open')).toBe(false);
+    expect(drawer?.closest('.legacy-ui.legacy-chrome')).not.toBeNull();
+
+    openDrawer();
     expect(overlay?.classList.contains('open')).toBe(true);
     expect(drawer?.classList.contains('open')).toBe(true);
-    expect(drawer?.closest('.legacy-ui.legacy-chrome')).not.toBeNull();
   });
 
-  it('有權限條件的入口：沒有登入者權限時不顯示，有權限才顯示（照 A DRAWER_MENUS）', () => {
-    const base: RouteAccessContext = {
-      uid: 'U_x', role: 'admin', roleLevel: 4, capabilities: [], hasPermission: () => false,
-    };
-    const view = render(<Harness />);
-    openDrawer();
-    expect(document.querySelector('[href="/admin/logs"]')).toBeNull();
-    view.unmount();
-
-    const denied = render(<Harness routeAccess={base} />);
-    openDrawer();
-    expect(document.querySelector('[href="/admin/logs"]')).toBeNull();
-    denied.unmount();
-
-    render(<Harness routeAccess={{ ...base, hasPermission: (c) => c === 'admin.logs.entry' }} />);
-    openDrawer();
-    expect(document.querySelector('[href="/admin/logs"]')).not.toBeNull();
-  });
-
-  it('closes on #drawer-overlay click and Escape', () => {
+  it('U-002：點遮罩或按 Escape 關閉抽屜（移除 .open）並將焦點還回選單按鈕', () => {
     render(<Harness />);
-    openDrawer();
+    const btn = openDrawer();
     const overlay = document.getElementById('drawer-overlay')!;
+    const drawer = document.getElementById('side-drawer')!;
     fireEvent.click(overlay);
-    expect(document.getElementById('side-drawer')).toBeNull();
+    expect(drawer.classList.contains('open')).toBe(false);
+    expect(document.activeElement).toBe(btn);
 
     openDrawer();
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(document.getElementById('side-drawer')).toBeNull();
+    expect(drawer.classList.contains('open')).toBe(false);
   });
 
-  it('renders drawer items in #drawer-menu with A classes and hides disabled features', async () => {
+  it('U-001：支援左滑超過寬度 1/3 關閉手勢，位移不足則彈回不關閉', () => {
     render(<Harness />);
     openDrawer();
-    const menu = document.getElementById('drawer-menu')!;
-    const items = Array.from(menu.querySelectorAll<HTMLAnchorElement>('a.drawer-item'));
-    expect(items.map((a) => a.getAttribute('href'))).toEqual([
-      '/stats', '/manual', '/profile/qr', '/admin/events',
+    const drawer = document.getElementById('side-drawer')!;
+    Object.defineProperty(drawer, 'offsetWidth', { value: 270, configurable: true });
+
+    // 位移不足（-40px < 90px）不關閉
+    fireEvent.touchStart(drawer, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchMove(drawer, { touches: [{ clientX: 160, clientY: 102 }] });
+    fireEvent.touchEnd(drawer);
+    expect(drawer.classList.contains('open')).toBe(true);
+
+    // 左滑超過 1/3（-120px > 90px）關閉
+    fireEvent.touchStart(drawer, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchMove(drawer, { touches: [{ clientX: 80, clientY: 102 }] });
+    fireEvent.touchEnd(drawer);
+    expect(drawer.classList.contains('open')).toBe(false);
+  });
+
+  it('M-008：有權限條件的入口（日誌中心）依登入者權限顯示或隱藏', () => {
+    const base: RouteAccessContext = {
+      uid: 'U_x',
+      role: 'admin',
+      roleLevel: 4,
+      capabilities: [],
+      hasPermission: () => false,
+    };
+    const view = render(<Harness routeAccess={base} />);
+    openDrawer();
+    expect(document.querySelector('[data-page="page-admin-logs"]')).toBeNull();
+    view.unmount();
+
+    render(
+      <Harness
+        routeAccess={{
+          ...base,
+          hasPermission: (c) => c === 'admin.logs.entry',
+        }}
+      />,
+    );
+    openDrawer();
+    expect(document.querySelector('[data-page="page-admin-logs"]')).not.toBeNull();
+  });
+
+  it('M-004 & M-005：上鎖入口點擊提示「功能尚未開放」並關閉抽屜；申請入口打開說明彈窗', () => {
+    render(<Harness />);
+    openDrawer();
+    const drawer = document.getElementById('side-drawer')!;
+    const personalItem = drawer.querySelector('[data-page="page-personal-dashboard"]') as HTMLElement;
+    expect(personalItem).not.toBeNull();
+    expect(personalItem.textContent).toContain('🔒');
+
+    fireEvent.click(personalItem);
+    expect(getToasts().some((t) => t.message === '功能尚未開放')).toBe(true);
+    expect(drawer.classList.contains('open')).toBe(false);
+
+    openDrawer();
+    const applyItem = drawer.querySelector('[data-action="apply-role"]') as HTMLElement;
+    fireEvent.click(applyItem);
+    expect(document.getElementById('role-application-notice-overlay')).not.toBeNull();
+  });
+
+  it('M-009 & M-010 & M-014 & M-015 & M-016：訪客顯示「? / 未登入 / 未登入」且無 LINE 登入鈕；管理員可點角色標籤切換隱身', () => {
+    const guestView = render(<Harness />);
+    openDrawer();
+    expect(document.getElementById('drawer-avatar')?.textContent).toBe('?');
+    expect(document.getElementById('drawer-name')?.textContent).toBe('未登入');
+    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('未登入');
+    expect(document.querySelector('#side-drawer .line-login-btn')).toBeNull();
+    guestView.unmount();
+
+    const adminAccess: SideDrawerProps['routeAccess'] = {
+      uid: 'u1',
+      role: 'admin',
+      roleLevel: 4,
+      displayName: 'Firestore Admin',
+      pictureUrl: null,
+      capabilities: [],
+      hasPermission: () => true,
+    };
+    render(
+      <Harness
+        user={{ uid: 'u1', displayName: 'Auth Fallback', pictureUrl: null }}
+        routeAccess={adminAccess}
+        identity={{ identityId: 'secondary', displayName: '第二暱稱', avatarCandidates: [] }}
+      />,
+    );
+    openDrawer();
+    expect(document.getElementById('drawer-name')?.textContent).toBe('第二暱稱');
+    expect(document.getElementById('drawer-avatar')?.classList.contains('avatar-identity-crown')).toBe(true);
+
+    const roleTag = document.getElementById('drawer-role-tag')!;
+    expect(roleTag.textContent).toBe('管理員');
+    fireEvent.click(roleTag);
+    expect(getToasts().some((t) => t.message === '已開啟隱身模式')).toBe(true);
+    expect(roleTag.style.opacity).toBe('0.45');
+  });
+
+  it('M-012：語言選單顯示 6 種語言（含國旗，不含简体中文）', () => {
+    render(<Harness />);
+    openDrawer();
+    const select = document.getElementById('lang-select') as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll('option')).map((o) => ({
+      value: o.value,
+      text: o.textContent,
+    }));
+    expect(options).toEqual([
+      { value: 'zh-TW', text: '🇹🇼 繁中' },
+      { value: 'en', text: '🇺🇸 EN' },
+      { value: 'ja', text: '🇯🇵 日本語' },
+      { value: 'ko', text: '🇰🇷 한국어' },
+      { value: 'th', text: '🇹🇭 ไทย' },
+      { value: 'vi', text: '🇻🇳 Tiếng Việt' },
     ]);
-    expect(menu.querySelector('.drawer-divider')).not.toBeNull();
-    await act(() => setRemoteFlags({ 'shell-drawer-admin': false }));
-    expect(menu.querySelector('[href="/admin/events"]')).toBeNull();
+  });
+
+  it('M-011：點擊清除快取跳出紅字 Warning 確認框', () => {
+    render(<Harness />);
+    openDrawer();
+    const clearBtn = document.querySelector('.drawer-clear-btn') as HTMLButtonElement;
+    fireEvent.click(clearBtn);
+    const modal = document.getElementById('app-confirm-modal');
+    expect(modal).not.toBeNull();
+    expect(modal?.querySelector('.app-confirm-warning')?.textContent).toBe('⚠ Warning');
+    fireEvent.click(document.getElementById('app-confirm-cancel')!);
+    expect(document.getElementById('app-confirm-modal')).toBeNull();
   });
 
   it('cycles font size 15px -> 16.5px -> 18px on html style and localStorage sporthub_font_size', () => {
@@ -169,23 +252,13 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     render(<Harness />);
     openDrawer();
     const toggle = document.getElementById('theme-toggle')!;
-    fireEvent.click(toggle);
+    act(() => {
+      fireEvent.click(toggle);
+    });
     expect(getTheme()).toBe('dark');
-    fireEvent.click(toggle);
+    act(() => {
+      fireEvent.click(toggle);
+    });
     expect(getTheme()).toBe('light');
-  });
-
-  it('displays user name and role tag in #drawer-name and #drawer-role-tag', () => {
-    render(
-      <LocationProvider>
-        <SideDrawer
-          open
-          onClose={vi.fn()}
-          user={{ uid: 'u1', displayName: 'Alex', pictureUrl: null }}
-        />
-      </LocationProvider>,
-    );
-    expect(document.getElementById('drawer-name')?.textContent).toBe('Alex');
-    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('一般會員');
   });
 });

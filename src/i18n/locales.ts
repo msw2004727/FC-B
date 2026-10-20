@@ -4,13 +4,25 @@ export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'zh-TW';
 
-/** 各語系以「該語言本身」書寫的顯示名稱。 */
+/**
+ * 側邊抽屜語言選單的 6 種語言與順序（照 A `js/i18n.js`；站長決定拿掉简体中文選項，保留 zh-CN 字典）。
+ */
+export const DRAWER_LOCALES: readonly Locale[] = [
+  'zh-TW',
+  'en',
+  'ja',
+  'ko',
+  'th',
+  'vi',
+] as const;
+
+/** 各語系顯示名稱（照 A `js/i18n.js` `_label` 國旗＋名稱）。 */
 export const LOCALE_LABELS: Record<Locale, string> = {
-  'zh-TW': '繁體中文',
+  'zh-TW': '🇹🇼 繁中',
   'zh-CN': '简体中文',
-  en: 'English',
-  ja: '日本語',
-  vi: 'Tiếng Việt',
-  th: 'ไทย',
-  ko: '한국어',
+  en: '🇺🇸 EN',
+  ja: '🇯🇵 日本語',
+  ko: '🇰🇷 한국어',
+  th: '🇹🇭 ไทย',
+  vi: '🇻🇳 Tiếng Việt',
 };

@@ -1,6 +1,11 @@
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import {
+  getActiveSport,
+  resolveTeamSportFilterSync,
+  useActiveSport,
+} from '@/core/sport-filter';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -8,7 +13,7 @@ import { SPORTS } from '@/features/events/data/sports';
 import { LegacyTeamCard } from '../components/legacy/LegacyTeamCard';
 import {
   filterTeams,
-   normalizeTeamCategory,
+  normalizeTeamCategory,
   sortTeams,
 } from '../data/team-list-model';
 import { loadTeams } from '../data/teams-repo';
@@ -47,19 +52,39 @@ const TAIWAN_REGIONS = [
   '連江縣',
 ] as const;
 
+function toTeamSportValue(globalSport: string): string {
+  return globalSport && globalSport !== 'all' ? globalSport : '';
+}
+
 export default function TeamsPage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
+  const [globalSport] = useActiveSport();
 
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [sportTag, setSportTag] = useState('');
+  const [sportTag, setSportTag] = useState<string>(() => toTeamSportValue(getActiveSport()));
   const [region, setRegion] = useState('');
   const [typeTab, setTypeTab] = useState('');
   const sequence = useRef(0);
+  const syncedGlobalSportRef = useRef<string>(toTeamSportValue(getActiveSport()));
+
+  // M-020：照 A `team-list.js#_syncTeamSportFilterWithGlobal` 與頂部全站運動篩選同步（force: true）
+  useEffect(() => {
+    const resolved = resolveTeamSportFilterSync(
+      sportTag,
+      syncedGlobalSportRef.current,
+      globalSport,
+      true,
+    );
+    syncedGlobalSportRef.current = resolved.syncedGlobalSport;
+    if (sportTag !== resolved.value) {
+      setSportTag(resolved.value);
+    }
+  }, [globalSport]);
 
   // ASSUMPTION: 照 A `_canCreateTeamByPermission()` 檢查 `team.create` 權限決定「新增俱樂部」按鈕是否顯示。
   const canCreateTeam = useMemo(
@@ -210,6 +235,7 @@ export default function TeamsPage(): JSX.Element {
           <select
             id="team-sport-filter"
             value={sportTag}
+            data-synced-global-sport={syncedGlobalSportRef.current}
             onChange={(e) => setSportTag(e.currentTarget.value)}
           >
             <option value="" data-i18n="全部運動">

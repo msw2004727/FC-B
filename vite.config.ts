@@ -110,7 +110,25 @@ const pwa = VitePWA({
   strategies: 'generateSW',
   registerType: 'autoUpdate',
   injectRegister: false,
-  manifest: false,
+  // 加到主畫面（PWA）設定：內容逐項照 A manifest.json（2026-10-20 站長要求新版沿用舊版 PWA）；
+  // 檔名照 A 用 manifest.json，<link rel="manifest"> 由外掛注入 index.html。
+  manifestFilename: 'manifest.json',
+  manifest: {
+    name: 'ToosterX',
+    short_name: 'ToosterX',
+    description: '台灣運動揪團報名平台',
+    lang: 'zh-TW',
+    start_url: './',
+    scope: './',
+    display: 'standalone',
+    background_color: '#0f172a',
+    theme_color: '#0d9488',
+    icons: [
+      { src: 'assets/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { src: 'assets/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+      { src: 'assets/icons/icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  },
   workbox: {
     globPatterns: ['**/*.{js,css,html,webp,svg}'],
     globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js'],
