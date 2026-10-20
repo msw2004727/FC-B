@@ -14,7 +14,13 @@ import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
 
+/** index.html 的開頁骨架只負責首屏外觀；第一次 render 前同步清掉（同一個 task 內，不會閃白）。 */
+function clearBootShell(root: HTMLElement): void {
+  if (root.querySelector('[data-boot-shell]')) root.textContent = '';
+}
+
 function renderBootError(root: HTMLElement): void {
+  clearBootShell(root);
   render(<ErrorFallback fixed onRetry={() => location.reload()} />, root);
 }
 
@@ -48,6 +54,7 @@ async function boot(): Promise<void> {
   }
 
   try {
+    clearBootShell(root);
     render(<App />, root);
   } catch (err) {
     console.error('[boot] 首次 render 失敗', err);

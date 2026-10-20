@@ -20,11 +20,15 @@ function buildSha(): string {
   }
 }
 
-/** Cloudflare Pages `_headers`：全站不收錄、HTML 不快取（內測更新頻繁）；雜湊命名的 assets 照常長快取。 */
+/**
+ * Cloudflare Pages `_headers`：全站不收錄；HTML 每次向伺服器確認新版（no-cache，未變更回 304），
+ * 雜湊命名的 assets 照常長快取。
+ * 2026-10-20 HTML 由 no-store 改 no-cache：一樣不會用到舊版 HTML，但可走 304 與瀏覽器「上一頁」快取（no-store 會讓 bfcache 失效）。
+ */
 const INTERNAL_TEST_HEADERS = [
   '/*',
   '  X-Robots-Tag: noindex, nofollow',
-  '  Cache-Control: no-store',
+  '  Cache-Control: no-cache',
   '/assets/*',
   '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable',
@@ -65,8 +69,33 @@ function internalTestNoIndex(): Plugin {
   };
 }
 
+/**
+ * 預設語系字典預載：字典是 import.meta.glob 動態載入，瀏覽器要等主程式執行後才知道要下載。
+ * 在 HTML 加上 modulepreload，讓它跟主程式同時下載（語系不是 zh-TW 的使用者多下載一個小檔，可接受）。
+ */
+function preloadDefaultLocale(): Plugin {
+  return {
+    name: 'fcb-preload-default-locale',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const chunk = Object.values(ctx.bundle ?? {}).find(
+          (item) => item.type === 'chunk' && item.name === 'i18n-zh-TW',
+        );
+        if (!chunk) return [];
+        return [{
+          tag: 'link',
+          attrs: { rel: 'modulepreload', crossorigin: '', href: `/${chunk.fileName}` },
+          injectTo: 'head',
+        }];
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [preact(), internalTestNoIndex()],
+  plugins: [preact(), internalTestNoIndex(), preloadDefaultLocale()],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },
@@ -84,8 +113,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // 同一語系的核心與各功能字典合併成一個 chunk，切換語系只需一次請求（避免每個功能一個小檔）
+        // 舊版 A 的翻譯（i18n/legacy）也併入同一個 chunk（原本另成一檔，首屏多一個請求）
         manualChunks(id: string) {
-          const m = id.match(/[\\/](?:messages|locales)[\\/](zh-TW|zh-CN|en|ja|vi|th|ko)\.json$/);
+          const m = id.match(/[\\/](?:messages|locales|legacy)[\\/](zh-TW|zh-CN|en|ja|vi|th|ko)\.json$/);
           return m ? `i18n-${m[1]}` : undefined;
         },
       },

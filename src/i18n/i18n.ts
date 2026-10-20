@@ -145,12 +145,10 @@ export function resolveLocale(candidates: string[]): Locale {
 async function loadDict(locale: Locale): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
 
+  // 核心、功能、舊版字典同時下載（原本等核心字典回來才開始下載其他，首屏多一段網路來回）。
   const coreKey = `./messages/${locale}.json`;
   const coreLoader = coreLoaders[coreKey];
-  if (coreLoader) {
-    const data = await coreLoader();
-    Object.assign(result, flatten(data));
-  }
+  const corePromise = coreLoader ? coreLoader() : Promise.resolve(null);
 
   const re = new RegExp(`^\\.\\./features/([^/]+)/locales/${escapeRegex(locale)}\\.json$`);
   const tasks: Promise<void>[] = [];
@@ -178,9 +176,10 @@ async function loadDict(locale: Locale): Promise<Record<string, string>> {
       }),
     );
   }
-  await Promise.all(tasks);
+  const [coreData] = await Promise.all([corePromise, ...tasks]);
 
-  return result;
+  // 核心字典放最前面，與原本「先放核心、再放功能與舊版」的合併結果相同。
+  return coreData ? { ...flatten(coreData), ...result } : result;
 }
 
 type DictLoader = (locale: Locale) => Promise<Record<string, string>>;

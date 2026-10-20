@@ -14,8 +14,7 @@
  */
 
 import { useEffect, useState } from 'preact/hooks';
-import type { Firestore, Query } from 'firebase/firestore';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import type { DocumentSnapshot, Firestore, Query } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
 import { getCurrentUser } from '@/data/auth';
@@ -140,11 +139,17 @@ function parseCapabilities(data: Record<string, unknown> | null): string[] {
   return out;
 }
 
+/**
+ * Firestore SDK 用到時才載入：viewer 在 App 首屏的靜態引用鏈上，靜態 import 會讓首屏等整包 SDK（壓縮後約 160KB）下載與執行完。
+ * 2026-10-20 由頂層 import 改為 loadViewer 內動態載入。
+ */
+type FirestoreApi = typeof import('firebase/firestore');
+
 type DocResult =
   | { ok: true; data: Record<string, unknown> | null }
   | { ok: false; error: unknown };
 
-function safeGetDoc(promise: Promise<Awaited<ReturnType<typeof getDoc>>>): Promise<DocResult> {
+function safeGetDoc(promise: Promise<DocumentSnapshot>): Promise<DocResult> {
   return promise.then(
     (snap): DocResult => {
       if (!snap.exists()) return { ok: true, data: null };
@@ -157,9 +162,11 @@ function safeGetDoc(promise: Promise<Awaited<ReturnType<typeof getDoc>>>): Promi
 
 // ASSUMPTION: A 的 FirebaseService 讀取 customRoles 集合路徑為 'customRoles'（與 _cache.customRoles 對應）。
 async function loadCustomRolesForRole(
+  fs: FirestoreApi,
   db: Firestore,
   role: string,
 ): Promise<Record<string, unknown>[]> {
+  const { collection, getDocs } = fs;
   if (isBuiltinRole(role)) return [];
   try {
     const snap = await getDocs(collection(db, 'customRoles'));
@@ -184,10 +191,12 @@ async function loadCustomRolesForRole(
  * 必須保留完整幹部欄位，交給純函式再次判定。
  */
 async function loadTeamIdsForUser(
+  fs: FirestoreApi,
   db: Firestore,
   uid: string,
   userDoc: VisibilityUserDoc | null,
 ): Promise<Set<string>> {
+  const { collection, getDocs, query, where } = fs;
   if (!userDoc) return computeVisibleTeamIds(uid, null, []);
 
   const runTeamQuery = async (
@@ -275,8 +284,9 @@ async function loadTeamIdsForUser(
 export async function loadViewer(uid: string): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
 
-  const firebase = await getFirebase();
+  const [firebase, fs] = await Promise.all([getFirebase(), import('firebase/firestore')]);
   const db = firebase.db as unknown as Firestore;
+  const { doc, getDoc } = fs;
 
   let userData: Record<string, unknown> | null = null;
   try {
@@ -304,14 +314,14 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
 
   const customRolesPromise: Promise<Record<string, unknown>[]> = isBuiltinRole(role)
     ? Promise.resolve([])
-    : loadCustomRolesForRole(db, role);
+    : loadCustomRolesForRole(fs, db, role);
 
   const [roleRes, grantRes, capRes, customRoles, teamIds] = await Promise.all([
     roleDocPromise,
     safeGetDoc(getDoc(doc(db, 'userPermissionGrants', uid))),
     capDocPromise,
     customRolesPromise,
-    loadTeamIdsForUser(db, uid, visibilityUser),
+    loadTeamIdsForUser(fs, db, uid, visibilityUser),
   ]);
 
   if (!roleRes.ok) warnOnce('rolePermissions', roleRes.error);
