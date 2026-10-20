@@ -64,7 +64,8 @@ describe('App 內測閘門', () => {
   it('白名單帳號正常進入', async () => {
     render(<App />);
     await act(async () => { emit('auth:changed', { uid: 'U_tester' }); });
-    await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy());
+    // 整包測試同時跑時延遲載入的路由偶爾超過預設 1 秒，放寬等待上限避免誤報（2026-10-20 兩次偶發）。
+    await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy(), { timeout: 5000 });
     expect(screen.queryByText(t('internalTest.title'))).toBeNull();
   });
 
@@ -77,7 +78,7 @@ describe('App 內測閘門', () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_PUBLIC_LAUNCH', '1');
     const second = render(<App />);
-    await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy(), { timeout: 5000 });
     expect(second.container.querySelector('.internal-test-badge')).toBeNull();
   });
 });
