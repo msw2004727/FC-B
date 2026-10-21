@@ -118,7 +118,7 @@ npm run check              # 型別＋完整測試＋i18n
 ## 11. 下一位 PM 第一天要做的五件事
 
 1. 讀 FC 的 `CLAUDE.md`、本檔、FC 的 local-only `docs/specs/lite-convergence/handover-private.md`（帳號、平台、待站長授權清單），跑 `npm run check` 確認全綠。
-2. 查用量（`get_usage`），照站長規則：產出交給 DeepSeek／MiMo、Codex 最高驗收，自己只做決策與合併。
+2. 分工照既有做法：大量基礎工作派 DeepSeek／MiMo，測試與審查由 Codex／Gemini 4，Opus 驗收。
 3. 問站長 M-171：是否讓 Google 收錄 next.toosterx.com（目前 noindex，見 4.1）。
 4. 開工第 3 批（活動詳情與報名）：用 FC scratchpad 的 `build-batch-ctx.mjs` 依盤點項目產生附件，派工單照 `p77-batch2/prompt-common.md` 格式，每單拆小避免截斷。
 5. 每段工作結束更新施工看板（ArtifactData，只改資料不重發頁面），並在 FC `docs/claude-memory.md` 追加紀錄。
