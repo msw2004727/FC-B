@@ -84,7 +84,7 @@ export function isCourseLinkedLifecycleLocked(event: EventDoc | null | undefined
 
 // ── 開始時間解析（A `_parseEventStartDate`，第 258～272 行） ──
 
-function parseEventStartDate(dateStr: unknown): Date | null {
+export function parseEventStartDate(dateStr: unknown): Date | null {
   if (typeof dateStr !== 'string' || !dateStr) return null;
   const parts = dateStr.split(' ');
   const dateParts = (parts[0] ?? '').split('/');

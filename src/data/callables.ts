@@ -14,6 +14,8 @@ import type { Functions } from 'firebase/functions';
 import type {
   AdjustEventCapacityRequest,
   AdjustEventCapacityResponse,
+  AdjustExpRequest,
+  AdjustExpResponse,
   AdjustTeamReservationRequest,
   AdjustTeamReservationResponse,
   AdminManageUserRequest,
@@ -34,6 +36,8 @@ import type {
   CommitIdentitySettingsResponse,
   CommitSecondaryIdentityAvatarRequest,
   CommitSecondaryIdentityAvatarResponse,
+  ConfirmEventAttendanceRequest,
+  ConfirmEventAttendanceResponse,
   CreateCustomTokenRequest,
   CreateCustomTokenResponse,
   CreateEventFromCourseLessonRequest,
@@ -124,6 +128,7 @@ import { getFirebase, shouldUseEmulator } from './firebase';
 
 export interface CallableMap {
   adjustEventCapacity: { req: AdjustEventCapacityRequest; res: AdjustEventCapacityResponse };
+  adjustExp: { req: AdjustExpRequest; res: AdjustExpResponse };
   adjustTeamReservation: { req: AdjustTeamReservationRequest; res: AdjustTeamReservationResponse };
   adminManageUser: { req: AdminManageUserRequest; res: AdminManageUserResponse };
   approveCourseEnrollment: { req: ApproveCourseEnrollmentRequest; res: ApproveCourseEnrollmentResponse };
@@ -133,6 +138,10 @@ export interface CallableMap {
   cancelCourseEnrollment: { req: CancelCourseEnrollmentRequest; res: CancelCourseEnrollmentResponse };
   cancelRegistration: { req: CancelRegistrationRequest; res: CancelRegistrationResponse };
   commitIdentitySettings: { req: CommitIdentitySettingsRequest; res: CommitIdentitySettingsResponse };
+  confirmEventAttendance: {
+    req: ConfirmEventAttendanceRequest;
+    res: ConfirmEventAttendanceResponse;
+  };
   commitSecondaryIdentityAvatar: {
     req: CommitSecondaryIdentityAvatarRequest;
     res: CommitSecondaryIdentityAvatarResponse;
