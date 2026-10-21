@@ -24,14 +24,6 @@
   "notFound.home": "Back to home",
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
-  "internalTest.title": "Internal testing",
-  "internalTest.body": "The new ToosterX is in internal testing and is open to invited accounts only. Please use the current version.",
-  "internalTest.notInvited": "This account is not on the internal test list. Please use the current version.",
-  "internalTest.checking": "Checking test access…",
-  "internalTest.login": "Log in with LINE",
-  "internalTest.goOld": "Go to the current ToosterX",
-  "internalTest.eventOnly": "During internal testing you can only act on events whose title starts with \"[內測]\".",
-  "internalTest.blocked": "During internal testing you cannot act on users outside the test list. Please use the current version.",
   "internalTest.badge": "Internal test · {sha} · {target}",
   "ui": {
     "shell": {

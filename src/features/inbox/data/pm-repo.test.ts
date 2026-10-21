@@ -207,33 +207,3 @@ describe('pm-repo 寫入（Callable）', () => {
   });
 });
 
-describe('pm-repo 內測守衛', () => {
-  const TESTER = `U${'a'.repeat(32)}`;
-  const PEER = `U${'b'.repeat(32)}`;
-  const REAL = `U${'c'.repeat(32)}`;
-
-  beforeEach(async () => {
-    callFnMock.mockReset();
-    callFnMock.mockResolvedValue({});
-    const { sha256Hex } = await import('@/data/internal-test');
-    vi.stubEnv('VITE_INTERNAL_TEST', '1');
-    vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', [await sha256Hex(TESTER), await sha256Hex(PEER)].join(','));
-  });
-  afterEach(() => vi.unstubAllEnvs());
-
-  it('傳給名單外的人被擋；傳給內測者照常送出', async () => {
-    await expect(sendPrivateMessage(REAL, 'hi')).rejects.toMatchObject({ code: 'INTERNAL_TEST_BLOCKED' });
-    expect(callFnMock).not.toHaveBeenCalled();
-    await sendPrivateMessage(PEER, 'hi');
-    expect(callFnMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('編輯／收回依對話 id 判斷雙方；格式不明一律擋', async () => {
-    await expect(editPrivateMessage(`pm_${TESTER}_${REAL}`, 'm1', 'x'))
-      .rejects.toMatchObject({ code: 'INTERNAL_TEST_BLOCKED' });
-    await expect(recallPrivateMessage('pm_c1', 'm1')).rejects.toMatchObject({ code: 'INTERNAL_TEST_BLOCKED' });
-    expect(callFnMock).not.toHaveBeenCalled();
-    await recallPrivateMessage(`pm_${TESTER}_${PEER}`, 'm1');
-    expect(callFnMock).toHaveBeenCalledWith('recallPrivateMessage', { conversationId: `pm_${TESTER}_${PEER}`, messageId: 'm1' });
-  });
-});

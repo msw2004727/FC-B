@@ -24,14 +24,6 @@
   "notFound.home": "ホームに戻る",
   "feature.reserved": "この機能は近日公開予定です",
   "feature.external": "外部システム連携準備中",
-  "internalTest.title": "社内テスト中",
-  "internalTest.body": "新しい ToosterX は社内テスト中で、招待されたアカウントのみ利用できます。通常は現行版をご利用ください。",
-  "internalTest.notInvited": "このアカウントはテスト対象ではありません。現行版をご利用ください。",
-  "internalTest.checking": "テスト資格を確認しています…",
-  "internalTest.login": "LINE でログイン",
-  "internalTest.goOld": "現行版 ToosterX へ",
-  "internalTest.eventOnly": "テスト期間中は、タイトルが「[內測]」で始まるイベントのみ操作できます。",
-  "internalTest.blocked": "テスト期間中はテスト対象外のユーザーに操作できません。現行版をご利用ください。",
   "internalTest.badge": "社内テスト版 · {sha} · {target}",
   "ui": {
     "shell": {

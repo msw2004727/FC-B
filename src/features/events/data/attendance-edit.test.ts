@@ -8,7 +8,6 @@ const {
   mockCollection,
   mockDoc,
   mockServerTimestamp,
-  mockAssertInternalTestEventDocWritable,
 } = vi.hoisted(() => {
   const set = vi.fn();
   const update = vi.fn();
@@ -36,7 +35,6 @@ const {
       return { id: second, path: String(second) };
     }),
     mockServerTimestamp: vi.fn(() => ({ __serverTimestamp: true })),
-    mockAssertInternalTestEventDocWritable: vi.fn(() => Promise.resolve()),
   };
 });
 
@@ -49,10 +47,6 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/data/firebase', () => ({
   getFirebase: vi.fn(() => Promise.resolve({ db: { __mockDb: true } })),
-}));
-
-vi.mock('@/data/internal-test', () => ({
-  assertInternalTestEventDocWritable: mockAssertInternalTestEventDocWritable,
 }));
 
 import {
@@ -413,7 +407,6 @@ describe('writeAttendanceOps', () => {
       'u_operator_admin',
     );
 
-    expect(mockAssertInternalTestEventDocWritable).toHaveBeenCalledWith('event_doc_99');
     expect(mockWriteBatch).toHaveBeenCalledTimes(1);
     expect(mockCollection).toHaveBeenCalledWith(
       expect.anything(),

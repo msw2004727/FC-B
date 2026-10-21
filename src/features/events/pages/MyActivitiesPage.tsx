@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
-import { InternalTestBlockedError } from '@/data/internal-test';
 import { useUserRoles } from '@/data/user-roles';
 import { useViewer } from '@/features/profile/data/viewer';
 import { lt, useT } from '@/i18n/i18n';
@@ -365,9 +364,7 @@ export default function MyActivitiesPage(): JSX.Element {
       void loadAll(activeTab, true);
       toast.show({ message: msgs.done, tone: 'success' });
     } catch (err: unknown) {
-      if (err instanceof InternalTestBlockedError) {
-        toast.show({ message: t(err.messageKey), tone: 'error' });
-      } else if (err instanceof EventLifecycleError && err.code === 'COURSE_LINKED') {
+      if (err instanceof EventLifecycleError && err.code === 'COURSE_LINKED') {
         toast.show({
           message: '課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放',
           tone: 'error',

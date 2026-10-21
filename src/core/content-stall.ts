@@ -80,7 +80,7 @@ function isCurrentRouteContentRendered(): boolean {
   const main = document.querySelector('.app-main');
   if (!main) return false;
   // 若已有實際頁面節點且不在全頁 loading 狀態，視為已就緒
-  const activePage = main.querySelector('.page.active, .internal-test-gate, .not-found');
+  const activePage = main.querySelector('.page.active, .not-found');
   if (!activePage) return false;
   if (activePage.getAttribute('aria-busy') === 'true') return false;
   return true;

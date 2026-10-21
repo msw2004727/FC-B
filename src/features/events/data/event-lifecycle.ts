@@ -12,7 +12,6 @@
  *   - 不做 A `_cleanupCancelledRecords`（Rules 只允許 admin 刪除；一般主辦方刪不掉）。
  *   - 不做 A 內部的 confirm 對話框（UI 層負責）。
  *   - 通知改由 `loadEventNotifyRecipientUids`＋`sendTemplateNotification` 逐人送。
- *   - 內測守衛沿用 B `assertInternalTestEventTitle`。
  *
  * 順序：課程連結 → 權限 →（重開／上架）時間已過 → 內測守衛 → 寫入 → 通知與操作日誌（取消：通知→日誌；上架：日誌→通知，照 A）。
  */
@@ -20,7 +19,6 @@
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
-import { assertInternalTestEventTitle } from '@/data/internal-test';
 import { sendTemplateNotification } from '@/data/notify';
 import { writeOpLog } from '@/data/op-log';
 import type { ViewerView } from '@/features/profile/data/viewer';
@@ -188,7 +186,6 @@ export async function cancelEvent(input: LifecycleInput): Promise<void> {
     throw new EventLifecycleError('NOT_ALLOWED', '您只能管理自己的活動');
   }
 
-  assertInternalTestEventTitle(event.title);
 
   try {
     await writeEventStatus(eventDocId, 'cancelled');
@@ -238,7 +235,6 @@ export async function reopenEvent(input: LifecycleInput): Promise<void> {
     );
   }
 
-  assertInternalTestEventTitle(event.title);
 
   let registrations: RegistrationDoc[] = [];
   try {
@@ -294,7 +290,6 @@ export async function relistEvent(input: LifecycleInput): Promise<void> {
     );
   }
 
-  assertInternalTestEventTitle(event.title);
 
   let registrations: RegistrationDoc[] = [];
   try {

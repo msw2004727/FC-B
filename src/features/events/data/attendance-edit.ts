@@ -21,7 +21,6 @@ import type { Firestore } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 import { attendanceRecords as attendanceRecordsPath } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
-import { assertInternalTestEventDocWritable } from '@/data/internal-test';
 import {
   getLatestAttendanceRecord,
   matchAttendanceRecord,
@@ -440,7 +439,6 @@ export async function writeAttendanceOps(
     return { addedDocIds: [], removedDocIds: [] };
   }
 
-  await assertInternalTestEventDocWritable(eventDocId);
 
   const [{ collection, doc: fsDoc, serverTimestamp, writeBatch }, db] = await Promise.all([
     import('firebase/firestore'),

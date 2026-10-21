@@ -133,7 +133,6 @@
     "cancel": "取消",
     "submitCreate": "建立活动",
     "saveChanges": "保存变更",
-    "visibleInLegacy": "此内测活动在旧版公开列表看得到",
     "error": {
       "titleRequired": "请输入活动名称",
       "titleTooLong": "活动名称不可超过 {limit} 字",

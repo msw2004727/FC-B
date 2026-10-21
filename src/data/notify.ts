@@ -10,17 +10,11 @@
  * - 收件匣、LINE 失敗都只 warn，不往外拋（A 為 fire-and-forget）。
  * - `source` 預設 `template:${key}`，可由 `lineOptions.source` 覆寫。
  * - dedupeKey 取收件匣訊息的 `dedupeKey`，`lineOptions.dedupeKey` 優先。
- * - LINE 前以 `assertInternalTestWritable`（kind='line'）檢查；被擋時不推播並回
- *   `reason:'internal_test_blocked'`。
  */
 
 import { callFn, type RequestOf } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
-import {
-  assertInternalTestWritable,
-  InternalTestBlockedError,
-} from '@/data/internal-test';
 
 // ── 內建範本（照 A `_getDefaultNotifTemplates` 逐字複製） ──
 
@@ -310,18 +304,6 @@ export async function sendTemplateNotification(
   // A `_queueLinePush`：強制推播的來源不必讀開關。
   const toggles = isForcedLinePushSource(source) ? {} : await loadNotificationToggles();
   if (shouldSkipLinePushByToggles(category, source, toggles)) {
-    return { delivered: true, linePushed: false };
-  }
-
-  // 內測守衛（B only）：呼叫前先檢；被擋 → 不推播、回 reason。
-  try {
-    await assertInternalTestWritable({ kind: 'line', affectedUids: [input.targetUid] });
-  } catch (err) {
-    if (err instanceof InternalTestBlockedError) {
-      return { delivered: true, linePushed: false, reason: 'internal_test_blocked' };
-    }
-    // eslint-disable-next-line no-console
-    console.warn('[notify] internal test check failed', err);
     return { delivered: true, linePushed: false };
   }
 

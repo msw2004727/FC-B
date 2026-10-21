@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, render, screen, waitFor } from '@testing-library/preact';
 import type { AuthUser } from '@/data/auth';
-import { emit } from '@/core/events';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
-import { sha256Hex } from '@/data/internal-test';
 import { App } from './App';
 
 const auth = vi.hoisted(() => ({
@@ -34,7 +32,6 @@ beforeEach(async () => {
   _setDictLoaderForTest(null);
   await setLocale('zh-TW');
   vi.stubEnv('VITE_INTERNAL_TEST', '1');
-  vi.stubEnv('VITE_INTERNAL_TEST_UID_HASHES', await sha256Hex('U_tester'));
 });
 
 afterEach(() => {
@@ -44,34 +41,16 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('App 內測閘門', () => {
-  it('訪客只看到內測頁與登入鈕，不載入功能', async () => {
-    const { container } = render(<App />);
-    expect(await screen.findByText(t('internalTest.title'))).toBeTruthy();
-    expect(screen.getByText(t('internalTest.body'))).toBeTruthy();
-    expect(container.querySelector('.internal-test-gate button')?.textContent)
-      .toContain(t('internalTest.login'));
-    expect(screen.queryByText('HOME_ROUTE')).toBeNull();
-  });
-
-  it('不在名單的帳號看到「不在內測名單」，不載入功能', async () => {
+// 測試同步更新：2026-10-20 站長取消內測名單與寫入守門
+describe('App 內測模式（只剩浮水印）', () => {
+  it('訪客直接看到站內功能，不再出現內測頁', async () => {
     render(<App />);
-    await act(async () => { emit('auth:changed', { uid: 'U_other' }); });
-    expect(await screen.findByText(t('internalTest.notInvited'))).toBeTruthy();
-    expect(screen.queryByText('HOME_ROUTE')).toBeNull();
-  });
-
-  it('白名單帳號正常進入', async () => {
-    render(<App />);
-    await act(async () => { emit('auth:changed', { uid: 'U_tester' }); });
-    // 整包測試同時跑時延遲載入的路由偶爾超過預設 1 秒，放寬等待上限避免誤報（2026-10-20 兩次偶發）。
     await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy(), { timeout: 5000 });
-    expect(screen.queryByText(t('internalTest.title'))).toBeNull();
   });
 
-  it('內測模式顯示版本角標；正式上線不顯示角標也不擋', async () => {
+  it('內測模式顯示版本角標；正式上線不顯示角標', async () => {
     const first = render(<App />);
-    await screen.findByText(t('internalTest.title'));
+    await waitFor(() => expect(screen.getByText('HOME_ROUTE')).toBeTruthy(), { timeout: 5000 });
     expect(first.container.querySelector('.internal-test-badge')).not.toBeNull();
     first.unmount();
 

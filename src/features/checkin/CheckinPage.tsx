@@ -35,7 +35,6 @@ import {
   type ScanMode,
   type ScanRegistration,
 } from './data/attendance';
-import { InternalTestBlockedError } from '@/data/internal-test';
 import {
   createQrScanner,
   scannerFailure,
@@ -306,10 +305,6 @@ function ScanSession({ entry, context, mode }: SessionProps) {
 
   const recoverWriteFailure = async (error?: unknown): Promise<void> => {
     if (!allowed()) return;
-    if (error instanceof InternalTestBlockedError) {
-      showPopup({ tone: 'error', key: 'internalTestOnly' });
-      return;
-    }
     try {
       await refresh();
     } catch {

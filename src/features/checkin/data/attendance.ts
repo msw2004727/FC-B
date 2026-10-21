@@ -12,7 +12,6 @@ import type { Firestore } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 import { attendanceRecords as attendanceRecordsPath } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
-import { assertInternalTestEventDocWritable } from '@/data/internal-test';
 
 // ── 型別 ──────────────────────────────────────────
 
@@ -430,7 +429,6 @@ export async function recordAttendance(
 ): Promise<string> {
   if (!eventDocId) throw new Error('[checkin] recordAttendance 需要 eventDocId（R-REG-014）');
   if (!record.eventId) throw new Error('[checkin] recordAttendance 需要 eventId（public id，R-ID-009）');
-  await assertInternalTestEventDocWritable(eventDocId);
 
   const [{ doc: fsDoc, collection, setDoc, serverTimestamp }, db] = await Promise.all([
     import('firebase/firestore'),
@@ -463,7 +461,6 @@ export async function removeAttendance(
   if (!eventDocId) throw new Error('[checkin] removeAttendance 需要 eventDocId（R-REG-014）');
   if (!recordDocId) throw new Error('[checkin] removeAttendance 需要 recordDocId');
   if (!operatorUid) throw new Error('[checkin] removeAttendance 需要 operatorUid（removedByUid，A24）');
-  await assertInternalTestEventDocWritable(eventDocId);
 
   const [{ doc: fsDoc, updateDoc, serverTimestamp }, db] = await Promise.all([
     import('firebase/firestore'),

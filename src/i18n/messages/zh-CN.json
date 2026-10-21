@@ -24,14 +24,6 @@
   "notFound.home": "回到首页",
   "feature.reserved": "此功能即将推出",
   "feature.external": "即将接入外部系统",
-  "internalTest.title": "内测中",
-  "internalTest.body": "新版 ToosterX 正在内部测试，目前只开放受邀账号。一般使用请前往旧版。",
-  "internalTest.notInvited": "这个账号不在内测名单中，请前往旧版使用。",
-  "internalTest.checking": "正在确认内测资格…",
-  "internalTest.login": "LINE 登录",
-  "internalTest.goOld": "前往 ToosterX 旧版",
-  "internalTest.eventOnly": "内测期间只能操作标题以「[內測]」开头的活动。",
-  "internalTest.blocked": "内测期间不能对内测名单以外的用户操作，请到旧版进行。",
   "internalTest.badge": "内测版 · {sha} · {target}",
   "ui": {
     "shell": {

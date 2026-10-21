@@ -1,7 +1,6 @@
 import './event-form.css';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { InternalTestBlockedError } from '@/data/internal-test';
 import { useT } from '@/i18n/i18n';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
@@ -316,15 +315,10 @@ export function EventFormModal({
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
-        if (result.visibleInLegacyList) {
-          toast.show({ message: t('events.form.visibleInLegacy'), tone: 'info' });
-        }
         onSaved(result.eventId);
       }
     } catch (error) {
-      if (error instanceof InternalTestBlockedError) {
-        toast.show({ message: t(error.messageKey), tone: 'error' });
-      } else if (error instanceof EventCreateError) {
+      if (error instanceof EventCreateError) {
         if (error.code === 'BASIC_CREATE_REQUIRED' || error.code === 'CREATE_NOT_ALLOWED') {
           toast.show({ message: t('events.form.error.createNotAllowed'), tone: 'error' });
         } else if (error.code === 'EDIT_NOT_ALLOWED') {

@@ -54,9 +54,8 @@ import {
 } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import { resolveShareLink } from './share-link';
-import { InternalTestGate } from './InternalTestGate';
 import { firebaseTargetLabel } from '@/data/firebase';
-import { isInternalTestMode, isInternalTester } from '@/data/internal-test';
+import { isInternalTestMode } from '@/data/internal-test';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { SyncStatusBar } from './SyncStatusBar';
@@ -117,9 +116,8 @@ export function App({
   const authRevision = useRef(0);
   const loginSequence = useRef(0);
   const currentUid = useRef<string | null>(null);
+  // 內測模式只剩角落浮水印（2026-10-20 站長取消白名單閘門與寫入守門）。
   const internalTest = useMemo(() => isInternalTestMode(), []);
-  // 內測模式：undefined＝確認中、true／false＝白名單結果（僅對目前 uid 有效）。
-  const [tester, setTester] = useState<{ uid: string; ok: boolean } | null>(null);
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
@@ -250,22 +248,9 @@ export function App({
     });
   }, [handleLogin]);
 
-  useEffect(() => {
-    const uid = user?.uid ?? null;
-    if (!internalTest || uid === null) return;
-    let alive = true;
-    isInternalTester(uid)
-      .then((ok) => { if (alive) setTester({ uid, ok }); })
-      .catch(() => { if (alive) setTester({ uid, ok: false }); });
-    return () => { alive = false; };
-  }, [internalTest, user?.uid]);
-
   const [routeAccess, setRouteAccess] = useState<(RouteAccessContext & Partial<ViewerView>) | null>(null);
   const pending = loginPending || externalPending;
   const isRestricted = routeAccess?.isRestricted === true;
-  const gateState: boolean | null | undefined = !internalTest ? true
-    : user === null ? null
-      : tester?.uid === user.uid ? tester.ok : undefined;
 
   return (
     <LocationProvider>
@@ -284,18 +269,14 @@ export function App({
           {loginError && !drawerOpen && (
             <div role="alert"><Text>{t('ui.shell.loginError')}</Text></div>
           )}
-          {gateState === true
-            ? <RouteArea routes={routes} isRestricted={isRestricted} />
-            : <InternalTestGate allowed={gateState} onLogin={handleLogin} loginPending={pending} />}
+          <RouteArea routes={routes} isRestricted={isRestricted} />
         </main>
-        {gateState === true && (
-          <BottomNav
-            user={user}
-            onLogin={handleLogin}
-            loginPending={pending}
-            isRestricted={isRestricted}
-          />
-        )}
+        <BottomNav
+          user={user}
+          onLogin={handleLogin}
+          loginPending={pending}
+          isRestricted={isRestricted}
+        />
         {internalTest && (
           <div class="internal-test-badge" aria-hidden="true">
             {t('internalTest.badge', {
@@ -314,12 +295,10 @@ export function App({
         onLogin={handleLogin}
         loginPending={pending}
         loginError={loginError}
-        routeAccess={gateState === true ? routeAccess : null}
+        routeAccess={routeAccess}
       />
-      {gateState === true && <ViewerAccessBridge onChange={setRouteAccess} />}
-      {gateState === true && (
-        <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
-      )}
+      <ViewerAccessBridge onChange={setRouteAccess} />
+      <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
       <MobileLineLoginHintModal
         open={mobileHintOpen}
         onCancel={closeMobileHint}

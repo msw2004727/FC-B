@@ -24,14 +24,6 @@
   "notFound.home": "Về trang chủ",
   "feature.reserved": "Tính năng này sắp ra mắt",
   "feature.external": "Sắp kết nối hệ thống bên ngoài",
-  "internalTest.title": "Đang thử nghiệm nội bộ",
-  "internalTest.body": "ToosterX phiên bản mới đang thử nghiệm nội bộ, chỉ mở cho tài khoản được mời. Vui lòng dùng phiên bản hiện tại.",
-  "internalTest.notInvited": "Tài khoản này không có trong danh sách thử nghiệm. Vui lòng dùng phiên bản hiện tại.",
-  "internalTest.checking": "Đang kiểm tra quyền thử nghiệm…",
-  "internalTest.login": "Đăng nhập LINE",
-  "internalTest.goOld": "Đến ToosterX phiên bản hiện tại",
-  "internalTest.eventOnly": "Trong thời gian thử nghiệm, chỉ thao tác được với sự kiện có tiêu đề bắt đầu bằng \"[內測]\".",
-  "internalTest.blocked": "Trong thời gian thử nghiệm, không thể thao tác với người dùng ngoài danh sách thử nghiệm. Vui lòng dùng phiên bản hiện tại.",
   "internalTest.badge": "Bản thử nghiệm · {sha} · {target}",
   "ui": {
     "shell": {

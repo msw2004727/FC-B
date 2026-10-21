@@ -201,7 +201,6 @@
     "cancel": "取消",
     "submitCreate": "建立活動",
     "saveChanges": "儲存變更",
-    "visibleInLegacy": "此內測活動在舊版公開列表看得到",
     "error": {
       "titleRequired": "請輸入活動名稱",
       "titleTooLong": "活動名稱不可超過 {limit} 字",

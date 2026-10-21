@@ -703,28 +703,6 @@ describe('createEvent', () => {
     expect(txSetMock).not.toHaveBeenCalled();
   });
 
-  it('內測模式：標題不是「[內測]」開頭就不建立', async () => {
-    vi.stubEnv('VITE_INTERNAL_TEST', '1');
-    try {
-      await expect(createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic'))
-        .rejects.toMatchObject({ code: 'INTERNAL_TEST_EVENT_ONLY' });
-      expect(txSetMock).not.toHaveBeenCalled();
-      txGetMock.mockResolvedValue({ exists: () => false });
-      const userResult = await createEvent(buildForm({ title: '[內測]練球' }), buildCtx(), 'ce_golden_user_basic');
-      expect(txSetMock).toHaveBeenCalledTimes(1);
-      // 一般 user 沒有 addons_use：無法設私密，回報舊版列表看得到。
-      expect(userResult.payload.privateEvent).toBe(false);
-      expect(userResult.visibleInLegacyList).toBe(true);
-      // 有加值權限（admin 有 event.edit_all）：內測活動一律私密。
-      const admin = buildCtx({ role: 'admin', capabilities: [], rolePermissions: ['event.edit_all'] });
-      const adminResult = await createEvent(buildForm({ title: '[內測]練球' }), admin, 'ce_golden_user_basic');
-      expect(adminResult.payload.privateEvent).toBe(true);
-      expect(adminResult.visibleInLegacyList).toBe(false);
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
   it('同一 id 已被他人使用 → ID_TAKEN，不覆寫', async () => {
     txGetMock.mockResolvedValue({ exists: () => true, data: () => ({ creatorUid: 'uid_other' }) });
     await expect(createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic'))

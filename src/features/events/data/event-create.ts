@@ -13,11 +13,6 @@
 
 import { getFirebase } from '@/data/firebase';
 import { callFn } from '@/data/callables';
-import {
-  assertInternalTestEventDocWritable,
-  assertInternalTestEventTitle,
-  isInternalTestMode,
-} from '@/data/internal-test';
 import type {
   AdjustEventCapacityRequest,
   AdjustEventCapacityResponse,
@@ -734,17 +729,10 @@ export async function createEvent(
   payload: EventCreatePayload;
   alreadyExisted: boolean;
   addonsStripped: boolean;
-  /** 內測模式下沒有加值權限、無法設為私密：這筆 [內測] 活動在舊版公開列表看得到，UI 要提示。 */
-  visibleInLegacyList: boolean;
 }> {
   if (!EVENT_ID_PATTERN.test(eventId)) {
     throw new EventCreateError('INVALID_ID', `Event ID does not match Rules pattern: ${eventId}`);
   }
-  assertInternalTestEventTitle(form.title);
-  // 內測活動能設私密就一律私密，A 的公開列表不會出現（只有 owner／delegate／admin 以上看得到）。
-  const internal = isInternalTestMode();
-  const canMakePrivate = canUseActivityAddons(toOperateContext(ctx), null);
-  if (internal && canMakePrivate) form = { ...form, privateEvent: true };
   const payload = buildCreateEventPayload(form, ctx, eventId);
   const [{ doc, runTransaction, serverTimestamp }, { db }] = await Promise.all([
     import('firebase/firestore'),
@@ -768,7 +756,6 @@ export async function createEvent(
     payload,
     alreadyExisted,
     addonsStripped: applyAddonGate(form, ctx, null).stripped,
-    visibleInLegacyList: internal && !canMakePrivate,
   };
 }
 
@@ -777,8 +764,6 @@ export async function updateEventBasics(
   form: CreateEventForm,
   ctx: CreateEventContext,
 ): Promise<EditResult> {
-  assertInternalTestEventTitle(existing.title);
-  assertInternalTestEventTitle(form.title);
   const result = buildEditEventUpdates(existing, form, ctx);
   const { updates, capacityChange } = result;
 
@@ -804,7 +789,6 @@ export async function changeEventCapacity(
   eventId: string,
   newMax: number,
 ): Promise<AdjustEventCapacityResponse> {
-  await assertInternalTestEventDocWritable(eventId);
   return callAdjustEventCapacity({ eventId, newMax });
 }
 

@@ -143,7 +143,6 @@
     "cancel": "キャンセル",
     "submitCreate": "イベント作成",
     "saveChanges": "変更を保存",
-    "visibleInLegacy": "この内部テストイベントは旧版の公開一覧に表示されます",
     "error": {
       "titleRequired": "イベント名を入力してください",
       "titleTooLong": "イベント名は {limit} 文字以内で入力してください",

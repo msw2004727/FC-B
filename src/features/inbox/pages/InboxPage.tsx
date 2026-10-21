@@ -2,7 +2,6 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useT } from '@/i18n/i18n';
-import { InternalTestBlockedError } from '@/data/internal-test';
 import { useViewer } from '@/features/profile/data/viewer';
 import {
   ensureMessageAction,
@@ -572,9 +571,6 @@ export default function InboxPage(): JSX.Element {
       }));
       setBanner({ tone: 'success', text: t('inbox.action.success') });
     } catch (error) {
-      if (error instanceof InternalTestBlockedError) {
-        setBanner({ tone: 'error', text: t(error.messageKey) });
-      }
       setActionUi((prev) => ({
         ...prev,
         runningKey: null,
@@ -644,7 +640,7 @@ export default function InboxPage(): JSX.Element {
       await sendPrivateMessage(targetUid, composeBody);
       setComposeBody('');
     } catch (error) {
-      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.sendFailed'));
+      setPmErrorText(t('inbox.pm.sendFailed'));
     } finally {
       setSendingPm(false);
     }
@@ -672,7 +668,7 @@ export default function InboxPage(): JSX.Element {
       setEditingMessageId(null);
       setEditingBody('');
     } catch (error) {
-      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.editFailed'));
+      setPmErrorText(t('inbox.pm.editFailed'));
     } finally {
       setPmBusyMessageId(null);
     }
@@ -689,7 +685,7 @@ export default function InboxPage(): JSX.Element {
     try {
       await recallPrivateMessage(cId, msgId);
     } catch (error) {
-      setPmErrorText(t(error instanceof InternalTestBlockedError ? error.messageKey : 'inbox.pm.recallFailed'));
+      setPmErrorText(t('inbox.pm.recallFailed'));
     } finally {
       setPmBusyMessageId(null);
     }

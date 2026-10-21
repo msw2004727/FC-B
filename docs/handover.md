@@ -15,7 +15,7 @@
 | Firebase 專案 | `fc-football-6c8dc` | 前端公開設定在 `src/data/firebase-config.ts`（公開 client 設定，不是秘密） |
 | Cloud Functions region | `asia-east1` | 所有 Callable 都在這個 region |
 | B 內測網域 | `next.toosterx.com` | 已加入 Firebase Auth 授權網域（2026-10-19） |
-| B 部署平台 | Cloudflare Pages 專案 `fc-b`（`fc-b.pages.dev`） | 2026-10-19 建立；連本 repo `main` 自動建置（push 即部署）。建置 `npm run build`、輸出 `dist`、環境變數 `NODE_VERSION=22`、`VITE_LIFF_ID`、`VITE_CALLABLE_MODE=live`、`VITE_INTERNAL_TEST_UID_HASHES`（站長自己填）。自訂網域 `next.toosterx.com`（CNAME → `fc-b.pages.dev`，Cloudflare 代理） |
+| B 部署平台 | Cloudflare Pages 專案 `fc-b`（`fc-b.pages.dev`） | 2026-10-19 建立；連本 repo `main` 自動建置（push 即部署）。建置 `npm run build`、輸出 `dist`、環境變數 `NODE_VERSION=22`、`VITE_LIFF_ID`、`VITE_CALLABLE_MODE=live`（舊的 `VITE_INTERNAL_TEST_UID_HASHES` 已不使用，可從平台刪除）。自訂網域 `next.toosterx.com`（CNAME → `fc-b.pages.dev`，Cloudflare 代理） |
 | **B 的 LIFF ID** | `2009084941-3WHCMLLn` | LIFF app「ToosterX Next」，Endpoint `https://next.toosterx.com/`，Full，scopes `openid`＋`profile`，加好友 On (aggressive) |
 | B 的 LIFF 所屬 channel | `2009084941`（LINE Login「FC 足球報名系統」） | |
 | A 的 LIFF ID | `2009525300-AuPGQ0sh` | A 是 **LINE MINI App**（MINI App 不能另加 LIFF，所以 B 的 LIFF 建在同 provider 的 Login channel） |
@@ -29,8 +29,7 @@
 | `VITE_LIFF_ID` | LIFF ID（正式建置時由平台注入，見上表） |
 | `VITE_FIREBASE_EMULATOR` | `1` 時開發模式連本機 emulator；正式建置一律忽略 |
 | `VITE_CALLABLE_MODE` | `live`（正式 Callable）或 `mock`（測試用假實作） |
-| `VITE_PUBLIC_LAUNCH` | **不設＝內測模式**（正式建置預設）；只有正式上線才設 `1` |
-| `VITE_INTERNAL_TEST_UID_HASHES` | 內測白名單：每位內測者 LINE UID 的 SHA-256（十六進位，逗號分隔）。不放明文 UID；空白＝沒有人能進 |
+| `VITE_PUBLIC_LAUNCH` | **不設＝內測模式**（正式建置預設：角落浮水印＋noindex）；只有正式上線才設 `1` |
 | `VITE_INTERNAL_TEST` | 只在 `vite dev` 有效：`1` 時本機也套用內測模式（測試閘門用） |
 
 範本見 `.env.example`。
@@ -49,27 +48,18 @@ npm run check              # 型別＋完整測試＋i18n
 
 ## 4.1 內測模式（next.toosterx.com）
 
-> **2026-10-21 現況**：站長 2026-10-20 已決定取消內測名單與寫入守門（新舊站是同一份資料的兩個入口、權限同 A，只保留角落浮水印），**但程式尚未改**：`src/app/App.tsx` 的 `InternalTestGate` 與各寫入模組的 [內測] 守門仍在，內測站訪客目前只看到「內測中」頁。拿掉時要一併處理下面的 noindex／robots（是否開放 Google 收錄另由站長決定）與單元測試。
+正式建置在 `VITE_PUBLIC_LAUNCH` 不是 `1` 時是內測模式，只剩兩件事（程式：`src/data/internal-test.ts`、`vite.config.ts` 的 `internalTestNoIndex`）：
 
-正式建置在 `VITE_PUBLIC_LAUNCH` 不是 `1` 時自動進入內測模式（忘了設也不會對外開放）。程式：`src/data/internal-test.ts`、`vite.config.ts` 的 `internalTestNoIndex`。
+- **角落浮水印**：畫面右下角「內測版 · 短 commit · 連線目標」（Cloudflare 建置用 `CF_PAGES_COMMIT_SHA`）。
+- **搜尋引擎隔離**：建置時注入 `noindex` meta，輸出 `robots.txt`（全站 Disallow）與 Cloudflare `_headers`（`X-Robots-Tag`）。是否讓 Google 收錄另由站長決定。
 
-- **白名單閘門**：登入後比對 SHA-256(uid)，不在名單（含未登入）只看到「內測中」頁，不載入任何功能。這是**資料污染防護與體驗閘門，不是安全邊界**；權限仍由 Firestore Rules 與 Callable 把關，與舊版相同。
-- **搜尋引擎隔離**：建置時注入 `noindex` meta，輸出 `robots.txt`（全站 Disallow）與 Cloudflare `_headers`（`X-Robots-Tag`、HTML `no-store`、`/assets/*` 長快取）。不提交 sitemap。
-- **寫入限制**：活動相關寫入（報名、取消、簽到、建立、編輯、名額）只限標題以「[內測]」開頭的活動；建立 [內測] 活動時，有加值權限就自動設為私密（舊版公開列表看不到），沒有則回傳 `visibleInLegacyList` 讓 UI 提示。俱樂部、私訊、收件匣投遞、LINE 通知：影響到的所有人（自己、對方、申請人、幹部、收件人）都在白名單才放行，真實使用者不會被改到資料、也不會收到任何內測通知。俱樂部不因名稱帶「[內測]」而豁免（避免改到真人的 users 文件卻沒通知）。只動自己的資料（個人資料、身分設定、自己收件匣已讀／刪除）不擋。
-- **版本角標**：畫面右下角顯示「內測版 · 短 commit」（Cloudflare 建置用 `CF_PAGES_COMMIT_SHA`）。
-- **計算白名單雜湊**（只在自己的電腦算，不要把 UID 貼到任何網站）：
-
-  ```bash
-  node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))" <LINE UID>
-  ```
-
-- **測試資料**：測試用活動與俱樂部由站長在舊版建立，名稱以「[內測]」開頭，俱樂部幹部與申請人都要是內測帳號；大部分操作請用測試帳號，不要用主帳號。
+**2026-10-20 站長取消白名單閘門與寫入守門**（取代 2026-10-19 的三道防護）：任何人（含訪客）都能瀏覽與使用，新舊站是同一份正式資料的兩個入口，權限與舊版 A 完全相同，由 Firestore Rules 與 Callable 把關。B 的寫入格式仍必須與 A 一致。
 
 ### 正式上線收尾清單
 
-1. Cloudflare Pages 設 `VITE_PUBLIC_LAUNCH=1`、移除 `VITE_INTERNAL_TEST_UID_HASHES`，重新建置。
+1. Cloudflare Pages 設 `VITE_PUBLIC_LAUNCH=1`，重新建置。
 2. 確認建置輸出沒有 `robots.txt` 的全站 Disallow、`_headers` 與 noindex meta，畫面沒有「內測版」角標（`src/data/internal-test.test.ts`、`src/app/App.internal-test.test.tsx` 已有單元測試；建置輸出要再人工看一次）。
-3. 站長在舊版刪除所有 [內測] 活動與測試俱樂部（待做：B 提供唯讀清單頁列出「標題含 [內測] 且由白名單帳號建立」的文件）。
+3. 站長在舊版刪除內測期間建立的 [內測] 測試活動與測試俱樂部。
 4. 正式網域的 sitemap／SEO 另案處理。
 
 ## 5. 架構重點
@@ -109,7 +99,6 @@ npm run check              # 型別＋完整測試＋i18n
 
 ## 9. 尚未完成、上線前要做的事
 
-- 內測閘門與寫入守門移除（站長已決定，見 4.1）。
 - 第 3～9 批 UI 照舊版（見第 7 節）。
 - 活動管理剩餘：降級／強制遞補（需新 Callable）、名單結算（開 `CALLABLES_DEPLOYED`）、放鴿子欄、隊伍排序、委託人編輯、隊伍保留名額快速調整、對外分享、左右滑切分頁。
 - 後台完整權限（P 階段）→ 收件匣的入隊核准按鈕要等它。
@@ -130,7 +119,7 @@ npm run check              # 型別＋完整測試＋i18n
 
 1. 讀 FC 的 `CLAUDE.md`、本檔、FC 的 local-only `docs/specs/lite-convergence/handover-private.md`（帳號、平台、待站長授權清單），跑 `npm run check` 確認全綠。
 2. 查用量（`get_usage`），照站長規則：產出交給 DeepSeek／MiMo、Codex 最高驗收，自己只做決策與合併。
-3. 依站長已做的決定移除內測閘門與寫入守門（見 4.1），保留浮水印；推送前請站長授權。
+3. 問站長 M-171：是否讓 Google 收錄 next.toosterx.com（目前 noindex，見 4.1）。
 4. 開工第 3 批（活動詳情與報名）：用 FC scratchpad 的 `build-batch-ctx.mjs` 依盤點項目產生附件，派工單照 `p77-batch2/prompt-common.md` 格式，每單拆小避免截斷。
 5. 每段工作結束更新施工看板（ArtifactData，只改資料不重發頁面），並在 FC `docs/claude-memory.md` 追加紀錄。
 

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { useT } from '@/i18n/i18n';
-import { InternalTestBlockedError } from '@/data/internal-test';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
@@ -367,11 +366,7 @@ function TeamDetailContent({
       }
     } catch (error) {
       if (!alive.current) return;
-      if (error instanceof InternalTestBlockedError) {
-        toast.show({ message: t(error.messageKey), tone: 'warning' });
-      } else {
-        toast.show({ message: t('clubs.actionError'), tone: 'error' });
-      }
+      toast.show({ message: t('clubs.actionError'), tone: 'error' });
     } finally {
       actionLock.current = false;
       if (alive.current) setBusy(false);
@@ -407,11 +402,7 @@ function TeamDetailContent({
       }
     } catch (error) {
       if (!alive.current) return;
-      if (error instanceof InternalTestBlockedError) {
-        toast.show({ message: t(error.messageKey), tone: 'warning' });
-      } else {
-        toast.show({ message: '退出俱樂部失敗，請重試', tone: 'error' });
-      }
+      toast.show({ message: '退出俱樂部失敗，請重試', tone: 'error' });
     } finally {
       actionLock.current = false;
       if (alive.current) setBusy(false);

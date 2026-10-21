@@ -144,7 +144,6 @@
     "cancel": "Cancel",
     "submitCreate": "Create Event",
     "saveChanges": "Save Changes",
-    "visibleInLegacy": "This internal test event is visible on the legacy public list",
     "error": {
       "titleRequired": "Please enter an event title",
       "titleTooLong": "Event name cannot exceed {limit} characters",

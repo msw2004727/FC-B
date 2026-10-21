@@ -184,7 +184,6 @@ describe('EventFormModal', () => {
         payload: {} as eventCreateMod.EventCreatePayload,
         alreadyExisted: false,
         addonsStripped: false,
-        visibleInLegacyList: false,
       });
     });
 

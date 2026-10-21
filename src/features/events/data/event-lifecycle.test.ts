@@ -27,27 +27,8 @@ vi.mock('./event-detail', () => ({
   loadEventRegistrations: vi.fn(async () => []),
 }));
 
-vi.mock('@/data/internal-test', () => ({
-  assertInternalTestEventTitle: vi.fn(),
-  InternalTestBlockedError: class InternalTestBlockedError extends Error {
-    code: 'INTERNAL_TEST_EVENT_ONLY' | 'INTERNAL_TEST_BLOCKED';
-    messageKey: 'internalTest.eventOnly' | 'internalTest.blocked';
-    constructor(kind: 'event' | 'team' | 'pm' | 'inbox' | 'line' = 'event') {
-      super(
-        kind === 'event'
-          ? '內測期間只能操作標題以「[內測]」開頭的活動'
-          : `內測期間不能對內測名單以外的使用者操作（${kind}）`,
-      );
-      this.name = 'InternalTestBlockedError';
-      this.code = kind === 'event' ? 'INTERNAL_TEST_EVENT_ONLY' : 'INTERNAL_TEST_BLOCKED';
-      this.messageKey = kind === 'event' ? 'internalTest.eventOnly' : 'internalTest.blocked';
-    }
-  },
-}));
-
 import { setDoc, updateDoc } from 'firebase/firestore';
 
-import { assertInternalTestEventTitle, InternalTestBlockedError } from '@/data/internal-test';
 import { sendTemplateNotification } from '@/data/notify';
 import { createGuestViewer, type ViewerView } from '@/features/profile/data/viewer';
 
@@ -66,7 +47,6 @@ const mockSetDoc = vi.mocked(setDoc);
 const mockSendNotify = vi.mocked(sendTemplateNotification);
 const mockLoadRecipients = vi.mocked(loadEventNotifyRecipientUids);
 const mockLoadRegs = vi.mocked(loadEventRegistrations);
-const mockAssertInternalTest = vi.mocked(assertInternalTestEventTitle);
 
 function ev(overrides: Record<string, unknown> = {}): EventDoc {
   return {
@@ -117,7 +97,6 @@ beforeEach(() => {
   mockLoadRegs.mockReset();
   mockLoadRegs.mockResolvedValue([]);
 
-  mockAssertInternalTest.mockReset();
 });
 
 // ── isCourseLinkedLifecycleLocked ─────────────────────
@@ -228,22 +207,6 @@ describe('cancelEvent', () => {
       }),
     ).rejects.toMatchObject({ code: 'NOT_ALLOWED' });
     expect(mockUpdateDoc).not.toHaveBeenCalled();
-  });
-
-  it('throws InternalTestBlockedError as-is', async () => {
-    mockAssertInternalTest.mockImplementationOnce(() => {
-      throw new InternalTestBlockedError('event');
-    });
-    await expect(
-      cancelEvent({
-        event: ev(),
-        eventDocId: 'doc-1',
-        viewer: adminViewer(),
-        now: new Date(),
-      }),
-    ).rejects.toBeInstanceOf(InternalTestBlockedError);
-    expect(mockUpdateDoc).not.toHaveBeenCalled();
-    expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
   it('throws WRITE_FAILED when updateDoc rejects', async () => {

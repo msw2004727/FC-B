@@ -143,7 +143,6 @@
     "cancel": "Hủy",
     "submitCreate": "Tạo hoạt động",
     "saveChanges": "Lưu thay đổi",
-    "visibleInLegacy": "Hoạt động thử nghiệm nội bộ này hiển thị trên danh sách công khai bản cũ",
     "error": {
       "titleRequired": "Vui lòng nhập tên hoạt động",
       "titleTooLong": "Tên sự kiện không được quá {limit} ký tự",

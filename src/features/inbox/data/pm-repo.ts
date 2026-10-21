@@ -14,7 +14,6 @@
 //     PM_THREAD_LIMIT:    50（對話列表上限）
 
 import { callFn } from '@/data/callables';
-import { assertInternalTestWritable } from '@/data/internal-test';
 import { getFirebase } from '@/data/firebase';
 
 // ── 常數（照 A pm-permission.js） ──────────────────
@@ -268,7 +267,6 @@ export async function sendPrivateMessage(
   const safeToUid = String(toUid ?? '').trim();
   if (!safeToUid) throw new Error('sendPrivateMessage: toUid is required');
   const trimmed = assertValidPmBody(body);
-  await assertInternalTestWritable({ kind: 'pm', affectedUids: [safeToUid] });
   const res = await callFn('sendPrivateMessage', { toUid: safeToUid, body: trimmed });
   return { conversationId: String(res?.conversationId ?? ''), messageId: String(res?.messageId ?? '') };
 }
@@ -284,7 +282,6 @@ export async function editPrivateMessage(
   if (!cId) throw new Error('editPrivateMessage: conversationId is required');
   if (!mId) throw new Error('editPrivateMessage: messageId is required');
   const trimmed = assertValidPmBody(body);
-  await assertInternalTestWritable({ kind: 'pm', affectedUids: conversationParticipants(cId) });
   await callFn('editPrivateMessage', {
     conversationId: cId,
     messageId: mId,
@@ -301,7 +298,6 @@ export async function recallPrivateMessage(
   const mId = String(messageId ?? '').trim();
   if (!cId) throw new Error('recallPrivateMessage: conversationId is required');
   if (!mId) throw new Error('recallPrivateMessage: messageId is required');
-  await assertInternalTestWritable({ kind: 'pm', affectedUids: conversationParticipants(cId) });
   await callFn('recallPrivateMessage', { conversationId: cId, messageId: mId });
 }
 

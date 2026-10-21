@@ -29,7 +29,6 @@
   "cancel": "取消",
   "unknownUser": "查無此用戶",
   "writeError": "操作或重新整理失敗，可能已有部分紀錄儲存。請重新整理後再試。",
-  "internalTestOnly": "內測期間只能為標題以「[內測]」開頭的活動簽到。",
   "family": "家庭代簽",
   "selectMembers": "請選擇要處理的成員。",
   "familyChanged": "家庭報名資料已變更，請取消後重新掃描。",

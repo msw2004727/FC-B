@@ -29,7 +29,6 @@
   "cancel": "取消",
   "unknownUser": "查无此用户",
   "writeError": "操作或刷新失败，可能已有部分记录保存。请刷新后再试。",
-  "internalTestOnly": "内测期间只能为标题以「[內測]」开头的活动签到。",
   "family": "家庭代签",
   "selectMembers": "请选择要处理的成员。",
   "familyChanged": "家庭报名资料已变更，请取消后重新扫描。",

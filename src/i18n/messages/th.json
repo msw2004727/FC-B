@@ -24,14 +24,6 @@
   "notFound.home": "กลับหน้าแรก",
   "feature.reserved": "ฟีเจอร์นี้จะเปิดให้ใช้เร็วๆ นี้",
   "feature.external": "กำลังเชื่อมต่อระบบภายนอก",
-  "internalTest.title": "กำลังทดสอบภายใน",
-  "internalTest.body": "ToosterX เวอร์ชันใหม่กำลังทดสอบภายใน เปิดให้เฉพาะบัญชีที่ได้รับเชิญ โปรดใช้เวอร์ชันปัจจุบัน",
-  "internalTest.notInvited": "บัญชีนี้ไม่อยู่ในรายชื่อทดสอบ โปรดใช้เวอร์ชันปัจจุบัน",
-  "internalTest.checking": "กำลังตรวจสอบสิทธิ์ทดสอบ…",
-  "internalTest.login": "เข้าสู่ระบบด้วย LINE",
-  "internalTest.goOld": "ไปที่ ToosterX เวอร์ชันปัจจุบัน",
-  "internalTest.eventOnly": "ระหว่างทดสอบภายใน ทำรายการได้เฉพาะกิจกรรมที่ชื่อขึ้นต้นด้วย \"[內測]\"",
-  "internalTest.blocked": "ระหว่างทดสอบภายใน ไม่สามารถทำรายการกับผู้ใช้นอกรายชื่อทดสอบได้ โปรดใช้เวอร์ชันปัจจุบัน",
   "internalTest.badge": "รุ่นทดสอบภายใน · {sha} · {target}",
   "ui": {
     "shell": {

@@ -22,7 +22,6 @@
  */
 
 import { CallableError, callFn } from '@/data/callables';
-import { InternalTestBlockedError, assertInternalTestEventTitle } from '@/data/internal-test';
 import type {
   CancelRegistrationRequest,
   CancelRegistrationResponse,
@@ -488,21 +487,6 @@ function toSignupError(
   });
 }
 
-/** 內測模式：只有「[內測]」活動可報名／取消（src/data/internal-test.ts）。 */
-function assertInternalTestEvent(event: EventDoc): void {
-  try {
-    assertInternalTestEventTitle(event.title);
-  } catch (error) {
-    if (!(error instanceof InternalTestBlockedError)) throw error;
-    throw new SignupError({
-      code: 'failed-precondition',
-      originalCode: error.code,
-      messageKey: 'internalTest.eventOnly',
-      message: error.message,
-    });
-  }
-}
-
 function assertPrecheck(result: SignupPrecheckResult): void {
   if (result.ok) return;
   throw new SignupError({
@@ -649,7 +633,6 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
       );
       assertCurrentAuth(context, captured, 'signup');
       assertEventId(snapshot.event, frozenInput.eventId, 'signup');
-      assertInternalTestEvent(snapshot.event);
       assertSnapshot(snapshot);
       if (snapshot.viewer.uid !== captured.uid) {
         throw operationError('signup', 'AUTH_CHANGED', '使用者資料與登入身分不符');
@@ -729,7 +712,6 @@ export function cancelRegistration(input: CancelRegistrationInput): Promise<Canc
       const snapshot = await context.load(frozenInput.eventId);
       assertCurrentAuth(context, captured, 'cancel');
       assertEventId(snapshot.event, frozenInput.eventId, 'cancel');
-      assertInternalTestEvent(snapshot.event);
 
       // A08 有此守衛；A10 沒有，不能以審查建議代替來源契約。
       if (frozenInput.kind === 'self') {
