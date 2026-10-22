@@ -65,3 +65,10 @@ export function useCheckinText(): (key: CheckinTextKey) => string {
 
   return (key) => dictionaries[locale][key];
 }
+
+/** 把 `{name}`、`{count}` 這類佔位字換成實際值（T-010：結果訊息照 A 帶名字）。 */
+export function fillText(template: string, values: Readonly<Record<string, string | number>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match
+  ));
+}

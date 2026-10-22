@@ -31,16 +31,17 @@ export function scannerFailure(error: unknown): ScannerFailure {
 
 export function createQrDeduplicator(
   now: () => number = () => performance.now(),
+  windowMs = 3000,
 ): (value: string) => boolean {
-  const seen = new Map<string, number>();
+  let lastValue: string | undefined;
+  let lastTime = 0;
 
   return (value) => {
     const time = now();
-    for (const [key, previous] of seen) {
-      if (time - previous >= 2_000) seen.delete(key);
-    }
-    if (seen.has(value)) return false;
-    seen.set(value, time);
+    // 照 A `_toggleCamera`：只比較上一個接受碼；拒絕不延長時間。
+    if (value === lastValue && time - lastTime < windowMs) return false;
+    lastValue = value;
+    lastTime = time;
     return true;
   };
 }

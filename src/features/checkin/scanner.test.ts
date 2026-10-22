@@ -79,16 +79,45 @@ describe('QR scanner', () => {
     expect(ponyfill.prepare).toHaveBeenCalledOnce();
   });
 
-  it('rejects repeated QR values for two seconds, including A/B/A', async () => {
+  // 測試同步更新：照 A（M-105）。
+  it('rejects the same QR for three seconds without extending the window', async () => {
     const { createQrDeduplicator } = await import('./scanner');
     let time = 0;
     const accept = createQrDeduplicator(() => time);
 
     expect(accept('A')).toBe(true);
-    expect(accept('B')).toBe(true);
-    time = 1_999;
+    time = 1_000;
     expect(accept('A')).toBe(false);
-    time = 2_000;
+    time = 2_999;
+    expect(accept('A')).toBe(false);
+    time = 3_000;
+    expect(accept('A')).toBe(true);
+    time = 5_999;
+    expect(accept('A')).toBe(false);
+    time = 6_000;
+    expect(accept('A')).toBe(true);
+  });
+
+  // 測試同步更新：照 A（M-105）。
+  it('accepts A/B/A because only the last accepted code is compared', async () => {
+    const { createQrDeduplicator } = await import('./scanner');
+    const accept = createQrDeduplicator(() => 0);
+
+    expect(accept('A')).toBe(true);
+    expect(accept('B')).toBe(true);
+    expect(accept('A')).toBe(true);
+    expect(accept('A')).toBe(false);
+  });
+
+  it('supports an injected deduplication window', async () => {
+    const { createQrDeduplicator } = await import('./scanner');
+    let time = 0;
+    const accept = createQrDeduplicator(() => time, 500);
+
+    expect(accept('A')).toBe(true);
+    time = 499;
+    expect(accept('A')).toBe(false);
+    time = 500;
     expect(accept('A')).toBe(true);
   });
 

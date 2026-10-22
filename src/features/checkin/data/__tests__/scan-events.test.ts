@@ -4,12 +4,18 @@
  * 目標：
  *  - 只列出 `canOperateEventSite === true` 的活動（R-IAM-010）。
  *  - 分類／排序照 A `_categorizeScanEvents`。
+ *  - 狀態篩選照 A `renderScanPage`：open / full / ended。
  *  - public id ≠ docId 的舊活動：value/eventId = public id，docId 保留。
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { loadScanEvents, pickScanBucket } from '../scan-events';
+import {
+  SCAN_EVENT_TYPE_CONFIG,
+  loadScanEvents,
+  pickScanBucket,
+  toScanEventEntry,
+} from '../scan-events';
 import type { EventDoc } from '@/features/events/data/types';
 import type { OperateContext } from '@/features/events/data/operate-permissions';
 
@@ -39,8 +45,9 @@ function visitorContext(uid: string): OperateContext {
 
 const NOW = new Date(2026, 4, 9, 10, 0, 0); // 2026-05-09 10:00 本地時間
 
+// 測試同步更新：照 A（M-104）預設 status: 'open' 以符合狀態篩選。
 function event(over: Partial<EventDoc>): EventDoc {
-  return { ...over };
+  return { status: 'open', ...over };
 }
 
 describe('loadScanEvents', () => {
@@ -161,5 +168,70 @@ describe('loadScanEvents', () => {
     expect(pickScanBucket(buckets, 'today')).toHaveLength(1);
     expect(pickScanBucket(buckets, 'past')).toHaveLength(0);
     expect(pickScanBucket(buckets, 'future')).toHaveLength(0);
+  });
+
+  it('只收 status open / full / ended（照 A renderScanPage）', () => {
+    const missing = event({
+      id: 'e_missing',
+      _docId: 'e_missing',
+      date: '2026/05/09 10:00~12:00',
+      creatorUid: 'u1',
+    });
+    delete (missing as { status?: string }).status;
+
+    const buckets = loadScanEvents({
+      context: ownerContext('u1'),
+      now: NOW,
+      events: [
+        event({ id: 'e_open', _docId: 'e_open', status: 'open', date: '2026/05/09 10:00~12:00', creatorUid: 'u1' }),
+        event({ id: 'e_full', _docId: 'e_full', status: 'full', date: '2026/05/09 10:00~12:00', creatorUid: 'u1' }),
+        event({ id: 'e_ended', _docId: 'e_ended', status: 'ended', date: '2026/05/09 10:00~12:00', creatorUid: 'u1' }),
+        event({ id: 'e_cancelled', _docId: 'e_cancelled', status: 'cancelled', date: '2026/05/09 10:00~12:00', creatorUid: 'u1' }),
+        event({ id: 'e_upcoming', _docId: 'e_upcoming', status: 'upcoming', date: '2026/05/09 10:00~12:00', creatorUid: 'u1' }),
+        missing,
+      ],
+    });
+    const all = [...buckets.today, ...buckets.past, ...buckets.future]
+      .map((entry) => entry.eventId)
+      .sort();
+    expect(all).toEqual(['e_ended', 'e_full', 'e_open']);
+  });
+
+  it('SCAN_EVENT_TYPE_CONFIG 對照 A TYPE_CONFIG 前綴', () => {
+    expect(SCAN_EVENT_TYPE_CONFIG.play).toEqual({ label: 'PLAY' });
+
+    const buckets = loadScanEvents({
+      context: ownerContext('u1'),
+      now: NOW,
+      typeConfig: SCAN_EVENT_TYPE_CONFIG,
+      events: [
+        event({
+          id: 'e_play',
+          _docId: 'e_play',
+          type: 'play',
+          date: '2026/05/09 10:00~12:00',
+          creatorUid: 'u1',
+        }),
+      ],
+    });
+    expect(buckets.today[0]!.typeLabel).toBe('[PLAY] ');
+  });
+
+  it('toScanEventEntry 匯出並帶類型前綴', () => {
+    const entry = toScanEventEntry(
+      event({ id: 'evt_public', _docId: 'doc-id', type: 'play' }),
+      SCAN_EVENT_TYPE_CONFIG,
+    );
+    expect(entry).toMatchObject({
+      value: 'evt_public',
+      eventId: 'evt_public',
+      docId: 'doc-id',
+      typeLabel: '[PLAY] ',
+    });
+  });
+
+  it('toScanEventEntry 缺 docId 回 null', () => {
+    expect(toScanEventEntry(event({ id: 'evt_public', _docId: undefined, docId: undefined })))
+      .toBeNull();
   });
 });

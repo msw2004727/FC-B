@@ -3,6 +3,7 @@
  *
  * 權限一律以 `canOperateEventSite` 判斷（R-IAM-010），不自行縮窄。
  * 分類／排序照 A `_categorizeScanEvents`：today asc / past desc / future asc。
+ * 狀態篩選照 A `renderScanPage`：只收 open / full / ended。
  * `value` 與 `eventId` 為 public id（R-ID-009，等同 A `_scanSelectedEventId`），
  * 另附 `docId`（R-REG-014 寫入路徑 `/events/{docId}/attendanceRecords`）。
  */
@@ -17,6 +18,16 @@ import type { EventDoc } from '@/features/events/data/types';
 export interface ScanEventTypeConfig {
   readonly [type: string]: { readonly label: string } | undefined;
 }
+
+/** 照 A `js/config.js#TYPE_CONFIG` 的 label。 */
+export const SCAN_EVENT_TYPE_CONFIG: ScanEventTypeConfig = {
+  friendly: { label: '友誼' },
+  camp: { label: '教學' },
+  play: { label: 'PLAY' },
+  watch: { label: '觀賽' },
+  course: { label: '課程' },
+  external: { label: '外部' },
+};
 
 export interface ScanEventEntry {
   /** `<option>` 的 value；A 的 `_scanSelectedEventId` 即 public id（R-ID-009）。 */
@@ -53,6 +64,8 @@ export interface LoadScanEventsInput {
   parseEventDate?: (date: string | undefined) => Date | null;
 }
 
+const SCAN_STATUSES: ReadonlySet<string> = new Set(['open', 'full', 'ended']);
+
 /** 從 date 字串（如「2026/05/09 15:00~17:00」）解析日期部分，避免依賴 Date 對原字串的寬鬆解析。 */
 function defaultParseEventDate(date: string | undefined): Date | null {
   if (!date) return null;
@@ -63,6 +76,11 @@ function defaultParseEventDate(date: string | undefined): Date | null {
   const day = Number(m[3]);
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
   return new Date(year, month - 1, day);
+}
+
+function eventStatus(event: EventDoc): string {
+  const value = (event as EventDoc & { status?: unknown }).status;
+  return typeof value === 'string' ? value : '';
 }
 
 function resolveIds(event: EventDoc): { eventId: string; docId: string } | null {
@@ -78,7 +96,11 @@ function resolveIds(event: EventDoc): { eventId: string; docId: string } | null 
   return { eventId, docId };
 }
 
-function toEntry(event: EventDoc, typeConfig?: ScanEventTypeConfig): ScanEventEntry | null {
+/** 就是既有 `toEntry`，改為匯出供帶入模式使用。 */
+export function toScanEventEntry(
+  event: EventDoc,
+  typeConfig?: ScanEventTypeConfig,
+): ScanEventEntry | null {
   const ids = resolveIds(event);
   if (!ids) return null;
   const type = event.type;
@@ -110,8 +132,10 @@ export function loadScanEvents(input: LoadScanEventsInput): ScanEventBuckets {
   const tomorrowStart = new Date(todayStart.getTime() + 86_400_000);
 
   for (const event of events) {
+    const status = eventStatus(event);
+    if (!SCAN_STATUSES.has(status)) continue;
     if (!canOperateEventSite(context, event)) continue;
-    const entry = toEntry(event, typeConfig);
+    const entry = toScanEventEntry(event, typeConfig);
     if (!entry) continue;
 
     const parsed = parse(event.date);
