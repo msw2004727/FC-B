@@ -22,21 +22,16 @@ import {
   MyActivityCard,
   getEventCreatorName,
   getEventCreatorUid,
-  type LifecycleKind,
 } from '../components/legacy/MyActivityCard';
+import {
+  runEventLifecycleAction,
+  type LifecycleKind,
+} from '../components/legacy/event-lifecycle-action';
 import {
   MyActivityDetailModal,
   MyActivityStatsModal,
 } from '../components/legacy/MyActivityModals';
 import { operateContextFromViewer } from '../data/event-create-context';
-import {
-  EventLifecycleError,
-  cancelEvent,
-  isCourseLinkedLifecycleLocked,
-  isEventStartPassed,
-  relistEvent,
-  reopenEvent,
-} from '../data/event-lifecycle';
 import { getEventsRepo } from '../data/events-repo';
 import {
   MY_ACTIVITY_DEFAULT_PAGE_SIZE,
@@ -46,11 +41,7 @@ import {
   sortMyActivitiesByNearestTime,
   type MyActivityTab,
 } from '../data/my-activities-model';
-import {
-  canCancelOwnActivity,
-  canManageAllActivities,
-  canReopenOrRelistActivity,
-} from '../data/operate-permissions';
+import { canManageAllActivities } from '../data/operate-permissions';
 import type { EventDoc } from '../data/types';
 
 /** 第一版不做刪除（PM 決策）：刪除按鈕導回舊版。 */
@@ -65,37 +56,6 @@ const TAB_CONFIG: readonly { id: MyActivityTab; text: string }[] = [
   { id: 'ended', text: '已結束' },
   { id: 'cancelled', text: '已取消' },
 ] as const;
-
-const LIFECYCLE_MESSAGES: Readonly<
-  Record<
-    LifecycleKind,
-    {
-      confirm: string;
-      done: string;
-      fail: string;
-      startPassed: string;
-    }
-  >
-> = {
-  cancel: {
-    confirm: '確定要取消此活動？',
-    done: '活動已取消',
-    fail: '取消失敗，請重試',
-    startPassed: '',
-  },
-  reopen: {
-    confirm: '確定要重新開放此活動？',
-    done: '活動已重新開放',
-    fail: '重新開放失敗，請重試',
-    startPassed: '活動時間已過，請先編輯活動並更新時間後再重新開放。',
-  },
-  relist: {
-    confirm: '確定要重新上架此活動？\n報名名單與候補名單將會保留。',
-    done: '活動已重新上架',
-    fail: '重新上架失敗，請重試',
-    startPassed: '活動時間已過，請先編輯活動並更新時間後再上架。',
-  },
-};
 
 function eventDocIdOf(e: EventDoc): string {
   return String(e._docId ?? e.docId ?? e.id ?? '');
@@ -340,53 +300,14 @@ export default function MyActivitiesPage(): JSX.Element {
    * 課程連結 → 權限 →（重開／上架）時間已過提示 → 確認框 → 寫入 → 重新整理列表 → 成功提示。
    */
   async function handleLifecycle(kind: LifecycleKind, e: EventDoc): Promise<void> {
-    const docId = eventDocIdOf(e);
-    if (!docId || lifecycleBusyRef.current.has(docId)) return;
-    const msgs = LIFECYCLE_MESSAGES[kind];
-    if (isCourseLinkedLifecycleLocked(e)) {
-      toast.show({
-        message: '課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放',
-        tone: 'error',
-      });
-      return;
-    }
-    const allowed =
-      kind === 'cancel'
-        ? canCancelOwnActivity(operateCtx, e)
-        : canReopenOrRelistActivity(operateCtx, e);
-    if (!allowed) {
-      toast.show({ message: '您只能管理自己的活動', tone: 'error' });
-      return;
-    }
-    if (kind !== 'cancel' && isEventStartPassed(e)) {
-      await appConfirm(msgs.startPassed);
-      return;
-    }
-    lifecycleBusyRef.current.add(docId);
-    try {
-      if (!(await appConfirm(msgs.confirm))) return;
-      const input = { event: e, eventDocId: docId, viewer };
-      if (kind === 'cancel') await cancelEvent(input);
-      else if (kind === 'reopen') await reopenEvent(input);
-      else await relistEvent(input);
-      void loadAll(activeTab, true);
-      toast.show({ message: msgs.done, tone: 'success' });
-    } catch (err: unknown) {
-      if (err instanceof EventLifecycleError && err.code === 'COURSE_LINKED') {
-        toast.show({
-          message: '課程轉化的活動請回課堂管理，不能在活動端取消、結束、刪除或重新開放',
-          tone: 'error',
-        });
-      } else if (err instanceof EventLifecycleError && err.code === 'NOT_ALLOWED') {
-        toast.show({ message: '您只能管理自己的活動', tone: 'error' });
-      } else if (err instanceof EventLifecycleError && err.code === 'START_PASSED') {
-        await appConfirm(msgs.startPassed);
-      } else {
-        toast.show({ message: msgs.fail, tone: 'error' });
-      }
-    } finally {
-      lifecycleBusyRef.current.delete(docId);
-    }
+    await runEventLifecycleAction(kind, e, {
+      viewer,
+      operateCtx,
+      busy: lifecycleBusyRef.current,
+      onDone: () => {
+        void loadAll(activeTab, true);
+      },
+    });
   }
 
   async function handleDeleteInLegacy(): Promise<void> {
