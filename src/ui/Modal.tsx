@@ -42,7 +42,8 @@ const bodyLocks = new WeakMap<HTMLElement, BodyLock>();
 
 const DEFAULT_BUSY_MESSAGE = '資料儲存中，請稍候';
 
-function lockBody(body: HTMLElement): () => void {
+/** 鎖背景捲動（計數，最後一層關閉才還原）；照 A 外觀的自繪彈窗（建立活動表單）共用這一套。 */
+export function lockBody(body: HTMLElement): () => void {
   let lock = bodyLocks.get(body);
 
   if (!lock) {

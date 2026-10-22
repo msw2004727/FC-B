@@ -28,6 +28,8 @@ export interface DelegatePickerView {
   /** 搜尋結果（A 最多 5 筆）。 */
   results: readonly DelegateChip[];
   dropdownOpen: boolean;
+  /** 照 A _searchDelegates：載入／空結果／失敗文字；空字串表示不顯示。 */
+  dropdownStatus: string;
   /** A 的三種 placeholder：「搜尋用戶...」「已達上限 3 人」「無權設定委託人」。 */
   placeholder: string;
   inputDisabled: boolean;

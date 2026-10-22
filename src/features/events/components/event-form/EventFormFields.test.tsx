@@ -37,6 +37,7 @@ function makeDelegates(): DelegatePickerView {
     query: '',
     results: [],
     dropdownOpen: false,
+    dropdownStatus: '',
     placeholder: '搜尋用戶...',
     inputDisabled: false,
     onQuery: vi.fn(),

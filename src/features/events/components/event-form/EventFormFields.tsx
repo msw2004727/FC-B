@@ -728,9 +728,9 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
             class={`ce-delegate-dropdown${delegates.dropdownOpen ? ' open' : ''}`}
             id="ce-delegate-dropdown"
           >
-            {delegates.dropdownOpen && delegates.results.length === 0 && (
+            {delegates.dropdownOpen && delegates.dropdownStatus && (
               <div style={{ padding: '.4rem .6rem', fontSize: '.78rem', color: 'var(--text-muted)' }}>
-                {lt('找不到符合的用戶')}
+                {lt(delegates.dropdownStatus, delegates.dropdownStatus)}
               </div>
             )}
             {delegates.dropdownOpen && delegates.results.map((chip) => {

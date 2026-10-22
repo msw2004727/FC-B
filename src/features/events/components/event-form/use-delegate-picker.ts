@@ -45,6 +45,8 @@ export function useDelegatePicker(input: {
   const query = useRef('');
   const results = useRef<DelegateChip[]>([]);
   const open = useRef(false);
+  // 照 A _searchDelegates：只有無結果時顯示目錄狀態。
+  const dropdownStatus = useRef('');
   const focusedOnce = useRef(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancellations = useRef(new Set<() => void>());
@@ -114,12 +116,19 @@ export function useDelegatePicker(input: {
 
     results.current = requestedQuery ? matching(requestedQuery) : [];
     open.current = Boolean(requestedQuery);
+    dropdownStatus.current = requestedQuery && results.current.length === 0
+      ? getUserDirectory().length > 0
+        ? '正在更新用戶資料…'
+        : '載入用戶資料…'
+      : '';
     render();
 
+    let directoryReady = false;
     try {
-      await loadUserDirectory({ force });
+      directoryReady = await loadUserDirectory({ force });
     } catch {
       // 照 A _searchDelegates；載入失敗仍保留可用的快取結果。
+      directoryReady = false;
     }
     if (
       !alive.current
@@ -131,6 +140,11 @@ export function useDelegatePicker(input: {
 
     results.current = requestedQuery ? matching(requestedQuery) : [];
     open.current = Boolean(requestedQuery) && selected.current.length < 3;
+    dropdownStatus.current = requestedQuery && results.current.length === 0
+      ? directoryReady
+        ? '找不到符合的用戶'
+        : '用戶資料載入失敗，請稍後重試'
+      : '';
     render();
   };
 
@@ -334,6 +348,10 @@ export function useDelegatePicker(input: {
       query: query.current,
       results: canManage ? results.current : [],
       dropdownOpen: canManage && open.current && selected.current.length < 3,
+      dropdownStatus: canManage && open.current && selected.current.length < 3
+        && results.current.length === 0
+        ? dropdownStatus.current || '找不到符合的用戶'
+        : '',
       placeholder: !canManage
         ? lt('無權設定委託人', '無權設定委託人')
         : selected.current.length >= 3
