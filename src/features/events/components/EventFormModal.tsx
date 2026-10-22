@@ -18,7 +18,11 @@ import {
   type EventStatus,
 } from '../data/event-create';
 import { createEventContextFromViewer, operateContextFromViewer } from '../data/event-create-context';
-import { canManageAllActivities, hasActivityManageEntry } from '../data/operate-permissions';
+import {
+  canManageAllActivities,
+  canUseActivityAddons,
+  hasActivityManageEntry,
+} from '../data/operate-permissions';
 import {
   hasEventChangeNotificationDiff,
   loadEventNotifyRecipientUids,
@@ -32,11 +36,14 @@ import {
   type EventFormState,
   canToggleEventRegion,
   resolveCreatorName,
+  EVENT_TITLE_LIMIT,
 } from '../data/event-form-model';
 import type { EventDoc } from '../data/types';
 import { EventFormFields } from './event-form/EventFormFields';
 import { useCoverUpload } from './event-form/use-cover-upload';
 import { useDelegatePicker } from './event-form/use-delegate-picker';
+import { useTeamOnlyPicker } from './event-form/use-team-only-picker';
+import type { EventFormAddonState } from './event-form/form-types';
 
 /** 建立／編輯後交給頁面執行 A 的後續流程。 */
 export interface EventFormSavedResult {
@@ -54,9 +61,6 @@ export interface EventFormModalProps {
   onClose(): void;
   onSaved(result: EventFormSavedResult): void;
 }
-
-// ASSUMPTION: 附件未提供標題上限常數的匯出位置，沿用既有表單的 16 字。
-const EVENT_TITLE_LIMIT = 16;
 
 function toEventForEdit(doc: EventDoc, fallbackId: string): EventForEdit {
   const ext = doc as EventDoc & {
@@ -111,11 +115,50 @@ export function EventFormModal({
   const existingForPicker = mode === 'edit' && existing
     ? toEventForEdit(existing, existing.id ?? existing._docId ?? existing.docId ?? '')
     : null;
+  const canUseAddons = canUseActivityAddons(operateContextFromViewer(viewer), existingForPicker);
   const cover = useCoverUpload();
   const delegates = useDelegatePicker({ viewer, existing: existingForPicker });
 
-  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, onSaved });
-  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, onSaved };
+  function patch(value: Partial<EventFormState>): void {
+    // 照 A handleCreateEvent：送出期間固定本次表單，避免非同步驗證與 payload 不一致。
+    if (!mountedRef.current || submitInFlightRef.current) return;
+    setFormState(previous => ({ ...previous, ...value }));
+  }
+
+  const teamOnly = useTeamOnlyPicker({
+    viewer,
+    existing: mode === 'edit' ? existing ?? null : null,
+    mode,
+    enabled: formState.teamOnly,
+    selectedIds: formState.teamOnlyTeamIds,
+    onChange: ids => patch({ teamOnlyTeamIds: ids }),
+  });
+
+  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, onSaved });
+  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, onSaved };
+
+  function guardAddon(): boolean {
+    // 照 A _guardActivityAddonToggle：handler 與畫面使用同一個權限 helper。
+    const current = latestRef.current;
+    const target = current.mode === 'edit' && current.existing
+      ? toEventForEdit(current.existing, current.formState.eventId ?? '')
+      : null;
+    if (canUseActivityAddons(operateContextFromViewer(current.viewer), target)) return true;
+    toast.show({ message: lt(ADDON_UPSELL_MESSAGE, ADDON_UPSELL_MESSAGE) });
+    return false;
+  }
+
+  function patchAddon(value: Partial<EventFormAddonState>): void {
+    if (!mountedRef.current || submitInFlightRef.current) return;
+    // 照 A _guardActivityAddonToggle：關閉可直接操作，其餘變更再次守門。
+    if (Object.values(value).some(item => item !== false) && !guardAddon()) return;
+    patch(value);
+  }
+
+  function onReservedClick(): void {
+    // 照 A _handleReservedActivityAddonClick：只有提示，不修改表單。
+    toast.show({ message: lt(ADDON_UPSELL_MESSAGE, ADDON_UPSELL_MESSAGE) });
+  }
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -160,9 +203,21 @@ export function EventFormModal({
 
     const now = new Date();
     if (mode === 'edit' && existing) {
-      const nextState = formStateFromEvent(existing);
+      const nextState = formStateFromEvent(existing, { canUseAddons });
       setFormState(nextState);
       setGeneratedEventId(nextState.eventId);
+      const teamFields = existing as unknown as Record<string, unknown>;
+      const teamNames = Array.isArray(teamFields.creatorTeamNames)
+        ? teamFields.creatorTeamNames.filter((name): name is string => typeof name === 'string')
+        : [];
+      teamOnly.reset(
+        nextState.teamOnlyTeamIds,
+        teamNames.length
+          ? teamNames
+          : typeof teamFields.creatorTeamName === 'string' && teamFields.creatorTeamName
+            ? [teamFields.creatorTeamName]
+            : [],
+      );
       cover.reset({ image: existing.image ?? '', imageVariants: existing.imageVariants });
       // 照 A openEditEvent：既有委託人只取 UID 與名稱。
       delegates.reset(Array.isArray(existing.delegates)
@@ -181,6 +236,7 @@ export function EventFormModal({
       setFormState(createDefaultFormState(now));
       cover.reset({ image: '' });
       delegates.reset([]);
+      teamOnly.reset([], []);
       const ctx = createEventContextFromViewer(viewer, now);
       if (ctx) {
         try {
@@ -192,7 +248,7 @@ export function EventFormModal({
         setGeneratedEventId(null);
       }
     }
-  }, [open, mode, existing, viewer, cover.reset, delegates.reset]);
+  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, canUseAddons]);
 
   // 照 A 委託人送出驗證：等待重繪後讀取 hook 更新的最新名稱，避免使用舊 render 快照。
   useLayoutEffect(() => {
@@ -258,18 +314,61 @@ export function EventFormModal({
       });
       if (!isCurrent()) return;
 
-      const current = latestRef.current;
+      let current = latestRef.current;
       const now = new Date();
+      const addonTarget = current.mode === 'edit' && current.existing
+        ? toEventForEdit(current.existing, current.formState.eventId ?? '')
+        : null;
+      const submitCanUseAddons = canUseActivityAddons(
+        operateContextFromViewer(current.viewer),
+        addonTarget,
+      );
       const stateForValidation: EventFormState = {
         ...current.formState,
-        eventId: mode === 'edit'
-          ? (current.formState.eventId ?? existing?.id ?? 'edit')
+        regionEnabled: canToggleEventRegion(current.viewer.hasPermission)
+          ? current.formState.regionEnabled
+          : true,
+        eventId: current.mode === 'edit'
+          ? (current.formState.eventId ?? current.existing?.id ?? 'edit')
           : null,
       };
-      const validation = validateEventForm(stateForValidation, now);
+      const validation = validateEventForm(stateForValidation, now, {
+        canUseAddons: submitCanUseAddons,
+      });
       if (!validation.ok) {
-        toast.show({ message: t(validation.messageKey, validation.params), tone: 'error' });
+        toast.show({
+          message: 'message' in validation
+            ? lt(validation.message, validation.message)
+            : t(validation.messageKey, validation.params),
+          tone: 'error',
+        });
         return;
+      }
+
+      // 照 A handleCreateEvent：地區之後才驗證限定俱樂部。
+      // 無加值權限時由資料層移除加值 updates，不因既有限定俱樂部阻擋基本編輯。
+      if (submitCanUseAddons) {
+        // 照 A eventCreateHasOnlyTeamScopedAddon：告知選擇器俱樂部限定以外是否還有其他加值欄位開啟。
+        const fs = current.formState;
+        const otherAddonsEnabled = fs.feeEnabled || fs.genderRestrictionEnabled || fs.privateEvent
+          || fs.teamSplitEnabled || fs.socialLinksEnabled || fs.earlyBirdEnabled || fs.gpsEnabled;
+        const teamValidation = await current.teamOnly.validateForSubmit({ otherAddonsEnabled });
+        if (!isCurrent()) return;
+        if (!teamValidation.ok) {
+          toast.show({
+            message: lt(teamValidation.message, teamValidation.message),
+            tone: 'error',
+          });
+          return;
+        }
+
+        // 照 A 限定俱樂部驗證：等待 hook 提交最新目錄名稱後才組 payload。
+        await new Promise<void>((resolve) => {
+          afterRenderRef.current = resolve;
+          setSubmitRevision(value => value + 1);
+        });
+        if (!isCurrent()) return;
+        current = latestRef.current;
       }
 
       const ctx = createEventContextFromViewer(current.viewer, now);
@@ -290,6 +389,7 @@ export function EventFormModal({
         image: current.cover.value.image,
         imageVariants: current.cover.value.imageVariants,
         delegates: current.delegates.value,
+        teamOnlySelection: current.teamOnly.resolveSelection(),
       });
 
       if (mode === 'edit' && existing) {
@@ -306,8 +406,8 @@ export function EventFormModal({
           return;
         }
 
-        // T-013 修補：封面／委託人已接入並預填；第 2 段前只保留既有加值欄位。
-        const result = await updateEventBasics(existingForEdit, payloadForm, ctx, { addons: true });
+        // 照 A handleCreateEvent：加值欄位由表單送出，資料層依權限移除 updates。
+        const result = await updateEventBasics(existingForEdit, payloadForm, ctx);
         if (!isCurrent()) return;
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
@@ -463,11 +563,20 @@ export function EventFormModal({
           <EventFormFields
             mode={mode}
             state={formState}
-            onPatch={patch => setFormState(previous => ({ ...previous, ...patch }))}
+            onPatch={patch}
             titleLimit={EVENT_TITLE_LIMIT}
             canToggleRegion={canToggleRegion}
             cover={cover.view}
             delegates={delegates.view}
+            addons={{
+              state: formState,
+              onPatch: patchAddon,
+              guardAddon,
+              onReservedClick,
+              teamPicker: teamOnly.picker,
+              teamOnlyToggleDisabled: teamOnly.toggleDisabled,
+              teamOnlyLabel: teamOnly.label,
+            }}
             location={{
               statusText: lt('GPS功能未開啟', 'GPS功能未開啟'),
               statusState: 'disabled',

@@ -13,6 +13,7 @@ import {
 } from './event-form-model';
 import type { EventDoc } from './types';
 import { SPORTS } from './sports';
+import { TEAM_SPLIT_COLORS } from '../components/event-form/TeamJerseyIcon';
 
 afterEach(() => {
   cleanup();
@@ -279,6 +280,427 @@ describe('1E-3：封面、委託人與運動類型', () => {
       expect(toCreateEventForm(makeValidState({ sportTag: tag }), '主辦人').sportTag).toBe('');
     },
   );
+});
+
+describe('2B-1：加值狀態、還原、對應與驗證', () => {
+  it('加值預設照 A，陣列不跨表單共用', () => {
+    const state = createDefaultFormState();
+    expect(state).toMatchObject({
+      feeEnabled: false,
+      fee: '0',
+      teamOnly: false,
+      teamOnlyTeamIds: [],
+      genderRestrictionEnabled: false,
+      allowedGender: '',
+      privateEvent: false,
+      teamSplitEnabled: false,
+      teamSplitCount: 2,
+      teamSplitColorIdx: [0, 1, 2, 3],
+      teamSplitBalanceCap: true,
+      teamSplitMode: 'random',
+      teamSplitLockHours: 2,
+      socialLinksEnabled: false,
+      socialLinkInputs: [''],
+      earlyBirdEnabled: false,
+      earlyBirdCost: '10',
+      gpsEnabled: false,
+    });
+    state.teamSplitColorIdx[0] = 7;
+    state.teamOnlyTeamIds.push('team-a');
+    state.socialLinkInputs.push('https://example.test/');
+    const another = createDefaultFormState();
+    expect(another.teamSplitColorIdx).toEqual([0, 1, 2, 3]);
+    expect(another.teamOnlyTeamIds).toEqual([]);
+    expect(another.socialLinkInputs).toEqual(['']);
+  });
+
+  it('還原 A 加值欄位，色票以 hex 對回索引，GPS 受權限控制', () => {
+    const color = TEAM_SPLIT_COLORS[3];
+    if (!color) throw new Error('missing contract color');
+    const doc = {
+      id: 'public-addon-event',
+      feeEnabled: true,
+      fee: 120,
+      teamOnly: true,
+      creatorTeamIds: ['team-b', 'team-a'],
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+      privateEvent: true,
+      teamSplit: {
+        enabled: true,
+        mode: 'self-select',
+        balanceCap: false,
+        selfSelectLockHours: 6,
+        teams: [
+          { key: 'A', color: color.hex, name: color.name },
+          { key: 'B', color: 'unknown-color', name: '舊色票' },
+        ],
+      },
+      socialLinksEnabled: true,
+      socialLinks: [{ url: 'https://line.me/test#fragment' }],
+      earlyBirdEnabled: true,
+      earlyBirdCost: 30,
+      mapLocationConfirmed: true,
+    } as unknown as EventDoc;
+
+    expect(formStateFromEvent(doc, { canUseAddons: true })).toMatchObject({
+      feeEnabled: true,
+      fee: '120',
+      teamOnly: true,
+      teamOnlyTeamIds: ['team-b', 'team-a'],
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+      privateEvent: true,
+      teamSplitEnabled: true,
+      teamSplitCount: 2,
+      teamSplitColorIdx: [3, 1, 2, 3],
+      teamSplitBalanceCap: false,
+      teamSplitMode: 'self-select',
+      teamSplitLockHours: 6,
+      socialLinksEnabled: true,
+      socialLinkInputs: ['https://line.me/test'],
+      earlyBirdEnabled: true,
+      earlyBirdCost: '30',
+      gpsEnabled: true,
+    });
+    expect(formStateFromEvent(doc).gpsEnabled).toBe(false);
+    expect(formStateFromEvent(doc, { canUseAddons: false }).gpsEnabled).toBe(false);
+    expect(formStateFromEvent({
+      id: 'gps-event',
+      gpsEnabled: true,
+    } as unknown as EventDoc, { canUseAddons: true }).gpsEnabled).toBe(true);
+  });
+
+  it('舊資料還原單一俱樂部、預設費用、早鳥、社群及分隊值', () => {
+    const state = formStateFromEvent({
+      id: 'old-event',
+      fee: 80,
+      creatorTeamId: 'old-team',
+      creatorTeamIds: [],
+      socialLinksEnabled: true,
+      socialLinks: [],
+      earlyBirdEnabled: true,
+      earlyBirdCost: 0,
+      teamSplit: {
+        enabled: true,
+        mode: 'manual',
+        teams: [{ color: 'unknown' }, { color: 'unknown' }, { color: 'unknown' }],
+      },
+    } as unknown as EventDoc);
+    expect(state).toMatchObject({
+      feeEnabled: true,
+      fee: '80',
+      teamOnlyTeamIds: ['old-team'],
+      socialLinksEnabled: false,
+      socialLinkInputs: [''],
+      earlyBirdCost: '10',
+      teamSplitCount: 3,
+      teamSplitBalanceCap: true,
+      teamSplitMode: 'manual',
+      teamSplitLockHours: 2,
+    });
+    expect(formStateFromEvent({
+      id: 'explicit-fee',
+      feeEnabled: false,
+      fee: 80,
+    } as unknown as EventDoc).feeEnabled).toBe(false);
+  });
+
+  it('開啟欄位送 A 格式，限定俱樂部以 extras 的順序為準', () => {
+    const state = makeValidState({
+      feeEnabled: true,
+      fee: '123.9',
+      teamOnly: true,
+      teamOnlyTeamIds: ['ignored-state-id'],
+      genderRestrictionEnabled: true,
+      allowedGender: '男',
+      privateEvent: true,
+      teamSplitEnabled: true,
+      teamSplitCount: 3,
+      teamSplitColorIdx: [3, 2, 1, 0],
+      teamSplitBalanceCap: false,
+      teamSplitMode: 'self-select',
+      teamSplitLockHours: 5,
+      socialLinksEnabled: true,
+      socialLinkInputs: [' line.me/test#fragment ', 'https://line.me/test', ''],
+      earlyBirdEnabled: true,
+      earlyBirdCost: '25.9',
+      gpsEnabled: true,
+    });
+    const selection = { ids: ['team-b', 'team-a'], names: ['乙隊', '甲隊'] };
+    const form = toCreateEventForm(state, '主辦人', { teamOnlySelection: selection });
+    expect(form).toMatchObject({
+      feeEnabled: true,
+      fee: 123,
+      teamOnly: true,
+      creatorTeamId: 'team-b',
+      creatorTeamName: '乙隊',
+      creatorTeamIds: ['team-b', 'team-a'],
+      creatorTeamNames: ['乙隊', '甲隊'],
+      genderRestrictionEnabled: true,
+      allowedGender: '男',
+      privateEvent: true,
+      socialLinksEnabled: true,
+      earlyBirdEnabled: true,
+      earlyBirdCost: 25,
+      earlyBirdPolicyVersion: 1,
+      gpsEnabled: true,
+    });
+    expect(form.creatorTeamIds).not.toBe(selection.ids);
+    expect(form.creatorTeamNames).not.toBe(selection.names);
+    expect(form.teamSplit).toEqual({
+      enabled: true,
+      mode: 'self-select',
+      balanceCap: false,
+      selfSelectLockHours: 5,
+      teams: [3, 2, 1].map((index, offset) => ({
+        key: ['A', 'B', 'C'][offset],
+        color: TEAM_SPLIT_COLORS[index]?.hex,
+        name: TEAM_SPLIT_COLORS[index]?.name,
+      })),
+    });
+    expect(form.teamSplit).not.toHaveProperty('lockAt');
+    expect(form.socialLinks).toEqual([{
+      url: 'https://line.me/test',
+      platform: 'line',
+      label: 'LINE',
+      host: 'line.me',
+    }]);
+  });
+
+  it('關閉欄位不送殘留值，社群 enabled 依合法連結決定', () => {
+    const state = makeValidState({
+      fee: '100',
+      allowedGender: '女',
+      teamOnlyTeamIds: ['stale-team'],
+      socialLinkInputs: ['https://line.me/test'],
+      earlyBirdCost: '200',
+    });
+    const form = toCreateEventForm(state, '主辦人', {
+      teamOnlySelection: { ids: ['stale-team'], names: ['舊隊'] },
+    });
+    expect(form).toMatchObject({
+      feeEnabled: false,
+      fee: 0,
+      teamOnly: false,
+      creatorTeamId: null,
+      creatorTeamName: null,
+      creatorTeamIds: [],
+      creatorTeamNames: [],
+      allowedGender: '',
+      socialLinksEnabled: false,
+      socialLinks: [],
+      earlyBirdEnabled: false,
+      earlyBirdCost: 0,
+      earlyBirdPolicyVersion: null,
+    });
+    expect(form.teamSplit).toBeUndefined();
+    expect(toCreateEventForm(makeValidState({
+      socialLinksEnabled: true,
+      socialLinkInputs: ['', 'http://'],
+    }), '主辦人')).toMatchObject({
+      socialLinksEnabled: false,
+      socialLinks: [],
+    });
+    expect(toCreateEventForm(makeValidState({
+      feeEnabled: true,
+      fee: 'abc',
+    }), '主辦人').fee).toBe(0);
+  });
+
+  it.each([
+    ['9', 10],
+    ['501', 500],
+    ['25.9', 25],
+    ['abc', 10],
+    ['Infinity', 10],
+  ])('早鳥 %s 正規化為 %i', (raw, expected) => {
+    expect(toCreateEventForm(makeValidState({
+      earlyBirdEnabled: true,
+      earlyBirdCost: raw,
+    }), '主辦人').earlyBirdCost).toBe(expected);
+  });
+
+  it.each(['random', 'manual', 'self-select'] as const)(
+    '分隊模式 %s 的鎖定時間、預設索引與無效色票回退照 A',
+    mode => {
+      const form = toCreateEventForm(makeValidState({
+        teamSplitEnabled: true,
+        teamSplitCount: 4,
+        teamSplitMode: mode,
+        teamSplitLockHours: 0,
+        teamSplitColorIdx: [999],
+      }), '主辦人');
+      expect(form.teamSplit?.selfSelectLockHours).toBe(mode === 'self-select' ? 2 : 0);
+      expect(form.teamSplit?.teams.map(team => team.color)).toEqual([
+        TEAM_SPLIT_COLORS[0]?.hex,
+        TEAM_SPLIT_COLORS[1]?.hex,
+        TEAM_SPLIT_COLORS[2]?.hex,
+        TEAM_SPLIT_COLORS[3]?.hex,
+      ]);
+    },
+  );
+
+  it.each([
+    {
+      patch: { socialLinksEnabled: true, socialLinkInputs: [' ', ''] },
+      message: '社群連結開啟後，請至少填入 1 個網址',
+    },
+    {
+      patch: { socialLinksEnabled: true, socialLinkInputs: ['https://line.me/test', 'http://'] },
+      message: '社群連結網址格式不正確，請確認後再送出',
+    },
+    {
+      patch: { earlyBirdEnabled: true, earlyBirdCost: '9' },
+      message: '早鳥報名積分需介於 10～500 分',
+    },
+    {
+      patch: { earlyBirdEnabled: true, earlyBirdCost: '501' },
+      message: '早鳥報名積分需介於 10～500 分',
+    },
+    {
+      patch: { earlyBirdEnabled: true, earlyBirdCost: 'abc' },
+      message: '早鳥報名積分需介於 10～500 分',
+    },
+    {
+      patch: { earlyBirdEnabled: true },
+      message: '早鳥報名需搭配未來的開放報名時間',
+    },
+    {
+      patch: {
+        earlyBirdEnabled: true,
+        regOpenEnabled: true,
+        regOpenDate: '2026-06-01',
+        regOpenClock: '10:00',
+      },
+      message: '早鳥報名需搭配未來的開放報名時間',
+    },
+    {
+      patch: { feeEnabled: true, fee: '0' },
+      message: '請輸入活動費用',
+    },
+    {
+      patch: { genderRestrictionEnabled: true, allowedGender: '' },
+      message: '請選擇限定性別',
+    },
+  ] satisfies { patch: Partial<EventFormState>; message: string }[])(
+    '新增驗證逐字回傳：$message',
+    ({ patch, message }) => {
+      document.documentElement.lang = 'zh-TW';
+      expect(validateEventForm(makeValidState(patch), FIXED_NOW)).toEqual({
+        ok: false,
+        message,
+      });
+    },
+  );
+
+  it('驗證順序：社群空值 → 格式 → 早鳥積分 → 標題', () => {
+    const state = makeValidState({
+      title: '',
+      socialLinksEnabled: true,
+      socialLinkInputs: [''],
+      earlyBirdEnabled: true,
+      earlyBirdCost: '9',
+    });
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '社群連結開啟後，請至少填入 1 個網址',
+    });
+    state.socialLinkInputs = ['http://'];
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '社群連結網址格式不正確，請確認後再送出',
+    });
+    state.socialLinkInputs = ['https://line.me/test'];
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '早鳥報名積分需介於 10～500 分',
+    });
+    state.earlyBirdCost = '10';
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, messageKey: 'events.form.error.titleRequired',
+    });
+  });
+
+  it('驗證順序：開放報名完整 → 早鳥未來時間 → 費用 → 建立時間', () => {
+    const state = makeValidState({
+      dateVal: '2026-05-01',
+      regOpenEnabled: true,
+      regOpenDate: '2026-06-05',
+      regOpenClock: '',
+      earlyBirdEnabled: true,
+      feeEnabled: true,
+      fee: '0',
+    });
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, messageKey: 'events.form.error.regOpenIncomplete',
+    });
+    state.regOpenEnabled = false;
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '早鳥報名需搭配未來的開放報名時間',
+    });
+    state.regOpenEnabled = true;
+    state.regOpenClock = '12:00';
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '請輸入活動費用',
+    });
+    state.fee = '20';
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, messageKey: 'events.form.error.startInPast',
+    });
+  });
+
+  it('驗證順序：運動標籤 → 限定性別 → 地區', () => {
+    const state = makeValidState({
+      sportTag: '',
+      genderRestrictionEnabled: true,
+      allowedGender: '',
+      region: '',
+    });
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, messageKey: 'events.form.error.sportRequired',
+    });
+    state.sportTag = 'football';
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, message: '請選擇限定性別',
+    });
+    state.allowedGender = '女';
+    expect(validateEventForm(state, FIXED_NOW)).toEqual({
+      ok: false, messageKey: 'events.form.error.regionRequired',
+    });
+  });
+
+  it('無加值權限仍先驗社群及早鳥積分，其後不阻擋既有加值欄位的基本編輯', () => {
+    const state = makeValidState({
+      eventId: 'existing',
+      feeEnabled: true,
+      fee: '0',
+      earlyBirdEnabled: true,
+      earlyBirdCost: '10',
+      genderRestrictionEnabled: true,
+      allowedGender: '',
+    });
+    expect(validateEventForm(state, FIXED_NOW, { canUseAddons: false })).toEqual({
+      ok: true,
+    });
+    state.earlyBirdCost = '9';
+    expect(validateEventForm(state, FIXED_NOW, { canUseAddons: false })).toEqual({
+      ok: false, message: '早鳥報名積分需介於 10～500 分',
+    });
+  });
+
+  it('合法早鳥邊界、性別及費用可以送出', () => {
+    for (const cost of ['10', '500']) {
+      expect(validateEventForm(makeValidState({
+        earlyBirdEnabled: true,
+        earlyBirdCost: cost,
+        regOpenEnabled: true,
+        regOpenDate: '2026-06-05',
+        regOpenClock: '12:00',
+        feeEnabled: true,
+        fee: '100',
+        genderRestrictionEnabled: true,
+        allowedGender: '男',
+      }), FIXED_NOW)).toEqual({ ok: true });
+    }
+  });
 });
 
 describe('照 A 修正的項目', () => {

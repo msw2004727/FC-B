@@ -1,6 +1,9 @@
 import type { CreateEventForm, DelegationEntry, EventImageVariants, EventType } from './event-create';
 import type { EventDoc } from './types';
 import type { CustomRole } from '@/features/profile/data/permissions';
+import type { EventFormAddonState } from '../components/event-form/form-types';
+import { TEAM_SPLIT_COLORS } from '../components/event-form/TeamJerseyIcon';
+import { normalizeEventSocialLinks, normalizeEventSocialUrl } from './event-social-links';
 import { getSportKeySafe } from './sports';
 
 /** A `js/config.js#REGION_MAP`：順序（地區與縣市）照 A，表單依此順序顯示。 */
@@ -64,7 +67,7 @@ export const LEGACY_FRIENDLY_TYPE_OPTION = { value: 'friendly' as EventType, lab
 /** A `_getEventTitleInputLimit` 預設值。 */
 export const EVENT_TITLE_LIMIT = 16;
 
-export interface EventFormState {
+export interface EventFormState extends EventFormAddonState {
   eventId: string | null;
   title: string;
   type: EventType;
@@ -107,6 +110,24 @@ export function createDefaultFormState(_now: Date = new Date()): EventFormState 
     minAge: '0',
     notes: '',
     sportTag: '',
+    feeEnabled: false,
+    fee: '0',
+    teamOnly: false,
+    teamOnlyTeamIds: [],
+    genderRestrictionEnabled: false,
+    allowedGender: '',
+    privateEvent: false,
+    teamSplitEnabled: false,
+    teamSplitCount: 2,
+    teamSplitColorIdx: [0, 1, 2, 3],
+    teamSplitBalanceCap: true,
+    teamSplitMode: 'random',
+    teamSplitLockHours: 2,
+    socialLinksEnabled: false,
+    socialLinkInputs: [''],
+    earlyBirdEnabled: false,
+    earlyBirdCost: '10',
+    gpsEnabled: false,
   };
 }
 
@@ -179,7 +200,10 @@ type ExtendedEventDoc = EventDoc & {
   cities?: unknown;
 };
 
-export function formStateFromEvent(event: EventDoc): EventFormState {
+export function formStateFromEvent(
+  event: EventDoc,
+  options?: { canUseAddons?: boolean },
+): EventFormState {
   const ext = event as ExtendedEventDoc;
   const eventId = event.id ?? event._docId ?? event.docId ?? null;
   const title = typeof event.title === 'string' ? event.title : '';
@@ -210,7 +234,32 @@ export function formStateFromEvent(event: EventDoc): EventFormState {
   // 照 A getSportKeySafe。
   const sportTag = getSportKeySafe(ext.sportTag);
 
+  // 照 A openEditEvent：讀取文件與送出表單分開正規化。
+  const addons = event as unknown as Record<string, unknown>;
+  const rawSplit = addons.teamSplit;
+  const split = rawSplit && typeof rawSplit === 'object'
+    ? rawSplit as Record<string, unknown>
+    : null;
+  const teams: unknown[] = Array.isArray(split?.teams) ? split.teams : [];
+  const colorIndices = [0, 1, 2, 3];
+  teams.forEach((team, index) => {
+    if (!team || typeof team !== 'object') return;
+    const color = (team as Record<string, unknown>).color;
+    const colorIndex = TEAM_SPLIT_COLORS.findIndex(item => item.hex === color);
+    if (colorIndex >= 0) colorIndices[index] = colorIndex;
+  });
+  const links = normalizeEventSocialLinks(addons.socialLinks);
+  const rawEarlyBirdCost = Number(addons.earlyBirdCost || 10);
+  const earlyBirdCost = Number.isFinite(rawEarlyBirdCost)
+    ? Math.max(10, Math.min(500, Math.floor(rawEarlyBirdCost)))
+    : 10;
+  const creatorTeamIds = Array.isArray(addons.creatorTeamIds)
+    ? addons.creatorTeamIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const fee = Number(addons.fee || 0);
+
   return {
+    ...createDefaultFormState(),
     eventId,
     title,
     type,
@@ -229,17 +278,70 @@ export function formStateFromEvent(event: EventDoc): EventFormState {
     minAge: String(ageLimitEnabled ? minAgeNum : 0),
     notes,
     sportTag,
+    // A event-manage-lifecycle.js：`this._isEventFeeEnabled?.(e) ?? Number(e?.fee || 0) > 0`，A 並未定義 _isEventFeeEnabled，
+    // 實際只看 fee > 0。刻意改良：文件明確 feeEnabled:false 時尊重它（A 會把這種舊資料的收費開關打開、存檔改成 true）；
+    // A 建立的活動不會出現 false＋fee>0，正常資料兩者結果相同（PM 查證）。
+    feeEnabled: typeof addons.feeEnabled === 'boolean' ? addons.feeEnabled : fee > 0,
+    fee: String(fee > 0 ? fee : 0),
+    teamOnly: !!addons.teamOnly,
+    teamOnlyTeamIds: creatorTeamIds.length
+      ? [...creatorTeamIds]
+      : typeof addons.creatorTeamId === 'string' && addons.creatorTeamId
+        ? [addons.creatorTeamId]
+        : [],
+    genderRestrictionEnabled: !!addons.genderRestrictionEnabled,
+    allowedGender: addons.allowedGender === '男' || addons.allowedGender === '女'
+      ? addons.allowedGender
+      : '',
+    privateEvent: !!addons.privateEvent,
+    teamSplitEnabled: !!split?.enabled,
+    teamSplitCount: teams.length || 2,
+    teamSplitColorIdx: colorIndices,
+    teamSplitBalanceCap: split?.balanceCap !== false,
+    teamSplitMode: split?.mode === 'self-select' || split?.mode === 'manual'
+      ? split.mode
+      : 'random',
+    teamSplitLockHours: Number(split?.selfSelectLockHours) || 2,
+    socialLinksEnabled: !!addons.socialLinksEnabled && links.length > 0,
+    socialLinkInputs: links.length ? links.map(link => link.url) : [''],
+    earlyBirdEnabled: !!addons.earlyBirdEnabled,
+    earlyBirdCost: String(earlyBirdCost),
+    gpsEnabled: !!options?.canUseAddons
+      && (!!addons.gpsEnabled || addons.mapLocationConfirmed === true),
   };
 }
 
 export type ValidateEventFormResult =
   | { ok: true }
-  | { ok: false; messageKey: string; params?: Record<string, string | number> };
+  | { ok: false; messageKey: string; params?: Record<string, string | number> }
+  | { ok: false; message: string };
 
 export function validateEventForm(
   state: EventFormState,
   now: Date = new Date(),
+  options?: { canUseAddons?: boolean },
 ): ValidateEventFormResult {
+  // 照 A _getEventSocialLinksFormData：先檢查各原始輸入，再正規化及去重。
+  if (state.socialLinksEnabled) {
+    const values = state.socialLinkInputs.map(value => value.trim()).filter(Boolean);
+    if (values.length === 0) {
+      return { ok: false, message: '社群連結開啟後，請至少填入 1 個網址' };
+    }
+    if (values.some(value => !normalizeEventSocialUrl(value))) {
+      return { ok: false, message: '社群連結網址格式不正確，請確認後再送出' };
+    }
+  }
+
+  // 照 A _getEventEarlyBirdFormData：表單取值檢查先於標題及加值權限清除。
+  if (state.earlyBirdEnabled) {
+    const cost = Number(state.earlyBirdCost);
+    if (!Number.isFinite(cost) || cost < 10 || cost > 500) {
+      return { ok: false, message: '早鳥報名積分需介於 10～500 分' };
+    }
+  }
+
+  // 照 A handleCreateEvent：無權限的加值值不參與後續基本欄位驗證。
+  const canUseAddons = options?.canUseAddons !== false;
   const title = state.title.trim();
   if (!title) {
     return { ok: false, messageKey: 'events.form.error.titleRequired' };
@@ -270,6 +372,20 @@ export function validateEventForm(
     }
   }
 
+  if (canUseAddons && state.earlyBirdEnabled) {
+    const regOpenTime = state.regOpenEnabled
+      ? new Date(`${state.regOpenDate.trim()}T${state.regOpenClock.trim()}`).getTime()
+      : NaN;
+    // ASSUMPTION: 本卡既有表單只有單日模式；多日相對開放時間由後續卡處理。
+    if (!Number.isFinite(regOpenTime) || regOpenTime <= now.getTime()) {
+      return { ok: false, message: '早鳥報名需搭配未來的開放報名時間' };
+    }
+  }
+
+  if (canUseAddons && state.feeEnabled && (Number.parseInt(state.fee, 10) || 0) <= 0) {
+    return { ok: false, message: '請輸入活動費用' };
+  }
+
   const startTimestamp = new Date(`${dateVal}T${startTime}`);
   const endTimestamp = new Date(`${dateVal}T${endTime}`);
 
@@ -297,6 +413,10 @@ export function validateEventForm(
 
   if (!state.sportTag.trim()) {
     return { ok: false, messageKey: 'events.form.error.sportRequired' };
+  }
+
+  if (canUseAddons && state.genderRestrictionEnabled && !state.allowedGender) {
+    return { ok: false, message: '請選擇限定性別' };
   }
 
   if (state.regionEnabled && !state.region.trim()) {
@@ -336,6 +456,7 @@ export function toCreateEventForm(
     image?: string;
     imageVariants?: EventImageVariants;
     delegates?: DelegationEntry[];
+    teamOnlySelection?: { ids: string[]; names: string[] };
   },
 ): CreateEventForm {
   // A：parseInt 是有限數就照用，否則 20。
@@ -350,6 +471,34 @@ export function toCreateEventForm(
   }
 
   const regionData = resolveRegionPayload(state.regionEnabled, state.region, state.cities);
+  const socialLinks = state.socialLinksEnabled
+    ? normalizeEventSocialLinks(state.socialLinkInputs.map(url => ({ url })))
+    : [];
+  const rawEarlyBirdCost = Number(state.earlyBirdCost);
+  const earlyBirdCost = Number.isFinite(rawEarlyBirdCost)
+    ? Math.max(10, Math.min(500, Math.floor(rawEarlyBirdCost)))
+    : 10;
+  const creatorTeamIds = state.teamOnly ? [...(extras?.teamOnlySelection?.ids ?? [])] : [];
+  const creatorTeamNames = state.teamOnly ? [...(extras?.teamOnlySelection?.names ?? [])] : [];
+
+  // 照 A _tsGetFormData：無效色票索引退回第一色，lockAt 留給資料層計算。
+  const teamSplit: CreateEventForm['teamSplit'] = state.teamSplitEnabled
+    ? {
+      enabled: true,
+      mode: state.teamSplitMode,
+      balanceCap: state.teamSplitBalanceCap,
+      selfSelectLockHours: state.teamSplitMode === 'self-select'
+        ? (state.teamSplitLockHours || 2)
+        : 0,
+      teams: ['A', 'B', 'C', 'D'].slice(0, state.teamSplitCount || 2).map((key, index) => {
+        const color = TEAM_SPLIT_COLORS[state.teamSplitColorIdx[index] ?? index]
+          ?? TEAM_SPLIT_COLORS[0];
+        // ASSUMPTION: 2A 契約固定提供 8 色；缺失時中止，避免寫入錯誤色票。
+        if (!color) throw new Error('TEAM_SPLIT_COLORS is empty');
+        return { key, color: color.hex, name: color.name };
+      }),
+    }
+    : undefined;
 
   return {
     title: state.title.trim(),
@@ -370,20 +519,22 @@ export function toCreateEventForm(
     regionEnabled: regionData.regionEnabled,
     region: regionData.region,
     cities: regionData.cities,
-    feeEnabled: false,
-    fee: 0,
-    teamOnly: false,
-    creatorTeamId: null,
-    creatorTeamName: null,
-    creatorTeamIds: [],
-    creatorTeamNames: [],
-    genderRestrictionEnabled: false,
-    allowedGender: '',
-    privateEvent: false,
-    socialLinksEnabled: false,
-    socialLinks: [],
-    earlyBirdEnabled: false,
-    earlyBirdCost: 0,
-    earlyBirdPolicyVersion: null,
+    feeEnabled: state.feeEnabled,
+    fee: state.feeEnabled ? (Number.parseInt(state.fee, 10) || 0) : 0,
+    teamOnly: state.teamOnly,
+    creatorTeamId: creatorTeamIds[0] ?? null,
+    creatorTeamName: creatorTeamNames[0] ?? null,
+    creatorTeamIds,
+    creatorTeamNames,
+    genderRestrictionEnabled: state.genderRestrictionEnabled,
+    allowedGender: state.genderRestrictionEnabled ? state.allowedGender : '',
+    privateEvent: state.privateEvent,
+    teamSplit,
+    socialLinksEnabled: state.socialLinksEnabled && socialLinks.length > 0,
+    socialLinks,
+    earlyBirdEnabled: state.earlyBirdEnabled,
+    earlyBirdCost: state.earlyBirdEnabled ? earlyBirdCost : 0,
+    earlyBirdPolicyVersion: state.earlyBirdEnabled ? 1 : null,
+    gpsEnabled: state.gpsEnabled,
   };
 }

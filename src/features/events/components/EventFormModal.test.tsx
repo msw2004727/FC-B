@@ -6,6 +6,9 @@ import type { EventDoc } from '../data/types';
 import type { DirectoryUser } from '../data/user-directory';
 import type { useCoverUpload } from './event-form/use-cover-upload';
 import type { useDelegatePicker } from './event-form/use-delegate-picker';
+import type { useTeamOnlyPicker } from './event-form/use-team-only-picker';
+import type { EventFormFields } from './event-form/EventFormFields';
+import type { EventFormAddonState } from './event-form/form-types';
 import zhTW from '../locales/zh-TW.json';
 import * as eventCreateMod from '../data/event-create';
 import { EventFormModal } from './EventFormModal';
@@ -23,6 +26,12 @@ const mocks = vi.hoisted(() => ({
   recipients: vi.fn(async (_docId: string) => ['U_reg_1']),
   users: [] as DirectoryUser[],
   loadDirectory: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
+  teamOnly: null as ReturnType<typeof useTeamOnlyPicker> | null,
+  teamInput: null as Parameters<typeof useTeamOnlyPicker>[0] | null,
+  teamReset: vi.fn<ReturnType<typeof useTeamOnlyPicker>['reset']>(),
+  teamValidate: vi.fn<ReturnType<typeof useTeamOnlyPicker>['validateForSubmit']>(),
+  teamResolve: vi.fn<ReturnType<typeof useTeamOnlyPicker>['resolveSelection']>(),
+  fields: null as Parameters<typeof EventFormFields>[0] | null,
 }));
 
 vi.mock('@/ui/Toast', () => ({
@@ -49,6 +58,25 @@ vi.mock('./event-form/use-delegate-picker', () => ({
     return mocks.delegates;
   },
 }));
+
+vi.mock('./event-form/use-team-only-picker', () => ({
+  useTeamOnlyPicker: (input: Parameters<typeof useTeamOnlyPicker>[0]) => {
+    mocks.teamInput = input;
+    if (!mocks.teamOnly) throw new Error('missing team picker mock');
+    return mocks.teamOnly;
+  },
+}));
+
+vi.mock('./event-form/EventFormFields', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./event-form/EventFormFields')>();
+  return {
+    ...actual,
+    EventFormFields: (props: Parameters<typeof EventFormFields>[0]) => {
+      mocks.fields = props;
+      return <actual.EventFormFields {...props} />;
+    },
+  };
+});
 
 vi.mock('../data/event-create', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/event-create')>();
@@ -198,6 +226,19 @@ beforeEach(async () => {
   mocks.users = [];
   mocks.loadDirectory.mockReset().mockResolvedValue(true);
   mocks.verify.mockReset().mockResolvedValue({ ok: true });
+  mocks.fields = null;
+  mocks.teamInput = null;
+  mocks.teamReset.mockReset();
+  mocks.teamValidate.mockReset().mockResolvedValue({ ok: true });
+  mocks.teamResolve.mockReset().mockReturnValue({ ids: [], names: [] });
+  mocks.teamOnly = {
+    picker: <div data-testid="team-only-picker" />,
+    label: '',
+    toggleDisabled: false,
+    reset: mocks.teamReset,
+    resolveSelection: mocks.teamResolve,
+    validateForSubmit: mocks.teamValidate,
+  };
   mocks.cover = {
     view: { previewUrl: '', onPickFile: vi.fn() },
     cropper: <div data-testid="cover-cropper" />,
@@ -416,7 +457,8 @@ describe('EventFormModal（1D）', () => {
     expect(document.body.style.getPropertyValue('overflow')).toBe('');
   });
 
-  it('編輯預填既有值並只保留 addons，送出中顯示儲存中', async () => {
+  // 測試同步更新：照 A（2B-2）。
+  it('編輯預填既有值、不傳 preserve，送出中顯示儲存中', async () => {
     const update = deferred<Awaited<ReturnType<typeof eventCreateMod.updateEventBasics>>>();
     vi.mocked(eventCreateMod.updateEventBasics).mockReturnValue(update.promise);
     const variants = {} as NonNullable<ReturnType<typeof useCoverUpload>['value']['imageVariants']>;
@@ -443,8 +485,8 @@ describe('EventFormModal（1D）', () => {
     expect(element('#ce-submit-btn').textContent).toBe('儲存中');
     const call = vi.mocked(eventCreateMod.updateEventBasics).mock.calls[0];
     expect(call?.[0]).toMatchObject({ id: 'ce_edit_99', docId: 'document_edit_99' });
-    // 測試同步更新：照 A（1D-3），封面及委託人改由表單帶入。
-    expect(call?.[3]).toEqual({ addons: true });
+    // 測試同步更新：照 A（2B-2），加值欄位改由表單及資料層權限決定。
+    expect(call).toHaveLength(3);
 
     await act(async () => {
       update.resolve({ updates: {}, capacityChange: null, addonsStripped: false });
@@ -663,6 +705,368 @@ describe('EventFormModal（1D）', () => {
     mocks.delegates.view.dropdownStatus = '';
     renderForm();
     expect(element('#ce-delegate-dropdown').textContent).toBe('');
+  });
+});
+
+describe('2B-2：加值表單契約與送出接線', () => {
+  function addonView() {
+    const addons = mocks.fields?.addons;
+    if (!addons) throw new Error('missing addons contract');
+    return addons;
+  }
+
+  function userViewer(allowed: boolean): ViewerView {
+    return {
+      ...TEST_VIEWER,
+      role: 'user',
+      roleLevel: 0,
+      capabilities: [
+        'user.activity.basic_create',
+        ...(allowed ? ['user.activity.addons_use'] : []),
+      ],
+      hasPermission: (code: string) => code === 'event.create' || code === 'event.edit_self',
+      permissionSources: {
+        rolePermissions: ['event.create', 'event.edit_self'],
+        userGrants: [],
+        customRoles: [],
+      },
+    } as ViewerView;
+  }
+
+  function patchAddons(value: Partial<EventFormAddonState>): void {
+    act(() => addonView().onPatch(value));
+  }
+
+  it('無 addons_use 時拒絕開啟，提示 A 原文且狀態不變', async () => {
+    renderForm({ viewer: userViewer(false) });
+    const before = { ...addonView().state };
+    act(() => {
+      expect(addonView().guardAddon()).toBe(false);
+    });
+    expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '如需更多功能請聯繫官方Line@',
+    });
+    mocks.toast.mockClear();
+
+    // 照 A _guardActivityAddonToggle：即使呼叫端略過 guard，onPatch 仍再次檢查。
+    patchAddons({ feeEnabled: true, fee: '100' });
+    expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '如需更多功能請聯繫官方Line@',
+    });
+    expect(addonView().state).toEqual(before);
+
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0]).toMatchObject({
+      feeEnabled: false,
+      fee: 0,
+    });
+  });
+
+  it('有 addons_use 可開啟並送完整加值 payload，不新增預留欄位', async () => {
+    renderForm({ viewer: userViewer(true) });
+    expect(addonView().guardAddon()).toBe(true);
+    patchAddons({
+      feeEnabled: true,
+      fee: '120',
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+      privateEvent: true,
+      teamSplitEnabled: true,
+      teamSplitMode: 'self-select',
+      teamSplitLockHours: 4,
+      socialLinksEnabled: true,
+      socialLinkInputs: ['https://line.me/test'],
+      gpsEnabled: true,
+    });
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0];
+    expect(payload).toMatchObject({
+      feeEnabled: true,
+      fee: 120,
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+      privateEvent: true,
+      teamSplit: { enabled: true, mode: 'self-select', selfSelectLockHours: 4 },
+      socialLinksEnabled: true,
+      gpsEnabled: true,
+    });
+    expect(payload?.socialLinks[0]?.url).toBe('https://line.me/test');
+    expect(mocks.teamValidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('預留功能只有提示，完整 payload 與點擊前一致', async () => {
+    const view = renderForm({ viewer: userViewer(true) });
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    const before = vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0];
+    view.unmount();
+
+    vi.mocked(eventCreateMod.createEvent).mockClear();
+    mocks.toast.mockClear();
+    renderForm({ viewer: userViewer(true) });
+    await fillCreate();
+    const beforeState = { ...addonView().state };
+    act(() => addonView().onReservedClick());
+    expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '如需更多功能請聯繫官方Line@',
+    });
+    expect(addonView().state).toEqual(beforeState);
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+    expect(eventCreateMod.updateEventBasics).not.toHaveBeenCalled();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0]).toEqual(before);
+  });
+
+  it('建立重設俱樂部、接線 picker 與選取狀態，payload 使用 resolveSelection', async () => {
+    if (!mocks.teamOnly) throw new Error('missing team mock');
+    mocks.teamOnly.toggleDisabled = true;
+    renderForm();
+    expect(mocks.teamReset).toHaveBeenCalledWith([], []);
+    expect(mocks.teamInput).toMatchObject({
+      mode: 'create',
+      existing: null,
+      enabled: false,
+      selectedIds: [],
+    });
+    expect(addonView().teamOnlyToggleDisabled).toBe(true);
+    expect(addonView().teamPicker).toBe(mocks.teamOnly.picker);
+
+    patchAddons({ teamOnly: true });
+    act(() => mocks.teamInput?.onChange(['team-b', 'team-a']));
+    expect(addonView().state.teamOnlyTeamIds).toEqual(['team-b', 'team-a']);
+    expect(mocks.teamInput?.selectedIds).toEqual(['team-b', 'team-a']);
+    mocks.teamResolve.mockReturnValue({
+      ids: ['team-b', 'team-a'],
+      names: ['乙隊', '甲隊'],
+    });
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0]).toMatchObject({
+      teamOnly: true,
+      creatorTeamId: 'team-b',
+      creatorTeamName: '乙隊',
+      creatorTeamIds: ['team-b', 'team-a'],
+      creatorTeamNames: ['乙隊', '甲隊'],
+    });
+  });
+
+  it('編輯還原限定俱樂部並送加值欄位，呼叫沒有 preserve', async () => {
+    const existing = {
+      ...EXISTING,
+      feeEnabled: true,
+      fee: 80,
+      teamOnly: true,
+      creatorTeamIds: ['team-a'],
+      creatorTeamNames: ['甲隊'],
+      gpsEnabled: true,
+    } as unknown as EventDoc;
+    mocks.teamResolve.mockReturnValue({ ids: ['team-a'], names: ['甲隊'] });
+    renderForm({ mode: 'edit', existing });
+    expect(mocks.teamReset).toHaveBeenCalledWith(['team-a'], ['甲隊']);
+    expect(mocks.teamInput?.existing).toBe(existing);
+    expect(addonView().state).toMatchObject({
+      feeEnabled: true,
+      fee: '80',
+      gpsEnabled: true,
+    });
+    patchAddons({ fee: '160' });
+    await submit();
+    await waitFor(() => expect(eventCreateMod.updateEventBasics).toHaveBeenCalledTimes(1));
+    const call = vi.mocked(eventCreateMod.updateEventBasics).mock.calls[0];
+    expect(call).toHaveLength(3);
+    expect(call?.[1]).toMatchObject({
+      feeEnabled: true,
+      fee: 160,
+      creatorTeamIds: ['team-a'],
+    });
+  });
+
+  it('無加值權限的編輯仍送出基本資料，保留資料層 addonsStripped 提示', async () => {
+    vi.mocked(eventCreateMod.updateEventBasics).mockResolvedValue({
+      updates: { title: EXISTING.title },
+      capacityChange: null,
+      addonsStripped: true,
+    });
+    const existing = {
+      ...EXISTING,
+      feeEnabled: true,
+      fee: 0,
+      teamOnly: true,
+      creatorTeamId: 'old-team',
+      creatorTeamName: '舊隊',
+      earlyBirdEnabled: true,
+      earlyBirdCost: 10,
+      genderRestrictionEnabled: true,
+      allowedGender: '',
+      mapLocationConfirmed: true,
+    } as unknown as EventDoc;
+    const onSaved = vi.fn();
+    renderForm({ mode: 'edit', existing, viewer: userViewer(false), onSaved });
+    expect(addonView().state.gpsEnabled).toBe(false);
+    expect(mocks.teamReset).toHaveBeenCalledWith(['old-team'], ['舊隊']);
+    await submit();
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(eventCreateMod.updateEventBasics).mock.calls[0]).toHaveLength(3);
+    expect(mocks.teamValidate).not.toHaveBeenCalled();
+    expect(mocks.toast).toHaveBeenCalledWith({
+      message: '如需更多功能請聯繫官方Line@',
+      tone: 'info',
+    });
+  });
+
+  it('訊息順序：社群 → 早鳥積分 → 標題 → 費用', async () => {
+    renderForm({ viewer: userViewer(true) });
+    patchAddons({
+      socialLinksEnabled: true,
+      socialLinkInputs: [''],
+      earlyBirdEnabled: true,
+      earlyBirdCost: '9',
+      feeEnabled: true,
+      fee: '0',
+    });
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '社群連結開啟後，請至少填入 1 個網址',
+      tone: 'error',
+    }));
+    patchAddons({ socialLinkInputs: ['https://line.me/test'] });
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '早鳥報名積分需介於 10～500 分',
+      tone: 'error',
+    }));
+    patchAddons({ earlyBirdEnabled: false });
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '請輸入活動名稱',
+      tone: 'error',
+    }));
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '請輸入活動費用',
+      tone: 'error',
+    }));
+    expect(mocks.teamValidate).not.toHaveBeenCalled();
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('地區檢查通過後才驗證俱樂部；五則錯誤逐字顯示且不寫入', async () => {
+    renderForm();
+    await fillCreate();
+    act(() => mocks.fields?.onPatch({ region: '' }));
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: '請選擇活動地區',
+      tone: 'error',
+    }));
+    expect(mocks.teamValidate).not.toHaveBeenCalled();
+
+    act(() => mocks.fields?.onPatch({ region: '中部' }));
+    patchAddons({ teamOnly: true });
+    for (const message of [
+      '請選擇限定俱樂部',
+      '請至少選擇 1 支俱樂部',
+      '非總管編輯活動時不能變更限定俱樂部',
+      '非總管建立俱樂部限定活動時，只能選擇 1 支由你管理的俱樂部',
+      '權限不足：無法建立此俱樂部限定活動',
+    ]) {
+      mocks.teamValidate.mockResolvedValueOnce({ ok: false, message });
+      await submit();
+      await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+        message,
+        tone: 'error',
+      }));
+    }
+    expect(mocks.teamValidate).toHaveBeenCalledTimes(5);
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+    expect(eventCreateMod.updateEventBasics).not.toHaveBeenCalled();
+  });
+
+  it('俱樂部驗證後採用最新名稱，驗證期間拒絕改動送出快照', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof mocks.teamValidate>>>();
+    mocks.teamValidate.mockReturnValueOnce(pending.promise);
+    const view = renderForm();
+    await fillCreate();
+    patchAddons({ teamOnly: true });
+    await submit();
+    await waitFor(() => expect(mocks.teamValidate).toHaveBeenCalledTimes(1));
+
+    patchAddons({ feeEnabled: true, fee: '200' });
+    act(() => mocks.fields?.onPatch({ title: '驗證期間異動' }));
+    expect(addonView().state.feeEnabled).toBe(false);
+    expect(element<HTMLInputElement>('#ce-title').value).toBe('週六足球團');
+    mocks.teamResolve.mockReturnValue({
+      ids: ['team-a'],
+      names: ['最新隊名'],
+    });
+    await act(async () => pending.resolve({ ok: true }));
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(eventCreateMod.createEvent).mock.calls[0]?.[0]).toMatchObject({
+      title: '週六足球團',
+      creatorTeamNames: ['最新隊名'],
+      feeEnabled: false,
+    });
+    view.unmount();
+  });
+
+  it('俱樂部驗證拒絕後可重試，不留下送出鎖', async () => {
+    mocks.teamValidate.mockRejectedValueOnce(new Error('offline'));
+    renderForm();
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(mocks.toast).toHaveBeenLastCalledWith({
+      message: t('events.form.error.submitFailed'),
+      tone: 'error',
+    }));
+    expect(element<HTMLButtonElement>('#ce-submit-btn').disabled).toBe(false);
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+    await submit();
+    await waitFor(() => expect(eventCreateMod.createEvent).toHaveBeenCalledTimes(1));
+    expect(mocks.teamValidate).toHaveBeenCalledTimes(2);
+  });
+
+  it('卸載後晚到的俱樂部驗證不得提示或寫入', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof mocks.teamValidate>>>();
+    mocks.teamValidate.mockReturnValueOnce(pending.promise);
+    const onSaved = vi.fn();
+    const view = renderForm({ onSaved });
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(mocks.teamValidate).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => pending.resolve({ ok: false, message: '請至少選擇 1 支俱樂部' }));
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('關閉再開啟後舊俱樂部驗證不得送出新表單', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof mocks.teamValidate>>>();
+    mocks.teamValidate.mockReturnValueOnce(pending.promise);
+    const view = renderForm();
+    await fillCreate();
+    await submit();
+    await waitFor(() => expect(mocks.teamValidate).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <EventFormModal open={false} mode="create" viewer={TEST_VIEWER}
+        onClose={() => undefined} onSaved={() => undefined} />,
+    );
+    view.rerender(
+      <EventFormModal open mode="create" viewer={TEST_VIEWER}
+        onClose={() => undefined} onSaved={() => undefined} />,
+    );
+    await act(async () => pending.resolve({ ok: true }));
+    expect(eventCreateMod.createEvent).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(element<HTMLInputElement>('#ce-title').value).toBe('');
   });
 });
 
