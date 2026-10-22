@@ -3,9 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
-import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { lt, useT } from '@/i18n/i18n';
-import { toast } from '@/ui/Toast';
 import { useViewer, type ViewerView } from '../data/viewer';
 import { loadUserProfile, type UserProfile } from '../data/profile-model';
 import {
@@ -21,7 +19,6 @@ import {
 } from '../ui/shared';
 import {
   FirstLoginEditor,
-  IdentityEditor,
   needsFirstLogin,
   PeopleEditor,
   SocialEditor,
@@ -32,14 +29,16 @@ import {
   LegacySocialGrid,
 } from '../components/legacy/LegacyProfileSocialAndRelated';
 import { LegacyIdentityCard } from '../components/legacy/LegacyIdentityCard';
+import { LegacyLineNotifyCard } from '../components/legacy/LegacyLineNotifyCard';
 import { LegacyProfileInfoCard } from '../components/legacy/LegacyProfileCards';
+import { ProfileInfoButton } from '../components/legacy/ProfileInfoButton';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '@/styles/legacy/edu-info-btn.css';
 import '../legacy/profile.css';
 
 type Editor =
-  | { kind: 'companions' | 'eduChildren' | 'identity' | 'first' }
+  | { kind: 'companions' | 'eduChildren' | 'first' }
   | { kind: 'social'; platform: Platform }
   | null;
 
@@ -138,15 +137,17 @@ function ProfileContent({
       <LegacyRelatedActivities uid={uid} />
 
       {canEditIdentity && (
-        <LegacyIdentityCard
-          profile={profile}
-          onOpenEditor={() => setEditor({ kind: 'identity' })}
-        />
+        <LegacyIdentityCard uid={uid} profile={profile} viewer={viewer} />
       )}
 
       <LegacyProfileInfoCard uid={uid} profile={profile} onSaved={saved} />
 
-      {/* 下一批補：LINE 推播通知綁定（#profile-line-notify） */}
+      <LegacyLineNotifyCard
+        uid={uid}
+        profile={profile}
+        onSaved={(patch) => setProfile((p) => ({ ...p, ...patch }))}
+      />
+
       {/* 下一批補：我的收藏（#profile-favorites-card） */}
       {/* 下一批補：我的俱樂部申請（#profile-applications-card） */}
 
@@ -166,17 +167,7 @@ function ProfileContent({
           }}
         >
           <span style="display:flex;align-items:center;gap:.35rem">
-            <span
-              class="edu-info-btn"
-              title={lt('說明', '說明')}
-              data-i18n-title="說明"
-              onClick={(e) => {
-                e.stopPropagation();
-                toast.show({ message: UNAVAILABLE_FEATURE_MSG });
-              }}
-            >
-              ?
-            </span>
+            <ProfileInfoButton infoKey="companions" />
             <span data-i18n="我的運動夥伴">{lt('我的運動夥伴', '我的運動夥伴')}</span>
             <span class="fav-count-badge" id="companions-count">
               {String(companionsCount)}
@@ -244,9 +235,6 @@ function ProfileContent({
           onClose={close}
           onSaved={saved}
         />
-      )}
-      {!firstOpen && editor?.kind === 'identity' && canEditIdentity && (
-        <IdentityEditor profile={profile} onClose={close} onSaved={saved} />
       )}
     </div>
   );

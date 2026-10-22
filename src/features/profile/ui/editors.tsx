@@ -8,13 +8,11 @@ import { Text } from '@/ui/Text';
 import type { UserProfile } from '../data/profile-model';
 import {
   clearSocialLink,
-  commitIdentitySettings,
   saveCompanions,
   saveEduChildren,
   saveFirstLoginProfile,
   saveSocialLink,
   type FirstLoginInput,
-  type CommitIdentitySettingsInput,
 } from '../data/profile-writes';
 import {
   objectValue,
@@ -574,70 +572,5 @@ export function SocialEditor({
   );
 }
 
-export function IdentityEditor({
-  profile,
-  onClose,
-  onSaved,
-}: {
-  profile: UserProfile;
-  onClose: () => void;
-  onSaved: Saved;
-}) {
-  const t = useT();
-  const mutation = useSubmission();
-  const [enabled, setEnabled] = useState(profile['secondaryEnabled'] === true);
-  const [name, setName] = useState(stringValue(profile['secondaryDisplayName']));
-  const [avatarNotice, setAvatarNotice] = useState(false);
-
-  // UI 傳入專用表單值；資料層透過 buildIdentitySettingsRequest 轉成 A 的 Callable wire payload。
-  return (
-    <Modal
-      open
-      title={t('profile.identity')}
-      loading={mutation.pending}
-      closeOnEsc={!mutation.pending}
-      closeOnOverlay={!mutation.pending}
-      onClose={() => { if (!mutation.pending) onClose(); }}
-    >
-      <form class="profile-form profile-editor-form" onSubmit={(event) => {
-        event.preventDefault();
-        if (!event.currentTarget.reportValidity() || (enabled && !name.trim())) return;
-        const input: CommitIdentitySettingsInput = {
-          secondaryEnabled: enabled,
-          secondaryDisplayName: name.trim(),
-        };
-        mutation.submit(
-          () => commitIdentitySettings(input),
-          () => onSaved({ ...input }),
-        ).catch(() => { /* submit 已處理。 */ });
-      }}>
-        <fieldset disabled={mutation.pending}>
-          <label class="profile-toggle">
-            <Text>{t('profile.enableIdentity')}</Text>
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(event) => setEnabled(event.currentTarget.checked)}
-            />
-          </label>
-          <Field label={t('profile.identityName')}>
-            <input
-              value={name}
-              maxLength={40}
-              required={enabled}
-              onInput={(event) => setName(event.currentTarget.value)}
-            />
-          </Field>
-          <button type="button" onClick={() => setAvatarNotice(true)}>
-            <Text>{t('profile.secondaryAvatar')}</Text>
-          </button>
-          {avatarNotice && <p role="status"><Text>{t('profile.comingSoon')}</Text></p>}
-          {/* 本批沒有 Storage 上傳通道；入口只顯示提示，不選檔、不建立 path、
-              不呼叫 commitSecondaryIdentityAvatar，也不直寫 Firestore。 */}
-        </fieldset>
-        <SaveError failed={mutation.failed} />
-        <Actions pending={mutation.pending} onClose={onClose} />
-      </form>
-    </Modal>
-  );
-}
+// M-123：IdentityEditor 已移除，改由 `components/legacy/LegacyIdentityCard.tsx`
+// 照 A `#profile-identity-card` 行內編輯流程輸出。

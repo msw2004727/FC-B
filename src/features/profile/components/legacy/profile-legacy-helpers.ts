@@ -188,37 +188,3 @@ export function getUserTeamEntries(profile: UserProfile): UserTeamEntry[] {
   const fallbackNames = [...new Set([...rawNames.filter(Boolean), ...(singleName ? [singleName] : [])])];
   return fallbackNames.map((name) => ({ id: '', name }));
 }
-
-export interface SecondaryIdentityInfo {
-  enabled: boolean;
-  displayName: string;
-  avatarUrl: string | null;
-}
-
-export function extractSecondaryIdentity(profile: UserProfile): SecondaryIdentityInfo {
-  const settings = profile['identitySettings'];
-  const identities =
-    settings && typeof settings === 'object' && !Array.isArray(settings)
-      ? (settings as Record<string, unknown>)['identities']
-      : null;
-  const secondary =
-    identities && typeof identities === 'object' && !Array.isArray(identities)
-      ? (identities as Record<string, unknown>)['secondary']
-      : null;
-  const secObj =
-    secondary && typeof secondary === 'object' && !Array.isArray(secondary)
-      ? (secondary as Record<string, unknown>)
-      : null;
-
-  const enabled =
-    profile['secondaryEnabled'] === true || secObj?.['enabled'] === true;
-  const displayName =
-    (typeof profile['secondaryDisplayName'] === 'string' && profile['secondaryDisplayName'].trim())
-    || (typeof secObj?.['displayName'] === 'string' && secObj['displayName'].trim())
-    || '';
-  const avatarUrl = sanitizeHttpAvatarUrl(
-    profile['secondaryAvatarUrl'] ?? secObj?.['avatarUrl'],
-  );
-
-  return { enabled, displayName, avatarUrl };
-}

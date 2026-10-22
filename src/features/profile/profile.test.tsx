@@ -70,6 +70,25 @@ vi.mock('./data/profile-writes', () => ({
   },
 }));
 
+// 測試同步更新：照 A（M-123）LegacyIdentityCard/LegacyLineNotifyCard 依賴這兩支模組。
+vi.mock('@/data/identity-settings', () => ({
+  useIdentitySettings: () => null,
+  getIdentitySettings: () => null,
+  setIdentitySettingsLocal: vi.fn(),
+  subscribeIdentitySettings: () => () => {},
+  startIdentitySettings: vi.fn(),
+  stopIdentitySettings: vi.fn(),
+}));
+
+vi.mock('@/features/events/data/line-notify-bind', () => ({
+  bindLineNotify: vi.fn().mockResolvedValue(undefined),
+  buildLineNotifyPayload: vi.fn(() => ({})),
+}));
+
+vi.mock('@/ui/AppConfirm', () => ({
+  appConfirm: vi.fn().mockResolvedValue(true),
+}));
+
 function flatten(value: Record<string, unknown>, prefix = 'profile'): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -120,19 +139,6 @@ function deferred<T>() {
     reject = no;
   });
   return { promise, resolve, reject };
-}
-
-async function openIdentityEditor(): Promise<void> {
-  const card = await waitFor(() => {
-    const found = document.getElementById('profile-identity-card');
-    if (!found) throw new Error('identity card missing');
-    return found;
-  });
-  fireEvent.click(card.querySelector('.profile-collapse-toggle') as HTMLElement);
-  fireEvent.click(card.querySelector('#profile-identity-edit-btn') as HTMLElement);
-  await waitFor(() => {
-    if (!document.querySelector('dialog.ui-modal')) throw new Error('identity editor not open');
-  });
 }
 
 function formScope() {
@@ -894,52 +900,7 @@ describe('我的個人頁（A 版結構）', () => {
     await waitFor(() => expect(clearSocialLink).toHaveBeenCalledWith('U-me', 'ig'));
   });
 
-  it('身分設定只傳明確表單欄位', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
-      role: 'super_admin',
-      exp: 999,
-      secondaryEnabled: false,
-      secondaryDisplayName: '',
-    }));
-    render(<ProfilePage />);
-    await openIdentityEditor();
-    await setCheckbox(zh.enableIdentity, true);
-    expect((formScope().getByLabelText(zh.identityName) as HTMLInputElement).required).toBe(true);
-    await inputValue(zh.identityName, '第二名字');
-    expect((formScope().getByRole('checkbox', { name: zh.enableIdentity }) as HTMLInputElement).checked)
-      .toBe(true);
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
-    await waitFor(() => expect(commitIdentitySettings).toHaveBeenCalledTimes(1));
-    expect(commitIdentitySettings).toHaveBeenCalledWith({
-      secondaryEnabled: true,
-      secondaryDisplayName: '第二名字',
-    });
-    expect(saveFirstLoginProfile).not.toHaveBeenCalled();
-    expect(commitSecondaryIdentityAvatar).not.toHaveBeenCalled();
-  });
-
-  it('啟用次身分但名稱空白不得提交', async () => {
-    render(<ProfilePage />);
-    await openIdentityEditor();
-    await setCheckbox(zh.enableIdentity, true);
-    expect((formScope().getByLabelText(zh.identityName) as HTMLInputElement).required).toBe(true);
-    await inputValue(zh.identityName, '   ');
-    await clickButton(zh.save);
-    expectNoWrites();
-    expect(screen.getByRole('dialog')).toBeTruthy();
-  });
-
-  it('次身分頭像入口只提示稍後開放，不呼叫任何寫入或建立檔案輸入', async () => {
-    render(<ProfilePage />);
-    await openIdentityEditor();
-    await clickButton(zh.secondaryAvatar);
-    await waitFor(() => expect(
-      screen.getAllByRole('status').some((element) => element.textContent === zh.comingSoon),
-    ).toBe(true));
-    expect(document.querySelector('input[type="file"]')).toBeNull();
-    expectNoWrites();
-  });
+  // 測試同步更新：照 A（M-123）IdentityEditor 移除，改由 LegacyIdentityCard.test.tsx 覆蓋；A 啟用時暱稱空白存「次身份」，不再擋提交。
 
   it('切換帳號立即隱藏舊資料，舊請求晚到不覆蓋新資料', async () => {
     const first = deferred<UserProfile | null>();

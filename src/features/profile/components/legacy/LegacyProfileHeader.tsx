@@ -9,11 +9,12 @@ import { toast } from '@/ui/Toast';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
+import { useIdentitySettings } from '@/data/identity-settings';
+import { getEffectiveIdentity } from '@/data/identity-resolver';
 import {
   ROLE_DISPLAY_MAP,
   UNAVAILABLE_MSG,
   calcLevelFromExp,
-  extractSecondaryIdentity,
   getAvatarInitial,
   isAdminPlusRole,
   resolveEffectiveRole,
@@ -109,15 +110,29 @@ export function LegacyProfileTopSection({
   const effectiveRole = resolveEffectiveRole(profile, rolesMap[uid]);
   const roleInfo = ROLE_DISPLAY_MAP[effectiveRole] ?? ROLE_DISPLAY_MAP.user;
 
-  const secondary = extractSecondaryIdentity(profile);
-  const displayName =
-    (secondary.enabled && secondary.displayName)
-    || (typeof profile['displayName'] === 'string' && profile['displayName'].trim())
-    || profile.name
-    || '-';
-  const rawAvatar = secondary.enabled
-    ? secondary.avatarUrl
-    : sanitizeHttpAvatarUrl(profile['pictureUrl'] ?? profile['picture']);
+  // 照 A `renderProfileData`：用 `getCurrentIdentity('profile')` 解析有效身份。
+  const identitySettings = useIdentitySettings();
+  const canUseSecondary = viewer.hasPermission('profile.secondary_identity');
+  const identity = getEffectiveIdentity(
+    {
+      uid,
+      displayName:
+        typeof profile['displayName'] === 'string' ? profile['displayName'] : null,
+      name: profile.name,
+      pictureUrl:
+        typeof profile['pictureUrl'] === 'string' ? profile['pictureUrl'] : null,
+      photoURL:
+        typeof profile['picture'] === 'string' ? profile['picture'] : null,
+    },
+    {
+      settings: identitySettings,
+      surface: 'profile',
+      allowSecondaryIdentity: canUseSecondary,
+    },
+  );
+  const displayName = (identity?.displayName ?? '').trim() || '-';
+  const rawAvatar = sanitizeHttpAvatarUrl(identity?.pictureUrl ?? null);
+  const isSecondary = identity?.identityId === 'secondary';
 
   // A `_canViewRawUid`：只有 admin / super_admin 看得到原始 UID。
   const canViewRawUid =
@@ -140,7 +155,7 @@ export function LegacyProfileTopSection({
           name={displayName}
           baseClass="profile-avatar"
           imageContainerClass="profile-avatar profile-avatar-img"
-          crown={secondary.enabled}
+          crown={isSecondary}
         />
         {/* B 無稱號成就系統，照 A 無稱號時輸出純顯示名稱 */}
         <div class="profile-title" id="profile-title" data-no-translate>
