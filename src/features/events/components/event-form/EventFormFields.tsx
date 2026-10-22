@@ -22,6 +22,7 @@ import { SPORTS } from '../../data/sports';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
+import { EventFormAddons, type EventFormAddonsProps } from './EventFormAddons';
 
 export interface EventFormFieldsProps {
   mode: 'create' | 'edit';
@@ -32,6 +33,7 @@ export interface EventFormFieldsProps {
   cover: CoverUploadView;
   location: LocationControlView;
   delegates: DelegatePickerView;
+  addons?: Omit<EventFormAddonsProps, 'onInfo'>;
 }
 
 /** A `_userTag(name, role)` 的 role class 只認內建角色；未知值退回 user（避免渲染錯誤角色樣式）。 */
@@ -608,7 +610,9 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
         </div>
       </div>
 
-      {/* 第 2 段：進階功能（ce-value-section） */}
+      {props.addons ? (
+        <EventFormAddons {...props.addons} onInfo={(key) => setActiveInfoKey(key)} />
+      ) : null}
 
       {/* 人數上限 */}
       <div class="ce-row">

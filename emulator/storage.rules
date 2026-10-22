@@ -1,29 +1,13 @@
+// 本機 emulator 用：照正式兩個 bucket（預設、asia-east1）目前實際部署的 Storage ruleset（2026-03-06 版，指揮官 2026-10-22 以 Rules REST API 唯讀查證）。
+// 不是 FC repo 的 storage.rules：repo 版（5d3afd302）對 Path 呼叫 matches，部署即壞、從未部署，修正另案 T-015。
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    function isImageUpload() {
-      return request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-    }
-
-    function isSecondaryIdentityAvatarPath(path) {
-      return path.matches('users/[^/]+/identities/secondary/[^/]+');
-    }
-
-    match /images/users/{uid}/identities/secondary/{fileName} {
-      allow read: if true;
-      allow create, update: if request.auth != null
-        && request.auth.uid == uid
-        && isImageUpload();
-      allow delete: if request.auth != null && request.auth.uid == uid;
-    }
-
     match /images/{allPaths=**} {
       allow read: if true;
-      allow create, update: if request.auth != null
-        && !isSecondaryIdentityAvatarPath(allPaths)
-        && isImageUpload();
-      allow delete: if false;
+      allow write: if request.auth != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
   }
 }
