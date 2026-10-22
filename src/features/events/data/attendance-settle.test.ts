@@ -50,7 +50,9 @@ import {
   ADJUST_EXP_TIMEOUT_MESSAGE,
   ADJUST_EXP_TIMEOUT_MS,
   AUTO_EXP_MAX_ABS,
+  COMPLETE_ACTIVITY_DEDUPE_AFTER_END_MS,
   COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS,
+  COMPLETE_ACTIVITY_END_FALLBACK_MS,
   CONFIRM_ATTENDANCE_TIMEOUT_MESSAGE,
   CONFIRM_ATTENDANCE_TIMEOUT_MS,
   buildAttendanceDesired,
@@ -58,6 +60,7 @@ import {
   buildCompleteActivityRequestId,
   hasPriorCompleteActivityGrant,
   loadCompleteActivityExpAmount,
+  resolveCompleteActivityDedupeWindow,
   settleAttendance,
   type SettleAttendanceInput,
   type SettleAttendanceResult,
@@ -261,6 +264,67 @@ describe('純函式與常數', () => {
   });
 });
 
+describe('resolveCompleteActivityDedupeWindow', () => {
+  it('保留結束後 72 小時與結束時間 fallback 24 小時常數', () => {
+    expect(COMPLETE_ACTIVITY_DEDUPE_AFTER_END_MS).toBe(72 * 60 * 60 * 1000);
+    expect(COMPLETE_ACTIVITY_END_FALLBACK_MS).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('完整起訖使用開始前 24 小時至結束後 72 小時', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00~11:00')).toEqual({
+      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
+      untilMs: new Date(2026, 9, 28, 11, 0).getTime(),
+    });
+  });
+
+  it('無結束時間時以開始 + 24 小時為結束', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00')).toEqual({
+      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
+      untilMs: new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000,
+    });
+  });
+
+  it('只有日期時以當天零時為開始並套用 fallback', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25')).toEqual({
+      sinceMs: new Date(2026, 9, 24, 0, 0).getTime(),
+      untilMs: new Date(2026, 9, 25, 0, 0).getTime() + 96 * 60 * 60 * 1000,
+    });
+  });
+
+  it('跨午夜時使用隔天的結束時刻', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25 23:00~01:00')).toEqual({
+      sinceMs: new Date(2026, 9, 24, 23, 0).getTime(),
+      untilMs: new Date(2026, 9, 26, 1, 0).getTime() + 72 * 60 * 60 * 1000,
+    });
+  });
+
+  it('結束等於開始時使用隔天同時刻，支援單位數小時', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00~9:00')).toEqual({
+      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
+      untilMs: new Date(2026, 9, 26, 9, 0).getTime() + 72 * 60 * 60 * 1000,
+    });
+  });
+
+  it.each([
+    '2026/10/25 09:00~xx',
+    '2026/10/25 09:00~25:00',
+    '2026/10/25 09:00~11:60',
+    '2026/10/25 09:00~11:5',
+    '2026/10/25 09:00~11.5:00',
+    '2026/10/25 09:00~-1:00',
+    '2026/10/25 09:00~',
+  ])('結束時間格式壞時使用 fallback：%s', (date) => {
+    expect(resolveCompleteActivityDedupeWindow(date)).toEqual({
+      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
+      untilMs: new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000,
+    });
+  });
+
+  it.each(['無法解析', '', null, undefined, 123, '999999/10/25 09:00~11:00'])('無法解析時回 null：%j', (date) => {
+    expect(resolveCompleteActivityDedupeWindow(date)).toBeNull();
+  });
+});
+
 describe('loadCompleteActivityExpAmount', () => {
   it.each([
     ['字串金額', '12', 12],
@@ -324,6 +388,37 @@ describe('loadCompleteActivityExpAmount', () => {
 });
 
 describe('hasPriorCompleteActivityGrant', () => {
+  it.each([
+    ['上界剛好命中', 2000, true],
+    ['上界加 1 毫秒不命中', 2001, false],
+  ])('%s', async (_label, createdAt, expected) => {
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt }));
+    await expect(hasPriorCompleteActivityGrant('U123', '原因', 1000, 2000))
+      .resolves.toBe(expected);
+  });
+
+  it.each([
+    ['低於下界', 999, false],
+    ['等於下界', 1000, true],
+    ['晚於下界', 2001, true],
+  ])('untilMs 為 null 時只看下界：%s', async (_label, createdAt, expected) => {
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt }));
+    await expect(hasPriorCompleteActivityGrant('U123', '原因', 1000, null))
+      .resolves.toBe(expected);
+  });
+
+  it('sinceMs 為 null 時忽略上界與 createdAt，任一筆即命中', async () => {
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: 2001 }));
+    await expect(hasPriorCompleteActivityGrant('U123', '原因', null, 2000))
+      .resolves.toBe(true);
+    mockGetDocs.mockResolvedValueOnce(logs({}));
+    await expect(hasPriorCompleteActivityGrant('U123', '原因', null, 2000))
+      .resolves.toBe(true);
+    mockGetDocs.mockResolvedValueOnce(logs());
+    await expect(hasPriorCompleteActivityGrant('U123', '原因', null, 2000))
+      .resolves.toBe(false);
+  });
+
   it('只使用 uid、正規化 reason 兩個等值條件', async () => {
     const reason = `  ${'長'.repeat(220)}  `;
     mockGetDocs.mockResolvedValue(logs({ createdAt: 1000 }));
@@ -578,6 +673,86 @@ describe('settleAttendance', () => {
       operatorLabel: '系統',
       requestId: 'autoexp_U123_complete_activity_ce_101',
     });
+  });
+
+  it('晚 3 天結算仍查得到 A 在活動當天發的紀錄，跳過發放', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 28, 20));
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(2026, 9, 25, 11, 5) }));
+    const result = await settleAttendance(input());
+
+    expectOk(result);
+    expect(result.skippedAlready).toEqual([{ uid: 'U123', source: 'expLogs' }]);
+    expect(adjustCalls()).toHaveLength(0);
+  });
+
+  it('晚 10 天結算，下一場同名活動（7 天後）已發過的紀錄不影響本場，仍發放', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 4, 20));
+    mockGetDocs.mockResolvedValueOnce(logs({
+      createdAt: new Date(2026, 10, 1, 11, 5),
+    }));
+
+    const result = await settleAttendance(input());
+
+    expectOk(result);
+    expect(result.granted).toEqual(['U123']);
+    expect(result.skippedAlready).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(adjustCalls()).toHaveLength(1);
+  });
+
+  it.each([
+    ['結束後 72 小時邊界命中', 0, true],
+    ['結束後 72 小時超過 1 毫秒不命中', 1, false],
+  ])('%s', async (_label, offsetMs, expectedHit) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 4, 20));
+    const untilMs = new Date(2026, 9, 25, 11, 0).getTime() + 72 * 60 * 60 * 1000;
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: untilMs + offsetMs }));
+
+    const result = await settleAttendance(input());
+
+    expectOk(result);
+    expect(result.skippedAlready).toEqual(
+      expectedHit ? [{ uid: 'U123', source: 'expLogs' }] : [],
+    );
+    expect(result.granted).toEqual(expectedHit ? [] : ['U123']);
+    expect(result.failed).toEqual([]);
+    expect(adjustCalls()).toHaveLength(expectedHit ? 0 : 1);
+  });
+
+  it.each([
+    ['開始 + 96 小時命中', 0, true],
+    ['開始 + 96 小時超過 1 毫秒不命中', 1, false],
+  ])('無結束時間時以開始 + 24h 為結束：%s', async (_label, offsetMs, expectedHit) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 4, 20));
+    const untilMs = new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000;
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: untilMs + offsetMs }));
+
+    const result = await settleAttendance(input({
+      event: { id: 'ce_100', title: '週日友誼賽', date: '2026/10/25 09:00' },
+    }));
+
+    expectOk(result);
+    expect(result.skippedAlready).toEqual(
+      expectedHit ? [{ uid: 'U123', source: 'expLogs' }] : [],
+    );
+    expect(result.granted).toEqual(expectedHit ? [] : ['U123']);
+    expect(result.failed).toEqual([]);
+    expect(adjustCalls()).toHaveLength(expectedHit ? 0 : 1);
+  });
+
+  it('年份超出 Date 範圍時比照無法解析，任何舊紀錄都算命中', async () => {
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(2026, 9, 25, 11) }));
+    const result = await settleAttendance(input({
+      event: { id: 'ce_100', title: '週日友誼賽', date: '999999/10/25 09:00~11:00' },
+    }));
+
+    expectOk(result);
+    expect(result.skippedAlready).toEqual([{ uid: 'U123', source: 'expLogs' }]);
+    expect(adjustCalls()).toHaveLength(0);
   });
 
   it('日期無法解析時，任何舊紀錄都算命中', async () => {

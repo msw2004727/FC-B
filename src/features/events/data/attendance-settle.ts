@@ -9,6 +9,7 @@
 // (b) 正式環境含 expTargets：commit 564e54c58（2026-10-19，回傳 expTargets）是 2026-10-20 部署 commit 2f2935fd0 的祖先。仍把缺 expTargets 視為空陣列。
 // (c) 金額鍵名：A `_getAutoExpRules` 讀 `siteConfig/autoExpRules` 文件、以規則 key 取值，完成活動為 `complete_activity`（Number(...)，未設定為 0）。
 // (d) expLogs.time 是伺服器時區的 'MM/DD HH:mm'、沒有年份，無法比時間；時間窗改用 createdAt（serverTimestamp，A 的 adjustUserExp 也走 adjustExp callable，所以都有 createdAt）。
+// (e) 雙邊時間窗含開始前 24h 至結束後 72h，上界排除下一場同名活動紀錄；取不到結束時間則用開始 + 24h。同名活動在開始前 24h 內也辦、一天兩場同名仍刻意不處理，寧可漏發。
 
 import { callFn, CallableError } from '@/data/callables';
 import type {
@@ -27,6 +28,8 @@ import { parseEventStartDate } from './event-lifecycle';
 export const CONFIRM_ATTENDANCE_TIMEOUT_MS = 30_000;
 export const ADJUST_EXP_TIMEOUT_MS = 15_000;
 export const COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const COMPLETE_ACTIVITY_DEDUPE_AFTER_END_MS = 72 * 60 * 60 * 1000;
+export const COMPLETE_ACTIVITY_END_FALLBACK_MS = 24 * 60 * 60 * 1000;
 export const AUTO_EXP_MAX_ABS = 100;
 export const CONFIRM_ATTENDANCE_TIMEOUT_MESSAGE = '結算逾時，請重新整理後再試';
 export const ADJUST_EXP_TIMEOUT_MESSAGE = '發放經驗值逾時';
@@ -54,6 +57,7 @@ export type SettleAttendanceResult =
       /** 伺服器回傳的 expTargets（缺就 []），只保留去重後的非空字串。 */
       targets: string[];
       granted: string[];
+      /** expLogs：時間窗內有同 uid、同 reason 的紀錄；requestId：伺服器 deduplicated。 */
       skippedAlready: Array<{ uid: string; source: 'expLogs' | 'requestId' }>;
       /** 金額無效時整批不發，此時 granted 與 failed 皆空。 */
       skippedZeroAmount: boolean;
@@ -85,6 +89,41 @@ export function buildCompleteActivityReason(title: string): string {
 
 export function buildCompleteActivityRequestId(uid: string, eventId: string): string {
   return `autoexp_${uid}_complete_activity_${eventId}`;
+}
+
+/** 以活動起訖建立雙邊時間窗；取不到結束時間時用開始 + 24h。 */
+export function resolveCompleteActivityDedupeWindow(
+  date: unknown,
+): { sinceMs: number; untilMs: number } | null {
+  const start = parseEventStartDate(date);
+  // 年份超出 Date 範圍時 parseEventStartDate 會回 Invalid Date，比照無法解析。
+  if (start === null || Number.isNaN(start.getTime())) return null;
+
+  let endMs = start.getTime() + COMPLETE_ACTIVITY_END_FALLBACK_MS;
+  const endPart = typeof date === 'string' ? date.split(' ')[1]?.split('~')[1] : undefined;
+  const match = endPart?.match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    const hh = Number(match[1]);
+    const mm = Number(match[2]);
+    if (
+      Number.isInteger(hh) && hh >= 0 && hh <= 23 &&
+      Number.isInteger(mm) && mm >= 0 && mm <= 59
+    ) {
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const d = start.getDate();
+      let end = new Date(y, m, d, hh, mm);
+      if (end.getTime() <= start.getTime()) {
+        end = new Date(y, m, d + 1, hh, mm);
+      }
+      endMs = end.getTime();
+    }
+  }
+
+  return {
+    sinceMs: start.getTime() - COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS,
+    untilMs: endMs + COMPLETE_ACTIVITY_DEDUPE_AFTER_END_MS,
+  };
 }
 
 /** 組 desired；省略的列在伺服器完全不動。 */
@@ -173,11 +212,12 @@ function createdAtMillis(value: unknown): number | null {
   }
 }
 
-/** 只查 uid、reason 兩個等值條件，時間窗在前端判斷；查詢錯誤往外拋。 */
+/** 只查 uid、reason 等值條件，前端判斷雙邊時間窗（兩端含）；上界 null 僅看下界，下界 null 任一筆即命中；查詢錯誤往外拋。 */
 export async function hasPriorCompleteActivityGrant(
   uid: string,
   reason: string,
   sinceMs: number | null,
+  untilMs: number | null = null,
 ): Promise<boolean> {
   const [{ collection, query, where, getDocs }, { db }] = await Promise.all([
     import('firebase/firestore'),
@@ -194,7 +234,7 @@ export async function hasPriorCompleteActivityGrant(
   if (sinceMs === null) return snap.docs.length > 0;
   return snap.docs.some((entry) => {
     const millis = createdAtMillis(entry.data().createdAt);
-    return millis !== null && millis >= sinceMs;
+    return millis !== null && millis >= sinceMs && (untilMs === null || millis <= untilMs);
   });
 }
 
@@ -286,12 +326,16 @@ export async function settleAttendance(
   }
 
   const reason = buildCompleteActivityReason(title);
-  const start = parseEventStartDate(event.date);
-  const sinceMs = start ? start.getTime() - COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS : null;
+  const dedupeWindow = resolveCompleteActivityDedupeWindow(event.date);
 
   for (const uid of targets) {
     try {
-      if (await hasPriorCompleteActivityGrant(uid, reason, sinceMs)) {
+      if (await hasPriorCompleteActivityGrant(
+        uid,
+        reason,
+        dedupeWindow?.sinceMs ?? null,
+        dedupeWindow?.untilMs ?? null,
+      )) {
         result.skippedAlready.push({ uid, source: 'expLogs' });
         continue;
       }
