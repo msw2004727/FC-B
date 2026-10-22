@@ -625,15 +625,22 @@ export default function ActivitiesPage(): JSX.Element {
             <h2 class="page-header-title" data-i18n="活動行事曆">
               {lt('活動行事曆', '活動行事曆')}
             </h2>
+            {/* 照 A theme.js#bindFilterToggle：展開或有篩選時加 active、開啟時焦點到關鍵字；面板靠 .visible 才顯示（layout.css） */}
             <button
               type="button"
-              class="page-search-toggle-btn activity-filter-toggle-btn"
+              class={`page-search-toggle-btn activity-filter-toggle-btn${searchOpen || filterType || keywordInput.trim() ? ' active' : ''}`}
               id="filter-toggle"
               aria-label={lt('搜尋與篩選活動', '搜尋與篩選活動')}
               aria-expanded={searchOpen ? 'true' : 'false'}
               aria-controls="filter-bar"
               data-i18n-aria-label="搜尋與篩選活動"
-              onClick={() => setSearchOpen((v) => !v)}
+              onClick={() => {
+                const nextOpen = !searchOpen;
+                setSearchOpen(nextOpen);
+                if (nextOpen) {
+                  requestAnimationFrame(() => keywordInputRef.current?.focus({ preventScroll: true }));
+                }
+              }}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -725,7 +732,7 @@ export default function ActivitiesPage(): JSX.Element {
         </div>
 
         <div
-          class="filter-bar collapsible-search-panel activity-filter-panel"
+          class={`filter-bar collapsible-search-panel activity-filter-panel${searchOpen ? ' visible' : ''}`}
           id="filter-bar"
           hidden={!searchOpen}
           aria-hidden={searchOpen ? 'false' : 'true'}

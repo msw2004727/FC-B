@@ -368,6 +368,8 @@ describe('ActivitiesPage (U-027 搜尋延遲與清除)', () => {
     });
     // 實際使用時搜尋列是展開的；收合（hidden）時瀏覽器不允許 focus。
     fireEvent.click(container.querySelector('#filter-toggle') as HTMLElement);
+    // 照 A layout.css：面板要有 .visible 才會顯示
+    expect(container.querySelector('#filter-bar')?.classList.contains('visible')).toBe(true);
     const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
     fireEvent.input(input, { target: { value: 'pickleball' } });
     const clearBtn = await waitFor(() => {
