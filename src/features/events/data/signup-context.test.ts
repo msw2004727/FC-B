@@ -163,7 +163,8 @@ describe('createDetailSignupContexts', () => {
       type: 'companion', companionId: 'male', companionName: '小明',
     }])).participantCheck).toMatchObject({
       ok: false, reason: 'gender_restricted',
-      message: '同行者不符合活動性別限制',
+      // 測試同步更新：照 A _getCompanionGenderRestrictionMessage 具名訊息（Gemini 審查 P2）。
+      message: '小明 不符合此活動的女性限制',
     });
   });
 
@@ -207,7 +208,9 @@ describe('詳情資格 helper', () => {
     expect(canDetailCompanionSignup(event, undefined)).toBe(false);
     expect(canDetailCompanionSignup({ allowedGender: '女' }, undefined)).toBe(true);
     expect(detailCompanionGenderMessage(event, '小花'))
-      .toBe('同行者不符合活動性別限制');
+      .toBe('小花 不符合此活動的女性限制');
+    expect(detailCompanionGenderMessage(event, ''))
+      .toBe('所選同行者不符合此活動的女性限制');
   });
 });
 

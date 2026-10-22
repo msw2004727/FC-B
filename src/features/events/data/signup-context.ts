@@ -68,10 +68,14 @@ export function detailCompanionGenderMessage(
   event: SignupEvent,
   name: string,
 ): string {
-  // ASSUMPTION: 附件截斷具名訊息，使用 A 已提供的完整 fallback 原文。
-  void event;
-  void name;
-  return '同行者不符合活動性別限制';
+  // 照 A event-list-helpers.js#_getCompanionGenderRestrictionMessage。
+  const raw = event.genderRestrictionEnabled ? event.allowedGender : '';
+  const allowedGender = raw === '男' || raw === '女' ? raw : '';
+  if (!allowedGender) return '';
+  const label = allowedGender === '男' ? '男性限制' : '女性限制';
+  return name
+    ? `${name} 不符合此活動的${label}`
+    : `所選同行者不符合此活動的${label}`;
 }
 
 /** 照 A handleSignup／_confirmCompanionRegisterUnlocked。 */

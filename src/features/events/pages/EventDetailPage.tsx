@@ -1258,25 +1258,7 @@ function EventDetailSession({
     let cancelled = 0;
     let writeAttempted = false;
     try {
-      // 本單明定先加報再取消；A 附件原順序相反。
-      if (chosen.length) {
-        writeAttempted = true;
-        const response = await registerSelection({
-          eventId: current.event.id ?? publicId,
-          user: { uid, displayName: currentViewer.current.displayName },
-          participants,
-          companionToggle: true,
-        }, false);
-        if (!alive.current) return;
-        if (response.deduplicated) {
-          toast.show({ message: '報名處理中，請稍候' });
-          setCompanionOpen(false);
-          await refresh(current);
-          return;
-        }
-        confirmed = count(response.confirmed);
-        waitlisted = count(response.waitlisted);
-      }
+      // 照 A _confirmCompanionRegisterUnlocked：先取消再加報（Gemini 審查 P1，原交件順序相反）。
       if (cancelRegistrationIds.length) {
         if (!alive.current || currentViewer.current.uid !== uid) return;
         writeAttempted = true;
@@ -1296,6 +1278,25 @@ function EventDetailSession({
           return;
         }
         cancelled = cancelRegistrationIds.length;
+      }
+      if (chosen.length) {
+        if (!alive.current || currentViewer.current.uid !== uid) return;
+        writeAttempted = true;
+        const response = await registerSelection({
+          eventId: current.event.id ?? publicId,
+          user: { uid, displayName: currentViewer.current.displayName },
+          participants,
+          companionToggle: true,
+        }, false);
+        if (!alive.current) return;
+        if (response.deduplicated) {
+          toast.show({ message: '報名處理中，請稍候' });
+          setCompanionOpen(false);
+          await refresh(current);
+          return;
+        }
+        confirmed = count(response.confirmed);
+        waitlisted = count(response.waitlisted);
       }
       const parts: string[] = [];
       if (confirmed + waitlisted > 0) parts.push(`新增 ${confirmed + waitlisted} 人`);
@@ -1318,7 +1319,7 @@ function EventDetailSession({
         GENDER_RESTRICTED: '同行者不符合性別限制',
         TEAM_RESTRICTED: '不符合球隊限定',
         PROFILE_INCOMPLETE: '請先補齊個人資料',
-        ALREADY_CANCELLED: '夥伴報名已更新',
+        ALREADY_CANCELLED: '報名狀態已更新',
       };
       toast.show({ message: messages[code] || '夥伴報名調整失敗，請稍後再試' });
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
@@ -1420,8 +1421,15 @@ function EventDetailSession({
     && (event.allowedGender === '男' || event.allowedGender === '女')
     ? event.allowedGender : '';
   const companionItems: CompanionSelectItem[] = companions.map(item => {
+    // 照 A regByCompanionId → regByCompanionName；名字只比對沒有 companionId 的舊紀錄（Gemini 審查 P1）。
+    const cid = item.id.trim();
+    const cname = item.name.trim();
     const reg = owned.find(value => isCompanion(value)
-      && String(value.companionId || '').trim() === item.id.trim());
+      && String(value.companionId || '').trim() === cid)
+      ?? owned.find(value => isCompanion(value)
+        && !String(value.companionId || '').trim()
+        && cname !== ''
+        && String(value.companionName || value.userName || '').trim() === cname);
     return {
       ...item,
       registered: Boolean(reg),
@@ -1527,10 +1535,11 @@ function EventDetailSession({
                     class="detail-toolbar-btn companion-signup-toolbar-action"
                     disabled={busy || refreshFailed}
                     aria-busy={companionBusy ? 'true' : undefined}
+                    aria-disabled={companionBusy ? 'true' : undefined}
                     onClick={() => startCompanion(openCompanionSelect)}
                   >
                     幫夥伴報名
-                    {companionBusy && <span class="fcb-sr-only">處理中</span>}
+                    {companionBusy && <span class="fcb-sr-only">（處理中）</span>}
                   </button>
                 </div>
                 <div class="signup-loading-hint">
@@ -1752,6 +1761,7 @@ function EventDetailSession({
               targets={cancelModal.targets}
               selectAll={cancelModal.selectAll}
               busy={busy}
+              eventTitle={event.title || ''}
               onClose={() => { if (!busy) setCancelModal(null); }}
               onConfirm={ids => start(() => confirmCancel(ids))}
             />

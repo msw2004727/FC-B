@@ -204,7 +204,8 @@ describe('3b-1w 報名流程', () => {
       .toContain('rgb(220, 38, 38)');
   });
 
-  it('幫夥伴報名只按 companionId 比對，先加報再取消', async () => {
+  // 測試同步更新：照 A _confirmCompanionRegisterUnlocked 先取消再加報（Gemini 審查 P1）。
+  it('幫夥伴報名只按 companionId 比對，先取消再加報', async () => {
     mocks.history.mockResolvedValue([self, companion]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '幫夥伴報名' }));
@@ -236,7 +237,7 @@ describe('3b-1w 報名流程', () => {
     const cancelOrder = mocks.cancel.mock.invocationCallOrder[0];
     expect(registerOrder).toBeDefined();
     expect(cancelOrder).toBeDefined();
-    expect(registerOrder ?? Infinity).toBeLessThan(cancelOrder ?? 0);
+    expect(cancelOrder ?? Infinity).toBeLessThan(registerOrder ?? 0);
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
       message: '夥伴報名已更新：新增 1 人、取消 1 人',
     }));

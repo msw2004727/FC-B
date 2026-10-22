@@ -241,31 +241,7 @@ export function getSignupButtonState(input: SignupButtonInput): SignupButtonStat
       glowWrap: true,
     });
   }
-  if (owned.length > 0) {
-    const allWaitlisted = owned.every((reg) => reg.status === 'waitlisted');
-    if (allWaitlisted) {
-      return buttonState('cancelWaitlist', '取消候補', {
-        action: 'cancel',
-        tone: 'warning',
-        bg: '#7c3aed',
-        color: '#fff',
-        glow: '#7c3aed',
-        glowLight: '#a78bfa',
-        hint: '正在取消候補',
-        glowWrap: true,
-      });
-    }
-    return buttonState('cancel', '取消報名', {
-      action: 'cancel',
-      tone: 'danger',
-      bg: '#dc2626',
-      color: '#fff',
-      glow: '#dc2626',
-      glowLight: '#f87171',
-      hint: '正在取消報名',
-      glowWrap: true,
-    });
-  }
+  // 照 A：主按鈕只看本人報名（排除同行者）；只剩同行者時照常顯示報名鈕，取消同行者走「幫夥伴報名」。
 
   // 7. upcoming：照 A `_buildEventEarlyBirdSignupHtml`。
   if (event.status === 'upcoming') {

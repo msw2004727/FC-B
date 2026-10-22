@@ -17,6 +17,8 @@ export interface CompanionCancelModalProps {
   targets: readonly CompanionCancelTarget[];
   selectAll: boolean;
   busy: boolean;
+  /** 照 A：標題「取消報名 — ${e.title}」。 */
+  eventTitle?: string;
   onClose: () => void;
   /** 至少勾一個才可按 */
   onConfirm: (registrationIds: string[]) => void;
@@ -73,6 +75,7 @@ export function CompanionCancelModal({
   targets,
   selectAll,
   busy,
+  eventTitle,
   onClose,
   onConfirm,
 }: CompanionCancelModalProps): JSX.Element | null {
@@ -126,8 +129,7 @@ export function CompanionCancelModal({
         style="max-width:360px;position:static;border-radius:var(--radius);transform:none"
       >
         <div class="modal-header">
-          {/* ASSUMPTION: props 沒有 eventTitle；A 的「取消報名 — 活動標題」在本元件固定顯示「取消報名」。 */}
-          <h3 id="companion-cancel-title">取消報名</h3>
+          <h3 id="companion-cancel-title">{eventTitle ? `取消報名 — ${eventTitle}` : '取消報名'}</h3>
           <button
             type="button"
             class="modal-close"

@@ -199,20 +199,21 @@ describe('getSignupButtonState', () => {
     });
   });
 
-  it('同行者仍有報名且全部候補時取消候補', () => {
+  // 測試同步更新：照 A _getCurrentUserEventRegistrationState 排除同行者，只剩同行者時主按鈕是報名鈕（Gemini 審查 P2）。
+  it('只剩同行者報名（候補）時主按鈕仍是報名鈕', () => {
     expect(run({
       registrations: [
         { userId: 'u1', participantType: 'companion', status: 'waitlisted' },
       ],
-    }).kind).toBe('cancelWaitlist');
+    }).kind).toBe('signup');
   });
 
-  it('同行者仍有報名且非全部候補時取消報名', () => {
+  it('只剩同行者報名（正取）時主按鈕仍是報名鈕', () => {
     expect(run({
       registrations: [
         { userId: 'u1', participantType: 'companion', status: 'confirmed' },
       ],
-    }).kind).toBe('cancel');
+    }).kind).toBe('signup');
   });
 
   it('早鳥名額已滿', () => {
