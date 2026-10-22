@@ -92,7 +92,12 @@ export function EventDetailHeaderActions(props: EventDetailHeaderActionsProps): 
   }
 
   async function refreshDetail(): Promise<void> {
-    if (!latest.current.context.uid || refreshPending.current) return;
+    if (refreshPending.current) return;
+    // 訪客沒有名單與本人紀錄可重讀：照 A 重新讀活動即可（重新載入本頁）。
+    if (!latest.current.context.uid) {
+      latest.current.onReload();
+      return;
+    }
     refreshPending.current = true;
     setRefreshing(true);
     try {
@@ -114,7 +119,8 @@ export function EventDetailHeaderActions(props: EventDetailHeaderActionsProps): 
     current.onOpenLog();
   }
 
-  if (!context.uid) return null;
+  // 指揮官 2026-10-22 決定（M-090）：預覽文字「訪客不顯示」與 A 不符，照 A——瀏覽數與重新整理鈕對所有人顯示，
+  // 只有 +1（incrementEventViewCount）限登入者觸發；活動公開與 Log 仍依權限（訪客無）。
   return (
     <>
       <div id="detail-public-toggle-wrap" style={canToggle ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}>

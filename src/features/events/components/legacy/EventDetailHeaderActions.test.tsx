@@ -33,9 +33,17 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-it('訪客不顯示按鈕與瀏覽數；一般 user 只有 refresh 與不可點擊計數', () => {
-  const view = render(<EventDetailHeaderActions {...props({ ...user, uid: null, role: null })} />);
-  expect(view.container.textContent).toBe('');
+// 測試同步更新：照 A（M-090，指揮官 2026-10-22 決定，預覽文字與 A 不符）訪客也顯示瀏覽數與重新整理。
+it('訪客顯示瀏覽數與重新整理（按下重新載入）、無公開與 Log；一般 user 只有 refresh 與不可點擊計數', () => {
+  const guestProps = props({ ...user, uid: null, role: null });
+  const view = render(<EventDetailHeaderActions {...guestProps} />);
+  expect(screen.getAllByRole('button')).toHaveLength(1);
+  expect(screen.getByTitle('瀏覽次數')).toBeTruthy();
+  expect(screen.queryByText('Log')).toBeNull();
+  expect(screen.queryByLabelText('活動公開')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+  expect(guestProps.onReload).toHaveBeenCalledOnce();
+  expect(guestProps.onRefresh).not.toHaveBeenCalled();
   view.rerender(<EventDetailHeaderActions {...props()} />);
   expect(screen.getAllByRole('button')).toHaveLength(1);
   expect(screen.getByRole('button', { name: '重新整理' }).querySelector('svg')).toBeTruthy();

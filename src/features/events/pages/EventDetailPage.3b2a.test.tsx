@@ -98,12 +98,13 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-it('M-089／090：訪客無頁首按鈕及瀏覽數，不呼叫計數', async () => {
+// 測試同步更新：照 A（M-090，指揮官 2026-10-22 決定）訪客顯示瀏覽數與重新整理，但不 +1。
+it('M-089／090：訪客顯示瀏覽數與重新整理、無管理按鈕，不呼叫計數', async () => {
   mocks.viewer.mockReturnValue(viewer({ uid: null, role: 'guest' }));
   const view = render(<EventDetailPage id="public" />);
   await screen.findByText('測試活動');
-  expect(view.container.querySelector('#detail-view-count-wrap')).toBeNull();
-  expect(screen.queryByRole('button', { name: '重新整理' })).toBeNull();
+  expect(view.container.querySelector('#detail-view-count-wrap')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '重新整理' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '活動編輯' })).toBeNull();
   expect(screen.queryByText('Log')).toBeNull();
   expect(mocks.increment).not.toHaveBeenCalled();
