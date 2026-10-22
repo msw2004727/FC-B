@@ -43,13 +43,15 @@ it('沒有 picker 時隱藏好友選項，保留 A 的 R/share 入口', () => {
   expect(screen.getByText('分享到 LINE')).toBeTruthy();
 });
 
-it('返回鍵與卸載會清理 overlay 與延遲回呼', () => {
+// 測試同步更新：照 A cleanup(choice) 同步回報選擇（Gemini 審查：延遲 400ms 會讓手勢權限過期）。
+it('返回鍵當下回報 cancel，卸載會釋放 overlay', () => {
   const onChoice = vi.fn();
   const view = render(<ShareActionSheet canPicker onChoice={onChoice} />);
   act(() => { overlay.onBack?.(); });
+  expect(onChoice).toHaveBeenCalledExactlyOnceWith('cancel');
   view.unmount();
   act(() => { vi.runAllTimers(); });
-  expect(onChoice).not.toHaveBeenCalled();
+  expect(onChoice).toHaveBeenCalledOnce();
   expect(overlay.release).toHaveBeenCalledOnce();
 });
 

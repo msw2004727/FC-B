@@ -85,7 +85,11 @@ export async function shareEvent(
   try {
     const url = buildEventLiffUrl(event.id || '');
     const altText = buildEventShareAltText(event, url, options.heat);
-    const liff = await deps.loadLiff();
+    // 訪客且不在 LINE App 內：A 也沒有 LIFF session，不先等 SDK，保留 navigator.share 的使用者手勢。
+    const maybeInLine = typeof navigator !== 'undefined' && /\bLine\//i.test(navigator.userAgent || '');
+    const liff = options.loggedIn || maybeInLine || overrides.loadLiff
+      ? await deps.loadLiff()
+      : null;
     if (!current()) return;
     const canPicker = canUseShareTargetPicker(liff);
 

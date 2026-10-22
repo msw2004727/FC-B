@@ -102,12 +102,16 @@ export async function addEventToCalendar(
       ...parsed,
     });
     let liff: CalendarLiff | null = null;
-    try {
-      liff = options.loadLiff
-        ? await options.loadLiff()
-        : (await import('@line/liff')).default;
-    } catch {
-      // 照 A：一般瀏覽器不依賴 LIFF。
+    // 照 A 同步判斷：不在 LINE App 內就不等 LIFF，避免手勢權限過期讓 window.open 被擋。
+    const maybeInLine = typeof navigator !== 'undefined' && /\bLine\//i.test(navigator.userAgent || '');
+    if (maybeInLine || options.loadLiff) {
+      try {
+        liff = options.loadLiff
+          ? await options.loadLiff()
+          : (await import('@line/liff')).default;
+      } catch {
+        // 照 A：一般瀏覽器不依賴 LIFF。
+      }
     }
     if (options.signal.aborted) return;
 

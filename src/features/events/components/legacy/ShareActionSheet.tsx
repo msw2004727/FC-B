@@ -18,7 +18,6 @@ export function ShareActionSheet({
 }: Props): JSX.Element {
   const [active, setActive] = useState(false);
   const closing = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const choiceHandler = useRef(onChoice);
   choiceHandler.current = onChoice;
 
@@ -26,10 +25,8 @@ export function ShareActionSheet({
     if (closing.current) return;
     closing.current = true;
     setActive(false);
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      choiceHandler.current(choice);
-    }, 400);
+    // 照 A cleanup(choice)：當下同步回報選擇（保留點擊手勢），退場動畫由外層延遲卸載。
+    choiceHandler.current(choice);
   }
 
   useEffect(() => {
@@ -40,7 +37,6 @@ export function ShareActionSheet({
     });
     return () => {
       cancelAnimationFrame(frame);
-      if (timer.current !== null) clearTimeout(timer.current);
       release();
     };
   }, []);
@@ -142,13 +138,16 @@ export function showShareActionSheet(
       render(null, host);
       host.remove();
     };
-    const finish = (choice: ShareChoice): void => {
+    // 照 A：選擇後立即 resolve，overlay 退場 400ms 後才移除；中止時立即移除。
+    const finish = (choice: ShareChoice, immediate = false): void => {
       if (settled) return;
       settled = true;
-      cleanup();
+      signal.removeEventListener('abort', abort);
       resolve(choice);
+      if (immediate) cleanup();
+      else setTimeout(cleanup, 400);
     };
-    const abort = (): void => finish('cancel');
+    const abort = (): void => finish('cancel', true);
 
     signal.addEventListener('abort', abort, { once: true });
     try {

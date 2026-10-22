@@ -8,6 +8,8 @@ import { readEventsSnapshot } from '../../data/events-snapshot-cache';
 import { isEventVisibleToUser } from '../../data/visibility';
 import { safeImageUrl } from '../../data/detail-model';
 import type { ShareBuilderContext, ShareEvent } from '../../data/event-share-builders';
+import { shareEvent } from '../../data/event-share';
+import { addEventToCalendar } from '../../data/event-calendar';
 
 interface ShellProps {
   publicId: string;
@@ -159,9 +161,7 @@ export function EventDetailToolbarActions({
     if (sharing.current || !alive.current) return;
     sharing.current = true;
     try {
-      const module = await import('../../data/event-share');
-      if (!alive.current) return;
-      await module.shareEvent(event, {
+      await shareEvent(event, {
         loggedIn,
         heat,
         registrations,
@@ -181,21 +181,16 @@ export function EventDetailToolbarActions({
     if (calendar.current || !alive.current) return;
     calendar.current = true;
     try {
-      const module = await import('../../data/event-calendar');
-      if (!alive.current) return;
-      await module.addEventToCalendar(event, {
+      await addEventToCalendar(event, {
         signal: controller.current.signal,
         showToast: (message) => {
           if (alive.current) toast.show({ message });
         },
       });
     } catch {
-      // ASSUMPTION: A 無模組載入失敗文案，沿用 B 已有的操作失敗翻譯。
+      // A 沒有此失敗狀態；沿用 B 既有「操作失敗，請稍後重試。」翻譯。
       if (alive.current) {
-        const i18n = await import('@/i18n/i18n');
-        if (alive.current) toast.show({
-          message: i18n.lt('events.detailPage.actionError', '操作失敗'),
-        });
+        toast.show({ message: lt('events.detailPage.actionError', '操作失敗，請稍後重試。') });
       }
     } finally {
       calendar.current = false;
