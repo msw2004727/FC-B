@@ -97,6 +97,15 @@ function cycleTeamColor(state: EventFormAddonState, teamIdx: number): number[] {
   return nextIndexes;
 }
 
+/**
+ * 受控 checkbox：瀏覽器在 change 時已把 DOM 勾選切換，若守門拒絕（state 沒變）Preact 不會重繪，
+ * 畫面會停在「已打開」。先把 DOM 拉回目前 state，成功時由 state 更新重繪（照 A `toggle.checked = false`）。
+ */
+function keepControlled(el: HTMLInputElement, current: boolean, run: () => void): void {
+  run();
+  el.checked = current;
+}
+
 export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
   const { state, onPatch, guardAddon, onReservedClick, teamPicker, teamOnlyToggleDisabled, onInfo } = props;
   const lt = useLegacyT();
@@ -196,7 +205,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
   }
 
   function handleTeamCountChange(value: string): void {
-    if (!guardAddon()) return;
+    // 照 A bindTeamSplitToggle：隊數下拉只重繪色票，不檢查加值權限（Gemini 審 P3，原規格誤列）。
     const next = Number(value);
     onPatch({ teamSplitCount: next });
   }
@@ -328,7 +337,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                   type="checkbox"
                   id="ce-fee-enabled"
                   checked={state.feeEnabled}
-                  onChange={(ev) => handleFeeToggle(ev.currentTarget.checked)}
+                  onChange={(ev) => keepControlled(ev.currentTarget, state.feeEnabled, () => handleFeeToggle(ev.currentTarget.checked))}
                 />
                 <span class="toggle-slider"></span>
               </label>
@@ -365,7 +374,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 id="ce-team-only"
                 checked={state.teamOnly}
                 disabled={teamOnlyToggleDisabled}
-                onChange={(ev) => handleTeamOnlyToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.teamOnly, () => handleTeamOnlyToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>
@@ -392,7 +401,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                   type="checkbox"
                   id="ce-gender-restriction-enabled"
                   checked={state.genderRestrictionEnabled}
-                  onChange={(ev) => handleGenderToggle(ev.currentTarget.checked)}
+                  onChange={(ev) => keepControlled(ev.currentTarget, state.genderRestrictionEnabled, () => handleGenderToggle(ev.currentTarget.checked))}
                 />
                 <span class="toggle-slider"></span>
               </label>
@@ -441,7 +450,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 type="checkbox"
                 id="ce-private-event"
                 checked={state.privateEvent}
-                onChange={(ev) => handlePrivateToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.privateEvent, () => handlePrivateToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>
@@ -468,7 +477,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 type="checkbox"
                 id="ce-team-split-enabled"
                 checked={state.teamSplitEnabled}
-                onChange={(ev) => handleTeamSplitToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.teamSplitEnabled, () => handleTeamSplitToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>
@@ -573,7 +582,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                   id="ce-team-split-balance"
                   checked={state.teamSplitBalanceCap}
                   style={{ display: 'none' }}
-                  onChange={(ev) => handleBalanceToggle(ev.currentTarget.checked)}
+                  onChange={(ev) => keepControlled(ev.currentTarget, state.teamSplitBalanceCap, () => handleBalanceToggle(ev.currentTarget.checked))}
                 />
                 <span id="ce-team-split-balance-icon" style={{ fontSize: '.85rem', lineHeight: 1 }}>
                   {state.teamSplitBalanceCap ? '✅' : '⬜'}
@@ -650,7 +659,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 type="checkbox"
                 id="ce-social-links-enabled"
                 checked={state.socialLinksEnabled}
-                onChange={(ev) => handleSocialLinksToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.socialLinksEnabled, () => handleSocialLinksToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>
@@ -715,7 +724,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 type="checkbox"
                 id="ce-early-bird-enabled"
                 checked={state.earlyBirdEnabled}
-                onChange={(ev) => handleEarlyBirdToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.earlyBirdEnabled, () => handleEarlyBirdToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>
@@ -765,7 +774,7 @@ export function EventFormAddons(props: EventFormAddonsProps): JSX.Element {
                 type="checkbox"
                 id="ce-gps-enabled"
                 checked={state.gpsEnabled}
-                onChange={(ev) => handleGpsToggle(ev.currentTarget.checked)}
+                onChange={(ev) => keepControlled(ev.currentTarget, state.gpsEnabled, () => handleGpsToggle(ev.currentTarget.checked))}
               />
               <span class="toggle-slider"></span>
             </label>

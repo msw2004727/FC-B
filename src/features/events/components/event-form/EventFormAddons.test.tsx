@@ -108,6 +108,16 @@ describe('EventFormAddons', () => {
     }
   });
 
+  it('守門拒絕時開關畫面維持未勾（PM 補測：瀏覽器 change 已切換 DOM，需拉回）', () => {
+    const rendered = renderAddons(baseState());
+    rendered.guardAddon.mockReturnValue(false);
+    const fee = rendered.container.querySelector<HTMLInputElement>('#ce-fee-enabled')!;
+    fee.checked = true;
+    fireEvent.change(fee);
+    expect(rendered.onPatch).not.toHaveBeenCalled();
+    expect(fee.checked).toBe(false);
+  });
+
   it('5 個預留佔位 click／Enter／Space 只呼叫 onReservedClick，checkbox 永遠未勾且零寫入', () => {
     const { container, onPatch, onReservedClick } = renderAddons(baseState());
     const rows = Array.from(container.querySelectorAll<HTMLDivElement>('.ce-value-reserved'));
