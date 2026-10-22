@@ -1,9 +1,11 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import { getEventParticipantStats } from '../../data/participant-stats';
 import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
+import { getViewerEventRegState } from '../../data/viewer-reg-state';
+import './timeline-card-extra.css';
 
 export type LegacyEventDoc = EventDoc & {
   pinned?: boolean;
@@ -17,6 +19,12 @@ export type LegacyEventDoc = EventDoc & {
   host?: string;
   genderRestrictionEnabled?: boolean;
   allowedGender?: string;
+  // M-079：A `_isCourseLinkedEvent` 需要的欄位
+  courseLinked?: boolean;
+  courseLinkId?: string;
+  courseLinkSource?: string;
+  source?: string;
+  courseEventDetailsManagedByEvent?: boolean;
 };
 
 /** A `config.js#TYPE_CONFIG`（個人頁活動卡也共用）。 */
@@ -51,53 +59,150 @@ export function getGenderRibbonText(allowedGender: string): string {
   return allowedGender === '男' ? '限男生' : '限女生';
 }
 
-function getViewerRegStatus(
-  event: EventDoc,
-  viewerUid: string | null,
-  viewerRegistrations: readonly RegistrationDoc[],
-): { isSignedUp: boolean; isWaitlist: boolean } {
-  if (!viewerUid) return { isSignedUp: false, isWaitlist: false };
-  const eventIds = new Set(
-    [event.id, event._docId, event.docId].filter((x): x is string => Boolean(x)),
+/** M-079：照 A `event-list-helpers.js#_isCourseLinkedEvent`。 */
+function isCourseLinkedEvent(event: LegacyEventDoc): boolean {
+  const source = String(event.courseLinkSource || event.source || '').trim();
+  return Boolean(
+    event.courseLinked === true
+      || String(event.courseLinkId || '').trim()
+      || source === 'eduCourseLesson',
   );
-  // R-ID-002 / R-ID-003: 只認 UID
-  const activeRegs = viewerRegistrations.filter((r) => {
-    const rUid = r.userId || r.uid || r.ownerUid;
-    return (
-      rUid === viewerUid
-      && Boolean(r.eventId && eventIds.has(r.eventId))
-      && (r.status === 'confirmed' || r.status === 'waitlisted' || r.status === 'registered')
-    );
-  });
-  if (activeRegs.length === 0) return { isSignedUp: false, isWaitlist: false };
-  const hasConfirmed = activeRegs.some(
-    (r) => r.status === 'confirmed' || r.status === 'registered',
-  );
-  const isWaitlist = !hasConfirmed && activeRegs.some((r) => r.status === 'waitlisted');
-  return { isSignedUp: true, isWaitlist };
+}
+
+/** M-079：照 A `_getEventDisplayTypeKey`。 */
+function getEventDisplayTypeKey(event: LegacyEventDoc): string {
+  if (isCourseLinkedEvent(event) && event.courseEventDetailsManagedByEvent !== true) return 'course';
+  const rawType = String(event.type || '').trim();
+  if (rawType && TYPE_CONFIG[rawType]) return rawType;
+  return 'friendly';
+}
+
+/** M-077：照 A 進度條公式（每 100ms 加 4 / 2 / 0.5 / 0.15，最高 85）。 */
+function nextProgress(p: number): number {
+  const inc = p < 30 ? 4 : p < 60 ? 2 : p < 80 ? 0.5 : 0.15;
+  return Math.min(p + inc, 85);
 }
 
 export interface TimelineEventCardProps {
   event: LegacyEventDoc;
   viewerUid: string | null;
+  viewerRoleLevel: number;
   viewerRegistrations: readonly RegistrationDoc[];
   isPending: boolean;
+  isFavorited: boolean;
   onSelect: (event: LegacyEventDoc) => void;
-  onUnavailableFeature: (e: MouseEvent) => void;
+  onToggleFavorite: (event: LegacyEventDoc) => void;
 }
 
 export function TimelineEventCard({
   event,
   viewerUid,
+  viewerRoleLevel,
   viewerRegistrations,
   isPending,
+  isFavorited,
   onSelect,
-  onUnavailableFeature,
+  onToggleFavorite,
 }: TimelineEventCardProps): JSX.Element {
   const [failedImg, setFailedImg] = useState<string | null>(null);
+  const [showPending, setShowPending] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [commentCount, setCommentCount] = useState(0);
+  const [commentVisible, setCommentVisible] = useState(false);
 
-  const rawType = event.type || 'friendly';
-  const typeKey = TYPE_CONFIG[rawType] ? rawType : 'friendly';
+  const cardRef = useRef<HTMLDivElement>(null);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // M-077：`isPending` 為 true 後等 150ms 才亮載入條；之後每 100ms 依 A 公式遞增到 85。
+  useEffect(() => {
+    if (!isPending) {
+      if (delayRef.current) { clearTimeout(delayRef.current); delayRef.current = null; }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      setShowPending(false);
+      setProgress(0);
+      return;
+    }
+    delayRef.current = setTimeout(() => {
+      delayRef.current = null;
+      setShowPending(true);
+      setProgress(0);
+      intervalRef.current = setInterval(() => {
+        setProgress((p) => nextProgress(p));
+      }, 100);
+    }, 150);
+    return () => {
+      if (delayRef.current) { clearTimeout(delayRef.current); delayRef.current = null; }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    };
+  }, [isPending]);
+
+  // M-076：卡片進入可視範圍才觀察（照 A `_observeActivityCommentBadgeRows`，rootMargin 240px）。
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver !== 'function') {
+      setCommentVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        setCommentVisible(true);
+      }
+    }, { root: null, rootMargin: '240px 0px', threshold: 0.01 });
+    observer.observe(el);
+    return () => {
+      try { observer.disconnect(); } catch { /* ignore */ }
+    };
+  }, []);
+
+  // M-076：可見且登入才動態載入 comment-badge 並查詢留言數（卸載/不可見時取消）。
+  useEffect(() => {
+    if (!viewerUid || event.type === 'external') {
+      setCommentCount(0);
+      return;
+    }
+    if (!commentVisible) return;
+    const eventId = event.id || '';
+    if (!eventId) return;
+    const eventDocId = event._docId || event.docId || eventId;
+    if (!eventDocId) return;
+
+    let cancelled = false;
+    let cancelFn: (() => void) | null = null;
+
+    import('../../data/comment-badge')
+      .then((m) => {
+        if (cancelled) return;
+        const scope = m.canManageEventComments(event, viewerUid, viewerRoleLevel) ? 'manage' : 'member';
+        const cacheKey = m.getCommentBadgeCacheKey(eventId, viewerUid, scope);
+        const req = m.requestCommentCount({
+          cacheKey,
+          eventId,
+          eventDocId,
+          event,
+          viewerUid,
+          viewerRoleLevel,
+        });
+        cancelFn = req.cancel;
+        req.promise
+          .then((count) => { if (!cancelled) setCommentCount(count); })
+          .catch(() => { /* 留言數非關鍵，靜默 */ });
+      })
+      .catch(() => { /* 動態載入失敗不影響卡片 */ });
+
+    return () => {
+      cancelled = true;
+      if (cancelFn) cancelFn();
+    };
+    // event 物件在列表內為穩定參考；此 effect 依 id/docId/type 重新掛載。
+  }, [commentVisible, viewerUid, viewerRoleLevel, event]);
+
+  const rawType = String(event.type || 'friendly');
+  // M-079：課程連動活動 -> 顯示「課程」
+  const typeKey = getEventDisplayTypeKey(event);
   const typeConf = TYPE_CONFIG[typeKey] ?? TYPE_CONFIG.friendly!;
   const isExternal = typeKey === 'external';
   const effStatus = !isExternal ? effectiveEventStatus(event) : (event.status || 'open');
@@ -108,9 +213,10 @@ export function TimelineEventCard({
   const hasGenderRestriction = Boolean(allowedGender);
   const genderRibbonText = hasGenderRestriction ? getGenderRibbonText(allowedGender) : '';
 
-  const { isSignedUp, isWaitlist } = !isExternal
-    ? getViewerRegStatus(event, viewerUid, viewerRegistrations)
-    : { isSignedUp: false, isWaitlist: false };
+  // M-080：照 A `_getCurrentUserEventRegistrationState`（排除同行者、只認 UID、含備援）。
+  const { signedUp, onWaitlist } = !isExternal
+    ? getViewerEventRegState(event, viewerUid, viewerRegistrations)
+    : { signedUp: false, onWaitlist: false };
 
   const rawImg = event.imageVariants?.cover || event.image || '';
   const eventImage = rawImg && rawImg !== failedImg ? rawImg : '';
@@ -173,16 +279,36 @@ export function TimelineEventCard({
     'tl-event-row',
     rowClass,
     isEnded ? 'tl-past' : '',
-    isPending ? 'tl-pending' : '',
+    showPending ? 'tl-pending' : '',
   ].filter(Boolean).join(' ');
+
+  const hasComment = commentCount > 0;
+  const commentLabel = hasComment
+    ? `${commentCount > 99 ? '99+' : commentCount} 則留言`
+    : '';
+
+  function handleCardKeyDown(e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void {
+    // U-022：焦點在內部按鈕（收藏愛心）時，不攔 Enter／空白鍵，避免誤開詳情。
+    const target = e.target;
+    if (target instanceof Element && target.closest('button')) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      onSelect(event);
+    }
+  }
 
   return (
     <div
+      ref={cardRef}
       class={classList}
       data-event-id={event.id || ''}
       style={rowStyle}
-      aria-busy={isPending ? 'true' : undefined}
+      // U-022：讓卡片像連結一樣可用滑鼠、鍵盤、讀屏。
+      role="link"
+      tabIndex={0}
+      aria-busy={showPending ? 'true' : undefined}
       onClick={() => onSelect(event)}
+      onKeyDown={handleCardKeyDown}
     >
       {hasGenderRestriction && (
         <span class="tl-event-gender-ribbon">{genderRibbonText}</span>
@@ -234,36 +360,41 @@ export function TimelineEventCard({
         <span class={`tl-event-status ${statusCss}`}>
           {statusLabel}
         </span>
-        {/* 下一批補：留言數徽章 */}
+        {/* M-076：留言數徽章（可見才載入）；DOM 照 A `_activityCommentBadgeHtml` */}
         <span
           class="tl-comment-badge"
           data-comment-badge-for={event.id || ''}
-          hidden
-          aria-hidden="true"
+          hidden={!hasComment}
+          aria-hidden={hasComment ? 'false' : 'true'}
+          aria-label={hasComment ? commentLabel : undefined}
+          title={hasComment ? commentLabel : undefined}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.6-.8L3 21l1.8-4.7A8.1 8.1 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z" />
             <path d="M8 10h8M8 14h5" />
           </svg>
-          <span class="tl-comment-badge-count">0</span>
+          <span class="tl-comment-badge-count">{commentCount > 99 ? '99+' : String(commentCount)}</span>
         </span>
       </div>
       <div class="tl-event-icons">
-        {/* 下一批補：收藏愛心 */}
+        {/* M-076：收藏愛心（照 A `_favHeartHtml` 外觀）；U-022：擋冒泡避免開詳情 */}
         <button
           type="button"
-          class="fav-heart"
+          class={isFavorited ? 'fav-heart active' : 'fav-heart'}
           data-fav-type="Event"
           data-fav-id={event.id || ''}
-          title="加入收藏"
-          onClick={onUnavailableFeature}
+          title={isFavorited ? '取消收藏' : '加入收藏'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(event);
+          }}
         >
           <svg
             width="18"
             height="18"
             viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--text-muted)"
+            fill={isFavorited ? 'var(--danger)' : 'none'}
+            stroke={isFavorited ? 'var(--danger)' : 'var(--text-muted)'}
             stroke-width="2"
           >
             <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
@@ -281,14 +412,16 @@ export function TimelineEventCard({
       {event.privateEvent && (
         <span class="tl-stamp-private">不公開</span>
       )}
-      {isWaitlist ? (
+      {/* M-080：正取／候補章（只用本⼈報名判斷） */}
+      {onWaitlist ? (
         <span class="tl-stamp-waitlisted">候補</span>
-      ) : isSignedUp ? (
+      ) : signedUp ? (
         <span class="tl-stamp-confirmed">正取</span>
       ) : null}
-      {isPending && (
+      {/* M-077：150ms 後才顯示載入條，進度條漸進 0→85% */}
+      {showPending && (
         <div class="tl-loading-bar">
-          <div class="tl-loading-fill" style="width: 30%" />
+          <div class="tl-loading-fill" style={`width: ${progress}%`} />
         </div>
       )}
     </div>

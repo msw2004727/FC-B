@@ -10,6 +10,7 @@ import { getEventsRepo, type EventsRepo } from '../data/events-repo';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { useViewer } from '@/features/profile/data/viewer';
 import type { EventDoc } from '../data/types';
+import * as favoritesMod from '../data/favorites';
 import ActivitiesPage from './ActivitiesPage';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
@@ -18,6 +19,11 @@ vi.mock('@/i18n/i18n', async (importOriginal) => ({
 }));
 vi.mock('@/features/events/data/events-repo', () => ({
   getEventsRepo: vi.fn(),
+}));
+vi.mock('../data/favorites', () => ({
+  loadFavorites: vi.fn(),
+  saveFavorites: vi.fn(),
+  toggleEventInFavorites: vi.fn(),
 }));
 vi.mock('../data/viewer-registrations', () => ({
   loadViewerRegistrations: vi.fn(),
@@ -88,6 +94,16 @@ beforeEach(async () => {
     getSnapshot: () => ({ active, terminal: [] }),
   });
   vi.mocked(loadViewerRegistrations).mockResolvedValue([]);
+  // M-076：收藏讀寫 mock（避免 jsdom 觸發 Firestore）
+  vi.mocked(favoritesMod.loadFavorites).mockResolvedValue({ events: [], tournaments: [] });
+  vi.mocked(favoritesMod.saveFavorites).mockResolvedValue(undefined);
+  vi.mocked(favoritesMod.toggleEventInFavorites).mockImplementation((cur, eventId) => {
+    const events = [...cur.events];
+    const idx = events.indexOf(eventId);
+    const added = idx < 0;
+    if (added) events.push(eventId); else events.splice(idx, 1);
+    return { next: { events, tournaments: [...cur.tournaments] }, added };
+  });
   vi.mocked(useViewer).mockReturnValue({
     uid: 'viewer',
     teamIds: new Set(),
@@ -196,7 +212,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(loadViewerRegistrations).toHaveBeenCalledWith('viewer');
   });
 
-  it('marks card with tl-pending and navigates to /events/{id} when clicked', async () => {
+  // 測試同步更新：照 A（M-077），tl-pending 有 150ms 延遲。
+  it('marks card with tl-pending after 150ms delay and navigates to /events/{id} when clicked', async () => {
     const { container } = mount();
     const card = await waitFor(() => {
       const el = container.querySelector('.tl-event-row[data-event-id="public-football"]');
@@ -205,13 +222,35 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
 
     fireEvent.click(card);
-    expect(card.classList.contains('tl-pending')).toBe(true);
+    await waitFor(() => {
+      expect(card.classList.contains('tl-pending')).toBe(true);
+    });
     await waitFor(() => {
       expect(window.location.pathname).toBe('/events/public-football');
     });
   });
 
-  it('shows toast when clicking unavailable features (share, calendar tab, beginner tab, nearby, favorite heart)', async () => {
+  // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
+  // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
+  // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
+  // 測試同步更新：照 A（M-076），愛心改用收藏切換，不再顯示「尚未開放」。
+  // 測試同步更新：照 A（M-071）月曆已開放，改由下方月曆案例驗證。
+  it('opens the calendar tab lazily and writes tab=calendar to the URL (M-071)', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('.tl-event-row')).toBeTruthy();
+    });
+    fireEvent.click(container.querySelector('[data-atab="calendar"]') as HTMLElement);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('calendar');
+      expect((container.querySelector('#activity-list') as HTMLElement).hidden).toBe(true);
+      expect((container.querySelector('#activity-calendar') as HTMLElement).hidden).toBe(false);
+      expect(container.querySelector('[data-atab="calendar"]')?.classList.contains('active')).toBe(true);
+      expect(container.querySelector('#activity-calendar .evt-cal-skeleton')).toBeNull();
+    });
+  });
+
+  it('shows toast when clicking unavailable features (share, beginner tab, nearby)', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
@@ -219,12 +258,9 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
 
     const shareBtn = container.querySelector('#activity-share-url-btn') as HTMLElement;
     fireEvent.click(shareBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
-
-    toast.clear();
-    const calTab = container.querySelector('[data-atab="calendar"]') as HTMLElement;
-    fireEvent.click(calTab);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
+    await waitFor(() => {
+      expect(getToasts().at(-1)?.message).toBe('複製失敗，請手動複製');
+    });
 
     toast.clear();
     const beginnerTab = container.querySelector('[data-atab="beginner"]') as HTMLElement;
@@ -234,13 +270,16 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     toast.clear();
     const nearbyBtn = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
     fireEvent.click(nearbyBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
 
+    // 測試同步更新：照 A（M-076）愛心改為收藏切換，不開啟詳情。
     toast.clear();
     const favBtn = container.querySelector('.fav-heart') as HTMLElement;
     fireEvent.click(favBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
     expect(window.location.pathname).toBe('/activities');
+    await waitFor(() => {
+      expect(getToasts().at(-1)?.message).toBe('已加入收藏');
+    });
   });
 
   it('normalizes an ended tab while preserving sport and other query values', async () => {
@@ -300,5 +339,66 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
       expect(new URLSearchParams(window.location.search).get('sport')).toBeNull();
       expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
     });
+  });
+});
+
+// 本單新增：U-027 搜尋延遲與清除（不改既有案例）。
+describe('ActivitiesPage (U-027 搜尋延遲與清除)', () => {
+  it('delays keyword filtering by 150ms and keeps the input controlled', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'pickleball' } });
+    expect(input.value).toBe('pickleball');
+    // 尚未 150ms，列表不變
+    expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeNull();
+    }, { timeout: 400 });
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+  });
+
+  it('shows a clear button after typing, and clicking it clears immediately and refocuses', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    // 實際使用時搜尋列是展開的；收合（hidden）時瀏覽器不允許 focus。
+    fireEvent.click(container.querySelector('#filter-toggle') as HTMLElement);
+    // 照 A layout.css：面板要有 .visible 才會顯示
+    expect(container.querySelector('#filter-bar')?.classList.contains('visible')).toBe(true);
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'pickleball' } });
+    const clearBtn = await waitFor(() => {
+      const btn = container.querySelector('.activity-filter-clear-btn') as HTMLElement;
+      if (!btn) throw new Error('clear button not ready');
+      return btn;
+    });
+    fireEvent.click(clearBtn);
+    expect(input.value).toBe('');
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('clears keyword and pending debounce when clicking 清除篩選', async () => {
+    history.replaceState(null, '', '/activities?sport=dodgeball');
+    const { container } = mount();
+    await screen.findByText('請確認「右上角」活動類別，當前沒有活動');
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'football' } });
+    fireEvent.click(screen.getByText('清除篩選'));
+    expect(input.value).toBe('');
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+      expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+    });
+    // 超過延遲時間，確認舊關鍵字沒有被套用
+    await new Promise((r) => setTimeout(r, 200));
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
   });
 });
