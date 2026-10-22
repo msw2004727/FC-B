@@ -520,15 +520,19 @@ export default function ActivitiesPage(): JSX.Element {
   }, [data.events, viewer, registrations, regionTab, effectiveSport, activeTab, filterType, filterKeyword]);
 
   // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬。
+  const calendarVisibleEvents = useMemo(
+    () => getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[],
+    [data.events, viewer, registrations],
+  );
   const calendarEvents = useMemo(() => {
-    let list = getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[];
+    let list = calendarVisibleEvents;
     list = filterByRegionTab(list, regionTab);
     list = filterBySportTag(list, effectiveSport || 'all');
     if (filterType) list = list.filter((event) => event.type === filterType);
     const keyword = filterKeyword.trim().toLowerCase();
     if (keyword) list = list.filter((event) => matchesActivityKeyword(event, keyword));
     return list;
-  }, [data.events, viewer, registrations, regionTab, effectiveSport, filterType, filterKeyword]);
+  }, [calendarVisibleEvents, regionTab, effectiveSport, filterType, filterKeyword]);
 
   // M-071：照 A _loadAndRenderCalendar，切到月曆才下載月曆模組；失敗提示，再切回月曆會重試。
   const [CalendarView, setCalendarView] = useState<ComponentType<ActivityCalendarProps> | null>(null);
@@ -1026,6 +1030,7 @@ export default function ActivitiesPage(): JSX.Element {
           {activeTab === 'calendar' && CalendarView && (
               <CalendarView
                 events={calendarEvents}
+                registeredSourceEvents={calendarVisibleEvents}
                 viewerUid={viewer.uid}
                 viewerRegistrations={registrations}
                 onSelectEvent={handleSelectCard}

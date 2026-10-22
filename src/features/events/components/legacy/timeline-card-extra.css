@@ -9,10 +9,9 @@
 .legacy-ui .tl-event-row .tl-event-icons .fav-heart::after {
   content: '';
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: -16px;
+  left: -12px;
   width: 40px;
   height: 40px;
-  transform: translate(-50%, -50%);
   z-index: 0;
 }

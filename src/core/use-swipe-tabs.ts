@@ -210,6 +210,7 @@ export function useSwipeTabs(options: UseSwipeTabsOptions): void {
       content.removeEventListener('touchend', handleTouchEnd);
       for (const t of pendingTimers) clearTimeout(t);
       pendingTimers.clear();
+      reset();
       delete content.dataset['swipeBound'];
     };
   }, [contentRef, tabsRef]);

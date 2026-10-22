@@ -118,10 +118,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     ta.value = text;
     ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
     document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    return true;
+    try {
+      ta.select();
+      // B 改良：A 不看回傳值一律當成功；回傳 false 時改顯示 A 的「複製失敗，請手動複製」。
+      return Boolean(document.execCommand('copy'));
+    } finally {
+      document.body.removeChild(ta);
+    }
   } catch {
     return false;
   }

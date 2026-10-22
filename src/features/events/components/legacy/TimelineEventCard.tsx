@@ -160,9 +160,11 @@ export function TimelineEventCard({
 
   // M-076：可見且登入才動態載入 comment-badge 並查詢留言數（卸載/不可見時取消）。
   useEffect(() => {
+    if (!viewerUid || event.type === 'external') {
+      setCommentCount(0);
+      return;
+    }
     if (!commentVisible) return;
-    if (!viewerUid) return;
-    if (event.type === 'external') return;
     const eventId = event.id || '';
     if (!eventId) return;
     const eventDocId = event._docId || event.docId || eventId;

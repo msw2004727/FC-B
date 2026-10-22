@@ -22,6 +22,8 @@ import { useCalendarNav } from './use-calendar-nav';
 
 export interface ActivityCalendarProps {
   events: readonly LegacyEventDoc[];
+  /** 照 A _getCalendarUserRegisteredDateKeys：計算「當天已有報名」用的可見活動（未套篩選）；省略時用 events。 */
+  registeredSourceEvents?: readonly LegacyEventDoc[];
   viewerUid: string | null;
   viewerRegistrations: readonly RegistrationDoc[];
   onSelectEvent: (event: LegacyEventDoc) => void;
@@ -63,13 +65,13 @@ export default function ActivityCalendar(props: ActivityCalendarProps): JSX.Elem
   const registeredDates = useMemo(() => {
     const dates = new Set<string>();
     if (!viewerUid) return dates;
-    for (const event of events) {
+    for (const event of props.registeredSourceEvents ?? events) {
       if (!event.id || !getViewerEventRegState(event, viewerUid, viewerRegistrations).signedUp) continue;
       const key = toDateKey(event.date);
       if (key) dates.add(key);
     }
     return dates;
-  }, [events, viewerUid, viewerRegistrations]);
+  }, [events, props.registeredSourceEvents, viewerUid, viewerRegistrations]);
 
   // 照 A _setActivityTab：網址直入也捲回頂端。
   useEffect(() => {

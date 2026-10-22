@@ -152,6 +152,31 @@ describe('shareCurrentActivityUrl', () => {
       }
     }
   });
+
+  it('shows fail toast and removes the textarea when execCommand returns false', async () => {
+    stubKey(navigator, 'share', undefined);
+    stubKey(navigator, 'clipboard', undefined);
+
+    const originalExec = (document as unknown as { execCommand?: unknown }).execCommand;
+    try {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+      const showToast = vi.fn();
+      const ok = await shareCurrentActivityUrl(baseFilters, { showToast });
+      expect(ok).toBe(false);
+      expect(showToast).toHaveBeenCalledWith(SHARED_TOAST_FAIL);
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      Object.defineProperty(document, 'execCommand', {
+        value: originalExec,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 });
 
 describe('NEARBY_DISABLED_MSG', () => {
