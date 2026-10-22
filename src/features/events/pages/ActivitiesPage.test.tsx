@@ -211,6 +211,9 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
   });
 
+  // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
+  // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
+  // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
   it('shows toast when clicking unavailable features (share, calendar tab, beginner tab, nearby, favorite heart)', async () => {
     const { container } = mount();
     await waitFor(() => {
@@ -219,7 +222,9 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
 
     const shareBtn = container.querySelector('#activity-share-url-btn') as HTMLElement;
     fireEvent.click(shareBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
+    await waitFor(() => {
+      expect(getToasts().at(-1)?.message).toBe('複製失敗，請手動複製');
+    });
 
     toast.clear();
     const calTab = container.querySelector('[data-atab="calendar"]') as HTMLElement;
@@ -234,7 +239,7 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     toast.clear();
     const nearbyBtn = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
     fireEvent.click(nearbyBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
 
     toast.clear();
     const favBtn = container.querySelector('.fav-heart') as HTMLElement;

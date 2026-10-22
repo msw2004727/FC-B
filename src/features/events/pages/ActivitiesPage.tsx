@@ -8,6 +8,7 @@ import {
   normalizeActiveSport,
   useActiveSport,
 } from '@/core/sport-filter';
+import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -17,8 +18,15 @@ import {
   getEventAllowedGender,
   type LegacyEventDoc,
 } from '../components/legacy/TimelineEventCard';
+import { ExternalTransitCard } from '../components/legacy/ExternalTransitCard';
 import { canCreateEvent } from '../data/event-create';
 import { createEventContextFromViewer } from '../data/event-create-context';
+import {
+  NEARBY_DISABLED_MSG,
+  SHARED_TOAST_FAIL,
+  shareCurrentActivityUrl,
+  type ActivityShareFilters,
+} from '../data/activity-share';
 import { publicEventHref } from '../data/presentation';
 import { SPORTS, eventSportTag } from '../data/sports';
 import { isEventInEndedTab, normalizeListTab } from '../data/terminal';
@@ -196,6 +204,9 @@ export default function ActivitiesPage(): JSX.Element {
   });
   const registrationRequestSeq = useRef(0);
   const lastSyncedUrlRef = useRef<string>(location.url);
+  const [transitEvent, setTransitEvent] = useState<LegacyEventDoc | null>(null);
+  const activityListRef = useRef<HTMLDivElement>(null);
+  const activityTabsRef = useRef<HTMLDivElement>(null);
 
   const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
   const showCreateButton = useMemo(
@@ -320,15 +331,49 @@ export default function ActivitiesPage(): JSX.Element {
 
   function handleUnavailableFeature(e?: MouseEvent): void {
     if (e) e.stopPropagation();
-    // 下一批補：分享、尋找附近活動、收藏愛心、主辦方排行
+    // 下一批補：收藏愛心、主辦方排行
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
+  // M-073：分享當前活動分類網址，照 A `shareCurrentActivityUrl`
+  function handleShareCurrentActivityUrl(e?: MouseEvent): void {
+    if (e) e.stopPropagation();
+    const filters: ActivityShareFilters = {
+      region: regionTab,
+      sport: effectiveSport || 'all',
+      tab: activeTab,
+      type: filterType,
+    };
+    shareCurrentActivityUrl(filters, {
+      showToast: (message) => toast.show({ message }),
+    }).catch(() => {
+      // L-07：獨立非同步 Promise 自行捕捉錯誤
+      toast.show({ message: SHARED_TOAST_FAIL });
+    });
+  }
+
+  // M-073：附近活動地圖在 B 一律停用外觀，點擊照 A 停用分支原文
+  function handleNearbyActivity(e?: MouseEvent): void {
+    if (e) e.stopPropagation();
+    toast.show({ message: NEARBY_DISABLED_MSG });
+  }
+
   function handleSelectCard(event: LegacyEventDoc): void {
+    // M-078：外部活動開中繼卡、不換頁，照 A `openTimelineEventDetail` 開頭
+    if (event.type === 'external' && event.externalUrl) {
+      setTransitEvent(event);
+      return;
+    }
+    // 連帶 M-077：同一張卡已在開啟中時直接 return，不重複 route
+    if (pendingEventId === event.id) return;
     const href = publicEventHref(event);
     if (!href) return;
     setPendingEventId(event.id ?? null);
     location.route(href);
+  }
+
+  function handleCloseTransitCard(): void {
+    setTransitEvent(null);
   }
 
   // U-027：點清除鈕清空關鍵字並立即套用，焦點回到輸入框。
@@ -406,6 +451,19 @@ export default function ActivitiesPage(): JSX.Element {
   const todayStr = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
   const sortedMonthKeys = Object.keys(monthGroups).sort((a, b) => a.localeCompare(b));
 
+  // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；活動頁 getKey 排除未開放頁籤（beginner、high-intensity）
+  useSwipeTabs({
+    contentRef: activityListRef,
+    tabsRef: activityTabsRef,
+    onSwitch: (key) => switchActivityTab(key),
+    getKey: (btn) => {
+      const key = btn.dataset.atab;
+      if (!key) return null;
+      if (key === 'beginner' || key === 'high-intensity') return null;
+      return key;
+    },
+  });
+
   return (
     <div class="legacy-ui">
       <section
@@ -464,7 +522,7 @@ export default function ActivitiesPage(): JSX.Element {
                 <path d="m16.2 16.2 4 4" />
               </svg>
             </button>
-            {/* 下一批補：分享當前活動分類網址 */}
+            {/* M-073：分享當前活動分類網址，照 A `shareCurrentActivityUrl` */}
             <button
               type="button"
               class="page-search-toggle-btn activity-share-url-btn"
@@ -473,7 +531,7 @@ export default function ActivitiesPage(): JSX.Element {
               title={lt('分享當前活動分類網址', '分享當前活動分類網址')}
               data-i18n-aria-label="分享當前活動分類網址"
               data-i18n-title="分享當前活動分類網址"
-              onClick={handleUnavailableFeature}
+              onClick={handleShareCurrentActivityUrl}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -597,7 +655,7 @@ export default function ActivitiesPage(): JSX.Element {
           </div>
         )}
 
-        <div class="tab-bar" id="activity-tabs">
+        <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
           {/* 下一批補：月曆檢視 */}
           <button
             type="button"
@@ -698,15 +756,15 @@ export default function ActivitiesPage(): JSX.Element {
               {region}
             </button>
           ))}
-          {/* 下一批補：尋找附近活動 */}
+          {/* M-073：附近活動地圖在 B 一律停用外觀，title/點擊照 A 停用分支 */}
           <button
             type="button"
             class="region-tab region-tab-nearby region-tab-disabled"
             id="region-tab-nearby-activity"
             aria-disabled="true"
-            title={lt('尋找附近活動', '尋找附近活動')}
-            data-i18n-title="尋找附近活動"
-            onClick={handleUnavailableFeature}
+            title={lt('附近活動地圖尚未開啟', '附近活動地圖尚未開啟')}
+            data-i18n-title="附近活動地圖尚未開啟"
+            onClick={handleNearbyActivity}
           >
             <svg
               class="region-tab-icon"
@@ -734,7 +792,7 @@ export default function ActivitiesPage(): JSX.Element {
           </button>
         </div>
 
-        <div class="timeline-calendar" id="activity-list">
+        <div class="timeline-calendar" id="activity-list" ref={activityListRef}>
           {data.loading ? (
             <div
               class="activity-list-loading"
@@ -858,6 +916,14 @@ export default function ActivitiesPage(): JSX.Element {
             location.route('/events/' + eventId);
           }}
         />
+
+        {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}
+        {transitEvent && (
+          <ExternalTransitCard
+            event={transitEvent}
+            onClose={handleCloseTransitCard}
+          />
+        )}
       </section>
     </div>
   );
