@@ -535,7 +535,8 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         if (!chosen.selected.has(key)) continue;
         unique.set(key, {
           companionId: row.companionId ?? null,
-          companionName: row.companionName ?? null,
+          // 照 A `_showFamilyCheckinMenu`：data-name 是 `companionName || userName`，同行者寫入的 companionName 就是它（空字串也改用 userName）。
+          companionName: row.companionName || row.userName || null,
           displayName: row.companionName || row.userName || chosen.user.name,
         });
       }

@@ -519,6 +519,29 @@ describe('ScanSession', () => {
     expect(element('#scan-result-title').textContent).toBe('Member 等 1 人簽到成功');
   });
 
+  // Codex 第二審 P1：照 A `companionName || userName`，同行者名字空白時寫入報名者名字。
+  it('writes the registrant name when a companion name is blank like A', async () => {
+    regs = [
+      { userId: 'member', userName: 'Member', status: 'confirmed' },
+      { userId: 'member', userName: 'Member', status: 'confirmed', companionId: 'child', companionName: '' },
+    ];
+    stored = [record()];
+    renderSession();
+    await ready();
+    await startCamera();
+    await scan();
+    await confirmFamily();
+    expect(mocks.record).toHaveBeenCalledOnce();
+    expect(mocks.record.mock.calls[0]).toEqual([
+      'event-document',
+      expect.objectContaining({
+        participantType: 'companion',
+        companionId: 'child',
+        companionName: 'Member',
+      }),
+    ]);
+  });
+
   it('freezes the family mode while the parent mode changes', async () => {
     regs = familyRegistrations();
     const entry = makeEntry();
