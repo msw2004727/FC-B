@@ -100,6 +100,15 @@ describe('EventFormFields', () => {
     }
   });
 
+  it('多日期時報名開放摘要照 A：每場活動開始前 N 日 M 小時 開放（PM 補測）', () => {
+    const multiDate = { dates: ['2026-11-01', '2026-11-08'], isMultiDate: true, countText: '已選 2 個日期（上限 30）', onRemove: vi.fn() };
+    renderFields({ multiDate, state: { ...createDefaultFormState(), regOpenEnabled: true, regRelDays: '1', regRelHours: '3' } });
+    expect(document.querySelector('#ce-reg-open-summary')?.textContent).toBe('報名開放：每場活動開始前 1 日 3 小時 開放');
+    cleanup();
+    renderFields({ multiDate, state: { ...createDefaultFormState(), regOpenEnabled: true } });
+    expect(document.querySelector('#ce-reg-open-summary')?.textContent).toBe('報名開放：未指定提前時間，建立後立即開放報名');
+  });
+
   it('開放報名開關關閉時 onPatch 收到清空日期與時間', () => {
     const onPatch = vi.fn();
     const state: EventFormState = {

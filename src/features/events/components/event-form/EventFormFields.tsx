@@ -216,6 +216,18 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
   let regOpenSummaryText: string;
   if (!state.regOpenEnabled) {
     regOpenSummaryText = lt('報名開放：建立後立即開放報名');
+  } else if (props.mode === 'create' && props.multiDate?.isMultiDate === true) {
+    // 照 A _updateCreateTimeSummary 多日期分支：「每場活動開始前 N 日 M 小時 開放」（PM 補：原交件少這一支）。
+    const days = Number(state.regRelDays || 0);
+    const hours = Number(state.regRelHours || 0);
+    if (days || hours) {
+      const parts: string[] = [];
+      if (days) parts.push(`${days} 日`);
+      if (hours) parts.push(`${hours} 小時`);
+      regOpenSummaryText = lt('報名開放：每場活動開始前 {parts} 開放', '報名開放：每場活動開始前 {parts} 開放', { parts: parts.join(' ') });
+    } else {
+      regOpenSummaryText = lt('報名開放：未指定提前時間，建立後立即開放報名');
+    }
   } else if (state.regOpenDate && state.regOpenClock) {
     regOpenSummaryText = lt(
       '報名開放：{date} {time} 後可報名',
