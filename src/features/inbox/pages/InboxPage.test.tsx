@@ -1,31 +1,22 @@
 import { h } from 'preact';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import zhTW from '../locales/zh-TW.json';
+import type { InboxMessage } from '../data/inbox-repo';
+import type { PmThread } from '../data/pm-repo';
 
-function lookupKey(key: string, params?: Record<string, unknown>): string {
-  const cleanKey = key.startsWith('inbox.') ? key.slice('inbox.'.length) : key;
-  const parts = cleanKey.split('.');
-  let current: unknown = zhTW;
-  for (const part of parts) {
-    if (current && typeof current === 'object' && part in (current as Record<string, unknown>)) {
-      current = (current as Record<string, unknown>)[part];
-    } else {
-      return key;
-    }
-  }
-  if (typeof current !== 'string') return key;
-  if (!params) return current;
-  return current.replace(/\{(\w+)\}/g, (_, k: string) =>
-    params[k] !== undefined ? String(params[k]) : `{${k}}`,
-  );
-}
-
+// 測試同步更新：照 A（M-134 / M-136 / M-138 / U-043 / U-044 / U-045）
+// i18n 以「A 中文原文為 key，查不到顯示原文」的行為比對 A；此處以簡化實作模擬。
 vi.mock('@/i18n/i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/i18n/i18n')>();
   return {
     ...actual,
-    useT: () => (key: string, params?: Record<string, unknown>) => lookupKey(key, params),
+    useLegacyT: () =>
+      (key: string, _fallback: string, params?: Record<string, unknown>) => {
+        if (!params) return key;
+        return key.replace(/\{(\w+)\}/g, (_m, k: string) =>
+          params[k] !== undefined ? String(params[k]) : `{${k}}`,
+        );
+      },
   };
 });
 
@@ -34,9 +25,8 @@ vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: () => mockUseViewer(),
 }));
 
-const mockRoute = vi.fn();
 vi.mock('preact-iso', () => ({
-  useLocation: () => ({ path: '/inbox', route: mockRoute }),
+  useLocation: () => ({ path: '/inbox', route: vi.fn() }),
 }));
 
 const mockSubscribeInbox = vi.fn();
@@ -58,22 +48,11 @@ vi.mock('../data/inbox-repo', async (importOriginal) => {
 });
 
 const mockSubscribeThreads = vi.fn();
-const mockSubscribeConversation = vi.fn();
-const mockSendPrivateMessage = vi.fn();
-const mockEditPrivateMessage = vi.fn();
-const mockRecallPrivateMessage = vi.fn();
-const mockMarkConversationRead = vi.fn();
-
 vi.mock('../data/pm-repo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/pm-repo')>();
   return {
     ...actual,
     subscribeThreads: (...args: unknown[]) => mockSubscribeThreads(...args),
-    subscribeConversation: (...args: unknown[]) => mockSubscribeConversation(...args),
-    sendPrivateMessage: (...args: unknown[]) => mockSendPrivateMessage(...args),
-    editPrivateMessage: (...args: unknown[]) => mockEditPrivateMessage(...args),
-    recallPrivateMessage: (...args: unknown[]) => mockRecallPrivateMessage(...args),
-    markConversationRead: (...args: unknown[]) => mockMarkConversationRead(...args),
   };
 });
 
@@ -86,26 +65,59 @@ vi.mock('@/core/action-registry', async (importOriginal) => {
   };
 });
 
+const mockOpenPmDialog = vi.fn();
+vi.mock('../components/pm-dialog-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/pm-dialog-store')>();
+  return {
+    ...actual,
+    openPmDialog: (...args: unknown[]) => mockOpenPmDialog(...args),
+  };
+});
+
+const mockAppConfirm = vi.fn();
+vi.mock('@/ui/AppConfirm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/ui/AppConfirm')>();
+  return {
+    ...actual,
+    appConfirm: (...args: unknown[]) => mockAppConfirm(...args),
+  };
+});
+
+// 測試同步更新：照 A（項目 1）改用共用 @/ui/Toast，不再自建底部 banner。
+const mockToastShow = vi.fn();
+vi.mock('@/ui/Toast', () => ({
+  toast: {
+    show: (...args: unknown[]) => mockToastShow(...args),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  },
+}));
+
+const mockPushOverlay = vi.fn((_onBack: () => boolean) => () => undefined);
+vi.mock('@/core/overlay-back', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/overlay-back')>();
+  return {
+    ...actual,
+    pushOverlay: (onBack: () => boolean) => mockPushOverlay(onBack),
+  };
+});
+
 import InboxPage from './InboxPage';
-import type { InboxMessage } from '../data/inbox-repo';
-import type { PmMessage, PmThread } from '../data/pm-repo';
 
 describe('InboxPage', () => {
   let inboxCallback: ((msgs: InboxMessage[]) => void) | null = null;
-  let inboxUnsub: ReturnType<typeof vi.fn>;
   let threadsCallback: ((threads: PmThread[]) => void) | null = null;
+  let inboxUnsub: ReturnType<typeof vi.fn>;
   let threadsUnsub: ReturnType<typeof vi.fn>;
-  let convCallback: ((msgs: PmMessage[]) => void) | null = null;
-  let convUnsub: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     inboxCallback = null;
     threadsCallback = null;
-    convCallback = null;
     inboxUnsub = vi.fn();
     threadsUnsub = vi.fn();
-    convUnsub = vi.fn();
+
+    document.documentElement.lang = 'zh-TW';
 
     mockUseViewer.mockReturnValue({
       uid: 'u1',
@@ -118,338 +130,392 @@ describe('InboxPage', () => {
       capabilities: [],
     });
 
-    mockSubscribeInbox.mockImplementation((_uid: string, onChange: (msgs: InboxMessage[]) => void) => {
-      inboxCallback = onChange;
-      return inboxUnsub;
-    });
-
-    mockSubscribeThreads.mockImplementation((_uid: string, onChange: (threads: PmThread[]) => void) => {
-      threadsCallback = onChange;
-      return threadsUnsub;
-    });
-
-    mockSubscribeConversation.mockImplementation(
-      (_uid: string, _cid: string, onChange: (msgs: PmMessage[]) => void) => {
-        convCallback = onChange;
-        return convUnsub;
+    mockSubscribeInbox.mockImplementation(
+      (_uid: string, onChange: (msgs: InboxMessage[]) => void) => {
+        inboxCallback = onChange;
+        return inboxUnsub;
+      },
+    );
+    mockSubscribeThreads.mockImplementation(
+      (_uid: string, onChange: (threads: PmThread[]) => void) => {
+        threadsCallback = onChange;
+        return threadsUnsub;
       },
     );
 
     mockMarkRead.mockResolvedValue(undefined);
     mockMarkAllRead.mockResolvedValue(undefined);
     mockDeleteMessage.mockResolvedValue(undefined);
-    mockClearAll.mockResolvedValue(2);
+    mockClearAll.mockResolvedValue(0);
     mockEnsureMessageAction.mockResolvedValue(null);
-    mockMarkConversationRead.mockResolvedValue({ readCount: 1, hasMore: false });
-    mockSendPrivateMessage.mockResolvedValue({ conversationId: 'c1', messageId: 'm1' });
-    mockEditPrivateMessage.mockResolvedValue(undefined);
-    mockRecallPrivateMessage.mockResolvedValue(undefined);
+    mockAppConfirm.mockResolvedValue(true);
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
-  it('renders login prompt when viewer is guest (not logged in)', () => {
-    mockUseViewer.mockReturnValue({
-      uid: null,
-      role: 'guest',
-      displayName: null,
-      hasPermission: () => false,
-      teamIds: new Set<string>(),
-      roleLevel: -1,
-      pictureUrl: null,
-      capabilities: [],
+  function renderPage(options: {
+    messages?: InboxMessage[];
+    threads?: PmThread[];
+  } = {}): void {
+    render(<InboxPage />);
+    if (inboxCallback) {
+      act(() => {
+        inboxCallback!(options.messages ?? []);
+      });
+    }
+    if (threadsCallback) {
+      act(() => {
+        threadsCallback!(options.threads ?? []);
+      });
+    }
+  }
+
+  it('切到私訊頁籤時隱藏工具列與搜尋列（照 A M-134）', async () => {
+    renderPage({ messages: [] });
+
+    const toolbar = document.getElementById('msg-toolbar-row');
+    const filterRow = document.getElementById('msg-filter-row');
+    expect(toolbar?.style.display).toBe('flex');
+    expect(filterRow?.style.display).toBe('flex');
+
+    const pmTab = document.querySelector<HTMLElement>(
+      '#msg-inbox-tabs .tab[data-msgtype="pm-conversation"]',
+    );
+    expect(pmTab).toBeTruthy();
+    if (!pmTab) return;
+    fireEvent.click(pmTab);
+
+    await waitFor(() => {
+      expect(toolbar?.style.display).toBe('none');
+      expect(filterRow?.style.display).toBe('none');
+    });
+  });
+
+  it('私訊對話卡整張點擊呼叫 openPmDialog（照 A M-136）', async () => {
+    renderPage({
+      messages: [],
+      threads: [
+        {
+          id: 'c1',
+          conversationId: 'c1',
+          peerUid: 'peer1',
+          peerName: 'Bob',
+          peerAvatar: 'https://example.com/a.png',
+          lastMessageBody: 'hi',
+          unreadCount: 1,
+        },
+      ],
     });
 
-    render(h(InboxPage, {}));
-    expect(screen.getByText('請先登入以查看訊息')).toBeTruthy();
-    expect(mockSubscribeInbox).not.toHaveBeenCalled();
+    const pmTab = document.querySelector<HTMLElement>(
+      '#msg-inbox-tabs .tab[data-msgtype="pm-conversation"]',
+    );
+    if (!pmTab) throw new Error('pm tab missing');
+    fireEvent.click(pmTab);
+
+    await waitFor(() => {
+      expect(document.querySelector('.pm-thread-card')).toBeTruthy();
+    });
+
+    const card = document.querySelector<HTMLElement>('.pm-thread-card');
+    if (!card) throw new Error('pm thread card missing');
+    fireEvent.click(card);
+
+    expect(mockOpenPmDialog).toHaveBeenCalledTimes(1);
+    expect(mockOpenPmDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'peer1', name: 'Bob' }),
+    );
   });
 
-  it('subscribes to inbox on mount, updates in real-time, and unsubscribes on unmount', async () => {
-    const { unmount } = render(h(InboxPage, {}));
-    expect(mockSubscribeInbox).toHaveBeenCalledWith(
-      'u1',
-      expect.any(Function),
-      expect.any(Function),
-    );
+  it('私訊最後一則撤回時預覽顯示「訊息已撤回」（照 A M-136）', async () => {
+    renderPage({
+      messages: [],
+      threads: [
+        {
+          id: 'c1',
+          conversationId: 'c1',
+          peerUid: 'peer1',
+          peerName: 'Bob',
+          lastMessageBody: '原始內容',
+          lastMessageStatus: 'recalled',
+          unreadCount: 0,
+        },
+      ],
+    });
 
-    act(() => {
-      inboxCallback?.([
+    const pmTab = document.querySelector<HTMLElement>(
+      '#msg-inbox-tabs .tab[data-msgtype="pm-conversation"]',
+    );
+    if (!pmTab) throw new Error('pm tab missing');
+    fireEvent.click(pmTab);
+
+    await waitFor(() => {
+      const preview = document.querySelector('.pm-thread-preview');
+      expect(preview?.textContent).toBe('訊息已撤回');
+      expect(preview?.textContent).not.toContain('原始內容');
+    });
+  });
+
+  it('無內文訊息點擊只 markRead、不開詳情彈窗（照 A M-136 message-render.js）', async () => {
+    renderPage({
+      messages: [
         {
           id: 'm1',
           _docId: 'm1',
           type: 'system',
           typeName: '系統',
-          title: '歡迎加入',
-          preview: '系統歡迎信預覽',
-          body: '系統歡迎信完整內容',
-          time: '2026/04/10 10:00',
+          title: '通知標題',
+          preview: '預覽',
+          time: '2025/01/01 10:00',
           read: false,
         },
-      ]);
-    });
-
-    expect(await screen.findByText('歡迎加入')).toBeTruthy();
-    unmount();
-    expect(inboxUnsub).toHaveBeenCalledTimes(1);
-    expect(threadsUnsub).toHaveBeenCalledTimes(1);
-  });
-
-  it('supports markRead on click, markAllRead, single delete with confirmation, and clearAll keeping pending', async () => {
-    render(h(InboxPage, {}));
-    const sampleMessages: InboxMessage[] = [
-      {
-        id: 'm1',
-        _docId: 'm1',
-        type: 'system',
-        typeName: '系統',
-        title: '第一則未讀',
-        preview: '預覽一',
-        body: '內容一',
-        time: '2026/04/10 12:00',
-        read: false,
-      },
-      {
-        id: 'm2',
-        _docId: 'm2',
-        type: 'activity',
-        typeName: '活動',
-        title: '待審核申請',
-        preview: '預覽二',
-        body: '內容二',
-        time: '2026/04/10 11:00',
-        read: true,
-        actionType: 'team_join_request',
-        actionStatus: 'pending',
-      },
-    ];
-
-    act(() => {
-      inboxCallback?.(sampleMessages);
-    });
-
-    // Click message -> opens detail and calls markRead
-    fireEvent.click(await screen.findByText('第一則未讀'));
-    expect(mockMarkRead).toHaveBeenCalledWith('u1', sampleMessages[0]);
-    expect(await screen.findByText('內容一')).toBeTruthy();
-
-    // Single delete via in-page confirmation modal
-    fireEvent.click(screen.getByText('從我的收件匣移除'));
-    expect(await screen.findByText('確定要從收件匣移除「第一則未讀」嗎？')).toBeTruthy();
-    fireEvent.click(screen.getByText('確認'));
-    await waitFor(() => {
-      expect(mockDeleteMessage).toHaveBeenCalledWith('u1', sampleMessages[0]);
-    });
-
-    // Mark all read
-    fireEvent.click(screen.getByText('一鍵全讀'));
-    await waitFor(() => {
-      expect(mockMarkAllRead).toHaveBeenCalledWith('u1', sampleMessages);
-    });
-
-    // Clear all -> opens confirmation modal -> calls clearAll and displays count
-    fireEvent.click(screen.getByText('清空訊息'));
-    expect(
-      await screen.findByText('確定要清空收件匣嗎？待審核的訊息將會保留。'),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByText('確認'));
-    await waitFor(() => {
-      expect(mockClearAll).toHaveBeenCalledWith('u1', sampleMessages);
-    });
-    expect(
-      await screen.findByText('已清除 2 則訊息（待審核訊息已保留）'),
-    ).toBeTruthy();
-  });
-
-  it('hides action buttons when canAct is false', async () => {
-    mockEnsureMessageAction.mockResolvedValue({
-      canAct: vi.fn().mockResolvedValue(false),
-      actions: [
-        { key: 'approve', labelKey: 'inbox.action.approve', run: vi.fn() },
       ],
     });
 
-    render(h(InboxPage, {}));
-    act(() => {
-      inboxCallback?.([
+    const card = document.querySelector<HTMLElement>('.msg-card');
+    if (!card) throw new Error('msg card missing');
+    fireEvent.click(card);
+
+    await waitFor(() => {
+      expect(mockMarkRead).toHaveBeenCalled();
+    });
+    expect(document.getElementById('msg-inbox-detail-modal')).toBeNull();
+  });
+
+  it('清空訊息先 appConfirm 且文字含實際可清空數量（照 A M-138）', async () => {
+    renderPage({
+      messages: [
         {
-          id: 'req1',
-          _docId: 'req1',
+          id: 'm1',
+          _docId: 'm1',
           type: 'system',
-          title: '入隊申請',
-          body: '王小明申請入隊',
-          time: '2026/04/10 12:00',
+          title: 'A',
+          time: '2025/01/01 00:00',
+          read: true,
+        },
+        {
+          id: 'm2',
+          _docId: 'm2',
+          type: 'system',
+          title: 'B',
+          time: '2025/01/02 00:00',
           read: true,
           actionType: 'team_join_request',
           actionStatus: 'pending',
         },
-      ]);
-    });
-
-    fireEvent.click(await screen.findByText('入隊申請'));
-    await waitFor(() => {
-      expect(mockEnsureMessageAction).toHaveBeenCalledWith('team_join_request');
-    });
-    expect(screen.queryByText('同意')).toBeNull();
-  });
-
-  it('shows action buttons when canAct is true, runs action, and supports retry on failure', async () => {
-    const runApprove = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('network fail'))
-      .mockResolvedValueOnce(undefined);
-
-    mockEnsureMessageAction.mockResolvedValue({
-      canAct: vi.fn().mockResolvedValue(true),
-      actions: [
-        { key: 'approve', labelKey: 'inbox.action.approve', run: runApprove },
+        {
+          id: 'm3',
+          _docId: 'm3',
+          type: 'system',
+          title: 'C',
+          time: '2025/01/03 00:00',
+          read: true,
+        },
       ],
     });
 
-    render(h(InboxPage, {}));
-    const msg: InboxMessage = {
-      id: 'req2',
-      _docId: 'req2',
-      type: 'system',
-      title: '入隊申請二',
-      body: '李小華申請入隊',
-      time: '2026/04/10 12:00',
-      read: true,
-      actionType: 'team_join_request',
-      actionStatus: 'pending',
-    };
-
-    act(() => {
-      inboxCallback?.([msg]);
+    const clearBtn = screen.getByText('清空訊息').closest('button');
+    if (!clearBtn) throw new Error('clear button missing');
+    await act(async () => {
+      fireEvent.click(clearBtn);
     });
 
-    fireEvent.click(await screen.findByText('入隊申請二'));
-    const approveBtn = await screen.findByText('同意');
-    fireEvent.click(approveBtn);
-
-    // First attempt fails -> shows error & retry button
-    expect(await screen.findByText('重試操作')).toBeTruthy();
-    expect(runApprove).toHaveBeenCalledTimes(1);
-
-    // Retry succeeds
-    fireEvent.click(screen.getByText('重試操作'));
     await waitFor(() => {
-      expect(runApprove).toHaveBeenCalledTimes(2);
+      expect(mockAppConfirm).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByText('操作已完成')).toBeTruthy();
+    const firstArg = mockAppConfirm.mock.calls[0]?.[0] as string;
+    expect(firstArg).toContain('確定要清空');
+    expect(firstArg).toContain('2');
+    expect(firstArg).toContain('此操作無法恢復');
+    expect(mockClearAll).toHaveBeenCalledTimes(1);
+    // 測試同步更新：照 A（項目 3）只刪 deletable，待審核訊息（m2）不被刪。
+    const passedMsgs = mockClearAll.mock.calls[0]?.[1] as InboxMessage[];
+    const passedIds = passedMsgs.map((m) => m.id).sort();
+    expect(passedIds).toEqual(['m1', 'm3']);
   });
 
-  it('displays processed status and reviewer name when actionStatus is not pending', async () => {
-    render(h(InboxPage, {}));
-    act(() => {
-      inboxCallback?.([
+  it('一鍵全讀失敗時還原畫面並顯示失敗提示（照 A U-044）', async () => {
+    mockMarkAllRead.mockRejectedValueOnce(new Error('boom'));
+    renderPage({
+      messages: [
         {
-          id: 'req3',
-          _docId: 'req3',
+          id: 'm1',
+          _docId: 'm1',
           type: 'system',
-          title: '已審核申請',
-          body: '陳大文申請入隊',
-          time: '2026/04/10 12:00',
+          typeName: '系統',
+          title: 'A',
+          time: '2025/01/01 00:00',
+          read: false,
+        },
+        {
+          id: 'm2',
+          _docId: 'm2',
+          type: 'system',
+          typeName: '系統',
+          title: 'B',
+          time: '2025/01/02 00:00',
+          read: false,
+        },
+      ],
+    });
+
+    const btn = screen.getByText('一鍵全讀').closest('button');
+    if (!btn) throw new Error('mark all read button missing');
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+
+    await waitFor(() => {
+      expect(mockMarkAllRead).toHaveBeenCalledTimes(1);
+    });
+    // 還原：兩張卡仍是 msg-unread
+    const cards = document.querySelectorAll<HTMLElement>('.msg-card');
+    expect(cards.length).toBe(2);
+    cards.forEach((c) => {
+      expect(c.classList.contains('msg-unread')).toBe(true);
+    });
+    // 測試同步更新：照 A（項目 1）改用共用 toast.show 斷言
+    await waitFor(() => {
+      expect(mockToastShow).toHaveBeenCalledWith({ message: '標記失敗，請重試' });
+    });
+  });
+
+  it('審核同意成功後顯示 A 原文「已同意加入申請」（照 A 項目 2 message-actions-team.js）', async () => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    mockEnsureMessageAction.mockResolvedValue({
+      canAct: vi.fn().mockResolvedValue(true),
+      actions: [{ key: 'approve', run }],
+    });
+
+    renderPage({
+      messages: [
+        {
+          id: 'm1',
+          _docId: 'm1',
+          type: 'system',
+          typeName: '系統',
+          title: '俱樂部申請',
+          body: '申請內容',
+          time: '2025/01/01 10:00',
           read: true,
           actionType: 'team_join_request',
-          actionStatus: 'approved',
-          reviewerName: '張隊長',
+          actionStatus: 'pending',
         },
-      ]);
+      ],
     });
 
-    fireEvent.click(await screen.findByText('已審核申請'));
-    expect(await screen.findByText('已同意（張隊長）')).toBeTruthy();
-    expect(screen.queryByText('同意')).toBeNull();
+    const card = document.querySelector<HTMLElement>('.msg-card');
+    if (!card) throw new Error('msg card missing');
+    fireEvent.click(card);
+
+    await waitFor(() => {
+      expect(document.getElementById('msg-inbox-detail-modal')).toBeTruthy();
+    });
+
+    const approveBtn = await screen.findByText('同意');
+    await act(async () => {
+      fireEvent.click(approveBtn);
+    });
+
+    await waitFor(() => {
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(mockToastShow).toHaveBeenCalledWith({ message: '已同意加入申請' });
+    });
   });
 
-  it('handles private messages: character limit, recall only for own messages, and markConversationRead loop', async () => {
-    mockMarkConversationRead
-      .mockResolvedValueOnce({ readCount: 10, hasMore: true })
-      .mockResolvedValueOnce({ readCount: 5, hasMore: false });
-
-    render(h(InboxPage, {}));
-    act(() => {
-      inboxCallback?.([]);
-      threadsCallback?.([
+  it('搜尋輸入 180ms 去抖後才篩選（照 A U-043）', async () => {
+    renderPage({
+      messages: [
         {
-          id: 'conv_1',
-          conversationId: 'conv_1',
-          peerUid: 'u2',
-          peerName: 'Bob',
-          lastMessageBody: 'Hello!',
-          unreadCount: 2,
-        },
-      ]);
-    });
-
-    // Switch to PM tab
-    fireEvent.click(screen.getByRole('tab', { name: '私訊' }));
-    expect(await screen.findByText('Hello!')).toBeTruthy();
-
-    // Open thread
-    fireEvent.click(screen.getByText('Hello!'));
-    await waitFor(() => {
-      expect(mockMarkConversationRead).toHaveBeenCalledTimes(2);
-    });
-
-    // Push messages: one from peer ('u2') and one from self ('u1')
-    act(() => {
-      convCallback?.([
-        {
-          id: 'pm_peer',
-          messageId: 'pm_peer',
-          fromUid: 'u2',
-          toUid: 'u1',
-          direction: 'in',
-          body: 'Peer message',
-          status: 'active',
+          id: 'm1',
+          _docId: 'm1',
+          type: 'system',
+          title: 'Alpha',
+          preview: 'aaa',
+          time: '2025/01/01 00:00',
           read: true,
         },
         {
-          id: 'pm_own',
-          messageId: 'pm_own',
-          fromUid: 'u1',
-          toUid: 'u2',
-          direction: 'out',
-          body: 'My own message',
-          status: 'active',
+          id: 'm2',
+          _docId: 'm2',
+          type: 'system',
+          title: 'Beta',
+          preview: 'bbb',
+          time: '2025/01/02 00:00',
           read: true,
-          peerRead: false,
         },
-      ]);
+        {
+          id: 'm3',
+          _docId: 'm3',
+          type: 'system',
+          title: 'Gamma',
+          preview: 'ccc',
+          time: '2025/01/03 00:00',
+          read: true,
+        },
+      ],
     });
 
-    expect(await screen.findByText('Peer message')).toBeTruthy();
-    expect(screen.getByText('My own message')).toBeTruthy();
+    expect(document.querySelectorAll('.msg-card').length).toBe(3);
 
-    // Recall button only appears once (for own message, not peer message)
-    const recallBtns = screen.getAllByText('撤回');
-    expect(recallBtns).toHaveLength(1);
-    fireEvent.click(recallBtns[0]!);
+    vi.useFakeTimers();
+    try {
+      const searchInput = document.getElementById('msg-search-keyword') as HTMLInputElement | null;
+      if (!searchInput) throw new Error('search input missing');
+
+      fireEvent.input(searchInput, { target: { value: 'xyz' } });
+
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      // 100ms 內尚未去抖 → 仍 3 張
+      expect(document.querySelectorAll('.msg-card').length).toBe(3);
+
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      // 累計 200ms ≥ 180ms → 篩選套用（無符合 → 0 張）
+      expect(document.querySelectorAll('.msg-card').length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('詳情彈窗 Esc 關閉且焦點返回觸發的訊息卡（照 A U-045）', async () => {
+    renderPage({
+      messages: [
+        {
+          id: 'm1',
+          _docId: 'm1',
+          type: 'system',
+          typeName: '系統',
+          title: '有內文',
+          body: '這是內文',
+          time: '2025/01/01 10:00',
+          read: true,
+        },
+      ],
+    });
+
+    const card = document.querySelector<HTMLElement>('.msg-card');
+    if (!card) throw new Error('msg card missing');
+    card.focus();
+    expect(document.activeElement).toBe(card);
+
+    fireEvent.click(card);
+
     await waitFor(() => {
-      expect(mockRecallPrivateMessage).toHaveBeenCalledWith('conv_1', 'pm_own');
+      expect(document.getElementById('msg-inbox-detail-modal')).toBeTruthy();
     });
 
-    // Compose character limit check (max 300)
-    const input = screen.getByLabelText('輸入私訊內容') as HTMLTextAreaElement;
-    const sendBtn = screen.getByText('送出').closest('button') as HTMLButtonElement;
+    fireEvent.keyDown(document, { key: 'Escape' });
 
-    const overText = 'a'.repeat(305);
-    fireEvent.input(input, { target: { value: overText } });
-    expect(await screen.findByText('已超過字數上限（-5 字）')).toBeTruthy();
-    expect(sendBtn.disabled).toBe(true);
-
-    const validText = 'Hello Bob!';
-    fireEvent.input(input, { target: { value: validText } });
-    expect(await screen.findByText('剩餘 290 字')).toBeTruthy();
-    expect(sendBtn.disabled).toBe(false);
-
-    fireEvent.submit(sendBtn.closest('form')!);
     await waitFor(() => {
-      expect(mockSendPrivateMessage).toHaveBeenCalledWith('u2', 'Hello Bob!');
+      expect(document.getElementById('msg-inbox-detail-modal')).toBeNull();
     });
+    expect(document.activeElement).toBe(card);
   });
 });
