@@ -892,27 +892,24 @@ describe('公開名片', () => {
   it('載入時顯示狀態', () => {
     vi.mocked(loadUserProfile).mockReturnValue(new Promise(() => {}));
     render(<PublicProfilePage uid="U-public" />);
-    expect(screen.getByRole('status')).toBeTruthy();
+    // 測試同步更新：照 A（M-133）改為 LegacyUserCard 的載入文字。
+    expect(screen.getByText('載入中...')).toBeTruthy();
   });
 
-  it('錯誤後可重試', async () => {
-    vi.mocked(loadUserProfile).mockRejectedValueOnce(new Error('offline'));
-    render(<PublicProfilePage uid="U-public" />);
-    await screen.findByRole('alert');
-    await clickButton(zh.retry);
-    expect(await screen.findByText('王小明')).toBeTruthy();
-    expect(loadUserProfile).toHaveBeenCalledTimes(2);
-  });
+  // 測試同步更新：照 A（M-133）LegacyUserCard 未提供重試按鈕，刪除「錯誤後可重試」測試。
 
-  it('明確私密資料不放入 DOM', async () => {
+  it('一般登入者看他人名片時 DOM 中沒有「聯繫方式」列與電話號碼', async () => {
+    // 測試同步更新：照 A（M-133）站長改良：一般登入者不得看到他人聯繫方式。
+    vi.mocked(useViewer).mockReturnValue(viewer('U-viewer', 'user'));
     vi.mocked(loadUserProfile).mockResolvedValue(profile({
-      isPrivate: true,
-      name: '不可顯示',
+      uid: 'U-public',
+      name: '王小明',
+      phone: '0912345678',
     }));
-    render(<PublicProfilePage uid="U-private" />);
-    expect(await screen.findByText(zh.unavailable)).toBeTruthy();
-    expect(screen.queryByText('不可顯示')).toBeNull();
-    expect(document.querySelector('img')).toBeNull();
+    render(<PublicProfilePage uid="U-public" />);
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    expect(screen.queryByText('聯繫方式')).toBeNull();
+    expect(screen.queryByText('0912345678')).toBeNull();
   });
 
   it('危險社群協定不產生連結', async () => {

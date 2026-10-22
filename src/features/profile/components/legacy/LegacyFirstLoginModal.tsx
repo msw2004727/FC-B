@@ -9,6 +9,7 @@ import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
+import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
 
 export interface FirstLoginInitial {
   gender: string;
@@ -58,6 +59,9 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const [month, setMonth] = useState(parsed.month);
   const [day, setDay] = useState(parsed.day);
   const [region, setRegion] = useState(initial.region);
+  const [regionMatches, setRegionMatches] = useState<string[]>([]);
+  const [regionOpen, setRegionOpen] = useState(false);
+  const [regionActiveIndex, setRegionActiveIndex] = useState(-1);
   const [email, setEmail] = useState(initial.email);
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -73,6 +77,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const monthRef = useRef<HTMLSelectElement>(null);
   const dayRef = useRef<HTMLSelectElement>(null);
   const regionRef = useRef<HTMLInputElement>(null);
+  const regionBlurTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -80,6 +85,10 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     // 照 A `data-no-backdrop-close="1"`：不關遮罩、不關 Esc、不關返回鍵。
     return () => {
       aliveRef.current = false;
+      if (regionBlurTimerRef.current !== null) {
+        window.clearTimeout(regionBlurTimerRef.current);
+        regionBlurTimerRef.current = null;
+      }
       unlock();
     };
   }, []);
@@ -100,6 +109,68 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   function changeMonth(value: string): void {
     setMonth(value);
     if (Number(day) > daysInMonth(year, value)) setDay('');
+  }
+
+  function updateRegionMatches(value: string): void {
+    setRegionMatches(filterTwRegions(value, true));
+    setRegionOpen(true);
+    setRegionActiveIndex(-1);
+  }
+
+  function handleRegionInput(value: string): void {
+    setRegion(value);
+    updateRegionMatches(value);
+  }
+
+  function handleRegionFocus(): void {
+    if (regionBlurTimerRef.current !== null) {
+      window.clearTimeout(regionBlurTimerRef.current);
+      regionBlurTimerRef.current = null;
+    }
+    if (regionMatches.length > 0) setRegionOpen(true);
+  }
+
+  function handleRegionBlur(): void {
+    if (regionBlurTimerRef.current !== null) {
+      window.clearTimeout(regionBlurTimerRef.current);
+    }
+    regionBlurTimerRef.current = window.setTimeout(() => {
+      regionBlurTimerRef.current = null;
+      setRegionOpen(false);
+    }, 150);
+  }
+
+  function selectRegion(name: string): void {
+    setRegion(name);
+    setRegionMatches([]);
+    setRegionOpen(false);
+    setRegionActiveIndex(-1);
+    regionRef.current?.focus();
+  }
+
+  function handleRegionKeyDown(event: JSX.TargetedKeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      setRegionOpen(false);
+      return;
+    }
+    if (!regionOpen || regionMatches.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setRegionActiveIndex((prev) => (prev + 1) % regionMatches.length);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setRegionActiveIndex((prev) => (prev <= 0 ? regionMatches.length - 1 : prev - 1));
+      return;
+    }
+    if (event.key === 'Enter') {
+      const match = regionActiveIndex >= 0 ? regionMatches[regionActiveIndex] : undefined;
+      if (match) {
+        event.preventDefault();
+        selectRegion(match);
+      }
+    }
   }
 
   function handleDismiss(): void {
@@ -150,6 +221,13 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       } catch {
         // noop
       }
+      return;
+    }
+
+    // ASSUMPTION: A 未提供地區無效的專屬錯誤文字，沿用 A 錯誤欄位顯示「請輸入有效的縣市名稱」。
+    const normalizedRegion = region.trim().replace(/臺/g, '台');
+    if (!TW_REGIONS.includes(normalizedRegion)) {
+      setErrorText(lt('請輸入有效的縣市名稱', '請輸入有效的縣市名稱'));
       return;
     }
 
@@ -295,10 +373,48 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 autoComplete="off"
                 value={region}
                 disabled={pending}
-                onInput={(event) => setRegion(event.currentTarget.value)}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="fl-region-list"
+                aria-expanded={regionOpen ? 'true' : 'false'}
+                aria-activedescendant={
+                  regionActiveIndex >= 0 ? `fl-region-option-${regionActiveIndex}` : undefined
+                }
+                onInput={(event) => handleRegionInput(event.currentTarget.value)}
+                onFocus={handleRegionFocus}
+                onBlur={handleRegionBlur}
+                onKeyDown={handleRegionKeyDown}
               />
-              {/* ASSUMPTION: B 無 filterTwRegions 資料源；#fl-region-list 保持空，改為自由輸入。 */}
-              <div id="fl-region-list" />
+              <div
+                id="fl-region-list"
+                role="listbox"
+                style={regionOpen ? undefined : 'display:none'}
+              >
+                {regionMatches.length === 0 ? (
+                  <div style="padding:8px 12px;color:#999;font-size:13px">
+                    {lt('無匹配結果', '無匹配結果')}
+                  </div>
+                ) : (
+                  regionMatches.map((name, index) => (
+                    <div
+                      key={name}
+                      id={`fl-region-option-${index}`}
+                      role="option"
+                      aria-selected={index === regionActiveIndex ? 'true' : 'false'}
+                      data-region={name}
+                      style={`padding:7px 12px;font-size:13px;border-bottom:1px solid var(--border,#eee)${
+                        index === regionActiveIndex
+                          ? ';background:var(--bg-hover,#f3f4f6);font-weight:600'
+                          : ''
+                      }`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectRegion(name)}
+                    >
+                      {name}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
             <div class="ce-row fl-field fl-email-field">
               <label for="fl-email">

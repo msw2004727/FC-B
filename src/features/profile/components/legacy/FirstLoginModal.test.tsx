@@ -121,4 +121,39 @@ describe('LegacyFirstLoginModal（M-130 照 A index.html#first-login-modal）', 
     expect(onClose).toHaveBeenCalled();
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
   });
+
+  it('輸入「台」時出現縣市建議選項（照 A flRenderList）', async () => {
+    renderModal();
+    const input = document.getElementById('fl-region-input') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '台' } });
+    await waitFor(() => {
+      expect(document.querySelector('#fl-region-list [data-region="台北市"]')).not.toBeNull();
+    });
+  });
+
+  it('點選建議選項後填入地區（照 A flSelectRegion）', async () => {
+    renderModal();
+    const input = document.getElementById('fl-region-input') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '台' } });
+    await waitFor(() => {
+      expect(document.querySelector('#fl-region-list [data-region="台北市"]')).not.toBeNull();
+    });
+    fireEvent.click(document.querySelector('#fl-region-list [data-region="台北市"]') as HTMLElement);
+    await waitFor(() => expect(input.value).toBe('台北市'));
+  });
+
+  it('填無效地區送出顯示錯誤且不呼叫 saveFirstLoginProfile', async () => {
+    renderModal({
+      initial: { gender: '男', birthday: '1990/01/15', region: '', email: '' },
+    });
+    const input = document.getElementById('fl-region-input') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '火星' } });
+    fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);
+    fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
+    await waitFor(() => {
+      expect(document.getElementById('fl-error-msg')?.textContent)
+        .toBe('請輸入有效的縣市名稱');
+    });
+    expect(saveFirstLoginProfile).not.toHaveBeenCalled();
+  });
 });
