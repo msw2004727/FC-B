@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
-import { lt, useT } from '@/i18n/i18n';
+import { lt } from '@/i18n/i18n';
 import { useViewer, type ViewerView } from '../data/viewer';
 import { loadUserProfile, type UserProfile } from '../data/profile-model';
 import {
@@ -20,7 +20,6 @@ import {
 import {
   FirstLoginEditor,
   needsFirstLogin,
-  PeopleEditor,
   SocialEditor,
 } from '../ui/editors';
 import { LegacyProfileTopSection } from '../components/legacy/LegacyProfileHeader';
@@ -31,14 +30,19 @@ import {
 import { LegacyIdentityCard } from '../components/legacy/LegacyIdentityCard';
 import { LegacyLineNotifyCard } from '../components/legacy/LegacyLineNotifyCard';
 import { LegacyProfileInfoCard } from '../components/legacy/LegacyProfileCards';
-import { ProfileInfoButton } from '../components/legacy/ProfileInfoButton';
+import { LegacyFavoritesCard } from '../components/legacy/LegacyFavoritesCard';
+import { LegacyApplicationsCard } from '../components/legacy/LegacyApplicationsCard';
+import { LegacyCompanionsCard } from '../components/legacy/LegacyCompanionsCard';
+import { LegacyActivityRecordsCard } from '../components/legacy/LegacyActivityRecordsCard';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '@/styles/legacy/edu-info-btn.css';
 import '../legacy/profile.css';
 
+// M-128：移除 eduChildren；M-127：companions 改成就地展開的 LegacyCompanionsCard，
+// 不再走 B 既有 PeopleEditor。
 type Editor =
-  | { kind: 'companions' | 'eduChildren' | 'first' }
+  | { kind: 'first' }
   | { kind: 'social'; platform: Platform }
   | null;
 
@@ -79,7 +83,6 @@ function ProfileContent({
   initial: UserProfile;
   viewer: ViewerView;
 }): JSX.Element {
-  const t = useT();
   const [profile, setProfile] = useState(initial);
   const [dismissed, setDismissed] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
@@ -113,13 +116,6 @@ function ProfileContent({
     setEditor(null);
   }
 
-  const companionsCount = Array.isArray(profile['companions'])
-    ? profile['companions'].length
-    : 0;
-  const childrenCount = Array.isArray(profile['eduChildren'])
-    ? profile['eduChildren'].length
-    : 0;
-
   return (
     <div id="profile-content">
       <LegacyProfileTopSection
@@ -148,61 +144,10 @@ function ProfileContent({
         onSaved={(patch) => setProfile((p) => ({ ...p, ...patch }))}
       />
 
-      {/* 下一批補：我的收藏（#profile-favorites-card） */}
-      {/* 下一批補：我的俱樂部申請（#profile-applications-card） */}
-
-      {/* 我的運動夥伴（同行者入口，點擊開 B 既有 PeopleEditor） */}
-      <div class="info-card" id="my-companions-card">
-        <div
-          class="info-title profile-collapse-toggle"
-          role="button"
-          tabIndex={0}
-          aria-label={t('profile.companions')}
-          onClick={() => setEditor({ kind: 'companions' })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setEditor({ kind: 'companions' });
-            }
-          }}
-        >
-          <span style="display:flex;align-items:center;gap:.35rem">
-            <ProfileInfoButton infoKey="companions" />
-            <span data-i18n="我的運動夥伴">{lt('我的運動夥伴', '我的運動夥伴')}</span>
-            <span class="fav-count-badge" id="companions-count">
-              {String(companionsCount)}
-            </span>
-          </span>
-          <span class="profile-collapse-arrow">▶</span>
-        </div>
-      </div>
-
-      {/* 教育子女入口（保留 B 既有功能，外觀採 A info-card 標題列結構，點擊開 PeopleEditor） */}
-      <div class="info-card" id="my-edu-children-card">
-        <div
-          class="info-title profile-collapse-toggle"
-          role="button"
-          tabIndex={0}
-          aria-label={t('profile.children')}
-          onClick={() => setEditor({ kind: 'eduChildren' })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setEditor({ kind: 'eduChildren' });
-            }
-          }}
-        >
-          <span style="display:flex;align-items:center;gap:.35rem">
-            <span>{t('profile.children')}</span>
-            <span class="fav-count-badge" id="edu-children-count">
-              {String(childrenCount)}
-            </span>
-          </span>
-          <span class="profile-collapse-arrow">▶</span>
-        </div>
-      </div>
-
-      {/* 下一批補：報名紀錄分頁（#record-tabs / #my-activity-records） */}
+      <LegacyFavoritesCard uid={uid} profile={profile} />
+      <LegacyApplicationsCard uid={uid} profile={profile} />
+      <LegacyCompanionsCard uid={uid} profile={profile} onSaved={saved} />
+      <LegacyActivityRecordsCard uid={uid} />
 
       {(firstOpen || editor?.kind === 'first') && (
         <FirstLoginEditor
@@ -215,17 +160,6 @@ function ProfileContent({
           }}
         />
       )}
-      {!firstOpen &&
-        (editor?.kind === 'companions' || editor?.kind === 'eduChildren') && (
-          <PeopleEditor
-            key={editor.kind}
-            uid={uid}
-            profile={profile}
-            kind={editor.kind}
-            onClose={close}
-            onSaved={saved}
-          />
-        )}
       {!firstOpen && editor?.kind === 'social' && (
         <SocialEditor
           key={editor.platform}

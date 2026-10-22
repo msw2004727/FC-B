@@ -89,6 +89,18 @@ vi.mock('@/ui/AppConfirm', () => ({
   appConfirm: vi.fn().mockResolvedValue(true),
 }));
 
+// 測試同步更新：照 A（M-127/M-128）夥伴卡改就地展開（LegacyCompanionsCard 獨立測試）、子女卡移除。
+// 第 2 段其他卡片在本檔 mock 成空元件，各自有獨立測試。
+vi.mock('./components/legacy/LegacyFavoritesCard', () => ({
+  LegacyFavoritesCard: () => null,
+}));
+vi.mock('./components/legacy/LegacyApplicationsCard', () => ({
+  LegacyApplicationsCard: () => null,
+}));
+vi.mock('./components/legacy/LegacyActivityRecordsCard', () => ({
+  LegacyActivityRecordsCard: () => null,
+}));
+
 function flatten(value: Record<string, unknown>, prefix = 'profile'): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -213,20 +225,51 @@ function expectFormValid(buttonName: string): void {
   expect(element.form.checkValidity()).toBe(true);
 }
 
-async function fillFirstLogin(email = 'a@example.com'): Promise<void> {
-  await selectValue(zh.gender, '女');
-  await selectValue(zh.year, '1999');
-  await selectValue(zh.month, '3');
-  await selectValue(zh.day, '4');
-  await inputValue(zh.region, '臺中市');
-  await inputValue(zh.email, email);
+// 測試同步更新：照 A（M-130）首次登入為 A DOM（#fl-* id），以 id 直接操作 select/input。
+async function setSelectById(id: string, value: string): Promise<void> {
+  const element = document.getElementById(id) as HTMLSelectElement | null;
+  if (!element) throw new Error(`Expected select #${id}`);
+  fireEvent.input(element, { target: { value } });
+  await act(async () => {
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await waitFor(() => {
+    expect((document.getElementById(id) as HTMLSelectElement).value).toBe(value);
+  });
+}
 
-  expect((formScope().getByLabelText(zh.gender) as HTMLSelectElement).value).toBe('女');
-  expect((formScope().getByLabelText(zh.year) as HTMLSelectElement).value).toBe('1999');
-  expect((formScope().getByLabelText(zh.month) as HTMLSelectElement).value).toBe('3');
-  expect((formScope().getByLabelText(zh.day) as HTMLSelectElement).value).toBe('4');
-  expect((formScope().getByLabelText(zh.region) as HTMLInputElement).value).toBe('臺中市');
-  expect((formScope().getByLabelText(zh.email) as HTMLInputElement).value).toBe(email);
+async function setInputById(id: string, value: string): Promise<void> {
+  const element = document.getElementById(id) as HTMLInputElement | null;
+  if (!element) throw new Error(`Expected input #${id}`);
+  fireEvent.input(element, { target: { value } });
+  await waitFor(() => {
+    expect((document.getElementById(id) as HTMLInputElement).value).toBe(value);
+  });
+}
+
+async function setLegalConsent(checked: boolean): Promise<void> {
+  const element = document.getElementById('fl-legal-consent') as HTMLInputElement | null;
+  if (!element) throw new Error('Expected #fl-legal-consent');
+  if (element.checked !== checked) fireEvent.click(element);
+  await waitFor(() => {
+    expect((document.getElementById('fl-legal-consent') as HTMLInputElement).checked).toBe(checked);
+  });
+}
+
+async function fillFirstLogin(email = 'a@example.com'): Promise<void> {
+  await setSelectById('fl-gender', '女');
+  await setSelectById('fl-birthday-y', '1999');
+  await setSelectById('fl-birthday-m', '03');
+  await setSelectById('fl-birthday-d', '04');
+  await setInputById('fl-region-input', '臺中市');
+  await setInputById('fl-email', email);
+
+  expect((document.getElementById('fl-gender') as HTMLSelectElement).value).toBe('女');
+  expect((document.getElementById('fl-birthday-y') as HTMLSelectElement).value).toBe('1999');
+  expect((document.getElementById('fl-birthday-m') as HTMLSelectElement).value).toBe('03');
+  expect((document.getElementById('fl-birthday-d') as HTMLSelectElement).value).toBe('04');
+  expect((document.getElementById('fl-region-input') as HTMLInputElement).value).toBe('臺中市');
+  expect((document.getElementById('fl-email') as HTMLInputElement).value).toBe(email);
 }
 
 function expectNoWrites(): void {
@@ -559,28 +602,28 @@ describe('我的個人頁（A 版結構）', () => {
       .mockResolvedValueOnce(undefined);
 
     render(<ProfilePage />);
-    await screen.findByRole('dialog');
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     await fillFirstLogin();
-    await setCheckbox(zh.legalConsent, true);
-    expectFormValid(zh.agreeSubmit);
-    await clickButton(zh.agreeSubmit);
+    await setLegalConsent(true);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
 
     await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledTimes(1));
-    expect((await screen.findByRole('alert')).textContent).toBe(zh.saveError);
-    expect((formScope().getByLabelText(zh.gender) as HTMLSelectElement).value).toBe('女');
-    expect((formScope().getByLabelText(zh.year) as HTMLSelectElement).value).toBe('1999');
-    expect((formScope().getByLabelText(zh.month) as HTMLSelectElement).value).toBe('3');
-    expect((formScope().getByLabelText(zh.day) as HTMLSelectElement).value).toBe('4');
-    expect((formScope().getByLabelText(zh.region) as HTMLInputElement).value).toBe('臺中市');
-    expect((formScope().getByLabelText(zh.email) as HTMLInputElement).value).toBe('a@example.com');
-    expect((formScope().getByRole('checkbox', { name: zh.legalConsent }) as HTMLInputElement).checked)
-      .toBe(true);
+    // 測試同步更新：照 A（M-130）錯誤訊息顯示在 #fl-error-msg，文字為 A 原文。
+    await waitFor(() => expect(
+      document.getElementById('fl-error-msg')?.textContent,
+    ).toBe('儲存失敗，請檢查網路後重試。若持續失敗可重新整理頁面。'));
+    expect((document.getElementById('fl-gender') as HTMLSelectElement).value).toBe('女');
+    expect((document.getElementById('fl-birthday-y') as HTMLSelectElement).value).toBe('1999');
+    expect((document.getElementById('fl-birthday-m') as HTMLSelectElement).value).toBe('03');
+    expect((document.getElementById('fl-birthday-d') as HTMLSelectElement).value).toBe('04');
+    expect((document.getElementById('fl-region-input') as HTMLInputElement).value).toBe('臺中市');
+    expect((document.getElementById('fl-email') as HTMLInputElement).value).toBe('a@example.com');
+    expect((document.getElementById('fl-legal-consent') as HTMLInputElement).checked).toBe(true);
 
     await waitFor(() => expect(
-      (screen.getByRole('button', { name: zh.agreeSubmit }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: '同意並送出' }) as HTMLButtonElement).disabled,
     ).toBe(false));
-    expectFormValid(zh.agreeSubmit);
-    await clickButton(zh.agreeSubmit);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
     await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledTimes(2));
 
     const expected = {
@@ -592,7 +635,7 @@ describe('我的個人頁（A 版結構）', () => {
     };
     expect(saveFirstLoginProfile).toHaveBeenNthCalledWith(1, 'U-me', expected);
     expect(saveFirstLoginProfile).toHaveBeenNthCalledWith(2, 'U-me', expected);
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeNull());
     expect(commitIdentitySettings).not.toHaveBeenCalled();
     expect(commitSecondaryIdentityAvatar).not.toHaveBeenCalled();
   });
@@ -600,27 +643,25 @@ describe('我的個人頁（A 版結構）', () => {
   it('首次表單未勾法律同意不能送出；email 可留白', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '', email: '' }));
     render(<ProfilePage />);
-    await screen.findByRole('dialog');
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     await fillFirstLogin('');
 
-    expect(screen.getByRole('link', { name: zh.terms }).getAttribute('href')).toBe('/terms');
-    expect(screen.getByRole('link', { name: zh.privacy }).getAttribute('href')).toBe('/privacy');
-    expect((formScope().getByRole('checkbox', { name: zh.legalConsent }) as HTMLInputElement).checked)
-      .toBe(false);
-    await clickButton(zh.agreeSubmit);
-    expectNoWrites();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '服務條款' }).getAttribute('href')).toBe('/terms');
+    expect(screen.getByRole('link', { name: '隱私權政策' }).getAttribute('href')).toBe('/privacy');
+    expect((document.getElementById('fl-legal-consent') as HTMLInputElement).checked).toBe(false);
 
-    await setCheckbox(zh.legalConsent, true);
-    expectFormValid(zh.agreeSubmit);
-    await setCheckbox(zh.legalConsent, false);
-    await clickButton(zh.agreeSubmit);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
     expectNoWrites();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(document.getElementById('first-login-modal')).toBeTruthy();
 
-    await setCheckbox(zh.legalConsent, true);
-    expectFormValid(zh.agreeSubmit);
-    await clickButton(zh.agreeSubmit);
+    await setLegalConsent(true);
+    await setLegalConsent(false);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
+    expectNoWrites();
+    expect(document.getElementById('first-login-modal')).toBeTruthy();
+
+    await setLegalConsent(true);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
     await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledTimes(1));
     expect(saveFirstLoginProfile).toHaveBeenCalledWith('U-me', {
       gender: '女',
@@ -628,24 +669,23 @@ describe('我的個人頁（A 版結構）', () => {
       region: '臺中市',
       legalConsent: true,
     });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeNull());
   });
 
   it('月份變更會清除不存在的日期，未補日期不得提交', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '' }));
     render(<ProfilePage />);
-    await screen.findByRole('dialog');
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     await fillFirstLogin('');
-    await selectValue(zh.day, '31');
-    await selectValue(zh.month, '2');
-    expect((formScope().getByLabelText(zh.day) as HTMLSelectElement).value).toBe('');
-    await setCheckbox(zh.legalConsent, true);
-    await clickButton(zh.agreeSubmit);
+    await setSelectById('fl-birthday-d', '31');
+    await setSelectById('fl-birthday-m', '02');
+    expect((document.getElementById('fl-birthday-d') as HTMLSelectElement).value).toBe('');
+    await setLegalConsent(true);
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
     expectNoWrites();
 
-    await selectValue(zh.day, '28');
-    expectFormValid(zh.agreeSubmit);
-    await clickButton(zh.agreeSubmit);
+    await setSelectById('fl-birthday-d', '28');
+    fireEvent.click(screen.getByRole('button', { name: '同意並送出' }));
     await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledWith('U-me', {
       gender: '女',
       birthday: '1999/02/28',
@@ -657,228 +697,113 @@ describe('我的個人頁（A 版結構）', () => {
   it('首次表單可稍後填寫，不呼叫任何寫入', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '' }));
     render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.later });
-    await clickButton(zh.later);
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '稍後填寫' }));
+    await waitFor(() => expect(document.getElementById('first-login-modal')).toBeNull());
     expectNoWrites();
   });
 
-  it('同行者可編輯、刪除、新增，保留既有 ID 與未修改欄位', async () => {
+  // 測試同步更新：照 A（M-127）夥伴卡改就地展開＋CompanionModal；編輯保留既有 id 與未修改欄位。
+  it('同行者可編輯，保留既有 ID 與未修改欄位', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({
       companions: [
         { id: 'c1', name: '小一', birthday: '2010/01/01', gender: '男', notes: '家人' },
-        { id: 'c2', name: '小二', custom: 'keep' },
-        { id: 'c3', name: '小三', custom: 'untouched' },
       ],
     }));
     render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.companions });
-    await clickButton(zh.companions);
-    await inputValue(`${zh.name} 1`, '新名字');
-    await selectValue(`${zh.gender} 1`, '女');
-    await inputValue(`${zh.notes} 1`, '朋友');
-    await clickButton(`${zh.remove} 2`);
-    await clickButton(zh.add);
-    await inputValue(`${zh.name} 3`, '新夥伴');
+    await screen.findByText('王小明');
+    fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
 
-    expect((formScope().getByLabelText(`${zh.name} 1`) as HTMLInputElement).value).toBe('新名字');
-    expect((formScope().getByLabelText(`${zh.gender} 1`) as HTMLSelectElement).value).toBe('女');
-    expect((formScope().getByLabelText(`${zh.notes} 1`) as HTMLTextAreaElement).value).toBe('朋友');
-    expect((formScope().getByLabelText(`${zh.name} 3`) as HTMLInputElement).maxLength).toBe(20);
-    expect((formScope().getByLabelText(`${zh.notes} 3`) as HTMLTextAreaElement).maxLength).toBe(50);
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
+    const nameInput = document.getElementById('companion-modal-name') as HTMLInputElement | null;
+    if (!nameInput) throw new Error('Expected #companion-modal-name');
+    expect(nameInput.value).toBe('小一');
+    await act(async () => {
+      fireEvent.input(nameInput, { target: { value: '新名字' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    });
+
     await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(1));
+    // saveCompanion 只覆寫 name/gender/notes；birthday 等未修改欄位需原樣保留（A 對照）。
     expect(saveCompanions).toHaveBeenCalledWith('U-me', [
-      { id: 'c1', name: '新名字', birthday: '2010/01/01', gender: '女', notes: '朋友' },
-      { id: 'c3', name: '小三', custom: 'untouched' },
-      { id: expect.stringMatching(/^comp_\d+_[a-z0-9]+$/), name: '新夥伴', gender: '', notes: '' },
+      { id: 'c1', name: '新名字', birthday: '2010/01/01', gender: '男', notes: '家人' },
     ]);
     expect(saveEduChildren).not.toHaveBeenCalled();
   });
 
+  // 測試同步更新：照 A（M-127）連續新增兩名；ID 使用 generateId('comp_')，同一毫秒仍須不同，且不依賴 crypto。
   it('同一毫秒連續新增同行者仍得到不同的 comp_ ID（generateId），且不依賴 crypto', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1800000000000);
     vi.stubGlobal('crypto', {});
 
     render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.companions });
-    await clickButton(zh.companions);
-    await clickButton(zh.add);
-    await inputValue(`${zh.name} 1`, '夥伴一');
-    await clickButton(zh.add);
-    await inputValue(`${zh.name} 2`, '夥伴二');
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
+    await screen.findByText('王小明');
+    fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
 
-    await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(1));
-    expect(saveCompanions).toHaveBeenCalledWith('U-me', [
-      { id: expect.stringMatching(/^comp_\d+_[a-z0-9]+$/), name: '夥伴一', gender: '', notes: '' },
-      { id: expect.stringMatching(/^comp_\d+_[a-z0-9]+$/), name: '夥伴二', gender: '', notes: '' },
-    ]);
-
-    const call = vi.mocked(saveCompanions).mock.calls[0];
-    if (!call) throw new Error('Expected saveCompanions call');
-    const ids = call[1].map((value) => {
-      if (value === null || typeof value !== 'object' || !('id' in value)) {
-        throw new Error('Expected companion with id');
-      }
-      if (typeof value.id !== 'string') throw new Error('Expected string companion id');
-      return value.id;
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
+    await act(async () => {
+      fireEvent.input(
+        document.getElementById('companion-modal-name') as HTMLInputElement,
+        { target: { value: '夥伴一' } },
+      );
     });
-    expect(ids).toHaveLength(2);
-    expect(new Set(ids).size).toBe(2);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    });
+    await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
+    await act(async () => {
+      fireEvent.input(
+        document.getElementById('companion-modal-name') as HTMLInputElement,
+        { target: { value: '夥伴二' } },
+      );
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    });
+    await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(2));
+
+    const calls = vi.mocked(saveCompanions).mock.calls;
+    const first = calls[0]?.[1] as Array<Record<string, unknown>> | undefined;
+    const second = calls[1]?.[1] as Array<Record<string, unknown>> | undefined;
+    if (!first || !second) throw new Error('Expected saveCompanions calls');
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(2);
+
+    const id1 = first[0]?.['id'];
+    const id2 = second[1]?.['id'];
+    expect(typeof id1).toBe('string');
+    expect(typeof id2).toBe('string');
+    expect(id1).toMatch(/^comp_/);
+    expect(id2).toMatch(/^comp_/);
+    expect(id1).not.toBe(id2);
     expect(saveEduChildren).not.toHaveBeenCalled();
   });
 
-  it('子女只顯示姓名與俱樂部；解除綁定後原樣保存剩餘物件', async () => {
-    const removed = Object.freeze({
-      id: 'student-remove',
-      name: '孩子一',
-      teamId: 'team-one',
-      teamName: '第一俱樂部',
-    });
-    const kept = Object.freeze({
-      id: 'student-keep',
-      name: '  孩子二  ',
-      teamId: 'team-two',
-      teamName: '第二俱樂部',
-      custom: Object.freeze({ source: 'education', tags: Object.freeze(['keep']) }),
-      gender: '其他',
-      notes: '原始資料',
-    });
-    const another = Object.freeze({
-      id: 'student-another',
-      name: '孩子三',
-      teamId: 'team-three',
-      teamName: '第三俱樂部',
-      unknownField: null,
-    });
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
-      eduChildren: [removed, kept, another],
-    }));
-
+  // 測試同步更新：照 A（M-128）子女卡已移除，個人頁不再渲染 #my-edu-children-card。
+  it('照 A（M-128）個人頁不存在 #my-edu-children-card', async () => {
     render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.children });
-    await clickButton(zh.children);
-    const dialog = screen.getByRole('dialog');
-    expect(dialog.textContent).toContain('孩子一');
-    expect(dialog.textContent).toContain('第一俱樂部');
-    expect(dialog.textContent).toContain('孩子二');
-    expect(dialog.textContent).toContain('第二俱樂部');
-    expect(dialog.textContent).toContain('孩子三');
-    expect(dialog.textContent).toContain('第三俱樂部');
-    expect(dialog.querySelectorAll('input, select, textarea')).toHaveLength(0);
-    expect(screen.queryByRole('button', { name: zh.add })).toBeNull();
-    expect(screen.getAllByRole('button', { name: new RegExp(`^${zh.unlinkChild} \\d+$`) }))
-      .toHaveLength(3);
-
-    await clickButton(`${zh.unlinkChild} 1`);
-    expect(dialog.textContent).not.toContain('孩子一');
-    expect(dialog.textContent).not.toContain('第一俱樂部');
-    expect(dialog.textContent).toContain('孩子二');
-    expect(dialog.textContent).toContain('孩子三');
-    expectNoWrites();
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
-
-    await waitFor(() => expect(saveEduChildren).toHaveBeenCalledTimes(1));
-    expect(saveEduChildren).toHaveBeenCalledWith('U-me', [kept, another]);
-    const call = vi.mocked(saveEduChildren).mock.calls[0];
-    if (!call) throw new Error('Expected saveEduChildren call');
-    expect(call[1][0]).toBe(kept);
-    expect(call[1][1]).toBe(another);
-    expect(saveCompanions).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-
-    await clickButton(zh.children);
-    expect(screen.getByRole('dialog').textContent).not.toContain('孩子一');
-    expect(screen.getByRole('dialog').textContent).toContain('第二俱樂部');
-    expect(screen.getByRole('dialog').querySelectorAll('input, select, textarea')).toHaveLength(0);
+    await screen.findByText('王小明');
+    expect(document.getElementById('my-edu-children-card')).toBeNull();
   });
 
-  it('空子女列表說明教育課程審核後自動綁定，不提供新增或輸入欄', async () => {
-    render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.children });
-    await clickButton(zh.children);
-
-    const dialog = screen.getByRole('dialog');
-    expect(dialog.textContent).toContain(zh.emptyChildren);
-    expect(dialog.querySelectorAll('input, select, textarea')).toHaveLength(0);
-    expect(screen.queryByRole('button', { name: zh.add })).toBeNull();
-    expect(screen.queryByRole('button', { name: new RegExp(`^${zh.unlinkChild}`) })).toBeNull();
-    expectNoWrites();
-  });
-
-  it('解除最後一名子女後儲存空陣列', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
-      eduChildren: [{ id: 'student-only', name: '孩子', teamId: 'team-one', teamName: '第一俱樂部' }],
-    }));
-    render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.children });
-    await clickButton(zh.children);
-    await clickButton(`${zh.unlinkChild} 1`);
-    expect(screen.getByRole('dialog').textContent).toContain(zh.emptyChildren);
-    expectNoWrites();
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
-
-    await waitFor(() => expect(saveEduChildren).toHaveBeenCalledWith('U-me', []));
-    expect(saveEduChildren).toHaveBeenCalledTimes(1);
-    expect(saveCompanions).not.toHaveBeenCalled();
-  });
-
-  it('子女解除綁定儲存失敗後保留剩餘原始資料並可重試', async () => {
-    const kept = Object.freeze({
-      id: 'student-keep',
-      name: '留下的孩子',
-      teamId: 'team-keep',
-      teamName: '保留俱樂部',
-      custom: Object.freeze({ keep: true }),
-    });
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
-      eduChildren: [
-        { id: 'student-remove', name: '解除的孩子', teamId: 'team-remove', teamName: '原俱樂部' },
-        kept,
-      ],
-    }));
-    vi.mocked(saveEduChildren)
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(undefined);
-
-    render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.children });
-    await clickButton(zh.children);
-    await clickButton(`${zh.unlinkChild} 1`);
-    await clickButton(zh.save);
-
-    expect((await screen.findByRole('alert')).textContent).toBe(zh.saveError);
-    expect(screen.getByRole('dialog').textContent).toContain('留下的孩子');
-    expect(screen.getByRole('dialog').textContent).not.toContain('解除的孩子');
-    expect(screen.getByRole('dialog').querySelectorAll('input, select, textarea')).toHaveLength(0);
-    await waitFor(() => expect(
-      (screen.getByRole('button', { name: zh.save }) as HTMLButtonElement).disabled,
-    ).toBe(false));
-    await clickButton(zh.save);
-
-    await waitFor(() => expect(saveEduChildren).toHaveBeenCalledTimes(2));
-    expect(saveEduChildren).toHaveBeenNthCalledWith(1, 'U-me', [kept]);
-    expect(saveEduChildren).toHaveBeenNthCalledWith(2, 'U-me', [kept]);
-    for (const call of vi.mocked(saveEduChildren).mock.calls) {
-      expect(call[1][0]).toBe(kept);
-    }
-    expect(saveCompanions).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  });
-
+  // 測試同步更新：照 A（M-127）空姓名只 toast「請填寫姓名」，不呼叫任何寫入，彈窗保留。
   it('新增同行者未填姓名不得寫入', async () => {
     render(<ProfilePage />);
-    await screen.findByRole('button', { name: zh.companions });
-    await clickButton(zh.companions);
-    await clickButton(zh.add);
-    await clickButton(zh.save);
+    await screen.findByText('王小明');
+    fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     expectNoWrites();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(document.getElementById('companion-modal-name')).toBeTruthy();
   });
 
   it('社群按鈕顯示 active 狀態並可開啟編輯器與清除', async () => {
@@ -888,15 +813,25 @@ describe('我的個人頁（A 版結構）', () => {
     expect(igBtn.getAttribute('data-platform')).toBe('ig');
     expect(igBtn.classList.contains('active')).toBe(true);
 
-    await clickButton(editLabel);
-    await inputValue(zh.socialValue, 'new_account');
-    expectFormValid(zh.save);
-    await clickButton(zh.save);
+    // 測試同步更新：照 A（M-130）社群編輯改為 #social-link-modal（#social-link-input、#social-clear-btn）。
+    fireEvent.click(igBtn);
+    await waitFor(() => expect(document.getElementById('social-link-modal')).toBeTruthy());
+    const input = document.getElementById('social-link-input') as HTMLInputElement | null;
+    if (!input) throw new Error('Expected #social-link-input');
+    await act(async () => {
+      fireEvent.input(input, { target: { value: 'new_account' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    });
     await waitFor(() => expect(saveSocialLink).toHaveBeenCalledWith('U-me', 'ig', 'new_account'));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.getElementById('social-link-modal')).toBeNull());
 
-    await clickButton(editLabel);
-    await clickButton(zh.clear);
+    fireEvent.click(igBtn);
+    await waitFor(() => expect(document.getElementById('social-link-modal')).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(document.getElementById('social-clear-btn') as HTMLButtonElement);
+    });
     await waitFor(() => expect(clearSocialLink).toHaveBeenCalledWith('U-me', 'ig'));
   });
 
