@@ -185,13 +185,27 @@ export function LegacyIdentityCard(props: {
     };
   }, []);
 
-  // 照 A `renderIdentitySettings`：非編輯時同步表單與 baseline。
+  // 照 A `renderIdentitySettings`（fix-2 1C）：編輯期間仍要同步 enabled，
+  // 只保留暱稱草稿；且 saving 期間不覆寫表單，失敗一律由 catch 一起還原。
+  // - enabled：一律 `setFormEnabled(secEnabled)`（A `enabledEl.checked = !!secondary?.enabled`）。
+  // - 暱稱：`preserveDraft = editing && 草稿非空 && 草稿 !== 既存名稱` 才保留；
+  //   另照 A `document.activeElement !== nameEl` 在使用者聚焦輸入框時也不覆寫。
+  // - baseline：只在非編輯、非儲存中時更新（A `if (!editing || !baseline)`）。
+  // - 依賴刻意不放 formName／baseline：讓打字不重跑；快照、編輯、儲存狀態變動才同步。
   useEffect(() => {
-    if (editing) return;
     setFormEnabled(secEnabled);
-    setFormName(secDisplayName);
-    setBaseline({ enabled: secEnabled, displayName: secDisplayName });
-  }, [editing, secEnabled, secDisplayName]);
+    const draftName = formName.trim();
+    const preserveDraft = editing && !!draftName && draftName !== secDisplayName;
+    const nameFocused =
+      nameInputRef.current !== null
+      && document.activeElement === nameInputRef.current;
+    if (!saving && !preserveDraft && !nameFocused) {
+      setFormName(secDisplayName);
+    }
+    if (!editing && !saving) {
+      setBaseline({ enabled: secEnabled, displayName: secDisplayName });
+    }
+  }, [editing, secEnabled, secDisplayName, saving]);
 
   const canEdit = viewer.hasPermission('profile.secondary_identity');
   const isDirty =
@@ -231,7 +245,16 @@ export function LegacyIdentityCard(props: {
       }
       savingRef.current = true;
       setSaving(true);
+      // 照 A `saveIdentitySettings`：保存 previousEditing／previousBaseline 與表單草稿，
+      // Callable 失敗時一起還原（仍在編輯模式、草稿保留、可直接再按儲存重試）。
       const previous = getIdentitySettings();
+      const previousEditing = editing;
+      const previousBaseline: BaselineState = {
+        enabled: baseline.enabled,
+        displayName: baseline.displayName,
+      };
+      const previousFormEnabled = formEnabled;
+      const previousFormName = formName;
       const optimistic = buildOptimisticSettings(previous, enabled, displayName);
       setIdentitySettingsLocal(optimistic);
       setBaseline({ enabled, displayName });
@@ -248,11 +271,10 @@ export function LegacyIdentityCard(props: {
       } catch (err) {
         console.error('[saveIdentitySettings]', err);
         setIdentitySettingsLocal(previous);
-        const prevSec = previous?.identities?.secondary ?? null;
-        setBaseline({
-          enabled: prevSec?.enabled === true,
-          displayName: (prevSec?.displayName ?? '').trim(),
-        });
+        setBaseline(previousBaseline);
+        setEditing(previousEditing);
+        setFormEnabled(previousFormEnabled);
+        setFormName(previousFormName);
         toast.show({ message: lt('第二身份儲存失敗', '第二身份儲存失敗') });
         return false;
       } finally {
@@ -260,7 +282,8 @@ export function LegacyIdentityCard(props: {
         setSaving(false);
       }
     },
-    [canEdit, lt],
+    // 需讀最新 editing／baseline／formEnabled／formName 才能正確保存 previous*。
+    [canEdit, lt, editing, baseline, formEnabled, formName],
   );
 
   // 照 A `handleSecondaryIdentityToggleChange`：立即儲存、失敗還原。

@@ -266,6 +266,90 @@ describe('LegacyIdentityCard', () => {
     expect(mocks.setIdentitySettingsLocal).toHaveBeenCalled();
   });
 
+  it('編輯中收到啟用快照 → 詳細欄位鎖定、按儲存顯示 toast 且不送出（fix-2 項目 1）', async () => {
+    const disabled = buildSettings({ enabled: false, displayName: '' });
+    mocks.useIdentitySettings.mockReturnValue(disabled);
+    mocks.getIdentitySettings.mockReturnValue(disabled);
+
+    const { rerender } = render(
+      <LegacyIdentityCard
+        uid="U-me"
+        profile={fakeProfile()}
+        viewer={fakeViewer(true)}
+      />,
+    );
+    expandCard();
+
+    fireEvent.click(getEditBtn());
+    await waitFor(() => expect(getNameInput().disabled).toBe(false));
+    fireEvent.input(getNameInput(), { target: { value: '新暱稱' } });
+
+    // 模擬另一個分頁啟用第二身份後的 settings 快照。
+    const enabled = buildSettings({ enabled: true, displayName: '' });
+    mocks.useIdentitySettings.mockReturnValue(enabled);
+    mocks.getIdentitySettings.mockReturnValue(enabled);
+    rerender(
+      <LegacyIdentityCard
+        uid="U-me"
+        profile={fakeProfile()}
+        viewer={fakeViewer(true)}
+      />,
+    );
+
+    // 照 A `renderIdentitySettings`：enabled 一律同步（checkbox 變勾選）。
+    await waitFor(() => expect(getCheckbox().checked).toBe(true));
+    // 照 A `_syncIdentityFormState`：`canEditDetails = !enabled && editing` 不成立 → 詳細欄位鎖定。
+    await waitFor(() => expect(getNameInput().disabled).toBe(true));
+    // 暱稱照 A `preserveDraft`：草稿非空且與既存名稱不同，不被快照覆蓋。
+    expect(getNameInput().value).toBe('新暱稱');
+
+    // 照 A `toggleIdentitySettingsEdit`：enabled 為真 → toast「請先關閉第二身份才可以編輯」。
+    fireEvent.click(getEditBtn());
+
+    expect(mocks.toastShow).toHaveBeenCalledWith({
+      message: '請先關閉第二身份才可以編輯',
+    });
+    // 絕不以舊值 secondaryEnabled:false 送出。
+    expect(mocks.commitIdentitySettings).not.toHaveBeenCalled();
+  });
+
+  it('儲存失敗 → 留在編輯模式、草稿保留、可再按儲存重試（fix-2 項目 2）', async () => {
+    const disabled = buildSettings({ enabled: false, displayName: '' });
+    mocks.useIdentitySettings.mockReturnValue(disabled);
+    mocks.getIdentitySettings.mockReturnValue(disabled);
+    mocks.commitIdentitySettings.mockRejectedValueOnce(new Error('boom'));
+
+    renderCard();
+    expandCard();
+
+    fireEvent.click(getEditBtn());
+    await waitFor(() => expect(getNameInput().disabled).toBe(false));
+    fireEvent.input(getNameInput(), { target: { value: '新暱稱' } });
+    fireEvent.click(getEditBtn());
+
+    await waitFor(() =>
+      expect(mocks.commitIdentitySettings).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
+      expect(mocks.toastShow).toHaveBeenCalledWith({
+        message: '第二身份儲存失敗',
+      }),
+    );
+
+    // 照 A `saveIdentitySettings`：失敗時還原 previousEditing／previousBaseline，
+    // 仍留在編輯模式，輸入框值仍是草稿。
+    await waitFor(() => expect(getNameInput().value).toBe('新暱稱'));
+    expect(getEditBtn().textContent).toBe('儲存');
+    expect(getEditBtn().classList.contains('is-save-mode')).toBe(true);
+    expect(getNameInput().disabled).toBe(false);
+
+    // 可直接再按儲存重試。
+    fireEvent.click(getEditBtn());
+    await waitFor(() =>
+      expect(mocks.commitIdentitySettings).toHaveBeenCalledTimes(2),
+    );
+  });
+
   it('上傳超過 5MB → toast 且不上傳', () => {
     renderCard();
     expandCard();
