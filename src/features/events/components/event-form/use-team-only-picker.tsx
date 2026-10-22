@@ -115,16 +115,20 @@ export function buildTeamOnlyContext(viewer: ViewerView): OperateContext {
   };
 }
 
-/** 照 A `_resolveTeamDisplayName`；本單指定最後回退 id。 */
+/**
+ * 照 A `_resolveTeamDisplayName`：一般以俱樂部目前名稱優先、活動記錄的舊名稱為後備；
+ * 只有非總管編輯、保留既有範圍時（A `preserveExistingScope`）才以舊名稱優先（Gemini 審 P2）。最後回退 id。
+ */
 function displayName(
   id: string,
   hints: ReadonlyMap<string, string>,
   teams: readonly TeamDoc[],
+  preferHint = false,
 ): string {
   const hint = hints.get(id)?.trim();
-  if (hint) return hint;
+  if (preferHint && hint) return hint;
   const team = teams.find(item => String(item.id || item._docId || '').trim() === id);
-  return team?.name?.trim() || id;
+  return team?.name?.trim() || hint || id;
 }
 
 /** 照 A `_getTeamOnlyCandidateTeams`／`_populateTeamSelect`。 */
@@ -172,7 +176,7 @@ export function buildTeamOnlyModel(input: {
   const options = preserveExistingScope
     ? existingIds.flatMap(id => {
         const option = optionMap.get(id);
-        return option ? [option] : [];
+        return option ? [{ ...option, name: displayName(id, hints, input.teams, true) }] : [];
       })
     : [...optionMap.values()];
 
@@ -439,7 +443,10 @@ export function useTeamOnlyPicker(input: TeamOnlyPickerInput): TeamOnlyPickerRes
       ids.sort((a, b) =>
         (order.get(a) ?? Number.MAX_SAFE_INTEGER)
         - (order.get(b) ?? Number.MAX_SAFE_INTEGER));
-      return { ids, names: ids.map(id => displayName(id, hints, teams)) };
+      return {
+        ids,
+        names: ids.map(id => displayName(id, hints, teams, currentModel.preserveExistingScope)),
+      };
     }
     if (currentModel.options.length > 0) return { ids: [], names: [] };
 
@@ -453,7 +460,8 @@ export function useTeamOnlyPicker(input: TeamOnlyPickerInput): TeamOnlyPickerRes
     options?: { otherAddonsEnabled?: boolean },
   ): Promise<SubmitResult> {
     if (!latest.current.enabled) return { ok: true };
-    const hasOnlyTeamScopedAddon = options?.otherAddonsEnabled === false;
+    // 照 A `_canCreateTeamOnlyActivityForSubmit` 預設 hasOnlyTeamScopedAddon !== false（未傳時視為只有俱樂部限定；Gemini 審 P3）。
+    const hasOnlyTeamScopedAddon = options?.otherAddonsEnabled !== true;
     const validationInput = latest.current;
     const token = sequence.current;
     await ensureDirectory();

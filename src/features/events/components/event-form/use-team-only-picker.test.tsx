@@ -606,8 +606,9 @@ describe('useTeamOnlyPicker', () => {
       ok: false,
       message: '權限不足：無法建立此俱樂部限定活動',
     };
-    expect(await validation()).toEqual(denied);
-    expect(await validation({})).toEqual(denied);
+    // 測試同步更新：照 A `_canCreateTeamOnlyActivityForSubmit` 預設 hasOnlyTeamScopedAddon !== false，未傳時視為只有俱樂部限定。
+    expect(await validation()).toEqual({ ok: true });
+    expect(await validation({})).toEqual({ ok: true });
     expect(await validation({ otherAddonsEnabled: true })).toEqual(denied);
     expect(await validation({ otherAddonsEnabled: false })).toEqual({ ok: true });
   });
@@ -737,7 +738,8 @@ describe('useTeamOnlyPicker', () => {
     expect(picker().label).toBe('已啟用：僅限「乙俱樂部」');
 
     act(() => picker().reset(['a'], ['歷史甲']));
-    expect(picker().label).toBe('已啟用：僅限「歷史甲」');
+    // 測試同步更新：照 A，非鎖定範圍（總管）以俱樂部目前名稱優先，舊名稱只當後備。
+    expect(picker().label).toBe('已啟用：僅限「甲俱樂部」');
 
     view.rerender(<Harness viewer={currentViewer} enabled={false} />);
     expect(picker().label).toBe('');

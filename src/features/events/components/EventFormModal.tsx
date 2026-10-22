@@ -63,11 +63,23 @@ export interface EventFormModalProps {
   onSaved(result: EventFormSavedResult): void;
 }
 
+const ADDON_TOGGLE_KEYS = [
+  'feeEnabled', 'teamOnly', 'genderRestrictionEnabled', 'privateEvent',
+  'teamSplitEnabled', 'teamSplitBalanceCap', 'socialLinksEnabled', 'earlyBirdEnabled', 'gpsEnabled',
+] as const;
+
+/**
+ * mapLocationUpdatedAt 寫回值：A 建立與選點一律寫 ISO 字串，正常資料都是字串、原樣保留。
+ * 例外：快取序列化後的 Timestamp（有 toDate 或只剩 seconds）轉成 ISO 字串，避免寫回物件或把值弄丟。
+ */
 function toIsoOrNull(value: unknown): string | null {
   if (typeof value === 'string') return value;
-  if (value && typeof value === 'object' && typeof (value as { toDate?: unknown }).toDate === 'function') {
-    const date = (value as { toDate(): Date }).toDate();
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  if (value && typeof value === 'object') {
+    const record = value as { toDate?: unknown; seconds?: unknown };
+    const date = typeof record.toDate === 'function'
+      ? (record as { toDate(): Date }).toDate()
+      : typeof record.seconds === 'number' ? new Date(record.seconds * 1000) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
   }
   return null;
 }
@@ -163,8 +175,10 @@ export function EventFormModal({
 
   function patchAddon(value: Partial<EventFormAddonState>): void {
     if (!mountedRef.current || submitInFlightRef.current) return;
-    // 照 A _guardActivityAddonToggle：關閉可直接操作，其餘變更再次守門。
-    if (Object.values(value).some(item => item !== false) && !guardAddon()) return;
+    // 照 A _guardActivityAddonToggle：只有把加值開關「打開」才守門（EventFormAddons 已先問過，這裡是後盾）；
+    // 關閉、或修改已打開欄位的子值（費用金額、社群網址…）不檢查（Gemini 審 P2：原寫法每次輸入都跳提示）。
+    const turningOn = ADDON_TOGGLE_KEYS.some(key => value[key] === true);
+    if (turningOn && !guardAddon()) return;
     patch(value);
   }
 

@@ -40,8 +40,10 @@ export function EventLocationPicker({
   onClose,
 }: EventLocationPickerProps): JSX.Element {
   const lt = useLegacyT();
-  const [query, setQuery] = useState(locationText.trim());
-  const [address, setAddress] = useState(initial.mapAddress || locationText);
+  // 照 A openEventLocationPicker：地點文字先 trim 再當搜尋與確認地址的初值（Gemini 審 P2）。
+  const trimmedLocation = locationText.trim();
+  const [query, setQuery] = useState(trimmedLocation);
+  const [address, setAddress] = useState(initial.mapAddress || trimmedLocation);
   // ASSUMPTION: A 對 null 使用 String(null) 後由 number input 清空；
   // 受控輸入直接使用空字串，保留實際畫面與確認時 Number('') 的行為。
   const [lat, setLat] = useState(initial.lat === null ? '' : String(initial.lat));
