@@ -19,7 +19,11 @@ import {
   type OperateContext,
 } from '@/features/events/data/operate-permissions';
 import { createDetailSignupContexts } from '@/features/events/data/signup-context';
-import type { DetailEvent, DetailRegistration } from '@/features/events/data/detail-model';
+import {
+  sortRegistrations,
+  type DetailEvent,
+  type DetailRegistration,
+} from '@/features/events/data/detail-model';
 import type { EventDoc } from '@/features/events/data/types';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 
@@ -361,7 +365,8 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
   }
 
   const cancelFlow = useCancelRegistration({
-    getViewerUid: () => viewer.uid ?? null,
+    // 與 cancelContext.getViewer 共用同一個 viewerRef，避免非同步流程取得舊世代登入者。
+    getViewerUid: () => viewerRef.current.uid ?? null,
     isAlive: () => mountedRef.current,
     canRun: () => mountedRef.current,
     login,
@@ -377,6 +382,17 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
     },
   });
 
+  // 登入者改變時清掉既有 snapshot 並關閉彈窗，避免交付他人 snapshot。
+  const closeModalRef = useRef(cancelFlow.closeModal);
+  closeModalRef.current = cancelFlow.closeModal;
+  const prevUidRef = useRef(viewer.uid);
+  useEffect(() => {
+    if (prevUidRef.current === viewer.uid) return;
+    prevUidRef.current = viewer.uid;
+    snapshotRef.current = null;
+    closeModalRef.current();
+  }, [viewer.uid]);
+
   const registered: RegisteredActivity[] =
     state.status === 'ready' ? state.data.registered : [];
   const hosted: HostedActivity[] =
@@ -388,6 +404,11 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
   };
 
   const handleEditHosted = (event: EventRecord): void => {
+    // 顯示端與 handler 都走同一 helper 驗權（R-IAM-011）。
+    if (!canEditOwnActivityBasic(operateCtx, event)) {
+      toast.show({ message: '您只能管理自己的活動', tone: 'error' });
+      return;
+    }
     setEditing(event as unknown as EventDoc);
   };
 
@@ -429,18 +450,24 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
         loadViewerRegistrations(currentUid),
       ]);
       if (!mountedRef.current) return;
+      // 非同步期間登入者改變：丟棄結果、不呼叫 beginCancel。
+      if (viewerRef.current.uid !== currentUid) return;
       if (!detail) {
         toast.show({ message: '找不到此活動', tone: 'error' });
         return;
       }
-      // 照詳情頁：本人與同行者都要，順序交由 beginCancel 內既有流程處理。
+      // 照詳情頁：先以 detail 頁的 sortRegistrations 過濾有效報名（去除已取消／已移除）
+      // 並依 registeredAt／promotionOrder 排序，只留本活動的本人與同行者。
+      // owned 為空時交由 hook 顯示「你尚未報名此活動」。
       // ASSUMPTION: RegistrationDoc 帶 eventId 欄位；同 A 資料結構（既有格式）。
-      const owned = regs
-        .filter((reg) => {
-          const eventId = (reg as { eventId?: unknown }).eventId;
-          return typeof eventId === 'string' && eventId.trim() === publicId;
-        })
-        .map((reg) => reg as unknown as DetailRegistration);
+      const owned = sortRegistrations(
+        regs
+          .filter((reg) => {
+            const eventId = (reg as { eventId?: unknown }).eventId;
+            return typeof eventId === 'string' && eventId.trim() === publicId;
+          })
+          .map((reg) => reg as unknown as DetailRegistration),
+      );
       const snapshot: CancelFlowSnapshot = {
         event: detail.event as unknown as DetailEvent,
         publicId,
