@@ -53,6 +53,11 @@ function preserveLocationUpdatedAt(value: unknown): EventLocationUpdatedAt {
   ) {
     return value as { toDate(): Date };
   }
+  // 快取序列化後的 Timestamp 只剩 seconds：轉成代表原時間的 ISO 字串（Codex 第二審 P1：原寫法回 null，存檔被換成現在時間）。
+  if (typeof value === 'object' && value !== null && typeof (value as { seconds?: unknown }).seconds === 'number') {
+    const date = new Date((value as { seconds: number }).seconds * 1000);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
   return null;
 }
 

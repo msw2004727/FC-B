@@ -148,6 +148,17 @@ describe('草稿與 payload', () => {
     }
   });
 
+  it('快取序列化的 Timestamp（只剩 seconds）讀入時轉成原時間的 ISO 字串（Codex 第二審 P1）', () => {
+    const draft = resetLocationDraft({
+      location: '場地',
+      lat: 25,
+      lng: 121,
+      mapLocationConfirmed: true,
+      mapLocationUpdatedAt: { seconds: 1767225600, nanoseconds: 0 },
+    }, '場地');
+    expect(draft.mapLocationUpdatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
   it('stale 不因文字改回而恢復；空白正規化不造成 stale', () => {
     const draft = confirmed();
     expect(markLocationStale(draft, ' 場地 ')).toBe(draft);
