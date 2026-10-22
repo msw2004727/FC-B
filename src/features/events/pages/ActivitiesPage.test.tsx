@@ -10,6 +10,7 @@ import { getEventsRepo, type EventsRepo } from '../data/events-repo';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { useViewer } from '@/features/profile/data/viewer';
 import type { EventDoc } from '../data/types';
+import * as favoritesMod from '../data/favorites';
 import ActivitiesPage from './ActivitiesPage';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
@@ -18,6 +19,11 @@ vi.mock('@/i18n/i18n', async (importOriginal) => ({
 }));
 vi.mock('@/features/events/data/events-repo', () => ({
   getEventsRepo: vi.fn(),
+}));
+vi.mock('../data/favorites', () => ({
+  loadFavorites: vi.fn(),
+  saveFavorites: vi.fn(),
+  toggleEventInFavorites: vi.fn(),
 }));
 vi.mock('../data/viewer-registrations', () => ({
   loadViewerRegistrations: vi.fn(),
@@ -88,6 +94,16 @@ beforeEach(async () => {
     getSnapshot: () => ({ active, terminal: [] }),
   });
   vi.mocked(loadViewerRegistrations).mockResolvedValue([]);
+  // M-076：收藏讀寫 mock（避免 jsdom 觸發 Firestore）
+  vi.mocked(favoritesMod.loadFavorites).mockResolvedValue({ events: [], tournaments: [] });
+  vi.mocked(favoritesMod.saveFavorites).mockResolvedValue(undefined);
+  vi.mocked(favoritesMod.toggleEventInFavorites).mockImplementation((cur, eventId) => {
+    const events = [...cur.events];
+    const idx = events.indexOf(eventId);
+    const added = idx < 0;
+    if (added) events.push(eventId); else events.splice(idx, 1);
+    return { next: { events, tournaments: [...cur.tournaments] }, added };
+  });
   vi.mocked(useViewer).mockReturnValue({
     uid: 'viewer',
     teamIds: new Set(),
@@ -196,7 +212,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(loadViewerRegistrations).toHaveBeenCalledWith('viewer');
   });
 
-  it('marks card with tl-pending and navigates to /events/{id} when clicked', async () => {
+  // 測試同步更新：照 A（M-077），tl-pending 有 150ms 延遲。
+  it('marks card with tl-pending after 150ms delay and navigates to /events/{id} when clicked', async () => {
     const { container } = mount();
     const card = await waitFor(() => {
       const el = container.querySelector('.tl-event-row[data-event-id="public-football"]');
@@ -205,7 +222,9 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
 
     fireEvent.click(card);
-    expect(card.classList.contains('tl-pending')).toBe(true);
+    await waitFor(() => {
+      expect(card.classList.contains('tl-pending')).toBe(true);
+    });
     await waitFor(() => {
       expect(window.location.pathname).toBe('/events/public-football');
     });
@@ -214,7 +233,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
   // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
   // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
   // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
-  it('shows toast when clicking unavailable features (share, calendar tab, beginner tab, nearby, favorite heart)', async () => {
+  // 測試同步更新：照 A（M-076），愛心改用收藏切換，不再顯示「尚未開放」。
+  it('shows toast when clicking unavailable features (share, calendar tab, beginner tab, nearby)', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
@@ -241,11 +261,14 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     fireEvent.click(nearbyBtn);
     expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
 
+    // 測試同步更新：照 A（M-076）愛心改為收藏切換，不開啟詳情。
     toast.clear();
     const favBtn = container.querySelector('.fav-heart') as HTMLElement;
     fireEvent.click(favBtn);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
     expect(window.location.pathname).toBe('/activities');
+    await waitFor(() => {
+      expect(getToasts().at(-1)?.message).toBe('已加入收藏');
+    });
   });
 
   it('normalizes an ended tab while preserving sport and other query values', async () => {

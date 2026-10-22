@@ -34,6 +34,12 @@ import type { RegistrationDoc } from '../data/types';
 import { useEvents } from '../data/use-events';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { getVisibleEvents } from '../data/visibility';
+import {
+  loadFavorites,
+  saveFavorites,
+  toggleEventInFavorites,
+  type FavoritesDoc,
+} from '../data/favorites';
 import { useDebouncedValue } from '../data/use-debounced-value';
 import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
@@ -204,6 +210,10 @@ export default function ActivitiesPage(): JSX.Element {
   });
   const registrationRequestSeq = useRef(0);
   const lastSyncedUrlRef = useRef<string>(location.url);
+  // M-076：卡片收藏狀態（心／資料同步都以此為準）
+  const [favorites, setFavorites] = useState<FavoritesDoc>({ events: [], tournaments: [] });
+  const favoritesRequestSeq = useRef(0);
+  const favoritesRef = useRef<FavoritesDoc>({ events: [], tournaments: [] });
   const [transitEvent, setTransitEvent] = useState<LegacyEventDoc | null>(null);
   const activityListRef = useRef<HTMLDivElement>(null);
   const activityTabsRef = useRef<HTMLDivElement>(null);
@@ -315,6 +325,32 @@ export default function ActivitiesPage(): JSX.Element {
     };
   }, [viewer.uid]);
 
+  // M-076：viewer.uid 變動時讀取 `users/{uid}.favorites`（照 A `_getFavorites`；失敗視為空收藏）
+  useEffect(() => {
+    const sequence = ++favoritesRequestSeq.current;
+    const uid = viewer.uid;
+    if (!uid) {
+      favoritesRef.current = { events: [], tournaments: [] };
+      setFavorites({ events: [], tournaments: [] });
+      return;
+    }
+    favoritesRef.current = { events: [], tournaments: [] };
+    setFavorites({ events: [], tournaments: [] });
+    let cancelled = false;
+    loadFavorites(uid)
+      .then((fav) => {
+        if (cancelled || sequence !== favoritesRequestSeq.current) return;
+        favoritesRef.current = fav;
+        setFavorites(fav);
+      })
+      .catch(() => {
+        if (cancelled || sequence !== favoritesRequestSeq.current) return;
+        favoritesRef.current = { events: [], tournaments: [] };
+        setFavorites({ events: [], tournaments: [] });
+      });
+    return () => { cancelled = true; };
+  }, [viewer.uid]);
+
   function switchActivityTab(nextTab: string, e?: MouseEvent): void {
     if (e) e.stopPropagation();
     // 下一批補：月曆檢視、新手友善、高強度篩選
@@ -370,6 +406,42 @@ export default function ActivitiesPage(): JSX.Element {
     if (!href) return;
     setPendingEventId(event.id ?? null);
     location.route(href);
+  }
+
+
+  // M-076：卡片愛心切換收藏（樂觀更新；失敗還原）。點擊前先阻擋「未登入」。
+  function handleToggleFavorite(targetEvent: LegacyEventDoc): void {
+    const eventId = targetEvent.id;
+    if (!eventId) return;
+    const uid = viewer.uid;
+    if (!uid) {
+      // 照 A `_requireProtectedActionLogin(..., { suppressToast: true })`：不提示直接登入
+      void import('@/data/auth')
+        .then((m) => m.signIn())
+        .catch(() => { /* 登入失敗不處理 */ });
+      return;
+    }
+    // 用 ref 讀最新狀態，避免連點時拿舊閉包。
+    const current = favoritesRef.current;
+    const { next, added } = toggleEventInFavorites(current, eventId);
+    favoritesRef.current = next;
+    setFavorites(next);
+    saveFavorites(uid, next)
+      .then(() => {
+        toast.show({
+          message: added
+            ? lt('toast.favoriteAdded', '已加入收藏')
+            : lt('toast.favoriteRemoved', '已取消收藏'),
+        });
+      })
+      .catch(() => {
+        // ASSUMPTION：A 是 fire-and-forget；B 失敗時還原（期間若又點過，以後來的狀態為準不還原）。
+        if (favoritesRef.current === next) {
+          favoritesRef.current = current;
+          setFavorites(current);
+        }
+        toast.show({ message: t('events.detailPage.actionError') });
+      });
   }
 
   function handleCloseTransitCard(): void {
@@ -877,10 +949,12 @@ export default function ActivitiesPage(): JSX.Element {
                               key={ev.id ?? ev._docId ?? `ev-${idx}`}
                               event={ev}
                               viewerUid={viewer.uid}
+                              viewerRoleLevel={viewer.roleLevel}
                               viewerRegistrations={registrations}
                               isPending={Boolean(ev.id && pendingEventId === ev.id)}
+                              isFavorited={Boolean(ev.id && favorites.events.includes(ev.id))}
                               onSelect={handleSelectCard}
-                              onUnavailableFeature={handleUnavailableFeature}
+                              onToggleFavorite={handleToggleFavorite}
                             />
                           ))}
                         </div>

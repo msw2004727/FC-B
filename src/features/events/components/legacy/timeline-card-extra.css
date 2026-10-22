@@ -1,0 +1,18 @@
+/* U-023：收藏愛心可點範圍擴大到 40×40，外觀、位置不變；不加進 A 的 activity.css。 */
+
+/* 需要 relative 讓 ::after 以此為基準 */
+.legacy-ui .tl-event-row .tl-event-icons .fav-heart {
+  position: relative;
+}
+
+/* 透明擴張區：只加可點範圍，不影響視覺；不覆蓋右側箭頭（箭頭是獨立 sibling） */
+.legacy-ui .tl-event-row .tl-event-icons .fav-heart::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+}
