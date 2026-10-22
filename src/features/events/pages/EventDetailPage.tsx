@@ -54,7 +54,7 @@ import {
   type SignupFlip,
 } from '../components/legacy/EventDetailPrimaryButton';
 import type { CompanionSelectItem } from '../components/legacy/CompanionSelectModal';
-import type { CompanionCancelTarget } from '../components/legacy/CompanionCancelModal';
+import { useCancelRegistration } from '../components/legacy/use-cancel-registration';
 import { operateContextFromViewer } from '../data/event-create-context';
 import {
   canOperateEventSite,
@@ -182,9 +182,6 @@ interface Notice {
 const DetailCompanionSelectModal = lazy(() =>
   import('../components/legacy/CompanionSelectModal')
     .then(module => ({ default: module.CompanionSelectModal })));
-const DetailCompanionCancelModal = lazy(() =>
-  import('../components/legacy/CompanionCancelModal')
-    .then(module => ({ default: module.CompanionCancelModal })));
 const DetailLineNotifyPrompt = lazy(() =>
   import('../components/legacy/LineNotifyPrompt')
     .then(module => ({ default: module.LineNotifyPrompt })));
@@ -257,10 +254,6 @@ function EventDetailSession({
   const [companions, setCompanions] = useState<SignupCompanion[]>([]);
   const [companionOpen, setCompanionOpen] = useState(false);
   const [companionBusy, setCompanionBusy] = useState(false);
-  const [cancelModal, setCancelModal] = useState<{
-    targets: CompanionCancelTarget[];
-    selectAll: boolean;
-  } | null>(null);
   const [signupProfile, setSignupProfile] = useState<SignupProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(viewer.uid));
   const [flip, setFlip] = useState<SignupFlip | null>(null);
@@ -1191,145 +1184,32 @@ function EventDetailSession({
     maybeShowLinePrompt(uid).catch(() => {});
   }
 
-  // 照 A handleCancelSignup；重複本人紀錄依課程目標去重判斷。
-  async function beginCancel(): Promise<void> {
-    const current = snapshot;
-    const uid = currentViewer.current.uid;
-    if (!uid) {
-      await login();
-      return;
-    }
-    if (!current || !visible || refreshFailed || !alive.current) return;
-    const selfRegs = owned.filter(reg => !isCompanion(reg));
-    if (selfRegs.length === 0) {
-      toast.show({ message: '你尚未報名此活動' });
-      return;
-    }
-    const selfKeys = new Set(selfRegs.map(reg => {
-      const course = reg as DetailRegistration & {
-        courseStudentId?: string;
-        courseLinkId?: string;
-      };
-      const student = String(course.courseStudentId || '').trim();
-      const link = String(course.courseLinkId || '').trim();
-      return student || link
-        ? `course:${link}:${student || registrationId(reg)}`
-        : `ordinary:${registrationOwner(reg) || uid}`;
-    }));
-    if (owned.some(isCompanion) || selfKeys.size > 1) {
-      // 照 A：selfRegs.concat(companionRegs)，本人在前。
-      const ordered = [...selfRegs, ...owned.filter(isCompanion)];
-      const targets: CompanionCancelTarget[] = ordered.map(reg => {
-        const course = reg as DetailRegistration & {
-          courseStudentId?: string;
-          courseLinkId?: string;
-        };
-        return {
-          registrationId: registrationId(reg),
-          isSelf: !isCompanion(reg),
-          name: reg.companionName || reg.userName || '',
-          status: reg.status === 'waitlisted' ? 'waitlisted' : 'confirmed',
-          courseStudentId: course.courseStudentId,
-          courseLinkId: course.courseLinkId,
-        };
-      });
-      setCancelModal({ targets, selectAll: selfKeys.size === 1 });
-      return;
-    }
-
-    const latest = await contexts.cancel.load(current.event.id ?? publicId);
-    if (!alive.current) return;
-    if (latest.event.status === 'ended' || latest.event.status === 'cancelled') {
-      toast.show({ message: '活動已開始，無法再取消報名' });
-      return;
-    }
-    const start = eventStartMs(latest.event);
-    if (start > 0 && start <= Date.now()) {
-      toast.show({ message: '活動已於開始時間結束，無法取消報名' });
-      return;
-    }
-    const waitlisted = selfRegs.every(reg => reg.status === 'waitlisted');
-    if (!await appConfirm(waitlisted ? '確定要取消候補？' : '確定要取消報名？')) return;
-    if (!alive.current || currentViewer.current.uid !== uid) return;
-    const ids = selfRegs.map(registrationId);
-    if (ids.some(id => !id)) {
-      toast.show({ message: '報名資料尚未同步完成，請重新整理後再試' });
-      return;
-    }
-    const response = await cancelRegistration({
-      eventId: current.event.id ?? publicId,
-      userId: uid,
-      registrationIds: ids,
-      kind: 'self',
-      context: contexts.cancel,
-    });
-    if (!alive.current) return;
-    if (response.deduplicated) {
-      toast.show({ message: '取消處理中，請稍候' });
-      await refresh(current);
-      return;
-    }
-    toast.show({ message: waitlisted ? '已取消候補' : '已取消報名' });
-    const rawEvent: unknown = (response as { event?: unknown }).event;
-    // ASSUMPTION: 舊 Callable 無 event 投影時，重讀活動以判斷取消後是否仍額滿。
-    const updated = rawEvent && typeof rawEvent === 'object' && !Array.isArray(rawEvent)
-      ? { ...current.event, ...rawEvent } as DetailEvent
-      : (await loadEventDetail(current.event.id ?? publicId))?.event;
-    if (!alive.current) return;
-    if (updated) {
-      const full = getEventParticipantStats(updated, []).isCapacityFull;
-      showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)');
-    }
-    await refresh(updated ? { ...current, event: updated } : current);
-  }
-
-  async function confirmCancel(ids: string[]): Promise<void> {
-    const current = snapshot;
-    const uid = currentViewer.current.uid;
-    if (!current || !uid || !visible || refreshFailed || !alive.current) return;
-    if (!ids.length) {
-      toast.show({ message: '請選擇要取消的報名' });
-      return;
-    }
-    const targets = owned.filter(reg => ids.includes(registrationId(reg)));
-    if (new Set(ids).size !== ids.length || targets.length !== ids.length
-      || targets.some(reg => !registrationId(reg))) {
+  // 照 A handleCancelSignup；抽成可重用 hook，行為與原 beginCancel／confirmCancel 相同。
+  const cancelFlow = useCancelRegistration({
+    getViewerUid: () => currentViewer.current.uid ?? null,
+    isAlive: () => alive.current,
+    canRun: () => visible && !refreshFailed && alive.current,
+    login,
+    cancelContext: contexts.cancel,
+    onIntegrityError: () => {
       show('events.detailPage.refreshError');
       setRefreshFailed(true);
-      return;
-    }
-    try {
-      const response = await cancelRegistration({
-        eventId: current.event.id ?? publicId,
-        userId: uid,
-        registrationIds: ids,
-        kind: targets.every(reg => !isCompanion(reg)) ? 'self' : 'companion',
-        context: contexts.cancel,
-      });
-      if (!alive.current) return;
-      toast.show({ message: response.deduplicated
-        ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
-      setCancelModal(null);
-      await refresh(current);
-    } catch (error) {
-      if (!alive.current) return;
-      if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {
-        toast.show({ message: `已取消 ${ids.length} 筆報名` });
-        setCancelModal(null);
-        await refresh(current);
-        return;
+    },
+    onSelfCancelled: async ({ deduplicated, updatedEvent }) => {
+      const current = snapshot;
+      if (!current) return;
+      if (!deduplicated && updatedEvent) {
+        const full = getEventParticipantStats(updatedEvent, []).isCapacityFull;
+        showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)');
       }
-      const messages: Record<string, string> = {
-        REG_NOT_FOUND: '找不到報名紀錄',
-        EVENT_NOT_FOUND: '活動不存在',
-        PERMISSION_DENIED: '無權限執行此操作',
-        EVENT_ENDED: '活動已開始，無法再取消報名',
-        EVENT_STARTED: '活動已於開始時間結束，無法取消報名',
-      };
-      const code = error instanceof SignupError ? error.originalCode : '';
-      toast.show({ message: `取消失敗：${messages[code] || '連線逾時，請檢查網路後重新整理再試'}` });
-    }
-  }
+      await refresh(updatedEvent ? { ...current, event: updatedEvent } : current);
+    },
+    onBatchCancelled: async () => {
+      const current = snapshot;
+      if (!current) return;
+      await refresh(current);
+    },
+  });
 
   // 照 A _openCompanionSelectModal；只在工具列入口讀同行者。
   async function openCompanionSelect(): Promise<void> {
@@ -1748,7 +1628,16 @@ function EventDetailSession({
                 busy={busy}
                 flip={flip}
                 onClick={() => {
-                  if (state.action === 'cancel') start(beginCancel);
+                  if (state.action === 'cancel') {
+                    const current = snapshot;
+                    if (current) {
+                      start(() => cancelFlow.beginCancel({
+                        event: current.event,
+                        publicId,
+                        owned,
+                      }));
+                    }
+                  }
                   else if (state.action === 'signup') start(() => beginSelfSignup({}));
                   else if (state.action === 'earlyBird') {
                     start(() => beginSelfSignup({ earlyBird: true }));
@@ -1933,19 +1822,19 @@ function EventDetailSession({
             />
           </Suspense>
         )}
-        {cancelModal && (
-          <Suspense fallback={null}>
-            <DetailCompanionCancelModal
-              open
-              targets={cancelModal.targets}
-              selectAll={cancelModal.selectAll}
-              busy={busy}
-              eventTitle={event.title || ''}
-              onClose={() => { if (!busy) setCancelModal(null); }}
-              onConfirm={ids => start(() => confirmCancel(ids))}
-            />
-          </Suspense>
-        )}
+        {cancelFlow.renderModal({
+          busy,
+          eventTitle: event.title || '',
+          onConfirm: ids => {
+            const current = snapshot;
+            if (!current) return;
+            start(() => cancelFlow.confirmCancel({
+              event: current.event,
+              publicId,
+              owned,
+            }, ids));
+          },
+        })}
         {linePromptOpen && (
           <Suspense fallback={null}>
             <DetailLineNotifyPrompt
