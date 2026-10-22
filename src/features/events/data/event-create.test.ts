@@ -1369,6 +1369,31 @@ describe('createEvent', () => {
     expect(txSetMock).not.toHaveBeenCalled();
   });
 
+  it('重試：首次含地圖座標已寫入、重送時沒帶地圖欄位 → CONTENT_CONFLICT（雙向比對選填欄位）', async () => {
+    const existing = {
+      ...(buildCreateEventPayload(buildForm(), buildCtx(), 'ce_golden_user_basic') as unknown as Record<string, unknown>),
+      gpsEnabled: true,
+      lat: 25.03,
+      lng: 121.56,
+      mapLocationConfirmed: true,
+    };
+    txGetMock.mockResolvedValue({ exists: () => true, data: () => existing });
+    await expect(createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic'))
+      .rejects.toMatchObject({ code: 'CONTENT_CONFLICT' });
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('onWriteStart 只在權限通過、即將進入 transaction 時呼叫', async () => {
+    const onWriteStart = vi.fn();
+    await expect(createEvent(buildForm(), buildCtx({ capabilities: [] }), 'ce_golden_user_basic', { onWriteStart }))
+      .rejects.toBeInstanceOf(EventCreateError);
+    expect(onWriteStart).not.toHaveBeenCalled();
+
+    txGetMock.mockResolvedValue({ exists: () => false });
+    await createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic', { onWriteStart });
+    expect(onWriteStart).toHaveBeenCalledTimes(1);
+  });
+
   it('同一 id 已被他人使用 → ID_TAKEN，不覆寫', async () => {
     txGetMock.mockResolvedValue({ exists: () => true, data: () => ({ creatorUid: 'uid_other' }) });
     await expect(createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic'))

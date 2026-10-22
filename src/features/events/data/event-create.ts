@@ -746,6 +746,10 @@ const CREATE_CONTENT_IGNORED_KEYS = new Set([
   'image', 'imageVariants', 'status', 'countdown', 'mapLocationUpdatedAt',
   'current', 'waitlist', 'participants', 'waitlistNames', 'createdAt', 'updatedAt',
 ]);
+/** buildCreateEventPayload 視條件才寫的建立欄位：本次沒寫時，既有文件也必須沒有實際內容（雙向比對）。 */
+const CREATE_OPTIONAL_CONTENT_KEYS = [
+  'teamSplit', 'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed',
+];
 
 function normalizeForCompare(value: unknown): unknown {
   if (value instanceof Date) return value.getTime();
@@ -766,11 +770,22 @@ export function createContentMatches(
   existing: Record<string, unknown>,
   payload: Record<string, unknown>,
 ): boolean {
-  return Object.keys(payload).every((key) => {
+  const sameWritten = Object.keys(payload).every((key) => {
     if (CREATE_CONTENT_IGNORED_KEYS.has(key) || payload[key] === undefined) return true;
     return JSON.stringify(normalizeForCompare(existing[key] ?? null))
       === JSON.stringify(normalizeForCompare(payload[key]));
   });
+  // 例：首次含地圖座標已寫入、重送時關掉地圖 → 既有座標仍在，不能當成同一請求。
+  const noDroppedOptional = CREATE_OPTIONAL_CONTENT_KEYS.every((key) => (
+    payload[key] !== undefined
+    || existing[key] === undefined || existing[key] === null || existing[key] === false
+  ));
+  return sameWritten && noDroppedOptional;
+}
+
+/** 呼叫端掛勾：onWriteStart 在權限檢查與圖片上傳都通過、即將進入 transaction 時呼叫（之後失敗才是「結果未確認」）。 */
+export interface CreateWriteHooks {
+  onWriteStart?: () => void;
 }
 
 /**
@@ -781,6 +796,7 @@ export async function createEvent(
   form: CreateEventForm,
   ctx: CreateEventContext,
   eventId: string,
+  hooks: CreateWriteHooks = {},
 ): Promise<{
   eventId: string;
   payload: EventCreatePayload;
@@ -804,6 +820,7 @@ export async function createEvent(
     getFirebase(),
   ]);
   const ref = doc(db, 'events', eventId);
+  hooks.onWriteStart?.();
   const alreadyExisted = await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (snap.exists()) {
@@ -834,6 +851,7 @@ export async function createEventsBatch(
   ctx: CreateEventContext,
   eventIds: readonly string[],
   batchGroupId: string,
+  hooks: CreateWriteHooks = {},
 ): Promise<{ eventIds: string[]; alreadyExisted: boolean; addonsStripped: boolean }> {
   if (forms.length < 2 || forms.length > 30 || eventIds.length !== forms.length) {
     throw new EventCreateError('BATCH_SIZE_INVALID', 'Event batch must contain 2 to 30 forms and matching IDs.');
@@ -888,6 +906,7 @@ export async function createEventsBatch(
     ref: doc(db, 'events', payload.id),
   }));
 
+  hooks.onWriteStart?.();
   const alreadyExisted = await runTransaction(db, async tx => {
     // 照 A addEventsAtomic：同一個 transaction 先讀全部，再判斷冪等或衝突，最後全部寫入。
     const snapshots: Array<Awaited<ReturnType<typeof tx.get>>> = [];

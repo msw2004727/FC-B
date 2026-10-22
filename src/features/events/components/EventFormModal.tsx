@@ -473,8 +473,13 @@ export function EventFormModal({
           return;
         }
       }
-      // 從這裡起可能寫入；成功才清掉，失敗則保留讓重送沿用同一請求。
-      if (createRequest) unconfirmedCreateRef.current = createRequest;
+      // 資料層進入 transaction 時才標記：之後失敗結果未確認，保留讓重送沿用同一請求；成功才清掉。
+      // 權限、圖片上傳等寫入前的失敗不標記，也不清掉先前真正未確認的標記。
+      const writeHooks = {
+        onWriteStart: () => {
+          if (createRequest) unconfirmedCreateRef.current = createRequest;
+        },
+      };
       const creatorName = resolveCreatorName(
         current.viewer.displayName,
         current.viewer.role,
@@ -560,7 +565,7 @@ export function EventFormModal({
         });
         batchGroupIdRef.current ??= generateId('batch_');
         const forms = buildMultiDateForms(payloadForm, submitDates, stateForSubmit);
-        const result = await createEventsBatch(forms, ctx, ids, batchGroupIdRef.current);
+        const result = await createEventsBatch(forms, ctx, ids, batchGroupIdRef.current, writeHooks);
         if (!isCurrent()) return;
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
@@ -579,7 +584,7 @@ export function EventFormModal({
           targetEventId = newEventId(ctx);
           setGeneratedEventId(targetEventId);
         }
-        const result = await createEvent(payloadForm, ctx, targetEventId);
+        const result = await createEvent(payloadForm, ctx, targetEventId, writeHooks);
         if (!isCurrent()) return;
         unconfirmedCreateRef.current = null;
         if (result.addonsStripped) {
