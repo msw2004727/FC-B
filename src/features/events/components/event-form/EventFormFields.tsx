@@ -23,6 +23,7 @@ import type { CoverUploadView, DelegatePickerView, LocationControlView } from '.
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
 import { EventFormAddons, type EventFormAddonsProps } from './EventFormAddons';
+import type { MultiDateView } from './use-multi-date';
 
 export interface EventFormFieldsProps {
   mode: 'create' | 'edit';
@@ -34,6 +35,7 @@ export interface EventFormFieldsProps {
   location: LocationControlView;
   delegates: DelegatePickerView;
   addons?: Omit<EventFormAddonsProps, 'onInfo'>;
+  multiDate?: MultiDateView;
 }
 
 /** A `_userTag(name, role)` 的 role class 只認內建角色；未知值退回 user（避免渲染錯誤角色樣式）。 */
@@ -220,9 +222,12 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
     regOpenSummaryText = lt('報名開放：請選擇完整的開放日期與時間');
   }
 
+  const isMultiDate = props.mode === 'create' && props.multiDate?.isMultiDate === true;
   const regOpenHint = !state.regOpenEnabled
-    ? lt('關閉時建立後立即開放報名；開啟後可指定開放日期與時間。')
-    : lt('報名時間未到會顯示「即將開放」，到達時間後自動開放報名。');
+    ? lt('關閉時建立後立即開放報名；開啟後可指定開放日期與時間。', '關閉時建立後立即開放報名；開啟後可指定開放日期與時間。')
+    : isMultiDate
+      ? lt('每場活動的報名開放時間將依此設定個別計算。', '每場活動的報名開放時間將依此設定個別計算。')
+      : lt('報名時間未到會顯示「即將開放」，到達時間後自動開放報名。', '報名時間未到會顯示「即將開放」，到達時間後自動開放報名。');
 
   // 照 A _updateEventAgeLimitUI。
   const minAgeNum = parseMinAge(state.minAge);
@@ -521,9 +526,28 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
         <div id="ce-time-summary" class="ce-time-summary" aria-live="polite">
           {timeSummaryText}
         </div>
-        <div id="ce-multi-date-area" style={{ display: 'none' }}>
-          <div id="ce-multi-date-tags" class="ce-multi-date-tags"></div>
-          <div id="ce-multi-date-count" class="ce-multi-date-count"></div>
+        <div id="ce-multi-date-area" style={{ display: isMultiDate ? '' : 'none' }}>
+          <div id="ce-multi-date-tags" class="ce-multi-date-tags">
+            {isMultiDate && props.multiDate?.dates.map(date => {
+              const parts = date.split('-');
+              const label = parts.length === 3
+                ? `${Number.parseInt(parts[1] ?? '', 10)}/${Number.parseInt(parts[2] ?? '', 10)}`
+                : date;
+              return (
+                <span class="ce-date-tag" key={date}>
+                  {label}
+                  <span
+                    class="ce-date-tag-x"
+                    data-date={date}
+                    onClick={() => props.multiDate?.onRemove(date)}
+                  >✕</span>
+                </span>
+              );
+            })}
+          </div>
+          <div id="ce-multi-date-count" class="ce-multi-date-count">
+            {isMultiDate ? props.multiDate?.countText : ''}
+          </div>
         </div>
       </div>
 
@@ -563,7 +587,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
           <div
             id="ce-reg-open-absolute"
             class="ce-reg-open-row"
-            style={{ display: state.regOpenEnabled ? undefined : 'none' }}
+            style={{ display: state.regOpenEnabled && !isMultiDate ? undefined : 'none' }}
           >
             <label class="ce-time-field ce-reg-open-field">
               <span class="ce-time-field-label">{lt('開放日期')}</span>
@@ -572,7 +596,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                 id="ce-reg-open-date"
                 class="ce-reg-open-date"
                 placeholder={lt('報名開放日期')}
-                disabled={!state.regOpenEnabled}
+                disabled={!state.regOpenEnabled || isMultiDate}
                 value={state.regOpenDate}
                 onInput={(e) => onPatch({ regOpenDate: e.currentTarget.value })}
                 onChange={(e) => onPatch({ regOpenDate: e.currentTarget.value })}
@@ -586,19 +610,41 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                 class="ce-reg-open-clock"
                 step={1800}
                 placeholder={lt('報名開放時間')}
-                disabled={!state.regOpenEnabled}
+                disabled={!state.regOpenEnabled || isMultiDate}
                 value={state.regOpenClock}
                 onInput={(e) => onPatch({ regOpenClock: e.currentTarget.value })}
                 onChange={(e) => onPatch({ regOpenClock: e.currentTarget.value })}
               />
             </label>
           </div>
-          <div id="ce-reg-open-relative" class="ce-reg-open-relative" style={{ display: 'none' }}>
-            <span class="ce-reg-rel-label">{lt('活動開始前')}</span>
-            <select id="ce-reg-rel-days" class="ce-reg-rel-select"></select>
-            <span>{lt('日')}</span>
-            <select id="ce-reg-rel-hours" class="ce-reg-rel-select"></select>
-            <span>{lt('時')}</span>
+          <div
+            id="ce-reg-open-relative"
+            class="ce-reg-open-relative"
+            style={{ display: state.regOpenEnabled && isMultiDate ? '' : 'none' }}
+          >
+            <span class="ce-reg-rel-label">{lt('活動開始前', '活動開始前')}</span>
+            <select
+              id="ce-reg-rel-days"
+              class="ce-reg-rel-select"
+              value={state.regRelDays}
+              onChange={e => onPatch({ regRelDays: e.currentTarget.value })}
+            >
+              {Array.from({ length: 31 }, (_, value) => (
+                <option key={value} value={String(value)}>{value}</option>
+              ))}
+            </select>
+            <span>{lt('日', '日')}</span>
+            <select
+              id="ce-reg-rel-hours"
+              class="ce-reg-rel-select"
+              value={state.regRelHours}
+              onChange={e => onPatch({ regRelHours: e.currentTarget.value })}
+            >
+              {Array.from({ length: 24 }, (_, value) => (
+                <option key={value} value={String(value)}>{value}</option>
+              ))}
+            </select>
+            <span>{lt('時', '時')}</span>
           </div>
         </div>
         <div id="ce-reg-open-summary" class="ce-time-summary ce-time-summary-muted" aria-live="polite">

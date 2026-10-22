@@ -81,6 +81,8 @@ export interface EventFormState extends EventFormAddonState {
   regOpenEnabled: boolean;
   regOpenDate: string;
   regOpenClock: string;
+  regRelDays: string;
+  regRelHours: string;
   max: string;
   ageLimitEnabled: boolean;
   minAge: string;
@@ -105,6 +107,8 @@ export function createDefaultFormState(_now: Date = new Date()): EventFormState 
     regOpenEnabled: false,
     regOpenDate: '',
     regOpenClock: '',
+    regRelDays: '0',
+    regRelHours: '0',
     max: '20',
     ageLimitEnabled: false,
     minAge: '0',
@@ -319,7 +323,8 @@ export type ValidateEventFormResult =
 export function validateEventForm(
   state: EventFormState,
   now: Date = new Date(),
-  options?: { canUseAddons?: boolean },
+  // ASSUMPTION: PM 以 options.dates 傳入 hook.dates；既有呼叫不傳時維持單日驗證。
+  options?: { canUseAddons?: boolean; dates?: readonly string[] },
 ): ValidateEventFormResult {
   // 照 A _getEventSocialLinksFormData：先檢查各原始輸入，再正規化及去重。
   if (state.socialLinksEnabled) {
@@ -355,8 +360,11 @@ export function validateEventForm(
     return { ok: false, messageKey: 'events.form.error.locationRequired' };
   }
 
-  const dateVal = state.dateVal.trim();
-  if (!dateVal) {
+  // 照 A _isMultiDateMode：編輯模式永遠使用單日。
+  const isMultiDate = !state.eventId && (options?.dates?.length ?? 0) >= 2;
+  const dates = isMultiDate ? [...(options?.dates ?? [])] : [state.dateVal.trim()];
+  const dateVal = dates[0] ?? '';
+  if (!dateVal || dates.some(date => !date.trim())) {
     return { ok: false, messageKey: 'events.form.error.dateRequired' };
   }
 
@@ -366,19 +374,27 @@ export function validateEventForm(
     return { ok: false, messageKey: 'events.form.error.timeRequired' };
   }
 
-  if (state.regOpenEnabled) {
+  if (state.regOpenEnabled && !isMultiDate) {
     if (!state.regOpenDate.trim() || !state.regOpenClock.trim()) {
       return { ok: false, messageKey: 'events.form.error.regOpenIncomplete' };
     }
   }
 
   if (canUseAddons && state.earlyBirdEnabled) {
-    const regOpenTime = state.regOpenEnabled
-      ? new Date(`${state.regOpenDate.trim()}T${state.regOpenClock.trim()}`).getTime()
-      : NaN;
-    // ASSUMPTION: 本卡既有表單只有單日模式；多日相對開放時間由後續卡處理。
-    if (!Number.isFinite(regOpenTime) || regOpenTime <= now.getTime()) {
-      return { ok: false, message: '早鳥報名需搭配未來的開放報名時間' };
+    if (isMultiDate) {
+      // 照 A _getRelativeRegOpen：開關關閉時視為 0。
+      const days = state.regOpenEnabled ? Number.parseInt(state.regRelDays, 10) || 0 : 0;
+      const hours = state.regOpenEnabled ? Number.parseInt(state.regRelHours, 10) || 0 : 0;
+      if (!days && !hours) {
+        return { ok: false, message: '早鳥報名需先設定活動開始前的開放報名時間' };
+      }
+    } else {
+      const regOpenTime = state.regOpenEnabled
+        ? new Date(`${state.regOpenDate.trim()}T${state.regOpenClock.trim()}`).getTime()
+        : NaN;
+      if (!Number.isFinite(regOpenTime) || regOpenTime <= now.getTime()) {
+        return { ok: false, message: '早鳥報名需搭配未來的開放報名時間' };
+      }
     }
   }
 
@@ -386,24 +402,19 @@ export function validateEventForm(
     return { ok: false, message: '請輸入活動費用' };
   }
 
-  const startTimestamp = new Date(`${dateVal}T${startTime}`);
-  const endTimestamp = new Date(`${dateVal}T${endTime}`);
-
+  // 照 A handleCreateEvent：建立時逐場檢查開始時間。
+  const timestamps = dates.map(date => ({
+    start: new Date(`${date}T${startTime}`).getTime(),
+    end: new Date(`${date}T${endTime}`).getTime(),
+  }));
   const isCreate = !state.eventId;
-  if (isCreate) {
-    if (
-      Number.isNaN(startTimestamp.getTime()) ||
-      startTimestamp.getTime() < now.getTime()
-    ) {
-      return { ok: false, messageKey: 'events.form.error.startInPast' };
-    }
+  if (isCreate && timestamps.some(item => Number.isNaN(item.start) || item.start < now.getTime())) {
+    return { ok: false, messageKey: 'events.form.error.startInPast' };
   }
 
-  if (
-    Number.isNaN(startTimestamp.getTime()) ||
-    Number.isNaN(endTimestamp.getTime()) ||
-    endTimestamp.getTime() <= startTimestamp.getTime()
-  ) {
+  if (timestamps.some(item =>
+    Number.isNaN(item.start) || Number.isNaN(item.end) || item.end <= item.start
+  )) {
     return { ok: false, messageKey: 'events.form.error.endBeforeStart' };
   }
 
@@ -424,6 +435,47 @@ export function validateEventForm(
   }
 
   return { ok: true };
+}
+
+/** 照 A _calcRegOpenForDate：以本地日期逐日、逐時計算。 */
+export function calcRegOpenForDate(
+  dateVal: string,
+  startTime: string,
+  relDays: number,
+  relHours: number,
+): string | null {
+  if (relDays === 0 && relHours === 0) return null;
+  if (!Number.isInteger(relDays) || !Number.isInteger(relHours)
+    || relDays < 0 || relDays > 30 || relHours < 0 || relHours > 23) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal) || !/^\d{2}:\d{2}$/.test(startTime)) return null;
+
+  const dt = new Date(`${dateVal}T${startTime}`);
+  if (!Number.isFinite(dt.getTime())) return null;
+  // 照本單非法日期契約：拒絕 Date 自動進位的日期與時間。
+  const normalizedDate = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+  const normalizedTime = `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  if (normalizedDate !== dateVal || normalizedTime !== startTime) return null;
+
+  dt.setDate(dt.getDate() - relDays);
+  dt.setHours(dt.getHours() - relHours);
+  return `${String(dt.getFullYear()).padStart(4, '0')}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}T${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+}
+
+/** 照 A _buildMultiDateEvents：其他欄位沿用，每場獨立換日期與報名時間。 */
+export function buildMultiDateForms(
+  base: CreateEventForm,
+  dates: readonly string[],
+  state: EventFormState,
+): CreateEventForm[] {
+  const days = Number.parseInt(state.regRelDays, 10) || 0;
+  const hours = Number.parseInt(state.regRelHours, 10) || 0;
+  return dates.map(dateVal => ({
+    ...base,
+    dateVal,
+    regOpenTime: state.regOpenEnabled
+      ? calcRegOpenForDate(dateVal, base.startTime, days, hours)
+      : null,
+  }));
 }
 
 /** A `_regionGetFormData`：關閉送空值；開啟時縣市原樣送出（A 不回填，空縣市由 UI「至少保留一個」避免）。 */

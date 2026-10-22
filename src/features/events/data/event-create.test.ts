@@ -75,6 +75,7 @@ import {
   buildEditEventUpdates,
   changeEventCapacity,
   createEvent,
+  createEventsBatch,
   newEventId,
   updateEventBasics,
   EventCreateError,
@@ -102,6 +103,331 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+import {
+  buildMultiDateForms,
+  calcRegOpenForDate,
+  createDefaultFormState,
+  toCreateEventForm,
+  validateEventForm,
+} from './event-form-model';
+
+// ASSUMPTION: 未提供 event-form-model.test.ts 原文，純函式案例集中於本檔，保留未知既有測試。
+describe('卡 3B：相對報名與多日期驗證', () => {
+  function validState() {
+    return {
+      ...createDefaultFormState(),
+      title: '多日足球',
+      location: '球場',
+      sportTag: 'football',
+      dateVal: '2030-05-10',
+    };
+  }
+
+  it('相對欄位預設為 0', () => {
+    expect(createDefaultFormState()).toMatchObject({ regRelDays: '0', regRelHours: '0' });
+  });
+
+  it('跨日、跨月、跨年與閏日依本地時間計算', () => {
+    expect(calcRegOpenForDate('2030-05-10', '01:30', 1, 2)).toBe('2030-05-08T23:30');
+    expect(calcRegOpenForDate('2030-03-01', '14:00', 1, 0)).toBe('2030-02-28T14:00');
+    expect(calcRegOpenForDate('2030-01-01', '00:30', 0, 1)).toBe('2029-12-31T23:30');
+    expect(calcRegOpenForDate('2032-03-01', '14:00', 1, 0)).toBe('2032-02-29T14:00');
+  });
+
+  it('0、非法日期、非法時間及超範圍回 null', () => {
+    expect(calcRegOpenForDate('2030-05-10', '14:00', 0, 0)).toBeNull();
+    expect(calcRegOpenForDate('invalid', '14:00', 1, 0)).toBeNull();
+    expect(calcRegOpenForDate('2030-02-30', '14:00', 1, 0)).toBeNull();
+    expect(calcRegOpenForDate('2030-05-10', '24:00', 1, 0)).toBeNull();
+    expect(calcRegOpenForDate('2030-05-10', '14:00', 31, 0)).toBeNull();
+    expect(calcRegOpenForDate('2030-05-10', '14:00', 0, 24)).toBeNull();
+  });
+
+  it('組裝只替換 dateVal 與 regOpenTime，不修改 base', () => {
+    const state = { ...validState(), regOpenEnabled: true, regRelDays: '1', regRelHours: '2' };
+    const base = toCreateEventForm(state, '教練');
+    const dates = ['2030-05-10', '2030-05-12'];
+    const forms = buildMultiDateForms(base, dates, state);
+    expect(forms).toEqual(dates.map(dateVal => ({
+      ...base,
+      dateVal,
+      regOpenTime: `${dateVal === '2030-05-10' ? '2030-05-09' : '2030-05-11'}T12:00`,
+    })));
+    expect(base.dateVal).toBe('2030-05-10');
+    expect(base.regOpenTime).toBeNull();
+    expect(buildMultiDateForms(base, dates, { ...state, regOpenEnabled: false })
+      .every(form => form.regOpenTime === null)).toBe(true);
+  });
+
+  it('多日期跳過絕對時間完整性，早鳥要求相對開放時間', () => {
+    // 測試同步更新：照 A（驗證）。
+    const state = {
+      ...validState(),
+      dateVal: '',
+      regOpenEnabled: true,
+      earlyBirdEnabled: true,
+    };
+    const now = new Date('2030-05-01T12:00');
+    const options = { dates: ['2030-05-10', '2030-05-12'] };
+    expect(validateEventForm(state, now, options)).toEqual({
+      ok: false,
+      message: '早鳥報名需先設定活動開始前的開放報名時間',
+    });
+    expect(validateEventForm({ ...state, regRelDays: '1' }, now, options)).toEqual({ ok: true });
+    expect(validateEventForm({ ...state, regRelHours: '1' }, now, options)).toEqual({ ok: true });
+    expect(validateEventForm({
+      ...state, regRelDays: '1', regOpenEnabled: false,
+    }, now, options)).toEqual({
+      ok: false,
+      message: '早鳥報名需先設定活動開始前的開放報名時間',
+    });
+    expect(validateEventForm(state, now, { ...options, canUseAddons: false })).toEqual({ ok: true });
+  });
+
+  it('每一場都檢查開始時間，不能只驗第一場', () => {
+    const state = { ...validState(), dateVal: '' };
+    expect(validateEventForm(state, new Date('2030-05-01T12:00'), {
+      dates: ['2030-05-10', '2030-04-30'],
+    })).toEqual({ ok: false, messageKey: 'events.form.error.startInPast' });
+  });
+
+  it('單日期及編輯維持絕對時間驗證', () => {
+    const state = { ...validState(), regOpenEnabled: true };
+    const now = new Date('2030-05-01T12:00');
+    expect(validateEventForm(state, now)).toEqual({
+      ok: false, messageKey: 'events.form.error.regOpenIncomplete',
+    });
+    expect(validateEventForm({ ...state, eventId: 'ce_existing' }, now, {
+      dates: ['2030-05-10', '2030-05-12'],
+    })).toEqual({ ok: false, messageKey: 'events.form.error.regOpenIncomplete' });
+  });
+});
+
+describe('卡 3B：createEventsBatch', () => {
+  function batchContext(): CreateEventContext {
+    return {
+      uid: 'batch-owner',
+      role: 'super_admin',
+      capabilities: [],
+      rolePermissions: null,
+      userGrants: null,
+      now: new Date('2030-05-01T00:00'),
+      generateId: vi.fn(() => 'ce_unused'),
+    };
+  }
+
+  function batchForms(count = 2): CreateEventForm[] {
+    const state = {
+      ...createDefaultFormState(),
+      title: '多日足球',
+      location: '球場',
+      sportTag: 'football',
+      regOpenEnabled: true,
+      regRelDays: '1',
+      teamSplitEnabled: true,
+      teamSplitMode: 'self-select' as const,
+      teamSplitLockHours: 2,
+    };
+    const dates = Array.from({ length: count }, (_, index) =>
+      `2030-05-${String(index + 1).padStart(2, '0')}`);
+    return buildMultiDateForms(toCreateEventForm(state, '教練'), dates, state);
+  }
+
+  function batchIds(count = 2): string[] {
+    return Array.from({ length: count }, (_, index) => `ce_batch_${index}`);
+  }
+
+  function writtenPayload(index: number): Record<string, unknown> {
+    const value: unknown = txSetMock.mock.calls[index]?.[1];
+    if (!value || typeof value !== 'object') throw new Error('缺少寫入 payload');
+    return value as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    txGetMock.mockReset();
+    txSetMock.mockReset();
+    txGetMock.mockResolvedValue({ exists: () => false });
+  });
+
+  it.each([2, 30])('%i 場只用一次 transaction，先全部 get 才全部 set', async count => {
+    const { runTransaction } = await import('firebase/firestore');
+    vi.mocked(runTransaction).mockClear();
+    const forms = batchForms(count);
+    const ids = batchIds(count);
+    const result = await createEventsBatch(forms, batchContext(), ids, 'batch_fixed');
+    expect(result).toEqual({ eventIds: ids, alreadyExisted: false, addonsStripped: false });
+    expect(runTransaction).toHaveBeenCalledTimes(1);
+    expect(txGetMock).toHaveBeenCalledTimes(count);
+    expect(txSetMock).toHaveBeenCalledTimes(count);
+    const getOrder = txGetMock.mock.invocationCallOrder;
+    const setOrder = txSetMock.mock.invocationCallOrder;
+    expect(Math.max(...getOrder)).toBeLessThan(Math.min(...setOrder));
+    forms.forEach((form, index) => {
+      const id = ids[index];
+      const payload = writtenPayload(index);
+      expect(txSetMock.mock.calls[index]?.[0]).toEqual({ path: `events/${id}` });
+      expect(payload).toMatchObject({
+        id,
+        clientRequestId: id,
+        creatorUid: 'batch-owner',
+        batchGroupId: 'batch_fixed',
+        date: `${form.dateVal.replace(/-/g, '/')} 14:00~16:00`,
+        startTimestamp: new Date(`${form.dateVal}T14:00`),
+        endTimestamp: new Date(`${form.dateVal}T16:00`),
+        regOpenTime: form.regOpenTime,
+        status: index === 0 ? 'open' : 'upcoming',
+        teamSplit: { lockAt: new Date(`${form.dateVal}T12:00`) },
+        createdAt: '__SERVER_TIMESTAMP__',
+        updatedAt: '__SERVER_TIMESTAMP__',
+      });
+      expect(payload).not.toHaveProperty('payloadRevision');
+      expect(payload).not.toHaveProperty('payloadDigest');
+    });
+    expect(writtenPayload(0).teamSplit).not.toEqual(writtenPayload(1).teamSplit);
+  });
+
+  it.each([0, 1, 31])('拒絕 %i 場且沒有上傳或寫入', async count => {
+    await expect(createEventsBatch(batchForms(count), batchContext(), batchIds(count), 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'BATCH_SIZE_INVALID' });
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(txGetMock).not.toHaveBeenCalled();
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('拒絕長度不符、重複 ID、非法 ID、空 UID 與空批次 ID', async () => {
+    await expect(createEventsBatch(batchForms(), batchContext(), ['ce_one'], 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'BATCH_SIZE_INVALID' });
+    await expect(createEventsBatch(batchForms(), batchContext(), ['ce_same', 'ce_same'], 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'ID_TAKEN' });
+    await expect(createEventsBatch(batchForms(), batchContext(), ['bad', 'ce_valid'], 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'INVALID_ID' });
+    await expect(createEventsBatch(batchForms(), { ...batchContext(), uid: '' }, batchIds(), 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'CREATOR_UID_REQUIRED' });
+    await expect(createEventsBatch(batchForms(), batchContext(), batchIds(), ''))
+      .rejects.toMatchObject({ code: 'BATCH_GROUP_INVALID' });
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('全部相符的重送視為成功，不寫入、不另產生 ID', async () => {
+    const ctx = batchContext();
+    txGetMock.mockImplementation(async (ref: { path: string }) => {
+      const id = ref.path.slice('events/'.length);
+      return {
+        exists: () => true,
+        data: () => ({
+          id, clientRequestId: id, creatorUid: ctx.uid, batchGroupId: 'batch_fixed',
+        }),
+      };
+    });
+    expect(await createEventsBatch(batchForms(), ctx, batchIds(), 'batch_fixed'))
+      .toMatchObject({ alreadyExisted: true, eventIds: batchIds() });
+    expect(txSetMock).not.toHaveBeenCalled();
+    expect(ctx.generateId).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 1])('部分存在（第 %i 筆存在）一筆都不寫', async existingIndex => {
+    batchIds().forEach((id, index) => {
+      txGetMock.mockResolvedValueOnce({
+        exists: () => index === existingIndex,
+        data: () => ({
+          id, clientRequestId: id, creatorUid: 'batch-owner', batchGroupId: 'batch_fixed',
+        }),
+      });
+    });
+    await expect(createEventsBatch(batchForms(), batchContext(), batchIds(), 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'ID_TAKEN' });
+    expect(txGetMock).toHaveBeenCalledTimes(2);
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['id', 'creatorUid', 'clientRequestId', 'batchGroupId'])('%s 不符一筆都不寫', async field => {
+    txGetMock.mockImplementation(async (ref: { path: string }) => {
+      const id = ref.path.slice('events/'.length);
+      return {
+        exists: () => true,
+        data: () => ({
+          id, clientRequestId: id, creatorUid: 'batch-owner', batchGroupId: 'batch_fixed',
+          [field]: 'different',
+        }),
+      };
+    });
+    await expect(createEventsBatch(batchForms(), batchContext(), batchIds(), 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'ID_TAKEN' });
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('封面 variants 逐場傳入自己的 ID，完成後才開始 transaction', async () => {
+    coverMocks.uploadEventImageVariants.mockImplementation(async (id: string) => ({
+      cover: `https://example.com/events/${id}_cover`,
+      homeNext: `https://example.com/events/${id}_homeNext`,
+    }));
+    const forms = batchForms().map(form => ({
+      ...form,
+      image: '',
+      imageVariants: { cover: 'data:image/webp;base64,cover', homeNext: 'data:image/webp;base64,next' },
+    }));
+    await createEventsBatch(forms, batchContext(), batchIds(), 'batch_fixed');
+    batchIds().forEach((id, index) => {
+      expect(coverMocks.uploadEventImageVariants).toHaveBeenNthCalledWith(index + 1, id, forms[index]?.imageVariants);
+      expect(writtenPayload(index)).toMatchObject({
+        image: `https://example.com/events/${id}_cover`,
+        imageVariants: {
+          cover: `https://example.com/events/${id}_cover`,
+          homeNext: `https://example.com/events/${id}_homeNext`,
+        },
+      });
+    });
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(Math.max(...coverMocks.uploadEventImageVariants.mock.invocationCallOrder))
+      .toBeLessThan(Math.min(...txGetMock.mock.invocationCallOrder));
+  });
+
+  it('無 variants 的 data URL 沿用單場上傳函式與各自路徑', async () => {
+    const forms = batchForms().map(form => ({ ...form, image: 'data:image/png;base64,cover' }));
+    await createEventsBatch(forms, batchContext(), batchIds(), 'batch_fixed');
+    batchIds().forEach((id, index) => {
+      expect(coverMocks.uploadImageDataUrl).toHaveBeenNthCalledWith(
+        index + 1, 'data:image/png;base64,cover', `events/${id}`,
+      );
+    });
+  });
+
+  it('封面失敗不進 transaction，重試可以成功', async () => {
+    coverMocks.uploadEventImageVariants.mockRejectedValueOnce(new Error('upload failed'));
+    await expect(createEventsBatch(batchForms(), batchContext(), batchIds(), 'batch_fixed'))
+      .rejects.toThrow('upload failed');
+    expect(txGetMock).not.toHaveBeenCalled();
+    expect(txSetMock).not.toHaveBeenCalled();
+    await expect(createEventsBatch(batchForms(), batchContext(), batchIds(), 'batch_fixed'))
+      .resolves.toMatchObject({ alreadyExisted: false });
+    expect(txSetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('沒有建立權限時不先上傳', async () => {
+    await expect(createEventsBatch(
+      batchForms(),
+      { ...batchContext(), role: 'user', capabilities: [] },
+      batchIds(),
+      'batch_fixed',
+    )).rejects.toBeInstanceOf(EventCreateError);
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('沿用加值權限清除並回傳 addonsStripped', async () => {
+    const ctx = {
+      ...batchContext(),
+      role: 'user',
+      capabilities: ['user.activity.basic_create'],
+    };
+    await expect(createEventsBatch(batchForms(), ctx, batchIds(), 'batch_fixed'))
+      .resolves.toMatchObject({ addonsStripped: true });
+    expect(writtenPayload(0)).not.toHaveProperty('teamSplit');
+    expect(writtenPayload(1)).not.toHaveProperty('teamSplit');
+  });
 });
 
 // ── 測試輔助 ─────────────────────────────────────────

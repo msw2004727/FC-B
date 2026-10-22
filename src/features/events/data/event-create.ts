@@ -788,6 +788,101 @@ export async function createEvent(
   };
 }
 
+/** 照 A addEventsAtomic：先全部讀取及判斷，再全部寫入。 */
+export async function createEventsBatch(
+  forms: readonly CreateEventForm[],
+  ctx: CreateEventContext,
+  eventIds: readonly string[],
+  batchGroupId: string,
+): Promise<{ eventIds: string[]; alreadyExisted: boolean; addonsStripped: boolean }> {
+  if (forms.length < 2 || forms.length > 30 || eventIds.length !== forms.length) {
+    throw new EventCreateError('BATCH_SIZE_INVALID', 'Event batch must contain 2 to 30 forms and matching IDs.');
+  }
+  if (eventIds.some(id => !EVENT_ID_PATTERN.test(id))) {
+    throw new EventCreateError('INVALID_ID', 'Invalid event document ID.');
+  }
+  if (new Set(eventIds).size !== eventIds.length) {
+    throw new EventCreateError('ID_TAKEN', 'Duplicate event document IDs.');
+  }
+  if (!ctx.uid.trim() || ctx.uid === 'unknown') {
+    throw new EventCreateError('CREATOR_UID_REQUIRED', 'Creator UID is required.');
+  }
+  if (!batchGroupId.trim()) {
+    throw new EventCreateError('BATCH_GROUP_INVALID', 'Batch group ID is required.');
+  }
+
+  assertCreateAllowed(ctx);
+  // 照 A addEventsAtomic：固定本次輸入，避免上傳期間呼叫端改動陣列。
+  const ids = [...eventIds];
+  const prepared = forms.map((form, index) => {
+    const id = ids[index];
+    if (!id) {
+      throw new EventCreateError('INVALID_ID', 'Missing event document ID.');
+    }
+    return {
+      ...buildCreateEventPayload(form, ctx, id),
+      batchGroupId,
+    };
+  });
+  const creatorUid = ctx.uid;
+  const addonsStripped = forms.some(form => applyAddonGate(form, ctx, null).stripped);
+
+  // 照 A addEventsAtomic：每場各自上傳，transaction callback 不做 Storage I/O。
+  for (const payload of prepared) {
+    const imageVariants = await uploadEventImageVariants(payload.id, payload.imageVariants);
+    let image = pickEventImage(payload.image, imageVariants);
+    if (image.startsWith('data:')) {
+      image = (await uploadImageDataUrl(image, `events/${payload.id}`)) || '';
+    }
+    payload.image = resolveEventCoverImage(image);
+    if (imageVariants) payload.imageVariants = imageVariants;
+    else delete payload.imageVariants;
+  }
+
+  const [{ doc, runTransaction, serverTimestamp }, { db }] = await Promise.all([
+    import('firebase/firestore'),
+    getFirebase(),
+  ]);
+  const entries = prepared.map(payload => ({
+    payload,
+    ref: doc(db, 'events', payload.id),
+  }));
+
+  const alreadyExisted = await runTransaction(db, async tx => {
+    // 照 A addEventsAtomic：同一個 transaction 先讀全部，再判斷冪等或衝突，最後全部寫入。
+    const snapshots: Array<Awaited<ReturnType<typeof tx.get>>> = [];
+    for (const entry of entries) snapshots.push(await tx.get(entry.ref));
+
+    const existingCount = snapshots.filter(snapshot => snapshot.exists()).length;
+    if (existingCount > 0) {
+      const matches = existingCount === entries.length && entries.every((entry, index) => {
+        const snapshot = snapshots[index];
+        if (!snapshot?.exists()) return false;
+        const existing = snapshot.data() as Record<string, unknown>;
+        return existing.id === entry.payload.id
+          && existing.clientRequestId === entry.payload.id
+          && existing.creatorUid === creatorUid
+          && existing.batchGroupId === batchGroupId;
+      });
+      if (!matches) {
+        throw new EventCreateError('ID_TAKEN', 'Batch IDs are partially present or belong to another request.');
+      }
+      return true;
+    }
+
+    for (const entry of entries) {
+      tx.set(entry.ref, {
+        ...entry.payload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    return false;
+  });
+
+  return { eventIds: ids, alreadyExisted, addonsStripped };
+}
+
 export async function updateEventBasics(
   existing: EventForEdit,
   form: CreateEventForm,
