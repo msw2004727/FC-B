@@ -36,7 +36,8 @@ export type ShareHeat = 'hot' | 'warm' | 'normal' | 'cold';
 
 export interface ShareRegistration {
   status?: string;
-  teamKey?: string;
+  // 分隊重置後為 null（A _tsTeamKeyUpdatePayload）。
+  teamKey?: string | null;
 }
 
 export interface ShareBuilderContext {

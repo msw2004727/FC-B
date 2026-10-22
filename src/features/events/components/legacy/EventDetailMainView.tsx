@@ -5,6 +5,7 @@ import { eventStartMs } from '../../data/terminal';
 import type { UserRole } from '@/ui/Avatar';
 import { count, safeImageUrl, type DetailEvent } from '../../data/detail-model';
 import { parseEventStartDate } from '../../data/event-lifecycle';
+import { renderEventSocialLinksHtml } from '../../data/event-social-links';
 
 
 export type LegacyDetailEvent = DetailEvent & {
@@ -225,6 +226,7 @@ export interface EventDetailInfoSectionProps {
   onOpenProfile: (uid: string) => void;
   onContactHost: () => void;
   onOpenTeam: (teamId: string) => void;
+  teamSplitSlot?: JSX.Element | null;
 }
 
 export function EventDetailInfoSection({
@@ -236,6 +238,7 @@ export function EventDetailInfoSection({
   onOpenProfile,
   onContactHost,
   onOpenTeam,
+  teamSplitSlot,
 }: EventDetailInfoSectionProps): JSX.Element {
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ?? '')}`;
   const regOpen = formatRegOpenInfo(event, nowMs);
@@ -331,6 +334,7 @@ export function EventDetailInfoSection({
             </span>
           </div>
         )}
+        {teamSplitSlot}
       </div>
 
       <div class="detail-row detail-row-wide detail-host-row" data-detail-field="host">
@@ -369,6 +373,19 @@ export function EventDetailInfoSection({
               />
             ))}
           </span>
+        </div>
+      )}
+
+      {event.socialLinksEnabled && (
+        <div
+          class="detail-row detail-row-wide detail-social-links-row"
+          data-detail-field="social-links"
+        >
+          <span class="detail-label">社群</span>
+          <span
+            class="event-social-link-list"
+            dangerouslySetInnerHTML={{ __html: renderEventSocialLinksHtml(event.socialLinks) }}
+          />
         </div>
       )}
 

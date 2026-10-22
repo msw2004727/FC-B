@@ -37,6 +37,7 @@ const EXPECTED_FIELDS = [
   // T-005b（M-089）：fixture 新增兩欄，由上方 M-089 案例另行逐案比對。
   'canViewEventOperationLog',
   'canManageTeamOnlyVisibility',
+  'canManageTeamSplit',
 ].sort();
 
 describe('O 階段：A 真實函式 432 案差分 oracle', () => {
@@ -71,6 +72,9 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
       }));
       expect(helpers.canViewEventOperationLog(context, input.event), `${testCase.id}: Log`)
         .toBe(testCase.expected.canViewEventOperationLog);
+      // T-005b（M-092）：分隊批次鈕。
+      expect(helpers.canManageTeamSplit(context, input.event), `${testCase.id}: teamSplit`)
+        .toBe(testCase.expected.canManageTeamSplit);
       expect(
         helpers.canManageTeamOnlyVisibility(context, input.teamEvent, staff),
         `${testCase.id}: visibility`,
@@ -110,6 +114,8 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
       }));
       expect(helpers.canViewEventOperationLog(context, input.event), `${index}: Log`)
         .toBe(testCase.expected.canViewEventOperationLog);
+      expect(helpers.canManageTeamSplit(context, input.event), `${index}: teamSplit`)
+        .toBe(testCase.expected.canManageTeamSplit);
       expect(
         helpers.canManageTeamOnlyVisibility(context, input.teamEvent, staff),
         `${index}: team`,
@@ -126,7 +132,7 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
     expect(oracle.cases).toHaveLength(432);
     expect(new Set(oracle.cases.map(testCase => testCase.id)).size).toBe(432);
     // T-005b：FC 67114d051 擴充 oracle（新增 Log／活動公開 helper 與 teamVisibilityCases），既有 432 案預期值不變。
-    expect(oracle.meta.fcHead).toBe('67114d051a76fc2cb35ef8d8623ccc4959211fa9');
+    expect(oracle.meta.fcHead).toBe('64764e0aaca659dea64496f499f4246ec447dc45');
   });
 
   for (const testCase of oracle.cases) {
@@ -194,6 +200,7 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
       const {
         canViewEventOperationLog: _log,
         canManageTeamOnlyVisibility: _teamVisibility,
+        canManageTeamSplit: _teamSplit,
         ...baseExpected
       } = testCase.expected;
       expect(actual, `${testCase.id}: complete expected`).toStrictEqual(baseExpected);

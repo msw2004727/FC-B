@@ -271,3 +271,10 @@ export function canManageTeamOnlyVisibility(
   if (ids.size === 0) return isOwner(context, event);
   return isOwner(context, event) || [...ids].some(id => staffTeamIds.has(id));
 }
+
+/** 照 A _canManageTeamSplit（event-list-helpers.js 第 451～453 行）。 */
+export function canManageTeamSplit(context: OperateContext, event: EventInput): boolean {
+  return !!event
+    && canUseActivityAddons(context, event)
+    && (canManageAllActivities(context) || isScoped(context, event));
+}

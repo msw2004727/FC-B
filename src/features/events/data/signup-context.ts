@@ -1,5 +1,6 @@
 import type { EventDoc, ViewerContext } from './types';
 import type { SignupProfile } from './signup-profile';
+import { getTeamSplit } from './team-split';
 import {
   SignupError,
   type CancelOperationContext,
@@ -185,8 +186,9 @@ export function createDetailSignupContexts(
           participantCheck: checkParticipants(event, participants, deps, now),
           earlyBirdWindow: isEventEarlyBirdWindow(event, now),
           teamSignupAllowed: canDetailTeamSignup(event, viewer.teamIds),
-          // ASSUMPTION: 分隊選隊依本單要求交由下一張單處理。
-          requiresTeamSelection: false,
+          // 照 A handleSignup；由報名 payload 的 teamKey 滿足選隊要求。
+          requiresTeamSelection: getTeamSplit(event)?.enabled === true
+            && getTeamSplit(event)?.mode === 'self-select',
         };
       },
     },

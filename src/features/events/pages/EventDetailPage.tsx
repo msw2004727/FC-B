@@ -7,7 +7,18 @@ import {
   EventDetailHeaderActions,
   canEditDetailActivity,
 } from '../components/legacy/EventDetailHeaderActions';
-import { canViewEventOperationLog } from '../data/operate-permissions';
+import { canManageTeamSplit, canViewEventOperationLog } from '../data/operate-permissions';
+import {
+  getSplitTeams,
+  getTeamSplit,
+  type TeamBatchAction,
+  type TeamRegistration,
+} from '../data/team-split';
+import {
+  TeamInfoCards,
+  TeamBatchButtons,
+  TeamSelectUI,
+} from '../components/legacy/TeamSplitSection';
 import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staff';
 import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
 import type { RegLogRegistration } from '../data/event-reg-log';
@@ -256,6 +267,12 @@ function EventDetailSession({
   const [now, setNow] = useState(() => Date.now());
   const [rosterEditing, setRosterEditing] = useState(false);
   const [rosterSubmitting, setRosterSubmitting] = useState(false);
+  const [selectedTeamKey, setSelectedTeamKey] = useState<string | null>(null);
+  const [teamRegistrations, setTeamRegistrations] = useState<TeamRegistration[] | null>(null);
+  const teamRowsRef = useRef<TeamRegistration[] | null>(null);
+  const teamLoadRef = useRef<Promise<TeamRegistration[]> | null>(null);
+  const teamLoadSequence = useRef(0);
+  const teamBatchPending = useRef(false);
   const alive = useRef(true);
   const sequence = useRef(0);
   const rosterSequence = useRef(0);
@@ -590,6 +607,110 @@ function EventDetailSession({
     && canEditDetailActivity(operateContextFromViewer(viewer), event);
   const canShowDetailLog = visible && !!viewer.uid
     && canViewEventOperationLog(operateContextFromViewer(viewer), event);
+
+  const teamSplitEnabled = getTeamSplit(event)?.enabled === true;
+  // ASSUMPTION: 訪客不讀 registrations，分隊人數照本單顯示 0。
+  const teamDisplayRegistrations: readonly TeamRegistration[] = viewer.uid
+    ? teamRegistrations ?? snapshot?.registrations ?? []
+    : [];
+
+  function publishTeamRows(rows: TeamRegistration[]): void {
+    if (!alive.current) return;
+    teamRowsRef.current = rows;
+    setTeamRegistrations(rows);
+  }
+
+  // 照 A _tsLoadWritableRegistrations；成功才快取，失敗清除 inflight。
+  function loadTeamRows(eventDocId: string): Promise<TeamRegistration[]> {
+    if (teamRowsRef.current !== null) return Promise.resolve(teamRowsRef.current);
+    if (teamLoadRef.current) return teamLoadRef.current;
+    const request = ++teamLoadSequence.current;
+    const task = loadEventRegistrations(eventDocId).then(rows => {
+      if (alive.current && request === teamLoadSequence.current
+        && headerState.current.snapshot?.eventDocId === eventDocId
+        && headerState.current.visible) {
+        publishTeamRows(rows);
+      }
+      return rows;
+    }).finally(() => {
+      if (teamLoadRef.current === task) teamLoadRef.current = null;
+    });
+    teamLoadRef.current = task;
+    return task;
+  }
+
+  useEffect(() => {
+    teamLoadSequence.current += 1;
+    teamLoadRef.current = null;
+    teamRowsRef.current = null;
+    setTeamRegistrations(null);
+    setSelectedTeamKey(null);
+    if (visible && viewer.uid && teamSplitEnabled && snapshot?.eventDocId) {
+      // 照 A _tsPreloadWritableRegistrations；不展開或改變名單載入狀態。
+      loadTeamRows(snapshot.eventDocId).catch(() => {
+        // 照 A：預載失敗不阻斷詳情；批次操作時重新讀取。
+      });
+    }
+    return () => {
+      teamLoadSequence.current += 1;
+      teamLoadRef.current = null;
+    };
+  }, [snapshot?.eventDocId, visible, viewer.uid, teamSplitEnabled]);
+
+  useEffect(() => {
+    if (!viewer.uid || !snapshot || teamBatchPending.current) return;
+    // 照 A 重讀名單後更新分隊快取；初始空陣列不能覆蓋預載結果。
+    if (rosterPhase !== 'ready' && snapshot.registrations.length === 0) return;
+    teamLoadSequence.current += 1;
+    publishTeamRows(snapshot.registrations);
+  }, [snapshot?.registrations, rosterPhase, viewer.uid]);
+
+  async function runTeamBatch(action: TeamBatchAction): Promise<void> {
+    const current = headerState.current;
+    const target = current.snapshot;
+    if (!target || !current.visible || !getTeamSplit(target.event)?.enabled) return;
+    const permitted = (): boolean => canManageTeamSplit(
+      operateContextFromViewer(currentViewer.current),
+      headerState.current.snapshot?.event,
+    );
+    if (!permitted()) {
+      toast.show({ message: '權限不足' });
+      return;
+    }
+    if (teamBatchPending.current) {
+      toast.show({ message: '分隊更新中，請稍候' });
+      return;
+    }
+    teamBatchPending.current = true;
+    const uid = currentViewer.current.uid;
+    const isCurrent = (): boolean => alive.current
+      && currentViewer.current.uid === uid
+      && headerState.current.visible
+      && headerState.current.snapshot === target;
+    try {
+      const { runTeamSplitBatch } = await import('../data/team-split-writes');
+      if (!isCurrent()) return;
+      await runTeamSplitBatch({
+        eventDocId: target.eventDocId,
+        action,
+        teams: getSplitTeams(target.event),
+        canManage: permitted,
+        isCurrent,
+        loadRegistrations: () => loadTeamRows(target.eventDocId),
+        confirm: message => appConfirm(message),
+        notify: message => {
+          if (isCurrent()) toast.show({ message });
+        },
+        publish: rows => {
+          if (isCurrent()) publishTeamRows(rows);
+        },
+      });
+    } catch {
+      if (isCurrent()) toast.show({ message: '分隊更新失敗，請稍後再試' });
+    } finally {
+      teamBatchPending.current = false;
+    }
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -935,6 +1056,15 @@ function EventDetailSession({
     if (!alive.current || currentViewer.current.uid !== uid) return;
     const earlyBird = latest.earlyBirdWindow
       && (opts.earlyBird === true || latest.event.status === 'upcoming');
+    // 照 A handleSignup：自選模式先選隊，使用重讀後的活動設定。
+    const signupTeamSplit = getTeamSplit(latest.event);
+    const requiresTeamSelection = signupTeamSplit?.enabled === true
+      && signupTeamSplit.mode === 'self-select';
+    const signupTeamKey = requiresTeamSelection ? selectedTeamKey : null;
+    if (requiresTeamSelection && !signupTeamKey) {
+      toast.show({ message: lt('teamSplit.select.required', '請先選擇隊伍') });
+      return;
+    }
     const result = precheckSignup(
       latest.event, latest.viewer, latest.registrations, new Date(), {
         profileComplete: latest.profileComplete,
@@ -942,7 +1072,8 @@ function EventDetailSession({
         earlyBirdWindow: latest.earlyBirdWindow,
         earlyBirdAccepted: earlyBird,
         teamSignupAllowed: latest.teamSignupAllowed,
-        requiresTeamSelection: false,
+        // 照 A：本頁已檢查選隊；registerForEvent 的 context 仍要求 teamKey。
+        requiresTeamSelection: requiresTeamSelection && !signupTeamKey,
       },
     );
     if (!result.ok) {
@@ -987,6 +1118,7 @@ function EventDetailSession({
       eventId: current.event.id ?? publicId,
       user: { uid, displayName: currentViewer.current.displayName },
       context: contexts.signup,
+      ...(signupTeamKey ? { teamKey: signupTeamKey } : {}),
       ...(earlyBird ? { earlyBirdAccepted: true, earlyBirdExpectedCost: cost } : {}),
     });
     if (!alive.current || currentViewer.current.uid !== uid) return;
@@ -1015,11 +1147,28 @@ function EventDetailSession({
       profileRef.current = next;
       setSignupProfile(next);
     }
-    toast.show({
-      message: waitlisted ? '已加入候補名單'
-        : response.earlyBirdCharged
-          ? `早鳥報名成功，已扣除 ${charged} 積分` : '報名成功！',
-    });
+    let signupMessage = waitlisted ? '已加入候補名單'
+      : response.earlyBirdCharged
+        ? `早鳥報名成功，已扣除 ${charged} 積分` : '報名成功！';
+    // ASSUMPTION: B 批次 Callable 將 A registration 放在 registrations 的本人項目；
+    // 同時接受 A 單筆 registration 回傳，兩者都只讀取 teamKey。
+    const singleRegistration: unknown = (
+      response as unknown as { registration?: unknown }
+    ).registration;
+    const assignedRegistration = selfResult ?? singleRegistration;
+    const assignedKey = assignedRegistration !== null
+      && typeof assignedRegistration === 'object'
+      && 'teamKey' in assignedRegistration
+      && typeof assignedRegistration.teamKey === 'string'
+      ? assignedRegistration.teamKey : null;
+    if (!waitlisted && signupTeamSplit?.enabled
+      && signupTeamSplit.mode === 'random' && assignedKey) {
+      const assignedTeam = getSplitTeams(latest.event).find(team => team.key === assignedKey);
+      if (assignedTeam) {
+        signupMessage += ` 你被分配到 ${assignedTeam.name || `${assignedTeam.key} 隊`}`;
+      }
+    }
+    toast.show({ message: signupMessage });
     showFlip(waitlisted ? '取消候補' : '取消報名', waitlisted ? '#7c3aed' : '#dc2626');
     await refresh(current);
     if (!alive.current) return;
@@ -1509,6 +1658,14 @@ function EventDetailSession({
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}
+            teamSplitSlot={<>
+              <TeamInfoCards event={event} registrations={teamDisplayRegistrations} />
+              <TeamBatchButtons
+                event={event}
+                context={operateCtx}
+                onAction={action => { runTeamBatch(action).catch(() => {}); }}
+              />
+            </>}
             onOpenProfile={profile}
             onContactHost={() => {
               // 照 A contactEventOrganizer；身分只認 UID。
@@ -1551,7 +1708,7 @@ function EventDetailSession({
                 event={event}
                 loggedIn={Boolean(viewer.uid)}
                 heat={calcHeatPrediction(event, now)}
-                registrations={snapshot.registrations}
+                registrations={teamSplitEnabled ? teamDisplayRegistrations : snapshot.registrations}
                 canScan={() => Boolean(
                   currentViewer.current.uid
                   && canManageDetailAttendanceRecords(currentViewer.current, snapshot.event)
@@ -1561,6 +1718,13 @@ function EventDetailSession({
                 }}
               />
             </div>
+
+            <TeamSelectUI
+              event={event}
+              registrations={teamDisplayRegistrations}
+              selectedKey={selectedTeamKey}
+              onSelect={setSelectedTeamKey}
+            />
 
             <div class="detail-action-primary" id="detail-action-primary">
               <EventDetailPrimaryButton
