@@ -163,7 +163,10 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
   it('M-009 & M-010 & M-014 & M-015 & M-016：訪客顯示「? / 未登入 / 未登入」且無 LINE 登入鈕；管理員可點角色標籤切換隱身', () => {
     const guestView = render(<Harness />);
     openDrawer();
-    expect(document.getElementById('drawer-avatar')?.textContent).toBe('?');
+    // 測試同步更新：照 A（M-168）訪客頭像改為 guest-avatar-icon，不再顯示「?」。
+    const guestAvatar = document.getElementById('drawer-avatar');
+    expect(guestAvatar?.querySelector('svg.guest-avatar-icon')).not.toBeNull();
+    expect(guestAvatar?.textContent).not.toBe('?');
     expect(document.getElementById('drawer-name')?.textContent).toBe('未登入');
     expect(document.getElementById('drawer-role-tag')?.textContent).toBe('未登入');
     expect(document.querySelector('#side-drawer .line-login-btn')).toBeNull();

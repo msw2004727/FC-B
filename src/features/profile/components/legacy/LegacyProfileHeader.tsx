@@ -207,35 +207,6 @@ export function LegacyProfileTopSection({
         )}
       </div>
 
-      <div id="profile-slot-banner" class="profile-scene-preview">
-        <button
-          type="button"
-          class="profile-scene-key"
-          onClick={handleUnavailable}
-          aria-label="場景鑰匙"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="6" r="4" />
-            <path d="M12 10v11m0-4h4m-4 4h4" />
-          </svg>
-        </button>
-        <span class="profile-scene-stars" aria-hidden="true" />
-        <span class="profile-scene-orb" aria-hidden="true" />
-        <span class="profile-scene-title">Coming soon.</span>
-        <span class="profile-scene-subtitle">── 敬請期待 ──</span>
-        <span class="profile-scene-grass" aria-hidden="true" />
-      </div>
-
       <div class="profile-stats">
         <div class="stat-item">
           <span class="stat-num" id="profile-stat-total">

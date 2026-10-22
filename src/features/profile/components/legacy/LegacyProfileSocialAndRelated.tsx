@@ -192,8 +192,9 @@ function RelatedActivityCardRow({
 export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
   const location = useLocation();
   const { state, retry } = useRemote(uid, loadRelatedActivities);
-  const [regOpen, setRegOpen] = useState(true);
-  const [hostedOpen, setHostedOpen] = useState(true);
+  // M-170：預設收起（不記憶展開狀態）。
+  const [regOpen, setRegOpen] = useState(false);
+  const [hostedOpen, setHostedOpen] = useState(false);
   const [hostedLimit, setHostedLimit] = useState(HOSTED_PAGE_SIZE);
 
   const registered: RegisteredActivity[] =
@@ -211,7 +212,17 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
       <div class="info-card profile-related-card" id="profile-registered-activities-card">
         <div
           class={`info-title profile-collapse-toggle${regOpen ? ' open' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={regOpen}
           onClick={() => setRegOpen((prev) => !prev)}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setRegOpen((prev) => !prev);
+            }
+          }}
         >
           <span style="display:flex;align-items:center;gap:.45rem">
             我的報名
@@ -221,36 +232,48 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
           </span>
           <span class="profile-collapse-arrow">▶</span>
         </div>
-        <div
-          class="profile-collapse-content profile-related-activity-list"
-          id="profile-registered-activities-list"
-          style={regOpen ? undefined : 'display:none'}
-        >
-          {state.status === 'loading' && <Loading />}
-          {state.status === 'error' && <Failure retry={retry} />}
-          {state.status === 'ready' && (
-            registered.length === 0 ? (
-              <div class="profile-related-empty">目前沒有正取或候補中的報名活動</div>
-            ) : (
-              registered.map((item, idx) => (
-                <RelatedActivityCardRow
-                  key={item.event.id || `reg-${idx}`}
-                  event={item.event}
-                  effectiveStatus={item.effectiveStatus}
-                  kind="registered"
-                  registrationStatus={item.registrationStatus}
-                  onSelect={handleOpenEvent}
-                />
-              ))
-            )
-          )}
-        </div>
+        {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪） */}
+        {regOpen && (
+          <div
+            class="profile-collapse-content profile-related-activity-list"
+            id="profile-registered-activities-list"
+          >
+            {state.status === 'loading' && <Loading />}
+            {state.status === 'error' && <Failure retry={retry} />}
+            {state.status === 'ready' && (
+              registered.length === 0 ? (
+                <div class="profile-related-empty">目前沒有正取或候補中的報名活動</div>
+              ) : (
+                registered.map((item, idx) => (
+                  <RelatedActivityCardRow
+                    key={item.event.id || `reg-${idx}`}
+                    event={item.event}
+                    effectiveStatus={item.effectiveStatus}
+                    kind="registered"
+                    registrationStatus={item.registrationStatus}
+                    onSelect={handleOpenEvent}
+                  />
+                ))
+              )
+            )}
+          </div>
+        )}
       </div>
 
       <div class="info-card profile-related-card" id="profile-hosted-activities-card">
         <div
           class={`info-title profile-collapse-toggle${hostedOpen ? ' open' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={hostedOpen}
           onClick={() => setHostedOpen((prev) => !prev)}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setHostedOpen((prev) => !prev);
+            }
+          }}
         >
           <span style="display:flex;align-items:center;gap:.45rem">
             我開的團
@@ -260,45 +283,47 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
           </span>
           <span class="profile-collapse-arrow">▶</span>
         </div>
-        <div
-          class="profile-collapse-content profile-related-activity-list"
-          id="profile-hosted-activities-list"
-          style={hostedOpen ? undefined : 'display:none'}
-        >
-          {state.status === 'loading' && <Loading />}
-          {state.status === 'error' && <Failure retry={retry} />}
-          {state.status === 'ready' && (
-            hosted.length === 0 ? (
-              <div class="profile-related-empty">目前沒有報名中的主辦活動</div>
-            ) : (
-              <>
-                {hosted.slice(0, hostedLimit).map((item, idx) => (
-                  <RelatedActivityCardRow
-                    key={item.event.id || `hosted-${idx}`}
-                    event={item.event}
-                    effectiveStatus={item.effectiveStatus}
-                    kind="hosted"
-                    onSelect={handleOpenEvent}
-                  />
-                ))}
-                {hostedLimit < hosted.length && (
-                  <div class="profile-related-load-more">
-                    <div class="profile-related-load-more-note">
-                      {`已顯示 ${Math.min(hostedLimit, hosted.length)} / ${hosted.length}`}
+        {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪） */}
+        {hostedOpen && (
+          <div
+            class="profile-collapse-content profile-related-activity-list"
+            id="profile-hosted-activities-list"
+          >
+            {state.status === 'loading' && <Loading />}
+            {state.status === 'error' && <Failure retry={retry} />}
+            {state.status === 'ready' && (
+              hosted.length === 0 ? (
+                <div class="profile-related-empty">目前沒有報名中的主辦活動</div>
+              ) : (
+                <>
+                  {hosted.slice(0, hostedLimit).map((item, idx) => (
+                    <RelatedActivityCardRow
+                      key={item.event.id || `hosted-${idx}`}
+                      event={item.event}
+                      effectiveStatus={item.effectiveStatus}
+                      kind="hosted"
+                      onSelect={handleOpenEvent}
+                    />
+                  ))}
+                  {hostedLimit < hosted.length && (
+                    <div class="profile-related-load-more">
+                      <div class="profile-related-load-more-note">
+                        {`已顯示 ${Math.min(hostedLimit, hosted.length)} / ${hosted.length}`}
+                      </div>
+                      <button
+                        type="button"
+                        class="outline-btn profile-related-load-more-btn"
+                        onClick={() => setHostedLimit((prev) => prev + HOSTED_PAGE_SIZE)}
+                      >
+                        查看更多
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      class="outline-btn profile-related-load-more-btn"
-                      onClick={() => setHostedLimit((prev) => prev + HOSTED_PAGE_SIZE)}
-                    >
-                      查看更多
-                    </button>
-                  </div>
-                )}
-              </>
-            )
-          )}
-        </div>
+                  )}
+                </>
+              )
+            )}
+          </div>
+        )}
       </div>
     </>
   );

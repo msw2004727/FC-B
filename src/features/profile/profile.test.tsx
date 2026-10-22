@@ -329,7 +329,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-uid-wrap')?.textContent).toContain('U-me');
   });
 
-  it('出席統計讀不到時顯示 --，場景鑰匙與成就/稱號點擊顯示未開放提示', async () => {
+  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號點擊顯示未開放提示', async () => {
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(null);
     const toastSpy = vi.spyOn(toast, 'show');
     render(<ProfilePage />);
@@ -339,10 +339,14 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-stat-done')?.textContent).toBe('--');
     expect(document.getElementById('profile-stat-rate')?.textContent).toBe('--');
 
-    fireEvent.click(screen.getByRole('button', { name: '場景鑰匙' }));
-    expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+    // 測試同步更新：照 A（M-169）場景鑰匙入口已移除。
+    expect(document.getElementById('profile-slot-banner')).toBeNull();
+    expect(document.querySelector('.profile-scene-key')).toBeNull();
 
     fireEvent.click(screen.getByText('成就/徽章'));
+    expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+
+    fireEvent.click(screen.getByText('稱號'));
     expect(toastSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -360,20 +364,38 @@ describe('我的個人頁（A 版結構）', () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
     expect(screen.getAllByText('測試俱樂部').length).toBeGreaterThan(0);
+    await waitFor(() => expect(loadRelatedActivities).toHaveBeenCalledWith('U-me'));
+
+    // 測試同步更新：照 A（M-170）「我的報名」「我開的團」進頁預設收起，展開才渲染清單。
+    const regCard = document.getElementById('profile-registered-activities-card');
+    const regToggle = regCard?.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(regToggle.classList.contains('open')).toBe(false);
+    expect(document.getElementById('profile-registered-activities-list')).toBeNull();
+    await waitFor(() => expect(document.getElementById('profile-registered-activities-count')?.textContent).toBe('1'));
+
+    fireEvent.click(regToggle);
+    expect(regToggle.classList.contains('open')).toBe(true);
+    expect(document.getElementById('profile-registered-activities-list')).not.toBeNull();
     // A 的活動卡整列可點（data-event-id），標題不另包連結。
     expect((await screen.findByText('週末足球')).closest('.profile-related-event-card')?.getAttribute('data-event-id'))
       .toBe('event-1');
+
+    const hostedCard = document.getElementById('profile-hosted-activities-card');
+    const hostedToggle = hostedCard?.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(hostedToggle.classList.contains('open')).toBe(false);
+    expect(document.getElementById('profile-hosted-activities-list')).toBeNull();
+    expect(document.getElementById('profile-hosted-activities-count')?.textContent).toBe('1');
+
+    fireEvent.click(hostedToggle);
+    expect(hostedToggle.classList.contains('open')).toBe(true);
+    expect(document.getElementById('profile-hosted-activities-list')).not.toBeNull();
     expect(screen.getByText('晨間慢跑').closest('.profile-related-event-card')?.getAttribute('data-event-id'))
       .toBe('event-2');
-    expect(loadRelatedActivities).toHaveBeenCalledWith('U-me');
 
-    const regCard = document.getElementById('profile-registered-activities-card');
-    const regToggle = regCard?.querySelector('.profile-collapse-toggle') as HTMLElement;
-    const regList = document.getElementById('profile-registered-activities-list') as HTMLElement;
-    expect(regToggle.classList.contains('open')).toBe(true);
+    // 再點一次「我的報名」收起，清單從 DOM 移除。
     fireEvent.click(regToggle);
     expect(regToggle.classList.contains('open')).toBe(false);
-    expect(regList.style.display).toBe('none');
+    expect(document.getElementById('profile-registered-activities-list')).toBeNull();
   });
 
   it('我的資料卡支援行內編輯、地區清單選擇、取消與儲存', async () => {
@@ -423,6 +445,87 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-gender')?.textContent).toBe('女');
     expect(document.getElementById('profile-region')?.textContent).toBe('台中市');
     expect(document.getElementById('profile-phone')?.textContent).toBe('0911-222-333');
+  });
+
+  it('U-041：儲存中按鈕 disabled 且連按只呼叫一次 updateProfileFields', async () => {
+    vi.mocked(updateProfileFields).mockReturnValue(new Promise<void>(() => {}));
+    render(<ProfilePage />);
+    expect(await screen.findByText('王小明')).toBeTruthy();
+
+    const infoCard = document.getElementById('profile-info-card')!;
+    fireEvent.click(infoCard.querySelector('.profile-collapse-toggle') as HTMLElement);
+    fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
+
+    const saveBtn = screen.getByRole('button', { name: '儲存' }) as HTMLButtonElement;
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(saveBtn.disabled).toBe(true);
+      expect(saveBtn.textContent).toBe('儲存中...');
+    });
+    fireEvent.click(saveBtn);
+    expect(updateProfileFields).toHaveBeenCalledTimes(1);
+  });
+
+  it('U-042：地區清單可用鍵盤選擇並以 Escape 收起', async () => {
+    render(<ProfilePage />);
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    const infoCard = document.getElementById('profile-info-card')!;
+    fireEvent.click(infoCard.querySelector('.profile-collapse-toggle') as HTMLElement);
+    fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
+
+    const regionInput = document.getElementById('profile-edit-region') as HTMLInputElement;
+    fireEvent.input(regionInput, { target: { value: '台' } });
+    await waitFor(() => {
+      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(regionInput, { key: 'Escape' });
+    await waitFor(() => {
+      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBe(0);
+    });
+
+    fireEvent.input(regionInput, { target: { value: '台' } });
+    await waitFor(() => {
+      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBeGreaterThan(0);
+    });
+    const firstOption = document.querySelector('#profile-region-list [data-region]') as HTMLElement;
+    const firstName = firstOption.getAttribute('data-region')!;
+    fireEvent.keyDown(regionInput, { key: 'ArrowDown' });
+    fireEvent.keyDown(regionInput, { key: 'Enter' });
+    expect(regionInput.value).toBe(firstName);
+  });
+
+  it('U-040：「我的資料」標題可用 Enter 展開', async () => {
+    render(<ProfilePage />);
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    const infoCard = document.getElementById('profile-info-card')!;
+    const title = infoCard.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(title.getAttribute('role')).toBe('button');
+    expect(title.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(title.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('M-121：「我的資料」的 ? 開啟說明視窗，了解後關閉且卡片不展開', async () => {
+    render(<ProfilePage />);
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    const infoCard = document.getElementById('profile-info-card')!;
+    const title = infoCard.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(title.getAttribute('aria-expanded')).toBe('false');
+
+    const infoBtn = infoCard.querySelector('.edu-info-btn') as HTMLElement;
+    fireEvent.click(infoBtn);
+    await waitFor(() => {
+      expect(document.querySelector('.edu-info-dialog-title')?.textContent).toBe('我的資料');
+    });
+    expect(title.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: '了解' }));
+    await waitFor(() => {
+      expect(document.querySelector('.edu-info-dialog-title')).toBeNull();
+    });
+    expect(title.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('第一次失敗後重試會重新呼叫 loader', async () => {

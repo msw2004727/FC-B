@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { lt } from '@/i18n/i18n';
@@ -9,11 +9,11 @@ import { updateProfileFields } from '../../data/profile-writes';
 import { stringValue } from '../../ui/shared';
 import {
   TW_REGIONS,
-  UNAVAILABLE_MSG,
   filterTwRegions,
   formatCreatedAt,
   getUserTeamEntries,
 } from './profile-legacy-helpers';
+import { ProfileInfoButton } from './ProfileInfoButton';
 
 function daysInMonth(year: string, month: string): number {
   const y = Number(year);
@@ -42,7 +42,17 @@ export function LegacyProfileInfoCard({
   const [bdD, setBdD] = useState('');
   const [region, setRegion] = useState('');
   const [regionMatches, setRegionMatches] = useState<string[]>([]);
+  const [regionHighlight, setRegionHighlight] = useState<number>(-1);
   const [phone, setPhone] = useState('');
+
+  // U-041：避免連按兩次呼叫 updateProfileFields。
+  const pendingRef = useRef(false);
+  // U-042：輸入框失焦後延遲收起清單。
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
+  }, []);
 
   const currentYear = new Date().getFullYear();
   const teams = getUserTeamEntries(profile);
@@ -69,10 +79,55 @@ export function LegacyProfileInfoCard({
   function handleRegionInput(val: string): void {
     setRegion(val);
     setRegionMatches(filterTwRegions(val, true));
+    setRegionHighlight(-1);
+  }
+
+  // U-042：鍵盤操作地區清單
+  function handleRegionKeyDown(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      setRegionMatches([]);
+      setRegionHighlight(-1);
+      return;
+    }
+    if (regionMatches.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setRegionHighlight((prev) => (prev + 1) % regionMatches.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setRegionHighlight((prev) => (prev <= 0 ? regionMatches.length - 1 : prev - 1));
+    } else if (e.key === 'Enter') {
+      if (regionHighlight >= 0 && regionHighlight < regionMatches.length) {
+        const picked = regionMatches[regionHighlight];
+        if (picked !== undefined) {
+          e.preventDefault();
+          setRegion(picked);
+          setRegionMatches([]);
+          setRegionHighlight(-1);
+        }
+      }
+    }
+  }
+
+  function handleRegionBlur(): void {
+    if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => {
+      blurTimerRef.current = null;
+      setRegionMatches([]);
+      setRegionHighlight(-1);
+    }, 150);
+  }
+
+  function handleRegionFocus(): void {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
   }
 
   async function handleSave(): Promise<void> {
-    if (pending) return;
+    // U-041：連按保護（pending state 尚未更新前也攔住）。
+    if (pendingRef.current || pending) return;
     const regionVal = region.trim();
     const normalizedRegionCheck = regionVal.replace(/臺/g, '台');
     if (regionVal && !TW_REGIONS.includes(normalizedRegionCheck)) {
@@ -90,6 +145,7 @@ export function LegacyProfileInfoCard({
       patch['birthday'] = `${bdY}/${bdM.padStart(2, '0')}/${bdD.padStart(2, '0')}`;
     }
 
+    pendingRef.current = true;
     setPending(true);
     try {
       await updateProfileFields(uid, patch);
@@ -100,6 +156,7 @@ export function LegacyProfileInfoCard({
     } catch {
       toast.show({ message: '個人資料更新失敗，請稍後再試', tone: 'error' });
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   }
@@ -127,21 +184,20 @@ export function LegacyProfileInfoCard({
     <div class="info-card" id="profile-info-card">
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((prev) => !prev);
+          }
+        }}
       >
         <span style="display:flex;align-items:center;gap:.35rem">
-          <button
-            type="button"
-            class="edu-info-btn"
-            title={lt('說明', '說明')}
-            data-i18n-title="說明"
-            onClick={(e) => {
-              e.stopPropagation();
-              toast.show({ message: UNAVAILABLE_MSG });
-            }}
-          >
-            ?
-          </button>
+          <ProfileInfoButton infoKey="myProfile" />
           <span data-i18n="profile.myProfile">{lt('profile.myProfile', '我的資料')}</span>
         </span>
         <span class="profile-collapse-arrow">▶</span>
@@ -268,30 +324,45 @@ export function LegacyProfileInfoCard({
               id="profile-edit-region"
               class="profile-edit-input"
               aria-label="地區"
+              aria-autocomplete="list"
+              aria-controls="profile-region-list"
+              aria-expanded={regionMatches.length > 0 ? 'true' : 'false'}
               placeholder={lt('輸入搜尋縣市...', '輸入搜尋縣市...')}
               data-i18n-placeholder="輸入搜尋縣市..."
               autoComplete="off"
               value={region}
               onInput={(e) => handleRegionInput(e.currentTarget.value)}
+              onKeyDown={handleRegionKeyDown}
+              onBlur={handleRegionBlur}
+              onFocus={handleRegionFocus}
             />
           </div>
           <div
             id="profile-region-list"
+            role="listbox"
             style={`max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);${regionMatches.length > 0 ? '' : 'display:none'}`}
           >
-            {regionMatches.map((name) => (
-              <div
-                key={name}
-                data-region={name}
-                style="padding:6px 10px;font-size:.78rem;border-bottom:1px solid var(--border);cursor:pointer"
-                onClick={() => {
-                  setRegion(name);
-                  setRegionMatches([]);
-                }}
-              >
-                {name}
-              </div>
-            ))}
+            {regionMatches.map((name, idx) => {
+              const isHighlighted = idx === regionHighlight;
+              return (
+                <div
+                  key={name}
+                  data-region={name}
+                  role="option"
+                  aria-selected={isHighlighted ? 'true' : 'false'}
+                  style={`padding:6px 10px;font-size:.78rem;border-bottom:1px solid var(--border);cursor:pointer${isHighlighted ? ';background:var(--bg-elevated)' : ''}`}
+                  // U-042：不讓 mousedown 奪走輸入框焦點，click 才能正常選取。
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setRegion(name);
+                    setRegionMatches([]);
+                    setRegionHighlight(-1);
+                  }}
+                >
+                  {name}
+                </div>
+              );
+            })}
           </div>
           <div class="info-row">
             <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>
@@ -338,7 +409,7 @@ export function LegacyProfileInfoCard({
                 handleSave().catch(() => {});
               }}
             >
-              {lt('儲存', '儲存')}
+              {pending ? lt('儲存中...', '儲存中...') : lt('儲存', '儲存')}
             </button>
           </div>
         </div>

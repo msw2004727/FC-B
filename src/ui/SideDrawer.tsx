@@ -46,6 +46,7 @@ import {
   isStandalonePwa,
 } from '@/features/pwa/pwa-install';
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
+import { GuestAvatarIcon } from './GuestAvatarIcon';
 
 export interface SideDrawerIdentity {
   readonly identityId?: 'primary' | 'secondary' | string;
@@ -609,8 +610,11 @@ export function SideDrawer({
                 class={`drawer-avatar${isSecondaryIdentity ? ' avatar-identity-crown' : ''}`}
                 id="drawer-avatar"
                 data-identity-crown={isSecondaryIdentity ? '1' : undefined}
+                style={isSignedIn
+                  ? undefined
+                  : { color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
               >
-                {avatarInitial}
+                {isSignedIn ? avatarInitial : <GuestAvatarIcon />}
               </div>
             )}
             <div class="drawer-user-info">

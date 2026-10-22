@@ -82,6 +82,16 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(login).toHaveBeenCalledOnce();
   });
 
+  // 測試同步更新：照 A（M-168）authPending 且無 user 時頭像占位顯示 guest-avatar-icon。
+  it('shows guest-avatar-icon placeholder while auth is pending and no user', () => {
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />,
+    );
+    const avatar = container.querySelector('#line-avatar-topbar');
+    expect(avatar).not.toBeNull();
+    expect(avatar?.querySelector('svg.guest-avatar-icon')).not.toBeNull();
+  });
+
   it('switches #top-logo-img src between light and dark theme and falls back to png on error', () => {
     setTheme('light');
     const { container } = render(

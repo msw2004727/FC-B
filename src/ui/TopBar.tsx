@@ -19,6 +19,7 @@ import { eventSportTag } from '@/features/events/data/sports';
 import { lt } from '@/i18n/i18n';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
+import { GuestAvatarIcon } from './GuestAvatarIcon';
 
 export interface TopBarProps {
   onMenuClick: () => void;
@@ -598,9 +599,11 @@ export function TopBar({
                 <div
                   id="line-avatar-topbar"
                   class="line-avatar-topbar line-avatar-fallback line-avatar-loading"
+                  style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
                   aria-label="同步中"
                   title="同步中"
                 >
+                  <GuestAvatarIcon size={22} />
                   <span class="line-avatar-spinner" aria-hidden="true" />
                 </div>
               </div>
