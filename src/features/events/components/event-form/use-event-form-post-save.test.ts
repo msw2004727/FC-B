@@ -254,6 +254,13 @@ describe('useEventFormPostSave', () => {
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
 
+  it('沒有暱稱時操作者用角色名稱（照 A _writeOpLog；Codex 第二審 P3）', async () => {
+    render(createElement(HarnessFC, { value: { ...viewer, displayName: null } as ViewerView }));
+    act(() => save({ ...result, mode: 'edit' }));
+    await flush();
+    expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ type: 'event_edit', operator: '教練' }));
+  });
+
   it('未登入不寫日誌、不發經驗值、不詢問分享', async () => {
     render(createElement(HarnessFC, { value: { ...viewer, uid: null } }));
     act(() => save(result));

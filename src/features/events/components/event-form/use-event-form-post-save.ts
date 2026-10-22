@@ -5,6 +5,14 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { EventFormSavedResult } from '../EventFormModal';
+import { roleLabelOf } from '../../data/event-form-model';
+
+/** 照 A ApiService._writeOpLog：暱稱 → 角色名稱（含自訂角色）→「系統」（Codex 第二審 P3）。 */
+function opLogOperator(viewer: ViewerView): string {
+  return viewer.displayName?.trim()
+    || roleLabelOf(viewer.role, viewer.permissionSources?.customRoles ?? [])
+    || '系統';
+}
 
 interface PostSaveInput {
   viewer: ViewerView;
@@ -94,8 +102,7 @@ export function useEventFormPostSave(
       (async () => {
         try {
           const { writeOpLog } = await import('@/data/op-log');
-          // ASSUMPTION: 附件未提供角色中文名稱 helper，無顯示名稱時沿用「系統」。
-          const operator = snapshot.viewer.displayName?.trim() || '系統';
+          const operator = opLogOperator(snapshot.viewer);
           await writeOpLog({
             type: mode === 'edit' ? 'event_edit' : 'event_create',
             typeName: mode === 'edit' ? '編輯活動' : '建立活動',
@@ -142,7 +149,7 @@ export function useEventFormPostSave(
           });
           // 照 A ApiService.adjustUserExp 的 _writeOpLog('exp','自動EXP',…)（寫法同 grantLineBindingExp；Gemini 審 P3）。
           const { writeOpLog } = await import('@/data/op-log');
-          const display = snapshot.viewer.displayName?.trim() || '系統';
+          const display = opLogOperator(snapshot.viewer);
           await writeOpLog({
             type: 'exp',
             typeName: '自動EXP',
