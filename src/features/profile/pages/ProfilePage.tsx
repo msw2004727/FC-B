@@ -31,10 +31,8 @@ import {
   LegacyRelatedActivities,
   LegacySocialGrid,
 } from '../components/legacy/LegacyProfileSocialAndRelated';
-import {
-  LegacyIdentityCard,
-  LegacyProfileInfoCard,
-} from '../components/legacy/LegacyProfileCards';
+import { LegacyIdentityCard } from '../components/legacy/LegacyIdentityCard';
+import { LegacyProfileInfoCard } from '../components/legacy/LegacyProfileCards';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '@/styles/legacy/edu-info-btn.css';
