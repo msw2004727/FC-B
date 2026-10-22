@@ -191,5 +191,7 @@ export default defineConfig({
     // 整包平行跑時，第一次動態載入大模組（登入、Firestore）會拖過預設 5 秒而偶發逾時；
     // 單獨跑都在 1 秒內。統一放寬到 15 秒，取代逐個測試加 timeout。
     testTimeout: 15_000,
+    // findBy*／waitFor 的等待統一放寬（見 src/test-setup.ts）。
+    setupFiles: ['./src/test-setup.ts'],
   },
 });
