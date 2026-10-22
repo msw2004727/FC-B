@@ -6,6 +6,7 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLegacyT } from '@/i18n/i18n';
+import { SportIcon } from '@/ui/SportIcon';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
 import type { EventType } from '../../data/event-create';
@@ -110,6 +111,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
   const sportPickerRef = useRef<HTMLDivElement | null>(null);
   const citiesRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const sportSearchRef = useRef<HTMLInputElement | null>(null);
 
   const handleCloseInfo = useCallback(() => {
     setActiveInfoKey(null);
@@ -128,9 +130,10 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
     el.style.animation = 'region-shake .4s ease';
   }, [cityShakeCount]);
 
-  // 照 A event-create-sport-picker.js：點擊外部關閉下拉。
+  // 照 A event-create-sport-picker.js：點擊外部關閉下拉；打開時聚焦搜尋框（`els.search?.focus()`）。
   useEffect(() => {
     if (!sportDropdownOpen) return;
+    sportSearchRef.current?.focus();
     const handler = (ev: MouseEvent): void => {
       const picker = sportPickerRef.current;
       if (picker && picker.contains(ev.target as Node)) return;
@@ -482,6 +485,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
               placeholder={lt('選擇日期')}
               value={state.dateVal}
               onInput={(e) => onPatch({ dateVal: e.currentTarget.value })}
+              onChange={(e) => onPatch({ dateVal: e.currentTarget.value })}
             />
           </label>
           <label class="ce-time-field ce-time-field-start">
@@ -494,6 +498,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
               placeholder={lt('開始')}
               value={state.startTime}
               onInput={(e) => onPatch({ startTime: e.currentTarget.value })}
+              onChange={(e) => onPatch({ startTime: e.currentTarget.value })}
             />
           </label>
           <span class="ce-time-separator">~</span>
@@ -507,6 +512,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
               placeholder={lt('結束')}
               value={state.endTime}
               onInput={(e) => onPatch({ endTime: e.currentTarget.value })}
+              onChange={(e) => onPatch({ endTime: e.currentTarget.value })}
             />
           </label>
         </div>
@@ -567,6 +573,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                 disabled={!state.regOpenEnabled}
                 value={state.regOpenDate}
                 onInput={(e) => onPatch({ regOpenDate: e.currentTarget.value })}
+                onChange={(e) => onPatch({ regOpenDate: e.currentTarget.value })}
               />
             </label>
             <label class="ce-time-field ce-reg-open-field">
@@ -580,6 +587,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                 disabled={!state.regOpenEnabled}
                 value={state.regOpenClock}
                 onInput={(e) => onPatch({ regOpenClock: e.currentTarget.value })}
+                onChange={(e) => onPatch({ regOpenClock: e.currentTarget.value })}
               />
             </label>
           </div>
@@ -785,7 +793,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
             <span class="ce-sport-selected-inner" id="ce-sport-selected-inner">
               {selectedSport ? (
                 <span class="ce-sport-value">
-                  <span class="sport-emoji" aria-hidden="true">{selectedSport.symbol}</span>
+                  <SportIcon sportKey={selectedSport.key} />
                   <span>{lt(selectedSport.label, selectedSport.label)}</span>
                 </span>
               ) : (
@@ -814,8 +822,16 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
               id="ce-sport-search"
               class="ce-sport-search"
               placeholder={lt('搜尋運動 / 場景標籤')}
+              ref={sportSearchRef}
               value={sportSearch}
               onInput={(e) => setSportSearch(e.currentTarget.value)}
+              onKeyDown={(ev) => {
+                // 照 A：搜尋框按 Escape 關閉下拉。
+                if (ev.key === 'Escape') {
+                  ev.stopPropagation();
+                  setSportDropdownOpen(false);
+                }
+              }}
             />
             <div id="ce-sport-list" class="ce-sport-list" role="listbox">
               {filteredSports.length === 0 ? (
@@ -835,7 +851,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                         setSportDropdownOpen(false);
                       }}
                     >
-                      <span class="sport-emoji" aria-hidden="true">{item.symbol}</span>
+                      <SportIcon sportKey={item.key} />
                       <span>{lt(item.label, item.label)}</span>
                     </button>
                   );

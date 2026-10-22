@@ -115,7 +115,7 @@ describe('useCreateEventEntry', () => {
     mocks.load.mockReturnValue(new Promise((done) => { resolve = done; }));
     render(<Harness />);
     const button = screen.getByText('我要開團');
-    expect(button.getAttribute('aria-disabled')).toBeNull();
+    expect(button.getAttribute('aria-disabled')).toBe('false'); // 測試同步更新：照 A（M-070）未鎖定為 'false'
     fireEvent.click(button);
     await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('選擇活動類型')).toBeNull();
@@ -134,7 +134,7 @@ describe('useCreateEventEntry', () => {
     fireEvent.click(await screen.findByText('儲存個人資料'));
     await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(2));
     await waitFor(() => {
-      expect(screen.getByText('我要開團').getAttribute('aria-disabled')).toBeNull();
+      expect(screen.getByText('我要開團').getAttribute('aria-disabled')).toBe('false'); // 測試同步更新：照 A（M-070）
     });
     expect(screen.queryByText('選擇活動類型')).toBeNull();
     expect(screen.getByText('表單關閉')).toBeTruthy();

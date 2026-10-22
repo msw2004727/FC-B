@@ -130,14 +130,25 @@ export function useEventFormPostSave(
             : 0;
           if (amount <= 0) return;
           // 照 A _grantAutoExp 與 grantLineBindingExp。
+          const reason = `自動：主辦活動（${title}）`;
           await callFn('adjustExp', {
             mode: 'auto',
             targets: [uid],
             amount,
-            reason: `自動：主辦活動（${title}）`,
+            reason,
             operatorLabel: '系統',
             requestId: `autoexp_${uid}_host_activity_${Date.now()}`,
             ruleKey: 'host_activity',
+          });
+          // 照 A ApiService.adjustUserExp 的 _writeOpLog('exp','自動EXP',…)（寫法同 grantLineBindingExp；Gemini 審 P3）。
+          const { writeOpLog } = await import('@/data/op-log');
+          const display = snapshot.viewer.displayName?.trim() || '系統';
+          await writeOpLog({
+            type: 'exp',
+            typeName: '自動EXP',
+            content: `${display} +${amount}「${reason}」`,
+            actorUid: uid,
+            operator: display,
           });
         } catch {
           // 經驗值與日誌各自隔離，不互相阻擋。

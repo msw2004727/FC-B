@@ -180,7 +180,8 @@ export function useDelegatePicker(input: {
     focusedOnce.current = false;
     render();
     if (permitted()) {
-      // 照 A _initDelegateSearch，開表單先更新目錄。
+      // 照 A _initDelegateSearch，開表單先強制更新目錄；之後首次 focus 不再重複 force（Gemini 審 P3）。
+      focusedOnce.current = true;
       search(true).catch(() => undefined);
     }
   };

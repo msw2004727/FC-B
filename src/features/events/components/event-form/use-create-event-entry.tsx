@@ -30,7 +30,7 @@ export interface CreateEventEntry {
   profileLocked: boolean;
   buttonProps: {
     lockedClass: string;
-    'aria-disabled'?: 'true';
+    'aria-disabled'?: 'true' | 'false';
     'data-profile-incomplete'?: '1';
     title?: string;
   };
@@ -254,7 +254,8 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
           'data-profile-incomplete': '1',
           title: lt('請先完成個人資料，再建立活動', '請先完成個人資料，再建立活動'),
         }
-      : { lockedClass: '' },
+      // 照 A _refreshActivityCreateButton：未鎖定時 aria-disabled='false'（Gemini 審 P3）。
+      : { lockedClass: '', 'aria-disabled': 'false' },
     onClick,
     formOpen,
     closeForm: () => setFormOpen(false),

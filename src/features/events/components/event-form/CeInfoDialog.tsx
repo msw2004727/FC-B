@@ -5,7 +5,7 @@
  */
 import type { JSX } from 'preact';
 import { createPortal } from 'preact/compat';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { CE_INFO, type CeInfoKey } from './ce-info';
@@ -19,16 +19,19 @@ export function CeInfoDialog({ infoKey, onClose }: CeInfoDialogProps): JSX.Eleme
   const lt = useLegacyT();
 
   // 照 A：開啟時登記實體返回鍵，返回鍵先關這個說明視窗。
+  // 照 CompanionSelectModal：callback 放 ref，避免父層重繪時重複推退歷史紀錄（Gemini 審 P3）。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!infoKey) return;
     const release = pushOverlay(() => {
-      onClose();
+      onCloseRef.current();
       return true;
     });
     return () => {
       release();
     };
-  }, [infoKey, onClose]);
+  }, [infoKey]);
 
   if (!infoKey) return null;
   const info = CE_INFO[infoKey];
