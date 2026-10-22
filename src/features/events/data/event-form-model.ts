@@ -1,6 +1,7 @@
-import type { CreateEventForm, EventType } from './event-create';
+import type { CreateEventForm, DelegationEntry, EventImageVariants, EventType } from './event-create';
 import type { EventDoc } from './types';
 import type { CustomRole } from '@/features/profile/data/permissions';
+import { getSportKeySafe } from './sports';
 
 /** A `js/config.js#REGION_MAP`：順序（地區與縣市）照 A，表單依此順序顯示。 */
 export const REGION_MAP: Readonly<Record<string, readonly string[]>> = {
@@ -206,7 +207,8 @@ export function formStateFromEvent(event: EventDoc): EventFormState {
   const ageLimitEnabled = minAgeNum > 0;
 
   const notes = typeof ext.notes === 'string' ? ext.notes : '';
-  const sportTag = typeof ext.sportTag === 'string' ? ext.sportTag.trim() : '';
+  // 照 A getSportKeySafe。
+  const sportTag = getSportKeySafe(ext.sportTag);
 
   return {
     eventId,
@@ -330,6 +332,11 @@ export function parseMinAge(value: string): number {
 export function toCreateEventForm(
   state: EventFormState,
   creatorName: string,
+  extras?: {
+    image?: string;
+    imageVariants?: EventImageVariants;
+    delegates?: DelegationEntry[];
+  },
 ): CreateEventForm {
   // A：parseInt 是有限數就照用，否則 20。
   const maxParsed = Number.parseInt(state.max, 10);
@@ -354,11 +361,12 @@ export function toCreateEventForm(
     max,
     minAge,
     notes: state.notes.trim(),
-    sportTag: state.sportTag.trim(),
+    sportTag: getSportKeySafe(state.sportTag),
     regOpenTime,
-    image: '',
+    image: extras?.image ?? '',
+    ...(extras?.imageVariants !== undefined ? { imageVariants: extras.imageVariants } : {}),
     creatorName,
-    delegates: [],
+    delegates: extras?.delegates ?? [],
     regionEnabled: regionData.regionEnabled,
     region: regionData.region,
     cities: regionData.cities,

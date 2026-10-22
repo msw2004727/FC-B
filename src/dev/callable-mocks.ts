@@ -6,6 +6,39 @@ import type { ConfirmEventAttendanceDesiredState } from '@/data/contract/callabl
 
 const mockEventViewCounts = new Map<string, number>();
 
+registerMock('listUserDirectory', async (req) => {
+  const [{ getFirebase, shouldUseEmulator }, fs] = await Promise.all([
+    import('@/data/firebase'),
+    import('firebase/firestore'),
+  ]);
+  if (!shouldUseEmulator()) {
+    throw new Error('listUserDirectory mock 僅供 emulator 使用');
+  }
+  const firebase = await getFirebase();
+  const snapshot = await fs.getDocs(fs.collection(firebase.db, 'users'));
+  const requested = req.verifyUids === undefined
+    ? null
+    : new Set(req.verifyUids.map(uid => uid.trim()).filter(Boolean));
+  const seen = new Set<string>();
+  const users = snapshot.docs.flatMap(document => {
+    const data: Record<string, unknown> = document.data();
+    // ASSUMPTION: emulator users 文件以 UID 為文件 id；不以 public id／名稱識別用戶。
+    const uid = String(data.uid || document.id).trim();
+    if (!uid || seen.has(uid) || (requested !== null && !requested.has(uid))) return [];
+    seen.add(uid);
+    const name = String(data.name || data.displayName || '').trim();
+    const displayName = String(data.displayName || data.name || '').trim();
+    return [{
+      uid,
+      name: name || displayName || '未知',
+      displayName,
+      pictureUrl: typeof data.pictureUrl === 'string' ? data.pictureUrl.trim() : '',
+      role: String(data.role || 'user').trim() || 'user',
+    }];
+  });
+  return { users };
+});
+
 registerMock('incrementEventViewCount', async (req) => {
   const [{ getFirebase }, fs] = await Promise.all([
     import('@/data/firebase'),

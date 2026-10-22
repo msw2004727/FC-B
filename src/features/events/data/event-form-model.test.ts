@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { cleanup } from '@testing-library/preact';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   REGION_MAP,
   createDefaultFormState,
@@ -11,6 +12,11 @@ import {
   canToggleEventRegion,
 } from './event-form-model';
 import type { EventDoc } from './types';
+import { SPORTS } from './sports';
+
+afterEach(() => {
+  cleanup();
+});
 
 const FIXED_NOW = new Date('2026-06-01T10:00:00');
 
@@ -224,6 +230,55 @@ describe('event-form-model', () => {
     expect(form.delegates).toEqual([]);
     expect(form.image).toBe('');
   });
+});
+
+describe('1E-3：封面、委託人與運動類型', () => {
+  it('未給 extras 維持原預設，且不產生 imageVariants 欄位', () => {
+    const form = toCreateEventForm(makeValidState(), '主辦人');
+    expect(form.image).toBe('');
+    expect(form.delegates).toEqual([]);
+    expect(Object.hasOwn(form, 'imageVariants')).toBe(false);
+    expect(toCreateEventForm(makeValidState(), '主辦人', {})).toEqual(form);
+  });
+
+  it('extras 原樣帶入既有欄位', () => {
+    const extras = {
+      image: 'https://example.test/image.webp',
+      imageVariants: {
+        cover: 'https://example.test/cover.webp',
+        homeNext: 'https://example.test/home.webp',
+      },
+      delegates: [{ uid: 'delegate-uid', name: '委託人' }],
+    };
+    const form = toCreateEventForm(makeValidState(), '主辦人', extras);
+    expect(form.image).toBe(extras.image);
+    expect(form.imageVariants).toEqual(extras.imageVariants);
+    expect(form.delegates).toEqual(extras.delegates);
+    expect(form.creatorName).toBe('主辦人');
+  });
+
+  it('只有部分 extras 時，其餘維持預設', () => {
+    const form = toCreateEventForm(makeValidState(), '主辦人', { image: 'cover' });
+    expect(form.image).toBe('cover');
+    expect(form.delegates).toEqual([]);
+    expect(Object.hasOwn(form, 'imageVariants')).toBe(false);
+  });
+
+  it.each(SPORTS.map(sport => sport.sportTag))('有效 sportTag %s 在讀取與送出時 trim', tag => {
+    // 測試同步更新：照 A（1E-3）。
+    const state = formStateFromEvent({ id: 'public-id', sportTag: ` ${tag} ` } as EventDoc);
+    expect(state.sportTag).toBe(tag);
+    expect(toCreateEventForm(makeValidState({ sportTag: ` ${tag} ` }), '主辦人').sportTag).toBe(tag);
+  });
+
+  it.each(['', 'unknown', 'FOOTBALL', '__proto__', 'constructor'])(
+    '未知 sportTag %s 在讀取與送出時轉空字串',
+    tag => {
+      // 測試同步更新：照 A（1E-3）。
+      expect(formStateFromEvent({ id: 'public-id', sportTag: tag } as EventDoc).sportTag).toBe('');
+      expect(toCreateEventForm(makeValidState({ sportTag: tag }), '主辦人').sportTag).toBe('');
+    },
+  );
 });
 
 describe('照 A 修正的項目', () => {
