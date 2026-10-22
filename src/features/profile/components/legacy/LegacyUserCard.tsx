@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 
 import { emit } from '@/core/events';
 import { SHOW_EXP } from '@/core/exp-display';
@@ -78,6 +79,7 @@ export interface LegacyUserCardProps {
  */
 export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const viewer = useViewer();
+  const location = useLocation();
   const identitySettings = useIdentitySettings();
   const targetUid = uid;
   const isSelf = Boolean(viewer.uid && viewer.uid === targetUid);
@@ -297,13 +299,15 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
             {teamEntries.length === 0
               ? lt('無', '無')
               : teamEntries.map((entry, i) => (
-                <span key={entry.id || `${entry.name}-${i}`}>
-                  {i > 0 ? '、' : ''}
-                  {entry.id ? (
-                    <a href={`#page-team?id=${encodeURIComponent(entry.id)}`}>{entry.name}</a>
-                  ) : (
-                    entry.name
-                  )}
+                // 照 A _getUserTeamHtml：每個俱樂部一個 .uc-team-link 膠囊，點擊開俱樂部頁，不加分隔字。
+                <span
+                  key={entry.id || `${entry.name}-${i}`}
+                  class="uc-team-link"
+                  onClick={() => {
+                    if (entry.id) location.route(`/teams/${encodeURIComponent(entry.id)}`);
+                  }}
+                >
+                  {entry.name}
                 </span>
               ))}
           </span>

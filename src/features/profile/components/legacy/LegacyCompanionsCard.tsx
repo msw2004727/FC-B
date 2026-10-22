@@ -149,7 +149,7 @@ export function LegacyCompanionsCard(
   return (
     <div class="info-card" id="my-companions-card">
       <div
-        class="info-title profile-collapse-toggle"
+        class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
         tabIndex={0}
         aria-label={titleText}
