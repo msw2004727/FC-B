@@ -173,17 +173,36 @@ function renderGlowWrap(
 
 export interface EventDetailCoverProps {
   event: LegacyDetailEvent;
+  /** A 編輯 helper 的結果，不使用現場操作權。 */
   canEdit: boolean;
-  onUnavailable: (e?: MouseEvent) => void;
+  onEdit: () => void;
 }
 
 export function EventDetailCover({
   event,
   canEdit,
-  onUnavailable,
+  onEdit,
 }: EventDetailCoverProps): JSX.Element {
   const coverImage = safeImageUrl(event.imageVariants?.cover || event.image);
   const ribbonMeta = getCoverRibbonMeta(event);
+  // 照 A `_renderEventDetailEditButton`。
+  const editButton = canEdit ? (
+    <button
+      type="button"
+      class="detail-cover-edit-btn"
+      data-event-id={event.id || event._docId || event.docId || ''}
+      onClick={click => {
+        click.stopPropagation();
+        onEdit();
+      }}
+    >
+      <svg class="detail-cover-edit-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.4-9.4z" />
+      </svg>
+      <span>活動編輯</span>
+    </button>
+  ) : null;
 
   return (
     <div
@@ -206,16 +225,7 @@ export function EventDetailCover({
           <span class={`detail-cover-ribbon detail-cover-ribbon-${ribbonMeta.typeKey}`}>
             {ribbonMeta.label}
           </span>
-          {/* 下一批補：詳情頁編輯活動入口 */}
-          {canEdit && (
-            <button
-              type="button"
-              class="detail-cover-edit-btn"
-              onClick={onUnavailable}
-            >
-              編輯
-            </button>
-          )}
+          {editButton}
         </div>
       ) : (
         <div class="detail-cover-media detail-cover-media-empty">
@@ -223,16 +233,7 @@ export function EventDetailCover({
           <span class={`detail-cover-ribbon detail-cover-ribbon-${ribbonMeta.typeKey}`}>
             {ribbonMeta.label}
           </span>
-          {/* 下一批補：詳情頁編輯活動入口 */}
-          {canEdit && (
-            <button
-              type="button"
-              class="detail-cover-edit-btn"
-              onClick={onUnavailable}
-            >
-              編輯
-            </button>
-          )}
+          {editButton}
         </div>
       )}
     </div>

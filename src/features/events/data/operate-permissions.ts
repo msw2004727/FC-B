@@ -229,3 +229,45 @@ export function canUseActivityAddons(context: OperateContext, event: EventInput)
   if (!hasUserActivityCapability(context, 'user.activity.addons_use')) return false;
   return !event || isOwner(context, event);
 }
+
+/** A `_canViewEventOperationLog(e)`（event-list-helpers.js 第 466～469 行）。 */
+export function canViewEventOperationLog(context: OperateContext, event: EventInput): boolean {
+  if (!ready(context) || !canOperatePrivate(context, event)) return false;
+  return !!event && (
+    canManageAll(context)
+    || (hasActivityManageEntry(context) && isScoped(context, event))
+  );
+}
+
+/** A `_canManageTeamOnlyVisibility(e)`（＝ `_canToggleEventPublic`，第 455～464 行）。
+ * staffTeamIds：本人是 captainUid／leaderUids（無陣列才看 leaderUid）／coachUids 的俱樂部 ID。
+ */
+export function canManageTeamOnlyVisibility(
+  context: OperateContext,
+  event: (OperateEvent & {
+    teamOnly?: unknown;
+    creatorTeamId?: unknown;
+    creatorTeamIds?: unknown;
+  }) | null | undefined,
+  staffTeamIds: ReadonlySet<string>,
+): boolean {
+  if (!ready(context) || !event || !event.teamOnly) return false;
+  if (!canOperatePrivate(context, event)) return false;
+  if (canManageAll(context)) return true;
+  if (
+    (hasActivityManageEntry(context) || permissionChecker(context)('team.toggle_event_visibility'))
+    && isScoped(context, event)
+  ) return true;
+  if (!canUseActivityAddons(context, event)) return false;
+
+  // 照 A `_getEventLimitedTeamIds`。
+  const ids = new Set<string>();
+  const pushId = (value: unknown): void => {
+    const id = String(value || '').trim();
+    if (id) ids.add(id);
+  };
+  if (Array.isArray(event.creatorTeamIds)) event.creatorTeamIds.forEach(pushId);
+  pushId(event.creatorTeamId);
+  if (ids.size === 0) return isOwner(context, event);
+  return isOwner(context, event) || [...ids].some(id => staffTeamIds.has(id));
+}

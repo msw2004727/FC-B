@@ -60,6 +60,8 @@ import type {
   GetPmAuditLogsResponse,
   GetPrivateMessageSettingsRequest,
   GetPrivateMessageSettingsResponse,
+  IncrementEventViewCountRequest,
+  IncrementEventViewCountResponse,
   ListEduCourseEnrollmentSummariesRequest,
   ListEduCourseEnrollmentSummariesResponse,
   ListEduCourseEnrollmentsRequest,
@@ -174,6 +176,10 @@ export interface CallableMap {
   getPrivateMessageSettings: {
     req: GetPrivateMessageSettingsRequest;
     res: GetPrivateMessageSettingsResponse;
+  };
+  incrementEventViewCount: {
+    req: IncrementEventViewCountRequest;
+    res: IncrementEventViewCountResponse;
   };
   listEduCourseEnrollmentSummaries: {
     req: ListEduCourseEnrollmentSummariesRequest;

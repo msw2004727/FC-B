@@ -34,14 +34,99 @@ const EXPECTED_FIELDS = [
   ...Object.keys(ACTIONS),
   'hasActivityManageEntry',
   'capabilities',
+  // T-005b（M-089）：fixture 新增兩欄，由上方 M-089 案例另行逐案比對。
+  'canViewEventOperationLog',
+  'canManageTeamOnlyVisibility',
 ].sort();
 
 describe('O 階段：A 真實函式 432 案差分 oracle', () => {
+  it('M-089：主案例逐案比對 Log 與俱樂部公開權限', async () => {
+    const helpers = await import('./operate-permissions');
+    const { isTeamStaff, getEventLimitedTeamIds } = await import('./team-staff');
+    for (const testCase of oracle.cases) {
+      const input = testCase.input;
+      const context: OperateContext = {
+        uid: input.uid,
+        role: input.role,
+        rolePermissions: input.rolePermissions,
+        userGrants: input.userGrants,
+        capabilities: input.capabilities,
+        customRoles: input.customRoles.map(role => ({ ...(role as CustomRole) })),
+      };
+      // ASSUMPTION: PM fixture 的 teams 是 A getTeams() 的原始文件陣列。
+      const teams = input.teams as Array<{
+        id?: unknown;
+        _docId?: unknown;
+        docId?: unknown;
+        captainUid?: unknown;
+        leaderUids?: unknown;
+        leaderUid?: unknown;
+        coachUids?: unknown;
+      }>;
+      const staff = new Set(getEventLimitedTeamIds(input.teamEvent).filter(id => {
+        const team = teams.find(item => item.id === id)
+          ?? teams.find(item => [item.id, item._docId, item.docId]
+            .map(value => String(value || '').trim()).filter(Boolean).includes(id));
+        return isTeamStaff(input.uid, team);
+      }));
+      expect(helpers.canViewEventOperationLog(context, input.event), `${testCase.id}: Log`)
+        .toBe(testCase.expected.canViewEventOperationLog);
+      expect(
+        helpers.canManageTeamOnlyVisibility(context, input.teamEvent, staff),
+        `${testCase.id}: visibility`,
+      ).toBe(testCase.expected.canManageTeamOnlyVisibility);
+    }
+  });
+
+  it('M-089：540 案 teamVisibilityCases 全量差分', async () => {
+    const helpers = await import('./operate-permissions');
+    const { isTeamStaff, getEventLimitedTeamIds } = await import('./team-staff');
+    expect(oracle.teamVisibilityCases).toHaveLength(540);
+    for (const [index, testCase] of oracle.teamVisibilityCases.entries()) {
+      const input = testCase.input;
+      const context: OperateContext = {
+        uid: input.uid,
+        role: input.role,
+        rolePermissions: input.rolePermissions,
+        userGrants: input.userGrants,
+        capabilities: input.capabilities,
+        customRoles: input.customRoles.map(role => ({ ...(role as CustomRole) })),
+      };
+      // ASSUMPTION: PM fixture 的 teams 是 A getTeams() 的原始文件陣列。
+      const teams = input.teams as Array<{
+        id?: unknown;
+        _docId?: unknown;
+        docId?: unknown;
+        captainUid?: unknown;
+        leaderUids?: unknown;
+        leaderUid?: unknown;
+        coachUids?: unknown;
+      }>;
+      const staff = new Set(getEventLimitedTeamIds(input.teamEvent).filter(id => {
+        const team = teams.find(item => item.id === id)
+          ?? teams.find(item => [item.id, item._docId, item.docId]
+            .map(value => String(value || '').trim()).filter(Boolean).includes(id));
+        return isTeamStaff(input.uid, team);
+      }));
+      expect(helpers.canViewEventOperationLog(context, input.event), `${index}: Log`)
+        .toBe(testCase.expected.canViewEventOperationLog);
+      expect(
+        helpers.canManageTeamOnlyVisibility(context, input.teamEvent, staff),
+        `${index}: team`,
+      ).toBe(testCase.expected.canManageTeamOnlyVisibility);
+      expect(
+        helpers.canManageTeamOnlyVisibility(context, input.event, staff),
+        `${index}: non-team`,
+      ).toBe(testCase.expected.canManageTeamOnlyVisibilityNonTeamEvent);
+    }
+  });
+
   it('完整 fixture；禁止以 6 案 sample 代替', () => {
     expect(oracle.meta.caseCount).toBe(432);
     expect(oracle.cases).toHaveLength(432);
     expect(new Set(oracle.cases.map(testCase => testCase.id)).size).toBe(432);
-    expect(oracle.meta.fcHead).toBe('5ba42ed5c96afded5e3dfdb0d3ef447d65e35185');
+    // T-005b：FC 67114d051 擴充 oracle（新增 Log／活動公開 helper 與 teamVisibilityCases），既有 432 案預期值不變。
+    expect(oracle.meta.fcHead).toBe('67114d051a76fc2cb35ef8d8623ccc4959211fa9');
   });
 
   for (const testCase of oracle.cases) {
@@ -106,7 +191,12 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
           .toBe(testCase.expected.capabilities[code]);
       }
 
-      expect(actual, `${testCase.id}: complete expected`).toStrictEqual(testCase.expected);
+      const {
+        canViewEventOperationLog: _log,
+        canManageTeamOnlyVisibility: _teamVisibility,
+        ...baseExpected
+      } = testCase.expected;
+      expect(actual, `${testCase.id}: complete expected`).toStrictEqual(baseExpected);
     });
   }
 });

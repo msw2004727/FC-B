@@ -408,12 +408,12 @@ describe('EventDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '聯繫主辦' }));
     expect(mocks.toastShow).toHaveBeenCalledTimes(3);
 
-    fireEvent.click(screen.getByRole('button', { name: '報名紀錄' }));
-    expect(mocks.toastShow).toHaveBeenCalledTimes(4);
-
-    const viewCountWrap = view.container.querySelector('#detail-view-count-wrap')!;
-    fireEvent.click(viewCountWrap);
-    expect(mocks.toastShow).toHaveBeenCalledTimes(5);
+    // 測試同步更新：照 A（M-089／M-090）「報名紀錄」改為依權限的「Log」鈕、瀏覽數不可點，
+    // 改由 EventDetailPage.3b2a.test.tsx 與 EventDetailHeaderActions.test.tsx 驗證。
+    expect(screen.queryByRole('button', { name: '報名紀錄' })).toBeNull();
+    const viewCountWrap = view.container.querySelector('#detail-view-count-wrap');
+    if (viewCountWrap) fireEvent.click(viewCountWrap);
+    expect(mocks.toastShow).toHaveBeenCalledTimes(3);
   });
 
   it('支援登入者與訪客的各種主按鈕狀態文字', async () => {

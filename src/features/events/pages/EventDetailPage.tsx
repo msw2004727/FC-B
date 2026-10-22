@@ -1,6 +1,15 @@
 import type { JSX } from 'preact';
+import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import {
+  EventDetailHeaderActions,
+  canEditDetailActivity,
+} from '../components/legacy/EventDetailHeaderActions';
+import { canViewEventOperationLog } from '../data/operate-permissions';
+import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staff';
+import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
+import type { RegLogRegistration } from '../data/event-reg-log';
 import { useGoBack } from '@/core/back-guard';
 import { lt, useT } from '@/i18n/i18n';
 import { Toast, toast } from '@/ui/Toast';
@@ -60,6 +69,12 @@ import {
 import type { RegistrationDoc } from '../data/types';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
+
+// 照 A 編輯與 Log 入口；穩定 lazy 型別，只在開啟時下載。
+const DetailEventFormModal = lazy(() => import('../components/EventFormModal')
+  .then(module => ({ default: module.EventFormModal })));
+const DetailEventRegLogModal = lazy(() => import('../components/legacy/EventRegLogModal')
+  .then(module => ({ default: module.EventRegLogModal })));
 
 interface Snapshot {
   event: DetailEvent;
@@ -402,6 +417,131 @@ function EventDetailSession({
     if (owner) roleUids.push(owner);
   }
   const roles = useUserRoles(viewer.uid ? roleUids : []);
+
+  const [staffState, setStaffState] = useState<{
+    key: string;
+    ids: ReadonlySet<string>;
+  }>({ key: '', ids: new Set<string>() });
+  const [detailViewCount, setDetailViewCount] = useState(0);
+  const [editingDetail, setEditingDetail] = useState(false);
+  const [detailLogOpen, setDetailLogOpen] = useState(false);
+  const headerRefreshPending = useRef(false);
+  const headerState = useRef({ snapshot, visible });
+  headerState.current = { snapshot, visible };
+  const staffKey = JSON.stringify([
+    viewer.uid, snapshot?.eventDocId, !!event?.teamOnly, getEventLimitedTeamIds(event),
+  ]);
+  const staffTeamIds: ReadonlySet<string> = staffState.key === staffKey
+    ? staffState.ids : new Set<string>();
+  const canEditCover = visible
+    && canEditDetailActivity(operateContextFromViewer(viewer), event);
+  const canShowDetailLog = visible && !!viewer.uid
+    && canViewEventOperationLog(operateContextFromViewer(viewer), event);
+
+  useEffect(() => {
+    let disposed = false;
+    setStaffState({ key: staffKey, ids: new Set<string>() });
+    if (visible && viewer.uid && event?.teamOnly) {
+      loadEventStaffTeamIds(viewer.uid, event).then(ids => {
+        if (!disposed && alive.current) setStaffState({ key: staffKey, ids });
+      }).catch(() => {
+        if (!disposed && alive.current) setStaffState({ key: staffKey, ids: new Set<string>() });
+      });
+    }
+    return () => { disposed = true; };
+  }, [staffKey, visible]);
+
+  useEffect(() => {
+    let disposed = false;
+    if (visible && viewer.uid && event?.id && snapshot?.eventDocId) {
+      incrementEventViewCount(viewer.uid, event.id, snapshot.eventDocId).then(result => {
+        if (disposed || !alive.current || !result) return;
+        setDetailViewCount(previous => mergeViewCount(
+          previous, (headerState.current.snapshot?.event as LegacyDetailEvent | undefined)?.viewCount, result.viewCount,
+        ));
+      }).catch(() => {});
+    }
+    return () => { disposed = true; };
+  }, [visible, viewer.uid, event?.id, snapshot?.eventDocId]);
+
+  useEffect(() => {
+    if (!canEditCover) setEditingDetail(false);
+    if (!canShowDetailLog) setDetailLogOpen(false);
+  }, [canEditCover, canShowDetailLog]);
+
+  function editDetail(): void {
+    const current = headerState.current;
+    if (!current.visible || !canEditDetailActivity(
+      operateContextFromViewer(currentViewer.current),
+      current.snapshot?.event,
+    )) {
+      toast.show({ message: '權限不足' });
+      return;
+    }
+    setEditingDetail(true);
+  }
+
+  function openDetailLog(): void {
+    const current = headerState.current;
+    if (!current.visible || !currentViewer.current.uid || !canViewEventOperationLog(
+      operateContextFromViewer(currentViewer.current),
+      current.snapshot?.event,
+    )) {
+      toast.show({ message: '權限不足' });
+      return;
+    }
+    setDetailLogOpen(true);
+  }
+
+  // 照 A `_refreshEventDetail`：重讀活動與名單；原 refresh 會吞錯，這裡同批讀完才提交。
+  async function refreshDetailHeader(): Promise<void> {
+    const current = headerState.current.snapshot;
+    const uid = currentViewer.current.uid;
+    if (!current || !uid || !headerState.current.visible || headerRefreshPending.current
+      || operation.current || rosterSubmitting) return;
+    headerRefreshPending.current = true;
+    const request = sequence.current;
+    const rosterRequest = ++rosterSequence.current;
+    try {
+      const [fresh, registrations, history, attendanceRecords] = await Promise.all([
+        loadEventDetail(current.event.id ?? publicId),
+        loadEventRegistrations(current.eventDocId),
+        loadViewerRegistrations(uid),
+        canViewDetailAttendanceRecordDetails(currentViewer.current, current.event)
+          ? loadEventAttendance(current.eventDocId)
+          : Promise.resolve([] as EventAttendanceEntry[]),
+      ]);
+      if (!alive.current || request !== sequence.current
+        || rosterRequest !== rosterSequence.current || currentViewer.current.uid !== uid) return;
+      if (!fresh || fresh.eventDocId !== current.eventDocId) throw new Error('refresh failed');
+      const nextEvent = {
+        ...fresh.event,
+        id: fresh.event.id ?? publicId,
+        viewCount: mergeViewCount(
+          (fresh.event as LegacyDetailEvent).viewCount,
+          (headerState.current.snapshot?.event as LegacyDetailEvent | undefined)?.viewCount,
+          detailViewCount,
+        ),
+      };
+      if (!isEventVisibleToUser(nextEvent, currentViewer.current, history)) {
+        setSnapshot(null);
+        setPhase('missing');
+        return;
+      }
+      setSnapshot({
+        event: nextEvent,
+        eventDocId: fresh.eventDocId,
+        viewerRegistrations: history,
+        registrations,
+        attendanceRecords,
+      });
+      setRosterPhase('ready');
+      setHistoryFailed(false);
+      setRefreshFailed(false);
+    } finally {
+      headerRefreshPending.current = false;
+    }
+  }
 
   const eventId = event?.id ?? publicId;
   const operateCtx = operateContextFromViewer(viewer);
@@ -806,79 +946,14 @@ function EventDetailSession({
                 </svg>
               </button>
             </h2>
-            {/* 下一批補：公開／私密活動切換 */}
-            <div
-              id="detail-public-toggle-wrap"
-              style={canManageRoster ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
-            >
-              <button
-                type="button"
-                class="event-reg-log-btn"
-                onClick={handleUnavailable}
-              >
-                {event.privateEvent ? '私密' : '公開'}
-              </button>
-            </div>
-            {/* 下一批補：瀏覽次數累積寫入 */}
-            <div
-              id="detail-view-count-wrap"
-              class="event-view-count"
-              style="flex-shrink:0"
-              aria-label={lt('瀏覽次數', '瀏覽次數')}
-              title={lt('瀏覽次數', '瀏覽次數')}
-              data-i18n-aria-label="瀏覽次數"
-              data-i18n-title="瀏覽次數"
-              onClick={handleUnavailable}
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="13"
-                height="13"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <span id="detail-view-count-num">{viewCountNum.toLocaleString()}</span>
-            </div>
-            {/* 下一批補：手動重新整理按鈕 */}
-            <div
-              id="detail-refresh-btn-wrap"
-              style={viewer.uid ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
-            >
-              <button
-                type="button"
-                class="event-detail-refresh-btn"
-                title="重新整理"
-                aria-label="重新整理"
-                onClick={handleUnavailable}
-              >
-                ↻
-              </button>
-            </div>
-            {/* 下一批補：報名紀錄彈窗 */}
-            <div
-              id="detail-log-btn-wrap"
-              style={viewer.uid ? 'flex-shrink:0' : 'display:none;flex-shrink:0'}
-            >
-              <button
-                type="button"
-                class="event-reg-log-btn"
-                onClick={handleUnavailable}
-              >
-                報名紀錄
-              </button>
-            </div>
+            <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />
           </div>
         </div>
 
         <EventDetailCover
           event={event}
-          canEdit={canManageRoster}
-          onUnavailable={handleUnavailable}
+          canEdit={canEditCover}
+          onEdit={editDetail}
         />
 
         <div class="detail-body" id="detail-body">
@@ -1136,6 +1211,32 @@ function EventDetailSession({
             ? submitCancel()
             : submitSignup(snapshot, selected)))}
         />
+        {detailLogOpen && canShowDetailLog && (
+          <Suspense fallback={<div role="status">載入中…</div>}>
+            <DetailEventRegLogModal
+              eventId={eventId}
+              eventDocId={snapshot.eventDocId}
+              cachedRegistrations={snapshot.registrations as readonly RegLogRegistration[]}
+              onClose={() => setDetailLogOpen(false)}
+            />
+          </Suspense>
+        )}
+        {editingDetail && canEditCover && (
+          <Suspense fallback={<div role="status">載入中…</div>}>
+            <DetailEventFormModal
+              open
+              mode="edit"
+              existing={{ ...event, _docId: snapshot.eventDocId, docId: snapshot.eventDocId }}
+              viewer={viewer}
+              onClose={() => setEditingDetail(false)}
+              onSaved={() => {
+                if (!alive.current) return;
+                setEditingDetail(false);
+                setReload(value => value + 1);
+              }}
+            />
+          </Suspense>
+        )}
         {noticeToast}
       </section>
     </div>

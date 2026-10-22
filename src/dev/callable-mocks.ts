@@ -4,6 +4,24 @@
 import { registerMock } from '@/data/callables';
 import type { ConfirmEventAttendanceDesiredState } from '@/data/contract/callables';
 
+const mockEventViewCounts = new Map<string, number>();
+
+registerMock('incrementEventViewCount', async (req) => {
+  const [{ getFirebase }, fs] = await Promise.all([
+    import('@/data/firebase'),
+    import('firebase/firestore'),
+  ]);
+  const firebase = await getFirebase();
+  const snapshot = await fs.getDoc(fs.doc(firebase.db, 'events', req.docId));
+  const value: unknown = snapshot.exists() ? snapshot.data().viewCount : 0;
+  const numeric = Number(value || 0);
+  const stored = Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
+  const key = JSON.stringify([req.eventId, req.docId]);
+  const viewCount = Math.max(stored, mockEventViewCounts.get(key) ?? 0) + 1;
+  mockEventViewCounts.set(key, viewCount);
+  return { incremented: true, viewCount };
+});
+
 function isFailureEnabled(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1';
