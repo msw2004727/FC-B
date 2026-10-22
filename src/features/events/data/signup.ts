@@ -52,6 +52,8 @@ export interface BuildRegisterPayloadInput {
   earlyBirdExpectedCost?: number;
   teamKey?: string;
   preferredTeamReservationTeamId?: string;
+  /** 照 A _confirmCompanionRegisterUnlocked 的 requestId 與名稱 fallback。 */
+  companionToggle?: boolean;
   now?: number;
   randomSuffix?: string;
 }
@@ -61,6 +63,8 @@ export interface BuildCancelPayloadInput {
   userId: string;
   registrationIds: string[];
   kind: 'self' | 'companion';
+  /** 照 A _confirmCompanionRegisterUnlocked 的 reason 與 requestId。 */
+  companionToggle?: boolean;
   now?: number;
   randomSuffix?: string;
 }
@@ -164,7 +168,8 @@ export function buildRegisterPayload(input: BuildRegisterPayloadInput): Register
 
   const selected = selectParticipants(input);
   // A07/A09 使用 ||，不得自行 trim 顯示名稱。
-  const userName = input.user.displayName || input.user.name || '用戶';
+  const userName = input.user.displayName || input.user.name
+    || (input.companionToggle ? '使用者' : '用戶');
   const participants = selected.map((participant) => {
     const operator = { userId: input.user.uid, userName };
     return participant.type === 'self'
@@ -179,7 +184,7 @@ export function buildRegisterPayload(input: BuildRegisterPayloadInput): Register
   const payload: RegisterForEventRequest & { teamKey?: string } = {
     eventId: input.eventId,
     participants,
-    requestId: `${input.user.uid}_${input.eventId}_${input.now ?? Date.now()}_${input.randomSuffix ?? Math.random().toString(36).slice(2, 5)}`,
+    requestId: `${input.user.uid}_${input.eventId}_${input.companionToggle ? 'companions_' : ''}${input.now ?? Date.now()}_${input.randomSuffix ?? Math.random().toString(36).slice(2, 5)}`,
   };
 
   if (input.earlyBirdAccepted === true) {
@@ -217,13 +222,14 @@ export function buildCancelPayload(input: BuildCancelPayloadInput): CancelRegist
 
   const timestamp = input.now ?? Date.now();
   const requestId = input.kind === 'companion'
-    ? `cancel_companion_${input.userId}_${input.eventId}_${timestamp}`
+    ? `cancel_companion_${input.companionToggle ? 'toggle_' : ''}${input.userId}_${input.eventId}_${timestamp}`
     : `cancel_${input.userId}_${input.eventId}_${timestamp}_${input.randomSuffix ?? Math.random().toString(36).slice(2, 5)}`;
 
   return {
     eventId: input.eventId,
     registrationIds,
-    reason: 'user_cancel',
+    reason: input.kind === 'companion' && input.companionToggle
+      ? 'companion_toggle' : 'user_cancel',
     requestId,
   };
 }

@@ -56,7 +56,8 @@ vi.mock('../data/operate-permissions', async (importOriginal) => ({
   canRemoveConfirmedParticipant: () => false,
 }));
 vi.mock('../data/attendance-settle', () => ({ settleAttendance: vi.fn() }));
-vi.mock('../data/event-lifecycle', () => ({ resolveOperator: () => '使用者' }));
+vi.mock('../data/event-lifecycle', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../data/event-lifecycle')>()), resolveOperator: () => '使用者' }));
 vi.mock('@/features/checkin/data/attendance', () => ({
   loadEventAttendance: vi.fn(async () => []),
 }));

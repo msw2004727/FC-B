@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
   viewer: vi.fn(),
   companions: vi.fn(),
+  signupProfile: vi.fn(),
+  confirm: vi.fn(),
   toastShow: vi.fn(),
   settleAttendance: vi.fn<(input: SettleAttendanceInput) => Promise<SettleAttendanceResult>>(),
   writeAttendanceOps: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock('@/features/events/data/attendance-edit', async (importOriginal) => ({
 vi.mock('@/data/user-roles', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/data/user-roles')>()),
   useUserRoles: () => ({}),
+  getCachedUserLevel: () => 0,
 }));
 
 const ZH_DICT: Record<string, string> = {
@@ -124,6 +127,45 @@ vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer }));
 vi.mock('@/features/events/data/companions', () => ({
   loadSignupCompanions: mocks.companions,
 }));
+vi.mock('@/features/events/data/signup-profile', () => ({
+  loadSignupProfile: mocks.signupProfile,
+}));
+vi.mock('@/ui/AppConfirm', async (o) => ({
+  ...(await o<typeof import('@/ui/AppConfirm')>()),
+  appConfirm: mocks.confirm,
+}));
+vi.mock('@/features/events/data/line-notify-bind', () => ({
+  shouldShowLineNotifyPrompt: async () => false,
+  bindLineNotify: vi.fn(),
+  dismissLineNotifyPrompt: vi.fn(),
+}));
+// 測試同步更新：照 A（M-084），此既有頁面測試隔離 context 的額外讀取。
+// 真實 context 的讀取及限制由 signup-context.test.ts 驗證。
+vi.mock('@/features/events/data/signup-context', async (o) => ({
+  ...(await o<typeof import('../data/signup-context')>()),
+  createDetailSignupContexts: (deps: {
+    getViewer: () => ViewerView | null;
+    generation: number;
+  }) => ({
+    signup: {
+      getAuth: () => ({ uid: deps.getViewer()?.uid ?? null, generation: deps.generation }),
+      load: async (eventId: string) => ({
+        event: { id: eventId, status: 'open' },
+        viewer: deps.getViewer(),
+        registrations: [],
+        profileComplete: true,
+        participantCheck: { ok: true },
+        earlyBirdWindow: false,
+        teamSignupAllowed: true,
+        requiresTeamSelection: false,
+      }),
+    },
+    cancel: {
+      getAuth: () => ({ uid: deps.getViewer()?.uid ?? null, generation: deps.generation }),
+      load: async (eventId: string) => ({ event: { id: eventId, status: 'open' } }),
+    },
+  }),
+}));
 vi.mock('@/data/auth', () => ({ signIn: mocks.signIn, getLastKnownAuthUid: () => undefined }));
 vi.mock('@/features/events/data/signup', async (importOriginal) => {
   const original = await importOriginal<typeof import('../data/signup')>();
@@ -181,8 +223,15 @@ beforeEach(async () => {
   mocks.attendance.mockResolvedValue([]);
   mocks.history.mockResolvedValue([]);
   mocks.companions.mockResolvedValue([]);
-  mocks.register.mockResolvedValue({ deduplicated: false });
-  mocks.cancel.mockResolvedValue({ deduplicated: false });
+  // 測試同步更新：照 A（M-084／M-083）。
+  mocks.signupProfile.mockResolvedValue({
+    gender: '女', birthday: '2000/01/01', exp: 100, lineNotifyBound: true,
+  });
+  mocks.confirm.mockResolvedValue(true);
+  mocks.register.mockResolvedValue({
+    deduplicated: false, confirmed: 1, registrations: [{ participantType: 'self', status: 'confirmed' }],
+  });
+  mocks.cancel.mockResolvedValue({ deduplicated: false, event: { current: 0, max: 0 } });
   mocks.signIn.mockResolvedValue({ uid: 'u1' });
 });
 
@@ -667,7 +716,9 @@ describe('EventDetailPage', () => {
     await screen.findByRole('heading', { level: 2 });
     await screen.findByText('無法同步你的報名狀態，請重試後再報名。');
     expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
+    // 測試同步更新：照 A（M-084），歷史失敗顯示同步狀態而非可按的立即報名。
+    expect(screen.getByRole('button', { name: '報名狀態同步中' }))
+      .toHaveProperty('disabled', true);
     expect(mocks.register).not.toHaveBeenCalled();
     expect(mocks.companions).not.toHaveBeenCalled();
   });
@@ -693,21 +744,27 @@ describe('EventDetailPage', () => {
       .toContain('已報 1/0');
   });
 
-  it('確認選取後才取消，payload 使用子文件 ID', async () => {
+  // 測試同步更新：照 A（M-081），單人取消走 appConfirm，不開選人彈窗。
+  it('單人確認後才取消，payload 使用子文件 ID 與 context', async () => {
+    let confirm!: (value: boolean) => void;
+    mocks.confirm.mockReturnValue(new Promise<boolean>(resolve => { confirm = resolve; }));
     mocks.registrations.mockResolvedValue([]);
     mocks.history.mockResolvedValueOnce([self]).mockResolvedValue([]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定要取消報名？'));
     expect(mocks.cancel).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole('button', { name: '確認取消' }));
+    await act(async () => { confirm(true); });
     await screen.findByRole('button', { name: '立即報名' });
-    expect(mocks.cancel).toHaveBeenCalledWith({
+    expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'ce_123_abc',
       userId: 'u1',
       registrationIds: ['registration-self'],
       kind: 'self',
-    });
+      context: expect.objectContaining({ getAuth: expect.any(Function), load: expect.any(Function) }),
+    }));
     expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已取消報名' });
   });
 
   it('未登入點報名呼叫動態載入的 signIn', async () => {
@@ -719,18 +776,20 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).not.toHaveBeenCalled();
   });
 
-  it('有同行者時先選擇，未確認不送出', async () => {
+  // 測試同步更新：照 A（M-084），本人直接報名，不查詢或開啟同行者選擇。
+  it('有同行者仍直接報名本人', async () => {
     mocks.companions.mockResolvedValue([{ id: 'c1', name: '同行小王' }]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
-    fireEvent.click(await screen.findByRole('checkbox', { name: '同行小王' }));
-    expect(mocks.register).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '確認報名' }));
     await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        companions: [{ companionId: 'c1', companionName: '同行小王' }],
+        user: { uid: 'u1', displayName: '小明' },
+        context: expect.objectContaining({ getAuth: expect.any(Function) }),
       }),
     ));
+    expect(mocks.companions).not.toHaveBeenCalled();
+    expect(document.querySelector('#companion-select-overlay')).toBeNull();
+    expect(mocks.toastShow).toHaveBeenCalledWith({ message: '報名成功！' });
   });
 
   it('SignupError 以翻譯後 Toast 呈現', async () => {
@@ -799,7 +858,8 @@ describe('EventDetailPage', () => {
       .toContain('已報 1/0');
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.cancel).not.toHaveBeenCalled();
-    expect(mocks.companions).toHaveBeenCalledTimes(1);
+    // 測試同步更新：照 A（M-084），本人報名不載入同行者。
+    expect(mocks.companions).not.toHaveBeenCalled();
     expect(mocks.detail).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenCalledTimes(2);
     expect(mocks.history).toHaveBeenCalledTimes(3);

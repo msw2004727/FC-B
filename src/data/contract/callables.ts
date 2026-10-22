@@ -313,7 +313,8 @@ export interface CancelRegistrationRequest {
    * @validation validReasons.includes(reason) ? reason : "user_cancel"（無效值預設 user_cancel）
    * @source request.data || {} 解構；validReasons / cancelReason
    */
-  reason?: "user_cancel" | "manager_remove" | "capacity_change";
+  // A _confirmCompanionRegisterUnlocked 送 "companion_toggle"；伺服器不在 validReasons 時視為 user_cancel（functions/index.js validReasons）。
+  reason?: "user_cancel" | "manager_remove" | "capacity_change" | "companion_toggle";
   /**
    * @validation string 且 length > 0 時 slice(0, 100)；否則產生 cancel_${callerUid}_${eventId}_${Date.now()}
    * @source request.data || {} 解構；safeRequestId

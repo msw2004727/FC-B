@@ -24,10 +24,26 @@ import { loadEventAttendance, type EventAttendanceEntry } from '@/features/check
 import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
-import { precheckSignup, cancelRegistration, SignupError } from '../data/signup';
+import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
 import { registerSelection } from '../data/signup-selection';
 import { loadSignupCompanions, type SignupCompanion } from '../data/companions';
 import { getSignupButtonState } from '../data/signup-state';
+import { loadSignupProfile, type SignupProfile } from '../data/signup-profile';
+import {
+  canDetailCompanionSignup,
+  createDetailSignupContexts,
+  detailCompanionGenderMessage,
+} from '../data/signup-context';
+import { getEventEarlyBirdCost } from '../data/signup-restrictions';
+import { effectiveEventStatus } from '../data/my-activities-model';
+import { getEventParticipantStats } from '../data/participant-stats';
+import { eventStartMs } from '../data/terminal';
+import {
+  EventDetailPrimaryButton,
+  type SignupFlip,
+} from '../components/legacy/EventDetailPrimaryButton';
+import type { CompanionSelectItem } from '../components/legacy/CompanionSelectModal';
+import type { CompanionCancelTarget } from '../components/legacy/CompanionCancelModal';
 import { operateContextFromViewer } from '../data/event-create-context';
 import {
   canOperateEventSite,
@@ -36,7 +52,6 @@ import {
 import { managerRemoveRegistration } from '../data/roster-remove';
 import {
   count,
-  eventDateRange,
   guestConfirmedCount,
   guestEventPeople,
   isActiveRegistration,
@@ -61,10 +76,8 @@ import {
 } from '../components/legacy/DetailAttendanceSummary';
 import { GuestRosterSections } from '../components/legacy/GuestRosterSections';
 import {
-  CompanionSelectModal,
   EventDetailCover,
   EventDetailInfoSection,
-  EventDetailPrimaryButton,
   calcHeatPrediction,
   type LegacyDetailEvent,
 } from '../components/legacy/EventDetailMainView';
@@ -154,7 +167,17 @@ interface Notice {
   serial: number;
 }
 
-type Sheet = 'signup' | 'cancel' | null;
+const DetailCompanionSelectModal = lazy(() =>
+  import('../components/legacy/CompanionSelectModal')
+    .then(module => ({ default: module.CompanionSelectModal })));
+const DetailCompanionCancelModal = lazy(() =>
+  import('../components/legacy/CompanionCancelModal')
+    .then(module => ({ default: module.CompanionCancelModal })));
+const DetailLineNotifyPrompt = lazy(() =>
+  import('../components/legacy/LineNotifyPrompt')
+    .then(module => ({ default: module.LineNotifyPrompt })));
+
+let nextSignupGeneration = 0;
 type RosterPhase = 'idle' | 'loading' | 'ready' | 'error';
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
@@ -219,9 +242,17 @@ function EventDetailSession({
   const [busy, setBusy] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [sheet, setSheet] = useState<Sheet>(null);
   const [companions, setCompanions] = useState<SignupCompanion[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [companionOpen, setCompanionOpen] = useState(false);
+  const [companionBusy, setCompanionBusy] = useState(false);
+  const [cancelModal, setCancelModal] = useState<{
+    targets: CompanionCancelTarget[];
+    selectAll: boolean;
+  } | null>(null);
+  const [signupProfile, setSignupProfile] = useState<SignupProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(Boolean(viewer.uid));
+  const [flip, setFlip] = useState<SignupFlip | null>(null);
+  const [linePromptOpen, setLinePromptOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [rosterEditing, setRosterEditing] = useState(false);
   const [rosterSubmitting, setRosterSubmitting] = useState(false);
@@ -233,6 +264,50 @@ function EventDetailSession({
   const noticeSequence = useRef(0);
   const currentViewer = useRef(viewer);
   currentViewer.current = viewer;
+  const profileRef = useRef(signupProfile);
+  profileRef.current = signupProfile;
+  const companionsRef = useRef(companions);
+  companionsRef.current = companions;
+  const profileSequence = useRef(0);
+  const flipSequence = useRef(0);
+  const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lineAbort = useRef<AbortController | null>(null);
+  const generation = useRef(0);
+  if (!generation.current) generation.current = ++nextSignupGeneration;
+  const signupContexts = useRef<ReturnType<typeof createDetailSignupContexts> | null>(null);
+  if (!signupContexts.current) {
+    signupContexts.current = createDetailSignupContexts({
+      getViewer: () => alive.current ? currentViewer.current : null,
+      generation: generation.current,
+      getProfile: () => profileRef.current,
+      getCompanionGender: id => companionsRef.current.find(item => item.id === id)?.gender,
+    });
+  }
+  const contexts = signupContexts.current;
+
+  useEffect(() => {
+    const request = ++profileSequence.current;
+    const uid = viewer.uid;
+    setProfileLoading(Boolean(uid));
+    setSignupProfile(null);
+    profileRef.current = null;
+    if (!uid) return;
+    loadSignupProfile(uid).then(
+      value => {
+        if (!alive.current || request !== profileSequence.current) return;
+        profileRef.current = value;
+        setSignupProfile(value);
+      },
+      () => {
+        if (!alive.current || request !== profileSequence.current) return;
+        profileRef.current = null;
+        setSignupProfile(null);
+      },
+    ).finally(() => {
+      if (alive.current && request === profileSequence.current) setProfileLoading(false);
+    });
+    return () => { profileSequence.current += 1; };
+  }, [viewer.uid]);
 
   useEffect(() => {
     alive.current = true;
@@ -241,6 +316,9 @@ function EventDetailSession({
       alive.current = false;
       sequence.current += 1;
       rosterSequence.current += 1;
+      profileSequence.current += 1;
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current);
+      lineAbort.current?.abort();
       window.clearInterval(timer);
     };
   }, []);
@@ -396,7 +474,18 @@ function EventDetailSession({
     try {
       await work();
     } catch (error) {
-      show(errorKey(error, 'events.detailPage.actionError'));
+      if (alive.current) {
+        if (error instanceof SignupError && [
+          'gender_restricted', 'age_restricted', 'event_unavailable',
+          'event_ended', 'event_started', 'event_not_open',
+          'event_team_only_restricted', 'already_registered',
+          'EVENT_ENDED', 'EVENT_STARTED',
+        ].includes(error.originalCode)) {
+          toast.show({ message: error.message });
+        } else {
+          show(errorKey(error, 'events.detailPage.actionError'));
+        }
+      }
     } finally {
       operation.current = false;
       if (alive.current) setBusy(false);
@@ -785,103 +874,474 @@ function EventDetailSession({
       snapshot?.viewerRegistrations.filter((reg) => reg.eventId === eventId) ?? [],
     );
   const owned = actionRegistrations.filter((reg) => registrationOwner(reg) === viewer.uid);
-  const selfRegistered = owned.some((reg) => !isCompanion(reg));
-  const signedCompanions = new Set(owned.map((reg) => reg.companionId).filter(Boolean));
-
-  function check(current: Snapshot, includeSelf: boolean): boolean {
-    if (historyFailed) {
-      show('events.detailPage.historyError');
-      return false;
-    }
-    const currentEventId = current.event.id ?? publicId;
-    const history = current.viewerRegistrations.filter((reg) => reg.eventId === currentEventId);
-    const result = precheckSignup(current.event, currentViewer.current, history, new Date());
-    if (result.ok) return true;
-
-    if (!includeSelf && result.reason === 'already_registered') return true;
-    show(result.messageKey.replace(/^event\./, 'events.'));
-    return false;
+  // 照 A handleSignup／handleCancelSignup 的翻牌生命週期。
+  function showFlip(text: string, background: string): void {
+    if (!alive.current) return;
+    if (flipTimer.current !== null) clearTimeout(flipTimer.current);
+    setFlip({ text, background, serial: ++flipSequence.current });
+    flipTimer.current = setTimeout(() => {
+      flipTimer.current = null;
+      if (alive.current) setFlip(null);
+    }, 750);
   }
 
-  async function submitSignup(current: Snapshot, keys: readonly string[]): Promise<void> {
+  async function maybeShowLinePrompt(uid: string): Promise<void> {
+    if (!alive.current || profileRef.current?.lineNotifyBound === true) return;
+    const module = await import('../data/line-notify-bind');
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    const allowed = await module.shouldShowLineNotifyPrompt(uid);
+    // await 後重讀 ref（TS 會沿用前面的窄化，改用函式讀最新值）。
+    const boundNow = (): boolean => profileRef.current?.lineNotifyBound === true;
+    if (alive.current && currentViewer.current.uid === uid && !boundNow() && allowed) {
+      setLinePromptOpen(true);
+    }
+  }
+
+  async function bindNotify(): Promise<void> {
+    const uid = currentViewer.current.uid;
+    if (!uid || !alive.current) return;
+    const module = await import('../data/line-notify-bind');
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    lineAbort.current?.abort();
+    const controller = new AbortController();
+    lineAbort.current = controller;
+    await module.bindLineNotify(uid, currentViewer.current.displayName || undefined, {
+      signal: controller.signal,
+      notify: message => {
+        if (alive.current && currentViewer.current.uid === uid) toast.show({ message });
+      },
+    });
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    const next = {
+      ...(profileRef.current ?? { gender: '', birthday: '', exp: 0 }),
+      lineNotifyBound: true,
+    };
+    profileRef.current = next;
+    setSignupProfile(next);
+  }
+
+  // 照 A handleSignup；本人報名不載入同行者，也不開選人彈窗。
+  async function beginSelfSignup(opts: { earlyBird?: boolean }): Promise<void> {
+    const current = snapshot;
     const uid = currentViewer.current.uid;
     if (!uid) {
       await login();
       return;
     }
-    const includeSelf = keys.includes('self');
-    if (!check(current, includeSelf)) return;
-    const chosen = companions.filter((item) => keys.includes(`companion:${item.id}`));
-    if (!includeSelf && chosen.length === 0) {
-      show('events.detailPage.selectSomeone');
+    if (!current || refreshFailed || !alive.current) return;
+    if (profileLoading || historyFailed) return;
+
+    const latest = await contexts.signup.load(current.event.id ?? publicId, [{ type: 'self' }]);
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    const earlyBird = latest.earlyBirdWindow
+      && (opts.earlyBird === true || latest.event.status === 'upcoming');
+    const result = precheckSignup(
+      latest.event, latest.viewer, latest.registrations, new Date(), {
+        profileComplete: latest.profileComplete,
+        participantCheck: latest.participantCheck,
+        earlyBirdWindow: latest.earlyBirdWindow,
+        earlyBirdAccepted: earlyBird,
+        teamSignupAllowed: latest.teamSignupAllowed,
+        requiresTeamSelection: false,
+      },
+    );
+    if (!result.ok) {
+      const messages: Record<string, string> = {
+        event_unavailable: '此活動目前無法報名',
+        event_ended: '活動已開始，報名已結束',
+        event_started: '活動已於開始時間結束，無法報名',
+        event_not_open: '報名尚未開放，請稍後再試',
+        event_team_only_restricted: '俱樂部限定活動，僅限該隊成員報名',
+        already_registered: '你已經報名這場活動',
+      };
+      if (result.message || messages[result.reason]) {
+        toast.show({ message: result.message || messages[result.reason] || '' });
+      } else {
+        show(result.messageKey.replace(/^event\./, 'events.'));
+      }
       return;
     }
-    await registerSelection({
+
+    const signupEvent = latest.event as DetailEvent & {
+      earlyBirdEnabled?: unknown;
+      earlyBirdCost?: unknown;
+    };
+    const cost = getEventEarlyBirdCost(signupEvent);
+    if (earlyBird) {
+      if (getEventParticipantStats(latest.event, []).isCapacityFull) {
+        toast.show({ message: '早鳥名額已滿，正式開放後可依活動狀態候補報名' });
+        return;
+      }
+      if ((profileRef.current?.exp ?? 0) < cost) {
+        toast.show({ message: '目前積分不足，可等正式開放後報名' });
+        return;
+      }
+      const accepted = await appConfirm(
+        `早鳥報名確認\n你將使用 ${cost} 積分提前報名「${latest.event.title || '此活動'}」。\n若活動取消，系統會退回積分；若你自行取消報名，已扣除的早鳥積分不會退回。`,
+        { okText: '確認扣除並報名' },
+      );
+      if (!accepted || !alive.current || currentViewer.current.uid !== uid) return;
+    }
+
+    const response = await registerForEvent({
       eventId: current.event.id ?? publicId,
       user: { uid, displayName: currentViewer.current.displayName },
-      companions: chosen.map((item) => ({
-        companionId: item.id,
-        companionName: item.name,
-      })),
-    }, includeSelf);
-    if (!alive.current) return;
-    setSheet(null);
-    show('events.detailPage.signupSuccess');
+      context: contexts.signup,
+      ...(earlyBird ? { earlyBirdAccepted: true, earlyBirdExpectedCost: cost } : {}),
+    });
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    if (response.deduplicated) {
+      toast.show({ message: '報名處理中，請稍候' });
+      await refresh(current);
+      return;
+    }
+
+    const registrations: unknown[] = Array.isArray(response.registrations)
+      ? response.registrations : [];
+    const selfResult = registrations.find(value =>
+      value !== null && typeof value === 'object'
+      && 'participantType' in value && value.participantType === 'self')
+      ?? registrations[0];
+    const responseStatus = selfResult !== null && typeof selfResult === 'object'
+      && 'status' in selfResult ? selfResult.status : undefined;
+    const waitlisted = responseStatus === 'waitlisted'
+      || (!selfResult && count(response.waitlisted) > 0);
+    const charged = count(response.earlyBirdCost);
+    if (response.earlyBirdCharged && profileRef.current) {
+      const next = {
+        ...profileRef.current,
+        exp: Math.max(0, profileRef.current.exp - charged),
+      };
+      profileRef.current = next;
+      setSignupProfile(next);
+    }
+    toast.show({
+      message: waitlisted ? '已加入候補名單'
+        : response.earlyBirdCharged
+          ? `早鳥報名成功，已扣除 ${charged} 積分` : '報名成功！',
+    });
+    showFlip(waitlisted ? '取消候補' : '取消報名', waitlisted ? '#7c3aed' : '#dc2626');
     await refresh(current);
+    if (!alive.current) return;
+    // 照 A _maybeShowLineNotifyPrompt；引導失敗不改寫報名成功結果。
+    maybeShowLinePrompt(uid).catch(() => {});
   }
 
-  async function beginSignup(forceSheet: boolean): Promise<void> {
-    if (!snapshot || !visible || refreshFailed) return;
-    if (!viewer.uid) {
+  // 照 A handleCancelSignup；重複本人紀錄依課程目標去重判斷。
+  async function beginCancel(): Promise<void> {
+    const current = snapshot;
+    const uid = currentViewer.current.uid;
+    if (!uid) {
       await login();
       return;
     }
-    if (!check(snapshot, !forceSheet)) return;
-
-    const available = await loadSignupCompanions(viewer.uid);
-    if (!alive.current) return;
-    if (available.length > 0 || forceSheet) {
-      setCompanions(available);
-      setSelected(forceSheet || selfRegistered ? [] : ['self']);
-      setSheet('signup');
-    } else {
-      await submitSignup(snapshot, ['self']);
+    if (!current || !visible || refreshFailed || !alive.current) return;
+    const selfRegs = owned.filter(reg => !isCompanion(reg));
+    if (selfRegs.length === 0) {
+      toast.show({ message: '你尚未報名此活動' });
+      return;
     }
+    const selfKeys = new Set(selfRegs.map(reg => {
+      const course = reg as DetailRegistration & {
+        courseStudentId?: string;
+        courseLinkId?: string;
+      };
+      const student = String(course.courseStudentId || '').trim();
+      const link = String(course.courseLinkId || '').trim();
+      return student || link
+        ? `course:${link}:${student || registrationId(reg)}`
+        : `ordinary:${registrationOwner(reg) || uid}`;
+    }));
+    if (owned.some(isCompanion) || selfKeys.size > 1) {
+      // 照 A：selfRegs.concat(companionRegs)，本人在前。
+      const ordered = [...selfRegs, ...owned.filter(isCompanion)];
+      const targets: CompanionCancelTarget[] = ordered.map(reg => {
+        const course = reg as DetailRegistration & {
+          courseStudentId?: string;
+          courseLinkId?: string;
+        };
+        return {
+          registrationId: registrationId(reg),
+          isSelf: !isCompanion(reg),
+          name: reg.companionName || reg.userName || '',
+          status: reg.status === 'waitlisted' ? 'waitlisted' : 'confirmed',
+          courseStudentId: course.courseStudentId,
+          courseLinkId: course.courseLinkId,
+        };
+      });
+      setCancelModal({ targets, selectAll: selfKeys.size === 1 });
+      return;
+    }
+
+    const latest = await contexts.cancel.load(current.event.id ?? publicId);
+    if (!alive.current) return;
+    if (latest.event.status === 'ended' || latest.event.status === 'cancelled') {
+      toast.show({ message: '活動已開始，無法再取消報名' });
+      return;
+    }
+    const start = eventStartMs(latest.event);
+    if (start > 0 && start <= Date.now()) {
+      toast.show({ message: '活動已於開始時間結束，無法取消報名' });
+      return;
+    }
+    const waitlisted = selfRegs.every(reg => reg.status === 'waitlisted');
+    if (!await appConfirm(waitlisted ? '確定要取消候補？' : '確定要取消報名？')) return;
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    const ids = selfRegs.map(registrationId);
+    if (ids.some(id => !id)) {
+      toast.show({ message: '報名資料尚未同步完成，請重新整理後再試' });
+      return;
+    }
+    const response = await cancelRegistration({
+      eventId: current.event.id ?? publicId,
+      userId: uid,
+      registrationIds: ids,
+      kind: 'self',
+      context: contexts.cancel,
+    });
+    if (!alive.current) return;
+    if (response.deduplicated) {
+      toast.show({ message: '取消處理中，請稍候' });
+      await refresh(current);
+      return;
+    }
+    toast.show({ message: waitlisted ? '已取消候補' : '已取消報名' });
+    const rawEvent: unknown = (response as { event?: unknown }).event;
+    // ASSUMPTION: 舊 Callable 無 event 投影時，重讀活動以判斷取消後是否仍額滿。
+    const updated = rawEvent && typeof rawEvent === 'object' && !Array.isArray(rawEvent)
+      ? { ...current.event, ...rawEvent } as DetailEvent
+      : (await loadEventDetail(current.event.id ?? publicId))?.event;
+    if (!alive.current) return;
+    if (updated) {
+      const full = getEventParticipantStats(updated, []).isCapacityFull;
+      showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)');
+    }
+    await refresh(updated ? { ...current, event: updated } : current);
   }
 
-  async function submitCancel(): Promise<void> {
-    if (!snapshot || !viewer.uid || !visible || selected.length === 0) return;
-    const targets = owned.filter((reg) => selected.includes(registrationId(reg)));
-    if (targets.length !== selected.length || targets.some((reg) => !registrationId(reg))) {
+  async function confirmCancel(ids: string[]): Promise<void> {
+    const current = snapshot;
+    const uid = currentViewer.current.uid;
+    if (!current || !uid || !visible || refreshFailed || !alive.current) return;
+    if (!ids.length) {
+      toast.show({ message: '請選擇要取消的報名' });
+      return;
+    }
+    const targets = owned.filter(reg => ids.includes(registrationId(reg)));
+    if (new Set(ids).size !== ids.length || targets.length !== ids.length
+      || targets.some(reg => !registrationId(reg))) {
       show('events.detailPage.refreshError');
       setRefreshFailed(true);
       return;
     }
-    await cancelRegistration({
-      eventId: snapshot.event.id ?? publicId,
-      userId: viewer.uid,
-      registrationIds: targets.map(registrationId),
-      kind: targets.length === 1 && !isCompanion(targets[0]!)
-        ? 'self' : 'companion',
-    });
-    if (!alive.current) return;
-    setSheet(null);
-    show('events.detailPage.cancelSuccess');
-    await refresh(snapshot);
+    try {
+      const response = await cancelRegistration({
+        eventId: current.event.id ?? publicId,
+        userId: uid,
+        registrationIds: ids,
+        kind: targets.every(reg => !isCompanion(reg)) ? 'self' : 'companion',
+        context: contexts.cancel,
+      });
+      if (!alive.current) return;
+      toast.show({ message: response.deduplicated
+        ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
+      setCancelModal(null);
+      await refresh(current);
+    } catch (error) {
+      if (!alive.current) return;
+      if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {
+        toast.show({ message: `已取消 ${ids.length} 筆報名` });
+        setCancelModal(null);
+        await refresh(current);
+        return;
+      }
+      const messages: Record<string, string> = {
+        REG_NOT_FOUND: '找不到報名紀錄',
+        EVENT_NOT_FOUND: '活動不存在',
+        PERMISSION_DENIED: '無權限執行此操作',
+        EVENT_ENDED: '活動已開始，無法再取消報名',
+        EVENT_STARTED: '活動已於開始時間結束，無法取消報名',
+      };
+      const code = error instanceof SignupError ? error.originalCode : '';
+      toast.show({ message: `取消失敗：${messages[code] || '連線逾時，請檢查網路後重新整理再試'}` });
+    }
   }
 
-  function toggle(key: string, checked: boolean): void {
-    setSelected((previous) => checked
-      ? Array.from(new Set([...previous, key]))
-      : previous.filter((value) => value !== key));
+  // 照 A _openCompanionSelectModal；只在工具列入口讀同行者。
+  async function openCompanionSelect(): Promise<void> {
+    const uid = currentViewer.current.uid;
+    if (!uid) {
+      await login();
+      return;
+    }
+    const current = snapshot;
+    if (!current || !visible || refreshFailed || !alive.current) return;
+    const status = effectiveEventStatus(current.event);
+    if (status === 'ended' || status === 'cancelled') {
+      toast.show({ message: '活動已開始，無法再調整夥伴報名' });
+      return;
+    }
+    if (status === 'upcoming') {
+      toast.show({ message: '報名尚未開放，請稍後再試' });
+      return;
+    }
+    const available = await loadSignupCompanions(uid);
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    if (!available.length) {
+      toast.show({ message: '請先到個人資訊新增同行者' });
+      return;
+    }
+    companionsRef.current = available;
+    setCompanions(available);
+    setCompanionOpen(true);
+  }
+
+  async function confirmCompanions(selection: {
+    addCompanionIds: string[];
+    cancelRegistrationIds: string[];
+  }): Promise<void> {
+    const current = snapshot;
+    const uid = currentViewer.current.uid;
+    if (!current || !uid || !visible || refreshFailed || !alive.current) return;
+    const { addCompanionIds, cancelRegistrationIds } = selection;
+    if (!addCompanionIds.length && !cancelRegistrationIds.length) {
+      toast.show({ message: '沒有需要調整的同行者' });
+      return;
+    }
+    const chosen = companionsRef.current.filter(item => addCompanionIds.includes(item.id));
+    const targets = owned.filter(reg =>
+      isCompanion(reg) && cancelRegistrationIds.includes(registrationId(reg)));
+    if (new Set(addCompanionIds).size !== addCompanionIds.length
+      || chosen.length !== addCompanionIds.length
+      || new Set(cancelRegistrationIds).size !== cancelRegistrationIds.length
+      || targets.length !== cancelRegistrationIds.length) {
+      show('events.detailPage.refreshError');
+      return;
+    }
+
+    const participants = chosen.map(item => ({
+      type: 'companion' as const,
+      companionId: item.id,
+      companionName: item.name,
+    }));
+    const latest = await contexts.signup.load(current.event.id ?? publicId, participants);
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    if (!isEventVisibleToUser(latest.event, latest.viewer, latest.registrations)) {
+      toast.show({ message: '此活動目前無法報名' });
+      setCompanionOpen(false);
+      return;
+    }
+    if (latest.event.status === 'ended' || latest.event.status === 'cancelled') {
+      toast.show({ message: '活動已開始，報名已結束' });
+      setCompanionOpen(false);
+      return;
+    }
+    if (latest.event.status === 'upcoming') {
+      toast.show({ message: '報名尚未開放，請稍後再試' });
+      return;
+    }
+    if (!latest.teamSignupAllowed) {
+      toast.show({ message: '俱樂部限定活動，僅限該隊成員報名' });
+      return;
+    }
+    const invalid = chosen.find(item =>
+      !canDetailCompanionSignup(latest.event as LegacyDetailEvent, item.gender));
+    if (invalid) {
+      toast.show({
+        message: detailCompanionGenderMessage(latest.event, invalid.name),
+      });
+      return;
+    }
+
+    let confirmed = 0;
+    let waitlisted = 0;
+    let cancelled = 0;
+    let writeAttempted = false;
+    try {
+      // 本單明定先加報再取消；A 附件原順序相反。
+      if (chosen.length) {
+        writeAttempted = true;
+        const response = await registerSelection({
+          eventId: current.event.id ?? publicId,
+          user: { uid, displayName: currentViewer.current.displayName },
+          participants,
+          companionToggle: true,
+        }, false);
+        if (!alive.current) return;
+        if (response.deduplicated) {
+          toast.show({ message: '報名處理中，請稍候' });
+          setCompanionOpen(false);
+          await refresh(current);
+          return;
+        }
+        confirmed = count(response.confirmed);
+        waitlisted = count(response.waitlisted);
+      }
+      if (cancelRegistrationIds.length) {
+        if (!alive.current || currentViewer.current.uid !== uid) return;
+        writeAttempted = true;
+        const response = await cancelRegistration({
+          eventId: current.event.id ?? publicId,
+          userId: uid,
+          registrationIds: cancelRegistrationIds,
+          kind: 'companion',
+          companionToggle: true,
+          context: contexts.cancel,
+        });
+        if (!alive.current) return;
+        if (response.deduplicated) {
+          toast.show({ message: '取消處理中，請稍候' });
+          setCompanionOpen(false);
+          await refresh(current);
+          return;
+        }
+        cancelled = cancelRegistrationIds.length;
+      }
+      const parts: string[] = [];
+      if (confirmed + waitlisted > 0) parts.push(`新增 ${confirmed + waitlisted} 人`);
+      if (waitlisted > 0) parts.push(`候補 ${waitlisted} 人`);
+      if (cancelled > 0) parts.push(`取消 ${cancelled} 人`);
+      toast.show({
+        message: parts.length ? `夥伴報名已更新：${parts.join('、')}` : '夥伴報名已更新',
+      });
+      setCompanionOpen(false);
+      await refresh(current);
+    } catch (error) {
+      if (!alive.current) return;
+      const code = error instanceof SignupError ? error.originalCode : '';
+      const messages: Record<string, string> = {
+        ALREADY_REGISTERED: '已有相同報名，請重新整理後再試',
+        EVENT_NOT_FOUND: '找不到活動',
+        EVENT_ENDED: '活動已開始，無法調整',
+        EVENT_CANCELLED: '活動已取消',
+        REG_NOT_OPEN: '報名尚未開放',
+        GENDER_RESTRICTED: '同行者不符合性別限制',
+        TEAM_RESTRICTED: '不符合球隊限定',
+        PROFILE_INCOMPLETE: '請先補齊個人資料',
+        ALREADY_CANCELLED: '夥伴報名已更新',
+      };
+      toast.show({ message: messages[code] || '夥伴報名調整失敗，請稍後再試' });
+      // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
+      if (writeAttempted) {
+        setCompanionOpen(false);
+        await refresh(current);
+      }
+    }
+  }
+
+  function startCompanion(work: () => Promise<void>): void {
+    start(async () => {
+      setCompanionBusy(true);
+      try {
+        await work();
+      } finally {
+        if (alive.current) setCompanionBusy(false);
+      }
+    });
   }
 
   function profile(uid: string): void {
     if (uid) location.route(`/profile/${encodeURIComponent(uid)}`);
-  }
-
-  function name(reg: DetailRegistration): string {
-    return reg.companionName || reg.userName || t('events.detailPage.unnamed');
   }
 
   const noticeToast = notice && (
@@ -945,15 +1405,31 @@ function EventDetailSession({
     viewer,
     registrations: actionRegistrations,
     now: new Date(now),
+    profile: signupProfile,
+    profileLoading,
+    historyFailed,
+    viewerTeamIds: viewer.teamIds,
   });
-  const range = eventDateRange(event.date);
   const maximum = count(event.max);
-  const remaining = maximum > 0 ? Math.max(0, maximum - confirmedCount) : null;
-  const fee = count(event.fee);
-  const selectedCount = selected.length;
-  const waitlistedEstimate = remaining === null ? 0 : Math.max(0, selectedCount - remaining);
-  const canAdd = !['ended', 'upcoming', 'cancelled'].includes(event.status ?? '') &&
-    !(range && Date.parse(range.start) <= now);
+  const companionStats = getEventParticipantStats(
+    event, rosterPhase === 'ready' ? snapshot.registrations : [],
+  );
+  const feeEnabled = event.feeEnabled ?? count(event.fee) > 0;
+  const fee = feeEnabled ? count(event.fee) : 0;
+  const allowedGender = event.genderRestrictionEnabled
+    && (event.allowedGender === '男' || event.allowedGender === '女')
+    ? event.allowedGender : '';
+  const companionItems: CompanionSelectItem[] = companions.map(item => {
+    const reg = owned.find(value => isCompanion(value)
+      && String(value.companionId || '').trim() === item.id.trim());
+    return {
+      ...item,
+      registered: Boolean(reg),
+      registrationId: reg ? registrationId(reg) : undefined,
+      status: reg ? (reg.status === 'waitlisted' ? 'waitlisted' : 'confirmed') : undefined,
+      genderAllowed: canDetailCompanionSignup(event, item.gender),
+    };
+  });
   const viewCountNum = count(event.viewCount);
   const hasUnregRecords =
     rosterExpanded
@@ -1040,7 +1516,7 @@ function EventDetailSession({
           <div class="detail-action-zone">
             <div class="detail-action-toolbar">
               <div
-                class="signup-glow-wrap"
+                class={`signup-glow-wrap${companionBusy ? ' loading' : ''}`}
                 style="--glow-c:#2563eb;--glow-c-light:#60a5fa"
               >
                 <div class="signup-glow-border" />
@@ -1049,10 +1525,12 @@ function EventDetailSession({
                   <button
                     type="button"
                     class="detail-toolbar-btn companion-signup-toolbar-action"
-                    disabled={busy || refreshFailed || !canAdd}
-                    onClick={() => start(() => beginSignup(true))}
+                    disabled={busy || refreshFailed}
+                    aria-busy={companionBusy ? 'true' : undefined}
+                    onClick={() => startCompanion(openCompanionSelect)}
                   >
                     幫夥伴報名
+                    {companionBusy && <span class="fcb-sr-only">處理中</span>}
                   </button>
                 </div>
                 <div class="signup-loading-hint">
@@ -1077,20 +1555,18 @@ function EventDetailSession({
 
             <div class="detail-action-primary" id="detail-action-primary">
               <EventDetailPrimaryButton
-                event={event}
-                isGuest={!viewer.uid}
                 state={state}
-                label={t(state.labelKey)}
                 disabled={state.disabled || busy || refreshFailed}
                 busy={busy}
+                flip={flip}
                 onClick={() => {
-                  if (state.action === 'cancel') {
-                    setSelected(owned.map(registrationId).filter(Boolean));
-                    setSheet('cancel');
-                  } else if (state.action === 'explain') {
-                    show(state.messageKey ?? 'events.detailPage.actionError');
-                  } else if (state.action === 'signup') {
-                    start(() => beginSignup(false));
+                  if (state.action === 'cancel') start(beginCancel);
+                  else if (state.action === 'signup') start(() => beginSelfSignup({}));
+                  else if (state.action === 'earlyBird') {
+                    start(() => beginSelfSignup({ earlyBird: true }));
+                  } else if (state.action === 'login') start(login);
+                  else if (state.action === 'explain' && state.messageText) {
+                    toast.show({ message: state.messageText });
                   }
                 }}
               />
@@ -1251,30 +1727,45 @@ function EventDetailSession({
           </div>
         </div>
 
-        <CompanionSelectModal
-          open={sheet !== null}
-          mode={sheet}
-          eventTitle={event.title || t('events.card.untitled')}
-          viewerName={viewer.displayName || t('events.detailPage.unnamed')}
-          selfRegistered={selfRegistered}
-          companions={companions}
-          signedCompanions={signedCompanions}
-          ownedItems={owned.map((reg) => ({
-            key: registrationId(reg),
-            label: name(reg),
-          }))}
-          selected={selected}
-          busy={busy}
-          fee={fee}
-          remaining={remaining}
-          waitlistedEstimate={waitlistedEstimate}
-          t={t}
-          onToggle={toggle}
-          onClose={() => { if (!busy) setSheet(null); }}
-          onConfirm={() => start(() => (sheet === 'cancel'
-            ? submitCancel()
-            : submitSignup(snapshot, selected)))}
-        />
+        {companionOpen && (
+          <Suspense fallback={null}>
+            <DetailCompanionSelectModal
+              open
+              eventTitle={event.title || ''}
+              feeEnabled={feeEnabled}
+              fee={fee}
+              remaining={companionStats.remainingCount}
+              max={companionStats.maxCount}
+              genderDetailText={allowedGender
+                ? (allowedGender === '男' ? '限男性報名' : '限女性報名') : ''}
+              items={companionItems}
+              busy={busy}
+              onClose={() => { if (!busy) setCompanionOpen(false); }}
+              onConfirm={selection => startCompanion(() => confirmCompanions(selection))}
+            />
+          </Suspense>
+        )}
+        {cancelModal && (
+          <Suspense fallback={null}>
+            <DetailCompanionCancelModal
+              open
+              targets={cancelModal.targets}
+              selectAll={cancelModal.selectAll}
+              busy={busy}
+              onClose={() => { if (!busy) setCancelModal(null); }}
+              onConfirm={ids => start(() => confirmCancel(ids))}
+            />
+          </Suspense>
+        )}
+        {linePromptOpen && (
+          <Suspense fallback={null}>
+            <DetailLineNotifyPrompt
+              open
+              onClosed={() => { if (alive.current) setLinePromptOpen(false); }}
+              onBind={() => start(bindNotify)}
+            />
+          </Suspense>
+        )}
         {detailLogOpen && canShowDetailLog && (
           <Suspense fallback={<div role="status">載入中…</div>}>
             <DetailEventRegLogModal

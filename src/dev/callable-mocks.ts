@@ -77,3 +77,35 @@ registerMock('adjustExp', (req) => {
     })),
   };
 });
+
+// T-005b：報名／取消流程本機實測用；不寫 Firestore，只回 A Callable 成功形狀。
+// `fcb:mock:signupWaitlist=1` 回候補、`fcb:mock:signupFail=1` 回失敗。
+registerMock('registerForEvent', async (req) => {
+  if (isFailureEnabled('fcb:mock:signupFail')) {
+    throw Object.assign(new Error('mock：報名失敗'), { code: 'internal' });
+  }
+  const status = isFailureEnabled('fcb:mock:signupWaitlist') ? 'waitlisted' : 'confirmed';
+  const registrations = req.participants.map((person, index) => ({
+    id: `reg_mock_${index}`,
+    eventId: req.eventId,
+    userId: person.userId,
+    participantType: person.companionId ? 'companion' : 'self',
+    companionId: person.companionId,
+    status,
+  }));
+  return {
+    success: true,
+    registrations,
+    confirmed: status === 'confirmed' ? registrations.length : 0,
+    waitlisted: status === 'waitlisted' ? registrations.length : 0,
+    earlyBirdCharged: req.earlyBirdAccepted === true,
+    earlyBirdCost: req.earlyBirdAccepted === true ? Number(req.earlyBirdExpectedCost || 0) : 0,
+  };
+});
+
+registerMock('cancelRegistration', async (req) => {
+  if (isFailureEnabled('fcb:mock:cancelFail')) {
+    throw Object.assign(new Error('mock：取消失敗'), { code: 'internal' });
+  }
+  return { success: true, cancelled: req.registrationIds, alreadyCancelled: [], promoted: [] };
+});
