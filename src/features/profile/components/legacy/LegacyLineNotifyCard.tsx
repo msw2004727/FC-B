@@ -5,6 +5,9 @@
 //   本卡不重寫綁定或經驗值邏輯。
 // - 開關／解除只寫 `users/{uid}.lineNotify` + `updatedAt`，透過 `saveLineNotify`。
 // - legacy 畫面：inline style 與 A 一致；可見文字一律 `lt()`。
+//
+// fix-1：畫面狀態由最新 props.profile['lineNotify'] 推導；只有寫入進行中疊加樂觀值，
+//   寫入完成或失敗即清掉。切換時以原始 lineNotify 為基準，不覆寫其他欄位。
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -19,7 +22,7 @@ import { toast } from '@/ui/Toast';
 
 import type { UserProfile } from '../../data/profile-model';
 import {
-  buildToggledLineNotify,
+  buildToggledLineNotifyFromRaw,
   buildUnboundLineNotify,
   readLineNotify,
   saveLineNotify,
@@ -54,10 +57,10 @@ export function LegacyLineNotifyCard({
   onSaved: (patch: Record<string, unknown>) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<LineNotifyState>(() => readLineNotify(profile));
   const [binding, setBinding] = useState(false);
-  const [pending, setPending] = useState<LineNotifyKey | null>(null);
+  const [pendingKey, setPendingKey] = useState<LineNotifyKey | null>(null);
   const [unbinding, setUnbinding] = useState(false);
+  const [optimistic, setOptimistic] = useState<LineNotifyState | null>(null);
   const [fade, setFade] = useState<{ bound?: boolean; unbound?: boolean }>({});
 
   const mountedRef = useRef(true);
@@ -94,8 +97,10 @@ export function LegacyLineNotifyCard({
     return typeof v === 'string' && v.trim() ? v.trim() : '';
   })();
 
+  // 畫面以最新 props 推導；寫入進行中才用樂觀值覆蓋。
+  const view = optimistic ?? readLineNotify(profile);
   const displayNameText = displayName || '-';
-  const boundAtText = state.boundAt || '-';
+  const boundAtText = view.boundAt || '-';
 
   function handleToggleOpen(): void {
     setOpen((prev) => !prev);
@@ -124,8 +129,6 @@ export function LegacyLineNotifyCard({
       .then(() => {
         if (!mountedRef.current) return;
         const payload = buildLineNotifyPayload().lineNotify;
-        const next: LineNotifyState = { ...payload };
-        setState(next);
         onSaved({ lineNotify: payload });
         triggerFade('bound');
       })
@@ -143,32 +146,44 @@ export function LegacyLineNotifyCard({
       });
   }
 
-  async function handleToggle(key: LineNotifyKey): Promise<void> {
-    if (pending !== null) return;
-    if (!state.bound) return;
+  async function handleToggle(key: LineNotifyKey, input?: HTMLInputElement): Promise<void> {
+    // 受控 checkbox 被擋下或寫入失敗時，Preact 不會把 DOM 勾選狀態改回來，要手動設回（review-lessons／T-013）。
+    const restoreInput = (): void => {
+      if (input) input.checked = !!readLineNotify(profile).settings[key];
+    };
+    if (pendingKey !== null) { restoreInput(); return; }
+    // 照 A `toggleLineNotify`：未綁定直接 return；以最新 profile 為基準。
+    const current = readLineNotify(profile);
+    if (!current.bound) { restoreInput(); return; }
 
-    const prev = state;
-    const next = buildToggledLineNotify(prev, key);
-    setState(next);
-    setPending(key);
+    const raw = profile['lineNotify'];
+    const nextRaw = buildToggledLineNotifyFromRaw(raw, key);
+    if (!nextRaw) { restoreInput(); return; }
+
+    const optimisticState = readLineNotify({ lineNotify: nextRaw });
+    setOptimistic(optimisticState);
+    setPendingKey(key);
 
     try {
-      await saveLineNotify(uid, next);
+      await saveLineNotify(uid, nextRaw);
       if (!mountedRef.current) return;
-      onSaved({ lineNotify: next });
+      onSaved({ lineNotify: nextRaw });
       const label = TOGGLE_LABELS[key];
-      const message = next.settings[key]
+      const message = optimisticState.settings[key]
         ? lt('已開啟{label}', '已開啟{label}', { label })
         : lt('已關閉{label}', '已關閉{label}', { label });
       toast.show({ message });
     } catch (err) {
       if (!mountedRef.current) return;
-      // 照 A：寫入失敗無提示；B 僅 console.warn 並還原開關。
+      // 照 A：寫入失敗無提示；B 僅 console.warn 並由清掉樂觀值還原開關。
       // eslint-disable-next-line no-console
       console.warn('[line-notify] toggle failed', err);
-      setState(prev);
+      restoreInput();
     } finally {
-      if (mountedRef.current) setPending(null);
+      if (mountedRef.current) {
+        setOptimistic(null);
+        setPendingKey(null);
+      }
     }
   }
 
@@ -185,10 +200,10 @@ export function LegacyLineNotifyCard({
 
     setUnbinding(true);
     const payload = buildUnboundLineNotify();
+    setOptimistic(readLineNotify({ lineNotify: payload }));
     try {
       await saveLineNotify(uid, payload);
       if (!mountedRef.current) return;
-      setState(payload);
       onSaved({ lineNotify: payload });
       triggerFade('unbound');
       toast.show({ message: lt('已解除 LINE 綁定', '已解除 LINE 綁定') });
@@ -199,7 +214,10 @@ export function LegacyLineNotifyCard({
         tone: 'error',
       });
     } finally {
-      if (mountedRef.current) setUnbinding(false);
+      if (mountedRef.current) {
+        setUnbinding(false);
+        setOptimistic(null);
+      }
     }
   }
 
@@ -219,10 +237,10 @@ export function LegacyLineNotifyCard({
             {lt('profile.lineNotify', 'LINE 推播通知')}
           </span>{' '}
           <span
-            class={`line-notify-status ${state.bound ? 'bound' : 'unbound'}`}
+            class={`line-notify-status ${view.bound ? 'bound' : 'unbound'}`}
             id="line-notify-badge"
           >
-            {state.bound ? lt('已綁定', '已綁定') : lt('未綁定', '未綁定')}
+            {view.bound ? lt('已綁定', '已綁定') : lt('未綁定', '未綁定')}
           </span>
         </span>
         <span class="profile-collapse-arrow">▶</span>
@@ -236,7 +254,7 @@ export function LegacyLineNotifyCard({
         <div
           id="line-notify-bound"
           class={fade.bound ? 'fadeIn' : undefined}
-          style={state.bound ? undefined : 'display:none'}
+          style={view.bound ? undefined : 'display:none'}
         >
           <div class="line-notify-row">
             <span data-i18n="LINE 帳號">{lt('LINE 帳號', 'LINE 帳號')}</span>
@@ -263,10 +281,10 @@ export function LegacyLineNotifyCard({
                 <input
                   type="checkbox"
                   id={`line-toggle-${row.key}`}
-                  checked={!!state.settings[row.key]}
-                  disabled={pending === row.key}
-                  onChange={() => {
-                    handleToggle(row.key).catch(() => {});
+                  checked={!!view.settings[row.key]}
+                  disabled={pendingKey === row.key}
+                  onChange={(e) => {
+                    handleToggle(row.key, e.currentTarget).catch(() => {});
                   }}
                 />
                 <span class="toggle-slider"></span>
@@ -293,7 +311,7 @@ export function LegacyLineNotifyCard({
         <div
           id="line-notify-unbound"
           class={fade.unbound ? 'fadeIn' : undefined}
-          style={state.bound ? 'display:none' : undefined}
+          style={view.bound ? 'display:none' : undefined}
         >
           <div class="line-notify-empty">
             <svg

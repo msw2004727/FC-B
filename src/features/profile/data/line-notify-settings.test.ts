@@ -14,7 +14,7 @@ import { getFirebase } from '@/data/firebase';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import {
-  buildToggledLineNotify,
+  buildToggledLineNotifyFromRaw,
   buildUnboundLineNotify,
   readLineNotify,
   saveLineNotify,
@@ -32,7 +32,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('readLineNotify', () => {
+describe('readLineNotify（顯示用正規化）', () => {
   it('profile 沒有 lineNotify 時回傳預設未綁定', () => {
     expect(readLineNotify({})).toEqual({ bound: false, settings: {} });
   });
@@ -63,13 +63,14 @@ describe('readLineNotify', () => {
     expect(r.bound).toBe(false);
   });
 
-  it('settings 非物件 → 空物件；只保留三個合法 key；型別不符丟棄', () => {
+  it('顯示用：settings 非物件 → 空物件；只保留三個合法 key；型別不符不顯示', () => {
     const r1 = readLineNotify({ lineNotify: { bound: true, settings: 'x' } });
     expect(r1.settings).toEqual({});
     const r2 = readLineNotify({
       lineNotify: { bound: true, settings: { activity: true, system: 'yes', foo: true } },
     });
     expect(r2.settings).toEqual({ activity: true });
+    // 寫入保留未知 key 由 buildToggledLineNotifyFromRaw 測試。
   });
 
   it('settings 不是物件時仍保留 bound 狀態', () => {
@@ -78,7 +79,7 @@ describe('readLineNotify', () => {
     expect(r.settings).toEqual({});
   });
 
-  it('boundAt 非字串丟棄（安全）', () => {
+  it('boundAt 非字串在顯示時丟棄（安全）', () => {
     const r = readLineNotify({
       lineNotify: { bound: true, boundAt: 123, settings: {} },
     });
@@ -86,31 +87,80 @@ describe('readLineNotify', () => {
   });
 });
 
-describe('buildToggledLineNotify', () => {
-  it('activity false → true，保留其他欄位（含 boundAt）', () => {
-    const cur: LineNotifyState = {
+describe('buildToggledLineNotifyFromRaw（照 A 以原始 lineNotify 展開）', () => {
+  it('只切換指定 key；未知 settings key、其他根欄位（含 boundAt 非字串）原樣保留', () => {
+    const raw = {
       bound: true,
-      boundAt: '2025/01/02',
-      settings: { activity: false, system: true },
+      boundAt: 123,
+      customRoot: 'keep-me',
+      settings: {
+        activity: true,
+        system: false,
+        custom: 'yes',
+        foo: true,
+        nested: { a: 1 },
+      },
     };
-    const next = buildToggledLineNotify(cur, 'activity');
-    expect(next.bound).toBe(true);
-    expect(next.boundAt).toBe('2025/01/02');
-    expect(next.settings).toEqual({ activity: true, system: true });
+    const next = buildToggledLineNotifyFromRaw(raw, 'system');
+    expect(next).toEqual({
+      bound: true,
+      boundAt: 123,
+      customRoot: 'keep-me',
+      settings: {
+        activity: true,
+        system: true,
+        custom: 'yes',
+        foo: true,
+        nested: { a: 1 },
+      },
+    });
     // 純函式：不動來源
-    expect(cur.settings.activity).toBe(false);
+    expect(raw.settings.system).toBe(false);
   });
 
   it('undefined → true（照 A `!settings[key]`）', () => {
-    const cur: LineNotifyState = { bound: true, settings: {} };
-    const next = buildToggledLineNotify(cur, 'tournament');
-    expect(next.settings.tournament).toBe(true);
+    const next = buildToggledLineNotifyFromRaw(
+      { bound: true, settings: { activity: false, foo: 'bar' } },
+      'tournament',
+    );
+    expect(next).toEqual({
+      bound: true,
+      settings: { activity: false, foo: 'bar', tournament: true },
+    });
   });
 
-  it('true → false', () => {
-    const cur: LineNotifyState = { bound: true, settings: { system: true } };
-    const next = buildToggledLineNotify(cur, 'system');
-    expect(next.settings.system).toBe(false);
+  it('true → false，保留其他根欄位', () => {
+    const next = buildToggledLineNotifyFromRaw(
+      { bound: true, boundAt: '2025/01/02', settings: { system: true }, extra: 7 },
+      'system',
+    );
+    expect(next).toEqual({
+      bound: true,
+      boundAt: '2025/01/02',
+      settings: { system: false },
+      extra: 7,
+    });
+  });
+
+  it('raw 非物件回 null（不得寫入）', () => {
+    expect(buildToggledLineNotifyFromRaw(null, 'activity')).toBeNull();
+    expect(buildToggledLineNotifyFromRaw(undefined, 'activity')).toBeNull();
+    expect(buildToggledLineNotifyFromRaw('oops', 'activity')).toBeNull();
+    expect(buildToggledLineNotifyFromRaw(42, 'activity')).toBeNull();
+    expect(buildToggledLineNotifyFromRaw([], 'activity')).toBeNull();
+    expect(buildToggledLineNotifyFromRaw(false, 'activity')).toBeNull();
+  });
+
+  it('settings 非物件時視為空物件，只新增切換 key', () => {
+    const next = buildToggledLineNotifyFromRaw(
+      { bound: true, settings: 'x', customRoot: 1 },
+      'activity',
+    );
+    expect(next).toEqual({
+      bound: true,
+      settings: { activity: true },
+      customRoot: 1,
+    });
   });
 });
 
@@ -153,11 +203,12 @@ describe('saveLineNotify', () => {
     expect((payload as unknown as Record<string, unknown>)['updatedAt']).toEqual({ __sv: 'SERVER_TIMESTAMP' });
   });
 
-  it('已綁定含 boundAt 也會原樣寫入 lineNotify', async () => {
-    const ln: LineNotifyState = {
+  it('原始 Record 含未知欄位也會原樣寫入 lineNotify', async () => {
+    const ln: Record<string, unknown> = {
       bound: true,
-      boundAt: '2025/05/06',
-      settings: { activity: true, system: false, tournament: true },
+      boundAt: 123,
+      customRoot: 'keep-me',
+      settings: { activity: true, custom: 'yes' },
     };
     await saveLineNotify('u2', ln);
     const [, payload] = vi.mocked(updateDoc).mock.calls[0]!;

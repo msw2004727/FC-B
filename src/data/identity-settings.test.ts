@@ -177,4 +177,21 @@ describe('M-123 identity-settings store', () => {
     setIdentitySettingsLocal(settings);
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it('第一次 getFirebase 失敗後，同 uid 可重新啟動並訂閱成功', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fbMock.getFirebase.mockRejectedValueOnce(new Error('boom'));
+
+    startIdentitySettings('u1');
+    await flush();
+    expect(fbMock.getFirebase).toHaveBeenCalledTimes(1);
+    expect(fsMock.onSnapshot).not.toHaveBeenCalled();
+
+    // fix-1：失敗後已清掉 pending，同 uid 再次呼叫應重新啟動。
+    startIdentitySettings('u1');
+    await flush();
+    expect(fsMock.onSnapshot).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
 });

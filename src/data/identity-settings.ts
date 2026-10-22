@@ -140,6 +140,11 @@ export function startIdentitySettings(uid: string): void {
       currentUnsubscribe = unsub;
       startingUid = null;
     } catch (err) {
+      // 照 A：只有「已有 listener 且同 uid」才跳過；啟動失敗不得留下 pending，
+      // 同 uid 才能重試。確認仍是本次啟動才清，避免清掉新一次啟動的狀態。
+      if (myGen === generation && currentUid === safeUid && startingUid === safeUid) {
+        startingUid = null;
+      }
       console.warn('[identity-settings] start failed', err);
     }
   };

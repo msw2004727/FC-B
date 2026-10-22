@@ -177,7 +177,7 @@ describe('LegacyLineNotifyCard — 切換通知開關', () => {
 
     expect(saveLineNotify).toHaveBeenCalledTimes(1);
     const [, payload] = vi.mocked(saveLineNotify).mock.calls[0]!;
-    const state = payload as LineNotifyState;
+    const state = payload as unknown as LineNotifyState;
     expect(state.bound).toBe(true);
     expect(state.boundAt).toBe('2025/01/02');
     expect(state.settings).toEqual({ activity: true, system: true, tournament: true });
@@ -215,6 +215,42 @@ describe('LegacyLineNotifyCard — 切換通知開關', () => {
     expect(toast.show).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it('重新收到新 profile 後，切換以最新 lineNotify 為基準（不覆寫 system）', () => {
+    const first = makeProfile({
+      lineNotify: {
+        bound: true,
+        boundAt: '2025/01/02',
+        settings: { activity: true, system: true, tournament: false },
+      },
+    });
+    const second = makeProfile({
+      lineNotify: {
+        bound: true,
+        boundAt: '2025/01/02',
+        settings: { activity: true, system: false, tournament: false },
+      },
+    });
+    const onSaved = vi.fn();
+    const { container, rerender } = render(
+      <LegacyLineNotifyCard uid="u1" profile={first} onSaved={onSaved} />,
+    );
+    expand(container);
+
+    rerender(
+      <LegacyLineNotifyCard uid="u1" profile={second} onSaved={onSaved} />,
+    );
+    const cb = container.querySelector('#line-toggle-activity') as HTMLInputElement;
+    expect(cb.checked).toBe(true);
+
+    fireEvent.click(cb);
+
+    expect(saveLineNotify).toHaveBeenCalledTimes(1);
+    const [, payload] = vi.mocked(saveLineNotify).mock.calls[0]!;
+    const settings = payload['settings'] as Record<string, unknown>;
+    expect(settings['system']).toBe(false);
+    expect(settings['activity']).toBe(false);
   });
 
   it('未綁定時不呼叫 saveLineNotify（防禦性）', async () => {
