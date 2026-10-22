@@ -29,6 +29,8 @@ export interface EventTemplatesView {
 interface HookInput {
   viewer: ViewerView;
   mode: 'create' | 'edit';
+  /** false：掛載時不查範本，由呼叫端開表單時呼叫 reset() 才載入（照 A 只在開表單時載入）。 */
+  loadOnMount?: boolean;
   onApply(result: ReturnType<typeof templateToFormPatch>, name: string): void;
   collect(): {
     state: EventFormState;
@@ -45,6 +47,8 @@ interface Scope {
   busy: boolean;
   templates: EventTemplateDoc[];
   saveName: string;
+  /** 掛載前（layout effect 開表單時）就要求載入，啟用後補載。 */
+  loadRequested: boolean;
 }
 
 interface Snapshot {
@@ -73,6 +77,7 @@ export function useEventTemplates(input: HookInput): {
     busy: false,
     templates: [],
     saveName: '',
+    loadRequested: false,
   }), [uid]);
 
   const currentScope = useRef(scope);
@@ -136,7 +141,8 @@ export function useEventTemplates(input: HookInput): {
   useEffect(() => {
     scope.active = true;
     // refresh 自行處理成功、失敗及過期結果。
-    void refresh();
+    if (latestInput.current.loadOnMount !== false || scope.loadRequested) void refresh();
+    scope.loadRequested = false;
 
     return () => {
       scope.active = false;
@@ -320,6 +326,11 @@ export function useEventTemplates(input: HookInput): {
     },
     reset() {
       // 照 A 開表單：清空 ce-template-name 並重新載入範本。
+      if (currentScope.current === scope && !scope.active) {
+        scope.saveName = '';
+        scope.loadRequested = true;
+        return;
+      }
       if (!isCurrent()) return;
       scope.saveName = '';
       publish(scope.busy || (visible?.loading ?? false));

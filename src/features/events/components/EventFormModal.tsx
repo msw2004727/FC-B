@@ -167,6 +167,8 @@ export function EventFormModal({
   const templates = useEventTemplates({
     viewer,
     mode,
+    // 表單元件常駐在活動頁；照 A 只在開表單時載入範本，避免沒開表單也每次查 Firestore。
+    loadOnMount: false,
     onApply: (result) => {
       // 照 A _loadEventTemplate：無加值權限且範本含加值時先提示。
       if (result.upsell) toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
@@ -310,8 +312,6 @@ export function EventFormModal({
       batchIdsRef.current = new Map();
       batchGroupIdRef.current = null;
       unconfirmedCreateRef.current = null;
-      // 照 A openCreateEventModal：清空範本名稱並重新載入範本。
-      latestRef.current.templates.reset();
       const ctx = createEventContextFromViewer(viewer, now);
       if (ctx) {
         try {
@@ -323,6 +323,8 @@ export function EventFormModal({
         setGeneratedEventId(null);
       }
     }
+    // 照 A openCreateEventModal／重設表單欄位：清空範本名稱並重新載入範本（編輯也顯示範本列）。
+    latestRef.current.templates.reset();
   }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons]);
 
   // 照 A 委託人送出驗證：等待重繪後讀取 hook 更新的最新名稱，避免使用舊 render 快照。

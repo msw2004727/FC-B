@@ -9,6 +9,7 @@ import {
 import type { EventLocationValue } from './use-event-location';
 import { EventFormFields, type EventFormFieldsProps } from './EventFormFields';
 import { useEventTemplates, type EventTemplatesView } from './use-event-templates';
+import { useLayoutEffect } from 'preact/hooks';
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn(),
@@ -426,6 +427,35 @@ describe('useEventTemplates', () => {
     await ready(harness);
     expect(harness.current().view.templates[0]?.id).toBe('tpl_new');
     expect(mocks.load).toHaveBeenCalledTimes(2);
+  });
+
+  it('loadOnMount=false：掛載不查範本，reset（開表單）才載入', async () => {
+    mocks.load.mockResolvedValue([template()]);
+    const harness = setup({ loadOnMount: false });
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.load).not.toHaveBeenCalled();
+
+    act(() => harness.current().reset());
+    await ready(harness);
+    expect(mocks.load).toHaveBeenCalledTimes(1);
+    expect(harness.current().view.templates[0]?.id).toBe('tpl_1');
+  });
+
+  it('loadOnMount=false：啟用前（layout effect 開表單）呼叫 reset，啟用後補載一次', async () => {
+    mocks.load.mockResolvedValue([template()]);
+    function Early(props: HookInput) {
+      const result = useEventTemplates(props);
+      useLayoutEffect(() => { result.reset(); }, []);
+      return null;
+    }
+    render(<Early
+      viewer={viewer()}
+      mode="create"
+      loadOnMount={false}
+      collect={() => ({ state: createDefaultFormState(), image: null, location, canUseAddons: false })}
+      onApply={vi.fn()}
+    />);
+    await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1));
   });
 
   it('兩次 reload 交錯時只接受最新結果', async () => {
