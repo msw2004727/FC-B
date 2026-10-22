@@ -15,7 +15,8 @@
  *   - `now` / `regOpenTime` 一律用 UTC 明確建構，避免跨日邊界。
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { cleanup } from '@testing-library/preact';
 
 // ── Mock：@/data/callables ──────────────────────────
 
@@ -51,6 +52,20 @@ vi.mock('@/data/firebase', () => ({
   getFirebase: vi.fn(async () => ({ db: { kind: 'db' } })),
 }));
 
+const coverMocks = vi.hoisted(() => ({
+  uploadEventImageVariants: vi.fn(),
+  uploadImageDataUrl: vi.fn(),
+}));
+
+vi.mock('@/features/events/data/event-cover-upload', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./event-cover-upload')>();
+  return {
+    ...actual,
+    uploadEventImageVariants: coverMocks.uploadEventImageVariants,
+    uploadImageDataUrl: coverMocks.uploadImageDataUrl,
+  };
+});
+
 // ── 受測模組（mock 已套用）──
 
 import {
@@ -68,6 +83,26 @@ import {
   type EventForEdit,
 } from '@/features/events/data/event-create';
 import goldenData from './__fixtures__/event-create-golden.json';
+import { DEFAULT_EVENT_COVER_URL } from './event-cover-upload';
+import {
+  canManageAllActivities,
+  hasActivityManageEntry,
+  type OperateContext,
+} from './operate-permissions';
+
+beforeEach(() => {
+  document.documentElement.lang = 'zh-TW';
+  coverMocks.uploadEventImageVariants.mockReset();
+  coverMocks.uploadEventImageVariants.mockImplementation(
+    async (_id: string, variants: CreateEventForm['imageVariants']) => variants,
+  );
+  coverMocks.uploadImageDataUrl.mockReset();
+  coverMocks.uploadImageDataUrl.mockResolvedValue('https://example.com/uploaded.webp');
+});
+
+afterEach(() => {
+  cleanup();
+});
 
 // ── 測試輔助 ─────────────────────────────────────────
 
@@ -587,6 +622,244 @@ describe('buildEditEventUpdates', () => {
       }
       expect(result.updates.title).toBe('週末練球（已更新）');
       expect(result.updates.notes).toBeDefined();
+    }
+  });
+});
+
+describe('1C-3：照 A 的封面 I/O 與資料修正', () => {
+  const existing: EventForEdit = {
+    id: 'ce_public',
+    docId: 'legacy-document-id',
+    creatorUid: 'uid_user_golden',
+    status: 'open',
+    current: 0,
+    waitlist: 0,
+    max: 20,
+  };
+
+  beforeEach(() => {
+    txGetMock.mockReset();
+    txGetMock.mockResolvedValue({ exists: () => false });
+    txSetMock.mockReset();
+    updateDocMock.mockReset();
+    updateDocMock.mockResolvedValue(undefined);
+  });
+
+  it('建立保留既有封面，Storage 在 transaction 之前完成', async () => {
+    const result = await createEvent(buildForm(), buildCtx(), 'ce_public');
+    expect(result.payload.image).toBe('https://example.com/cover.jpg');
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(coverMocks.uploadEventImageVariants).toHaveBeenCalledWith('ce_public', undefined);
+    expect(coverMocks.uploadEventImageVariants.mock.invocationCallOrder[0]!)
+      .toBeLessThan(txGetMock.mock.invocationCallOrder[0]!);
+  });
+
+  it('建立無封面時寫固定預設封面', async () => {
+    // 測試同步更新：照 A（1C-3），建立流程會補預設封面。
+    const result = await createEvent(buildForm({ image: '  ' }), buildCtx(), 'ce_public');
+    expect(result.payload.image).toBe(DEFAULT_EVENT_COVER_URL);
+    expect(result.payload).not.toHaveProperty('imageVariants');
+    expect(txSetMock.mock.calls[0]?.[1]).toMatchObject({ image: DEFAULT_EVENT_COVER_URL });
+  });
+
+  it('建立採用成功的 cover，不再重複上傳 data 主圖', async () => {
+    const variants = { cover: 'data:image/webp;base64,COVER', homeNext: 'data:image/webp;base64,NEXT' };
+    coverMocks.uploadEventImageVariants.mockResolvedValue({
+      cover: 'https://example.com/cover-new',
+      homeNext: 'https://example.com/next-new',
+    });
+    const result = await createEvent(
+      buildForm({ image: variants.cover, imageVariants: variants }),
+      buildCtx(),
+      'ce_public',
+    );
+    expect(result.payload.image).toBe('https://example.com/cover-new');
+    expect(result.payload.imageVariants).toEqual({
+      cover: 'https://example.com/cover-new',
+      homeNext: 'https://example.com/next-new',
+    });
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+  });
+
+  it('variants 失敗 key 不寫回；只剩 homeNext 且主圖為空時採用它', async () => {
+    coverMocks.uploadEventImageVariants.mockResolvedValue({ homeNext: 'https://example.com/next' });
+    const result = await createEvent(buildForm({
+      image: '',
+      imageVariants: { cover: 'data:image/webp;base64,COVER', homeNext: 'data:image/webp;base64,NEXT' },
+    }), buildCtx(), 'ce_public');
+    expect(result.payload.imageVariants).toEqual({ homeNext: 'https://example.com/next' });
+    expect(result.payload.image).toBe('https://example.com/next');
+  });
+
+  it('variants 全部失敗且主圖為空時不寫 variants，使用預設封面', async () => {
+    coverMocks.uploadEventImageVariants.mockResolvedValue(undefined);
+    const result = await createEvent(buildForm({
+      image: '',
+      imageVariants: { cover: 'data:image/webp;base64,COVER' },
+    }), buildCtx(), 'ce_public');
+    expect(result.payload).not.toHaveProperty('imageVariants');
+    expect(result.payload.image).toBe(DEFAULT_EVENT_COVER_URL);
+  });
+
+  it('data 主圖使用 public id 上傳，失敗時建立使用預設封面', async () => {
+    const image = 'data:image/png;base64,MAIN';
+    const success = await createEvent(buildForm({ image }), buildCtx(), 'ce_public');
+    expect(coverMocks.uploadImageDataUrl).toHaveBeenCalledWith(image, 'events/ce_public');
+    expect(success.payload.image).toBe('https://example.com/uploaded.webp');
+    expect(coverMocks.uploadImageDataUrl.mock.invocationCallOrder[0]!)
+      .toBeLessThan(txGetMock.mock.invocationCallOrder[0]!);
+
+    coverMocks.uploadImageDataUrl.mockResolvedValueOnce(null);
+    const failed = await createEvent(buildForm({ image }), buildCtx(), 'ce_public');
+    expect(failed.payload.image).toBe(DEFAULT_EVENT_COVER_URL);
+  });
+
+  it('建立上傳尚未完成時不開始 transaction', async () => {
+    let finish: ((value: CreateEventForm['imageVariants']) => void) | undefined;
+    coverMocks.uploadEventImageVariants.mockReturnValueOnce(
+      new Promise<CreateEventForm['imageVariants']>((resolve) => { finish = resolve; }),
+    );
+    const pending = createEvent(buildForm(), buildCtx(), 'ce_public');
+    expect(txGetMock).not.toHaveBeenCalled();
+    finish?.(undefined);
+    await pending;
+    expect(txGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('建立權限或 ID 不符時不做 Storage I/O', async () => {
+    await expect(createEvent(buildForm(), buildCtx({ capabilities: [] }), 'ce_public'))
+      .rejects.toMatchObject({ code: 'BASIC_CREATE_REQUIRED' });
+    await expect(createEvent(buildForm(), buildCtx(), 'invalid'))
+      .rejects.toMatchObject({ code: 'INVALID_ID' });
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('編輯 preserve.image 完全不上傳且不寫 image／imageVariants', async () => {
+    const result = await updateEventBasics(existing, buildForm({
+      image: 'data:image/png;base64,MAIN',
+      imageVariants: { cover: 'data:image/png;base64,COVER' },
+    }), buildCtx(), { image: true });
+
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(result.updates).not.toHaveProperty('image');
+    expect(result.updates).not.toHaveProperty('imageVariants');
+    const written = updateDocMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(written).not.toHaveProperty('image');
+    expect(written).not.toHaveProperty('imageVariants');
+  });
+
+  it('編輯主圖上傳用 public id；Firestore 寫 document id', async () => {
+    await updateEventBasics(existing, buildForm({
+      image: 'data:image/png;base64,MAIN',
+    }), buildCtx());
+    expect(coverMocks.uploadImageDataUrl).toHaveBeenCalledWith(
+      'data:image/png;base64,MAIN',
+      'events/ce_public',
+    );
+    expect(updateDocMock).toHaveBeenCalledWith(
+      { path: 'events/legacy-document-id' },
+      expect.objectContaining({ image: 'https://example.com/uploaded.webp' }),
+    );
+    expect(coverMocks.uploadImageDataUrl.mock.invocationCallOrder[0]!)
+      .toBeLessThan(updateDocMock.mock.invocationCallOrder[0]!);
+  });
+
+  it('編輯 variants 先上傳，成功 cover 取代 data 主圖', async () => {
+    coverMocks.uploadEventImageVariants.mockResolvedValue({
+      cover: 'https://example.com/edited-cover',
+    });
+    const result = await updateEventBasics(existing, buildForm({
+      image: 'https://example.com/old',
+      imageVariants: {
+        cover: 'data:image/png;base64,COVER',
+        homeNext: 'data:image/png;base64,NEXT',
+      },
+    }), buildCtx());
+    expect(result.updates.image).toBe('https://example.com/edited-cover');
+    expect(result.updates.imageVariants).toEqual({ cover: 'https://example.com/edited-cover' });
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(coverMocks.uploadEventImageVariants.mock.invocationCallOrder[0]!)
+      .toBeLessThan(updateDocMock.mock.invocationCallOrder[0]!);
+  });
+
+  it('編輯 variants 與主圖上傳均失敗時，不寫失敗欄位', async () => {
+    coverMocks.uploadEventImageVariants.mockResolvedValue(undefined);
+    coverMocks.uploadImageDataUrl.mockResolvedValue(null);
+    const result = await updateEventBasics(existing, buildForm({
+      image: 'https://example.com/old',
+      imageVariants: { cover: 'data:image/png;base64,COVER' },
+    }), buildCtx());
+    expect(coverMocks.uploadImageDataUrl).toHaveBeenCalledWith(
+      'data:image/png;base64,COVER',
+      'events/ce_public',
+    );
+    expect(result.updates).not.toHaveProperty('image');
+    expect(result.updates).not.toHaveProperty('imageVariants');
+    expect(updateDocMock.mock.calls[0]?.[1]).not.toHaveProperty('image');
+  });
+
+  it('編輯空封面不套預設封面', async () => {
+    const result = await updateEventBasics(existing, buildForm({ image: '' }), buildCtx());
+    expect(result.updates.image).toBe('');
+  });
+
+  it('編輯拒絕授權時不上傳、不寫文件', async () => {
+    await expect(updateEventBasics(
+      existing,
+      buildForm({ image: 'data:image/png;base64,MAIN' }),
+      buildCtx({ uid: 'other', capabilities: [] }),
+    )).rejects.toMatchObject({ code: 'EDIT_NOT_ALLOWED' });
+    expect(coverMocks.uploadEventImageVariants).not.toHaveBeenCalled();
+    expect(coverMocks.uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('只有 event.edit_all 的管理員，沒有管理入口仍可變更 status', () => {
+    // 測試同步更新：照 A（1C-3），管理入口與 event.edit_all 為 OR。
+    // PM 修正：admin 角色本身有管理入口（coach+ 後備），改用「一般 user＋個別授權 event.edit_all」才測得到只有 edit_all 的情況。
+    const ctx = buildCtx({
+      role: 'user',
+      capabilities: ['user.activity.own_edit_basic'],
+      userGrants: { uid: 'uid_user_golden', enabled: true, permissions: ['event.edit_all'] },
+    });
+    const opCtx: OperateContext = { ...ctx, customRoles: ctx.customRoles ?? [] };
+    // B 的 hasActivityManageEntry 照 A 已含 event.edit_all，所以 OR 條件與原寫法等價；此測試只鎖住 edit_all 者可改 status。
+    expect(canManageAllActivities(opCtx)).toBe(true);
+
+    expect(buildEditEventUpdates(existing, buildForm({
+      regOpenTime: '2026-06-01T00:00:00Z',
+    }), ctx).updates.status).toBe('upcoming');
+    expect(buildEditEventUpdates(
+      { ...existing, status: 'upcoming' },
+      buildForm(),
+      ctx,
+    ).updates.status).toBe('open');
+    for (const status of ['ended', 'cancelled'] as const) {
+      expect(buildEditEventUpdates(
+        { ...existing, status },
+        buildForm({ regOpenTime: '2026-06-01T00:00:00Z' }),
+        ctx,
+      ).updates).not.toHaveProperty('status');
+    }
+  });
+
+  it('建立與編輯 earlyBirdPolicyVersion 固定由 enabled 決定', () => {
+    // 測試同步更新：照 A（1C-3），不採用表單版本。
+    const ctx = buildCtx({ role: 'coach' });
+    for (const earlyBirdEnabled of [true, false]) {
+      const form = buildForm({
+        earlyBirdEnabled,
+        earlyBirdPolicyVersion: earlyBirdEnabled ? null : 1,
+        earlyBirdCost: 50,
+      });
+      const expected = earlyBirdEnabled ? 1 : null;
+      expect(buildCreateEventPayload(form, ctx, 'ce_public').earlyBirdPolicyVersion)
+        .toBe(expected);
+      expect(buildEditEventUpdates(existing, form, ctx).updates.earlyBirdPolicyVersion)
+        .toBe(expected);
     }
   });
 });

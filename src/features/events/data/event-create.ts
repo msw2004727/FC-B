@@ -29,6 +29,12 @@ import {
   hasActivityManageEntry,
   type OperateContext,
 } from './operate-permissions';
+import {
+  pickEventImage,
+  resolveEventCoverImage,
+  uploadEventImageVariants,
+  uploadImageDataUrl,
+} from './event-cover-upload';
 
 // 供呼叫端由本模組取得 Callable 契約型別（與 `src/data/contract/callables.ts` 同源）。
 export type {
@@ -562,7 +568,8 @@ export function buildCreateEventPayload(
     socialLinks: form.socialLinksEnabled ? [...form.socialLinks] : [],
     earlyBirdEnabled: form.earlyBirdEnabled,
     earlyBirdCost: form.earlyBirdEnabled ? form.earlyBirdCost : 0,
-    earlyBirdPolicyVersion: form.earlyBirdEnabled ? form.earlyBirdPolicyVersion : null,
+    // 照 A handleCreateEvent：啟用時版本固定為 1。
+    earlyBirdPolicyVersion: form.earlyBirdEnabled ? 1 : null,
   };
 
   const variants = buildImageVariants(form);
@@ -637,7 +644,8 @@ export function buildEditEventUpdates(
     updates.socialLinks = form.socialLinksEnabled ? [...form.socialLinks] : [];
     updates.earlyBirdEnabled = form.earlyBirdEnabled;
     updates.earlyBirdCost = form.earlyBirdEnabled ? form.earlyBirdCost : 0;
-    updates.earlyBirdPolicyVersion = form.earlyBirdEnabled ? form.earlyBirdPolicyVersion : null;
+    // 照 A handleCreateEvent：啟用時版本固定為 1。
+    updates.earlyBirdPolicyVersion = form.earlyBirdEnabled ? 1 : null;
 
     if (form.mapPickerEnabled) Object.assign(updates, buildLocationPayload(form));
 
@@ -669,10 +677,10 @@ export function buildEditEventUpdates(
     updates.max = form.max;
   }
 
-  // status：照 verify 第 7 條四段規則，但先檢查活動管理入口。
-  const hasManageEntry = hasActivityManageEntry(toOperateContext(ctx));
+  // 照 A handleCreateEvent：管理入口或 event.edit_all 均可調整狀態。
+  const canChangeStatus = hasActivityManageEntry(opCtx) || canManageAllActivities(opCtx);
   if (
-    hasManageEntry &&
+    canChangeStatus &&
     existing.status !== 'ended' &&
     existing.status !== 'cancelled'
   ) {
@@ -746,7 +754,15 @@ export async function createEvent(
   if (!EVENT_ID_PATTERN.test(eventId)) {
     throw new EventCreateError('INVALID_ID', `Event ID does not match Rules pattern: ${eventId}`);
   }
-  const payload = buildCreateEventPayload(form, ctx, eventId);
+  // 照 A addEvent：先檢查權限，再上傳；transaction 內不做 Storage I/O。
+  assertCreateAllowed(ctx);
+  const imageVariants = await uploadEventImageVariants(eventId, form.imageVariants);
+  let image = pickEventImage(form.image, imageVariants);
+  if (image.startsWith('data:')) {
+    image = (await uploadImageDataUrl(image, `events/${eventId}`)) || '';
+  }
+  image = resolveEventCoverImage(image);
+  const payload = buildCreateEventPayload({ ...form, image, imageVariants }, ctx, eventId);
   const [{ doc, runTransaction, serverTimestamp }, { db }] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
@@ -780,6 +796,26 @@ export async function updateEventBasics(
 ): Promise<EditResult> {
   const result = buildEditEventUpdates(existing, form, ctx, preserve);
   const { updates, capacityChange } = result;
+
+  if (!preserve.image) {
+    // 照 A handleCreateEvent／updateEvent：先選主圖，再處理 variants。
+    let image = pickEventImage(form.image, form.imageVariants);
+    const imageVariants = await uploadEventImageVariants(existing.id, form.imageVariants);
+    if (imageVariants) updates.imageVariants = imageVariants;
+    else delete updates.imageVariants;
+
+    // 照 A _uploadEventImageVariants：成功的 cover 取代空主圖或 data URL。
+    if (imageVariants?.cover && (!image || image.startsWith('data:'))) {
+      image = imageVariants.cover;
+    }
+    if (image.startsWith('data:')) {
+      const uploaded = await uploadImageDataUrl(image, `events/${existing.id}`);
+      if (uploaded) updates.image = uploaded;
+      else delete updates.image;
+    } else {
+      updates.image = image;
+    }
+  }
 
   if (Object.keys(updates).length > 0) {
     const [{ doc, updateDoc, serverTimestamp }, { db }] = await Promise.all([
