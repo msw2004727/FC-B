@@ -247,6 +247,12 @@ describe('EventFormModal', () => {
       expect(eventCreateMod.updateEventBasics).toHaveBeenCalledTimes(1);
       expect(onSaved).toHaveBeenCalledWith('ce_edit_99');
     });
+    // T-013 修補：表單尚無加值／委託人／封面欄位，編輯時必須要求保留原值。
+    expect((vi.mocked(eventCreateMod.updateEventBasics).mock.calls[0] as unknown[])[3]).toEqual({
+      addons: true,
+      delegates: true,
+      image: true,
+    });
   });
 
   it('編輯後通知欄位有變才送活動變更通知（照 A）', async () => {

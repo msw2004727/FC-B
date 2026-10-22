@@ -562,6 +562,33 @@ describe('buildEditEventUpdates', () => {
       expect((err as EventCreateError).code).toBe('EDIT_NOT_ALLOWED');
     }
   });
+
+  it('T-013 修補：preserve 指定的群組不寫入（教練編輯不覆寫既有加值／委託人／封面）', () => {
+    const admin = buildCtx({ role: 'admin', capabilities: [], rolePermissions: ['event.edit_all'] });
+    const base = buildEditEventUpdates(existing(), editForm(), coachCtx());
+    expect('privateEvent' in base.updates).toBe(true);
+    expect('image' in base.updates).toBe(true);
+    expect('delegates' in base.updates).toBe(true);
+
+    for (const ctx of [coachCtx(), admin]) {
+      const result = buildEditEventUpdates(existing(), editForm(), ctx, {
+        addons: true,
+        delegates: true,
+        image: true,
+      });
+      for (const field of [
+        'feeEnabled', 'fee', 'genderRestrictionEnabled', 'allowedGender', 'privateEvent',
+        'socialLinksEnabled', 'socialLinks', 'earlyBirdEnabled', 'earlyBirdCost',
+        'earlyBirdPolicyVersion', 'teamSplit', 'gpsEnabled', 'lat', 'lng', 'teamOnly',
+        'creatorTeamId', 'creatorTeamName', 'creatorTeamIds', 'creatorTeamNames',
+        'delegates', 'delegateUids', 'image', 'imageVariants',
+      ]) {
+        expect(field in result.updates).toBe(false);
+      }
+      expect(result.updates.title).toBe('週末練球（已更新）');
+      expect(result.updates.notes).toBeDefined();
+    }
+  });
 });
 
 // ── Callable 邊界：changeEventCapacity ────────────────

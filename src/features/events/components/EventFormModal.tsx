@@ -280,7 +280,12 @@ export function EventFormModal({
           toast.show({ message: t('events.form.error.maxBelowConfirmed'), tone: 'error' });
           return;
         }
-        const result = await updateEventBasics(existingForEdit, payloadForm, ctx);
+        // T-013 修補：表單還沒有加值／委託人／封面欄位，編輯時保留原值，不送預設值覆寫。
+        const result = await updateEventBasics(existingForEdit, payloadForm, ctx, {
+          addons: true,
+          delegates: true,
+          image: true,
+        });
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }

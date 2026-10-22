@@ -262,6 +262,16 @@ export interface EventEditUpdates {
   mapLocationUpdatedAt?: string | null;
 }
 
+/**
+ * 編輯時表單尚未提供的欄位群組：不寫入、保留原值（T-013 修補）。
+ * B 表單還沒有加值／委託人／封面欄位時若照送預設值，會把既有活動的私密、費用、委託人、封面等覆寫成關閉或空白。
+ */
+export interface EditPreserveOptions {
+  addons?: boolean;
+  delegates?: boolean;
+  image?: boolean;
+}
+
 export interface EditResult {
   updates: EventEditUpdates;
   capacityChange: number | null;
@@ -572,6 +582,7 @@ export function buildEditEventUpdates(
   existing: EventForEdit,
   form: CreateEventForm,
   ctx: CreateEventContext,
+  preserve: EditPreserveOptions = {},
 ): EditResult {
   if (!canEditOwnActivityBasic(toOperateContext(ctx), existing)) {
     throw new EventCreateError(
@@ -602,7 +613,6 @@ export function buildEditEventUpdates(
     endTimestamp,
     minAge: form.minAge,
     notes: form.notes,
-    image: form.image,
     sportTag: form.sportTag,
     regOpenTime: form.regOpenTime,
     gradient: gradientFor(form.type),
@@ -611,10 +621,13 @@ export function buildEditEventUpdates(
     cities: [...form.cities],
   };
 
-  const variants = buildImageVariants(form);
-  if (variants) updates.imageVariants = variants;
+  if (!preserve.image) {
+    updates.image = form.image;
+    const variants = buildImageVariants(form);
+    if (variants) updates.imageVariants = variants;
+  }
 
-  if (canUseAddons) {
+  if (canUseAddons && !preserve.addons) {
     updates.feeEnabled = form.feeEnabled;
     updates.fee = form.fee;
     updates.genderRestrictionEnabled = form.genderRestrictionEnabled;
@@ -632,7 +645,7 @@ export function buildEditEventUpdates(
     if (teamSplit) updates.teamSplit = teamSplit;
   }
 
-  if (canChangeTeamOnly) {
+  if (canChangeTeamOnly && !preserve.addons) {
     updates.teamOnly = form.teamOnly;
     updates.creatorTeamId = form.teamOnly ? form.creatorTeamId : null;
     updates.creatorTeamName = form.teamOnly ? form.creatorTeamName : null;
@@ -640,7 +653,7 @@ export function buildEditEventUpdates(
     updates.creatorTeamNames = form.teamOnly ? [...form.creatorTeamNames] : [];
   }
 
-  if (canChangeDelegates) {
+  if (canChangeDelegates && !preserve.delegates) {
     updates.delegates = form.delegates.map((d) => ({ ...d }));
     updates.delegateUids = form.delegates.map((d) => d.uid);
   }
@@ -763,8 +776,9 @@ export async function updateEventBasics(
   existing: EventForEdit,
   form: CreateEventForm,
   ctx: CreateEventContext,
+  preserve: EditPreserveOptions = {},
 ): Promise<EditResult> {
-  const result = buildEditEventUpdates(existing, form, ctx);
+  const result = buildEditEventUpdates(existing, form, ctx, preserve);
   const { updates, capacityChange } = result;
 
   if (Object.keys(updates).length > 0) {
