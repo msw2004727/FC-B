@@ -214,5 +214,10 @@
     "settleSuccess": "儲存完成",
     "settleFailed": "儲存失敗，勾選已保留\n請再按一次「完成」重試",
     "expGrantFailed": "有 {count} 人經驗值未發放，請聯繫管理員"
+  },
+  "formResubmit": {
+    "modeLocked": "待重新送出的活動不能切換單日／多日期模式，請改回原模式後再試",
+    "datesLocked": "待重新送出的活動不能變更日期，請改回原日期後再試",
+    "contentConflict": "活動可能已建立，但內容和先前送出的不同；請先到活動列表確認再修改"
   }
 }

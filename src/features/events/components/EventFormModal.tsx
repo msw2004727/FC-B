@@ -464,14 +464,12 @@ export function EventFormModal({
       if (createRequest && unconfirmed) {
         if (createRequest.kind !== unconfirmed.kind) {
           // 照 A handleCreateEvent：待重新送出的請求不得切換模式，否則會用另一組 ID 重複建立。
-          const message = '待重新送出的活動不能切換單日／多日期模式，請改回原模式後再試';
-          toast.show({ message: lt(message, message), tone: 'error' });
+          toast.show({ message: t('events.formResubmit.modeLocked'), tone: 'error' });
           return;
         }
         if (createRequest.datesKey !== unconfirmed.datesKey) {
           // 刻意比 A 嚴格：多日期改了日期也視為不同請求（已建立的場次不會因刪掉日期而消失）。
-          const message = '待重新送出的活動不能變更日期，請改回原日期後再試';
-          toast.show({ message: lt(message, message), tone: 'error' });
+          toast.show({ message: t('events.formResubmit.datesLocked'), tone: 'error' });
           return;
         }
       }
@@ -602,8 +600,7 @@ export function EventFormModal({
     } catch (error: unknown) {
       if (!isCurrent()) return;
       if (error instanceof EventCreateError && error.code === 'CONTENT_CONFLICT') {
-        const message = '活動可能已建立，但內容和先前送出的不同；請先到活動列表確認再修改';
-        toast.show({ message: lt(message, message), tone: 'error' });
+        toast.show({ message: t('events.formResubmit.contentConflict'), tone: 'error' });
       } else if (error instanceof EventCreateError) {
         if (error.code === 'BASIC_CREATE_REQUIRED' || error.code === 'CREATE_NOT_ALLOWED') {
           toast.show({ message: t('events.form.error.createNotAllowed'), tone: 'error' });

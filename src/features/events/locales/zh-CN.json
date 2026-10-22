@@ -146,5 +146,10 @@
     "settleSuccess": "保存完成",
     "settleFailed": "保存失败，勾选已保留\n请再按一次「完成」重试",
     "expGrantFailed": "有 {count} 人经验值未发放，请联系管理员"
+  },
+  "formResubmit": {
+    "modeLocked": "待重新提交的活动不能切换单日/多日期模式，请改回原模式后重试",
+    "datesLocked": "待重新提交的活动不能修改日期，请改回原日期后重试",
+    "contentConflict": "活动可能已创建，但内容与先前提交的不同，请先到活动列表确认后再修改"
   }
 }

@@ -157,5 +157,10 @@
     "settleSuccess": "Saved successfully",
     "settleFailed": "Save failed. Your selections have been kept.\nPlease click Finish again to retry.",
     "expGrantFailed": "EXP was not granted to {count} participants. Please contact an administrator."
+  },
+  "formResubmit": {
+    "modeLocked": "An event awaiting resubmission cannot switch between single-date and multi-date modes. Switch back to the original mode and try again.",
+    "datesLocked": "An event awaiting resubmission cannot change its dates. Restore the original dates and try again.",
+    "contentConflict": "The event may already have been created, but its details differ from what you submitted earlier. Check the event list before editing."
   }
 }

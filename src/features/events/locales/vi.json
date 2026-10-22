@@ -156,5 +156,10 @@
     "settleSuccess": "Đã lưu thành công",
     "settleFailed": "Lưu thất bại. Các lựa chọn đã được giữ lại.\nVui lòng nhấn Hoàn tất lần nữa để thử lại.",
     "expGrantFailed": "Có {count} người chưa được cấp EXP. Vui lòng liên hệ quản trị viên."
+  },
+  "formResubmit": {
+    "modeLocked": "Hoạt động đang chờ gửi lại không thể đổi chế độ một ngày/nhiều ngày. Hãy đổi về chế độ ban đầu rồi thử lại.",
+    "datesLocked": "Hoạt động đang chờ gửi lại không thể thay đổi ngày. Hãy khôi phục ngày ban đầu rồi thử lại.",
+    "contentConflict": "Hoạt động có thể đã được tạo nhưng nội dung khác với lần gửi trước. Vui lòng kiểm tra danh sách hoạt động trước khi chỉnh sửa."
   }
 }
