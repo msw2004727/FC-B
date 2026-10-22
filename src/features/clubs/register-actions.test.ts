@@ -178,7 +178,7 @@ describe('register-actions: team_join_request', () => {
   });
 
   it('approve 動作呼叫 approveTeamJoin，request 含 team/applicantUid/message/reviewer', async () => {
-    loadTeamMock.mockResolvedValueOnce(teamWith({ captainUid: CAPTAIN_UID }));
+    loadTeamMock.mockResolvedValue(teamWith({ captainUid: CAPTAIN_UID }));
     const handler = getMessageAction('team_join_request')!;
     const message = makeMessage();
     const viewer = makeViewer(CAPTAIN_UID, { displayName: '隊長' });
@@ -192,7 +192,7 @@ describe('register-actions: team_join_request', () => {
   });
 
   it('reject 動作呼叫 rejectTeamJoin', async () => {
-    loadTeamMock.mockResolvedValueOnce(teamWith({ captainUid: CAPTAIN_UID }));
+    loadTeamMock.mockResolvedValue(teamWith({ captainUid: CAPTAIN_UID }));
     const handler = getMessageAction('team_join_request')!;
     await handler.actions[1]!.run(makeMessage(), makeViewer(CAPTAIN_UID));
     expect(rejectMock).toHaveBeenCalledTimes(1);
@@ -203,7 +203,7 @@ describe('register-actions: team_join_request', () => {
 
   // 測試同步更新：照 A（M-137）新增 ignore 動作測試。
   it('ignore 動作呼叫 ignoreTeamJoin，request 含 team/message/reviewer', async () => {
-    loadTeamMock.mockResolvedValueOnce(teamWith({ captainUid: CAPTAIN_UID }));
+    loadTeamMock.mockResolvedValue(teamWith({ captainUid: CAPTAIN_UID }));
     const handler = getMessageAction('team_join_request')!;
     const message = makeMessage();
     const viewer = makeViewer(CAPTAIN_UID, { displayName: '隊長' });
@@ -222,6 +222,18 @@ describe('register-actions: team_join_request', () => {
     expect(await handler.canAct(stranger, makeMessage())).toBe(false);
     // actions 陣列本身三個動作齊備，可見性由 canAct 統一決定（與 approve／reject 同一權限判斷，R-IAM-011）。
     expect(handler.actions.map((a) => a.key)).toEqual(['approve', 'reject', 'ignore']);
+  });
+
+  it('無權限時直接執行 approve／reject／ignore 都會丟錯且不寫入（run 內再用 canAct 檢查，R-IAM-011）', async () => {
+    loadTeamMock.mockResolvedValue(teamWith({ captainUid: 'Uother' }));
+    const handler = getMessageAction('team_join_request')!;
+    const stranger = makeViewer(RANDOM_UID);
+    for (const action of handler.actions) {
+      await expect(action.run(makeMessage(), stranger)).rejects.toThrow('permission denied');
+    }
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(rejectMock).not.toHaveBeenCalled();
+    expect(ignoreMock).not.toHaveBeenCalled();
   });
 
   it('approve 找不到 team 時丟錯（不外洩空 success）', async () => {

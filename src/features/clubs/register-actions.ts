@@ -61,6 +61,16 @@ function isTeamStaff(team: TeamDoc, uid: string): boolean {
   return coachUids.includes(uid);
 }
 
+/**
+ * R-IAM-011：執行前用與顯示同一個 canAct 再檢查一次，無權限一律不寫（T-019 Codex 第二審 P1）。
+ * 注意：FC Callable syncGroupActionStatus 本身只檢查登入，後端授權缺口另案回報，不在 B 修。
+ */
+async function assertCanAct(viewer: MessageActionViewer, message: InboxMessageLike): Promise<void> {
+  if (!(await handler.canAct(viewer, message))) {
+    throw new Error('team_join_request: permission denied');
+  }
+}
+
 const handler: MessageActionHandler = {
   async canAct(
     viewer: MessageActionViewer,
@@ -100,6 +110,7 @@ const handler: MessageActionHandler = {
       key: 'approve',
       labelKey: 'inbox.action.approve',
       async run(message, viewer): Promise<void> {
+        await assertCanAct(viewer, message);
         const team = await loadTeamForMessage(message);
         const applicantUid = resolveApplicantUid(message);
         if (!applicantUid) {
@@ -120,6 +131,7 @@ const handler: MessageActionHandler = {
       key: 'reject',
       labelKey: 'inbox.action.reject',
       async run(message, viewer): Promise<void> {
+        await assertCanAct(viewer, message);
         const team = await loadTeamForMessage(message);
         const applicantUid = resolveApplicantUid(message);
         if (!applicantUid) {
@@ -142,6 +154,7 @@ const handler: MessageActionHandler = {
       key: 'ignore',
       labelKey: 'inbox.action.ignore',
       async run(message, viewer): Promise<void> {
+        await assertCanAct(viewer, message);
         const team = await loadTeamForMessage(message);
         await ignoreTeamJoin({
           team,
