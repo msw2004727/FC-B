@@ -6,6 +6,12 @@ import { useViewer } from '@/features/profile/data/viewer';
 import { useLegacyT } from '@/i18n/i18n';
 
 import {
+  ACHIEVEMENT_CONDITIONS,
+  type AchievementConditionAction,
+  type AchievementConditionFilter,
+  type AchievementConditionTimeRange,
+} from '../data/achievement-conditions';
+import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
   evaluateFromProgress,
@@ -22,10 +28,28 @@ import {
 // A 的 .ach-* 樣式在 profile.css。
 import '@/features/profile/legacy/profile.css';
 
+/** 照 A `_getAchievementRegistry().findActionConfig`。 */
+function findActionConfig(key: unknown): AchievementConditionAction | undefined {
+  if (typeof key !== 'string') return undefined;
+  return ACHIEVEMENT_CONDITIONS.actions.find((a) => a.key === key);
+}
+
+/** 照 A `_getAchievementRegistry().findTimeRangeConfig`。 */
+function findTimeRangeConfig(key: unknown): AchievementConditionTimeRange | undefined {
+  if (typeof key !== 'string') return undefined;
+  return ACHIEVEMENT_CONDITIONS.timeRanges.find((t) => t.key === key);
+}
+
+/** 照 A `_getAchievementRegistry().findFilterConfig`。 */
+function findFilterConfig(key: unknown): AchievementConditionFilter | undefined {
+  if (typeof key !== 'string') return undefined;
+  return ACHIEVEMENT_CONDITIONS.filters.find((f) => f.key === key);
+}
+
 /**
- * 照 A `achievement/shared.js#generateConditionDesc` 逐字移植為純函式。
- * B 沒有 A `_getAchievementRegistry` 的 action label／unit／filter label，退回 action 名稱作 label
- * （同 A `actionCfg ? actionCfg.label : condition.action`）。不支援的 condition 顯示「未設定成就條件」。
+ * 照 A `achievement/shared.js#generateConditionDesc` 逐行移植。
+ * 條件描述：streak、`!unit && threshold <= 1` 只回 label、timeText、filterText（僅 filter !== 'all' 且
+ * needsFilter 才附）、單位前空格。B 現況：`isSupportedCondition` 不通過時回「未設定成就條件」（保留原行為）。
  */
 export function generateConditionDesc(
   condition: Record<string, unknown> | undefined,
@@ -33,17 +57,27 @@ export function generateConditionDesc(
 ): string {
   if (!condition) return desc || '未設定成就條件';
   if (!isSupportedCondition(condition)) return '未設定成就條件';
+
   const actionRaw = condition['action'];
-  const actionLabel = typeof actionRaw === 'string' ? actionRaw : '';
+  const timeRangeRaw = condition['timeRange'];
+  const filterRaw = condition['filter'];
   const thresholdRaw = condition['threshold'];
+
+  const actionCfg = findActionConfig(actionRaw);
+  const timeRangeCfg = findTimeRangeConfig(timeRangeRaw);
+  const filterCfg = findFilterConfig(filterRaw);
+
+  const actionLabel = actionCfg ? actionCfg.label : (typeof actionRaw === 'string' ? actionRaw : '');
+  const unit = actionCfg ? actionCfg.unit : '';
   let threshold = 0;
   if (typeof thresholdRaw === 'number') threshold = thresholdRaw;
   else if (typeof thresholdRaw === 'string') {
     const n = Number(thresholdRaw);
     if (Number.isFinite(n)) threshold = n;
   }
-  const timeRangeRaw = condition['timeRange'];
+
   const timeRange = typeof timeRangeRaw === 'string' ? timeRangeRaw : 'none';
+
   if (timeRange === 'streak') {
     const daysRaw = condition['streakDays'];
     let days = threshold;
@@ -52,10 +86,25 @@ export function generateConditionDesc(
       const n = Number(daysRaw);
       if (Number.isFinite(n)) days = n;
     }
-    return `連續 ${days} 天${actionLabel}`;
+    const filterText =
+      filterCfg && filterRaw !== 'all' && actionCfg && actionCfg.needsFilter
+        ? ` ${filterCfg.label}`
+        : '';
+    return `連續 ${days} 天${actionLabel}${filterText}`;
   }
-  if (threshold <= 1) return actionLabel;
-  return `${actionLabel} ${threshold}`.trim();
+
+  if (!unit && threshold <= 1) return actionLabel;
+
+  const timeText = timeRangeCfg && timeRange !== 'none' ? timeRangeCfg.label : '';
+  const filterText =
+    filterCfg && filterRaw !== 'all' && actionCfg && actionCfg.needsFilter
+      ? ` ${filterCfg.label}`
+      : '';
+
+  if (timeText) {
+    return `${timeText}${actionLabel}${filterText} ${threshold}${unit ? ` ${unit}` : ''}`.trim();
+  }
+  return `${actionLabel}${filterText} ${threshold}${unit ? ` ${unit}` : ''}`.trim();
 }
 
 interface PageData {

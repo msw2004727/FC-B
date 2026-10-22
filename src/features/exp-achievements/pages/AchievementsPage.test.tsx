@@ -27,6 +27,36 @@ import AchievementsPage, { generateConditionDesc } from './AchievementsPage';
 
 const useViewerMock = vi.mocked(useViewer);
 
+// 測試同步更新：照 A（fix-4e 項目 1）補 generateConditionDesc 三個案例。
+describe('generateConditionDesc（照 A achievement/shared.js 條件描述）', () => {
+  it('complete_event 100 → 顯示 A 中文條件描述', () => {
+    expect(
+      generateConditionDesc(
+        { action: 'complete_event', timeRange: 'none', threshold: 100 },
+        undefined,
+      ),
+    ).toBe('完成活動（簽到+簽退） 100 場');
+  });
+
+  it('complete_profile 1 → 只顯示 label', () => {
+    expect(
+      generateConditionDesc(
+        { action: 'complete_profile', timeRange: 'none', threshold: 1 },
+        undefined,
+      ),
+    ).toBe('完成個人檔案');
+  });
+
+  it('attendance_rate 90 → 含單位', () => {
+    expect(
+      generateConditionDesc(
+        { action: 'attendance_rate', timeRange: 'none', threshold: 90 },
+        undefined,
+      ),
+    ).toBe('達到出席率 90 %');
+  });
+});
+
 describe('AchievementsPage', () => {
   beforeEach(() => {
     document.documentElement.lang = 'zh-TW';
@@ -143,21 +173,22 @@ describe('generateConditionDesc', () => {
     );
   });
 
-  it('支援的 action、threshold <= 1 時只有 action', () => {
+  // 測試同步更新：照 A shared.js#generateConditionDesc（有單位時 threshold 1 仍帶數量與單位）。
+  it('支援的 action、有單位時 threshold 1 也帶數量與單位', () => {
     expect(
       generateConditionDesc(
         { action: 'complete_event', timeRange: 'none', threshold: 1 },
         undefined,
       ),
-    ).toBe('complete_event');
+    ).toBe('完成活動（簽到+簽退） 1 場');
   });
 
-  it('支援的 action、threshold > 1 帶上 threshold', () => {
+  it('支援的 action、threshold > 1 帶上數量與單位', () => {
     expect(
       generateConditionDesc(
         { action: 'complete_event', timeRange: 'none', threshold: 5 },
         undefined,
       ),
-    ).toBe('complete_event 5');
+    ).toBe('完成活動（簽到+簽退） 5 場');
   });
 });

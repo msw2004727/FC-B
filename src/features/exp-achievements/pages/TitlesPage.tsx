@@ -3,6 +3,8 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { useGoBack } from '@/core/back-guard';
 import { getFirebase } from '@/data/firebase';
+import { getEffectiveIdentity } from '@/data/identity-resolver';
+import { useIdentitySettings } from '@/data/identity-settings';
 import { useViewer } from '@/features/profile/data/viewer';
 import { useLegacyT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -43,14 +45,19 @@ async function loadUserDoc(uid: string): Promise<UserDocData | null> {
 export default function TitlesPage(): JSX.Element {
   const lt = useLegacyT();
   const goBack = useGoBack('/');
-  const { uid } = useViewer();
+  const viewer = useViewer();
+  const { uid } = viewer;
+  // 照 A `profile-data-stats.js#renderTitlePage` 的 identity 解析。
+  const identitySettings = useIdentitySettings();
 
   const [loading, setLoading] = useState(true);
   const [bigOptions, setBigOptions] = useState<string[]>([]);
   const [normalOptions, setNormalOptions] = useState<string[]>([]);
   const [selectedBig, setSelectedBig] = useState('');
   const [selectedNormal, setSelectedNormal] = useState('');
-  const [lineName, setLineName] = useState('-');
+  // 照 A：LINE 暱稱自 user doc + identity resolver 派生，不用單獨 state，避免
+  // identitySettings 晚到時 lineName 停在舊值（L-04）。
+  const [userDoc, setUserDoc] = useState<UserDocData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -69,7 +76,7 @@ export default function TitlesPage(): JSX.Element {
     setNormalOptions([]);
     setSelectedBig('');
     setSelectedNormal('');
-    setLineName('-');
+    setUserDoc(null);
     (async () => {
       try {
         const [userDoc, defs, progress] = await Promise.all([
@@ -93,7 +100,7 @@ export default function TitlesPage(): JSX.Element {
             : '';
         setSelectedBig(currentBig);
         setSelectedNormal(currentNormal);
-        setLineName(userDoc?.displayName || '-');
+        setUserDoc(userDoc);
       } catch (err) {
         if (cancelled) return;
         // 讀取失敗不當成空進度：清空可選稱號並禁止儲存。
@@ -102,7 +109,7 @@ export default function TitlesPage(): JSX.Element {
         setNormalOptions([]);
         setSelectedBig('');
         setSelectedNormal('');
-        setLineName('-');
+        setUserDoc(null);
         // eslint-disable-next-line no-console
         console.warn('[titles] load failed', err);
       } finally {
@@ -113,6 +120,21 @@ export default function TitlesPage(): JSX.Element {
       cancelled = true;
     };
   }, [uid, reloadTick]);
+
+  // 照 A `profile-data-stats.js#renderTitlePage`：`identity?.displayName || user.displayName || '-'`。
+  const identity =
+    userDoc && uid
+      ? getEffectiveIdentity(
+          { uid, displayName: userDoc.displayName },
+          {
+            settings: identitySettings,
+            surface: 'profile',
+            // ASSUMPTION: viewer mock 若無 hasPermission，?. 走 undefined ⇒ 沿用 A 預設（允許次要身份）。
+            allowSecondaryIdentity: viewer.hasPermission?.('profile.secondary_identity'),
+          },
+        )
+      : null;
+  const lineName = identity?.displayName || userDoc?.displayName || '-';
 
   const handleSave = async (): Promise<void> => {
     if (submitting || loading || loadError) return;
