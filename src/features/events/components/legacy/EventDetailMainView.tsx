@@ -103,26 +103,23 @@ function extractDelegates(raw: unknown): DelegateEntry[] {
 }
 
 function calcCountdown(event: LegacyDetailEvent, nowMs: number): string {
-  if (event.status === 'cancelled') return '已取消';
+  // 照 A _calcCountdown。
   if (event.status === 'ended') return '已結束';
-  const start = eventStartMs(event);
-  if (!start || start <= 0) return '進行中';
+  if (event.status === 'cancelled') return '已取消';
+  if (event.status === 'upcoming' && event.regOpenTime) return '即將開放';
+  // ASSUMPTION: 未附 B eventDateRange 全文，沿用現有日期解析，僅讀 event.date。
+  const range = eventDateRange(event.date);
+  const start = range ? Date.parse(range.start) : NaN;
+  if (!Number.isFinite(start)) return '';
   const diff = start - nowMs;
-  if (diff <= 0) {
-    const range = eventDateRange(event.date);
-    if (range?.end) {
-      const endMs = Date.parse(range.end);
-      if (Number.isFinite(endMs) && nowMs >= endMs) return '已結束';
-    }
-    return '進行中';
-  }
+  if (diff <= 0) return '已結束';
   const totalMin = Math.floor(diff / 60000);
   const days = Math.floor(totalMin / 1440);
   const hours = Math.floor((totalMin % 1440) / 60);
   const mins = totalMin % 60;
-  if (days > 0) return `${days}日${hours}時`;
-  if (hours > 0) return `${hours}時${mins}分`;
-  return `${mins}分`;
+  if (days > 0) return `剩餘 ${days}日${hours}時`;
+  if (hours > 0) return `剩餘 ${hours}時${mins}分`;
+  return `剩餘 ${mins}分`;
 }
 
 function formatRegOpenInfo(
@@ -247,7 +244,8 @@ export interface EventDetailInfoSectionProps {
   nowMs: number;
   roles: Record<string, UserRole | undefined>;
   onOpenProfile: (uid: string) => void;
-  onUnavailable: (e?: MouseEvent) => void;
+  onContactHost: () => void;
+  onOpenTeam: (teamId: string) => void;
 }
 
 export function EventDetailInfoSection({
@@ -257,7 +255,8 @@ export function EventDetailInfoSection({
   nowMs,
   roles,
   onOpenProfile,
-  onUnavailable,
+  onContactHost,
+  onOpenTeam,
 }: EventDetailInfoSectionProps): JSX.Element {
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ?? '')}`;
   const regOpen = formatRegOpenInfo(event, nowMs);
@@ -284,18 +283,14 @@ export function EventDetailInfoSection({
     <>
       <div class="detail-row detail-row-wide" data-detail-field="location">
         <span class="detail-label">地點</span>
-        {event.location ? (
-          <a
-            href={mapUrl}
-            target="sporthub_map"
-            rel="noopener"
-            style="color:var(--primary);text-decoration:none"
-          >
-            {`${event.location} 📍`}
-          </a>
-        ) : (
-          <span>地点未定</span>
-        )}
+        <a
+          href={mapUrl}
+          target="sporthub_map"
+          rel="noopener"
+          style="color:var(--primary);text-decoration:none"
+        >
+          {`${event.location ?? ''} 📍`}
+        </a>
       </div>
 
       <div class="detail-row detail-row-wide" data-detail-field="date">
@@ -370,11 +365,11 @@ export function EventDetailInfoSection({
             onOpenProfile={onOpenProfile}
           />
         </span>
-        {/* 下一批補：聯繫主辦私訊功能 */}
+        {/* 照 A contactEventOrganizer */}
         <button
           type="button"
           class="event-host-contact-pill"
-          onClick={onUnavailable}
+          onClick={onContactHost}
         >
           聯繫主辦
         </button>
@@ -411,13 +406,13 @@ export function EventDetailInfoSection({
           <span style="color:#e11d48;font-weight:600">
             {event.creatorTeamId ? (
               <>
-                {/* 下一批補：俱樂部詳情頁導覽 */}
+                {/* 照 A showTeamDetail */}
                 <a
                   href="javascript:void(0)"
                   style="color:inherit;text-decoration:underline;text-underline-offset:2px"
                   onClick={(ev) => {
                     ev.preventDefault();
-                    onUnavailable();
+                    if (event.creatorTeamId) onOpenTeam(event.creatorTeamId);
                   }}
                 >
                   {teamDisplayName}

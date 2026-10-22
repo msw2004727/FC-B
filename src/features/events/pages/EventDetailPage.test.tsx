@@ -124,7 +124,7 @@ vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer }));
 vi.mock('@/features/events/data/companions', () => ({
   loadSignupCompanions: mocks.companions,
 }));
-vi.mock('@/data/auth', () => ({ signIn: mocks.signIn }));
+vi.mock('@/data/auth', () => ({ signIn: mocks.signIn, getLastKnownAuthUid: () => undefined }));
 vi.mock('@/features/events/data/signup', async (importOriginal) => {
   const original = await importOriginal<typeof import('../data/signup')>();
   return { ...original, registerForEvent: mocks.register, cancelRegistration: mocks.cancel };
@@ -395,26 +395,8 @@ describe('EventDetailPage', () => {
     view.unmount();
   });
 
-  it('點擊未開放功能顯示「此功能尚未開放，請先使用舊版」提示', async () => {
-    const view = mount();
-    await screen.findByRole('heading', { level: 2 });
-
-    fireEvent.click(screen.getByRole('button', { name: '分享活動' }));
-    expect(mocks.toastShow).toHaveBeenLastCalledWith({ message: '此功能尚未開放，請先使用舊版' });
-
-    fireEvent.click(screen.getByRole('button', { name: '加入行事曆' }));
-    expect(mocks.toastShow).toHaveBeenCalledTimes(2);
-
-    fireEvent.click(screen.getByRole('button', { name: '聯繫主辦' }));
-    expect(mocks.toastShow).toHaveBeenCalledTimes(3);
-
-    // 測試同步更新：照 A（M-089／M-090）「報名紀錄」改為依權限的「Log」鈕、瀏覽數不可點，
-    // 改由 EventDetailPage.3b2a.test.tsx 與 EventDetailHeaderActions.test.tsx 驗證。
-    expect(screen.queryByRole('button', { name: '報名紀錄' })).toBeNull();
-    const viewCountWrap = view.container.querySelector('#detail-view-count-wrap');
-    if (viewCountWrap) fireEvent.click(viewCountWrap);
-    expect(mocks.toastShow).toHaveBeenCalledTimes(3);
-  });
+  // 測試同步更新：照 A（M-091／M-089／M-090）分享、行事曆、聯繫主辦、Log、瀏覽數都已接上，
+  // 原「點擊未開放功能顯示提示」案例刪除，改由 EventDetailPage.3b2a／3b2b 測試驗證各自行為。
 
   it('支援登入者與訪客的各種主按鈕狀態文字', async () => {
     // 1. ended
@@ -473,18 +455,24 @@ describe('EventDetailPage', () => {
   });
 
   it('找不到與被封鎖具有相同畫面，且不讀取名單', async () => {
+    // 測試同步更新：照 A（M-094）找不到時 toast「找不到此活動」並返回，不再顯示大標題。
     mocks.detail.mockResolvedValueOnce(null);
     const first = mount();
-    await screen.findByText('找不到此活動');
+    await waitFor(() => {
+      expect(mocks.toastShow).toHaveBeenLastCalledWith({ message: '找不到此活動' });
+    });
     const missing = first.container.innerHTML;
     first.unmount();
+    mocks.toastShow.mockClear();
 
     mocks.detail.mockResolvedValue({
       ...detail,
       event: { ...detail.event, blockedUids: ['u1'] },
     });
     const second = mount();
-    await screen.findByText('找不到此活動');
+    await waitFor(() => {
+      expect(mocks.toastShow).toHaveBeenLastCalledWith({ message: '找不到此活動' });
+    });
     expect(second.container.innerHTML).toBe(missing);
     expect(mocks.registrations).not.toHaveBeenCalled();
   });
@@ -606,8 +594,9 @@ describe('EventDetailPage', () => {
       .mockReturnValueOnce(retryRegistrations);
 
     mount();
-    const title = await screen.findByRole('heading', { level: 2 });
-    const region = screen.getByRole('region', { name: '參加名單' });
+    // 測試同步更新：照 A（U-024）載入骨架也有 h2，先等名單區出現再取標題。
+    const region = await screen.findByRole('region', { name: '參加名單' });
+    const title = screen.getByRole('heading', { level: 2 });
     fireEvent.click(within(region).getByRole('button', { name: '查看出席名單' }));
     await within(region).findByText('無法載入參加名單，請重試。');
 
@@ -687,7 +676,9 @@ describe('EventDetailPage', () => {
     mocks.registrations.mockResolvedValue([self]);
     mocks.history.mockResolvedValueOnce([]).mockResolvedValue([self]);
     const view = mount();
-    const title = await screen.findByRole('heading', { level: 2 });
+    // 測試同步更新：照 A（U-024）載入骨架也有 h2，先等主按鈕出現再取標題。
+    await screen.findByRole('button', { name: '立即報名' });
+    const title = screen.getByRole('heading', { level: 2 });
     fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
     await screen.findByRole('button', { name: '取消報名' });
     expect(mocks.register).toHaveBeenCalledTimes(1);

@@ -124,7 +124,7 @@ vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer }));
 vi.mock('@/features/events/data/companions', () => ({
   loadSignupCompanions: mocks.companions,
 }));
-vi.mock('@/data/auth', () => ({ signIn: mocks.signIn }));
+vi.mock('@/data/auth', () => ({ signIn: mocks.signIn, getLastKnownAuthUid: () => undefined }));
 vi.mock('@/features/events/data/signup', async (importOriginal) => {
   const original = await importOriginal<typeof import('../data/signup')>();
   return { ...original, registerForEvent: mocks.register, cancelRegistration: mocks.cancel };

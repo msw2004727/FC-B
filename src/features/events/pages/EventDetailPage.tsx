@@ -64,8 +64,14 @@ import {
   EventDetailCover,
   EventDetailInfoSection,
   EventDetailPrimaryButton,
+  calcHeatPrediction,
   type LegacyDetailEvent,
 } from '../components/legacy/EventDetailMainView';
+import {
+  EventDetailLoadingShell,
+  EventDetailMissing,
+  EventDetailToolbarActions,
+} from '../components/legacy/EventDetailLoadingShell';
 import type { RegistrationDoc } from '../data/types';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
@@ -503,17 +509,27 @@ function EventDetailSession({
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
     try {
+      // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
+      // 名單／紀錄重讀失敗只保留舊資料，不讓整次重新整理失敗（Gemini 審查 P2）。
+      let registrationsFailed = false;
       const [fresh, registrations, history, attendanceRecords] = await Promise.all([
         loadEventDetail(current.event.id ?? publicId),
-        loadEventRegistrations(current.eventDocId),
-        loadViewerRegistrations(uid),
+        loadEventRegistrations(current.eventDocId).catch(() => {
+          registrationsFailed = true;
+          return current.registrations;
+        }),
+        loadViewerRegistrations(uid).catch(() => current.viewerRegistrations),
         canViewDetailAttendanceRecordDetails(currentViewer.current, current.event)
-          ? loadEventAttendance(current.eventDocId)
+          ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve([] as EventAttendanceEntry[]),
       ]);
       if (!alive.current || request !== sequence.current
         || rosterRequest !== rosterSequence.current || currentViewer.current.uid !== uid) return;
-      if (!fresh || fresh.eventDocId !== current.eventDocId) throw new Error('refresh failed');
+      if (!fresh || fresh.eventDocId !== current.eventDocId) {
+        // 照 A：找不到最新活動文件時的專用提示，不走一般失敗。
+        toast.show({ message: '刷新失敗，找不到最新活動資料' });
+        return;
+      }
       const nextEvent = {
         ...fresh.event,
         id: fresh.event.id ?? publicId,
@@ -535,7 +551,7 @@ function EventDetailSession({
         registrations,
         attendanceRecords,
       });
-      setRosterPhase('ready');
+      if (!registrationsFailed) setRosterPhase('ready');
       setHistoryFailed(false);
       setRefreshFailed(false);
     } finally {
@@ -820,22 +836,21 @@ function EventDetailSession({
 
   if (phase === 'loading') {
     return (
-      <div class="legacy-ui">
-        <section class="page active" id="page-activity-detail" aria-busy="true">
-          <div class="detail-body" id="detail-body">
-            <div class="reg-loading">{t('events.detailPage.loading')}</div>
-          </div>
-          {noticeToast}
-        </section>
-      </div>
+      <EventDetailLoadingShell publicId={publicId} viewer={viewer} goBack={goBack}>
+        {noticeToast}
+      </EventDetailLoadingShell>
     );
   }
 
   if (phase === 'error') {
+    // ASSUMPTION: A 沒有錯誤頁；沿用 B 重試內容，套用首次載入外框。
     return (
-      <div class="legacy-ui">
-        <section class="page active" id="page-activity-detail">
-          <div class="detail-body" id="detail-body">
+      <EventDetailLoadingShell
+        publicId={publicId}
+        viewer={viewer}
+        goBack={goBack}
+        loading={false}
+      >
             <h1>{t('events.detailPage.loadError')}</h1>
             <button
               type="button"
@@ -844,24 +859,13 @@ function EventDetailSession({
             >
               {t('events.retry')}
             </button>
-          </div>
           {noticeToast}
-        </section>
-      </div>
+      </EventDetailLoadingShell>
     );
   }
 
   if (phase === 'missing' || !snapshot || !event || !visible) {
-    return (
-      <div class="legacy-ui">
-        <section class="page active" id="page-activity-detail">
-          <div class="detail-body" id="detail-body">
-            <h1>{t('events.detailPage.notFound')}</h1>
-            <a href="/activities">{t('events.pageTitle')}</a>
-          </div>
-        </section>
-      </div>
-    );
+    return <EventDetailMissing goBack={goBack} />;
   }
 
   const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
@@ -964,7 +968,15 @@ function EventDetailSession({
             nowMs={now}
             roles={roles}
             onOpenProfile={profile}
-            onUnavailable={handleUnavailable}
+            onContactHost={() => {
+              // 照 A contactEventOrganizer；身分只認 UID。
+              const uid = (event.creatorUid || '').trim();
+              if (uid) profile(uid);
+              else toast.show({ message: '暫時找不到主辦人資料。' });
+            }}
+            onOpenTeam={(teamId) => {
+              location.route(`/teams/${encodeURIComponent(teamId)}`);
+            }}
           />
 
           <div class="detail-action-zone">
@@ -990,32 +1002,19 @@ function EventDetailSession({
                   <span class="mini-text">寫入中</span>
                 </div>
               </div>
-              {/* 下一批補：分享活動 */}
-              <button
-                type="button"
-                class="detail-toolbar-btn"
-                onClick={handleUnavailable}
-              >
-                分享活動
-              </button>
-              {/* 下一批補：加入行事曆 */}
-              <button
-                type="button"
-                class="detail-toolbar-btn"
-                onClick={handleUnavailable}
-              >
-                加入行事曆
-              </button>
-              {/* 下一批補：現場簽到導覽 */}
-              {canManageRoster && (
-                <button
-                  type="button"
-                  class="detail-toolbar-btn"
-                  onClick={handleUnavailable}
-                >
-                  現場簽到
-                </button>
-              )}
+              <EventDetailToolbarActions
+                event={event}
+                loggedIn={Boolean(viewer.uid)}
+                heat={calcHeatPrediction(event, now)}
+                registrations={snapshot.registrations}
+                canScan={() => Boolean(
+                  currentViewer.current.uid
+                  && canManageDetailAttendanceRecords(currentViewer.current, snapshot.event)
+                )}
+                onScan={() => {
+                  location.route(`/checkin?eventId=${encodeURIComponent(eventId)}`);
+                }}
+              />
             </div>
 
             <div class="detail-action-primary" id="detail-action-primary">
