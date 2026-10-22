@@ -57,6 +57,12 @@ import { resolveShareLink } from './share-link';
 import { firebaseTargetLabel } from '@/data/firebase';
 import { isInternalTestMode } from '@/data/internal-test';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
+import { getEffectiveIdentity } from '@/data/identity-resolver';
+import {
+  startIdentitySettings,
+  stopIdentitySettings,
+  useIdentitySettings,
+} from '@/data/identity-settings';
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { SyncStatusBar } from './SyncStatusBar';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
@@ -252,6 +258,33 @@ export function App({
   const pending = loginPending || externalPending;
   const isRestricted = routeAccess?.isRestricted === true;
 
+  // 照 A `renderLoginUI`：以 `getCurrentIdentity('chrome')` 解析右上角／抽屜顯示身份。
+  const identitySettings = useIdentitySettings();
+  const chromeUid = routeAccess?.uid ?? null;
+  const chromeIdentity = chromeUid
+    ? getEffectiveIdentity(
+      {
+        uid: chromeUid,
+        displayName: routeAccess?.displayName ?? user?.displayName ?? null,
+        pictureUrl: routeAccess?.pictureUrl ?? user?.pictureUrl ?? null,
+      },
+      {
+        settings: identitySettings,
+        surface: 'chrome',
+        allowSecondaryIdentity:
+          routeAccess?.hasPermission?.('profile.secondary_identity') === true,
+      },
+    )
+    : null;
+  // 照 A `renderLoginUI`：第二身份時 TopBar 只用第二身份的頭像候選，不退回 LINE 頭像。
+  const topBarUser = chromeIdentity?.identityId === 'secondary' && user
+    ? {
+      ...user,
+      displayName: chromeIdentity.displayName,
+      pictureUrl: chromeIdentity.avatarCandidates[0] ?? null,
+    }
+    : user;
+
   return (
     <LocationProvider>
       <div ref={shellRef} class="app-shell ui-app-shell">
@@ -261,7 +294,8 @@ export function App({
           onMenuClick={openDrawer}
           onLogin={handleLogin}
           loginPending={pending}
-          user={user}
+          user={topBarUser}
+          crown={chromeIdentity?.identityId === 'secondary'}
           authPending={!authKnown && expectSignedIn}
         />
         <SyncStatusBar />
@@ -296,8 +330,16 @@ export function App({
         loginPending={pending}
         loginError={loginError}
         routeAccess={routeAccess}
+        identity={chromeIdentity
+          ? {
+            identityId: chromeIdentity.identityId,
+            displayName: chromeIdentity.displayName,
+            avatarCandidates: chromeIdentity.avatarCandidates,
+          }
+          : null}
       />
       <ViewerAccessBridge onChange={setRouteAccess} />
+      <IdentitySettingsBridge uid={chromeUid} />
       <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
       <MobileLineLoginHintModal
         open={mobileHintOpen}
@@ -319,6 +361,25 @@ function ViewerAccessBridge({ onChange }: { onChange: (access: ViewerView) => vo
   useEffect(() => {
     onChange(viewer);
   }, [viewer, onChange]);
+  return null;
+}
+
+/**
+ * 照 A `_setupIdentityPrivateListener`／`_stopIdentityPrivateListener`：
+ * routeAccess 提供 uid 後才啟動監聽（避免閘門前讀 Firestore）；
+ * uid 變空或元件卸載時停止並清成 null。
+ */
+function IdentitySettingsBridge({ uid }: { uid: string | null }): null {
+  useEffect(() => {
+    if (!uid) {
+      stopIdentitySettings();
+      return undefined;
+    }
+    startIdentitySettings(uid);
+    return () => {
+      stopIdentitySettings();
+    };
+  }, [uid]);
   return null;
 }
 

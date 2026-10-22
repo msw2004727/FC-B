@@ -1,9 +1,15 @@
-export interface IdentityUser {
-  uid?: string | null;
-  displayName?: string | null;
-  name?: string | null;
-  pictureUrl?: string | null;
-  photoURL?: string | null;
+import {
+  buildPublicSnapshot as resolveBuildPublicSnapshot,
+  getEffectiveIdentity,
+  getMainIdentity as resolveMainIdentity,
+  type IdentityUserInput,
+  type ResolvedIdentity,
+} from '@/data/identity-resolver';
+import { getIdentitySettings } from '@/data/identity-settings';
+
+export interface IdentityUser extends IdentityUserInput {
+  /** 呼叫端傳入 viewer.hasPermission，用來判斷是否允許第二身份（照 A `ApiService.canUseSecondaryIdentityFeature()`）。 */
+  hasPermission?: (code: string) => boolean;
 }
 
 export interface PublicIdentitySnapshot {
@@ -19,51 +25,74 @@ export interface CommentAuthor {
   identitySnapshot: PublicIdentitySnapshot;
 }
 
+const SECONDARY_IDENTITY_PERMISSION = 'profile.secondary_identity';
+
 function trim(value: unknown): string {
   return String(value || '').trim();
 }
 
-/** 照 A getMainIdentity；身分識別依 R-ID-002 只認 UID。 */
-export function getMainIdentity(user: IdentityUser) {
-  const uid = trim(user.uid);
-  const displayName = trim(user.displayName || user.name || uid || '用戶');
-  const pictureUrl = trim(user.pictureUrl || user.photoURL);
+/** 照 A `IdentityResolver.getMainIdentity`；身分識別依 R-ID-002 只認 UID。 */
+export function getMainIdentity(user: IdentityUser): ResolvedIdentity {
+  const resolved = resolveMainIdentity(user);
+  if (resolved) return resolved;
   return {
-    identityId: 'main' as const,
-    uid,
-    displayName,
-    name: displayName,
-    pictureUrl,
-    photoURL: pictureUrl,
-    avatarCandidates: pictureUrl ? [pictureUrl] : [],
+    identityId: 'main',
+    uid: '',
+    displayName: '用戶',
+    name: '用戶',
+    pictureUrl: '',
+    photoURL: '',
+    avatarCandidates: [],
     isPrimary: true,
     source: 'users',
   };
 }
 
-/** 照 A buildPublicSnapshot。 */
+/** 照 A `IdentityResolver.buildPublicSnapshot`；第二身份由呼叫端的 hasPermission 決定。 */
 export function buildPublicSnapshot(user: IdentityUser): PublicIdentitySnapshot {
-  const identity = getMainIdentity(user);
-  // ASSUMPTION: B 沒有第二身份切換來源，寫入固定使用主身份。
-  return {
-    identityId: 'main',
-    displayName: identity.displayName.trim().slice(0, 80),
-    avatarUrl: identity.pictureUrl.trim().slice(0, 1200),
-  };
+  const allowSecondary = user.hasPermission?.(SECONDARY_IDENTITY_PERMISSION) === true;
+  const resolved = resolveBuildPublicSnapshot(user, {
+    settings: getIdentitySettings(),
+    allowSecondaryIdentity: allowSecondary,
+  });
+  if (!resolved) {
+    return { identityId: 'main', displayName: '用戶', avatarUrl: '' };
+  }
+  return resolved;
 }
 
-/** 照 A _getEventCommentAuthor。 */
+/** 照 A `event-comments.js#_getEventCommentAuthor`。 */
 export function getEventCommentAuthor(user: IdentityUser): CommentAuthor {
-  const identity = getMainIdentity(user);
+  const rootIdentity = getMainIdentity(user);
+  const allowSecondary = user.hasPermission?.(SECONDARY_IDENTITY_PERMISSION) === true;
+  const effective = getEffectiveIdentity(user, {
+    settings: getIdentitySettings(),
+    surface: 'comment',
+    allowSecondaryIdentity: allowSecondary,
+  });
+  const requestedIdentityId: 'main' | 'secondary' =
+    effective?.identityId === 'secondary' ? 'secondary' : 'main';
+  const snapshot = resolveBuildPublicSnapshot(user, {
+    settings: getIdentitySettings(),
+    surface: 'comment',
+    allowSecondaryIdentity: allowSecondary,
+    requestedIdentityId,
+  });
+  const rootName = trim(rootIdentity.displayName || user.displayName || user.name || '用戶');
+  const rootPhoto = trim(rootIdentity.pictureUrl || user.pictureUrl || user.photoURL);
   return {
-    uid: trim(user.uid),
-    authorName: identity.displayName || '用戶',
-    authorPhoto: identity.pictureUrl,
-    identitySnapshot: buildPublicSnapshot(user),
+    uid: rootIdentity.uid,
+    authorName: rootName || '用戶',
+    authorPhoto: rootPhoto,
+    identitySnapshot: snapshot ?? {
+      identityId: 'main',
+      displayName: rootName || '用戶',
+      avatarUrl: rootPhoto,
+    },
   };
 }
 
-/** 照 A _normalizePublicIdentitySnapshot。 */
+/** 照 A `_normalizePublicIdentitySnapshot`。 */
 export function normalizePublicIdentitySnapshot(value: unknown): PublicIdentitySnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -77,7 +106,7 @@ export function normalizePublicIdentitySnapshot(value: unknown): PublicIdentityS
   };
 }
 
-/** 照 A _resolveEventCommentDisplay；官方身份不退回主帳號照片。 */
+/** 照 A `_resolveEventCommentDisplay`；官方身份不退回主帳號照片。 */
 export function resolveEventCommentDisplay(data: Record<string, unknown>) {
   const identitySnapshot = normalizePublicIdentitySnapshot(data.identitySnapshot);
   return {
