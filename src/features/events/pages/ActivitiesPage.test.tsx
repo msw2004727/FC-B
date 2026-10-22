@@ -234,7 +234,23 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
   // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
   // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
   // 測試同步更新：照 A（M-076），愛心改用收藏切換，不再顯示「尚未開放」。
-  it('shows toast when clicking unavailable features (share, calendar tab, beginner tab, nearby)', async () => {
+  // 測試同步更新：照 A（M-071）月曆已開放，改由下方月曆案例驗證。
+  it('opens the calendar tab lazily and writes tab=calendar to the URL (M-071)', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('.tl-event-row')).toBeTruthy();
+    });
+    fireEvent.click(container.querySelector('[data-atab="calendar"]') as HTMLElement);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('calendar');
+      expect((container.querySelector('#activity-list') as HTMLElement).hidden).toBe(true);
+      expect((container.querySelector('#activity-calendar') as HTMLElement).hidden).toBe(false);
+      expect(container.querySelector('[data-atab="calendar"]')?.classList.contains('active')).toBe(true);
+      expect(container.querySelector('#activity-calendar .evt-cal-skeleton')).toBeNull();
+    });
+  });
+
+  it('shows toast when clicking unavailable features (share, beginner tab, nearby)', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
@@ -245,11 +261,6 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     await waitFor(() => {
       expect(getToasts().at(-1)?.message).toBe('複製失敗，請手動複製');
     });
-
-    toast.clear();
-    const calTab = container.querySelector('[data-atab="calendar"]') as HTMLElement;
-    fireEvent.click(calTab);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
 
     toast.clear();
     const beginnerTab = container.querySelector('[data-atab="beginner"]') as HTMLElement;

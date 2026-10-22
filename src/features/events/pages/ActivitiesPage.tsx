@@ -2,6 +2,7 @@ import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import type { ComponentType } from 'preact';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
 import {
   getActiveSport,
@@ -44,6 +45,22 @@ import { useDebouncedValue } from '../data/use-debounced-value';
 import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
+import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
+
+// M-071：月曆載入中骨架（同 A pages/activity.html #activity-calendar 內容）。
+function CalendarSkeleton(): JSX.Element {
+  return (
+    <div class="evt-cal-skeleton" aria-hidden="true">
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+      <div class="evt-cal-skeleton-cell" />
+    </div>
+  );
+}
 
 interface ViewerRegistrationsState {
   uid: string | null;
@@ -96,7 +113,7 @@ function readUrlFilters(urlStr: string): {
   hasSportParam: boolean;
   region: string;
   sport: string;
-  tab: 'normal' | 'female';
+  tab: 'normal' | 'female' | 'calendar';
   type: string;
 } {
   const parsed = new URL(urlStr || '/activities', 'https://toosterx.invalid');
@@ -110,7 +127,7 @@ function readUrlFilters(urlStr: string): {
     hasSportParam,
     region: normalizeActivityUrlRegion(params.get('region')),
     sport: normalizeActiveSport(params.get('sport')),
-    tab: normalizedTab === 'female' ? 'female' : 'normal',
+    tab: normalizedTab === 'calendar' ? 'calendar' : normalizedTab === 'female' ? 'female' : 'normal',
     type: normalizeActivityUrlType(params.get('type')),
   };
 }
@@ -244,7 +261,8 @@ export default function ActivitiesPage(): JSX.Element {
     const parsed = readUrlFilters(location.url);
     const current = new URL(location.url, 'https://toosterx.invalid');
     const requestedTab = current.searchParams.get('tab');
-    if (requestedTab !== null && requestedTab !== 'normal' && requestedTab !== 'female') {
+    if (requestedTab !== null && requestedTab !== 'normal'
+      && requestedTab !== 'female' && requestedTab !== 'calendar') {
       const nextTab = normalizeListTab(requestedTab);
       current.searchParams.set('tab', nextTab === 'female' ? 'female' : 'normal');
       location.route(`${current.pathname}${current.search}${current.hash}`, true);
@@ -353,13 +371,17 @@ export default function ActivitiesPage(): JSX.Element {
 
   function switchActivityTab(nextTab: string, e?: MouseEvent): void {
     if (e) e.stopPropagation();
-    // 下一批補：月曆檢視、新手友善、高強度篩選
-    if (nextTab === 'calendar' || nextTab === 'beginner' || nextTab === 'high-intensity') {
+    // 下一批補：新手友善、高強度篩選
+    if (nextTab === 'beginner' || nextTab === 'high-intensity') {
       toast.show({ message: UNAVAILABLE_MSG });
       return;
     }
+    // 照 A _setActivityTab：切到月曆捲回頂端
+    if (nextTab === 'calendar') {
+      try { window.scrollTo(0, 0); } catch { /* 環境未提供捲動。 */ }
+    }
     const next = new URL(location.url, 'https://toosterx.invalid');
-    next.searchParams.set('tab', nextTab);
+    next.searchParams.set('tab', normalizeListTab(nextTab));
     const target = `${next.pathname}${next.search}${next.hash}`;
     lastSyncedUrlRef.current = target;
     location.route(target);
@@ -496,6 +518,34 @@ export default function ActivitiesPage(): JSX.Element {
     }
     return list;
   }, [data.events, viewer, registrations, regionTab, effectiveSport, activeTab, filterType, filterKeyword]);
+
+  // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬。
+  const calendarEvents = useMemo(() => {
+    let list = getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[];
+    list = filterByRegionTab(list, regionTab);
+    list = filterBySportTag(list, effectiveSport || 'all');
+    if (filterType) list = list.filter((event) => event.type === filterType);
+    const keyword = filterKeyword.trim().toLowerCase();
+    if (keyword) list = list.filter((event) => matchesActivityKeyword(event, keyword));
+    return list;
+  }, [data.events, viewer, registrations, regionTab, effectiveSport, filterType, filterKeyword]);
+
+  // M-071：照 A _loadAndRenderCalendar，切到月曆才下載月曆模組；失敗提示，再切回月曆會重試。
+  const [CalendarView, setCalendarView] = useState<ComponentType<ActivityCalendarProps> | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'calendar' || CalendarView) return;
+    let alive = true;
+    import('../components/legacy/ActivityCalendar')
+      .then((mod) => {
+        if (alive) setCalendarView(() => mod.default);
+      })
+      .catch(() => {
+        if (alive) toast.show({ message: '月曆載入失敗，請重試' });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeTab, CalendarView]);
 
   const monthGroups = useMemo(() => {
     const groups: Record<string, Record<number, DayGroup>> = {};
@@ -728,10 +778,9 @@ export default function ActivitiesPage(): JSX.Element {
         )}
 
         <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
-          {/* 下一批補：月曆檢視 */}
           <button
             type="button"
-            class="tab"
+            class={`tab${activeTab === 'calendar' ? ' active' : ''}`}
             data-atab="calendar"
             onClick={(e) => switchActivityTab('calendar', e)}
           >
@@ -864,7 +913,12 @@ export default function ActivitiesPage(): JSX.Element {
           </button>
         </div>
 
-        <div class="timeline-calendar" id="activity-list" ref={activityListRef}>
+        <div
+          class="timeline-calendar"
+          id="activity-list"
+          ref={activityListRef}
+          hidden={activeTab === 'calendar'}
+        >
           {data.loading ? (
             <div
               class="activity-list-loading"
@@ -967,17 +1021,26 @@ export default function ActivitiesPage(): JSX.Element {
           )}
         </div>
 
-        {/* 下一批補：月曆視圖容器 */}
-        <div id="activity-calendar" hidden>
-          <div class="evt-cal-skeleton" aria-hidden="true">
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-            <div class="evt-cal-skeleton-cell" />
-          </div>
+        <div id="activity-calendar" hidden={activeTab !== 'calendar'}>
+          {activeTab === 'calendar' && !CalendarView && <CalendarSkeleton />}
+          {activeTab === 'calendar' && CalendarView && (
+              <CalendarView
+                events={calendarEvents}
+                viewerUid={viewer.uid}
+                viewerRegistrations={registrations}
+                onSelectEvent={handleSelectCard}
+                onJumpToDate={(dateKey: string) => {
+                  switchActivityTab('normal');
+                  // 照 A _jumpToTimelineDate；確認頁面仍存在才定位。
+                  requestAnimationFrame(() => {
+                    const list = document.getElementById('activity-list');
+                    if (!list || list.hidden) return;
+                    list.querySelector<HTMLElement>(`[data-date-anchor="${dateKey}"]`)
+                      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+                  });
+                }}
+              />
+          )}
         </div>
 
         <EventFormModal
