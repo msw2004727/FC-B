@@ -9,6 +9,7 @@ import {
 } from 'preact/hooks';
 import { Component, Fragment } from 'preact';
 import type { ComponentChildren, ComponentType } from 'preact';
+import { Suspense, lazy as lazyComponent } from 'preact/compat';
 import { LocationProvider, Router, Route, lazy, useLocation } from 'preact-iso';
 import { TopBar } from '@/ui/TopBar';
 import { BottomNav } from '@/ui/BottomNav';
@@ -66,6 +67,14 @@ import {
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { SyncStatusBar } from './SyncStatusBar';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
+
+// M-139：全站私訊即時泡泡與浮層外框一律 lazy 載入，避免首屏帶入 firestore。
+const LazyPmBubbleHost = lazyComponent(() =>
+  import('@/features/inbox/components/PmBubbleHost').then((m) => ({ default: m.PmBubbleHost })),
+);
+const LazyPmDialogHost = lazyComponent(() =>
+  import('@/features/inbox/components/PmDialogHost').then((m) => ({ default: m.PmDialogHost })),
+);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
@@ -340,6 +349,13 @@ export function App({
       />
       <ViewerAccessBridge onChange={setRouteAccess} />
       <IdentitySettingsBridge uid={chromeUid} />
+      <Suspense fallback={null}>
+        {chromeUid !== null && <LazyPmBubbleHost uid={chromeUid} />}
+      </Suspense>
+      <Suspense fallback={null}>
+        {/* 私訊只在登入後可用；未登入不載入浮層外框。 */}
+        {chromeUid !== null && <LazyPmDialogHost />}
+      </Suspense>
       <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
       <MobileLineLoginHintModal
         open={mobileHintOpen}
