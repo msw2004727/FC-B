@@ -160,6 +160,8 @@ export function EventFormModal({
   // 多日期每個日期的活動 id 與整批 batchGroupId 在本次開表單期間固定（重送時沿用，冪等）。
   const batchIdsRef = useRef(new Map<string, string>());
   const batchGroupIdRef = useRef<string | null>(null);
+  // 建立結果未確認（可能已寫入）時記住當次的單日／多日期與日期；重送必須是同一請求（照 A pending marker 的模式檢查）。
+  const unconfirmedCreateRef = useRef<{ kind: 'single' | 'multi'; datesKey: string } | null>(null);
 
   // 照 A event-create-template.js：從範本建立／儲存為範本。
   const templates = useEventTemplates({
@@ -307,6 +309,7 @@ export function EventFormModal({
       multiDate.reset();
       batchIdsRef.current = new Map();
       batchGroupIdRef.current = null;
+      unconfirmedCreateRef.current = null;
       // 照 A openCreateEventModal：清空範本名稱並重新載入範本。
       latestRef.current.templates.reset();
       const ctx = createEventContextFromViewer(viewer, now);
@@ -452,6 +455,26 @@ export function EventFormModal({
         toast.show({ message: t('events.form.error.createNotAllowed'), tone: 'error' });
         return;
       }
+      const createRequest = current.mode === 'create'
+        ? { kind: submitDates ? 'multi' as const : 'single' as const, datesKey: (submitDates ?? []).join(',') }
+        : null;
+      const unconfirmed = unconfirmedCreateRef.current;
+      if (createRequest && unconfirmed) {
+        if (createRequest.kind !== unconfirmed.kind) {
+          // 照 A handleCreateEvent：待重新送出的請求不得切換模式，否則會用另一組 ID 重複建立。
+          const message = '待重新送出的活動不能切換單日／多日期模式，請改回原模式後再試';
+          toast.show({ message: lt(message, message), tone: 'error' });
+          return;
+        }
+        if (createRequest.datesKey !== unconfirmed.datesKey) {
+          // 刻意比 A 嚴格：多日期改了日期也視為不同請求（已建立的場次不會因刪掉日期而消失）。
+          const message = '待重新送出的活動不能變更日期，請改回原日期後再試';
+          toast.show({ message: lt(message, message), tone: 'error' });
+          return;
+        }
+      }
+      // 從這裡起可能寫入；成功才清掉，失敗則保留讓重送沿用同一請求。
+      if (createRequest) unconfirmedCreateRef.current = createRequest;
       const creatorName = resolveCreatorName(
         current.viewer.displayName,
         current.viewer.role,
@@ -542,6 +565,7 @@ export function EventFormModal({
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
+        unconfirmedCreateRef.current = null;
         // 照 A：成功提示「已建立 N 場「X」活動！」、分享詢問用第一場。
         current.onSaved({
           mode: 'create',
@@ -557,6 +581,7 @@ export function EventFormModal({
         }
         const result = await createEvent(payloadForm, ctx, targetEventId);
         if (!isCurrent()) return;
+        unconfirmedCreateRef.current = null;
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
@@ -569,7 +594,10 @@ export function EventFormModal({
       }
     } catch (error: unknown) {
       if (!isCurrent()) return;
-      if (error instanceof EventCreateError) {
+      if (error instanceof EventCreateError && error.code === 'CONTENT_CONFLICT') {
+        const message = '活動可能已建立，但內容和先前送出的不同；請先到活動列表確認再修改';
+        toast.show({ message: lt(message, message), tone: 'error' });
+      } else if (error instanceof EventCreateError) {
         if (error.code === 'BASIC_CREATE_REQUIRED' || error.code === 'CREATE_NOT_ALLOWED') {
           toast.show({ message: t('events.form.error.createNotAllowed'), tone: 'error' });
         } else if (error.code === 'EDIT_NOT_ALLOWED') {

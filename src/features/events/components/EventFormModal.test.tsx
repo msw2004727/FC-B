@@ -106,6 +106,15 @@ vi.mock('../data/user-directory', async (importOriginal) => {
   };
 });
 
+// 測試同步更新（第 3 段）：開表單會載入範本，替身回空清單，避免 jsdom 連 Firestore 失敗而多出 toast。
+vi.mock('../data/event-templates', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../data/event-templates')>();
+  return {
+    ...actual,
+    loadEventTemplates: async () => [],
+  };
+});
+
 const TEST_VIEWER = {
   uid: 'u_host_1',
   displayName: '測試團主',

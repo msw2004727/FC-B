@@ -311,21 +311,43 @@ describe('卡 3B：createEventsBatch', () => {
     expect(txSetMock).not.toHaveBeenCalled();
   });
 
+  // 測試同步更新（Codex 第 3 段第二審 P1）：重送冪等改為「識別欄位＋建立內容」都相同才算成功。
+  function existingBatchDocs(ctx: ReturnType<typeof batchContext>, mutate?: (doc: Record<string, unknown>, index: number) => void) {
+    const forms = batchForms();
+    const ids = batchIds();
+    return async (ref: { path: string }) => {
+      const id = ref.path.slice('events/'.length);
+      const index = ids.indexOf(id);
+      const doc: Record<string, unknown> = {
+        ...(buildCreateEventPayload(forms[index]!, ctx, id) as unknown as Record<string, unknown>),
+        batchGroupId: 'batch_fixed',
+        // 建立後才會變的欄位不參與比對。
+        image: 'https://example.test/uploaded.png',
+        current: 3,
+        status: 'full',
+      };
+      mutate?.(doc, index);
+      return { exists: () => true, data: () => doc };
+    };
+  }
+
   it('全部相符的重送視為成功，不寫入、不另產生 ID', async () => {
     const ctx = batchContext();
-    txGetMock.mockImplementation(async (ref: { path: string }) => {
-      const id = ref.path.slice('events/'.length);
-      return {
-        exists: () => true,
-        data: () => ({
-          id, clientRequestId: id, creatorUid: ctx.uid, batchGroupId: 'batch_fixed',
-        }),
-      };
-    });
+    txGetMock.mockImplementation(existingBatchDocs(ctx));
     expect(await createEventsBatch(batchForms(), ctx, batchIds(), 'batch_fixed'))
       .toMatchObject({ alreadyExisted: true, eventIds: batchIds() });
     expect(txSetMock).not.toHaveBeenCalled();
     expect(ctx.generateId).not.toHaveBeenCalled();
+  });
+
+  it('已建立但重送時內容改過（標題）→ CONTENT_CONFLICT，不寫入', async () => {
+    const ctx = batchContext();
+    txGetMock.mockImplementation(existingBatchDocs(ctx, (doc, index) => {
+      if (index === 1) doc.title = '先前送出的標題';
+    }));
+    await expect(createEventsBatch(batchForms(), ctx, batchIds(), 'batch_fixed'))
+      .rejects.toMatchObject({ code: 'CONTENT_CONFLICT' });
+    expect(txSetMock).not.toHaveBeenCalled();
   });
 
   it.each([0, 1])('部分存在（第 %i 筆存在）一筆都不寫', async existingIndex => {
@@ -1322,10 +1344,28 @@ describe('createEvent', () => {
     expect('payloadDigest' in written).toBe(false);
   });
 
-  it('重試：同一 id 已由本人建立 → 視為成功、不覆寫', async () => {
-    txGetMock.mockResolvedValue({ exists: () => true, data: () => ({ creatorUid: 'uid_user_golden' }) });
+  // 測試同步更新（Codex 第 3 段第二審 P1）：本人建立且內容相同才視為成功。
+  it('重試：同一 id 已由本人以相同內容建立 → 視為成功、不覆寫', async () => {
+    const existing = {
+      ...(buildCreateEventPayload(buildForm(), buildCtx(), 'ce_golden_user_basic') as unknown as Record<string, unknown>),
+      image: 'https://example.test/uploaded.png',
+      current: 1,
+      participants: ['某人'],
+    };
+    txGetMock.mockResolvedValue({ exists: () => true, data: () => existing });
     const result = await createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic');
     expect(result.alreadyExisted).toBe(true);
+    expect(txSetMock).not.toHaveBeenCalled();
+  });
+
+  it('重試：同一 id 已由本人建立但內容改過（名額）→ CONTENT_CONFLICT，不覆寫', async () => {
+    const existing = {
+      ...(buildCreateEventPayload(buildForm(), buildCtx(), 'ce_golden_user_basic') as unknown as Record<string, unknown>),
+      max: 99,
+    };
+    txGetMock.mockResolvedValue({ exists: () => true, data: () => existing });
+    await expect(createEvent(buildForm(), buildCtx(), 'ce_golden_user_basic'))
+      .rejects.toMatchObject({ code: 'CONTENT_CONFLICT' });
     expect(txSetMock).not.toHaveBeenCalled();
   });
 

@@ -738,6 +738,42 @@ export function newEventId(ctx: CreateEventContext): string {
 }
 
 /**
+ * 重送冪等的內容比對（取代 A 的 payloadRevision／payloadDigest）：既有文件與本次 payload 逐欄相同才算同一請求。
+ * 排除重送時本來就可能不同的欄位：圖片（重新上傳網址不同）、依送出時間算的 status／countdown／地圖確認時間、
+ * 建立後會被報名改動的統計欄位、伺服器時間。
+ */
+const CREATE_CONTENT_IGNORED_KEYS = new Set([
+  'image', 'imageVariants', 'status', 'countdown', 'mapLocationUpdatedAt',
+  'current', 'waitlist', 'participants', 'waitlistNames', 'createdAt', 'updatedAt',
+]);
+
+function normalizeForCompare(value: unknown): unknown {
+  if (value instanceof Date) return value.getTime();
+  if (Array.isArray(value)) return value.map(normalizeForCompare);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown> & { toMillis?: () => number };
+    if (typeof record.toMillis === 'function') return record.toMillis();
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      if (record[key] !== undefined) out[key] = normalizeForCompare(record[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function createContentMatches(
+  existing: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): boolean {
+  return Object.keys(payload).every((key) => {
+    if (CREATE_CONTENT_IGNORED_KEYS.has(key) || payload[key] === undefined) return true;
+    return JSON.stringify(normalizeForCompare(existing[key] ?? null))
+      === JSON.stringify(normalizeForCompare(payload[key]));
+  });
+}
+
+/**
  * 建立活動（R-ID-007：events.doc(eventId)，不用 add）。以 transaction 做 create 語意：
  * 文件不存在才寫入；已存在且是本人建立的（前一次送出其實成功、只是回應沒收到）→ 視為成功，回傳既有文件。
  */
@@ -771,9 +807,13 @@ export async function createEvent(
   const alreadyExisted = await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (snap.exists()) {
-      const existing = snap.data() as { creatorUid?: unknown };
+      const existing = snap.data() as Record<string, unknown>;
       if (existing.creatorUid !== ctx.uid) {
         throw new EventCreateError('ID_TAKEN', `Event ID already used by another creator: ${eventId}`);
+      }
+      // 前一次其實已建立但回應遺失：內容相同才視為成功，改過內容不得宣稱已儲存。
+      if (!createContentMatches(existing, payload as unknown as Record<string, unknown>)) {
+        throw new EventCreateError('CONTENT_CONFLICT', `Existing event differs from this request: ${eventId}`);
       }
       return true;
     }
@@ -866,6 +906,12 @@ export async function createEventsBatch(
       });
       if (!matches) {
         throw new EventCreateError('ID_TAKEN', 'Batch IDs are partially present or belong to another request.');
+      }
+      if (!entries.every((entry, index) => createContentMatches(
+        snapshots[index]?.data() as Record<string, unknown>,
+        entry.payload as unknown as Record<string, unknown>,
+      ))) {
+        throw new EventCreateError('CONTENT_CONFLICT', 'Existing batch differs from this request.');
       }
       return true;
     }
