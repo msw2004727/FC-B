@@ -413,6 +413,21 @@ describe('useEventTemplates', () => {
     expect(mocks.load).toHaveBeenCalledTimes(3);
   });
 
+  it('reset 照 A 開表單：清空範本名稱並重新載入清單', async () => {
+    mocks.load.mockResolvedValueOnce([template()]);
+    const harness = setup();
+    await ready(harness);
+    setName(harness, '寫一半');
+    expect(harness.current().view.saveName).toBe('寫一半');
+
+    mocks.load.mockResolvedValueOnce([template('tpl_new')]);
+    act(() => harness.current().reset());
+    expect(harness.current().view.saveName).toBe('');
+    await ready(harness);
+    expect(harness.current().view.templates[0]?.id).toBe('tpl_new');
+    expect(mocks.load).toHaveBeenCalledTimes(2);
+  });
+
   it('兩次 reload 交錯時只接受最新結果', async () => {
     const first = deferred<EventTemplateDoc[]>();
     const second = deferred<EventTemplateDoc[]>();

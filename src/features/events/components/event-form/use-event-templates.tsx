@@ -58,6 +58,7 @@ interface Snapshot {
 export function useEventTemplates(input: HookInput): {
   view: EventTemplatesView;
   reload(): void;
+  reset(): void;
 } {
   const lt = useLegacyT();
   // ASSUMPTION: ViewerContext 的登入 UID 欄位為 uid；不使用角色或顯示名識別帳號。
@@ -315,6 +316,13 @@ export function useEventTemplates(input: HookInput): {
     },
     reload() {
       // refresh 自行捕捉拒絕。
+      void refresh();
+    },
+    reset() {
+      // 照 A 開表單：清空 ce-template-name 並重新載入範本。
+      if (!isCurrent()) return;
+      scope.saveName = '';
+      publish(scope.busy || (visible?.loading ?? false));
       void refresh();
     },
   };

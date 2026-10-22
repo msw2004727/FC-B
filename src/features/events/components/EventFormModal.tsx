@@ -170,12 +170,17 @@ export function EventFormModal({
       if (result.upsell) toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
       patch(result.patch);
       if (result.image) cover.reset({ image: result.image });
-      if (result.locationTemplate) {
-        location.reset({ ...result.locationTemplate, location: result.patch.location ?? latestRef.current.formState.location });
-      }
+      // 照 A _restoreEventLocationTemplateDraft：範本無座標（或無加值權限）時也重置定位草稿。
+      const templateLocation = result.patch.location ?? latestRef.current.formState.location;
+      location.reset(result.locationTemplate
+        ? { ...result.locationTemplate, location: templateLocation }
+        : { location: templateLocation, mapLocationConfirmed: false });
     },
     collect: () => ({
-      state: latestRef.current.formState,
+      // 與送出一致：無地區開關權限者地區一律視為開啟（A 隱藏 toggle 強制勾選）。
+      state: canToggleEventRegion(latestRef.current.viewer.hasPermission)
+        ? latestRef.current.formState
+        : { ...latestRef.current.formState, regionEnabled: true },
       image: latestRef.current.cover.value.image || null,
       location: latestRef.current.location.buildValue(new Date()),
       canUseAddons,
@@ -191,8 +196,8 @@ export function EventFormModal({
     onChange: ids => patch({ teamOnlyTeamIds: ids }),
   });
 
-  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, onSaved });
-  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, onSaved };
+  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, templates, onSaved });
+  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, templates, onSaved };
 
   function guardAddon(): boolean {
     // 照 A _guardActivityAddonToggle：handler 與畫面使用同一個權限 helper。
@@ -302,6 +307,8 @@ export function EventFormModal({
       multiDate.reset();
       batchIdsRef.current = new Map();
       batchGroupIdRef.current = null;
+      // 照 A openCreateEventModal：清空範本名稱並重新載入範本。
+      latestRef.current.templates.reset();
       const ctx = createEventContextFromViewer(viewer, now);
       if (ctx) {
         try {
