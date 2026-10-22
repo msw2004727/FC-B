@@ -14,14 +14,14 @@ import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { EventFormModal } from '../components/EventFormModal';
+import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
+import { useEventFormPostSave } from '../components/event-form/use-event-form-post-save';
 import {
   TimelineEventCard,
   getEventAllowedGender,
   type LegacyEventDoc,
 } from '../components/legacy/TimelineEventCard';
 import { ExternalTransitCard } from '../components/legacy/ExternalTransitCard';
-import { canCreateEvent } from '../data/event-create';
-import { createEventContextFromViewer } from '../data/event-create-context';
 import {
   NEARBY_DISABLED_MSG,
   SHARED_TOAST_FAIL,
@@ -212,7 +212,12 @@ export default function ActivitiesPage(): JSX.Element {
   const [globalSport, setGlobalSport] = useActiveSport();
 
   const [searchOpen, setSearchOpen] = useState(false);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const createEntry = useCreateEventEntry(viewer);
+  const onFormSaved = useEventFormPostSave({
+    viewer,
+    close: createEntry.closeForm,
+    refresh: () => data.retry(),
+  });
   const [filterType, setFilterType] = useState<string>(() => initialUrlFilters.type);
   // U-027：輸入框即時顯示，實際篩選延遲 150ms。
   const [keywordInput, setKeywordInput] = useState('');
@@ -235,11 +240,7 @@ export default function ActivitiesPage(): JSX.Element {
   const activityListRef = useRef<HTMLDivElement>(null);
   const activityTabsRef = useRef<HTMLDivElement>(null);
 
-  const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
-  const showCreateButton = useMemo(
-    () => (createCtx ? canCreateEvent(createCtx) : false),
-    [createCtx],
-  );
+  const showCreateButton = createEntry.canCreate;
   const showManageEntry = useMemo(
     () => drawerOwnActivityManage(viewer),
     [viewer],
@@ -708,12 +709,15 @@ export default function ActivitiesPage(): JSX.Element {
             </button>
             <button
               type="button"
-              class="primary-btn small"
+              class={`primary-btn small${createEntry.buttonProps.lockedClass ? ` ${createEntry.buttonProps.lockedClass}` : ''}`}
               id="activity-create-btn"
               style={showCreateButton ? undefined : 'display:none'}
               aria-label={lt('＋我要開團', '＋我要開團')}
+              aria-disabled={createEntry.buttonProps['aria-disabled']}
+              data-profile-incomplete={createEntry.buttonProps['data-profile-incomplete']}
+              title={createEntry.buttonProps.title}
               data-i18n-aria-label="＋我要開團"
-              onClick={() => setCreateModalOpen(true)}
+              onClick={createEntry.onClick}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -1055,15 +1059,13 @@ export default function ActivitiesPage(): JSX.Element {
           )}
         </div>
 
+        {createEntry.overlays}
         <EventFormModal
-          open={createModalOpen}
+          open={createEntry.formOpen}
           mode="create"
           viewer={viewer}
-          onClose={() => setCreateModalOpen(false)}
-          onSaved={({ eventId }) => {
-            setCreateModalOpen(false);
-            location.route('/events/' + eventId);
-          }}
+          onClose={createEntry.closeForm}
+          onSaved={onFormSaved}
         />
 
         {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}

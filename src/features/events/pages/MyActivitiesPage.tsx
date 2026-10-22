@@ -13,6 +13,11 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
 import { toast } from '@/ui/Toast';
 import { EventFormModal } from '../components/EventFormModal';
+import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
+import {
+  useEventFormPostSave,
+  useEventFormSession,
+} from '../components/event-form/use-event-form-post-save';
 import {
   MyActivityCard,
   getEventCreatorName,
@@ -23,11 +28,7 @@ import {
   MyActivityDetailModal,
   MyActivityStatsModal,
 } from '../components/legacy/MyActivityModals';
-import { canCreateEvent } from '../data/event-create';
-import {
-  createEventContextFromViewer,
-  operateContextFromViewer,
-} from '../data/event-create-context';
+import { operateContextFromViewer } from '../data/event-create-context';
 import {
   EventLifecycleError,
   cancelEvent,
@@ -131,8 +132,9 @@ export default function MyActivitiesPage(): JSX.Element {
   const [selectedCreatorUid, setSelectedCreatorUid] = useState('');
   const [creatorDropdownOpen, setCreatorDropdownOpen] = useState(false);
 
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const createEntry = useCreateEventEntry(viewer);
   const [editingEvent, setEditingEvent] = useState<EventDoc | null>(null);
+  useEventFormSession(editingEvent !== null);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [detailEvent, setDetailEvent] = useState<EventDoc | null>(null);
 
@@ -192,11 +194,17 @@ export default function MyActivitiesPage(): JSX.Element {
       });
   }, [activeTab, canAccessPage, syncFromRepo]);
 
-  const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
-  const showCreateButton = useMemo(
-    () => (createCtx ? canCreateEvent(createCtx) : false),
-    [createCtx],
-  );
+  const showCreateButton = createEntry.canCreate;
+  const onCreateSaved = useEventFormPostSave({
+    viewer,
+    close: createEntry.closeForm,
+    refresh: () => loadAll(activeTab, true),
+  });
+  const onEditSaved = useEventFormPostSave({
+    viewer,
+    close: () => setEditingEvent(null),
+    refresh: () => loadAll(activeTab, true),
+  });
   const operateCtx = useMemo(() => operateContextFromViewer(viewer), [viewer]);
   const isAdmin = useMemo(
     () => canManageAllActivities(operateCtx) || viewer.hasPermission('event.edit_all'),
@@ -507,11 +515,14 @@ export default function MyActivitiesPage(): JSX.Element {
           </div>
           <button
             type="button"
-            class="primary-btn small"
+            class={`primary-btn small${createEntry.buttonProps.lockedClass ? ` ${createEntry.buttonProps.lockedClass}` : ''}`}
             id="my-activity-create-btn"
             style={showCreateButton ? undefined : 'display:none'}
+            aria-disabled={createEntry.buttonProps['aria-disabled']}
+            data-profile-incomplete={createEntry.buttonProps['data-profile-incomplete']}
+            title={createEntry.buttonProps.title}
             data-i18n="＋ 新增"
-            onClick={() => setCreateModalOpen(true)}
+            onClick={createEntry.onClick}
           >
             {lt('＋ 新增', '＋ 新增')}
           </button>
@@ -620,15 +631,13 @@ export default function MyActivitiesPage(): JSX.Element {
           onClose={() => setStatsModalOpen(false)}
         />
 
+        {createEntry.overlays}
         <EventFormModal
-          open={createModalOpen}
+          open={createEntry.formOpen}
           mode="create"
           viewer={viewer}
-          onClose={() => setCreateModalOpen(false)}
-          onSaved={() => {
-            setCreateModalOpen(false);
-            void loadAll(activeTab, true);
-          }}
+          onClose={createEntry.closeForm}
+          onSaved={onCreateSaved}
         />
 
         <EventFormModal
@@ -637,10 +646,7 @@ export default function MyActivitiesPage(): JSX.Element {
           existing={editingEvent ?? undefined}
           viewer={viewer}
           onClose={() => setEditingEvent(null)}
-          onSaved={() => {
-            setEditingEvent(null);
-            void loadAll(activeTab, true);
-          }}
+          onSaved={onEditSaved}
         />
       </section>
     </div>

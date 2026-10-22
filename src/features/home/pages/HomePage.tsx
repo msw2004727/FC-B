@@ -4,8 +4,9 @@ import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { EventFormModal } from '@/features/events/components/EventFormModal';
-import { canCreateEvent } from '@/features/events/data/event-create';
-import { createEventContextFromViewer } from '@/features/events/data/event-create-context';
+import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
+import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
+import { useLegacyT } from '@/i18n/i18n';
 import { publicEventHref } from '@/features/events/data/presentation';
 import { SPORTS, eventSportTag } from '@/features/events/data/sports';
 import type { EventDoc } from '@/features/events/data/types';
@@ -61,6 +62,7 @@ function isPublicActiveHomeEvent(event: EventDoc, nowMs: number): boolean {
 }
 
 export default function HomePage(): JSX.Element {
+  const lt = useLegacyT();
   const viewer = useViewer();
   const location = useLocation();
   const eventsData = useEvents(viewer.uid);
@@ -69,17 +71,18 @@ export default function HomePage(): JSX.Element {
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<AnnouncementDoc | null>(null);
   const [activeSport, setActiveSport] = useActiveSport();
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const createEntry = useCreateEventEntry(viewer);
+  const onFormSaved = useEventFormPostSave({
+    viewer,
+    close: createEntry.closeForm,
+    refresh: () => eventsData.retry(),
+  });
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchRegion, setSearchRegion] = useState<string>(() => readStoredRegion());
   const [searchSport, setSearchSport] = useState<string>(() => activeSport || 'all');
   const [searchType, setSearchType] = useState<string>('');
 
-  const createCtx = useMemo(() => createEventContextFromViewer(viewer), [viewer]);
-  const userCanCreate = useMemo(
-    () => (createCtx ? canCreateEvent(createCtx) : false),
-    [createCtx],
-  );
+  const userCanCreate = createEntry.canCreate;
 
   useEffect(() => {
     let active = true;
@@ -142,15 +145,7 @@ export default function HomePage(): JSX.Element {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (!viewer.uid) {
-      toast.show({ message: '請先登入後再建立活動' });
-      return;
-    }
-    if (!userCanCreate) {
-      toast.show({ message: '權限不足' });
-      return;
-    }
-    setCreateModalOpen(true);
+    createEntry.onClick();
   }
 
   function handleSelectHomeSport(sportKey: string): void {
@@ -225,9 +220,12 @@ export default function HomePage(): JSX.Element {
             <span class="home-watch-party-copy">一起找人看比賽</span>
           </button>
           <button
-            class="primary-btn small home-create-event-btn"
+            class={`primary-btn small home-create-event-btn${createEntry.buttonProps.lockedClass ? ` ${createEntry.buttonProps.lockedClass}` : ''}`}
             type="button"
             style={userCanCreate ? undefined : 'display:none'}
+            aria-disabled={createEntry.buttonProps['aria-disabled']}
+            data-profile-incomplete={createEntry.buttonProps['data-profile-incomplete']}
+            title={createEntry.buttonProps.title}
             onClick={handleOpenCreateEvent}
           >
             <svg
@@ -241,7 +239,7 @@ export default function HomePage(): JSX.Element {
               <path d="M12 5v14" />
               <path d="M5 12h14" />
             </svg>
-            <span>我要開團</span>
+            <span>{lt('我要開團', '我要開團')}</span>
           </button>
         </div>
 
@@ -569,15 +567,13 @@ export default function HomePage(): JSX.Element {
           </div>
         )}
 
+        {createEntry.overlays}
         <EventFormModal
-          open={createModalOpen}
+          open={createEntry.formOpen}
           mode="create"
           viewer={viewer}
-          onClose={() => setCreateModalOpen(false)}
-          onSaved={({ eventId }) => {
-            setCreateModalOpen(false);
-            location.route('/events/' + eventId);
-          }}
+          onClose={createEntry.closeForm}
+          onSaved={onFormSaved}
         />
       </section>
     </div>

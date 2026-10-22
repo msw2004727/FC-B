@@ -100,6 +100,7 @@ import {
 import type { RegistrationDoc } from '../data/types';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
+import { EventFormPostSaveBoundary } from '../components/event-form/use-event-form-post-save';
 
 // 照 A _renderDetailCommentsLoadFailure，chunk 失敗只影響留言區。
 const EventCommentsSection = lazy(() =>
@@ -1966,18 +1967,26 @@ function EventDetailSession({
         )}
         {editingDetail && canEditCover && (
           <Suspense fallback={<div role="status">載入中…</div>}>
-            <DetailEventFormModal
-              open
-              mode="edit"
-              existing={{ ...event, _docId: snapshot.eventDocId, docId: snapshot.eventDocId }}
+            <EventFormPostSaveBoundary
               viewer={viewer}
-              onClose={() => setEditingDetail(false)}
-              onSaved={() => {
-                if (!alive.current) return;
-                setEditingDetail(false);
-                setReload(value => value + 1);
+              close={() => {
+                if (alive.current) setEditingDetail(false);
               }}
-            />
+              refresh={() => {
+                if (alive.current) setReload(value => value + 1);
+              }}
+            >
+              {(onSaved) => (
+                <DetailEventFormModal
+                  open
+                  mode="edit"
+                  existing={{ ...event, _docId: snapshot.eventDocId, docId: snapshot.eventDocId }}
+                  viewer={viewer}
+                  onClose={() => setEditingDetail(false)}
+                  onSaved={onSaved}
+                />
+              )}
+            </EventFormPostSaveBoundary>
           </Suspense>
         )}
         {noticeToast}
