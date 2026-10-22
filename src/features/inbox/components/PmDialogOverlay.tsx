@@ -189,10 +189,11 @@ export function PmDialogOverlay(): JSX.Element | null {
   }, [target]);
 
   useEffect(() => {
-    if (!target || conversationId) return;
+    // viewer 首次渲染時 uid 可能還在載入：等 uid 到位後才判斷，避免一開就被關掉（T-019 瀏覽器實測抓到）。
+    if (!target || !myUid || conversationId) return;
     showToast(lt('無法開啟私訊', '無法開啟私訊'));
     closePmDialog();
-  }, [target, conversationId, lt]);
+  }, [target, myUid, conversationId, lt]);
 
   const resizeInput = useCallback(() => {
     const input = inputRef.current;

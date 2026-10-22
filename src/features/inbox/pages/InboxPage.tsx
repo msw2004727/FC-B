@@ -603,7 +603,7 @@ export default function InboxPage(): JSX.Element {
   if (!uid) {
     return (
       <div class="legacy-ui">
-        <section class="page" id="page-messages">
+        <section class="page active" id="page-messages">
           <div class="page-header">
             {backButton}
             <h2 class="page-header-title">{lt('訊息', '訊息')}</h2>
@@ -618,7 +618,7 @@ export default function InboxPage(): JSX.Element {
 
   return (
     <div class="legacy-ui">
-      <section class="page" id="page-messages">
+      <section class="page active" id="page-messages">
         <div class="page-header">
           {backButton}
           <h2 class="page-header-title">{lt('訊息', '訊息')}</h2>
