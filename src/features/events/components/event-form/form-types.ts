@@ -55,3 +55,44 @@ export interface LocationControlView {
   onOpenPicker(): void;
   onClear(): void;
 }
+
+/**
+ * 進階功能區（加值欄位）的表單狀態（T-013 第 2 段）。
+ * 欄位與預設照 A：event-create.js 開表單重設（2758～2797）與 event-create-options.js 各 _set*／_get*FormData。
+ */
+export type TeamSplitMode = 'random' | 'self-select' | 'manual';
+
+export interface EventFormAddonState {
+  /** A `ce-fee-enabled`／`ce-fee`（字串，送出時 parseInt，A `_setEventFeeFormState(false, 0)`）。 */
+  feeEnabled: boolean;
+  fee: string;
+  /** A `ce-team-only`；選到的俱樂部 id（依選取順序；非總管只能 1 支）。 */
+  teamOnly: boolean;
+  teamOnlyTeamIds: string[];
+  /** A `ce-gender-restriction-enabled`／`_getAllowedGenderValue()`。 */
+  genderRestrictionEnabled: boolean;
+  allowedGender: '' | '男' | '女';
+  /** A `ce-private-event`。 */
+  privateEvent: boolean;
+  /** A 分隊：`ce-team-split-enabled`、`ce-team-split-count`（2～4）、`_tsTeamColorIdx`（每隊色票索引，對應 A `_tsDefaultColors`）、`ce-team-split-balance`（預設 true）、模式（預設 random）、自選鎖定小時（預設 2）。 */
+  teamSplitEnabled: boolean;
+  teamSplitCount: number;
+  teamSplitColorIdx: number[];
+  teamSplitBalanceCap: boolean;
+  teamSplitMode: TeamSplitMode;
+  teamSplitLockHours: number;
+  /** A 社群連結：開關＋輸入框（最多 5 列，A `_eventSocialLinksMax`）。 */
+  socialLinksEnabled: boolean;
+  socialLinkInputs: string[];
+  /** A 早鳥：開關＋消耗積分（字串，A `_setEventEarlyBirdFormData(false, 10)`，10～500）。 */
+  earlyBirdEnabled: boolean;
+  earlyBirdCost: string;
+  /** A `ce-gps-enabled`。 */
+  gpsEnabled: boolean;
+}
+
+/** 進階功能區可選的限定俱樂部（A `ce-team-select` 的 option）。 */
+export interface TeamOnlyOption {
+  id: string;
+  name: string;
+}
