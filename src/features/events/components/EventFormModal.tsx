@@ -42,6 +42,7 @@ import type { EventDoc } from '../data/types';
 import { EventFormFields } from './event-form/EventFormFields';
 import { useCoverUpload } from './event-form/use-cover-upload';
 import { useDelegatePicker } from './event-form/use-delegate-picker';
+import { useEventLocation } from './event-form/use-event-location';
 import { useTeamOnlyPicker } from './event-form/use-team-only-picker';
 import type { EventFormAddonState } from './event-form/form-types';
 
@@ -60,6 +61,15 @@ export interface EventFormModalProps {
   viewer: ViewerView;
   onClose(): void;
   onSaved(result: EventFormSavedResult): void;
+}
+
+function toIsoOrNull(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    const date = (value as { toDate(): Date }).toDate();
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  return null;
 }
 
 function toEventForEdit(doc: EventDoc, fallbackId: string): EventForEdit {
@@ -125,6 +135,9 @@ export function EventFormModal({
     setFormState(previous => ({ ...previous, ...value }));
   }
 
+  // 照 A event-location-draft.js：地點的地圖座標（GPS 開關在進階功能）。
+  const location = useEventLocation({ locationText: formState.location, gpsEnabled: formState.gpsEnabled });
+
   const teamOnly = useTeamOnlyPicker({
     viewer,
     existing: mode === 'edit' ? existing ?? null : null,
@@ -134,8 +147,8 @@ export function EventFormModal({
     onChange: ids => patch({ teamOnlyTeamIds: ids }),
   });
 
-  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, onSaved });
-  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, onSaved };
+  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, onSaved });
+  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, onSaved };
 
   function guardAddon(): boolean {
     // 照 A _guardActivityAddonToggle：handler 與畫面使用同一個權限 helper。
@@ -219,6 +232,8 @@ export function EventFormModal({
             : [],
       );
       cover.reset({ image: existing.image ?? '', imageVariants: existing.imageVariants });
+      // 照 A _resetEventLocationDraft('ce', e)。
+      location.reset(existing as unknown as Record<string, unknown>);
       // 照 A openEditEvent：既有委託人只取 UID 與名稱。
       delegates.reset(Array.isArray(existing.delegates)
         ? existing.delegates.flatMap((item: unknown) => {
@@ -235,6 +250,7 @@ export function EventFormModal({
     } else {
       setFormState(createDefaultFormState(now));
       cover.reset({ image: '' });
+      location.reset(null);
       delegates.reset([]);
       teamOnly.reset([], []);
       const ctx = createEventContextFromViewer(viewer, now);
@@ -248,7 +264,7 @@ export function EventFormModal({
         setGeneratedEventId(null);
       }
     }
-  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, canUseAddons]);
+  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons]);
 
   // 照 A 委託人送出驗證：等待重繪後讀取 hook 更新的最新名稱，避免使用舊 render 快照。
   useLayoutEffect(() => {
@@ -385,12 +401,19 @@ export function EventFormModal({
       const stateForSubmit = canToggleEventRegion(current.viewer.hasPermission)
         ? current.formState
         : { ...current.formState, regionEnabled: true };
-      const payloadForm = toCreateEventForm(stateForSubmit, creatorName, {
-        image: current.cover.value.image,
-        imageVariants: current.cover.value.imageVariants,
-        delegates: current.delegates.value,
-        teamOnlySelection: current.teamOnly.resolveSelection(),
-      });
+      const locationValue = current.location.buildValue(new Date());
+      const payloadForm = {
+        ...toCreateEventForm(stateForSubmit, creatorName, {
+          image: current.cover.value.image,
+          imageVariants: current.cover.value.imageVariants,
+          delegates: current.delegates.value,
+          teamOnlySelection: current.teamOnly.resolveSelection(),
+        }),
+        // 照 A _buildEventLocationPayload('ce', location)：功能未開時 mapPickerEnabled=false，8 個地圖欄位都不寫。
+        ...locationValue,
+        // A 建立時一律寫 ISO 字串；既有資料若是 Timestamp 也轉成 ISO 字串，避免寫回物件改變型別。
+        mapLocationUpdatedAt: toIsoOrNull(locationValue.mapLocationUpdatedAt),
+      };
 
       if (mode === 'edit' && existing) {
         const targetId = current.formState.eventId ?? existing.id ?? existing._docId ?? existing.docId ?? '';
@@ -577,18 +600,7 @@ export function EventFormModal({
               teamOnlyToggleDisabled: teamOnly.toggleDisabled,
               teamOnlyLabel: teamOnly.label,
             }}
-            location={{
-              statusText: lt('GPS功能未開啟', 'GPS功能未開啟'),
-              statusState: 'disabled',
-              buttonText: lt('設定地圖座標', '設定地圖座標'),
-              buttonDisabled: true,
-              buttonLooksDisabled: true,
-              summary: '',
-              showClear: false,
-              // 第 2 段：GPS／地圖座標接 featureFlags
-              onOpenPicker: () => undefined,
-              onClear: () => undefined,
-            }}
+            location={location.view}
           />
         </div>
         <div class="modal-actions">
@@ -618,6 +630,7 @@ export function EventFormModal({
         </div>
       </div>
       {cover.cropper}
+      {location.picker}
     </div>,
     document.body,
   );

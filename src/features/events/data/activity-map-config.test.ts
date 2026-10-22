@@ -1,0 +1,234 @@
+import { cleanup } from '@testing-library/preact';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const firebase = vi.hoisted(() => ({
+  getApp: vi.fn(),
+  getFirestore: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn(),
+}));
+
+vi.mock('firebase/app', () => ({ getApp: firebase.getApp }));
+vi.mock('firebase/firestore', () => ({
+  getFirestore: firebase.getFirestore,
+  doc: firebase.doc,
+  getDoc: firebase.getDoc,
+}));
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.resetAllMocks();
+  document.documentElement.lang = 'zh-TW';
+  history.replaceState(null, '', '/');
+  firebase.getApp.mockReturnValue({});
+  firebase.getFirestore.mockReturnValue({});
+  firebase.doc.mockReturnValue({});
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('禁止連網')));
+  vi.stubGlobal('google', undefined);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  history.replaceState(null, '', '/');
+});
+
+describe('runtime-config', () => {
+  it('只讀同網域設定，合併進行中的請求並快取成功金鑰', async () => {
+    let finish!: (value: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      finish = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const config = await import('./activity-map-config');
+    const first = config.getActivityMapGoogleApiKey();
+    const second = config.getActivityMapGoogleApiKey();
+    finish({
+      ok: true,
+      json: async () => ({
+        googleMapsBrowserApiKey: ' test-key ',
+        googleMapsVersion: 'weekly',
+        unrelated: 'ignored',
+      }),
+    } as Response);
+    expect(await first).toBe('test-key');
+    expect(await second).toBe('test-key');
+    expect(await config.getActivityMapGoogleApiKey()).toBe('test-key');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/runtime-config.json', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+  });
+
+  it('失敗後可重試，空金鑰不新增 Google script', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ swEnabled: true }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ googleMapsBrowserApiKey: 'later' }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const append = vi.spyOn(document.head, 'appendChild');
+    const config = await import('./activity-map-config');
+    expect(await config.getActivityMapGoogleApiKey()).toBe('');
+    expect(await config.ensureEventLocationGoogleMapsLoaded()).toBe(false);
+    expect(append).not.toHaveBeenCalled();
+    expect(await config.getActivityMapGoogleApiKey()).toBe('later');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('HTTP 與 JSON 失敗都回空字串', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => { throw new Error('invalid json'); },
+      }));
+    const config = await import('./activity-map-config');
+    expect(await config.getActivityMapGoogleApiKey()).toBe('');
+    expect(await config.getActivityMapGoogleApiKey()).toBe('');
+  });
+
+  it('script 參數照 A，失敗後重新建立且不連網', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        googleMapsBrowserApiKey: 'mock-key',
+        googleMapsVersion: 'weekly',
+      }),
+    }));
+    const scripts: HTMLScriptElement[] = [];
+    vi.spyOn(document.head, 'appendChild').mockImplementation(
+      <T extends Node>(node: T): T => {
+        scripts.push(node as unknown as HTMLScriptElement);
+        return node;
+      },
+    );
+    const config = await import('./activity-map-config');
+    const first = config.ensureEventLocationGoogleMapsLoaded();
+    const failed = expect(first).rejects.toThrow('Google Maps script failed');
+    await vi.waitFor(() => expect(scripts).toHaveLength(1));
+    const script = scripts[0]!;
+    const url = new URL(script.src);
+    expect(url.origin).toBe('https://maps.googleapis.com');
+    expect(url.searchParams.get('key')).toBe('mock-key');
+    expect(url.searchParams.get('v')).toBe('weekly');
+    expect(url.searchParams.get('auth_referrer_policy')).toBe('origin');
+    expect(script.referrerPolicy).toBe('origin');
+    expect(script.async).toBe(true);
+    script.dispatchEvent(new Event('error'));
+    await failed;
+    expect(script.onerror).toBeNull();
+
+    const second = config.ensureEventLocationGoogleMapsLoaded();
+    const concurrent = config.ensureEventLocationGoogleMapsLoaded();
+    await vi.waitFor(() => expect(scripts).toHaveLength(2));
+    scripts[1]!.dispatchEvent(new Event('load'));
+    expect(await second).toBe(true);
+    expect(await concurrent).toBe(true);
+  });
+
+  it('已有 Geocoder 時不讀 runtime-config', async () => {
+    vi.stubGlobal('google', { maps: { Geocoder: class {} } });
+    const config = await import('./activity-map-config');
+    expect(await config.ensureEventLocationGoogleMapsLoaded()).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('featureFlags', () => {
+  it('讀失敗為 false，下一次成功可恢復並快取', async () => {
+    firebase.getDoc
+      .mockRejectedValueOnce(new Error('denied'))
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ activityMapLocationPickerEnabled: true }),
+      });
+    const config = await import('./activity-map-config');
+    const listener = vi.fn();
+    const unsubscribe = config.subscribeActivityMapFeature(listener);
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+    expect(config.isActivityMapLocationPickerEnabled()).toBe(false);
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
+    expect(firebase.getDoc).toHaveBeenCalledTimes(2);
+    expect(firebase.doc).toHaveBeenCalledWith({}, 'siteConfig', 'featureFlags');
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it.each([false, 'true', 1, undefined])('只接受嚴格 true：%s', async (value) => {
+    firebase.getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ activityMapLocationPickerEnabled: value }),
+    });
+    const config = await import('./activity-map-config');
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+    expect(firebase.getDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('文件不存在為 false', async () => {
+    firebase.getDoc.mockResolvedValue({ exists: () => false });
+    const config = await import('./activity-map-config');
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+  });
+
+  it.each([
+    ['http://localhost/?activityMap=1', true],
+    ['http://127.0.0.1/?activityMap=1', true],
+    ['http://demo.local/?activityMap=1', true],
+    ['https://next.toosterx.com/?activityMap=1', false],
+    ['http://localhost/?activityMap=0', false],
+    ['http://localhost/', false],
+  ])('診斷覆寫 %s → %s', async (href, expected) => {
+    vi.stubGlobal('window', { location: { href } });
+    const config = await import('./activity-map-config');
+    expect(config.isActivityMapDiagnosticOverride()).toBe(expected);
+    if (expected) {
+      expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
+      expect(firebase.getDoc).not.toHaveBeenCalled();
+    }
+  });
+
+  it('通知隔離例外，採 listener 快照', async () => {
+    firebase.getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ activityMapLocationPickerEnabled: true }),
+    });
+    const config = await import('./activity-map-config');
+    const second = vi.fn();
+    const late = vi.fn();
+    let removeSecond = (): void => undefined;
+    config.subscribeActivityMapFeature(() => {
+      removeSecond();
+      config.subscribeActivityMapFeature(late);
+      throw new Error('listener');
+    });
+    removeSecond = config.subscribeActivityMapFeature(second);
+    await config.loadActivityMapLocationPickerEnabled();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(late).not.toHaveBeenCalled();
+  });
+});
+
+describe('A 座標工具', () => {
+  it('正規化別名、範圍與文字', async () => {
+    const config = await import('./activity-map-config');
+    expect(config.normalizePoint({ latitude: '25', longitude: '121' }))
+      .toEqual({ lat: 25, lng: 121 });
+    expect(config.normalizePoint({ lat: 0, lon: 0 })).toEqual({ lat: 0, lng: 0 });
+    expect(config.normalizePoint({ lat: 91, lng: 0 })).toBeNull();
+    expect(config.normalizePoint({ lat: 0, lng: -181 })).toBeNull();
+    expect(config.normalizePoint({ lat: '', lng: 0 })).toBeNull();
+    expect(config.normalizePoint(null)).toBeNull();
+    expect(config.toFiniteNumber(Infinity)).toBeNull();
+    expect(config.toFiniteNumber(Symbol('invalid'))).toBeNull();
+    expect(config.normalizeLocationText('  台北 \n 場地  ')).toBe('台北 場地');
+    expect(config.formatPoint({ lat: 25, lng: 121 })).toBe('25.000000, 121.000000');
+    expect(config.formatPoint(null)).toBe('');
+  });
+});
