@@ -618,6 +618,20 @@ function EventDetailSession({
     if (!alive.current) return;
     teamRowsRef.current = rows;
     setTeamRegistrations(rows);
+    // 照 A _tsApplyTeamAssignments＋_tsRefreshTeamSplitUi：已載入的名單也同步隊伍（含失敗還原）（Gemini 審查 P2）。
+    const teamByDoc = new Map(rows.map(row => [row._docId, row.teamKey ?? null]));
+    setSnapshot(prev => {
+      if (!prev || prev.registrations.length === 0) return prev;
+      let changed = false;
+      const registrations = prev.registrations.map(reg => {
+        if (!reg._docId || !teamByDoc.has(reg._docId)) return reg;
+        const teamKey = teamByDoc.get(reg._docId) ?? null;
+        if ((reg as TeamRegistration).teamKey === teamKey) return reg;
+        changed = true;
+        return { ...reg, teamKey } as typeof reg;
+      });
+      return changed ? { ...prev, registrations } : prev;
+    });
   }
 
   // 照 A _tsLoadWritableRegistrations；成功才快取，失敗清除 inflight。
