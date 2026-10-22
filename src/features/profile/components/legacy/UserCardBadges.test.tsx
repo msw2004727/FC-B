@@ -53,6 +53,7 @@ vi.mock('@/features/exp-achievements/data/achievements', async () => {
   };
 });
 
+import { loadUserAchievementProgress } from '@/features/exp-achievements/data/achievements';
 import { UserCardBadges } from './UserCardBadges';
 
 // 測試同步更新：照 A（項目 5）——點毛玻璃改成「讀取對方成就」而非 toast 未開放。
@@ -89,5 +90,52 @@ describe('UserCardBadges', () => {
     });
     expect(container.textContent).toContain('Badge1');
     expect(container.querySelector('.uc-blur-overlay')).toBeFalsy();
+  });
+
+  it('rerender 換 uid 後重設並恢復遮罩', async () => {
+    const { container, rerender } = render(<UserCardBadges uid="target" isSelf={false} />);
+    const blur = container.querySelector('.uc-blur-overlay');
+    if (blur) fireEvent.click(blur);
+    await waitFor(() => {
+      expect(container.querySelector('.uc-badge-list')).toBeTruthy();
+    });
+    expect(container.querySelector('.uc-blur-overlay')).toBeFalsy();
+
+    rerender(<UserCardBadges uid="target2" isSelf={false} />);
+    await waitFor(() => {
+      expect(container.querySelector('.uc-blur-overlay')).toBeTruthy();
+    });
+  });
+
+  it('切換 uid 後舊請求晚到不覆蓋新對象', async () => {
+    type Progress = Record<string, { current: number; completedAt: unknown }>;
+    let resolveOld: ((value: Progress) => void) | null = null;
+    vi.mocked(loadUserAchievementProgress).mockImplementationOnce(
+      () =>
+        new Promise<Progress>((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+
+    const { container, rerender } = render(<UserCardBadges uid="old" isSelf={false} />);
+    const blur = container.querySelector('.uc-blur-overlay');
+    expect(blur).toBeTruthy();
+    if (blur) fireEvent.click(blur);
+
+    await waitFor(() => {
+      expect(resolveOld).toBeTypeOf('function');
+    });
+
+    rerender(<UserCardBadges uid="new" isSelf={false} />);
+    await waitFor(() => {
+      expect(container.querySelector('.uc-blur-overlay')).toBeTruthy();
+    });
+
+    const finishOld = resolveOld as ((value: Progress) => void) | null;
+    finishOld?.({ a1: { current: 1, completedAt: null } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(container.querySelector('.uc-blur-overlay')).toBeTruthy();
+    expect(container.textContent).not.toContain('Badge1');
   });
 });

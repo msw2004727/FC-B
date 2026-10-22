@@ -2,10 +2,12 @@ import { cleanup, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(async () => ({
-    auth: { currentUser: { uid: 'me' } },
-    db: {},
-  })),
+  getFirebase: vi.fn(async () => ({ db: {} })),
+}));
+
+// 測試同步更新：照 A（fix-4d 項目 1）改用 useViewer 取登入 uid。
+vi.mock('@/features/profile/data/viewer', () => ({
+  useViewer: vi.fn(() => ({ uid: 'me' })),
 }));
 
 vi.mock('../data/achievements', async () => {
@@ -20,12 +22,18 @@ vi.mock('../data/achievements', async () => {
 });
 
 import { loadAchievementDefs, loadUserAchievementProgress } from '../data/achievements';
+import { useViewer } from '@/features/profile/data/viewer';
 import AchievementsPage, { generateConditionDesc } from './AchievementsPage';
+
+const useViewerMock = vi.mocked(useViewer);
 
 describe('AchievementsPage', () => {
   beforeEach(() => {
     document.documentElement.lang = 'zh-TW';
     vi.clearAllMocks();
+    useViewerMock.mockReturnValue(
+      { uid: 'me' } as unknown as ReturnType<typeof useViewer>,
+    );
   });
 
   afterEach(() => {
@@ -98,6 +106,28 @@ describe('AchievementsPage', () => {
     // 沒有已完成／未獲得徽章時不應該顯示對應區塊
     expect(container.querySelectorAll('.ach-card-done-overlay').length).toBe(0);
     expect(container.textContent).not.toContain('已獲得徽章');
+  });
+
+  it('uid 延後出現才載入', async () => {
+    useViewerMock.mockReturnValue(
+      { uid: null } as unknown as ReturnType<typeof useViewer>,
+    );
+    vi.mocked(loadAchievementDefs).mockResolvedValue({ achievements: [], badges: [] });
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({});
+
+    const { rerender, findByText, queryByText } = render(<AchievementsPage />);
+    await findByText('載入中...');
+    expect(loadAchievementDefs).not.toHaveBeenCalled();
+    expect(loadUserAchievementProgress).not.toHaveBeenCalled();
+    expect(queryByText('尚無成就')).toBeNull();
+
+    useViewerMock.mockReturnValue(
+      { uid: 'me' } as unknown as ReturnType<typeof useViewer>,
+    );
+    rerender(<AchievementsPage />);
+    await findByText('尚無成就');
+    expect(loadAchievementDefs).toHaveBeenCalled();
+    expect(loadUserAchievementProgress).toHaveBeenCalledWith('me');
   });
 });
 

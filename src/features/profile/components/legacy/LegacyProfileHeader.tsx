@@ -150,6 +150,8 @@ export function LegacyProfileTopSection({
   }>({ big: null, normal: null });
   useEffect(() => {
     let cancelled = false;
+    setBadgeCount('--');
+    setTitlePartsState({ big: null, normal: null });
     (async () => {
       try {
         const mod = await import('@/features/exp-achievements/data/achievements');

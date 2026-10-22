@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import type { BadgeDef } from '@/features/exp-achievements/data/achievements';
 import { lt } from '@/i18n/i18n';
@@ -30,16 +30,20 @@ export function UserCardBadges({ uid, isSelf }: UserCardBadgesProps): JSX.Elemen
   const [loaded, setLoaded] = useState(false);
   const [badges, setBadges] = useState<EarnedBadge[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const requestSeq = useRef(0);
 
-  const load = async (): Promise<void> => {
-    if (loading) return;
+  const load = async (targetUid: string): Promise<void> => {
+    const seq = ++requestSeq.current;
     setLoading(true);
+    setError(false);
     try {
       const mod = await loadAchievementsModule();
       const [defs, progressMap] = await Promise.all([
         mod.loadAchievementDefs(),
-        mod.loadUserAchievementProgress(uid),
+        mod.loadUserAchievementProgress(targetUid),
       ]);
+      if (seq !== requestSeq.current) return;
       const evaluated = mod.evaluateFromProgress(defs.achievements, progressMap);
       const { completed } = mod.splitPendingCompleted(evaluated);
       const earned = mod
@@ -47,34 +51,56 @@ export function UserCardBadges({ uid, isSelf }: UserCardBadgesProps): JSX.Elemen
         .map(({ badge, color }) => ({ badge, color }));
       setBadges(earned);
       setLoaded(true);
+      setError(false);
     } catch (err) {
-      setLoaded(true);
+      if (seq !== requestSeq.current) return;
+      // 讀取失敗不顯示空狀態，保留重試入口。
+      setBadges([]);
+      setLoaded(false);
+      setError(true);
       // eslint-disable-next-line no-console
       console.warn('[profile] load user card badges failed', err);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
-  // 照 A：本人不遮，直接載入。
+  // 照 A：本人不遮，直接載入；uid 切換時重設並作廢舊請求。
   useEffect(() => {
+    requestSeq.current += 1;
+    setBadges([]);
+    setLoaded(false);
+    setError(false);
+    setLoading(false);
     if (isSelf) {
-      void load();
+      void load(uid);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelf, uid]);
 
   const showBlur = !isSelf && !loaded;
 
+  const handleRetry = (): void => {
+    if (loading) return;
+    void load(uid);
+  };
+
   const handleBlurClick = (): void => {
-    void load();
+    handleRetry();
   };
 
   return (
     <div class="info-card">
       <div class="info-title">{lt('已獲得徽章', '已獲得徽章')}</div>
       <div id="uc-badge-container">
-        {loaded && badges.length > 0 ? (
+        {error ? (
+          <div
+            style="font-size:.82rem;color:var(--text-muted);cursor:pointer"
+            onClick={handleRetry}
+          >
+            {lt('徽章載入失敗', '徽章載入失敗')}
+          </div>
+        ) : loaded && badges.length > 0 ? (
           <div class="uc-badge-list">
             {badges.map(({ badge, color }) => (
               <div class="uc-badge-item" key={badge.id}>
@@ -96,7 +122,9 @@ export function UserCardBadges({ uid, isSelf }: UserCardBadgesProps): JSX.Elemen
       {showBlur ? (
         <div class="uc-blur-overlay" onClick={handleBlurClick}>
           <div class="uc-blur-text">
-            {lt('點擊載入此用戶的徽章', '點擊載入此用戶的徽章')}
+            {error
+              ? lt('徽章載入失敗', '徽章載入失敗')
+              : lt('點擊載入此用戶的徽章', '點擊載入此用戶的徽章')}
           </div>
         </div>
       ) : null}

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(async () => ({ db: {} })),
+  getFirebase: vi.fn(async () => ({
+    db: {},
+    auth: { currentUser: { uid: 'u1' } },
+  })),
 }));
 
 const updateDocMock = vi.fn(
@@ -50,6 +53,11 @@ describe('saveTitles', () => {
 
   it('無 uid 拋錯且不寫入', async () => {
     await expect(saveTitles('', 'a', 'b')).rejects.toThrow();
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('uid 與 currentUser 不同時拋錯、不呼叫 updateDoc', async () => {
+    await expect(saveTitles('u2', 'Gold', 'Normal')).rejects.toThrow();
     expect(updateDocMock).not.toHaveBeenCalled();
   });
 });

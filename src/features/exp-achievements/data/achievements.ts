@@ -14,7 +14,7 @@ export interface AchievementDef {
   badgeId?: string;
   status?: string;
   condition?: Record<string, unknown>;
-  target?: number;
+  target?: number | string;
   desc?: string;
 }
 
@@ -105,8 +105,8 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function asFiniteNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+function asNumberOrString(value: unknown): number | string | undefined {
+  if (typeof value === 'number' || typeof value === 'string') return value;
   return undefined;
 }
 
@@ -129,16 +129,11 @@ function sortByCategory(items: EvaluatedAchievement[]): EvaluatedAchievement[] {
   );
 }
 
-// 照 A shared.js#getThreshold。
+// 照 A stats.js#getThreshold：condition.threshold ?? target ?? 1，交給 Number() 比較。
+// 非有限數字（含 'invalid'）會得到 NaN，後續比較為 false，不回退 target。
 export function getAchThreshold(a: AchievementDef): number {
-  const threshold = a.condition?.['threshold'];
-  if (threshold != null) {
-    const num = Number(threshold);
-    // ASSUMPTION: 文件值若為數字字串，Number() 與 A 後續比較一致；非有限值退回 target。
-    if (Number.isFinite(num)) return num;
-  }
-  if (a.target != null) return a.target;
-  return 1;
+  const rawThreshold = a.condition?.['threshold'] ?? a.target ?? 1;
+  return Number(rawThreshold);
 }
 
 // 照 A registry.js#isSupportedCondition。
@@ -272,7 +267,7 @@ function toAchievementDef(id: string, data: Record<string, unknown>): Achievemen
     badgeId: asString(data['badgeId']),
     status: asString(data['status']),
     condition,
-    target: asFiniteNumber(data['target']),
+    target: asNumberOrString(data['target']),
     desc: asString(data['desc']),
   };
 }
@@ -313,10 +308,10 @@ export async function loadUserAchievementProgress(
     }
     return progress;
   } catch (err) {
-    // 照 A：讀取失敗只警告，回空資料。
+    // 讀取失敗必須拋出，讓呼叫端區分「成功空資料」與「失敗」。
     // eslint-disable-next-line no-console
     console.warn('[achievements] loadUserAchievementProgress failed', err);
-    return {};
+    throw err;
   }
 }
 
@@ -339,9 +334,9 @@ export async function loadAchievementDefs(): Promise<{
       badges: badgeSnap.docs.map((doc) => toBadgeDef(doc.id, asRecord(doc.data()))),
     };
   } catch (err) {
-    // ASSUMPTION: A 無對應讀取函式；失敗時回空清單讓 UI 顯示尚無成就。
+    // 讀取失敗必須拋出，讓呼叫端區分「成功空資料」與「失敗」。
     // eslint-disable-next-line no-console
     console.warn('[achievements] loadAchievementDefs failed', err);
-    return { achievements: [], badges: [] };
+    throw err;
   }
 }

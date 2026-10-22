@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
 import { useGoBack } from '@/core/back-guard';
-import { getFirebase } from '@/data/firebase';
+import { useViewer } from '@/features/profile/data/viewer';
 import { useLegacyT } from '@/i18n/i18n';
 
 import {
@@ -65,34 +65,24 @@ interface PageData {
   badges: BadgeDef[];
 }
 
-// ASSUMPTION: `getFirebase()` 回傳物件含 `auth`；`auth.currentUser.uid` 為目前登入 UID。
-//   若實際形狀不同，PM 可改以 B 的身分 hook 取 UID（R-ID-002 只認 UID）。
-async function getCurrentUid(): Promise<string | null> {
-  try {
-    const fb = (await getFirebase()) as unknown as {
-      auth?: { currentUser?: { uid?: string } | null } | null;
-    };
-    return fb.auth?.currentUser?.uid ?? null;
-  } catch {
-    return null;
-  }
-}
+
 
 export default function AchievementsPage(): JSX.Element {
   const lt = useLegacyT();
   const goBack = useGoBack('/');
+  const { uid } = useViewer();
   const [data, setData] = useState<PageData | null>(null);
 
   useEffect(() => {
+    if (!uid) {
+      // 登入狀態尚未恢復：維持載入中，不誤顯示「尚無成就」。
+      setData(null);
+      return;
+    }
     let cancelled = false;
+    setData(null);
     (async () => {
       try {
-        const uid = await getCurrentUid();
-        if (cancelled) return;
-        if (!uid) {
-          setData({ earned: [], pending: [], completed: [], badges: [] });
-          return;
-        }
         const [defs, progress] = await Promise.all([
           loadAchievementDefs(),
           loadUserAchievementProgress(uid),
@@ -113,7 +103,7 @@ export default function AchievementsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [uid]);
 
   const header = (
     <div class="page-header">
@@ -139,12 +129,16 @@ export default function AchievementsPage(): JSX.Element {
     </div>
   );
 
-  if (!data) {
+  if (!uid || !data) {
     return (
       <div class="legacy-ui">
         <section class="page active" id="page-achievements">
           {header}
-          <div id="achievement-grid" />
+          <div id="achievement-grid">
+            <div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:.85rem">
+              {lt('載入中...', '載入中...')}
+            </div>
+          </div>
         </section>
       </div>
     );

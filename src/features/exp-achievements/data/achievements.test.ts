@@ -18,6 +18,36 @@ import {
   type EvaluatedAchievement,
 } from './achievements';
 
+describe('getAchThreshold（照 A stats.js）', () => {
+  it('threshold 非數值時不比對 target，視為未完成', () => {
+    const ach: AchievementDef = {
+      id: 'a1',
+      name: 'A1',
+      category: 'bronze',
+      condition: { action: 'register_event', threshold: 'invalid' },
+      target: 1,
+    };
+    const [ev] = evaluateFromProgress([ach], {
+      a1: { current: 1, completedAt: null },
+    });
+    expect(ev?.done).toBe(false);
+  });
+
+  it('數字字串 target 照 A 以 Number() 比較', () => {
+    const ach: AchievementDef = {
+      id: 'a2',
+      name: 'A2',
+      category: 'bronze',
+      condition: { action: 'register_event' },
+      target: '2',
+    };
+    const [ev] = evaluateFromProgress([ach], {
+      a2: { current: 2, completedAt: null },
+    });
+    expect(ev?.done).toBe(true);
+  });
+});
+
 const f = vi.hoisted(() => ({
   collection: vi.fn(),
   getDocs: vi.fn(),

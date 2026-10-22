@@ -8,6 +8,11 @@ vi.mock('@/data/firebase', () => ({
   })),
 }));
 
+// 測試同步更新：照 A（fix-4d 項目 1）元件改用 useViewer 取登入 uid。
+vi.mock('@/features/profile/data/viewer', () => ({
+  useViewer: vi.fn(() => ({ uid: 'me' })),
+}));
+
 const getDocMock = vi.fn();
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((_db: unknown, ...segments: unknown[]) => ({
@@ -40,12 +45,19 @@ vi.mock('../data/titles-write', () => ({
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
 
 import { loadAchievementDefs, loadUserAchievementProgress } from '../data/achievements';
+import { useViewer } from '@/features/profile/data/viewer';
+import { toast } from '@/ui/Toast';
 import TitlesPage from './TitlesPage';
+
+const useViewerMock = vi.mocked(useViewer);
 
 describe('TitlesPage', () => {
   beforeEach(() => {
     document.documentElement.lang = 'zh-TW';
     vi.clearAllMocks();
+    useViewerMock.mockReturnValue(
+      { uid: 'me' } as unknown as ReturnType<typeof useViewer>,
+    );
     getDocMock.mockResolvedValue({
       exists: () => true,
       data: () => ({ titleBig: 'GoldAch', titleNormal: 'SilverAch', displayName: 'TestUser' }),
@@ -54,6 +66,53 @@ describe('TitlesPage', () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it('讀取失敗顯示錯誤與重新整理並禁止儲存', async () => {
+    vi.mocked(loadAchievementDefs).mockRejectedValue(new Error('fail'));
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({});
+    const { container, getByText } = render(<TitlesPage />);
+    await waitFor(() => {
+      expect(container.textContent).toContain('載入失敗，請重新整理');
+    });
+    expect(getByText('重新整理')).toBeTruthy();
+    expect(container.textContent).not.toContain('儲存稱號');
+  });
+
+  it('儲存前驗證稱號在已取得清單內', async () => {
+    vi.mocked(loadAchievementDefs).mockResolvedValue({
+      achievements: [
+        {
+          id: 'a1',
+          name: 'GoldAch',
+          category: 'gold',
+          condition: { action: 'register_event', timeRange: 'none', threshold: 1 },
+        },
+      ],
+      badges: [],
+    });
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({
+      a1: { current: 1, completedAt: null },
+    });
+    const { container, getByText } = render(<TitlesPage />);
+    // 等載入完成（儲存鈕可用）再操作，否則 disabled 按鈕點擊不會觸發 onClick。
+    await waitFor(() => {
+      const btn = getByText('儲存稱號').closest('button') as HTMLButtonElement | null;
+      expect(btn?.disabled).toBe(false);
+    });
+    const select = container.querySelector('#title-big') as HTMLSelectElement;
+    const option = document.createElement('option');
+    option.value = 'Hack';
+    option.textContent = 'Hack';
+    select.appendChild(option);
+    select.value = 'Hack';
+    fireEvent.change(select);
+    const saveButton = getByText('儲存稱號').closest('button');
+    if (saveButton) fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(vi.mocked(toast.show)).toHaveBeenCalled();
+    });
+    expect(saveTitlesMock).not.toHaveBeenCalled();
   });
 
   it('只列出已完成成就、預設選目前值', async () => {

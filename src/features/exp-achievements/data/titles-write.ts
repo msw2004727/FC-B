@@ -15,10 +15,12 @@ export async function saveTitles(
   const cleanUid = String(uid || '').trim();
   if (!cleanUid) throw new Error('saveTitles: uid is required');
 
-  const [{ doc, updateDoc, serverTimestamp }, { db }] = await Promise.all([
-    import('firebase/firestore'),
-    getFirebase(),
-  ]);
+  const { db, auth } = await getFirebase();
+  const currentUid = auth.currentUser?.uid;
+  if (!currentUid || currentUid !== cleanUid) {
+    throw new Error('saveTitles: current user mismatch');
+  }
+  const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
   await updateDoc(doc(db, 'users', cleanUid), {
     titleBig: titleBig || null,
     titleNormal: titleNormal || null,
