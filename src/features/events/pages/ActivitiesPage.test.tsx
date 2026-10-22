@@ -241,14 +241,15 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
     });
     fireEvent.click(container.querySelector('[data-atab="calendar"]') as HTMLElement);
+    // 月曆是 lazy chunk：機器滿載（並行兩套全測）時載入會超過預設 1 秒，放寬到 10 秒（T-005b）。
     await waitFor(() => {
       expect(new URLSearchParams(window.location.search).get('tab')).toBe('calendar');
       expect((container.querySelector('#activity-list') as HTMLElement).hidden).toBe(true);
       expect((container.querySelector('#activity-calendar') as HTMLElement).hidden).toBe(false);
       expect(container.querySelector('[data-atab="calendar"]')?.classList.contains('active')).toBe(true);
       expect(container.querySelector('#activity-calendar .evt-cal-skeleton')).toBeNull();
-    });
-  });
+    }, { timeout: 10_000 });
+  }, 15_000);
 
   it('shows toast when clicking unavailable features (share, beginner tab, nearby)', async () => {
     const { container } = mount();
