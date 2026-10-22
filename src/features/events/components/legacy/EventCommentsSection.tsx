@@ -19,6 +19,7 @@ import {
   type CommentContext,
   type CommentItem,
   type Liker,
+  commentEventEndMs,
 } from '../../data/event-comments';
 import {
   getEventCommentAuthor,
@@ -260,14 +261,16 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
   useEffect(() => {
     alive.current = true;
     load();
-    const clock = setInterval(() => {
-      if (alive.current) setClock((value) => value + 1);
-    }, 1000);
+    // A 沒有每秒重繪；只在活動結束那一刻重算一次「留言已關閉」（Gemini 審查 P3）。
+    const endMs = commentEventEndMs(current.current.event.date);
+    const remain = endMs !== null ? endMs - Date.now() : -1;
+    if (remain > 0 && remain < 2_147_483_647) {
+      schedule(() => setClock((value) => value + 1), remain + 50);
+    }
     return () => {
       alive.current = false;
       sequence.current += 1;
       clearTimers();
-      clearInterval(clock);
       replyInputs.current.clear();
     };
   }, []);
@@ -491,7 +494,7 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
                   onChange={(e) => setPrivateComment(e.currentTarget.checked)}
                 /> 私密留言（僅主辦與委託能見）
               </label>
-              <button type="submit" class="event-comment-submit" disabled={!!busyKey}>
+              <button type="submit" class="event-comment-submit" disabled={busyKey === 'comment'}>
                 {busyKey === 'comment' ? '送出中' : '送出'}
               </button>
             </div>
@@ -564,7 +567,7 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
                       setReplyBodies((previous) => ({ ...previous, [comment.id]: value }));
                     }}
                   />
-                  <button type="submit" disabled={!!busyKey}>
+                  <button type="submit" disabled={busyKey === `reply:${comment.id}`}>
                     {busyKey === `reply:${comment.id}` ? '送出中' : '送出'}
                   </button>
                 </form>
