@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { lt, useT } from '@/i18n/i18n';
-import { UserTag } from '@/ui/UserTag';
 import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
@@ -50,6 +49,7 @@ import {
   DetailAttendanceLoading,
   DetailAttendanceSummary,
 } from '../components/legacy/DetailAttendanceSummary';
+import { GuestRosterSections } from '../components/legacy/GuestRosterSections';
 import {
   CompanionSelectModal,
   EventDetailCover,
@@ -670,39 +670,6 @@ function EventDetailSession({
     return reg.companionName || reg.userName || t('events.detailPage.unnamed');
   }
 
-  function guestRoster(status: 'confirmed' | 'waitlisted'): JSX.Element | null {
-    if (!event) return null;
-    const people = guestEventPeople(
-      event,
-      status === 'confirmed' ? 'participants' : 'waitlistNames',
-    );
-    if (status === 'waitlisted' && people.length === 0) return null;
-    return (
-      <div class="detail-section">
-        <div class="detail-section-title">
-          {`${t(`events.detailPage.${status}`)} ${people.length}`}
-        </div>
-        {people.length === 0 ? (
-          <div>{t('events.detailPage.emptyRoster')}</div>
-        ) : (
-          <ul class="participant-list" style="list-style:none;padding:0;margin:0">
-            {people.map((person, index) => (
-              <li key={`${status}:${index}:${person.uid}`}>
-                <UserTag
-                  uid={person.uid}
-                  name={person.name}
-                  role={roles[person.uid]}
-                  disabled={!person.uid}
-                  onOpenProfile={profile}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    );
-  }
-
   const noticeToast = notice && (
     <Toast
       key={notice.serial}
@@ -1027,19 +994,16 @@ function EventDetailSession({
           </div>
 
           {!viewer.uid ? (
-            <>
-              <div class="detail-section">
-                <div id="detail-attendance-table">
-                  {guestRoster('confirmed')}
-                </div>
-              </div>
-              <div id="detail-waitlist-container">
-                {guestRoster('waitlisted')}
-              </div>
-              <div class="detail-section" id="detail-unreg-section" style="display:none">
-                <div id="detail-unreg-table" />
-              </div>
-            </>
+            <GuestRosterSections
+              event={event}
+              eventId={eventId}
+              expanded={rosterExpanded}
+              onExpand={() => setRosterExpanded(true)}
+              onOpenProfile={profile}
+              max={maximum}
+              confirmedCount={confirmedCount}
+              waitlistCount={waitlistCount}
+            />
           ) : (
             <section
               aria-label={t('events.detailPage.roster')}
@@ -1101,16 +1065,6 @@ function EventDetailSession({
                   )}
                 </div>
               </div>
-              <div id="detail-waitlist-container">
-                {rosterExpanded && rosterPhase === 'ready' && (
-                  <WaitlistRosterTable
-                    event={event}
-                    registrations={snapshot.registrations}
-                    roles={roles}
-                    onOpenProfile={profile}
-                  />
-                )}
-              </div>
               <div
                 class="detail-section"
                 id="detail-unreg-section"
@@ -1133,6 +1087,16 @@ function EventDetailSession({
                     />
                   )}
                 </div>
+              </div>
+              <div id="detail-waitlist-container">
+                {rosterExpanded && rosterPhase === 'ready' && (
+                  <WaitlistRosterTable
+                    event={event}
+                    registrations={snapshot.registrations}
+                    roles={roles}
+                    onOpenProfile={profile}
+                  />
+                )}
               </div>
             </section>
           )}

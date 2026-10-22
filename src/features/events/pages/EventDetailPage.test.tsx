@@ -548,7 +548,12 @@ describe('EventDetailPage', () => {
     expect(screen.getByText('請攜帶飲水')).toBeTruthy();
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
       .toContain('已報 3/10');
-    expect(screen.getByText('公開正取')).toBeTruthy();
+    // 測試同步更新：照 A（M-087）訪客先看摘要卡，按下才展開膠囊。
+    expect(screen.getByText('出席名單')).toBeTruthy();
+    expect(screen.getByText('3/10')).toBeTruthy();
+    expect(screen.getByText('候補 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+    await waitFor(() => expect(screen.getByText('公開正取')).toBeTruthy());
     expect(screen.getByText('公開候補')).toBeTruthy();
     expect(screen.queryByText('無效資料')).toBeNull();
     expect(screen.queryByText('舊正取不應混入')).toBeNull();
@@ -581,6 +586,9 @@ describe('EventDetailPage', () => {
     });
 
     const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    // 測試同步更新：照 A（M-087）訪客先看摘要卡，按下才展開膠囊。
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
     await screen.findByText('舊正取');
     expect(screen.getByText('舊候補')).toBeTruthy();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
