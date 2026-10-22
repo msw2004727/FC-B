@@ -188,7 +188,7 @@ describe('EventFormModal', () => {
     });
 
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith('ce_fixed_id_001');
+      expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ mode: 'create', eventId: 'ce_fixed_id_001', count: 1 }));
     });
   });
 
@@ -245,7 +245,7 @@ describe('EventFormModal', () => {
 
     await waitFor(() => {
       expect(eventCreateMod.updateEventBasics).toHaveBeenCalledTimes(1);
-      expect(onSaved).toHaveBeenCalledWith('ce_edit_99');
+      expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ mode: 'edit', eventId: 'ce_edit_99', count: 1 }));
     });
     // T-013 修補：表單尚無加值／委託人／封面欄位，編輯時必須要求保留原值。
     expect((vi.mocked(eventCreateMod.updateEventBasics).mock.calls[0] as unknown[])[3]).toEqual({

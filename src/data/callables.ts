@@ -70,6 +70,8 @@ import type {
   ListEduCoursePublicRosterResponse,
   ListPmAuditThreadsRequest,
   ListPmAuditThreadsResponse,
+  ListUserDirectoryRequest,
+  ListUserDirectoryResponse,
   ManageCourseLinkedRegistrationStatusRequest,
   ManageCourseLinkedRegistrationStatusResponse,
   MarkPrivateConversationReadRequest,
@@ -194,6 +196,7 @@ export interface CallableMap {
     res: ListEduCoursePublicRosterResponse;
   };
   listPmAuditThreads: { req: ListPmAuditThreadsRequest; res: ListPmAuditThreadsResponse };
+  listUserDirectory: { req: ListUserDirectoryRequest; res: ListUserDirectoryResponse };
   manageCourseLinkedRegistrationStatus: {
     req: ManageCourseLinkedRegistrationStatusRequest;
     res: ManageCourseLinkedRegistrationStatusResponse;

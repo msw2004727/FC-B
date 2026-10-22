@@ -47,13 +47,24 @@ import {
 import { SPORTS } from '../data/sports';
 import type { EventDoc } from '../data/types';
 
+/**
+ * 送出成功後交給頁面的結果（T-013）：頁面依此做 A 的建立／編輯後流程（提示、刷新、分享詢問）。
+ * count：這次建立的場數（多日期 > 1；編輯固定 1）。
+ */
+export interface EventFormSavedResult {
+  mode: 'create' | 'edit';
+  eventId: string;
+  title: string;
+  count: number;
+}
+
 export interface EventFormModalProps {
   open: boolean;
   mode: 'create' | 'edit';
   existing?: EventDoc;
   viewer: ViewerView;
   onClose(): void;
-  onSaved(eventId: string): void;
+  onSaved(result: EventFormSavedResult): void;
 }
 
 const REGION_LABEL_KEY: Readonly<Record<string, string>> = {
@@ -309,7 +320,7 @@ export function EventFormModal({
             console.warn('[EventFormModal] event_changed notify failed', err);
           });
         }
-        onSaved(existingForEdit.id);
+        onSaved({ mode: 'edit', eventId: existingForEdit.id, title: payloadForm.title, count: 1 });
       } else {
         let targetEventId = generatedEventId;
         if (!targetEventId) {
@@ -320,7 +331,7 @@ export function EventFormModal({
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
-        onSaved(result.eventId);
+        onSaved({ mode: 'create', eventId: result.eventId, title: payloadForm.title, count: 1 });
       }
     } catch (error) {
       if (error instanceof EventCreateError) {

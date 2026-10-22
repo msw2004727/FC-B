@@ -574,7 +574,7 @@ export default function HomePage(): JSX.Element {
           mode="create"
           viewer={viewer}
           onClose={() => setCreateModalOpen(false)}
-          onSaved={(eventId) => {
+          onSaved={({ eventId }) => {
             setCreateModalOpen(false);
             location.route('/events/' + eventId);
           }}
