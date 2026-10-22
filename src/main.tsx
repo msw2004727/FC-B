@@ -8,6 +8,7 @@ import './styles/legacy/base.css';
 import './styles/legacy/layout.css';
 import './styles/legacy-body-state.css';
 import './styles/legacy-input-zoom.css';
+import './styles/legacy-line-height.css';
 import { App } from './app/App';
 import { ErrorFallback } from './ui/ErrorFallback';
 import { registerFeatures } from './core/feature-registry';

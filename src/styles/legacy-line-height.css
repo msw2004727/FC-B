@@ -1,0 +1,12 @@
+/*
+ * T-018（2026-10-22）：照 A 的行高——A 的 css/base.css 的 body 沒有設定 line-height，
+ * 全站是瀏覽器預設 normal。B 的 src/styles/base.css 設了 body { line-height: var(--line-height-body) }（24px），
+ * A 的 body 規則限定到 .legacy-ui 後沒帶行高，每個 .legacy-ui 外框就繼承到 B 的 24px，
+ * 照 A 外觀的元件因此比 A 高（實測：活動類型選單按鈕 B 73.3px vs A 57.3px；抽屜項目 45px vs 38px）。
+ * 只設在 .legacy-ui 外框本身：A 各元件自己的 line-height 都寫在子元素選擇器上（打包後是 .legacy-ui .xxx），
+ * 不會被這條規則蓋掉。src/ui/app-shell.css 原本只處理 .app-main > .legacy-ui，
+ * 掛在 body 或外框上的 .legacy-ui（彈窗、類型選單、建立活動表單、抽屜、頂部列、底部導覽）都漏掉了。
+ */
+.legacy-ui {
+  line-height: normal;
+}

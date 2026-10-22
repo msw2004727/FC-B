@@ -17,4 +17,6 @@
 
 **限定範圍**：`scripts/legacy-css-scope.mjs`（Vite PostCSS 外掛）把路徑含 `/legacy/` 的 CSS 選擇器改寫成只作用在 `.legacy-ui` 之內（`:root`、`html`、`body` → `.legacy-ui`；`[data-theme="dark"]` → `[data-theme="dark"] .legacy-ui`）。原因：直接全域載入時，尚未改版、但用了同名 class 的 B 頁面會跑版（2026-10-19 實測「我的活動」分頁列變直排）。頁面改成 A 結構後，在最外層加 `class="legacy-ui"` 即套用。
 
+**行高**：A 的 body 沒設 line-height（瀏覽器預設 normal），限定範圍後 .legacy-ui 會繼承 B body 的 24px；由 `src/styles/legacy-line-height.css` 在每個 .legacy-ui 外框補回 normal（T-018，2026-10-22）。
+
 功能頁專用的 A CSS（例如活動頁的 `activity.css`）放在該功能資料夾，隨路由延遲載入。
