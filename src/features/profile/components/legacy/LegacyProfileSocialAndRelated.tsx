@@ -1,9 +1,29 @@
 import type { JSX } from 'preact';
-import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
-import { useState } from 'preact/hooks';
+import { Suspense, lazy } from 'preact/compat';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
-import { useT } from '@/i18n/i18n';
+import { lt, useT } from '@/i18n/i18n';
+import { toast } from '@/ui/Toast';
+import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
+import { runEventLifecycleAction } from '@/features/events/components/legacy/event-lifecycle-action';
+import {
+  useCancelRegistration,
+  type CancelFlowSnapshot,
+} from '@/features/events/components/legacy/use-cancel-registration';
+import { operateContextFromViewer } from '@/features/events/data/event-create-context';
+import { loadEventDetail } from '@/features/events/data/event-detail';
+import {
+  canCancelOwnActivity,
+  canEditOwnActivityBasic,
+  type OperateContext,
+} from '@/features/events/data/operate-permissions';
+import { createDetailSignupContexts } from '@/features/events/data/signup-context';
+import type { DetailEvent, DetailRegistration } from '@/features/events/data/detail-model';
+import type { EventDoc } from '@/features/events/data/types';
+import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
+
+import { useViewer } from '../../data/viewer';
 import type { UserProfile } from '../../data/profile-model';
 import {
   loadRelatedActivities,
@@ -22,6 +42,11 @@ import {
 import { sanitizeHttpAvatarUrl } from './profile-legacy-helpers';
 
 const HOSTED_PAGE_SIZE = 10;
+
+// L-05：lazy 元件在 module 級建立，避免每次 render 產生新元件型別。
+const LazyEventFormModal = lazy(() =>
+  import('@/features/events/components/EventFormModal')
+    .then(module => ({ default: module.EventFormModal })));
 
 export function LegacySocialGrid({
   profile,
@@ -114,19 +139,31 @@ export function LegacySocialGrid({
   );
 }
 
+interface RelatedActivityCardRowProps {
+  event: EventRecord;
+  effectiveStatus: string;
+  kind: 'registered' | 'hosted';
+  registrationStatus?: string;
+  onSelect: (id: string) => void;
+  operateCtx: OperateContext;
+  onEditHosted: (event: EventRecord) => void;
+  onCancelHosted: (event: EventRecord) => void;
+  onCancelRegistration: (event: EventRecord) => void;
+  actionBusy: boolean;
+}
+
 function RelatedActivityCardRow({
   event,
   effectiveStatus,
   kind,
   registrationStatus,
   onSelect,
-}: {
-  event: EventRecord;
-  effectiveStatus: string;
-  kind: 'registered' | 'hosted';
-  registrationStatus?: string;
-  onSelect: (id: string) => void;
-}): JSX.Element {
+  operateCtx,
+  onEditHosted,
+  onCancelHosted,
+  onCancelRegistration,
+  actionBusy,
+}: RelatedActivityCardRowProps): JSX.Element {
   const id = String(event.id || '').trim();
   // A `_getEventDisplayTypeKey`：type 在 TYPE_CONFIG 才採用，否則 friendly（課程連動活動 B 尚無欄位，下一批補）。
   const rawType = typeof event['type'] === 'string' ? event['type'].trim() : '';
@@ -150,6 +187,82 @@ function RelatedActivityCardRow({
   const rowBaseClass = teamOnly ? 'tl-type-teamonly' : `tl-type-${typeKey}`;
   const metaParts = [typeLabel, timeText, locationText].filter(Boolean);
   const isWaitlisted = registrationStatus === 'waitlisted';
+
+  // 照 A `_renderProfileRelatedActivityActions` / `_profileRelatedActionIcon`
+  const actions: JSX.Element[] = [];
+  if (id) {
+    if (kind === 'registered') {
+      const regLabel = isWaitlisted ? '取消候補' : '取消報名';
+      actions.push(
+        <button
+          key="cancel-registration"
+          type="button"
+          class="profile-related-icon-btn danger"
+          data-event-id={id}
+          disabled={actionBusy}
+          aria-label={lt(regLabel, regLabel)}
+          title={lt(regLabel, regLabel)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCancelRegistration(event);
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" />
+            <path d="M9 12h11" />
+            <path d="M4 5v14" />
+          </svg>
+        </button>,
+      );
+    } else {
+      // 照 A：無權限時不顯示；handler 內再以同 helper 檢查一次（R-IAM-011）。
+      if (canEditOwnActivityBasic(operateCtx, event)) {
+        actions.push(
+          <button
+            key="edit"
+            type="button"
+            class="profile-related-icon-btn"
+            data-event-id={id}
+            disabled={actionBusy}
+            aria-label={lt('編輯活動', '編輯活動')}
+            title={lt('編輯活動', '編輯活動')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditHosted(event);
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+          </button>,
+        );
+      }
+      if (!isEnded && canCancelOwnActivity(operateCtx, event)) {
+        actions.push(
+          <button
+            key="cancel-event"
+            type="button"
+            class="profile-related-icon-btn danger"
+            data-event-id={id}
+            disabled={actionBusy}
+            aria-label={lt('取消活動', '取消活動')}
+            title={lt('取消活動', '取消活動')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancelHosted(event);
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8 8l8 8" />
+              <path d="M16 8l-8 8" />
+            </svg>
+          </button>,
+        );
+      }
+    }
+  }
 
   return (
     <div
@@ -182,7 +295,7 @@ function RelatedActivityCardRow({
       </div>
       <div class="profile-related-card-right">
         <span class={`tl-event-status ${statusConf.css}`}>{statusConf.label}</span>
-        <div class="profile-related-event-actions" />
+        <div class="profile-related-event-actions">{actions}</div>
         <span class="tl-event-arrow">›</span>
       </div>
     </div>
@@ -191,11 +304,78 @@ function RelatedActivityCardRow({
 
 export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
   const location = useLocation();
-  const { state, retry } = useRemote(uid, loadRelatedActivities);
+  const viewer = useViewer();
+  const operateCtx = useMemo(() => operateContextFromViewer(viewer), [viewer]);
+
+  // ASSUMPTION: useRemote 以第一個參數值變動重跑載入；用拼上 reloadCount 的 key 觸發重新載入。
+  const [reloadCount, setReloadCount] = useState(0);
+  const reloadKey = `${uid}:${reloadCount}`;
+  const { state, retry } = useRemote(reloadKey, (key: string) => {
+    const raw = key.split(':')[0] || uid;
+    return loadRelatedActivities(raw);
+  });
+
   // M-170：預設收起（不記憶展開狀態）。
   const [regOpen, setRegOpen] = useState(false);
   const [hostedOpen, setHostedOpen] = useState(false);
   const [hostedLimit, setHostedLimit] = useState(HOSTED_PAGE_SIZE);
+  const [editing, setEditing] = useState<EventDoc | null>(null);
+  const [modalBusy, setModalBusy] = useState(false);
+  const [actionIds, setActionIds] = useState<Record<string, true>>({});
+
+  const busyRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef(true);
+  const snapshotRef = useRef<CancelFlowSnapshot | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const reload = (): void => {
+    setReloadCount((n) => n + 1);
+  };
+
+  // 讓 getViewer 每次都拿到最新 viewer，避免非同步流程取得舊值。
+  const viewerRef = useRef(viewer);
+  viewerRef.current = viewer;
+
+  // 照詳情頁：cancelContext 由 createDetailSignupContexts 提供。
+  const contexts = useMemo(
+    () => createDetailSignupContexts({
+      getViewer: () => viewerRef.current,
+      generation: 0,
+      getProfile: () => null,
+      getCompanionGender: () => undefined,
+    }),
+    [],
+  );
+
+  async function login(): Promise<void> {
+    // 照詳情頁：動態載入 auth 後登入；不讓個人頁靜態依賴 auth。
+    // ASSUMPTION: `@/data/auth` 匯出 `signIn()`（與 EventDetailPage 相同用法）。
+    const auth = await import('@/data/auth');
+    await auth.signIn();
+  }
+
+  const cancelFlow = useCancelRegistration({
+    getViewerUid: () => viewer.uid ?? null,
+    isAlive: () => mountedRef.current,
+    canRun: () => mountedRef.current,
+    login,
+    cancelContext: contexts.cancel,
+    onIntegrityError: () => {
+      toast.show({ message: '報名資料尚未同步完成，請重新整理後再試' });
+    },
+    onSelfCancelled: async () => {
+      reload();
+    },
+    onBatchCancelled: async () => {
+      reload();
+    },
+  });
 
   const registered: RegisteredActivity[] =
     state.status === 'ready' ? state.data.registered : [];
@@ -206,6 +386,96 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
     if (!eventId) return;
     location.route(`/events/${encodeURIComponent(eventId)}`);
   };
+
+  const handleEditHosted = (event: EventRecord): void => {
+    setEditing(event as unknown as EventDoc);
+  };
+
+  const handleCancelHosted = async (event: EventRecord): Promise<void> => {
+    const publicId = String(event.id ?? '').trim();
+    if (!publicId) return;
+    try {
+      // 重讀活動以取得正確 `_docId`（related-activities 的 EventRecord 可能缺 `_docId`）。
+      const detail = await loadEventDetail(publicId);
+      if (!mountedRef.current) return;
+      if (!detail) {
+        toast.show({ message: '找不到此活動', tone: 'error' });
+        return;
+      }
+      // 照 A `cancelMyActivity`／`runEventLifecycleAction`；以同一 helper 再檢查權限。
+      await runEventLifecycleAction('cancel', detail.event, {
+        viewer,
+        operateCtx,
+        busy: busyRef.current,
+        onDone: reload,
+      });
+    } catch {
+      // L-12：獨立非同步流程自行吞錯，不依賴 ErrorBoundary。
+    }
+  };
+
+  const handleCancelRegistration = async (event: EventRecord): Promise<void> => {
+    const publicId = String(event.id ?? '').trim();
+    if (!publicId) return;
+    if (!viewer.uid) {
+      await login();
+      return;
+    }
+    const currentUid = viewer.uid;
+    setActionIds((prev) => ({ ...prev, [publicId]: true }));
+    try {
+      const [detail, regs] = await Promise.all([
+        loadEventDetail(publicId),
+        loadViewerRegistrations(currentUid),
+      ]);
+      if (!mountedRef.current) return;
+      if (!detail) {
+        toast.show({ message: '找不到此活動', tone: 'error' });
+        return;
+      }
+      // 照詳情頁：本人與同行者都要，順序交由 beginCancel 內既有流程處理。
+      // ASSUMPTION: RegistrationDoc 帶 eventId 欄位；同 A 資料結構（既有格式）。
+      const owned = regs
+        .filter((reg) => {
+          const eventId = (reg as { eventId?: unknown }).eventId;
+          return typeof eventId === 'string' && eventId.trim() === publicId;
+        })
+        .map((reg) => reg as unknown as DetailRegistration);
+      const snapshot: CancelFlowSnapshot = {
+        event: detail.event as unknown as DetailEvent,
+        publicId,
+        owned,
+      };
+      snapshotRef.current = snapshot;
+      await cancelFlow.beginCancel(snapshot);
+    } finally {
+      if (mountedRef.current) {
+        setActionIds((prev) => {
+          if (!(publicId in prev)) return prev;
+          const next = { ...prev };
+          delete next[publicId];
+          return next;
+        });
+      }
+    }
+  };
+
+  const handleConfirmCancel = async (ids: string[]): Promise<void> => {
+    const snapshot = snapshotRef.current;
+    if (!snapshot) return;
+    setModalBusy(true);
+    try {
+      await cancelFlow.confirmCancel(snapshot, ids);
+    } finally {
+      if (mountedRef.current) setModalBusy(false);
+    }
+  };
+
+  const isActionBusy = (eventId: string | undefined): boolean =>
+    typeof eventId === 'string' && eventId.length > 0 && Boolean(actionIds[eventId]);
+
+  const snapshotTitle = snapshotRef.current?.event.title;
+  const modalEventTitle = typeof snapshotTitle === 'string' ? snapshotTitle : '';
 
   return (
     <>
@@ -252,6 +522,11 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
                     kind="registered"
                     registrationStatus={item.registrationStatus}
                     onSelect={handleOpenEvent}
+                    operateCtx={operateCtx}
+                    onEditHosted={handleEditHosted}
+                    onCancelHosted={handleCancelHosted}
+                    onCancelRegistration={handleCancelRegistration}
+                    actionBusy={isActionBusy(item.event.id)}
                   />
                 ))
               )
@@ -303,6 +578,11 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
                       effectiveStatus={item.effectiveStatus}
                       kind="hosted"
                       onSelect={handleOpenEvent}
+                      operateCtx={operateCtx}
+                      onEditHosted={handleEditHosted}
+                      onCancelHosted={handleCancelHosted}
+                      onCancelRegistration={handleCancelRegistration}
+                      actionBusy={isActionBusy(item.event.id)}
                     />
                   ))}
                   {hostedLimit < hosted.length && (
@@ -325,6 +605,32 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
           </div>
         )}
       </div>
+
+      {/* 編輯活動：lazy 載入表單，不讓個人頁靜態依賴 EventFormModal。 */}
+      {editing && (
+        <Suspense fallback={null}>
+          <LazyEventFormModal
+            open
+            mode="edit"
+            existing={editing}
+            viewer={viewer}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              reload();
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* 同行者取消彈窗：由 hook 渲染，只在本元件內。 */}
+      {cancelFlow.renderModal({
+        busy: modalBusy,
+        eventTitle: modalEventTitle,
+        onConfirm: (ids) => {
+          void handleConfirmCancel(ids);
+        },
+      })}
     </>
   );
 }
