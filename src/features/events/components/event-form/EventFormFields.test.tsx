@@ -73,9 +73,10 @@ describe('EventFormFields', () => {
     expect(document.querySelector('#ce-region-toggle-row')).not.toBeNull();
   });
 
-  it('各列順序照 A：封面 → 名稱 → 類型 → 地區 → 地點 → 時間 → 開放報名 → 人數 → 年齡 → 委託人 → 注意事項 → 運動', () => {
+  it('各列順序照 A：範本 → 封面 → 名稱 → 類型 → 地區 → 地點 → 時間 → 開放報名 → 人數 → 年齡 → 委託人 → 注意事項 → 運動', () => {
     renderFields();
     const expectedIds = [
+      'ce-template-area',
       'ce-upload-area',
       'ce-title',
       'ce-type',
@@ -115,15 +116,22 @@ describe('EventFormFields', () => {
       regOpenEnabled: false,
       regOpenDate: '',
       regOpenClock: '',
+      // 測試同步更新：照 A _handleEventRegOpenToggle 關閉時相對天／時也歸 0（第 3 段）。
+      regRelDays: '0',
+      regRelHours: '0',
     });
   });
 
   it('? 開出對應 CE_INFO 標題（地點 →「活動地點」），點「了解」關閉', () => {
     renderFields();
-    const btns = document.querySelectorAll<HTMLButtonElement>('.edu-info-btn');
-    // 順序：title, type, region, location, time, regOpen, max, age, delegate, notes, sport
-    expect(btns.length).toBe(11);
-    fireEvent.click(btns[3]!);
+    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(13);
+    // ASSUMPTION: 地點輸入與其說明按鈕維持在同一個 .ce-row，以欄位鍵定位。
+    const locationRow = document.getElementById('ce-location')?.closest('.ce-row');
+    const buttons = locationRow?.querySelectorAll<HTMLButtonElement>('.edu-info-btn');
+    expect(buttons).toHaveLength(1);
+    const locationInfo = locationRow?.querySelector<HTMLButtonElement>('.edu-info-btn');
+    if (!locationInfo) throw new Error('缺少活動地點說明按鈕');
+    fireEvent.click(locationInfo);
     const title = document.querySelector('.edu-info-dialog-title');
     expect(title?.textContent).toBe('活動地點');
     const closeBtn = document.querySelector('.edu-info-dialog .primary-btn') as HTMLButtonElement;

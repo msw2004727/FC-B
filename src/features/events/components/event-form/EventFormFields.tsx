@@ -23,6 +23,7 @@ import type { CoverUploadView, DelegatePickerView, LocationControlView } from '.
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
 import { EventFormAddons, type EventFormAddonsProps } from './EventFormAddons';
+import type { EventTemplatesView } from './use-event-templates';
 import type { MultiDateView } from './use-multi-date';
 
 export interface EventFormFieldsProps {
@@ -36,6 +37,9 @@ export interface EventFormFieldsProps {
   delegates: DelegatePickerView;
   addons?: Omit<EventFormAddonsProps, 'onInfo'>;
   multiDate?: MultiDateView;
+  templates?: EventTemplatesView;
+  /** 照 A event-create-multidate.js：#ce-date 的 focus／change／blur picker session（建立模式才累積多日期）。 */
+  dateInputHandlers?: { onFocus(): void; onChange(value: string): void; onBlur(): void };
 }
 
 /** A `_userTag(name, role)` 的 role class 只認內建角色；未知值退回 user（避免渲染錯誤角色樣式）。 */
@@ -257,7 +261,44 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
 
   return (
     <div class="ce-form ce-form-v2">
-      {/* 第 3 段：從範本建立（ce-template-area） */}
+      <div class="ce-row" id="ce-template-area">
+        <div class="ce-label-row">
+          <button
+            type="button"
+            class="edu-info-btn"
+            title={lt('說明', '說明')}
+            onClick={() => setActiveInfoKey('template')}
+          >?</button>
+          <label>{lt('從範本建立', '從範本建立')}</label>
+        </div>
+        <div
+          id="ce-template-selector"
+          style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center"
+          aria-busy={props.templates?.loading ?? false}
+        >
+          {(props.templates?.templates.length ?? 0) === 0 ? (
+            <span style="font-size:.75rem;color:var(--text-muted)">
+              {lt('尚無範本', '尚無範本')}
+            </span>
+          ) : props.templates?.templates.map((template) => (
+            <span
+              key={template.id}
+              style="display:inline-flex;align-items:center;gap:.2rem;padding:.2rem .5rem;border-radius:var(--radius-full);background:var(--accent-bg);border:1px solid var(--accent);font-size:.72rem;cursor:pointer;color:var(--accent);font-weight:600"
+              onClick={() => props.templates?.onLoad(template.id)}
+            >
+              {template.name}
+              <span
+                style="cursor:pointer;color:var(--text-muted);font-weight:400;margin-left:.1rem"
+                title={lt('刪除範本', '刪除範本')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.templates?.onDelete(template.id);
+                }}
+              >✕</span>
+            </span>
+          ))}
+        </div>
+      </div>
       {/* 封面圖片（A #ce-upload-area） */}
       <div class="ce-row">
         <label>{lt('活動封面圖片')}</label>
@@ -492,7 +533,12 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
               placeholder={lt('選擇日期')}
               value={state.dateVal}
               onInput={(e) => onPatch({ dateVal: e.currentTarget.value })}
-              onChange={(e) => onPatch({ dateVal: e.currentTarget.value })}
+              onChange={(e) => {
+                onPatch({ dateVal: e.currentTarget.value });
+                props.dateInputHandlers?.onChange(e.currentTarget.value);
+              }}
+              onFocus={() => props.dateInputHandlers?.onFocus()}
+              onBlur={() => props.dateInputHandlers?.onBlur()}
             />
           </label>
           <label class="ce-time-field ce-time-field-start">
@@ -569,7 +615,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
                   onPatch({ regOpenEnabled: true });
                 } else {
                   // 照 A _handleEventRegOpenToggle：關閉時清空開放日期與時間。
-                  onPatch({ regOpenEnabled: false, regOpenDate: '', regOpenClock: '' });
+                  onPatch({ regOpenEnabled: false, regOpenDate: '', regOpenClock: '', regRelDays: '0', regRelHours: '0' });
                 }
               }}
             />
@@ -916,7 +962,34 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
         </div>
       </div>
 
-      {/* 第 3 段：儲存為範本（ce-template-name） */}
+      <div class="ce-row" style="border-top:1px solid var(--border);padding-top:.6rem;margin-top:.3rem">
+        <div class="ce-label-row">
+          <button
+            type="button"
+            class="edu-info-btn"
+            title={lt('說明', '說明')}
+            onClick={() => setActiveInfoKey('saveTemplate')}
+          >?</button>
+          <label>{lt('儲存為範本', '儲存為範本')}</label>
+        </div>
+        <div style="display:flex;gap:.3rem;align-items:center">
+          <input
+            type="text"
+            id="ce-template-name"
+            placeholder={lt('範本名稱（例：週六友誼賽）', '範本名稱（例：週六友誼賽）')}
+            maxLength={20}
+            style="flex:1;min-width:0;font-size:.78rem;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)"
+            value={props.templates?.saveName ?? ''}
+            onInput={(event) => props.templates?.onSaveNameChange(event.currentTarget.value)}
+          />
+          <button
+            type="button"
+            class="outline-btn"
+            style="font-size:.72rem;padding:.28rem .5rem;flex-shrink:0"
+            onClick={() => props.templates?.onSave()}
+          >{lt('儲存', '儲存')}</button>
+        </div>
+      </div>
 
       <CeInfoDialog infoKey={activeInfoKey} onClose={handleCloseInfo} />
     </div>

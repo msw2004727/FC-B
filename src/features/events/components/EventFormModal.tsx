@@ -16,6 +16,7 @@ import {
   updateEventBasics,
   type EventForEdit,
   type EventStatus,
+  createEventsBatch,
 } from '../data/event-create';
 import { createEventContextFromViewer, operateContextFromViewer } from '../data/event-create-context';
 import {
@@ -37,12 +38,16 @@ import {
   canToggleEventRegion,
   resolveCreatorName,
   EVENT_TITLE_LIMIT,
+  buildMultiDateForms,
 } from '../data/event-form-model';
 import type { EventDoc } from '../data/types';
 import { EventFormFields } from './event-form/EventFormFields';
 import { useCoverUpload } from './event-form/use-cover-upload';
 import { useDelegatePicker } from './event-form/use-delegate-picker';
 import { useEventLocation } from './event-form/use-event-location';
+import { useMultiDate } from './event-form/use-multi-date';
+import { useEventTemplates } from './event-form/use-event-templates';
+import { generateId } from '@/data/ids';
 import { useTeamOnlyPicker } from './event-form/use-team-only-picker';
 import type { EventFormAddonState } from './event-form/form-types';
 
@@ -150,6 +155,33 @@ export function EventFormModal({
   // 照 A event-location-draft.js：地點的地圖座標（GPS 開關在進階功能）。
   const location = useEventLocation({ locationText: formState.location, gpsEnabled: formState.gpsEnabled });
 
+  // 照 A event-create-multidate.js：建立模式選 2 個以上日期即一次建立多場。
+  const multiDate = useMultiDate({ mode, dateVal: formState.dateVal, onDateValChange: value => patch({ dateVal: value }) });
+  // 多日期每個日期的活動 id 與整批 batchGroupId 在本次開表單期間固定（重送時沿用，冪等）。
+  const batchIdsRef = useRef(new Map<string, string>());
+  const batchGroupIdRef = useRef<string | null>(null);
+
+  // 照 A event-create-template.js：從範本建立／儲存為範本。
+  const templates = useEventTemplates({
+    viewer,
+    mode,
+    onApply: (result) => {
+      // 照 A _loadEventTemplate：無加值權限且範本含加值時先提示。
+      if (result.upsell) toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
+      patch(result.patch);
+      if (result.image) cover.reset({ image: result.image });
+      if (result.locationTemplate) {
+        location.reset({ ...result.locationTemplate, location: result.patch.location ?? latestRef.current.formState.location });
+      }
+    },
+    collect: () => ({
+      state: latestRef.current.formState,
+      image: latestRef.current.cover.value.image || null,
+      location: latestRef.current.location.buildValue(new Date()),
+      canUseAddons,
+    }),
+  });
+
   const teamOnly = useTeamOnlyPicker({
     viewer,
     existing: mode === 'edit' ? existing ?? null : null,
@@ -159,8 +191,8 @@ export function EventFormModal({
     onChange: ids => patch({ teamOnlyTeamIds: ids }),
   });
 
-  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, onSaved });
-  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, onSaved };
+  const latestRef = useRef({ open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, onSaved });
+  latestRef.current = { open, mode, existing, viewer, formState, cover, delegates, teamOnly, location, multiDate, onSaved };
 
   function guardAddon(): boolean {
     // 照 A _guardActivityAddonToggle：handler 與畫面使用同一個權限 helper。
@@ -267,6 +299,9 @@ export function EventFormModal({
       location.reset(null);
       delegates.reset([]);
       teamOnly.reset([], []);
+      multiDate.reset();
+      batchIdsRef.current = new Map();
+      batchGroupIdRef.current = null;
       const ctx = createEventContextFromViewer(viewer, now);
       if (ctx) {
         try {
@@ -362,8 +397,12 @@ export function EventFormModal({
           ? (current.formState.eventId ?? current.existing?.id ?? 'edit')
           : null,
       };
+      const submitDates = current.mode === 'create' && current.multiDate.view.isMultiDate
+        ? current.multiDate.dates
+        : undefined;
       const validation = validateEventForm(stateForValidation, now, {
         canUseAddons: submitCanUseAddons,
+        ...(submitDates ? { dates: submitDates } : {}),
       });
       if (!validation.ok) {
         toast.show({
@@ -479,6 +518,29 @@ export function EventFormModal({
           eventId: existingForEdit.id,
           title: payloadForm.title,
           count: 1,
+        });
+      } else if (submitDates) {
+        // 照 A handleCreateEvent 多日期分支＋addEventsAtomic：一次 transaction 建立多場。
+        const ids = submitDates.map((date) => {
+          const known = batchIdsRef.current.get(date);
+          if (known) return known;
+          const id = newEventId(ctx);
+          batchIdsRef.current.set(date, id);
+          return id;
+        });
+        batchGroupIdRef.current ??= generateId('batch_');
+        const forms = buildMultiDateForms(payloadForm, submitDates, stateForSubmit);
+        const result = await createEventsBatch(forms, ctx, ids, batchGroupIdRef.current);
+        if (!isCurrent()) return;
+        if (result.addonsStripped) {
+          toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
+        }
+        // 照 A：成功提示「已建立 N 場「X」活動！」、分享詢問用第一場。
+        current.onSaved({
+          mode: 'create',
+          eventId: result.eventIds[0] ?? ids[0] ?? '',
+          title: payloadForm.title,
+          count: result.eventIds.length,
         });
       } else {
         let targetEventId = generatedEventId;
@@ -615,6 +677,9 @@ export function EventFormModal({
               teamOnlyLabel: teamOnly.label,
             }}
             location={location.view}
+            multiDate={multiDate.view}
+            dateInputHandlers={multiDate.dateInputHandlers}
+            templates={templates.view}
           />
         </div>
         <div class="modal-actions">
