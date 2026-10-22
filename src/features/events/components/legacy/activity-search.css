@@ -1,0 +1,43 @@
+/* U-027：關鍵字搜尋清除鈕（B 自訂，僅限 .legacy-ui 內）。 */
+
+.legacy-ui .filter-bar .filter-search-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.legacy-ui .filter-bar .filter-search-wrap input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 3rem;
+}
+
+.legacy-ui .filter-bar .activity-filter-clear-btn {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.legacy-ui .filter-bar .activity-filter-clear-btn:hover {
+  color: var(--text-secondary);
+}
+
+.legacy-ui .filter-bar .activity-filter-clear-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}

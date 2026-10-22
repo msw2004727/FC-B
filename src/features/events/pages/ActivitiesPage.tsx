@@ -26,7 +26,10 @@ import type { RegistrationDoc } from '../data/types';
 import { useEvents } from '../data/use-events';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { getVisibleEvents } from '../data/visibility';
+import { useDebouncedValue } from '../data/use-debounced-value';
+import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
+import '../components/legacy/activity-search.css';
 
 interface ViewerRegistrationsState {
   uid: string | null;
@@ -180,7 +183,11 @@ export default function ActivitiesPage(): JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<string>(() => initialUrlFilters.type);
-  const [filterKeyword, setFilterKeyword] = useState('');
+  // U-027：輸入框即時顯示，實際篩選延遲 150ms。
+  const [keywordInput, setKeywordInput] = useState('');
+  const debouncedKeyword = useDebouncedValue(keywordInput, 150);
+  const filterKeyword = debouncedKeyword.value;
+  const keywordInputRef = useRef<HTMLInputElement>(null);
   const [regionTab, setRegionTab] = useState<string>(() => initialUrlFilters.region);
   const [pendingEventId, setPendingEventId] = useState<string | null>(null);
   const [viewerRegistrations, setViewerRegistrations] = useState<ViewerRegistrationsState>({
@@ -206,6 +213,10 @@ export default function ActivitiesPage(): JSX.Element {
   const effectiveSport = urlFilters.hasSportParam
     ? urlFilters.sport
     : (globalSport || getActiveSport() || 'all');
+
+  const petalsCanvasRef = useRef<HTMLCanvasElement>(null);
+  // M-074：切到女生專屬頁籤時在既有 canvas 上飄花瓣（照 A `_startActivityFemalePetals`）。
+  useFemalePetals(petalsCanvasRef, activeTab === 'female');
 
   // 當外部改變 location.url（例如首次進入帶 ?sport=、?region=、?type=、?tab=）時同步進狀態與全站運動
   useEffect(() => {
@@ -320,11 +331,20 @@ export default function ActivitiesPage(): JSX.Element {
     location.route(href);
   }
 
+  // U-027：點清除鈕清空關鍵字並立即套用，焦點回到輸入框。
+  function handleClearKeyword(): void {
+    setKeywordInput('');
+    debouncedKeyword.setImmediate('');
+    keywordInputRef.current?.focus();
+  }
+
   // U-026：空狀態一鍵清除地區、運動、類型、關鍵字
   function handleClearAllFilters(): void {
     setRegionTab('全部');
     setFilterType('');
-    setFilterKeyword('');
+    // U-027：清除輸入框與延遲中的計時器。
+    setKeywordInput('');
+    debouncedKeyword.setImmediate('');
     setGlobalSport('all');
     const next = new URL(location.url, 'https://toosterx.invalid');
     next.searchParams.delete('region');
@@ -392,7 +412,12 @@ export default function ActivitiesPage(): JSX.Element {
         class={`page active${activeTab === 'female' ? ' activity-female-theme' : ''}`}
         id="page-activities"
       >
-        <canvas id="activity-female-petals" class="activity-female-petals" aria-hidden="true" />
+        <canvas
+          ref={petalsCanvasRef}
+          id="activity-female-petals"
+          class="activity-female-petals"
+          aria-hidden="true"
+        />
         <div class="page-header activity-page-header">
           <button
             class="back-btn"
@@ -532,15 +557,31 @@ export default function ActivitiesPage(): JSX.Element {
             <option value="watch" data-i18n="觀賽">{lt('觀賽', '觀賽')}</option>
             <option value="external" data-i18n="外部">{lt('外部', '外部')}</option>
           </select>
-          <input
-            type="text"
-            id="activity-filter-keyword"
-            value={filterKeyword}
-            onInput={(e) => setFilterKeyword(e.currentTarget.value)}
-            placeholder={lt('模糊搜尋名稱 / 地點 / 主辦 / 日期...', '模糊搜尋名稱 / 地點 / 主辦 / 日期...')}
-            autocomplete="off"
-            data-i18n-placeholder="模糊搜尋名稱 / 地點 / 主辦 / 日期..."
-          />
+          <div class="filter-search-wrap">
+            <input
+              type="text"
+              id="activity-filter-keyword"
+              ref={keywordInputRef}
+              value={keywordInput}
+              onInput={(e) => setKeywordInput(e.currentTarget.value)}
+              placeholder={lt('模糊搜尋名稱 / 地點 / 主辦 / 日期...', '模糊搜尋名稱 / 地點 / 主辦 / 日期...')}
+              autocomplete="off"
+              data-i18n-placeholder="模糊搜尋名稱 / 地點 / 主辦 / 日期..."
+            />
+            {keywordInput.length > 0 && (
+              <button
+                type="button"
+                class="activity-filter-clear-btn"
+                aria-label={lt('清除', '清除')}
+                onClick={handleClearKeyword}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12" />
+                  <path d="M18 6L6 18" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {showManageEntry && (

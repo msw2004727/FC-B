@@ -302,3 +302,62 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
   });
 });
+
+// 本單新增：U-027 搜尋延遲與清除（不改既有案例）。
+describe('ActivitiesPage (U-027 搜尋延遲與清除)', () => {
+  it('delays keyword filtering by 150ms and keeps the input controlled', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'pickleball' } });
+    expect(input.value).toBe('pickleball');
+    // 尚未 150ms，列表不變
+    expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeNull();
+    }, { timeout: 400 });
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+  });
+
+  it('shows a clear button after typing, and clicking it clears immediately and refocuses', async () => {
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    // 實際使用時搜尋列是展開的；收合（hidden）時瀏覽器不允許 focus。
+    fireEvent.click(container.querySelector('#filter-toggle') as HTMLElement);
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'pickleball' } });
+    const clearBtn = await waitFor(() => {
+      const btn = container.querySelector('.activity-filter-clear-btn') as HTMLElement;
+      if (!btn) throw new Error('clear button not ready');
+      return btn;
+    });
+    fireEvent.click(clearBtn);
+    expect(input.value).toBe('');
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('clears keyword and pending debounce when clicking 清除篩選', async () => {
+    history.replaceState(null, '', '/activities?sport=dodgeball');
+    const { container } = mount();
+    await screen.findByText('請確認「右上角」活動類別，當前沒有活動');
+    const input = container.querySelector('#activity-filter-keyword') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'football' } });
+    fireEvent.click(screen.getByText('清除篩選'));
+    expect(input.value).toBe('');
+    await waitFor(() => {
+      expect(container.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+      expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+    });
+    // 超過延遲時間，確認舊關鍵字沒有被套用
+    await new Promise((r) => setTimeout(r, 200));
+    expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
+  });
+});
