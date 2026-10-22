@@ -8,6 +8,9 @@ import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
+import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
+import { settleAttendance } from '../data/attendance-settle';
+import { resolveOperator } from '../data/event-lifecycle';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
 import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
@@ -450,16 +453,71 @@ function EventDetailSession({
   }
 
   async function handleCloseRosterEdit(): Promise<void> {
-    if (rosterSubmitting) return;
+    if (rosterSubmitting || !alive.current) return;
     setRosterSubmitting(true);
+
+    if (!CALLABLES_DEPLOYED) {
+      try {
+        await instantSave.flushInstantSaves();
+      } finally {
+        instantSave.resetInstantSave();
+        if (alive.current) {
+          setRosterSubmitting(false);
+          setRosterEditing(false);
+        }
+      }
+      return;
+    }
+
+    const curEvent = snapshot?.event;
+    if (
+      !snapshot
+      || !curEvent
+      || canOperateEventSite(operateContextFromViewer(currentViewer.current), curEvent) !== true
+    ) {
+      show('events.roster.noPermission');
+      if (alive.current) setRosterSubmitting(false);
+      return;
+    }
+
     try {
       await instantSave.flushInstantSaves();
-    } finally {
-      instantSave.resetInstantSave();
-      if (alive.current) {
-        setRosterSubmitting(false);
-        setRosterEditing(false);
+      if (!alive.current) return;
+
+      const people = buildConfirmedRoster(curEvent, snapshot.registrations).people;
+      const result = await settleAttendance({
+        event: { id: curEvent.id || eventId, title: curEvent.title, date: curEvent.date },
+        people,
+        getSelection: instantSave.getRowSelection,
+        operatorUid: currentViewer.current.uid ?? null,
+        operatorName: resolveOperator(currentViewer.current),
+      });
+      if (!alive.current) return;
+
+      if (result.ok === false) {
+        show('events.roster.settleFailed');
+        return;
       }
+
+      show('events.roster.settleSuccess');
+      if (result.failed.length > 0) {
+        toast.show({
+          message: t('events.roster.expGrantFailed', { count: result.failed.length }),
+        });
+      }
+
+      try {
+        await reloadAttendanceOnly();
+      } catch {
+        // 結算已成功；重讀失敗不影響成功提示與退出編輯。
+      }
+      if (!alive.current) return;
+      instantSave.resetInstantSave();
+      setRosterEditing(false);
+    } catch {
+      show('events.roster.settleFailed');
+    } finally {
+      if (alive.current) setRosterSubmitting(false);
     }
   }
 

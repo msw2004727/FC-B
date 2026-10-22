@@ -209,6 +209,9 @@
     "saveFailed": "Failed to save {name}, reverted",
     "noPermission": "Insufficient permissions",
     "settleInLegacy": "Please click Finish in the legacy version to settle EXP and no-shows",
-    "goLegacy": "Open Legacy"
+    "goLegacy": "Open Legacy",
+    "settleSuccess": "Saved successfully",
+    "settleFailed": "Save failed. Your selections have been kept.\nPlease click Finish again to retry.",
+    "expGrantFailed": "EXP was not granted to {count} participants. Please contact an administrator."
   }
 }

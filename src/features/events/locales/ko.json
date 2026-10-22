@@ -206,6 +206,9 @@
     "saveFailed": "{name} 저장 실패, 복원됨",
     "noPermission": "권한이 없습니다",
     "settleInLegacy": "경험치 및 노쇼 정산은 구버전에서 완료를 눌러주세요",
-    "goLegacy": "구버전으로 이동"
+    "goLegacy": "구버전으로 이동",
+    "settleSuccess": "저장 완료",
+    "settleFailed": "저장에 실패했습니다. 선택 상태는 유지됩니다.\n「완료」를 다시 눌러 재시도해 주세요.",
+    "expGrantFailed": "{count}명에게 경험치가 지급되지 않았습니다. 관리자에게 문의해 주세요."
   }
 }

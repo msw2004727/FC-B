@@ -208,6 +208,9 @@
     "saveFailed": "Lưu {name} thất bại, đã hoàn tác",
     "noPermission": "Không đủ quyền",
     "settleInLegacy": "Vui lòng nhấn Hoàn tất ở bản cũ để kết toán EXP và vắng mặt",
-    "goLegacy": "Mở bản cũ"
+    "goLegacy": "Mở bản cũ",
+    "settleSuccess": "Đã lưu thành công",
+    "settleFailed": "Lưu thất bại. Các lựa chọn đã được giữ lại.\nVui lòng nhấn Hoàn tất lần nữa để thử lại.",
+    "expGrantFailed": "Có {count} người chưa được cấp EXP. Vui lòng liên hệ quản trị viên."
   }
 }

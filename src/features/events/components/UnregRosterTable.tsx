@@ -10,7 +10,7 @@
  * - 資料來源：該活動 `attendanceRecords` 中 `type === 'unreg'` 且未刪除（排除 `removed`／`cancelled`）的紀錄；同一 `uid` 只列一次，依名字排序。
  * - 權限：照 A `canManage = canOperateEventSite(e) === true`。無權限時不顯示「編輯」按鈕，僅唯讀顯示表格。
  * - 「踢掉」：`appConfirm('確定要將 {名字} 從未報名單中移除嗎？')` → 以 `removeAttendance` 軟刪該用戶於此活動的所有有效出席紀錄（unreg / checkin / checkout / note），寫 `writeOpLog('unreg_removed', '移除未報名掃碼', '從「{活動}」移除 {名字}')`，toast「已將 {名字} 從未報名單中移除」。
- * - 「編輯／關閉編輯」：編輯模式開放勾選簽到／簽退與備註（即時存檔規則同正取表）；因伺服器結算 `confirmEventAttendance` 尚未部署（`CALLABLES_DEPLOYED === false`），沿用正取表「關閉編輯」與「請在舊版按完成以結算經驗值與放鴿子」提示。
+ * - 「編輯／完成」：編輯模式開放勾選簽到／簽退與備註；旗標 true 時「完成」只 flush 即時存檔並提示「儲存完成」，不呼叫結算或發經驗值；false 回退「關閉編輯」與舊版結算提示。
  * - R-ID-002：只以 `uid` 比對，不移植名字比對分支。
  */
 
@@ -508,6 +508,9 @@ export function UnregRosterTable({
     setSubmitting(true);
     try {
       await flushInstantSaves();
+      if (CALLABLES_DEPLOYED && aliveRef.current) {
+        latestRef.current.onToast?.('儲存完成');
+      }
     } finally {
       resetInstantSave();
       if (aliveRef.current) {
@@ -577,7 +580,7 @@ export function UnregRosterTable({
             handleCloseEdit().catch(() => {});
           }}
         >
-          {isSubmitting ? '儲存中...' : '關閉編輯'}
+          {isSubmitting ? '儲存中...' : CALLABLES_DEPLOYED ? '完成' : '關閉編輯'}
         </button>
       );
     }

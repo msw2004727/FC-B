@@ -7,7 +7,7 @@
  * - 降候補待新 Callable（「候」欄表頭與欄位都不輸出）
  * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
- * - 伺服器結算 `CALLABLES_DEPLOYED === true` 的「完成」路徑（本批 CALLABLES_DEPLOYED 為 false，只顯示「關閉編輯」與前往舊版提示）
+ * 已接線：`CALLABLES_DEPLOYED === true` 顯示「完成」，由父層執行伺服器結算；false 回退「關閉編輯」與舊版提示。
  * - 任何以名字比對身分的分支（R-ID-002 刻意不移植）
  */
 
@@ -104,8 +104,8 @@ export function AttendanceRosterTable({
   function renderManageButton(): JSX.Element | null {
     if (!showManage) return null;
     if (tableEditing) {
-      // CALLABLES_DEPLOYED === true 的伺服器結算路徑於下一批實作；
-      // 本批旗標為 false，按鈕文字固定為「關閉編輯」（送出中顯示「儲存中...」），按鈕外觀照 A 綠底樣式。
+      // 旗標 true 顯示「完成」，由 onCloseEdit 執行伺服器結算；false 回退「關閉編輯」。
+      // 送出中顯示「儲存中...」，按鈕外觀照 A 綠底樣式。
       const finishStyle = `font-size:.75rem;padding:.25rem .6rem;background:#2e7d32;color:#fff;border:none;border-radius:var(--radius-sm);${
         isSubmitting ? 'cursor:not-allowed;opacity:.72' : 'cursor:pointer'
       }`;
@@ -116,7 +116,7 @@ export function AttendanceRosterTable({
           disabled={isSubmitting}
           onClick={() => onCloseEdit?.()}
         >
-          {isSubmitting ? '儲存中...' : '關閉編輯'}
+          {isSubmitting ? '儲存中...' : CALLABLES_DEPLOYED ? '完成' : '關閉編輯'}
         </button>
       );
     }

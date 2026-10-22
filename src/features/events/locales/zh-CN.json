@@ -198,6 +198,9 @@
     "saveFailed": "{name} 保存失败，已还原",
     "noPermission": "权限不足",
     "settleInLegacy": "请在旧版按完成以结算经验值与放鸽子",
-    "goLegacy": "前往旧版"
+    "goLegacy": "前往旧版",
+    "settleSuccess": "保存完成",
+    "settleFailed": "保存失败，勾选已保留\n请再按一次「完成」重试",
+    "expGrantFailed": "有 {count} 人经验值未发放，请联系管理员"
   }
 }

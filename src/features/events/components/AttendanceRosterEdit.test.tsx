@@ -184,14 +184,13 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     expect(screen.getByRole('button', { name: '管理名單' })).toBeTruthy();
   });
 
-  it('編輯模式：顯示「關閉編輯」（不顯示「完成」）與舊版結算提示，且僅代報／保留席位／模糊列不可勾選', () => {
+  // 測試同步更新：照 A（C-001）
+  it('編輯模式：顯示「完成」且不顯示舊版結算提示，僅代報／保留席位／模糊列不可勾選', () => {
     render(<Harness />);
-    expect(screen.getByRole('button', { name: '關閉編輯' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
-    expect(screen.getByText('請在舊版按完成以結算經驗值與放鴿子')).toBeTruthy();
-    const link = screen.getByRole('link', { name: '前往舊版' });
-    expect(link.getAttribute('href')).toBe('https://toosterx.com/');
-    expect(link.getAttribute('target')).toBe('_blank');
+    expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '關閉編輯' })).toBeNull();
+    expect(screen.queryByText('請在舊版按完成以結算經驗值與放鴿子')).toBeNull();
+    expect(screen.queryByRole('link', { name: '前往舊版' })).toBeNull();
 
     // 一般列與同行者列有 checkbox
     expect(document.getElementById('manual-checkin-u_1')).toBeTruthy();
@@ -296,7 +295,8 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(2);
   });
 
-  it('按下「關閉編輯」會先 flush debounce 中的備註再關閉編輯模式', async () => {
+  // 測試同步更新：照 A（C-001）
+  it('按下「完成」會先 flush debounce 中的備註再關閉編輯模式', async () => {
     render(<Harness />);
     const noteInput = document.getElementById('manual-note-u_1') as HTMLInputElement;
 
@@ -306,7 +306,7 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     // 尚未滿 1000ms，還沒寫入
     expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
 
-    const closeBtn = screen.getByRole('button', { name: '關閉編輯' });
+    const closeBtn = screen.getByRole('button', { name: '完成' });
     await act(async () => {
       fireEvent.click(closeBtn);
       await vi.advanceTimersByTimeAsync(0);

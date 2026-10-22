@@ -208,6 +208,9 @@
     "saveFailed": "{name} の保存に失敗したため元に戻しました",
     "noPermission": "権限がありません",
     "settleInLegacy": "経験値とドタキャンの精算は旧版で「完了」を押してください",
-    "goLegacy": "旧版へ移動"
+    "goLegacy": "旧版へ移動",
+    "settleSuccess": "保存しました",
+    "settleFailed": "保存に失敗しました。チェック状態は保持されています。\nもう一度「完了」を押して再試行してください。",
+    "expGrantFailed": "{count} 人に経験値が付与されませんでした。管理者にお問い合わせください。"
   }
 }

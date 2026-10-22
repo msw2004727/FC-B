@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { LoadedEventDetail } from '../data/event-detail';
 import type { DetailRegistration } from '../data/detail-model';
+import type { SettleAttendanceInput, SettleAttendanceResult } from '../data/attendance-settle';
 
 const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
@@ -16,6 +17,22 @@ const mocks = vi.hoisted(() => ({
   viewer: vi.fn(),
   companions: vi.fn(),
   toastShow: vi.fn(),
+  settleAttendance: vi.fn<(input: SettleAttendanceInput) => Promise<SettleAttendanceResult>>(),
+  writeAttendanceOps: vi.fn(),
+}));
+
+vi.mock('@/features/events/data/attendance-settle', () => ({
+  settleAttendance: mocks.settleAttendance,
+}));
+
+vi.mock('@/features/events/data/attendance-edit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../data/attendance-edit')>()),
+  writeAttendanceOps: mocks.writeAttendanceOps,
+}));
+
+vi.mock('@/data/user-roles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/data/user-roles')>()),
+  useUserRoles: () => ({}),
 }));
 
 const ZH_DICT: Record<string, string> = {
@@ -64,6 +81,10 @@ const ZH_DICT: Record<string, string> = {
   'events.roster.note': '備註',
   'events.roster.empty': '尚無正取名單',
   'events.roster.manage': '管理名單',
+  'events.roster.noPermission': '權限不足',
+  'events.roster.settleSuccess': '儲存完成',
+  'events.roster.settleFailed': '儲存失敗，勾選已保留\n請再按一次「完成」重試',
+  'events.roster.expGrantFailed': '有 {count} 人經驗值未發放，請聯繫管理員',
   'events.signup.error.profileIncomplete': '請先完成個人資料',
 };
 
@@ -809,5 +830,197 @@ describe('EventDetailPage', () => {
     await screen.findByRole('heading', { level: 2 });
     resolveOld({ ...detail, event: { ...detail.event, id: 'old', title: '舊活動' } });
     await waitFor(() => expect(screen.queryByText('舊活動')).toBeNull());
+  });
+});
+
+describe('名單結算「完成」（C-001）', () => {
+  function successResult(
+    overrides: Partial<Extract<SettleAttendanceResult, { ok: true }>> = {},
+  ): Extract<SettleAttendanceResult, { ok: true }> {
+    return {
+      ok: true,
+      added: 0,
+      removed: 0,
+      targets: [],
+      granted: [],
+      skippedAlready: [],
+      skippedZeroAmount: false,
+      failed: [],
+      ...overrides,
+    };
+  }
+
+  async function enterRosterEdit(): Promise<void> {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單 / 出席紀錄' }));
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
+    await screen.findByRole('button', { name: '完成' });
+  }
+
+  function checkinBox(): HTMLInputElement {
+    const box = screen.getByRole('checkbox', { name: '小明 簽到' });
+    if (!(box instanceof HTMLInputElement)) {
+      throw new Error('簽到 checkbox 不存在');
+    }
+    return box;
+  }
+
+  beforeEach(() => {
+    mocks.viewer.mockReturnValue({
+      ...viewer,
+      uid: 'host1',
+      capabilities: ['user.activity.site_operate'],
+    });
+    mocks.registrations.mockResolvedValue([self]);
+    mocks.writeAttendanceOps.mockResolvedValue({ addedDocIds: ['att1'], removedDocIds: [] });
+    mocks.settleAttendance.mockResolvedValue(successResult());
+  });
+
+  it('成功以公開活動 id、名單與登入者結算，提示成功並退出編輯', async () => {
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
+    const input = mocks.settleAttendance.mock.calls[0]?.[0];
+    expect(input?.event.id).toBe('ce_123_abc');
+    expect(input?.people.length).toBeGreaterThan(0);
+    expect(input?.operatorUid).toBe('host1');
+    expect(input?.operatorName).toBe('小明');
+    expect(input?.getSelection).toEqual(expect.any(Function));
+    expect(mocks.toastShow).not.toHaveBeenCalled();
+  });
+
+  it('結算失敗保留編輯與已勾選狀態，再按完成可重試成功', async () => {
+    let finishWrite!: () => void;
+    mocks.writeAttendanceOps.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    }));
+    mocks.settleAttendance
+      .mockImplementationOnce(async (input) => {
+        const person = input.people.find((entry) => entry.uid === 'u1');
+        expect(person).toBeDefined();
+        if (!person) throw new Error('測試名單缺少 u1');
+        expect(input.getSelection(person)?.checkin).toBe(true);
+        return { ok: false, stage: 'confirm', error: 'x' };
+      })
+      .mockResolvedValueOnce(successResult());
+
+    await enterRosterEdit();
+    fireEvent.click(checkinBox());
+    expect(checkinBox().checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    });
+    expect(mocks.writeAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(mocks.settleAttendance).not.toHaveBeenCalled();
+
+    mocks.attendance.mockResolvedValue([
+      { _docId: 'att1', uid: 'u1', userName: '小明', type: 'checkin', status: 'active' },
+    ]);
+    await act(async () => {
+      finishWrite();
+    });
+
+    await screen.findByText('儲存失敗，勾選已保留 請再按一次「完成」重試');
+    expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
+    expect(checkinBox().checked).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.settleAttendance).toHaveBeenCalledTimes(2);
+  });
+
+  it('部分發放失敗另外提示未發放人數一次', async () => {
+    mocks.settleAttendance.mockResolvedValue(successResult({
+      targets: ['u1', 'u2'],
+      failed: [{ uid: 'u1', error: 'x' }, { uid: 'u2', error: 'y' }],
+    }));
+
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.toastShow).toHaveBeenCalledExactlyOnceWith({
+      message: '有 2 人經驗值未發放，請聯繫管理員',
+    });
+  });
+
+  it('只有 skippedAlready 時不提示經驗值未發放', async () => {
+    mocks.settleAttendance.mockResolvedValue(successResult({
+      targets: ['u1'],
+      skippedAlready: [{ uid: 'u1', source: 'expLogs' }],
+    }));
+
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.toastShow).not.toHaveBeenCalled();
+  });
+
+  it('skippedZeroAmount 時不提示經驗值未發放', async () => {
+    mocks.settleAttendance.mockResolvedValue(successResult({
+      targets: ['u1'],
+      skippedZeroAmount: true,
+      amountSkipReason: 'zero',
+    }));
+
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.toastShow).not.toHaveBeenCalled();
+  });
+
+  it('送出中顯示儲存中並 disabled，再點不會重複結算', async () => {
+    let finishSettle!: (result: SettleAttendanceResult) => void;
+    mocks.settleAttendance.mockReturnValue(new Promise<SettleAttendanceResult>((resolve) => {
+      finishSettle = resolve;
+    }));
+
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    await waitFor(() => expect(mocks.settleAttendance).toHaveBeenCalledTimes(1));
+
+    const button = screen.getByRole('button', { name: '儲存中...' });
+    expect(button).toHaveProperty('disabled', true);
+    fireEvent.click(button);
+    expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishSettle(successResult());
+    });
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+  });
+
+  it('settleAttendance 意外 throw 時保留編輯並解除送出狀態', async () => {
+    mocks.settleAttendance.mockRejectedValueOnce(new Error('unexpected'));
+
+    await enterRosterEdit();
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存失敗，勾選已保留 請再按一次「完成」重試');
+    expect(screen.getByRole('button', { name: '完成' })).toHaveProperty('disabled', false);
+    expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
+    expect(mocks.toastShow).not.toHaveBeenCalled();
+  });
+
+  it('結算成功後重讀失敗仍保留成功提示並退出編輯', async () => {
+    await enterRosterEdit();
+    mocks.attendance.mockRejectedValueOnce(new Error('reload failed'));
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(screen.queryByText('儲存失敗，勾選已保留 請再按一次「完成」重試')).toBeNull();
+    expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
   });
 });

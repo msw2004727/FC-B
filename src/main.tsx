@@ -37,6 +37,14 @@ async function boot(): Promise<void> {
     return;
   }
 
+  if (import.meta.env.VITE_CALLABLE_MODE === 'mock') {
+    try {
+      await import('./dev/callable-mocks');
+    } catch (err) {
+      console.error('[boot] Callable mock 載入失敗', err);
+    }
+  }
+
   try {
     registerFeatures(ALL_FEATURES);
   } catch (err) {

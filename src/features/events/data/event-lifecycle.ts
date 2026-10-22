@@ -111,7 +111,7 @@ export function isEventStartPassed(event: EventDoc, now: Date = new Date()): boo
 
 // ── operator（A `api-service.js#_writeOpLog`：`curUser?.displayName || ROLES[role]?.label || '系統'`） ──
 
-function resolveOperator(viewer: ViewerView): string {
+export function resolveOperator(viewer: ViewerView): string {
   return viewer.displayName || roleLabelOf(viewer.role, viewer.permissionSources?.customRoles ?? []) || '系統';
 }
 

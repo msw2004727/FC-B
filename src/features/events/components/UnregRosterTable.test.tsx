@@ -6,11 +6,17 @@ const {
   mockWriteAttendanceOps,
   mockWriteOpLog,
   mockAppConfirm,
+  mockSettleAttendance,
 } = vi.hoisted(() => ({
   mockRemoveAttendance: vi.fn(),
   mockWriteAttendanceOps: vi.fn(),
   mockWriteOpLog: vi.fn(),
   mockAppConfirm: vi.fn(),
+  mockSettleAttendance: vi.fn(),
+}));
+
+vi.mock('../data/attendance-settle', () => ({
+  settleAttendance: mockSettleAttendance,
 }));
 
 vi.mock('@/features/checkin/data/attendance', async () => {
@@ -155,7 +161,8 @@ describe('UnregRosterTable', () => {
     expect(screen.getByRole('button', { name: '編輯' })).toBeTruthy();
   });
 
-  it('enters edit mode on clicking 編輯, shows 踢掉 button, legacy settle notice, and instant-saves checkout', async () => {
+  // 測試同步更新：照 A（C-001）
+  it('enters edit mode on clicking 編輯, shows 完成 and 踢掉 buttons, and instant-saves checkout', async () => {
     render(
       <UnregRosterTable
         eventId="ce_1"
@@ -168,10 +175,11 @@ describe('UnregRosterTable', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '編輯' }));
-    expect(screen.getByRole('button', { name: '關閉編輯' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '關閉編輯' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: '踢' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '踢掉' })).toBeTruthy();
-    expect(screen.getByText('請在舊版按完成以結算經驗值與放鴿子')).toBeTruthy();
+    expect(screen.queryByText('請在舊版按完成以結算經驗值與放鴿子')).toBeNull();
 
     const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
     expect(checkoutBox.checked).toBe(false);
@@ -228,5 +236,49 @@ describe('UnregRosterTable', () => {
     });
     await vi.waitFor(() => expect(onReload).toHaveBeenCalledTimes(1));
     expect(onToast).toHaveBeenCalledWith('已將 陳路人 從未報名單中移除');
+  });
+
+  it('按「完成」等待 flush 後提示儲存完成並退出編輯，不呼叫正取名單結算', async () => {
+    const onToast = vi.fn();
+    let finishWrite!: () => void;
+    mockWriteAttendanceOps.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    }));
+
+    render(
+      <UnregRosterTable
+        eventId="ce_1"
+        eventDocId="doc_1"
+        eventTitle="週五夜球"
+        attendanceRecords={sampleUnregRecords}
+        canManage={true}
+        operatorUid="u_admin"
+        onToast={onToast}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    fireEvent.input(screen.getByRole('textbox', { name: '陳路人 備註' }), {
+      target: { value: '準備收工' },
+    });
+    expect(mockWriteAttendanceOps).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onToast).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '儲存中...' })).toBeTruthy();
+    expect(mockSettleAttendance).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishWrite();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(onToast).toHaveBeenCalledExactlyOnceWith('儲存完成');
+    expect(screen.getByRole('button', { name: '編輯' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
+    expect(mockSettleAttendance).not.toHaveBeenCalled();
   });
 });

@@ -266,6 +266,9 @@
     "saveFailed": "{name} 儲存失敗，已還原",
     "noPermission": "權限不足",
     "settleInLegacy": "請在舊版按完成以結算經驗值與放鴿子",
-    "goLegacy": "前往舊版"
+    "goLegacy": "前往舊版",
+    "settleSuccess": "儲存完成",
+    "settleFailed": "儲存失敗，勾選已保留\n請再按一次「完成」重試",
+    "expGrantFailed": "有 {count} 人經驗值未發放，請聯繫管理員"
   }
 }
