@@ -17,7 +17,7 @@ import {
   type MessageActionHandler,
   type MessageActionViewer,
 } from '@/core/action-registry';
-import { approveTeamJoin, rejectTeamJoin } from '@/features/clubs/data/membership';
+import { approveTeamJoin, ignoreTeamJoin, rejectTeamJoin } from '@/features/clubs/data/membership';
 import { loadTeam } from '@/features/clubs/data/teams-repo';
 import type { TeamDoc } from '@/features/clubs/data/types';
 
@@ -128,6 +128,23 @@ const handler: MessageActionHandler = {
         await rejectTeamJoin({
           team,
           applicantUid,
+          message,
+          reviewer: {
+            uid: String(viewer.uid ?? ''),
+            displayName: viewer.displayName,
+          },
+        });
+      },
+    },
+    {
+      // 照 A `handleTeamJoinAction` 的 `ignore` 分支：
+      // 只同步審核狀態（ignoreTeamJoin 內部），不通知、不寫 audit；成功 toast 由 InboxPage 依 key 顯示。
+      key: 'ignore',
+      labelKey: 'inbox.action.ignore',
+      async run(message, viewer): Promise<void> {
+        const team = await loadTeamForMessage(message);
+        await ignoreTeamJoin({
+          team,
           message,
           reviewer: {
             uid: String(viewer.uid ?? ''),

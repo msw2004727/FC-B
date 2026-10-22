@@ -677,6 +677,60 @@ export async function rejectTeamJoin({
   );
 }
 
+/* ── 非同步：忽略（M-137）───────────────────────── */
+
+// 照 A `handleTeamJoinAction` 的 `ignore` 分支：
+//   只做同步審核狀態（syncGroupActionStatus）＋ opLog（best-effort）；
+//   不通知申請人、不通知其他幹部、不寫 audit、不改 users／teams。
+export interface IgnoreTeamJoinInput {
+  team: TeamDoc;
+  message: InboxMessageForReview;
+  reviewer: TeamMember;
+}
+
+export async function ignoreTeamJoin({
+  team,
+  message,
+  reviewer,
+}: IgnoreTeamJoinInput): Promise<void> {
+  const teamId = trimUid(team?.id);
+  const groupId = trimName(message?.meta?.groupId);
+  const reviewerUid = trimUid(reviewer?.uid);
+  const reviewerName = getReviewerName(reviewer ?? {});
+  const teamName = trimName(message?.meta?.teamName) || trimName(team?.name);
+  const applicantName = trimName(message?.meta?.applicantName) || '未知';
+
+  if (!teamId) throw new Error('[membership] ignoreTeamJoin: team.id is required');
+  // 照 A：沒有 groupId 就無法同步審核狀態（同 rejectTeamJoin 的理由），直接拒絕操作。
+  if (!groupId) {
+    throw new Error('[membership] ignoreTeamJoin: message.meta.groupId is required');
+  }
+
+  // 1. 主要寫入：把同 groupId 的 pending 訊息改為 ignored（Callable 白名單含 'ignored'）；失敗往外拋。
+  await callFn('syncGroupActionStatus', {
+    groupId,
+    newStatus: 'ignored',
+    reviewerName,
+  });
+
+  // 2. opLog（best-effort）。照 A `_writeOpLog('team_approve', '俱樂部審批', \`${reviewerName} 忽略「${applicantName}」加入「${teamName}」的申請\`)`。
+  // 以動態 import 呼叫 writeOpLog，避免 firebase/firestore 進入首屏靜態依賴（效能底線）。
+  await runBestEffort(
+    async () => {
+      const { writeOpLog } = await import('@/data/op-log');
+      await writeOpLog({
+        type: 'team_approve',
+        typeName: '俱樂部審批',
+        content: `${reviewerName} 忽略「${applicantName}」加入「${teamName}」的申請`,
+        actorUid: reviewerUid || null,
+        operator: reviewerName,
+      });
+    },
+    'ignoreTeamJoin.writeOpLog',
+    teamId,
+  );
+}
+
 /* ── 非同步：退出 ─────────────────────────────────── */
 
 export async function leaveTeam({

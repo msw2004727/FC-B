@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { loadTeamMock, approveMock, rejectMock } = vi.hoisted(() => {
+const { loadTeamMock, approveMock, rejectMock, ignoreMock } = vi.hoisted(() => {
   const loadTeamMock = vi.fn();
   const approveMock = vi.fn(() => Promise.resolve({ changed: true }));
   const rejectMock = vi.fn(() => Promise.resolve());
-  return { loadTeamMock, approveMock, rejectMock };
+  const ignoreMock = vi.fn(() => Promise.resolve());
+  return { loadTeamMock, approveMock, rejectMock, ignoreMock };
 });
 
 vi.mock('@/features/clubs/data/teams-repo', () => ({
@@ -14,6 +15,7 @@ vi.mock('@/features/clubs/data/teams-repo', () => ({
 vi.mock('@/features/clubs/data/membership', () => ({
   approveTeamJoin: approveMock,
   rejectTeamJoin: rejectMock,
+  ignoreTeamJoin: ignoreMock,
 }));
 
 // 匯入就會觸發 registerMessageAction('team_join_request', …)
@@ -59,12 +61,15 @@ describe('register-actions: team_join_request', () => {
     approveMock.mockImplementation(() => Promise.resolve({ changed: true }));
     rejectMock.mockReset();
     rejectMock.mockImplementation(() => Promise.resolve());
+    ignoreMock.mockReset();
+    ignoreMock.mockImplementation(() => Promise.resolve());
   });
 
   it('匯入時即登錄 team_join_request', () => {
     const handler = getMessageAction('team_join_request');
     expect(handler).not.toBeNull();
-    expect(handler!.actions.map((a) => a.key)).toEqual(['approve', 'reject']);
+    // 測試同步更新：照 A（M-137）新增 ignore 動作。
+    expect(handler!.actions.map((a) => a.key)).toEqual(['approve', 'reject', 'ignore']);
   });
 
   it('隊長可操作（captainUid 相符）', async () => {
@@ -194,6 +199,29 @@ describe('register-actions: team_join_request', () => {
     const arg = (rejectMock.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
     expect((arg as { team: TeamDoc }).team.id).toBe(TEAM_ID);
     expect(arg.applicantUid).toBe('Uapplicant');
+  });
+
+  // 測試同步更新：照 A（M-137）新增 ignore 動作測試。
+  it('ignore 動作呼叫 ignoreTeamJoin，request 含 team/message/reviewer', async () => {
+    loadTeamMock.mockResolvedValueOnce(teamWith({ captainUid: CAPTAIN_UID }));
+    const handler = getMessageAction('team_join_request')!;
+    const message = makeMessage();
+    const viewer = makeViewer(CAPTAIN_UID, { displayName: '隊長' });
+    await handler.actions[2]!.run(message, viewer);
+    expect(ignoreMock).toHaveBeenCalledTimes(1);
+    const arg = (ignoreMock.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+    expect((arg as { team: TeamDoc }).team.id).toBe(TEAM_ID);
+    expect(arg.message).toBe(message);
+    expect(arg.reviewer).toEqual({ uid: CAPTAIN_UID, displayName: '隊長' });
+  });
+
+  it('無權限時 approve／reject／ignore 三個動作都不可見（canAct=false 統一擋）', async () => {
+    loadTeamMock.mockResolvedValue(teamWith({ captainUid: 'Uother' }));
+    const handler = getMessageAction('team_join_request')!;
+    const stranger = makeViewer(RANDOM_UID);
+    expect(await handler.canAct(stranger, makeMessage())).toBe(false);
+    // actions 陣列本身三個動作齊備，可見性由 canAct 統一決定（與 approve／reject 同一權限判斷，R-IAM-011）。
+    expect(handler.actions.map((a) => a.key)).toEqual(['approve', 'reject', 'ignore']);
   });
 
   it('approve 找不到 team 時丟錯（不外洩空 success）', async () => {
