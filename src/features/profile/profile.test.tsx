@@ -31,6 +31,23 @@ import { useUserRoles } from '@/data/user-roles';
 // 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
 vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
 
+// 測試同步更新：照 A（M-121）成就/稱號快捷改導頁，需 stub useLocation().route 供斷言。
+const { routeMock } = vi.hoisted(() => ({ routeMock: vi.fn() }));
+vi.mock('preact-iso', async () => {
+  const actual = await vi.importActual<typeof import('preact-iso')>('preact-iso');
+  const stubLocation = {
+    url: '/',
+    path: '/',
+    query: {} as Record<string, string>,
+    previous: '/',
+    route: routeMock,
+  } as unknown as ReturnType<typeof actual.useLocation>;
+  return {
+    ...actual,
+    useLocation: () => stubLocation,
+  };
+});
+
 vi.mock('./data/viewer', () => ({ useViewer: vi.fn() }));
 vi.mock('./data/profile-model', () => ({ loadUserProfile: vi.fn() }));
 vi.mock('./data/related-activities', () => ({ loadRelatedActivities: vi.fn() }));
@@ -378,9 +395,9 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-uid-wrap')?.textContent).toContain('U-me');
   });
 
-  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號點擊顯示未開放提示', async () => {
+  // 測試同步更新：照 A（M-121）
+  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號導向新頁', async () => {
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(null);
-    const toastSpy = vi.spyOn(toast, 'show');
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
 
@@ -392,11 +409,13 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-slot-banner')).toBeNull();
     expect(document.querySelector('.profile-scene-key')).toBeNull();
 
+    // 測試同步更新：照 A（M-121）成就/稱號快捷改為導頁。
+    routeMock.mockClear();
     fireEvent.click(screen.getByText('成就/徽章'));
-    expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+    expect(routeMock).toHaveBeenCalledWith('/achievements');
 
     fireEvent.click(screen.getByText('稱號'));
-    expect(toastSpy).toHaveBeenCalledTimes(2);
+    expect(routeMock).toHaveBeenCalledWith('/titles');
   });
 
   it('正常顯示俱樂部與活動連結，支援區塊收合', async () => {

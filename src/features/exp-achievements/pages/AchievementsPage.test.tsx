@@ -1,0 +1,133 @@
+import { cleanup, render, waitFor } from '@testing-library/preact';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/data/firebase', () => ({
+  getFirebase: vi.fn(async () => ({
+    auth: { currentUser: { uid: 'me' } },
+    db: {},
+  })),
+}));
+
+vi.mock('../data/achievements', async () => {
+  const actual: typeof import('../data/achievements') = await vi.importActual(
+    '../data/achievements',
+  );
+  return {
+    ...actual,
+    loadAchievementDefs: vi.fn(),
+    loadUserAchievementProgress: vi.fn(),
+  };
+});
+
+import { loadAchievementDefs, loadUserAchievementProgress } from '../data/achievements';
+import AchievementsPage, { generateConditionDesc } from './AchievementsPage';
+
+describe('AchievementsPage', () => {
+  beforeEach(() => {
+    document.documentElement.lang = 'zh-TW';
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('渲染已獲得徽章／進行中／已完成三區與進度', async () => {
+    vi.mocked(loadAchievementDefs).mockResolvedValue({
+      achievements: [
+        {
+          id: 'a1',
+          name: '測試成就1',
+          category: 'bronze',
+          condition: { action: 'register_event', timeRange: 'none', threshold: 3 },
+        },
+        {
+          id: 'a2',
+          name: '測試成就2',
+          category: 'gold',
+          condition: { action: 'complete_event', timeRange: 'none', threshold: 1 },
+        },
+      ],
+      badges: [{ id: 'b1', name: '青銅徽章', achId: 'a2', image: null }],
+    });
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({
+      a1: { current: 1, completedAt: null },
+      a2: { current: 1, completedAt: '2025-10-01' },
+    });
+
+    const { container, findByText } = render(<AchievementsPage />);
+
+    await findByText('已獲得徽章');
+    await findByText('進行中');
+    expect(await findByText('1/3')).toBeTruthy();
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.ach-card-done-overlay').length).toBe(1);
+    });
+    // 測試同步更新：照 A（項目 2）jsdom 會把 inline style 正規化成 rgb 形式。
+    // 已完成卡片的分類色（gold → #d4a017）以 style.borderColor 斷言。
+    const doneCard = container.querySelector('.ach-card-done') as HTMLElement | null;
+    expect(doneCard).toBeTruthy();
+    expect(doneCard?.style.borderColor).toBe('rgb(212, 160, 23)');
+  });
+
+  it('尚無成就', async () => {
+    vi.mocked(loadAchievementDefs).mockResolvedValue({ achievements: [], badges: [] });
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({});
+    const { findByText } = render(<AchievementsPage />);
+    await findByText('尚無成就');
+  });
+
+  it('分區標題不會在無資料時誤顯示', async () => {
+    vi.mocked(loadAchievementDefs).mockResolvedValue({
+      achievements: [
+        {
+          id: 'a1',
+          name: '唯一成就',
+          category: 'bronze',
+          condition: { action: 'register_event', timeRange: 'none', threshold: 5 },
+        },
+      ],
+      badges: [],
+    });
+    vi.mocked(loadUserAchievementProgress).mockResolvedValue({
+      a1: { current: 1, completedAt: null },
+    });
+    const { container, findByText } = render(<AchievementsPage />);
+    await findByText('進行中');
+    // 沒有已完成／未獲得徽章時不應該顯示對應區塊
+    expect(container.querySelectorAll('.ach-card-done-overlay').length).toBe(0);
+    expect(container.textContent).not.toContain('已獲得徽章');
+  });
+});
+
+describe('generateConditionDesc', () => {
+  it('無 condition 用 desc，沒 desc 顯示未設定成就條件', () => {
+    expect(generateConditionDesc(undefined, 'desc')).toBe('desc');
+    expect(generateConditionDesc(undefined, undefined)).toBe('未設定成就條件');
+  });
+
+  it('不支援的 condition 顯示未設定成就條件', () => {
+    expect(generateConditionDesc({ action: 'unknown', timeRange: 'none' }, 'd')).toBe(
+      '未設定成就條件',
+    );
+  });
+
+  it('支援的 action、threshold <= 1 時只有 action', () => {
+    expect(
+      generateConditionDesc(
+        { action: 'complete_event', timeRange: 'none', threshold: 1 },
+        undefined,
+      ),
+    ).toBe('complete_event');
+  });
+
+  it('支援的 action、threshold > 1 帶上 threshold', () => {
+    expect(
+      generateConditionDesc(
+        { action: 'complete_event', timeRange: 'none', threshold: 5 },
+        undefined,
+      ),
+    ).toBe('complete_event 5');
+  });
+});
