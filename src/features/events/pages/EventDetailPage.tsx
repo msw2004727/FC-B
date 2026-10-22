@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import type { EventCommentsSectionProps } from '../components/legacy/EventCommentsSection';
 import {
   EventDetailHeaderActions,
   canEditDetailActivity,
@@ -75,6 +76,63 @@ import {
 import type { RegistrationDoc } from '../data/types';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
+
+// 照 A _renderDetailCommentsLoadFailure，chunk 失敗只影響留言區。
+const EventCommentsSection = lazy(() =>
+  import('../components/legacy/EventCommentsSection')
+    .catch(() => ({ default: EventCommentsChunkRetry })),
+);
+
+function EventCommentsChunkRetry(props: EventCommentsSectionProps): JSX.Element {
+  const [Loaded, setLoaded] = useState<
+    typeof import('../components/legacy/EventCommentsSection').default | null
+  >(null);
+  const [loading, setLoading] = useState(false);
+  const alive = useRef(true);
+  const pending = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  if (Loaded) return <Loaded {...props} />;
+  return (
+    <div class="detail-section event-comments-section">
+      <div class="detail-section-title">留言</div>
+      <div class="event-comments-empty event-comments-load-state">
+        <div class="event-comments-load-title">
+          {loading ? '留言重新載入中...' : '留言暫時無法載入'}
+        </div>
+        <div class="event-comments-load-note">
+          可以先瀏覽活動資訊，稍後再重新載入留言。
+        </div>
+        <div class="event-comments-load-actions">
+          <button
+            type="button"
+            class="event-comment-retry-btn"
+            disabled={loading}
+            onClick={() => {
+              if (pending.current) return;
+              pending.current = true;
+              setLoading(true);
+              import('../components/legacy/EventCommentsSection').then(
+                (module) => {
+                  if (alive.current) setLoaded(() => module.default);
+                },
+                () => {
+                  if (alive.current) setLoading(false);
+                },
+              ).catch(() => {
+                if (alive.current) setLoading(false);
+              }).finally(() => { pending.current = false; });
+            }}
+          >
+            重新載入留言
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // 照 A 編輯與 Log 入口；穩定 lazy 型別，只在開啟時下載。
 const DetailEventFormModal = lazy(() => import('../components/EventFormModal')
@@ -1175,14 +1233,21 @@ function EventDetailSession({
             </section>
           )}
 
-          {/* 下一批補：活動留言區塊 */}
-          <div id="detail-comments-container" onClick={handleUnavailable}>
-            <div class="detail-section event-comments-section">
-              <div class="detail-section-title">留言</div>
-              <div class="event-comments-empty" style="cursor:pointer">
-                留言功能（點擊查看）
+          {/* 照 A _renderDetailComments；M-093 在詳情 ready 後才載入留言。 */}
+          <div id="detail-comments-container">
+            <Suspense fallback={
+              <div class="detail-section event-comments-section">
+                <div class="detail-section-title">留言</div>
+                <div class="reg-loading">留言將在報名名單完成後載入...</div>
               </div>
-            </div>
+            }>
+              <EventCommentsSection
+                event={event}
+                eventDocId={snapshot.eventDocId}
+                viewer={viewer}
+                canLoad={phase === 'ready'}
+              />
+            </Suspense>
           </div>
         </div>
 

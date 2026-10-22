@@ -36,7 +36,18 @@ export interface CommentBadgeQuery {
 interface CacheEntry { cachedAt: number; eventId: string; count: number }
 
 const cache = new Map<string, CacheEntry>();
+const cacheGenerations = new Map<string, number>();
 let activeCount = 0;
+
+/** 照 A _clearActivityCommentBadgeCacheForEvent；阻止舊查詢回填失效快取。 */
+export function clearCommentBadgeCacheForEvent(eventId: string): void {
+  const target = eventId.trim();
+  if (!target) return;
+  cacheGenerations.set(target, (cacheGenerations.get(target) ?? 0) + 1);
+  for (const [key, entry] of cache) {
+    if (entry.eventId === target) cache.delete(key);
+  }
+}
 
 interface QueueItem {
   query: CommentBadgeQuery;
@@ -186,9 +197,12 @@ function drainQueue(): void {
     if (item.cancelled) continue;
     activeCount += 1;
     const run = async (): Promise<void> => {
+      const generation = cacheGenerations.get(item.query.eventId) ?? 0;
       try {
         const count = await fetchCommentCount(item.query);
-        setCachedCount(item.query.cacheKey, item.query.eventId, count);
+        if (generation === (cacheGenerations.get(item.query.eventId) ?? 0)) {
+          setCachedCount(item.query.cacheKey, item.query.eventId, count);
+        }
         item.resolve(count);
       } catch (err) {
         item.reject(err);
