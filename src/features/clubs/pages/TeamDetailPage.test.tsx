@@ -12,6 +12,7 @@ import { clearPendingJoin, loginForClubs, _resetClubsSessionForTest } from './cl
 import { canShowInviteQr, canViewClubDetail } from '../club-policy';
 import { canInviteToTeam } from '../components/legacy/TeamDetailV2Header';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
+import type { TeamSettingsModalProps } from '../components/legacy/TeamSettingsModal';
 import { renderQrToCanvas } from '@/features/profile/data/qr';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -24,6 +25,28 @@ const policyMock = vi.hoisted(() => ({
 
 const routeState = vi.hoisted(() => ({ id: 'club', route: vi.fn() }));
 const pickMock = vi.hoisted(() => vi.fn());
+const settingsModalMock = vi.hoisted(() => ({
+  latestProps: null as TeamSettingsModalProps | null,
+}));
+
+vi.mock('../components/legacy/TeamSettingsModal', () => ({
+  TeamSettingsModal: (props: TeamSettingsModalProps) => {
+    settingsModalMock.latestProps = props;
+    return (
+      <div role="dialog" aria-label="俱樂部設定">
+        <button type="button" onClick={() => props.onClose()}>
+          關閉
+        </button>
+        <button type="button" onClick={() => { void props.onSaved(); }}>
+          已儲存
+        </button>
+        <button type="button" onClick={() => props.onEditBasic()}>
+          編輯基本資料
+        </button>
+      </div>
+    );
+  },
+}));
 
 vi.mock('../components/legacy/use-team-image-upload', () => ({
   useTeamImageUpload: vi.fn(),
@@ -212,6 +235,7 @@ const snapshot = vi.fn<() => { active: EventDoc[]; terminal: EventDoc[] }>();
 beforeEach(() => {
   vi.clearAllMocks();
   pickMock.mockClear();
+  settingsModalMock.latestProps = null;
   vi.mocked(useTeamImageUpload).mockReturnValue({
     pick: pickMock,
     busyKind: null,
@@ -510,6 +534,122 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(pickMock).toHaveBeenNthCalledWith(2, 'avatar');
     expect(pickMock).toHaveBeenCalledTimes(2);
     expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens settings for the manager without an unavailable toast and closes it', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    const manager = viewer('captain', ['club']);
+    vi.mocked(useViewer).mockReturnValue(manager);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '俱樂部設定' });
+    expect(settingsModalMock.latestProps?.team).toEqual(team);
+    expect(settingsModalMock.latestProps?.viewer).toBe(manager);
+    expect(toastSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull(),
+    );
+  });
+
+  it.each(['u1', 'leader1', 'coach1'])(
+    'shows unavailable toast instead of settings for non-manager %s',
+    async (uid) => {
+      const toastSpy = vi.spyOn(toast, 'show');
+      vi.mocked(loadTeam).mockResolvedValue({
+        ...team,
+        coachUids: ['coach1'],
+        coaches: ['教練丙'],
+      });
+      vi.mocked(useViewer).mockReturnValue(viewer(uid, ['club']));
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+
+      expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
+      expect(settingsModalMock.latestProps).toBeNull();
+      expect(toastSpy).toHaveBeenCalledTimes(1);
+      expect(toastSpy).toHaveBeenCalledWith({
+        message: '此功能尚未開放，請先使用舊版',
+      });
+    },
+  );
+
+  it('opens settings with team.manage_all permission', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('admin'),
+      hasPermission: (permission) => permission === 'team.manage_all',
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+
+    expect(await screen.findByRole('dialog', { name: '俱樂部設定' })).toBeTruthy();
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it('silently reloads after saving settings and keeps the dialog and title mounted', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    const { container } = render(<TeamDetailPage />);
+    const title = await screen.findByText('測試俱樂部');
+    expect(container.querySelector('.td-v2-title')).toBe(title);
+    expect(loadTeam).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    const dialog = await screen.findByRole('dialog', { name: '俱樂部設定' });
+    const originalTeam = settingsModalMock.latestProps?.team;
+    expect(originalTeam).toEqual(team);
+
+    const pendingLoad = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pendingLoad.promise);
+    fireEvent.click(within(dialog).getByRole('button', { name: '已儲存' }));
+
+    await waitFor(() => expect(loadTeam).toHaveBeenCalledTimes(2));
+    expect(loadTeam).toHaveBeenLastCalledWith('club');
+    expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
+    expect(container.querySelector('.td-v2-title')).toBe(title);
+    expect(screen.getByText('測試俱樂部')).toBe(title);
+    expect(screen.queryByText('載入中…')).toBeNull();
+
+    const updatedTeam: TeamDoc = { ...team, name: '設定更新後俱樂部' };
+    await act(async () => {
+      pendingLoad.resolve(updatedTeam);
+      await pendingLoad.promise;
+    });
+
+    expect(await screen.findByText('設定更新後俱樂部')).toBe(title);
+    expect(container.querySelector('.td-v2-title')).toBe(title);
+    expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
+    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(settingsModalMock.latestProps?.team).toEqual(updatedTeam);
+    expect(settingsModalMock.latestProps?.team).not.toBe(originalTeam);
+  });
+
+  it('shows unavailable toast for editing basic info without closing settings', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    const dialog = await screen.findByRole('dialog', { name: '俱樂部設定' });
+    expect(toastSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '編輯基本資料' }));
+
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+    expect(toastSpy).toHaveBeenCalledWith({
+      message: '此功能尚未開放，請先使用舊版',
+    });
+    expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
+    expect(loadTeam).toHaveBeenCalledTimes(1);
   });
 
   it('hides image edit buttons from a normal member', async () => {

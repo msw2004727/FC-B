@@ -41,6 +41,7 @@ import {
 } from '../components/legacy/TeamDetailV2Header';
 import { TeamDetailV2Panels } from '../components/legacy/TeamDetailV2Panels';
 import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
+import { TeamSettingsModal } from '../components/legacy/TeamSettingsModal';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
@@ -116,6 +117,7 @@ function TeamDetailContent({
   const [tab, setTab] = useState<V2TabKey>('overview');
   const [busy, setBusy] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [, setPendingRevision] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
@@ -254,6 +256,14 @@ function TeamDetailContent({
 
   function handleUnavailable(): void {
     toast.show({ message: UNAVAILABLE_MSG });
+  }
+
+  function handleMore(): void {
+    if (team && canEditTeamSettings(viewer, team)) {
+      setSettingsOpen(true);
+      return;
+    }
+    handleUnavailable();
   }
 
   async function reloadTeamSilently(): Promise<void> {
@@ -539,6 +549,7 @@ function TeamDetailContent({
               tabs={tabs}
               activeTab={activeTab}
               onBack={handleBack}
+              onMore={handleMore}
               onContact={handleContact}
               onInvite={handleInvite}
               onUnavailable={handleUnavailable}
@@ -595,6 +606,15 @@ function TeamDetailContent({
                 teamId={String(team.id ?? '')}
                 teamName={String(team.name ?? '')}
                 onClose={() => setInviteOpen(false)}
+              />
+            ) : null}
+            {settingsOpen && team ? (
+              <TeamSettingsModal
+                team={team}
+                viewer={viewer}
+                onClose={() => setSettingsOpen(false)}
+                onSaved={() => reloadTeamSilently()}
+                onEditBasic={handleUnavailable}
               />
             ) : null}
           </div>

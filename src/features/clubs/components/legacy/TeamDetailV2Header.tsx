@@ -155,6 +155,7 @@ export interface TeamDetailV2HeaderProps {
   tabs: readonly V2TabDef[];
   activeTab: V2TabKey;
   onBack: () => void;
+  onMore: () => void;
   onContact: () => void;
   onInvite: () => void;
   onUnavailable: () => void;
@@ -182,6 +183,7 @@ export function TeamDetailV2Header({
   tabs,
   activeTab,
   onBack,
+  onMore,
   onContact,
   onInvite,
   onUnavailable,
@@ -236,13 +238,12 @@ export function TeamDetailV2Header({
           <div class="td-v2-title">{team.name || '俱樂部名稱'}</div>
           <div class="td-v2-subtitle">{subtitle}</div>
         </div>
-        {/* 下一批補：更多操作／設定與分享 */}
         <button
           class="td-v2-icon-btn"
           type="button"
           data-td-v2-action="more"
           aria-label="更多操作"
-          onClick={onUnavailable}
+          onClick={onMore}
         >
           <SvgIcon name="more" />
         </button>
