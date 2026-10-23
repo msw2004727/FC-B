@@ -212,6 +212,15 @@ function uniqueMemberRoleValues(values: unknown, ignoreCase = false): string[] {
   return result;
 }
 
+/** 領隊 UID 保序去重並修剪空白；只有 leaderUids 非陣列時才回退 legacy 單值。 */
+export function getTeamLeaderUidList(team: TeamDoc): string[] {
+  return uniqueMemberRoleValues(
+    Array.isArray(team.leaderUids)
+      ? team.leaderUids
+      : team.leaderUid ? [team.leaderUid] : [],
+  );
+}
+
 /**
  * 依 team 文件中的 UID 計算升降目標，不使用名單列的角色字串。
  * 對應 A `_getTeamMemberRoleActionTarget`（js/modules/team/team-detail.js:1209-1239）
@@ -230,7 +239,8 @@ export function getMemberRoleChangeTarget(
   if (!uid || uid === viewer.uid.trim()) return null;
   if (String(team.captainUid ?? '').trim() === uid) return null;
 
-  const currentLevel = uniqueMemberRoleValues(team.leaderUids).includes(uid)
+  const leaderUidList = getTeamLeaderUidList(team);
+  const currentLevel = leaderUidList.includes(uid)
     ? 2
     : uniqueMemberRoleValues(team.coachUids).includes(uid)
       ? 1
@@ -270,7 +280,8 @@ export interface MemberRoleUpdates {
  * 純計算角色欄位，不執行 Firestore 寫入，也不取代呼叫端的權限守衛。
  * 對應 A `_buildTeamRoleLevelUpdates`（js/modules/team/team-detail.js:1241-1326）。
  * UID 決定身分；名稱僅同步顯示快取，以小寫比對刪除並保序去重。
- * 顯示名稱空白時使用目標 UID；members 由 recountTeamMembers 維護。
+ * 顯示名稱空白時使用目標 UID。
+ * 升降職務不改變人數，因此不寫 `members`；`recountTeamMembers` 是伺服器 Callable，B 尚未接線。
  */
 export function buildMemberRoleUpdates(
   team: TeamDoc | null | undefined,
@@ -291,11 +302,7 @@ export function buildMemberRoleUpdates(
   const rawCoaches = source['coaches'];
   const rawCoachNames = source['coachNames'];
 
-  let leaderUids = uniqueMemberRoleValues(
-    Array.isArray(team.leaderUids)
-      ? team.leaderUids
-      : team.leaderUid ? [team.leaderUid] : [],
-  );
+  let leaderUids = getTeamLeaderUidList(team);
   let leaders = uniqueMemberRoleValues(
     Array.isArray(rawLeaders)
       ? rawLeaders

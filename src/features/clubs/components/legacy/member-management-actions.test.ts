@@ -102,6 +102,42 @@ afterEach(() => {
 });
 
 describe('變更成員職務', () => {
+  // 測試同步更新：legacy 領隊可降為教練，交易 guard 與稽核採相同角色判定。
+  it('只有 legacy 領隊時降級成功，寫入 coach 並稽核原角色 leader', async () => {
+    const team = makeTeam();
+    delete team.leaderUids;
+    team.leaderUid = 'U-lead';
+    const input = roleInput({
+      team,
+      targetUid: 'U-lead',
+      displayName: '領隊甲',
+      direction: 'demote',
+    });
+
+    await expect(changeMemberRole(input)).resolves.toEqual({
+      ok: true,
+      target: { key: 'coach', level: 1, direction: 'demote' },
+    });
+    expect(mocks.saveTeamRoleChange).toHaveBeenCalledExactlyOnceWith(
+      team, 'U-lead', 'coach', '領隊甲', expect.any(Function),
+    );
+    await expect(mocks.saveTeamRoleChange.mock.results[0]?.value)
+      .resolves.toMatchObject({
+        leaderUids: [],
+        leaderUid: null,
+        coachUids: ['U-coach', 'U-lead'],
+      });
+    expect(mocks.callFn).toHaveBeenCalledWith(
+      'writeAuditLog',
+      expect.objectContaining({
+        meta: {
+          teamId: 'tm_test_1',
+          statusFrom: 'leader',
+          statusTo: 'coach',
+        },
+      }),
+    );
+  });
   it('主要寫入採真的政策計算結果，逐欄投遞通知、重算與稽核', async () => {
     const input = roleInput();
     const expectedUpdates = buildMemberRoleUpdates(
@@ -514,13 +550,42 @@ describe('角色文字與 UID 角色辨識', () => {
     expect(getTeamRoleOfMember(team, 'U-cap')).toBe('captain');
   });
 
-  it('忽略非陣列、舊單值領隊與顯示名稱，沒有 UID 不判作球經', () => {
+  // 測試同步更新：只有 legacy 領隊時回退，與教練重疊仍優先領隊。
+  it('缺少或非陣列領隊欄位時採 legacy 單值', () => {
+    expect(getTeamRoleOfMember({
+      leaderUid: ' U-lead ',
+    }, ' U-lead ')).toBe('leader');
     expect(getTeamRoleOfMember({
       leaderUid: 'U-lead',
       leaderUids: null,
+      coachUids: ['U-lead'],
+    }, 'U-lead')).toBe('leader');
+  });
+
+  // 測試同步更新：空陣列與非空陣列均優先於 legacy 單值。
+  it('領隊陣列存在時不回退 legacy', () => {
+    for (const leaderUids of [[], ['U-other']]) {
+      expect(getTeamRoleOfMember({
+        leaderUids,
+        leaderUid: 'U-lead',
+      }, 'U-lead')).toBe('member');
+      expect(getTeamRoleOfMember({
+        leaderUids,
+        leaderUid: 'U-lead',
+        coachUids: ['U-lead'],
+      }, 'U-lead')).toBe('coach');
+    }
+  });
+
+  // 測試同步更新：保留非陣列教練、名稱欄位與空 UID 的既有語意。
+  it('忽略非陣列教練與顯示名稱，沒有 UID 不判作球經', () => {
+    const team: TeamDoc = {
       coachUids: 'U-coach',
       captain: 'U-mem',
-    }, 'U-lead')).toBe('member');
+      leaders: ['U-mem'],
+    };
+    expect(getTeamRoleOfMember(team, 'U-coach')).toBe('member');
+    expect(getTeamRoleOfMember(team, 'U-mem')).toBe('member');
     expect(getTeamRoleOfMember({}, '')).toBe('member');
   });
 

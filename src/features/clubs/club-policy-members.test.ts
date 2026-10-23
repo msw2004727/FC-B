@@ -10,6 +10,7 @@ import {
   canShowInviteQr,
   canViewMemberNote,
   getMemberRoleChangeTarget,
+  getTeamLeaderUidList, // 測試同步更新
 } from './club-policy';
 import type {
   MemberRoleDirection,
@@ -275,6 +276,49 @@ describe('剔除成員純判斷', () => {
   });
 });
 
+ // 測試同步更新：共用 helper 保留既有角色更新的正規化與回退語意。
+describe('領隊 UID 清單', () => {
+  it('陣列優先，修剪空白、去空並保序去重', () => {
+    expect(getTeamLeaderUidList({
+      leaderUids: [' U-other ', '', 'U-lead', 'U-other', ' \t ', ' U-lead '],
+      leaderUid: 'U-legacy',
+    })).toEqual(['U-other', 'U-lead']);
+  });
+
+  it('缺少或非陣列主欄位時回退 legacy 單值', () => {
+    expect(getTeamLeaderUidList({ leaderUid: ' U-lead ' })).toEqual(['U-lead']);
+    for (const leaderUids of [undefined, null, 'invalid', 123]) {
+      expect(getTeamLeaderUidList({
+        leaderUids,
+        leaderUid: ' U-lead ',
+      })).toEqual(['U-lead']);
+    }
+  });
+
+  it('空陣列與正規化後為空的陣列均不回退 legacy', () => {
+    for (const leaderUids of [[], ['', ' \t ']]) {
+      expect(getTeamLeaderUidList({
+        leaderUids,
+        leaderUid: 'U-lead',
+      })).toEqual([]);
+    }
+  });
+
+  it('沒有有效來源時回傳空陣列', () => {
+    expect(getTeamLeaderUidList({})).toEqual([]);
+    expect(getTeamLeaderUidList({ leaderUid: ' \t ' })).toEqual([]);
+  });
+
+  it('非字串值沿用 String(value || "") 的既有轉換語意', () => {
+    expect(getTeamLeaderUidList({
+      leaderUids: [null, undefined, false, 0, 123, ' 123 ', true, 'true'],
+    })).toEqual(['123', 'true']);
+    // 刻意傳入非字串驗證容錯
+    expect(getTeamLeaderUidList({ leaderUid: 123 } as unknown as TeamDoc)).toEqual(['123']);
+    expect(getTeamLeaderUidList({ leaderUid: false } as unknown as TeamDoc)).toEqual([]);
+  });
+});
+
 describe('角色升降目標', () => {
   const cases: ReadonlyArray<{
     name: string;
@@ -406,18 +450,34 @@ describe('角色升降目標', () => {
       .toEqual({ key: 'coach', level: 1, direction: 'demote' });
   });
 
-  it('角色由 UID 陣列決定，不採 legacy 領隊或名稱欄位', () => {
-    const team = makeTeam({
-      leaderUids: undefined,
+  // 測試同步更新：缺少領隊陣列時採 legacy UID，但仍不採名稱欄位。
+  it('只有 legacy 領隊時不可再晉升，降級目標為教練', () => {
+    const team: TeamDoc = {
+      captainUid: 'U-cap',
+      leaderUid: 'U-lead',
       leaders: ['U-mem'],
       coachUids: [' U-coach '],
-    });
-    expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-legacy', 'promote'))
-      .toEqual({ key: 'coach', level: 1, direction: 'promote' });
+    };
+    expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-lead', 'promote'))
+      .toBeNull();
+    expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-lead', 'demote'))
+      .toEqual({ key: 'coach', level: 1, direction: 'demote' });
     expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-mem', 'promote'))
       .toEqual({ key: 'coach', level: 1, direction: 'promote' });
     expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, ' U-coach ', 'promote'))
       .toEqual({ key: 'leader', level: 2, direction: 'promote' });
+  });
+
+  // 測試同步更新：陣列存在時，即使為空也不得回退 legacy。
+  it.each([[], ['U-other']])('領隊陣列 %j 優先於 legacy 單值', (...leaderUids) => {
+    const team = makeTeam({
+      leaderUids,
+      leaderUid: 'U-lead',
+    });
+    expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-lead', 'promote'))
+      .toEqual({ key: 'coach', level: 1, direction: 'promote' });
+    expect(getMemberRoleChangeTarget(makeViewer('U-cap'), team, 'U-lead', 'demote'))
+      .toBeNull();
   });
 
   it('所有允許的目標層級均嚴格低於操作者層級', () => {
@@ -448,6 +508,24 @@ describe('角色升降目標', () => {
 });
 
 describe('角色更新欄位純計算', () => {
+  // 測試同步更新：legacy 領隊降為教練，既有更新欄位契約不變。
+  it('只有 legacy 領隊時降為教練並清除領隊單值', () => {
+    expect(buildMemberRoleUpdates({
+      leaderUid: 'U-lead',
+      leader: 'Leader',
+      coachUids: ['U-coach'],
+      coaches: ['Coach'],
+    }, 'U-lead', 'coach', 'Leader')).toEqual({
+      leaderUids: [],
+      leaders: [],
+      leaderNames: [],
+      leaderUid: null,
+      leader: '',
+      coachUids: ['U-coach', 'U-lead'],
+      coaches: ['Coach', 'Leader'],
+      coachNames: ['Coach', 'Leader'],
+    });
+  });
   it('一般隊員加入教練陣列，保留領隊欄位並同步名稱', () => {
     expect(buildMemberRoleUpdates(makeTeam(), ' U-mem ', 'coach', ' Bob '))
       .toEqual({

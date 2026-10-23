@@ -4,7 +4,8 @@
  * :1328-1339 _sendTeamRoleLevelChangeNotice、:1685-1768 editTeamMemberNote；
  * 重算重試對應 api-service.js:2758-2775 promoteUserByUid。
  *
- * 與 A 差異：members 由伺服器 recountTeamMembers 維護，不在前端重算或寫入；
+ * 與 A 差異：升降職務不改變人數，因此不寫 `members`；
+ * `recountTeamMembers` 是伺服器 Callable，B 尚未接線；
  * 不實作剔除隊員；角色重算、通知與稽核均為 best-effort；
  * 備註補上 120 字硬上限，且不寫無對應 AuditAction 的備註 opLog。
  */
@@ -15,6 +16,7 @@ import {
   canChangeMemberRole,
   canEditMemberNote,
   getMemberRoleChangeTarget,
+  getTeamLeaderUidList,
 } from '../../club-policy';
 import type { MemberRoleTarget } from '../../club-policy';
 import { saveTeamMemberNote, saveTeamRoleChange } from '../../data/teams-write';
@@ -74,7 +76,7 @@ export function getTeamRoleOfMember(
     Array.isArray(values)
     && values.some((value: unknown) => String(value ?? '').trim() === normalizedUid);
 
-  if (containsUid(team.leaderUids)) return 'leader';
+  if (getTeamLeaderUidList(team).includes(normalizedUid)) return 'leader';
   if (containsUid(team.coachUids)) return 'coach';
   return 'member';
 }
@@ -123,7 +125,7 @@ export async function changeMemberRole(
   const displayName = input.displayName.trim() || targetUid;
   let statusFrom = getTeamRoleOfMember(team, targetUid);
 
-  // 不加入 A 的 updates.members；B 由 recountTeamMembers 維護。
+  // 升降職務不改變人數，因此不寫 members；recountTeamMembers 是伺服器 Callable，B 尚未接線。
   // 主要寫入失敗直接往外拋，所有後續副作用都不啟動。
   const updates = await saveTeamRoleChange(
     team,
