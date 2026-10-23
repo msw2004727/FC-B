@@ -6,6 +6,8 @@
  * 未知欄位以索引簽名保留，不得據此寫入。
  */
 
+import type { TeamContactLink } from './team-contact-links';
+
 export interface TeamImageVariants {
   card?: string;
   cover?: string;
@@ -70,6 +72,23 @@ export interface TeamDoc {
 
   name?: string;
   nameEn?: string;
+
+  /** 對應 A js/modules/team/team-form.js:handleSaveTeam；以下為選填讀取欄位。 */
+  nationality?: string;
+  founded?: string | number;
+  contact?: string;
+  bio?: string;
+  contactLinksEnabled?: boolean;
+  contactLinks?: TeamContactLink[];
+  captainName?: string;
+  leaderNames?: readonly string[] | null;
+  coaches?: readonly string[] | null;
+  coachNames?: readonly string[] | null;
+  wins?: number;
+  draws?: number;
+  losses?: number;
+  gf?: number;
+  ga?: number;
 
   /** legacy：隊長顯示名稱（只用於關鍵字搜尋）。 */
   captain?: string;

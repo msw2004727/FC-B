@@ -435,3 +435,40 @@ export function canCreateClubEvent(
     || hasEventCreate;
   return hasCreateEntry && (canManageAll || hasExactStaffScope);
 }
+
+export interface ClubCreateTeamViewer {
+  readonly uid: string | null;
+  hasPermission(code: string): boolean;
+}
+
+/** 對應 A js/modules/team/team-list-helpers.js:_canCreateTeamByPermission */
+export function canCreateTeam(
+  viewer: ClubCreateTeamViewer | null | undefined,
+): boolean {
+  return typeof viewer?.uid === 'string'
+    && viewer.uid.trim().length > 0
+    && viewer.hasPermission('team.create');
+}
+
+/** 對應 A js/modules/team/team-form-search.js:searchTeamCoach */
+export function canAssignCoach(
+  viewer: ClubCreateTeamViewer | null | undefined,
+): boolean {
+  // 與本卡及 A 的搜尋權限條件一致：本 helper 僅判三種 permission 的 OR。
+  return !!viewer && (
+    viewer.hasPermission('team.assign_coach')
+    || viewer.hasPermission('team.manage_all')
+    || viewer.hasPermission('team.manage.entry')
+  );
+}
+
+/** 對應 A js/modules/team/team-form-init.js:400-411（經理轉移區權限） */
+export function canTransferCaptain(
+  viewer: ClubCreateTeamViewer | null | undefined,
+  team: Pick<TeamDoc, 'captainUid'> | null | undefined,
+): boolean {
+  // ASSUMPTION: 附件未含該段函式名稱及完整原碼，依本卡指定條件；
+  // trim 僅判 uid 是否非空，身分採 captainUid === uid，不以名稱或其他擁有者欄位代替。
+  if (!team || typeof viewer?.uid !== 'string' || !viewer.uid.trim()) return false;
+  return viewer.hasPermission('team.manage_all') || team.captainUid === viewer.uid;
+}
