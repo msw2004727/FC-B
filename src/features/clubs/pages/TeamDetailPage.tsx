@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { getLastKnownAuthUid } from '@/data/auth';
@@ -9,6 +9,10 @@ import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
 import { getEventsRepo } from '@/features/events/data/events-repo';
+import { EventFormModal } from '@/features/events/components/EventFormModal';
+import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
+import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
+import { getSportKeySafe } from '@/features/events/data/sports';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
@@ -23,7 +27,12 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
-import { canEditTeamSettings, canShowInviteQr, resolveClubDetailAccess } from '../club-policy';
+import {
+  canCreateClubEvent,
+  canEditTeamSettings,
+  canShowInviteQr,
+  resolveClubDetailAccess,
+} from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
 import type { TeamDoc, TeamMember } from '../data/types';
 import {
@@ -40,6 +49,10 @@ import {
   type V2TabKey,
 } from '../components/legacy/TeamDetailV2Header';
 import { TeamDetailV2Panels } from '../components/legacy/TeamDetailV2Panels';
+import {
+  getRememberedTeamTab,
+  rememberTeamTab,
+} from '../components/legacy/team-detail-tab-memory';
 import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
 import { TeamSettingsModal } from '../components/legacy/TeamSettingsModal';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
@@ -114,7 +127,8 @@ function TeamDetailContent({
   const [teamAttempt, setTeamAttempt] = useState(0);
   const [memberAttempt, setMemberAttempt] = useState(0);
   const [eventAttempt, setEventAttempt] = useState(0);
-  const [tab, setTab] = useState<V2TabKey>('overview');
+  const [pickedTab, setPickedTab] = useState<V2TabKey | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -145,7 +159,7 @@ function TeamDetailContent({
       (loaded) => {
         if (cancelled || sequence !== teamSequence.current) return;
         const normalized = loaded
-          ? { ...loaded, id: loaded.id || loaded._docId || id }
+          ? { ...loaded, id: String(loaded.id || loaded._docId || id).trim() }
           : null;
         setTeamState({ status: 'ready', value: normalized });
       },
@@ -161,7 +175,7 @@ function TeamDetailContent({
   }, [id, teamAttempt, access, viewer.uid]);
 
   const team = teamState.status === 'ready' ? teamState.value : null;
-  const teamId = team?.id ?? '';
+  const teamId = String(team?.id ?? id).trim();
   const teamRef = useRef<TeamDoc | null>(team);
   teamRef.current = team;
   const membersKey = team
@@ -178,6 +192,23 @@ function TeamDetailContent({
     viewer,
     onSaved: () => reloadTeamSilently(),
   });
+  const createEntry = useCreateEventEntry(viewer);
+  const onFormSaved = useEventFormPostSave({
+    viewer,
+    close: createEntry.closeForm,
+    refresh: () => setEventAttempt((v) => v + 1),
+  });
+  const canCreateEvent = canCreateClubEvent(viewer, team);
+  // 同一批資料切換頁籤或開啟 overlay 時保留 events 與日期 Set 的參照。
+  const visibleEvents = useMemo(
+    () => eventsState.status === 'ready'
+      ? getTeamFutureEvents(
+          teamId,
+          getVisibleEvents(eventsState.value.events, viewer, eventsState.value.registrations),
+        )
+      : [],
+    [eventsState, teamId, viewer],
+  );
   const showMembers = !!team && isTeamDetailSectionVisible(team, 'members');
   const showEvents = !!team && isTeamDetailSectionVisible(team, 'events');
   const showInfo = !!team && isTeamDetailSectionVisible(team, 'info');
@@ -273,11 +304,33 @@ function TeamDetailContent({
       if (sequence !== teamSequence.current || !alive.current) return;
       setTeamState({
         status: 'ready',
-        value: loaded ? { ...loaded, id: loaded.id || loaded._docId || id } : null,
+        value: loaded
+          ? { ...loaded, id: String(loaded.id || loaded._docId || id).trim() }
+          : null,
       });
     } catch (error) {
       console.error('[TeamDetailPage.reloadTeamSilently]', error);
     }
+  }
+
+  function selectTab(next: V2TabKey): void {
+    setPickedTab(next);
+    rememberTeamTab(teamId, next);
+    try {
+      shellRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    } catch { /* 忽略 */ }
+  }
+
+  function handleCreateEvent(): void {
+    if (!team || !canCreateClubEvent(viewer, team)) {
+      toast.show({ message: '只有俱樂部職員可以新增俱樂部活動' });
+      return;
+    }
+    createEntry.onClickCustom({
+      teamIds: [String(team.id ?? '').trim()],
+      teamNames: [String(team.name ?? '')],
+      sportTag: getSportKeySafe(team.sportTag ?? ''),
+    });
   }
 
   function handleInvite(): void {
@@ -397,13 +450,7 @@ function TeamDetailContent({
   const joinState = getSessionJoinState(teamId, viewer.uid);
   const primaryAction = getTeamPrimaryAction(team, viewer, joinState);
 
-  const visibleEvents =
-    eventsState.status === 'ready'
-      ? getTeamFutureEvents(
-          teamId,
-          getVisibleEvents(eventsState.value.events, viewer, eventsState.value.registrations),
-        )
-      : [];
+
 
   const roster =
     membersState.status === 'ready' && membersState.value !== null
@@ -429,7 +476,9 @@ function TeamDetailContent({
   const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
 
   const tabs = getTabsForTeam(team, courseCount, eventCount);
-  const activeTab = tabs.some((item) => item.key === tab) ? tab : 'overview';
+  const activeTab = pickedTab && tabs.some((item) => item.key === pickedTab)
+    ? pickedTab
+    : getRememberedTeamTab(teamId, tabs.map((item) => item.key));
 
   function handleJoinPending(): void {
     const state = getSessionJoinState(teamId, viewer.uid);
@@ -532,6 +581,7 @@ function TeamDetailContent({
         <div class="detail-body" id="team-detail-body">
           <div
             class="td-v2-shell"
+            ref={shellRef}
             data-team-id={teamId}
             style={themeColor ? { '--td-v2-theme': themeColor } : undefined}
           >
@@ -564,7 +614,7 @@ function TeamDetailContent({
               onLeave={() => {
                 void handleLeave();
               }}
-              onSelectTab={(nextTab) => setTab(nextTab)}
+              onSelectTab={selectTab}
             />
 
             <TeamDetailV2Panels
@@ -579,8 +629,10 @@ function TeamDetailContent({
               totalGames={totalGames}
               winRate={winRate}
               canManageMembers={canManageRoster}
+              canCreateEvent={canCreateEvent}
+              onCreateEvent={handleCreateEvent}
               busy={busy}
-              onSelectTab={(nextTab) => setTab(nextTab)}
+              onSelectTab={selectTab}
               onSelectEvent={(eventId) =>
                 location.route(`/events/${encodeURIComponent(eventId)}`)
               }
@@ -600,6 +652,15 @@ function TeamDetailContent({
                 <div class="td-v2-course-modal-body" />
               </div>
             </div>
+            {createEntry.overlays}
+            <EventFormModal
+              open={createEntry.formOpen}
+              mode="create"
+              viewer={viewer}
+              preset={createEntry.preset}
+              onClose={createEntry.closeForm}
+              onSaved={onFormSaved}
+            />
             {imageUpload.overlay}
             {inviteOpen && team ? (
               <TeamInviteQrOverlay
@@ -627,7 +688,7 @@ function TeamDetailContent({
 export default function TeamDetailPage(): JSX.Element {
   const { params } = useRoute();
   const viewer = useViewer();
-  const id = params.id || '';
+  const id = String(params.id || '').trim();
 
   return <TeamDetailContent key={JSON.stringify([id, viewer.uid])} id={id} viewer={viewer} />;
 }

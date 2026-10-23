@@ -1,6 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamDetailPage from './TeamDetailPage';
+import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
+import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
+import type {
+  EventFormModalProps,
+  EventFormPreset,
+} from '@/features/events/components/EventFormModal';
+import { getSportKeySafe } from '@/features/events/data/sports';
+import { _resetTeamTabMemoryForTest } from '../components/legacy/team-detail-tab-memory';
+import type { TeamDetailV2PanelsProps } from '../components/legacy/TeamDetailV2Panels';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
@@ -25,6 +34,42 @@ const policyMock = vi.hoisted(() => ({
 
 const routeState = vi.hoisted(() => ({ id: 'club', route: vi.fn() }));
 const pickMock = vi.hoisted(() => vi.fn());
+// 測試同步更新：新增活動入口與表單改用 stub，保留真實 Panels 的 DOM。
+const customMock = vi.hoisted(() => vi.fn());
+const eventFormMock = vi.hoisted(() => ({
+  latestProps: null as EventFormModalProps | null,
+}));
+const panelsMock = vi.hoisted(() => ({
+  latestProps: null as TeamDetailV2PanelsProps | null,
+}));
+
+vi.mock('@/features/events/components/event-form/use-create-event-entry', () => ({
+  useCreateEventEntry: vi.fn(),
+}));
+
+vi.mock('@/features/events/components/EventFormModal', () => ({
+  EventFormModal: (props: EventFormModalProps) => {
+    eventFormMock.latestProps = props;
+    return <div data-testid="event-form-stub" data-open={String(props.open)} />;
+  },
+}));
+
+vi.mock('@/features/events/components/event-form/use-event-form-post-save', () => ({
+  useEventFormPostSave: vi.fn(() => vi.fn()),
+}));
+
+vi.mock('../components/legacy/TeamDetailV2Panels', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../components/legacy/TeamDetailV2Panels')
+  >();
+  return {
+    ...actual,
+    TeamDetailV2Panels: (props: TeamDetailV2PanelsProps) => {
+      panelsMock.latestProps = props;
+      return <actual.TeamDetailV2Panels {...props} />;
+    },
+  };
+});
 const settingsModalMock = vi.hoisted(() => ({
   latestProps: null as TeamSettingsModalProps | null,
 }));
@@ -234,6 +279,23 @@ const snapshot = vi.fn<() => { active: EventDoc[]; terminal: EventDoc[] }>();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 測試同步更新：每個案例獨立清除頁籤記憶並重設新增活動 hook。
+  _resetTeamTabMemoryForTest();
+  customMock.mockClear();
+  eventFormMock.latestProps = null;
+  panelsMock.latestProps = null;
+  vi.mocked(useCreateEventEntry).mockReturnValue({
+    canCreate: true,
+    profileLocked: false,
+    buttonProps: { lockedClass: '' },
+    onClick: vi.fn(),
+    onClickCustom: customMock,
+    preset: null,
+    formOpen: false,
+    closeForm: vi.fn(),
+    overlays: null,
+  });
+  vi.mocked(useEventFormPostSave).mockImplementation(() => vi.fn());
   pickMock.mockClear();
   settingsModalMock.latestProps = null;
   vi.mocked(useTeamImageUpload).mockReturnValue({
@@ -271,6 +333,238 @@ afterEach(() => {
 });
 
 describe('TeamDetailPage (Legacy V2)', () => {
+  it('remembers the selected tab after remounting the same club', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    });
+    const first = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+    expect(first.container.querySelector('.td-v2-panel-members.active')).toBeTruthy();
+
+    cleanup();
+    const second = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(second.container.querySelector('.td-v2-panel-members.active')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '成員' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('starts another club on overview and restores the first club tab on return', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club', 'other-club']),
+      role: 'coach',
+    });
+    vi.mocked(loadTeam).mockImplementation((id) => Promise.resolve({
+      ...team,
+      id,
+      name: id === 'club' ? '測試俱樂部' : '另一俱樂部',
+    }));
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+
+    routeState.id = 'other-club';
+    view.rerender(<TeamDetailPage />);
+    await screen.findByText('另一俱樂部');
+    expect(view.container.querySelector('.td-v2-panel-overview.active')).toBeTruthy();
+
+    routeState.id = 'club';
+    view.rerender(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(view.container.querySelector('.td-v2-panel-members.active')).toBeTruthy();
+  });
+
+  it('falls back to overview when a remembered tab is hidden', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+
+    cleanup();
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...team,
+      detailVisibility: { members: false },
+    });
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(screen.queryByRole('tab', { name: '成員' })).toBeNull();
+    expect(view.container.querySelector('.td-v2-panel-overview.active')).toBeTruthy();
+  });
+
+  it('uses trimmed team ids for tab memory', async () => {
+    routeState.id = '  club  ';
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, id: ' club ' });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(loadTeam).toHaveBeenCalledWith('club');
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+
+    cleanup();
+    routeState.id = 'club';
+    vi.mocked(loadTeam).mockResolvedValue(team);
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(view.container.querySelector('.td-v2-panel-members.active')).toBeTruthy();
+  });
+
+  it('smoothly scrolls the shell from both header and panel tab controls', async () => {
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    const shell = container.querySelector<HTMLDivElement>('.td-v2-shell');
+    if (!shell) throw new Error('缺少詳情外殼');
+    const scrollIntoView = vi.fn();
+    shell.scrollIntoView = scrollIntoView;
+
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({
+      block: 'start',
+      behavior: 'smooth',
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: '總覽' }));
+    const quick = container.querySelector<HTMLButtonElement>(
+      '.td-v2-quick[data-tab="events"]',
+    );
+    if (!quick) throw new Error('缺少活動快速導覽');
+    fireEvent.click(quick);
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+    expect(container.querySelector('.td-v2-panel-events.active')).toBeTruthy();
+  });
+
+  it('still switches tabs when scrollIntoView throws', async () => {
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    const shell = container.querySelector<HTMLDivElement>('.td-v2-shell');
+    if (!shell) throw new Error('缺少詳情外殼');
+    shell.scrollIntoView = vi.fn(() => {
+      throw new Error('scroll unavailable');
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: '成員' }));
+    expect(container.querySelector('.td-v2-panel-members.active')).toBeTruthy();
+  });
+
+  it('opens a custom club event with the club preset for a coach captain', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: /活動/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增俱樂部活動' }));
+    expect(customMock).toHaveBeenCalledTimes(1);
+    expect(customMock).toHaveBeenCalledWith({
+      teamIds: ['club'],
+      teamNames: ['測試俱樂部'],
+      sportTag: getSportKeySafe('football'),
+    });
+  });
+
+  it('hides create entry from a normal member and guards direct handler calls', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: /活動/ }));
+
+    expect(screen.queryByRole('button', { name: '+ 新增俱樂部活動' })).toBeNull();
+    const props = panelsMock.latestProps;
+    if (!props) throw new Error('缺少 Panels props');
+    expect(props.canCreateEvent).toBe(false);
+    act(() => props.onCreateEvent());
+
+    expect(customMock).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledWith({
+      message: '只有俱樂部職員可以新增俱樂部活動',
+    });
+  });
+
+  it('reloads events through the post-save refresh callback', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(1));
+
+    const call = vi.mocked(useEventFormPostSave).mock.calls.at(-1);
+    if (!call) throw new Error('缺少表單儲存後 hook 呼叫');
+    const repoCalls = vi.mocked(getEventsRepo).mock.calls.length;
+    const loadCalls = loadEvents.mock.calls.length;
+    await act(async () => {
+      await call[0].refresh();
+    });
+
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(loadCalls + 1));
+    expect(getEventsRepo).toHaveBeenCalledTimes(repoCalls + 1);
+    expect(loadEvents).toHaveBeenLastCalledWith({ terminalMode: 'none' });
+  });
+
+  it('forwards preset, open, viewer and callbacks to the form and mounts overlays', async () => {
+    const manager: ViewerView = {
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    };
+    const preset: EventFormPreset = {
+      teamIds: ['club'],
+      teamNames: ['測試俱樂部'],
+      sportTag: getSportKeySafe('football'),
+    };
+    const closeForm = vi.fn();
+    const onSaved = vi.fn<EventFormModalProps['onSaved']>();
+    vi.mocked(useViewer).mockReturnValue(manager);
+    vi.mocked(useEventFormPostSave).mockReturnValue(onSaved);
+    vi.mocked(useCreateEventEntry).mockReturnValue({
+      canCreate: true,
+      profileLocked: false,
+      buttonProps: { lockedClass: '' },
+      onClick: vi.fn(),
+      onClickCustom: customMock,
+      preset,
+      formOpen: true,
+      closeForm,
+      overlays: <div data-testid="create-entry-overlay" />,
+    });
+    const view = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(eventFormMock.latestProps?.preset).toBe(preset);
+    expect(eventFormMock.latestProps?.open).toBe(true);
+    expect(eventFormMock.latestProps?.mode).toBe('create');
+    expect(eventFormMock.latestProps?.viewer).toBe(manager);
+    expect(eventFormMock.latestProps?.onClose).toBe(closeForm);
+    expect(eventFormMock.latestProps?.onSaved).toBe(onSaved);
+    expect(screen.getByTestId('event-form-stub').getAttribute('data-open')).toBe('true');
+    expect(screen.getByTestId('create-entry-overlay').closest('.td-v2-shell')).toBeTruthy();
+    const savedCall = vi.mocked(useEventFormPostSave).mock.calls.at(-1);
+    if (!savedCall) throw new Error('缺少表單儲存後 hook 呼叫');
+    expect(savedCall[0].viewer).toBe(manager);
+    expect(savedCall[0].close).toBe(closeForm);
+
+    vi.mocked(useCreateEventEntry).mockReturnValue({
+      canCreate: true,
+      profileLocked: false,
+      buttonProps: { lockedClass: '' },
+      onClick: vi.fn(),
+      onClickCustom: customMock,
+      preset: null,
+      formOpen: false,
+      closeForm,
+      overlays: null,
+    });
+    view.rerender(<TeamDetailPage />);
+    expect(eventFormMock.latestProps?.preset).toBeNull();
+    expect(eventFormMock.latestProps?.open).toBe(false);
+    expect(screen.getByTestId('event-form-stub').getAttribute('data-open')).toBe('false');
+  });
   it('renders legacy v2 shell, hero, stats, tabs and overview content', async () => {
     const { container } = render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');

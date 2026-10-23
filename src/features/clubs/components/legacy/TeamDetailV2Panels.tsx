@@ -1,4 +1,6 @@
 import type { JSX } from 'preact';
+import { useMemo } from 'preact/hooks';
+import { TeamDetailWeekStrip } from './TeamDetailWeekStrip';
 import { effectiveEventStatus } from '@/features/events/data/my-activities-model';
 import { UserTag } from '@/ui/UserTag';
 import type { EventDoc } from '@/features/events/data/types';
@@ -140,50 +142,7 @@ export function renderEventRows(
   );
 }
 
-function buildWeekStrip(events: readonly EventDoc[]): JSX.Element {
-  // 延伸載入下一批補：本批固定輸出自今日起 14 天
-  const now = new Date();
-  const todayKey = getDateKey(now);
-  const eventDays = new Set<string>();
-  for (const e of events) {
-    const key = getDateKey(parseEventStartDate(e.date));
-    if (key) eventDays.add(key);
-  }
-  const labels = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
-  const days: JSX.Element[] = [];
-  for (let offset = 0; offset <= 13; offset += 1) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    const key = getDateKey(date);
-    const weekday = date.getDay();
-    const weekendClass = weekday === 6 ? ' weekend-sat' : weekday === 0 ? ' weekend-sun' : '';
-    const activeClass = key === todayKey ? ' active' : '';
-    days.push(
-      <div
-        key={key}
-        class={`td-v2-day${weekendClass}${activeClass}`}
-        data-date={key}
-        role="listitem"
-      >
-        <span>{labels[weekday]}</span>
-        <strong>{date.getDate()}</strong>
-        {eventDays.has(key) ? <i /> : null}
-      </div>,
-    );
-  }
-  return (
-    <div
-      class="td-v2-week"
-      role="list"
-      tabIndex={0}
-      aria-label="Activity calendar"
-      data-range-start="0"
-      data-range-end="13"
-      data-event-days={Array.from(eventDays).join('|')}
-    >
-      {days}
-    </div>
-  );
-}
+
 
 function resolvePersonName(
   uid: string,
@@ -208,6 +167,8 @@ export interface TeamDetailV2PanelsProps {
   totalGames: number;
   winRate: number;
   canManageMembers: boolean;
+  canCreateEvent: boolean;
+  onCreateEvent: () => void;
   busy: boolean;
   onSelectTab: (tab: V2TabKey) => void;
   onSelectEvent: (eventId: string) => void;
@@ -230,6 +191,8 @@ export function TeamDetailV2Panels({
   totalGames,
   winRate,
   canManageMembers,
+  canCreateEvent,
+  onCreateEvent,
   busy,
   onSelectTab,
   onSelectEvent,
@@ -239,6 +202,14 @@ export function TeamDetailV2Panels({
   onLogin,
   onUnavailable,
 }: TeamDetailV2PanelsProps): JSX.Element {
+  const eventDaySet = useMemo(() => {
+    const days = new Set<string>();
+    for (const event of events) {
+      const key = getDateKey(parseEventStartDate(event.date));
+      if (key) days.add(key);
+    }
+    return days;
+  }, [events]);
   const showCourses = isTeamDetailSectionVisible(team, 'courses');
   const showEvents = isTeamDetailSectionVisible(team, 'events');
   const showMembers = isTeamDetailSectionVisible(team, 'members');
@@ -462,7 +433,7 @@ export function TeamDetailV2Panels({
               <h3>本週行事曆</h3>
               <span>{`${events.length} 場活動`}</span>
             </div>
-            {buildWeekStrip(events)}
+            <TeamDetailWeekStrip eventDays={eventDaySet} />
           </div>
           <div class="td-v2-card">
             <div class="td-v2-section-head">
@@ -486,7 +457,16 @@ export function TeamDetailV2Panels({
             ) : (
               renderEventRows(events, 8, onSelectEvent)
             )}
-            {/* 下一批補：+ 新增俱樂部活動 */}
+            {canCreateEvent && (
+              <button
+                class="td-v2-ghost"
+                type="button"
+                data-td-v2-action="create-event"
+                onClick={onCreateEvent}
+              >
+                + 新增俱樂部活動
+              </button>
+            )}
           </div>
         </section>
       )}

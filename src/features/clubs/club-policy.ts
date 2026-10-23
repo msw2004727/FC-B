@@ -354,3 +354,51 @@ export function buildMemberRoleUpdates(
     coachNames: [...coaches],
   };
 }
+
+export interface ClubCreateEventViewer extends ClubMemberViewer {
+  role: string;
+  capabilities: readonly string[];
+}
+
+/** A `_canCreateTeamDetailActivity`：入口與 handler 共用，職員身分只比對 UID。 */
+export function canCreateClubEvent(
+  viewer: ClubCreateEventViewer | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  if (!team || !viewer || !isMemberViewerLoggedIn(viewer)) return false;
+
+  const uid = viewer.uid.trim();
+  const roleKey = String(viewer.role || 'user').trim().toLowerCase() || 'user';
+  const has = (code: string): boolean => viewer.hasPermission(code);
+  const canManageAll = roleKey === 'super_admin' || has('event.edit_all');
+  const staffIds = [
+    team.captainUid,
+    team.creatorUid,
+    team.ownerUid,
+    team.leaderUid,
+    ...(Array.isArray(team.leaderUids) ? team.leaderUids : []),
+    ...(Array.isArray(team.coachUids) ? team.coachUids : []),
+  ].map((value: unknown) => String(value || '').trim()).filter(Boolean);
+  const hasExactStaffScope = staffIds.includes(uid);
+  const hasEventCreate = has('event.create');
+
+  if (roleKey === 'user') {
+    const hasTeamCreateEvent = has('team.create_event');
+    const basic = viewer.capabilities.includes('user.activity.basic_create');
+    const addon = viewer.capabilities.includes('user.activity.addons_use');
+    return (hasEventCreate && hasTeamCreateEvent && hasExactStaffScope)
+      || (
+        addon
+        && (basic || hasEventCreate)
+        && (canManageAll || (hasTeamCreateEvent && hasExactStaffScope))
+      );
+  }
+
+  const isCoachPlus = ['coach', 'captain', 'venue_owner', 'admin', 'super_admin']
+    .includes(roleKey);
+  const hasCreateEntry = isCoachPlus
+    || has('activity.manage.entry')
+    || has('event.edit_all')
+    || hasEventCreate;
+  return hasCreateEntry && (canManageAll || hasExactStaffScope);
+}
