@@ -27,19 +27,30 @@ export function clearPendingJoin(teamId: string, uid: string): void {
 }
 
 /**
- * ASSUMPTION: 未附 auth 的登入 export；沿用 auth 模組的 login() 入口。
- * 若實際專案入口名稱不同，只需調整此 adapter。
- * 缺少入口時明確失敗，頁面顯示可重試錯誤，不自行建立登入 URL。
+ * 進行中的登入。列表與詳情同時再呼叫時回傳同一個 Promise，不再打第二次 `signIn`。
+ * 外層不標 async，否則每次呼叫都會包成新的 Promise。
+ * 進行中不會被另一個 flight 換掉，結束時直接清掉即可。
  */
-export async function loginForClubs(): Promise<void> {
-  const auth: unknown = await import('@/data/auth');
-  if (
-    !auth ||
-    typeof auth !== 'object' ||
-    !('login' in auth) ||
-    typeof auth.login !== 'function'
-  ) {
-    throw new Error('Club login adapter requires the auth login entry point.');
+let loginInFlight: Promise<void> | null = null;
+
+async function runLoginForClubs(): Promise<void> {
+  try {
+    const auth = await import('@/data/auth');
+    try {
+      await auth.signIn();
+    } catch (err) {
+      if (auth.isLoginRedirectingError(err)) return;
+      throw err;
+    }
+  } finally {
+    loginInFlight = null;
   }
-  await auth.login();
+}
+
+/** M-119：走 `signIn()`。重導向不是失敗，其餘錯誤交給頁面 toast。 */
+export function loginForClubs(): Promise<void> {
+  if (loginInFlight) return loginInFlight;
+  const pending = runLoginForClubs();
+  loginInFlight = pending;
+  return pending;
 }

@@ -2,8 +2,10 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
-import { useT } from '@/i18n/i18n';
+import { getLastKnownAuthUid } from '@/data/auth';
+import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
+import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
 import { getEventsRepo } from '@/features/events/data/events-repo';
@@ -22,6 +24,7 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
+import { resolveClubDetailAccess } from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
 import type { TeamDoc, TeamMember } from '../data/types';
 import {
@@ -116,6 +119,9 @@ function TeamDetailContent({
   const teamSequence = useRef(0);
   const memberSequence = useRef(0);
   const eventSequence = useRef(0);
+  // M-119：照 A team-detail.js:997-1000。存取只走 resolveClubDetailAccess。
+  // pending：不讀資料、不要求登入（含 auth 已是字串但 viewer 還沒 uid）。login-required 才出閘門。
+  const access = resolveClubDetailAccess(viewer, getLastKnownAuthUid());
 
   useEffect(() => {
     alive.current = true;
@@ -125,6 +131,8 @@ function TeamDetailContent({
   }, []);
 
   useEffect(() => {
+    // 只有 allowed 才讀俱樂部。uid 或 access 變了就依相依項重跑。
+    if (access !== 'allowed') return;
     const sequence = ++teamSequence.current;
     let cancelled = false;
     setTeamState({ status: 'loading' });
@@ -145,7 +153,7 @@ function TeamDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [id, teamAttempt]);
+  }, [id, teamAttempt, access, viewer.uid]);
 
   const team = teamState.status === 'ready' ? teamState.value : null;
   const showMembers = !!team && isTeamDetailSectionVisible(team, 'members');
@@ -228,7 +236,53 @@ function TeamDetailContent({
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
-  if (teamState.status === 'loading') {
+  // ASSUMPTION: 閘門不載入俱樂部，頁首只留既有返回鈕，不顯示隊名與統計。
+  // 不自動 signIn，避免使用者取消登入後按返回又被送去登入。
+  if (access === 'login-required') {
+    return (
+      <div class="legacy-ui">
+        <section class="page active td-v2-active" id="page-team-detail">
+          <div class="detail-body" id="team-detail-body">
+            <div class="td-v2-shell" data-team-id={id}>
+              <div class="td-v2-topbar">
+                <button
+                  class="td-v2-icon-btn"
+                  type="button"
+                  data-td-v2-action="back"
+                  aria-label="返回"
+                  onClick={handleBack}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15 6l-6 6 6 6" />
+                  </svg>
+                </button>
+              </div>
+              <main class="td-v2-content">
+                <div class="td-v2-empty">
+                  <div>
+                    <Text>{lt('請先登入 LINE 帳號', '請先登入 LINE 帳號')}</Text>
+                  </div>
+                  <button
+                    type="button"
+                    class="primary-btn small"
+                    style="margin-top:8px;min-height:44px;min-width:96px"
+                    disabled={busy}
+                    onClick={() => {
+                      void login();
+                    }}
+                  >
+                    <Text>{lt('登入', '登入')}</Text>
+                  </button>
+                </div>
+              </main>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (access === 'pending' || teamState.status === 'loading') {
     return (
       <ShellState teamId={id}>
         <div class="td-v2-empty" role="status">

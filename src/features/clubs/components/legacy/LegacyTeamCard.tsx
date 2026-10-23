@@ -12,6 +12,10 @@ import type { TeamCategoryKey, TeamDoc } from '../../data/types';
 export interface LegacyTeamCardProps {
   team: TeamDoc;
   onSelect: (teamId: string) => void;
+  /** M-115：150ms 後才為 true；進度條 DOM 在這時才輸出。 */
+  isPending?: boolean;
+  /** 由列表頁管理的偽進度（0–85），套在 .tc-loading-fill 的 width。 */
+  pendingProgress?: number;
 }
 
 const CATEGORY_LABELS: Record<TeamCategoryKey, string> = {
@@ -46,7 +50,12 @@ function getSportSymbol(sportTag: string | undefined): string {
   return SPORTS.find((s) => s.sportTag === key)?.symbol ?? '';
 }
 
-export function LegacyTeamCard({ team, onSelect }: LegacyTeamCardProps): JSX.Element {
+export function LegacyTeamCard({
+  team,
+  onSelect,
+  isPending = false,
+  pendingProgress = 0,
+}: LegacyTeamCardProps): JSX.Element {
   const teamId = String(team.id || team._docId || '').trim();
   const pinnedClass = team.pinned ? ' tc-pinned' : '';
   const rank = getTeamRank(team.teamExp);
@@ -90,14 +99,23 @@ export function LegacyTeamCard({ team, onSelect }: LegacyTeamCardProps): JSX.Ele
     onSelect(teamId);
   };
 
+  // ASSUMPTION: B 的卡片一律有 .tc-card-media（無圖時同時帶 .tc-img-placeholder），
+  // 載入條放在該節點內，等同 A 先查 .tc-card-media 再 fallback .tc-img-placeholder。
+  const loadingBar = isPending ? (
+    <div class="tc-loading-bar">
+      <div class="tc-loading-fill" style={{ width: `${pendingProgress}%` }} />
+    </div>
+  ) : null;
+
   return (
     <div
-      class={`tc-card${pinnedClass}${attentionClass}${themeClass}`}
+      class={`tc-card${pinnedClass}${attentionClass}${themeClass}${isPending ? ' is-pending' : ''}`}
       style={Object.keys(styleVars).length > 0 ? styleVars : undefined}
       data-team-id={teamId}
       role="link"
       tabIndex={0}
       aria-label={team.name || '未命名俱樂部'}
+      aria-busy={isPending ? 'true' : undefined}
       onClick={handleActivate}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -134,6 +152,7 @@ export function LegacyTeamCard({ team, onSelect }: LegacyTeamCardProps): JSX.Ele
           {hasCategoryRibbon && (
             <span class={categoryRibbonClass}>{categoryLabel}</span>
           )}
+          {loadingBar}
         </div>
       ) : (
         <div class="tc-card-media tc-img-placeholder">
@@ -150,6 +169,7 @@ export function LegacyTeamCard({ team, onSelect }: LegacyTeamCardProps): JSX.Ele
           {hasCategoryRibbon && (
             <span class={categoryRibbonClass}>{categoryLabel}</span>
           )}
+          {loadingBar}
         </div>
       )}
       <div class="tc-body">
@@ -163,6 +183,15 @@ export function LegacyTeamCard({ team, onSelect }: LegacyTeamCardProps): JSX.Ele
           <span>{team.region ?? ''}</span>
         </div>
       </div>
+      {isPending && (
+        <div class="tc-loading-panel">
+          <span class="tc-loading-spinner" aria-hidden="true" />
+          <span class="tc-loading-copy">
+            <strong>資料更新中</strong>
+            <span>正在整理俱樂部最新內容</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

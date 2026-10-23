@@ -7,10 +7,12 @@ import {
   resolveTeamSportFilterSync,
   useActiveSport,
 } from '@/core/sport-filter';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { SPORTS } from '@/features/events/data/sports';
+import { resolveClubDetailAccess } from '../club-policy';
 import { LegacyTeamCard } from '../components/legacy/LegacyTeamCard';
 import {
   filterTeams,
@@ -19,7 +21,81 @@ import {
 } from '../data/team-list-model';
 import { loadTeams } from '../data/teams-repo';
 import type { TeamDoc } from '../data/types';
+import { getClubListFilters, saveClubListFilters } from './clubs-list-session';
+import { loginForClubs } from './clubs-session';
 import '../legacy/team.css';
+
+/** M-114：照 A `filterTeams`，最後一次變動起算 300ms 才套到列表。 */
+const FILTER_APPLY_MS = 300;
+/** M-115：照 A `_teamCardPendingDelayMs`。 */
+const CARD_PENDING_DELAY_MS = 150;
+const CARD_PROGRESS_INTERVAL_MS = 100;
+/** 列表仍掛載超過這段時間，視為換頁失敗。 */
+const CARD_PENDING_GIVE_UP_MS = 10_000;
+
+interface AppliedListFilters {
+  query: string;
+  region: string;
+  sportTag: string;
+  typeTab: string;
+}
+
+function sameAppliedFilters(a: AppliedListFilters, b: AppliedListFilters): boolean {
+  return (
+    a.query === b.query
+    && a.region === b.region
+    && a.sportTag === b.sportTag
+    && a.typeTab === b.typeTab
+  );
+}
+
+/** M-115：照 A `_showTeamCardPending` 每 100ms 的增量，上限 85。 */
+function nextClubCardProgress(progress: number): number {
+  const inc = progress < 30 ? 4 : progress < 60 ? 2 : progress < 80 ? 0.5 : 0.15;
+  return Math.min(progress + inc, 85);
+}
+
+/**
+ * 點卡後 150ms 才亮載入條，之後每 100ms 推進進度。
+ * 顯示中的 id 必須仍是目前 pending，換卡或清除時立刻收掉舊的。
+ */
+function useClubCardPendingVisual(pendingTeamId: string | null): {
+  visibleTeamId: string | null;
+  progress: number;
+} {
+  const [shownTeamId, setShownTeamId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (!pendingTeamId) {
+      setShownTeamId(null);
+      setProgress(0);
+      return;
+    }
+    setShownTeamId(null);
+    setProgress(0);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      setShownTeamId(pendingTeamId);
+      setProgress(0);
+      intervalId = setInterval(() => {
+        setProgress((value) => nextClubCardProgress(value));
+      }, CARD_PROGRESS_INTERVAL_MS);
+    }, CARD_PENDING_DELAY_MS);
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId !== null) clearInterval(intervalId);
+    };
+  }, [pendingTeamId]);
+
+  const visibleTeamId = shownTeamId !== null && shownTeamId === pendingTeamId
+    ? shownTeamId
+    : null;
+  return {
+    visibleTeamId,
+    progress: visibleTeamId !== null ? progress : 0,
+  };
+}
 
 type ListState =
   | { status: 'loading' }
@@ -66,13 +142,32 @@ export default function TeamsPage(): JSX.Element {
 
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  // M-114：返回列表時還原搜尋字、地區、類型頁籤、篩選面板。運動不在這份記憶裡。
+  const [restoredFilters] = useState(() => getClubListFilters());
+  const [filtersOpen, setFiltersOpen] = useState(restoredFilters.filtersOpen);
+  const [query, setQuery] = useState(restoredFilters.query);
   const [sportTag, setSportTag] = useState<string>(() => toTeamSportValue(getActiveSport()));
-  const [region, setRegion] = useState('');
-  const [typeTab, setTypeTab] = useState('');
+  const [region, setRegion] = useState(restoredFilters.region);
+  const [typeTab, setTypeTab] = useState(restoredFilters.typeTab);
+  // ASSUMPTION: 重新掛載時 applied 直接採用 session 的即時篩選，不再等 300ms，返回後列表與輸入框一致。
+  const [applied, setApplied] = useState<AppliedListFilters>(() => ({
+    query: restoredFilters.query,
+    region: restoredFilters.region,
+    sportTag: toTeamSportValue(getActiveSport()),
+    typeTab: restoredFilters.typeTab,
+  }));
+  const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
+  const { visibleTeamId, progress } = useClubCardPendingVisual(pendingTeamId);
   const sequence = useRef(0);
   const syncedGlobalSportRef = useRef<string>(toTeamSportValue(getActiveSport()));
+  const appliedRef = useRef(applied);
+  appliedRef.current = applied;
+  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusFrameRef = useRef<number | null>(null);
+  const failTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTeamIdRef = useRef<string | null>(null);
+  // M-119：訪客登入進行中不再 toast／route／signIn。結束（含失敗）後解鎖。
+  const loginLockRef = useRef(false);
 
   // M-020：照 A `team-list.js#_syncTeamSportFilterWithGlobal` 與頂部全站運動篩選同步（force: true）
   useEffect(() => {
@@ -115,19 +210,60 @@ export default function TeamsPage(): JSX.Element {
     };
   }, [attempt]);
 
+  // 寫即時值，不是 applied。運動不寫入。
+  useEffect(() => {
+    saveClubListFilters({ query, region, typeTab, filtersOpen });
+  }, [query, region, typeTab, filtersOpen]);
+
+  // 控制項立刻反映在 state；列表只吃 300ms 後的 applied。卸載時清 timer。
+  useEffect(() => {
+    const next: AppliedListFilters = { query, region, sportTag, typeTab };
+    if (sameAppliedFilters(next, appliedRef.current)) return;
+    if (filterTimerRef.current !== null) {
+      clearTimeout(filterTimerRef.current);
+    }
+    filterTimerRef.current = setTimeout(() => {
+      filterTimerRef.current = null;
+      setApplied(next);
+    }, FILTER_APPLY_MS);
+    return () => {
+      if (filterTimerRef.current !== null) {
+        clearTimeout(filterTimerRef.current);
+        filterTimerRef.current = null;
+      }
+    };
+  }, [query, region, sportTag, typeTab]);
+
+  useEffect(() => {
+    return () => {
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+      }
+      if (failTimerRef.current !== null) {
+        clearTimeout(failTimerRef.current);
+        failTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const hasActiveFilters = Boolean(query.trim() || sportTag || region);
   const filterBtnActive = filtersOpen || hasActiveFilters;
+  // 照 A team-list.js `_doFilterTeams`：只選類型頁籤也算篩過，無結果用 team.noMatch。
+  const appliedHasActiveFilters = Boolean(
+    applied.query.trim() || applied.sportTag || applied.region || applied.typeTab !== '',
+  );
 
   const sortedTeams = useMemo(() => {
     if (state.status !== 'ready') return [];
     const filtered = filterTeams(state.teams, {
-      query,
-      region,
-      sportTag,
-      typeTab,
+      query: applied.query,
+      region: applied.region,
+      sportTag: applied.sportTag,
+      typeTab: applied.typeTab,
     });
     return sortTeams(filtered);
-  }, [state, query, region, sportTag, typeTab]);
+  }, [state, applied]);
 
   function switchTeamTypeTab(rawType: string): void {
     const nextType = rawType ? normalizeTeamCategory(rawType) : '';
@@ -143,13 +279,72 @@ export default function TeamsPage(): JSX.Element {
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
+  function handleToggleFilters(): void {
+    const nextOpen = !filtersOpen;
+    if (focusFrameRef.current !== null) {
+      cancelAnimationFrame(focusFrameRef.current);
+      focusFrameRef.current = null;
+    }
+    if (nextOpen) {
+      // M-114：照 A `toggleTeamFilterPanel`，展開後下一幀聚焦 #team-search；收合不聚焦。
+      focusFrameRef.current = requestAnimationFrame(() => {
+        focusFrameRef.current = null;
+        const panel = document.getElementById('team-filter-panel');
+        if (!panel || panel.hidden) return;
+        const search = document.getElementById('team-search');
+        if (search instanceof HTMLInputElement) {
+          search.focus({ preventScroll: true });
+        }
+      });
+    }
+    setFiltersOpen(nextOpen);
+  }
+
   function handleSelectTeam(teamId: string): void {
     if (!teamId) return;
+    // M-119：照 A team-detail.js:997-1000。先換成詳情網址再 signIn，redirectUri 才是這頁。
+    // 只有 login-required 走訪客登入；pending／allowed 交給詳情頁，並維持點卡 pending。
+    const access = resolveClubDetailAccess(viewer, getLastKnownAuthUid());
+    if (access === 'login-required') {
+      if (loginLockRef.current) return;
+      loginLockRef.current = true;
+      toast.show({ message: lt('請先登入 LINE 帳號', '請先登入 LINE 帳號') });
+      location.route(`/teams/${encodeURIComponent(teamId)}`);
+      void (async () => {
+        try {
+          await loginForClubs();
+        } catch {
+          toast.show({ message: t('clubs.actionError'), tone: 'error' });
+        } finally {
+          loginLockRef.current = false;
+        }
+      })();
+      return;
+    }
+    // 同一張卡已在 pending 時不再 route。
+    if (pendingTeamIdRef.current === teamId) return;
+    if (failTimerRef.current !== null) {
+      clearTimeout(failTimerRef.current);
+      failTimerRef.current = null;
+    }
+    pendingTeamIdRef.current = teamId;
+    setPendingTeamId(teamId);
+    // ASSUMPTION: lazy 換頁失敗不會丟出拒絕；列表若 10 秒後仍掛載就清回饋並提示。
+    // 換卡會重計這 10 秒；同一張卡重點直接 return，不重計。
+    failTimerRef.current = setTimeout(() => {
+      failTimerRef.current = null;
+      pendingTeamIdRef.current = null;
+      setPendingTeamId(null);
+      toast.show({
+        message: lt('俱樂部頁面載入失敗，請稍後再試', '俱樂部頁面載入失敗，請稍後再試'),
+        tone: 'error',
+      });
+    }, CARD_PENDING_GIVE_UP_MS);
     location.route(`/teams/${encodeURIComponent(teamId)}`);
   }
 
-  const emptyMessage = hasActiveFilters
-    ? lt('未找到符合條件的俱樂部', '未找到符合條件的俱樂部')
+  const emptyMessage = appliedHasActiveFilters
+    ? lt('team.noMatch', '找不到符合的俱樂部')
     : '此類型尚無俱樂部';
 
   return (
@@ -191,7 +386,7 @@ export default function TeamsPage(): JSX.Element {
               aria-expanded={filtersOpen ? 'true' : 'false'}
               aria-controls="team-filter-panel"
               data-i18n-aria-label="搜尋與篩選俱樂部"
-              onClick={() => setFiltersOpen((open) => !open)}
+              onClick={handleToggleFilters}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -377,7 +572,11 @@ export default function TeamsPage(): JSX.Element {
           </button>
         </div>
 
-        <div class="team-grid" id="team-list">
+        <div
+          class="team-grid"
+          id="team-list"
+          aria-busy={state.status === 'loading' ? 'true' : undefined}
+        >
           {state.status === 'loading' && (
             <>
               <div class="skeleton skeleton-team-card" />
@@ -406,6 +605,11 @@ export default function TeamsPage(): JSX.Element {
                 <LegacyTeamCard
                   key={team.id || team._docId || `team-${idx}`}
                   team={team}
+                  isPending={
+                    visibleTeamId !== null
+                    && visibleTeamId === String(team.id || team._docId || '').trim()
+                  }
+                  pendingProgress={progress}
                   onSelect={handleSelectTeam}
                 />
               ))
