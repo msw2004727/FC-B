@@ -7,6 +7,7 @@ import type {
 import type { DirectoryUser } from '@/features/events/data/user-directory';
 import { SPORTS } from '@/features/events/data/sports';
 import { toast } from '@/ui/Toast';
+import { appConfirm } from '@/ui/AppConfirm';
 import {
   canAssignCoach,
   canCreateTeam,
@@ -136,11 +137,51 @@ function strings(value: unknown): string[] {
 }
 
 function firstNames(...values: unknown[]): string[] {
+  let blankNames: string[] = [];
   for (const value of values) {
     const names = strings(value);
-    if (names.length) return names;
+    if (names.some(Boolean)) {
+      // 保留空白位置；回退姓名不得使原本可靠的 UID／姓名索引位移。
+      return Array.from(
+        { length: Math.max(blankNames.length, names.length) },
+        (_, index) => names[index] ?? '',
+      );
+    }
+    if (!blankNames.length && names.length) blankNames = names;
   }
-  return [];
+  return blankNames;
+}
+
+interface LegacyStaffName {
+  id: number;
+  name: string;
+}
+
+function reconcileLegacyNames(
+  previous: LegacyStaffName[],
+  names: string[],
+  allocateId: () => number,
+): LegacyStaffName[] {
+  const remaining = [...previous];
+  return names.map(name => {
+    const index = remaining.findIndex(item => item.name === name);
+    if (index >= 0) {
+      const existing = remaining.splice(index, 1)[0];
+      if (existing) return existing;
+    }
+    return { id: allocateId(), name };
+  });
+}
+
+function submitFailureMessage(mode: TeamFormProps['mode'], error?: unknown): string {
+  if (mode === 'edit') return '俱樂部更新失敗，請重試';
+  const message = typeof error === 'string'
+    ? error
+    : error && typeof error === 'object'
+      && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : '';
+  return `儲存失敗：${message}`;
 }
 
 function staffList(
@@ -239,15 +280,15 @@ function initialValues(
   };
 }
 
-function tags(members: TeamFormStaffMember[], unresolved: string[]): StaffTag[] {
+function tags(members: TeamFormStaffMember[], unresolved: LegacyStaffName[]): StaffTag[] {
   return [
     ...members.map(member => ({
       key: `uid:${member.uid}`,
       uid: member.uid,
       name: member.name,
     })),
-    ...unresolved.map((name, index) => ({
-      key: `legacy:${index}`,
+    ...unresolved.map(({ id, name }) => ({
+      key: `legacy:${id}`,
       uid: null,
       name,
     })),
@@ -321,6 +362,18 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   const seed = useMemo(() => initialValues(props, scope.users), [scope]);
   const [values, setValues] = useState(seed);
   const valuesRef = useRef(seed);
+  const nextLegacyId = useRef(0);
+  const legacyNames = useRef<{
+    leaders: LegacyStaffName[];
+    coaches: LegacyStaffName[];
+  } | null>(null);
+  if (legacyNames.current === null) {
+    legacyNames.current = {
+      leaders: reconcileLegacyNames([], seed.unresolvedLeaderNames, () => nextLegacyId.current++),
+      coaches: reconcileLegacyNames([], seed.unresolvedCoachNames, () => nextLegacyId.current++),
+    };
+  }
+  const captainRequest = useRef(0);
   const latest = useRef({ props, scope });
   latest.current = { props, scope };
   const mounted = useRef(false);
@@ -356,14 +409,32 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     if (reader?.readyState === 1) reader.abort();
   };
 
+  const syncLegacyNames = (next: TeamFormValues, reset = false): void => {
+    legacyNames.current = {
+      leaders: reconcileLegacyNames(
+        reset ? [] : legacyNames.current?.leaders ?? [],
+        next.unresolvedLeaderNames,
+        () => nextLegacyId.current++,
+      ),
+      coaches: reconcileLegacyNames(
+        reset ? [] : legacyNames.current?.coaches ?? [],
+        next.unresolvedCoachNames,
+        () => nextLegacyId.current++,
+      ),
+    };
+  };
+
   const write = (next: TeamFormValues): void => {
     if (!current()) return;
+    syncLegacyNames(next);
     valuesRef.current = next;
     setValues(next);
   };
 
   useLayoutEffect(() => {
     mounted.current = true;
+    captainRequest.current += 1;
+    syncLegacyNames(seed, true);
     valuesRef.current = seed;
     setValues(seed);
     originalCaptain.current = { member: seed.captain, name: seed.unresolvedCaptainName };
@@ -381,6 +452,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
     return () => {
       mounted.current = false;
+      captainRequest.current += 1;
       imageRequest.current += 1;
       cancelBlur();
       abortReader();
@@ -505,8 +577,13 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         [role]: valuesRef.current[role].filter(member => member.uid !== key.slice(4)),
       });
     } else if (key.startsWith('legacy:')) {
-      const index = Number(key.slice(7));
-      if (!Number.isInteger(index) || index < 0) return;
+      const entries = legacyNames.current?.[role] ?? [];
+      const index = entries.findIndex(item => `legacy:${item.id}` === key);
+      if (index < 0) return;
+      // 先移除對應 ID，再同步姓名；重複姓名也不會沿用已刪除的 ID。
+      if (legacyNames.current) {
+        legacyNames.current[role] = entries.filter((_, i) => i !== index);
+      }
       write({
         ...valuesRef.current,
         [unresolvedKey]: valuesRef.current[unresolvedKey].filter((_, i) => i !== index),
@@ -516,8 +593,10 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
   const selectCaptain = async (uid: string): Promise<void> => {
     if (!editable() || !transferAllowed()) return;
+    const request = ++captainRequest.current;
     const member = await transferPicker.pick(uid);
-    if (!member || !editable() || !transferAllowed()) return;
+    if (request !== captainRequest.current
+      || !member || !editable() || !transferAllowed()) return;
     dirtyRoles.current.add('captain');
     write({ ...valuesRef.current, captain: member, unresolvedCaptainName: '' });
     setPendingName(member.name);
@@ -526,6 +605,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
   const clearCaptain = (): void => {
     if (!editable() || !transferAllowed()) return;
+    captainRequest.current += 1;
     dirtyRoles.current.add('captain');
     write({
       ...valuesRef.current,
@@ -622,6 +702,35 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     setSequence(null);
 
     try {
+      if (submittedProps.mode === 'edit' && submittedProps.team) {
+        const oldUid = submittedProps.team.captainUid?.trim() || '';
+        const newUid = submittedValues.captain?.uid.trim() || oldUid;
+        if (oldUid && newUid && oldUid !== newUid) {
+          const findUser = (uid: string) => scope.users.find(user => {
+            // ASSUMPTION: 目錄型別僅保證 uid；兼容 A 可選的 _docId／id。
+            const candidate = user as DirectoryUser & { _docId?: string; id?: string };
+            return candidate.uid === uid || candidate._docId === uid || candidate.id === uid;
+          });
+          const oldUser = findUser(oldUid);
+          const newUser = findUser(newUid);
+          const oldName = oldUser?.name || oldUser?.displayName || '原俱樂部經理';
+          const newName = submittedValues.captain?.name
+            || newUser?.name || newUser?.displayName || '新俱樂部經理';
+          const confirmed = await appConfirm(
+            `確定要轉移俱樂部經理嗎？\n\n` +
+            `目前經理：${oldName}\n` +
+            `新的經理：${newName}\n\n` +
+            `注意：\n` +
+            `- 俱樂部經理只能有一位，不是可複選的領隊欄位。\n` +
+            `- 儲存後，新的經理會取得俱樂部管理權限。\n` +
+            `- 原經理可能失去此俱樂部管理權限，除非仍保留領隊、教練或其他管理身份。\n\n` +
+            `確定要儲存這次經理轉移？`,
+          );
+          if (!current() || !confirmed) return;
+        }
+      }
+      if (!current()) return;
+
       const result = submittedProps.mode === 'create'
         ? await submitCreateTeam({ viewer, values: submittedValues, images: submittedImages })
         : submittedProps.team
@@ -635,7 +744,10 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
       if (!current() || !result) return;
       if (!result.ok) {
-        toast.show({ message: result.message || '儲存失敗：', tone: 'error' });
+        toast.show({
+          message: result.message || submitFailureMessage(submittedProps.mode),
+          tone: 'error',
+        });
         return;
       }
       toast.show({
@@ -656,8 +768,13 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         // 寫入已成功；父層刷新失敗不得改報儲存失敗。
       }
       // onSaved 由 UI 負責關閉／刷新，避免另外呼叫 onClose 重複卸載。
-    } catch {
-      if (current()) toast.show({ message: '儲存失敗：', tone: 'error' });
+    } catch (error: unknown) {
+      if (current()) {
+        toast.show({
+          message: submitFailureMessage(submittedProps.mode, error),
+          tone: 'error',
+        });
+      }
     } finally {
       if (current()) {
         locked.current = false;
@@ -813,14 +930,14 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       clear: clearCaptain,
     },
     leaders: {
-      tags: tags(values.leaders, values.unresolvedLeaderNames),
+      tags: tags(values.leaders, legacyNames.current?.leaders ?? []),
       picker: leaderPicker,
       add: uid => addStaff('leaders', uid),
       remove: key => removeStaff('leaders', key),
     },
     coaches: {
       allowed: coachesAllowed,
-      tags: tags(values.coaches, values.unresolvedCoachNames),
+      tags: tags(values.coaches, legacyNames.current?.coaches ?? []),
       picker: coachPicker,
       add: uid => addStaff('coaches', uid),
       remove: key => removeStaff('coaches', key),

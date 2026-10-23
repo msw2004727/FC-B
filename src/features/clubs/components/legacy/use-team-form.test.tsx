@@ -15,6 +15,7 @@ import type {
   DirectoryVerification,
 } from '@/features/events/data/user-directory';
 import { toast } from '@/ui/Toast';
+import { appConfirm } from '@/ui/AppConfirm';
 import {
   submitCreateTeam,
   submitEditTeam,
@@ -36,6 +37,7 @@ vi.mock('../../data/team-form-actions', () => ({
   submitEditTeam: vi.fn(),
 }));
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
+vi.mock('@/ui/AppConfirm', () => ({ appConfirm: vi.fn() }));
 vi.mock('@/features/events/components/event-form/ImageCropper', () => ({
   ImageCropper: (props: ImageCropperProps) => {
     cropper.props = props;
@@ -88,6 +90,7 @@ async function flush(): Promise<void> {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(appConfirm).mockResolvedValue(true);
   renders = 0;
   cropper.props = null;
   vi.mocked(getUserDirectory).mockReturnValue([]);
@@ -116,6 +119,358 @@ afterEach(() => {
 });
 
 describe('useTeamForm', () => {
+  it.each(
+    [true, false].flatMap(directoryOk =>
+      ['', '   '].flatMap(blank =>
+        [true, false].map(withUid => ({ directoryOk, blank, withUid })),
+      ),
+    ),
+  )('空白姓名回退並保留身分界線：%j', async ({ directoryOk, blank, withUid }) => {
+    vi.mocked(loadUserDirectory).mockResolvedValue(directoryOk);
+    vi.mocked(getUserDirectory).mockReturnValue(directoryOk
+      ? [user('leader', '目錄領隊'), user('coach', '目錄教練'), user('same', '舊領隊')]
+      : []);
+    render(<Harness {...props({
+      mode: 'edit',
+      team: {
+        id: 'old-team',
+        captainUid: 'me',
+        leaderNames: [blank],
+        leader: '舊領隊',
+        leaderUids: withUid ? ['leader'] : [],
+        coachNames: [blank],
+        coaches: ['舊教練'],
+        coachUids: withUid ? ['coach'] : [],
+      },
+    })} />);
+    await flush();
+
+    expect(api.values.leaders).toEqual(withUid
+      ? [{ uid: 'leader', name: directoryOk ? '目錄領隊' : '舊領隊' }]
+      : []);
+    expect(api.values.coaches).toEqual(withUid
+      ? [{ uid: 'coach', name: directoryOk ? '目錄教練' : '舊教練' }]
+      : []);
+    expect(api.values.unresolvedLeaderNames).toEqual(withUid ? [] : ['舊領隊']);
+    expect(api.values.unresolvedCoachNames).toEqual(withUid ? [] : ['舊教練']);
+  });
+
+  it('領隊空白陣列優先回退 leaders，仍保留未連結姓名', async () => {
+    vi.mocked(getUserDirectory).mockReturnValue([user('same', '舊領隊甲')]);
+    render(<Harness {...props({
+      mode: 'edit',
+      team: {
+        id: 'old-team',
+        captainUid: 'me',
+        leaderNames: ['', ' '],
+        leaders: ['舊領隊甲', '舊領隊乙'],
+        leader: '單一舊領隊',
+      },
+    })} />);
+    await flush();
+    expect(api.values.leaders).toEqual([]);
+    expect(api.values.unresolvedLeaderNames).toEqual(['舊領隊甲', '舊領隊乙']);
+  });
+
+  it.each([true, false])('回退姓名保留空白位置，目錄成功=%s', async directoryOk => {
+    vi.mocked(loadUserDirectory).mockResolvedValue(directoryOk);
+    vi.mocked(getUserDirectory).mockReturnValue(directoryOk
+      ? [user('first', '第一位'), user('second', '第二位')]
+      : []);
+    render(<Harness {...props({
+      mode: 'edit',
+      team: {
+        id: 'old-team',
+        captainUid: 'me',
+        leaderUids: ['first', 'second'],
+        leaderNames: [' ', ''],
+        leader: '第一位舊名',
+        coachUids: ['first', 'second'],
+        coachNames: ['', '第二位舊名'],
+      },
+    })} />);
+    await flush();
+    expect(api.values.leaders).toEqual([
+      { uid: 'first', name: directoryOk ? '第一位' : '第一位舊名' },
+      { uid: 'second', name: directoryOk ? '第二位' : '' },
+    ]);
+    expect(api.values.coaches).toEqual([
+      { uid: 'first', name: directoryOk ? '第一位' : '' },
+      { uid: 'second', name: directoryOk ? '第二位' : '第二位舊名' },
+    ]);
+    expect(api.values.unresolvedLeaderNames).toEqual([]);
+    expect(api.values.unresolvedCoachNames).toEqual([]);
+  });
+
+  it.each(['leaders', 'coaches'] as const)(
+    '%s 未連結 tag 可在同一 act 依原 key 連刪，重複舊 key 不誤刪',
+    async role => {
+      render(<Harness {...props({
+        mode: 'edit',
+        team: {
+          id: 'old-team',
+          captainUid: 'me',
+          leaderNames: ['甲', '乙', '丙'],
+          coachNames: ['甲', '乙', '丙'],
+        },
+      })} />);
+      await flush();
+      const original = api[role].tags;
+      const first = original[0]!;
+      const second = original[1]!;
+      const third = original[2]!;
+      act(() => {
+        api[role].remove(first.key);
+        api[role].remove(second.key);
+        api[role].remove(first.key);
+      });
+      expect(api[role].tags).toEqual([third]);
+      act(() => api[role].remove(second.key));
+      expect(api[role].tags).toEqual([third]);
+    },
+  );
+
+  it.each([true, false])(
+    '清除使進行中的經理驗證失效，原經理有 UID=%s',
+    async withUid => {
+      const verifying = deferred<DirectoryVerification>();
+      vi.mocked(verifyUserDirectorySelection).mockReturnValue(verifying.promise);
+      render(<Harness {...props({
+        mode: 'edit',
+        viewer: {
+          uid: 'me',
+          displayName: '管理員',
+          hasPermission: () => true,
+        },
+        team: {
+          id: 'old-team',
+          captainUid: withUid ? 'me' : '',
+          captainName: '原經理',
+        },
+      })} />);
+      await flush();
+      const original = api.values.captain;
+      const unresolved = api.values.unresolvedCaptainName;
+      let selection!: Promise<void>;
+      act(() => { selection = api.captain.select('next'); });
+      expect(verifyUserDirectorySelection).toHaveBeenCalledTimes(1);
+      act(() => api.captain.clear());
+      await act(async () => {
+        verifying.resolve({
+          ok: true, users: [user('next', '新經理')], missingUids: [], reason: '',
+        });
+        await selection;
+      });
+      expect(api.values.captain).toEqual(original);
+      expect(api.values.unresolvedCaptainName).toBe(unresolved);
+      expect(api.captain.pendingName).toBeNull();
+    },
+  );
+
+  it.each(['switch', 'unmount'] as const)(
+    '經理驗證等待期間 %s，結果不得寫入',
+    async change => {
+      const verifying = deferred<DirectoryVerification>();
+      vi.mocked(verifyUserDirectorySelection).mockReturnValue(verifying.promise);
+      const view = render(<Harness {...props({
+        mode: 'edit',
+        team: { id: 'old-team', captainUid: 'me', captainName: '原經理' },
+      })} />);
+      await flush();
+      let selection!: Promise<void>;
+      act(() => { selection = api.captain.select('next'); });
+      if (change === 'switch') {
+        view.rerender(<Harness {...props()} />);
+        await flush();
+      } else {
+        view.unmount();
+      }
+      const count = renders;
+      await act(async () => {
+        verifying.resolve({
+          ok: true, users: [user('next')], missingUids: [], reason: '',
+        });
+        await selection;
+      });
+      expect(renders).toBe(count);
+      expect(api.values.captain?.uid).toBe('me');
+      expect(api.values.unresolvedCaptainName).toBe('');
+      expect(api.captain.pendingName).toBeNull();
+      expect(toast.show).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['create', 'edit'] as const)(
+    '%s action 回傳失敗：優先採 message，缺少時使用模式文案',
+    async mode => {
+      const action = vi.mocked(mode === 'create' ? submitCreateTeam : submitEditTeam);
+      const options = props({
+        mode,
+        team: mode === 'edit' ? { id: 'old-team', captainUid: 'me' } : undefined,
+      });
+      render(<Harness {...options} />);
+      await flush();
+      for (const message of ['action 指定訊息', undefined]) {
+        action.mockResolvedValue({
+          ok: false,
+          reason: 'write-failed',
+          ...(message ? { message } : {}),
+        });
+        vi.mocked(toast.show).mockClear();
+        await act(async () => { await api.submit(); });
+        expect(toast.show).toHaveBeenCalledExactlyOnceWith({
+          message: message || (mode === 'edit' ? '俱樂部更新失敗，請重試' : '儲存失敗：'),
+          tone: 'error',
+        });
+        expect(api.busy).toBe(false);
+      }
+      expect(options.onSaved).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['create', 'edit'] as const)(
+    '%s action reject／同步例外使用模式文案並解鎖',
+    async mode => {
+      const action = vi.mocked(mode === 'create' ? submitCreateTeam : submitEditTeam);
+      const options = props({
+        mode,
+        team: mode === 'edit' ? { id: 'old-team', captainUid: 'me' } : undefined,
+      });
+      render(<Harness {...options} />);
+      await flush();
+      for (const synchronous of [false, true]) {
+        for (const error of [new Error('offline'), '字串錯誤', undefined]) {
+          if (synchronous) {
+            action.mockImplementationOnce(() => { throw error; });
+          } else {
+            action.mockRejectedValueOnce(error);
+          }
+          vi.mocked(toast.show).mockClear();
+          await act(async () => { await api.submit(); });
+          expect(toast.show).toHaveBeenCalledExactlyOnceWith({
+            message: mode === 'edit'
+              ? '俱樂部更新失敗，請重試'
+              : `儲存失敗：${error instanceof Error ? error.message : error ?? ''}`,
+            tone: 'error',
+          });
+          expect(api.busy).toBe(false);
+        }
+      }
+      expect(options.onSaved).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    '經理轉移等待確認才呼叫 action，確認結果=%s',
+    async confirmed => {
+      const confirmation = deferred<boolean>();
+      vi.mocked(appConfirm).mockReturnValue(confirmation.promise);
+      vi.mocked(getUserDirectory).mockReturnValue([user('me', '原經理')]);
+      const options = props({
+        mode: 'edit',
+        team: { id: 'old-team', captainUid: 'me', captainName: '過去名稱' },
+      });
+      render(<Harness {...options} />);
+      await flush();
+      await act(async () => { await api.captain.select('next'); });
+      let submission!: Promise<void>;
+      act(() => { submission = api.submit(); });
+      expect(appConfirm).toHaveBeenCalledExactlyOnceWith(
+        '確定要轉移俱樂部經理嗎？\n\n' +
+        '目前經理：原經理\n' +
+        '新的經理：姓名-next\n\n' +
+        '注意：\n' +
+        '- 俱樂部經理只能有一位，不是可複選的領隊欄位。\n' +
+        '- 儲存後，新的經理會取得俱樂部管理權限。\n' +
+        '- 原經理可能失去此俱樂部管理權限，除非仍保留領隊、教練或其他管理身份。\n\n' +
+        '確定要儲存這次經理轉移？',
+      );
+      expect(submitEditTeam).not.toHaveBeenCalled();
+      expect(toast.show).not.toHaveBeenCalled();
+      expect(api.busy).toBe(true);
+      await act(async () => {
+        confirmation.resolve(confirmed);
+        await submission;
+      });
+      expect(submitEditTeam).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+      expect(options.onSaved).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+      expect(toast.show).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+      expect(api.busy).toBe(false);
+    },
+  );
+
+  it('轉移確認找不到姓名時使用 A 的經理名稱回退', async () => {
+    vi.mocked(appConfirm).mockResolvedValue(false);
+    render(<Harness {...props({
+      mode: 'edit',
+      team: { id: 'old-team', captainUid: 'me' },
+    })} />);
+    await flush();
+    act(() => api.setValue('captain', { uid: 'next', name: '' }));
+    await act(async () => { await api.submit(); });
+    expect(appConfirm).toHaveBeenCalledWith(expect.stringContaining(
+      '目前經理：原俱樂部經理\n新的經理：新俱樂部經理\n\n',
+    ));
+    expect(submitEditTeam).not.toHaveBeenCalled();
+    expect(toast.show).not.toHaveBeenCalled();
+    expect(api.busy).toBe(false);
+  });
+
+  it.each(['same', 'no-old', 'create'] as const)(
+    '%s 不跳經理轉移確認',
+    async scenario => {
+      const mode = scenario === 'create' ? 'create' : 'edit';
+      render(<Harness {...props({
+        mode,
+        viewer: { uid: 'me', displayName: '本人', hasPermission: () => true },
+        team: mode === 'edit'
+          ? { id: 'old-team', captainUid: scenario === 'same' ? 'me' : '' }
+          : undefined,
+      })} />);
+      await flush();
+      if (scenario === 'no-old') {
+        act(() => api.setValue('captain', { uid: 'next', name: '新經理' }));
+      }
+      await act(async () => { await api.submit(); });
+      expect(appConfirm).not.toHaveBeenCalled();
+      expect(mode === 'create' ? submitCreateTeam : submitEditTeam).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['switch', 'unmount'] as const)(
+    '轉移確認期間 %s，確認後不得呼叫 action 或通知',
+    async change => {
+      const confirmation = deferred<boolean>();
+      vi.mocked(appConfirm).mockReturnValue(confirmation.promise);
+      const options = props({
+        mode: 'edit',
+        team: { id: 'old-team', captainUid: 'me' },
+      });
+      const view = render(<Harness {...options} />);
+      await flush();
+      await act(async () => { await api.captain.select('next'); });
+      let submission!: Promise<void>;
+      act(() => { submission = api.submit(); });
+      expect(appConfirm).toHaveBeenCalledTimes(1);
+      if (change === 'switch') {
+        view.rerender(<Harness {...props()} />);
+        await flush();
+        expect(api.busy).toBe(false);
+      } else {
+        view.unmount();
+      }
+      const count = renders;
+      await act(async () => {
+        confirmation.resolve(true);
+        await submission;
+      });
+      expect(renders).toBe(count);
+      expect(submitEditTeam).not.toHaveBeenCalled();
+      expect(submitCreateTeam).not.toHaveBeenCalled();
+      expect(options.onSaved).not.toHaveBeenCalled();
+      expect(toast.show).not.toHaveBeenCalled();
+    },
+  );
   it('新增初始值、文案、運動 key 與單次目錄載入', async () => {
     render(<Harness {...props()} />);
     await flush();
@@ -188,7 +543,7 @@ describe('useTeamForm', () => {
       unresolvedCoachNames: ['舊教練'],
     });
     expect(api.coaches.tags).toEqual([
-      { key: 'legacy:0', uid: null, name: '舊教練' },
+      { key: expect.stringMatching(/^legacy:\d+$/), uid: null, name: '舊教練' },
     ]);
     expect(api.image.previewUrl).toBe('cover.jpg');
     expect(api.captain.transferVisible).toBe(true);
@@ -564,7 +919,7 @@ describe('useTeamForm', () => {
     await act(async () => { await api.submit(); });
     expect(api.busy).toBe(false);
     expect(toast.show).toHaveBeenLastCalledWith({
-      message: '儲存失敗：', tone: 'error',
+      message: '儲存失敗：offline', tone: 'error',
     });
     vi.mocked(toast.show).mockClear();
     await act(async () => { await api.submit(); });
