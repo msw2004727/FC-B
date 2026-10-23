@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
+import { toast } from '@/ui/Toast';
 
 import type { TeamFormApi, TeamFormProps } from './use-team-form';
 import { useTeamForm } from './use-team-form';
@@ -48,9 +49,30 @@ function settle(task: Promise<void>): void {
   task.catch(() => undefined);
 }
 
+function acceptedPreviewUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (
+    url.startsWith('https://')
+    || url.startsWith('blob:')
+    || url.startsWith('data:image/')
+  ) {
+    return url;
+  }
+  return null;
+}
+
 function coverStyle(url: string | null): string | undefined {
-  if (!url) return undefined;
-  return `background-image:url(${JSON.stringify(url)})`;
+  const safe = acceptedPreviewUrl(url);
+  if (!safe) return undefined;
+  return `background-image:url(${JSON.stringify(safe)})`;
+}
+
+function CaptainLine({ text }: { text: string }): JSX.Element {
+  const splitAt = text.indexOf('：');
+  if (splitAt < 0) return <>{text}</>;
+  const prefix = text.slice(0, splitAt + 1);
+  const name = text.slice(splitAt + 1);
+  return <>{prefix}<span style="color:var(--accent)">{name}</span></>;
 }
 
 function PlatformGlyph({ platform }: { platform: string }): JSX.Element {
@@ -136,18 +158,38 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
   const fileRef = useRef<HTMLInputElement>(null);
   const pickFileRef = useRef(api.image.pickFile);
   pickFileRef.current = api.image.pickFile;
+  const busyRef = useRef(api.busy);
+  busyRef.current = api.busy;
+  const cropperOpenRef = useRef(api.image.cropper != null);
+  cropperOpenRef.current = api.image.cropper != null;
+  const ltRef = useRef(lt);
+  ltRef.current = lt;
+
+  function closeIfIdle(): boolean {
+    if (busyRef.current) {
+      toast.show({
+        message: ltRef.current('資料儲存中，請稍候', '資料儲存中，請稍候'),
+      });
+      return false;
+    }
+    latest.current.onClose();
+    return true;
+  }
 
   useEffect(() => {
     const unlock = lockBody(document.body);
+    // 裁切器開著時回傳 false，避免返回鍵關掉整張表單；送出中同樣不關。
     const releaseBack = pushOverlay(() => {
-      latest.current.onClose();
-      return true;
+      if (cropperOpenRef.current) return false;
+      return closeIfIdle();
     });
     const handleKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
+      // 裁切器自己處理 Esc，表單不攔截。
+      if (cropperOpenRef.current) return;
       event.preventDefault();
       event.stopPropagation();
-      latest.current.onClose();
+      closeIfIdle();
     };
     document.addEventListener('keydown', handleKey, true);
     closeButton.current?.focus();
@@ -173,7 +215,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
     };
   }, []);
 
-  const previewUrl = api.image.previewUrl;
+  const previewUrl = acceptedPreviewUrl(api.image.previewUrl);
   const requiredMark = (): JSX.Element => (
     <span class="required">{lt('*必填', '*必填')}</span>
   );
@@ -210,7 +252,9 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
             type="button"
             class="modal-close"
             aria-label={lt('關閉', '關閉')}
-            onClick={() => latest.current.onClose()}
+            onClick={() => {
+              closeIfIdle();
+            }}
           >
             ✕
           </button>
@@ -319,6 +363,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               </label>
               <select
                 id="ct-team-sport-tag"
+                aria-required="true"
                 style="width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.85rem;background:var(--surface);color:var(--text-primary)"
                 value={api.values.sportTag}
                 onChange={(event) => api.setValue('sportTag', event.currentTarget.value)}
@@ -338,6 +383,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               <input
                 type="text"
                 id="ct-team-name"
+                aria-required="true"
                 maxLength={15}
                 placeholder={lt('例：雷霆隊', '例：雷霆隊')}
                 value={api.values.name}
@@ -375,6 +421,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 <input
                   type="text"
                   id="ct-team-region"
+                  aria-required="true"
                   maxLength={20}
                   placeholder={lt('輸入或選擇縣市', '輸入或選擇縣市')}
                   autocomplete="off"
@@ -430,7 +477,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 id="ct-captain-display"
                 style="font-size:.85rem;font-weight:600;color:var(--text-primary);padding:.3rem 0"
               >
-                {api.captain.displayText}
+                <CaptainLine text={api.captain.displayText} />
               </div>
               {api.captain.transferVisible ? (
                 <div id="ct-captain-transfer">
@@ -572,6 +619,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                       <input
                         type="url"
                         class="ce-social-link-input"
+                        aria-label={`${lt('連結', '連結')} ${index + 1}`}
                         value={draft}
                         onInput={(event) => {
                           api.contactLinks.setDraft(index, event.currentTarget.value);
@@ -654,7 +702,9 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
           <button
             type="button"
             class="outline-btn"
-            onClick={() => latest.current.onClose()}
+            onClick={() => {
+              closeIfIdle();
+            }}
           >
             {lt('取消', '取消')}
           </button>

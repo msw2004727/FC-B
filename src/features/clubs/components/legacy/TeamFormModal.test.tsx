@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { pushOverlay } from '@/core/overlay-back';
 import { lockBody } from '@/ui/Modal';
+import { getToasts, toast } from '@/ui/Toast';
 
 import { TEAM_CATEGORY_OPTIONS } from '../../data/team-form-model';
 import type { TeamFormValues } from '../../data/team-form-model';
@@ -256,6 +257,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  toast.clear();
   cleanup();
 });
 
@@ -337,7 +339,7 @@ describe('TeamFormModal', () => {
 
   it('新增模式顯示創立者經理與鎖定文案，不顯示轉移區', () => {
     renderModal({ mode: 'create' });
-    expect(screen.getByText('俱樂部經理（創立者）：創立者')).toBeTruthy();
+    expect(document.getElementById('ct-captain-display')?.textContent).toBe('俱樂部經理（創立者）：創立者');
     expect(screen.getByText('（創立者自動成為俱樂部經理）')).toBeTruthy();
     expect(document.getElementById('ct-captain-transfer')).toBeNull();
     expect(document.getElementById('ct-captain-search')).toBeNull();
@@ -357,7 +359,7 @@ describe('TeamFormModal', () => {
         clear: vi.fn(),
       },
     });
-    expect(screen.getByText('目前俱樂部經理：原經理')).toBeTruthy();
+    expect(document.getElementById('ct-captain-display')?.textContent).toBe('目前俱樂部經理：原經理');
     expect(screen.getByText(/原經理可能失去此俱樂部管理權限/)).toBeTruthy();
     expect(screen.getByText(/未選擇新用戶則維持目前經理/)).toBeTruthy();
     expect(document.getElementById('ct-captain-search')).not.toBeNull();
@@ -891,5 +893,165 @@ describe('TeamFormModal', () => {
     expect(setLeader).toHaveBeenCalledWith('領');
     expect(setCoach).toHaveBeenCalledWith('教');
     expect(setCaptain).toHaveBeenCalledWith('經');
+  });
+
+  it('busy 時 ✕、取消、Esc、返回鍵都不呼叫 onClose', () => {
+    renderModal({ busy: true });
+
+    fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+    toast.clear();
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+    toast.clear();
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+    toast.clear();
+
+    const onBack = overlayMock.mock.calls[0]?.[0];
+    if (!onBack) throw new Error('沒有登記返回鍵');
+    expect(onBack()).toBe(false);
+    expect(getToasts()[0]?.message).toBe('資料儲存中，請稍候');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('裁切器開啟時 Esc 不呼叫 onClose，關閉後才呼叫', () => {
+    const cropper: JSX.Element = <div id="team-cropper-guard">裁切</div>;
+    const image = {
+      previewUrl: null,
+      hasNew: false,
+      pickFile: vi.fn(async () => undefined),
+      cropper,
+    };
+    const openApi = makeApi({ image });
+    useTeamFormMock.mockReturnValue(openApi);
+    const view = render(<TeamFormModal {...formProps(openApi)} />);
+
+    const escapeWhileOpen = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.dispatchEvent(escapeWhileOpen);
+    });
+    expect(escapeWhileOpen.defaultPrevented).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    const onBack = overlayMock.mock.calls[0]?.[0];
+    if (!onBack) throw new Error('沒有登記返回鍵');
+    expect(onBack()).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+
+    const closedApi = makeApi({ image: { ...image, cropper: null } });
+    useTeamFormMock.mockReturnValue(closedApi);
+    view.rerender(<TeamFormModal {...formProps(closedApi)} />);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('新增與編輯的經理名稱用 accent 標出，沒有全形冒號則整句原樣', () => {
+    renderModal({ mode: 'create' });
+    const created = document.getElementById('ct-captain-display');
+    const createdName = created?.querySelector('span');
+    expect(created?.textContent).toBe('俱樂部經理（創立者）：創立者');
+    expect(createdName?.textContent).toBe('創立者');
+    expect(createdName?.getAttribute('style')?.replace(/\s/g, '')).toContain('color:var(--accent)');
+    expect(createdName?.querySelector('*')).toBeNull();
+    cleanup();
+
+    renderModal({ mode: 'edit' });
+    const edited = document.getElementById('ct-captain-display');
+    const editedName = edited?.querySelector('span');
+    expect(edited?.textContent).toBe('目前俱樂部經理：原經理');
+    expect(editedName?.textContent).toBe('原經理');
+    expect(editedName?.getAttribute('style')?.replace(/\s/g, '')).toContain('color:var(--accent)');
+    cleanup();
+
+    renderModal({
+      captain: {
+        displayText: '目前俱樂部經理:原經理',
+        lockedText: null,
+        transferVisible: false,
+        transferPicker: makePicker(),
+        selected: { uid: 'cap', name: '原經理' },
+        pendingName: null,
+        select: vi.fn(async () => undefined),
+        clear: vi.fn(),
+      },
+    });
+    const plain = document.getElementById('ct-captain-display');
+    expect(plain?.textContent).toBe('目前俱樂部經理:原經理');
+    expect(plain?.querySelector('span')).toBeNull();
+  });
+
+  it('聯絡連結有編號 aria-label，必填欄有 aria-required 且沒有原生 required', () => {
+    renderModal({
+      values: makeValues({ contactLinksEnabled: true }),
+      contactLinks: {
+        drafts: ['https://line.me/a', ''],
+        setEnabled: vi.fn(),
+        setDraft: vi.fn(),
+        add: vi.fn(),
+        remove: vi.fn(),
+        canAdd: true,
+        previews: [null, null],
+      },
+    });
+    const inputs = document.querySelectorAll('.ce-social-link-input');
+    expect(Array.from(inputs).map((input) => input.getAttribute('aria-label'))).toEqual([
+      '連結 1',
+      '連結 2',
+    ]);
+    for (const id of ['ct-team-sport-tag', 'ct-team-name', 'ct-team-region']) {
+      const field = document.getElementById(id);
+      expect(field?.getAttribute('aria-required')).toBe('true');
+      expect(field?.hasAttribute('required')).toBe(false);
+    }
+  });
+
+  it('封面背景只接受 https、blob 與 data:image，其餘顯示空狀態', () => {
+    for (const url of ['http://x', 'javascript:alert(1)', '//x']) {
+      renderModal({
+        image: {
+          previewUrl: url,
+          hasNew: true,
+          pickFile: vi.fn(async () => undefined),
+          cropper: null,
+        },
+      });
+      const preview = document.getElementById('ct-team-preview');
+      if (!(preview instanceof HTMLElement)) throw new Error('找不到封面');
+      expect(preview.style.backgroundImage).toBe('');
+      expect(preview.classList.contains('has-image')).toBe(false);
+      expect(preview.querySelector('.ce-upload-icon')?.textContent).toBe('+');
+      cleanup();
+    }
+
+    for (const url of [
+      'https://cdn.example/cover.webp',
+      'blob:https://cdn.example/cover',
+      'data:image/webp;base64,xxx',
+    ]) {
+      renderModal({
+        image: {
+          previewUrl: url,
+          hasNew: true,
+          pickFile: vi.fn(async () => undefined),
+          cropper: null,
+        },
+      });
+      const preview = document.getElementById('ct-team-preview');
+      if (!(preview instanceof HTMLElement)) throw new Error('找不到封面');
+      expect(preview.style.backgroundImage).toContain(url);
+      expect(preview.classList.contains('has-image')).toBe(true);
+      expect(preview.querySelector('.ce-upload-icon')).toBeNull();
+      cleanup();
+    }
   });
 });

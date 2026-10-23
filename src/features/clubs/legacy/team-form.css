@@ -4,8 +4,8 @@
  * 選擇器由 legacy-css-scope 收進 .legacy-ui。
  */
 
+/* 不得覆寫 .modal 在 ≥800px 的 max-width:640px（A 規則），否則寬螢幕撐滿。 */
 #create-team-modal {
-  max-width: 100%;
   overflow-x: hidden;
 }
 
