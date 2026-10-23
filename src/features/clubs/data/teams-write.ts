@@ -30,7 +30,8 @@
 import type { FieldValue } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 import { teams as teamsCollection } from '@/data/paths';
-import type { MemberRoleUpdates } from '../club-policy';
+import { buildMemberRoleUpdates } from '../club-policy';
+import type { MemberRoleKey, MemberRoleUpdates } from '../club-policy';
 import { invalidateTeams } from './teams-repo';
 import type { TeamDoc } from './types';
 
@@ -165,7 +166,8 @@ export async function saveTeamAvatar(
 
 /**
  * 對應 A updateTeam 的 image／imageVariants／updatedAt。
- * 尺寸圖僅保留 cover、card、square 的 HTTPS 網址，不寫 coverUrl。
+ * 提供尺寸圖時驗證所有鍵與值；只接受 cover、card、square 的 HTTPS 網址。
+ * 空物件視為未提供，不寫 coverUrl。
  */
 export async function saveTeamCover(
   team: TeamWriteTarget,
@@ -177,13 +179,16 @@ export async function saveTeamCover(
   const variants: TeamImageVariantsWrite = {};
   const source: unknown = payload.imageVariants;
 
-  if (isRecord(source)) {
+  if (source !== undefined) {
+    if (!isRecord(source)) fail('imageVariants must be an object');
+    assertKeys(source, new Set(['cover', 'card', 'square']));
     for (const key of ['cover', 'card', 'square'] as const) {
       if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
       const value = source[key];
-      if (typeof value === 'string' && value.trim().startsWith('https://')) {
-        variants[key] = value.trim();
+      if (typeof value !== 'string' || !value.startsWith('https://')) {
+        fail(`imageVariants.${key} must start with https://`);
       }
+      variants[key] = value.trim();
     }
   }
 
@@ -322,9 +327,52 @@ export async function saveTeamRoleUpdates(
 }
 
 /**
- * 對應 A 備註 Object.assign 合併後經 updateTeam 寫入的紀錄。
- * 使用 FieldPath 僅更新指定成員；紀錄 updatedAt 保留 ISO 字串，
- * 文件 updatedAt 使用 serverTimestamp，頂層符合領隊／教練欄位白名單。
+ * 在交易內以最新文件重驗目標並計算八個角色欄位。
+ * 不寫 members、captainUid 或 captainName；交易失敗直接往外拋。
+ */
+export async function saveTeamRoleChange(
+  team: TeamWriteTarget,
+  targetUid: string,
+  targetKey: MemberRoleKey,
+  displayName: string,
+  guard?: (fresh: TeamDoc) => boolean,
+): Promise<MemberRoleUpdates | null> {
+  const docId = resolveDocId(team);
+  const [firestore, { db }] = await Promise.all([
+    import('firebase/firestore'),
+    getFirebase(),
+  ]);
+  const ref = firestore.doc(db, teamsCollection, docId);
+  const result = await firestore.runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) fail('team document not found');
+
+    const data = snap.data();
+    const fresh = {
+      ...data,
+      _docId: snap.id,
+      id: data.id ?? snap.id,
+    } as TeamDoc;
+    if (guard && !guard(fresh)) return null;
+
+    const updates = buildMemberRoleUpdates(fresh, targetUid, targetKey, displayName);
+    if (!updates) return null;
+
+    tx.update(ref, {
+      ...updates,
+      updatedAt: firestore.serverTimestamp(),
+    });
+    return updates;
+  });
+  if (result !== null) invalidateTeams();
+  return result;
+}
+
+/**
+ * 使用 FieldPath 單點更新指定成員的 notes 與 updatedAt。
+ * 紀錄 updatedAt 保留 ISO 字串，文件 updatedAt 使用 serverTimestamp，
+ * 頂層符合領隊／教練欄位白名單。
+ * @param existingRecord 保留相容，已不使用：改用巢狀欄位路徑單點更新，不再重建整筆紀錄
  */
 export async function saveTeamMemberNote(
   team: TeamWriteTarget,
@@ -351,21 +399,14 @@ export async function saveTeamMemberNote(
   ) {
     fail('record updatedAt must be an ISO string');
   }
-  if (existingRecord != null && !isRecord(existingRecord)) {
-    fail('existingRecord must be an object or null');
-  }
-
   const fieldName = kind === 'activity' ? 'memberActivityData' : 'memberCourseData';
-  const mergedRecord = {
-    ...(existingRecord ?? {}),
-    notes: record.notes,
-    updatedAt: record.updatedAt,
-  };
   const { firestore, ref } = await writeContext(docId);
   await firestore.updateDoc(
     ref,
-    new firestore.FieldPath(fieldName, key),
-    mergedRecord,
+    new firestore.FieldPath(fieldName, key, 'notes'),
+    record.notes,
+    new firestore.FieldPath(fieldName, key, 'updatedAt'),
+    record.updatedAt,
     'updatedAt',
     firestore.serverTimestamp(),
   );

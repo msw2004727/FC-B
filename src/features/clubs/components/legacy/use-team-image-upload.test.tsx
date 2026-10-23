@@ -529,6 +529,129 @@ describe('俱樂部圖片上傳', () => {
     );
   });
 
+  // 測試同步更新：保留 hook 實例，驗證團隊／帳號切換使舊流程失效。
+  it.each([
+    ['avatar', 'team'],
+    ['avatar', 'uid'],
+    ['cover', 'team'],
+    ['cover', 'uid'],
+  ] as const)('%s 裁切中換 %s，舊確認與取消均無效', async (kind, changed) => {
+    const fixture = setup();
+    await openCropper(fixture, kind);
+    if (kind === 'cover') {
+      fireEvent.click(screen.getByText('確認'));
+      await screen.findByText('俱樂部卡片 2/2');
+    }
+    const oldProps = cropperLog.props.at(-1);
+    if (!oldProps) throw new Error('缺少舊裁切回呼');
+
+    fixture.rerender(
+      <Harness
+        team={changed === 'team' ? { id: 'tm_test_2', _docId: 'tm_test_2' } : team}
+        viewer={changed === 'uid' ? { ...viewer, uid: 'U-test-2' } : viewer}
+        onSaved={fixture.onSaved}
+      />,
+    );
+    act(() => {
+      oldProps.onConfirm(DATA_URL);
+      oldProps.onCancel();
+    });
+
+    expect(screen.queryByTestId('cropper')).toBeNull();
+    await expectIdle();
+    expect(uploadImageDataUrl).not.toHaveBeenCalled();
+    expect(saveTeamAvatar).not.toHaveBeenCalled();
+    expect(saveTeamCover).not.toHaveBeenCalled();
+    expect(fixture.onSaved).not.toHaveBeenCalled();
+    expect(toast.show).not.toHaveBeenCalled();
+
+    await openCropper(fixture, 'avatar');
+    expect(screen.getByTestId('cropper')).toBeTruthy();
+  });
+
+  it.each([
+    ['avatar', 'team', 1],
+    ['avatar', 'uid', 1],
+    ['cover', 'team', 1],
+    ['cover', 'uid', 1],
+    ['cover', 'team', 2],
+    ['cover', 'uid', 2],
+  ] as const)(
+    '%s 第 %s 身分切換情境，第 %i 次上傳等待中切換後不寫入',
+    async (kind, changed, uploadNumber) => {
+      const fixture = setup();
+      const pending = deferred<string | null>();
+      if (uploadNumber === 2) {
+        vi.mocked(uploadImageDataUrl)
+          .mockResolvedValueOnce(COVER_URL)
+          .mockReturnValueOnce(pending.promise);
+      } else {
+        vi.mocked(uploadImageDataUrl).mockReturnValueOnce(pending.promise);
+      }
+      await openCropper(fixture, kind);
+      await confirmAll(kind);
+      await waitFor(() => {
+        expect(uploadImageDataUrl).toHaveBeenCalledTimes(uploadNumber);
+      });
+
+      fixture.rerender(
+        <Harness
+          team={changed === 'team' ? { id: 'tm_test_2', _docId: 'tm_test_2' } : team}
+          viewer={changed === 'uid' ? { ...viewer, uid: 'U-test-2' } : viewer}
+          onSaved={fixture.onSaved}
+        />,
+      );
+      await expectIdle();
+
+      await act(async () => {
+        pending.resolve(AVATAR_URL);
+        await pending.promise;
+      });
+
+      expect(uploadImageDataUrl).toHaveBeenCalledTimes(uploadNumber);
+      expect(saveTeamAvatar).not.toHaveBeenCalled();
+      expect(saveTeamCover).not.toHaveBeenCalled();
+      expect(fixture.onSaved).not.toHaveBeenCalled();
+      expect(toast.show).not.toHaveBeenCalled();
+    },
+  );
+
+  it('舊上傳完成不得釋放新團隊上傳中的鎖', async () => {
+    const fixture = setup();
+    const oldUpload = deferred<string | null>();
+    const newUpload = deferred<string | null>();
+    vi.mocked(uploadImageDataUrl)
+      .mockReturnValueOnce(oldUpload.promise)
+      .mockReturnValueOnce(newUpload.promise);
+
+    await openCropper(fixture, 'avatar');
+    await confirmAll('avatar');
+    const nextTeam: TeamDoc = { id: 'tm_test_2', _docId: 'tm_test_2' };
+    fixture.rerender(
+      <Harness team={nextTeam} viewer={viewer} onSaved={fixture.onSaved} />,
+    );
+    await openCropper(fixture, 'avatar');
+    await confirmAll('avatar');
+
+    await act(async () => {
+      oldUpload.resolve(AVATAR_URL);
+      await oldUpload.promise;
+    });
+    expect(screen.getByTestId('busy').textContent).toBe('avatar');
+    expect(saveTeamAvatar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('換封面'));
+    expect(fixture.click).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      newUpload.resolve(AVATAR_URL);
+      await newUpload.promise;
+    });
+    await waitFor(() => {
+      expect(saveTeamAvatar).toHaveBeenCalledExactlyOnceWith(nextTeam, AVATAR_URL);
+    });
+    await expectIdle();
+  });
+
   it('同步重複確認只啟動一次上傳', async () => {
     const fixture = setup();
     await openCropper(fixture, 'avatar');

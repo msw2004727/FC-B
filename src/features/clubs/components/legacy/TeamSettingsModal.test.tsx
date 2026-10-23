@@ -395,6 +395,149 @@ describe('俱樂部設定彈窗', () => {
     await expectSuccess();
   });
 
+  // 測試同步更新：成功但未重讀的設定必須成為後續整包寫入的基準。
+  it.each(['重讀拒絕', '重讀完成但 prop 不變'] as const)(
+    '%s 時依序關閉活動與成員，保留兩次成功結果',
+    async (outcome) => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const onSaved = vi.fn<() => Promise<void>>();
+      if (outcome === '重讀拒絕') onSaved.mockRejectedValue(new Error('重讀失敗'));
+      else onSaved.mockResolvedValue(undefined);
+      const team = makeTeam({ detailVisibility: { events: true, members: true } });
+      setup(team, { onSaved });
+
+      fireEvent.click(checkbox('活動'));
+      await waitFor(() => {
+        expect(onSaved).toHaveBeenCalledTimes(1);
+        expect(checkbox('活動').disabled).toBe(false);
+      });
+      expect(checkbox('活動').checked).toBe(false);
+
+      fireEvent.click(checkbox('成員列表'));
+      expect(saveMock).toHaveBeenNthCalledWith(2, team, {
+        detailVisibility: { events: false, members: false },
+      });
+      await waitFor(() => {
+        expect(onSaved).toHaveBeenCalledTimes(2);
+        expect(checkbox('成員列表').disabled).toBe(false);
+      });
+      expect(checkbox('活動').checked).toBe(false);
+      expect(checkbox('成員列表').checked).toBe(false);
+      expect(team.detailVisibility).toEqual({ events: true, members: true });
+    },
+  );
+
+  it('onSaved 正常並更新 prop 後，後續 visibility 寫入使用新 prop', async () => {
+    const original = makeTeam({ detailVisibility: { events: true, members: true } });
+    const onSaved = vi.fn();
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+
+    const refreshed = makeTeam({
+      detailVisibility: { events: false, members: true, bio: false },
+    });
+    rerender(<TeamSettingsModal {...props} team={refreshed} />);
+    fireEvent.click(checkbox('成員列表'));
+
+    expect(saveMock).toHaveBeenNthCalledWith(2, refreshed, {
+      detailVisibility: { events: false, members: false, bio: false },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('成員列表').disabled).toBe(false);
+    });
+    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('簡介').checked).toBe(false);
+  });
+
+  it('visibility 寫入失敗不污染 confirmed，也不清除前次成功設定', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const team = makeTeam({ detailVisibility: { events: true, members: true } });
+    const onSaved = vi.fn().mockRejectedValue(new Error('重讀失敗'));
+    setup(team, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+
+    saveMock.mockRejectedValueOnce(new Error('寫入失敗'));
+    fireEvent.click(checkbox('成員列表'));
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith({
+        message: '設定更新失敗，請稍後再試',
+        tone: 'error',
+      });
+      expect(checkbox('成員列表').disabled).toBe(false);
+    });
+    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('成員列表').checked).toBe(true);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(checkbox('活動'));
+    expect(saveMock).toHaveBeenNthCalledWith(3, team, {
+      detailVisibility: { events: true, members: true },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+  });
+
+  it('其他設定成功後不因下一次寫入或失敗而回跳', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const onSaved = vi.fn().mockRejectedValue(new Error('重讀失敗'));
+    setup(makeTeam({ themeColor: '#445566' }), { onSaved });
+    let savedCount = 0;
+    const settled = async () => {
+      savedCount += 1;
+      await waitFor(() => {
+        expect(onSaved).toHaveBeenCalledTimes(savedCount);
+        expect(document.querySelector(
+          '#team-detail-settings-body input:disabled, #team-detail-settings-body button:disabled',
+        )).toBeNull();
+      });
+    };
+
+    fireEvent.click(checkbox('隊員可邀請'));
+    await settled();
+    fireEvent.click(checkbox('半透明遮罩'));
+    await settled();
+    changeColor('#112233');
+    await settled();
+    fireEvent.click(categoryButton('教學'));
+    await settled();
+    fireEvent.click(checkbox('活動'));
+    await settled();
+
+    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('半透明遮罩').checked).toBe(false);
+    expect(colorInput().value).toBe('#112233');
+    expect(categoryButton('教學').getAttribute('aria-pressed')).toBe('true');
+    expect(checkbox('活動').checked).toBe(false);
+
+    saveMock.mockRejectedValueOnce(new Error('主題色寫入失敗'));
+    changeColor('#778899');
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith({
+        message: '設定更新失敗，請稍後再試',
+        tone: 'error',
+      });
+      expect(colorInput().disabled).toBe(false);
+    });
+    expect(colorInput().value).toBe('#112233');
+    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('半透明遮罩').checked).toBe(false);
+    expect(categoryButton('教學').getAttribute('aria-pressed')).toBe('true');
+    expect(checkbox('活動').checked).toBe(false);
+  });
+
   it('依序等待寫入、onSaved，再顯示成功通知', async () => {
     const write = deferred();
     const refresh = deferred();

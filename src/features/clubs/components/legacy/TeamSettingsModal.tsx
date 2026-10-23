@@ -107,6 +107,14 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   const { team, viewer } = props;
   const lt = useLegacyT();
   const [pending, setPending] = useState<PendingSettings | null>(null);
+  const confirmed = useRef<{ source: TeamDoc; patch: TeamSettingsPatch }>({
+    source: team,
+    patch: {},
+  });
+  // 父層傳入新物件時立即以新 prop 為準，不讓舊成功 patch 跨越資料版本。
+  if (confirmed.current.source !== team) {
+    confirmed.current = { source: team, patch: {} };
+  }
   const alive = useRef(true);
   const writing = useRef(false);
   const latest = useRef(props);
@@ -139,20 +147,32 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     };
   }, []);
 
-  // 寫入期間樂觀顯示；成功後保留至父層傳入新 team，之後以新 prop 為準。
-  const patch = pending && (pending.busy || pending.source === team)
-    ? pending.patch
-    : undefined;
-  const category = patch?.type ?? (getTeamCategoryMeta(team)?.key ?? 'competitive');
+  // 顯示順序：prop → 已成功寫入 → 同一 prop 的進行中 patch。
+  const optimistic = pending?.source === team ? pending.patch : undefined;
+  const patch: TeamSettingsPatch = {
+    ...confirmed.current.patch,
+    ...optimistic,
+  };
+  const detailVisibility = {
+    ...(team.detailVisibility && typeof team.detailVisibility === 'object'
+      ? team.detailVisibility
+      : {}),
+    ...confirmed.current.patch.detailVisibility,
+    ...optimistic?.detailVisibility,
+  };
+  const category = patch.type ?? (getTeamCategoryMeta(team)?.key ?? 'competitive');
   const visibility = {
     ...getTeamDetailVisibility(team),
-    ...patch?.detailVisibility,
+    ...detailVisibility,
   };
-  const memberInvite = patch?.allowMemberInvite ?? (team.allowMemberInvite !== false);
-  const overlayEnabled = patch?.themeOverlayEnabled ?? (team.themeOverlayEnabled !== false);
-  const themeColor = patch?.themeColor !== undefined
+  const memberInvite = patch.allowMemberInvite ?? (team.allowMemberInvite !== false);
+  const overlayEnabled = patch.themeOverlayEnabled ?? (team.themeOverlayEnabled !== false);
+  const themeColor = patch.themeColor !== undefined
     ? patch.themeColor ?? ''
     : getTeamThemeColor(team);
+  const eduSettings = patch.eduSettings !== undefined
+    ? patch.eduSettings
+    : team.eduSettings;
 
   function isBusy(control: Control | null): boolean {
     return !!pending?.busy && pending.control === control;
@@ -179,12 +199,26 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     writing.current = true;
     control.disabled = true;
     setPending({ source: team, patch: updates, control, busy: true });
-    let saved = false;
 
     try {
       await saveTeamSettingsPatch(team, updates);
-      saved = true;
       if (!alive.current) return;
+
+      if (confirmed.current.source === team && latest.current.team === team) {
+        const previous = confirmed.current.patch;
+        confirmed.current.patch = {
+          ...previous,
+          ...updates,
+          ...(updates.detailVisibility !== undefined
+            ? {
+                detailVisibility: {
+                  ...previous.detailVisibility,
+                  ...updates.detailVisibility,
+                },
+              }
+            : {}),
+        };
+      }
 
       try {
         await latest.current.onSaved();
@@ -212,9 +246,8 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
       writing.current = false;
       if (alive.current) {
         control.disabled = false;
-        setPending(saved
-          ? { source: team, patch: updates, control, busy: false }
-          : null);
+        // 成功值已移入 confirmed；失敗只移除本次樂觀值。
+        setPending(null);
       }
     }
   }
@@ -223,7 +256,7 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   themeColorChange.current = (input): void => {
     const color = normalizeTeamThemeColor(input.value);
     const revert = (): void => {
-      input.value = getTeamThemeColor(latest.current.team) || '#0d9488';
+      input.value = themeColor || '#0d9488';
     };
     if (!color) {
       revert();
@@ -296,13 +329,13 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
       teachingEnabled: isTeaching,
       eduSettings: isTeaching
         ? {
-            ...(team.eduSettings ?? {}),
-            acceptingStudents: team.eduSettings?.acceptingStudents !== false,
+            ...(eduSettings ?? {}),
+            acceptingStudents: eduSettings?.acceptingStudents !== false,
             teachingEnabled: true,
           }
         : null,
     }, () => {
-      // 分類由 prop / pending 推導；失敗清除 pending 即回復 prop。
+      // 分類由 prop / confirmed / pending 推導；失敗只清除 pending。
     }, button);
   }
 
@@ -422,7 +455,7 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                       const button = event.currentTarget;
                       if (isBusy(button)) return;
                       commit({ themeColor: null }, () => {
-                        // 清除 pending 後由 team prop 還原色碼與圓點。
+                        // 清除 pending 後由 confirmed 覆蓋 prop 還原色碼與圓點。
                       }, button);
                     }}
                   >
@@ -461,11 +494,7 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                         <span>{lt(item.desc, item.desc)}</span>
                       </div>
                       {renderSwitch(label, visibility[item.key] !== false, (checked) => {
-                        const current = {
-                          ...(team.detailVisibility && typeof team.detailVisibility === 'object'
-                            ? team.detailVisibility
-                            : {}),
-                        };
+                        const current = { ...detailVisibility };
                         if (isVisibilityKey(item.key)) current[item.key] = checked;
                         return { detailVisibility: current };
                       }, item.key)}

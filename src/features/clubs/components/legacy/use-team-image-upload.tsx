@@ -46,6 +46,8 @@ export interface TeamImageUploadApi {
 interface Selection extends UseTeamImageUploadOptions {
   team: TeamDoc;
   kind: TeamImageKind;
+  teamId: string;
+  uid: string;
 }
 
 interface CropSequence {
@@ -136,6 +138,16 @@ export function useTeamImageUpload(
   const selectionRef = useRef<Selection | null>(null);
   const [busyKind, setBusyKind] = useState<TeamImageKind | null>(null);
   const [sequence, setSequence] = useState<CropSequence | null>(null);
+  const latest = useRef(options);
+  latest.current = options;
+  const teamId = String(team?.id ?? team?._docId ?? '');
+  const uid = viewer.uid;
+
+  const matchesSelection = useCallback((selection: Selection): boolean => {
+    const current = latest.current;
+    return String(current.team?.id ?? current.team?._docId ?? '') === selection.teamId
+      && current.viewer.uid === selection.uid;
+  }, []);
 
   const abortReader = useCallback(() => {
     const reader = readerRef.current;
@@ -153,6 +165,18 @@ export function useTeamImageUpload(
     };
   }, [abortReader]);
 
+  useLayoutEffect(() => {
+    // 已送出的 Storage／Firestore 請求無法取消，只使尚未提交的步驟失效。
+    requestId.current += 1;
+    selectionRef.current = null;
+    step.current = 0;
+    abortReader();
+    setSequence(null);
+    locked.current = false;
+    setBusyKind(null);
+    if (inputRef.current) inputRef.current.value = '';
+  }, [teamId, uid, abortReader]);
+
   const pick = useCallback((kind: TeamImageKind): void => {
     if (!team || !mounted.current) return;
     if (!canEditTeamSettings(viewer, team)) {
@@ -167,7 +191,17 @@ export function useTeamImageUpload(
     step.current = 0;
     abortReader();
     setSequence(null);
-    selectionRef.current = { kind, team, viewer, onSaved };
+    const selectionUid = viewer.uid;
+    if (selectionUid === null) {
+      selectionRef.current = null;
+      console.warn('[useTeamImageUpload] 流程已失效：使用者 UID 為 null');
+      return;
+    }
+    selectionRef.current = {
+      kind, team, viewer, onSaved,
+      teamId: String(team.id ?? team._docId ?? ''),
+      uid: selectionUid,
+    };
     input.value = '';
     input.click();
   }, [team, viewer, onSaved, busyKind, abortReader]);
@@ -179,7 +213,7 @@ export function useTeamImageUpload(
     if (!file || !mounted.current || locked.current) return;
 
     const selection = selectionRef.current;
-    if (!selection) return;
+    if (!selection || !matchesSelection(selection)) return;
 
     const request = ++requestId.current;
     step.current = 0;
@@ -255,31 +289,44 @@ export function useTeamImageUpload(
         console.error('[useTeamImageUpload]', error);
         toast.show({ message: '圖片處理失敗，請重試', tone: 'error' });
       });
-  }, [abortReader, team, viewer]);
+  }, [abortReader, team, viewer, matchesSelection]);
 
   const upload = async (current: CropSequence, dataUrl: string): Promise<void> => {
     const { request, selection } = current;
     const { kind, team: target, onSaved: saved } = selection;
-    const active = () => mounted.current && request === requestId.current;
+    const active = () => mounted.current
+      && request === requestId.current
+      && matchesSelection(selection);
+    const canSubmit = () => {
+      if (!active()) return false;
+      const currentOptions = latest.current;
+      if (!currentOptions.team
+        || !canEditTeamSettings(currentOptions.viewer, currentOptions.team)) {
+        throw new Error('TEAM_IMAGE_PERMISSION_DENIED');
+      }
+      return true;
+    };
 
     try {
-      const teamId = String(target.id ?? target._docId ?? '');
+      // 上傳前比對選取時的團隊及 UID；每次 await 後提交下一步前再次檢查。
+      if (!canSubmit()) return;
+      const teamId = selection.teamId;
       if (!teamId) throw new Error('TEAM_ID_REQUIRED');
 
       if (kind === 'avatar') {
         const url = await uploadImageDataUrl(dataUrl, `teams/${teamId}_avatar`);
         if (!url) throw new Error('TEAM_AVATAR_UPLOAD_FAILED');
-        if (!active()) return;
+        if (!canSubmit()) return;
         await saveTeamAvatar(target, url);
       } else {
         if (!current.cover) throw new Error('TEAM_COVER_DATA_REQUIRED');
         const coverUrl = await uploadImageDataUrl(current.cover, `teams/${teamId}_cover`);
         if (!coverUrl) throw new Error('TEAM_COVER_UPLOAD_FAILED');
-        if (!active()) return;
+        if (!canSubmit()) return;
 
         const cardUrl = await uploadImageDataUrl(dataUrl, `teams/${teamId}_card`);
         if (!cardUrl) throw new Error('TEAM_CARD_UPLOAD_FAILED');
-        if (!active()) return;
+        if (!canSubmit()) return;
 
         await saveTeamCover(target, {
           image: coverUrl,
@@ -309,8 +356,11 @@ export function useTeamImageUpload(
         });
       }
     } finally {
-      locked.current = false;
-      if (active()) setBusyKind(null);
+      // 舊請求完成不得解開新流程的鎖。
+      if (active()) {
+        locked.current = false;
+        setBusyKind(null);
+      }
     }
   };
 
@@ -320,6 +370,7 @@ export function useTeamImageUpload(
     const isCurrent = () =>
       mounted.current &&
       request === requestId.current &&
+      matchesSelection(selection) &&
       step.current === index &&
       !locked.current;
 
