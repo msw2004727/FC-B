@@ -20,7 +20,7 @@ import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import {
   buildTeamRoster,
-  canManageTeamMembers,
+  // ASSUMPTION: 未附 import 區塊，此具名 import 為獨立一行且僅供原 canManageRoster 使用。
   getTeamFutureEvents,
   getTeamMemberCount,
   getTeamPrimaryAction,
@@ -446,7 +446,6 @@ function TeamDetailContent({
   const teamName = team.name || '未命名俱樂部';
   const themeColor = getTeamThemeColor(team);
   const canEdit = canEditTeamSettings(viewer, team);
-  const canManageRoster = canManageTeamMembers(team, viewer);
   const joinState = getSessionJoinState(teamId, viewer.uid);
   const primaryAction = getTeamPrimaryAction(team, viewer, joinState);
 
@@ -628,7 +627,8 @@ function TeamDetailContent({
               courseCount={courseCount}
               totalGames={totalGames}
               winRate={winRate}
-              canManageMembers={canManageRoster}
+              viewer={viewer}
+              onTeamChanged={() => reloadTeamSilently()}
               canCreateEvent={canCreateEvent}
               onCreateEvent={handleCreateEvent}
               busy={busy}

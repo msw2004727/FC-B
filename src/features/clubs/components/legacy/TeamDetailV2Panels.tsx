@@ -166,7 +166,9 @@ export interface TeamDetailV2PanelsProps {
   courseCount: number;
   totalGames: number;
   winRate: number;
-  canManageMembers: boolean;
+  // ASSUMPTION: 未附介面原文，既有宣告為此單行；使用 import type 運算式避免假設檔頭 import 排列。
+  viewer: import('../../data/types').ClubViewer;
+  onTeamChanged: () => void | Promise<void>;
   canCreateEvent: boolean;
   onCreateEvent: () => void;
   busy: boolean;
@@ -190,7 +192,9 @@ export function TeamDetailV2Panels({
   courseCount,
   totalGames,
   winRate,
-  canManageMembers,
+  // ASSUMPTION: 未附完整解構，既有成員管理 prop 採此單行解構。
+  viewer,
+  onTeamChanged,
   canCreateEvent,
   onCreateEvent,
   busy,
@@ -509,7 +513,8 @@ export function TeamDetailV2Panels({
               <LegacyTeamMembersCard
                 team={team}
                 roster={roster}
-                canManageMembers={canManageMembers}
+                viewer={viewer}
+                onTeamChanged={onTeamChanged}
                 onOpenProfile={onOpenProfile}
               />
             )}

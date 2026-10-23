@@ -16,7 +16,7 @@ import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/pro
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
-import type { TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
+import type { ClubViewer, TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
 import { clearPendingJoin, loginForClubs, _resetClubsSessionForTest } from './clubs-session';
 import { canShowInviteQr, canViewClubDetail } from '../club-policy';
 import { canInviteToTeam } from '../components/legacy/TeamDetailV2Header';
@@ -41,6 +41,9 @@ const eventFormMock = vi.hoisted(() => ({
 }));
 const panelsMock = vi.hoisted(() => ({
   latestProps: null as TeamDetailV2PanelsProps | null,
+}));
+const membersCardMock = vi.hoisted(() => ({
+  onTeamChanged: null as (() => void | Promise<void>) | null,
 }));
 
 vi.mock('@/features/events/components/event-form/use-create-event-entry', () => ({
@@ -204,30 +207,40 @@ vi.mock('@/ui/UserTag', () => ({
   ),
 }));
 
+// 測試同步更新：記錄 viewer 與成員管理完成後的重讀 callback。
 vi.mock('../components/legacy/LegacyTeamMembersCard', () => ({
   LegacyTeamMembersCard: ({
     roster,
-    canManageMembers,
+    viewer,
+    onTeamChanged,
     onOpenProfile,
   }: {
     team: TeamDoc;
     roster: readonly TeamRosterRow[];
-    canManageMembers: boolean;
+    viewer: ClubViewer;
+    onTeamChanged: () => void | Promise<void>;
     onOpenProfile: (uid: string) => void;
-  }) => (
-    <div data-testid="legacy-members-card" data-can-manage={String(canManageMembers)}>
-      {roster.map((row) => (
-        <button
-          key={row.uid}
-          type="button"
-          data-uid={row.uid}
-          onClick={() => onOpenProfile(row.uid)}
-        >
-          {row.name || row.uid}
-        </button>
-      ))}
-    </div>
-  ),
+  }) => {
+    membersCardMock.onTeamChanged = onTeamChanged;
+    return (
+      <div
+        data-testid="legacy-members-card"
+        data-viewer-uid={viewer.uid}
+        data-has-on-team-changed={String(typeof onTeamChanged === 'function')}
+      >
+        {roster.map((row) => (
+          <button
+            key={row.uid}
+            type="button"
+            data-uid={row.uid}
+            onClick={() => onOpenProfile(row.uid)}
+          >
+            {row.name || row.uid}
+          </button>
+        ))}
+      </div>
+    );
+  },
 }));
 
 function deferred<T>() {
@@ -284,6 +297,7 @@ beforeEach(() => {
   customMock.mockClear();
   eventFormMock.latestProps = null;
   panelsMock.latestProps = null;
+  membersCardMock.onTeamChanged = null;
   vi.mocked(useCreateEventEntry).mockReturnValue({
     canCreate: true,
     profileLocked: false,
@@ -706,20 +720,52 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(requestTeamJoin).not.toHaveBeenCalled();
   });
 
-  it('passes roster and canManageMembers to LegacyTeamMembersCard', async () => {
-    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+  // 測試同步更新
+  it('passes roster, viewer and onTeamChanged to LegacyTeamMembersCard', async () => {
+    const manager = viewer('captain', ['club']);
+    vi.mocked(useViewer).mockReturnValue(manager);
     vi.mocked(loadTeamMembers).mockResolvedValue([
       { uid: 'captain', displayName: '隊長甲' },
       { uid: 'member', displayName: '成員乙', teamIds: ['club'] },
     ]);
     render(<TeamDetailPage />);
-    await screen.findByText('測試俱樂部');
+    const title = await screen.findByText('測試俱樂部');
     fireEvent.click(screen.getByRole('tab', { name: '成員' }));
 
     const card = await screen.findByTestId('legacy-members-card');
-    expect(card.getAttribute('data-can-manage')).toBe('true');
+    expect(card.getAttribute('data-viewer-uid')).toBe(manager.uid);
+    expect(card.getAttribute('data-has-on-team-changed')).toBe('true');
+    const onTeamChanged = membersCardMock.onTeamChanged;
+    expect(typeof onTeamChanged).toBe('function');
+    if (typeof onTeamChanged !== 'function') throw new Error('缺少 onTeamChanged callback');
+
     fireEvent.click(screen.getByRole('button', { name: '成員乙' }));
     expect(routeState.route).toHaveBeenCalledWith('/profile/member');
+
+    const loadCalls = vi.mocked(loadTeam).mock.calls.length;
+    const pendingLoad = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pendingLoad.promise);
+    let refresh: void | Promise<void> = undefined;
+
+    await act(async () => {
+      refresh = onTeamChanged();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(loadTeam).toHaveBeenCalledTimes(loadCalls + 1));
+    expect(loadTeam).toHaveBeenLastCalledWith('club');
+    expect(screen.getByText('測試俱樂部')).toBe(title);
+    expect(screen.getByTestId('legacy-members-card')).toBe(card);
+    expect(screen.queryByText('載入中…')).toBeNull();
+
+    await act(async () => {
+      pendingLoad.resolve({ ...team, name: '成員管理更新後俱樂部' });
+      await refresh;
+    });
+
+    expect(await screen.findByText('成員管理更新後俱樂部')).toBe(title);
+    expect(screen.getByTestId('legacy-members-card')).toBe(card);
+    expect(screen.queryByText('載入中…')).toBeNull();
   });
 
   it('confirms join via appConfirm, shows toast and retains pending state', async () => {
