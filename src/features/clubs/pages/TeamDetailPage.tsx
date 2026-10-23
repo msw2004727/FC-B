@@ -237,6 +237,19 @@ function TeamDetailContent({
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
+  const onOpenProfile = (uid: string): void => {
+    location.route(`/profile/${encodeURIComponent(uid)}`);
+  };
+
+  function handleContact(): void {
+    const captainUid = String(team?.captainUid ?? '').trim();
+    if (!captainUid) {
+      toast.show({ message: '此俱樂部尚未設定負責人' });
+      return;
+    }
+    onOpenProfile(captainUid);
+  }
+
   // ASSUMPTION: 閘門不載入俱樂部，頁首只留既有返回鈕，不顯示隊名與統計。
   // 不自動 signIn，避免使用者取消登入後按返回又被送去登入。
   if (access === 'login-required') {
@@ -489,6 +502,7 @@ function TeamDetailContent({
               tabs={tabs}
               activeTab={activeTab}
               onBack={handleBack}
+              onContact={handleContact}
               onUnavailable={handleUnavailable}
               onJoin={() => {
                 void handleJoin();
@@ -518,7 +532,7 @@ function TeamDetailContent({
               onSelectEvent={(eventId) =>
                 location.route(`/events/${encodeURIComponent(eventId)}`)
               }
-              onOpenProfile={(uid) => location.route(`/profile/${encodeURIComponent(uid)}`)}
+              onOpenProfile={onOpenProfile}
               onRetryMembers={() => setMemberAttempt((v) => v + 1)}
               onRetryEvents={() => setEventAttempt((v) => v + 1)}
               onLogin={() => {

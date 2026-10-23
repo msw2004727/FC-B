@@ -162,6 +162,7 @@ export interface TeamDetailV2HeaderProps {
   tabs: readonly V2TabDef[];
   activeTab: V2TabKey;
   onBack: () => void;
+  onContact: () => void;
   onUnavailable: () => void;
   onJoin: () => void;
   onJoined: () => void;
@@ -184,6 +185,7 @@ export function TeamDetailV2Header({
   tabs,
   activeTab,
   onBack,
+  onContact,
   onUnavailable,
   onJoin,
   onJoined,
@@ -362,13 +364,12 @@ export function TeamDetailV2Header({
         >
           <SvgIcon name="share" />
         </button>
-        {/* 下一批補：聯繫負責人 */}
         <button
           class="td-v2-cta-icon"
           type="button"
           data-td-v2-action="contact"
           aria-label="聯繫負責人"
-          onClick={onUnavailable}
+          onClick={onContact}
         >
           <SvgIcon name="contact" />
         </button>

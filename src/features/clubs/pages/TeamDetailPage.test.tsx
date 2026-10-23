@@ -474,7 +474,9 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
 
     fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
-    expect(toastSpy).toHaveBeenCalledTimes(2);
+    // 測試同步更新：聯繫負責人已接線
+    expect(routeState.route).toHaveBeenCalledWith('/profile/captain');
+    expect(toastSpy).toHaveBeenCalledTimes(1);
 
     // 經理身分：顯示頭像/封面編輯按鈕且 invite 啟用
     vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
@@ -485,7 +487,49 @@ describe('TeamDetailPage (Legacy V2)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '更換俱樂部封面' }));
     fireEvent.click(screen.getByRole('button', { name: '更換俱樂部頭像' }));
-    expect(toastSpy).toHaveBeenCalledTimes(4);
+    // 測試同步更新：聯繫負責人已接線
+    expect(toastSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('opens the captain profile when contacting the manager without an unavailable toast', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid: 'U-captain-1' });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
+    expect(routeState.route).toHaveBeenCalledWith('/profile/U-captain-1');
+    expect(toastSpy).not.toHaveBeenCalledWith({
+      message: '此功能尚未開放，請先使用舊版',
+    });
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, '', '   '])(
+    'shows the missing captain toast without routing when captainUid is %s',
+    async (captainUid) => {
+      const toastSpy = vi.spyOn(toast, 'show');
+      vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid });
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
+      expect(toastSpy).toHaveBeenCalledWith({
+        message: '此俱樂部尚未設定負責人',
+      });
+      expect(routeState.route).not.toHaveBeenCalled();
+    },
+  );
+
+  it('trims captainUid before opening the captain profile', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid: '  U-captain-1  ' });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
+    expect(routeState.route).toHaveBeenCalledWith('/profile/U-captain-1');
+    expect(toastSpy).not.toHaveBeenCalled();
   });
 
   it('handles loading, error retry and not-found states with legacy v2 shell', async () => {
