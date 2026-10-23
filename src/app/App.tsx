@@ -12,6 +12,7 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { Suspense, lazy as lazyComponent } from 'preact/compat';
 import { LocationProvider, Router, Route, lazy, useLocation } from 'preact-iso';
 import { TopBar } from '@/ui/TopBar';
+import { QaBanner } from '@/features/qa-login/components/QaBanner';
 import { BottomNav } from '@/ui/BottomNav';
 import { SideDrawer } from '@/ui/SideDrawer';
 import { Text } from '@/ui/Text';
@@ -297,6 +298,7 @@ export function App({
   return (
     <LocationProvider>
       <div ref={shellRef} class="app-shell ui-app-shell">
+        <QaBanner uid={routeAccess?.uid ?? null} />
         <TopBar
           menuRef={menuRef}
           drawerOpen={drawerOpen}

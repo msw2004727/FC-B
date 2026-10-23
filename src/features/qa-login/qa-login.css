@@ -1,0 +1,313 @@
+/* QA 登入頁與全站橫幅。顏色與間距只用 tokens.css。 */
+
+.qa-login {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-8);
+}
+
+.qa-login__title {
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-title-lg);
+  line-height: var(--line-height-title-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.qa-login__lede {
+  margin: 0 0 var(--space-6);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.qa-login__field {
+  margin: 0 0 var(--space-4);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.qa-login .ui-input,
+.qa-login .ui-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.qa-login .ui-input label,
+.qa-login .ui-select label,
+.qa-login .ui-input label .ui-text,
+.qa-login .ui-select label .ui-text {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.qa-login .ui-input input,
+.qa-login .ui-select select {
+  height: 44px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.qa-login__password {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.qa-login__password .ui-input input {
+  padding-block: 0;
+  padding-inline-start: var(--space-3);
+  padding-inline-end: calc(var(--space-8) + var(--space-8) + var(--space-3));
+}
+
+.qa-login__password .ui-input input::-ms-reveal,
+.qa-login__password .ui-input input::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.qa-login__password-toggle {
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  min-width: calc(var(--space-8) + var(--space-8));
+  margin: 0;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-left: var(--border-hairline) solid var(--color-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--color-brand);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-body-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.qa-login__password-toggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.qa-login--error .qa-login__password .ui-input input {
+  border-color: var(--color-danger);
+}
+
+.qa-login--error .qa-login__password-toggle {
+  border-left-color: var(--color-danger);
+}
+
+.qa-login__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body-sm);
+}
+
+.qa-login__error .ui-text {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body-sm);
+}
+
+.qa-login__error-icon {
+  flex: 0 0 auto;
+  font-variant-emoji: text;
+}
+
+.qa-login .ui-select {
+  position: relative;
+}
+
+.qa-login .ui-select select {
+  appearance: none;
+  padding-block: 0;
+  padding-inline-start: var(--space-3);
+  padding-inline-end: calc(var(--space-8) + var(--space-4));
+  background-color: var(--color-bg-input);
+  background-image: none;
+}
+
+.qa-login .ui-select select:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+}
+
+.qa-login .ui-select select:active:not(:disabled) {
+  background-color: var(--color-bg-active);
+}
+
+.qa-login .ui-select::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: var(--space-4);
+  bottom: 18px;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-right: 2px solid var(--color-text-secondary);
+  border-bottom: 2px solid var(--color-text-secondary);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* 特異度要蓋過 .ui-button（margin: 0、font-size: body-sm、padding-block: space-2）。
+   預覽主按鈕是滿版 44px、字級 body-lg，底下留 space-4 才接到提示框。 */
+.qa-login .ui-button.qa-login__submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  margin: var(--space-2) 0 var(--space-4);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-lg);
+}
+
+.qa-login .ui-button.qa-login__submit .ui-text {
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-lg);
+}
+
+.qa-login .qa-login__submit::before {
+  inset: 0;
+}
+
+.qa-login__notice {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-hairline) solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.qa-login__footnote {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body-sm);
+}
+
+@media (min-width: 1280px) {
+  .qa-login {
+    max-width: 36rem;
+    margin-inline: auto;
+  }
+}
+
+.qa-banner {
+  /* 高於 legacy #top-bar 900、.sync-bar 899；
+     低於 #drawer-overlay 950、#side-drawer 960、modal 1100/1110、
+     AppConfirm 1300、Toast 10001。tokens.css 的 --z-* 沒有這一層。 */
+  --qa-banner-z: 905;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--qa-banner-z);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(44px + env(safe-area-inset-top, 0px));
+  margin: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: 0;
+  padding-left: calc(var(--space-4) + var(--safe-left));
+  padding-right: calc(var(--space-4) + var(--safe-right));
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  border-bottom: var(--border-hairline) solid var(--color-warning);
+}
+
+.qa-banner__label {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.qa-banner__logout {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: 44px;
+  min-width: 44px;
+  margin: 0;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-2) 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-body-sm);
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.qa-banner__logout:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.qa-banner__logout:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (min-width: 800px) {
+  /* 與 legacy layout.css ≥800px 的 #top-bar 同一條：640px、水平置中。 */
+  .qa-banner {
+    max-width: 640px;
+    width: 100%;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+}
+
+/* legacy 輸出 .legacy-ui #top-bar / .legacy-ui .sync-bar（layout.css）。
+   多一個 .legacy-chrome，特異度高一級，載入順序即使較早也蓋得過。不用 !important。
+   橫幅不在時 --qa-banner-h 為 0、--qa-topbar-safe 未設定，算式退回原本的 top／高度／安全區。
+   橫幅在時安全區算進橫幅高度，--qa-topbar-safe 為 0，TopBar 不再加一次。 */
+.legacy-ui.legacy-chrome #top-bar {
+  top: var(--qa-banner-h, 0px);
+  height: calc(var(--topbar-h) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
+  padding-top: var(--qa-topbar-safe, env(safe-area-inset-top, 0px));
+}
+
+.legacy-ui.legacy-chrome .sync-bar {
+  top: calc(var(--topbar-h) + var(--qa-banner-h, 0px) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
+}

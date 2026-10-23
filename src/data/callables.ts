@@ -62,6 +62,8 @@ import type {
   GetPrivateMessageSettingsResponse,
   IncrementEventViewCountRequest,
   IncrementEventViewCountResponse,
+  IssueQaTestTokenRequest,
+  IssueQaTestTokenResponse,
   ListEduCourseEnrollmentSummariesRequest,
   ListEduCourseEnrollmentSummariesResponse,
   ListEduCourseEnrollmentsRequest,
@@ -183,6 +185,7 @@ export interface CallableMap {
     req: IncrementEventViewCountRequest;
     res: IncrementEventViewCountResponse;
   };
+  issueQaTestToken: { req: IssueQaTestTokenRequest; res: IssueQaTestTokenResponse };
   listEduCourseEnrollmentSummaries: {
     req: ListEduCourseEnrollmentSummariesRequest;
     res: ListEduCourseEnrollmentSummariesResponse;
@@ -361,6 +364,30 @@ export async function callFn<N extends CallableName>(
   name: N,
   request: RequestOf<N>,
 ): Promise<ResponseOf<N>> {
+  // ASSUMPTION: 為滿足密碼不落地與 emulator 同路徑，須補此分支，超出原列兩處型別登錄。
+  // QA request 不得進 recorder，原始錯誤也不得進 CallableError.details。
+  if (name === 'issueQaTestToken') {
+    try {
+      if (isMockMode()) {
+        const handler = mocks.get(name);
+        if (!handler) throw new Error('[auth] QA login failed');
+        const response = await handler(request);
+        return response as ResponseOf<N>;
+      }
+
+      // firebase.ts 已連接 Functions emulator；沿用 ctx.functions 才不會繞過該連線。
+      const [{ httpsCallable }, ctx] = await Promise.all([
+        import('firebase/functions'),
+        getFirebase(),
+      ]);
+      const callable = httpsCallable<RequestOf<N>, ResponseOf<N>>(ctx.functions, name);
+      const result = await callable(request);
+      return result.data;
+    } catch {
+      throw new Error('[auth] QA login failed');
+    }
+  }
+
   recordCall(name, request);
 
   if (isMockMode()) {

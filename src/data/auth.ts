@@ -10,6 +10,10 @@
 //
 // A 版 Functions 端 `createCustomToken` 會拒絕 localhost / 127.0.0.1 來源
 // （`a-createCustomToken-guard.js`），B 端不得嘗試繞過——本地開發請一律使用 emulator + devSignIn。
+//
+// QA 測試模式（T-024）是經站長核准的第二條簽發路徑，走 issueQaTestToken：
+// 伺服器驗證臨時密碼後簽發帶 qa claim 的 token，不是繞過 createCustomToken-guard，
+// 也不可沿用 devSignIn。密碼僅供當次 request 使用，不得記錄、快取或附於錯誤。
 
 import { emit } from '@/core/events';
 import { toast } from '@/ui/Toast';
@@ -213,6 +217,122 @@ export async function devSignIn(
 export async function signOut(): Promise<void> {
   const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
   await authMod.signOut(ctx.auth);
+}
+
+export interface QaClaims {
+  persona: string | null;
+  agent: string | null;
+  /** qaExp：epoch ms；claim 缺或型別不符為 null。 */
+  exp: number | null;
+}
+
+/** QA 測試模式登入：呼叫 issueQaTestToken → signInWithCustomToken。密碼不落地（見檔頭規則）。 */
+export async function signInWithQa(password: string, persona: string): Promise<AuthUser> {
+  try {
+    if (password === '' || persona === '') {
+      throw new Error('[auth] QA login failed');
+    }
+
+    const { customToken } = await callFn('issueQaTestToken', { password, persona });
+    if (typeof customToken !== 'string' || customToken.length === 0) {
+      throw new Error('[auth] QA login failed');
+    }
+
+    const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
+    const credential = await authMod.signInWithCustomToken(ctx.auth, customToken);
+    const user = credential.user;
+    emitAuth(user.uid);
+    return {
+      uid: user.uid,
+      displayName: user.displayName,
+      pictureUrl: user.photoURL,
+    };
+  } catch {
+    throw new Error('[auth] QA login failed');
+  }
+}
+
+/**
+ * 目前登入者的 QA 狀態；未登入或 claims.qa !== true 回 null。不強制刷新 token。
+ * 有帶 expectedUid 時，讀取前與 getIdTokenResult 之後都必須仍是該 uid。
+ * 沒帶參數時不核對 uid。
+ */
+export async function readQaClaims(expectedUid?: string): Promise<QaClaims | null> {
+  try {
+    const ctx = await getFirebase();
+    const currentUser = ctx.auth.currentUser;
+    if (!currentUser) return null;
+    if (expectedUid !== undefined && currentUser.uid !== expectedUid) return null;
+
+    const { claims } = await currentUser.getIdTokenResult();
+    if (
+      ctx.auth.currentUser !== currentUser ||
+      (expectedUid !== undefined && currentUser.uid !== expectedUid) ||
+      claims.qa !== true
+    ) {
+      return null;
+    }
+
+    return {
+      persona:
+        typeof claims.qaPersona === 'string' && claims.qaPersona.length > 0
+          ? claims.qaPersona
+          : null,
+      agent:
+        typeof claims.qaAgent === 'string' && claims.qaAgent.length > 0
+          ? claims.qaAgent
+          : null,
+      exp:
+        typeof claims.qaExp === 'number' && Number.isFinite(claims.qaExp)
+          ? claims.qaExp
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 登出 QA：expectedUid 是按下登出當下要結束的使用者；
+ * currentUser 為 null 或 uid 不符時不 signOut、不清任何 key 並回 false，
+ * 相符且 signOut 成功並清完 localStorage 前綴與 sessionStorage `_lineLoginRetryCount` 後回 true，
+ * signOut 拒絕則清理後照樣拒絕。
+ */
+export async function signOutQa(expectedUid: string): Promise<boolean> {
+  const ctx = await getFirebase();
+  const currentUser = ctx.auth.currentUser;
+  if (currentUser == null || currentUser.uid !== expectedUid) return false;
+
+  try {
+    await signOut();
+  } finally {
+    // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源。
+    const prefixes = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
+    const exactKeys = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
+
+    try {
+      const keys = Object.keys(localStorage);
+      for (const key of keys) {
+        if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
+          try {
+            localStorage.removeItem(key);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      sessionStorage.removeItem('_lineLoginRetryCount');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return true;
 }
 
 /** 訂閱 Auth 狀態變更；回傳取消訂閱函式。第一次呼叫會先 lazy 載入 firebase/auth。 */

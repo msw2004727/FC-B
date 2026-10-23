@@ -1,3 +1,10 @@
+/* 預設 0。QaBanner 把實測高度寫在 <html> 的 inline style。
+   不可再宣告在 .app-shell：#top-bar、.sync-bar、.app-main 都在它裡面，
+   子元素會繼承 0，把 html 上的高度蓋掉。 */
+:root {
+  --qa-banner-h: 0px;
+}
+
 .ui-app-shell {
   width: 100%;
   /* M-058：照 A css/base.css:129,1401——800px 以下最大寬度 560px，800px 以上 640px */
@@ -13,7 +20,7 @@
 .ui-app-shell .app-main {
   flex: 1 1 auto;
   min-width: 0;
-  padding-top: calc(var(--topbar-h, 56px) + env(safe-area-inset-top, 0px));
+  padding-top: calc(var(--topbar-h, 56px) + var(--qa-banner-h, 0px) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
   padding-bottom: calc(var(--bottombar-h, 64px) + 55px + env(safe-area-inset-bottom, 0px));
   padding-left: calc(var(--space-2) + var(--safe-left));
   padding-right: calc(var(--space-2) + var(--safe-right));
@@ -35,13 +42,16 @@
 }
 
 .ui-top-bar {
-  top: 0;
-  min-height: calc(var(--topbar-h) + var(--safe-top));
-  padding-top: var(--safe-top);
+  top: var(--qa-banner-h, 0px);
+  min-height: calc(var(--topbar-h) + var(--qa-topbar-safe, var(--safe-top)));
+  padding-top: var(--qa-topbar-safe, var(--safe-top));
   padding-left: calc(var(--space-3) + var(--safe-left));
   padding-right: calc(var(--space-3) + var(--safe-right));
   z-index: var(--z-topbar);
 }
+
+/* #top-bar / .sync-bar 的橫幅偏移在 qa-login.css。
+   legacy 打包後是 .legacy-ui #top-bar（與本檔舊選擇器同特異度），必須更高一級才穩。 */
 
 .ui-bottom-nav {
   bottom: 0;
