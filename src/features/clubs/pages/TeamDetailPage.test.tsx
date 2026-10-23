@@ -11,6 +11,7 @@ import type { TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
 import { clearPendingJoin, loginForClubs, _resetClubsSessionForTest } from './clubs-session';
 import { canShowInviteQr, canViewClubDetail } from '../club-policy';
 import { canInviteToTeam } from '../components/legacy/TeamDetailV2Header';
+import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import { renderQrToCanvas } from '@/features/profile/data/qr';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -22,6 +23,11 @@ const policyMock = vi.hoisted(() => ({
 }));
 
 const routeState = vi.hoisted(() => ({ id: 'club', route: vi.fn() }));
+const pickMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../components/legacy/use-team-image-upload', () => ({
+  useTeamImageUpload: vi.fn(),
+}));
 
 vi.mock('preact-iso', () => ({
   useRoute: () => ({ params: { id: routeState.id } }),
@@ -205,6 +211,12 @@ const snapshot = vi.fn<() => { active: EventDoc[]; terminal: EventDoc[] }>();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  pickMock.mockClear();
+  vi.mocked(useTeamImageUpload).mockReturnValue({
+    pick: pickMock,
+    busyKind: null,
+    overlay: null,
+  });
   policyMock.reset();
   authUid.value = undefined;
   toast.clear();
@@ -493,8 +505,147 @@ describe('TeamDetailPage (Legacy V2)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '更換俱樂部封面' }));
     fireEvent.click(screen.getByRole('button', { name: '更換俱樂部頭像' }));
-    // 測試同步更新：聯繫負責人已接線
-    expect(toastSpy).toHaveBeenCalledTimes(3);
+    // 測試同步更新：封面／頭像已接上傳 hook，只有分享仍顯示未開放提示。
+    expect(pickMock).toHaveBeenNthCalledWith(1, 'cover');
+    expect(pickMock).toHaveBeenNthCalledWith(2, 'avatar');
+    expect(pickMock).toHaveBeenCalledTimes(2);
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides image edit buttons from a normal member', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(screen.queryByRole('button', { name: '更換俱樂部封面' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '更換俱樂部頭像' })).toBeNull();
+    expect(pickMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['leader1', 'coach1'])(
+    'hides image edit buttons from non-manager staff %s',
+    async (uid) => {
+      // ASSUMPTION: 教練名冊欄位為 coachUids／coaches，與 leaderUids／leaders 對應。
+      vi.mocked(loadTeam).mockResolvedValue({
+        ...team,
+        coachUids: ['coach1'],
+        coaches: ['教練丙'],
+      });
+      vi.mocked(useViewer).mockReturnValue(viewer(uid, ['club']));
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      expect(screen.queryByRole('button', { name: '更換俱樂部封面' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '更換俱樂部頭像' })).toBeNull();
+      expect(pickMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shows image edit buttons with team.manage_all permission', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('admin'),
+      hasPermission: (permission) => permission === 'team.manage_all',
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(screen.getByRole('button', { name: '更換俱樂部封面' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '更換俱樂部頭像' })).toBeTruthy();
+  });
+
+  it('silently reloads the team after saving an image and updates its name', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    const { container } = render(<TeamDetailPage />);
+    const title = await screen.findByText('測試俱樂部');
+    await waitFor(() => expect(loadTeamMembers).toHaveBeenCalledTimes(1));
+    expect(loadTeam).toHaveBeenCalledTimes(1);
+
+    const shell = container.querySelector('.td-v2-shell');
+    expect(shell).toBeTruthy();
+    expect(shell?.contains(title)).toBe(true);
+    const memberCallsBeforeSave = vi.mocked(loadTeamMembers).mock.calls.length;
+
+    const call = vi.mocked(useTeamImageUpload).mock.calls.at(-1);
+    if (!call) throw new Error('缺少圖片上傳 hook 呼叫');
+    expect(call[0].team?.id).toBe('club');
+
+    const pendingLoad = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pendingLoad.promise);
+    let saved: void | Promise<void> = undefined;
+
+    await act(async () => {
+      saved = call[0].onSaved('avatar');
+      await Promise.resolve();
+    });
+
+    expect(loadTeam).toHaveBeenCalledTimes(2);
+    expect(loadTeam).toHaveBeenLastCalledWith('club');
+    expect(screen.getByText('測試俱樂部')).toBe(title);
+    expect(container.querySelector('.td-v2-shell')).toBe(shell);
+    expect(shell?.contains(title)).toBe(true);
+    expect(loadTeamMembers).toHaveBeenCalledTimes(memberCallsBeforeSave);
+
+    await act(async () => {
+      pendingLoad.resolve({ ...team, name: '更新後俱樂部' });
+      await saved;
+    });
+
+    expect(await screen.findByText('更新後俱樂部')).toBe(title);
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+    expect(container.querySelector('.td-v2-shell')).toBe(shell);
+    expect(shell?.contains(title)).toBe(true);
+    expect(loadTeamMembers).toHaveBeenCalledTimes(memberCallsBeforeSave);
+  });
+
+  it('reloads members once when a silent team reload changes coachUids', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    vi.mocked(loadTeam).mockResolvedValueOnce({
+      ...team,
+      coachUids: ['coach1'],
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    await waitFor(() => expect(loadTeamMembers).toHaveBeenCalledTimes(1));
+    const memberCallsBeforeSave = vi.mocked(loadTeamMembers).mock.calls.length;
+
+    const call = vi.mocked(useTeamImageUpload).mock.calls.at(-1);
+    if (!call) throw new Error('缺少圖片上傳 hook 呼叫');
+
+    const updatedTeam: TeamDoc = { ...team, coachUids: ['coach2'] };
+    vi.mocked(loadTeam).mockResolvedValueOnce(updatedTeam);
+
+    await act(async () => {
+      await call[0].onSaved('avatar');
+    });
+
+    await waitFor(() =>
+      expect(loadTeamMembers).toHaveBeenCalledTimes(memberCallsBeforeSave + 1),
+    );
+    expect(loadTeam).toHaveBeenCalledTimes(2);
+    expect(loadTeam).toHaveBeenLastCalledWith('club');
+    expect(loadTeamMembers).toHaveBeenLastCalledWith(updatedTeam);
+  });
+
+  it('disables both image edit buttons while uploading the cover', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    vi.mocked(useTeamImageUpload).mockReturnValue({
+      pick: pickMock,
+      busyKind: 'cover',
+      overlay: null,
+    });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const cover = screen.getByRole('button', {
+      name: '更換俱樂部封面',
+    }) as HTMLButtonElement;
+    const avatar = screen.getByRole('button', {
+      name: '更換俱樂部頭像',
+    }) as HTMLButtonElement;
+    expect(cover.disabled).toBe(true);
+    expect(avatar.disabled).toBe(true);
+    expect(cover.getAttribute('aria-busy')).toBe('true');
+    expect(avatar.getAttribute('aria-busy')).toBeNull();
   });
 
   it('opens a local invite QR dialog for the captain without fetching', async () => {

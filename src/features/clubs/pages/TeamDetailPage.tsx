@@ -16,7 +16,6 @@ import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import {
   buildTeamRoster,
-  canEditTeamByRoleOrCaptain,
   canManageTeamMembers,
   getTeamFutureEvents,
   getTeamMemberCount,
@@ -24,7 +23,7 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
-import { canShowInviteQr, resolveClubDetailAccess } from '../club-policy';
+import { canEditTeamSettings, canShowInviteQr, resolveClubDetailAccess } from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
 import type { TeamDoc, TeamMember } from '../data/types';
 import {
@@ -42,6 +41,7 @@ import {
 } from '../components/legacy/TeamDetailV2Header';
 import { TeamDetailV2Panels } from '../components/legacy/TeamDetailV2Panels';
 import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
+import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
 
@@ -159,6 +159,23 @@ function TeamDetailContent({
   }, [id, teamAttempt, access, viewer.uid]);
 
   const team = teamState.status === 'ready' ? teamState.value : null;
+  const teamId = team?.id ?? '';
+  const teamRef = useRef<TeamDoc | null>(team);
+  teamRef.current = team;
+  const membersKey = team
+    ? JSON.stringify([
+        team.id ?? team._docId ?? '',
+        team.captainUid ?? '',
+        Array.isArray(team.leaderUids) ? team.leaderUids : [],
+        team.leaderUid ?? '',
+        Array.isArray(team.coachUids) ? team.coachUids : [],
+      ])
+    : '';
+  const imageUpload = useTeamImageUpload({
+    team,
+    viewer,
+    onSaved: () => reloadTeamSilently(),
+  });
   const showMembers = !!team && isTeamDetailSectionVisible(team, 'members');
   const showEvents = !!team && isTeamDetailSectionVisible(team, 'events');
   const showInfo = !!team && isTeamDetailSectionVisible(team, 'info');
@@ -167,9 +184,9 @@ function TeamDetailContent({
     const sequence = ++memberSequence.current;
     let cancelled = false;
     setMembersState({ status: 'loading' });
-    if (!team || (!showMembers && !showInfo)) return;
+    if (!teamRef.current || (!showMembers && !showInfo)) return;
 
-    loadTeamMembers(team).then(
+    loadTeamMembers(teamRef.current).then(
       (members) => {
         if (!cancelled && sequence === memberSequence.current) {
           setMembersState({ status: 'ready', value: members });
@@ -184,13 +201,13 @@ function TeamDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [team, showMembers, showInfo, viewer.uid, memberAttempt]);
+  }, [membersKey, showMembers, showInfo, viewer.uid, memberAttempt]);
 
   useEffect(() => {
     const sequence = ++eventSequence.current;
     let cancelled = false;
     setEventsState({ status: 'loading' });
-    if (!team || !showEvents) return;
+    if (!teamId || !showEvents) return;
 
     const repo = getEventsRepo();
     Promise.all([
@@ -211,7 +228,7 @@ function TeamDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [team, showEvents, viewer.uid, eventAttempt]);
+  }, [teamId, showEvents, viewer.uid, eventAttempt]);
 
   useEffect(() => {
     if (!team?.id || !viewer.uid || !viewer.teamIds.has(team.id)) return;
@@ -237,6 +254,20 @@ function TeamDetailContent({
 
   function handleUnavailable(): void {
     toast.show({ message: UNAVAILABLE_MSG });
+  }
+
+  async function reloadTeamSilently(): Promise<void> {
+    const sequence = ++teamSequence.current;
+    try {
+      const loaded = await loadTeam(id);
+      if (sequence !== teamSequence.current || !alive.current) return;
+      setTeamState({
+        status: 'ready',
+        value: loaded ? { ...loaded, id: loaded.id || loaded._docId || id } : null,
+      });
+    } catch (error) {
+      console.error('[TeamDetailPage.reloadTeamSilently]', error);
+    }
   }
 
   function handleInvite(): void {
@@ -349,10 +380,9 @@ function TeamDetailContent({
     );
   }
 
-  const teamId = team.id || id;
   const teamName = team.name || '未命名俱樂部';
   const themeColor = getTeamThemeColor(team);
-  const canEdit = canEditTeamByRoleOrCaptain(team, viewer);
+  const canEdit = canEditTeamSettings(viewer, team);
   const canManageRoster = canManageTeamMembers(team, viewer);
   const joinState = getSessionJoinState(teamId, viewer.uid);
   const primaryAction = getTeamPrimaryAction(team, viewer, joinState);
@@ -512,6 +542,9 @@ function TeamDetailContent({
               onContact={handleContact}
               onInvite={handleInvite}
               onUnavailable={handleUnavailable}
+              onEditAvatar={() => imageUpload.pick('avatar')}
+              onEditCover={() => imageUpload.pick('cover')}
+              imageBusyKind={imageUpload.busyKind}
               onJoin={() => {
                 void handleJoin();
               }}
@@ -556,6 +589,7 @@ function TeamDetailContent({
                 <div class="td-v2-course-modal-body" />
               </div>
             </div>
+            {imageUpload.overlay}
             {inviteOpen && team ? (
               <TeamInviteQrOverlay
                 teamId={String(team.id ?? '')}

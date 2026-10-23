@@ -158,6 +158,9 @@ export interface TeamDetailV2HeaderProps {
   onContact: () => void;
   onInvite: () => void;
   onUnavailable: () => void;
+  onEditAvatar: () => void;
+  onEditCover: () => void;
+  imageBusyKind: 'avatar' | 'cover' | null;
   onJoin: () => void;
   onJoined: () => void;
   onJoinPending: () => void;
@@ -182,6 +185,9 @@ export function TeamDetailV2Header({
   onContact,
   onInvite,
   onUnavailable,
+  onEditAvatar,
+  onEditCover,
+  imageBusyKind,
   onJoin,
   onJoined,
   onJoinPending,
@@ -254,14 +260,15 @@ export function TeamDetailV2Header({
         )}
         <div class="td-v2-hero-shade" />
         {canEdit && (
-          /* 下一批補：更換俱樂部封面 */
           <button
             class="td-v2-cover-edit"
             type="button"
             data-td-v2-action="edit-cover"
             aria-label="更換俱樂部封面"
             title="更換俱樂部封面"
-            onClick={onUnavailable}
+            onClick={onEditCover}
+            disabled={imageBusyKind !== null}
+            aria-busy={imageBusyKind === 'cover' ? 'true' : undefined}
           >
             <SvgIcon name="camera" />
           </button>
@@ -278,14 +285,15 @@ export function TeamDetailV2Header({
               </div>
             )}
             {canEdit && (
-              /* 下一批補：更換俱樂部頭像 */
               <button
                 class="td-v2-avatar-edit"
                 type="button"
                 data-td-v2-action="edit-avatar"
                 aria-label="更換俱樂部頭像"
                 title="更換俱樂部頭像"
-                onClick={onUnavailable}
+                onClick={onEditAvatar}
+                disabled={imageBusyKind !== null}
+                aria-busy={imageBusyKind === 'avatar' ? 'true' : undefined}
               >
                 <SvgIcon name="camera" />
               </button>
