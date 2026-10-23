@@ -59,10 +59,17 @@ export interface EventFormSavedResult {
   count: number;
 }
 
+export interface EventFormPreset {
+  teamIds: readonly string[];
+  teamNames: readonly string[];
+  sportTag: string;
+}
+
 export interface EventFormModalProps {
   open: boolean;
   mode: 'create' | 'edit';
   existing?: EventDoc;
+  preset?: EventFormPreset | null;
   viewer: ViewerView;
   onClose(): void;
   onSaved(result: EventFormSavedResult): void;
@@ -119,6 +126,7 @@ export function EventFormModal({
   open,
   mode,
   existing,
+  preset,
   viewer,
   onClose,
   onSaved,
@@ -303,11 +311,25 @@ export function EventFormModal({
         })
         : []);
     } else {
-      setFormState(createDefaultFormState(now));
+      const createPreset = mode === 'create' ? preset : null;
+      if (createPreset) {
+        setFormState({
+          ...createDefaultFormState(now),
+          teamOnly: true,
+          teamOnlyTeamIds: [...createPreset.teamIds],
+          sportTag: createPreset.sportTag,
+        });
+      } else {
+        setFormState(createDefaultFormState(now));
+      }
       cover.reset({ image: '' });
       location.reset(null);
       delegates.reset([]);
-      teamOnly.reset([], []);
+      if (createPreset) {
+        teamOnly.reset([...createPreset.teamIds], [...createPreset.teamNames]);
+      } else {
+        teamOnly.reset([], []);
+      }
       multiDate.reset();
       batchIdsRef.current = new Map();
       batchGroupIdRef.current = null;
@@ -325,7 +347,7 @@ export function EventFormModal({
     }
     // 照 A openCreateEventModal／重設表單欄位：清空範本名稱並重新載入範本（編輯也顯示範本列）。
     latestRef.current.templates.reset();
-  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons]);
+  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons, preset]);
 
   // 照 A 委託人送出驗證：等待重繪後讀取 hook 更新的最新名稱，避免使用舊 render 快照。
   useLayoutEffect(() => {

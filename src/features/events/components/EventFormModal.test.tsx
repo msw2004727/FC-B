@@ -12,6 +12,8 @@ import type { EventFormAddonState } from './event-form/form-types';
 import zhTW from '../locales/zh-TW.json';
 import * as eventCreateMod from '../data/event-create';
 import { EventFormModal } from './EventFormModal';
+import type { EventFormPreset } from './EventFormModal';
+import { createDefaultFormState } from '../data/event-form-model';
 
 const mocks = vi.hoisted(() => ({
   cover: null as ReturnType<typeof useCoverUpload> | null,
@@ -129,6 +131,164 @@ const TEST_VIEWER = {
     customRoles: [],
   },
 } as unknown as ViewerView;
+
+describe('EventFormModal optional preset', () => {
+  const preset: EventFormPreset = {
+    teamIds: ['tm_test_1'],
+    teamNames: ['測試俱樂部'],
+    sportTag: 'badminton',
+  };
+
+  function fields(): Parameters<typeof EventFormFields>[0] {
+    if (!mocks.fields) throw new Error('missing rendered fields');
+    return mocks.fields;
+  }
+
+  // ASSUMPTION: 附件未提供欄位 DOM selector；沿用既有 fields spy 驗證
+  // checkbox 與 sportTag 收到的受控值，並透過實際 onPatch 模擬使用者修改。
+  // mock 初始化沿用本測試檔既有的 beforeEach。
+  it('未傳 preset 的 create 保留全部預設值', () => {
+    render(
+      <EventFormModal
+        open
+        mode="create"
+        viewer={TEST_VIEWER}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+    expect(fields().state).toEqual(createDefaultFormState());
+    expect(fields().state.teamOnly).toBe(false);
+    expect(fields().state.sportTag).toBe('');
+    expect(mocks.teamReset).toHaveBeenLastCalledWith([], []);
+  });
+
+  it('create 只預選三個欄位，開啟期間更換 preset 不覆蓋輸入', () => {
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    const view = render(
+      <EventFormModal
+        open
+        mode="create"
+        viewer={TEST_VIEWER}
+        preset={preset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    expect(fields().state).toEqual({
+      ...createDefaultFormState(),
+      teamOnly: true,
+      teamOnlyTeamIds: ['tm_test_1'],
+      sportTag: 'badminton',
+    });
+    expect(mocks.teamReset).toHaveBeenLastCalledWith(
+      ['tm_test_1'],
+      ['測試俱樂部'],
+    );
+
+    act(() => {
+      fields().onPatch({ title: '使用者輸入標題' });
+    });
+    const resetCalls = mocks.teamReset.mock.calls.length;
+    const nextPreset: EventFormPreset = {
+      teamIds: ['tm_test_2'],
+      teamNames: ['另一俱樂部'],
+      sportTag: 'football',
+    };
+    view.rerender(
+      <EventFormModal
+        open
+        mode="create"
+        viewer={TEST_VIEWER}
+        preset={nextPreset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    expect(fields().state.title).toBe('使用者輸入標題');
+    expect(fields().state.teamOnly).toBe(true);
+    expect(fields().state.teamOnlyTeamIds).toEqual(['tm_test_1']);
+    expect(fields().state.sportTag).toBe('badminton');
+    expect(mocks.teamReset).toHaveBeenCalledTimes(resetCalls);
+
+    view.rerender(
+      <EventFormModal
+        open={false}
+        mode="create"
+        viewer={TEST_VIEWER}
+        preset={nextPreset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    view.rerender(
+      <EventFormModal
+        open
+        mode="create"
+        viewer={TEST_VIEWER}
+        preset={nextPreset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    expect(fields().state.title).toBe('');
+    expect(fields().state.teamOnlyTeamIds).toEqual(['tm_test_2']);
+    expect(fields().state.sportTag).toBe('football');
+    expect(mocks.teamReset).toHaveBeenLastCalledWith(
+      ['tm_test_2'],
+      ['另一俱樂部'],
+    );
+  });
+
+  it('edit 傳 preset 不改變既有活動初始值或 picker reset', () => {
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    const view = render(
+      <EventFormModal
+        open
+        mode="edit"
+        existing={EXISTING}
+        viewer={TEST_VIEWER}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    const baseline = {
+      ...fields().state,
+      teamOnlyTeamIds: [...fields().state.teamOnlyTeamIds],
+    };
+    const baselineReset = mocks.teamReset.mock.calls.at(-1);
+    expect(baselineReset).toBeDefined();
+    const resetCalls = mocks.teamReset.mock.calls.length;
+
+    view.rerender(
+      <EventFormModal
+        open={false}
+        mode="edit"
+        existing={EXISTING}
+        viewer={TEST_VIEWER}
+        preset={preset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    view.rerender(
+      <EventFormModal
+        open
+        mode="edit"
+        existing={EXISTING}
+        viewer={TEST_VIEWER}
+        preset={preset}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    expect(fields().state).toEqual(baseline);
+    expect(mocks.teamReset).toHaveBeenCalledTimes(resetCalls + 1);
+    expect(mocks.teamReset.mock.calls.at(-1)).toEqual(baselineReset);
+  });
+});
 
 const EXISTING = {
   id: 'ce_edit_99',

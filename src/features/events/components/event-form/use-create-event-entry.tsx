@@ -7,6 +7,7 @@ import type { UserProfile } from '@/features/profile/data/profile-model';
 import { canCreateEvent } from '../../data/event-create';
 import { createEventContextFromViewer } from '../../data/event-create-context';
 import { CreateEventTypeSheet } from './CreateEventTypeSheet';
+import type { EventFormPreset } from '../EventFormModal';
 import {
   invalidateEventFormPostSave,
   useEventFormSession,
@@ -35,6 +36,10 @@ export interface CreateEventEntry {
     title?: string;
   };
   onClick(): void;
+  /** 俱樂部詳情用：略過類型選擇，直接開自訂表單並套 preset（A: openCreateEventModal({ directCustom: true }) ＋ _applyTeamDetailEventPreset）。 */
+  onClickCustom(preset: EventFormPreset): void;
+  /** 目前表單要套用的 preset；一般入口（onClick）開啟時為 null。 */
+  preset: EventFormPreset | null;
   formOpen: boolean;
   closeForm(): void;
   overlays: JSX.Element | null;
@@ -46,6 +51,7 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [preset, setPreset] = useState<EventFormPreset | null>(null);
 
   const mounted = useRef(false);
   const generation = useRef(0);
@@ -119,6 +125,7 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
     setSheetOpen(false);
     setEditorOpen(false);
     setFormOpen(false);
+    setPreset(null);
 
     const uid = viewer.uid;
     if (uid) {
@@ -132,6 +139,7 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
       request.current = null;
       cached.current = null;
       clickBusy.current = false;
+      setPreset(null);
     };
   }, [viewer.uid]);
 
@@ -146,7 +154,7 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
     });
   }
 
-  function onClick(): void {
+  function start(next: EventFormPreset | null): void {
     if (!mounted.current || clickBusy.current) return;
     if (!allowed()) {
       deny();
@@ -180,7 +188,17 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
         setEditorOpen(true);
         return;
       }
-      setSheetOpen(true);
+      if (next === null) {
+        setPreset(null);
+        setSheetOpen(true);
+      } else {
+        if (!allowed()) {
+          deny();
+          return;
+        }
+        setPreset(next);
+        setFormOpen(true);
+      }
     })()
       .catch(() => {
         if (!isCurrent()) return;
@@ -193,6 +211,9 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
         if (isCurrent()) clickBusy.current = false;
       });
   }
+
+  const onClick = (): void => start(null);
+  const onClickCustom = (p: EventFormPreset): void => start(p);
 
   function afterProfileSaved(): void {
     const uid = currentViewer.current.uid;
@@ -238,6 +259,7 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
             deny();
             return;
           }
+          setPreset(null);
           setFormOpen(true);
         }}
       />
@@ -257,8 +279,13 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
       // 照 A _refreshActivityCreateButton：未鎖定時 aria-disabled='false'（Gemini 審 P3）。
       : { lockedClass: '', 'aria-disabled': 'false' },
     onClick,
+    onClickCustom,
+    preset,
     formOpen,
-    closeForm: () => setFormOpen(false),
+    closeForm: () => {
+      setFormOpen(false);
+      setPreset(null);
+    },
     overlays,
   };
 }
