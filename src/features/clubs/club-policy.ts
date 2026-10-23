@@ -47,3 +47,16 @@ export function resolveClubDetailAccess(
 
   return authUid === null ? 'login-required' : 'pending';
 }
+
+/** 申請是否仍在「審核中」冷卻期內（照 A：now - sentAt < 冷卻）。sentAt 非有限正數、或比 now 晚超過一個冷卻期（時鐘錯亂／損毀資料）視為否。 */
+export function isJoinRequestPending(sentAtMs: number, nowMs: number = Date.now()): boolean {
+  return Number.isFinite(sentAtMs)
+    && sentAtMs > 0
+    && nowMs - sentAtMs < JOIN_REQUEST_COOLDOWN_MS
+    && sentAtMs - nowMs <= JOIN_REQUEST_COOLDOWN_MS;
+}
+
+/** 剩餘小時，照 A：Math.max(1, Math.ceil((冷卻 - (now - sentAt)) / 3600000))。 */
+export function getJoinRequestHoursLeft(sentAtMs: number, nowMs: number = Date.now()): number {
+  return Math.max(1, Math.ceil((JOIN_REQUEST_COOLDOWN_MS - (nowMs - sentAtMs)) / 3600000));
+}

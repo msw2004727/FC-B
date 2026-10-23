@@ -15,6 +15,8 @@ import {
   JOIN_REQUEST_COOLDOWN_MS,
   canViewClubDetail,
   resolveClubDetailAccess,
+  isJoinRequestPending,
+  getJoinRequestHoursLeft,
 } from './club-policy';
 import type { ClubDetailAccess, ClubViewer } from './club-policy';
 
@@ -158,5 +160,40 @@ describe('resolveClubDetailAccess', () => {
   it('登入已確定但 viewer uid 延後出現時，先等待再允許載入', () => {
     expect(resolveClubDetailAccess({ uid: null }, 'u1')).toBe('pending');
     expect(resolveClubDetailAccess({ uid: 'u1' }, 'u1')).toBe('allowed');
+  });
+});
+
+describe('isJoinRequestPending', () => {
+  const now = 1_800_000_000_000;
+
+  it.each([
+    ['剛送出', now, true],
+    ['已過 23 小時 59 分 59 秒', now - JOIN_REQUEST_COOLDOWN_MS + 1000, true],
+    ['恰好 24 小時', now - JOIN_REQUEST_COOLDOWN_MS, false],
+    ['超過 24 小時', now - JOIN_REQUEST_COOLDOWN_MS - 1, false],
+    ['NaN', NaN, false],
+    ['零', 0, false],
+    ['負數', -1, false],
+    ['Infinity', Infinity, false],
+    ['未來 1 小時', now + 3600000, true],
+    ['未來恰好 24 小時', now + JOIN_REQUEST_COOLDOWN_MS, true],
+    ['未來超過 24 小時', now + JOIN_REQUEST_COOLDOWN_MS + 1, false],
+  ])('%s', (_label, sentAt, expected) => {
+    expect(isJoinRequestPending(sentAt, now)).toBe(expected);
+  });
+});
+
+describe('getJoinRequestHoursLeft', () => {
+  const sentAt = 1_800_000_000_000;
+
+  it.each([
+    ['剛送出', 0, 24],
+    ['剩 30 分鐘', JOIN_REQUEST_COOLDOWN_MS - 30 * 60000, 1],
+    ['剩 1 小時 1 分鐘', JOIN_REQUEST_COOLDOWN_MS - 61 * 60000, 2],
+    ['剩 23 小時', 3600000, 23],
+    ['恰好過期仍至少為 1', JOIN_REQUEST_COOLDOWN_MS, 1],
+    ['過期仍至少為 1', JOIN_REQUEST_COOLDOWN_MS + 3600000, 1],
+  ])('%s', (_label, elapsed, expected) => {
+    expect(getJoinRequestHoursLeft(sentAt, sentAt + elapsed)).toBe(expected);
   });
 });

@@ -30,6 +30,7 @@ import type { TeamDoc, TeamMember } from '../data/types';
 import {
   clearPendingJoin,
   getSessionJoinState,
+  getSessionJoinHoursLeft,
   loginForClubs,
   rememberPendingJoin,
 } from './clubs-session';
@@ -373,8 +374,9 @@ function TeamDetailContent({
   function handleJoinPending(): void {
     const state = getSessionJoinState(teamId, viewer.uid);
     if (state?.status === 'pending') {
+      const hours = getSessionJoinHoursLeft(teamId, viewer.uid) ?? 24;
       toast.show({
-        message: '您已申請此俱樂部，請等候審核（可於 24 小時後再次申請）',
+        message: `您已申請此俱樂部，請等候審核（可於 ${hours} 小時後再次申請）`,
       });
       return;
     }
@@ -397,8 +399,9 @@ function TeamDetailContent({
     }
     const currentJoinState = getSessionJoinState(teamId, viewer.uid);
     if (currentJoinState?.status === 'pending') {
+      const hours = getSessionJoinHoursLeft(teamId, viewer.uid) ?? 24;
       toast.show({
-        message: '您已申請此俱樂部，請等候審核（可於 24 小時後再次申請）',
+        message: `您已申請此俱樂部，請等候審核（可於 ${hours} 小時後再次申請）`,
       });
       return;
     }

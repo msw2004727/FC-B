@@ -8,7 +8,7 @@ import { getEventsRepo } from '@/features/events/data/events-repo';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import type { TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
-import { clearPendingJoin, loginForClubs } from './clubs-session';
+import { clearPendingJoin, loginForClubs, _resetClubsSessionForTest } from './clubs-session';
 import { canViewClubDetail } from '../club-policy';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -668,5 +668,115 @@ describe('TeamDetailPage (Legacy V2)', () => {
     await screen.findByText('測試俱樂部');
     expect(loadTeam).toHaveBeenCalledWith('club');
     expect(screen.queryByText('請先登入 LINE 帳號')).toBeNull();
+  });
+});
+
+describe('join pending persistence (M-117)', () => {
+  const key = 'club-join-pending:u1:club';
+
+  beforeEach(() => {
+    localStorage.clear();
+    _resetClubsSessionForTest();
+    authUid.value = 'u1';
+    vi.mocked(useViewer).mockReturnValue(viewer('u1'));
+  });
+
+  it('重新整理後顯示審核中，點擊提示剩餘時間且不重送', async () => {
+    localStorage.setItem(key, JSON.stringify({ sentAt: Date.now() }));
+    _resetClubsSessionForTest();
+    const toastSpy = vi.spyOn(toast, 'show');
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(await screen.findByRole('button', { name: '審核中' }));
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '您已申請此俱樂部，請等候審核（可於 24 小時後再次申請）',
+      }),
+    );
+    expect(requestTeamJoin).not.toHaveBeenCalled();
+  });
+
+  it('過期後顯示加入俱樂部並移除本機紀錄', async () => {
+    localStorage.setItem(key, JSON.stringify({ sentAt: Date.now() - 25 * 60 * 60 * 1000 }));
+    _resetClubsSessionForTest();
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(await screen.findByRole('button', { name: '加入俱樂部' })).toBeTruthy();
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it('另一個 uid 不會沿用原使用者的審核中紀錄', async () => {
+    localStorage.setItem(key, JSON.stringify({ sentAt: Date.now() }));
+    _resetClubsSessionForTest();
+    authUid.value = 'u2';
+    vi.mocked(useViewer).mockReturnValue(viewer('u2'));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(await screen.findByRole('button', { name: '加入俱樂部' })).toBeTruthy();
+    expect(localStorage.getItem(key)).not.toBeNull();
+    expect(requestTeamJoin).not.toHaveBeenCalled();
+  });
+
+  it('確認加入成功後保存本機紀錄', async () => {
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    fireEvent.click(screen.getByRole('button', { name: '加入俱樂部' }));
+    await waitFor(() =>
+      expect(appConfirm).toHaveBeenCalledWith('確定要加入「測試俱樂部」俱樂部？'),
+    );
+    await waitFor(() => expect(requestTeamJoin).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: '審核中' })).toBeTruthy();
+    expect(localStorage.getItem(key)).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem(key) ?? '{}')).toEqual({
+      sentAt: expect.any(Number),
+    });
+  });
+
+  it('setItem 丟例外時加入仍成功並以記憶體顯示審核中', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    try {
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      fireEvent.click(screen.getByRole('button', { name: '加入俱樂部' }));
+      await waitFor(() =>
+        expect(appConfirm).toHaveBeenCalledWith('確定要加入「測試俱樂部」俱樂部？'),
+      );
+      await waitFor(() => expect(requestTeamJoin).toHaveBeenCalledTimes(1));
+      const pendingBtn = await screen.findByRole('button', { name: '審核中' });
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '已送出加入申請！' }),
+      );
+      expect(setItemSpy).toHaveBeenCalledWith(key, expect.any(String));
+      expect(localStorage.getItem(key)).toBeNull();
+
+      fireEvent.click(pendingBtn);
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: '您已申請此俱樂部，請等候審核（可於 24 小時後再次申請）',
+        }),
+      );
+      expect(requestTeamJoin).toHaveBeenCalledTimes(1);
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
+  it('已成為成員時清除本機申請紀錄', async () => {
+    localStorage.setItem(key, JSON.stringify({ sentAt: Date.now() }));
+    _resetClubsSessionForTest();
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+    expect(requestTeamJoin).not.toHaveBeenCalled();
   });
 });
