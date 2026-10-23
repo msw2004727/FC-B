@@ -543,6 +543,144 @@ describe('LegacyTeamMembersCard', () => {
     await waitFor(() => expect(onTeamChanged).toHaveBeenCalledTimes(1));
   });
 
+  // 測試同步更新：使用附件既有的 ./member-management-actions mock。
+  it.each(['移除', '非成員', '無 user'] as const)(
+    '開框後最新 roster 為%s時拒絕升級並關閉',
+    async (state) => {
+      const { container, rerender, onTeamChanged, onOpenProfile } = renderManagement();
+      openMemberPromotion(container);
+
+      const roster = state === '移除'
+        ? managementRoster.filter((row) => row.uid !== 'member')
+        : managementRoster.map((row) => row.uid !== 'member'
+          ? row
+          : {
+              ...row,
+              ...(state === '非成員' ? { isMember: false } : { user: null }),
+            });
+
+      rerender(
+        <LegacyTeamMembersCard
+          team={managementTeam}
+          roster={roster}
+          viewer={managerViewer}
+          onTeamChanged={onTeamChanged}
+          onOpenProfile={onOpenProfile}
+        />,
+      );
+      expect(screen.getByText('晉升確認')).toBeTruthy();
+      fireEvent.click(dialogButton(/確認/));
+
+      await waitFor(() => {
+        expect(toast.show).toHaveBeenCalledExactlyOnceWith({
+          message: '找不到成員資料',
+          tone: 'error',
+        });
+        expect(screen.queryByText('俱樂部成員層級調整')).toBeNull();
+      });
+      expect(changeMemberRole).not.toHaveBeenCalled();
+      expect(onTeamChanged).not.toHaveBeenCalled();
+    },
+  );
+
+  // 測試同步更新
+  it('開框後成員已成為教練，不得把原確認改成晉升領隊', async () => {
+    const { container, rerender, onTeamChanged, onOpenProfile } = renderManagement();
+    openMemberPromotion(container);
+
+    rerender(
+      <LegacyTeamMembersCard
+        team={{
+          ...managementTeam,
+          coachUids: ['coach', 'member'],
+        }}
+        roster={managementRoster}
+        viewer={managerViewer}
+        onTeamChanged={onTeamChanged}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+    fireEvent.click(dialogButton(/確認/));
+
+    await waitFor(() => {
+      expect(toast.show).toHaveBeenCalledExactlyOnceWith({
+        message: '此成員層級已是最新狀態',
+        tone: 'error',
+      });
+      expect(screen.queryByText('俱樂部成員層級調整')).toBeNull();
+    });
+    expect(changeMemberRole).not.toHaveBeenCalled();
+    expect(onTeamChanged).not.toHaveBeenCalled();
+  });
+
+  // 測試同步更新
+  it('開框後同 UID 經理變成領隊，確認時拒絕晉升', async () => {
+    const { container, rerender, onTeamChanged, onOpenProfile } = renderManagement();
+    openMemberPromotion(container);
+
+    // ASSUMPTION: 失去經理權指同一帳號變為領隊；切換 UID 仍依既有契約立即關框。
+    const managerUid = managerViewer.uid;
+    expect(managerUid).not.toBeNull();
+    if (managerUid === null) throw new Error('經理測試資料缺少 UID');
+    const leaderViewer = makeViewer(managerUid);
+    rerender(
+      <LegacyTeamMembersCard
+        team={{
+          ...managementTeam,
+          captainUid: 'replacement',
+          leaderUids: ['leader', managerViewer.uid],
+        }}
+        roster={managementRoster}
+        viewer={leaderViewer}
+        onTeamChanged={onTeamChanged}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+    expect(screen.getByText('晉升確認')).toBeTruthy();
+    fireEvent.click(dialogButton(/確認/));
+
+    await waitFor(() => {
+      expect(toast.show).toHaveBeenCalledExactlyOnceWith({
+        message: '此成員目前無法晉升',
+        tone: 'error',
+      });
+      expect(screen.queryByText('俱樂部成員層級調整')).toBeNull();
+    });
+    expect(changeMemberRole).not.toHaveBeenCalled();
+    expect(onTeamChanged).not.toHaveBeenCalled();
+  });
+
+  // 測試同步更新
+  it('開框後角色不變，寫入使用最新 roster 的顯示名稱', async () => {
+    const { container, rerender, onTeamChanged, onOpenProfile } = renderManagement();
+    openMemberPromotion(container);
+    const roster = managementRoster.map((row) => row.uid === 'member'
+      ? { ...row, name: '最新隊員名稱' }
+      : row);
+
+    rerender(
+      <LegacyTeamMembersCard
+        team={managementTeam}
+        roster={roster}
+        viewer={managerViewer}
+        onTeamChanged={onTeamChanged}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+    fireEvent.click(dialogButton(/確認/));
+
+    await waitFor(() => expect(onTeamChanged).toHaveBeenCalledTimes(1));
+    expect(changeMemberRole).toHaveBeenCalledExactlyOnceWith({
+      team: managementTeam,
+      viewer: managerViewer,
+      targetUid: 'member',
+      displayName: '最新隊員名稱',
+      direction: 'promote',
+    });
+    expect(screen.queryByText('俱樂部成員層級調整')).toBeNull();
+  });
+
+  // 測試同步更新：保留狀態不變時的成功回歸。
   it('升級確認使用真對話框，成功寫入、通知並刷新', async () => {
     const { container, onTeamChanged } = renderManagement();
     openMemberPromotion(container);

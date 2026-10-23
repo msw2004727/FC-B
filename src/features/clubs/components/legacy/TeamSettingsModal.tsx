@@ -103,6 +103,45 @@ function isVisibilityKey(key: string): key is VisibilityKey {
   return VISIBILITY_ITEMS.some((item) => item.key === key);
 }
 
+function isSameSettingsTeam(left: TeamDoc, right: TeamDoc): boolean {
+  // ASSUMPTION: _docId 優先識別寫入文件，缺少時使用 id；無識別碼時只接受同一物件。
+  const leftId = left._docId ?? left.id;
+  const rightId = right._docId ?? right.id;
+  return leftId != null && rightId != null
+    ? leftId === rightId
+    : left === right;
+}
+
+function retainUnreflectedSettings(
+  patch: TeamSettingsPatch,
+  team: TeamDoc,
+): TeamSettingsPatch {
+  const source = team as unknown as Record<string, unknown>;
+  const remaining: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(patch)) {
+    const actual = source[key];
+    if (key === 'detailVisibility' && value !== null && typeof value === 'object') {
+      const actualVisibility = actual !== null && typeof actual === 'object'
+        ? actual as Record<string, unknown>
+        : {};
+      const visibility = Object.fromEntries(
+        Object.entries(value).filter(([subKey, subValue]) =>
+          actualVisibility[subKey] !== subValue),
+      );
+      if (Object.keys(visibility).length > 0) remaining[key] = visibility;
+      continue;
+    }
+
+    const reflected = value !== null && typeof value === 'object'
+      ? JSON.stringify(actual) === JSON.stringify(value)
+      : actual === value;
+    if (!reflected) remaining[key] = value;
+  }
+
+  return remaining as TeamSettingsPatch;
+}
+
 export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   const { team, viewer } = props;
   const lt = useLegacyT();
@@ -111,9 +150,14 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     source: team,
     patch: {},
   });
-  // 父層傳入新物件時立即以新 prop 為準，不讓舊成功 patch 跨越資料版本。
+  // 同隊新引用只清除已反映的成功值；舊內容不能清掉尚未同步的成功基準。
   if (confirmed.current.source !== team) {
-    confirmed.current = { source: team, patch: {} };
+    confirmed.current = {
+      source: team,
+      patch: isSameSettingsTeam(confirmed.current.source, team)
+        ? retainUnreflectedSettings(confirmed.current.patch, team)
+        : {},
+    };
   }
   const alive = useRef(true);
   const writing = useRef(false);
@@ -204,9 +248,12 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
       await saveTeamSettingsPatch(team, updates);
       if (!alive.current) return;
 
-      if (confirmed.current.source === team && latest.current.team === team) {
-        const previous = confirmed.current.patch;
-        confirmed.current.patch = {
+      const currentTeam = latest.current.team;
+      if (isSameSettingsTeam(team, currentTeam)) {
+        const previous = isSameSettingsTeam(confirmed.current.source, currentTeam)
+          ? confirmed.current.patch
+          : {};
+        const successful: TeamSettingsPatch = {
           ...previous,
           ...updates,
           ...(updates.detailVisibility !== undefined
@@ -217,6 +264,10 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                 },
               }
             : {}),
+        };
+        confirmed.current = {
+          source: currentTeam,
+          patch: retainUnreflectedSettings(successful, currentTeam),
         };
       }
 
@@ -345,6 +396,7 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
 
   return createPortal(
     <div class="legacy-ui">
+      <div class="modal-overlay open" aria-hidden="true" />
       <div
         class="modal open"
         id="team-detail-settings-modal"

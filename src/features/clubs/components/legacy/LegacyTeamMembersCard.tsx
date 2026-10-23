@@ -246,20 +246,27 @@ export function LegacyTeamMembersCard({
 
   const confirmRole = async (): Promise<void> => {
     if (!alive.current || actionLock.current || dialog?.kind !== 'role') return;
-    const { row, target: selectedTarget } = dialog;
-    const direction = selectedTarget.direction;
-    const target = getMemberRoleChangeTarget(viewer, team, row.uid, direction);
-    if (!target) {
-      showRoleUnavailable(direction);
+    const selectedTarget = dialog.target;
+    const row = roster.find((candidate) => candidate.uid === dialog.row.uid);
+    if (!row || !row.isMember || !row.user) {
       setDialog(null);
-      return;
-    }
-    if (!row.isMember || !row.user) {
-      setDialog(null);
+      toast.show({ message: '找不到成員資料', tone: 'error' });
       return;
     }
 
-    const { actionText } = getRoleChangeLabels(target);
+    const direction = selectedTarget.direction;
+    const actionText = direction === 'promote' ? '晉升' : '降級';
+    const current = getMemberRoleChangeTarget(viewer, team, row.uid, direction);
+    if (!current || current.key !== selectedTarget.key) {
+      setDialog(null);
+      toast.show({
+        message: current
+          ? '此成員層級已是最新狀態'
+          : `此成員目前無法${actionText}`,
+        tone: 'error',
+      });
+      return;
+    }
     const version = contextVersion.current;
     const isCurrent = (): boolean =>
       alive.current

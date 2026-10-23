@@ -78,6 +78,31 @@ function setup(team = makeTeam(), overrides: Partial<TeamSettingsModalProps> = {
   return { ...render(<TeamSettingsModal {...props} />), props };
 }
 
+it('設定彈窗渲染遮罩，點擊不關閉，卸載後移除', () => {
+  policyMock.mockReturnValue(true);
+  lockMock.mockReturnValue(unlockBody);
+  overlayMock.mockReturnValue(releaseBack);
+
+  const { unmount, props } = setup();
+  try {
+    const overlay = document.querySelector('.modal-overlay.open');
+    expect(overlay).not.toBeNull();
+    if (!(overlay instanceof HTMLElement)) throw new Error('找不到設定彈窗遮罩');
+
+    expect(overlay.getAttribute('aria-hidden')).toBe('true');
+    expect(overlay.hasAttribute('id')).toBe(false);
+    fireEvent.click(overlay);
+    expect(props.onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('dialog', { name: '俱樂部設定' }));
+    expect(props.onClose).not.toHaveBeenCalled();
+  } finally {
+    unmount();
+  }
+
+  expect(document.querySelector('.modal-overlay.open')).toBeNull();
+});
+
 function checkbox(label: string): HTMLInputElement {
   const node = document.querySelector(
     `label.td-settings-switch[aria-label="${label}"] input`,
@@ -427,6 +452,214 @@ describe('俱樂部設定彈窗', () => {
     },
   );
 
+  // 測試同步更新：同 id、舊內容、新引用不得清除成功基準。
+  it('重讀拒絕後收到舊內容的新 team，第二次 visibility 保留第一次成功值', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const onSaved = vi.fn().mockRejectedValue(new Error('重讀失敗'));
+    const original = makeTeam({ detailVisibility: { events: true, members: true } });
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+
+    const stale = makeTeam({ detailVisibility: { events: true, members: true } });
+    expect(stale).not.toBe(original);
+    expect(stale.id).toBe(original.id);
+    rerender(<TeamSettingsModal {...props} team={stale} />);
+    expect(checkbox('活動').checked).toBe(false);
+
+    fireEvent.click(checkbox('成員列表'));
+    expect(saveMock).toHaveBeenNthCalledWith(2, stale, {
+      detailVisibility: { events: false, members: false },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('成員列表').disabled).toBe(false);
+    });
+    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('成員列表').checked).toBe(false);
+  });
+
+  // 測試同步更新：先確認第二次 patch，再用後續 prop 變更證明已同步項目確實移除。
+  it('新 team 反映成功值後清除 confirmed，後續以 prop 為基準', async () => {
+    const onSaved = vi.fn();
+    const original = makeTeam({ detailVisibility: { events: true, members: true } });
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+
+    const reflected = makeTeam({ detailVisibility: { events: false, members: true } });
+    rerender(<TeamSettingsModal {...props} team={reflected} />);
+    fireEvent.click(checkbox('成員列表'));
+    expect(saveMock).toHaveBeenNthCalledWith(2, reflected, {
+      detailVisibility: { events: false, members: false },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('成員列表').disabled).toBe(false);
+    });
+
+    rerender(
+      <TeamSettingsModal
+        {...props}
+        team={makeTeam({ detailVisibility: { events: false, members: false } })}
+      />,
+    );
+    rerender(
+      <TeamSettingsModal
+        {...props}
+        team={makeTeam({ detailVisibility: { events: true, members: true } })}
+      />,
+    );
+    expect(checkbox('活動').checked).toBe(true);
+    expect(checkbox('成員列表').checked).toBe(true);
+    expect(saveMock).toHaveBeenCalledTimes(2);
+  });
+
+  // 測試同步更新：等待寫入期間換引用，既有成功值與本次成功值都必須保留。
+  it('寫入等待期間替換同隊引用，完成後不丟失成功項目', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const onSaved = vi.fn().mockRejectedValue(new Error('重讀失敗'));
+    const original = makeTeam({ detailVisibility: { events: true, members: true } });
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+
+    const write = deferred();
+    saveMock.mockReturnValueOnce(write.promise);
+    fireEvent.click(checkbox('成員列表'));
+    expect(saveMock).toHaveBeenNthCalledWith(2, original, {
+      detailVisibility: { events: false, members: false },
+    });
+
+    const stale = makeTeam({ detailVisibility: { events: true, members: true } });
+    rerender(<TeamSettingsModal {...props} team={stale} />);
+    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('成員列表').disabled).toBe(true);
+
+    await act(async () => {
+      write.resolve();
+      await write.promise;
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('活動').checked).toBe(false);
+      expect(checkbox('成員列表').checked).toBe(false);
+    });
+
+    fireEvent.click(checkbox('簡介'));
+    expect(saveMock).toHaveBeenNthCalledWith(3, stale, {
+      detailVisibility: { events: false, members: false, bio: false },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(3);
+      expect(checkbox('簡介').disabled).toBe(false);
+    });
+  });
+
+  // 測試同步更新：detailVisibility 逐子 key 清除，未同步項目繼續保留。
+  it('新 team 只反映部分 visibility 時，只移除相同的子 key', async () => {
+    const onSaved = vi.fn();
+    const original = makeTeam({ detailVisibility: { events: true, members: true } });
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(checkbox('活動'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(checkbox('活動').disabled).toBe(false);
+    });
+    fireEvent.click(checkbox('成員列表'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(checkbox('成員列表').disabled).toBe(false);
+    });
+
+    rerender(
+      <TeamSettingsModal
+        {...props}
+        team={makeTeam({ detailVisibility: { events: false, members: true } })}
+      />,
+    );
+    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('成員列表').checked).toBe(false);
+
+    const next = makeTeam({ detailVisibility: { events: true, members: true } });
+    rerender(<TeamSettingsModal {...props} team={next} />);
+    expect(checkbox('活動').checked).toBe(true);
+    expect(checkbox('成員列表').checked).toBe(false);
+    fireEvent.click(checkbox('簡介'));
+    expect(saveMock).toHaveBeenNthCalledWith(3, next, {
+      detailVisibility: { events: true, members: false, bio: false },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(3);
+      expect(checkbox('簡介').disabled).toBe(false);
+    });
+  });
+
+  // 測試同步更新：物件以序列化內容比對；相同內容的新物件可解除成功覆蓋。
+  it('eduSettings 保留至新 team 反映相同內容，再接受後續 prop 設定', async () => {
+    const onSaved = vi.fn();
+    const original = makeTeam({
+      eduSettings: { acceptingStudents: false, teachingEnabled: false },
+    });
+    const { rerender, props } = setup(original, { onSaved });
+
+    fireEvent.click(categoryButton('教學'));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(categoryButton('教學').disabled).toBe(false);
+    });
+
+    const stale = makeTeam({
+      eduSettings: { acceptingStudents: true, teachingEnabled: false },
+    });
+    rerender(<TeamSettingsModal {...props} team={stale} />);
+    expect(categoryButton('教學').getAttribute('aria-pressed')).toBe('true');
+
+    rerender(
+      <TeamSettingsModal
+        {...props}
+        team={makeTeam({
+          type: 'education',
+          teachingEnabled: true,
+          eduSettings: { acceptingStudents: false, teachingEnabled: true },
+        })}
+      />,
+    );
+
+    const next = makeTeam({
+      type: 'competitive',
+      teachingEnabled: false,
+      eduSettings: { acceptingStudents: true, teachingEnabled: false },
+    });
+    rerender(<TeamSettingsModal {...props} team={next} />);
+    expect(categoryButton('競技').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(categoryButton('教學'));
+    expect(saveMock).toHaveBeenNthCalledWith(2, next, {
+      type: 'education',
+      teachingEnabled: true,
+      eduSettings: { acceptingStudents: true, teachingEnabled: true },
+    });
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(2);
+      expect(categoryButton('教學').disabled).toBe(false);
+    });
+  });
+
+  // 測試同步更新
   it('onSaved 正常並更新 prop 後，後續 visibility 寫入使用新 prop', async () => {
     const original = makeTeam({ detailVisibility: { events: true, members: true } });
     const onSaved = vi.fn();
@@ -672,7 +905,8 @@ describe('俱樂部設定彈窗', () => {
     expect(invite.checked).toBe(false);
   });
 
-  it('成功後等待新 team，收到父層新值時以 prop 為準', async () => {
+  // 測試同步更新：純量成功值須等 prop 反映後才移除。
+  it('成功後收到未反映成功值的新 team，保留成功值直到同步', async () => {
     const { rerender, props } = setup();
     fireEvent.click(checkbox('隊員可邀請'));
     await expectSuccess();
@@ -684,11 +918,22 @@ describe('俱樂部設定彈窗', () => {
         team={makeTeam({ allowMemberInvite: true, themeColor: '#445566' })}
       />,
     );
-    expect(checkbox('隊員可邀請').checked).toBe(true);
+    expect(checkbox('隊員可邀請').checked).toBe(false);
     expect(colorInput().value).toBe('#445566');
+
+    rerender(
+      <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: false })} />,
+    );
+    expect(checkbox('隊員可邀請').checked).toBe(false);
+
+    rerender(
+      <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: true })} />,
+    );
+    expect(checkbox('隊員可邀請').checked).toBe(true);
   });
 
-  it('父層在 onSaved 完成前更新 team，完成後不覆蓋父層新值', async () => {
+  // 測試同步更新：onSaved 尚未完成時收到舊內容新引用也不能清除成功值。
+  it('父層在 onSaved 完成前傳入未同步 team，完成後保留已成功值', async () => {
     const refresh = deferred();
     const onSaved = vi.fn(() => refresh.promise);
     const { rerender, props } = setup(makeTeam(), { onSaved });
@@ -698,13 +943,15 @@ describe('俱樂部設定彈窗', () => {
     rerender(
       <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: true })} />,
     );
+    expect(checkbox('隊員可邀請').checked).toBe(false);
 
     await act(async () => {
       refresh.resolve();
       await refresh.promise;
     });
     await expectSuccess();
-    expect(checkbox('隊員可邀請').checked).toBe(true);
+    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('隊員可邀請').disabled).toBe(false);
   });
 
   it.each(['成功', '失敗'])('卸載後寫入%s不再通知或呼叫 onSaved', async (outcome) => {
