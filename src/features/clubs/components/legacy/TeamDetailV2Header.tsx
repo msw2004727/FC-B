@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { SPORTS } from '@/features/events/data/sports';
 import type { ClubViewer, TeamDoc, TeamPrimaryAction } from '../../data/types';
+import { canShowInviteQr } from '../../club-policy';
 import {
   getTeamCoverImageUrl,
   getTeamRank,
@@ -64,15 +65,7 @@ export function canInviteToTeam(
   team: TeamDoc | null | undefined,
   viewer: ClubViewer | null | undefined,
 ): boolean {
-  if (!team || !viewer?.uid) return false;
-  const uid = viewer.uid;
-  const teamId = String(team.id ?? '').trim();
-  const isMember = Boolean(teamId && viewer.teamIds.has(teamId));
-  const isCaptain = String(team.captainUid ?? '').trim() === uid;
-  const isCoach =
-    Array.isArray(team.coachUids) &&
-    team.coachUids.some((id) => String(id ?? '').trim() === uid);
-  return isCaptain || isCoach || (isMember && team['allowMemberInvite'] !== false);
+  return canShowInviteQr(viewer, team);
 }
 
 function SvgIcon({ name }: { name: 'back' | 'more' | 'camera' | 'join' | 'check' | 'share' | 'contact' | 'qr' | 'leave' }): JSX.Element {
@@ -163,6 +156,7 @@ export interface TeamDetailV2HeaderProps {
   activeTab: V2TabKey;
   onBack: () => void;
   onContact: () => void;
+  onInvite: () => void;
   onUnavailable: () => void;
   onJoin: () => void;
   onJoined: () => void;
@@ -186,6 +180,7 @@ export function TeamDetailV2Header({
   activeTab,
   onBack,
   onContact,
+  onInvite,
   onUnavailable,
   onJoin,
   onJoined,
@@ -373,7 +368,6 @@ export function TeamDetailV2Header({
         >
           <SvgIcon name="contact" />
         </button>
-        {/* 下一批補：邀請 QR */}
         <button
           class="td-v2-cta-icon"
           type="button"
@@ -381,7 +375,7 @@ export function TeamDetailV2Header({
           disabled={!canInvite}
           aria-disabled={!canInvite ? 'true' : undefined}
           aria-label="邀請 QR"
-          onClick={onUnavailable}
+          onClick={onInvite}
         >
           <SvgIcon name="qr" />
         </button>

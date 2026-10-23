@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamDetailPage from './TeamDetailPage';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
@@ -9,7 +9,9 @@ import { loadViewerRegistrations } from '@/features/events/data/viewer-registrat
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import type { TeamDoc, TeamMember, TeamRosterRow } from '../data/types';
 import { clearPendingJoin, loginForClubs, _resetClubsSessionForTest } from './clubs-session';
-import { canViewClubDetail } from '../club-policy';
+import { canShowInviteQr, canViewClubDetail } from '../club-policy';
+import { canInviteToTeam } from '../components/legacy/TeamDetailV2Header';
+import { renderQrToCanvas } from '@/features/profile/data/qr';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import zh from '../locales/zh-TW.json';
@@ -39,6 +41,10 @@ vi.mock('../data/membership', () => ({
 vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: vi.fn(),
   requestViewerRefresh: vi.fn(),
+}));
+
+vi.mock('@/features/profile/data/qr', () => ({
+  renderQrToCanvas: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/features/events/data/events-repo', () => ({ getEventsRepo: vi.fn() }));
@@ -489,6 +495,106 @@ describe('TeamDetailPage (Legacy V2)', () => {
     fireEvent.click(screen.getByRole('button', { name: '更換俱樂部頭像' }));
     // 測試同步更新：聯繫負責人已接線
     expect(toastSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('opens a local invite QR dialog for the captain without fetching', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    try {
+      vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      fireEvent.click(screen.getByRole('button', { name: '邀請 QR' }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog.textContent).toContain('測試俱樂部 邀請加入');
+      expect(dialog.textContent).toContain('?team=');
+      await waitFor(() => expect(renderQrToCanvas).toHaveBeenCalled());
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it.each(['Escape', 'close'] as const)(
+    'closes the invite QR dialog with %s',
+    async (method) => {
+      vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+
+      fireEvent.click(screen.getByRole('button', { name: '邀請 QR' }));
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(renderQrToCanvas).toHaveBeenCalled());
+
+      if (method === 'Escape') {
+        fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' });
+      } else {
+        fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+      }
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    },
+  );
+
+  it('keeps invite disabled and does not open a dialog for a non-member', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('u1'));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const inviteBtn = screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement;
+    expect(inviteBtn.disabled).toBe(true);
+    fireEvent.click(inviteBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(renderQrToCanvas).not.toHaveBeenCalled();
+  });
+
+  it('uses the same invite policy for the header and handler across three inputs', () => {
+    const cases: Array<{ team: TeamDoc; viewer: ViewerView; allowed: boolean }> = [
+      { team, viewer: viewer('u1'), allowed: false },
+      {
+        team: { ...team, allowMemberInvite: false },
+        viewer: viewer('u1', ['club']),
+        allowed: false,
+      },
+      { team, viewer: viewer('u1', ['club']), allowed: true },
+    ];
+
+    for (const entry of cases) {
+      const allowed = canShowInviteQr(entry.viewer, entry.team);
+      expect(allowed).toBe(entry.allowed);
+      expect(canInviteToTeam(entry.team, entry.viewer)).toBe(allowed);
+    }
+  });
+
+  it('disables invite for a member when allowMemberInvite is false', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, allowMemberInvite: false });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const inviteBtn = screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement;
+    expect(inviteBtn.disabled).toBe(true);
+    fireEvent.click(inviteBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(renderQrToCanvas).not.toHaveBeenCalled();
+  });
+
+  it('allows a member to open invite QR when allowMemberInvite is unset', async () => {
+    vi.mocked(useViewer).mockReturnValue(viewer('u1', ['club']));
+    vi.mocked(loadTeam).mockResolvedValue(team);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const inviteBtn = screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement;
+    expect(inviteBtn.disabled).toBe(false);
+    fireEvent.click(inviteBtn);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('測試俱樂部 邀請加入');
+    await waitFor(() => expect(renderQrToCanvas).toHaveBeenCalled());
   });
 
   it('opens the captain profile when contacting the manager without an unavailable toast', async () => {

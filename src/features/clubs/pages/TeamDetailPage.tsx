@@ -24,7 +24,7 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
-import { resolveClubDetailAccess } from '../club-policy';
+import { canShowInviteQr, resolveClubDetailAccess } from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
 import type { TeamDoc, TeamMember } from '../data/types';
 import {
@@ -41,6 +41,7 @@ import {
   type V2TabKey,
 } from '../components/legacy/TeamDetailV2Header';
 import { TeamDetailV2Panels } from '../components/legacy/TeamDetailV2Panels';
+import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
 
@@ -114,6 +115,7 @@ function TeamDetailContent({
   const [eventAttempt, setEventAttempt] = useState(0);
   const [tab, setTab] = useState<V2TabKey>('overview');
   const [busy, setBusy] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [, setPendingRevision] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
@@ -235,6 +237,11 @@ function TeamDetailContent({
 
   function handleUnavailable(): void {
     toast.show({ message: UNAVAILABLE_MSG });
+  }
+
+  function handleInvite(): void {
+    if (!team || !canShowInviteQr(viewer, team)) return;
+    setInviteOpen(true);
   }
 
   const onOpenProfile = (uid: string): void => {
@@ -503,6 +510,7 @@ function TeamDetailContent({
               activeTab={activeTab}
               onBack={handleBack}
               onContact={handleContact}
+              onInvite={handleInvite}
               onUnavailable={handleUnavailable}
               onJoin={() => {
                 void handleJoin();
@@ -548,6 +556,13 @@ function TeamDetailContent({
                 <div class="td-v2-course-modal-body" />
               </div>
             </div>
+            {inviteOpen && team ? (
+              <TeamInviteQrOverlay
+                teamId={String(team.id ?? '')}
+                teamName={String(team.name ?? '')}
+                onClose={() => setInviteOpen(false)}
+              />
+            ) : null}
           </div>
         </div>
       </section>
