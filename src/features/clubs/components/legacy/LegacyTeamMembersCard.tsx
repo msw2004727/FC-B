@@ -10,7 +10,7 @@ import {
   canEditMemberNote,
   canManageMembers as policyCanManageMembers,
   canViewMemberNote,
-  getMemberRoleChangeTarget,
+  getMemberRoleChangeTargetForUser,
   type MemberRoleTarget,
 } from '../../club-policy';
 import {
@@ -172,7 +172,7 @@ export function LegacyTeamMembersCard({
     row: TeamRosterRow,
     direction: MemberRoleTarget['direction'],
   ): void => {
-    const target = getMemberRoleChangeTarget(viewer, team, row.uid, direction);
+    const target = getMemberRoleChangeTargetForUser(viewer, team, row.user, direction);
     if (!target) {
       showRoleUnavailable(direction);
       return;
@@ -256,7 +256,7 @@ export function LegacyTeamMembersCard({
 
     const direction = selectedTarget.direction;
     const actionText = direction === 'promote' ? '晉升' : '降級';
-    const current = getMemberRoleChangeTarget(viewer, team, row.uid, direction);
+    const current = getMemberRoleChangeTargetForUser(viewer, team, row.user, direction);
     if (!current || current.key !== selectedTarget.key) {
       setDialog(null);
       toast.show({
@@ -281,6 +281,7 @@ export function LegacyTeamMembersCard({
         team,
         viewer,
         targetUid: row.uid,
+        targetUser: row.user,
         displayName: getMemberDisplayName(row),
         direction,
       });
@@ -406,8 +407,8 @@ export function LegacyTeamMembersCard({
                 const uid = String(row.uid ?? '').trim();
                 const userRole = getMemberUserTagRole(row);
                 const canEditNote = canEditMemberNote(viewer, team) && Boolean(row.user);
-                const up = getMemberRoleChangeTarget(viewer, team, row.uid, 'promote');
-                const down = getMemberRoleChangeTarget(viewer, team, row.uid, 'demote');
+                const up = getMemberRoleChangeTargetForUser(viewer, team, row.user, 'promote');
+                const down = getMemberRoleChangeTargetForUser(viewer, team, row.user, 'demote');
                 const showUp = row.isMember && Boolean(row.user) && up !== null;
                 const showDown = row.isMember && Boolean(row.user) && down !== null;
                 const showActions = effectiveEditMode && (canEditNote || showUp || showDown);

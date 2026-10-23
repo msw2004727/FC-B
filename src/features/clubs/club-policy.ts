@@ -3,6 +3,8 @@ import {
   canManageTeamMembers,
   getTeamStaffIdentity,
 } from './data/team-detail-model';
+import { isUserInTeam } from './data/team-list-model';
+import type { TeamUserLike } from './data/team-list-model';
 import type { ClubViewer as ClubMemberViewer, TeamDoc } from './data/types';
 
 /** M-119：俱樂部詳情是否要求登入（照 A js/modules/team/team-detail.js:997-1000）；改成 false 即開放訪客。 */
@@ -221,10 +223,34 @@ export function getTeamLeaderUidList(team: TeamDoc): string[] {
   );
 }
 
+/** 升降職務的目標必須在使用者文件中具有該隊成員資格。 */
+export function isRoleChangeTargetInTeam(
+  team: TeamDoc | null | undefined,
+  targetUser: TeamUserLike | null | undefined,
+): boolean {
+  return !!team
+    && !!targetUser
+    && isUserInTeam(targetUser, String(team.id ?? team._docId ?? '').trim());
+}
+
+/** UI／action 共用的升降目標判斷，先驗證使用者文件的 UID 與成員資格。 */
+export function getMemberRoleChangeTargetForUser(
+  viewer: ClubMemberViewer | null | undefined,
+  team: TeamDoc | null | undefined,
+  targetUser: TeamUserLike | null | undefined,
+  direction: MemberRoleDirection,
+): MemberRoleTarget | null {
+  if (!targetUser) return null;
+  const targetUid = String(targetUser.uid ?? targetUser._docId ?? '').trim();
+  if (!targetUid || !isRoleChangeTargetInTeam(team, targetUser)) return null;
+  return getMemberRoleChangeTarget(viewer, team, targetUid, direction);
+}
+
 /**
  * 依 team 文件中的 UID 計算升降目標，不使用名單列的角色字串。
  * 對應 A `_getTeamMemberRoleActionTarget`（js/modules/team/team-detail.js:1209-1239）
  * 與同檔 `_getCurrentTeamRoleLevel`；不允許自我升降或調整球經。
+ * 純層級判斷，不含成員資格；UI／action 一律用 getMemberRoleChangeTargetForUser
  */
 export function getMemberRoleChangeTarget(
   viewer: ClubMemberViewer | null | undefined,

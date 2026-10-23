@@ -77,7 +77,19 @@ function makeRow(overrides: Partial<TeamRosterRow> & { uid: string }): TeamRoste
     name: overrides.name ?? '王小明',
     isMember: overrides.isMember ?? true,
     roles: overrides.roles ?? [],
-    user: overrides.user ?? null,
+    // 測試同步更新
+    // ASSUMPTION: 既有有 user 的列原本代表在隊使用者；補齊測試文件的成員資格。
+    // 明確傳入的 teamIds／teamId 優先保留，讓離隊與 legacy 案例使用真實輸入。
+    user: overrides.user
+      ? {
+          ...(
+            overrides.user.teamIds === undefined && overrides.user.teamId === undefined
+              ? { teamIds: ['team-1'] }
+              : {}
+          ),
+          ...overrides.user,
+        }
+      : null,
     labelKey: overrides.labelKey ?? 'clubs.roster.member',
     isMissingName: overrides.isMissingName ?? false,
   };
@@ -399,6 +411,123 @@ describe('LegacyTeamMembersCard', () => {
     );
   }
 
+  // 測試同步更新：幹部掛名與 row.isMember 不可取代使用者文件的在隊資格。
+  it('已離隊的掛名教練沒有升降鈕，但仍依備註權限顯示鉛筆', () => {
+    const team: TeamDoc = { ...managementTeam, coachUids: ['coach'] };
+    const roster = [
+      makeRow({
+        uid: 'coach',
+        name: '教練丙',
+        roles: ['clubs.role.coach'],
+        isMember: true,
+        user: { uid: 'coach', teamIds: [] },
+      }),
+    ];
+    const { container } = renderManagement(managerViewer, team, roster);
+    enterEditMode();
+
+    const coach = rowElement(container, 'coach');
+    expect(coach.querySelector('.td-member-role-action-cell')).toBeNull();
+    expect(within(coach).queryByRole('button', { name: '晉升為領隊' })).toBeNull();
+    expect(within(coach).queryByRole('button', { name: '降級為隊員' })).toBeNull();
+    expect(within(coach).getByRole('button', { name: '編輯活動備註' })).toBeTruthy();
+    expect(changeMemberRole).not.toHaveBeenCalled();
+  });
+
+  // 測試同步更新：確認時必須重讀最新 roster 的 user，不能沿用開框時的文件。
+  it.each([
+    { buttonName: '晉升為領隊', message: '此成員目前無法晉升' },
+    { buttonName: '降級為隊員', message: '此成員目前無法降級' },
+  ])('開啟 $buttonName 後目標離隊，確認時拒絕寫入', async ({ buttonName, message }) => {
+    const team: TeamDoc = { ...managementTeam, coachUids: ['coach'] };
+    const roster = [
+      makeRow({
+        uid: 'coach',
+        name: '教練丙',
+        roles: ['clubs.role.coach'],
+        user: { uid: 'coach', teamIds: ['team-1'] },
+      }),
+    ];
+    const { container, rerender, onTeamChanged, onOpenProfile } =
+      renderManagement(managerViewer, team, roster);
+    enterEditMode();
+    fireEvent.click(
+      within(rowElement(container, 'coach')).getByRole('button', { name: buttonName }),
+    );
+    expect(dialogButton(/確認/)).toBeTruthy();
+
+    rerender(
+      <LegacyTeamMembersCard
+        team={team}
+        roster={[
+          makeRow({
+            uid: 'coach',
+            name: '教練丙',
+            roles: ['clubs.role.coach'],
+            isMember: true,
+            user: { uid: 'coach', teamIds: ['other-team'] },
+          }),
+        ]}
+        viewer={managerViewer}
+        onTeamChanged={onTeamChanged}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+    fireEvent.click(dialogButton(/確認/));
+
+    await waitFor(() => {
+      expect(toast.show).toHaveBeenCalledWith({ message, tone: 'error' });
+    });
+    expect(changeMemberRole).not.toHaveBeenCalled();
+    expect(onTeamChanged).not.toHaveBeenCalled();
+    expect(rowElement(container, 'coach').querySelector('.td-member-role-action-cell'))
+      .toBeNull();
+  });
+
+  // 測試同步更新：在隊成員維持成功路徑，且 action 接收最新列的原 user 物件。
+  it('在隊成員確認晉升時將最新 roster 的 targetUser 傳給 action', async () => {
+    const originalRow = makeRow({
+      uid: 'member',
+      name: '隊員丁',
+      user: { uid: 'member', teamIds: ['team-1'] },
+    });
+    const { container, rerender, onTeamChanged, onOpenProfile } =
+      renderManagement(managerViewer, managementTeam, [originalRow]);
+    openMemberPromotion(container);
+
+    const latestRow = makeRow({
+      uid: 'member',
+      name: '隊員丁',
+      user: { uid: 'member', teamIds: ['team-1', 'other-team'] },
+    });
+    rerender(
+      <LegacyTeamMembersCard
+        team={managementTeam}
+        roster={[latestRow]}
+        viewer={managerViewer}
+        onTeamChanged={onTeamChanged}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+    fireEvent.click(dialogButton(/確認/));
+
+    await waitFor(() => expect(onTeamChanged).toHaveBeenCalledTimes(1));
+    expect(changeMemberRole).toHaveBeenCalledExactlyOnceWith({
+      team: managementTeam,
+      viewer: managerViewer,
+      targetUid: 'member',
+      targetUser: latestRow.user,
+      displayName: '隊員丁',
+      direction: 'promote',
+    });
+    expect(vi.mocked(changeMemberRole).mock.calls[0]?.[0].targetUser)
+      .toBe(latestRow.user);
+    expect(toast.show).toHaveBeenCalledWith({
+      message: '已晉升為教練',
+      tone: 'success',
+    });
+  });
+
   it('經理編輯模式依隊員、教練、領隊、球經產出 A action DOM，完全沒有剔除鈕', () => {
     const { container } = renderManagement();
     enterEditMode();
@@ -674,6 +803,8 @@ describe('LegacyTeamMembersCard', () => {
       team: managementTeam,
       viewer: managerViewer,
       targetUid: 'member',
+      // 測試同步更新
+      targetUser: expect.objectContaining({ uid: 'member' }),
       displayName: '最新隊員名稱',
       direction: 'promote',
     });
@@ -692,6 +823,8 @@ describe('LegacyTeamMembersCard', () => {
       team: managementTeam,
       viewer: managerViewer,
       targetUid: 'member',
+      // 測試同步更新
+      targetUser: expect.objectContaining({ uid: 'member' }),
       displayName: '隊員丁',
       direction: 'promote',
     });
@@ -777,6 +910,8 @@ describe('LegacyTeamMembersCard', () => {
       team: managementTeam,
       viewer: managerViewer,
       targetUid: 'coach',
+      // 測試同步更新
+      targetUser: expect.objectContaining({ uid: 'coach' }),
       displayName: '教練丙',
       direction: 'demote',
     });

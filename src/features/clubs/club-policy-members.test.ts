@@ -10,6 +10,8 @@ import {
   canShowInviteQr,
   canViewMemberNote,
   getMemberRoleChangeTarget,
+  getMemberRoleChangeTargetForUser, // 測試同步更新
+  isRoleChangeTargetInTeam, // 測試同步更新
   getTeamLeaderUidList, // 測試同步更新
 } from './club-policy';
 import type {
@@ -503,6 +505,128 @@ describe('角色升降目標', () => {
         expect(result).toEqual(entry.expected);
         if (result) expect(result.level).toBeLessThan(actor.level);
       }
+    }
+  });
+});
+
+// 測試同步更新：新增成員資格守衛；既有純層級判斷案例保持不變。
+describe('使用者文件的角色升降資格', () => {
+  it('teamIds 或只有 legacy teamId 含該隊時允許，並修剪隊伍 ID', () => {
+    const viewer = makeViewer('U-cap');
+    const team = makeTeam({ id: ' T-club ' });
+    for (const user of [
+      { uid: 'U-mem', teamIds: ['T-other', ' T-club '] },
+      { uid: 'U-mem', teamId: ' T-club ' },
+      { uid: 'U-mem', teamIds: [], teamId: 'T-club' },
+    ]) {
+      expect(isRoleChangeTargetInTeam(team, user)).toBe(true);
+      expect(getMemberRoleChangeTargetForUser(viewer, team, user, 'promote'))
+        .toEqual(getMemberRoleChangeTarget(viewer, team, 'U-mem', 'promote'));
+    }
+  });
+
+  it('幹部 UID 仍掛名但使用者已離隊時拒絕升降', () => {
+    const viewer = makeViewer('U-cap');
+    const team = makeTeam({ coachUids: ['U-coach'] });
+    for (const user of [
+      { uid: 'U-coach', teamIds: [] },
+      { uid: 'U-coach', teamIds: ['T-other'] },
+      { uid: 'U-coach', teamId: 'T-other' },
+      { uid: 'U-coach' },
+    ]) {
+      expect(isRoleChangeTargetInTeam(team, user)).toBe(false);
+      for (const direction of ['promote', 'demote'] as const) {
+        expect(getMemberRoleChangeTargetForUser(viewer, team, user, direction))
+          .toBeNull();
+      }
+    }
+    expect(getMemberRoleChangeTarget(viewer, team, 'U-coach', 'promote'))
+      .toEqual({ key: 'leader', level: 2, direction: 'promote' });
+  });
+
+  it('缺少使用者或隊伍時拒絕', () => {
+    const viewer = makeViewer('U-cap');
+    const user = { uid: 'U-mem', teamIds: ['T-club'] };
+    for (const missing of [null, undefined]) {
+      expect(isRoleChangeTargetInTeam(makeTeam(), missing)).toBe(false);
+      expect(isRoleChangeTargetInTeam(missing, user)).toBe(false);
+      expect(getMemberRoleChangeTargetForUser(viewer, makeTeam(), missing, 'promote'))
+        .toBeNull();
+      expect(getMemberRoleChangeTargetForUser(viewer, missing, user, 'promote'))
+        .toBeNull();
+    }
+  });
+
+  it('隊伍 ID 空白或缺少時拒絕；只有缺少 id 才使用 _docId', () => {
+    const viewer = makeViewer('U-cap');
+    const user = { uid: 'U-mem', teamIds: ['', 'T-club'] };
+    for (const team of [
+      makeTeam({ id: '' }),
+      makeTeam({ id: ' \t ' }),
+      makeTeam({ id: undefined, _docId: undefined }),
+      makeTeam({ id: '', _docId: 'T-club' }),
+    ]) {
+      expect(isRoleChangeTargetInTeam(team, user)).toBe(false);
+      expect(getMemberRoleChangeTargetForUser(viewer, team, user, 'promote'))
+        .toBeNull();
+    }
+
+    const fallbackTeam = makeTeam({ id: undefined, _docId: ' T-club ' });
+    expect(isRoleChangeTargetInTeam(fallbackTeam, user)).toBe(true);
+    expect(getMemberRoleChangeTargetForUser(viewer, fallbackTeam, user, 'promote'))
+      .toEqual({ key: 'coach', level: 1, direction: 'promote' });
+  });
+
+  it('在隊成員的所有升降結果與既有純層級判斷相同', () => {
+    const team = makeTeam();
+    for (const viewer of [
+      makeViewer('U-cap'),
+      makeViewer('U-creator'),
+      makeViewer('U-owner'),
+      makeViewer('U-admin', { perms: new Set(['team.manage_all']) }),
+      makeViewer('U-coach'),
+      makeViewer(null),
+    ]) {
+      for (const targetUid of ['U-mem', 'U-coach', 'U-lead', 'U-cap']) {
+        for (const direction of ['promote', 'demote'] as const) {
+          expect(getMemberRoleChangeTargetForUser(
+            viewer,
+            team,
+            { uid: targetUid, teamIds: ['T-club'] },
+            direction,
+          )).toEqual(getMemberRoleChangeTarget(viewer, team, targetUid, direction));
+        }
+      }
+    }
+  });
+
+  it('使用者 uid 缺少時使用 _docId，並修剪 UID', () => {
+    const viewer = makeViewer('U-cap');
+    const team = makeTeam();
+    expect(getMemberRoleChangeTargetForUser(
+      viewer,
+      team,
+      { _docId: ' U-coach ', teamIds: ['T-club'] },
+      'promote',
+    )).toEqual({ key: 'leader', level: 2, direction: 'promote' });
+    expect(getMemberRoleChangeTargetForUser(
+      viewer,
+      team,
+      { uid: ' U-mem ', _docId: 'U-coach', teamIds: ['T-club'] },
+      'promote',
+    )).toEqual({ key: 'coach', level: 1, direction: 'promote' });
+  });
+
+  it('沒有有效使用者 UID 時拒絕，空白 uid 不回退 _docId', () => {
+    for (const user of [
+      { teamIds: ['T-club'] },
+      { uid: '', teamIds: ['T-club'] },
+      { uid: ' \t ', _docId: 'U-mem', teamIds: ['T-club'] },
+      { _docId: ' \t ', teamIds: ['T-club'] },
+    ]) {
+      expect(getMemberRoleChangeTargetForUser(
+        makeViewer('U-cap'), makeTeam(), user, 'promote',
+      )).toBeNull();
     }
   });
 });

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildMemberRoleUpdates } from '../../club-policy';
 import type { MemberRoleTarget, MemberRoleUpdates } from '../../club-policy';
+import type { TeamUserLike } from '../../data/team-list-model'; // 測試同步更新
 import type { saveTeamRoleChange } from '../../data/teams-write';
 import type { ClubViewer, TeamDoc } from '../../data/types';
 import {
@@ -54,11 +55,22 @@ function makeViewer(uid = 'U-cap', manageAll = false): ClubViewer {
   };
 }
 
-function roleInput(overrides: Partial<ChangeMemberRoleInput> = {}): ChangeMemberRoleInput {
+// 測試同步更新：既有角色案例預設提供對應隊伍與 UID 的在隊使用者文件。
+function inTeam(team: TeamDoc, uid: string): TeamUserLike {
   return {
-    team: makeTeam(),
+    uid,
+    teamIds: [String(team.id ?? team._docId ?? '').trim()],
+  };
+}
+
+function roleInput(overrides: Partial<ChangeMemberRoleInput> = {}): ChangeMemberRoleInput {
+  const team = overrides.team ?? makeTeam();
+  const targetUid = overrides.targetUid ?? 'U-mem';
+  return {
+    team,
     viewer: makeViewer(),
-    targetUid: 'U-mem',
+    targetUid,
+    targetUser: inTeam(team, targetUid), // 測試同步更新
     displayName: '隊員甲',
     direction: 'promote',
     ...overrides,
@@ -102,6 +114,92 @@ afterEach(() => {
 });
 
 describe('變更成員職務', () => {
+  // 測試同步更新：已離隊的掛名幹部不可寫入，也不可觸發通知或角色重算。
+  it.each(['promote', 'demote'] as const)(
+    '已離隊但仍掛名的教練不可 %s，沒有任何寫入或副作用',
+    async (direction) => {
+      await expect(changeMemberRole(roleInput({
+        targetUid: 'U-coach',
+        targetUser: { uid: 'U-coach', teamIds: ['other-team'] },
+        direction,
+      }))).resolves.toEqual({ ok: false, reason: 'no-target' });
+      expectNoWrites();
+    },
+  );
+
+  // 測試同步更新
+  it('使用者文件 UID 與寫入目標 UID 不一致時拒絕', async () => {
+    await expect(changeMemberRole(roleInput({
+      targetUid: ' U-mem ',
+      targetUser: { uid: ' U-other ', teamIds: ['tm_test_1'] },
+    }))).resolves.toEqual({ ok: false, reason: 'no-target' });
+    expectNoWrites();
+  });
+
+  // 測試同步更新
+  it.each([null, undefined])('使用者文件為 %s 時拒絕', async (targetUser) => {
+    await expect(changeMemberRole(roleInput({
+      targetUser,
+    }))).resolves.toEqual({ ok: false, reason: 'no-target' });
+    expectNoWrites();
+  });
+
+  // 測試同步更新：預檢失敗的 reason 仍優先反映操作者沒有權限。
+  it('操作者無權限且使用者文件缺少時仍回 forbidden', async () => {
+    await expect(changeMemberRole(roleInput({
+      viewer: makeViewer('U-lead'),
+      targetUser: null,
+    }))).resolves.toEqual({ ok: false, reason: 'forbidden' });
+    expectNoWrites();
+  });
+
+  // 測試同步更新：UID 修剪及 _docId 回退與政策 helper 一致。
+  it.each([
+    { uid: ' U-mem ', teamIds: ['tm_test_1'] },
+    { _docId: ' U-mem ', teamIds: ['tm_test_1'] },
+    { uid: 'U-mem', teamId: 'tm_test_1' },
+  ])('在隊使用者文件 %j 可寫入正規化後的目標 UID', async (targetUser) => {
+    const input = roleInput({ targetUid: ' U-mem ', targetUser });
+    await expect(changeMemberRole(input)).resolves.toEqual({
+      ok: true,
+      target: { key: 'coach', level: 1, direction: 'promote' },
+    });
+    expect(mocks.saveTeamRoleChange).toHaveBeenCalledExactlyOnceWith(
+      input.team, 'U-mem', 'coach', '隊員甲', expect.any(Function),
+    );
+  });
+
+  // 測試同步更新：刻意在 mock 內更新同一份快照以獨立驗證 guard；
+  // 正式程式沒有在交易中重新讀取使用者文件。
+  it('交易 guard 拒絕仍掛名但使用者文件已不在隊的教練', async () => {
+    const targetUser: TeamUserLike = {
+      uid: 'U-coach',
+      teamIds: ['tm_test_1'],
+    };
+    const fresh = makeTeam();
+    const transactionWrite = vi.fn();
+    mocks.saveTeamRoleChange.mockImplementationOnce(async (_team, uid, key, name, guard) => {
+      if (!guard) throw new Error('缺少交易 guard');
+      targetUser.teamIds = [];
+      expect(fresh.coachUids).toEqual(['U-coach']);
+      const allowed = guard(fresh);
+      expect(allowed).toBe(false);
+      if (!allowed) return null;
+      transactionWrite();
+      return buildMemberRoleUpdates(fresh, uid, key, name);
+    });
+
+    await expect(changeMemberRole(roleInput({
+      targetUid: 'U-coach',
+      targetUser,
+      displayName: '教練甲',
+    }))).resolves.toEqual({ ok: false, reason: 'no-target' });
+    expect(mocks.saveTeamRoleChange).toHaveBeenCalledTimes(1);
+    expect(transactionWrite).not.toHaveBeenCalled();
+    expect(mocks.callFn).not.toHaveBeenCalled();
+    expect(mocks.deliverInboxMessage).not.toHaveBeenCalled();
+    expect(mocks.saveTeamMemberNote).not.toHaveBeenCalled();
+  });
   // 測試同步更新：legacy 領隊可降為教練，交易 guard 與稽核採相同角色判定。
   it('只有 legacy 領隊時降級成功，寫入 coach 並稽核原角色 leader', async () => {
     const team = makeTeam();

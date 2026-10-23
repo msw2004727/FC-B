@@ -15,10 +15,11 @@ import { deliverInboxMessage } from '@/data/inbox-delivery';
 import {
   canChangeMemberRole,
   canEditMemberNote,
-  getMemberRoleChangeTarget,
+  getMemberRoleChangeTargetForUser,
   getTeamLeaderUidList,
 } from '../../club-policy';
 import type { MemberRoleTarget } from '../../club-policy';
+import type { TeamUserLike } from '../../data/team-list-model';
 import { saveTeamMemberNote, saveTeamRoleChange } from '../../data/teams-write';
 import type { ClubViewer, TeamDoc } from '../../data/types';
 
@@ -30,6 +31,8 @@ export interface ChangeMemberRoleInput {
   team: TeamDoc;
   viewer: ClubViewer;
   targetUid: string;
+  /** 呼叫當下的使用者文件快照；預檢與交易 guard 共用。 */
+  targetUser: TeamUserLike | null | undefined;
   /** 顯示名稱空白時使用 UID；僅用於名稱快取，不用於權限判斷。 */
   displayName: string;
   direction: 'promote' | 'demote';
@@ -114,13 +117,19 @@ export async function changeMemberRole(
 ): Promise<RoleChangeResult> {
   const { team, viewer, direction } = input;
   const targetUid = input.targetUid.trim();
-  const target = getMemberRoleChangeTarget(viewer, team, targetUid, direction);
+  const target = getMemberRoleChangeTargetForUser(
+    viewer, team, input.targetUser, direction,
+  );
   if (!target) {
     return {
       ok: false,
       reason: canChangeMemberRole(viewer, team) ? 'no-target' : 'forbidden',
     };
   }
+  const targetUserUid = String(
+    input.targetUser?.uid ?? input.targetUser?._docId ?? '',
+  ).trim();
+  if (targetUserUid !== targetUid) return { ok: false, reason: 'no-target' };
 
   const displayName = input.displayName.trim() || targetUid;
   let statusFrom = getTeamRoleOfMember(team, targetUid);
@@ -133,7 +142,10 @@ export async function changeMemberRole(
     target.key,
     displayName,
     (fresh) => {
-      if (getMemberRoleChangeTarget(viewer, fresh, targetUid, direction)?.key !== target.key) {
+      // fresh 是交易讀到的最新 team；targetUser 沿用呼叫當下的使用者文件快照。
+      if (getMemberRoleChangeTargetForUser(
+        viewer, fresh, input.targetUser, direction,
+      )?.key !== target.key) {
         return false;
       }
       // 交易可能重試；成功回傳時保留最後一次 guard 所讀到的變更前角色。
