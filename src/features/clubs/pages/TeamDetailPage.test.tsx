@@ -22,6 +22,7 @@ import { canShowInviteQr, canViewClubDetail } from '../club-policy';
 import { canInviteToTeam } from '../components/legacy/TeamDetailV2Header';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import type { TeamSettingsModalProps } from '../components/legacy/TeamSettingsModal';
+import type { TeamFormProps } from '../components/legacy/use-team-form';
 import { renderQrToCanvas } from '@/features/profile/data/qr';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -75,6 +76,25 @@ vi.mock('../components/legacy/TeamDetailV2Panels', async (importOriginal) => {
 });
 const settingsModalMock = vi.hoisted(() => ({
   latestProps: null as TeamSettingsModalProps | null,
+}));
+
+const teamFormMock = vi.hoisted(() => ({
+  latestProps: null as (TeamFormProps & { open: boolean }) | null,
+}));
+
+// 本檔保留頁面接線測試；真表單整頁流程在 TeamDetailPage.edit-basic.test.tsx。
+vi.mock('../components/legacy/TeamFormModal', () => ({
+  TeamFormModal: (props: TeamFormProps & { open: boolean }) => {
+    teamFormMock.latestProps = props;
+    if (!props.open) return null;
+    return (
+      <div role="dialog" aria-label="編輯俱樂部基本資料">
+        <button type="button" onClick={props.onClose}>
+          關閉表單
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('../components/legacy/TeamSettingsModal', () => ({
@@ -312,6 +332,7 @@ beforeEach(() => {
   vi.mocked(useEventFormPostSave).mockImplementation(() => vi.fn());
   pickMock.mockClear();
   settingsModalMock.latestProps = null;
+  teamFormMock.latestProps = null;
   vi.mocked(useTeamImageUpload).mockReturnValue({
     pick: pickMock,
     busyKind: null,
@@ -972,9 +993,10 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(settingsModalMock.latestProps?.team).not.toBe(originalTeam);
   });
 
-  it('shows unavailable toast for editing basic info without closing settings', async () => {
+  it('opens basic info editing after closing settings（測試同步更新）', async () => {
     const toastSpy = vi.spyOn(toast, 'show');
-    vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
+    const manager = viewer('captain', ['club']);
+    vi.mocked(useViewer).mockReturnValue(manager);
     render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
 
@@ -984,12 +1006,20 @@ describe('TeamDetailPage (Legacy V2)', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: '編輯基本資料' }));
 
-    expect(toastSpy).toHaveBeenCalledTimes(1);
-    expect(toastSpy).toHaveBeenCalledWith({
-      message: '此功能尚未開放，請先使用舊版',
-    });
-    expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
+    expect(await screen.findByRole('dialog', {
+      name: '編輯俱樂部基本資料',
+    })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(teamFormMock.latestProps?.open).toBe(true);
+    expect(teamFormMock.latestProps?.mode).toBe('edit');
+    expect(teamFormMock.latestProps?.team).toEqual(team);
+    expect(teamFormMock.latestProps?.viewer).toBe(manager);
+    expect(toastSpy).not.toHaveBeenCalled();
     expect(loadTeam).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '關閉表單' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('hides image edit buttons from a normal member', async () => {

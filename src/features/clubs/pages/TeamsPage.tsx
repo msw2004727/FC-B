@@ -1,4 +1,4 @@
-import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
+
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -12,7 +12,8 @@ import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
 import { SPORTS } from '@/features/events/data/sports';
-import { resolveClubDetailAccess } from '../club-policy';
+import { canCreateTeam, resolveClubDetailAccess } from '../club-policy';
+import { TeamFormModal } from '../components/legacy/TeamFormModal';
 import { LegacyTeamCard } from '../components/legacy/LegacyTeamCard';
 import {
   filterTeams,
@@ -102,8 +103,7 @@ type ListState =
   | { status: 'error' }
   | { status: 'ready'; teams: TeamDoc[] };
 
-// U-020：共用 core/unavailable 的提示文字。
-const UNAVAILABLE_MSG = UNAVAILABLE_FEATURE_MSG;
+
 
 const TAIWAN_REGIONS = [
   '台北市',
@@ -142,6 +142,11 @@ export default function TeamsPage(): JSX.Element {
 
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [createFormUid, setCreateFormUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreateFormUid(null);
+  }, [viewer.uid]);
   // M-114：返回列表時還原搜尋字、地區、類型頁籤、篩選面板。運動不在這份記憶裡。
   const [restoredFilters] = useState(() => getClubListFilters());
   const [filtersOpen, setFiltersOpen] = useState(restoredFilters.filtersOpen);
@@ -183,11 +188,8 @@ export default function TeamsPage(): JSX.Element {
     }
   }, [globalSport]);
 
-  // ASSUMPTION: 照 A `_canCreateTeamByPermission()` 檢查 `team.create` 權限決定「新增俱樂部」按鈕是否顯示。
-  const canCreateTeam = useMemo(
-    () => viewer.hasPermission('team.create'),
-    [viewer],
-  );
+  // R-IAM-011：顯示與 handler 都使用同一個政策函式。
+  const showCreateTeam = canCreateTeam(viewer);
 
   useEffect(() => {
     const current = ++sequence.current;
@@ -274,9 +276,34 @@ export default function TeamsPage(): JSX.Element {
     );
   }
 
-  function handleOpenCreate(): void {
-    // 下一批補：新增俱樂部表單
-    toast.show({ message: UNAVAILABLE_MSG });
+  async function handleOpenCreate(): Promise<void> {
+    if (!viewer.uid?.trim()) {
+      // 沿用本頁既有的登入流程；建立入口保留在列表，不導向詳情頁。
+      if (loginLockRef.current) return;
+      loginLockRef.current = true;
+      toast.show({ message: '請先登入 LINE 帳號' });
+      try {
+        await loginForClubs();
+      } catch {
+        toast.show({ message: t('clubs.actionError'), tone: 'error' });
+      } finally {
+        loginLockRef.current = false;
+      }
+      return;
+    }
+
+    if (!canCreateTeam(viewer)) {
+      toast.show({ message: '目前未開啟建立俱樂部權限' });
+      return;
+    }
+
+    setCreateFormUid(viewer.uid);
+  }
+
+  function handleCreateSaved(): void {
+    setCreateFormUid(null);
+    // createTeamDoc 已 invalidateTeams；沿用本頁 attempt 重新載入並就地重繪。
+    setAttempt((value) => value + 1);
   }
 
   function handleToggleFilters(): void {
@@ -402,12 +429,11 @@ export default function TeamsPage(): JSX.Element {
               </svg>
             </button>
           </div>
-          {/* 下一批補：新增俱樂部 */}
           <button
             type="button"
             class="primary-btn small"
             id="team-page-create-btn"
-            style={canCreateTeam ? undefined : 'display:none'}
+            style={showCreateTeam ? 'min-height:44px' : 'display:none'}
             data-i18n="新增俱樂部"
             onClick={handleOpenCreate}
           >
@@ -620,6 +646,16 @@ export default function TeamsPage(): JSX.Element {
             ))}
         </div>
       </section>
+      {createFormUid !== null && createFormUid === viewer.uid ? (
+        <TeamFormModal
+          key={createFormUid}
+          open
+          mode="create"
+          viewer={viewer}
+          onClose={() => setCreateFormUid(null)}
+          onSaved={handleCreateSaved}
+        />
+      ) : null}
     </div>
   );
 }

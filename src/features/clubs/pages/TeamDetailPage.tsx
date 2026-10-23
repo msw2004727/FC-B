@@ -55,6 +55,7 @@ import {
 } from '../components/legacy/team-detail-tab-memory';
 import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
 import { TeamSettingsModal } from '../components/legacy/TeamSettingsModal';
+import { TeamFormModal } from '../components/legacy/TeamFormModal';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
@@ -131,7 +132,8 @@ function TeamDetailContent({
   const shellRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // 單一狀態確保設定與基本資料表單不會同時掛載。
+  const [teamOverlay, setTeamOverlay] = useState<'settings' | 'edit-basic' | null>(null);
   const [, setPendingRevision] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
@@ -291,10 +293,26 @@ function TeamDetailContent({
 
   function handleMore(): void {
     if (team && canEditTeamSettings(viewer, team)) {
-      setSettingsOpen(true);
+      setTeamOverlay('settings');
       return;
     }
+    // 保留既有非經理的分享入口行為。
     handleUnavailable();
+  }
+
+  function handleEditBasic(): void {
+    if (!team || !canEditTeamSettings(viewer, team)) {
+      toast.show({ message: '您沒有編輯此俱樂部的權限' });
+      return;
+    }
+
+    // 同一次更新卸載設定彈窗，再掛載表單；各彈窗沿用自己的 overlay cleanup。
+    setTeamOverlay('edit-basic');
+  }
+
+  async function handleBasicSaved(): Promise<void> {
+    setTeamOverlay(null);
+    await reloadTeamSilently();
   }
 
   async function reloadTeamSilently(): Promise<void> {
@@ -669,13 +687,22 @@ function TeamDetailContent({
                 onClose={() => setInviteOpen(false)}
               />
             ) : null}
-            {settingsOpen && team ? (
+            {teamOverlay === 'settings' ? (
               <TeamSettingsModal
                 team={team}
                 viewer={viewer}
-                onClose={() => setSettingsOpen(false)}
+                onClose={() => setTeamOverlay(null)}
                 onSaved={() => reloadTeamSilently()}
-                onEditBasic={handleUnavailable}
+                onEditBasic={handleEditBasic}
+              />
+            ) : teamOverlay === 'edit-basic' ? (
+              <TeamFormModal
+                open
+                mode="edit"
+                team={team}
+                viewer={viewer}
+                onClose={() => setTeamOverlay(null)}
+                onSaved={handleBasicSaved}
               />
             ) : null}
           </div>

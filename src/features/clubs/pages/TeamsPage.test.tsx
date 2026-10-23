@@ -301,17 +301,28 @@ describe('TeamsPage (Legacy A DOM & CSS)', () => {
     expect(cards[0]?.querySelector('.tc-pin-rail')?.textContent).toContain('置頂');
   });
 
-  it('shows toast when clicking #team-page-create-btn', async () => {
+  it('shows toast when clicking #team-page-create-btn（測試同步更新）', async () => {
     canCreatePermission = true;
     const { container } = render(<TeamsPage />);
     await screen.findByRole('link', { name: 'Alpha' });
 
-    const createBtn = container.querySelector('#team-page-create-btn') as HTMLButtonElement;
+    const createBtn = container.querySelector<HTMLButtonElement>('#team-page-create-btn');
+    if (!createBtn) throw new Error('缺少新增俱樂部按鈕');
     expect(createBtn.style.display).not.toBe('none');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    vi.mocked(toast.show).mockClear();
     fireEvent.click(createBtn);
-    expect(toast.show).toHaveBeenCalledWith({
-      message: '此功能尚未開放，請先使用舊版',
-    });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.isConnected).toBe(true);
+    expect(dialog.querySelector<HTMLInputElement>('#ct-team-name')).not.toBeNull();
+    expect(toast.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '此功能尚未開放，請先使用舊版',
+      }),
+    );
+    expect(screen.queryByText('此功能尚未開放，請先使用舊版')).toBeNull();
   });
 });
 
