@@ -92,17 +92,17 @@ function isRetryableRoleError(error: unknown): boolean {
     .includes(code.replace(/^functions\//, ''));
 }
 
-async function recalculateRole(targetUid: string, teamId: string): Promise<void> {
+export async function recalculateRole(targetUid: string, teamId: string) {
   try {
-    await callFn('autoPromoteTeamRole', { targetUid, teamId });
+    return await callFn('autoPromoteTeamRole', { targetUid, teamId });
   } catch (error: unknown) {
     if (!isRetryableRoleError(error)) throw error;
     // A 最多兩次；第二次的錯誤由外層 best-effort 處理，不繼續重試。
-    await callFn('autoPromoteTeamRole', { targetUid, teamId });
+    return await callFn('autoPromoteTeamRole', { targetUid, teamId });
   }
 }
 
-async function bestEffort(label: string, action: () => Promise<unknown>): Promise<void> {
+export async function bestEffort(label: string, action: () => Promise<unknown>): Promise<void> {
   try {
     await action();
   } catch {
