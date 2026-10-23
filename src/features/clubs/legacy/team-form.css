@@ -1,0 +1,129 @@
+/* T-025：新增／編輯俱樂部表單的 B 端補強。
+ * 只補觸控區、390px 不橫向捲動、中文標籤不斷字。
+ * 不新增色碼或變數；顏色沿用 A 的 legacy 規則與 tokens.css 既有變數。
+ * 選擇器由 legacy-css-scope 收進 .legacy-ui。
+ */
+
+#create-team-modal {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#create-team-modal .modal-header,
+#create-team-modal .modal-body,
+#create-team-modal .modal-actions,
+#create-team-modal .ce-form,
+#create-team-modal .ce-row,
+#create-team-modal .ce-social-links-list,
+#create-team-modal .ce-social-link-row,
+#create-team-modal .ct-type-tag-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#create-team-modal .ce-row > div {
+  min-width: 0;
+}
+
+#create-team-modal .ce-row input,
+#create-team-modal .ce-row select,
+#create-team-modal .ce-row textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#create-team-modal .modal-header h3,
+#create-team-modal .ce-row label,
+#create-team-modal .ct-type-tag-btn,
+#create-team-modal .ct-type-tag-btn small,
+#create-team-modal .ct-type-tag-hint,
+#create-team-modal .ct-edu-toggle-label,
+#create-team-modal .ct-edu-toggle-hint,
+#create-team-modal .ct-captain-transfer-warning,
+#create-team-modal .ct-captain-hint,
+#create-team-modal .ct-leader-hint,
+#create-team-modal .ce-social-links-tip,
+#create-team-modal .ce-upload-text,
+#create-team-modal .ce-upload-hint {
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: normal;
+}
+
+#create-team-modal .team-tag,
+#create-team-modal .tus-name,
+#create-team-modal .tus-uid {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#create-team-modal .ce-upload-placeholder.has-image,
+#create-team-modal .ce-upload-placeholder.has-image:hover {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#create-team-modal .modal-close {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+}
+
+#create-team-modal .toggle-switch {
+  box-sizing: border-box;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  overflow: visible;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#create-team-modal .team-tag .team-tag-x {
+  position: relative;
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+}
+
+#create-team-modal .team-tag .team-tag-x::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+#create-team-modal .team-user-suggest-item,
+#create-team-modal .ce-social-link-remove,
+#create-team-modal .ce-social-links-add,
+#create-team-modal .modal-actions .outline-btn,
+#create-team-modal .modal-actions .primary-btn {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+#create-team-modal .team-user-suggest-item {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+#create-team-modal .ce-social-link-remove {
+  min-width: 44px;
+}
+
+#create-team-modal .modal-actions {
+  flex-wrap: wrap;
+}
