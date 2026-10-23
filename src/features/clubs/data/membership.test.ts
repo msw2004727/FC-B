@@ -190,6 +190,115 @@ describe('requestTeamJoin', () => {
     });
   });
 
+  it('全部 deliverToInbox 回 already-exists 仍成功，LINE 與 audit 照常呼叫', async () => {
+    callFnMock.mockImplementation((async (name: string, request: unknown) => {
+      if (name === 'deliverToInbox') {
+        throw {
+          code: 'functions/already-exists',
+          message: 'MESSAGE_ID_ALREADY_EXISTS',
+        };
+      }
+      return defaultCallFnImpl(name, request);
+    }) as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(
+      requestTeamJoin({ team: baseTeam, applicant: baseApplicant }),
+    ).resolves.toBeTruthy();
+
+    const calls = callFnMock.mock.calls;
+    expect(calls.filter((c) => c[0] === 'deliverToInbox')).toHaveLength(3);
+    const lineCalls = calls.filter((c) => c[0] === 'enqueuePrivilegedLineNotification');
+    expect(lineCalls).toHaveLength(3);
+    expect(lineCalls.map((c) => (c[1] as { uid: string }).uid).sort())
+      .toEqual(['cap_uid', 'coach_uid', 'leader_uid']);
+    const auditCalls = calls.filter((c) => c[0] === 'writeAuditLog');
+    expect(auditCalls).toHaveLength(1);
+    expect(auditCalls[0]![1]).toMatchObject({
+      action: 'team_join_request',
+      targetId: 'team_main',
+      result: 'success',
+    });
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      '[membership] requestTeamJoin.deliverToInbox failed',
+      expect.anything(),
+    );
+  });
+
+  it('一位職員 already-exists、其餘成功時仍成功且不記錄投遞失敗警告', async () => {
+    callFnMock.mockImplementation((async (name: string, request: unknown) => {
+      if (
+        name === 'deliverToInbox'
+        && (request as { targetUid: string }).targetUid === 'cap_uid'
+      ) {
+        throw {
+          code: 'functions/already-exists',
+          message: 'MESSAGE_ID_ALREADY_EXISTS',
+        };
+      }
+      return defaultCallFnImpl(name, request);
+    }) as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(
+      requestTeamJoin({ team: baseTeam, applicant: baseApplicant }),
+    ).resolves.toBeTruthy();
+
+    const inboxCalls = callFnMock.mock.calls.filter((c) => c[0] === 'deliverToInbox');
+    expect(inboxCalls).toHaveLength(3);
+    expect(inboxCalls.map((c) => (c[1] as { targetUid: string }).targetUid).sort())
+      .toEqual(['cap_uid', 'coach_uid', 'leader_uid']);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      '[membership] requestTeamJoin.deliverToInbox failed',
+      expect.anything(),
+    );
+  });
+
+  it('每次 deliverToInbox 的訊息與收件人均符合線上 team_join_request 條件', async () => {
+    const result = await requestTeamJoin({ team: baseTeam, applicant: baseApplicant });
+    expect(result).toBeTruthy();
+
+    const inboxCalls = callFnMock.mock.calls.filter((c) => c[0] === 'deliverToInbox');
+    expect(inboxCalls).toHaveLength(3);
+    for (const c of inboxCalls) {
+      const request = c[1] as { message: Record<string, unknown>; targetUid: string };
+      const message = request.message;
+      expect(message['actionType']).toBe('team_join_request');
+      expect(message['actionStatus']).toBe('pending');
+      expect('reviewerName' in message).toBe(false);
+
+      const meta = message['meta'] as Record<string, unknown>;
+      expect(Object.keys(meta).sort()).toEqual([
+        'applicantName',
+        'applicantUid',
+        'groupId',
+        'teamId',
+        'teamName',
+      ]);
+      expect(meta['applicantUid']).toBe('applicant_uid');
+      expect(meta['groupId']).toMatch(/^tjr_\d{10,16}_[a-z0-9]{1,8}$/);
+      expect(meta['groupId']).toBe((result as { groupId: string }).groupId);
+      expect(['cap_uid', 'leader_uid', 'coach_uid']).toContain(request.targetUid);
+    }
+  });
+
+  it('Math.random 回傳 0 時 groupId 仍符合線上格式', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    const result = await requestTeamJoin({ team: baseTeam, applicant: baseApplicant });
+    expect(result).toBeTruthy();
+    const groupId = (result as { groupId: string }).groupId;
+    expect(groupId).toMatch(/^tjr_\d{10,16}_[a-z0-9]{1,8}$/);
+
+    const inboxCalls = callFnMock.mock.calls.filter((c) => c[0] === 'deliverToInbox');
+    expect(inboxCalls).toHaveLength(3);
+    for (const c of inboxCalls) {
+      const request = c[1] as { message: { meta: { groupId: string } } };
+      expect(request.message.meta.groupId).toBe(groupId);
+      expect(request.message.meta.groupId).toMatch(/^tjr_\d{10,16}_[a-z0-9]{1,8}$/);
+    }
+  });
+
   it('LINE 推播失敗不影響主結果', async () => {
     callFnMock.mockImplementation((async (name: string, request: unknown) => {
       if (name === 'enqueuePrivilegedLineNotification') {

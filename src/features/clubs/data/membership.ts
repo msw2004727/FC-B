@@ -417,7 +417,7 @@ export async function requestTeamJoin({
     throw new Error('[membership] requestTeamJoin: no staff to review');
   }
 
-  const groupId = `tjr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const groupId = `tjr_${Date.now()}_${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
   const body = `${applicantName} 申請加入「${teamName}」俱樂部，請審核此申請。`;
   const meta = { teamId, teamName, applicantUid, applicantName, groupId };
 

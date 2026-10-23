@@ -8,6 +8,7 @@ import {
   buildInboxDeliveryDedupeKey,
   buildInboxMessage,
   deliverInboxMessage,
+  isAlreadyExistsError,
 } from './inbox-delivery';
 
 // golden 照 A js/modules/message/message-notify.js `_deliverMessageToInbox`／`_buildInboxDeliveryDedupeKey`
@@ -80,7 +81,95 @@ describe('buildInboxDeliveryDedupeKey', () => {
   });
 });
 
+describe('isAlreadyExistsError', () => {
+  it.each([
+    'functions/already-exists',
+    'already-exists',
+  ])('只依正確的 code 判定已存在：%s', (code) => {
+    expect(isAlreadyExistsError({ code })).toBe(true);
+  });
+
+  it.each([
+    undefined,
+    null,
+    false,
+    0,
+    'already-exists',
+    {},
+    { message: 'MESSAGE_ID_ALREADY_EXISTS' },
+    { code: undefined },
+    { code: null },
+    { code: 123 },
+    { code: {} },
+    { code: 'Already-Exists' },
+    { code: 'functions/Already-Exists' },
+    { code: 'other/functions/already-exists' },
+    { code: 'functions/functions/already-exists' },
+    { code: 'functions/internal', message: 'MESSAGE_ID_ALREADY_EXISTS' },
+  ])('非物件或不符合的 code 回傳 false：%j', (err) => {
+    expect(isAlreadyExistsError(err)).toBe(false);
+  });
+});
+
 describe('deliverInboxMessage', () => {
+  it.each([
+    'functions/already-exists',
+    'already-exists',
+  ])('Callable 回 %s 時回傳原訊息物件、不拋錯', async (code) => {
+    vi.mocked(callFn).mockRejectedValueOnce({
+      code,
+      message: 'MESSAGE_ID_ALREADY_EXISTS',
+    });
+
+    const message = await deliverInboxMessage(base);
+
+    expect(message).toEqual(buildInboxMessage(base));
+    expect(callFn).toHaveBeenCalledTimes(1);
+    const request = vi.mocked(callFn).mock.calls[0]![1] as {
+      message: Record<string, unknown>;
+    };
+    expect(message).toBe(request.message);
+  });
+
+  it('已存在後保留 dedupe 鍵，5 秒內相同內容不再呼叫 Callable', async () => {
+    vi.mocked(callFn).mockRejectedValueOnce({
+      code: 'functions/already-exists',
+      message: 'MESSAGE_ID_ALREADY_EXISTS',
+    });
+
+    await expect(deliverInboxMessage(base)).resolves.toEqual(buildInboxMessage(base));
+    await expect(
+      deliverInboxMessage({ ...base, now: new Date(NOW.getTime() + 4999) }),
+    ).resolves.toBeNull();
+    expect(callFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('permission-denied 往外拋並釋放 dedupe 鍵，再次投遞會重新呼叫 Callable', async () => {
+    const error = {
+      code: 'functions/permission-denied',
+      message: 'PERMISSION_DENIED',
+    };
+    vi.mocked(callFn).mockRejectedValueOnce(error);
+
+    await expect(deliverInboxMessage(base)).rejects.toBe(error);
+    expect(callFn).toHaveBeenCalledTimes(1);
+
+    await expect(deliverInboxMessage(base)).resolves.toEqual(buildInboxMessage(base));
+    expect(callFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('message 含 ALREADY_EXISTS 但 code 為 internal 仍往外拋', async () => {
+    const error = {
+      code: 'functions/internal',
+      message: 'MESSAGE_ID_ALREADY_EXISTS',
+    };
+    vi.mocked(callFn).mockRejectedValueOnce(error);
+
+    await expect(deliverInboxMessage(base)).rejects.toBe(error);
+    await expect(deliverInboxMessage(base)).resolves.toEqual(buildInboxMessage(base));
+    expect(callFn).toHaveBeenCalledTimes(2);
+  });
+
   it('照 A _deliverToInboxCF 的 request 形狀呼叫 deliverToInbox', async () => {
     const msg = await deliverInboxMessage(base);
     expect(callFn).toHaveBeenCalledWith('deliverToInbox', {

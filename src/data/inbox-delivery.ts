@@ -107,10 +107,16 @@ export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unk
   };
 }
 
+export function isAlreadyExistsError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && code.replace(/^functions\//, '') === 'already-exists';
+}
+
 /**
  * 投遞站內信（A `_deliverToInboxCF` 的 request 形狀）。回傳送出的訊息物件；
  * 同一把 dedupeKey 5 秒內重複送出時回傳 null（A `_claimRecentInboxDeliveryKey`），呼叫端應略過後續（例如 LINE）。
- * Callable 失敗會釋放這把鍵（A `_releaseRecentInboxDeliveryKey`）並往外拋，由呼叫端決定是否屬 best-effort。
+ * Callable 回 already-exists 視為已送達，保留 dedupe 鍵並回傳訊息；其他失敗會釋放這把鍵（A `_releaseRecentInboxDeliveryKey`）並往外拋，由呼叫端決定是否屬 best-effort。
  */
 export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Record<string, unknown> | null> {
   const message = buildInboxMessage(input);
@@ -130,6 +136,7 @@ export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Re
       targetType: message['targetType'],
     } as never);
   } catch (err) {
+    if (isAlreadyExistsError(err)) return message;
     releaseRecentInboxDeliveryKey(dedupeKey);
     throw err;
   }
