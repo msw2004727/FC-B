@@ -67,7 +67,7 @@ describe('qa-login manifest', () => {
     expect(JSON.stringify(DRAWER_MENUS)).not.toContain('/qa-login');
   });
 
-  it('七個語系 key 相同，zh-TW 的錯誤文案精確，四個 persona 用詞相同', () => {
+  it('七個語系 key 相同，zh-TW 的錯誤文案精確，五個 persona 用詞相同', () => {
     const dicts = Object.fromEntries(LOCALES.map((locale) => [locale, loadLocale(locale)])) as Record<
       Locale,
       Record<string, string>
@@ -86,7 +86,7 @@ describe('qa-login manifest', () => {
       expect(dicts[locale].title).toBe(dicts[locale]['banner.plain']);
     }
 
-    const personaKeys = ['persona.captain', 'persona.coach', 'persona.memberA', 'persona.memberB'] as const;
+    const personaKeys = ['persona.captain', 'persona.coach', 'persona.venueOwner', 'persona.memberA', 'persona.memberB'] as const;
     for (const key of personaKeys) {
       const values = LOCALES.map((locale) => dicts[locale][key]);
       expect(values.every((value) => value === zhTW[key])).toBe(true);

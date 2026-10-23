@@ -12,6 +12,7 @@
   "persona.label": "测试身份",
   "persona.captain": "QA測試-隊長",
   "persona.coach": "QA測試-教練",
+  "persona.venueOwner": "QA測試-場主",
   "persona.memberA": "QA測試-會員甲",
   "persona.memberB": "QA測試-會員乙",
   "submit": "进入测试模式",

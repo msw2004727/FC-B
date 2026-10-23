@@ -186,22 +186,47 @@ describe('QaLoginPage', () => {
     expect(input.value).toBe('');
 
     const options = Array.from(select.options);
-    expect(options).toHaveLength(4);
+    expect(options).toHaveLength(5);
     expect(options.map((option) => option.value)).toEqual([
       'captain',
       'coach',
+      'venueOwner',
       'memberA',
       'memberB',
     ]);
     expect(options.map((option) => option.getAttribute('label'))).toEqual([
       'QA測試-隊長',
       'QA測試-教練',
+      'QA測試-場主',
       'QA測試-會員甲',
       'QA測試-會員乙',
     ]);
     expect(options.some((option) => option.value === '')).toBe(false);
     expect(select.value).toBe('captain');
     expect(submit.disabled).toBe(false);
+  });
+
+  it('選 QA測試-場主 後送出，signInWithQa 以 venueOwner 呼叫', async () => {
+    signInWithQaMock.mockResolvedValue({
+      uid: 'uid-qa-1',
+      displayName: null,
+      pictureUrl: null,
+    });
+    const { input, select, form } = mountPage();
+    const venueOwner = Array.from(select.options).find(
+      (option) => option.getAttribute('label') === 'QA測試-場主',
+    );
+    if (!venueOwner) throw new Error('找不到場主選項');
+    fillPassword(input, SECRET);
+    await choosePersona(select, venueOwner.value);
+
+    await act(async () => {
+      submitForm(form);
+      await Promise.resolve();
+    });
+
+    expect(signInWithQaMock).toHaveBeenCalledTimes(1);
+    expect(signInWithQaMock).toHaveBeenCalledWith(SECRET, 'venueOwner');
   });
 
   it('密碼為空時按送出不呼叫登入、不顯示錯誤，焦點在密碼欄', () => {

@@ -244,9 +244,10 @@ describe('useQaSession', () => {
 });
 
 describe('isQaPersonaKey', () => {
-  it('四個合法 key 為 true，其他值為 false', () => {
+  it('五個合法 key 為 true，其他值為 false', () => {
     expect(isQaPersonaKey('captain')).toBe(true);
     expect(isQaPersonaKey('coach')).toBe(true);
+    expect(isQaPersonaKey('venueOwner')).toBe(true);
     expect(isQaPersonaKey('memberA')).toBe(true);
     expect(isQaPersonaKey('memberB')).toBe(true);
     expect(isQaPersonaKey('admin')).toBe(false);

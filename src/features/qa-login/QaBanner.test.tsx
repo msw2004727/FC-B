@@ -155,6 +155,16 @@ describe('QaBanner', () => {
     expect(screen.getByRole('button', { name: '登出 QA' })).toBeTruthy();
   });
 
+  it('QA 場主顯示 QA測試-場主', async () => {
+    readQaClaimsMock.mockResolvedValue({ persona: 'venueOwner', agent: 'agent-1', exp: 1 });
+    render(<QaBanner uid="uid-qa" />);
+
+    const status = await screen.findByRole('status');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(bannerLabel()).toBe('QA 測試模式：QA測試-場主');
+    expect(screen.getByRole('button', { name: '登出 QA' })).toBeTruthy();
+  });
+
   it('不在清單的 persona 顯示原字串，空字串只顯示 QA 測試模式', async () => {
     readQaClaimsMock.mockResolvedValueOnce({ persona: 'field-crew', agent: null, exp: null });
     const unknown = render(<QaBanner uid="uid-qa" />);

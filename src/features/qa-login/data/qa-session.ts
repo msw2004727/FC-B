@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { on } from '@/core/events';
 import { readQaClaims } from '@/data/auth';
 
-export const QA_PERSONA_KEYS = ['captain', 'coach', 'memberA', 'memberB'] as const;
+export const QA_PERSONA_KEYS = ['captain', 'coach', 'venueOwner', 'memberA', 'memberB'] as const;
 export type QaPersonaKey = (typeof QA_PERSONA_KEYS)[number];
 
 export function isQaPersonaKey(value: unknown): value is QaPersonaKey {
