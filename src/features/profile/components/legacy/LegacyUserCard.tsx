@@ -236,6 +236,9 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
       .catch((err) => {
         // eslint-disable-next-line no-console
         console.warn('[legacy-user-card] records load failed', err);
+        // 照 A refreshUserCardRecords 失敗時 showToast('活動紀錄刷新失敗')；已換人或卸載就不提示。
+        if (!mountedRef.current || seq !== recordsSeqRef.current) return;
+        toast.show({ message: lt('活動紀錄刷新失敗', '活動紀錄刷新失敗') });
       })
       .finally(() => {
         if (!mountedRef.current || seq !== recordsSeqRef.current) return;

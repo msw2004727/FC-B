@@ -419,7 +419,44 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料�
     ]);
   });
 
-  it('同活動同狀態的重複 activityRecord 只留一筆（照 A _canonicalizeRecordList，保留較新的）', () => {
+  it('同活動同狀態的重複 activityRecord 只留一筆（照 A _canonicalizeRecordList，保留較新的；較新的排在前面也一樣）', () => {
+    const oldRec = actRec('e1', 'registered', 'Dup-old', {
+      _docId: 'old',
+      createdAt: { seconds: 1000 },
+    });
+    const newRec = actRec('e1', 'registered', 'Dup-new', {
+      _docId: 'new',
+      createdAt: { seconds: 2000 },
+    });
+    const events = {
+      e1: { status: 'open', date: '2026/10/02 19:00' },
+      e2: { status: 'open', date: '2026/10/01 19:00' },
+    };
+    // 較新的排在前面：「忽略時間、保留最後一筆」的實作會留下 Dup-old 而失敗
+    const newestFirst: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [newRec, oldRec, actRec('e2', 'registered', 'Single')],
+      attendanceRecords: [],
+      events,
+    };
+    expect(getFilteredRecords(newestFirst, 'registered', false).map((r) => r.name)).toEqual([
+      'Dup-new',
+      'Single',
+    ]);
+    // 「忽略時間、保留第一筆」的實作在這個順序會留下 Dup-old
+    const oldestFirst: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [oldRec, newRec, actRec('e2', 'registered', 'Single')],
+      attendanceRecords: [],
+      events,
+    };
+    expect(getFilteredRecords(oldestFirst, 'registered', false).map((r) => r.name)).toEqual([
+      'Dup-new',
+      'Single',
+    ]);
+  });
+
+  it('(舊版測試保留) 較舊的在前、較新的在後', () => {
     const stats: UserStatsSnapshot = {
       uid: 'u1',
       activityRecords: [
@@ -447,6 +484,45 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料�
     const before = JSON.stringify(baseStats);
     getFilteredRecords(baseStats, 'all', false);
     expect(JSON.stringify(baseStats)).toBe(before);
+  });
+});
+
+describe('活動查表的原型鍵（eventId 剛好叫 constructor／__proto__ 等）', () => {
+  const protoKeys = ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf'];
+
+  it('查表是空的時候，這些 eventId 一律是「查不到活動」，不能被當成查得到', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: protoKeys.map((eventId) => actRec(eventId, 'registered', `P-${eventId}`)),
+      attendanceRecords: [],
+      events: {},
+    };
+    expect(getFilteredRecords(stats, 'all', false)).toEqual([]);
+    expect(getFilteredRecords({ ...stats, events: undefined }, 'all', false)).toEqual([]);
+  });
+
+  it('活動真的叫這些 id 時查得到（載入器的查表不受原型影響）', async () => {
+    const actDocs = protoKeys.map((eventId) =>
+      makeDoc({
+        id: `a-${eventId}`,
+        path: `events/d-${eventId}/activityRecords/a-${eventId}`,
+        hasParent: true,
+        data: { uid: 'u1', eventId, status: 'registered', name: `P-${eventId}` },
+      }),
+    );
+    getDocs
+      .mockResolvedValueOnce({ docs: actDocs })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({
+        docs: protoKeys.map((id) => makeEventDoc(id, { status: 'open', date: '2026/10/01 19:00' })),
+      });
+
+    const stats = await loadUserStats('u1');
+    for (const id of protoKeys) {
+      expect(Object.prototype.hasOwnProperty.call(stats.events, id)).toBe(true);
+    }
+    const names = getFilteredRecords(stats, 'registered', false).map((r) => r.name);
+    expect(names.sort()).toEqual(protoKeys.map((id) => `P-${id}`).sort());
   });
 });
 

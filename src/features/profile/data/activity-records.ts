@@ -133,7 +133,11 @@ async function loadEventLookup(
   db: unknown,
   eventIds: readonly string[],
 ): Promise<Record<string, EventLookupEntry>> {
-  const lookup: Record<string, EventLookupEntry> = {};
+  // 無原型物件：eventId 叫 `constructor`／`__proto__` 等也只是普通鍵，不會沿原型鏈被「查到」。
+  const lookup: Record<string, EventLookupEntry> = Object.create(null) as Record<
+    string,
+    EventLookupEntry
+  >;
   if (eventIds.length === 0) return lookup;
 
   const { collection, getDocs, query, where } = await import('firebase/firestore');
@@ -301,6 +305,15 @@ export function parseEventStartMs(value: unknown): number | null {
   return Number.isFinite(ts) ? ts : null;
 }
 
+/** 只認查表自己的鍵（呼叫端也可能傳一般物件，不能讓 `constructor` 之類的原型屬性被當成活動）。 */
+function lookupEvent(
+  events: Record<string, EventLookupEntry>,
+  eventId: string | undefined,
+): EventLookupEntry | undefined {
+  if (!eventId) return undefined;
+  return Object.prototype.hasOwnProperty.call(events, eventId) ? events[eventId] : undefined;
+}
+
 interface Categorized {
   registered: ActivityRecordItem[];
   completed: ActivityRecordItem[];
@@ -377,7 +390,7 @@ function categorizeRecords(
       if (seenCancel.has(eid) || seenComplete.has(eid)) return;
       if (isPublic) return; // 公開卡片不顯示報名中
       // 照 A `ApiService.getEvent(r.eventId)`：查不到活動就不推入 registered／missed。
-      const event = events[eid];
+      const event = lookupEvent(events, eid);
       if (!event) return;
       const eventStatus = event.status;
       if (eventStatus !== 'ended' && eventStatus !== 'cancelled') {
@@ -421,7 +434,7 @@ export function getFilteredRecords(
   // 照 A：依活動（`getEvent(r.eventId).date`）開始時間由新到舊；查不到活動的項目排最後。
   // activityRecord 自己的 `date` 只有 MM/DD（沒有年份），不能拿來排序。
   const startOf = (item: ActivityRecordItem): number | null =>
-    item.eventId ? parseEventStartMs(events[item.eventId]?.date) : null;
+    parseEventStartMs(lookupEvent(events, item.eventId)?.date);
   return result.sort((a, b) => {
     const dA = startOf(a);
     const dB = startOf(b);

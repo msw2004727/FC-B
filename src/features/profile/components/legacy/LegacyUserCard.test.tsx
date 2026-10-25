@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/ui/Toast', () => ({ toast: vi.fn() }));
+vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
 vi.mock('../../data/profile-model', () => ({ loadUserProfile: vi.fn() }));
 vi.mock('../../data/activity-records', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../data/activity-records')>();
@@ -17,6 +17,8 @@ vi.mock('../../data/attendance-summary', () => ({
 }));
 vi.mock('../../data/viewer', () => ({ useViewer: vi.fn() }));
 vi.mock('@/data/identity-settings', () => ({ useIdentitySettings: vi.fn(() => null) }));
+
+import { toast } from '@/ui/Toast';
 
 import { loadUserStats, getFilteredRecords } from '../../data/activity-records';
 import { loadUserAttendanceSummary } from '../../data/attendance-summary';
@@ -202,6 +204,49 @@ describe('LegacyUserCard（照 A showUserProfile）', () => {
         '資料更新 2026/10/26 14:30',
       ),
     );
+  });
+
+  it('他人名片的清單一律以公開模式過濾（getFilteredRecords 第三參數 true：不顯示報名中／未出席）', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+    const { container } = render(<LegacyUserCard uid="target-uid" />);
+    await waitFor(() => expect(container.querySelector('.uc-header')).toBeTruthy());
+    const recordBlur = Array.from(container.querySelectorAll('.uc-blur-overlay')).find((el) =>
+      el.textContent?.includes('點擊載入活動記錄'),
+    );
+    if (recordBlur) fireEvent.click(recordBlur);
+    await waitFor(() => expect(getFilteredRecords).toHaveBeenCalled());
+    for (const call of vi.mocked(getFilteredRecords).mock.calls) {
+      expect(call[2]).toBe(true);
+    }
+    // 切換頁籤後仍是公開模式
+    fireEvent.click(container.querySelector('#uc-record-tabs button[data-filter="cancelled"]') as Element);
+    await waitFor(() =>
+      expect(vi.mocked(getFilteredRecords)).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'cancelled',
+        true,
+      ),
+    );
+  });
+
+  it('活動紀錄載入失敗：顯示「活動紀錄刷新失敗」toast（照 A refreshUserCardRecords），可再點擊重試', async () => {
+    vi.mocked(loadUserStats).mockRejectedValueOnce(new Error('network'));
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+    const { container } = render(<LegacyUserCard uid="target-uid" />);
+    await waitFor(() => expect(container.querySelector('.uc-header')).toBeTruthy());
+    const overlayOf = (): Element | undefined =>
+      Array.from(container.querySelectorAll('.uc-blur-overlay')).find((el) =>
+        el.textContent?.includes('點擊載入活動記錄'),
+      );
+    fireEvent.click(overlayOf() as Element);
+    await waitFor(() =>
+      expect(vi.mocked(toast.show)).toHaveBeenCalledWith({ message: '活動紀錄刷新失敗' }),
+    );
+    // 失敗後仍維持未載入（毛玻璃還在），再點一次能重試成功
+    expect(overlayOf()).toBeTruthy();
+    fireEvent.click(overlayOf() as Element);
+    await waitFor(() => expect(overlayOf()).toBeUndefined());
+    expect(vi.mocked(toast.show)).toHaveBeenCalledTimes(1);
   });
 
   it('同一元件換看另一個人：前一人還在飛的活動紀錄／統計延後完成，不可寫進新的名片', async () => {

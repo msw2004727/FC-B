@@ -269,6 +269,148 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
     ).toBe(true);
   });
 
+  describe('onSummaryRefreshed（把刷新取得的 fresh summary 交給父層更新頁首三格）', () => {
+    const FRESH = summaryOf('u1', new Date(2026, 5, 1, 12, 0, 0));
+
+    beforeEach(() => {
+      mockedLoadSummary.mockImplementation((_uid: string, opts?: { fresh?: boolean }) =>
+        Promise.resolve(opts?.fresh ? FRESH : null),
+      );
+      mockedLoadUserStats.mockResolvedValue(statsWith('u1', 'X'));
+    });
+
+    it('刷新成功（Callable 成功且重讀成功）→ 呼叫一次並帶 fresh summary；掛載與展開不呼叫', async () => {
+      const onSummaryRefreshed = vi.fn();
+      mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
+      render(<LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />);
+      fireEvent.click(toggle());
+      await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(onSummaryRefreshed).toHaveBeenCalledTimes(1));
+      expect(onSummaryRefreshed).toHaveBeenCalledWith(FRESH);
+      // 呼叫發生在重讀完成之後（此時 toast 也已顯示）
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已是最新' });
+    });
+
+    it('沒傳 prop 也能正常刷新，不報錯', async () => {
+      mockedCallFn.mockResolvedValue({ success: true, created: 1, updated: 0 } as never);
+      render(<LegacyActivityRecordsCard uid="u1" />);
+      fireEvent.click(refreshBtn());
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已更新' }),
+      );
+    });
+
+    it('Callable 失敗（冷卻中）或重讀失敗 → 不呼叫；之後只重讀成功才呼叫一次', async () => {
+      const onSummaryRefreshed = vi.fn();
+      render(<LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />);
+
+      mockedCallFn.mockRejectedValueOnce(
+        Object.assign(new Error('too soon'), {
+          code: 'functions/resource-exhausted',
+          details: { retryAfterSeconds: 10 },
+        }),
+      );
+      fireEvent.click(refreshBtn());
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({ message: '請 10 秒後再刷新' }),
+      );
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+
+      mockedCallFn.mockResolvedValueOnce({ success: true, created: 1, updated: 0 } as never);
+      mockedLoadUserStats.mockRejectedValueOnce(new Error('network'));
+      fireEvent.click(refreshBtn());
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({
+          message: '報名紀錄已修復，但重新讀取失敗，請再按一次重新整理',
+        }),
+      );
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+
+      // 只重讀這次成功 → 才通知父層
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(onSummaryRefreshed).toHaveBeenCalledTimes(1));
+      expect(onSummaryRefreshed).toHaveBeenCalledWith(FRESH);
+      expect(mockedCallFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('fresh summary 讀取失敗（null）→ 不呼叫（沒有東西可以更新頁首）', async () => {
+      const onSummaryRefreshed = vi.fn();
+      mockedLoadSummary.mockResolvedValue(null);
+      mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
+      render(<LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />);
+      fireEvent.click(refreshBtn());
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已是最新' }),
+      );
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+    });
+
+    it('等待期間換 uid → 不把舊人的 summary 交給父層', async () => {
+      const onSummaryRefreshed = vi.fn();
+      const callable = deferred<unknown>();
+      mockedCallFn.mockReturnValueOnce(callable.promise as never);
+      const { rerender } = render(
+        <LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />,
+      );
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(mockedCallFn).toHaveBeenCalledTimes(1));
+      rerender(<LegacyActivityRecordsCard uid="u2" onSummaryRefreshed={onSummaryRefreshed} />);
+      callable.resolve({ success: true, created: 1, updated: 0 });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+    });
+  });
+
+  it('E1：Callable 期間換 uid，舊人的結果不得寫進「只重讀」旗標——新 uid 第一次刷新仍打 Callable，toast 不沿用舊人的 created', async () => {
+    const callable = deferred<unknown>();
+    mockedCallFn.mockReturnValueOnce(callable.promise as never);
+    mockedLoadUserStats.mockResolvedValue(statsWith('u2', 'Two'));
+    const { rerender } = render(<LegacyActivityRecordsCard uid="u1" />);
+    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledWith('u1'));
+
+    fireEvent.click(refreshBtn());
+    await waitFor(() => expect(mockedCallFn).toHaveBeenCalledTimes(1));
+    rerender(<LegacyActivityRecordsCard uid="u2" />);
+    callable.resolve({ success: true, created: 5, updated: 0 }); // 舊人：有 5 筆新增
+    await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockedLoadUserStats).not.toHaveBeenCalled();
+
+    // 新 uid 第一次刷新：必須重新打 Callable（不能被誤判成「只重讀」），且結果是新人的（created 0）
+    mockedCallFn.mockResolvedValueOnce({ success: true, created: 0, updated: 0 } as never);
+    fireEvent.click(refreshBtn());
+    await waitFor(() => expect(mockedCallFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已是最新' }),
+    );
+    expect(mockedToastShow).not.toHaveBeenCalledWith({ message: '報名紀錄已更新' });
+  });
+
+  it('E2：掛載時那次 summary 很慢、刷新後的較新 summary 先到——慢的晚到不可把畫面退回舊值', async () => {
+    const slowMount = deferred<UserAttendanceSummary | null>();
+    mockedLoadSummary.mockImplementation((_uid: string, opts?: { fresh?: boolean }) =>
+      opts?.fresh
+        ? Promise.resolve(summaryOf('u1', new Date(2026, 5, 1, 12, 0, 0)))
+        : slowMount.promise,
+    );
+    mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
+    mockedLoadUserStats.mockResolvedValue(statsWith('u1', 'X'));
+    render(<LegacyActivityRecordsCard uid="u1" />);
+
+    fireEvent.click(refreshBtn());
+    await waitFor(() => expect(screen.getByText('資料更新 2026/06/01 12:00')).toBeTruthy());
+
+    slowMount.resolve(summaryOf('u1', new Date(2026, 0, 1, 8, 0, 0)));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByText('資料更新 2026/06/01 12:00')).toBeTruthy();
+    expect(screen.queryByText('資料更新 2026/01/01 08:00')).toBeNull();
+  });
+
   it('掛載時讀到的 summary 超過 60 秒才展開 → 展開時重讀；60 秒內不重讀', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0));

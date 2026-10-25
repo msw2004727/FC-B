@@ -22,12 +22,23 @@ type Filter = 'all' | 'registered' | 'completed' | 'cancelled';
 type Status = 'idle' | 'loading' | 'error' | 'ready';
 // 'stale'＝這次請求已被取代（換 uid、卸載或有更新的請求），結果被丟棄，不寫畫面也不提示。
 type LoadResult = 'ok' | 'error' | 'stale';
+interface LoadOutcome {
+  result: LoadResult;
+  /** 這次載入讀到的 summary（沒讀 summary 或讀取失敗為 null）。 */
+  summary: UserAttendanceSummary | null;
+}
 
 // 掛載時讀到的 summary 超過這個年齡，第一次展開就重讀（避免卡片內的清單比統計新很多）。
 const SUMMARY_REUSE_MS = 60_000;
 
 export interface LegacyActivityRecordsCardProps {
   uid: string;
+  /**
+   * 使用者按「重新整理」且 Callable 與重讀都成功後，把剛讀到的新 summary 交給父層
+   * （A 刷新後頁首應到／完成／出席率會一起更新；頁首由父層持有，卡片不直接改它）。
+   * 沒傳時只更新卡片自己的「資料更新」。
+   */
+  onSummaryRefreshed?: (summary: UserAttendanceSummary) => void;
 }
 
 interface FilterTab {
@@ -62,6 +73,9 @@ export function LegacyActivityRecordsCard(
 ): JSX.Element {
   const { uid } = props;
   const lt = useLegacyT();
+  // 回呼用 ref 保存最新值：不讓父層換 callback 造成載入流程重建。
+  const onSummaryRefreshedRef = useRef(props.onSummaryRefreshed);
+  onSummaryRefreshedRef.current = props.onSummaryRefreshed;
 
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -78,6 +92,9 @@ export function LegacyActivityRecordsCard(
   // 收合狀態就已讀到的 summary（首次展開不必重讀，除非已過期）；換 uid 時重置。
   const summaryLoadedRef = useRef(false);
   const summaryFetchedAtRef = useRef(0);
+  // summary 請求的發出序號／已套用的最大序號：較晚發出的請求優先，慢的舊請求晚到不得蓋掉較新的。
+  const summaryIssueRef = useRef(0);
+  const summaryAppliedRef = useRef(0);
   const refreshingRef = useRef(false);
   // Callable 已成功但重讀失敗時記住結果：下一次按「重新整理」只重讀，不再打 Callable（避免撞冷卻）。
   const reloadOnlyRef = useRef<{ changed: number } | null>(null);
@@ -88,6 +105,18 @@ export function LegacyActivityRecordsCard(
       mountedRef.current = false;
     };
   }, []);
+
+  // 套用 summary：序號不比已套用的新就丟棄；讀取失敗（null）不蓋掉已顯示的值。
+  const applySummary = useCallback(
+    (token: number, sum: UserAttendanceSummary | null): void => {
+      if (sum === null || token <= summaryAppliedRef.current) return;
+      summaryAppliedRef.current = token;
+      summaryLoadedRef.current = true;
+      summaryFetchedAtRef.current = Date.now();
+      setSummary(sum);
+    },
+    [],
+  );
 
   // 照 A：標題列「資料更新」時間跟著統計走（A 以 onSnapshot 常駐），不必等展開卡片才有。
   // 同一 UID 的並行讀取在 loadUserAttendanceSummary 內合併，和頁首統計不會重複讀。
@@ -107,25 +136,25 @@ export function LegacyActivityRecordsCard(
     setPage(1);
     if (!targetUid) return undefined;
     let active = true;
+    const token = ++summaryIssueRef.current;
     loadUserAttendanceSummary(targetUid)
       .then((sum) => {
         if (!active || !mountedRef.current) return;
-        summaryLoadedRef.current = sum !== null;
-        if (sum !== null) summaryFetchedAtRef.current = Date.now();
-        setSummary(sum);
+        applySummary(token, sum);
       })
       .catch(() => { /* 讀取失敗維持 -- */ });
     return () => {
       active = false;
     };
-  }, [uid]);
+  }, [uid, applySummary]);
 
   const loadAll = useCallback(
     async (
       opts: { reuseSummary?: boolean; freshSummary?: boolean } = {},
-    ): Promise<LoadResult> => {
+    ): Promise<LoadOutcome> => {
+      const stale: LoadOutcome = { result: 'stale', summary: null };
       const targetUid = String(uid || '').trim();
-      if (!targetUid || !mountedRef.current) return 'stale';
+      if (!targetUid || !mountedRef.current) return stale;
       const epoch = epochRef.current;
       const seq = ++loadSeqRef.current;
       setStatus('loading');
@@ -134,6 +163,7 @@ export function LegacyActivityRecordsCard(
           opts.reuseSummary === true &&
           summaryLoadedRef.current &&
           Date.now() - summaryFetchedAtRef.current < SUMMARY_REUSE_MS;
+        const summaryToken = skipSummary ? 0 : ++summaryIssueRef.current;
         const [snap, sum] = await Promise.all([
           loadUserStats(targetUid),
           skipSummary
@@ -143,27 +173,23 @@ export function LegacyActivityRecordsCard(
               : loadUserAttendanceSummary(targetUid),
         ]);
         if (!mountedRef.current || seq !== loadSeqRef.current || epoch !== epochRef.current) {
-          return 'stale';
+          return stale;
         }
         setStats(snap);
-        if (sum !== undefined) {
-          summaryLoadedRef.current = sum !== null;
-          if (sum !== null) summaryFetchedAtRef.current = Date.now();
-          setSummary(sum);
-        }
+        if (sum !== undefined) applySummary(summaryToken, sum);
         setStatus('ready');
-        return 'ok';
+        return { result: 'ok', summary: sum ?? null };
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[LegacyActivityRecordsCard] load failed', err);
         if (!mountedRef.current || seq !== loadSeqRef.current || epoch !== epochRef.current) {
-          return 'stale';
+          return stale;
         }
         setStatus('error');
-        return 'error';
+        return { result: 'error', summary: null };
       }
     },
-    [uid],
+    [uid, applySummary],
   );
 
   const handleToggle = useCallback((): void => {
@@ -206,15 +232,15 @@ export function LegacyActivityRecordsCard(
               created?: unknown;
               updated?: unknown;
             } | null;
+            // 等待 Callable 期間可能已卸載或換 uid：先檢查，才不會把舊人的結果寫進「只重讀」旗標。
+            if (superseded()) return;
             pending = { changed: Number(res?.created || 0) + Number(res?.updated || 0) };
             reloadOnlyRef.current = pending;
           }
-          // 等待 Callable 期間可能已卸載或換 uid：不替舊畫面重讀。
-          if (superseded()) return;
           // 剛重算完：summary 必須是新發出的請求，不能沿用刷新前就已在飛的。
-          const result = await loadAll({ freshSummary: true });
-          if (result === 'stale' || superseded()) return;
-          if (result === 'error') {
+          const outcome = await loadAll({ freshSummary: true });
+          if (outcome.result === 'stale' || superseded()) return;
+          if (outcome.result === 'error') {
             toast.show({
               message: lt(
                 '報名紀錄已修復，但重新讀取失敗，請再按一次重新整理',
@@ -225,6 +251,15 @@ export function LegacyActivityRecordsCard(
           }
           reloadOnlyRef.current = null;
           setPage(1); // 照 A：renderActivityRecords(filter, 1)，篩選維持
+          if (outcome.summary) {
+            try {
+              onSummaryRefreshedRef.current?.(outcome.summary);
+            } catch (cbErr) {
+              // 父層回呼出錯不能讓已成功的刷新被當成失敗。
+              // eslint-disable-next-line no-console
+              console.warn('[LegacyActivityRecordsCard] onSummaryRefreshed failed', cbErr);
+            }
+          }
           toast.show({
             message: pending.changed > 0
               ? lt('報名紀錄已更新', '報名紀錄已更新')
