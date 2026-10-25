@@ -1,0 +1,29 @@
+/*
+ * 成就／稱號系統關閉期間的反灰外觀（T-038，2026-10-26）。開關見 availability.ts 的 ACHIEVEMENTS_OPEN。
+ * 沿用我的頁「道具欄」現成的反灰值（opacity／grayscale），但入口仍要能點（點了顯示「尚未開放」），
+ * 所以不能直接用 A 的 .quick-item.disabled（它帶 pointer-events:none，點擊事件根本不會發生）。
+ */
+.legacy-ui .ach-closed {
+  opacity: .35;
+  filter: grayscale(1);
+}
+.legacy-ui .quick-item.ach-closed,
+.legacy-ui .info-card.ach-closed {
+  cursor: not-allowed;
+}
+/* 蓋掉 A 的 .quick-item:hover 強調色，反灰按鈕不要有 hover 回饋 */
+.legacy-ui .quick-item.ach-closed,
+.legacy-ui .quick-item.ach-closed:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+/*
+ * 他人名片的徽章數（#uc-stat-badges，DOM 在 LegacyUserCard.tsx，目前固定顯示 --）：
+ * 該檔由其他工單修改，這裡用相鄰兄弟選擇器反灰，不動它的 DOM。恢復開放時一併刪除這條。
+ */
+.legacy-ui #uc-stat-badges,
+.legacy-ui #uc-stat-badges + .stat-label {
+  opacity: .35;
+  filter: grayscale(1);
+}

@@ -2,7 +2,11 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import type { BadgeDef } from '@/features/exp-achievements/data/achievements';
-import { lt } from '@/i18n/i18n';
+import {
+  ACHIEVEMENTS_OPEN,
+  showAchievementsClosedToast,
+} from '@/features/exp-achievements/availability';
+import { lt, useT } from '@/i18n/i18n';
 
 export interface UserCardBadgesProps {
   uid: string;
@@ -25,8 +29,26 @@ function loadAchievementsModule(): Promise<typeof import('@/features/exp-achieve
  * 照 A `showUserProfile` 的「已獲得徽章」區塊（`#uc-badge-container`）。
  * 本人直接載入；非本人先遮毛玻璃，點擊後才讀 `users/{targetUid}/achievements`。
  * 載入失敗顯示空狀態；資料層動態 import，不進首屏 bundle。
+ * 成就系統關閉期間（ACHIEVEMENTS_OPEN=false）改顯示反灰的 UserCardBadgesClosed，不讀任何徽章資料。
  */
-export function UserCardBadges({ uid, isSelf }: UserCardBadgesProps): JSX.Element {
+export function UserCardBadges(props: UserCardBadgesProps): JSX.Element {
+  return ACHIEVEMENTS_OPEN ? <UserCardBadgesLive {...props} /> : <UserCardBadgesClosed />;
+}
+
+/** 關閉期間：保留區塊標題，整塊反灰；點擊只顯示「尚未開放」，不載入徽章。 */
+function UserCardBadgesClosed(): JSX.Element {
+  const t = useT();
+  return (
+    <div class="info-card ach-closed" aria-disabled="true" onClick={showAchievementsClosedToast}>
+      <div class="info-title">{lt('已獲得徽章', '已獲得徽章')}</div>
+      <div id="uc-badge-container">
+        <div style="font-size:.82rem;color:var(--text-muted)">{t('exp-achievements.closed')}</div>
+      </div>
+    </div>
+  );
+}
+
+function UserCardBadgesLive({ uid, isSelf }: UserCardBadgesProps): JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const [badges, setBadges] = useState<EarnedBadge[]>([]);
   const [loading, setLoading] = useState(false);
