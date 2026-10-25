@@ -1,7 +1,8 @@
 // T-038（2026-10-26）：桌機滾輪失效的回歸防護。
 // 根因：A 的 base.css `body { overscroll-behavior:none; overflow-x:hidden }` 被 legacy-css-scope 改寫到 `.legacy-ui`，
 // .legacy-ui 成為捲動容器且 overscroll-behavior:none，滾輪被它吃掉、不傳給整頁。
-// 修法在 src/styles/legacy-body-state.css：全域 body 仍是 none（防下拉重整／回彈，M-057），.legacy-ui 這層必須是 auto。
+// 修法在 src/styles/legacy-body-state.css：.legacy-ui 這層必須是 auto；防下拉重整／回彈由根元素 html 的 overscroll-behavior-y:none 負責（body 的 none 維持不變）。
+// 瀏覽器端的實際檢查（計算值、滾輪、觸控、iframe 滾動鏈）見 scripts/e2e-scroll-guard.mjs。
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -51,8 +52,20 @@ describe('.legacy-ui 的滾動鏈（桌機滾輪）', () => {
     expect(overscrollOf(baseCss, BASE_PATH, '.legacy-ui', { scope: true })).toContain('none');
   });
 
-  it('全域 body 仍是 overscroll-behavior:none（防下拉重整與回彈，M-057）', () => {
+  it('全域 body 仍是 overscroll-behavior:none（維持 M-057／A 的規則，與修前一致）', () => {
     expect(overscrollOf(stateCss, STATE_PATH, 'body')).toEqual(['none']);
+  });
+
+  it('根元素 html 設 overscroll-behavior-y:none：真正擋下拉重整與回彈的是它（body 的值在 Chromium 不傳給 viewport）', () => {
+    // 實測：只設 body → 子頁捲到底後父頁被帶著捲；只設 html → 擋住；A 正式站也只設了 body。
+    // 只設垂直軸：M-057 的目的是下拉重整與回彈，水平的邊緣滑動返回維持 A 實際行為。
+    const root = postcss.parse(stateCss);
+    const values = [];
+    root.walkRules((rule) => {
+      if (!rule.selectors.map((s) => s.trim()).includes('html')) return;
+      rule.walkDecls(/^overscroll-behavior/, (decl) => values.push(`${decl.prop}:${decl.value}`));
+    });
+    expect(values).toEqual(['overscroll-behavior-y:none']);
   });
 
   it('.legacy-ui 這層由更高特異度的規則改回 auto，滾輪可傳給整頁', () => {
