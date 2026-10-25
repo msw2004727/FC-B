@@ -75,7 +75,7 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
       >
         <div
           class="modal"
-          style="width:100%;max-width:340px;position:static;border-radius:var(--radius);transform:none"
+          style="width:calc(100% - 2rem);max-width:340px;position:static;border-radius:var(--radius);transform:none"
         >
           <div class="modal-header">
             <h3 id="companion-modal-title">

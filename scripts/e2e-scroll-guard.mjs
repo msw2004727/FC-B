@@ -10,11 +10,11 @@
  *   4. node scripts/e2e-scroll-guard.mjs [baseUrl]         預設 http://localhost:5181
  *
  * 安全：只接受 loopback 的 http(s) 網址（localhost／127.0.0.1／::1）；且頁面的 console 必須回報
- * 「連線目標 … · emulator」（src/data/firebase.ts 的啟動訊息），否則視為連到正式庫而中止。
+ * 「連線目標 … · emulator」（src/data/firebase.ts 的啟動訊息），否則視為連到正式庫，直接丟錯中止（exit 2），不繼續檢查。
  * 另會對本機 Firestore emulator（127.0.0.1:8080）寫入一個測試用戶（完整個資，才不會跳首次登入彈窗鎖住捲動）。
  *
  * 檢查（任何一項「等不到明確目標頁／資料／捲動範圍」都是失敗，不會退而測別的畫面）：
- *   A. 計算值：html overscroll-behavior-y＝none 且 overflow 為 visible；body＝none；.legacy-ui 的 Y＝auto、X＝none（只改 Y）。
+ *   A. 計算值：html overscroll-behavior-y＝none 且 overflow 為 visible；body＝none；頁面外框（.app-main > .legacy-ui）的 Y＝auto、X＝none（只改 Y）。
  *   B. 桌機 1280×720／1366×768：/activities 與 /profile，游標下是內容（不是固定列）、起點 scrollY＝0、滾輪 5 格後 scrollY 增加。
  *   C. 手機 390×844：/activities 真實觸控滑動（CDP Input.dispatchTouchEvent）後 scrollY 增加。
  *   D. 頁面底部餘量：#app 底到文件底沒有多餘空白；/profile 最後一張卡到文件底的餘量不超過 220px（修前多一個視窗高 ≈ 720px）。
@@ -146,13 +146,15 @@ async function main() {
       page.on('console', (msg) => infoLogs.push(msg.text()));
       await signIn(page, base);
       await openReady(page, base, ACTIVITIES, EVENT_LINK);
-      check(
-        '連線目標是 emulator（console 的 [firebase] 連線目標訊息）',
-        infoLogs.some((line) => /\[firebase\].*連線目標.*·\s*emulator/.test(line)),
-        infoLogs.find((line) => line.includes('連線目標')) ?? '沒有看到連線目標訊息',
-      );
+      // 不是 emulator 就直接中止（throw → 外層 exit 2），不繼續對這個網址做任何檢查。
+      const target = infoLogs.find((line) => /\[firebase\].*連線目標/.test(line));
+      if (!target || !/·\s*emulator/.test(target)) {
+        throw new Error(`頁面沒有回報 emulator 連線目標，中止（收到：${target ?? '沒有連線目標訊息'}）`);
+      }
+      console.log(`PASS  連線目標是 emulator  ${target}`);
       const v = await page.evaluate(() => {
-        const ui = document.querySelector('#app .legacy-ui');
+        // 頁面本體的外框：.app-main > .legacy-ui（#app 底下第一個 .legacy-ui 是頂部列的 .legacy-chrome，不是頁面）
+        const ui = document.querySelector('.app-main > .legacy-ui');
         const css = (el, prop) => getComputedStyle(el)[prop];
         return {
           htmlY: css(document.documentElement, 'overscrollBehaviorY'),
@@ -165,8 +167,8 @@ async function main() {
       check('html overscroll-behavior-y＝none（viewport 層級防下拉重整／回彈）', v.htmlY === 'none', `html=${v.htmlY}`);
       check('html overflow 維持 visible（否則 body 的值不傳給 viewport、也會改變捲動來源）', v.htmlOverflowY === 'visible', `overflow-y=${v.htmlOverflowY}`);
       check('body overscroll-behavior-y 仍是 none（與修前一致）', v.bodyY === 'none', `body=${v.bodyY}`);
-      check('.legacy-ui 的 Y 軸是 auto（滾輪不被吃掉）', v.uiY === 'auto', `.legacy-ui y=${v.uiY}`);
-      check('.legacy-ui 的 X 軸維持修前的 none（只改了 Y）', v.uiX === 'none', `.legacy-ui x=${v.uiX}`);
+      check('頁面外框（.app-main > .legacy-ui）的 Y 軸是 auto（滾輪不被吃掉）', v.uiY === 'auto', `y=${v.uiY}`);
+      check('頁面外框的 X 軸維持修前的 none（只改了 Y）', v.uiX === 'none', `x=${v.uiX}`);
 
       // ── D. 頁面底部餘量（無多餘空白） ──────────────────────────────
       const gap = await page.evaluate(() => {
