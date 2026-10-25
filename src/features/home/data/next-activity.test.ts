@@ -256,32 +256,67 @@ describe('loadNextActivityInputs — Firestore I/O', () => {
   });
 });
 
-// ── T-033：報名很多的帳號，最新報名不能被 limit 截掉 ─────────────
+// ── T-033：報名紀錄很多的帳號，最新報名不能被 limit 截掉 ─────────────
 
 const HEAVY_UID = 'U0000000000000000000000000000001';
 
+type StoreDoc = FakeReg & { path: string };
+
+function subDoc(eventDocId: string, regId: string, status: string): StoreDoc {
+  return {
+    ...makeSubcollectionReg(regId, { userId: HEAVY_UID, eventId: eventDocId, status }),
+    path: `events/${eventDocId}/registrations/${regId}`,
+  };
+}
+
+function rootDoc(regId: string, eventId: string, status: string): StoreDoc {
+  return {
+    ...makeLegacyRootReg(regId, { userId: HEAVY_UID, eventId, status }),
+    path: `registrations/${regId}`,
+  };
+}
+
+const pad = (n: number): string => String(n).padStart(4, '0');
+
+/** Firestore 的預設順序：依完整文件路徑逐段比較（`events/…` 排在根 `registrations/…` 之前）。 */
+function comparePath(a: string, b: string): number {
+  const sa = a.split('/');
+  const sb = b.split('/');
+  for (let i = 0; i < Math.min(sa.length, sb.length); i += 1) {
+    const x = sa[i] as string;
+    const y = sb[i] as string;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return sa.length - sb.length;
+}
+
+const TARGET_EVENT_DOC_ID = `ce_${pad(157)}`;
+
 /**
- * 站長帳號形狀的假資料（309 筆、217 筆 cancelled），依文件路徑排序（collectionGroup 預設順序）：
- * 先是 59 筆舊版根集合殘留（已取消）、158 筆已取消的子集合報名、1 筆 removed、
- * 89 筆過去活動的 confirmed（含 1 筆舊資料殘留的 registered）、1 筆 waitlisted，最後一筆才是明天活動的 confirmed。
+ * 站長帳號形狀的壓力資料（309 筆；數字照診斷：子集合 250＝cancelled 217／confirmed 31／removed 1／waitlisted 1，
+ * 舊根殘留 59＝約 55 筆 cancelled＋4 筆進行中）。這是「依診斷數字人工排出來」的資料，不是診斷的逐筆重放：
+ * 子集合第 158 筆是明天活動的報名（診斷中該筆被 limit(120) 截掉），前 120 筆為 113 cancelled＋6 confirmed＋1 removed。
+ * 為了涵蓋 `registered`，子集合的 31 筆 confirmed 裡有 1 筆改成 registered。
  */
-function buildHeavyUserRegistrations(): FakeReg[] {
-  const regs: FakeReg[] = [];
-  const base = { userId: HEAVY_UID };
+function buildHeavyUserRegistrations(): StoreDoc[] {
+  const sub: string[] = [];
+  for (let i = 0; i < 120; i += 1) sub.push('cancelled');
+  [20, 40, 60, 80, 100, 110].forEach((i) => { sub[i] = 'confirmed'; });
+  sub[119] = 'removed';
+  for (let i = 120; i < 157; i += 1) sub.push('cancelled');
+  sub.push('confirmed'); // 第 158 筆（index 157）：明天活動
+  sub.push(
+    ...Array<string>(67).fill('cancelled'),
+    ...Array<string>(23).fill('confirmed'),
+    'registered',
+    'waitlisted',
+  );
+  const docs: StoreDoc[] = sub.map((status, i) => subDoc(`ce_${pad(i)}`, `r_${pad(i)}`, status));
   for (let i = 0; i < 59; i += 1) {
-    regs.push(makeLegacyRootReg(`root-${i}`, { ...base, eventId: `evt-old-root-${i}`, status: 'cancelled' }));
+    const status = i === 0 || i === 1 || i === 2 ? 'confirmed' : i === 3 ? 'registered' : 'cancelled';
+    docs.push(rootDoc(`root_${i}`, `ce_root_${i}`, status));
   }
-  for (let i = 0; i < 158; i += 1) {
-    regs.push(makeSubcollectionReg(`c-${i}`, { ...base, eventId: `evt-old-c-${i}`, status: 'cancelled' }));
-  }
-  regs.push(makeSubcollectionReg('removed-0', { ...base, eventId: 'evt-old-removed', status: 'removed' }));
-  for (let i = 0; i < 89; i += 1) {
-    // 其中一筆是舊資料殘留的 registered（沒有現行寫入點，但讀端都承認它是進行中）。
-    regs.push(makeSubcollectionReg(`ok-${i}`, { ...base, eventId: `evt-old-ok-${i}`, status: i === 0 ? 'registered' : 'confirmed' }));
-  }
-  regs.push(makeSubcollectionReg('wait-0', { ...base, eventId: 'evt-old-wait', status: 'waitlisted' }));
-  regs.push(makeSubcollectionReg('tomorrow', { ...base, eventId: 'evt-tomorrow', status: 'confirmed' }));
-  return regs;
+  return docs;
 }
 
 interface FakeConstraint {
@@ -292,9 +327,9 @@ interface FakeConstraint {
   n?: number;
 }
 
-/** 照 Firestore 語意執行 collectionGroup('registrations') 查詢：where（==、in）依序過濾後再 limit。 */
-function runRegistrationQuery(store: FakeReg[], constraints: FakeConstraint[]): { docs: FakeReg[] } {
-  let docs = store;
+/** 照 Firestore 語意執行 collectionGroup('registrations') 查詢：依完整路徑排序 → where（==、in）→ limit。 */
+function runRegistrationQuery(store: StoreDoc[], constraints: FakeConstraint[]): { docs: StoreDoc[] } {
+  let docs = [...store].sort((a, b) => comparePath(a.path, b.path));
   for (const c of constraints) {
     if (c.kind !== 'where' || !c.field) continue;
     const field = c.field;
@@ -306,114 +341,143 @@ function runRegistrationQuery(store: FakeReg[], constraints: FakeConstraint[]): 
     });
   }
   const lim = constraints.find((c) => c.kind === 'limit')?.n;
-  return makeSnap(lim === undefined ? docs : docs.slice(0, lim)) as { docs: FakeReg[] };
+  return { docs: lim === undefined ? docs : docs.slice(0, lim) };
 }
 
-function installHeavyUserFirestore(store: FakeReg[]): void {
+/** 依查詢種類回應：registrations collectionGroup 走假資料；管理的活動（creator／owner／delegate）與 id 反查一律回空。 */
+function installFirestore(store: StoreDoc[]): { requestedEventDocIds: string[]; regSnapshotSizes: number[] } {
+  const probe = { requestedEventDocIds: [] as string[], regSnapshotSizes: [] as number[] };
   mockedGetDocs.mockImplementation(((q: unknown) => {
-    const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
-    if (base?.kind === 'collectionGroup') return Promise.resolve(runRegistrationQuery(store, constraints)) as never;
-    return Promise.resolve(makeSnap([])) as never; // 管理的活動（creator／owner／delegate）與 id 反查：都沒有
+    const { base, constraints } = q as { base: { kind?: string; id?: string }; constraints: FakeConstraint[] };
+    if (base?.kind === 'collectionGroup' && base.id === 'registrations') {
+      const snap = runRegistrationQuery(store, constraints);
+      probe.regSnapshotSizes.push(snap.docs.length);
+      return Promise.resolve(snap) as never;
+    }
+    return Promise.resolve(makeSnap([])) as never;
   }) as never);
   vi.mocked(doc).mockImplementation(((_db: unknown, path: string, id: string) => ({ path, id })) as never);
   vi.mocked(getDoc).mockImplementation(((ref: { id: string }) => {
-    if (ref.id === 'evt-tomorrow') {
-      return Promise.resolve(
-        makeEventSnap('evt-tomorrow', {
-          id: 'evt-tomorrow',
-          title: 'Tomorrow Match',
-          date: '2099/01/02 09:00~11:00',
-          status: 'open',
-        }),
-      ) as never;
-    }
+    probe.requestedEventDocIds.push(ref.id);
+    const isTarget = ref.id === TARGET_EVENT_DOC_ID;
     return Promise.resolve(
-      makeEventSnap(ref.id, { id: ref.id, title: 'Old', date: '2000/01/01 09:00~11:00', status: 'open' }),
+      makeEventSnap(ref.id, {
+        id: ref.id,
+        title: isTarget ? 'Tomorrow Match' : 'Old',
+        date: isTarget ? '2099/01/02 09:00~11:00' : '2000/01/01 09:00~11:00',
+        status: 'open',
+      }),
     ) as never;
   }) as never);
+  return probe;
 }
+
+const deps = (warn: (...args: unknown[]) => void) => ({
+  getFirebase: async () => ({ db: {} as never }),
+  logger: { warn },
+});
 
 describe('T-033：報名紀錄很多的帳號（309 筆、217 筆已取消）', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  test('假資料重現舊問題：舊查詢（只有 userId ＋ limit 120）窗口全是取消紀錄，漏掉明天的報名', async () => {
+  test('壓力資料的形狀：309 筆、依路徑排序後前 120 筆都是子集合的舊紀錄，舊查詢（userId ＋ limit 120）漏掉目標報名', () => {
     const store = buildHeavyUserRegistrations();
     expect(store).toHaveLength(309);
-    expect(store.filter((r) => r.data().status === 'cancelled')).toHaveLength(217);
+    expect(store.filter((r) => String(r.path).startsWith('events/'))).toHaveLength(250);
 
     const legacyQuery = query(
       collectionGroup({} as never, 'registrations'),
       where('userId', '==', HEAVY_UID),
       limit(120),
     ) as unknown as { constraints: FakeConstraint[] };
-    const window = runRegistrationQuery(store, legacyQuery.constraints).docs;
+    const firstWindow = runRegistrationQuery(store, legacyQuery.constraints).docs;
 
-    expect(window).toHaveLength(120);
-    expect(window.some((r) => r.data().eventId === 'evt-tomorrow')).toBe(false);
-    expect(window.every((r) => r.data().status === 'cancelled')).toBe(true);
+    expect(firstWindow).toHaveLength(120);
+    // 子集合（events/…）排在根（registrations/…）前：窗口全是子集合文件，不是被舊根佔用。
+    expect(firstWindow.every((r) => r.path.startsWith('events/'))).toBe(true);
+    const statuses = firstWindow.map((r) => String(r.data().status));
+    expect(statuses.filter((s) => s === 'cancelled')).toHaveLength(113);
+    expect(statuses.filter((s) => s === 'confirmed')).toHaveLength(6);
+    expect(statuses.filter((s) => s === 'removed')).toHaveLength(1);
+    expect(firstWindow.some((r) => r.data().eventId === TARGET_EVENT_DOC_ID)).toBe(false);
   });
 
-  test('新查詢取得明天的報名，排除取消／removed 與舊版根集合殘留，也不觸發上限警告', async () => {
-    installHeavyUserFirestore(buildHeavyUserRegistrations());
+  test('新查詢取得明天的報名：只回進行中的子集合報名，舊根的進行中資料被擋下且不補抓活動', async () => {
+    const probe = installFirestore(buildHeavyUserRegistrations());
     const warn = vi.fn();
 
-    const inputs = await loadNextActivityInputs(
-      { getFirebase: async () => ({ db: {} as never }), logger: { warn } },
-      HEAVY_UID,
-    );
+    const inputs = await loadNextActivityInputs(deps(warn), HEAVY_UID);
 
-    // 89 筆過去活動（confirmed／registered）＋ 1 筆 waitlisted ＋ 明天這筆；舊版根集合殘留（皆 cancelled）本來就被 status 篩掉。
-    expect(inputs.registrations).toHaveLength(91);
-    expect(inputs.registrations.some((r) => r.eventId === 'evt-tomorrow')).toBe(true);
+    // 伺服器端 status in 後有 36 筆（32 筆子集合＋4 筆舊根進行中）；舊根由 filterSubcollectionDocs 擋掉，剩 32 筆。
+    expect(probe.regSnapshotSizes).toEqual([36]);
+    expect(inputs.registrations).toHaveLength(32);
+    expect(inputs.registrations.some((r) => r.eventId === TARGET_EVENT_DOC_ID)).toBe(true);
     expect(inputs.registrations.every((r) => ACTIVE_REGISTRATION_STATUSES.includes(String(r.status)))).toBe(true);
+    expect(inputs.registrations.some((r) => String(r.eventId).startsWith('ce_root_'))).toBe(false);
+    expect(probe.requestedEventDocIds.some((id) => id.startsWith('ce_root_'))).toBe(false);
     expect(warn).not.toHaveBeenCalled();
   });
 
-  test('resolveNextActivity：站長帳號形狀的資料會選出明天的活動（舊查詢會得到 null）', async () => {
-    installHeavyUserFirestore(buildHeavyUserRegistrations());
+  test('舊根殘留的 confirmed／registered：伺服器端查得到，但不進結果、不補抓活動（filterSubcollectionDocs 在擋）', async () => {
+    const probe = installFirestore([
+      rootDoc('root-a', 'ce_root_a', 'confirmed'),
+      rootDoc('root-b', 'ce_root_b', 'registered'),
+      rootDoc('root-c', 'ce_root_c', 'waitlisted'),
+    ]);
+
+    const inputs = await loadNextActivityInputs(deps(vi.fn()), HEAVY_UID);
+
+    expect(probe.regSnapshotSizes).toEqual([3]);
+    expect(inputs.registrations).toEqual([]);
+    expect(probe.requestedEventDocIds).toEqual([]);
+  });
+
+  test('resolveNextActivity：壓力資料會選出明天的活動（舊查詢得不到它）', async () => {
+    installFirestore(buildHeavyUserRegistrations());
 
     const result = await resolveNextActivity(
-      {
-        getFirebase: async () => ({ db: {} as never }),
-        logger: { warn: () => {} },
-        now: () => new Date(2099, 0, 1).getTime(),
-      },
+      { ...deps(vi.fn()), now: () => new Date(2099, 0, 1).getTime() },
       HEAVY_UID,
     );
 
-    expect(result?.event.id).toBe('evt-tomorrow');
+    expect(result?.event.id).toBe(TARGET_EVENT_DOC_ID);
     expect(registrationStatusMeta(result?.registration)).toEqual({ key: 'confirmed', label: '正取' });
   });
 
-  test('回傳筆數打到上限 → logger.warn（避免日後又靜默截斷）；未達上限不警告', async () => {
-    const full = Array.from({ length: REGISTRATION_QUERY_LIMIT }, (_, i) =>
-      makeSubcollectionReg(`r-${i}`, { userId: HEAVY_UID, eventId: `evt-old-${i}`, status: 'confirmed' }),
-    );
-    mockedGetDocs.mockResolvedValue(makeSnap(full) as never);
-    vi.mocked(doc).mockImplementation(((_db: unknown, path: string, id: string) => ({ path, id })) as never);
-    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
-    const warn = vi.fn();
-    await loadNextActivityInputs({ getFirebase: async () => ({ db: {} as never }), logger: { warn } }, HEAVY_UID);
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('hit the limit'))).toBe(true);
+  describe('上限邊界（有效報名前面還有 30 筆已取消，status 篩選要在 limit 之前）', () => {
+    function activeStore(n: number): StoreDoc[] {
+      const noise = Array.from({ length: 30 }, (_, i) => subDoc(`ce_0_${pad(i)}`, `n_${i}`, 'cancelled'));
+      const active = Array.from({ length: n }, (_, i) => subDoc(`ce_1_${pad(i)}`, `a_${i}`, 'confirmed'));
+      return [...noise, ...active];
+    }
+    const isLimitWarning = ([msg]: unknown[]): boolean => String(msg).includes('hit the limit');
 
-    warn.mockClear();
-    mockedGetDocs.mockResolvedValue(makeSnap(full.slice(0, REGISTRATION_QUERY_LIMIT - 1)) as never);
-    await loadNextActivityInputs({ getFirebase: async () => ({ db: {} as never }), logger: { warn } }, HEAVY_UID);
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('hit the limit'))).toBe(false);
+    test.each([
+      { n: 119, expected: 119, warns: false },
+      { n: 150, expected: 150, warns: false }, // 超過舊上限 120、低於 200：全部取得，證明上限不是 120
+      { n: 199, expected: 199, warns: false },
+      { n: 200, expected: 200, warns: true },
+      { n: 201, expected: 200, warns: true },
+    ])('有效報名 $n 筆 → 取得 $expected 筆、上限警告 $warns', async ({ n, expected, warns }) => {
+      installFirestore(activeStore(n));
+      const warn = vi.fn();
+
+      const inputs = await loadNextActivityInputs(deps(warn), HEAVY_UID);
+
+      expect(inputs.registrations).toHaveLength(expected);
+      expect(warn.mock.calls.some(isLimitWarning)).toBe(warns);
+    });
   });
 
   test('報名查詢失敗（例如索引或網路）→ 記警告並略過，不丟錯', async () => {
     mockedGetDocs.mockRejectedValue(new Error('boom'));
     const warn = vi.fn();
-    const inputs = await loadNextActivityInputs(
-      { getFirebase: async () => ({ db: {} as never }), logger: { warn } },
-      HEAVY_UID,
-    );
+    const inputs = await loadNextActivityInputs(deps(warn), HEAVY_UID);
     expect(inputs.registrations).toEqual([]);
     expect(warn.mock.calls.some(([msg]) => String(msg).includes('registration query skipped'))).toBe(true);
   });
 
-  test('查詢用的進行中狀態，客戶端 isActiveRegistration 也都視為進行中（兩邊不漂移）', () => {
+  test('查詢用的進行中狀態都被客戶端 isActiveRegistration 接受（白名單是客戶端接受集合的子集；缺 status 的報名不在此保證內）', () => {
     expect(ACTIVE_REGISTRATION_STATUSES).toEqual(expect.arrayContaining(['confirmed', 'waitlisted', 'registered']));
     for (const status of ACTIVE_REGISTRATION_STATUSES) {
       expect(isActiveRegistration({ id: 'r', userId: HEAVY_UID, status }, HEAVY_UID)).toBe(true);

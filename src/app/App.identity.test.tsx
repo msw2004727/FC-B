@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { AuthUser } from '@/data/auth';
+import { emit } from '@/core/events';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { normalizeIdentitySettings, type IdentitySettings } from '@/data/identity-resolver';
@@ -270,6 +271,63 @@ describe('T-033 頂部頭像主身份與抽屜用同一份姓名／頭像', () =
     expect(topUser?.displayName).toBeNull();
     expect(topUser?.pictureUrl).toBeNull();
     expect(topBarProps.last?.isSyncing).toBe(true);
+  });
+
+  it('Firestore 名稱是空白（\'\'、\'   \'）而 Auth 有名稱 → 退回 Auth 名稱，不被空白擋住', async () => {
+    viewerMocks.useViewer.mockReturnValue(viewerWith({ displayName: '   ', pictureUrl: '' }));
+    await signInAs({ uid: 'u1', displayName: 'Auth名', pictureUrl: 'auth.jpg' });
+
+    await waitFor(() => {
+      const topUser = topBarProps.last?.user as TopBarUserProp;
+      expect(topUser?.displayName).toBe('Auth名');
+      expect(topUser?.pictureUrl).toBe('auth.jpg');
+    });
+  });
+
+  it('兩邊名稱頭像都是空白或空字串 → 視為沒有資料（null，TopBar 顯示「?」），空白頭像網址不算有頭像', async () => {
+    viewerMocks.useViewer.mockReturnValue(viewerWith({ displayName: '   ', pictureUrl: '  ' }));
+    await signInAs({ uid: 'u1', displayName: '', pictureUrl: '\t' });
+
+    await waitFor(() => expect(topBarProps.last?.isSyncing).toBe(false));
+    const topUser = topBarProps.last?.user as TopBarUserProp;
+    expect(topUser?.displayName).toBeNull();
+    expect(topUser?.pictureUrl).toBeNull();
+  });
+
+  it('A 登入 → 登出 → B 登入，而 routeAccess 仍是 A 的快照 → B 不套用 A 的姓名／頭像；快照換成 B 後才套用', async () => {
+    viewerMocks.useViewer.mockReturnValue(viewerWith({ uid: 'u1', displayName: 'A的名字', pictureUrl: 'a.jpg' }));
+    const view = await signInAs({ uid: 'u1', displayName: null, pictureUrl: null });
+    await waitFor(() => expect((topBarProps.last?.user as TopBarUserProp)?.displayName).toBe('A的名字'));
+
+    // 登出：user 清空，TopBar 不再收到使用者。
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+    });
+    await waitFor(() => expect(topBarProps.last?.user ?? null).toBeNull());
+    expect(topBarProps.last?.isSyncing).toBe(false);
+
+    // B 登入：viewer 快照仍是 A 的（useViewer 的 mock 沒變）。
+    auth.getCurrentUser.mockResolvedValue({ uid: 'u2', displayName: null, pictureUrl: null });
+    await act(async () => {
+      emit('auth:changed', { uid: 'u2' });
+    });
+    await waitFor(() => expect((topBarProps.last?.user as TopBarUserProp)?.uid).toBe('u2'));
+    let topUser = topBarProps.last?.user as TopBarUserProp;
+    expect(topUser?.displayName).toBeNull();
+    expect(topUser?.pictureUrl).toBeNull();
+    expect(topBarProps.last?.isSyncing).toBe(true);
+
+    // viewer 快照換成 B 的之後才套用 B 自己的資料。
+    viewerMocks.useViewer.mockReturnValue(viewerWith({ uid: 'u2', displayName: 'B的名字', pictureUrl: 'b.jpg' }));
+    await act(async () => {
+      view.rerender(<App />);
+    });
+    await waitFor(() => {
+      topUser = topBarProps.last?.user as TopBarUserProp;
+      expect(topUser?.displayName).toBe('B的名字');
+      expect(topUser?.pictureUrl).toBe('b.jpg');
+    });
+    expect(topBarProps.last?.isSyncing).toBe(false);
   });
 
   it('未登入 → TopBar 不收到 user，也不顯示同步中', async () => {

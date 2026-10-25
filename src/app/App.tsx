@@ -105,6 +105,14 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
   return component;
 }
 
+/** 取第一個「去空白後不為空」的字串；都沒有回 null（空字串、全空白、null、undefined 都算沒有資料）。 */
+function firstNonBlank(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') return value;
+  }
+  return null;
+}
+
 export interface AppProps {
   onLogin?: () => void | Promise<void>;
   loginPending?: boolean;
@@ -301,8 +309,8 @@ export function App({
       }
       : {
         ...user,
-        displayName: viewerForUser?.displayName ?? user.displayName,
-        pictureUrl: viewerForUser?.pictureUrl ?? user.pictureUrl,
+        displayName: firstNonBlank(viewerForUser?.displayName, user.displayName),
+        pictureUrl: firstNonBlank(viewerForUser?.pictureUrl, user.pictureUrl),
       };
 
   return (
