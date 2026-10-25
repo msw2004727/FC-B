@@ -249,6 +249,36 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(view.container.querySelector('#line-avatar-topbar')?.textContent).toBe('A');
   });
 
+  it('T-033：已登入但名稱頭像還沒到（isSyncing）→ 同步小轉圈；資料到了 → 換成首字', () => {
+    const user = { uid: 'U0000000000000000000000000000001', displayName: null, pictureUrl: null };
+    const view = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} user={user} isSyncing />);
+    const avatar = () => view.container.querySelector('#line-avatar-topbar');
+    expect(avatar()?.classList.contains('line-avatar-loading')).toBe(true);
+    expect(avatar()?.querySelector('.line-avatar-spinner')).not.toBeNull();
+    expect(avatar()?.textContent).toBe('');
+
+    view.rerender(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} user={{ ...user, displayName: '小明' }} isSyncing={false} />,
+    );
+    expect(avatar()?.classList.contains('line-avatar-loading')).toBe(false);
+    expect(avatar()?.querySelector('.line-avatar-spinner')).toBeNull();
+    expect(avatar()?.textContent).toBe('小');
+  });
+
+  it('T-033：資料同步完成、兩邊都沒有名稱 → 顯示「?」而不是轉圈', () => {
+    const user = { uid: 'U0000000000000000000000000000001', displayName: null, pictureUrl: null };
+    const { container } = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} user={user} isSyncing={false} />);
+    const avatar = container.querySelector('#line-avatar-topbar');
+    expect(avatar?.classList.contains('line-avatar-loading')).toBe(false);
+    expect(avatar?.textContent).toBe('?');
+  });
+
+  it('T-033：isSyncing 但已有頭像網址 → 不轉圈（照 A：只有「同步中且尚無頭像網址」才轉）', () => {
+    const user = { uid: 'U0000000000000000000000000000001', displayName: null, pictureUrl: 'https://example.test/a.png' };
+    const { container } = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} user={user} isSyncing />);
+    expect(container.querySelector('#line-avatar-topbar')?.classList.contains('line-avatar-loading')).toBe(false);
+  });
+
   it('opens #user-menu-dropdown when clicking avatar, closes on outside click, and calls signOut on logout (M-017)', async () => {
     const signOutSpy = vi.spyOn(authMod, 'signOut').mockResolvedValue();
     const { container } = render(

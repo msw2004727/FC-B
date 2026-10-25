@@ -287,13 +287,23 @@ export function App({
     )
     : null;
   // 照 A `renderLoginUI`：第二身份時 TopBar 只用第二身份的頭像候選，不退回 LINE 頭像。
-  const topBarUser = chromeIdentity?.identityId === 'secondary' && user
-    ? {
-      ...user,
-      displayName: chromeIdentity.displayName,
-      pictureUrl: chromeIdentity.avatarCandidates[0] ?? null,
-    }
-    : user;
+  // 主身份與抽屜用同一份資料（Firestore 使用者資料優先、Auth 備援）：LINE 使用者的 Auth 帳號
+  // 沒有名稱與頭像（functions ensureAuthUser 只給 uid），只看 Auth 會永遠顯示「?」。
+  // 兩邊都沒名稱時不退回 uid／「用戶」，維持 TopBar 的「?」。
+  const viewerForUser = user && routeAccess?.uid === user.uid ? routeAccess : null;
+  const topBarUser = !user
+    ? null
+    : chromeIdentity?.identityId === 'secondary'
+      ? {
+        ...user,
+        displayName: chromeIdentity.displayName,
+        pictureUrl: chromeIdentity.avatarCandidates[0] ?? null,
+      }
+      : {
+        ...user,
+        displayName: viewerForUser?.displayName ?? user.displayName,
+        pictureUrl: viewerForUser?.pictureUrl ?? user.pictureUrl,
+      };
 
   return (
     <LocationProvider>
@@ -308,6 +318,7 @@ export function App({
           user={topBarUser}
           crown={chromeIdentity?.identityId === 'secondary'}
           authPending={!authKnown && expectSignedIn}
+          isSyncing={user !== null && viewerForUser === null}
         />
         <SyncStatusBar />
         <main class="app-main">
