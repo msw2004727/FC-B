@@ -184,14 +184,8 @@ function AuthenticatedProfile({
   const { state, retry } = useRemote(uid, loadUserProfile);
   if (state.status === 'loading') return <Loading />;
   if (state.status === 'error') return <Failure retry={retry} />;
-  if (!state.data) {
-    return (
-      <>
-        <Missing />
-        <Failure retry={retry} />
-      </>
-    );
-  }
+  // 查無個人資料只顯示「找不到資料」；只有真的讀取失敗（上面）才顯示失敗訊息與重試（退修 1 #6）。
+  if (!state.data) return <Missing />;
 
   return <ProfileContent uid={uid} initial={state.data} viewer={viewer} />;
 }

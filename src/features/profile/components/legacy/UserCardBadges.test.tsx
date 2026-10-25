@@ -167,23 +167,42 @@ describe('UserCardBadges（成就系統關閉）', () => {
     gate.open = true;
   });
 
-  it('保留區塊標題，整塊反灰（ach-closed＋aria-disabled），不出現毛玻璃載入提示', () => {
+  it('保留區塊標題，整塊反灰（ach-closed），不出現毛玻璃載入提示', () => {
     const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
     const card = container.querySelector('.info-card');
     expect(container.textContent).toContain('已獲得徽章');
     expect(card?.classList.contains('ach-closed')).toBe(true);
-    expect(card?.getAttribute('aria-disabled')).toBe('true');
     expect(container.querySelector('.uc-blur-overlay')).toBeFalsy();
     expect(container.textContent).not.toContain('點擊載入此用戶的徽章');
     expect(container.querySelector('.uc-badge-list')).toBeFalsy();
   });
 
-  it('點擊只顯示尚未開放，不讀取任何徽章資料', async () => {
+  it('關閉說明由原生 button 承載（可聚焦、有角色、保留可見說明文字，退修 1 #3）', () => {
+    const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
+    const button = container.querySelector('button.ach-closed-note') as HTMLButtonElement | null;
+    expect(button).toBeTruthy();
+    expect(button?.tagName).toBe('BUTTON');
+    expect(button?.type).toBe('button');
+    expect(button?.getAttribute('aria-disabled')).toBe('true');
+    // 原生 button 預設可聚焦；說明文字就是 button 的可見文字（測試環境沒載字典，t() 回傳 key）
+    expect(button?.textContent).toMatch(/exp-achievements\.closed|尚未開放/);
+    expect(button?.tabIndex).toBe(0);
+    expect(button?.disabled).toBe(false);
+    button?.focus();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('點 button 與點卡片其他地方各只觸發一次尚未開放，不讀取任何徽章資料', async () => {
     const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
     const card = container.querySelector('.info-card');
+    const button = container.querySelector('button.ach-closed-note');
     expect(card).toBeTruthy();
-    if (card) fireEvent.click(card);
+    expect(button).toBeTruthy();
+    if (button) fireEvent.click(button);
     expect(closedToastMock).toHaveBeenCalledTimes(1);
+    const title = container.querySelector('.info-title');
+    if (title) fireEvent.click(title);
+    expect(closedToastMock).toHaveBeenCalledTimes(2);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(loadAchievementDefs).not.toHaveBeenCalled();
     expect(loadUserAchievementProgress).not.toHaveBeenCalled();

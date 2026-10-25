@@ -1,10 +1,22 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { routeMock } = vi.hoisted(() => ({ routeMock: vi.fn() }));
+const { routeMock, gate } = vi.hoisted(() => ({ routeMock: vi.fn(), gate: { open: false } }));
 vi.mock('preact-iso', () => ({
   useLocation: () => ({ route: routeMock }),
 }));
+
+// 成就／稱號開放開關：預設關閉（正式狀態），gate.open=true 驗證開放時所有反灰與導向都解除（退修 1 #2）。
+vi.mock('@/features/exp-achievements/availability', async () => {
+  const actual: typeof import('@/features/exp-achievements/availability') =
+    await vi.importActual('@/features/exp-achievements/availability');
+  return {
+    ...actual,
+    get ACHIEVEMENTS_OPEN() {
+      return gate.open;
+    },
+  };
+});
 
 vi.mock('@/features/exp-achievements/data/achievements', async () => {
   const actual: typeof import('@/features/exp-achievements/data/achievements') =
@@ -54,6 +66,7 @@ vi.mock('@/data/identity-resolver', () => ({
   }),
 }));
 
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
@@ -71,13 +84,17 @@ const viewer = {
 } as unknown as ViewerView;
 
 describe('LegacyProfileHeader', () => {
-  beforeEach(() => {
-    document.documentElement.lang = 'zh-TW';
+  beforeEach(async () => {
+    // 載入真正的 zh-TW 字典：toast 文字要是實際譯文，不是 key 名稱（退修 1 測試強度）
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW');
     vi.clearAllMocks();
+    gate.open = false;
   });
 
   afterEach(() => {
     cleanup();
+    gate.open = false;
   });
 
   it('頭部顯示金銀稱號與名字', async () => {
@@ -135,7 +152,7 @@ describe('LegacyProfileHeader', () => {
       expect(routeMock).not.toHaveBeenCalled();
       expect(toastSpy).toHaveBeenCalledTimes(2);
       for (const call of toastSpy.mock.calls) {
-        expect(call[0]).toEqual({ message: expect.stringMatching(/exp-achievements\.closed|尚未開放/) });
+        expect(call[0]).toEqual({ message: '功能尚未開放' });
       }
       toastSpy.mockRestore();
     });
@@ -150,6 +167,32 @@ describe('LegacyProfileHeader', () => {
       // 其他三個統計項不反灰
       expect(container.querySelectorAll('.stat-item.ach-closed')).toHaveLength(1);
       expect(quickItem(container, '道具欄').disabled).toBe(true);
+    });
+  });
+
+  // 退修 1 #2：ACHIEVEMENTS_OPEN 是單一開關，改 true 後頭部所有反灰與「不導頁」都要解除。
+  describe('成就／稱號開放（ACHIEVEMENTS_OPEN=true）', () => {
+    it('快捷鈕與徽章數統計項不反灰，點擊照原本導到 /achievements、/titles，不顯示尚未開放', async () => {
+      gate.open = true;
+      const toastSpy = vi.spyOn(toast, 'show');
+      const { container } = render(
+        <LegacyProfileTopSection uid="me" profile={profile} viewer={viewer} summary={null} />,
+      );
+      const items = Array.from(container.querySelectorAll<HTMLButtonElement>('.quick-item'));
+      const achievements = items.find((b) => b.textContent?.includes('成就/徽章'));
+      const titles = items.find((b) => b.textContent?.includes('稱號'));
+      expect(achievements && titles).toBeTruthy();
+      expect(container.querySelectorAll('.ach-closed')).toHaveLength(0);
+      expect(achievements?.hasAttribute('aria-disabled')).toBe(false);
+      await waitFor(() => {
+        expect(container.querySelector('#profile-stat-badges')?.textContent).toBe('2');
+      });
+      if (achievements) fireEvent.click(achievements);
+      if (titles) fireEvent.click(titles);
+      expect(routeMock).toHaveBeenNthCalledWith(1, '/achievements');
+      expect(routeMock).toHaveBeenNthCalledWith(2, '/titles');
+      expect(toastSpy).not.toHaveBeenCalled();
+      toastSpy.mockRestore();
     });
   });
 });

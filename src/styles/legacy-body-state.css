@@ -11,8 +11,9 @@ body { overscroll-behavior: none; }
  * 桌機滾輪事件被這層吃掉、不再傳給整頁（viewport），游標停在內容區就無法上下捲動（A 沒有這個問題：它沒有 .legacy-ui 這層容器，滾輪直接落在 viewport）。
  * .legacy-ui 這層必須讓捲動往上傳；防下拉重整與回彈改由下面的 html 規則負責（見 html 那條的說明）。
  * 用 `body .legacy-ui`（特異度高於 base.css 打包後的 .legacy-ui），不依賴載入順序；modal 等元件自己的 overscroll-behavior: contain 不受影響。
+ * 只改垂直軸（-y）：滾輪／觸控的問題在 Y 軸，水平軸維持修前的 none（用簡寫會連 X 軸一起改，退修 1 修正）。
  */
-body .legacy-ui { overscroll-behavior: auto; }
+body .legacy-ui { overscroll-behavior-y: auto; }
 /*
  * T-038（2026-10-26，顧問必停點補驗）：真正擋下拉重新整理與回彈的是「根元素 html」的 overscroll-behavior。
  * 實測（Chromium 147）：只在 body 設 none，子頁捲到底後再滾，父頁仍被帶著捲；只在 html 設 none 才擋住——

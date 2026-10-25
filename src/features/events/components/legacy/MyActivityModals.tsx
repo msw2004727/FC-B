@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
+import '@/styles/legacy/edu-info-btn.css';
 import { STATUS_CONFIG } from './TimelineEventCard';
 import { getEventCreatorName } from './MyActivityCard';
 import { loadEventRegistrations } from '../../data/event-detail';
@@ -82,8 +83,10 @@ export function MyActivityStatsModal({
     </div>
   );
 
+  // createPortal 到 body 會離開頁面的 .legacy-ui，A 的 .edu-info-overlay 樣式（限定在 .legacy-ui 內）就套不到；
+  // 比照 ProfileInfoButton／CeInfoDialog 外包一層 .legacy-ui（退修 1 #7：只補 CSS import 還不夠）。
   if (typeof document !== 'undefined') {
-    return createPortal(overlay, document.body);
+    return createPortal(<div class="legacy-ui">{overlay}</div>, document.body);
   }
   return overlay;
 }

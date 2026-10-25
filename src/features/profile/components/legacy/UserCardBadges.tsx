@@ -35,14 +35,21 @@ export function UserCardBadges(props: UserCardBadgesProps): JSX.Element {
   return ACHIEVEMENTS_OPEN ? <UserCardBadgesLive {...props} /> : <UserCardBadgesClosed />;
 }
 
-/** 關閉期間：保留區塊標題，整塊反灰；點擊只顯示「尚未開放」，不載入徽章。 */
+/**
+ * 關閉期間：保留區塊標題，整塊反灰；點擊只顯示「尚未開放」，不載入徽章。
+ * 可操作的是卡片裡的原生 button（承載可見的關閉說明；可聚焦，Enter／Space 由瀏覽器轉成 click）；
+ * 卡片本身的 onClick 只是讓滑鼠點整塊也有回應，button 的 click 會冒泡到這裡，所以只處理一次。
+ * 個人頁在 .legacy-ui 內，文字不用 <Text>（FC-B CLAUDE.md：A 外觀頁面不用 <Text>）。
+ */
 function UserCardBadgesClosed(): JSX.Element {
   const t = useT();
   return (
-    <div class="info-card ach-closed" aria-disabled="true" onClick={showAchievementsClosedToast}>
+    <div class="info-card ach-closed" onClick={showAchievementsClosedToast}>
       <div class="info-title">{lt('已獲得徽章', '已獲得徽章')}</div>
       <div id="uc-badge-container">
-        <div style="font-size:.82rem;color:var(--text-muted)">{t('exp-achievements.closed')}</div>
+        <button type="button" class="ach-closed-note" aria-disabled="true">
+          {t('exp-achievements.closed')}
+        </button>
       </div>
     </div>
   );

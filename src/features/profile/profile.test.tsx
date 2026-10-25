@@ -612,6 +612,26 @@ describe('我的個人頁（A 版結構）', () => {
     expect(loadUserProfile).toHaveBeenCalledTimes(2);
   });
 
+  it('查無個人資料時只顯示「找不到資料」，不同時顯示讀取失敗與重試（退修 1 #6）', async () => {
+    vi.mocked(loadUserProfile).mockResolvedValue(null);
+    render(<ProfilePage />);
+    expect(await screen.findByText(zh.unavailable)).toBeTruthy();
+    expect(screen.queryByText(zh.loadError)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: zh.retry })).toBeNull();
+    expect(document.querySelectorAll('.profile-state')).toHaveLength(1);
+  });
+
+  it('真的讀取失敗才顯示失敗訊息與重試，不顯示「找不到資料」（退修 1 #6）', async () => {
+    vi.mocked(loadUserProfile).mockRejectedValue(new Error('offline'));
+    render(<ProfilePage />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(zh.loadError)).toBeTruthy();
+    expect(screen.getByRole('button', { name: zh.retry })).toBeTruthy();
+    expect(screen.queryByText(zh.unavailable)).toBeNull();
+    expect(document.querySelectorAll('.profile-state')).toHaveLength(1);
+  });
+
   it('首次表單只提交白名單；保留失敗輸入，允許重試', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({
       gender: '',

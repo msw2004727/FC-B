@@ -20,6 +20,25 @@ describe('exp-achievements 路由守衛（T-038）', () => {
     }
   });
 
+  it('關閉期間：成就頁與稱號頁模組完全不會被載入（不只是回傳替身，退修 1 測試強度）', async () => {
+    const loaded = vi.fn();
+    vi.resetModules();
+    vi.doUnmock('./availability');
+    vi.doMock('./pages/AchievementsPage', () => {
+      loaded('achievements');
+      return { default: () => null };
+    });
+    vi.doMock('./pages/TitlesPage', () => {
+      loaded('titles');
+      return { default: () => null };
+    });
+    const { manifest: closedManifest } = await import('./index');
+    for (const route of closedManifest.routes) await route.load();
+    expect(loaded).not.toHaveBeenCalled();
+    vi.doUnmock('./pages/AchievementsPage');
+    vi.doUnmock('./pages/TitlesPage');
+  });
+
   it('開放時：路由載入原本的成就頁與稱號頁', async () => {
     vi.resetModules();
     vi.doMock('./availability', () => ({ ACHIEVEMENTS_OPEN: true }));

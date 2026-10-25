@@ -1,5 +1,7 @@
 /*
  * 成就／稱號系統關閉期間的反灰外觀（T-038，2026-10-26）。開關見 availability.ts 的 ACHIEVEMENTS_OPEN。
+ * 這個檔的每條規則都綁在狀態 class 上（元件關閉時才加的 .ach-closed，或 availability.ts 掛在 <html> 的 .achievements-closed），
+ * 開放後 class 不存在，規則就不會命中——不需要另外刪 CSS（closed-css.test.ts 檢查每個選擇器都綁了狀態 class）。
  * 沿用我的頁「道具欄」現成的反灰值（opacity／grayscale），但入口仍要能點（點了顯示「尚未開放」），
  * 所以不能直接用 A 的 .quick-item.disabled（它帶 pointer-events:none，點擊事件根本不會發生）。
  */
@@ -18,12 +20,28 @@
   border-color: var(--border);
   color: var(--text-secondary);
 }
+/* 鍵盤焦點要看得見（整塊有 opacity，環畫粗一點） */
+.legacy-ui .quick-item.ach-closed:focus-visible,
+.legacy-ui .info-card.ach-closed .ach-closed-note:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+/* 名片關閉說明：原生 button 承載（可聚焦、Enter／Space 啟動），外觀與其他說明文字一致 */
+.legacy-ui .info-card.ach-closed .ach-closed-note {
+  display: block;
+  padding: 0;
+  font-size: .82rem;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: not-allowed;
+}
 /*
- * 他人名片的徽章數（#uc-stat-badges，DOM 在 LegacyUserCard.tsx，目前固定顯示 --）：
- * 該檔由其他工單修改，這裡用相鄰兄弟選擇器反灰，不動它的 DOM。恢復開放時一併刪除這條。
+ * 他人名片的徽章數（#uc-stat-badges，DOM 在 T-037 擁有的 LegacyUserCard.tsx，目前固定顯示 --）：
+ * 不改該檔的 DOM，用 <html> 的狀態 class 控制；數字與標籤是同層兄弟（用一般兄弟選擇器，中間多包一層元素不會失效，
+ * 結構契約由 closed-css.test.ts 檢查）。
  */
-.legacy-ui #uc-stat-badges,
-.legacy-ui #uc-stat-badges + .stat-label {
+html.achievements-closed .legacy-ui #uc-stat-badges,
+html.achievements-closed .legacy-ui #uc-stat-badges ~ .stat-label {
   opacity: .35;
   filter: grayscale(1);
 }

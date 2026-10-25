@@ -27,6 +27,19 @@ function overscrollOf(css, from, sel, { scope = false } = {}) {
   return values;
 }
 
+/** 回傳 selector 完整等於 sel 的規則裡，名稱符合 propRe 的宣告（後面的覆蓋前面的）。 */
+function declsByProp(css, from, sel, propRe) {
+  const root = postcss.parse(css, { from });
+  const out = {};
+  root.walkRules((rule) => {
+    if (!rule.selectors.map((s) => s.trim()).includes(sel)) return;
+    rule.walkDecls(propRe, (decl) => {
+      out[decl.prop] = decl.value;
+    });
+  });
+  return out;
+}
+
 /** 簡化的特異度（id, class／屬性／偽類, 元素）；只夠比較本測試用到的選擇器。 */
 function specificity(selector) {
   const ids = (selector.match(/#[\w-]+/g) ?? []).length;
@@ -68,10 +81,18 @@ describe('.legacy-ui 的滾動鏈（桌機滾輪）', () => {
     expect(values).toEqual(['overscroll-behavior-y:none']);
   });
 
-  it('.legacy-ui 這層由更高特異度的規則改回 auto，滾輪可傳給整頁', () => {
-    const fix = overscrollOf(stateCss, STATE_PATH, 'body .legacy-ui');
-    expect(fix).toEqual(['auto']);
+  it('.legacy-ui 這層只把 Y 軸由更高特異度的規則改回 auto（X 軸維持修前的 none），滾輪可傳給整頁', () => {
+    // 用長手寫法 overscroll-behavior-y：簡寫 overscroll-behavior 會連 X 軸一起改（退修 1 #1）。
+    const fix = declsByProp(stateCss, STATE_PATH, 'body .legacy-ui', /^overscroll-behavior/);
+    expect(fix).toEqual({ 'overscroll-behavior-y': 'auto' });
     expect(isHigher(specificity('body .legacy-ui'), specificity('.legacy-ui'))).toBe(true);
+
+    // 兩條規則疊起來後 .legacy-ui 的有效值：X 取 A 原檔簡寫的 none，Y 取覆蓋規則的 auto。
+    const base = overscrollOf(baseCss, BASE_PATH, '.legacy-ui', { scope: true }).at(-1);
+    const effective = { x: base, y: base };
+    if (fix['overscroll-behavior-y']) effective.y = fix['overscroll-behavior-y'];
+    if (fix['overscroll-behavior-x']) effective.x = fix['overscroll-behavior-x'];
+    expect(effective).toEqual({ x: 'none', y: 'auto' });
   });
 
   it('legacy-body-state.css 不經 legacy-css-scope（路徑不含 /legacy/ 資料夾），body 選擇器維持全域', () => {

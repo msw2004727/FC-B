@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import type { Locale } from '@/i18n/locales';
 import { toast } from '@/ui/Toast';
-import { ACHIEVEMENTS_OPEN, showAchievementsClosedToast } from './availability';
+import {
+  ACHIEVEMENTS_CLOSED_CLASS,
+  ACHIEVEMENTS_OPEN,
+  showAchievementsClosedToast,
+  syncAchievementsClosedClass,
+} from './availability';
 
 const EXPECTED: Record<Locale, string> = {
   'zh-TW': '功能尚未開放',
@@ -40,5 +45,20 @@ describe('成就／稱號開放開關（T-038）', () => {
     expect(spy).toHaveBeenCalledWith({ message });
     expect(message).not.toContain('exp-achievements.closed');
     spy.mockRestore();
+  });
+
+  it('載入模組時依開關在 <html> 掛上狀態 class（關閉＝有 class）', () => {
+    expect(document.documentElement.classList.contains(ACHIEVEMENTS_CLOSED_CLASS)).toBe(!ACHIEVEMENTS_OPEN);
+    expect(ACHIEVEMENTS_CLOSED_CLASS).toBe('achievements-closed');
+  });
+
+  it('開放時移除 <html> 狀態 class，關閉時再加回（改 ACHIEVEMENTS_OPEN=true 後不會留下反灰，退修 1 #2）', () => {
+    const root = document.createElement('html');
+    syncAchievementsClosedClass(false, root);
+    expect(root.classList.contains(ACHIEVEMENTS_CLOSED_CLASS)).toBe(true);
+    syncAchievementsClosedClass(true, root);
+    expect(root.classList.contains(ACHIEVEMENTS_CLOSED_CLASS)).toBe(false);
+    syncAchievementsClosedClass(false, root);
+    expect(root.classList.contains(ACHIEVEMENTS_CLOSED_CLASS)).toBe(true);
   });
 });
