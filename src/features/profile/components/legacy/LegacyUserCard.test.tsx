@@ -3,11 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/ui/Toast', () => ({ toast: vi.fn() }));
 vi.mock('../../data/profile-model', () => ({ loadUserProfile: vi.fn() }));
-vi.mock('../../data/activity-records', () => ({
-  loadUserStats: vi.fn(),
-  getFilteredRecords: vi.fn(() => []),
-  RECORDS_PAGE_SIZE: 10,
-}));
+vi.mock('../../data/activity-records', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../data/activity-records')>();
+  return {
+    formatUserAttendanceSummaryTime: actual.formatUserAttendanceSummaryTime,
+    loadUserStats: vi.fn(),
+    getFilteredRecords: vi.fn(() => []),
+    RECORDS_PAGE_SIZE: 10,
+  };
+});
 vi.mock('../../data/attendance-summary', () => ({
   loadUserAttendanceSummary: vi.fn(),
 }));
@@ -135,5 +139,68 @@ describe('LegacyUserCard（照 A showUserProfile）', () => {
 
     await waitFor(() => expect(loadUserStats).toHaveBeenCalledWith('target-uid'));
     expect(loadUserAttendanceSummary).toHaveBeenCalledWith('target-uid');
+  });
+
+  it('統計三格照 A _renderUserAttendanceSummary：應到＝expectedCount、完成場次＝completedCount（不是簽到場次 attendedCount）、出席率＝attendRate', async () => {
+    // 站長實測帳號形狀：應到 26、簽到 22、完成（簽到＋簽退）14、出席率 85%。
+    vi.mocked(loadUserAttendanceSummary).mockResolvedValue({
+      uid: 'target-uid',
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: 26,
+      attendedCount: 22,
+      completedCount: 14,
+      attendRate: 85,
+      updatedAt: null,
+    });
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+    const { container } = render(<LegacyUserCard uid="target-uid" />);
+    await waitFor(() => expect(container.querySelector('.uc-header')).toBeTruthy());
+
+    // 載入前三格都是 --
+    expect(container.querySelector('#uc-stat-total')?.textContent).toBe('--');
+    expect(container.querySelector('#uc-stat-done')?.textContent).toBe('--');
+    expect(container.querySelector('#uc-stat-rate')?.textContent).toBe('--');
+
+    const recordBlur = Array.from(container.querySelectorAll('.uc-blur-overlay')).find((el) =>
+      el.textContent?.includes('點擊載入活動記錄'),
+    );
+    expect(recordBlur).toBeTruthy();
+    if (recordBlur) fireEvent.click(recordBlur);
+
+    await waitFor(() =>
+      expect(container.querySelector('#uc-stat-total')?.textContent).toBe('26'),
+    );
+    expect(container.querySelector('#uc-stat-done')?.textContent).toBe('14');
+    expect(container.querySelector('#uc-stat-rate')?.textContent).toBe('85%');
+  });
+
+  it('「資料更新」時間照 A _formatUserAttendanceSummaryTime：YYYY/MM/DD HH:mm（含年份）', async () => {
+    vi.mocked(loadUserAttendanceSummary).mockResolvedValue({
+      uid: 'target-uid',
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: 5,
+      attendedCount: 4,
+      completedCount: 3,
+      attendRate: 80,
+      // Firestore Timestamp 形狀（正式資料的 updatedAt）
+      updatedAt: { toDate: () => new Date(2026, 9, 26, 14, 30, 0) },
+    });
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+    const { container } = render(<LegacyUserCard uid="target-uid" />);
+    await waitFor(() => expect(container.querySelector('.uc-header')).toBeTruthy());
+    expect(container.querySelector('#uc-records-updated-at')?.textContent).toBe('資料更新 --');
+
+    const recordBlur = Array.from(container.querySelectorAll('.uc-blur-overlay')).find((el) =>
+      el.textContent?.includes('點擊載入活動記錄'),
+    );
+    if (recordBlur) fireEvent.click(recordBlur);
+
+    await waitFor(() =>
+      expect(container.querySelector('#uc-records-updated-at')?.textContent).toBe(
+        '資料更新 2026/10/26 14:30',
+      ),
+    );
   });
 });

@@ -14,6 +14,7 @@ import {
   type UserAttendanceSummary,
 } from '../../data/attendance-summary';
 import {
+  formatUserAttendanceSummaryTime,
   getFilteredRecords,
   loadUserStats,
   type UserStatsSnapshot,
@@ -34,32 +35,6 @@ import {
   resolveEffectiveRole,
   sanitizeHttpAvatarUrl,
 } from './profile-legacy-helpers';
-
-/** 照 A `_renderUserAttendanceSummary` 的 `uc-records-updated-at`（初值 `--`，載入後顯示 MM/DD HH:MM）。 */
-function formatUpdatedAt(value: unknown): string {
-  if (!value) return '--';
-  let d: Date | null = null;
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as { toDate?: () => Date; seconds?: unknown };
-    if (typeof obj.toDate === 'function') {
-      try {
-        d = obj.toDate();
-      } catch {
-        d = null;
-      }
-    } else if (typeof obj.seconds === 'number' && Number.isFinite(obj.seconds)) {
-      d = new Date(obj.seconds * 1000);
-    }
-  } else if (typeof value === 'string' || typeof value === 'number') {
-    d = new Date(value);
-  }
-  if (!d || Number.isNaN(d.getTime())) return '--';
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${mm}/${dd} ${hh}:${mi}`;
-}
 
 type RecordFilter = 'all' | 'completed' | 'cancelled';
 
@@ -329,7 +304,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
           <span>{lt('活動紀錄', '活動紀錄')}</span>
           <span class="profile-record-sync-meta">
             <span id="uc-records-updated-at" class="profile-record-updated-at">
-              {lt('資料更新', '資料更新')} {formatUpdatedAt(summary?.updatedAt)}
+              {lt('資料更新', '資料更新')} {formatUserAttendanceSummaryTime(summary?.updatedAt)}
             </span>
             <button
               id="uc-records-refresh"
@@ -362,7 +337,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
             <span class="stat-label">{lt('應到場次', '應到場次')}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-num" id="uc-stat-done">{summary?.attendedCount ?? '--'}</span>
+            <span class="stat-num" id="uc-stat-done">{summary?.completedCount ?? '--'}</span>
             <span class="stat-label">{lt('完成場次', '完成場次')}</span>
           </div>
           <div class="stat-item">

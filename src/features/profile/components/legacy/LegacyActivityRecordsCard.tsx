@@ -1,7 +1,9 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
+import { callFn } from '@/data/callables';
 import { useLegacyT } from '@/i18n/i18n';
+import { toast } from '@/ui/Toast';
 
 import {
   formatUserAttendanceSummaryTime,
@@ -58,9 +60,13 @@ export function LegacyActivityRecordsCard(
   const [status, setStatus] = useState<Status>('idle');
   const [stats, setStats] = useState<UserStatsSnapshot | null>(null);
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
+  // 收合狀態就已讀到的 summary（首次展開不必重讀）；換 uid 或重新整理時重置。
+  const summaryLoadedRef = useRef(false);
+  const refreshingRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -69,25 +75,51 @@ export function LegacyActivityRecordsCard(
     };
   }, []);
 
-  const loadAll = useCallback(async (): Promise<void> => {
+  // 照 A：標題列「資料更新」時間跟著統計走（A 以 onSnapshot 常駐），不必等展開卡片才有。
+  // 同一 UID 的並行讀取在 loadUserAttendanceSummary 內合併，和頁首統計不會重複讀。
+  useEffect(() => {
     const targetUid = String(uid || '').trim();
-    if (!targetUid) return;
+    summaryLoadedRef.current = false;
+    setSummary(null);
+    if (!targetUid) return undefined;
+    let active = true;
+    loadUserAttendanceSummary(targetUid)
+      .then((sum) => {
+        if (!active || !mountedRef.current) return;
+        summaryLoadedRef.current = sum !== null;
+        setSummary(sum);
+      })
+      .catch(() => { /* 讀取失敗維持 -- */ });
+    return () => {
+      active = false;
+    };
+  }, [uid]);
+
+  const loadAll = useCallback(async (reuseSummary = false): Promise<boolean> => {
+    const targetUid = String(uid || '').trim();
+    if (!targetUid) return false;
     const seq = ++loadSeqRef.current;
     setStatus('loading');
     try {
+      const skipSummary = reuseSummary && summaryLoadedRef.current;
       const [snap, sum] = await Promise.all([
         loadUserStats(targetUid),
-        loadUserAttendanceSummary(targetUid),
+        skipSummary ? Promise.resolve(undefined) : loadUserAttendanceSummary(targetUid),
       ]);
-      if (!mountedRef.current || seq !== loadSeqRef.current) return;
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setStats(snap);
-      setSummary(sum);
+      if (sum !== undefined) {
+        summaryLoadedRef.current = sum !== null;
+        setSummary(sum);
+      }
       setStatus('ready');
+      return true;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('[LegacyActivityRecordsCard] load failed', err);
-      if (!mountedRef.current || seq !== loadSeqRef.current) return;
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setStatus('error');
+      return false;
     }
   }, [uid]);
 
@@ -95,7 +127,7 @@ export function LegacyActivityRecordsCard(
     if (!open) {
       setOpen(true);
       if (status === 'idle') {
-        loadAll().catch(() => { /* loadAll 內部已處理錯誤 */ });
+        loadAll(true).catch(() => { /* loadAll 內部已處理錯誤 */ });
       }
     } else {
       setOpen(false);
@@ -116,9 +148,49 @@ export function LegacyActivityRecordsCard(
     (ev: MouseEvent): void => {
       // 照 A：`event.stopPropagation(); App.refreshMyActivityRecords();`
       ev.stopPropagation();
-      loadAll().catch(() => { /* loadAll 內部已處理錯誤 */ });
+      if (refreshingRef.current) return;
+      refreshingRef.current = true;
+      setRefreshing(true);
+      (async (): Promise<void> => {
+        try {
+          // A `refreshMyActivityRecords`：先請伺服器依報名補齊／修正 activityRecords 並重算統計，
+          // 再重讀（有冷卻時間，太頻繁會被擋）。
+          const res = (await callFn('refreshMyActivityRecords', {})) as {
+            created?: unknown;
+            updated?: unknown;
+          } | null;
+          const reloaded = await loadAll();
+          if (!mountedRef.current) return;
+          if (!reloaded) return;
+          const changed = Number(res?.created || 0) + Number(res?.updated || 0);
+          toast.show({
+            message: changed > 0
+              ? lt('報名紀錄已更新', '報名紀錄已更新')
+              : lt('報名紀錄已是最新', '報名紀錄已是最新'),
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[LegacyActivityRecordsCard] refresh failed', err);
+          if (!mountedRef.current) return;
+          const e = err as { code?: unknown; details?: { retryAfterSeconds?: unknown } } | null;
+          const code = typeof e?.code === 'string' ? e.code.replace(/^functions\//, '') : '';
+          if (code === 'resource-exhausted') {
+            const seconds = Number(e?.details?.retryAfterSeconds || 0);
+            toast.show({
+              message: seconds
+                ? lt('請 {n} 秒後再刷新', '請 {n} 秒後再刷新', { n: seconds })
+                : lt('刷新太頻繁，請稍後再試', '刷新太頻繁，請稍後再試'),
+            });
+          } else {
+            toast.show({ message: lt('報名紀錄刷新失敗', '報名紀錄刷新失敗') });
+          }
+        } finally {
+          refreshingRef.current = false;
+          if (mountedRef.current) setRefreshing(false);
+        }
+      })().catch(() => { /* 內部已處理 */ });
     },
-    [loadAll],
+    [loadAll, lt],
   );
 
   const handleFilterClick = useCallback((next: Filter): void => {
@@ -166,7 +238,8 @@ export function LegacyActivityRecordsCard(
             <button
               id="my-records-refresh"
               type="button"
-              class="profile-record-refresh-btn"
+              class={`profile-record-refresh-btn${refreshing ? ' spinning' : ''}`}
+              disabled={refreshing}
               onClick={handleRefresh}
               title={lt('重新整理', '重新整理')}
               aria-label={lt('重新整理', '重新整理')}

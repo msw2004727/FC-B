@@ -10,6 +10,10 @@ vi.mock('@/features/profile/components/legacy/ProfileInfoButton', () => ({
   ),
 }));
 
+// ── Callable／Toast mock：重新整理要走 refreshMyActivityRecords（照 A refreshMyActivityRecords）──
+vi.mock('@/data/callables', () => ({ callFn: vi.fn() }));
+vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
+
 // ── data 層：保留純函式本體，僅 mock loadUserStats ──
 vi.mock('@/features/profile/data/activity-records', async (importOriginal) => {
   const actual =
@@ -35,11 +39,15 @@ import {
   type UserStatsSnapshot,
 } from '@/features/profile/data/activity-records';
 import { loadUserAttendanceSummary } from '@/features/profile/data/attendance-summary';
+import { callFn } from '@/data/callables';
+import { toast } from '@/ui/Toast';
 
 import { LegacyActivityRecordsCard } from './LegacyActivityRecordsCard';
 
 const mockedLoadUserStats = vi.mocked(loadUserStats);
 const mockedLoadSummary = vi.mocked(loadUserAttendanceSummary);
+const mockedCallFn = vi.mocked(callFn);
+const mockedToastShow = vi.mocked(toast.show);
 
 function emptyStats(uid = 'u1'): UserStatsSnapshot {
   return { uid, activityRecords: [], attendanceRecords: [] };
@@ -114,10 +122,14 @@ describe('LegacyActivityRecordsCard', () => {
     const stats: UserStatsSnapshot = {
       uid: 'u1',
       activityRecords: [
-        { _docId: 'r1', eventId: 'e1', status: 'registered', name: 'LiveEvent', date: '2024-01-01T00:00:00Z', eventStatus: 'ongoing' },
-        { _docId: 'r2', eventId: 'e2', status: 'cancelled', name: 'CancelledOne', date: '2024-02-01T00:00:00Z' },
+        { _docId: 'r1', eventId: 'e1', status: 'registered', name: 'LiveEvent', date: '01/01', uid: 'u1' },
+        { _docId: 'r2', eventId: 'e2', status: 'cancelled', name: 'CancelledOne', date: '02/01', uid: 'u1' },
       ],
       attendanceRecords: [],
+      events: {
+        e1: { status: 'open', date: '2024/01/01 19:00~21:00' },
+        e2: { status: 'ended', date: '2024/02/01 19:00~21:00' },
+      },
     };
     mockedLoadUserStats.mockResolvedValue(stats);
     mockedLoadSummary.mockResolvedValue(null);
@@ -141,18 +153,152 @@ describe('LegacyActivityRecordsCard', () => {
     });
   });
 
-  it('重新整理鈕會再次呼叫 loadUserStats／loadUserAttendanceSummary', async () => {
+  it('重新整理鈕：先呼叫 refreshMyActivityRecords（A 的補齊報名紀錄＋重算統計），再重讀 loadUserStats／summary', async () => {
     mockedLoadUserStats.mockResolvedValue(emptyStats());
     mockedLoadSummary.mockResolvedValue(null);
+    mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
 
     render(<LegacyActivityRecordsCard uid="u1" />);
     fireEvent.click(getCollapseToggle());
     await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
-    expect(mockedLoadSummary).toHaveBeenCalledTimes(1);
+    expect(mockedCallFn).not.toHaveBeenCalled();
+    const summaryCallsBeforeRefresh = mockedLoadSummary.mock.calls.length;
 
     fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
     await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
+    expect(mockedCallFn).toHaveBeenCalledWith('refreshMyActivityRecords', {});
+    expect(mockedLoadSummary.mock.calls.length).toBeGreaterThan(summaryCallsBeforeRefresh);
+    // callable 一定在重讀之前完成
+    const callOrder = mockedCallFn.mock.invocationCallOrder[0] ?? 0;
+    const statsOrder = mockedLoadUserStats.mock.invocationCallOrder[1] ?? 0;
+    expect(callOrder).toBeLessThan(statsOrder);
+  });
+
+  it('重新整理結果 toast：有新增或更新→「報名紀錄已更新」；沒有→「報名紀錄已是最新」', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue(null);
+    render(<LegacyActivityRecordsCard uid="u1" />);
+
+    mockedCallFn.mockResolvedValueOnce({ success: true, created: 1, updated: 0 } as never);
+    fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已更新' }),
+    );
+
+    mockedToastShow.mockClear();
+    mockedCallFn.mockResolvedValueOnce({ success: true, created: 0, updated: 0 } as never);
+    fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已是最新' }),
+    );
+  });
+
+  it('重新整理太頻繁（resource-exhausted）→ 顯示等待秒數，且不重讀', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue(null);
+    render(<LegacyActivityRecordsCard uid="u1" />);
+
+    mockedCallFn.mockRejectedValueOnce(
+      Object.assign(new Error('too soon'), {
+        code: 'functions/resource-exhausted',
+        details: { retryAfterSeconds: 30 },
+      }),
+    );
+    fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '請 30 秒後再刷新' }),
+    );
+    expect(mockedLoadUserStats).not.toHaveBeenCalled();
+
+    mockedToastShow.mockClear();
+    mockedCallFn.mockRejectedValueOnce(
+      Object.assign(new Error('too soon'), { code: 'resource-exhausted' }),
+    );
+    fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '刷新太頻繁，請稍後再試' }),
+    );
+  });
+
+  it('重新整理失敗（其它錯誤）→「報名紀錄刷新失敗」，按鈕恢復可按', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue(null);
+    render(<LegacyActivityRecordsCard uid="u1" />);
+
+    mockedCallFn.mockRejectedValueOnce(new Error('boom'));
+    const btn = document.getElementById('my-records-refresh') as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄刷新失敗' }),
+    );
+    await waitFor(() => expect(btn.disabled).toBe(false));
+  });
+
+  it('重新整理進行中按鈕 disabled＋spinning，避免連點重複呼叫', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue(null);
+    let release: (v: unknown) => void = () => {};
+    mockedCallFn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }) as never,
+    );
+    render(<LegacyActivityRecordsCard uid="u1" />);
+
+    const btn = document.getElementById('my-records-refresh') as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    expect(btn.classList.contains('spinning')).toBe(true);
+    fireEvent.click(btn);
+    expect(mockedCallFn).toHaveBeenCalledTimes(1);
+
+    release({ success: true, created: 0, updated: 0 });
+    await waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.classList.contains('spinning')).toBe(false);
+  });
+
+  it('收合狀態就載入 summary：標題列「資料更新」立即顯示統計時間（照 A 常駐監聽），不載入紀錄清單', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue({
+      uid: 'u1',
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: 3,
+      attendedCount: 2,
+      completedCount: 2,
+      attendRate: 67,
+      updatedAt: new Date(2024, 0, 5, 9, 7, 0),
+    });
+
+    render(<LegacyActivityRecordsCard uid="u1" />);
+    await waitFor(() => {
+      expect(screen.getByText('資料更新 2024/01/05 09:07')).toBeTruthy();
+    });
+    expect(mockedLoadSummary).toHaveBeenCalledWith('u1');
+    expect(mockedLoadUserStats).not.toHaveBeenCalled();
+  });
+
+  it('已在收合狀態讀到 summary 時，第一次展開只讀紀錄、不重複讀 summary', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue({
+      uid: 'u1',
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: 3,
+      attendedCount: 2,
+      completedCount: 2,
+      attendRate: 67,
+      updatedAt: new Date(2024, 0, 5, 9, 7, 0),
+    });
+
+    render(<LegacyActivityRecordsCard uid="u1" />);
+    await waitFor(() => {
+      expect(screen.getByText('資料更新 2024/01/05 09:07')).toBeTruthy();
+    });
+    fireEvent.click(getCollapseToggle());
+    await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
+    expect(mockedLoadSummary).toHaveBeenCalledTimes(1);
   });
 
   it('超過 10 筆時顯示分頁「‹ p / total ›」且可按下一頁', async () => {
@@ -161,13 +307,20 @@ describe('LegacyActivityRecordsCard', () => {
       eventId: `e${i}`,
       status: 'registered' as const,
       name: `E${i}`,
-      date: `2024-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
-      eventStatus: 'ongoing',
+      date: `01/${String(i + 1).padStart(2, '0')}`,
+      uid: 'u1',
     }));
+    const events = Object.fromEntries(
+      activityRecords.map((r, i) => [
+        r.eventId,
+        { status: 'open', date: `2024/01/${String(i + 1).padStart(2, '0')} 19:00~21:00` },
+      ]),
+    );
     mockedLoadUserStats.mockResolvedValue({
       uid: 'u1',
       activityRecords,
       attendanceRecords: [],
+      events,
     });
     mockedLoadSummary.mockResolvedValue(null);
 

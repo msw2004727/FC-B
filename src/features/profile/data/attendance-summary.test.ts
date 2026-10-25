@@ -126,6 +126,41 @@ describe('loadUserAttendanceSummary', () => {
     });
   });
 
+  it('同一 UID 同時多處呼叫只讀一次（共用進行中的請求）；完成後再呼叫會重新讀取，不留過期快取', async () => {
+    const emptyDoc = { exists: () => false, data: () => undefined };
+    vi.mocked(getDoc).mockResolvedValue(emptyDoc as never);
+    let resolveSnap: (v: unknown) => void = () => {};
+    vi.mocked(getDoc).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSnap = resolve;
+        }) as never,
+    );
+
+    const first = loadUserAttendanceSummary('U-shared');
+    const second = loadUserAttendanceSummary('U-shared');
+    const otherUid = loadUserAttendanceSummary('U-other');
+    await vi.waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
+
+    resolveSnap({
+      exists: () => true,
+      data: () => ({ expectedCount: 3, attendedCount: 2, completedCount: 1 }),
+    });
+    const [a, b] = await Promise.all([first, second]);
+    await otherUid;
+    expect(a).toBe(b);
+    expect(a?.expectedCount).toBe(3);
+
+    // 已完成 → 下一次呼叫（例如按重新整理）必須重新讀伺服器
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ expectedCount: 4, attendedCount: 3, completedCount: 2 }),
+    } as never);
+    const third = await loadUserAttendanceSummary('U-shared');
+    expect(third?.expectedCount).toBe(4);
+    expect(getDoc).toHaveBeenCalledTimes(3);
+  });
+
   it('getDoc 拋錯時捕捉並回傳 null', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.mocked(getDoc).mockRejectedValue(new Error('permission-denied'));

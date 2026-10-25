@@ -7,6 +7,7 @@ const {
   addDoc,
   writeBatch,
   getDocs,
+  collection,
   collectionGroup,
   query,
   where,
@@ -17,6 +18,7 @@ const {
   const addDoc = vi.fn();
   const writeBatch = vi.fn();
   const getDocs = vi.fn();
+  const collection = vi.fn((_db: unknown, name: string) => ({ __col: name }));
   const collectionGroup = vi.fn((_db: unknown, name: string) => ({ __cg: name }));
   const query = vi.fn((base: unknown, ...clauses: unknown[]) => ({
     __query: base,
@@ -34,6 +36,7 @@ const {
     addDoc,
     writeBatch,
     getDocs,
+    collection,
     collectionGroup,
     query,
     where,
@@ -42,6 +45,7 @@ const {
 });
 
 vi.mock('firebase/firestore', () => ({
+  collection,
   collectionGroup,
   query,
   where,
@@ -85,9 +89,24 @@ function makeDoc(spec: MockDocSpec): Record<string, unknown> {
   };
 }
 
+function makeEventDoc(id: string, data: Record<string, unknown>): Record<string, unknown> {
+  return { id: `doc-${id}`, data: () => ({ id, ...data }) };
+}
+
+/** A 現場寫入的 activityRecord 形狀（`firebase-crud.js#registerForEvent`）：沒有 eventStatus，date 只有 MM/DD。 */
+function actRec(
+  eventId: string,
+  status: string,
+  name: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { _docId: `r-${eventId}-${status}`, eventId, status, name, date: '10/01', uid: 'u1', ...extra };
+}
+
 describe('loadUserStats（R-REG-014 過濾、無寫入）', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    getDocs.mockReset();
   });
 
   it('使用 collectionGroup + where(uid)，過濾 legacy root，且不做任何寫入', async () => {
@@ -101,11 +120,12 @@ describe('loadUserStats（R-REG-014 過濾、無寫入）', () => {
       id: 'l1',
       path: 'activityRecords/l1',
       hasParent: false,
-      data: { uid: 'u1' },
+      data: { uid: 'u1', eventId: 'legacy-event' },
     });
     getDocs
       .mockResolvedValueOnce({ docs: [sub, legacy] })
-      .mockResolvedValueOnce({ docs: [] });
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValue({ docs: [] });
 
     const result = await loadUserStats('u1');
 
@@ -133,33 +153,125 @@ describe('loadUserStats（R-REG-014 過濾、無寫入）', () => {
     await expect(loadUserStats('')).rejects.toThrow(/uid/);
     await expect(loadUserStats('   ')).rejects.toThrow(/uid/);
   });
+
+  it('照 A getEvent：用 where(id in …) 讀出記錄所屬活動的 status／date（legacy root 與 removed 不查）', async () => {
+    const act = (eventId: string, status: string, path: string, hasParent = true) =>
+      makeDoc({
+        id: `a-${eventId}-${status}`,
+        path,
+        hasParent,
+        data: { uid: 'u1', eventId, status, name: eventId },
+      });
+    getDocs
+      .mockResolvedValueOnce({
+        docs: [
+          act('e1', 'registered', 'events/d1/activityRecords/a1'),
+          act('e2', 'cancelled', 'events/d2/activityRecords/a2'),
+          act('e3', 'removed', 'events/d3/activityRecords/a3'),
+          act('e-legacy', 'registered', 'activityRecords/a4', false),
+        ],
+      })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({
+        docs: [
+          makeEventDoc('e1', { status: 'open', date: '2026/10/01 19:00~21:00', title: 'T1' }),
+          makeEventDoc('e2', { status: 'ended', date: '2026/09/01 19:00~21:00' }),
+        ],
+      });
+
+    const result = await loadUserStats('u1');
+
+    expect(collection).toHaveBeenCalledWith({ __mockDb: true }, 'events');
+    expect(where).toHaveBeenCalledWith('id', 'in', ['e1', 'e2']);
+    expect(result.events).toEqual({
+      e1: { status: 'open', date: '2026/10/01 19:00~21:00' },
+      e2: { status: 'ended', date: '2026/09/01 19:00~21:00' },
+    });
+    expect(setDoc).not.toHaveBeenCalled();
+    expect(writeBatch).not.toHaveBeenCalled();
+  });
+
+  it('活動超過 30 場時分批查詢（Firestore in 上限），結果合併', async () => {
+    const ids = Array.from({ length: 65 }, (_, i) => `e${i}`);
+    const actDocs = ids.map((eventId) =>
+      makeDoc({
+        id: `a-${eventId}`,
+        path: `events/d-${eventId}/activityRecords/a-${eventId}`,
+        hasParent: true,
+        data: { uid: 'u1', eventId, status: 'registered', name: eventId },
+      }),
+    );
+    getDocs
+      .mockResolvedValueOnce({ docs: actDocs })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockImplementation(async (q: { __clauses: { __value: unknown }[] }) => ({
+        docs: (q.__clauses[0]?.__value as string[]).map((id) =>
+          makeEventDoc(id, { status: 'open', date: '2026/10/01 19:00' }),
+        ),
+      }));
+
+    const result = await loadUserStats('u1');
+
+    const inCalls = where.mock.calls.filter((c) => c[0] === 'id' && c[1] === 'in');
+    expect(inCalls.map((c) => (c[2] as string[]).length)).toEqual([30, 30, 5]);
+    expect(Object.keys(result.events ?? {})).toHaveLength(65);
+  });
+
+  it('沒有任何需要查的活動時不發 events 查詢', async () => {
+    getDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+    const result = await loadUserStats('u1');
+    expect(result.events).toEqual({});
+    expect(collection).not.toHaveBeenCalled();
+  });
+
+  it('活動查詢失敗時整體 reject（避免把「查不到活動」誤顯示成沒有報名）', async () => {
+    const actDoc = makeDoc({
+      id: 'a1',
+      path: 'events/d1/activityRecords/a1',
+      hasParent: true,
+      data: { uid: 'u1', eventId: 'e1', status: 'registered', name: 'A' },
+    });
+    getDocs
+      .mockResolvedValueOnce({ docs: [actDoc] })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockRejectedValueOnce(new Error('permission-denied'));
+
+    await expect(loadUserStats('u1')).rejects.toThrow('permission-denied');
+  });
 });
 
-describe('getFilteredRecords（照 A _categorizeRecords 四種 filter）', () => {
-  // 各狀況：
-  //  - e1：registered + ongoing       → registered
-  //  - e2：registered + ended         → missed
-  //  - e3：registered + ended，且有 checkin+checkout → completed
-  //  - e4：cancelled                  → cancelled
-  //  - e5：removed                    → 全部跳過
+describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料形狀照正式庫）', () => {
+  // 各狀況（activityRecord 沒有 eventStatus，狀態與日期都從 events 查表來）：
+  //  - e1：registered + 活動進行中（open）   → registered
+  //  - e2：registered + 活動已結束（ended）  → missed
+  //  - e3：registered + 活動已結束，有 checkin+checkout → completed
+  //  - e4：cancelled                         → cancelled
+  //  - e5：removed                           → 全部跳過
   const baseStats: UserStatsSnapshot = {
     uid: 'u1',
     activityRecords: [
-      { _docId: 'r1', eventId: 'e1', status: 'registered', name: 'A', date: '2024-01-01T00:00:00Z', eventStatus: 'ongoing' },
-      { _docId: 'r2', eventId: 'e2', status: 'registered', name: 'B', date: '2024-02-01T00:00:00Z', eventStatus: 'ended' },
-      { _docId: 'r3', eventId: 'e3', status: 'registered', name: 'C', date: '2024-03-01T00:00:00Z', eventStatus: 'ended' },
-      { _docId: 'r4', eventId: 'e4', status: 'cancelled', name: 'D', date: '2024-04-01T00:00:00Z' },
-      { _docId: 'r5', eventId: 'e5', status: 'removed', name: 'E', date: '2024-05-01T00:00:00Z' },
+      actRec('e1', 'registered', 'A', { date: '03/01' }),
+      actRec('e2', 'registered', 'B', { date: '02/01' }),
+      actRec('e3', 'registered', 'C', { date: '01/01' }),
+      actRec('e4', 'cancelled', 'D', { date: '04/01' }),
+      actRec('e5', 'removed', 'E', { date: '05/01' }),
     ],
     attendanceRecords: [
       { eventId: 'e3', uid: 'u1', type: 'checkin' },
       { eventId: 'e3', uid: 'u1', type: 'checkout' },
     ],
+    events: {
+      e1: { status: 'open', date: '2026/03/01 19:00~21:00' },
+      e2: { status: 'ended', date: '2026/02/01 19:00~21:00' },
+      e3: { status: 'ended', date: '2026/01/01 19:00~21:00' },
+      e4: { status: 'ended', date: '2026/04/01 19:00~21:00' },
+      e5: { status: 'ended', date: '2026/05/01 19:00~21:00' },
+    },
   };
 
   it("filter='all'：registered + completed + cancelled，依活動日期新到舊", () => {
     const result = getFilteredRecords(baseStats, 'all', false);
-    expect(result.map((r) => r.name)).toEqual(['D', 'C', 'B', 'A']);
+    expect(result.map((r) => r.name)).toEqual(['D', 'A', 'B', 'C']);
     expect(result.find((r) => r.name === 'B')?._displayStatus).toBe('missed');
     expect(result.find((r) => r.name === 'C')?._displayStatus).toBe('completed');
     expect(result.find((r) => r.name === 'A')?._displayStatus).toBeUndefined();
@@ -170,7 +282,7 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter）', () =>
 
   it("filter='registered'：只回 registered + missed（不含 cancelled／completed）", () => {
     const result = getFilteredRecords(baseStats, 'registered', false);
-    expect(result.map((r) => r.name)).toEqual(['B', 'A']);
+    expect(result.map((r) => r.name)).toEqual(['A', 'B']);
   });
 
   it("filter='completed'：只回有 checkin+checkout 者", () => {
@@ -193,25 +305,147 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter）', () =>
     const stats: UserStatsSnapshot = {
       uid: 'u1',
       activityRecords: [
-        { eventId: 'e1', status: 'cancelled', name: 'old', date: '2024-01-01T00:00:00Z' },
-        { eventId: 'e1', status: 'registered', name: 'new', date: '2024-01-01T00:00:00Z', eventStatus: 'ongoing' },
+        actRec('e1', 'cancelled', 'old'),
+        actRec('e1', 'registered', 'new'),
       ],
       attendanceRecords: [],
+      events: { e1: { status: 'open', date: '2026/10/01 19:00' } },
     };
     const result = getFilteredRecords(stats, 'all', false);
     expect(result.map((r) => r.name)).toEqual(['new']);
   });
 
-  it('缺少 eventStatus 時照 A「查不到活動」不推入 registered', () => {
+  it('活動查不到（已刪除或不在查表）→ 照 A 不推入 registered', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [actRec('e1', 'registered', 'A')],
+      attendanceRecords: [],
+      events: {},
+    };
+    expect(getFilteredRecords(stats, 'all', false)).toEqual([]);
+    expect(getFilteredRecords({ ...stats, events: undefined }, 'all', false)).toEqual([]);
+  });
+
+  it('候補（waitlisted）：活動進行中顯示，活動已結束不算未出席、也不顯示', () => {
     const stats: UserStatsSnapshot = {
       uid: 'u1',
       activityRecords: [
-        { eventId: 'e1', status: 'registered', name: 'A', date: '2024-01-01T00:00:00Z' },
+        actRec('e1', 'waitlisted', 'WaitOpen'),
+        actRec('e2', 'waitlisted', 'WaitEnded'),
       ],
       attendanceRecords: [],
+      events: {
+        e1: { status: 'open', date: '2026/10/01 19:00' },
+        e2: { status: 'ended', date: '2026/09/01 19:00' },
+      },
     };
-    const result = getFilteredRecords(stats, 'all', false);
-    expect(result).toEqual([]);
+    const result = getFilteredRecords(stats, 'registered', false);
+    expect(result.map((r) => r.name)).toEqual(['WaitOpen']);
+  });
+
+  it('活動已被取消（event.status=cancelled）→ registered 紀錄不顯示', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [actRec('e1', 'registered', 'Gone')],
+      attendanceRecords: [],
+      events: { e1: { status: 'cancelled', date: '2026/10/01 19:00' } },
+    };
+    expect(getFilteredRecords(stats, 'all', false)).toEqual([]);
+  });
+
+  it('排序用活動完整日期（含年份），不是 activityRecord 的 MM/DD：跨年也是新到舊', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [
+        actRec('e2025', 'cancelled', 'Y2025', { date: '12/20' }),
+        actRec('e2026', 'cancelled', 'Y2026', { date: '01/05' }),
+        actRec('e2024', 'cancelled', 'Y2024', { date: '12/31' }),
+      ],
+      attendanceRecords: [],
+      events: {
+        e2025: { status: 'ended', date: '2025/12/20 19:00~21:00' },
+        e2026: { status: 'ended', date: '2026/01/05 19:00~21:00' },
+        e2024: { status: 'ended', date: '2024/12/31 19:00~21:00' },
+      },
+    };
+    const result = getFilteredRecords(stats, 'cancelled', false);
+    expect(result.map((r) => r.name)).toEqual(['Y2026', 'Y2025', 'Y2024']);
+  });
+
+  it('查不到活動日期的項目排在最後（照 A null 分支）', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [
+        actRec('eNoEvent', 'cancelled', 'NoEvent'),
+        actRec('eDated', 'cancelled', 'Dated'),
+      ],
+      attendanceRecords: [],
+      events: { eDated: { status: 'ended', date: '2026/01/05 19:00' } },
+    };
+    const result = getFilteredRecords(stats, 'cancelled', false);
+    expect(result.map((r) => r.name)).toEqual(['Dated', 'NoEvent']);
+  });
+
+  it('已移除（removed）或已取消（cancelled）的簽到／簽退紀錄不算完成（照 A getUserAttendanceRecords）', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [
+        actRec('e1', 'registered', 'RemovedOut'),
+        actRec('e2', 'registered', 'CancelledIn'),
+        actRec('e3', 'registered', 'Real'),
+      ],
+      attendanceRecords: [
+        { eventId: 'e1', uid: 'u1', type: 'checkin' },
+        { eventId: 'e1', uid: 'u1', type: 'checkout', status: 'removed' },
+        { eventId: 'e2', uid: 'u1', type: 'checkin', status: 'cancelled' },
+        { eventId: 'e2', uid: 'u1', type: 'checkout' },
+        { eventId: 'e3', uid: 'u1', type: 'checkin', status: 'active' },
+        { eventId: 'e3', uid: 'u1', type: 'checkout', status: 'active' },
+      ],
+      events: {
+        e1: { status: 'ended', date: '2026/01/01 19:00' },
+        e2: { status: 'ended', date: '2026/01/02 19:00' },
+        e3: { status: 'ended', date: '2026/01/03 19:00' },
+      },
+    };
+    const completed = getFilteredRecords(stats, 'completed', false);
+    expect(completed.map((r) => r.name)).toEqual(['Real']);
+    // 另兩場只簽到一半 → 活動已結束且正式報名 → 未出席
+    const registered = getFilteredRecords(stats, 'registered', false);
+    expect(registered.map((r) => [r.name, r._displayStatus])).toEqual([
+      ['CancelledIn', 'missed'],
+      ['RemovedOut', 'missed'],
+    ]);
+  });
+
+  it('同活動同狀態的重複 activityRecord 只留一筆（照 A _canonicalizeRecordList，保留較新的）', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [
+        actRec('e1', 'registered', 'Dup-old', {
+          _docId: 'old',
+          createdAt: { seconds: 1000 },
+        }),
+        actRec('e1', 'registered', 'Dup-new', {
+          _docId: 'new',
+          createdAt: { seconds: 2000 },
+        }),
+        actRec('e2', 'registered', 'Single'),
+      ],
+      attendanceRecords: [],
+      events: {
+        e1: { status: 'open', date: '2026/10/02 19:00' },
+        e2: { status: 'open', date: '2026/10/01 19:00' },
+      },
+    };
+    const result = getFilteredRecords(stats, 'registered', false);
+    expect(result.map((r) => r.name)).toEqual(['Dup-new', 'Single']);
+  });
+
+  it('不改輸入（純函式）', () => {
+    const before = JSON.stringify(baseStats);
+    getFilteredRecords(baseStats, 'all', false);
+    expect(JSON.stringify(baseStats)).toBe(before);
   });
 });
 
