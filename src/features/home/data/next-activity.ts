@@ -32,8 +32,11 @@ import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 
 // ── 常數（與 A 對齊） ─────────────────────────────────
 
-/** 報名查詢的安全上限（A 為 120；B 搭配 status 篩選後上調，打到上限時會記警告）。 */
-export const REGISTRATION_QUERY_LIMIT = 200;
+/**
+ * 報名查詢的安全上限（A 原為 120；B 搭配 status 篩選後上調，打到上限時會記警告）。
+ * 2026-10-26 唯讀統計：每人進行中報名最大約 299（>200 的有 2 人），顧問裁定兩站都用 500（T-036）。
+ */
+export const REGISTRATION_QUERY_LIMIT = 500;
 export const EVENT_QUERY_LIMIT = 80;
 
 /**

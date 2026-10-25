@@ -146,7 +146,7 @@ function ProfileContent({
       <LegacyFavoritesCard uid={uid} profile={profile} />
       <LegacyApplicationsCard uid={uid} profile={profile} />
       <LegacyCompanionsCard uid={uid} profile={profile} onSaved={saved} />
-      <LegacyActivityRecordsCard uid={uid} />
+      <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={setSummary} />
 
       {(firstOpen || editor?.kind === 'first') && (
         <FirstLoginEditor

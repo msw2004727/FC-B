@@ -454,10 +454,11 @@ describe('T-033：報名紀錄很多的帳號（309 筆、217 筆已取消）', 
 
     test.each([
       { n: 119, expected: 119, warns: false },
-      { n: 150, expected: 150, warns: false }, // 超過舊上限 120、低於 200：全部取得，證明上限不是 120
-      { n: 199, expected: 199, warns: false },
-      { n: 200, expected: 200, warns: true },
-      { n: 201, expected: 200, warns: true },
+      { n: 150, expected: 150, warns: false }, // 超過舊上限 120：全部取得，證明上限不是 120
+      { n: 299, expected: 299, warns: false }, // 2026-10-26 統計的最大值：上限 500 之下全部取得
+      { n: 499, expected: 499, warns: false },
+      { n: 500, expected: 500, warns: true },
+      { n: 501, expected: 500, warns: true },
     ])('有效報名 $n 筆 → 取得 $expected 筆、上限警告 $warns', async ({ n, expected, warns }) => {
       installFirestore(activeStore(n));
       const warn = vi.fn();
