@@ -32,8 +32,22 @@ import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 
 // ── 常數（與 A 對齊） ─────────────────────────────────
 
-export const REGISTRATION_QUERY_LIMIT = 120;
+/** 報名查詢的安全上限（A 為 120；B 搭配 status 篩選後上調，打到上限時會記警告）。 */
+export const REGISTRATION_QUERY_LIMIT = 200;
 export const EVENT_QUERY_LIMIT = 80;
+
+/**
+ * 「進行中」的報名狀態，報名查詢用 `where('status','in', …)` 只取這些。
+ * collectionGroup 預設依文件路徑排序、查詢又沒有 orderBy，只靠 limit 會被大量取消紀錄佔滿視窗，
+ * 把最新活動的報名截掉（2026-10-25 實測：309 筆、217 筆已取消，明天的報名被 limit(120) 截掉）。
+ * `userId ==` 加 `status in` 現有索引即可執行，不需新增複合索引。
+ *
+ * 狀態集合（T-033 盤點 FC js／functions／Rules 與 FC-B）：registrations 現行寫入值只有
+ * confirmed／waitlisted／cancelled／removed；`registered` 沒有現行寫入點，但舊資料可能殘留，
+ * A 的 `_isActiveRegistrationStatus`、Rules 的移除守衛與 B 個人頁都承認它是進行中，所以一併列入。
+ * 沒有 pending／invited 等其他進行中值（那些在別的集合）。
+ */
+export const ACTIVE_REGISTRATION_STATUSES: readonly string[] = ['confirmed', 'waitlisted', 'registered'];
 
 const TERMINAL_EVENT_STATUSES = new Set([
   'ended',
@@ -360,9 +374,16 @@ export async function loadNextActivityInputs(
       query(
         collectionGroup(db, 'registrations'),
         where('userId', '==', safeUid),
+        where('status', 'in', [...ACTIVE_REGISTRATION_STATUSES]),
         limit(REGISTRATION_QUERY_LIMIT),
       ),
     );
+    if (regSnap.docs.length >= REGISTRATION_QUERY_LIMIT) {
+      logger.warn(
+        '[NextActivity] registration query hit the limit; later registrations may be missing:',
+        REGISTRATION_QUERY_LIMIT,
+      );
+    }
     const subcollectionDocs = filterSubcollectionDocs(regSnap.docs);
     subcollectionDocs.forEach((d) => registrations.push(mapRegistration(d)));
   } catch (err) {
