@@ -50,16 +50,43 @@ interface DirectSnapLike {
   data: () => unknown;
 }
 
+// 進行中的請求（同一 UID 同時多處呼叫只讀一次）；完成即移除，不是快取——
+// 之後再呼叫（按重新整理、換頁回來）一律重新讀，避免顯示過期的 userAttendanceStats。
+const inflight = new Map<string, Promise<UserAttendanceSummary | null>>();
+
+export interface LoadUserAttendanceSummaryOptions {
+  /**
+   * 寫入之後重讀（例如 `refreshMyActivityRecords` 剛重算完）：不得沿用寫入前就已發出的進行中請求，
+   * 一律新發一次；之後的一般呼叫會改共用這次較新的請求。
+   */
+  fresh?: boolean;
+}
+
 /**
  * 讀取 `userAttendanceStats/{uid}` 單一文件（只做一次 `getDoc`，不用 `onSnapshot`）。
  * 文件不存在時照 A 回傳全 0；讀取失敗回傳 `null`（UI 顯示 `--`）。
  */
-export async function loadUserAttendanceSummary(
+export function loadUserAttendanceSummary(
   uid: string,
+  options: LoadUserAttendanceSummaryOptions = {},
 ): Promise<UserAttendanceSummary | null> {
   const targetUid = String(uid || '').trim();
-  if (!targetUid || targetUid.includes('/')) return null;
+  if (!targetUid || targetUid.includes('/')) return Promise.resolve(null);
 
+  if (!options.fresh) {
+    const pending = inflight.get(targetUid);
+    if (pending) return pending;
+  }
+  const request = fetchUserAttendanceSummary(targetUid).finally(() => {
+    if (inflight.get(targetUid) === request) inflight.delete(targetUid);
+  });
+  inflight.set(targetUid, request);
+  return request;
+}
+
+async function fetchUserAttendanceSummary(
+  targetUid: string,
+): Promise<UserAttendanceSummary | null> {
   try {
     const { db } = await getFirebase();
     const firestore = db as unknown as Firestore;
