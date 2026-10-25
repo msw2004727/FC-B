@@ -203,4 +203,55 @@ describe('LegacyUserCard（照 A showUserProfile）', () => {
       ),
     );
   });
+
+  it('同一元件換看另一個人：前一人還在飛的活動紀錄／統計延後完成，不可寫進新的名片', async () => {
+    vi.mocked(loadUserProfile).mockImplementation(async (uid: string) =>
+      makeProfile({ uid, _docId: uid, name: uid, displayName: uid }),
+    );
+    let resolveStatsA: (v: { uid: string; activityRecords: []; attendanceRecords: [] }) => void =
+      () => {};
+    vi.mocked(loadUserStats).mockImplementation((uid: string) =>
+      uid === 'uid-a'
+        ? new Promise((resolve) => {
+          resolveStatsA = resolve as typeof resolveStatsA;
+        })
+        : Promise.resolve({ uid, activityRecords: [], attendanceRecords: [] }),
+    );
+    vi.mocked(loadUserAttendanceSummary).mockImplementation(async (uid: string) => ({
+      uid,
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: uid === 'uid-a' ? 99 : 5,
+      attendedCount: 4,
+      completedCount: 3,
+      attendRate: 80,
+      updatedAt: null,
+    }));
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+
+    const { container, rerender } = render(<LegacyUserCard uid="uid-a" />);
+    await waitFor(() => expect(container.querySelector('.uc-header')).toBeTruthy());
+    const overlayOf = (): Element | undefined =>
+      Array.from(container.querySelectorAll('.uc-blur-overlay')).find((el) =>
+        el.textContent?.includes('點擊載入活動記錄'),
+      );
+    fireEvent.click(overlayOf() as Element);
+    await waitFor(() => expect(loadUserStats).toHaveBeenCalledWith('uid-a'));
+
+    // 還沒讀完就換看 uid-b
+    rerender(<LegacyUserCard uid="uid-b" />);
+    await waitFor(() => expect(container.textContent).toContain('uid-b'));
+    await waitFor(() => expect(overlayOf()).toBeTruthy());
+
+    // 前一人的結果現在才到：uid-b 的名片必須維持「尚未載入」
+    resolveStatsA({ uid: 'uid-a', activityRecords: [], attendanceRecords: [] });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(overlayOf()).toBeTruthy();
+    expect(container.querySelector('#uc-stat-total')?.textContent).toBe('--');
+
+    // 之後正常點擊載入 uid-b：顯示 uid-b 自己的統計
+    fireEvent.click(overlayOf() as Element);
+    await waitFor(() => expect(loadUserStats).toHaveBeenCalledWith('uid-b'));
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+  });
 });

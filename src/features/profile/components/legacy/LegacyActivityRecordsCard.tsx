@@ -20,6 +20,11 @@ import { ProfileInfoButton } from './ProfileInfoButton';
 
 type Filter = 'all' | 'registered' | 'completed' | 'cancelled';
 type Status = 'idle' | 'loading' | 'error' | 'ready';
+// 'stale'＝這次請求已被取代（換 uid、卸載或有更新的請求），結果被丟棄，不寫畫面也不提示。
+type LoadResult = 'ok' | 'error' | 'stale';
+
+// 掛載時讀到的 summary 超過這個年齡，第一次展開就重讀（避免卡片內的清單比統計新很多）。
+const SUMMARY_REUSE_MS = 60_000;
 
 export interface LegacyActivityRecordsCardProps {
   uid: string;
@@ -46,7 +51,11 @@ const TABS: FilterTab[] = [
  * - `.info-card > .info-title.profile-collapse-toggle`：標題列（?／報名紀錄／資料更新／重新整理）。
  * - `.tab-bar.compact#record-tabs`：4 個頁籤；預設收起，展開才載入（省流量）。
  * - `.mini-activity-list#my-activity-records`：清單本體。
- * 唯讀（R-STAT-000），不寫入 Firestore。
+ *
+ * 載入唯讀（R-STAT-000）：本元件不直接寫入任何 Firestore 欄位、不在前端重算統計。
+ * 唯一的寫入是使用者按「重新整理」時觸發的 Callable `refreshMyActivityRecords`（照 A）：
+ * 由伺服器依報名補齊／修正 activityRecords、重算 userAttendanceStats、記錄冷卻時間；
+ * 前端只負責呼叫並重新讀取，不參與修復內容。
  */
 export function LegacyActivityRecordsCard(
   props: LegacyActivityRecordsCardProps,
@@ -64,9 +73,14 @@ export function LegacyActivityRecordsCard(
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
-  // 收合狀態就已讀到的 summary（首次展開不必重讀）；換 uid 或重新整理時重置。
+  // 每次換 uid 遞增：進行中的載入／刷新看到世代不同就放棄結果。
+  const epochRef = useRef(0);
+  // 收合狀態就已讀到的 summary（首次展開不必重讀，除非已過期）；換 uid 時重置。
   const summaryLoadedRef = useRef(false);
+  const summaryFetchedAtRef = useRef(0);
   const refreshingRef = useRef(false);
+  // Callable 已成功但重讀失敗時記住結果：下一次按「重新整理」只重讀，不再打 Callable（避免撞冷卻）。
+  const reloadOnlyRef = useRef<{ changed: number } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -77,16 +91,27 @@ export function LegacyActivityRecordsCard(
 
   // 照 A：標題列「資料更新」時間跟著統計走（A 以 onSnapshot 常駐），不必等展開卡片才有。
   // 同一 UID 的並行讀取在 loadUserAttendanceSummary 內合併，和頁首統計不會重複讀。
+  // uid 改變（同一元件實例換人）：整張卡回到初始狀態，舊 uid 還在飛的請求結果一律丟棄。
   useEffect(() => {
     const targetUid = String(uid || '').trim();
+    epochRef.current += 1;
+    loadSeqRef.current += 1;
     summaryLoadedRef.current = false;
+    summaryFetchedAtRef.current = 0;
+    reloadOnlyRef.current = null;
     setSummary(null);
+    setStats(null);
+    setStatus('idle');
+    setOpen(false);
+    setFilter('all');
+    setPage(1);
     if (!targetUid) return undefined;
     let active = true;
     loadUserAttendanceSummary(targetUid)
       .then((sum) => {
         if (!active || !mountedRef.current) return;
         summaryLoadedRef.current = sum !== null;
+        if (sum !== null) summaryFetchedAtRef.current = Date.now();
         setSummary(sum);
       })
       .catch(() => { /* 讀取失敗維持 -- */ });
@@ -95,39 +120,57 @@ export function LegacyActivityRecordsCard(
     };
   }, [uid]);
 
-  const loadAll = useCallback(async (reuseSummary = false): Promise<boolean> => {
-    const targetUid = String(uid || '').trim();
-    if (!targetUid) return false;
-    const seq = ++loadSeqRef.current;
-    setStatus('loading');
-    try {
-      const skipSummary = reuseSummary && summaryLoadedRef.current;
-      const [snap, sum] = await Promise.all([
-        loadUserStats(targetUid),
-        skipSummary ? Promise.resolve(undefined) : loadUserAttendanceSummary(targetUid),
-      ]);
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
-      setStats(snap);
-      if (sum !== undefined) {
-        summaryLoadedRef.current = sum !== null;
-        setSummary(sum);
+  const loadAll = useCallback(
+    async (
+      opts: { reuseSummary?: boolean; freshSummary?: boolean } = {},
+    ): Promise<LoadResult> => {
+      const targetUid = String(uid || '').trim();
+      if (!targetUid || !mountedRef.current) return 'stale';
+      const epoch = epochRef.current;
+      const seq = ++loadSeqRef.current;
+      setStatus('loading');
+      try {
+        const skipSummary =
+          opts.reuseSummary === true &&
+          summaryLoadedRef.current &&
+          Date.now() - summaryFetchedAtRef.current < SUMMARY_REUSE_MS;
+        const [snap, sum] = await Promise.all([
+          loadUserStats(targetUid),
+          skipSummary
+            ? Promise.resolve(undefined)
+            : opts.freshSummary
+              ? loadUserAttendanceSummary(targetUid, { fresh: true })
+              : loadUserAttendanceSummary(targetUid),
+        ]);
+        if (!mountedRef.current || seq !== loadSeqRef.current || epoch !== epochRef.current) {
+          return 'stale';
+        }
+        setStats(snap);
+        if (sum !== undefined) {
+          summaryLoadedRef.current = sum !== null;
+          if (sum !== null) summaryFetchedAtRef.current = Date.now();
+          setSummary(sum);
+        }
+        setStatus('ready');
+        return 'ok';
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[LegacyActivityRecordsCard] load failed', err);
+        if (!mountedRef.current || seq !== loadSeqRef.current || epoch !== epochRef.current) {
+          return 'stale';
+        }
+        setStatus('error');
+        return 'error';
       }
-      setStatus('ready');
-      return true;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[LegacyActivityRecordsCard] load failed', err);
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
-      setStatus('error');
-      return false;
-    }
-  }, [uid]);
+    },
+    [uid],
+  );
 
   const handleToggle = useCallback((): void => {
     if (!open) {
       setOpen(true);
       if (status === 'idle') {
-        loadAll(true).catch(() => { /* loadAll 內部已處理錯誤 */ });
+        loadAll({ reuseSummary: true }).catch(() => { /* loadAll 內部已處理錯誤 */ });
       }
     } else {
       setOpen(false);
@@ -151,27 +194,46 @@ export function LegacyActivityRecordsCard(
       if (refreshingRef.current) return;
       refreshingRef.current = true;
       setRefreshing(true);
+      const epoch = epochRef.current;
+      const superseded = (): boolean => !mountedRef.current || epoch !== epochRef.current;
       (async (): Promise<void> => {
         try {
           // A `refreshMyActivityRecords`：先請伺服器依報名補齊／修正 activityRecords 並重算統計，
-          // 再重讀（有冷卻時間，太頻繁會被擋）。
-          const res = (await callFn('refreshMyActivityRecords', {})) as {
-            created?: unknown;
-            updated?: unknown;
-          } | null;
-          const reloaded = await loadAll();
-          if (!mountedRef.current) return;
-          if (!reloaded) return;
-          const changed = Number(res?.created || 0) + Number(res?.updated || 0);
+          // 再重讀（有冷卻時間，太頻繁會被擋）。上次 Callable 已成功只差重讀時，這次只重讀。
+          let pending = reloadOnlyRef.current;
+          if (!pending) {
+            const res = (await callFn('refreshMyActivityRecords', {})) as {
+              created?: unknown;
+              updated?: unknown;
+            } | null;
+            pending = { changed: Number(res?.created || 0) + Number(res?.updated || 0) };
+            reloadOnlyRef.current = pending;
+          }
+          // 等待 Callable 期間可能已卸載或換 uid：不替舊畫面重讀。
+          if (superseded()) return;
+          // 剛重算完：summary 必須是新發出的請求，不能沿用刷新前就已在飛的。
+          const result = await loadAll({ freshSummary: true });
+          if (result === 'stale' || superseded()) return;
+          if (result === 'error') {
+            toast.show({
+              message: lt(
+                '報名紀錄已修復，但重新讀取失敗，請再按一次重新整理',
+                '報名紀錄已修復，但重新讀取失敗，請再按一次重新整理',
+              ),
+            });
+            return;
+          }
+          reloadOnlyRef.current = null;
+          setPage(1); // 照 A：renderActivityRecords(filter, 1)，篩選維持
           toast.show({
-            message: changed > 0
+            message: pending.changed > 0
               ? lt('報名紀錄已更新', '報名紀錄已更新')
               : lt('報名紀錄已是最新', '報名紀錄已是最新'),
           });
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[LegacyActivityRecordsCard] refresh failed', err);
-          if (!mountedRef.current) return;
+          if (superseded()) return;
           const e = err as { code?: unknown; details?: { retryAfterSeconds?: unknown } } | null;
           const code = typeof e?.code === 'string' ? e.code.replace(/^functions\//, '') : '';
           if (code === 'resource-exhausted') {
@@ -202,9 +264,12 @@ export function LegacyActivityRecordsCard(
     setPage(next);
   }, []);
 
+  // 換 uid 的那一個 render（effect 清狀態之前）也不顯示上一人的資料。
   const items = useMemo(
-    () => (stats ? getFilteredRecords(stats, filter, false) : []),
-    [stats, filter],
+    () => (stats && stats.uid === String(uid || '').trim()
+      ? getFilteredRecords(stats, filter, false)
+      : []),
+    [stats, filter, uid],
   );
 
   const updatedValue = summary

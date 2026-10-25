@@ -275,43 +275,30 @@ function buildAttendanceIndex(
 }
 
 /**
- * 照 A `_parseEventStartDate(event.date)`：`YYYY/MM/DD`＋可選 `HH:mm~HH:mm`，取開始時間（本地時區）。
- * 格式不符時退回 `Date.parse`／Timestamp 形狀，仍失敗回 `null`（A 的 `_getFilteredRecords` 會把 null 排最後）。
+ * 照 A `event-list-stats.js#_parseEventStartDate(event.date)` 逐步移植：
+ * 以空白切成「日期／時間」，日期以 `/` 切三節（`YYYY/MM/DD`，不足三節回 null），
+ * 時間取 `~` 前的 `HH:mm`（缺值當 0），用本地時區組成 Date。
+ * 不是此格式的字串（含 ISO）、非字串一律回 null——和 A 一樣，由 `_getFilteredRecords` 排到最後；
+ * 不再退回 `Date.parse` 猜。唯一刻意的差異：A 對 `parseInt` 得 NaN 的輸入會產生 Invalid Date
+ * （使比較函式回 NaN、排序順序未定義），B 改回 null 讓它確定地排最後。
  */
-function parseEventStartMs(value: unknown): number | null {
-  if (value == null || value === '') return null;
-  if (typeof value === 'string') {
-    const parts = value.split(' ');
-    const dateParts = (parts[0] ?? '').split('/');
-    if (dateParts.length >= 3) {
-      const y = parseInt(dateParts[0] ?? '', 10);
-      const m = parseInt(dateParts[1] ?? '', 10) - 1;
-      const d = parseInt(dateParts[2] ?? '', 10);
-      if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
-        let hh = 0;
-        let mm = 0;
-        if (parts[1]) {
-          const [h, mi] = (parts[1].split('~')[0] ?? '').split(':').map(Number);
-          hh = h || 0;
-          mm = mi || 0;
-        }
-        const ts = new Date(y, m, d, hh, mm).getTime();
-        return Number.isFinite(ts) ? ts : null;
-      }
-    }
-    const ts = Date.parse(value);
-    return Number.isFinite(ts) ? ts : null;
+export function parseEventStartMs(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const parts = value.split(' ');
+  const dateParts = (parts[0] ?? '').split('/');
+  if (dateParts.length < 3) return null;
+  const y = parseInt(dateParts[0] ?? '', 10);
+  const m = parseInt(dateParts[1] ?? '', 10) - 1;
+  const d = parseInt(dateParts[2] ?? '', 10);
+  let hh = 0;
+  let mm = 0;
+  if (parts[1]) {
+    const [h, mi] = (parts[1].split('~')[0] ?? '').split(':').map(Number);
+    hh = h || 0;
+    mm = mi || 0;
   }
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (value instanceof Date) {
-    const ts = value.getTime();
-    return Number.isFinite(ts) ? ts : null;
-  }
-  if (typeof value === 'object') {
-    const seconds = Number((value as { seconds?: unknown }).seconds);
-    if (Number.isFinite(seconds)) return seconds * 1000;
-  }
-  return null;
+  const ts = new Date(y, m, d, hh, mm).getTime();
+  return Number.isFinite(ts) ? ts : null;
 }
 
 interface Categorized {

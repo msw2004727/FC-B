@@ -62,6 +62,8 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const mountedRef = useRef(true);
+  // 活動紀錄載入世代：換看另一個人時遞增，前一人還在飛的結果不得寫進新的名片。
+  const recordsSeqRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -110,6 +112,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    recordsSeqRef.current += 1;
     setStats(null);
     setSummary(null);
     setRecordsLoaded(false);
@@ -218,13 +221,14 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   // 照 A `renderUserCardRecords` + `refreshUserCardRecords`：一次取回活動紀錄與統計。
   const loadRecords = (): void => {
     if (recordsLoading) return;
+    const seq = ++recordsSeqRef.current;
     setRecordsLoading(true);
     Promise.all([
       loadUserStats(profile.uid),
       loadUserAttendanceSummary(profile.uid),
     ])
       .then(([s, sum]) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || seq !== recordsSeqRef.current) return;
         setStats(s);
         setSummary(sum);
         setRecordsLoaded(true);
@@ -234,13 +238,15 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
         console.warn('[legacy-user-card] records load failed', err);
       })
       .finally(() => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || seq !== recordsSeqRef.current) return;
         setRecordsLoading(false);
       });
   };
 
   const effectiveFilter: RecordFilter = activeFilter ?? 'all';
-  const filteredRecords = stats ? getFilteredRecords(stats, effectiveFilter, true) : [];
+  const filteredRecords = stats && stats.uid === profile.uid
+    ? getFilteredRecords(stats, effectiveFilter, true)
+    : [];
 
   const handleShareClick = (): void => {
     // ASSUMPTION: B 尚無個人名片分享功能（本單範圍外），照 A 輸出按鈕但點擊 toast 提示。

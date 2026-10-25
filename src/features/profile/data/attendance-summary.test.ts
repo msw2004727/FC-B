@@ -161,6 +161,39 @@ describe('loadUserAttendanceSummary', () => {
     expect(getDoc).toHaveBeenCalledTimes(3);
   });
 
+  it('fresh：寫入後重讀不得沿用寫入前就已發出的進行中請求，且之後的一般呼叫改共用這次新請求', async () => {
+    const releases: ((v: unknown) => void)[] = [];
+    vi.mocked(getDoc).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(resolve);
+        }) as never,
+    );
+    const snapOf = (expectedCount: number) => ({
+      exists: () => true,
+      data: () => ({ expectedCount, attendedCount: 0, completedCount: 0 }),
+    });
+
+    const beforeWrite = loadUserAttendanceSummary('U-fresh'); // 寫入前發出（舊資料）
+    const afterWrite = loadUserAttendanceSummary('U-fresh', { fresh: true }); // 寫入後重讀
+    await vi.waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
+
+    // 新請求進行中，一般呼叫要加入新請求，不是舊的
+    const joiner = loadUserAttendanceSummary('U-fresh');
+    expect(getDoc).toHaveBeenCalledTimes(2);
+
+    // 舊請求先完成（資料是舊的）：不可影響新請求，也不可把新請求從共用表移除
+    releases[0]?.(snapOf(1));
+    expect((await beforeWrite)?.expectedCount).toBe(1);
+    const lateJoiner = loadUserAttendanceSummary('U-fresh');
+    expect(getDoc).toHaveBeenCalledTimes(2);
+
+    releases[1]?.(snapOf(9));
+    expect((await afterWrite)?.expectedCount).toBe(9);
+    expect(await joiner).toBe(await afterWrite);
+    expect(await lateJoiner).toBe(await afterWrite);
+  });
+
   it('getDoc 拋錯時捕捉並回傳 null', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.mocked(getDoc).mockRejectedValue(new Error('permission-denied'));

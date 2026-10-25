@@ -64,6 +64,7 @@ import {
   formatUserAttendanceSummaryTime,
   getFilteredRecords,
   loadUserStats,
+  parseEventStartMs,
   type UserStatsSnapshot,
 } from './activity-records';
 
@@ -446,6 +447,87 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料�
     const before = JSON.stringify(baseStats);
     getFilteredRecords(baseStats, 'all', false);
     expect(JSON.stringify(baseStats)).toBe(before);
+  });
+});
+
+describe('parseEventStartMs（照 A event-list-stats.js#_parseEventStartDate 的格式變體）', () => {
+  const local = (y: number, m: number, d: number, hh = 0, mm = 0): number =>
+    new Date(y, m, d, hh, mm).getTime();
+
+  it('YYYY/MM/DD HH:mm~HH:mm 取開始時間（本地時區）', () => {
+    expect(parseEventStartMs('2026/10/01 19:00~21:00')).toBe(local(2026, 9, 1, 19, 0));
+  });
+
+  it('只有日期 → 當天 00:00；沒有結束時間 → 取該時間；不補零也可', () => {
+    expect(parseEventStartMs('2026/10/01')).toBe(local(2026, 9, 1));
+    expect(parseEventStartMs('2026/10/01 19:30')).toBe(local(2026, 9, 1, 19, 30));
+    expect(parseEventStartMs('2026/1/5 9:05~10:00')).toBe(local(2026, 0, 5, 9, 5));
+  });
+
+  it('A 的細節：空時間段或缺小時／分鐘一律當 0（hh || 0）', () => {
+    expect(parseEventStartMs('2026/10/01  19:00')).toBe(local(2026, 9, 1)); // 雙空白 → parts[1] 為空字串
+    expect(parseEventStartMs('2026/10/01 ~21:00')).toBe(local(2026, 9, 1));
+    expect(parseEventStartMs('2026/10/01 19')).toBe(local(2026, 9, 1, 19, 0));
+  });
+
+  it('不是 A 的格式就是 null（A 回 null；不另外用 Date.parse 猜），排序時墊底', () => {
+    expect(parseEventStartMs('2026-10-01T10:00:00Z')).toBeNull(); // A：第一段不足 3 節 → null
+    expect(parseEventStartMs('10/01')).toBeNull(); // activityRecord 自己的 MM/DD
+    expect(parseEventStartMs('')).toBeNull();
+    expect(parseEventStartMs(undefined)).toBeNull();
+    expect(parseEventStartMs(null)).toBeNull();
+    expect(parseEventStartMs(1760000000000)).toBeNull();
+    expect(parseEventStartMs({ seconds: 1760000000 })).toBeNull();
+  });
+
+  it('無法解成數字的日期（A 會得到 Invalid Date）→ null，不讓排序比較函式回 NaN', () => {
+    expect(parseEventStartMs('abc/def/ghi')).toBeNull();
+    expect(parseEventStartMs('2026/xx/01 19:00')).toBeNull();
+  });
+});
+
+describe('簽到／簽退去重順序（A getUserAttendanceRecords：先 _canonicalizeRecordList 再排除 removed／cancelled）', () => {
+  // A 的 attendanceRecords canonical key 含 status：eventId|uid|type|participantType|companionKey|status
+  // （js/firebase-service.js#_canonicalRecordKey），所以「先去重再排除」與「先排除再去重」的結果集合相同——狀態不同的文件永遠不會互相淘汰。
+  const events = { e1: { status: 'ended', date: '2026/01/01 19:00' } };
+  const base = [actRec('e1', 'registered', 'Event1')];
+
+  it('有效簽退旁邊還有較新的 removed 簽退 → 仍算完成（A 不會用失效版本淘汰有效版本）', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: base,
+      attendanceRecords: [
+        { eventId: 'e1', uid: 'u1', type: 'checkin', status: 'active' },
+        { eventId: 'e1', uid: 'u1', type: 'checkout', status: 'active', createdAt: { seconds: 1000 } },
+        { eventId: 'e1', uid: 'u1', type: 'checkout', status: 'removed', createdAt: { seconds: 2000 } },
+      ],
+      events,
+    };
+    expect(getFilteredRecords(stats, 'completed', false).map((r) => r.name)).toEqual(['Event1']);
+  });
+
+  it('同狀態重複的簽到文件不影響結果；只剩 removed 的簽退則不算完成', () => {
+    const dup: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: base,
+      attendanceRecords: [
+        { eventId: 'e1', uid: 'u1', type: 'checkin' },
+        { eventId: 'e1', uid: 'u1', type: 'checkin' },
+        { eventId: 'e1', uid: 'u1', type: 'checkout' },
+      ],
+      events,
+    };
+    expect(getFilteredRecords(dup, 'completed', false)).toHaveLength(1);
+
+    const onlyRemoved: UserStatsSnapshot = {
+      ...dup,
+      attendanceRecords: [
+        { eventId: 'e1', uid: 'u1', type: 'checkin' },
+        { eventId: 'e1', uid: 'u1', type: 'checkout', status: 'removed' },
+        { eventId: 'e1', uid: 'u1', type: 'checkout', status: 'removed' },
+      ],
+    };
+    expect(getFilteredRecords(onlyRemoved, 'completed', false)).toHaveLength(0);
   });
 });
 

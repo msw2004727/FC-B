@@ -164,14 +164,38 @@ describe('LegacyActivityRecordsCard', () => {
     expect(mockedCallFn).not.toHaveBeenCalled();
     const summaryCallsBeforeRefresh = mockedLoadSummary.mock.calls.length;
 
+    // Callable 還沒完成（deferred）時，不可以先重讀；完成後才重讀
+    let resolveCallable: (v: unknown) => void = () => {};
+    mockedCallFn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCallable = resolve;
+        }) as never,
+    );
     fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() =>
+      expect(mockedCallFn).toHaveBeenCalledWith('refreshMyActivityRecords', {}),
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockedLoadUserStats).toHaveBeenCalledTimes(1);
+    expect(mockedLoadSummary.mock.calls.length).toBe(summaryCallsBeforeRefresh);
+
+    resolveCallable({ success: true, created: 0, updated: 0 });
     await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(2));
-    expect(mockedCallFn).toHaveBeenCalledWith('refreshMyActivityRecords', {});
     expect(mockedLoadSummary.mock.calls.length).toBeGreaterThan(summaryCallsBeforeRefresh);
-    // callable 一定在重讀之前完成
-    const callOrder = mockedCallFn.mock.invocationCallOrder[0] ?? 0;
-    const statsOrder = mockedLoadUserStats.mock.invocationCallOrder[1] ?? 0;
-    expect(callOrder).toBeLessThan(statsOrder);
+  });
+
+  it('刷新後重讀 summary 一律 fresh（不沿用刷新前就已發出的請求）', async () => {
+    mockedLoadUserStats.mockResolvedValue(emptyStats());
+    mockedLoadSummary.mockResolvedValue(null);
+    mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
+    render(<LegacyActivityRecordsCard uid="u1" />);
+    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(1));
+    expect(mockedLoadSummary).toHaveBeenLastCalledWith('u1');
+
+    fireEvent.click(document.getElementById('my-records-refresh') as HTMLElement);
+    await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
+    expect(mockedLoadSummary).toHaveBeenLastCalledWith('u1', { fresh: true });
   });
 
   it('重新整理結果 toast：有新增或更新→「報名紀錄已更新」；沒有→「報名紀錄已是最新」', async () => {
