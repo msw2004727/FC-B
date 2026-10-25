@@ -118,7 +118,8 @@ export function Failure({ retry }: { retry: () => void }) {
   return (
     <div class="profile-state">
       <p role="alert"><Text>{t('profile.loadError')}</Text></p>
-      <button type="button" onClick={retry}><Text>{t('profile.retry')}</Text></button>
+      {/* 個人頁都在 .legacy-ui 內，A 的 button 重設會把無 class 的按鈕洗成純文字；比照 ErrorFallback 用 A 的 primary-btn small */}
+      <button type="button" class="primary-btn small" onClick={retry}><Text>{t('profile.retry')}</Text></button>
     </div>
   );
 }

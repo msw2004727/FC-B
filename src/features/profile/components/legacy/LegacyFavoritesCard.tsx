@@ -340,7 +340,7 @@ export function LegacyFavoritesCard(props: LegacyFavoritesCardProps): JSX.Elemen
   return (
     <div class="info-card" id="profile-favorites-card">
       <div
-        class="info-title profile-collapse-toggle"
+        class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
         tabIndex={0}
         aria-expanded={open ? 'true' : 'false'}
