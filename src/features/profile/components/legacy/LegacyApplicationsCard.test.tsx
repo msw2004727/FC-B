@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/preact';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/preact';
 
 import type { UserProfile } from '../../data/profile-model';
 import type { TeamDoc } from '@/features/clubs/data/types';
@@ -92,5 +92,34 @@ describe('LegacyApplicationsCard', () => {
     expect(card).not.toBeNull();
     const toggle = container.querySelector('.profile-collapse-toggle') as HTMLElement;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('展開時標題列加 open class（箭頭才會轉向下，照 A toggleClass open；T-038）', async () => {
+    vi.mocked(loadTeams).mockResolvedValue([makeTeam('t1', 'Alpha')]);
+    vi.mocked(getDocs).mockResolvedValue(
+      makeSnap([
+        {
+          id: 'm-1',
+          data: {
+            actionType: 'team_join_request',
+            actionStatus: 'pending',
+            createdAt: 1000,
+            meta: { applicantUid: 'u1', teamId: 't1', teamName: 'Alpha' },
+          },
+        },
+      ]),
+    );
+
+    const { container } = render(<LegacyApplicationsCard uid={uid} profile={profile} />);
+    await waitFor(() => {
+      expect(container.querySelector('#app-count-badge')?.textContent).toBe('1');
+    });
+    const toggle = container.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(toggle.classList.contains('open')).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.classList.contains('open')).toBe(true);
+    fireEvent.click(toggle);
+    expect(toggle.classList.contains('open')).toBe(false);
   });
 });

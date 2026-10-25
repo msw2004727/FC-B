@@ -5,6 +5,36 @@
  * 來源：A css/base.css 第 94、278 行；A css/layout.css 第 1169～1170 行。只收狀態規則，不收版面規則。
  */
 body { overscroll-behavior: none; }
+/*
+ * T-038（2026-10-26）：A 的 body 規則 `overscroll-behavior:none; overflow-x:hidden` 被 legacy-css-scope 改寫到 .legacy-ui 後，
+ * .legacy-ui 因 overflow-x:hidden 變成捲動容器（overflow-y 計算為 auto），又帶著 overscroll-behavior:none，
+ * 桌機滾輪事件被這層吃掉、不再傳給整頁（viewport），游標停在內容區就無法上下捲動（A 沒有這個問題：它沒有 .legacy-ui 這層容器，滾輪直接落在 viewport）。
+ * .legacy-ui 這層必須讓捲動往上傳；防下拉重整與回彈改由下面的 html 規則負責（見 html 那條的說明）。
+ * 用 `body .legacy-ui`（特異度高於 base.css 打包後的 .legacy-ui），不依賴載入順序；modal 等元件自己的 overscroll-behavior: contain 不受影響。
+ * 只改垂直軸（-y）：滾輪／觸控的問題在 Y 軸，水平軸維持修前的 none（用簡寫會連 X 軸一起改，退修 1 修正）。
+ */
+body .legacy-ui { overscroll-behavior-y: auto; }
+/*
+ * T-038（2026-10-26，顧問必停點補驗）：真正擋下拉重新整理與回彈的是「根元素 html」的 overscroll-behavior。
+ * 實測（Chromium 147）：只在 body 設 none，子頁捲到底後再滾，父頁仍被帶著捲；只在 html 設 none 才擋住——
+ * body 的值不會傳給 viewport，A 正式站（toosterx.com）的 `body{overscroll-behavior:none}` 也是這樣，並沒有真正套到 viewport。
+ * 修前 B 手機上的「擋住」其實是 .legacy-ui 的 overscroll-behavior:none 順便擋的，同時也讓頁面捲不動（就是上面那個 bug），
+ * 把 .legacy-ui 改回 auto 後不能因此失去防護，所以在 html 補上。只設垂直軸（M-057 的目的是下拉重整與回彈），
+ * 不碰水平軸，邊緣滑動返回等手勢維持 A 實際的行為。
+ */
+html { overscroll-behavior-y: none; }
+/*
+ * T-038（2026-10-26）：同一條 A body 規則還帶了 min-height:100dvh 與 padding-top／bottom，改寫到 .legacy-ui 後，
+ * 直接掛在 <body> 底下的 .legacy-ui 外框（換頁載入提示 #status-hint 的外框，route-loading.ts 動態建立；彈窗外框）
+ * 會變成一塊 100dvh＋padding 的空白方塊，把整頁可捲高度多撐一個視窗高（實測 /profile 內容 1094px，頁面 1814px，底部多出約 720px 空白）。
+ * 這類外框只是容器，不是頁面本體，比照 app-shell.css 的 .legacy-ui.legacy-chrome 取消它們。頁面本體在 #app 底下，不受影響。
+ */
+body > .legacy-ui {
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+}
 body.modal-open { overflow: hidden; }
 html.profile-complete-scroll-lock,
 body.profile-complete-scroll-lock { overscroll-behavior: none; }

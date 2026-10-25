@@ -36,7 +36,6 @@ import { LegacyCompanionsCard } from '../components/legacy/LegacyCompanionsCard'
 import { LegacyActivityRecordsCard } from '../components/legacy/LegacyActivityRecordsCard';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
-import '@/styles/legacy/edu-info-btn.css';
 import '../legacy/profile.css';
 
 // M-128：移除 eduChildren；M-127：companions 改成就地展開的 LegacyCompanionsCard，
@@ -184,14 +183,9 @@ function AuthenticatedProfile({
   const { state, retry } = useRemote(uid, loadUserProfile);
   if (state.status === 'loading') return <Loading />;
   if (state.status === 'error') return <Failure retry={retry} />;
-  if (!state.data) {
-    return (
-      <>
-        <Missing />
-        <Failure retry={retry} />
-      </>
-    );
-  }
+  // 查無個人資料：單一區塊＝「找不到資料」＋重試。loadUserProfile 會吞掉 I/O 錯誤回 null，
+  // null 也可能是網路暫時失敗，所以必須有重試；不同時顯示「目前無法載入」那塊（退修 1 #6、退修 2 P2-1）。
+  if (!state.data) return <Missing retry={retry} />;
 
   return <ProfileContent uid={uid} initial={state.data} viewer={viewer} />;
 }

@@ -7,7 +7,7 @@
 |------|------|----------|
 | base.css | A `css/base.css` | `src/main.tsx` 載入，打包時限定在 `.legacy-ui` 內 |
 | layout.css | A `css/layout.css` | 同上 |
-| edu-info-btn.css | A `css/education.css` 第 5～12 行（整檔 6000 多行，只抽說明按鈕這段） | 個人頁等用到 `.edu-info-btn` 的頁面自行 import |
+| edu-info-btn.css | A `css/education.css` 第 5～31 行（整檔 6000 多行，只抽說明按鈕與說明彈窗 `.edu-info-overlay`／`.edu-info-dialog*` 這段；T-038 把原本只抽到第 12 行漏掉的彈窗樣式補進來） | 個人頁等用到 `.edu-info-btn` 的頁面自行 import |
 | message.css | A `css/message.css` | 活動管理（`.msg-manage-card`）、之後的收件匣自行 import |
 | manage-status.css | A `css/admin.css` 第 333 行（整檔 2500 多行，只抽 `.banner-manage-status`） | 活動管理自行 import |
 | calendar.css | A `css/calendar.css`（行尾轉 LF） | 活動頁月曆元件自行 import，切到月曆頁籤才載入（M-071） |

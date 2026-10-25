@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
@@ -59,5 +61,14 @@ describe('ProfileInfoButton（M-121 前半）', () => {
     expect(overlay).not.toBeNull();
     if (overlay) fireEvent.click(overlay);
     expect(document.querySelector('.edu-info-overlay')).toBeNull();
+  });
+
+  // 退修 2 P3 d：vitest 會略過 CSS，所以讀原始碼確認 ProfileInfoButton 自己載入說明按鈕／彈窗樣式。
+  it('自己 import edu-info-btn.css（不靠 ProfilePage 先載入）', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/profile/components/legacy/ProfileInfoButton.tsx'),
+      'utf8',
+    );
+    expect(source).toContain("import '@/styles/legacy/edu-info-btn.css';");
   });
 });

@@ -53,14 +53,28 @@ vi.mock('@/features/exp-achievements/data/achievements', async () => {
   };
 });
 
-import { loadUserAchievementProgress } from '@/features/exp-achievements/data/achievements';
+// T-038：成就系統開放開關（預設關閉）。開放時的行為（原本的載入徽章流程）由 gate.open=true 驗證，
+// 關閉時的反灰＋尚未開放另有 describe。
+const { gate, closedToastMock } = vi.hoisted(() => ({
+  gate: { open: true },
+  closedToastMock: vi.fn(),
+}));
+vi.mock('@/features/exp-achievements/availability', () => ({
+  get ACHIEVEMENTS_OPEN() {
+    return gate.open;
+  },
+  showAchievementsClosedToast: closedToastMock,
+}));
+
+import { loadAchievementDefs, loadUserAchievementProgress } from '@/features/exp-achievements/data/achievements';
 import { UserCardBadges } from './UserCardBadges';
 
 // 測試同步更新：照 A（項目 5）——點毛玻璃改成「讀取對方成就」而非 toast 未開放。
-describe('UserCardBadges', () => {
+describe('UserCardBadges（成就系統開放）', () => {
   beforeEach(() => {
     document.documentElement.lang = 'zh-TW';
     vi.clearAllMocks();
+    gate.open = true;
   });
 
   afterEach(() => {
@@ -137,5 +151,68 @@ describe('UserCardBadges', () => {
 
     expect(container.querySelector('.uc-blur-overlay')).toBeTruthy();
     expect(container.textContent).not.toContain('Badge1');
+  });
+});
+
+// T-038（2026-10-26）：成就／稱號系統先關閉——他人名片的徽章區反灰、不可互動（點擊只顯示尚未開放）。
+describe('UserCardBadges（成就系統關閉）', () => {
+  beforeEach(() => {
+    document.documentElement.lang = 'zh-TW';
+    vi.clearAllMocks();
+    gate.open = false;
+  });
+
+  afterEach(() => {
+    cleanup();
+    gate.open = true;
+  });
+
+  it('保留區塊標題，整塊反灰（ach-closed），不出現毛玻璃載入提示', () => {
+    const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
+    const card = container.querySelector('.info-card');
+    expect(container.textContent).toContain('已獲得徽章');
+    expect(card?.classList.contains('ach-closed')).toBe(true);
+    expect(container.querySelector('.uc-blur-overlay')).toBeFalsy();
+    expect(container.textContent).not.toContain('點擊載入此用戶的徽章');
+    expect(container.querySelector('.uc-badge-list')).toBeFalsy();
+  });
+
+  it('關閉說明由原生 button 承載（可聚焦、有角色、保留可見說明文字，退修 1 #3）', () => {
+    const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
+    const button = container.querySelector('button.ach-closed-note') as HTMLButtonElement | null;
+    expect(button).toBeTruthy();
+    expect(button?.tagName).toBe('BUTTON');
+    expect(button?.type).toBe('button');
+    expect(button?.getAttribute('aria-disabled')).toBe('true');
+    // 原生 button 預設可聚焦；說明文字就是 button 的可見文字（測試環境沒載字典，t() 回傳 key）
+    expect(button?.textContent).toMatch(/exp-achievements\.closed|尚未開放/);
+    expect(button?.tabIndex).toBe(0);
+    expect(button?.disabled).toBe(false);
+    button?.focus();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('點 button 與點卡片其他地方各只觸發一次尚未開放，不讀取任何徽章資料', async () => {
+    const { container } = render(<UserCardBadges uid="target" isSelf={false} />);
+    const card = container.querySelector('.info-card');
+    const button = container.querySelector('button.ach-closed-note');
+    expect(card).toBeTruthy();
+    expect(button).toBeTruthy();
+    if (button) fireEvent.click(button);
+    expect(closedToastMock).toHaveBeenCalledTimes(1);
+    const title = container.querySelector('.info-title');
+    if (title) fireEvent.click(title);
+    expect(closedToastMock).toHaveBeenCalledTimes(2);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(loadAchievementDefs).not.toHaveBeenCalled();
+    expect(loadUserAchievementProgress).not.toHaveBeenCalled();
+  });
+
+  it('本人名片也一樣：不自動載入徽章', async () => {
+    const { container } = render(<UserCardBadges uid="me" isSelf={true} />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.querySelector('.info-card')?.classList.contains('ach-closed')).toBe(true);
+    expect(loadAchievementDefs).not.toHaveBeenCalled();
+    expect(loadUserAchievementProgress).not.toHaveBeenCalled();
   });
 });

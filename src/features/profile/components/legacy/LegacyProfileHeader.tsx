@@ -6,6 +6,10 @@ import { emit } from '@/core/events';
 import { useUserRoles } from '@/data/user-roles';
 import { lt } from '@/i18n/i18n';
 import { useLocation } from 'preact-iso';
+import {
+  ACHIEVEMENTS_OPEN,
+  showAchievementsClosedToast,
+} from '@/features/exp-achievements/availability';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
@@ -186,6 +190,11 @@ export function LegacyProfileTopSection({
   }, [uid, profile.titleBig, profile.titleNormal]);
 
   const location = useLocation();
+  // 成就／稱號關閉期間（ACHIEVEMENTS_OPEN=false）：入口只顯示「尚未開放」提示，不導頁。
+  const openAchievementsEntry = (path: string): void => {
+    if (ACHIEVEMENTS_OPEN) location.route(path);
+    else showAchievementsClosedToast();
+  };
 
   return (
     <>
@@ -300,7 +309,7 @@ export function LegacyProfileTopSection({
             {lt('profile.attendanceRate', '出席率')}
           </span>
         </div>
-        <div class="stat-item">
+        <div class={ACHIEVEMENTS_OPEN ? 'stat-item' : 'stat-item ach-closed'}>
           <span class="stat-num" id="profile-stat-badges">{badgeCount}</span>
           <span class="stat-label" data-i18n="profile.badges">
             {lt('profile.badges', '徽章')}
@@ -311,8 +320,9 @@ export function LegacyProfileTopSection({
       <div class="quick-grid">
         <button
           type="button"
-          class="quick-item"
-          onClick={() => location.route('/achievements')}
+          class={ACHIEVEMENTS_OPEN ? 'quick-item' : 'quick-item ach-closed'}
+          aria-disabled={ACHIEVEMENTS_OPEN ? undefined : 'true'}
+          onClick={() => openAchievementsEntry('/achievements')}
         >
           <span>🏅</span>
           <span data-i18n="profile.achievements">
@@ -321,8 +331,9 @@ export function LegacyProfileTopSection({
         </button>
         <button
           type="button"
-          class="quick-item"
-          onClick={() => location.route('/titles')}
+          class={ACHIEVEMENTS_OPEN ? 'quick-item' : 'quick-item ach-closed'}
+          aria-disabled={ACHIEVEMENTS_OPEN ? undefined : 'true'}
+          onClick={() => openAchievementsEntry('/titles')}
         >
           <span>🎖️</span>
           <span data-i18n="profile.titles">{lt('profile.titles', '稱號')}</span>

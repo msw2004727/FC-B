@@ -118,14 +118,27 @@ export function Failure({ retry }: { retry: () => void }) {
   return (
     <div class="profile-state">
       <p role="alert"><Text>{t('profile.loadError')}</Text></p>
-      <button type="button" onClick={retry}><Text>{t('profile.retry')}</Text></button>
+      {/* 個人頁都在 .legacy-ui 內，A 的 button 重設會把無 class 的按鈕洗成純文字；比照 ErrorFallback 用 A 的 primary-btn small */}
+      <button type="button" class="primary-btn small" onClick={retry}><Text>{t('profile.retry')}</Text></button>
     </div>
   );
 }
 
-export function Missing() {
+/**
+ * 查無資料。loadUserProfile 會吞掉 getDoc／getDocs 的 I/O 錯誤並回 null（見 profile-model.ts），
+ * 所以「找不到」與「暫時讀不到」在畫面上分不出來——給 retry 時在同一個區塊補重試鈕（退修 2 P2-1），
+ * 不另外顯示 role="alert" 的失敗訊息。
+ */
+export function Missing({ retry }: { retry?: () => void }) {
   const t = useT();
-  return <div class="profile-state"><Text>{t('profile.unavailable')}</Text></div>;
+  return (
+    <div class="profile-state">
+      <Text>{t('profile.unavailable')}</Text>
+      {retry ? (
+        <button type="button" class="primary-btn small" onClick={retry}><Text>{t('profile.retry')}</Text></button>
+      ) : null}
+    </div>
+  );
 }
 
 type Role = NonNullable<ComponentProps<typeof UserTag>['role']>;

@@ -395,8 +395,8 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-uid-wrap')?.textContent).toContain('U-me');
   });
 
-  // 測試同步更新：照 A（M-121）
-  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號導向新頁', async () => {
+  // 測試同步更新：照 A（M-121）；T-038 成就/稱號先關閉
+  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號反灰且點擊只顯示尚未開放', async () => {
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(null);
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
@@ -409,13 +409,18 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-slot-banner')).toBeNull();
     expect(document.querySelector('.profile-scene-key')).toBeNull();
 
-    // 測試同步更新：照 A（M-121）成就/稱號快捷改為導頁。
+    // T-038（2026-10-26）：成就/稱號系統先關閉（exp-achievements/availability.ts），
+    // 原本照 A（M-121）導頁的快捷改為反灰＋「尚未開放」提示，不導頁。
     routeMock.mockClear();
+    const toastSpy = vi.spyOn(toast, 'show');
     fireEvent.click(screen.getByText('成就/徽章'));
-    expect(routeMock).toHaveBeenCalledWith('/achievements');
-
     fireEvent.click(screen.getByText('稱號'));
-    expect(routeMock).toHaveBeenCalledWith('/titles');
+    expect(routeMock).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledTimes(2);
+    for (const call of toastSpy.mock.calls) {
+      expect(call[0]).toEqual({ message: expect.stringMatching(/exp-achievements\.closed|尚未開放/) });
+    }
+    toastSpy.mockRestore();
   });
 
   it('正常顯示俱樂部與活動連結，支援區塊收合', async () => {
@@ -606,6 +611,9 @@ describe('我的個人頁（A 版結構）', () => {
     expect(await screen.findByText('王小明')).toBeTruthy();
     expect(loadUserProfile).toHaveBeenCalledTimes(2);
   });
+
+  // 「查無資料／讀取失敗」的畫面測試在 pages/ProfilePage.load-failure.test.tsx：
+  // 要走真的 loadUserProfile（它會吞掉 I/O 錯誤回 null），這個檔把 loadUserProfile 整個 mock 掉，無法表達那個行為（退修 2 P2-1）。
 
   it('首次表單只提交白名單；保留失敗輸入，允許重試', async () => {
     vi.mocked(loadUserProfile).mockResolvedValue(profile({

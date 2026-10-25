@@ -192,6 +192,23 @@ describe('LegacyFavoritesCard', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('展開時標題列加 open class（箭頭才會轉向下，照 A toggleClass open；T-038）', async () => {
+    vi.mocked(loadFavorites).mockResolvedValue({ events: ['e1'], tournaments: [] });
+    vi.mocked(loadEventDetail).mockImplementation(async (id: string) => makeDetail(id) as never);
+    vi.mocked(loadViewerRegistrations).mockResolvedValue([]);
+
+    const { container } = render(<LegacyFavoritesCard uid={uid} profile={profile} />);
+    await waitFor(() => {
+      expect(container.querySelector('#fav-count-badge')?.textContent).toBe('1');
+    });
+    const toggle = container.querySelector('.profile-collapse-toggle') as HTMLElement;
+    expect(toggle.classList.contains('open')).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.classList.contains('open')).toBe(true);
+    fireEvent.click(toggle);
+    expect(toggle.classList.contains('open')).toBe(false);
+  });
+
   it('登入者報名狀態覆蓋 fallback badge（confirmed → 已報名／class open）', async () => {
     vi.mocked(loadFavorites).mockResolvedValue({ events: ['e1'], tournaments: [] });
     vi.mocked(loadEventDetail).mockImplementation(async (id: string) => makeDetail(id) as never);

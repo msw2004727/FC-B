@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { PROFILE_INFO, type ProfileInfoKey } from './profile-info';
+// A 的說明按鈕（.edu-info-btn）與說明彈窗（.edu-info-overlay／.edu-info-dialog）樣式：這個元件自己載入，
+// 不靠 ProfilePage 先載入（退修 2 P3 d；彈窗 portal 到 body、外包 .legacy-ui，樣式限定在 .legacy-ui 內）。
+import '@/styles/legacy/edu-info-btn.css';
 
 /**
  * M-121 前半：卡標題「?」按鈕與說明視窗（照 A `profile-data.js#_showProfileInfo`）。

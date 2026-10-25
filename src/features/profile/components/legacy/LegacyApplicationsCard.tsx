@@ -126,7 +126,7 @@ export function LegacyApplicationsCard(
   return (
     <div class="info-card" id="profile-applications-card">
       <div
-        class="info-title profile-collapse-toggle"
+        class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
         tabIndex={0}
         aria-expanded={open ? 'true' : 'false'}
