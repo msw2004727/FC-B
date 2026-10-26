@@ -145,7 +145,6 @@ export default function HomePage(): JSX.Element {
 
   useEffect(() => {
     let active = true;
-    let bannersFailed = false;
     let bannersConfirmed = false;
     // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
     // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
@@ -153,9 +152,6 @@ export default function HomePage(): JSX.Element {
     trackPublicRead(
       loadActiveBanners({
         getFirebase: getFirebaseCore,
-        onFailure: () => {
-          bannersFailed = true;
-        },
         onResult: (meta) => {
           bannersConfirmed = meta.fromCache === false;
         },
@@ -164,11 +160,9 @@ export default function HomePage(): JSX.Element {
       .then((list) => {
         // 畫面已卸載（或被新的一輪取代）就什麼都不做：舊請求晚到不能覆寫快照，也不能動畫面。
         if (!active) return;
-        // 查詢失敗（回傳空陣列）：保留畫面上的橫幅（可能是快照），也不動快照。
-        if (bannersFailed) return;
         if (!bannersConfirmed) {
-          // 不是確認向伺服器新取得（離線時 Firestore 回持久快取）：不更新快照新鮮度、也不拿它取代快照；
-          // 畫面上還沒有任何橫幅時才用（維持 T-041 以來的行為）。
+          // 沒有確認向伺服器新取得：查詢失敗（loadActiveBanners 回 []、沒有回報結果）、離線時 Firestore 回持久快取、或讀不到旗標。
+          // 一律不更新快照新鮮度，也不拿它取代畫面上的快照橫幅（失敗不會清掉快照）；畫面上還沒有任何橫幅時才用（維持 T-041 以來的行為）。
           setBanners((prev) => (prev.length > 0 ? prev : list));
           return;
         }

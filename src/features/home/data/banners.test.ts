@@ -52,31 +52,23 @@ describe('banners data layer', () => {
     expect(result[0]?.linkUrl).toBe('');
   });
 
-  it('讀取失敗仍回空陣列，並通知 onFailure（呼叫端分辨「查詢失敗」與「真的沒有橫幅」）；成功時不通知', async () => {
+  it('讀取失敗仍回空陣列，而且不回報結果（onResult 不被呼叫）——呼叫端靠這點分辨「查詢失敗」與「伺服器確認沒有橫幅」', async () => {
     const warn = vi.fn();
-    const onFailure = vi.fn();
+    const onResult = vi.fn();
     vi.mocked(getDocs).mockRejectedValueOnce(new Error('offline'));
-    expect(await loadActiveBanners({ logger: { warn }, onFailure })).toEqual([]);
-    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(await loadActiveBanners({ logger: { warn }, onResult })).toEqual([]);
+    expect(onResult).not.toHaveBeenCalled();
 
-    onFailure.mockClear();
-    vi.mocked(getDocs).mockResolvedValueOnce({ docs: [] } as unknown as Awaited<ReturnType<typeof getDocs>>);
-    expect(await loadActiveBanners({ logger: { warn }, onFailure })).toEqual([]);
-    expect(onFailure).not.toHaveBeenCalled();
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs: [],
+      metadata: { fromCache: false },
+    } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    expect(await loadActiveBanners({ logger: { warn }, onResult })).toEqual([]);
+    expect(onResult).toHaveBeenCalledWith({ fromCache: false });
   });
 
-  it('onFailure／onResult 丟錯也不破壞回傳契約：失敗仍回 []、成功仍回橫幅', async () => {
+  it('onResult 丟錯也不破壞回傳契約：仍回橫幅，而不是被當成讀取失敗回 []', async () => {
     const warn = vi.fn();
-    vi.mocked(getDocs).mockRejectedValueOnce(new Error('offline'));
-    await expect(
-      loadActiveBanners({
-        logger: { warn },
-        onFailure: () => {
-          throw new Error('callback failed');
-        },
-      }),
-    ).resolves.toEqual([]);
-
     vi.mocked(getDocs).mockResolvedValueOnce({
       docs: [{ id: 'b1', data: () => ({ status: 'active', title: 'ok' }) }],
     } as unknown as Awaited<ReturnType<typeof getDocs>>);

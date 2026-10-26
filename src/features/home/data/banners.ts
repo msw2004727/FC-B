@@ -31,16 +31,15 @@ export interface BannerDeps {
   getFirebase?: () => Promise<{ db: Firestore }>;
   logger?: { warn: (...args: unknown[]) => void };
   now?: () => number;
-  /** 讀取失敗時呼叫（失敗仍回傳空陣列）。呼叫端靠它分辨「查詢失敗」和「真的沒有橫幅」。callback 丟錯會被吞掉，不影響回傳。 */
-  onFailure?: (err: unknown) => void;
   /**
-   * 讀取成功時呼叫（回傳前）。`fromCache === false` 才是「確認向伺服器新取得」，可以拿來更新首屏快照的新鮮度；
-   * `true`（離線時的持久快取）或 `undefined`（讀不到 metadata）都不算。callback 丟錯會被吞掉。
+   * 讀取成功時呼叫（回傳前；失敗不會呼叫，失敗仍回傳空陣列）。`fromCache === false` 才是「確認向伺服器新取得」，
+   * 呼叫端可以拿來更新首屏快照的新鮮度，並藉此分辨「查詢失敗（沒有回報）」和「伺服器確認真的沒有橫幅（回報 false 且清單為空）」；
+   * `true`（離線時的持久快取）或 `undefined`（讀不到 metadata）都不算。callback 丟錯會被吞掉，不影響回傳。
    */
   onResult?: (meta: { fromCache: boolean | undefined }) => void;
 }
 
-/** 呼叫端提供的通知 callback 丟錯不能破壞 loadActiveBanners 的契約（成功回橫幅、失敗回 []）。 */
+/** 呼叫端提供的通知 callback 丟錯不能破壞 loadActiveBanners 的契約（成功回橫幅）。 */
 function notifyCallback(call: () => void): void {
   try {
     call();
@@ -198,7 +197,6 @@ export async function loadActiveBanners(deps: BannerDeps = {}): Promise<BannerDo
     return banners;
   } catch (err) {
     logger.warn('[banners] failed to load banners:', err);
-    notifyCallback(() => deps.onFailure?.(err));
     return [];
   }
 }

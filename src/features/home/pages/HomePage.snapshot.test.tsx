@@ -266,8 +266,8 @@ describe('HomePage 首屏快照：橫幅', () => {
     writeBannersSnapshot([banner({ id: 'b1', title: '快照橫幅' })]);
     const before = localStorage.getItem(BANNERS_SNAPSHOT_KEY);
     let result!: Promise<BannerDoc[]>;
-    vi.mocked(loadActiveBanners).mockImplementation((deps) => {
-      deps?.onFailure?.(new Error('offline'));
+    // 讀取失敗：loadActiveBanners 回 []，而且不回報結果（沒有呼叫 onResult）
+    vi.mocked(loadActiveBanners).mockImplementation(() => {
       result = Promise.resolve([]);
       return result;
     });
