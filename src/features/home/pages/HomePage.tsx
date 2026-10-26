@@ -7,7 +7,7 @@ import { useCreateEventEntry } from '@/features/events/components/event-form/use
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import { useLegacyT } from '@/i18n/i18n';
 import { publicEventHref } from '@/features/events/data/presentation';
-import { SPORTS, eventSportTag } from '@/features/events/data/sports';
+import { SPORTS } from '@/features/events/data/sports';
 import type { EventDoc } from '@/features/events/data/types';
 import { useEvents } from '@/features/events/data/use-events';
 import { getVisibleEvents } from '@/features/events/data/visibility';
@@ -28,7 +28,13 @@ import {
   scheduleEventFormPrefetch,
   type EventFormModalComponent,
 } from '../data/event-form-loader';
-import { parseEventDateRange } from '../data/next-activity';
+import {
+  readBannersSnapshot,
+  readSportsSnapshot,
+  writeBannersSnapshot,
+  writeSportsSnapshot,
+} from '../data/home-snapshot';
+import { computeGuestSportRows, computeSportRows } from '../data/sport-rows';
 // 首頁兩顆「我要開團」按鈕（.home-create-event-btn：金色旋轉外框、藍色漸層、光暈動畫、鎖定狀態）的樣式定義在
 // activity.css。表單改 lazy 後它不再隨 EventFormModal 進首頁，所以在這裡明確引入，並放在 home.css 之前，
 // 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
@@ -60,14 +66,9 @@ function readStoredRegion(): string {
   }
 }
 
-function isPublicActiveHomeEvent(event: EventDoc, nowMs: number): boolean {
-  if (!event || !(event.id || event._docId || event.docId)) return false;
-  const status = String(event.status || '').toLowerCase();
-  if (['ended', 'cancelled', 'canceled', 'archived'].includes(status)) return false;
-  if (event.privateEvent === true || event.teamOnly === true) return false;
-  const range = parseEventDateRange(event.date ?? event.startAt ?? event.startTime);
-  const startMs = range?.startMs ?? 0;
-  return startMs === 0 || startMs > nowMs;
+/** 剛向伺服器讀回活動時，更新首屏運動統計快照（訪客視角，與帳號無關；T-042）。 */
+function saveSportsSnapshotFrom(events: EventDoc[]): void {
+  writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
 }
 
 export default function HomePage(): JSX.Element {
@@ -75,9 +76,10 @@ export default function HomePage(): JSX.Element {
   const viewer = useViewer();
   const location = useLocation();
   // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
-  const eventsData = useEvents(viewer.uid, { terminalMode: 'none' });
+  const eventsData = useEvents(viewer.uid, { terminalMode: 'none', onFresh: saveSportsSnapshotFrom });
 
-  const [banners, setBanners] = useState<BannerDoc[]>([]);
+  // 首屏快照（T-042）：橫幅文字與圖片網址第一次 render 就畫，背景讀回後再換；過期或版本不同讀到空陣列（維持骨架）。
+  const [banners, setBanners] = useState<BannerDoc[]>(() => readBannersSnapshot());
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<AnnouncementDoc | null>(null);
   const [activeSport, setActiveSport] = useActiveSport();
@@ -127,11 +129,22 @@ export default function HomePage(): JSX.Element {
 
   useEffect(() => {
     let active = true;
+    let bannersFailed = false;
     // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
     // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
     // 有登入旗標的人 Auth 先走（避免新分頁以未登入身分成為 Firestore 主分頁），登記不生效（T-041，見 data/firebase.ts）。
-    trackPublicRead(loadActiveBanners({ getFirebase: getFirebaseCore }))
+    trackPublicRead(
+      loadActiveBanners({
+        getFirebase: getFirebaseCore,
+        onFailure: () => {
+          bannersFailed = true;
+        },
+      }),
+    )
       .then((list) => {
+        // 查詢失敗（回傳空陣列）時不蓋掉畫面上的橫幅、也不動快照；成功才寫快照（空清單＝目前沒有橫幅，刪掉舊快照）。
+        if (bannersFailed) return;
+        writeBannersSnapshot(list);
         if (active) setBanners(list);
       })
       .catch(() => {
@@ -154,27 +167,14 @@ export default function HomePage(): JSX.Element {
     [eventsData.events, viewer],
   );
 
-  const sportRows = useMemo(() => {
-    const nowMs = Date.now();
-    const publicActive = visibleEvents.filter((ev) => isPublicActiveHomeEvent(ev, nowMs));
-    const counts = new Map<string, number>();
-    for (const ev of publicActive) {
-      const key = eventSportTag(ev) || 'football';
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    const order = new Map<string, number>(SPORTS.map((item, idx) => [item.key, idx]));
-    return SPORTS.map((item) => ({
-      key: item.key,
-      label: item.label,
-      symbol: item.symbol,
-      count: counts.get(item.key) || 0,
-    }))
-      .filter((item) => item.count > 0)
-      .sort((a, b) => {
-        if (a.count !== b.count) return b.count - a.count;
-        return (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0);
-      });
-  }, [visibleEvents]);
+  const computedSportRows = useMemo(
+    () => computeSportRows(visibleEvents, Date.now()),
+    [visibleEvents],
+  );
+  // 首屏快照（T-042）：活動還在讀、或讀取失敗且沒有任何上次資料時，用快照的運動統計先畫（不看登入是否確認）；
+  // 讀回後（含「目前沒有活動」）一律改用即時結果。過期或版本不同的快照讀到空陣列＝不顯示任何統計。
+  const snapshotSportRows = useMemo(() => readSportsSnapshot(), []);
+  const sportRows = eventsData.loading || eventsData.error ? snapshotSportRows : computedSportRows;
 
   function handleUnavailableFeature(e?: Event): void {
     if (e) {

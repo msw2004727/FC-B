@@ -1,0 +1,24 @@
+/* T-042：橫幅圖由 background-image 改成 <img>（第一張 fetchpriority=high、其餘 lazy）。B 自己加的補充，A 沒有這條。
+   目標是和原本 `background-size: cover; background-position: center` 畫出一模一樣的結果：
+   - 鋪滿整個 .banner-slide（絕對定位 inset:0，不吃 slide 的 padding）、object-fit: cover、置中；
+   - ::after 的暗色漸層遮罩（home.css）是 slide 的最後一個子層，仍蓋在圖片上方（同為 z-index:auto 的定位元素，依樹狀順序疊放）；
+   - 全域 `img { opacity:0 }` 的淡入由 slide 自己的 .banner-slide--loading（opacity .15 → 1）負責，圖片本身不再重複淡入；
+   - pointer-events:none：點擊與長按都落在 slide 上，行為和原本的背景圖一樣（點橫幅開連結、不會跳出「儲存圖片」或被拖曳）。 */
+.banner-slide-img {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+  opacity: 1;
+  transition: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

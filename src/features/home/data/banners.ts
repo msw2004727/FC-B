@@ -31,6 +31,8 @@ export interface BannerDeps {
   getFirebase?: () => Promise<{ db: Firestore }>;
   logger?: { warn: (...args: unknown[]) => void };
   now?: () => number;
+  /** 讀取失敗時呼叫（失敗仍回傳空陣列）。呼叫端靠它分辨「查詢失敗」和「真的沒有橫幅」。 */
+  onFailure?: (err: unknown) => void;
 }
 
 function toMillis(value: unknown): number {
@@ -166,6 +168,7 @@ export async function loadActiveBanners(deps: BannerDeps = {}): Promise<BannerDo
     return filterAndSortBanners(docs);
   } catch (err) {
     logger.warn('[banners] failed to load banners:', err);
+    deps.onFailure?.(err);
     return [];
   }
 }

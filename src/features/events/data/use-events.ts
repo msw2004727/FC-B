@@ -13,6 +13,11 @@ export type UseEventsTerminalMode = 'preview' | 'none';
 export interface UseEventsOptions {
   /** 預設 'preview'。首頁只算進行中活動，用 'none' 少一個查詢與 payload。 */
   terminalMode?: UseEventsTerminalMode;
+  /**
+   * 每次「向伺服器讀回」成功時呼叫一次（不含記憶體／本機快照那份上次資料）。
+   * 首頁用它寫自己的公開首屏快照（T-042）：只能拿剛讀回的資料寫，否則舊資料會被重新蓋上新的時間戳。
+   */
+  onFresh?: (events: EventDoc[]) => void;
 }
 
 interface Inflight {
@@ -137,6 +142,8 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   const terminalMode = options.terminalMode ?? 'preview';
   const terminalModeRef = useRef(terminalMode);
   terminalModeRef.current = terminalMode;
+  const onFreshRef = useRef(options.onFresh);
+  onFreshRef.current = options.onFresh;
   const stale = useMemo(() => (fresh ? null : staleEventsFor(viewerUid)), [fresh, viewerUid]);
 
   useEffect(() => {
@@ -152,6 +159,11 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
         } else {
           // 登入狀態還沒確定（或 viewer 還沒載成本人）：先不寫，確定後補寫。
           pendingSnapshot = next;
+        }
+        try {
+          onFreshRef.current?.(next);
+        } catch {
+          /* 呼叫端的快照寫入失敗不影響列表 */
         }
         if (!current) return;
         setFresh(next);

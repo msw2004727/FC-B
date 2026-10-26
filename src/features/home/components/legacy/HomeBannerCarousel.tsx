@@ -5,6 +5,7 @@ import {
   sanitizeHttpUrl,
   type BannerDoc,
 } from '../../data/banners';
+import './banner-img.css';
 
 const AUTOPLAY_INTERVAL_MS = 8000;
 const imageReadyCache: Record<string, boolean> = {};
@@ -253,10 +254,8 @@ export function HomeBannerCarousel({
               : undefined;
 
             if (safeImg) {
-              const bgCss = isLoaded
-                ? `background-image:url("${safeImg.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}");background-size:cover;background-position:center;`
-                : '';
-              const cursorCss = safeLink ? 'cursor:pointer;' : '';
+              // T-042：圖片改成 <img>（原本是 background-image，無法設優先權與延遲載入）。第一張 fetchpriority=high＋eager，
+              // 其餘 lazy；width／height 對應後台上傳的 1200×545。外觀對齊原背景圖（cover＋置中）見 banner-img.css。
               return (
                 <div
                   key={b.id || b._docId || `slide-${idx}`}
@@ -264,9 +263,21 @@ export function HomeBannerCarousel({
                   data-bg-src={safeImg}
                   data-banner-priority={idx === 0 ? 'high' : 'normal'}
                   data-banner-load-state={isLoaded ? 'done' : 'loading'}
-                  style={`${bgCss}${cursorCss}` || undefined}
+                  style={safeLink ? 'cursor:pointer;' : undefined}
                   onClick={handleSlideClick}
-                />
+                >
+                  <img
+                    class="banner-slide-img"
+                    src={safeImg}
+                    alt=""
+                    width={1200}
+                    height={545}
+                    decoding="async"
+                    loading={idx === 0 ? 'eager' : 'lazy'}
+                    fetchpriority={idx === 0 ? 'high' : undefined}
+                    draggable={false}
+                  />
+                </div>
               );
             }
 

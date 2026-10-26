@@ -51,6 +51,19 @@ describe('banners data layer', () => {
     expect(result[0]?.linkUrl).toBe('');
   });
 
+  it('讀取失敗仍回空陣列，並通知 onFailure（呼叫端分辨「查詢失敗」與「真的沒有橫幅」）；成功時不通知', async () => {
+    const warn = vi.fn();
+    const onFailure = vi.fn();
+    vi.mocked(getDocs).mockRejectedValueOnce(new Error('offline'));
+    expect(await loadActiveBanners({ logger: { warn }, onFailure })).toEqual([]);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    onFailure.mockClear();
+    vi.mocked(getDocs).mockResolvedValueOnce({ docs: [] } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    expect(await loadActiveBanners({ logger: { warn }, onFailure })).toEqual([]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
   it('validates colors and http/https urls safely', () => {
     expect(sanitizeHttpUrl('https://toosterx.com/a')).toBe('https://toosterx.com/a');
     expect(sanitizeHttpUrl('http://toosterx.com/a')).toBe('http://toosterx.com/a');

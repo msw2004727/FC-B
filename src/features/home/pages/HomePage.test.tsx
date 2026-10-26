@@ -11,6 +11,7 @@ import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { toast } from '@/ui/Toast';
 import { loadActiveAnnouncements, type AnnouncementDoc } from '../data/announcements';
 import { loadActiveBanners, type BannerDoc } from '../data/banners';
+import { _clearHomeSnapshotForTest } from '../data/home-snapshot';
 import {
   parseEventDateRange,
   registrationStatusMeta,
@@ -107,6 +108,8 @@ function deferred<T>(): {
 beforeEach(() => {
   vi.resetAllMocks();
   _resetUseEventsForTest();
+  // 首屏快照（T-042）存在 localStorage，會在案例之間殘留：每個案例從沒有快照開始，快照行為另在 HomePage.snapshot.test.tsx 測。
+  _clearHomeSnapshotForTest();
   vi.mocked(useViewer).mockReturnValue(makeViewer('u1'));
   vi.mocked(resolveNextActivity).mockResolvedValue(null);
   vi.mocked(loadActiveBanners).mockResolvedValue([]);

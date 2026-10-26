@@ -100,6 +100,30 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     expect(guestFirst.getByTestId('p').textContent).toBe('--:A 的資料');
   });
 
+  it('onFresh 只在伺服器讀回時呼叫（拿剛讀回的資料），顯示本機快照那份上次資料時不呼叫；它丟錯不影響列表', async () => {
+    writeEventsSnapshot(null, [ev('a', '舊資料')]);
+    let resolve!: (v: string[]) => void;
+    loadEventsStatic.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const onFresh = vi.fn((_events: EventDoc[]) => {
+      throw new Error('snapshot write failed');
+    });
+    function FreshProbe(): preact.JSX.Element {
+      const { events } = useEvents(null, { onFresh });
+      return h('div', { 'data-testid': 'p' }, events.map((e) => e.title).join(','));
+    }
+
+    const view = render(h(FreshProbe, null));
+    expect(view.getByTestId('p').textContent).toBe('舊資料');
+    expect(onFresh).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
+    repoEvents = [ev('b', '新資料')];
+    resolve(['events']);
+    await waitFor(() => expect(view.getByTestId('p').textContent).toBe('新資料'));
+    expect(onFresh).toHaveBeenCalledTimes(1);
+    expect(onFresh.mock.calls[0]?.[0]?.map((e) => e.title)).toEqual(['新資料']);
+  });
+
   it('超過大小上限不存', () => {
     const big = Array.from({ length: 2000 }, (_, i) => ({ ...ev(`e${i}`, 'x'.repeat(600)) }));
     writeEventsSnapshot(null, big);

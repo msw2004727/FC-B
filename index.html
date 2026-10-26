@@ -7,6 +7,15 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="color-scheme" content="light dark" />
+    <!-- T-042：首頁一開就會連的來源，趁下載 JS 時先做好 DNS＋TCP＋TLS（手機上每個新來源約 0.3～0.6 秒）。
+         firestore 的讀取是 CORS 請求，要帶 crossorigin 才會重用這條連線；橫幅圖是 <img>（不帶 crossorigin）。
+         其餘（登入還原、舊的登入彈窗頁）只預先解析 DNS，避免白占連線。 -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://firebasestorage.googleapis.com" />
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
+    <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
+    <link rel="dns-prefetch" href="https://www.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fc-football-6c8dc.firebaseapp.com" />
     <title>ToosterX</title>
     <!-- 照 A index.html：圖示、加到主畫面（PWA）相關標籤；manifest 由 vite.config.ts 的 PWA 設定產生（內容照 A manifest.json） -->
     <link rel="icon" href="/assets/icons/icon-192x192.png" type="image/png" />

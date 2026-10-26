@@ -1,0 +1,222 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { APP_VERSION } from '@/version';
+import type { BannerDoc } from './banners';
+import {
+  BANNERS_SNAPSHOT_KEY,
+  HOME_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_MAX_CHARS,
+  SPORTS_SNAPSHOT_KEY,
+  _clearHomeSnapshotForTest,
+  readBannersSnapshot,
+  readSportsSnapshot,
+  writeBannersSnapshot,
+  writeSportsSnapshot,
+} from './home-snapshot';
+
+const NOW = Date.UTC(2026, 9, 27, 3, 0, 0);
+
+function banner(partial: Partial<BannerDoc> & { id: string }): BannerDoc {
+  return { _docId: partial.id, status: 'active', ...partial };
+}
+
+function putRaw(key: string, entry: Record<string, unknown>): void {
+  localStorage.setItem(key, JSON.stringify(entry));
+}
+
+beforeEach(() => {
+  _clearHomeSnapshotForTest();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  _clearHomeSnapshotForTest();
+});
+
+describe('橫幅快照', () => {
+  it('寫入後在 30 分鐘內讀得回來，只留畫面用得到的欄位', () => {
+    writeBannersSnapshot(
+      [
+        {
+          ...banner({
+            id: 'b1',
+            title: '週末熱血開踢',
+            subtitle: '立即加入',
+            titleColor: '#ffffff',
+            image: 'https://firebasestorage.googleapis.com/v0/b/x/o/b1.webp?alt=media',
+            linkUrl: 'https://example.com/go',
+            gradient: 'linear-gradient(#000, #333)',
+          }),
+          // Firestore Timestamp 之類的時間欄位不進快照
+          startAt: { seconds: 1, nanoseconds: 0 },
+          endAt: { seconds: 2, nanoseconds: 0 },
+        },
+        banner({ id: 'b2', title: '第二張' }),
+      ],
+      NOW,
+    );
+
+    const read = readBannersSnapshot(NOW + 5 * 60 * 1000);
+    expect(read.map((b) => b.id)).toEqual(['b1', 'b2']);
+    expect(read[0]).toMatchObject({
+      id: 'b1',
+      _docId: 'b1',
+      status: 'active',
+      title: '週末熱血開踢',
+      subtitle: '立即加入',
+      titleColor: '#ffffff',
+      image: 'https://firebasestorage.googleapis.com/v0/b/x/o/b1.webp?alt=media',
+      linkUrl: 'https://example.com/go',
+      gradient: 'linear-gradient(#000, #333)',
+    });
+    expect(read[0]).not.toHaveProperty('startAt');
+    expect(read[0]).not.toHaveProperty('endAt');
+  });
+
+  it('快照內容與帳號無關：存的只有版本、時間與橫幅欄位', () => {
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as Record<string, unknown>;
+    expect(Object.keys(stored).sort()).toEqual(['appVersion', 'items', 'savedAt', 'v']);
+    expect(stored.appVersion).toBe(APP_VERSION);
+    expect(stored.savedAt).toBe(NOW);
+  });
+
+  it('剛好 30 分鐘仍可用；超過 30 分鐘一律當沒有快照（只留骨架）', () => {
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS)).toHaveLength(1);
+    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toEqual([]);
+  });
+
+  it('版本和目前不同一律當沒有快照（即使剛寫入）', () => {
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: '0.20200101',
+      savedAt: NOW,
+      items: [{ id: 'b1', _docId: 'b1', title: '舊版寫的' }],
+    });
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+  });
+
+  it('寫入時間在未來太遠（時鐘不可信）、格式不符、壞 JSON 都當沒有快照', () => {
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW + 10 * 60 * 1000,
+      items: [{ id: 'b1', _docId: 'b1' }],
+    });
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+
+    putRaw(BANNERS_SNAPSHOT_KEY, { v: 2, appVersion: APP_VERSION, savedAt: NOW, items: [{ id: 'b1', _docId: 'b1' }] });
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+
+    putRaw(BANNERS_SNAPSHOT_KEY, { v: 1, appVersion: APP_VERSION, savedAt: NOW, items: 'nope' });
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+
+    localStorage.setItem(BANNERS_SNAPSHOT_KEY, '{not json');
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+  });
+
+  it('圖片與連結只接受 http/https（本機資料被竄改也不會變成 javascript: 等協定）；缺 id 的項目略過', () => {
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: [
+        { id: 'b1', _docId: 'b1', image: 'javascript:alert(1)', linkUrl: 'data:text/html,x', title: 'ok' },
+        { id: '', _docId: 'b2' },
+        { _docId: 'b3' },
+        null,
+        'oops',
+      ],
+    });
+    const read = readBannersSnapshot(NOW);
+    expect(read).toHaveLength(1);
+    expect(read[0]?.image).toBe('');
+    expect(read[0]?.linkUrl).toBe('');
+  });
+
+  it('空清單（伺服器說目前沒有橫幅）會刪掉舊快照', () => {
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).not.toBeNull();
+    writeBannersSnapshot([], NOW + 1000);
+    expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('超過字數上限不存，並刪掉舊的', () => {
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    writeBannersSnapshot([banner({ id: 'b1', title: 'y'.repeat(HOME_SNAPSHOT_MAX_CHARS) })], NOW + 1000);
+    expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
+  });
+});
+
+describe('運動統計快照', () => {
+  const rows = [
+    { key: 'football', label: '足球', symbol: '⚽', count: 3 },
+    { key: 'basketball', label: '籃球', symbol: '🏀', count: 1 },
+  ];
+
+  it('只存 key＋數量，讀取時由 SPORTS 還原標籤與符號', () => {
+    writeSportsSnapshot(rows, NOW);
+    const stored = JSON.parse(localStorage.getItem(SPORTS_SNAPSHOT_KEY) as string) as { items: unknown[] };
+    expect(stored.items).toEqual([
+      { key: 'football', count: 3 },
+      { key: 'basketball', count: 1 },
+    ]);
+    expect(readSportsSnapshot(NOW + 1000)).toEqual(rows);
+  });
+
+  it('超過 30 分鐘或版本不同：不回任何統計（不顯示「N 活動」之類的狀態文字）', () => {
+    writeSportsSnapshot(rows, NOW);
+    expect(readSportsSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toEqual([]);
+
+    putRaw(SPORTS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: '0.20200101',
+      savedAt: NOW,
+      items: [{ key: 'football', count: 3 }],
+    });
+    expect(readSportsSnapshot(NOW)).toEqual([]);
+  });
+
+  it('未知運動 key、數量不是正整數的項目略過', () => {
+    putRaw(SPORTS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: [
+        { key: 'football', count: 2.9 },
+        { key: 'not-a-sport', count: 5 },
+        { key: 'basketball', count: 0 },
+        { key: 'tennis', count: -1 },
+        { key: 'running', count: 'many' },
+      ],
+    });
+    expect(readSportsSnapshot(NOW).map((r) => [r.key, r.count])).toEqual([['football', 2]]);
+  });
+
+  it('兩段快照各有各的時間戳：只更新橫幅不會讓舊的運動統計變新', () => {
+    writeSportsSnapshot(rows, NOW);
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW + 25 * 60 * 1000);
+    const later = NOW + 31 * 60 * 1000;
+    expect(readBannersSnapshot(later)).toHaveLength(1);
+    expect(readSportsSnapshot(later)).toEqual([]);
+  });
+});
+
+describe('localStorage 不可用', () => {
+  it('讀寫丟錯一律忽略，回空陣列', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    expect(() => writeBannersSnapshot([banner({ id: 'b1' })], NOW)).not.toThrow();
+    expect(() => writeBannersSnapshot([], NOW)).not.toThrow();
+    expect(() => writeSportsSnapshot([{ key: 'football', label: '足球', symbol: '⚽', count: 1 }], NOW)).not.toThrow();
+    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readSportsSnapshot(NOW)).toEqual([]);
+  });
+});
