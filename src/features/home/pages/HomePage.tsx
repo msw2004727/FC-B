@@ -81,19 +81,12 @@ export default function HomePage(): JSX.Element {
   // 帳號語意：快照為訪客視角的公開資料、沒有帳號歸屬；登入者的最終畫面一律以正式資料（用自己的視角算）取代快照。
   // 「只放訪客可見資料」由寫入守門保證：writeSportsSnapshot／writeBannersSnapshot 只收 computeGuestSportRows／toPublicBanners 的輸出型別。
   const [sportSnap, setSportSnap] = useState<SnapshotRead<SportRow> | null>(() => readSportsSnapshot());
-  // ref 與 state 同步更新：到期回呼拿它核對「畫面上現在的統計是否仍來自快照、是否真的到期」，
-  // 避免正式資料剛取代快照、舊計時器／舊 effect 清理交錯時把正式資料誤清掉。
-  const sportSnapRef = useRef(sportSnap);
-  useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => {
-    const current = sportSnapRef.current;
-    if (!current || Date.now() < current.expiresAt) return;
-    sportSnapRef.current = null;
-    setSportSnap(null);
-  });
+  // 統計的到期回呼只是「丟掉快照 fallback」，不碰正式資料（正式資料是另外用 events 算出來的），所以過時的回呼晚到也沒有副作用，
+  // 不需要核對來源（橫幅不同：橫幅的 state 同時放快照與正式資料，過時的回呼會把正式資料清掉，所以橫幅那邊要核對）。
+  useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => setSportSnap(null));
   // 只有「確認新取得」的活動才會走到這裡（use-events 的 onFresh）：用訪客視角寫快照、撤銷快照 fallback（含空結果；之後重試也不回頭用舊統計）。
   const handleFreshEvents = useCallback((events: EventDoc[]) => {
     writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
-    sportSnapRef.current = null;
     setSportSnap(null);
   }, []);
   // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。

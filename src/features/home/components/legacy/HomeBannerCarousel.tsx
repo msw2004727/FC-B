@@ -38,7 +38,9 @@ export function HomeBannerCarousel({
   const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
-  const mountedRef = useRef(true);
+  /** 每個 <img> 元素目前有效的解碼工作編號（每次 load 事件遞增）；舊工作的結果即使網址剛好又換回來也作廢（A→B→A）。 */
+  const decodeJobsRef = useRef(new WeakMap<HTMLImageElement, number>());
+  const decodeSeqRef = useRef(0);
   const timeoutsRef = useRef(new Map<string, number>());
   const prefetchedRef = useRef(new Set<string>());
   const timerRef = useRef<number | null>(null);
@@ -61,13 +63,6 @@ export function HomeBannerCarousel({
     }
   }, [activeIndex, bannerCount]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   const markImage = useCallback((url: string, status: ImageStatus) => {
     if (status === 'loaded') imageReadyCache[url] = 'loaded';
     // 曾經成功、後來失敗（例如圖片被換掉或刪除）：撤掉「已載入成功」的紀錄，下次進來才會重新嘗試。
@@ -76,10 +71,16 @@ export function HomeBannerCarousel({
   }, []);
 
   // 圖片由 <img> 自己載入（第一張高優先、其餘 lazy），這裡只接它的結果：載入後再解碼才算 loaded，失敗或解碼失敗算 failed。
-  // 解碼是非同步的：回來時若畫面已卸載、或這個 <img> 已被換掉（列表替換→元素移除，或同一個元素改指向別的網址），結果作廢。
+  // 解碼是非同步的：回來時若畫面已卸載（元素已不在 DOM）、這個 <img> 已被換掉（列表替換→元素移除，或同一個元素改指向別的網址），
+  // 或同一個元素後來又有更新的載入工作（網址 A→B→A 時舊工作的網址與現在剛好相同），結果作廢。
   const handleImageLoad = useCallback(
     (url: string, img: HTMLImageElement) => {
-      const isStale = (): boolean => !mountedRef.current || !img.isConnected || img.getAttribute('src') !== url;
+      const job = ++decodeSeqRef.current;
+      decodeJobsRef.current.set(img, job);
+      const isStale = (): boolean =>
+        !img.isConnected
+        || img.getAttribute('src') !== url
+        || decodeJobsRef.current.get(img) !== job;
       if (typeof img.decode !== 'function') {
         markImage(url, 'loaded');
         return;

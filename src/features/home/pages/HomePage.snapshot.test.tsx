@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { JSX } from 'preact';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { _resetFirebaseForTest } from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
-import { _resetUseEventsForTest, useEvents } from '@/features/events/data/use-events';
+import { _resetUseEventsForTest } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { APP_VERSION } from '@/version';
 import { loadActiveAnnouncements } from '../data/announcements';
@@ -118,26 +117,31 @@ function mockEvents(
   load: () => Promise<unknown>,
   active: object[] = [],
   activeFromCache: boolean | undefined = false,
-): void {
+): { requestSettled: () => Promise<void> } {
+  let lastRequest: Promise<unknown> | null = null;
   vi.mocked(getEventsRepo).mockReturnValue({
-    loadEventsStatic: vi.fn().mockImplementation(load),
+    loadEventsStatic: vi.fn().mockImplementation(() => {
+      lastRequest = load();
+      return lastRequest;
+    }),
     ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
     loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
     getSnapshot: () => ({ active, terminal: [], activeFromCache }),
   } as unknown as ReturnType<typeof getEventsRepo>);
-}
-
-/**
- * 「活動請求已處理完」的完成訊號：另一個畫面（witness）共用同一個進行中的請求（useEvents 的 inflight），
- * 它的 loading 變 false 時，先登記的首頁的處理一定已經跑過（同一個 Promise 的 then 依登記順序執行）。
- * 要掛在請求結算「之前」；用在「確認某件事沒有發生」的案例，取代固定次數的 await Promise.resolve()。
- */
-function EventsWitness(): JSX.Element {
-  const { loading } = useEvents(null, { terminalMode: 'none' });
-  return <div data-testid="events-witness" data-done={loading ? '0' : '1'} />;
-}
-async function waitForWitness(witness: { getByTestId: (id: string) => HTMLElement }): Promise<void> {
-  await waitFor(() => expect(witness.getByTestId('events-witness').getAttribute('data-done')).toBe('1'));
+  return {
+    /**
+     * 「這一輪活動請求已處理完」的明確完成訊號（用在「確認某件事沒有發生」的案例，取代固定次數的 await Promise.resolve()）：
+     * 先等請求本身結算（成功或失敗），再等一個巨集任務——它保證請求之後排入的所有 Promise 工作（hook 的處理、重繪）都已經做完。
+     * 不依賴 hook 的 loading 旗標（hook 有舊資料時，請求還沒結算 loading 也可能是 false）。
+     */
+    requestSettled: async () => {
+      await waitFor(() => expect(lastRequest).not.toBeNull());
+      await (lastRequest as Promise<unknown>).catch(() => undefined);
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+    },
+  };
 }
 
 const MIN = 60 * 1000;
@@ -604,10 +608,9 @@ describe('HomePage 首屏快照：運動統計', () => {
 
     // 快取是空的：不能當成「確認沒有活動」，繼續用快照
     _resetUseEventsForTest();
-    mockEvents(() => Promise.resolve(['events']), [], true);
+    const { requestSettled } = mockEvents(() => Promise.resolve(['events']), [], true);
     const second = render(<HomePage />);
-    const witness = render(<EventsWitness />);
-    await waitForWitness(witness);
+    await requestSettled();
     expect(footballCount(second.container)).toBe('7 活動');
     expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBe(before);
   });
@@ -616,14 +619,13 @@ describe('HomePage 首屏快照：運動統計', () => {
     writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 10 * MIN);
     const before = localStorage.getItem(SPORTS_SNAPSHOT_KEY);
     const pending = deferred<unknown>();
-    mockEvents(() => pending.promise, [ev('late1'), ev('late2'), ev('late3')]);
+    const { requestSettled } = mockEvents(() => pending.promise, [ev('late1'), ev('late2'), ev('late3')]);
 
     const view = render(<HomePage />);
     await waitFor(() => expect(getEventsRepo).toHaveBeenCalled());
     view.unmount();
-    const witness = render(<EventsWitness />);
     pending.resolve(['events']);
-    await waitForWitness(witness);
+    await requestSettled();
 
     expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBe(before);
   });

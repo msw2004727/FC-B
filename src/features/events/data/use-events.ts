@@ -90,9 +90,13 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
 }
 
 /**
- * 這個結果陣列是「這一次呼叫確認向伺服器新取得」的：這次呼叫自己成功（repo 回傳非空；被較新請求取代的呼叫 repo 回傳 []，
- * 那時共用的 snapshot 還是上一次的資料與旗標，不能算這次新取得），而且 repo 回報 `activeFromCache === false`。
- * 失敗的呼叫 repo 會直接丟錯，不會走到這裡。見 `UseEventsOptions.onFresh`。
+ * 這個結果陣列是「這一次呼叫確認向伺服器新取得」的。依賴 events-repo 的 `loadEventsStatic` 回傳契約
+ * （`events-repo.test.ts` 與 `use-events.repo-contract.test.tsx` 用真實 repo 驗證）：
+ * - 回傳值（`receipt`）是**完成回條，不是活動陣列**：成功（含成功但零筆）回 `['events']`（非空）；被較新請求取代回 `[]`
+ *   （這次呼叫沒有提交任何資料）；失敗直接丟 `EventsLoadError`（不會走到這裡）。
+ * - 成功的呼叫在回傳前、通過 sequence 檢查之後，同步把資料與 `activeFromCache` 一起提交；所以緊接著 `getSnapshot()`
+ *   讀到的，就是這一次呼叫剛提交的資料與旗標。被取代的呼叫沒有提交，那時共用 snapshot 仍是上一次的資料與旗標，不能算這次新取得。
+ * 因此條件是：`receipt` 非空（這次自己成功）且 `activeFromCache === false`（不是離線時的本機快取）。見 `UseEventsOptions.onFresh`。
  */
 const serverConfirmed = new WeakSet<EventDoc[]>();
 
@@ -101,10 +105,10 @@ function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
     const { getEventsRepo } = await loadRepoModule();
     const repo = getEventsRepo();
     // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
-    const loaded = await repo.loadEventsStatic({ terminalMode: mode });
+    const receipt = await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
     const events = [...snapshot.active, ...snapshot.terminal];
-    if (Array.isArray(loaded) && loaded.length > 0 && snapshot.activeFromCache === false) serverConfirmed.add(events);
+    if (Array.isArray(receipt) && receipt.length > 0 && snapshot.activeFromCache === false) serverConfirmed.add(events);
     return events;
   })();
 }

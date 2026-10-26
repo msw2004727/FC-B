@@ -12,7 +12,7 @@
  * 2. 凍結：上述兩種清單與裡面的每個元素都凍結，建構後不能再被改寫。
  * 3. **寫入當下逐欄重新投影**（`projectBanner`／`projectSportItem`）：序列化的唯一來源是「寫入當下重新建立的純量物件」，
  *    不直接序列化元素物件——每個欄位檢查型別與長度上限，連結／漸層用同一組驗證函式，巢狀物件與多餘欄位一律丟掉。
- *    讀取時也用同一個投影，所以本機資料被竄改也進不了畫面。
+ *    讀取時也用同一個投影——這是格式與白名單驗證，**不是資料真實性驗證**：合法形狀的竄改內容（例如改過的標題文字）仍可能顯示。
  * - 橫幅：banners 集合本來就是公開讀取，欄位只留畫面用得到的（不含 Timestamp 等無法 JSON 還原的欄位）。
  *   A 的橫幅沒有時間區間（只看 status === 'active'，見 `banners.ts#isHomeCarouselBanner`），所以不需要保存排程。
  * - 運動統計：用訪客視角算（不含私密／俱樂部限定／黑名單判斷），不帶任何帳號資料。
@@ -37,7 +37,7 @@
  */
 import { SPORTS } from '@/features/events/data/sports';
 import { APP_VERSION } from '@/version';
-import { safeBannerGradient, safeBannerLinkUrl, sanitizeHttpUrl, type BannerDoc } from './banners';
+import { isHomeCarouselBanner, safeBannerGradient, safeBannerLinkUrl, sanitizeHttpUrl, type BannerDoc } from './banners';
 import { isGuestSportRows, type GuestSportRows, type SportRow } from './sport-rows';
 
 export const BANNERS_SNAPSHOT_KEY = 'fcb:home-banners:v1';
@@ -192,6 +192,9 @@ const publicBannerLists = new WeakSet<object>();
 export function toPublicBanners(banners: readonly BannerDoc[]): PublicBannerList {
   const items: BannerDoc[] = [];
   for (const banner of banners) {
+    // 寫入端：正常輸入一律先通過首頁橫幅資格（active、排除射門遊戲／觀賽／首頁資訊／版面設定這些特殊文件）；
+    // 缺 status 或不是 active 的不放行——「缺 status 視為 active」的相容只留在讀取端（舊格式）。
+    if (!isHomeCarouselBanner(banner)) continue;
     const projected = projectBanner(banner);
     if (projected) items.push(Object.freeze(projected));
     if (items.length >= MAX_ITEMS) break;
@@ -208,7 +211,8 @@ export function readBannersSnapshot(nowMs: number = Date.now()): SnapshotRead<Ba
   const items: BannerDoc[] = [];
   for (const item of section.items) {
     const banner = projectBanner(item);
-    if (banner) items.push(banner);
+    // 讀取端相容舊格式（缺 status 視為 active），但特殊文件仍然要排除。
+    if (banner && isHomeCarouselBanner(banner)) items.push(banner);
   }
   return items.length > 0 ? { items, expiresAt: section.expiresAt } : null;
 }

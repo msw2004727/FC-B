@@ -309,3 +309,77 @@ describe('request sequence L-02', () => {
     expect(repo.getSnapshot().active[0]?._docId).toBe('latest');
   });
 });
+
+// 首屏快照（T-042）依賴的契約，直接用「真實」createEventsRepo 驗證（不是替身）：
+// `loadEventsStatic` 的回傳值是「完成回條」，不是活動陣列——
+//   - 成功（含成功但零筆）→ ['events']（非空）；
+//   - 被較新請求取代 → []（這次呼叫沒有提交任何資料）；
+//   - 失敗 → 丟 EventsLoadError（不 resolve）。
+// 成功的呼叫會在「回傳前、通過 sequence 檢查之後」同步把資料與 activeFromCache 一起提交進 state，所以呼叫端在
+// `await loadEventsStatic()` 之後立刻 `getSnapshot()` 讀到的，就是這一次呼叫剛提交的資料與旗標。
+describe('loadEventsStatic 回傳契約與 getSnapshot() 的關係（首屏快照依賴）', () => {
+  const fresh = (ids: string[]): unknown => ({ docs: ids.map((id) => makeDoc(id)), metadata: { fromCache: false } });
+  const cached = (ids: string[]): unknown => ({ docs: ids.map((id) => makeDoc(id)), metadata: { fromCache: true } });
+
+  test('成功：回傳 [\'events\']，資料與旗標同一次提交', async () => {
+    docs.mockResolvedValueOnce(fresh(['a', 'b']) as never);
+    const repo = makeRepo();
+    const loaded = await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(loaded).toEqual(['events']);
+    expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['a', 'b']);
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+  });
+
+  test('成功但零筆：回傳仍是 [\'events\']（不是空陣列），資料為空、旗標照實回報', async () => {
+    docs.mockResolvedValueOnce(fresh([]) as never);
+    const repo = makeRepo();
+    const loaded = await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(loaded).toEqual(['events']);
+    expect(loaded.length).toBeGreaterThan(0);
+    expect(repo.getSnapshot().active).toEqual([]);
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+
+    docs.mockResolvedValueOnce(cached([]) as never);
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' })).resolves.toEqual(['events']);
+    expect(repo.getSnapshot().activeFromCache).toBe(true);
+  });
+
+  test('被較新請求取代：回傳 []，而且沒有提交任何資料——getSnapshot() 仍是上一次成功提交的資料與旗標', async () => {
+    const repo = makeRepo();
+    docs.mockResolvedValueOnce(fresh(['prev']) as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+
+    const requestA = defer<unknown>();
+    const requestB = defer<unknown>();
+    docs.mockReturnValueOnce(requestA.promise as never).mockReturnValueOnce(requestB.promise as never);
+    const callA = repo.loadEventsStatic({ terminalMode: 'none' });
+    // 等 A 真的發出查詢，再讓 B 取代它
+    await vi.waitFor(() => expect(docs).toHaveBeenCalledTimes(2));
+    const callB = repo.loadEventsStatic({ terminalMode: 'none' });
+    await vi.waitFor(() => expect(docs).toHaveBeenCalledTimes(3));
+
+    // A 的查詢結果回來（即使是 fromCache=true 的新資料），但 A 已被取代：回傳 []，不提交
+    requestA.resolve(cached(['from-a']));
+    await expect(callA).resolves.toEqual([]);
+    expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['prev']);
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+
+    // B 完成：回傳 ['events']，提交 B 的資料與旗標
+    requestB.resolve(fresh(['from-b']));
+    await expect(callB).resolves.toEqual(['events']);
+    expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['from-b']);
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+  });
+
+  test('失敗：丟 EventsLoadError、不 resolve；getSnapshot() 維持上一次成功提交的資料與旗標', async () => {
+    const repo = makeRepo();
+    docs.mockResolvedValueOnce(cached(['prev']) as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+
+    docs.mockRejectedValueOnce(new Error('network'));
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' })).rejects.toBeInstanceOf(EventsLoadError);
+    expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['prev']);
+    expect(repo.getSnapshot().activeFromCache).toBe(true);
+  });
+});

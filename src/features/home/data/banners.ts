@@ -129,13 +129,39 @@ export function safeBannerColor(value: unknown, fallback: string): string {
 
 // 漸層文法（只收這些，其餘一律不收）：
 //   linear-gradient( [方向或角度,]? 色標, 色標 [, 色標…] )
-//   方向：`to top|bottom|left|right [top|bottom|left|right]` 或角度（deg／grad／rad／turn）
-//   色標：顏色 [位置[ 位置]]；顏色＝#hex（3～8 碼）、rgb()／rgba()／hsl()／hsla()（只含數字、%、空白、逗號、斜線）、純英文色名；位置＝數字加 % 或 px
-const GRADIENT_DIRECTION = /^(?:to\s+(?:top|bottom|left|right)(?:\s+(?:top|bottom|left|right))?|-?\d+(?:\.\d+)?(?:deg|grad|rad|turn))$/i;
-const GRADIENT_COLOR = '(?:#[0-9a-f]{3,8}|(?:rgb|rgba|hsl|hsla)\\(\\s*[\\d.%\\s,/-]+\\)|[a-z]{3,20})';
-const GRADIENT_POSITION = '-?\\d+(?:\\.\\d+)?(?:%|px)';
-const GRADIENT_STOP = new RegExp(`^${GRADIENT_COLOR}(?:\\s+${GRADIENT_POSITION}){0,2}$`, 'i');
+//   方向：單一方向（`to top|bottom|left|right`），或角落（一個水平加一個垂直：`to top left`、`to left top`，不收 `to top bottom`、`to top top`），
+//         或角度（數字加 deg／grad／rad／turn）
+//   色標：顏色 [位置[ 位置]]；位置＝數字加 % 或 px；顏色是下列之一——
+//         #hex（剛好 3、4、6 或 8 碼）、rgb()／rgba()（三個 0～255 或百分比數字＋選用的 alpha；逗號式或空白加斜線式）、
+//         hsl()／hsla()（色相＋兩個百分比＋選用的 alpha；逗號式或空白加斜線式）、純英文色名
+const NUM = '(?:\\d+\\.?\\d*|\\.\\d+)';
+const GRADIENT_DIRECTION_KEYWORD = /^to\s+(top|bottom|left|right)(?:\s+(top|bottom|left|right))?$/i;
+const GRADIENT_ANGLE = new RegExp(`^-?${NUM}(?:deg|grad|rad|turn)$`, 'i');
+const RGB_CHANNEL = `${NUM}%?`;
+const COLOR_ALPHA = `${NUM}%?`;
+const GRADIENT_COLOR = [
+  '#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})',
+  `rgba?\\(\\s*${RGB_CHANNEL}\\s*,\\s*${RGB_CHANNEL}\\s*,\\s*${RGB_CHANNEL}\\s*(?:,\\s*${COLOR_ALPHA}\\s*)?\\)`,
+  `rgba?\\(\\s*${RGB_CHANNEL}\\s+${RGB_CHANNEL}\\s+${RGB_CHANNEL}\\s*(?:/\\s*${COLOR_ALPHA}\\s*)?\\)`,
+  `hsla?\\(\\s*-?${NUM}(?:deg|rad|grad|turn)?\\s*,\\s*${NUM}%\\s*,\\s*${NUM}%\\s*(?:,\\s*${COLOR_ALPHA}\\s*)?\\)`,
+  `hsla?\\(\\s*-?${NUM}(?:deg|rad|grad|turn)?\\s+${NUM}%\\s+${NUM}%\\s*(?:/\\s*${COLOR_ALPHA}\\s*)?\\)`,
+  '[a-z]{3,20}',
+].join('|');
+const GRADIENT_POSITION = `-?${NUM}(?:%|px)`;
+const GRADIENT_STOP = new RegExp(`^(?:${GRADIENT_COLOR})(?:\\s+${GRADIENT_POSITION}){0,2}$`, 'i');
 const GRADIENT_MAX_ARGS = 12;
+
+/** 漸層的第一個參數是不是合法的方向或角度（`to top bottom`、`to left right`、`to top top` 這類無效組合不收）。 */
+function isGradientDirection(arg: string): boolean {
+  if (GRADIENT_ANGLE.test(arg)) return true;
+  const m = GRADIENT_DIRECTION_KEYWORD.exec(arg);
+  if (!m) return false;
+  const first = (m[1] ?? '').toLowerCase();
+  const second = (m[2] ?? '').toLowerCase();
+  if (!second) return true;
+  const horizontal = (side: string): boolean => side === 'left' || side === 'right';
+  return horizontal(first) !== horizontal(second);
+}
 
 /** 在最外層（括號深度 0）依逗號切開；括號不平衡（含提早閉合）回 null。 */
 function splitTopLevelArgs(inner: string): string[] | null {
@@ -171,7 +197,7 @@ export function safeBannerGradient(value: unknown): string {
   if (!head || !raw.endsWith(')')) return '';
   const args = splitTopLevelArgs(raw.slice(head[0].length, -1));
   if (!args || args.length < 2 || args.length > GRADIENT_MAX_ARGS) return '';
-  const stops = GRADIENT_DIRECTION.test(args[0] ?? '') ? args.slice(1) : args;
+  const stops = isGradientDirection(args[0] ?? '') ? args.slice(1) : args;
   if (stops.length < 2) return '';
   return stops.every((stop) => GRADIENT_STOP.test(stop)) ? raw : '';
 }

@@ -250,31 +250,42 @@ describe('HomeBannerCarousel 連結契約（儲存與使用同一個：只開 ht
 });
 
 describe('HomeBannerCarousel decode 的生命週期', () => {
-  function deferredDecode(): { resolve: () => void; reject: (e: unknown) => void } {
-    let resolve!: () => void;
-    let reject!: (e: unknown) => void;
-    const promise = new Promise<void>((done, fail) => {
-      resolve = done;
-      reject = fail;
+  type Job = { resolve: () => void; reject: (e: unknown) => void; settled: Promise<void> };
+  const jobs: Job[] = [];
+  /** 每次 decode() 呼叫都產生一個可個別 resolve／reject 的工作，依呼叫順序放進 jobs。 */
+  function installDecode(): void {
+    jobs.length = 0;
+    HTMLImageElement.prototype.decode = vi.fn(() => {
+      let resolve!: () => void;
+      let reject!: (e: unknown) => void;
+      const promise = new Promise<void>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      jobs.push({ resolve, reject, settled: promise.then(() => undefined, () => undefined) });
+      return promise;
     });
-    HTMLImageElement.prototype.decode = vi.fn(() => promise);
-    return { resolve, reject };
   }
+  /** 明確的完成訊號：讓已經排入的 Promise 工作（含 decode 的 then 與 Preact 的重繪）全部做完。 */
+  const flush = (): Promise<void> => act(async () => { await vi.advanceTimersByTimeAsync(0); });
   const stateOf = (container: HTMLElement): string | null =>
     (slides(container)[0] as HTMLElement).getAttribute('data-banner-load-state');
+  const props = { onOpenNearbyMap: noop, onOpenSearchModal: noop, onOpenCreateEvent: noop, canCreate: false };
+  const imgOf = (container: HTMLElement): HTMLImageElement => container.querySelector('img') as HTMLImageElement;
+
+  beforeEach(() => {
+    installDecode();
+  });
 
   it('畫面卸載後才解碼完成：結果作廢，不會記成「已載入成功」', async () => {
     const [u1] = urls(1) as [string];
-    const decode = deferredDecode();
     const first = renderCarousel([banner('a', u1)]);
     await act(async () => {
-      fireEvent.load(first.container.querySelector('img') as HTMLImageElement);
+      fireEvent.load(imgOf(first.container));
     });
     cleanup();
-    await act(async () => {
-      decode.resolve();
-      await Promise.resolve();
-    });
+    jobs[0]?.resolve();
+    await flush();
 
     // 重新進來：不能因為卸載後才完成的解碼而直接當作已載入
     const again = renderCarousel([banner('a', u1)]);
@@ -283,52 +294,74 @@ describe('HomeBannerCarousel decode 的生命週期', () => {
 
   it('列表替換（那個 <img> 已被移除）後才解碼完成：結果作廢', async () => {
     const [u1, u2] = urls(2) as [string, string];
-    const decode = deferredDecode();
-    const view = render(
-      <HomeBannerCarousel banners={[banner('a', u1)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
-    );
+    const view = render(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
     await act(async () => {
-      fireEvent.load(view.container.querySelector('img') as HTMLImageElement);
+      fireEvent.load(imgOf(view.container as HTMLElement));
     });
-    view.rerender(
-      <HomeBannerCarousel banners={[banner('b', u2)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
-    );
-    await act(async () => {
-      decode.resolve();
-      await Promise.resolve();
-    });
-    view.rerender(
-      <HomeBannerCarousel banners={[banner('a', u1)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
-    );
+    view.rerender(<HomeBannerCarousel banners={[banner('b', u2)]} {...props} />);
+    jobs[0]?.resolve();
+    await flush();
+    view.rerender(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
     expect(stateOf(view.container as HTMLElement)).toBe('loading');
   });
 
-  it('同一個 <img> 改指向別的網址後，舊網址的解碼結果作廢', async () => {
+  it('同一個 <img> 改指向別的網址後，舊網址的解碼結果作廢（換回舊網址後仍是載入中——沒有 src 守門就會誤判成已載入）', async () => {
     const [u1, u2] = urls(2) as [string, string];
-    const decode = deferredDecode();
-    const props = { onOpenNearbyMap: noop, onOpenSearchModal: noop, onOpenCreateEvent: noop, canCreate: false };
     const view = render(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
     await act(async () => {
-      fireEvent.load(view.container.querySelector('img') as HTMLImageElement);
+      fireEvent.load(imgOf(view.container as HTMLElement));
     });
-    // 同一個橫幅（同 key）換了圖：元素重用、src 變了
+    // 同一個橫幅（同 key）換了圖：元素重用、src 變成 u2；舊工作（u1）在這時才完成
     view.rerender(<HomeBannerCarousel banners={[banner('a', u2)]} {...props} />);
-    await act(async () => {
-      decode.resolve();
-      await Promise.resolve();
-    });
-    // 新網址沒有任何結果，不能被舊網址的解碼結果影響
+    jobs[0]?.resolve();
+    await flush();
+    // 換回 u1（這次沒有觸發新的載入事件）：u1 不能因為舊工作而被當成已載入
+    view.rerender(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
     expect(stateOf(view.container as HTMLElement)).toBe('loading');
+  });
+
+  it('A→B→A：舊的 A 工作即使網址剛好又相同也作廢；以最新的 A 工作為準（resolve 與 reject 兩種舊結果）', async () => {
+    for (const oldResult of ['resolve', 'reject'] as const) {
+      cleanup();
+      installDecode();
+      const [uA, uB] = urls(2) as [string, string];
+      const view = render(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
+      const img = imgOf(view.container as HTMLElement);
+      await act(async () => {
+        fireEvent.load(img); // 工作 0：A
+      });
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uB)]} {...props} />);
+      await act(async () => {
+        fireEvent.load(img); // 工作 1：B
+      });
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
+      await act(async () => {
+        fireEvent.load(img); // 工作 2：A（最新）
+      });
+      expect(jobs).toHaveLength(3);
+
+      // 舊的 A 工作（0）先回來：網址、元素、掛載都沒變，只有工作編號不是最新 → 必須作廢
+      if (oldResult === 'resolve') jobs[0]?.resolve();
+      else jobs[0]?.reject(new Error('EncodingError'));
+      await flush();
+      expect(stateOf(view.container as HTMLElement), `舊工作 ${oldResult}`).toBe('loading');
+
+      // 最新的 A 工作（2）才算數
+      jobs[2]?.resolve();
+      await flush();
+      expect(stateOf(view.container as HTMLElement)).toBe('done');
+    }
   });
 
   it('曾經載入成功、後來失敗：撤掉「已載入成功」的紀錄，下次進來重新嘗試', async () => {
     const [u1] = urls(1) as [string];
-    HTMLImageElement.prototype.decode = vi.fn(() => Promise.resolve());
     const first = renderCarousel([banner('a', u1)]);
-    const img = first.container.querySelector('img') as HTMLImageElement;
+    const img = imgOf(first.container);
     await act(async () => {
       fireEvent.load(img);
     });
+    jobs[0]?.resolve();
+    await flush();
     expect(stateOf(first.container)).toBe('done');
     await act(async () => {
       fireEvent.error(img);

@@ -385,6 +385,39 @@ describe('寫入守門（顧問裁定 P1-1 採 A：快照為訪客視角公開�
     );
   });
 
+  it('寫入端只收通過首頁橫幅資格（isHomeCarouselBanner）的橫幅：非 active、缺 status、特殊文件一律不寫；缺 status 的相容只在讀取端', () => {
+    const missingStatus = { id: 'ms', _docId: 'ms', title: '缺 status' } as BannerDoc;
+    const list = toPublicBanners([
+      banner({ id: 'ok', title: '正常' }),
+      banner({ id: 'draft', status: 'draft' }),
+      missingStatus,
+      banner({ id: 's1', type: 'shotgame' }),
+      banner({ id: 's2', type: 'watchParty' }),
+      banner({ id: 's3', type: 'homeInfo' }),
+      banner({ id: 's4', type: 'homeLayout' }),
+      banner({ id: 's5', slot: 'home-info' }),
+      banner({ id: 'home-layout' }),
+    ]);
+    expect(list.map((b) => b.id)).toEqual(['ok']);
+    writeBannersSnapshot(list, NOW);
+    const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as { items: Array<{ id: string; status: string }> };
+    expect(stored.items.map((b) => [b.id, b.status])).toEqual([['ok', 'active']]);
+
+    // 讀取端相容舊格式（缺 status 視為 active），但特殊文件仍然排除
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: [
+        { id: 'old', _docId: 'old', title: '舊格式' },
+        { id: 'x', _docId: 'x', type: 'shotgame' },
+        { id: 'home-info', _docId: 'home-info' },
+        { id: 'd', _docId: 'd', status: 'draft' },
+      ],
+    });
+    expect(readBannersSnapshot(NOW)?.items.map((b) => b.id)).toEqual(['old']);
+  });
+
   it('寫入當下逐欄重新投影：元素凍結，建構後不能被改寫（加 uid、改 count、塞巢狀物件都會丟錯），寫出的內容仍是乾淨的白名單純量', () => {
     const list = toPublicBanners([banner({ id: 'b1', title: '公開', image: 'https://example.com/1.webp' })]);
     const first = list[0] as BannerDoc;

@@ -121,6 +121,17 @@ describe('banners data layer', () => {
       'linear-gradient(to bottom right, #fff, #000 50%)',
       'linear-gradient(0.25turn, hsl(210 40% 50%), transparent)',
       'linear-gradient(#0d9488, #1e3a8a)',
+      // 色碼只收 3、4、6、8 位
+      'linear-gradient(#abc, #abcd)',
+      'linear-gradient(#aabbcc, #aabbccdd)',
+      // 方向：單一方向、角落（一個水平加一個垂直，順序不拘）、角度
+      'linear-gradient(to right, red, blue)',
+      'linear-gradient(to left top, red, blue)',
+      'linear-gradient(to top left, red, blue)',
+      'linear-gradient(-45deg, red, blue)',
+      // rgb／hsl：逗號式與空白加斜線式
+      'linear-gradient(rgb(1 2 3 / 50%), rgb(10%, 20%, 30%))',
+      'linear-gradient(hsla(120, 50%, 50%, .5), hsl(120deg 50% 50% / 0.5))',
     ]) {
       expect(safeBannerGradient(ok), ok).toBe(ok);
     }
@@ -140,6 +151,22 @@ describe('banners data layer', () => {
       'linear-gradient(to right)',
       'linear-gradient(red, calc(1px + 2px))',
       'linear-gradient(red, blue 10%%%)',
+      // 無效 CSS（不會注入資源，但也不該收）：色碼位數、無效的方向組合、rgb／hsl 引數不合法
+      'linear-gradient(#12345, blue)',
+      'linear-gradient(#12, blue)',
+      'linear-gradient(#1234567, blue)',
+      'linear-gradient(#ggg, blue)',
+      'linear-gradient(to top bottom, red, blue)',
+      'linear-gradient(to left right, red, blue)',
+      'linear-gradient(to top top, red, blue)',
+      'linear-gradient(to, red, blue)',
+      'linear-gradient(rgb(1,2), blue)',
+      'linear-gradient(rgb(1 2 3, 4), blue)',
+      'linear-gradient(rgb(1,2,3 / 4), blue)',
+      'linear-gradient(rgb(a,b,c), blue)',
+      'linear-gradient(hsl(1,2,3), blue)',
+      'linear-gradient(hsl(1 2% 3%, 4), blue)',
+      'linear-gradient(red 10px 20px 30px, blue)',
       'linear-gradient(' + 'a,'.repeat(200) + 'b)',
       'red',
       '',
