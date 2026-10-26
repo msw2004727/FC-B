@@ -1,6 +1,7 @@
 import {
   collection,
   getDocs,
+  limit,
   query,
   type DocumentData,
   type Firestore,
@@ -8,6 +9,12 @@ import {
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
 export const ANNOUNCEMENTS_COLLECTION = 'announcements';
+
+/**
+ * 公告查詢上限：與 A 的 `_buildCollectionQuery`（一般集合 limit(200)）及 banners.ts 一致。
+ * 公告只有少數幾則會同時有效，這是防止歷史公告無限累積的保險，不改變顯示結果（有效公告仍依狀態與排序篩出）。
+ */
+export const ANNOUNCEMENTS_QUERY_LIMIT = 200;
 
 export interface AnnouncementDoc {
   id: string;
@@ -170,7 +177,9 @@ export async function loadActiveAnnouncements(
   const nowMs = deps.now?.() ?? Date.now();
   try {
     const { db } = await getFB();
-    const snap = await getDocs(query(collection(db, ANNOUNCEMENTS_COLLECTION)));
+    const snap = await getDocs(
+      query(collection(db, ANNOUNCEMENTS_COLLECTION), limit(ANNOUNCEMENTS_QUERY_LIMIT)),
+    );
     const docs = snap.docs.map((d) => mapAnnouncementDoc(d));
     return filterAndSortAnnouncements(docs, nowMs);
   } catch (err) {

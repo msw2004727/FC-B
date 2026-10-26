@@ -6,15 +6,29 @@ import { isEventInEndedTab } from './terminal';
 import { sortEvents } from './presentation';
 import type { EventDoc } from './types';
 
+/** preview：一併載入 ended／cancelled 近 50 筆（R-EVT-002、R-EVT-003，活動列表等頁用）；none：只載進行中，首頁用。 */
+export type UseEventsTerminalMode = 'preview' | 'none';
+
+export interface UseEventsOptions {
+  /** 預設 'preview'。首頁只算進行中活動，用 'none' 少一個查詢與 payload。 */
+  terminalMode?: UseEventsTerminalMode;
+}
+
+interface Inflight {
+  mode: UseEventsTerminalMode;
+  promise: Promise<EventDoc[]>;
+}
+
 // 同一 singleton 上的同型 UI 請求共用 Promise，避免首頁／列表互相作廢請求。
 // 成功和失敗均清除（L-08）；hook 本身仍有生命週期保護。
-let inflight: Promise<EventDoc[]> | null = null;
+let inflight: Inflight | null = null;
 /** 本次開啟期間最後一次成功讀到的活動與讀取當時的帳號（切頁回來時直接先畫）。 */
 let lastLoaded: { uid: string | null; events: EventDoc[] } | null = null;
 
 /**
  * stale-first 的上次資料：記憶體 → 本機快照（30 分鐘內）。
  * 只有 viewer 帳號等於登入模組確認的帳號時才給（使用者資料載入前不以訪客身分先畫，Fable 2026-10-19）。
+ * 首頁（none）寫入的快照沒有 ended／cancelled 預覽；活動列表拿來先畫後，仍會照常載入預覽再更新。
  */
 function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   const known = getLastKnownAuthUid();
@@ -29,18 +43,33 @@ export function _resetUseEventsForTest(): void {
   lastLoaded = null;
 }
 
-function load(): Promise<EventDoc[]> {
-  if (inflight) return inflight;
-  const request = (async () => {
+function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+  return (async () => {
     const repo = getEventsRepo();
-    // 需要 terminal preview：結束後六小時內仍在一般列表（R-EVT-002）。
-    await repo.loadEventsStatic({ terminalMode: 'preview' });
+    // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
+    await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
     return [...snapshot.active, ...snapshot.terminal];
   })();
-  inflight = request;
+}
+
+function load(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+  const current = inflight;
+  // preview 是 none 的超集：進行中的是 preview，或這次只要 none，都直接共用。
+  if (current && (current.mode === 'preview' || mode === 'none')) return current.promise;
+
+  // 進行中的是 none、這次要 preview：等它結束再補載 terminal，
+  // 不並行（repo 的 loadSeq 會讓較早的請求作廢）。
+  const request = current
+    ? current.promise.then(
+      () => start(mode),
+      () => start(mode),
+    )
+    : start(mode);
+  const entry: Inflight = { mode, promise: request };
+  inflight = entry;
   const clear = (): void => {
-    if (inflight === request) inflight = null;
+    if (inflight === entry) inflight = null;
   };
   request.then(clear, clear);
   return request;
@@ -49,7 +78,7 @@ function load(): Promise<EventDoc[]> {
 /**
  * @param viewerUid 目前畫面使用者的 uid（訪客為 null）；用來決定能不能先畫上次資料與快照歸屬。
  */
-export function useEvents(viewerUid: string | null): {
+export function useEvents(viewerUid: string | null, options: UseEventsOptions = {}): {
   events: EventDoc[];
   loading: boolean;
   error: boolean;
@@ -63,13 +92,16 @@ export function useEvents(viewerUid: string | null): {
   const [now, setNow] = useState(Date.now);
   const viewerUidRef = useRef(viewerUid);
   viewerUidRef.current = viewerUid;
+  const terminalMode = options.terminalMode ?? 'preview';
+  const terminalModeRef = useRef(terminalMode);
+  terminalModeRef.current = terminalMode;
   const stale = useMemo(() => (fresh ? null : staleEventsFor(viewerUid)), [fresh, viewerUid]);
 
   useEffect(() => {
     let current = true;
     setPending(true);
     setFailed(false);
-    load().then(
+    load(terminalModeRef.current).then(
       (next) => {
         const owner = viewerUidRef.current;
         if (getLastKnownAuthUid() === owner) {

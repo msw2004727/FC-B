@@ -17,17 +17,17 @@
 import {
   collection,
   collectionGroup,
-  doc,
-  getDoc,
+  documentId,
   getDocs,
   limit,
   query,
   where,
   type DocumentData,
   type Firestore,
+  type Query,
 } from 'firebase/firestore';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
-import { events as eventsCollectionPath, filterSubcollectionDocs, resolveEventDocId } from '@/data/paths';
+import { events as eventsCollectionPath, filterSubcollectionDocs } from '@/data/paths';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 
 // ── 常數（與 A 對齊） ─────────────────────────────────
@@ -38,6 +38,8 @@ import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
  */
 export const REGISTRATION_QUERY_LIMIT = 500;
 export const EVENT_QUERY_LIMIT = 80;
+/** Firestore `in` 查詢一次最多 30 個值，補抓活動時依此分批。 */
+export const EVENT_IN_QUERY_CHUNK = 30;
 
 /**
  * 「進行中」的報名狀態，報名查詢用 `where('status','in', …)` 只取這些。
@@ -355,9 +357,54 @@ function mergeEventsByIdentity(events: EventDoc[]): EventDoc[] {
   return Array.from(map.values());
 }
 
+function chunkIds(ids: readonly string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
+/**
+ * 報名指向、但管理的活動沒涵蓋的活動，一次用 `in` 查詢補抓（取代過去逐筆 resolveEventDocId＋getDoc 的串行）：
+ *   - `documentId() in ids`：報名的 eventId 就是文件 id（多數情況）
+ *   - `id in ids`：報名記的是 public id、文件 id 不同的活動（R-ID-010，原 resolveEventDocId 的第二步）
+ * 兩條查詢、各分批並行；單一批次失敗只記警告，不影響其他批次。
+ */
+async function fetchMissingEvents(
+  db: Firestore,
+  missingEventIds: readonly string[],
+  logger: NextActivityLogger,
+): Promise<EventDoc[]> {
+  const run = (label: string, build: (ids: string[]) => Query<DocumentData>, ids: string[]) =>
+    getDocs(build(ids)).then(
+      (snap) => snap.docs.map((d) => mapDoc(d)),
+      (err) => {
+        logger.warn('[NextActivity] event fetch skipped:', label, ids, err);
+        return [] as EventDoc[];
+      },
+    );
+
+  const batches = chunkIds(missingEventIds, EVENT_IN_QUERY_CHUNK).flatMap((ids) => [
+    run(
+      'documentId',
+      (chunk) => query(collection(db, eventsCollectionPath), where(documentId(), 'in', chunk)),
+      ids,
+    ),
+    run(
+      'id',
+      (chunk) => query(collection(db, eventsCollectionPath), where('id', 'in', chunk)),
+      ids,
+    ),
+  ]);
+  return (await Promise.all(batches)).flat();
+}
+
 /**
  * 從 Firestore 讀取「下一場活動」所需的所有輸入。
  * 注意：collectionGroup('registrations') 的結果必須先過 filterSubcollectionDocs（R-REG-014）。
+ *
+ * 查詢順序（A4：原本是報名 → 三個管理查詢 → 逐筆補抓三段串行）：
+ *   1) 報名與三個管理查詢互不相依，一起發出（Promise.all）
+ *   2) 兩邊都回來才知道哪些報名指向的活動還缺，缺的 id 用 `in` 查詢一次補抓
  */
 export async function loadNextActivityInputs(
   deps: NextActivityDeps,
@@ -370,31 +417,34 @@ export async function loadNextActivityInputs(
   const logger: NextActivityLogger = deps.logger ?? console;
   const { db } = await getFB();
 
-  // 1) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
-  const registrations: RegistrationDoc[] = [];
-  try {
-    const regSnap = await getDocs(
-      query(
-        collectionGroup(db, 'registrations'),
-        where('userId', '==', safeUid),
-        where('status', 'in', [...ACTIVE_REGISTRATION_STATUSES]),
-        limit(REGISTRATION_QUERY_LIMIT),
-      ),
-    );
-    if (regSnap.docs.length >= REGISTRATION_QUERY_LIMIT) {
-      logger.warn(
-        '[NextActivity] registration query hit the limit; later registrations may be missing:',
-        REGISTRATION_QUERY_LIMIT,
+  // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
+  const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
+    const registrations: RegistrationDoc[] = [];
+    try {
+      const regSnap = await getDocs(
+        query(
+          collectionGroup(db, 'registrations'),
+          where('userId', '==', safeUid),
+          where('status', 'in', [...ACTIVE_REGISTRATION_STATUSES]),
+          limit(REGISTRATION_QUERY_LIMIT),
+        ),
       );
+      if (regSnap.docs.length >= REGISTRATION_QUERY_LIMIT) {
+        logger.warn(
+          '[NextActivity] registration query hit the limit; later registrations may be missing:',
+          REGISTRATION_QUERY_LIMIT,
+        );
+      }
+      const subcollectionDocs = filterSubcollectionDocs(regSnap.docs);
+      subcollectionDocs.forEach((d) => registrations.push(mapRegistration(d)));
+    } catch (err) {
+      logger.warn('[NextActivity] registration query skipped:', err);
     }
-    const subcollectionDocs = filterSubcollectionDocs(regSnap.docs);
-    subcollectionDocs.forEach((d) => registrations.push(mapRegistration(d)));
-  } catch (err) {
-    logger.warn('[NextActivity] registration query skipped:', err);
-  }
+    return registrations;
+  })();
 
-  // 2) 使用者管理的活動（owner / creator / delegate）
-  const managedSnaps = await Promise.all([
+  // 1b) 使用者管理的活動（owner / creator / delegate）
+  const managedPromise = Promise.all([
     getDocs(
       query(
         collection(db, eventsCollectionPath),
@@ -427,12 +477,14 @@ export async function loadNextActivityInputs(
     }),
   ]);
 
+  const [registrations, managedSnaps] = await Promise.all([registrationsPromise, managedPromise]);
+
   const managedEvents: EventDoc[] = [];
   managedSnaps.forEach((snap) => {
     snap?.docs.forEach((d) => managedEvents.push(mapDoc(d)));
   });
 
-  // 3) 報名指向、但 managed/cache 未涵蓋的活動 → 依 id 補抓
+  // 2) 報名指向、但 managed/cache 未涵蓋的活動 → 依 id 一次補抓
   const haveIds = new Set<string>();
   managedEvents.forEach((event) => {
     [event.id, event._docId, event.docId].forEach((raw) => {
@@ -450,24 +502,11 @@ export async function loadNextActivityInputs(
     missingEventIds.push(id);
   });
 
-  const missingEvents = await Promise.all(
-    missingEventIds.map(async (publicId) => {
-      try {
-        const docId = await resolveEventDocId(publicId);
-        if (!docId) return null;
-        const snap = await getDoc(doc(db, eventsCollectionPath, docId));
-        if (!snap.exists()) return null;
-        return { ...(snap.data() as Record<string, unknown>), _docId: snap.id } as EventDoc;
-      } catch (err) {
-        logger.warn('[NextActivity] event fetch skipped:', publicId, err);
-        return null;
-      }
-    }),
-  );
+  const missingEvents = missingEventIds.length > 0
+    ? await fetchMissingEvents(db, missingEventIds, logger)
+    : [];
 
-  const mergedEvents = mergeEventsByIdentity(
-    [...managedEvents, ...missingEvents.filter((e): e is EventDoc => e != null)],
-  );
+  const mergedEvents = mergeEventsByIdentity([...managedEvents, ...missingEvents]);
   return { registrations, events: mergedEvents };
 }
 

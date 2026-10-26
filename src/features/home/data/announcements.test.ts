@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { collection, getDocs, query, type Firestore } from 'firebase/firestore';
+import { collection, getDocs, limit, query, type Firestore } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 import {
   ANNOUNCEMENTS_COLLECTION,
+  ANNOUNCEMENTS_QUERY_LIMIT,
   computeMarqueeDurationSeconds,
   filterAndSortAnnouncements,
   getAnnouncementEffectiveStatus,
@@ -13,6 +14,7 @@ import {
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
+  limit: vi.fn(),
   getDocs: vi.fn(),
 }));
 
@@ -29,6 +31,7 @@ beforeEach(() => {
   } as Awaited<ReturnType<typeof getFirebase>>);
   vi.mocked(collection).mockReturnValue('ann-col-ref' as unknown as ReturnType<typeof collection>);
   vi.mocked(query).mockImplementation((ref) => ref as unknown as ReturnType<typeof query>);
+  vi.mocked(limit).mockImplementation((n) => ({ limit: n }) as unknown as ReturnType<typeof limit>);
 });
 
 describe('announcements data layer', () => {
@@ -78,6 +81,16 @@ describe('announcements data layer', () => {
     expect(collection).toHaveBeenCalledWith(fakeDb, ANNOUNCEMENTS_COLLECTION);
     expect(result.map((a) => a.id)).toEqual(['a1', 'a2']);
     expect(result[0]?.title).toBe('重要通知');
+  });
+
+  it('caps the query with limit(200) like A (A4)', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as unknown as Awaited<ReturnType<typeof getDocs>>);
+
+    await loadActiveAnnouncements();
+
+    expect(ANNOUNCEMENTS_QUERY_LIMIT).toBe(200);
+    expect(limit).toHaveBeenCalledWith(200);
+    expect(query).toHaveBeenCalledWith('ann-col-ref', { limit: 200 });
   });
 
   it('computes marquee duration matching A formula Math.max(10, totalChars * 0.35)', () => {

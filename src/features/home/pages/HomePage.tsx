@@ -69,7 +69,8 @@ export default function HomePage(): JSX.Element {
   const lt = useLegacyT();
   const viewer = useViewer();
   const location = useLocation();
-  const eventsData = useEvents(viewer.uid);
+  // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
+  const eventsData = useEvents(viewer.uid, { terminalMode: 'none' });
 
   const [banners, setBanners] = useState<BannerDoc[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);

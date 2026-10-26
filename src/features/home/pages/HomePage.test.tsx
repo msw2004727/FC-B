@@ -318,4 +318,19 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     fireEvent.click(chip);
     expect(mockRoute).toHaveBeenCalledWith('/activities?sport=football');
   });
+
+  it('home loads active events only (terminalMode none, A4); terminal preview is left to the list pages', async () => {
+    const loadEventsStatic = vi.fn().mockResolvedValue(['events']);
+    vi.mocked(getEventsRepo).mockReturnValue({
+      loadEventsStatic,
+      ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
+      loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
+      getSnapshot: () => ({ active: [], terminal: [] }),
+    });
+
+    render(<HomePage />);
+
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalledTimes(1));
+    expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'none' });
+  });
 });

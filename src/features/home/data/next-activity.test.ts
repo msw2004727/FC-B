@@ -23,18 +23,13 @@ vi.mock('@/data/firebase', () => ({
   })),
 }));
 
-// resolveEventDocId 內部是動態 import('firebase/firestore')，不吃上面的假 SDK；這裡直接視為「公開 id ＝ 文件 id」。
-vi.mock('@/data/paths', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/data/paths')>()),
-  resolveEventDocId: vi.fn(async (eventId: string) => eventId),
-}));
-
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db: unknown, path: string) => ({ kind: 'collection', path })),
   collectionGroup: vi.fn((_db: unknown, id: string) => ({ kind: 'collectionGroup', id })),
   query: vi.fn((base: unknown, ...constraints: unknown[]) => ({ kind: 'query', base, constraints })),
   where: vi.fn((field: string, op: string, value: unknown) => ({ kind: 'where', field, op, value })),
   limit: vi.fn((n: number) => ({ kind: 'limit', n })),
+  documentId: vi.fn(() => ({ kind: 'documentId' })),
   orderBy: vi.fn(),
   startAfter: vi.fn(),
   getDocs: vi.fn(),
@@ -42,10 +37,11 @@ vi.mock('firebase/firestore', () => ({
   getDoc: vi.fn(),
 }));
 
-import { collectionGroup, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { collectionGroup, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import {
   ACTIVE_REGISTRATION_STATUSES,
+  EVENT_IN_QUERY_CHUNK,
   REGISTRATION_QUERY_LIMIT,
   isActiveRegistration,
   managedRoleForEvent,
@@ -321,7 +317,7 @@ function buildHeavyUserRegistrations(): StoreDoc[] {
 
 interface FakeConstraint {
   kind: string;
-  field?: string;
+  field?: unknown;
   op?: string;
   value?: unknown;
   n?: number;
@@ -331,7 +327,7 @@ interface FakeConstraint {
 function runRegistrationQuery(store: StoreDoc[], constraints: FakeConstraint[]): { docs: StoreDoc[] } {
   let docs = [...store].sort((a, b) => comparePath(a.path, b.path));
   for (const c of constraints) {
-    if (c.kind !== 'where' || !c.field) continue;
+    if (c.kind !== 'where' || typeof c.field !== 'string') continue;
     const field = c.field;
     docs = docs.filter((d) => {
       const actual = d.data()[field];
@@ -344,9 +340,35 @@ function runRegistrationQuery(store: StoreDoc[], constraints: FakeConstraint[]):
   return { docs: lim === undefined ? docs : docs.slice(0, lim) };
 }
 
-/** 依查詢種類回應：registrations collectionGroup 走假資料；管理的活動（creator／owner／delegate）與 id 反查一律回空。 */
-function installFirestore(store: StoreDoc[]): { requestedEventDocIds: string[]; regSnapshotSizes: number[] } {
-  const probe = { requestedEventDocIds: [] as string[], regSnapshotSizes: [] as number[] };
+interface EventInQuery {
+  field: 'documentId' | 'id';
+  ids: string[];
+}
+
+function targetEventSnap(id: string): FakeEvent {
+  const isTarget = id === TARGET_EVENT_DOC_ID;
+  return makeEventSnap(id, {
+    id,
+    title: isTarget ? 'Tomorrow Match' : 'Old',
+    date: isTarget ? '2099/01/02 09:00~11:00' : '2000/01/01 09:00~11:00',
+    status: 'open',
+  });
+}
+
+/**
+ * 依查詢種類回應：registrations collectionGroup 走假資料；管理的活動（creator／owner／delegate）回空；
+ * 補抓活動的 `in` 查詢（documentId() in … 與 id in …）記下要查的 id，documentId 那條回對應的活動，id 那條回空。
+ */
+function installFirestore(store: StoreDoc[]): {
+  requestedEventDocIds: string[];
+  regSnapshotSizes: number[];
+  inQueries: EventInQuery[];
+} {
+  const probe = {
+    requestedEventDocIds: [] as string[],
+    regSnapshotSizes: [] as number[],
+    inQueries: [] as EventInQuery[],
+  };
   mockedGetDocs.mockImplementation(((q: unknown) => {
     const { base, constraints } = q as { base: { kind?: string; id?: string }; constraints: FakeConstraint[] };
     if (base?.kind === 'collectionGroup' && base.id === 'registrations') {
@@ -354,20 +376,16 @@ function installFirestore(store: StoreDoc[]): { requestedEventDocIds: string[]; 
       probe.regSnapshotSizes.push(snap.docs.length);
       return Promise.resolve(snap) as never;
     }
+    const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+    if (base?.kind === 'collection' && inWhere) {
+      const ids = inWhere.value as string[];
+      const byDocId = typeof inWhere.field !== 'string';
+      probe.inQueries.push({ field: byDocId ? 'documentId' : 'id', ids });
+      if (!byDocId) return Promise.resolve(makeSnap([])) as never;
+      probe.requestedEventDocIds.push(...ids);
+      return Promise.resolve(makeSnap(ids.map((id) => targetEventSnap(id)))) as never;
+    }
     return Promise.resolve(makeSnap([])) as never;
-  }) as never);
-  vi.mocked(doc).mockImplementation(((_db: unknown, path: string, id: string) => ({ path, id })) as never);
-  vi.mocked(getDoc).mockImplementation(((ref: { id: string }) => {
-    probe.requestedEventDocIds.push(ref.id);
-    const isTarget = ref.id === TARGET_EVENT_DOC_ID;
-    return Promise.resolve(
-      makeEventSnap(ref.id, {
-        id: ref.id,
-        title: isTarget ? 'Tomorrow Match' : 'Old',
-        date: isTarget ? '2099/01/02 09:00~11:00' : '2000/01/01 09:00~11:00',
-        status: 'open',
-      }),
-    ) as never;
   }) as never);
   return probe;
 }
@@ -483,5 +501,107 @@ describe('T-033：報名紀錄很多的帳號（309 筆、217 筆已取消）', 
     for (const status of ACTIVE_REGISTRATION_STATUSES) {
       expect(isActiveRegistration({ id: 'r', userId: HEAVY_UID, status }, HEAVY_UID)).toBe(true);
     }
+  });
+});
+
+// ── T-041 A4：查詢並行與補抓改批次 ──────────────────────
+
+describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const UID = 'U0000000000000000000000000000002';
+  const regDoc = (id: string, eventId: string): FakeReg =>
+    makeSubcollectionReg(id, { userId: UID, eventId, status: 'confirmed' });
+
+  test('報名查詢與三個管理查詢同時發出，不必等報名先回來', async () => {
+    const pending: Array<(snap: { docs: unknown[] }) => void> = [];
+    mockedGetDocs.mockImplementation((() =>
+      new Promise((resolve) => {
+        pending.push(resolve as (snap: { docs: unknown[] }) => void);
+      })) as never);
+
+    const done = loadNextActivityInputs(deps(vi.fn()), UID);
+
+    // 四個查詢（報名＋creator／owner／delegate）都已發出，但還沒有任何一個回來
+    await vi.waitFor(() => expect(mockedGetDocs).toHaveBeenCalledTimes(4));
+    pending.forEach((resolve) => resolve(makeSnap([])));
+    await expect(done).resolves.toEqual({ registrations: [], events: [] });
+    // 沒有缺的活動 → 不發補抓查詢
+    expect(mockedGetDocs).toHaveBeenCalledTimes(4);
+  });
+
+  test('缺的活動改一次 in 查詢：35 筆 → 2 批 × （文件 id、id 欄位）共 4 個查詢，且不再逐筆 getDoc', async () => {
+    const ids = Array.from({ length: 35 }, (_, i) => `miss_${pad(i)}`);
+    const probe = installFirestore(ids.map((id, i) => ({
+      ...regDoc(`r_${i}`, id),
+      path: `events/${id}/registrations/r_${i}`,
+    })));
+
+    const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
+
+    expect(inputs.registrations).toHaveLength(35);
+    expect(probe.inQueries).toHaveLength(4);
+    const byDocId = probe.inQueries.filter((q) => q.field === 'documentId');
+    const byId = probe.inQueries.filter((q) => q.field === 'id');
+    expect(byDocId.map((q) => q.ids.length).sort((a, b) => a - b)).toEqual([5, EVENT_IN_QUERY_CHUNK]);
+    expect(byId.map((q) => q.ids.length).sort((a, b) => a - b)).toEqual([5, EVENT_IN_QUERY_CHUNK]);
+    expect(new Set(byDocId.flatMap((q) => q.ids))).toEqual(new Set(ids));
+    expect(vi.mocked(getDoc)).not.toHaveBeenCalled();
+    expect(inputs.events).toHaveLength(35);
+  });
+
+  test('同一個活動被多筆報名指向只查一次', async () => {
+    const probe = installFirestore([
+      { ...regDoc('r1', 'dup'), path: 'events/dup/registrations/r1' },
+      { ...regDoc('r2', 'dup'), path: 'events/dup/registrations/r2' },
+    ]);
+
+    await loadNextActivityInputs(deps(vi.fn()), UID);
+
+    expect(probe.inQueries.find((q) => q.field === 'documentId')?.ids).toEqual(['dup']);
+  });
+
+  test('報名記的是 public id、文件 id 不同：由 id 欄位的 in 查詢補回（R-ID-010）', async () => {
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') {
+        return Promise.resolve(makeSnap([regDoc('r1', 'pub-1')])) as never;
+      }
+      const inWhere = constraints.find((c) => c.op === 'in');
+      if (inWhere && typeof inWhere.field === 'string') {
+        return Promise.resolve(makeSnap([
+          makeEventSnap('doc-xyz', { id: 'pub-1', title: 'Public Id Match', date: '2099/01/02 09:00~11:00', status: 'open' }),
+        ])) as never;
+      }
+      return Promise.resolve(makeSnap([])) as never;
+    }) as never);
+
+    const result = await resolveNextActivity({ ...deps(vi.fn()), now: () => NOW }, UID);
+
+    expect(result?.event.id).toBe('pub-1');
+    expect(result?.event._docId).toBe('doc-xyz');
+  });
+
+  test('補抓的某一批失敗：記警告、其他批次與報名照常（不丟錯）', async () => {
+    const warn = vi.fn();
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') {
+        return Promise.resolve(makeSnap([regDoc('r1', 'evt-a')])) as never;
+      }
+      const inWhere = constraints.find((c) => c.op === 'in');
+      if (inWhere && typeof inWhere.field === 'string') return Promise.reject(new Error('index missing')) as never;
+      if (inWhere) {
+        return Promise.resolve(makeSnap([
+          makeEventSnap('evt-a', { id: 'evt-a', title: 'A', date: '2099/01/02 09:00~11:00', status: 'open' }),
+        ])) as never;
+      }
+      return Promise.resolve(makeSnap([])) as never;
+    }) as never);
+
+    const inputs = await loadNextActivityInputs(deps(warn), UID);
+
+    expect(inputs.events.map((e) => e.id)).toEqual(['evt-a']);
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('event fetch skipped'))).toBe(true);
   });
 });
