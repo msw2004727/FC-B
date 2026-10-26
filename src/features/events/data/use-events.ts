@@ -1,20 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getLastKnownAuthUid } from '@/data/auth';
-import { getEventsRepo } from './events-repo';
+import { trackPublicRead } from '@/data/firebase';
+import { on } from '@/core/events';
 import { readEventsSnapshot, writeEventsSnapshot } from './events-snapshot-cache';
 import { isEventInEndedTab } from './terminal';
 import { sortEvents } from './presentation';
 import type { EventDoc } from './types';
 
+/** preview：一併載入 ended／cancelled 近 50 筆（R-EVT-002、R-EVT-003，活動列表等頁用）；none：只載進行中，首頁用。 */
+export type UseEventsTerminalMode = 'preview' | 'none';
+
+export interface UseEventsOptions {
+  /** 預設 'preview'。首頁只算進行中活動，用 'none' 少一個查詢與 payload。 */
+  terminalMode?: UseEventsTerminalMode;
+}
+
+interface Inflight {
+  mode: UseEventsTerminalMode;
+  promise: Promise<EventDoc[]>;
+}
+
 // 同一 singleton 上的同型 UI 請求共用 Promise，避免首頁／列表互相作廢請求。
 // 成功和失敗均清除（L-08）；hook 本身仍有生命週期保護。
-let inflight: Promise<EventDoc[]> | null = null;
+let inflight: Inflight | null = null;
 /** 本次開啟期間最後一次成功讀到的活動與讀取當時的帳號（切頁回來時直接先畫）。 */
 let lastLoaded: { uid: string | null; events: EventDoc[] } | null = null;
 
 /**
  * stale-first 的上次資料：記憶體 → 本機快照（30 分鐘內）。
  * 只有 viewer 帳號等於登入模組確認的帳號時才給（使用者資料載入前不以訪客身分先畫，Fable 2026-10-19）。
+ * 首頁（none）寫入的快照沒有 ended／cancelled 預覽；活動列表拿來先畫後，仍會照常載入預覽再更新。
  */
 function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   const known = getLastKnownAuthUid();
@@ -23,24 +38,80 @@ function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   return readEventsSnapshot(viewerUid);
 }
 
+/**
+ * 網路資料比登入確認更早回來時（首頁的公開讀取不等 Auth，T-041）暫存在這裡，
+ * 等登入帳號確定、且與畫面使用者相同才寫入記憶體與本機快照——快取歸屬守門不放寬（Fable 2026-10-19）。
+ * 活動本身是公開資料，哪個帳號確認後寫都一樣；守門保證的是「快照只掛在確認過的帳號底下」。
+ */
+let pendingSnapshot: EventDoc[] | null = null;
+
+function commitSnapshot(owner: string | null, events: EventDoc[]): void {
+  lastLoaded = { uid: owner, events };
+  writeEventsSnapshot(owner, events);
+}
+
+function flushPendingSnapshot(viewerUid: string | null): void {
+  if (!pendingSnapshot) return;
+  if (getLastKnownAuthUid() !== viewerUid) return;
+  const events = pendingSnapshot;
+  pendingSnapshot = null;
+  commitSnapshot(viewerUid, events);
+}
+
 /** 測試用。 */
 export function _resetUseEventsForTest(): void {
   inflight = null;
   lastLoaded = null;
+  pendingSnapshot = null;
 }
 
-function load(): Promise<EventDoc[]> {
-  if (inflight) return inflight;
-  const request = (async () => {
+let repoModule: Promise<typeof import('./events-repo')> | null = null;
+
+/**
+ * events-repo 靜態 import Firestore SDK，這裡動態載入才不會把 SDK 帶進首頁路由的靜態相依（T-041 A2）。
+ * 只 import 一次（共用 Promise），失敗時清掉以便重試（L-08）。
+ */
+function loadRepoModule(): Promise<typeof import('./events-repo')> {
+  if (!repoModule) {
+    const promise = import('./events-repo');
+    repoModule = promise;
+    promise.catch(() => {
+      if (repoModule === promise) repoModule = null;
+    });
+  }
+  return repoModule;
+}
+
+function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+  return (async () => {
+    const { getEventsRepo } = await loadRepoModule();
     const repo = getEventsRepo();
-    // 需要 terminal preview：結束後六小時內仍在一般列表（R-EVT-002）。
-    await repo.loadEventsStatic({ terminalMode: 'preview' });
+    // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
+    await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
     return [...snapshot.active, ...snapshot.terminal];
   })();
-  inflight = request;
+}
+
+function load(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+  const current = inflight;
+  // preview 是 none 的超集：進行中的是 preview，或這次只要 none，都直接共用。
+  if (current && (current.mode === 'preview' || mode === 'none')) return current.promise;
+
+  // 進行中的是 none、這次要 preview：等它結束再補載 terminal，
+  // 不並行（repo 的 loadSeq 會讓較早的請求作廢）。
+  const request = current
+    ? current.promise.then(
+      () => start(mode),
+      () => start(mode),
+    )
+    : start(mode);
+  // 首頁的活動讀取是公開讀取：登記後，首頁公開讀取全部處理完才讓 Auth 註冊（見 data/firebase.ts）。
+  trackPublicRead(request);
+  const entry: Inflight = { mode, promise: request };
+  inflight = entry;
   const clear = (): void => {
-    if (inflight === request) inflight = null;
+    if (inflight === entry) inflight = null;
   };
   request.then(clear, clear);
   return request;
@@ -49,7 +120,7 @@ function load(): Promise<EventDoc[]> {
 /**
  * @param viewerUid 目前畫面使用者的 uid（訪客為 null）；用來決定能不能先畫上次資料與快照歸屬。
  */
-export function useEvents(viewerUid: string | null): {
+export function useEvents(viewerUid: string | null, options: UseEventsOptions = {}): {
   events: EventDoc[];
   loading: boolean;
   error: boolean;
@@ -63,18 +134,24 @@ export function useEvents(viewerUid: string | null): {
   const [now, setNow] = useState(Date.now);
   const viewerUidRef = useRef(viewerUid);
   viewerUidRef.current = viewerUid;
+  const terminalMode = options.terminalMode ?? 'preview';
+  const terminalModeRef = useRef(terminalMode);
+  terminalModeRef.current = terminalMode;
   const stale = useMemo(() => (fresh ? null : staleEventsFor(viewerUid)), [fresh, viewerUid]);
 
   useEffect(() => {
     let current = true;
     setPending(true);
     setFailed(false);
-    load().then(
+    load(terminalModeRef.current).then(
       (next) => {
         const owner = viewerUidRef.current;
         if (getLastKnownAuthUid() === owner) {
-          lastLoaded = { uid: owner, events: next };
-          writeEventsSnapshot(owner, next);
+          pendingSnapshot = null;
+          commitSnapshot(owner, next);
+        } else {
+          // 登入狀態還沒確定（或 viewer 還沒載成本人）：先不寫，確定後補寫。
+          pendingSnapshot = next;
         }
         if (!current) return;
         setFresh(next);
@@ -89,6 +166,12 @@ export function useEvents(viewerUid: string | null): {
     );
     return () => { current = false; };
   }, [attempt]);
+
+  // 登入帳號確定（auth:changed）或畫面使用者換成確認過的帳號時，補寫早到的網路資料。
+  useEffect(() => {
+    flushPendingSnapshot(viewerUid);
+  }, [viewerUid]);
+  useEffect(() => on('auth:changed', () => flushPendingSnapshot(viewerUidRef.current)), []);
 
   const events = fresh ?? stale ?? [];
   // 已有上次資料時更新失敗不顯示錯誤（A 的快取模式也是如此）。

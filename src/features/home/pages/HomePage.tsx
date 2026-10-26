@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
-import { EventFormModal } from '@/features/events/components/EventFormModal';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import { useLegacyT } from '@/i18n/i18n';
@@ -12,6 +11,7 @@ import { SPORTS, eventSportTag } from '@/features/events/data/sports';
 import type { EventDoc } from '@/features/events/data/types';
 import { useEvents } from '@/features/events/data/use-events';
 import { getVisibleEvents } from '@/features/events/data/visibility';
+import { getFirebaseCore, trackPublicRead } from '@/data/firebase';
 import { useViewer } from '@/features/profile/data/viewer';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
@@ -23,7 +23,16 @@ import {
   type AnnouncementDoc,
 } from '../data/announcements';
 import { loadActiveBanners, type BannerDoc } from '../data/banners';
+import {
+  loadEventFormModal,
+  scheduleEventFormPrefetch,
+  type EventFormModalComponent,
+} from '../data/event-form-loader';
 import { parseEventDateRange } from '../data/next-activity';
+// 首頁兩顆「我要開團」按鈕（.home-create-event-btn：金色旋轉外框、藍色漸層、光暈動畫、鎖定狀態）的樣式定義在
+// activity.css。表單改 lazy 後它不再隨 EventFormModal 進首頁，所以在這裡明確引入，並放在 home.css 之前，
+// 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
+import '@/features/events/legacy/activity.css';
 import '../legacy/home.css';
 
 const HOME_ACTIVITY_REGION_KEY = 'toosterx_home_activity_region';
@@ -65,7 +74,8 @@ export default function HomePage(): JSX.Element {
   const lt = useLegacyT();
   const viewer = useViewer();
   const location = useLocation();
-  const eventsData = useEvents(viewer.uid);
+  // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
+  const eventsData = useEvents(viewer.uid, { terminalMode: 'none' });
 
   const [banners, setBanners] = useState<BannerDoc[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
@@ -84,16 +94,50 @@ export default function HomePage(): JSX.Element {
 
   const userCanCreate = createEntry.canCreate;
 
+  // 開團表單改成點擊時才下載（A1）；載入完成後元件保持掛載，行為同原本「一直掛著、靠 open 開關」。
+  const [FormModal, setFormModal] = useState<EventFormModalComponent | null>(null);
+  const formOpen = createEntry.formOpen;
+  const closeForm = createEntry.closeForm;
+  useEffect(() => {
+    if (!formOpen || FormModal) return undefined;
+    let active = true;
+    loadEventFormModal().then(
+      (component) => {
+        // 元件本身是函式，setState 要包一層避免被當成 updater。
+        if (active) setFormModal(() => component);
+      },
+      () => {
+        if (!active) return;
+        toast.show({
+          message: lt('活動建立功能載入失敗，請稍後再試', '活動建立功能載入失敗，請稍後再試'),
+        });
+        closeForm();
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [formOpen, FormModal]);
+
+  // 有建立權限的人：瀏覽器空閒時先把表單載好，點「我要開團」後少一次等待。
+  useEffect(() => {
+    if (!userCanCreate) return undefined;
+    return scheduleEventFormPrefetch();
+  }, [userCanCreate]);
+
   useEffect(() => {
     let active = true;
-    loadActiveBanners()
+    // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
+    // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
+    // 有登入旗標的人 Auth 先走（避免新分頁以未登入身分成為 Firestore 主分頁），登記不生效（T-041，見 data/firebase.ts）。
+    trackPublicRead(loadActiveBanners({ getFirebase: getFirebaseCore }))
       .then((list) => {
         if (active) setBanners(list);
       })
       .catch(() => {
         if (active) setBanners([]);
       });
-    loadActiveAnnouncements()
+    trackPublicRead(loadActiveAnnouncements())
       .then((list) => {
         if (active) setAnnouncements(list);
       })
@@ -145,6 +189,8 @@ export default function HomePage(): JSX.Element {
       e.preventDefault();
       e.stopPropagation();
     }
+    // 一按就開始下載表單：後面還有讀個人資料與類型選擇，通常載完才輪到它。
+    loadEventFormModal().catch(() => undefined);
     createEntry.onClick();
   }
 
@@ -568,13 +614,15 @@ export default function HomePage(): JSX.Element {
         )}
 
         {createEntry.overlays}
-        <EventFormModal
-          open={createEntry.formOpen}
-          mode="create"
-          viewer={viewer}
-          onClose={createEntry.closeForm}
-          onSaved={onFormSaved}
-        />
+        {FormModal && (
+          <FormModal
+            open={createEntry.formOpen}
+            mode="create"
+            viewer={viewer}
+            onClose={createEntry.closeForm}
+            onSaved={onFormSaved}
+          />
+        )}
       </section>
     </div>
   );

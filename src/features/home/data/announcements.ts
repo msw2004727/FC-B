@@ -1,13 +1,13 @@
-import {
-  collection,
-  getDocs,
-  query,
-  type DocumentData,
-  type Firestore,
-} from 'firebase/firestore';
-import { getFirebase as defaultGetFirebase } from '@/data/firebase';
+// Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔會被首頁路由引用，靜態 import 會把約 160 KB gz 的 SDK 帶進首頁的靜態相依。
+import type { DocumentData, Firestore } from 'firebase/firestore';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
+// 公告是公開唯讀資料，只需要 app＋firestore，不等 auth／functions（T-041）。
+import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 
 export const ANNOUNCEMENTS_COLLECTION = 'announcements';
+
+// 查詢維持 main 的原語意：整個集合不加 limit。有效公告是在客戶端依狀態與排序篩出，
+// 沒有 orderBy 的 limit 是「先截取、再篩選」，集合超過上限時可能漏掉有效公告（退修 4 移除 T-041 先前加的 limit(200)）。
 
 export interface AnnouncementDoc {
   id: string;
@@ -169,7 +169,10 @@ export async function loadActiveAnnouncements(
   const logger = deps.logger ?? console;
   const nowMs = deps.now?.() ?? Date.now();
   try {
-    const { db } = await getFB();
+    const [{ db }, { collection, getDocs, query }] = await Promise.all([
+      getFB(),
+      loadFirestoreSdk(),
+    ]);
     const snap = await getDocs(query(collection(db, ANNOUNCEMENTS_COLLECTION)));
     const docs = snap.docs.map((d) => mapAnnouncementDoc(d));
     return filterAndSortAnnouncements(docs, nowMs);

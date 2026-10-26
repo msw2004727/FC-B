@@ -1,11 +1,7 @@
-import {
-  collection,
-  getDocs,
-  limit,
-  query,
-  type DocumentData,
-  type Firestore,
-} from 'firebase/firestore';
+// Firestore SDK 只在查詢當下動態載入（T-041 A2）：HomeBannerCarousel 只用到本檔的純函式，
+// 靜態 import SDK 會讓首頁路由的靜態相依多帶約 160 KB gz。
+import type { DocumentData, Firestore } from 'firebase/firestore';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
 export const BANNERS_COLLECTION = 'banners';
@@ -160,7 +156,10 @@ export async function loadActiveBanners(deps: BannerDeps = {}): Promise<BannerDo
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger = deps.logger ?? console;
   try {
-    const { db } = await getFB();
+    const [{ db }, { collection, getDocs, limit, query }] = await Promise.all([
+      getFB(),
+      loadFirestoreSdk(),
+    ]);
     // A `_buildCollectionQuery`：banners 沒有特別排序，db.collection(name).limit(200)。
     const snap = await getDocs(query(collection(db, BANNERS_COLLECTION), limit(200)));
     const docs = snap.docs.map((d) => mapBannerDoc(d));

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import {
+  _resetFirebaseForTest,
+  armFirebaseAuthHold,
+  whenFirebaseAuthAllowed,
+} from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { _resetUseEventsForTest } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
@@ -36,6 +41,12 @@ vi.mock('@/features/events/data/events-repo', () => ({
 
 vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: vi.fn(),
+}));
+
+// 首頁的開團入口 hook（use-create-event-entry）掛載時會預讀個人資料：loadUserProfile → 真的 getFirebase()，
+// 用正式設定連 Google 443 讀使用者文件（退修 3 F1：單元測試不得連外）。這個檔不測開團流程，直接回「查無資料」。
+vi.mock('@/features/profile/data/profile-model', () => ({
+  loadUserProfile: async () => null,
 }));
 
 vi.mock('@/features/home/data/next-activity', async (importOriginal) => {
@@ -110,6 +121,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  _resetFirebaseForTest();
   vi.useRealTimers();
 });
 
@@ -155,6 +167,11 @@ describe('HomePage (legacy A DOM & CSS)', () => {
 
     await waitFor(() => {
       expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(2);
+    });
+    // 活動資料是動態載入 events-repo 後才查詢；等它跑完再推進計時器，輪播計時器才不會在推進途中被重新計時。
+    await waitFor(() => expect(getEventsRepo).toHaveBeenCalled());
+    await act(async () => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
     });
 
     expect(screen.getByRole('heading', { name: '週末熱血開踢' })).toBeTruthy();
@@ -318,4 +335,61 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     fireEvent.click(chip);
     expect(mockRoute).toHaveBeenCalledWith('/activities?sport=football');
   });
+
+  it('home loads active events only (terminalMode none, A4); terminal preview is left to the list pages', async () => {
+    const loadEventsStatic = vi.fn().mockResolvedValue(['events']);
+    vi.mocked(getEventsRepo).mockReturnValue({
+      loadEventsStatic,
+      ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
+      loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
+      getSnapshot: () => ({ active: [], terminal: [] }),
+    });
+
+    render(<HomePage />);
+
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalledTimes(1));
+    expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'none' });
+  });
+
+  // 三個公開讀取（events／banners／announcements）都要登記給 Auth 暫緩機制（T-041）。
+  // 每個案例讓「其中一個」維持未回來、另外兩個先回來：少登記任何一個，就會在這裡提早放行而被抓到。
+  it.each(['events', 'banners', 'announcements'] as const)(
+    '%s 讀取還沒回來時不放行 Auth；回來後才放行',
+    async (pendingRead) => {
+      armFirebaseAuthHold({ settleMs: 5, capMs: 60_000 });
+      const pendingEvents = deferred<string[]>();
+      const pendingBanners = deferred<BannerDoc[]>();
+      const pendingAnnouncements = deferred<AnnouncementDoc[]>();
+      vi.mocked(getEventsRepo).mockReturnValue({
+        loadEventsStatic: vi.fn().mockReturnValue(
+          pendingRead === 'events' ? pendingEvents.promise : Promise.resolve(['events']),
+        ),
+        ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
+        loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
+        getSnapshot: () => ({ active: [], terminal: [] }),
+      });
+      vi.mocked(loadActiveBanners).mockReturnValue(
+        pendingRead === 'banners' ? pendingBanners.promise : Promise.resolve([]),
+      );
+      vi.mocked(loadActiveAnnouncements).mockReturnValue(
+        pendingRead === 'announcements' ? pendingAnnouncements.promise : Promise.resolve([]),
+      );
+      let allowed = false;
+      void whenFirebaseAuthAllowed().then(() => {
+        allowed = true;
+      });
+
+      render(<HomePage />);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      });
+      expect(allowed).toBe(false);
+
+      pendingEvents.resolve(['events']);
+      pendingBanners.resolve([]);
+      pendingAnnouncements.resolve([]);
+      await waitFor(() => expect(allowed).toBe(true));
+    },
+  );
+
 });
