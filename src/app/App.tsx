@@ -222,6 +222,9 @@ export function App({
   }, []);
 
   const handleLogin = useCallback((): void => {
+    // 首頁訪客路徑會暫緩 Auth 註冊（T-041）；按下登入代表使用者現在就要 Auth，
+    // 登入流程的 callable 要等 getFirebase()，不立刻放行會多等 3～10 秒（冪等：沒有暫緩或已放行時是空操作）。
+    releaseFirebaseAuthHold();
     if (pendingRef.current || externalPending || currentUid.current !== null) return;
     pendingRef.current = true;
     const sequence = ++loginSequence.current;

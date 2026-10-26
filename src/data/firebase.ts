@@ -191,10 +191,19 @@ async function initializeFirebaseApp(): Promise<FirebaseApp> {
 }
 
 async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
-  const [app, firestoreMod] = await Promise.all([
+  const loading = Promise.all([
     getFirebaseApp(),
     import('firebase/firestore'),
   ]);
+  // 有登入旗標：Auth 先走（旗標閘會等它），所以載入要和 Firestore 模組「並行」開始，而不是等 Firestore 模組下載完才由
+  // waitForFirstAuthState 起頭（T-052：只有 getFirebaseCore() 被呼叫、沒人呼叫 getFirebase() 時會變成串行）。
+  // 只啟動、不等結果：同一個 _authPromise 之後仍由 waitForFirstAuthState 等候並處理失敗（降級）；這裡的 catch
+  // 只是讓這條提前啟動的 Promise 在被等候之前就失敗時不變成未處理的拒絕。排在 app／firestore 的 import 之後，
+  // 與 App 呼叫 getFirebase() 時已驗證的發出順序相同；不啟動 Functions，旗標閘仍只等 Auth。
+  if (sessionFlagAtStart()) {
+    getFirebaseAuth().catch(() => undefined);
+  }
+  const [app, firestoreMod] = await loading;
 
   // 上次已登入（旗標）：先等 Auth 註冊進 app、再等它的第一次狀態事件，才初始化 Firestore（見下方「登入旗標閘」）。
   // Auth 未能確認註冊（載入失敗、getAuth 失敗、逾時）→ 降級：Firestore 改用 memoryLocalCache，不參與多分頁協作。

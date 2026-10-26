@@ -1,3 +1,5 @@
+import { getFirebaseCore } from '@/data/firebase';
+
 export interface ActivityMapPoint {
   lat: number;
   lng: number;
@@ -81,15 +83,12 @@ export async function loadActivityMapLocationPickerEnabled(): Promise<boolean> {
   const request = (async (): Promise<boolean> => {
     let enabled = false;
     try {
-      // ASSUMPTION: B 已初始化預設 Firebase app，使用其預設 Firestore。
-      // 附件未提供 getFirebase 的來源；SDK 維持動態載入。
-      const [{ doc, getDoc, getFirestore }, { getApp }] = await Promise.all([
-        import('firebase/firestore'),
-        import('firebase/app'),
-      ]);
-      const snapshot = await getDoc(
-        doc(getFirestore(getApp()), 'siteConfig', 'featureFlags'),
-      );
+      // 經 getFirebaseCore() 取 db（T-052）：app 已初始化、Firestore 尚未建立時（登入旗標閘期間），
+      // 直接 getFirestore(getApp()) 會繞過 data/firebase.ts 建出沒有持久化設定的實例；
+      // SDK 維持動態載入（core 已載入 firebase/firestore，這裡的 import 只是取同一份模組）。
+      const { db } = await getFirebaseCore();
+      const { doc, getDoc } = await import('firebase/firestore');
+      const snapshot = await getDoc(doc(db, 'siteConfig', 'featureFlags'));
       const data: unknown = snapshot.exists() ? snapshot.data() : null;
       enabled = !!data
         && typeof data === 'object'

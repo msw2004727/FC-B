@@ -6,6 +6,9 @@ const firebase = vi.hoisted(() => ({
   getFirestore: vi.fn(),
   doc: vi.fn(),
   getDoc: vi.fn(),
+  getFirebaseCore: vi.fn(),
+  /** getFirebaseCore() 給的 db；斷言 doc() 拿到的就是它（不是另外 getFirestore() 建的）。 */
+  coreDb: { name: 'core-db' },
 }));
 
 vi.mock('firebase/app', () => ({ getApp: firebase.getApp }));
@@ -14,6 +17,7 @@ vi.mock('firebase/firestore', () => ({
   doc: firebase.doc,
   getDoc: firebase.getDoc,
 }));
+vi.mock('@/data/firebase', () => ({ getFirebaseCore: firebase.getFirebaseCore }));
 
 beforeEach(() => {
   vi.resetModules();
@@ -21,8 +25,9 @@ beforeEach(() => {
   document.documentElement.lang = 'zh-TW';
   history.replaceState(null, '', '/');
   firebase.getApp.mockReturnValue({});
-  firebase.getFirestore.mockReturnValue({});
+  firebase.getFirestore.mockReturnValue({ name: 'direct-db' });
   firebase.doc.mockReturnValue({});
+  firebase.getFirebaseCore.mockResolvedValue({ app: {}, db: firebase.coreDb });
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('禁止連網')));
   vi.stubGlobal('google', undefined);
 });
@@ -155,9 +160,50 @@ describe('featureFlags', () => {
     expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
     expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
     expect(firebase.getDoc).toHaveBeenCalledTimes(2);
-    expect(firebase.doc).toHaveBeenCalledWith({}, 'siteConfig', 'featureFlags');
+    expect(firebase.doc).toHaveBeenCalledWith(firebase.coreDb, 'siteConfig', 'featureFlags');
     expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  // T-052：db 一律經 getFirebaseCore()（data/firebase.ts 的單例），不自己 getFirestore(getApp())。
+  it('db 來自 getFirebaseCore()：不直接呼叫 getApp／getFirestore，core 還沒好時不查詢', async () => {
+    let resolveCore!: (value: { app: object; db: object }) => void;
+    firebase.getFirebaseCore.mockReturnValue(new Promise((resolve) => {
+      resolveCore = resolve;
+    }));
+    firebase.getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ activityMapLocationPickerEnabled: true }),
+    });
+    const config = await import('./activity-map-config');
+    const loading = config.loadActivityMapLocationPickerEnabled();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // 旗標閘期間 core 還沒好：不能先繞過去建出沒有持久化設定的 Firestore
+    expect(firebase.getFirebaseCore).toHaveBeenCalledOnce();
+    expect(firebase.getFirestore).not.toHaveBeenCalled();
+    expect(firebase.getApp).not.toHaveBeenCalled();
+    expect(firebase.getDoc).not.toHaveBeenCalled();
+
+    resolveCore({ app: {}, db: firebase.coreDb });
+    expect(await loading).toBe(true);
+    expect(firebase.doc).toHaveBeenCalledWith(firebase.coreDb, 'siteConfig', 'featureFlags');
+    expect(firebase.getFirestore).not.toHaveBeenCalled();
+    expect(firebase.getApp).not.toHaveBeenCalled();
+  });
+
+  it('getFirebaseCore() 失敗視為 false，不快取，下一次成功可恢復', async () => {
+    firebase.getFirebaseCore
+      .mockRejectedValueOnce(new Error('firebase target blocked'))
+      .mockResolvedValue({ app: {}, db: firebase.coreDb });
+    firebase.getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ activityMapLocationPickerEnabled: true }),
+    });
+    const config = await import('./activity-map-config');
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+    expect(config.isActivityMapLocationPickerEnabled()).toBe(false);
+    expect(firebase.getDoc).not.toHaveBeenCalled();
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
   });
 
   it.each([false, 'true', 1, undefined])('只接受嚴格 true：%s', async (value) => {
