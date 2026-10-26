@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe('橫幅快照', () => {
-  it('寫入後在 30 分鐘內讀得回來，只留畫面用得到的欄位', () => {
+  it('寫入後在 30 分鐘內讀得回來，只留畫面用得到的欄位，並帶到期時間', () => {
     writeBannersSnapshot(
       [
         {
@@ -56,8 +56,9 @@ describe('橫幅快照', () => {
     );
 
     const read = readBannersSnapshot(NOW + 5 * 60 * 1000);
-    expect(read.map((b) => b.id)).toEqual(['b1', 'b2']);
-    expect(read[0]).toMatchObject({
+    expect(read?.expiresAt).toBe(NOW + HOME_SNAPSHOT_MAX_AGE_MS);
+    expect(read?.items.map((b) => b.id)).toEqual(['b1', 'b2']);
+    expect(read?.items[0]).toMatchObject({
       id: 'b1',
       _docId: 'b1',
       status: 'active',
@@ -68,8 +69,8 @@ describe('橫幅快照', () => {
       linkUrl: 'https://example.com/go',
       gradient: 'linear-gradient(#000, #333)',
     });
-    expect(read[0]).not.toHaveProperty('startAt');
-    expect(read[0]).not.toHaveProperty('endAt');
+    expect(read?.items[0]).not.toHaveProperty('startAt');
+    expect(read?.items[0]).not.toHaveProperty('endAt');
   });
 
   it('快照內容與帳號無關：存的只有版本、時間與橫幅欄位', () => {
@@ -82,8 +83,8 @@ describe('橫幅快照', () => {
 
   it('剛好 30 分鐘仍可用；超過 30 分鐘一律當沒有快照（只留骨架）', () => {
     writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
-    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS)).toHaveLength(1);
-    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toEqual([]);
+    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS)?.items).toHaveLength(1);
+    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
   });
 
   it('版本和目前不同一律當沒有快照（即使剛寫入）', () => {
@@ -93,7 +94,7 @@ describe('橫幅快照', () => {
       savedAt: NOW,
       items: [{ id: 'b1', _docId: 'b1', title: '舊版寫的' }],
     });
-    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
   });
 
   it('寫入時間在未來太遠（時鐘不可信）、格式不符、壞 JSON 都當沒有快照', () => {
@@ -103,16 +104,29 @@ describe('橫幅快照', () => {
       savedAt: NOW + 10 * 60 * 1000,
       items: [{ id: 'b1', _docId: 'b1' }],
     });
-    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
 
     putRaw(BANNERS_SNAPSHOT_KEY, { v: 2, appVersion: APP_VERSION, savedAt: NOW, items: [{ id: 'b1', _docId: 'b1' }] });
-    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
 
     putRaw(BANNERS_SNAPSHOT_KEY, { v: 1, appVersion: APP_VERSION, savedAt: NOW, items: 'nope' });
-    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
 
     localStorage.setItem(BANNERS_SNAPSHOT_KEY, '{not json');
-    expect(readBannersSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
+  });
+
+  it('讀取時超過字數上限的內容在解析前就丟掉（不先 JSON.parse）', () => {
+    const parse = vi.spyOn(JSON, 'parse');
+    const huge = JSON.stringify({
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: [{ id: 'b1', _docId: 'b1', title: 'y'.repeat(HOME_SNAPSHOT_MAX_CHARS) }],
+    });
+    localStorage.setItem(BANNERS_SNAPSHOT_KEY, huge);
+    expect(readBannersSnapshot(NOW)).toBeNull();
+    expect(parse).not.toHaveBeenCalled();
   });
 
   it('圖片與連結只接受 http/https（本機資料被竄改也不會變成 javascript: 等協定）；缺 id 的項目略過', () => {
@@ -129,9 +143,35 @@ describe('橫幅快照', () => {
       ],
     });
     const read = readBannersSnapshot(NOW);
-    expect(read).toHaveLength(1);
-    expect(read[0]?.image).toBe('');
-    expect(read[0]?.linkUrl).toBe('');
+    expect(read?.items).toHaveLength(1);
+    expect(read?.items[0]?.image).toBe('');
+    expect(read?.items[0]?.linkUrl).toBe('');
+  });
+
+  it('漸層只收單純的 gradient(...)：被竄改的內容（url、分號、額外宣告）丟掉改用預設底色；寫入時同樣過濾', () => {
+    const evil = [
+      'linear-gradient(red, blue); background-image: url(https://evil.example/x.png)',
+      'linear-gradient(url(https://evil.example/x.png), blue)',
+      'url(https://evil.example/x.png)',
+      'red; position: fixed',
+      'linear-gradient(red, blue) /* x */',
+    ];
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: [
+        ...evil.map((gradient, i) => ({ id: `e${i}`, _docId: `e${i}`, gradient })),
+        { id: 'ok', _docId: 'ok', gradient: 'linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)' },
+      ],
+    });
+    const read = readBannersSnapshot(NOW);
+    expect(read?.items.slice(0, evil.length).map((b) => b.gradient)).toEqual(evil.map(() => undefined));
+    expect(read?.items.at(-1)?.gradient).toBe('linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)');
+
+    writeBannersSnapshot([banner({ id: 'w', gradient: evil[0] })], NOW);
+    const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as { items: Array<{ gradient?: string }> };
+    expect(stored.items[0]?.gradient).toBeUndefined();
   });
 
   it('空清單（伺服器說目前沒有橫幅）會刪掉舊快照', () => {
@@ -154,19 +194,21 @@ describe('運動統計快照', () => {
     { key: 'basketball', label: '籃球', symbol: '🏀', count: 1 },
   ];
 
-  it('只存 key＋數量，讀取時由 SPORTS 還原標籤與符號', () => {
+  it('只存 key＋數量，讀取時由 SPORTS 還原標籤與符號，並帶到期時間', () => {
     writeSportsSnapshot(rows, NOW);
     const stored = JSON.parse(localStorage.getItem(SPORTS_SNAPSHOT_KEY) as string) as { items: unknown[] };
     expect(stored.items).toEqual([
       { key: 'football', count: 3 },
       { key: 'basketball', count: 1 },
     ]);
-    expect(readSportsSnapshot(NOW + 1000)).toEqual(rows);
+    const read = readSportsSnapshot(NOW + 1000);
+    expect(read?.items).toEqual(rows);
+    expect(read?.expiresAt).toBe(NOW + HOME_SNAPSHOT_MAX_AGE_MS);
   });
 
   it('超過 30 分鐘或版本不同：不回任何統計（不顯示「N 活動」之類的狀態文字）', () => {
     writeSportsSnapshot(rows, NOW);
-    expect(readSportsSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toEqual([]);
+    expect(readSportsSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
 
     putRaw(SPORTS_SNAPSHOT_KEY, {
       v: 1,
@@ -174,7 +216,14 @@ describe('運動統計快照', () => {
       savedAt: NOW,
       items: [{ key: 'football', count: 3 }],
     });
-    expect(readSportsSnapshot(NOW)).toEqual([]);
+    expect(readSportsSnapshot(NOW)).toBeNull();
+  });
+
+  it('讀取時超過字數上限的內容在解析前就丟掉', () => {
+    const parse = vi.spyOn(JSON, 'parse');
+    localStorage.setItem(SPORTS_SNAPSHOT_KEY, 'x'.repeat(HOME_SNAPSHOT_MAX_CHARS + 1));
+    expect(readSportsSnapshot(NOW)).toBeNull();
+    expect(parse).not.toHaveBeenCalled();
   });
 
   it('未知運動 key、數量不是正整數的項目略過', () => {
@@ -190,20 +239,20 @@ describe('運動統計快照', () => {
         { key: 'running', count: 'many' },
       ],
     });
-    expect(readSportsSnapshot(NOW).map((r) => [r.key, r.count])).toEqual([['football', 2]]);
+    expect(readSportsSnapshot(NOW)?.items.map((r) => [r.key, r.count])).toEqual([['football', 2]]);
   });
 
   it('兩段快照各有各的時間戳：只更新橫幅不會讓舊的運動統計變新', () => {
     writeSportsSnapshot(rows, NOW);
     writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW + 25 * 60 * 1000);
     const later = NOW + 31 * 60 * 1000;
-    expect(readBannersSnapshot(later)).toHaveLength(1);
-    expect(readSportsSnapshot(later)).toEqual([]);
+    expect(readBannersSnapshot(later)?.items).toHaveLength(1);
+    expect(readSportsSnapshot(later)).toBeNull();
   });
 });
 
 describe('localStorage 不可用', () => {
-  it('讀寫丟錯一律忽略，回空陣列', () => {
+  it('讀寫丟錯一律忽略，回 null', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('denied');
     });
@@ -216,7 +265,7 @@ describe('localStorage 不可用', () => {
     expect(() => writeBannersSnapshot([banner({ id: 'b1' })], NOW)).not.toThrow();
     expect(() => writeBannersSnapshot([], NOW)).not.toThrow();
     expect(() => writeSportsSnapshot([{ key: 'football', label: '足球', symbol: '⚽', count: 1 }], NOW)).not.toThrow();
-    expect(readBannersSnapshot(NOW)).toEqual([]);
-    expect(readSportsSnapshot(NOW)).toEqual([]);
+    expect(readBannersSnapshot(NOW)).toBeNull();
+    expect(readSportsSnapshot(NOW)).toBeNull();
   });
 });

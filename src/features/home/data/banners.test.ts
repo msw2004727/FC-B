@@ -7,6 +7,7 @@ import {
   isHomeCarouselBanner,
   loadActiveBanners,
   safeBannerColor,
+  safeBannerGradient,
   sanitizeHttpUrl,
   type BannerDoc,
 } from './banners';
@@ -62,6 +63,66 @@ describe('banners data layer', () => {
     vi.mocked(getDocs).mockResolvedValueOnce({ docs: [] } as unknown as Awaited<ReturnType<typeof getDocs>>);
     expect(await loadActiveBanners({ logger: { warn }, onFailure })).toEqual([]);
     expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('onFailure／onResult 丟錯也不破壞回傳契約：失敗仍回 []、成功仍回橫幅', async () => {
+    const warn = vi.fn();
+    vi.mocked(getDocs).mockRejectedValueOnce(new Error('offline'));
+    await expect(
+      loadActiveBanners({
+        logger: { warn },
+        onFailure: () => {
+          throw new Error('callback failed');
+        },
+      }),
+    ).resolves.toEqual([]);
+
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs: [{ id: 'b1', data: () => ({ status: 'active', title: 'ok' }) }],
+    } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    const result = await loadActiveBanners({
+      logger: { warn },
+      onResult: () => {
+        throw new Error('callback failed');
+      },
+    });
+    expect(result.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('onResult 回報這份結果是不是從本機快取回來的（離線時 getDocs 回持久快取）；沒有 metadata 回 undefined', async () => {
+    const onResult = vi.fn();
+    const docs = [{ id: 'b1', data: () => ({ status: 'active' }) }];
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs,
+      metadata: { fromCache: false },
+    } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    await loadActiveBanners({ onResult });
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs,
+      metadata: { fromCache: true },
+    } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    await loadActiveBanners({ onResult });
+    vi.mocked(getDocs).mockResolvedValueOnce({ docs } as unknown as Awaited<ReturnType<typeof getDocs>>);
+    await loadActiveBanners({ onResult });
+    expect(onResult.mock.calls.map((c) => c[0])).toEqual([
+      { fromCache: false },
+      { fromCache: true },
+      { fromCache: undefined },
+    ]);
+  });
+
+  it('safeBannerGradient 只收單純的 gradient(...)', () => {
+    expect(safeBannerGradient('linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)')).toBe(
+      'linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)',
+    );
+    expect(safeBannerGradient('radial-gradient(circle at 20% 30%, var(--accent), #000)')).toContain('radial-gradient');
+    expect(safeBannerGradient('linear-gradient(to right, red, blue); background-image:url(https://evil.example/x)')).toBe('');
+    expect(safeBannerGradient('linear-gradient(url(https://evil.example/x), blue)')).toBe('');
+    expect(safeBannerGradient('url(https://evil.example/x)')).toBe('');
+    expect(safeBannerGradient('red')).toBe('');
+    expect(safeBannerGradient('linear-gradient(red, blue)'.padEnd(400, ' '))).toBe('linear-gradient(red, blue)');
+    expect(safeBannerGradient('linear-gradient(' + 'a,'.repeat(200) + 'b)')).toBe('');
+    expect(safeBannerGradient(null)).toBe('');
   });
 
   it('validates colors and http/https urls safely', () => {

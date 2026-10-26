@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { EventDoc } from '@/features/events/data/types';
 import { computeGuestSportRows, computeSportRows, isPublicActiveHomeEvent } from './sport-rows';
 
-const NOW = new Date('2026/10/27 03:00:00').getTime();
+// 與時區無關：測試活動的日期（2030、2020 年）離 NOW 差好幾年，本機時區不會改變「已開始／未開始」的判斷。
+const NOW = Date.UTC(2026, 9, 27, 3, 0, 0);
 
 function ev(id: string, extra: Record<string, unknown> = {}): EventDoc {
   return { id, status: 'open', date: '2030/10/20 18:00~20:00', ...extra } as EventDoc;

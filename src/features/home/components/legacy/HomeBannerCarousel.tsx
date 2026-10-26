@@ -2,13 +2,20 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import {
   safeBannerColor,
+  safeBannerGradient,
   sanitizeHttpUrl,
   type BannerDoc,
 } from '../../data/banners';
 import './banner-img.css';
 
 const AUTOPLAY_INTERVAL_MS = 8000;
-const imageReadyCache: Record<string, boolean> = {};
+/** 第一張／其他張等多久還沒載好就不再把整張壓暗（慢網路時讓圖片邊載邊顯示），不代表失敗。 */
+const FIRST_IMAGE_TIMEOUT_MS = 1800;
+const OTHER_IMAGE_TIMEOUT_MS = 3500;
+/** loaded＝載入並解碼成功；failed＝載入失敗或無法解碼（改顯示底色）；timeout＝等太久，先取消壓暗、仍等它載完。 */
+type ImageStatus = 'loaded' | 'failed' | 'timeout';
+/** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記，下次進來重新嘗試。 */
+const imageReadyCache: Record<string, ImageStatus> = {};
 
 export interface HomeBannerCarouselProps {
   banners: readonly BannerDoc[];
@@ -27,9 +34,11 @@ export function HomeBannerCarousel({
   canCreate,
 }: HomeBannerCarouselProps): JSX.Element {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [loadedUrls, setLoadedUrls] = useState<Record<string, boolean>>(() => ({
+  const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
+  const timeoutsRef = useRef(new Map<string, number>());
+  const prefetchedRef = useRef(new Set<string>());
   const timerRef = useRef<number | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -50,65 +59,63 @@ export function HomeBannerCarousel({
     }
   }, [activeIndex, bannerCount]);
 
-  const preloadBannerUrl = useCallback((url: string, priority: 'high' | 'normal') => {
-    if (!url || imageReadyCache[url]) return;
-    let settled = false;
-    const markDone = (): void => {
-      if (settled) return;
-      settled = true;
-      imageReadyCache[url] = true;
-      setLoadedUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
-    };
-
-    const timeoutMs = priority === 'high' ? 1800 : 3500;
-    const fallbackTimer = window.setTimeout(markDone, timeoutMs);
-    if (typeof Image === 'undefined') {
-      window.clearTimeout(fallbackTimer);
-      markDone();
-      return;
-    }
-    const img = new Image();
-    if ('decoding' in img) img.decoding = 'async';
-    img.onload = () => {
-      window.clearTimeout(fallbackTimer);
-      markDone();
-    };
-    img.onerror = () => {
-      window.clearTimeout(fallbackTimer);
-      markDone();
-    };
-    img.src = url;
-    if (typeof img.decode === 'function') {
-      img.decode().then(
-        () => {
-          window.clearTimeout(fallbackTimer);
-          markDone();
-        },
-        () => {
-          window.clearTimeout(fallbackTimer);
-          markDone();
-        },
-      );
-    }
+  const markImage = useCallback((url: string, status: ImageStatus) => {
+    if (status === 'loaded') imageReadyCache[url] = 'loaded';
+    setImageStatus((prev) => (prev[url] === status ? prev : { ...prev, [url]: status }));
   }, []);
 
+  // 圖片由 <img> 自己載入（第一張高優先、其餘 lazy），這裡只接它的結果：載入後再解碼才算 loaded，失敗或解碼失敗算 failed。
+  const handleImageLoad = useCallback(
+    (url: string, img: HTMLImageElement) => {
+      if (typeof img.decode !== 'function') {
+        markImage(url, 'loaded');
+        return;
+      }
+      img.decode().then(
+        () => markImage(url, 'loaded'),
+        () => markImage(url, 'failed'),
+      );
+    },
+    [markImage],
+  );
+
+  // 每張圖各有一個逾時計時（只在第一次看到這個網址時啟動）：到時還沒有結果就標 timeout（取消壓暗、不當成失敗）。
   useEffect(() => {
-    if (banners.length === 0) return;
-    const timers: number[] = [];
     banners.forEach((b, idx) => {
       const url = sanitizeHttpUrl(b.image);
-      if (!url) return;
-      if (idx === 0 || idx === activeIndex) {
-        preloadBannerUrl(url, 'high');
-      } else {
-        const t = window.setTimeout(() => preloadBannerUrl(url, 'normal'), 120);
-        timers.push(t);
-      }
+      if (!url || imageReadyCache[url] || timeoutsRef.current.has(url)) return;
+      const ms = idx === 0 ? FIRST_IMAGE_TIMEOUT_MS : OTHER_IMAGE_TIMEOUT_MS;
+      timeoutsRef.current.set(
+        url,
+        window.setTimeout(() => {
+          setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
+        }, ms),
+      );
     });
+  }, [banners]);
+  useEffect(() => {
+    const timeouts = timeoutsRef.current;
     return () => {
-      timers.forEach((t) => window.clearTimeout(t));
+      timeouts.forEach((t) => window.clearTimeout(t));
+      timeouts.clear();
     };
-  }, [banners, activeIndex, preloadBannerUrl]);
+  }, []);
+
+  // 預取：只預取「下一張」，而且等目前這張有結果（載好、失敗或逾時）之後才開始，不跟它搶頻寬。
+  // 其餘的圖交給 <img loading="lazy">；使用者點圓點直接跳到某張時，只預取那一張。
+  const prefetchImage = useCallback((url: string) => {
+    if (!url || imageReadyCache[url] || prefetchedRef.current.has(url) || typeof Image === 'undefined') return;
+    prefetchedRef.current.add(url);
+    const img = new Image();
+    if ('decoding' in img) img.decoding = 'async';
+    img.src = url;
+  }, []);
+  useEffect(() => {
+    if (banners.length < 2) return;
+    const currentUrl = sanitizeHttpUrl(banners[activeIndex]?.image);
+    if (currentUrl && !imageStatus[currentUrl]) return;
+    prefetchImage(sanitizeHttpUrl(banners[(activeIndex + 1) % banners.length]?.image));
+  }, [banners, activeIndex, imageStatus, prefetchImage]);
 
   const stopAutoplay = useCallback(() => {
     if (timerRef.current !== null) {
@@ -140,11 +147,9 @@ export function HomeBannerCarousel({
       const cnt = banners.length || 1;
       const safeIdx = ((idx % cnt) + cnt) % cnt;
       setActiveIndex(safeIdx);
-      const target = banners[safeIdx];
-      const url = sanitizeHttpUrl(target?.image);
-      if (url) preloadBannerUrl(url, 'high');
+      prefetchImage(sanitizeHttpUrl(banners[safeIdx]?.image));
     },
-    [banners, preloadBannerUrl],
+    [banners, prefetchImage],
   );
 
   const handleTouchStart = (e: TouchEvent): void => {
@@ -246,12 +251,27 @@ export function HomeBannerCarousel({
           banners.map((b, idx) => {
             const safeLink = sanitizeHttpUrl(b.linkUrl);
             const safeImg = sanitizeHttpUrl(b.image);
-            const isLoaded = Boolean(safeImg && loadedUrls[safeImg]);
+            const status = safeImg ? imageStatus[safeImg] : undefined;
             const handleSlideClick = safeLink
               ? () => {
                   window.open(safeLink, 'sporthub_ad', 'noopener,noreferrer');
                 }
               : undefined;
+
+            if (safeImg && status === 'failed') {
+              // 圖片載入失敗或無法解碼：改顯示底色（不顯示壞圖，也不顯示「1200 × 545」的開發用佔位字）。
+              return (
+                <div
+                  key={b.id || b._docId || `slide-${idx}`}
+                  class="banner-slide banner-slide--failed"
+                  data-bg-src={safeImg}
+                  data-banner-priority={idx === 0 ? 'high' : 'normal'}
+                  data-banner-load-state="failed"
+                  style={`background:${safeBannerGradient(b.gradient) || 'var(--bg-elevated)'}${safeLink ? ';cursor:pointer' : ''}`}
+                  onClick={handleSlideClick}
+                />
+              );
+            }
 
             if (safeImg) {
               // T-042：圖片改成 <img>（原本是 background-image，無法設優先權與延遲載入）。第一張 fetchpriority=high＋eager，
@@ -259,10 +279,10 @@ export function HomeBannerCarousel({
               return (
                 <div
                   key={b.id || b._docId || `slide-${idx}`}
-                  class={`banner-slide${isLoaded ? '' : ' banner-slide--loading'}`}
+                  class={`banner-slide${status ? '' : ' banner-slide--loading'}`}
                   data-bg-src={safeImg}
                   data-banner-priority={idx === 0 ? 'high' : 'normal'}
-                  data-banner-load-state={isLoaded ? 'done' : 'loading'}
+                  data-banner-load-state={status === 'loaded' ? 'done' : (status ?? 'loading')}
                   style={safeLink ? 'cursor:pointer;' : undefined}
                   onClick={handleSlideClick}
                 >
@@ -276,12 +296,14 @@ export function HomeBannerCarousel({
                     loading={idx === 0 ? 'eager' : 'lazy'}
                     fetchpriority={idx === 0 ? 'high' : undefined}
                     draggable={false}
+                    onLoad={(e) => handleImageLoad(safeImg, e.currentTarget)}
+                    onError={() => markImage(safeImg, 'failed')}
                   />
                 </div>
               );
             }
 
-            const bgGradient = b.gradient || 'var(--bg-elevated)';
+            const bgGradient = safeBannerGradient(b.gradient) || 'var(--bg-elevated)';
             return (
               <div
                 key={b.id || b._docId || `slide-${idx}`}

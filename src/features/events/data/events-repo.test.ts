@@ -99,6 +99,24 @@ describe('active events', () => {
     expect(repo.getSnapshot().active[0]?._docId).toBe('a');
   });
 
+  test('reports whether the active list came from the local cache (T-042 snapshot freshness)', async () => {
+    const repo = makeRepo();
+    expect(repo.getSnapshot().activeFromCache).toBeUndefined();
+
+    docs.mockResolvedValueOnce({ docs: [makeDoc('a')], metadata: { fromCache: false } } as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(repo.getSnapshot().activeFromCache).toBe(false);
+
+    docs.mockResolvedValueOnce({ docs: [makeDoc('a')], metadata: { fromCache: true } } as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(repo.getSnapshot().activeFromCache).toBe(true);
+
+    // 讀不到 metadata（例如替身）＝不能確認，不是 false
+    docs.mockResolvedValueOnce(snap([makeDoc('a')]) as never);
+    await repo.loadEventsStatic({ terminalMode: 'none' });
+    expect(repo.getSnapshot().activeFromCache).toBeUndefined();
+  });
+
   test('failed active refresh retains the preceding active snapshot', async () => {
     const repo = makeRepo();
     docs.mockResolvedValueOnce(snap([makeDoc('saved')]) as never);

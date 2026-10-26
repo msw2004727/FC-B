@@ -44,6 +44,11 @@ export interface EventsRepoDeps {
 export interface EventsSnapshot {
   active: EventDoc[];
   terminal: EventDoc[];
+  /**
+   * 目前 active 清單是不是從本機快取回來的（離線時 getDocs 會回持久快取）。false＝確認向伺服器新取得；
+   * true 或 undefined（還沒載入成功、或讀不到 metadata）都不算確認。給首頁快照決定能不能更新新鮮度用（T-042）。
+   */
+  activeFromCache?: boolean;
 }
 
 export interface LoadEventsStaticOptions {
@@ -64,7 +69,7 @@ export interface EventsRepo {
 }
 
 type SnapshotResult =
-  | { ok: true; docs: QueryDocumentSnapshot<DocumentData>[] }
+  | { ok: true; docs: QueryDocumentSnapshot<DocumentData>[]; fromCache?: boolean }
   | { ok: false; docs: QueryDocumentSnapshot<DocumentData>[] };
 
 interface TerminalResult {
@@ -75,6 +80,7 @@ interface TerminalResult {
 
 interface InternalState {
   active: EventDoc[];
+  activeFromCache: boolean | undefined;
   terminal: EventDoc[];
   terminalLoadedMode: 'none' | 'preview' | 'history';
   terminalLastDoc: QueryDocumentSnapshot<DocumentData> | null;
@@ -100,6 +106,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
   const logger = deps.logger ?? console;
   const state: InternalState = {
     active: [],
+    activeFromCache: undefined,
     terminal: [],
     terminalLoadedMode: 'none',
     terminalLastDoc: null,
@@ -124,7 +131,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
   ): Promise<SnapshotResult> {
     try {
       const snapshot = await getDocs(request);
-      return { ok: true, docs: snapshot.docs };
+      return { ok: true, docs: snapshot.docs, fromCache: snapshot.metadata?.fromCache };
     } catch {
       // 不輸出 SDK 原始錯誤、查詢內容或使用者資料。
       logger.warn(`[EventsRepo] ${label} query failed.`);
@@ -199,7 +206,10 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
 
     if (sequence !== state.loadSeq) return [];
 
-    if (active.ok) state.active = active.docs.map(mapDoc);
+    if (active.ok) {
+      state.active = active.docs.map(mapDoc);
+      state.activeFromCache = active.fromCache;
+    }
     if (terminal?.result.ok) {
       state.terminal = terminal.result.docs.map(mapDoc);
       state.terminalLoadedMode = mode === 'history' ? 'history' : 'preview';
@@ -279,6 +289,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     getSnapshot: () => ({
       active: [...state.active],
       terminal: [...state.terminal],
+      activeFromCache: state.activeFromCache,
     }),
   };
 }

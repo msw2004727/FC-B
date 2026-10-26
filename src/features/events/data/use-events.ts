@@ -14,8 +14,10 @@ export interface UseEventsOptions {
   /** 預設 'preview'。首頁只算進行中活動，用 'none' 少一個查詢與 payload。 */
   terminalMode?: UseEventsTerminalMode;
   /**
-   * 每次「向伺服器讀回」成功時呼叫一次（不含記憶體／本機快照那份上次資料）。
-   * 首頁用它寫自己的公開首屏快照（T-042）：只能拿剛讀回的資料寫，否則舊資料會被重新蓋上新的時間戳。
+   * 每次「確認向伺服器新取得」的結果被這個畫面採用時呼叫一次（含「目前沒有活動」的空結果）。
+   * 不含：記憶體／本機快照那份上次資料、離線時 Firestore 回的持久快取（`activeFromCache` 不是 false）、
+   * 已卸載或已被新一輪請求取代的畫面。首頁用它寫自己的公開首屏快照（T-042）：
+   * 只能拿確認新取得的資料寫，否則舊資料會被重新蓋上新的時間戳。
    */
   onFresh?: (events: EventDoc[]) => void;
 }
@@ -87,6 +89,9 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
   return repoModule;
 }
 
+/** 這個結果陣列是「確認向伺服器新取得」的（repo 回報 `activeFromCache === false`）。見 `UseEventsOptions.onFresh`。 */
+const serverConfirmed = new WeakSet<EventDoc[]>();
+
 function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
   return (async () => {
     const { getEventsRepo } = await loadRepoModule();
@@ -94,7 +99,9 @@ function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
     // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
     await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
-    return [...snapshot.active, ...snapshot.terminal];
+    const events = [...snapshot.active, ...snapshot.terminal];
+    if (snapshot.activeFromCache === false) serverConfirmed.add(events);
+    return events;
   })();
 }
 
@@ -160,12 +167,14 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
           // 登入狀態還沒確定（或 viewer 還沒載成本人）：先不寫，確定後補寫。
           pendingSnapshot = next;
         }
-        try {
-          onFreshRef.current?.(next);
-        } catch {
-          /* 呼叫端的快照寫入失敗不影響列表 */
-        }
         if (!current) return;
+        if (serverConfirmed.has(next)) {
+          try {
+            onFreshRef.current?.(next);
+          } catch {
+            /* 呼叫端的快照寫入失敗不影響列表 */
+          }
+        }
         setFresh(next);
         setNow(Date.now());
         setPending(false);

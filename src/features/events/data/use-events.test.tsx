@@ -7,6 +7,8 @@ import type { EventDoc } from './types';
 
 const loadEventsStatic = vi.fn<() => Promise<string[]>>();
 let repoEvents: EventDoc[] = [];
+/** repo 回報的 activeFromCache：false＝確認向伺服器新取得（預設），true＝離線時的持久快取，undefined＝讀不到。 */
+let repoFromCache: boolean | undefined = false;
 
 let knownUid: string | null | undefined = null;
 vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => knownUid }));
@@ -14,7 +16,7 @@ vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => knownUid }));
 vi.mock('./events-repo', () => ({
   getEventsRepo: () => ({
     loadEventsStatic,
-    getSnapshot: () => ({ active: [...repoEvents], terminal: [] }),
+    getSnapshot: () => ({ active: [...repoEvents], terminal: [], activeFromCache: repoFromCache }),
   }),
 }));
 
@@ -35,6 +37,7 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     _clearEventsSnapshotForTest();
     loadEventsStatic.mockReset();
     repoEvents = [];
+    repoFromCache = false;
     knownUid = null;
   });
   afterEach(() => cleanup());
@@ -100,7 +103,7 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     expect(guestFirst.getByTestId('p').textContent).toBe('--:A 的資料');
   });
 
-  it('onFresh 只在伺服器讀回時呼叫（拿剛讀回的資料），顯示本機快照那份上次資料時不呼叫；它丟錯不影響列表', async () => {
+  it('onFresh 只在「確認向伺服器新取得」時呼叫（拿剛讀回的資料），顯示本機快照那份上次資料時不呼叫；它丟錯不影響列表', async () => {
     writeEventsSnapshot(null, [ev('a', '舊資料')]);
     let resolve!: (v: string[]) => void;
     loadEventsStatic.mockImplementation(() => new Promise((r) => { resolve = r; }));
@@ -122,6 +125,69 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     await waitFor(() => expect(view.getByTestId('p').textContent).toBe('新資料'));
     expect(onFresh).toHaveBeenCalledTimes(1);
     expect(onFresh.mock.calls[0]?.[0]?.map((e) => e.title)).toEqual(['新資料']);
+  });
+
+  it('onFresh：空結果也算（確認目前沒有活動）；離線時的持久快取（fromCache=true）或讀不到旗標（undefined）都不呼叫，列表仍照常顯示', async () => {
+    const onFresh = vi.fn();
+    function FreshProbe(): preact.JSX.Element {
+      const { events } = useEvents(null, { onFresh });
+      return h('div', { 'data-testid': 'p' }, events.map((e) => e.title).join(','));
+    }
+
+    // 確認新取得、而且是空的
+    loadEventsStatic.mockResolvedValue(['events']);
+    repoEvents = [];
+    const confirmedEmpty = render(h(FreshProbe, null));
+    await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+    expect(onFresh).toHaveBeenLastCalledWith([]);
+    expect(confirmedEmpty.getByTestId('p').textContent).toBe('');
+    cleanup();
+
+    for (const flag of [true, undefined] as const) {
+      onFresh.mockClear();
+      _resetUseEventsForTest();
+      repoFromCache = flag;
+      repoEvents = [ev('c', '快取資料')];
+      const view = render(h(FreshProbe, null));
+      await waitFor(() => expect(view.getByTestId('p').textContent).toBe('快取資料'));
+      expect(onFresh).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it('onFresh：畫面卸載後才回來的結果不呼叫；重試時只有現在這一輪呼叫、不重複呼叫', async () => {
+    const onFresh = vi.fn();
+    const pending: Array<(v: string[]) => void> = [];
+    loadEventsStatic.mockImplementation(() => new Promise((r) => { pending.push(r); }));
+    function FreshProbe(): preact.JSX.Element {
+      const { events, retry } = useEvents(null, { onFresh });
+      return h('button', { 'data-testid': 'p', onClick: retry }, events.map((e) => e.title).join(','));
+    }
+
+    // 卸載後才回來
+    const first = render(h(FreshProbe, null));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    first.unmount();
+    cleanup();
+    repoEvents = [ev('late', '卸載後才回來')];
+    pending[0]?.(['events']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onFresh).not.toHaveBeenCalled();
+
+    // 重試（新一輪）時舊一輪還沒回來：兩輪共用同一個進行中的請求，結果回來時只有「現在這一輪」呼叫 onFresh，不會呼叫兩次
+    _resetUseEventsForTest();
+    pending.length = 0;
+    const second = render(h(FreshProbe, null));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    second.getByTestId('p').click();
+    repoEvents = [ev('new', '新一輪')];
+    pending[0]?.(['events']);
+    await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+    expect(onFresh.mock.calls[0]?.[0]?.map((e: EventDoc) => e.title)).toEqual(['新一輪']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onFresh).toHaveBeenCalledTimes(1);
   });
 
   it('超過大小上限不存', () => {

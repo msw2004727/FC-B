@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
@@ -33,8 +33,10 @@ import {
   readSportsSnapshot,
   writeBannersSnapshot,
   writeSportsSnapshot,
+  type SnapshotRead,
 } from '../data/home-snapshot';
-import { computeGuestSportRows, computeSportRows } from '../data/sport-rows';
+import { computeGuestSportRows, computeSportRows, type SportRow } from '../data/sport-rows';
+import { useSnapshotExpiry } from '../data/use-snapshot-expiry';
 // 首頁兩顆「我要開團」按鈕（.home-create-event-btn：金色旋轉外框、藍色漸層、光暈動畫、鎖定狀態）的樣式定義在
 // activity.css。表單改 lazy 後它不再隨 EventFormModal 進首頁，所以在這裡明確引入，並放在 home.css 之前，
 // 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
@@ -66,20 +68,34 @@ function readStoredRegion(): string {
   }
 }
 
-/** 剛向伺服器讀回活動時，更新首屏運動統計快照（訪客視角，與帳號無關；T-042）。 */
-function saveSportsSnapshotFrom(events: EventDoc[]): void {
-  writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
-}
-
 export default function HomePage(): JSX.Element {
   const lt = useLegacyT();
   const viewer = useViewer();
   const location = useLocation();
+  // 首屏快照（T-042）。運動統計的畫面來源有三種，優先順序固定：
+  //   1. 即時：這個畫面採用了「確認向伺服器新取得」的活動（含空結果）→ 一律用 computedSportRows，快照從此撤銷（sportSnap=null）；
+  //   2. 既有快取：useEvents 已有活動（記憶體／帳號底下的本機快照／離線時的持久快取）→ 用它算（T-041 以來的行為，沒動）；
+  //   3. 首屏快照：以上都沒有（活動還在讀或讀取失敗）才用，且到期（見下）或被撤銷後就不再用。
+  // 橫幅同理：快照只是第一次 render 先畫的內容，伺服器確認的結果一到就取代，到期也要撤掉。
+  const [sportSnap, setSportSnap] = useState<SnapshotRead<SportRow> | null>(() => readSportsSnapshot());
+  useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => setSportSnap(null));
+  // 只有「確認新取得」的活動才會走到這裡（use-events 的 onFresh）：寫快照、撤銷快照 fallback（含空結果；之後重試也不回頭用舊統計）。
+  const handleFreshEvents = useCallback((events: EventDoc[]) => {
+    writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
+    setSportSnap(null);
+  }, []);
   // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
-  const eventsData = useEvents(viewer.uid, { terminalMode: 'none', onFresh: saveSportsSnapshotFrom });
+  const eventsData = useEvents(viewer.uid, { terminalMode: 'none', onFresh: handleFreshEvents });
 
-  // 首屏快照（T-042）：橫幅文字與圖片網址第一次 render 就畫，背景讀回後再換；過期或版本不同讀到空陣列（維持骨架）。
-  const [banners, setBanners] = useState<BannerDoc[]>(() => readBannersSnapshot());
+  // 橫幅快照第一次 render 就畫（沒有、過期或版本不同＝空陣列，維持骨架）。只讀一次。
+  const [initialBanners] = useState(() => readBannersSnapshot());
+  const [banners, setBanners] = useState<BannerDoc[]>(() => initialBanners?.items ?? []);
+  // 目前畫面上的橫幅若來自快照，這裡是它的到期時間；被伺服器結果取代後為 null。
+  const [bannerExpiry, setBannerExpiry] = useState<number | null>(() => initialBanners?.expiresAt ?? null);
+  useSnapshotExpiry(bannerExpiry, () => {
+    setBanners([]);
+    setBannerExpiry(null);
+  });
   const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<AnnouncementDoc | null>(null);
   const [activeSport, setActiveSport] = useActiveSport();
@@ -130,6 +146,7 @@ export default function HomePage(): JSX.Element {
   useEffect(() => {
     let active = true;
     let bannersFailed = false;
+    let bannersConfirmed = false;
     // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
     // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
     // 有登入旗標的人 Auth 先走（避免新分頁以未登入身分成為 Firestore 主分頁），登記不生效（T-041，見 data/firebase.ts）。
@@ -139,13 +156,26 @@ export default function HomePage(): JSX.Element {
         onFailure: () => {
           bannersFailed = true;
         },
+        onResult: (meta) => {
+          bannersConfirmed = meta.fromCache === false;
+        },
       }),
     )
       .then((list) => {
-        // 查詢失敗（回傳空陣列）時不蓋掉畫面上的橫幅、也不動快照；成功才寫快照（空清單＝目前沒有橫幅，刪掉舊快照）。
+        // 畫面已卸載（或被新的一輪取代）就什麼都不做：舊請求晚到不能覆寫快照，也不能動畫面。
+        if (!active) return;
+        // 查詢失敗（回傳空陣列）：保留畫面上的橫幅（可能是快照），也不動快照。
         if (bannersFailed) return;
+        if (!bannersConfirmed) {
+          // 不是確認向伺服器新取得（離線時 Firestore 回持久快取）：不更新快照新鮮度、也不拿它取代快照；
+          // 畫面上還沒有任何橫幅時才用（維持 T-041 以來的行為）。
+          setBanners((prev) => (prev.length > 0 ? prev : list));
+          return;
+        }
+        // 確認新取得：寫快照（空清單＝目前沒有橫幅，刪掉舊快照）、換畫面、快照到期不再適用。
         writeBannersSnapshot(list);
-        if (active) setBanners(list);
+        setBanners(list);
+        setBannerExpiry(null);
       })
       .catch(() => {
         if (active) setBanners([]);
@@ -171,10 +201,8 @@ export default function HomePage(): JSX.Element {
     () => computeSportRows(visibleEvents, Date.now()),
     [visibleEvents],
   );
-  // 首屏快照（T-042）：活動還在讀、或讀取失敗且沒有任何上次資料時，用快照的運動統計先畫（不看登入是否確認）；
-  // 讀回後（含「目前沒有活動」）一律改用即時結果。過期或版本不同的快照讀到空陣列＝不顯示任何統計。
-  const snapshotSportRows = useMemo(() => readSportsSnapshot(), []);
-  const sportRows = eventsData.loading || eventsData.error ? snapshotSportRows : computedSportRows;
+  // 來源 2（既有快取）優先於來源 3（首屏快照）；來源 1 確認後 sportSnap 已是 null，見上方 handleFreshEvents。
+  const sportRows = eventsData.events.length === 0 && sportSnap ? sportSnap.items : computedSportRows;
 
   function handleUnavailableFeature(e?: Event): void {
     if (e) {

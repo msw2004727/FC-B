@@ -31,8 +31,22 @@ export interface BannerDeps {
   getFirebase?: () => Promise<{ db: Firestore }>;
   logger?: { warn: (...args: unknown[]) => void };
   now?: () => number;
-  /** 讀取失敗時呼叫（失敗仍回傳空陣列）。呼叫端靠它分辨「查詢失敗」和「真的沒有橫幅」。 */
+  /** 讀取失敗時呼叫（失敗仍回傳空陣列）。呼叫端靠它分辨「查詢失敗」和「真的沒有橫幅」。callback 丟錯會被吞掉，不影響回傳。 */
   onFailure?: (err: unknown) => void;
+  /**
+   * 讀取成功時呼叫（回傳前）。`fromCache === false` 才是「確認向伺服器新取得」，可以拿來更新首屏快照的新鮮度；
+   * `true`（離線時的持久快取）或 `undefined`（讀不到 metadata）都不算。callback 丟錯會被吞掉。
+   */
+  onResult?: (meta: { fromCache: boolean | undefined }) => void;
+}
+
+/** 呼叫端提供的通知 callback 丟錯不能破壞 loadActiveBanners 的契約（成功回橫幅、失敗回 []）。 */
+function notifyCallback(call: () => void): void {
+  try {
+    call();
+  } catch {
+    /* 忽略 */
+  }
 }
 
 function toMillis(value: unknown): number {
@@ -103,6 +117,19 @@ export function safeBannerColor(value: unknown, fallback: string): string {
 }
 
 /**
+ * 橫幅漸層底色要寫進 inline style，只接受單純的 linear／radial／conic-gradient(...)：
+ * 顏色、角度、百分比、`var(--x)` 這類字元可以；`url(`、分號、引號、反斜線、註解一律不收（避免寫入額外 CSS 宣告或觸發額外資源請求）。
+ * 不合格回空字串，呼叫端改用預設底色。
+ */
+export function safeBannerGradient(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 300) return '';
+  if (!/^(?:repeating-)?(?:linear|radial|conic)-gradient\([#%.,()\s\w-]*\)$/i.test(raw)) return '';
+  if (/url\s*\(|expression|image-set|@|\\|\/\*/i.test(raw)) return '';
+  return raw;
+}
+
+/**
  * A `api-service.js#getBanners`＋`banner.js#renderBannerCarousel`：
  * 排除射門遊戲／觀賽／首頁資訊／版面設定這些特殊文件，再只留 status === 'active'。
  * A 沒有時間區間判斷，也沒有另外排序（順序＝查詢結果，即文件 ID 升冪）。
@@ -165,10 +192,13 @@ export async function loadActiveBanners(deps: BannerDeps = {}): Promise<BannerDo
     // A `_buildCollectionQuery`：banners 沒有特別排序，db.collection(name).limit(200)。
     const snap = await getDocs(query(collection(db, BANNERS_COLLECTION), limit(200)));
     const docs = snap.docs.map((d) => mapBannerDoc(d));
-    return filterAndSortBanners(docs);
+    const banners = filterAndSortBanners(docs);
+    // 回報這份結果是不是「確認向伺服器新取得」：離線時 getDocs 會回持久快取（fromCache=true）；沒有 metadata（例如測試替身）回 undefined。
+    notifyCallback(() => deps.onResult?.({ fromCache: (snap as { metadata?: { fromCache?: boolean } }).metadata?.fromCache }));
+    return banners;
   } catch (err) {
     logger.warn('[banners] failed to load banners:', err);
-    deps.onFailure?.(err);
+    notifyCallback(() => deps.onFailure?.(err));
     return [];
   }
 }
