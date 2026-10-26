@@ -20,6 +20,16 @@
   background: transparent;
 }
 
+/*
+ * T-050：取代 A layout.css 的「All」待機脈動提示框（sport-picker-attention，頁面打開後閃兩次）。
+ * 原因：上面的 U-008 規則（specificity 較高）把同一個 ::before 改成 44×44、top/left 50%，A 的動畫 transform: scale()
+ * 又蓋掉 translate(-50%,-50%)，脈動時淡框偏到按鈕右下方（站長截圖）；新站不要待機提示框。
+ * 只關待機動畫；展開（.open）時 ::before 外圈與 ::after 小箭頭維持 A 的樣式。layout.css 是 A 原檔不手改，所以覆寫放在這裡。
+ */
+.legacy-ui.legacy-chrome #sport-picker-btn::before {
+  animation: none;
+}
+
 /* U-004：鍵盤焦點在運動下拉項目上的可見提示（不改變滑鼠外觀） */
 .legacy-ui.legacy-chrome .sport-picker-item:focus-visible {
   outline: 2px solid var(--accent, #0d9488);
