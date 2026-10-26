@@ -323,6 +323,8 @@ describe('LegacyUserCard（照 A showUserProfile）', () => {
       expect(container.textContent).not.toContain('Alice');
       expect(container.textContent).toContain('載入中...');
 
+      // uid-b 的讀取是在 effect 裡才發出的；等它發出（resolveB 才有效）再讓它完成
+      await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('uid-b'));
       resolveB(makeProfile({ uid: 'uid-b', _docId: 'uid-b', name: 'Bob2', displayName: 'Bob2' }));
       await waitFor(() => expect(container.textContent).toContain('Bob2'));
     } finally {

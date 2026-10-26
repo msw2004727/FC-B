@@ -134,6 +134,8 @@ describe('ProfilePage + 報名紀錄卡：頁首 summary 競態（T-048 F1）', 
 
     render(<ProfilePage />);
     await waitFor(() => expect(refreshBtn()).toBeTruthy());
+    // 個人頁與卡片的掛載 effect 都跑過（各發一次掛載讀取）才按，否則卡片會把刷新當成「換 uid 前」的請求丟棄
+    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
     expect(headerDone()).toBe('--');
 
     fireEvent.click(refreshBtn());
