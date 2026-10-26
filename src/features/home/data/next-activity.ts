@@ -355,10 +355,24 @@ function chunkIds(ids: readonly string[], size: number): string[][] {
 }
 
 /**
+ * 能不能放進 `documentId() in [...]`：Firestore 文件 id 不得含 '/'、不得是 '.'／'..'、不得符合 `__.*__`、不得超過 1500 bytes。
+ * 違規的 id 放進 `documentId()` 條件，SDK 在建查詢時就會同步丟錯。
+ */
+export function isValidFirestoreDocId(id: string): boolean {
+  if (!id || id === '.' || id === '..') return false;
+  if (id.includes('/')) return false;
+  if (/^__.*__$/.test(id)) return false;
+  return new TextEncoder().encode(id).length <= 1500;
+}
+
+/**
  * 報名指向、但管理的活動沒涵蓋的活動，一次用 `in` 查詢補抓（取代過去逐筆 resolveEventDocId＋getDoc 的串行）：
- *   - `documentId() in ids`：報名的 eventId 就是文件 id（多數情況）
+ *   - `documentId() in ids`：報名的 eventId 就是文件 id（多數情況）；不是合法文件 id 的（例如含 '/'）不放進這條
  *   - `id in ids`：報名記的是 public id、文件 id 不同的活動（R-ID-010，原 resolveEventDocId 的第二步）
- * 兩條查詢、各分批並行；單一批次失敗只記警告，不影響其他批次。
+ * 兩條查詢、各分批並行；單一批次失敗（含建查詢時同步丟錯）只記警告，不影響其他批次（原本逐筆隔離的語意）。
+ *
+ * R-ID-010 的優先順序：`events/{eventId}` 這份文件存在就用它；只有它不存在才採 `id` 欄位相符的那份。
+ * 同一個 public id 同時對應兩份文件時，`id` 欄位那份會被丟掉。
  */
 async function fetchMissingEvents(
   sdk: FirestoreSdk,
@@ -367,28 +381,42 @@ async function fetchMissingEvents(
   logger: NextActivityLogger,
 ): Promise<EventDoc[]> {
   const { collection, documentId, getDocs, query, where } = sdk;
-  const run = (label: string, build: (ids: string[]) => Query<DocumentData>, ids: string[]) =>
-    getDocs(build(ids)).then(
-      (snap) => snap.docs.map((d) => mapDoc(d)),
-      (err) => {
-        logger.warn('[NextActivity] event fetch skipped:', label, ids, err);
-        return [] as EventDoc[];
-      },
-    );
+  const run = async (
+    label: string,
+    build: (ids: string[]) => Query<DocumentData>,
+    ids: string[],
+  ): Promise<EventDoc[]> => {
+    try {
+      const snap = await getDocs(build(ids));
+      return snap.docs.map((d) => mapDoc(d));
+    } catch (err) {
+      logger.warn('[NextActivity] event fetch skipped:', label, ids, err);
+      return [];
+    }
+  };
 
-  const batches = chunkIds(missingEventIds, EVENT_IN_QUERY_CHUNK).flatMap((ids) => [
-    run(
+  const byDocIdBatches = chunkIds(missingEventIds.filter(isValidFirestoreDocId), EVENT_IN_QUERY_CHUNK)
+    .map((ids) => run(
       'documentId',
       (chunk) => query(collection(db, eventsCollectionPath), where(documentId(), 'in', chunk)),
       ids,
-    ),
-    run(
+    ));
+  const byPublicIdBatches = chunkIds(missingEventIds, EVENT_IN_QUERY_CHUNK)
+    .map((ids) => run(
       'id',
       (chunk) => query(collection(db, eventsCollectionPath), where('id', 'in', chunk)),
       ids,
-    ),
+    ));
+  const [byDocIdResults, byPublicIdResults] = await Promise.all([
+    Promise.all(byDocIdBatches),
+    Promise.all(byPublicIdBatches),
   ]);
-  return (await Promise.all(batches)).flat();
+
+  const byDocId = byDocIdResults.flat();
+  const resolvedDocIds = new Set(byDocId.map((event) => String(event._docId ?? '').trim()));
+  const byPublicId = byPublicIdResults.flat()
+    .filter((event) => !resolvedDocIds.has(String(event.id ?? '').trim()));
+  return [...byPublicId, ...byDocId];
 }
 
 /**

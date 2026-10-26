@@ -43,6 +43,7 @@ import {
   ACTIVE_REGISTRATION_STATUSES,
   EVENT_IN_QUERY_CHUNK,
   REGISTRATION_QUERY_LIMIT,
+  isValidFirestoreDocId,
   isActiveRegistration,
   managedRoleForEvent,
   pickNextActivity,
@@ -604,4 +605,124 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     expect(inputs.events.map((e) => e.id)).toEqual(['evt-a']);
     expect(warn.mock.calls.some(([msg]) => String(msg).includes('event fetch skipped'))).toBe(true);
   });
+
+  // ── 退修 1（P3-3）：補抓的邊界 ──
+
+  /** 照真的 SDK：documentId() 條件的值含 '/' 時，建查詢（where）就會同步丟錯。 */
+  function makeWhereRejectInvalidDocIds(): () => void {
+    const original = vi.mocked(where).getMockImplementation();
+    vi.mocked(where).mockImplementation(((field: unknown, op: string, value: unknown) => {
+      const isDocumentId = typeof field !== 'string';
+      if (isDocumentId && Array.isArray(value) && value.some((v) => String(v).includes('/'))) {
+        throw new Error("Invalid query. When querying with documentId(), you must provide a valid document ID, but it contains a '/'.");
+      }
+      return { kind: 'where', field, op, value };
+    }) as never);
+    return () => {
+      if (original) vi.mocked(where).mockImplementation(original);
+    };
+  }
+
+  function eventsByQuery(
+    registrations: FakeReg[],
+    answer: (field: 'documentId' | 'id', ids: string[]) => unknown[],
+  ): { inQueries: Array<{ field: 'documentId' | 'id'; ids: string[] }> } {
+    const probe = { inQueries: [] as Array<{ field: 'documentId' | 'id'; ids: string[] }> };
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') return Promise.resolve(makeSnap(registrations)) as never;
+      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      if (!inWhere) return Promise.resolve(makeSnap([])) as never;
+      const field = typeof inWhere.field === 'string' ? 'id' : 'documentId';
+      const ids = inWhere.value as string[];
+      probe.inQueries.push({ field, ids });
+      return Promise.resolve(makeSnap(answer(field, ids))) as never;
+    }) as never);
+    return probe;
+  }
+
+  test('isValidFirestoreDocId：含 /、. ／ ..、__x__、空字串、超過 1500 bytes 都不是合法文件 id', () => {
+    expect(isValidFirestoreDocId('ce_20261026_ab12')).toBe(true);
+    expect(isValidFirestoreDocId('活動-1')).toBe(true);
+    for (const bad of ['', '.', '..', 'a/b', '/x', '__name__', '__x__', 'a'.repeat(1501)]) {
+      expect(isValidFirestoreDocId(bad), bad.slice(0, 20)).toBe(false);
+    }
+  });
+
+  test('eventId 含 / ：不放進 documentId() 那條（否則建查詢就同步丟錯），仍走 id 欄位那條，其他 id 照常補抓，整張卡不失敗', async () => {
+    const restore = makeWhereRejectInvalidDocIds();
+    try {
+      const warn = vi.fn();
+      const probe = eventsByQuery(
+        [regDoc('r1', 'a/b'), regDoc('r2', 'ok1')],
+        (field, ids) => (field === 'documentId'
+          ? ids.filter((id) => id === 'ok1').map((id) => makeEventSnap(id, { id, title: 'OK', date: '2099/01/02 09:00~11:00', status: 'open' }))
+          : []),
+      );
+
+      const inputs = await loadNextActivityInputs(deps(warn), UID);
+
+      expect(probe.inQueries.find((q) => q.field === 'documentId')?.ids).toEqual(['ok1']);
+      expect(probe.inQueries.find((q) => q.field === 'id')?.ids).toEqual(['a/b', 'ok1']);
+      expect(inputs.events.map((e) => e.id)).toEqual(['ok1']);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  test('某條補抓在建查詢時同步丟錯：只記警告，另一條與整體照常（原本逐筆隔離的語意）', async () => {
+    const original = vi.mocked(where).getMockImplementation();
+    vi.mocked(where).mockImplementation(((field: unknown, op: string, value: unknown) => {
+      if (typeof field !== 'string') throw new Error('invalid documentId query');
+      return { kind: 'where', field, op, value };
+    }) as never);
+    try {
+      const warn = vi.fn();
+      eventsByQuery(
+        [regDoc('r1', 'pub-1')],
+        (field) => (field === 'id'
+          ? [makeEventSnap('doc-1', { id: 'pub-1', title: 'By id field', date: '2099/01/02 09:00~11:00', status: 'open' })]
+          : []),
+      );
+
+      const inputs = await loadNextActivityInputs(deps(warn), UID);
+
+      expect(inputs.events.map((e) => e._docId)).toEqual(['doc-1']);
+      expect(warn.mock.calls.some(([msg, label]) => String(msg).includes('event fetch skipped') && label === 'documentId')).toBe(true);
+    } finally {
+      if (original) vi.mocked(where).mockImplementation(original);
+    }
+  });
+
+  test.each([
+    { name: '兩份的 id 欄位都等於 public id', docIdFieldOfA: 'X' },
+    { name: '文件 id 那份的 id 欄位是別的值', docIdFieldOfA: 'a-other' },
+  ])('R-ID-010：同一個 public id 對應兩份文件時，events/{eventId} 那份優先，id 欄位那份丟掉（$name）', async ({ docIdFieldOfA }) => {
+    const docA = makeEventSnap('X', { id: docIdFieldOfA, title: 'A（文件 id = X）', date: '2099/01/02 09:00~11:00', status: 'open' });
+    const docB = makeEventSnap('Y', { id: 'X', title: 'B（id 欄位 = X）', date: '2099/01/03 09:00~11:00', status: 'open' });
+    eventsByQuery(
+      [regDoc('r1', 'X')],
+      (field) => (field === 'documentId' ? [docA] : [docB, ...(docIdFieldOfA === 'X' ? [docA] : [])]),
+    );
+
+    const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
+    expect(inputs.events.map((e) => e._docId)).toEqual(['X']);
+
+    const result = await resolveNextActivity({ ...deps(vi.fn()), now: () => NOW }, UID);
+    expect(result?.event._docId).toBe('X');
+    expect(result?.event.title).toBe('A（文件 id = X）');
+  });
+
+  test('文件 id 那份不存在時，id 欄位那份照常採用', async () => {
+    eventsByQuery(
+      [regDoc('r1', 'X')],
+      (field) => (field === 'id'
+        ? [makeEventSnap('Y', { id: 'X', title: 'B', date: '2099/01/03 09:00~11:00', status: 'open' })]
+        : []),
+    );
+    const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
+    expect(inputs.events.map((e) => e._docId)).toEqual(['Y']);
+  });
+
 });
