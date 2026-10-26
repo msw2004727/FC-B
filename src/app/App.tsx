@@ -192,8 +192,9 @@ export function App({
       if (!cancelled) setMobileHintOpen(true);
     });
 
-    // 開在首頁時，等首頁的公開讀取（events／banners／announcements）處理完才還原登入狀態：
+    // 開在首頁且沒有登入旗標（真訪客）時，等首頁的公開讀取（events／banners／announcements）處理完才還原登入狀態：
     // Auth 一註冊進 Firestore，Firestore 的非同步佇列就會停到 Auth 初始化完成（T-041，見 data/firebase.ts）。
+    // 有登入旗標的人不暫緩，whenFirebaseAuthAllowed() 立即 resolve。
     Promise.all([import('@/data/auth'), whenFirebaseAuthAllowed()]).then(([auth]) => {
       if (cancelled) return;
       stopAuth = auth.onAuthChanged(() => {

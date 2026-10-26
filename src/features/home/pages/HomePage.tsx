@@ -128,7 +128,8 @@ export default function HomePage(): JSX.Element {
   useEffect(() => {
     let active = true;
     // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
-    // 登記後，首頁公開讀取全部處理完才讓 Auth 註冊，登入者的首屏資料不再被 Auth 還原擋住（T-041，見 data/firebase.ts）。
+    // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
+    // 有登入旗標的人 Auth 先走（避免新分頁以未登入身分成為 Firestore 主分頁），登記不生效（T-041，見 data/firebase.ts）。
     trackPublicRead(loadActiveBanners({ getFirebase: getFirebaseCore }))
       .then((list) => {
         if (active) setBanners(list);

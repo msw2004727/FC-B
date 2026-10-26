@@ -12,30 +12,47 @@ const sdk = vi.hoisted(() => ({
   calls: [] as string[],
   fail: { auth: false },
   authGate: null as null | { promise: Promise<void> },
+  /** 讓 firebase/app 的載入卡住，檢查 auth／functions 是否與它並行。 */
+  appGate: null as null | { promise: Promise<void> },
+  /** firebase/auth 模組載入要多久（毫秒），模擬 Auth chunk 比 Firestore 模組慢。 */
+  authDelayMs: 0,
+  authReadyFails: false,
+  /** 每個案例遞增；模擬 SDK 只在自己的世代內寫紀錄，避免前一案例殘留的非同步工作汙染下一案例。 */
+  generation: 0,
   fakeApp: { name: 'fake-app' },
   fakeDb: { name: 'fake-db' },
   fakeFunctions: { name: 'fake-functions' },
 }));
 
+/** 只有目前世代的紀錄才算數。 */
+function record(gen: number, list: string[], entry: string): void {
+  if (gen === sdk.generation) list.push(entry);
+}
+
 const fakeAuth = {
   name: 'fake-auth',
   authStateReady: () => {
-    sdk.calls.push('authStateReady:called');
+    record(sdk.generation, sdk.calls, 'authStateReady:called');
+    if (sdk.authReadyFails) return Promise.reject(new Error('authStateReady failed'));
+    const gen = sdk.generation;
     return (sdk.authGate?.promise ?? Promise.resolve()).then(() => {
-      sdk.calls.push('authStateReady:resolved');
+      record(gen, sdk.calls, 'authStateReady:resolved');
     });
   },
 };
 
 const appFactory = async () => {
-  sdk.importOrder.push('app');
+  const gen = sdk.generation;
+  record(gen, sdk.importOrder, 'app');
+  if (sdk.appGate) await sdk.appGate.promise;
   return { getApps: () => [], getApp: () => sdk.fakeApp, initializeApp: () => sdk.fakeApp };
 };
 const firestoreFactory = async () => {
-  sdk.importOrder.push('firestore');
+  const gen = sdk.generation;
+  record(gen, sdk.importOrder, 'firestore');
   return {
     initializeFirestore: () => {
-      sdk.calls.push('initializeFirestore');
+      record(gen, sdk.calls, 'initializeFirestore');
       return sdk.fakeDb;
     },
     persistentLocalCache: () => ({}),
@@ -46,24 +63,27 @@ const firestoreFactory = async () => {
   };
 };
 const authFactory = async () => {
-  sdk.importOrder.push('auth');
+  const gen = sdk.generation;
+  record(gen, sdk.importOrder, 'auth');
+  if (sdk.authDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, sdk.authDelayMs));
   if (sdk.fail.auth) throw new Error('auth chunk failed');
   return {
     getAuth: () => {
-      sdk.calls.push('getAuth');
+      record(gen, sdk.calls, 'getAuth');
       return fakeAuth;
     },
     connectAuthEmulator: () => undefined,
   };
 };
 const functionsFactory = async () => {
-  sdk.importOrder.push('functions');
+  record(sdk.generation, sdk.importOrder, 'functions');
   return { getFunctions: () => sdk.fakeFunctions, connectFunctionsEmulator: () => undefined };
 };
 
 type FirebaseModule = typeof import('./firebase');
 let firebase: FirebaseModule;
 let warn: MockInstance<typeof console.warn>;
+let info: MockInstance<typeof console.info>;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -86,22 +106,35 @@ function settledState(promise: Promise<unknown>): { settled: boolean } {
 beforeEach(async () => {
   localStorage.clear();
   vi.resetModules();
+  sdk.generation += 1;
   sdk.importOrder.length = 0;
   sdk.calls.length = 0;
   sdk.fail.auth = false;
   sdk.authGate = null;
+  sdk.appGate = null;
+  sdk.authDelayMs = 0;
+  sdk.authReadyFails = false;
   warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.doMock('firebase/app', appFactory);
   vi.doMock('firebase/firestore', firestoreFactory);
   vi.doMock('firebase/auth', authFactory);
   vi.doMock('firebase/functions', functionsFactory);
   firebase = await import('./firebase');
   firebase._resetFirebaseForTest();
+  // 預設逾時（3 秒／10 秒，performance.now() 是 worker 存活時間）在整包平行跑、負載高時會先於測試步驟觸發而偶發失敗
+  // （退修 3 F2）。這個檔的案例都把逾時放到足夠大，需要短逾時的案例自己覆寫。
+  firebase._setSessionGateTimingForTest({
+    afterCoreMs: 60_000,
+    capMs: Number.MAX_SAFE_INTEGER,
+    registerMaxMs: 60_000,
+  });
 });
 
 afterEach(() => {
   firebase._resetFirebaseForTest();
   warn.mockRestore();
+  info.mockRestore();
   localStorage.clear();
 });
 
@@ -113,10 +146,10 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
 
     const core = firebase.getFirebaseCore();
     const coreState = settledState(core);
-    await wait(60);
-    // Auth 已載入並開始等第一次狀態事件，Firestore 還沒初始化、core 也還沒 resolve
+    // 先等到 Auth 載入完並開始等第一次狀態事件（模組解析在高負載下可能很慢，不能用固定等待）
+    await vi.waitFor(() => expect(sdk.calls).toContain('authStateReady:called'), { timeout: 10_000 });
+    // 此時 gate 還關著：Firestore 還沒初始化、core 也還沒 resolve
     expect(sdk.calls).toContain('getAuth');
-    expect(sdk.calls).toContain('authStateReady:called');
     expect(sdk.calls).not.toContain('initializeFirestore');
     expect(coreState.settled).toBe(false);
 
@@ -144,28 +177,114 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(ctx).toMatchObject({ app: sdk.fakeApp, db: sdk.fakeDb, auth: fakeAuth, functions: sdk.fakeFunctions });
   });
 
-  it('保險：Auth 的第一次狀態事件不來 → 逾時後照樣放行 Firestore，並記警告', async () => {
+  it('保險：Auth 已註冊、但第一次狀態事件不來 → 逾時後放行 Firestore（記 info：Auth 已註冊，Firestore 會自己等）', async () => {
     localStorage.setItem(FLAG_KEY, '1');
     sdk.authGate = deferred(); // 永遠不 resolve
-    firebase._setSessionGateTimingForTest({ afterCoreMs: 50, capMs: 60_000 });
+    firebase._setSessionGateTimingForTest({ afterCoreMs: 50 });
 
     const startedAt = Date.now();
     const ctx = await firebase.getFirebaseCore();
     expect(ctx.db).toBe(sdk.fakeDb);
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(40);
-    expect(sdk.calls).toContain('initializeFirestore');
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('等不到 Auth 的第一次狀態事件'))).toBe(true);
+    // 放行時 Auth 一定已經註冊進 app
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    expect(info.mock.calls.some(([msg]) => String(msg).includes('第一次狀態事件'))).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it('保險：整體上限已過（capMs 用完）→ 不再等，立即放行', async () => {
+  it('保險：整體上限已過（capMs 用完）→ 不再等第一次狀態事件，但 Auth 仍已註冊', async () => {
     localStorage.setItem(FLAG_KEY, '1');
     sdk.authGate = deferred();
-    firebase._setSessionGateTimingForTest({ afterCoreMs: 60_000, capMs: 0 });
+    firebase._setSessionGateTimingForTest({ capMs: 0 });
 
     const startedAt = Date.now();
+    await firebase.getFirebaseCore(); // 若錯誤地去等永遠不 resolve 的 gate，這裡會卡到測試逾時
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+  });
+
+  // ── 退修 3 F3：逾時只計 authStateReady()；Auth 註冊本身不能被 3 秒逾時放行 ──
+  it('回歸：Auth chunk 比 Firestore 模組慢（延遲 200 ms）且 afterCoreMs 只有 50 ms → Firestore 仍排在 getAuth 之後', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.authDelayMs = 200;
+    firebase._setSessionGateTimingForTest({ afterCoreMs: 50 });
+
     await firebase.getFirebaseCore();
-    expect(Date.now() - startedAt).toBeLessThan(500);
+
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+  });
+
+  it('回歸：capMs 用完時 Auth 還沒載入完 → 仍等 Auth 註冊進 app 才初始化 Firestore', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.authDelayMs = 150;
+    firebase._setSessionGateTimingForTest({ capMs: 0 });
+
+    await firebase.getFirebaseCore();
+
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+  });
+
+  it('保險：Auth 註冊超過 registerMaxMs 還沒好（不得已）→ 放行 Firestore 並記警告', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.authDelayMs = 4000; // Auth 載入要 4 秒；registerMaxMs 只有 50 ms，不該等它
+    firebase._setSessionGateTimingForTest({ registerMaxMs: 50 });
+
+    const startedAt = Date.now();
+    const ctx = await firebase.getFirebaseCore();
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(Date.now() - startedAt).toBeLessThan(3500);
     expect(sdk.calls).toContain('initializeFirestore');
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('還沒註冊進 app'))).toBe(true);
+  });
+
+  it('保險：authStateReady() 自己 reject → 記警告並放行，core 不會永久失敗', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.authReadyFails = true;
+
+    const ctx = await firebase.getFirebaseCore();
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.calls).toContain('initializeFirestore');
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('authStateReady() 失敗'))).toBe(true);
+    // 之後再呼叫仍是同一個成功的 core
+    await expect(firebase.getFirebaseCore()).resolves.toMatchObject({ db: sdk.fakeDb });
+  });
+
+  // ── 退修 3 F5：有旗標時 app 初始化與 auth／functions 的 import 並行 ──
+  it('有旗標時 auth／functions 的 import 不必等 app 載入完（並行，和 main 一樣少一個往返）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    const appGate = deferred();
+    sdk.appGate = appGate; // app 模組卡住
+
+    const full = firebase.getFirebase();
+    // app 的 gate 還關著，但 auth 與 functions 的下載應該已經開始（並行）
+    await vi.waitFor(
+      () => expect(sdk.importOrder).toEqual(expect.arrayContaining(['app', 'auth', 'functions'])),
+      { timeout: 10_000 },
+    );
+    expect(sdk.calls).not.toContain('getAuth');
+
+    appGate.resolve();
+    const ctx = await full;
+    expect(ctx.auth).toBe(fakeAuth);
+  });
+
+  it('沒旗標時 auth 仍然排在 core 與暫緩之後才載入（不因並行改動而提早評估 firebase/auth）', async () => {
+    const appGate = deferred();
+    sdk.appGate = appGate;
+    firebase.armFirebaseAuthHold({ capMs: 60_000, afterCoreMs: 60_000 });
+    firebase.trackPublicRead(new Promise(() => undefined));
+
+    void firebase.getFirebase();
+    await wait(60);
+    expect(sdk.importOrder).not.toContain('auth');
+    appGate.resolve();
+    await firebase.getFirebaseCore();
+    await wait(60);
+    expect(sdk.importOrder).not.toContain('auth'); // 暫緩中
   });
 
   it('保險：Auth 模組載入失敗 → 放行 Firestore 並警告；getFirebase() 仍會拒絕讓呼叫端知道', async () => {

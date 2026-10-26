@@ -43,6 +43,12 @@ vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: vi.fn(),
 }));
 
+// 首頁的開團入口 hook（use-create-event-entry）掛載時會預讀個人資料：loadUserProfile → 真的 getFirebase()，
+// 用正式設定連 Google 443 讀使用者文件（退修 3 F1：單元測試不得連外）。這個檔不測開團流程，直接回「查無資料」。
+vi.mock('@/features/profile/data/profile-model', () => ({
+  loadUserProfile: async () => null,
+}));
+
 vi.mock('@/features/home/data/next-activity', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/home/data/next-activity')>();
   return {

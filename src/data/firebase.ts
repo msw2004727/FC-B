@@ -160,7 +160,7 @@ async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
     import('firebase/firestore'),
   ]);
 
-  // 上次已登入（旗標）：先等 Auth 的第一次狀態事件，再初始化 Firestore（見下方「登入旗標閘」）。
+  // 上次已登入（旗標）：先等 Auth 註冊進 app、再等它的第一次狀態事件，才初始化 Firestore（見下方「登入旗標閘」）。
   if (sessionFlagAtStart()) await waitForFirstAuthState();
 
   const db = initializeFirestoreInstance(app, firestoreMod);
@@ -178,18 +178,28 @@ async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
 }
 
 async function initializeFirebaseExtras(): Promise<FirebaseExtras> {
-  const app = await getFirebaseApp();
-  if (!sessionFlagAtStart()) {
+  let app: FirebaseApp;
+  let authMod: typeof import('firebase/auth');
+  let functionsMod: typeof import('firebase/functions');
+  if (sessionFlagAtStart()) {
+    // 有登入旗標：Auth 先走（core 反過來等 Auth 的第一次狀態事件），這裡不能等 core，否則互等。
+    // app 初始化與 auth／functions 的 import 並行（和 main 一樣少一個往返）。
+    [app, authMod, functionsMod] = await Promise.all([
+      getFirebaseApp(),
+      import('firebase/auth'),
+      import('firebase/functions'),
+    ]);
+  } else {
     // 訪客（沒有登入旗標）：firestore 的下載先於 auth／functions 開始，
     // 開在首頁時再等首頁的公開讀取處理完才讓 Auth 註冊（見下方「首頁公開讀取優先」）。
+    app = await getFirebaseApp();
     await getFirebaseCore();
     await whenFirebaseAuthAllowed();
+    [authMod, functionsMod] = await Promise.all([
+      import('firebase/auth'),
+      import('firebase/functions'),
+    ]);
   }
-  // 有登入旗標：Auth 先走（core 反過來等 Auth 的第一次狀態事件），這裡不能等 core，否則互等。
-  const [authMod, functionsMod] = await Promise.all([
-    import('firebase/auth'),
-    import('firebase/functions'),
-  ]);
 
   const auth: Auth = authMod.getAuth(app);
   const functions: Functions = functionsMod.getFunctions(app, FUNCTIONS_REGION);
@@ -205,8 +215,10 @@ async function initializeFirebaseExtras(): Promise<FirebaseExtras> {
 // ── 首頁公開讀取優先（T-041）────────────────────────────
 //
 // Firestore SDK 的行為（node_modules/@firebase/firestore 的 FirebaseAuthCredentialsProvider）：
-// 只要 Auth 註冊進同一個 app，Firestore 的非同步佇列就會停到 Auth 初始化完成才繼續——
-// 不管 Auth 是在 Firestore 之前或之後才註冊。Auth 初始化（還原登入者）包含 popup／redirect 解析器的
+// 只要 Auth 註冊進同一個 app，Firestore 的非同步佇列就會停到 Auth 初始化完成才繼續。
+// 註冊時機有差別：Auth 在 Firestore 客戶端啟動「之前」註冊 → 第一個操作就等 Auth、以登入者身分啟動；
+// 在「之後」才註冊 → 客戶端已先以未登入身分啟動（setTimeout(0) 後視為未登入），之後的操作才被擋住——
+// 這個「先以未登入身分啟動」正是下面「登入旗標閘」要避免的窗口（對登入者）。Auth 初始化（還原登入者）包含 popup／redirect 解析器的
 // iframe、token 刷新（securetoken）與 accounts:lookup，登入者實測要 2～4 秒；這段時間連「公開資料」的
 // 查詢與回應都排在後面（2026-10-26 站長已登入瀏覽器實測：Firebase 大 chunk 4.1 s 載完，
 // 第一個 Firestore Listen 要到 8.2 s）。
@@ -307,7 +319,7 @@ function coreReadyForAuthHold(): void {
   hold.coreTimer = setTimeout(releaseFirebaseAuthHold, hold.afterCoreMs);
 }
 
-// ── 登入旗標閘（T-041 退修 1，顧問定案）────────────────────
+// ── 登入旗標閘（T-041 退修 1，顧問定案；退修 3 F3 修正逾時範圍）────────
 //
 // 上面「公開讀取優先」讓 Firestore 在 Auth 註冊之前就以未登入身分啟動。對真訪客沒問題（沒有私人監聽），
 // 但對登入者有一個窗口：Firestore 多分頁持久化（persistentMultipleTabManager）由「主分頁」用自己的憑證替所有分頁
@@ -316,16 +328,27 @@ function coreReadyForAuthHold(): void {
 // permission-denied 廣播回舊分頁，那些監聽就永久終止，使用者不重整也看不到錯。main 沒有這個窗口。
 // 解法：登入成功時 emitAuth 會寫旗標（既有的 `fcb:signed-in`，見 auth-hint.ts；登出、帳號失效時 Auth 發出 null 狀態，
 // 同一處清掉；讀寫都包 try/catch）。啟動時：
-//   - 有旗標（上次已登入）→ 先走 Auth（不暫緩），等 Auth 的第一次狀態事件（`auth.authStateReady()`）再初始化 Firestore；
+//   - 有旗標（上次已登入）→ 先走 Auth（不暫緩），Auth 註冊進 app 之後、等 Auth 的第一次狀態事件
+//     （`auth.authStateReady()`）再初始化 Firestore；
 //   - 沒旗標（真訪客）→ 照「公開讀取優先」立即啟動 Firestore。
 // 注意：「第一次狀態事件」不是只讀 IndexedDB——SDK 發事件前會先 getIdToken()（過期才刷新 securetoken）與
 // accounts:lookup（見 @firebase/auth 的 reloadAndSetCurrentUserOrClear），且 getAuth 預設還會先處理 redirect 解析器的 iframe，
 // 所以登入者實際等待是網路往返（量測 2～4 秒），和修前一樣；訪客的速度收益則完整保留。
-// 保險：Auth 載入失敗或事件遲遲不來，沿用 3 秒（Firestore 模組就緒後）／10 秒（整體）上限，逾時照樣放行並警告，
-// 不會讓登入者永遠卡住；放行時 Auth 已註冊進 app，Firestore 仍會自己等 Auth 初始化完成，不會以未登入身分啟動。
+// 兩段等待、兩種上限（不能混在一起，否則 Auth 還沒註冊就放行 Firestore，P2-1 窗口重開）：
+//   1) 等 Auth 註冊進 app（載入 chunk＋getAuth）：只設較長的保險上限（registerMaxMs，預設 20 秒）。失敗或逾時才放行並警告——
+//      這時 Auth 沒註冊，Firestore 會以未登入身分啟動，是不得已的退路，不是正常路徑。
+//   2) Auth 已註冊後等 authStateReady()：和 3 秒（afterCoreMs）比快，整體上限 capMs（10 秒，performance.now() 計）用完則不再等。
+//      這一步逾時可以放心放行：Auth 已註冊，Firestore 啟動時會自己等 Auth 初始化完成（FirebaseAuthCredentialsProvider），
+//      不會以未登入身分啟動；因此逾時只記 info（3 秒落在實測 2～4 秒的 Auth 還原分布內，常會發生）。
+//      authStateReady() 自己 reject 則記警告並放行（不讓 core 永久失敗）。
 
 let sessionFlag: boolean | null = null;
-let sessionGateTiming = { afterCoreMs: AUTH_HOLD_AFTER_CORE_MS, capMs: AUTH_HOLD_CAP_MS };
+const AUTH_REGISTER_MAX_MS = 20_000;
+let sessionGateTiming = {
+  afterCoreMs: AUTH_HOLD_AFTER_CORE_MS,
+  capMs: AUTH_HOLD_CAP_MS,
+  registerMaxMs: AUTH_REGISTER_MAX_MS,
+};
 
 /** 啟動時的登入旗標（只讀一次，頁面生命週期內不變——core 與 extras 誰等誰由它決定，不能中途翻轉造成互等）。 */
 function sessionFlagAtStart(): boolean {
@@ -333,27 +356,54 @@ function sessionFlagAtStart(): boolean {
   return sessionFlag;
 }
 
+type Timed<T> = { timedOut: false; value: T } | { timedOut: true };
+
+/** 最多等 ms 毫秒；promise 先完成就回傳它的值，reject 照樣往外丟。 */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<Timed<T>> {
+  return new Promise<Timed<T>>((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ timedOut: true }), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ timedOut: false, value });
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function waitForFirstAuthState(): Promise<void> {
+  // 1) 等 Auth 註冊進 app
+  let auth: Auth;
+  try {
+    const registered = await withTimeout(getFirebaseExtras(), sessionGateTiming.registerMaxMs);
+    if (registered.timedOut) {
+      console.warn(
+        `[firebase] Auth 超過 ${sessionGateTiming.registerMaxMs} ms 還沒註冊進 app，Firestore 照常啟動（以未登入身分）`,
+      );
+      return;
+    }
+    auth = registered.value.auth;
+  } catch (err) {
+    console.warn('[firebase] Auth 載入失敗，Firestore 照常啟動（以未登入身分）', err);
+    return;
+  }
+
+  // 2) Auth 已註冊：等第一次狀態事件，逾時放行是安全的（Firestore 會自己等 Auth 初始化）
   const elapsedMs = typeof performance !== 'undefined' ? performance.now() : 0;
   const timeoutMs = Math.max(0, Math.min(sessionGateTiming.afterCoreMs, sessionGateTiming.capMs - elapsedMs));
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), timeoutMs);
-  });
-  const ready = getFirebaseExtras().then(
-    async ({ auth }) => {
-      await auth.authStateReady();
-      return 'ready' as const;
-    },
-    (err: unknown) => {
-      console.warn('[firebase] Auth 載入失敗，Firestore 照常啟動', err);
-      return 'failed' as const;
-    },
-  );
-  const outcome = await Promise.race([ready, timeout]);
-  if (timer !== null) clearTimeout(timer);
-  if (outcome === 'timeout') {
-    console.warn(`[firebase] 等不到 Auth 的第一次狀態事件（${Math.round(timeoutMs)} ms），Firestore 照常啟動`);
+  try {
+    const ready = await withTimeout(Promise.resolve().then(() => auth.authStateReady()), timeoutMs);
+    if (ready.timedOut) {
+      console.info(
+        `[firebase] Auth 的第一次狀態事件 ${Math.round(timeoutMs)} ms 內還沒到；Auth 已註冊，Firestore 啟動後會自己等 Auth 初始化`,
+      );
+    }
+  } catch (err) {
+    console.warn('[firebase] auth.authStateReady() 失敗，Firestore 照常啟動', err);
   }
 }
 
@@ -367,9 +417,11 @@ if (
   armFirebaseAuthHold();
 }
 
-/** 測試用：縮短登入旗標閘的逾時（毫秒）。 */
-export function _setSessionGateTimingForTest(timing: { afterCoreMs: number; capMs: number }): void {
-  sessionGateTiming = timing;
+/** 測試用：調整登入旗標閘的逾時（毫秒）；沒給的欄位維持預設。 */
+export function _setSessionGateTimingForTest(
+  timing: Partial<{ afterCoreMs: number; capMs: number; registerMaxMs: number }>,
+): void {
+  sessionGateTiming = { ...sessionGateTiming, ...timing };
 }
 
 /** 測試用：清掉單例、暫緩狀態與旗標快取（每個測試用全新的載入狀態）。 */
@@ -381,7 +433,11 @@ export function _resetFirebaseForTest(): void {
   releaseFirebaseAuthHold();
   authHold = null;
   sessionFlag = null;
-  sessionGateTiming = { afterCoreMs: AUTH_HOLD_AFTER_CORE_MS, capMs: AUTH_HOLD_CAP_MS };
+  sessionGateTiming = {
+    afterCoreMs: AUTH_HOLD_AFTER_CORE_MS,
+    capMs: AUTH_HOLD_CAP_MS,
+    registerMaxMs: AUTH_REGISTER_MAX_MS,
+  };
 }
 
 type FirestoreModule = typeof import('firebase/firestore');
