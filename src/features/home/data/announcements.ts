@@ -6,7 +6,8 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import { getFirebase as defaultGetFirebase } from '@/data/firebase';
+// 公告是公開唯讀資料，只需要 app＋firestore，不等 auth／functions（T-041）。
+import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 
 export const ANNOUNCEMENTS_COLLECTION = 'announcements';
 

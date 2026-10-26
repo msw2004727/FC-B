@@ -10,6 +10,10 @@
 // - Functions region 固定 `asia-east1`（R-CF-001）。
 // - `VITE_FIREBASE_EMULATOR === '1'` 且非 PROD 建置時連線 emulator；PROD 一律忽略該旗標。
 // - 正式資料庫一律不得從本機網址開啟（fail-closed，見 `assertFirebaseTargetAllowed`）。
+// - 分兩段載入（T-041）：`getFirebaseCore()` 只載 app＋firestore（首頁資料路徑先到先用）；
+//   auth＋functions 排在 core 之後才開始下載，由 `getFirebase()` 負責等它們就緒。
+//   所有需要 auth／functions 的呼叫端一律走 `getFirebase()`（它會 await 兩段都就緒才回傳），
+//   不會出現「第一次點沒反應」；只讀公開資料、只要 db 的呼叫端才用 `getFirebaseCore()`。
 
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
@@ -18,15 +22,24 @@ import type { Functions } from 'firebase/functions';
 
 import { FIREBASE_CONFIG } from './firebase-config';
 
-export interface FirebaseContext {
+/** 第一段：app＋firestore（首頁資料路徑只需要這兩個）。 */
+export interface FirebaseCoreContext {
   app: FirebaseApp;
   db: Firestore;
+}
+
+/** 第二段：auth＋functions（排在 core 之後才下載）。 */
+interface FirebaseExtras {
   auth: Auth;
   functions: Functions;
 }
 
+export interface FirebaseContext extends FirebaseCoreContext, FirebaseExtras {}
+
 const FUNCTIONS_REGION = 'asia-east1' as const;
 
+let _corePromise: Promise<FirebaseCoreContext> | null = null;
+let _extrasPromise: Promise<FirebaseExtras> | null = null;
 let _contextPromise: Promise<FirebaseContext> | null = null;
 
 /** 是否應連線 emulator：僅非 PROD 且明確設定 VITE_FIREBASE_EMULATOR=1。 */
@@ -81,15 +94,39 @@ export function assertFirebaseTargetAllowed(
   }
 }
 
-/** 取得（單例）Firebase context。第一個呼叫觸發動態載入；後續回傳同一 Promise。 */
+/**
+ * 取得（單例）app＋firestore。第一個呼叫觸發動態載入；後續回傳同一 Promise。
+ * 不會載入 auth／functions；需要它們的呼叫端請用 `getFirebase()`。
+ */
+export function getFirebaseCore(): Promise<FirebaseCoreContext> {
+  if (!_corePromise) {
+    _corePromise = initializeFirebaseCore();
+  }
+  return _corePromise;
+}
+
+/**
+ * 取得（單例）完整 Firebase context（app＋firestore＋auth＋functions）。
+ * 回傳的 Promise 要等 core 與 auth／functions 都就緒才會 resolve，所以呼叫端拿到的 `auth`、`functions` 一定可用。
+ * auth／functions 的下載排在 core 之後（讓 firestore 先拿到頻寬），第一次呼叫本函式時才開始。
+ */
 export function getFirebase(): Promise<FirebaseContext> {
   if (!_contextPromise) {
-    _contextPromise = initializeFirebaseContext();
+    _contextPromise = Promise.all([getFirebaseCore(), getFirebaseExtras()]).then(
+      ([core, extras]) => ({ ...core, ...extras }),
+    );
   }
   return _contextPromise;
 }
 
-async function initializeFirebaseContext(): Promise<FirebaseContext> {
+function getFirebaseExtras(): Promise<FirebaseExtras> {
+  if (!_extrasPromise) {
+    _extrasPromise = initializeFirebaseExtras();
+  }
+  return _extrasPromise;
+}
+
+async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
   if (import.meta.env.MODE !== 'test') {
     try {
       assertFirebaseTargetAllowed(shouldUseEmulator());
@@ -100,11 +137,9 @@ async function initializeFirebaseContext(): Promise<FirebaseContext> {
     }
     console.info(`[firebase] 連線目標：${firebaseTargetLabel()}`);
   }
-  const [appMod, firestoreMod, authMod, functionsMod] = await Promise.all([
+  const [appMod, firestoreMod] = await Promise.all([
     import('firebase/app'),
     import('firebase/firestore'),
-    import('firebase/auth'),
-    import('firebase/functions'),
   ]);
 
   const app: FirebaseApp = appMod.getApps().length
@@ -112,20 +147,42 @@ async function initializeFirebaseContext(): Promise<FirebaseContext> {
     : appMod.initializeApp(FIREBASE_CONFIG);
 
   const db = initializeFirestoreInstance(app, firestoreMod);
-  const auth: Auth = authMod.getAuth(app);
-  const functions: Functions = functionsMod.getFunctions(app, FUNCTIONS_REGION);
 
   if (shouldUseEmulator()) {
     firestoreMod.connectFirestoreEmulator(db, '127.0.0.1', 8080);
-    authMod.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-    functionsMod.connectFunctionsEmulator(functions, '127.0.0.1', 5001);
     console.warn(
       '[firebase] ⚠️ 使用本機 emulator（firestore:8080 / auth:9099 / functions:5001）；' +
         '此警告只在 VITE_FIREBASE_EMULATOR=1 且非 PROD 建置時出現。',
     );
   }
 
-  return { app, db, auth, functions };
+  return { app, db };
+}
+
+async function initializeFirebaseExtras(): Promise<FirebaseExtras> {
+  // 先等 core：目標檢查失敗時 extras 一起失敗；firestore 的下載也先於 auth／functions 開始。
+  const core = await getFirebaseCore();
+  const [authMod, functionsMod] = await Promise.all([
+    import('firebase/auth'),
+    import('firebase/functions'),
+  ]);
+
+  const auth: Auth = authMod.getAuth(core.app);
+  const functions: Functions = functionsMod.getFunctions(core.app, FUNCTIONS_REGION);
+
+  if (shouldUseEmulator()) {
+    authMod.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    functionsMod.connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+  }
+
+  return { auth, functions };
+}
+
+/** 測試用：清掉單例（每個測試用全新的載入狀態）。 */
+export function _resetFirebaseForTest(): void {
+  _corePromise = null;
+  _extrasPromise = null;
+  _contextPromise = null;
 }
 
 type FirestoreModule = typeof import('firebase/firestore');

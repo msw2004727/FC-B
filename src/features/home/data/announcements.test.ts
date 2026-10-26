@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { collection, getDocs, limit, query, type Firestore } from 'firebase/firestore';
-import { getFirebase } from '@/data/firebase';
+import { getFirebaseCore } from '@/data/firebase';
 import {
   ANNOUNCEMENTS_COLLECTION,
   ANNOUNCEMENTS_QUERY_LIMIT,
@@ -19,16 +19,16 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(),
+  getFirebaseCore: vi.fn(),
 }));
 
 const fakeDb = { name: 'mock-db' } as unknown as Firestore;
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(getFirebase).mockResolvedValue({
+  vi.mocked(getFirebaseCore).mockResolvedValue({
     db: fakeDb,
-  } as Awaited<ReturnType<typeof getFirebase>>);
+  } as Awaited<ReturnType<typeof getFirebaseCore>>);
   vi.mocked(collection).mockReturnValue('ann-col-ref' as unknown as ReturnType<typeof collection>);
   vi.mocked(query).mockImplementation((ref) => ref as unknown as ReturnType<typeof query>);
   vi.mocked(limit).mockImplementation((n) => ({ limit: n }) as unknown as ReturnType<typeof limit>);

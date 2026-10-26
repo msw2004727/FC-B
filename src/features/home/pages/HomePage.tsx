@@ -11,6 +11,7 @@ import { SPORTS, eventSportTag } from '@/features/events/data/sports';
 import type { EventDoc } from '@/features/events/data/types';
 import { useEvents } from '@/features/events/data/use-events';
 import { getVisibleEvents } from '@/features/events/data/visibility';
+import { getFirebaseCore } from '@/data/firebase';
 import { useViewer } from '@/features/profile/data/viewer';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
@@ -122,7 +123,8 @@ export default function HomePage(): JSX.Element {
 
   useEffect(() => {
     let active = true;
-    loadActiveBanners()
+    // 橫幅只讀公開資料，只需要 app＋firestore，不等 auth／functions（T-041）。
+    loadActiveBanners({ getFirebase: getFirebaseCore })
       .then((list) => {
         if (active) setBanners(list);
       })

@@ -17,7 +17,8 @@ import {
   type QueryConstraint,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { getFirebase as defaultGetFirebase } from '@/data/firebase';
+// 只讀活動（公開資料），只需要 app＋firestore，不等 auth／functions（T-041）。
+import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath } from '@/data/paths';
 import type { EventDoc } from './types';
 
