@@ -686,6 +686,26 @@ describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，
     expect(sdk.calls).toEqual(['initializeFirestore']);
   });
 
+  // T-052 退修 1：旗標在 core 被呼叫的當下取樣並快取（啟動快照）。取樣點比修前（await app＋firestore 模組之後）略早，
+  // 差別只出現在「core 被呼叫之後、Firestore 模組下載完成之前」旗標才被寫入（例如別的分頁剛登入）：這一頁維持啟動時的判斷。
+  it('旗標是啟動快照：core 被呼叫後、Firestore 模組下載完成前才寫入旗標，這一頁仍視為訪客，不為 core 啟動 Auth', async () => {
+    const firestoreGate = deferred();
+    sdk.firestoreImportGate = firestoreGate;
+
+    const core = firebase.getFirebaseCore(); // 取樣：此時沒有旗標
+    await vi.waitFor(() => expect(sdk.importOrder).toContain('firestore'), { timeout: 10_000 });
+    localStorage.setItem(FLAG_KEY, '1'); // 別的分頁登入，寫入旗標
+    firestoreGate.resolve();
+
+    const ctx = await core;
+    await wait(30);
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.importOrder).not.toContain('auth'); // 沒有為這個 core 啟動 Auth，也沒有等第一次狀態事件
+    expect(sdk.calls).toEqual(['initializeFirestore']);
+    expect(sdk.cache).toContain('persistentLocalCache');
+    expect(firebase.isFirebaseDegraded()).toBe(false);
+  });
+
   it('旗標壞掉或 localStorage 不能用 → 當成訪客，不丟錯', async () => {
     const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage disabled');

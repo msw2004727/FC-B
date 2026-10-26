@@ -145,6 +145,7 @@ describe('runtime-config', () => {
 });
 
 describe('featureFlags', () => {
+  // 設定讀取失敗可重試（core 已成功）：getDoc 第一次丟錯 → false 且不快取，第二次成功 → true 並快取。
   it('讀失敗為 false，下一次成功可恢復並快取', async () => {
     firebase.getDoc
       .mockRejectedValueOnce(new Error('denied'))
@@ -191,19 +192,31 @@ describe('featureFlags', () => {
     expect(firebase.getApp).not.toHaveBeenCalled();
   });
 
-  it('getFirebaseCore() 失敗視為 false，不快取，下一次成功可恢復', async () => {
-    firebase.getFirebaseCore
-      .mockRejectedValueOnce(new Error('firebase target blocked'))
-      .mockResolvedValue({ app: {}, db: firebase.coreDb });
+  // 注意兩種失敗不同：
+  // - 「設定讀取失敗」（core 已成功、getDoc 丟錯）：不快取，下次開表單可重試——見上面「讀失敗為 false，下一次成功可恢復並快取」。
+  // - 「core 初始化失敗」：真實的 getFirebaseCore() 失敗後，後續呼叫拿到的是同一個已 reject 的 Promise（data/firebase.ts 的
+  //   _corePromise 不清除，T-041 §10-6），本頁不會重新初始化，也就沒有「下次成功」。這裡只釘住 map-config 自己的契約：
+  //   每次都視為 false、不發出任何查詢、不快取（沒有半套的旗標狀態）。
+  it('core 初始化失敗（每次都是同一個已 reject 的 Promise）：連續呼叫都回 false、不發任何查詢，本頁不會自行恢復', async () => {
+    const failedCore = Promise.reject(new Error('firebase target blocked'));
+    failedCore.catch(() => undefined); // 單例 Promise 一開始就是 rejected 的；先接住，避免被當成未處理的拒絕
+    firebase.getFirebaseCore.mockReturnValue(failedCore);
     firebase.getDoc.mockResolvedValue({
       exists: () => true,
       data: () => ({ activityMapLocationPickerEnabled: true }),
     });
     const config = await import('./activity-map-config');
+
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
+    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
     expect(await config.loadActivityMapLocationPickerEnabled()).toBe(false);
     expect(config.isActivityMapLocationPickerEnabled()).toBe(false);
+    // 每次呼叫都重新問 core（拿到同一個失敗），但從未走到查詢
+    expect(firebase.getFirebaseCore).toHaveBeenCalledTimes(3);
+    expect(firebase.doc).not.toHaveBeenCalled();
     expect(firebase.getDoc).not.toHaveBeenCalled();
-    expect(await config.loadActivityMapLocationPickerEnabled()).toBe(true);
+    expect(firebase.getFirestore).not.toHaveBeenCalled();
+    expect(firebase.getApp).not.toHaveBeenCalled();
   });
 
   it.each([false, 'true', 1, undefined])('只接受嚴格 true：%s', async (value) => {

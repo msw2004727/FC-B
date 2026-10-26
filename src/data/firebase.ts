@@ -11,11 +11,14 @@
 // - Functions region 固定 `asia-east1`（R-CF-001）。
 // - `VITE_FIREBASE_EMULATOR === '1'` 且非 PROD 建置時連線 emulator；PROD 一律忽略該旗標。
 // - 正式資料庫一律不得從本機網址開啟（fail-closed，見 `assertFirebaseTargetAllowed`）。
-// - 分兩段載入（T-041）：`getFirebaseCore()` 只載 app＋firestore（首頁資料路徑先到先用）；
-//   auth＋functions 排在 core 之後才開始下載，由 `getFirebase()` 負責等它們就緒。
+// - 分兩段載入（T-041）：`getFirebaseCore()` 載 app＋firestore（首頁資料路徑先到先用）；
+//   auth＋functions 由 `getFirebase()` 負責等它們就緒。下載順序依啟動路徑不同（見下方「啟動順序」與「登入旗標閘」）：
+//   - 沒有登入旗標（訪客）：auth＋functions 排在 core 之後才開始下載（開在首頁時再等公開讀取處理完）；
+//   - 有登入旗標：Auth 先走——core 一開始就與 app／firestore 的下載並行啟動 Auth（T-052），Functions 與 Auth 並行、各自獨立。
 //   所有需要 auth／functions 的呼叫端一律走 `getFirebase()`（它會 await 兩段都就緒才回傳），
 //   結構上避免「第一次點沒反應」（單元測試以 gate 證明，未在真實瀏覽器驗證）；
-//   只讀公開資料、只要 db 的呼叫端才用 `getFirebaseCore()`。
+//   只要 db 的呼叫端（公開資料，或登入後才讀得到的唯讀設定，如 `activity-map-config`）才用 `getFirebaseCore()`；
+//   清單由 `firebase-core-users.test.ts` 管制。
 // - 啟動順序（T-041）：真訪客立即啟動 Firestore、Auth 等首頁公開讀取跑完再註冊（「首頁公開讀取優先」）；
 //   上次已登入（localStorage 旗標 `fcb:signed-in`）則 Auth 先走、等 Auth 的第一次狀態事件再初始化 Firestore
 //   （「登入旗標閘」，避免新分頁以未登入身分成為 Firestore 主分頁）。
@@ -34,7 +37,7 @@ export interface FirebaseCoreContext {
   db: Firestore;
 }
 
-/** 第二段：auth＋functions（排在 core 之後才下載）。 */
+/** 第二段：auth＋functions（訪客排在 core 之後才下載；有登入旗標時 Auth 與 core 並行啟動，見 `initializeFirebaseCore`）。 */
 interface FirebaseExtras {
   auth: Auth;
   functions: Functions;
@@ -132,8 +135,8 @@ export function assertFirebaseTargetAllowed(
 
 /**
  * 取得（單例）app＋firestore。第一個呼叫觸發動態載入；後續回傳同一 Promise。
- * 沒有登入旗標（訪客）時不會載入 auth／functions；有登入旗標時為了「登入旗標閘」，會先載入並註冊 Auth
- * （不含 Functions），等到 Auth 註冊進 app（與第一次狀態事件或其逾時）之後才初始化 Firestore。
+ * 沒有登入旗標（訪客）時不會載入 auth／functions；有登入旗標時為了「登入旗標閘」，core 一開始就會與 app／firestore
+ * 模組並行載入並註冊 Auth（不含 Functions），等到 Auth 註冊進 app（與第一次狀態事件或其逾時）之後才初始化 Firestore。
  * 需要 auth／functions 的呼叫端請用 `getFirebase()`。
  */
 export function getFirebaseCore(): Promise<FirebaseCoreContext> {
@@ -200,6 +203,7 @@ async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
   // 只啟動、不等結果：同一個 _authPromise 之後仍由 waitForFirstAuthState 等候並處理失敗（降級）；這裡的 catch
   // 只是讓這條提前啟動的 Promise 在被等候之前就失敗時不變成未處理的拒絕。排在 app／firestore 的 import 之後，
   // 與 App 呼叫 getFirebase() 時已驗證的發出順序相同；不啟動 Functions，旗標閘仍只等 Auth。
+  // 旗標在此（core 被呼叫的當下）取樣並快取，是「啟動快照」：之後別的分頁才寫入的旗標不會改變這一頁的路徑。
   if (sessionFlagAtStart()) {
     getFirebaseAuth().catch(() => undefined);
   }
