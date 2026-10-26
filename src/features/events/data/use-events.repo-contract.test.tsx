@@ -113,15 +113,17 @@ describe('useEvents.onFresh × 真實 events-repo 的回傳契約', () => {
     vi.mocked(getDocs).mockResolvedValueOnce(result(['s1', 's2'], false) as never);
     await getEventsRepo().loadEventsStatic({ terminalMode: 'none' });
     expect(getEventsRepo().getSnapshot().activeFromCache).toBe(false);
+    // 呼叫次數用相對值（前置那一次已算進去），單獨執行與整檔執行都成立
+    const base = vi.mocked(getDocs).mock.calls.length;
 
     const requestA = deferred<unknown>();
     const requestB = deferred<unknown>();
     vi.mocked(getDocs).mockReturnValueOnce(requestA.promise as never).mockReturnValueOnce(requestB.promise as never);
     const view = render(h(Probe, null));
-    await waitFor(() => expect(vi.mocked(getDocs)).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(vi.mocked(getDocs)).toHaveBeenCalledTimes(base + 1));
     // 在畫面這一輪（A）還沒回來時，別處（例如活動列表）又發了一輪（B），取代 A
     const callB = getEventsRepo().loadEventsStatic({ terminalMode: 'none' });
-    await waitFor(() => expect(vi.mocked(getDocs)).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(vi.mocked(getDocs)).toHaveBeenCalledTimes(base + 2));
 
     requestA.resolve(result(['from-a'], false));
     await waitFor(() => expect(view.getByTestId('p').textContent).toBe('s1,s2')); // 沿用上一次提交的資料顯示
