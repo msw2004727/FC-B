@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getLastKnownAuthUid } from '@/data/auth';
+import { trackPublicRead } from '@/data/firebase';
+import { on } from '@/core/events';
 import { readEventsSnapshot, writeEventsSnapshot } from './events-snapshot-cache';
 import { isEventInEndedTab } from './terminal';
 import { sortEvents } from './presentation';
@@ -36,10 +38,31 @@ function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   return readEventsSnapshot(viewerUid);
 }
 
+/**
+ * 網路資料比登入確認更早回來時（首頁的公開讀取不等 Auth，T-041）暫存在這裡，
+ * 等登入帳號確定、且與畫面使用者相同才寫入記憶體與本機快照——快取歸屬守門不放寬（Fable 2026-10-19）。
+ * 活動本身是公開資料，哪個帳號確認後寫都一樣；守門保證的是「快照只掛在確認過的帳號底下」。
+ */
+let pendingSnapshot: EventDoc[] | null = null;
+
+function commitSnapshot(owner: string | null, events: EventDoc[]): void {
+  lastLoaded = { uid: owner, events };
+  writeEventsSnapshot(owner, events);
+}
+
+function flushPendingSnapshot(viewerUid: string | null): void {
+  if (!pendingSnapshot) return;
+  if (getLastKnownAuthUid() !== viewerUid) return;
+  const events = pendingSnapshot;
+  pendingSnapshot = null;
+  commitSnapshot(viewerUid, events);
+}
+
 /** 測試用。 */
 export function _resetUseEventsForTest(): void {
   inflight = null;
   lastLoaded = null;
+  pendingSnapshot = null;
 }
 
 let repoModule: Promise<typeof import('./events-repo')> | null = null;
@@ -83,6 +106,8 @@ function load(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
       () => start(mode),
     )
     : start(mode);
+  // 首頁的活動讀取是公開讀取：登記後，首頁公開讀取全部處理完才讓 Auth 註冊（見 data/firebase.ts）。
+  trackPublicRead(request);
   const entry: Inflight = { mode, promise: request };
   inflight = entry;
   const clear = (): void => {
@@ -122,8 +147,11 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
       (next) => {
         const owner = viewerUidRef.current;
         if (getLastKnownAuthUid() === owner) {
-          lastLoaded = { uid: owner, events: next };
-          writeEventsSnapshot(owner, next);
+          pendingSnapshot = null;
+          commitSnapshot(owner, next);
+        } else {
+          // 登入狀態還沒確定（或 viewer 還沒載成本人）：先不寫，確定後補寫。
+          pendingSnapshot = next;
         }
         if (!current) return;
         setFresh(next);
@@ -138,6 +166,12 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
     );
     return () => { current = false; };
   }, [attempt]);
+
+  // 登入帳號確定（auth:changed）或畫面使用者換成確認過的帳號時，補寫早到的網路資料。
+  useEffect(() => {
+    flushPendingSnapshot(viewerUid);
+  }, [viewerUid]);
+  useEffect(() => on('auth:changed', () => flushPendingSnapshot(viewerUidRef.current)), []);
 
   const events = fresh ?? stale ?? [];
   // 已有上次資料時更新失敗不顯示錯誤（A 的快取模式也是如此）。

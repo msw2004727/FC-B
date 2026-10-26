@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import {
+  _resetFirebaseForTest,
+  armFirebaseAuthHold,
+  whenFirebaseAuthAllowed,
+} from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { _resetUseEventsForTest } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
@@ -110,6 +115,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  _resetFirebaseForTest();
   vi.useRealTimers();
 });
 
@@ -338,4 +344,33 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     await waitFor(() => expect(loadEventsStatic).toHaveBeenCalledTimes(1));
     expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'none' });
   });
+
+  it('registers events, banners and announcements as public reads; Auth is released only after all three settle (T-041)', async () => {
+    armFirebaseAuthHold({ settleMs: 5, capMs: 60_000 });
+    const banners = deferred<BannerDoc[]>();
+    const announcements = deferred<AnnouncementDoc[]>();
+    vi.mocked(loadActiveBanners).mockReturnValue(banners.promise);
+    vi.mocked(loadActiveAnnouncements).mockReturnValue(announcements.promise);
+    let allowed = false;
+    void whenFirebaseAuthAllowed().then(() => {
+      allowed = true;
+    });
+
+    render(<HomePage />);
+    // 活動讀取（mock）很快就回來，但橫幅與公告還沒回來 → 不放行
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(allowed).toBe(false);
+
+    banners.resolve([]);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(allowed).toBe(false);
+
+    announcements.resolve([]);
+    await waitFor(() => expect(allowed).toBe(true));
+  });
+
 });

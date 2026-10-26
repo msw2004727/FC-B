@@ -2,9 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// T-041 A2：首頁（HomePage）隨入口同步載入，所以入口的「靜態 import 圖」不得含 Firestore SDK 的值 import，
-// 否則 SDK（約 160 KB gz）會進入口的靜態相依，第一次 render 得等它下載完。
-// 資料模組要在查詢當下才用 loadFirestoreSdk() 動態取得 SDK（見 src/data/firestore-sdk.ts）。
+// T-041 A2：首頁（HomePage）隨入口同步載入，所以入口的「靜態 import 圖」不得含任何 Firebase SDK（firebase/*）的值 import，
+// 否則 SDK（firestore 約 160 KB gz、auth 約 36 KB gz）會進入口的靜態相依，第一次 render 得等它們下載完。
+// 資料模組要在查詢當下才動態取得 SDK（firestore 用 loadFirestoreSdk()，見 src/data/firestore-sdk.ts；
+// app／auth／functions 在 data/firebase.ts 動態 import）。
 // 本測試沿著 main.tsx 的靜態 import（排除 import type 與動態 import()）走訪原始碼，找出違規的檔案與路徑。
 
 const SRC = resolve(__dirname, '..');
@@ -38,7 +39,7 @@ function staticImportSpecs(file: string): string[] {
   return specs;
 }
 
-function findFirestoreImporters(entry: string): Array<{ file: string; chain: string[] }> {
+function findFirebaseSdkImporters(entry: string): Array<{ file: string; chain: string[] }> {
   const parent = new Map<string, string>();
   const seen = new Set<string>();
   const queue = [entry];
@@ -48,7 +49,7 @@ function findFirestoreImporters(entry: string): Array<{ file: string; chain: str
     if (seen.has(file)) continue;
     seen.add(file);
     for (const spec of staticImportSpecs(file)) {
-      if (spec === 'firebase/firestore') {
+      if (/^firebase(\/|$)/.test(spec)) {
         hits.push(file);
         continue;
       }
@@ -72,8 +73,8 @@ function findFirestoreImporters(entry: string): Array<{ file: string; chain: str
 }
 
 describe('入口的靜態 import 圖', () => {
-  it('不含 firebase/firestore 的值 import（SDK 要在查詢當下動態載入）', () => {
-    const offenders = findFirestoreImporters(ENTRY);
+  it('不含任何 firebase/* SDK 的值 import（firestore、auth、functions、app 都要動態載入）', () => {
+    const offenders = findFirebaseSdkImporters(ENTRY);
     expect(offenders.map((o) => `${o.file}\n  ← ${o.chain.join(' → ')}`)).toEqual([]);
   });
 
@@ -83,7 +84,7 @@ describe('入口的靜態 import 圖', () => {
   });
 
   it('走訪器本身有效：對一個確實靜態 import firestore 的檔案能抓到', () => {
-    const hits = findFirestoreImporters(join(SRC, 'features/events/data/events-repo.ts'));
+    const hits = findFirebaseSdkImporters(join(SRC, 'features/events/data/events-repo.ts'));
     expect(hits.map((h) => h.file)).toContain('src/features/events/data/events-repo.ts');
   });
 });

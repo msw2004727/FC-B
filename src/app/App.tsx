@@ -56,7 +56,11 @@ import {
 } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import { resolveShareLink } from './share-link';
-import { firebaseTargetLabel } from '@/data/firebase';
+import {
+  firebaseTargetLabel,
+  releaseFirebaseAuthHold,
+  whenFirebaseAuthAllowed,
+} from '@/data/firebase';
 import { isInternalTestMode } from '@/data/internal-test';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { getEffectiveIdentity } from '@/data/identity-resolver';
@@ -188,7 +192,9 @@ export function App({
       if (!cancelled) setMobileHintOpen(true);
     });
 
-    import('@/data/auth').then((auth) => {
+    // 開在首頁時，等首頁的公開讀取（events／banners／announcements）處理完才還原登入狀態：
+    // Auth 一註冊進 Firestore，Firestore 的非同步佇列就會停到 Auth 初始化完成（T-041，見 data/firebase.ts）。
+    Promise.all([import('@/data/auth'), whenFirebaseAuthAllowed()]).then(([auth]) => {
       if (cancelled) return;
       stopAuth = auth.onAuthChanged(() => {
         // onAuthChanged 內部發出 auth:changed。
@@ -436,6 +442,13 @@ function RouteArea({
   useLayoutEffect(() => {
     if (redirect !== null) location.route(redirect, true);
   }, [redirect, location.route]);
+
+  // 暫緩 Auth 註冊只為了讓「首頁」的公開讀取先跑完；人不在首頁（含分享連結導向）就立刻放行（T-041）。
+  useEffect(() => {
+    if (redirect !== null || normalizeRoutePath(location.path || '/') !== '/') {
+      releaseFirebaseAuthHold();
+    }
+  }, [redirect, location.path]);
 
   // M-045、M-046：標記返回起點；LINE／PWA 裝首頁返回保護哨兵（只在開站時一次）。
   useEffect(() => initBackGuard(), []);

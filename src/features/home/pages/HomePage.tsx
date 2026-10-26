@@ -11,7 +11,7 @@ import { SPORTS, eventSportTag } from '@/features/events/data/sports';
 import type { EventDoc } from '@/features/events/data/types';
 import { useEvents } from '@/features/events/data/use-events';
 import { getVisibleEvents } from '@/features/events/data/visibility';
-import { getFirebaseCore } from '@/data/firebase';
+import { getFirebaseCore, trackPublicRead } from '@/data/firebase';
 import { useViewer } from '@/features/profile/data/viewer';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
@@ -123,15 +123,16 @@ export default function HomePage(): JSX.Element {
 
   useEffect(() => {
     let active = true;
-    // 橫幅只讀公開資料，只需要 app＋firestore，不等 auth／functions（T-041）。
-    loadActiveBanners({ getFirebase: getFirebaseCore })
+    // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
+    // 登記後，首頁公開讀取全部處理完才讓 Auth 註冊，登入者的首屏資料不再被 Auth 還原擋住（T-041，見 data/firebase.ts）。
+    trackPublicRead(loadActiveBanners({ getFirebase: getFirebaseCore }))
       .then((list) => {
         if (active) setBanners(list);
       })
       .catch(() => {
         if (active) setBanners([]);
       });
-    loadActiveAnnouncements()
+    trackPublicRead(loadActiveAnnouncements())
       .then((list) => {
         if (active) setAnnouncements(list);
       })
