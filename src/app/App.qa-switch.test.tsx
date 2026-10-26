@@ -29,7 +29,11 @@ const auth = vi.hoisted(() => ({
   stop: vi.fn(),
 }));
 
-vi.mock('@/data/auth', () => ({
+// 兩個模組都用「部分 mock」：只覆寫會連到 Firebase 或需要受控的函式，其餘匯出沿用真實實作。
+// 手寫完整匯出清單的舊寫法，一旦別條分支替模組新增匯出（T-041 整合驗證時，App 啟動呼叫了新增的
+// whenFirebaseAuthAllowed 而報 "No export defined on the mock"）就會壞；部分 mock 不受影響。
+vi.mock('@/data/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/data/auth')>()),
   signIn: auth.signIn,
   getCurrentUser: auth.getCurrentUser,
   onAuthChanged: auth.onAuthChanged,
@@ -38,8 +42,15 @@ vi.mock('@/data/auth', () => ({
   getLastKnownAuthUid: vi.fn(() => undefined),
 }));
 
-vi.mock('@/data/firebase', () => ({
+// 真實 firebase.ts 載入時只做純函式與單例宣告，Firebase SDK 都在函式內動態載入，所以 importOriginal 是安全的。
+// 必須覆寫每一個會初始化真實 Firebase 的載入函式：getFirebase，以及 T-041 新增的 getFirebaseCore
+//（首頁資料路徑用；本分支還沒有這個匯出，多覆寫一個不存在的名稱無害，整合後同一份測試仍成立）。
+// whenFirebaseAuthAllowed／trackPublicRead／releaseFirebaseAuthHold／isFirebaseDegraded 等 T-041 新增的匯出沿用真實實作：
+// 單元測試模式不會自動暫緩 Auth（沒呼叫 armFirebaseAuthHold），它們都是立即 resolve 或原樣回傳。
+vi.mock('@/data/firebase', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/data/firebase')>()),
   getFirebase: vi.fn(async () => ({ db: {}, auth: {} })),
+  getFirebaseCore: vi.fn(async () => ({ db: {} })),
   firebaseTargetLabel: () => 'test',
 }));
 
