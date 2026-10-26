@@ -22,6 +22,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 站內時間字串（YYYY/MM/DD HH:mm）一律當台北時間解析；本機開發機時區即為 Asia/Taipei，
+    # GitHub runner 預設 UTC。這是還原開發環境，不是放寬或 skip 測試。
+    # 已知需要它的測試：src/features/home/data/announcements.test.ts「公告有效狀態」2 案
+    # （首次實跑 run 40346895901 在 UTC 下失敗）。
+    env:
+      TZ: Asia/Taipei
     steps:
       - uses: actions/checkout@v7
         with:
