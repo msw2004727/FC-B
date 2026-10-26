@@ -49,6 +49,28 @@ let _corePromise: Promise<FirebaseCoreContext> | null = null;
 let _extrasPromise: Promise<FirebaseExtras> | null = null;
 let _contextPromise: Promise<FirebaseContext> | null = null;
 
+/**
+ * 降級原因（退修 4）：上次已登入（有旗標）、但 Auth 沒能在 `registerMaxMs` 內確認註冊進 app（逾時），
+ * 或 Auth 載入／註冊失敗，Firestore 因此改用 `memoryLocalCache()`（不持久化、不參與多分頁協作）。
+ */
+export type FirebaseDegradedReason = 'auth-register-timeout' | 'auth-register-failed';
+let _degradedReason: FirebaseDegradedReason | null = null;
+
+/**
+ * 這一頁的 Firestore 是否處於降級（沒有離線快取、不參與多分頁協作）。唯讀；core 初始化完成後才有確定值
+ * （core 還沒完成前回傳 false）。給之後依離線快取假設運作的路徑（例如 T-042 首屏快照）判斷能不能假設有離線資料。
+ * Auth 之後若補載成功，Firestore 會因憑證變更自動重連（`FirebaseAuthCredentialsProvider` 的 onInit），
+ * 但快取仍是純記憶體，所以降級狀態整頁維持不變。
+ */
+export function isFirebaseDegraded(): boolean {
+  return _degradedReason !== null;
+}
+
+/** 降級原因；沒降級為 null。 */
+export function getFirebaseDegradedReason(): FirebaseDegradedReason | null {
+  return _degradedReason;
+}
+
 /** 是否應連線 emulator：僅非 PROD 且明確設定 VITE_FIREBASE_EMULATOR=1。 */
 export function shouldUseEmulator(): boolean {
   if (import.meta.env.PROD) return false;
@@ -164,14 +186,17 @@ async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
 
   // 上次已登入（旗標）：先等 Auth 註冊進 app、再等它的第一次狀態事件，才初始化 Firestore（見下方「登入旗標閘」）。
   // Auth 未能確認註冊（載入失敗、getAuth 失敗、逾時）→ 降級：Firestore 改用 memoryLocalCache，不參與多分頁協作。
-  const authUnconfirmed = sessionFlagAtStart() ? (await waitForFirstAuthState()) === 'degraded' : false;
-  if (authUnconfirmed) {
+  const degradedReason = sessionFlagAtStart() ? await waitForFirstAuthState() : null;
+  if (degradedReason) {
+    _degradedReason = degradedReason;
+    // core 只初始化一次，所以這則警告整頁只會出現一次。
     console.warn(
-      '[firebase] Auth 未能確認註冊，Firestore 改用 memoryLocalCache（不持久化、不參與多分頁協作；只影響這一頁的離線快取）',
+      `[firebase] Auth 未能確認註冊（${degradedReason}），Firestore 改用 memoryLocalCache` +
+        '（不持久化、不參與多分頁協作；只影響這一頁的離線快取）。Auth 之後若補載成功，Firestore 會因憑證變更自動重連。',
     );
   }
 
-  const db = initializeFirestoreInstance(app, firestoreMod, authUnconfirmed);
+  const db = initializeFirestoreInstance(app, firestoreMod, degradedReason !== null);
 
   if (shouldUseEmulator()) {
     firestoreMod.connectFirestoreEmulator(db, '127.0.0.1', 8080);
@@ -421,12 +446,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<Timed<T>> {
 }
 
 /**
- * 'ready'：Auth 已確認註冊進 app（之後等不等得到第一次狀態事件都安全）；
- * 'degraded'：Auth 未能確認註冊（載入失敗、getAuth 失敗、逾時）——呼叫端要讓 Firestore 改用 memoryLocalCache。
+ * 回傳 `null`：Auth 已確認註冊進 app（之後等不等得到第一次狀態事件都安全）；
+ * 回傳原因：Auth 未能確認註冊——呼叫端要讓 Firestore 改用 memoryLocalCache 並記下降級原因。
  */
-type AuthGateResult = 'ready' | 'degraded';
-
-async function waitForFirstAuthState(): Promise<AuthGateResult> {
+async function waitForFirstAuthState(): Promise<FirebaseDegradedReason | null> {
   // 1) 等 Auth 註冊進 app：只等 Auth 自己（app＋import firebase/auth＋getAuth＋emulator 連線），
   //    不含 Functions——Functions 的 import 慢或失敗不得被當成「Auth 沒好」（退修 4 P1-b）。
   let auth: Auth;
@@ -436,12 +459,12 @@ async function waitForFirstAuthState(): Promise<AuthGateResult> {
       console.warn(
         `[firebase] Auth 超過 ${sessionGateTiming.registerMaxMs} ms 還沒註冊進 app，Firestore 照常啟動`,
       );
-      return 'degraded';
+      return 'auth-register-timeout';
     }
     auth = registered.value;
   } catch (err) {
     console.warn('[firebase] Auth 載入或註冊失敗，Firestore 照常啟動', err);
-    return 'degraded';
+    return 'auth-register-failed';
   }
 
   // 2) Auth 已註冊：等第一次狀態事件，逾時放行是安全的（Firestore 會自己等 Auth 初始化）
@@ -457,7 +480,7 @@ async function waitForFirstAuthState(): Promise<AuthGateResult> {
   } catch (err) {
     console.warn('[firebase] auth.authStateReady() 失敗，Firestore 照常啟動', err);
   }
-  return 'ready';
+  return null;
 }
 
 // 開在首頁才暫緩（且沒有登入旗標）：單元測試（MODE=test）不自動啟動，測試需要時自己呼叫 armFirebaseAuthHold()。
@@ -485,6 +508,7 @@ export function _resetFirebaseForTest(): void {
   _corePromise = null;
   _extrasPromise = null;
   _contextPromise = null;
+  _degradedReason = null;
   releaseFirebaseAuthHold();
   authHold = null;
   sessionFlag = null;
