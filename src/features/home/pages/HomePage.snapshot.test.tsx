@@ -449,36 +449,43 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
   });
 });
 
-describe('HomePage 橫幅圖：<img>（第一張高優先、其餘延遲載入）', () => {
-  it('第一張 fetchpriority=high＋eager，其餘 lazy；有 width／height，不再用 background-image', async () => {
+describe('HomePage 橫幅圖：background-image 畫面＋第一張動態 preload', () => {
+  const preloads = (): HTMLLinkElement[] =>
+    Array.from(document.head.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="image"]'));
+
+  it('畫面沒有 <img>，載入後用 slide 的 inline background-image；第一張在 <head> 加高優先權 preload，卸載後移除', async () => {
     vi.mocked(loadActiveBanners).mockResolvedValue([
       banner({ id: 'b1', title: 'A', image: 'https://example.com/home-1.webp' }),
       banner({ id: 'b2', title: 'B', image: 'https://example.com/home-2.webp' }),
     ]);
 
-    const { container } = render(<HomePage />);
-    await waitFor(() => expect(container.querySelectorAll('#banner-track img.banner-slide-img').length).toBe(2));
+    const { container, unmount } = render(<HomePage />);
+    await waitFor(() => expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(2));
 
-    const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('#banner-track img.banner-slide-img'));
-    expect(imgs[0]?.getAttribute('fetchpriority')).toBe('high');
-    expect(imgs[0]?.getAttribute('loading')).toBe('eager');
-    expect(imgs[1]?.getAttribute('fetchpriority')).toBeNull();
-    expect(imgs[1]?.getAttribute('loading')).toBe('lazy');
-    for (const img of imgs) {
-      expect(img.getAttribute('width')).toBe('1200');
-      expect(img.getAttribute('height')).toBe('545');
-      expect(img.getAttribute('alt')).toBe('');
-    }
-    expect(imgs.map((i) => i.getAttribute('src'))).toEqual([
+    expect(container.querySelector('#banner-track img')).toBeNull();
+    const slides = Array.from(container.querySelectorAll<HTMLElement>('#banner-track .banner-slide'));
+    expect(slides.map((s) => s.getAttribute('data-bg-src'))).toEqual([
       'https://example.com/home-1.webp',
       'https://example.com/home-2.webp',
     ]);
-    for (const slide of Array.from(container.querySelectorAll<HTMLElement>('#banner-track .banner-slide'))) {
-      expect(slide.getAttribute('style') ?? '').not.toContain('background-image');
-    }
+    // 只有第一張有 preload，href 與橫幅網址、data-bg-src 一字不差
+    const links = preloads();
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(['https://example.com/home-1.webp']);
+    expect(links[0]?.getAttribute('fetchpriority')).toBe('high');
+
+    unmount();
+    expect(preloads()).toHaveLength(0);
   });
 
-  it('沒有圖片網址的橫幅仍走漸層底色，不產生 <img>', async () => {
+  it('有橫幅快照時，第一次 render 後（網路還沒回來）就已經加上第一張的 preload', () => {
+    seedBanners([banner({ id: 'b1', title: 'A', image: 'https://example.com/snap-1.webp' })]);
+    vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
+
+    render(<HomePage />);
+    expect(preloads().map((l) => l.getAttribute('href'))).toEqual(['https://example.com/snap-1.webp']);
+  });
+
+  it('沒有圖片網址的橫幅仍走漸層底色，不產生 <img>，也沒有 preload', async () => {
     vi.mocked(loadActiveBanners).mockResolvedValue([
       banner({ id: 'b1', title: 'A', gradient: 'linear-gradient(#000, #333)' }),
     ]);
@@ -488,6 +495,7 @@ describe('HomePage 橫幅圖：<img>（第一張高優先、其餘延遲載入�
 
     expect(container.querySelector('#banner-track img')).toBeNull();
     expect(container.querySelector('.banner-placeholder')).toBeTruthy();
+    expect(preloads()).toHaveLength(0);
   });
 });
 

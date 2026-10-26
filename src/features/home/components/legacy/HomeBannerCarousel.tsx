@@ -7,13 +7,15 @@ import {
   sanitizeHttpUrl,
   type BannerDoc,
 } from '../../data/banners';
-import './banner-img.css';
 
 const AUTOPLAY_INTERVAL_MS = 8000;
-/** 第一張／其他張等多久還沒載好就不再把整張壓暗（慢網路時讓圖片邊載邊顯示），不代表失敗。 */
+/** 第一張／其他張等多久還沒載好就不再把整張壓暗、直接設背景圖（慢網路時讓圖片邊載邊顯示），不代表失敗；與原本相同。 */
 const FIRST_IMAGE_TIMEOUT_MS = 1800;
 const OTHER_IMAGE_TIMEOUT_MS = 3500;
-/** loaded＝載入並解碼成功；failed＝載入失敗或無法解碼（改顯示底色）；timeout＝等太久，先取消壓暗、仍等它載完。 */
+/**
+ * 這張圖的載入結果。loaded＝載入成功；failed＝載入失敗；timeout＝等太久，先取消壓暗並設背景圖、仍等它載完。
+ * 三種畫面和原本一致：都取消壓暗；loaded、timeout 設背景圖，failed 不設（壞網址的背景圖本來就什麼都不畫，只剩暗色遮罩）。
+ */
 type ImageStatus = 'loaded' | 'failed' | 'timeout';
 /** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記（曾成功後又失敗的會被撤掉），下次進來重新嘗試。 */
 const imageReadyCache: Record<string, ImageStatus> = {};
@@ -26,6 +28,10 @@ function rememberLoaded(url: string): void {
   imageReadyCache[url] = 'loaded';
   const urls = Object.keys(imageReadyCache);
   for (let i = 0; i < urls.length - IMAGE_READY_CACHE_MAX; i += 1) delete imageReadyCache[urls[i] as string];
+}
+
+function timeoutFor(index: number): number {
+  return index === 0 ? FIRST_IMAGE_TIMEOUT_MS : OTHER_IMAGE_TIMEOUT_MS;
 }
 
 export interface HomeBannerCarouselProps {
@@ -48,11 +54,9 @@ export function HomeBannerCarousel({
   const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
-  /** 每個 <img> 元素目前有效的解碼工作編號（同一個元素每次 load 事件遞增）；較舊工作的結果作廢。 */
-  const decodeJobsRef = useRef(new WeakMap<HTMLImageElement, number>());
-  const decodeSeqRef = useRef(0);
+  /** 這個畫面已經開始載入的網址（同一個網址只載一次）與它們還沒結算的逾時計時。 */
+  const startedRef = useRef(new Set<string>());
   const timeoutsRef = useRef(new Map<string, number>());
-  const prefetchedRef = useRef(new Set<string>());
   const timerRef = useRef<number | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -80,70 +84,88 @@ export function HomeBannerCarousel({
     setImageStatus((prev) => (prev[url] === status ? prev : { ...prev, [url]: status }));
   }, []);
 
-  // 圖片由 <img> 自己載入（第一張高優先、其餘 lazy），這裡只接它的結果：載入後再解碼才算 loaded，失敗或解碼失敗算 failed。
-  // 解碼是非同步的：回來時若這個 <img> 已不在 DOM（畫面卸載、列表替換，或網址改變——<img> 以網址為 key，網址一變就換成新元素、
-  // 舊元素立刻移除，所以網址 A→B→A 時舊的 A 工作也作廢，不需要等後續的 load 事件），或同一個元素後來又有更新的載入工作，結果作廢。
-  const handleImageLoad = useCallback(
-    (url: string, img: HTMLImageElement) => {
-      const job = ++decodeSeqRef.current;
-      decodeJobsRef.current.set(img, job);
-      const isStale = (): boolean =>
-        !img.isConnected
-        || decodeJobsRef.current.get(img) !== job;
-      if (typeof img.decode !== 'function') {
-        markImage(url, 'loaded');
+  // 載入：圖片用 `new Image()` 載（和原本一樣），先載到才設背景圖；畫面本身仍是 slide 的 inline background-image，沒有 <img> 當畫面。
+  // 第一張一開始就載；其餘只在「目前這張有結果（載好或確定失敗）」之後才載下一張——逾時（timeout）只是取消壓暗並設背景圖，
+  // 圖片可能還在下載，這時再載下一張會跟它搶頻寬（慢網路最明顯）；使用者點圓點直接跳到某張時，只載那一張。
+  // 每個網址只載一次、各自一個逾時計時（載入時才啟動）：到時還沒有結果就標 timeout，之後載好／失敗再改成 loaded／failed。
+  // 失敗只結算一次（不重試、沒有重試迴圈），畫面維持原本的暗色遮罩。
+  const loadImage = useCallback(
+    (url: string, timeoutMs: number) => {
+      if (!url || imageReadyCache[url] || startedRef.current.has(url)) return;
+      startedRef.current.add(url);
+      if (typeof Image === 'undefined') {
+        setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
         return;
       }
-      img.decode().then(
-        () => {
-          if (!isStale()) markImage(url, 'loaded');
-        },
-        () => {
-          if (!isStale()) markImage(url, 'failed');
-        },
+      const timers = timeoutsRef.current;
+      timers.set(
+        url,
+        window.setTimeout(() => {
+          timers.delete(url);
+          setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
+        }, timeoutMs),
       );
+      let settled = false;
+      const settle = (status: 'loaded' | 'failed'): void => {
+        if (settled) return;
+        settled = true;
+        const timer = timers.get(url);
+        if (timer !== undefined) {
+          window.clearTimeout(timer);
+          timers.delete(url);
+        }
+        markImage(url, status);
+      };
+      const img = new Image();
+      if ('decoding' in img) img.decoding = 'async';
+      img.onload = () => settle('loaded');
+      img.onerror = () => settle('failed');
+      img.src = url;
+      if (typeof img.decode === 'function') {
+        img.decode().then(
+          () => settle('loaded'),
+          () => settle('failed'),
+        );
+      }
     },
     [markImage],
   );
-
-  // 每張圖各有一個逾時計時（只在第一次看到這個網址時啟動）：到時還沒有結果就標 timeout（取消壓暗、不當成失敗）。
   useEffect(() => {
-    banners.forEach((b, idx) => {
-      const url = sanitizeHttpUrl(b.image);
-      if (!url || imageReadyCache[url] || timeoutsRef.current.has(url)) return;
-      const ms = idx === 0 ? FIRST_IMAGE_TIMEOUT_MS : OTHER_IMAGE_TIMEOUT_MS;
-      timeoutsRef.current.set(
-        url,
-        window.setTimeout(() => {
-          setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
-        }, ms),
-      );
-    });
-  }, [banners]);
-  useEffect(() => {
-    const timeouts = timeoutsRef.current;
+    const timers = timeoutsRef.current;
     return () => {
-      timeouts.forEach((t) => window.clearTimeout(t));
-      timeouts.clear();
+      timers.forEach((t) => window.clearTimeout(t));
+      timers.clear();
     };
   }, []);
-
-  // 預取：只預取「下一張」，而且等目前這張真的載好（或確定失敗）之後才開始。逾時（timeout）只是不再壓暗，圖片可能還在下載，
-  // 這時預取會跟它搶頻寬（慢網路最明顯），所以不算。其餘的圖交給 <img loading="lazy">；使用者點圓點直接跳到某張時，只預取那一張。
-  const prefetchImage = useCallback((url: string) => {
-    if (!url || imageReadyCache[url] || prefetchedRef.current.has(url) || typeof Image === 'undefined') return;
-    prefetchedRef.current.add(url);
-    const img = new Image();
-    if ('decoding' in img) img.decoding = 'async';
-    img.src = url;
-  }, []);
+  useEffect(() => {
+    if (banners.length === 0) return;
+    loadImage(sanitizeHttpUrl(banners[activeIndex]?.image), timeoutFor(activeIndex));
+  }, [banners, activeIndex, loadImage]);
   useEffect(() => {
     if (banners.length < 2) return;
     const currentUrl = sanitizeHttpUrl(banners[activeIndex]?.image);
     const currentStatus = currentUrl ? imageStatus[currentUrl] : undefined;
     if (currentUrl && currentStatus !== 'loaded' && currentStatus !== 'failed') return;
-    prefetchImage(sanitizeHttpUrl(banners[(activeIndex + 1) % banners.length]?.image));
-  }, [banners, activeIndex, imageStatus, prefetchImage]);
+    const next = (activeIndex + 1) % banners.length;
+    loadImage(sanitizeHttpUrl(banners[next]?.image), timeoutFor(next));
+  }, [banners, activeIndex, imageStatus, loadImage]);
+
+  // 提早高優先權下載第一張：動態加一個 <link rel="preload" as="image" fetchpriority="high">（取代原本想用的隱藏 <img>：
+  // 少一層 DOM、沒有 LCP 歸屬與破圖圖示的問題）。href 與背景圖用的是同一個字串（safeImg，背景圖只多了 CSS 跳脫、解析後相同），
+  // 才打得到同一份快取。清單替換或畫面卸載時移除，不累積；這張已經載入成功過（記憶體紀錄）就不需要。
+  const firstImageUrl = sanitizeHttpUrl(banners[0]?.image);
+  useEffect(() => {
+    if (!firstImageUrl || imageReadyCache[firstImageUrl]) return;
+    const link = document.createElement('link');
+    link.setAttribute('rel', 'preload');
+    link.setAttribute('as', 'image');
+    link.setAttribute('fetchpriority', 'high');
+    link.setAttribute('href', firstImageUrl);
+    document.head.appendChild(link);
+    return () => {
+      link.remove();
+    };
+  }, [firstImageUrl]);
 
   const stopAutoplay = useCallback(() => {
     if (timerRef.current !== null) {
@@ -175,9 +197,9 @@ export function HomeBannerCarousel({
       const cnt = banners.length || 1;
       const safeIdx = ((idx % cnt) + cnt) % cnt;
       setActiveIndex(safeIdx);
-      prefetchImage(sanitizeHttpUrl(banners[safeIdx]?.image));
+      loadImage(sanitizeHttpUrl(banners[safeIdx]?.image), timeoutFor(safeIdx));
     },
-    [banners, prefetchImage],
+    [banners, loadImage],
   );
 
   const handleTouchStart = (e: TouchEvent): void => {
@@ -286,24 +308,14 @@ export function HomeBannerCarousel({
                 }
               : undefined;
 
-            if (safeImg && status === 'failed') {
-              // 圖片載入失敗或無法解碼：改顯示底色（不顯示壞圖，也不顯示「1200 × 545」的開發用佔位字）。
-              return (
-                <div
-                  key={b.id || b._docId || `slide-${idx}`}
-                  class="banner-slide banner-slide--failed"
-                  data-bg-src={safeImg}
-                  data-banner-priority={idx === 0 ? 'high' : 'normal'}
-                  data-banner-load-state="failed"
-                  style={`background:${safeBannerGradient(b.gradient) || 'var(--bg-elevated)'}${safeLink ? ';cursor:pointer' : ''}`}
-                  onClick={handleSlideClick}
-                />
-              );
-            }
-
             if (safeImg) {
-              // T-042：圖片改成 <img>（原本是 background-image，無法設優先權與延遲載入）。第一張 fetchpriority=high＋eager，
-              // 其餘 lazy；width／height 對應後台上傳的 1200×545。外觀對齊原背景圖（cover＋置中）見 banner-img.css。
+              // 畫面和原本（a924c7b）完全一樣：slide 自己的 inline background-image。載入中壓暗（.banner-slide--loading）；
+              // loaded、timeout 設背景圖（timeout＝逾時後直接設，邊載邊顯示）；failed 不設——壞網址的背景圖本來就什麼都不畫，只剩暗色遮罩，
+              // 所以失敗時的可見畫面沒有任何新樣式。
+              const bgCss = status === 'loaded' || status === 'timeout'
+                ? `background-image:url("${safeImg.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}");background-size:cover;background-position:center;`
+                : '';
+              const cursorCss = safeLink ? 'cursor:pointer;' : '';
               return (
                 <div
                   key={b.id || b._docId || `slide-${idx}`}
@@ -311,24 +323,9 @@ export function HomeBannerCarousel({
                   data-bg-src={safeImg}
                   data-banner-priority={idx === 0 ? 'high' : 'normal'}
                   data-banner-load-state={status === 'loaded' ? 'done' : (status ?? 'loading')}
-                  style={safeLink ? 'cursor:pointer;' : undefined}
+                  style={`${bgCss}${cursorCss}` || undefined}
                   onClick={handleSlideClick}
-                >
-                  <img
-                    key={safeImg}
-                    class="banner-slide-img"
-                    src={safeImg}
-                    alt=""
-                    width={1200}
-                    height={545}
-                    decoding="async"
-                    loading={idx === 0 ? 'eager' : 'lazy'}
-                    fetchpriority={idx === 0 ? 'high' : undefined}
-                    draggable={false}
-                    onLoad={(e) => handleImageLoad(safeImg, e.currentTarget)}
-                    onError={() => markImage(safeImg, 'failed')}
-                  />
-                </div>
+                />
               );
             }
 
