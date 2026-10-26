@@ -30,6 +30,9 @@ describe('index.html 開頁骨架', () => {
     ['id="line-login-wrapper"', topBar],
     ['id="line-login-btn"', topBar],
     ['id="line-avatar-topbar"', topBar],
+    // T-050：登入確認中頭像的骨架與 TopBar authPending 一致（只放轉圈圈）
+    ['line-avatar-loading', topBar],
+    ['class="line-avatar-spinner"', topBar],
   ])('%s 與元件一致', (needle, componentSource) => {
     expect(shell).toContain(needle);
     expect(componentSource).toContain(needle);

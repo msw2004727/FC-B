@@ -82,14 +82,35 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(login).toHaveBeenCalledOnce();
   });
 
-  // 測試同步更新：照 A（M-168）authPending 且無 user 時頭像占位顯示 guest-avatar-icon。
-  it('shows guest-avatar-icon placeholder while auth is pending and no user', () => {
+  // 測試同步更新（T-050）：取代 M-168 的「人形＋轉圈圈」；照 A（_buildTopbarAvatarFallback）authPending 且無 user 只放轉圈圈。
+  it('T-050：登入確認中（authPending 且無 user）頭像只有轉圈圈，沒有人形 svg、沒有 inline 底色', () => {
     const { container } = render(
       <TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />,
     );
-    const avatar = container.querySelector('#line-avatar-topbar');
+    const avatar = container.querySelector<HTMLElement>('#line-avatar-topbar');
     expect(avatar).not.toBeNull();
-    expect(avatar?.querySelector('svg.guest-avatar-icon')).not.toBeNull();
+    expect(avatar?.querySelector('svg')).toBeNull();
+    expect(avatar?.querySelector('.guest-avatar-icon')).toBeNull();
+    expect(avatar?.children.length).toBe(1);
+    expect(avatar?.firstElementChild?.classList.contains('line-avatar-spinner')).toBe(true);
+    expect(avatar?.textContent).toBe('');
+    expect(avatar?.getAttribute('style')).toBeNull();
+    expect(avatar?.classList.contains('line-avatar-fallback')).toBe(true);
+    expect(avatar?.classList.contains('line-avatar-loading')).toBe(true);
+    expect(avatar?.getAttribute('aria-label')).toBe('同步中');
+    expect(avatar?.getAttribute('title')).toBe('同步中');
+  });
+
+  it('T-050：authPending 與 syncingFallback（已登入、資料未到）頭像外觀一致：同 class、同樣只有一個轉圈圈', () => {
+    const pending = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />);
+    const a = pending.container.querySelector('#line-avatar-topbar')!;
+    const pendingShape = { cls: a.className, kids: Array.from(a.children).map((c) => c.className) };
+    cleanup();
+
+    const user = { uid: 'U0000000000000000000000000000001', displayName: null, pictureUrl: null };
+    const syncing = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} user={user} isSyncing />);
+    const b = syncing.container.querySelector('#line-avatar-topbar')!;
+    expect({ cls: b.className, kids: Array.from(b.children).map((c) => c.className) }).toEqual(pendingShape);
   });
 
   it('switches #top-logo-img src between light and dark theme and falls back to png on error', () => {
