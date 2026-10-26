@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // T-042：index.html 的連線提示（preconnect／dns-prefetch）。靜態檢查，不連網。
-const html = readFileSync(fileURLToPath(new URL('../../index.html', import.meta.url)), 'utf8');
+const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8');
 const head = html.slice(0, html.indexOf('</head>'));
 
 function linkTags(rel: string): string[] {
