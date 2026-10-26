@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 // Functions 的 import 慢或失敗不得影響旗標閘（Auth 註冊是獨立步驟）。
 // 退修 5：降級警告整頁只有一則、固定文字（不帶錯誤物件，原始錯誤走 console.debug）；
 // 需要「Auth 卡住」的案例一律用 sdk.authImportGate（deferred）而不是真實計時，afterEach 會放開所有 gate。
+// T-052：有旗標時 core 一開始就並行啟動 Auth（不必等 Firestore 模組下載完）；用 sdk.firestoreImportGate 卡住 Firestore 模組來證明。
 
 const FLAG_KEY = 'fcb:signed-in';
 
@@ -24,6 +25,8 @@ const sdk = vi.hoisted(() => ({
   authImportGate: null as null | { promise: Promise<void> },
   /** 讓 firebase/app 的載入卡住，檢查 auth／functions 是否與它並行。 */
   appGate: null as null | { promise: Promise<void> },
+  /** 讓 firebase/firestore 的載入卡住（Firestore 模組還在下載），檢查 Auth 是否與它並行（T-052）。 */
+  firestoreImportGate: null as null | { promise: Promise<void> },
   /** firebase/auth 模組載入要多久（毫秒），模擬 Auth chunk 比 Firestore 模組慢。 */
   authDelayMs: 0,
   authReadyFails: false,
@@ -91,6 +94,7 @@ const appFactory = async () => {
 const firestoreFactory = async () => {
   const gen = sdk.generation;
   record(gen, sdk.importOrder, 'firestore');
+  if (sdk.firestoreImportGate) await sdk.firestoreImportGate.promise;
   return {
     initializeFirestore: (app: object) => {
       record(gen, sdk.calls, 'initializeFirestore');
@@ -246,6 +250,7 @@ beforeEach(async () => {
   sdk.authGate = null;
   sdk.authImportGate = null;
   sdk.appGate = null;
+  sdk.firestoreImportGate = null;
   sdk.authDelayMs = 0;
   sdk.authReadyFails = false;
   warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -427,6 +432,62 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(ctx.auth).toBe(fakeAuth);
   });
 
+  // ── T-052：只呼叫 getFirebaseCore() 時，Auth 也要和 Firestore 模組並行載入（不是等 Firestore 模組下載完才開始）──
+  it('只呼叫 getFirebaseCore()、Firestore 模組還在下載 → Auth 的載入與註冊已經並行開始；Functions 沒被啟動；語意不變', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    const firestoreGate = deferred();
+    sdk.firestoreImportGate = firestoreGate; // Firestore 模組卡住（還在下載）
+
+    const core = firebase.getFirebaseCore(); // 只呼叫 core，沒有任何人呼叫 getFirebase()
+    const coreState = settledState(core);
+
+    // Firestore 模組還沒好，Auth 已經載入完並註冊進 app（若 Auth 要等 Firestore 模組，這裡會卡到逾時）
+    await vi.waitFor(() => expect(sdk.calls).toContain('getAuth'), { timeout: 10_000 });
+    expect(sdk.importOrder).toEqual(expect.arrayContaining(['app', 'firestore', 'auth']));
+    expect(sdk.importOrder).not.toContain('functions'); // 旗標閘只等 Auth，不為 core 提前啟動 Functions
+    expect(sdk.calls).not.toContain('initializeFirestore');
+    expect(coreState.settled).toBe(false);
+
+    firestoreGate.resolve();
+    const ctx = await core;
+    // 已驗收的語意不變：Firestore 排在 Auth 註冊與第一次狀態事件之後、走持久化、不降級
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.calls.filter((entry) => entry === 'getAuth')).toHaveLength(1); // 提前啟動與旗標閘共用同一個 Auth，不重複註冊
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('authStateReady:resolved'));
+    expect(sdk.calls.indexOf('authStateReady:resolved')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    expect(sdk.cache).toEqual(expect.arrayContaining(['persistentLocalCache', 'persistentMultipleTabManager']));
+    expect(sdk.cache).not.toContain('memoryLocalCache');
+    expect(firebase.isFirebaseDegraded()).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+    expect(sdk.importOrder).not.toContain('functions'); // core 完成後仍沒有 Functions
+  });
+
+  it('提前啟動的 Auth 比 Firestore 模組更早失敗：不會變成未處理的拒絕，之後仍照常降級（auth-register-failed）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.fail.auth = true; // Auth 模組載入立刻失敗
+    const firestoreGate = deferred();
+    sdk.firestoreImportGate = firestoreGate; // Firestore 模組卡住：Auth 的失敗發生在任何人等候它之前
+
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const core = firebase.getFirebaseCore();
+      await vi.waitFor(() => expect(sdk.importOrder).toContain('auth'), { timeout: 10_000 });
+      await wait(60); // 讓 Auth 的拒絕在沒人等候的情況下經過 Node 的未處理拒絕檢查
+      expect(unhandled).not.toHaveBeenCalled();
+
+      firestoreGate.resolve();
+      const ctx = await core;
+      expect(ctx.db).toBe(sdk.fakeDb);
+      expectDegradedToMemoryCache('auth-register-failed');
+      expect(debuggedError('auth chunk failed')).toBe(true);
+      await wait(20);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
   it('沒旗標時 auth 仍然排在 core 與暫緩之後才載入（不因並行改動而提早評估 firebase/auth）', async () => {
     const appGate = deferred();
     sdk.appGate = appGate;
@@ -605,6 +666,43 @@ describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，
     // 真訪客照舊用持久化＋多分頁協作（沒有私人監聽，沒有 P2-1 窗口）
     expect(sdk.cache).toContain('persistentLocalCache');
     expect(sdk.cache).not.toContain('memoryLocalCache');
+    expect(firebase.isFirebaseDegraded()).toBe(false);
+  });
+
+  it('沒旗標：Firestore 模組還在下載時 Auth 也不會被提早啟動（T-052 的提早啟動只限有旗標）', async () => {
+    const firestoreGate = deferred();
+    sdk.firestoreImportGate = firestoreGate;
+
+    const core = firebase.getFirebaseCore();
+    await vi.waitFor(() => expect(sdk.importOrder).toContain('firestore'), { timeout: 10_000 });
+    await wait(60);
+    expect(sdk.importOrder).not.toContain('auth');
+    expect(sdk.importOrder).not.toContain('functions');
+
+    firestoreGate.resolve();
+    await core;
+    await wait(30);
+    expect(sdk.importOrder).not.toContain('auth');
+    expect(sdk.calls).toEqual(['initializeFirestore']);
+  });
+
+  // T-052 退修 1：旗標在 core 被呼叫的當下取樣並快取（啟動快照）。取樣點比修前（await app＋firestore 模組之後）略早，
+  // 差別只出現在「core 被呼叫之後、Firestore 模組下載完成之前」旗標才被寫入（例如別的分頁剛登入）：這一頁維持啟動時的判斷。
+  it('旗標是啟動快照：core 被呼叫後、Firestore 模組下載完成前才寫入旗標，這一頁仍視為訪客，不為 core 啟動 Auth', async () => {
+    const firestoreGate = deferred();
+    sdk.firestoreImportGate = firestoreGate;
+
+    const core = firebase.getFirebaseCore(); // 取樣：此時沒有旗標
+    await vi.waitFor(() => expect(sdk.importOrder).toContain('firestore'), { timeout: 10_000 });
+    localStorage.setItem(FLAG_KEY, '1'); // 別的分頁登入，寫入旗標
+    firestoreGate.resolve();
+
+    const ctx = await core;
+    await wait(30);
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.importOrder).not.toContain('auth'); // 沒有為這個 core 啟動 Auth，也沒有等第一次狀態事件
+    expect(sdk.calls).toEqual(['initializeFirestore']);
+    expect(sdk.cache).toContain('persistentLocalCache');
     expect(firebase.isFirebaseDegraded()).toBe(false);
   });
 

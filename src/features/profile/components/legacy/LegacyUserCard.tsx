@@ -61,6 +61,9 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  // status／profile 是為哪個「請求 uid」載入的。不能拿 profile.uid 比對：它可能是 lineUserId 或 doc id
+  // （mapUserProfileDoc 的 uid || lineUserId || docId），不一定等於請求的 uid。
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const mountedRef = useRef(true);
   // 活動紀錄載入世代：換看另一個人時遞增，前一人還在飛的結果不得寫進新的名片。
   const recordsSeqRef = useRef(0);
@@ -77,9 +80,11 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     let cancelled = false;
     setStatus('loading');
     setProfile(null);
+    setLoadedFor(null);
     loadUserProfile(targetUid)
       .then((p) => {
         if (cancelled || !mountedRef.current) return;
+        setLoadedFor(targetUid);
         if (!p) {
           setStatus('missing');
           return;
@@ -91,6 +96,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
         if (cancelled || !mountedRef.current) return;
         // eslint-disable-next-line no-console
         console.warn('[legacy-user-card] load failed', err);
+        setLoadedFor(targetUid);
         setStatus('error');
       });
     return () => {
@@ -121,7 +127,8 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     setPage(1);
   }, [targetUid]);
 
-  if (status === 'loading') {
+  // 換看另一個人的那一個 render（effect 清狀態之前）：資料不是為目前 uid 載入的，一律當載入中，不顯示上一人。
+  if (status === 'loading' || loadedFor !== targetUid) {
     return (
       <div class="user-card-full" id="user-card-full">
         <div class="info-card">
