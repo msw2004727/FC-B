@@ -345,32 +345,45 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'none' });
   });
 
-  it('registers events, banners and announcements as public reads; Auth is released only after all three settle (T-041)', async () => {
-    armFirebaseAuthHold({ settleMs: 5, capMs: 60_000 });
-    const banners = deferred<BannerDoc[]>();
-    const announcements = deferred<AnnouncementDoc[]>();
-    vi.mocked(loadActiveBanners).mockReturnValue(banners.promise);
-    vi.mocked(loadActiveAnnouncements).mockReturnValue(announcements.promise);
-    let allowed = false;
-    void whenFirebaseAuthAllowed().then(() => {
-      allowed = true;
-    });
+  // 三個公開讀取（events／banners／announcements）都要登記給 Auth 暫緩機制（T-041）。
+  // 每個案例讓「其中一個」維持未回來、另外兩個先回來：少登記任何一個，就會在這裡提早放行而被抓到。
+  it.each(['events', 'banners', 'announcements'] as const)(
+    '%s 讀取還沒回來時不放行 Auth；回來後才放行',
+    async (pendingRead) => {
+      armFirebaseAuthHold({ settleMs: 5, capMs: 60_000 });
+      const pendingEvents = deferred<string[]>();
+      const pendingBanners = deferred<BannerDoc[]>();
+      const pendingAnnouncements = deferred<AnnouncementDoc[]>();
+      vi.mocked(getEventsRepo).mockReturnValue({
+        loadEventsStatic: vi.fn().mockReturnValue(
+          pendingRead === 'events' ? pendingEvents.promise : Promise.resolve(['events']),
+        ),
+        ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
+        loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
+        getSnapshot: () => ({ active: [], terminal: [] }),
+      });
+      vi.mocked(loadActiveBanners).mockReturnValue(
+        pendingRead === 'banners' ? pendingBanners.promise : Promise.resolve([]),
+      );
+      vi.mocked(loadActiveAnnouncements).mockReturnValue(
+        pendingRead === 'announcements' ? pendingAnnouncements.promise : Promise.resolve([]),
+      );
+      let allowed = false;
+      void whenFirebaseAuthAllowed().then(() => {
+        allowed = true;
+      });
 
-    render(<HomePage />);
-    // 活動讀取（mock）很快就回來，但橫幅與公告還沒回來 → 不放行
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    });
-    expect(allowed).toBe(false);
+      render(<HomePage />);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      });
+      expect(allowed).toBe(false);
 
-    banners.resolve([]);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    });
-    expect(allowed).toBe(false);
-
-    announcements.resolve([]);
-    await waitFor(() => expect(allowed).toBe(true));
-  });
+      pendingEvents.resolve(['events']);
+      pendingBanners.resolve([]);
+      pendingAnnouncements.resolve([]);
+      await waitFor(() => expect(allowed).toBe(true));
+    },
+  );
 
 });
