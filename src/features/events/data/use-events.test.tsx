@@ -46,6 +46,8 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     const view = render(h(Probe, null));
     expect(view.getByTestId('p').textContent).toBe('--:舊資料');
 
+    // events-repo 是動態載入的，等它真的開始查詢才回應
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
     repoEvents = [ev('b', '新資料')];
     resolve(['events']);
     await waitFor(() => expect(view.getByTestId('p').textContent).toBe('--:新資料'));

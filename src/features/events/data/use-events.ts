@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getLastKnownAuthUid } from '@/data/auth';
-import { getEventsRepo } from './events-repo';
 import { readEventsSnapshot, writeEventsSnapshot } from './events-snapshot-cache';
 import { isEventInEndedTab } from './terminal';
 import { sortEvents } from './presentation';
@@ -43,8 +42,26 @@ export function _resetUseEventsForTest(): void {
   lastLoaded = null;
 }
 
+let repoModule: Promise<typeof import('./events-repo')> | null = null;
+
+/**
+ * events-repo 靜態 import Firestore SDK，這裡動態載入才不會把 SDK 帶進首頁路由的靜態相依（T-041 A2）。
+ * 只 import 一次（共用 Promise），失敗時清掉以便重試（L-08）。
+ */
+function loadRepoModule(): Promise<typeof import('./events-repo')> {
+  if (!repoModule) {
+    const promise = import('./events-repo');
+    repoModule = promise;
+    promise.catch(() => {
+      if (repoModule === promise) repoModule = null;
+    });
+  }
+  return repoModule;
+}
+
 function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
   return (async () => {
+    const { getEventsRepo } = await loadRepoModule();
     const repo = getEventsRepo();
     // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
     await repo.loadEventsStatic({ terminalMode: mode });

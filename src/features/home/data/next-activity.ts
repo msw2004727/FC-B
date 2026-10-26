@@ -14,18 +14,9 @@
  * Firestore 呼叫全部集中在 loadNextActivityInputs() 這一個 async 函式；其餘為純函式。
  */
 
-import {
-  collection,
-  collectionGroup,
-  documentId,
-  getDocs,
-  limit,
-  query,
-  where,
-  type DocumentData,
-  type Firestore,
-  type Query,
-} from 'firebase/firestore';
+// Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔的純函式會被首頁路由引用，靜態 import SDK 會讓首頁多帶約 160 KB gz。
+import type { DocumentData, Firestore, Query } from 'firebase/firestore';
+import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath, filterSubcollectionDocs } from '@/data/paths';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
@@ -370,10 +361,12 @@ function chunkIds(ids: readonly string[], size: number): string[][] {
  * 兩條查詢、各分批並行；單一批次失敗只記警告，不影響其他批次。
  */
 async function fetchMissingEvents(
+  sdk: FirestoreSdk,
   db: Firestore,
   missingEventIds: readonly string[],
   logger: NextActivityLogger,
 ): Promise<EventDoc[]> {
+  const { collection, documentId, getDocs, query, where } = sdk;
   const run = (label: string, build: (ids: string[]) => Query<DocumentData>, ids: string[]) =>
     getDocs(build(ids)).then(
       (snap) => snap.docs.map((d) => mapDoc(d)),
@@ -415,7 +408,8 @@ export async function loadNextActivityInputs(
 
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger: NextActivityLogger = deps.logger ?? console;
-  const { db } = await getFB();
+  const [{ db }, sdk] = await Promise.all([getFB(), loadFirestoreSdk()]);
+  const { collection, collectionGroup, getDocs, limit, query, where } = sdk;
 
   // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
   const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
@@ -503,7 +497,7 @@ export async function loadNextActivityInputs(
   });
 
   const missingEvents = missingEventIds.length > 0
-    ? await fetchMissingEvents(db, missingEventIds, logger)
+    ? await fetchMissingEvents(sdk, db, missingEventIds, logger)
     : [];
 
   const mergedEvents = mergeEventsByIdentity([...managedEvents, ...missingEvents]);

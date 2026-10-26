@@ -1,11 +1,6 @@
-import {
-  collection,
-  getDocs,
-  limit,
-  query,
-  type DocumentData,
-  type Firestore,
-} from 'firebase/firestore';
+// Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔會被首頁路由引用，靜態 import 會把約 160 KB gz 的 SDK 帶進首頁的靜態相依。
+import type { DocumentData, Firestore } from 'firebase/firestore';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
 // 公告是公開唯讀資料，只需要 app＋firestore，不等 auth／functions（T-041）。
 import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 
@@ -177,7 +172,10 @@ export async function loadActiveAnnouncements(
   const logger = deps.logger ?? console;
   const nowMs = deps.now?.() ?? Date.now();
   try {
-    const { db } = await getFB();
+    const [{ db }, { collection, getDocs, limit, query }] = await Promise.all([
+      getFB(),
+      loadFirestoreSdk(),
+    ]);
     const snap = await getDocs(
       query(collection(db, ANNOUNCEMENTS_COLLECTION), limit(ANNOUNCEMENTS_QUERY_LIMIT)),
     );

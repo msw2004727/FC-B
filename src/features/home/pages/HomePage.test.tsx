@@ -156,6 +156,11 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     await waitFor(() => {
       expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(2);
     });
+    // 活動資料是動態載入 events-repo 後才查詢；等它跑完再推進計時器，輪播計時器才不會在推進途中被重新計時。
+    await waitFor(() => expect(getEventsRepo).toHaveBeenCalled());
+    await act(async () => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
 
     expect(screen.getByRole('heading', { name: '週末熱血開踢' })).toBeTruthy();
     expect(screen.getByText('立即加入附近球局')).toBeTruthy();

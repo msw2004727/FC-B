@@ -30,6 +30,11 @@ function Probe({ options }: { options?: UseEventsOptions }): preact.JSX.Element 
   return h('div', { 'data-testid': 'p' }, `${loading ? 'L' : '-'}:${events.map((e) => e.title).join(',')}`);
 }
 
+/** events-repo 是動態載入的：讓排隊中的載入與 microtask 跑完，再檢查「沒有多發請求」。 */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 30));
+}
+
 function deferred(): { promise: Promise<string[]>; resolve: () => void; reject: (e: Error) => void } {
   let resolve!: () => void;
   let reject!: (e: Error) => void;
@@ -71,6 +76,8 @@ describe('useEvents terminalMode', () => {
     loadEventsStatic.mockReturnValue(d.promise);
     render(h(Probe, { options: { terminalMode: 'none' } }));
     render(h(Probe, { options: { terminalMode: 'none' } }));
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
+    await settle();
     expect(loadEventsStatic).toHaveBeenCalledTimes(1);
     d.resolve();
   });
@@ -80,6 +87,8 @@ describe('useEvents terminalMode', () => {
     loadEventsStatic.mockReturnValue(d.promise);
     render(h(Probe, null));
     render(h(Probe, { options: { terminalMode: 'none' } }));
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
+    await settle();
     expect(loadEventsStatic).toHaveBeenCalledTimes(1);
     expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'preview' });
     d.resolve();
@@ -92,6 +101,8 @@ describe('useEvents terminalMode', () => {
 
     render(h(Probe, { options: { terminalMode: 'none' } }));
     const list = render(h(Probe, null));
+    await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
+    await settle();
     expect(loadEventsStatic).toHaveBeenCalledTimes(1);
     expect(loadEventsStatic).toHaveBeenLastCalledWith({ terminalMode: 'none' });
 
