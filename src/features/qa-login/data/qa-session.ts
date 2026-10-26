@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { on } from '@/core/events';
-import { readQaClaims } from '@/data/auth';
+import { inspectQaAccount, readQaClaims } from '@/data/auth';
 
 export const QA_PERSONA_KEYS = ['captain', 'coach', 'venueOwner', 'memberA', 'memberB'] as const;
 export type QaPersonaKey = (typeof QA_PERSONA_KEYS)[number];
@@ -104,4 +104,56 @@ export function useQaSession(uid: string | null | undefined): QaSessionView | nu
     return undefined;
   }
   return snapshot.value;
+}
+
+/**
+ * 目前登入者是否「確認是一般（非 QA）帳號」。uid 由呼叫端傳入（頁面的 useViewer）。
+ * 只有 inspectQaAccount 回 regular 才是 true；讀取中、讀不到（unknown）、QA 登入者、未登入都是 false，
+ * 所以「無法確認」時不會對使用者宣稱他是一般帳號。
+ * 結果綁定它查的 uid：uid 一變，舊 uid 晚到的結果不會被採用（即使中間沒有經過未登入）。
+ */
+export function useRegularAccount(uid: string | null | undefined): boolean {
+  const [result, setResult] = useState<{ uid: string; regular: boolean } | null>(null);
+
+  useEffect(() => {
+    if (uid == null) {
+      setResult(null);
+      return undefined;
+    }
+    const watched: string = uid;
+    let active = true;
+    let version = 0;
+
+    async function check(): Promise<void> {
+      const mine = ++version;
+      let regular = false;
+      try {
+        regular = (await inspectQaAccount(watched)).kind === 'regular';
+      } catch {
+        regular = false;
+      }
+      if (active && mine === version) setResult({ uid: watched, regular });
+    }
+
+    const unsubscribe = on('auth:changed', ({ uid: changedUid }) => {
+      if (!active) return;
+      version += 1;
+      // 事件上的 uid 和目前傳入的不同：先撤銷舊結果，等呼叫端把新 uid 傳進來再查。
+      if (changedUid !== watched) {
+        setResult(null);
+        return;
+      }
+      check().catch(() => undefined);
+    });
+
+    // 訂閱後補查，避免 render 到 effect 之間的事件留下舊狀態。
+    check().catch(() => undefined);
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [uid]);
+
+  return uid != null && result !== null && result.uid === uid && result.regular;
 }

@@ -3,6 +3,8 @@
   "lede": "仅供内部测试。请输入临时密码并选择测试身份。",
   "notice": "QA 身份会写入正式数据库，数据名称皆以『QA測試-』开头。请勿使用真实个人资料。",
   "footnote": "此页不在菜单中，仅限持有临时密码者使用。",
+  "switchNotice": "当前已登录为「{name}」。登录 QA 会切换到 QA 账号，原账号会退出登录。",
+  "switchNoticeNoName": "当前已登录普通账号。登录 QA 会切换到 QA 账号，原账号会退出登录。",
   "password.label": "临时密码",
   "password.placeholder": "请输入临时密码",
   "password.show": "显示",

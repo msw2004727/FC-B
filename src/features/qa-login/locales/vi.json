@@ -3,6 +3,8 @@
   "lede": "Chỉ dùng cho kiểm thử nội bộ. Nhập mật khẩu tạm và chọn một danh tính kiểm thử.",
   "notice": "Danh tính QA sẽ được ghi vào cơ sở dữ liệu chính thức. Tên dữ liệu đều bắt đầu bằng 『QA測試-』. Đừng dùng thông tin cá nhân thật.",
   "footnote": "Trang này không có trong menu. Chỉ người có mật khẩu tạm mới dùng được.",
+  "switchNotice": "Bạn đang đăng nhập với tên “{name}”. Đăng nhập QA sẽ chuyển sang tài khoản QA và đăng xuất tài khoản hiện tại.",
+  "switchNoticeNoName": "Bạn đang đăng nhập bằng tài khoản thường. Đăng nhập QA sẽ chuyển sang tài khoản QA và đăng xuất tài khoản hiện tại.",
   "password.label": "Mật khẩu tạm",
   "password.placeholder": "Nhập mật khẩu tạm",
   "password.show": "Hiện",

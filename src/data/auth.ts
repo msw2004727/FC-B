@@ -226,7 +226,78 @@ export interface QaClaims {
   exp: number | null;
 }
 
-/** QA 測試模式登入：呼叫 issueQaTestToken → signInWithCustomToken。密碼不落地（見檔頭規則）。 */
+// 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源與主題等與帳號無關的設定。
+const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
+const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
+
+/** 換帳號前拍下的帳號相關 localStorage（key → 當時的值）。 */
+export type AccountLocalSnapshot = ReadonlyMap<string, string | null>;
+
+/** 目前 localStorage 內屬於帳號的 key 與值；儲存空間不可用回空表。 */
+export function snapshotAccountLocalState(): AccountLocalSnapshot {
+  const snapshot = new Map<string, string | null>();
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (
+        ACCOUNT_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix)) ||
+        ACCOUNT_STORAGE_EXACT_KEYS.includes(key)
+      ) {
+        snapshot.set(key, localStorage.getItem(key));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return snapshot;
+}
+
+/**
+ * 清掉上一位使用者殘留的本機帳號資料；signOutQa 與 QA 登入切換帳號共用。
+ * 不帶參數＝清掉此刻所有帳號相關 key（登出）。
+ * 帶 snapshot＝只清「快照時存在、且現在值沒被改寫」的 key：換帳號時 Firebase 的觀察者可能在
+ * signInWithCustomToken 回傳前就觸發，新帳號當下寫入的同前綴 key（或改寫同名 key）不會被誤清。
+ * sessionStorage `_lineLoginRetryCount` 兩種模式都清。
+ * 儲存空間不可用或單一 key 移除失敗都靜默略過（其餘 key 照清）。
+ */
+export function clearAccountLocalState(snapshot?: AccountLocalSnapshot): void {
+  let targets: string[] = [];
+  try {
+    if (snapshot === undefined) {
+      targets = Object.keys(localStorage).filter(
+        (key) =>
+          ACCOUNT_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix)) ||
+          ACCOUNT_STORAGE_EXACT_KEYS.includes(key),
+      );
+    } else {
+      for (const [key, value] of snapshot) {
+        if (localStorage.getItem(key) === value) targets.push(key);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  for (const key of targets) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    sessionStorage.removeItem('_lineLoginRetryCount');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * QA 測試模式登入：呼叫 issueQaTestToken → signInWithCustomToken。密碼不落地（見檔頭規則）。
+ * 登入前若**確認**是非 QA 帳號（一般 LINE 帳號），成功後才清掉該帳號殘留的本機資料（clearAccountLocalState）；
+ * 登入前帳號狀態讀不到（unknown）時保守不清理，QA 登入照常完成——殘留的 key 會在日後 signOutQa 時清掉。
+ * 密碼錯誤、伺服器拒絕或 signInWithCustomToken 失敗時，原帳號與它的本機資料一律不動。
+ */
 export async function signInWithQa(password: string, persona: string): Promise<AuthUser> {
   try {
     if (password === '' || persona === '') {
@@ -239,8 +310,14 @@ export async function signInWithQa(password: string, persona: string): Promise<A
     }
 
     const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
+    // 伺服器已接受密碼；此刻 currentUser 仍是登入前的帳號，換人前先確認它是不是一般帳號，
+    // 並拍下它的帳號相關 key（之後只清這些，新帳號在觀察者回呼中寫入的不會被誤清）。
+    const previous = ctx.auth.currentUser;
+    const previousStatus = previous != null ? await inspectQaAccount(previous.uid) : null;
+    const leftover = previousStatus?.kind === 'regular' ? snapshotAccountLocalState() : null;
     const credential = await authMod.signInWithCustomToken(ctx.auth, customToken);
     const user = credential.user;
+    if (leftover !== null) clearAccountLocalState(leftover);
     emitAuth(user.uid);
     return {
       uid: user.uid,
@@ -253,43 +330,69 @@ export async function signInWithQa(password: string, persona: string): Promise<A
 }
 
 /**
- * 目前登入者的 QA 狀態；未登入或 claims.qa !== true 回 null。不強制刷新 token。
- * 有帶 expectedUid 時，讀取前與 getIdTokenResult 之後都必須仍是該 uid。
+ * 目前登入者的 QA 狀態，四種：
+ * - none：沒有登入者；
+ * - qa：claims.qa === true，附 claims；
+ * - regular：成功讀到 token claims，且確認 claims.qa !== true（一般帳號）；
+ * - unknown：讀不到——getFirebase／getIdTokenResult 拋錯、uid 與 expectedUid 不符、讀取途中換人。
+ * 呼叫端要「確認是一般帳號才動作」時只能認 regular，unknown 不得當成一般帳號。
+ */
+export type QaAccountStatus =
+  | { kind: 'none' }
+  | { kind: 'qa'; claims: QaClaims }
+  | { kind: 'regular' }
+  | { kind: 'unknown' };
+
+/**
+ * 讀目前登入者的 QA 狀態。不強制刷新 token。
+ * 有帶 expectedUid 時，讀取前與 getIdTokenResult 之後都必須仍是該 uid（否則 unknown）。
  * 沒帶參數時不核對 uid。
  */
-export async function readQaClaims(expectedUid?: string): Promise<QaClaims | null> {
+export async function inspectQaAccount(expectedUid?: string): Promise<QaAccountStatus> {
   try {
     const ctx = await getFirebase();
     const currentUser = ctx.auth.currentUser;
-    if (!currentUser) return null;
-    if (expectedUid !== undefined && currentUser.uid !== expectedUid) return null;
+    if (!currentUser) return { kind: 'none' };
+    if (expectedUid !== undefined && currentUser.uid !== expectedUid) return { kind: 'unknown' };
 
     const { claims } = await currentUser.getIdTokenResult();
     if (
       ctx.auth.currentUser !== currentUser ||
-      (expectedUid !== undefined && currentUser.uid !== expectedUid) ||
-      claims.qa !== true
+      (expectedUid !== undefined && currentUser.uid !== expectedUid)
     ) {
-      return null;
+      return { kind: 'unknown' };
     }
+    if (claims.qa !== true) return { kind: 'regular' };
 
     return {
-      persona:
-        typeof claims.qaPersona === 'string' && claims.qaPersona.length > 0
-          ? claims.qaPersona
-          : null,
-      agent:
-        typeof claims.qaAgent === 'string' && claims.qaAgent.length > 0
-          ? claims.qaAgent
-          : null,
-      exp:
-        typeof claims.qaExp === 'number' && Number.isFinite(claims.qaExp)
-          ? claims.qaExp
-          : null,
+      kind: 'qa',
+      claims: {
+        persona:
+          typeof claims.qaPersona === 'string' && claims.qaPersona.length > 0
+            ? claims.qaPersona
+            : null,
+        agent:
+          typeof claims.qaAgent === 'string' && claims.qaAgent.length > 0
+            ? claims.qaAgent
+            : null,
+        exp:
+          typeof claims.qaExp === 'number' && Number.isFinite(claims.qaExp)
+            ? claims.qaExp
+            : null,
+      },
     };
   } catch {
-    return null;
+    return { kind: 'unknown' };
   }
+}
+
+/**
+ * 目前登入者的 QA claims；未登入、不是 QA、或任何讀不到的情況一律回 null。
+ * 需要分辨「確認不是 QA」與「讀不到」時改用 inspectQaAccount。
+ */
+export async function readQaClaims(expectedUid?: string): Promise<QaClaims | null> {
+  const status = await inspectQaAccount(expectedUid);
+  return status.kind === 'qa' ? status.claims : null;
 }
 
 /**
@@ -306,30 +409,7 @@ export async function signOutQa(expectedUid: string): Promise<boolean> {
   try {
     await signOut();
   } finally {
-    // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源。
-    const prefixes = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
-    const exactKeys = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
-
-    try {
-      const keys = Object.keys(localStorage);
-      for (const key of keys) {
-        if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
-          try {
-            localStorage.removeItem(key);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-
-    try {
-      sessionStorage.removeItem('_lineLoginRetryCount');
-    } catch {
-      /* ignore */
-    }
+    clearAccountLocalState();
   }
 
   return true;

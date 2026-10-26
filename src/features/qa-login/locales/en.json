@@ -3,6 +3,8 @@
   "lede": "For internal testing only. Enter the temporary password and choose a test identity.",
   "notice": "QA identities are written to the production database. Record names start with 『QA測試-』. Do not use real personal information.",
   "footnote": "This page is not in the menu. Only people with the temporary password can use it.",
+  "switchNotice": "You are currently signed in as “{name}”. Signing in to QA switches to the QA account and signs out your current account.",
+  "switchNoticeNoName": "You are currently signed in with a regular account. Signing in to QA switches to the QA account and signs out your current account.",
   "password.label": "Temporary password",
   "password.placeholder": "Enter the temporary password",
   "password.show": "Show",

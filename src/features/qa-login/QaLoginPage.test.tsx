@@ -1,17 +1,28 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { emit } from '@/core/events';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
+import { LOCALES } from '@/i18n/locales';
+import type { ViewerView } from '@/features/profile/data/viewer';
 
 const SECRET = 'pw-secret-123';
 
-const { signInWithQaMock, routeMock } = vi.hoisted(() => ({
+const { signInWithQaMock, inspectQaAccountMock, useViewerMock, routeMock } = vi.hoisted(() => ({
   signInWithQaMock: vi.fn(),
+  inspectQaAccountMock: vi.fn(),
+  useViewerMock: vi.fn(),
   routeMock: vi.fn(),
 }));
 
 vi.mock('@/data/auth', () => ({
   signInWithQa: (...args: unknown[]) => signInWithQaMock(...args),
+  inspectQaAccount: (...args: unknown[]) => inspectQaAccountMock(...args),
+  readQaClaims: vi.fn(async () => null),
+}));
+
+vi.mock('@/features/profile/data/viewer', () => ({
+  useViewer: () => useViewerMock(),
 }));
 
 vi.mock('preact-iso', async () => {
@@ -155,12 +166,34 @@ function assertSecretOutsideDom(secret: string): void {
   expect(JSON.stringify(history.state)).not.toContain(secret);
 }
 
+function viewerOf(uid: string | null, displayName: string | null): ViewerView {
+  return {
+    uid,
+    teamIds: new Set<string>(),
+    hasPermission: () => false,
+    roleLevel: 0,
+    role: uid === null ? 'guest' : 'user',
+    displayName,
+    pictureUrl: null,
+    capabilities: [],
+  };
+}
+
+/** 「目前已登入…會切換到 QA 帳號」提示（表單上方的 role=status 區域）；沒有時回 null。 */
+function switchNotice(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[role="status"] .qa-login__notice');
+}
+
 beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   document.head.querySelectorAll('meta[name="robots"]').forEach((node) => node.remove());
   history.replaceState(null, '', '/qa-login');
   signInWithQaMock.mockReset();
+  inspectQaAccountMock.mockReset();
+  inspectQaAccountMock.mockResolvedValue({ kind: 'regular' });
+  useViewerMock.mockReset();
+  useViewerMock.mockReturnValue(viewerOf(null, null));
   routeMock.mockReset();
   _setDictLoaderForTest(null);
   await setLocale('zh-TW');
@@ -638,4 +671,329 @@ describe('QaLoginPage', () => {
     expect(hidden).not.toBeNull();
     expect(hidden?.textContent).toBe('隱藏');
   });
+});
+
+describe('QaLoginPage 已用一般帳號登入時的切換提示（T-047）', () => {
+  const REGULAR_UID = 'U-regular-secret-uid-0001';
+  const QA_STATUS = {
+    kind: 'qa',
+    claims: { persona: 'captain', agent: 'agent-1', exp: 1 },
+  } as const;
+
+  it('一般登入者（uid 有值、確認不是 QA）→ 顯示含名稱的提示，沿用既有 notice 樣式，不含 uid', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    inspectQaAccountMock.mockResolvedValue({ kind: 'regular' });
+    mountPage();
+
+    await waitFor(() => {
+      expect(switchNotice()).not.toBeNull();
+    });
+    const notice = switchNotice();
+    expect(notice?.tagName).toBe('P');
+    expect(notice?.classList.contains('qa-login__notice')).toBe(true);
+    expect(notice?.textContent).toBe('目前已登入為「小明」。登入 QA 會切換到 QA 帳號，原帳號會登出。');
+    expect(inspectQaAccountMock).toHaveBeenCalledWith(REGULAR_UID);
+    expect(notice?.outerHTML).not.toContain(REGULAR_UID);
+    expect(document.body.innerHTML).not.toContain(REGULAR_UID);
+  });
+
+  it('名稱是空字串或全空白 → 改用不帶名稱的句子', async () => {
+    for (const name of [null, '', '   ']) {
+      cleanup();
+      useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, name));
+      mountPage();
+      await waitFor(() => {
+        expect(switchNotice()).not.toBeNull();
+      });
+      expect(switchNotice()?.textContent).toBe(
+        '目前已登入一般帳號。登入 QA 會切換到 QA 帳號，原帳號會登出。',
+      );
+    }
+  });
+
+  it('名稱含角括號等字元時以純文字呈現，不產生 HTML 節點', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '<img src=x onerror=alert(1)>'));
+    mountPage();
+    await waitFor(() => {
+      expect(switchNotice()).not.toBeNull();
+    });
+    expect(switchNotice()?.querySelector('img')).toBeNull();
+    expect(switchNotice()?.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('未登入（uid 為 null）→ 不顯示，也不去讀 QA 狀態', async () => {
+    useViewerMock.mockReturnValue(viewerOf(null, null));
+    mountPage();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(switchNotice()).toBeNull();
+    expect(inspectQaAccountMock).not.toHaveBeenCalled();
+  });
+
+  it('已經是 QA 登入者（claims.qa）→ 不顯示', async () => {
+    useViewerMock.mockReturnValue(viewerOf('uid-qa-1', 'QA測試-隊長'));
+    inspectQaAccountMock.mockResolvedValue(QA_STATUS);
+    mountPage();
+    await waitFor(() => {
+      expect(inspectQaAccountMock).toHaveBeenCalledWith('uid-qa-1');
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(switchNotice()).toBeNull();
+  });
+
+  it('讀不到 QA 狀態（unknown：讀取失敗、uid 不符、讀取途中換人）或沒有登入者（none）→ 不顯示，不宣稱他是一般帳號', async () => {
+    for (const status of [{ kind: 'unknown' }, { kind: 'none' }]) {
+      cleanup();
+      inspectQaAccountMock.mockReset();
+      inspectQaAccountMock.mockResolvedValue(status);
+      useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+      mountPage();
+      await waitFor(() => {
+        expect(inspectQaAccountMock).toHaveBeenCalledWith(REGULAR_UID);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(switchNotice()).toBeNull();
+    }
+
+    cleanup();
+    inspectQaAccountMock.mockReset();
+    inspectQaAccountMock.mockRejectedValue(new Error('unexpected'));
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    mountPage();
+    await waitFor(() => {
+      expect(inspectQaAccountMock).toHaveBeenCalledWith(REGULAR_UID);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(switchNotice()).toBeNull();
+  });
+
+  it('QA 狀態還在讀取時先不顯示（避免 QA 登入者看到一閃而過的提示），讀完確認不是 QA 才出現', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    let resolveStatus: (value: { kind: 'regular' }) => void = () => undefined;
+    inspectQaAccountMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStatus = resolve;
+        }),
+    );
+    mountPage();
+    await waitFor(() => {
+      expect(inspectQaAccountMock).toHaveBeenCalled();
+    });
+    expect(switchNotice()).toBeNull();
+
+    await act(async () => {
+      resolveStatus({ kind: 'regular' });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(switchNotice()).not.toBeNull();
+    });
+  });
+
+  it('登入狀態改變：一般帳號登出後提示消失；QA 登入後提示消失', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    const view = render(<QaLoginPage />);
+    await waitFor(() => {
+      expect(switchNotice()).not.toBeNull();
+    });
+
+    useViewerMock.mockReturnValue(viewerOf(null, null));
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+      view.rerender(<QaLoginPage />);
+    });
+    await waitFor(() => {
+      expect(switchNotice()).toBeNull();
+    });
+
+    useViewerMock.mockReturnValue(viewerOf('uid-qa-1', 'QA測試-隊長'));
+    inspectQaAccountMock.mockResolvedValue(QA_STATUS);
+    await act(async () => {
+      emit('auth:changed', { uid: 'uid-qa-1' });
+      view.rerender(<QaLoginPage />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(switchNotice()).toBeNull();
+  });
+
+  for (const withEvent of [true, false]) {
+    it(`一般帳號直接切成 QA 帳號（中間沒有經過未登入；${withEvent ? '有' : '沒有'} auth:changed 事件）→ 提示消失，QA 狀態還沒查完也不沿用舊結果`, async () => {
+      useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+      const view = render(<QaLoginPage />);
+      await waitFor(() => {
+        expect(switchNotice()).not.toBeNull();
+      });
+
+      // QA 帳號的狀態還沒查完：舊帳號的「是一般帳號」結果不能沿用到新的 uid 上。
+      let resolveQa: (value: typeof QA_STATUS) => void = () => undefined;
+      inspectQaAccountMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveQa = resolve;
+          }),
+      );
+      useViewerMock.mockReturnValue(viewerOf('uid-qa-1', 'QA測試-隊長'));
+      await act(async () => {
+        if (withEvent) emit('auth:changed', { uid: 'uid-qa-1' });
+        view.rerender(<QaLoginPage />);
+      });
+      await waitFor(() => {
+        expect(inspectQaAccountMock).toHaveBeenCalledWith('uid-qa-1');
+      });
+      expect(switchNotice()).toBeNull();
+
+      await act(async () => {
+        resolveQa(QA_STATUS);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(switchNotice()).toBeNull();
+    });
+  }
+
+  it('舊帳號的 QA 狀態晚到，且 uid 已直接換成 QA 帳號 → 舊結果不採用，提示不會殘留', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    let resolveOld: (value: { kind: 'regular' }) => void = () => undefined;
+    inspectQaAccountMock.mockImplementation((uid?: string) =>
+      uid === REGULAR_UID
+        ? new Promise((resolve) => {
+            resolveOld = resolve;
+          })
+        : Promise.resolve(QA_STATUS),
+    );
+    const view = render(<QaLoginPage />);
+    await waitFor(() => {
+      expect(inspectQaAccountMock).toHaveBeenCalledWith(REGULAR_UID);
+    });
+    expect(switchNotice()).toBeNull();
+
+    useViewerMock.mockReturnValue(viewerOf('uid-qa-1', 'QA測試-隊長'));
+    await act(async () => {
+      emit('auth:changed', { uid: 'uid-qa-1' });
+      view.rerender(<QaLoginPage />);
+    });
+    await waitFor(() => {
+      expect(inspectQaAccountMock).toHaveBeenCalledWith('uid-qa-1');
+    });
+
+    await act(async () => {
+      resolveOld({ kind: 'regular' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(switchNotice()).toBeNull();
+  });
+
+  it('提示是 role=status 的即時區域內容；沒有提示時區域仍在但是空的', async () => {
+    const view = render(<QaLoginPage />);
+    const region = document.querySelector('[role="status"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute('aria-live')).toBe('polite');
+    expect(region?.childElementCount).toBe(0);
+
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    await act(async () => {
+      view.rerender(<QaLoginPage />);
+    });
+    await waitFor(() => {
+      expect(region?.querySelector('.qa-login__notice')).not.toBeNull();
+    });
+  });
+
+  it('QA 登入失敗時提示仍在、不導頁；登入成功時照舊導向首頁', async () => {
+    useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, '小明'));
+    const { input, form } = mountPage();
+    await waitFor(() => {
+      expect(switchNotice()).not.toBeNull();
+    });
+
+    signInWithQaMock.mockRejectedValueOnce(new Error('[auth] QA login failed'));
+    fillPassword(input, SECRET);
+    await act(async () => {
+      submitForm(form);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+    expect(routeMock).not.toHaveBeenCalled();
+    expect(switchNotice()).not.toBeNull();
+
+    signInWithQaMock.mockResolvedValueOnce({ uid: 'uid-qa-1', displayName: null, pictureUrl: null });
+    fillPassword(input, SECRET);
+    await act(async () => {
+      submitForm(form);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(routeMock).toHaveBeenCalledWith('/');
+    });
+  });
+
+  it('七份 locales/*.json 都有 switchNotice（含 {name}）與 switchNoticeNoName（不含 {name}），且都非空', () => {
+    const dictionaries = import.meta.glob<Record<string, unknown>>('./locales/*.json', {
+      eager: true,
+      import: 'default',
+    });
+    const byLocale = new Map<string, Record<string, unknown>>();
+    for (const [path, dict] of Object.entries(dictionaries)) {
+      const locale = path.replace('./locales/', '').replace('.json', '');
+      byLocale.set(locale, dict);
+    }
+    expect([...byLocale.keys()].sort()).toEqual([...LOCALES].sort());
+
+    for (const locale of LOCALES) {
+      const dict = byLocale.get(locale);
+      const withName = dict?.switchNotice;
+      const noName = dict?.switchNoticeNoName;
+      expect(typeof withName, `${locale} switchNotice`).toBe('string');
+      expect(typeof noName, `${locale} switchNoticeNoName`).toBe('string');
+      expect((withName as string).trim().length, `${locale} switchNotice 非空`).toBeGreaterThan(0);
+      expect((noName as string).trim().length, `${locale} switchNoticeNoName 非空`).toBeGreaterThan(0);
+      expect(withName as string, `${locale} switchNotice 含 {name}`).toContain('{name}');
+      expect(noName as string, `${locale} switchNoticeNoName 不含 {name}`).not.toContain('{name}');
+      expect(noName as string, `${locale} switchNoticeNoName 不含大括號`).not.toMatch(/[{}]/);
+      expect((withName as string).match(/\{[^}]*\}/g), `${locale} 只有 {name} 一個參數`).toEqual(['{name}']);
+    }
+  });
+
+  it('七個語系都能渲染含名稱與不含名稱兩種提示，且渲染結果等於各語系 JSON 的文案', async () => {
+    const dictionaries = import.meta.glob<Record<string, string>>('./locales/*.json', {
+      eager: true,
+      import: 'default',
+    });
+    for (const locale of LOCALES) {
+      const dict = dictionaries[`./locales/${locale}.json`];
+      if (dict === undefined) throw new Error(`缺少 ${locale}.json`);
+      cleanup();
+      await setLocale(locale);
+
+      useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, 'Alex'));
+      mountPage();
+      await waitFor(() => {
+        expect(switchNotice()).not.toBeNull();
+      });
+      expect(switchNotice()?.textContent).toBe(dict.switchNotice?.replace('{name}', 'Alex'));
+      cleanup();
+
+      useViewerMock.mockReturnValue(viewerOf(REGULAR_UID, null));
+      mountPage();
+      await waitFor(() => {
+        expect(switchNotice()).not.toBeNull();
+      });
+      expect(switchNotice()?.textContent).toBe(dict.switchNoticeNoName);
+    }
+  }, 60_000);
 });
