@@ -453,7 +453,33 @@ describe('HomePage 橫幅圖：background-image 畫面＋第一張動態 preload
   const preloads = (): HTMLLinkElement[] =>
     Array.from(document.head.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="image"]'));
 
-  it('畫面沒有 <img>，載入後用 slide 的 inline background-image；第一張在 <head> 加高優先權 preload，卸載後移除', async () => {
+  /** 替身：記下 `new Image()` 的網址與回呼，測試用 onload 手動結算。 */
+  const loaders: Array<{ url: string; ref: FakeImage }> = [];
+  class FakeImage {
+    decoding = '';
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(url: string) {
+      loaders.push({ url, ref: this });
+    }
+  }
+  const settle = async (url: string): Promise<void> => {
+    const entry = loaders.find((l) => l.url === url);
+    await act(async () => {
+      entry?.ref.onload?.();
+    });
+  };
+
+  beforeEach(() => {
+    loaders.length = 0;
+    vi.stubGlobal('Image', FakeImage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    for (const link of preloads()) link.remove();
+  });
+
+  it('畫面沒有 <img>；第一張在 <head> 加高優先權 preload；圖片載入完成後 slide 用 inline background-image；卸載後 link 移除', async () => {
     vi.mocked(loadActiveBanners).mockResolvedValue([
       banner({ id: 'b1', title: 'A', image: 'https://example.com/home-1.webp' }),
       banner({ id: 'b2', title: 'B', image: 'https://example.com/home-2.webp' }),
@@ -463,8 +489,8 @@ describe('HomePage 橫幅圖：background-image 畫面＋第一張動態 preload
     await waitFor(() => expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(2));
 
     expect(container.querySelector('#banner-track img')).toBeNull();
-    const slides = Array.from(container.querySelectorAll<HTMLElement>('#banner-track .banner-slide'));
-    expect(slides.map((s) => s.getAttribute('data-bg-src'))).toEqual([
+    const slides = (): HTMLElement[] => Array.from(container.querySelectorAll<HTMLElement>('#banner-track .banner-slide'));
+    expect(slides().map((s) => s.getAttribute('data-bg-src'))).toEqual([
       'https://example.com/home-1.webp',
       'https://example.com/home-2.webp',
     ]);
@@ -472,6 +498,14 @@ describe('HomePage 橫幅圖：background-image 畫面＋第一張動態 preload
     const links = preloads();
     expect(links.map((l) => l.getAttribute('href'))).toEqual(['https://example.com/home-1.webp']);
     expect(links[0]?.getAttribute('fetchpriority')).toBe('high');
+
+    // 載入前：載入中壓暗、沒有背景圖；載入完成後：取消壓暗、inline background-image 指向同一個網址
+    expect(slides()[0]?.classList.contains('banner-slide--loading')).toBe(true);
+    expect(slides()[0]?.getAttribute('style') ?? '').not.toContain('background-image');
+    await settle('https://example.com/home-1.webp');
+    expect(slides()[0]?.classList.contains('banner-slide--loading')).toBe(false);
+    expect(slides()[0]?.getAttribute('data-banner-load-state')).toBe('done');
+    expect(slides()[0]?.getAttribute('style')).toContain('background-image: url("https://example.com/home-1.webp")');
 
     unmount();
     expect(preloads()).toHaveLength(0);
@@ -483,6 +517,66 @@ describe('HomePage 橫幅圖：background-image 畫面＋第一張動態 preload
 
     render(<HomePage />);
     expect(preloads().map((l) => l.getAttribute('href'))).toEqual(['https://example.com/snap-1.webp']);
+  });
+
+  it('快照先畫、正式資料回來後第一張的網址不同：舊的 preload 被移除、換成新的第一張（不累積），卸載後全部移除', async () => {
+    seedBanners([banner({ id: 'b1', title: 'A', image: 'https://example.com/snap-first.webp' })]);
+    const pending = deferred<BannerDoc[]>();
+    vi.mocked(loadActiveBanners).mockImplementation(async (deps?: BannerDeps) => {
+      const list = await pending.promise;
+      deps?.onResult?.({ fromCache: false });
+      return list;
+    });
+
+    const { unmount } = render(<HomePage />);
+    expect(preloads().map((l) => l.getAttribute('href'))).toEqual(['https://example.com/snap-first.webp']);
+
+    pending.resolve([
+      banner({ id: 'b9', title: 'Fresh', image: 'https://example.com/fresh-first.webp' }),
+      banner({ id: 'b1', title: 'A', image: 'https://example.com/snap-first.webp' }),
+    ]);
+    await waitFor(() => expect(preloads().map((l) => l.getAttribute('href'))).toEqual(['https://example.com/fresh-first.webp']));
+
+    unmount();
+    expect(preloads()).toHaveLength(0);
+  });
+
+  it('帶 query 的網址：href 與 data-bg-src 一字不差（含 ? 與 &）', async () => {
+    const url = 'https://example.com/a.webp?alt=media&token=ab%2Fcd&v=2';
+    vi.mocked(loadActiveBanners).mockResolvedValue([banner({ id: 'b1', title: 'A', image: url })]);
+
+    const { container } = render(<HomePage />);
+    await waitFor(() => expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(1));
+    expect(preloads().map((l) => l.getAttribute('href'))).toEqual([url]);
+    expect(container.querySelector('#banner-track .banner-slide')?.getAttribute('data-bg-src')).toBe(url);
+  });
+
+  it('非 http(s) 的圖片網址：不加 preload、不載入', async () => {
+    vi.mocked(loadActiveBanners).mockResolvedValue([
+      banner({ id: 'b1', title: 'A', image: 'javascript:alert(1)' }),
+      banner({ id: 'b2', title: 'B', image: 'data:image/png;base64,AAAA' }),
+    ]);
+
+    const { container } = render(<HomePage />);
+    await waitFor(() => expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(2));
+    expect(preloads()).toHaveLength(0);
+    expect(loaders).toHaveLength(0);
+  });
+
+  it('只移除自己加的 link：外部本來就有的 preload 不受影響', async () => {
+    const external = document.createElement('link');
+    external.setAttribute('rel', 'preload');
+    external.setAttribute('as', 'image');
+    external.setAttribute('href', 'https://example.com/external.webp');
+    document.head.appendChild(external);
+    // 用沒載入過的網址（先前案例載入成功過的網址會命中共用紀錄、本來就不加 preload）
+    vi.mocked(loadActiveBanners).mockResolvedValue([banner({ id: 'b1', title: 'A', image: 'https://example.com/external-case-1.webp' })]);
+
+    const { container, unmount } = render(<HomePage />);
+    await waitFor(() => expect(container.querySelectorAll('#banner-track .banner-slide').length).toBe(1));
+    expect(preloads()).toHaveLength(2);
+    unmount();
+    expect(preloads()).toEqual([external]);
   });
 
   it('沒有圖片網址的橫幅仍走漸層底色，不產生 <img>，也沒有 preload', async () => {

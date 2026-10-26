@@ -17,7 +17,10 @@ const OTHER_IMAGE_TIMEOUT_MS = 3500;
  * 三種畫面和原本一致：都取消壓暗；loaded、timeout 設背景圖，failed 不設（壞網址的背景圖本來就什麼都不畫，只剩暗色遮罩）。
  */
 type ImageStatus = 'loaded' | 'failed' | 'timeout';
-/** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記（曾成功後又失敗的會被撤掉），下次進來重新嘗試。 */
+/**
+ * 本次開啟期間已確認載入成功的圖片（切頁回來略過淡入、不重載）；失敗與逾時不記，下次進來重新嘗試一次。
+ * 只由「還活著」的載入工作寫入（見 loadImage）；語意是「曾載入成功」，不偵測之後網址是否失效（原本也沒有）。
+ */
 const imageReadyCache: Record<string, ImageStatus> = {};
 /** 成功紀錄的上限：超過時丟掉最舊的（只是那張圖下次進來會重做一次淡入，不影響正確性）。 */
 const IMAGE_READY_CACHE_MAX = 100;
@@ -32,6 +35,21 @@ function rememberLoaded(url: string): void {
 
 function timeoutFor(index: number): number {
   return index === 0 ? FIRST_IMAGE_TIMEOUT_MS : OTHER_IMAGE_TIMEOUT_MS;
+}
+
+/** 一個網址的載入工作：alive＝還有效（卸載或網址離開清單就作廢）；settled＝已有載入成功／失敗的結果（逾時不算）。 */
+interface LoadJob {
+  alive: boolean;
+  settled: boolean;
+  timer: number | null;
+}
+
+function cancelJob(job: LoadJob): void {
+  job.alive = false;
+  if (job.timer !== null) {
+    window.clearTimeout(job.timer);
+    job.timer = null;
+  }
 }
 
 export interface HomeBannerCarouselProps {
@@ -54,9 +72,8 @@ export function HomeBannerCarousel({
   const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
-  /** 這個畫面已經開始載入的網址（同一個網址只載一次）與它們還沒結算的逾時計時。 */
-  const startedRef = useRef(new Set<string>());
-  const timeoutsRef = useRef(new Map<string, number>());
+  /** 這個畫面的載入工作（每個網址一個）。 */
+  const jobsRef = useRef(new Map<string, LoadJob>());
   const timerRef = useRef<number | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -77,42 +94,48 @@ export function HomeBannerCarousel({
     }
   }, [activeIndex, bannerCount]);
 
-  const markImage = useCallback((url: string, status: ImageStatus) => {
+  // 結算（只會被「還活著」的載入工作呼叫，見 loadImage）：成功寫進共用紀錄並更新本畫面；失敗只更新本畫面（不記）。
+  const markImage = useCallback((url: string, status: 'loaded' | 'failed') => {
     if (status === 'loaded') rememberLoaded(url);
-    // 曾經成功、後來失敗（例如圖片被換掉或刪除）：撤掉「已載入成功」的紀錄，下次進來才會重新嘗試。
-    else if (status === 'failed') delete imageReadyCache[url];
     setImageStatus((prev) => (prev[url] === status ? prev : { ...prev, [url]: status }));
   }, []);
 
   // 載入：圖片用 `new Image()` 載（和原本一樣），先載到才設背景圖；畫面本身仍是 slide 的 inline background-image，沒有 <img> 當畫面。
   // 第一張一開始就載；其餘只在「目前這張有結果（載好或確定失敗）」之後才載下一張——逾時（timeout）只是取消壓暗並設背景圖，
   // 圖片可能還在下載，這時再載下一張會跟它搶頻寬（慢網路最明顯）；使用者點圓點直接跳到某張時，只載那一張。
-  // 每個網址只載一次、各自一個逾時計時（載入時才啟動）：到時還沒有結果就標 timeout，之後載好／失敗再改成 loaded／failed。
-  // 失敗只結算一次（不重試、沒有重試迴圈），畫面維持原本的暗色遮罩。
+  //
+  // 載入工作的生命週期（每個網址一個工作，存在 jobsRef）：
+  // - 同一個網址在這個畫面只有一個工作（去重）；失敗只結算一次、不重試、沒有重試迴圈。
+  // - 工作在畫面卸載、或這個網址不在新的清單裡時作廢（cancelJob）：之後才回來的 onload／onerror／decode／逾時都不得寫共用紀錄或本地狀態
+  //   （否則舊工作會污染共用紀錄，讓新畫面以為載好了卻沒有結果）。網址換回來（A→B→A）時是新的工作，不沿用舊的。
+  // - 共用紀錄命中（這次開啟期間已載入成功過）就不重載，但必須把本地狀態同步成 loaded，新畫面才拿得到結果。
+  // 共用紀錄的語意是「這次開啟期間曾載入成功，可略過淡入」，不偵測之後網址是否失效（原本也沒有）；失敗不記，下次進來重新嘗試一次。
   const loadImage = useCallback(
     (url: string, timeoutMs: number) => {
-      if (!url || imageReadyCache[url] || startedRef.current.has(url)) return;
-      startedRef.current.add(url);
+      if (!url) return;
+      if (imageReadyCache[url]) {
+        setImageStatus((prev) => (prev[url] === 'loaded' ? prev : { ...prev, [url]: 'loaded' }));
+        return;
+      }
+      const jobs = jobsRef.current;
+      if (jobs.has(url)) return;
+      const job: LoadJob = { alive: true, settled: false, timer: null };
+      jobs.set(url, job);
       if (typeof Image === 'undefined') {
         setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
         return;
       }
-      const timers = timeoutsRef.current;
-      timers.set(
-        url,
-        window.setTimeout(() => {
-          timers.delete(url);
-          setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
-        }, timeoutMs),
-      );
-      let settled = false;
+      job.timer = window.setTimeout(() => {
+        job.timer = null;
+        if (!job.alive) return;
+        setImageStatus((prev) => (prev[url] ? prev : { ...prev, [url]: 'timeout' }));
+      }, timeoutMs);
       const settle = (status: 'loaded' | 'failed'): void => {
-        if (settled) return;
-        settled = true;
-        const timer = timers.get(url);
-        if (timer !== undefined) {
-          window.clearTimeout(timer);
-          timers.delete(url);
+        if (!job.alive || job.settled) return;
+        job.settled = true;
+        if (job.timer !== null) {
+          window.clearTimeout(job.timer);
+          job.timer = null;
         }
         markImage(url, status);
       };
@@ -130,11 +153,39 @@ export function HomeBannerCarousel({
     },
     [markImage],
   );
+  // 清單改變：不在新清單裡的網址，工作作廢並丟掉它的本地狀態（沒有成功紀錄的話），之後換回來才會重新開始；仍在清單裡的網址保留（去重）。
+  // 必須定義在下面兩個載入 effect 之前（同一輪 commit 依定義順序執行）。
   useEffect(() => {
-    const timers = timeoutsRef.current;
+    const present = new Set<string>();
+    for (const b of banners) {
+      const url = sanitizeHttpUrl(b.image);
+      if (url) present.add(url);
+    }
+    const jobs = jobsRef.current;
+    const dropped: string[] = [];
+    jobs.forEach((job, url) => {
+      if (present.has(url)) return;
+      cancelJob(job);
+      jobs.delete(url);
+      dropped.push(url);
+    });
+    if (dropped.length === 0) return;
+    setImageStatus((prev) => {
+      let next = prev;
+      for (const url of dropped) {
+        if (!(url in next) || imageReadyCache[url]) continue;
+        if (next === prev) next = { ...prev };
+        delete next[url];
+      }
+      return next;
+    });
+  }, [banners]);
+  // 卸載：全部作廢（清掉逾時計時，並讓還在途的回呼失效）。
+  useEffect(() => {
+    const jobs = jobsRef.current;
     return () => {
-      timers.forEach((t) => window.clearTimeout(t));
-      timers.clear();
+      jobs.forEach(cancelJob);
+      jobs.clear();
     };
   }, []);
   useEffect(() => {
