@@ -411,11 +411,13 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料�
     };
     const completed = getFilteredRecords(stats, 'completed', false);
     expect(completed.map((r) => r.name)).toEqual(['Real']);
-    // 另兩場只簽到一半 → 活動已結束且正式報名 → 未出席
+    // 另兩場只簽到一半、活動已結束且正式報名：
+    //  - CancelledIn：有效紀錄只剩簽退（簽到被 cancelled 排除）→ 沒有簽到 → 未出席
+    //  - RemovedOut：有效紀錄只剩簽到（簽退被 removed 排除）→ 有簽到沒簽退 → 未完成（T-039）
     const registered = getFilteredRecords(stats, 'registered', false);
     expect(registered.map((r) => [r.name, r._displayStatus])).toEqual([
       ['CancelledIn', 'missed'],
-      ['RemovedOut', 'missed'],
+      ['RemovedOut', 'incomplete'],
     ]);
   });
 
@@ -484,6 +486,138 @@ describe('getFilteredRecords（照 A _categorizeRecords 四種 filter；資料�
     const before = JSON.stringify(baseStats);
     getFilteredRecords(baseStats, 'all', false);
     expect(JSON.stringify(baseStats)).toBe(before);
+  });
+});
+
+// T-039：站長 2026-10-26 同意——已結束、正式報名、只簽到沒簽退者，報名分頁顯示「未完成」而不是「未出席」。
+// 刻意與 A（`_categorizeRecords` 一律 missed）不同；只改顯示分類，不改完成判定與任何統計。
+describe('只簽到沒簽退 → incomplete（T-039；沒簽到仍是 missed）', () => {
+  const attendedAll = (eventId: string): Record<string, unknown>[] => [
+    { eventId, uid: 'u1', type: 'checkin' },
+    { eventId, uid: 'u1', type: 'checkout' },
+  ];
+  const stats: UserStatsSnapshot = {
+    uid: 'u1',
+    activityRecords: [
+      actRec('eIn', 'registered', 'OnlyCheckin'),
+      actRec('eOut', 'registered', 'OnlyCheckout'),
+      actRec('eNone', 'registered', 'NoAttendance'),
+      actRec('eDone', 'registered', 'Done'),
+      actRec('eWait', 'waitlisted', 'WaitEndedCheckin'),
+      actRec('eOpen', 'registered', 'OpenCheckin'),
+      actRec('eOther', 'registered', 'OthersCheckin'),
+    ],
+    attendanceRecords: [
+      { eventId: 'eIn', uid: 'u1', type: 'checkin' },
+      { eventId: 'eOut', uid: 'u1', type: 'checkout' },
+      ...attendedAll('eDone'),
+      { eventId: 'eWait', uid: 'u1', type: 'checkin' },
+      { eventId: 'eOpen', uid: 'u1', type: 'checkin' },
+      // 別人（不同 uid）的簽到不能算在自己身上
+      { eventId: 'eOther', uid: 'someone-else', type: 'checkin' },
+    ],
+    events: {
+      eIn: { status: 'ended', date: '2026/01/07 19:00' },
+      eOut: { status: 'ended', date: '2026/01/06 19:00' },
+      eNone: { status: 'ended', date: '2026/01/05 19:00' },
+      eDone: { status: 'ended', date: '2026/01/04 19:00' },
+      eWait: { status: 'ended', date: '2026/01/03 19:00' },
+      eOpen: { status: 'open', date: '2026/01/02 19:00' },
+      eOther: { status: 'ended', date: '2026/01/01 19:00' },
+    },
+  };
+  const statusOf = (
+    filter: 'all' | 'registered' | 'completed' | 'cancelled',
+    name: string,
+    isPublic = false,
+  ): string | undefined | null => {
+    const found = getFilteredRecords(stats, filter, isPublic).find((r) => r.name === name);
+    return found ? (found._displayStatus ?? undefined) : null;
+  };
+
+  it('只簽到沒簽退（活動已結束、正式報名）→ incomplete', () => {
+    expect(statusOf('registered', 'OnlyCheckin')).toBe('incomplete');
+    expect(statusOf('all', 'OnlyCheckin')).toBe('incomplete');
+  });
+
+  it('只簽退沒簽到 → 仍是 missed', () => {
+    expect(statusOf('registered', 'OnlyCheckout')).toBe('missed');
+    expect(statusOf('all', 'OnlyCheckout')).toBe('missed');
+  });
+
+  it('完全沒簽到 → 仍是 missed', () => {
+    expect(statusOf('registered', 'NoAttendance')).toBe('missed');
+    expect(statusOf('all', 'NoAttendance')).toBe('missed');
+  });
+
+  it('別人（不同 uid）的簽到不算 → 仍是 missed', () => {
+    expect(statusOf('registered', 'OthersCheckin')).toBe('missed');
+  });
+
+  it('簽到＋簽退 → completed，完成判定不變（只出現在完成／全部，不在報名分頁）', () => {
+    expect(statusOf('completed', 'Done')).toBe('completed');
+    expect(statusOf('all', 'Done')).toBe('completed');
+    expect(statusOf('registered', 'Done')).toBeNull();
+    // 只簽到沒簽退的不算完成
+    expect(statusOf('completed', 'OnlyCheckin')).toBeNull();
+  });
+
+  it("filter='registered'：incomplete 與 missed 同在報名這一桶，依活動日期新到舊", () => {
+    const names = getFilteredRecords(stats, 'registered', false).map((r) => r.name);
+    expect(names).toEqual(['OnlyCheckin', 'OnlyCheckout', 'NoAttendance', 'OpenCheckin', 'OthersCheckin']);
+  });
+
+  it("filter='all'：incomplete／missed／completed 一起依活動日期新到舊（排序不變）", () => {
+    const result = getFilteredRecords(stats, 'all', false);
+    expect(result.map((r) => [r.name, r._displayStatus ?? null])).toEqual([
+      ['OnlyCheckin', 'incomplete'],
+      ['OnlyCheckout', 'missed'],
+      ['NoAttendance', 'missed'],
+      ['Done', 'completed'],
+      ['OpenCheckin', null],
+      ['OthersCheckin', 'missed'],
+    ]);
+  });
+
+  it('候補（waitlisted）活動已結束：即使有簽到也不顯示（waitlisted 不算應到，不變）', () => {
+    expect(statusOf('registered', 'WaitEndedCheckin')).toBeNull();
+    expect(statusOf('all', 'WaitEndedCheckin')).toBeNull();
+  });
+
+  it('活動進行中：有簽到沒簽退仍是一般報名中（沒有 _displayStatus，不變）', () => {
+    expect(statusOf('registered', 'OpenCheckin')).toBeUndefined();
+  });
+
+  it('公開名片仍隱藏報名中（incomplete 與 missed 都不出現）', () => {
+    for (const filter of ['all', 'registered'] as const) {
+      expect(getFilteredRecords(stats, filter, true).map((r) => r._displayStatus)).not.toContain(
+        'incomplete',
+      );
+      expect(getFilteredRecords(stats, filter, true).map((r) => r._displayStatus)).not.toContain(
+        'missed',
+      );
+    }
+    expect(getFilteredRecords(stats, 'registered', true)).toEqual([]);
+    expect(getFilteredRecords(stats, 'all', true).map((r) => r.name)).toEqual(['Done']);
+  });
+
+  it('只簽到、但同活動已取消後沒有重新報名（cancelled）→ 只出現在取消，不當 incomplete', () => {
+    const cancelledStats: UserStatsSnapshot = {
+      uid: 'u1',
+      activityRecords: [actRec('eC', 'cancelled', 'CancelledOnly')],
+      attendanceRecords: [{ eventId: 'eC', uid: 'u1', type: 'checkin' }],
+      events: { eC: { status: 'ended', date: '2026/01/01 19:00' } },
+    };
+    expect(getFilteredRecords(cancelledStats, 'registered', false)).toEqual([]);
+    expect(getFilteredRecords(cancelledStats, 'cancelled', false).map((r) => r.name)).toEqual([
+      'CancelledOnly',
+    ]);
+  });
+
+  it('不改輸入（純函式）', () => {
+    const before = JSON.stringify(stats);
+    getFilteredRecords(stats, 'all', false);
+    expect(JSON.stringify(stats)).toBe(before);
   });
 });
 
