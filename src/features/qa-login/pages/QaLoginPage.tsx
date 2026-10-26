@@ -3,7 +3,7 @@ import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { signInWithQa } from '@/data/auth';
-import { QA_PERSONA_KEYS, useQaSession } from '@/features/qa-login/data/qa-session';
+import { QA_PERSONA_KEYS, useRegularAccount } from '@/features/qa-login/data/qa-session';
 import { useViewer } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { Button } from '@/ui/Button';
@@ -44,10 +44,10 @@ export default function QaLoginPage(): JSX.Element {
   const [revealed, setRevealed] = useState(false);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
-  // 已用一般帳號登入（uid 有值、claims 確認不是 QA）時提示會切換帳號；QA 登入者、未登入、claims 讀取中都不提示。
+  // 已用一般帳號登入（uid 有值、claims 確認不是 QA）時提示會切換帳號；
+  // QA 登入者、未登入、claims 讀取中、讀不到（無法確認）都不提示。
   const viewer = useViewer();
-  const qaSession = useQaSession(viewer.uid);
-  const regularAccount = viewer.uid !== null && qaSession === null;
+  const regularAccount = useRegularAccount(viewer.uid);
   const regularName = viewer.displayName?.trim() ?? '';
 
   useEffect(() => {

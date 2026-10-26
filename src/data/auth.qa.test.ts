@@ -25,7 +25,14 @@ vi.mock('./firebase', () => ({
   shouldUseEmulator: () => false,
 }));
 
-import { clearAccountLocalState, readQaClaims, signInWithQa, signOutQa } from './auth';
+import {
+  clearAccountLocalState,
+  inspectQaAccount,
+  readQaClaims,
+  signInWithQa,
+  signOutQa,
+  snapshotAccountLocalState,
+} from './auth';
 
 const SECRET = 'pw-secret';
 const LEAK_SECRET = 'pw-secret-123';
@@ -611,6 +618,103 @@ describe('clearAccountLocalState（signOutQa 與 QA 切換帳號共用）', () =
     expect(() => clearAccountLocalState()).not.toThrow();
     keysSpy.mockRestore();
   });
+
+  it('第一個 key 的 removeItem 拋錯時，其餘 key 與 _lineLoginRetryCount 仍被清掉，無關的 key 不動', () => {
+    seedRegularAccountStorage();
+    const realRemove = Storage.prototype.removeItem;
+    let attempts = 0;
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      attempts += 1;
+      if (attempts === 1) throw new Error('storage-blocked-once');
+      realRemove.call(this, key);
+    });
+
+    expect(() => clearAccountLocalState()).not.toThrow();
+
+    const remaining = CLEARED_KEYS.filter((key) => localStorage.getItem(key) !== null);
+    expect(remaining).toHaveLength(1);
+    expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+    for (const key of UNRELATED_KEYS) {
+      expect(localStorage.getItem(key)).toBe(`keep-${key}`);
+    }
+  });
+
+  it('帶快照時只清快照時存在且值未改寫的 key；snapshotAccountLocalState 只收帳號相關 key', () => {
+    seedRegularAccountStorage();
+    const snapshot = snapshotAccountLocalState();
+    expect([...snapshot.keys()].sort()).toEqual([...CLEARED_KEYS].sort());
+    for (const key of UNRELATED_KEYS) {
+      expect(snapshot.has(key)).toBe(false);
+    }
+
+    localStorage.setItem('shub_ts_late', 'new-account'); // 快照之後才出現
+    localStorage.setItem('LIFFfoo', 'rewritten'); // 值被改寫
+    clearAccountLocalState(snapshot);
+
+    expect(localStorage.getItem('shub_ts_late')).toBe('new-account');
+    expect(localStorage.getItem('LIFFfoo')).toBe('rewritten');
+    expect(localStorage.getItem('shub_c_x')).toBeNull();
+    expect(localStorage.getItem('toosterx:auth:z')).toBeNull();
+    expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+  });
+});
+
+describe('inspectQaAccount：區分「確認非 QA」與「讀不到」', () => {
+  it('沒有登入者 → none', async () => {
+    authState.currentUser = null;
+    await expect(inspectQaAccount()).resolves.toEqual({ kind: 'none' });
+  });
+
+  it('claims.qa 為 true → qa，附 claims；readQaClaims 回同一份', async () => {
+    authState.currentUser = qaUser('uid-qa-1');
+    await expect(inspectQaAccount('uid-qa-1')).resolves.toEqual({
+      kind: 'qa',
+      claims: { persona: 'captain', agent: 'agent-1', exp: 1 },
+    });
+    await expect(readQaClaims('uid-qa-1')).resolves.toEqual({ persona: 'captain', agent: 'agent-1', exp: 1 });
+  });
+
+  it('成功讀到 claims 且 qa 不是嚴格的 true → regular（readQaClaims 仍回 null）', async () => {
+    for (const qa of [undefined, false, 'true', 1]) {
+      const claims: Record<string, unknown> = {};
+      if (qa !== undefined) claims.qa = qa;
+      authState.currentUser = { uid: 'U-line-owner', getIdTokenResult: () => Promise.resolve({ claims }) };
+      await expect(inspectQaAccount('U-line-owner')).resolves.toEqual({ kind: 'regular' });
+      await expect(readQaClaims('U-line-owner')).resolves.toBeNull();
+    }
+  });
+
+  it('讀取失敗、uid 不符、讀取途中換人、getFirebase 失敗 → 一律 unknown，不會被當成 regular', async () => {
+    authState.currentUser = {
+      uid: 'U-line-owner',
+      getIdTokenResult: () => Promise.reject(new Error('token-refresh-failed')),
+    };
+    await expect(inspectQaAccount('U-line-owner')).resolves.toEqual({ kind: 'unknown' });
+
+    authState.currentUser = regularUser('U-line-owner');
+    await expect(inspectQaAccount('U-other')).resolves.toEqual({ kind: 'unknown' });
+
+    authState.currentUser = {
+      uid: 'U-line-owner',
+      getIdTokenResult: () => {
+        authState.currentUser = regularUser('U-someone-else');
+        return Promise.resolve({ claims: {} });
+      },
+    };
+    await expect(inspectQaAccount('U-line-owner')).resolves.toEqual({ kind: 'unknown' });
+
+    authState.currentUser = {
+      uid: 'U-line-owner',
+      getIdTokenResult: () => {
+        authState.currentUser = { uid: 'U-line-owner', getIdTokenResult: () => Promise.resolve({ claims: {} }) };
+        return Promise.resolve({ claims: {} });
+      },
+    };
+    await expect(inspectQaAccount('U-line-owner')).resolves.toEqual({ kind: 'unknown' });
+
+    getFirebaseMock.mockRejectedValueOnce(new Error('firebase-init-failed'));
+    await expect(inspectQaAccount()).resolves.toEqual({ kind: 'unknown' });
+  });
 });
 
 describe('signInWithQa 從一般帳號切換到 QA 帳號', () => {
@@ -739,11 +843,39 @@ describe('signInWithQa 從一般帳號切換到 QA 帳號', () => {
     expectRegularAccountStorageKept();
   });
 
-  it('讀不到舊帳號的 claims（getIdTokenResult 拒絕）→ 視為一般帳號，登入照常成功並清理', async () => {
+  it('讀不到舊帳號的 claims（getIdTokenResult 拒絕）→ 狀態未知：保守不清理，但 QA 登入照常成功', async () => {
     seedRegularAccountStorage();
     authState.currentUser = {
       uid: 'U-line-owner',
       getIdTokenResult: () => Promise.reject(new Error('token-refresh-failed')),
+    };
+    qaTokenIssued();
+    const seen: Array<{ uid: string | null }> = [];
+    const stop = on('auth:changed', (payload) => {
+      seen.push(payload);
+    });
+
+    try {
+      await expect(signInWithQa('pw', 'captain')).resolves.toEqual(
+        expect.objectContaining({ uid: 'uid-qa-new' }),
+      );
+    } finally {
+      stop();
+    }
+
+    expect(seen).toEqual([{ uid: 'uid-qa-new' }]);
+    expectRegularAccountStorageKept();
+  });
+
+  it('讀取舊帳號 claims 途中使用者被換掉 → 狀態未知，不清理，QA 登入照常成功', async () => {
+    seedRegularAccountStorage();
+    const replacement: FakeUser = { uid: 'U-someone-else', getIdTokenResult: () => Promise.resolve({ claims: {} }) };
+    authState.currentUser = {
+      uid: 'U-line-owner',
+      getIdTokenResult: () => {
+        authState.currentUser = replacement;
+        return Promise.resolve({ claims: {} });
+      },
     };
     qaTokenIssued();
 
@@ -751,7 +883,34 @@ describe('signInWithQa 從一般帳號切換到 QA 帳號', () => {
       expect.objectContaining({ uid: 'uid-qa-new' }),
     );
 
-    expectRegularAccountStorageCleared();
+    expectRegularAccountStorageKept();
+  });
+
+  it('SDK 觀察者先於 signInWithCustomToken 完成並寫入新帳號的同前綴 key → 新帳號的 key 保留，只清登入前就存在的舊 key', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    callFnMock.mockResolvedValue({ customToken: 'custom-token-from-server' });
+    signInWithCustomTokenMock.mockImplementation(async () => {
+      // 模擬 Firebase 的觀察者／auth:changed 監聽者在 Promise 完成前就為新帳號寫入資料。
+      localStorage.setItem('shub_cache_qa_new_account', 'qa-cache');
+      localStorage.setItem('LIFF_STORE:new', 'qa-liff');
+      localStorage.setItem('shub_c_x', 'rewritten-by-new-account'); // 改寫了舊帳號同名的 key
+      return { user: { uid: 'uid-qa-new', displayName: null, photoURL: null } };
+    });
+
+    await signInWithQa('pw', 'captain');
+
+    expect(localStorage.getItem('shub_cache_qa_new_account')).toBe('qa-cache');
+    expect(localStorage.getItem('LIFF_STORE:new')).toBe('qa-liff');
+    expect(localStorage.getItem('shub_c_x')).toBe('rewritten-by-new-account');
+    // 登入前就存在、值沒被改寫的舊帳號 key 照清。
+    for (const key of CLEARED_KEYS.filter((k) => k !== 'shub_c_x')) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+    expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+    for (const key of UNRELATED_KEYS) {
+      expect(localStorage.getItem(key)).toBe(`keep-${key}`);
+    }
   });
 
   it('清理本身失敗（storage 不可用）不影響登入結果', async () => {
