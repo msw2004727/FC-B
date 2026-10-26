@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // T-048 F1：個人頁（ProfilePage）＋真實的報名紀錄卡。掛載時的 summary 讀取比「卡片刷新」晚完成時，
@@ -121,31 +121,68 @@ describe('ProfilePage + 報名紀錄卡：頁首 summary 競態（T-048 F1）', 
     cleanup();
   });
 
-  it('掛載時的讀取很慢、卡片刷新後的新 summary 先到——慢的晚到不可把頁首退回舊數字', async () => {
-    let resolveMount: (v: UserAttendanceSummary | null) => void = () => {};
-    const slowMount = new Promise<UserAttendanceSummary | null>((resolve) => {
-      resolveMount = resolve;
+  // 讓慢的那次讀取完成，並等它的 .then 處理與 Preact render 都做完（不靠固定時間）：
+  // 在 act 內 resolve／reject 後再 await 同一個 Promise——先登記的 .then（個人頁、卡片）會先於這個 await 的後續執行，
+  // act 結束時再刷新 render，之後的斷言才不是「舊值還沒處理就先通過」。
+  async function settle(slow: Promise<unknown>, finish: () => void): Promise<void> {
+    await act(async () => {
+      finish();
+      await slow.catch(() => undefined);
+    });
+  }
+
+  // 個人頁與卡片的掛載 effect 都跑過（各發一次掛載讀取）才按：真實使用者的 Callable 要數百毫秒，effect 早就跑完了。
+  async function renderAndWaitMountEffects(): Promise<void> {
+    render(<ProfilePage />);
+    await waitFor(() => expect(refreshBtn()).toBeTruthy());
+    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
+  }
+
+  function slowMountRead(): {
+    slow: Promise<UserAttendanceSummary | null>;
+    resolve: (v: UserAttendanceSummary | null) => void;
+    reject: (e: unknown) => void;
+  } {
+    let resolve: (v: UserAttendanceSummary | null) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    const slow = new Promise<UserAttendanceSummary | null>((res, rej) => {
+      resolve = res;
+      reject = rej;
     });
     mockedLoadSummary.mockImplementation((_uid: string, opts?: { fresh?: boolean }) =>
       opts?.fresh
         ? Promise.resolve(summaryOf(16, new Date(2026, 5, 1, 12, 0, 0)))
-        : slowMount,
+        : slow,
     );
+    return { slow, resolve, reject };
+  }
 
-    render(<ProfilePage />);
-    await waitFor(() => expect(refreshBtn()).toBeTruthy());
-    // 個人頁與卡片的掛載 effect 都跑過（各發一次掛載讀取）才按，否則卡片會把刷新當成「換 uid 前」的請求丟棄
-    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
+  it.each([
+    ['舊值', summaryOf(14, new Date(2026, 0, 1, 8, 0, 0))],
+    ['讀取失敗（null）', null],
+  ])('掛載時的讀取很慢、卡片刷新後的新 summary 先到——慢的晚到（%s）不可把頁首退回舊數字', async (_label, late) => {
+    const mount = slowMountRead();
+    await renderAndWaitMountEffects();
     expect(headerDone()).toBe('--');
 
     fireEvent.click(refreshBtn());
     await waitFor(() => expect(headerDone()).toBe('16'));
 
-    // 掛載時那次讀取現在才完成（舊值）：頁首與卡片的「資料更新」都必須維持刷新後的新值
-    resolveMount(summaryOf(14, new Date(2026, 0, 1, 8, 0, 0)));
-    await new Promise((r) => setTimeout(r, 30));
+    // 掛載時那次讀取現在才完成：頁首與卡片的「資料更新」都必須維持刷新後的新值
+    await settle(mount.slow, () => mount.resolve(late));
     expect(headerDone()).toBe('16');
     expect(document.getElementById('my-records-updated-at')?.textContent).toBe('資料更新 2026/06/01 12:00');
+  });
+
+  it('掛載時的讀取失敗（reject）：頁首維持 --、不報錯；之後刷新仍能更新頁首', async () => {
+    const mount = slowMountRead();
+    await renderAndWaitMountEffects();
+
+    await settle(mount.slow, () => mount.reject(new Error('network')));
+    expect(headerDone()).toBe('--');
+
+    fireEvent.click(refreshBtn());
+    await waitFor(() => expect(headerDone()).toBe('16'));
   });
 
   it('沒有刷新時，掛載讀取完成後頁首正常顯示（序號保護不擋第一次套用）', async () => {

@@ -101,11 +101,10 @@ function ProfileContent({
     const token = summarySeq.issue();
     loadUserAttendanceSummary(uid)
       .then((res) => {
-        if (active && summarySeq.accept(token)) setSummary(res);
+        // 與卡片同一規則：讀取失敗（null）不推進已套用序號，也不覆蓋既有 summary（起始的清空由上面的 setSummary(null) 負責）。
+        if (active && res !== null && summarySeq.accept(token)) setSummary(res);
       })
-      .catch(() => {
-        if (active && summarySeq.accept(token)) setSummary(null);
-      });
+      .catch(() => { /* 讀取失敗維持 -- */ });
     return () => {
       active = false;
     };

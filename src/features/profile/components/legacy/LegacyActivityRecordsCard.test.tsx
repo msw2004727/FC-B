@@ -407,6 +407,7 @@ describe('LegacyActivityRecordsCard', () => {
         for (const key of ['Enter', ' ']) {
           // fireEvent 回傳 false＝事件被 preventDefault（瀏覽器會因此不再對按鈕觸發 click）
           expect(fireEvent.keyDown(target, { key })).toBe(true);
+          expect(fireEvent.keyUp(target, { key })).toBe(true);
           expect(header.getAttribute('aria-expanded')).toBe('false');
         }
       }

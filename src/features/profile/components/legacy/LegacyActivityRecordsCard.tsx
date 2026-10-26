@@ -92,6 +92,9 @@ export function LegacyActivityRecordsCard(
   const loadSeqRef = useRef(0);
   // 每次換 uid 遞增：進行中的載入／刷新看到世代不同就放棄結果。
   const epochRef = useRef(0);
+  // 目前的世代屬於哪個 uid：掛載 effect 不遞增世代（它屬於初始 uid）。Preact 的 effect 在繪製後才跑，
+  // 使用者可能在那之前就按了刷新；若這時遞增，刷新捕捉的世代會被當成「換 uid 前」的請求而丟棄。
+  const epochUidRef = useRef(String(uid || '').trim());
   // 收合狀態就已讀到的 summary（首次展開不必重讀，除非已過期）；換 uid 時重置。
   const summaryLoadedRef = useRef(false);
   const summaryFetchedAtRef = useRef(0);
@@ -124,7 +127,10 @@ export function LegacyActivityRecordsCard(
   // uid 改變（同一元件實例換人）：整張卡回到初始狀態，舊 uid 還在飛的請求結果一律丟棄。
   useEffect(() => {
     const targetUid = String(uid || '').trim();
-    epochRef.current += 1;
+    if (epochUidRef.current !== targetUid) {
+      epochUidRef.current = targetUid;
+      epochRef.current += 1;
+    }
     loadSeqRef.current += 1;
     summaryLoadedRef.current = false;
     summaryFetchedAtRef.current = 0;

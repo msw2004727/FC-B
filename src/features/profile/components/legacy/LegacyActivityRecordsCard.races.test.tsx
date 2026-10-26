@@ -522,4 +522,35 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
       container.remove();
     }
   });
+
+  it('掛載 effect 之前就按了重新整理：Callable 完成後仍會重讀並提示（不被當成換 uid 前的請求丟棄）', async () => {
+    const callable = deferred<unknown>();
+    mockedCallFn.mockReturnValueOnce(callable.promise as never);
+    mockedLoadUserStats.mockResolvedValue(statsWith('u1', 'X'));
+    mockedLoadSummary.mockImplementation((_uid: string, opts?: { fresh?: boolean }) =>
+      Promise.resolve(opts?.fresh ? summaryOf('u1', new Date(2026, 5, 1, 12, 0, 0)) : null),
+    );
+    // 直接用 preact render（不包 act）：Preact 的 effect 在繪製後才跑，render() 回來時卡片的掛載 effect 還沒執行。
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    try {
+      preactRender(<LegacyActivityRecordsCard uid="u1" />, container);
+      // 掛載 effect 會發出第一次 summary 讀取；此刻還沒發出＝effect 確實還沒跑
+      expect(mockedLoadSummary).not.toHaveBeenCalled();
+      (container.querySelector('#my-records-refresh') as HTMLButtonElement).click();
+      expect(mockedCallFn).toHaveBeenCalledTimes(1);
+
+      // 真實的 Callable 要數百毫秒：掛載 effect 在它完成前早就跑完
+      await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(1));
+      callable.resolve({ success: true, created: 1, updated: 0 });
+
+      await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已更新' }),
+      );
+    } finally {
+      preactRender(null, container);
+      container.remove();
+    }
+  });
 });
