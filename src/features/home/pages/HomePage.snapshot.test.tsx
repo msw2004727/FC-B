@@ -355,22 +355,33 @@ describe('HomePage 首屏快照：橫幅', () => {
 
 describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用假時鐘，不真的等）', () => {
   const T0 = Date.UTC(2026, 9, 27, 3, 0, 0);
+  // 首頁每分鐘會因為 useEvents 的計時器重新 render 一次（整分鐘對齊掛載時間），而選用快照時會再檢查期限——
+  // 所以到期時間刻意放在「整分鐘之間」，並且把頁面其他會觸發 render 的非同步工作先做完（settle）：
+  // 這樣到期後畫面能變，就只可能是效期 hook（計時器／可見性）自己撤掉的，不是被別的 render 順便帶掉。
+  const settle = async (): Promise<void> => {
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+  };
 
-  it('橫幅：計時器到期後撤掉，回到骨架', async () => {
+  it('橫幅：計時器在到期那一刻就撤掉（不等下一分鐘的 render），回到骨架', async () => {
     vi.useFakeTimers({ now: T0 });
-    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0);
+    // 到期時間 = T0 + 25 分 17 秒
+    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 5 * MIN + 17_000);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
+    mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);
     expect(screen.getByText('快到期的橫幅')).toBeTruthy();
 
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS - 1000);
+      vi.advanceTimersByTime(25 * MIN + 10_000);
     });
     expect(screen.getByText('快到期的橫幅')).toBeTruthy();
 
+    // 25:30——下一次整分鐘的 render 在 26:00，所以這時畫面變了就是計時器撤的
     await act(async () => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(20_000);
     });
     expect(screen.queryByText('快到期的橫幅')).toBeNull();
     expect(container.querySelector('.skeleton-slide')).toBeTruthy();
@@ -380,42 +391,52 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
     seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 29 * MIN);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
+    mockEvents(() => new Promise(() => undefined));
 
     render(<HomePage />);
+    await settle();
     expect(screen.getByText('快到期的橫幅')).toBeTruthy();
 
     vi.setSystemTime(T0 + 2 * MIN);
+    // 時間過了但沒有任何 render：畫面還是舊的
+    expect(screen.getByText('快到期的橫幅')).toBeTruthy();
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     expect(screen.queryByText('快到期的橫幅')).toBeNull();
   });
 
-  it('運動統計：計時器到期後撤掉「N 活動」，活動一直讀不回來也不再顯示舊統計', async () => {
+  it('運動統計：計時器在到期那一刻就撤掉「N 活動」，活動一直讀不回來也不再顯示舊統計', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 5 * MIN + 17_000);
     mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);
     expect(footballCount(container)).toBe('7 活動');
 
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS + 1000);
+      vi.advanceTimersByTime(25 * MIN + 10_000);
+    });
+    expect(footballCount(container)).toBe('7 活動');
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
     });
     expect(footballChip(container)).toBeNull();
     expect(container.querySelector('#home-sport-entry')?.textContent ?? '').not.toMatch(/\d+\s*活動/);
   });
 
-  it('運動統計：讀取失敗的頁面跨過 30 分鐘後也撤掉（visibilitychange）', async () => {
+  it('運動統計：讀取失敗的頁面跨過 30 分鐘後，回到可見（visibilitychange）立刻撤掉', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
     writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 29 * MIN);
     mockEvents(() => Promise.reject(new Error('offline')));
 
     const { container } = render(<HomePage />);
-    // 讀取失敗與否，畫面都先是快照（失敗後沒有任何上次資料，沿用快照）
+    await settle();
+    // 讀取失敗、沒有任何上次資料：沿用快照
     expect(footballCount(container)).toBe('7 活動');
 
     vi.setSystemTime(T0 + 2 * MIN);
+    expect(footballCount(container)).toBe('7 活動');
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
