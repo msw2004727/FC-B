@@ -110,6 +110,19 @@ export function sanitizeHttpUrl(value: unknown): string {
   return /^https?:\/\//i.test(raw) ? raw : '';
 }
 
+/**
+ * 橫幅連結白名單（首屏快照寫入與讀取用）：http/https，或站內路徑——以單一 `/` 開頭，不含空白與控制字元，
+ * 且不是 `//…`、`/\…`（瀏覽器會把它們當成其他網站）。其他（`javascript:`、`data:`、相對網址、任意字串）一律回空字串。
+ * 注意：畫面上實際開啟連結的仍是 `sanitizeHttpUrl`（只收 http/https），本函式只決定「什麼可以存進快照」。
+ */
+export function safeBannerLinkUrl(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 2000 || /[\u0000-\u001f\u007f]/.test(raw)) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\') && !/\s/.test(raw)) return raw;
+  return '';
+}
+
 export function safeBannerColor(value: unknown, fallback: string): string {
   const raw = String(value ?? '').trim();
   return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : fallback;

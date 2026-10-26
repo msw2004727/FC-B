@@ -32,6 +32,7 @@ import {
   readBannersSnapshot,
   readSportsSnapshot,
   writeBannersSnapshot,
+  toPublicBanners,
   writeSportsSnapshot,
   type SnapshotRead,
 } from '../data/home-snapshot';
@@ -77,9 +78,11 @@ export default function HomePage(): JSX.Element {
   //   2. 既有快取：useEvents 已有活動（記憶體／帳號底下的本機快照／離線時的持久快取）→ 用它算（T-041 以來的行為，沒動）；
   //   3. 首屏快照：以上都沒有（活動還在讀或讀取失敗）才用，且到期（見下）或被撤銷後就不再用。
   // 橫幅同理：快照只是第一次 render 先畫的內容，伺服器確認的結果一到就取代，到期也要撤掉。
+  // 帳號語意：快照為訪客視角的公開資料、沒有帳號歸屬；登入者的最終畫面一律以正式資料（用自己的視角算）取代快照。
+  // 「只放訪客可見資料」由寫入守門保證：writeSportsSnapshot／writeBannersSnapshot 只收 computeGuestSportRows／toPublicBanners 的輸出型別。
   const [sportSnap, setSportSnap] = useState<SnapshotRead<SportRow> | null>(() => readSportsSnapshot());
   useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => setSportSnap(null));
-  // 只有「確認新取得」的活動才會走到這裡（use-events 的 onFresh）：寫快照、撤銷快照 fallback（含空結果；之後重試也不回頭用舊統計）。
+  // 只有「確認新取得」的活動才會走到這裡（use-events 的 onFresh）：用訪客視角寫快照、撤銷快照 fallback（含空結果；之後重試也不回頭用舊統計）。
   const handleFreshEvents = useCallback((events: EventDoc[]) => {
     writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
     setSportSnap(null);
@@ -167,7 +170,7 @@ export default function HomePage(): JSX.Element {
           return;
         }
         // 確認新取得：寫快照（空清單＝目前沒有橫幅，刪掉舊快照）、換畫面、快照到期不再適用。
-        writeBannersSnapshot(list);
+        writeBannersSnapshot(toPublicBanners(list));
         setBanners(list);
         setBannerExpiry(null);
       })

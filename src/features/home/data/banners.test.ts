@@ -8,6 +8,7 @@ import {
   loadActiveBanners,
   safeBannerColor,
   safeBannerGradient,
+  safeBannerLinkUrl,
   sanitizeHttpUrl,
   type BannerDoc,
 } from './banners';
@@ -101,6 +102,16 @@ describe('banners data layer', () => {
       { fromCache: true },
       { fromCache: undefined },
     ]);
+  });
+
+  it('safeBannerLinkUrl 只收 http/https 與站內路徑', () => {
+    expect(safeBannerLinkUrl('https://example.com/a?b=1')).toBe('https://example.com/a?b=1');
+    expect(safeBannerLinkUrl('  /events/abc  ')).toBe('/events/abc');
+    const bads = ['javascript:alert(1)', 'data:text/html,x', '//evil.example', '/\\evil.example', 'events/abc', '/a b', '/a\u0000b', 'https://a.b/\nx', '', null, undefined];
+    for (const bad of bads) {
+      expect(safeBannerLinkUrl(bad), String(bad)).toBe('');
+    }
+    expect(safeBannerLinkUrl('/' + 'a'.repeat(2000))).toBe('');
   });
 
   it('safeBannerGradient 只收單純的 gradient(...)', () => {

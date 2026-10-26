@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EventDoc } from '@/features/events/data/types';
-import { computeGuestSportRows, computeSportRows, isPublicActiveHomeEvent } from './sport-rows';
+import { computeGuestSportRows, computeSportRows, isGuestSportRows, isPublicActiveHomeEvent } from './sport-rows';
 
 // 與時區無關：測試活動的日期（2030、2020 年）離 NOW 差好幾年，本機時區不會改變「已開始／未開始」的判斷。
 const NOW = Date.UTC(2026, 9, 27, 3, 0, 0);
@@ -53,5 +53,18 @@ describe('computeGuestSportRows（首屏快照用，訪客視角）', () => {
       NOW,
     );
     expect(rows.map((r) => [r.key, r.count])).toEqual([['football', 1]]);
+  });
+});
+
+describe('GuestSportRows 品牌（首屏快照唯一允許的寫入來源）', () => {
+  it('只有 computeGuestSportRows 的輸出會被認得；登入者視角的 computeSportRows 輸出、手寫陣列都不算', () => {
+    const events = [ev('1', { sportTag: 'football' })];
+    const guest = computeGuestSportRows(events, NOW);
+    expect(isGuestSportRows(guest)).toBe(true);
+    expect(Object.isFrozen(guest)).toBe(true);
+    expect(isGuestSportRows(computeSportRows(events, NOW))).toBe(false);
+    expect(isGuestSportRows([...guest])).toBe(false);
+    expect(isGuestSportRows(null)).toBe(false);
+    expect(isGuestSportRows('football')).toBe(false);
   });
 });

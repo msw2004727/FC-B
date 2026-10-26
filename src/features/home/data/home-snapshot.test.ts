@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_VERSION } from '@/version';
 import type { BannerDoc } from './banners';
+import { guestRowsOf } from './__fixtures__/guest-rows';
+import { computeSportRows } from './sport-rows';
 import {
   BANNERS_SNAPSHOT_KEY,
   HOME_SNAPSHOT_MAX_AGE_MS,
@@ -9,6 +11,7 @@ import {
   _clearHomeSnapshotForTest,
   readBannersSnapshot,
   readSportsSnapshot,
+  toPublicBanners,
   writeBannersSnapshot,
   writeSportsSnapshot,
 } from './home-snapshot';
@@ -17,6 +20,11 @@ const NOW = Date.UTC(2026, 9, 27, 3, 0, 0);
 
 function banner(partial: Partial<BannerDoc> & { id: string }): BannerDoc {
   return { _docId: partial.id, status: 'active', ...partial };
+}
+
+/** 寫橫幅快照的唯一合法來源是白名單映射（toPublicBanners）。 */
+function putBanners(list: BannerDoc[], nowMs: number): void {
+  writeBannersSnapshot(toPublicBanners(list), nowMs);
 }
 
 function putRaw(key: string, entry: Record<string, unknown>): void {
@@ -34,8 +42,7 @@ afterEach(() => {
 
 describe('橫幅快照', () => {
   it('寫入後在 30 分鐘內讀得回來，只留畫面用得到的欄位，並帶到期時間', () => {
-    writeBannersSnapshot(
-      [
+    putBanners([
         {
           ...banner({
             id: 'b1',
@@ -74,7 +81,7 @@ describe('橫幅快照', () => {
   });
 
   it('快照內容與帳號無關：存的只有版本、時間與橫幅欄位', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW);
     const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as Record<string, unknown>;
     expect(Object.keys(stored).sort()).toEqual(['appVersion', 'items', 'savedAt', 'v']);
     expect(stored.appVersion).toBe(APP_VERSION);
@@ -82,7 +89,7 @@ describe('橫幅快照', () => {
   });
 
   it('剛好 30 分鐘仍可用；超過 30 分鐘一律當沒有快照（只留骨架）', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW);
     expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS)?.items).toHaveLength(1);
     expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
   });
@@ -169,30 +176,27 @@ describe('橫幅快照', () => {
     expect(read?.items.slice(0, evil.length).map((b) => b.gradient)).toEqual(evil.map(() => undefined));
     expect(read?.items.at(-1)?.gradient).toBe('linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)');
 
-    writeBannersSnapshot([banner({ id: 'w', gradient: evil[0] })], NOW);
+    putBanners([banner({ id: 'w', gradient: evil[0] })], NOW);
     const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as { items: Array<{ gradient?: string }> };
     expect(stored.items[0]?.gradient).toBeUndefined();
   });
 
   it('空清單（伺服器說目前沒有橫幅）會刪掉舊快照', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW);
     expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).not.toBeNull();
-    writeBannersSnapshot([], NOW + 1000);
+    putBanners([], NOW + 1000);
     expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
   });
 
   it('超過字數上限不存，並刪掉舊的', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
-    writeBannersSnapshot([banner({ id: 'b1', title: 'y'.repeat(HOME_SNAPSHOT_MAX_CHARS) })], NOW + 1000);
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW);
+    putBanners([banner({ id: 'b1', title: 'y'.repeat(HOME_SNAPSHOT_MAX_CHARS) })], NOW + 1000);
     expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
   });
 });
 
 describe('運動統計快照', () => {
-  const rows = [
-    { key: 'football', label: '足球', symbol: '⚽', count: 3 },
-    { key: 'basketball', label: '籃球', symbol: '🏀', count: 1 },
-  ];
+  const rows = guestRowsOf({ football: 3, basketball: 1 });
 
   it('只存 key＋數量，讀取時由 SPORTS 還原標籤與符號，並帶到期時間', () => {
     writeSportsSnapshot(rows, NOW);
@@ -244,7 +248,7 @@ describe('運動統計快照', () => {
 
   it('兩段快照各有各的時間戳：只更新橫幅不會讓舊的運動統計變新', () => {
     writeSportsSnapshot(rows, NOW);
-    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW + 25 * 60 * 1000);
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW + 25 * 60 * 1000);
     const later = NOW + 31 * 60 * 1000;
     expect(readBannersSnapshot(later)?.items).toHaveLength(1);
     expect(readSportsSnapshot(later)).toBeNull();
@@ -262,10 +266,81 @@ describe('localStorage 不可用', () => {
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
       throw new Error('denied');
     });
-    expect(() => writeBannersSnapshot([banner({ id: 'b1' })], NOW)).not.toThrow();
-    expect(() => writeBannersSnapshot([], NOW)).not.toThrow();
-    expect(() => writeSportsSnapshot([{ key: 'football', label: '足球', symbol: '⚽', count: 1 }], NOW)).not.toThrow();
+    expect(() => putBanners([banner({ id: 'b1' })], NOW)).not.toThrow();
+    expect(() => putBanners([], NOW)).not.toThrow();
+    expect(() => writeSportsSnapshot(guestRowsOf({ football: 1 }), NOW)).not.toThrow();
     expect(readBannersSnapshot(NOW)).toBeNull();
     expect(readSportsSnapshot(NOW)).toBeNull();
+  });
+});
+
+describe('寫入守門（顧問裁定 P1-1 採 A：快照為訪客視角公開資料，由寫入來源型別保證）', () => {
+  it('寫入函式只收訪客可見計算與白名單映射的輸出：其他來源編譯不過（@ts-expect-error 型別測試），執行期也不寫', () => {
+    // @ts-expect-error 手寫的統計陣列不是 GuestSportRows
+    writeSportsSnapshot([{ key: 'football', label: '足球', symbol: '⚽', count: 3 }], NOW);
+    // @ts-expect-error 登入者視角的 computeSportRows 輸出不是 GuestSportRows
+    writeSportsSnapshot(computeSportRows([], NOW), NOW);
+    // @ts-expect-error 未經白名單映射的橫幅不是 PublicBannerList
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })], NOW);
+    expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBeNull();
+    expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
+
+    // 型別被 as 強轉繞過時，執行期仍拒絕（沒有登記過的輸入不寫）
+    writeSportsSnapshot([{ key: 'football', label: '足球', symbol: '⚽', count: 3 }] as never, NOW);
+    writeBannersSnapshot([banner({ id: 'b1', title: 'x' })] as never, NOW);
+    expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBeNull();
+    expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('白名單映射 toPublicBanners：多餘欄位（uid、email、時間欄位…）不會進快照', () => {
+    putBanners(
+      [
+        {
+          ...banner({ id: 'b1', title: 'x' }),
+          creatorUid: 'U_PRIVATE',
+          email: 'someone@example.com',
+          startAt: { seconds: 1, nanoseconds: 0 },
+        } as BannerDoc,
+      ],
+      NOW,
+    );
+    const raw = localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string;
+    expect(raw).not.toContain('U_PRIVATE');
+    expect(raw).not.toContain('someone@example.com');
+    expect(raw).not.toContain('startAt');
+  });
+
+  it('橫幅連結白名單：http/https 或站內路徑（單一 / 開頭）才存；javascript:、data:、//、/\、相對網址、含空白或控制字元的都丟掉（寫入與讀取同一組檢查）', () => {
+    const cases: Array<[string, string]> = [
+      ['https://example.com/go?a=1', 'https://example.com/go?a=1'],
+      ['http://example.com/', 'http://example.com/'],
+      ['/events/abc?x=1', '/events/abc?x=1'],
+      ['javascript:alert(1)', ''],
+      ['data:text/html,<script>alert(1)</script>', ''],
+      ['//evil.example/x', ''],
+      ['/\\evil.example/x', ''],
+      ['events/abc', ''],
+      ['/has space', ''],
+      ['/ctrl\u0000char', ''],
+      ['', ''],
+    ];
+    putBanners(cases.map(([linkUrl], i) => banner({ id: `l${i}`, linkUrl })), NOW);
+    // 寫入端：存進去的內容就已經過濾（不靠讀取時才擋）
+    const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as { items: Array<{ linkUrl?: string }> };
+    expect(stored.items.map((b) => b.linkUrl ?? '')).toEqual(cases.map(([, expected]) => expected));
+    expect(readBannersSnapshot(NOW)?.items.map((b) => b.linkUrl ?? '')).toEqual(
+      cases.map(([, expected]) => expected),
+    );
+
+    // 讀取端：本機資料被竄改也一樣被擋
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: 1,
+      appVersion: APP_VERSION,
+      savedAt: NOW,
+      items: cases.map(([linkUrl], i) => ({ id: `t${i}`, _docId: `t${i}`, linkUrl })),
+    });
+    expect(readBannersSnapshot(NOW)?.items.map((b) => b.linkUrl ?? '')).toEqual(
+      cases.map(([, expected]) => expected),
+    );
   });
 });

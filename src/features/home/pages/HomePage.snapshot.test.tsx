@@ -7,11 +7,13 @@ import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { APP_VERSION } from '@/version';
 import { loadActiveAnnouncements } from '../data/announcements';
 import { loadActiveBanners, type BannerDeps, type BannerDoc } from '../data/banners';
+import { guestRowsOf } from '../data/__fixtures__/guest-rows';
 import {
   BANNERS_SNAPSHOT_KEY,
   HOME_SNAPSHOT_MAX_AGE_MS,
   SPORTS_SNAPSHOT_KEY,
   _clearHomeSnapshotForTest,
+  toPublicBanners,
   writeBannersSnapshot,
   writeSportsSnapshot,
 } from '../data/home-snapshot';
@@ -19,7 +21,7 @@ import { resolveNextActivity } from '../data/next-activity';
 import HomePage from './HomePage';
 
 // T-042 首屏快照：回訪時第一次 render 就畫橫幅與運動統計；過期／版本不同只留骨架（掛載後跨過 30 分鐘也要撤掉）；
-// 背景讀取照常進行；只有「確認向伺服器新取得」的結果才更新快照；與帳號無關。
+// 背景讀取照常進行；只有「確認向伺服器新取得」的結果才更新快照；快照為訪客視角的公開資料、沒有帳號歸屬，登入者的最終畫面一律以正式資料取代快照。
 
 let capturedRefresh: (() => void) | null = null;
 
@@ -72,10 +74,10 @@ vi.mock('@/features/events/components/EventFormModal', () => ({
   EventFormModal: () => null,
 }));
 
-function makeViewer(uid: string | null, roleLevel = 0): ViewerView {
+function makeViewer(uid: string | null, roleLevel = 0, teamIds: string[] = []): ViewerView {
   return {
     uid,
-    teamIds: new Set(),
+    teamIds: new Set(teamIds),
     roleLevel,
     role: roleLevel >= 4 ? 'admin' : 'user',
     displayName: uid,
@@ -83,6 +85,11 @@ function makeViewer(uid: string | null, roleLevel = 0): ViewerView {
     capabilities: [],
     hasPermission: () => roleLevel >= 4,
   };
+}
+
+/** 種橫幅快照：寫入函式只收白名單映射（toPublicBanners）的輸出。 */
+function seedBanners(list: BannerDoc[], savedAt?: number): void {
+  writeBannersSnapshot(toPublicBanners(list), savedAt);
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -121,7 +128,6 @@ function mockEvents(
 
 const MIN = 60 * 1000;
 const staleAt = (): number => Date.now() - HOME_SNAPSHOT_MAX_AGE_MS - MIN;
-const FOOTBALL = { key: 'football', label: '足球', symbol: '⚽' };
 const footballChip = (container: Element): Element | null =>
   container.querySelector('.home-sport-chip[data-home-sport="football"]');
 const footballCount = (container: Element): string | undefined =>
@@ -155,7 +161,7 @@ afterEach(() => {
 
 describe('HomePage 首屏快照：橫幅', () => {
   it('30 分鐘內、同版本的快照在第一次 render 就畫出橫幅文字，網路還沒回來也不顯示骨架；背景讀取照常發出', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: '週末熱血開踢', subtitle: '立即加入附近球局' })]);
+    seedBanners([banner({ id: 'b1', title: '週末熱血開踢', subtitle: '立即加入附近球局' })]);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
     const { container } = render(<HomePage />);
@@ -168,7 +174,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('確認向伺服器新取得後換成新的橫幅，並更新快照', async () => {
-    writeBannersSnapshot([banner({ id: 'old', title: '舊橫幅' })], Date.now() - 10 * MIN);
+    seedBanners([banner({ id: 'old', title: '舊橫幅' })], Date.now() - 10 * MIN);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;
@@ -196,7 +202,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('不是確認新取得（離線時 Firestore 回持久快取）：不更新快照、不取代畫面上的快照橫幅', async () => {
-    writeBannersSnapshot([banner({ id: 'snap', title: '快照橫幅' })], Date.now() - 10 * MIN);
+    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], Date.now() - 10 * MIN);
     const before = localStorage.getItem(BANNERS_SNAPSHOT_KEY);
     let result!: Promise<BannerDoc[]>;
     vi.mocked(loadActiveBanners).mockImplementation((deps) => {
@@ -235,7 +241,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('超過 30 分鐘的快照只留骨架：不畫橫幅文字', () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: '過期橫幅' })], staleAt());
+    seedBanners([banner({ id: 'b1', title: '過期橫幅' })], staleAt());
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
     const { container } = render(<HomePage />);
@@ -263,7 +269,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('伺服器讀取失敗時，保留畫面上的快照橫幅，也不動快照', async () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: '快照橫幅' })]);
+    seedBanners([banner({ id: 'b1', title: '快照橫幅' })]);
     const before = localStorage.getItem(BANNERS_SNAPSHOT_KEY);
     let result!: Promise<BannerDoc[]>;
     // 讀取失敗：loadActiveBanners 回 []，而且不回報結果（沒有呼叫 onResult）
@@ -283,7 +289,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('伺服器確認「沒有橫幅」時，清掉畫面上的快照橫幅與快照', async () => {
-    writeBannersSnapshot([banner({ id: 'b1', title: '已下架橫幅' })]);
+    seedBanners([banner({ id: 'b1', title: '已下架橫幅' })]);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;
@@ -303,7 +309,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 
   it('畫面卸載後才回來的舊請求不能覆寫快照；兩個畫面先後讀取時，只有現在這個畫面的結果會寫', async () => {
-    writeBannersSnapshot([banner({ id: 'seed', title: '種子' })], Date.now() - 5 * MIN);
+    seedBanners([banner({ id: 'seed', title: '種子' })], Date.now() - 5 * MIN);
     const first = deferred<BannerDoc[]>();
     const second = deferred<BannerDoc[]>();
     const queue = [first, second];
@@ -338,7 +344,7 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('橫幅：計時器到期後撤掉，回到骨架', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeBannersSnapshot([banner({ id: 'b1', title: '快到期的橫幅' })], T0);
+    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
     const { container } = render(<HomePage />);
@@ -358,7 +364,7 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('橫幅：背景分頁的計時器被延後時，回到可見（visibilitychange）立刻撤掉', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    writeBannersSnapshot([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 29 * MIN);
+    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 29 * MIN);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
     render(<HomePage />);
@@ -373,7 +379,7 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('運動統計：計時器到期後撤掉「N 活動」，活動一直讀不回來也不再顯示舊統計', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], T0);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0);
     mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);
@@ -388,7 +394,7 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('運動統計：讀取失敗的頁面跨過 30 分鐘後也撤掉（visibilitychange）', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], T0 - 29 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 29 * MIN);
     mockEvents(() => Promise.reject(new Error('offline')));
 
     const { container } = render(<HomePage />);
@@ -449,7 +455,7 @@ describe('HomePage 橫幅圖：<img>（第一張高優先、其餘延遲載入�
 
 describe('HomePage 首屏快照：運動統計', () => {
   it('活動還在讀時，用快照的統計先畫（不等登入確認），確認新取得後換成即時結果並更新快照', async () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], Date.now() - 10 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 10 * MIN);
     const pending = deferred<unknown>();
     mockEvents(() => pending.promise, [
       ev('e1'),
@@ -493,7 +499,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('超過 30 分鐘的快照只留骨架：不顯示任何「N 活動」', () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], staleAt());
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), staleAt());
     mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);
@@ -503,7 +509,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('確認「目前沒有活動」後不再沿用快照；之後重試（讀取中或失敗）也不會又退回舊統計', async () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], Date.now() - 5 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 5 * MIN);
     const calls: Array<(value: unknown) => void> = [];
     const rejects: Array<(reason: unknown) => void> = [];
     mockEvents(() => new Promise((resolve, reject) => {
@@ -536,7 +542,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('活動讀取失敗、又沒有任何上次資料時，沿用 30 分鐘內的快照統計', async () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }]);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }));
     let result!: Promise<unknown>;
     mockEvents(() => {
       result = Promise.reject(new Error('offline'));
@@ -553,7 +559,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('不是確認新取得（離線時的持久快取）：有活動就照常顯示、但不更新快照；空的快取不會撤掉快照', async () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], Date.now() - 10 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 10 * MIN);
     const before = localStorage.getItem(SPORTS_SNAPSHOT_KEY);
 
     // 快取有 2 場：顯示快取算出的數字，快照不動
@@ -576,7 +582,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('畫面卸載後才回來的活動結果不寫快照', async () => {
-    writeSportsSnapshot([{ ...FOOTBALL, count: 7 }], Date.now() - 10 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 10 * MIN);
     const before = localStorage.getItem(SPORTS_SNAPSHOT_KEY);
     const pending = deferred<unknown>();
     mockEvents(() => pending.promise, [ev('late1'), ev('late2'), ev('late3')]);
@@ -595,37 +601,94 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 });
 
-describe('HomePage 首屏快照：與帳號無關', () => {
-  it.each([
-    ['訪客', null],
-    ['換成另一個帳號', 'u2'],
-  ] as const)('第一位使用者寫的快照，%s 開啟也直接用，且快照裡沒有任何帳號資料', async (_label, nextUid) => {
-    vi.mocked(loadActiveBanners).mockImplementation(
-      bannersResult([banner({ id: 'b1', title: '公開橫幅', image: 'https://example.com/1.webp' })]),
-    );
-    mockEvents(() => Promise.resolve(['events']), [ev('e1'), ev('e2', { privateEvent: true, creatorUid: 'u1' })]);
+describe('HomePage 首屏快照：訪客視角的公開資料，沒有帳號歸屬（顧問裁定 P1-1 採 A）', () => {
+  // 伺服器回來的活動：e3 黑名單擋住 u1；e4 私密（u1 自己開的）；e5 俱樂部限定（u1 的球隊）。
+  // 首頁運動統計對所有人都不計私密／俱樂部限定活動（既有規則）；黑名單是唯一會讓登入者與訪客視角不同的條件。
+  const SERVER_EVENTS = [
+    ev('e1'),
+    ev('e2', { date: '2030/10/21 18:00~20:00' }),
+    ev('e3', { date: '2030/10/22 18:00~20:00', blockedUids: ['u1'] }),
+    ev('e4', { privateEvent: true, creatorUid: 'u1' }),
+    ev('e5', { teamOnly: true, creatorUid: 'someone', creatorTeamId: 't1' }),
+  ];
+  const viewers: Array<[string, () => ViewerView]> = [
+    ['u1', () => makeViewer('u1', 0, ['t1'])],
+    ['u2', () => makeViewer('u2')],
+    ['訪客', () => makeViewer(null)],
+    ['管理員', () => makeViewer('admin1', 4)],
+  ];
 
-    // 第一位使用者（u1）：確認新取得後寫快照。
-    const first = render(<HomePage />);
-    await first.findByRole('heading', { name: '公開橫幅' });
+  async function snapshotWrittenBy(viewer: ViewerView): Promise<{ items: unknown; raw: string }> {
+    _resetUseEventsForTest();
+    _clearHomeSnapshotForTest();
+    vi.mocked(useViewer).mockReturnValue(viewer);
+    vi.mocked(loadActiveBanners).mockImplementation(
+      bannersResult([banner({ id: 'b1', title: '公開橫幅', image: 'https://example.com/1.webp', linkUrl: 'https://example.com/go' })]),
+    );
+    mockEvents(() => Promise.resolve(['events']), SERVER_EVENTS);
+    const view = render(<HomePage />);
+    await view.findByRole('heading', { name: '公開橫幅' });
     await waitFor(() => expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).not.toBeNull());
     await waitFor(() => expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).not.toBeNull());
-    first.unmount();
+    view.unmount();
     cleanup();
+    const sports = JSON.parse(localStorage.getItem(SPORTS_SNAPSHOT_KEY) as string) as { items: unknown; savedAt: number };
+    const banners = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as { items: unknown; savedAt: number };
+    // 時間戳每次不同，比對內容時拿掉
+    return { items: { sports: sports.items, banners: banners.items }, raw: (localStorage.getItem(SPORTS_SNAPSHOT_KEY) ?? '') + (localStorage.getItem(BANNERS_SNAPSHOT_KEY) ?? '') };
+  }
 
-    for (const key of [BANNERS_SNAPSHOT_KEY, SPORTS_SNAPSHOT_KEY]) {
-      expect(localStorage.getItem(key) as string).not.toContain('u1');
+  it('u1／u2／訪客／管理員開首頁，寫出的快照內容完全相同，而且不含任何帳號資料或非訪客可見的資料', async () => {
+    const written = [];
+    for (const [name, make] of viewers) written.push({ name, ...(await snapshotWrittenBy(make())) });
+
+    const [first, ...rest] = written;
+    for (const other of rest) expect(other.items, `${other.name} 與 ${first?.name}`).toEqual(first?.items);
+    // 內容就是訪客視角：e1、e2、e3 三場公開活動（e3 的黑名單只擋 u1 的畫面，不影響訪客視角）；私密與俱樂部限定不計
+    expect(first?.items).toMatchObject({ sports: [{ key: 'football', count: 3 }] });
+    for (const w of written) {
+      for (const secret of ['u1', 'u2', 'admin1', 'blockedUids', 'creatorUid', 'teamOnly']) {
+        expect(w.raw, `${w.name} 的快照不應含 ${secret}`).not.toContain(secret);
+      }
     }
+  });
 
-    // 下一位：網路都還沒回來，第一次 render 就要有畫面。
-    _resetUseEventsForTest();
-    vi.mocked(useViewer).mockReturnValue(makeViewer(nextUid));
-    vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
-    mockEvents(() => new Promise(() => undefined));
+  it('第一位使用者寫的快照，訪客或另一個帳號開啟也直接用（沒有帳號歸屬可言）', async () => {
+    await snapshotWrittenBy(makeViewer('u1', 0, ['t1']));
+
+    for (const nextViewer of [makeViewer(null), makeViewer('u2')]) {
+      cleanup();
+      _resetUseEventsForTest();
+      vi.mocked(useViewer).mockReturnValue(nextViewer);
+      vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
+      mockEvents(() => new Promise(() => undefined));
+
+      const { container } = render(<HomePage />);
+
+      expect(screen.getByRole('heading', { name: '公開橫幅' })).toBeTruthy();
+      expect(footballCount(container)).toBe('3 活動');
+    }
+  });
+
+  it('登入者的最終畫面一律以正式資料取代快照：先看到訪客視角的快照，活動讀回後改成自己看得到的數字；快照維持訪客視角', async () => {
+    // 先有一份快照（訪客視角，例如昨天的訪客或別的帳號寫的）：football 7
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 10 * MIN);
+    vi.mocked(useViewer).mockReturnValue(makeViewer('u1', 0, ['t1']));
+    const pending = deferred<unknown>();
+    mockEvents(() => pending.promise, SERVER_EVENTS);
 
     const { container } = render(<HomePage />);
+    // 活動還在讀：登入者先看到快照（訪客視角）——黑名單登入者會短暫看到訪客視角統計，與 T-041 P3-4 同一件事，已接受
+    expect(footballCount(container)).toBe('7 活動');
 
-    expect(screen.getByRole('heading', { name: '公開橫幅' })).toBeTruthy();
-    expect(footballCount(container)).toBe('1 活動');
+    await act(async () => {
+      pending.resolve(['events']);
+    });
+
+    // 正式資料：e1、e2 公開；e3 被黑名單擋住（對 u1 不可見）；私密與俱樂部限定活動依首頁既有規則對所有人都不計
+    await waitFor(() => expect(footballCount(container)).toBe('2 活動'));
+    // 快照本身維持訪客視角（e1、e2、e3＝3），不是 u1 的視角
+    const stored = JSON.parse(localStorage.getItem(SPORTS_SNAPSHOT_KEY) as string) as { items: Array<{ key: string; count: number }> };
+    expect(stored.items).toEqual([{ key: 'football', count: 3 }]);
   });
 });

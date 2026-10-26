@@ -2,12 +2,16 @@
  * 首頁首屏的本機快照（T-042，A5 擴大版）：橫幅清單（含第一張圖網址）＋運動分類統計。
  *
  * 目的：回訪（暖啟動）時第一次 render 就能畫出橫幅文字與運動入口，不必等 Firestore；背景照常向伺服器更新後再換。
- * 刻意獨立於 `events-snapshot-cache`（那份掛在登入帳號底下、要等登入確認才能用）：
- * 首屏快照只存「公開可見」資料，所以不需要、也不看登入狀態——
- * - 橫幅：banners 集合本來就是公開讀取，欄位只留畫面用得到的（不含 Timestamp 等無法 JSON 還原的欄位）。
- *   A 的橫幅沒有時間區間（只看 status === 'active'，見 `banners.ts#isHomeCarouselBanner`），所以不需要保存排程。
- * - 運動統計：用訪客視角算（`computeGuestSportRows`，不含私密／俱樂部限定／黑名單判斷），不帶任何帳號資料。
- *   因為與帳號無關，換帳號、登出都不需要清；登入者拿到伺服器資料後照常用自己的視角重算。
+ * 刻意獨立於 `events-snapshot-cache`（那份掛在登入帳號底下、要等登入確認才能用）。
+ *
+ * 帳號語意（顧問裁定，P1-1 採 A）：**快照為訪客視角的公開資料，沒有帳號歸屬可言；登入者的最終畫面一律以正式資料取代快照。**
+ * 因為只放訪客可見的資料，所以不需要、也不看登入狀態；換帳號、登出都不需要清。這個保證由「寫入守門」提供，不靠讀取時比對帳號：
+ * - 寫入函式的簽章只收兩種型別——`GuestSportRows`（只能由 `computeGuestSportRows()` 產生）與 `PublicBannerList`
+ *   （只能由 `toPublicBanners()` 的白名單映射產生）；其他來源編譯不過，執行期也拒絕沒登記過的輸入。
+ * - 橫幅：banners 集合本來就是公開讀取，欄位只留畫面用得到的（不含 Timestamp 等無法 JSON 還原的欄位）；
+ *   圖片與連結再過白名單。A 的橫幅沒有時間區間（只看 status === 'active'，見 `banners.ts#isHomeCarouselBanner`），所以不需要保存排程。
+ * - 運動統計：用訪客視角算（不含私密／俱樂部限定／黑名單判斷），不帶任何帳號資料。
+ * - 已知且已接受：被某活動黑名單擋住的登入者，在活動讀回之前會短暫看到訪客視角的統計（與 T-041 P3-4 同一件事）。
  *
  * 新鮮度守門（顧問 2026-10-26 加的第四條原則）：每段快照都帶 `appVersion` 與 `savedAt`；
  * 讀取時版本和 `APP_VERSION` 不同、或寫入超過 30 分鐘（沿用 A 的 `publicBootSnapshotMaxAgeMs` 語意），
@@ -23,8 +27,8 @@
  */
 import { SPORTS } from '@/features/events/data/sports';
 import { APP_VERSION } from '@/version';
-import { safeBannerGradient, sanitizeHttpUrl, type BannerDoc } from './banners';
-import type { SportRow } from './sport-rows';
+import { safeBannerGradient, safeBannerLinkUrl, sanitizeHttpUrl, type BannerDoc } from './banners';
+import { isGuestSportRows, type GuestSportRows, type SportRow } from './sport-rows';
 
 export const BANNERS_SNAPSHOT_KEY = 'fcb:home-banners:v1';
 export const SPORTS_SNAPSHOT_KEY = 'fcb:home-sports:v1';
@@ -107,7 +111,10 @@ function optString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-/** 只留首頁橫幅畫面用得到的欄位（不存 startAt／endAt 等時間欄位，那些可能是 Firestore Timestamp，JSON 還原不了）。 */
+/**
+ * 橫幅白名單映射：只留首頁橫幅畫面用得到的欄位（不存 startAt／endAt 等時間欄位，那些可能是 Firestore Timestamp，JSON 還原不了），
+ * 圖片只收 http/https、連結只收 http/https 或站內路徑、漸層只收單純 gradient(...)——寫入與讀取共用同一組檢查。
+ */
 function pickBanner(banner: BannerDoc): BannerDoc {
   return {
     id: banner.id,
@@ -118,13 +125,27 @@ function pickBanner(banner: BannerDoc): BannerDoc {
     subtitle: banner.subtitle,
     titleColor: banner.titleColor,
     subtitleColor: banner.subtitleColor,
-    image: banner.image,
-    linkUrl: banner.linkUrl,
+    image: sanitizeHttpUrl(banner.image),
+    linkUrl: safeBannerLinkUrl(banner.linkUrl),
     slotName: banner.slotName,
     slot: banner.slot,
     sortOrder: banner.sortOrder,
     gradient: safeBannerGradient(banner.gradient) || undefined,
   };
+}
+
+/**
+ * 通過白名單映射的橫幅清單：**首屏快照唯一允許的橫幅寫入來源**，只能由 `toPublicBanners()` 產生。
+ * `writeBannersSnapshot` 的簽章只收這個型別（編譯期），並在執行期檢查登記（防 `as` 強轉）。
+ */
+export type PublicBannerList = readonly BannerDoc[] & { readonly __publicBannerList: true };
+
+const publicBannerLists = new WeakSet<object>();
+
+export function toPublicBanners(banners: readonly BannerDoc[]): PublicBannerList {
+  const list = Object.freeze(banners.map(pickBanner));
+  publicBannerLists.add(list);
+  return list as PublicBannerList;
 }
 
 function reviveBanner(raw: unknown): BannerDoc | null {
@@ -143,9 +164,9 @@ function reviveBanner(raw: unknown): BannerDoc | null {
     subtitle: optString(row.subtitle),
     titleColor: optString(row.titleColor),
     subtitleColor: optString(row.subtitleColor),
-    // 圖片與連結只接受 http/https，防止本機資料被竄改成 javascript: 等協定。
+    // 圖片與連結再過一次白名單，防止本機資料被竄改成 javascript: 等協定或任意字串。
     image: sanitizeHttpUrl(row.image),
-    linkUrl: sanitizeHttpUrl(row.linkUrl),
+    linkUrl: safeBannerLinkUrl(row.linkUrl),
     slotName: optString(row.slotName),
     slot: typeof row.slot === 'number' || typeof row.slot === 'string' ? row.slot : undefined,
     sortOrder:
@@ -169,12 +190,13 @@ export function readBannersSnapshot(nowMs: number = Date.now()): SnapshotRead<Ba
   return items.length > 0 ? { items, expiresAt: section.expiresAt } : null;
 }
 
-/** 寫橫幅快照；空清單代表「伺服器說目前沒有橫幅」，把舊快照刪掉。呼叫端只能在確認向伺服器新取得時呼叫。 */
-export function writeBannersSnapshot(
-  banners: readonly BannerDoc[],
-  nowMs: number = Date.now(),
-): void {
-  writeSection(BANNERS_SNAPSHOT_KEY, banners.map(pickBanner), nowMs);
+/**
+ * 寫橫幅快照；空清單代表「伺服器說目前沒有橫幅」，把舊快照刪掉。呼叫端只能在確認向伺服器新取得時呼叫。
+ * 只收 `toPublicBanners()` 的輸出；沒登記過的輸入（型別被強轉繞過）在執行期也不寫。
+ */
+export function writeBannersSnapshot(banners: PublicBannerList, nowMs: number = Date.now()): void {
+  if (!publicBannerLists.has(banners)) return;
+  writeSection(BANNERS_SNAPSHOT_KEY, banners, nowMs);
 }
 
 /** 讀運動統計快照：沒有、過期、版本不同或格式不符都回 null；未知的運動 key 略過。 */
@@ -193,8 +215,12 @@ export function readSportsSnapshot(nowMs: number = Date.now()): SnapshotRead<Spo
   return items.length > 0 ? { items, expiresAt: section.expiresAt } : null;
 }
 
-/** 寫運動統計快照（只存 key＋數量；標籤與符號讀取時由 SPORTS 還原）。呼叫端只能在確認向伺服器新取得時呼叫。 */
-export function writeSportsSnapshot(rows: readonly SportRow[], nowMs: number = Date.now()): void {
+/**
+ * 寫運動統計快照（只存 key＋數量；標籤與符號讀取時由 SPORTS 還原）。呼叫端只能在確認向伺服器新取得時呼叫。
+ * 只收 `computeGuestSportRows()` 的輸出（訪客可見計算）；沒登記過的輸入（型別被強轉繞過）在執行期也不寫。
+ */
+export function writeSportsSnapshot(rows: GuestSportRows, nowMs: number = Date.now()): void {
+  if (!isGuestSportRows(rows)) return;
   writeSection(SPORTS_SNAPSHOT_KEY, rows.map((row) => ({ key: row.key, count: row.count })), nowMs);
 }
 

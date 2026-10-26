@@ -50,7 +50,22 @@ export function computeSportRows(visibleEvents: readonly EventDoc[], nowMs: numb
     });
 }
 
-/** 訪客視角的運動統計（寫首屏快照用，與帳號無關）。 */
-export function computeGuestSportRows(events: readonly EventDoc[], nowMs: number): SportRow[] {
-  return computeSportRows(getVisibleEvents(events, GUEST_VIEWER, []), nowMs);
+/**
+ * 訪客視角的運動統計：**首屏快照唯一允許的寫入來源**（T-042，顧問裁定 P1-1 採 A）。
+ * 型別帶品牌（只能由 `computeGuestSportRows` 產生），`writeSportsSnapshot` 的簽章只收這個型別，其他來源（例如登入者視角的
+ * `computeSportRows` 輸出、手寫陣列）編譯不過；同時登記在 WeakSet，執行期也拒絕沒登記過的輸入（防 `as` 強轉）。
+ */
+export type GuestSportRows = readonly SportRow[] & { readonly __guestVisibleSportRows: true };
+
+const guestRows = new WeakSet<object>();
+
+export function computeGuestSportRows(events: readonly EventDoc[], nowMs: number): GuestSportRows {
+  const rows = Object.freeze(computeSportRows(getVisibleEvents(events, GUEST_VIEWER, []), nowMs));
+  guestRows.add(rows);
+  return rows as GuestSportRows;
+}
+
+/** 這份統計是不是 `computeGuestSportRows` 產生的（執行期檢查，給快照寫入函式用）。 */
+export function isGuestSportRows(value: unknown): value is GuestSportRows {
+  return typeof value === 'object' && value !== null && guestRows.has(value);
 }
