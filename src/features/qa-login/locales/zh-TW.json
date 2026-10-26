@@ -3,6 +3,8 @@
   "lede": "僅供內部測試。請輸入臨時密碼並選擇測試身分。",
   "notice": "QA 身分會寫入正式資料庫，資料名稱皆以『QA測試-』開頭。請勿使用真實個資。",
   "footnote": "此頁不在選單中，僅限持有臨時密碼者使用。",
+  "switchNotice": "目前已登入為「{name}」。登入 QA 會切換到 QA 帳號，原帳號會登出。",
+  "switchNoticeNoName": "目前已登入一般帳號。登入 QA 會切換到 QA 帳號，原帳號會登出。",
   "password.label": "臨時密碼",
   "password.placeholder": "請輸入臨時密碼",
   "password.show": "顯示",

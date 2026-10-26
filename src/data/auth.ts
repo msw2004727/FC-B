@@ -226,7 +226,42 @@ export interface QaClaims {
   exp: number | null;
 }
 
-/** QA 測試模式登入：呼叫 issueQaTestToken → signInWithCustomToken。密碼不落地（見檔頭規則）。 */
+/**
+ * 清掉上一位使用者殘留的本機帳號資料；signOutQa 與 QA 登入切換帳號共用。
+ * 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源與主題等與帳號無關的設定。
+ * 儲存空間不可用或單一 key 移除失敗都靜默略過。
+ */
+export function clearAccountLocalState(): void {
+  const prefixes = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
+  const exactKeys = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
+
+  try {
+    const keys = Object.keys(localStorage);
+    for (const key of keys) {
+      if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    sessionStorage.removeItem('_lineLoginRetryCount');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * QA 測試模式登入：呼叫 issueQaTestToken → signInWithCustomToken。密碼不落地（見檔頭規則）。
+ * 登入前若是非 QA 帳號（一般 LINE 帳號），成功後才清掉該帳號殘留的本機資料（clearAccountLocalState）；
+ * 密碼錯誤、伺服器拒絕或 signInWithCustomToken 失敗時，原帳號與它的本機資料一律不動。
+ */
 export async function signInWithQa(password: string, persona: string): Promise<AuthUser> {
   try {
     if (password === '' || persona === '') {
@@ -239,8 +274,12 @@ export async function signInWithQa(password: string, persona: string): Promise<A
     }
 
     const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
+    // 伺服器已接受密碼；此刻 currentUser 仍是登入前的帳號，換人前先記下它是不是非 QA 帳號。
+    const previous = ctx.auth.currentUser;
+    const switchingFromRegular = previous != null && (await readQaClaims(previous.uid)) === null;
     const credential = await authMod.signInWithCustomToken(ctx.auth, customToken);
     const user = credential.user;
+    if (switchingFromRegular) clearAccountLocalState();
     emitAuth(user.uid);
     return {
       uid: user.uid,
@@ -306,30 +345,7 @@ export async function signOutQa(expectedUid: string): Promise<boolean> {
   try {
     await signOut();
   } finally {
-    // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源。
-    const prefixes = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
-    const exactKeys = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
-
-    try {
-      const keys = Object.keys(localStorage);
-      for (const key of keys) {
-        if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
-          try {
-            localStorage.removeItem(key);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-
-    try {
-      sessionStorage.removeItem('_lineLoginRetryCount');
-    } catch {
-      /* ignore */
-    }
+    clearAccountLocalState();
   }
 
   return true;

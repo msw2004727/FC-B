@@ -25,7 +25,7 @@ vi.mock('./firebase', () => ({
   shouldUseEmulator: () => false,
 }));
 
-import { readQaClaims, signInWithQa, signOutQa } from './auth';
+import { clearAccountLocalState, readQaClaims, signInWithQa, signOutQa } from './auth';
 
 const SECRET = 'pw-secret';
 const LEAK_SECRET = 'pw-secret-123';
@@ -500,5 +500,294 @@ describe('signOutQa', () => {
     await expect(signOutQa('uid-expected')).resolves.toBe(false);
     expect(firebaseSignOutMock).not.toHaveBeenCalled();
     expectAccountStorageKept();
+  });
+});
+
+// ── T-047：已用一般帳號登入後再 QA 登入 ─────────────────────────────
+
+/** 與帳號無關的 key：QA 切換帳號、登出清理都不能碰。 */
+const UNRELATED_KEYS = [
+  'unrelated',
+  'sporthub_theme',
+  'sporthub_font_size',
+  'sporthub_active_sport',
+  'toosterx:locale',
+  'toosterx:theme',
+] as const;
+
+function seedRegularAccountStorage(): void {
+  seedAccountStorage();
+  for (const key of UNRELATED_KEYS) {
+    localStorage.setItem(key, `keep-${key}`);
+  }
+}
+
+function expectRegularAccountStorageKept(): void {
+  for (const key of CLEARED_KEYS) {
+    expect(localStorage.getItem(key)).toBe(`value-${key}`);
+  }
+  expect(sessionStorage.getItem('_lineLoginRetryCount')).toBe('3');
+  for (const key of UNRELATED_KEYS) {
+    expect(localStorage.getItem(key)).toBe(`keep-${key}`);
+  }
+}
+
+function expectRegularAccountStorageCleared(): void {
+  for (const key of CLEARED_KEYS) {
+    expect(localStorage.getItem(key)).toBeNull();
+  }
+  expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+  for (const key of UNRELATED_KEYS) {
+    expect(localStorage.getItem(key)).toBe(`keep-${key}`);
+  }
+}
+
+function storageSnapshot(): string {
+  const local = Object.keys(localStorage).sort().map((key) => [key, localStorage.getItem(key)]);
+  const session = Object.keys(sessionStorage).sort().map((key) => [key, sessionStorage.getItem(key)]);
+  return JSON.stringify({ local, session });
+}
+
+function regularUser(uid = 'U-line-owner'): FakeUser {
+  return { uid, getIdTokenResult: () => Promise.resolve({ claims: {} }) };
+}
+
+function qaUser(uid = 'uid-qa-old'): FakeUser {
+  return {
+    uid,
+    getIdTokenResult: () =>
+      Promise.resolve({
+        claims: { qa: true, qaPersona: 'captain', qaAgent: 'agent-1', qaExp: 1 },
+      }),
+  };
+}
+
+function qaTokenIssued(): void {
+  callFnMock.mockResolvedValue({ customToken: 'custom-token-from-server' });
+  signInWithCustomTokenMock.mockResolvedValue({
+    user: { uid: 'uid-qa-new', displayName: null, photoURL: null },
+  });
+}
+
+function keysState(): 'keys-present' | 'keys-gone' {
+  return localStorage.getItem('shub_c_x') === null ? 'keys-gone' : 'keys-present';
+}
+
+describe('clearAccountLocalState（signOutQa 與 QA 切換帳號共用）', () => {
+  it('清掉帳號相關前綴、exact keys 與 _lineLoginRetryCount，保留與帳號無關的 key（主題、字級、語系…）', () => {
+    seedRegularAccountStorage();
+    expectRegularAccountStorageKept();
+
+    clearAccountLocalState();
+
+    expectRegularAccountStorageCleared();
+  });
+
+  it('清理結果與 signOutQa 完全一致', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = { uid: 'uid-qa' };
+    await expect(signOutQa('uid-qa')).resolves.toBe(true);
+    const afterSignOutQa = storageSnapshot();
+
+    localStorage.clear();
+    sessionStorage.clear();
+    seedRegularAccountStorage();
+    clearAccountLocalState();
+
+    expect(storageSnapshot()).toBe(afterSignOutQa);
+  });
+
+  it('單一 key 移除失敗或 storage 不可用都不外拋', () => {
+    seedRegularAccountStorage();
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('storage-blocked');
+    });
+    expect(() => clearAccountLocalState()).not.toThrow();
+    remove.mockRestore();
+
+    const keysSpy = vi.spyOn(Object, 'keys').mockImplementation(() => {
+      throw new Error('storage-unavailable');
+    });
+    expect(() => clearAccountLocalState()).not.toThrow();
+    keysSpy.mockRestore();
+  });
+});
+
+describe('signInWithQa 從一般帳號切換到 QA 帳號', () => {
+  it('成功後才清掉舊帳號殘留的本機資料（先 signInWithCustomToken、再清、再發 auth:changed），保留與帳號無關的 key', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    qaTokenIssued();
+
+    const order: string[] = [];
+    signInWithCustomTokenMock.mockImplementation(async () => {
+      order.push(`signInWithCustomToken:${keysState()}`);
+      return { user: { uid: 'uid-qa-new', displayName: null, photoURL: null } };
+    });
+    const stop = on('auth:changed', ({ uid }) => {
+      order.push(`auth:changed:${uid}:${keysState()}`);
+    });
+
+    try {
+      const user = await signInWithQa('pw', 'captain');
+      expect(user.uid).toBe('uid-qa-new');
+    } finally {
+      stop();
+    }
+
+    expect(order).toEqual([
+      'signInWithCustomToken:keys-present',
+      'auth:changed:uid-qa-new:keys-gone',
+    ]);
+    expectRegularAccountStorageCleared();
+    expect(firebaseSignOutMock).not.toHaveBeenCalled();
+  });
+
+  it('伺服器拒絕（密碼錯誤等）→ 原帳號與它的 key 都不動，沒換帳號、沒 signOut、沒 auth:changed', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    callFnMock.mockRejectedValue(new Error('permission-denied'));
+    const seen: Array<{ uid: string | null }> = [];
+    const stop = on('auth:changed', (payload) => {
+      seen.push(payload);
+    });
+
+    try {
+      await expect(signInWithQa('wrong', 'captain')).rejects.toEqual(
+        expect.objectContaining({ message: QA_ERROR }),
+      );
+    } finally {
+      stop();
+    }
+
+    expect(signInWithCustomTokenMock).not.toHaveBeenCalled();
+    expect(firebaseSignOutMock).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+    expect(authState.currentUser?.uid).toBe('U-line-owner');
+    expectRegularAccountStorageKept();
+  });
+
+  it('伺服器沒給 token 或給空 token → 原帳號的 key 都不動', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+
+    callFnMock.mockResolvedValueOnce({});
+    await expect(signInWithQa('pw', 'captain')).rejects.toEqual(
+      expect.objectContaining({ message: QA_ERROR }),
+    );
+    callFnMock.mockResolvedValueOnce({ customToken: '' });
+    await expect(signInWithQa('pw', 'captain')).rejects.toEqual(
+      expect.objectContaining({ message: QA_ERROR }),
+    );
+
+    expect(signInWithCustomTokenMock).not.toHaveBeenCalled();
+    expectRegularAccountStorageKept();
+  });
+
+  it('伺服器已發 token 但 signInWithCustomToken 失敗 → 原帳號的 key 都不動，沒有 auth:changed', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    callFnMock.mockResolvedValue({ customToken: 'custom-token-from-server' });
+    signInWithCustomTokenMock.mockRejectedValue(new Error('auth/invalid-custom-token'));
+    const seen: Array<{ uid: string | null }> = [];
+    const stop = on('auth:changed', (payload) => {
+      seen.push(payload);
+    });
+
+    try {
+      await expect(signInWithQa('pw', 'captain')).rejects.toEqual(
+        expect.objectContaining({ message: QA_ERROR }),
+      );
+    } finally {
+      stop();
+    }
+
+    expect(seen).toEqual([]);
+    expectRegularAccountStorageKept();
+  });
+
+  it('輸入為空字串（根本沒送出）→ 不讀 claims、不動 key', async () => {
+    seedRegularAccountStorage();
+    const getIdTokenResult = vi.fn(() => Promise.resolve({ claims: {} }));
+    authState.currentUser = { uid: 'U-line-owner', getIdTokenResult };
+
+    await expect(signInWithQa('', 'captain')).rejects.toEqual(
+      expect.objectContaining({ message: QA_ERROR }),
+    );
+
+    expect(getIdTokenResult).not.toHaveBeenCalled();
+    expectRegularAccountStorageKept();
+  });
+
+  it('已經是 QA 登入者再登入別的角色 → 不清理', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = qaUser();
+    qaTokenIssued();
+
+    await signInWithQa('pw', 'coach');
+
+    expectRegularAccountStorageKept();
+  });
+
+  it('登入前沒有任何登入者 → 不清理', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = null;
+    qaTokenIssued();
+
+    await signInWithQa('pw', 'captain');
+
+    expectRegularAccountStorageKept();
+  });
+
+  it('讀不到舊帳號的 claims（getIdTokenResult 拒絕）→ 視為一般帳號，登入照常成功並清理', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = {
+      uid: 'U-line-owner',
+      getIdTokenResult: () => Promise.reject(new Error('token-refresh-failed')),
+    };
+    qaTokenIssued();
+
+    await expect(signInWithQa('pw', 'captain')).resolves.toEqual(
+      expect.objectContaining({ uid: 'uid-qa-new' }),
+    );
+
+    expectRegularAccountStorageCleared();
+  });
+
+  it('清理本身失敗（storage 不可用）不影響登入結果', async () => {
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    qaTokenIssued();
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('storage-blocked');
+    });
+
+    await expect(signInWithQa('pw', 'captain')).resolves.toEqual(
+      expect.objectContaining({ uid: 'uid-qa-new' }),
+    );
+  });
+
+  it('切換成功與失敗都不把密碼寫進 console 或 storage', async () => {
+    const spies = consoleMethods.map((method) => vi.spyOn(console, method).mockImplementation(() => undefined));
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    qaTokenIssued();
+
+    await signInWithQa(LEAK_SECRET, 'captain');
+    assertSecretNotInStorage(LEAK_SECRET);
+
+    seedRegularAccountStorage();
+    authState.currentUser = regularUser();
+    callFnMock.mockRejectedValueOnce(new Error(`boom ${LEAK_SECRET}`));
+    await expect(signInWithQa(LEAK_SECRET, 'captain')).rejects.toEqual(
+      expect.objectContaining({ message: QA_ERROR }),
+    );
+    assertSecretNotInStorage(LEAK_SECRET);
+
+    for (const spy of spies) {
+      for (const args of spy.mock.calls) {
+        expect(stringifyCallArgs(args)).not.toContain(LEAK_SECRET);
+      }
+    }
   });
 });
