@@ -40,6 +40,9 @@ export function ActivityRecordList(props: ActivityRecordListProps): JSX.Element 
         return lt('候補中', '候補中');
       case 'missed':
         return lt('未出席', '未出席');
+      // T-039（B 專屬，A 沒有）：只簽到沒簽退。A 翻譯包無此鍵，同 '未出席' 做法用原文 fallback。
+      case 'incomplete':
+        return lt('未完成', '未完成');
       default:
         return key;
     }

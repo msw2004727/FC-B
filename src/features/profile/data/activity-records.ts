@@ -18,7 +18,7 @@ const EVENTS_COLLECTION = 'events' as const;
 
 /**
  * 照 A `_categorizeRecords` 回傳的欄位：activityRecords 文件本身的 `eventId`／`status`／`name`／`date`／`uid`，
- * 加上 `_displayStatus`（completed／missed）與 `_mapSubcollectionDoc` 補的 `_docId`。名稱照 A。
+ * 加上 `_displayStatus`（completed／missed，另有 B 專屬的 incomplete＝只簽到沒簽退）與 `_mapSubcollectionDoc` 補的 `_docId`。名稱照 A。
  * 保留 index signature 讓活動快取冗餘欄位（例如 `eventStatus`）也能被帶到渲染端。
  */
 export interface ActivityRecordItem {
@@ -396,8 +396,10 @@ function categorizeRecords(
       if (eventStatus !== 'ended' && eventStatus !== 'cancelled') {
         registered.push(toItem(r));
       } else if (eventStatus === 'ended' && status === 'registered') {
-        // 只有正式報名且活動已結束、未完成簽到者才顯示 missed；waitlisted 不算應到
-        registered.push(toItem(r, 'missed'));
+        // 只有正式報名且活動已結束、未完成簽到者才進這裡；waitlisted 不算應到。
+        // T-039（站長 2026-10-26 同意，刻意與 A 不同）：有簽到沒簽退 → incomplete（未完成）；
+        // 沒有簽到（含只簽退）→ missed（未出席）。只改顯示分類，完成判定與統計不變。
+        registered.push(toItem(r, attendance.checkin.has(eid) ? 'incomplete' : 'missed'));
       }
     }
   });
