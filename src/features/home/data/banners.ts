@@ -133,7 +133,12 @@ export function safeBannerColor(value: unknown, fallback: string): string {
 //         或角度（數字加 deg／grad／rad／turn）
 //   色標：顏色 [位置[ 位置]]；位置＝數字加 % 或 px；顏色是下列之一——
 //         #hex（剛好 3、4、6 或 8 碼）、rgb()／rgba()（三個 0～255 或百分比數字＋選用的 alpha；逗號式或空白加斜線式）、
-//         hsl()／hsla()（色相＋兩個百分比＋選用的 alpha；逗號式或空白加斜線式）、純英文色名
+//         hsl()／hsla()（色相＋兩個百分比＋選用的 alpha；逗號式或空白加斜線式）、
+//         英文色名（只檢查是 3～20 個英文字母，**不核對是不是真的 CSS 色名**，所以 `notacolor` 會通過）
+// 這是「受限字元與結構」的驗證，不是 CSS 有效性驗證：通過的字串不保證瀏覽器認得；瀏覽器不認得時只會把整個 background 宣告丟掉
+// （沒有底色），不會注入資源或額外宣告——這是它要守住的界線。rgb／hsl 的負數通道不收（CSS 會夾到範圍內，但 A 沒有任何來源會產生；
+// A 產生漸層的地方 `js/config.js` 的 `GRADIENT_MAP`、`TOURNAMENT_GRADIENT_MAP` 與 Functions 預設都是 `linear-gradient(135deg,#hex,#hex)`，
+// A 的橫幅後台程式沒有漸層輸入欄位；2026-10-27 查 A 站 `index.html` 內嵌的首頁摘要：3 筆橫幅的 `gradient` 都是空字串）。
 const NUM = '(?:\\d+\\.?\\d*|\\.\\d+)';
 const GRADIENT_DIRECTION_KEYWORD = /^to\s+(top|bottom|left|right)(?:\s+(top|bottom|left|right))?$/i;
 const GRADIENT_ANGLE = new RegExp(`^-?${NUM}(?:deg|grad|rad|turn)$`, 'i');
@@ -188,7 +193,7 @@ function splitTopLevelArgs(inner: string): string[] | null {
  * 橫幅漸層底色要寫進 inline style，只接受**單一** `linear-gradient(...)`，且括號平衡、內容符合上面的文法：
  * 顏色（色碼／rgb(a)／hsl(a)／英文色名）、位置（% 或 px）、方向或角度。`url(`、`var(`、分號、引號、反斜線、註解、
  * 額外的背景層（例如 `linear-gradient(red,blue),var(--x)`）、radial／conic 一律不收（避免寫入額外 CSS 宣告或觸發額外資源請求）。
- * 不合格回空字串，呼叫端改用預設底色。
+ * 不合格回空字串，呼叫端改用預設底色。**契約是格式與結構驗證，不保證有效 CSS**（見上方文法註解）。
  */
 export function safeBannerGradient(value: unknown): string {
   const raw = String(value ?? '').trim();

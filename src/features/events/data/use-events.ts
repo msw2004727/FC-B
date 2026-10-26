@@ -15,11 +15,13 @@ export interface UseEventsOptions {
   terminalMode?: UseEventsTerminalMode;
   /**
    * 每次「確認向伺服器新取得」的結果被這個畫面採用時呼叫一次（含「目前沒有活動」的空結果）。
-   * 不含：記憶體／本機快照那份上次資料、離線時 Firestore 回的持久快取（`activeFromCache` 不是 false）、
+   * 參數**只有這次確認新取得的進行中（active）活動**，不含 ended／cancelled 預覽（terminal）：terminal 沒有自己的
+   * 「是否為本次伺服器結果」旗標（`none` 模式根本不更新它，沿用的是更早一次的資料）。
+   * 不呼叫：記憶體／本機快照那份上次資料、離線時 Firestore 回的持久快取（`activeFromCache` 不是 false）、
    * 已卸載或已被新一輪請求取代的畫面。首頁用它寫自己的公開首屏快照（T-042）：
    * 只能拿確認新取得的資料寫，否則舊資料會被重新蓋上新的時間戳。
    */
-  onFresh?: (events: EventDoc[]) => void;
+  onFresh?: (activeEvents: EventDoc[]) => void;
 }
 
 interface Inflight {
@@ -90,15 +92,18 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
 }
 
 /**
- * 這個結果陣列是「這一次呼叫確認向伺服器新取得」的。依賴 events-repo 的 `loadEventsStatic` 回傳契約
- * （`events-repo.test.ts` 與 `use-events.repo-contract.test.tsx` 用真實 repo 驗證）：
- * - 回傳值（`receipt`）是**完成回條，不是活動陣列**：成功（含成功但零筆）回 `['events']`（非空）；被較新請求取代回 `[]`
- *   （這次呼叫沒有提交任何資料）；失敗直接丟 `EventsLoadError`（不會走到這裡）。
- * - 成功的呼叫在回傳前、通過 sequence 檢查之後，同步把資料與 `activeFromCache` 一起提交；所以緊接著 `getSnapshot()`
- *   讀到的，就是這一次呼叫剛提交的資料與旗標。被取代的呼叫沒有提交，那時共用 snapshot 仍是上一次的資料與旗標，不能算這次新取得。
+ * 回傳的結果陣列（key）→ 這一次呼叫「確認向伺服器新取得」的進行中（active）清單。沒有登記＝不是確認新取得的。
+ * 依賴 events-repo 的 `loadEventsStatic` 回傳契約（`events-repo.test.ts` 與 `use-events.repo-contract.test.tsx` 用真實 repo 驗證）：
+ * - 回傳值（`receipt`）是**完成回條，不是活動陣列**：這次呼叫自己成功（含成功但零筆）回 `['events']`（非空）；
+ *   被較新請求取代回 `[]`（這次呼叫沒有提交任何資料）；底層查詢失敗丟 `EventsLoadError`（不會走到這裡）——
+ *   但「失敗丟錯」只在這次呼叫沒被取代時成立：被取代的呼叫即使底層失敗，也是先判斷被取代而回 `[]`（所以 `[]` 不一定代表沒失敗，
+ *   只代表這次呼叫的結果不算數）。
+ * - 成功的呼叫在回傳前、通過 sequence 檢查之後，同步把 **active 清單與 `activeFromCache`** 一起提交；所以緊接著 `getSnapshot()`
+ *   讀到的 active 與旗標，就是這一次呼叫剛提交的。被取代的呼叫沒有提交，那時共用 snapshot 仍是上一次的 active 與旗標，不能算這次新取得。
+ *   terminal 不在這個保證裡（`none` 模式不更新它；`preview` 的 terminal 也沒有獨立旗標），所以只登記 active。
  * 因此條件是：`receipt` 非空（這次自己成功）且 `activeFromCache === false`（不是離線時的本機快取）。見 `UseEventsOptions.onFresh`。
  */
-const serverConfirmed = new WeakSet<EventDoc[]>();
+const serverConfirmedActive = new WeakMap<EventDoc[], EventDoc[]>();
 
 function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
   return (async () => {
@@ -108,7 +113,9 @@ function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
     const receipt = await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
     const events = [...snapshot.active, ...snapshot.terminal];
-    if (Array.isArray(receipt) && receipt.length > 0 && snapshot.activeFromCache === false) serverConfirmed.add(events);
+    if (Array.isArray(receipt) && receipt.length > 0 && snapshot.activeFromCache === false) {
+      serverConfirmedActive.set(events, snapshot.active);
+    }
     return events;
   })();
 }
@@ -176,9 +183,10 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
           pendingSnapshot = next;
         }
         if (!current) return;
-        if (serverConfirmed.has(next)) {
+        const confirmedActive = serverConfirmedActive.get(next);
+        if (confirmedActive) {
           try {
-            onFreshRef.current?.(next);
+            onFreshRef.current?.(confirmedActive);
           } catch {
             /* 呼叫端的快照寫入失敗不影響列表 */
           }

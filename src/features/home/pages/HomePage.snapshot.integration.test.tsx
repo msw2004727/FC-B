@@ -98,7 +98,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
   return { promise, resolve, reject };
 }
 
-/** 等所有已排入的 Promise 工作做完（setTimeout 是巨集任務，會在微任務佇列清空之後才執行）。 */
+/** 完成訊號：本次請求結算，並讓出一個巨集任務（setTimeout 會在當下的微任務佇列清空之後才執行）。不代表之後不會再有別的工作排入。 */
 async function settle(): Promise<void> {
   await act(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));

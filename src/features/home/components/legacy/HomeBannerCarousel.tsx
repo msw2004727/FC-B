@@ -17,6 +17,16 @@ const OTHER_IMAGE_TIMEOUT_MS = 3500;
 type ImageStatus = 'loaded' | 'failed' | 'timeout';
 /** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記（曾成功後又失敗的會被撤掉），下次進來重新嘗試。 */
 const imageReadyCache: Record<string, ImageStatus> = {};
+/** 成功紀錄的上限：超過時丟掉最舊的（只是那張圖下次進來會重做一次淡入，不影響正確性）。 */
+const IMAGE_READY_CACHE_MAX = 100;
+
+function rememberLoaded(url: string): void {
+  // 先刪再寫：讓這個網址排到最新（字串鍵依寫入順序列舉）。
+  delete imageReadyCache[url];
+  imageReadyCache[url] = 'loaded';
+  const urls = Object.keys(imageReadyCache);
+  for (let i = 0; i < urls.length - IMAGE_READY_CACHE_MAX; i += 1) delete imageReadyCache[urls[i] as string];
+}
 
 export interface HomeBannerCarouselProps {
   banners: readonly BannerDoc[];
@@ -38,7 +48,7 @@ export function HomeBannerCarousel({
   const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
-  /** 每個 <img> 元素目前有效的解碼工作編號（每次 load 事件遞增）；舊工作的結果即使網址剛好又換回來也作廢（A→B→A）。 */
+  /** 每個 <img> 元素目前有效的解碼工作編號（同一個元素每次 load 事件遞增）；較舊工作的結果作廢。 */
   const decodeJobsRef = useRef(new WeakMap<HTMLImageElement, number>());
   const decodeSeqRef = useRef(0);
   const timeoutsRef = useRef(new Map<string, number>());
@@ -64,22 +74,21 @@ export function HomeBannerCarousel({
   }, [activeIndex, bannerCount]);
 
   const markImage = useCallback((url: string, status: ImageStatus) => {
-    if (status === 'loaded') imageReadyCache[url] = 'loaded';
+    if (status === 'loaded') rememberLoaded(url);
     // 曾經成功、後來失敗（例如圖片被換掉或刪除）：撤掉「已載入成功」的紀錄，下次進來才會重新嘗試。
     else if (status === 'failed') delete imageReadyCache[url];
     setImageStatus((prev) => (prev[url] === status ? prev : { ...prev, [url]: status }));
   }, []);
 
   // 圖片由 <img> 自己載入（第一張高優先、其餘 lazy），這裡只接它的結果：載入後再解碼才算 loaded，失敗或解碼失敗算 failed。
-  // 解碼是非同步的：回來時若畫面已卸載（元素已不在 DOM）、這個 <img> 已被換掉（列表替換→元素移除，或同一個元素改指向別的網址），
-  // 或同一個元素後來又有更新的載入工作（網址 A→B→A 時舊工作的網址與現在剛好相同），結果作廢。
+  // 解碼是非同步的：回來時若這個 <img> 已不在 DOM（畫面卸載、列表替換，或網址改變——<img> 以網址為 key，網址一變就換成新元素、
+  // 舊元素立刻移除，所以網址 A→B→A 時舊的 A 工作也作廢，不需要等後續的 load 事件），或同一個元素後來又有更新的載入工作，結果作廢。
   const handleImageLoad = useCallback(
     (url: string, img: HTMLImageElement) => {
       const job = ++decodeSeqRef.current;
       decodeJobsRef.current.set(img, job);
       const isStale = (): boolean =>
         !img.isConnected
-        || img.getAttribute('src') !== url
         || decodeJobsRef.current.get(img) !== job;
       if (typeof img.decode !== 'function') {
         markImage(url, 'loaded');
@@ -306,6 +315,7 @@ export function HomeBannerCarousel({
                   onClick={handleSlideClick}
                 >
                   <img
+                    key={safeImg}
                     class="banner-slide-img"
                     src={safeImg}
                     alt=""

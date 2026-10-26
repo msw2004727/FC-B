@@ -223,6 +223,27 @@ describe('HomeBannerCarousel 載入結果', () => {
     expect(style).toContain('var(--bg-elevated)');
     expect(style).not.toContain('evil.example');
   });
+
+  it('「已載入成功」的紀錄有上限（100 筆）：超過時丟掉最舊的（下次進來重做淡入），最新的仍在', async () => {
+    const all = urls(105);
+    for (const u of all) {
+      const { container } = renderCarousel([banner('cap', u)]);
+      await act(async () => {
+        fireEvent.load(container.querySelector('img') as HTMLImageElement);
+      });
+      cleanup();
+    }
+    const stateFor = (u: string): string | null => {
+      const { container } = renderCarousel([banner('cap', u)]);
+      const state = (slides(container)[0] as HTMLElement).getAttribute('data-banner-load-state');
+      cleanup();
+      return state;
+    };
+    expect(stateFor(all[0] as string), '最舊的（第 1 筆）被丟掉').toBe('loading');
+    expect(stateFor(all[4] as string), '第 5 筆也被丟掉（105 − 100）').toBe('loading');
+    expect(stateFor(all[5] as string), '第 6 筆還在').toBe('done');
+    expect(stateFor(all[104] as string), '最新的還在').toBe('done');
+  });
 });
 
 describe('HomeBannerCarousel 連結契約（儲存與使用同一個：只開 http/https）', () => {
@@ -266,7 +287,7 @@ describe('HomeBannerCarousel decode 的生命週期', () => {
       return promise;
     });
   }
-  /** 明確的完成訊號：讓已經排入的 Promise 工作（含 decode 的 then 與 Preact 的重繪）全部做完。 */
+  /** 完成訊號：讓目前已排入的 Promise 工作（含 decode 的 then 與 Preact 的重繪）跑完——只保證這一刻之前排入的，不含之後才排入的。 */
   const flush = (): Promise<void> => act(async () => { await vi.advanceTimersByTimeAsync(0); });
   const stateOf = (container: HTMLElement): string | null =>
     (slides(container)[0] as HTMLElement).getAttribute('data-banner-load-state');
@@ -305,51 +326,91 @@ describe('HomeBannerCarousel decode 的生命週期', () => {
     expect(stateOf(view.container as HTMLElement)).toBe('loading');
   });
 
-  it('同一個 <img> 改指向別的網址後，舊網址的解碼結果作廢（換回舊網址後仍是載入中——沒有 src 守門就會誤判成已載入）', async () => {
-    const [u1, u2] = urls(2) as [string, string];
-    const view = render(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
-    await act(async () => {
-      fireEvent.load(imgOf(view.container as HTMLElement));
-    });
-    // 同一個橫幅（同 key）換了圖：元素重用、src 變成 u2；舊工作（u1）在這時才完成
-    view.rerender(<HomeBannerCarousel banners={[banner('a', u2)]} {...props} />);
-    jobs[0]?.resolve();
-    await flush();
-    // 換回 u1（這次沒有觸發新的載入事件）：u1 不能因為舊工作而被當成已載入
-    view.rerender(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
-    expect(stateOf(view.container as HTMLElement)).toBe('loading');
-  });
-
-  it('A→B→A：舊的 A 工作即使網址剛好又相同也作廢；以最新的 A 工作為準（resolve 與 reject 兩種舊結果）', async () => {
+  it('網址改變、中間沒有任何新的 load 事件（A→B→A）：舊的 A 解碼工作回來時作廢——resolve 不會記成「已載入成功」、reject 不會誤判失敗', async () => {
     for (const oldResult of ['resolve', 'reject'] as const) {
       cleanup();
       installDecode();
       const [uA, uB] = urls(2) as [string, string];
       const view = render(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
-      const img = imgOf(view.container as HTMLElement);
+      const elA = imgOf(view.container as HTMLElement);
       await act(async () => {
-        fireEvent.load(img); // 工作 0：A
+        fireEvent.load(elA); // 工作 0：A
       });
-      view.rerender(<HomeBannerCarousel banners={[banner('a', uB)]} {...props} />);
-      await act(async () => {
-        fireEvent.load(img); // 工作 1：B
-      });
-      view.rerender(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
-      await act(async () => {
-        fireEvent.load(img); // 工作 2：A（最新）
-      });
-      expect(jobs).toHaveLength(3);
+      expect(jobs).toHaveLength(1);
 
-      // 舊的 A 工作（0）先回來：網址、元素、掛載都沒變，只有工作編號不是最新 → 必須作廢
+      // 換成 B、再換回 A，期間沒有新的 load 事件（真實瀏覽器裡新圖的 load 是非同步才到的）
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uB)]} {...props} />);
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
+      expect(elA.isConnected, '網址一變，舊元素就被換掉').toBe(false);
+      expect(imgOf(view.container as HTMLElement)).not.toBe(elA);
+      expect(jobs).toHaveLength(1);
+
+      // 舊的 A 工作這時才回來：網址剛好又是 A，但它屬於已被換掉的元素 → 作廢
       if (oldResult === 'resolve') jobs[0]?.resolve();
       else jobs[0]?.reject(new Error('EncodingError'));
       await flush();
       expect(stateOf(view.container as HTMLElement), `舊工作 ${oldResult}`).toBe('loading');
 
-      // 最新的 A 工作（2）才算數
+      // 成功紀錄沒被污染：重新進來 A 仍是載入中
+      cleanup();
+      const again = renderCarousel([banner('a', uA)]);
+      expect(stateOf(again.container), `舊工作 ${oldResult}，重新進來`).toBe('loading');
+    }
+  });
+
+  it('A→B→A 且每次換圖都有新的 load 事件：只有最新的 A 工作算數（舊的 A 工作 resolve／reject 都作廢）', async () => {
+    for (const oldResult of ['resolve', 'reject'] as const) {
+      cleanup();
+      installDecode();
+      const [uA, uB] = urls(2) as [string, string];
+      const view = render(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
+      await act(async () => {
+        fireEvent.load(imgOf(view.container as HTMLElement)); // 工作 0：A
+      });
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uB)]} {...props} />);
+      await act(async () => {
+        fireEvent.load(imgOf(view.container as HTMLElement)); // 工作 1：B
+      });
+      view.rerender(<HomeBannerCarousel banners={[banner('a', uA)]} {...props} />);
+      await act(async () => {
+        fireEvent.load(imgOf(view.container as HTMLElement)); // 工作 2：A（最新）
+      });
+      expect(jobs).toHaveLength(3);
+
+      if (oldResult === 'resolve') jobs[0]?.resolve();
+      else jobs[0]?.reject(new Error('EncodingError'));
+      await flush();
+      expect(stateOf(view.container as HTMLElement), `舊工作 ${oldResult}`).toBe('loading');
+
       jobs[2]?.resolve();
       await flush();
       expect(stateOf(view.container as HTMLElement)).toBe('done');
+    }
+  });
+
+  it('同一個元素連續兩次 load：較舊的解碼工作作廢，以最新的為準（resolve 與 reject 兩種舊結果）', async () => {
+    for (const oldResult of ['resolve', 'reject'] as const) {
+      cleanup();
+      installDecode();
+      const [u1] = urls(1) as [string];
+      const view = renderCarousel([banner('a', u1)]);
+      const img = imgOf(view.container);
+      await act(async () => {
+        fireEvent.load(img); // 工作 0
+      });
+      await act(async () => {
+        fireEvent.load(img); // 工作 1（最新）
+      });
+      expect(jobs).toHaveLength(2);
+
+      if (oldResult === 'resolve') jobs[0]?.resolve();
+      else jobs[0]?.reject(new Error('EncodingError'));
+      await flush();
+      expect(stateOf(view.container), `舊工作 ${oldResult}`).toBe('loading');
+
+      jobs[1]?.resolve();
+      await flush();
+      expect(stateOf(view.container)).toBe('done');
     }
   });
 

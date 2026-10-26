@@ -9,7 +9,8 @@ import type { EventDoc } from './types';
 // `useEvents` 的 onFresh（首屏快照依賴它）配上「真實」的 events-repo（只換掉 Firestore SDK 的 getDocs）：
 // 「確認新取得」＝這一次呼叫自己成功（loadEventsStatic 回傳完成回條 ['events']，含成功零筆）且 activeFromCache === false。
 // 被較新請求取代（回 []）的呼叫，即使共用 snapshot 還留著上一次的 fromCache=false，也不算；失敗更不算。
-// repo 是單例，狀態跨案例保留——依序進行，正好重現「上一次成功留下旗標 false」的情境。
+// onFresh 只收到這次確認新取得的 active（不夾帶 repo 先前載入的 terminal）。
+// repo 是單例、狀態跨案例保留，所以每個案例都在案例內自己建立前置狀態（直接讓 repo 先成功一次），單獨執行也成立。
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db: unknown, path: string) => ({ kind: 'collection', path })),
@@ -30,10 +31,13 @@ vi.mock('@/data/firebase', async (importOriginal) => ({
   getFirebaseCore: vi.fn(async () => ({ db: {} })),
 }));
 
-function doc(id: string): { id: string; data: () => Record<string, unknown>; ref: { id: string } } {
-  return { id, data: () => ({ status: 'open', title: id }), ref: { id } };
+function doc(id: string, status = 'open'): { id: string; data: () => Record<string, unknown>; ref: { id: string } } {
+  return { id, data: () => ({ status, title: id }), ref: { id } };
 }
-const result = (ids: string[], fromCache: boolean): unknown => ({ docs: ids.map(doc), metadata: { fromCache } });
+const result = (ids: string[], fromCache: boolean, status = 'open'): unknown => ({
+  docs: ids.map((id) => doc(id, status)),
+  metadata: { fromCache },
+});
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -43,7 +47,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve };
 }
 
-/** 等所有已排入的 Promise 工作做完（setTimeout 是巨集任務，會在微任務佇列清空之後才執行）。 */
+/** 完成訊號：本次請求結算，並讓出一個巨集任務（setTimeout 會在當下的微任務佇列清空之後才執行）。不代表之後不會再有別的工作排入。 */
 async function settle(): Promise<void> {
   await act(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -88,8 +92,26 @@ describe('useEvents.onFresh × 真實 events-repo 的回傳契約', () => {
     expect(titles(onFresh.mock.calls[0]?.[0] ?? [])).toEqual(['s1', 's2']);
   });
 
+  it('repo 先前載入過 terminal（preview），之後 none 模式成功零筆 active：onFresh 只收到空的 active，不夾帶舊的 terminal', async () => {
+    // 前置（案例內建立）：preview 載入，active 一筆、terminal 兩筆 ended
+    vi.mocked(getDocs)
+      .mockResolvedValueOnce(result(['p-active'], false) as never)
+      .mockResolvedValueOnce(result(['p-ended-1', 'p-ended-2'], false, 'ended') as never);
+    await getEventsRepo().loadEventsStatic({ terminalMode: 'preview' });
+    expect(titles(getEventsRepo().getSnapshot().terminal)).toEqual(['p-ended-1', 'p-ended-2']);
+
+    // 首頁（none）這次成功但目前沒有進行中的活動；repo 的 terminal 沿用上一次
+    vi.mocked(getDocs).mockResolvedValueOnce(result([], false) as never);
+    render(h(Probe, null));
+    await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+    expect(onFresh).toHaveBeenLastCalledWith([]);
+    expect(titles(getEventsRepo().getSnapshot().terminal)).toEqual(['p-ended-1', 'p-ended-2']);
+  });
+
   it('被較新請求取代：repo 回傳 []、沒提交任何資料——即使共用 snapshot 還留著上一次的 fromCache=false，也不呼叫 onFresh', async () => {
-    // 前一個案例留下的 repo 狀態：資料 s1、s2，activeFromCache === false
+    // 前置（案例內建立）：repo 先成功提交一次資料 s1、s2，activeFromCache === false
+    vi.mocked(getDocs).mockResolvedValueOnce(result(['s1', 's2'], false) as never);
+    await getEventsRepo().loadEventsStatic({ terminalMode: 'none' });
     expect(getEventsRepo().getSnapshot().activeFromCache).toBe(false);
 
     const requestA = deferred<unknown>();

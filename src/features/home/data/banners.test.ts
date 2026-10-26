@@ -176,6 +176,43 @@ describe('banners data layer', () => {
     expect(safeBannerGradient(null)).toBe('');
   });
 
+  it('safeBannerGradient 的契約是「受限字元與結構」、不是 CSS 有效性：英文色名只看字母（notacolor 會通過）；A 產生漸層的格式都通過；通過的字串一律不含能注入資源或額外宣告的內容', () => {
+    // 已知且接受的界線：不核對色名，瀏覽器不認得時只會丟掉整個 background 宣告
+    expect(safeBannerGradient('linear-gradient(notacolor, blue)')).toBe('linear-gradient(notacolor, blue)');
+    // 負數的 rgb 通道不收（A 沒有任何來源會產生）
+    expect(safeBannerGradient('linear-gradient(rgb(-1,2,3), blue)')).toBe('');
+    expect(safeBannerGradient('linear-gradient(rgb(1,-2,3), blue)')).toBe('');
+    // A 產生漸層的所有來源格式（js/config.js 的 GRADIENT_MAP、TOURNAMENT_GRADIENT_MAP、Functions 預設）都要通過，不能誤拒既有資料
+    for (const fromA of [
+      'linear-gradient(135deg,#0d9488,#065f46)',
+      'linear-gradient(135deg,#0f766e,#115e59)',
+      'linear-gradient(135deg,#ec4899,#be185d)',
+      'linear-gradient(135deg,#7c3aed,#4338ca)',
+      'linear-gradient(135deg,#f59e0b,#d97706)',
+      'linear-gradient(135deg,#6b7280,#4b5563)',
+      'linear-gradient(135deg,#0284c7,#075985)',
+    ]) {
+      expect(safeBannerGradient(fromA), fromA).toBe(fromA);
+    }
+    // 不管內容是否為有效 CSS，通過的字串都不含分號、引號、反斜線、註解、url(／var(／換行
+    const injectionShapes = [
+      'linear-gradient(notacolor, blue)',
+      'linear-gradient(url, blue)',
+      'linear-gradient(red, blue);background:url(https://evil.example/x)',
+      'linear-gradient(red, blue)\nbackground:url(x)',
+      'linear-gradient(red, "blue")',
+      "linear-gradient(red, 'blue')",
+      'linear-gradient(red, blue\\)',
+      'linear-gradient(red, url(https://evil.example/x))',
+      'linear-gradient(red, var(--x))',
+      'linear-gradient(red, blue /* c */)',
+    ];
+    for (const candidate of injectionShapes) {
+      const out = safeBannerGradient(candidate);
+      expect(out, candidate).not.toMatch(/[;"'\\\n\r]|\/\*|url\(|var\(/i);
+    }
+  });
+
   it('validates colors and http/https urls safely', () => {
     expect(sanitizeHttpUrl('https://toosterx.com/a')).toBe('https://toosterx.com/a');
     expect(sanitizeHttpUrl('http://toosterx.com/a')).toBe('http://toosterx.com/a');

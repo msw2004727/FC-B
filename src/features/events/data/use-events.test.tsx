@@ -7,6 +7,8 @@ import type { EventDoc } from './types';
 
 const loadEventsStatic = vi.fn<() => Promise<string[]>>();
 let repoEvents: EventDoc[] = [];
+/** repo 目前持有的 ended／cancelled 預覽（上一次載入的；onFresh 不該拿到它）。 */
+let repoTerminal: EventDoc[] = [];
 /** repo 回報的 activeFromCache：false＝確認向伺服器新取得（預設），true＝離線時的持久快取，undefined＝讀不到。 */
 let repoFromCache: boolean | undefined = false;
 
@@ -16,7 +18,7 @@ vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => knownUid }));
 vi.mock('./events-repo', () => ({
   getEventsRepo: () => ({
     loadEventsStatic,
-    getSnapshot: () => ({ active: [...repoEvents], terminal: [], activeFromCache: repoFromCache }),
+    getSnapshot: () => ({ active: [...repoEvents], terminal: [...repoTerminal], activeFromCache: repoFromCache }),
   }),
 }));
 
@@ -37,6 +39,7 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     _clearEventsSnapshotForTest();
     loadEventsStatic.mockReset();
     repoEvents = [];
+    repoTerminal = [];
     repoFromCache = false;
     knownUid = null;
   });
@@ -193,6 +196,31 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     expect(onFresh.mock.calls[0]?.[0]?.map((e: EventDoc) => e.title)).toEqual(['新一輪']);
     // 舊一輪的處理先於新一輪登記，所以看到新一輪呼叫時，舊一輪若要呼叫早就呼叫過了：仍然只有一次
     expect(onFresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('onFresh 只收到這次確認新取得的進行中（active）清單：repo 已持有 terminal 時，成功零筆也只傳 []、有資料時不夾帶 terminal', async () => {
+    const onFresh = vi.fn<(events: EventDoc[]) => void>();
+    function FreshProbe(): preact.JSX.Element {
+      const { events } = useEvents(null, { terminalMode: 'none', onFresh });
+      return h('div', { 'data-testid': 'p' }, events.map((e) => e.title).join(','));
+    }
+    loadEventsStatic.mockResolvedValue(['events']);
+    repoTerminal = [{ ...ev('t1', '已結束的活動'), status: 'ended' } as EventDoc];
+
+    // 先前載入過 terminal，這次 none 模式成功但零筆 active
+    repoEvents = [];
+    render(h(FreshProbe, null));
+    await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+    expect(onFresh).toHaveBeenLastCalledWith([]);
+    cleanup();
+
+    // 有 active 時：只有 active，沒有 terminal
+    onFresh.mockClear();
+    _resetUseEventsForTest();
+    repoEvents = [ev('a1', '進行中')];
+    render(h(FreshProbe, null));
+    await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+    expect(onFresh.mock.calls[0]?.[0]?.map((e) => e.title)).toEqual(['進行中']);
   });
 
   it('onFresh：被較新請求取代的呼叫（repo 回傳 []）不算新取得——即使共用的 snapshot 還留著上一次 fromCache=false 的旗標', async () => {
