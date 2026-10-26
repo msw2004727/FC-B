@@ -1,3 +1,4 @@
+import { render as preactRender } from 'preact';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -298,5 +299,47 @@ describe('LegacyUserCard（照 A showUserProfile）', () => {
     fireEvent.click(overlayOf() as Element);
     await waitFor(() => expect(loadUserStats).toHaveBeenCalledWith('uid-b'));
     await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+  });
+
+  it('T-048 F8：同一實例換看另一個人的第一次 render（effect 清狀態之前）就不顯示前一人的資料', async () => {
+    let resolveB: (p: UserProfile | null) => void = () => {};
+    vi.mocked(loadUserProfile).mockImplementation((uid: string) =>
+      uid === 'uid-a'
+        ? Promise.resolve(makeProfile({ uid, _docId: uid, name: 'Alice', displayName: 'Alice' }))
+        : new Promise<UserProfile | null>((resolve) => {
+          resolveB = resolve;
+        }),
+    );
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+
+    // 直接用 preact render（不包 act）：effect 在繪製後才跑，render() 回來時的 DOM 就是換 uid 的第一次 render。
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    try {
+      preactRender(<LegacyUserCard uid="uid-a" />, container);
+      await waitFor(() => expect(container.textContent).toContain('Alice'));
+
+      preactRender(<LegacyUserCard uid="uid-b" />, container);
+      expect(container.textContent).not.toContain('Alice');
+      expect(container.textContent).toContain('載入中...');
+
+      resolveB(makeProfile({ uid: 'uid-b', _docId: 'uid-b', name: 'Bob2', displayName: 'Bob2' }));
+      await waitFor(() => expect(container.textContent).toContain('Bob2'));
+    } finally {
+      preactRender(null, container);
+      container.remove();
+    }
+  });
+
+  it('profile.uid 與請求的 uid 不同（以 lineUserId／doc id 後備查詢到）仍正常顯示，不卡在載入中', async () => {
+    vi.mocked(loadUserProfile).mockResolvedValue(
+      makeProfile({ uid: 'doc-uid', _docId: 'doc-uid', name: 'Carol', displayName: 'Carol' }),
+    );
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'viewer-uid', role: 'user' }));
+
+    const { container } = render(<LegacyUserCard uid="line-user-id" />);
+
+    await waitFor(() => expect(container.textContent).toContain('Carol'));
+    expect(container.querySelector('.uc-header')).toBeTruthy();
   });
 });

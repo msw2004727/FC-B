@@ -200,7 +200,17 @@ describe('LegacyActivityRecordsCard', () => {
 
   it('重新整理結果 toast：有新增或更新→「報名紀錄已更新」；沒有→「報名紀錄已是最新」', async () => {
     mockedLoadUserStats.mockResolvedValue(emptyStats());
-    mockedLoadSummary.mockResolvedValue(null);
+    // summary 讀得到才算整體成功（讀不到是部分失敗，另有提示，見 races 測試 F2）
+    mockedLoadSummary.mockResolvedValue({
+      uid: 'u1',
+      exists: true,
+      sourceVersion: 1,
+      expectedCount: 3,
+      attendedCount: 2,
+      completedCount: 2,
+      attendRate: 67,
+      updatedAt: new Date(2024, 0, 5, 9, 7, 0),
+    });
     render(<LegacyActivityRecordsCard uid="u1" />);
 
     mockedCallFn.mockResolvedValueOnce({ success: true, created: 1, updated: 0 } as never);
@@ -377,6 +387,51 @@ describe('LegacyActivityRecordsCard', () => {
     fireEvent.click(getCollapseToggle());
     await waitFor(() => {
       expect(screen.getByText('資料更新 2024/01/05 09:07')).toBeTruthy();
+    });
+  });
+
+  describe('標題列鍵盤操作（T-048 F6）', () => {
+    beforeEach(() => {
+      mockedLoadUserStats.mockResolvedValue(emptyStats());
+      mockedLoadSummary.mockResolvedValue(null);
+      mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
+    });
+
+    it('焦點在內部按鈕（重新整理、?）時按 Enter／Space：不切換展開、不 preventDefault（按鈕維持原生行為）', async () => {
+      render(<LegacyActivityRecordsCard uid="u1" />);
+      const header = getCollapseToggle();
+      const refresh = document.getElementById('my-records-refresh') as HTMLButtonElement;
+      const info = screen.getByTestId('profile-info-btn');
+
+      for (const target of [refresh, info]) {
+        for (const key of ['Enter', ' ']) {
+          // fireEvent 回傳 false＝事件被 preventDefault（瀏覽器會因此不再對按鈕觸發 click）
+          expect(fireEvent.keyDown(target, { key })).toBe(true);
+          expect(header.getAttribute('aria-expanded')).toBe('false');
+        }
+      }
+      expect(mockedLoadUserStats).not.toHaveBeenCalled();
+
+      // 按鈕自己的 click 照常觸發，且不會冒泡成展開／收合
+      fireEvent.click(refresh);
+      await waitFor(() => expect(mockedCallFn).toHaveBeenCalledTimes(1));
+      expect(header.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('焦點在標題列本身：Enter 展開、Space 收合，且 preventDefault', async () => {
+      render(<LegacyActivityRecordsCard uid="u1" />);
+      const header = getCollapseToggle();
+
+      expect(fireEvent.keyDown(header, { key: 'Enter' })).toBe(false);
+      expect(header.getAttribute('aria-expanded')).toBe('true');
+      await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
+
+      expect(fireEvent.keyDown(header, { key: ' ' })).toBe(false);
+      expect(header.getAttribute('aria-expanded')).toBe('false');
+
+      // 其它按鍵不處理
+      expect(fireEvent.keyDown(header, { key: 'a' })).toBe(true);
+      expect(header.getAttribute('aria-expanded')).toBe('false');
     });
   });
 });

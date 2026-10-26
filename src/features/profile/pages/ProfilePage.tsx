@@ -10,6 +10,7 @@ import {
   loadUserAttendanceSummary,
   type UserAttendanceSummary,
 } from '../data/attendance-summary';
+import { useSummarySequencer } from '../data/summary-sequencer';
 import {
   Failure,
   Loading,
@@ -90,20 +91,30 @@ function ProfileContent({
   const firstOpen = !dismissed && needsFirstLogin(profile);
   const canEditIdentity = viewer.hasPermission('profile.secondary_identity');
 
+  // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
+  // 掛載讀取比刷新慢完成時，舊值不得蓋掉較新的頁首數字。
+  const summarySeq = useSummarySequencer();
+
   useEffect(() => {
     let active = true;
     setSummary(null);
+    const token = summarySeq.issue();
     loadUserAttendanceSummary(uid)
       .then((res) => {
-        if (active) setSummary(res);
+        if (active && summarySeq.accept(token)) setSummary(res);
       })
       .catch(() => {
-        if (active) setSummary(null);
+        if (active && summarySeq.accept(token)) setSummary(null);
       });
     return () => {
       active = false;
     };
-  }, [uid]);
+  }, [uid, summarySeq]);
+
+  // 卡片刷新成功後交來的 summary 一定比掛載時發出的讀取新：發新序號套用，之後晚到的舊讀取會被丟棄。
+  function summaryRefreshed(next: UserAttendanceSummary): void {
+    if (summarySeq.accept(summarySeq.issue())) setSummary(next);
+  }
 
   function saved(patch: Record<string, unknown>): void {
     setProfile((previous) => ({ ...previous, ...patch }));
@@ -146,7 +157,7 @@ function ProfileContent({
       <LegacyFavoritesCard uid={uid} profile={profile} />
       <LegacyApplicationsCard uid={uid} profile={profile} />
       <LegacyCompanionsCard uid={uid} profile={profile} onSaved={saved} />
-      <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={setSummary} />
+      <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={summaryRefreshed} />
 
       {(firstOpen || editor?.kind === 'first') && (
         <FirstLoginEditor

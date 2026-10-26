@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render as preactRender } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 
 // 退修 1：競態與錯誤路徑（換 uid、舊請求延後完成、Callable 期間卸載、刷新沿用舊 summary、Callable 成功後重讀失敗）。
+// T-048：summary 單獨失敗的部分失敗提示（F2）、換 uid 第一次 render 的更新時間（F8）。
 
 vi.mock('@/features/profile/components/legacy/ProfileInfoButton', () => ({
   ProfileInfoButton: () => <button data-testid="profile-info-btn">?</button>,
@@ -96,6 +98,7 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
     mockedCallFn.mockResolvedValue({ success: true, created: 2, updated: 0 } as never);
     mockedLoadUserStats.mockRejectedValueOnce(new Error('network'));
     mockedLoadUserStats.mockResolvedValueOnce(statsWith('u1', 'Recovered'));
+    mockedLoadSummary.mockResolvedValue(summaryOf('u1', new Date(2026, 5, 1, 12, 0, 0)));
     render(<LegacyActivityRecordsCard uid="u1" />);
 
     fireEvent.click(refreshBtn());
@@ -338,16 +341,61 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
       expect(mockedCallFn).toHaveBeenCalledTimes(2);
     });
 
-    it('fresh summary 讀取失敗（null）→ 不呼叫（沒有東西可以更新頁首）', async () => {
+    const PARTIAL = '報名紀錄已更新，但統計讀取失敗，請再按一次重新整理';
+
+    it('F2：紀錄重讀成功但 summary 讀取失敗（null）→ 不顯示「已是最新」、顯示部分失敗提示，且不通知父層', async () => {
       const onSummaryRefreshed = vi.fn();
       mockedLoadSummary.mockResolvedValue(null);
       mockedCallFn.mockResolvedValue({ success: true, created: 0, updated: 0 } as never);
       render(<LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />);
       fireEvent.click(refreshBtn());
-      await waitFor(() =>
-        expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已是最新' }),
-      );
+      await waitFor(() => expect(mockedToastShow).toHaveBeenCalledWith({ message: PARTIAL }));
+      expect(mockedToastShow).toHaveBeenCalledTimes(1);
+      expect(mockedToastShow).not.toHaveBeenCalledWith({ message: '報名紀錄已是最新' });
+      expect(mockedToastShow).not.toHaveBeenCalledWith({ message: '報名紀錄已更新' });
       expect(onSummaryRefreshed).not.toHaveBeenCalled();
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+    });
+
+    it('F2：部分失敗後保留只讀重試——再按只重讀（Callable 不再被呼叫）；summary 成功後才清旗標並通知父層', async () => {
+      const onSummaryRefreshed = vi.fn();
+      let summaryReadable = false;
+      mockedLoadSummary.mockImplementation((_uid: string, opts?: { fresh?: boolean }) =>
+        Promise.resolve(opts?.fresh && summaryReadable ? FRESH : null),
+      );
+      mockedCallFn.mockResolvedValue({ success: true, created: 2, updated: 0 } as never);
+      render(<LegacyActivityRecordsCard uid="u1" onSummaryRefreshed={onSummaryRefreshed} />);
+
+      // 第一次：Callable 成功、紀錄重讀成功、summary 失敗 → 部分失敗提示
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(mockedToastShow).toHaveBeenCalledWith({ message: PARTIAL }));
+      expect(mockedCallFn).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+
+      // 第二次：只重讀（不重打 Callable）；summary 仍失敗 → 仍是部分失敗，旗標保留
+      mockedToastShow.mockClear();
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(mockedToastShow).toHaveBeenCalledWith({ message: PARTIAL }));
+      expect(mockedCallFn).toHaveBeenCalledTimes(1);
+      expect(mockedLoadUserStats).toHaveBeenCalledTimes(2);
+      expect(onSummaryRefreshed).not.toHaveBeenCalled();
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+
+      // 第三次：summary 讀得到 → 照第一次 Callable 的結果（created 2）顯示「已更新」並通知父層
+      mockedToastShow.mockClear();
+      summaryReadable = true;
+      fireEvent.click(refreshBtn());
+      await waitFor(() =>
+        expect(mockedToastShow).toHaveBeenCalledWith({ message: '報名紀錄已更新' }),
+      );
+      expect(mockedCallFn).toHaveBeenCalledTimes(1);
+      expect(onSummaryRefreshed).toHaveBeenCalledTimes(1);
+      expect(onSummaryRefreshed).toHaveBeenCalledWith(FRESH);
+      await waitFor(() => expect(refreshBtn().disabled).toBe(false));
+
+      // 第四次：旗標已清，恢復正常流程（先打 Callable）
+      fireEvent.click(refreshBtn());
+      await waitFor(() => expect(mockedCallFn).toHaveBeenCalledTimes(2));
     });
 
     it('等待期間換 uid → 不把舊人的 summary 交給父層', async () => {
@@ -370,6 +418,9 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
     const callable = deferred<unknown>();
     mockedCallFn.mockReturnValueOnce(callable.promise as never);
     mockedLoadUserStats.mockResolvedValue(statsWith('u2', 'Two'));
+    mockedLoadSummary.mockImplementation((uid: string) =>
+      Promise.resolve(summaryOf(uid, new Date(2026, 5, 1, 12, 0, 0))),
+    );
     const { rerender } = render(<LegacyActivityRecordsCard uid="u1" />);
     await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledWith('u1'));
 
@@ -438,5 +489,37 @@ describe('LegacyActivityRecordsCard 競態與錯誤路徑', () => {
     fireEvent.click(toggle());
     await waitFor(() => expect(mockedLoadUserStats).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
+  });
+
+  it('F8：同一實例換 uid 的第一次 render（effect 清狀態之前），「資料更新」不得顯示前一人的時間', async () => {
+    const slowU2 = deferred<UserAttendanceSummary | null>();
+    mockedLoadSummary.mockImplementation((uid: string) =>
+      uid === 'u1'
+        ? Promise.resolve(summaryOf('u1', new Date(2025, 4, 5, 8, 0, 0)))
+        : slowU2.promise,
+    );
+    // 直接用 preact render（不包 act）：Preact 的 effect 在繪製後才跑，所以 render() 回來時的 DOM
+    // 就是「換 uid 的第一次 render」，這才抓得到 effect 清掉舊 summary 之前的畫面。
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    try {
+      preactRender(<LegacyActivityRecordsCard uid="u1" />, container);
+      await waitFor(() =>
+        expect(container.textContent).toContain('資料更新 2025/05/05 08:00'),
+      );
+
+      preactRender(<LegacyActivityRecordsCard uid="u2" />, container);
+      expect(container.textContent).not.toContain('2025/05/05 08:00');
+      expect(container.textContent).toContain('資料更新 --');
+
+      // u2 自己的 summary 到了才顯示 u2 的時間
+      slowU2.resolve(summaryOf('u2', new Date(2026, 1, 2, 10, 0, 0)));
+      await waitFor(() =>
+        expect(container.textContent).toContain('資料更新 2026/02/02 10:00'),
+      );
+    } finally {
+      preactRender(null, container);
+      container.remove();
+    }
   });
 });

@@ -15,6 +15,7 @@ import {
   loadUserAttendanceSummary,
   type UserAttendanceSummary,
 } from '../../data/attendance-summary';
+import { useSummarySequencer } from '../../data/summary-sequencer';
 import { ActivityRecordList } from './ActivityRecordList';
 import { ProfileInfoButton } from './ProfileInfoButton';
 
@@ -26,6 +27,8 @@ interface LoadOutcome {
   result: LoadResult;
   /** 這次載入讀到的 summary（沒讀 summary 或讀取失敗為 null）。 */
   summary: UserAttendanceSummary | null;
+  /** 這次有要求 summary 但讀取失敗（loadUserAttendanceSummary 回 null）；沒要求 summary 的載入為 false。 */
+  summaryFailed: boolean;
 }
 
 // 掛載時讀到的 summary 超過這個年齡，第一次展開就重讀（避免卡片內的清單比統計新很多）。
@@ -92,9 +95,8 @@ export function LegacyActivityRecordsCard(
   // 收合狀態就已讀到的 summary（首次展開不必重讀，除非已過期）；換 uid 時重置。
   const summaryLoadedRef = useRef(false);
   const summaryFetchedAtRef = useRef(0);
-  // summary 請求的發出序號／已套用的最大序號：較晚發出的請求優先，慢的舊請求晚到不得蓋掉較新的。
-  const summaryIssueRef = useRef(0);
-  const summaryAppliedRef = useRef(0);
+  // summary 請求的發出序號保護（與 ProfilePage 共用同一套）：較晚發出的請求優先，慢的舊請求晚到不得蓋掉較新的。
+  const summarySeq = useSummarySequencer();
   const refreshingRef = useRef(false);
   // Callable 已成功但重讀失敗時記住結果：下一次按「重新整理」只重讀，不再打 Callable（避免撞冷卻）。
   const reloadOnlyRef = useRef<{ changed: number } | null>(null);
@@ -109,13 +111,12 @@ export function LegacyActivityRecordsCard(
   // 套用 summary：序號不比已套用的新就丟棄；讀取失敗（null）不蓋掉已顯示的值。
   const applySummary = useCallback(
     (token: number, sum: UserAttendanceSummary | null): void => {
-      if (sum === null || token <= summaryAppliedRef.current) return;
-      summaryAppliedRef.current = token;
+      if (sum === null || !summarySeq.accept(token)) return;
       summaryLoadedRef.current = true;
       summaryFetchedAtRef.current = Date.now();
       setSummary(sum);
     },
-    [],
+    [summarySeq],
   );
 
   // 照 A：標題列「資料更新」時間跟著統計走（A 以 onSnapshot 常駐），不必等展開卡片才有。
@@ -136,7 +137,7 @@ export function LegacyActivityRecordsCard(
     setPage(1);
     if (!targetUid) return undefined;
     let active = true;
-    const token = ++summaryIssueRef.current;
+    const token = summarySeq.issue();
     loadUserAttendanceSummary(targetUid)
       .then((sum) => {
         if (!active || !mountedRef.current) return;
@@ -146,13 +147,13 @@ export function LegacyActivityRecordsCard(
     return () => {
       active = false;
     };
-  }, [uid, applySummary]);
+  }, [uid, applySummary, summarySeq]);
 
   const loadAll = useCallback(
     async (
       opts: { reuseSummary?: boolean; freshSummary?: boolean } = {},
     ): Promise<LoadOutcome> => {
-      const stale: LoadOutcome = { result: 'stale', summary: null };
+      const stale: LoadOutcome = { result: 'stale', summary: null, summaryFailed: false };
       const targetUid = String(uid || '').trim();
       if (!targetUid || !mountedRef.current) return stale;
       const epoch = epochRef.current;
@@ -163,7 +164,7 @@ export function LegacyActivityRecordsCard(
           opts.reuseSummary === true &&
           summaryLoadedRef.current &&
           Date.now() - summaryFetchedAtRef.current < SUMMARY_REUSE_MS;
-        const summaryToken = skipSummary ? 0 : ++summaryIssueRef.current;
+        const summaryToken = skipSummary ? 0 : summarySeq.issue();
         const [snap, sum] = await Promise.all([
           loadUserStats(targetUid),
           skipSummary
@@ -178,7 +179,7 @@ export function LegacyActivityRecordsCard(
         setStats(snap);
         if (sum !== undefined) applySummary(summaryToken, sum);
         setStatus('ready');
-        return { result: 'ok', summary: sum ?? null };
+        return { result: 'ok', summary: sum ?? null, summaryFailed: sum === null };
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[LegacyActivityRecordsCard] load failed', err);
@@ -186,10 +187,10 @@ export function LegacyActivityRecordsCard(
           return stale;
         }
         setStatus('error');
-        return { result: 'error', summary: null };
+        return { result: 'error', summary: null, summaryFailed: false };
       }
     },
-    [uid, applySummary],
+    [uid, applySummary, summarySeq],
   );
 
   const handleToggle = useCallback((): void => {
@@ -205,6 +206,8 @@ export function LegacyActivityRecordsCard(
 
   const handleHeaderKeyDown = useCallback(
     (ev: KeyboardEvent): void => {
+      // 只處理標題列本身的按鍵；焦點在內部按鈕（重新整理、?）時保持原生行為，不 preventDefault、不切換。
+      if (ev.target !== ev.currentTarget) return;
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
         handleToggle();
@@ -249,8 +252,19 @@ export function LegacyActivityRecordsCard(
             });
             return;
           }
-          reloadOnlyRef.current = null;
           setPage(1); // 照 A：renderActivityRecords(filter, 1)，篩選維持
+          if (outcome.summaryFailed) {
+            // 紀錄已重讀成功、統計（summary）讀取失敗：頁首數字仍是舊值，不能說「已是最新」。
+            // reloadOnlyRef 保留：下一次按只重讀，不再打 Callable、不撞冷卻。
+            toast.show({
+              message: lt(
+                '報名紀錄已更新，但統計讀取失敗，請再按一次重新整理',
+                '報名紀錄已更新，但統計讀取失敗，請再按一次重新整理',
+              ),
+            });
+            return;
+          }
+          reloadOnlyRef.current = null;
           if (outcome.summary) {
             try {
               onSummaryRefreshedRef.current?.(outcome.summary);
@@ -307,7 +321,8 @@ export function LegacyActivityRecordsCard(
     [stats, filter, uid],
   );
 
-  const updatedValue = summary
+  // 換 uid 的那一個 render（effect 清狀態之前）也不顯示上一人的更新時間。
+  const updatedValue = summary && summary.uid === String(uid || '').trim()
     ? formatUserAttendanceSummaryTime(summary.updatedAt)
     : '--';
   const updatedText = lt('資料更新 {value}', '資料更新 {value}', {
