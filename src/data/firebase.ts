@@ -6,14 +6,16 @@
 // 決策：
 // - `initializeFirestore` + `persistentLocalCache` + `persistentMultipleTabManager`
 //   → 多分頁共用同一份 IndexedDB 快取，避免 A 版曾發生的「多分頁讀取量暴增」與「權限卡住」。
-// - 若持久化不可用，退回 `memoryLocalCache()`。
+// - 若持久化不可用（沒有 IndexedDB／window，或登入旗標閘判定 Auth 未能確認註冊而降級），使用 `memoryLocalCache()`；
+//   `persistentLocalCache` 初始化丟錯時的退路是 `getFirestore(app)`，不保證是純記憶體快取。
 // - Functions region 固定 `asia-east1`（R-CF-001）。
 // - `VITE_FIREBASE_EMULATOR === '1'` 且非 PROD 建置時連線 emulator；PROD 一律忽略該旗標。
 // - 正式資料庫一律不得從本機網址開啟（fail-closed，見 `assertFirebaseTargetAllowed`）。
 // - 分兩段載入（T-041）：`getFirebaseCore()` 只載 app＋firestore（首頁資料路徑先到先用）；
 //   auth＋functions 排在 core 之後才開始下載，由 `getFirebase()` 負責等它們就緒。
 //   所有需要 auth／functions 的呼叫端一律走 `getFirebase()`（它會 await 兩段都就緒才回傳），
-//   不會出現「第一次點沒反應」；只讀公開資料、只要 db 的呼叫端才用 `getFirebaseCore()`。
+//   結構上避免「第一次點沒反應」（單元測試以 gate 證明，未在真實瀏覽器驗證）；
+//   只讀公開資料、只要 db 的呼叫端才用 `getFirebaseCore()`。
 // - 啟動順序（T-041）：真訪客立即啟動 Firestore、Auth 等首頁公開讀取跑完再註冊（「首頁公開讀取優先」）；
 //   上次已登入（localStorage 旗標 `fcb:signed-in`）則 Auth 先走、等 Auth 的第一次狀態事件再初始化 Firestore
 //   （「登入旗標閘」，避免新分頁以未登入身分成為 Firestore 主分頁）。
@@ -51,22 +53,27 @@ let _contextPromise: Promise<FirebaseContext> | null = null;
 
 /**
  * 降級原因（退修 4）：上次已登入（有旗標）、但 Auth 沒能在 `registerMaxMs` 內確認註冊進 app（逾時），
- * 或 Auth 載入／註冊失敗，Firestore 因此改用 `memoryLocalCache()`（不持久化、不參與多分頁協作）。
+ * 或 Auth 載入／註冊失敗，於是「決定」讓 Firestore 改用純記憶體快取 `memoryLocalCache()`（不持久化、不參與多分頁協作）。
  */
 export type FirebaseDegradedReason = 'auth-register-timeout' | 'auth-register-failed';
 let _degradedReason: FirebaseDegradedReason | null = null;
 
 /**
- * 這一頁的 Firestore 是否處於降級（沒有離線快取、不參與多分頁協作）。唯讀；core 初始化完成後才有確定值
- * （core 還沒完成前回傳 false）。給之後依離線快取假設運作的路徑（例如 T-042 首屏快照）判斷能不能假設有離線資料。
+ * 「降級決策」是否已經做出（唯讀）。
+ * - `true`：已決定降級。這是決策旗標，不保證 Firestore 已經建立成功——決定之後 `initializeFirestore`／emulator 連線
+ *   還可能失敗，此時 core 會 reject（旗標仍為 true），呼叫端要自己處理 core 失敗。
+ * - `false`：沒有做出降級決策，**不代表**持久化快取可用：沒有 IndexedDB／window 時一樣用純記憶體快取，
+ *   此時原因旗標仍為 null；持久化初始化失敗的退路（`getFirestore(app)`）也不會改變這個旗標。
+ * core 還沒走到決策點之前回傳 false。給之後依離線快取假設運作的路徑（例如 T-042 首屏快照）使用時，
+ * 要把 `false` 當成「沒有降級」而不是「保證有離線快取」。
  * Auth 之後若補載成功，Firestore 會因憑證變更自動重連（`FirebaseAuthCredentialsProvider` 的 onInit），
- * 但快取仍是純記憶體，所以降級狀態整頁維持不變。
+ * 但快取仍是純記憶體，所以降級決策整頁維持不變。
  */
 export function isFirebaseDegraded(): boolean {
   return _degradedReason !== null;
 }
 
-/** 降級原因；沒降級為 null。 */
+/** 降級原因；沒做出降級決策為 null（語意同 `isFirebaseDegraded()`）。 */
 export function getFirebaseDegradedReason(): FirebaseDegradedReason | null {
   return _degradedReason;
 }
@@ -125,7 +132,9 @@ export function assertFirebaseTargetAllowed(
 
 /**
  * 取得（單例）app＋firestore。第一個呼叫觸發動態載入；後續回傳同一 Promise。
- * 不會載入 auth／functions；需要它們的呼叫端請用 `getFirebase()`。
+ * 沒有登入旗標（訪客）時不會載入 auth／functions；有登入旗標時為了「登入旗標閘」，會先載入並註冊 Auth
+ * （不含 Functions），等到 Auth 註冊進 app（與第一次狀態事件或其逾時）之後才初始化 Firestore。
+ * 需要 auth／functions 的呼叫端請用 `getFirebase()`。
  */
 export function getFirebaseCore(): Promise<FirebaseCoreContext> {
   if (!_corePromise) {
@@ -137,7 +146,10 @@ export function getFirebaseCore(): Promise<FirebaseCoreContext> {
 /**
  * 取得（單例）完整 Firebase context（app＋firestore＋auth＋functions）。
  * 回傳的 Promise 要等 core 與 auth／functions 都就緒才會 resolve，所以呼叫端拿到的 `auth`、`functions` 都已建立（任一邊載入失敗則整個 Promise reject）。
- * auth／functions 的下載排在 core 之後（讓 firestore 先拿到頻寬），第一次呼叫本函式時才開始。
+ * auth／functions 的下載順序依啟動路徑不同，且都是第一次需要它們時才開始：
+ *   - 沒有登入旗標（訪客）：排在 core 之後（讓 firestore 先拿到頻寬），開在首頁時再等首頁公開讀取處理完；
+ *   - 有登入旗標：Auth 先走（core 反過來等它），不等 core；Functions 與 Auth 並行下載、各自獨立，
+ *     Functions 慢或失敗不影響 Auth 註冊與 core，只會讓本函式 reject。
  */
 export function getFirebase(): Promise<FirebaseContext> {
   if (!_contextPromise) {
@@ -189,7 +201,8 @@ async function initializeFirebaseCore(): Promise<FirebaseCoreContext> {
   const degradedReason = sessionFlagAtStart() ? await waitForFirstAuthState() : null;
   if (degradedReason) {
     _degradedReason = degradedReason;
-    // core 只初始化一次，所以這則警告整頁只會出現一次。
+    // 降級警告唯一的輸出位置（core 只初始化一次，整頁只會出現一次）：只有固定原因碼與固定說明文字，
+    // 不帶任何錯誤物件（可能夾帶敏感欄位）；原始錯誤與逾時毫秒由 waitForFirstAuthState 用 console.debug 記錄。
     console.warn(
       `[firebase] Auth 未能確認註冊（${degradedReason}），Firestore 改用 memoryLocalCache` +
         '（不持久化、不參與多分頁協作；只影響這一頁的離線快取）。Auth 之後若補載成功，Firestore 會因憑證變更自動重連。',
@@ -456,14 +469,13 @@ async function waitForFirstAuthState(): Promise<FirebaseDegradedReason | null> {
   try {
     const registered = await withTimeout(getFirebaseAuth(), sessionGateTiming.registerMaxMs);
     if (registered.timedOut) {
-      console.warn(
-        `[firebase] Auth 超過 ${sessionGateTiming.registerMaxMs} ms 還沒註冊進 app，Firestore 照常啟動`,
-      );
+      // 不在這裡 warn：降級警告只由 initializeFirebaseCore 輸出一次（診斷細節走 debug）。
+      console.debug(`[firebase] Auth 超過 ${sessionGateTiming.registerMaxMs} ms 還沒註冊進 app`);
       return 'auth-register-timeout';
     }
     auth = registered.value;
   } catch (err) {
-    console.warn('[firebase] Auth 載入或註冊失敗，Firestore 照常啟動', err);
+    console.debug('[firebase] Auth 載入或註冊失敗（原始錯誤僅供除錯）', err);
     return 'auth-register-failed';
   }
 
@@ -478,7 +490,9 @@ async function waitForFirstAuthState(): Promise<FirebaseDegradedReason | null> {
       );
     }
   } catch (err) {
-    console.warn('[firebase] auth.authStateReady() 失敗，Firestore 照常啟動', err);
+    // Auth 已註冊，不降級；固定文字 warn，原始錯誤只放 debug。
+    console.warn('[firebase] auth.authStateReady() 失敗，Firestore 照常啟動');
+    console.debug('[firebase] auth.authStateReady() 原始錯誤（僅供除錯）', err);
   }
   return null;
 }
@@ -543,7 +557,7 @@ function initializeFirestoreInstance(
     });
   } catch (err) {
     console.warn(
-      '[firebase] persistentLocalCache 初始化失敗，改用 memoryLocalCache',
+      '[firebase] persistentLocalCache 初始化失敗，改用 getFirestore(app)（不保證是純記憶體快取）',
       err,
     );
     try {

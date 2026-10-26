@@ -728,7 +728,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
 
 
   // ── 退修 4（P2，R-ID-010）：直接文件 id 查詢失敗 ≠ 文件不存在 ──
-  test('直接文件 id 的查詢（非同步）失敗：不採 id 欄位備援找到的另一份文件；其他 id 照常', async () => {
+  test('直接文件 id 的查詢（非同步）失敗：同一批的 id 都不採 id 欄位備援找到的文件（缺席比錯卡好）', async () => {
     const warn = vi.fn();
     mockedGetDocs.mockImplementation(((q: unknown) => {
       const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
@@ -750,6 +750,63 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     // documentId 那批（X、Z 同一批）失敗 → 兩個 id 都不確定 → 都不採備援（缺席比錯卡好）
     expect(inputs.events).toEqual([]);
     expect(warn.mock.calls.some(([msg, label]) => String(msg).includes('event fetch skipped') && label === 'documentId')).toBe(true);
+  });
+
+  // ── 退修 5（P2 測試）：跨批次——失敗批次不採備援，成功批次的結果與備援照常保留；原錯誤物件傳進 logger ──
+  test('跨批次（61 個缺的 id → documentId 30／30／1 三批）：第一批失敗只讓該批不採備援；其他批次的結果與備援照常；原錯誤物件傳進 logger', async () => {
+    const ids = Array.from({ length: EVENT_IN_QUERY_CHUNK * 2 + 1 }, (_, i) => `x_${pad(i)}`);
+    const boom = new Error('network (documentId batch 1)');
+    const documentIdBatches: string[][] = [];
+    const doc = (docId: string, publicId: string) =>
+      makeEventSnap(docId, { id: publicId, title: `doc ${docId}`, date: '2099/01/02 09:00~11:00', status: 'open' });
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') {
+        return Promise.resolve(makeSnap(ids.map((id, i) => regDoc(`r${i}`, id)))) as never;
+      }
+      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      if (!inWhere) return Promise.resolve(makeSnap([])) as never;
+      const batchIds = inWhere.value as string[];
+      if (typeof inWhere.field !== 'string') {
+        const index = documentIdBatches.push(batchIds) - 1;
+        if (index === 0) return Promise.reject(boom) as never; // 第一批整批失敗
+        // 第二批：只有批內第一個 id 的 events/{id} 存在（其餘「確認不存在」）；第三批（1 個 id）存在
+        const present = index === 1 ? batchIds.slice(0, 1) : batchIds;
+        return Promise.resolve(makeSnap(present.map((id) => doc(id, id)))) as never;
+      }
+      // id 欄位那條：每個 id 都有一份別名文件 alias_<id>（文件 id 不同、id 欄位 = 該 id）
+      return Promise.resolve(makeSnap(batchIds.map((id) => doc(`alias_${id}`, id)))) as never;
+    }) as never);
+    const warn = vi.fn();
+
+    const inputs = await loadNextActivityInputs(deps(warn), UID);
+
+    expect(documentIdBatches.map((batch) => batch.length)).toEqual([EVENT_IN_QUERY_CHUNK, EVENT_IN_QUERY_CHUNK, 1]);
+    const [failedIds = [], okIds = [], lastIds = []] = documentIdBatches;
+    const [okFirst = '', ...okRest] = okIds;
+    const [lastId = ''] = lastIds;
+    const docIds = new Set(inputs.events.map((event) => event._docId));
+
+    // 失敗那批：自己的文件補不到，id 欄位備援也不採
+    for (const id of failedIds) {
+      expect(docIds.has(id), id).toBe(false);
+      expect(docIds.has(`alias_${id}`), `alias_${id}`).toBe(false);
+    }
+    // 成功批次：events/{id} 存在的用它（別名丟掉）；確認不存在的才採 id 欄位備援
+    expect(docIds.has(okFirst)).toBe(true);
+    expect(docIds.has(`alias_${okFirst}`)).toBe(false);
+    for (const id of okRest) expect(docIds.has(`alias_${id}`), `alias_${id}`).toBe(true);
+    expect(docIds.has(lastId)).toBe(true);
+    expect(docIds.has(`alias_${lastId}`)).toBe(false);
+    expect(inputs.events).toHaveLength(1 + okRest.length + 1);
+
+    // 只記一則警告（id 欄位那條都成功），且原錯誤物件原封不動傳進 logger
+    expect(warn).toHaveBeenCalledTimes(1);
+    const call = warn.mock.calls[0] ?? [];
+    expect(call[0]).toBe('[NextActivity] event fetch skipped:');
+    expect(call[1]).toBe('documentId');
+    expect(call[2]).toEqual(failedIds);
+    expect(call[3]).toBe(boom);
   });
 
   test('直接文件 id 查詢成功但沒找到：才採 id 欄位備援（確認 events/X 不存在）', async () => {
@@ -788,4 +845,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     }
   });
 
+  // ── 已知未修（既有邏輯，T-041 沒改；Codex 觀察項）：只登記為待辦，不斷言目前行為 ──
+  test.todo('已知未修：managed 活動的 public id 恰好等於報名的 eventId 時，haveIds 會把該 eventId 視為已涵蓋，應優先的 events/{eventId} 直接文件不會被查（R-ID-010）');
+  test.todo('已知未修：mergeEventsByIdentity 以 public id 合併，managed 活動與補抓活動（或兩份直接文件）共用同一個 public id 時，後者的欄位覆蓋前者、只剩一份');
 });

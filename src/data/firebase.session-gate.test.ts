@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 // 原因與取捨見 data/firebase.ts 的「登入旗標閘」註解。
 // 退修 4：Auth 未能確認註冊（載入失敗、getAuth 失敗、逾時）→ 降級用 memoryLocalCache（不持久化、不參與多分頁協作）；
 // Functions 的 import 慢或失敗不得影響旗標閘（Auth 註冊是獨立步驟）。
+// 退修 5：降級警告整頁只有一則、固定文字（不帶錯誤物件，原始錯誤走 console.debug）；
+// 需要「Auth 卡住」的案例一律用 sdk.authImportGate（deferred）而不是真實計時，afterEach 會放開所有 gate。
 
 const FLAG_KEY = 'fcb:signed-in';
 
@@ -18,6 +20,8 @@ const sdk = vi.hoisted(() => ({
   /** 讓 firebase/functions 的載入卡住（Functions 慢）。 */
   functionsGate: null as null | { promise: Promise<void> },
   authGate: null as null | { promise: Promise<void> },
+  /** 讓 firebase/auth 的載入卡住（Auth 註冊還沒完成）；用 gate 而不是真實計時，不受機器負載影響。 */
+  authImportGate: null as null | { promise: Promise<void> },
   /** 讓 firebase/app 的載入卡住，檢查 auth／functions 是否與它並行。 */
   appGate: null as null | { promise: Promise<void> },
   /** firebase/auth 模組載入要多久（毫秒），模擬 Auth chunk 比 Firestore 模組慢。 */
@@ -116,6 +120,7 @@ const authFactory = async () => {
   const gen = sdk.generation;
   record(gen, sdk.importOrder, 'auth');
   if (sdk.authDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, sdk.authDelayMs));
+  if (sdk.authImportGate) await sdk.authImportGate.promise;
   if (sdk.fail.auth) throw new Error('auth chunk failed');
   return {
     getAuth: (app: object) => {
@@ -137,7 +142,10 @@ const functionsFactory = async () => {
   const gen = sdk.generation;
   record(gen, sdk.importOrder, 'functions');
   if (sdk.functionsGate) await sdk.functionsGate.promise;
-  if (sdk.fail.functions) throw new Error('functions chunk failed');
+  if (sdk.fail.functions) {
+    record(gen, sdk.calls, 'functions:rejected');
+    throw new Error('functions chunk failed');
+  }
   return {
     getFunctions: () => {
       record(gen, sdk.calls, 'getFunctions');
@@ -151,13 +159,19 @@ type FirebaseModule = typeof import('./firebase');
 let firebase: FirebaseModule;
 let warn: MockInstance<typeof console.warn>;
 let info: MockInstance<typeof console.info>;
+let debug: MockInstance<typeof console.debug>;
+
+/** 本案例建立的 gate；afterEach 一律放開，避免卡住的背景工作殘留到案例之後。 */
+const openGates: Array<{ resolve: () => void }> = [];
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((res) => {
     resolve = res;
   });
-  return { promise, resolve };
+  const gate = { promise, resolve };
+  openGates.push(gate);
+  return gate;
 }
 
 async function wait(ms: number): Promise<void> {
@@ -173,12 +187,36 @@ function onlyClient(): FakeClient {
   return client;
 }
 
-/** 降級：Firestore 用 memoryLocalCache，persistentLocalCache／persistentMultipleTabManager 完全沒被呼叫，並記警告。 */
-function expectDegradedToMemoryCache(): void {
+/**
+ * 降級：Firestore 用 memoryLocalCache，persistentLocalCache／persistentMultipleTabManager 完全沒被呼叫；
+ * 降級警告整頁「剛好一則」（沒有其他 warn）、內容含固定原因碼、而且沒有帶任何錯誤物件（只有一個字串參數）。
+ */
+function expectDegradedToMemoryCache(reason: 'auth-register-timeout' | 'auth-register-failed'): void {
   expect(sdk.cache).toContain('memoryLocalCache');
   expect(sdk.cache).not.toContain('persistentLocalCache');
   expect(sdk.cache).not.toContain('persistentMultipleTabManager');
-  expect(warn.mock.calls.some(([msg]) => String(msg).includes('memoryLocalCache'))).toBe(true);
+  expect(warn).toHaveBeenCalledTimes(1);
+  const args = warn.mock.calls[0] ?? [];
+  expect(args).toHaveLength(1);
+  expect(String(args[0])).toContain('memoryLocalCache');
+  expect(String(args[0])).toContain(reason);
+  expect(firebase.getFirebaseDegradedReason()).toBe(reason);
+}
+
+/** 錯誤與它的 cause 鏈上的訊息（vitest 載入 mock 工廠失敗時會把原始錯誤包成 cause）。 */
+function errorMessages(err: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    messages.push(current.message);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return messages;
+}
+
+/** 原始錯誤（訊息含 `message` 的 Error，含 cause 鏈）有被交給 console.debug，而不是 warn。 */
+function debuggedError(message: string): boolean {
+  return debug.mock.calls.some((args) => args.some((arg) => errorMessages(arg).some((m) => m.includes(message))));
 }
 
 function settledState(promise: Promise<unknown>): { settled: boolean } {
@@ -202,11 +240,13 @@ beforeEach(async () => {
   fakeAuth.uid = null;
   sdk.functionsGate = null;
   sdk.authGate = null;
+  sdk.authImportGate = null;
   sdk.appGate = null;
   sdk.authDelayMs = 0;
   sdk.authReadyFails = false;
   warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+  debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
   vi.doMock('firebase/app', appFactory);
   vi.doMock('firebase/firestore', firestoreFactory);
   vi.doMock('firebase/auth', authFactory);
@@ -222,10 +262,14 @@ beforeEach(async () => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // 先放開所有 gate，讓卡住的背景工作收尾（它們只會寫自己世代的紀錄；而且每個案例都 resetModules，模組狀態不共用）
+  for (const gate of openGates.splice(0)) gate.resolve();
+  await wait(0);
   firebase._resetFirebaseForTest();
   warn.mockRestore();
   info.mockRestore();
+  debug.mockRestore();
   localStorage.clear();
 });
 
@@ -297,9 +341,7 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     sdk.authGate = deferred();
     firebase._setSessionGateTimingForTest({ capMs: 0 });
 
-    const startedAt = Date.now();
     await firebase.getFirebaseCore(); // 若錯誤地去等永遠不 resolve 的 gate，這裡會卡到測試逾時
-    expect(Date.now() - startedAt).toBeLessThan(10_000);
     expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
     expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
   });
@@ -327,31 +369,34 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
   });
 
-  it('保險：Auth 註冊超過 registerMaxMs 還沒好（不得已）→ 放行 Firestore 並記警告', async () => {
+  it('保險：Auth 註冊超過 registerMaxMs 還沒好（不得已）→ 放行 Firestore，降級用 memoryLocalCache，只記一則固定文字警告', async () => {
     localStorage.setItem(FLAG_KEY, '1');
-    sdk.authDelayMs = 4000; // Auth 載入要 4 秒；registerMaxMs 只有 50 ms，不該等它
+    sdk.authImportGate = deferred(); // Auth 的載入卡住（不靠真實計時，不受機器負載影響）；registerMaxMs 只有 50 ms
     firebase._setSessionGateTimingForTest({ registerMaxMs: 50 });
 
-    const startedAt = Date.now();
-    const ctx = await firebase.getFirebaseCore();
+    const ctx = await firebase.getFirebaseCore(); // 若錯誤地去等 Auth 載入，這裡會卡到測試逾時
     expect(ctx.db).toBe(sdk.fakeDb);
-    expect(Date.now() - startedAt).toBeLessThan(3500);
     expect(sdk.calls).toContain('initializeFirestore');
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('還沒註冊進 app'))).toBe(true);
+    expect(sdk.calls).not.toContain('getAuth');
     // 退修 4 P1-a：Auth 沒能確認註冊 → 降級用 memoryLocalCache，不持久化、不參與多分頁協作
-    expectDegradedToMemoryCache();
+    expectDegradedToMemoryCache('auth-register-timeout');
     expect(firebase.isFirebaseDegraded()).toBe(true);
-    expect(firebase.getFirebaseDegradedReason()).toBe('auth-register-timeout');
+    // 逾時毫秒只放 debug（診斷細節不進 warn）
+    expect(debug.mock.calls.some(([msg]) => String(msg).includes('還沒註冊進 app'))).toBe(true);
   });
 
-  it('保險：authStateReady() 自己 reject → 記警告並放行，core 不會永久失敗', async () => {
+  it('保險：authStateReady() 自己 reject → 記一則固定文字警告（不帶錯誤物件）並放行，core 不會永久失敗', async () => {
     localStorage.setItem(FLAG_KEY, '1');
     sdk.authReadyFails = true;
 
     const ctx = await firebase.getFirebaseCore();
     expect(ctx.db).toBe(sdk.fakeDb);
     expect(sdk.calls).toContain('initializeFirestore');
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('authStateReady() 失敗'))).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('authStateReady() 失敗');
+    expect(warn.mock.calls[0]).toHaveLength(1);
+    expect(debuggedError('authStateReady failed')).toBe(true); // 原始錯誤只在 debug
+    expect(firebase.isFirebaseDegraded()).toBe(false);
     expect(sdk.cache).toContain('persistentLocalCache'); // Auth 已註冊，不降級
     expect(sdk.cache).not.toContain('memoryLocalCache');
     // 之後再呼叫仍是同一個成功的 core
@@ -398,10 +443,9 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
 
     const ctx = await firebase.getFirebaseCore();
     expect(ctx.db).toBe(sdk.fakeDb);
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 載入或註冊失敗'))).toBe(true);
-    expectDegradedToMemoryCache();
+    expectDegradedToMemoryCache('auth-register-failed');
     expect(firebase.isFirebaseDegraded()).toBe(true);
-    expect(firebase.getFirebaseDegradedReason()).toBe('auth-register-failed');
+    expect(debuggedError('auth chunk failed')).toBe(true); // 原始錯誤只在 debug，不進 warn
     await expect(firebase.getFirebase()).rejects.toThrow();
   });
 
@@ -413,28 +457,28 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     const ctx = await firebase.getFirebaseCore();
 
     expect(ctx.db).toBe(sdk.fakeDb);
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 載入或註冊失敗'))).toBe(true);
-    expectDegradedToMemoryCache();
-    expect(firebase.getFirebaseDegradedReason()).toBe('auth-register-failed');
+    expectDegradedToMemoryCache('auth-register-failed');
+    expect(debuggedError('getAuth failed')).toBe(true);
   });
 
   // ── 退修 4（FC 顧問附加條件）：降級後 Auth 補到 → 本頁串流以登入身分重連 ──
   it('降級後 Auth 補到：Firestore 不重建、Auth 註冊進同一個 app，之後登入 → 以登入身分重連（重跑查詢）；降級警告只一次', async () => {
     localStorage.setItem(FLAG_KEY, '1');
-    sdk.authDelayMs = 300; // Auth chunk 慢；registerMaxMs 只有 50 ms → 降級啟動，Auth 之後才補到
+    const authImportGate = deferred();
+    sdk.authImportGate = authImportGate; // Auth chunk 卡住；registerMaxMs 只有 50 ms → 降級啟動，Auth 之後才補到
     firebase._setSessionGateTimingForTest({ registerMaxMs: 50 });
 
     const core = await firebase.getFirebaseCore();
 
     // 降級啟動：未登入身分、Auth 尚未註冊、純記憶體快取、可觀測旗標成立
-    expectDegradedToMemoryCache();
+    expectDegradedToMemoryCache('auth-register-timeout');
     expect(firebase.isFirebaseDegraded()).toBe(true);
-    expect(firebase.getFirebaseDegradedReason()).toBe('auth-register-timeout');
     expect(sdk.calls).not.toContain('getAuth');
     expect(model.clients).toHaveLength(1);
     expect(onlyClient()).toMatchObject({ identity: null, watching: false, reconnects: [] });
 
-    // Auth 補到（getFirebase() 等到 Auth 與 Functions 都好）
+    // Auth 補到（放開 gate；getFirebase() 等到 Auth 與 Functions 都好）
+    authImportGate.resolve();
     const full = await firebase.getFirebase();
     expect(full.auth).toBe(fakeAuth);
     expect(full.db).toBe(core.db);
@@ -452,7 +496,7 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     // 快取仍是純記憶體，降級狀態整頁維持；警告只記一次（core 只初始化一次）
     expect(firebase.isFirebaseDegraded()).toBe(true);
     await firebase.getFirebaseCore();
-    expect(warn.mock.calls.filter(([msg]) => String(msg).includes('改用 memoryLocalCache'))).toHaveLength(1);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   // ── 退修 4 P1-b：旗標閘只等 Auth 註冊，Functions 的 import 慢或失敗不得被當成「Auth 沒好」 ──
@@ -467,7 +511,7 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
     expect(sdk.cache).toEqual(expect.arrayContaining(['persistentLocalCache', 'persistentMultipleTabManager']));
     expect(sdk.cache).not.toContain('memoryLocalCache');
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 未能確認註冊'))).toBe(false);
+    expect(warn).not.toHaveBeenCalled(); // Functions 失敗不是降級事件，不產生降級警告
     expect(firebase.isFirebaseDegraded()).toBe(false);
     // 需要完整 context 的呼叫端仍然會知道 Functions 載不到
     await expect(firebase.getFirebase()).rejects.toThrow();
@@ -493,6 +537,55 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(complete.functions).toBe(sdk.fakeFunctions);
     expect(complete.auth).toBe(fakeAuth);
   }, 8000);
+
+  // ── 退修 5（P2 測試）：Auth 尚未完成、Functions 已經 reject 的並行情境 ──
+  it('並行：Auth 載入卡住、Functions 先 reject → 完整 context 先 reject，但 core 不提前完成；Auth 成功後才走持久化（不降級）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.fail.functions = true;
+    const authImportGate = deferred();
+    sdk.authImportGate = authImportGate; // Auth 卡住
+
+    // 同時啟動完整 context，並「提前」接住它的 rejection（Functions 先 reject、Auth 還沒好）
+    const full = firebase.getFirebase();
+    const fullOutcome = full.then(() => 'resolved' as const, (err: unknown) => err);
+    const core = firebase.getFirebaseCore();
+    const coreState = settledState(core);
+
+    await vi.waitFor(() => expect(sdk.calls).toContain('functions:rejected'), { timeout: 10_000 });
+    await expect(fullOutcome).resolves.toBeInstanceOf(Error); // 完整 context 已因 Functions 失敗而 reject
+    // …但 core 不能因此提前完成：Auth 還沒註冊進 app
+    await wait(30);
+    expect(coreState.settled).toBe(false);
+    expect(sdk.calls).not.toContain('getAuth');
+    expect(sdk.calls).not.toContain('initializeFirestore');
+    expect(warn).not.toHaveBeenCalled();
+
+    authImportGate.resolve();
+    await core;
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    expect(sdk.cache).toEqual(expect.arrayContaining(['persistentLocalCache', 'persistentMultipleTabManager']));
+    expect(sdk.cache).not.toContain('memoryLocalCache');
+    expect(firebase.isFirebaseDegraded()).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('並行：Auth 載入卡住、Functions 先 reject、Auth 註冊逾時 → 降級用 memoryLocalCache，原因是逾時（不是 Functions 失敗）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.fail.functions = true;
+    sdk.authImportGate = deferred(); // Auth 一直卡住
+    firebase._setSessionGateTimingForTest({ registerMaxMs: 50 });
+
+    const full = firebase.getFirebase();
+    const fullOutcome = full.then(() => 'resolved' as const, (err: unknown) => err);
+    const ctx = await firebase.getFirebaseCore();
+
+    expect(ctx.db).toBe(sdk.fakeDb);
+    await vi.waitFor(() => expect(sdk.calls).toContain('functions:rejected'), { timeout: 10_000 });
+    await expect(fullOutcome).resolves.toBeInstanceOf(Error);
+    expect(sdk.calls).not.toContain('getAuth');
+    expectDegradedToMemoryCache('auth-register-timeout');
+  });
 });
 
 describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，不等 Auth', () => {
