@@ -6,11 +6,8 @@ import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 
 export const ANNOUNCEMENTS_COLLECTION = 'announcements';
 
-/**
- * 公告查詢上限：與 A 的 `_buildCollectionQuery`（一般集合 limit(200)）及 banners.ts 一致。
- * 公告只有少數幾則會同時有效，這是防止歷史公告無限累積的保險，不改變顯示結果（有效公告仍依狀態與排序篩出）。
- */
-export const ANNOUNCEMENTS_QUERY_LIMIT = 200;
+// 查詢維持 main 的原語意：整個集合不加 limit。有效公告是在客戶端依狀態與排序篩出，
+// 沒有 orderBy 的 limit 是「先截取、再篩選」，集合超過上限時可能漏掉有效公告（退修 4 移除 T-041 先前加的 limit(200)）。
 
 export interface AnnouncementDoc {
   id: string;
@@ -172,13 +169,11 @@ export async function loadActiveAnnouncements(
   const logger = deps.logger ?? console;
   const nowMs = deps.now?.() ?? Date.now();
   try {
-    const [{ db }, { collection, getDocs, limit, query }] = await Promise.all([
+    const [{ db }, { collection, getDocs, query }] = await Promise.all([
       getFB(),
       loadFirestoreSdk(),
     ]);
-    const snap = await getDocs(
-      query(collection(db, ANNOUNCEMENTS_COLLECTION), limit(ANNOUNCEMENTS_QUERY_LIMIT)),
-    );
+    const snap = await getDocs(query(collection(db, ANNOUNCEMENTS_COLLECTION)));
     const docs = snap.docs.map((d) => mapAnnouncementDoc(d));
     return filterAndSortAnnouncements(docs, nowMs);
   } catch (err) {

@@ -671,7 +671,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     }
   });
 
-  test('某條補抓在建查詢時同步丟錯：只記警告，另一條與整體照常（原本逐筆隔離的語意）', async () => {
+  test('某條補抓在建查詢時同步丟錯：只記警告、整張卡不失敗；該批 id 不採 id 欄位備援（缺席比錯卡好）', async () => {
     const original = vi.mocked(where).getMockImplementation();
     vi.mocked(where).mockImplementation(((field: unknown, op: string, value: unknown) => {
       if (typeof field !== 'string') throw new Error('invalid documentId query');
@@ -688,7 +688,8 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
 
       const inputs = await loadNextActivityInputs(deps(warn), UID);
 
-      expect(inputs.events.map((e) => e._docId)).toEqual(['doc-1']);
+      // 直接文件 id 那條失敗 → 不知道 events/pub-1 在不在 → 不採 id 欄位備援找到的 doc-1
+      expect(inputs.events).toEqual([]);
       expect(warn.mock.calls.some(([msg, label]) => String(msg).includes('event fetch skipped') && label === 'documentId')).toBe(true);
     } finally {
       if (original) vi.mocked(where).mockImplementation(original);
@@ -723,6 +724,68 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     );
     const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
     expect(inputs.events.map((e) => e._docId)).toEqual(['Y']);
+  });
+
+
+  // ── 退修 4（P2，R-ID-010）：直接文件 id 查詢失敗 ≠ 文件不存在 ──
+  test('直接文件 id 的查詢（非同步）失敗：不採 id 欄位備援找到的另一份文件；其他 id 照常', async () => {
+    const warn = vi.fn();
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') {
+        return Promise.resolve(makeSnap([regDoc('r1', 'X'), regDoc('r2', 'Z')])) as never;
+      }
+      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      if (!inWhere) return Promise.resolve(makeSnap([])) as never;
+      if (typeof inWhere.field !== 'string') return Promise.reject(new Error('network')) as never; // documentId 那條整批失敗
+      // id 欄位那條：X 對應到另一份文件 Y；Z 對應到 Z2
+      return Promise.resolve(makeSnap([
+        makeEventSnap('Y', { id: 'X', title: '錯的卡（events/X 其實存在）', date: '2099/01/02 09:00~11:00', status: 'open' }),
+        makeEventSnap('Z2', { id: 'Z', title: 'Z', date: '2099/01/03 09:00~11:00', status: 'open' }),
+      ])) as never;
+    }) as never);
+
+    const inputs = await loadNextActivityInputs(deps(warn), UID);
+
+    // documentId 那批（X、Z 同一批）失敗 → 兩個 id 都不確定 → 都不採備援（缺席比錯卡好）
+    expect(inputs.events).toEqual([]);
+    expect(warn.mock.calls.some(([msg, label]) => String(msg).includes('event fetch skipped') && label === 'documentId')).toBe(true);
+  });
+
+  test('直接文件 id 查詢成功但沒找到：才採 id 欄位備援（確認 events/X 不存在）', async () => {
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+      if (base?.kind === 'collectionGroup') return Promise.resolve(makeSnap([regDoc('r1', 'X')])) as never;
+      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      if (inWhere && typeof inWhere.field === 'string') {
+        return Promise.resolve(makeSnap([
+          makeEventSnap('Y', { id: 'X', title: 'B', date: '2099/01/03 09:00~11:00', status: 'open' }),
+        ])) as never;
+      }
+      return Promise.resolve(makeSnap([])) as never; // documentId 那條成功但空
+    }) as never);
+
+    const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
+    expect(inputs.events.map((e) => e._docId)).toEqual(['Y']);
+  });
+
+  test('不可能是文件 id 的 public id（含 /）：只能走 id 欄位，找到就採用（本來就不會有 events/{含 / 的 id}）', async () => {
+    const restore = makeWhereRejectInvalidDocIds();
+    try {
+      const probe = eventsByQuery(
+        [regDoc('r1', 'a/b')],
+        (field) => (field === 'id'
+          ? [makeEventSnap('Q', { id: 'a/b', title: 'slash id', date: '2099/01/02 09:00~11:00', status: 'open' })]
+          : []),
+      );
+
+      const inputs = await loadNextActivityInputs(deps(vi.fn()), UID);
+
+      expect(probe.inQueries.find((q) => q.field === 'documentId')).toBeUndefined(); // 沒有可查的合法文件 id
+      expect(inputs.events.map((e) => e._docId)).toEqual(['Q']);
+    } finally {
+      restore();
+    }
   });
 
 });

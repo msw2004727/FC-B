@@ -8,8 +8,14 @@ import { describe, expect, it } from 'vitest';
 // app／auth／functions 在 data/firebase.ts 動態 import）。
 // 本測試沿著 main.tsx 的靜態 import（排除 import type 與動態 import()）走訪原始碼，找出違規的檔案與路徑。
 //
-// 已知限制：只看語法，不理解字串／樣板字串裡長得像 import 的文字（會誤報，不會漏報）；
-// 動態 import() 一律視為沒問題（那正是我們要的做法）。
+// 已知限制（這是簡易的原始碼掃描，不是 TypeScript 解析器；退修 4 更正先前「只會誤報、不會漏報」的說法）：
+//   - 誤報：不理解字串／樣板字串裡長得像 import 的文字。
+//   - 漏報邊角（已知，不修）：
+//     · 預設匯入剛好叫 `type`（`import type from './bridge';`）會被當成 `import type` 而略過；
+//     · 簡易去註解器只認字串引號，不認正規表達式字面值——正規表達式字面值裡的兩個斜線會被當成行註解的開頭，
+//       同一行後面的 import 因此被吃掉（例如先宣告一個匹配兩個斜線的正規表達式、同一行再接 import 敘述）；
+//     · 看不到 `require()`、`import.meta.glob` 之類的非 import 語法（本專案入口圖沒有使用）。
+//   動態 import() 一律視為沒問題（那正是我們要的做法）。真正的把關還有 dist 靜態分析（入口 chunk 不得靜態相依 SDK chunk）。
 
 const SRC = resolve(__dirname, '..');
 const ENTRY = join(SRC, 'main.tsx');

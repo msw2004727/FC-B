@@ -366,13 +366,15 @@ export function isValidFirestoreDocId(id: string): boolean {
 }
 
 /**
- * 報名指向、但管理的活動沒涵蓋的活動，一次用 `in` 查詢補抓（取代過去逐筆 resolveEventDocId＋getDoc 的串行）：
+ * 報名指向、但管理的活動沒涵蓋的活動，一次用 `in` 查詢補抓（取代過去每個缺的 id 各自 resolveEventDocId＋getDoc：id 之間用 Promise.all 並行，但單一 id 內是串行的 1～3 次往返）：
  *   - `documentId() in ids`：報名的 eventId 就是文件 id（多數情況）；不是合法文件 id 的（例如含 '/'）不放進這條
  *   - `id in ids`：報名記的是 public id、文件 id 不同的活動（R-ID-010，原 resolveEventDocId 的第二步）
  * 兩條查詢、各分批並行；單一批次失敗（含建查詢時同步丟錯）只記警告，不影響其他批次（原本逐筆隔離的語意）。
  *
- * R-ID-010 的優先順序：`events/{eventId}` 這份文件存在就用它；只有它不存在才採 `id` 欄位相符的那份。
+ * R-ID-010 的優先順序：`events/{eventId}` 這份文件存在就用它；只有它「確認不存在」才採 `id` 欄位相符的那份。
  * 同一個 public id 同時對應兩份文件時，`id` 欄位那份會被丟掉。
+ * 「確認不存在」＝直接文件 id 的查詢成功且沒找到（或這個 id 本來就不可能是文件 id，例如含 '/'）。
+ * 直接文件 id 的查詢「失敗」時不知道 `events/X` 在不在，這些 id 不採 `id` 欄位備援——該卡缺席比顯示錯的卡好（退修 4）。
  */
 async function fetchMissingEvents(
   sdk: FirestoreSdk,
@@ -381,17 +383,23 @@ async function fetchMissingEvents(
   logger: NextActivityLogger,
 ): Promise<EventDoc[]> {
   const { collection, documentId, getDocs, query, where } = sdk;
+  interface BatchResult {
+    /** 查詢（含建查詢）是否成功；失敗時 events 一定是空的。 */
+    ok: boolean;
+    ids: string[];
+    events: EventDoc[];
+  }
   const run = async (
     label: string,
     build: (ids: string[]) => Query<DocumentData>,
     ids: string[],
-  ): Promise<EventDoc[]> => {
+  ): Promise<BatchResult> => {
     try {
       const snap = await getDocs(build(ids));
-      return snap.docs.map((d) => mapDoc(d));
+      return { ok: true, ids, events: snap.docs.map((d) => mapDoc(d)) };
     } catch (err) {
       logger.warn('[NextActivity] event fetch skipped:', label, ids, err);
-      return [];
+      return { ok: false, ids, events: [] };
     }
   };
 
@@ -412,10 +420,18 @@ async function fetchMissingEvents(
     Promise.all(byPublicIdBatches),
   ]);
 
-  const byDocId = byDocIdResults.flat();
+  const byDocId = byDocIdResults.flatMap((result) => result.events);
   const resolvedDocIds = new Set(byDocId.map((event) => String(event._docId ?? '').trim()));
-  const byPublicId = byPublicIdResults.flat()
-    .filter((event) => !resolvedDocIds.has(String(event.id ?? '').trim()));
+  // 直接文件 id 的查詢失敗：這些 id 的 events/{id} 在不在不知道，不能退回 id 欄位備援
+  const unconfirmedIds = new Set(
+    byDocIdResults.filter((result) => !result.ok).flatMap((result) => result.ids),
+  );
+  const byPublicId = byPublicIdResults
+    .flatMap((result) => result.events)
+    .filter((event) => {
+      const publicId = String(event.id ?? '').trim();
+      return !resolvedDocIds.has(publicId) && !unconfirmedIds.has(publicId);
+    });
   return [...byPublicId, ...byDocId];
 }
 
@@ -423,7 +439,7 @@ async function fetchMissingEvents(
  * 從 Firestore 讀取「下一場活動」所需的所有輸入。
  * 注意：collectionGroup('registrations') 的結果必須先過 filterSubcollectionDocs（R-REG-014）。
  *
- * 查詢順序（A4：原本是報名 → 三個管理查詢 → 逐筆補抓三段串行）：
+ * 查詢順序（A4：原本是「報名」→「三個管理查詢」→「補抓缺的活動」三個階段串行；補抓階段各 id 之間並行、單一 id 內串行）：
  *   1) 報名與三個管理查詢互不相依，一起發出（Promise.all）
  *   2) 兩邊都回來才知道哪些報名指向的活動還缺，缺的 id 用 `in` 查詢一次補抓
  */

@@ -4,13 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 // 上次已登入（localStorage 旗標 fcb:signed-in）→ 先走 Auth，等 Auth 的第一次狀態事件再初始化 Firestore；
 // 沒旗標（真訪客）→ 照「首頁公開讀取優先」立即初始化 Firestore，不等 Auth。
 // 原因與取捨見 data/firebase.ts 的「登入旗標閘」註解。
+// 退修 4：Auth 未能確認註冊（載入失敗、getAuth 失敗、逾時）→ 降級用 memoryLocalCache（不持久化、不參與多分頁協作）；
+// Functions 的 import 慢或失敗不得影響旗標閘（Auth 註冊是獨立步驟）。
 
 const FLAG_KEY = 'fcb:signed-in';
 
 const sdk = vi.hoisted(() => ({
   importOrder: [] as string[],
   calls: [] as string[],
-  fail: { auth: false },
+  fail: { auth: false, getAuth: false, functions: false },
+  /** Firestore 本地快取的設定紀錄（持久化＋多分頁協作 vs 純記憶體）。 */
+  cache: [] as string[],
+  /** 讓 firebase/functions 的載入卡住（Functions 慢）。 */
+  functionsGate: null as null | { promise: Promise<void> },
   authGate: null as null | { promise: Promise<void> },
   /** 讓 firebase/app 的載入卡住，檢查 auth／functions 是否與它並行。 */
   appGate: null as null | { promise: Promise<void> },
@@ -55,9 +61,18 @@ const firestoreFactory = async () => {
       record(gen, sdk.calls, 'initializeFirestore');
       return sdk.fakeDb;
     },
-    persistentLocalCache: () => ({}),
-    persistentMultipleTabManager: () => ({}),
-    memoryLocalCache: () => ({}),
+    persistentLocalCache: () => {
+      record(gen, sdk.cache, 'persistentLocalCache');
+      return {};
+    },
+    persistentMultipleTabManager: () => {
+      record(gen, sdk.cache, 'persistentMultipleTabManager');
+      return {};
+    },
+    memoryLocalCache: () => {
+      record(gen, sdk.cache, 'memoryLocalCache');
+      return {};
+    },
     getFirestore: () => sdk.fakeDb,
     connectFirestoreEmulator: () => undefined,
   };
@@ -69,6 +84,7 @@ const authFactory = async () => {
   if (sdk.fail.auth) throw new Error('auth chunk failed');
   return {
     getAuth: () => {
+      if (sdk.fail.getAuth) throw new Error('getAuth failed');
       record(gen, sdk.calls, 'getAuth');
       return fakeAuth;
     },
@@ -76,8 +92,17 @@ const authFactory = async () => {
   };
 };
 const functionsFactory = async () => {
-  record(sdk.generation, sdk.importOrder, 'functions');
-  return { getFunctions: () => sdk.fakeFunctions, connectFunctionsEmulator: () => undefined };
+  const gen = sdk.generation;
+  record(gen, sdk.importOrder, 'functions');
+  if (sdk.functionsGate) await sdk.functionsGate.promise;
+  if (sdk.fail.functions) throw new Error('functions chunk failed');
+  return {
+    getFunctions: () => {
+      record(gen, sdk.calls, 'getFunctions');
+      return sdk.fakeFunctions;
+    },
+    connectFunctionsEmulator: () => undefined,
+  };
 };
 
 type FirebaseModule = typeof import('./firebase');
@@ -97,6 +122,14 @@ async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** 降級：Firestore 用 memoryLocalCache，persistentLocalCache／persistentMultipleTabManager 完全沒被呼叫，並記警告。 */
+function expectDegradedToMemoryCache(): void {
+  expect(sdk.cache).toContain('memoryLocalCache');
+  expect(sdk.cache).not.toContain('persistentLocalCache');
+  expect(sdk.cache).not.toContain('persistentMultipleTabManager');
+  expect(warn.mock.calls.some(([msg]) => String(msg).includes('memoryLocalCache'))).toBe(true);
+}
+
 function settledState(promise: Promise<unknown>): { settled: boolean } {
   const state = { settled: false };
   void promise.then(() => { state.settled = true; }, () => { state.settled = true; });
@@ -110,6 +143,10 @@ beforeEach(async () => {
   sdk.importOrder.length = 0;
   sdk.calls.length = 0;
   sdk.fail.auth = false;
+  sdk.fail.getAuth = false;
+  sdk.fail.functions = false;
+  sdk.cache.length = 0;
+  sdk.functionsGate = null;
   sdk.authGate = null;
   sdk.appGate = null;
   sdk.authDelayMs = 0;
@@ -159,6 +196,9 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(sdk.calls.indexOf('authStateReady:resolved')).toBeGreaterThan(-1);
     expect(sdk.calls.indexOf('initializeFirestore')).toBeGreaterThan(sdk.calls.indexOf('authStateReady:resolved'));
     expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    // 正常路徑：持久化＋多分頁協作，沒有降級
+    expect(sdk.cache).toEqual(expect.arrayContaining(['persistentLocalCache', 'persistentMultipleTabManager']));
+    expect(sdk.cache).not.toContain('memoryLocalCache');
   });
 
   it('不暫緩 Auth：即使首頁暫緩機制被啟動，有旗標時 Auth 仍然立刻載入（Auth 先走，不會互等）', async () => {
@@ -191,6 +231,9 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
     expect(info.mock.calls.some(([msg]) => String(msg).includes('第一次狀態事件'))).toBe(true);
     expect(warn).not.toHaveBeenCalled();
+    // Auth 已註冊：放行時仍用持久化，不降級
+    expect(sdk.cache).toContain('persistentLocalCache');
+    expect(sdk.cache).not.toContain('memoryLocalCache');
   });
 
   it('保險：整體上限已過（capMs 用完）→ 不再等第一次狀態事件，但 Auth 仍已註冊', async () => {
@@ -239,6 +282,8 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(Date.now() - startedAt).toBeLessThan(3500);
     expect(sdk.calls).toContain('initializeFirestore');
     expect(warn.mock.calls.some(([msg]) => String(msg).includes('還沒註冊進 app'))).toBe(true);
+    // 退修 4 P1-a：Auth 沒能確認註冊 → 降級用 memoryLocalCache，不持久化、不參與多分頁協作
+    expectDegradedToMemoryCache();
   });
 
   it('保險：authStateReady() 自己 reject → 記警告並放行，core 不會永久失敗', async () => {
@@ -249,6 +294,8 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(ctx.db).toBe(sdk.fakeDb);
     expect(sdk.calls).toContain('initializeFirestore');
     expect(warn.mock.calls.some(([msg]) => String(msg).includes('authStateReady() 失敗'))).toBe(true);
+    expect(sdk.cache).toContain('persistentLocalCache'); // Auth 已註冊，不降級
+    expect(sdk.cache).not.toContain('memoryLocalCache');
     // 之後再呼叫仍是同一個成功的 core
     await expect(firebase.getFirebaseCore()).resolves.toMatchObject({ db: sdk.fakeDb });
   });
@@ -287,15 +334,66 @@ describe('有登入旗標（上次已登入）：Auth 先走，Firestore 等 Aut
     expect(sdk.importOrder).not.toContain('auth'); // 暫緩中
   });
 
-  it('保險：Auth 模組載入失敗 → 放行 Firestore 並警告；getFirebase() 仍會拒絕讓呼叫端知道', async () => {
+  it('保險：Auth 模組載入失敗 → 放行 Firestore 並警告，降級用 memoryLocalCache；getFirebase() 仍會拒絕讓呼叫端知道', async () => {
     localStorage.setItem(FLAG_KEY, '1');
     sdk.fail.auth = true;
 
     const ctx = await firebase.getFirebaseCore();
     expect(ctx.db).toBe(sdk.fakeDb);
-    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 載入失敗'))).toBe(true);
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 載入或註冊失敗'))).toBe(true);
+    expectDegradedToMemoryCache();
     await expect(firebase.getFirebase()).rejects.toThrow();
   });
+
+  // ── 退修 4 P1-a：Auth 未能確認註冊的降級路徑不得以持久化＋多分頁協作啟動 Firestore ──
+  it('getAuth() 丟錯 → 當成 Auth 沒註冊成功：降級用 memoryLocalCache（persistent 沒被呼叫）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.fail.getAuth = true;
+
+    const ctx = await firebase.getFirebaseCore();
+
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 載入或註冊失敗'))).toBe(true);
+    expectDegradedToMemoryCache();
+  });
+
+  // ── 退修 4 P1-b：旗標閘只等 Auth 註冊，Functions 的 import 慢或失敗不得被當成「Auth 沒好」 ──
+  it('Functions 的 import 失敗、Auth 正常 → Firestore 仍等 getAuth 之後才初始化，走持久化（不降級）', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    sdk.fail.functions = true;
+
+    const ctx = await firebase.getFirebaseCore();
+
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.calls.indexOf('getAuth')).toBeGreaterThan(-1);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    expect(sdk.cache).toEqual(expect.arrayContaining(['persistentLocalCache', 'persistentMultipleTabManager']));
+    expect(sdk.cache).not.toContain('memoryLocalCache');
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('Auth 未能確認註冊'))).toBe(false);
+    // 需要完整 context 的呼叫端仍然會知道 Functions 載不到
+    await expect(firebase.getFirebase()).rejects.toThrow();
+  });
+
+  it('Functions 的 import 很慢（卡住）、Auth 正常 → Firestore 不等 Functions；getFirebase() 仍等到 Functions 就緒才回傳', async () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    const functionsGate = deferred();
+    sdk.functionsGate = functionsGate;
+
+    const full = firebase.getFirebase();
+    const fullState = settledState(full);
+    const ctx = await firebase.getFirebaseCore(); // 若錯誤地等 Functions，這裡會卡到測試逾時
+
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.calls.indexOf('getAuth')).toBeLessThan(sdk.calls.indexOf('initializeFirestore'));
+    expect(sdk.cache).toContain('persistentLocalCache');
+    expect(sdk.calls).not.toContain('getFunctions'); // Functions 還沒好
+    expect(fullState.settled).toBe(false);
+
+    functionsGate.resolve();
+    const complete = await full;
+    expect(complete.functions).toBe(sdk.fakeFunctions);
+    expect(complete.auth).toBe(fakeAuth);
+  }, 8000);
 });
 
 describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，不等 Auth', () => {
@@ -307,6 +405,9 @@ describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，
     expect(sdk.calls).toEqual(['initializeFirestore']);
     expect(sdk.importOrder).not.toContain('auth');
     expect(sdk.calls).not.toContain('authStateReady:called');
+    // 真訪客照舊用持久化＋多分頁協作（沒有私人監聽，沒有 P2-1 窗口）
+    expect(sdk.cache).toContain('persistentLocalCache');
+    expect(sdk.cache).not.toContain('memoryLocalCache');
   });
 
   it('旗標壞掉或 localStorage 不能用 → 當成訪客，不丟錯', async () => {
