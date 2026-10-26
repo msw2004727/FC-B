@@ -227,6 +227,10 @@ function settledState(promise: Promise<unknown>): { settled: boolean } {
 
 beforeEach(async () => {
   localStorage.clear();
+  // jsdom 沒有 indexedDB，而 firebase.ts 只在 typeof indexedDB !== 'undefined'（且有 window）時才走持久化分支
+  // （initializeFirestoreInstance 的 canUsePersistence）。不 stub 的話，所有「走持久化」的斷言都走不到那個分支，
+  // 而「降級用 memoryLocalCache」的斷言則會在拿掉降級修復後仍然通過（假綠）。需要「沒有 IndexedDB」的案例自己覆寫。
+  vi.stubGlobal('indexedDB', {});
   vi.resetModules();
   sdk.generation += 1;
   sdk.importOrder.length = 0;
@@ -270,6 +274,7 @@ afterEach(async () => {
   warn.mockRestore();
   info.mockRestore();
   debug.mockRestore();
+  vi.unstubAllGlobals();
   localStorage.clear();
 });
 
@@ -623,5 +628,28 @@ describe('沒有登入旗標（真訪客）：照舊立即初始化 Firestore，
     const full = await firebase.getFirebase();
     expect(full.db).toBe(core.db);
     expect(full.auth).toBe(fakeAuth);
+  });
+});
+
+// ── 退修 6：快取選擇取決於 IndexedDB 是否存在；沒有 IndexedDB 走純記憶體，但那不是 Auth 降級 ──
+describe('快取選擇：沒有 IndexedDB 時走純記憶體快取，但那不是 Auth 降級', () => {
+  it('測試前提：beforeEach 有 stub indexedDB（沒有的話，所有「走持久化」斷言都走不到持久化分支）', () => {
+    expect(typeof indexedDB).toBe('object');
+  });
+
+  it.each([
+    { name: '有登入旗標、Auth 正常', flagged: true },
+    { name: '沒有旗標（真訪客）', flagged: false },
+  ])('沒有 IndexedDB（$name）→ 純記憶體快取、沒有降級警告，isFirebaseDegraded() 仍為 false、原因為 null', async ({ flagged }) => {
+    if (flagged) localStorage.setItem(FLAG_KEY, '1');
+    vi.stubGlobal('indexedDB', undefined); // 像 jsdom／無痕模式：沒有 IndexedDB
+
+    const ctx = await firebase.getFirebaseCore();
+
+    expect(ctx.db).toBe(sdk.fakeDb);
+    expect(sdk.cache).toEqual(['memoryLocalCache']); // 沒碰持久化分支
+    expect(warn).not.toHaveBeenCalled(); // 這不是 Auth 降級，沒有降級警告
+    expect(firebase.isFirebaseDegraded()).toBe(false);
+    expect(firebase.getFirebaseDegradedReason()).toBeNull();
   });
 });
