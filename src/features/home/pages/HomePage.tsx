@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
-import { EventFormModal } from '@/features/events/components/EventFormModal';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import { useLegacyT } from '@/i18n/i18n';
@@ -23,6 +22,11 @@ import {
   type AnnouncementDoc,
 } from '../data/announcements';
 import { loadActiveBanners, type BannerDoc } from '../data/banners';
+import {
+  loadEventFormModal,
+  scheduleEventFormPrefetch,
+  type EventFormModalComponent,
+} from '../data/event-form-loader';
 import { parseEventDateRange } from '../data/next-activity';
 import '../legacy/home.css';
 
@@ -83,6 +87,37 @@ export default function HomePage(): JSX.Element {
   const [searchType, setSearchType] = useState<string>('');
 
   const userCanCreate = createEntry.canCreate;
+
+  // 開團表單改成點擊時才下載（A1）；載入完成後元件保持掛載，行為同原本「一直掛著、靠 open 開關」。
+  const [FormModal, setFormModal] = useState<EventFormModalComponent | null>(null);
+  const formOpen = createEntry.formOpen;
+  const closeForm = createEntry.closeForm;
+  useEffect(() => {
+    if (!formOpen || FormModal) return undefined;
+    let active = true;
+    loadEventFormModal().then(
+      (component) => {
+        // 元件本身是函式，setState 要包一層避免被當成 updater。
+        if (active) setFormModal(() => component);
+      },
+      () => {
+        if (!active) return;
+        toast.show({
+          message: lt('活動建立功能載入失敗，請稍後再試', '活動建立功能載入失敗，請稍後再試'),
+        });
+        closeForm();
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [formOpen, FormModal]);
+
+  // 有建立權限的人：瀏覽器空閒時先把表單載好，點「我要開團」後少一次等待。
+  useEffect(() => {
+    if (!userCanCreate) return undefined;
+    return scheduleEventFormPrefetch();
+  }, [userCanCreate]);
 
   useEffect(() => {
     let active = true;
@@ -145,6 +180,8 @@ export default function HomePage(): JSX.Element {
       e.preventDefault();
       e.stopPropagation();
     }
+    // 一按就開始下載表單：後面還有讀個人資料與類型選擇，通常載完才輪到它。
+    loadEventFormModal().catch(() => undefined);
     createEntry.onClick();
   }
 
@@ -568,13 +605,15 @@ export default function HomePage(): JSX.Element {
         )}
 
         {createEntry.overlays}
-        <EventFormModal
-          open={createEntry.formOpen}
-          mode="create"
-          viewer={viewer}
-          onClose={createEntry.closeForm}
-          onSaved={onFormSaved}
-        />
+        {FormModal && (
+          <FormModal
+            open={createEntry.formOpen}
+            mode="create"
+            viewer={viewer}
+            onClose={createEntry.closeForm}
+            onSaved={onFormSaved}
+          />
+        )}
       </section>
     </div>
   );
