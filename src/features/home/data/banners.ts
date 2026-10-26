@@ -111,16 +111,15 @@ export function sanitizeHttpUrl(value: unknown): string {
 }
 
 /**
- * 橫幅連結白名單（首屏快照寫入與讀取用）：http/https，或站內路徑——以單一 `/` 開頭，不含空白與控制字元，
- * 且不是 `//…`、`/\…`（瀏覽器會把它們當成其他網站）。其他（`javascript:`、`data:`、相對網址、任意字串）一律回空字串。
- * 注意：畫面上實際開啟連結的仍是 `sanitizeHttpUrl`（只收 http/https），本函式只決定「什麼可以存進快照」。
+ * 橫幅連結白名單——**儲存（首屏快照）與使用（輪播點擊開啟）共用同一個契約**：只收 http/https，
+ * 不含控制字元、長度上限 2000。其他（`javascript:`、`data:`、`//…`、站內路徑、相對網址、任意字串）一律回空字串。
+ * 契約以上線版輪播實際能開啟的連結為準（a924c7b 的 `sanitizeHttpUrl`＋`window.open`，只支援 http/https）；
+ * 顧問提到的「站內路徑」是上限、不是要求新增行為，所以快照不收站內路徑（收了也沒有 handler 能開，會變成存了用不到的字串）。
  */
 export function safeBannerLinkUrl(value: unknown): string {
-  const raw = String(value ?? '').trim();
+  const raw = sanitizeHttpUrl(value);
   if (!raw || raw.length > 2000 || /[\u0000-\u001f\u007f]/.test(raw)) return '';
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\') && !/\s/.test(raw)) return raw;
-  return '';
+  return raw;
 }
 
 export function safeBannerColor(value: unknown, fallback: string): string {
@@ -128,17 +127,53 @@ export function safeBannerColor(value: unknown, fallback: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : fallback;
 }
 
+// 漸層文法（只收這些，其餘一律不收）：
+//   linear-gradient( [方向或角度,]? 色標, 色標 [, 色標…] )
+//   方向：`to top|bottom|left|right [top|bottom|left|right]` 或角度（deg／grad／rad／turn）
+//   色標：顏色 [位置[ 位置]]；顏色＝#hex（3～8 碼）、rgb()／rgba()／hsl()／hsla()（只含數字、%、空白、逗號、斜線）、純英文色名；位置＝數字加 % 或 px
+const GRADIENT_DIRECTION = /^(?:to\s+(?:top|bottom|left|right)(?:\s+(?:top|bottom|left|right))?|-?\d+(?:\.\d+)?(?:deg|grad|rad|turn))$/i;
+const GRADIENT_COLOR = '(?:#[0-9a-f]{3,8}|(?:rgb|rgba|hsl|hsla)\\(\\s*[\\d.%\\s,/-]+\\)|[a-z]{3,20})';
+const GRADIENT_POSITION = '-?\\d+(?:\\.\\d+)?(?:%|px)';
+const GRADIENT_STOP = new RegExp(`^${GRADIENT_COLOR}(?:\\s+${GRADIENT_POSITION}){0,2}$`, 'i');
+const GRADIENT_MAX_ARGS = 12;
+
+/** 在最外層（括號深度 0）依逗號切開；括號不平衡（含提早閉合）回 null。 */
+function splitTopLevelArgs(inner: string): string[] | null {
+  const args: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth < 0) return null;
+    } else if (ch === ',' && depth === 0) {
+      args.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  if (depth !== 0) return null;
+  args.push(inner.slice(start).trim());
+  return args;
+}
+
 /**
- * 橫幅漸層底色要寫進 inline style，只接受單純的 linear／radial／conic-gradient(...)：
- * 顏色、角度、百分比、`var(--x)` 這類字元可以；`url(`、分號、引號、反斜線、註解一律不收（避免寫入額外 CSS 宣告或觸發額外資源請求）。
+ * 橫幅漸層底色要寫進 inline style，只接受**單一** `linear-gradient(...)`，且括號平衡、內容符合上面的文法：
+ * 顏色（色碼／rgb(a)／hsl(a)／英文色名）、位置（% 或 px）、方向或角度。`url(`、`var(`、分號、引號、反斜線、註解、
+ * 額外的背景層（例如 `linear-gradient(red,blue),var(--x)`）、radial／conic 一律不收（避免寫入額外 CSS 宣告或觸發額外資源請求）。
  * 不合格回空字串，呼叫端改用預設底色。
  */
 export function safeBannerGradient(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw || raw.length > 300) return '';
-  if (!/^(?:repeating-)?(?:linear|radial|conic)-gradient\([#%.,()\s\w-]*\)$/i.test(raw)) return '';
-  if (/url\s*\(|expression|image-set|@|\\|\/\*/i.test(raw)) return '';
-  return raw;
+  const head = /^linear-gradient\(/i.exec(raw);
+  if (!head || !raw.endsWith(')')) return '';
+  const args = splitTopLevelArgs(raw.slice(head[0].length, -1));
+  if (!args || args.length < 2 || args.length > GRADIENT_MAX_ARGS) return '';
+  const stops = GRADIENT_DIRECTION.test(args[0] ?? '') ? args.slice(1) : args;
+  if (stops.length < 2) return '';
+  return stops.every((stop) => GRADIENT_STOP.test(stop)) ? raw : '';
 }
 
 /**

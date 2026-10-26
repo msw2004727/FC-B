@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JSX } from 'preact';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { _resetFirebaseForTest } from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
-import { _resetUseEventsForTest } from '@/features/events/data/use-events';
+import { _resetUseEventsForTest, useEvents } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { APP_VERSION } from '@/version';
 import { loadActiveAnnouncements } from '../data/announcements';
@@ -124,6 +125,19 @@ function mockEvents(
     loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
     getSnapshot: () => ({ active, terminal: [], activeFromCache }),
   } as unknown as ReturnType<typeof getEventsRepo>);
+}
+
+/**
+ * 「活動請求已處理完」的完成訊號：另一個畫面（witness）共用同一個進行中的請求（useEvents 的 inflight），
+ * 它的 loading 變 false 時，先登記的首頁的處理一定已經跑過（同一個 Promise 的 then 依登記順序執行）。
+ * 要掛在請求結算「之前」；用在「確認某件事沒有發生」的案例，取代固定次數的 await Promise.resolve()。
+ */
+function EventsWitness(): JSX.Element {
+  const { loading } = useEvents(null, { terminalMode: 'none' });
+  return <div data-testid="events-witness" data-done={loading ? '0' : '1'} />;
+}
+async function waitForWitness(witness: { getByTestId: (id: string) => HTMLElement }): Promise<void> {
+  await waitFor(() => expect(witness.getByTestId('events-witness').getAttribute('data-done')).toBe('1'));
 }
 
 const MIN = 60 * 1000;
@@ -398,9 +412,7 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
     mockEvents(() => Promise.reject(new Error('offline')));
 
     const { container } = render(<HomePage />);
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // 讀取失敗與否，畫面都先是快照（失敗後沒有任何上次資料，沿用快照）
     expect(footballCount(container)).toBe('7 活動');
 
     vi.setSystemTime(T0 + 2 * MIN);
@@ -573,10 +585,8 @@ describe('HomePage 首屏快照：運動統計', () => {
     _resetUseEventsForTest();
     mockEvents(() => Promise.resolve(['events']), [], true);
     const second = render(<HomePage />);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    const witness = render(<EventsWitness />);
+    await waitForWitness(witness);
     expect(footballCount(second.container)).toBe('7 活動');
     expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBe(before);
   });
@@ -590,12 +600,9 @@ describe('HomePage 首屏快照：運動統計', () => {
     const view = render(<HomePage />);
     await waitFor(() => expect(getEventsRepo).toHaveBeenCalled());
     view.unmount();
-    cleanup();
+    const witness = render(<EventsWitness />);
     pending.resolve(['events']);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await waitForWitness(witness);
 
     expect(localStorage.getItem(SPORTS_SNAPSHOT_KEY)).toBe(before);
   });

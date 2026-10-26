@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import {
   safeBannerColor,
   safeBannerGradient,
+  safeBannerLinkUrl,
   sanitizeHttpUrl,
   type BannerDoc,
 } from '../../data/banners';
@@ -14,7 +15,7 @@ const FIRST_IMAGE_TIMEOUT_MS = 1800;
 const OTHER_IMAGE_TIMEOUT_MS = 3500;
 /** loaded＝載入並解碼成功；failed＝載入失敗或無法解碼（改顯示底色）；timeout＝等太久，先取消壓暗、仍等它載完。 */
 type ImageStatus = 'loaded' | 'failed' | 'timeout';
-/** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記，下次進來重新嘗試。 */
+/** 本次開啟期間已確認載入成功的圖片（切頁回來不再重做淡入）；失敗與逾時不記（曾成功後又失敗的會被撤掉），下次進來重新嘗試。 */
 const imageReadyCache: Record<string, ImageStatus> = {};
 
 export interface HomeBannerCarouselProps {
@@ -37,6 +38,7 @@ export function HomeBannerCarousel({
   const [imageStatus, setImageStatus] = useState<Record<string, ImageStatus>>(() => ({
     ...imageReadyCache,
   }));
+  const mountedRef = useRef(true);
   const timeoutsRef = useRef(new Map<string, number>());
   const prefetchedRef = useRef(new Set<string>());
   const timerRef = useRef<number | null>(null);
@@ -59,21 +61,36 @@ export function HomeBannerCarousel({
     }
   }, [activeIndex, bannerCount]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const markImage = useCallback((url: string, status: ImageStatus) => {
     if (status === 'loaded') imageReadyCache[url] = 'loaded';
+    // 曾經成功、後來失敗（例如圖片被換掉或刪除）：撤掉「已載入成功」的紀錄，下次進來才會重新嘗試。
+    else if (status === 'failed') delete imageReadyCache[url];
     setImageStatus((prev) => (prev[url] === status ? prev : { ...prev, [url]: status }));
   }, []);
 
   // 圖片由 <img> 自己載入（第一張高優先、其餘 lazy），這裡只接它的結果：載入後再解碼才算 loaded，失敗或解碼失敗算 failed。
+  // 解碼是非同步的：回來時若畫面已卸載、或這個 <img> 已被換掉（列表替換→元素移除，或同一個元素改指向別的網址），結果作廢。
   const handleImageLoad = useCallback(
     (url: string, img: HTMLImageElement) => {
+      const isStale = (): boolean => !mountedRef.current || !img.isConnected || img.getAttribute('src') !== url;
       if (typeof img.decode !== 'function') {
         markImage(url, 'loaded');
         return;
       }
       img.decode().then(
-        () => markImage(url, 'loaded'),
-        () => markImage(url, 'failed'),
+        () => {
+          if (!isStale()) markImage(url, 'loaded');
+        },
+        () => {
+          if (!isStale()) markImage(url, 'failed');
+        },
       );
     },
     [markImage],
@@ -101,8 +118,8 @@ export function HomeBannerCarousel({
     };
   }, []);
 
-  // 預取：只預取「下一張」，而且等目前這張有結果（載好、失敗或逾時）之後才開始，不跟它搶頻寬。
-  // 其餘的圖交給 <img loading="lazy">；使用者點圓點直接跳到某張時，只預取那一張。
+  // 預取：只預取「下一張」，而且等目前這張真的載好（或確定失敗）之後才開始。逾時（timeout）只是不再壓暗，圖片可能還在下載，
+  // 這時預取會跟它搶頻寬（慢網路最明顯），所以不算。其餘的圖交給 <img loading="lazy">；使用者點圓點直接跳到某張時，只預取那一張。
   const prefetchImage = useCallback((url: string) => {
     if (!url || imageReadyCache[url] || prefetchedRef.current.has(url) || typeof Image === 'undefined') return;
     prefetchedRef.current.add(url);
@@ -113,7 +130,8 @@ export function HomeBannerCarousel({
   useEffect(() => {
     if (banners.length < 2) return;
     const currentUrl = sanitizeHttpUrl(banners[activeIndex]?.image);
-    if (currentUrl && !imageStatus[currentUrl]) return;
+    const currentStatus = currentUrl ? imageStatus[currentUrl] : undefined;
+    if (currentUrl && currentStatus !== 'loaded' && currentStatus !== 'failed') return;
     prefetchImage(sanitizeHttpUrl(banners[(activeIndex + 1) % banners.length]?.image));
   }, [banners, activeIndex, imageStatus, prefetchImage]);
 
@@ -249,7 +267,7 @@ export function HomeBannerCarousel({
           </div>
         ) : (
           banners.map((b, idx) => {
-            const safeLink = sanitizeHttpUrl(b.linkUrl);
+            const safeLink = safeBannerLinkUrl(b.linkUrl);
             const safeImg = sanitizeHttpUrl(b.image);
             const status = safeImg ? imageStatus[safeImg] : undefined;
             const handleSlideClick = safeLink

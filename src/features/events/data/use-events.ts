@@ -89,7 +89,11 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
   return repoModule;
 }
 
-/** 這個結果陣列是「確認向伺服器新取得」的（repo 回報 `activeFromCache === false`）。見 `UseEventsOptions.onFresh`。 */
+/**
+ * 這個結果陣列是「這一次呼叫確認向伺服器新取得」的：這次呼叫自己成功（repo 回傳非空；被較新請求取代的呼叫 repo 回傳 []，
+ * 那時共用的 snapshot 還是上一次的資料與旗標，不能算這次新取得），而且 repo 回報 `activeFromCache === false`。
+ * 失敗的呼叫 repo 會直接丟錯，不會走到這裡。見 `UseEventsOptions.onFresh`。
+ */
 const serverConfirmed = new WeakSet<EventDoc[]>();
 
 function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
@@ -97,10 +101,10 @@ function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
     const { getEventsRepo } = await loadRepoModule();
     const repo = getEventsRepo();
     // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
-    await repo.loadEventsStatic({ terminalMode: mode });
+    const loaded = await repo.loadEventsStatic({ terminalMode: mode });
     const snapshot = repo.getSnapshot();
     const events = [...snapshot.active, ...snapshot.terminal];
-    if (snapshot.activeFromCache === false) serverConfirmed.add(events);
+    if (Array.isArray(loaded) && loaded.length > 0 && snapshot.activeFromCache === false) serverConfirmed.add(events);
     return events;
   })();
 }

@@ -84,7 +84,7 @@ describe('HomeBannerCarousel 載入策略', () => {
     expect(requested).toEqual([u2]);
   });
 
-  it('目前這張逾時（1800 ms）也算有結果：開始預取下一張，但第一張不當成失敗', async () => {
+  it('慢網路：第一張逾時（1800 ms）只是取消壓暗、不算載好——圖片可能還在下載，這時不預取下一張（不跟它搶頻寬）；載好後才預取', async () => {
     const [u1, u2, u3] = urls(3) as [string, string, string];
     const { container } = renderCarousel([banner('a', u1), banner('b', u2), banner('c', u3)]);
 
@@ -93,14 +93,29 @@ describe('HomeBannerCarousel 載入策略', () => {
     });
     expect(requested).toEqual([]);
     await act(async () => {
-      vi.advanceTimersByTime(2);
+      vi.advanceTimersByTime(30_000);
     });
-    expect(requested).toEqual([u2]);
-
+    // 逾時狀態：取消壓暗、不當失敗，但仍沒有任何預取請求
     const first = slides(container)[0] as HTMLElement;
     expect(first.getAttribute('data-banner-load-state')).toBe('timeout');
     expect(first.classList.contains('banner-slide--loading')).toBe(false);
     expect(first.querySelector('img')).toBeTruthy();
+    expect(requested).toEqual([]);
+
+    // 第一張終於載好 → 才預取第二張
+    await act(async () => {
+      fireEvent.load(first.querySelector('img') as HTMLImageElement);
+    });
+    expect(requested).toEqual([u2]);
+  });
+
+  it('第一張載入失敗也算有結果：照常預取下一張', async () => {
+    const [u1, u2] = urls(2) as [string, string];
+    const { container } = renderCarousel([banner('a', u1), banner('b', u2)]);
+    await act(async () => {
+      fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    });
+    expect(requested).toEqual([u2]);
   });
 
   it('點圓點直接跳到某張：只預取那一張', async () => {
@@ -207,5 +222,121 @@ describe('HomeBannerCarousel 載入結果', () => {
     const style = (slides(plain.container)[0] as HTMLElement).getAttribute('style') ?? '';
     expect(style).toContain('var(--bg-elevated)');
     expect(style).not.toContain('evil.example');
+  });
+});
+
+describe('HomeBannerCarousel 連結契約（儲存與使用同一個：只開 http/https）', () => {
+  it('http/https 連結：點橫幅開新分頁；站內路徑或不合格連結沒有 handler、點了什麼都不會發生', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const [u1, u2, u3] = urls(3) as [string, string, string];
+    const { container } = renderCarousel([
+      banner('a', u1, { linkUrl: 'https://example.com/go' }),
+      banner('b', u2, { linkUrl: '/events/abc' }),
+      banner('c', u3, { linkUrl: 'javascript:alert(1)' }),
+    ]);
+    const [a, b, c] = slides(container) as [HTMLElement, HTMLElement, HTMLElement];
+
+    expect(a.getAttribute('style')).toMatch(/cursor:\s*pointer/);
+    fireEvent.click(a);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith('https://example.com/go', 'sporthub_ad', 'noopener,noreferrer');
+
+    for (const slide of [b, c]) {
+      expect(slide.getAttribute('style') ?? '').not.toMatch(/cursor:\s*pointer/);
+      fireEvent.click(slide);
+    }
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('HomeBannerCarousel decode 的生命週期', () => {
+  function deferredDecode(): { resolve: () => void; reject: (e: unknown) => void } {
+    let resolve!: () => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<void>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    HTMLImageElement.prototype.decode = vi.fn(() => promise);
+    return { resolve, reject };
+  }
+  const stateOf = (container: HTMLElement): string | null =>
+    (slides(container)[0] as HTMLElement).getAttribute('data-banner-load-state');
+
+  it('畫面卸載後才解碼完成：結果作廢，不會記成「已載入成功」', async () => {
+    const [u1] = urls(1) as [string];
+    const decode = deferredDecode();
+    const first = renderCarousel([banner('a', u1)]);
+    await act(async () => {
+      fireEvent.load(first.container.querySelector('img') as HTMLImageElement);
+    });
+    cleanup();
+    await act(async () => {
+      decode.resolve();
+      await Promise.resolve();
+    });
+
+    // 重新進來：不能因為卸載後才完成的解碼而直接當作已載入
+    const again = renderCarousel([banner('a', u1)]);
+    expect(stateOf(again.container)).toBe('loading');
+  });
+
+  it('列表替換（那個 <img> 已被移除）後才解碼完成：結果作廢', async () => {
+    const [u1, u2] = urls(2) as [string, string];
+    const decode = deferredDecode();
+    const view = render(
+      <HomeBannerCarousel banners={[banner('a', u1)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
+    );
+    await act(async () => {
+      fireEvent.load(view.container.querySelector('img') as HTMLImageElement);
+    });
+    view.rerender(
+      <HomeBannerCarousel banners={[banner('b', u2)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
+    );
+    await act(async () => {
+      decode.resolve();
+      await Promise.resolve();
+    });
+    view.rerender(
+      <HomeBannerCarousel banners={[banner('a', u1)]} onOpenNearbyMap={noop} onOpenSearchModal={noop} onOpenCreateEvent={noop} canCreate={false} />,
+    );
+    expect(stateOf(view.container as HTMLElement)).toBe('loading');
+  });
+
+  it('同一個 <img> 改指向別的網址後，舊網址的解碼結果作廢', async () => {
+    const [u1, u2] = urls(2) as [string, string];
+    const decode = deferredDecode();
+    const props = { onOpenNearbyMap: noop, onOpenSearchModal: noop, onOpenCreateEvent: noop, canCreate: false };
+    const view = render(<HomeBannerCarousel banners={[banner('a', u1)]} {...props} />);
+    await act(async () => {
+      fireEvent.load(view.container.querySelector('img') as HTMLImageElement);
+    });
+    // 同一個橫幅（同 key）換了圖：元素重用、src 變了
+    view.rerender(<HomeBannerCarousel banners={[banner('a', u2)]} {...props} />);
+    await act(async () => {
+      decode.resolve();
+      await Promise.resolve();
+    });
+    // 新網址沒有任何結果，不能被舊網址的解碼結果影響
+    expect(stateOf(view.container as HTMLElement)).toBe('loading');
+  });
+
+  it('曾經載入成功、後來失敗：撤掉「已載入成功」的紀錄，下次進來重新嘗試', async () => {
+    const [u1] = urls(1) as [string];
+    HTMLImageElement.prototype.decode = vi.fn(() => Promise.resolve());
+    const first = renderCarousel([banner('a', u1)]);
+    const img = first.container.querySelector('img') as HTMLImageElement;
+    await act(async () => {
+      fireEvent.load(img);
+    });
+    expect(stateOf(first.container)).toBe('done');
+    await act(async () => {
+      fireEvent.error(img);
+    });
+    expect(stateOf(first.container)).toBe('failed');
+    cleanup();
+
+    const again = renderCarousel([banner('a', u1)]);
+    expect(stateOf(again.container)).toBe('loading');
   });
 });

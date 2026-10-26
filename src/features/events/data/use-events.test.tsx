@@ -164,16 +164,22 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
       return h('button', { 'data-testid': 'p', onClick: retry }, events.map((e) => e.title).join(','));
     }
 
-    // 卸載後才回來
+    // 卸載後才回來。完成訊號：另一個畫面（witness）共用同一個進行中的請求，它顯示出結果時，
+    // 先登記的第一個畫面的處理一定已經跑過（同一個 Promise 的 then 依登記順序執行）。
+    function Witness(): preact.JSX.Element {
+      const { events } = useEvents(null);
+      return h('div', { 'data-testid': 'witness' }, events.map((e) => e.title).join(','));
+    }
     const first = render(h(FreshProbe, null));
     await waitFor(() => expect(pending).toHaveLength(1));
     first.unmount();
     cleanup();
+    const witness = render(h(Witness, null));
     repoEvents = [ev('late', '卸載後才回來')];
     pending[0]?.(['events']);
-    await Promise.resolve();
-    await Promise.resolve();
+    await waitFor(() => expect(witness.getByTestId('witness').textContent).toBe('卸載後才回來'));
     expect(onFresh).not.toHaveBeenCalled();
+    cleanup();
 
     // 重試（新一輪）時舊一輪還沒回來：兩輪共用同一個進行中的請求，結果回來時只有「現在這一輪」呼叫 onFresh，不會呼叫兩次
     _resetUseEventsForTest();
@@ -185,9 +191,24 @@ describe('useEvents stale-first（照 A 先畫上次資料）', () => {
     pending[0]?.(['events']);
     await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
     expect(onFresh.mock.calls[0]?.[0]?.map((e: EventDoc) => e.title)).toEqual(['新一輪']);
-    await Promise.resolve();
-    await Promise.resolve();
+    // 舊一輪的處理先於新一輪登記，所以看到新一輪呼叫時，舊一輪若要呼叫早就呼叫過了：仍然只有一次
     expect(onFresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('onFresh：被較新請求取代的呼叫（repo 回傳 []）不算新取得——即使共用的 snapshot 還留著上一次 fromCache=false 的旗標', async () => {
+    const onFresh = vi.fn();
+    function FreshProbe(): preact.JSX.Element {
+      const { events } = useEvents(null, { onFresh });
+      return h('div', { 'data-testid': 'p' }, events.map((e) => e.title).join(','));
+    }
+    // repo 上一次成功時留下的資料與旗標（fromCache=false）；這次呼叫被較新的請求取代，repo 回傳 []，沒有提交新資料
+    repoEvents = [ev('prev', '上一次的資料')];
+    repoFromCache = false;
+    loadEventsStatic.mockResolvedValue([]);
+
+    const view = render(h(FreshProbe, null));
+    await waitFor(() => expect(view.getByTestId('p').textContent).toBe('上一次的資料'));
+    expect(onFresh).not.toHaveBeenCalled();
   });
 
   it('超過大小上限不存', () => {

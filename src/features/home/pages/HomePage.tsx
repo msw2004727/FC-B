@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
@@ -81,10 +81,19 @@ export default function HomePage(): JSX.Element {
   // 帳號語意：快照為訪客視角的公開資料、沒有帳號歸屬；登入者的最終畫面一律以正式資料（用自己的視角算）取代快照。
   // 「只放訪客可見資料」由寫入守門保證：writeSportsSnapshot／writeBannersSnapshot 只收 computeGuestSportRows／toPublicBanners 的輸出型別。
   const [sportSnap, setSportSnap] = useState<SnapshotRead<SportRow> | null>(() => readSportsSnapshot());
-  useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => setSportSnap(null));
+  // ref 與 state 同步更新：到期回呼拿它核對「畫面上現在的統計是否仍來自快照、是否真的到期」，
+  // 避免正式資料剛取代快照、舊計時器／舊 effect 清理交錯時把正式資料誤清掉。
+  const sportSnapRef = useRef(sportSnap);
+  useSnapshotExpiry(sportSnap?.expiresAt ?? null, () => {
+    const current = sportSnapRef.current;
+    if (!current || Date.now() < current.expiresAt) return;
+    sportSnapRef.current = null;
+    setSportSnap(null);
+  });
   // 只有「確認新取得」的活動才會走到這裡（use-events 的 onFresh）：用訪客視角寫快照、撤銷快照 fallback（含空結果；之後重試也不回頭用舊統計）。
   const handleFreshEvents = useCallback((events: EventDoc[]) => {
     writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
+    sportSnapRef.current = null;
     setSportSnap(null);
   }, []);
   // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
@@ -95,7 +104,12 @@ export default function HomePage(): JSX.Element {
   const [banners, setBanners] = useState<BannerDoc[]>(() => initialBanners?.items ?? []);
   // 目前畫面上的橫幅若來自快照，這裡是它的到期時間；被伺服器結果取代後為 null。
   const [bannerExpiry, setBannerExpiry] = useState<number | null>(() => initialBanners?.expiresAt ?? null);
+  const bannerExpiryRef = useRef(bannerExpiry);
   useSnapshotExpiry(bannerExpiry, () => {
+    const due = bannerExpiryRef.current;
+    // 已被正式資料取代（ref 已是 null）或還沒真的到期（計時器提早醒來、時鐘被調回）：什麼都不做。
+    if (due === null || Date.now() < due) return;
+    bannerExpiryRef.current = null;
     setBanners([]);
     setBannerExpiry(null);
   });
@@ -171,6 +185,7 @@ export default function HomePage(): JSX.Element {
         }
         // 確認新取得：寫快照（空清單＝目前沒有橫幅，刪掉舊快照）、換畫面、快照到期不再適用。
         writeBannersSnapshot(toPublicBanners(list));
+        bannerExpiryRef.current = null;
         setBanners(list);
         setBannerExpiry(null);
       })
@@ -199,7 +214,11 @@ export default function HomePage(): JSX.Element {
     [visibleEvents],
   );
   // 來源 2（既有快取）優先於來源 3（首屏快照）；來源 1 確認後 sportSnap 已是 null，見上方 handleFreshEvents。
-  const sportRows = eventsData.events.length === 0 && sportSnap ? sportSnap.items : computedSportRows;
+  // 選用快照當下再檢查一次期限（計時器被延後、時鐘往前跳時，不能選到已過期的快照）。
+  const sportSnapUsable = sportSnap !== null && Date.now() < sportSnap.expiresAt;
+  const sportRows = eventsData.events.length === 0 && sportSnap && sportSnapUsable ? sportSnap.items : computedSportRows;
+  // 橫幅同理：畫面上的橫幅若來自快照而且已過期（計時器還沒來得及撤掉），這一輪 render 就不畫。
+  const shownBanners = bannerExpiry !== null && Date.now() >= bannerExpiry ? [] : banners;
 
   function handleUnavailableFeature(e?: Event): void {
     if (e) {
@@ -274,7 +293,7 @@ export default function HomePage(): JSX.Element {
       <section class="page active" id="page-home">
         {/* Banner Carousel */}
         <HomeBannerCarousel
-          banners={banners}
+          banners={shownBanners}
           onOpenNearbyMap={handleUnavailableFeature}
           onOpenSearchModal={handleOpenSearchModal}
           onOpenCreateEvent={handleOpenCreateEvent}

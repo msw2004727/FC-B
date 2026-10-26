@@ -60,7 +60,10 @@ export type GuestSportRows = readonly SportRow[] & { readonly __guestVisibleSpor
 const guestRows = new WeakSet<object>();
 
 export function computeGuestSportRows(events: readonly EventDoc[], nowMs: number): GuestSportRows {
-  const rows = Object.freeze(computeSportRows(getVisibleEvents(events, GUEST_VIEWER, []), nowMs));
+  // 清單與每一列都凍結：建構後不能再被改寫（寫入快照時另有逐欄重新投影，見 home-snapshot.ts）。
+  const rows = Object.freeze(
+    computeSportRows(getVisibleEvents(events, GUEST_VIEWER, []), nowMs).map((row) => Object.freeze(row)),
+  );
   guestRows.add(rows);
   return rows as GuestSportRows;
 }

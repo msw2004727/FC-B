@@ -104,27 +104,48 @@ describe('banners data layer', () => {
     ]);
   });
 
-  it('safeBannerLinkUrl 只收 http/https 與站內路徑', () => {
+  it('safeBannerLinkUrl 只收 http/https（與輪播點擊同一個契約）', () => {
     expect(safeBannerLinkUrl('https://example.com/a?b=1')).toBe('https://example.com/a?b=1');
-    expect(safeBannerLinkUrl('  /events/abc  ')).toBe('/events/abc');
-    const bads = ['javascript:alert(1)', 'data:text/html,x', '//evil.example', '/\\evil.example', 'events/abc', '/a b', '/a\u0000b', 'https://a.b/\nx', '', null, undefined];
+    expect(safeBannerLinkUrl('  http://example.com/x  ')).toBe('http://example.com/x');
+    const bads = ['javascript:alert(1)', 'data:text/html,x', '//evil.example', '/events/abc', '/\\evil.example', 'events/abc', 'https://a.b/\nx', 'https://a.b/\u0000x', '', null, undefined];
     for (const bad of bads) {
       expect(safeBannerLinkUrl(bad), String(bad)).toBe('');
     }
-    expect(safeBannerLinkUrl('/' + 'a'.repeat(2000))).toBe('');
+    expect(safeBannerLinkUrl('https://example.com/' + 'a'.repeat(2000))).toBe('');
   });
 
-  it('safeBannerGradient 只收單純的 gradient(...)', () => {
-    expect(safeBannerGradient('linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)')).toBe(
+  it('safeBannerGradient 只收單一、括號平衡的 linear-gradient(...)，內容限色碼／rgb(a)／hsl(a)／英文色名／% 與 px／方向或角度', () => {
+    for (const ok of [
       'linear-gradient(135deg, #0d9488 0%, rgba(1,2,3,.5) 100%)',
-    );
-    expect(safeBannerGradient('radial-gradient(circle at 20% 30%, var(--accent), #000)')).toContain('radial-gradient');
-    expect(safeBannerGradient('linear-gradient(to right, red, blue); background-image:url(https://evil.example/x)')).toBe('');
-    expect(safeBannerGradient('linear-gradient(url(https://evil.example/x), blue)')).toBe('');
-    expect(safeBannerGradient('url(https://evil.example/x)')).toBe('');
-    expect(safeBannerGradient('red')).toBe('');
-    expect(safeBannerGradient('linear-gradient(red, blue)'.padEnd(400, ' '))).toBe('linear-gradient(red, blue)');
-    expect(safeBannerGradient('linear-gradient(' + 'a,'.repeat(200) + 'b)')).toBe('');
+      'linear-gradient(to right, red, blue)',
+      'linear-gradient(to bottom right, #fff, #000 50%)',
+      'linear-gradient(0.25turn, hsl(210 40% 50%), transparent)',
+      'linear-gradient(#0d9488, #1e3a8a)',
+    ]) {
+      expect(safeBannerGradient(ok), ok).toBe(ok);
+    }
+    for (const bad of [
+      'linear-gradient(red,blue),var(--extra)',
+      'linear-gradient(red,blue), linear-gradient(green,yellow)',
+      'linear-gradient(red,blue)) , x(',
+      'linear-gradient(red,blue',
+      'linear-gradient(red, blue); background-image:url(https://evil.example/x)',
+      'linear-gradient(url(https://evil.example/x), blue)',
+      'linear-gradient(var(--a), var(--b))',
+      'linear-gradient(red, blue) /* x */',
+      'radial-gradient(circle, red, blue)',
+      'conic-gradient(red, blue)',
+      'url(https://evil.example/x)',
+      'linear-gradient(red)',
+      'linear-gradient(to right)',
+      'linear-gradient(red, calc(1px + 2px))',
+      'linear-gradient(red, blue 10%%%)',
+      'linear-gradient(' + 'a,'.repeat(200) + 'b)',
+      'red',
+      '',
+    ]) {
+      expect(safeBannerGradient(bad), bad).toBe('');
+    }
     expect(safeBannerGradient(null)).toBe('');
   });
 
