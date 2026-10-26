@@ -1,0 +1,53 @@
+# FC-B CI：型別檢查＋vitest 全套＋i18n 檢查（T-051）。
+# 刻意不做的事：不執行任何建置（FC-B 的 build 預設連 PROD）、不部署、不用 secret、不用第三方 action。
+# 本機（Windows）不再跑全測，Playwright 與速度量測仍在本機。
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# 最小權限：只讀 repo 內容。
+permissions:
+  contents: read
+
+# 同一分支的舊 run 自動取消。PR 事件用 head_ref、push 事件用 ref_name，
+# 兩者同為分支名，所以「分支 push＋該分支的 PR」只會留最新的一個 run。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 版本與本機一致（本機 v24.20.0）；cache: npm 以 package-lock.json 為快取鍵。
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # --no-audit／--no-fund：不為 npm audit、funding 提示額外對外連線。
+      - id: install
+        name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      # 以下三個檢查彼此獨立：任一失敗整個 job 為紅，但每個步驟都會跑完，一次看到所有失敗。
+      # 只有依賴安裝失敗（沒有 node_modules）或被手動取消時才不跑。
+      - name: 型別檢查（tsc）
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx tsc --noEmit
+
+      - name: 單元測試（vitest 全套）
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx vitest run
+
+      - name: i18n 檢查（7 語系）
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node scripts/check-i18n.mjs
