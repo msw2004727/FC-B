@@ -29,6 +29,10 @@ import {
   type EventFormModalComponent,
 } from '../data/event-form-loader';
 import { parseEventDateRange } from '../data/next-activity';
+// 首頁兩顆「我要開團」按鈕（.home-create-event-btn：金色旋轉外框、藍色漸層、光暈動畫、鎖定狀態）的樣式定義在
+// activity.css。表單改 lazy 後它不再隨 EventFormModal 進首頁，所以在這裡明確引入，並放在 home.css 之前，
+// 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
+import '@/features/events/legacy/activity.css';
 import '../legacy/home.css';
 
 const HOME_ACTIVITY_REGION_KEY = 'toosterx_home_activity_region';
