@@ -31,24 +31,14 @@ export interface AnnouncementDeps {
   now?: () => number;
 }
 
-/** parseTaipei 回 null 之後，只讓帶明確時區的字串走 Date.parse。無時區垃圾字串回 0，不再丟給 Date.parse。 */
-function hasExplicitTimeZone(raw: string): boolean {
-  return /(?:Z|[+-]\d{2}:\d{2}|[+-]\d{4}|\bGMT\b|\bUTC\b)/i.test(raw);
-}
-
-/** 字串分支改台北牆鐘；匯出是為了測 GMT 後備（正式路徑的字串走 parseAnnouncementTime，不經過這裡）。 */
-export function toMillis(value: unknown): number {
+/** 字串當台北牆鐘。取代 slash 正則＋new Date(y, m, d) 與 Date.parse 後備：parseTaipei 已處理 Z／±hh:mm，其餘回 0。 */
+function toMillis(value: unknown): number {
   if (!value) return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (typeof value === 'string') {
     const raw = value.trim();
     if (!raw) return 0;
-    // 取代 slash 正則＋new Date(y, m, d) 的裝置本地解析。
-    const ms = parseTaipei(raw);
-    if (ms !== null) return ms;
-    if (!hasExplicitTimeZone(raw)) return 0;
-    const parsed = Date.parse(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return parseTaipei(raw) ?? 0;
   }
   if (typeof value === 'object') {
     const v = value as {

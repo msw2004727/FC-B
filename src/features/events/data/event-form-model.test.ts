@@ -2,6 +2,7 @@ import { cleanup } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   REGION_MAP,
+  calcRegOpenForDate,
   createDefaultFormState,
   formStateFromEvent,
   toCreateEventForm,
@@ -734,6 +735,12 @@ describe('照 A 修正的項目', () => {
   });
 });
 
+// 非標準字串刻意與舊版不同（正式資料只寫標準 datetime-local；差異記入 project_b_intentional_diffs_from_a）：
+// ① ISO 純日期（'2026-10-19'：舊＝UTC 午夜＝台北 08:00，新＝台北 00:00）
+// ② 不存在的日期（2026-02-30：舊 V8 進位成 3/2，新回 null → 走錯誤 key）
+// ③ 英文日期（'Oct 19, 2026'：舊 V8 能解析、新回 null）
+// ④ 其他 V8 能解析而 parseTaipei 不收的格式（+0800、無時區小數秒、toString()）
+// 可接受：寫入端只寫標準格式（A 寫 `${dateVal}T${timeVal}`；T-056 實測 regOpenTime 為 datetime-local 或 null）。
 describe('台北牆鐘：驗證與報名時間讀回', () => {
   it('早鳥開放時間等於現在仍拒絕，晚 1 分鐘可以', () => {
     const now = new Date('2026-06-01T10:00:00+08:00');
@@ -751,7 +758,7 @@ describe('台北牆鐘：驗證與報名時間讀回', () => {
     }), now)).toEqual({ ok: true });
   });
 
-  it('不存在的日期走原本的錯誤 key（建立 startInPast、編輯 endBeforeStart）', () => {
+  it('刻意與舊版不同：不存在的日期回 null 並走錯誤 key（舊 V8 會進位放行）', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     expect(validateEventForm(makeValidState({ dateVal: '2026-02-30' }), now)).toEqual({
       ok: false,
@@ -781,20 +788,45 @@ describe('台北牆鐘：驗證與報名時間讀回', () => {
     expect(early.regOpenDate).toBe('2026-10-19');
     expect(early.regOpenClock).toBe('00:30');
 
-    const dateOnly = formStateFromEvent({ id: 'd', regOpenTime: '2026-10-19' } as EventDoc);
-    expect(dateOnly.regOpenEnabled).toBe(true);
-    expect(dateOnly.regOpenDate).toBe('2026-10-19');
-    expect(dateOnly.regOpenClock).toBe('00:00');
-
     const bad = formStateFromEvent({ id: 'e', regOpenTime: 'nope' } as EventDoc);
     expect(bad.regOpenEnabled).toBe(false);
     expect(bad.regOpenDate).toBe('');
     expect(bad.regOpenClock).toBe('');
+  });
 
+  it('刻意與舊版不同：ISO 純日期當台北 00:00（舊＝UTC 午夜＝台北 08:00）', () => {
+    const dateOnly = formStateFromEvent({ id: 'd', regOpenTime: '2026-10-19' } as EventDoc);
+    expect(dateOnly.regOpenEnabled).toBe(true);
+    expect(dateOnly.regOpenDate).toBe('2026-10-19');
+    expect(dateOnly.regOpenClock).toBe('00:00');
+  });
+
+  it('刻意與舊版不同：英文日期無法解析則關閉報名時間（舊 V8 能解析）', () => {
     const english = formStateFromEvent({ id: 'f', regOpenTime: 'Oct 19, 2026' } as EventDoc);
     expect(english.regOpenEnabled).toBe(false);
     expect(english.regOpenDate).toBe('');
     expect(english.regOpenClock).toBe('');
+  });
+
+  it('刻意與舊版不同：+0800、無時區小數秒、toString() 無法解析則關閉（舊 V8 能解析）', () => {
+    for (const regOpenTime of [
+      '2026-10-19T09:00:00+0800',
+      '2026-10-19T09:00:00.000',
+      'Mon Oct 19 2026 09:00:00 GMT+0800 (台北標準時間)',
+    ]) {
+      const parsed = formStateFromEvent({ id: 'g', regOpenTime } as EventDoc);
+      expect(parsed.regOpenEnabled).toBe(false);
+      expect(parsed.regOpenDate).toBe('');
+      expect(parsed.regOpenClock).toBe('');
+    }
+  });
+});
+
+describe('calcRegOpenForDate 台北牆鐘', () => {
+  it('跨美西夏令仍逐時相減，跨年落到前一年', () => {
+    expect(calcRegOpenForDate('2026-03-08', '03:30', 0, 1)).toBe('2026-03-08T02:30');
+    expect(calcRegOpenForDate('2026-11-01', '01:30', 0, 1)).toBe('2026-11-01T00:30');
+    expect(calcRegOpenForDate('2027-01-01', '00:30', 1, 2)).toBe('2026-12-30T22:30');
   });
 });
 

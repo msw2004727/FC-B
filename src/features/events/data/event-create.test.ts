@@ -773,43 +773,93 @@ describe('buildCreateEventPayload', () => {
 });
 
 describe('寫入端台北 oracle（UTC+8 與舊本地實作逐位元相同）', () => {
-  const dateVal = '2026-10-19';
-  const startTime = '10:00';
-  const endTime = '12:00';
+  const rows = [
+    {
+      name: '一般',
+      dateVal: '2026-10-19',
+      startTime: '10:00',
+      endTime: '12:00',
+      selfSelectLockHours: 2,
+      startMs: Date.parse('2026-10-19T10:00:00+08:00'),
+      endMs: Date.parse('2026-10-19T12:00:00+08:00'),
+      lockMs: Date.parse('2026-10-19T08:00:00+08:00'),
+    },
+    {
+      name: '00:30',
+      dateVal: '2026-10-19',
+      startTime: '00:30',
+      endTime: '02:00',
+      selfSelectLockHours: 2,
+      startMs: Date.parse('2026-10-19T00:30:00+08:00'),
+      endMs: Date.parse('2026-10-19T02:00:00+08:00'),
+      lockMs: Date.parse('2026-10-18T22:30:00+08:00'),
+    },
+    {
+      name: '跨日不加 24h',
+      dateVal: '2026-10-19',
+      startTime: '23:00',
+      endTime: '01:00',
+      selfSelectLockHours: 2,
+      startMs: Date.parse('2026-10-19T23:00:00+08:00'),
+      endMs: Date.parse('2026-10-19T01:00:00+08:00'),
+      lockMs: Date.parse('2026-10-19T21:00:00+08:00'),
+    },
+    {
+      name: '跨年',
+      dateVal: '2026-12-31',
+      startTime: '23:00',
+      endTime: '23:30',
+      selfSelectLockHours: 2,
+      startMs: Date.parse('2026-12-31T23:00:00+08:00'),
+      endMs: Date.parse('2026-12-31T23:30:00+08:00'),
+      lockMs: Date.parse('2026-12-31T21:00:00+08:00'),
+    },
+    {
+      name: '月底',
+      dateVal: '2026-02-28',
+      startTime: '10:00',
+      endTime: '12:00',
+      selfSelectLockHours: 2,
+      startMs: Date.parse('2026-02-28T10:00:00+08:00'),
+      endMs: Date.parse('2026-02-28T12:00:00+08:00'),
+      lockMs: Date.parse('2026-02-28T08:00:00+08:00'),
+    },
+  ];
 
-  function oraclePayload() {
+  function oraclePayload(row: (typeof rows)[number]) {
     return buildCreateEventPayload(buildForm({
-      dateVal,
-      startTime,
-      endTime,
+      dateVal: row.dateVal,
+      startTime: row.startTime,
+      endTime: row.endTime,
       teamSplit: {
         enabled: true,
         mode: 'self-select',
         balanceCap: false,
-        selfSelectLockHours: 2,
+        selfSelectLockHours: row.selfSelectLockHours,
         teams: [{ key: 'A', color: '#EF4444', name: '紅隊' }],
       },
     }), buildCtx({
       capabilities: ['user.activity.basic_create', 'user.activity.addons_use'],
-      now: new Date('2026-10-01T00:00:00Z'),
+      now: new Date(Date.parse('2026-10-01T00:00:00Z')),
     }), 'ce_oracle_taipei');
   }
 
-  // 只在 CI／本機以 Asia/Taipei 啟動時跑，證明對 UTC+8 裝置與舊 `new Date(`${d}T${t}`)` 相同。
-  it.runIf(process.env.TZ === 'Asia/Taipei')('Asia/Taipei：新實作與舊本地解析逐位元相同', () => {
-    const legacyStart = new Date(`${dateVal}T${startTime}`).getTime();
-    const legacyEnd = new Date(`${dateVal}T${endTime}`).getTime();
-    const payload = oraclePayload();
-    expect(payload.startTimestamp.getTime()).toBe(legacyStart);
-    expect(payload.endTimestamp.getTime()).toBe(legacyEnd);
-    expect(payload.teamSplit?.lockAt?.getTime()).toBe(legacyStart - 2 * 3_600_000);
-  });
-
-  it('任何時區：新實作仍等於字面絕對時間', () => {
-    const payload = oraclePayload();
-    expect(payload.startTimestamp.getTime()).toBe(Date.parse('2026-10-19T02:00:00Z'));
-    expect(payload.endTimestamp.getTime()).toBe(Date.parse('2026-10-19T04:00:00Z'));
-    expect(payload.teamSplit?.lockAt?.getTime()).toBe(Date.parse('2026-10-19T00:00:00Z'));
+  // 舊本地實作寫在測試裡（new Date(`${d}T${t}`)）。四個時區都對字面絕對時間；
+  // 只有 CI 的 Asia/Taipei 格再對舊實作，證明 UTC+8 裝置逐位元相同。
+  it.each(rows)('$name：新實作等於字面絕對時間', (row) => {
+    const payload = oraclePayload(row);
+    expect(payload.startTimestamp.getTime()).toBe(row.startMs);
+    expect(payload.endTimestamp.getTime()).toBe(row.endMs);
+    expect(payload.teamSplit?.lockAt?.getTime()).toBe(row.lockMs);
+    if (process.env.TZ === 'Asia/Taipei') {
+      const legacyStart = new Date(`${row.dateVal}T${row.startTime}`).getTime();
+      const legacyEnd = new Date(`${row.dateVal}T${row.endTime}`).getTime();
+      expect(payload.startTimestamp.getTime()).toBe(legacyStart);
+      expect(payload.endTimestamp.getTime()).toBe(legacyEnd);
+      expect(payload.teamSplit?.lockAt?.getTime()).toBe(
+        legacyStart - row.selfSelectLockHours * 3_600_000,
+      );
+    }
   });
 });
 
@@ -986,6 +1036,23 @@ describe('buildEditEventUpdates', () => {
       coachCtx(),
     );
     expect(result.updates.status).toBeUndefined();
+  });
+
+  it('status：regOpenTime 2026-10-19T09:00，08:59+08 為 upcoming，09:00+08 且 existing upcoming 為 open', () => {
+    const form = editForm({ regOpenTime: '2026-10-19T09:00' });
+    const before = buildEditEventUpdates(
+      existing({ status: 'open' }),
+      form,
+      { ...coachCtx(), now: new Date(Date.parse('2026-10-19T08:59:00+08:00')) },
+    );
+    expect(before.updates.status).toBe('upcoming');
+
+    const atOpen = buildEditEventUpdates(
+      existing({ status: 'upcoming' }),
+      form,
+      { ...coachCtx(), now: new Date(Date.parse('2026-10-19T09:00:00+08:00')) },
+    );
+    expect(atOpen.updates.status).toBe('open');
   });
 
   it('限定俱樂部：有 event.edit_all 才寫 teamOnly／creatorTeam*（A 編輯分支）', () => {

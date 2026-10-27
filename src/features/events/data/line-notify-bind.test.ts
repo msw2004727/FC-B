@@ -64,15 +64,21 @@ afterEach(() => {
 
 describe('formatBoundAt（照 A `_completeLineBinding` 的 boundAt）', () => {
   it('輸出 YYYY/MM/DD，月日補零', () => {
-    expect(formatBoundAt(new Date(2024, 0, 5))).toBe('2024/01/05');
-    expect(formatBoundAt(new Date(2024, 11, 31))).toBe('2024/12/31');
-    expect(formatBoundAt(new Date(2000, 6, 9))).toBe('2000/07/09');
+    expect(formatBoundAt(new Date(Date.parse('2024-01-04T16:00:00Z')))).toBe('2024/01/05');
+    expect(formatBoundAt(new Date(Date.parse('2024-12-30T16:00:00Z')))).toBe('2024/12/31');
+    expect(formatBoundAt(new Date(Date.parse('2000-07-08T16:00:00Z')))).toBe('2000/07/09');
+  });
+
+  it('台北日界：16:30Z 與 15:59Z 為 10/19，16:00Z 為 10/20', () => {
+    expect(formatBoundAt(new Date(Date.parse('2026-10-18T16:30:00Z')))).toBe('2026/10/19');
+    expect(formatBoundAt(new Date(Date.parse('2026-10-19T15:59:00Z')))).toBe('2026/10/19');
+    expect(formatBoundAt(new Date(Date.parse('2026-10-19T16:00:00Z')))).toBe('2026/10/20');
   });
 });
 
 describe('buildLineNotifyPayload（照 A `_completeLineBinding` 的 lineNotify）', () => {
   it('逐欄等於 A：bound / boundAt / settings', () => {
-    const payload = buildLineNotifyPayload(new Date(2024, 5, 15));
+    const payload = buildLineNotifyPayload(new Date(Date.parse('2024-06-14T16:00:00Z')));
     expect(payload).toEqual({
       lineNotify: {
         bound: true,
@@ -83,9 +89,13 @@ describe('buildLineNotifyPayload（照 A `_completeLineBinding` 的 lineNotify�
   });
 
   it('未給日期時使用今天', () => {
-    const today = new Date();
-    const expected = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-    expect(buildLineNotifyPayload().lineNotify.boundAt).toBe(expected);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.parse('2026-10-19T15:59:00Z')));
+    try {
+      expect(buildLineNotifyPayload().lineNotify.boundAt).toBe('2026/10/19');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

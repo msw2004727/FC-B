@@ -7,6 +7,7 @@
 //
 // 積分或 opLog 失敗只 console.warn；綁定本身視為成功（A 同）。
 
+import { formatTaipei } from '@/core/taipei-time';
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { writeOpLog } from '@/data/op-log';
@@ -17,12 +18,9 @@ const DISMISS_KEY = '_dismissLineNotifyPrompt';
 /** A `LINE_CONFIG.BOT_BASIC_ID`。 */
 const LINE_BOT_BASIC_ID = '@830utvza';
 
-/** A `_completeLineBinding`：`YYYY/MM/DD`。 */
+/** A `_completeLineBinding`：`YYYY/MM/DD`。取代本地 getFullYear／getMonth／getDate，改寫台北牆鐘。 */
 export function formatBoundAt(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}/${m}/${d}`;
+  return formatTaipei(date.getTime(), 'YYYY/MM/DD');
 }
 
 /** A `_completeLineBinding`：寫入 users 的 lineNotify 欄位。 */

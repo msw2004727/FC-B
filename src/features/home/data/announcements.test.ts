@@ -7,7 +7,6 @@ import {
   filterAndSortAnnouncements,
   getAnnouncementEffectiveStatus,
   loadActiveAnnouncements,
-  toMillis,
   type AnnouncementDoc,
 } from './announcements';
 
@@ -127,6 +126,12 @@ describe('announcements data layer', () => {
   });
 });
 
+// 非標準字串刻意與舊版不同（正式資料只寫標準 YYYY/MM/DD HH:mm；差異記入 project_b_intentional_diffs_from_a）：
+// ① ISO 純日期（'2026-10-19'：舊＝UTC 午夜＝台北 08:00，新＝台北 00:00）
+// ② 不存在的日期（2026-02-30：舊 V8 進位成 3/2，新回 null）
+// ③ 英文日期（'Oct 19, 2026'：舊 V8 能解析、新回 null）
+// ④ 其他 V8 能解析而 parseTaipei 不收的格式（+0800、無時區小數秒、toString()）
+// 可接受：寫入端只寫標準格式。
 describe('公告有效狀態（照 A _getAnnouncementEffectiveStatus）', () => {
   const base: AnnouncementDoc = { id: 'a', _docId: 'a', title: 'T', content: '', status: '', sortOrder: 0 } as AnnouncementDoc;
   const now = Date.parse('2026-10-19T12:00:00+08:00');
@@ -142,9 +147,7 @@ describe('公告有效狀態（照 A _getAnnouncementEffectiveStatus）', () => 
     expect(filterAndSortAnnouncements([{ ...base, status: 'scheduled', rawPublishAt: '2026/10/19 13:00' }], now)).toEqual([]);
   });
 
-  it('英文日期不走 Date.parse，因此不會下架', () => {
-    expect(toMillis('Oct 19 2026 11:00')).toBe(0);
-    expect(toMillis('Oct 19 2020 11:00')).toBe(0);
+  it('刻意與舊版不同：英文日期不當絕對時間，不會下架', () => {
     expect(getAnnouncementEffectiveStatus({
       ...base,
       status: 'active',
@@ -155,10 +158,6 @@ describe('公告有效狀態（照 A _getAnnouncementEffectiveStatus）', () => 
       status: 'active',
       unpublishAt: 'Oct 19 2020 11:00',
     }, now)).toBe('active');
-  });
-
-  it('帶明確時區的 GMT 字串仍當絕對時間', () => {
-    expect(toMillis('Mon, 19 Oct 2026 03:00:00 GMT')).toBe(Date.parse('2026-10-19T03:00:00Z'));
   });
 
   it('帶 Z 的下架時間是絕對時間，04:00Z 之後已下架', () => {

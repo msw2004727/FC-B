@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 20
     # 站內時間字串（YYYY/MM/DD HH:mm）一律當台北時間解析；本機開發機時區即為 Asia/Taipei，
     # GitHub runner 預設 UTC。這是還原開發環境，不是放寬或 skip 測試。
-    # 公告寫入端已由 054b 改為台北牆鐘。全套在非台北時區仍有 P01 本地解析副本（054c）。
+    # 公告上下架判斷已由 054b 改為台北牆鐘。全套在非台北時區仍有 P01 本地解析副本（054c）。
     env:
       TZ: Asia/Taipei
     steps:
@@ -59,7 +59,7 @@ jobs:
 
   # 時區矩陣（T-054a，檔案清單 T-054b）：只跑時區敏感測試，四個時區各跑一次，期望值完全相同。
   # 與上面的 check job 互補：check 維持 TZ=Asia/Taipei 跑全套（還原開發環境）。
-  # 公告寫入端已由 054b 改為台北牆鐘，但全套在非台北時區仍有 P01 本地解析副本
+  # 公告上下架判斷已由 054b 改為台北牆鐘，但全套在非台北時區仍有 P01 本地解析副本
   # （parseEventStartDate 等，054c）。全套 UTC job 留給 054c。不要把全套 vitest 改成多時區。
   # 刻意不做的事同 check：不建置、不部署、不用 secret、不用第三方 action。
   tz-matrix:
@@ -87,4 +87,4 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: 時區敏感測試（vitest）
-        run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts
+        run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts src/features/events/data/line-notify-bind.test.ts
