@@ -1,6 +1,7 @@
 /**
  * 「活動管理」頁的純函式模型，對齊舊版 A `js/modules/event/event-manage.js#renderMyActivities`。
  */
+import { parseTaipei } from '@/core/taipei-time';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import { operateContextFromViewer } from './event-create-context';
 import { canManageAllActivities } from './operate-permissions';
@@ -73,8 +74,9 @@ export function effectiveEventStatus(event: EventDoc, nowMs: number = Date.now()
   if (startMs !== Number.MAX_SAFE_INTEGER && startMs <= nowMs) return 'ended';
   const regOpenRaw = (event as EventDoc & { regOpenTime?: unknown }).regOpenTime;
   if (typeof regOpenRaw === 'string' && regOpenRaw) {
-    const regOpenMs = new Date(regOpenRaw).getTime();
-    if (!Number.isNaN(regOpenMs) && regOpenMs > nowMs) return 'upcoming';
+    // 取代 new Date(regOpenRaw).getTime() 的裝置本地解析。null（舊的 NaN）不判 upcoming。
+    const regOpenMs = parseTaipei(regOpenRaw);
+    if (regOpenMs !== null && regOpenMs > nowMs) return 'upcoming';
   }
   // A `_isEventTrulyFull(event)`：列表沒有該活動的報名名單，等同 A 未從伺服器抓過名單時的投影計算（realCurrent／current＋保留席）。
   return isEventTrulyFull(event, []) ? 'full' : 'open';

@@ -9,10 +9,10 @@
  *   - updateEventBasics：有報名 + max 變動時，會先 updateDoc 再呼叫 callFn。
  *
  * 時區無關策略：
- *   - `event-create.ts` 內 `buildStartEnd` 走本地時區；golden 內的 ISO 是 UTC 字串。
- *   - 比較時把兩邊都化為「同一個 YYYY-MM-DDTHH:mm 本地時間的毫秒數」，
- *     因此測試不依賴 `TZ` 環境變數。
- *   - `now` / `regOpenTime` 一律用 UTC 明確建構，避免跨日邊界。
+ *   - `buildStartEnd` 把 dateVal＋時間當台北牆鐘。golden 的 ISO 記的是牆鐘欄位
+ *     （歷史上標成 Z），比較時改成 `YYYY-MM-DDTHH:mm:00+08:00` 的絕對毫秒。
+ *   - 期望值用 `Date.parse('…+08:00')` 這類字面絕對時間，不用本地 `new Date(y, m, d)`。
+ *   - 帶 `Z` 的 `regOpenTime` 仍是絕對時間（parseTaipei 原樣採用）。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -129,17 +129,20 @@ describe('卡 3B：相對報名與多日期驗證', () => {
     expect(createDefaultFormState()).toMatchObject({ regRelDays: '0', regRelHours: '0' });
   });
 
-  it('跨日、跨月、跨年與閏日依本地時間計算', () => {
+  it('跨日、跨月、跨年與閏日依台北牆鐘計算', () => {
     expect(calcRegOpenForDate('2030-05-10', '01:30', 1, 2)).toBe('2030-05-08T23:30');
     expect(calcRegOpenForDate('2030-03-01', '14:00', 1, 0)).toBe('2030-02-28T14:00');
     expect(calcRegOpenForDate('2030-01-01', '00:30', 0, 1)).toBe('2029-12-31T23:30');
     expect(calcRegOpenForDate('2032-03-01', '14:00', 1, 0)).toBe('2032-02-29T14:00');
+    // 2027-01-01 00:30 往前 1 天 2 小時：跨年落到 2026-12-30 22:30。
+    expect(calcRegOpenForDate('2027-01-01', '00:30', 1, 2)).toBe('2026-12-30T22:30');
   });
 
   it('0、非法日期、非法時間及超範圍回 null', () => {
     expect(calcRegOpenForDate('2030-05-10', '14:00', 0, 0)).toBeNull();
     expect(calcRegOpenForDate('invalid', '14:00', 1, 0)).toBeNull();
     expect(calcRegOpenForDate('2030-02-30', '14:00', 1, 0)).toBeNull();
+    expect(calcRegOpenForDate('2026-2-3', '00:30', 1, 2)).toBeNull();
     expect(calcRegOpenForDate('2030-05-10', '24:00', 1, 0)).toBeNull();
     expect(calcRegOpenForDate('2030-05-10', '14:00', 31, 0)).toBeNull();
     expect(calcRegOpenForDate('2030-05-10', '14:00', 0, 24)).toBeNull();
@@ -213,7 +216,7 @@ describe('卡 3B：createEventsBatch', () => {
       capabilities: [],
       rolePermissions: null,
       userGrants: null,
-      now: new Date('2030-05-01T00:00'),
+      now: new Date('2030-05-01T00:00:00+08:00'),
       generateId: vi.fn(() => 'ce_unused'),
     };
   }
@@ -274,11 +277,11 @@ describe('卡 3B：createEventsBatch', () => {
         creatorUid: 'batch-owner',
         batchGroupId: 'batch_fixed',
         date: `${form.dateVal.replace(/-/g, '/')} 14:00~16:00`,
-        startTimestamp: new Date(`${form.dateVal}T14:00`),
-        endTimestamp: new Date(`${form.dateVal}T16:00`),
+        startTimestamp: new Date(`${form.dateVal}T14:00:00+08:00`),
+        endTimestamp: new Date(`${form.dateVal}T16:00:00+08:00`),
         regOpenTime: form.regOpenTime,
         status: index === 0 ? 'open' : 'upcoming',
-        teamSplit: { lockAt: new Date(`${form.dateVal}T12:00`) },
+        teamSplit: { lockAt: new Date(`${form.dateVal}T12:00:00+08:00`) },
         createdAt: '__SERVER_TIMESTAMP__',
         updatedAt: '__SERVER_TIMESTAMP__',
       });
@@ -455,13 +458,14 @@ describe('卡 3B：createEventsBatch', () => {
 // ── 測試輔助 ─────────────────────────────────────────
 
 /**
- * 把 golden 內 UTC ISO 字串視作「本地時間」解析，與 `buildStartEnd` 行為一致。
- * 例：golden `2026-05-15T15:00:00.000Z` → `new Date('2026-05-15T15:00')` 的毫秒。
+ * golden 的 ISO 記的是牆鐘欄位（歷史上標成 Z）。寫入端改為台北牆鐘後，
+ * 同一組欄位的絕對毫秒是 `YYYY-MM-DDTHH:mm:00+08:00`。
+ * 例：golden `2026-05-15T15:00:00.000Z` → `Date.parse('2026-05-15T15:00:00+08:00')`。
  */
-function goldenTimestampToLocalMs(isoString: string): number {
+function goldenTimestampToTaipeiMs(isoString: string): number {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/i.exec(isoString);
-  if (!m) return new Date(isoString).getTime();
-  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}`).getTime();
+  if (!m) return Date.parse(isoString);
+  return Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00+08:00`);
 }
 
 /** 把 golden 物件內已知的 Date 欄位轉為與 payload 同基準的毫秒數。 */
@@ -474,7 +478,7 @@ function hydrateGoldenDates(value: unknown): unknown {
         typeof v === 'string' &&
         (key === 'startTimestamp' || key === 'endTimestamp' || key === 'lockAt')
       ) {
-        out[key] = goldenTimestampToLocalMs(v);
+        out[key] = goldenTimestampToTaipeiMs(v);
       } else {
         out[key] = hydrateGoldenDates(v);
       }
@@ -598,13 +602,10 @@ describe('buildCreateEventPayload', () => {
     expect(payload.endTimestamp).toBeInstanceOf(Date);
   });
 
-  it('start / end 走本地時區（不依賴執行環境 TZ）', () => {
+  it('start / end 是台北牆鐘的絕對毫秒（四個時區相同）', () => {
     const payload = buildCreateEventPayload(buildForm(), buildCtx(), 'ce_golden_user_basic');
-    // 期望值也用同一種 local-time 解析，因此在任何 TZ 下都成立。
-    expect(payload.startTimestamp.getTime()).toBe(
-      new Date('2026-05-15T15:00').getTime(),
-    );
-    expect(payload.endTimestamp.getTime()).toBe(new Date('2026-05-15T17:00').getTime());
+    expect(payload.startTimestamp.getTime()).toBe(Date.parse('2026-05-15T15:00:00+08:00'));
+    expect(payload.endTimestamp.getTime()).toBe(Date.parse('2026-05-15T17:00:00+08:00'));
   });
 
   it('不寫 payloadRevision / payloadDigest', () => {
@@ -728,8 +729,87 @@ describe('buildCreateEventPayload', () => {
       balanceCap: true,
       selfSelectLockHours: 3,
       teams,
-      lockAt: new Date(new Date('2026-05-15T15:00').getTime() - 3 * 3_600_000),
+      lockAt: new Date(Date.parse('2026-05-15T12:00:00+08:00')),
     });
+  });
+
+  it('2026-10-19 10:00～12:00 的起迄與預設 2 小時 lockAt 是字面絕對時間', () => {
+    const ctx = buildCtx({
+      capabilities: ['user.activity.basic_create', 'user.activity.addons_use'],
+      now: new Date('2026-10-01T00:00:00Z'),
+    });
+    const teams = [{ key: 'A', color: '#EF4444', name: '紅隊' }];
+    const payload = buildCreateEventPayload(buildForm({
+      dateVal: '2026-10-19',
+      startTime: '10:00',
+      endTime: '12:00',
+      teamSplit: {
+        enabled: true,
+        mode: 'self-select',
+        balanceCap: false,
+        selfSelectLockHours: 2,
+        teams,
+      },
+    }), ctx, 'ce_taipei_wall');
+    expect(payload.startTimestamp.getTime()).toBe(Date.parse('2026-10-19T02:00:00Z'));
+    expect(payload.endTimestamp.getTime()).toBe(Date.parse('2026-10-19T04:00:00Z'));
+    expect(payload.teamSplit?.lockAt).toBeInstanceOf(Date);
+    expect(payload.teamSplit?.lockAt?.getTime()).toBe(Date.parse('2026-10-19T00:00:00Z'));
+  });
+
+  it('regOpenTime 2026-10-19T09:00：08:59+08 為 upcoming，09:00+08 起為 open', () => {
+    const form = buildForm({ regOpenTime: '2026-10-19T09:00' });
+    expect(buildCreateEventPayload(
+      form,
+      buildCtx({ now: new Date('2026-10-19T08:59:00+08:00') }),
+      'ce_reg_before',
+    ).status).toBe('upcoming');
+    expect(buildCreateEventPayload(
+      form,
+      buildCtx({ now: new Date('2026-10-19T09:00:00+08:00') }),
+      'ce_reg_at',
+    ).status).toBe('open');
+  });
+});
+
+describe('寫入端台北 oracle（UTC+8 與舊本地實作逐位元相同）', () => {
+  const dateVal = '2026-10-19';
+  const startTime = '10:00';
+  const endTime = '12:00';
+
+  function oraclePayload() {
+    return buildCreateEventPayload(buildForm({
+      dateVal,
+      startTime,
+      endTime,
+      teamSplit: {
+        enabled: true,
+        mode: 'self-select',
+        balanceCap: false,
+        selfSelectLockHours: 2,
+        teams: [{ key: 'A', color: '#EF4444', name: '紅隊' }],
+      },
+    }), buildCtx({
+      capabilities: ['user.activity.basic_create', 'user.activity.addons_use'],
+      now: new Date('2026-10-01T00:00:00Z'),
+    }), 'ce_oracle_taipei');
+  }
+
+  // 只在 CI／本機以 Asia/Taipei 啟動時跑，證明對 UTC+8 裝置與舊 `new Date(`${d}T${t}`)` 相同。
+  it.runIf(process.env.TZ === 'Asia/Taipei')('Asia/Taipei：新實作與舊本地解析逐位元相同', () => {
+    const legacyStart = new Date(`${dateVal}T${startTime}`).getTime();
+    const legacyEnd = new Date(`${dateVal}T${endTime}`).getTime();
+    const payload = oraclePayload();
+    expect(payload.startTimestamp.getTime()).toBe(legacyStart);
+    expect(payload.endTimestamp.getTime()).toBe(legacyEnd);
+    expect(payload.teamSplit?.lockAt?.getTime()).toBe(legacyStart - 2 * 3_600_000);
+  });
+
+  it('任何時區：新實作仍等於字面絕對時間', () => {
+    const payload = oraclePayload();
+    expect(payload.startTimestamp.getTime()).toBe(Date.parse('2026-10-19T02:00:00Z'));
+    expect(payload.endTimestamp.getTime()).toBe(Date.parse('2026-10-19T04:00:00Z'));
+    expect(payload.teamSplit?.lockAt?.getTime()).toBe(Date.parse('2026-10-19T00:00:00Z'));
   });
 });
 

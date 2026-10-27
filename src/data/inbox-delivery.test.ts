@@ -12,7 +12,7 @@ import {
 } from './inbox-delivery';
 
 // golden 照 A js/modules/message/message-notify.js `_deliverMessageToInbox`／`_buildInboxDeliveryDedupeKey`
-const NOW = new Date(2026, 9, 19, 8, 5, 0);
+const NOW = new Date('2026-10-19T08:05:00+08:00');
 const base = {
   title: '俱樂部加入申請',
   body: '王小明 申請加入「測試隊」俱樂部，請審核此申請。',
@@ -58,6 +58,13 @@ describe('buildInboxMessage（A _deliverMessageToInbox）', () => {
       actionStatus: 'pending',
       meta: { teamId: 'tm_1' },
     });
+  });
+
+  it('台北 00:30 的 time 不會變成前一天', () => {
+    expect(buildInboxMessage({
+      ...base,
+      now: new Date('2026-10-19T00:30:00+08:00'),
+    }).time).toBe('2026/10/19 00:30');
   });
 
   it('preview 超過 40 字截斷並加 ...', () => {

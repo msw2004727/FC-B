@@ -19,7 +19,8 @@ afterEach(() => {
   cleanup();
 });
 
-const FIXED_NOW = new Date('2026-06-01T10:00:00');
+// 絕對瞬間 2026-06-01 10:00 台北。早鳥「等於現在」在四個時區都必須拒絕。
+const FIXED_NOW = new Date('2026-06-01T10:00:00+08:00');
 
 function makeValidState(overrides: Partial<EventFormState> = {}): EventFormState {
   return {
@@ -730,6 +731,70 @@ describe('照 A 修正的項目', () => {
     const base = createDefaultFormState(new Date('2026-05-01T00:00:00'));
     expect(toCreateEventForm({ ...base, max: '0' }, '小明').max).toBe(0);
     expect(toCreateEventForm({ ...base, max: 'abc' }, '小明').max).toBe(20);
+  });
+});
+
+describe('台北牆鐘：驗證與報名時間讀回', () => {
+  it('早鳥開放時間等於現在仍拒絕，晚 1 分鐘可以', () => {
+    const now = new Date('2026-06-01T10:00:00+08:00');
+    expect(validateEventForm(makeValidState({
+      earlyBirdEnabled: true,
+      regOpenEnabled: true,
+      regOpenDate: '2026-06-01',
+      regOpenClock: '10:00',
+    }), now)).toEqual({ ok: false, message: '早鳥報名需搭配未來的開放報名時間' });
+    expect(validateEventForm(makeValidState({
+      earlyBirdEnabled: true,
+      regOpenEnabled: true,
+      regOpenDate: '2026-06-01',
+      regOpenClock: '10:01',
+    }), now)).toEqual({ ok: true });
+  });
+
+  it('不存在的日期走原本的錯誤 key（建立 startInPast、編輯 endBeforeStart）', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    expect(validateEventForm(makeValidState({ dateVal: '2026-02-30' }), now)).toEqual({
+      ok: false,
+      messageKey: 'events.form.error.startInPast',
+    });
+    expect(validateEventForm(makeValidState({
+      eventId: 'ce_existing',
+      dateVal: '2026-02-30',
+    }), now)).toEqual({
+      ok: false,
+      messageKey: 'events.form.error.endBeforeStart',
+    });
+  });
+
+  it('datetime-local 仍用字串拆解；帶時區後備讀台北牆鐘；無法解析則關閉', () => {
+    const local = formStateFromEvent({ id: 'a', regOpenTime: '2026-10-19T09:00' } as EventDoc);
+    expect(local.regOpenEnabled).toBe(true);
+    expect(local.regOpenDate).toBe('2026-10-19');
+    expect(local.regOpenClock).toBe('09:00');
+
+    const zoned = formStateFromEvent({ id: 'b', regOpenTime: '2026-10-19T01:00:00Z' } as EventDoc);
+    expect(zoned.regOpenEnabled).toBe(true);
+    expect(zoned.regOpenDate).toBe('2026-10-19');
+    expect(zoned.regOpenClock).toBe('09:00');
+
+    const early = formStateFromEvent({ id: 'c', regOpenTime: '2026-10-19T00:30:00+08:00' } as EventDoc);
+    expect(early.regOpenDate).toBe('2026-10-19');
+    expect(early.regOpenClock).toBe('00:30');
+
+    const dateOnly = formStateFromEvent({ id: 'd', regOpenTime: '2026-10-19' } as EventDoc);
+    expect(dateOnly.regOpenEnabled).toBe(true);
+    expect(dateOnly.regOpenDate).toBe('2026-10-19');
+    expect(dateOnly.regOpenClock).toBe('00:00');
+
+    const bad = formStateFromEvent({ id: 'e', regOpenTime: 'nope' } as EventDoc);
+    expect(bad.regOpenEnabled).toBe(false);
+    expect(bad.regOpenDate).toBe('');
+    expect(bad.regOpenClock).toBe('');
+
+    const english = formStateFromEvent({ id: 'f', regOpenTime: 'Oct 19, 2026' } as EventDoc);
+    expect(english.regOpenEnabled).toBe(false);
+    expect(english.regOpenDate).toBe('');
+    expect(english.regOpenClock).toBe('');
   });
 });
 

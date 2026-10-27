@@ -427,3 +427,18 @@ describe('ATTENDANCE_FIELD_ALLOWLIST / recordAttendance', () => {
     })).rejects.toThrow(/eventDocId/);
   });
 });
+
+describe('defaultFormatTime（未注入 formatTime）', () => {
+  it('台北 00:30 寫成 2026/10/19 00:30，不會變成前一天', () => {
+    const rec = buildAttendanceRecord({
+      eventId: 'evt_pub_1',
+      uid: 'user_A',
+      userName: 'Alice',
+      type: 'checkin',
+      now: new Date('2026-10-19T00:30:00+08:00'),
+      idFactory: () => 'att_fixed',
+    });
+    expect(rec.time).toBe('2026/10/19 00:30');
+    expect(rec.id).toBe('att_fixed');
+  });
+});

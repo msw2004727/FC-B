@@ -1,3 +1,4 @@
+import { parseTaipei } from '@/core/taipei-time';
 import type { SignupProfile } from './signup-profile';
 
 /**
@@ -223,8 +224,10 @@ export function isEventEarlyBirdWindow(
   if (!event || event.status === 'ended' || event.status === 'cancelled') return false;
   if (!getEventEarlyBirdCost(event)) return false;
   if (!event.regOpenTime) return false;
-  const regOpen = new Date(String(event.regOpenTime));
-  if (Number.isNaN(regOpen.getTime()) || regOpen <= now) return false;
+  // regOpenTime 是台北牆鐘。取代 new Date(String(...)) 的裝置本地解析，避免非 UTC+8 把早鳥窗口判錯。
+  // null 對應舊的 NaN，仍回 false。開始時間的 parseEventStartDate 是 P01，本卡不動。
+  const regOpen = parseTaipei(event.regOpenTime);
+  if (regOpen === null || regOpen <= now.getTime()) return false;
   const start = parseEventStartDate(event.date);
   if (start && start <= now) return false;
   return true;

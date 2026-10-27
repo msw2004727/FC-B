@@ -7,16 +7,19 @@
 
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 
+import { taipeiParts } from '@/core/taipei-time';
 import { getFirebase } from '@/data/firebase';
 
 const OPERATION_LOGS_COLLECTION = 'operationLogs' as const;
 
-/** A `_writeOpLog` 的時間字串：`MM/DD HH:mm`。 */
+/** A `_writeOpLog` 的時間字串：`MM/DD HH:mm`（台北牆鐘）。 */
 export function opLogTimeString(date: Date): string {
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mi = String(date.getMinutes()).padStart(2, '0');
+  // helper 沒有 MM/DD HH:mm，用 taipeiParts 組成。取代 getMonth／getHours，避免非 UTC+8 寫出偏移的 time。
+  const parts = taipeiParts(date.getTime());
+  const mm = String(parts.month).padStart(2, '0');
+  const dd = String(parts.day).padStart(2, '0');
+  const hh = String(parts.hour).padStart(2, '0');
+  const mi = String(parts.minute).padStart(2, '0');
   return `${mm}/${dd} ${hh}:${mi}`;
 }
 

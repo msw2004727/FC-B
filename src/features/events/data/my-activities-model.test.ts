@@ -194,5 +194,26 @@ describe('有效狀態（照 A _getEventEffectiveStatus／_autoEndExpiredEvents�
     expect(effectiveEventStatus({ id: 'd', status: 'open', date: '2026/07/01 10:00~12:00', current: 20, max: 20 } as EventDoc, now)).toBe('full');
     expect(effectiveEventStatus({ id: 'e', status: 'upcoming', date: '2026/07/01 10:00~12:00', current: 3, max: 20 } as EventDoc, now)).toBe('open');
   });
+
+  it('regOpenTime 2026-10-19T09:00：遠未來活動在 08:59+08 為 upcoming，09:00+08 起為 open', () => {
+    const event = {
+      id: 'far',
+      status: 'open',
+      date: '2099/01/01 10:00~12:00',
+      regOpenTime: '2026-10-19T09:00',
+    } as EventDoc;
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T08:59:00+08:00'))).toBe('upcoming');
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T09:00:00+08:00'))).toBe('open');
+  });
+
+  it('無效 regOpenTime 不判 upcoming', () => {
+    const event = {
+      id: 'bad',
+      status: 'open',
+      date: '2099/01/01 10:00~12:00',
+      regOpenTime: 'nope',
+    } as EventDoc;
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T08:59:00+08:00'))).toBe('open');
+  });
 });
 

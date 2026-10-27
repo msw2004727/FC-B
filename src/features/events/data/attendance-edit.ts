@@ -18,6 +18,8 @@
  */
 
 import type { Firestore } from 'firebase/firestore';
+
+import { formatTaipei } from '@/core/taipei-time';
 import { getFirebase } from '@/data/firebase';
 import { attendanceRecords as attendanceRecordsPath } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
@@ -149,8 +151,8 @@ export function getAttendancePersonKey(person: {
 
 /** 對照 A `App._formatDateTime`：`YYYY/MM/DD HH:mm`。 */
 export function formatAttendanceDateTime(d: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // 台北牆鐘。取代 getFullYear／getHours，避免非 UTC+8 把偏移的出席時間寫進名單。
+  return formatTaipei(d.getTime());
 }
 
 /**

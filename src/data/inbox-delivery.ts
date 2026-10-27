@@ -7,6 +7,7 @@
  * - 不移植 A 的本機樂觀插入與 5 秒重複投遞守衛（屬收件匣 UI 快取；B 由收件匣模組自行處理）。
  */
 
+import { formatTaipei } from '@/core/taipei-time';
 import { callFn } from '@/data/callables';
 
 export interface InboxDeliveryExtra {
@@ -64,10 +65,6 @@ export function buildInboxDeliveryDedupeKey(
   ].join('||');
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
 /** A `_deliverMessageToInbox` 的 newMsg（不含寫入）。 */
 export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unknown> {
   const { title, body, category, categoryName, senderName, extra } = input;
@@ -75,7 +72,8 @@ export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unk
   const random = input.random ?? Math.random;
   const nowMs = now.getTime();
   const preview = body.length > 40 ? `${body.slice(0, 40)}...` : body;
-  const timeStr = `${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  // time 是台北牆鐘。取代 getFullYear／getHours，避免非 UTC+8 把偏移的時間寫進收件匣。
+  const timeStr = formatTaipei(now.getTime());
   const directTargetUid = input.targetUid || null;
   const targetTeamId = extra?.targetTeamId || null;
   const targetRoles = extra?.targetRoles || null;

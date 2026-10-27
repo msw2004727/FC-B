@@ -24,11 +24,15 @@ const mockServerTimestamp = vi.mocked(serverTimestamp);
 
 describe('opLogTimeString', () => {
   it('formats MM/DD HH:mm with zero padding', () => {
-    expect(opLogTimeString(new Date(2026, 0, 5, 7, 3))).toBe('01/05 07:03');
+    expect(opLogTimeString(new Date('2026-01-05T07:03:00+08:00'))).toBe('01/05 07:03');
   });
 
   it('handles November and hour 15', () => {
-    expect(opLogTimeString(new Date(2026, 10, 9, 15, 4))).toBe('11/09 15:04');
+    expect(opLogTimeString(new Date('2026-11-09T15:04:00+08:00'))).toBe('11/09 15:04');
+  });
+
+  it('台北 00:30 的日期不會變成前一天', () => {
+    expect(opLogTimeString(new Date('2026-10-19T00:30:00+08:00'))).toBe('10/19 00:30');
   });
 });
 
@@ -40,7 +44,7 @@ describe('writeOpLog', () => {
   });
 
   it('writes operationLogs doc with op_<timestamp>_<6 chars> id and A fields', async () => {
-    const now = new Date(2026, 4, 9, 15, 30);
+    const now = new Date('2026-05-09T15:30:00+08:00');
     await writeOpLog({
       type: 'event_cancel',
       typeName: '取消活動',

@@ -13,6 +13,7 @@
 
 import { getFirebase } from '@/data/firebase';
 import { callFn } from '@/data/callables';
+import { parseTaipei } from '@/core/taipei-time';
 import type {
   AdjustEventCapacityRequest,
   AdjustEventCapacityResponse,
@@ -351,10 +352,11 @@ function isEventTrulyFull(existing: EventForEdit): boolean {
 }
 
 function buildStartEnd(form: CreateEventForm): { startTimestamp: Date; endTimestamp: Date } {
-  // 對齊 A：`new Date(`${dateVal}T${time}`)`，走本地時區。
-  // ASSUMPTION: 測試需在 TZ=UTC 下跑、或使用與 golden 同 TZ 之環境。
-  const startTimestamp = new Date(`${form.dateVal}T${form.startTime}`);
-  const endTimestamp = new Date(`${form.dateVal}T${form.endTime}`);
+  // dateVal＋startTime／endTime 是台北牆鐘（與 Functions parseEventStartDateInTaipei 相同語意）。
+  // 取代 new Date(dateVal + "T" + time) 的裝置本地解析：非 UTC+8 的主辦人會把偏移的絕對時間寫進 Firestore。
+  // parseTaipei 回 null 時維持舊的 Invalid Date（上游驗證負責擋）；結束早於開始不加 24 小時。
+  const startTimestamp = new Date(parseTaipei(`${form.dateVal}T${form.startTime}`) ?? Number.NaN);
+  const endTimestamp = new Date(parseTaipei(`${form.dateVal}T${form.endTime}`) ?? Number.NaN);
   return { startTimestamp, endTimestamp };
 }
 
@@ -516,7 +518,7 @@ export function buildCreateEventPayload(
   const { startTimestamp, endTimestamp } = buildStartEnd(form);
   const dateStr = buildDateString(form);
   const nowMs = ctx.now.getTime();
-  const regOpenMs = form.regOpenTime ? new Date(form.regOpenTime).getTime() : 0;
+  const regOpenMs = form.regOpenTime ? (parseTaipei(form.regOpenTime) ?? 0) : 0;
   const status: 'open' | 'upcoming' = regOpenMs > nowMs ? 'upcoming' : 'open';
 
   const payload: EventCreatePayload = {
@@ -685,7 +687,7 @@ export function buildEditEventUpdates(
     existing.status !== 'cancelled'
   ) {
     const nowMs = ctx.now.getTime();
-    const regOpenMs = form.regOpenTime ? new Date(form.regOpenTime).getTime() : 0;
+    const regOpenMs = form.regOpenTime ? (parseTaipei(form.regOpenTime) ?? 0) : 0;
     if (regOpenMs > nowMs) {
       updates.status = 'upcoming';
     } else if (existing.status === 'upcoming') {

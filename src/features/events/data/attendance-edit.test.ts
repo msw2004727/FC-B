@@ -365,7 +365,7 @@ describe('writeAttendanceOps', () => {
   });
 
   it('使用同一個 writeBatch 原子提交新增與軟刪除，且不寫入 A 快取內部欄位', async () => {
-    const timeStr = formatAttendanceDateTime(new Date(2026, 4, 1, 9, 5));
+    const timeStr = '2026/05/01 09:05';
     const res = await writeAttendanceOps(
       'event_doc_99',
       {
@@ -448,5 +448,12 @@ describe('writeAttendanceOps', () => {
     expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     expect(res.addedDocIds).toHaveLength(2);
     expect(res.removedDocIds).toEqual(['old_att_doc_1']);
+  });
+});
+
+describe('formatAttendanceDateTime', () => {
+  it('絕對時間格式化成台北牆鐘，00:30 不會變成前一天', () => {
+    expect(formatAttendanceDateTime(new Date('2026-05-01T09:05:00+08:00'))).toBe('2026/05/01 09:05');
+    expect(formatAttendanceDateTime(new Date('2026-10-19T00:30:00+08:00'))).toBe('2026/10/19 00:30');
   });
 });

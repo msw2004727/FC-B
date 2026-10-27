@@ -3,6 +3,7 @@ import type { DocumentData, Firestore } from 'firebase/firestore';
 import { loadFirestoreSdk } from '@/data/firestore-sdk';
 // 公告是公開唯讀資料，只需要 app＋firestore，不等 auth／functions（T-041）。
 import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
+import { formatTaipei, parseTaipei } from '@/core/taipei-time';
 
 export const ANNOUNCEMENTS_COLLECTION = 'announcements';
 
@@ -30,25 +31,22 @@ export interface AnnouncementDeps {
   now?: () => number;
 }
 
-function toMillis(value: unknown): number {
+/** parseTaipei 回 null 之後，只讓帶明確時區的字串走 Date.parse。無時區垃圾字串回 0，不再丟給 Date.parse。 */
+function hasExplicitTimeZone(raw: string): boolean {
+  return /(?:Z|[+-]\d{2}:\d{2}|[+-]\d{4}|\bGMT\b|\bUTC\b)/i.test(raw);
+}
+
+/** 字串分支改台北牆鐘；匯出是為了測 GMT 後備（正式路徑的字串走 parseAnnouncementTime，不經過這裡）。 */
+export function toMillis(value: unknown): number {
   if (!value) return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (typeof value === 'string') {
     const raw = value.trim();
     if (!raw) return 0;
-    const slash = raw.match(
-      /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
-    );
-    if (slash) {
-      return new Date(
-        Number(slash[1]),
-        Number(slash[2]) - 1,
-        Number(slash[3]),
-        Number(slash[4] || 0),
-        Number(slash[5] || 0),
-        Number(slash[6] || 0),
-      ).getTime();
-    }
+    // 取代 slash 正則＋new Date(y, m, d) 的裝置本地解析。
+    const ms = parseTaipei(raw);
+    if (ms !== null) return ms;
+    if (!hasExplicitTimeZone(raw)) return 0;
     const parsed = Date.parse(raw);
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -90,18 +88,16 @@ function formatPublishAt(value: unknown): string {
   if (typeof value === 'string') return value.trim();
   const ms = toMillis(value);
   if (!ms) return '';
-  const d = new Date(ms);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // Timestamp 等非字串讀回台北牆鐘。與解析同一套，避免只改一半。
+  return formatTaipei(ms);
 }
 
 /** A `api-service.js#_parseAnnouncementTime`：Timestamp／Date／'YYYY/MM/DD HH:mm' 字串。 */
 function parseAnnouncementTime(value: unknown): number {
   if (!value) return 0;
   if (typeof value === 'string') {
-    const normalized = value.trim().replace(/\//g, '-').replace(' ', 'T');
-    const ms = new Date(normalized).getTime();
-    return Number.isNaN(ms) ? 0 : ms;
+    // 無時區字串當台北牆鐘。不走 Date.parse，避免英文日期被當成絕對時間。
+    return parseTaipei(value) ?? 0;
   }
   return toMillis(value);
 }

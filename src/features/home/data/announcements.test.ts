@@ -7,6 +7,7 @@ import {
   filterAndSortAnnouncements,
   getAnnouncementEffectiveStatus,
   loadActiveAnnouncements,
+  toMillis,
   type AnnouncementDoc,
 } from './announcements';
 
@@ -80,6 +81,27 @@ describe('announcements data layer', () => {
     expect(result[0]?.title).toBe('重要通知');
   });
 
+  it('Timestamp 的 publishAt 格式化成台北牆鐘，00:30 不會變成前一天', async () => {
+    const seconds = Math.floor(Date.parse('2026-10-19T00:30:00+08:00') / 1000);
+    vi.mocked(getDocs).mockResolvedValue({
+      docs: [{
+        id: 'ts',
+        data: () => ({
+          id: 'ts',
+          status: 'active',
+          title: '凌晨',
+          content: '',
+          publishAt: { seconds, nanoseconds: 0 },
+        }),
+      }],
+    } as unknown as Awaited<ReturnType<typeof getDocs>>);
+
+    const result = await loadActiveAnnouncements({
+      now: () => Date.parse('2026-10-19T12:00:00+08:00'),
+    });
+    expect(result[0]?.publishAt).toBe('2026/10/19 00:30');
+  });
+
   it('queries the whole collection without limit (main semantics restored; active ones are filtered client-side)', async () => {
     vi.mocked(getDocs).mockResolvedValue({ docs: [] } as unknown as Awaited<ReturnType<typeof getDocs>>);
 
@@ -118,5 +140,37 @@ describe('公告有效狀態（照 A _getAnnouncementEffectiveStatus）', () => 
     expect(getAnnouncementEffectiveStatus({ ...base, status: 'scheduled', rawPublishAt: '2026/10/19 13:00' }, now)).toBe('scheduled');
     expect(getAnnouncementEffectiveStatus({ ...base, status: 'scheduled', rawPublishAt: '2026/10/19 11:00' }, now)).toBe('active');
     expect(filterAndSortAnnouncements([{ ...base, status: 'scheduled', rawPublishAt: '2026/10/19 13:00' }], now)).toEqual([]);
+  });
+
+  it('英文日期不走 Date.parse，因此不會下架', () => {
+    expect(toMillis('Oct 19 2026 11:00')).toBe(0);
+    expect(toMillis('Oct 19 2020 11:00')).toBe(0);
+    expect(getAnnouncementEffectiveStatus({
+      ...base,
+      status: 'active',
+      unpublishAt: 'Oct 19 2026 11:00',
+    }, now)).toBe('active');
+    expect(getAnnouncementEffectiveStatus({
+      ...base,
+      status: 'active',
+      unpublishAt: 'Oct 19 2020 11:00',
+    }, now)).toBe('active');
+  });
+
+  it('帶明確時區的 GMT 字串仍當絕對時間', () => {
+    expect(toMillis('Mon, 19 Oct 2026 03:00:00 GMT')).toBe(Date.parse('2026-10-19T03:00:00Z'));
+  });
+
+  it('帶 Z 的下架時間是絕對時間，04:00Z 之後已下架', () => {
+    expect(getAnnouncementEffectiveStatus({
+      ...base,
+      status: 'active',
+      unpublishAt: '2026-10-19T03:00:00Z',
+    }, now)).toBe('expired');
+    expect(getAnnouncementEffectiveStatus({
+      ...base,
+      status: 'active',
+      unpublishAt: '2026-10-19T05:00:00Z',
+    }, now)).toBe('active');
   });
 });

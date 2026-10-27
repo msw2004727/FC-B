@@ -1,3 +1,4 @@
+import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
 import type { CreateEventForm, DelegationEntry, EventImageVariants, EventType } from './event-create';
 import type { EventDoc } from './types';
 import type { CustomRole } from '@/features/profile/data/permissions';
@@ -177,15 +178,17 @@ function parseRegOpenTime(raw: unknown): {
       regOpenClock: localMatch[2] ?? '',
     };
   }
-  const d = new Date(str);
-  if (Number.isNaN(d.getTime())) {
+  // 後備不是 datetime-local 純字串。解析與讀欄位必須同一套台北牆鐘，不能只改一半。
+  const ms = parseTaipei(str);
+  if (ms === null) {
     return { regOpenEnabled: false, regOpenDate: '', regOpenClock: '' };
   }
-  const yyyy = d.getFullYear();
-  const mm = pad2(d.getMonth() + 1);
-  const dd = pad2(d.getDate());
-  const hh = pad2(d.getHours());
-  const min = pad2(d.getMinutes());
+  const parts = taipeiParts(ms);
+  const yyyy = String(parts.year).padStart(4, '0');
+  const mm = pad2(parts.month);
+  const dd = pad2(parts.day);
+  const hh = pad2(parts.hour);
+  const min = pad2(parts.minute);
   return {
     regOpenEnabled: true,
     regOpenDate: `${yyyy}-${mm}-${dd}`,
@@ -389,10 +392,11 @@ export function validateEventForm(
         return { ok: false, message: '早鳥報名需先設定活動開始前的開放報名時間' };
       }
     } else {
-      const regOpenTime = state.regOpenEnabled
-        ? new Date(`${state.regOpenDate.trim()}T${state.regOpenClock.trim()}`).getTime()
-        : NaN;
-      if (!Number.isFinite(regOpenTime) || regOpenTime <= now.getTime()) {
+      const regOpenMs = state.regOpenEnabled
+        ? parseTaipei(`${state.regOpenDate.trim()}T${state.regOpenClock.trim()}`)
+        : null;
+      // null 對應舊的 NaN／非有限數，仍走同一個錯誤訊息，不新增 key。
+      if (regOpenMs === null || regOpenMs <= now.getTime()) {
         return { ok: false, message: '早鳥報名需搭配未來的開放報名時間' };
       }
     }
@@ -404,8 +408,8 @@ export function validateEventForm(
 
   // 照 A handleCreateEvent：建立時逐場檢查開始時間。
   const timestamps = dates.map(date => ({
-    start: new Date(`${date}T${startTime}`).getTime(),
-    end: new Date(`${date}T${endTime}`).getTime(),
+    start: parseTaipei(`${date}T${startTime}`) ?? Number.NaN,
+    end: parseTaipei(`${date}T${endTime}`) ?? Number.NaN,
   }));
   const isCreate = !state.eventId;
   if (isCreate && timestamps.some(item => Number.isNaN(item.start) || item.start < now.getTime())) {
@@ -437,7 +441,12 @@ export function validateEventForm(
   return { ok: true };
 }
 
-/** 照 A _calcRegOpenForDate：以本地日期逐日、逐時計算。 */
+/**
+ * 照 A `_calcRegOpenForDate`：以 dateVal＋startTime（台北牆鐘）為基準，逐日、逐時往前推，
+ * 回傳 `YYYY-MM-DDTHH:mm`。
+ * 取代本地 `new Date`＋`setDate`／`setHours`：非 UTC+8 裝置的本地推算會寫出偏移的 regOpenTime。
+ * 台北無夏令，減 relDays×24h 與 relHours×1h 與本地逐日逐時等價。
+ */
 export function calcRegOpenForDate(
   dateVal: string,
   startTime: string,
@@ -447,18 +456,20 @@ export function calcRegOpenForDate(
   if (relDays === 0 && relHours === 0) return null;
   if (!Number.isInteger(relDays) || !Number.isInteger(relHours)
     || relDays < 0 || relDays > 30 || relHours < 0 || relHours > 23) return null;
+  // 未補零（`2026-2-3`）與改前一樣先被正則擋下，不進解析。
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal) || !/^\d{2}:\d{2}$/.test(startTime)) return null;
 
-  const dt = new Date(`${dateVal}T${startTime}`);
-  if (!Number.isFinite(dt.getTime())) return null;
-  // 照本單非法日期契約：拒絕 Date 自動進位的日期與時間。
-  const normalizedDate = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
-  const normalizedTime = `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  const startMs = parseTaipei(`${dateVal}T${startTime}`);
+  if (startMs === null) return null;
+  // 照本單非法日期契約：parseTaipei 對不存在的日期回 null；再比對補零後的牆鐘字串。
+  const parts = taipeiParts(startMs);
+  const normalizedDate = `${String(parts.year).padStart(4, '0')}-${pad2(parts.month)}-${pad2(parts.day)}`;
+  const normalizedTime = `${pad2(parts.hour)}:${pad2(parts.minute)}`;
   if (normalizedDate !== dateVal || normalizedTime !== startTime) return null;
 
-  dt.setDate(dt.getDate() - relDays);
-  dt.setHours(dt.getHours() - relHours);
-  return `${String(dt.getFullYear()).padStart(4, '0')}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}T${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  const ms = startMs - relDays * 24 * 3_600_000 - relHours * 3_600_000;
+  const formatted = formatTaipei(ms, 'YYYY-MM-DDTHH:mm');
+  return formatted || null;
 }
 
 /** 照 A _buildMultiDateEvents：其他欄位沿用，每場獨立換日期與報名時間。 */

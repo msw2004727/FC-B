@@ -175,6 +175,28 @@ describe('isEventEarlyBirdWindow / getEventEarlyBirdCost', () => {
       now,
     )).toBe(false);
   });
+
+  it('regOpenTime 2026-10-19T09:00：08:59+08 仍在窗口，09:00+08 起不是', () => {
+    const event = {
+      status: 'open',
+      date: '2099/01/01 10:00',
+      regOpenTime: '2026-10-19T09:00',
+      earlyBirdEnabled: true,
+      earlyBirdCost: 50,
+    };
+    expect(isEventEarlyBirdWindow(event, new Date('2026-10-19T08:59:00+08:00'))).toBe(true);
+    expect(isEventEarlyBirdWindow(event, new Date('2026-10-19T09:00:00+08:00'))).toBe(false);
+  });
+
+  it('無效 regOpenTime → false', () => {
+    expect(isEventEarlyBirdWindow({
+      status: 'open',
+      date: '2099/01/01 10:00',
+      regOpenTime: 'nope',
+      earlyBirdEnabled: true,
+      earlyBirdCost: 50,
+    }, now)).toBe(false);
+  });
 });
 
 describe('hasAvailableTeamReservationSignup', () => {

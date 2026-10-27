@@ -6,6 +6,7 @@ import type { UserRole } from '@/ui/Avatar';
 import { count, safeImageUrl, type DetailEvent } from '../../data/detail-model';
 import { parseEventStartDate } from '../../data/event-lifecycle';
 import { renderEventSocialLinksHtml } from '../../data/event-social-links';
+import { formatTaipei, parseTaipei } from '@/core/taipei-time';
 
 
 export type LegacyDetailEvent = DetailEvent & {
@@ -128,11 +129,13 @@ function formatRegOpenInfo(
   nowMs: number,
 ): { regStr: string; suffix: string; isUpcoming: boolean } | null {
   if (!event.regOpenTime) return null;
-  const regDate = new Date(event.regOpenTime);
-  if (!Number.isFinite(regDate.getTime())) return null;
-  const regStr = `${regDate.getFullYear()}/${String(regDate.getMonth() + 1).padStart(2, '0')}/${String(regDate.getDate()).padStart(2, '0')} ${String(regDate.getHours()).padStart(2, '0')}:${String(regDate.getMinutes()).padStart(2, '0')}`;
+  // 解析與讀回必須同一套台北牆鐘。取代 new Date ＋ getFullYear／getHours，避免非 UTC+8 把開放報名顯示成另一天。
+  const ms = parseTaipei(event.regOpenTime);
+  if (ms === null) return null;
+  const regStr = formatTaipei(ms, 'YYYY/MM/DD HH:mm');
+  if (!regStr) return null;
   if (event.status === 'upcoming') {
-    const diff = regDate.getTime() - nowMs;
+    const diff = ms - nowMs;
     const totalMin = Math.max(0, Math.floor(diff / 60000));
     const days = Math.floor(totalMin / 1440);
     const hours = Math.floor((totalMin % 1440) / 60);

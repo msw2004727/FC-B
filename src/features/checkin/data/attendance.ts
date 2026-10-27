@@ -9,6 +9,7 @@
 
 import type { Firestore } from 'firebase/firestore';
 
+import { formatTaipei } from '@/core/taipei-time';
 import { getFirebase } from '@/data/firebase';
 import { attendanceRecords as attendanceRecordsPath } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
@@ -75,8 +76,8 @@ function defaultIdFactory(): string {
  * 預設 `YYYY/MM/DD HH:mm`，呼叫端如需與 A 完全一致的格式請注入。
  */
 function defaultFormatTime(d: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // 台北牆鐘 YYYY/MM/DD HH:mm。取代 getFullYear／getHours，避免非 UTC+8 簽到寫出偏移時間。
+  return formatTaipei(d.getTime());
 }
 
 // ── 純函式：buildAttendanceRecord ─────────────────
