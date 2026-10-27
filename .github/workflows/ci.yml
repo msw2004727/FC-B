@@ -57,3 +57,35 @@ jobs:
       - name: i18n 檢查（7 語系）
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node scripts/check-i18n.mjs
+
+  # 時區矩陣（T-054a）：只跑時區敏感測試，行程以四種時區各啟動一次，期望值完全相同。
+  # 與上面的 check job 互補：check 維持 TZ=Asia/Taipei 跑全套（還原開發環境）；
+  # 這裡不跑全套，因為全套在非台北時區目前仍有依賴本地解析的既有測試（例如 announcements.test.ts，
+  # 屬 054b 的修正範圍）。全套 UTC job 將在 054c 啟用；054b／054c 新增的時區敏感測試檔請加進下方指令。
+  # 刻意不做的事同 check：不建置、不部署、不用 secret、不用第三方 action。
+  tz-matrix:
+    name: 時區矩陣（TZ=${{ matrix.tz }}）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # 四個時區各自獨立，一個紅不取消其他，一次看到所有失敗。
+      fail-fast: false
+      matrix:
+        tz: [Asia/Taipei, Asia/Tokyo, UTC, America/Los_Angeles]
+    env:
+      TZ: ${{ matrix.tz }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      - name: 時區敏感測試（vitest）
+        run: npx vitest run src/core/taipei-time.test.ts
