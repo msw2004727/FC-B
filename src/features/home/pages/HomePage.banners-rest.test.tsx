@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { _resetFirebaseForTest } from '@/data/firebase';
+import { _resetFirebaseForTest, isLocalOrPrivateHostname, shouldUseEmulator } from '@/data/firebase';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { _resetUseEventsForTest } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { loadActiveAnnouncements } from '../data/announcements';
 import { loadActiveBanners, type BannerDeps, type BannerDoc } from '../data/banners';
+import { _resetBannersRestForTest } from '../data/banners-rest';
 import {
   BANNERS_SNAPSHOT_KEY,
   _clearHomeSnapshotForTest,
@@ -20,6 +21,14 @@ import HomePage from './HomePage';
 // T-042c：冷啟動（沒有有效首屏快照）時，橫幅清單在第一次 render 就用 Firestore REST 匿名讀取，比 SDK 更早畫出 hero 並寫入快照；
 // SDK 之後的正式資料照舊取代它；REST 任何失敗都靜默退回 SDK 路徑；SDK 已確認取代後晚到的 REST 結果不覆蓋、不寫快照。
 // 這個檔案的 fetch 全部是假的（vi.stubGlobal），不對任何線上端點發請求。
+
+// 連線目標守門（F1）：只覆寫 shouldUseEmulator／isLocalOrPrivateHostname，其餘匯出維持原樣。
+// jsdom 的 hostname 是 localhost，真實的 isLocalOrPrivateHostname 會讓 REST 不發，所以預設都回 false（＝線上環境），守門案例再覆寫。
+vi.mock('@/data/firebase', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/data/firebase')>()),
+  shouldUseEmulator: vi.fn(),
+  isLocalOrPrivateHostname: vi.fn(),
+}));
 
 vi.mock('preact-iso', () => ({
   useLocation: () => ({ url: '/', path: '/', query: {}, route: vi.fn() }),
@@ -139,6 +148,9 @@ let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
 beforeEach(() => {
   vi.resetAllMocks();
+  _resetBannersRestForTest();
+  vi.mocked(shouldUseEmulator).mockReturnValue(false);
+  vi.mocked(isLocalOrPrivateHostname).mockReturnValue(false);
   _resetUseEventsForTest();
   _clearHomeSnapshotForTest();
   vi.mocked(useViewer).mockReturnValue(makeViewer('u1'));
@@ -189,6 +201,7 @@ describe('HomePage 冷啟動：橫幅 REST 讀取', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       structuredQuery: { from: [{ collectionId: 'banners' }], limit: 200 },
     });
+    expect(init.headers).toEqual({ 'Content-Type': 'text/plain' }); // 簡單請求，不觸發 preflight
     const headerNames = Object.keys((init.headers ?? {}) as Record<string, string>).map((k) => k.toLowerCase());
     expect(headerNames).toEqual(['content-type']);
     expect(JSON.stringify([url, init])).not.toContain(FIREBASE_CONFIG.apiKey);
@@ -348,6 +361,62 @@ describe('HomePage 冷啟動：橫幅 REST 讀取', () => {
     });
     expect(await screen.findByRole('heading', { name: 'SDK 標題' })).toBeTruthy();
     expect(snapshotIds()).toEqual(['s1']);
+  });
+});
+
+describe('HomePage 冷啟動 REST：連線目標守門與每次頁面載入只發一次', () => {
+  const sdkRenders = async (): Promise<void> => {
+    // SDK 路徑照常：確認新取得 → 畫面＋快照（證明沒發 REST 時首頁仍正常）。
+    vi.mocked(loadActiveBanners).mockImplementation(sdkConfirmedAfter(Promise.resolve([banner({ id: 's1', title: 'SDK 標題' })])));
+  };
+
+  it('emulator 模式：完全不呼叫 fetch（REST 會直連正式端點、繞過 SDK 的 emulator 守門）；SDK 路徑照常', async () => {
+    vi.mocked(shouldUseEmulator).mockReturnValue(true);
+    await sdkRenders();
+
+    render(<HomePage />);
+
+    expect(await screen.findByRole('heading', { name: 'SDK 標題' })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(loadActiveBanners).toHaveBeenCalledTimes(1);
+  });
+
+  it('網址是本機／區網（isLocalOrPrivateHostname 為真，且以 location.hostname 判斷）：完全不呼叫 fetch', async () => {
+    vi.mocked(isLocalOrPrivateHostname).mockReturnValue(true);
+    await sdkRenders();
+
+    render(<HomePage />);
+
+    expect(await screen.findByRole('heading', { name: 'SDK 標題' })).toBeTruthy();
+    expect(isLocalOrPrivateHostname).toHaveBeenCalledWith(location.hostname);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it('用真實的 isLocalOrPrivateHostname：jsdom 的網址是 localhost → 完全不呼叫 fetch', async () => {
+    const actual = await vi.importActual<typeof import('@/data/firebase')>('@/data/firebase');
+    vi.mocked(isLocalOrPrivateHostname).mockImplementation(actual.isLocalOrPrivateHostname);
+    expect(location.hostname).toBe('localhost');
+    await sdkRenders();
+
+    render(<HomePage />);
+
+    expect(await screen.findByRole('heading', { name: 'SDK 標題' })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it('每次頁面載入只發一次：第一次失敗後 HomePage 重掛不會再發，SDK 路徑每次照常', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
+
+    const first = render(<HomePage />);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    render(<HomePage />);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1); // 沒有再發
+    expect(loadActiveBanners).toHaveBeenCalledTimes(2); // SDK 路徑兩次掛載各一次
   });
 });
 

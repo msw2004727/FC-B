@@ -7,6 +7,9 @@
  *   （`./banners` 本身靜態 import `data/firebase.ts`，但首頁入口本來就有，沒有新增任何模組到入口圖；SDK 只在 banners.ts 動態載入。）
  * - 匿名請求：不帶 `Authorization`、不帶 API key（網址沒有 `key=`、沒有 `x-goog-api-key`）、`credentials: 'omit'`。
  *   `banners` 的 Rules 是 `allow read: if true`（公開讀取），不需要憑證。
+ * - 這個模組直接連正式端點、不經 SDK 初始化，所以繞過了 `data/firebase.ts` 的「本機只能連 emulator」守門；呼叫端（HomePage）
+ *   必須先過 `banners-rest-guard.ts` 的 `canUseBannersRest()`（emulator 或本機／區網網址一律不發）。
+ *   另外每次頁面載入只發一次（`startBannersRestFetch` 的模組層旗標）。
  * - 與 SDK 路徑同一個查詢（`collection('banners').limit(200)`）、同一個文件映射（`mapBannerDoc`）、同一個篩選（`filterAndSortBanners`）；
  *   REST 的欄位值（`stringValue`／`integerValue`…）先解成 SDK `data()` 同形的 JS 值，再交給 `mapBannerDoc`，所以映射語意由同一份程式碼保證。
  *   只解碼 `mapBannerDoc` 會讀的欄位，未知欄位一律丟棄；單筆損毀只丟該筆。
@@ -199,7 +202,10 @@ async function readTextWithLimit(res: Response, maxBytes: number): Promise<strin
 async function requestBanners(fetchImpl: typeof fetch, signal: AbortSignal | undefined): Promise<BannerDoc[] | null> {
   const res = await fetchImpl(bannersRestUrl(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // text/plain：跨來源「簡單請求」，不觸發 CORS preflight（少一個往返）。Firestore SDK 對同一組 REST 端點就是這樣做
+    // （@firebase/firestore 的 REST connection `Content-Type: text/plain`，註解寫明是為了避免 preflight）；body 仍是 JSON 字串。
+    // 伺服器是否接受 text/plain 的 runQuery 是依 SDK 先例推論，尚未實測；若被拒（非 2xx）只會靜默退回 SDK 路徑。
+    headers: { 'Content-Type': 'text/plain' },
     body: bannersRestBody(),
     // 匿名公開讀取：不帶 cookie／憑證；沒有 Authorization、沒有 API key。
     credentials: 'omit',
@@ -261,8 +267,21 @@ export interface BannersRestRequest {
   cancel: () => void;
 }
 
-/** 立刻發出請求（HomePage 第一次 render 呼叫，與 SDK 載入並行）。 */
-export function startBannersRestFetch(options: Pick<BannersRestOptions, 'fetchImpl'> = {}): BannersRestRequest {
+/** 本次頁面載入是否已經發過冷啟動的 REST 請求（模組層，整個頁面載入期間只發一次）。 */
+let started = false;
+
+/** 測試用：清掉「本次頁面載入已發過」的旗標（repo 慣例，同 `_resetFirebaseForTest`）。 */
+export function _resetBannersRestForTest(): void {
+  started = false;
+}
+
+/**
+ * 立刻發出請求（HomePage 第一次 render 呼叫，與 SDK 載入並行）。**每次頁面載入只發一次**：已經發過就回 `null`
+ * ——HomePage 重掛（切頁再回來）時 SDK 早已載好，再發 REST 沒有速度效益，只會多讀一次集合；第一次失敗也不重試（SDK 路徑照常）。
+ */
+export function startBannersRestFetch(options: Pick<BannersRestOptions, 'fetchImpl'> = {}): BannersRestRequest | null {
+  if (started) return null;
+  started = true;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const result = fetchBannersViaRest({ ...options, signal: controller?.signal });
   return { result, cancel: () => controller?.abort() };

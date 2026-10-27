@@ -8,6 +8,7 @@ import { BANNERS_COLLECTION, loadActiveBanners, type BannerDoc } from './banners
 import {
   BANNERS_REST_MAX_BYTES,
   BANNERS_REST_TIMEOUT_MS,
+  _resetBannersRestForTest,
   bannersRestBody,
   bannersRestUrl,
   fetchBannersViaRest,
@@ -56,6 +57,7 @@ let debugSpy: MockInstance<typeof console.debug>;
 
 beforeEach(() => {
   vi.resetAllMocks();
+  _resetBannersRestForTest();
   vi.mocked(getFirebase).mockResolvedValue({ db: fakeDb } as Awaited<ReturnType<typeof getFirebase>>);
   vi.mocked(collection).mockReturnValue('banners-col-ref' as unknown as ReturnType<typeof collection>);
   vi.mocked(query).mockImplementation((ref) => ref as unknown as ReturnType<typeof query>);
@@ -73,6 +75,13 @@ const ONE_DOC = [restDoc('b1', restActiveFields({ title: restStr('標題一') })
 
 function mockFetch(make: () => Promise<Response> | Response): ReturnType<typeof vi.fn<typeof fetch>> {
   return vi.fn<typeof fetch>(async () => make());
+}
+
+/** startBannersRestFetch 每次頁面載入只發一次；這裡的案例都是「第一次呼叫」，拿不到就是測試前置錯了。 */
+function startOrFail(options: Parameters<typeof startBannersRestFetch>[0]): NonNullable<ReturnType<typeof startBannersRestFetch>> {
+  const request = startBannersRestFetch(options);
+  if (!request) throw new Error('startBannersRestFetch 回傳 null（旗標沒有重設？）');
+  return request;
 }
 
 function firstCall(fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>): { url: string; init: RequestInit } {
@@ -94,6 +103,8 @@ describe('請求內容：匿名、公開讀取、與 SDK 路徑同一個查詢',
     expect(url).toBe(bannersRestUrl());
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('omit');
+    // text/plain＝跨來源簡單請求，不觸發 CORS preflight（Firestore SDK 對同一端點的做法）；body 仍是 JSON 字串。
+    expect(init.headers).toEqual({ 'Content-Type': 'text/plain' });
     expect(JSON.parse(String(init.body))).toEqual({
       structuredQuery: { from: [{ collectionId: 'banners' }], limit: 200 },
     });
@@ -492,7 +503,7 @@ describe('失敗一律回 null（絕不丟錯、不重試、不 console.error）
     expect(never).not.toHaveBeenCalled();
 
     let signal: AbortSignal | undefined;
-    const request = startBannersRestFetch({
+    const request = startOrFail({
       fetchImpl: vi.fn<typeof fetch>(
         (_input, init) =>
           new Promise<Response>((_resolve, reject) => {
@@ -645,7 +656,7 @@ describe('startBannersRestFetch', () => {
           signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
         }),
     );
-    const request = startBannersRestFetch({ fetchImpl });
+    const request = startOrFail({ fetchImpl });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(signal?.aborted).toBe(false);
     request.cancel();
@@ -654,8 +665,40 @@ describe('startBannersRestFetch', () => {
   });
 
   it('成功時 result 是清單', async () => {
-    const request = startBannersRestFetch({ fetchImpl: mockFetch(() => jsonResponse(ONE_DOC).response) });
+    const request = startOrFail({ fetchImpl: mockFetch(() => jsonResponse(ONE_DOC).response) });
     expect((await request.result)?.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('每次頁面載入只發一次：第二次呼叫回 null、不再發請求；第一次失敗也不重試', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const first = startBannersRestFetch({ fetchImpl });
+    expect(first).not.toBeNull();
+    expect(await first?.result).toBeNull(); // 第一次失敗
+
+    expect(startBannersRestFetch({ fetchImpl })).toBeNull();
+    expect(startBannersRestFetch({ fetchImpl })).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('旗標只由測試用的重設函式清掉（等於一次新的頁面載入）', () => {
+    const fetchImpl = mockFetch(() => jsonResponse(ONE_DOC).response);
+    expect(startBannersRestFetch({ fetchImpl })).not.toBeNull();
+    expect(startBannersRestFetch({ fetchImpl })).toBeNull();
+    _resetBannersRestForTest();
+    expect(startBannersRestFetch({ fetchImpl })).not.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('模組重新載入（新的頁面載入）時旗標是全新的：不需要任何重設匯出', async () => {
+    const fetchImpl = mockFetch(() => jsonResponse(ONE_DOC).response);
+    expect(startBannersRestFetch({ fetchImpl })).not.toBeNull();
+    expect(startBannersRestFetch({ fetchImpl })).toBeNull();
+    vi.resetModules();
+    const fresh = await import('./banners-rest');
+    expect(fresh.startBannersRestFetch({ fetchImpl })).not.toBeNull();
+    expect(fresh.startBannersRestFetch({ fetchImpl })).toBeNull();
   });
 });
 

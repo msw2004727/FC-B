@@ -24,6 +24,7 @@ import {
 } from '../data/announcements';
 import { loadActiveBanners, type BannerDoc } from '../data/banners';
 import { startBannersRestFetch } from '../data/banners-rest';
+import { canUseBannersRest } from '../data/banners-rest-guard';
 import {
   loadEventFormModal,
   scheduleEventFormPrefetch,
@@ -96,8 +97,9 @@ export default function HomePage(): JSX.Element {
   // 橫幅快照第一次 render 就畫（沒有、過期或版本不同＝空陣列，維持骨架）。只讀一次。
   const [initialBanners] = useState(() => readBannersSnapshot());
   // 冷啟動（沒有有效快照）才在第一次 render 就發出匿名 REST 讀取（T-042c），與 SDK 載入並行；已有快照的暖啟動不發（快照已經畫出來了）。
+  // 本機網址或 emulator 模式不發（REST 會繞過 SDK 的「本機只能連 emulator」守門）；每次頁面載入只發一次（重掛回傳 null）。
   // 結果由下方的 effect 接手，失敗（null）一律靜默、SDK 路徑照常。
-  const [bannersRest] = useState(() => (initialBanners ? null : startBannersRestFetch()));
+  const [bannersRest] = useState(() => (initialBanners || !canUseBannersRest() ? null : startBannersRestFetch()));
   const [banners, setBanners] = useState<BannerDoc[]>(() => initialBanners?.items ?? []);
   // 目前畫面上的橫幅若來自快照，這裡是它的到期時間；被伺服器結果取代後為 null。
   const [bannerExpiry, setBannerExpiry] = useState<number | null>(() => initialBanners?.expiresAt ?? null);
