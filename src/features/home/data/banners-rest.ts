@@ -275,13 +275,49 @@ export function _resetBannersRestForTest(): void {
   started = false;
 }
 
+declare global {
+  interface Window {
+    /**
+     * index.html 內嵌 script（`#fcb-early-banners`，T-042d）在 HTML 到達時就發出的 runQuery：resolve「原始回應」（JSON 陣列，
+     * 沒有任何映射）或 `null`（失敗）；沒發（暖啟動、emulator、本機網址、非首頁網址）就不存在。映射與白名單都在這個檔案與 HomePage。
+     */
+    __fcbEarlyBanners?: Promise<unknown> | null;
+  }
+}
+
+/** 取走內嵌 script 提早發出的請求（只取一次；取走後清掉全域，原始回應不留在 window 上）。不是 Promise 一律當作沒有。 */
+function takeEarlyBanners(): Promise<unknown> | null {
+  if (typeof window === 'undefined') return null;
+  const early = window.__fcbEarlyBanners;
+  delete window.__fcbEarlyBanners;
+  return early && typeof (early as PromiseLike<unknown>).then === 'function' ? early : null;
+}
+
+/** 早期請求的原始回應 → 橫幅清單，與自發路徑同一個 `parseRunQueryResponse`（映射、篩選都在這裡）；任何失敗回 `null`，不重發。 */
+async function resolveEarlyBanners(early: Promise<unknown>): Promise<BannerDoc[] | null> {
+  try {
+    const list = parseRunQueryResponse(await early);
+    if (list === null) logFallback();
+    return list;
+  } catch {
+    logFallback();
+    return null;
+  }
+}
+
 /**
- * 立刻發出請求（HomePage 第一次 render 呼叫，與 SDK 載入並行）。**每次頁面載入只發一次**：已經發過就回 `null`
+ * 取得本次頁面載入的冷啟動橫幅請求（HomePage 第一次 render 呼叫，與 SDK 載入並行）。**每次頁面載入只發一次**：已經發過就回 `null`
  * ——HomePage 重掛（切頁再回來）時 SDK 早已載好，再發 REST 沒有速度效益，只會多讀一次集合；第一次失敗也不重試（SDK 路徑照常）。
+ *
+ * T-042d：index.html 內嵌 script 若已在 HTML 到達時發出請求（`window.__fcbEarlyBanners`），就接手它的結果、**不再自己發**
+ * （早期請求與自發互斥）；它失敗（resolve `null`）同樣只退回 SDK，不補發第二次。沒有早期請求才照 T-042c 的路徑自己發。
  */
 export function startBannersRestFetch(options: Pick<BannersRestOptions, 'fetchImpl'> = {}): BannersRestRequest | null {
   if (started) return null;
   started = true;
+  const early = takeEarlyBanners();
+  // 早期請求屬於頁面載入本身，沒有「取消」可言（卸載只需要忽略結果，HomePage 以 active 旗標處理）。
+  if (early) return { result: resolveEarlyBanners(early), cancel: () => undefined };
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const result = fetchBannersViaRest({ ...options, signal: controller?.signal });
   return { result, cancel: () => controller?.abort() };

@@ -16,6 +16,85 @@
     <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
     <link rel="dns-prefetch" href="https://www.googleapis.com" />
     <link rel="dns-prefetch" href="https://fc-football-6c8dc.firebaseapp.com" />
+    <!-- T-042d：冷啟動提早發橫幅 REST、預載第一張橫幅圖。設計、發不發的條件、安全邊界見 scripts/early-banners-html.ts 檔頭；
+         __FCB_*__ 代號由該外掛在建置時換成真值，這段註解也由它刪掉（不隨 HTML 送出）。測試：src/app/early-banners.test.ts。
+         日後若加 CSP，必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com。 -->
+    <script id="fcb-early-banners">
+      (function () {
+        var P = '__FCB_PROJECT_ID__', V = '__FCB_APP_VERSION__', L = location, M = 262144, K = /^home-(info|layout)$/;
+        function str(f, k) {
+          var v = (f || 0)[k];
+          return v && typeof v.stringValue === 'string' ? v.stringValue : '';
+        }
+        function local(h) {
+          return /^(localhost|127\.0\.0\.1|::1|\[::1\]|0\.0\.0\.0)$|\.(localhost|local)$|^(10\.\d{1,3}|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/.test(String(h || '').trim().toLowerCase());
+        }
+        function warm() {
+          try {
+            var s = localStorage.getItem('fcb:home-banners:v1'), t = Date.now();
+            s = s && s.length <= 100000 && JSON.parse(s);
+            return s && s.v === 1 && s.appVersion === V && Array.isArray(s.items) && s.items.length > 0 &&
+              s.savedAt === +s.savedAt && t - s.savedAt <= 1800000 && s.savedAt <= t + 60000;
+          } catch (_) {}
+        }
+        function body(r) {
+          var g, d, x = '', k = 0;
+          if (!r.ok || +r.headers.get('content-length') > M) return null;
+          g = r.body && r.body.getReader && r.body.getReader();
+          if (!g) return r.text().then(function (t) { return new TextEncoder().encode(t).length > M ? null : t; });
+          d = new TextDecoder();
+          return (function next() {
+            return g.read().then(function (q) {
+              if (q.done) return x + d.decode();
+              if (q.value) {
+                if ((k += q.value.byteLength) > M) { g.cancel().catch(function () {}); return null; }
+                x += d.decode(q.value, { stream: true });
+              }
+              return next();
+            });
+          })();
+        }
+        function preload(p) {
+          var i, d, q, f, m, u, k;
+          if (p.some(function (e) { return e && e.error !== undefined; })) return;
+          for (i = 0; i < p.length; i++) {
+            d = (p[i] || 0).document || 0;
+            q = typeof d.name === 'string' ? d.name.split('/') : [];
+            f = d.fields;
+            if (q.length !== 7 || q[2] !== 'databases' || q[4] !== 'documents' || q[5] !== 'banners' || !q[6] ||
+              str(f, 'status').trim() !== 'active' || /^(shotgame|watchParty|homeInfo|homeLayout)$/.test(str(f, 'type')) ||
+              K.test(str(f, 'slot')) || K.test(q[6]) || K.test(str(f, 'id').trim())) continue;
+            m = str(f, 'image').trim();
+            if (!m || m.length > 2000 || !/^https:\/\//i.test(m)) return;
+            u = new URL(m);
+            if (u.username || u.password || (u.host !== 'firebasestorage.googleapis.com' && u.origin !== L.origin)) return;
+            k = document.createElement('link');
+            k.setAttribute('rel', 'preload');
+            k.setAttribute('as', 'image');
+            k.setAttribute('fetchpriority', 'high');
+            k.setAttribute('href', m);
+            document.head.appendChild(k);
+            return;
+          }
+        }
+        try {
+          if (L.pathname !== '/' || L.search || local(L.hostname) || warm()) return;
+          var c = new AbortController(), t = setTimeout(function () { c.abort(); }, 4000);
+          window.__fcbEarlyBanners = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents:runQuery', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: '{"structuredQuery":{"from":[{"collectionId":"banners"}],"limit":200}}',
+            credentials: 'omit',
+            signal: c.signal
+          }).then(body).then(function (x) {
+            var p = x && JSON.parse(x);
+            if (!Array.isArray(p)) return null;
+            try { preload(p); } catch (_) {}
+            return p;
+          }).catch(function () { return null; }).then(function (v) { clearTimeout(t); c.abort(); return v; });
+        } catch (_) {}
+      })();
+    </script>
     <title>ToosterX</title>
     <!-- 照 A index.html：圖示、加到主畫面（PWA）相關標籤；manifest 由 vite.config.ts 的 PWA 設定產生（內容照 A manifest.json） -->
     <link rel="icon" href="/assets/icons/icon-192x192.png" type="image/png" />

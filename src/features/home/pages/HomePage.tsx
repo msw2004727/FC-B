@@ -98,7 +98,8 @@ export default function HomePage(): JSX.Element {
   const [initialBanners] = useState(() => readBannersSnapshot());
   // 冷啟動（沒有有效快照）才在第一次 render 就發出匿名 REST 讀取（T-042c），與 SDK 載入並行；已有快照的暖啟動不發（快照已經畫出來了）。
   // 本機網址或 emulator 模式不發（REST 會繞過 SDK 的「本機只能連 emulator」守門）；每次頁面載入只發一次（重掛回傳 null）。
-  // 結果由下方的 effect 接手，失敗（null）一律靜默、SDK 路徑照常。
+  // 結果由下方的 effect 接手，失敗（null）一律靜默、SDK 路徑照常。T-042d：index.html 內嵌 script 若已提早發出請求（window.__fcbEarlyBanners），
+  // startBannersRestFetch 接手它的原始回應（映射、toPublicBanners 白名單、快照寫入守門仍全在這裡），不再自己發。
   const [bannersRest] = useState(() => (initialBanners || !canUseBannersRest() ? null : startBannersRestFetch()));
   const [banners, setBanners] = useState<BannerDoc[]>(() => initialBanners?.items ?? []);
   // 目前畫面上的橫幅若來自快照，這裡是它的到期時間；被伺服器結果取代後為 null。

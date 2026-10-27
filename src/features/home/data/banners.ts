@@ -212,8 +212,10 @@ export function safeBannerGradient(value: unknown): string {
  * 排除射門遊戲／觀賽／首頁資訊／版面設定這些特殊文件，再只留 status === 'active'。
  * A 沒有時間區間判斷，也沒有另外排序（順序＝查詢結果，即文件 ID 升冪）。
  */
-const EXCLUDED_TYPES: ReadonlySet<string> = new Set(['shotgame', 'watchParty', 'homeInfo', 'homeLayout']);
-const EXCLUDED_KEYS: ReadonlySet<string> = new Set(['home-info', 'home-layout']);
+// 匯出給測試用（T-042d）：index.html 的內嵌 script 手寫了同一份排除條件（`#fcb-early-banners` 的 /^(shotgame|…)$/ 與 K），
+// 這兩個集合新增成員時，`src/app/early-banners.test.ts` 會對每個成員產生案例而變紅，提醒同步改 index.html。
+export const EXCLUDED_TYPES: ReadonlySet<string> = new Set(['shotgame', 'watchParty', 'homeInfo', 'homeLayout']);
+export const EXCLUDED_KEYS: ReadonlySet<string> = new Set(['home-info', 'home-layout']);
 
 export function isHomeCarouselBanner(banner: BannerDoc | null | undefined): boolean {
   if (!banner) return false;
