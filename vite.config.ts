@@ -6,6 +6,10 @@ import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
 import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
+// 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
+import { earlyBannersHtml } from './scripts/early-banners-html.ts';
+import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
+import { APP_VERSION } from './src/version.ts';
 
 /** 版本角標用的短 commit：Cloudflare Pages 建置提供 CF_PAGES_COMMIT_SHA，本機退回 git。 */
 function buildSha(): string {
@@ -159,7 +163,8 @@ const pwa = VitePWA({
 });
 
 export default defineConfig({
-  plugins: [preact(), internalTestNoIndex(), pwa],
+  // T-042d：index.html 的冷啟動提早 REST 內嵌 script，把 projectId／版號代號換成真值（emulator 建置整段移除）。
+  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION }), internalTestNoIndex(), pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },
