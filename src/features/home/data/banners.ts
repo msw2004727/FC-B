@@ -231,7 +231,8 @@ export function filterAndSortBanners(banners: readonly BannerDoc[] | null | unde
   return banners.filter((b) => isHomeCarouselBanner(b));
 }
 
-function mapBannerDoc(docSnap: { id: string; data: () => DocumentData }): BannerDoc {
+// 匯出給 banners-rest.ts（T-042c）共用：REST 與 SDK 兩條路徑的文件映射用同一個函式，欄位語意不會分歧。
+export function mapBannerDoc(docSnap: { id: string; data: () => DocumentData }): BannerDoc {
   const raw = (docSnap.data() ?? {}) as Record<string, unknown>;
   const id = String(raw.id ?? docSnap.id).trim() || docSnap.id;
   return {

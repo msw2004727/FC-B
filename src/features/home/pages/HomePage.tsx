@@ -23,6 +23,8 @@ import {
   type AnnouncementDoc,
 } from '../data/announcements';
 import { loadActiveBanners, type BannerDoc } from '../data/banners';
+import { startBannersRestFetch } from '../data/banners-rest';
+import { canUseBannersRest } from '../data/banners-rest-guard';
 import {
   loadEventFormModal,
   scheduleEventFormPrefetch,
@@ -94,6 +96,10 @@ export default function HomePage(): JSX.Element {
 
   // 橫幅快照第一次 render 就畫（沒有、過期或版本不同＝空陣列，維持骨架）。只讀一次。
   const [initialBanners] = useState(() => readBannersSnapshot());
+  // 冷啟動（沒有有效快照）才在第一次 render 就發出匿名 REST 讀取（T-042c），與 SDK 載入並行；已有快照的暖啟動不發（快照已經畫出來了）。
+  // 本機網址或 emulator 模式不發（REST 會繞過 SDK 的「本機只能連 emulator」守門）；每次頁面載入只發一次（重掛回傳 null）。
+  // 結果由下方的 effect 接手，失敗（null）一律靜默、SDK 路徑照常。
+  const [bannersRest] = useState(() => (initialBanners || !canUseBannersRest() ? null : startBannersRestFetch()));
   const [banners, setBanners] = useState<BannerDoc[]>(() => initialBanners?.items ?? []);
   // 目前畫面上的橫幅若來自快照，這裡是它的到期時間；被伺服器結果取代後為 null。
   const [bannerExpiry, setBannerExpiry] = useState<number | null>(() => initialBanners?.expiresAt ?? null);
@@ -156,6 +162,8 @@ export default function HomePage(): JSX.Element {
   useEffect(() => {
     let active = true;
     let bannersConfirmed = false;
+    // SDK 已確認的正式資料取代過畫面：之後晚到的 REST 結果不得再覆蓋、也不得再寫快照。
+    let sdkConfirmed = false;
     // 橫幅與公告都是公開讀取（Rules allow read: if true），只需要 app＋firestore，不等 auth／functions；
     // 登記後，沒有登入旗標的訪客：首頁公開讀取全部處理完才讓 Auth 註冊，首屏資料不再被 Auth 還原擋住；
     // 有登入旗標的人 Auth 先走（避免新分頁以未登入身分成為 Firestore 主分頁），登記不生效（T-041，見 data/firebase.ts）。
@@ -177,6 +185,7 @@ export default function HomePage(): JSX.Element {
           return;
         }
         // 確認新取得：寫快照（空清單＝目前沒有橫幅，刪掉舊快照）、換畫面、快照到期不再適用。
+        sdkConfirmed = true;
         writeBannersSnapshot(toPublicBanners(list));
         bannerExpiryRef.current = null;
         setBanners(list);
@@ -185,6 +194,18 @@ export default function HomePage(): JSX.Element {
       .catch(() => {
         if (active) setBanners([]);
       });
+    // 冷啟動的 REST 結果（比 SDK 早到的暫時畫面）：畫面已卸載、SDK 已確認取代過、REST 失敗（null）、或沒有可顯示的橫幅（空清單，
+    // 「真的沒有橫幅」交給 SDK 的確認結果判斷）都不動作。有結果就和 SDK 確認路徑一樣，經 toPublicBanners 白名單後寫快照並畫出同一份白名單結果；
+    // 之後 SDK 的正式資料照舊取代它。REST 不經 trackPublicRead／Auth 暫緩（獨立的匿名請求）。
+    bannersRest?.result
+      .then((list) => {
+        if (!active || sdkConfirmed || !list || list.length === 0) return;
+        const publicList = toPublicBanners(list);
+        if (publicList.length === 0) return;
+        writeBannersSnapshot(publicList);
+        setBanners([...publicList]);
+      })
+      .catch(() => undefined);
     trackPublicRead(loadActiveAnnouncements())
       .then((list) => {
         if (active) setAnnouncements(list);
@@ -194,6 +215,7 @@ export default function HomePage(): JSX.Element {
       });
     return () => {
       active = false;
+      bannersRest?.cancel();
     };
   }, []);
 
