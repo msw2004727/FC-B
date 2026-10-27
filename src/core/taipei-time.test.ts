@@ -53,6 +53,11 @@ const EXPECTED_OFFSETS: Record<string, { winter: number; summer: number }> = {
 };
 
 const STARTUP_TZ = process.env.TZ;
+/**
+ * 還原用的時區：TZ 環境變數有值就用它，沒有就取 ICU 偵測到的系統時區（只在測試檔用 Intl，helper 本身不用），
+ * 還原一律明確賦值，不用 delete（Windows 上 delete 後可能停在探測最後設的時區）。
+ */
+const STARTUP_ZONE = STARTUP_TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function currentOffsets(): { winter: number; summer: number } {
   return {
@@ -66,8 +71,7 @@ function setZone(zone: string): void {
 }
 
 function restoreZone(): void {
-  if (STARTUP_TZ === undefined) delete process.env.TZ;
-  else process.env.TZ = STARTUP_TZ;
+  process.env.TZ = STARTUP_ZONE;
 }
 
 function isTaipeiZone(): boolean {
@@ -186,6 +190,11 @@ const RANGE_CASES: readonly RangeCase[] = [
   { name: '結束等於開始 → 不加 24h', input: '2026/10/19 11:00~11:00', start: '2026-10-19T11:00:00+08:00', end: '2026-10-19T11:00:00+08:00' },
   { name: '只有日期 → 當天 23:59', input: '2026/10/19', start: '2026-10-19T00:00:00+08:00', end: '2026-10-19T23:59:00+08:00' },
   { name: '起點含秒、無結束 → 結束＝開始', input: '2026/10/19 11:00:30', start: '2026-10-19T11:00:30+08:00', end: '2026-10-19T11:00:30+08:00' },
+  // 起點含秒：跨日判斷以分鐘精度比較（對齊 Functions，起點沒有秒）
+  { name: '起點含秒、結束在同一分鐘 → 不加 24h，結束取起點', input: '2026/10/19 11:00:30~11:00', start: '2026-10-19T11:00:30+08:00', end: '2026-10-19T11:00:30+08:00' },
+  { name: '起點含秒、結束較晚', input: '2026/10/19 11:00:30~13:00', start: '2026-10-19T11:00:30+08:00', end: '2026-10-19T13:00:00+08:00' },
+  { name: '起點含秒、結束早一分鐘 → 加 24h', input: '2026/10/19 11:00:30~10:59', start: '2026-10-19T11:00:30+08:00', end: '2026-10-20T10:59:00+08:00' },
+  { name: '起點含秒、跨日', input: '2026/10/19 23:00:30~01:00', start: '2026-10-19T23:00:30+08:00', end: '2026-10-20T01:00:00+08:00' },
   { name: '結束小時超界', input: '2026/10/19 11:00~25:00', start: null, end: null },
   { name: '結束分鐘超界', input: '2026/10/19 11:00~12:60', start: null, end: null },
   { name: '日期不存在', input: '2026/02/30 10:00~11:00', start: null, end: null },
@@ -372,11 +381,13 @@ const PARITY_REG_OPEN_VALUES: readonly unknown[] = [
 
 interface DivergenceCase {
   name: string;
-  input: string;
-  /** Functions 的起點／終點／報名開放解析結果（毫秒的 ISO 描述；null＝回 null）。 */
+  input: unknown;
+  /** Functions 的起點／終點／報名開放解析結果（毫秒的 ISO 描述；null＝回 null；不寫＝不斷言）。 */
   functions: { start?: string | null; end?: string | null; regOpen?: string | null };
   /** `parseTaipei` 的結果。 */
   helper: string | null;
+  /** `parseTaipeiRange` 的終點（null＝整個範圍回 null）；不寫＝不斷言。 */
+  helperEnd?: string | null;
 }
 
 /**
@@ -419,6 +430,59 @@ const DIVERGENCES: readonly DivergenceCase[] = [
     input: '2026/10/19 11:00 extra',
     functions: { start: '2026-10-19T11:00:00+08:00' },
     helper: null,
+  },
+  {
+    name: '起點含秒的範圍：helper 保留秒，但跨日判斷以分鐘比較（Functions 起訖皆忽略秒）',
+    input: '2026/10/19 11:00:30~11:00',
+    functions: { start: '2026-10-19T11:00:00+08:00', end: '2026-10-19T11:00:00+08:00' },
+    helper: '2026-10-19T11:00:30+08:00',
+    helperEnd: '2026-10-19T11:00:30+08:00',
+  },
+  {
+    name: '斜線日期接 T：Functions 回 null，helper 當台北',
+    input: '2026/10/19T11:00',
+    functions: { start: null },
+    helper: '2026-10-19T11:00:00+08:00',
+  },
+  {
+    name: '範圍分隔前後有空白：Functions 只取前兩段（終點＝起點），helper 回 null',
+    input: '2026/10/19 11:00 ~ 13:00',
+    functions: { start: '2026-10-19T11:00:00+08:00', end: '2026-10-19T11:00:00+08:00' },
+    helper: null,
+    helperEnd: null,
+  },
+  {
+    name: '全形波浪號 U+FF5E：Functions 退回 00:00（起訖皆是），helper 回 null',
+    input: '2026/10/19 11:00～13:00',
+    functions: { start: '2026-10-19T00:00:00+08:00', end: '2026-10-19T00:00:00+08:00' },
+    helper: null,
+    helperEnd: null,
+  },
+  {
+    name: '連字號範圍 11:00-13:00：Functions 退回 00:00（起訖皆是），helper 回 null',
+    input: '2026/10/19 11:00-13:00',
+    functions: { start: '2026-10-19T00:00:00+08:00', end: '2026-10-19T00:00:00+08:00' },
+    helper: null,
+    helperEnd: null,
+  },
+  {
+    name: '只有日期後接 ~13:00：Functions 起點 00:00、終點 13:00，helper 回 null',
+    input: '2026/10/19 ~13:00',
+    functions: { start: '2026-10-19T00:00:00+08:00', end: '2026-10-19T13:00:00+08:00' },
+    helper: null,
+    helperEnd: null,
+  },
+  {
+    name: '分鐘只有 1 位數：Functions 接受，helper 回 null',
+    input: '2026/10/19 9:5',
+    functions: { start: '2026-10-19T09:05:00+08:00' },
+    helper: null,
+  },
+  {
+    name: 'regOpen 輸入是數字：Functions 先轉字串再 new Date（此處不斷言其結果），helper 直接當毫秒',
+    input: 1760000000000,
+    functions: {},
+    helper: new Date(1760000000000).toISOString(),
   },
   {
     name: '破折號只有日期：Functions 經 new Date 當 UTC 午夜，helper 當台北午夜',
@@ -482,6 +546,17 @@ function registerHelperSuite(): void {
       expect(parseTaipei({ seconds: 1760000000, nanoseconds: 500_000_000 })).toBe(1760000000500);
       expect(parseTaipei({ _seconds: 1760000000, _nanoseconds: 1_000_000 })).toBe(1760000000001);
       expect(parseTaipei({ seconds: 1760000000 })).toBe(1760000000000);
+    });
+
+    it('toMillis 的小數毫秒取整（Math.floor），且 toMillis 優先於 toDate', () => {
+      expect(parseTaipei({ toMillis: () => 1760000000123.7 })).toBe(1760000000123);
+      expect(
+        parseTaipei({
+          toMillis: () => 1760000000123.9,
+          toDate: () => new Date(1760000000999),
+        }),
+      ).toBe(1760000000123);
+      expect(parseTaipei({ toMillis: () => -1.5 })).toBe(-2);
     });
 
     it('Timestamp 形物件異常 → null（不丟例外）', () => {
@@ -576,6 +651,19 @@ function registerHelperSuite(): void {
       expect(addTaipeiDays(abs('2028-02-28T10:00:00+08:00'), 2)).toBe(abs('2028-03-01T10:00:00+08:00'));
     });
 
+    it('負數毫秒（1970 年以前）：日界用 floor，欄位與格式化正確', () => {
+      expect(taipeiStartOfDay(-1)).toBe(-28_800_000);
+      expect(taipeiStartOfDay(-30_000_000)).toBe(-115_200_000);
+      // 1970-01-01T07:59:59.999 台北，當天是週四
+      expect(taipeiParts(-1)).toEqual({ year: 1970, month: 1, day: 1, hour: 7, minute: 59, second: 59, weekday: 4 });
+      expect(formatTaipei(-1)).toBe('1970/01/01 07:59');
+      // -30,000,000 ms ＝ 1969-12-31T15:40Z ＝ 台北 1969/12/31 23:40
+      expect(formatTaipei(-30_000_000)).toBe('1969/12/31 23:40');
+      expect(taipeiDateKey(-30_000_000)).toBe('1969/12/31');
+      expect(formatTaipei(taipeiStartOfDay(-30_000_000))).toBe('1969/12/31 00:00');
+      expect(parseTaipei('1969/12/31 23:40')).toBe(-30_000_000);
+    });
+
     it('美西夏令轉換日前後加一天仍是整 24 小時', () => {
       for (const iso of ['2026-03-07T12:00:00+08:00', '2026-03-08T12:00:00+08:00', '2026-10-31T12:00:00+08:00', '2026-11-01T12:00:00+08:00']) {
         expect(addTaipeiDays(abs(iso), 1) - abs(iso)).toBe(DAY);
@@ -629,13 +717,14 @@ function registerHelperSuite(): void {
       expect(parseTaipei(value)).toBe(refParseRegOpen(value));
     });
 
-    it.each(DIVERGENCES)('刻意差異：$name', ({ input, functions, helper }) => {
+    it.each(DIVERGENCES)('刻意差異：$name', ({ input, functions, helper, helperEnd }) => {
       // Functions 端（參照實作）
       if (functions.start !== undefined) expect(refParseStart(input)).toBe(expectedMs(functions.start));
       if (functions.end !== undefined) expect(refParseEnd(input)).toBe(expectedMs(functions.end));
       if (functions.regOpen !== undefined) expect(refParseRegOpen(input)).toBe(expectedMs(functions.regOpen));
       // helper 端
       expect(parseTaipei(input)).toBe(expectedMs(helper));
+      if (helperEnd !== undefined) expect(parseTaipeiRange(input)?.endMs ?? null).toBe(expectedMs(helperEnd));
     });
   });
 
@@ -711,12 +800,13 @@ function registerHelperSuite(): void {
 /* ───────────── 行程層：以啟動時的 TZ 環境變數為準（CI tz-matrix 逐一啟動） ───────────── */
 
 describe('時區矩陣：行程啟動時區', () => {
-  it.runIf(Boolean(process.env.CI) && STARTUP_TZ !== undefined && STARTUP_TZ in EXPECTED_OFFSETS)(
-    'CI：行程時區確實是 TZ 環境變數指定的時區',
-    () => {
-      expect(currentOffsets()).toEqual(EXPECTED_OFFSETS[STARTUP_TZ ?? '']);
-    },
-  );
+  // CI 一律檢查：TZ 必須存在且是矩陣表內的時區名（含 check job 的 Asia/Taipei），
+  // 這樣 matrix 的時區名或環境變數打錯時會轉紅，而不是被略過。
+  it.runIf(Boolean(process.env.CI))('CI：行程時區確實是 TZ 環境變數指定的時區', () => {
+    expect(STARTUP_TZ).toBeDefined();
+    expect(Object.hasOwn(EXPECTED_OFFSETS, STARTUP_TZ ?? '')).toBe(true);
+    expect(currentOffsets()).toEqual(EXPECTED_OFFSETS[STARTUP_TZ ?? '']);
+  });
 
   registerHelperSuite();
 });

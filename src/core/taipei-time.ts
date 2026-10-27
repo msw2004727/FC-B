@@ -172,7 +172,10 @@ function finiteOrNull(value: unknown): number | null {
 function timestampLikeToMillis(value: object): number | null {
   const v = value as TimestampLike;
   try {
-    if (typeof v.toMillis === 'function') return finiteOrNull(v.toMillis());
+    if (typeof v.toMillis === 'function') {
+      const ms = finiteOrNull(v.toMillis());
+      return ms === null ? null : Math.floor(ms);
+    }
     if (typeof v.toDate === 'function') {
       const d = v.toDate();
       return isDate(d) ? finiteOrNull(d.getTime()) : null;
@@ -208,7 +211,7 @@ export function parseTaipei(input: unknown): number | null {
  * parseEventStartDateInTaipei／parseEventEndDateInTaipei 對齊：
  *  - 只有日期 → 當天 00:00～23:59（結束秒數為 0）。
  *  - 有開始時間但沒有結束時間（無 `~` 或 `~` 後為空）→ 結束＝開始。
- *  - 結束時間「早於」開始（嚴格小於）→ 結束 +24 小時（跨日）；相等不加。
+ *  - 結束時間「早於」開始（嚴格小於，以分鐘精度比較，起點的秒不影響）→ 結束 +24 小時（跨日）；相等不加。
  *  - 結束時間超出 00:00–23:59 → `null`。
  * 只接受無時區的站內字串；其他型別一律 `null`。
  */
@@ -226,7 +229,9 @@ export function parseTaipeiRange(input: unknown): TaipeiRange | null {
     if (!isValidTime(clock.endHour, clock.endMinute, 0)) return null;
     endMs = wallClockToMs(clock.year, clock.month, clock.day, clock.endHour, clock.endMinute, 0);
   }
-  if (endMs < startMs) endMs += DAY_MS;
+  // 跨日判斷以分鐘精度比較（Functions 的起點沒有秒）；起點含秒且結束落在同一分鐘時，結束取起點，保持 endMs >= startMs。
+  if (endMs < startMs - clock.second * 1000) endMs += DAY_MS;
+  else if (endMs < startMs) endMs = startMs;
   return { startMs, endMs };
 }
 
