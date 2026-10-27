@@ -257,6 +257,34 @@ describe('回應映射：成功、空結果、略過、損毀、未知欄位、�
     expect(b.slotName).toBe('hero');
   });
 
+  // 用 sortOrder／slot 驗證：這兩個欄位收「數字或字串」，NaN 是 number，會通過 mapBannerDoc 的型別檢查而真的進到結果裡
+  // （字串欄位如 subtitleColor 看不出來——壞值變成 NaN 後 typeof 不是 string，照樣被 mapBannerDoc 丟掉）。
+  it.each(['abc', '1.5', '12e3', '', '-', '+5', ' 5', '0x10', '1'.repeat(20)])(
+    'integerValue 不是十進位整數字串（%j）：該欄位被丟棄，不會變成 NaN 進映射結果',
+    (bad) => {
+      const [b] = parseRunQueryResponse([restDoc('b1', restActiveFields({ sortOrder: restInt(bad), slot: restInt(bad) }))]) ?? [];
+      expect(b?.id).toBe('b1');
+      expect(b?.sortOrder).toBeUndefined();
+      expect(b?.slot).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['42', 42],
+    ['-7', -7],
+    ['0', 0],
+    ['1234567890123456789', 1234567890123456789],
+  ])('integerValue 的十進位整數字串（%s）解成數字', (text, expected) => {
+    const [b] = parseRunQueryResponse([restDoc('b1', restActiveFields({ sortOrder: restInt(text) }))]) ?? [];
+    expect(b?.sortOrder).toBe(expected);
+  });
+
+  it('doubleValue 不是數字、也不是 NaN／Infinity／-Infinity 字串時丟棄該欄位', () => {
+    const [b] = parseRunQueryResponse([restDoc('b1', restActiveFields({ sortOrder: restDouble('abc'), slot: restDouble('infinity') }))]) ?? [];
+    expect(b?.sortOrder).toBeUndefined();
+    expect(b?.slot).toBeUndefined();
+  });
+
   it('危險連結與圖片網址沿用既有白名單（javascript:、data:、ftp: 一律變空字串）', () => {
     const result = parseRunQueryResponse([
       restDoc('b1', restActiveFields({ linkUrl: restStr('javascript:alert(1)'), image: restStr('data:image/png;base64,AAAA') })),
