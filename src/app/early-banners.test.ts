@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,7 @@ import {
   bannersRestUrl,
   parseRunQueryResponse,
 } from '@/features/home/data/banners-rest';
+import { EXCLUDED_KEYS, EXCLUDED_TYPES } from '@/features/home/data/banners';
 import { canUseBannersRest } from '@/features/home/data/banners-rest-guard';
 import {
   BANNERS_SNAPSHOT_KEY,
@@ -103,8 +104,11 @@ function run(options: RunOptions = {}) {
   const created: string[] = [];
   const timers: Timer[] = [];
   const fetchCalls: Array<{ url: string; init: RequestInit }> = [];
+  const consoleCalls: string[] = [];
   const fetchImpl = options.fetch === undefined ? hanging : options.fetch;
   const sandbox: Record<string, unknown> = {
+    // vm 沙盒的 console 預設是 V8 內建、不走宿主的 spy，所以自己傳一個替身：script 呼叫任何 console 方法都會被記下來。
+    console: new Proxy({}, { get: (_target, name) => () => void consoleCalls.push(String(name)) }),
     location: {
       hostname: options.hostname ?? 'toosterx.com',
       pathname: options.pathname ?? '/',
@@ -151,6 +155,7 @@ function run(options: RunOptions = {}) {
     created,
     timers,
     fetchCalls,
+    consoleCalls,
     fired: fetchCalls.length > 0,
     /** window.__fcbEarlyBanners（沒發＝undefined）。 */
     early: sandbox.__fcbEarlyBanners as Promise<unknown> | undefined,
@@ -211,6 +216,14 @@ const HOSTS = [
   '192.168.1',
   '172.015.0.1',
   '1.2.3.4',
+  // IPv6 link-local／ULA 與尾端有點的 localhost：目前 TS 與 script 都視為「不是本機」（既有缺口，早期 script 照搬）；
+  // 之後若只改其中一邊（例如 isLocalOrPrivateHostname 開始擋它們），這幾列會紅，提醒兩邊一起改。
+  '[fe80::1]',
+  '[fd00::1]',
+  'fe80::1',
+  'fd00::1',
+  'localhost.',
+  'LOCALHOST.',
   ...Array.from({ length: 40 }, (_, n) => `172.${n}.0.1`),
   '',
 ];
@@ -461,6 +474,31 @@ describe('內嵌 script：resolve 原始回應（不映射）或 null，絕不 r
     expect(json(await run({ fetch: async () => ok.response }).early)).toBe(json([restEmptyMarker()]));
   });
 
+  // 256 KB 上限與非 2xx 不只是「不解析」：結果一確定就中止請求，瀏覽器才不會繼續在背景把本文收進緩衝區（對照 T-042c banners-rest.ts 的 finally abort）。
+  const ABORT_CASES: Array<[string, () => FetchImpl]> = [
+    ['非 2xx', () => async () => jsonResponse([], { status: 500 }).response],
+    ['宣告的 Content-Length 超過 256 KB', () => async () => jsonResponse([], { headers: { 'Content-Length': String(BANNERS_REST_MAX_BYTES + 1) } }).response],
+    ['串流讀到超過 256 KB', () => async () => fakeResponse(splitBytes(new TextEncoder().encode(`[${' '.repeat(BANNERS_REST_MAX_BYTES)}]`), 64 * 1024)).response],
+    ['成功（本文已讀完，abort 等同沒動作）', () => okFetch([restEmptyMarker()])],
+    ['回應不是 JSON', () => async () => fakeResponse('<html>').response],
+  ];
+  it.each(ABORT_CASES)('結果確定後中止請求：%s', async (_name, make) => {
+    const r = run({ fetch: make() });
+    const signal = r.fetchCalls[0]?.init.signal;
+    expect(signal?.aborted).toBe(false); // 結果出來之前不中止
+    await r.early;
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('成功時中止請求不影響回傳的內容', async () => {
+    const payload = [withImage('b1', GOOD_IMAGE)];
+    const r = run({ fetch: okFetch(payload) });
+    const result = await r.early;
+    expect(r.fetchCalls[0]?.init.signal?.aborted).toBe(true);
+    expect(json(result)).toBe(json(payload));
+    expect(r.links).toHaveLength(1);
+  });
+
   it('沒有串流介面時 256 KB 上限量的是位元組不是字數：字數沒超過但位元組超過 → null；位元組沒超過 → 可以', async () => {
     // 「中」UTF-8 三個位元組：90000 個字＝約 270 KB（字數遠小於上限），87000 個字＝約 261 KB（剛好在上限內）。
     const over = fakeResponse(`["${'中'.repeat(90_000)}"]`, { noStream: true });
@@ -674,6 +712,32 @@ describe('內嵌 script：第一張橫幅圖 preload', () => {
     if (href !== null) expect(list?.[0]?.image).toBe(href);
   });
 
+  // 排除條件由 banners.ts 的 EXCLUDED_TYPES／EXCLUDED_KEYS 決定；內嵌 script 手寫了同一份。這裡對「集合的每個成員」各產生案例：
+  // 日後 banners.ts 新增成員、而 index.html 沒跟上時，這些案例會紅（只鎖「刪除條件」不夠，要鎖「新增條件」）。
+  const SKIPPED = 'https://firebasestorage.googleapis.com/skipped.webp';
+  const EXCLUDED_CASES: Array<[string, Record<string, unknown>[]]> = [
+    ...[...EXCLUDED_TYPES].map((type): [string, Record<string, unknown>[]] => [
+      `類型 ${type}`,
+      [withImage('a1', SKIPPED, { type: restStr(type) }), withImage('a2', GOOD_IMAGE)],
+    ]),
+    ...[...EXCLUDED_KEYS].flatMap((key): Array<[string, Record<string, unknown>[]]> => [
+      [`slot ${key}`, [withImage('a1', SKIPPED, { slot: restStr(key) }), withImage('a2', GOOD_IMAGE)]],
+      [`id 欄位 ${key}`, [withImage('a1', SKIPPED, { id: restStr(key) }), withImage('a2', GOOD_IMAGE)]],
+      [`文件 ID ${key}`, [withImage(key, SKIPPED), withImage('a2', GOOD_IMAGE)]],
+    ]),
+  ];
+  it('排除集合不是空的（防止上面的逐成員案例變成空轉）', () => {
+    expect(EXCLUDED_TYPES.size).toBeGreaterThan(0);
+    expect(EXCLUDED_KEYS.size).toBeGreaterThan(0);
+    expect(EXCLUDED_CASES.length).toBe(EXCLUDED_TYPES.size + EXCLUDED_KEYS.size * 3);
+  });
+  it.each(EXCLUDED_CASES)('banners.ts 排除的特殊文件（%s）：HomePage 與內嵌 script 都跳過它，取下一張', async (_name, payload) => {
+    expect(parseRunQueryResponse(payload)?.[0]?.image).toBe(GOOD_IMAGE);
+    const r = run({ fetch: okFetch(payload) });
+    await r.early;
+    expect(r.links.map((l) => l.attrs.href)).toEqual([GOOD_IMAGE]);
+  });
+
   it('文件名稱的專案不影響判斷（只看路徑形狀），名稱 7 段以外一律不當 banners 文件', async () => {
     const wrongShape = { document: { name: `${restDocName('a1')}/sub/x`, fields: restActiveFields({ image: restStr(GOOD_IMAGE) }) } };
     const r = run({ fetch: okFetch([wrongShape]) });
@@ -734,12 +798,25 @@ describe('內嵌 script：只做兩件事，不越權', () => {
     expect(code).toContain("u.host !== 'firebasestorage.googleapis.com'");
   });
 
-  it('沒有任何 console 輸出（失敗全部靜默）', async () => {
-    const spies = (['log', 'info', 'debug', 'warn', 'error'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => undefined));
-    await run({ fetch: () => Promise.reject(new TypeError('Failed to fetch')) }).early;
-    await run({ fetch: okFetch('x') }).early;
-    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
+  it('沒有任何 console 輸出（成功與各種失敗路徑都靜默；沙盒的 console 是會記錄呼叫的替身）', async () => {
+    const runs = [
+      run({ fetch: okFetch([withImage('b1', GOOD_IMAGE)]) }),
+      run({ fetch: okFetch('x') }),
+      run({ fetch: okFetch([withImage('b1', 'https://')]) }),
+      run({ fetch: () => Promise.reject(new TypeError('Failed to fetch')) }),
+      run({ fetch: async () => jsonResponse([], { status: 500 }).response }),
+      run({ fetch: async () => fakeResponse('[{"document":').response }),
+      run({ fetch: null }),
+    ];
+    for (const r of runs) await r.early;
+    expect(runs.flatMap((r) => r.consoleCalls)).toEqual([]);
+  });
+
+  it('console 替身有鑑別力：被呼叫時真的會記下來（防止上面的斷言變成永遠通過）', () => {
+    const code = "console.error('x'); console.warn('y');";
+    const calls: string[] = [];
+    runInNewContext(code, { console: new Proxy({}, { get: (_t, name) => () => void calls.push(String(name)) }) });
+    expect(calls).toEqual(['error', 'warn']);
   });
 
   it('體積：維持小段（簡報目標 < 1 KB gzip，實測約 1.6 KB；這裡的上限只防止日後無意中膨脹，實測值記在報告）', () => {
@@ -769,14 +846,63 @@ describe('index.html 中的內嵌 script', () => {
 // ── 7. 建置外掛 ──────────────────────────────────────────────────────────────────────────────
 
 describe('建置外掛 earlyBannersHtml', () => {
-  it('把兩個代號各換成一次真值，其餘 HTML 一字不動', () => {
+  /** 原始 index.html 去掉 script 正上方那則說明註解（獨立於外掛的正規式：用位置切）。 */
+  function rawWithoutDocComment(): string {
+    const start = rawHtml.indexOf('    <!-- T-042d：');
+    const end = rawHtml.indexOf('-->\n', start) + '-->\n'.length;
+    expect(start).toBeGreaterThan(-1);
+    expect(rawHtml.slice(end)).toMatch(/^ *<script id="fcb-early-banners">/);
+    return rawHtml.slice(0, start) + rawHtml.slice(end);
+  }
+
+  it('把兩個代號各換成一次真值、刪掉 script 上方的說明註解，其餘 HTML 一字不動', () => {
     const out = buildHtml();
     expect(out).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
     expect(out).not.toContain(EARLY_BANNERS_VERSION_TOKEN);
     expect(out).toContain(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`);
     expect(
       out.replace(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`, `var P = '${EARLY_BANNERS_PROJECT_TOKEN}', V = '${EARLY_BANNERS_VERSION_TOKEN}'`),
-    ).toBe(rawHtml);
+    ).toBe(rawWithoutDocComment());
+  });
+
+  it('建置後輸出不含那段中文說明註解（約 0.6 KB gzip 不送給每個訪客），script 內容與連線提示等其他內容不變', () => {
+    const out = buildHtml();
+    for (const gone of ['T-042d：', 'early-banners-html.ts', 'src/app/early-banners.test.ts', '日後若加 CSP']) {
+      expect(out, gone).not.toContain(gone);
+      expect(rawHtml, gone).toContain(gone); // 原始碼裡還在（說明不丟）
+    }
+    // script 本體逐字相同（只換代號）：沒有被壓縮、沒有被改寫。
+    const scriptOf = (html: string): string => /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(html)?.[0] ?? '';
+    expect(scriptOf(out)).toBe(
+      scriptOf(rawHtml).replace(EARLY_BANNERS_PROJECT_TOKEN, FIREBASE_CONFIG.projectId).replace(EARLY_BANNERS_VERSION_TOKEN, APP_VERSION),
+    );
+    // 其他註解與連線提示完全沒被誤刪。
+    expect(out).toContain('首頁一開就會連的來源');
+    expect(out).toContain('<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />');
+    expect(out).toContain('<title>ToosterX</title>');
+    expect(Buffer.byteLength(rawHtml) - Buffer.byteLength(out)).toBeGreaterThan(400);
+    // gzip 實際省下的量（防止之後註解被改回送出）。
+    expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(150);
+  });
+
+  it('只刪「正上方緊鄰 script」的那一則註解：別的註解、不相鄰的註解、沒有註解的情況都不動', () => {
+    const opts = { projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION, emulator: false };
+    const script = `<script id="${EARLY_BANNERS_SCRIPT_ID}">var P = '${EARLY_BANNERS_PROJECT_TOKEN}', V = '${EARLY_BANNERS_VERSION_TOKEN}';</script>`;
+    const out = transformEarlyBannersHtml(`<head>\n  <!-- keep 1 -->\n  <link a />\n  <!-- keep 2 -->\n  <meta b />\n  <!-- doc -->\n  ${script}\n  <title>t</title>\n</head>`, opts);
+    expect(out).toContain('<!-- keep 1 -->');
+    expect(out).toContain('<!-- keep 2 -->');
+    expect(out).not.toContain('<!-- doc -->');
+    expect(out).toContain('<link a />');
+    expect(out).toContain('<meta b />');
+    expect(out).toContain('<title>t</title>');
+    // 沒有說明註解：照常處理。
+    expect(transformEarlyBannersHtml(`<head>\n  <!-- keep -->\n  <link a />\n  ${script}\n</head>`, opts)).toContain('<!-- keep -->');
+    // 註解跟 script 之間隔了別的標籤：不算緊鄰，不刪。
+    expect(transformEarlyBannersHtml(`<head>\n  <!-- not adjacent -->\n  <link a />\n  ${script}\n</head>`, opts)).toContain('<!-- not adjacent -->');
+    // 連續兩則註解：只刪貼著 script 的那一則。
+    const two = transformEarlyBannersHtml(`<head>\n  <!-- first -->\n  <!-- second -->\n  ${script}\n</head>`, opts);
+    expect(two).toContain('<!-- first -->');
+    expect(two).not.toContain('<!-- second -->');
   });
 
   it('emulator 建置：整段 script 移除（連 Firestore REST 網址都不留）', () => {
@@ -844,9 +970,62 @@ describe('Service Worker 與 CSP', () => {
     expect(workbox).not.toMatch(/googleapis\.com/i);
   });
 
-  it('_headers 目前沒有 CSP；日後若加，必須放行 connect-src firestore 與 img-src firebasestorage', () => {
-    if (!/Content-Security-Policy/i.test(viteConfig)) return;
-    expect(viteConfig).toMatch(/connect-src[^'"\n]*https:\/\/firestore\.googleapis\.com/);
-    expect(viteConfig).toMatch(/img-src[^'"\n]*https:\/\/firebasestorage\.googleapis\.com/);
+  // CSP 絆線：目前整個 repo 沒有任何 CSP。只要任何會送給瀏覽器的設定出現 Content-Security-Policy（`_headers`、<meta http-equiv>、public/ 下的檔案），
+  // 就必須放行早期 REST 與預載圖要用的兩個來源，否則內嵌 script 會被瀏覽器擋掉而靜默失效。範圍：vite.config.ts（產生 `_headers`）、index.html、public/ 下的文字檔；
+  // 不涵蓋 Cloudflare 後台手動設定的標頭（repo 外，看不到）。
+  function cspProblems(name: string, text: string): string[] {
+    if (!/Content-Security-Policy/i.test(text)) return [];
+    const problems: string[] = [];
+    if (!/connect-src[^;\n]*https:\/\/firestore\.googleapis\.com/.test(text)) problems.push(`${name}：CSP 沒有放行 connect-src https://firestore.googleapis.com`);
+    if (!/img-src[^;\n]*https:\/\/firebasestorage\.googleapis\.com/.test(text)) problems.push(`${name}：CSP 沒有放行 img-src https://firebasestorage.googleapis.com`);
+    return problems;
+  }
+
+  /** 去掉註解再掃：index.html 的說明註解本身就寫了 connect-src／img-src 的放行字樣，不去掉的話任何 CSP 都會被它「放行」。 */
+  function withoutComments(name: string, text: string): string {
+    if (/\.html?$/i.test(name)) return text.replace(/<!--[\s\S]*?-->/g, '');
+    // 程式碼檔只去掉「從行首開始」的區塊註解與「前面是空白」的 // 註解：字串裡的 '**/*.js'、'/*'、'https://…' 不會被誤當註解而吃掉後面的程式碼。
+    if (/\.[cm]?[jt]sx?$/i.test(name)) return text.replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+    return text;
+  }
+
+  function publicTextFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...publicTextFiles(full));
+      else if (/(^_headers$|\.(html?|json|txt|toml|webmanifest|xml)$)/i.test(entry.name) && statSync(full).size < 512 * 1024) out.push(full);
+    }
+    return out;
+  }
+
+  it('CSP 檢查本身有鑑別力：有 CSP 沒放行會報、放行了不報、沒有 CSP 不報', () => {
+    expect(cspProblems('x', "Content-Security-Policy: default-src 'self'")).toHaveLength(2);
+    expect(cspProblems('x', "Content-Security-Policy: connect-src 'self' https://firestore.googleapis.com; img-src 'self'")).toHaveLength(1);
+    expect(cspProblems('x', "Content-Security-Policy: img-src 'self' https://firebasestorage.googleapis.com")).toHaveLength(1);
+    expect(
+      cspProblems('x', "Content-Security-Policy: default-src 'self'; connect-src 'self' https://firestore.googleapis.com; img-src 'self' data: https://firebasestorage.googleapis.com"),
+    ).toEqual([]);
+    expect(cspProblems('x', '<meta http-equiv="content-security-policy" content="default-src \'self\'">')).toHaveLength(2);
+    expect(cspProblems('x', 'no policy here')).toEqual([]);
+    // 註解裡寫了放行字樣不算數：去掉註解後 CSP 仍然沒放行 → 要報。
+    const metaWithComment = `<!-- 必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com -->\n<meta http-equiv="Content-Security-Policy" content="default-src 'self'">`;
+    expect(cspProblems('a.html', metaWithComment)).toEqual([]); // 沒去掉註解就被註解「放行」＝假陰性
+    expect(cspProblems('a.html', withoutComments('a.html', metaWithComment))).toHaveLength(2);
+    const configWithComment = `// connect-src https://firestore.googleapis.com img-src https://firebasestorage.googleapis.com\nconst h = "Content-Security-Policy: default-src 'self'";`;
+    expect(cspProblems('a.ts', withoutComments('a.ts', configWithComment))).toHaveLength(2);
+    // 字串裡的 https:// 不會被當成 // 註解而吃掉。
+    expect(withoutComments('a.ts', "const u = 'https://firestore.googleapis.com'; // note")).toContain('https://firestore.googleapis.com');
+  });
+
+  it('repo 內所有會送給瀏覽器的設定：沒有 CSP，或有 CSP 就已放行 connect-src firestore 與 img-src firebasestorage', () => {
+    const sources: Array<[string, string]> = [
+      ['vite.config.ts', viteConfig],
+      ['index.html', rawHtml],
+      ...publicTextFiles(resolve(ROOT, 'public')).map((file): [string, string] => [file.slice(ROOT.length + 1), readFileSync(file, 'utf8')]),
+    ];
+    expect(sources.length).toBeGreaterThanOrEqual(3); // 至少掃到 vite.config.ts、index.html、public/ 下的檔案（目前是 runtime-config.json；防止掃描範圍悄悄變空）
+    expect(sources.some(([name]) => name.replace(/\\/g, '/').startsWith('public/'))).toBe(true);
+    expect(sources.flatMap(([name, text]) => cspProblems(name, withoutComments(name, text)))).toEqual([]);
   });
 });

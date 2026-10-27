@@ -16,12 +16,8 @@
     <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
     <link rel="dns-prefetch" href="https://www.googleapis.com" />
     <link rel="dns-prefetch" href="https://fc-football-6c8dc.firebaseapp.com" />
-    <!-- T-042d：冷啟動提早發橫幅 REST、預載第一張橫幅圖（HTML 一到就開始，不等入口 JS）。只做這兩件事：
-         ① 匿名 runQuery，把「原始回應」掛在 window.__fcbEarlyBanners（Promise；失敗一律 null、不 reject、不寫 console）；
-         ② 第一張候選橫幅的圖網址通過 https＋白名單主機（firebasestorage.googleapis.com 或同源）才插一個 preload link。
-         不解析成畫面資料、不寫快照：映射、toPublicBanners 白名單與快照寫入守門都在 HomePage（startBannersRestFetch 接手）。
-         __FCB_*__ 兩個代號由 scripts/early-banners-html.ts 建置時換成真值（emulator 建置整段移除）；發不發的條件同
-         canUseBannersRest()＋readBannersSnapshot()，另只在首頁網址（路徑 / 且無查詢字串），src/app/early-banners.test.ts 鎖定。
+    <!-- T-042d：冷啟動提早發橫幅 REST、預載第一張橫幅圖。設計、發不發的條件、安全邊界見 scripts/early-banners-html.ts 檔頭；
+         __FCB_*__ 代號由該外掛在建置時換成真值，這段註解也由它刪掉（不隨 HTML 送出）。測試：src/app/early-banners.test.ts。
          日後若加 CSP，必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com。 -->
     <script id="fcb-early-banners">
       (function () {
@@ -95,7 +91,7 @@
             if (!Array.isArray(p)) return null;
             try { preload(p); } catch (_) {}
             return p;
-          }).catch(function () { return null; }).then(function (v) { clearTimeout(t); return v; });
+          }).catch(function () { return null; }).then(function (v) { clearTimeout(t); c.abort(); return v; });
         } catch (_) {}
       })();
     </script>
