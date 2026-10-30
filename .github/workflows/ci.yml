@@ -88,3 +88,26 @@ jobs:
 
       - name: 時區敏感測試（vitest）
         run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts src/features/events/data/line-notify-bind.test.ts
+
+  # T-054c 探測（暫時）：全套 vitest 在 TZ=UTC 跑一次，記錄紅燈範圍（顧問 Q-7：只加 UTC 全套）。
+  utc-full-probe:
+    name: 全套探測（TZ=UTC）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      - name: 全套測試（vitest，TZ=UTC）
+        run: npx vitest run
