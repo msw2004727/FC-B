@@ -1,0 +1,19 @@
+[
+  {"id":"一般使用者","role":"user","scope":"none","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":false},
+  {"id":"主辦含現場能力","role":"user","scope":"owner","site":true,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"主辦無現場能力","role":"user","scope":"owner","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":false},
+  {"id":"協辦含現場能力","role":"user","scope":"delegate","site":true,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"協辦無現場能力","role":"user","scope":"delegate","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":true},
+  {"id":"教練主辦","role":"coach","scope":"owner","site":false,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"教練協辦","role":"coach","scope":"delegate","site":false,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"教練非關係人","role":"coach","scope":"none","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":false},
+  {"id":"隊長主辦","role":"captain","scope":"owner","site":false,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"隊長非關係人","role":"captain","scope":"none","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":false},
+  {"id":"跨活動管理員","role":"admin","scope":"none","site":false,"permissions":["event.edit_all"],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"管理員無跨活動碼","role":"admin","scope":"none","site":false,"permissions":[],"privateEvent":false,"demote":false,"promote":false},
+  {"id":"最高管理員","role":"super_admin","scope":"none","site":false,"permissions":[],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"持跨活動碼使用者","role":"user","scope":"none","site":false,"permissions":["event.edit_all"],"privateEvent":false,"demote":true,"promote":true},
+  {"id":"私密活動非關係教練","role":"coach","scope":"none","site":false,"permissions":["event.edit_all"],"privateEvent":true,"demote":false,"promote":false},
+  {"id":"私密活動主辦教練","role":"coach","scope":"owner","site":false,"permissions":[],"privateEvent":true,"demote":true,"promote":true},
+  {"id":"私密活動跨活動管理員","role":"admin","scope":"none","site":false,"permissions":["event.edit_all"],"privateEvent":true,"demote":true,"promote":true}
+]

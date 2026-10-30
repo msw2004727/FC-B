@@ -1,5 +1,5 @@
 /**
- * 活動詳情「報名名單（出席表）」與「候補名單」唯讀檢視資料模型。
+ * 活動詳情「報名名單（出席表）」與「候補名單」檢視及管理共用資料模型。
  *
  * 對照舊版 A：
  * - `_buildConfirmedParticipantSummary`（`event-manage-noshow.js`）
@@ -7,38 +7,26 @@
  * - `_matchAttendanceRecord`、`_getLatestAttendanceRecord`、`_attendanceRecordMs`（`event-manage-attendance.js`）
  * - `_renderGroupedWaitlistSection`（`event-detail.js`）
  *
- * 本批不做（之後的批次補）：
- * - 編輯模式（「踢」「候」欄、候補升正取）
+ * 編輯模式已提供「踢」「候」欄與候補升正取，操作由元件及資料流程處理。
+ * 尚未提供的顯示項目與不移植的行為：
  * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
  * - 載入防抖、效能 log、快速預覽、延遲補畫
  * - 任何以名字比對身分的分支（R-ID-002 刻意不移植）
  */
 
+import type { TeamReservationSummaryInput, RosterParticipantWithUid } from '@/data/contract/roster-projection';
+
 export interface RosterDisplayBadge {
   name?: string;
   image?: string;
 }
 
-export interface TeamReservationSummaryInput {
-  teamId?: unknown;
-  teamName?: unknown;
-  reservedSlots?: unknown;
-  usedSlots?: unknown;
-  remainingSlots?: unknown;
-}
-
-export interface RosterParticipantWithUid {
-  uid?: unknown;
-  name?: unknown;
-  displayName?: unknown;
-  teamKey?: unknown;
-  teamReservationTeamId?: unknown;
-  teamReservationTeamName?: unknown;
-  teamSeatSource?: unknown;
-}
+export type { TeamReservationSummaryInput, RosterParticipantWithUid } from '@/data/contract/roster-projection';
 
 export interface RosterEventInput {
+  courseLinked?: unknown;
+  courseLinkSource?: unknown;
   id?: unknown;
   max?: unknown;
   current?: unknown;
@@ -74,6 +62,8 @@ export interface RosterRegistrationInput {
   courseLinkId?: unknown;
   courseStudentId?: unknown;
   courseStudentName?: unknown;
+  courseLinkState?: unknown;
+  coursePriority?: unknown;
 }
 
 export interface RosterAttendanceRecordInput {

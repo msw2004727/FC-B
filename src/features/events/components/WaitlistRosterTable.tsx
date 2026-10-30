@@ -1,20 +1,24 @@
 /**
- * 活動詳情「候補名單」唯讀檢視元件。
+ * 活動詳情候補名單與名單狀態調整。
  *
- * 對照舊版 A `event-detail.js#_renderGroupedWaitlistSection` 與 `event-manage-waitlist.js#_renderWaitlistSection`（非編輯模式表格）。
+ * 對照舊版 A `event-detail.js#_renderGroupedWaitlistSection` 與 `event-manage-waitlist.js#_renderWaitlistSection`（檢視表格與編輯模式正取操作）。
  *
- * 本批不做（之後的批次補）：
- * - 編輯模式（「正取」升正取按鈕）
+ * 不移植的行為：
  * - 以名字比對或重排（R-ID-002 刻意不移植）
  */
 
 import type { JSX } from 'preact';
+import { useT } from '@/i18n/i18n';
+import type { OperateContext } from '../data/operate-permissions';
+import { canAdjustRosterStatus } from '../data/roster-status-policy';
+import { RosterStatusCell, RosterStatusCourseNote } from './RosterStatusControls';
 import { Fragment } from 'preact';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
 import {
   buildWaitlistRoster,
   type RosterEventInput,
+  type WaitlistRosterItem,
   type RosterRegistrationInput,
 } from '../data/attendance-roster-model';
 
@@ -23,6 +27,11 @@ export interface WaitlistRosterTableProps {
   registrations: readonly RosterRegistrationInput[];
   roles: Readonly<Record<string, UserRole>>;
   onOpenProfile: (uid: string) => void;
+  editing?: boolean;
+  submitting?: boolean;
+  rosterContext?: OperateContext;
+  promotePendingKeys?: Readonly<Record<string, boolean>>;
+  onPromoteParticipant?: (item: WaitlistRosterItem) => void;
 }
 
 export function WaitlistRosterTable({
@@ -30,7 +39,15 @@ export function WaitlistRosterTable({
   registrations,
   roles,
   onOpenProfile,
+  editing = false,
+  submitting = false,
+  rosterContext,
+  promotePendingKeys,
+  onPromoteParticipant,
 }: WaitlistRosterTableProps): JSX.Element | null {
+  const t = useT();
+  const showPromoteColumn = Boolean(editing && rosterContext
+    && canAdjustRosterStatus('promote', rosterContext, event));
   const { items, totalCount } = buildWaitlistRoster(event, registrations);
 
   // 對照 A：if (items.length === 0) { container.innerHTML = ''; return; }
@@ -44,10 +61,12 @@ export function WaitlistRosterTable({
       >
         <span>{`候補名單（${totalCount}）`}</span>
       </div>
+      <RosterStatusCourseNote event={event} editing={editing} />
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.8rem">
           <thead>
             <tr style="border-bottom:2px solid var(--border)">
+              {showPromoteColumn && <th style="text-align:center;padding:.4rem .3rem;font-weight:600;width:3rem">{t('events.roster.promoteColumn')}</th>}
               <th style="text-align:center;padding:.4rem .3rem;font-weight:600;width:2rem">#</th>
               <th style="text-align:left;padding:.4rem .3rem;font-weight:600">姓名</th>
             </tr>
@@ -58,6 +77,10 @@ export function WaitlistRosterTable({
               return (
                 <Fragment key={rowKey}>
                   <tr style="border-bottom:1px solid var(--border)">
+                    {showPromoteColumn && <RosterStatusCell action="promote"
+                      userId={item.userId} name={item.name} registrations={registrations}
+                      submitting={submitting} pending={promotePendingKeys?.[item.userId]}
+                      onClick={() => onPromoteParticipant?.(item)} />}
                     <td style="padding:.35rem .3rem;text-align:center;width:2rem">
                       <span class="wl-pos">{idx + 1}</span>
                     </td>
@@ -73,6 +96,7 @@ export function WaitlistRosterTable({
                   </tr>
                   {item.selfOrphanInfo ? (
                     <tr style="border-bottom:1px solid var(--border)">
+                      {showPromoteColumn && <td />}
                       <td />
                       <td
                         style="padding:.1rem .3rem .1rem 1.8rem;font-size:.72rem;color:var(--text-muted)"
@@ -87,6 +111,7 @@ export function WaitlistRosterTable({
                   {item.companions.map((c, cIdx) => (
                     <Fragment key={`${rowKey}:comp:${c.companionId || cIdx}`}>
                       <tr style="border-bottom:1px solid var(--border)">
+                        {showPromoteColumn && <td />}
                         <td />
                         <td
                           style="padding:.3rem .3rem;text-align:left;padding-left:1.2rem"
@@ -97,6 +122,7 @@ export function WaitlistRosterTable({
                       </tr>
                       {c.orphanInfo ? (
                         <tr style="border-bottom:1px solid var(--border)">
+                          {showPromoteColumn && <td />}
                           <td />
                           <td
                             style="padding:.1rem .3rem .1rem 2.4rem;font-size:.72rem;color:var(--text-muted)"

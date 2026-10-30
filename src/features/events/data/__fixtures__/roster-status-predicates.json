@@ -1,0 +1,20 @@
+[
+  {"input":{},"expected":false},
+  {"input":{"source":"eduCourseLesson"},"expected":true},
+  {"input":{"courseLinkSource":"eduCourseLesson"},"expected":true},
+  {"input":{"source":"manual","courseLinkSource":"eduCourseLesson"},"expected":false},
+  {"input":{"source":" ","courseLinkSource":" eduCourseLesson "},"expected":true},
+  {"input":{"source":3,"courseLinkSource":"eduCourseLesson"},"expected":true},
+  {"input":{"courseLinkState":"created_by_course"},"expected":true},
+  {"input":{"courseLinkState":" priority_overlay "},"expected":true},
+  {"input":{"courseLinkState":"created_by_courseX"},"expected":false},
+  {"input":{"coursePriority":true},"expected":true},
+  {"input":{"coursePriority":"true"},"expected":false},
+  {"input":{"courseLinkId":"linkA"},"expected":true},
+  {"input":{"courseLinkId":"  "},"expected":false},
+  {"input":{"courseLinkId":1},"expected":false},
+  {"input":{"courseStudentId":"studentA"},"expected":true},
+  {"input":{"courseStudentId":1},"expected":false},
+  {"input":{"courseStudentName":"學員"},"expected":false},
+  {"input":{"source":"eduCourseLesson                                                                                "},"expected":true}
+]

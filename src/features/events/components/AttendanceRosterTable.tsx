@@ -4,7 +4,6 @@
  * 對照舊版 A `event-manage-attendance.js#_doRenderAttendanceTable`。
  *
  * 本批不做（下一批補）：
- * - 降候補待新 Callable（「候」欄表頭與欄位都不輸出）
  * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
  * 已接線：`CALLABLES_DEPLOYED === true` 顯示「完成」，由父層執行伺服器結算；false 回退「關閉編輯」與舊版提示。
@@ -12,6 +11,11 @@
  */
 
 import type { JSX } from 'preact';
+import { LEGACY_SETTLE_URL } from './legacy-links';
+import { useT } from '@/i18n/i18n';
+import { canAdjustRosterStatus } from '../data/roster-status-policy';
+import type { OperateContext } from '../data/operate-permissions';
+import { RosterStatusCell, RosterStatusCourseNote } from './RosterStatusControls';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
@@ -47,6 +51,9 @@ export interface AttendanceRosterTableProps {
   onStartEdit?: () => void;
   onCloseEdit?: () => void;
   onKickParticipant?: (person: ConfirmedRosterPerson) => void;
+  rosterContext?: OperateContext;
+  demotePendingKeys?: Readonly<Record<string, boolean>>;
+  onDemoteParticipant?: (person: ConfirmedRosterPerson) => void;
   getRowSelection?: (person: ConfirmedRosterPerson) => AttendanceSelection;
   inFlightKeys?: Readonly<Record<string, boolean>>;
   savedFlashKeys?: Readonly<Record<string, boolean>>;
@@ -59,7 +66,6 @@ export interface AttendanceRosterTableProps {
   onChangeNote?: (person: ConfirmedRosterPerson, noteValue: string) => void;
 }
 
-const LEGACY_SETTLE_URL = 'https://toosterx.com/';
 const PROXY_ROW_STYLE =
   'border-bottom:1px solid var(--border);background:linear-gradient(90deg, rgba(148,163,184,.16), rgba(148,163,184,.04) 55%, transparent)';
 
@@ -77,6 +83,9 @@ export function AttendanceRosterTable({
   onStartEdit,
   onCloseEdit,
   onKickParticipant,
+  rosterContext,
+  demotePendingKeys,
+  onDemoteParticipant,
   getRowSelection,
   inFlightKeys,
   savedFlashKeys,
@@ -91,15 +100,26 @@ export function AttendanceRosterTable({
   const isSubmitting = Boolean(showManage && submitting);
   const showAttendanceRecordColumns = !publicRosterOnly;
   const showKickColumn = Boolean(tableEditing && canRemoveConfirmed);
-  // 降候補待新 Callable（「候」欄表頭與欄位都不輸出）
+  const t = useT();
+  const showDemoteColumn = Boolean(tableEditing && rosterContext
+    && canAdjustRosterStatus('demote', rosterContext, event));
   const attendanceRecordColumnCount = showAttendanceRecordColumns ? 3 : 0;
-  const tableColSpan = (tableEditing ? (canRemoveConfirmed ? 1 : 0) + 1 : 1) + attendanceRecordColumnCount;
+  const tableColSpan = (tableEditing ? (canRemoveConfirmed ? 1 : 0) + 1 : 1) + attendanceRecordColumnCount + (showDemoteColumn ? 1 : 0);
   const kickStyle =
     'font-size:.7rem;padding:.2rem .4rem;border:1px solid var(--danger);color:var(--danger);background:transparent;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap'
     + (isSubmitting ? ';opacity:.65;cursor:not-allowed' : '');
   const noteInputStyle =
     'width:100%;font-size:.72rem;padding:.15rem .3rem;border:1px solid var(--border);border-radius:3px;box-sizing:border-box'
     + (isSubmitting ? ';opacity:.7;cursor:not-allowed' : '');
+
+  function renderDemoteCell(p: ConfirmedRosterPerson): JSX.Element | null {
+    if (!showDemoteColumn) return null;
+    return <RosterStatusCell action="demote" userId={p.uid} name={p.name || p.displayName}
+      registrations={registrations}
+      empty={p.isCompanion || p.isTeamPlaceholder || p.proxyOnly || p.isProxyOnly || p.attendanceAmbiguous}
+      submitting={isSubmitting} pending={demotePendingKeys?.[p.uid]}
+      onClick={() => onDemoteParticipant?.(p)} />;
+  }
 
   function renderManageButton(): JSX.Element | null {
     if (!showManage) return null;
@@ -164,6 +184,7 @@ export function AttendanceRosterTable({
           {renderManageButton()}
         </div>
         {renderLegacySettleBanner()}
+        <RosterStatusCourseNote event={event} editing={tableEditing} />
         <div style="font-size:.8rem;color:var(--text-muted);padding:.3rem 0">尚無報名</div>
       </div>
     );
@@ -338,13 +359,14 @@ export function AttendanceRosterTable({
   return (
     <div style="overflow-x:auto">
       {renderLegacySettleBanner()}
+      <RosterStatusCourseNote event={event} editing={tableEditing} />
       <table style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed">
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
             {showKickColumn && (
               <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2rem">踢</th>
             )}
-            {/* 降候補待新 Callable */}
+            {showDemoteColumn && <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2rem">{t('events.roster.demoteColumn')}</th>}
             <th style="text-align:left;padding:.4rem .3rem;font-weight:600">
               <div style="display:flex;align-items:center;gap:.4rem;white-space:nowrap">
                 {`報名名單（${renderedRosterCount}/${maxCount}）`}
@@ -412,7 +434,7 @@ export function AttendanceRosterTable({
                     style={PROXY_ROW_STYLE}
                   >
                     {renderEmptyKickCell()}
-                    {/* 降候補待新 Callable */}
+                    {renderDemoteCell(p)}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderEmptyAttendanceCells('僅代報')}
                   </tr>
@@ -426,7 +448,7 @@ export function AttendanceRosterTable({
                     class="team-reservation-placeholder-row"
                   >
                     {renderEmptyKickCell()}
-                    {/* 降候補待新 Callable */}
+                    {renderDemoteCell(p)}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderEmptyAttendanceCells('保留席位')}
                   </tr>
@@ -473,7 +495,7 @@ export function AttendanceRosterTable({
                   style="border-bottom:1px solid var(--border)"
                 >
                   {tableEditing && renderKickCell(p)}
-                  {/* 降候補待新 Callable */}
+                  {renderDemoteCell(p)}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                   {renderEmptyAttendanceCells('請至課程點名')}
                 </tr>
@@ -489,7 +511,7 @@ export function AttendanceRosterTable({
                   style="border-bottom:1px solid var(--border)"
                 >
                   {renderKickCell(p)}
-                  {/* 降候補待新 Callable */}
+                  {renderDemoteCell(p)}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                   {renderEditableAttendanceCells(p, attendanceKey, state)}
                 </tr>

@@ -81,6 +81,7 @@ import {
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
 import { UnregRosterTable, buildUnregPeopleList } from '../components/UnregRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
+import { useRosterStatusActions } from '../components/useRosterStatusActions';
 import { WaitlistRosterTable } from '../components/WaitlistRosterTable';
 import {
   DetailAttendanceLoading,
@@ -872,6 +873,58 @@ function EventDetailSession({
     },
   });
 
+  const rosterStatusActions = useRosterStatusActions({
+    eventId,
+    submitting: rosterSubmitting,
+    setSubmitting: setRosterSubmitting,
+    isCurrent: () => alive.current && headerState.current.snapshot?.eventDocId === snapshot?.eventDocId,
+    getLatest: () => ({
+      event: headerState.current.snapshot?.event ?? {},
+      registrations: headerState.current.snapshot?.registrations ?? [],
+      context: operateContextFromViewer(currentViewer.current),
+      operatorName: resolveOperator(currentViewer.current),
+    }),
+    flush: instantSave.flushInstantSaves,
+    reload: async () => {
+      const current = headerState.current.snapshot;
+      const uid = currentViewer.current.uid;
+      if (!current || !uid) throw new Error('stale');
+      const request = ++rosterSequence.current;
+      const [fresh, registrations, history] = await Promise.all([
+        loadEventDetail(current.event.id || eventId),
+        loadEventRegistrations(current.eventDocId),
+        loadViewerRegistrations(uid),
+      ]);
+      if (!alive.current || currentViewer.current.uid !== uid || request !== rosterSequence.current
+        || headerState.current.snapshot?.eventDocId !== current.eventDocId) throw new Error('stale');
+      if (!fresh || fresh.eventDocId !== current.eventDocId) throw new Error('EVENT_NOT_FOUND');
+      if (!isEventVisibleToUser(fresh.event, currentViewer.current, history)) {
+        setSnapshot(null);
+        setPhase('missing');
+        throw new Error('PERMISSION_DENIED');
+      }
+      // 直接採用伺服器活動投影，保留團隊席位；不以報名筆數覆蓋 current。
+      const next = {
+        ...(headerState.current.snapshot ?? current),
+        event: { ...fresh.event, id: fresh.event.id || eventId },
+        eventDocId: current.eventDocId,
+        registrations,
+        viewerRegistrations: history,
+      };
+      headerState.current = { snapshot: next, visible: true };
+      setSnapshot(next);
+      instantSave.resetInstantSave();
+      setRosterPhase('ready');
+      setRefreshFailed(false);
+      setHistoryFailed(false);
+      return {
+        event: next.event, registrations,
+        context: operateContextFromViewer(currentViewer.current),
+        operatorName: resolveOperator(currentViewer.current),
+      };
+    },
+  });
+
   function handleStartRosterEdit(): void {
     const curEvent = snapshot?.event;
     if (
@@ -886,7 +939,7 @@ function EventDetailSession({
   }
 
   async function handleCloseRosterEdit(): Promise<void> {
-    if (rosterSubmitting || !alive.current) return;
+    if (rosterSubmitting || rosterStatusActions.busy() || !alive.current) return;
     setRosterSubmitting(true);
 
     if (!CALLABLES_DEPLOYED) {
@@ -955,10 +1008,10 @@ function EventDetailSession({
   }
 
   async function handleKickParticipant(person: ConfirmedRosterPerson): Promise<void> {
-    if (!snapshot || rosterSubmitting) return;
+    if (!snapshot || rosterSubmitting || rosterStatusActions.busy()) return;
     const targetName = person.name || person.displayName || '';
     const confirmed = await appConfirm(`確定要將 ${targetName} 從報名名單中移除嗎？`);
-    if (!confirmed || !alive.current) return;
+    if (!confirmed || !alive.current || rosterStatusActions.busy()) return;
 
     setRosterSubmitting(true);
     try {
@@ -1739,6 +1792,14 @@ function EventDetailSession({
                       onOpenProfile={profile}
                       canManage={canManageRoster}
                       canRemoveConfirmed={canRemoveConfirmed}
+                      rosterContext={operateCtx}
+                      demotePendingKeys={rosterStatusActions.demotePendingKeys}
+                      onDemoteParticipant={person => {
+                        rosterStatusActions.perform('demote', {
+                          userId: person.uid, name: person.name || person.displayName,
+                          isCompanion: person.isCompanion,
+                        }).catch(() => show('events.roster.statusFailed'));
+                      }}
                       publicRosterOnly={publicRosterOnly}
                       editing={rosterEditing}
                       submitting={rosterSubmitting}
@@ -1781,6 +1842,15 @@ function EventDetailSession({
               <div id="detail-waitlist-container">
                 {rosterExpanded && rosterPhase === 'ready' && (
                   <WaitlistRosterTable
+                    editing={rosterEditing}
+                    submitting={rosterSubmitting}
+                    rosterContext={operateCtx}
+                    promotePendingKeys={rosterStatusActions.promotePendingKeys}
+                    onPromoteParticipant={item => {
+                      rosterStatusActions.perform('promote', {
+                        userId: item.userId, name: item.name,
+                      }).catch(() => show('events.roster.statusFailed'));
+                    }}
                     event={event}
                     registrations={snapshot.registrations}
                     roles={roles}

@@ -52,6 +52,10 @@ import type {
   EnsureNotificationTemplatesResponse,
   FetchUsageMetricsManualRequest,
   FetchUsageMetricsManualResponse,
+  ForceDemoteToWaitlistRequest,
+  ForceDemoteToWaitlistResponse,
+  ForcePromoteWaitlistRequest,
+  ForcePromoteWaitlistResponse,
   GetEduStudentAttendanceOverviewRequest,
   GetEduStudentAttendanceOverviewResponse,
   GetPmAuditConversationRequest,
@@ -171,6 +175,8 @@ export interface CallableMap {
     req: FetchUsageMetricsManualRequest;
     res: FetchUsageMetricsManualResponse;
   };
+  forceDemoteToWaitlist: { req: ForceDemoteToWaitlistRequest; res: ForceDemoteToWaitlistResponse };
+  forcePromoteWaitlist: { req: ForcePromoteWaitlistRequest; res: ForcePromoteWaitlistResponse };
   getEduStudentAttendanceOverview: {
     req: GetEduStudentAttendanceOverviewRequest;
     res: GetEduStudentAttendanceOverviewResponse;

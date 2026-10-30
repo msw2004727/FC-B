@@ -15,6 +15,7 @@
  */
 
 import type { JSX } from 'preact';
+import { LEGACY_SETTLE_URL } from './legacy-links';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { writeOpLog } from '@/data/op-log';
@@ -65,8 +66,6 @@ export interface UnregRosterTableProps {
   /** 顯示 Toast 訊息回呼。 */
   onToast?: (message: string) => void;
 }
-
-const LEGACY_SETTLE_URL = 'https://toosterx.com/';
 
 function str(val: unknown): string {
   return typeof val === 'string'

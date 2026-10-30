@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
+import {
+  registerMock as registerCallableMock, clearMocks as clearCallableMocks,
+  startRecording as startCallableRecording, stopRecording as stopCallableRecording,
+  CallableError as CallableFailure,
+} from '@/data/callables';
+import { translate as rosterTranslate, demoted as demoteResponse, promoted as promoteResponse } from '../data/roster-status-test-fixtures';
+vi.mock('@/data/op-log', () => ({ writeOpLog: vi.fn(async () => {}) }));
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { LoadedEventDetail } from '../data/event-detail';
 import type { DetailRegistration } from '../data/detail-model';
@@ -92,7 +99,7 @@ const ZH_DICT: Record<string, string> = {
 };
 
 function translateKey(key: string, params?: Record<string, string | number>): string {
-  const tpl = ZH_DICT[key] ?? key;
+  const tpl = ZH_DICT[key] ?? rosterTranslate(key, params);
   if (!params) return tpl;
   return tpl.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? ''));
 }
@@ -123,7 +130,7 @@ vi.mock('@/features/checkin/data/attendance', () => ({
 vi.mock('@/features/events/data/viewer-registrations', () => ({
   loadViewerRegistrations: mocks.history,
 }));
-vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer }));
+vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer, requestViewerRefresh: vi.fn() }));
 vi.mock('@/features/events/data/companions', () => ({
   loadSignupCompanions: mocks.companions,
 }));
@@ -238,6 +245,9 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  clearCallableMocks();
+  stopCallableRecording();
 });
 
 describe('EventDetailPage', () => {
@@ -1081,5 +1091,71 @@ describe('名單結算「完成」（C-001）', () => {
     await screen.findByRole('button', { name: '管理名單', exact: true });
     expect(screen.queryByText('儲存失敗，勾選已保留 請再按一次「完成」重試')).toBeNull();
     expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('名單狀態調整頁面接線', () => {
+  const rosterEvent = { ...detail.event, id: 'evtA', creatorUid: 'uidA', max: 2, title: '週末活動' };
+  const rosterReg = { ...self, eventId: 'evtA', userId: 'uidB', _docId: 'regA' };
+  async function openRoster(status: 'confirmed' | 'waitlisted' = 'confirmed') {
+    vi.stubEnv('VITE_CALLABLE_MODE', 'mock');
+    clearCallableMocks();
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'uidA', capabilities: ['user.activity.site_operate'] });
+    mocks.detail.mockResolvedValue({ eventDocId: 'docA', event: rosterEvent });
+    mocks.registrations.mockResolvedValue([{ ...rosterReg, status }]);
+    history.replaceState(null, '', '/events/evtA');
+    const view = render(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單 / 出席紀錄' }));
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
+    return view;
+  }
+  it('名單狀態調整：確認、刷新與後續結算採用新名單', async () => {
+    const view = await openRoster();
+    let release!: () => void;
+    mocks.confirm.mockImplementation(() => new Promise<boolean>(resolve => { release = () => resolve(true); }));
+    registerCallableMock('forceDemoteToWaitlist', () => {
+      mocks.registrations.mockResolvedValue([{ ...rosterReg, status: 'waitlisted' }]);
+      mocks.detail.mockResolvedValue({ eventDocId: 'docA', event: { ...rosterEvent, current: 3, realCurrent: 0, waitlist: 1 } });
+      return demoteResponse;
+    });
+    startCallableRecording();
+    const originalPage = view.container.querySelector('#page-activity-detail');
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定將 小明 下放到候補嗎？'));
+    expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toHaveProperty('disabled', true);
+    await act(async () => { release(); });
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' })));
+    expect(view.container.querySelector('#page-activity-detail')).toBe(originalPage);
+    expect(screen.queryByRole('button', { name: '將 小明 下放到候補' })).toBeNull();
+    expect(screen.getByRole('button', { name: '將 小明 正取' })).toBeTruthy();
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('3/2');
+    const calls = stopCallableRecording();
+    expect(calls).toHaveLength(1); expect(calls[0]?.request).toMatchObject({ eventId: 'evtA', userId: 'uidB' });
+    expect(mocks.writeAttendanceOps).not.toHaveBeenCalled();
+    mocks.settleAttendance.mockResolvedValue({ ok: true, added: 0, removed: 0, targets: [],
+      granted: [], skippedAlready: [], skippedZeroAmount: false, failed: [] });
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    await waitFor(() => expect(mocks.settleAttendance).toHaveBeenCalledOnce());
+    expect(mocks.settleAttendance.mock.calls[0]?.[0].people.some(person => person.uid === 'uidB')).toBe(false);
+  });
+  it('名單狀態調整：正取二次確認與名單刷新', async () => {
+    await openRoster('waitlisted');
+    let attempt = 0;
+    registerCallableMock('forcePromoteWaitlist', () => {
+      if (++attempt === 1) throw new CallableFailure('failed-precondition', 'CAPACITY_EXCEEDED');
+      mocks.registrations.mockResolvedValue([{ ...rosterReg, status: 'confirmed' }]);
+      return promoteResponse;
+    });
+    startCallableRecording();
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 正取' }));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('正取後將超過名額上限，確定要繼續嗎？'));
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' })));
+    const calls = stopCallableRecording();
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.request).not.toHaveProperty('allowOverCapacity');
+    expect(calls[1]?.request).toHaveProperty('allowOverCapacity', true);
+    expect((calls[0]?.request as { requestId: string }).requestId)
+      .not.toBe((calls[1]?.request as { requestId: string }).requestId);
+    expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toBeTruthy();
   });
 });
