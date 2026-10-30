@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import type { FeatureManifest } from '@/core/feature-types';
 import { drawerSuperAdminOnly } from '@/core/drawer-access';
 
@@ -11,10 +10,7 @@ export const manifest: FeatureManifest = {
       titleKey: 'roles.title',
       // 照 A DRAWER_MENUS 的權限決定選單是否顯示（頁面本身另擋）。
       drawerVisibleIf: drawerSuperAdminOnly,
-      load: () =>
-        import('@/ui/PlaceholderPage').then((m) => ({
-          default: () => h(m.PlaceholderPage, { titleKey: 'roles.title' }),
-        })),
+      load: () => import('./pages/RolesAdminPage'),
     },
   ],
 };

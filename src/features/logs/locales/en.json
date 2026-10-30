@@ -41,6 +41,8 @@
     "allTypes": "All Types",
     "loading": "Loading...",
     "empty": "No matching records found",
+    "loadError": "Could not load operation logs. Please retry.",
+    "retry": "Retry",
     "uncategorized": "Uncategorized",
     "unmarked": "Unmarked",
     "none": "None",

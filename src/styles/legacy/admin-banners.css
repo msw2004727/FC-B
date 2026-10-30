@@ -1,0 +1,139 @@
+/*
+ * 後台「首頁管理—Banner 廣告」（M-145）專用的 A 樣式，自 A `css/admin.css` 原樣複製（選擇器與宣告逐字相同），
+ * 只抽這一頁用到的規則；各後台卡各自一個檔（admin-users／admin-roles／admin-banners／admin-logs），
+ * 共用的選擇器內容逐字相同，不會衝突。`.form-card`、`.form-row`、`.text-btn`、`.card-list`、`.ce-upload*`、
+ * `.primary-btn`、`.status-*` 在 A `css/base.css`（本資料夾 base.css）已有，這裡不重複。
+ *
+ * 來源行號（A `css/admin.css`）：
+ *   252      .role-editor-header
+ *   323-333  Banner Manage Card（.banner-manage-card／.banner-thumb／.banner-thumb-empty／#banner-manage-list .banner-thumb／
+ *            .banner-manage-info／.banner-manage-title／.banner-manage-meta／.banner-manage-status；
+ *            .banner-thumb-circle 與 #popup-ad-manage-list／#shotgame-ad-manage-list 屬別的廣告類型，不抽）
+ *   635      .admin-section-label
+ *   725-745  Ad Collapse Toggle
+ *   752-755  #banner-preview
+ *   757-784  .banner-color-inputs
+ *   814-864  .ad-edit-modal-root（編輯彈窗）
+ *
+ * 刻意不抽：A 第 831 行 `body.ad-edit-modal-open { overflow: hidden; }`。legacy-css-scope 外掛會把 `body` 改寫成
+ * `.legacy-ui`，那條規則在 B 不會作用在 body 上；彈窗元件改用 inline style 鎖住 body 捲動（見 BannerForm.tsx）。
+ * 載入方式：AdminBannersPage 自行 import，隨 /admin/banners 路由延遲載入。
+ */
+.role-editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .65rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); font-weight: 700; font-size: .85rem; }
+
+/* ─── Banner Manage Card ─── */
+.banner-manage-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem; display: flex; gap: .75rem; align-items: center; }
+.banner-thumb { width: 80px; aspect-ratio: 2.2/1; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: .75rem; color: #fff; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+.banner-thumb-empty { background: transparent; border: 2px dashed var(--border); color: var(--text-muted); font-size: .55rem; line-height: 1.2; text-align: center; }
+#banner-manage-list .banner-thumb { width: 112px; aspect-ratio: 1200 / 545; }
+.banner-manage-info { flex: 1; }
+.banner-manage-title { font-weight: 600; font-size: .85rem; }
+.banner-manage-meta { font-size: .72rem; color: var(--text-muted); margin-top: .1rem; }
+.banner-manage-status { display: inline-block; padding: .1rem .4rem; border-radius: var(--radius-full); font-size: .65rem; font-weight: 600; }
+
+/* ─── Admin Section Label ─── */
+.admin-section-label { font-weight: 700; font-size: .85rem; color: var(--text-secondary); padding: .5rem 0 .3rem; margin-top: .5rem; border-bottom: 1px solid var(--border); margin-bottom: .5rem; }
+
+/* ─── Ad Collapse Toggle ─── */
+.ad-collapse-section { margin-top: .8rem; }
+.ad-collapse-section:first-child { margin-top: 0; }
+.ad-collapse-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.ad-collapse-arrow {
+  font-size: .7rem;
+  transition: transform .25s;
+  color: var(--text-muted);
+}
+.ad-collapse-toggle.open .ad-collapse-arrow {
+  transform: rotate(90deg);
+}
+.ad-collapse-content {
+  padding-top: .4rem;
+}
+
+#banner-preview {
+  aspect-ratio: 1200 / 545;
+  min-height: 96px;
+}
+
+.banner-color-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.banner-color-inputs label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .48rem .55rem;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.banner-color-inputs input[type="color"] {
+  width: 34px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.ad-edit-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, .46);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.ad-edit-modal-root.is-open {
+  display: flex;
+}
+
+.ad-edit-modal-root .form-card.ad-edit-modal-card {
+  width: min(100%, 460px);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, .28);
+  border-radius: var(--radius-lg);
+}
+
+.ad-edit-modal-root .form-card.ad-edit-modal-card .role-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  padding-bottom: .45rem;
+}
+
+@media (max-width: 520px) {
+  .ad-edit-modal-root {
+    align-items: flex-end;
+    padding: .7rem;
+  }
+
+  .ad-edit-modal-root .form-card.ad-edit-modal-card {
+    width: 100%;
+    max-height: calc(100vh - 1.4rem);
+    border-radius: 18px 18px 12px 12px;
+  }
+}

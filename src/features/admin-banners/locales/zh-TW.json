@@ -1,0 +1,94 @@
+{
+  "title": "首頁管理",
+  "nav": "首頁管理",
+  "back": "返回",
+  "permissionDenied": "權限不足",
+  "permissionDeniedBody": "您沒有權限管理首頁。",
+  "sectionTitle": "Banner 廣告（3 個廣告位）",
+  "loading": "載入中...",
+  "loadError": "橫幅載入失敗，請稍後重試",
+  "retry": "重試",
+  "empty": "目前沒有廣告位",
+  "card": {
+    "defaultSlotName": "廣告位 {slot}",
+    "statusEmpty": "空白",
+    "statusActive": "啟用中",
+    "statusScheduled": "已排程",
+    "statusExpired": "已下架",
+    "timeEmpty": "尚未設定廣告",
+    "timeNotSet": "尚未設定時間",
+    "forever": "永久",
+    "remain": "剩餘 {days} 天",
+    "clicks": "點擊 {n} 次"
+  },
+  "action": {
+    "set": "設定",
+    "edit": "編輯",
+    "delist": "下架",
+    "relist": "重新上架",
+    "clear": "刪除"
+  },
+  "confirm": {
+    "clear": "確定要刪除此廣告？將清空所有設定。"
+  },
+  "toast": {
+    "denied": "權限不足",
+    "delisted": "廣告已下架",
+    "relisted": "廣告已重新上架",
+    "cleared": "廣告已刪除",
+    "uploading": "圖片上傳中...",
+    "savedScheduled": "Banner 已排程，將於 {time} 啟用",
+    "savedNow": "Banner 已更新並立即啟用",
+    "saveError": "儲存失敗，請稍後重試",
+    "actionError": "操作失敗，請稍後重試",
+    "relistExpired": "結束時間已過，請先編輯結束時間再上架",
+    "imageProcessError": "圖片處理失敗，請重試",
+    "imageTooLarge": "圖片太大，請換一張較小的圖片"
+  },
+  "form": {
+    "setTitle": "設定 {slot}",
+    "editTitle": "編輯 {slot}",
+    "cancel": "取消",
+    "slotName": "廣告位名稱",
+    "slotNamePlaceholder": "例：廣告位 1",
+    "image": "廣告圖片",
+    "imageUpload": "點擊上傳圖片",
+    "imageHint": "建議尺寸 1200 x 545 px，JPG / PNG，5MB 內",
+    "title": "Banner 大標題",
+    "titlePlaceholder": "例：下班揪人一起動",
+    "subtitle": "Banner 小標題",
+    "subtitlePlaceholder": "例：找活動、開團、加入報名，一個地方完成。",
+    "colors": "Banner 字色",
+    "titleColor": "大標題",
+    "subtitleColor": "小標題",
+    "link": "跳轉連結（選填）",
+    "linkPlaceholder": "https://...",
+    "mode": "啟用方式",
+    "modeNow": "立即啟用",
+    "modeScheduled": "預約啟用",
+    "publishAt": "啟用時間",
+    "unpublishAt": "結束時間",
+    "save": "儲存",
+    "saving": "儲存中..."
+  },
+  "error": {
+    "titleTooLong": "Banner 大標題不可超過 18 字",
+    "subtitleTooLong": "Banner 小標題不可超過 32 字",
+    "slotNameRequired": "請輸入廣告位名稱",
+    "slotNameTooLong": "廣告位名稱不可超過 12 字",
+    "publishRequired": "請選擇啟用時間",
+    "linkInvalid": "跳轉連結需以 http:// 或 https:// 開頭",
+    "linkChars": "跳轉連結不可包含空白、引號、< >、反引號或反斜線",
+    "timeInvalid": "時間格式不正確",
+    "endNotAfterNow": "結束時間必須晚於現在",
+    "endNotAfterStart": "結束時間必須晚於啟用時間"
+  },
+  "image": {
+    "badType": "請上傳 JPG / PNG / WebP 圖片",
+    "tooBig": "圖片太大，不能超過 5MB"
+  },
+  "cropper": {
+    "title": "Banner 圖片",
+    "targetLabel": "首頁 Banner"
+  }
+}

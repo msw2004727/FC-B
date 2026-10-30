@@ -1,0 +1,95 @@
+{
+  "title": "User Management",
+  "back": "Back",
+  "access": {
+    "deniedTitle": "No permission",
+    "deniedBody": "You do not have permission to view user management."
+  },
+  "filter": {
+    "toggleLabel": "Search and filter users",
+    "keywordPlaceholder": "Search users...",
+    "roleAll": "All roles",
+    "genderAll": "All genders",
+    "joinedRange": "Joined (days ago)",
+    "loginRange": "Last login (days ago)",
+    "rangeFrom": "From",
+    "rangeTo": "To",
+    "regionPlaceholder": "Region",
+    "roleLabel": "Role",
+    "genderLabel": "Gender"
+  },
+  "gender": {
+    "male": "Male",
+    "female": "Female",
+    "other": "Other",
+    "undisclosed": "Prefer not to say"
+  },
+  "list": {
+    "loading": "Loading…",
+    "loadFailed": "Failed to load users",
+    "retry": "Retry",
+    "empty": "No users match your filters",
+    "loadMore": "Load more (showing {shown} / {total})",
+    "refresh": "Refresh",
+    "partialNote": "There are many users. Only {loaded} of {total} are loaded; search and filters cover loaded users only.",
+    "partialUnknown": "There are many users. Only {loaded} are loaded; search and filters cover loaded users only.",
+    "loadMoreUsers": "Load more users"
+  },
+  "card": {
+    "email": "Email: ",
+    "restrictState": "Restriction: ",
+    "restricted": "Restricted",
+    "normal": "Normal",
+    "lastLogin": "Last login: ",
+    "noRecord": "No record",
+    "edit": "Edit",
+    "view": "View",
+    "restrict": "Restrict",
+    "unrestrict": "Unrestrict"
+  },
+  "modal": {
+    "title": "Edit user — {name}",
+    "close": "Close",
+    "role": "Role",
+    "region": "Region",
+    "gender": "Gender",
+    "birthday": "Birthday",
+    "sports": "Sports",
+    "sportsPlaceholder": "e.g. Football, Basketball",
+    "phone": "Phone",
+    "phonePlaceholder": "e.g. 0912-345-678",
+    "email": "Email",
+    "emailPlaceholder": "e.g. name@example.com",
+    "unfilled": "Not set",
+    "currentValue": "Current: {value}",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "restrict": {
+    "do": "restrict",
+    "undo": "unrestrict",
+    "confirm": "Are you sure you want to {action} \"{name}\"?",
+    "failed": "Failed to {action}. Please try again later."
+  },
+  "toast": {
+    "refreshed": "Refreshed",
+    "refreshFailed": "Refresh failed. Please try again later.",
+    "saving": "Saving, please wait",
+    "noPermission": "No permission",
+    "userNotFound": "User not found",
+    "restrictUserNotFound": "User not found",
+    "noChange": "No changes",
+    "invalidEmail": "Enter a valid email address, or leave it empty to clear.",
+    "saveFailed": "Save failed. Data was not updated.",
+    "updated": "Updated \"{name}\"",
+    "restricted": "User restricted",
+    "unrestricted": "Restriction removed",
+    "onlyUserRole": "Only regular users can be restricted",
+    "cannotRestrictSelf": "You cannot restrict yourself",
+    "cannotRestrictSuperAdmin": "Super admins cannot be restricted"
+  },
+  "error": {
+    "permission": "You do not have permission to do this",
+    "notFound": "User not found"
+  }
+}

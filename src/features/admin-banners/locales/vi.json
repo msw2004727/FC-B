@@ -1,0 +1,94 @@
+{
+  "title": "Quản lý trang chủ",
+  "nav": "Quản lý trang chủ",
+  "back": "Quay lại",
+  "permissionDenied": "Không đủ quyền",
+  "permissionDeniedBody": "Bạn không có quyền quản lý trang chủ.",
+  "sectionTitle": "Quảng cáo banner (3 vị trí)",
+  "loading": "Đang tải...",
+  "loadError": "Không tải được banner. Vui lòng thử lại sau.",
+  "retry": "Thử lại",
+  "empty": "Chưa có vị trí quảng cáo",
+  "card": {
+    "defaultSlotName": "Vị trí {slot}",
+    "statusEmpty": "Trống",
+    "statusActive": "Đang chạy",
+    "statusScheduled": "Đã hẹn giờ",
+    "statusExpired": "Đã gỡ",
+    "timeEmpty": "Chưa thiết lập quảng cáo",
+    "timeNotSet": "Chưa thiết lập thời gian",
+    "forever": "Vĩnh viễn",
+    "remain": "Còn {days} ngày",
+    "clicks": "{n} lượt nhấp"
+  },
+  "action": {
+    "set": "Thiết lập",
+    "edit": "Sửa",
+    "delist": "Gỡ xuống",
+    "relist": "Đăng lại",
+    "clear": "Xóa"
+  },
+  "confirm": {
+    "clear": "Xóa quảng cáo này? Mọi thiết lập sẽ bị xóa."
+  },
+  "toast": {
+    "denied": "Không đủ quyền",
+    "delisted": "Đã gỡ quảng cáo",
+    "relisted": "Đã đăng lại quảng cáo",
+    "cleared": "Đã xóa quảng cáo",
+    "uploading": "Đang tải ảnh lên...",
+    "savedScheduled": "Đã hẹn giờ banner, sẽ chạy lúc {time}",
+    "savedNow": "Đã cập nhật banner và chạy ngay",
+    "saveError": "Lưu thất bại. Vui lòng thử lại sau.",
+    "actionError": "Thao tác thất bại. Vui lòng thử lại sau.",
+    "relistExpired": "Đã quá thời gian kết thúc. Hãy sửa thời gian kết thúc trước khi đăng lại.",
+    "imageProcessError": "Xử lý ảnh thất bại. Vui lòng thử lại.",
+    "imageTooLarge": "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn."
+  },
+  "form": {
+    "setTitle": "Thiết lập {slot}",
+    "editTitle": "Sửa {slot}",
+    "cancel": "Hủy",
+    "slotName": "Tên vị trí",
+    "slotNamePlaceholder": "Ví dụ: Vị trí 1",
+    "image": "Ảnh quảng cáo",
+    "imageUpload": "Nhấn để tải ảnh lên",
+    "imageHint": "Kích thước đề xuất 1200 x 545 px, JPG / PNG, tối đa 5MB",
+    "title": "Tiêu đề banner",
+    "titlePlaceholder": "Ví dụ: Rủ nhau vận động sau giờ làm",
+    "subtitle": "Tiêu đề phụ banner",
+    "subtitlePlaceholder": "Ví dụ: Tìm hoạt động, mở nhóm, đăng ký, tất cả tại một nơi.",
+    "colors": "Màu chữ banner",
+    "titleColor": "Tiêu đề",
+    "subtitleColor": "Tiêu đề phụ",
+    "link": "Liên kết (tùy chọn)",
+    "linkPlaceholder": "https://...",
+    "mode": "Cách kích hoạt",
+    "modeNow": "Kích hoạt ngay",
+    "modeScheduled": "Hẹn giờ",
+    "publishAt": "Thời gian bắt đầu",
+    "unpublishAt": "Thời gian kết thúc",
+    "save": "Lưu",
+    "saving": "Đang lưu..."
+  },
+  "error": {
+    "titleTooLong": "Tiêu đề banner không được quá 18 ký tự",
+    "subtitleTooLong": "Tiêu đề phụ banner không được quá 32 ký tự",
+    "slotNameRequired": "Vui lòng nhập tên vị trí",
+    "slotNameTooLong": "Tên vị trí không được quá 12 ký tự",
+    "publishRequired": "Vui lòng chọn thời gian bắt đầu",
+    "linkInvalid": "Liên kết phải bắt đầu bằng http:// hoặc https://",
+    "linkChars": "Liên kết không được chứa khoảng trắng, dấu nháy, < >, dấu huyền ngược hoặc dấu gạch chéo ngược",
+    "timeInvalid": "Định dạng thời gian không hợp lệ",
+    "endNotAfterNow": "Thời gian kết thúc phải muộn hơn hiện tại",
+    "endNotAfterStart": "Thời gian kết thúc phải muộn hơn thời gian bắt đầu"
+  },
+  "image": {
+    "badType": "Vui lòng tải lên ảnh JPG / PNG / WebP",
+    "tooBig": "Ảnh quá lớn (tối đa 5MB)"
+  },
+  "cropper": {
+    "title": "Ảnh banner",
+    "targetLabel": "Banner trang chủ"
+  }
+}

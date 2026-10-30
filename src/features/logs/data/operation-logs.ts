@@ -14,6 +14,8 @@ export interface OperationLogDoc {
   _docId?: string;
   id?: string;
   actorUid?: string | null;
+  /** 舊別名（Rules `isOpLogOwnerRequest` 仍允許）；A 從來只寫 `actorUid`、不寫也不讀 `uid`。讀取一律走 `getOperationLogActorUid`。 */
+  uid?: string | null;
   operator?: string;
   type?: string;
   typeName?: string;
@@ -69,6 +71,17 @@ export async function fetchOperationLogs(): Promise<OperationLogDoc[]> {
       id: typeof data.id === 'string' && data.id.trim() ? data.id : docSnap.id,
     } as OperationLogDoc;
   });
+}
+
+/**
+ * 操作者 UID 的單一讀取點：`actorUid` 優先，缺值退 `uid`，兩者皆缺（或不是字串）回空字串＝未知操作者。
+ * A 只寫 `actorUid`、不寫也不讀 `uid`；`uid` 只是 Rules `isOpLogOwnerRequest` 允許的舊別名，這裡當無害容錯。
+ * Functions 寫的日誌常缺 actorUid，屬正常情況，回空字串由畫面顯示「未標示」。
+ * 畫面、搜尋文字、診斷包都經過這裡，不要在元件裡自行 `actorUid || uid`。
+ */
+export function getOperationLogActorUid(log: OperationLogDoc | null | undefined): string {
+  const pick = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+  return pick(log?.actorUid) || pick(log?.uid);
 }
 
 /** A `_getOperationLogDocId` */
@@ -160,7 +173,7 @@ export function getOperationLogSearchText(log: OperationLogDoc | null | undefine
     log?.time,
     formatOperationLogCreatedAt(log),
     log?.operator,
-    log?.actorUid,
+    getOperationLogActorUid(log),
     log?.type,
     log?.typeName,
     log?.content,
@@ -270,7 +283,7 @@ export function buildOperationLogDiagnosticText(
     header,
     `${timeLabel}：${formatOperationLogCreatedAt(log, unmarked)}`,
     `${typeLabel}：${log?.typeName || uncategorized} (${log?.type || 'unknown'})`,
-    `${operatorLabel}：${log?.operator || unmarked} / ${log?.actorUid || unmarked}`,
+    `${operatorLabel}：${log?.operator || unmarked} / ${getOperationLogActorUid(log) || unmarked}`,
     `${contentLabel}：${log?.content || unmarked}`,
     `${eventIdLabel}：${log?.eventId || none}`,
     `${docIdLabel}：${getOperationLogDocId(log) || unmarked}`,

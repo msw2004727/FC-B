@@ -15,9 +15,11 @@ import { manifest as profile } from './features/profile/index';
 import { manifest as personalDashboard } from './features/personal-dashboard/index';
 import { manifest as notifications } from './features/notifications/index';
 import { manifest as roles } from './features/roles/index';
+import { manifest as adminUsers } from './features/admin-users/index';
 import { manifest as opsDashboard } from './features/ops-dashboard/index';
 import { manifest as logs } from './features/logs/index';
 import { manifest as dataRepair } from './features/data-repair/index';
+import { manifest as adminBanners } from './features/admin-banners/index';
 import { manifest as seoAdmin } from './features/seo-admin/index';
 import { manifest as siteTheme } from './features/site-theme/index';
 import { manifest as expAchievements } from './features/exp-achievements/index';
@@ -40,9 +42,11 @@ export const ALL_FEATURES: FeatureManifest[] = [
   personalDashboard,
   notifications,
   roles,
+  adminUsers,
   opsDashboard,
   logs,
   dataRepair,
+  adminBanners,
   seoAdmin,
   siteTheme,
   expAchievements,

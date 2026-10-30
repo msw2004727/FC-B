@@ -1,0 +1,95 @@
+{
+  "title": "จัดการผู้ใช้",
+  "back": "ย้อนกลับ",
+  "access": {
+    "deniedTitle": "ไม่มีสิทธิ์",
+    "deniedBody": "คุณไม่มีสิทธิ์ดูหน้าจัดการผู้ใช้"
+  },
+  "filter": {
+    "toggleLabel": "ค้นหาและกรองผู้ใช้",
+    "keywordPlaceholder": "ค้นหาผู้ใช้...",
+    "roleAll": "ทุกสิทธิ์",
+    "genderAll": "ทุกเพศ",
+    "joinedRange": "จำนวนวันนับจากวันที่เข้าร่วม",
+    "loginRange": "จำนวนวันนับจากการเข้าสู่ระบบล่าสุด",
+    "rangeFrom": "จาก",
+    "rangeTo": "ถึง",
+    "regionPlaceholder": "ภูมิภาค",
+    "roleLabel": "สิทธิ์",
+    "genderLabel": "เพศ"
+  },
+  "gender": {
+    "male": "ชาย",
+    "female": "หญิง",
+    "other": "อื่น ๆ",
+    "undisclosed": "ไม่ระบุ"
+  },
+  "list": {
+    "loading": "กำลังโหลด…",
+    "loadFailed": "โหลดข้อมูลผู้ใช้ไม่สำเร็จ",
+    "retry": "ลองใหม่",
+    "empty": "ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข",
+    "loadMore": "โหลดเพิ่ม (แสดงอยู่ {shown} / {total})",
+    "refresh": "รีเฟรช",
+    "partialNote": "มีผู้ใช้จำนวนมาก จึงโหลดมาเพียง {loaded} จาก {total} คน การค้นหาและตัวกรองใช้ได้เฉพาะผู้ใช้ที่โหลดแล้ว",
+    "partialUnknown": "มีผู้ใช้จำนวนมาก จึงโหลดมาเพียง {loaded} คน การค้นหาและตัวกรองใช้ได้เฉพาะผู้ใช้ที่โหลดแล้ว",
+    "loadMoreUsers": "โหลดผู้ใช้เพิ่ม"
+  },
+  "card": {
+    "email": "Email: ",
+    "restrictState": "สถานะการจำกัด: ",
+    "restricted": "ถูกจำกัด",
+    "normal": "ปกติ",
+    "lastLogin": "เข้าสู่ระบบล่าสุด: ",
+    "noRecord": "ยังไม่มีบันทึก",
+    "edit": "แก้ไข",
+    "view": "ดู",
+    "restrict": "จำกัด",
+    "unrestrict": "ยกเลิกการจำกัด"
+  },
+  "modal": {
+    "title": "แก้ไขผู้ใช้ — {name}",
+    "close": "ปิด",
+    "role": "สิทธิ์",
+    "region": "ภูมิภาค",
+    "gender": "เพศ",
+    "birthday": "วันเกิด",
+    "sports": "ประเภทกีฬา",
+    "sportsPlaceholder": "เช่น ฟุตบอล, บาสเกตบอล",
+    "phone": "เบอร์ติดต่อ",
+    "phonePlaceholder": "เช่น 0912-345-678",
+    "email": "อีเมล",
+    "emailPlaceholder": "เช่น name@example.com",
+    "unfilled": "ยังไม่กรอก",
+    "currentValue": "ค่าปัจจุบัน: {value}",
+    "cancel": "ยกเลิก",
+    "save": "บันทึก"
+  },
+  "restrict": {
+    "do": "จำกัด",
+    "undo": "ยกเลิกการจำกัด",
+    "confirm": "ต้องการ{action} \"{name}\" ใช่หรือไม่?",
+    "failed": "{action}ไม่สำเร็จ โปรดลองใหม่ภายหลัง"
+  },
+  "toast": {
+    "refreshed": "รีเฟรชแล้ว",
+    "refreshFailed": "รีเฟรชไม่สำเร็จ โปรดลองใหม่ภายหลัง",
+    "saving": "กำลังบันทึก โปรดรอสักครู่",
+    "noPermission": "ไม่มีสิทธิ์",
+    "userNotFound": "ไม่พบผู้ใช้",
+    "restrictUserNotFound": "ไม่พบผู้ใช้",
+    "noChange": "ไม่มีการเปลี่ยนแปลง",
+    "invalidEmail": "โปรดกรอกอีเมลที่ถูกต้อง หรือเว้นว่างเพื่อลบ",
+    "saveFailed": "บันทึกไม่สำเร็จ ข้อมูลยังไม่ถูกอัปเดต",
+    "updated": "อัปเดตข้อมูลของ \"{name}\" แล้ว",
+    "restricted": "จำกัดผู้ใช้แล้ว",
+    "unrestricted": "ยกเลิกการจำกัดแล้ว",
+    "onlyUserRole": "จำกัดได้เฉพาะผู้ใช้ทั่วไป",
+    "cannotRestrictSelf": "ไม่สามารถจำกัดตัวเองได้",
+    "cannotRestrictSuperAdmin": "ไม่สามารถจำกัดผู้ดูแลสูงสุดได้"
+  },
+  "error": {
+    "permission": "คุณไม่มีสิทธิ์ทำรายการนี้",
+    "notFound": "ไม่พบผู้ใช้"
+  }
+}

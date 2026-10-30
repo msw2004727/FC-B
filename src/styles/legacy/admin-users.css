@@ -1,0 +1,59 @@
+/* 舊版 A `css/admin.css` 的「用戶管理」相關規則（原檔照搬，不得手改；要更新就從 A 重新複製）。
+   來源行號：第 7～8 行（.admin-search）、第 38 行（.admin-card-list）、第 152～201 行（Admin User Card：.admin-user-*／.au-*）。
+   M-142 用戶管理頁自行 import；其餘頁面（M-155／M-145／M-157）各自複製自己用到的通用 class，選擇器內容逐字相同，不會衝突。 */
+
+.admin-search { padding: .3rem .2rem .6rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+.admin-search input { flex: 1; min-width: 180px; }
+
+.admin-card-list { display: flex; flex-direction: column; gap: .5rem; }
+
+/* ─── Admin User Card ─── */
+.admin-user-page-header { align-items: center; }
+.admin-user-page-heading { min-width: 0; }
+.admin-user-filter-panel.admin-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(116px, .8fr) minmax(106px, .72fr);
+  align-items: end;
+  padding: .48rem;
+}
+.admin-user-filter-panel.admin-search[hidden] { display: none !important; }
+.admin-user-filter-panel.visible { display: grid; }
+.admin-user-range-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .24rem;
+  color: var(--text-muted);
+  font-size: .68rem;
+  font-weight: 800;
+}
+.admin-user-range-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: .35rem;
+}
+.admin-user-filter-panel input,
+.admin-user-filter-panel select {
+  width: 100%;
+  min-width: 0;
+  flex: initial;
+  height: 36px;
+  box-sizing: border-box;
+}
+@media (max-width: 620px) {
+  .admin-user-filter-panel.admin-search { grid-template-columns: 1fr; }
+}
+.admin-user-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .85rem; display: flex; gap: .65rem; align-items: flex-start; }
+.au-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
+.au-avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--primary); color: #fff; font-weight: 700; font-size: .9rem; }
+.admin-user-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
+.admin-user-info { min-width: 0; }
+.admin-user-name { font-weight: 600; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-user-meta { font-size: .72rem; color: var(--text-muted); margin-top: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-user-actions { display: flex; gap: .35rem; align-items: center; }
+.au-btn { font-size: .72rem; padding: .3rem .6rem; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; white-space: nowrap; transition: all .15s; }
+.au-btn:hover { border-color: var(--primary); color: var(--primary); }
+.au-btn-edit { border-color: var(--primary); color: var(--primary); }
+.au-btn-edit:hover { background: var(--primary); color: #fff; }
+.au-btn-view { border-color: rgba(99,102,241,.4); color: var(--text-muted); }
+.au-btn-view:hover { border-color: var(--primary); color: var(--primary); }

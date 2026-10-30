@@ -1,0 +1,95 @@
+{
+  "title": "Quản lý người dùng",
+  "back": "Quay lại",
+  "access": {
+    "deniedTitle": "Không có quyền",
+    "deniedBody": "Bạn không có quyền xem trang quản lý người dùng."
+  },
+  "filter": {
+    "toggleLabel": "Tìm kiếm và lọc người dùng",
+    "keywordPlaceholder": "Tìm người dùng...",
+    "roleAll": "Tất cả quyền",
+    "genderAll": "Tất cả giới tính",
+    "joinedRange": "Số ngày từ khi tham gia",
+    "loginRange": "Số ngày từ lần đăng nhập cuối",
+    "rangeFrom": "Từ",
+    "rangeTo": "Đến",
+    "regionPlaceholder": "Khu vực",
+    "roleLabel": "Quyền",
+    "genderLabel": "Giới tính"
+  },
+  "gender": {
+    "male": "Nam",
+    "female": "Nữ",
+    "other": "Khác",
+    "undisclosed": "Không tiết lộ"
+  },
+  "list": {
+    "loading": "Đang tải…",
+    "loadFailed": "Không tải được danh sách người dùng",
+    "retry": "Thử lại",
+    "empty": "Không tìm thấy người dùng phù hợp",
+    "loadMore": "Tải thêm (đang hiển thị {shown} / {total})",
+    "refresh": "Làm mới",
+    "partialNote": "Có rất nhiều người dùng nên chỉ tải {loaded} / {total} người. Tìm kiếm và bộ lọc chỉ áp dụng cho người dùng đã tải.",
+    "partialUnknown": "Có rất nhiều người dùng nên chỉ tải {loaded} người. Tìm kiếm và bộ lọc chỉ áp dụng cho người dùng đã tải.",
+    "loadMoreUsers": "Tải thêm người dùng"
+  },
+  "card": {
+    "email": "Email: ",
+    "restrictState": "Trạng thái hạn chế: ",
+    "restricted": "Đang bị hạn chế",
+    "normal": "Bình thường",
+    "lastLogin": "Đăng nhập cuối: ",
+    "noRecord": "Chưa có bản ghi",
+    "edit": "Sửa",
+    "view": "Xem",
+    "restrict": "Hạn chế",
+    "unrestrict": "Bỏ hạn chế"
+  },
+  "modal": {
+    "title": "Sửa người dùng — {name}",
+    "close": "Đóng",
+    "role": "Quyền",
+    "region": "Khu vực",
+    "gender": "Giới tính",
+    "birthday": "Ngày sinh",
+    "sports": "Môn thể thao",
+    "sportsPlaceholder": "VD: Bóng đá, Bóng rổ",
+    "phone": "Số điện thoại",
+    "phonePlaceholder": "VD: 0912-345-678",
+    "email": "Email",
+    "emailPlaceholder": "VD: name@example.com",
+    "unfilled": "Chưa điền",
+    "currentValue": "Giá trị hiện tại: {value}",
+    "cancel": "Hủy",
+    "save": "Lưu"
+  },
+  "restrict": {
+    "do": "hạn chế",
+    "undo": "bỏ hạn chế",
+    "confirm": "Bạn có chắc muốn {action} \"{name}\" không?",
+    "failed": "Không thể {action}. Vui lòng thử lại sau."
+  },
+  "toast": {
+    "refreshed": "Đã làm mới",
+    "refreshFailed": "Làm mới thất bại. Vui lòng thử lại sau.",
+    "saving": "Đang lưu, vui lòng chờ",
+    "noPermission": "Không có quyền",
+    "userNotFound": "Không tìm thấy người dùng",
+    "restrictUserNotFound": "Không tìm thấy người dùng",
+    "noChange": "Không có thay đổi",
+    "invalidEmail": "Vui lòng nhập email hợp lệ hoặc để trống để xóa.",
+    "saveFailed": "Lưu thất bại, dữ liệu chưa được cập nhật",
+    "updated": "Đã cập nhật dữ liệu của \"{name}\"",
+    "restricted": "Đã hạn chế người dùng",
+    "unrestricted": "Đã bỏ hạn chế",
+    "onlyUserRole": "Chỉ hạn chế được người dùng thường",
+    "cannotRestrictSelf": "Không thể tự hạn chế chính mình",
+    "cannotRestrictSuperAdmin": "Không thể hạn chế quản trị viên cấp cao"
+  },
+  "error": {
+    "permission": "Bạn không có quyền thực hiện thao tác này",
+    "notFound": "Không tìm thấy người dùng"
+  }
+}

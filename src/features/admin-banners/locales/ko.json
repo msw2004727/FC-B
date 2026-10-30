@@ -1,0 +1,94 @@
+{
+  "title": "홈 관리",
+  "nav": "홈 관리",
+  "back": "뒤로",
+  "permissionDenied": "권한이 없습니다",
+  "permissionDeniedBody": "홈을 관리할 권한이 없습니다.",
+  "sectionTitle": "배너 광고 (광고 자리 3개)",
+  "loading": "불러오는 중...",
+  "loadError": "배너를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  "retry": "다시 시도",
+  "empty": "광고 자리가 없습니다",
+  "card": {
+    "defaultSlotName": "광고 자리 {slot}",
+    "statusEmpty": "비어 있음",
+    "statusActive": "게시 중",
+    "statusScheduled": "예약됨",
+    "statusExpired": "게시 중단",
+    "timeEmpty": "아직 광고가 설정되지 않았습니다",
+    "timeNotSet": "시간이 설정되지 않았습니다",
+    "forever": "무기한",
+    "remain": "{days}일 남음",
+    "clicks": "클릭 {n}회"
+  },
+  "action": {
+    "set": "설정",
+    "edit": "편집",
+    "delist": "게시 중단",
+    "relist": "다시 게시",
+    "clear": "삭제"
+  },
+  "confirm": {
+    "clear": "이 광고를 삭제할까요? 모든 설정이 지워집니다."
+  },
+  "toast": {
+    "denied": "권한이 없습니다",
+    "delisted": "광고 게시를 중단했습니다",
+    "relisted": "광고를 다시 게시했습니다",
+    "cleared": "광고를 삭제했습니다",
+    "uploading": "이미지 업로드 중...",
+    "savedScheduled": "배너를 예약했습니다. {time}에 게시가 시작됩니다",
+    "savedNow": "배너를 업데이트하고 바로 게시했습니다",
+    "saveError": "저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    "actionError": "작업에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+    "relistExpired": "게시 종료 시간이 지났습니다. 종료 시간을 먼저 편집한 뒤 다시 게시해 주세요",
+    "imageProcessError": "이미지 처리에 실패했습니다. 다시 시도해 주세요",
+    "imageTooLarge": "이미지가 너무 큽니다. 더 작은 이미지를 선택해 주세요."
+  },
+  "form": {
+    "setTitle": "{slot} 설정",
+    "editTitle": "{slot} 편집",
+    "cancel": "취소",
+    "slotName": "광고 자리 이름",
+    "slotNamePlaceholder": "예: 광고 자리 1",
+    "image": "광고 이미지",
+    "imageUpload": "눌러서 이미지 업로드",
+    "imageHint": "권장 크기 1200 x 545 px, JPG / PNG, 5MB 이내",
+    "title": "배너 제목",
+    "titlePlaceholder": "예: 퇴근 후 같이 운동해요",
+    "subtitle": "배너 부제목",
+    "subtitlePlaceholder": "예: 모임 찾기, 개설, 신청을 한 곳에서.",
+    "colors": "배너 글자색",
+    "titleColor": "제목",
+    "subtitleColor": "부제목",
+    "link": "이동 링크 (선택)",
+    "linkPlaceholder": "https://...",
+    "mode": "게시 방식",
+    "modeNow": "바로 게시",
+    "modeScheduled": "예약 게시",
+    "publishAt": "게시 시작 시간",
+    "unpublishAt": "게시 종료 시간",
+    "save": "저장",
+    "saving": "저장 중..."
+  },
+  "error": {
+    "titleTooLong": "배너 제목은 18자를 넘을 수 없습니다",
+    "subtitleTooLong": "배너 부제목은 32자를 넘을 수 없습니다",
+    "slotNameRequired": "광고 자리 이름을 입력해 주세요",
+    "slotNameTooLong": "광고 자리 이름은 12자를 넘을 수 없습니다",
+    "publishRequired": "게시 시작 시간을 선택해 주세요",
+    "linkInvalid": "링크는 http:// 또는 https://로 시작해야 합니다",
+    "linkChars": "링크에는 공백, 따옴표, < >, 백틱, 역슬래시를 넣을 수 없습니다",
+    "timeInvalid": "시간 형식이 올바르지 않습니다",
+    "endNotAfterNow": "게시 종료 시간은 현재보다 나중이어야 합니다",
+    "endNotAfterStart": "게시 종료 시간은 게시 시작 시간보다 나중이어야 합니다"
+  },
+  "image": {
+    "badType": "JPG / PNG / WebP 이미지를 업로드해 주세요",
+    "tooBig": "이미지가 너무 큽니다 (최대 5MB)"
+  },
+  "cropper": {
+    "title": "배너 이미지",
+    "targetLabel": "홈 배너"
+  }
+}

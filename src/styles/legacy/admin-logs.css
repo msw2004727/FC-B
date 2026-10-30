@@ -1,0 +1,108 @@
+/* 操作日誌頁（M-157）專用 CSS：自 A `css/admin.css` 逐字複製（行尾轉 LF），不手改；
+   每段註明 A 來源行號。只複製操作日誌頁用得到的規則，其他頁的規則不放進來。
+   載入方式：AdminLogsPage 自行 import，隨 /admin/logs 路由延遲載入；
+   scripts/legacy-css-scope.mjs 會把選擇器限定在 `.legacy-ui` 之內。 */
+
+/* A admin.css 第 7～10 行：搜尋框與篩選列 */
+.admin-search { padding: .3rem .2rem .6rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+.admin-search input { flex: 1; min-width: 180px; }
+.admin-filters { display: flex; gap: .3rem; flex: 1; flex-wrap: wrap; }
+.admin-filters select { flex: 1; min-width: 100px; }
+
+/* A admin.css 第 46～48 行：日誌面板（A 實際執行時，操作日誌包在 .admin-log-panels > .admin-log-panel 內） */
+.admin-log-panels { display: flex; flex-direction: column; gap: .7rem; }
+.admin-log-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .5rem; }
+.admin-log-panel[hidden] { display: none !important; }
+
+/* A admin.css 第 287～291 行：日誌清單與列 */
+.log-list { display: flex; flex-direction: column; gap: .3rem; }
+.log-item { display: flex; align-items: flex-start; gap: .5rem; padding: .55rem .5rem; border-bottom: 1px solid var(--border); font-size: .8rem; }
+.log-time { font-size: .7rem; color: var(--text-muted); white-space: nowrap; min-width: 80px; }
+.log-content { flex: 1; color: var(--text-secondary); }
+.log-type { display: inline-block; padding: .1rem .38rem; border-radius: var(--radius-full); font-size: .65rem; font-weight: 700; margin-right: .3rem; border: 1px solid transparent; }
+
+/* A admin.css 第 299～313 行：類型膠囊色調（log-tone-*） */
+.log-type.log-tone-blue { background: rgba(59,130,246,.14); color: #2563eb; }
+.log-type.log-tone-violet { background: rgba(168,85,247,.14); color: #9333ea; }
+.log-type.log-tone-purple { background: rgba(139,92,246,.14); color: #7c3aed; }
+.log-type.log-tone-green { background: rgba(34,197,94,.14); color: #15803d; }
+.log-type.log-tone-teal { background: rgba(20,184,166,.14); color: #0f766e; }
+.log-type.log-tone-orange { background: rgba(249,115,22,.14); color: #ea580c; }
+.log-type.log-tone-indigo { background: rgba(99,102,241,.14); color: #4338ca; }
+.log-type.log-tone-sky { background: rgba(14,165,233,.14); color: #0284c7; }
+.log-type.log-tone-pink { background: rgba(236,72,153,.14); color: #db2777; }
+.log-type.log-tone-amber { background: rgba(245,158,11,.16); color: #d97706; }
+.log-type.log-tone-cyan { background: rgba(6,182,212,.14); color: #0e7490; }
+.log-type.log-tone-rose { background: rgba(244,63,94,.14); color: #e11d48; }
+.log-type.log-tone-red { background: rgba(239,68,68,.14); color: #dc2626; }
+.log-type.log-tone-gray { background: rgba(100,116,139,.14); color: #475569; }
+.log-type[class*="log-tone-"] { border-color: currentColor; }
+
+/* A admin.css 第 896～916 行：操作日誌列結構（含 520px 以下版面） */
+.log-item[class*="oplog-row-"] { border-radius: 6px; }
+.operation-log-item { flex-direction: column; align-items: stretch; gap: .45rem; }
+.operation-log-main { display: flex; align-items: flex-start; gap: .55rem; width: 100%; min-width: 0; }
+.operation-log-main .log-content { flex: 1; min-width: 0; }
+.operation-log-action-text { overflow-wrap: anywhere; }
+.operation-log-meta { display: flex; flex-wrap: wrap; gap: .25rem; padding-left: calc(70px + .55rem); }
+.operation-log-meta span { font-size: .68rem; line-height: 1.35; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 999px; padding: .12rem .4rem; overflow-wrap: anywhere; }
+.operation-log-details { border-top: 1px solid var(--border); padding-top: .42rem; }
+.operation-log-details summary { cursor: pointer; color: var(--primary); font-size: .74rem; font-weight: 700; }
+.operation-log-detail-grid { margin-top: .5rem; display: flex; flex-direction: column; gap: .42rem; }
+.operation-log-detail-row { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: .5rem; align-items: start; }
+.operation-log-detail-row span { color: var(--text-muted); font-size: .68rem; padding-top: .18rem; }
+.operation-log-detail-row pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .72rem; line-height: 1.45; color: var(--text-secondary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .42rem .5rem; }
+.operation-log-detail-row pre.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.operation-log-copy-btn { font-size: .68rem; padding: .18rem .45rem; margin-top: .45rem; }
+@media (max-width: 520px) {
+  .operation-log-main { flex-wrap: wrap; }
+  .operation-log-main .log-time { width: 100%; }
+  .operation-log-meta { padding-left: 0; }
+  .operation-log-detail-row { grid-template-columns: 1fr; gap: .2rem; }
+}
+
+/* A admin.css 第 917～944 行：操作日誌列底色（淺色／深色） */
+.log-item.oplog-row-log-tone-blue   { background: rgba(59,130,246,.06); }
+.log-item.oplog-row-log-tone-violet { background: rgba(168,85,247,.06); }
+.log-item.oplog-row-log-tone-purple { background: rgba(139,92,246,.06); }
+.log-item.oplog-row-log-tone-green  { background: rgba(34,197,94,.06); }
+.log-item.oplog-row-log-tone-teal   { background: rgba(20,184,166,.06); }
+.log-item.oplog-row-log-tone-orange { background: rgba(249,115,22,.06); }
+.log-item.oplog-row-log-tone-indigo { background: rgba(99,102,241,.06); }
+.log-item.oplog-row-log-tone-sky    { background: rgba(14,165,233,.06); }
+.log-item.oplog-row-log-tone-pink   { background: rgba(236,72,153,.06); }
+.log-item.oplog-row-log-tone-amber  { background: rgba(245,158,11,.06); }
+.log-item.oplog-row-log-tone-cyan   { background: rgba(6,182,212,.06); }
+.log-item.oplog-row-log-tone-rose   { background: rgba(244,63,94,.06); }
+.log-item.oplog-row-log-tone-red    { background: rgba(239,68,68,.08); }
+.log-item.oplog-row-log-tone-gray   { background: rgba(100,116,139,.05); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-blue   { background: rgba(59,130,246,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-violet { background: rgba(168,85,247,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-purple { background: rgba(139,92,246,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-green  { background: rgba(34,197,94,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-teal   { background: rgba(20,184,166,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-orange { background: rgba(249,115,22,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-indigo { background: rgba(99,102,241,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-sky    { background: rgba(14,165,233,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-pink   { background: rgba(236,72,153,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-amber  { background: rgba(245,158,11,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-cyan   { background: rgba(6,182,212,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-rose   { background: rgba(244,63,94,.12); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-red    { background: rgba(239,68,68,.14); }
+[data-theme="dark"] .log-item.oplog-row-log-tone-gray   { background: rgba(100,116,139,.10); }
+
+/* A admin.css 第 968～981 行：類型膠囊深色底 */
+[data-theme="dark"] .log-type.log-tone-blue { background: rgba(59,130,246,.22); }
+[data-theme="dark"] .log-type.log-tone-violet { background: rgba(168,85,247,.22); }
+[data-theme="dark"] .log-type.log-tone-purple { background: rgba(139,92,246,.22); }
+[data-theme="dark"] .log-type.log-tone-green { background: rgba(34,197,94,.22); }
+[data-theme="dark"] .log-type.log-tone-teal { background: rgba(20,184,166,.22); }
+[data-theme="dark"] .log-type.log-tone-orange { background: rgba(249,115,22,.22); }
+[data-theme="dark"] .log-type.log-tone-indigo { background: rgba(99,102,241,.22); }
+[data-theme="dark"] .log-type.log-tone-sky { background: rgba(14,165,233,.22); }
+[data-theme="dark"] .log-type.log-tone-pink { background: rgba(236,72,153,.22); }
+[data-theme="dark"] .log-type.log-tone-amber { background: rgba(245,158,11,.24); }
+[data-theme="dark"] .log-type.log-tone-cyan { background: rgba(6,182,212,.22); }
+[data-theme="dark"] .log-type.log-tone-rose { background: rgba(244,63,94,.22); }
+[data-theme="dark"] .log-type.log-tone-red { background: rgba(239,68,68,.22); }
+[data-theme="dark"] .log-type.log-tone-gray { background: rgba(100,116,139,.24); }

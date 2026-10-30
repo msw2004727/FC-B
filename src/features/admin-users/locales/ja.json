@@ -1,0 +1,95 @@
+{
+  "title": "ユーザー管理",
+  "back": "戻る",
+  "access": {
+    "deniedTitle": "権限がありません",
+    "deniedBody": "ユーザー管理を表示する権限がありません。"
+  },
+  "filter": {
+    "toggleLabel": "ユーザーを検索・絞り込み",
+    "keywordPlaceholder": "ユーザーを検索...",
+    "roleAll": "すべての権限",
+    "genderAll": "すべての性別",
+    "joinedRange": "参加からの日数",
+    "loginRange": "最終ログインからの日数",
+    "rangeFrom": "以上",
+    "rangeTo": "以下",
+    "regionPlaceholder": "地域",
+    "roleLabel": "権限",
+    "genderLabel": "性別"
+  },
+  "gender": {
+    "male": "男性",
+    "female": "女性",
+    "other": "その他",
+    "undisclosed": "非公開"
+  },
+  "list": {
+    "loading": "読み込み中…",
+    "loadFailed": "ユーザーの読み込みに失敗しました",
+    "retry": "再試行",
+    "empty": "条件に合うユーザーが見つかりません",
+    "loadMore": "さらに表示（{shown} / {total} 件表示中）",
+    "refresh": "更新",
+    "partialNote": "ユーザー数が多いため、{total} 人中 {loaded} 人のみ読み込み済みです。検索・絞り込みは読み込み済みのユーザーが対象です。",
+    "partialUnknown": "ユーザー数が多いため、{loaded} 人のみ読み込み済みです。検索・絞り込みは読み込み済みのユーザーが対象です。",
+    "loadMoreUsers": "さらにユーザーを読み込む"
+  },
+  "card": {
+    "email": "Email：",
+    "restrictState": "制限状態：",
+    "restricted": "制限中",
+    "normal": "通常",
+    "lastLogin": "最終ログイン：",
+    "noRecord": "記録なし",
+    "edit": "編集",
+    "view": "表示",
+    "restrict": "制限",
+    "unrestrict": "制限を解除"
+  },
+  "modal": {
+    "title": "ユーザーを編集 — {name}",
+    "close": "閉じる",
+    "role": "権限",
+    "region": "地域",
+    "gender": "性別",
+    "birthday": "生年月日",
+    "sports": "スポーツ",
+    "sportsPlaceholder": "例：サッカー、バスケットボール",
+    "phone": "電話番号",
+    "phonePlaceholder": "例：0912-345-678",
+    "email": "メールアドレス",
+    "emailPlaceholder": "例：name@example.com",
+    "unfilled": "未入力",
+    "currentValue": "現在の値：{value}",
+    "cancel": "キャンセル",
+    "save": "保存"
+  },
+  "restrict": {
+    "do": "制限",
+    "undo": "制限を解除",
+    "confirm": "「{name}」を{action}しますか？",
+    "failed": "{action}に失敗しました。しばらくしてからもう一度お試しください"
+  },
+  "toast": {
+    "refreshed": "更新しました",
+    "refreshFailed": "更新に失敗しました。しばらくしてからもう一度お試しください",
+    "saving": "保存中です。しばらくお待ちください",
+    "noPermission": "権限がありません",
+    "userNotFound": "ユーザーが見つかりません",
+    "restrictUserNotFound": "ユーザーが見つかりません",
+    "noChange": "変更はありません",
+    "invalidEmail": "有効なメールアドレスを入力するか、空欄にして削除してください。",
+    "saveFailed": "保存に失敗しました。データは更新されていません",
+    "updated": "「{name}」の情報を更新しました",
+    "restricted": "ユーザーを制限しました",
+    "unrestricted": "制限を解除しました",
+    "onlyUserRole": "制限できるのは一般ユーザーのみです",
+    "cannotRestrictSelf": "自分自身は制限できません",
+    "cannotRestrictSuperAdmin": "総管理者は制限できません"
+  },
+  "error": {
+    "permission": "この操作を行う権限がありません",
+    "notFound": "ユーザーが見つかりません"
+  }
+}

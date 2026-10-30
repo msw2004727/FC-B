@@ -41,6 +41,8 @@
     "allTypes": "전체 유형",
     "loading": "불러오는 중...",
     "empty": "조건에 맞는 기록이 없습니다",
+    "loadError": "작업 로그를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도",
     "uncategorized": "미분류",
     "unmarked": "미표시",
     "none": "없음",

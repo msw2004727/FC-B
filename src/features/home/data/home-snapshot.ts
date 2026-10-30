@@ -233,6 +233,14 @@ export function writeBannersSnapshot(banners: PublicBannerList, nowMs: number = 
   writeSection(BANNERS_SNAPSHOT_KEY, items, nowMs);
 }
 
+/**
+ * 後台（M-145）儲存／下架／上架／清空橫幅後，同一用戶端立刻丟掉橫幅快照，下次開首頁改走伺服器。
+ * 只清橫幅一段；其他裝置的快照仍受 30 分鐘期限限制（已知）。
+ */
+export function invalidateBannersSnapshot(): void {
+  removeSection(BANNERS_SNAPSHOT_KEY);
+}
+
 /** 讀運動統計快照：沒有、過期、版本不同或格式不符都回 null；未知的運動 key 略過。 */
 export function readSportsSnapshot(nowMs: number = Date.now()): SnapshotRead<SportRow> | null {
   const section = readSection(SPORTS_SNAPSHOT_KEY, nowMs);

@@ -1,0 +1,94 @@
+{
+  "title": "Home Management",
+  "nav": "Home Management",
+  "back": "Back",
+  "permissionDenied": "Permission denied",
+  "permissionDeniedBody": "You do not have permission to manage the home page.",
+  "sectionTitle": "Banner Ads (3 slots)",
+  "loading": "Loading...",
+  "loadError": "Failed to load banners. Please try again later.",
+  "retry": "Retry",
+  "empty": "No ad slots yet",
+  "card": {
+    "defaultSlotName": "Slot {slot}",
+    "statusEmpty": "Empty",
+    "statusActive": "Active",
+    "statusScheduled": "Scheduled",
+    "statusExpired": "Delisted",
+    "timeEmpty": "No ad set yet",
+    "timeNotSet": "No time set",
+    "forever": "Permanent",
+    "remain": "{days} days left",
+    "clicks": "{n} clicks"
+  },
+  "action": {
+    "set": "Set up",
+    "edit": "Edit",
+    "delist": "Delist",
+    "relist": "Relist",
+    "clear": "Delete"
+  },
+  "confirm": {
+    "clear": "Delete this ad? All its settings will be cleared."
+  },
+  "toast": {
+    "denied": "Permission denied",
+    "delisted": "Ad delisted",
+    "relisted": "Ad relisted",
+    "cleared": "Ad deleted",
+    "uploading": "Uploading image...",
+    "savedScheduled": "Banner scheduled; it will go live at {time}",
+    "savedNow": "Banner updated and live now",
+    "saveError": "Save failed. Please try again later.",
+    "actionError": "Action failed. Please try again later.",
+    "relistExpired": "The end time has passed. Edit the end time before relisting.",
+    "imageProcessError": "Image processing failed. Please try again.",
+    "imageTooLarge": "The image is too large. Please choose a smaller one."
+  },
+  "form": {
+    "setTitle": "Set up {slot}",
+    "editTitle": "Edit {slot}",
+    "cancel": "Cancel",
+    "slotName": "Slot name",
+    "slotNamePlaceholder": "e.g. Slot 1",
+    "image": "Ad image",
+    "imageUpload": "Tap to upload an image",
+    "imageHint": "Suggested size 1200 x 545 px, JPG / PNG, within 5MB",
+    "title": "Banner headline",
+    "titlePlaceholder": "e.g. Find a game after work",
+    "subtitle": "Banner subheading",
+    "subtitlePlaceholder": "e.g. Find events, host games and sign up, all in one place.",
+    "colors": "Banner text color",
+    "titleColor": "Headline",
+    "subtitleColor": "Subheading",
+    "link": "Link (optional)",
+    "linkPlaceholder": "https://...",
+    "mode": "Start mode",
+    "modeNow": "Start now",
+    "modeScheduled": "Schedule",
+    "publishAt": "Start time",
+    "unpublishAt": "End time",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "error": {
+    "titleTooLong": "The banner headline cannot exceed 18 characters",
+    "subtitleTooLong": "The banner subheading cannot exceed 32 characters",
+    "slotNameRequired": "Please enter a slot name",
+    "slotNameTooLong": "The slot name cannot exceed 12 characters",
+    "publishRequired": "Please choose a start time",
+    "linkInvalid": "The link must start with http:// or https://",
+    "linkChars": "The link cannot contain spaces, quotes, < >, backticks or backslashes",
+    "timeInvalid": "The time format is not valid",
+    "endNotAfterNow": "The end time must be later than now",
+    "endNotAfterStart": "The end time must be later than the start time"
+  },
+  "image": {
+    "badType": "Please upload a JPG / PNG / WebP image",
+    "tooBig": "The image is too large (max 5MB)"
+  },
+  "cropper": {
+    "title": "Banner image",
+    "targetLabel": "Home banner"
+  }
+}

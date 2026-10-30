@@ -41,6 +41,8 @@
     "allTypes": "Tất cả loại",
     "loading": "Đang tải...",
     "empty": "Không có bản ghi phù hợp",
+    "loadError": "Không thể tải nhật ký thao tác. Vui lòng thử lại.",
+    "retry": "Thử lại",
     "uncategorized": "Chưa phân loại",
     "unmarked": "Chưa ghi",
     "none": "Không có",

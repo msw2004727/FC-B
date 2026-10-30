@@ -1,0 +1,94 @@
+{
+  "title": "首页管理",
+  "nav": "首页管理",
+  "back": "返回",
+  "permissionDenied": "权限不足",
+  "permissionDeniedBody": "您没有权限管理首页。",
+  "sectionTitle": "Banner 广告（3 个广告位）",
+  "loading": "加载中...",
+  "loadError": "横幅加载失败，请稍后重试",
+  "retry": "重试",
+  "empty": "目前没有广告位",
+  "card": {
+    "defaultSlotName": "广告位 {slot}",
+    "statusEmpty": "空白",
+    "statusActive": "启用中",
+    "statusScheduled": "已排程",
+    "statusExpired": "已下架",
+    "timeEmpty": "尚未设置广告",
+    "timeNotSet": "尚未设置时间",
+    "forever": "永久",
+    "remain": "剩余 {days} 天",
+    "clicks": "点击 {n} 次"
+  },
+  "action": {
+    "set": "设置",
+    "edit": "编辑",
+    "delist": "下架",
+    "relist": "重新上架",
+    "clear": "删除"
+  },
+  "confirm": {
+    "clear": "确定要删除此广告？将清空所有设置。"
+  },
+  "toast": {
+    "denied": "权限不足",
+    "delisted": "广告已下架",
+    "relisted": "广告已重新上架",
+    "cleared": "广告已删除",
+    "uploading": "图片上传中...",
+    "savedScheduled": "Banner 已排程，将于 {time} 启用",
+    "savedNow": "Banner 已更新并立即启用",
+    "saveError": "保存失败，请稍后重试",
+    "actionError": "操作失败，请稍后重试",
+    "relistExpired": "结束时间已过，请先编辑结束时间再上架",
+    "imageProcessError": "图片处理失败，请重试",
+    "imageTooLarge": "图片太大，请换一张较小的图片"
+  },
+  "form": {
+    "setTitle": "设置 {slot}",
+    "editTitle": "编辑 {slot}",
+    "cancel": "取消",
+    "slotName": "广告位名称",
+    "slotNamePlaceholder": "例：广告位 1",
+    "image": "广告图片",
+    "imageUpload": "点击上传图片",
+    "imageHint": "建议尺寸 1200 x 545 px，JPG / PNG，5MB 内",
+    "title": "Banner 大标题",
+    "titlePlaceholder": "例：下班揪人一起动",
+    "subtitle": "Banner 小标题",
+    "subtitlePlaceholder": "例：找活动、开团、加入报名，一个地方完成。",
+    "colors": "Banner 字色",
+    "titleColor": "大标题",
+    "subtitleColor": "小标题",
+    "link": "跳转链接（选填）",
+    "linkPlaceholder": "https://...",
+    "mode": "启用方式",
+    "modeNow": "立即启用",
+    "modeScheduled": "预约启用",
+    "publishAt": "启用时间",
+    "unpublishAt": "结束时间",
+    "save": "保存",
+    "saving": "保存中..."
+  },
+  "error": {
+    "titleTooLong": "Banner 大标题不可超过 18 字",
+    "subtitleTooLong": "Banner 小标题不可超过 32 字",
+    "slotNameRequired": "请输入广告位名称",
+    "slotNameTooLong": "广告位名称不可超过 12 字",
+    "publishRequired": "请选择启用时间",
+    "linkInvalid": "跳转链接需以 http:// 或 https:// 开头",
+    "linkChars": "跳转链接不可包含空白、引号、< >、反引号或反斜杠",
+    "timeInvalid": "时间格式不正确",
+    "endNotAfterNow": "结束时间必须晚于现在",
+    "endNotAfterStart": "结束时间必须晚于启用时间"
+  },
+  "image": {
+    "badType": "请上传 JPG / PNG / WebP 图片",
+    "tooBig": "图片太大，不能超过 5MB"
+  },
+  "cropper": {
+    "title": "Banner 图片",
+    "targetLabel": "首页 Banner"
+  }
+}

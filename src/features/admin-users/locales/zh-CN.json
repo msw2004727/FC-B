@@ -1,0 +1,95 @@
+{
+  "title": "用户管理",
+  "back": "返回",
+  "access": {
+    "deniedTitle": "权限不足",
+    "deniedBody": "你没有查看用户管理的权限。"
+  },
+  "filter": {
+    "toggleLabel": "搜索与筛选用户",
+    "keywordPlaceholder": "搜索用户...",
+    "roleAll": "全部身份",
+    "genderAll": "全部性别",
+    "joinedRange": "加入区间（日）",
+    "loginRange": "最后登录区间（日）",
+    "rangeFrom": "起",
+    "rangeTo": "止",
+    "regionPlaceholder": "地区",
+    "roleLabel": "身份",
+    "genderLabel": "性别"
+  },
+  "gender": {
+    "male": "男",
+    "female": "女",
+    "other": "其他",
+    "undisclosed": "不透露"
+  },
+  "list": {
+    "loading": "加载中…",
+    "loadFailed": "加载用户资料失败",
+    "retry": "重试",
+    "empty": "找不到符合条件的用户",
+    "loadMore": "加载更多（已显示 {shown} / {total}）",
+    "refresh": "刷新",
+    "partialNote": "用户数量较多，目前只加载了 {loaded} / {total} 位，搜索与筛选只涵盖已加载的用户。",
+    "partialUnknown": "用户数量较多，目前只加载了 {loaded} 位，搜索与筛选只涵盖已加载的用户。",
+    "loadMoreUsers": "加载更多用户"
+  },
+  "card": {
+    "email": "Email：",
+    "restrictState": "限制状态：",
+    "restricted": "限制中",
+    "normal": "正常",
+    "lastLogin": "最后登录：",
+    "noRecord": "暂无记录",
+    "edit": "编辑",
+    "view": "查看",
+    "restrict": "限制",
+    "unrestrict": "解除限制"
+  },
+  "modal": {
+    "title": "编辑用户 — {name}",
+    "close": "关闭",
+    "role": "权限",
+    "region": "地区",
+    "gender": "性别",
+    "birthday": "生日",
+    "sports": "运动类别",
+    "sportsPlaceholder": "例：足球、篮球",
+    "phone": "联系电话",
+    "phonePlaceholder": "例：0912-345-678",
+    "email": "电子邮件",
+    "emailPlaceholder": "例：name@example.com",
+    "unfilled": "未填写",
+    "currentValue": "当前值：{value}",
+    "cancel": "取消",
+    "save": "保存"
+  },
+  "restrict": {
+    "do": "限制",
+    "undo": "解除限制",
+    "confirm": "确定要{action}「{name}」吗？",
+    "failed": "{action}失败，请稍后再试"
+  },
+  "toast": {
+    "refreshed": "已刷新",
+    "refreshFailed": "刷新失败，请稍后再试",
+    "saving": "数据保存中，请稍候",
+    "noPermission": "权限不足",
+    "userNotFound": "找不到该用户",
+    "restrictUserNotFound": "找不到用户",
+    "noChange": "没有变更",
+    "invalidEmail": "请输入有效的电子邮件，或留空清除。",
+    "saveFailed": "保存失败，数据未更新",
+    "updated": "已更新「{name}」的资料",
+    "restricted": "已限制用户",
+    "unrestricted": "已解除限制",
+    "onlyUserRole": "目前仅支持限制一般用户",
+    "cannotRestrictSelf": "不可限制自己",
+    "cannotRestrictSuperAdmin": "无法限制总管"
+  },
+  "error": {
+    "permission": "权限不足，无法执行此操作",
+    "notFound": "找不到该用户"
+  }
+}

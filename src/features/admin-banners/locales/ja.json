@@ -1,0 +1,94 @@
+{
+  "title": "ホーム管理",
+  "nav": "ホーム管理",
+  "back": "戻る",
+  "permissionDenied": "権限がありません",
+  "permissionDeniedBody": "ホームを管理する権限がありません。",
+  "sectionTitle": "バナー広告（3 枠）",
+  "loading": "読み込み中...",
+  "loadError": "バナーの読み込みに失敗しました。しばらくしてからやり直してください。",
+  "retry": "再試行",
+  "empty": "広告枠がありません",
+  "card": {
+    "defaultSlotName": "広告枠 {slot}",
+    "statusEmpty": "空き",
+    "statusActive": "掲載中",
+    "statusScheduled": "予約済み",
+    "statusExpired": "掲載停止",
+    "timeEmpty": "広告は未設定です",
+    "timeNotSet": "時間が未設定です",
+    "forever": "無期限",
+    "remain": "残り {days} 日",
+    "clicks": "{n} 回クリック"
+  },
+  "action": {
+    "set": "設定",
+    "edit": "編集",
+    "delist": "掲載停止",
+    "relist": "再掲載",
+    "clear": "削除"
+  },
+  "confirm": {
+    "clear": "この広告を削除しますか？すべての設定が消去されます。"
+  },
+  "toast": {
+    "denied": "権限がありません",
+    "delisted": "広告の掲載を停止しました",
+    "relisted": "広告を再掲載しました",
+    "cleared": "広告を削除しました",
+    "uploading": "画像をアップロード中...",
+    "savedScheduled": "バナーを予約しました。{time} に掲載を開始します",
+    "savedNow": "バナーを更新し、すぐに掲載を開始しました",
+    "saveError": "保存に失敗しました。しばらくしてからやり直してください。",
+    "actionError": "操作に失敗しました。しばらくしてからやり直してください。",
+    "relistExpired": "掲載終了時刻を過ぎています。先に終了時刻を編集してから再掲載してください",
+    "imageProcessError": "画像の処理に失敗しました。もう一度お試しください",
+    "imageTooLarge": "画像が大きすぎます。小さい画像を選んでください。"
+  },
+  "form": {
+    "setTitle": "{slot} を設定",
+    "editTitle": "{slot} を編集",
+    "cancel": "キャンセル",
+    "slotName": "広告枠の名前",
+    "slotNamePlaceholder": "例：広告枠 1",
+    "image": "広告画像",
+    "imageUpload": "タップして画像をアップロード",
+    "imageHint": "推奨サイズ 1200 x 545 px、JPG / PNG、5MB 以内",
+    "title": "バナーの見出し",
+    "titlePlaceholder": "例：仕事帰りに一緒に運動しよう",
+    "subtitle": "バナーのサブ見出し",
+    "subtitlePlaceholder": "例：イベント探し、開催、申込みをひとつの場所で。",
+    "colors": "バナーの文字色",
+    "titleColor": "見出し",
+    "subtitleColor": "サブ見出し",
+    "link": "リンク先（任意）",
+    "linkPlaceholder": "https://...",
+    "mode": "掲載方法",
+    "modeNow": "すぐに掲載",
+    "modeScheduled": "予約して掲載",
+    "publishAt": "掲載開始時刻",
+    "unpublishAt": "掲載終了時刻",
+    "save": "保存",
+    "saving": "保存中..."
+  },
+  "error": {
+    "titleTooLong": "バナーの見出しは 18 文字以内にしてください",
+    "subtitleTooLong": "バナーのサブ見出しは 32 文字以内にしてください",
+    "slotNameRequired": "広告枠の名前を入力してください",
+    "slotNameTooLong": "広告枠の名前は 12 文字以内にしてください",
+    "publishRequired": "掲載開始時刻を選んでください",
+    "linkInvalid": "リンクは http:// または https:// で始めてください",
+    "linkChars": "リンクには空白、引用符、< >、バッククォート、バックスラッシュを含められません",
+    "timeInvalid": "時刻の形式が正しくありません",
+    "endNotAfterNow": "掲載終了時刻は現在より後にしてください",
+    "endNotAfterStart": "掲載終了時刻は掲載開始時刻より後にしてください"
+  },
+  "image": {
+    "badType": "JPG / PNG / WebP の画像をアップロードしてください",
+    "tooBig": "画像が大きすぎます（5MB まで）"
+  },
+  "cropper": {
+    "title": "バナー画像",
+    "targetLabel": "ホームのバナー"
+  }
+}
