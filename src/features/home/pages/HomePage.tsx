@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'preact-iso';
 import { useActiveSport } from '@/core/sport-filter';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
+import { SHOW_ANNOUNCEMENTS } from '@/core/hidden-features';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import { useLegacyT } from '@/i18n/i18n';
@@ -207,13 +208,15 @@ export default function HomePage(): JSX.Element {
         setBanners([...publicList]);
       })
       .catch(() => undefined);
-    trackPublicRead(loadActiveAnnouncements())
-      .then((list) => {
-        if (active) setAnnouncements(list);
-      })
-      .catch(() => {
-        if (active) setAnnouncements([]);
-      });
+    if (SHOW_ANNOUNCEMENTS) {
+      trackPublicRead(loadActiveAnnouncements())
+        .then((list) => {
+          if (active) setAnnouncements(list);
+        })
+        .catch(() => {
+          if (active) setAnnouncements([]);
+        });
+    }
     return () => {
       active = false;
       bannersRest?.cancel();
@@ -350,62 +353,66 @@ export default function HomePage(): JSX.Element {
         </div>
 
         {/* System Announcement Marquee */}
-        <div
-          class="announce-marquee-wrap"
-          id="announce-marquee-wrap"
-          style={announcements.length > 0 ? undefined : 'display:none'}
-        >
-          <span class="announce-marquee-label">公告</span>
-          <div class="announce-marquee-track" id="announce-marquee-track">
-            {announcements.length > 0 && (
-              <div
-                class="announce-marquee-inner"
-                style={`--marquee-duration: ${marqueeDuration}s`}
-              >
-                {[...announcements, ...announcements].map((ann, idx) => (
-                  <span
-                    key={`${ann.id}-${idx}`}
-                    class="announce-marquee-item"
-                    onClick={() => setSelectedAnn(ann)}
-                  >
-                    {`${ann.title || '公告'}：${ann.content || ''}`}
-                  </span>
-                ))}
-              </div>
-            )}
+        {SHOW_ANNOUNCEMENTS && (
+          <div
+            class="announce-marquee-wrap"
+            id="announce-marquee-wrap"
+            style={announcements.length > 0 ? undefined : 'display:none'}
+          >
+            <span class="announce-marquee-label">公告</span>
+            <div class="announce-marquee-track" id="announce-marquee-track">
+              {announcements.length > 0 && (
+                <div
+                  class="announce-marquee-inner"
+                  style={`--marquee-duration: ${marqueeDuration}s`}
+                >
+                  {[...announcements, ...announcements].map((ann, idx) => (
+                    <span
+                      key={`${ann.id}-${idx}`}
+                      class="announce-marquee-item"
+                      onClick={() => setSelectedAnn(ann)}
+                    >
+                      {`${ann.title || '公告'}：${ann.content || ''}`}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Announcement Detail Modal */}
-        <div
-          class={`modal-overlay${selectedAnn ? ' open' : ''}`}
-          id="announce-detail-modal"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedAnn(null);
-          }}
-        >
-          <div class={`modal announcement-detail-modal${selectedAnn ? ' open' : ''}`}>
-            <div class="modal-header">
-              <h3 id="ann-detail-title">{selectedAnn?.title || (selectedAnn ? '公告' : '')}</h3>
-              <button
-                class="modal-close"
-                type="button"
-                onClick={() => setSelectedAnn(null)}
+        {SHOW_ANNOUNCEMENTS && (
+          <div
+            class={`modal-overlay${selectedAnn ? ' open' : ''}`}
+            id="announce-detail-modal"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedAnn(null);
+            }}
+          >
+            <div class={`modal announcement-detail-modal${selectedAnn ? ' open' : ''}`}>
+              <div class="modal-header">
+                <h3 id="ann-detail-title">{selectedAnn?.title || (selectedAnn ? '公告' : '')}</h3>
+                <button
+                  class="modal-close"
+                  type="button"
+                  onClick={() => setSelectedAnn(null)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div class="modal-body" id="ann-detail-body">
+                {selectedAnn?.content || ''}
+              </div>
+              <div
+                id="ann-detail-footer"
+                style="padding:.4rem 1.2rem .8rem;display:flex;align-items:center;gap:.5rem;font-size:.72rem;color:var(--text-muted)"
               >
-                ✕
-              </button>
-            </div>
-            <div class="modal-body" id="ann-detail-body">
-              {selectedAnn?.content || ''}
-            </div>
-            <div
-              id="ann-detail-footer"
-              style="padding:.4rem 1.2rem .8rem;display:flex;align-items:center;gap:.5rem;font-size:.72rem;color:var(--text-muted)"
-            >
-              {selectedAnn ? <span>{selectedAnn.publishAt || ''}</span> : null}
+                {selectedAnn ? <span>{selectedAnn.publishAt || ''}</span> : null}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* My Next Activity */}
         <HomeNextActivity

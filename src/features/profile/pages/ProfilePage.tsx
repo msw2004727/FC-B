@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
+import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt } from '@/i18n/i18n';
 import { useViewer, type ViewerView } from '../data/viewer';
 import { loadUserProfile, type UserProfile } from '../data/profile-model';
@@ -153,7 +154,9 @@ function ProfileContent({
         onSaved={(patch) => setProfile((p) => ({ ...p, ...patch }))}
       />
 
-      <LegacyFavoritesCard uid={uid} profile={profile} />
+      {SHOW_FAVORITES && (
+        <LegacyFavoritesCard uid={uid} profile={profile} />
+      )}
       <LegacyApplicationsCard uid={uid} profile={profile} />
       <LegacyCompanionsCard uid={uid} profile={profile} onSaved={saved} />
       <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={summaryRefreshed} />

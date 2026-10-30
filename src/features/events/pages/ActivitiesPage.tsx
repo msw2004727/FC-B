@@ -1,4 +1,5 @@
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
+import { SHOW_FAVORITES } from '@/core/hidden-features';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -346,6 +347,7 @@ export default function ActivitiesPage(): JSX.Element {
 
   // M-076：viewer.uid 變動時讀取 `users/{uid}.favorites`（照 A `_getFavorites`；失敗視為空收藏）
   useEffect(() => {
+    if (!SHOW_FAVORITES) return;
     const sequence = ++favoritesRequestSeq.current;
     const uid = viewer.uid;
     if (!uid) {

@@ -13,6 +13,16 @@ import type { EventDoc } from '../data/types';
 import * as favoritesMod from '../data/favorites';
 import ActivitiesPage from './ActivitiesPage';
 
+const hiddenFeatures = vi.hoisted(() => ({
+  showFavorites: true,
+  showAnnouncements: true,
+}));
+
+vi.mock('@/core/hidden-features', () => ({
+  get SHOW_FAVORITES() { return hiddenFeatures.showFavorites; },
+  get SHOW_ANNOUNCEMENTS() { return hiddenFeatures.showAnnouncements; },
+}));
+
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/i18n/i18n')>()),
   useT: () => t,
@@ -74,6 +84,8 @@ function mount(): ReturnType<typeof render> {
 }
 
 beforeEach(async () => {
+  hiddenFeatures.showFavorites = true;
+  hiddenFeatures.showAnnouncements = true;
   // 運動選擇會記在 localStorage（照 A），每案先清掉再重設全站狀態。
   try { localStorage.removeItem(ACTIVE_SPORT_STORAGE_KEY); } catch { /* ignore */ }
   _resetSportFilterForTest();
@@ -124,6 +136,19 @@ afterEach(() => {
 });
 
 describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
+  it('收藏關閉時不渲染愛心，也不讀取收藏', async () => {
+    hiddenFeatures.showFavorites = false;
+
+    const { container } = mount();
+    await waitFor(() => {
+      expect(container.querySelector('.tl-event-row[data-event-id="public-football"]')).toBeTruthy();
+      expect(loadViewerRegistrations).toHaveBeenCalledWith('viewer');
+    });
+
+    expect(container.querySelector('.fav-heart')).toBeNull();
+    expect(favoritesMod.loadFavorites).not.toHaveBeenCalled();
+  });
+
   it('renders legacy A skeleton ids, classes, month header, date column, and card fields', async () => {
     const { container } = mount();
     await waitFor(() => {

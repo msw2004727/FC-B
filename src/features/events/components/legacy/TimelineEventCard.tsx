@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import { getEventParticipantStats } from '../../data/participant-stats';
 import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
@@ -378,28 +379,30 @@ export function TimelineEventCard({
       </div>
       <div class="tl-event-icons">
         {/* M-076：收藏愛心（照 A `_favHeartHtml` 外觀）；U-022：擋冒泡避免開詳情 */}
-        <button
-          type="button"
-          class={isFavorited ? 'fav-heart active' : 'fav-heart'}
-          data-fav-type="Event"
-          data-fav-id={event.id || ''}
-          title={isFavorited ? '取消收藏' : '加入收藏'}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite(event);
-          }}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill={isFavorited ? 'var(--danger)' : 'none'}
-            stroke={isFavorited ? 'var(--danger)' : 'var(--text-muted)'}
-            stroke-width="2"
+        {SHOW_FAVORITES && (
+          <button
+            type="button"
+            class={isFavorited ? 'fav-heart active' : 'fav-heart'}
+            data-fav-type="Event"
+            data-fav-id={event.id || ''}
+            title={isFavorited ? '取消收藏' : '加入收藏'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(event);
+            }}
           >
-            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
-          </svg>
-        </button>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill={isFavorited ? 'var(--danger)' : 'none'}
+              stroke={isFavorited ? 'var(--danger)' : 'var(--text-muted)'}
+              stroke-width="2"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+            </svg>
+          </button>
+        )}
         <span
           class="event-sport-icon tl-event-sport-corner"
           title={sportLabel}

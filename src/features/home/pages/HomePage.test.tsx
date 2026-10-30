@@ -20,6 +20,16 @@ import {
 } from '../data/next-activity';
 import HomePage from './HomePage';
 
+const hiddenFeatures = vi.hoisted(() => ({
+  showFavorites: true,
+  showAnnouncements: true,
+}));
+
+vi.mock('@/core/hidden-features', () => ({
+  get SHOW_FAVORITES() { return hiddenFeatures.showFavorites; },
+  get SHOW_ANNOUNCEMENTS() { return hiddenFeatures.showAnnouncements; },
+}));
+
 const mockRoute = vi.fn();
 
 vi.mock('preact-iso', () => ({
@@ -106,6 +116,8 @@ function deferred<T>(): {
 }
 
 beforeEach(() => {
+  hiddenFeatures.showFavorites = true;
+  hiddenFeatures.showAnnouncements = true;
   vi.resetAllMocks();
   _resetUseEventsForTest();
   // 首屏快照（T-042）存在 localStorage，會在案例之間殘留：每個案例從沒有快照開始，快照行為另在 HomePage.snapshot.test.tsx 測。
@@ -129,6 +141,20 @@ afterEach(() => {
 });
 
 describe('HomePage (legacy A DOM & CSS)', () => {
+  it('公告關閉時不渲染跑馬燈與詳情視窗，也不讀取公告', async () => {
+    hiddenFeatures.showAnnouncements = false;
+
+    const { container } = render(<HomePage />);
+    await waitFor(() => {
+      expect(loadActiveBanners).toHaveBeenCalledTimes(1);
+    });
+
+    expect(container.querySelector('.announce-marquee-wrap')).toBeNull();
+    expect(container.querySelector('#announce-detail-modal')).toBeNull();
+    expect(container.querySelector('.announcement-detail-modal')).toBeNull();
+    expect(loadActiveAnnouncements).not.toHaveBeenCalled();
+  });
+
   it('renders legacy A container structure and key IDs/classes', async () => {
     const { container } = render(<HomePage />);
     expect(container.querySelector('.legacy-ui > section.page.active#page-home')).toBeTruthy();

@@ -23,6 +23,7 @@ import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staf
 import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
 import type { RegLogRegistration } from '../data/event-reg-log';
 import { useGoBack } from '@/core/back-guard';
+import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
 import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -1514,27 +1515,31 @@ function EventDetailSession({
             <h2 id="detail-title" style="margin:0;min-width:0;flex:1" data-i18n="活動名稱">
               {event.title || t('events.card.untitled')}
               {' '}
-              {/* 下一批補：收藏愛心 */}
-              <button
-                type="button"
-                class="fav-heart"
-                data-fav-type="Event"
-                data-fav-id={eventId}
-                title="加入收藏"
-                aria-label="加入收藏"
-                onClick={handleUnavailable}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="var(--text-muted)"
-                  stroke-width="2"
-                >
-                  <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
-                </svg>
-              </button>
+              {SHOW_FAVORITES && (
+                <>
+                  {/* 下一批補：收藏愛心 */}
+                  <button
+                    type="button"
+                    class="fav-heart"
+                    data-fav-type="Event"
+                    data-fav-id={eventId}
+                    title="加入收藏"
+                    aria-label="加入收藏"
+                    onClick={handleUnavailable}
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--text-muted)"
+                      stroke-width="2"
+                    >
+                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+                    </svg>
+                  </button>
+                </>
+              )}
             </h2>
             <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />
           </div>
