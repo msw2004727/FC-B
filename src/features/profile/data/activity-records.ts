@@ -288,7 +288,7 @@ function buildAttendanceIndex(
 export function parseEventStartMs(value: unknown): number | null {
   if (typeof value !== 'string' || !value) return null;
   const [date = '', time = ''] = value.split(' ');
-  if (date.split('/').length !== 3 || date.includes('T')) return null;
+  if (date.split('/').length !== 3) return null;
   const start = time.split('~')[0] ?? '';
   const [hour, minute] = start.split(':').map(Number);
   const minuteTime = String(hour || 0) + ':' + String(minute || 0).padStart(2, '0');
