@@ -2,7 +2,7 @@
 // 完全對齊 A `js/config.js`（ROLES、DRAWER_MENUS）與 `js/modules/role.js`（_canAccessDrawerItem、renderDrawerMenu）。
 
 import type { RouteAccessContext } from '@/core/feature-types';
-import { drawerOwnActivityManage } from '@/core/drawer-access';
+import { drawerByRolePermission, drawerOwnActivityManage } from '@/core/drawer-access';
 
 export interface RoleInfo {
   readonly level: number;
@@ -255,6 +255,11 @@ export function canAccessDrawerItem(
 
   if (item.page === 'page-my-activities') {
     return drawerOwnActivityManage(ctx);
+  }
+
+  if (item.page === 'page-admin-repair') {
+    // 入口條件與頁面門檻一致（角色層級持碼＋入口碼）；permissionCode 欄位不決定此項是否顯示。
+    return drawerByRolePermission('admin.repair.event_blocklist')(ctx) && ctx.hasPermission('admin.repair.entry');
   }
 
   if (item.permissionCode) {

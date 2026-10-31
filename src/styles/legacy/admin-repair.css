@@ -1,0 +1,31 @@
+/* 黑名單管理 */
+#repair-pane-event-blocklist .eb-intro,
+#repair-pane-event-blocklist .eb-search-card,
+#repair-pane-event-blocklist .eb-reason-card { margin-bottom: .8rem; }
+#repair-pane-event-blocklist .eb-search-card { position: relative; }
+#repair-pane-event-blocklist .eb-step { display: block; font-weight: 600; font-size: .9rem; margin: 0 0 .45rem; }
+#repair-pane-event-blocklist .eb-intro .eb-step { margin-bottom: .3rem; }
+#repair-pane-event-blocklist .eb-intro-text { font-size: .78rem; color: var(--text-muted); line-height: 1.7; }
+#repair-pane-event-blocklist .eb-selected { margin-top: .5rem; font-size: .78rem; color: var(--text-muted); }
+#repair-pane-event-blocklist .eb-selected strong { color: var(--text-primary); }
+#repair-pane-event-blocklist .eb-add { margin-top: .6rem; }
+#repair-pane-event-blocklist .ce-delegate-dropdown { background: var(--bg-card); box-shadow: var(--shadow); }
+#repair-pane-event-blocklist .ce-delegate-item { width: 100%; text-align: left; }
+#repair-pane-event-blocklist .ce-delegate-item:hover { background: var(--bg-elevated); }
+#repair-pane-event-blocklist .ce-delegate-item-name { color: var(--text-primary); }
+#repair-pane-event-blocklist .ce-delegate-item-meta { color: var(--text-muted); }
+#repair-pane-event-blocklist .eb-result-note { padding: .45rem .6rem; font-size: .78rem; color: var(--text-muted); }
+#repair-pane-event-blocklist #eb-existing-list { font-size: .8rem; color: var(--text-secondary); line-height: 1.6; }
+#repair-pane-event-blocklist .eb-empty { padding: .5rem 0; color: var(--text-muted); }
+#repair-pane-event-blocklist .eb-group { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: .5rem; overflow: hidden; }
+#repair-pane-event-blocklist .eb-group-heading { padding: .4rem .5rem; background: var(--bg-elevated); font-size: .82rem; font-weight: 600; }
+#repair-pane-event-blocklist .eb-group-heading span { font-size: .72rem; color: var(--text-muted); font-weight: 400; }
+#repair-pane-event-blocklist .eb-row { padding: .4rem .5rem; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+#repair-pane-event-blocklist .eb-row-body { flex: 1; min-width: 0; overflow-wrap: break-word; }
+#repair-pane-event-blocklist .eb-row-name { font-size: .82rem; font-weight: 500; }
+#repair-pane-event-blocklist .eb-row-meta { font-size: .7rem; color: var(--text-muted); margin-top: .1rem; }
+#repair-pane-event-blocklist .eb-remove { font-size: .72rem; padding: .2rem .5rem; color: var(--danger); border-color: var(--danger); flex-shrink: 0; }
+#page-admin-repair .eb-note { color: var(--text-muted); font-size: .78rem; line-height: 1.7; margin: .5rem 0 .8rem; }
+#page-admin-repair .eb-center { text-align: center; padding: 2rem; color: var(--text-muted); }
+#repair-pane-event-blocklist input:disabled,
+#repair-pane-event-blocklist button:disabled { opacity: .4; cursor: not-allowed; }

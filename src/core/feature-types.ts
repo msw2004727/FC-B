@@ -10,6 +10,8 @@ export interface RouteAccessContext {
   roleLevel: number;
   capabilities: readonly string[];
   hasPermission: (code: string) => boolean;
+  /** 選填：角色層級的權限清單（與 useViewer() 相容）；省略視為無角色層級權限。 */
+  permissionSources?: { rolePermissions: readonly string[] | null };
 }
 
 export interface FeatureRoute {

@@ -1,0 +1,24 @@
+{
+  "source": "與既有寫入契約對照",
+  "date": "2026-10-30",
+  "payload": {
+    "blockedUids": {
+      "operation": "arrayUnion",
+      "elements": [
+        "targetA"
+      ]
+    },
+    "blockedUidsLog": {
+      "operation": "arrayUnion",
+      "elements": [
+        {
+          "uid": "targetA",
+          "by": "uidA",
+          "action": "add",
+          "at": "2026-10-30T00:00:00.000Z",
+          "reason": "測試原因"
+        }
+      ]
+    }
+  }
+}

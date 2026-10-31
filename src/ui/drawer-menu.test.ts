@@ -20,6 +20,24 @@ function makeAccess(overrides: Partial<RouteAccessContext> = {}): RouteAccessCon
   };
 }
 
+describe('用戶補正管理入口', () => {
+  const repair = DRAWER_MENUS.find((item) => item.page === 'page-admin-repair');
+  const code = 'admin.repair.event_blocklist';
+  const admin = (overrides: Partial<RouteAccessContext>) => makeAccess({ role: 'admin', roleLevel: 4, ...overrides });
+  it('無角色層級持碼時不顯示，即使 hasPermission 全開', () => {
+    expect(canAccessDrawerItem(repair, admin({ hasPermission: () => true }))).toBe(false);
+    expect(canAccessDrawerItem(repair, admin({ hasPermission: () => true, permissionSources: { rolePermissions: ['admin.repair.entry'] } }))).toBe(false);
+  });
+  it('角色層級持碼且有入口碼才顯示；缺入口碼不顯示', () => {
+    const permissionSources = { rolePermissions: [code, 'admin.repair.entry'] };
+    expect(canAccessDrawerItem(repair, admin({ permissionSources, hasPermission: (c) => c === 'admin.repair.entry' }))).toBe(true);
+    expect(canAccessDrawerItem(repair, admin({ permissionSources, hasPermission: () => false }))).toBe(false);
+  });
+  it('super_admin 有入口碼時顯示', () => {
+    expect(canAccessDrawerItem(repair, makeAccess({ role: 'super_admin', roleLevel: 5, hasPermission: () => true }))).toBe(true);
+  });
+});
+
 describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
   it('訪客與一般用戶只看到前 6 個基本入口（含 3 個上鎖入口與 3 個動作入口），不畫多餘分隔線與後台標題', () => {
     const guestNodes = buildDrawerRenderNodes(null);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RouteAccessContext } from './feature-types';
-import { drawerByPermission, drawerOwnActivityManage, drawerSuperAdminOnly } from './drawer-access';
+import { drawerByPermission, drawerByRolePermission, drawerOwnActivityManage, drawerSuperAdminOnly } from './drawer-access';
 
 function access(overrides: Partial<RouteAccessContext> = {}): RouteAccessContext {
   return { uid: 'U_x', role: 'user', roleLevel: 0, capabilities: [], hasPermission: () => false, ...overrides };
@@ -11,6 +11,19 @@ describe('drawer-access（照 A _canAccessDrawerItem）', () => {
     const gate = drawerByPermission('admin.logs.entry');
     expect(gate(access())).toBe(false);
     expect(gate(access({ hasPermission: (c) => c === 'admin.logs.entry' }))).toBe(true);
+  });
+
+  it('黑名單入口照寫入條件：super_admin 與角色層級持碼者顯示，無碼 admin 與個別授權不顯示', () => {
+    const gate = drawerByRolePermission('admin.repair.event_blocklist');
+    const withCode = { rolePermissions: ['admin.repair.event_blocklist'] };
+    expect(gate(access({ role: 'super_admin', roleLevel: 5 }))).toBe(true);
+    expect(gate(access({ role: 'admin', roleLevel: 4, permissionSources: withCode }))).toBe(true);
+    expect(gate(access({ role: 'admin', roleLevel: 4, permissionSources: { rolePermissions: ['admin.repair.entry'] } }))).toBe(false);
+    expect(gate(access({ role: 'admin', roleLevel: 4, permissionSources: { rolePermissions: null } }))).toBe(false);
+    expect(gate(access({ role: 'admin', roleLevel: 4 }))).toBe(false);
+    expect(gate(access({ role: 'admin', roleLevel: 4, hasPermission: () => true }))).toBe(false);
+    expect(gate(access({ role: 'user', permissionSources: withCode, hasPermission: () => true }))).toBe(false);
+    expect(gate(access({ uid: null, role: 'super_admin', roleLevel: 5 }))).toBe(false);
   });
 
   it('權限管理只給 super_admin', () => {

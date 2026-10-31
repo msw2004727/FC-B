@@ -43,7 +43,7 @@ export interface WriteOpLogInput {
   now?: Date;
 }
 
-export async function writeOpLog(input: WriteOpLogInput): Promise<void> {
+export async function writeOpLog(input: WriteOpLogInput, onFailure?: () => void): Promise<void> {
   const now = input.now ?? new Date();
   const docId = generateOpLogDocId(now);
 
@@ -62,7 +62,8 @@ export async function writeOpLog(input: WriteOpLogInput): Promise<void> {
     const { db } = await getFirebase();
     await setDoc(doc(db, OPERATION_LOGS_COLLECTION, docId), payload, { merge: true });
   } catch (err) {
+    if (onFailure) onFailure();
     // eslint-disable-next-line no-console
-    console.error('[opLog]', err);
+    else console.error('[opLog]', err);
   }
 }

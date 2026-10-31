@@ -1,0 +1,142 @@
+[
+  {
+    "label": "一般用戶",
+    "role": "user",
+    "permissions": [],
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "教練",
+    "role": "coach",
+    "permissions": [],
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "領隊",
+    "role": "captain",
+    "permissions": [],
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "管理員",
+    "role": "admin",
+    "permissions": [
+      "admin.repair.entry"
+    ],
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "管理員完整",
+    "role": "admin",
+    "permissions": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "grants": [],
+    "enabled": true,
+    "view": true,
+    "write": true
+  },
+  {
+    "label": "教練完整",
+    "role": "coach",
+    "permissions": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "grants": [],
+    "enabled": true,
+    "view": true,
+    "write": true
+  },
+  {
+    "label": "領隊完整",
+    "role": "captain",
+    "permissions": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "grants": [],
+    "enabled": true,
+    "view": true,
+    "write": true
+  },
+  {
+    "label": "來源缺失",
+    "role": "admin",
+    "permissions": null,
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "來源缺失另有授權",
+    "role": "admin",
+    "permissions": null,
+    "grants": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "enabled": true,
+    "view": true,
+    "write": false
+  },
+  {
+    "label": "用戶另有授權",
+    "role": "user",
+    "permissions": [],
+    "grants": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "enabled": true,
+    "view": true,
+    "write": false
+  },
+  {
+    "label": "用戶角色清單",
+    "role": "user",
+    "permissions": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "grants": [],
+    "enabled": true,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "停用授權",
+    "role": "user",
+    "permissions": [],
+    "grants": [
+      "admin.repair.entry",
+      "admin.repair.event_blocklist"
+    ],
+    "enabled": false,
+    "view": false,
+    "write": false
+  },
+  {
+    "label": "最高管理員",
+    "role": "super_admin",
+    "permissions": null,
+    "grants": [],
+    "enabled": true,
+    "view": true,
+    "write": true
+  }
+]
