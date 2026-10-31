@@ -73,6 +73,7 @@ function defaultParseEventDate(date: string | undefined): Date | null {
   if (!date) return null;
   const day = date.split(' ')[0] ?? '';
   // Q-12：只收斜線日期；保留此消費端只看日期、不依活動時間分桶的語意。
+  // `split(' ')[0]` 後嚴格解析仍會收 `YYYY/MM/DD` 接 T，此守衛維持 Q-12（接 T 回 null→past），非冗餘。
   if (day.split('/').length !== 3 || day.includes('T')) return null;
   const ms = parseEventStartMs(day);
   // Date 只保留注入點簽名，禁止以本地 getter 讀回。
