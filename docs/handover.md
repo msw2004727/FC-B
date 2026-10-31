@@ -115,6 +115,25 @@ npm run check              # 型別＋完整測試＋i18n
 - 歷史紀錄一律以瀏覽器歷史為準：`src/core/overlay-back.ts`（彈窗返回）、`src/core/back-guard.ts`（返回起點、LINE／PWA 首頁哨兵），不要另建站內堆疊。
 - 自訂角色使用者暫時看不到私密活動列表（V 階段保守做法，P 階段補）。
 
+### 0.20261031 上線後觀察與已知限制
+
+觀察點（上線後做，記結果）：
+1. 經驗值發放：同時最多 5 個 `adjustExp` Callable、無額外限流，只靠 `_expDedupe` 去重——看錯誤率與延遲。
+2. 實際結算一場 20～30 人：看總耗時，確認 `expLogs`／`_expDedupe` 無重複。
+3. 手機時區設東京或 UTC 抽驗：活動列表、月曆「今天」、俱樂部週條、掃碼「今天」分桶、首頁下一場標籤。
+4. 掃碼頁每碼讀取量（每碼並行讀出席與報名）與 console。
+5. 掃碼寫入失敗的提示不標人名（卡片禁新增文案）→ 切換後 UI 卡，需站長預覽。
+6. 掃碼頁無離頁警告；iOS 忽略 `beforeunload`；LINE 凍結頁面時 flush 不保證送達——舊站同樣限制。
+回退：還原合流 commit 後 bump，或 Cloudflare Pages 回滾上一版。
+
+已知限制與刻意取捨：
+- T-086c 沒做「掃碼 session 一次載入」：每碼仍並行重讀出席＋報名（多台裝置同時掃碼才看得到彼此的簽到，穩定優先）；每碼讀取量已因拿掉寫後重讀而減半。真正的 session 快取另開切換後省錢卡。
+- 非標準日期寫法（起點帶秒、日期時間間多空白或 `~` 前後空白、斜線日期接 `T` 或 tab）在台北裝置的結果與舊版不同，已寫成「刻意與舊版不同」測試；正式資料 759/759 為標準格式。`scan-events.ts` 的 `includes('T')` 守衛不冗餘（移除會讓接 T 的日期變有效，違反 Q-12），改動前先跑 scan-events 測試。
+- `src/core/taipei-guard.test.ts` 的允許清單釘「檔案＋行號＋完整行文字」；改動被守護檔上方的行時要同步清單。
+- 本機 worktree 以 junction 掛 node_modules 時 `scanner.test.ts` 9 案會紅（`Denied ID …zxing_reader.wasm?url`），是環境問題；FC-B 主目錄單跑與 CI 為綠。
+- 報名／取消永遠等伺服器確認（名額原子性），第一級只縮短送出前的往返；伺服器端「報名檢查強化」（防重複進交易、取消開始時間檢查、黑名單與年齡檢查）排下一次 Functions 部署批次。
+- 後台黑名單頁：選單只對最高管理員或「角色本身持黑名單碼」的人顯示；只有個別授權者看不到選單，只能直接打網址進唯讀頁。
+
 ## 11. 下一位 PM 第一天要做的五件事
 
 1. 讀 FC 的 `CLAUDE.md`、本檔、FC 的 local-only `docs/specs/lite-convergence/handover-private.md`（帳號、平台、待站長授權清單），跑 `npm run check` 確認全綠。
