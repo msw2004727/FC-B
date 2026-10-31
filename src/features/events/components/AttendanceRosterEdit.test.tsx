@@ -714,6 +714,91 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     expect(ops.adds.some((add) => add.type === 'note' && add.note === 'B')).toBe(true);
   });
 
+  it('寫入中改動後第一筆失敗，排隊的第二筆不再送出，畫面維持已還原', async () => {
+    let rejectFirst!: (err: Error) => void;
+    mockWriteAttendanceOps.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        rejectFirst = reject;
+      }),
+    );
+    const onFailed = vi.fn();
+    render(<UidATable eventDocId="evtA" onReload={async () => []} onFailed={onFailed} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+    const checkoutBox = document.getElementById('manual-checkout-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkoutBox.checked).toBe(true);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      rejectFirst(new Error('network error'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onFailed).toHaveBeenCalledWith('甲');
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(false);
+    expect(checkoutBox.checked).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(false);
+    expect(checkoutBox.checked).toBe(false);
+  });
+
+  it('防抖中改動後前一筆失敗，待送出的變更不再送出，畫面維持已還原', async () => {
+    let rejectFirst!: (err: Error) => void;
+    mockWriteAttendanceOps.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        rejectFirst = reject;
+      }),
+    );
+    const onFailed = vi.fn();
+    render(<UidATable eventDocId="evtA" onReload={async () => []} onFailed={onFailed} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+    const checkoutBox = document.getElementById('manual-checkout-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkoutBox.checked).toBe(true);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      rejectFirst(new Error('network error'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onFailed).toHaveBeenCalledWith('甲');
+    expect(checkinBox.checked).toBe(false);
+    expect(checkoutBox.checked).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(false);
+    expect(checkoutBox.checked).toBe(false);
+  });
+
   it('卸載後寫入結束不會再掛上 beforeunload', async () => {
     let resolveFirst!: (value: { addedDocIds: string[]; removedDocIds: string[] }) => void;
     mockWriteAttendanceOps

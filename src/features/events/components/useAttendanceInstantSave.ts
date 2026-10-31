@@ -14,7 +14,7 @@
  * 失敗後下一次頁面傳入的新清單要採用。開始或結束編輯且沒有寫入中項目時，也把本地清單對回頁面資料。
  * 離頁：`visibilitychange`（hidden）、`pagehide`、卸載與切換活動都會 flush 防抖中的寫入，不丟計時器。
  * 有待送或寫入中的變更時註冊 `beforeunload`，清空後解除；卸載之後不再掛回。
- * 排隊中的變更把當下草稿凍進寫入情境，活動切換清掉草稿後重送仍用那份草稿。
+ * 排隊中的變更把當下草稿凍進寫入情境。只有活動切換才用凍結勾選；同一活動重送讀當下草稿，失敗還原後不再送出。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
@@ -466,9 +466,11 @@ export function useAttendanceInstantSave({
         const writeGen = frozen && pinned ? pinned.gen : eventGenRef.current;
         const ui = (): boolean => aliveRef.current && eventGenRef.current === writeGen;
 
-        const wantedRaw = pinned?.selection
-          ?? draftMapRef.current[attendanceKey]
-          ?? computeActualSelection(person, curRecords);
+        // 只有活動切換（frozen）才用凍結勾選。凍結勾選為空時用該次實際狀態，不讀新活動草稿。
+        // 同一活動讀當下草稿：失敗還原已清草稿，防抖或排隊重送不會再寫失敗前的勾選。
+        const wantedRaw = frozen
+          ? (pinned?.selection ?? computeActualSelection(person, curRecords))
+          : (draftMapRef.current[attendanceKey] ?? computeActualSelection(person, curRecords));
         const wanted = normalizeAttendanceSelection({
           checkin: wantedRaw.checkin,
           checkout: wantedRaw.checkout,
