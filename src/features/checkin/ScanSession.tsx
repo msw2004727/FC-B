@@ -231,7 +231,6 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
   const [popup, setPopup] = useState<Popup | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
   const recordsRef = useRef<EventAttendanceEntry[]>([]);
-  const regsRef = useRef<ScanRegistration[]>([]);
   const inflight = useRef(new Map<string, LocalWrite>());
   const acked = useRef(new Map<string, AckedWrite>());
   const writeSeq = useRef(0);
@@ -291,7 +290,6 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     const merged = mergeAttendance(serverRecords, readEpoch, publish);
     if (publish) {
       recordsRef.current = merged;
-      regsRef.current = [...serverRegs];
       if (alive.current) {
         setRecords(merged);
         setRegistrations([...serverRegs]);
@@ -344,7 +342,6 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     stopCamera();
     familyRef.current = null;
     recordsRef.current = [];
-    regsRef.current = [];
     inflight.current.clear();
     acked.current.clear();
     popupOwner.current = null;
@@ -436,42 +433,47 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     // 不等這次 Promise：onScan 在顯示結果後即可 resolve，鏡頭才能掃下一碼。
     void commitAttendanceBatch(docId, toWrite)
       .then((ids) => {
-        if (!valid()) {
-          clearWrite(keys, writeId);
-          return;
+        try {
+          if (!valid()) {
+            clearWrite(keys, writeId);
+            return;
+          }
+          const renamed = new Map(optimisticIds.map((id, index) => [id, ids[index] ?? id]));
+          const rename = (record: EventAttendanceEntry): EventAttendanceEntry => {
+            const nextId = renamed.get(record._docId);
+            return nextId && nextId !== record._docId ? { ...record, _docId: nextId } : record;
+          };
+          for (const key of keys) {
+            const item = inflight.current.get(key);
+            if (!item || item.writeId !== writeId) continue;
+            inflight.current.delete(key);
+            acked.current.set(key, { epoch: readSequence.current, entry: rename(item.entry) });
+          }
+          const next = recordsRef.current.map(rename);
+          const present = new Set(next.map((record) => inflightKey(record)));
+          const missing: EventAttendanceEntry[] = [];
+          for (const key of keys) {
+            const item = acked.current.get(key);
+            if (item && !present.has(key)) missing.push(item.entry);
+          }
+          publishRecords([...missing, ...next]);
+        } catch {
+          // 寫入已經成功。整理本地紀錄失敗時不要拿掉簽到，也不要當成寫入失敗。
         }
-        const renamed = new Map(optimisticIds.map((id, index) => [id, ids[index] ?? id]));
-        const rename = (record: EventAttendanceEntry): EventAttendanceEntry => {
-          const nextId = renamed.get(record._docId);
-          return nextId && nextId !== record._docId ? { ...record, _docId: nextId } : record;
-        };
-        for (const key of keys) {
-          const item = inflight.current.get(key);
-          if (!item || item.writeId !== writeId) continue;
-          inflight.current.delete(key);
-          acked.current.set(key, { epoch: readSequence.current, entry: rename(item.entry) });
-        }
-        const next = recordsRef.current.map(rename);
-        const present = new Set(next.map((record) => inflightKey(record)));
-        const missing: EventAttendanceEntry[] = [];
-        for (const key of keys) {
-          const item = acked.current.get(key);
-          if (item && !present.has(key)) missing.push(item.entry);
-        }
-        publishRecords([...missing, ...next]);
-      })
-      .catch(() => {
+      }, () => {
         clearWrite(keys, writeId);
-        if (!valid()) return;
-        const drop = new Set(optimisticIds);
-        publishRecords(recordsRef.current.filter((record) => !drop.has(record._docId)));
-        if (popupOwner.current === ownerUid) {
-          popupOwner.current = null;
-          setPopup(null);
+        if (valid()) {
+          const drop = new Set(optimisticIds);
+          publishRecords(recordsRef.current.filter((record) => !drop.has(record._docId)));
+          if (popupOwner.current === ownerUid) {
+            popupOwner.current = null;
+            setPopup(null);
+          }
+          // 失敗後背景重讀，不擋下一碼；讓畫面回到伺服器上的出席。
+          void refresh(valid);
         }
+        // toast 不依賴這個畫面。離開頁面或換身分後仍要提示，避免已顯示成功卻沒人知道寫入失敗。
         toast.show(latest.current.t('writeError'));
-        // 失敗後背景重讀，不擋下一碼；讓畫面回到伺服器上的出席。
-        void refresh(valid);
       });
   };
 

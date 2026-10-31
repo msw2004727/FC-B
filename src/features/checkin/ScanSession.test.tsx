@@ -1017,6 +1017,68 @@ describe('ScanSession', () => {
     expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
     expect(mocks.batch).toHaveBeenCalledTimes(2);
   });
+
+  it('toasts a write failure once after the session unmounts', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    const view = renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+    expect(mocks.toast).not.toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
+
+    view.unmount();
+    pending.reject(new Error('offline'));
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.toast.mock.calls.filter((call) =>
+      call[0] === '寫入失敗：請確認登入狀態與網路')).toHaveLength(1);
+  });
+
+  it('keeps the shown check-in when the success handler throws', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const reads = mocks.attendance.mock.calls.length;
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+
+    // 寫入 Promise 已完成，但讀取回傳 id 時丟例外。這不是寫入失敗。
+    let threw = false;
+    const ids = new Proxy(['doc-a'], {
+      get(target, prop, receiver) {
+        if (prop === '0') {
+          threw = true;
+          throw new Error('rename failed');
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    await act(async () => {
+      pending.resolve(ids);
+      await pending.promise;
+      await Promise.resolve();
+    });
+
+    expect(threw).toBe(true);
+    expect(mocks.toast).not.toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
+    expect(document.querySelector('#scan-result-modal')).not.toBeNull();
+    expect(element('#scan-results').textContent).toContain('targetA 簽到成功');
+    expect(mocks.attendance.mock.calls.length).toBe(reads + 1);
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('buildScanView', () => {
