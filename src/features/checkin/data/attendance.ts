@@ -107,7 +107,7 @@ export interface BuildAttendanceRecordInput {
 }
 
 /**
- * 照 A 組出寫入物件（不含 status / createdAt；那兩個由 recordAttendance 補）。
+ * 照 A 組出寫入物件（不含 status / createdAt；那兩個由 commitAttendanceBatch 補）。
  *
  * A 來源對照：
  *  - 非家庭路徑（`_processAttendance`）：`{ id, eventId, uid, userName, type, time }`。
@@ -419,34 +419,49 @@ async function resolveDb(): Promise<Firestore> {
 }
 
 /**
- * A `addAttendanceRecord`：
- *   `set({ ...record, status: 'active', createdAt: serverTimestamp() })`
+ * A `addAttendanceRecord` 的欄位（`status: 'active'`、`createdAt: serverTimestamp()`）。
+ * 同一次掃碼要寫的多筆記錄（未報名標記、簽到、簽退）合併成一個 writeBatch，
  * 寫入 `events/{eventDocId}/attendanceRecords/{autoId}`（R-REG-014）。
- * 回傳新文件的 doc.id。
+ * 空清單不開啟 batch。回傳順序與傳入記錄一致。
  */
-export async function recordAttendance(
+export async function commitAttendanceBatch(
   eventDocId: string,
-  record: AttendanceWritePayload,
-): Promise<string> {
-  if (!eventDocId) throw new Error('[checkin] recordAttendance 需要 eventDocId（R-REG-014）');
-  if (!record.eventId) throw new Error('[checkin] recordAttendance 需要 eventId（public id，R-ID-009）');
+  records: readonly AttendanceWritePayload[],
+): Promise<string[]> {
+  if (!eventDocId) throw new Error('[checkin] commitAttendanceBatch 需要 eventDocId（R-REG-014）');
+  if (records.length === 0) return [];
+  for (const record of records) {
+    if (!record.eventId) {
+      throw new Error('[checkin] commitAttendanceBatch 需要 eventId（public id，R-ID-009）');
+    }
+  }
 
-  const [{ doc: fsDoc, collection, setDoc, serverTimestamp }, db] = await Promise.all([
+  const [{ doc: fsDoc, collection, serverTimestamp, writeBatch }, db] = await Promise.all([
     import('firebase/firestore'),
     resolveDb(),
   ]);
 
-  const payload: Record<string, unknown> = {
-    ...record,
-    status: record.status ?? 'active',
-    createdAt: serverTimestamp(),
-  };
-  assertAttendancePayload('recordAttendance', payload);
+  const payloads: Record<string, unknown>[] = [];
+  for (const record of records) {
+    const payload: Record<string, unknown> = {
+      ...record,
+      status: record.status ?? 'active',
+      createdAt: serverTimestamp(),
+    };
+    assertAttendancePayload('commitAttendanceBatch', payload);
+    payloads.push(payload);
+  }
 
+  const batch = writeBatch(db);
   const collRef = collection(db, attendanceRecordsPath(eventDocId));
-  const docRef = fsDoc(collRef);
-  await setDoc(docRef, payload);
-  return docRef.id;
+  const ids: string[] = [];
+  for (const payload of payloads) {
+    const docRef = fsDoc(collRef);
+    ids.push(docRef.id);
+    batch.set(docRef, payload);
+  }
+  await batch.commit();
+  return ids;
 }
 
 /**
