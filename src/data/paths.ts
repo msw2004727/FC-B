@@ -71,13 +71,19 @@ export function filterSubcollectionDocs<T extends { ref: DocRefLike }>(docs: T[]
 
 // ── 解析 public eventId → Firestore docId（R-ID-010） ──
 
+/** R-ID-010 解析時已經讀到的活動文件。呼叫端應直接沿用，不要再 getDoc 一次。 */
+export interface ResolvedEventDoc {
+  docId: string;
+  data: Record<string, unknown>;
+}
+
 /**
- * 依 public eventId 解析 `events/{docId}`：
- *  1. 若 `events/{eventId}` 存在，回傳 `eventId`。
- *  2. 否則以 `where('id', '==', eventId)` 取第一筆 doc id。
+ * 與 `resolveEventDocId` 相同的 R-ID-010 順序，並把已讀到的文件一起回傳：
+ *  1. `events/{eventId}` 存在就用這次 getDoc 的內容。
+ *  2. 否則 `where('id', '==', eventId)` 取第一筆，用查詢結果的內容。
  *  3. 都沒有回 `null`。
  */
-export async function resolveEventDocId(eventId: string): Promise<string | null> {
+export async function resolveEventDocSnapshot(eventId: string): Promise<ResolvedEventDoc | null> {
   const [{ doc, getDoc, collection, query, where, limit, getDocs }, ctx] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
@@ -85,11 +91,24 @@ export async function resolveEventDocId(eventId: string): Promise<string | null>
 
   const directRef = doc(ctx.db, events, eventId);
   const directSnap = await getDoc(directRef);
-  if (directSnap.exists()) return eventId;
+  if (directSnap.exists()) {
+    return { docId: eventId, data: (directSnap.data() ?? {}) as Record<string, unknown> };
+  }
 
   const q = query(collection(ctx.db, events), where('id', '==', eventId), limit(1));
   const result = await getDocs(q);
   const first = result.docs[0];
   if (!first) return null;
-  return first.id;
+  return { docId: first.id, data: (first.data() ?? {}) as Record<string, unknown> };
+}
+
+/**
+ * 依 public eventId 解析 `events/{docId}`：
+ *  1. 若 `events/{eventId}` 存在，回傳 `eventId`。
+ *  2. 否則以 `where('id', '==', eventId)` 取第一筆 doc id。
+ *  3. 都沒有回 `null`。
+ */
+export async function resolveEventDocId(eventId: string): Promise<string | null> {
+  const resolved = await resolveEventDocSnapshot(eventId);
+  return resolved ? resolved.docId : null;
 }

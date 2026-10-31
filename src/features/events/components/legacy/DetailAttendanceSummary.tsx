@@ -8,6 +8,7 @@ export interface DetailAttendanceSummaryProps {
   canManage: boolean;
   canViewRecords: boolean;
   onOpen: () => void;
+  onPrefetch?: () => void;
 }
 
 /**
@@ -21,6 +22,7 @@ export function DetailAttendanceSummary({
   canManage,
   canViewRecords,
   onOpen,
+  onPrefetch,
 }: DetailAttendanceSummaryProps): JSX.Element {
   const safeId = String(eventId || '').trim();
   const title = canManage || canViewRecords ? '出席管理' : '出席名單';
@@ -57,6 +59,7 @@ export function DetailAttendanceSummary({
           type="button"
           class="detail-toolbar-btn"
           data-detail-attendance-open-button={safeId}
+          onPointerDown={onPrefetch}
           onClick={onOpen}
         >
           {actionLabel}

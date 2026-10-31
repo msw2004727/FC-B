@@ -4,16 +4,19 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getDocMock, getDocsMock, resolveEventDocIdMock } = vi.hoisted(() => ({
+const { getDocMock, getDocsMock, whereMock, limitMock } = vi.hoisted(() => ({
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
-  resolveEventDocIdMock: vi.fn(),
+  whereMock: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+  limitMock: vi.fn((n: number) => ({ limit: n })),
 }));
 
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, ...paths: string[]) => ({ path: paths.join('/') }),
   collection: (_db: unknown, ...paths: string[]) => ({ path: paths.join('/') }),
   query: (ref: unknown) => ref,
+  where: whereMock,
+  limit: limitMock,
   orderBy: (ref: unknown) => ref,
   getDoc: getDocMock,
   getDocs: getDocsMock,
@@ -23,31 +26,94 @@ vi.mock('@/data/firebase', () => ({
   getFirebase: vi.fn(async () => ({ db: { __fake: true }, auth: null, functions: null })),
 }));
 
-vi.mock('@/data/paths', async () => {
-  const actual = await vi.importActual<typeof import('@/data/paths')>('@/data/paths');
-  return {
-    ...actual,
-    resolveEventDocId: resolveEventDocIdMock,
-  };
-});
-
+import { resolveEventDocId } from '@/data/paths';
 import { loadEventDetail, loadEventRegistrations } from './event-detail';
 import type { RegistrationDoc } from './types';
 
 beforeEach(() => {
   getDocMock.mockReset();
   getDocsMock.mockReset();
-  resolveEventDocIdMock.mockReset();
+  whereMock.mockClear();
+  limitMock.mockClear();
+});
+
+describe('resolveEventDocId', () => {
+  it('R-ID-010：events/{id} 存在就回傳該 id，不再 where', async () => {
+    getDocMock.mockResolvedValueOnce({
+      exists: () => true,
+      id: 'evtA',
+      data: () => ({ id: 'evtA', title: '直接' }),
+    });
+
+    await expect(resolveEventDocId('evtA')).resolves.toBe('evtA');
+    expect(getDocMock).toHaveBeenCalledTimes(1);
+    const ref = getDocMock.mock.calls[0]?.[0] as { path?: string } | undefined;
+    expect(ref?.path).toBe('events/evtA');
+    expect(getDocsMock).not.toHaveBeenCalled();
+    expect(whereMock).not.toHaveBeenCalled();
+  });
+
+  it('R-ID-010：直接文件沒有時才 where(\'id\',\'==\',id) limit 1，回傳文件 id', async () => {
+    getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'publicEvt', data: () => undefined });
+    getDocsMock.mockResolvedValueOnce({
+      docs: [{ id: 'docId123', data: () => ({ id: 'publicEvt' }) }],
+    });
+
+    await expect(resolveEventDocId('publicEvt')).resolves.toBe('docId123');
+    expect(getDocMock).toHaveBeenCalledTimes(1);
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
+    expect(getDocMock.mock.invocationCallOrder[0]).toBeLessThan(getDocsMock.mock.invocationCallOrder[0] ?? 0);
+    const direct = getDocMock.mock.calls[0]?.[0] as { path?: string } | undefined;
+    const queried = getDocsMock.mock.calls[0]?.[0] as { path?: string } | undefined;
+    expect(direct?.path).toBe('events/publicEvt');
+    expect(queried?.path).toBe('events');
+    expect(whereMock).toHaveBeenCalledWith('id', '==', 'publicEvt');
+    expect(limitMock).toHaveBeenCalledWith(1);
+  });
+
+  it('兩段都沒有時回傳 null', async () => {
+    getDocMock.mockResolvedValueOnce({ exists: () => false, data: () => undefined });
+    getDocsMock.mockResolvedValueOnce({ docs: [] });
+
+    await expect(resolveEventDocId('missing')).resolves.toBeNull();
+    expect(getDocMock).toHaveBeenCalledTimes(1);
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('loadEventDetail', () => {
-  it('R-ID-010：public id 與 docId 不同時，先 resolve 再讀 events/{docId}', async () => {
-    // 舊活動：public `id` = publicEvt，但 Firestore docId = docId123
-    resolveEventDocIdMock.mockResolvedValueOnce('docId123');
+  it('直接命中時沿用 getDoc 內容，活動文件 getDoc 前 2 後 1', async () => {
     getDocMock.mockResolvedValueOnce({
       exists: () => true,
-      id: 'docId123',
-      data: () => ({ id: 'publicEvt', title: 'Old Event' }),
+      id: 'evtA',
+      data: () => ({ id: 'evtA', title: '直接' }),
+    });
+
+    const result = await loadEventDetail('evtA');
+    if (result === null) throw new Error('expected event detail');
+
+    expect(result.eventDocId).toBe('evtA');
+    expect(result.event.id).toBe('evtA');
+    expect(result.event.title).toBe('直接');
+    expect(result.event._docId).toBe('evtA');
+    expect(getDocMock).toHaveBeenCalledTimes(1);
+    expect(getDocsMock).not.toHaveBeenCalled();
+    const ref = getDocMock.mock.calls[0]?.[0] as { path?: string } | undefined;
+    expect(ref?.path).toBe('events/evtA');
+  });
+
+  it('R-ID-010：public id 與 docId 不同時沿用 where 讀到的文件，getDoc 前 2 後 1', async () => {
+    // 舊活動：public `id` = publicEvt，但 Firestore docId = docId123
+    getDocMock.mockResolvedValueOnce({
+      exists: () => false,
+      id: 'publicEvt',
+      data: () => undefined,
+    });
+    getDocsMock.mockResolvedValueOnce({
+      docs: [{
+        id: 'docId123',
+        data: () => ({ id: 'publicEvt', title: 'Old Event' }),
+      }],
     });
 
     const result = await loadEventDetail('publicEvt');
@@ -58,29 +124,24 @@ describe('loadEventDetail', () => {
     expect(result.event.title).toBe('Old Event');
     expect(result.event._docId).toBe('docId123');
 
-    expect(resolveEventDocIdMock).toHaveBeenCalledTimes(1);
-    expect(resolveEventDocIdMock).toHaveBeenCalledWith('publicEvt');
     expect(getDocMock).toHaveBeenCalledTimes(1);
-
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
     const ref = getDocMock.mock.calls[0]?.[0] as { path?: string } | undefined;
-    expect(ref?.path).toBe('events/docId123');
+    expect(ref?.path).toBe('events/publicEvt');
+    expect(whereMock).toHaveBeenCalledWith('id', '==', 'publicEvt');
+    expect(limitMock).toHaveBeenCalledWith(1);
   });
 
-  it('resolve 失敗時回傳 null（不 fallback 直讀 publicId）', async () => {
-    resolveEventDocIdMock.mockResolvedValueOnce(null);
+  it('兩段都找不到時回傳 null，且不再對 publicId 多讀一次', async () => {
+    getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'missing', data: () => undefined });
+    getDocsMock.mockResolvedValueOnce({ docs: [] });
+
     const result = await loadEventDetail('missing');
     expect(result).toBeNull();
-    expect(getDocMock).not.toHaveBeenCalled();
-  });
-
-  it('docId 對應文件不存在時回傳 null', async () => {
-    resolveEventDocIdMock.mockResolvedValueOnce('docId456');
-    getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'docId456', data: () => ({}) });
-
-    const result = await loadEventDetail('evt456');
-    expect(result).toBeNull();
+    expect(getDocMock).toHaveBeenCalledTimes(1);
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
     const ref = getDocMock.mock.calls[0]?.[0] as { path?: string } | undefined;
-    expect(ref?.path).toBe('events/docId456');
+    expect(ref?.path).toBe('events/missing');
   });
 });
 

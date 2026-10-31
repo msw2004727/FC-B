@@ -388,18 +388,18 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).not.toHaveBeenCalled();
     view.unmount();
 
-    // 3. 可管理（主辦人 host1 + site_operate）→「出席管理」＋「管理名單 / 出席紀錄」
+    // 3. 可管理（主辦人 host1 + site_operate）→ 進頁自動展開，名單只讀一次
+    mocks.registrations.mockClear();
     mocks.viewer.mockReturnValue({
       ...viewer,
       uid: 'host1',
       capabilities: ['user.activity.site_operate'],
     });
     view = mount();
-    await screen.findByRole('heading', { level: 2 });
-    summary = view.container.querySelector('.detail-attendance-summary');
-    expect(summary?.textContent).toContain('出席管理');
-    expect(screen.getByRole('button', { name: '管理名單 / 出席紀錄' })).toBeTruthy();
-    expect(mocks.registrations).not.toHaveBeenCalled();
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
     view.unmount();
   });
 
@@ -717,7 +717,8 @@ describe('EventDetailPage', () => {
     await screen.findByRole('heading', { name: '無法載入活動詳情，請重試。' });
     expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
     expect(mocks.registrations).not.toHaveBeenCalled();
-    expect(mocks.history).not.toHaveBeenCalled();
+    // T-085：活動讀取與本人報名改為同時發出，失敗時 history 也已啟動。
+    expect(mocks.history).toHaveBeenCalledTimes(1);
   });
 
   it('本人歷史讀取失敗不顯示活動整頁錯誤，也不繞過報名前置檢查', async () => {
@@ -921,7 +922,6 @@ describe('名單結算「完成」（C-001）', () => {
 
   async function enterRosterEdit(): Promise<void> {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: '管理名單 / 出席紀錄' }));
     fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
     await screen.findByRole('button', { name: '完成' });
   }
@@ -1178,7 +1178,6 @@ describe('名單狀態調整頁面接線', () => {
     mocks.registrations.mockResolvedValue([{ ...rosterReg, status }]);
     history.replaceState(null, '', '/events/evtA');
     const view = render(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: '管理名單 / 出席紀錄' }));
     fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
     return view;
   }
@@ -1230,5 +1229,251 @@ describe('名單狀態調整頁面接線', () => {
     expect((calls[0]?.request as { requestId: string }).requestId)
       .not.toBe((calls[1]?.request as { requestId: string }).requestId);
     expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toBeTruthy();
+  });
+});
+
+describe('T-085 名單展開與進頁讀取', () => {
+  function manager(): ViewerView {
+    return {
+      ...viewer,
+      uid: 'host1',
+      capabilities: ['user.activity.site_operate'],
+    };
+  }
+
+  it('管理者進頁自動展開且名單只讀一次', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.registrations.mockResolvedValue([self]);
+    mount();
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+  });
+
+  it('一般用戶與訪客不自動展開、不多讀名單', async () => {
+    const userView = mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(screen.getByRole('button', { name: '查看出席名單' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.attendance).not.toHaveBeenCalled();
+    userView.unmount();
+
+    mocks.history.mockClear();
+    mocks.registrations.mockClear();
+    mocks.attendance.mockClear();
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: { ...detail.event, isPublic: true },
+    });
+    mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(screen.getByRole('button', { name: '查看出席名單' })).toBeTruthy();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
+    expect(mocks.attendance).not.toHaveBeenCalled();
+  });
+
+  it('operation 與 refreshFailed 期間不展開、不卡在載入中', async () => {
+    let rejectRefresh!: (error: Error) => void;
+    mocks.registrations.mockImplementationOnce(() => new Promise<DetailRegistration[]>((_resolve, reject) => {
+      rejectRefresh = reject;
+    }));
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'host1', capabilities: [] });
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+
+    mocks.viewer.mockReturnValue(manager());
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+    expect(screen.getByRole('button', { name: '管理名單 / 出席紀錄' })).toBeTruthy();
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+
+    rejectRefresh(new Error('offline'));
+    await waitFor(() => expect(screen.getAllByText('無法更新名單，請重試。').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: '管理名單 / 出席紀錄' })).toBeTruthy();
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+
+    mocks.registrations.mockResolvedValue([self]);
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
+    // 失敗那次 1；重試的 refresh 1；接著自動展開 1。
+    expect(mocks.registrations).toHaveBeenCalledTimes(3);
+    expect(mocks.registrations).toHaveBeenLastCalledWith('firestore-doc-a');
+  });
+
+  it('pointerdown 預讀後點擊只讀一次，且預讀當下不展開', async () => {
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    mount();
+    const button = await screen.findByRole('button', { name: '查看出席名單' });
+    fireEvent.pointerDown(button);
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: '查看出席名單' })).toBeTruthy();
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+
+    fireEvent.click(button);
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    await screen.findByText('名單載入中...');
+    resolveRegs([self]);
+    await screen.findByText('小明');
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+  });
+
+  it('換活動後重置，新活動再自動展開一次', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.registrations.mockResolvedValue([self]);
+    mocks.detail.mockImplementation(async (id: string) => {
+      if (id === 'evtA') {
+        return {
+          ...detail,
+          eventDocId: 'doc-evtA',
+          event: { ...detail.event, id: 'evtA', title: '換場活動', creatorUid: 'host1' },
+        };
+      }
+      return detail;
+    });
+    const view = render(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+
+    mocks.registrations.mockClear();
+    view.rerender(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
+    await screen.findByText('換場活動');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('doc-evtA');
+  });
+
+  it('登入者進頁時活動讀取與本人報名同時發出', async () => {
+    let resolveDetail!: (value: LoadedEventDetail) => void;
+    let resolveHistory!: (value: DetailRegistration[]) => void;
+    mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
+      resolveDetail = resolve;
+    }));
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mount();
+    await waitFor(() => {
+      expect(mocks.detail).toHaveBeenCalledTimes(1);
+      expect(mocks.history).toHaveBeenCalledTimes(1);
+      expect(mocks.history).toHaveBeenCalledWith('u1');
+    });
+    resolveHistory([]);
+    resolveDetail(detail);
+    await screen.findByRole('button', { name: '查看出席名單' });
+    expect(mocks.registrations).not.toHaveBeenCalled();
+  });
+
+  it('預讀被不會結束的 promise 卡住，報名刷新後再展開會重讀且不卡在載入中', async () => {
+    let calls = 0;
+    mocks.registrations.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return new Promise<DetailRegistration[]>(() => {});
+      return Promise.resolve([{ ...self, userName: '重讀參加者' }]);
+    });
+    mount();
+    const open = await screen.findByRole('button', { name: '查看出席名單' });
+    fireEvent.pointerDown(open);
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: '查看出席名單' })).toBeTruthy();
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+    expect(screen.queryByText('重讀參加者')).toBeNull();
+
+    const signup = screen.getByRole('button', { name: '立即報名' });
+    await waitFor(() => expect((signup as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(signup);
+    await waitFor(() => {
+      expect(mocks.registrations).toHaveBeenCalledTimes(2);
+      expect(mocks.toastShow).toHaveBeenCalledWith({ message: '報名成功！' });
+      expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
+        .toBe(false);
+    });
+    expect(screen.queryByText('重讀參加者')).toBeNull();
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+    await screen.findByText('重讀參加者');
+    expect(screen.queryByText('名單載入中...')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(3);
+    expect(mocks.registrations).toHaveBeenLastCalledWith('firestore-doc-a');
+  });
+
+  it('重新整理時名單讀取失敗，已展開的載入中改為錯誤並可重試', async () => {
+    let calls = 0;
+    mocks.registrations.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return new Promise<DetailRegistration[]>(() => {});
+      if (calls === 2) return Promise.reject(new Error('offline'));
+      return Promise.resolve([{ ...self, userName: '重試後參加者' }]);
+    });
+    mocks.viewer.mockReturnValue(manager());
+    mount();
+    await screen.findByText('名單載入中...');
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+    const region = await screen.findByRole('region', { name: '參加名單' });
+    await within(region).findByText('無法載入參加名單，請重試。');
+    expect(within(region).queryByText('名單載入中...')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(region).getByRole('button', { name: '重試' }));
+    await within(region).findByText('重試後參加者');
+    expect(within(region).queryByText('名單載入中...')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(3);
+    expect(mocks.registrations).toHaveBeenLastCalledWith('firestore-doc-a');
+  });
+
+  it('重新整理找不到活動時，已展開的載入中改為錯誤', async () => {
+    let calls = 0;
+    mocks.registrations.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return new Promise<DetailRegistration[]>(() => {});
+      return Promise.resolve([]);
+    });
+    mocks.viewer.mockReturnValue(manager());
+    mount();
+    await screen.findByText('名單載入中...');
+    mocks.detail.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+    const region = await screen.findByRole('region', { name: '參加名單' });
+    await within(region).findByText('無法載入參加名單，請重試。');
+    expect(within(region).queryByText('名單載入中...')).toBeNull();
+    expect(within(region).getByRole('button', { name: '重試' })).toBeTruthy();
+    expect(mocks.toastShow).toHaveBeenCalledWith({ message: '刷新失敗，找不到最新活動資料' });
+  });
+
+  it('setReload 重新載入後管理者再自動展開一次且 registrations 只讀一次', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.registrations.mockResolvedValue([self]);
+    mocks.history.mockRejectedValueOnce(new Error('offline'));
+    mount();
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('無法同步你的報名狀態，請重試後再報名。');
+    mocks.registrations.mockClear();
+    fireEvent.click(within(alert).getByRole('button', { name: '重試' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
   });
 });

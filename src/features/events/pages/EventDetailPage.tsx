@@ -274,6 +274,9 @@ function EventDetailSession({
   const rosterSequence = useRef(0);
   const attendanceReloadSeq = useRef(0);
   const rosterPending = useRef(false);
+  // 每個活動只自動展開一次；載入 effect 在交出新快照前會重置。不寫入持久化。
+  const rosterAutoOpened = useRef(false);
+  const rosterAutoHold = useRef(true);
   const operation = useRef(false);
   const noticeSequence = useRef(0);
   const currentViewer = useRef(viewer);
@@ -358,6 +361,7 @@ function EventDetailSession({
     const request = ++sequence.current;
     rosterSequence.current += 1;
     rosterPending.current = false;
+    rosterAutoHold.current = true;
     let disposed = false;
     const current = (): boolean =>
       !disposed && alive.current && request === sequence.current;
@@ -374,9 +378,25 @@ function EventDetailSession({
         return;
       }
 
+      const uid = viewer.uid;
       let detail: Awaited<ReturnType<typeof loadEventDetail>>;
+      let history: RegistrationDoc[] = [];
+      let failedHistory = false;
       try {
-        detail = await loadEventDetail(publicId);
+        if (uid) {
+          const [loaded, historyResult] = await Promise.all([
+            loadEventDetail(publicId),
+            loadViewerRegistrations(uid).then(
+              (rows) => ({ rows, failed: false as const }),
+              () => ({ rows: [] as RegistrationDoc[], failed: true as const }),
+            ),
+          ]);
+          detail = loaded;
+          history = historyResult.rows;
+          failedHistory = historyResult.failed;
+        } else {
+          detail = await loadEventDetail(publicId);
+        }
       } catch {
         if (current()) setPhase('error');
         return;
@@ -386,17 +406,6 @@ function EventDetailSession({
         setPhase('missing');
         return;
       }
-
-      let history: RegistrationDoc[] = [];
-      let failedHistory = false;
-      if (viewer.uid) {
-        try {
-          history = await loadViewerRegistrations(viewer.uid);
-        } catch {
-          failedHistory = true;
-        }
-      }
-      if (!current()) return;
 
       if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
         setPhase('missing');
@@ -412,6 +421,8 @@ function EventDetailSession({
       };
       setSnapshot(next);
       setHistoryFailed(failedHistory);
+      rosterAutoOpened.current = false;
+      rosterAutoHold.current = false;
       setPhase('ready');
 
       if (!viewer.uid) {
@@ -471,7 +482,14 @@ function EventDetailSession({
     const current = snapshot;
     if (!current || !currentViewer.current.uid) return;
     setRosterExpanded(true);
-    if (rosterPhase === 'ready' || rosterPhase === 'loading') return;
+    if (rosterPhase === 'ready') return;
+    fetchRosterForSnapshot(current).catch(() => {});
+  }
+
+  function prefetchDetailAttendanceRecords(): void {
+    const current = snapshot;
+    if (!current || !currentViewer.current.uid) return;
+    if (rosterPhase === 'ready' || rosterPending.current) return;
     fetchRosterForSnapshot(current).catch(() => {});
   }
 
@@ -519,6 +537,8 @@ function EventDetailSession({
     const uid = currentViewer.current.uid;
     if (!uid) return;
     const request = ++rosterSequence.current;
+    // 收起中的預讀被序號作廢後，未結束的那一輪不能繼續占著鎖，否則展開會永遠跳過。
+    if (!rosterExpanded) rosterPending.current = false;
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
       current.event,
@@ -787,6 +807,7 @@ function EventDetailSession({
     headerRefreshPending.current = true;
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
+    rosterPending.current = false;
     try {
       // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
       // 名單／紀錄重讀失敗只保留舊資料，不讓整次重新整理失敗（Gemini 審查 P2）。
@@ -807,6 +828,7 @@ function EventDetailSession({
       if (!fresh || fresh.eventDocId !== current.eventDocId) {
         // 照 A：找不到最新活動文件時的專用提示，不走一般失敗。
         toast.show({ message: '刷新失敗，找不到最新活動資料' });
+        setRosterPhase((phase) => (phase === 'loading' ? 'error' : phase));
         return;
       }
       const nextEvent = {
@@ -831,6 +853,7 @@ function EventDetailSession({
         attendanceRecords,
       });
       if (!registrationsFailed) setRosterPhase('ready');
+      else setRosterPhase((phase) => (phase === 'loading' ? 'error' : phase));
       setHistoryFailed(false);
       setRefreshFailed(false);
     } finally {
@@ -841,6 +864,29 @@ function EventDetailSession({
   const eventId = event?.id ?? publicId;
   const operateCtx = operateContextFromViewer(viewer);
   const canManageRoster = canManageDetailAttendanceRecords(viewer, event);
+
+  useEffect(() => {
+    if (rosterAutoHold.current || rosterAutoOpened.current) return;
+    if (phase !== 'ready' || !snapshot || !canManageRoster) return;
+    if (
+      !currentViewer.current.uid
+      || operation.current
+      || refreshFailed
+      || rosterPending.current
+      || !isEventVisibleToUser(
+        snapshot.event,
+        currentViewer.current,
+        snapshot.viewerRegistrations,
+      )
+    ) {
+      return;
+    }
+    rosterAutoOpened.current = true;
+    setRosterExpanded(true);
+    if (rosterPhase === 'ready') return;
+    fetchRosterForSnapshot(snapshot).catch(() => {});
+  }, [phase, snapshot, canManageRoster, refreshFailed, busy, viewer.uid, rosterPhase]);
+
   const canRemoveConfirmed = Boolean(
     event && canRemoveConfirmedParticipant(operateCtx, event) === true,
   );
@@ -1765,6 +1811,7 @@ function EventDetailSession({
                       canManage={canManageRoster}
                       canViewRecords={canViewAttendanceDetails}
                       onOpen={handleOpenDetailAttendanceRecords}
+                      onPrefetch={prefetchDetailAttendanceRecords}
                     />
                   ) : rosterPhase === 'loading' ? (
                     <DetailAttendanceLoading
