@@ -781,39 +781,59 @@ describe('settleAttendance', () => {
     expect(adjustCalls()[0]?.[1]).toMatchObject({ targets: ['U456'] });
   });
 
-  it('逐人等待完成：第一人未完成前不查第二人或開始第二次 adjustExp', async () => {
-    const firstStarted = deferred<void>();
-    const releaseFirst = deferred<void>();
+  it('每人先查 expLogs 再 adjustExp，未滿五人時兩人可同時發放', async () => {
     const order: string[] = [];
+    const bothAdjusting = deferred<void>();
+    let adjusting = 0;
+    const release = deferred<void>();
 
+    mockGetDocs.mockImplementation(async (
+      query: { constraints?: Array<{ field?: string; value?: unknown }> },
+    ) => {
+      const uid = query.constraints?.find((item) => item.field === 'uid')?.value;
+      order.push(`查:${String(uid)}`);
+      return logs();
+    });
     mockCallFn.mockImplementation(async (
       name: string,
       request: { targets?: string[] },
     ) => {
-      if (name === 'confirmEventAttendance') return confirm(['U123', 'U456']);
+      if (name === 'confirmEventAttendance') return confirm(['uidA', 'uidB']);
       const uid = request.targets?.[0];
       order.push(`開始:${uid}`);
-      if (uid === 'U123') {
-        firstStarted.resolve(undefined);
-        await releaseFirst.promise;
-      }
+      adjusting += 1;
+      if (adjusting === 2) bothAdjusting.resolve(undefined);
+      await release.promise;
       order.push(`完成:${uid}`);
       return { success: true, results: [{ targetId: uid, success: true }] };
     });
 
-    const pending = settleAttendance(input());
-    await firstStarted.promise;
+    const pending = settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA'), person('uidB')],
+    }));
+    try {
+      await bothAdjusting.promise;
 
-    expect(order).toEqual(['開始:U123']);
-    expect(adjustCalls()).toHaveLength(1);
-    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+      expect(order.indexOf('查:uidA')).toBeGreaterThanOrEqual(0);
+      expect(order.indexOf('查:uidA')).toBeLessThan(order.indexOf('開始:uidA'));
+      expect(order.indexOf('查:uidB')).toBeGreaterThanOrEqual(0);
+      expect(order.indexOf('查:uidB')).toBeLessThan(order.indexOf('開始:uidB'));
+      expect(order.some((step) => step.startsWith('完成:'))).toBe(false);
+      expect(adjustCalls()).toHaveLength(2);
+      expect(mockGetDocs).toHaveBeenCalledTimes(2);
 
-    releaseFirst.resolve(undefined);
-    const result = await pending;
+      release.resolve(undefined);
+      const result = await pending;
 
-    expectOk(result);
-    expect(order).toEqual(['開始:U123', '完成:U123', '開始:U456', '完成:U456']);
-    expect(result.granted).toEqual(['U123', 'U456']);
+      expectOk(result);
+      expect(result.granted).toEqual(['uidA', 'uidB']);
+      expect(order).toContain('完成:uidA');
+      expect(order).toContain('完成:uidB');
+    } finally {
+      release.resolve(undefined);
+      await pending.catch(() => undefined);
+    }
   });
 
   it('單人失敗不影響其他人，且不重試已送出的 requestId', async () => {
@@ -995,22 +1015,249 @@ describe('settleAttendance', () => {
     expect(adjustCalls()).toHaveLength(1);
   });
 
-  it('操作紀錄完成後才讀金額', async () => {
+  it('操作日誌未完成仍讀金額並發放', async () => {
     const logStarted = deferred<void>();
     const releaseLog = deferred<void>();
+    const amountStarted = deferred<void>();
     mockWriteOpLog.mockImplementationOnce(async () => {
       logStarted.resolve(undefined);
       await releaseLog.promise;
     });
+    mockGetDoc.mockImplementationOnce(async () => {
+      amountStarted.resolve(undefined);
+      return rules();
+    });
 
     const pending = settleAttendance(input());
     await logStarted.promise;
-    expect(mockGetDoc).not.toHaveBeenCalled();
+    await amountStarted.promise;
+    expect(mockGetDoc).toHaveBeenCalledTimes(1);
     expect(adjustCalls()).toHaveLength(0);
 
     releaseLog.resolve(undefined);
     const result = await pending;
     expectOk(result);
     expect(result.granted).toEqual(['U123']);
+    expect(adjustCalls()).toHaveLength(1);
+  });
+
+  it('三十人發放同時不超過五人且全部發到、requestId 不變', async () => {
+    const targets = Array.from({ length: 30 }, (_, index) => (
+      index === 0 ? 'uidA' : index === 1 ? 'uidB' : `targetA${index}`
+    ));
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const reachedCap = deferred<void>();
+    const release = deferred<void>();
+
+    mockGetDocs.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      if (inFlight === 5) reachedCap.resolve(undefined);
+      return logs();
+    });
+    mockCallFn.mockImplementation(async (
+      name: string,
+      request: { targets?: string[]; requestId?: string },
+    ) => {
+      if (name === 'confirmEventAttendance') {
+        return { success: true, added: 0, removed: 0, expTargets: targets };
+      }
+      const uid = request.targets?.[0] ?? '';
+      expect(request.requestId).toBe(buildCompleteActivityRequestId(uid, 'evtA'));
+      try {
+        await release.promise;
+        return { success: true, results: [{ targetId: uid, success: true }] };
+      } finally {
+        inFlight -= 1;
+      }
+    });
+
+    const pending = settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA')],
+    }));
+    try {
+      await reachedCap.promise;
+      await vi.waitFor(() => expect(adjustCalls().length).toBe(5));
+
+      expect(inFlight).toBe(5);
+      expect(maxInFlight).toBeLessThanOrEqual(5);
+      expect(mockGetDocs).toHaveBeenCalledTimes(5);
+
+      release.resolve(undefined);
+      const result = await pending;
+
+      expectOk(result);
+      expect(maxInFlight).toBe(5);
+      expect(result.granted).toEqual(targets);
+      expect(new Set(result.granted).size).toBe(30);
+      expect(result.failed).toEqual([]);
+      expect(adjustCalls()).toHaveLength(30);
+      expect(adjustCalls().map(([, payload]) => payload.requestId).sort()).toEqual(
+        targets.map((uid) => buildCompleteActivityRequestId(uid, 'evtA')).sort(),
+      );
+    } finally {
+      release.resolve(undefined);
+      await pending.catch(() => undefined);
+    }
+  });
+
+  it('部分失敗時其他人照發且失敗清單正確', async () => {
+    const targets = ['uidA', 'uidB', 'targetA'];
+    mockCallFn.mockImplementation(async (
+      name: string,
+      request: { targets?: string[]; requestId?: string },
+    ) => {
+      if (name === 'confirmEventAttendance') {
+        return { success: true, added: 1, removed: 0, expTargets: targets };
+      }
+      const uid = request.targets?.[0] ?? '';
+      expect(request.requestId).toBe(buildCompleteActivityRequestId(uid, 'evtA'));
+      if (uid === 'targetA') {
+        return { success: true, results: [{ targetId: uid, success: false, error: 'not_found' }] };
+      }
+      return { success: true, results: [{ targetId: uid, success: true }] };
+    });
+
+    const result = await settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA'), person('uidB')],
+    }));
+
+    expectOk(result);
+    expect(result.failed).toEqual([{ uid: 'targetA', error: 'not_found' }]);
+    expect(result.granted).toEqual(['uidA', 'uidB']);
+    expect(result.skippedAlready).toEqual([]);
+    expect(adjustCalls().map(([, payload]) => payload.targets?.[0]).sort()).toEqual([
+      'targetA',
+      'uidA',
+      'uidB',
+    ]);
+  });
+
+  it('同一人只發一次', async () => {
+    mockCallFn.mockResolvedValueOnce(confirm(['uidA', ' uidA ', 'uidA']));
+    const result = await settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA')],
+    }));
+
+    expectOk(result);
+    expect(result.targets).toEqual(['uidA']);
+    expect(result.granted).toEqual(['uidA']);
+    expect(adjustCalls()).toHaveLength(1);
+    expect(adjustCalls()[0]?.[1]).toMatchObject({
+      targets: ['uidA'],
+      requestId: 'autoexp_uidA_complete_activity_evtA',
+    });
+  });
+
+  it('操作日誌拒絕不影響結果也不產生未處理 rejection', async () => {
+    const reasons: unknown[] = [];
+    const onProcess = (reason: unknown): void => {
+      reasons.push(reason);
+    };
+    const onWindow = (event: PromiseRejectionEvent): void => {
+      reasons.push(event.reason);
+      event.preventDefault();
+    };
+    process.on('unhandledRejection', onProcess);
+    window.addEventListener('unhandledrejection', onWindow);
+    mockWriteOpLog.mockRejectedValueOnce(new Error('日誌失敗'));
+    mockCallFn.mockImplementation(async (name: string) => {
+      if (name === 'confirmEventAttendance') return confirm(['uidA']);
+      if (name === 'adjustExp') {
+        return { success: true, results: [{ targetId: 'uidA', success: true }] };
+      }
+      throw new Error(`未預期的 Callable：${name}`);
+    });
+
+    try {
+      const result = await settleAttendance(input({
+        event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+        people: [person('uidA')],
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(reasons).toEqual([]);
+      expectOk(result);
+      expect(result.granted).toEqual(['uidA']);
+      expect(mockWriteOpLog).toHaveBeenCalledTimes(1);
+      expect(adjustCalls()).toHaveLength(1);
+    } finally {
+      process.off('unhandledRejection', onProcess);
+      window.removeEventListener('unhandledrejection', onWindow);
+    }
+  });
+
+  it('只在經驗值發放期間攔截關閉分頁，結束後移除', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const releaseAmount = deferred<void>();
+    const amountStarted = deferred<void>();
+    const releaseAdjust = deferred<void>();
+    const adjustStarted = deferred<void>();
+    mockGetDoc.mockImplementationOnce(async () => {
+      amountStarted.resolve(undefined);
+      await releaseAmount.promise;
+      return rules();
+    });
+    mockCallFn.mockImplementation(async (name: string) => {
+      if (name === 'confirmEventAttendance') return confirm(['uidA']);
+      adjustStarted.resolve(undefined);
+      await releaseAdjust.promise;
+      return { success: true, results: [{ targetId: 'uidA', success: true }] };
+    });
+
+    const pending = settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA')],
+    }));
+    try {
+      await amountStarted.promise;
+      expect(add.mock.calls.some(([type]) => type === 'beforeunload')).toBe(false);
+
+      releaseAmount.resolve(undefined);
+      await adjustStarted.promise;
+      const registration = add.mock.calls.find(([type]) => type === 'beforeunload');
+      const handler = registration?.[1] as ((event: BeforeUnloadEvent) => void) | undefined;
+      expect(handler).toEqual(expect.any(Function));
+      if (!handler) throw new Error('未註冊 beforeunload');
+      const event = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent;
+      handler(event);
+      expect(event.defaultPrevented).toBe(true);
+
+      releaseAdjust.resolve(undefined);
+      const result = await pending;
+      expectOk(result);
+      expect(result.granted).toEqual(['uidA']);
+      expect(remove).toHaveBeenCalledWith('beforeunload', handler);
+    } finally {
+      releaseAmount.resolve(undefined);
+      releaseAdjust.resolve(undefined);
+      await pending.catch(() => undefined);
+    }
+  });
+
+  it('經驗值發放失敗後移除關閉分頁攔截', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    mockCallFn.mockImplementation(async (name: string) => {
+      if (name === 'confirmEventAttendance') return confirm(['uidA']);
+      throw new Error('網路錯誤');
+    });
+
+    const result = await settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA')],
+    }));
+
+    expectOk(result);
+    expect(result.failed).toEqual([{ uid: 'uidA', error: '網路錯誤' }]);
+    expect(result.granted).toEqual([]);
+    const handler = add.mock.calls.find(([type]) => type === 'beforeunload')?.[1];
+    expect(handler).toEqual(expect.any(Function));
+    expect(remove).toHaveBeenCalledWith('beforeunload', handler);
   });
 });

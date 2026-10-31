@@ -1,4 +1,4 @@
-// 活動正取名單結算：套用簽到狀態，再循序發放完成活動經驗值。
+// 活動正取名單結算：套用簽到狀態，再以最多 5 人同時發放完成活動經驗值。
 // 對照 A：event-manage-confirm.js#_confirmAllAttendance、auto-exp/index.js#_grantAutoExp。
 // 刻意偏離 A：requestId 使用決定性鍵而非 Date.now()；逐人查 expLogs，避免 A 已發過者重複領取。
 // 不移植 _reconcileNoShowExp、不處理未報名單；不直接寫 attendanceRecords 或 expLogs。
@@ -212,22 +212,28 @@ function createdAtMillis(value: unknown): number | null {
   }
 }
 
-/** 只查 uid、reason 等值條件，前端判斷雙邊時間窗（兩端含）；上界 null 僅看下界，下界 null 任一筆即命中；查詢錯誤往外拋。 */
-export async function hasPriorCompleteActivityGrant(
-  uid: string,
-  reason: string,
-  sinceMs: number | null,
-  untilMs: number | null = null,
-): Promise<boolean> {
+async function loadExpLogFirestore() {
   const [{ collection, query, where, getDocs }, { db }] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
   ]);
-  const snap = await getDocs(
-    query(
-      collection(db, 'expLogs'),
-      where('uid', '==', uid),
-      where('reason', '==', reason.trim().slice(0, 200)),
+  return { collection, query, where, getDocs, db };
+}
+
+type ExpLogFirestore = Awaited<ReturnType<typeof loadExpLogFirestore>>;
+
+async function hasPriorCompleteActivityGrantWith(
+  uid: string,
+  reason: string,
+  sinceMs: number | null,
+  untilMs: number | null,
+  fs: ExpLogFirestore,
+): Promise<boolean> {
+  const snap = await fs.getDocs(
+    fs.query(
+      fs.collection(fs.db, 'expLogs'),
+      fs.where('uid', '==', uid),
+      fs.where('reason', '==', reason.trim().slice(0, 200)),
     ),
   );
 
@@ -236,6 +242,22 @@ export async function hasPriorCompleteActivityGrant(
     const millis = createdAtMillis(entry.data().createdAt);
     return millis !== null && millis >= sinceMs && (untilMs === null || millis <= untilMs);
   });
+}
+
+/** 只查 uid、reason 等值條件，前端判斷雙邊時間窗（兩端含）；上界 null 僅看下界，下界 null 任一筆即命中；查詢錯誤往外拋。 */
+export async function hasPriorCompleteActivityGrant(
+  uid: string,
+  reason: string,
+  sinceMs: number | null,
+  untilMs: number | null = null,
+): Promise<boolean> {
+  return hasPriorCompleteActivityGrantWith(
+    uid,
+    reason,
+    sinceMs,
+    untilMs,
+    await loadExpLogFirestore(),
+  );
 }
 
 /** 逾時只停止等待，不能取消已送出的 Callable；呼叫端不得自動重試。 */
@@ -253,6 +275,83 @@ async function withTimeout<T>(
     return await Promise.race([operation(), timeoutPromise]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const EXP_GRANT_CONCURRENCY = 5;
+
+type CompleteActivityGrantOutcome =
+  | { kind: 'granted'; uid: string }
+  | { kind: 'skipped'; uid: string; source: 'expLogs' | 'requestId' }
+  | { kind: 'failed'; uid: string; error: string };
+
+/** 發放進行中攔截關閉分頁。瀏覽器只顯示內建提示，完成或失敗後由呼叫端移除。 */
+function attachCompleteActivityUnloadWarning(): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const warn = (event: BeforeUnloadEvent): void => {
+    event.preventDefault();
+    event.returnValue = '';
+  };
+  window.addEventListener('beforeunload', warn);
+  return () => {
+    window.removeEventListener('beforeunload', warn);
+  };
+}
+
+/** 單人仍先查 expLogs 再 adjustExp；查失敗或發放失敗的收集方式與原本相同。 */
+async function grantOneCompleteActivityExp(
+  uid: string,
+  eventId: string,
+  reason: string,
+  amount: number,
+  dedupeWindow: { sinceMs: number; untilMs: number } | null,
+  adjustTimeoutMs: number,
+  fs: ExpLogFirestore,
+): Promise<CompleteActivityGrantOutcome> {
+  try {
+    if (await hasPriorCompleteActivityGrantWith(
+      uid,
+      reason,
+      dedupeWindow?.sinceMs ?? null,
+      dedupeWindow?.untilMs ?? null,
+      fs,
+    )) {
+      return { kind: 'skipped', uid, source: 'expLogs' };
+    }
+  } catch {
+    // 查不到去重證據就不發；重複發放的代價高於漏發。
+    return { kind: 'failed', uid, error: 'dedupe_query_failed' };
+  }
+
+  try {
+    const response = await withTimeout(
+      () => callFn('adjustExp', {
+        mode: 'auto',
+        targets: [uid],
+        amount,
+        reason,
+        operatorLabel: '系統',
+        requestId: buildCompleteActivityRequestId(uid, eventId),
+      }),
+      adjustTimeoutMs,
+      ADJUST_EXP_TIMEOUT_MESSAGE,
+    );
+
+    const first = response.results?.[0];
+    if (response.deduplicated === true) {
+      return { kind: 'skipped', uid, source: 'requestId' };
+    }
+    if (first?.success === false) {
+      return { kind: 'failed', uid, error: first.error || 'adjust_failed' };
+    }
+    if (response.success === true && first?.success === true) {
+      // 伺服器對每位 target 回一筆 results；沒有成功結果就不算已發。
+      return { kind: 'granted', uid };
+    }
+    return { kind: 'failed', uid, error: 'unexpected_response' };
+  } catch (err) {
+    // requestId 一送出就可能已消耗；含逾時在內都不重試。
+    return { kind: 'failed', uid, error: errorMessage(err) };
   }
 }
 
@@ -284,17 +383,15 @@ export async function settleAttendance(
   const title = typeof event.title === 'string' ? event.title : '';
   const { added, removed } = res;
 
-  try {
-    await writeOpLog({
-      type: 'manual_attendance',
-      typeName: '編輯簽到',
-      content: `活動 ${title} 已套用編輯簽到（共 ${Object.keys(desired).length} 人，${added + removed} 筆操作）`,
-      actorUid: operatorUid,
-      operator: operatorName,
-    });
-  } catch {
+  void writeOpLog({
+    type: 'manual_attendance',
+    typeName: '編輯簽到',
+    content: `活動 ${title} 已套用編輯簽到（共 ${Object.keys(desired).length} 人，${added + removed} 筆操作）`,
+    actorUid: operatorUid,
+    operator: operatorName,
+  }).catch(() => {
     // writeOpLog 原本會吞錯；額外保護，避免日誌失敗中斷已完成結算的後續發放。
-  }
+  });
 
   const targets = Array.isArray(res.expTargets)
     ? [...new Set(
@@ -327,52 +424,45 @@ export async function settleAttendance(
 
   const reason = buildCompleteActivityReason(title);
   const dedupeWindow = resolveCompleteActivityDedupeWindow(event.date);
+  const adjustTimeoutMs = input.adjustTimeoutMs ?? ADJUST_EXP_TIMEOUT_MS;
+  const outcomes: Array<CompleteActivityGrantOutcome | undefined> = new Array(targets.length);
+  let nextIndex = 0;
+  const releaseUnloadWarning = attachCompleteActivityUnloadWarning();
 
-  for (const uid of targets) {
-    try {
-      if (await hasPriorCompleteActivityGrant(
-        uid,
-        reason,
-        dedupeWindow?.sinceMs ?? null,
-        dedupeWindow?.untilMs ?? null,
-      )) {
-        result.skippedAlready.push({ uid, source: 'expLogs' });
-        continue;
-      }
-    } catch {
-      // 查不到去重證據就不發；重複發放的代價高於漏發。
-      result.failed.push({ uid, error: 'dedupe_query_failed' });
-      continue;
-    }
-
-    try {
-      const response = await withTimeout(
-        () => callFn('adjustExp', {
-          mode: 'auto',
-          targets: [uid],
-          amount: amountResult.amount,
+  try {
+    // 池啟動前解析一次，工人共用同一組 firestore 與 db，避免同時動態載入。
+    const fs = await loadExpLogFirestore();
+    // 固定最多 5 條工人：做完一人才取下一個 index，不是一次展開全部 targets。
+    const workerCount = Math.min(EXP_GRANT_CONCURRENCY, targets.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (nextIndex < targets.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const uid = targets[index];
+        if (!uid) continue;
+        outcomes[index] = await grantOneCompleteActivityExp(
+          uid,
+          event.id,
           reason,
-          operatorLabel: '系統',
-          requestId: buildCompleteActivityRequestId(uid, event.id),
-        }),
-        input.adjustTimeoutMs ?? ADJUST_EXP_TIMEOUT_MS,
-        ADJUST_EXP_TIMEOUT_MESSAGE,
-      );
-
-      const first = response.results?.[0];
-      if (response.deduplicated === true) {
-        result.skippedAlready.push({ uid, source: 'requestId' });
-      } else if (first?.success === false) {
-        result.failed.push({ uid, error: first.error || 'adjust_failed' });
-      } else if (response.success === true && first?.success === true) {
-        // 伺服器對每位 target 回一筆 results；沒有成功結果就不算已發。
-        result.granted.push(uid);
-      } else {
-        result.failed.push({ uid, error: 'unexpected_response' });
+          amountResult.amount,
+          dedupeWindow,
+          adjustTimeoutMs,
+          fs,
+        );
       }
-    } catch (err) {
-      // requestId 一送出就可能已消耗；含逾時在內都不重試。
-      result.failed.push({ uid, error: errorMessage(err) });
+    }));
+  } finally {
+    releaseUnloadWarning();
+  }
+
+  for (const outcome of outcomes) {
+    if (!outcome) continue;
+    if (outcome.kind === 'granted') {
+      result.granted.push(outcome.uid);
+    } else if (outcome.kind === 'skipped') {
+      result.skippedAlready.push({ uid: outcome.uid, source: outcome.source });
+    } else {
+      result.failed.push({ uid: outcome.uid, error: outcome.error });
     }
   }
 
