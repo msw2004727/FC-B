@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -110,6 +111,7 @@ describe('UnregRosterTable', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    Reflect.deleteProperty(document, 'visibilityState');
   });
 
   it('returns null when there are no active unreg records', () => {
@@ -280,5 +282,285 @@ describe('UnregRosterTable', () => {
     expect(screen.getByRole('button', { name: '編輯' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
     expect(mockSettleAttendance).not.toHaveBeenCalled();
+  });
+
+  function beforeUnloadPrevented(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  function renderEditing(): HTMLElement {
+    const view = render(
+      <UnregRosterTable
+        eventId="ce_1"
+        eventDocId="doc_1"
+        eventTitle="週五夜球"
+        attendanceRecords={sampleUnregRecords}
+        canManage={true}
+        operatorUid="u_admin"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    return view.container as HTMLElement;
+  }
+
+  it('防抖期間卸載會送出且只送一次', async () => {
+    const view = render(
+      <UnregRosterTable
+        eventId="ce_1"
+        eventDocId="doc_1"
+        eventTitle="週五夜球"
+        attendanceRecords={sampleUnregRecords}
+        canManage={true}
+        operatorUid="u_admin"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      view.unmount();
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('visibility 仍為 visible 時不送出；變成 hidden 才 flush 一次', async () => {
+    renderEditing();
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagehide 會 flush 防抖中的寫入且只送一次', async () => {
+    renderEditing();
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('寫入成功後重讀未完成時該列已可再操作', async () => {
+    let resolveReload!: (rows: readonly RosterAttendanceRecordInput[]) => void;
+    const onReload = vi.fn(
+      () => new Promise<readonly RosterAttendanceRecordInput[]>((resolve) => {
+        resolveReload = resolve;
+      }),
+    );
+    render(
+      <UnregRosterTable
+        eventId="ce_1"
+        eventDocId="doc_1"
+        eventTitle="週五夜球"
+        attendanceRecords={sampleUnregRecords}
+        canManage={true}
+        operatorUid="u_admin"
+        onReloadAttendance={onReload}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(checkoutBox.disabled).toBe(false);
+    expect(checkoutBox.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    expect(checkoutBox.disabled).toBe(false);
+    expect(checkoutBox.checked).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(2);
+    const removes = mockWriteAttendanceOps.mock.calls[1]?.[1] as {
+      removes: Array<{ _docId?: string }>;
+    };
+    expect(removes.removes.map((rec) => rec._docId)).toContain('d1');
+    await act(async () => {
+      resolveReload([]);
+    });
+  });
+
+  it('快速連點同一人只寫最後狀態', async () => {
+    renderEditing();
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    const opsArg = mockWriteAttendanceOps.mock.calls[0]?.[1] as {
+      adds: Array<{ type: string }>;
+    };
+    expect(opsArg.adds.map((add) => add.type)).toEqual(['checkout']);
+    expect(checkoutBox.checked).toBe(true);
+  });
+
+  it('寫入失敗時還原簽退勾選', async () => {
+    mockWriteAttendanceOps.mockRejectedValueOnce(new Error('network error'));
+    const onToast = vi.fn();
+    render(
+      <UnregRosterTable
+        eventId="ce_1"
+        eventDocId="doc_1"
+        eventTitle="週五夜球"
+        attendanceRecords={sampleUnregRecords}
+        canManage={true}
+        operatorUid="u_admin"
+        onToast={onToast}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+    const checkinBox = document.getElementById('unreg-checkin-u_unreg_1') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+
+    expect(onToast).toHaveBeenCalledWith('陳路人 儲存失敗，已還原');
+    expect(checkoutBox.checked).toBe(false);
+    expect(checkinBox.checked).toBe(true);
+  });
+
+  it('beforeunload 在有待寫入時註冊，清空後解除', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    try {
+      renderEditing();
+      expect(beforeUnloadPrevented()).toBe(false);
+      const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.click(checkoutBox);
+      });
+      expect(add.mock.calls.filter((call) => call[0] === 'beforeunload')).toHaveLength(1);
+      expect(beforeUnloadPrevented()).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+      expect(remove.mock.calls.filter((call) => call[0] === 'beforeunload').length).toBeGreaterThan(0);
+      expect(beforeUnloadPrevented()).toBe(false);
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
+  it('寫入成功後背景重讀失敗，頁面傳入新出席資料時改採用新資料', async () => {
+    const initialRecords: RosterAttendanceRecordInput[] = [
+      {
+        _docId: 'targetA',
+        uid: 'uidA',
+        userName: '甲',
+        type: 'unreg',
+        status: 'active',
+        time: '2026/10/31 10:00',
+      },
+    ];
+    const nextRecords: RosterAttendanceRecordInput[] = [
+      ...initialRecords,
+      {
+        uid: 'uidA',
+        userName: '甲',
+        type: 'note',
+        status: 'active',
+        note: '頁面備註',
+        time: '2026/10/31 10:01',
+      },
+    ];
+    const onReload = vi.fn(() => Promise.reject(new Error('reload failed')));
+
+    function PageDataUnreg() {
+      const [records, setRecords] = useState(initialRecords);
+      return (
+        <>
+          <button type="button" onClick={() => setRecords(nextRecords)}>套用頁面資料</button>
+          <UnregRosterTable
+            eventId="evtA"
+            eventDocId="evtA"
+            eventTitle="甲"
+            attendanceRecords={records}
+            canManage={true}
+            operatorUid="uidB"
+            onReloadAttendance={onReload}
+          />
+        </>
+      );
+    }
+
+    render(<PageDataUnreg />);
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    const checkinBox = document.getElementById('unreg-checkin-uidA') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '套用頁面資料' }));
+    });
+    expect((document.getElementById('unreg-checkin-uidA') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('unreg-note-uidA') as HTMLInputElement).value).toBe('頁面備註');
   });
 });

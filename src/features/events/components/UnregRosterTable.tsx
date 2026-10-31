@@ -22,6 +22,7 @@ import { writeOpLog } from '@/data/op-log';
 import { removeAttendance } from '@/features/checkin/data/attendance';
 import { appConfirm } from '@/ui/AppConfirm';
 import {
+  applyAttendanceWriteResult,
   collectAttendanceOps,
   formatAttendanceDateTime,
   normalizeAttendanceSelection,
@@ -39,6 +40,7 @@ import {
   NOTE_DEBOUNCE_MS,
   ROW_FAILED_FLASH_MS,
   ROW_SAVED_FLASH_MS,
+  useAttendanceLeaveGuard,
 } from './useAttendanceInstantSave';
 
 export interface UnregPerson {
@@ -144,6 +146,16 @@ export function UnregRosterTable({
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const flashTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const idCounterRef = useRef<{ v: number }>({ v: Date.now() });
+  const recordsRef = useRef<readonly RosterAttendanceRecordInput[]>(attendanceRecords);
+  const seenPropsRecordsRef = useRef<readonly RosterAttendanceRecordInput[]>(attendanceRecords);
+  const localEpochRef = useRef(0);
+  const serverEpochRef = useRef(0);
+  const adoptNextPropsRef = useRef(false);
+  const flushRef = useRef<() => void>(() => {});
+  const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
+  const syncPendingRef = useRef<() => void>(() => {});
+  const scheduleReloadRef = useRef<() => void>(() => {});
+  const reloadLoopRef = useRef({ running: false, again: false });
 
   const latestRef = useRef({
     eventId,
@@ -177,18 +189,37 @@ export function UnregRosterTable({
   }
   peopleByUidRef.current = nextPeopleMap;
 
+  if (attendanceRecords !== seenPropsRecordsRef.current) {
+    const writing = Object.keys(inFlightMapRef.current).length > 0
+      || Object.keys(queuedMapRef.current).length > 0;
+    if (!writing && (localEpochRef.current === serverEpochRef.current || adoptNextPropsRef.current)) {
+      seenPropsRecordsRef.current = attendanceRecords;
+      recordsRef.current = attendanceRecords;
+      serverEpochRef.current = localEpochRef.current;
+      adoptNextPropsRef.current = false;
+    } else if (!writing) {
+      seenPropsRecordsRef.current = attendanceRecords;
+    }
+  }
+
   useEffect(() => {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
-      for (const timer of Object.values(noteTimersRef.current)) clearTimeout(timer);
-      for (const timer of Object.values(saveTimersRef.current)) clearTimeout(timer);
       for (const timer of Object.values(flashTimersRef.current)) clearTimeout(timer);
-      noteTimersRef.current = {};
-      saveTimersRef.current = {};
       flashTimersRef.current = {};
     };
   }, []);
+
+  const syncBeforeUnload = useAttendanceLeaveGuard(eventDocId, flushRef);
+  syncLeaveGuardRef.current = syncBeforeUnload;
+  syncPendingRef.current = () => {
+    const pending = Object.keys(noteTimersRef.current).length > 0
+      || Object.keys(saveTimersRef.current).length > 0
+      || Object.keys(inFlightMapRef.current).length > 0
+      || Object.keys(queuedMapRef.current).length > 0;
+    syncLeaveGuardRef.current(pending);
+  };
 
   const computeActualSelection = useCallback(
     (
@@ -218,7 +249,7 @@ export function UnregRosterTable({
     (person: UnregPerson): AttendanceSelection => {
       const draft = draftMapRef.current[person.uid] ?? draftByUid[person.uid];
       if (draft) return draft;
-      return computeActualSelection(person, latestRef.current.attendanceRecords);
+      return computeActualSelection(person, recordsRef.current);
     },
     [computeActualSelection, draftByUid],
   );
@@ -277,110 +308,165 @@ export function UnregRosterTable({
     }
   }, []);
 
-  const writeForUid = useCallback(
-    async (uid: string): Promise<void> => {
-      if (!uid) return;
-      if (uid in inFlightMapRef.current) {
-        queuedMapRef.current[uid] = true;
-        return;
-      }
-
-      const person = peopleByUidRef.current.get(uid);
-      if (!person) return;
-
-      const {
-        eventId: curEventId,
-        eventDocId: curDocId,
-        operatorUid: curOperatorUid,
-        attendanceRecords: curRecords,
-      } = latestRef.current;
-
-      const wantedRaw =
-        draftMapRef.current[uid] ?? computeActualSelection(person, curRecords);
-      const wanted = normalizeAttendanceSelection({
-        checkin: wantedRaw.checkin,
-        checkout: wantedRaw.checkout,
-        note: wantedRaw.note.trim().slice(0, 20),
-      });
-
-      const baseRecord = {
-        eventId: curEventId,
-        uid: person.uid,
-        userName: person.name,
-        participantType: 'self' as const,
-        companionId: null,
-        companionName: null,
-      };
-      const timeStr = formatAttendanceDateTime(new Date());
-      const ops = collectAttendanceOps(
-        { uid: person.uid, name: person.name, isCompanion: false },
-        wanted,
-        curRecords,
-        curEventId,
-        timeStr,
-        baseRecord,
-        idCounterRef.current,
-      );
-
-      if (ops.blocked || (ops.adds.length === 0 && ops.removes.length === 0)) {
-        return;
-      }
-
-      if (!curOperatorUid || !curDocId) {
-        setDraftForUid(uid, null);
-        triggerRowFlash(uid, 'failed');
-        latestRef.current.onToast?.(`${person.name} 儲存失敗，已還原`);
-        return;
-      }
-
-      if (aliveRef.current) {
-        setInFlightUids((prev) => ({ ...prev, [uid]: true }));
-      }
-
-      const runPromise = (async () => {
-        try {
-          await writeAttendanceOps(curDocId, ops, curOperatorUid);
+  scheduleReloadRef.current = () => {
+    const loop = reloadLoopRef.current;
+    if (loop.running) {
+      loop.again = true;
+      return;
+    }
+    loop.running = true;
+    void (async () => {
+      try {
+        do {
+          loop.again = false;
+          if (!aliveRef.current) break;
+          const reload = latestRef.current.onReloadAttendance;
+          if (!reload) break;
+          const epoch = localEpochRef.current;
           try {
-            if (latestRef.current.onReloadAttendance) {
-              const refreshed = await latestRef.current.onReloadAttendance();
-              latestRef.current.attendanceRecords = refreshed;
-            }
+            const refreshed = await reload();
             if (
-              !queuedMapRef.current[uid]
-              && !noteTimersRef.current[uid]
-              && !saveTimersRef.current[uid]
+              !aliveRef.current
+              || localEpochRef.current !== epoch
+              || loop.again
             ) {
+              continue;
+            }
+            serverEpochRef.current = epoch;
+            recordsRef.current = refreshed;
+            adoptNextPropsRef.current = false;
+            for (const uid of Object.keys(draftMapRef.current)) {
+              if (
+                queuedMapRef.current[uid]
+                || noteTimersRef.current[uid]
+                || saveTimersRef.current[uid]
+                || inFlightMapRef.current[uid]
+              ) {
+                continue;
+              }
               setDraftForUid(uid, null);
             }
           } catch {
-            // 重讀失敗保留樂觀草稿
+            if (aliveRef.current) adoptNextPropsRef.current = true;
           }
-          triggerRowFlash(uid, 'saved');
-        } catch {
-          setDraftForUid(uid, null);
-          triggerRowFlash(uid, 'failed');
+        } while (loop.again && aliveRef.current);
+      } finally {
+        loop.running = false;
+        if (loop.again && aliveRef.current) scheduleReloadRef.current();
+      }
+    })();
+  };
+
+  const writeForUid = useCallback(
+    async (uid: string): Promise<void> => {
+      try {
+        if (!uid) return;
+        if (uid in inFlightMapRef.current) {
+          queuedMapRef.current[uid] = true;
+          return;
+        }
+
+        const person = peopleByUidRef.current.get(uid) ?? null;
+        if (!person) return;
+
+        const curEventId = latestRef.current.eventId;
+        const curDocId = latestRef.current.eventDocId;
+        const curOperatorUid = latestRef.current.operatorUid;
+        const curRecords = recordsRef.current;
+        const ui = (): boolean => aliveRef.current;
+
+        const wantedRaw =
+          draftMapRef.current[uid] ?? computeActualSelection(person, curRecords);
+        const wanted = normalizeAttendanceSelection({
+          checkin: wantedRaw.checkin,
+          checkout: wantedRaw.checkout,
+          note: wantedRaw.note.trim().slice(0, 20),
+        });
+
+        const baseRecord = {
+          eventId: curEventId,
+          uid: person.uid,
+          userName: person.name,
+          participantType: 'self' as const,
+          companionId: null,
+          companionName: null,
+        };
+        const timeStr = formatAttendanceDateTime(new Date());
+        const ops = collectAttendanceOps(
+          { uid: person.uid, name: person.name, isCompanion: false },
+          wanted,
+          curRecords,
+          curEventId,
+          timeStr,
+          baseRecord,
+          idCounterRef.current,
+        );
+
+        if (ops.blocked || (ops.adds.length === 0 && ops.removes.length === 0)) {
+          return;
+        }
+
+        if (!curOperatorUid || !curDocId) {
+          if (ui()) {
+            setDraftForUid(uid, null);
+            triggerRowFlash(uid, 'failed');
+          }
           latestRef.current.onToast?.(`${person.name} 儲存失敗，已還原`);
-        } finally {
-          delete inFlightMapRef.current[uid];
-          if (aliveRef.current) {
-            setInFlightUids((prev) => {
-              if (!prev[uid]) return prev;
-              const copy = { ...prev };
-              delete copy[uid];
-              return copy;
-            });
-          }
-          if (queuedMapRef.current[uid]) {
-            delete queuedMapRef.current[uid];
-            if (aliveRef.current) {
+          return;
+        }
+
+        if (ui()) {
+          setInFlightUids((prev) => ({ ...prev, [uid]: true }));
+        }
+
+        const runPromise = (async () => {
+          try {
+            const result = await writeAttendanceOps(curDocId, ops, curOperatorUid);
+            const patched = applyAttendanceWriteResult(recordsRef.current, ops, result);
+            recordsRef.current = patched;
+            localEpochRef.current += 1;
+            const actual = computeActualSelection(person, patched);
+            if (
+              ui()
+              && !queuedMapRef.current[uid]
+              && !noteTimersRef.current[uid]
+              && !saveTimersRef.current[uid]
+              && actual.checkin === wanted.checkin
+              && actual.checkout === wanted.checkout
+              && actual.note === wanted.note
+            ) {
+              setDraftForUid(uid, null);
+            }
+            if (aliveRef.current) scheduleReloadRef.current();
+            if (ui()) triggerRowFlash(uid, 'saved');
+          } catch {
+            if (ui()) {
+              setDraftForUid(uid, null);
+              triggerRowFlash(uid, 'failed');
+            }
+            latestRef.current.onToast?.(`${person.name} 儲存失敗，已還原`);
+          } finally {
+            delete inFlightMapRef.current[uid];
+            if (ui()) {
+              setInFlightUids((prev) => {
+                if (!prev[uid]) return prev;
+                const copy = { ...prev };
+                delete copy[uid];
+                return copy;
+              });
+            }
+            if (queuedMapRef.current[uid]) {
+              delete queuedMapRef.current[uid];
               void writeForUid(uid);
             }
           }
-        }
-      })();
+        })();
 
-      inFlightMapRef.current[uid] = runPromise;
-      await runPromise;
+        inFlightMapRef.current[uid] = runPromise;
+        await runPromise;
+      } finally {
+        syncPendingRef.current();
+      }
     },
     [computeActualSelection, setDraftForUid, triggerRowFlash],
   );
@@ -392,6 +478,7 @@ export function UnregRosterTable({
         delete saveTimersRef.current[uid];
         void writeForUid(uid);
       }, CHECKBOX_DEBOUNCE_MS);
+      syncPendingRef.current();
     },
     [writeForUid],
   );
@@ -441,6 +528,7 @@ export function UnregRosterTable({
         delete noteTimersRef.current[person.uid];
         scheduleSave(person.uid);
       }, NOTE_DEBOUNCE_MS);
+      syncPendingRef.current();
     },
     [getRowSelection, scheduleSave, setDraftForUid],
   );
@@ -466,6 +554,7 @@ export function UnregRosterTable({
       safety += 1;
       await Promise.allSettled(Object.values(inFlightMapRef.current));
     }
+    syncPendingRef.current();
   }, [writeForUid]);
 
   const resetInstantSave = useCallback((): void => {
@@ -478,7 +567,19 @@ export function UnregRosterTable({
     if (aliveRef.current) {
       setDraftByUid({});
     }
+    if (Object.keys(inFlightMapRef.current).length === 0) {
+      const pageRecords = latestRef.current.attendanceRecords;
+      recordsRef.current = pageRecords;
+      seenPropsRecordsRef.current = pageRecords;
+      serverEpochRef.current = localEpochRef.current;
+      adoptNextPropsRef.current = false;
+    }
+    syncPendingRef.current();
   }, []);
+
+  flushRef.current = () => {
+    void flushInstantSaves();
+  };
 
   if (people.length === 0) {
     return null;
@@ -530,7 +631,7 @@ export function UnregRosterTable({
     await flushInstantSaves();
     if (!aliveRef.current) return;
 
-    const curRecords = latestRef.current.attendanceRecords.filter(isActiveRecord);
+    const curRecords = recordsRef.current.filter(isActiveRecord);
     const model = toPersonModel(person);
     // 對照 A `_removeUnregUser`：軟刪除該用戶於此活動的所有有效出席紀錄（unreg / checkin / checkout / note）
     const targets = curRecords.filter(

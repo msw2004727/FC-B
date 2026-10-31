@@ -272,6 +272,7 @@ function EventDetailSession({
   const alive = useRef(true);
   const sequence = useRef(0);
   const rosterSequence = useRef(0);
+  const attendanceReloadSeq = useRef(0);
   const rosterPending = useRef(false);
   const operation = useRef(false);
   const noticeSequence = useRef(0);
@@ -851,12 +852,14 @@ function EventDetailSession({
     if (!docId || !canViewDetailAttendanceRecordDetails(currentViewer.current, snapshot?.event)) {
       return snapshot?.attendanceRecords ?? [];
     }
+    const request = ++attendanceReloadSeq.current;
     const records = await loadEventAttendance(docId);
-    if (alive.current) {
-      setSnapshot((prev) => (prev && prev.eventDocId === docId
-        ? { ...prev, attendanceRecords: records }
-        : prev));
+    if (!alive.current || request !== attendanceReloadSeq.current) {
+      return records;
     }
+    setSnapshot((prev) => (prev && prev.eventDocId === docId
+      ? { ...prev, attendanceRecords: records }
+      : prev));
     return records;
   };
 

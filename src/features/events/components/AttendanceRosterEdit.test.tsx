@@ -145,6 +145,71 @@ function Harness({
   );
 }
 
+const uidEvent: RosterEventInput = { id: 'evtA', max: 10, current: 1 };
+const uidRegs: RosterRegistrationInput[] = [
+  {
+    _docId: 'targetA',
+    userId: 'uidA',
+    userName: '甲',
+    status: 'confirmed',
+    participantType: 'self',
+  },
+];
+
+function UidATable({
+  eventDocId,
+  onReload,
+  onFailed = () => undefined,
+  nextRecords,
+}: {
+  eventDocId: string;
+  onReload: () => Promise<readonly RosterAttendanceRecordInput[]>;
+  onFailed?: (name: string) => void;
+  nextRecords?: readonly RosterAttendanceRecordInput[];
+}) {
+  const [records, setRecords] = useState<readonly RosterAttendanceRecordInput[]>([]);
+  const instant = useAttendanceInstantSave({
+    event: uidEvent,
+    eventDocId,
+    publicEventId: 'evtA',
+    operatorUid: 'uidB',
+    registrations: uidRegs,
+    attendanceRecords: records,
+    onReloadAttendance: async () => {
+      const next = await onReload();
+      setRecords(next);
+      return next;
+    },
+    onSaveFailed: onFailed,
+  });
+
+  return (
+    <>
+      {nextRecords ? (
+        <button type="button" onClick={() => setRecords(nextRecords)}>套用頁面資料</button>
+      ) : null}
+      <AttendanceRosterTable
+        event={uidEvent}
+        registrations={uidRegs}
+        attendanceRecords={records}
+        roles={{}}
+        onOpenProfile={() => undefined}
+        canManage={true}
+        editing={true}
+        submitting={false}
+        onStartEdit={() => undefined}
+        onCloseEdit={() => undefined}
+        getRowSelection={instant.getRowSelection}
+        inFlightKeys={instant.inFlightKeys}
+        savedFlashKeys={instant.savedFlashKeys}
+        failedFlashKeys={instant.failedFlashKeys}
+        onToggleCheckbox={instant.onToggleCheckbox}
+        onChangeNote={instant.onChangeNote}
+      />
+    </>
+  );
+}
+
 describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -155,6 +220,7 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    Reflect.deleteProperty(document, 'visibilityState');
   });
 
   it('非編輯模式：無管理權限時不顯示管理名單按鈕；有權限時顯示「管理名單」', () => {
@@ -315,5 +381,375 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     // flush 立即寫入備註並退出編輯模式
     expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: '管理名單' })).toBeTruthy();
+  });
+
+  function beforeUnloadPrevented(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  it('防抖期間卸載會送出且只送一次', async () => {
+    const view = render(<Harness />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      view.unmount();
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('visibility 仍為 visible 時不送出；變成 hidden 才 flush 一次', async () => {
+    render(<Harness />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagehide 會 flush 防抖中的寫入且只送一次', async () => {
+    render(<Harness />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+  });
+
+  it('寫入成功後重讀未完成時該列已可再操作，下一筆刪除剛寫入的文件', async () => {
+    let resolveReload!: (rows: readonly RosterAttendanceRecordInput[]) => void;
+    const onReload = vi.fn(
+      () => new Promise<readonly RosterAttendanceRecordInput[]>((resolve) => {
+        resolveReload = resolve;
+      }),
+    );
+    render(<Harness onReload={onReload} />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(checkinBox.disabled).toBe(false);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    expect(checkinBox.checked).toBe(false);
+    expect(checkinBox.disabled).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(2);
+    const removes = mockWriteAttendanceOps.mock.calls[1]?.[1] as {
+      removes: Array<{ _docId?: string }>;
+    };
+    expect(removes.removes.map((rec) => rec._docId)).toContain('d1');
+
+    await act(async () => {
+      resolveReload([]);
+    });
+  });
+
+  it('快速連點同一人只寫最後一次，最終為已簽到', async () => {
+    const saved: RosterAttendanceRecordInput[] = [
+      { _docId: 'd1', id: 'att_1', uid: 'u_1', type: 'checkin', status: 'active' },
+    ];
+    render(<Harness onReload={vi.fn(async () => saved)} />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    const opsArg = mockWriteAttendanceOps.mock.calls[0]?.[1] as {
+      adds: Array<{ type: string }>;
+    };
+    expect(opsArg.adds.map((add) => add.type)).toEqual(['checkin']);
+    expect(checkinBox.checked).toBe(true);
+  });
+
+  it('beforeunload 在有待寫入時註冊一次，寫完後解除', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    try {
+      render(<Harness />);
+      expect(beforeUnloadPrevented()).toBe(false);
+      const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+      const checkoutBox = document.getElementById('manual-checkout-u_1') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.click(checkinBox);
+      });
+      expect(add.mock.calls.filter((call) => call[0] === 'beforeunload')).toHaveLength(1);
+      expect(beforeUnloadPrevented()).toBe(true);
+
+      await act(async () => {
+        fireEvent.click(checkoutBox);
+      });
+      expect(add.mock.calls.filter((call) => call[0] === 'beforeunload')).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+      expect(remove.mock.calls.filter((call) => call[0] === 'beforeunload').length).toBeGreaterThan(0);
+      expect(beforeUnloadPrevented()).toBe(false);
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
+  it('寫入中又改動會排隊，重送時刪除剛拿到的文件', async () => {
+    let resolveFirst!: (value: { addedDocIds: string[]; removedDocIds: string[] }) => void;
+    mockWriteAttendanceOps.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    render(<UidATable eventDocId="evtA" onReload={async () => []} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst({ addedDocIds: ['targetA'], removedDocIds: [] });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(2);
+    const removes = mockWriteAttendanceOps.mock.calls[1]?.[1] as {
+      removes: Array<{ _docId?: string }>;
+    };
+    expect(removes.removes.map((rec) => rec._docId)).toContain('targetA');
+  });
+
+  it('較舊的背景重讀晚回來，不能覆蓋較新的本地勾選', async () => {
+    const pending: Array<(rows: readonly RosterAttendanceRecordInput[]) => void> = [];
+    const onReload = vi.fn(
+      () => new Promise<readonly RosterAttendanceRecordInput[]>((resolve) => {
+        pending.push(resolve);
+      }),
+    );
+    render(<UidATable eventDocId="evtA" onReload={onReload} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+    const checkoutBox = document.getElementById('manual-checkout-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(checkinBox.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(checkoutBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(checkoutBox.checked).toBe(true);
+    expect(onReload).toHaveBeenCalledTimes(1);
+
+    const resolveStale = pending[0];
+    if (!resolveStale) throw new Error('缺少背景重讀');
+    await act(async () => {
+      resolveStale([]);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect((document.getElementById('manual-checkout-uidA') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('manual-checkin-uidA') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('重讀失敗後保留本地勾選，且不當成寫入失敗', async () => {
+    const onFailed = vi.fn();
+    const onReload = vi.fn(() => Promise.reject(new Error('reload failed')));
+    render(<UidATable eventDocId="evtA" onReload={onReload} onFailed={onFailed} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(checkinBox.checked).toBe(true);
+  });
+
+  it('寫入成功後背景重讀失敗，頁面傳入新出席資料時改採用新資料', async () => {
+    const onFailed = vi.fn();
+    const onReload = vi.fn(() => Promise.reject(new Error('reload failed')));
+    const nextRecords: RosterAttendanceRecordInput[] = [
+      {
+        _docId: 'targetA',
+        uid: 'uidA',
+        userName: '甲',
+        type: 'note',
+        status: 'active',
+        note: '頁面備註',
+        time: '2026/10/31 10:01',
+      },
+    ];
+    render(
+      <UidATable
+        eventDocId="evtA"
+        onReload={onReload}
+        onFailed={onFailed}
+        nextRecords={nextRecords}
+      />,
+    );
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(checkinBox.checked).toBe(true);
+    expect(onFailed).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '套用頁面資料' }));
+    });
+    expect((document.getElementById('manual-checkin-uidA') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('manual-note-uidA') as HTMLInputElement).value).toBe('頁面備註');
+  });
+
+  it('寫入中改備註並排隊後切換活動，寫完仍送出該備註', async () => {
+    let resolveFirst!: (value: { addedDocIds: string[]; removedDocIds: string[] }) => void;
+    mockWriteAttendanceOps.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    const view = render(<UidATable eventDocId="evtA" onReload={async () => []} />);
+    const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+    const noteInput = document.getElementById('manual-note-uidA') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.input(noteInput, { target: { value: 'B' } });
+      await vi.advanceTimersByTimeAsync(NOTE_DEBOUNCE_MS + CHECKBOX_DEBOUNCE_MS);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      view.rerender(<UidATable eventDocId="evtB" onReload={async () => []} />);
+    });
+    await act(async () => {
+      resolveFirst({ addedDocIds: ['targetA'], removedDocIds: [] });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(2);
+    const second = mockWriteAttendanceOps.mock.calls[1];
+    expect(second?.[0]).toBe('evtA');
+    const ops = second?.[1] as { adds: Array<{ type: string; note?: string }> };
+    expect(ops.adds.some((add) => add.type === 'note' && add.note === 'B')).toBe(true);
+  });
+
+  it('卸載後寫入結束不會再掛上 beforeunload', async () => {
+    let resolveFirst!: (value: { addedDocIds: string[]; removedDocIds: string[] }) => void;
+    mockWriteAttendanceOps
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({ addedDocIds: ['targetA'], removedDocIds: [] });
+    const add = vi.spyOn(window, 'addEventListener');
+    try {
+      const view = render(<UidATable eventDocId="evtA" onReload={async () => []} />);
+      const checkinBox = document.getElementById('manual-checkin-uidA') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.click(checkinBox);
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      await act(async () => {
+        fireEvent.click(checkinBox);
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        view.unmount();
+      });
+      const before = add.mock.calls.filter((call) => call[0] === 'beforeunload').length;
+      await act(async () => {
+        resolveFirst({ addedDocIds: ['targetA'], removedDocIds: [] });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const after = add.mock.calls.filter((call) => call[0] === 'beforeunload').length;
+      expect(after).toBe(before);
+      expect(beforeUnloadPrevented()).toBe(false);
+    } finally {
+      add.mockRestore();
+    }
   });
 });

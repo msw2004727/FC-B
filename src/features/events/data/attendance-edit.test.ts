@@ -50,6 +50,7 @@ vi.mock('@/data/firebase', () => ({
 }));
 
 import {
+  applyAttendanceWriteResult,
   buildAttendanceBaseRecord,
   collectAttendanceOps,
   formatAttendanceDateTime,
@@ -57,7 +58,13 @@ import {
   writeAttendanceOps,
   type AttendanceBaseRecord,
 } from './attendance-edit';
-import type { RosterAttendanceRecordInput, RosterRegistrationInput } from './attendance-roster-model';
+import {
+  attendanceRecordMs,
+  getLatestAttendanceRecord,
+  type ConfirmedRosterPerson,
+  type RosterAttendanceRecordInput,
+  type RosterRegistrationInput,
+} from './attendance-roster-model';
 
 describe('normalizeAttendanceSelection', () => {
   it('勾選 checkout 時強制連帶勾選 checkin', () => {
@@ -455,5 +462,89 @@ describe('formatAttendanceDateTime', () => {
   it('絕對時間格式化成台北牆鐘，00:30 不會變成前一天', () => {
     expect(formatAttendanceDateTime(new Date('2026-05-01T09:05:00+08:00'))).toBe('2026/05/01 09:05');
     expect(formatAttendanceDateTime(new Date('2026-10-19T00:30:00+08:00'))).toBe('2026/10/19 00:30');
+  });
+});
+
+describe('applyAttendanceWriteResult 同一分鐘備註', () => {
+  const notePerson: ConfirmedRosterPerson = {
+    name: '甲',
+    displayName: '甲',
+    uid: 'uidA',
+    ownerUid: 'uidA',
+    isCompanion: false,
+    hasSelfReg: true,
+    proxyOnly: false,
+    displayBadges: [],
+    teamKey: null,
+    regDocId: null,
+    teamReservationTeamId: null,
+    teamReservationTeamName: null,
+    teamSeatSource: null,
+  };
+
+  it('同一分鐘內連改兩次備註 A→B，getLatestAttendanceRecord 取到 B；改回 A 會送出', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-31T02:05:40.000Z'));
+    try {
+      const timeStr = formatAttendanceDateTime(new Date());
+      const personInput = { uid: 'uidA', name: '甲', isCompanion: false };
+      const baseRecord: AttendanceBaseRecord = {
+        eventId: 'evtA',
+        uid: 'uidA',
+        userName: '甲',
+        participantType: 'self',
+        companionId: null,
+        companionName: null,
+      };
+      const counter = { v: 1 };
+      const opsA = collectAttendanceOps(
+        personInput,
+        { checkin: false, checkout: false, note: 'A' },
+        [],
+        'evtA',
+        timeStr,
+        baseRecord,
+        counter,
+        () => 'aaaa',
+      );
+      let records = applyAttendanceWriteResult([], opsA, {
+        addedDocIds: ['targetA'],
+        removedDocIds: [],
+      });
+      vi.setSystemTime(new Date('2026-10-31T02:05:41.000Z'));
+      const opsB = collectAttendanceOps(
+        personInput,
+        { checkin: false, checkout: false, note: 'B' },
+        records,
+        'evtA',
+        timeStr,
+        baseRecord,
+        counter,
+        () => 'bbbb',
+      );
+      records = applyAttendanceWriteResult(records, opsB, {
+        addedDocIds: ['targetA'],
+        removedDocIds: [],
+      });
+      const noteA = records.find((record) => record.note === 'A');
+      const noteB = records.find((record) => record.note === 'B');
+      expect(typeof noteA?.createdAt).toBe('string');
+      expect(typeof noteB?.createdAt).toBe('string');
+      expect(attendanceRecordMs(noteB, 0)).toBeGreaterThan(attendanceRecordMs(noteA, 0));
+      expect(getLatestAttendanceRecord(records, notePerson, 'note')?.note).toBe('B');
+      const back = collectAttendanceOps(
+        personInput,
+        { checkin: false, checkout: false, note: 'A' },
+        records,
+        'evtA',
+        timeStr,
+        baseRecord,
+        counter,
+        () => 'cccc',
+      );
+      expect(back.adds.some((add) => add.type === 'note' && add.note === 'A')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

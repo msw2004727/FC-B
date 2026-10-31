@@ -502,3 +502,47 @@ export async function writeAttendanceOps(
     removedDocIds: Array.from(removedDocIdsSet),
   };
 }
+
+/**
+ * 把一次 `writeAttendanceOps` 的結果併進本地出席清單。
+ * 軟刪除標成 `removed`；新增列帶上 Firestore 回傳的 `_docId`，讓下一筆 ops 能指到剛寫入的文件。
+ * `addedDocIds` 與 `ops.adds` 依寫入順序對齊；少於新增筆數的 ID 不補假文件。
+ */
+export function applyAttendanceWriteResult(
+  records: readonly RosterAttendanceRecordInput[],
+  ops: Pick<CollectAttendanceOpsResult, 'adds'>,
+  result: WriteAttendanceOpsResult | null | undefined,
+): RosterAttendanceRecordInput[] {
+  const removed = new Set(result?.removedDocIds ?? []);
+  const addedIds = result?.addedDocIds ?? [];
+  const next: RosterAttendanceRecordInput[] = [];
+  for (const record of records) {
+    const docId = str(record._docId);
+    if (docId && removed.has(docId)) {
+      next.push({ ...record, status: 'removed' });
+    } else {
+      next.push(record);
+    }
+  }
+  const count = Math.min(ops.adds.length, addedIds.length);
+  for (let i = 0; i < count; i += 1) {
+    const add = ops.adds[i];
+    const docId = addedIds[i];
+    if (!add || !docId) continue;
+    const created: RosterAttendanceRecordInput = {
+      _docId: docId,
+      id: add.id,
+      uid: add.uid,
+      userName: add.userName,
+      companionId: add.companionId,
+      companionName: add.companionName,
+      type: add.type,
+      time: add.time,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+    if (add.note !== undefined) created.note = add.note;
+    next.push(created);
+  }
+  return next;
+}

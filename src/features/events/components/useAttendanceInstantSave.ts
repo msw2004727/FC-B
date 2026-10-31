@@ -9,14 +9,17 @@
  * - 成功時觸發該列短暫閃綠（`att-row-saved`，600ms）。
  * - `_flushInstantSaves`：立即執行所有 debounce 中的計時器並等待所有 in-flight 寫入完成。
  *
- * 寫入成功後的畫面更新策略（決策第 3 點）：
- * 採用「重新呼叫 `loadEventAttendance(eventDocId)` 並以本地樂觀草稿（drafts）橋接讀取延遲」：
- * 理由：`writeBatch` 新增的文件 ID 與伺服器時間戳由 Firestore 產生，直接重讀 `loadEventAttendance`
- * 能確保 `_docId` 與之後軟刪除所需的 canonical 文件身分完全一致，避免手工拼湊快取結構與真實子集合偏離（L-31）。
+ * 寫入成功後：用 `writeAttendanceOps` 回傳的文件 ID 局部更新本地出席清單，該列鎖只到 `batch.commit()`。
+ * 整批重讀改為背景排程，不擋住該列。重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗；
+ * 失敗後下一次頁面傳入的新清單要採用。開始或結束編輯且沒有寫入中項目時，也把本地清單對回頁面資料。
+ * 離頁：`visibilitychange`（hidden）、`pagehide`、卸載與切換活動都會 flush 防抖中的寫入，不丟計時器。
+ * 有待送或寫入中的變更時註冊 `beforeunload`，清空後解除；卸載之後不再掛回。
+ * 排隊中的變更把當下草稿凍進寫入情境，活動切換清掉草稿後重送仍用那份草稿。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import {
+  applyAttendanceWriteResult,
   buildAttendanceBaseRecord,
   collectAttendanceOps,
   formatAttendanceDateTime,
@@ -76,6 +79,75 @@ export interface UseAttendanceInstantSaveResult {
   resetInstantSave: () => void;
 }
 
+interface PendingAttendanceWriteContext {
+  gen: number;
+  eventDocId: string;
+  publicEventId: string;
+  operatorUid: string | null;
+  registrations: readonly RosterRegistrationInput[];
+  records: readonly RosterAttendanceRecordInput[];
+  person: ConfirmedRosterPerson | null;
+  selection: AttendanceSelection | null;
+}
+
+/**
+ * hidden、pagehide、卸載與 scopeKey 改變時 flush。
+ * beforeunload 只在元件這次 effect 仍有效、且 `pending === true` 時註冊。
+ * 卸載或切換 scope 的 cleanup 先標成無效並拆掉監聽，之後寫入結束的同步不得再掛回。
+ */
+export function useAttendanceLeaveGuard(
+  scopeKey: string,
+  flushRef: { readonly current: () => void },
+): (pending: boolean) => void {
+  const boundRef = useRef(false);
+  const mountedRef = useRef(false);
+  const handlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
+  if (handlerRef.current === null) {
+    handlerRef.current = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+  }
+
+  const syncBeforeUnload = useCallback((pending: boolean): void => {
+    if (!mountedRef.current) return;
+    const handler = handlerRef.current;
+    if (!handler) return;
+    if (pending && !boundRef.current) {
+      window.addEventListener('beforeunload', handler);
+      boundRef.current = true;
+    } else if (!pending && boundRef.current) {
+      window.removeEventListener('beforeunload', handler);
+      boundRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') flushRef.current();
+    };
+    const onPageHide = (): void => {
+      flushRef.current();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      mountedRef.current = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      const handler = handlerRef.current;
+      if (handler && boundRef.current) {
+        window.removeEventListener('beforeunload', handler);
+        boundRef.current = false;
+      }
+      flushRef.current();
+    };
+  }, [scopeKey, flushRef]);
+
+  return syncBeforeUnload;
+}
+
 export function useAttendanceInstantSave({
   event,
   eventDocId,
@@ -100,6 +172,21 @@ export function useAttendanceInstantSave({
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const flashTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const idCounterRef = useRef<{ v: number }>({ v: Date.now() });
+  const recordsRef = useRef<readonly RosterAttendanceRecordInput[]>(attendanceRecords);
+  const seenPropsRecordsRef = useRef<readonly RosterAttendanceRecordInput[]>(attendanceRecords);
+  const recordsEventRef = useRef(eventDocId);
+  const localEpochRef = useRef(0);
+  const serverEpochRef = useRef(0);
+  const adoptNextPropsRef = useRef(false);
+  const eventGenRef = useRef(0);
+  const pendingCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
+  const queuedCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
+  const flushRef = useRef<() => void>(() => {});
+  const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
+  const syncPendingRef = useRef<() => void>(() => {});
+  const scheduleReloadRef = useRef<() => void>(() => {});
+  const reloadLoopRef = useRef({ running: false, again: false });
+  const eventResetSkipRef = useRef(true);
 
   const latestRef = useRef({
     event,
@@ -143,18 +230,83 @@ export function useAttendanceInstantSave({
   }
   peopleByKeyRef.current = nextPeopleMap;
 
+  if (recordsEventRef.current !== eventDocId) {
+    recordsEventRef.current = eventDocId;
+    eventGenRef.current += 1;
+    recordsRef.current = attendanceRecords;
+    seenPropsRecordsRef.current = attendanceRecords;
+    localEpochRef.current = 0;
+    serverEpochRef.current = 0;
+    adoptNextPropsRef.current = false;
+  } else if (attendanceRecords !== seenPropsRecordsRef.current) {
+    const writing = Object.keys(inFlightMapRef.current).length > 0
+      || Object.keys(queuedMapRef.current).length > 0;
+    if (!writing && (localEpochRef.current === serverEpochRef.current || adoptNextPropsRef.current)) {
+      seenPropsRecordsRef.current = attendanceRecords;
+      recordsRef.current = attendanceRecords;
+      serverEpochRef.current = localEpochRef.current;
+      adoptNextPropsRef.current = false;
+    } else if (!writing) {
+      seenPropsRecordsRef.current = attendanceRecords;
+    }
+  }
+
+  const captureCtx = (key: string): PendingAttendanceWriteContext => ({
+    gen: eventGenRef.current,
+    eventDocId: latestRef.current.eventDocId,
+    publicEventId: latestRef.current.publicEventId,
+    operatorUid: latestRef.current.operatorUid,
+    registrations: latestRef.current.registrations,
+    records: recordsRef.current,
+    person: peopleByKeyRef.current.get(key) ?? null,
+    selection: draftMapRef.current[key] ?? null,
+  });
+
+  const refreshPendingRecords = (
+    gen: number,
+    records: readonly RosterAttendanceRecordInput[],
+  ): void => {
+    for (const key of Object.keys(pendingCtxRef.current)) {
+      const ctx = pendingCtxRef.current[key];
+      if (ctx && ctx.gen === gen) pendingCtxRef.current[key] = { ...ctx, records };
+    }
+    for (const key of Object.keys(queuedCtxRef.current)) {
+      const ctx = queuedCtxRef.current[key];
+      if (ctx && ctx.gen === gen) queuedCtxRef.current[key] = { ...ctx, records };
+    }
+  };
+
   useEffect(() => {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
-      for (const timer of Object.values(noteTimersRef.current)) clearTimeout(timer);
-      for (const timer of Object.values(saveTimersRef.current)) clearTimeout(timer);
       for (const timer of Object.values(flashTimersRef.current)) clearTimeout(timer);
-      noteTimersRef.current = {};
-      saveTimersRef.current = {};
       flashTimersRef.current = {};
     };
   }, []);
+
+  const syncBeforeUnload = useAttendanceLeaveGuard(eventDocId, flushRef);
+  syncLeaveGuardRef.current = syncBeforeUnload;
+  syncPendingRef.current = () => {
+    const pending = Object.keys(noteTimersRef.current).length > 0
+      || Object.keys(saveTimersRef.current).length > 0
+      || Object.keys(inFlightMapRef.current).length > 0
+      || Object.keys(queuedMapRef.current).length > 0;
+    syncLeaveGuardRef.current(pending);
+  };
+
+  useEffect(() => {
+    if (eventResetSkipRef.current) {
+      eventResetSkipRef.current = false;
+      return;
+    }
+    // 離頁 guard 的 cleanup 已先 flush 舊活動；這裡只清畫面，不砍 in-flight promise。
+    draftMapRef.current = {};
+    setDraftByKey({});
+    setInFlightKeys({});
+    setSavedFlashKeys({});
+    setFailedFlashKeys({});
+  }, [eventDocId]);
 
   const computeActualSelection = useCallback(
     (
@@ -176,7 +328,7 @@ export function useAttendanceInstantSave({
       const key = getAttendancePersonKey(person);
       const draft = key ? draftMapRef.current[key] ?? draftByKey[key] : undefined;
       if (draft) return draft;
-      return computeActualSelection(person, latestRef.current.attendanceRecords);
+      return computeActualSelection(person, recordsRef.current);
     },
     [computeActualSelection, draftByKey],
   );
@@ -235,111 +387,189 @@ export function useAttendanceInstantSave({
     }
   }, []);
 
-  const writeForKey = useCallback(
-    async (attendanceKey: string): Promise<void> => {
-      if (!attendanceKey) return;
-      if (attendanceKey in inFlightMapRef.current) {
-        queuedMapRef.current[attendanceKey] = true;
-        return;
-      }
-
-      const person = peopleByKeyRef.current.get(attendanceKey);
-      if (!person) return;
-
-      const {
-        eventDocId: curDocId,
-        publicEventId: curEventId,
-        operatorUid: curOperatorUid,
-        registrations: curRegs,
-        attendanceRecords: curRecords,
-      } = latestRef.current;
-
-      const wantedRaw =
-        draftMapRef.current[attendanceKey] ?? computeActualSelection(person, curRecords);
-      const wanted = normalizeAttendanceSelection({
-        checkin: wantedRaw.checkin,
-        checkout: wantedRaw.checkout,
-        note: wantedRaw.note.trim().slice(0, 20),
-      });
-
-      const resolved = buildAttendanceBaseRecord(curEventId, person, curRegs);
-      if (!resolved.ok) {
-        // 還原至實際狀態並提示
-        setDraftForKey(attendanceKey, null);
-        latestRef.current.onCompanionMissing?.();
-        return;
-      }
-
-      const timeStr = formatAttendanceDateTime(new Date());
-      const ops = collectAttendanceOps(
-        person,
-        wanted,
-        curRecords,
-        curEventId,
-        timeStr,
-        resolved.record,
-        idCounterRef.current,
-      );
-
-      if (ops.blocked || (ops.adds.length === 0 && ops.removes.length === 0)) {
-        return;
-      }
-
-      if (!curOperatorUid || !curDocId) {
-        setDraftForKey(attendanceKey, null);
-        triggerRowFlash(attendanceKey, 'failed');
-        latestRef.current.onSaveFailed(person.name || person.displayName || '');
-        return;
-      }
-
-      if (aliveRef.current) {
-        setInFlightKeys((prev) => ({ ...prev, [attendanceKey]: true }));
-      }
-
-      const runPromise = (async () => {
-        try {
-          await writeAttendanceOps(curDocId, ops, curOperatorUid);
-          // 即時存檔不發任何經驗值（決策第 4 點：經驗值集中在伺服器結算時發）。
+  scheduleReloadRef.current = () => {
+    const loop = reloadLoopRef.current;
+    if (loop.running) {
+      loop.again = true;
+      return;
+    }
+    loop.running = true;
+    void (async () => {
+      try {
+        do {
+          loop.again = false;
+          if (!aliveRef.current) break;
+          const epoch = localEpochRef.current;
+          const gen = eventGenRef.current;
+          const docId = latestRef.current.eventDocId;
           try {
             const refreshed = await latestRef.current.onReloadAttendance();
-            latestRef.current.attendanceRecords = refreshed;
             if (
-              !queuedMapRef.current[attendanceKey]
-              && !noteTimersRef.current[attendanceKey]
-              && !saveTimersRef.current[attendanceKey]
+              !aliveRef.current
+              || eventGenRef.current !== gen
+              || latestRef.current.eventDocId !== docId
+              || localEpochRef.current !== epoch
+              || loop.again
             ) {
-              setDraftForKey(attendanceKey, null);
+              continue;
+            }
+            serverEpochRef.current = epoch;
+            recordsRef.current = refreshed;
+            adoptNextPropsRef.current = false;
+            for (const key of Object.keys(draftMapRef.current)) {
+              if (
+                queuedMapRef.current[key]
+                || noteTimersRef.current[key]
+                || saveTimersRef.current[key]
+                || inFlightMapRef.current[key]
+              ) {
+                continue;
+              }
+              setDraftForKey(key, null);
             }
           } catch {
-            // 重讀失敗時保留樂觀顯示值，不視為寫入失敗。
+            // 重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗。
+            // 下一筆頁面傳入的新清單要採用，避免計數永遠追不平。
+            if (aliveRef.current) adoptNextPropsRef.current = true;
           }
-          triggerRowFlash(attendanceKey, 'saved');
-        } catch {
-          // 寫入失敗：清除樂觀草稿（還原該列 checkbox／備註至實際狀態）並 toast（L-08、L-09）
-          setDraftForKey(attendanceKey, null);
-          triggerRowFlash(attendanceKey, 'failed');
+        } while (loop.again && aliveRef.current);
+      } finally {
+        loop.running = false;
+        if (loop.again && aliveRef.current) scheduleReloadRef.current();
+      }
+    })();
+  };
+
+  const writeForKey = useCallback(
+    async (attendanceKey: string, pinned?: PendingAttendanceWriteContext): Promise<void> => {
+      try {
+        if (!attendanceKey) return;
+        const frozen = Boolean(pinned && pinned.gen !== eventGenRef.current);
+        if (attendanceKey in inFlightMapRef.current) {
+          queuedMapRef.current[attendanceKey] = true;
+          const ctx = frozen && pinned ? pinned : captureCtx(attendanceKey);
+          const draft = draftMapRef.current[attendanceKey];
+          queuedCtxRef.current[attendanceKey] = draft ? { ...ctx, selection: draft } : ctx;
+          return;
+        }
+
+        const person = frozen
+          ? pinned?.person ?? null
+          : peopleByKeyRef.current.get(attendanceKey) ?? null;
+        if (!person) return;
+
+        const curDocId = frozen && pinned ? pinned.eventDocId : latestRef.current.eventDocId;
+        const curEventId = frozen && pinned ? pinned.publicEventId : latestRef.current.publicEventId;
+        const curOperatorUid = frozen && pinned ? pinned.operatorUid : latestRef.current.operatorUid;
+        const curRegs = frozen && pinned ? pinned.registrations : latestRef.current.registrations;
+        const curRecords = frozen && pinned ? pinned.records : recordsRef.current;
+        const writeGen = frozen && pinned ? pinned.gen : eventGenRef.current;
+        const ui = (): boolean => aliveRef.current && eventGenRef.current === writeGen;
+
+        const wantedRaw = pinned?.selection
+          ?? draftMapRef.current[attendanceKey]
+          ?? computeActualSelection(person, curRecords);
+        const wanted = normalizeAttendanceSelection({
+          checkin: wantedRaw.checkin,
+          checkout: wantedRaw.checkout,
+          note: wantedRaw.note.trim().slice(0, 20),
+        });
+
+        const resolved = buildAttendanceBaseRecord(curEventId, person, curRegs);
+        if (!resolved.ok) {
+          if (ui()) setDraftForKey(attendanceKey, null);
+          latestRef.current.onCompanionMissing?.();
+          return;
+        }
+
+        const timeStr = formatAttendanceDateTime(new Date());
+        const ops = collectAttendanceOps(
+          person,
+          wanted,
+          curRecords,
+          curEventId,
+          timeStr,
+          resolved.record,
+          idCounterRef.current,
+        );
+
+        if (ops.blocked || (ops.adds.length === 0 && ops.removes.length === 0)) {
+          return;
+        }
+
+        if (!curOperatorUid || !curDocId) {
+          if (ui()) {
+            setDraftForKey(attendanceKey, null);
+            triggerRowFlash(attendanceKey, 'failed');
+          }
           latestRef.current.onSaveFailed(person.name || person.displayName || '');
-        } finally {
-          delete inFlightMapRef.current[attendanceKey];
-          if (aliveRef.current) {
-            setInFlightKeys((prev) => {
-              if (!prev[attendanceKey]) return prev;
-              const copy = { ...prev };
-              delete copy[attendanceKey];
-              return copy;
-            });
-          }
-          if (queuedMapRef.current[attendanceKey]) {
-            delete queuedMapRef.current[attendanceKey];
-            if (aliveRef.current) {
-              void writeForKey(attendanceKey);
+          return;
+        }
+
+        if (ui()) {
+          setInFlightKeys((prev) => ({ ...prev, [attendanceKey]: true }));
+        }
+
+        const runPromise = (async () => {
+          try {
+            const result = await writeAttendanceOps(curDocId, ops, curOperatorUid);
+            // 即時存檔不發任何經驗值（決策第 4 點：經驗值集中在伺服器結算時發）。
+            const base = eventGenRef.current === writeGen ? recordsRef.current : curRecords;
+            const patched = applyAttendanceWriteResult(base, ops, result);
+            if (eventGenRef.current === writeGen) {
+              recordsRef.current = patched;
+              localEpochRef.current += 1;
+              refreshPendingRecords(writeGen, patched);
+              const actual = computeActualSelection(person, patched);
+              if (
+                ui()
+                && !queuedMapRef.current[attendanceKey]
+                && !noteTimersRef.current[attendanceKey]
+                && !saveTimersRef.current[attendanceKey]
+                && actual.checkin === wanted.checkin
+                && actual.checkout === wanted.checkout
+                && actual.note === wanted.note
+              ) {
+                setDraftForKey(attendanceKey, null);
+              }
+              if (aliveRef.current && eventGenRef.current === writeGen) {
+                scheduleReloadRef.current();
+              }
+            } else {
+              refreshPendingRecords(writeGen, patched);
+            }
+            if (ui()) triggerRowFlash(attendanceKey, 'saved');
+          } catch {
+            // 寫入失敗：清除樂觀草稿（還原該列 checkbox／備註至實際狀態）並 toast（L-08、L-09）
+            if (ui()) {
+              setDraftForKey(attendanceKey, null);
+              triggerRowFlash(attendanceKey, 'failed');
+            }
+            latestRef.current.onSaveFailed(person.name || person.displayName || '');
+          } finally {
+            delete inFlightMapRef.current[attendanceKey];
+            if (ui()) {
+              setInFlightKeys((prev) => {
+                if (!prev[attendanceKey]) return prev;
+                const copy = { ...prev };
+                delete copy[attendanceKey];
+                return copy;
+              });
+            }
+            if (queuedMapRef.current[attendanceKey]) {
+              const nextCtx = queuedCtxRef.current[attendanceKey];
+              delete queuedMapRef.current[attendanceKey];
+              delete queuedCtxRef.current[attendanceKey];
+              void writeForKey(attendanceKey, nextCtx);
             }
           }
-        }
-      })();
+        })();
 
-      inFlightMapRef.current[attendanceKey] = runPromise;
-      await runPromise;
+        inFlightMapRef.current[attendanceKey] = runPromise;
+        await runPromise;
+      } finally {
+        syncPendingRef.current();
+      }
     },
     [computeActualSelection, setDraftForKey, triggerRowFlash],
   );
@@ -348,10 +578,13 @@ export function useAttendanceInstantSave({
   const scheduleSave = useCallback(
     (key: string): void => {
       if (saveTimersRef.current[key]) clearTimeout(saveTimersRef.current[key]);
+      pendingCtxRef.current[key] = captureCtx(key);
       saveTimersRef.current[key] = setTimeout(() => {
         delete saveTimersRef.current[key];
-        void writeForKey(key);
+        const pinned = pendingCtxRef.current[key];
+        void writeForKey(key, pinned);
       }, CHECKBOX_DEBOUNCE_MS);
+      syncPendingRef.current();
     },
     [writeForKey],
   );
@@ -402,11 +635,13 @@ export function useAttendanceInstantSave({
       if (noteTimersRef.current[key]) {
         clearTimeout(noteTimersRef.current[key]);
       }
+      pendingCtxRef.current[key] = captureCtx(key);
       noteTimersRef.current[key] = setTimeout(() => {
         delete noteTimersRef.current[key];
         // A：備註計時到後呼叫 `_onAttendanceCheckboxChange`（再延遲 300ms）。
         scheduleSave(key);
       }, NOTE_DEBOUNCE_MS);
+      syncPendingRef.current();
     },
     [getRowSelection, setDraftForKey, scheduleSave],
   );
@@ -422,7 +657,8 @@ export function useAttendanceInstantSave({
       clearTimeout(saveTimersRef.current[key]);
       delete noteTimersRef.current[key];
       delete saveTimersRef.current[key];
-      pendingWrites.push(writeForKey(key));
+      const pinned = pendingCtxRef.current[key];
+      pendingWrites.push(writeForKey(key, pinned));
     }
     if (pendingWrites.length > 0) {
       await Promise.allSettled(pendingWrites);
@@ -433,6 +669,7 @@ export function useAttendanceInstantSave({
       safety += 1;
       await Promise.allSettled(Object.values(inFlightMapRef.current));
     }
+    syncPendingRef.current();
   }, [writeForKey]);
 
   const resetInstantSave = useCallback((): void => {
@@ -441,11 +678,25 @@ export function useAttendanceInstantSave({
     noteTimersRef.current = {};
     saveTimersRef.current = {};
     queuedMapRef.current = {};
+    queuedCtxRef.current = {};
+    pendingCtxRef.current = {};
     draftMapRef.current = {};
     if (aliveRef.current) {
       setDraftByKey({});
     }
+    if (Object.keys(inFlightMapRef.current).length === 0) {
+      const pageRecords = latestRef.current.attendanceRecords;
+      recordsRef.current = pageRecords;
+      seenPropsRecordsRef.current = pageRecords;
+      serverEpochRef.current = localEpochRef.current;
+      adoptNextPropsRef.current = false;
+    }
+    syncPendingRef.current();
   }, []);
+
+  flushRef.current = () => {
+    void flushInstantSaves();
+  };
 
   return {
     getRowSelection,

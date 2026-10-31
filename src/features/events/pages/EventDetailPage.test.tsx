@@ -1092,6 +1092,51 @@ describe('名單結算「完成」（C-001）', () => {
     expect(screen.queryByText('儲存失敗，勾選已保留 請再按一次「完成」重試')).toBeNull();
     expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
   });
+
+  it('較舊的出席重讀晚回來時不覆蓋較新的名單', async () => {
+    mocks.registrations.mockResolvedValue([
+      { ...self, _docId: 'targetA', userId: 'uidA', userName: '甲', eventId: 'evtA' },
+    ]);
+    const pending: Array<(rows: unknown) => void> = [];
+    await enterRosterEdit();
+    mocks.attendance.mockImplementation(
+      () => new Promise((resolve) => {
+        pending.push(resolve);
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '甲 簽到' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    });
+    await waitFor(() => {
+      expect(pending.length).toBeGreaterThanOrEqual(2);
+    });
+    const resolveStale = pending[0];
+    const resolveFresh = pending[pending.length - 1];
+    if (!resolveStale || !resolveFresh || resolveStale === resolveFresh) {
+      throw new Error('需要兩次重疊的出席重讀');
+    }
+
+    const fresh = [{
+      _docId: 'targetA',
+      uid: 'uidA',
+      userName: '甲',
+      type: 'checkin',
+      status: 'active',
+    }];
+    await act(async () => {
+      resolveFresh(fresh);
+    });
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    await act(async () => {
+      resolveStale([]);
+    });
+
+    const table = document.querySelector('#detail-attendance-table');
+    const row = Array.from(table?.querySelectorAll('tr') ?? []).find((tr) => tr.textContent?.includes('甲'));
+    expect(row?.textContent).toContain('✓');
+  });
 });
 
 describe('名單狀態調整頁面接線', () => {
