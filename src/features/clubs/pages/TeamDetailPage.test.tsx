@@ -9,7 +9,8 @@ import type {
 } from '@/features/events/components/EventFormModal';
 import { getSportKeySafe } from '@/features/events/data/sports';
 import { _resetTeamTabMemoryForTest } from '../components/legacy/team-detail-tab-memory';
-import type { TeamDetailV2PanelsProps } from '../components/legacy/TeamDetailV2Panels';
+import { renderEventRows, TeamDetailV2Panels, type TeamDetailV2PanelsProps } from '../components/legacy/TeamDetailV2Panels';
+import type { TeamDetailWeekStripProps } from '../components/legacy/TeamDetailWeekStrip';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
@@ -27,6 +28,18 @@ import { renderQrToCanvas } from '@/features/profile/data/qr';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import zh from '../locales/zh-TW.json';
+
+const weekToday = vi.hoisted(() => ({ value: undefined as string | undefined }));
+vi.mock('../components/legacy/TeamDetailWeekStrip', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/legacy/TeamDetailWeekStrip')>();
+  return {
+    ...actual,
+    TeamDetailWeekStrip: (props: TeamDetailWeekStripProps) => (
+      <actual.TeamDetailWeekStrip {...props}
+        today={weekToday.value ? new Date(Date.parse(weekToday.value)) : props.today} />
+    ),
+  };
+});
 
 const authUid = vi.hoisted(() => ({ value: undefined as string | null | undefined }));
 const policyMock = vi.hoisted(() => ({
@@ -317,6 +330,7 @@ beforeEach(() => {
   customMock.mockClear();
   eventFormMock.latestProps = null;
   panelsMock.latestProps = null;
+  weekToday.value = undefined;
   membersCardMock.onTeamChanged = null;
   vi.mocked(useCreateEventEntry).mockReturnValue({
     canCreate: true,
@@ -1589,5 +1603,38 @@ describe('join pending persistence (M-117)', () => {
 
     await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
     expect(requestTeamJoin).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('T-054c V1／V2：俱樂部活動日期與週條', () => {
+  it('V1：台北 00:30 的活動卡顯示 10 月 19 日', () => {
+    const { container } = render(renderEventRows([
+      { id: 'evtA', date: '2026/10/19 00:30~02:00' },
+    ], 1, vi.fn()));
+    expect(container.querySelector('.td-v2-event-date em')?.textContent).toBe('10月');
+    expect(container.querySelector('.td-v2-event-date strong')?.textContent).toBe('19');
+  });
+
+  it('V2：真實 Panels 的 eventDaySet 對到真實週條的台北今天', () => {
+    // 只經既有 today prop 注入時刻；日期鍵與週條 DOM 均走正式元件。
+    weekToday.value = '2026-10-19T00:30:00+08:00';
+    const props: TeamDetailV2PanelsProps = {
+      team: { id: 'targetA' }, activeTab: 'events', roster: [], membersStatus: 'ready',
+      events: [{ id: 'evtA', date: '2026/10/19 00:30~02:00' }], eventsStatus: 'ready',
+      memberCount: 0, courseCount: 0, totalGames: 0, winRate: 0,
+      viewer: { uid: 'uidA', teamIds: new Set<string>(), hasPermission: () => false },
+      onTeamChanged: vi.fn(), canCreateEvent: false, onCreateEvent: vi.fn(), busy: false,
+      onSelectTab: vi.fn(), onSelectEvent: vi.fn(), onOpenProfile: vi.fn(),
+      onRetryMembers: vi.fn(), onRetryEvents: vi.fn(), onLogin: vi.fn(), onUnavailable: vi.fn(),
+    };
+    const { container } = render(<TeamDetailV2Panels {...props} />);
+    const strip = container.querySelector('.td-v2-week');
+    expect(strip?.getAttribute('data-event-days')).toBe('2026-10-19');
+    const cell = strip?.querySelector('[data-date="2026-10-19"]');
+    expect(cell?.classList.contains('active')).toBe(true);
+    expect(cell?.querySelector('span')?.textContent).toBe('MON');
+    expect(cell?.querySelector('i')).not.toBeNull();
+    expect(strip?.querySelectorAll('.td-v2-day i')).toHaveLength(1);
   });
 });

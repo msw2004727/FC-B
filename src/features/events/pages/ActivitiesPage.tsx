@@ -1,3 +1,4 @@
+import { taipeiParts } from '@/core/taipei-time';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import type { JSX } from 'preact';
@@ -576,8 +577,8 @@ export default function ActivitiesPage(): JSX.Element {
     return groups;
   }, [filteredEvents]);
 
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+  const today = taipeiParts(Date.now());
+  const todayStr = `${today.year}/${today.month}/${today.day}`;
   const sortedMonthKeys = Object.keys(monthGroups).sort((a, b) => a.localeCompare(b));
 
   // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；活動頁 getKey 排除未開放頁籤（beginner、high-intensity）

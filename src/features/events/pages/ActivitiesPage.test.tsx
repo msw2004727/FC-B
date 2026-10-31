@@ -428,3 +428,30 @@ describe('ActivitiesPage (U-027 搜尋延遲與清除)', () => {
     expect(container.querySelector('[data-event-id="public-pickleball"]')).toBeTruthy();
   });
 });
+
+
+describe('T-054c AP1：時間軸的台北今天', () => {
+  it.each(['2026-10-19T00:30:00+08:00', '2026-10-19T23:30:00+08:00'])(
+    '%s 的 today class 落在台北 10/19', async (now) => {
+      // 直接注入 Date.now；不啟用 fake timers，也不改正式頁面的介面。
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(now));
+      try {
+        active = [
+          { id: 'evtA', _docId: 'evtA', title: 'evtA', date: '2026/10/19 23:00~23:59', status: 'open' },
+          { id: 'targetA', _docId: 'targetA', title: 'targetA', date: '2026/10/20 23:00~23:59', status: 'open' },
+        ];
+        const { container } = mount();
+        await waitFor(() => {
+          expect(container.querySelector('.tl-day-group[data-date-anchor="2026-10-19"]')).not.toBeNull();
+          expect(container.querySelector('.tl-day-group[data-date-anchor="2026-10-20"]')).not.toBeNull();
+        });
+        expect(container.querySelectorAll('.tl-date-col.today')).toHaveLength(1);
+        expect(container.querySelector('[data-date-anchor="2026-10-19"] .tl-date-col')?.classList.contains('today')).toBe(true);
+        expect(container.querySelector('[data-date-anchor="2026-10-20"] .tl-date-col')?.classList.contains('today')).toBe(false);
+      } finally {
+        cleanup();
+        clock.mockRestore();
+      }
+    },
+  );
+});

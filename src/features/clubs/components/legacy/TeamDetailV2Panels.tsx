@@ -1,4 +1,6 @@
 import type { JSX } from 'preact';
+import { parseEventStartMs } from '@/core/event-time';
+import { formatTaipei, taipeiParts } from '@/core/taipei-time';
 import { useMemo } from 'preact/hooks';
 import { TeamDetailWeekStrip } from './TeamDetailWeekStrip';
 import { effectiveEventStatus } from '@/features/events/data/my-activities-model';
@@ -17,42 +19,8 @@ import {
   type V2TabKey,
 } from './TeamDetailV2Header';
 
-function parseEventStartDate(value: unknown): Date | null {
-  if (value == null) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === 'object') {
-    const candidate = value as { toDate?: () => Date; seconds?: unknown };
-    if (typeof candidate.toDate === 'function') {
-      const d = candidate.toDate();
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof candidate.seconds === 'number') {
-      return new Date(candidate.seconds * 1000);
-    }
-  }
-  const text = String(value).trim();
-  if (!text) return null;
-  const m = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (m) {
-    const d = new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] !== undefined ? Number(m[4]) : 0,
-      m[5] !== undefined ? Number(m[5]) : 0,
-    );
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function getDateKey(date: Date | null): string {
-  if (!date || Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function getDateKey(ms: number | null): string {
+  return ms === null ? '' : formatTaipei(ms, 'YYYY-MM-DD');
 }
 
 /** A `_buildTeamDetailV2EventRows` 直接讀活動文件的 `current`／`max`。 */
@@ -86,10 +54,11 @@ export function renderEventRows(
     <>
       {visible.map((e, idx) => {
         const eventId = String(e.id || e._docId || '').trim();
-        const date = parseEventStartDate(e.date);
+        const startMs = parseEventStartMs(e.date);
+        const date = startMs === null ? null : taipeiParts(startMs);
         const dateStr = String(e.date ?? '');
-        const month = date ? `${date.getMonth() + 1}月` : dateStr.split(' ')[0] || '';
-        const day = date ? String(date.getDate()) : '';
+        const month = date ? `${date.month}月` : dateStr.split(' ')[0] || '';
+        const day = date ? String(date.day) : '';
         const statusKey = effectiveEventStatus(e);
         const status =
           statusKey === 'full' ? '已額滿' : statusKey === 'upcoming' ? '即將開放' : '報名中';
@@ -209,7 +178,7 @@ export function TeamDetailV2Panels({
   const eventDaySet = useMemo(() => {
     const days = new Set<string>();
     for (const event of events) {
-      const key = getDateKey(parseEventStartDate(event.date));
+      const key = getDateKey(parseEventStartMs(event.date));
       if (key) days.add(key);
     }
     return days;

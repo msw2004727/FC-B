@@ -6,6 +6,7 @@
  * 日期節點由 Preact 管理；往前補齊日期後以 layout effect 補償捲動位置。
  */
 import type { JSX } from 'preact';
+import { addTaipeiDays, formatTaipei, taipeiParts, taipeiStartOfDay } from '@/core/taipei-time';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 export interface TeamDetailWeekStripProps {
@@ -29,14 +30,6 @@ interface PendingPrepend {
 const BLOCK_SIZE = 14;
 const MIN_RANGE_START = -182;
 const LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
-
-function getDateKey(date: Date): string {
-  return [
-    String(date.getFullYear()),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
-}
 
 export function TeamDetailWeekStrip({
   eventDays,
@@ -166,13 +159,15 @@ export function TeamDetailWeekStrip({
   }
 
   const now = today ?? new Date();
-  const todayKey = getDateKey(now);
+  const todayStart = taipeiStartOfDay(now.getTime());
+  const todayKey = formatTaipei(todayStart, 'YYYY-MM-DD');
   const days: JSX.Element[] = [];
 
   for (let offset = rangeStart; offset <= rangeEnd; offset += 1) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    const key = getDateKey(date);
-    const weekday = date.getDay();
+    const ms = addTaipeiDays(todayStart, offset);
+    const key = formatTaipei(ms, 'YYYY-MM-DD');
+    const date = taipeiParts(ms);
+    const weekday = date.weekday;
     const weekendClass = weekday === 6 ? ' weekend-sat' : weekday === 0 ? ' weekend-sun' : '';
     const activeClass = key === todayKey ? ' active' : '';
 
@@ -184,7 +179,7 @@ export function TeamDetailWeekStrip({
         role="listitem"
       >
         <span>{LABELS[weekday]}</span>
-        <strong>{date.getDate()}</strong>
+        <strong>{date.day}</strong>
         {eventDays.has(key) ? <i /> : null}
       </div>,
     );

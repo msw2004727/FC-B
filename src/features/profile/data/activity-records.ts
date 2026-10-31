@@ -6,6 +6,7 @@
 
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 
+import { parseEventStartMs as parseActivityStartMs } from '@/core/event-time';
 import { getFirebase } from '@/data/firebase';
 
 // 照 A `_renderRecordListHtml` 的 `PAGE_SIZE = 10`。
@@ -279,30 +280,19 @@ function buildAttendanceIndex(
 }
 
 /**
- * 照 A `event-list-stats.js#_parseEventStartDate(event.date)` 逐步移植：
- * 以空白切成「日期／時間」，日期以 `/` 切三節（`YYYY/MM/DD`，不足三節回 null），
- * 時間取 `~` 前的 `HH:mm`（缺值當 0），用本地時區組成 Date。
- * 不是此格式的字串（含 ISO）、非字串一律回 null——和 A 一樣，由 `_getFilteredRecords` 排到最後；
- * 不再退回 `Date.parse` 猜。唯一刻意的差異：A 對 `parseInt` 得 NaN 的輸入會產生 Invalid Date
- * （使比較函式回 NaN、排序順序未定義），B 改回 null 讓它確定地排最後。
+ * 保留 A 的斜線日期／空白時間入口；非字串與 ISO 一律 null、排序時放最後。
+ * 起點委派共用台北 helper，回絕對毫秒；缺時間仍為當日 00:00。
+ * 消費端只取第一段空白時間及時分，保留舊版忽略秒數與多餘空白後時間的語意。
+ * 刻意與舊版不同：不存在的日期／時間由 helper 嚴格拒絕，不再進位。
  */
 export function parseEventStartMs(value: unknown): number | null {
   if (typeof value !== 'string' || !value) return null;
-  const parts = value.split(' ');
-  const dateParts = (parts[0] ?? '').split('/');
-  if (dateParts.length < 3) return null;
-  const y = parseInt(dateParts[0] ?? '', 10);
-  const m = parseInt(dateParts[1] ?? '', 10) - 1;
-  const d = parseInt(dateParts[2] ?? '', 10);
-  let hh = 0;
-  let mm = 0;
-  if (parts[1]) {
-    const [h, mi] = (parts[1].split('~')[0] ?? '').split(':').map(Number);
-    hh = h || 0;
-    mm = mi || 0;
-  }
-  const ts = new Date(y, m, d, hh, mm).getTime();
-  return Number.isFinite(ts) ? ts : null;
+  const [date = '', time = ''] = value.split(' ');
+  if (date.split('/').length !== 3 || date.includes('T')) return null;
+  const start = time.split('~')[0] ?? '';
+  const [hour, minute] = start.split(':').map(Number);
+  const minuteTime = String(hour || 0) + ':' + String(minute || 0).padStart(2, '0');
+  return parseActivityStartMs(date + ' ' + minuteTime);
 }
 
 /** 只認查表自己的鍵（呼叫端也可能傳一般物件，不能讓 `constructor` 之類的原型屬性被當成活動）。 */

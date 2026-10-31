@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { formatTaipei } from '@/core/taipei-time';
 import { toast } from '@/ui/Toast';
 import {
   DOM_RECYCLE_THRESHOLD,
   addMonthKey,
   getWindowedMonthKeys,
   minimumMonthKey,
-  monthKeyFromDate,
 } from '../../data/calendar-model';
 
 interface PositionRequest {
@@ -17,7 +17,7 @@ interface PositionRequest {
 
 /** 照 A _bindCalendarScrollObserver、_renderCalendarMonths、_ensureCalendarBuffer。 */
 export function useCalendarNav() {
-  const initial = useRef(monthKeyFromDate(new Date()));
+  const initial = useRef(formatTaipei(Date.now(), 'YYYY-MM-DD').slice(0, 7));
   const [current, setCurrent] = useState(initial.current);
   const [months, setMonths] = useState(() => getWindowedMonthKeys(initial.current, new Date()));
   const scrollRef = useRef<HTMLDivElement>(null);

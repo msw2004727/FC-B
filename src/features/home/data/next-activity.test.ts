@@ -38,8 +38,12 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 import { collectionGroup, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { parseEventDateRange as parseTerminalRange } from '@/features/events/data/terminal';
+import { formatNextActivityDateRange } from '../components/legacy/HomeNextActivity';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import {
+  parseEventDateRange,
+  isUpcomingEvent,
   ACTIVE_REGISTRATION_STATUSES,
   EVENT_IN_QUERY_CHUNK,
   REGISTRATION_QUERY_LIMIT,
@@ -53,7 +57,7 @@ import {
   resolveNextActivity,
 } from './next-activity';
 
-const NOW = new Date(2099, 0, 1).getTime(); // 2099-01-01
+const NOW = Date.parse('2099-01-01T00:00:00+08:00'); // 2099-01-01
 
 const mockedGetDocs = vi.mocked(getDocs);
 
@@ -455,7 +459,7 @@ describe('T-033：報名紀錄很多的帳號（309 筆、217 筆已取消）', 
     installFirestore(buildHeavyUserRegistrations());
 
     const result = await resolveNextActivity(
-      { ...deps(vi.fn()), now: () => new Date(2099, 0, 1).getTime() },
+      { ...deps(vi.fn()), now: () => Date.parse('2099-01-01T00:00:00+08:00') },
       HEAVY_UID,
     );
 
@@ -848,4 +852,36 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
   // ── 已知未修（既有邏輯，T-041 沒改；Codex 觀察項）：只登記為待辦，不斷言目前行為 ──
   test.todo('已知未修：managed 活動的 public id 恰好等於報名的 eventId 時，haveIds 會把該 eventId 視為已涵蓋，應優先的 events/{eventId} 直接文件不會被查（R-ID-010）');
   test.todo('已知未修：mergeEventsByIdentity 以 public id 合併，managed 活動與補抓活動（或兩份直接文件）共用同一個 public id 時，後者的欄位覆蓋前者、只剩一份');
+});
+
+
+describe('T-054c N1–N3：首頁台北活動時間', () => {
+  test.each([
+    ['2026/10/19 11:00~13:00', '2026-10-19T11:00:00+08:00', '2026-10-19T13:00:00+08:00'],
+    ['2026/10/19 23:00~01:00', '2026-10-19T23:00:00+08:00', '2026-10-19T01:00:00+08:00'],
+    ['2026/10/19 11:00', '2026-10-19T11:00:00+08:00', '2026-10-19T13:00:00+08:00'],
+    ['2026/10/19', '2026-10-19T00:00:00+08:00', '2026-10-19T02:00:00+08:00'],
+  ])('N1：%s 的字面起訖與 terminal 一致', (date, start, end) => {
+    const expected = { startMs: Date.parse(start), endMs: Date.parse(end) };
+    expect(parseEventDateRange(date)).toEqual(expected);
+    expect(parseTerminalRange(date)).toEqual(expected);
+  });
+
+  test.each([
+    ['2026/10/19 11:00~13:00', '10/19 (一) 11:00 - 13:00'],
+    ['2026/10/19 00:30~02:00', '10/19 (一) 00:30 - 02:00'],
+    ['2026/10/19 23:00~01:00', '10/19 (一) 23:00 - 01:00'],
+  ])('N2：%s 的日期標籤不隨裝置時區改變', (date, label) => {
+    expect(formatNextActivityDateRange({ id: 'evtA', date })).toBe(label);
+  });
+
+  test('N3：起點等於 now 不算未來，前一毫秒仍算未來', () => {
+    const event: EventDoc = { id: 'evtA', date: '2026/10/19 11:00~13:00', status: 'open' };
+    expect(isUpcomingEvent(event, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(false);
+    expect(isUpcomingEvent(event, Date.parse('2026-10-19T10:59:59.999+08:00'))).toBe(true);
+  });
+
+  test.each(['Oct 19, 2026', '2026/02/30 11:00~13:00'])('刻意與舊版不同：拒絕 %s', (date) => {
+    expect(parseEventDateRange(date)).toBeNull();
+  });
 });
