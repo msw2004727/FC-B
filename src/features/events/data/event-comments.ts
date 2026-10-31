@@ -1,4 +1,5 @@
 import { getFirebase } from '@/data/firebase';
+import { parseTaipei } from '@/core/taipei-time';
 import {
   canManageEventComments,
   clearCommentBadgeCacheForEvent,
@@ -95,15 +96,13 @@ export function commentEventEndMs(date: string | undefined): number | null {
     /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})(?:\s*[~～]\s*(?:(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+)?(\d{1,2}):(\d{2}))?$/,
   );
   if (!match) return null;
-  const start = new Date(
-    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
-    Number(match[4]), Number(match[5]),
-  ).getTime();
+  const start = parseTaipei(`${match[1]}/${match[2]}/${match[3]} ${match[4]}:${match[5]}`);
+  if (start === null) return null;
   if (!match[9]) return start;
-  let end = new Date(
-    Number(match[6] || match[1]), Number(match[7] || match[2]) - 1,
-    Number(match[8] || match[3]), Number(match[9]), Number(match[10]),
-  ).getTime();
+  let end = parseTaipei(
+    `${match[6] || match[1]}/${match[7] || match[2]}/${match[8] || match[3]} ${match[9]}:${match[10]}`,
+  );
+  if (end === null) return null;
   if (!match[6] && end < start) end += 86400000;
   return Number.isFinite(end) ? end : null;
 }

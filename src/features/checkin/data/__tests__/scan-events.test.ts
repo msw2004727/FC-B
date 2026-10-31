@@ -43,7 +43,7 @@ function visitorContext(uid: string): OperateContext {
   };
 }
 
-const NOW = new Date(2026, 4, 9, 10, 0, 0); // 2026-05-09 10:00 本地時間
+const NOW = new Date(Date.parse('2026-05-09T10:00:00+08:00')); // 台北時間
 
 // 測試同步更新：照 A（M-104）預設 status: 'open' 以符合狀態篩選。
 function event(over: Partial<EventDoc>): EventDoc {
@@ -233,5 +233,64 @@ describe('loadScanEvents', () => {
   it('toScanEventEntry 缺 docId 回 null', () => {
     expect(toScanEventEntry(event({ id: 'evt_public', _docId: undefined, docId: undefined })))
       .toBeNull();
+  });
+});
+
+
+describe('T-054c K1–K5：台北日期分桶', () => {
+  it.each(['2026-10-19T00:30:00+08:00', '2026-10-19T23:30:00+08:00'])(
+    'K1／K2：%s 仍以台北 10/19 為今天', (now) => {
+      const buckets = loadScanEvents({
+        context: ownerContext('uidA'), now: new Date(Date.parse(now)),
+        events: [
+          event({ id: 'evtA', _docId: 'evtA', creatorUid: 'uidA', date: '2026/10/19 09:00~10:00' }),
+          event({ id: 'targetA', _docId: 'targetA', creatorUid: 'uidA', date: '2026/10/20 09:00~10:00' }),
+          event({ id: 'uidB', _docId: 'uidB', creatorUid: 'uidA', date: '2026/10/18 09:00~10:00' }),
+        ],
+      });
+      expect(buckets.today.map((entry) => entry.eventId)).toEqual(['evtA']);
+      expect(buckets.future.map((entry) => entry.eventId)).toEqual(['targetA']);
+      expect(buckets.past.map((entry) => entry.eventId)).toEqual(['uidB']);
+    },
+  );
+
+  it('K3：斜線只有日期仍屬今天，時間無效也不改日期分桶', () => {
+    for (const date of ['2026/10/19', '2026/10/19 invalid']) {
+      const buckets = loadScanEvents({
+        context: ownerContext('uidA'), now: new Date(Date.parse('2026-10-19T00:30:00+08:00')),
+        events: [event({ id: 'evtA', _docId: 'evtA', creatorUid: 'uidA', date })],
+      });
+      expect(buckets.today.map((entry) => entry.eventId)).toEqual(['evtA']);
+      expect(buckets.past).toEqual([]);
+      expect(buckets.future).toEqual([]);
+    }
+  });
+
+  it.each(['2026-10-19', '2026.10.19', '2026/02/30', 'bad'])(
+    '刻意與舊版不同：K3／K4 嚴格日期 %s 進 past', (date) => {
+      const buckets = loadScanEvents({
+        context: ownerContext('uidA'), now: new Date(Date.parse('2026-10-19T00:30:00+08:00')),
+        events: [event({ id: 'evtA', _docId: 'evtA', creatorUid: 'uidA', date })],
+      });
+      expect(buckets.past.map((entry) => entry.eventId)).toEqual(['evtA']);
+      expect(buckets.today).toEqual([]);
+      expect(buckets.future).toEqual([]);
+    },
+  );
+
+  it('K5：保留 Date 注入簽名，以注入瞬間所在台北日分桶', () => {
+    const parsed: (string | undefined)[] = [];
+    const buckets = loadScanEvents({
+      context: ownerContext('uidA'), now: new Date(Date.parse('2026-10-19T23:30:00+08:00')),
+      events: [event({ id: 'evtA', _docId: 'evtA', creatorUid: 'uidA', date: 'custom' })],
+      parseEventDate: (date) => {
+        parsed.push(date);
+        return new Date(Date.parse('2026-10-19T00:30:00+08:00'));
+      },
+    });
+    expect(parsed).toEqual(['custom']);
+    expect(buckets.today.map((entry) => entry.eventId)).toEqual(['evtA']);
+    expect(buckets.past).toEqual([]);
+    expect(buckets.future).toEqual([]);
   });
 });

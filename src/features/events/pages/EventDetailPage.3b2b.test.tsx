@@ -221,10 +221,10 @@ describe('M-088 資訊列', () => {
   });
 
   it.each([
-    [new Date(2099, 9, 23, 7, 0).getTime(), '剩餘 2日3時'],
-    [new Date(2099, 9, 25, 7, 30).getTime(), '剩餘 2時30分'],
-    [new Date(2099, 9, 25, 9, 45).getTime(), '剩餘 15分'],
-    [new Date(2099, 9, 25, 10, 0).getTime(), '已結束'],
+    [Date.parse('2099-10-23T07:00:00+08:00'), '剩餘 2日3時'],
+    [Date.parse('2099-10-25T07:30:00+08:00'), '剩餘 2時30分'],
+    [Date.parse('2099-10-25T09:45:00+08:00'), '剩餘 15分'],
+    [Date.parse('2099-10-25T10:00:00+08:00'), '已結束'],
   ])('時間 %s 顯示 %s', (nowMs, expected) => {
     info(detailEvent(), nowMs);
     expect(document.querySelector('[data-detail-field="countdown"]')?.textContent)

@@ -4,7 +4,7 @@ import { getEventParticipantStats } from '../../data/participant-stats';
 import { eventStartMs } from '../../data/terminal';
 import type { UserRole } from '@/ui/Avatar';
 import { count, safeImageUrl, type DetailEvent } from '../../data/detail-model';
-import { parseEventStartDate } from '../../data/event-lifecycle';
+import { parseEventStartMs } from '@/core/event-time';
 import { renderEventSocialLinksHtml } from '../../data/event-social-links';
 import { formatTaipei, parseTaipei } from '@/core/taipei-time';
 
@@ -109,10 +109,10 @@ function calcCountdown(event: LegacyDetailEvent, nowMs: number): string {
   if (event.status === 'ended') return '已結束';
   if (event.status === 'cancelled') return '已取消';
   if (event.status === 'upcoming' && event.regOpenTime) return '即將開放';
-  // 照 A _parseEventStartDate（B 移植版 parseEventStartDate）；小時不補零（9:52）也要能解析。
-  const startDate = parseEventStartDate(event.date);
-  if (!startDate) return '';
-  const start = startDate.getTime();
+  // 沿用斜線日期限制；小時不補零（9:52）仍可解析。
+  if (typeof event.date !== 'string' || (event.date.split(' ')[0] ?? '').split('/').length < 3) return '';
+  const start = parseEventStartMs(event.date);
+  if (start === null) return '';
   const diff = start - nowMs;
   if (diff <= 0) return '已結束';
   const totalMin = Math.floor(diff / 60000);

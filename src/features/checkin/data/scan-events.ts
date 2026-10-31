@@ -12,6 +12,8 @@ import {
   canOperateEventSite,
   type OperateContext,
 } from '@/features/events/data/operate-permissions';
+import { parseEventStartMs } from '@/core/event-time';
+import { taipeiStartOfDay } from '@/core/taipei-time';
 import type { EventDoc } from '@/features/events/data/types';
 
 /** 對應 A 的 `TYPE_CONFIG[e.type].label`；由外部注入避免耦合 UI 設定。 */
@@ -69,13 +71,12 @@ const SCAN_STATUSES: ReadonlySet<string> = new Set(['open', 'full', 'ended']);
 /** 從 date 字串（如「2026/05/09 15:00~17:00」）解析日期部分，避免依賴 Date 對原字串的寬鬆解析。 */
 function defaultParseEventDate(date: string | undefined): Date | null {
   if (!date) return null;
-  const m = /^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/.exec(date);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  const day = Number(m[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  return new Date(year, month - 1, day);
+  const day = date.split(' ')[0] ?? '';
+  // Q-12：只收斜線日期；保留此消費端只看日期、不依活動時間分桶的語意。
+  if (day.split('/').length !== 3 || day.includes('T')) return null;
+  const ms = parseEventStartMs(day);
+  // Date 只保留注入點簽名，禁止以本地 getter 讀回。
+  return ms === null ? null : new Date(taipeiStartOfDay(ms));
 }
 
 function eventStatus(event: EventDoc): string {
@@ -128,8 +129,8 @@ export function loadScanEvents(input: LoadScanEventsInput): ScanEventBuckets {
 
   const buckets: ScanEventBuckets = { today: [], past: [], future: [] };
 
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrowStart = new Date(todayStart.getTime() + 86_400_000);
+  const todayStart = taipeiStartOfDay(now.getTime());
+  const tomorrowStart = todayStart + 86_400_000;
 
   for (const event of events) {
     const status = eventStatus(event);
@@ -143,7 +144,7 @@ export function loadScanEvents(input: LoadScanEventsInput): ScanEventBuckets {
       buckets.past.push(entry);
       continue;
     }
-    const eventDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    const eventDay = taipeiStartOfDay(parsed.getTime());
     if (eventDay >= todayStart && eventDay < tomorrowStart) {
       buckets.today.push(entry);
     } else if (eventDay < todayStart) {

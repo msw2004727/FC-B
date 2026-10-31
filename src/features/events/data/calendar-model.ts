@@ -1,3 +1,4 @@
+import { formatTaipei } from '@/core/taipei-time';
 import type { LegacyEventDoc } from '../components/legacy/TimelineEventCard';
 import { effectiveEventStatus } from './my-activities-model';
 import { SPORTS, eventSportTag, getSportLabelByKey } from './sports';
@@ -65,7 +66,7 @@ export function toDateKey(value: string | undefined): string {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-/** 照 A dateObjToKey。 */
+/** 純日曆 Date 的欄位鍵（供月格／月份算術）；瞬間的日期鍵請用 formatTaipei。 */
 export function dateObjToKey(date: Date): string {
   if (!Number.isFinite(date.getTime())) return '';
   return `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -90,7 +91,7 @@ export function monthLabel(key: string): string {
 
 /** 照 A _calendarGoPrev。 */
 export function minimumMonthKey(now: Date): string {
-  return monthKeyFromDate(new Date(now.getFullYear(), now.getMonth() - MAX_PAST_MONTHS, 1));
+  return addMonthKey(formatTaipei(now.getTime(), 'YYYY-MM-DD').slice(0, 7), -MAX_PAST_MONTHS);
 }
 
 /** 照 A _getWindowedMonthKeys。 */
@@ -112,8 +113,7 @@ export function getMonthGridShape(year: number, month: number) {
 export function buildMonthCells(key: string, now: Date) {
   const [year = 0, month = 1] = key.split('-').map(Number);
   const shape = getMonthGridShape(year, month - 1);
-  const today = dateObjToKey(now);
-  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const today = formatTaipei(now.getTime(), 'YYYY-MM-DD');
   return Array.from({ length: shape.weekRows * 7 }, (_, index) => {
     const offset = index - shape.firstWeekday;
     const date = new Date(year, month - 1, offset + 1);
@@ -124,7 +124,7 @@ export function buildMonthCells(key: string, now: Date) {
       day: date.getDate(),
       outside,
       today: !outside && dateKey === today,
-      past: date.getTime() < midnight,
+      past: dateKey < today,
       row: Math.floor(index / 7) + 1,
       col: index % 7 + 1,
     };

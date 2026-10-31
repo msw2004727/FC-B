@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { taipeiParts } from '@/core/taipei-time';
 import { useEffect, useState } from 'preact/hooks';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc } from '@/features/events/data/types';
@@ -21,12 +22,12 @@ export function formatNextActivityDateRange(event: EventDoc | null | undefined):
   if (!event) return '';
   const range = parseEventDateRange(event.date ?? event.startAt ?? event.startTime);
   if (!range?.startMs) return String(event.date ?? '');
-  const start = new Date(range.startMs);
-  const end = new Date(range.endMs || range.startMs + 2 * 60 * 60 * 1000);
-  const dayName = DAY_NAMES[start.getDay()] ?? '日';
-  const datePart = `${pad2(start.getMonth() + 1)}/${pad2(start.getDate())} (${dayName})`;
-  const startTime = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
-  const endTime = `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+  const start = taipeiParts(range.startMs);
+  const end = taipeiParts(range.endMs || range.startMs + 2 * 60 * 60 * 1000);
+  const dayName = DAY_NAMES[start.weekday] ?? '日';
+  const datePart = `${pad2(start.month)}/${pad2(start.day)} (${dayName})`;
+  const startTime = `${pad2(start.hour)}:${pad2(start.minute)}`;
+  const endTime = `${pad2(end.hour)}:${pad2(end.minute)}`;
   return `${datePart} ${startTime} - ${endTime}`;
 }
 

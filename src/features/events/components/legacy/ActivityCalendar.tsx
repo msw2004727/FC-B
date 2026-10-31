@@ -60,6 +60,7 @@ export function CalendarEventCell({
 export default function ActivityCalendar(props: ActivityCalendarProps): JSX.Element {
   const { events, viewerUid, viewerRegistrations, onSelectEvent, onJumpToDate } = props;
   const nav = useCalendarNav();
+  // 傳絕對瞬間；buildMonthCells 以台北日期決定 today／past，格子維持純日曆算術。
   const now = new Date();
 
   const registeredDates = useMemo(() => {

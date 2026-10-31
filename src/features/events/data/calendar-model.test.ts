@@ -35,8 +35,8 @@ describe('calendar-model：照 A（M-071）', () => {
   });
 
   it('月份跨年、標籤、過去三個月邊界', () => {
-    const now = new Date(2026, 0, 15);
-    expect(monthKeyFromDate(now)).toBe('2026-01');
+    const now = new Date(Date.parse('2026-01-15T00:00:00+08:00'));
+    expect(monthKeyFromDate(new Date(2026, 0, 15))).toBe('2026-01');
     expect(addMonthKey('2026-01', -1)).toBe('2025-12');
     expect(addMonthKey('2026-12', 1)).toBe('2027-01');
     expect(monthLabel('2026-01')).toBe('2026年1月');
@@ -49,12 +49,12 @@ describe('calendar-model：照 A（M-071）', () => {
     expect(getMonthGridShape(2021, 1).weekRows).toBe(4);
     expect(getMonthGridShape(2026, 3).weekRows).toBe(5);
     expect(getMonthGridShape(2026, 2).weekRows).toBe(6);
-    const cells = buildMonthCells('2026-04', new Date(2026, 3, 22, 12));
+    const cells = buildMonthCells('2026-04', new Date(Date.parse('2026-04-22T12:00:00+08:00')));
     expect(cells[0]).toMatchObject({ dateKey: '2026-03-30', outside: true, row: 1, col: 1 });
     expect(cells.find((cell) => cell.dateKey === '2026-04-22'))
       .toMatchObject({ today: true, past: false, outside: false });
     expect(cells.find((cell) => cell.dateKey === '2026-04-21')?.past).toBe(true);
-    const previous = buildMonthCells('2026-03', new Date(2026, 3, 1));
+    const previous = buildMonthCells('2026-03', new Date(Date.parse('2026-04-01T00:00:00+08:00')));
     expect(previous.find((cell) => cell.dateKey === '2026-04-01')?.today).toBe(false);
   });
 
@@ -103,12 +103,33 @@ describe('calendar-model：照 A（M-071）', () => {
     expect(signupStateClass({ signedUp: true, onWaitlist: true })).toBe('is-waitlisted');
     const presentation = calendarEventPresentation({
       id: 'public', title: '活動', date: '2026/4/1 10:00~11:00', sportTag: 'football',
-    }, { signedUp: true, onWaitlist: false }, new Date(2026, 3, 22).getTime());
+    }, { signedUp: true, onWaitlist: false }, Date.parse('2026-04-22T00:00:00+08:00'));
     expect(presentation.status).toBe('ended');
     expect(presentation.label).toBe('已結束活動：活動，足球，10:00');
     expect(presentation.className).toBe('evt-cal-event is-signed-up');
     expect(calendarEventPresentation({
       title: '置頂', pinned: true, status: 'cancelled',
     }, { signedUp: false, onWaitlist: false }, 0).label).toBe('置頂活動：置頂，其他');
+  });
+});
+
+
+describe('T-054c CM-a／CM-b：台北今天與月份邊界', () => {
+  it.each(['2026-10-19T00:30:00+08:00', '2026-10-19T23:30:00+08:00'])(
+    'CM-a：%s 的 today／past 都以台北日期為準', (now) => {
+      const cells = buildMonthCells('2026-10', new Date(Date.parse(now)));
+      expect(cells.filter((cell) => cell.today).map((cell) => cell.dateKey)).toEqual(['2026-10-19']);
+      expect(cells.find((cell) => cell.dateKey === '2026-10-18')).toMatchObject({ today: false, past: true });
+      expect(cells.find((cell) => cell.dateKey === '2026-10-19')).toMatchObject({ today: true, past: false });
+      expect(cells.find((cell) => cell.dateKey === '2026-10-20')).toMatchObject({ today: false, past: false });
+    },
+  );
+
+  it.each([
+    ['2026-11-01T00:30:00+08:00', '2026-08'],
+    ['2026-10-31T23:30:00+08:00', '2026-07'],
+    ['2027-01-01T00:30:00+08:00', '2026-10'],
+  ])('CM-b：%s 的最早月份為 %s', (now, minimum) => {
+    expect(minimumMonthKey(new Date(Date.parse(now)))).toBe(minimum);
   });
 });

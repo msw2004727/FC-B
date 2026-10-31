@@ -661,23 +661,20 @@ describe('活動查表的原型鍵（eventId 剛好叫 constructor／__proto__ �
 });
 
 describe('parseEventStartMs（照 A event-list-stats.js#_parseEventStartDate 的格式變體）', () => {
-  const local = (y: number, m: number, d: number, hh = 0, mm = 0): number =>
-    new Date(y, m, d, hh, mm).getTime();
-
-  it('YYYY/MM/DD HH:mm~HH:mm 取開始時間（本地時區）', () => {
-    expect(parseEventStartMs('2026/10/01 19:00~21:00')).toBe(local(2026, 9, 1, 19, 0));
+  it('YYYY/MM/DD HH:mm~HH:mm 取開始時間（台北絕對毫秒）', () => {
+    expect(parseEventStartMs('2026/10/01 19:00~21:00')).toBe(Date.parse('2026-10-01T19:00:00+08:00'));
   });
 
   it('只有日期 → 當天 00:00；沒有結束時間 → 取該時間；不補零也可', () => {
-    expect(parseEventStartMs('2026/10/01')).toBe(local(2026, 9, 1));
-    expect(parseEventStartMs('2026/10/01 19:30')).toBe(local(2026, 9, 1, 19, 30));
-    expect(parseEventStartMs('2026/1/5 9:05~10:00')).toBe(local(2026, 0, 5, 9, 5));
+    expect(parseEventStartMs('2026/10/01')).toBe(Date.parse('2026-10-01T00:00:00+08:00'));
+    expect(parseEventStartMs('2026/10/01 19:30')).toBe(Date.parse('2026-10-01T19:30:00+08:00'));
+    expect(parseEventStartMs('2026/1/5 9:05~10:00')).toBe(Date.parse('2026-01-05T09:05:00+08:00'));
   });
 
   it('A 的細節：空時間段或缺小時／分鐘一律當 0（hh || 0）', () => {
-    expect(parseEventStartMs('2026/10/01  19:00')).toBe(local(2026, 9, 1)); // 雙空白 → parts[1] 為空字串
-    expect(parseEventStartMs('2026/10/01 ~21:00')).toBe(local(2026, 9, 1));
-    expect(parseEventStartMs('2026/10/01 19')).toBe(local(2026, 9, 1, 19, 0));
+    expect(parseEventStartMs('2026/10/01  19:00')).toBe(Date.parse('2026-10-01T00:00:00+08:00')); // 雙空白 → parts[1] 為空字串
+    expect(parseEventStartMs('2026/10/01 ~21:00')).toBe(Date.parse('2026-10-01T00:00:00+08:00'));
+    expect(parseEventStartMs('2026/10/01 19')).toBe(Date.parse('2026-10-01T19:00:00+08:00'));
   });
 
   it('不是 A 的格式就是 null（A 回 null；不另外用 Date.parse 猜），排序時墊底', () => {
@@ -756,5 +753,43 @@ describe('formatUserAttendanceSummaryTime', () => {
     expect(
       formatUserAttendanceSummaryTime({ seconds: Math.floor(d.getTime() / 1000) }),
     ).toBe(expected);
+  });
+});
+
+
+describe('T-054c A1–A3：活動紀錄台北起點', () => {
+  it('A1：起點為台北字面毫秒，保留忽略秒數的語意', () => {
+    expect(parseEventStartMs('2026/10/19 11:00~13:00')).toBe(Date.parse('2026-10-19T11:00:00+08:00'));
+    expect(parseEventStartMs('2026/10/19 11:00:59~13:00')).toBe(Date.parse('2026-10-19T11:00:00+08:00'));
+  });
+
+  it.each([
+    new Date(Date.parse('2026-10-19T11:00:00+08:00')),
+    { toMillis: () => Date.parse('2026-10-19T11:00:00+08:00') },
+    '2026-10-19', '2026-10-19T03:00:00Z', '2026-10-19T12:00:00+09:00',
+  ])('A2：不放寬既有非字串／ISO 入口 %s', (value) => {
+    expect(parseEventStartMs(value)).toBeNull();
+  });
+
+  it('A3：getFilteredRecords 依活動起點降冪，null 永遠最後', () => {
+    const stats: UserStatsSnapshot = {
+      uid: 'uidA', attendanceRecords: [],
+      activityRecords: [
+        { eventId: 'targetA', status: 'registered', uid: 'uidA' },
+        { eventId: 'evtA', status: 'registered', uid: 'uidA' },
+        { eventId: 'uidB', status: 'registered', uid: 'uidA' },
+      ],
+      events: {
+        targetA: { status: 'open', date: 'bad' },
+        evtA: { status: 'open', date: '2026/10/19 00:30~02:00' },
+        uidB: { status: 'open', date: '2026/10/19 11:00~13:00' },
+      },
+    };
+    expect(getFilteredRecords(stats, 'registered', false).map((record) => record.eventId))
+      .toEqual(['uidB', 'evtA', 'targetA']);
+  });
+
+  it('刻意與舊版不同：不存在日期不進位', () => {
+    expect(parseEventStartMs('2026/02/30 11:00~13:00')).toBeNull();
   });
 });

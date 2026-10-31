@@ -14,3 +14,4 @@
 - 性能預算：首頁 JS gzip ≤ 60KB；不得載入未啟用功能的程式碼。
 - 不得寫入任何 secret。
 - 交付前跑 `npm run check` 與 `npm run build`。
+- 舊站 A 維護模式、新站 FC-B 主線；改版取捨順序「穩定 → 速度 → 省錢」。canonical 規則在 FC 專案 `CLAUDE.md` 的 R-CTX-007（只做新站、舊站僅修既有 bug 或動共用項目）與 R-CTX-008（穩定／速度／省錢順序）；簡報與審查結論要寫對這三項的影響。

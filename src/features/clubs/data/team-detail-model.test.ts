@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { EventDoc } from '@/features/events/data/types';
 
 import {
   buildTeamRoster,
@@ -224,7 +225,7 @@ describe('isTeamEventForTeam / isTeamEventInFuture / getTeamFutureEvents', () =>
   });
 
   it('isTeamEventInFuture 照 A：ended／cancelled 否；start（無則 end）>= now；無法解析視為未來', () => {
-    const now = new Date(2026, 0, 1, 0, 0, 0);
+    const now = new Date(Date.parse('2026-01-01T00:00:00+08:00'));
     expect(isTeamEventInFuture({ date: '2026/05/09 15:00~17:00' }, now)).toBe(true);
     expect(isTeamEventInFuture({ date: '2025/01/01 10:00~12:00' }, now)).toBe(false);
     expect(isTeamEventInFuture({ date: 'bad' }, now)).toBe(true);
@@ -234,7 +235,7 @@ describe('isTeamEventForTeam / isTeamEventInFuture / getTeamFutureEvents', () =>
   });
 
   it('getTeamFutureEvents 過濾 team + future，依起始時間升冪', () => {
-    const now = new Date(2026, 0, 1);
+    const now = new Date(Date.parse('2026-01-01T00:00:00+08:00'));
     const events = [
       { id: 'e-later', date: '2026/06/01 10:00~12:00', teamOnly: true, creatorTeamId: 't1' },
       { id: 'e-past', date: '2025/12/01 10:00~12:00', teamOnly: true, creatorTeamId: 't1' },
@@ -319,5 +320,33 @@ describe('getTeamMemberCount', () => {
   it('非數值 members 視為 0', () => {
     const team = { members: 'not-a-number' } as unknown as TeamDoc;
     expect(getTeamMemberCount(team)).toBe(0);
+  });
+});
+
+
+describe('T-054c C1–C3：俱樂部活動時間', () => {
+  it('C1：字串與 Timestamp 依絕對起點排序，無法解析排最後', () => {
+    const timestamp = {
+      id: 'targetA', teamOnly: true, creatorTeamId: 'targetA',
+      date: { seconds: Date.parse('2026-10-19T12:00:00+08:00') / 1000 },
+    } as unknown as EventDoc;
+    const events: EventDoc[] = [
+      { id: 'uidA', teamOnly: true, creatorTeamId: 'targetA', date: 'bad' },
+      timestamp,
+      { id: 'evtA', teamOnly: true, creatorTeamId: 'targetA', date: '2026/10/19 11:00~13:00' },
+    ];
+    expect(getTeamFutureEvents('targetA', events, new Date(Date.parse('2026-10-19T00:30:00+08:00')))
+      .map((event) => event.id)).toEqual(['evtA', 'targetA', 'uidA']);
+  });
+
+  it('C2：起點等於 now 仍是未來，後一毫秒不再是未來', () => {
+    const event: EventDoc = { id: 'evtA', date: '2026/10/19 11:00~13:00' };
+    expect(isTeamEventInFuture(event, new Date(Date.parse('2026-10-19T11:00:00+08:00')))).toBe(true);
+    expect(isTeamEventInFuture(event, new Date(Date.parse('2026-10-19T11:00:00.001+08:00')))).toBe(false);
+  });
+
+  it('C3：起訖皆無法解析時仍是未來', () => {
+    expect(isTeamEventInFuture({ id: 'evtA', date: 'bad' },
+      new Date(Date.parse('2026-10-19T00:30:00+08:00')))).toBe(true);
   });
 });

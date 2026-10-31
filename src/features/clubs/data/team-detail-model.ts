@@ -8,6 +8,7 @@
  * 詳見 buildTeamRoster 的 TODO。
  */
 
+import { eventEndOfDayMs, parseEventDate, parseEventStartMs } from '@/core/event-time';
 import type { EventDoc } from '@/features/events/data/types';
 import { getEventLimitedTeamIds } from '@/features/events/data/visibility';
 
@@ -281,55 +282,11 @@ export function isTeamEventForTeam(
   return getEventLimitedTeamIds(event).includes(target);
 }
 
-function parseEventStartDate(value: unknown): Date | null {
-  if (value == null) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-  if (typeof value === 'object') {
-    const candidate = value as {
-      toDate?: () => Date;
-      seconds?: unknown;
-    };
-    if (typeof candidate.toDate === 'function') {
-      const d = candidate.toDate();
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof candidate.seconds === 'number') {
-      return new Date(candidate.seconds * 1000);
-    }
-  }
-  const text = String(value).trim();
-  if (!text) return null;
-  // A 的日期字串格式「YYYY/MM/DD HH:mm~HH:mm」；只取起點。
-  const m = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (m) {
-    const year = Number(m[1]);
-    const month = Number(m[2]);
-    const day = Number(m[3]);
-    const hour = m[4] !== undefined ? Number(m[4]) : 0;
-    const minute = m[5] !== undefined ? Number(m[5]) : 0;
-    const date = new Date(year, month - 1, day, hour, minute);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-/** A `_parseEventEndDate`（event-list-stats.js）：無結束時間時為當天 23:59:59。只解析「YYYY/MM/DD HH:mm~HH:mm」。 */
-function parseEventEndDate(value: unknown): Date | null {
-  if (typeof value !== 'string' || !value) return null;
-  const parts = value.split(' ');
-  const dateParts = (parts[0] ?? '').split('/');
-  if (dateParts.length < 3) return null;
-  const y = parseInt(dateParts[0] ?? '', 10);
-  const m = parseInt(dateParts[1] ?? '', 10) - 1;
-  const d = parseInt(dateParts[2] ?? '', 10);
-  if (!parts[1]) return new Date(y, m, d, 23, 59, 59);
-  const end = parts[1].split('~')[1];
-  if (!end) return new Date(y, m, d, 23, 59, 59);
-  const [hh, mm] = end.split(':').map(Number);
-  return new Date(y, m, d, hh || 0, mm || 0);
+/** 無結束時間時保留當天 23:59:59；明確結束不套跨日。 */
+function parseEventEndMs(value: unknown): number | null {
+  if (typeof value !== 'string' || !value.includes('/')) return null;
+  const parsed = parseEventDate(value);
+  return parsed === null ? null : parsed.explicitEndMs ?? eventEndOfDayMs(parsed.startMs);
 }
 
 /**
@@ -341,8 +298,8 @@ export function isTeamEventInFuture(
   now: Date,
 ): boolean {
   if (!event || event.status === 'ended' || event.status === 'cancelled') return false;
-  const anchor = parseEventStartDate(event.date) ?? parseEventEndDate(event.date);
-  return !anchor || anchor.getTime() >= now.getTime();
+  const anchor = parseEventStartMs(event.date) ?? parseEventEndMs(event.date);
+  return anchor === null || anchor >= now.getTime();
 }
 
 /**
@@ -360,14 +317,14 @@ export function getTeamFutureEvents(
   return events
     .filter((e) => isTeamEventForTeam(e, teamId) && isTeamEventInFuture(e, now))
     .sort((a, b) => {
-      const da = parseEventStartDate(a.date);
-      const db = parseEventStartDate(b.date);
-      if (da && db) {
-        const diff = da.getTime() - db.getTime();
+      const da = parseEventStartMs(a.date);
+      const db = parseEventStartMs(b.date);
+      if (da !== null && db !== null) {
+        const diff = da - db;
         if (diff !== 0) return diff;
-      } else if (da && !db) {
+      } else if (da !== null && db === null) {
         return -1;
-      } else if (!da && db) {
+      } else if (da === null && db !== null) {
         return 1;
       }
       return String(a.date ?? '').localeCompare(String(b.date ?? ''));

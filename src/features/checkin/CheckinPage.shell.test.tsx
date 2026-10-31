@@ -76,17 +76,11 @@ vi.mock('./ScanSession', () => ({
   },
 }));
 
+import { addTaipeiDays, formatTaipei, taipeiStartOfDay } from '@/core/taipei-time';
 import CheckinPage from './CheckinPage';
 
-function formatDate(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}/${month}/${day}`;
-}
-
 function dayOffset(offset: number): string {
-  const now = new Date();
-  return formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset));
+  return formatTaipei(addTaipeiDays(taipeiStartOfDay(Date.now()), offset), 'YYYY/MM/DD');
 }
 
 function event(over: Partial<EventDoc>): EventDoc {

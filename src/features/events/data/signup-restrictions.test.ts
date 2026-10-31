@@ -236,3 +236,54 @@ describe('hasAvailableTeamReservationSignup', () => {
     )).toBe(false);
   });
 });
+
+describe('T-054c G1～G4', () => {
+  const event = {
+    status: 'open', date: '2026/10/19 11:00~13:00',
+    regOpenTime: '2026-10-20T09:00', earlyBirdEnabled: true, earlyBirdCost: 50,
+  };
+
+  it('G1 regOpen 在未來時，活動起點含等號關閉早鳥窗口', () => {
+    expect(isEventEarlyBirdWindow(event, new Date('2026-10-19T10:59:59.999+08:00'))).toBe(true);
+    expect(isEventEarlyBirdWindow(event, new Date('2026-10-19T11:00:00+08:00'))).toBe(false);
+    expect(isEventEarlyBirdWindow(event, new Date('2026-10-19T11:00:00.001+08:00'))).toBe(false);
+    expect(isEventEarlyBirdWindow({ ...event, regOpenTime: '2026-10-19T09:00' }, new Date('2026-10-19T09:00:00+08:00'))).toBe(false);
+  });
+
+  it('G2 無活動起點，台北生日當天凌晨已足齡', () => {
+    const profile = { ...male, birthday: '2008/10/19' };
+    expect(getEventAgeSignupState({ minAge: 18 }, profile, new Date('2026-10-18T16:30:00Z'))).toEqual({
+      restricted: false, canSignup: true, requiresLogin: false, reason: '', minAge: 18, age: 18,
+    });
+    expect(getEventAgeSignupState({ minAge: 18 }, profile, new Date('2026-10-18T23:59:59+08:00'))).toEqual({
+      restricted: true, canSignup: false, requiresLogin: false, reason: 'underage', minAge: 18, age: 17,
+    });
+  });
+
+  it('G3 基準日為活動日：生日當天足齡、前一天不足齡', () => {
+    const profile = { ...male, birthday: '2008/10/19' };
+    const before = new Date('2026-01-01T00:00:00+08:00');
+    expect(getEventAgeSignupState({ minAge: 18, date: '2026/10/19 00:30~02:00' }, profile, before))
+      .toEqual({ restricted: false, canSignup: true, requiresLogin: false, reason: '', minAge: 18, age: 18 });
+    expect(getEventAgeSignupState({ minAge: 18, date: '2026/10/18 23:30~23:59' }, profile, before))
+      .toEqual({ restricted: true, canSignup: false, requiresLogin: false, reason: 'underage', minAge: 18, age: 17 });
+  });
+
+  it('G4 非字串 regOpenTime 不開早鳥窗口（P3-2）', () => {
+    for (const regOpenTime of [
+      Date.parse('2026-10-20T09:00:00+08:00'),
+      { toMillis: () => Date.parse('2026-10-20T09:00:00+08:00') },
+      { seconds: Date.parse('2026-10-20T09:00:00+08:00') / 1000 },
+    ]) {
+      expect(isEventEarlyBirdWindow({ ...event, regOpenTime }, new Date('2026-10-19T09:00:00+08:00'))).toBe(false);
+    }
+  });
+});
+
+it('G3 消費端不擴大 ISO 起點，年齡仍採 now 後備', () => {
+  expect(getEventAgeSignupState(
+    { minAge: 18, date: '2026-10-19T11:00:00+08:00' },
+    { ...male, birthday: '2008/10/19' },
+    new Date('2026-10-18T12:00:00+08:00'),
+  )).toEqual({ restricted: true, canSignup: false, requiresLogin: false, reason: 'underage', minAge: 18, age: 17 });
+});

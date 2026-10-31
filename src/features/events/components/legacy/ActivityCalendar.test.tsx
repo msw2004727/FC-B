@@ -27,7 +27,7 @@ const defaults: ActivityCalendarProps = {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date(2026, 3, 22, 12));
+  vi.setSystemTime(new Date(Date.parse('2026-04-22T12:00:00+08:00')));
   vi.clearAllMocks();
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
     window.setTimeout(() => callback(performance.now()), 16));
@@ -143,5 +143,34 @@ describe('ActivityCalendar：照 A（M-071）', () => {
     const view = render(<ActivityCalendar {...defaults} />);
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+
+describe('T-054c 月曆台北今天接線', () => {
+  it.each(['2026-10-19T00:30:00+08:00', '2026-10-19T23:30:00+08:00'])(
+    'CM-a UI：%s 的今日格與過去格', (now) => {
+      vi.setSystemTime(new Date(Date.parse(now)));
+      const { container } = render(<ActivityCalendar {...defaults} events={[]} viewerUid="uidA" />);
+      flushLayout();
+      const month = container.querySelector('[data-month="2026-10"]');
+      expect(month?.querySelector('[data-date="2026-10-19"]')?.getAttribute('data-today')).toBe('1');
+      expect(month?.querySelector('[data-date="2026-10-18"]')?.getAttribute('data-today')).toBe('0');
+      expect(container.querySelector('#evt-cal-label')?.textContent).toBe('2026年10月');
+    },
+  );
+
+  it('CM-b UI：台北跨月時從 11 月開始，退三個月至 8 月即停', () => {
+    vi.setSystemTime(new Date(Date.parse('2026-11-01T00:30:00+08:00')));
+    const { container } = render(<ActivityCalendar {...defaults} events={[]} viewerUid="uidA" />);
+    flushLayout();
+    expect(container.querySelector('#evt-cal-label')?.textContent).toBe('2026年11月');
+    expect(container.querySelector('[data-month="2026-11"] [data-date="2026-11-01"]')?.getAttribute('data-today')).toBe('1');
+    for (let index = 0; index < 3; index++) {
+      fireEvent.click(screen.getByRole('button', { name: '上個月' }));
+      flushLayout();
+    }
+    expect(container.querySelector('#evt-cal-label')?.textContent).toBe('2026年8月');
+    expect((screen.getByRole('button', { name: '上個月' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

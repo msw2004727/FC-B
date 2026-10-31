@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TeamDetailWeekStrip } from './TeamDetailWeekStrip';
 
-const TODAY = new Date(2026, 9, 26);
+const TODAY = new Date(Date.parse('2026-10-26T00:00:00+08:00'));
 let frameId = 0;
 let frames: Map<number, FrameRequestCallback>;
 
@@ -112,7 +112,25 @@ describe('俱樂部詳情延伸週曆', () => {
     vi.restoreAllMocks();
   });
 
-  it('初始顯示本地今日起十四格，保留屬性、週末樣式與活動圓點', () => {
+  it.each([
+    ['2026-10-19T00:30:00+08:00', '2026-10-19', 'MON', '19'],
+    ['2026-11-01T00:30:00+08:00', '2026-11-01', 'SUN', '1'],
+    ['2026-10-31T23:30:00+08:00', '2026-10-31', 'SAT', '31'],
+  ])('W1–W3：%s 的今天、星期與活動小點同格', (now, key, label, day) => {
+    const { container } = render(
+      <TeamDetailWeekStrip today={new Date(Date.parse(now))} eventDays={new Set([key])} />,
+    );
+    const el = getStrip(container as HTMLElement);
+    const cell = getDay(el, key);
+    expect(el.querySelectorAll('.active')).toHaveLength(1);
+    expect(cell.classList.contains('active')).toBe(true);
+    expect(cell.querySelector('span')?.textContent).toBe(label);
+    expect(cell.querySelector('strong')?.textContent).toBe(day);
+    expect(cell.querySelector('i')).not.toBeNull();
+    expect(el.querySelectorAll('.td-v2-day i')).toHaveLength(1);
+  });
+
+  it('初始顯示台北今日起十四格，保留屬性、週末樣式與活動圓點', () => {
     const eventDays = new Set(['2026-10-26', '2026-11-01']);
     const { el } = renderStrip(eventDays);
 

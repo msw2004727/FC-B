@@ -23,7 +23,8 @@ import {
   type AttendanceSelection,
 } from './attendance-edit';
 import type { ConfirmedRosterPerson } from './attendance-roster-model';
-import { parseEventStartDate } from './event-lifecycle';
+import { parseEventStartMs } from '@/core/event-time';
+import { taipeiStartOfDay } from '@/core/taipei-time';
 
 export const CONFIRM_ATTENDANCE_TIMEOUT_MS = 30_000;
 export const ADJUST_EXP_TIMEOUT_MS = 15_000;
@@ -95,11 +96,12 @@ export function buildCompleteActivityRequestId(uid: string, eventId: string): st
 export function resolveCompleteActivityDedupeWindow(
   date: unknown,
 ): { sinceMs: number; untilMs: number } | null {
-  const start = parseEventStartDate(date);
-  // 年份超出 Date 範圍時 parseEventStartDate 會回 Invalid Date，比照無法解析。
-  if (start === null || Number.isNaN(start.getTime())) return null;
+  // 保留斜線字串限制；非字串、無法解析或年份超界仍回 null。
+  if (typeof date !== 'string' || (date.split(' ')[0] ?? '').split('/').length < 3) return null;
+  const startMs = parseEventStartMs(date);
+  if (startMs === null) return null;
 
-  let endMs = start.getTime() + COMPLETE_ACTIVITY_END_FALLBACK_MS;
+  let endMs = startMs + COMPLETE_ACTIVITY_END_FALLBACK_MS;
   const endPart = typeof date === 'string' ? date.split(' ')[1]?.split('~')[1] : undefined;
   const match = endPart?.match(/^(\d{1,2}):(\d{2})$/);
   if (match) {
@@ -109,19 +111,16 @@ export function resolveCompleteActivityDedupeWindow(
       Number.isInteger(hh) && hh >= 0 && hh <= 23 &&
       Number.isInteger(mm) && mm >= 0 && mm <= 59
     ) {
-      const y = start.getFullYear();
-      const m = start.getMonth();
-      const d = start.getDate();
-      let end = new Date(y, m, d, hh, mm);
-      if (end.getTime() <= start.getTime()) {
-        end = new Date(y, m, d + 1, hh, mm);
+      let end = taipeiStartOfDay(startMs) + (hh * 60 + mm) * 60_000;
+      if (end <= startMs) {
+        end += 86_400_000;
       }
-      endMs = end.getTime();
+      endMs = end;
     }
   }
 
   return {
-    sinceMs: start.getTime() - COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS,
+    sinceMs: startMs - COMPLETE_ACTIVITY_DEDUPE_WINDOW_MS,
     untilMs: endMs + COMPLETE_ACTIVITY_DEDUPE_AFTER_END_MS,
   };
 }

@@ -18,6 +18,7 @@
 
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
+import { parseEventStartMs } from '@/core/event-time';
 import { getFirebase } from '@/data/firebase';
 import { sendTemplateNotification } from '@/data/notify';
 import { writeOpLog } from '@/data/op-log';
@@ -82,31 +83,12 @@ export function isCourseLinkedLifecycleLocked(event: EventDoc | null | undefined
   );
 }
 
-// ── 開始時間解析（A `_parseEventStartDate`，第 258～272 行） ──
-
-export function parseEventStartDate(dateStr: unknown): Date | null {
-  if (typeof dateStr !== 'string' || !dateStr) return null;
-  const parts = dateStr.split(' ');
-  const dateParts = (parts[0] ?? '').split('/');
-  if (dateParts.length < 3) return null;
-  const y = parseInt(dateParts[0] ?? '', 10);
-  const m = parseInt(dateParts[1] ?? '', 10) - 1;
-  const d = parseInt(dateParts[2] ?? '', 10);
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-
-  const timePartRaw = parts[1];
-  if (timePartRaw) {
-    const timePart = timePartRaw.split('~')[0] ?? '';
-    const [hh, mm] = timePart.split(':').map(Number);
-    return new Date(y, m, d, hh || 0, mm || 0);
-  }
-  return new Date(y, m, d);
-}
-
 /** A 重開／上架前的判斷 `startDate && startDate <= new Date()`；UI 先用它決定是否顯示提示。 */
 export function isEventStartPassed(event: EventDoc, now: Date = new Date()): boolean {
-  const startDate = parseEventStartDate(event.date);
-  return !!startDate && startDate <= now;
+  // 保留消費端只收斜線日期的限制；日期運算委派共用 helper。
+  if (typeof event.date !== 'string' || (event.date.split(' ')[0] ?? '').split('/').length < 3) return false;
+  const startMs = parseEventStartMs(event.date);
+  return startMs !== null && startMs <= now.getTime();
 }
 
 // ── operator（A `api-service.js#_writeOpLog`：`curUser?.displayName || ROLES[role]?.label || '系統'`） ──
@@ -227,8 +209,7 @@ export async function reopenEvent(input: LifecycleInput): Promise<void> {
     throw new EventLifecycleError('NOT_ALLOWED', '您只能管理自己的活動');
   }
 
-  const startDate = parseEventStartDate(event.date);
-  if (startDate && startDate <= now) {
+  if (isEventStartPassed(event, now)) {
     throw new EventLifecycleError(
       'START_PASSED',
       '活動時間已過，請先編輯活動並更新時間後再重新開放。',
@@ -282,8 +263,7 @@ export async function relistEvent(input: LifecycleInput): Promise<void> {
     throw new EventLifecycleError('NOT_ALLOWED', '您只能管理自己的活動');
   }
 
-  const startDate = parseEventStartDate(event.date);
-  if (startDate && startDate <= now) {
+  if (isEventStartPassed(event, now)) {
     throw new EventLifecycleError(
       'START_PASSED',
       '活動時間已過，請先編輯活動並更新時間後再上架。',

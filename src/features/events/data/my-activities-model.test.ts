@@ -15,7 +15,7 @@ import {
 // 測試同步更新（R-QA-005）：列表改用 A 的有效狀態（開始時間已過＝已結束），固定現在時間在測試資料日期之前。
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-05-01T00:00:00'));
+  vi.setSystemTime(new Date('2026-05-01T00:00:00+08:00'));
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -124,7 +124,7 @@ describe('filterManageableEvents', () => {
 });
 
 describe('sortMyActivitiesByNearestTime (golden against A _sortMyActivitiesByNearestTime)', () => {
-  const now = new Date(2026, 4, 10, 12, 0, 0).getTime(); // 2026/05/10 12:00
+  const now = Date.parse('2026-05-10T12:00:00+08:00'); // 2026/05/10 12:00
 
   it('orders active events before terminal, nearer start time first, earlier start tie-breaker, then id localeCompare', () => {
     const input: EventDoc[] = [
@@ -186,7 +186,7 @@ describe('getMyActivityVisibleLimit & progressTone', () => {
 });
 
 describe('有效狀態（照 A _getEventEffectiveStatus／_autoEndExpiredEvents，只算不寫）', () => {
-  const now = new Date('2026-06-01T12:00:00').getTime();
+  const now = Date.parse('2026-06-01T12:00:00+08:00');
   it('已取消／已結束照舊；開始時間已過算已結束；報名開放在未來算即將開放；額滿算已額滿', () => {
     expect(effectiveEventStatus({ id: 'a', status: 'cancelled', date: '2026/07/01 10:00~12:00' } as EventDoc, now)).toBe('cancelled');
     expect(effectiveEventStatus({ id: 'b', status: 'open', date: '2026/05/01 10:00~12:00' } as EventDoc, now)).toBe('ended');
@@ -217,3 +217,20 @@ describe('有效狀態（照 A _getEventEffectiveStatus／_autoEndExpiredEvents�
   });
 });
 
+
+describe('T-054c M1 狀態邊界', () => {
+  it('起點當下轉 ended，regOpen 當下不再 upcoming', () => {
+    const event = { id: 'evtA', status: 'open', date: '2026/10/19 11:00~13:00', regOpenTime: '2026-10-19T09:00' } as EventDoc;
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T08:59:59.999+08:00'))).toBe('upcoming');
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T09:00:00+08:00'))).toBe('open');
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T10:59:59.999+08:00'))).toBe('open');
+    expect(effectiveEventStatus(event, Date.parse('2026-10-19T11:00:00+08:00'))).toBe('ended');
+  });
+
+  it('G4 對照：非字串 regOpenTime 不判 upcoming', () => {
+    for (const regOpenTime of [Date.parse('2026-10-20T09:00:00+08:00'), { toMillis: () => Date.parse('2026-10-20T09:00:00+08:00') }]) {
+      const event = { id: 'evtA', status: 'open', date: '2026/10/19 11:00~13:00', regOpenTime } as unknown as EventDoc;
+      expect(effectiveEventStatus(event, Date.parse('2026-10-19T09:00:00+08:00'))).toBe('open');
+    }
+  });
+});

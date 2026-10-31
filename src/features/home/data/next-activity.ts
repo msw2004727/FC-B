@@ -15,6 +15,7 @@
  */
 
 // Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔的純函式會被首頁路由引用，靜態 import SDK 會讓首頁多帶約 160 KB gz。
+import { parseEventRangeMs } from '@/core/event-time';
 import type { DocumentData, Firestore, Query } from 'firebase/firestore';
 import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
@@ -73,75 +74,7 @@ export interface DateRange {
 
 /** 與 home-next-activity.js::parseEventDateRange 對齊 */
 export function parseEventDateRange(value: unknown): DateRange | null {
-  if (!value) return null;
-  if (typeof value !== 'string') {
-    const ms = toMillis(value);
-    return ms ? { startMs: ms, endMs: ms + 2 * 60 * 60 * 1000 } : null;
-  }
-  const raw = value.trim();
-  const m = raw.match(
-    /(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})(?:\s*[~\uFF5E-]\s*(\d{1,2}):(\d{2}))?/,
-  );
-  if (!m) {
-    const parsed = Date.parse(raw);
-    return Number.isFinite(parsed) ? { startMs: parsed, endMs: parsed + 2 * 60 * 60 * 1000 } : null;
-  }
-  const y = m[1];
-  const mo = m[2];
-  const d = m[3];
-  const sh = m[4];
-  const sm = m[5];
-  if (!y || !mo || !d || !sh || !sm) return null;
-  const year = Number(y);
-  const month = Number(mo) - 1;
-  const day = Number(d);
-  const startHour = Number(sh);
-  const startMinute = Number(sm);
-  const eh = m[6];
-  const em = m[7];
-  const endHour = eh ? Number(eh) : startHour + 2;
-  const endMinute = em ? Number(em) : startMinute;
-  const start = new Date(year, month, day, startHour, startMinute, 0);
-  const end = new Date(year, month, day, endHour, endMinute, 0);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
-
-function toMillis(value: unknown): number {
-  if (!value) return 0;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (typeof value === 'object') {
-    const v = value as {
-      toMillis?: () => number;
-      toDate?: () => Date;
-      seconds?: number;
-      _seconds?: number;
-      nanoseconds?: number;
-      _nanoseconds?: number;
-    };
-    if (typeof v.toMillis === 'function') {
-      try {
-        return v.toMillis();
-      } catch {
-        return 0;
-      }
-    }
-    if (typeof v.toDate === 'function') {
-      try {
-        const d = v.toDate();
-        return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
-      } catch {
-        return 0;
-      }
-    }
-    const secRaw = typeof v.seconds === 'number' ? v.seconds : v._seconds;
-    if (typeof secRaw === 'number' && Number.isFinite(secRaw)) {
-      const nanoRaw = typeof v.nanoseconds === 'number' ? v.nanoseconds : v._nanoseconds;
-      const nano = typeof nanoRaw === 'number' ? nanoRaw : 0;
-      return secRaw * 1000 + Math.floor(nano / 1_000_000);
-    }
-  }
-  const parsed = Date.parse(String(value));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseEventRangeMs(value);
 }
 
 export function eventStartMs(event: EventDoc | null | undefined): number {
