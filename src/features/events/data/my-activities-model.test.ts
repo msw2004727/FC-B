@@ -186,7 +186,7 @@ describe('getMyActivityVisibleLimit & progressTone', () => {
 });
 
 describe('有效狀態（照 A _getEventEffectiveStatus／_autoEndExpiredEvents，只算不寫）', () => {
-  const now = new Date('2026-06-01T12:00:00').getTime();
+  const now = Date.parse('2026-06-01T12:00:00+08:00');
   it('已取消／已結束照舊；開始時間已過算已結束；報名開放在未來算即將開放；額滿算已額滿', () => {
     expect(effectiveEventStatus({ id: 'a', status: 'cancelled', date: '2026/07/01 10:00~12:00' } as EventDoc, now)).toBe('cancelled');
     expect(effectiveEventStatus({ id: 'b', status: 'open', date: '2026/05/01 10:00~12:00' } as EventDoc, now)).toBe('ended');

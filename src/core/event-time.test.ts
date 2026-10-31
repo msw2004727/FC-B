@@ -113,16 +113,19 @@ describe('T-054c event-time（行程層四時區共用字面期望）', () => {
     }
   });
 
-  it('E10 元測試：本地解析突變體只在 UTC+8 等於字面期望', () => {
+  it('E10 元測試：本地解析突變體只在 UTC+8 等於字面期望，真實解析在任何時區都等於字面期望', () => {
     // 只有元測試刻意使用本地建構；不切換 process.env.TZ。
+    const localStart = (y: number, m: number, d: number, hh: number, mi: number) => new Date(y, m - 1, d, hh, mi).getTime();
     const cases = [
-      { local: new Date(2026, 9, 19, 11), expected: Date.parse('2026-10-19T11:00:00+08:00') },
-      { local: new Date(2026, 2, 8, 2, 30), expected: Date.parse('2026-03-08T02:30:00+08:00') },
-      { local: new Date(2026, 10, 1, 1, 30), expected: Date.parse('2026-11-01T01:30:00+08:00') },
+      { text: '2026/10/19 11:00~13:00', local: localStart(2026, 10, 19, 11, 0), expected: Date.parse('2026-10-19T11:00:00+08:00') },
+      { text: '2026/03/08 02:30~04:00', local: localStart(2026, 3, 8, 2, 30), expected: Date.parse('2026-03-08T02:30:00+08:00') },
+      { text: '2026/11/01 01:30~03:00', local: localStart(2026, 11, 1, 1, 30), expected: Date.parse('2026-11-01T01:30:00+08:00') },
     ];
+    const taipeiLeg = !process.env.TZ || process.env.TZ === 'Asia/Taipei';
     for (const entry of cases) {
-      if (entry.local.getTimezoneOffset() === -480) expect(entry.local.getTime()).toBe(entry.expected);
-      else expect(entry.local.getTime()).not.toBe(entry.expected);
+      expect(parseEventDate(entry.text)?.startMs).toBe(entry.expected);
+      if (taipeiLeg) expect(entry.local).toBe(entry.expected);
+      else expect(entry.local).not.toBe(entry.expected);
     }
   });
 

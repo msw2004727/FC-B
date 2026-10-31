@@ -96,10 +96,24 @@ describe('T-054c terminal 保留語意', () => {
     expect(eventStartMs(null)).toBe(0);
   });
 
-  it.each(['2026/02/30 10:00~11:00', 'abc', null])('T5 無效日期 %j', (date) => {
+  it('T5a 刻意與舊版不同：不存在的日期不進位，改看 status', () => {
+    const date = '2026/02/30 10:00~11:00';
     expect(parseEventDateRange(date)).toBeNull();
     expect(isEventInEndedTab({ date, status: 'ended' }, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(true);
     expect(isEventInEndedTab({ date, status: 'open' }, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(false);
+  });
+
+  it.each(['abc', null])('T5 無效日期 %j', (date) => {
+    expect(parseEventDateRange(date)).toBeNull();
+    expect(isEventInEndedTab({ date, status: 'ended' }, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(true);
+    expect(isEventInEndedTab({ date, status: 'open' }, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(false);
+  });
+
+  it.each(['2026/10/25  09:00~11:00', '2026/10/25 09:00 ~ 11:00'])('T7 刻意與舊版不同：容忍多餘空白 %s', (date) => {
+    expect(parseEventDateRange(date)).toEqual({
+      startMs: Date.parse('2026-10-25T09:00:00+08:00'),
+      endMs: Date.parse('2026-10-25T11:00:00+08:00'),
+    });
   });
 
   it.each(['Oct 19, 2026', '2026-02-30'])('T6 刻意與舊版不同：不猜測或進位 %s', (date) => {
