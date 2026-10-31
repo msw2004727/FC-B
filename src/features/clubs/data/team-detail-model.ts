@@ -8,7 +8,7 @@
  * 詳見 buildTeamRoster 的 TODO。
  */
 
-import { eventEndOfDayMs, parseEventDate, parseEventStartMs } from '@/core/event-time';
+import { parseEventStartMs } from '@/core/event-time';
 import type { EventDoc } from '@/features/events/data/types';
 import { getEventLimitedTeamIds } from '@/features/events/data/visibility';
 
@@ -282,23 +282,16 @@ export function isTeamEventForTeam(
   return getEventLimitedTeamIds(event).includes(target);
 }
 
-/** 無結束時間時保留當天 23:59:59；明確結束不套跨日。 */
-function parseEventEndMs(value: unknown): number | null {
-  if (typeof value !== 'string' || !value.includes('/')) return null;
-  const parsed = parseEventDate(value);
-  return parsed === null ? null : parsed.explicitEndMs ?? eventEndOfDayMs(parsed.startMs);
-}
-
 /**
  * A `_isTeamEventInFuture`（team-detail-render.js）：ended／cancelled 不算；
- * 以開始時間（無則結束時間）為基準，**兩者都解析不出時視為未來**（照 A，避免日期格式異常的活動消失）。
+ * 以開始時間為基準，解析不出時視為未來（照 A，避免日期格式異常的活動消失）。
  */
 export function isTeamEventInFuture(
   event: EventDoc | null | undefined,
   now: Date,
 ): boolean {
   if (!event || event.status === 'ended' || event.status === 'cancelled') return false;
-  const anchor = parseEventStartMs(event.date) ?? parseEventEndMs(event.date);
+  const anchor = parseEventStartMs(event.date);
   return anchor === null || anchor >= now.getTime();
 }
 

@@ -278,6 +278,16 @@ describe('T-054c K1–K5：台北日期分桶', () => {
     },
   );
 
+  it('刻意與舊版不同：斜線日期接 T 回 null，由今天分桶改入 past', () => {
+    const buckets = loadScanEvents({
+      context: ownerContext('uidA'), now: new Date(Date.parse('2026-10-19T00:30:00+08:00')),
+      events: [event({ id: 'evtA', _docId: 'evtA', creatorUid: 'uidA', date: '2026/10/19T09:00' })],
+    });
+    expect(buckets.past.map((entry) => entry.eventId)).toEqual(['evtA']);
+    expect(buckets.today).toEqual([]);
+    expect(buckets.future).toEqual([]);
+  });
+
   it('K5：保留 Date 注入簽名，以注入瞬間所在台北日分桶', () => {
     const parsed: (string | undefined)[] = [];
     const buckets = loadScanEvents({

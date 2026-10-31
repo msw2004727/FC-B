@@ -224,7 +224,7 @@ describe('isTeamEventForTeam / isTeamEventInFuture / getTeamFutureEvents', () =>
     expect(isTeamEventForTeam({ creatorTeamId: 't1' }, null)).toBe(false);
   });
 
-  it('isTeamEventInFuture 照 A：ended／cancelled 否；start（無則 end）>= now；無法解析視為未來', () => {
+  it('isTeamEventInFuture 照 A：ended／cancelled 否；start >= now；起點無法解析視為未來', () => {
     const now = new Date(Date.parse('2026-01-01T00:00:00+08:00'));
     expect(isTeamEventInFuture({ date: '2026/05/09 15:00~17:00' }, now)).toBe(true);
     expect(isTeamEventInFuture({ date: '2025/01/01 10:00~12:00' }, now)).toBe(false);
@@ -345,7 +345,7 @@ describe('T-054c C1–C3：俱樂部活動時間', () => {
     expect(isTeamEventInFuture(event, new Date(Date.parse('2026-10-19T11:00:00.001+08:00')))).toBe(false);
   });
 
-  it('C3：起訖皆無法解析時仍是未來', () => {
+  it('C3：起點無法解析時視為未來', () => {
     expect(isTeamEventInFuture({ id: 'evtA', date: 'bad' },
       new Date(Date.parse('2026-10-19T00:30:00+08:00')))).toBe(true);
   });

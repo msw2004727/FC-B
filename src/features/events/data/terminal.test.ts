@@ -109,11 +109,11 @@ describe('T-054c terminal 保留語意', () => {
     expect(isEventInEndedTab({ date, status: 'open' }, Date.parse('2026-10-19T11:00:00+08:00'))).toBe(false);
   });
 
-  it.each(['2026/10/25  09:00~11:00', '2026/10/25 09:00 ~ 11:00'])('T7 刻意與舊版不同：容忍多餘空白 %s', (date) => {
-    expect(parseEventDateRange(date)).toEqual({
-      startMs: Date.parse('2026-10-25T09:00:00+08:00'),
-      endMs: Date.parse('2026-10-25T11:00:00+08:00'),
-    });
+  it('刻意與舊版不同：T7 ~ 前後有空白時已結束頁籤照實解析結束（舊版結束＝起點，+6h 於 15:00 移出；新版結束 11:00，+6h 於 17:00 移出）', () => {
+    const event = { status: 'open', date: '2026/10/25 09:00 ~ 11:00' };
+    expect(isEventInEndedTab(event, Date.parse('2026-10-25T15:00:00+08:00'))).toBe(false);
+    expect(isEventInEndedTab(event, Date.parse('2026-10-25T16:59:59.999+08:00'))).toBe(false);
+    expect(isEventInEndedTab(event, Date.parse('2026-10-25T17:00:00+08:00'))).toBe(true);
   });
 
   it.each(['Oct 19, 2026', '2026-02-30'])('T6 刻意與舊版不同：不猜測或進位 %s', (date) => {

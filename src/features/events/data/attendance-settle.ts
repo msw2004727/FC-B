@@ -243,6 +243,7 @@ async function hasPriorCompleteActivityGrantWith(
   });
 }
 
+// 相容／測試用
 /** 只查 uid、reason 等值條件，前端判斷雙邊時間窗（兩端含）；上界 null 僅看下界，下界 null 任一筆即命中；查詢錯誤往外拋。 */
 export async function hasPriorCompleteActivityGrant(
   uid: string,
@@ -430,7 +431,16 @@ export async function settleAttendance(
 
   try {
     // 池啟動前解析一次，工人共用同一組 firestore 與 db，避免同時動態載入。
-    const fs = await loadExpLogFirestore();
+    // 載入失敗不 reject：confirm 已套用，全部 targets 記 dedupe_query_failed。
+    let fs: ExpLogFirestore;
+    try {
+      fs = await loadExpLogFirestore();
+    } catch {
+      for (const uid of targets) {
+        result.failed.push({ uid, error: 'dedupe_query_failed' });
+      }
+      return result;
+    }
     // 固定最多 5 條工人：做完一人才取下一個 index，不是一次展開全部 targets。
     const workerCount = Math.min(EXP_GRANT_CONCURRENCY, targets.length);
     await Promise.all(Array.from({ length: workerCount }, async () => {

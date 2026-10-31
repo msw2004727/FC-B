@@ -372,4 +372,12 @@ describe('T-054c CM1～CM3', () => {
     expect(commentEventEndMs('2026/10/19 23:00~2026/10/21 01:00')).toBe(Date.parse('2026-10-21T01:00:00+08:00'));
     expect(commentEventEndMs('2026/10/19 23:00~2026/10/19 01:00')).toBe(Date.parse('2026-10-19T01:00:00+08:00'));
   });
+
+  it('刻意與舊版不同：結束時間無效（~24:00／~25:00）整體回 null，留言不自動關閉（舊版進位到隔天；表單產生不出此值）', () => {
+    const nextDay = Date.parse('2026-10-20T00:00:00+08:00');
+    expect(commentEventEndMs('2026/10/19 11:00~24:00')).toBeNull();
+    expect(commentEventEndMs('2026/10/19 11:00~25:00')).toBeNull();
+    expect(isEventCommentsClosed({ date: '2026/10/19 11:00~24:00', status: 'open' }, nextDay)).toBe(false);
+    expect(isEventCommentsClosed({ date: '2026/10/19 11:00~25:00', status: 'open' }, nextDay)).toBe(false);
+  });
 });
