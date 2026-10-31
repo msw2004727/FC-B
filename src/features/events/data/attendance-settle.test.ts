@@ -1260,6 +1260,33 @@ describe('settleAttendance', () => {
     expect(handler).toEqual(expect.any(Function));
     expect(remove).toHaveBeenCalledWith('beforeunload', handler);
   });
+
+  it('expLogs 載入失敗時回 ok，全部 targets 記 dedupe_query_failed，且不呼叫 adjustExp', async () => {
+    mockCallFn.mockResolvedValueOnce(confirm(['uidA', 'uidB']));
+    mockGetFirebase
+      .mockResolvedValueOnce({ db: { __fakeDb: true } })
+      .mockRejectedValueOnce(new Error('exp log 載入失敗'));
+
+    const result = await settleAttendance(input({
+      event: { id: 'evtA', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
+      people: [person('uidA'), person('uidB')],
+    }));
+
+    expect(result).toEqual({
+      ok: true,
+      added: 2,
+      removed: 1,
+      targets: ['uidA', 'uidB'],
+      granted: [],
+      skippedAlready: [],
+      skippedZeroAmount: false,
+      failed: [
+        { uid: 'uidA', error: 'dedupe_query_failed' },
+        { uid: 'uidB', error: 'dedupe_query_failed' },
+      ],
+    });
+    expect(adjustCalls()).toHaveLength(0);
+  });
 });
 
 describe('T-054c R5 結算窗口 ST1～ST6', () => {
@@ -1283,4 +1310,11 @@ describe('T-054c R5 結算窗口 ST1～ST6', () => {
     ('ST6 無法解析或消費端不接受的輸入回 null %j', (date) => {
       expect(resolveCompleteActivityDedupeWindow(date)).toBeNull();
     });
+
+  it('刻意與舊版不同：日期與時間雙空白時起點取 09:00（舊版起點 00:00）；split 仍取不到結束，until 沿用起點 +24h 再 +72h', () => {
+    expect(resolveCompleteActivityDedupeWindow('2026/10/25  09:00~11:00')).toEqual({
+      sinceMs: Date.parse('2026-10-24T09:00:00+08:00'),
+      untilMs: Date.parse('2026-10-29T09:00:00+08:00'),
+    });
+  });
 });

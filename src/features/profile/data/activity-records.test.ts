@@ -792,4 +792,21 @@ describe('T-054c A1–A3：活動紀錄台北起點', () => {
   it('刻意與舊版不同：不存在日期不進位', () => {
     expect(parseEventStartMs('2026/02/30 11:00~13:00')).toBeNull();
   });
+
+  it('刻意與舊版不同：斜線日期接 T 回 null，排序由有值變排最後', () => {
+    expect(parseEventStartMs('2026/10/19T09:00')).toBeNull();
+    const stats: UserStatsSnapshot = {
+      uid: 'uidA', attendanceRecords: [],
+      activityRecords: [
+        { eventId: 'evtA', status: 'registered', uid: 'uidA' },
+        { eventId: 'targetA', status: 'registered', uid: 'uidA' },
+      ],
+      events: {
+        evtA: { status: 'open', date: '2026/10/19T09:00' },
+        targetA: { status: 'open', date: '2026/10/18 11:00~13:00' },
+      },
+    };
+    expect(getFilteredRecords(stats, 'registered', false).map((record) => record.eventId))
+      .toEqual(['targetA', 'evtA']);
+  });
 });

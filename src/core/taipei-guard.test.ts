@@ -50,6 +50,12 @@ interface AllowedLine {
 // 薄包裝也記錄在此，但它們沒有違規 token，不會擴大本地日期操作的豁免範圍。
 const ALLOWED_LINES: readonly AllowedLine[] = [
   {
+    file: 'src/features/events/data/detail-model.ts',
+    line: 152,
+    source: "const endMs = Date.parse(`${year}-${month}-${day}T${endHour}:${endMinute}:00+08:00`);",
+    reason: '模板字串帶明確 +08:00 偏移，結果是台北絕對時間，不是本地解析（顧問 10-31 裁定保留）。',
+  },
+  {
     file: 'src/features/events/data/signup-restrictions.ts',
     line: 101,
     source: "const date = new Date(year, month - 1, day);",
@@ -207,14 +213,165 @@ interface LocalDateUse {
   token: string;
 }
 
-/** 純掃描函式：不讀檔、不套允許清單，可直接以違規字串驗證。 */
+function skipQuoted(source: string, i: number): number {
+  const quote = source[i] ?? '';
+  i += 1;
+  while (i < source.length) {
+    if (source[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (source[i] === quote) return i + 1;
+    if (source[i] === '\n') return i;
+    i += 1;
+  }
+  return i;
+}
+
+function skipTemplate(source: string, i: number): number {
+  i += 1;
+  while (i < source.length) {
+    if (source[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (source[i] === '`') return i + 1;
+    if (source[i] === '$' && source[i + 1] === '{') {
+      i = skipBraceExpr(source, i + 1);
+      continue;
+    }
+    i += 1;
+  }
+  return i;
+}
+
+function skipBraceExpr(source: string, braceIndex: number): number {
+  let i = braceIndex + 1;
+  let brace = 1;
+  while (i < source.length && brace > 0) {
+    const ch = source[i] ?? '';
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      i += 2;
+      while (i < source.length && source[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
+      i = Math.min(source.length, i + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      i = skipQuoted(source, i);
+      continue;
+    }
+    if (ch === '`') {
+      i = skipTemplate(source, i);
+      continue;
+    }
+    if (ch === '{') brace += 1;
+    else if (ch === '}') brace -= 1;
+    i += 1;
+  }
+  return i;
+}
+
+/** `new Date(` 參數頂層（括號／方括／大括深度皆回到呼叫本身）出現逗號或字串／模板字面量。 */
+function dateCallViolates(source: string, openParen: number, kind: 'new' | 'parse'): boolean {
+  let i = openParen + 1;
+  let paren = 1;
+  let bracket = 0;
+  let brace = 0;
+  let topComma = false;
+  let topLiteral = false;
+  const atTop = (): boolean => paren === 1 && bracket === 0 && brace === 0;
+
+  while (i < source.length && paren > 0) {
+    const ch = source[i] ?? '';
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      i += 2;
+      while (i < source.length && source[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
+      i = Math.min(source.length, i + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      if (atTop()) topLiteral = true;
+      i = skipQuoted(source, i);
+      continue;
+    }
+    if (ch === '`') {
+      if (atTop()) topLiteral = true;
+      i = skipTemplate(source, i);
+      continue;
+    }
+    if (ch === '(') {
+      paren += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ')') {
+      paren -= 1;
+      i += 1;
+      continue;
+    }
+    if (ch === '[') {
+      bracket += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ']') {
+      if (bracket > 0) bracket -= 1;
+      i += 1;
+      continue;
+    }
+    if (ch === '{') {
+      brace += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === '}') {
+      if (brace > 0) brace -= 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ',' && atTop()) topComma = true;
+    i += 1;
+  }
+
+  return topLiteral || (kind === 'new' && topComma);
+}
+
+/** 純掃描函式：不讀檔、不套允許清單，可直接以違規字串驗證。連註解與字串一併掃描。 */
 export function findLocalDateUses(source: string): LocalDateUse[] {
-  const pattern = /\.(?:getHours|getMinutes|getFullYear|getMonth|getDate|getDay)\s*\(|\bnew\s+Date\s*\(\s*(?:[$A-Z_a-z][\w$]*|[+-]?\d[\d_]*(?:\.\d+)?)\s*,/g;
   const lines = source.split(/\r?\n/);
-  return Array.from(source.matchAll(pattern), (match) => {
-    const line = source.slice(0, match.index).split('\n').length;
-    return { line, source: (lines[line - 1] ?? '').trim(), token: match[0] };
-  });
+  const hits: Array<LocalDateUse & { index: number }> = [];
+  const push = (index: number, token: string): void => {
+    const line = source.slice(0, index).split('\n').length;
+    hits.push({ index, line, source: (lines[line - 1] ?? '').trim(), token });
+  };
+
+  const getter = /\.(?:getHours|getMinutes|getFullYear|getMonth|getDate|getDay)\s*\(/g;
+  for (const match of source.matchAll(getter)) {
+    push(match.index ?? 0, match[0]);
+  }
+
+  const calls = /\b(?:new\s+Date|Date\.parse)\s*\(/g;
+  for (const match of source.matchAll(calls)) {
+    const token = match[0];
+    const openParen = (match.index ?? 0) + token.length - 1;
+    const kind = token.includes('parse') ? 'parse' : 'new';
+    if (dateCallViolates(source, openParen, kind)) push(match.index ?? 0, token);
+  }
+
+  hits.sort((a, b) => a.index - b.index);
+  return hits.map(({ line, source: lineSource, token }) => ({ line, source: lineSource, token }));
 }
 
 /** 讀檔由呼叫端負責；本函式對新增或改寫的本地日期操作直接報錯。 */
@@ -270,6 +427,9 @@ describe('T-054c 台北時間靜態守門', () => {
     'new Date(2026, 0, 1)',
     'evtA.getHours ( )',
     'new Date(\n  targetA, 0, 1)',
+    'new Date(getY(x), 1)',
+    "new Date('2026/10/19')",
+    'Date.parse(`${d} ${t}`)',
   ])('S3 元測試：攔下 %s', (source) => {
     expect(() => assertTaipeiSource('src/core/event-time.ts', source, ALLOWED_LINES)).toThrow();
   });
@@ -277,5 +437,18 @@ describe('T-054c 台北時間靜態守門', () => {
   it('S3 元測試：絕對毫秒建構及 UTC getter 可通過', () => {
     expect(() => assertTaipeiSource('src/core/event-time.ts', 'new Date(targetA).getUTCHours()'))
       .not.toThrow();
+  });
+
+  it('S3 元測試：單參數、巢狀括號與識別字不誤報', () => {
+    const source = [
+      'new Date()',
+      'new Date(targetA)',
+      'new Date(getY(x))',
+      'new Date(Date.UTC(year, month, 0))',
+      'Date.parse(targetA)',
+      'new Date(foo(\'2026/10/19\'))',
+      'new Date(endMs < Date.parse(start) ? endMs + 1 : endMs)',
+    ].join('\n');
+    expect(() => assertTaipeiSource('src/core/event-time.ts', source, ALLOWED_LINES)).not.toThrow();
   });
 });
