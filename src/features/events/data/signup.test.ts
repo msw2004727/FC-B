@@ -63,7 +63,7 @@ import { isEventVisibleToUser } from './visibility';
 
 const mockedVisible = vi.mocked(isEventVisibleToUser);
 const FIXED_MS = 1_700_000_000_000;
-const START_MS = new Date(2030, 4, 9, 15, 0).getTime();
+const START_MS = Date.parse('2030-05-09T15:00:00+08:00');
 
 function makeViewer(overrides: Partial<ViewerContext> = {}): ViewerContext {
   return {
@@ -510,7 +510,7 @@ describe('precheckSignup', () => {
     [START_MS - 1, true],
     [START_MS, false],
     [START_MS + 1, false],
-  ])('報名開始時間邊界 %s', (now, allowed) => {
+  ])('H1 報名開始時間邊界 %s', (now, allowed) => {
     expect(precheckSignup(
       { id: 'evt1', status: 'open', date: '2030/05/09 15:00~17:00' },
       makeViewer(),
@@ -842,7 +842,7 @@ describe('cancelRegistration：時間守衛與不同操作', () => {
     [START_MS - 1, true],
     [START_MS, false],
     [START_MS + 1, false],
-  ])('A08 開始時間邊界 %s', async (now, allowed) => {
+  ])('H1 A08 開始時間邊界 %s', async (now, allowed) => {
     registerMock('cancelRegistration', async () => ({ success: true }));
     const harness = cancelContext({ date: '2030/05/09 15:00~17:00' });
     const operation = cancelRegistration({

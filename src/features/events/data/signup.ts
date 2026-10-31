@@ -29,6 +29,7 @@ import type {
   RegisterForEventResponse,
 } from '@/data/contract/callables';
 import { emit } from '@/core/events';
+import { parseEventStartMs } from '@/core/event-time';
 
 import type { EventDoc, RegistrationDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
@@ -287,33 +288,11 @@ function rejected(reason: SignupPrecheckReason, messageKey: string): SignupPrech
   return { ok: false, reason, messageKey };
 }
 
-/**
- * 對齊附件 terminal.ts 所列的 A _parseEventStartDate。
- * 只讀 date，保留 split(' ')、斜線日期與 ~ 的原始語意；
- * 不接受首頁 parser 額外支援的 ISO、連字號日期或 startAt/startTime fallback。
- */
-function parseSignupStartDate(dateStr: unknown): Date | null {
-  if (typeof dateStr !== 'string' || !dateStr) return null;
-  const parts = dateStr.split(' ');
-  const dateParts = (parts[0] ?? '').split('/');
-  if (dateParts.length < 3) return null;
-  const year = parseInt(dateParts[0] ?? '', 10);
-  const month = parseInt(dateParts[1] ?? '', 10) - 1;
-  const day = parseInt(dateParts[2] ?? '', 10);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-
-  const timePartRaw = parts[1];
-  if (timePartRaw) {
-    const timePart = timePartRaw.split('~')[0] ?? '';
-    const [hour, minute] = timePart.split(':').map(Number);
-    return new Date(year, month, day, hour || 0, minute || 0);
-  }
-  return new Date(year, month, day);
-}
-
 function hasStarted(event: EventDoc, now: Date): boolean {
-  const start = parseSignupStartDate(event.date);
-  return start !== null && start.getTime() <= now.getTime();
+  // 保留報名端只收斜線 date 的限制，不使用 startAt/startTime fallback。
+  if (typeof event.date !== 'string' || (event.date.split(' ')[0] ?? '').split('/').length < 3) return false;
+  const start = parseEventStartMs(event.date);
+  return start !== null && start <= now.getTime();
 }
 
 function hasActiveSelfRegistration(

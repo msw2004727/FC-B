@@ -1,4 +1,5 @@
-import { parseTaipei } from '@/core/taipei-time';
+import { parseEventStartMs } from '@/core/event-time';
+import { parseTaipei, taipeiParts } from '@/core/taipei-time';
 import type { SignupProfile } from './signup-profile';
 
 /**
@@ -103,43 +104,24 @@ function parseEventSignupBirthday(value: unknown): Date | null {
 }
 
 // A `event-detail-signup.js#_calculateEventSignupAge`（第 733～744 行）
-function calculateEventSignupAge(birthday: Date | null, referenceDate: Date): number | null {
+function calculateEventSignupAge(birthday: Date | null, referenceMs: number): number | null {
   if (!(birthday instanceof Date) || Number.isNaN(birthday.getTime())) return null;
-  const ref = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
-    ? referenceDate
-    : new Date();
-  let age = ref.getFullYear() - birthday.getFullYear();
-  if (ref.getMonth() < birthday.getMonth()
-    || (ref.getMonth() === birthday.getMonth() && ref.getDate() < birthday.getDate())) {
+  const ref = taipeiParts(Number.isFinite(referenceMs) ? referenceMs : Date.now());
+  // 生日是純日曆日期，保留原本本地建構／欄位驗證；基準瞬間讀台北欄位。
+  let age = ref.year - birthday.getFullYear();
+  if (ref.month < birthday.getMonth() + 1
+    || (ref.month === birthday.getMonth() + 1 && ref.day < birthday.getDate())) {
     age -= 1;
   }
   return age >= 0 && age < 130 ? age : null;
 }
 
-// A `terminal.ts` 的 parseEventStartDate（A `_parseEventStartDate` 移植版，`前後空白容錯`）
-function parseEventStartDate(dateStr: unknown): Date | null {
-  if (typeof dateStr !== 'string' || !dateStr) return null;
-  const parts = dateStr.split(' ');
-  const dateParts = (parts[0] ?? '').split('/');
-  if (dateParts.length < 3) return null;
-  const y = parseInt(dateParts[0] ?? '', 10);
-  const m = parseInt(dateParts[1] ?? '', 10) - 1;
-  const d = parseInt(dateParts[2] ?? '', 10);
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  const timePartRaw = parts[1];
-  if (timePartRaw) {
-    const timePart = timePartRaw.split('~')[0] ?? '';
-    const [hh, mm] = timePart.split(':').map(Number);
-    return new Date(y, m, d, hh || 0, mm || 0);
-  }
-  return new Date(y, m, d);
-}
-
 // A `event-detail-signup.js#_getEventSignupReferenceDate`（第 725～731 行）
-function getEventSignupReferenceDate(event: { date?: unknown }, now: Date): Date {
-  const start = parseEventStartDate(event?.date);
-  if (start instanceof Date && !Number.isNaN(start.getTime())) return start;
-  return now;
+function getEventSignupReferenceDate(event: { date?: unknown }, now: Date): number {
+  const date = event?.date;
+  const start = typeof date === 'string' && (date.split(' ')[0] ?? '').split('/').length >= 3
+    ? parseEventStartMs(date) : null;
+  return start ?? now.getTime();
 }
 
 export interface AgeSignupState {
@@ -223,13 +205,15 @@ export function isEventEarlyBirdWindow(
 ): boolean {
   if (!event || event.status === 'ended' || event.status === 'cancelled') return false;
   if (!getEventEarlyBirdCost(event)) return false;
-  if (!event.regOpenTime) return false;
+  if (typeof event.regOpenTime !== 'string' || !event.regOpenTime) return false;
   // regOpenTime 是台北牆鐘。取代 new Date(String(...)) 的裝置本地解析，避免非 UTC+8 把早鳥窗口判錯。
-  // null 對應舊的 NaN，仍回 false。開始時間的 parseEventStartDate 是 P01，本卡不動。
+  // null 對應舊的 NaN，仍回 false。
   const regOpen = parseTaipei(event.regOpenTime);
   if (regOpen === null || regOpen <= now.getTime()) return false;
-  const start = parseEventStartDate(event.date);
-  if (start && start <= now) return false;
+  const date = event.date;
+  const start = typeof date === 'string' && (date.split(' ')[0] ?? '').split('/').length >= 3
+    ? parseEventStartMs(date) : null;
+  if (start !== null && start <= now.getTime()) return false;
   return true;
 }
 

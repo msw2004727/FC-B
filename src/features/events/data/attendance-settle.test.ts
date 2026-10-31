@@ -272,36 +272,36 @@ describe('resolveCompleteActivityDedupeWindow', () => {
 
   it('完整起訖使用開始前 24 小時至結束後 72 小時', () => {
     expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00~11:00')).toEqual({
-      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
-      untilMs: new Date(2026, 9, 28, 11, 0).getTime(),
+      sinceMs: Date.parse('2026-10-24T09:00:00+08:00'),
+      untilMs: Date.parse('2026-10-28T11:00:00+08:00'),
     });
   });
 
   it('無結束時間時以開始 + 24 小時為結束', () => {
     expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00')).toEqual({
-      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
-      untilMs: new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000,
+      sinceMs: Date.parse('2026-10-24T09:00:00+08:00'),
+      untilMs: Date.parse('2026-10-25T09:00:00+08:00') + 96 * 60 * 60 * 1000,
     });
   });
 
   it('只有日期時以當天零時為開始並套用 fallback', () => {
     expect(resolveCompleteActivityDedupeWindow('2026/10/25')).toEqual({
-      sinceMs: new Date(2026, 9, 24, 0, 0).getTime(),
-      untilMs: new Date(2026, 9, 25, 0, 0).getTime() + 96 * 60 * 60 * 1000,
+      sinceMs: Date.parse('2026-10-24T00:00:00+08:00'),
+      untilMs: Date.parse('2026-10-25T00:00:00+08:00') + 96 * 60 * 60 * 1000,
     });
   });
 
   it('跨午夜時使用隔天的結束時刻', () => {
     expect(resolveCompleteActivityDedupeWindow('2026/10/25 23:00~01:00')).toEqual({
-      sinceMs: new Date(2026, 9, 24, 23, 0).getTime(),
-      untilMs: new Date(2026, 9, 26, 1, 0).getTime() + 72 * 60 * 60 * 1000,
+      sinceMs: Date.parse('2026-10-24T23:00:00+08:00'),
+      untilMs: Date.parse('2026-10-26T01:00:00+08:00') + 72 * 60 * 60 * 1000,
     });
   });
 
   it('結束等於開始時使用隔天同時刻，支援單位數小時', () => {
     expect(resolveCompleteActivityDedupeWindow('2026/10/25 09:00~9:00')).toEqual({
-      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
-      untilMs: new Date(2026, 9, 26, 9, 0).getTime() + 72 * 60 * 60 * 1000,
+      sinceMs: Date.parse('2026-10-24T09:00:00+08:00'),
+      untilMs: Date.parse('2026-10-26T09:00:00+08:00') + 72 * 60 * 60 * 1000,
     });
   });
 
@@ -315,8 +315,8 @@ describe('resolveCompleteActivityDedupeWindow', () => {
     '2026/10/25 09:00~',
   ])('結束時間格式壞時使用 fallback：%s', (date) => {
     expect(resolveCompleteActivityDedupeWindow(date)).toEqual({
-      sinceMs: new Date(2026, 9, 24, 9, 0).getTime(),
-      untilMs: new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000,
+      sinceMs: Date.parse('2026-10-24T09:00:00+08:00'),
+      untilMs: Date.parse('2026-10-25T09:00:00+08:00') + 96 * 60 * 60 * 1000,
     });
   });
 
@@ -628,7 +628,7 @@ describe('settleAttendance', () => {
   });
 
   it('開始前 24 小時邊界命中 expLogs，跳過發放', async () => {
-    const since = new Date(2026, 9, 25, 9).getTime() - 86_400_000;
+    const since = Date.parse('2026-10-25T09:00:00+08:00') - 86_400_000;
     mockGetDocs.mockResolvedValueOnce(logs({ createdAt: { toMillis: () => since } }));
     const result = await settleAttendance(input());
 
@@ -643,7 +643,7 @@ describe('settleAttendance', () => {
   });
 
   it('舊紀錄早於開始前 24 小時，不阻擋發放', async () => {
-    const since = new Date(2026, 9, 25, 9).getTime() - 86_400_000;
+    const since = Date.parse('2026-10-25T09:00:00+08:00') - 86_400_000;
     mockGetDocs.mockResolvedValueOnce(logs({ createdAt: since - 1 }));
     const result = await settleAttendance(input());
 
@@ -657,7 +657,7 @@ describe('settleAttendance', () => {
     mockGetDocs.mockResolvedValueOnce(logs({
       uid: 'U123',
       reason: '自動：完成活動（週日友誼賽）',
-      createdAt: new Date(2026, 9, 18, 11),
+      createdAt: new Date(Date.parse('2026-10-18T11:00:00+08:00')),
     }));
     const result = await settleAttendance(input({
       event: { id: 'ce_101', title: '週日友誼賽', date: '2026/10/25 09:00~11:00' },
@@ -677,8 +677,8 @@ describe('settleAttendance', () => {
 
   it('晚 3 天結算仍查得到 A 在活動當天發的紀錄，跳過發放', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 9, 28, 20));
-    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(2026, 9, 25, 11, 5) }));
+    vi.setSystemTime(new Date(Date.parse('2026-10-28T20:00:00+08:00')));
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(Date.parse('2026-10-25T11:05:00+08:00')) }));
     const result = await settleAttendance(input());
 
     expectOk(result);
@@ -688,9 +688,9 @@ describe('settleAttendance', () => {
 
   it('晚 10 天結算，下一場同名活動（7 天後）已發過的紀錄不影響本場，仍發放', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 10, 4, 20));
+    vi.setSystemTime(new Date(Date.parse('2026-11-04T20:00:00+08:00')));
     mockGetDocs.mockResolvedValueOnce(logs({
-      createdAt: new Date(2026, 10, 1, 11, 5),
+      createdAt: new Date(Date.parse('2026-11-01T11:05:00+08:00')),
     }));
 
     const result = await settleAttendance(input());
@@ -707,8 +707,8 @@ describe('settleAttendance', () => {
     ['結束後 72 小時超過 1 毫秒不命中', 1, false],
   ])('%s', async (_label, offsetMs, expectedHit) => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 10, 4, 20));
-    const untilMs = new Date(2026, 9, 25, 11, 0).getTime() + 72 * 60 * 60 * 1000;
+    vi.setSystemTime(new Date(Date.parse('2026-11-04T20:00:00+08:00')));
+    const untilMs = Date.parse('2026-10-25T11:00:00+08:00') + 72 * 60 * 60 * 1000;
     mockGetDocs.mockResolvedValueOnce(logs({ createdAt: untilMs + offsetMs }));
 
     const result = await settleAttendance(input());
@@ -727,8 +727,8 @@ describe('settleAttendance', () => {
     ['開始 + 96 小時超過 1 毫秒不命中', 1, false],
   ])('無結束時間時以開始 + 24h 為結束：%s', async (_label, offsetMs, expectedHit) => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 10, 4, 20));
-    const untilMs = new Date(2026, 9, 25, 9, 0).getTime() + 96 * 60 * 60 * 1000;
+    vi.setSystemTime(new Date(Date.parse('2026-11-04T20:00:00+08:00')));
+    const untilMs = Date.parse('2026-10-25T09:00:00+08:00') + 96 * 60 * 60 * 1000;
     mockGetDocs.mockResolvedValueOnce(logs({ createdAt: untilMs + offsetMs }));
 
     const result = await settleAttendance(input({
@@ -745,7 +745,7 @@ describe('settleAttendance', () => {
   });
 
   it('年份超出 Date 範圍時比照無法解析，任何舊紀錄都算命中', async () => {
-    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(2026, 9, 25, 11) }));
+    mockGetDocs.mockResolvedValueOnce(logs({ createdAt: new Date(Date.parse('2026-10-25T11:00:00+08:00')) }));
     const result = await settleAttendance(input({
       event: { id: 'ce_100', title: '週日友誼賽', date: '999999/10/25 09:00~11:00' },
     }));
@@ -1013,4 +1013,27 @@ describe('settleAttendance', () => {
     expectOk(result);
     expect(result.granted).toEqual(['U123']);
   });
+});
+
+describe('T-054c R5 結算窗口 ST1～ST6', () => {
+  it.each([
+    ['ST1 跨日', '2026/10/19 23:00~01:00', '2026-10-18T23:00:00+08:00', '2026-10-23T01:00:00+08:00'],
+    ['ST2 台北凌晨', '2026/10/25 00:30~02:00', '2026-10-24T00:30:00+08:00', '2026-10-28T02:00:00+08:00'],
+    ['ST3 結束等於起點仍 +24h', '2026/10/25 09:00~09:00', '2026-10-24T09:00:00+08:00', '2026-10-29T09:00:00+08:00'],
+    ['ST4 跨年', '2026/12/31 23:00~01:00', '2026-12-30T23:00:00+08:00', '2027-01-04T01:00:00+08:00'],
+  ])('%s', (_name, date, since, until) => {
+    expect(resolveCompleteActivityDedupeWindow(date)).toEqual({
+      sinceMs: Date.parse(since), untilMs: Date.parse(until),
+    });
+  });
+
+  it.each(['999999/10/25 09:00~11:00', '0999/10/25 09:00~11:00'])
+    ('ST5 刻意與舊版不同：嚴格年份／超界回 null %s', (date) => {
+      expect(resolveCompleteActivityDedupeWindow(date)).toBeNull();
+    });
+
+  it.each([undefined, null, '', 'abc', 123, { seconds: 123 }, '2026-10-25T09:00:00+08:00'])
+    ('ST6 無法解析或消費端不接受的輸入回 null %j', (date) => {
+      expect(resolveCompleteActivityDedupeWindow(date)).toBeNull();
+    });
 });

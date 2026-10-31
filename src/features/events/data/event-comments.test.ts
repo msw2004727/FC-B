@@ -120,7 +120,7 @@ describe('M-093 純函式', () => {
   });
 
   it('取消、結束時間與跨日；未解析日期不擅自關閉', () => {
-    const end = new Date(2099, 0, 1, 11).getTime();
+    const end = Date.parse('2099-01-01T11:00:00+08:00');
     expect(commentEventEndMs(context.event.date)).toBe(end);
     expect(isEventCommentsClosed(context.event, end)).toBe(true);
     expect(isEventCommentsClosed(context.event, end - 1)).toBe(false);
@@ -128,9 +128,9 @@ describe('M-093 純函式', () => {
     expect(isEventCommentsClosed(null)).toBe(true);
     expect(isEventCommentsClosed({ date: 'invalid', status: 'ended' })).toBe(false);
     expect(commentEventEndMs('2099/01/01 23:00~01:00'))
-      .toBe(new Date(2099, 0, 2, 1).getTime());
+      .toBe(Date.parse('2099-01-02T01:00:00+08:00'));
     expect(commentEventEndMs('2099/01/01 23:00~2099/01/03 01:00'))
-      .toBe(new Date(2099, 0, 3, 1).getTime());
+      .toBe(Date.parse('2099-01-03T01:00:00+08:00'));
   });
 
   it('時間、計數與 liker 正規化', () => {
@@ -351,5 +351,25 @@ describe('M-093 留言徽章失效', () => {
     await first;
     await requestCommentCount(query).promise;
     expect(mock.getDocs).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('T-054c CM1～CM3', () => {
+  it('CM1 結束當下關閉；無結束用起點', () => {
+    const event = { date: '2026/10/19 11:00~13:00' };
+    expect(isEventCommentsClosed(event, Date.parse('2026-10-19T12:59:59.999+08:00'))).toBe(false);
+    expect(isEventCommentsClosed(event, Date.parse('2026-10-19T13:00:00+08:00'))).toBe(true);
+    expect(commentEventEndMs('2026/10/19 11:00')).toBe(Date.parse('2026-10-19T11:00:00+08:00'));
+    expect(commentEventEndMs('2026/10/19')).toBeNull();
+  });
+
+  it('CM2 跨日 +24h，結束等於起點不加一天', () => {
+    expect(commentEventEndMs('2026/12/31 23:00~01:00')).toBe(Date.parse('2027-01-01T01:00:00+08:00'));
+    expect(commentEventEndMs('2026/10/19 11:00~11:00')).toBe(Date.parse('2026-10-19T11:00:00+08:00'));
+  });
+
+  it('CM3 完整日期結束即使早於起點也不自動加一天', () => {
+    expect(commentEventEndMs('2026/10/19 23:00~2026/10/21 01:00')).toBe(Date.parse('2026-10-21T01:00:00+08:00'));
+    expect(commentEventEndMs('2026/10/19 23:00~2026/10/19 01:00')).toBe(Date.parse('2026-10-19T01:00:00+08:00'));
   });
 });

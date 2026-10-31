@@ -75,3 +75,15 @@ describe('formatRegOpenInfo（開放報名列）', () => {
     )).toBeNull();
   });
 });
+
+describe('T-054c EV1 倒數（EV2 開放報名列沿用上方逐字案例）', () => {
+  it.each([
+    ['2026-10-18T09:00:00+08:00', '剩餘 1日2時'],
+    ['2026-10-19T10:30:00+08:00', '剩餘 30分'],
+    ['2026-10-19T11:00:00+08:00', '已結束'],
+  ])('now=%s', (now, expected) => {
+    regOpenText(detailEvent({ id: 'evtA', date: '2026/10/19 11:00~13:00' }), Date.parse(now));
+    const value = document.querySelector('[data-detail-field="countdown"] > span:last-child');
+    expect(value?.textContent).toBe(expected);
+  });
+});

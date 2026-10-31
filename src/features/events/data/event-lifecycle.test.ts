@@ -37,6 +37,7 @@ import { loadEventRegistrations } from './event-detail';
 import {
   cancelEvent,
   isCourseLinkedLifecycleLocked,
+  isEventStartPassed,
   relistEvent,
   reopenEvent,
 } from './event-lifecycle';
@@ -132,7 +133,7 @@ describe('cancelEvent', () => {
   it('writes status=cancelled + updatedAt, notifies recipients, and writes op log', async () => {
     mockLoadRecipients.mockResolvedValue(['u1', 'u2']);
 
-    const now = new Date(2026, 4, 9, 10, 0);
+    const now = new Date(Date.parse('2026-05-09T10:00:00+08:00'));
     await cancelEvent({
       event: ev({ title: '晨跑', date: '2099/06/01 07:00~09:00', location: '公園' }),
       eventDocId: 'doc-1',
@@ -266,7 +267,7 @@ describe('reopenEvent', () => {
       } as Record<string, unknown>),
       eventDocId: 'doc-1',
       viewer: adminViewer(),
-      now: new Date(2026, 4, 9),
+      now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
     });
     const [, payload] = mockUpdateDoc.mock.calls[0]!;
     const data = payload as unknown as Record<string, unknown>;
@@ -293,7 +294,7 @@ describe('reopenEvent', () => {
       } as Record<string, unknown>),
       eventDocId: 'doc-1',
       viewer: adminViewer(),
-      now: new Date(2026, 4, 9),
+      now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
     });
     const data = mockUpdateDoc.mock.calls[0]![1] as unknown as Record<string, unknown>;
     expect(data.status).toBe('full');
@@ -305,7 +306,7 @@ describe('reopenEvent', () => {
         event: ev({ date: '2026/05/09 09:00', status: 'cancelled' }),
         eventDocId: 'doc-1',
         viewer: adminViewer(),
-        now: new Date(2026, 4, 9, 10, 0),
+        now: new Date(Date.parse('2026-05-09T10:00:00+08:00')),
       }),
     ).rejects.toMatchObject({ code: 'START_PASSED' });
     expect(mockUpdateDoc).not.toHaveBeenCalled();
@@ -341,7 +342,7 @@ describe('reopenEvent', () => {
         event: ev({ date: '2099/06/01 10:00' }),
         eventDocId: 'doc-1',
         viewer: adminViewer(),
-        now: new Date(2026, 4, 9),
+        now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
       }),
     ).rejects.toMatchObject({ code: 'WRITE_FAILED' });
     expect(mockSetDoc).not.toHaveBeenCalled();
@@ -364,7 +365,7 @@ describe('relistEvent', () => {
       } as Record<string, unknown>),
       eventDocId: 'doc-1',
       viewer: adminViewer(),
-      now: new Date(2026, 4, 9),
+      now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
     });
 
     const data = mockUpdateDoc.mock.calls[0]![1] as unknown as Record<string, unknown>;
@@ -389,7 +390,7 @@ describe('relistEvent', () => {
         event: ev({ date: '2026/05/09 09:00', status: 'ended' }),
         eventDocId: 'doc-1',
         viewer: adminViewer(),
-        now: new Date(2026, 4, 9, 10, 0),
+        now: new Date(Date.parse('2026-05-09T10:00:00+08:00')),
       }),
     ).rejects.toMatchObject({ code: 'START_PASSED' });
   });
@@ -401,10 +402,34 @@ describe('relistEvent', () => {
         event: ev({ date: '2099/06/01 10:00', status: 'ended' }),
         eventDocId: 'doc-1',
         viewer: adminViewer(),
-        now: new Date(2026, 4, 9),
+        now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
       }),
     ).rejects.toMatchObject({ code: 'WRITE_FAILED' });
     expect(mockSendNotify).not.toHaveBeenCalled();
     expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+});
+
+describe('T-054c L1 起點邊界', () => {
+  for (const [name, operate] of [['reopenEvent', reopenEvent], ['relistEvent', relistEvent]] as const) {
+    it(`${name} 起點當下拒絕 START_PASSED，前 1ms 通過`, async () => {
+      const input = {
+        event: ev({ id: 'evtA', creatorUid: 'uidA', date: '2026/10/19 11:00~13:00', max: 10 }),
+        eventDocId: 'evtA',
+        viewer: adminViewer({ uid: 'uidA' }),
+      };
+      await expect(operate({ ...input, now: new Date('2026-10-19T11:00:00+08:00') }))
+        .rejects.toMatchObject({ code: 'START_PASSED' });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+      expect(mockLoadRegs).not.toHaveBeenCalled();
+      await expect(operate({ ...input, now: new Date('2026-10-19T10:59:59.999+08:00') })).resolves.toBeUndefined();
+      expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it('L1 消費端保留 ISO／非字串日期不判開始已過', () => {
+    for (const date of ['2000-01-01T00:00:00+08:00', Date.parse('2000-01-01T00:00:00+08:00')]) {
+      expect(isEventStartPassed(ev({ id: 'evtA', date }), new Date('2026-10-19T11:00:00+08:00'))).toBe(false);
+    }
   });
 });
