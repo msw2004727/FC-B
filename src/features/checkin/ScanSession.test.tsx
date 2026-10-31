@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   registrations: vi.fn<() => Promise<ScanRegistration[]>>(),
   user: vi.fn<(uid: string, operatorUid: string) => Promise<ScanUser | null>>(),
   attendance: vi.fn<() => Promise<EventAttendanceEntry[]>>(),
-  record: vi.fn<(docId: string, value: AttendanceWritePayload) => Promise<string>>(),
+  batch: vi.fn<(docId: string, values: readonly AttendanceWritePayload[]) => Promise<string[]>>(),
   remove: vi.fn(),
   toast: vi.fn(),
   start: vi.fn<() => Promise<void>>(),
@@ -44,7 +44,7 @@ vi.mock('./data/attendance', async (original) => {
   return {
     ...actual,
     loadEventAttendance: mocks.attendance,
-    recordAttendance: mocks.record,
+    commitAttendanceBatch: mocks.batch,
     removeAttendance: mocks.remove,
   };
 });
@@ -86,6 +86,26 @@ import { buildScanView, ScanSession } from './ScanSession';
 let stored: EventAttendanceEntry[];
 let regs: ScanRegistration[];
 let context: OperateContext;
+
+function eventA(): ScanEventEntry {
+  const event = {
+    id: 'evtA',
+    _docId: 'evtA',
+    title: 'evtA',
+    delegateUids: ['operator'],
+    current: 0,
+    participants: [] as string[],
+  } as unknown as EventDoc;
+  return {
+    value: 'evtA',
+    eventId: 'evtA',
+    docId: 'evtA',
+    title: 'evtA',
+    date: '2026/10/31',
+    typeLabel: '',
+    event,
+  };
+}
 
 function makeEntry(current = 2, participants: string[] = ['Member']): ScanEventEntry {
   const event = {
@@ -138,6 +158,10 @@ function familyRegistrations(): ScanRegistration[] {
   ];
 }
 
+function batchPayloads(): AttendanceWritePayload[] {
+  return mocks.batch.mock.calls.flatMap((call) => [...call[1]]);
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -160,7 +184,10 @@ function renderSession(mode: ScanMode = 'checkin', entry = makeEntry()) {
 
 async function ready(): Promise<void> {
   await waitFor(() => expect(mocks.attendance).toHaveBeenCalled());
-  await act(async () => { await Promise.resolve(); });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 async function startCamera(): Promise<void> {
@@ -214,19 +241,23 @@ describe('ScanSession', () => {
       name: uid === 'member' ? 'Member' : 'Other',
     }));
     mocks.start.mockResolvedValue(undefined);
-    mocks.record.mockImplementation(async (_docId, value) => {
-      const docId = `written-${stored.length}`;
-      stored.push(record({
-        _docId: docId,
-        uid: value.uid,
-        userName: value.userName,
-        companionId: value.companionId ?? null,
-        companionName: value.companionName ?? null,
-        displayName: value.companionName || value.userName,
-        type: value.type,
-        time: value.time,
-      }));
-      return docId;
+    mocks.batch.mockImplementation(async (_docId, values) => {
+      const ids: string[] = [];
+      for (const value of values) {
+        const docId = `written-${stored.length}`;
+        stored.push(record({
+          _docId: docId,
+          uid: value.uid,
+          userName: value.userName,
+          companionId: value.companionId ?? null,
+          companionName: value.companionName ?? null,
+          displayName: value.companionName || value.userName,
+          type: value.type,
+          time: value.time,
+        }));
+        ids.push(docId);
+      }
+      return ids;
     });
   });
 
@@ -253,7 +284,7 @@ describe('ScanSession', () => {
 
     await scan('other');
     expect(element('#scan-result-title').textContent).toBe('Other 簽到成功');
-    expect(mocks.record).toHaveBeenCalledTimes(2);
+    expect(mocks.batch).toHaveBeenCalledTimes(2);
     expect(mocks.stop).toHaveBeenCalledTimes(stops);
     expect(mocks.pushOverlay).toHaveBeenCalledOnce();
   });
@@ -269,7 +300,7 @@ describe('ScanSession', () => {
 
     await scan('other');
     expect(mocks.user).toHaveBeenCalledOnce();
-    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
     expect(mocks.stop).toHaveBeenCalledTimes(stops);
   });
 
@@ -294,7 +325,7 @@ describe('ScanSession', () => {
       pending.resolve({ uid: 'member', name: 'Member' });
       await first;
     });
-    expect(mocks.record).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledOnce();
   });
 
   // 測試同步更新：照 A（M-105）。
@@ -307,7 +338,8 @@ describe('ScanSession', () => {
     await scan();
 
     expect(mocks.start).toHaveBeenCalledOnce();
-    expect(mocks.record.mock.calls.map((call) => call[1].type))
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(batchPayloads().map((value) => value.type))
       .toEqual(['checkin', 'checkout']);
     expect(element('#scan-result-title').textContent)
       .toBe('Member 未簽到，已自動完成簽到與簽退');
@@ -332,7 +364,8 @@ describe('ScanSession', () => {
       pending.resolve({ uid: 'member', name: 'Member' });
       await work;
     });
-    expect(mocks.record.mock.calls.map((call) => call[1].type))
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(batchPayloads().map((value) => value.type))
       .toEqual(['checkin', 'checkout']);
   });
 
@@ -499,14 +532,14 @@ describe('ScanSession', () => {
     fireEvent.change(child, { target: { checked: false } });
     fireEvent.click(element('#scan-family-confirm-btn'));
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('請選擇要處理的成員'));
-    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
 
     fireEvent.change(child, { target: { checked: true } });
     await confirmFamily();
-    expect(mocks.record).toHaveBeenCalledOnce();
-    expect(mocks.record.mock.calls[0]).toEqual([
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(mocks.batch.mock.calls[0]).toEqual([
       'event-document',
-      expect.objectContaining({
+      [expect.objectContaining({
         eventId: 'public-event',
         uid: 'member',
         userName: 'Member',
@@ -514,7 +547,7 @@ describe('ScanSession', () => {
         participantType: 'companion',
         companionId: 'child',
         companionName: 'Child',
-      }),
+      })],
     ]);
     expect(element('#scan-result-title').textContent).toBe('Member 等 1 人簽到成功');
   });
@@ -531,14 +564,14 @@ describe('ScanSession', () => {
     await startCamera();
     await scan();
     await confirmFamily();
-    expect(mocks.record).toHaveBeenCalledOnce();
-    expect(mocks.record.mock.calls[0]).toEqual([
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(mocks.batch.mock.calls[0]).toEqual([
       'event-document',
-      expect.objectContaining({
+      [expect.objectContaining({
         participantType: 'companion',
         companionId: 'child',
         companionName: 'Member',
-      }),
+      })],
     ]);
   });
 
@@ -552,7 +585,8 @@ describe('ScanSession', () => {
     view.rerender(<ScanSession entry={entry} context={context} mode="checkout" />);
     expect(element('#scan-family-confirm-btn').textContent).toBe('確認簽到');
     await confirmFamily();
-    expect(mocks.record.mock.calls.map((call) => call[1].type))
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(batchPayloads().map((value) => value.type))
       .toEqual(['checkin', 'checkin']);
     expect(element('#scan-result-title').textContent).toBe('Member 等 2 人簽到成功');
   });
@@ -568,7 +602,7 @@ describe('ScanSession', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
       '家庭報名資料已變更，請取消後重新掃描。',
     ));
-    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
     expect(document.querySelector('#scan-family-modal')).not.toBeNull();
   });
 
@@ -616,7 +650,8 @@ describe('ScanSession', () => {
       await scan();
       if (scenario === 'family') await confirmFamily();
 
-      const payloads = mocks.record.mock.calls.map((call) => call[1]);
+      const payloads = batchPayloads();
+      expect(mocks.batch).toHaveBeenCalledOnce();
       expect(payloads.map((value) => value.type)).toEqual(
         scenario === 'checkout'
           ? ['checkout']
@@ -632,16 +667,18 @@ describe('ScanSession', () => {
           type: 'checkout',
         }));
       }
-      for (const [docId, value] of mocks.record.mock.calls) {
+      for (const [docId, values] of mocks.batch.mock.calls) {
         expect(docId).toBe('event-document');
-        expect(value.eventId).toBe('public-event');
-        expect(value.uid).toBe('member');
-        expect(Object.keys(value).sort()).toEqual(
-          (scenario === 'family'
-            ? ['id', 'eventId', 'uid', 'userName', 'type', 'time',
-              'participantType', 'companionId', 'companionName']
-            : ['id', 'eventId', 'uid', 'userName', 'type', 'time']).sort(),
-        );
+        for (const value of values) {
+          expect(value.eventId).toBe('public-event');
+          expect(value.uid).toBe('member');
+          expect(Object.keys(value).sort()).toEqual(
+            (scenario === 'family'
+              ? ['id', 'eventId', 'uid', 'userName', 'type', 'time',
+                'participantType', 'companionId', 'companionName']
+              : ['id', 'eventId', 'uid', 'userName', 'type', 'time']).sort(),
+          );
+        }
       }
       expect(mocks.callFnMock).not.toHaveBeenCalled();
     },
@@ -670,18 +707,18 @@ describe('ScanSession', () => {
 
   it('refuses family back navigation while writing', async () => {
     regs = familyRegistrations();
-    const pending = deferred<string>();
-    mocks.record.mockReturnValueOnce(pending.promise);
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
     renderSession();
     await ready();
     await startCamera();
     await scan();
     fireEvent.click(element('#scan-family-confirm-btn'));
-    await waitFor(() => expect(mocks.record).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
     act(() => { expect(mocks.back?.()).toBe(false); });
     expect(document.querySelector('#scan-family-modal')).not.toBeNull();
 
-    await act(async () => { pending.resolve('first'); });
+    await act(async () => { pending.resolve(['first']); });
     await waitFor(() => expect(document.querySelector('#scan-result-modal')).not.toBeNull());
   });
 
@@ -714,7 +751,7 @@ describe('ScanSession', () => {
       pending.resolve({ uid: 'member', name: 'Member' });
       await work;
     });
-    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
   });
 
   it('stops pending work after operator or permission changes', async () => {
@@ -737,7 +774,7 @@ describe('ScanSession', () => {
       pending.resolve({ uid: 'member', name: 'Member' });
       await work;
     });
-    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
     expect(document.querySelector('#scan-camera-btn')).toBeNull();
     expect(mocks.stop).toHaveBeenCalled();
   });
@@ -758,8 +795,8 @@ describe('ScanSession', () => {
     expect(element('#scan-results').textContent).toContain('Member 簽到成功');
   });
 
-  it('toasts write failure, reloads and allows a successful retry', async () => {
-    mocks.record.mockRejectedValueOnce(new Error('offline'));
+  it('toasts write failure, restores the session and allows a successful retry', async () => {
+    mocks.batch.mockRejectedValueOnce(new Error('offline'));
     renderSession();
     await ready();
     await startCamera();
@@ -767,11 +804,12 @@ describe('ScanSession', () => {
     await scan();
     expect(mocks.toast).toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
     expect(mocks.attendance.mock.calls.length).toBeGreaterThan(reads + 1);
+    expect(element('#scan-results').textContent).not.toContain('Member 簽到成功');
     expect(document.querySelector('#scan-result-modal')).toBeNull();
 
     await scan();
     expect(element('#scan-result-title').textContent).toBe('Member 簽到成功');
-    expect(mocks.record).toHaveBeenCalledTimes(2);
+    expect(mocks.batch).toHaveBeenCalledTimes(2);
   });
 
   it('reports read failure separately and recovers on the next scan', async () => {
@@ -794,7 +832,7 @@ describe('ScanSession', () => {
     await ready();
     await startCamera();
     await scan();
-    expect(mocks.record.mock.calls.map((call) => call[1].type))
+    expect(batchPayloads().map((value) => value.type))
       .toEqual(['checkin']);
     expect(element('#scan-result-title').textContent).toBe('Member 簽到成功');
   });
@@ -805,8 +843,241 @@ describe('ScanSession', () => {
     await ready();
     await startCamera();
     await scan();
-    expect(mocks.record).toHaveBeenCalledOnce();
+    expect(mocks.batch).toHaveBeenCalledOnce();
     expect(element('#scan-result-title').textContent).toBe('Member 簽到成功');
+  });
+
+  it('reads a check-in and a registration that landed after the session opened', async () => {
+    regs = [];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const reads = mocks.attendance.mock.calls.length;
+    const regReads = mocks.registrations.mock.calls.length;
+    stored = [record({
+      _docId: 'remote',
+      uid: 'uidA',
+      userName: 'targetA',
+      displayName: 'targetA',
+    })];
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+
+    await scan('uidA');
+    expect(mocks.attendance.mock.calls.length).toBeGreaterThan(reads);
+    expect(mocks.registrations.mock.calls.length).toBeGreaterThan(regReads);
+    expect(element('#scan-result-title').textContent).toBe('targetA 已完成簽到');
+    expect(mocks.batch).not.toHaveBeenCalled();
+  });
+
+  it('shows each of two different people before either write settles', async () => {
+    regs = [
+      { userId: 'uidA', userName: 'targetA', status: 'confirmed' },
+      { userId: 'uidB', userName: 'uidB', status: 'confirmed' },
+    ];
+    mocks.user.mockImplementation(async (uid) => ({
+      uid,
+      name: uid === 'uidA' ? 'targetA' : 'uidB',
+    }));
+    const firstWrite = deferred<string[]>();
+    const secondWrite = deferred<string[]>();
+    mocks.batch
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(secondWrite.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const reads = mocks.attendance.mock.calls.length;
+    const regReads = mocks.registrations.mock.calls.length;
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    let firstWriteSettled = false;
+    let secondWriteSettled = false;
+    void firstWrite.promise.then(() => { firstWriteSettled = true; });
+    void secondWrite.promise.then(() => { secondWriteSettled = true; });
+
+    // 掃描器會 await onScan。這個 Promise 在寫入仍 pending 時就要 resolve，鏡頭才能接下一碼。
+    let firstSettled = false;
+    const firstScan = Promise.resolve(options.onScan('uidA')).then(() => { firstSettled = true; });
+    await act(async () => { await firstScan; });
+    expect(firstSettled).toBe(true);
+    expect(firstWriteSettled).toBe(false);
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+
+    let secondSettled = false;
+    const secondScan = Promise.resolve(options.onScan('uidB')).then(() => { secondSettled = true; });
+    await act(async () => { await secondScan; });
+    expect(secondSettled).toBe(true);
+    expect(firstWriteSettled).toBe(false);
+    expect(secondWriteSettled).toBe(false);
+    expect(element('#scan-result-title').textContent).toBe('uidB 簽到成功');
+    expect(element('#scan-results').textContent).toContain('targetA 簽到成功');
+    expect(element('#scan-results').textContent).toContain('uidB 簽到成功');
+    expect(mocks.batch).toHaveBeenCalledTimes(2);
+    expect(mocks.attendance.mock.calls.length).toBeGreaterThan(reads);
+    expect(mocks.registrations.mock.calls.length).toBeGreaterThan(regReads);
+
+    firstWrite.resolve(['doc-a']);
+    secondWrite.resolve(['doc-b']);
+    await act(async () => {
+      await firstWrite.promise;
+      await secondWrite.promise;
+    });
+    expect(firstWriteSettled).toBe(true);
+    expect(secondWriteSettled).toBe(true);
+  });
+
+  it('does not write the same person again while the first write is open', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    let first: Promise<void> | void;
+    await act(async () => {
+      first = options.onScan('uidA');
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功'));
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 已完成簽到');
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+
+    pending.resolve(['doc-a']);
+    await act(async () => { await first; });
+  });
+
+  it('shows an unregistered check-in before one merged batch settles', async () => {
+    regs = [];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    let work: Promise<void> | void;
+    await act(async () => {
+      work = options.onScan('uidA');
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(element('#scan-result-title').textContent)
+      .toBe('targetA 未報名，簽到成功'));
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+    expect(mocks.batch.mock.calls[0]?.[0]).toBe('evtA');
+    expect((mocks.batch.mock.calls[0]?.[1] as AttendanceWritePayload[]).map((value) => value.type))
+      .toEqual(['unreg', 'checkin']);
+    expect(element('#scan-results').textContent).toContain('targetA 簽到成功');
+    expect(element('#scan-results').textContent).toContain('targetA 未報名此活動');
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 未報名，已完成簽到');
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+
+    pending.resolve(['doc-u', 'doc-c']);
+    await act(async () => { await work; });
+  });
+
+  it('removes the optimistic result when the merged write fails', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const reads = mocks.attendance.mock.calls.length;
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    let settled = false;
+    const scanPromise = Promise.resolve(options.onScan('uidA')).then(() => { settled = true; });
+    await act(async () => { await scanPromise; });
+    expect(settled).toBe(true);
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+
+    pending.reject(new Error('offline'));
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.toast).toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
+    expect(document.querySelector('#scan-result-modal')).toBeNull();
+    expect(element('#scan-results').textContent).not.toContain('targetA 簽到成功');
+    expect(mocks.attendance.mock.calls.length).toBeGreaterThan(reads + 1);
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+    expect(mocks.batch).toHaveBeenCalledTimes(2);
+  });
+
+  it('toasts a write failure once after the session unmounts', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    const view = renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+    expect(mocks.toast).not.toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
+
+    view.unmount();
+    pending.reject(new Error('offline'));
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.toast.mock.calls.filter((call) =>
+      call[0] === '寫入失敗：請確認登入狀態與網路')).toHaveLength(1);
+  });
+
+  it('keeps the shown check-in when the success handler throws', async () => {
+    regs = [{ userId: 'uidA', userName: 'targetA', status: 'confirmed' }];
+    mocks.user.mockResolvedValue({ uid: 'uidA', name: 'targetA' });
+    const pending = deferred<string[]>();
+    mocks.batch.mockReturnValueOnce(pending.promise);
+    renderSession('checkin', eventA());
+    await ready();
+    await startCamera();
+    const reads = mocks.attendance.mock.calls.length;
+    const options = mocks.options;
+    if (!options) throw new Error('缺少掃描器');
+
+    await act(async () => { await options.onScan('uidA'); });
+    expect(element('#scan-result-title').textContent).toBe('targetA 簽到成功');
+
+    // 寫入 Promise 已完成，但讀取回傳 id 時丟例外。這不是寫入失敗。
+    let threw = false;
+    const ids = new Proxy(['doc-a'], {
+      get(target, prop, receiver) {
+        if (prop === '0') {
+          threw = true;
+          throw new Error('rename failed');
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    await act(async () => {
+      pending.resolve(ids);
+      await pending.promise;
+      await Promise.resolve();
+    });
+
+    expect(threw).toBe(true);
+    expect(mocks.toast).not.toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
+    expect(document.querySelector('#scan-result-modal')).not.toBeNull();
+    expect(element('#scan-results').textContent).toContain('targetA 簽到成功');
+    expect(mocks.attendance.mock.calls.length).toBe(reads + 1);
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
   });
 });
 

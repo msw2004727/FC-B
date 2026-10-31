@@ -16,9 +16,9 @@ import {
 } from './data/scan-reads';
 import {
   buildFamilyCheckinRecords,
+  commitAttendanceBatch,
   decideScanAction,
   loadEventAttendance,
-  recordAttendance,
   shouldUseFamilyFlow,
   type AttendanceWritePayload,
   type EventAttendanceEntry,
@@ -60,6 +60,43 @@ interface SessionProps {
 }
 
 const memberKey = (id: string | null | undefined): string => JSON.stringify(id ?? null);
+
+function inflightKey(record: { uid: string; type: string; companionId?: string | null }): string {
+  return `${record.uid}\0${record.type}\0${record.companionId ?? ''}`;
+}
+
+interface LocalWrite {
+  writeId: number;
+  entry: EventAttendanceEntry;
+}
+
+interface AckedWrite {
+  /** 寫入完成當下的讀取序號。比這次讀取更早開始的快照可能還沒看到它。 */
+  epoch: number;
+  entry: EventAttendanceEntry;
+}
+
+function activeAttendance(records: readonly EventAttendanceEntry[]): EventAttendanceEntry[] {
+  return records.filter((record) =>
+    record.status !== 'removed' && record.status !== 'cancelled');
+}
+
+function entryFromWrite(record: AttendanceWritePayload, docId: string): EventAttendanceEntry {
+  const companionId = record.companionId ?? null;
+  const companionName = record.companionName ?? null;
+  return {
+    _docId: docId,
+    uid: record.uid,
+    userName: record.userName,
+    companionId,
+    companionName,
+    displayName: companionName || record.userName,
+    type: record.type,
+    time: record.time,
+    status: record.status ?? 'active',
+    data: {},
+  };
+}
 
 /** 照 A `_renderScanResults`、`_renderAttendanceSections`。 */
 export function buildScanView(
@@ -193,6 +230,11 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
   const [uid, setUid] = useState('');
   const [popup, setPopup] = useState<Popup | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
+  const recordsRef = useRef<EventAttendanceEntry[]>([]);
+  const inflight = useRef(new Map<string, LocalWrite>());
+  const acked = useRef(new Map<string, AckedWrite>());
+  const writeSeq = useRef(0);
+  const popupOwner = useRef<string | null>(null);
 
   const allowed = (): boolean =>
     alive.current
@@ -202,6 +244,58 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
   const guard = (): (() => boolean) => {
     const current = epoch.current;
     return () => current === epoch.current && allowed();
+  };
+
+  const mergeAttendance = (
+    server: readonly EventAttendanceEntry[],
+    readEpoch: number,
+    publish: boolean,
+  ): EventAttendanceEntry[] => {
+    const activeKeys = new Set(activeAttendance(server).map((record) => inflightKey(record)));
+    const extras: EventAttendanceEntry[] = [];
+    const seen = new Set<string>();
+    for (const [key, item] of inflight.current) {
+      if (activeKeys.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      extras.push(item.entry);
+    }
+    for (const [key, item] of acked.current) {
+      const onServer = activeKeys.has(key);
+      // 這次讀取開始後才寫完、伺服器快照還沒有：留在畫面上，避免下一碼把簽到蓋掉又重寫。
+      const snapshotMissedWrite = item.epoch >= readEpoch && !onServer;
+      if (!snapshotMissedWrite) {
+        if (publish) acked.current.delete(key);
+        continue;
+      }
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push(item.entry);
+    }
+    return [...extras, ...server];
+  };
+
+  const publishRecords = (next: EventAttendanceEntry[]): void => {
+    recordsRef.current = next;
+    if (alive.current) setRecords(next);
+  };
+
+  const applyRead = (
+    serverRecords: readonly EventAttendanceEntry[],
+    serverRegs: readonly ScanRegistration[],
+    sequence: number,
+    readEpoch: number,
+    valid: () => boolean,
+  ): EventAttendanceEntry[] => {
+    const publish = valid() && sequence === readSequence.current;
+    const merged = mergeAttendance(serverRecords, readEpoch, publish);
+    if (publish) {
+      recordsRef.current = merged;
+      if (alive.current) {
+        setRecords(merged);
+        setRegistrations([...serverRegs]);
+      }
+    }
+    return merged;
   };
 
   const refresh = async (valid = guard()): Promise<boolean> => {
@@ -214,8 +308,7 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         loadScanRegistrations(docId),
       ]);
       if (!valid() || sequence !== readSequence.current) return false;
-      setRecords(nextRecords);
-      setRegistrations(nextRegistrations);
+      applyRead(nextRecords, nextRegistrations, sequence, sequence, valid);
       return true;
     } catch {
       if (valid() && sequence === readSequence.current) {
@@ -248,6 +341,10 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
   useLayoutEffect(() => {
     stopCamera();
     familyRef.current = null;
+    recordsRef.current = [];
+    inflight.current.clear();
+    acked.current.clear();
+    popupOwner.current = null;
     setFamily(null);
     setPopup(null);
     setRecords([]);
@@ -263,6 +360,7 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
   }, [context.uid, entry.docId, entry.eventId, permitted]);
 
   const closePopup = (): void => {
+    popupOwner.current = null;
     setPopup(null);
   };
 
@@ -287,8 +385,9 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     });
   }, [overlayKind]);
 
-  const showPopup = (value: Popup): void => {
+  const showPopup = (value: Popup, ownerUid: string | null = null): void => {
     if (!allowed()) return;
+    popupOwner.current = ownerUid;
     setPopup(value);
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
@@ -315,24 +414,67 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     if (alive.current) setBusy(false);
   };
 
-  const writeRecords = async (
-    values: readonly AttendanceWritePayload[],
-    docId: string,
-    valid: () => boolean,
-  ): Promise<boolean> => {
-    for (const value of values) {
-      if (!valid()) return false;
-      await recordAttendance(docId, value);
-      if (!valid()) return false;
+  const clearWrite = (keys: readonly string[], writeId: number): void => {
+    for (const key of keys) {
+      const item = inflight.current.get(key);
+      if (item && item.writeId === writeId) inflight.current.delete(key);
     }
-    return valid();
   };
 
-  const recoverWriteFailure = async (valid: () => boolean): Promise<void> => {
-    if (!valid()) return;
-    toast.show(latest.current.t('writeError'));
-    await refresh(valid);
-    if (!valid()) return;
+  const runWrite = (
+    docId: string,
+    toWrite: readonly AttendanceWritePayload[],
+    optimisticIds: readonly string[],
+    keys: readonly string[],
+    writeId: number,
+    ownerUid: string,
+    valid: () => boolean,
+  ): void => {
+    // 不等這次 Promise：onScan 在顯示結果後即可 resolve，鏡頭才能掃下一碼。
+    void commitAttendanceBatch(docId, toWrite)
+      .then((ids) => {
+        try {
+          if (!valid()) {
+            clearWrite(keys, writeId);
+            return;
+          }
+          const renamed = new Map(optimisticIds.map((id, index) => [id, ids[index] ?? id]));
+          const rename = (record: EventAttendanceEntry): EventAttendanceEntry => {
+            const nextId = renamed.get(record._docId);
+            return nextId && nextId !== record._docId ? { ...record, _docId: nextId } : record;
+          };
+          for (const key of keys) {
+            const item = inflight.current.get(key);
+            if (!item || item.writeId !== writeId) continue;
+            inflight.current.delete(key);
+            acked.current.set(key, { epoch: readSequence.current, entry: rename(item.entry) });
+          }
+          const next = recordsRef.current.map(rename);
+          const present = new Set(next.map((record) => inflightKey(record)));
+          const missing: EventAttendanceEntry[] = [];
+          for (const key of keys) {
+            const item = acked.current.get(key);
+            if (item && !present.has(key)) missing.push(item.entry);
+          }
+          publishRecords([...missing, ...next]);
+        } catch {
+          // 寫入已經成功。整理本地紀錄失敗時不要拿掉簽到，也不要當成寫入失敗。
+        }
+      }, () => {
+        clearWrite(keys, writeId);
+        if (valid()) {
+          const drop = new Set(optimisticIds);
+          publishRecords(recordsRef.current.filter((record) => !drop.has(record._docId)));
+          if (popupOwner.current === ownerUid) {
+            popupOwner.current = null;
+            setPopup(null);
+          }
+          // 失敗後背景重讀，不擋下一碼；讓畫面回到伺服器上的出席。
+          void refresh(valid);
+        }
+        // toast 不依賴這個畫面。離開頁面或換身分後仍要提示，避免已顯示成功卻沒人知道寫入失敗。
+        toast.show(latest.current.t('writeError'));
+      });
   };
 
   const processUid = async (input: string): Promise<void> => {
@@ -341,28 +483,31 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
     const valid = guard();
     const selectedEntry = latest.current.entry;
     const operatorUid = latest.current.context.uid;
-    let writing = false;
-    readSequence.current += 1;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      finish();
+    };
 
     try {
       if (!operatorUid) return;
-      const user = await findScanUser(input, operatorUid);
+      // 查人與出席、報名同時讀。進場那次載入只供列表，不能拿來判斷這一碼。
+      const sequence = ++readSequence.current;
+      const [user, serverRecords, serverRegs] = await Promise.all([
+        findScanUser(input, operatorUid),
+        loadEventAttendance(selectedEntry.docId),
+        loadScanRegistrations(selectedEntry.docId),
+      ]);
       if (!valid()) return;
+      const merged = applyRead(serverRecords, serverRegs, sequence, sequence, valid);
       if (!user) {
         showPopup({ tone: 'error', key: 'unknownUser' });
         return;
       }
 
-      const sequence = ++readSequence.current;
-      const [attendance, regs] = await Promise.all([
-        loadEventAttendance(selectedEntry.docId),
-        loadScanRegistrations(selectedEntry.docId),
-      ]);
-      if (!valid() || sequence !== readSequence.current) return;
-      setRecords(attendance);
-      setRegistrations(regs);
-      const active = attendance.filter((record) =>
-        record.status !== 'removed' && record.status !== 'cancelled');
+      const regs = serverRegs;
+      const active = activeAttendance(merged);
 
       if (shouldUseFamilyFlow(regs, user.uid)) {
         const familyMode = latest.current.mode;
@@ -382,6 +527,7 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
           selected,
         };
         familyRef.current = nextFamily;
+        popupOwner.current = null;
         setPopup(null);
         setFamily(nextFamily);
         return;
@@ -395,33 +541,53 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         registrations: regs,
         uid: user.uid,
         userName: user.name,
-        // 照 A `_processAttendance`；非同步讀取完成後取最新模式。
+        // 照 A `_processAttendance`；這次讀完才取最新模式。
         mode: latest.current.mode,
         attendance: active,
         now: new Date(),
       });
 
-      // ASSUMPTION: 第一筆寫入開始後維持這次完整決策，避免模式切換造成半套 payload。
-      writing = true;
-      const written = await writeRecords(decision.records, selectedEntry.docId, valid);
-      if (!valid() || !written) return;
-      await refresh(valid);
-      if (!valid()) return;
+      // 寫入尚未確認前，同一筆不得再送一次。仍在寫入的本地紀錄已併進這次出席。
+      const toWrite = decision.records.filter((record) => !inflight.current.has(inflightKey(record)));
+      const writeId = toWrite.length > 0 ? ++writeSeq.current : 0;
+      const optimistic = toWrite.map((record) => entryFromWrite(record, `pending:${record.id}`));
+      const keys = toWrite.map((record) => inflightKey(record));
+      if (toWrite.length > 0) {
+        for (let index = 0; index < keys.length; index += 1) {
+          const key = keys[index];
+          const entry = optimistic[index];
+          if (!key || !entry) continue;
+          inflight.current.set(key, { writeId, entry });
+        }
+        const keySet = new Set(keys);
+        publishRecords([
+          ...optimistic,
+          ...recordsRef.current.filter((record) => !keySet.has(inflightKey(record))),
+        ]);
+      }
       showPopup({
         tone: decision.resultClass,
         key: decision.reasonKey,
         name: user.name,
-      });
+      }, user.uid);
+      // 結果已顯示就解鎖，下一碼不必等寫入；同碼去重仍在掃描器。
+      release();
+      if (toWrite.length === 0) return;
+      // ASSUMPTION: 第一筆寫入開始後維持這次完整決策，避免模式切換造成半套 payload。
+      runWrite(
+        selectedEntry.docId,
+        toWrite,
+        optimistic.map((record) => record._docId),
+        keys,
+        writeId,
+        user.uid,
+        valid,
+      );
     } catch {
       if (!valid()) return;
-      if (writing) {
-        await recoverWriteFailure(valid);
-        if (!valid()) return;
-      } else {
-        toast.show(latest.current.t('loadError'));
-      }
+      toast.show(latest.current.t('loadError'));
     } finally {
-      finish();
+      release();
     }
   };
 
@@ -504,14 +670,14 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         return;
       }
 
+      // 送出前重讀報名（家庭報名資料已變更）與出席，並把仍在寫入的本地紀錄併回來。
       const sequence = ++readSequence.current;
-      const [attendance, regs] = await Promise.all([
+      const [serverRecords, regs] = await Promise.all([
         loadEventAttendance(selectedEntry.docId),
         loadScanRegistrations(selectedEntry.docId),
       ]);
-      if (!valid() || sequence !== readSequence.current) return;
-      setRecords(attendance);
-      setRegistrations(regs);
+      if (!valid()) return;
+      const merged = applyRead(serverRecords, regs, sequence, sequence, valid);
 
       const own = regs.filter((row) =>
         row.userId === chosen.user.uid && row.status === 'confirmed');
@@ -551,15 +717,46 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         userName: chosen.user.name,
         mode: chosen.mode,
         members: [...unique.values()],
-        attendance: attendance.filter((record) =>
-          record.status !== 'removed' && record.status !== 'cancelled'),
+        attendance: activeAttendance(merged),
         now: new Date(),
       });
 
-      writing = true;
-      const written = await writeRecords(values, selectedEntry.docId, valid);
-      if (!valid() || !written) return;
-      await refresh(valid);
+      if (values.length > 0) {
+        writing = true;
+        const writeId = ++writeSeq.current;
+        const pending = values.map((value) => entryFromWrite(value, `pending:${value.id}`));
+        const keys = values.map((value) => inflightKey(value));
+        for (let index = 0; index < keys.length; index += 1) {
+          const key = keys[index];
+          const entry = pending[index];
+          if (!key || !entry) continue;
+          inflight.current.set(key, { writeId, entry });
+        }
+        try {
+          const ids = await commitAttendanceBatch(selectedEntry.docId, values);
+          if (!valid()) {
+            clearWrite(keys, writeId);
+            return;
+          }
+          clearWrite(keys, writeId);
+          const added = values.map((value, index) =>
+            entryFromWrite(value, ids[index] ?? `pending:${value.id}`));
+          for (let index = 0; index < keys.length; index += 1) {
+            const key = keys[index];
+            const entry = added[index];
+            if (!key || !entry) continue;
+            acked.current.set(key, { epoch: readSequence.current, entry });
+          }
+          const keySet = new Set(keys);
+          publishRecords([
+            ...added,
+            ...recordsRef.current.filter((record) => !keySet.has(inflightKey(record))),
+          ]);
+        } catch (error) {
+          clearWrite(keys, writeId);
+          throw error;
+        }
+      }
       if (!valid()) return;
       familyRef.current = null;
       setFamily(null);
@@ -569,15 +766,15 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
         name: chosen.user.name,
         count: unique.size,
         mode: chosen.mode,
-      });
+      }, chosen.user.uid);
     } catch {
       if (!valid()) return;
       if (writing) {
-        await recoverWriteFailure(valid);
-        if (!valid()) return;
-      } else {
-        toast.show(latest.current.t('loadError'));
+        toast.show(latest.current.t('writeError'));
+        void refresh(valid);
+        return;
       }
+      toast.show(latest.current.t('loadError'));
     } finally {
       finish();
     }

@@ -14,8 +14,8 @@ import {
   ATTENDANCE_FIELD_ALLOWLIST,
   buildAttendanceRecord,
   buildFamilyCheckinRecords,
+  commitAttendanceBatch,
   decideScanAction,
-  recordAttendance,
   shouldUseFamilyFlow,
   type AttendanceWritePayload,
   type DecideScanActionInput,
@@ -399,14 +399,14 @@ describe('buildFamilyCheckinRecords — golden payload', () => {
 
 // ── allowlist：拒絕多餘欄位與操作者欄位 ──────────
 
-describe('ATTENDANCE_FIELD_ALLOWLIST / recordAttendance', () => {
+describe('ATTENDANCE_FIELD_ALLOWLIST / commitAttendanceBatch', () => {
   it('allowlist 不含任何「操作者」欄位（R-STAT-002）', () => {
     for (const key of ['operatorUid', 'actorUid', 'createdByUid', 'signedByUid']) {
       expect((ATTENDANCE_FIELD_ALLOWLIST as readonly string[]).includes(key)).toBe(false);
     }
   });
 
-  it('recordAttendance 拒絕多餘欄位（sync throw，Promise rejected）', async () => {
+  it('commitAttendanceBatch 拒絕多餘欄位（sync throw，Promise rejected）', async () => {
     const bad = {
       id: 'att_x',
       eventId: 'evt_pub_1',
@@ -417,14 +417,14 @@ describe('ATTENDANCE_FIELD_ALLOWLIST / recordAttendance', () => {
       operatorUid: 'attacker', // 不在 allowlist
     } as unknown as AttendanceWritePayload;
 
-    await expect(recordAttendance('docId_1', bad)).rejects.toThrow(/operatorUid/);
+    await expect(commitAttendanceBatch('docId_1', [bad])).rejects.toThrow(/operatorUid/);
   });
 
-  it('recordAttendance 需要 eventDocId（R-REG-014）', async () => {
-    await expect(recordAttendance('', {
+  it('commitAttendanceBatch 需要 eventDocId（R-REG-014）', async () => {
+    await expect(commitAttendanceBatch('', [{
       id: 'att_x', eventId: 'evt_pub_1', uid: 'user_A', userName: 'Alice',
       type: 'checkin', time: '',
-    })).rejects.toThrow(/eventDocId/);
+    }])).rejects.toThrow(/eventDocId/);
   });
 });
 
