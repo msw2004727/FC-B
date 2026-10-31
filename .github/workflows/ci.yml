@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 20
     # 站內時間字串（YYYY/MM/DD HH:mm）一律當台北時間解析；本機開發機時區即為 Asia/Taipei，
     # GitHub runner 預設 UTC。這是還原開發環境，不是放寬或 skip 測試。
-    # 公告上下架判斷已由 054b 改為台北牆鐘。全套在非台北時區仍有 P01 本地解析副本（054c）。
+    # 公告上下架判斷已由 054b 改為台北牆鐘；P01 活動時間解析已由 054c 收斂，另以 UTC 全套守門。
     env:
       TZ: Asia/Taipei
     steps:
@@ -57,10 +57,35 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node scripts/check-i18n.mjs
 
-  # 時區矩陣（T-054a，檔案清單 T-054b）：只跑時區敏感測試，四個時區各跑一次，期望值完全相同。
+  # T-054c／Q-7：正式 UTC 全套守門；只跑 vitest，不另跑型別或 i18n 檢查。
+  utc-full:
+    name: 全套（TZ=UTC）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - id: install
+        name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      - name: 單元測試（vitest 全套）
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx vitest run
+
+  # 時區矩陣（T-054a，檔案清單 T-054b／T-054c）：只跑時區敏感測試，四個時區各跑一次，期望值完全相同。
   # 與上面的 check job 互補：check 維持 TZ=Asia/Taipei 跑全套（還原開發環境）。
-  # 公告上下架判斷已由 054b 改為台北牆鐘，但全套在非台北時區仍有 P01 本地解析副本
-  # （parseEventStartDate 等，054c）。全套 UTC job 留給 054c。不要把全套 vitest 改成多時區。
+  # P01 活動時間解析已由 054c 收斂，utc-full 跑 UTC 全套；Tokyo／LA 維持檔案清單矩陣。
+  # UTC 全套耗時超過 check 的 1.5 倍或不穩時回報顧問，不自行關閉或放寬。
   # 刻意不做的事同 check：不建置、不部署、不用 secret、不用第三方 action。
   tz-matrix:
     name: 時區矩陣（TZ=${{ matrix.tz }}）
@@ -87,4 +112,4 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: 時區敏感測試（vitest）
-        run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts src/features/events/data/line-notify-bind.test.ts src/features/admin-banners/data/banner-model.test.ts src/features/admin-banners/data/banner-admin.test.ts
+        run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts src/features/events/data/line-notify-bind.test.ts src/features/admin-banners/data/banner-model.test.ts src/features/admin-banners/data/banner-admin.test.ts src/core/event-time.test.ts src/features/checkin/CheckinPage.shell.test.tsx src/features/checkin/data/__tests__/scan-events.test.ts src/features/clubs/components/legacy/TeamDetailWeekStrip.test.tsx src/features/clubs/data/team-detail-model.test.ts src/features/clubs/pages/TeamDetailPage.test.tsx src/features/events/components/legacy/ActivityCalendar.test.tsx src/features/events/data/attendance-settle.test.ts src/features/events/data/calendar-model.test.ts src/features/events/data/event-calendar.test.ts src/features/events/data/event-comments.test.ts src/features/events/data/event-lifecycle.test.ts src/features/events/data/signup.test.ts src/features/events/data/terminal.test.ts src/features/events/pages/ActivitiesPage.test.tsx src/features/events/pages/EventDetailPage.3b2b.test.tsx src/features/home/data/next-activity.test.ts src/features/profile/data/activity-records.test.ts src/core/taipei-guard.test.ts

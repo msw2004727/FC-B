@@ -851,15 +851,17 @@ describe('寫入端台北 oracle（UTC+8 與舊本地實作逐位元相同）', 
     expect(payload.startTimestamp.getTime()).toBe(row.startMs);
     expect(payload.endTimestamp.getTime()).toBe(row.endMs);
     expect(payload.teamSplit?.lockAt?.getTime()).toBe(row.lockMs);
-    if (process.env.TZ === 'Asia/Taipei') {
-      const legacyStart = new Date(`${row.dateVal}T${row.startTime}`).getTime();
-      const legacyEnd = new Date(`${row.dateVal}T${row.endTime}`).getTime();
-      expect(payload.startTimestamp.getTime()).toBe(legacyStart);
-      expect(payload.endTimestamp.getTime()).toBe(legacyEnd);
-      expect(payload.teamSplit?.lockAt?.getTime()).toBe(
-        legacyStart - row.selfSelectLockHours * 3_600_000,
-      );
-    }
+  });
+
+  it.runIf(process.env.TZ === 'Asia/Taipei').each(rows)('$name：台北裝置與舊本地實作逐位元相同', (row) => {
+    const payload = oraclePayload(row);
+    const legacyStart = new Date(`${row.dateVal}T${row.startTime}`).getTime();
+    const legacyEnd = new Date(`${row.dateVal}T${row.endTime}`).getTime();
+    expect(payload.startTimestamp.getTime()).toBe(legacyStart);
+    expect(payload.endTimestamp.getTime()).toBe(legacyEnd);
+    expect(payload.teamSplit?.lockAt?.getTime()).toBe(
+      legacyStart - row.selfSelectLockHours * 3_600_000,
+    );
   });
 });
 
