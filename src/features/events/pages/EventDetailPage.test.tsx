@@ -1089,8 +1089,36 @@ describe('名單結算「完成」（C-001）', () => {
 
     await screen.findByText('儲存完成');
     await screen.findByRole('button', { name: '管理名單', exact: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(screen.queryByText('儲存失敗，勾選已保留 請再按一次「完成」重試')).toBeNull();
+    expect(screen.queryByText('無法更新名單，請重試。')).toBeNull();
     expect(mocks.settleAttendance).toHaveBeenCalledTimes(1);
+  });
+
+  it('結算成功先退出編輯，出席重讀在背景進行', async () => {
+    let finishReload!: (value: unknown) => void;
+    await enterRosterEdit();
+    const callsBefore = mocks.attendance.mock.calls.length;
+    mocks.attendance.mockImplementationOnce(() => new Promise((resolve) => {
+      finishReload = resolve;
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+
+    await screen.findByText('儲存完成');
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    expect(screen.queryByRole('button', { name: '儲存中...' })).toBeNull();
+    expect(mocks.attendance.mock.calls.length).toBe(callsBefore + 1);
+    expect(screen.queryByText('無法更新名單，請重試。')).toBeNull();
+
+    await act(async () => {
+      finishReload([]);
+    });
+    expect(screen.getByText('儲存完成')).toBeTruthy();
+    expect(screen.queryByText('儲存失敗，勾選已保留 請再按一次「完成」重試')).toBeNull();
+    expect(screen.queryByText('無法更新名單，請重試。')).toBeNull();
   });
 });
 

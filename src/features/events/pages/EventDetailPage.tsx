@@ -992,14 +992,13 @@ function EventDetailSession({
         });
       }
 
-      try {
-        await reloadAttendanceOnly();
-      } catch {
-        // 結算已成功；重讀失敗不影響成功提示與退出編輯。
-      }
       if (!alive.current) return;
       instantSave.resetInstantSave();
       setRosterEditing(false);
+      // 成功提示與退出編輯不等待重讀。重讀失敗維持降級：不改成功結果、不標 refreshFailed。
+      void reloadAttendanceOnly().catch(() => {
+        // 結算已成功；重讀失敗不影響成功提示與退出編輯。
+      });
     } catch {
       show('events.roster.settleFailed');
     } finally {
