@@ -274,7 +274,7 @@ describe('useCancelRegistration', () => {
     const event = makeEvent({ id: 'evtA', ...overrides });
     const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
     isCompanionMock.mockReturnValue(false);
-    const load = vi.fn(async () => ({ event: makeEvent({ id: 'evtA' }) }));
+    const load = vi.fn(async () => ({ event }));
     const { getResult } = setup({
       getViewerUid: () => 'uidA',
       cancelContext: makeCancelContext(load),
@@ -287,7 +287,27 @@ describe('useCancelRegistration', () => {
     expect(toastShow).toHaveBeenCalledWith({ message: '活動已開始，無法再取消報名' });
     expect(appConfirmMock).not.toHaveBeenCalled();
     expect(cancelRegistrationMock).not.toHaveBeenCalled();
-    expect(load).not.toHaveBeenCalled();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('(T-086a) 快照顯示不可取消但最新活動可取消 → 重讀後照常開確認，不誤擋', async () => {
+    const stale = makeEvent({ id: 'evtA', status: 'ended' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    appConfirmMock.mockResolvedValueOnce(false);
+    const load = vi.fn(async () => ({ event: makeEvent({ id: 'evtA', status: 'open' }) }));
+    const { getResult } = setup({
+      getViewerUid: () => 'uidA',
+      cancelContext: makeCancelContext(load),
+    });
+
+    await act(async () => {
+      await getResult().beginCancel({ event: stale, publicId: 'evtA', owned });
+    });
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(appConfirmMock).toHaveBeenCalledTimes(1);
+    expect(toastShow).not.toHaveBeenCalledWith({ message: '活動已開始，無法再取消報名' });
   });
 
   it('(T-086a) deduplicated：不顯示成功、以結果未知通知呼叫端', async () => {

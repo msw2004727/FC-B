@@ -128,16 +128,24 @@ export function useCancelRegistration(
     }
 
     const eventId = snapshot.event.id ?? snapshot.publicId;
-    // T-086a：確認視窗前改用畫面已有的活動做提早拒絕（狀態同 context 的有效狀態）；
+    // T-086a：確認視窗前先用畫面已有的活動判斷（狀態同 context 的有效狀態），可取消時不再讀；
+    // 快照顯示不可取消才重讀最新活動確認後再拒絕（避免快照過時誤擋）。
     // 確認後 cancelRegistration 內仍重讀最新活動再檢查（顧問規則 1）。
-    if (['ended', 'cancelled'].includes(effectiveEventStatus(snapshot.event))) {
-      toast.show({ message: '活動已開始，無法再取消報名' });
-      return;
-    }
-    const start = eventStartMs(snapshot.event);
-    if (start > 0 && start <= Date.now()) {
-      toast.show({ message: '活動已於開始時間結束，無法取消報名' });
-      return;
+    const refusal = (event: DetailEvent): string | null => {
+      if (['ended', 'cancelled'].includes(effectiveEventStatus(event))) {
+        return '活動已開始，無法再取消報名';
+      }
+      const start = eventStartMs(event);
+      return start > 0 && start <= Date.now() ? '活動已於開始時間結束，無法取消報名' : null;
+    };
+    if (refusal(snapshot.event)) {
+      const latest = await cancelContext.load(eventId);
+      if (!isAlive()) return;
+      const message = refusal(latest.event);
+      if (message) {
+        toast.show({ message });
+        return;
+      }
     }
     const waitlisted = selfRegs.every(reg => reg.status === 'waitlisted');
     if (!await appConfirm(waitlisted ? '確定要取消候補？' : '確定要取消報名？')) return;
