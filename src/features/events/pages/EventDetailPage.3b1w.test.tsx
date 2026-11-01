@@ -78,6 +78,7 @@ vi.mock('../components/legacy/EventCommentsSection', () => ({
 }));
 
 import EventDetailPage from './EventDetailPage';
+import { SignupError } from '../data/signup';
 
 const viewer: ViewerView = {
   uid: 'u1',
@@ -424,5 +425,219 @@ describe('3b-1w 報名流程', () => {
     expect(input?.context.getAuth().uid).toBe('u1');
     view.unmount();
     expect(input?.context.getAuth().uid).toBeNull();
+  });
+});
+
+describe('T-086a 本人報名／取消縮短往返', () => {
+  const viewerA: ViewerView = { ...viewer, uid: 'uidA', displayName: '甲' };
+  const detailA: LoadedEventDetail = {
+    eventDocId: 'doc-evtA',
+    event: { ...detail.event, id: 'evtA' },
+  };
+  const selfA: DetailRegistration = {
+    ...self,
+    _docId: 'targetA',
+    eventId: 'evtA',
+    userId: 'uidA',
+    userName: '甲',
+  };
+
+  function mountA() {
+    return render(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
+  }
+
+  function busyButton(container: Element): Element | null {
+    return container.querySelector('button[aria-busy="true"]');
+  }
+
+  beforeEach(() => {
+    mocks.viewer.mockReturnValue(viewerA);
+    mocks.detail.mockResolvedValue(detailA);
+  });
+
+  it('本人報名把剛讀的同組快照交給 registerForEvent（頁面只讀 1 次）', async () => {
+    mountA();
+    const button = await screen.findByRole('button', { name: '立即報名' });
+    const before = mocks.detail.mock.calls.length;
+    fireEvent.click(button);
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    // 頁面前置檢查 1 次；registerForEvent 內是否重讀由 signup.test.ts 以 load 計數驗證。
+    expect(mocks.detail).toHaveBeenCalledTimes(before + 1);
+    const input = mocks.register.mock.calls[0]?.[0] as {
+      context: { getAuth: () => { generation: number } };
+      snapshotGeneration?: number;
+    } | undefined;
+    expect(input).toMatchObject({
+      eventId: 'evtA',
+      user: { uid: 'uidA', displayName: '甲' },
+      snapshot: expect.objectContaining({
+        event: expect.objectContaining({ id: 'evtA' }),
+        viewer: expect.objectContaining({ uid: 'uidA' }),
+      }),
+      snapshotLoadedAt: expect.any(Number),
+      snapshotParticipants: [{ type: 'self' }],
+    });
+    expect(input?.snapshotGeneration).toBe(input?.context.getAuth().generation);
+  });
+
+  it('早鳥確認視窗之後不傳快照，registerForEvent 必定重讀', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detailA,
+      event: {
+        ...detailA.event,
+        status: 'upcoming',
+        regOpenTime: '2099-10-18T12:00:00+08:00',
+        earlyBirdEnabled: true,
+        earlyBirdCost: 20,
+      },
+    });
+    mocks.register.mockResolvedValue({
+      confirmed: 1,
+      registrations: [{ participantType: 'self', status: 'confirmed' }],
+      earlyBirdCharged: true,
+      earlyBirdCost: 20,
+    });
+    mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '早鳥報名 · 20 積分' }));
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    const input = mocks.register.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(input).toMatchObject({ earlyBirdAccepted: true, earlyBirdExpectedCost: 20 });
+    expect(input).not.toHaveProperty('snapshot');
+    expect(input).not.toHaveProperty('snapshotLoadedAt');
+  });
+
+  it('報名成功後刷新在背景：讀取未回時已解除忙碌並顯示成功，晚到後才更新按鈕', async () => {
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValue([selfA]);
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveRegs([selfA]); });
+    await screen.findByRole('button', { name: '取消報名' });
+  });
+
+  it('成功後立刻再按報名：重讀後以已報名拒絕，不送第二次 Callable', async () => {
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>(() => {}));
+    mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValue([selfA]);
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '你已經報名這場活動' }));
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+  });
+
+  it('背景刷新晚到不覆蓋較新的快照', async () => {
+    let resolveStale!: (rows: DetailRegistration[]) => void;
+    mocks.registrations
+      .mockReturnValueOnce(new Promise<DetailRegistration[]>((resolve) => { resolveStale = resolve; }))
+      .mockResolvedValue([selfA]);
+    // 進頁、按下前置檢查、背景刷新（舊）、重新整理（新）。
+    mocks.history
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([selfA]);
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+    await screen.findByRole('button', { name: '取消報名' });
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    await act(async () => { resolveStale([]); });
+    expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+  });
+
+  it('deduplicated 報名：不顯示成功、不渲染回應名單，等重讀完成才解除忙碌', async () => {
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    mocks.register.mockResolvedValue({ deduplicated: true, registrations: [{ ...selfA }] });
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名處理中，請稍候' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(busyButton(view.container)).not.toBeNull();
+    expect(mocks.toast).not.toHaveBeenCalledWith({ message: '報名成功！' });
+    expect(view.container.querySelector('.signup-flip-back')).toBeNull();
+    expect(screen.queryByRole('button', { name: '取消報名' })).toBeNull();
+    await act(async () => { resolveRegs([]); });
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
+  });
+
+  it('報名逾時：顯示既有錯誤訊息後重讀名單，不重送', async () => {
+    mocks.register.mockRejectedValue(new SignupError({
+      code: 'deadline-exceeded',
+      originalCode: 'CALLABLE_TIMEOUT',
+      messageKey: 'event.signup.error.unknown',
+      message: '連線逾時，請檢查網路後重新整理再試',
+    }));
+    mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await screen.findByText('events.signup.error.unknown');
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    expect(mocks.toast).not.toHaveBeenCalledWith({ message: '報名成功！' });
+  });
+
+  it('單人取消：確認視窗前不讀活動，確認後才送出（頁面 0 次）', async () => {
+    mocks.history.mockResolvedValue([selfA]);
+    let confirm!: (value: boolean) => void;
+    mocks.confirm.mockReturnValue(new Promise<boolean>(resolve => { confirm = resolve; }));
+    mountA();
+    const button = await screen.findByRole('button', { name: '取消報名' });
+    const before = mocks.detail.mock.calls.length;
+    fireEvent.click(button);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定要取消報名？'));
+    expect(mocks.detail).toHaveBeenCalledTimes(before);
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    await act(async () => { confirm(true); });
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消報名' }));
+    expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'evtA',
+      registrationIds: ['targetA'],
+      kind: 'self',
+    }));
+    // cancelRegistration 已 mock；函式內送出前那 1 次重讀由 signup.test.ts 驗證。
+    expect(mocks.detail).toHaveBeenCalledTimes(before);
+  });
+
+  it('取消成功後刷新在背景：讀取未回時已解除忙碌', async () => {
+    mocks.history.mockResolvedValue([selfA]);
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>(() => {}));
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消報名' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+  });
+
+  it('deduplicated 取消：不顯示成功，等重讀完成才解除忙碌', async () => {
+    mocks.history.mockResolvedValue([selfA]);
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    mocks.cancel.mockResolvedValue({ deduplicated: true });
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '取消處理中，請稍候' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(busyButton(view.container)).not.toBeNull();
+    expect(mocks.toast).not.toHaveBeenCalledWith({ message: '已取消報名' });
+    await act(async () => { resolveRegs([selfA]); });
+    await waitFor(() => expect(busyButton(view.container)).toBeNull());
   });
 });

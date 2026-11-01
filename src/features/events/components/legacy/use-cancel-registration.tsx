@@ -11,6 +11,7 @@ import {
   type DetailRegistration,
 } from '../../data/detail-model';
 import { eventStartMs } from '../../data/terminal';
+import { effectiveEventStatus } from '../../data/my-activities-model';
 import { loadEventDetail } from '../../data/event-detail';
 import { cancelRegistration, SignupError } from '../../data/signup';
 import type { CancelOperationContext } from '../../data/signup';
@@ -34,11 +35,13 @@ export interface UseCancelRegistrationOptions {
   login(): Promise<void>;
   cancelContext: CancelOperationContext;
   onIntegrityError(): void;
+  /** deduplicated＝結果未知（含 T-086a 逾時）：呼叫端須 await 重讀名單。 */
   onSelfCancelled(result: {
     deduplicated: boolean;
     updatedEvent: DetailEvent | null;
   }): Promise<void>;
-  onBatchCancelled(): Promise<void>;
+  /** 同上；省略 result 視為伺服器已確認。 */
+  onBatchCancelled(result?: { deduplicated: boolean }): Promise<void>;
 }
 
 interface CancelModalState {
@@ -61,6 +64,7 @@ export interface UseCancelRegistrationResult {
 /**
  * 照 A `handleCancelSignup`；把詳情頁原 `beginCancel`／`confirmCancel` 逐行抽成
  * 可重用 hook，行為、文案、toast、寫入呼叫與順序都不變。
+ * T-086a：確認視窗前不再讀活動（改用畫面快照提早拒絕）；逾時視同結果未知並重讀名單。
  */
 export function useCancelRegistration(
   options: UseCancelRegistrationOptions,
@@ -124,13 +128,13 @@ export function useCancelRegistration(
     }
 
     const eventId = snapshot.event.id ?? snapshot.publicId;
-    const latest = await cancelContext.load(eventId);
-    if (!isAlive()) return;
-    if (latest.event.status === 'ended' || latest.event.status === 'cancelled') {
+    // T-086a：確認視窗前改用畫面已有的活動做提早拒絕（狀態同 context 的有效狀態）；
+    // 確認後 cancelRegistration 內仍重讀最新活動再檢查（顧問規則 1）。
+    if (['ended', 'cancelled'].includes(effectiveEventStatus(snapshot.event))) {
       toast.show({ message: '活動已開始，無法再取消報名' });
       return;
     }
-    const start = eventStartMs(latest.event);
+    const start = eventStartMs(snapshot.event);
     if (start > 0 && start <= Date.now()) {
       toast.show({ message: '活動已於開始時間結束，無法取消報名' });
       return;
@@ -143,13 +147,25 @@ export function useCancelRegistration(
       toast.show({ message: '報名資料尚未同步完成，請重新整理後再試' });
       return;
     }
-    const response = await cancelRegistration({
-      eventId,
-      userId: uid,
-      registrationIds: ids,
-      kind: 'self',
-      context: cancelContext,
-    });
+    let response: Awaited<ReturnType<typeof cancelRegistration>>;
+    try {
+      response = await cancelRegistration({
+        eventId,
+        userId: uid,
+        registrationIds: ids,
+        kind: 'self',
+        context: cancelContext,
+      });
+    } catch (error) {
+      // T-086a：逾時＝結果未知，顯示既有逾時訊息後重讀名單回到伺服器真相；不自動重送。
+      if (error instanceof SignupError && error.originalCode === 'CALLABLE_TIMEOUT') {
+        if (!isAlive()) return;
+        toast.show({ message: `取消失敗：${error.message}` });
+        await onSelfCancelled({ deduplicated: true, updatedEvent: null });
+        return;
+      }
+      throw error;
+    }
     if (!isAlive()) return;
     if (response.deduplicated) {
       toast.show({ message: '取消處理中，請稍候' });
@@ -203,7 +219,7 @@ export function useCancelRegistration(
       toast.show({ message: response.deduplicated
         ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
       setModal(null);
-      await onBatchCancelled();
+      await onBatchCancelled({ deduplicated: response.deduplicated === true });
     } catch (error) {
       if (!isAlive()) return;
       if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {
@@ -221,6 +237,8 @@ export function useCancelRegistration(
       };
       const code = error instanceof SignupError ? error.originalCode : '';
       toast.show({ message: `取消失敗：${messages[code] || '連線逾時，請檢查網路後重新整理再試'}` });
+      // T-086a：逾時＝結果未知，訊息後重讀名單；不自動重送。
+      if (code === 'CALLABLE_TIMEOUT') await onBatchCancelled({ deduplicated: true });
     }
   }
 

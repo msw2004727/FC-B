@@ -43,7 +43,9 @@ vi.mock('../../data/event-detail', () => ({
   loadEventDetail: (id: string) => loadEventDetailMock(id),
 }));
 
-vi.mock('../../data/terminal', () => ({
+// 測試同步更新（T-086a）：hook 改用 effectiveEventStatus，需保留 terminal 其餘真實匯出。
+vi.mock('../../data/terminal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../data/terminal')>()),
   eventStartMs: () => 0,
 }));
 
@@ -134,6 +136,7 @@ describe('useCancelRegistration', () => {
       (reg: unknown) => !!(reg as { companionName?: string }).companionName,
     );
     cancelRegistrationMock.mockReset();
+    toastShow.mockReset();
   });
 
   afterEach(() => {
@@ -231,5 +234,131 @@ describe('useCancelRegistration', () => {
     expect(toastShow).toHaveBeenCalledWith({ message: '已取消 1 筆報名' });
     expect(onBatchCancelled).toHaveBeenCalledTimes(1);
     expect(getResult().modal).toBeNull();
+  });
+
+  function timeoutError(): SignupError {
+    return new SignupError({
+      code: 'deadline-exceeded',
+      originalCode: 'CALLABLE_TIMEOUT',
+      messageKey: 'event.cancel.error.unknown',
+      message: '連線逾時，請檢查網路後重新整理再試',
+    });
+  }
+
+  it('(T-086a) 確認視窗前不讀活動：cancelContext.load 0 次', async () => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    cancelRegistrationMock.mockResolvedValueOnce({ deduplicated: false, event: { current: 0 } });
+    const load = vi.fn(async () => ({ event: makeEvent({ id: 'evtA' }) }));
+    const { getResult } = setup({
+      getViewerUid: () => 'uidA',
+      cancelContext: makeCancelContext(load),
+    });
+
+    await act(async () => {
+      await getResult().beginCancel({ event, publicId: 'evtA', owned });
+    });
+
+    expect(appConfirmMock).toHaveBeenCalledWith('確定要取消報名？');
+    expect(load).not.toHaveBeenCalled();
+    expect(loadEventDetailMock).not.toHaveBeenCalled();
+    expect(cancelRegistrationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['狀態已結束', { status: 'ended' }],
+    ['狀態已取消', { status: 'cancelled' }],
+    ['開始時間已過', { status: 'open', date: '2000/01/01 10:00~12:00' }],
+  ] as const)('(T-086a) 快照顯示%s → 提早 toast、不開確認、不送 Callable', async (_name, overrides) => {
+    const event = makeEvent({ id: 'evtA', ...overrides });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    const load = vi.fn(async () => ({ event: makeEvent({ id: 'evtA' }) }));
+    const { getResult } = setup({
+      getViewerUid: () => 'uidA',
+      cancelContext: makeCancelContext(load),
+    });
+
+    await act(async () => {
+      await getResult().beginCancel({ event, publicId: 'evtA', owned });
+    });
+
+    expect(toastShow).toHaveBeenCalledWith({ message: '活動已開始，無法再取消報名' });
+    expect(appConfirmMock).not.toHaveBeenCalled();
+    expect(cancelRegistrationMock).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('(T-086a) deduplicated：不顯示成功、以結果未知通知呼叫端', async () => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    cancelRegistrationMock.mockResolvedValueOnce({ deduplicated: true, event: { current: 0 } });
+    const onSelfCancelled = vi.fn(async () => {});
+    const { getResult } = setup({ getViewerUid: () => 'uidA', onSelfCancelled });
+
+    await act(async () => {
+      await getResult().beginCancel({ event, publicId: 'evtA', owned });
+    });
+
+    expect(toastShow).toHaveBeenCalledWith({ message: '取消處理中，請稍候' });
+    expect(toastShow).not.toHaveBeenCalledWith({ message: '已取消報名' });
+    expect(onSelfCancelled).toHaveBeenCalledTimes(1);
+    expect(onSelfCancelled).toHaveBeenCalledWith({ deduplicated: true, updatedEvent: null });
+  });
+
+  it('(T-086a) 本人取消逾時：顯示既有逾時訊息後以結果未知重讀，不重送', async () => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    cancelRegistrationMock.mockRejectedValueOnce(timeoutError());
+    const order: string[] = [];
+    toastShow.mockImplementation(() => { order.push('toast'); });
+    const onSelfCancelled = vi.fn(async () => { order.push('refresh'); });
+    const { getResult } = setup({ getViewerUid: () => 'uidA', onSelfCancelled });
+
+    await act(async () => {
+      await getResult().beginCancel({ event, publicId: 'evtA', owned });
+    });
+
+    expect(toastShow).toHaveBeenCalledWith({
+      message: '取消失敗：連線逾時，請檢查網路後重新整理再試',
+    });
+    expect(onSelfCancelled).toHaveBeenCalledWith({ deduplicated: true, updatedEvent: null });
+    expect(order).toEqual(['toast', 'refresh']);
+    expect(cancelRegistrationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('(T-086a) 批次取消：成功與 deduplicated 分別告知呼叫端；逾時以結果未知重讀', async () => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    const onBatchCancelled = vi.fn(async () => {});
+    const { getResult } = setup({ getViewerUid: () => 'uidA', onBatchCancelled });
+
+    cancelRegistrationMock.mockResolvedValueOnce({ deduplicated: false });
+    await act(async () => {
+      await getResult().confirmCancel({ event, publicId: 'evtA', owned }, ['targetA']);
+    });
+    expect(onBatchCancelled).toHaveBeenLastCalledWith({ deduplicated: false });
+
+    cancelRegistrationMock.mockResolvedValueOnce({ deduplicated: true });
+    await act(async () => {
+      await getResult().confirmCancel({ event, publicId: 'evtA', owned }, ['targetA']);
+    });
+    expect(toastShow).toHaveBeenLastCalledWith({ message: '取消處理中，請稍候' });
+    expect(onBatchCancelled).toHaveBeenLastCalledWith({ deduplicated: true });
+
+    cancelRegistrationMock.mockRejectedValueOnce(timeoutError());
+    await act(async () => {
+      await getResult().confirmCancel({ event, publicId: 'evtA', owned }, ['targetA']);
+    });
+    expect(toastShow).toHaveBeenLastCalledWith({
+      message: '取消失敗：連線逾時，請檢查網路後重新整理再試',
+    });
+    expect(onBatchCancelled).toHaveBeenLastCalledWith({ deduplicated: true });
+    expect(onBatchCancelled).toHaveBeenCalledTimes(3);
+    expect(cancelRegistrationMock).toHaveBeenCalledTimes(3);
   });
 });

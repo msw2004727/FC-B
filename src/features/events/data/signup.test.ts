@@ -1000,4 +1000,242 @@ describe('cancelRegistration：時間守衛與不同操作', () => {
   });
 });
 
+describe('T-086a：快照重用、逾時與 requestId', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function selfInput(
+    harness: ReturnType<typeof signupContext>,
+    extra: Partial<Parameters<typeof registerForEvent>[0]> = {},
+  ): Parameters<typeof registerForEvent>[0] {
+    return { eventId: 'evtA', user: { uid: 'uidA' }, context: harness.context, ...extra };
+  }
+
+  it('對照：未傳快照時頁面 1 次＋函式內 1 次＝讀 2 次', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({}, 'uidA');
+    await harness.context.load('evtA', [{ type: 'self' }]);
+    await registerForEvent(selfInput(harness));
+    expect(harness.load).toHaveBeenCalledTimes(2);
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it('同組快照在 3000ms 內：函式內 0 次（前 2 後 1）', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_MS);
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({}, 'uidA');
+    const pageSnapshot = await harness.context.load('evtA', [{ type: 'self' }]);
+    vi.setSystemTime(FIXED_MS + 3000);
+    await registerForEvent(selfInput(harness, {
+      snapshot: pageSnapshot,
+      snapshotLoadedAt: FIXED_MS,
+      snapshotGeneration: 1,
+      snapshotParticipants: [{ type: 'self' }],
+    }));
+    expect(harness.load).toHaveBeenCalledTimes(1);
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it.each([
+    ['超過 3000ms', { snapshotLoadedAt: FIXED_MS - 3001 }],
+    ['讀取時間在未來', { snapshotLoadedAt: FIXED_MS + 1 }],
+    ['uid 不同', { snapshot: makeSnapshot('evtA', 'uidB') }],
+    ['活動不同', { snapshot: makeSnapshot('targetA', 'uidA') }],
+    ['世代不同', { snapshotGeneration: 2 }],
+    ['participants 不同', {
+      snapshotParticipants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+    }],
+    ['缺 participants', { snapshotParticipants: undefined }],
+    ['缺讀取時間', { snapshotLoadedAt: undefined }],
+  ] as const)('%s → 照舊重讀', async (_name, overrides) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_MS);
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({}, 'uidA');
+    await registerForEvent(selfInput(harness, {
+      snapshot: makeSnapshot('evtA', 'uidA'),
+      snapshotLoadedAt: FIXED_MS,
+      snapshotGeneration: 1,
+      snapshotParticipants: [{ type: 'self' }],
+      ...overrides,
+    }));
+    expect(harness.load).toHaveBeenCalledTimes(1);
+    expect(harness.load).toHaveBeenCalledWith('evtA', [{ type: 'self' }]);
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it('重用的快照仍走前置檢查：活動已結束不送 Callable', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_MS);
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness, {
+      snapshot: { ...makeSnapshot('evtA', 'uidA'), event: { id: 'evtA', status: 'ended' } },
+      snapshotLoadedAt: FIXED_MS,
+      snapshotGeneration: 1,
+      snapshotParticipants: [{ type: 'self' }],
+    }))).rejects.toMatchObject({ originalCode: 'event_ended' });
+    expect(harness.load).not.toHaveBeenCalled();
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
+
+  it('重用的快照仍以送出當下時間檢查開始時間', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(START_MS);
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness, {
+      snapshot: {
+        ...makeSnapshot('evtA', 'uidA'),
+        event: { id: 'evtA', status: 'open', date: '2030/05/09 15:00~17:00' },
+      },
+      snapshotLoadedAt: START_MS - 10,
+      snapshotGeneration: 1,
+      snapshotParticipants: [{ type: 'self' }],
+    }))).rejects.toMatchObject({ originalCode: 'event_started' });
+    expect(harness.load).not.toHaveBeenCalled();
+    expect(recorded('registerForEvent')).toHaveLength(0);
+  });
+
+  it('連續兩次報名 requestId 不同；失敗後再按也換新 requestId', async () => {
+    const requestIds: string[] = [];
+    let attempts = 0;
+    registerMock('registerForEvent', async (request) => {
+      requestIds.push(String(request.requestId));
+      attempts += 1;
+      if (attempts === 2) throw new CallableError('unavailable', 'temporary', '');
+      return { success: true };
+    });
+    const harness = signupContext({}, 'uidA');
+    const input = selfInput(harness, { now: FIXED_MS });
+    await registerForEvent(input);
+    await expect(registerForEvent(input)).rejects.toBeInstanceOf(SignupError);
+    await registerForEvent(input);
+    expect(requestIds).toHaveLength(3);
+    expect(new Set(requestIds).size).toBe(3);
+  });
+
+  it('連續兩次取消 requestId 不同', async () => {
+    const requestIds: string[] = [];
+    registerMock('cancelRegistration', async (request) => {
+      requestIds.push(String(request.requestId));
+      return { success: true };
+    });
+    const harness = cancelContext({}, 'uidA');
+    const input = {
+      eventId: 'evtA',
+      userId: 'uidA',
+      registrationIds: ['targetA'],
+      kind: 'self' as const,
+      now: FIXED_MS,
+      randomSuffix: 'abc',
+      context: harness.context,
+    };
+    await cancelRegistration(input);
+    await cancelRegistration(input);
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+  });
+
+  async function flushMicrotasks(): Promise<void> {
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  }
+
+  it('報名 Callable 超過 15000ms：拒絕 CALLABLE_TIMEOUT、不重送、計時器清掉', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const pending = deferred<RegisterForEventResponse>();
+    let calls = 0;
+    registerMock('registerForEvent', () => {
+      calls += 1;
+      return pending.promise;
+    });
+    const harness = signupContext({}, 'uidA');
+    const operation = registerForEvent(selfInput(harness));
+    const assertion = expect(operation).rejects.toMatchObject({
+      name: 'SignupError',
+      code: 'deadline-exceeded',
+      originalCode: 'CALLABLE_TIMEOUT',
+      messageKey: 'event.signup.error.unknown',
+      message: '連線逾時，請檢查網路後重新整理再試',
+    });
+    await flushMicrotasks();
+    expect(calls).toBe(1);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+    pending.resolve({ success: true });
+    await flushMicrotasks();
+    expect(calls).toBe(1);
+    expect(recorded('registerForEvent')).toHaveLength(1);
+  });
+
+  it('取消 Callable 超過 15000ms：拒絕 CALLABLE_TIMEOUT、不重送、計時器清掉', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const pending = deferred<CancelRegistrationResponse>();
+    let calls = 0;
+    registerMock('cancelRegistration', () => {
+      calls += 1;
+      return pending.promise;
+    });
+    const operation = cancelRegistration({
+      eventId: 'evtA',
+      userId: 'uidA',
+      registrationIds: ['targetA'],
+      kind: 'self',
+      context: cancelContext({}, 'uidA').context,
+    });
+    const assertion = expect(operation).rejects.toMatchObject({
+      code: 'deadline-exceeded',
+      originalCode: 'CALLABLE_TIMEOUT',
+      messageKey: 'event.cancel.error.unknown',
+    });
+    await flushMicrotasks();
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+    pending.resolve({ success: true });
+    await flushMicrotasks();
+    expect(calls).toBe(1);
+  });
+
+  it('Callable 在逾時前完成：計時器清掉', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    registerMock('registerForEvent', async () => ({ success: true }));
+    registerMock('cancelRegistration', async () => ({ success: true }));
+    await registerForEvent(selfInput(signupContext({}, 'uidA')));
+    await cancelRegistration({
+      eventId: 'evtA',
+      userId: 'uidA',
+      registrationIds: ['targetA'],
+      kind: 'self',
+      context: cancelContext({}, 'uidA').context,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('逾時後再按：重新讀取並換新 requestId', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const requestIds: string[] = [];
+    const never = new Promise<RegisterForEventResponse>(() => {});
+    registerMock('registerForEvent', (request) => {
+      requestIds.push(String(request.requestId));
+      return requestIds.length === 1 ? never : { success: true };
+    });
+    const harness = signupContext({}, 'uidA');
+    const first = registerForEvent(selfInput(harness));
+    const assertion = expect(first).rejects.toMatchObject({ originalCode: 'CALLABLE_TIMEOUT' });
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    await registerForEvent(selfInput(harness));
+    expect(harness.load).toHaveBeenCalledTimes(2);
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+  });
+});
+
 // 第 6 項若解讀為 A10 同樣要求取消時間守衛則不成立：附件 A10 的 _confirmCompanionCancelUnlocked 未檢查活動狀態或開始時間，故只為 A08 本人取消補上該守衛。

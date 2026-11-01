@@ -14,6 +14,8 @@
  * - 正式操作入口必須提供 context，省略時拒絕，避免沿用無守衛的寫入路徑。
  * - context.load 必須在每次操作讀取最新資料，完成 A 的有效狀態、早鳥、
  *   個人資料、性別／年齡及隊伍選擇判定；不得把 UI 開頁時的結果直接重用。
+ *   T-086a 例外：呼叫端在按下後剛讀、3 秒內、同世代同組 participants 的快照可沿用
+ *   （見 RegisterForEventInput.snapshot），送出前仍至少有這一次最新讀取。
  * - getAuth 必須讀取即時認證狀態；generation 在每次認證身分切換時遞增，
  *   包括 A → B → A，不能只使用 UID。
  * - context 的介面在本檔定義；沒有臆造附件未提供的 Firebase／profile API。
@@ -407,6 +409,16 @@ export interface CancelOperationContext {
 
 export interface RegisterForEventInput extends BuildRegisterPayloadInput {
   context?: SignupOperationContext;
+  /**
+   * T-086a：呼叫端剛以 context.load 讀到的快照，可省掉函式內的重讀。
+   * 只有讀取時間（毫秒，取讀取開始時）在 SIGNUP_SNAPSHOT_REUSE_MS 內、認證世代相同、
+   * viewer.uid／event.id 與本次一致、且載入時的 participants 與本次相同才重用；
+   * 任一條件不成立照舊重讀。早鳥確認視窗之後呼叫端不得傳入。
+   */
+  snapshot?: SignupSnapshot;
+  snapshotLoadedAt?: number;
+  snapshotGeneration?: number;
+  snapshotParticipants?: readonly SignupParticipant[];
 }
 
 export interface CancelRegistrationInput extends BuildCancelPayloadInput {
@@ -539,6 +551,53 @@ function assertSelfCancellationTime(event: EventDoc, now: Date): void {
   }
 }
 
+/** T-086a：頁面前置檢查的快照在此時間內可直接沿用（顧問規則 1：送出前仍保留這一次最新讀取）。 */
+export const SIGNUP_SNAPSHOT_REUSE_MS = 3000;
+/** T-086a：報名／取消 Callable 前端逾時，與舊站 A 同值；逾時不自動重送。 */
+export const SIGNUP_CALLABLE_TIMEOUT_MS = 15_000;
+
+function participantKey(participants: readonly SignupParticipant[]): string {
+  return JSON.stringify(participants.map(participant => (participant.type === 'self'
+    ? ['self']
+    : [participant.type, participant.companionId, participant.companionName])));
+}
+
+/** 回傳可重用的快照；任一條件不成立回 null，由呼叫端照舊重讀。 */
+function reusableSnapshot(
+  input: RegisterForEventInput,
+  captured: OperationAuth,
+  selected: readonly SignupParticipant[],
+): SignupSnapshot | null {
+  const { snapshot, snapshotLoadedAt, snapshotGeneration, snapshotParticipants } = input;
+  if (!snapshot || typeof snapshotLoadedAt !== 'number' || !snapshotParticipants) return null;
+  const age = Date.now() - snapshotLoadedAt;
+  if (!(age >= 0 && age <= SIGNUP_SNAPSHOT_REUSE_MS)) return null;
+  if (snapshotGeneration !== captured.generation) return null;
+  if (snapshot.viewer?.uid !== captured.uid || snapshot.event?.id !== input.eventId) return null;
+  if (participantKey(snapshotParticipants) !== participantKey(selected)) return null;
+  return snapshot;
+}
+
+/** 只包本檔兩個 Callable；逾時＝結果未知，拒絕為 SignupError，不重送，計時器一定清掉。 */
+async function withCallableTimeout<T>(call: Promise<T>, scope: 'signup' | 'cancel'): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new SignupError({
+        code: 'deadline-exceeded',
+        originalCode: 'CALLABLE_TIMEOUT',
+        messageKey: scope === 'signup' ? 'event.signup.error.unknown' : 'event.cancel.error.unknown',
+        message: '連線逾時，請檢查網路後重新整理再試',
+      }));
+    }, SIGNUP_CALLABLE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([call, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 const inflightRegister = new Map<string, Promise<RegisterForEventResponse>>();
 const inflightCancel = new Map<string, Promise<CancelRegistrationResponse>>();
 const contextIds = new WeakMap<object, number>();
@@ -612,7 +671,8 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
     // 延到 microtask 才執行 load，確保 Map 已先保存 Promise。
     const inner = Promise.resolve().then(async (): Promise<RegisterForEventResponse> => {
       assertCurrentAuth(context, captured, 'signup');
-      const snapshot = await context.load(
+      // T-086a：頁面剛讀的同組快照可沿用；否則照舊在送出前重讀最新資料。
+      const snapshot = reusableSnapshot(input, captured, selected) ?? await context.load(
         frozenInput.eventId,
         selected.map((participant) => ({ ...participant })),
       );
@@ -645,7 +705,7 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
         ...frozenInput,
         now: requestTimestamp(operationNow(frozenInput.now)),
       });
-      const response = await callFn('registerForEvent', payload);
+      const response = await withCallableTimeout(callFn('registerForEvent', payload), 'signup');
 
       // Callable 可能已在伺服器完成；身分改變時拒絕沿用結果，也不發布舊身分事件。
       assertCurrentAuth(context, captured, 'signup');
@@ -708,7 +768,7 @@ export function cancelRegistration(input: CancelRegistrationInput): Promise<Canc
         ...frozenInput,
         now: requestTimestamp(operationNow(frozenInput.now)),
       });
-      const response = await callFn('cancelRegistration', payload);
+      const response = await withCallableTimeout(callFn('cancelRegistration', payload), 'cancel');
       assertCurrentAuth(context, captured, 'cancel');
       if (!response.deduplicated) {
         emit('registration:cancelled', { eventId: frozenInput.eventId, userId: frozenInput.userId });

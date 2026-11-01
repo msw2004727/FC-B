@@ -277,6 +277,9 @@ function EventDetailSession({
   // 每個活動只自動展開一次；載入 effect 在交出新快照前會重置。不寫入持久化。
   const rosterAutoOpened = useRef(false);
   const rosterAutoHold = useRef(true);
+  // T-086a：背景名單重讀的序號（0＝無）；完成時以 tick 觸發自動展開 effect 重新判斷。
+  const backgroundRefreshSeq = useRef(0);
+  const [backgroundRefreshTick, setBackgroundRefreshTick] = useState(0);
   const operation = useRef(false);
   const noticeSequence = useRef(0);
   const currentViewer = useRef(viewer);
@@ -579,6 +582,28 @@ function EventDetailSession({
     }
   }
 
+  // T-086a：伺服器已確認寫入後的名單重讀改背景，不占 busy；錯誤沿用 refresh 內的 refreshFailed／提示。
+  // 進行中暫停管理者自動展開，避免自動展開的讀取以序號作廢這次重讀；較新的讀取仍可作廢它。
+  async function refreshInBackground(current: Snapshot): Promise<void> {
+    const pending = refresh(current);
+    // refresh 在第一個 await 前已同步取號。
+    const request = rosterSequence.current;
+    backgroundRefreshSeq.current = request;
+    try {
+      await pending;
+    } catch (error) {
+      if (alive.current && request === rosterSequence.current) {
+        setRefreshFailed(true);
+        show(errorKey(error, 'events.detailPage.refreshError'));
+      }
+    } finally {
+      if (backgroundRefreshSeq.current === request) {
+        backgroundRefreshSeq.current = 0;
+        if (alive.current) setBackgroundRefreshTick(value => value + 1);
+      }
+    }
+  }
+
   const visible = snapshot !== null &&
     isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
   const event = snapshot?.event as LegacyDetailEvent | undefined;
@@ -873,6 +898,8 @@ function EventDetailSession({
       || operation.current
       || refreshFailed
       || rosterPending.current
+      || (backgroundRefreshSeq.current !== 0
+        && backgroundRefreshSeq.current === rosterSequence.current)
       || !isEventVisibleToUser(
         snapshot.event,
         currentViewer.current,
@@ -885,7 +912,8 @@ function EventDetailSession({
     setRosterExpanded(true);
     if (rosterPhase === 'ready') return;
     fetchRosterForSnapshot(snapshot).catch(() => {});
-  }, [phase, snapshot, canManageRoster, refreshFailed, busy, viewer.uid, rosterPhase]);
+  }, [phase, snapshot, canManageRoster, refreshFailed, busy, viewer.uid, rosterPhase,
+    backgroundRefreshTick]);
 
   const canRemoveConfirmed = Boolean(
     event && canRemoveConfirmedParticipant(operateCtx, event) === true,
@@ -1162,6 +1190,9 @@ function EventDetailSession({
     if (!current || refreshFailed || !alive.current) return;
     if (profileLoading || historyFailed) return;
 
+    // T-086a：讀取開始時間與世代（同 contexts 的 generation）交給 registerForEvent，3 秒內可省掉函式內的重讀。
+    const latestLoadedAt = Date.now();
+    const latestGeneration = generation.current;
     const latest = await contexts.signup.load(current.event.id ?? publicId, [{ type: 'self' }]);
     if (!alive.current || currentViewer.current.uid !== uid) return;
     const earlyBird = latest.earlyBirdWindow
@@ -1224,13 +1255,31 @@ function EventDetailSession({
       if (!accepted || !alive.current || currentViewer.current.uid !== uid) return;
     }
 
-    const response = await registerForEvent({
-      eventId: current.event.id ?? publicId,
-      user: { uid, displayName: currentViewer.current.displayName },
-      context: contexts.signup,
-      ...(signupTeamKey ? { teamKey: signupTeamKey } : {}),
-      ...(earlyBird ? { earlyBirdAccepted: true, earlyBirdExpectedCost: cost } : {}),
-    });
+    let response: Awaited<ReturnType<typeof registerForEvent>>;
+    try {
+      response = await registerForEvent({
+        eventId: current.event.id ?? publicId,
+        user: { uid, displayName: currentViewer.current.displayName },
+        context: contexts.signup,
+        ...(signupTeamKey ? { teamKey: signupTeamKey } : {}),
+        // T-086a：早鳥確認視窗之後不傳快照，確保確認後一定重讀。
+        ...(earlyBird ? { earlyBirdAccepted: true, earlyBirdExpectedCost: cost } : {
+          snapshot: latest,
+          snapshotLoadedAt: latestLoadedAt,
+          snapshotGeneration: latestGeneration,
+          snapshotParticipants: [{ type: 'self' as const }],
+        }),
+      });
+    } catch (error) {
+      // T-086a：逾時＝結果未知，顯示既有錯誤訊息後重讀名單；不自動重送。
+      if (error instanceof SignupError && error.originalCode === 'CALLABLE_TIMEOUT'
+        && alive.current && currentViewer.current.uid === uid) {
+        show(errorKey(error, 'events.detailPage.actionError'));
+        await refresh(current);
+        return;
+      }
+      throw error;
+    }
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (response.deduplicated) {
       toast.show({ message: '報名處理中，請稍候' });
@@ -1280,8 +1329,21 @@ function EventDetailSession({
     }
     toast.show({ message: signupMessage });
     showFlip(waitlisted ? '取消候補' : '取消報名', waitlisted ? '#7c3aed' : '#dc2626');
-    await refresh(current);
-    if (!alive.current) return;
+    // T-086a：額滿相關欄位先用伺服器回傳的活動投影；名單與「我的報名」仍以背景重讀為準，
+    // 不把 response.registrations 當名單渲染。
+    const rawEvent: unknown = response.event;
+    const responseEvent = rawEvent && typeof rawEvent === 'object' && !Array.isArray(rawEvent)
+      ? rawEvent as Partial<Snapshot['event']> : null;
+    const next: Snapshot = responseEvent
+      ? { ...current, event: { ...current.event, ...responseEvent } }
+      : current;
+    if (responseEvent) {
+      setSnapshot(previous => previous && ({
+        ...previous,
+        event: { ...previous.event, ...responseEvent },
+      }));
+    }
+    void refreshInBackground(next);
     // 照 A _maybeShowLineNotifyPrompt；引導失敗不改寫報名成功結果。
     maybeShowLinePrompt(uid).catch(() => {});
   }
@@ -1300,16 +1362,26 @@ function EventDetailSession({
     onSelfCancelled: async ({ deduplicated, updatedEvent }) => {
       const current = snapshot;
       if (!current) return;
-      if (!deduplicated && updatedEvent) {
+      // T-086a：結果未知（deduplicated／逾時）時等重讀完成（顧問規則 3）；已確認成功改背景重讀。
+      if (deduplicated) {
+        await refresh(current);
+        return;
+      }
+      if (updatedEvent) {
         const full = getEventParticipantStats(updatedEvent, []).isCapacityFull;
         showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)');
+        setSnapshot(previous => previous && ({ ...previous, event: updatedEvent }));
       }
-      await refresh(updatedEvent ? { ...current, event: updatedEvent } : current);
+      void refreshInBackground(updatedEvent ? { ...current, event: updatedEvent } : current);
     },
-    onBatchCancelled: async () => {
+    onBatchCancelled: async (result) => {
       const current = snapshot;
       if (!current) return;
-      await refresh(current);
+      if (result?.deduplicated) {
+        await refresh(current);
+        return;
+      }
+      void refreshInBackground(current);
     },
   });
 
