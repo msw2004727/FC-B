@@ -1,0 +1,9 @@
+{
+  "title": "Dữ liệu không hoạt động",
+  "back": "Quay lại",
+  "loading": "Đang tải...",
+  "noPermission": "Không có quyền",
+  "loadError": "Không tải được. Vui lòng thử lại.",
+  "retry": "Thử lại",
+  "loadMore": "Tải thêm"
+}

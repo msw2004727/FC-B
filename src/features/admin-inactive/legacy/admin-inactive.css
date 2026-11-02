@@ -1,0 +1,5 @@
+/* 舊版 A `css/admin.css` 的「Inactive Card」規則（原檔照搬，不得手改；要更新就從 A 重新複製）。
+   W1C-I 無效資料查詢頁自行 import；放在 legacy/ 底下，打包時限定在 .legacy-ui 內。 */
+
+/* ─── Inactive Card ─── */
+.inactive-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .85rem; opacity: .65; position: relative; margin-bottom: .5rem; }
