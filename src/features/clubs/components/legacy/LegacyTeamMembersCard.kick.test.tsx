@@ -149,3 +149,26 @@ describe('K6 背號／位置編輯', () => {
     expect(toast.show).toHaveBeenCalledWith({ message: '賽事數據已更新', tone: 'success' });
   });
 });
+
+describe('成員卡縮高（站長 11-02）', () => {
+  it('沒有統計內容時不出第二列、不顯示「-」；操作圖示與第一列同在一列容器旁', () => {
+    const { container } = renderCard();
+    expect(container.querySelector('section.td-member-management-panel.td-member-compact')).not.toBeNull();
+    const member = rowEl(container, 'member');
+    expect(member.querySelector('.td-member-line2')).toBeNull();
+    expect(member.querySelector('.td-member-meta-muted')).toBeNull();
+    const actions = member.querySelector('.td-member-action-cell');
+    expect(actions?.previousElementSibling?.className).toBe('td-member-row-main');
+    expect(member.querySelector('.td-member-row-main .td-member-line1')).not.toBeNull();
+  });
+
+  it('有統計內容時才出第二列', () => {
+    const joined = { ...team, memberJoinedAt: undefined };
+    const rows = [{ ...row('member', '隊員丁'), user: { uid: 'member', teamIds: ['team-1'], clubMatchParticipationCount: 3 } }];
+    const { container } = render(
+      <LegacyTeamMembersCard team={joined} roster={rows} viewer={viewer('member')} onTeamChanged={vi.fn()} onOpenProfile={vi.fn()} />,
+    );
+    const line2 = rowEl(container, 'member').querySelector('.td-member-line2');
+    expect(line2?.textContent).toContain('出賽 3 次');
+  });
+});

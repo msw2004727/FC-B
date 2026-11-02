@@ -1,0 +1,111 @@
+/*
+ * 成員卡縮高（站長 2026-11-02，B 刻意與 A 不同）：
+ * - 背號／位置／名字與右側操作圖示同一列；390px 放不下時圖示間距縮為 0，不換列。
+ * - 第二列（統計／備註）只在有內容時出現，單行、超出以省略號截斷。
+ * - 縮小列內距與列間距；圖示可點區域 32px。
+ * 只用 team.css 既有的 --td-mm-* 變數，深淺色沿用同一組。A 原檔 team.css 不改，這裡以多一個 class 覆寫。
+ * 路徑含 /legacy/，打包時同樣限定在 .legacy-ui 內（scripts/legacy-css-scope.mjs）。
+ */
+
+.td-member-management-panel.td-member-compact .td-member-list {
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.td-member-management-panel.td-member-compact .td-member-row,
+.td-member-management-panel.td-member-compact .td-member-list-shell.is-editing .td-member-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border-radius: 12px;
+}
+
+.td-member-management-panel.td-member-compact .td-member-row-main,
+.td-member-management-panel.td-member-compact .td-member-list-shell.is-editing .td-member-row-main {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  gap: 1px;
+}
+
+.td-member-management-panel.td-member-compact .td-member-line1 {
+  align-items: center;
+  min-height: 32px;
+}
+
+.td-member-management-panel.td-member-compact .td-member-roster-code,
+.td-member-management-panel.td-member-compact .td-member-name-wrap .user-capsule,
+.td-member-management-panel.td-member-compact .td-member-name-static {
+  margin-top: 0;
+}
+
+.td-member-management-panel.td-member-compact .td-member-name-wrap,
+.td-member-management-panel.td-member-compact .td-member-name-wrap .user-capsule,
+.td-member-management-panel.td-member-compact .td-member-name-static {
+  max-width: 100%;
+}
+
+.td-member-management-panel.td-member-compact .td-member-name-wrap {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+/* 第二、三列：單行，超出省略。 */
+.td-member-management-panel.td-member-compact .td-member-line2,
+.td-member-management-panel.td-member-compact .td-member-line3 {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+  padding-bottom: 2px;
+}
+
+.td-member-management-panel.td-member-compact .td-member-line2 .td-member-meta-item,
+.td-member-management-panel.td-member-compact .td-member-line3 .td-member-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 操作圖示：與第一列同高、靠右、不換列。 */
+.td-member-management-panel.td-member-compact .td-member-action-cell,
+.td-member-management-panel.td-member-compact .td-member-action-cell.td-member-manage-actions,
+.td-member-management-panel.td-member-compact .td-member-list-shell.is-editing .td-member-action-cell {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  width: auto;
+  max-width: none;
+  gap: 2px;
+  margin-left: auto;
+  justify-self: auto;
+}
+
+.td-member-management-panel.td-member-compact .td-mm-icon-btn,
+.td-member-management-panel.td-member-compact .td-member-row-edit-btn,
+.td-member-management-panel.td-member-compact .td-member-role-action-btn,
+.td-member-management-panel.td-member-compact .td-member-remove-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+
+@media (max-width: 430px) {
+  .td-member-management-panel.td-member-compact .td-member-action-cell,
+  .td-member-management-panel.td-member-compact .td-member-action-cell.td-member-manage-actions,
+  .td-member-management-panel.td-member-compact .td-member-list-shell.is-editing .td-member-action-cell {
+    gap: 0;
+  }
+
+  .td-member-management-panel.td-member-compact .td-member-row,
+  .td-member-management-panel.td-member-compact .td-member-list-shell.is-editing .td-member-row {
+    gap: 4px;
+  }
+
+  .td-member-management-panel.td-member-compact .td-member-line1 {
+    gap: 6px;
+  }
+}

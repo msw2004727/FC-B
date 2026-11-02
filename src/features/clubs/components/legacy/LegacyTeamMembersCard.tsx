@@ -27,6 +27,7 @@ import {
 } from './member-management-actions';
 import { TeamMemberMatchDialog, type TeamMemberMatchValue } from './TeamMemberMatchDialog';
 import { TeamMemberNoteDialog } from './TeamMemberNoteDialog';
+import './team-member-compact.css';
 import { TeamRoleConfirmDialog } from './TeamRoleConfirmDialog';
 import {
   buildMemberIntegratedMeta,
@@ -485,7 +486,7 @@ export function LegacyTeamMembersCard({
   };
 
   return (
-    <section class="td-member-management-panel" id="team-members-section">
+    <section class="td-member-management-panel td-member-compact" id="team-members-section">
       <div class="td-member-panel-pad">
         <div id="team-members-toggle" class="td-member-top">
           <div class="td-member-head-copy">
@@ -599,9 +600,10 @@ export function LegacyTeamMembersCard({
                           )}
                         </span>
                       </div>
-                      <div class="td-member-line2">
-                        {meta.primaryItems.length > 0 ? (
-                          meta.primaryItems.map((item, idx) => (
+                      {/* 站長 11-02 縮高：沒有內容時不出這一列（A 會顯示「-」）。 */}
+                      {meta.primaryItems.length > 0 && (
+                        <div class="td-member-line2">
+                          {meta.primaryItems.map((item, idx) => (
                             <Fragment key={`${idx}-${item.className}`}>
                               {idx > 0 && <span class="td-member-meta-sep"></span>}
                               <span
@@ -610,11 +612,9 @@ export function LegacyTeamMembersCard({
                                 {item.text}
                               </span>
                             </Fragment>
-                          ))
-                        ) : (
-                          <span class="td-member-meta-muted">-</span>
-                        )}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                       {meta.noteItems.length > 0 && (
                         <div class="td-member-line3">
                           {meta.noteItems.map((note, idx) => (
