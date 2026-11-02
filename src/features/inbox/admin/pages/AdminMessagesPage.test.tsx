@@ -1,6 +1,6 @@
 // 站內信管理頁（W2A-1／2／3）：讀取預算（進頁 ≤ 54）、權限、頁籤與按鈕、改狀態不重讀、撰寫發送（Callable 用 mock，不送真推播）。
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -16,6 +16,10 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('firebase/firestore', async () => (await import('../fake-firestore.test-helper')).fakeSdk);
+// 非同步 mock 工廠先解析一次，避免頁面同時動態載入兩次時拿到真的 SDK。
+beforeAll(async () => {
+  await import('firebase/firestore');
+});
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 vi.mock('@/data/callables', () => ({ callFn: state.callFn }));
 vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => 'resolved', getCurrentUser: async () => ({ uid: 'U-admin' }) }));

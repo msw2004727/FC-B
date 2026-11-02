@@ -1,10 +1,14 @@
 // 通知腳本編輯：開彈窗讀 notifTemplates ≤ 20、缺的基本範本補預設、只寫有改動或缺漏的。
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fakeState, limitOf, resetFakeFirestore, totalReads } from '../fake-firestore.test-helper';
 import { NOTIF_TEMPLATES_READ_LIMIT, loadEditableTemplates, saveTemplates } from './notif-templates-admin';
 
 vi.mock('firebase/firestore', async () => (await import('../fake-firestore.test-helper')).fakeSdk);
+// 非同步 mock 工廠先解析一次，避免頁面同時動態載入兩次時拿到真的 SDK。
+beforeAll(async () => {
+  await import('firebase/firestore');
+});
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 
 beforeEach(() => {
