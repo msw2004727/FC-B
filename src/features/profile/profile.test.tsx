@@ -381,13 +381,13 @@ describe('我的個人頁（A 版結構）', () => {
     // 一般用戶不顯示原始 UID 文字
     expect(document.getElementById('profile-uid-wrap')?.textContent).not.toContain('U-me');
 
-    // 出席統計有值時顯示數字，徽章顯示 --
+    // 出席統計有值時顯示數字；徽章統計已隨成就系統移除
     await waitFor(() => {
       expect(document.getElementById('profile-stat-total')?.textContent).toBe('8');
       expect(document.getElementById('profile-stat-done')?.textContent).toBe('5');
       expect(document.getElementById('profile-stat-rate')?.textContent).toBe('75%');
-      expect(document.getElementById('profile-stat-badges')?.textContent).toBe('--');
     });
+    expect(document.getElementById('profile-stat-badges')).toBeNull();
 
     // 切換為 admin 後可看到原始 UID
     vi.mocked(useViewer).mockReturnValue(viewer('U-me', 'admin'));
@@ -395,8 +395,8 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-uid-wrap')?.textContent).toContain('U-me');
   });
 
-  // 測試同步更新：照 A（M-121）；T-038 成就/稱號先關閉
-  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就/稱號反灰且點擊只顯示尚未開放', async () => {
+  // 測試同步更新：照 A（M-121）；成就／稱號／道具欄已移除（站長 2026-11-02）
+  it('出席統計讀不到時顯示 --，場景鑰匙不存在，成就／稱號／道具欄不出現', async () => {
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(null);
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
