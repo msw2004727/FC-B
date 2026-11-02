@@ -73,7 +73,8 @@ export function AdminOverlay(props: AdminOverlayProps): JSX.Element {
           aria-modal="true"
           aria-labelledby={props.labelledBy}
           tabIndex={-1}
-          style={props.boxStyle}
+          // 開窗時焦點移到本體（返回鍵／Tab 起點），不畫焦點框（A 沒有）。
+          style={`${props.boxStyle};outline:none`}
         >
           {props.children}
         </div>
