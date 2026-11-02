@@ -17,7 +17,7 @@
 
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
-import { deliverInboxMessage } from '@/data/inbox-delivery';
+import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
 
 import { CATEGORY_NAMES, ROLE_TARGETS, type AdminMessage, type MsgCategory, type MsgTargetType } from './admin-message-model';
 
@@ -43,9 +43,9 @@ export async function deliverAdminMessage(
   m: AdminMessage,
   senderUid: string | null,
 ): Promise<Record<string, unknown> | null> {
-  const extra: Record<string, unknown> = { adminMsgId: m.id, targetType: m.targetType || 'all' };
-  if (m.targetTeamId) extra['targetTeamId'] = m.targetTeamId;
-  if (Array.isArray(m.targetRoles) && m.targetRoles.length) extra['targetRoles'] = m.targetRoles;
+  const extra: InboxDeliveryExtra = { adminMsgId: m.id, targetType: m.targetType || 'all' };
+  if (m.targetTeamId) extra.targetTeamId = m.targetTeamId;
+  if (Array.isArray(m.targetRoles) && m.targetRoles.length) extra.targetRoles = m.targetRoles;
   return deliverInboxMessage({
     title: m.title,
     body: m.body,
