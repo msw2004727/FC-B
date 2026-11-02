@@ -43,12 +43,11 @@ describe('黑名單管理入口', () => {
 });
 
 describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
-  it('訪客與一般用戶只看到前 6 個基本入口（含 3 個上鎖入口與 3 個動作入口），不畫多餘分隔線與後台標題', () => {
+  it('訪客與一般用戶只看到前 5 個基本入口（含 2 個上鎖入口與 3 個動作入口；二手商品區已移除），不畫多餘分隔線與後台標題', () => {
     const guestNodes = buildDrawerRenderNodes(null);
     const labels = guestNodes.filter((n) => n.kind === 'item').map((n) => n.label);
     expect(labels).toEqual([
       '個人數據',
-      '二手商品區',
       '排行榜',
       '使用手冊',
       '分享網頁',
@@ -60,7 +59,7 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
     const lockedItems = guestNodes.filter(
       (n): n is Extract<typeof n, { kind: 'item' }> => n.kind === 'item' && n.locked === true,
     );
-    expect(lockedItems.map((n) => n.label)).toEqual(['個人數據', '二手商品區', '排行榜']);
+    expect(lockedItems.map((n) => n.label)).toEqual(['個人數據', '排行榜']);
   });
 
   it('活動管理入口遵循 _canAccessOwnActivityManageEntry：coach 以上或具 own_manage_entry 能力的一般用戶可見', () => {
@@ -171,7 +170,7 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
     expect(drawerItemStatus(byLabel('個人數據'))).toBe('closed');
     expect(drawerItemStatus(byLabel('排行榜'))).toBe('closed');
     expect(drawerItemStatus(byLabel('活動管理'))).toBe('done');
-    expect(drawerItemStatus(byLabel('賽事管理'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('俱樂部管理'))).toBe('wip');
     expect(drawerItemStatus(byLabel('分享網頁'))).toBe('done');
   });
 
@@ -192,7 +191,7 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
       if (!source.includes('PlaceholderPage')) continue;
       for (const match of source.matchAll(/path:\s*'([^']+)'/g)) placeholderPaths.push(match[1]!);
     }
-    // 鎖定入口（個人數據、二手商品區）本來就是 closed，不需列入佔位清單。
+    // 鎖定入口（個人數據）本來就是 closed，不需列入佔位清單。
     const drawerRoutes = new Set(DRAWER_MENUS.filter((e) => !e.locked).map((e) => e.routePath).filter((p): p is string => Boolean(p)));
     const expected = placeholderPaths.filter((p) => drawerRoutes.has(p)).sort();
     expect([...DRAWER_PLACEHOLDER_ROUTES].sort()).toEqual(expected);
@@ -214,12 +213,12 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
 });
 
 describe('新站不做的入口不出現在抽屜', () => {
-  it('SEO 儀表板、佈景主題、EXP 管理、成就/徽章管理不在 DRAWER_MENUS', () => {
+  it('SEO 儀表板、佈景主題、EXP 管理、成就/徽章管理、二手商品、賽事管理不在 DRAWER_MENUS', () => {
     const labels = DRAWER_MENUS.map((e) => e.label);
-    for (const label of ['SEO 儀表板', '佈景主題', '手動 EXP 管理', '自動 EXP 管理', '成就/徽章管理']) {
+    for (const label of ['SEO 儀表板', '佈景主題', '手動 EXP 管理', '自動 EXP 管理', '成就/徽章管理', '二手商品區', '二手商品管理', '賽事管理']) {
       expect(labels).not.toContain(label);
     }
-    const removedPages = ['page-admin-seo', 'page-admin-themes', 'page-admin-exp', 'page-admin-auto-exp', 'page-admin-achievements'];
+    const removedPages = ['page-admin-seo', 'page-admin-themes', 'page-admin-exp', 'page-admin-auto-exp', 'page-admin-achievements', 'page-shop', 'page-admin-shop', 'page-admin-tournaments'];
     expect(DRAWER_MENUS.some((e) => removedPages.includes(e.page ?? ''))).toBe(false);
   });
 });

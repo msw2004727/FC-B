@@ -1,7 +1,7 @@
 // 建置期功能開關。
 // 用法範例：
 //   FEATURE_OVERRIDES = { 'notifications': false }   // 強制關閉
-//   FEATURE_OVERRIDES = { 'shop': true }             // 強制開啟（含 reserved）
+//   FEATURE_OVERRIDES = { 'tournaments': true }      // 強制開啟（含 reserved）
 // 未列出的功能：預設開啟；reserved 功能預設關閉。
 
 import type { FeatureManifest } from './core/feature-types';
@@ -23,7 +23,6 @@ import { manifest as adminBanners } from './features/admin-banners/index';
 import { manifest as seoAdmin } from './features/seo-admin/index';
 import { manifest as siteTheme } from './features/site-theme/index';
 import { manifest as leaderboard } from './features/leaderboard/index';
-import { manifest as shop } from './features/shop/index';
 import { manifest as miniGames } from './features/mini-games/index';
 import { manifest as tournaments } from './features/tournaments/index';
 import { manifest as qaLogin } from './features/qa-login/index';
@@ -49,7 +48,6 @@ export const ALL_FEATURES: FeatureManifest[] = [
   seoAdmin,
   siteTheme,
   leaderboard,
-  shop,
   miniGames,
   tournaments,
   qaLogin,

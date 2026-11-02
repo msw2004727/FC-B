@@ -191,26 +191,23 @@ export interface DrawerMenuEntry {
  * - page-admin-roles → /admin/roles
  * - page-admin-logs → /admin/logs
  * - page-admin-repair → /admin/repair
- * 其餘後台／管理頁（賽事管理、俱樂部管理、小遊戲管理、用戶管理、首頁管理、二手商品管理、站內信管理、手動/自動 EXP、推播、公告、成就、無效資料查詢）B 尚未有對應管理路由，設為 null。
+ * 其餘後台／管理頁（俱樂部管理、小遊戲管理、站內信管理、推播、公告、無效資料查詢）B 尚未有對應管理路由，設為 null。
  */
-// SEO 儀表板、佈景主題、手動／自動 EXP 管理、成就/徽章管理：站長 2026-11-02 決定新站不做或移除，不放入抽屜（A 原有入口不照搬）。
+// SEO 儀表板、佈景主題、手動／自動 EXP 管理、成就/徽章管理、二手商品區／管理、賽事管理：站長 2026-11-02 決定新站不做或移除（賽事維持導向舊站），不放入抽屜（A 原有入口不照搬）。
 export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '個人數據', i18nKey: 'drawer.personalData', page: 'page-personal-dashboard', routePath: '/me/dashboard', minRole: 'user', locked: true },
-  { icon: '', label: '二手商品區', i18nKey: 'drawer.shop', page: 'page-shop', routePath: '/shop', minRole: 'user', locked: true },
   { icon: '', label: '排行榜', i18nKey: 'drawer.leaderboard', action: 'coming-soon', minRole: 'user', locked: true },
   { icon: '', label: '使用手冊', i18nKey: 'drawer.manual', action: 'manual', minRole: 'user' },
   { icon: '', label: '分享網頁', i18nKey: 'drawer.share', action: 'share', minRole: 'user' },
   { icon: '', label: '申請（俱樂部/場主/教練）', i18nKey: 'drawer.applyRole', action: 'apply-role', minRole: 'user' },
   { divider: true },
   { icon: '', label: '活動管理', i18nKey: 'drawer.activityManage', page: 'page-my-activities', routePath: '/my-activities', minRole: 'coach', permissionCode: 'activity.manage.entry' },
-  { icon: '', label: '賽事管理', i18nKey: 'drawer.tournamentManage', page: 'page-admin-tournaments', routePath: null, minRole: 'coach', permissionCode: 'admin.tournaments.entry' },
   { icon: '', label: '俱樂部管理', i18nKey: 'drawer.teamManage', page: 'page-team-manage', routePath: null, minRole: 'captain', permissionCode: 'team.manage.entry' },
   { divider: true, minRole: 'admin' },
   { sectionLabel: '後台管理', i18nKey: 'drawer.backendManage', minRole: 'admin' },
   { icon: '', label: '小遊戲管理', i18nKey: 'admin.gameManage', page: 'page-admin-games', routePath: null, minRole: 'admin', permissionCode: 'admin.games.entry' },
   { icon: '', label: '用戶管理', i18nKey: 'admin.userManage', page: 'page-admin-users', routePath: '/admin/users', minRole: 'admin', permissionCode: 'admin.users.entry' },
   { icon: '', label: '首頁管理', i18nKey: 'admin.adManage', page: 'page-admin-banners', routePath: '/admin/banners', minRole: 'admin', permissionCode: 'admin.banners.entry' },
-  { icon: '', label: '二手商品管理', i18nKey: 'admin.shopManage', page: 'page-admin-shop', routePath: null, minRole: 'admin', permissionCode: 'admin.shop.entry' },
   { icon: '', label: '站內信管理', i18nKey: 'admin.messageManage', page: 'page-admin-messages', routePath: null, minRole: 'admin', permissionCode: 'admin.messages.entry' },
   { icon: '', label: '數據儀表板', i18nKey: 'admin.dashboard', page: 'page-admin-dashboard', routePath: '/admin/ops', minRole: 'super_admin', permissionCode: 'admin.dashboard.entry' },
   { icon: '', label: '推播通知設定', i18nKey: 'admin.notifSettings', page: 'page-admin-notif', routePath: null, minRole: 'super_admin', permissionCode: 'admin.notif.entry' },
