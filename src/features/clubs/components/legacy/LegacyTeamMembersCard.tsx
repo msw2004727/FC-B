@@ -573,13 +573,16 @@ export function LegacyTeamMembersCard({
                   >
                     <div class="td-member-row-main">
                       <div class="td-member-line1">
-                        <span
-                          class={`td-member-roster-code${emptyClass}`}
-                          aria-label="背號與位置"
-                        >
-                          <span class="td-member-roster-no">{jersey}</span>
-                          <span class="td-member-roster-pos">{position}</span>
-                        </span>
+                        {/* 站長 11-02：編輯模式隱藏背號／位置標籤，讓名字在 390px 放得下（一般模式照常顯示）。 */}
+                        {!effectiveEditMode && (
+                          <span
+                            class={`td-member-roster-code${emptyClass}`}
+                            aria-label="背號與位置"
+                          >
+                            <span class="td-member-roster-no">{jersey}</span>
+                            <span class="td-member-roster-pos">{position}</span>
+                          </span>
+                        )}
                         <span class="td-member-name-cell">
                           {uid ? (
                             <span class={`td-member-name-wrap${stateClass}`}>

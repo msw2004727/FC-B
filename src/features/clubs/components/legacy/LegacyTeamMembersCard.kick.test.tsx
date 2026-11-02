@@ -172,3 +172,23 @@ describe('成員卡縮高（站長 11-02）', () => {
     expect(line2?.textContent).toContain('出賽 3 次');
   });
 });
+
+describe('編輯模式隱藏背號／位置標籤（站長 11-02）', () => {
+  it('一般模式有背號／位置標籤；進入編輯模式不渲染，名字與圖示仍在', () => {
+    const { container } = render(
+      <LegacyTeamMembersCard team={team} roster={roster} viewer={viewer('manager')} onTeamChanged={vi.fn()} onOpenProfile={vi.fn()} />,
+    );
+    const member = () => rowEl(container, 'member');
+    expect(member().querySelector('.td-member-roster-code')).not.toBeNull();
+    expect(member().querySelector('.td-member-roster-no')?.textContent).toBe('#7');
+    expect(member().querySelector('.td-member-roster-pos')?.textContent).toBe('MF');
+
+    fireEvent.click(within(container as HTMLElement).getByRole('button', { name: '成員管理' }));
+    expect(container.querySelectorAll('.td-member-roster-code')).toHaveLength(0);
+    expect(member().textContent).toContain('隊員丁');
+    expect(member().querySelector('.td-member-remove-btn')).not.toBeNull();
+
+    fireEvent.click(within(container as HTMLElement).getByRole('button', { name: '完成' }));
+    expect(member().querySelector('.td-member-roster-code')).not.toBeNull();
+  });
+});
