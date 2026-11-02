@@ -86,6 +86,7 @@ describe('kickTeamMember', () => {
     expect(getKickErrorMessage(new Error('TEAM_MANAGE_DENIED'))).toBe('您沒有移除隊員的權限');
     expect(getKickErrorMessage(new Error('TARGET_IS_STAFF'))).toBe('僅可移除一般隊員');
     expect(getKickErrorMessage(new Error('MEMBER_NOT_FOUND'))).toBe('隊員資料不存在或已不在球隊中');
+    expect(getKickErrorMessage(new Error('TEAM_ID_MISMATCH'))).toBe('此俱樂部資料格式較舊，請聯繫管理員處理');
     expect(getKickErrorMessage(new Error('boom'))).toBe('移除失敗，請稍後再試');
   });
 });

@@ -1,3 +1,4 @@
+import { BASE_ROLE_LEVEL_MAP } from '@/features/profile/data/permissions';
 import {
   canEditTeamByRoleOrCaptain,
   canManageTeamMembers,
@@ -479,12 +480,27 @@ export function canAccessTeamManageRecord(
   return canEditTeamSettings(viewer, team) || canManageMembers(viewer, team);
 }
 
-/** A `removeTeam` 的守衛 `_canEditTeamByRoleOrCaptain`；管理頁「刪除」鈕同一判斷。 */
+/** 刪除判斷需要的角色資訊（useViewer() 的 role／roleLevel；roleLevel 含自訂角色，與 A ROLE_LEVEL_MAP 一致）。 */
+export interface TeamDeleteViewer extends ClubMemberViewer {
+  readonly role: string;
+  readonly roleLevel: number;
+}
+
+/**
+ * 管理頁「刪除」鈕與 handleDelete 共用，對齊 Callable deleteTeam（functions/team-deletion.js
+ * isFrontendTeamDeleter ∧ isCoachPlusAccess）與 A `_canDeleteTeam`：
+ * super_admin ∨ ((擁有者 ∨ team.manage_all) ∧ (教練以上 ∨ admin.repair.team_join_repair))。
+ * 取代原本只看 `_canEditTeamByRoleOrCaptain`（角色低於教練的擁有者看得到鈕、伺服器卻會拒絕）。
+ */
 export function canDeleteTeam(
-  viewer: ClubMemberViewer | null | undefined,
+  viewer: TeamDeleteViewer | null | undefined,
   team: TeamDoc | null | undefined,
 ): boolean {
-  return canEditTeamSettings(viewer, team);
+  if (!team || !isMemberViewerLoggedIn(viewer)) return false;
+  if (viewer.role === 'super_admin') return true;
+  const coachPlus = viewer.roleLevel >= (BASE_ROLE_LEVEL_MAP.coach ?? 1)
+    || viewer.hasPermission('admin.repair.team_join_repair');
+  return coachPlus && canEditTeamSettings(viewer, team);
 }
 
 /** A `editTeamMemberMatchData` 的守衛 `_canManageTeamMembers`（背號／位置）。 */

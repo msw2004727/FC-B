@@ -375,9 +375,15 @@ async function getFunctionsForRegion(region: string): Promise<Functions> {
   return functions;
 }
 
+/** 呼叫選項；timeout 照 Firebase httpsCallable（毫秒，SDK 預設 70 秒），只給伺服器跑得比預設久的 Callable 用。 */
+export interface CallFnOptions {
+  readonly timeout?: number;
+}
+
 export async function callFn<N extends CallableName>(
   name: N,
   request: RequestOf<N>,
+  options?: CallFnOptions,
 ): Promise<ResponseOf<N>> {
   // ASSUMPTION: 為滿足密碼不落地與 emulator 同路徑，須補此分支，超出原列兩處型別登錄。
   // QA request 不得進 recorder，原始錯誤也不得進 CallableError.details。
@@ -435,7 +441,11 @@ export async function callFn<N extends CallableName>(
       ? ctx.functions
       : await getFunctionsForRegion(region);
 
-  const callable = httpsCallable<RequestOf<N>, ResponseOf<N>>(functions, name);
+  const callable = httpsCallable<RequestOf<N>, ResponseOf<N>>(
+    functions,
+    name,
+    options?.timeout ? { timeout: options.timeout } : undefined,
+  );
 
   try {
     const result = await callable(request);

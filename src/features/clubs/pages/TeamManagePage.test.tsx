@@ -211,6 +211,15 @@ describe('清單（K1a）', () => {
     expect(document.getElementById('team-manage-create-btn')).toBeNull();
   });
 
+  it('角色低於教練的擁有者：看得到編輯，看不到刪除（對齊 Callable deleteTeam）', async () => {
+    state.viewer = { ...makeViewer('U-cap', CAPTAIN), role: 'user', roleLevel: 0 };
+    const { container } = render(<TeamManagePage />);
+    await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).toBeNull());
+    const a = card(container, 'tm_a');
+    expect(within(a).getByRole('button', { name: '編輯' })).toBeTruthy();
+    expect(within(a).queryByRole('button', { name: '刪除' })).toBeNull();
+  });
+
   it('套用全域運動篩選', async () => {
     state.sport = 'football';
     const { container } = await renderLoaded(ADMIN, 'U-admin');
@@ -298,7 +307,7 @@ describe('刪除（K5）', () => {
     fireEvent.click(within(card(container, 'tm_a')).getByRole('button', { name: '刪除' }));
     await waitFor(() => expect(container.querySelector('[data-team-id="tm_a"]')).toBeNull());
     expect(appConfirm).toHaveBeenCalledWith('確定要刪除「A隊」？此操作無法復原。');
-    expect(state.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_a' });
+    expect(state.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_a' }, { timeout: 125000 });
     expect(toast.show).toHaveBeenCalledWith({ message: '已刪除「A隊」' });
     expect(sdk.updateDoc).not.toHaveBeenCalled();
   });
