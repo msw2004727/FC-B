@@ -19,15 +19,17 @@
   padding: 9px 18px 12px;
   border: none;
   border-radius: 12px 12px 0 0;
-  background: var(--border);
+  /* 未選頁籤用固定灰階（示意 A 的 #dfe3ea／#2b3445），--border 在深色下與頁面底色太接近、看不出堆疊 */
+  background: #dfe3ea;
   color: var(--text-muted);
   font-size: .8rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: -2px -1px 4px rgba(0, 0, 0, .08);
+  box-shadow: -3px -1px 6px rgba(0, 0, 0, .12);
   transform: translateY(4px);
 }
+[data-theme="dark"] .tc-tab { background: #2b3445; box-shadow: -3px -1px 6px rgba(0, 0, 0, .45); }
 .tc-tab:first-child { margin-left: 0; }
 .tc-tab:nth-child(1) { z-index: 4; }
 .tc-tab:nth-child(2) { z-index: 3; }
