@@ -1,4 +1,53 @@
 {
   "title": "锦标赛",
-  "nav": "锦标赛"
+  "nav": "锦标赛",
+  "heading": "賽事",
+  "add": "＋ 新增賽事",
+  "tab": {
+    "all": "全部",
+    "league": "聯賽",
+    "cup": "盃賽",
+    "friendly": "友誼賽"
+  },
+  "showEnded": "顯示已結束",
+  "loading": "載入中...",
+  "loadError": "載入失敗，請稍後重試",
+  "retry": "重試",
+  "empty": "目前沒有賽事",
+  "edit": "編輯",
+  "form": {
+    "createTitle": "新增賽事",
+    "editTitle": "編輯賽事",
+    "close": "關閉",
+    "image": "圖片",
+    "imageUpload": "上傳圖片",
+    "name": "比賽名稱",
+    "type": "比賽類型",
+    "startDate": "開始日",
+    "endDate": "結束日",
+    "url": "連結網址",
+    "save": "儲存",
+    "saving": "儲存中...",
+    "delete": "刪除"
+  },
+  "error": {
+    "name": "請輸入比賽名稱",
+    "type": "請選擇比賽類型",
+    "date": "請選擇開始日與結束日",
+    "dateOrder": "結束日不可早於開始日",
+    "url": "連結網址需以 https:// 開頭"
+  },
+  "toast": {
+    "saved": "已儲存",
+    "deleted": "已刪除",
+    "saveError": "儲存失敗，請稍後重試",
+    "deleteError": "刪除失敗，請稍後重試",
+    "denied": "權限不足",
+    "uploading": "圖片上傳中...",
+    "imageError": "圖片處理失敗，請重試",
+    "imageTooLarge": "圖片太大，請換一張",
+    "badType": "請上傳 JPG / PNG / WebP 圖片",
+    "tooBig": "圖片太大，不能超過 5MB"
+  },
+  "confirmDelete": "確定要刪除「{name}」嗎？"
 }

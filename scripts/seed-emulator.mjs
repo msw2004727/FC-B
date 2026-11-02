@@ -119,6 +119,34 @@ async function patchDocument(path, data) {
   }
 }
 
+// ── 4b. Storage emulator（T-089 賽事卡片圖片）────────────────────
+// 只對 FIREBASE_STORAGE_EMULATOR_HOST（預設 127.0.0.1:9199）上傳；host 非 localhost 一律拒絕。
+// 上傳到前端優先使用的 bucket（src/data/storage.ts 的 UPLOAD_STORAGE_BUCKET）。
+const storageHost = (process.env.FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199').trim();
+const STORAGE_BUCKET = 'fc-football-6c8dc-asia-east1';
+
+async function uploadSeedImage(objectPath, localFile) {
+  const storageHostname = parseHostname(storageHost);
+  if (storageHostname !== '127.0.0.1' && storageHostname !== 'localhost') {
+    throw new Error(`FIREBASE_STORAGE_EMULATOR_HOST=${JSON.stringify(storageHost)} 不是 localhost，拒絕上傳`);
+  }
+  const bytes = await readFile(resolve(__dirname, localFile));
+  const url = `http://${storageHost}/v0/b/${STORAGE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(objectPath)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/jpeg', Authorization: 'Bearer owner' },
+    body: bytes,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`上傳 ${objectPath} 失敗 [${res.status} ${res.statusText}] ${text}`);
+  }
+  const meta = await res.json();
+  const token = String(meta.downloadTokens || '').split(',')[0];
+  const encoded = encodeURIComponent(objectPath);
+  return `http://${storageHost}/v0/b/${STORAGE_BUCKET}/o/${encoded}?alt=media${token ? `&token=${token}` : ''}`;
+}
+
 async function resetEmulator() {
   const res = await fetch(resetUrl, { method: 'DELETE' });
   if (!res.ok && res.status !== 404) {
@@ -149,7 +177,7 @@ if (shouldReset) {
   await resetEmulator();
 }
 
-const counts = { users: 0, teams: 0, events: 0, registrations: 0, legacy: 0, inbox: 0 };
+const counts = { users: 0, teams: 0, events: 0, registrations: 0, legacy: 0, inbox: 0, grants: 0, tournamentCards: 0 };
 
 try {
   for (const doc of seedData.users) {
@@ -187,18 +215,45 @@ try {
     counts.legacy += 1;
     console.log(`[seed]   + ${reg.path} (legacy root, 用來驗證會被排除)`);
   }
+
+  for (const grant of seedData.userPermissionGrants ?? []) {
+    await patchDocument(`userPermissionGrants/${grant.id}`, grant.data);
+    counts.grants += 1;
+    console.log(`[seed]   + userPermissionGrants/${grant.id}`);
+  }
+
+  for (const card of seedData.tournamentCards ?? []) {
+    const data = { ...card.data };
+    if (card.seedImage) {
+      const objectPath = `tournamentCards/${card.id}/cover_seed.jpg`;
+      try {
+        data.image = await uploadSeedImage(objectPath, card.seedImage);
+        data.imagePath = objectPath;
+        console.log(`[seed]   + storage ${objectPath}`);
+      } catch (err) {
+        // Storage emulator 沒開時仍建立卡片（沒有圖片），不影響其他種子。
+        console.warn(`[seed]   ! 圖片未上傳（${err?.message ?? err}），卡片不帶圖片`);
+      }
+    }
+    await patchDocument(`tournamentCards/${card.id}`, data);
+    counts.tournamentCards += 1;
+    console.log(`[seed]   + tournamentCards/${card.id}`);
+  }
 } catch (err) {
   console.error(`[seed] 寫入失敗：${err?.message ?? err}`);
   process.exit(1);
 }
 
-const total = counts.users + counts.teams + counts.events + counts.registrations + counts.legacy + counts.inbox;
+const total = counts.users + counts.teams + counts.events + counts.registrations + counts.legacy + counts.inbox
+  + counts.grants + counts.tournamentCards;
 console.log('[seed] ───────── 完成 ─────────');
 console.log(`[seed]   users         : ${counts.users}`);
 console.log(`[seed]   teams         : ${counts.teams}`);
 console.log(`[seed]   events        : ${counts.events}`);
 console.log(`[seed]   registrations : ${counts.registrations}`);
 console.log(`[seed]   legacy root   : ${counts.legacy}`);
+console.log(`[seed]   perm grants   : ${counts.grants}`);
+console.log(`[seed]   tourn. cards  : ${counts.tournamentCards}`);
 console.log(`[seed]   ──────────────────────`);
 console.log(`[seed]   total writes  : ${total}`);
 console.log('[seed] 資料已寫入 emulator（非正式環境）。');

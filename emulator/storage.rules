@@ -9,5 +9,52 @@ service firebase.storage {
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
+
+    // T-089 新站賽事卡片圖片：照 FC 分支 t-089-rules 的 storage.rules 同名區塊（尚未部署，部署是 GATED）。
+    // 判斷靠跨服務讀 Firestore（users／rolePermissions／userPermissionGrants），emulator 要 firestore 一起開。
+    function storageAuthRole() {
+      let userPath = /databases/(default)/documents/users/$(request.auth.uid);
+      let docRole = firestore.exists(userPath) && firestore.get(userPath).data.get('role', '') is string
+        ? firestore.get(userPath).data.get('role', '')
+        : '';
+      return docRole != ''
+        ? docRole
+        : ((('role' in request.auth.token) && request.auth.token.role is string)
+          ? request.auth.token.role
+          : 'user');
+    }
+
+    function storageHasRolePerm(role, perm) {
+      let rpPath = /databases/(default)/documents/rolePermissions/$(role);
+      return role != 'user'
+        && firestore.exists(rpPath)
+        && firestore.get(rpPath).data.get('permissions', null) is list
+        && perm in firestore.get(rpPath).data.get('permissions', []);
+    }
+
+    function storageHasUserGrant(perm) {
+      let grantPath = /databases/(default)/documents/userPermissionGrants/$(request.auth.uid);
+      return firestore.exists(grantPath)
+        && firestore.get(grantPath).data.get('permissions', null) is list
+        && firestore.get(grantPath).data.get('enabled', true) == true
+        && perm in firestore.get(grantPath).data.get('permissions', []);
+    }
+
+    function isTournamentCardManager() {
+      let role = storageAuthRole();
+      return role == 'super_admin'
+        || storageHasRolePerm(role, 'admin.tournaments.entry')
+        || storageHasUserGrant('admin.tournaments.entry');
+    }
+
+    match /tournamentCards/{cardId}/{fileName} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && isTournamentCardManager();
+      allow delete: if request.auth != null
+        && isTournamentCardManager();
+    }
   }
 }

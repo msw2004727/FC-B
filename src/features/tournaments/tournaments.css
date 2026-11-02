@@ -1,0 +1,154 @@
+/*
+ * 新站「賽事」卡片清單（T-089，新站專屬，舊站沒有）。版面照站長同意的示意 A（資料夾頁籤）。
+ * 只用 A 既有色票變數（.legacy-ui 內由 A base.css 提供，深淺色自動切換），不自創變數。
+ * 選擇器一律 .tc- 前綴，避免影響其他頁。
+ */
+
+.legacy-ui .tc-page .page-header { padding-bottom: .4rem; }
+
+/* 資料夾頁籤：未選灰色疊在後、選中浮前與內容區連成一體 */
+.tc-tabs {
+  display: flex;
+  padding-left: 6px;
+  position: relative;
+  z-index: 1;
+}
+.tc-tab {
+  position: relative;
+  margin-left: -10px;
+  padding: 9px 18px 12px;
+  border: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: .8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: -2px -1px 4px rgba(0, 0, 0, .08);
+  transform: translateY(4px);
+}
+.tc-tab:first-child { margin-left: 0; }
+.tc-tab:nth-child(1) { z-index: 4; }
+.tc-tab:nth-child(2) { z-index: 3; }
+.tc-tab:nth-child(3) { z-index: 2; }
+.tc-tab:nth-child(4) { z-index: 1; }
+.tc-tab.active {
+  z-index: 9;
+  background: var(--bg-card);
+  color: var(--accent);
+  font-weight: 700;
+  transform: none;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, .10);
+}
+.tc-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 8px;
+  background: var(--bg-card);
+}
+
+.tc-panel {
+  position: relative;
+  z-index: 2;
+  background: var(--bg-card);
+  border-radius: 0 12px 12px 12px;
+  padding: 12px 10px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+  margin-bottom: 10px;
+}
+
+.tc-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: .8rem;
+  color: var(--text-muted);
+}
+.tc-toolbar label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+.tc-status {
+  padding: 1rem .5rem;
+  text-align: center;
+  font-size: .85rem;
+  color: var(--text-muted);
+}
+.tc-status .outline-btn { margin-top: .5rem; }
+
+/* 卡片：點整張開連結；已結束灰階並降低不透明度 */
+.tc-card { position: relative; margin-bottom: 12px; }
+.tc-card-link {
+  display: block;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+.tc-card.ended .tc-card-link { filter: grayscale(1); opacity: .6; }
+.tc-card-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 8 / 3;
+  object-fit: cover;
+  background: var(--bg-elevated);
+}
+.tc-card-body {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tc-card-text { min-width: 0; }
+.tc-card-name {
+  font-weight: 700;
+  font-size: .95rem;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+}
+.tc-card-dates {
+  margin-top: 3px;
+  font-size: .75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tc-chip {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: .7rem;
+  white-space: nowrap;
+}
+.tc-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .45);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.tc-edit svg { width: 16px; height: 16px; }
+
+/* 表單 */
+.legacy-ui .tc-form-image .ce-upload-placeholder { aspect-ratio: 8 / 3; }
+.tc-form-image img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }
+.tc-form-dates { display: flex; gap: .5rem; }
+.tc-form-dates > .ce-row { flex: 1; min-width: 0; }
+.tc-form-actions { display: flex; flex-direction: column; gap: .5rem; margin-top: .25rem; }
+.legacy-ui .tc-form-actions .danger-btn { width: 100%; text-align: center; }

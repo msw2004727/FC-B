@@ -407,7 +407,75 @@ export function buildSeedData(now = Date.now()) {
     }),
   ];
 
-  return { users, teams, events, registrations, legacy, inbox };
+  // ── 賽事卡片（T-089，新站專屬 tournamentCards，與舊站 tournaments 分開）────
+  // 第一筆是正式要上的「FEDA CUP 2026 飛達盃」（上線後由站長在畫面上建立，不寫正式資料庫）；
+  // 其餘兩筆只供 emulator 截圖驗頁籤與「已結束」，名稱標「示意」。
+  // image／imagePath 由 seed-emulator.mjs 上傳 seedImage 到 Storage emulator 後補上。
+  const friendlyDate = taipeiDateKey(now + 13 * DAY_MS);
+  const tournamentCards = [
+    {
+      id: 'tc_seed_feda_cup_2026',
+      seedImage: 'seed-assets/feda-cup-800x300.jpg',
+      data: {
+        name: 'FEDA CUP 2026 飛達盃',
+        type: 'cup',
+        startDate: '2026-10-09',
+        endDate: '2026-10-11',
+        url: 'https://cup.toosterx.com/',
+        image: '',
+        imagePath: '',
+        createdBy: UIDS.admin,
+        createdAt: new Date(now - 7 * DAY_MS),
+        updatedAt: new Date(now - 7 * DAY_MS),
+      },
+    },
+    {
+      id: 'tc_seed_demo_league',
+      data: {
+        name: '示意：2027 春季聯賽',
+        type: 'league',
+        startDate: '2027-03-06',
+        endDate: '2027-05-29',
+        url: 'https://example.com/league',
+        image: '',
+        imagePath: '',
+        createdBy: UIDS.admin,
+        createdAt: new Date(now - 2 * DAY_MS),
+        updatedAt: new Date(now - 2 * DAY_MS),
+      },
+    },
+    {
+      id: 'tc_seed_demo_friendly',
+      data: {
+        name: '示意：週末友誼賽',
+        type: 'friendly',
+        startDate: friendlyDate,
+        endDate: friendlyDate,
+        url: 'https://example.com/friendly',
+        image: '',
+        imagePath: '',
+        createdBy: UIDS.admin,
+        createdAt: new Date(now - DAY_MS),
+        updatedAt: new Date(now - DAY_MS),
+      },
+    },
+  ];
+
+  // 個別授權：讓 admin 種子帳號持有 admin.tournaments.entry（emulator 沒有 rolePermissions 文件，
+  // Rules 的 hasPerm 讀不到角色權限；用個別授權驗「hasPermission 含個別授權」這條路）。
+  const userPermissionGrants = [
+    {
+      id: UIDS.admin,
+      data: { uid: UIDS.admin, permissions: ['admin.tournaments.entry'], enabled: true },
+    },
+  ];
+
+  return { users, teams, events, registrations, legacy, inbox, tournamentCards, userPermissionGrants };
+}
+
+/** 台北日期 `YYYY-MM-DD`（台北無夏令時間，固定 +8）。 */
+function taipeiDateKey(ms) {
+  return new Date(ms + 8 * HOUR_MS).toISOString().slice(0, 10);
 }
 
 /** 匯出的種子資料物件（於 import 時以此當下時間產生一次）。 */
