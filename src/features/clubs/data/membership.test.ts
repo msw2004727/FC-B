@@ -689,3 +689,70 @@ describe('leaveTeam', () => {
   });
 });
 
+/* ── K3：recountTeamMembers 接線 ─────────────── */
+
+describe('recountTeamMembers（K3）', () => {
+  const team: TeamDoc = {
+    id: 'team_main',
+    name: 'Main Team',
+    captainUid: 'cap_uid',
+    leaderUids: [],
+    coachUids: [],
+  };
+  const liveSingleTeam = {
+    exists: () => true,
+    data: () => ({
+      teamIds: ['team_main'],
+      teamNames: ['Main Team'],
+      teamId: 'team_main',
+      teamName: 'Main Team',
+    }),
+  };
+
+  it('核准成功後呼叫 recountTeamMembers({ teamId })', async () => {
+    getDocMock.mockResolvedValue({ exists: () => true, data: () => ({ teamIds: [] }) } as never);
+    await approveTeamJoin({
+      team,
+      applicantUid: 'applicant_uid',
+      message: {
+        id: 'msg_1',
+        meta: { teamId: 'team_main', teamName: 'Main Team', applicantUid: 'applicant_uid', applicantName: '申請者', groupId: 'tjr_1' },
+      },
+      reviewer: { uid: 'cap_uid', displayName: '隊長' },
+    });
+    const recount = callFnMock.mock.calls.filter((c) => c[0] === 'recountTeamMembers');
+    expect(recount).toHaveLength(1);
+    expect(recount[0]![1]).toEqual({ teamId: 'team_main' });
+  });
+
+  it('已在隊上（changed=false）不重算', async () => {
+    getDocMock.mockResolvedValue(liveSingleTeam as never);
+    await approveTeamJoin({
+      team,
+      applicantUid: 'applicant_uid',
+      message: {
+        id: 'msg_1',
+        meta: { teamId: 'team_main', teamName: 'Main Team', applicantUid: 'applicant_uid', applicantName: '申請者', groupId: 'tjr_1' },
+      },
+      reviewer: { uid: 'cap_uid', displayName: '隊長' },
+    });
+    expect(callFnMock.mock.calls.some((c) => c[0] === 'recountTeamMembers')).toBe(false);
+  });
+
+  it('退出後呼叫 recountTeamMembers；失敗只 warn、主結果成功', async () => {
+    getDocMock.mockResolvedValue(liveSingleTeam as never);
+    callFnMock.mockImplementation((async (name: string) => {
+      if (name === 'recountTeamMembers') throw new Error('recount down');
+      return { success: true };
+    }) as never);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await leaveTeam({ team, self: { uid: 'regular_uid' } });
+
+    expect(result.stillStaff).toBe(false);
+    const recount = callFnMock.mock.calls.filter((c) => c[0] === 'recountTeamMembers');
+    expect(recount).toHaveLength(1);
+    expect(recount[0]![1]).toEqual({ teamId: 'team_main' });
+    expect(warnSpy).toHaveBeenCalled();
+  });
+});

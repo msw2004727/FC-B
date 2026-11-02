@@ -5,7 +5,7 @@
  * - 核准、退出 → 前端直寫 `users/{uid}`；payload 形狀必須通過 Rules 的
  *   `isTeamFieldShrinkOrClear` / `isSafeTeamMembershipUpdateByStaff` /
  *   `isSafeGrantedTeamReviewJoinUpdate`；`updatedAt` 用 `serverTimestamp()`。
- * - 不寫 `teams.members`（伺服器 Callable `recountTeamMembers` 維護），
+ * - 不寫 `teams.members`；核准、退出後 best-effort 呼叫 Callable `recountTeamMembers` 由伺服器重算，
  *   不寫 `teams.coachUids`（Rules 的 `isTeamStaffFieldsOnly` 不含 coachUids）。
  * - 角色重算只走 `autoPromoteTeamRole` Callable。
  * - 申請加入走 `deliverToInbox` + `enqueuePrivilegedLineNotification` + `writeAuditLog`。
@@ -522,7 +522,12 @@ export async function approveTeamJoin({
 
     // A 核准不重算角色（新成員沒有幹部職位）；角色重算只在退出時走 autoPromoteTeamRole。
 
-    // TODO(recountTeamMembers): teams.members 由伺服器 Callable 維護，本版不呼叫。
+    // K3：人數交給伺服器 recountTeamMembers 重算（best-effort，失敗不擋核准）。
+    await runBestEffort(
+      () => callFn('recountTeamMembers', { teamId }),
+      'approveTeamJoin.recountTeamMembers',
+      teamId,
+    );
 
     // 5. 通知 applicant
     const finalTeamName = result.update.teamName || teamName || result.update.teamId || '';
@@ -768,7 +773,12 @@ export async function leaveTeam({
     teamId,
   );
 
-  // TODO(recountTeamMembers): teams.members 由伺服器 Callable 維護，本版不呼叫。
+  // K3：人數交給伺服器 recountTeamMembers 重算（best-effort，失敗不擋退出）。
+  await runBestEffort(
+    () => callFn('recountTeamMembers', { teamId }),
+    'leaveTeam.recountTeamMembers',
+    teamId,
+  );
 
   return { stillStaff };
 }
