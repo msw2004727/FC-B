@@ -1,6 +1,6 @@
 // 站內信投遞與 LINE 推播（站長 2026-11-02 Q2）：全體只送站內信；指定用戶／俱樂部／角色照送，條件查詢＋上限；不讀 users 全集合。
 // 只用 mock 的 Callable，不送真推播。
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetRecentInboxDeliveryForTest } from '@/data/inbox-delivery';
 
@@ -9,11 +9,9 @@ import type { AdminMessage } from './admin-message-model';
 import { LINE_PUSH_ROLE_LIMIT, LINE_PUSH_TEAM_LIMIT, deliverAdminMessage, queueLinePushByTarget } from './admin-message-send';
 
 const callFn = vi.hoisted(() => vi.fn());
-vi.mock('firebase/firestore', async () => (await import('../fake-firestore.test-helper')).fakeSdk);
-// 非同步 mock 工廠先解析一次，避免頁面同時動態載入兩次時拿到真的 SDK。
-beforeAll(async () => {
-  await import('firebase/firestore');
-});
+// 同步工廠（照 TeamManagePage.test）：假 SDK 由 vi.hoisted 先載入。
+const fakeModule = await vi.hoisted(async () => import('../fake-firestore.test-helper'));
+vi.mock('firebase/firestore', () => fakeModule.fakeSdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 vi.mock('@/data/callables', () => ({ callFn }));
 

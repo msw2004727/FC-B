@@ -1,6 +1,8 @@
 // 聊天室稽核頁籤（W2A-5）：全走既有 Callable、前端 Firestore 讀取 0；說明小字拿掉；搜尋 → 對話列表 → 對話內容 → Log。
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 
 import { toast } from '@/ui/Toast';
 
@@ -69,6 +71,12 @@ function respond(name: string, req: Record<string, unknown>): unknown {
 function callsOf(name: string): Record<string, unknown>[] {
   return callFn.mock.calls.filter((c) => c[0] === name).map((c) => c[1] as Record<string, unknown>);
 }
+
+// 載入真正的繁中字典（照 ActivitiesPage.test）。
+beforeAll(async () => {
+  _setDictLoaderForTest(null);
+  await setLocale('zh-TW');
+});
 
 beforeEach(() => {
   callFn.mockReset();

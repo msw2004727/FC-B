@@ -1,5 +1,5 @@
 // adminMessages 讀寫：讀取預算（進頁 ≤ 54）、排程搶占 transaction、回收只刪自己的副本。
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fakeSdk, fakeState, limitOf, resetFakeFirestore, totalReads, type FakeDoc } from '../fake-firestore.test-helper';
 import {
@@ -15,11 +15,9 @@ import {
   updateAdminMessageStatus,
 } from './admin-messages-repo';
 
-vi.mock('firebase/firestore', async () => (await import('../fake-firestore.test-helper')).fakeSdk);
-// 非同步 mock 工廠先解析一次，避免頁面同時動態載入兩次時拿到真的 SDK。
-beforeAll(async () => {
-  await import('firebase/firestore');
-});
+// 同步工廠（照 TeamManagePage.test）：假 SDK 由 vi.hoisted 先載入。
+const fakeModule = await vi.hoisted(async () => import('../fake-firestore.test-helper'));
+vi.mock('firebase/firestore', () => fakeModule.fakeSdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 
 function docs(n: number, status = 'sent'): FakeDoc[] {

@@ -2,6 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
+
 import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -15,11 +17,9 @@ const state = vi.hoisted(() => ({
   callFn: vi.fn(),
 }));
 
-vi.mock('firebase/firestore', async () => (await import('../fake-firestore.test-helper')).fakeSdk);
-// 非同步 mock 工廠先解析一次，避免頁面同時動態載入兩次時拿到真的 SDK。
-beforeAll(async () => {
-  await import('firebase/firestore');
-});
+// 同步工廠（照 TeamManagePage.test）：假 SDK 由 vi.hoisted 先載入。
+const fakeModule = await vi.hoisted(async () => import('../fake-firestore.test-helper'));
+vi.mock('firebase/firestore', () => fakeModule.fakeSdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 vi.mock('@/data/callables', () => ({ callFn: state.callFn }));
 vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => 'resolved', getCurrentUser: async () => ({ uid: 'U-admin' }) }));
@@ -104,6 +104,12 @@ async function typeInto(id: string, value: string): Promise<void> {
     fireEvent.input(el);
   });
 }
+
+// 載入真正的繁中字典（照 ActivitiesPage.test）。
+beforeAll(async () => {
+  _setDictLoaderForTest(null);
+  await setLocale('zh-TW');
+});
 
 beforeEach(() => {
   resetFakeFirestore();
