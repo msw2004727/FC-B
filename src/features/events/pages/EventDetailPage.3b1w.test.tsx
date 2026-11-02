@@ -586,7 +586,9 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     }));
     mountA();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
-    await screen.findByText('events.signup.error.unknown');
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '連線逾時，請檢查網路後重新整理再試',
+    }));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.toast).not.toHaveBeenCalledWith({ message: '報名成功！' });

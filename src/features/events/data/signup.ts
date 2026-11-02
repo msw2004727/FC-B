@@ -570,6 +570,8 @@ function reusableSnapshot(
 ): SignupSnapshot | null {
   const { snapshot, snapshotLoadedAt, snapshotGeneration, snapshotParticipants } = input;
   if (!snapshot || typeof snapshotLoadedAt !== 'number' || !snapshotParticipants) return null;
+  // 早鳥要扣點：確認視窗之後一律重讀，不靠呼叫端不傳快照來守。
+  if (input.earlyBirdAccepted === true) return null;
   const age = Date.now() - snapshotLoadedAt;
   if (!(age >= 0 && age <= SIGNUP_SNAPSHOT_REUSE_MS)) return null;
   if (snapshotGeneration !== captured.generation) return null;

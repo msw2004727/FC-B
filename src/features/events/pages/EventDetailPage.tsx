@@ -389,10 +389,13 @@ function EventDetailSession({
         if (uid) {
           const [loaded, historyResult] = await Promise.all([
             loadEventDetail(publicId),
-            loadViewerRegistrations(uid).then(
-              (rows) => ({ rows, failed: false as const }),
-              () => ({ rows: [] as RegistrationDoc[], failed: true as const }),
-            ),
+            (async () => {
+              try {
+                return { rows: await loadViewerRegistrations(uid), failed: false as const };
+              } catch {
+                return { rows: [] as RegistrationDoc[], failed: true as const };
+              }
+            })(),
           ]);
           detail = loaded;
           history = historyResult.rows;
@@ -1274,7 +1277,7 @@ function EventDetailSession({
       // T-086a：逾時＝結果未知，顯示既有錯誤訊息後重讀名單；不自動重送。
       if (error instanceof SignupError && error.originalCode === 'CALLABLE_TIMEOUT'
         && alive.current && currentViewer.current.uid === uid) {
-        show(errorKey(error, 'events.detailPage.actionError'));
+        toast.show({ message: error.message });
         await refresh(current);
         return;
       }

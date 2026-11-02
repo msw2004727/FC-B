@@ -1066,6 +1066,22 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     expect(recorded('registerForEvent')).toHaveLength(1);
   });
 
+  it('早鳥報名即使快照新鮮也重讀', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_MS);
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const harness = signupContext({}, 'uidA');
+    await registerForEvent(selfInput(harness, {
+      snapshot: makeSnapshot('evtA', 'uidA'),
+      snapshotLoadedAt: FIXED_MS,
+      snapshotGeneration: 1,
+      snapshotParticipants: [{ type: 'self' }],
+      earlyBirdAccepted: true,
+      earlyBirdExpectedCost: 10,
+    })).catch(() => undefined);
+    expect(harness.load).toHaveBeenCalledTimes(1);
+  });
+
   it('重用的快照仍走前置檢查：活動已結束不送 Callable', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(FIXED_MS);
