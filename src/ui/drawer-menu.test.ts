@@ -172,7 +172,6 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
     expect(drawerItemStatus(byLabel('活動管理'))).toBe('done');
     // 測試同步更新：K1a 起俱樂部管理接上 /team-manage。
     expect(drawerItemStatus(byLabel('俱樂部管理'))).toBe('done');
-    expect(drawerItemStatus(byLabel('小遊戲管理'))).toBe('wip');
     expect(drawerItemStatus(byLabel('分享網頁'))).toBe('done');
   });
 
@@ -217,10 +216,10 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
 describe('新站不做的入口不出現在抽屜', () => {
   it('SEO 儀表板、佈景主題、EXP 管理、成就/徽章管理、二手商品、賽事管理不在 DRAWER_MENUS', () => {
     const labels = DRAWER_MENUS.map((e) => e.label);
-    for (const label of ['SEO 儀表板', '佈景主題', '手動 EXP 管理', '自動 EXP 管理', '成就/徽章管理', '二手商品區', '二手商品管理', '賽事管理']) {
+    for (const label of ['SEO 儀表板', '佈景主題', '手動 EXP 管理', '自動 EXP 管理', '成就/徽章管理', '二手商品區', '二手商品管理', '賽事管理', '小遊戲管理']) {
       expect(labels).not.toContain(label);
     }
-    const removedPages = ['page-admin-seo', 'page-admin-themes', 'page-admin-exp', 'page-admin-auto-exp', 'page-admin-achievements', 'page-shop', 'page-admin-shop', 'page-admin-tournaments'];
+    const removedPages = ['page-admin-seo', 'page-admin-themes', 'page-admin-exp', 'page-admin-auto-exp', 'page-admin-achievements', 'page-shop', 'page-admin-shop', 'page-admin-tournaments', 'page-admin-games'];
     expect(DRAWER_MENUS.some((e) => removedPages.includes(e.page ?? ''))).toBe(false);
   });
 });
