@@ -189,6 +189,8 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
 
   async function onTeamInput(value: string): Promise<void> {
     setTeamQuery(value);
+    // 俱樂部清單已載入時 await 幾乎立即返回，可能早於重繪；先同步更新 ref，免得最新輸入被誤判為過期。
+    teamQueryRef.current = value;
     const raw = value.trim();
     const seq = ++teamSeq.current;
     if (!raw) {
