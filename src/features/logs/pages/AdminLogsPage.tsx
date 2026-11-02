@@ -1,4 +1,5 @@
 import '@/styles/legacy/admin-logs.css';
+import '../legacy/admin-log-tabs.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useGoBack } from '@/core/back-guard';
@@ -6,11 +7,14 @@ import { useViewer } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { EmptyState } from '@/ui/EmptyState';
 import { toast } from '@/ui/Toast';
+import { PmAuditPanel } from '../components/PmAuditPanel';
 import {
   OPLOG_TYPE_GROUPS,
   filterOperationLogsList,
   findOperationLogByDocId,
+  getAvailableAdminLogTabs,
   paginateOperationLogs,
+  type AdminLogTabKey,
 } from '../data/log-center-model';
 import {
   buildOperationLogDiagnosticText,
@@ -25,12 +29,17 @@ import {
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
+/** 目前 B 已做好的頁籤（稽核日誌、錯誤日誌、用戶提示尚未搬，頁籤列不顯示它們）。 */
+const BUILT_LOG_TABS: readonly AdminLogTabKey[] = ['operation', 'chat'];
+
 /**
  * 後台「操作日誌」頁面（路由 `/admin/logs`），DOM／class 照 A `pages/admin-system.html` 的
  * `#page-admin-logs` 與 `user-admin-exp.js#renderOperationLogs`。
  * - 權限：需要 `admin.logs.entry`。
  * - 不實作 A 頁首的「一鍵清除」（`clearAllData`；Rules 也不允許刪除，且屬不可逆大批量刪除）。
- * - 暫不顯示頁籤列（稽核日誌、錯誤日誌等補齊後，頁籤與重新整理、功能說明按鈕一併回來）。
+ * - 頁籤列（A `admin-log-tabs.js`）：目前只有「操作日誌」與「聊天室稽核」（後者只限 super_admin，站長 2026-11-02 Q5）。
+ *   只有一個頁籤可用時不顯示頁籤列，標題維持「操作日誌」；有兩個以上時標題照 A 改為「日誌中心」。
+ *   稽核日誌、錯誤日誌等補齊後，頁籤與重新整理、功能說明按鈕一併回來。
  * - 讀取失敗時顯示錯誤與重試（A 沒有此畫面，本卡新增，D1）。
  */
 export default function AdminLogsPage(): JSX.Element {
@@ -38,6 +47,14 @@ export default function AdminLogsPage(): JSX.Element {
   const viewer = useViewer();
 
   const canAccessPage = viewer.hasPermission('admin.logs.entry');
+  const tabs = useMemo(
+    () => getAvailableAdminLogTabs(viewer.role).filter((tab) => BUILT_LOG_TABS.includes(tab.key)),
+    [viewer.role],
+  );
+  const showTabs = tabs.length > 1;
+  const [activeTab, setActiveTab] = useState<AdminLogTabKey>('operation');
+  const [chatMounted, setChatMounted] = useState(false);
+  const safeTab: AdminLogTabKey = tabs.some((tab) => tab.key === activeTab) ? activeTab : 'operation';
   // 照 A `goBackFromAdminLogs`：沒有上一頁時回數據儀表板（能進才回），否則回首頁。
   const goBack = useGoBack(viewer.hasPermission('admin.dashboard.entry') ? '/admin/ops' : '/');
 
@@ -143,11 +160,32 @@ export default function AdminLogsPage(): JSX.Element {
               />
             </svg>
           </button>
-          <h2>{t('logs.tabs.operation.title')}</h2>
+          <h2>{showTabs ? t('logs.centerTitle') : t('logs.tabs.operation.title')}</h2>
         </div>
 
+        {showTabs ? (
+          <div class="tab-bar admin-log-tabs" id="admin-log-tabs" role="tablist">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={safeTab === tab.key}
+                class={`tab${safeTab === tab.key ? ' active' : ''}`}
+                data-admin-log-tab={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  if (tab.key === 'chat') setChatMounted(true);
+                }}
+              >
+                {t(tab.titleKey)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <div class="admin-log-panels">
-          <section class="admin-log-panel" data-admin-log-panel="operation">
+          <section class="admin-log-panel" data-admin-log-panel="operation" hidden={safeTab !== 'operation'}>
             <div class="admin-search">
               <input
                 type="text"
@@ -336,6 +374,11 @@ export default function AdminLogsPage(): JSX.Element {
               )}
             </div>
           </section>
+          {showTabs && chatMounted ? (
+            <section class="admin-log-panel" data-admin-log-panel="chat" hidden={safeTab !== 'chat'}>
+              <PmAuditPanel />
+            </section>
+          ) : null}
         </div>
       </section>
     </div>

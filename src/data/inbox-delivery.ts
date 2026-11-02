@@ -34,6 +34,11 @@ export interface InboxDeliveryInput {
   /** 寄件者 UID（目前登入者）；伺服器仍會強制覆寫 fromUid。 */
   senderUid: string | null;
   extra?: InboxDeliveryExtra | null;
+  /**
+   * 選填：固定的信件 ID（例如站內信管理用 `msg_${adminMsgId}`）。重送時伺服器對群發覆寫同一份、
+   * 點對點回 already-exists（視為已送），不會產生第二封。省略時照 A 用 `msg_<時間>_<亂數>`。
+   */
+  messageId?: string | null;
   /** 測試注入。 */
   now?: Date;
   random?: () => number;
@@ -83,7 +88,7 @@ export function buildInboxMessage(input: InboxDeliveryInput): Record<string, unk
       : (targetTeamId ? 'team' : ((Array.isArray(targetRoles) && targetRoles.length) ? 'role' : 'all')));
   const dedupeKey = buildInboxDeliveryDedupeKey(category, title, body, directTargetUid, senderName, extra);
   return {
-    id: `msg_${nowMs}_${random().toString(36).slice(2, 6)}`,
+    id: input.messageId || `msg_${nowMs}_${random().toString(36).slice(2, 6)}`,
     type: category,
     typeName: categoryName,
     title,

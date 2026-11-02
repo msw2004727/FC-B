@@ -385,7 +385,8 @@ export function App({
       </Suspense>
       <Suspense fallback={null}>
         {/* 私訊只在登入後可用；未登入不載入浮層外框。 */}
-        {chromeUid !== null && <LazyPmDialogHost />}
+        {/* 站內信排程執行器借此掛載：角色由既有 routeAccess 傳入，不另讀 viewer。 */}
+        {chromeUid !== null && <LazyPmDialogHost viewer={routeAccess} />}
       </Suspense>
       <LazyUidQrModal user={user} onLogin={handleLogin} loginPending={pending} />
       <MobileLineLoginHintModal

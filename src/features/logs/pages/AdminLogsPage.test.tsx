@@ -26,6 +26,16 @@ vi.mock('@/data/user-roles', () => ({
   useUserRoles: (uids: readonly string[]) => mockUseUserRoles(uids),
 }));
 
+// 聊天室稽核頁籤（W2A-5）只走 Callable；mock 掉，確認未切頁籤前不呼叫。
+const mockCallFn = vi.fn(async (name: string, _req: unknown): Promise<unknown> => {
+  if (name === 'getPrivateMessageSettings') return { ok: true, settings: { allowUserToUserPm: false } };
+  if (name === 'getPmAuditLogs') return { ok: true, logs: [], nextCursor: null, hasMore: false };
+  return {};
+});
+vi.mock('@/data/callables', () => ({
+  callFn: (name: string, req: unknown) => mockCallFn(name, req),
+}));
+
 const mockFetchOperationLogs = vi.fn<() => Promise<OperationLogDoc[]>>();
 const mockCopyDiagnostic = vi.fn<(text: string) => Promise<void>>();
 
@@ -199,7 +209,10 @@ describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
   });
 
   describe('頁首與篩選列（逐項照 A pages/admin-system.html）', () => {
-    it('頁首只有返回鍵與「操作日誌」，沒有「一鍵清除」、頁籤列與任何寫入入口', async () => {
+    // 測試同步更新（W2A-5，站長 2026-11-02 Q5）：super_admin 多了「聊天室稽核」頁籤，頁籤列改由 super_admin 案例驗證；
+    // 只有一個頁籤可用的 admin 維持原本「沒有頁籤列」的畫面。
+    it('admin：頁首只有返回鍵與「操作日誌」，沒有「一鍵清除」、頁籤列與任何寫入入口', async () => {
+      mockUseViewer.mockReturnValue(makeViewer({ role: 'admin' }));
       render(<AdminLogsPage />);
       await waitFor(() => {
         expect(screen.getByText('沒有符合條件的紀錄')).toBeTruthy();
@@ -220,6 +233,35 @@ describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
       expect(screen.queryByRole('tablist')).toBeNull();
       expect(page.querySelector('#admin-log-refresh-btn')).toBeNull();
       expect(page.querySelector('#admin-log-info-btn')).toBeNull();
+    });
+
+    it('super_admin：標題「日誌中心」，頁籤只有已做好的「操作日誌」「聊天室稽核」；切到稽核才呼叫 Callable', async () => {
+      render(<AdminLogsPage />);
+      await waitFor(() => {
+        expect(screen.getByText('沒有符合條件的紀錄')).toBeTruthy();
+      });
+      const page = document.getElementById('page-admin-logs') as HTMLElement;
+      expect(page.querySelector('.page-header h2')?.textContent).toBe('日誌中心');
+      expect(page.querySelector('#admin-log-tabs')?.className).toBe('tab-bar admin-log-tabs');
+      expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual(['操作日誌', '聊天室稽核']);
+      expect(screen.getByRole('tab', { name: '操作日誌' }).className).toBe('tab active');
+      expect(page.querySelector('[data-admin-log-panel="chat"]')).toBeNull();
+      expect(mockCallFn).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('tab', { name: '聊天室稽核' }));
+      await waitFor(() => {
+        expect(mockCallFn).toHaveBeenCalledWith('getPrivateMessageSettings', {});
+      });
+      const chat = page.querySelector('[data-admin-log-panel="chat"]') as HTMLElement;
+      const operation = page.querySelector('[data-admin-log-panel="operation"]') as HTMLElement;
+      expect(chat.hidden).toBe(false);
+      expect(operation.hidden).toBe(true);
+      expect(chat.querySelector('.pm-audit-layout')).not.toBeNull();
+
+      fireEvent.click(screen.getByRole('tab', { name: '操作日誌' }));
+      expect(chat.hidden).toBe(true);
+      expect(operation.hidden).toBe(false);
+      expect(mockFetchOperationLogs).toHaveBeenCalledTimes(1);
     });
 
     it('搜尋框 placeholder 與類型下拉（optgroup 與選項順序）逐字照 A', async () => {

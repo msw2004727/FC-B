@@ -78,6 +78,11 @@ describe('buildInboxMessage（A _deliverMessageToInbox）', () => {
     expect(buildInboxMessage({ ...base, targetUid: null, extra: { targetRoles: ['admin'] } }).targetType).toBe('role');
     expect(buildInboxMessage({ ...base, targetUid: null }).targetType).toBe('all');
   });
+
+  it('給了 messageId 就用固定 ID（重送覆寫同一份）；沒給照 A 時間＋亂數', () => {
+    expect(buildInboxMessage({ ...base, messageId: 'msg_mg_1' }).id).toBe('msg_mg_1');
+    expect(buildInboxMessage({ ...base, messageId: null }).id).toMatch(/^msg_\d+_/);
+  });
 });
 
 describe('buildInboxDeliveryDedupeKey', () => {
