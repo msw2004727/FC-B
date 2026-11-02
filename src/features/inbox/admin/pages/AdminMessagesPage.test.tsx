@@ -405,7 +405,7 @@ describe('撰寫與發送（Callable 用 mock，不送真推播）', () => {
     });
     expect(fakeState.writes.some((w) => w.op === 'set')).toBe(true);
     expect(state.callFn.mock.calls.some((c) => c[0] === 'enqueuePrivilegedLineNotification')).toBe(false);
-    expect(vi.mocked(toast.show).mock.calls.some((c) => c[0].tone === 'success')).toBe(false);
+    expect(vi.mocked(toast.show).mock.calls.some((c) => typeof c[0] !== 'string' && c[0].tone === 'success')).toBe(false);
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.getByRole('button', { name: '發送' }).hasAttribute('disabled')).toBe(false);
     expect(container.querySelectorAll('[data-msg-id]').length).toBe(2);
