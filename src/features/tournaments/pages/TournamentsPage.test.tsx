@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
@@ -219,14 +219,28 @@ describe('新增、編輯、刪除', () => {
     mockUseViewer.mockReturnValue(MANAGER);
   });
 
-  function fill(id: string, value: string): void {
+  // @testing-library/preact 在載入 preact/compat 後會把 fireEvent.change 改發 input 事件（表單用 createPortal 會載入 compat），
+  // 下拉選單與檔案欄位的 onChange 聽的是原生 change，所以這兩種直接派送原生 change 事件（同 AdminBannersPage.test 的選檔寫法）。
+  async function dispatchChange(el: Element): Promise<void> {
+    await act(async () => {
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  async function fill(id: string, value: string): Promise<void> {
     const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
-    if (el instanceof HTMLSelectElement) {
+    if (el.tagName === 'SELECT') {
       el.value = value;
-      fireEvent.change(el);
+      await dispatchChange(el);
     } else {
       fireEvent.input(el, { target: { value } });
     }
+  }
+
+  async function pickImage(file: File): Promise<void> {
+    const input = document.getElementById('tc-image') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await dispatchChange(input);
   }
 
   it('新增（無圖片）：驗證不過不送；合格後送出並加進清單，不重讀', async () => {
@@ -235,16 +249,16 @@ describe('新增、編輯、刪除', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.queryByText('刪除')).toBeNull();
 
-    fill('tc-name', '冬季盃');
-    fill('tc-type', 'cup');
-    fill('tc-start', '2026-12-20');
-    fill('tc-end', '2026-12-21');
-    fill('tc-url', 'http://winter.example.com/');
+    await fill('tc-name', '冬季盃');
+    await fill('tc-type', 'cup');
+    await fill('tc-start', '2026-12-20');
+    await fill('tc-end', '2026-12-21');
+    await fill('tc-url', 'http://winter.example.com/');
     fireEvent.click(screen.getByText('儲存'));
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ message: '連結網址需以 https:// 開頭', tone: 'error' }));
     expect(mockSave).not.toHaveBeenCalled();
 
-    fill('tc-url', 'https://winter.example.com/');
+    await fill('tc-url', 'https://winter.example.com/');
     fireEvent.click(screen.getByText('儲存'));
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
     expect(mockUpload).not.toHaveBeenCalled();
@@ -263,17 +277,14 @@ describe('新增、編輯、刪除', () => {
   it('新增（有圖片）：裁切後先上傳再寫文件', async () => {
     await renderLoaded();
     fireEvent.click(screen.getByText('＋ 新增賽事'));
-    const input = document.getElementById('tc-image') as HTMLInputElement;
-    const file = new File([new Uint8Array([1, 2, 3])], 'cover.png', { type: 'image/png' });
-    Object.defineProperty(input, 'files', { value: [file] });
-    fireEvent.change(input);
+    await pickImage(new File([new Uint8Array([1, 2, 3])], 'cover.png', { type: 'image/png' }));
     fireEvent.click(await screen.findByText('cropper-ok'));
 
-    fill('tc-name', '冬季盃');
-    fill('tc-type', 'league');
-    fill('tc-start', '2026-12-20');
-    fill('tc-end', '2026-12-20');
-    fill('tc-url', 'https://winter.example.com/');
+    await fill('tc-name', '冬季盃');
+    await fill('tc-type', 'league');
+    await fill('tc-start', '2026-12-20');
+    await fill('tc-end', '2026-12-20');
+    await fill('tc-url', 'https://winter.example.com/');
     fireEvent.click(screen.getByText('儲存'));
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
@@ -288,15 +299,13 @@ describe('新增、編輯、刪除', () => {
     mockUpload.mockResolvedValueOnce(null);
     await renderLoaded();
     fireEvent.click(screen.getByText('＋ 新增賽事'));
-    const input = document.getElementById('tc-image') as HTMLInputElement;
-    Object.defineProperty(input, 'files', { value: [new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' })] });
-    fireEvent.change(input);
+    await pickImage(new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' }));
     fireEvent.click(await screen.findByText('cropper-ok'));
-    fill('tc-name', '冬季盃');
-    fill('tc-type', 'cup');
-    fill('tc-start', '2026-12-20');
-    fill('tc-end', '2026-12-20');
-    fill('tc-url', 'https://winter.example.com/');
+    await fill('tc-name', '冬季盃');
+    await fill('tc-type', 'cup');
+    await fill('tc-start', '2026-12-20');
+    await fill('tc-end', '2026-12-20');
+    await fill('tc-url', 'https://winter.example.com/');
     fireEvent.click(screen.getByText('儲存'));
     await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText('儲存')).toBeTruthy());
@@ -314,7 +323,7 @@ describe('新增、編輯、刪除', () => {
     expect((document.getElementById('tc-end') as HTMLInputElement).value).toBe('2026-10-11');
     expect((document.getElementById('tc-url') as HTMLInputElement).value).toBe('https://cup.toosterx.com/');
 
-    fill('tc-name', '飛達盃 2026');
+    await fill('tc-name', '飛達盃 2026');
     fireEvent.click(screen.getByText('儲存'));
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
     expect(mockSave.mock.calls[0]?.[0]).toMatchObject({ existing: { id: 'tc_feda' }, image: null });
