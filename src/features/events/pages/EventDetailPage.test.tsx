@@ -1570,6 +1570,14 @@ describe('T-088 背景刷新晚到', () => {
     fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
   }
 
+  // 晚到資料的提交排在 act 收尾之後：多沖兩輪巨集任務，讓提交、render、effect 都完成再斷言。
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+  }
+
   it('refresh 的舊出席讀取晚到時，保留期間重讀寫入的新紀錄', async () => {
     mocks.viewer.mockReturnValue(manager());
     mocks.detail.mockResolvedValue(detailFor(false));
@@ -1613,6 +1621,7 @@ describe('T-088 背景刷新晚到', () => {
     await act(async () => {
       stale.resolve([]);
     });
+    await settle();
     expect(attendanceRowText('乙')).toContain('✓');
   });
 
@@ -1703,11 +1712,17 @@ describe('T-088 背景刷新晚到', () => {
       expect(counts[1]?.startsWith('1')).toBe(true);
     });
 
+    // 晚到的舊名單多帶一位「丙」當提交記號：看到丙代表這份讀取確實被採用，才有資格斷言 teamKey。
     await act(async () => {
-      refreshRows.resolve([{ ...rosterReg, teamKey: 'A' }]);
+      refreshRows.resolve([
+        { ...rosterReg, teamKey: 'A' },
+        { ...rosterReg, _docId: 'targetC', userId: 'uidC', userName: '丙', teamKey: 'A' },
+      ]);
     });
+    await screen.findByText('丙');
+    await settle();
     const counts = teamCountTexts();
-    expect(counts[0]?.startsWith('0')).toBe(true);
+    expect(counts[0]?.startsWith('1')).toBe(true);
     expect(counts[1]?.startsWith('1')).toBe(true);
   });
 
@@ -1744,6 +1759,7 @@ describe('T-088 背景刷新晚到', () => {
     await act(async () => {
       stalled.resolve([]);
     });
+    await settle();
     const counts = teamCountTexts();
     expect(counts[0]?.startsWith('0')).toBe(true);
     expect(counts[1]?.startsWith('1')).toBe(true);

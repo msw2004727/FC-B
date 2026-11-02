@@ -724,9 +724,10 @@ function EventDetailSession({
     return { ...next, registrations, attendanceRecords };
   }
 
-  function publishTeamRows(rows: TeamRegistration[]): void {
+  // countAsPublish=false：只是把快照自己的名單同步回來（沒有新資料），不能讓進行中的讀取誤判「期間有發布」。
+  function publishTeamRows(rows: TeamRegistration[], countAsPublish = true): void {
     if (!alive.current) return;
-    teamPublishSeq.current += 1;
+    if (countAsPublish) teamPublishSeq.current += 1;
     teamRowsRef.current = rows;
     setTeamRegistrations(rows);
     // 照 A _tsApplyTeamAssignments＋_tsRefreshTeamSplitUi：已載入的名單也同步隊伍（含失敗還原）（Gemini 審查 P2）。
@@ -780,7 +781,7 @@ function EventDetailSession({
     // 照 A 重讀名單後更新分隊快取；初始空陣列不能覆蓋預載結果。
     if (rosterPhase !== 'ready' && snapshot.registrations.length === 0) return;
     teamLoadSequence.current += 1;
-    publishTeamRows(snapshot.registrations);
+    publishTeamRows(snapshot.registrations, false);
   }, [snapshot?.registrations, rosterPhase, viewer.uid]);
 
   async function runTeamBatch(action: TeamBatchAction): Promise<void> {
