@@ -1616,6 +1616,46 @@ describe('T-088 背景刷新晚到', () => {
     expect(attendanceRowText('乙')).toContain('✓');
   });
 
+  it('期間的出席重讀失敗時，晚到的 refresh 出席讀取結果仍被採用', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.detail.mockResolvedValue(detailFor(false));
+    mocks.registrations.mockResolvedValue([rosterReg]);
+    mocks.attendance.mockResolvedValue([]);
+    mocks.settleAttendance.mockResolvedValue({
+      ok: true,
+      added: 0,
+      removed: 0,
+      targets: [],
+      granted: [],
+      skippedAlready: [],
+      skippedZeroAmount: false,
+      failed: [],
+    });
+    mountEvt();
+    await screen.findByText('乙');
+    fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
+    await screen.findByRole('button', { name: '完成' });
+
+    const refreshRead = deferred<unknown[]>();
+    let reads = 0;
+    mocks.attendance.mockImplementation(() => {
+      reads += 1;
+      // 第 1 次是 refresh 的讀取（掛起）；第 2 次是結算後的出席重讀（失敗）。
+      return reads === 1 ? refreshRead.promise : Promise.reject(new Error('offline'));
+    });
+    await clickEnabledSignup();
+    await waitFor(() => expect(reads).toBe(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    await waitFor(() => expect(reads).toBe(2));
+
+    // 重讀沒有寫入快照：不得因此丟掉同時進行的 refresh 讀到的新出席。
+    await act(async () => {
+      refreshRead.resolve([checkin]);
+    });
+    await waitFor(() => expect(attendanceRowText('乙')).toContain('✓'));
+  });
+
   it('沒有出席重讀介入時，refresh 的出席讀取結果照常採用', async () => {
     mocks.viewer.mockReturnValue(manager());
     mocks.detail.mockResolvedValue(detailFor(false));
@@ -1671,7 +1711,7 @@ describe('T-088 背景刷新晚到', () => {
     expect(counts[1]?.startsWith('1')).toBe(true);
   });
 
-  it('分隊尚未載入時，refresh 的 registrations 原樣採用', async () => {
+  it('期間沒有分隊發布時，晚到的 refresh registrations 原樣採用', async () => {
     const stalled = deferred<unknown[]>();
     const refreshRows = deferred<unknown[]>();
     let calls = 0;

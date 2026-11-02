@@ -298,6 +298,8 @@ function EventDetailSession({
   const sequence = useRef(0);
   const rosterSequence = useRef(0);
   const attendanceReloadSeq = useRef(0);
+  // T-088：出席重讀「真正寫入快照」時才加一；讀取失敗或被較新重讀作廢時不加，晚到的整包讀取才不會誤丟新資料。
+  const attendanceCommitSeq = useRef(0);
   // T-088：publishTeamRows 每次加一。讀取開始時記下，提交時若已變就重套 teamKey。
   const teamPublishSeq = useRef(0);
   const rosterPending = useRef(false);
@@ -483,7 +485,7 @@ function EventDetailSession({
     }
     rosterPending.current = true;
     const request = ++rosterSequence.current;
-    const attendanceSeq = attendanceReloadSeq.current;
+    const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
     setRosterPhase('loading');
     const canViewDetails = canViewDetailAttendanceRecordDetails(
@@ -577,7 +579,7 @@ function EventDetailSession({
     const request = ++rosterSequence.current;
     // 收起中的預讀被序號作廢後，未結束的那一輪不能繼續占著鎖，否則展開會永遠跳過。
     if (!rosterExpanded) rosterPending.current = false;
-    const attendanceSeq = attendanceReloadSeq.current;
+    const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
@@ -713,7 +715,7 @@ function EventDetailSession({
   ): Snapshot | null {
     if (!previous) return null;
     const registrations = registrationsWithPublishedTeams(next.registrations, teamSeq);
-    const attendanceRecords = attendanceReloadSeq.current !== attendanceSeq
+    const attendanceRecords = attendanceCommitSeq.current !== attendanceSeq
       ? previous.attendanceRecords
       : next.attendanceRecords;
     if (registrations === next.registrations && attendanceRecords === next.attendanceRecords) {
@@ -893,7 +895,7 @@ function EventDetailSession({
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
     rosterPending.current = false;
-    const attendanceSeq = attendanceReloadSeq.current;
+    const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
     try {
       // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
@@ -993,6 +995,7 @@ function EventDetailSession({
     if (!alive.current || request !== attendanceReloadSeq.current) {
       return records;
     }
+    attendanceCommitSeq.current += 1;
     setSnapshot((prev) => (prev && prev.eventDocId === docId
       ? { ...prev, attendanceRecords: records }
       : prev));
