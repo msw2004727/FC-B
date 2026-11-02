@@ -31,6 +31,16 @@ export function patchCachedTeam(teamKey: string, patch: Partial<TeamDoc>): void 
   cachedTeams = cachedTeams.map((team) => (isSameTeam(team, key) ? { ...team, ...patch } : team));
 }
 
+/** 同 patchCachedTeam，但 patch 依快取中的現值計算（巢狀欄位單點更新後用）。 */
+export function patchCachedTeamWith(
+  teamKey: string,
+  buildPatch: (cached: TeamDoc) => Partial<TeamDoc>,
+): void {
+  const key = teamKey.trim();
+  if (!cachedTeams || !key) return;
+  cachedTeams = cachedTeams.map((team) => (isSameTeam(team, key) ? { ...team, ...buildPatch(team) } : team));
+}
+
 /** 刪除成功後從快取移除該俱樂部，不重讀整集合。 */
 export function removeCachedTeam(teamKey: string): void {
   const key = teamKey.trim();

@@ -32,8 +32,25 @@ import { getFirebase } from '@/data/firebase';
 import { teams as teamsCollection } from '@/data/paths';
 import { buildMemberRoleUpdates } from '../club-policy';
 import type { MemberRoleKey, MemberRoleUpdates } from '../club-policy';
-import { invalidateTeams } from './teams-repo';
+import { invalidateTeams, patchCachedTeamWith } from './teams-repo';
 import type { TeamDoc } from './types';
+
+/**
+ * 成員巢狀資料（memberMatchData／memberActivityData／memberCourseData）單點更新後，
+ * 就地合併進列表快取，不清整份快取（避免下次進列表重讀整個 teams 集合）。
+ */
+function patchCachedMemberRecord(
+  docId: string,
+  fieldName: 'memberMatchData' | 'memberActivityData' | 'memberCourseData',
+  memberKey: string,
+  record: Record<string, unknown>,
+): void {
+  patchCachedTeamWith(docId, (cached) => {
+    const map = isRecord(cached[fieldName]) ? (cached[fieldName] as Record<string, unknown>) : {};
+    const previous = isRecord(map[memberKey]) ? (map[memberKey] as Record<string, unknown>) : {};
+    return { [fieldName]: { ...map, [memberKey]: { ...previous, ...record } } };
+  });
+}
 
 /** 對應 A updateTeam 的文件定位；優先使用 _docId，缺少時使用 id。 */
 export type TeamWriteTarget = Pick<TeamDoc, 'id' | '_docId'>;
@@ -412,7 +429,12 @@ export async function saveTeamMemberMatchData(
     'updatedAt',
     firestore.serverTimestamp(),
   );
-  invalidateTeams();
+  patchCachedMemberRecord(docId, 'memberMatchData', key, {
+    jerseyNumber: record.jerseyNumber,
+    position: record.position,
+    notes: record.notes,
+    updatedAt: record.updatedAt,
+  });
 }
 
 /**
@@ -457,5 +479,5 @@ export async function saveTeamMemberNote(
     'updatedAt',
     firestore.serverTimestamp(),
   );
-  invalidateTeams();
+  patchCachedMemberRecord(docId, fieldName, key, { notes: record.notes, updatedAt: record.updatedAt });
 }

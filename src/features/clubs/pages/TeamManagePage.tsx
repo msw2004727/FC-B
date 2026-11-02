@@ -7,7 +7,7 @@
  *   上架中在前，「已下架俱樂部」分段在後，各段 `sortTeams`。
  * - 讀取預算：進頁只呼叫 1 次 `loadTeams()`（同 session 已有快取則 0 讀）；置頂／上下架／光跡／刪除後就地更新，不重讀。
  * - 按鈕顯示與 handler 共用同一個 club-policy 判斷（R-IAM-011）。
- * - 與 A 刻意差異：上下架 await 寫入、失敗回滾並提示（A 不 await、不回滾）；刪除走 Callable `deleteTeam`，刪完留在本頁；
+ * - 與 A 刻意差異：上下架 await 寫入、失敗回滾並提示（A 不 await、不回滾），且寫操作日誌（A 不寫）；刪除走 Callable `deleteTeam`，刪完留在本頁；
  *   光跡開關下的說明小字不顯示（站長 11-02 裁定）。
  */
 import type { JSX } from 'preact';
@@ -20,7 +20,8 @@ import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
-import { useViewer } from '@/features/profile/data/viewer';
+import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
+import { requestViewerRefresh, useViewer } from '@/features/profile/data/viewer';
 import '@/features/events/legacy/activity.css';
 import {
   canAccessTeamManagePage,
@@ -77,10 +78,11 @@ export default function TeamManagePage(): JSX.Element {
   const busyRef = useRef<Set<string>>(new Set());
   const alive = useRef(true);
 
-  const canAccess = canAccessTeamManagePage(viewer);
+  // L-43：useViewer() 先給權限全 false 的最小 viewer；完整 viewer 到位前顯示骨架，不閃「權限不足」、不讀資料。
+  const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
+  const canAccess = !waiting && canAccessTeamManagePage(viewer);
   const isAdmin = canManageAllTeams(viewer);
   const showCreate = canCreateTeam(viewer);
-  const authPending = !viewer.uid && getLastKnownAuthUid() !== null;
 
   useEffect(() => {
     alive.current = true;
@@ -203,7 +205,7 @@ export default function TeamManagePage(): JSX.Element {
     await runExclusive(key, 'active', async () => {
       patchLocal(key, { active: next });
       try {
-        await saveTeamActive(team, next);
+        await saveTeamActive(team, next, actor);
         toast.show({ message: next ? `已上架「${team.name ?? ''}」` : `已下架「${team.name ?? ''}」` });
       } catch (error) {
         console.error('[TeamManagePage.toggleActive]', error);
@@ -277,6 +279,11 @@ export default function TeamManagePage(): JSX.Element {
           ? { status: 'ready', teams: prev.teams.filter((item) => teamKey(item) !== key) }
           : prev));
         toast.show({ message: `已刪除「${name}」` });
+        // 自己的角色被伺服器改了、或自己是該隊成員（隊籍被清）時，重讀自己的 viewer。
+        const myUid = String(viewer.uid ?? '').trim();
+        if (myUid && (result.roleChangedUids.includes(myUid) || viewer.teamIds.has(key))) {
+          requestViewerRefresh();
+        }
       } catch (error) {
         console.error('[TeamManagePage.delete]', error);
         toast.show({ message: getTeamAdminErrorMessage(error, '刪除俱樂部失敗，請稍後再試'), tone: 'error' });
@@ -399,7 +406,7 @@ export default function TeamManagePage(): JSX.Element {
 
   function renderBody(): JSX.Element {
     if (!canAccess) {
-      if (authPending) return <div class="skeleton skeleton-team-card" />;
+      if (waiting) return <div class="skeleton skeleton-team-card" role="status" />;
       return (
         <div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:.85rem">權限不足</div>
       );

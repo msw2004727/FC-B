@@ -2,7 +2,7 @@
 // 使用真的 teams-repo／teams-admin-write，只替換 Firestore SDK，藉此計算實際讀取次數。
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ViewerView } from '@/features/profile/data/viewer';
+import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { invalidateTeams } from '../data/teams-repo';
@@ -27,13 +27,21 @@ const state = vi.hoisted(() => ({
   sport: 'all',
   route: vi.fn(),
   callFn: vi.fn(),
+  refreshViewer: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => sdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
 vi.mock('@/data/callables', () => ({ callFn: state.callFn }));
 vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => 'resolved' }));
-vi.mock('@/features/profile/data/viewer', () => ({ useViewer: () => state.viewer }));
+vi.mock('@/features/profile/data/viewer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/profile/data/viewer')>();
+  return {
+    createMinimalViewer: actual.createMinimalViewer,
+    useViewer: () => state.viewer,
+    requestViewerRefresh: state.refreshViewer,
+  };
+});
 vi.mock('@/core/sport-filter', () => ({ useActiveSport: () => [state.sport, vi.fn()] }));
 vi.mock('@/core/back-guard', () => ({ useGoBack: () => vi.fn() }));
 vi.mock('preact-iso', () => ({
@@ -132,6 +140,27 @@ describe('讀取預算', () => {
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
+  it('置頂後卸載再掛載：getDocs 仍是 1 次，且畫面沿用就地更新後的快取', async () => {
+    const first = await renderLoaded(ADMIN, 'U-admin');
+    fireEvent.click(within(card(first.container, 'tm_a')).getByRole('button', { name: '置頂' }));
+    await waitFor(() => expect(within(card(first.container, 'tm_a')).getByRole('button', { name: '已置頂' })).toBeTruthy());
+    cleanup();
+    const second = await renderLoaded(ADMIN, 'U-admin');
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+    expect(cardIds(second.container).slice(0, 2)).toEqual(['tm_p', 'tm_a']);
+    expect(within(card(second.container, 'tm_a')).getByRole('button', { name: '已置頂' })).toBeTruthy();
+  });
+
+  it('完整 viewer 未到位（最小 viewer）：顯示骨架、不閃「權限不足」、0 讀', async () => {
+    state.viewer = createMinimalViewer('U-admin');
+    const { container } = render(<TeamManagePage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(container.querySelector('.skeleton[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(sdk.getDocs).not.toHaveBeenCalled();
+    expect(document.getElementById('team-manage-create-btn')).toBeNull();
+  });
+
   it('沒有 team.manage.entry：顯示權限不足，0 讀', async () => {
     state.viewer = makeViewer('U-user', []);
     render(<TeamManagePage />);
@@ -147,6 +176,8 @@ describe('讀取預算', () => {
     await waitFor(() => expect(sdk.updateDoc).toHaveBeenCalledTimes(1));
     fireEvent.click(within(card(container, 'tm_c')).getByRole('button', { name: '下架' }));
     await waitFor(() => expect(sdk.updateDoc).toHaveBeenCalledTimes(2));
+    fireEvent.click(card(container, 'tm_p').querySelector<HTMLInputElement>('.team-attention-switch input')!);
+    await waitFor(() => expect(sdk.updateDoc).toHaveBeenCalledTimes(3));
     fireEvent.click(within(card(container, 'tm_b')).getByRole('button', { name: '刪除' }));
     await waitFor(() => expect(container.querySelector('[data-team-id="tm_b"]')).toBeNull());
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
@@ -231,6 +262,10 @@ describe('管理員專屬（K2）', () => {
     fireEvent.click(within(card(container, 'tm_d')).getByRole('button', { name: '上架' }));
     await waitFor(() => expect(toast.show).toHaveBeenCalledWith({ message: '已上架「D隊」' }));
     expect(updatePayloads()[0]).toEqual({ active: true, updatedAt: { __ts: true } });
+    // 與 A 刻意差異：上下架也寫操作日誌
+    await waitFor(() => expect(sdk.setDoc).toHaveBeenCalled());
+    const log = (sdk.setDoc.mock.calls[0] as unknown[])[1] as Record<string, unknown>;
+    expect(log).toMatchObject({ type: 'team_active', actorUid: 'U-admin', content: '上架「D隊」' });
     expect(screen.queryByText('已下架俱樂部')).toBeNull();
   });
 
@@ -266,6 +301,25 @@ describe('刪除（K5）', () => {
     expect(state.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_a' });
     expect(toast.show).toHaveBeenCalledWith({ message: '已刪除「A隊」' });
     expect(sdk.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('刪除結果的 roleChangedUids 含自己 → 重讀自己的 viewer；不含且不是成員 → 不重讀', async () => {
+    state.callFn.mockResolvedValueOnce({ ok: true, alreadyDeleted: false, roleChangedUids: ['U-cap'] });
+    const { container } = await renderLoaded(CAPTAIN);
+    fireEvent.click(within(card(container, 'tm_a')).getByRole('button', { name: '刪除' }));
+    await waitFor(() => expect(state.refreshViewer).toHaveBeenCalledTimes(1));
+    state.callFn.mockResolvedValueOnce({ ok: true, alreadyDeleted: false, roleChangedUids: ['U-x'] });
+    fireEvent.click(within(card(container, 'tm_d')).getByRole('button', { name: '刪除' }));
+    await waitFor(() => expect(container.querySelector('[data-team-id="tm_d"]')).toBeNull());
+    expect(state.refreshViewer).toHaveBeenCalledTimes(1);
+  });
+
+  it('自己是該隊成員 → 刪除後重讀自己的 viewer', async () => {
+    state.viewer = { ...makeViewer('U-cap', CAPTAIN), teamIds: new Set(['tm_a']) };
+    const { container } = render(<TeamManagePage />);
+    await waitFor(() => expect(container.querySelector('[data-team-id="tm_a"]')).not.toBeNull());
+    fireEvent.click(within(card(container, 'tm_a')).getByRole('button', { name: '刪除' }));
+    await waitFor(() => expect(state.refreshViewer).toHaveBeenCalledTimes(1));
   });
 
   it('取消確認不呼叫伺服器', async () => {

@@ -522,8 +522,9 @@ export async function approveTeamJoin({
 
     // A 核准不重算角色（新成員沒有幹部職位）；角色重算只在退出時走 autoPromoteTeamRole。
 
-    // K3：人數交給伺服器 recountTeamMembers 重算（best-effort，失敗不擋核准）。
-    await runBestEffort(
+    // K3：人數交給伺服器 recountTeamMembers 重算；與下面的通知並行（best-effort，不會 reject），
+    // 不擋通知，本區塊最後才等它結束。
+    const recount = runBestEffort(
       () => callFn('recountTeamMembers', { teamId }),
       'approveTeamJoin.recountTeamMembers',
       teamId,
@@ -568,6 +569,7 @@ export async function approveTeamJoin({
       'approveTeamJoin.writeAuditLog',
       teamId,
     );
+    await recount;
   }
 
   // 審核者自己的那則訊息不直寫：inbox Rules 只允許本人改 read／readAt（A 的 updateMessage 對非 admin 會被拒），

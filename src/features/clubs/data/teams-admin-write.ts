@@ -101,10 +101,17 @@ export async function saveTeamPinned(
 
 /**
  * A `toggleTeamActive` 的 B 版：等寫入完成才回報成功，失敗往外拋由呼叫端回滾畫面
- * （A 是樂觀更新、不 await、失敗不回滾，屬 A 既有缺點）。A 沒有寫操作日誌，這裡也不寫。
+ * （A 是樂觀更新、不 await、失敗不回滾，屬 A 既有缺點）。
+ * 與 A 刻意差異：A 上下架不寫操作日誌，B 照計畫補一筆 `team_active`（站長要求可稽核，只多 1 筆寫入）。
  */
-export async function saveTeamActive(team: TeamAdminTarget, active: boolean): Promise<void> {
+export async function saveTeamActive(
+  team: TeamAdminTarget,
+  active: boolean,
+  actor: TeamAdminActor,
+): Promise<void> {
   await updateTeamFields(team, { active });
+  const name = team.name || resolveDocId(team);
+  await writeTeamOpLog(actor, 'team_active', '俱樂部上下架', `${active ? '上架' : '下架'}「${name}」`);
 }
 
 /** A `toggleTeamAttentionEffect`：開關時一併寫正規化後的顏色。 */
@@ -137,7 +144,7 @@ export async function saveTeamAttentionColor(
 }
 
 export type DeleteTeamResult =
-  | { status: 'deleted' }
+  | { status: 'deleted'; roleChangedUids: string[] }
   | { status: 'partial'; remaining: number };
 
 /**
@@ -153,7 +160,10 @@ export async function deleteTeamViaCallable(team: TeamAdminTarget): Promise<Dele
   }
   removeCachedTeam(resolveDocId(team));
   if (teamId) removeCachedTeam(teamId);
-  return { status: 'deleted' };
+  const roleChangedUids = Array.isArray(res?.roleChangedUids)
+    ? res.roleChangedUids.map((uid) => String(uid ?? '').trim()).filter(Boolean)
+    : [];
+  return { status: 'deleted', roleChangedUids };
 }
 
 /** 伺服器錯誤訊息碼 → A 風格提示；未知錯誤回 A `removeTeam` 的通用失敗文案。 */

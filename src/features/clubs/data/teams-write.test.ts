@@ -45,10 +45,11 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('./teams-repo', () => ({
   invalidateTeams: vi.fn(),
+  patchCachedTeamWith: vi.fn(),
 }));
 
 import { getFirebase } from '@/data/firebase';
-import { invalidateTeams } from './teams-repo';
+import { invalidateTeams, patchCachedTeamWith } from './teams-repo';
 import {
   saveTeamAvatar,
   saveTeamCover,
@@ -87,12 +88,18 @@ function roles(): MemberRoleUpdates {
   };
 }
 
-function expectSuccess(args: unknown[]): void {
+// 測試同步更新：成員備註改為就地合併快取（patchCachedTeamWith），不再清整份快取。
+function expectSuccess(args: unknown[], cache: 'invalidate' | 'patch' = 'invalidate'): void {
   expect(fsDoc).toHaveBeenCalledExactlyOnceWith(db, 'teams', 'tm_test_1');
   expect(fsUpdateDoc).toHaveBeenCalledTimes(1);
   expect(vi.mocked(fsUpdateDoc).mock.calls[0]).toEqual(args);
   expect(fsServerTimestamp).toHaveBeenCalledTimes(1);
-  expect(invalidateTeams).toHaveBeenCalledTimes(1);
+  if (cache === 'invalidate') {
+    expect(invalidateTeams).toHaveBeenCalledTimes(1);
+  } else {
+    expect(invalidateTeams).not.toHaveBeenCalled();
+    expect(patchCachedTeamWith).toHaveBeenCalledTimes(1);
+  }
 }
 
 async function expectInvalid(action: () => Promise<void>): Promise<void> {
@@ -688,7 +695,7 @@ describe('儲存成員備註', () => {
       iso,
       'updatedAt',
       timestamp,
-    ]);
+    ], 'patch');
     const path: unknown = vi.mocked(fsUpdateDoc).mock.calls[0]?.[1];
     expect(path).toBeInstanceOf(FieldPath);
     expect(path).toHaveProperty('segments', [field, 'U-test-1', 'notes']);
@@ -711,7 +718,7 @@ describe('儲存成員備註', () => {
       iso,
       'updatedAt',
       timestamp,
-    ]);
+    ], 'patch');
   });
 
   it.each(['', '字'.repeat(120)])('接受空備註或恰好 120 字的備註', async (notes) => {
@@ -725,7 +732,7 @@ describe('儲存成員備註', () => {
       iso,
       'updatedAt',
       timestamp,
-    ]);
+    ], 'patch');
   });
 
   it.each(['', '   ', '.', '/', '~', '*', '[', ']'])(
@@ -783,7 +790,7 @@ describe('儲存成員備註', () => {
       iso,
       'updatedAt',
       timestamp,
-    ]);
+    ], 'patch');
   });
 
   it('不同 memberKey 使用不同的兩個 FieldPath', async () => {

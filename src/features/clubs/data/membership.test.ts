@@ -756,3 +756,36 @@ describe('recountTeamMembers（K3）', () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 });
+
+describe('recountTeamMembers 不擋核准通知（K3 終驗修正）', () => {
+  it('人數重算尚未回來時，申請人通知已送出；核准在重算結束後才回傳', async () => {
+    getDocMock.mockResolvedValue({ exists: () => true, data: () => ({ teamIds: [] }) } as never);
+    let releaseRecount!: () => void;
+    const recountGate = new Promise<void>((resolve) => { releaseRecount = resolve; });
+    callFnMock.mockImplementation((async (name: string, request: unknown) => {
+      if (name === 'recountTeamMembers') {
+        await recountGate;
+        return { success: true, members: 3 };
+      }
+      return defaultCallFnImpl(name, request);
+    }) as never);
+
+    let settled = false;
+    const pending = approveTeamJoin({
+      team: { id: 'team_main', name: 'Main Team', captainUid: 'cap_uid', leaderUids: [], coachUids: [] },
+      applicantUid: 'applicant_uid',
+      message: {
+        id: 'msg_1',
+        meta: { teamId: 'team_main', teamName: 'Main Team', applicantUid: 'applicant_uid', applicantName: '申請者', groupId: 'tjr_1' },
+      },
+      reviewer: { uid: 'cap_uid', displayName: '隊長' },
+    }).then((r) => { settled = true; return r; });
+
+    await vi.waitFor(() => {
+      expect(callFnMock.mock.calls.some((c) => c[0] === 'deliverToInbox')).toBe(true);
+    });
+    expect(settled).toBe(false);
+    releaseRecount();
+    await expect(pending).resolves.toMatchObject({ changed: true });
+  });
+});

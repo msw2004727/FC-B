@@ -5,7 +5,7 @@ import {
   getTeamAdminErrorMessage,
   normalizeTeamAttentionColor,
 } from './teams-admin-write';
-import { invalidateTeams, loadTeams } from './teams-repo';
+import { invalidateTeams, loadTeams, patchCachedTeamWith } from './teams-repo';
 
 const mocks = vi.hoisted(() => ({
   callFn: vi.fn(),
@@ -52,8 +52,8 @@ describe('normalizeTeamAttentionColor（A _normalizeTeamAttentionColor）', () =
 describe('deleteTeamViaCallable', () => {
   it('成功：呼叫 deleteTeam 並從快取移除，不重讀', async () => {
     await loadTeams();
-    mocks.callFn.mockResolvedValue({ ok: true, alreadyDeleted: false });
-    expect(await deleteTeamViaCallable({ id: 'tm_1', _docId: 'tm_1' })).toEqual({ status: 'deleted' });
+    mocks.callFn.mockResolvedValue({ ok: true, alreadyDeleted: false, roleChangedUids: [' U-cap ', ''] });
+    expect(await deleteTeamViaCallable({ id: 'tm_1', _docId: 'tm_1' })).toEqual({ status: 'deleted', roleChangedUids: ['U-cap'] });
     expect(mocks.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_1' });
     expect((await loadTeams()).map((t) => t.id)).toEqual(['tm_2']);
     expect(mocks.getDocs).toHaveBeenCalledTimes(1);
@@ -72,5 +72,19 @@ describe('deleteTeamViaCallable', () => {
     expect(getTeamAdminErrorMessage(new Error('TEAM_DELETE_DENIED'), 'x')).toBe('權限不足');
     expect(getTeamAdminErrorMessage(new Error('COACH_PLUS_REQUIRED'), 'x')).toBe('權限不足');
     expect(getTeamAdminErrorMessage(new Error('internal'), '刪除俱樂部失敗，請稍後再試')).toBe('刪除俱樂部失敗，請稍後再試');
+  });
+});
+
+describe('patchCachedTeamWith（成員巢狀資料就地合併）', () => {
+  it('依快取現值合併，不重讀', async () => {
+    await loadTeams();
+    patchCachedTeamWith('tm_1', (cached) => ({ name: `${cached.name}-改` }));
+    expect((await loadTeams()).map((t) => t.name)).toEqual(['一隊-改', '二隊']);
+    expect(mocks.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('快取不存在時不動', async () => {
+    patchCachedTeamWith('tm_1', () => ({ name: 'x' }));
+    expect((await loadTeams()).map((t) => t.name)).toEqual(['一隊', '二隊']);
   });
 });
