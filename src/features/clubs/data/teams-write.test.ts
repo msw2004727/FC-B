@@ -14,7 +14,7 @@
  * - 文件時間：updatedAt → updatedAt（serverTimestamp）。
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Transaction } from 'firebase/firestore';
 import type { MemberRoleUpdates } from '../club-policy';
 import type { TeamDoc } from './types';
@@ -123,6 +123,8 @@ beforeEach(() => {
 const actions: Array<{
   name: string;
   run: (target: TeamWriteTarget) => Promise<void>;
+  /** 測試同步更新：成員備註改就地合併快取（patchCachedTeamWith），其他寫入仍清快取。 */
+  cache?: 'patch';
 }> = [
   {
     name: '頭像',
@@ -143,18 +145,25 @@ const actions: Array<{
   {
     name: '活動備註',
     run: (target) => saveTeamMemberNote(target, 'activity', 'U-test-1', note),
+    cache: 'patch',
   },
   {
     name: '課程備註',
     run: (target) => saveTeamMemberNote(target, 'course', 'U-test-1', note),
+    cache: 'patch',
   },
 ];
 
-describe.each(actions)('$name 的共用寫入契約', ({ run }) => {
+describe.each(actions)('$name 的共用寫入契約', ({ run, cache }) => {
+  const cacheSpy = () => (cache === 'patch' ? patchCachedTeamWith : invalidateTeams);
+  afterEach(() => {
+    // 兩種快取更新互斥：用其中一種時另一種不得被呼叫。
+    expect(cache === 'patch' ? invalidateTeams : patchCachedTeamWith).not.toHaveBeenCalled();
+  });
   it('文件定位優先使用 _docId', async () => {
     await run({ _docId: 'tm_test_1', id: 'U-test-1' });
     expect(fsDoc).toHaveBeenCalledExactlyOnceWith(db, 'teams', 'tm_test_1');
-    expect(invalidateTeams).toHaveBeenCalledTimes(1);
+    expect(cacheSpy()).toHaveBeenCalledTimes(1);
   });
 
   it.each([undefined, '', '   '])('_docId 為 %s 時回退使用 id', async (docId) => {
@@ -162,7 +171,7 @@ describe.each(actions)('$name 的共用寫入契約', ({ run }) => {
     if (docId !== undefined) target._docId = docId;
     await run(target);
     expect(fsDoc).toHaveBeenCalledExactlyOnceWith(db, 'teams', 'tm_test_1');
-    expect(invalidateTeams).toHaveBeenCalledTimes(1);
+    expect(cacheSpy()).toHaveBeenCalledTimes(1);
   });
 
   it.each<TeamWriteTarget>([
@@ -172,7 +181,7 @@ describe.each(actions)('$name 的共用寫入契約', ({ run }) => {
   ])('文件 id 都空時拋出指定錯誤且不寫入：%j', async (target) => {
     await expect(run(target)).rejects.toThrow('[teams-write] team doc id missing');
     expect(fsUpdateDoc).not.toHaveBeenCalled();
-    expect(invalidateTeams).not.toHaveBeenCalled();
+    expect(cacheSpy()).not.toHaveBeenCalled();
     expect(getFirebase).not.toHaveBeenCalled();
   });
 
@@ -181,11 +190,11 @@ describe.each(actions)('$name 的共用寫入契約', ({ run }) => {
     vi.mocked(fsUpdateDoc).mockRejectedValueOnce(error);
 
     await expect(run(team)).rejects.toBe(error);
-    expect(invalidateTeams).not.toHaveBeenCalled();
+    expect(cacheSpy()).not.toHaveBeenCalled();
 
     await run(team);
     expect(fsUpdateDoc).toHaveBeenCalledTimes(2);
-    expect(invalidateTeams).toHaveBeenCalledTimes(1);
+    expect(cacheSpy()).toHaveBeenCalledTimes(1);
   });
 
   it('寫入完成前不清除快取', async () => {
@@ -208,10 +217,10 @@ describe.each(actions)('$name 的共用寫入契約', ({ run }) => {
 
     const saving = run(team);
     await startedWrite;
-    expect(invalidateTeams).not.toHaveBeenCalled();
+    expect(cacheSpy()).not.toHaveBeenCalled();
     finish();
     await saving;
-    expect(invalidateTeams).toHaveBeenCalledTimes(1);
+    expect(cacheSpy()).toHaveBeenCalledTimes(1);
   });
 });
 
