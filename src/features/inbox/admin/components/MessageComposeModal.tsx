@@ -4,9 +4,11 @@
  * searchMsgTeam、_selectMsgTeam、sendMessage）。
  *
  * - 收件人搜尋走 `listUserDirectory` Callable（前端 0 讀，同 session 共用快取）；選取與送出前再用 verifyUids 驗證。
- * - 俱樂部搜尋用已載入的俱樂部清單（未載入時 1 次 `loadTeams()`，同 session 共用）。
- * - 立即發送：寫 `adminMessages` → `deliverToInbox` → 背景 LINE 推播（全體用戶不推）。排程：只寫紀錄。
- * - 與 A 差異：寫入與投遞都等結果，失敗會提示並留在彈窗（A 不等、失敗無提示）；LINE 推播名單改條件查詢＋上限。
+ * - 俱樂部搜尋用已載入的俱樂部清單（本彈窗只呼叫 1 次 `loadTeams()`，打字不重複載入；同 session 共用）。
+ * - 立即發送：寫 `adminMessages` → `deliverToInbox` → 投遞成功才背景 LINE 推播（全體用戶不推）。排程：只寫紀錄。
+ * - 與 A 差異：寫入與投遞都等結果，失敗會提示並留在彈窗（A 不等、失敗無提示）；LINE 推播名單改條件查詢＋上限；
+ *   非 admin／super_admin 不顯示也不接受「全體／角色」對象（伺服器 deliverToInbox 同樣只准 admin 群發）；
+ *   原始 UID 只對 admin／super_admin 顯示（同 B 其他頁的 canViewRawUid）。
  */
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -16,6 +18,7 @@ import { toast } from '@/ui/Toast';
 import { loadTeams } from '@/features/clubs/data/teams-repo';
 import type { TeamDoc } from '@/features/clubs/data/types';
 import { roleLabelOf } from '@/features/events/data/event-form-model';
+import { isAdminPlusRole } from '@/features/profile/components/legacy/profile-legacy-helpers';
 import {
   getUserDirectory,
   loadUserDirectory,
@@ -26,10 +29,11 @@ import {
 import {
   MSG_BODY_MAX,
   MSG_CATEGORIES,
-  MSG_TARGET_TYPES,
   MSG_TITLE_MAX,
   buildAdminMessageRecord,
+  canBroadcastToTarget,
   canComposeMessage,
+  composeTargetTypesFor,
   senderNameOf,
   validateCompose,
   type AdminMessage,
@@ -62,9 +66,9 @@ export interface MessageComposeModalProps {
   onSaved: (record: AdminMessage) => void;
 }
 
-function matchUsers(users: readonly DirectoryUser[], q: string): DirectoryUser[] {
+function matchUsers(users: readonly DirectoryUser[], q: string, byUid: boolean): DirectoryUser[] {
   return users
-    .filter((u) => (u.name && u.name.toLowerCase().includes(q)) || (u.uid && u.uid.toLowerCase().includes(q)))
+    .filter((u) => (u.name && u.name.toLowerCase().includes(q)) || (byUid && u.uid && u.uid.toLowerCase().includes(q)))
     .slice(0, 8);
 }
 
@@ -74,11 +78,14 @@ function matchTeams(teams: readonly TeamDoc[], q: string): TeamDoc[] {
 
 export function MessageComposeModal(props: MessageComposeModalProps): JSX.Element {
   const t = useT();
+  const targetTypes = composeTargetTypesFor(props.viewer);
+  // A `_canViewRawUid`：只有 admin／super_admin 看得到（也搜得到）原始 UID。
+  const canViewRawUid = isAdminPlusRole(props.viewer.role);
   const [category, setCategory] = useState<MsgCategory>('system');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [schedule, setSchedule] = useState('');
-  const [targetType, setTargetType] = useState<MsgTargetType>('all');
+  const [targetType, setTargetType] = useState<MsgTargetType>(targetTypes[0] ?? 'individual');
   const [userQuery, setUserQuery] = useState('');
   const [teamQuery, setTeamQuery] = useState('');
   const [userDropdown, setUserDropdown] = useState<Dropdown>({ kind: 'closed' });
@@ -92,6 +99,8 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
   const userSeq = useRef(0);
   const teamSeq = useRef(0);
   const alive = useRef(true);
+  /** 本彈窗共用一次俱樂部載入（失敗清掉可再試），避免每打一字或載入中重複讀整個 teams。 */
+  const teamsPromise = useRef<Promise<TeamDoc[]> | null>(null);
   const targetRef = useRef(targetType);
   targetRef.current = targetType;
   const userQueryRef = useRef(userQuery);
@@ -109,18 +118,32 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
   }, []);
 
   function userMeta(u: DirectoryUser): string {
-    return [u.uid, roleLabelOf(u.role) ?? u.role].filter(Boolean).join(' · ');
+    return [canViewRawUid ? u.uid : '', roleLabelOf(u.role) ?? u.role].filter(Boolean).join(' · ');
+  }
+
+  function uidSuffix(uid: string): string {
+    return canViewRawUid && uid ? `（${uid}）` : '';
+  }
+
+  function loadTeamsOnce(): Promise<TeamDoc[]> {
+    if (!teamsPromise.current) {
+      teamsPromise.current = loadTeams().catch((err: unknown) => {
+        teamsPromise.current = null;
+        throw err;
+      });
+    }
+    return teamsPromise.current;
   }
 
   function renderUserMatches(raw: string, q: string, refreshed: boolean, loadFailed: boolean): void {
     const users = getUserDirectory();
-    const matches = matchUsers(users, q);
+    const matches = matchUsers(users, q, canViewRawUid);
     if (matches.length) setUserDropdown({ kind: 'users', users: matches });
     else if (!refreshed) setUserDropdown({ kind: 'hint', textKey: users.length ? 'refreshingUsers' : 'loadingUsers' });
     else setUserDropdown({ kind: 'hint', textKey: loadFailed ? 'userLoadFailed' : 'noUser' });
     // A：即時精準匹配提示
-    const exact = users.find((u) => u.uid === raw || u.name === raw);
-    setUserResult(exact ? t('inbox.admin.compose.found', { name: exact.name, uid: exact.uid ? `（${exact.uid}）` : '', role: exact.role }) : '');
+    const exact = users.find((u) => (canViewRawUid && u.uid === raw) || u.name === raw);
+    setUserResult(exact ? t('inbox.admin.compose.found', { name: exact.name, uid: uidSuffix(exact.uid), role: exact.role }) : '');
   }
 
   async function onUserInput(value: string): Promise<void> {
@@ -138,7 +161,7 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
     renderUserMatches(raw, q, false, false);
     const ready = await loadUserDirectory();
     if (!alive.current || seq !== userSeq.current || userQueryRef.current.trim() !== raw || targetRef.current !== 'individual') return;
-    const hasMatch = matchUsers(getUserDirectory(), q).length > 0;
+    const hasMatch = matchUsers(getUserDirectory(), q, canViewRawUid).length > 0;
     renderUserMatches(raw, q, true, !ready && !hasMatch);
   }
 
@@ -161,7 +184,7 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
     setMatchedUser(match);
     setUserQuery(match.name);
     setUserDropdown({ kind: 'closed' });
-    setUserResult(t('inbox.admin.compose.selected', { name: match.name, uid: match.uid ? `（${match.uid}）` : '', role: match.role }));
+    setUserResult(t('inbox.admin.compose.selected', { name: match.name, uid: uidSuffix(match.uid), role: match.role }));
   }
 
   async function onTeamInput(value: string): Promise<void> {
@@ -183,7 +206,7 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
     let teams: TeamDoc[] = [];
     let failed = false;
     try {
-      teams = await loadTeams();
+      teams = await loadTeamsOnce();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('[MessageAdmin] team directory load failed:', err);
@@ -209,7 +232,7 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
     userSeq.current += 1;
     setTargetType(value);
     if (value === 'team') {
-      loadTeams().catch(() => {
+      loadTeamsOnce().catch(() => {
         // 搜尋時會再試並提示。
       });
     }
@@ -218,6 +241,11 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
   async function send(): Promise<void> {
     if (busy) return;
     if (!canComposeMessage(props.viewer)) {
+      toast.show({ message: t('inbox.admin.toast.noPermission'), tone: 'error' });
+      return;
+    }
+    // 與選項同一判斷（R-IAM-011）：非 admin 不能發送或排程全體／角色群發。
+    if (!canBroadcastToTarget(props.viewer, targetType)) {
       toast.show({ message: t('inbox.admin.toast.noPermission'), tone: 'error' });
       return;
     }
@@ -269,9 +297,11 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
         try {
           await deliverAdminMessage(saved, props.viewer.uid);
         } catch (err) {
+          // 站內信沒送出：不推 LINE、不當成功，留在彈窗讓管理員再試（紀錄已寫，同 A 先寫紀錄）。
           // eslint-disable-next-line no-console
           console.error('[deliverMsg:inbox]', err);
           toast.show({ message: t('inbox.admin.toast.deliverFailed'), tone: 'error' });
+          return;
         }
         void pushLineInBackground(saved);
       }
@@ -381,7 +411,7 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
       <div class="form-row">
         <label for="msg-target">{t('inbox.admin.compose.target')}</label>
         <select id="msg-target" value={targetType} onChange={(e) => onTargetChange(e.currentTarget.value as MsgTargetType)}>
-          {MSG_TARGET_TYPES.map((type) => (
+          {targetTypes.map((type) => (
             <option key={type} value={type}>{t(`inbox.admin.targets.${type}`)}</option>
           ))}
         </select>

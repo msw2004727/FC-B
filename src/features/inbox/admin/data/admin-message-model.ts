@@ -48,6 +48,11 @@ export interface AdminMessage {
   status: string;
   scheduledAt?: string | null;
   lastError?: string;
+  /** 排程搶占時間（伺服器時間戳；A 寫入）。 */
+  processingAt?: unknown;
+  processingBy?: string;
+  /** B 新增：排程投遞連續失敗次數（達 SCHEDULE_MAX_SEND_FAILURES 改 cancelled）。 */
+  sendFailCount?: number;
 }
 
 export interface MessageViewer {
@@ -101,6 +106,11 @@ export const ROLE_TARGETS: Readonly<Partial<Record<MsgTargetType, readonly strin
 export const MSG_TITLE_MAX = 12;
 export const MSG_BODY_MAX = 300;
 
+/** 排程投遞失敗幾次後改 cancelled（B 新增；A 無上限、每分鐘重試）。 */
+export const SCHEDULE_MAX_SEND_FAILURES = 3;
+/** 處理中超過這段時間視為卡住，可在畫面上退回排程或取消（B 新增；A 卡住只能等）。 */
+export const PROCESSING_STALE_MS = 10 * 60_000;
+
 export function canAccessMessagesPage(viewer: MessageViewer): boolean {
   return viewer.hasPermission('admin.messages.entry');
 }
@@ -123,6 +133,21 @@ export function canRunScheduledMessages(viewer: MessageViewer): boolean {
   if (!viewer.uid) return false;
   if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
   return viewer.hasPermission('admin.messages.entry');
+}
+
+/**
+ * 撰寫時可選「全體／角色」群發對象的身分：照伺服器 `deliverToInbox`，群發（全體、角色）只放行角色 admin／super_admin；
+ * 其他身分（例如被授予 admin.messages.entry 的教練）只能選指定俱樂部或指定用戶。排程信也同樣限制
+ * （排程是由管理員的執行器代送，不限制就等於借管理員身分群發）。
+ */
+export function canBroadcastToTarget(viewer: Pick<MessageViewer, 'role'>, targetType: MsgTargetType): boolean {
+  if (targetType === 'team' || targetType === 'individual') return true;
+  return viewer.role === 'admin' || viewer.role === 'super_admin';
+}
+
+/** 撰寫視窗的對象選項（順序照 A，非管理員只留俱樂部與指定用戶）。 */
+export function composeTargetTypesFor(viewer: Pick<MessageViewer, 'role'>): MsgTargetType[] {
+  return MSG_TARGET_TYPES.filter((type) => canBroadcastToTarget(viewer, type));
 }
 
 /** A `renderMsgManage`：排程頁籤同時顯示 scheduled＋processing＋cancelled。 */
@@ -180,8 +205,33 @@ export function statusBadgeOf(status: string): { cls: string; known: boolean } {
 
 export type MsgCardAction = 'view' | 'recall' | 'delete' | 'cancelSchedule' | 'restoreSchedule';
 
-/** A `renderMsgManage` 各狀態的卡片按鈕；刪除另依 `canDeleteMessage`（同一判斷控制 handler）。 */
-export function cardActionsOf(status: string, viewer: MessageViewer): MsgCardAction[] {
+/** 伺服器時間戳／ISO 字串／毫秒 → 毫秒；無法解析回 null。 */
+function timestampMs(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (value && typeof value === 'object') {
+    const v = value as { toMillis?: () => number; seconds?: unknown };
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+  }
+  return null;
+}
+
+/** 處理中是否已卡住（超過 PROCESSING_STALE_MS；沒有搶占時間也算，否則永遠卡住）。 */
+export function isProcessingStale(m: Pick<AdminMessage, 'status' | 'processingAt'>, nowMs: number): boolean {
+  if (m.status !== 'processing') return false;
+  const started = timestampMs(m.processingAt);
+  return started === null || nowMs - started > PROCESSING_STALE_MS;
+}
+
+/**
+ * A `renderMsgManage` 各狀態的卡片按鈕；刪除另依 `canDeleteMessage`（同一判斷控制 handler）。
+ * 與 A 差異：處理中卡住（`processingStale`）時多給「取消排程」「恢復排程」，可取消或退回重排。
+ */
+export function cardActionsOf(status: string, viewer: MessageViewer, processingStale = false): MsgCardAction[] {
   const canDelete = canDeleteMessage(viewer);
   const withDelete = (list: MsgCardAction[]): MsgCardAction[] => (canDelete ? [...list, 'delete'] : list);
   switch (status) {
@@ -190,7 +240,7 @@ export function cardActionsOf(status: string, viewer: MessageViewer): MsgCardAct
     case 'scheduled':
       return withDelete(['view', 'cancelSchedule']);
     case 'processing':
-      return ['view'];
+      return processingStale ? ['view', 'cancelSchedule', 'restoreSchedule'] : ['view'];
     case 'recalled':
       return withDelete(['view']);
     case 'cancelled':

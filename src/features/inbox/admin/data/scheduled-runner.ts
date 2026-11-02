@@ -3,7 +3,10 @@
  * 對應 A `js/modules/message/message-admin.js#_processScheduledMessages`（`app.js` 每 60 秒呼叫）。
  *
  * - 搶占用 transaction（欄位照 A：processing／processingBy／processingAt），A 與 B 同時開著也不會重送。
- * - 與 A 差異：A 的站內信投遞是 fire-and-forget、一律標 sent；B 等投遞結果，失敗就退回 scheduled 並寫 lastError，下一輪再試。
+ * - 與 A 差異：A 的站內信投遞是 fire-and-forget、一律標 sent；B 等投遞結果，失敗就退回 scheduled 並寫 lastError，下一輪再試；
+ *   連續失敗 3 次改 cancelled。站內信 ID 固定（msg_<adminMsg id>），重送覆寫同一份、不會多一封。
+ * - 順序：投遞成功 → 標 sent（transaction，只在仍是自己搶占中才寫）→ 標成功才推 LINE。
+ *   標記失敗或已被取消時不推 LINE：卡住的信之後被退回重送時，才不會重複推播。
  * - 讀取：每輪 `where status == 'scheduled' limit 20`；只有 admin 以上身分會跑（見 canRunScheduledMessages）。
  */
 
@@ -20,7 +23,7 @@ export const SCHEDULE_CHECK_INTERVAL_MS = 60_000;
 
 export interface ScheduledStatusChange {
   docId: string;
-  status: 'sent' | 'scheduled';
+  status: 'sent' | 'scheduled' | 'cancelled';
 }
 
 type Listener = (change: ScheduledStatusChange) => void;
@@ -78,8 +81,8 @@ export async function processScheduledMessages(options: ProcessScheduledOptions)
         // eslint-disable-next-line no-console
         console.error('[Schedule] send failed:', m.id, sendErr);
         try {
-          await releaseScheduledMessageClaim(m._docId, sendErr);
-          notify({ docId: m._docId, status: 'scheduled' });
+          const status = await releaseScheduledMessageClaim(m._docId, options.processorId, sendErr);
+          if (status) notify({ docId: m._docId, status });
         } catch (releaseErr) {
           // eslint-disable-next-line no-console
           console.error('[Schedule] release failed:', m.id, releaseErr);
@@ -87,16 +90,22 @@ export async function processScheduledMessages(options: ProcessScheduledOptions)
         continue;
       }
       // 站內信已送出：之後的步驟失敗都不退回 scheduled，避免下一輪重送。
-      await pushLineBestEffort(m);
+      let marked = false;
       try {
-        await markScheduledMessageSent(m._docId);
-        sent += 1;
-        notify({ docId: m._docId, status: 'sent' });
+        marked = await markScheduledMessageSent(m._docId, options.processorId);
       } catch (markErr) {
-        // 標記失敗時信件留在「處理中」，不重送；畫面上可看到。
+        // 標記失敗時信件留在「處理中」，不重送、不推 LINE；超過 10 分鐘可在畫面上退回或取消。
         // eslint-disable-next-line no-console
         console.error('[Schedule] mark sent failed:', m.id, markErr);
       }
+      if (!marked) {
+        // eslint-disable-next-line no-console
+        console.warn('[Schedule] not marked sent, skip LINE:', m.id);
+        continue;
+      }
+      sent += 1;
+      notify({ docId: m._docId, status: 'sent' });
+      await pushLineBestEffort(m);
     }
   } finally {
     processing = false;

@@ -9,6 +9,8 @@
  *   - A 一次讀 200 份（不排序）；B 依建立時間分頁，計數用 count() 聚合（數字是全部信件，不受分頁影響）。
  *   - 回收確認框不再宣稱「收件人信箱中的信件將被移除」：收件人副本目前不會被移除（伺服器修正另卡，站長 2026-11-02 Q4）。
  *   - 寫入都等結果，失敗提示且畫面不變（A 先改畫面、失敗無提示）。
+ *   - 回收不刪自己信箱的副本（A 有，但伺服器寫進信箱的文件不含 adminMsgId，正式環境永遠找不到；見 admin-messages-repo）。
+ *   - 處理中超過 10 分鐘（卡住）可取消排程或恢復排程（A 只能等）。
  */
 import '@/styles/legacy/message.css';
 import '@/styles/legacy/manage-status.css';
@@ -35,6 +37,7 @@ import {
   cardActionsOf,
   filterMessagesForTab,
   formatScheduleText,
+  isProcessingStale,
   shiftCounts,
   statusBadgeOf,
   targetLabelOf,
@@ -46,7 +49,6 @@ import {
 import {
   countAdminMessages,
   loadAdminMessagesPage,
-  removeOwnInboxCopies,
   updateAdminMessageStatus,
 } from '../data/admin-messages-repo';
 import { subscribeScheduledChanges } from '../data/scheduled-runner';
@@ -193,10 +195,7 @@ export default function AdminMessagesPage(): JSX.Element {
     void runExclusive(m._docId, async () => {
       if (action === 'recall') {
         if (!(await appConfirm(t('inbox.admin.confirm.recall')))) return;
-        if (await changeStatus(m, 'recalled', 'inbox.admin.toast.recalled')) {
-          // A：同時刪除自己信箱裡的副本（收件人副本不動）。
-          await removeOwnInboxCopies(viewer.uid ?? '', m.id);
-        }
+        await changeStatus(m, 'recalled', 'inbox.admin.toast.recalled');
         return;
       }
       if (action === 'delete') {
@@ -329,7 +328,13 @@ export default function AdminMessagesPage(): JSX.Element {
             <div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.82rem">{t('inbox.admin.empty')}</div>
           ) : null}
           {visible.map((m) => (
-            <MessageCard key={m._docId} message={m} busy={Boolean(busy[m._docId])} actions={cardActionsOf(m.status, viewer)} onAction={onAction} />
+            <MessageCard
+              key={m._docId}
+              message={m}
+              busy={Boolean(busy[m._docId])}
+              actions={cardActionsOf(m.status, viewer, isProcessingStale(m, Date.now()))}
+              onAction={onAction}
+            />
           ))}
           {list.status === 'ready' && list.hasMore ? (
             <div style="display:flex;justify-content:center;padding:.6rem 0">

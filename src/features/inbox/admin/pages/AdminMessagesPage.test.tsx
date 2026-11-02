@@ -6,6 +6,7 @@ import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 
 import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
+import { loadTeams } from '@/features/clubs/data/teams-repo';
 import { toast } from '@/ui/Toast';
 import { _resetRecentInboxDeliveryForTest } from '@/data/inbox-delivery';
 
@@ -119,7 +120,7 @@ beforeEach(() => {
     adminDoc(2, 'sent', { target: '阿明', targetUid: 'U9', targetName: '阿明', targetType: 'individual' }),
     adminDoc(3, 'scheduled', { scheduledAt: '2026-11-08T09:00' }),
     adminDoc(4, 'cancelled', { scheduledAt: '2026-11-03T12:00' }),
-    adminDoc(5, 'processing', { scheduledAt: '2026-11-02T09:00' }),
+    adminDoc(5, 'processing', { scheduledAt: '2026-11-02T09:00', processingAt: { toMillis: () => Date.now() - 60_000 } }),
     adminDoc(6, 'recalled'),
   ]];
   let pageIndex = 0;
@@ -215,6 +216,15 @@ describe('畫面（照 A renderMsgManage）', () => {
     expect(within(card(container, 'd5')).getAllByRole('button').map((b) => b.textContent)).toEqual(['查看']);
   });
 
+  it('處理中超過 10 分鐘（卡住）：可取消排程或恢復排程；恢復寫 scheduled', async () => {
+    pages = [[adminDoc(7, 'processing', { scheduledAt: '2026-11-02T09:00', processingAt: { toMillis: () => Date.now() - 11 * 60_000 } })]];
+    const { container } = await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '已排程' }));
+    expect(within(card(container, 'd7')).getAllByRole('button').map((b) => b.textContent)).toEqual(['查看', '取消排程', '恢復排程']);
+    fireEvent.click(within(card(container, 'd7')).getByRole('button', { name: '恢復排程' }));
+    await waitFor(() => expect(fakeState.writes).toEqual([{ op: 'update', path: 'adminMessages/d7', data: { status: 'scheduled' } }]));
+  });
+
   it('只有 compose／delete 子碼、沒有入口碼：進不了頁（照 A 入口）', async () => {
     state.viewer = makeViewer('admin', ['admin.messages.compose', 'admin.messages.delete']);
     render(<AdminMessagesPage />);
@@ -231,7 +241,7 @@ describe('畫面（照 A renderMsgManage）', () => {
 });
 
 describe('改狀態：不重讀清單、0 讀 1 寫', () => {
-  it('回收：確認框不宣稱移除收件人副本；寫 recalled、計數就地更新、只刪自己的副本', async () => {
+  it('回收：確認框不宣稱移除收件人副本；寫 recalled、計數就地更新、不讀不刪信箱', async () => {
     const { container } = await renderPage();
     await waitFor(() => expect(document.getElementById('msg-sent-count')?.textContent).toContain('已發送 5 封'));
     const before = adminReads();
@@ -242,8 +252,9 @@ describe('改狀態：不重讀清單、0 讀 1 寫', () => {
     expect(message).not.toContain('將被移除');
     expect(fakeState.writes[0]).toEqual({ op: 'update', path: 'adminMessages/d1', data: { status: 'recalled' } });
     expect(adminReads()).toBe(before);
-    await waitFor(() => expect(fakeState.reads.some((r) => r.path === 'users/U-admin/inbox')).toBe(true));
-    expect(limitOf(fakeState.reads.find((r) => r.path === 'users/U-admin/inbox')?.q)).toBe(10);
+    // 測試同步更新：回收不再查／刪自己信箱副本（伺服器寫進信箱的文件不含 adminMsgId，正式環境永遠是空操作）。
+    expect(fakeState.reads.some((r) => r.path.startsWith('users/'))).toBe(false);
+    expect(fakeState.writes).toHaveLength(1);
     expect(document.getElementById('msg-sent-count')?.textContent).toBe('已發送 4 封 ・ 排程 2 封 ・ 已回收 2 封 ・ 已刪除 0 封');
     expect(toast.show).toHaveBeenCalledWith({ message: '已回收信件', tone: 'success' });
   });
@@ -363,15 +374,97 @@ describe('撰寫與發送（Callable 用 mock，不送真推播）', () => {
     expect(fakeState.writes).toEqual([]);
   });
 
-  it('投遞失敗：提示，紀錄已寫（照 A 先寫紀錄）', async () => {
+  it('投遞失敗：只提示錯誤、留在彈窗；不推 LINE、不當成功（紀錄已寫，照 A 先寫紀錄）', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    state.callFn.mockRejectedValueOnce(new Error('internal'));
-    await renderPage();
+    state.callFn.mockImplementation(async (name: string) => {
+      if (name === 'deliverToInbox') throw new Error('internal');
+      return { queued: true };
+    });
+    const { container } = await renderPage();
     fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
     await screen.findByRole('dialog');
+    const target = document.getElementById('msg-target') as HTMLSelectElement;
+    await act(async () => {
+      target.value = 'individual';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await typeInto('msg-individual-target', '阿');
+    const item = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('#msg-user-dropdown .ce-delegate-item');
+      if (!el) throw new Error('no item');
+      return el;
+    });
+    fireEvent.mouseDown(item);
+    await waitFor(() => expect(document.getElementById('msg-target-result')?.textContent).toContain('已選取'));
     await typeInto('msg-title', '公告');
     await typeInto('msg-body', '內容');
     fireEvent.click(screen.getByRole('button', { name: '發送' }));
     await waitFor(() => expect(toast.show).toHaveBeenCalledWith({ message: '站內信投遞失敗，請稍後再試', tone: 'error' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(fakeState.writes.some((w) => w.op === 'set')).toBe(true);
+    expect(state.callFn.mock.calls.some((c) => c[0] === 'enqueuePrivilegedLineNotification')).toBe(false);
+    expect(vi.mocked(toast.show).mock.calls.some((c) => c[0].tone === 'success')).toBe(false);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '發送' }).hasAttribute('disabled')).toBe(false);
+    expect(container.querySelectorAll('[data-msg-id]').length).toBe(2);
+  });
+
+  it('非 admin 角色（有 admin.messages.entry）：對象只有俱樂部與指定用戶；不顯示原始 UID', async () => {
+    await renderPage(ADMIN, 'coach');
+    fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
+    await screen.findByRole('dialog');
+    const target = document.getElementById('msg-target') as HTMLSelectElement;
+    expect(Array.from(target.options).map((o) => o.value)).toEqual(['team', 'individual']);
+    expect(target.value).toBe('team');
+    await act(async () => {
+      target.value = 'individual';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await typeInto('msg-individual-target', '阿');
+    const item = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('#msg-user-dropdown .ce-delegate-item');
+      if (!el) throw new Error('no item');
+      return el;
+    });
+    expect(item.textContent).not.toContain('U9');
+    fireEvent.mouseDown(item);
+    await waitFor(() => expect(document.getElementById('msg-target-result')?.textContent).toContain('已選取：阿明'));
+    expect(document.getElementById('msg-target-result')?.textContent).not.toContain('U9');
+  });
+
+  it('admin：下拉與結果顯示原始 UID（canViewRawUid）', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
+    await screen.findByRole('dialog');
+    const target = document.getElementById('msg-target') as HTMLSelectElement;
+    expect(target.options).toHaveLength(8);
+    await act(async () => {
+      target.value = 'individual';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await typeInto('msg-individual-target', '阿');
+    const item = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('#msg-user-dropdown .ce-delegate-item');
+      if (!el) throw new Error('no item');
+      return el;
+    });
+    expect(item.textContent).toContain('U9');
+  });
+
+  it('俱樂部搜尋：連續打字只載入一次俱樂部清單', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
+    await screen.findByRole('dialog');
+    const target = document.getElementById('msg-target') as HTMLSelectElement;
+    await act(async () => {
+      target.value = 'team';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await typeInto('msg-team-target', 'A');
+    await typeInto('msg-team-target', 'A隊');
+    await waitFor(() => expect(document.querySelector('#msg-team-dropdown .ce-delegate-item')).not.toBeNull());
+    expect(vi.mocked(loadTeams)).toHaveBeenCalledTimes(1);
   });
 });

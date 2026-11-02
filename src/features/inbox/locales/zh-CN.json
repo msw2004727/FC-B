@@ -226,6 +226,7 @@
     },
     "templates": {
       "title": "編輯通知腳本",
+      "intro": "使用 {佔位符} 來動態插入資訊，例如 {userName}、{eventName}",
       "placeholder": "佔位符：{value}",
       "none": "無",
       "titleLabel": "標題",

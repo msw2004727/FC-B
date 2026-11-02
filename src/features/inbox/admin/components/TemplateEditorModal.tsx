@@ -1,7 +1,7 @@
 /**
  * 編輯通知腳本疊窗。DOM／行內樣式照 A `#notif-template-editor` 與 `message-notify.js#showTemplateEditor`／`#saveAllTemplates`。
- * 與 A 差異：頂部「使用 {佔位符}…」說明句拿掉（站長 2026-11-02：說明小字一律拿掉，R-UI-026）；
- * 每份範本的「佔位符：…」是可用變數清單，保留。
+ * 頂部「使用 {佔位符}…」說明句與每份範本的「佔位符：…」清單都照 A 保留
+ * （R-UI-026：照 A 搬的畫面文案仍照 A；站長 Q11 拿掉說明只針對小遊戲與頭像檢測）。
  */
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -97,6 +97,7 @@ export function TemplateEditorModal({ onClose }: { onClose: () => void }): JSX.E
           ✕
         </button>
       </div>
+      <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:.8rem">{t('inbox.admin.templates.intro')}</div>
       <div id="notif-template-list">
         {state.status === 'loading' ? (
           <div role="status" style="text-align:center;padding:1rem;color:var(--text-muted);font-size:.82rem">

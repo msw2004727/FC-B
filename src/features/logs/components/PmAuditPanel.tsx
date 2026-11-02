@@ -3,8 +3,8 @@
  * DOM／class／文案照 A `js/modules/message/pm-audit.js#renderPmAuditPanel` 與 `css/message.css` 的 `.pm-audit-*`。
  * - 只限 super_admin（A `_isPmAuditAllowed`；頁籤本身也只對 super_admin 顯示）。
  * - 全部走既有 Callable，前端 Firestore 讀取 0。
- * - 與 A 差異：設定卡的說明段落拿掉（站長 2026-11-02：說明小字一律拿掉，R-UI-026），保留目前狀態一行；
- *   頭像只接受 https 網址；晚到的回應不覆蓋較新的操作結果。
+ * - 設定卡說明段落照 A 保留（R-UI-026：照 A 搬的畫面文案仍照 A；站長 Q11 拿掉說明只針對小遊戲與頭像檢測）。
+ * - 與 A 差異：頭像只接受 https 網址；晚到的回應不覆蓋較新的操作結果。
  */
 import '@/styles/legacy/message.css';
 
@@ -224,6 +224,7 @@ export function PmAuditPanel(): JSX.Element {
         <div class="pm-audit-setting-row">
           <div class="pm-audit-setting-copy">
             <h3>{t('logs.chat.settingTitle')}</h3>
+            <p>{t('logs.chat.settingDesc')}</p>
           </div>
           <label class="pm-audit-switch" aria-label={t('logs.chat.settingTitle')}>
             <input

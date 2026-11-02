@@ -3,14 +3,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ROLE_TARGETS,
+  PROCESSING_STALE_MS,
   buildAdminMessageRecord,
   canAccessMessagesPage,
+  canBroadcastToTarget,
+  composeTargetTypesFor,
   canComposeMessage,
   canDeleteMessage,
   canRunScheduledMessages,
   cardActionsOf,
   filterMessagesForTab,
   formatScheduleText,
+  isProcessingStale,
   isScheduledDue,
   senderNameOf,
   shiftCounts,
@@ -111,6 +115,36 @@ describe('頁籤、計數與按鈕（A renderMsgManage）', () => {
   it('對象文字：個人信顯示「暱稱（UID）」', () => {
     expect(targetLabelOf({ target: '阿明', targetUid: 'U9', targetName: '阿明' })).toBe('阿明（U9）');
     expect(targetLabelOf({ target: '全體用戶', targetUid: null })).toBe('全體用戶');
+  });
+});
+
+describe('群發對象限制（照伺服器 deliverToInbox：全體／角色只准 admin 以上）', () => {
+  it('admin／super_admin 全部對象；其他身分只留俱樂部與指定用戶', () => {
+    expect(composeTargetTypesFor({ role: 'admin' })).toEqual(['all', 'coach', 'captain', 'venue_owner', 'coach_up', 'admin', 'team', 'individual']);
+    expect(composeTargetTypesFor({ role: 'super_admin' })).toHaveLength(8);
+    expect(composeTargetTypesFor({ role: 'coach' })).toEqual(['team', 'individual']);
+    expect(canBroadcastToTarget({ role: 'coach' }, 'all')).toBe(false);
+    expect(canBroadcastToTarget({ role: 'coach' }, 'coach_up')).toBe(false);
+    expect(canBroadcastToTarget({ role: 'user' }, 'individual')).toBe(true);
+  });
+});
+
+describe('處理中卡住（超過 10 分鐘）', () => {
+  const now = Date.parse('2026-11-08T01:00:00Z');
+  it('依搶占時間判斷；Timestamp、ISO、沒有時間都能處理', () => {
+    const at = (ms: number) => ({ toMillis: () => ms });
+    expect(isProcessingStale(msg('processing', { processingAt: at(now - PROCESSING_STALE_MS + 1000) }), now)).toBe(false);
+    expect(isProcessingStale(msg('processing', { processingAt: at(now - PROCESSING_STALE_MS - 1000) }), now)).toBe(true);
+    expect(isProcessingStale(msg('processing', { processingAt: { seconds: (now - PROCESSING_STALE_MS - 1000) / 1000 } }), now)).toBe(true);
+    expect(isProcessingStale(msg('processing', { processingAt: new Date(now - 60_000).toISOString() }), now)).toBe(false);
+    expect(isProcessingStale(msg('processing'), now)).toBe(true);
+    expect(isProcessingStale(msg('scheduled'), now)).toBe(false);
+  });
+
+  it('卡住才多給取消排程與恢復排程', () => {
+    const full = viewer('admin', ['admin.messages.entry']);
+    expect(cardActionsOf('processing', full, true)).toEqual(['view', 'cancelSchedule', 'restoreSchedule']);
+    expect(cardActionsOf('processing', full, false)).toEqual(['view']);
   });
 });
 

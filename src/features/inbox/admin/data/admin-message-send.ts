@@ -8,9 +8,9 @@
  *
  * LINE 推播（站長 2026-11-02 裁定 Q2）：
  * - 指定用戶：直接推給該 UID（0 讀）。
- * - 指定俱樂部：`users where teamIds array-contains` 與 `users where teamId ==`（A `_isUserInTeam` 兩種都算）各 limit 200。
- * - 角色群發：`users where role in [...]` limit 500。
- * - 讀到上限＝可能還有更多：整批不推並回報（不挑一部分人送），站內信照送。
+ * - 指定俱樂部：`users where teamIds array-contains` 與 `users where teamId ==`（A `_isUserInTeam` 兩種都算）各 limit 201。
+ * - 角色群發：`users where role in [...]` limit 501。
+ * - 多讀 1 筆判斷「真的超過」：剛好 200／500 人照推；超過才整批不推並回報（不挑一部分人送），站內信照送。
  * - 全體用戶：只送站內信，不推 LINE。
  * 與 A 差異：A 先讀整個 users 集合再逐人推播（讀取與每日推播上限都會爆）。
  */
@@ -37,6 +37,11 @@ function categoryNameOf(m: AdminMessage): string {
   return CATEGORY_NAMES[m.category as MsgCategory] ?? m.categoryName ?? '系統';
 }
 
+/** 站內信 ID 由 adminMessages 的 id 推導（固定），排程重送時伺服器覆寫同一份或回 already-exists，不會多一封。 */
+export function inboxMessageIdOf(m: Pick<AdminMessage, 'id'>): string {
+  return `msg_${m.id}`;
+}
+
 /**
  * 投遞站內信。失敗往外拋（呼叫端決定提示或退回排程）；5 秒內重複送出回 null。
  */
@@ -44,7 +49,8 @@ export async function deliverAdminMessage(
   m: AdminMessage,
   senderUid: string | null,
 ): Promise<Record<string, unknown> | null> {
-  const extra: InboxDeliveryExtra = { adminMsgId: m.id, targetType: m.targetType || 'all' };
+  // dedupeKey 綁 adminMsg（同一封 5 秒內只送一次；不同封即使內容相同也照送）。
+  const extra: InboxDeliveryExtra = { adminMsgId: m.id, targetType: m.targetType || 'all', dedupeKey: `admin:${m.id}` };
   if (m.targetTeamId) extra.targetTeamId = m.targetTeamId;
   if (Array.isArray(m.targetRoles) && m.targetRoles.length) extra.targetRoles = m.targetRoles;
   return deliverInboxMessage({
@@ -56,6 +62,7 @@ export async function deliverAdminMessage(
     senderName: m.senderName || '系統',
     senderUid,
     extra,
+    messageId: inboxMessageIdOf(m),
   });
 }
 
@@ -65,10 +72,10 @@ async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
   const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const users = fs.collection(db, 'users');
   const [byTeamIds, byTeamId] = await Promise.all([
-    fs.getDocs(fs.query(users, fs.where('teamIds', 'array-contains', teamId), fs.limit(LINE_PUSH_TEAM_LIMIT))),
-    fs.getDocs(fs.query(users, fs.where('teamId', '==', teamId), fs.limit(LINE_PUSH_TEAM_LIMIT))),
+    fs.getDocs(fs.query(users, fs.where('teamIds', 'array-contains', teamId), fs.limit(LINE_PUSH_TEAM_LIMIT + 1))),
+    fs.getDocs(fs.query(users, fs.where('teamId', '==', teamId), fs.limit(LINE_PUSH_TEAM_LIMIT + 1))),
   ]);
-  if (byTeamIds.docs.length >= LINE_PUSH_TEAM_LIMIT || byTeamId.docs.length >= LINE_PUSH_TEAM_LIMIT) {
+  if (byTeamIds.docs.length > LINE_PUSH_TEAM_LIMIT || byTeamId.docs.length > LINE_PUSH_TEAM_LIMIT) {
     return { overLimit: LINE_PUSH_TEAM_LIMIT };
   }
   const uids = new Set<string>();
@@ -84,9 +91,9 @@ async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
 async function loadRoleRecipientUids(roles: readonly string[]): Promise<RecipientResult> {
   const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const snap = await fs.getDocs(
-    fs.query(fs.collection(db, 'users'), fs.where('role', 'in', [...roles]), fs.limit(LINE_PUSH_ROLE_LIMIT)),
+    fs.query(fs.collection(db, 'users'), fs.where('role', 'in', [...roles]), fs.limit(LINE_PUSH_ROLE_LIMIT + 1)),
   );
-  if (snap.docs.length >= LINE_PUSH_ROLE_LIMIT) return { overLimit: LINE_PUSH_ROLE_LIMIT };
+  if (snap.docs.length > LINE_PUSH_ROLE_LIMIT) return { overLimit: LINE_PUSH_ROLE_LIMIT };
   const uids = new Set<string>();
   for (const d of snap.docs) {
     const data = d.data() as { uid?: unknown };

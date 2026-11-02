@@ -3,7 +3,9 @@
  * - `js/firebase-service.js` 的 adminMessages 載入（A 是 `limit(200)` 不排序、整批進快取）
  * - `js/firebase-crud.js#addAdminMessage`／`#updateAdminMessage`
  * - `js/modules/message/message-admin.js#_claimScheduledMessageForSend`／`#_markScheduledMessageSent`／`#_releaseScheduledMessageClaim`
- * - `js/modules/message/message-admin-list.js#recallMsg`（刪自己信箱的副本）
+ *
+ * 與 A 差異：A `recallMsg` 回收時會刪「自己信箱」裡 adminMsgId 相符的副本；但伺服器 `deliverToInbox` 寫進
+ * 信箱的文件不含 adminMsgId，正式環境永遠找不到、等於空操作，B 不搬（回收只改 adminMessages 狀態）。
  *
  * 讀取預算（顧問方案 W2-A，測試斷言在 admin-messages-repo.test.ts／AdminMessagesPage.test.tsx）：
  * - 進頁：`orderBy createdAt desc limit 50`（≤ 50）＋四個狀態 `count()`（4）＝ ≤ 54；「載入更多」每次 ≤ 50。
@@ -15,16 +17,13 @@ import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
 import { loadFirestoreSdk } from '@/data/firestore-sdk';
-import { userInbox } from '@/data/paths';
 
-import type { AdminMessage, MsgCounts } from './admin-message-model';
+import { SCHEDULE_MAX_SEND_FAILURES, type AdminMessage, type MsgCounts } from './admin-message-model';
 
 const COLLECTION = 'adminMessages';
 export const ADMIN_MESSAGES_PAGE_SIZE = 50;
 /** 每輪排程檢查最多處理的筆數（A 沒有上限；B 限制單輪讀取量）。 */
 export const SCHEDULED_SCAN_LIMIT = 20;
-/** 回收時找自己信箱副本的上限（A 從快取比對；B 用條件查詢）。 */
-export const OWN_INBOX_COPY_LIMIT = 10;
 
 export interface AdminMessagesPage {
   items: AdminMessage[];
@@ -129,53 +128,67 @@ export async function claimScheduledMessage(
   return claimed;
 }
 
-/** A `_markScheduledMessageSent`。 */
-export async function markScheduledMessageSent(docId: string): Promise<void> {
-  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
-  await fs.updateDoc(fs.doc(db, COLLECTION, docId), {
-    status: 'sent',
-    sentAt: fs.serverTimestamp(),
-    processingAt: fs.deleteField(),
-    processingBy: fs.deleteField(),
-    lastError: fs.deleteField(),
-  });
-}
-
-/** A `_releaseScheduledMessageClaim`：退回 scheduled 並記錄錯誤（下一輪再試）。 */
-export async function releaseScheduledMessageClaim(docId: string, err: unknown): Promise<void> {
-  const message = err instanceof Error && err.message ? err.message : '';
-  const errorText = message ? message.slice(0, 300) : 'schedule_send_failed';
-  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
-  await fs.updateDoc(fs.doc(db, COLLECTION, docId), {
-    status: 'scheduled',
-    lastError: errorText,
-    processingAt: fs.deleteField(),
-    processingBy: fs.deleteField(),
-  });
+/** 仍由自己搶占中（status＝processing 且 processingBy＝自己）才可寫；避免把已取消或別人接手的信改回去。 */
+function isOwnProcessing(data: Record<string, unknown>, processorId: string): boolean {
+  return data['status'] === 'processing' && data['processingBy'] === processorId;
 }
 
 /**
- * A `recallMsg` 的後半：刪除「自己」信箱裡這封信的副本（A 只刪自己的，收件人副本不動）。
- * 以 `adminMsgId` 條件查詢（≤ 10 讀），回傳刪除筆數；失敗不往外拋（A 同樣只 warn）。
+ * A `_markScheduledMessageSent`。與 A 差異：transaction 內確認仍是自己搶占中才標 sent；回傳是否有寫。
  */
-export async function removeOwnInboxCopies(uid: string, adminMsgId: string): Promise<number> {
-  if (!uid || !adminMsgId) return 0;
-  try {
-    const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
-    const snap = await fs.getDocs(
-      fs.query(fs.collection(db, userInbox(uid)), fs.where('adminMsgId', '==', adminMsgId), fs.limit(OWN_INBOX_COPY_LIMIT)),
-    );
-    const results = await Promise.allSettled(snap.docs.map((d) => fs.deleteDoc(d.ref)));
-    let removed = 0;
-    for (const r of results) {
-      if (r.status === 'fulfilled') removed += 1;
-      // eslint-disable-next-line no-console
-      else console.warn('[recallMsg] inbox delete:', r.reason);
-    }
-    return removed;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[recallMsg] inbox lookup:', err);
-    return 0;
-  }
+export async function markScheduledMessageSent(docId: string, processorId: string): Promise<boolean> {
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
+  const ref = fs.doc(db, COLLECTION, docId);
+  let marked = false;
+  await fs.runTransaction(db, async (tx) => {
+    marked = false;
+    const snap = await tx.get(ref);
+    if (!snap.exists() || !isOwnProcessing((snap.data() ?? {}) as Record<string, unknown>, processorId)) return;
+    tx.update(ref, {
+      status: 'sent',
+      sentAt: fs.serverTimestamp(),
+      processingAt: fs.deleteField(),
+      processingBy: fs.deleteField(),
+      lastError: fs.deleteField(),
+    });
+    marked = true;
+  });
+  return marked;
+}
+
+/**
+ * A `_releaseScheduledMessageClaim`：退回 scheduled 並記錄錯誤（下一輪再試）。
+ * 與 A 差異：transaction 內確認仍是自己搶占中才寫；`sendFailCount` 累計失敗次數，
+ * 達 SCHEDULE_MAX_SEND_FAILURES 次改 cancelled（不再每分鐘重試），lastError 照寫。
+ * 回傳寫入後的狀態；沒寫（已被取消或別人接手）回 null。
+ */
+export async function releaseScheduledMessageClaim(
+  docId: string,
+  processorId: string,
+  err: unknown,
+): Promise<'scheduled' | 'cancelled' | null> {
+  const message = err instanceof Error && err.message ? err.message : '';
+  const errorText = message ? message.slice(0, 300) : 'schedule_send_failed';
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
+  const ref = fs.doc(db, COLLECTION, docId);
+  let result: 'scheduled' | 'cancelled' | null = null;
+  await fs.runTransaction(db, async (tx) => {
+    result = null;
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const data = (snap.data() ?? {}) as Record<string, unknown>;
+    if (!isOwnProcessing(data, processorId)) return;
+    const prev = Number(data['sendFailCount']);
+    const failCount = (Number.isFinite(prev) && prev > 0 ? Math.floor(prev) : 0) + 1;
+    const status = failCount >= SCHEDULE_MAX_SEND_FAILURES ? 'cancelled' : 'scheduled';
+    tx.update(ref, {
+      status,
+      lastError: errorText,
+      sendFailCount: failCount,
+      processingAt: fs.deleteField(),
+      processingBy: fs.deleteField(),
+    });
+    result = status;
+  });
+  return result;
 }

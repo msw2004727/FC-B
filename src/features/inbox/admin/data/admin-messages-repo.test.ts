@@ -1,4 +1,4 @@
-// adminMessages 讀寫：讀取預算（進頁 ≤ 54）、排程搶占 transaction、回收只刪自己的副本。
+// adminMessages 讀寫：讀取預算（進頁 ≤ 54）、排程搶占／標記／退回都用 transaction。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fakeSdk, fakeState, limitOf, resetFakeFirestore, totalReads, type FakeDoc } from '../fake-firestore.test-helper';
@@ -11,7 +11,6 @@ import {
   loadScheduledAdminMessages,
   markScheduledMessageSent,
   releaseScheduledMessageClaim,
-  removeOwnInboxCopies,
   updateAdminMessageStatus,
 } from './admin-messages-repo';
 
@@ -106,21 +105,42 @@ describe('寫入', () => {
     expect(fakeState.writes).toEqual([]);
   });
 
-  it('送出標記與退回：欄位照 A', async () => {
-    await markScheduledMessageSent('d1');
+  // 測試同步更新：標記與退回改 transaction（只在仍是自己處理中時寫）、退回累計失敗次數；回收不再刪自己信箱副本（正式環境永遠空操作）。
+  it('標記 sent：仍是自己處理中才寫，欄位照 A', async () => {
+    fakeState.txDoc = { status: 'processing', processingBy: 'U-admin' };
+    expect(await markScheduledMessageSent('d1', 'U-admin')).toBe(true);
+    expect(fakeState.writes[0]).toMatchObject({ op: 'tx.update', path: 'adminMessages/d1' });
     expect(fakeState.writes[0]?.data).toMatchObject({ status: 'sent', processingAt: { __deleteField: true }, lastError: { __deleteField: true } });
-    await releaseScheduledMessageClaim('d1', new Error('boom'));
-    expect(fakeState.writes[1]?.data).toMatchObject({ status: 'scheduled', lastError: 'boom', processingBy: { __deleteField: true } });
   });
 
-  it('回收：只查自己信箱 adminMsgId 相符的副本（≤ 10 讀）並刪除', async () => {
-    fakeState.docsHandler = () => [{ id: 'msg_1', data: { adminMsgId: 'mg_1' } }];
-    const removed = await removeOwnInboxCopies('U-me', 'mg_1');
-    expect(removed).toBe(1);
-    const q = fakeState.reads[0]?.q;
-    expect(q?.path).toBe('users/U-me/inbox');
-    expect(q?.constraints.find((c) => c.type === 'where')?.args).toEqual(['adminMsgId', '==', 'mg_1']);
-    expect(limitOf(q)).toBe(10);
-    expect(fakeState.writes).toEqual([{ op: 'delete', path: 'users/U-me/inbox/msg_1' }]);
+  it('標記 sent：已被取消、別人接手或不存在都不寫', async () => {
+    for (const doc of [{ status: 'cancelled', processingBy: 'U-admin' }, { status: 'processing', processingBy: 'U-other' }, null]) {
+      fakeState.txDoc = doc;
+      expect(await markScheduledMessageSent('d1', 'U-admin')).toBe(false);
+    }
+    expect(fakeState.writes).toEqual([]);
+  });
+
+  it('退回：累計失敗次數，未滿 3 次回 scheduled 並寫 lastError', async () => {
+    fakeState.txDoc = { status: 'processing', processingBy: 'U-admin' };
+    expect(await releaseScheduledMessageClaim('d1', 'U-admin', new Error('boom'))).toBe('scheduled');
+    expect(fakeState.writes[0]?.data).toMatchObject({ status: 'scheduled', lastError: 'boom', sendFailCount: 1, processingBy: { __deleteField: true } });
+    fakeState.txDoc = { status: 'processing', processingBy: 'U-admin', sendFailCount: 1 };
+    expect(await releaseScheduledMessageClaim('d1', 'U-admin', new Error('boom'))).toBe('scheduled');
+    expect(fakeState.writes[1]?.data).toMatchObject({ status: 'scheduled', sendFailCount: 2 });
+  });
+
+  it('退回：第 3 次改 cancelled 並寫 lastError', async () => {
+    fakeState.txDoc = { status: 'processing', processingBy: 'U-admin', sendFailCount: 2 };
+    expect(await releaseScheduledMessageClaim('d1', 'U-admin', new Error('internal'))).toBe('cancelled');
+    expect(fakeState.writes[0]?.data).toMatchObject({ status: 'cancelled', lastError: 'internal', sendFailCount: 3 });
+  });
+
+  it('退回：已被取消（不能改回 scheduled）或別人接手就不寫', async () => {
+    fakeState.txDoc = { status: 'cancelled', processingBy: 'U-admin' };
+    expect(await releaseScheduledMessageClaim('d1', 'U-admin', new Error('x'))).toBeNull();
+    fakeState.txDoc = { status: 'processing', processingBy: 'U-other' };
+    expect(await releaseScheduledMessageClaim('d1', 'U-admin', new Error('x'))).toBeNull();
+    expect(fakeState.writes).toEqual([]);
   });
 });

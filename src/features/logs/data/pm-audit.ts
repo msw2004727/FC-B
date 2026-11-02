@@ -22,11 +22,6 @@ export const PM_AUDIT_ACTIONS = [
   'settings_update',
 ] as const;
 
-/** A `_isPmAuditAllowed`：只限角色 super_admin（伺服器同）。 */
-export function isPmAuditAllowed(role: string): boolean {
-  return role === 'super_admin';
-}
-
 /** A `_pmAuditActionLabel`：Log 列的短標籤（A 原樣為英文代號）。 */
 export function pmAuditActionLabel(action: unknown): string {
   const labels: Record<string, string> = {

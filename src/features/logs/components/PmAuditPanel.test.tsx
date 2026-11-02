@@ -1,4 +1,4 @@
-// 聊天室稽核頁籤（W2A-5）：全走既有 Callable、前端 Firestore 讀取 0；說明小字拿掉；搜尋 → 對話列表 → 對話內容 → Log。
+// 聊天室稽核頁籤（W2A-5）：全走既有 Callable、前端 Firestore 讀取 0；設定卡說明照 A；搜尋 → 對話列表 → 對話內容 → Log。
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,14 +89,14 @@ afterEach(() => {
 });
 
 describe('PmAuditPanel', () => {
-  it('進頁籤：讀設定與 Log（Callable），Firestore 0 讀；設定卡沒有說明段落', async () => {
+  it('進頁籤：讀設定與 Log（Callable），Firestore 0 讀；設定卡說明段落逐字照 A', async () => {
     const { container } = render(<PmAuditPanel />);
     await waitFor(() => expect(document.getElementById('pm-audit-settings-status')?.textContent).toBe('已關閉：僅管理員、向上層級或既有對話可私訊。'));
     expect(callsOf('getPrivateMessageSettings')).toHaveLength(1);
     expect(callsOf('getPmAuditLogs')).toEqual([{ action: '', limit: 50 }]);
     expect(firestoreTouched).not.toHaveBeenCalled();
-    expect(container.querySelector('.pm-audit-setting-copy p')).toBeNull();
-    expect(container.textContent).not.toContain('開啟後所有已登入');
+    // 測試同步更新：照 A 恢復設定卡說明（Q11 拿掉說明只針對小遊戲與頭像檢測）。
+    expect(container.querySelector('.pm-audit-setting-copy p')?.textContent).toBe('開啟後所有已登入且未受限角色可彼此開新私訊；關閉時僅管理員、向上層級或既有對話可私訊。');
     await waitFor(() => expect(container.querySelector('.pm-audit-log strong')?.textContent).toBe('send'));
     expect(container.querySelector('.pm-audit-log span')?.textContent).toBe('Uaaaaa...aaa1 -> Ubbbbb...bbb2');
   });
