@@ -154,7 +154,8 @@ export type DeleteTeamResult =
 export async function deleteTeamViaCallable(team: TeamAdminTarget): Promise<DeleteTeamResult> {
   const teamId = String(team.id ?? '').trim() || resolveDocId(team);
   const { callFn } = await import('@/data/callables');
-  const res: DeleteTeamResponse = await callFn('deleteTeam', { teamId });
+  // 伺服器上限 120 秒，前端多留 5 秒，避免 SDK 預設 70 秒先逾時而誤報失敗
+  const res: DeleteTeamResponse = await callFn('deleteTeam', { teamId }, { timeout: 125000 });
   if (res?.partial) {
     return { status: 'partial', remaining: Number(res.partial.remaining) || 0 };
   }
@@ -173,5 +174,7 @@ export function getTeamAdminErrorMessage(error: unknown, fallback: string): stri
     : '';
   if (message.includes('COACH_PLUS_REQUIRED')) return '權限不足';
   if (message.includes('TEAM_DELETE_DENIED') || message.includes('TEAM_MANAGE_DENIED')) return '權限不足';
+  // 伺服器拒絕文件 id 與 id 欄位不一致的舊格式俱樂部；重試無效，不叫人重試
+  if (message.includes('TEAM_ID_MISMATCH')) return '此俱樂部資料格式較舊，請聯繫管理員處理';
   return fallback;
 }

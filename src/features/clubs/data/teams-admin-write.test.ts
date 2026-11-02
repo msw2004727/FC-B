@@ -54,7 +54,7 @@ describe('deleteTeamViaCallable', () => {
     await loadTeams();
     mocks.callFn.mockResolvedValue({ ok: true, alreadyDeleted: false, roleChangedUids: [' U-cap ', ''] });
     expect(await deleteTeamViaCallable({ id: 'tm_1', _docId: 'tm_1' })).toEqual({ status: 'deleted', roleChangedUids: ['U-cap'] });
-    expect(mocks.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_1' });
+    expect(mocks.callFn).toHaveBeenCalledWith('deleteTeam', { teamId: 'tm_1' }, { timeout: 125000 });
     expect((await loadTeams()).map((t) => t.id)).toEqual(['tm_2']);
     expect(mocks.getDocs).toHaveBeenCalledTimes(1);
   });
@@ -72,6 +72,7 @@ describe('deleteTeamViaCallable', () => {
     expect(getTeamAdminErrorMessage(new Error('TEAM_DELETE_DENIED'), 'x')).toBe('權限不足');
     expect(getTeamAdminErrorMessage(new Error('COACH_PLUS_REQUIRED'), 'x')).toBe('權限不足');
     expect(getTeamAdminErrorMessage(new Error('internal'), '刪除俱樂部失敗，請稍後再試')).toBe('刪除俱樂部失敗，請稍後再試');
+    expect(getTeamAdminErrorMessage(new Error('TEAM_ID_MISMATCH'), '刪除俱樂部失敗，請稍後再試')).toBe('此俱樂部資料格式較舊，請聯繫管理員處理');
   });
 });
 
