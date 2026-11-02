@@ -1,6 +1,6 @@
 // W1C-I 無效資料查詢頁：四身分權限、每頁籤讀取預算、切頁籤不重讀、只讀（不呼叫任何寫入 API）。
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('firebase/firestore', async () => (await import('../inactive-test-utils')).sdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: {} }) }));
@@ -13,6 +13,7 @@ vi.mock('@/features/profile/data/viewer', async (importOriginal) => {
   return { createMinimalViewer: actual.createMinimalViewer, useViewer: () => state.viewer };
 });
 
+import { setLocale } from '@/i18n/i18n';
 import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { createPermissionChecker } from '@/features/profile/data/permissions';
 import { calls, resetStore, sdk, totalReads, ts, WRITE_OR_OTHER_READ_APIS } from '../inactive-test-utils';
@@ -51,6 +52,11 @@ function seed(): void {
     ],
   });
 }
+
+// 用真的字典（含本功能 locales 與舊版 A 字典），順便驗證翻譯鍵存在。
+beforeAll(async () => {
+  await setLocale('zh-TW');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
