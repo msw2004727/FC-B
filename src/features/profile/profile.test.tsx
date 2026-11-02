@@ -409,18 +409,10 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-slot-banner')).toBeNull();
     expect(document.querySelector('.profile-scene-key')).toBeNull();
 
-    // T-038（2026-10-26）：成就/稱號系統先關閉（exp-achievements/availability.ts），
-    // 原本照 A（M-121）導頁的快捷改為反灰＋「尚未開放」提示，不導頁。
-    routeMock.mockClear();
-    const toastSpy = vi.spyOn(toast, 'show');
-    fireEvent.click(screen.getByText('成就/徽章'));
-    fireEvent.click(screen.getByText('稱號'));
-    expect(routeMock).not.toHaveBeenCalled();
-    expect(toastSpy).toHaveBeenCalledTimes(2);
-    for (const call of toastSpy.mock.calls) {
-      expect(call[0]).toEqual({ message: expect.stringMatching(/exp-achievements\.closed|尚未開放/) });
-    }
-    toastSpy.mockRestore();
+    // 成就／徽章、稱號、道具欄已從新站移除（站長 2026-11-02）。
+    expect(screen.queryByText('成就/徽章')).toBeNull();
+    expect(screen.queryByText('稱號')).toBeNull();
+    expect(screen.queryByText('道具欄')).toBeNull();
   });
 
   it('正常顯示俱樂部與活動連結，支援區塊收合', async () => {

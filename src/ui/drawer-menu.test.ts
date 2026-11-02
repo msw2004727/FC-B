@@ -214,10 +214,12 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
 });
 
 describe('新站不做的入口不出現在抽屜', () => {
-  it('SEO 儀表板與佈景主題不在 DRAWER_MENUS', () => {
+  it('SEO 儀表板、佈景主題、EXP 管理、成就/徽章管理不在 DRAWER_MENUS', () => {
     const labels = DRAWER_MENUS.map((e) => e.label);
-    expect(labels).not.toContain('SEO 儀表板');
-    expect(labels).not.toContain('佈景主題');
-    expect(DRAWER_MENUS.some((e) => e.page === 'page-admin-seo' || e.page === 'page-admin-themes')).toBe(false);
+    for (const label of ['SEO 儀表板', '佈景主題', '手動 EXP 管理', '自動 EXP 管理', '成就/徽章管理']) {
+      expect(labels).not.toContain(label);
+    }
+    const removedPages = ['page-admin-seo', 'page-admin-themes', 'page-admin-exp', 'page-admin-auto-exp', 'page-admin-achievements'];
+    expect(DRAWER_MENUS.some((e) => removedPages.includes(e.page ?? ''))).toBe(false);
   });
 });

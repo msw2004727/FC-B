@@ -5,11 +5,6 @@ import { useEffect, useState } from 'preact/hooks';
 import { emit } from '@/core/events';
 import { useUserRoles } from '@/data/user-roles';
 import { lt } from '@/i18n/i18n';
-import { useLocation } from 'preact-iso';
-import {
-  ACHIEVEMENTS_OPEN,
-  showAchievementsClosedToast,
-} from '@/features/exp-achievements/availability';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
@@ -147,55 +142,6 @@ export function LegacyProfileTopSection({
 
   // 照 A `_buildTitleDisplayHtml` / `getCurrentBadgeCount`：頭部徽章數與稱號於資料載入後更新。
   //   動態 import 成就資料層，避免 firestore 進首屏。載入失敗保留 `--` 與純名字。
-  const [badgeCount, setBadgeCount] = useState<string>('--');
-  const [titleParts, setTitlePartsState] = useState<{
-    big: string | null;
-    normal: string | null;
-  }>({ big: null, normal: null });
-  useEffect(() => {
-    let cancelled = false;
-    setBadgeCount('--');
-    setTitlePartsState({ big: null, normal: null });
-    (async () => {
-      try {
-        const mod = await import('@/features/exp-achievements/data/achievements');
-        const [defs, progressMap] = await Promise.all([
-          mod.loadAchievementDefs(),
-          mod.loadUserAchievementProgress(uid),
-        ]);
-        if (cancelled) return;
-        const evaluated = mod.evaluateFromProgress(defs.achievements, progressMap);
-        const { completed } = mod.splitPendingCompleted(evaluated);
-        const earned = mod.getEarnedBadges(completed, defs.badges);
-        setBadgeCount(String(earned.length));
-        setTitlePartsState(
-          mod.buildTitleParts(
-            { titleBig: profile['titleBig'], titleNormal: profile['titleNormal'] },
-            evaluated,
-          ),
-        );
-      } catch (err) {
-        // 照 A：載入失敗不影響頭部其他欄位。
-        if (!cancelled) {
-          // eslint-disable-next-line no-console
-          console.warn('[profile] load achievements for header failed', err);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // 只在 uid／稱號欄位變動時重讀，避免 profile 物件識別改變造成重複。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, profile.titleBig, profile.titleNormal]);
-
-  const location = useLocation();
-  // 成就／稱號關閉期間（ACHIEVEMENTS_OPEN=false）：入口只顯示「尚未開放」提示，不導頁。
-  const openAchievementsEntry = (path: string): void => {
-    if (ACHIEVEMENTS_OPEN) location.route(path);
-    else showAchievementsClosedToast();
-  };
-
   return (
     <>
       <div class="profile-header">
@@ -207,20 +153,7 @@ export function LegacyProfileTopSection({
           imageContainerClass="profile-avatar profile-avatar-img"
           crown={isSecondary}
         />
-        {/* 照 A `_buildTitleDisplayHtml`：金／銀稱號標籤 + 名字 */}
         <div class="profile-title" id="profile-title" data-no-translate>
-          {titleParts.big ? (
-            <>
-              <span class="title-tag title-gold">{titleParts.big}</span>
-              <span class="title-dot">·</span>
-            </>
-          ) : null}
-          {titleParts.normal ? (
-            <>
-              <span class="title-tag title-normal">{titleParts.normal}</span>
-              <span class="title-dot">·</span>
-            </>
-          ) : null}
           <span>{displayName}</span>
         </div>
         <div
@@ -309,46 +242,6 @@ export function LegacyProfileTopSection({
             {lt('profile.attendanceRate', '出席率')}
           </span>
         </div>
-        <div class={ACHIEVEMENTS_OPEN ? 'stat-item' : 'stat-item ach-closed'}>
-          <span class="stat-num" id="profile-stat-badges">{badgeCount}</span>
-          <span class="stat-label" data-i18n="profile.badges">
-            {lt('profile.badges', '徽章')}
-          </span>
-        </div>
-      </div>
-
-      <div class="quick-grid">
-        <button
-          type="button"
-          class={ACHIEVEMENTS_OPEN ? 'quick-item' : 'quick-item ach-closed'}
-          aria-disabled={ACHIEVEMENTS_OPEN ? undefined : 'true'}
-          onClick={() => openAchievementsEntry('/achievements')}
-        >
-          <span>🏅</span>
-          <span data-i18n="profile.achievements">
-            {lt('profile.achievements', '成就/徽章')}
-          </span>
-        </button>
-        <button
-          type="button"
-          class={ACHIEVEMENTS_OPEN ? 'quick-item' : 'quick-item ach-closed'}
-          aria-disabled={ACHIEVEMENTS_OPEN ? undefined : 'true'}
-          onClick={() => openAchievementsEntry('/titles')}
-        >
-          <span>🎖️</span>
-          <span data-i18n="profile.titles">{lt('profile.titles', '稱號')}</span>
-        </button>
-        <button
-          type="button"
-          class="quick-item disabled"
-          disabled
-          style="opacity:.35;filter:grayscale(1)"
-        >
-          <span>🎒</span>
-          <span data-i18n="profile.inventory">
-            {lt('profile.inventory', '道具欄')}
-          </span>
-        </button>
       </div>
     </>
   );

@@ -22,7 +22,6 @@ import { manifest as dataRepair } from './features/data-repair/index';
 import { manifest as adminBanners } from './features/admin-banners/index';
 import { manifest as seoAdmin } from './features/seo-admin/index';
 import { manifest as siteTheme } from './features/site-theme/index';
-import { manifest as expAchievements } from './features/exp-achievements/index';
 import { manifest as leaderboard } from './features/leaderboard/index';
 import { manifest as shop } from './features/shop/index';
 import { manifest as miniGames } from './features/mini-games/index';
@@ -49,7 +48,6 @@ export const ALL_FEATURES: FeatureManifest[] = [
   adminBanners,
   seoAdmin,
   siteTheme,
-  expAchievements,
   leaderboard,
   shop,
   miniGames,

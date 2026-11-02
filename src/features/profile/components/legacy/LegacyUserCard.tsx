@@ -25,7 +25,6 @@ import { useViewer } from '../../data/viewer';
 import { SocialLinks } from '../../ui/shared';
 import { ActivityRecordList } from './ActivityRecordList';
 import { LegacyAvatar } from './LegacyProfileHeader';
-import { UserCardBadges } from './UserCardBadges';
 import {
   ROLE_DISPLAY_MAP,
   UNAVAILABLE_MSG,
@@ -314,7 +313,6 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
           <span>{joinDate}</span>
         </div>
       </div>
-      <UserCardBadges uid={profile.uid} isSelf={isSelf} />
       <div class="info-card">
         <div class="info-title profile-record-title-row">
           <span>{lt('活動紀錄', '活動紀錄')}</span>
