@@ -57,17 +57,14 @@ function makeEnv(docs: Array<{ id: string; data: Record<string, unknown> }> = []
     serverTimestamp,
   } as unknown as FirestoreSdk;
   const upload = vi.fn(async (_dataUrl: string, _path: string) => 'https://storage.example/new.webp' as string | null);
-  const remove = vi.fn(async (_path: string) => undefined);
-  const warn = vi.fn();
   const deps: CardsRepoDeps = {
     getFirebase: async () => ({ db: {} as Firestore }),
     loadSdk: async () => sdk,
     newId: () => 'tc_1_abc',
     now: () => 1_760_000_000_000,
-    storage: { upload, remove },
-    warn,
+    upload,
   };
-  return { deps, getDocs, getDoc, collection, orderBy, limit, where, query, doc, setDoc, updateDoc, deleteDoc, upload, remove, warn };
+  return { deps, getDocs, getDoc, collection, orderBy, limit, where, query, doc, setDoc, updateDoc, deleteDoc, upload };
 }
 
 const WRITE = {
@@ -82,8 +79,13 @@ const EXISTING: TournamentCard = {
   id: 'tc_old',
   ...WRITE,
   image: 'https://storage.example/old.webp',
-  imagePath: 'tournamentCards/tc_old/cover_1.webp',
+  imagePath: 'images/tournamentCards/tc_old/cover_1.webp',
 };
+
+const NEW_IMAGE = (id: string) => ({
+  url: 'https://storage.example/new.webp',
+  path: `images/tournamentCards/${id}/cover_2.webp`,
+});
 
 describe('loadTournamentCards：讀取預算', () => {
   it('只發 1 個查詢：tournamentCards、orderBy(startDate, desc)、limit(100)，不讀舊站 tournaments', async () => {
@@ -138,12 +140,7 @@ describe('saveTournamentCard：新增', () => {
   it('setDoc 欄位剛好是白名單，createdBy 是操作者 uid', async () => {
     const env = makeEnv();
     const saved = await saveTournamentCard(
-      {
-        existing: null,
-        id: 'tc_1',
-        write: WRITE,
-        image: { url: 'https://storage.example/new.webp', path: 'tournamentCards/tc_1/cover_1.webp' },
-      },
+      { existing: null, id: 'tc_1', write: WRITE, image: NEW_IMAGE('tc_1') },
       MANAGER,
       env.deps,
     );
@@ -153,7 +150,7 @@ describe('saveTournamentCard：新增', () => {
     expect(payload).toEqual({
       ...WRITE,
       image: 'https://storage.example/new.webp',
-      imagePath: 'tournamentCards/tc_1/cover_1.webp',
+      imagePath: 'images/tournamentCards/tc_1/cover_2.webp',
       createdBy: 'u_admin',
       createdAt: TS,
       updatedAt: TS,
@@ -162,15 +159,36 @@ describe('saveTournamentCard：新增', () => {
       id: 'tc_1',
       ...WRITE,
       image: 'https://storage.example/new.webp',
-      imagePath: 'tournamentCards/tc_1/cover_1.webp',
+      imagePath: 'images/tournamentCards/tc_1/cover_2.webp',
     });
-    expect(env.remove).not.toHaveBeenCalled();
   });
 
-  it('沒有圖片也可以新增（image／imagePath 為空字串）', async () => {
+  it('沒有圖片：不寫 image／imagePath（不寫空字串）', async () => {
     const env = makeEnv();
-    await saveTournamentCard({ existing: null, id: 'tc_1', write: WRITE, image: null }, MANAGER, env.deps);
-    expect(env.setDoc.mock.calls[0]?.[1]).toMatchObject({ image: '', imagePath: '' });
+    const saved = await saveTournamentCard({ existing: null, id: 'tc_1', write: WRITE, image: null }, MANAGER, env.deps);
+    const payload = env.setDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect('image' in payload).toBe(false);
+    expect('imagePath' in payload).toBe(false);
+    expect(saved.image).toBe('');
+  });
+
+  it('上傳結果不合 Rules（非 https、路徑不在本卡資料夾）：拒絕且不寫文件', async () => {
+    const env = makeEnv();
+    await expect(
+      saveTournamentCard(
+        { existing: null, id: 'tc_1', write: WRITE, image: { url: 'http://127.0.0.1:9199/a', path: 'images/tournamentCards/tc_1/a.webp' } },
+        MANAGER,
+        env.deps,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-payload' });
+    await expect(
+      saveTournamentCard(
+        { existing: null, id: 'tc_1', write: WRITE, image: { url: 'https://s/a.webp', path: 'images/tournamentCards/tc_2/a.webp' } },
+        MANAGER,
+        env.deps,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-payload' });
+    expect(env.setDoc).not.toHaveBeenCalled();
   });
 
   it('寫入層再驗一次：非 https 連結、日期顛倒都拒絕', async () => {
@@ -195,77 +213,71 @@ describe('saveTournamentCard：新增', () => {
     ).rejects.toMatchObject({ code: 'invalid-id' });
   });
 
-  it('寫文件失敗：本次新上傳的圖片 best-effort 刪除後丟錯', async () => {
+  it('寫文件失敗直接丟錯（不嘗試刪 Storage）', async () => {
     const env = makeEnv();
     env.setDoc.mockRejectedValueOnce(new Error('permission-denied'));
     await expect(
-      saveTournamentCard(
-        { existing: null, id: 'tc_1', write: WRITE, image: { url: 'https://s/new.webp', path: 'tournamentCards/tc_1/cover_1.webp' } },
-        MANAGER,
-        env.deps,
-      ),
+      saveTournamentCard({ existing: null, id: 'tc_1', write: WRITE, image: NEW_IMAGE('tc_1') }, MANAGER, env.deps),
     ).rejects.toThrow('permission-denied');
-    expect(env.remove).toHaveBeenCalledWith('tournamentCards/tc_1/cover_1.webp');
   });
 });
 
 describe('saveTournamentCard：編輯', () => {
-  it('updateDoc 不帶 createdBy／createdAt；沒換圖時保留原圖、不刪圖', async () => {
+  it('沒換圖：updateDoc 不帶 createdBy／createdAt／image／imagePath，回傳保留原圖', async () => {
     const env = makeEnv();
-    await saveTournamentCard(
+    const saved = await saveTournamentCard(
       { existing: EXISTING, id: 'ignored', write: { ...WRITE, name: '新名稱' }, image: null },
       MANAGER,
       env.deps,
     );
     expect(env.doc).toHaveBeenCalledWith(expect.anything(), 'tournamentCards', 'tc_old');
     const payload = env.updateDoc.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(Object.keys(payload).sort()).toEqual([...UPDATE_FIELDS].sort());
-    expect(payload).toMatchObject({ name: '新名稱', image: EXISTING.image, imagePath: EXISTING.imagePath, updatedAt: TS });
-    expect(env.remove).not.toHaveBeenCalled();
+    expect(Object.keys(payload).sort()).toEqual(['endDate', 'name', 'startDate', 'type', 'updatedAt', 'url']);
+    expect(payload).toMatchObject({ name: '新名稱', updatedAt: TS });
+    expect(saved).toMatchObject({ image: EXISTING.image, imagePath: EXISTING.imagePath });
   });
 
-  it('換圖成功後才刪舊圖；刪舊圖失敗只記警告', async () => {
+  it('換圖：updateDoc 帶新的 image／imagePath，欄位在白名單內', async () => {
     const env = makeEnv();
-    env.remove.mockRejectedValueOnce(new Error('not-found'));
     const saved = await saveTournamentCard(
-      { existing: EXISTING, id: 'tc_old', write: WRITE, image: { url: 'https://s/new.webp', path: 'tournamentCards/tc_old/cover_2.webp' } },
+      { existing: EXISTING, id: 'tc_old', write: WRITE, image: NEW_IMAGE('tc_old') },
       MANAGER,
       env.deps,
     );
-    expect(env.remove).toHaveBeenCalledWith(EXISTING.imagePath);
-    expect(env.warn).toHaveBeenCalledTimes(1);
-    expect(saved.imagePath).toBe('tournamentCards/tc_old/cover_2.webp');
+    const payload = env.updateDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(Object.keys(payload).sort()).toEqual([...UPDATE_FIELDS].sort());
+    expect(payload).toMatchObject({ image: 'https://storage.example/new.webp', imagePath: 'images/tournamentCards/tc_old/cover_2.webp' });
+    expect(saved.imagePath).toBe('images/tournamentCards/tc_old/cover_2.webp');
   });
 });
 
 describe('deleteTournamentCard', () => {
-  it('deleteDoc 後 best-effort 刪除圖片', async () => {
+  it('只刪 Firestore 文件', async () => {
     const env = makeEnv();
     await deleteTournamentCard(EXISTING, MANAGER, env.deps);
     expect(env.deleteDoc).toHaveBeenCalledWith({ path: 'tournamentCards/tc_old' });
-    expect(env.remove).toHaveBeenCalledWith(EXISTING.imagePath);
+    expect(env.upload).not.toHaveBeenCalled();
   });
 
-  it('沒有圖片時不碰 Storage', async () => {
-    const env = makeEnv();
-    await deleteTournamentCard({ id: 'tc_x', imagePath: '' }, MANAGER, env.deps);
-    expect(env.remove).not.toHaveBeenCalled();
-  });
-
-  it('deleteDoc 失敗時不刪圖片', async () => {
+  it('deleteDoc 失敗時丟錯', async () => {
     const env = makeEnv();
     env.deleteDoc.mockRejectedValueOnce(new Error('denied'));
     await expect(deleteTournamentCard(EXISTING, MANAGER, env.deps)).rejects.toThrow('denied');
-    expect(env.remove).not.toHaveBeenCalled();
   });
 });
 
 describe('uploadTournamentCardImage', () => {
-  it('路徑 tournamentCards/{id}/cover_{時間}.webp', async () => {
+  it('路徑 images/tournamentCards/{id}/cover_{時間}.webp', async () => {
     const env = makeEnv();
     const result = await uploadTournamentCardImage('tc_1', 'data:image/webp;base64,AAAA', MANAGER, env.deps);
-    expect(env.upload).toHaveBeenCalledWith('data:image/webp;base64,AAAA', 'tournamentCards/tc_1/cover_1760000000000.webp');
-    expect(result).toEqual({ url: 'https://storage.example/new.webp', path: 'tournamentCards/tc_1/cover_1760000000000.webp' });
+    expect(env.upload).toHaveBeenCalledWith(
+      'data:image/webp;base64,AAAA',
+      'images/tournamentCards/tc_1/cover_1760000000000.webp',
+    );
+    expect(result).toEqual({
+      url: 'https://storage.example/new.webp',
+      path: 'images/tournamentCards/tc_1/cover_1760000000000.webp',
+    });
   });
 
   it('上傳失敗回 null', async () => {

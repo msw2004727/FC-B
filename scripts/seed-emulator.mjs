@@ -225,7 +225,7 @@ try {
   for (const card of seedData.tournamentCards ?? []) {
     const data = { ...card.data };
     if (card.seedImage) {
-      const objectPath = `tournamentCards/${card.id}/cover_seed.jpg`;
+      const objectPath = `images/tournamentCards/${card.id}/cover_seed.jpg`;
       try {
         data.image = await uploadSeedImage(objectPath, card.seedImage);
         data.imagePath = objectPath;

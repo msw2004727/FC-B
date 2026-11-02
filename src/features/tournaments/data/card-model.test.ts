@@ -87,7 +87,7 @@ describe('toTournamentCard', () => {
         endDate: '2026-10-11',
         url: 'https://cup.toosterx.com/',
         image: 'https://x/a.webp',
-        imagePath: 'tournamentCards/tc_1/cover_1.webp',
+        imagePath: 'images/tournamentCards/tc_1/cover_1.webp',
         createdBy: 'u1',
       }),
     ).toEqual({
@@ -98,7 +98,7 @@ describe('toTournamentCard', () => {
       endDate: '2026-10-11',
       url: 'https://cup.toosterx.com/',
       image: 'https://x/a.webp',
-      imagePath: 'tournamentCards/tc_1/cover_1.webp',
+      imagePath: 'images/tournamentCards/tc_1/cover_1.webp',
     });
   });
 

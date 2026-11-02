@@ -410,7 +410,9 @@ export function buildSeedData(now = Date.now()) {
   // ── 賽事卡片（T-089，新站專屬 tournamentCards，與舊站 tournaments 分開）────
   // 第一筆是正式要上的「FEDA CUP 2026 飛達盃」（上線後由站長在畫面上建立，不寫正式資料庫）；
   // 其餘兩筆只供 emulator 截圖驗頁籤與「已結束」，名稱標「示意」。
-  // image／imagePath 由 seed-emulator.mjs 上傳 seedImage 到 Storage emulator 後補上。
+  // 沒有圖片時不寫 image／imagePath；有 seedImage 的由 seed-emulator.mjs 上傳到 Storage emulator 的
+  // images/tournamentCards/{id}/ 後補上。emulator 的下載網址是 http://127.0.0.1，Rules 要求 image 為 https，
+  // 所以在 emulator 內編輯飛達盃這張會被 Rules 拒（示意兩張無圖可正常編輯）。
   const friendlyDate = taipeiDateKey(now + 13 * DAY_MS);
   const tournamentCards = [
     {
@@ -422,8 +424,6 @@ export function buildSeedData(now = Date.now()) {
         startDate: '2026-10-09',
         endDate: '2026-10-11',
         url: 'https://cup.toosterx.com/',
-        image: '',
-        imagePath: '',
         createdBy: UIDS.admin,
         createdAt: new Date(now - 7 * DAY_MS),
         updatedAt: new Date(now - 7 * DAY_MS),
@@ -437,8 +437,6 @@ export function buildSeedData(now = Date.now()) {
         startDate: '2027-03-06',
         endDate: '2027-05-29',
         url: 'https://example.com/league',
-        image: '',
-        imagePath: '',
         createdBy: UIDS.admin,
         createdAt: new Date(now - 2 * DAY_MS),
         updatedAt: new Date(now - 2 * DAY_MS),
@@ -452,8 +450,6 @@ export function buildSeedData(now = Date.now()) {
         startDate: friendlyDate,
         endDate: friendlyDate,
         url: 'https://example.com/friendly',
-        image: '',
-        imagePath: '',
         createdBy: UIDS.admin,
         createdAt: new Date(now - DAY_MS),
         updatedAt: new Date(now - DAY_MS),

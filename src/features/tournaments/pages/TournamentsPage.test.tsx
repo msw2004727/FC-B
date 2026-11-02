@@ -75,7 +75,7 @@ vi.mock('@/features/events/components/event-form/ImageCropper', async () => {
 // ── 測試資料（今天＝台北 2026-11-02）────────────────────
 const DOCS = [
   { id: 'tc_league', data: { name: '2027 春季聯賽', type: 'league', startDate: '2027-03-06', endDate: '2027-05-29', url: 'https://league.example.com/' } },
-  { id: 'tc_feda', data: { name: 'FEDA CUP 2026 飛達盃', type: 'cup', startDate: '2026-10-09', endDate: '2026-10-11', url: 'https://cup.toosterx.com/', image: 'https://storage.example/feda.webp', imagePath: 'tournamentCards/tc_feda/cover_1.webp' } },
+  { id: 'tc_feda', data: { name: 'FEDA CUP 2026 飛達盃', type: 'cup', startDate: '2026-10-09', endDate: '2026-10-11', url: 'https://cup.toosterx.com/', image: 'https://storage.example/feda.webp', imagePath: 'images/tournamentCards/tc_feda/cover_1.webp' } },
   { id: 'tc_friendly', data: { name: '週末友誼賽', type: 'friendly', startDate: '2026-11-15', endDate: '2026-11-15', url: 'https://friendly.example.com/' } },
 ];
 
@@ -114,7 +114,7 @@ beforeEach(() => {
   mockUseViewer.mockReturnValue(viewer());
   mockConfirm.mockResolvedValue(true);
   mockDelete.mockResolvedValue(undefined);
-  mockUpload.mockResolvedValue({ url: 'https://storage.example/new.webp', path: 'tournamentCards/tc_new/cover_1.webp' });
+  mockUpload.mockResolvedValue({ url: 'https://storage.example/new.webp', path: 'images/tournamentCards/tc_new/cover_1.webp' });
   mockSave.mockImplementation(async (input: { existing: TournamentCard | null; id: string; write: Record<string, string>; image: { url: string; path: string } | null }) => ({
     id: input.existing ? input.existing.id : input.id,
     ...input.write,
@@ -280,7 +280,7 @@ describe('新增、編輯、刪除', () => {
     expect(mockUpload).toHaveBeenCalledWith('tc_new', 'data:image/webp;base64,CROPPED', MANAGER);
     expect(mockSave.mock.calls[0]?.[0]).toMatchObject({
       id: 'tc_new',
-      image: { url: 'https://storage.example/new.webp', path: 'tournamentCards/tc_new/cover_1.webp' },
+      image: { url: 'https://storage.example/new.webp', path: 'images/tournamentCards/tc_new/cover_1.webp' },
     });
   });
 
