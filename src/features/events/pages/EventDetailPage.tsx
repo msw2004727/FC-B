@@ -181,6 +181,31 @@ interface Notice {
   serial: number;
 }
 
+// 與 publishTeamRows 同一套對應：缺 _docId 的列不參與；teamKey 空值寫成 null。
+function teamKeysByDoc(rows: readonly TeamRegistration[]): Map<string, string | null> {
+  const teamByDoc = new Map<string, string | null>();
+  for (const row of rows) {
+    if (!row._docId) continue;
+    teamByDoc.set(row._docId, row.teamKey ?? null);
+  }
+  return teamByDoc;
+}
+
+function applyTeamKeyMap<T extends { _docId?: string }>(
+  registrations: readonly T[],
+  teamByDoc: ReadonlyMap<string, string | null>,
+): T[] {
+  let changed = false;
+  const next = registrations.map(reg => {
+    if (!reg._docId || !teamByDoc.has(reg._docId)) return reg;
+    const teamKey = teamByDoc.get(reg._docId) ?? null;
+    if ((reg as TeamRegistration).teamKey === teamKey) return reg;
+    changed = true;
+    return { ...reg, teamKey } as T;
+  });
+  return changed ? next : registrations as T[];
+}
+
 const DetailCompanionSelectModal = lazy(() =>
   import('../components/legacy/CompanionSelectModal')
     .then(module => ({ default: module.CompanionSelectModal })));
@@ -273,6 +298,8 @@ function EventDetailSession({
   const sequence = useRef(0);
   const rosterSequence = useRef(0);
   const attendanceReloadSeq = useRef(0);
+  // T-088：publishTeamRows 每次加一。讀取開始時記下，提交時若已變就重套 teamKey。
+  const teamPublishSeq = useRef(0);
   const rosterPending = useRef(false);
   // 每個活動只自動展開一次；載入 effect 在交出新快照前會重置。不寫入持久化。
   const rosterAutoOpened = useRef(false);
@@ -456,6 +483,8 @@ function EventDetailSession({
     }
     rosterPending.current = true;
     const request = ++rosterSequence.current;
+    const attendanceSeq = attendanceReloadSeq.current;
+    const teamSeq = teamPublishSeq.current;
     setRosterPhase('loading');
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
@@ -469,11 +498,14 @@ function EventDetailSession({
           : Promise.resolve([] as EventAttendanceEntry[]),
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
-      setSnapshot((previous) => previous && ({
-        ...previous,
-        registrations,
-        attendanceRecords,
-      }));
+      setSnapshot((previous) => {
+        if (!previous) return null;
+        return adoptLoadedSnapshot(previous, {
+          ...previous,
+          registrations,
+          attendanceRecords,
+        }, attendanceSeq, teamSeq);
+      });
       setRosterPhase('ready');
     } catch {
       if (alive.current && request === rosterSequence.current) {
@@ -545,6 +577,8 @@ function EventDetailSession({
     const request = ++rosterSequence.current;
     // 收起中的預讀被序號作廢後，未結束的那一輪不能繼續占著鎖，否則展開會永遠跳過。
     if (!rosterExpanded) rosterPending.current = false;
+    const attendanceSeq = attendanceReloadSeq.current;
+    const teamSeq = teamPublishSeq.current;
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
       current.event,
@@ -559,7 +593,7 @@ function EventDetailSession({
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
       const active = registrations.filter(isActiveRegistration);
-      setSnapshot({
+      const next: Snapshot = {
         ...current,
         event: {
           ...current.event,
@@ -569,7 +603,8 @@ function EventDetailSession({
         registrations,
         viewerRegistrations: history,
         attendanceRecords,
-      });
+      };
+      setSnapshot((previous) => adoptLoadedSnapshot(previous, next, attendanceSeq, teamSeq));
       if (rosterExpanded) {
         setRosterPhase('ready');
       }
@@ -659,23 +694,45 @@ function EventDetailSession({
     ? teamRegistrations ?? snapshot?.registrations ?? []
     : [];
 
+  // T-088：讀取期間若出席重讀或分隊發布跑過，提交時保留較新的出席與 teamKey。
+  // previous 為 null（已切走）維持 null，不憑空建快照。teamRowsRef 尚未載入則不改 registrations。
+  function registrationsWithPublishedTeams<T extends { _docId?: string }>(
+    registrations: readonly T[],
+    teamSeq: number,
+  ): T[] {
+    const rows = teamRowsRef.current;
+    if (rows === null || teamPublishSeq.current === teamSeq) return registrations as T[];
+    return applyTeamKeyMap(registrations, teamKeysByDoc(rows));
+  }
+
+  function adoptLoadedSnapshot(
+    previous: Snapshot | null,
+    next: Snapshot,
+    attendanceSeq: number,
+    teamSeq: number,
+  ): Snapshot | null {
+    if (!previous) return null;
+    const registrations = registrationsWithPublishedTeams(next.registrations, teamSeq);
+    const attendanceRecords = attendanceReloadSeq.current !== attendanceSeq
+      ? previous.attendanceRecords
+      : next.attendanceRecords;
+    if (registrations === next.registrations && attendanceRecords === next.attendanceRecords) {
+      return next;
+    }
+    return { ...next, registrations, attendanceRecords };
+  }
+
   function publishTeamRows(rows: TeamRegistration[]): void {
     if (!alive.current) return;
+    teamPublishSeq.current += 1;
     teamRowsRef.current = rows;
     setTeamRegistrations(rows);
     // 照 A _tsApplyTeamAssignments＋_tsRefreshTeamSplitUi：已載入的名單也同步隊伍（含失敗還原）（Gemini 審查 P2）。
-    const teamByDoc = new Map(rows.map(row => [row._docId, row.teamKey ?? null]));
+    const teamByDoc = teamKeysByDoc(rows);
     setSnapshot(prev => {
       if (!prev || prev.registrations.length === 0) return prev;
-      let changed = false;
-      const registrations = prev.registrations.map(reg => {
-        if (!reg._docId || !teamByDoc.has(reg._docId)) return reg;
-        const teamKey = teamByDoc.get(reg._docId) ?? null;
-        if ((reg as TeamRegistration).teamKey === teamKey) return reg;
-        changed = true;
-        return { ...reg, teamKey } as typeof reg;
-      });
-      return changed ? { ...prev, registrations } : prev;
+      const registrations = applyTeamKeyMap(prev.registrations, teamByDoc);
+      return registrations === prev.registrations ? prev : { ...prev, registrations };
     });
   }
 
@@ -836,6 +893,8 @@ function EventDetailSession({
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
     rosterPending.current = false;
+    const attendanceSeq = attendanceReloadSeq.current;
+    const teamSeq = teamPublishSeq.current;
     try {
       // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
       // 名單／紀錄重讀失敗只保留舊資料，不讓整次重新整理失敗（Gemini 審查 P2）。
@@ -873,13 +932,13 @@ function EventDetailSession({
         setPhase('missing');
         return;
       }
-      setSnapshot({
+      setSnapshot((previous) => adoptLoadedSnapshot(previous, {
         event: nextEvent,
         eventDocId: fresh.eventDocId,
         viewerRegistrations: history,
         registrations,
         attendanceRecords,
-      });
+      }, attendanceSeq, teamSeq));
       if (!registrationsFailed) setRosterPhase('ready');
       else setRosterPhase((phase) => (phase === 'loading' ? 'error' : phase));
       setHistoryFailed(false);
@@ -969,6 +1028,7 @@ function EventDetailSession({
       const current = headerState.current.snapshot;
       const uid = currentViewer.current.uid;
       if (!current || !uid) throw new Error('stale');
+      const teamSeq = teamPublishSeq.current;
       const request = ++rosterSequence.current;
       const [fresh, registrations, history] = await Promise.all([
         loadEventDetail(current.event.id || eventId),
@@ -988,7 +1048,7 @@ function EventDetailSession({
         ...(headerState.current.snapshot ?? current),
         event: { ...fresh.event, id: fresh.event.id || eventId },
         eventDocId: current.eventDocId,
-        registrations,
+        registrations: registrationsWithPublishedTeams(registrations, teamSeq),
         viewerRegistrations: history,
       };
       headerState.current = { snapshot: next, visible: true };
@@ -998,7 +1058,7 @@ function EventDetailSession({
       setRefreshFailed(false);
       setHistoryFailed(false);
       return {
-        event: next.event, registrations,
+        event: next.event, registrations: next.registrations,
         context: operateContextFromViewer(currentViewer.current),
         operatorName: resolveOperator(currentViewer.current),
       };

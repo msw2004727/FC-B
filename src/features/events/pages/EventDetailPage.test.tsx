@@ -178,6 +178,18 @@ vi.mock('@/features/events/data/signup', async (importOriginal) => {
   const original = await importOriginal<typeof import('../data/signup')>();
   return { ...original, registerForEvent: mocks.register, cancelRegistration: mocks.cancel };
 });
+// T-088：分隊批次只負責呼叫 publish，避免 commit 碰到 Firestore 後把樂觀分隊打回。
+vi.mock('../data/team-split-writes', () => ({
+  runTeamSplitBatch: async (deps: {
+    isCurrent: () => boolean;
+    loadRegistrations: () => Promise<ReadonlyArray<{ teamKey?: string | null }>>;
+    publish: (rows: Array<{ teamKey?: string | null }>) => void;
+  }) => {
+    const rows = await deps.loadRegistrations();
+    if (!deps.isCurrent()) return;
+    deps.publish(rows.map(row => ({ ...row, teamKey: 'B' })));
+  },
+}));
 
 import EventDetailPage from './EventDetailPage';
 import { setLocale } from '@/i18n/i18n';
@@ -1475,5 +1487,225 @@ describe('T-085 名單展開與進頁讀取', () => {
     expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
     expect(mocks.registrations).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
+  });
+});
+
+describe('T-088 背景刷新晚到', () => {
+  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  function manager(): ViewerView {
+    return {
+      ...viewer,
+      uid: 'uidA',
+      displayName: '甲',
+      capabilities: ['user.activity.site_operate', 'user.activity.addons_use'],
+    };
+  }
+
+  const rosterReg: DetailRegistration = {
+    _docId: 'targetA',
+    eventId: 'evtA',
+    userId: 'uidB',
+    userName: '乙',
+    participantType: 'self',
+    status: 'confirmed',
+  };
+
+  const teamSplit = {
+    enabled: true,
+    mode: 'random',
+    teams: [
+      { key: 'A', color: '#EF4444', name: '紅隊' },
+      { key: 'B', color: '#3B82F6', name: '藍隊' },
+    ],
+  };
+
+  function detailFor(withTeams: boolean): LoadedEventDetail {
+    return {
+      eventDocId: 'evtA',
+      event: {
+        ...detail.event,
+        id: 'evtA',
+        creatorUid: 'uidA',
+        title: '週末活動',
+        max: 10,
+        ...(withTeams ? { teamSplit } : {}),
+      } as LoadedEventDetail['event'],
+    };
+  }
+
+  function mountEvt(): ReturnType<typeof render> {
+    history.replaceState(null, '', '/events/evtA');
+    return render(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
+  }
+
+  function attendanceRowText(name: string): string {
+    const table = document.querySelector('#detail-attendance-table');
+    const row = Array.from(table?.querySelectorAll('tr') ?? [])
+      .find((tr) => tr.textContent?.includes(name));
+    return row?.textContent ?? '';
+  }
+
+  function teamCountTexts(): string[] {
+    return Array.from(document.querySelectorAll('.team-stat-text'))
+      .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim());
+  }
+
+  const checkin = {
+    _docId: 'targetA',
+    uid: 'uidB',
+    userName: '乙',
+    type: 'checkin',
+    status: 'active',
+  };
+
+  async function clickEnabledSignup(): Promise<void> {
+    await waitFor(() => expect(
+      (screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled,
+    ).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
+  }
+
+  it('refresh 的舊出席讀取晚到時，保留期間重讀寫入的新紀錄', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.detail.mockResolvedValue(detailFor(false));
+    mocks.registrations.mockResolvedValue([rosterReg]);
+    mocks.attendance.mockResolvedValue([]);
+    mocks.settleAttendance.mockResolvedValue({
+      ok: true,
+      added: 0,
+      removed: 0,
+      targets: [],
+      granted: [],
+      skippedAlready: [],
+      skippedZeroAmount: false,
+      failed: [],
+    });
+    mountEvt();
+    await screen.findByText('乙');
+    fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
+    await screen.findByRole('button', { name: '完成' });
+
+    const queued: Array<ReturnType<typeof deferred<unknown[]>>> = [];
+    mocks.attendance.mockImplementation(() => {
+      const item = deferred<unknown[]>();
+      queued.push(item);
+      return item.promise;
+    });
+    await clickEnabledSignup();
+    await waitFor(() => expect(queued.length).toBe(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    await waitFor(() => expect(queued.length).toBe(2));
+    const stale = queued[0];
+    const reloaded = queued[1];
+    if (!stale || !reloaded) throw new Error('需要 refresh 與出席重讀各一次');
+
+    await act(async () => {
+      reloaded.resolve([checkin]);
+    });
+    await waitFor(() => expect(attendanceRowText('乙')).toContain('✓'));
+
+    await act(async () => {
+      stale.resolve([]);
+    });
+    expect(attendanceRowText('乙')).toContain('✓');
+  });
+
+  it('沒有出席重讀介入時，refresh 的出席讀取結果照常採用', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.detail.mockResolvedValue(detailFor(false));
+    mocks.registrations.mockResolvedValue([rosterReg]);
+    mocks.attendance.mockResolvedValue([]);
+    mountEvt();
+    await screen.findByText('乙');
+    expect(attendanceRowText('乙')).not.toContain('✓');
+
+    const callsBefore = mocks.attendance.mock.calls.length;
+    const refreshAttendance = deferred<unknown[]>();
+    mocks.attendance.mockImplementation(() => refreshAttendance.promise);
+    await clickEnabledSignup();
+    await waitFor(() => expect(mocks.attendance.mock.calls.length).toBe(callsBefore + 1));
+
+    await act(async () => {
+      refreshAttendance.resolve([checkin]);
+    });
+    await waitFor(() => expect(attendanceRowText('乙')).toContain('✓'));
+  });
+
+  it('refresh 的舊名單晚到時，保留期間發布的 teamKey', async () => {
+    mocks.viewer.mockReturnValue(manager());
+    mocks.detail.mockResolvedValue(detailFor(true));
+    mocks.registrations.mockResolvedValue([{ ...rosterReg, teamKey: 'A' }]);
+    mountEvt();
+    await screen.findByText('乙');
+    const fill = await screen.findByRole('button', { name: '補齊' });
+    await waitFor(() => {
+      const counts = teamCountTexts();
+      expect(counts[0]?.startsWith('1')).toBe(true);
+      expect(counts[1]?.startsWith('0')).toBe(true);
+    });
+
+    const refreshRows = deferred<Array<typeof rosterReg & { teamKey: string }>>();
+    const callsBefore = mocks.registrations.mock.calls.length;
+    mocks.registrations.mockImplementation(() => refreshRows.promise);
+    await clickEnabledSignup();
+    await waitFor(() => expect(mocks.registrations.mock.calls.length).toBe(callsBefore + 1));
+
+    fireEvent.click(fill);
+    await waitFor(() => {
+      const counts = teamCountTexts();
+      expect(counts[0]?.startsWith('0')).toBe(true);
+      expect(counts[1]?.startsWith('1')).toBe(true);
+    });
+
+    await act(async () => {
+      refreshRows.resolve([{ ...rosterReg, teamKey: 'A' }]);
+    });
+    const counts = teamCountTexts();
+    expect(counts[0]?.startsWith('0')).toBe(true);
+    expect(counts[1]?.startsWith('1')).toBe(true);
+  });
+
+  it('分隊尚未載入時，refresh 的 registrations 原樣採用', async () => {
+    const stalled = deferred<unknown[]>();
+    const refreshRows = deferred<unknown[]>();
+    let calls = 0;
+    mocks.registrations.mockImplementation(() => {
+      calls += 1;
+      return calls <= 2 ? stalled.promise : refreshRows.promise;
+    });
+    mocks.viewer.mockReturnValue(manager());
+    mocks.detail.mockResolvedValue(detailFor(true));
+    mountEvt();
+    await screen.findByRole('button', { name: '立即報名' });
+    await waitFor(() => expect(calls).toBe(2));
+    await waitFor(() => {
+      const counts = teamCountTexts();
+      expect(counts[0]?.startsWith('0')).toBe(true);
+      expect(counts[1]?.startsWith('0')).toBe(true);
+    });
+
+    await clickEnabledSignup();
+    await waitFor(() => expect(calls).toBe(3));
+    await act(async () => {
+      refreshRows.resolve([{ ...rosterReg, teamKey: 'B' }]);
+    });
+    await waitFor(() => {
+      const counts = teamCountTexts();
+      expect(counts[0]?.startsWith('0')).toBe(true);
+      expect(counts[1]?.startsWith('1')).toBe(true);
+    });
+
+    await act(async () => {
+      stalled.resolve([]);
+    });
+    const counts = teamCountTexts();
+    expect(counts[0]?.startsWith('0')).toBe(true);
+    expect(counts[1]?.startsWith('1')).toBe(true);
   });
 });
