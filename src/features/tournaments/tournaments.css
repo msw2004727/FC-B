@@ -20,6 +20,7 @@
   border: none;
   border-radius: 12px 12px 0 0;
   /* 未選頁籤用固定灰階（示意 A 的 #dfe3ea／#2b3445），--border 在深色下與頁面底色太接近、看不出堆疊 */
+  /* #dfe3ea（淺色）是站長同意的示意 A（t089-mockA.html 的 --tab-bg）指定值，刻意保留色碼、不另創 CSS 變數（T-089 終驗）。 */
   background: #dfe3ea;
   color: var(--text-muted);
   font-size: .8rem;
@@ -29,6 +30,7 @@
   box-shadow: -3px -1px 6px rgba(0, 0, 0, .12);
   transform: translateY(4px);
 }
+/* #2b3445（深色）是站長同意的示意 A（t089-mockA.html 深色 --tab-bg）指定值，刻意保留色碼（T-089 終驗）。 */
 [data-theme="dark"] .tc-tab { background: #2b3445; box-shadow: -3px -1px 6px rgba(0, 0, 0, .45); }
 .tc-tab:first-child { margin-left: 0; }
 .tc-tab:nth-child(1) { z-index: 4; }

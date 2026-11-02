@@ -206,11 +206,12 @@ describe('saveTournamentCard：新增', () => {
     expect(env.setDoc).not.toHaveBeenCalled();
   });
 
-  it('不合格的 id 拒絕', async () => {
+  it.each(['a/b', 'ct_1760000000000_abc123', 'tc_bad-id', 'tc_'])('不合格的 id（%s）拒絕（同 Rules tc_[A-Za-z0-9_]+）', async (id) => {
     const env = makeEnv();
     await expect(
-      saveTournamentCard({ existing: null, id: 'a/b', write: WRITE, image: null }, MANAGER, env.deps),
+      saveTournamentCard({ existing: null, id, write: WRITE, image: null }, MANAGER, env.deps),
     ).rejects.toMatchObject({ code: 'invalid-id' });
+    expect(env.setDoc).not.toHaveBeenCalled();
   });
 
   it('寫文件失敗直接丟錯（不嘗試刪 Storage）', async () => {

@@ -10,8 +10,11 @@ import { formatTaipei } from '@/core/taipei-time';
 export const TOURNAMENT_CARDS_COLLECTION = 'tournamentCards';
 /** 進頁只發這一個查詢的筆數上限（顧問讀取預算硬規則：1 個查詢、limit 100）。 */
 export const TOURNAMENT_CARDS_LIMIT = 100;
-/** 管理按鈕與所有寫入共用的權限碼（不新增權限碼）。 */
-export const TOURNAMENT_CARD_PERMISSION = 'admin.tournaments.entry';
+/**
+ * 管理按鈕與所有寫入共用的權限碼（不新增權限碼）：既有的 `admin.tournaments.manage_all`，預設 admin 起跳、可個別授權。
+ * T-089 終驗：站長選「管理員以上管理」；不用 `admin.tournaments.entry`（R-IAM-010 禁止拿 .entry 當動作授權）。
+ */
+export const TOURNAMENT_CARD_PERMISSION = 'admin.tournaments.manage_all';
 export const TOURNAMENT_CARD_ID_PREFIX = 'tc_';
 
 export const TOURNAMENT_CARD_TYPES = ['league', 'cup', 'friendly'] as const;
@@ -189,8 +192,8 @@ export interface TournamentCardActor {
 
 /**
  * 「＋ 新增賽事」、卡片鉛筆與所有寫入共用這一個判斷（R-IAM-011）：
- * 總管，或持有 `admin.tournaments.entry`（hasPermission 已含角色權限與個別授權）。
- * 與 Rules `isSuperAdmin() || hasEffectivePerm('admin.tournaments.entry')` 對應。
+ * 總管，或持有 `admin.tournaments.manage_all`（hasPermission 已含角色權限與個別授權）。
+ * 與 Rules `isSuperAdmin() || hasEffectivePerm('admin.tournaments.manage_all')` 對應。
  */
 export function canManageTournamentCards(actor: TournamentCardActor | null | undefined): boolean {
   if (!actor || typeof actor.uid !== 'string' || actor.uid.length === 0) return false;

@@ -1,6 +1,6 @@
 /**
  * 新站「賽事」卡片的讀寫（T-089）。②a 直寫：FC Functions 沒有對應 Callable，權限由 Rules
- * `match /tournamentCards/{id}` 把關（read 公開；create/update/delete 限 `isSuperAdmin() || hasEffectivePerm('admin.tournaments.entry')`）。
+ * `match /tournamentCards/{id}` 把關（read 公開；create/update/delete 限 `isSuperAdmin() || hasEffectivePerm('admin.tournaments.manage_all')`）。
  *
  * - 讀取：進頁只發 1 個查詢（`orderBy('startDate','desc')`＋`limit(100)`），頁籤與開關在前端篩。
  * - 寫入：每個函式最前面都驗 `canManageTournamentCards`（與按鈕同一個判斷，R-IAM-010／011），
@@ -55,11 +55,12 @@ export const UPDATE_FIELDS = [
   'updatedAt',
 ] as const;
 
-/** Storage 圖片的資料夾（與 Rules `imagePath.matches('images/tournamentCards/[^/]+/[^/]+')` 一致）。 */
+/** Storage 圖片的資料夾（與 Rules `imagePath.matches('images/tournamentCards/' + cardId + '/[^/]+')` 一致）。 */
 export const IMAGE_FOLDER = 'images/tournamentCards';
 /** Storage Rules 上限是嚴格小於 2MB。 */
 export const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-const CARD_ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
+/** 與 Rules `cardId.matches('tc_[A-Za-z0-9_]+')` 一致（generateId('tc_') 的產物都符合）。 */
+const CARD_ID_RE = /^tc_[A-Za-z0-9_]{1,117}$/;
 
 export class TournamentCardError extends Error {
   readonly code: 'permission-denied' | 'invalid-id' | 'invalid-payload' | 'image-too-large';
@@ -94,7 +95,7 @@ async function getContext(deps: CardsRepoDeps): Promise<{ db: Firestore; sdk: Fi
 
 function assertCanManage(actor: TournamentCardActor | null | undefined): asserts actor is TournamentCardActor & { uid: string } {
   if (!canManageTournamentCards(actor)) {
-    throw new TournamentCardError('permission-denied', 'admin.tournaments.entry required');
+    throw new TournamentCardError('permission-denied', 'admin.tournaments.manage_all required');
   }
 }
 

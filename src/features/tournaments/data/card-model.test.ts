@@ -240,7 +240,7 @@ describe('canManageTournamentCards：按鈕與寫入共用同一個判斷', () =
   }
 
   it.each([
-    ['持有 admin.tournaments.entry 的 admin', actor('admin', true)],
+    ['持有 admin.tournaments.manage_all 的 admin', actor('admin', true)],
     ['持有個別授權的一般用戶', actor('user', true)],
     ['總管（即使 hasPermission 回 false）', actor('super_admin', false)],
   ])('允許：%s', (_label, a) => {
@@ -258,8 +258,17 @@ describe('canManageTournamentCards：按鈕與寫入共用同一個判斷', () =
     expect(canManageTournamentCards(a)).toBe(false);
   });
 
-  it('只認 admin.tournaments.entry，不認其他碼', () => {
+  it('權限碼是 admin.tournaments.manage_all', () => {
+    expect(TOURNAMENT_CARD_PERMISSION).toBe('admin.tournaments.manage_all');
+  });
+
+  it('只認 admin.tournaments.manage_all，不認其他碼', () => {
     const other: TournamentCardActor = { uid: 'u1', role: 'admin', hasPermission: (code) => code === 'admin.tournaments.create' };
     expect(canManageTournamentCards(other)).toBe(false);
+  });
+
+  it('只有 admin.tournaments.entry 的 coach 拒絕（.entry 不是動作授權，R-IAM-010）', () => {
+    const entryOnly: TournamentCardActor = { uid: 'u_coach', role: 'coach', hasPermission: (code) => code === 'admin.tournaments.entry' };
+    expect(canManageTournamentCards(entryOnly)).toBe(false);
   });
 });

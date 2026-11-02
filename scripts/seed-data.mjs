@@ -457,12 +457,12 @@ export function buildSeedData(now = Date.now()) {
     },
   ];
 
-  // 個別授權：讓 admin 種子帳號持有 admin.tournaments.entry（emulator 沒有 rolePermissions 文件，
+  // 個別授權：讓 admin 種子帳號持有 admin.tournaments.manage_all（emulator 沒有 rolePermissions 文件，
   // Rules 的 hasPerm 讀不到角色權限；用個別授權驗「hasPermission 含個別授權」這條路）。
   const userPermissionGrants = [
     {
       id: UIDS.admin,
-      data: { uid: UIDS.admin, permissions: ['admin.tournaments.entry'], enabled: true },
+      data: { uid: UIDS.admin, permissions: ['admin.tournaments.manage_all'], enabled: true },
     },
   ];
 

@@ -99,7 +99,7 @@ export function BottomNav({
     }
 
     if (!activePaths.has(targetPath)) {
-      // 目標頁尚未在 B 啟用（例如 /tournaments）時提示尚未開放
+      // 目標頁的功能被關閉（建置期設定或遠端旗標）時提示尚未開放；/tournaments 已於 T-089 啟用為賽事卡片清單
       toast.show({ message: UNAVAILABLE_FEATURE_MSG });
       return;
     }

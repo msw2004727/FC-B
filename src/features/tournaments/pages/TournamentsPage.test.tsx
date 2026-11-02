@@ -95,7 +95,7 @@ function viewer(overrides: Partial<ViewerView> = {}): ViewerView {
 const MANAGER = viewer({
   uid: 'u_admin',
   role: 'admin',
-  hasPermission: (code: string) => code === 'admin.tournaments.entry',
+  hasPermission: (code: string) => code === 'admin.tournaments.manage_all',
 });
 
 function names(): string[] {
@@ -203,8 +203,19 @@ describe('管理按鈕（與寫入同一個判斷）', () => {
     expect(document.querySelectorAll('.tc-edit').length).toBe(0);
   });
 
+  it('只有 admin.tournaments.entry 的 coach 看不到（.entry 不是動作授權）', async () => {
+    mockUseViewer.mockReturnValue(viewer({
+      uid: 'u_coach',
+      role: 'coach',
+      hasPermission: (code: string) => code === 'admin.tournaments.entry',
+    }));
+    await renderLoaded();
+    expect(screen.queryByText('＋ 新增賽事')).toBeNull();
+    expect(document.querySelectorAll('.tc-edit').length).toBe(0);
+  });
+
   it.each([
-    ['持有 admin.tournaments.entry', MANAGER],
+    ['持有 admin.tournaments.manage_all', MANAGER],
     ['總管', viewer({ uid: 'u_super', role: 'super_admin' })],
   ])('%s 看得到新增與每張卡片的鉛筆', async (_label, v) => {
     mockUseViewer.mockReturnValue(v);
