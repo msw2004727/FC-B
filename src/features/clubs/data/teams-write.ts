@@ -368,6 +368,53 @@ export async function saveTeamRoleChange(
   return result;
 }
 
+/** A `_promptTeamMemberMatchData` 的輸入上限（背號 12、位置 20、備註 80）。 */
+export const MEMBER_MATCH_LIMITS = { jerseyNumber: 12, position: 20, notes: 80 } as const;
+
+/**
+ * 對應 A `editTeamMemberMatchData` → `_saveTeamMemberScopedTeamData(teamId, 'memberMatchData', key, record)`。
+ * 以 FieldPath 單點更新 `memberMatchData.{memberKey}` 的四欄，頂層只動 memberMatchData／updatedAt
+ * （Rules 幹部欄位白名單 `isTeamStaffFieldsOnly`）；不碰賽事集合。
+ */
+export async function saveTeamMemberMatchData(
+  team: TeamWriteTarget,
+  memberKey: string,
+  record: { jerseyNumber: string; position: string; notes: string; updatedAt: string },
+): Promise<void> {
+  const docId = resolveDocId(team);
+  if (typeof memberKey !== 'string') fail('invalid memberKey');
+  const key = memberKey.trim();
+  if (!key || /[/.~*\[\]]/.test(key)) fail('invalid memberKey');
+  if (!isRecord(record)) fail('match record must be an object');
+  for (const field of ['jerseyNumber', 'position', 'notes'] as const) {
+    const value = record[field];
+    if (typeof value !== 'string') fail(`${field} must be a string`);
+    if (value.length > MEMBER_MATCH_LIMITS[field]) fail(`${field} too long`);
+  }
+  if (
+    typeof record.updatedAt !== 'string'
+    || !Number.isFinite(Date.parse(record.updatedAt))
+    || new Date(record.updatedAt).toISOString() !== record.updatedAt
+  ) {
+    fail('record updatedAt must be an ISO string');
+  }
+  const { firestore, ref } = await writeContext(docId);
+  await firestore.updateDoc(
+    ref,
+    new firestore.FieldPath('memberMatchData', key, 'jerseyNumber'),
+    record.jerseyNumber,
+    new firestore.FieldPath('memberMatchData', key, 'position'),
+    record.position,
+    new firestore.FieldPath('memberMatchData', key, 'notes'),
+    record.notes,
+    new firestore.FieldPath('memberMatchData', key, 'updatedAt'),
+    record.updatedAt,
+    'updatedAt',
+    firestore.serverTimestamp(),
+  );
+  invalidateTeams();
+}
+
 /**
  * 使用 FieldPath 單點更新指定成員的 notes 與 updatedAt。
  * 紀錄 updatedAt 保留 ISO 字串，文件 updatedAt 使用 serverTimestamp，

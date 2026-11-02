@@ -528,7 +528,8 @@ describe('LegacyTeamMembersCard', () => {
     });
   });
 
-  it('經理編輯模式依隊員、教練、領隊、球經產出 A action DOM，完全沒有剔除鈕', () => {
+  // 測試同步更新：K4／K6 起補上 A 的賽事資料鈕與剔除鈕；剔除鈕只給一般隊員（站長 11-02：幹部先降職）。
+  it('經理編輯模式依隊員、教練、領隊、球經產出 A action DOM，剔除鈕只在一般隊員', () => {
     const { container } = renderManagement();
     enterEditMode();
 
@@ -555,7 +556,11 @@ describe('LegacyTeamMembersCard', () => {
     expect(actions.children[0]?.className).toBe(
       'td-member-row-edit-btn td-mm-icon-btn td-member-note-edit-btn',
     );
-    expect(actions.children[1]?.className).toBe('td-member-role-action-cell td-member-promote-cell');
+    expect(actions.children[1]?.className).toBe(
+      'td-member-row-edit-btn td-mm-icon-btn td-member-match-edit-btn',
+    );
+    expect(actions.children[2]?.className).toBe('td-member-remove-cell');
+    expect(actions.children[3]?.className).toBe('td-member-role-action-cell td-member-promote-cell');
     expect(member.querySelector('.promote')?.className).toBe(
       'td-member-role-action-btn promote td-mm-icon-btn',
     );
@@ -567,10 +572,13 @@ describe('LegacyTeamMembersCard', () => {
       Array.from(leader.querySelectorAll('.demote path')).map((path) => path.getAttribute('d')),
     ).toEqual(['M12 5v14', 'M19 12l-7 7-7-7']);
     expect(container.querySelector('.td-member-role-empty')).toBeNull();
-    expect(container.querySelector('.td-member-remove-btn')).toBeNull();
-    expect(container.querySelector('[aria-label="剔除成員"]')).toBeNull();
+    expect(within(member).getByRole('button', { name: '剔除成員' })).toBeTruthy();
+    for (const staff of [coach, leader, manager]) {
+      expect(staff.querySelector('.td-member-remove-btn')).toBeNull();
+      expect(within(staff).getByRole('button', { name: '編輯賽事資料' })).toBeTruthy();
+    }
+    expect(container.querySelectorAll('.td-member-remove-btn')).toHaveLength(1);
     expect(container.querySelector('.td-member-course-edit-btn')).toBeNull();
-    expect(container.querySelector('.td-member-match-edit-btn')).toBeNull();
   });
 
   it.each(['leader', 'coach'])('%s 可管理備註但沒有升降鈕', (uid) => {

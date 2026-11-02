@@ -315,6 +315,17 @@ function TeamDetailContent({
     await reloadTeamSilently();
   }
 
+  /** K4：剔除後只從已載入的成員名單移除該人，不重讀成員（俱樂部文件由 onTeamChanged 重讀 1 次）。 */
+  function handleMemberRemoved(uid: string): void {
+    const target = uid.trim();
+    setMembersState((prev) => (prev.status === 'ready' && prev.value
+      ? {
+          status: 'ready',
+          value: prev.value.filter((member) => String(member.uid ?? member._docId ?? '').trim() !== target),
+        }
+      : prev));
+  }
+
   async function reloadTeamSilently(): Promise<void> {
     const sequence = ++teamSequence.current;
     try {
@@ -647,6 +658,7 @@ function TeamDetailContent({
               winRate={winRate}
               viewer={viewer}
               onTeamChanged={() => reloadTeamSilently()}
+              onMemberRemoved={handleMemberRemoved}
               canCreateEvent={canCreateEvent}
               onCreateEvent={handleCreateEvent}
               busy={busy}

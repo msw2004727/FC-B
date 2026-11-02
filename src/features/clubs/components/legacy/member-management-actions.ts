@@ -4,9 +4,9 @@
  * :1328-1339 _sendTeamRoleLevelChangeNotice、:1685-1768 editTeamMemberNote；
  * 重算重試對應 api-service.js:2758-2775 promoteUserByUid。
  *
- * 與 A 差異：升降職務不改變人數，因此不寫 `members`；
- * `recountTeamMembers` 是伺服器 Callable，B 尚未接線；
- * 不實作剔除隊員；角色重算、通知與稽核均為 best-effort；
+ * 與 A 差異：升降職務不改變人數，因此不寫 `members` 也不呼叫 `recountTeamMembers`；
+ * 剔除一般隊員只走 Callable `removeTeamMember`（伺服器交易內剔除並重算人數）；
+ * 角色重算、通知與稽核均為 best-effort；
  * 備註補上 120 字硬上限，且不寫無對應 AuditAction 的備註 opLog。
  */
 import { callFn } from '@/data/callables';
@@ -14,13 +14,21 @@ import { deliverInboxMessage } from '@/data/inbox-delivery';
 
 import {
   canChangeMemberRole,
+  canEditMemberMatchData,
   canEditMemberNote,
+  canKickMember,
+  canManageMembers,
   getMemberRoleChangeTargetForUser,
   getTeamLeaderUidList,
 } from '../../club-policy';
 import type { MemberRoleTarget } from '../../club-policy';
 import type { TeamUserLike } from '../../data/team-list-model';
-import { saveTeamMemberNote, saveTeamRoleChange } from '../../data/teams-write';
+import {
+  MEMBER_MATCH_LIMITS,
+  saveTeamMemberMatchData,
+  saveTeamMemberNote,
+  saveTeamRoleChange,
+} from '../../data/teams-write';
 import type { ClubViewer, TeamDoc } from '../../data/types';
 
 export type RoleChangeResult =
@@ -134,7 +142,7 @@ export async function changeMemberRole(
   const displayName = input.displayName.trim() || targetUid;
   let statusFrom = getTeamRoleOfMember(team, targetUid);
 
-  // 升降職務不改變人數，因此不寫 members；recountTeamMembers 是伺服器 Callable，B 尚未接線。
+  // 升降職務不改變人數，因此不寫 members，也不需重算人數。
   // 主要寫入失敗直接往外拋，所有後續副作用都不啟動。
   const updates = await saveTeamRoleChange(
     team,
@@ -214,5 +222,97 @@ export async function saveMemberActivityNote(
   }, existingRecord ?? null);
 
   // B AuditAction 沒有備註更新項目；不冒用其他 action，也不移植 A opLog。
+  return { ok: true };
+}
+
+export type KickMemberResult =
+  | { ok: true; alreadyRemoved: boolean }
+  | { ok: false; reason: 'forbidden' | 'not-regular' };
+
+/**
+ * 剔除一般隊員（K4）。對應 A `removeTeamMember`（team-detail.js），改走 Callable `removeTeamMember`：
+ * 伺服器在交易內重驗幹部身分、改被剔者隊籍、寫 operationLogs，並重算人數。
+ * 球經／領隊／教練不可直接剔除（站長 11-02：先降職再剔除）；按鈕與本函式共用 `canKickMember`。
+ * Callable 錯誤往外拋，由呼叫端以 `getKickErrorMessage` 轉成提示。
+ */
+export async function kickTeamMember(input: {
+  team: TeamDoc;
+  viewer: ClubViewer;
+  targetUid: string;
+}): Promise<KickMemberResult> {
+  const { team, viewer } = input;
+  const targetUid = input.targetUid.trim();
+  if (!canKickMember(viewer, team, targetUid)) {
+    return { ok: false, reason: canManageMembers(viewer, team) ? 'not-regular' : 'forbidden' };
+  }
+  const teamId = String(team.id ?? team._docId ?? '').trim();
+  const res = await callFn('removeTeamMember', { teamId, memberUid: targetUid });
+  return { ok: true, alreadyRemoved: res?.alreadyRemoved === true };
+}
+
+/** removeTeamMember 錯誤碼 → A 文案（team-detail.js `removeTeamMember`）。 */
+export function getKickErrorMessage(error: unknown): string {
+  const message = error && typeof error === 'object' && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  if (message.includes('TARGET_IS_STAFF')) return '僅可移除一般隊員';
+  if (message.includes('MEMBER_NOT_FOUND')) return '隊員資料不存在或已不在球隊中';
+  if (message.includes('TEAM_MANAGE_DENIED') || message.includes('COACH_PLUS_REQUIRED')) {
+    return '您沒有移除隊員的權限';
+  }
+  return '移除失敗，請稍後再試';
+}
+
+export interface SaveMemberMatchInput {
+  team: TeamDoc;
+  viewer: ClubViewer;
+  memberKey: string;
+  jerseyNumber: string;
+  position: string;
+  notes: string;
+  /** 只用於操作日誌內容。 */
+  memberName: string;
+  now?: Date;
+}
+
+/**
+ * 背號／位置編輯（K6）。對應 A `editTeamMemberMatchData`：守衛 `_canManageTeamMembers`，
+ * 寫 `teams.memberMatchData.{memberKey}`，並照 A 寫一筆 `team_member_match_data_update` 操作日誌（best-effort）。
+ */
+export async function saveMemberMatchData(input: SaveMemberMatchInput): Promise<NoteResult> {
+  const { team, viewer } = input;
+  if (!canEditMemberMatchData(viewer, team)) return { ok: false, reason: 'forbidden' };
+  const memberKey = input.memberKey.trim();
+  const jerseyNumber = String(input.jerseyNumber ?? '').trim();
+  const position = String(input.position ?? '').trim();
+  const notes = String(input.notes ?? '').trim();
+  if (
+    !memberKey
+    || jerseyNumber.length > MEMBER_MATCH_LIMITS.jerseyNumber
+    || position.length > MEMBER_MATCH_LIMITS.position
+    || notes.length > MEMBER_MATCH_LIMITS.notes
+  ) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  await saveTeamMemberMatchData(team, memberKey, {
+    jerseyNumber,
+    position,
+    notes,
+    updatedAt: (input.now ?? new Date()).toISOString(),
+  });
+
+  const teamName = team.name || String(team.id ?? '');
+  await bestEffort('writeOpLog', async () => {
+    const { writeOpLog } = await import('@/data/op-log');
+    await writeOpLog({
+      type: 'team_member_match_data_update',
+      typeName: '編輯成員賽事數據',
+      content: `更新「${input.memberName.trim() || memberKey}」在「${teamName}」的賽事數據`,
+      actorUid: viewer.uid,
+      // 實際傳入的是 useViewer()（含 displayName）；ClubViewer 最小介面沒有此欄，缺值照 A 用「系統」。
+      operator: String((viewer as { displayName?: unknown }).displayName ?? '').trim() || '系統',
+    });
+  });
   return { ok: true };
 }

@@ -1,13 +1,16 @@
 import { Fragment, type JSX } from 'preact';
 import { lt } from '@/i18n/i18n';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { UserTag } from '@/ui/UserTag';
 import { isTeamDetailSectionVisible } from '../../data/team-detail-model';
 import type { ClubViewer, TeamDoc, TeamRosterRow } from '../../data/types';
 import {
   canChangeMemberRole,
+  canEditMemberMatchData,
   canEditMemberNote,
+  canKickMember,
   canManageMembers as policyCanManageMembers,
   canViewMemberNote,
   getMemberRoleChangeTargetForUser,
@@ -15,10 +18,14 @@ import {
 } from '../../club-policy';
 import {
   changeMemberRole,
+  getKickErrorMessage,
   getRoleChangeLabels,
   getTeamRoleOfMember,
+  kickTeamMember,
   saveMemberActivityNote,
+  saveMemberMatchData,
 } from './member-management-actions';
+import { TeamMemberMatchDialog, type TeamMemberMatchValue } from './TeamMemberMatchDialog';
 import { TeamMemberNoteDialog } from './TeamMemberNoteDialog';
 import { TeamRoleConfirmDialog } from './TeamRoleConfirmDialog';
 import {
@@ -42,10 +49,13 @@ export interface LegacyTeamMembersCardProps {
   viewer: ClubViewer;
   onTeamChanged: () => void | Promise<void>;
   onOpenProfile: (uid: string) => void;
+  /** K4：剔除成功後由頁面就地移除該列（不重讀成員）。 */
+  onMemberRemoved?: (uid: string) => void;
 }
 
 type MemberDialog =
   | { kind: 'note'; row: TeamRosterRow; initialNote: string }
+  | { kind: 'match'; row: TeamRosterRow; initial: TeamMemberMatchValue }
   | { kind: 'role'; row: TeamRosterRow; target: MemberRoleTarget };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,6 +67,30 @@ function renderEditSvgIcon(): JSX.Element {
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M12 20h9"></path>
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>
+  );
+}
+
+/** A `_buildTeamMemberSvgIcon('match')`。 */
+function renderMatchSvgIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M6 4h12l-2 7 2 9H6l2-9-2-7Z"></path>
+      <path d="M9 4c0 2 1.5 4 3 4s3-2 3-4"></path>
+      <path d="M10 14h4"></path>
+    </svg>
+  );
+}
+
+/** A `_buildTeamMemberSvgIcon('trash')`。 */
+function renderTrashSvgIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4h8v2"></path>
+      <path d="M19 6l-1 14H6L5 6"></path>
+      <path d="M10 11v5"></path>
+      <path d="M14 11v5"></path>
     </svg>
   );
 }
@@ -78,6 +112,7 @@ export function LegacyTeamMembersCard({
   viewer,
   onTeamChanged,
   onOpenProfile,
+  onMemberRemoved,
 }: LegacyTeamMembersCardProps): JSX.Element {
   const [selectedFilter, setSelectedFilter] = useState<LegacyMemberFilterKey>('all');
   const [editMode, setEditMode] = useState(false);
@@ -179,6 +214,112 @@ export function LegacyTeamMembersCard({
     }
     if (!effectiveEditMode || !row.isMember || !row.user || actionLock.current) return;
     setDialog({ kind: 'role', row, target });
+  };
+
+  const openMatch = (row: TeamRosterRow): void => {
+    if (!canEditMemberMatchData(viewer, team)) {
+      showNoteForbidden();
+      return;
+    }
+    if (!effectiveEditMode || !row.user || actionLock.current) return;
+    const current = getMemberMatchData(team, row);
+    setDialog({
+      kind: 'match',
+      row,
+      initial: { jerseyNumber: current.jerseyNumber, position: current.position, notes: current.notes },
+    });
+  };
+
+  const saveMatch = async (value: TeamMemberMatchValue): Promise<void> => {
+    if (!alive.current || actionLock.current || dialog?.kind !== 'match') return;
+    if (!canEditMemberMatchData(viewer, team)) {
+      showNoteForbidden();
+      return;
+    }
+    const { row } = dialog;
+    if (!row.user) return;
+    const version = contextVersion.current;
+    const isCurrent = (): boolean =>
+      alive.current
+      && contextVersion.current === version
+      && latestIdentity.current.uid === viewer.uid
+      && latestIdentity.current.teamId === teamId;
+
+    actionLock.current = true;
+    setBusy(true);
+    try {
+      const result = await saveMemberMatchData({
+        team,
+        viewer,
+        memberKey: row.uid,
+        jerseyNumber: value.jerseyNumber,
+        position: value.position,
+        notes: value.notes,
+        memberName: getMemberDisplayName(row),
+      });
+      if (!isCurrent()) return;
+      if (result.ok) {
+        setDialog(null);
+        toast.show({ message: '賽事數據已更新', tone: 'success' });
+        await refreshTeam();
+      } else {
+        toast.show({
+          message: result.reason === 'forbidden' ? '您沒有編輯隊員的權限' : '更新失敗，請稍後再試',
+          tone: 'error',
+        });
+      }
+    } catch {
+      // eslint-disable-next-line no-console
+      console.error('[LegacyTeamMembersCard] match data update failed');
+      if (isCurrent()) toast.show({ message: '更新失敗，請稍後再試', tone: 'error' });
+    } finally {
+      actionLock.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
+
+  /** K4：按鈕與 handler 共用 canKickMember（只對一般隊員；幹部先降職）。 */
+  const kickRow = async (row: TeamRosterRow): Promise<void> => {
+    if (!effectiveEditMode || actionLock.current) return;
+    if (!canKickMember(viewer, team, row.uid)) {
+      toast.show({
+        message: policyCanManageMembers(viewer, team) ? '僅可移除一般隊員' : '您沒有移除隊員的權限',
+        tone: 'error',
+      });
+      return;
+    }
+    const memberName = getMemberDisplayName(row).trim() || '隊員';
+    actionLock.current = true;
+    const version = contextVersion.current;
+    const isCurrent = (): boolean =>
+      alive.current
+      && contextVersion.current === version
+      && latestIdentity.current.uid === viewer.uid
+      && latestIdentity.current.teamId === teamId;
+    try {
+      if (!(await appConfirm(`確定要剔除「${memberName}」？`))) return;
+      if (!isCurrent()) return;
+      setBusy(true);
+      const result = await kickTeamMember({ team, viewer, targetUid: row.uid });
+      if (!isCurrent()) return;
+      if (!result.ok) {
+        toast.show({
+          message: result.reason === 'forbidden' ? '您沒有移除隊員的權限' : '僅可移除一般隊員',
+          tone: 'error',
+        });
+        return;
+      }
+      toast.show({ message: `已移除隊員「${memberName}」`, tone: 'success' });
+      onMemberRemoved?.(row.uid);
+      await refreshTeam();
+    } catch (error: unknown) {
+      // eslint-disable-next-line no-console
+      console.error('[LegacyTeamMembersCard] remove member failed');
+      if (isCurrent()) toast.show({ message: getKickErrorMessage(error), tone: 'error' });
+    } finally {
+      actionLock.current = false;
+      if (alive.current) setBusy(false);
+    }
   };
 
   const refreshTeam = async (): Promise<void> => {
@@ -411,7 +552,11 @@ export function LegacyTeamMembersCard({
                 const down = getMemberRoleChangeTargetForUser(viewer, team, row.user, 'demote');
                 const showUp = row.isMember && Boolean(row.user) && up !== null;
                 const showDown = row.isMember && Boolean(row.user) && down !== null;
-                const showActions = effectiveEditMode && (canEditNote || showUp || showDown);
+                const canEditMatch = canEditMemberMatchData(viewer, team) && Boolean(row.user);
+                // K4：A 對領隊／教練也顯示剔除鈕（前端多步寫入）；新站只對一般隊員顯示，幹部先降職（站長 11-02）。
+                const showRemove = row.isMember && Boolean(row.user) && canKickMember(viewer, team, uid);
+                const showActions = effectiveEditMode
+                  && (canEditNote || canEditMatch || showRemove || showUp || showDown);
                 const meta = buildMemberIntegratedMeta(team, row, {
                   showCourseSection,
                   showPrivateNotes,
@@ -504,6 +649,39 @@ export function LegacyTeamMembersCard({
                             <span class="td-mm-sr-only">編輯活動備註</span>
                           </button>
                         )}
+                        {canEditMatch && (
+                          <button
+                            class="td-member-row-edit-btn td-mm-icon-btn td-member-match-edit-btn"
+                            type="button"
+                            title="編輯賽事資料"
+                            aria-label="編輯賽事資料"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openMatch(row);
+                            }}
+                          >
+                            {renderMatchSvgIcon()}
+                            <span class="td-mm-sr-only">編輯賽事資料</span>
+                          </button>
+                        )}
+                        {showRemove && (
+                          <span class="td-member-remove-cell">
+                            <button
+                              class="td-member-remove-btn td-mm-icon-btn td-mm-danger"
+                              type="button"
+                              title="剔除成員"
+                              aria-label="剔除成員"
+                              disabled={busy}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void kickRow(row);
+                              }}
+                            >
+                              {renderTrashSvgIcon()}
+                              <span class="td-mm-sr-only">剔除</span>
+                            </button>
+                          </span>
+                        )}
                         {showUp && up && renderRoleAction(row, up)}
                         {showDown && down && renderRoleAction(row, down)}
                       </div>
@@ -524,6 +702,16 @@ export function LegacyTeamMembersCard({
           initialNote={dialog.initialNote}
           busy={busy}
           onSave={(notes) => { void saveNote(notes); }}
+          onCancel={closeDialog}
+        />
+      )}
+      {effectiveEditMode && dialog?.kind === 'match' && (
+        <TeamMemberMatchDialog
+          key={`match:${dialog.row.uid}`}
+          memberName={getMemberDisplayName(dialog.row)}
+          initial={dialog.initial}
+          busy={busy}
+          onSave={(value) => { void saveMatch(value); }}
           onCancel={closeDialog}
         />
       )}

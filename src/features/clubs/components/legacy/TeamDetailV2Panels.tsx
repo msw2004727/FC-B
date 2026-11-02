@@ -138,6 +138,8 @@ export interface TeamDetailV2PanelsProps {
   // ASSUMPTION: 未附介面原文，既有宣告為此單行；使用 import type 運算式避免假設檔頭 import 排列。
   viewer: import('../../data/types').ClubViewer;
   onTeamChanged: () => void | Promise<void>;
+  /** K4：剔除成功後就地移除該列。 */
+  onMemberRemoved?: (uid: string) => void;
   canCreateEvent: boolean;
   onCreateEvent: () => void;
   busy: boolean;
@@ -164,6 +166,7 @@ export function TeamDetailV2Panels({
   // ASSUMPTION: 未附完整解構，既有成員管理 prop 採此單行解構。
   viewer,
   onTeamChanged,
+  onMemberRemoved,
   canCreateEvent,
   onCreateEvent,
   busy,
@@ -485,6 +488,7 @@ export function TeamDetailV2Panels({
                 viewer={viewer}
                 onTeamChanged={onTeamChanged}
                 onOpenProfile={onOpenProfile}
+                onMemberRemoved={onMemberRemoved}
               />
             )}
           </div>
