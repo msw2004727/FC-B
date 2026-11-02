@@ -10,6 +10,7 @@
  */
 
 import { getFirebase } from '@/data/firebase';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
 import { DEFAULT_NOTIF_TEMPLATES } from '@/data/notify';
 
 export const NOTIF_TEMPLATES_READ_LIMIT = 20;
@@ -67,7 +68,7 @@ export function sortTemplates<T extends { key: string }>(list: readonly T[]): T[
 }
 
 export async function loadEditableTemplates(): Promise<EditableTemplate[]> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const snap = await fs.getDocs(fs.query(fs.collection(db, 'notifTemplates'), fs.limit(NOTIF_TEMPLATES_READ_LIMIT)));
   const byKey = new Map<string, EditableTemplate>();
   for (const d of snap.docs) {
@@ -100,7 +101,7 @@ export async function saveTemplates(
     return !prev || prev.missing || prev.title !== t.title || prev.body !== t.body;
   });
   if (changed.length === 0) return 0;
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const batch = fs.writeBatch(db);
   for (const t of changed) {
     const prev = before.get(t.key);

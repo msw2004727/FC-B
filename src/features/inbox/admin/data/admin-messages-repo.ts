@@ -14,6 +14,7 @@
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
 import { userInbox } from '@/data/paths';
 
 import type { AdminMessage, MsgCounts } from './admin-message-model';
@@ -45,7 +46,7 @@ function toAdminMessage(id: string, data: Record<string, unknown>): AdminMessage
 
 /** 依建立時間新到舊一次讀 50 份；`cursor` 是上一頁回傳的游標。 */
 export async function loadAdminMessagesPage(cursor: QueryDocumentSnapshot | null = null): Promise<AdminMessagesPage> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const base = fs.collection(db, COLLECTION);
   const q = cursor
     ? fs.query(base, fs.orderBy('createdAt', 'desc'), fs.startAfter(cursor), fs.limit(ADMIN_MESSAGES_PAGE_SIZE))
@@ -62,7 +63,7 @@ export async function loadAdminMessagesPage(cursor: QueryDocumentSnapshot | null
 
 /** 計數列：四個 `count()` 聚合（各算 1 讀起跳），不整批讀文件。 */
 export async function countAdminMessages(): Promise<MsgCounts> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const base = fs.collection(db, COLLECTION);
   const countOf = async (q: ReturnType<typeof fs.query>): Promise<number> =>
     (await fs.getCountFromServer(q)).data().count;
@@ -80,20 +81,20 @@ export async function countAdminMessages(): Promise<MsgCounts> {
  * 與 A 差異：文件 ID 用紀錄自己的 `id`（A 用 add() 隨機 ID）；B 讀取一律帶 `_docId`，兩種文件可並存。
  */
 export async function createAdminMessage(record: Omit<AdminMessage, '_docId'>): Promise<AdminMessage> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   await fs.setDoc(fs.doc(db, COLLECTION, record.id), { ...record, createdAt: fs.serverTimestamp() });
   return { ...record, _docId: record.id } as AdminMessage;
 }
 
 /** A `updateAdminMessage(id, { status })`：0 讀 1 寫。 */
 export async function updateAdminMessageStatus(docId: string, status: string): Promise<void> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   await fs.updateDoc(fs.doc(db, COLLECTION, docId), { status });
 }
 
 /** 排程檢查：只讀 status == 'scheduled'（單欄位索引），到期與否由呼叫端判斷。 */
 export async function loadScheduledAdminMessages(): Promise<AdminMessage[]> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const snap = await fs.getDocs(
     fs.query(fs.collection(db, COLLECTION), fs.where('status', '==', 'scheduled'), fs.limit(SCHEDULED_SCAN_LIMIT)),
   );
@@ -109,7 +110,7 @@ export async function claimScheduledMessage(
   processorId: string,
   isDue: (data: Record<string, unknown>) => boolean,
 ): Promise<boolean> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const ref = fs.doc(db, COLLECTION, docId);
   let claimed = false;
   await fs.runTransaction(db, async (tx) => {
@@ -130,7 +131,7 @@ export async function claimScheduledMessage(
 
 /** A `_markScheduledMessageSent`。 */
 export async function markScheduledMessageSent(docId: string): Promise<void> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   await fs.updateDoc(fs.doc(db, COLLECTION, docId), {
     status: 'sent',
     sentAt: fs.serverTimestamp(),
@@ -144,7 +145,7 @@ export async function markScheduledMessageSent(docId: string): Promise<void> {
 export async function releaseScheduledMessageClaim(docId: string, err: unknown): Promise<void> {
   const message = err instanceof Error && err.message ? err.message : '';
   const errorText = message ? message.slice(0, 300) : 'schedule_send_failed';
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   await fs.updateDoc(fs.doc(db, COLLECTION, docId), {
     status: 'scheduled',
     lastError: errorText,
@@ -160,7 +161,7 @@ export async function releaseScheduledMessageClaim(docId: string, err: unknown):
 export async function removeOwnInboxCopies(uid: string, adminMsgId: string): Promise<number> {
   if (!uid || !adminMsgId) return 0;
   try {
-    const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+    const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
     const snap = await fs.getDocs(
       fs.query(fs.collection(db, userInbox(uid)), fs.where('adminMsgId', '==', adminMsgId), fs.limit(OWN_INBOX_COPY_LIMIT)),
     );

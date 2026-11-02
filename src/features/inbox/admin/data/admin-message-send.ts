@@ -17,6 +17,7 @@
 
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
+import { loadFirestoreSdk } from '@/data/firestore-sdk';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
 
 import { CATEGORY_NAMES, ROLE_TARGETS, type AdminMessage, type MsgCategory, type MsgTargetType } from './admin-message-model';
@@ -61,7 +62,7 @@ export async function deliverAdminMessage(
 type RecipientResult = { uids: string[] } | { overLimit: number };
 
 async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const users = fs.collection(db, 'users');
   const [byTeamIds, byTeamId] = await Promise.all([
     fs.getDocs(fs.query(users, fs.where('teamIds', 'array-contains', teamId), fs.limit(LINE_PUSH_TEAM_LIMIT))),
@@ -81,7 +82,7 @@ async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
 }
 
 async function loadRoleRecipientUids(roles: readonly string[]): Promise<RecipientResult> {
-  const [fs, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
+  const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const snap = await fs.getDocs(
     fs.query(fs.collection(db, 'users'), fs.where('role', 'in', [...roles]), fs.limit(LINE_PUSH_ROLE_LIMIT)),
   );
