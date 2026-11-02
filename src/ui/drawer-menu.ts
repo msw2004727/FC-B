@@ -230,16 +230,28 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
 export type DrawerItemStatus = 'done' | 'closed' | 'wip';
 
 /**
- * 內測站抽屜的功能進度標記（站長 2026-11-02 指定）：
+ * 已註冊路由、但頁面仍是 PlaceholderPage（點開只看到「此功能即將推出」）的抽屜入口。
+ * 與 src/features 下實際使用 PlaceholderPage 的路由由 drawer-menu.test.ts 對帳：頁面做好或新增佔位時測試會提醒同步。
+ */
+export const DRAWER_PLACEHOLDER_ROUTES: readonly string[] = [
+  '/admin/ops',
+  '/admin/seo',
+  '/admin/theme',
+];
+
+/**
+ * 內測站抽屜的功能進度標記（站長 2026-11-02 指定；同日修正：有路由不等於做完）：
  * - closed：鎖定或 coming-soon，點了只會提示「功能尚未開放」
- * - wip：B 尚未有對應路由（routePath 為 null），點了提示請用舊版
- * - done：其餘都點得進去（有路由或本身是動作入口）
- * 完全由 DRAWER_MENUS 現況推導；之後補上 routePath 就自動變 done。
+ * - wip：B 尚未有對應路由、路由仍是佔位頁，或動作入口實際沒有內容（使用手冊的 /manual.html 在 B 不存在，
+ *   開出來是 SPA 殼；public/manual.html 補上後改回 done，測試會提醒）
+ * - done：其餘都點得進去且有實際內容
  */
 export function drawerItemStatus(entry: DrawerMenuEntry): DrawerItemStatus {
   if (entry.locked || entry.action === 'coming-soon') return 'closed';
+  if (entry.action === 'manual') return 'wip';
   if (entry.action) return 'done';
-  return entry.routePath ? 'done' : 'wip';
+  if (!entry.routePath || DRAWER_PLACEHOLDER_ROUTES.includes(entry.routePath)) return 'wip';
+  return 'done';
 }
 
 function effectiveAccess(access?: RouteAccessContext | null): RouteAccessContext {

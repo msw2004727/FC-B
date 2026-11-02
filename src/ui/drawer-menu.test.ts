@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { RouteAccessContext } from '@/core/feature-types';
 import {
   buildDrawerRenderNodes,
   canAccessDrawerItem,
   DRAWER_MENUS,
+  DRAWER_PLACEHOLDER_ROUTES,
   drawerItemStatus,
   getDrawerItemBgClass,
   resolveDrawerRoleInfo,
@@ -170,15 +173,45 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
     expect(drawerItemStatus(byLabel('排行榜'))).toBe('closed');
     expect(drawerItemStatus(byLabel('活動管理'))).toBe('done');
     expect(drawerItemStatus(byLabel('賽事管理'))).toBe('wip');
-    expect(drawerItemStatus(byLabel('使用手冊'))).toBe('done');
+    expect(drawerItemStatus(byLabel('分享網頁'))).toBe('done');
   });
 
-  it('清單內每個項目都判得出狀態：有 routePath 且不鎖定者一定是 done', () => {
+  it('佔位頁路由與使用手冊不得標成 done（點開只會看到「即將推出」或 SPA 殼）', () => {
+    expect(drawerItemStatus(byLabel('數據儀表板'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('SEO 儀表板'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('佈景主題'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('使用手冊'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('用戶管理'))).toBe('done');
+  });
+
+  it('DRAWER_PLACEHOLDER_ROUTES 與 src/features 實際使用 PlaceholderPage 的抽屜路由逐一對帳', () => {
+    const featuresDir = join(process.cwd(), 'src/features');
+    const placeholderPaths: string[] = [];
+    for (const dir of readdirSync(featuresDir, { withFileTypes: true })) {
+      if (!dir.isDirectory()) continue;
+      const file = join(featuresDir, dir.name, 'index.ts');
+      if (!existsSync(file)) continue;
+      const source = readFileSync(file, 'utf-8');
+      if (!source.includes('PlaceholderPage')) continue;
+      for (const match of source.matchAll(/path:\s*'([^']+)'/g)) placeholderPaths.push(match[1]!);
+    }
+    // 鎖定入口（個人數據、二手商品區）本來就是 closed，不需列入佔位清單。
+    const drawerRoutes = new Set(DRAWER_MENUS.filter((e) => !e.locked).map((e) => e.routePath).filter((p): p is string => Boolean(p)));
+    const expected = placeholderPaths.filter((p) => drawerRoutes.has(p)).sort();
+    expect([...DRAWER_PLACEHOLDER_ROUTES].sort()).toEqual(expected);
+  });
+
+  it('使用手冊：public/manual.html 存在才能標 done', () => {
+    const exists = existsSync(join(process.cwd(), 'public/manual.html'));
+    expect(drawerItemStatus(byLabel('使用手冊'))).toBe(exists ? 'done' : 'wip');
+  });
+
+  it('有路由、非佔位、非鎖定的入口一定是 done；其餘每項都判得出狀態', () => {
     for (const entry of DRAWER_MENUS) {
       if (entry.divider || entry.sectionLabel) continue;
       const status = drawerItemStatus(entry);
       expect(['done', 'closed', 'wip']).toContain(status);
-      if (entry.routePath && !entry.locked && entry.action !== 'coming-soon') expect(status).toBe('done');
+      if (entry.routePath && !entry.locked && !DRAWER_PLACEHOLDER_ROUTES.includes(entry.routePath)) expect(status).toBe('done');
     }
   });
 });

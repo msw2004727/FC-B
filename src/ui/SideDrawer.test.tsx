@@ -71,14 +71,14 @@ afterEach(() => {
 describe('SideDrawer 內測站功能進度圖示', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('內測站：每個入口文字右側有狀態圖示，鎖定入口為 closed、動作入口為 done', () => {
+  it('內測站：每個入口文字右側有狀態圖示，鎖定入口為 closed、分享動作入口為 done', () => {
     vi.stubEnv('VITE_INTERNAL_TEST', '1');
     render(<Harness />);
     openDrawer();
     const items = Array.from(document.querySelectorAll('#drawer-menu .drawer-item'));
     expect(items.length).toBeGreaterThan(0);
     for (const item of items) expect(item.querySelector('svg.drawer-status')).not.toBeNull();
-    const manual = document.querySelector('#drawer-menu [data-action="manual"] svg.drawer-status');
+    const manual = document.querySelector('#drawer-menu [data-action="share"] svg.drawer-status');
     const locked = document.querySelector('#drawer-menu [data-page="page-personal-dashboard"] svg.drawer-status');
     expect(manual?.getAttribute('data-status')).toBe('done');
     expect(locked?.getAttribute('data-status')).toBe('closed');
