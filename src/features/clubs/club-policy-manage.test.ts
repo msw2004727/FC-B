@@ -7,6 +7,7 @@ import {
   canEditMemberMatchData,
   canManageAllTeams,
 } from './club-policy';
+import type { TeamDeleteViewer } from './club-policy';
 import type { ClubViewer, TeamDoc } from './data/types';
 
 function viewer(uid: string | null, perms: readonly string[] = []): ClubViewer {
@@ -71,15 +72,43 @@ describe('canAccessTeamManageRecord（A _canEditTeamByRoleOrCaptain ∨ _canMana
   });
 });
 
-describe('canDeleteTeam（A removeTeam 守衛＝_canEditTeamByRoleOrCaptain）', () => {
-  it('擁有者三欄與 manage_all 可刪；領隊、教練、一般用戶不可', () => {
-    expect(canDeleteTeam(viewer('U-cap'), team)).toBe(true);
-    expect(canDeleteTeam(viewer('U-creator'), team)).toBe(true);
-    expect(canDeleteTeam(viewer('U-owner'), team)).toBe(true);
-    expect(canDeleteTeam(identities.admin, team)).toBe(true);
-    expect(canDeleteTeam(viewer('U-lead'), team)).toBe(false);
-    expect(canDeleteTeam(identities.coach, team)).toBe(false);
-    expect(canDeleteTeam(identities.user, team)).toBe(false);
+/**
+ * 刪除判斷對齊 Callable deleteTeam：super_admin ∨ ((擁有者 ∨ manage_all) ∧ (教練以上 ∨ team_join_repair))。
+ * 已知限制（顧問裁定接受）：Callable 只比對 uid（第二身分不參與擁有權）；rolePermissions 缺文件不套預設
+ * （正式三個角色文件都存在）；Callable 角色等級表不含自訂角色（正式 customRoles 為 0，日後與 T-079a 一起開卡）。
+ */
+describe('canDeleteTeam（對齊 Callable deleteTeam）', () => {
+  function deleter(uid: string, role: string, roleLevel: number, perms: readonly string[] = []): TeamDeleteViewer {
+    return { ...viewer(uid, perms), role, roleLevel };
+  }
+
+  it('角色低於教練的擁有者看不到', () => {
+    expect(canDeleteTeam(deleter('U-cap', 'user', 0), team)).toBe(false);
+    expect(canDeleteTeam(deleter('U-creator', 'user', 0), team)).toBe(false);
+  });
+
+  it('教練以上的擁有者三欄看得到；教練以上的領隊、教練、非擁有者看不到', () => {
+    expect(canDeleteTeam(deleter('U-cap', 'captain', 2), team)).toBe(true);
+    expect(canDeleteTeam(deleter('U-creator', 'coach', 1), team)).toBe(true);
+    expect(canDeleteTeam(deleter('U-owner', 'coach', 1), team)).toBe(true);
+    expect(canDeleteTeam(deleter('U-lead', 'coach', 1), team)).toBe(false);
+    expect(canDeleteTeam(deleter('U-coach', 'coach', 1), team)).toBe(false);
+    expect(canDeleteTeam(deleter('U-user', 'coach', 1), team)).toBe(false);
+  });
+
+  it('教練以上有 team.manage_all 看得到任何俱樂部；user 只有 team.manage_all 授權看不到', () => {
+    expect(canDeleteTeam(deleter('U-admin', 'admin', 4, ['team.manage_all']), team)).toBe(true);
+    expect(canDeleteTeam(deleter('U-user', 'user', 0, ['team.manage_all']), team)).toBe(false);
+  });
+
+  it('admin.repair.team_join_repair 可抵教練以上：user 擁有者看得到；非擁有者只有此權限看不到', () => {
+    expect(canDeleteTeam(deleter('U-cap', 'user', 0, ['admin.repair.team_join_repair']), team)).toBe(true);
+    expect(canDeleteTeam(deleter('U-user', 'user', 0, ['admin.repair.team_join_repair']), team)).toBe(false);
+  });
+
+  it('super_admin 一律看得到；訪客一律看不到', () => {
+    expect(canDeleteTeam(deleter('U-sa', 'super_admin', 5), team)).toBe(true);
+    expect(canDeleteTeam({ ...viewer(null), role: 'super_admin', roleLevel: 5 }, team)).toBe(false);
   });
 });
 
