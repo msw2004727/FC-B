@@ -55,7 +55,7 @@ function renderCard(v: ClubViewer = viewer('manager')) {
       onMemberRemoved={onMemberRemoved}
     />,
   );
-  fireEvent.click(within(utils.container).getByRole('button', { name: '成員管理' }));
+  fireEvent.click(within(utils.container as HTMLElement).getByRole('button', { name: '成員管理' }));
   return { ...utils, onTeamChanged, onMemberRemoved };
 }
 
