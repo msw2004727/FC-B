@@ -24,7 +24,7 @@ function makeAccess(overrides: Partial<RouteAccessContext> = {}): RouteAccessCon
   };
 }
 
-describe('用戶補正管理入口', () => {
+describe('黑名單管理入口', () => {
   const repair = DRAWER_MENUS.find((item) => item.page === 'page-admin-repair');
   const code = 'admin.repair.event_blocklist';
   const admin = (overrides: Partial<RouteAccessContext>) => makeAccess({ role: 'admin', roleLevel: 4, ...overrides });
@@ -84,18 +84,18 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
       roleLevel: 4,
       hasPermission: () => false,
     });
-    const seoEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-seo')!;
+    const usersEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-users')!;
     const rolesEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-roles')!;
 
-    expect(canAccessDrawerItem(seoEntry, adminNoPerms)).toBe(false);
+    expect(canAccessDrawerItem(usersEntry, adminNoPerms)).toBe(false);
     expect(canAccessDrawerItem(rolesEntry, adminNoPerms)).toBe(false);
 
-    const adminWithSeo = makeAccess({
+    const adminWithUsers = makeAccess({
       role: 'admin',
       roleLevel: 4,
-      hasPermission: (code) => code === 'admin.seo.entry',
+      hasPermission: (code) => code === 'admin.users.entry',
     });
-    expect(canAccessDrawerItem(seoEntry, adminWithSeo)).toBe(true);
+    expect(canAccessDrawerItem(usersEntry, adminWithUsers)).toBe(true);
 
     const superAdmin = makeAccess({
       role: 'super_admin',
@@ -122,14 +122,13 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
     // admin 入口為藍底
     expect(byLabel.get('用戶管理')?.bgClass).toBe('drawer-role-admin');
     expect(byLabel.get('首頁管理')?.bgClass).toBe('drawer-role-admin');
-    // super_admin 入口與 highlight: 'red'（SEO 儀表板、用戶補正管理）為紅底
+    // super_admin 入口與 highlight: 'red'（黑名單管理）為紅底
     expect(byLabel.get('數據儀表板')?.bgClass).toBe('drawer-role-super');
-    expect(byLabel.get('SEO 儀表板')?.bgClass).toBe('drawer-role-super');
-    expect(byLabel.get('用戶補正管理')?.bgClass).toBe('drawer-role-super');
+    expect(byLabel.get('黑名單管理')?.bgClass).toBe('drawer-role-super');
     expect(byLabel.get('權限管理')?.bgClass).toBe('drawer-role-super');
 
-    const seoEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-seo')!;
-    expect(getDrawerItemBgClass(seoEntry)).toBe('drawer-role-super');
+    const repairEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-repair')!;
+    expect(getDrawerItemBgClass(repairEntry)).toBe('drawer-role-super');
   });
 
   it('resolveDrawerRoleInfo 照 A ROLES 與自訂角色回傳標籤文字與顏色', () => {
@@ -178,8 +177,6 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
 
   it('佔位頁路由與使用手冊不得標成 done（點開只會看到「即將推出」或 SPA 殼）', () => {
     expect(drawerItemStatus(byLabel('數據儀表板'))).toBe('wip');
-    expect(drawerItemStatus(byLabel('SEO 儀表板'))).toBe('wip');
-    expect(drawerItemStatus(byLabel('佈景主題'))).toBe('wip');
     expect(drawerItemStatus(byLabel('使用手冊'))).toBe('wip');
     expect(drawerItemStatus(byLabel('用戶管理'))).toBe('done');
   });
@@ -213,5 +210,14 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
       expect(['done', 'closed', 'wip']).toContain(status);
       if (entry.routePath && !entry.locked && !DRAWER_PLACEHOLDER_ROUTES.includes(entry.routePath)) expect(status).toBe('done');
     }
+  });
+});
+
+describe('新站不做的入口不出現在抽屜', () => {
+  it('SEO 儀表板與佈景主題不在 DRAWER_MENUS', () => {
+    const labels = DRAWER_MENUS.map((e) => e.label);
+    expect(labels).not.toContain('SEO 儀表板');
+    expect(labels).not.toContain('佈景主題');
+    expect(DRAWER_MENUS.some((e) => e.page === 'page-admin-seo' || e.page === 'page-admin-themes')).toBe(false);
   });
 });

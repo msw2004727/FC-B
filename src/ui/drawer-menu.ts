@@ -188,13 +188,12 @@ export interface DrawerMenuEntry {
  * routePath 對照 `b_routes-summary.txt`（B 已註冊的後台／管理路由）：
  * - page-my-activities → /my-activities
  * - page-admin-dashboard → /admin/ops
- * - page-admin-seo → /admin/seo
- * - page-admin-themes → /admin/theme
  * - page-admin-roles → /admin/roles
  * - page-admin-logs → /admin/logs
  * - page-admin-repair → /admin/repair
  * 其餘後台／管理頁（賽事管理、俱樂部管理、小遊戲管理、用戶管理、首頁管理、二手商品管理、站內信管理、手動/自動 EXP、推播、公告、成就、無效資料查詢）B 尚未有對應管理路由，設為 null。
  */
+// SEO 儀表板、佈景主題：站長 2026-11-02 決定新站不做，不放入抽屜（A 原有入口不照搬）。
 export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '個人數據', i18nKey: 'drawer.personalData', page: 'page-personal-dashboard', routePath: '/me/dashboard', minRole: 'user', locked: true },
   { icon: '', label: '二手商品區', i18nKey: 'drawer.shop', page: 'page-shop', routePath: '/shop', minRole: 'user', locked: true },
@@ -214,8 +213,6 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '二手商品管理', i18nKey: 'admin.shopManage', page: 'page-admin-shop', routePath: null, minRole: 'admin', permissionCode: 'admin.shop.entry' },
   { icon: '', label: '站內信管理', i18nKey: 'admin.messageManage', page: 'page-admin-messages', routePath: null, minRole: 'admin', permissionCode: 'admin.messages.entry' },
   { icon: '', label: '數據儀表板', i18nKey: 'admin.dashboard', page: 'page-admin-dashboard', routePath: '/admin/ops', minRole: 'super_admin', permissionCode: 'admin.dashboard.entry' },
-  { icon: '', label: 'SEO 儀表板', i18nKey: 'admin.seo', page: 'page-admin-seo', routePath: '/admin/seo', minRole: 'admin', permissionCode: 'admin.seo.entry', highlight: 'red' },
-  { icon: '', label: '佈景主題', i18nKey: 'admin.themes', page: 'page-admin-themes', routePath: '/admin/theme', minRole: 'super_admin', permissionCode: 'admin.themes.entry' },
   { icon: '', label: '手動 EXP 管理', i18nKey: 'admin.expManage', page: 'page-admin-exp', routePath: null, minRole: 'super_admin', permissionCode: 'admin.exp.entry' },
   { icon: '', label: '自動 EXP 管理', i18nKey: 'drawer.autoExpManage', page: 'page-admin-auto-exp', routePath: null, minRole: 'super_admin', permissionCode: 'admin.auto_exp.entry' },
   { icon: '', label: '推播通知設定', i18nKey: 'admin.notifSettings', page: 'page-admin-notif', routePath: null, minRole: 'super_admin', permissionCode: 'admin.notif.entry' },
@@ -223,7 +220,7 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '成就/徽章管理', i18nKey: 'admin.achievements', page: 'page-admin-achievements', routePath: null, minRole: 'super_admin', permissionCode: 'admin.achievements.entry' },
   { icon: '', label: '權限管理', i18nKey: 'admin.roles', page: 'page-admin-roles', routePath: '/admin/roles', minRole: 'super_admin' },
   { icon: '', label: '日誌中心', i18nKey: 'admin.logs', page: 'page-admin-logs', routePath: '/admin/logs', minRole: 'super_admin', permissionCode: 'admin.logs.entry' },
-  { icon: '', label: '用戶補正管理', i18nKey: 'admin.repair', page: 'page-admin-repair', routePath: '/admin/repair', minRole: 'admin', permissionCode: 'admin.repair.entry', highlight: 'red' },
+  { icon: '', label: '黑名單管理', i18nKey: 'admin.repair', page: 'page-admin-repair', routePath: '/admin/repair', minRole: 'admin', permissionCode: 'admin.repair.entry', highlight: 'red' },
   { icon: '', label: '無效資料查詢', i18nKey: 'admin.inactive', page: 'page-admin-inactive', routePath: null, minRole: 'super_admin', permissionCode: 'admin.inactive.entry' },
 ];
 
@@ -235,8 +232,6 @@ export type DrawerItemStatus = 'done' | 'closed' | 'wip';
  */
 export const DRAWER_PLACEHOLDER_ROUTES: readonly string[] = [
   '/admin/ops',
-  '/admin/seo',
-  '/admin/theme',
 ];
 
 /**
