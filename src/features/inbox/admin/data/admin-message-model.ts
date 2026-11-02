@@ -47,7 +47,7 @@ export interface AdminMessage {
   time?: string;
   status: string;
   scheduledAt?: string | null;
-  [key: string]: unknown;
+  lastError?: string;
 }
 
 export interface MessageViewer {
