@@ -42,6 +42,8 @@ import type {
   CreateCustomTokenResponse,
   CreateEventFromCourseLessonRequest,
   CreateEventFromCourseLessonResponse,
+  DeleteTeamRequest,
+  DeleteTeamResponse,
   DeliverToInboxRequest,
   DeliverToInboxResponse,
   EditPrivateMessageRequest,
@@ -88,6 +90,8 @@ import type {
   MigrateUidFieldsResponse,
   RecallPrivateMessageRequest,
   RecallPrivateMessageResponse,
+  RecountTeamMembersRequest,
+  RecountTeamMembersResponse,
   RecordUserLoginIpRequest,
   RecordUserLoginIpResponse,
   RefreshMyActivityRecordsRequest,
@@ -96,6 +100,8 @@ import type {
   RegisterForEduCoursePlanResponse,
   RegisterForEventRequest,
   RegisterForEventResponse,
+  RemoveTeamMemberRequest,
+  RemoveTeamMemberResponse,
   RepairActivityRecordsManualRequest,
   RepairActivityRecordsManualResponse,
   RepairCompanionAttendanceRecordsRequest,
@@ -161,6 +167,7 @@ export interface CallableMap {
     req: CreateEventFromCourseLessonRequest;
     res: CreateEventFromCourseLessonResponse;
   };
+  deleteTeam: { req: DeleteTeamRequest; res: DeleteTeamResponse };
   deliverToInbox: { req: DeliverToInboxRequest; res: DeliverToInboxResponse };
   editPrivateMessage: { req: EditPrivateMessageRequest; res: EditPrivateMessageResponse };
   enqueuePrivilegedLineNotification: {
@@ -220,6 +227,7 @@ export interface CallableMap {
   };
   migrateUidFields: { req: MigrateUidFieldsRequest; res: MigrateUidFieldsResponse };
   recallPrivateMessage: { req: RecallPrivateMessageRequest; res: RecallPrivateMessageResponse };
+  recountTeamMembers: { req: RecountTeamMembersRequest; res: RecountTeamMembersResponse };
   recordUserLoginIp: { req: RecordUserLoginIpRequest; res: RecordUserLoginIpResponse };
   refreshMyActivityRecords: {
     req: RefreshMyActivityRecordsRequest;
@@ -230,6 +238,7 @@ export interface CallableMap {
     res: RegisterForEduCoursePlanResponse;
   };
   registerForEvent: { req: RegisterForEventRequest; res: RegisterForEventResponse };
+  removeTeamMember: { req: RemoveTeamMemberRequest; res: RemoveTeamMemberResponse };
   repairActivityRecordsManual: {
     req: RepairActivityRecordsManualRequest;
     res: RepairActivityRecordsManualResponse;

@@ -170,7 +170,9 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
     expect(drawerItemStatus(byLabel('個人數據'))).toBe('closed');
     expect(drawerItemStatus(byLabel('排行榜'))).toBe('closed');
     expect(drawerItemStatus(byLabel('活動管理'))).toBe('done');
-    expect(drawerItemStatus(byLabel('俱樂部管理'))).toBe('wip');
+    // 測試同步更新：K1a 起俱樂部管理接上 /team-manage。
+    expect(drawerItemStatus(byLabel('俱樂部管理'))).toBe('done');
+    expect(drawerItemStatus(byLabel('小遊戲管理'))).toBe('wip');
     expect(drawerItemStatus(byLabel('分享網頁'))).toBe('done');
   });
 

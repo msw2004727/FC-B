@@ -20,6 +20,24 @@ export function invalidateTeams(): void {
   cachedTeams = null;
 }
 
+function isSameTeam(team: TeamDoc, teamKey: string): boolean {
+  return String(team._docId ?? '').trim() === teamKey || String(team.id ?? '').trim() === teamKey;
+}
+
+/** 寫入成功後就地更新快取中的單一俱樂部，不重讀整集合（快取不存在時不動）。 */
+export function patchCachedTeam(teamKey: string, patch: Partial<TeamDoc>): void {
+  const key = teamKey.trim();
+  if (!cachedTeams || !key) return;
+  cachedTeams = cachedTeams.map((team) => (isSameTeam(team, key) ? { ...team, ...patch } : team));
+}
+
+/** 刪除成功後從快取移除該俱樂部，不重讀整集合。 */
+export function removeCachedTeam(teamKey: string): void {
+  const key = teamKey.trim();
+  if (!cachedTeams || !key) return;
+  cachedTeams = cachedTeams.filter((team) => !isSameTeam(team, key));
+}
+
 /**
  * 讀取 `teams` 全集合。
  *

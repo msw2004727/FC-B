@@ -2,6 +2,7 @@
   "title": "클럽",
   "nav": "클럽",
   "detail": "클럽 상세",
+  "manage": "俱樂部管理",
   "category": {
     "none": "없음",
     "competitive": "경기",

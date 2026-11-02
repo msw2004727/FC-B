@@ -307,7 +307,7 @@ export interface MemberRoleUpdates {
  * 對應 A `_buildTeamRoleLevelUpdates`（js/modules/team/team-detail.js:1241-1326）。
  * UID 決定身分；名稱僅同步顯示快取，以小寫比對刪除並保序去重。
  * 顯示名稱空白時使用目標 UID。
- * 升降職務不改變人數，因此不寫 `members`；`recountTeamMembers` 是伺服器 Callable，B 尚未接線。
+ * 升降職務不改變人數，因此不寫 `members`（人數由伺服器 Callable `recountTeamMembers` 維護）。
  */
 export function buildMemberRoleUpdates(
   team: TeamDoc | null | undefined,
@@ -448,6 +448,51 @@ export function canCreateTeam(
   return typeof viewer?.uid === 'string'
     && viewer.uid.trim().length > 0
     && viewer.hasPermission('team.create');
+}
+
+/**
+ * 俱樂部管理頁入口（抽屜與頁面共用）。對應 A `_canAccessPage('page-team-manage')`：
+ * 該頁在 DRAWER_MENUS 有 permissionCode，A 只看 `hasPermission('team.manage.entry')`（含個別授權），不另看擁有俱樂部。
+ */
+export function canAccessTeamManagePage(
+  viewer: ClubCreateTeamViewer | null | undefined,
+): boolean {
+  return typeof viewer?.uid === 'string'
+    && viewer.uid.trim().length > 0
+    && viewer.hasPermission('team.manage.entry');
+}
+
+/** A `renderTeamManage` 的 isAdmin（`team.manage_all`）：看全部俱樂部，並可置頂、上下架、光跡。 */
+export function canManageAllTeams(
+  viewer: ClubCreateTeamViewer | null | undefined,
+): boolean {
+  return typeof viewer?.uid === 'string'
+    && viewer.uid.trim().length > 0
+    && viewer.hasPermission('team.manage_all');
+}
+
+/** A `_canAccessTeamManageRecord`（team-list-helpers.js）：管理頁上看得到哪張卡。 */
+export function canAccessTeamManageRecord(
+  viewer: ClubMemberViewer | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  return canEditTeamSettings(viewer, team) || canManageMembers(viewer, team);
+}
+
+/** A `removeTeam` 的守衛 `_canEditTeamByRoleOrCaptain`；管理頁「刪除」鈕同一判斷。 */
+export function canDeleteTeam(
+  viewer: ClubMemberViewer | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  return canEditTeamSettings(viewer, team);
+}
+
+/** A `editTeamMemberMatchData` 的守衛 `_canManageTeamMembers`（背號／位置）。 */
+export function canEditMemberMatchData(
+  viewer: ClubMemberViewer | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  return canManageMembers(viewer, team);
 }
 
 /** 對應 A js/modules/team/team-form-search.js:searchTeamCoach */

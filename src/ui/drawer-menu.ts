@@ -191,7 +191,8 @@ export interface DrawerMenuEntry {
  * - page-admin-roles → /admin/roles
  * - page-admin-logs → /admin/logs
  * - page-admin-repair → /admin/repair
- * 其餘後台／管理頁（俱樂部管理、小遊戲管理、站內信管理、推播、公告、無效資料查詢）B 尚未有對應管理路由，設為 null。
+ * - page-team-manage → /team-manage
+ * 其餘後台／管理頁（小遊戲管理、站內信管理、推播、公告、無效資料查詢）B 尚未有對應管理路由，設為 null。
  */
 // SEO 儀表板、佈景主題、手動／自動 EXP 管理、成就/徽章管理、二手商品區／管理、賽事管理：站長 2026-11-02 決定新站不做或移除（賽事維持導向舊站），不放入抽屜（A 原有入口不照搬）。
 export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
@@ -202,7 +203,7 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '申請（俱樂部/場主/教練）', i18nKey: 'drawer.applyRole', action: 'apply-role', minRole: 'user' },
   { divider: true },
   { icon: '', label: '活動管理', i18nKey: 'drawer.activityManage', page: 'page-my-activities', routePath: '/my-activities', minRole: 'coach', permissionCode: 'activity.manage.entry' },
-  { icon: '', label: '俱樂部管理', i18nKey: 'drawer.teamManage', page: 'page-team-manage', routePath: null, minRole: 'captain', permissionCode: 'team.manage.entry' },
+  { icon: '', label: '俱樂部管理', i18nKey: 'drawer.teamManage', page: 'page-team-manage', routePath: '/team-manage', minRole: 'captain', permissionCode: 'team.manage.entry' },
   { divider: true, minRole: 'admin' },
   { sectionLabel: '後台管理', i18nKey: 'drawer.backendManage', minRole: 'admin' },
   { icon: '', label: '小遊戲管理', i18nKey: 'admin.gameManage', page: 'page-admin-games', routePath: null, minRole: 'admin', permissionCode: 'admin.games.entry' },

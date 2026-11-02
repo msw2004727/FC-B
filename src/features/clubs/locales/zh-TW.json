@@ -2,6 +2,7 @@
   "title": "俱樂部",
   "nav": "俱樂部",
   "detail": "俱樂部詳情",
+  "manage": "俱樂部管理",
   "category": {
     "none": "無",
     "competitive": "競技",
