@@ -96,5 +96,143 @@
     "editFailed": "수정에 실패했습니다. 다시 시도해 주세요.",
     "recallFailed": "회수에 실패했습니다. 다시 시도해 주세요.",
     "safetyNotice": "안전 안내: 이 링크는 사용자가 제공한 것입니다. 열기 전에 URL과 상대방 신원을 확인하세요. ToosterX는 개인 메시지를 통해 비밀번호, 인증번호 또는 결제 정보를 요구하지 않습니다."
+  },
+  "admin": {
+    "title": "站內信管理",
+    "back": "返回",
+    "close": "關閉",
+    "permissionDenied": "權限不足",
+    "editTemplates": "編輯腳本",
+    "countSummary": "已發送 {sent} 封 ・ 排程 {scheduled} 封 ・ 已回收 {recalled} 封 ・ 已刪除 {deleted} 封",
+    "tabs": {
+      "sent": "已發送",
+      "scheduled": "已排程",
+      "recalled": "已回收",
+      "deleted": "已刪除"
+    },
+    "status": {
+      "sent": "已發送",
+      "scheduled": "排程中",
+      "processing": "處理中",
+      "recalled": "已回收",
+      "cancelled": "已取消",
+      "deleted": "已刪除"
+    },
+    "detailStatus": {
+      "sent": "已發送",
+      "scheduled": "排程中",
+      "processing": "處理中",
+      "recalled": "已回收",
+      "cancelled": "已取消排程",
+      "deleted": "已刪除"
+    },
+    "empty": "無信件",
+    "loading": "載入中...",
+    "loadError": "載入失敗，請重試",
+    "retry": "重試",
+    "loadMore": "載入更多",
+    "targetLine": "對象：{target}",
+    "sender": "發送人：{name}",
+    "scheduleAt": "預約發送：{time}",
+    "processingAt": "處理中：{time}",
+    "originalSchedule": "原排程：{time}",
+    "actions": {
+      "view": "查看",
+      "recall": "回收",
+      "delete": "刪除",
+      "cancelSchedule": "取消排程",
+      "restoreSchedule": "恢復排程"
+    },
+    "confirm": {
+      "recall": "確定要回收此信件？收件人信箱中的信件不會移除。",
+      "delete": "確定要刪除此信件？",
+      "cancelSchedule": "確定要取消此排程信件？"
+    },
+    "toast": {
+      "recalled": "已回收信件",
+      "deleted": "信件已移至已刪除",
+      "cancelled": "已取消排程",
+      "restored": "已恢復排程",
+      "sent": "信件已發送",
+      "scheduled": "信件已排程",
+      "noPermission": "權限不足",
+      "actionFailed": "操作失敗，請稍後再試",
+      "deliverFailed": "站內信投遞失敗，請稍後再試",
+      "lineOverLimit": "推播對象超過 {limit} 人，LINE 推播未送出",
+      "lineFailed": "部分 LINE 推播未送出"
+    },
+    "detail": {
+      "category": "類別：{value}",
+      "target": "對象：{value}",
+      "time": "時間：{value}",
+      "sender": "發送人：{value}",
+      "schedule": "排程時間：{value}",
+      "status": "狀態：{value}"
+    },
+    "categories": {
+      "system": "系統",
+      "activity": "活動",
+      "private": "私訊"
+    },
+    "targets": {
+      "all": "全體用戶",
+      "coach": "全體教練",
+      "captain": "全體領隊",
+      "venue_owner": "全體場主",
+      "coach_up": "教練以上",
+      "admin": "管理員",
+      "team": "指定俱樂部",
+      "individual": "指定用戶 (UID/暱稱)"
+    },
+    "compose": {
+      "open": "＋ 發送",
+      "title": "撰寫站內信",
+      "category": "信件類別",
+      "titleLabel": "標題（上限 12 字）",
+      "required": "*必填",
+      "titlePlaceholder": "信件標題",
+      "target": "發送方式",
+      "individualLabel": "對象 UID 或暱稱",
+      "individualPlaceholder": "輸入暱稱或識別碼搜尋",
+      "teamLabel": "指定俱樂部",
+      "teamPlaceholder": "輸入俱樂部名稱搜尋",
+      "bodyLabel": "內容（上限 300 字）",
+      "bodyPlaceholder": "信件內容...",
+      "scheduleLabel": "排程發送（留空＝立即發送）",
+      "submit": "發送",
+      "loadingUsers": "載入用戶資料…",
+      "refreshingUsers": "正在更新用戶資料…",
+      "noUser": "找不到符合的用戶",
+      "userLoadFailed": "用戶資料載入失敗，請稍後重試",
+      "found": "✓ 找到：{name}{uid}・ {role}",
+      "selected": "✓ 已選取：{name}{uid}・ {role}",
+      "loadingTeams": "載入俱樂部資料…",
+      "noTeam": "找不到符合的俱樂部",
+      "teamLoadFailed": "俱樂部資料載入失敗，請稍後重試",
+      "teamSelected": "✓ 已選取：{name}",
+      "teamMeta": "{count}人 · {region}"
+    },
+    "validation": {
+      "titleRequired": "請輸入信件標題",
+      "titleTooLong": "標題不可超過 12 字",
+      "bodyRequired": "請輸入信件內容",
+      "bodyTooLong": "內容不可超過 300 字",
+      "teamRequired": "請先搜尋並選取目標俱樂部",
+      "userRequired": "請先搜尋並確認目標用戶",
+      "userMissing": "目標用戶已無法接收訊息，請重新選擇",
+      "userVerifyFailed": "無法驗證目標用戶，請檢查網路後再試",
+      "selectMissing": "此用戶目前無法選取，請重新搜尋",
+      "selectVerifyFailed": "用戶驗證失敗，請檢查網路後再試"
+    },
+    "templates": {
+      "title": "編輯通知腳本",
+      "placeholder": "佔位符：{value}",
+      "none": "無",
+      "titleLabel": "標題",
+      "bodyLabel": "內容",
+      "save": "儲存所有模板",
+      "saved": "通知模板已儲存",
+      "saveFailed": "通知模板儲存失敗"
+    }
   }
 }
