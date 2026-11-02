@@ -31,7 +31,7 @@ describe('loginBoundaries 與 A 的天數分組一致', () => {
 });
 
 describe('mapStatusUser', () => {
-  it('照 A：顯示名 displayName → name → uid；日期 Y/M/D；天數 floor', () => {
+  it('照 A：顯示名 displayName → name；日期 Y/M/D；天數 floor', () => {
     const last = NOW - 45 * DAY - 5000;
     const user = mapStatusUser('doc1', { uid: 'U1', displayName: '小明', role: 'coach', lastLogin: ts(last), pictureUrl: 'https://x/p.png' }, NOW);
     const d = new Date(last);
@@ -46,6 +46,11 @@ describe('mapStatusUser', () => {
       uid: 'doc2', name: '舊名', roleLabel: '一般用戶', lastLoginStr: '從未登入', daysSince: 9999,
     });
     expect(mapStatusUser('doc3', { role: 'custom_x' }, NOW).roleLabel).toBe('custom_x');
+  });
+
+  it('沒有名字顯示「未知」，不顯示原始 UID', () => {
+    expect(mapStatusUser('doc4', { uid: 'U-raw' }, NOW)).toMatchObject({ uid: 'U-raw', name: '未知' });
+    expect(mapStatusUser('doc5', {}, NOW)).toMatchObject({ uid: 'doc5', name: '未知' });
   });
 
   it('toMillis 支援 toMillis／seconds，其他回 null', () => {

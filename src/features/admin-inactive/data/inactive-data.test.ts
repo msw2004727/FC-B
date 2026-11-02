@@ -98,17 +98,19 @@ describe('活動頁籤', () => {
 });
 
 describe('用戶狀態頁籤', () => {
-  it('進頁：3 個 count＋兩段名單各 ≤ 10，讀取 ≤ 23（預算 26）；不整集合讀 users', async () => {
+  it('進頁：4 個 count＋兩段名單各 ≤ 10，讀取 ≤ 24（預算 26）；不整集合讀 users', async () => {
     const result = await loadUserStatus(NOW);
+    // 統計框含從未登入、lastLogin 非時間戳的 2 人；名單人數只算查得到的。
     expect(result.stats).toEqual({ active: 40, mid: 25, over90: 35 });
+    expect(result.listTotals).toEqual({ over90: 33, mid: 25 });
     expect(result.over90.items).toHaveLength(USER_LIST_PAGE_SIZE);
     expect(result.mid.items).toHaveLength(USER_LIST_PAGE_SIZE);
     // 最久沒登入的在前（同 A 天數由多到少）
     expect(result.over90.items[0]!.name).toBe('O32');
     expect(result.mid.items[0]!.name).toBe('M24');
-    expect(calls.filter((c) => c.kind === 'count')).toHaveLength(3);
+    expect(calls.filter((c) => c.kind === 'count')).toHaveLength(4);
     expect(calls.filter((c) => c.kind === 'docs')).toHaveLength(2);
-    expect(totalReads()).toBeLessThanOrEqual(26);
+    expect(totalReads()).toBeLessThanOrEqual(24);
     everyListHasWhereAndLimit();
     expectNoForbiddenApis();
   });
@@ -122,6 +124,18 @@ describe('用戶狀態頁籤', () => {
     expect(more.items.some((u) => firstIds.has(u.id))).toBe(false);
     expect(totalReads()).toBeLessThanOrEqual(USER_LIST_PAGE_SIZE);
     everyListHasWhereAndLimit();
+  });
+
+  it('超過 90 天名單全部載完的筆數＝listTotals.over90（從未登入者不在名單）', async () => {
+    const first = await loadUserStatus(NOW);
+    const items = [...first.over90.items];
+    let page = first.over90;
+    while (!page.done) {
+      page = await fetchUserSegmentPage('over90', page.cursor, NOW);
+      items.push(...page.items);
+    }
+    expect(items).toHaveLength(first.listTotals.over90);
+    expect(items.some((u) => u.id === 'never1' || u.id === 'legacy1')).toBe(false);
   });
 
   it('count 失敗時整體失敗（不假裝 0 人）', async () => {

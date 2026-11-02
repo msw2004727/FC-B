@@ -99,7 +99,8 @@ export function mapStatusUser(id: string, data: Raw | undefined, nowMs: number):
   return {
     id,
     uid,
-    name: str(d['displayName']) || str(d['name']) || uid || '未知',
+    // 沒有名字顯示「未知」，不把原始 UID 當名字顯示。
+    name: str(d['displayName']) || str(d['name']) || '未知',
     roleLabel: BASE_ROLES[role]?.label ?? role,
     pictureUrl: str(d['pictureUrl']),
     lastLoginStr,

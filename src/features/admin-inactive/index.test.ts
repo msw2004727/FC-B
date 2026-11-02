@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { ALL_FEATURES } from '@/features.config';
@@ -31,5 +33,11 @@ describe('admin-inactive manifest', () => {
     expect(entry.minRole).toBe('super_admin');
     expect(entry.permissionCode).toBe('admin.inactive.entry');
     expect(drawerItemStatus(entry)).toBe('done');
+  });
+
+  it('使用手冊 manual.html 不進 Service Worker 預快取（vite.config.ts globIgnores）', () => {
+    const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.ts'), 'utf8');
+    const ignores = /globIgnores:\s*\[([^\]]*)\]/.exec(viteConfig)?.[1] ?? '';
+    expect(ignores).toContain("'manual.html'");
   });
 });

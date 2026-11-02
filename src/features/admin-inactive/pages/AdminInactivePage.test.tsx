@@ -49,6 +49,8 @@ function seed(): void {
       ...Array.from({ length: 5 }, (_, i) => ({ id: `ua${i}`, data: { displayName: `活躍${i}`, lastLogin: ts(NOW - i * DAY) } })),
       ...Array.from({ length: 12 }, (_, i) => ({ id: `um${i}`, data: { displayName: `中段${i}`, role: 'coach', lastLogin: ts(NOW - (40 + i) * DAY) } })),
       ...Array.from({ length: 15 }, (_, i) => ({ id: `uo${i}`, data: { displayName: `久未${i}`, lastLogin: ts(NOW - (100 + i) * DAY), pictureUrl: 'https://example.invalid/a.png' } })),
+      { id: 'never1', data: { displayName: '從沒登入' } },
+      { id: 'legacy1', data: { displayName: '舊字串', lastLogin: '2025/01/01' } },
     ],
   });
 }
@@ -101,6 +103,20 @@ describe('權限（照 A：admin.inactive.entry，minRole super_admin）', () =>
     expect(screen.getByRole('status')).toBeTruthy();
     expect(calls).toHaveLength(0);
   });
+
+  it('viewer 延後到位：最小 viewer 時 0 讀，完整 viewer 到位後才開始讀', async () => {
+    state.viewer = createMinimalViewer('U-super');
+    const { container, rerender } = render(<AdminInactivePage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('status')).toBeTruthy();
+    expect(calls).toHaveLength(0);
+    state.viewer = viewer('super_admin');
+    rerender(<AdminInactivePage />);
+    await waitFor(() => expect(container.querySelectorAll('[data-team-id]')).toHaveLength(20));
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(calls.every((c) => c.name === 'teams')).toBe(true);
+    expect(totalReads()).toBeLessThanOrEqual(21);
+  });
 });
 
 describe('讀取預算（每頁籤進頁 ≤ 26）', () => {
@@ -134,15 +150,17 @@ describe('讀取預算（每頁籤進頁 ≤ 26）', () => {
     expectReadOnly();
   });
 
-  it('用戶狀態頁籤 ≤ 26 讀（3 個 count＋兩段各 ≤ 10）；統計與 A 分組一致；沒有頭像檢測', async () => {
+  it('用戶狀態頁籤 ≤ 24 讀（4 個 count＋兩段各 ≤ 10）；統計與 A 分組一致；沒有頭像檢測', async () => {
     const { container } = await openAs(viewer('super_admin'));
     await waitFor(() => expect(container.querySelectorAll('[data-team-id]').length).toBeGreaterThan(0));
     calls.length = 0;
     fireEvent.click(screen.getByRole('tab', { name: '用戶狀態' }));
     await waitFor(() => expect(screen.getByText('用戶登入統計')).toBeTruthy());
     expect(calls.every((c) => c.name === 'users')).toBe(true);
-    expect(calls.filter((c) => c.kind === 'count')).toHaveLength(3);
-    expect(totalReads()).toBeLessThanOrEqual(26);
+    expect(calls.filter((c) => c.kind === 'count')).toHaveLength(4);
+    expect(totalReads()).toBeLessThanOrEqual(24);
+    // 統計框含從未登入、lastLogin 非時間戳的 2 人；名單標題只算列得出的 15 人。
+    expect(screen.getByText('超過 90 天').previousElementSibling!.textContent).toBe('17');
     expect(screen.getByText('超過 90 天未登入（15 人）')).toBeTruthy();
     expect(screen.getByText('30~90 天未登入（12 人）')).toBeTruthy();
     expect(container.querySelectorAll('[data-segment="over90"] [data-uid]')).toHaveLength(10);
@@ -153,6 +171,8 @@ describe('讀取預算（每頁籤進頁 ≤ 26）', () => {
     fireEvent.click(over90.querySelector('button')!);
     await waitFor(() => expect(container.querySelectorAll('[data-segment="over90"] [data-uid]')).toHaveLength(15));
     expect(totalReads()).toBeLessThanOrEqual(10);
+    // 標題人數＝可列出的筆數，載完就沒有「載入更多」。
+    expect(container.querySelector('[data-segment="over90"] button')).toBeNull();
     expectReadOnly();
   });
 

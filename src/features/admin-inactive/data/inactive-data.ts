@@ -7,7 +7,7 @@
  * 讀取上限（每頁籤進頁，寫成測試斷言）：
  * - 俱樂部：count 1 ＋ 名單 ≤ 20 ＝ ≤ 21
  * - 活動：count 1 ＋ 名單 ≤ 20 ＝ ≤ 21
- * - 用戶狀態：count 3 ＋ 兩段名單各 ≤ 10 ＝ ≤ 23
+ * - 用戶狀態：count 4 ＋ 兩段名單各 ≤ 10 ＝ ≤ 24
  * 「載入更多」每次 ≤ 20（用戶名單每段 ≤ 10）。count 的計費是每 1,000 筆符合的索引項 1 次讀取（集合很大時會多於 1）。
  *
  * 索引：俱樂部、用戶只用單欄位條件（自動索引）；活動用既有複合索引 events (status ASC, createdAt DESC)。
@@ -117,6 +117,8 @@ export interface UserLoginStats {
 
 export interface UserStatusLoad {
   stats: UserLoginStats;
+  /** 名單查得到的人數（標題人數與「載入更多」用）。超過 90 天只算最後登入是時間戳的人，可能少於 stats.over90。 */
+  listTotals: Record<UserSegment, number>;
   over90: Page<StatusUser>;
   mid: Page<StatusUser>;
 }
@@ -148,15 +150,17 @@ export async function loadUserStatus(nowMs: number): Promise<UserStatusLoad> {
   const { activeAfterMs, over90AtOrBeforeMs } = loginBoundaries(nowMs);
   const activeAfter = Timestamp.fromMillis(activeAfterMs);
   const over90At = Timestamp.fromMillis(over90AtOrBeforeMs);
-  const [total, active, mid, over90, midPage] = await Promise.all([
+  const [total, active, mid, over90Listed, over90, midPage] = await Promise.all([
     countOf(users),
     countOf(query(users, where('lastLogin', '>', activeAfter))),
     countOf(query(users, where('lastLogin', '>', over90At), where('lastLogin', '<=', activeAfter))),
+    countOf(query(users, where('lastLogin', '<=', over90At))),
     fetchUserSegmentPage('over90', null, nowMs),
     fetchUserSegmentPage('mid', null, nowMs),
   ]);
   return {
     stats: { active, mid, over90: Math.max(0, total - active - mid) },
+    listTotals: { over90: over90Listed, mid },
     over90,
     mid: midPage,
   };

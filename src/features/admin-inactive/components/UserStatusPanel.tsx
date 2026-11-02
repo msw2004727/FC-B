@@ -88,7 +88,7 @@ export function UserStatusPanel(): JSX.Element {
 
   function hasMore(segment: UserSegment): boolean {
     const page = current[segment];
-    return !page.done && page.items.length < current.stats[segment];
+    return !page.done && page.items.length < current.listTotals[segment];
   }
 
   async function loadMore(segment: UserSegment): Promise<void> {
@@ -112,7 +112,8 @@ export function UserStatusPanel(): JSX.Element {
   }
 
   function section(segment: UserSegment, title: string, color: string): JSX.Element | null {
-    const count = current.stats[segment];
+    // 標題人數用名單查得到的人數（統計框的「超過 90 天」另含從未登入等列不出的帳號）。
+    const count = current.listTotals[segment];
     if (count <= 0) return null;
     return (
       <div style={CARD_BG} data-segment={segment}>
