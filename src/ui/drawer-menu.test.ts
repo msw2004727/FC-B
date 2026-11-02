@@ -4,6 +4,7 @@ import {
   buildDrawerRenderNodes,
   canAccessDrawerItem,
   DRAWER_MENUS,
+  drawerItemStatus,
   getDrawerItemBgClass,
   resolveDrawerRoleInfo,
   type CustomRoleInput,
@@ -158,5 +159,26 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
     expect(customInfo.color).toBe('#ec4899');
     expect(customInfo.level).toBeGreaterThan(1);
     expect(customInfo.level).toBeLessThan(2);
+  });
+});
+
+describe('drawerItemStatus（內測站功能進度標記）', () => {
+  const byLabel = (label: string) => DRAWER_MENUS.find((e) => e.label === label)!;
+
+  it('鎖定／coming-soon 是 closed、有路由是 done、沒有路由是 wip、動作入口是 done', () => {
+    expect(drawerItemStatus(byLabel('個人數據'))).toBe('closed');
+    expect(drawerItemStatus(byLabel('排行榜'))).toBe('closed');
+    expect(drawerItemStatus(byLabel('活動管理'))).toBe('done');
+    expect(drawerItemStatus(byLabel('賽事管理'))).toBe('wip');
+    expect(drawerItemStatus(byLabel('使用手冊'))).toBe('done');
+  });
+
+  it('清單內每個項目都判得出狀態：有 routePath 且不鎖定者一定是 done', () => {
+    for (const entry of DRAWER_MENUS) {
+      if (entry.divider || entry.sectionLabel) continue;
+      const status = drawerItemStatus(entry);
+      expect(['done', 'closed', 'wip']).toContain(status);
+      if (entry.routePath && !entry.locked && entry.action !== 'coming-soon') expect(status).toBe('done');
+    }
   });
 });

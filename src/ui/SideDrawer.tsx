@@ -24,14 +24,17 @@ import {
   UNAVAILABLE_FEATURE_MSG,
 } from '@/core/unavailable';
 import { APP_VERSION } from '@/version';
+import { isInternalTestMode } from '@/data/internal-test';
 import type { AuthUser } from '@/data/auth';
 import { getLastKnownAuthUid } from '@/data/auth';
 import { toast } from '@/ui/Toast';
 import {
   buildDrawerRenderNodes,
+  drawerItemStatus,
   getMiniAppShareUrl,
   resolveDrawerRoleInfo,
   type CustomRoleInput,
+  type DrawerItemStatus,
   type DrawerMenuEntry,
 } from './drawer-menu';
 import {
@@ -206,6 +209,26 @@ async function executeClearCache(): Promise<void> {
   }
 }
 
+// 內測站專用的功能進度圖示：打勾＝已完成、打叉＝沒開放、驚嘆號＝未完成（站長 2026-11-02）。
+function DrawerStatusIcon({ status }: { status: DrawerItemStatus }): preact.JSX.Element {
+  return (
+    <svg
+      class={`drawer-status drawer-status-${status}`}
+      data-status={status}
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="8" cy="8" r="7" fill="currentColor" />
+      {status === 'done' && <path d="M4.6 8.3l2.2 2.2 4.6-4.7" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />}
+      {status === 'closed' && <path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" />}
+      {status === 'wip' && <path d="M8 4.4v4.2M8 11v.1" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" />}
+    </svg>
+  );
+}
+
 export function SideDrawer({
   open,
   onClose,
@@ -237,6 +260,7 @@ export function SideDrawer({
   const [stealth, setStealth] = useState<boolean>(() => readLocalAdminStealth());
   const [brokenUrls, setBrokenUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
+  const internalTest = useMemo(() => isInternalTestMode(), []);
   const [showApplyNotice, setShowApplyNotice] = useState(false);
   const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
   const [dragOffsetX, setDragOffsetX] = useState<number | null>(null);
@@ -705,6 +729,7 @@ export function SideDrawer({
                 onClick={() => handleMenuItemClick(entry)}
               >
                 {displayLabel}
+                {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
                 {locked && (
                   <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
                 )}

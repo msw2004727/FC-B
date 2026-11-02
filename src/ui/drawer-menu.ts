@@ -227,6 +227,21 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '無效資料查詢', i18nKey: 'admin.inactive', page: 'page-admin-inactive', routePath: null, minRole: 'super_admin', permissionCode: 'admin.inactive.entry' },
 ];
 
+export type DrawerItemStatus = 'done' | 'closed' | 'wip';
+
+/**
+ * 內測站抽屜的功能進度標記（站長 2026-11-02 指定）：
+ * - closed：鎖定或 coming-soon，點了只會提示「功能尚未開放」
+ * - wip：B 尚未有對應路由（routePath 為 null），點了提示請用舊版
+ * - done：其餘都點得進去（有路由或本身是動作入口）
+ * 完全由 DRAWER_MENUS 現況推導；之後補上 routePath 就自動變 done。
+ */
+export function drawerItemStatus(entry: DrawerMenuEntry): DrawerItemStatus {
+  if (entry.locked || entry.action === 'coming-soon') return 'closed';
+  if (entry.action) return 'done';
+  return entry.routePath ? 'done' : 'wip';
+}
+
 function effectiveAccess(access?: RouteAccessContext | null): RouteAccessContext {
   if (access) return access;
   return {

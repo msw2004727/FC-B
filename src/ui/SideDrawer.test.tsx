@@ -68,6 +68,30 @@ afterEach(() => {
   localStorage.removeItem('admin_stealth');
 });
 
+describe('SideDrawer 內測站功能進度圖示', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('內測站：每個入口文字右側有狀態圖示，鎖定入口為 closed、動作入口為 done', () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '1');
+    render(<Harness />);
+    openDrawer();
+    const items = Array.from(document.querySelectorAll('#drawer-menu .drawer-item'));
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item.querySelector('svg.drawer-status')).not.toBeNull();
+    const manual = document.querySelector('#drawer-menu [data-action="manual"] svg.drawer-status');
+    const locked = document.querySelector('#drawer-menu [data-page="page-personal-dashboard"] svg.drawer-status');
+    expect(manual?.getAttribute('data-status')).toBe('done');
+    expect(locked?.getAttribute('data-status')).toBe('closed');
+  });
+
+  it('非內測站：完全不畫狀態圖示', () => {
+    vi.stubEnv('VITE_INTERNAL_TEST', '0');
+    render(<Harness />);
+    openDrawer();
+    expect(document.querySelector('#drawer-menu svg.drawer-status')).toBeNull();
+  });
+});
+
 describe('SideDrawer (legacy A DOM & CSS)', () => {
   it('M-001：#drawer-overlay 與 #side-drawer 常駐 DOM，開關靠 .open class 切換', () => {
     render(<Harness />);
