@@ -175,9 +175,9 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
     expect(drawerItemStatus(byLabel('分享網頁'))).toBe('done');
   });
 
-  it('佔位頁路由與使用手冊不得標成 done（點開只會看到「即將推出」或 SPA 殼）', () => {
+  // 測試同步更新：W1C-M 補上 public/manual.html，使用手冊改為 done（由下方「public/manual.html 存在才能標 done」把關）。
+  it('佔位頁路由不得標成 done（點開只會看到「即將推出」）', () => {
     expect(drawerItemStatus(byLabel('數據儀表板'))).toBe('wip');
-    expect(drawerItemStatus(byLabel('使用手冊'))).toBe('wip');
     expect(drawerItemStatus(byLabel('用戶管理'))).toBe('done');
   });
 

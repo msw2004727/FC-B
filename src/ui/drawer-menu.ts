@@ -231,13 +231,12 @@ export const DRAWER_PLACEHOLDER_ROUTES: readonly string[] = [
 /**
  * 內測站抽屜的功能進度標記（站長 2026-11-02 指定；同日修正：有路由不等於做完）：
  * - closed：鎖定或 coming-soon，點了只會提示「功能尚未開放」
- * - wip：B 尚未有對應路由、路由仍是佔位頁，或動作入口實際沒有內容（使用手冊的 /manual.html 在 B 不存在，
- *   開出來是 SPA 殼；public/manual.html 補上後改回 done，測試會提醒）
+ * - wip：B 尚未有對應路由，或路由仍是佔位頁
+ *   （使用手冊原本因 B 沒有 /manual.html 標 wip；W1C-M 2026-11-02 補上 public/manual.html 後改回 done，測試仍檢查檔案存在）
  * - done：其餘都點得進去且有實際內容
  */
 export function drawerItemStatus(entry: DrawerMenuEntry): DrawerItemStatus {
   if (entry.locked || entry.action === 'coming-soon') return 'closed';
-  if (entry.action === 'manual') return 'wip';
   if (entry.action) return 'done';
   if (!entry.routePath || DRAWER_PLACEHOLDER_ROUTES.includes(entry.routePath)) return 'wip';
   return 'done';
