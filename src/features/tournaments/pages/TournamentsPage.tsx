@@ -1,7 +1,8 @@
 import '../tournaments.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useT } from '@/i18n/i18n';
+import { useLocation } from 'preact-iso';
+import { lt, useT } from '@/i18n/i18n';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -45,6 +46,7 @@ interface EditingState {
  */
 export default function TournamentsPage(): JSX.Element {
   const t = useT();
+  const location = useLocation();
   const viewer = useViewer();
   const canManage = canManageTournamentCards(viewer);
 
@@ -180,17 +182,25 @@ export default function TournamentsPage(): JSX.Element {
     <div class="legacy-ui">
       <section class="page active tc-page" id="page-tournaments">
         <div class="page-header">
+          <button
+            class="back-btn"
+            type="button"
+            aria-label={lt('返回', '返回')}
+            data-i18n-aria-label="返回"
+            onClick={() => location.route('/')}
+          >
+            <svg class="back-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M15 6l-6 6 6 6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
-          {canManage ? (
-            <button
-              type="button"
-              class="primary-btn small"
-              id="tc-add-btn"
-              onClick={() => openEditor(null)}
-            >
-              {t('tournaments.add')}
-            </button>
-          ) : null}
         </div>
 
         <div class="tc-tabs" role="tablist">
@@ -206,6 +216,16 @@ export default function TournamentsPage(): JSX.Element {
               {t(`tournaments.tab.${value}`)}
             </button>
           ))}
+          {canManage ? (
+            <button
+              type="button"
+              class="primary-btn small tc-add-btn"
+              id="tc-add-btn"
+              onClick={() => openEditor(null)}
+            >
+              {t('tournaments.add')}
+            </button>
+          ) : null}
         </div>
         <div class="tc-panel" role="tabpanel">
           <div class="tc-toolbar">

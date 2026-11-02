@@ -433,7 +433,7 @@ export default function TeamsPage(): JSX.Element {
             type="button"
             class="primary-btn small"
             id="team-page-create-btn"
-            style={showCreateTeam ? 'min-height:44px' : 'display:none'}
+            style={showCreateTeam ? undefined : 'display:none'}
             data-i18n="新增俱樂部"
             onClick={handleOpenCreate}
           >
