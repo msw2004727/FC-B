@@ -186,15 +186,48 @@ function eventPatch(value: unknown): TeamReservationEventPatch | null {
   };
 }
 
+export interface TeamReservationPromotion {
+  /** 至少一個報名 ID 非空；不可改用 userId／userName 配對報名。 */
+  id: string;
+  docId: string;
+  userId: string;
+  userName: string;
+  teamSeatSource: 'reserved' | 'overflow' | null;
+}
+
+/** 僅投影已驗證欄位；髒資料不影響已成功的名額調整，也不提示原始資料。 */
+function validatedPromotions(value: unknown): TeamReservationPromotion[] {
+  if (!Array.isArray(value)) return [];
+  const promoted: TeamReservationPromotion[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    if ([item.id, item.docId, item.userId, item.userName]
+      .some(field => field != null && typeof field !== 'string')) continue;
+    const id = typeof item.id === 'string' ? item.id.trim() : '';
+    const docId = typeof item.docId === 'string' ? item.docId.trim() : '';
+    if (!id && !docId) continue;
+    if (item.teamSeatSource != null && item.teamSeatSource !== 'reserved' && item.teamSeatSource !== 'overflow') continue;
+    promoted.push({
+      id, docId,
+      userId: typeof item.userId === 'string' ? item.userId : '',
+      userName: typeof item.userName === 'string' ? item.userName : '',
+      teamSeatSource: item.teamSeatSource ?? null,
+    });
+  }
+  return promoted;
+}
+
 export type TeamReservationResult =
-  | { status: 'success'; deduplicated: false; message: string; eventPatch: TeamReservationEventPatch }
+  | { status: 'success'; deduplicated: false; message: string; eventPatch: TeamReservationEventPatch; promoted: TeamReservationPromotion[] }
   | { status: 'success'; deduplicated: true; message: string }
   | { status: 'error' | 'busy'; message: string }
   | { status: 'ignored' | 'course-managed'; message: '' };
 
 /**
  * 每個詳情頁建立一個 controller；getSnapshot 只讀目前記憶體快照，不得查 Firestore。
- * T-074b 在回傳後仍須核對自身頁面世代才套用 eventPatch，並在卸載時讓快照回 null。
+ * T-074b 在回傳後仍須核對自身頁面世代，套用 eventPatch 並依 promoted 的 docId／id
+ * 同步 registrations 的 confirmed 狀態及非空 teamSeatSource；卸載時讓快照回 null。
  */
 export function createTeamReservationController(
   getSnapshot: () => TeamReservationSnapshot | null,
@@ -248,7 +281,7 @@ export function createTeamReservationController(
         const patch = response?.success === true ? eventPatch(response.event) : null;
         if (!patch) return { status: 'error', message: FAILED };
         return {
-          status: 'success', deduplicated: false, eventPatch: patch,
+          status: 'success', deduplicated: false, eventPatch: patch, promoted: validatedPromotions(response.promoted),
           message: reservedSlots > 0 ? '已更新團隊名額' : '已取消團隊名額',
         };
       } catch (error) {
