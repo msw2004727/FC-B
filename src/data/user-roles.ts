@@ -4,7 +4,7 @@
 // - 同次讀取快取 role、exp 與放鴿子統計，不另開 users 查詢。
 // - role 屬於 UserRole 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
 // - 模組層 5 分鐘快取；同一批進行中的請求共用 Promise，避免重複讀。
-// - 讀取失敗：記一次 console.warn，回傳目前快取＋其餘 'user'，不丟例外。
+// - 讀取失敗：記一次 console.warn；角色回傳目前快取＋其餘 'user'，統計 reject。
 
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -56,9 +56,7 @@ interface UserSummary extends UserNoShowStats {
   exp: number;
 }
 
-interface FetchOutcome {
-  failed: boolean;
-}
+type FetchOutcome = { failed: false } | { failed: true; error: unknown };
 
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<FetchOutcome>>();
@@ -138,9 +136,8 @@ export function getCachedUserNoShowStats(uid: string): UserNoShowStats | undefin
   return copyNoShowStats(entry);
 }
 
-async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserSummary>> {
+async function fetchRoles(uids: readonly string[]): Promise<void> {
   const { db } = await getFirebase();
-  const result: Record<string, UserSummary> = {};
 
   for (const batch of chunk(uids, MAX_UIDS_PER_QUERY)) {
     // 只依 UID 精確匹配（R-ID-002），不依名字。
@@ -149,13 +146,22 @@ async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserS
       where(documentId(), 'in', batch),
     );
     const snapshot = await getDocs(ref);
+    const result: Record<string, UserSummary> = {};
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as Record<string, unknown> | undefined;
       result[docSnap.id] = { role: readRole(data), exp: readExp(data), ...readNoShowStats(data) };
     }
+    // 每批成功後才寫入快取；後續批次失敗不丟棄已取得的資料。
+    const expiresAt = Date.now() + CACHE_TTL_MS;
+    for (const uid of batch) {
+      cache.set(uid, {
+        role: result[uid]?.role ?? DEFAULT_ROLE,
+        exp: result[uid]?.exp ?? 0,
+        ...copyNoShowStats(result[uid]),
+        expiresAt,
+      });
+    }
   }
-
-  return result;
 }
 
 function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
@@ -165,16 +171,7 @@ function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
 
   const promise = (async (): Promise<FetchOutcome> => {
     try {
-      const fetched = await fetchRoles(uidsToFetch);
-      const expiresAt = Date.now() + CACHE_TTL_MS;
-      for (const uid of uidsToFetch) {
-        cache.set(uid, {
-          role: fetched[uid]?.role ?? DEFAULT_ROLE,
-          exp: fetched[uid]?.exp ?? 0,
-          ...copyNoShowStats(fetched[uid]),
-          expiresAt,
-        });
-      }
+      await fetchRoles(uidsToFetch);
       return { failed: false };
     } catch (error) {
       if (!warned) {
@@ -182,7 +179,7 @@ function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
         // eslint-disable-next-line no-console
         console.warn('[user-roles] 讀取使用者角色失敗，回退為預設角色', error);
       }
-      return { failed: true };
+      return { failed: true, error };
     } finally {
       // L-08：成功與失敗兩條路徑都清除 inflight。
       inflight.delete(key);
@@ -218,7 +215,7 @@ export async function loadUserRoles(
 
   await startFetch(toFetch);
 
-  // 成功時 cache 已被填上；失敗時 cache 保持現狀（可能含舊的 stale 值）。
+  // 成功批次已寫入 cache；失敗批次沿用舊值（可能 stale）或預設角色。
   for (const uid of toFetch) {
     result[uid] = cache.get(uid)?.role ?? DEFAULT_ROLE;
   }
@@ -228,13 +225,21 @@ export async function loadUserRoles(
 /**
  * 與 loadUserRoles 共用同一個快取及同批 inflight，沒有另一條 users 查詢。
  * 呼叫端傳入與 useUserRoles 相同的名單 UID，即使同時載入也只讀一次。
- * 失敗沿用既有角色 loader 的舊快取／預設值策略；新鮮度同為 5 分鐘。
+ * 任一批讀取失敗就 reject，保留成功批次快取；新鮮度同為 5 分鐘。
  */
 export async function loadUserNoShowStats(
   uids: readonly string[],
 ): Promise<Record<string, UserNoShowStats>> {
   const normalized = normalizeUids(uids);
-  await loadUserRoles(normalized);
+  const now = Date.now();
+  const toFetch = normalized.filter((uid) => {
+    const cached = cache.get(uid);
+    return !cached || cached.expiresAt <= now;
+  });
+  if (toFetch.length > 0) {
+    const outcome = await startFetch(toFetch);
+    if (outcome.failed) throw outcome.error;
+  }
   const result: Record<string, UserNoShowStats> = {};
   for (const uid of normalized) result[uid] = copyNoShowStats(cache.get(uid));
   return result;

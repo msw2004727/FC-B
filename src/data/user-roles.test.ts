@@ -296,28 +296,77 @@ describe('放鴿子統計共用角色快取', () => {
     expect(getDocsMock).toHaveBeenCalledTimes(2);
   });
 
-  it('首次失敗回預設值、不寫失敗快取；再次呼叫可成功', async () => {
+  it('首次失敗 reject、不寫失敗快取；再次呼叫可成功', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     getDocsMock.mockRejectedValueOnce(new Error('offline'));
-    expect(await loadUserNoShowStats(['u1'])).toEqual({ u1: emptyNoShowStats });
+    await expect(loadUserNoShowStats(['u1'])).rejects.toThrow('offline');
     expect(getCachedUserNoShowStats('u1')).toBeUndefined();
     getDocsMock.mockResolvedValueOnce({ docs: [{ id: 'u1', data: () => ({ noShowCount: 2 }) }] } as never);
     expect((await loadUserNoShowStats(['u1'])).u1?.noShowCount).toBe(2);
     expect(getDocsMock).toHaveBeenCalledTimes(2);
   });
 
-  it('到期重讀失敗沿用舊統計，且不把舊值視為新鮮快取', async () => {
+  it('到期重讀失敗時統計 reject、角色沿用舊值，且不更新快取期限', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const now = vi.spyOn(Date, 'now').mockReturnValue(0);
-    getDocsMock.mockResolvedValueOnce({ docs: [{ id: 'u1', data: () => ({ noShowCount: 2 }) }] } as never);
+    getDocsMock.mockResolvedValueOnce({ docs: [{ id: 'u1', data: () => ({ role: 'coach', noShowCount: 2 }) }] } as never);
     await loadUserRoles(['u1']);
     now.mockReturnValue(300_000);
     getDocsMock.mockRejectedValueOnce(new Error('offline'));
-    expect((await loadUserNoShowStats(['u1'])).u1?.noShowCount).toBe(2);
+    await Promise.all([
+      expect(loadUserNoShowStats(['u1'])).rejects.toThrow('offline'),
+      expect(loadUserRoles(['u1'])).resolves.toEqual({ u1: 'coach' }),
+    ]);
     expect(getCachedUserNoShowStats('u1')).toBeUndefined();
     getDocsMock.mockResolvedValueOnce({ docs: [{ id: 'u1', data: () => ({ noShowCount: 1 }) }] } as never);
     expect((await loadUserNoShowStats(['u1'])).u1?.noShowCount).toBe(1);
     expect(getDocsMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('部分有快取、後續批次失敗時 reject，保留成功批次，重試只查失敗 UID', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const cachedStats = { noShowCount: 1, endedRegCount: 4, lastEventWasNoShow: false };
+    const batchStats = { noShowCount: 2, endedRegCount: 10, lastEventWasNoShow: true };
+    const retriedStats = { noShowCount: 3, endedRegCount: 7, lastEventWasNoShow: true };
+    const newUids = Array.from({ length: 31 }, (_, i) => 'u' + i);
+    const successfulUids = newUids.slice(0, 30);
+    const failedUid = newUids[30]!;
+    const uids = ['cached', ...newUids];
+
+    getDocsMock.mockResolvedValueOnce({ docs: [{
+      id: 'cached', data: () => ({ role: 'admin', ...cachedStats }),
+    }] } as never);
+    await loadUserRoles(['cached']);
+    getDocsMock.mockResolvedValueOnce({ docs: successfulUids.map((id) => ({
+      id, data: () => ({ role: 'coach', ...batchStats }),
+    })) } as never);
+    getDocsMock.mockRejectedValueOnce(new Error('second batch failed'));
+
+    const rolesPromise = loadUserRoles(uids);
+    await expect(loadUserNoShowStats(uids)).rejects.toThrow('second batch failed');
+    const roles = await rolesPromise;
+    expect(roles.cached).toBe('admin');
+    expect(roles[failedUid]).toBe('user');
+    expect(getCachedUserNoShowStats('cached')).toEqual(cachedStats);
+    for (const uid of successfulUids) {
+      expect(roles[uid]).toBe('coach');
+      expect(getCachedUserNoShowStats(uid)).toEqual(batchStats);
+    }
+    expect(getCachedUserNoShowStats(failedUid)).toBeUndefined();
+    await loadUserNoShowStats(['cached', ...successfulUids]);
+    expect(getDocsMock).toHaveBeenCalledTimes(3);
+
+    getDocsMock.mockResolvedValueOnce({ docs: [{
+      id: failedUid, data: () => ({ ...retriedStats }),
+    }] } as never);
+    const stats = await loadUserNoShowStats(uids);
+    expect(stats.cached).toEqual(cachedStats);
+    for (const uid of successfulUids) expect(stats[uid]).toEqual(batchStats);
+    expect(stats[failedUid]).toEqual(retriedStats);
+    expect(getCachedUserNoShowStats(failedUid)).toEqual(retriedStats);
+    expect(getDocsMock.mock.calls.map(([q]) => extractBatchUids(q))).toEqual([
+      ['cached'], successfulUids, [failedUid], [failedUid],
+    ]);
   });
 
   it('空名單零查詢', async () => {
