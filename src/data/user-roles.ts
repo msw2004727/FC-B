@@ -1,7 +1,8 @@
 // 依 UID 批次載入使用者角色（R-ID-002：不以名字查身分）。
 //
 // - 以 `where(documentId(), 'in', chunk)` 每次最多 30 個 UID 分批讀 `users/{uid}`。
-// - 只取 `role` 欄位；值屬於 `UserRole` 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
+// - 同次讀取快取 role、exp 與放鴿子統計，不另開 users 查詢。
+// - role 屬於 UserRole 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
 // - 模組層 5 分鐘快取；同一批進行中的請求共用 Promise，避免重複讀。
 // - 讀取失敗：記一次 console.warn，回傳目前快取＋其餘 'user'，不丟例外。
 
@@ -36,14 +37,21 @@ function isUserRole(value: unknown): value is UserRole {
   return typeof value === 'string' && KNOWN_ROLES.has(value);
 }
 
-interface CacheEntry {
+/** Functions 寫回 users 的統計；只讀，不在前端重算或寫回。 */
+export interface UserNoShowStats {
+  noShowCount: number;
+  endedRegCount: number;
+  lastEventWasNoShow: boolean;
+}
+
+interface CacheEntry extends UserNoShowStats {
   role: UserRole;
   /** users.exp，給使用者膠囊算等級（A `_calcLevelFromExp`）。 */
   exp: number;
   expiresAt: number;
 }
 
-interface UserSummary {
+interface UserSummary extends UserNoShowStats {
   role: UserRole;
   exp: number;
 }
@@ -91,6 +99,22 @@ function readExp(data: Record<string, unknown> | undefined): number {
   return Math.max(0, Number(data?.exp || 0) || 0);
 }
 
+function readNoShowStats(data: Record<string, unknown> | undefined): UserNoShowStats {
+  return {
+    noShowCount: Number(data?.noShowCount || 0) || 0,
+    endedRegCount: Number(data?.endedRegCount || 0) || 0,
+    lastEventWasNoShow: Boolean(data?.lastEventWasNoShow),
+  };
+}
+
+function copyNoShowStats(entry: UserNoShowStats | undefined): UserNoShowStats {
+  return {
+    noShowCount: entry?.noShowCount ?? 0,
+    endedRegCount: entry?.endedRegCount ?? 0,
+    lastEventWasNoShow: entry?.lastEventWasNoShow ?? false,
+  };
+}
+
 /** A `profile-core.js#_calcLevelFromExp` 的等級。 */
 export function userLevelFromExp(totalExp: number): number {
   if (!(totalExp > 0)) return 0;
@@ -107,6 +131,13 @@ export function getCachedUserLevel(uid: string): number | undefined {
   return userLevelFromExp(entry.exp);
 }
 
+/** 未過期的統計副本；未載入或過期回 undefined，絕不觸發查詢。 */
+export function getCachedUserNoShowStats(uid: string): UserNoShowStats | undefined {
+  const entry = cache.get(String(uid || '').trim());
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  return copyNoShowStats(entry);
+}
+
 async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserSummary>> {
   const { db } = await getFirebase();
   const result: Record<string, UserSummary> = {};
@@ -120,7 +151,7 @@ async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserS
     const snapshot = await getDocs(ref);
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as Record<string, unknown> | undefined;
-      result[docSnap.id] = { role: readRole(data), exp: readExp(data) };
+      result[docSnap.id] = { role: readRole(data), exp: readExp(data), ...readNoShowStats(data) };
     }
   }
 
@@ -140,6 +171,7 @@ function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
         cache.set(uid, {
           role: fetched[uid]?.role ?? DEFAULT_ROLE,
           exp: fetched[uid]?.exp ?? 0,
+          ...copyNoShowStats(fetched[uid]),
           expiresAt,
         });
       }
@@ -193,6 +225,21 @@ export async function loadUserRoles(
   return result;
 }
 
+/**
+ * 與 loadUserRoles 共用同一個快取及同批 inflight，沒有另一條 users 查詢。
+ * 呼叫端傳入與 useUserRoles 相同的名單 UID，即使同時載入也只讀一次。
+ * 失敗沿用既有角色 loader 的舊快取／預設值策略；新鮮度同為 5 分鐘。
+ */
+export async function loadUserNoShowStats(
+  uids: readonly string[],
+): Promise<Record<string, UserNoShowStats>> {
+  const normalized = normalizeUids(uids);
+  await loadUserRoles(normalized);
+  const result: Record<string, UserNoShowStats> = {};
+  for (const uid of normalized) result[uid] = copyNoShowStats(cache.get(uid));
+  return result;
+}
+
 function uidsKey(uids: readonly string[]): string {
   return normalizeUids(uids).sort().join('\n');
 }
@@ -205,14 +252,16 @@ export function useUserRoles(uids: readonly string[]): Record<string, UserRole> 
   useEffect(() => {
     let cancelled = false;
     // 以內容 key 作為 dep：陣列身分改變但內容相同不會重查。
-    loadUserRoles(uids)
-      .then((next) => {
+    async function refresh(): Promise<void> {
+      try {
+        const next = await loadUserRoles(uids);
         if (cancelled) return;
         setRoles(next);
-      })
-      .catch(() => {
+      } catch {
         // loadUserRoles 內部已處理錯誤；此處僅作為安全網。
-      });
+      }
+    }
+    void refresh();
     return () => {
       cancelled = true;
     };
