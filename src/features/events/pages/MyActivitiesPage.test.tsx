@@ -19,7 +19,7 @@ afterEach(() => {
 
 const routeMock = vi.fn();
 let mockViewer: ViewerView = createGuestViewer();
-let mockActiveEvents: EventDoc[] = [];
+let mockActiveEvents: SwipeEventDoc[] = [];
 let mockTerminalEvents: EventDoc[] = [];
 const ensureTerminalMock = vi.fn(async () => ['events']);
 const loadStaticMock = vi.fn(async () => ['events']);
@@ -182,7 +182,7 @@ function swipeList(list: HTMLElement, dx: number): void {
   finishSwipe(list);
 }
 
-function getTab(container: HTMLElement, key: string): HTMLElement {
+function getTab(container: Element, key: string): HTMLElement {
   const tab = container.querySelector<HTMLElement>(
     `#my-activity-tabs .tab[data-afilter="${key}"]`,
   );
@@ -190,7 +190,7 @@ function getTab(container: HTMLElement, key: string): HTMLElement {
   return tab;
 }
 
-function activeTabKey(container: HTMLElement): string | undefined {
+function activeTabKey(container: Element): string | undefined {
   return container.querySelector<HTMLElement>('#my-activity-tabs .tab.active')?.dataset.afilter;
 }
 
@@ -198,7 +198,7 @@ function listTitles(list: HTMLElement): string[] {
   return Array.from(list.querySelectorAll('.msg-manage-title'), (el) => el.textContent ?? '');
 }
 
-async function waitForSwipeList(container: HTMLElement): Promise<HTMLElement> {
+async function waitForSwipeList(container: Element): Promise<HTMLElement> {
   return waitFor(() => {
     const list = container.querySelector<HTMLElement>('#my-activity-list');
     if (!list) throw new Error('Missing activity list');
