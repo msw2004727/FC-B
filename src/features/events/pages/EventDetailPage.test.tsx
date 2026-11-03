@@ -1793,6 +1793,12 @@ describe('T-074b 詳情頁整合', () => {
     mocks.detail.mockResolvedValue({ ...detail, event: activity });
     mocks.reservationSignupEvent = activity;
   });
+  async function openReservationRoster() {
+    mount();
+    // 此職員 fixture 未授予活動現場管理權，沿既有流程按需展開公開名單。
+    fireEvent.click(await screen.findByRole('button', { name: '查看出席名單' }));
+    await waitFor(() => expect(document.querySelector('.team-reservation-header-row')).toBeTruthy());
+  }
   async function adjust(value = '2') {
     fireEvent.click(await screen.findByRole('button', { name: '調整名額' }));
     fireEvent.input(screen.getByLabelText('團隊名額'), { target: { value } });
@@ -1807,7 +1813,7 @@ describe('T-074b 詳情頁整合', () => {
   });
   it('名單快速調整預選該隊，非該隊職員沒有入口', async () => {
     mocks.viewer.mockReturnValue({ ...staffViewer, staffTeams: [{ id: 't2', name: '二隊' }] });
-    mount();
+    await openReservationRoster();
     const button = await screen.findByRole('button', { name: '快速調整' });
     expect(button.closest('tr')?.textContent).toContain('二隊');
     expect(screen.getAllByRole('button', { name: '快速調整' })).toHaveLength(1);
@@ -1819,7 +1825,7 @@ describe('T-074b 詳情頁整合', () => {
     mocks.history.mockResolvedValue([waiting]);
     const callable = vi.fn(async () => success);
     registerCallableMock('adjustTeamReservation', callable);
-    mount();
+    await openReservationRoster();
     await screen.findAllByRole('button', { name: '快速調整' });
     expect(screen.getByRole('button', { name: '取消候補' })).toBeTruthy();
     const calls = [mocks.detail.mock.calls.length, mocks.registrations.mock.calls.length, mocks.history.mock.calls.length];
@@ -1837,7 +1843,7 @@ describe('T-074b 詳情頁整合', () => {
     mocks.registrations.mockResolvedValue([waiting]);
     mocks.history.mockResolvedValue([waiting]);
     registerCallableMock('adjustTeamReservation', async () => success);
-    mount();
+    await openReservationRoster();
     await screen.findAllByRole('button', { name: '快速調整' });
     let resolve!: (rows: unknown[]) => void;
     mocks.registrations.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
@@ -1896,7 +1902,7 @@ describe('T-074b 詳情頁整合', () => {
   });
   it('原始狀態仍 open 但開放時間未到，不出現團隊入口', async () => {
     mocks.detail.mockResolvedValue({ ...detail, event: { ...activity, regOpenTime: '2098-01-01T00:00:00+08:00' } });
-    mount();
+    await openReservationRoster();
     await waitFor(() => expect(document.querySelector('.team-reservation-header-row')).toBeTruthy());
     expect(screen.queryByRole('button', { name: /調整名額|團隊報名|快速調整/ })).toBeNull();
   });

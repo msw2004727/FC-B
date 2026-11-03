@@ -78,11 +78,15 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     render(<Harness activity={{ ...event, teamReservationSummaries: [] }} />);
     fireEvent.click(screen.getByRole('button', { name: '團隊報名' }));
     expect((screen.getByLabelText('團隊名額') as HTMLInputElement).value).toBe('5');
-    fireEvent.change(screen.getByLabelText('俱樂部'), { target: { value: 't2' } });
+    // preact testing-library 的 fireEvent.change 在 compat 下會改送 input；select 需原生 change。
+    const select = screen.getByLabelText('俱樂部') as HTMLSelectElement;
+    select.value = 't2';
+    fireEvent(select, new Event('change', { bubbles: true }));
     expect((screen.getByLabelText('團隊名額') as HTMLInputElement).value).toBe('0');
   });
+  // t1 的上限 = 2 + (10 - (8 - 2)) = 6；7 才是超額，5 仍合法。
   it.each([
-    ['1', '團隊名額不能低於已使用人數'], ['5', '團隊名額超過目前活動可用名額'],
+    ['1', '團隊名額不能低於已使用人數'], ['7', '團隊名額超過目前活動可用名額'],
   ])('前端擋下 %s，不送 Callable', async (value, message) => {
     render(<Harness />); await open(); input(value); confirm();
     await waitFor(() => expect(mock.toast).toHaveBeenCalledWith({ message }));
