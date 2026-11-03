@@ -229,14 +229,22 @@ describe('T-073b 共用快取與補正載入', () => {
     await act(async () => {});
     expect(callsTo('users')).toHaveLength(2);
 
+    const failedRoles = view.result.current.roles;
     view.rerender({ ...base, enabled: false });
-    await act(async () => {});
+    // 關閉也會重驗過期角色；空的 act 不保證非同步請求已結束。
+    // 等失敗快照發布、inflight 清除後再模擬恢復，避免重開沿用失敗中的請求。
+    await waitFor(() => expect(view.result.current.roles).not.toBe(failedRoles));
+    expect(view.result.current.data).toBeNull();
+    expect(getCachedUserNoShowStats('u1')).toBeUndefined();
+    expect(callsTo('users')).toHaveLength(3);
+    expect(callsTo('userCorrections')).toHaveLength(0);
     getDocsMock.mockImplementation(async q => {
       const req = request(q);
       return snapshot(req.uids, req.path === 'userCorrections') as never;
     });
     view.rerender(base);
     await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(callsTo('users')).toHaveLength(4);
     expect(callsTo('userCorrections')).toEqual([['u1']]);
   });
 
