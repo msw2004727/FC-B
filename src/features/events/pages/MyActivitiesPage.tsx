@@ -164,6 +164,12 @@ export default function MyActivitiesPage(): JSX.Element {
       const seq = ++loadSeqRef.current;
       setLoading(true);
       setError(false);
+      if (force) {
+        // 強制刷新會替換 Repo 的歷史清單與游標，畫面也必須回到第一頁並重新允許展開。
+        // 在 await 前重設：即使 active 失敗、terminal 成功，分頁仍與新快照一致。
+        setVisibleCounts({});
+        setHasRemoteMore(true);
+      }
       try {
         const repo = getEventsRepo();
         if (isHistoryTab(tab)) {
@@ -319,7 +325,8 @@ export default function MyActivitiesPage(): JSX.Element {
   }
 
   async function handleLoadMore(): Promise<void> {
-    if (loadingMore) return;
+    if (loading || loadingMore) return;
+    const seq = loadSeqRef.current;
     const key = getMyActivityPagingKey(activeTab, selectedCreatorUid);
     const nextLimit = visibleLimit + MY_ACTIVITY_DEFAULT_PAGE_SIZE;
     setVisibleCounts((prev) => ({
@@ -334,6 +341,7 @@ export default function MyActivitiesPage(): JSX.Element {
       setLoadingMore(true);
       try {
         const added = await getEventsRepo().loadMoreTerminalEvents();
+        if (seq !== loadSeqRef.current) return; // 刷新前的分頁回應不能覆寫新的分頁狀態。
         syncFromRepo();
         if (added === 0) {
           setHasRemoteMore(false);
@@ -568,7 +576,7 @@ export default function MyActivitiesPage(): JSX.Element {
                   <button
                     type="button"
                     class="outline-btn my-activity-load-more-btn"
-                    disabled={loadingMore}
+                    disabled={loading || loadingMore}
                     onClick={() => {
                       void handleLoadMore();
                     }}

@@ -81,13 +81,13 @@ describe('A 外部活動編輯表單', () => {
     expect(validateExternalEventEdit({ ...form, sportTag: 'arbitrary' })).toBe('請先選擇運動 / 場景標籤（必選）');
   });
   it('只寫 A 白名單，trim 欄位；旗標關時保留座標、不寫 GPS／時間戳', () => {
-    expect(buildExternalEventUpdates({ ...form, title: ' 改名 ', location: ' 球場 ', externalUrl: ' https://example.test ' }, loc())).toEqual({
+    expect(buildExternalEventUpdates({ ...form, title: ' 改名 ', location: ' 球場 ', externalUrl: ' https://example.test ' }, loc(), event)).toEqual({
       title: '改名', location: '球場', externalUrl: 'https://example.test', sportTag: 'football',
       date: '2026/01/05 09:00~11:00', image: event.image, gradient: 'linear-gradient(135deg,#6b7280,#4b5563)',
     });
   });
-  it('旗標開時保留已確認座標與原更新時間，cee 不寫 gpsEnabled', () => {
-    const updates = buildExternalEventUpdates(form, loc(true));
+  it('新增已確認座標，cee 不寫 gpsEnabled', () => {
+    const updates = buildExternalEventUpdates(form, loc(true), event);
     const { location: _location, ...coordinates } = point;
     expect(updates).toMatchObject(coordinates);
     expect(updates).not.toHaveProperty('gpsEnabled');
@@ -97,19 +97,71 @@ describe('A 外部活動編輯表單', () => {
   it.each(['地點已改', '未確認', '無座標'])('%s 時清空座標欄位', scenario => {
     const source = scenario === '未確認' ? { ...point, mapLocationConfirmed: false }
       : scenario === '無座標' ? { ...point, lat: NaN } : point;
-    const updates = buildExternalEventUpdates(form, loc(true, scenario === '地點已改' ? '新地點' : '球場', source));
+    const updates = buildExternalEventUpdates(form, loc(true, scenario === '地點已改' ? '新地點' : '球場', source), { ...event, ...point });
     expect(updates).toMatchObject({ lat: null, lng: null, mapAddress: null, mapPlaceId: null,
       mapProvider: null, mapLocationConfirmed: false, mapLocationUpdatedAt: null });
   });
 });
 
 describe('外部活動寫入／最新權限／opLog', () => {
+  describe.each(['owner', 'delegate'] as const)('%s 無 addons_use 的基本編輯', role => {
+    describe.each([false, true])('mapPickerEnabled=%s', enabled => {
+      it.each([
+        ['缺少全部地圖欄位', {}],
+        ['既有座標', point],
+        ['既有座標但缺少 metadata', { lat: 25, lng: 121, mapLocationConfirmed: true }],
+        ['明確空值', { lat: null, lng: null, mapLocationConfirmed: false }],
+        ['快取時間戳', { ...point, mapLocationUpdatedAt: { seconds: 1767225600 } }],
+      ])('%s：只改名稱不送任何地圖欄位', async (_name, coordinates) => {
+        const target = { ...event, ...coordinates, delegateUids: ['delegate'] };
+        context = { ...owner, uid: role };
+        mocks.read.mockResolvedValue(snapshot(target));
+        const value = buildEventLocationValue(resetLocationDraft(target, '球場'), '球場', true, enabled, new Date());
+        await saveExternalEventEdit(target, { ...form, title: '只改名稱' }, value, actor);
+        const updates = mocks.update.mock.calls[0]?.[1];
+        expect(updates.title).toBe('只改名稱');
+        for (const key of ['lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider',
+          'mapLocationConfirmed', 'mapLocationUpdatedAt', 'gpsEnabled']) {
+          expect(updates).not.toHaveProperty(key);
+        }
+      });
+    });
+  });
+
+  it('只送有變更的座標／metadata；保留其他欄位與原時間戳', () => {
+    const target = { ...event, ...point };
+    const updates = buildExternalEventUpdates(form, { ...loc(true), lat: 24 }, target);
+    expect(updates.lat).toBe(24);
+    for (const key of ['lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt']) {
+      expect(updates).not.toHaveProperty(key);
+    }
+  });
+
+  it('缺時間戳的舊座標真的改變時才補寫新的時間戳', () => {
+    const target = { ...event, ...point, mapLocationUpdatedAt: undefined };
+    const value = buildEventLocationValue(resetLocationDraft(target, '球場'), '球場', true, true, new Date('2026-11-04T00:00:00Z'));
+    expect(buildExternalEventUpdates(form, value, target)).not.toHaveProperty('mapLocationUpdatedAt');
+    expect(buildExternalEventUpdates(form, { ...value, lat: 24 }, target)).toMatchObject({
+      lat: 24, mapLocationUpdatedAt: '2026-11-04T00:00:00.000Z',
+    });
+  });
+
+  it('旗標關閉，即使草稿改變也不送座標；基本編輯不覆蓋伺服器較新的座標', async () => {
+    const target = { ...event, ...point };
+    const latestTarget = { ...target, lat: 24 };
+    mocks.read.mockResolvedValue(snapshot(latestTarget));
+    await saveExternalEventEdit(target, form, loc(true), actor);
+    expect(mocks.update.mock.calls[0]?.[1]).not.toHaveProperty('lat');
+    const updates = buildExternalEventUpdates(form, { ...loc(true), mapPickerEnabled: false, lat: 23 }, target);
+    for (const key of Object.keys(point).filter(key => key !== 'location')) expect(updates).not.toHaveProperty(key);
+  });
+
   it('已知 _docId 只 server read 一次，update 真實文件，最後寫 A opLog', async () => {
     await expect(saveExternalEventEdit(event, form, loc(), actor)).resolves.toEqual({ title: '原活動' });
     expect(mocks.read).toHaveBeenCalledExactlyOnceWith('events/legacy-document');
     expect(mocks.queryRead).not.toHaveBeenCalled();
     expect(mocks.update).toHaveBeenCalledExactlyOnceWith('events/legacy-document', {
-      ...buildExternalEventUpdates(form, loc()), updatedAt: 'SERVER_TIME',
+      ...buildExternalEventUpdates(form, loc(), event), updatedAt: 'SERVER_TIME',
     });
     expect(mocks.upload).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(mocks.log).toHaveBeenCalledExactlyOnceWith({

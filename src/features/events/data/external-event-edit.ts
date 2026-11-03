@@ -1,5 +1,7 @@
 import { getFirebase } from '@/data/firebase';
-import type { EventLocationValue } from '../components/event-form/use-event-location';
+import {
+  buildEventLocationValue, resetLocationDraft, type EventLocationValue,
+} from '../components/event-form/use-event-location';
 import { uploadImageDataUrl } from './event-cover-upload';
 import { canEditOwnActivityBasic, type OperateContext } from './operate-permissions';
 import { eventSportTag, getSportKeySafe } from './sports';
@@ -59,6 +61,7 @@ export function validateExternalEventEdit(form: ExternalEventEditForm): string |
 export function buildExternalEventUpdates(
   form: ExternalEventEditForm,
   location: EventLocationValue,
+  existing: EventDoc,
 ): Record<string, unknown> {
   const error = validateExternalEventEdit(form);
   if (error) throw new ExternalEventEditError(error);
@@ -71,16 +74,30 @@ export function buildExternalEventUpdates(
     image: form.image,
     gradient: 'linear-gradient(135deg,#6b7280,#4b5563)',
   };
-  // 重用 useEventLocation 的 A 草稿驗證結果；cee 一律視為 GPS 開，不寫 gpsEnabled。
-  // 旗標關時完全不動舊座標。白名單避免未來 hook 加欄位意外擴大寫入。
+  // 比對開啟表單時的草稿語意，避免替舊文件補上 null／false、預設地址或時間戳。
+  // 旗標關時完全不動舊座標；只送真正變更的白名單欄位，不擴大 Rules 權限。
   if (location.mapPickerEnabled) {
-    Object.assign(updates, {
-      lat: location.lat, lng: location.lng,
-      mapAddress: location.mapAddress, mapPlaceId: location.mapPlaceId,
-      mapProvider: location.mapProvider,
-      mapLocationConfirmed: location.mapLocationConfirmed,
-      mapLocationUpdatedAt: location.mapLocationUpdatedAt,
-    });
+    const source = existing as Record<string, unknown>;
+    const draft = resetLocationDraft(source, existing.location || '');
+    const before = buildEventLocationValue(draft, existing.location || '', true, true, new Date(0));
+    const fields = [
+      'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed',
+    ] as const;
+    let mapChanged = false;
+    for (const field of fields) {
+      if (location[field] === before[field]) continue;
+      mapChanged = true;
+      const previous = source[field] ?? (field === 'mapLocationConfirmed' ? false : null);
+      if (location[field] !== previous) updates[field] = location[field];
+    }
+    // hook 在舊座標缺時間戳時會產生現在時間；未改地圖時不得把它當成使用者修改。
+    const previousTime = draft.mapLocationUpdatedAt;
+    const nextTime = location.mapLocationUpdatedAt;
+    const timeKey = (value: typeof previousTime): string | null =>
+      typeof value === 'object' && value !== null ? value.toDate().toISOString() : value;
+    if ((mapChanged || previousTime !== null) && timeKey(nextTime) !== timeKey(previousTime)) {
+      updates.mapLocationUpdatedAt = nextTime;
+    }
   }
   return updates;
 }
@@ -111,7 +128,7 @@ export async function saveExternalEventEdit(
     return actor;
   };
   allowed(existing);
-  const updates = buildExternalEventUpdates(form, location);
+  const updates = buildExternalEventUpdates(form, location, existing);
   const [sdk, { db }] = await Promise.all([import('firebase/firestore'), getFirebase()]);
   const knownId = (existing._docId || existing.docId || '').trim();
   const publicId = (existing.id || '').trim();
