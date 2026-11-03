@@ -25,6 +25,7 @@ const ensureTerminalMock = vi.fn(async () => ['events']);
 const loadStaticMock = vi.fn(async () => ['events']);
 const loadMoreMock = vi.fn(async () => 0);
 const toastShowMock = vi.fn();
+const externalSaveMock = vi.fn();
 
 const testDict: Record<string, string> = {
   'events.manage.loadError': '無法載入活動，請重試。',
@@ -69,6 +70,12 @@ vi.mock('@/features/profile/data/viewer', async () => {
   };
 });
 
+// 建立入口會預讀資料卡；本頁測試用本機 fixture，禁止落到真實 Firebase。
+vi.mock('@/features/profile/data/profile-model', async (original) => ({
+  ...await original<typeof import('@/features/profile/data/profile-model')>(),
+  loadUserProfile: async () => null,
+}));
+
 vi.mock('@/data/user-roles', () => ({
   useUserRoles: () => ({}),
   getCachedUserLevel: () => undefined,
@@ -92,6 +99,17 @@ vi.mock('../data/events-repo', () => ({
       terminal: [...mockTerminalEvents],
     }),
   }),
+}));
+
+vi.mock('../data/external-event-edit', async (original) => ({
+  ...await original<typeof import('../data/external-event-edit')>(),
+  saveExternalEventEdit: (...args: unknown[]) => externalSaveMock(...args),
+}));
+vi.mock('../data/activity-map-config', async (original) => ({
+  ...await original<typeof import('../data/activity-map-config')>(),
+  isActivityMapLocationPickerEnabled: () => false,
+  loadActivityMapLocationPickerEnabled: async () => false,
+  subscribeActivityMapFeature: () => () => undefined,
 }));
 
 vi.mock('../components/EventFormModal', () => ({
@@ -223,6 +241,7 @@ describe('MyActivitiesPage', () => {
     loadStaticMock.mockClear();
     loadMoreMock.mockClear();
     toastShowMock.mockClear();
+    externalSaveMock.mockReset();
     mockActiveEvents = [];
     mockTerminalEvents = [];
   });
@@ -482,7 +501,7 @@ describe('MyActivitiesPage', () => {
     });
   });
 
-  it('shows pin and external event buttons and triggers unavailable toast on click', async () => {
+  it('external edit opens A modal; pin and share remain unavailable', async () => {
     mockViewer = adminViewer();
     mockActiveEvents = [
       {
@@ -512,11 +531,48 @@ describe('MyActivitiesPage', () => {
 
     toastShowMock.mockClear();
     fireEvent.click(editBtn);
-    expect(toastShowMock).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+    expect(screen.getByRole('dialog', { name: '編輯活動連結' })).toBeTruthy();
+    expect(screen.queryByTestId('event-form-modal')).toBeNull();
+    expect(toastShowMock).not.toHaveBeenCalled();
+    fireEvent.click(document.querySelector('#create-external-event-modal .modal-close')!);
 
     toastShowMock.mockClear();
     fireEvent.click(shareBtn);
     expect(toastShowMock).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+  });
+
+
+  it('external save closes modal and force reloads the active tab with updated card content', async () => {
+    mockViewer = adminViewer();
+    mockActiveEvents = [{ id: 'ext', _docId: 'doc-ext', type: 'external', title: '原名稱',
+      status: 'open', date: '2026/05/10 14:00~16:00', creatorUid: 'u-admin',
+      externalUrl: 'https://example.test', sportTag: 'football' } as SwipeEventDoc];
+    externalSaveMock.mockImplementation(async () => {
+      mockActiveEvents = [{ ...mockActiveEvents[0]!, title: '新名稱' }];
+      return { title: '新名稱' };
+    });
+    const { container } = render(<MyActivitiesPage />);
+    await screen.findByText('原名稱');
+    fireEvent.click(getTab(container, 'open'));
+    fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+    fireEvent.input(document.getElementById('cee-title')!, { target: { value: '新名稱' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存修改' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '編輯活動連結' })).toBeNull());
+    await screen.findByText('新名稱');
+    expect(loadStaticMock).toHaveBeenCalledWith({ terminalMode: 'preview', forceTerminalRefresh: true });
+    expect(activeTabKey(container)).toBe('open');
+    expect(toastShowMock).toHaveBeenCalledWith({ message: '活動連結「新名稱」已更新！' });
+    expect(externalSaveMock.mock.calls[0]?.[0]._docId).toBe('doc-ext');
+  });
+
+  it('external event owner without own_edit_basic has no edit button', async () => {
+    mockViewer = { ...createMinimalViewer('owner'), capabilities: ['user.activity.own_manage_entry'] };
+    mockActiveEvents = [{ id: 'ext', type: 'external', title: '無編輯權', creatorUid: 'owner',
+      status: 'open', date: '2026/05/10 14:00~16:00' }];
+    render(<MyActivitiesPage />);
+    await screen.findByText('無編輯權');
+    expect(screen.queryByRole('button', { name: '編輯' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '編輯活動連結' })).toBeNull();
   });
 
   it('paginates events and loads more when clicking 查看更多', async () => {

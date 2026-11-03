@@ -14,6 +14,7 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
 import { toast } from '@/ui/Toast';
 import { EventFormModal } from '../components/EventFormModal';
+import { ExternalEventEditModal } from '../components/ExternalEventEditModal';
 import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
 import {
   useEventFormPostSave,
@@ -42,7 +43,7 @@ import {
   sortMyActivitiesByNearestTime,
   type MyActivityTab,
 } from '../data/my-activities-model';
-import { canManageAllActivities } from '../data/operate-permissions';
+import { canEditOwnActivityBasic, canManageAllActivities } from '../data/operate-permissions';
 import type { EventDoc } from '../data/types';
 
 /** 第一版不做刪除（PM 決策）：刪除按鈕導回舊版。 */
@@ -144,7 +145,8 @@ export default function MyActivitiesPage(): JSX.Element {
 
   const createEntry = useCreateEventEntry(viewer);
   const [editingEvent, setEditingEvent] = useState<EventDoc | null>(null);
-  useEventFormSession(editingEvent !== null);
+  const [editingExternal, setEditingExternal] = useState<EventDoc | null>(null);
+  useEventFormSession(editingEvent !== null || editingExternal !== null);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [detailEvent, setDetailEvent] = useState<EventDoc | null>(null);
 
@@ -365,8 +367,17 @@ export default function MyActivitiesPage(): JSX.Element {
     window.open(LEGACY_SITE_URL, '_blank', 'noopener');
   }
 
+  function handleEdit(event: EventDoc): void {
+    if (event.type !== 'external') { setEditingEvent(event); return; }
+    if (!canEditOwnActivityBasic(operateCtx, event)) {
+      toast.show({ message: '您只能編輯自己的活動', tone: 'error' });
+      return;
+    }
+    setEditingExternal(event);
+  }
+
   function handleUnavailable(): void {
-    // 下一批補：置頂、外部活動編輯、外部活動分享
+    // 下一批補：置頂、外部活動分享
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
@@ -534,7 +545,7 @@ export default function MyActivitiesPage(): JSX.Element {
                     nowMs={nowMs}
                     operateCtx={operateCtx}
                     creatorRole={roles[creatorUid]}
-                    onEdit={(evDoc) => setEditingEvent(evDoc)}
+                    onEdit={handleEdit}
                     onLifecycle={(kind, evDoc) => {
                       void handleLifecycle(kind, evDoc);
                     }}
@@ -586,6 +597,14 @@ export default function MyActivitiesPage(): JSX.Element {
           nowMs={nowMs}
           onClose={() => setStatsModalOpen(false)}
         />
+
+        {editingExternal && <ExternalEventEditModal
+          key={eventDocIdOf(editingExternal)}
+          event={editingExternal}
+          viewer={viewer}
+          onClose={() => setEditingExternal(null)}
+          onSaved={() => { void loadAll(activeTab, true); }}
+        />}
 
         {createEntry.overlays}
         <EventFormModal
