@@ -13,6 +13,33 @@ export interface TeamStaffFields {
   coachUids?: unknown;
 }
 
+export interface StaffTeamOption {
+  id: string;
+  name: string;
+}
+
+export interface StaffTeamCandidate extends TeamStaffFields {
+  id?: unknown;
+  name?: unknown;
+  teamName?: unknown;
+}
+
+/** T-074：僅投影已載入的職員俱樂部，不查詢、不以角色或名稱補授權。 */
+export function getStaffTeams(
+  uid: string | null,
+  teams: readonly StaffTeamCandidate[],
+): StaffTeamOption[] {
+  const seen = new Set<string>();
+  const options: StaffTeamOption[] = [];
+  for (const team of teams) {
+    const id = String(team.id || '').trim();
+    if (!id || seen.has(id) || !isTeamStaff(uid, team)) continue;
+    seen.add(id);
+    options.push({ id, name: String(team.name || team.teamName || id).trim() || id });
+  }
+  return options;
+}
+
 /** 照 A `_getEventLimitedTeamIds`。 */
 export function getEventLimitedTeamIds(event: LimitedTeamEvent | null | undefined): string[] {
   if (!event) return [];

@@ -219,7 +219,7 @@ export function isEventEarlyBirdWindow(
 
 // ── 俱樂部預留名額 ────────────────────────────────────
 
-interface NormalizedTeamReservationSummary {
+export interface NormalizedTeamReservationSummary {
   teamId: string;
   teamName: string;
   reservedSlots: number;
@@ -228,7 +228,7 @@ interface NormalizedTeamReservationSummary {
 }
 
 // A `firebase-crud.js#_normalizeTeamReservationSummaries`（第 1094～1120 行）
-function normalizeTeamReservationSummaries(eventOrSummaries: unknown): NormalizedTeamReservationSummary[] {
+export function normalizeTeamReservationSummaries(eventOrSummaries: unknown): NormalizedTeamReservationSummary[] {
   const raw = Array.isArray(eventOrSummaries)
     ? (eventOrSummaries as unknown[])
     : (Array.isArray((eventOrSummaries as { teamReservationSummaries?: unknown } | null)?.teamReservationSummaries)
