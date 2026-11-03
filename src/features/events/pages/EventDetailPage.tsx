@@ -79,6 +79,7 @@ import {
   type ConfirmedRosterPerson,
 } from '../data/attendance-roster-model';
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
+import { useRosterNoShow } from '../components/useRosterNoShow';
 import { UnregRosterTable, buildUnregPeopleList } from '../components/UnregRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
 import { useRosterStatusActions } from '../components/useRosterStatusActions';
@@ -985,6 +986,15 @@ function EventDetailSession({
   );
   const canViewAttendanceDetails = canViewDetailAttendanceRecordDetails(viewer, event);
   const publicRosterOnly = !canViewAttendanceDetails;
+  const canViewNoShow = canViewAttendanceDetails;
+  const noShowData = useRosterNoShow({
+    viewerUid: viewer.uid,
+    eventDocId: snapshot?.eventDocId,
+    people: event ? buildConfirmedRoster(event, snapshot?.registrations ?? []).people : [],
+    roles,
+    canViewNoShow,
+    enabled: visible && rosterExpanded && rosterPhase === 'ready',
+  });
 
   const reloadAttendanceOnly = async (): Promise<readonly EventAttendanceEntry[]> => {
     const docId = snapshot?.eventDocId;
@@ -1979,6 +1989,8 @@ function EventDetailSession({
                       roles={roles}
                       onOpenProfile={profile}
                       canManage={canManageRoster}
+                      canViewNoShow={canViewNoShow}
+                      noShowData={noShowData}
                       canRemoveConfirmed={canRemoveConfirmed}
                       rosterContext={operateCtx}
                       demotePendingKeys={rosterStatusActions.demotePendingKeys}

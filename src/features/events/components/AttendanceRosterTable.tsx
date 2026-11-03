@@ -4,13 +4,14 @@
  * 對照舊版 A `event-manage-attendance.js#_doRenderAttendanceTable`。
  *
  * 本批不做（下一批補）：
- * - 放鴿子欄與出席率染色（R-STAT-000）
  * - 分隊排序與分隊徽章
  * 已接線：`CALLABLES_DEPLOYED === true` 顯示「完成」，由父層執行伺服器結算；false 回退「關閉編輯」與舊版提示。
  * - 任何以名字比對身分的分支（R-ID-002 刻意不移植）
  */
 
 import type { JSX } from 'preact';
+import { NO_SHOW_FEATURE_ENABLED, attendanceFill, participantNoShowCount } from '../data/noshow-roster';
+import type { RosterNoShowData } from './useRosterNoShow';
 import { LEGACY_SETTLE_URL } from './legacy-links';
 import { useT } from '@/i18n/i18n';
 import { canAdjustRosterStatus } from '../data/roster-status-policy';
@@ -40,6 +41,10 @@ export interface AttendanceRosterTableProps {
   onOpenProfile: (uid: string) => void;
   /** 目前使用者是否具備現場操作權限 `canOperateEventSite === true`。 */
   canManage?: boolean;
+  /** 頁面共用既有出席紀錄權限判斷，不在表格重新計算。 */
+  canViewNoShow?: boolean;
+  /** null／未傳代表未完成或失敗：欄位空白，膠囊不染色、不畫泡泡。 */
+  noShowData?: RosterNoShowData | null;
   /** 目前使用者是否具備移除正取參加者權限 `canRemoveConfirmedParticipant === true`。 */
   canRemoveConfirmed?: boolean;
   /** 僅顯示公開名單（隱藏簽到／簽退／備註三欄）。 */
@@ -76,6 +81,8 @@ export function AttendanceRosterTable({
   roles,
   onOpenProfile,
   canManage = false,
+  canViewNoShow = false,
+  noShowData = null,
   canRemoveConfirmed = false,
   publicRosterOnly = false,
   editing = false,
@@ -100,11 +107,13 @@ export function AttendanceRosterTable({
   const isSubmitting = Boolean(showManage && submitting);
   const showAttendanceRecordColumns = !publicRosterOnly;
   const showKickColumn = Boolean(tableEditing && canRemoveConfirmed);
+  const showAttendanceFill = showAttendanceRecordColumns && NO_SHOW_FEATURE_ENABLED && canViewNoShow;
+  const showNoShowColumn = showAttendanceFill && tableEditing;
   const t = useT();
   const showDemoteColumn = Boolean(tableEditing && rosterContext
     && canAdjustRosterStatus('demote', rosterContext, event));
   const attendanceRecordColumnCount = showAttendanceRecordColumns ? 3 : 0;
-  const tableColSpan = (tableEditing ? (canRemoveConfirmed ? 1 : 0) + 1 : 1) + attendanceRecordColumnCount + (showDemoteColumn ? 1 : 0);
+  const tableColSpan = (tableEditing ? (canRemoveConfirmed ? 1 : 0) + 1 : 1) + attendanceRecordColumnCount + (showDemoteColumn ? 1 : 0) + (showNoShowColumn ? 1 : 0);
   const kickStyle =
     'font-size:.7rem;padding:.2rem .4rem;border:1px solid var(--danger);color:var(--danger);background:transparent;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap'
     + (isSubmitting ? ';opacity:.65;cursor:not-allowed' : '');
@@ -190,6 +199,26 @@ export function AttendanceRosterTable({
     );
   }
 
+  function renderNoShowCell(p: ConfirmedRosterPerson): JSX.Element | null {
+    if (!showNoShowColumn) return null;
+    if (!noShowData) return <td style="padding:.35rem .2rem;text-align:center;width:3rem" />;
+    if (p.proxyOnly || p.isProxyOnly || p.isTeamPlaceholder) {
+      return <td style="padding:.35rem .2rem;text-align:center;color:var(--text-muted)">--</td>;
+    }
+    const count = participantNoShowCount(p, noShowData.counts);
+    const positive = count !== null && count > 0;
+    return (
+      <td style="padding:.35rem .2rem;text-align:center;width:3rem">
+        <span
+          title="放鴿子次數（已結束、正式報名且未完成簽到）"
+          style={`font-size:.78rem;font-weight:${positive ? '700' : '600'};color:${positive ? 'var(--danger)' : 'var(--text-muted)'}`}
+        >
+          {count === null ? '—' : positive ? count : ''}
+        </span>
+      </td>
+    );
+  }
+
   function renderNameCell(p: ConfirmedRosterPerson): JSX.Element {
     const isProxyOnly = Boolean(p.proxyOnly || p.isProxyOnly);
     let nameInner: JSX.Element;
@@ -220,6 +249,10 @@ export function AttendanceRosterTable({
             name={p.displayName}
             role={roles[p.uid]}
             disabled={!p.uid}
+            attendanceFill={showAttendanceFill && noShowData
+              ? attendanceFill(p.uid, noShowData.counts, noShowData.endedCounts) ?? undefined
+              : undefined}
+            recentNoShow={Boolean(showAttendanceFill && p.uid.trim() && noShowData?.recentUids.has(p.uid.trim()))}
             onOpenProfile={onOpenProfile}
           />
         </span>
@@ -373,6 +406,9 @@ export function AttendanceRosterTable({
                 {renderManageButton()}
               </div>
             </th>
+            {showNoShowColumn && (
+              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:3rem" title="放鴿子次數（已結束、正式報名且未完成簽到）">🕊</th>
+            )}
             {showAttendanceRecordColumns && (
               <>
                 <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2.5rem">簽到</th>
@@ -436,6 +472,7 @@ export function AttendanceRosterTable({
                     {renderEmptyKickCell()}
                     {renderDemoteCell(p)}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderNoShowCell(p)}
                     {renderEmptyAttendanceCells('僅代報')}
                   </tr>
                 );
@@ -450,6 +487,7 @@ export function AttendanceRosterTable({
                     {renderEmptyKickCell()}
                     {renderDemoteCell(p)}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderNoShowCell(p)}
                     {renderEmptyAttendanceCells('保留席位')}
                   </tr>
                 );
@@ -459,6 +497,7 @@ export function AttendanceRosterTable({
                 return (
                   <tr key={rowKey} class="team-reservation-placeholder-row">
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderNoShowCell(p)}
                     {renderEmptyAttendanceCells('保留席位')}
                   </tr>
                 );
@@ -467,6 +506,7 @@ export function AttendanceRosterTable({
                 return (
                   <tr key={rowKey} style={PROXY_ROW_STYLE}>
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                    {renderNoShowCell(p)}
                     {renderEmptyAttendanceCells('僅代報')}
                   </tr>
                 );
@@ -497,6 +537,7 @@ export function AttendanceRosterTable({
                   {tableEditing && renderKickCell(p)}
                   {renderDemoteCell(p)}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                  {renderNoShowCell(p)}
                   {renderEmptyAttendanceCells('請至課程點名')}
                 </tr>
               );
@@ -513,6 +554,7 @@ export function AttendanceRosterTable({
                   {renderKickCell(p)}
                   {renderDemoteCell(p)}
                   <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                  {renderNoShowCell(p)}
                   {renderEditableAttendanceCells(p, attendanceKey, state)}
                 </tr>
               );
@@ -525,6 +567,7 @@ export function AttendanceRosterTable({
                 style="border-bottom:1px solid var(--border)"
               >
                 <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
+                {renderNoShowCell(p)}
                 {showAttendanceRecordColumns && (
                   <>
                     <td style="padding:.35rem .2rem;text-align:center">
