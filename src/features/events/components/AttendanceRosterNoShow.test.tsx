@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/preact';
+import { setLocale } from '@/i18n/i18n';
 import { AttendanceRosterTable, type AttendanceRosterTableProps } from './AttendanceRosterTable';
 import { buildNoShowCountByUid, buildEndedRegCountByUid, buildLastNoShowSet } from '../data/noshow-roster';
 
@@ -9,6 +10,9 @@ vi.mock('../data/noshow-roster', async (original) => ({
   get NO_SHOW_FEATURE_ENABLED() { return feature.enabled; },
 }));
 
+vi.mock('@/data/roster-status-deployed', () => ({ ROSTER_STATUS_CALLABLES_DEPLOYED: true }));
+
+beforeAll(() => setLocale('zh-TW'));
 afterEach(() => { cleanup(); feature.enabled = true; });
 
 const stats = {
@@ -105,8 +109,17 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     expect(tag.style.getPropertyValue('--att-fill-color')).toBe(color ?? '');
   });
 
-  it.each([false, true])('同行者 —、僅代報／保留席位 --，特殊標頭 colspan 對齊（踢欄 %s）', canRemoveConfirmed => {
+  it.each([
+    { canRemoveConfirmed: false, demote: false },
+    { canRemoveConfirmed: true, demote: false },
+    { canRemoveConfirmed: false, demote: true },
+    { canRemoveConfirmed: true, demote: true },
+  ])('同行者 —、僅代報／保留席位 --，🕊 與操作欄 colspan 對齊：%j', ({ canRemoveConfirmed, demote }) => {
     render(<AttendanceRosterTable {...base} canRemoveConfirmed={canRemoveConfirmed}
+      rosterContext={demote ? {
+        uid: 'manager', role: 'admin', rolePermissions: ['event.edit_all'],
+        userGrants: null, capabilities: [], customRoles: [],
+      } : undefined}
       event={{ ...base.event, teamReservationSummaries: [
         { teamId: 't1', teamName: '測試隊', reservedSlots: 2, usedSlots: 1, remainingSlots: 1 },
       ] }}
@@ -121,7 +134,11 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     for (const name of ['↳ 同行者', '代報人', '測試隊 保留席位']) {
       expect(screen.getByText(name).closest('tr')?.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     }
+    expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);
+    expect(!!screen.queryByRole('columnheader', { name: '候' })).toBe(demote);
+    expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
     const columns = document.querySelectorAll('thead th').length;
+    expect(columns).toBe(5 + Number(canRemoveConfirmed) + Number(demote));
     for (const row of document.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
       expect(Array.from(row.cells).reduce((sum, cell) => sum + cell.colSpan, 0)).toBe(columns);
     }

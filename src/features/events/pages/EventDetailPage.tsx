@@ -80,6 +80,7 @@ import {
 } from '../data/attendance-roster-model';
 import { AttendanceRosterTable } from '../components/AttendanceRosterTable';
 import { useRosterNoShow } from '../components/useRosterNoShow';
+import { NO_SHOW_FEATURE_ENABLED } from '../data/noshow-roster';
 import { UnregRosterTable, buildUnregPeopleList } from '../components/UnregRosterTable';
 import { useAttendanceInstantSave } from '../components/useAttendanceInstantSave';
 import { useRosterStatusActions } from '../components/useRosterStatusActions';
@@ -669,7 +670,6 @@ function EventDetailSession({
     const owner = registrationOwner(reg);
     if (owner) roleUids.push(owner);
   }
-  const roles = useUserRoles(viewer.uid ? roleUids : []);
 
   const [staffState, setStaffState] = useState<{
     key: string;
@@ -987,13 +987,17 @@ function EventDetailSession({
   const canViewAttendanceDetails = canViewDetailAttendanceRecordDetails(viewer, event);
   const publicRosterOnly = !canViewAttendanceDetails;
   const canViewNoShow = canViewAttendanceDetails;
+  const noShowEnabled = Boolean(visible && rosterExpanded && rosterPhase === 'ready'
+    && canViewNoShow && NO_SHOW_FEATURE_ENABLED && viewer.uid && snapshot?.eventDocId);
+  // 展開跨過 TTL 時，仍由既有完整 UID 批次更新角色及統計，不另開 users 查詢。
+  const roles = useUserRoles(viewer.uid ? roleUids : [], noShowEnabled);
   const noShowData = useRosterNoShow({
     viewerUid: viewer.uid,
     eventDocId: snapshot?.eventDocId,
     people: event ? buildConfirmedRoster(event, snapshot?.registrations ?? []).people : [],
     roles,
     canViewNoShow,
-    enabled: visible && rosterExpanded && rosterPhase === 'ready',
+    enabled: noShowEnabled,
   });
 
   const reloadAttendanceOnly = async (): Promise<readonly EventAttendanceEntry[]> => {

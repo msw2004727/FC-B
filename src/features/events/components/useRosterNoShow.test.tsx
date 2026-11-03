@@ -2,6 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/preact';
 
 const feature = vi.hoisted(() => ({ enabled: true }));
+const stateUpdates = vi.hoisted(() => vi.fn());
+vi.mock('preact/hooks', async (original) => {
+  const hooks = await original<typeof import('preact/hooks')>();
+  return {
+    ...hooks,
+    useState: <T,>(initialState: T | (() => T)) => {
+      const [value, setValue] = hooks.useState(initialState);
+      const trackedSetter = hooks.useCallback((next: Parameters<typeof setValue>[0]) => {
+        stateUpdates(next);
+        setValue(next);
+      }, [setValue]);
+      return [value, trackedSetter] as const;
+    },
+  };
+});
 vi.mock('../data/noshow-roster', async (original) => ({
   ...(await original<typeof import('../data/noshow-roster')>()),
   get NO_SHOW_FEATURE_ENABLED() { return feature.enabled; },
@@ -16,7 +31,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('@/data/firebase', () => ({ getFirebase: vi.fn(async () => ({ db: {} })) }));
 
 import { getDocs } from 'firebase/firestore';
-import { _resetUserRolesCacheForTest, useUserRoles } from '@/data/user-roles';
+import { _resetUserRolesCacheForTest, getCachedUserNoShowStats, useUserRoles } from '@/data/user-roles';
 import { buildConfirmedRoster, type ConfirmedRosterPerson } from '../data/attendance-roster-model';
 import { useRosterNoShow } from './useRosterNoShow';
 
@@ -60,7 +75,9 @@ const base: Options = {
 };
 function mount(options: Partial<Options> = {}) {
   return renderHook((opts: Options) => {
-    const roles = useUserRoles(opts.viewerUid ? opts.roleUids : []);
+    const noShowEnabled = Boolean(opts.enabled && opts.canViewNoShow && feature.enabled
+      && opts.viewerUid && opts.eventDocId);
+    const roles = useUserRoles(opts.viewerUid ? opts.roleUids : [], noShowEnabled);
     const data = useRosterNoShow({ ...opts, roles });
     return { data, roles };
   }, { initialProps: { ...base, ...options } });
@@ -69,6 +86,7 @@ function mount(options: Partial<Options> = {}) {
 beforeEach(() => {
   _resetUserRolesCacheForTest();
   feature.enabled = true;
+  stateUpdates.mockClear();
   getDocsMock.mockReset();
   getDocsMock.mockImplementation(async q => {
     const { path, uids } = request(q);
@@ -150,6 +168,78 @@ describe('T-073b 共用快取與補正載入', () => {
     expect(callsTo('userCorrections')).toHaveLength(0);
   });
 
+  it.each([
+    { elapsed: 299_999, batches: 1, count: 1, ended: 3, recent: true },
+    { elapsed: 300_000, batches: 2, count: 4, ended: 8, recent: false },
+    { elapsed: 300_001, batches: 2, count: 4, ended: 8, recent: false },
+  ])('角色預載後 $elapsed ms 才展開，相同 UID 集合依 TTL 恢復統計', async ({ elapsed, batches, count, ended, recent }) => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    // 與頁面一致：關閉名單時已載入主辦、候補與參加者的角色。
+    const opts = { ...base, roleUids: ['host', 'waiting', 'u1'] };
+    const view = mount({ ...opts, enabled: false });
+    await waitFor(() => expect(view.result.current.roles.u1).toBe('user'));
+    expect(callsTo('users')).toEqual([opts.roleUids]);
+    expect(callsTo('userCorrections')).toHaveLength(0);
+    expect(view.result.current.data).toBeNull();
+
+    const refresh = deferred<ReturnType<typeof snapshot>>();
+    getDocsMock.mockImplementation(async q => {
+      const req = request(q);
+      return (req.path === 'users' ? await refresh.promise : snapshot(req.uids, true)) as never;
+    });
+    now.mockReturnValue(1_000 + elapsed);
+    expect(getCachedUserNoShowStats('u1') === undefined).toBe(batches === 2);
+    view.rerender(opts);
+    if (batches === 2) {
+      await waitFor(() => expect(callsTo('users')).toHaveLength(2));
+      expect(view.result.current.data).toBeNull();
+      expect(callsTo('userCorrections')).toHaveLength(0);
+      await act(async () => { refresh.resolve({ docs: opts.roleUids.map(id => ({
+        id, data: () => ({ role: 'coach', noShowCount: 5, endedRegCount: 8, lastEventWasNoShow: false }),
+      })) }); });
+    }
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(count));
+    expect(view.result.current.data?.endedCounts.get('u1')).toBe(ended);
+    expect(view.result.current.data?.recentUids.has('u1')).toBe(recent);
+    expect(view.result.current.roles.u1).toBe(batches === 2 ? 'coach' : 'user');
+    expect(callsTo('users')).toEqual(Array.from({ length: batches }, () => opts.roleUids));
+    expect(callsTo('userCorrections')).toEqual([['u1']]);
+
+    view.rerender({ ...opts, roleUids: [...opts.roleUids].reverse(), people: [...opts.people] });
+    await act(async () => {});
+    expect(callsTo('users')).toHaveLength(batches);
+    expect(callsTo('userCorrections')).toHaveLength(1);
+  });
+
+  it('跨 TTL 展開時角色重載失敗仍為 null，不讀補正、不因重繪重試；再次展開可恢復', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const view = mount({ enabled: false });
+    await waitFor(() => expect(view.result.current.roles.u1).toBe('user'));
+    const previousRoles = view.result.current.roles;
+    now.mockReturnValue(301_001);
+    getDocsMock.mockRejectedValue(new Error('refresh failed'));
+    view.rerender(base);
+    await waitFor(() => expect(view.result.current.roles).not.toBe(previousRoles));
+    expect(getCachedUserNoShowStats('u1')).toBeUndefined();
+    expect(view.result.current.data).toBeNull();
+    expect(callsTo('users')).toHaveLength(2);
+    expect(callsTo('userCorrections')).toHaveLength(0);
+    view.rerender({ ...base });
+    await act(async () => {});
+    expect(callsTo('users')).toHaveLength(2);
+
+    view.rerender({ ...base, enabled: false });
+    await act(async () => {});
+    getDocsMock.mockImplementation(async q => {
+      const req = request(q);
+      return snapshot(req.uids, req.path === 'userCorrections') as never;
+    });
+    view.rerender(base);
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(callsTo('userCorrections')).toEqual([['u1']]);
+  });
+
   it('補正 pending 無 raw 回退，全部成功後才發布', async () => {
     const pending = deferred<ReturnType<typeof snapshot>>();
     getDocsMock.mockImplementation(async q => {
@@ -161,6 +251,10 @@ describe('T-073b 共用快取與補正載入', () => {
     expect(view.result.current.data).toBeNull();
     await act(async () => { pending.resolve(snapshot(['u1'], true)); });
     await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    // 正控制：確認觀測器確實能看到補正發布的 setter 呼叫。
+    expect(stateUpdates).toHaveBeenCalledWith(expect.objectContaining({
+      adjustments: new Map([['u1', -1]]),
+    }));
   });
 
   it('補正失敗保持 null，不露錯誤、不自動重試；重新展開後可成功', async () => {
@@ -240,7 +334,7 @@ describe('T-073b 共用快取與補正載入', () => {
     await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
   });
 
-  it('補正未完成時撤權或卸載，遲到回應不發布', async () => {
+  it.each(['success', 'failure'])('補正未完成時撤權，晚到 %s 不呼叫 setter；再次授權另讀補正', async outcome => {
     const pending = deferred<ReturnType<typeof snapshot>>();
     getDocsMock.mockImplementation(async q => {
       const req = request(q);
@@ -249,10 +343,45 @@ describe('T-073b 共用快取與補正載入', () => {
     const view = mount();
     await waitFor(() => expect(callsTo('userCorrections')).toHaveLength(1));
     view.rerender({ ...base, canViewNoShow: false });
+    await act(async () => {});
     expect(view.result.current.data).toBeNull();
+    stateUpdates.mockClear();
+    await act(async () => {
+      if (outcome === 'success') pending.resolve(snapshot(['u1'], true));
+      else pending.reject(new Error('late correction failure'));
+    });
+    expect(stateUpdates).not.toHaveBeenCalled();
+    expect(view.result.current.data).toBeNull();
+    expect(callsTo('userCorrections')).toHaveLength(1);
+
+    getDocsMock.mockImplementation(async q => {
+      const req = request(q);
+      return snapshot(req.uids, req.path === 'userCorrections') as never;
+    });
+    view.rerender(base);
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(callsTo('userCorrections')).toHaveLength(2);
+    expect(stateUpdates).toHaveBeenCalledWith(expect.objectContaining({
+      adjustments: new Map([['u1', -1]]),
+    }));
+  });
+
+  it.each(['success', 'failure'])('保持授權直接卸載，晚到 %s 不呼叫 setter', async outcome => {
+    const pending = deferred<ReturnType<typeof snapshot>>();
+    getDocsMock.mockImplementation(async q => {
+      const req = request(q);
+      return (req.path === 'users' ? snapshot(req.uids) : await pending.promise) as never;
+    });
+    const view = mount();
+    await waitFor(() => expect(callsTo('userCorrections')).toHaveLength(1));
+    // 不先撤權；單獨驗證卸載清理，不能用卸載後不再更新的 result.current 當證據。
     view.unmount();
-    await act(async () => { pending.resolve(snapshot(['u1'], true)); });
-    expect(view.result.current.data).toBeNull();
+    stateUpdates.mockClear();
+    await act(async () => {
+      if (outcome === 'success') pending.resolve(snapshot(['u1'], true));
+      else pending.reject(new Error('late correction failure'));
+    });
+    expect(stateUpdates).not.toHaveBeenCalled();
     expect(callsTo('userCorrections')).toHaveLength(1);
   });
 });

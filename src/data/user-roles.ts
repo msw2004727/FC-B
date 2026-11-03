@@ -249,14 +249,17 @@ function uidsKey(uids: readonly string[]): string {
   return normalizeUids(uids).sort().join('\n');
 }
 
-/** uids 內容改變才重查；元件卸載後不 setState。 */
-export function useUserRoles(uids: readonly string[]): Record<string, UserRole> {
+/** UID 或 refreshKey 改變時重驗快取；沿用 TTL／inflight，卸載後不 setState。 */
+export function useUserRoles(
+  uids: readonly string[],
+  refreshKey?: boolean,
+): Record<string, UserRole> {
   const [roles, setRoles] = useState<Record<string, UserRole>>({});
   const key = uidsKey(uids);
 
   useEffect(() => {
     let cancelled = false;
-    // 以內容 key 作為 dep：陣列身分改變但內容相同不會重查。
+    // 名單啟用狀態改變也重驗快取，避免 UID 未變但統計已過期；一般重繪不重查。
     async function refresh(): Promise<void> {
       try {
         const next = await loadUserRoles(uids);
@@ -271,7 +274,7 @@ export function useUserRoles(uids: readonly string[]): Record<string, UserRole> 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, refreshKey]);
 
   return roles;
 }
