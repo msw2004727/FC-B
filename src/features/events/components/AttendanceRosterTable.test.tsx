@@ -304,3 +304,23 @@ describe('WaitlistRosterTable', () => {
     expect(screen.getAllByText(/↳ 報名人：Alice/).length).toBeGreaterThanOrEqual(1);
   });
 });
+
+
+describe('T-074b 快速調整', () => {
+  it('只在該隊獲准且非送出時顯示，點擊傳 teamId', () => {
+    const onAdjust = vi.fn();
+    const props = { event: { id: 'e1', max: 10, teamReservationSummaries: [
+      { teamId: 't1', teamName: '一隊', reservedSlots: 2, usedSlots: 0 },
+      { teamId: 't2', teamName: '二隊', reservedSlots: 2, usedSlots: 0 },
+    ] }, registrations: [], attendanceRecords: [], roles: {}, onOpenProfile: vi.fn(),
+    canAdjustTeamReservation: (id: string) => id === 't2', onAdjustTeamReservation: onAdjust };
+    const view = render(<AttendanceRosterTable {...props} publicRosterOnly />);
+    const button = screen.getByRole('button', { name: '快速調整' });
+    expect(button.closest('tr')?.textContent).toContain('二隊');
+    fireEvent.click(button); expect(onAdjust).toHaveBeenCalledWith('t2');
+    view.rerender(<AttendanceRosterTable {...props} publicRosterOnly submitting />);
+    expect(screen.queryByRole('button', { name: '快速調整' })).toBeNull();
+    view.rerender(<AttendanceRosterTable {...props} canAdjustTeamReservation={() => false} />);
+    expect(screen.queryByRole('button', { name: '快速調整' })).toBeNull();
+  });
+});

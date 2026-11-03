@@ -100,6 +100,8 @@ import {
   EventDetailToolbarActions,
 } from '../components/legacy/EventDetailLoadingShell';
 import type { RegistrationDoc } from '../data/types';
+import { useTeamReservation, type ReservationSuccess } from '../components/legacy/use-team-reservation';
+import { applyReservationPromotions } from '../components/legacy/team-reservation-sync';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
 import { EventFormPostSaveBoundary } from '../components/event-form/use-event-form-post-save';
@@ -302,6 +304,8 @@ function EventDetailSession({
   const attendanceCommitSeq = useRef(0);
   // T-088：publishTeamRows 每次加一。讀取開始時記下，提交時若已變就重套 teamKey。
   const teamPublishSeq = useRef(0);
+  // 只重套讀取開始後收到的 Callable 結果；後續新讀取仍以伺服器為準。
+  const reservationCommits = useRef<ReservationSuccess[]>([]);
   const rosterPending = useRef(false);
   // 每個活動只自動展開一次；載入 effect 在交出新快照前會重置。不寫入持久化。
   const rosterAutoOpened = useRef(false);
@@ -487,6 +491,7 @@ function EventDetailSession({
     const request = ++rosterSequence.current;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
+    const reservationSeq = reservationCommits.current.length;
     setRosterPhase('loading');
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
@@ -506,7 +511,7 @@ function EventDetailSession({
           ...previous,
           registrations,
           attendanceRecords,
-        }, attendanceSeq, teamSeq);
+        }, attendanceSeq, teamSeq, reservationSeq);
       });
       setRosterPhase('ready');
     } catch {
@@ -540,7 +545,7 @@ function EventDetailSession({
   }
 
   async function run(work: () => Promise<void>): Promise<void> {
-    if (operation.current || !alive.current) return;
+    if (operation.current || reservation.isPending() || !alive.current) return;
     operation.current = true;
     setBusy(true);
     try {
@@ -581,6 +586,7 @@ function EventDetailSession({
     if (!rosterExpanded) rosterPending.current = false;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
+    const reservationSeq = reservationCommits.current.length;
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
       current.event,
@@ -606,7 +612,7 @@ function EventDetailSession({
         viewerRegistrations: history,
         attendanceRecords,
       };
-      setSnapshot((previous) => adoptLoadedSnapshot(previous, next, attendanceSeq, teamSeq));
+      setSnapshot((previous) => adoptLoadedSnapshot(previous, next, attendanceSeq, teamSeq, reservationSeq));
       if (rosterExpanded) {
         setRosterPhase('ready');
       }
@@ -690,6 +696,47 @@ function EventDetailSession({
   const canShowDetailLog = visible && !!viewer.uid
     && canViewEventOperationLog(operateContextFromViewer(viewer), event);
 
+  function applyReservationResult(current: Snapshot, result: ReservationSuccess): Snapshot {
+    const eventId = current.event.id ?? publicId;
+    return {
+      ...current,
+      event: { ...current.event, ...result.eventPatch },
+      registrations: applyReservationPromotions(current.registrations, result.promoted, eventId),
+      viewerRegistrations: applyReservationPromotions(current.viewerRegistrations, result.promoted, eventId),
+    };
+  }
+
+  function applyPendingReservationResults(current: Snapshot, since: number): Snapshot {
+    return reservationCommits.current.slice(since).reduce(applyReservationResult, current);
+  }
+
+  const reservation = useTeamReservation({
+    event: snapshot ? {
+      ...snapshot.event,
+      status: snapshot.event.status === 'upcoming' ? 'upcoming' : effectiveEventStatus(snapshot.event, now),
+    } : null,
+    viewer,
+    loading: phase !== 'ready' || !visible || profileLoading || historyFailed
+      || refreshFailed || rosterPhase === 'loading',
+    blocked: busy || rosterSubmitting,
+    now,
+    sessionKey: reload,
+    onSuccess: result => {
+      if (!alive.current || !headerState.current.snapshot || !headerState.current.visible) return;
+      reservationCommits.current.push(result);
+      headerState.current = {
+        ...headerState.current,
+        snapshot: applyReservationResult(headerState.current.snapshot, result),
+      };
+      setSnapshot(previous => previous ? applyReservationResult(previous, result) : previous);
+      if (teamRowsRef.current) {
+        const rows = applyReservationPromotions(teamRowsRef.current, result.promoted, publicId);
+        teamRowsRef.current = rows;
+        setTeamRegistrations(rows);
+      }
+    },
+  });
+
   const teamSplitEnabled = getTeamSplit(event)?.enabled === true;
   // ASSUMPTION: 訪客不讀 registrations，分隊人數照本單顯示 0。
   const teamDisplayRegistrations: readonly TeamRegistration[] = viewer.uid
@@ -712,8 +759,10 @@ function EventDetailSession({
     next: Snapshot,
     attendanceSeq: number,
     teamSeq: number,
+    reservationSeq: number,
   ): Snapshot | null {
     if (!previous) return null;
+    next = applyPendingReservationResults(next, reservationSeq);
     const registrations = registrationsWithPublishedTeams(next.registrations, teamSeq);
     const attendanceRecords = attendanceCommitSeq.current !== attendanceSeq
       ? previous.attendanceRecords
@@ -744,7 +793,11 @@ function EventDetailSession({
     if (teamRowsRef.current !== null) return Promise.resolve(teamRowsRef.current);
     if (teamLoadRef.current) return teamLoadRef.current;
     const request = ++teamLoadSequence.current;
-    const task = loadEventRegistrations(eventDocId).then(rows => {
+    const reservationSeq = reservationCommits.current.length;
+    const task = loadEventRegistrations(eventDocId).then(loaded => {
+      const rows = reservationCommits.current.slice(reservationSeq).reduce(
+        (rows, result) => applyReservationPromotions(rows, result.promoted, publicId), loaded,
+      );
       if (alive.current && request === teamLoadSequence.current
         && headerState.current.snapshot?.eventDocId === eventDocId
         && headerState.current.visible) {
@@ -891,13 +944,14 @@ function EventDetailSession({
     const current = headerState.current.snapshot;
     const uid = currentViewer.current.uid;
     if (!current || !uid || !headerState.current.visible || headerRefreshPending.current
-      || operation.current || rosterSubmitting) return;
+      || operation.current || reservation.busy || rosterSubmitting) return;
     headerRefreshPending.current = true;
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
     rosterPending.current = false;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
+    const reservationSeq = reservationCommits.current.length;
     try {
       // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
       // 名單／紀錄重讀失敗只保留舊資料，不讓整次重新整理失敗（Gemini 審查 P2）。
@@ -941,7 +995,7 @@ function EventDetailSession({
         viewerRegistrations: history,
         registrations,
         attendanceRecords,
-      }, attendanceSeq, teamSeq));
+      }, attendanceSeq, teamSeq, reservationSeq));
       if (!registrationsFailed) setRosterPhase('ready');
       else setRosterPhase((phase) => (phase === 'loading' ? 'error' : phase));
       setHistoryFailed(false);
@@ -1033,6 +1087,7 @@ function EventDetailSession({
       const uid = currentViewer.current.uid;
       if (!current || !uid) throw new Error('stale');
       const teamSeq = teamPublishSeq.current;
+      const reservationSeq = reservationCommits.current.length;
       const request = ++rosterSequence.current;
       const [fresh, registrations, history] = await Promise.all([
         loadEventDetail(current.event.id || eventId),
@@ -1048,13 +1103,13 @@ function EventDetailSession({
         throw new Error('PERMISSION_DENIED');
       }
       // 直接採用伺服器活動投影，保留團隊席位；不以報名筆數覆蓋 current。
-      const next = {
+      const next = applyPendingReservationResults({
         ...(headerState.current.snapshot ?? current),
         event: { ...fresh.event, id: fresh.event.id || eventId },
         eventDocId: current.eventDocId,
         registrations: registrationsWithPublishedTeams(registrations, teamSeq),
         viewerRegistrations: history,
-      };
+      }, reservationSeq);
       headerState.current = { snapshot: next, visible: true };
       setSnapshot(next);
       instantSave.resetInstantSave();
@@ -1322,12 +1377,16 @@ function EventDetailSession({
       if (!accepted || !alive.current || currentViewer.current.uid !== uid) return;
     }
 
+    const reservationTeamId = await reservation.chooseSignupTeam(latest.event);
+    if (reservationTeamId === null || !alive.current || currentViewer.current.uid !== uid) return;
+
     let response: Awaited<ReturnType<typeof registerForEvent>>;
     try {
       response = await registerForEvent({
         eventId: current.event.id ?? publicId,
         user: { uid, displayName: currentViewer.current.displayName },
         context: contexts.signup,
+        ...(reservationTeamId ? { preferredTeamReservationTeamId: reservationTeamId } : {}),
         ...(signupTeamKey ? { teamKey: signupTeamKey } : {}),
         // T-086a：早鳥確認視窗之後不傳快照，確保確認後一定重讀。
         ...(earlyBird ? { earlyBirdAccepted: true, earlyBirdExpectedCost: cost } : {
@@ -1538,6 +1597,10 @@ function EventDetailSession({
       return;
     }
 
+    // 先完成俱樂部選擇再寫入，取消選擇不應先取消既有同行者報名。
+    const reservationTeamId = chosen.length ? await reservation.chooseSignupTeam(latest.event) : '';
+    if (reservationTeamId === null || !alive.current || currentViewer.current.uid !== uid) return;
+
     let confirmed = 0;
     let waitlisted = 0;
     let cancelled = 0;
@@ -1572,6 +1635,7 @@ function EventDetailSession({
           user: { uid, displayName: currentViewer.current.displayName },
           participants,
           companionToggle: true,
+          ...(reservationTeamId ? { preferredTeamReservationTeamId: reservationTeamId } : {}),
         }, false);
         if (!alive.current) return;
         if (response.deduplicated) {
@@ -1869,9 +1933,15 @@ function EventDetailSession({
             <div class="detail-action-primary" id="detail-action-primary">
               <EventDetailPrimaryButton
                 state={state}
-                disabled={state.disabled || busy || refreshFailed}
+                disabled={state.disabled || busy || reservation.busy || refreshFailed}
                 busy={busy}
                 flip={flip}
+                teamReservation={reservation.action ? {
+                  ...reservation.action,
+                  busy: reservation.busy,
+                  disabled: rosterSubmitting,
+                  onClick: () => reservation.open(reservation.action?.preferredTeamId),
+                } : null}
                 onClick={() => {
                   if (state.action === 'cancel') {
                     const current = snapshot;
@@ -1974,6 +2044,8 @@ function EventDetailSession({
                   ) : (
                     <AttendanceRosterTable
                       event={event}
+                      canAdjustTeamReservation={reservation.canAdjustTeam}
+                      onAdjustTeamReservation={reservation.open}
                       registrations={snapshot.registrations}
                       attendanceRecords={snapshot.attendanceRecords}
                       roles={roles}
@@ -1990,7 +2062,7 @@ function EventDetailSession({
                       }}
                       publicRosterOnly={publicRosterOnly}
                       editing={rosterEditing}
-                      submitting={rosterSubmitting}
+                      submitting={rosterSubmitting || reservation.busy}
                       onStartEdit={handleStartRosterEdit}
                       onCloseEdit={() => { handleCloseRosterEdit().catch(() => {}); }}
                       onKickParticipant={(person) => { handleKickParticipant(person).catch(() => {}); }}
@@ -2031,7 +2103,7 @@ function EventDetailSession({
                 {rosterExpanded && rosterPhase === 'ready' && (
                   <WaitlistRosterTable
                     editing={rosterEditing}
-                    submitting={rosterSubmitting}
+                    submitting={rosterSubmitting || reservation.busy}
                     rosterContext={operateCtx}
                     promotePendingKeys={rosterStatusActions.promotePendingKeys}
                     onPromoteParticipant={item => {
@@ -2067,6 +2139,7 @@ function EventDetailSession({
           </div>
         </div>
 
+        {reservation.dialogs}
         {companionOpen && (
           <Suspense fallback={null}>
             <DetailCompanionSelectModal
