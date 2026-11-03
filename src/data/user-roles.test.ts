@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/preact';
+import { act, renderHook, waitFor } from '@testing-library/preact';
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((db: unknown, path: string) => ({ kind: 'collection', db, path })),
@@ -130,6 +130,45 @@ describe('loadUserRoles', () => {
 });
 
 describe('useUserRoles', () => {
+  it('第一批已快取、第二批延遲期間啟用名單，仍只有兩批 users 查詢', async () => {
+    const uids = Array.from({ length: 31 }, (_, i) => 'u' + i);
+    const firstBatch = uids.slice(0, 30);
+    const lastUid = uids[30]!;
+    const stats = { noShowCount: 2, endedRegCount: 10, lastEventWasNoShow: true };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    getDocsMock.mockImplementation(async (q: unknown) => {
+      const batch = extractBatchUids(q);
+      if (batch.includes(lastUid)) await gate;
+      return { docs: batch.map((id) => ({
+        id, data: () => ({ role: 'coach', ...stats }),
+      })) } as never;
+    });
+    const view = renderHook(({ enabled }: { enabled: boolean }) => useUserRoles(uids, enabled), {
+      initialProps: { enabled: false },
+    });
+    try {
+      await waitFor(() => expect(getDocsMock).toHaveBeenCalledTimes(2));
+      for (const uid of firstBatch) expect(getCachedUserNoShowStats(uid)).toEqual(stats);
+      expect(getCachedUserNoShowStats(lastUid)).toBeUndefined();
+
+      await act(async () => { view.rerender({ enabled: true }); });
+      const pendingBatches = getDocsMock.mock.calls.map(([q]) => extractBatchUids(q));
+      expect(getCachedUserNoShowStats(lastUid)).toBeUndefined();
+      await act(async () => { release(); });
+      await waitFor(() => expect(view.result.current).toEqual(
+        Object.fromEntries(uids.map((uid) => [uid, 'coach'])),
+      ));
+
+      expect(pendingBatches).toEqual([firstBatch, [lastUid]]);
+      expect(getDocsMock.mock.calls.map(([q]) => extractBatchUids(q))).toEqual([firstBatch, [lastUid]]);
+      expect(getCachedUserNoShowStats(lastUid)).toEqual(stats);
+    } finally {
+      release();
+      view.unmount();
+    }
+  });
+
   it('uids 內容不變時不重查', async () => {
     mockGetDocsByUid({ u1: 'admin', u2: 'coach' });
 
@@ -266,6 +305,88 @@ describe('放鴿子統計共用角色快取', () => {
         { path: 'users' },
         { field: { kind: 'documentId' }, op: 'in' },
       ] });
+    }
+  });
+
+  it('重疊名單共用尚在讀取的 UID，只為新增 UID 查詢並等待兩者完成', async () => {
+    const stats = { noShowCount: 2, endedRegCount: 10, lastEventWasNoShow: true };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    getDocsMock.mockImplementation(async (q: unknown) => {
+      const batch = extractBatchUids(q);
+      if (batch.includes('u1')) await gate;
+      return { docs: batch.map((id) => ({
+        id, data: () => ({ role: 'coach', ...stats }),
+      })) } as never;
+    });
+    const rolesPromise = loadUserRoles(['u1', 'u2']);
+    try {
+      await waitFor(() => expect(getDocsMock).toHaveBeenCalledTimes(1));
+      const statsPromise = loadUserNoShowStats(['u2', 'u3']);
+      await waitFor(() => expect(getCachedUserNoShowStats('u3')).toEqual(stats));
+      const pendingBatches = getDocsMock.mock.calls.map(([q]) => extractBatchUids(q));
+      expect(getCachedUserNoShowStats('u2')).toBeUndefined();
+      release();
+      const [roles, loadedStats] = await Promise.all([rolesPromise, statsPromise]);
+      expect(roles).toEqual({ u1: 'coach', u2: 'coach' });
+      expect(loadedStats).toEqual({ u2: stats, u3: stats });
+      expect(pendingBatches).toEqual([['u1', 'u2'], ['u3']]);
+      expect(getDocsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      await rolesPromise;
+    }
+  });
+
+  it('共用延遲第二批的失敗結果，不快取零值，重試僅讀失敗 UID', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const uids = Array.from({ length: 31 }, (_, i) => 'u' + i);
+    const firstBatch = uids.slice(0, 30);
+    const lastUid = uids[30]!;
+    const stats = { noShowCount: 2, endedRegCount: 10, lastEventWasNoShow: true };
+    const failure = new Error('delayed second batch failed');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    getDocsMock.mockImplementation(async (q: unknown) => {
+      const batch = extractBatchUids(q);
+      if (batch.includes(lastUid)) {
+        await gate;
+        throw failure;
+      }
+      return { docs: batch.map((id) => ({
+        id, data: () => ({ role: 'coach', ...stats }),
+      })) } as never;
+    });
+    const rolesPromise = loadUserRoles(uids);
+    try {
+      await waitFor(() => expect(getDocsMock).toHaveBeenCalledTimes(2));
+      for (const uid of firstBatch) expect(getCachedUserNoShowStats(uid)).toEqual(stats);
+      expect(getCachedUserNoShowStats(lastUid)).toBeUndefined();
+      const statsRejection = expect(loadUserNoShowStats(uids)).rejects.toBe(failure);
+      const lastRolePromise = loadUserRoles([lastUid]);
+      release();
+      const [roles, lastRole] = await Promise.all([rolesPromise, lastRolePromise, statsRejection]);
+      expect(lastRole).toEqual({ [lastUid]: 'user' });
+      expect(roles[lastUid]).toBe('user');
+      for (const uid of firstBatch) {
+        expect(roles[uid]).toBe('coach');
+        expect(getCachedUserNoShowStats(uid)).toEqual(stats);
+      }
+      expect(getCachedUserNoShowStats(lastUid)).toBeUndefined();
+      expect(getDocsMock.mock.calls.map(([q]) => extractBatchUids(q))).toEqual([firstBatch, [lastUid]]);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      getDocsMock.mockResolvedValueOnce({ docs: [{
+        id: lastUid, data: () => ({ role: 'captain', ...stats }),
+      }] } as never);
+      expect(await loadUserNoShowStats(uids)).toEqual(Object.fromEntries(uids.map((uid) => [uid, stats])));
+      expect(await loadUserRoles([lastUid])).toEqual({ [lastUid]: 'captain' });
+      expect(getDocsMock.mock.calls.map(([q]) => extractBatchUids(q))).toEqual([
+        firstBatch, [lastUid], [lastUid],
+      ]);
+    } finally {
+      release();
+      await rolesPromise;
     }
   });
 

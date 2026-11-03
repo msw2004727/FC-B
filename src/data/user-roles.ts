@@ -3,7 +3,7 @@
 // - 以 `where(documentId(), 'in', chunk)` 每次最多 30 個 UID 分批讀 `users/{uid}`。
 // - 同次讀取快取 role、exp 與放鴿子統計，不另開 users 查詢。
 // - role 屬於 UserRole 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
-// - 模組層 5 分鐘快取；同一批進行中的請求共用 Promise，避免重複讀。
+// - 模組層 5 分鐘快取；依 UID 共用進行中的請求 Promise，避免重複讀。
 // - 讀取失敗：記一次 console.warn；角色回傳目前快取＋其餘 'user'，統計 reject。
 
 import { useEffect, useState } from 'preact/hooks';
@@ -164,30 +164,41 @@ async function fetchRoles(uids: readonly string[]): Promise<void> {
   }
 }
 
-function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
-  const key = [...uidsToFetch].sort().join('\n');
-  const existing = inflight.get(key);
-  if (existing) return existing;
+async function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
+  const pending = new Set<Promise<FetchOutcome>>();
+  const newUids: string[] = [];
+  for (const uid of uidsToFetch) {
+    const existing = inflight.get(uid);
+    if (existing) pending.add(existing);
+    else newUids.push(uid);
+  }
 
-  const promise = (async (): Promise<FetchOutcome> => {
-    try {
-      await fetchRoles(uidsToFetch);
-      return { failed: false };
-    } catch (error) {
-      if (!warned) {
-        warned = true;
-        // eslint-disable-next-line no-console
-        console.warn('[user-roles] 讀取使用者角色失敗，回退為預設角色', error);
+  if (newUids.length > 0) {
+    const promise = (async (): Promise<FetchOutcome> => {
+      try {
+        await fetchRoles(newUids);
+        return { failed: false };
+      } catch (error) {
+        if (!warned) {
+          warned = true;
+          // eslint-disable-next-line no-console
+          console.warn('[user-roles] 讀取使用者角色失敗，回退為預設角色', error);
+        }
+        return { failed: true, error };
+      } finally {
+        // L-08：成功與失敗兩條路徑都清除 inflight。
+        for (const uid of newUids) inflight.delete(uid);
       }
-      return { failed: true, error };
-    } finally {
-      // L-08：成功與失敗兩條路徑都清除 inflight。
-      inflight.delete(key);
-    }
-  })();
+    })();
 
-  inflight.set(key, promise);
-  return promise;
+    // 逐 UID 登記整個分批請求，包含尚未開始讀取的後續批次。
+    // 前批寫入快取後，縮小的待查集合或重疊名單仍可共用未完成的請求。
+    for (const uid of newUids) inflight.set(uid, promise);
+    pending.add(promise);
+  }
+
+  const outcomes = await Promise.all(pending);
+  return outcomes.find((outcome) => outcome.failed) ?? { failed: false };
 }
 
 /**
@@ -223,7 +234,7 @@ export async function loadUserRoles(
 }
 
 /**
- * 與 loadUserRoles 共用同一個快取及同批 inflight，沒有另一條 users 查詢。
+ * 與 loadUserRoles 共用同一個快取及逐 UID inflight，沒有另一條 users 查詢。
  * 呼叫端傳入與 useUserRoles 相同的名單 UID，即使同時載入也只讀一次。
  * 任一批讀取失敗就 reject，保留成功批次快取；新鮮度同為 5 分鐘。
  */
