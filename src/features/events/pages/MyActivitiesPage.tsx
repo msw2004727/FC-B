@@ -1,11 +1,12 @@
 import '../legacy/activity.css';
 import '@/styles/legacy/message.css';
 import '@/styles/legacy/manage-status.css';
-import type { JSX } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
+import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { useUserRoles } from '@/data/user-roles';
 import { useViewer } from '@/features/profile/data/viewer';
 import { lt, useT } from '@/i18n/i18n';
@@ -56,6 +57,55 @@ const TAB_CONFIG: readonly { id: MyActivityTab; text: string }[] = [
   { id: 'ended', text: '已結束' },
   { id: 'cancelled', text: '已取消' },
 ] as const;
+
+interface SwipeableActivityTabsProps {
+  activeTab: MyActivityTab;
+  onTabChange: (tab: MyActivityTab) => void;
+  children: ComponentChildren;
+}
+
+// T-075a：隨授權後的頁籤與列表掛載，避免 viewer 初值無權限時漏綁手勢。
+// 切頁狀態留在父層，滑動與點擊共用 setActiveTab 及既有載入／分頁流程。
+function SwipeableActivityTabs({
+  activeTab,
+  onTabChange,
+  children,
+}: SwipeableActivityTabsProps): JSX.Element {
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useSwipeTabs({
+    contentRef,
+    tabsRef,
+    onSwitch: (key) => {
+      const tab = TAB_CONFIG.find((item) => item.id === key);
+      if (tab) onTabChange(tab.id);
+    },
+    getKey: (btn) => btn.dataset.afilter ?? null,
+  });
+
+  return (
+    <>
+      <div class="tab-bar" id="my-activity-tabs" ref={tabsRef}>
+        {TAB_CONFIG.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            class={`tab${activeTab === tab.id ? ' active' : ''}`}
+            data-afilter={tab.id}
+            data-i18n={tab.text}
+            onClick={() => onTabChange(tab.id)}
+          >
+            {lt(tab.text, tab.text)}
+          </button>
+        ))}
+      </div>
+      <div class="card-list" id="my-activity-list" ref={contentRef}>
+        {children}
+      </div>
+    </>
+  );
+}
 
 function eventDocIdOf(e: EventDoc): string {
   return String(e._docId ?? e.docId ?? e.id ?? '');
@@ -450,22 +500,7 @@ export default function MyActivitiesPage(): JSX.Element {
         </div>
 
         {/* stats moved to modal: _showActivityStatsModal */}
-        <div class="tab-bar" id="my-activity-tabs">
-          {TAB_CONFIG.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              class={`tab${activeTab === tab.id ? ' active' : ''}`}
-              data-afilter={tab.id}
-              data-i18n={tab.text}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {lt(tab.text, tab.text)}
-            </button>
-          ))}
-        </div>
-
-        <div class="card-list" id="my-activity-list">
+        <SwipeableActivityTabs activeTab={activeTab} onTabChange={setActiveTab}>
           {loading && events.length === 0 ? null : error && events.length === 0 ? (
             <div
               role="alert"
@@ -533,7 +568,7 @@ export default function MyActivitiesPage(): JSX.Element {
               )}
             </>
           )}
-        </div>
+        </SwipeableActivityTabs>
 
         {/* 查看名單彈窗 */}
         <MyActivityDetailModal
