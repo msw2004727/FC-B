@@ -39,10 +39,13 @@ function darkenHex(hex: string): string {
 }
 
 // 照 A _tsJerseySvg；文字由 JSX 跳脫。
-function Jersey({ color, letter, width }: {
+export function Jersey({ color, letter, width, inline = true, ariaLabel }: {
   color: string;
   letter: string;
   width: number;
+  /** 資訊卡／選隊鈕沿用行內位置；名單徽章交給 A 的右上角 CSS。 */
+  inline?: boolean;
+  ariaLabel?: string;
 }): JSX.Element {
   const empty = !color || color === 'transparent';
   const safeColor = empty ? 'transparent' : color.replace(/[^#0-9a-fA-F]/g, '');
@@ -50,11 +53,11 @@ function Jersey({ color, letter, width }: {
   const rgb = parseHex(safeColor);
   const light = empty || Boolean(rgb
     && (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255 > 0.5);
-  const label = letter ? `${letter} 隊` : '未分配';
+  const label = ariaLabel || (letter ? `${letter} 隊` : '未分配');
   return (
     <svg
       class="uc-team-jersey"
-      style={`position:relative;top:0;right:0;width:${width}px;height:${Math.round(width * 0.875)}px`}
+      style={`${inline ? 'position:relative;top:0;right:0;' : ''}width:${width}px;height:${Math.round(width * 0.875)}px`}
       viewBox="0 0 32 28"
       fill="none"
       role="img"

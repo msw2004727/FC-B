@@ -3,13 +3,15 @@
  *
  * 對照舊版 A `event-manage-attendance.js#_doRenderAttendanceTable`。
  *
- * 本批不做（下一批補）：
- * - 分隊排序與分隊徽章
+ * 分隊徽章與排序照 A；不提供名單內球衣挑選器。
  * 已接線：`CALLABLES_DEPLOYED === true` 顯示「完成」，由父層執行伺服器結算；false 回退「關閉編輯」與舊版提示。
  * - 任何以名字比對身分的分支（R-ID-002 刻意不移植）
  */
 
 import type { JSX } from 'preact';
+import { useState } from 'preact/hooks';
+import { getSplitTeams, getTeamSplit, type TeamSplitConfig } from '../data/team-split';
+import { Jersey } from './legacy/TeamSplitSection';
 import { NO_SHOW_FEATURE_ENABLED, attendanceFill, participantNoShowCount } from '../data/noshow-roster';
 import type { RosterNoShowData } from './useRosterNoShow';
 import { LEGACY_SETTLE_URL } from './legacy-links';
@@ -34,7 +36,7 @@ import {
 } from '../data/attendance-roster-model';
 
 export interface AttendanceRosterTableProps {
-  event: RosterEventInput;
+  event: RosterEventInput & { teamSplit?: TeamSplitConfig };
   registrations: readonly RosterRegistrationInput[];
   attendanceRecords: readonly RosterAttendanceRecordInput[];
   roles: Readonly<Record<string, UserRole>>;
@@ -74,6 +76,9 @@ export interface AttendanceRosterTableProps {
 const PROXY_ROW_STYLE =
   'border-bottom:1px solid var(--border);background:linear-gradient(90deg, rgba(148,163,184,.16), rgba(148,163,184,.04) 55%, transparent)';
 
+// 照 A App._attendanceSortByTeam：跨活動保留，重載重置，不寫入儲存空間。
+let attendanceSortByTeam = false;
+
 export function AttendanceRosterTable({
   event,
   registrations,
@@ -100,7 +105,18 @@ export function AttendanceRosterTable({
   onToggleCheckbox,
   onChangeNote,
 }: AttendanceRosterTableProps): JSX.Element {
+  const [, redrawSort] = useState(0);
+  const sortByTeam = attendanceSortByTeam;
   const { people, count: renderedRosterCount } = buildConfirmedRoster(event, registrations);
+  const showJersey = Boolean(getTeamSplit(event)?.enabled);
+  const teams = getSplitTeams(event);
+  const showTeamSort = showJersey && teams.length > 0;
+  if (showTeamSort && sortByTeam) {
+    const teamOrder = new Map(teams.map((team, index) => [team.key, index]));
+    // A 對整個 people 穩定排序；無 teamKey 的標頭、保留席位及分隔列一併墊底。
+    people.sort((a, b) => (teamOrder.get(a.teamKey ?? '') ?? 999)
+      - (teamOrder.get(b.teamKey ?? '') ?? 999));
+  }
   const maxCount = Number(event.max || 0) || 0;
   const showManage = Boolean(canManage && !publicRosterOnly);
   const tableEditing = Boolean(showManage && editing);
@@ -242,6 +258,7 @@ export function AttendanceRosterTable({
         </span>
       );
     } else if (p.hasSelfReg) {
+      const team = p.teamKey ? teams.find(candidate => candidate.key === p.teamKey) : undefined;
       nameInner = (
         <span class="reg-name-text">
           <UserTag
@@ -253,6 +270,15 @@ export function AttendanceRosterTable({
               ? attendanceFill(p.uid, noShowData.counts, noShowData.endedCounts) ?? undefined
               : undefined}
             recentNoShow={Boolean(showAttendanceFill && p.uid.trim() && noShowData?.recentUids.has(p.uid.trim()))}
+            jersey={showJersey ? (
+              <Jersey
+                color={team?.color || ''}
+                letter={team?.key || '?'}
+                width={20}
+                inline={false}
+                ariaLabel={team ? `${team.key} 隊 - ${team.name || ''}` : undefined}
+              />
+            ) : undefined}
             onOpenProfile={onOpenProfile}
           />
         </span>
@@ -402,6 +428,27 @@ export function AttendanceRosterTable({
             {showDemoteColumn && <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:2rem">{t('events.roster.demoteColumn')}</th>}
             <th style="text-align:left;padding:.4rem .3rem;font-weight:600">
               <div style="display:flex;align-items:center;gap:.4rem;white-space:nowrap">
+                {showTeamSort && (
+                  <button
+                    type="button"
+                    class={`att-team-sort-btn${sortByTeam ? ' active' : ''}`}
+                    title="依球衣顏色排序"
+                    aria-label="依球衣顏色排序"
+                    aria-pressed={sortByTeam}
+                    onClick={e => {
+                      e.stopPropagation();
+                      attendanceSortByTeam = !attendanceSortByTeam;
+                      redrawSort(value => value + 1);
+                    }}
+                  >
+                    <svg viewBox="0 0 20 20" width="18" height="18" fill="none"
+                      stroke={sortByTeam ? '#fff' : 'var(--text-secondary)'}
+                      stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                      <path d="M6 4v12M6 4l-3 3M6 4l3 3" />
+                      <path d="M14 16V4M14 16l-3-3M14 16l3-3" />
+                    </svg>
+                  </button>
+                )}
                 {`報名名單（${renderedRosterCount}/${maxCount}）`}
                 {renderManageButton()}
               </div>

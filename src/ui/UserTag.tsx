@@ -26,6 +26,8 @@ export interface UserTagProps {
   /** A uc-att-warn（出席率染色）；有值時 title 改成放鴿子說明。 */
   attendanceFill?: { pct: number; color: string; noShow: number; ended: number };
   recentNoShow?: boolean;
+  /** A 名單右上角唯讀球衣，位置在泡泡之後、名字之前。 */
+  jersey?: JSX.Element;
   onOpenProfile: (uid: string) => void;
   class?: string;
   /** A 俱樂部成員卡會把名字包成 `<span class="td-member-name-text">`（長名字省略號用）。 */
@@ -56,6 +58,7 @@ export function UserTag({
   loading = false,
   attendanceFill,
   recentNoShow = false,
+  jersey,
   onOpenProfile,
   class: className = '',
   nameClass,
@@ -108,6 +111,7 @@ export function UserTag({
       {recentNoShow && (
         <span class="uc-recent-noshow" aria-label="最近一場活動未簽到" title="最近一場活動未簽到">🕊</span>
       )}
+      {jersey}
       {nameClass ? <span class={nameClass}>{displayName}</span> : displayName}
     </span>
   );

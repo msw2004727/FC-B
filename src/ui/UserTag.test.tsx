@@ -60,6 +60,31 @@ describe('UserTag（照 A 使用者膠囊）', () => {
     expect(open).toHaveBeenCalledWith('u7');
   });
 
+  it('可選球衣插槽照 A 放在泡泡後、名字前，維持 UID 名片操作', () => {
+    const open = vi.fn();
+    const { rerender } = render(<UserTag uid="jersey-user" name="球員" recentNoShow
+      nameClass="test-name" jersey={<svg class="uc-team-jersey" role="img" aria-label="B 隊 - 藍" />}
+      onOpenProfile={open} />);
+    const capsule = screen.getByRole('button');
+    const jersey = screen.getByRole('img', { name: 'B 隊 - 藍' });
+    expect(jersey.parentElement).toBe(capsule);
+    expect(jersey.previousElementSibling?.className).toBe('uc-recent-noshow');
+    expect(jersey.nextElementSibling?.textContent).toBe('球員');
+    fireEvent.click(jersey);
+    expect(open).toHaveBeenCalledExactlyOnceWith('jersey-user');
+    rerender(<UserTag uid="jersey-user" name="球員" onOpenProfile={open} />);
+    expect(capsule.querySelector('.uc-team-jersey')).toBeNull();
+    expect(capsule.textContent).toBe('Lv0球員');
+  });
+
+  it('球衣插槽不會繞過停用的名片操作', () => {
+    const open = vi.fn();
+    render(<UserTag uid="jersey-user" name="球員" disabled
+      jersey={<svg class="uc-team-jersey" role="img" aria-label="空衣" />} onOpenProfile={open} />);
+    fireEvent.click(screen.getByRole('img', { name: '空衣' }));
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('出席率染色照 A：uc-att-warn、CSS 變數與放鴿子 title', () => {
     render(
       <UserTag
