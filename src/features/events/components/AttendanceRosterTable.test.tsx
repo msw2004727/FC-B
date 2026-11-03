@@ -309,18 +309,24 @@ describe('WaitlistRosterTable', () => {
 describe('T-074b 快速調整', () => {
   it('只在該隊獲准且非送出時顯示，點擊傳 teamId', () => {
     const onAdjust = vi.fn();
+    // 名單沿用伺服器投影的 remainingSlots；只有保留席位、沒有報名者時仍應顯示隊伍列。
     const props = { event: { id: 'e1', max: 10, teamReservationSummaries: [
-      { teamId: 't1', teamName: '一隊', reservedSlots: 2, usedSlots: 0 },
-      { teamId: 't2', teamName: '二隊', reservedSlots: 2, usedSlots: 0 },
+      { teamId: 't1', teamName: '一隊', reservedSlots: 2, usedSlots: 0, remainingSlots: 2 },
+      { teamId: 't2', teamName: '二隊', reservedSlots: 2, usedSlots: 0, remainingSlots: 2 },
     ] }, registrations: [], attendanceRecords: [], roles: {}, onOpenProfile: vi.fn(),
     canAdjustTeamReservation: (id: string) => id === 't2', onAdjustTeamReservation: onAdjust };
     const view = render(<AttendanceRosterTable {...props} publicRosterOnly />);
+    expect(screen.getByText('一隊')).toBeTruthy();
+    expect(screen.getByText('二隊')).toBeTruthy();
     const button = screen.getByRole('button', { name: '快速調整' });
     expect(button.closest('tr')?.textContent).toContain('二隊');
     fireEvent.click(button); expect(onAdjust).toHaveBeenCalledWith('t2');
+    expect(onAdjust).toHaveBeenCalledTimes(1);
     view.rerender(<AttendanceRosterTable {...props} publicRosterOnly submitting />);
+    expect(screen.getByText('二隊')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '快速調整' })).toBeNull();
     view.rerender(<AttendanceRosterTable {...props} canAdjustTeamReservation={() => false} />);
+    expect(screen.getByText('二隊')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '快速調整' })).toBeNull();
   });
 });
