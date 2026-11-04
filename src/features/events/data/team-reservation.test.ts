@@ -4,6 +4,7 @@ vi.mock('@/data/callables', () => ({ callFn: vi.fn(), CallableError: class exten
 vi.mock('@/data/firebase', () => ({ getFirebase: vi.fn() }));
 vi.mock('firebase/firestore', () => ({ getDoc: vi.fn(), getDocs: vi.fn(), setDoc: vi.fn(), updateDoc: vi.fn() }));
 
+import { applyReservationPromotions } from '../components/legacy/team-reservation-sync';
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
@@ -197,7 +198,7 @@ describe('Callable 送出與生命週期', () => {
     },
   );
 
-  it('合法值只送一次、整數化、public ID、A requestId；只回傳允許的 patch，零直接讀寫', async () => {
+  it('合法值只送一次、整數化、public ID、截斷安全 requestId；只回傳允許的 patch，零直接讀寫', async () => {
     vi.mocked(callFn).mockResolvedValue({
       success: true, event: { ...occupancy, id: 'wrong', title: 'wrong' },
       promoted: promoted.map(item => ({ ...item, status: 'cancelled', eventId: 'wrong', extra: 'private' })),
@@ -205,11 +206,44 @@ describe('Callable 送出與生命週期', () => {
     const { controller, local } = fixture();
     expect(await controller.submit('t1', '7.9')).toEqual({ status: 'success', deduplicated: false, eventPatch: occupancy, promoted, message: '已更新團隊名額' });
     expect(callFn).toHaveBeenCalledExactlyOnceWith('adjustTeamReservation', {
-      eventId: 'event-public', teamId: 't1', reservedSlots: 7, requestId: 'team_res_u1_event-public_t1_' + now + '_abc',
+      eventId: 'event-public', teamId: 't1', reservedSlots: 7, requestId: 'team_res_' + now + '_abc_u1_event-public_t1',
     });
     expect(local.setItem).toHaveBeenCalledExactlyOnceWith('teamReservationSlots:t1', '7');
     for (const io of [getFirebase, getDoc, getDocs, setDoc, updateDoc]) expect(io).not.toHaveBeenCalled();
     expect(event.current).toBe(28);
+  });
+
+  it.each([[33, 23], [128, 128]])('長 UID（%s）與 ID（%s）：後端截 100 字後時間與亂數仍可區分操作', async (uidLength, idLength) => {
+    const uid = 'U' + 'a'.repeat(uidLength - 1);
+    const eventId = 'evt_' + 'e'.repeat(idLength - 4);
+    const teamId = 'team_' + 't'.repeat(idLength - 5);
+    let clock = now;
+    let suffix = 'abc';
+    const controller = createTeamReservationController(() => ({
+      event: { ...event, id: eventId, current: 0, teamReservationSummaries: [] },
+      viewer: { uid, teamIds: new Set([teamId]), staffTeams: [{ id: teamId, name: '長 ID 隊' }] },
+      generation: 1,
+    }), { storage: storage(), now: () => clock, randomSuffix: () => suffix });
+    const seen = new Set<string>();
+    vi.mocked(callFn).mockImplementation(async (_name, payload) => {
+      const key = String((payload as { requestId: string }).requestId).slice(0, 100);
+      if (seen.has(key)) return { success: true, deduplicated: true };
+      seen.add(key);
+      return { success: true, event: occupancy, promoted: [] };
+    });
+    expect(await controller.submit(teamId, 1)).toMatchObject({ status: 'success', deduplicated: false });
+    suffix = 'xyz'; // 同毫秒的第二次操作：只改亂數也不能被去重。
+    expect(await controller.submit(teamId, 2)).toMatchObject({ status: 'success', deduplicated: false });
+    clock += 2000; // 同亂數的下一次操作：只改時間也不能被去重。
+    expect(await controller.submit(teamId, 3)).toMatchObject({ status: 'success', deduplicated: false });
+    const ids = vi.mocked(callFn).mock.calls.map(([, payload]) => (payload as { requestId: string }).requestId);
+    expect(new Set(ids.map(id => id.slice(0, 100))).size).toBe(3);
+    for (const id of ids) expect(id.length).toBeLessThanOrEqual(100);
+    expect(ids[0]!.slice(0, 100)).toContain(String(now));
+    expect(ids[1]!.slice(0, 100)).toContain('xyz');
+    expect(ids[2]!.slice(0, 100)).toContain(String(now + 2000));
+    expect(callFn).toHaveBeenCalledTimes(3);
+    for (const io of [getFirebase, getDoc, getDocs, setDoc, updateDoc]) expect(io).not.toHaveBeenCalled();
   });
 
   it.each([undefined, null, 7, 'private/raw', {}, []].map(value => ({ value })))(
@@ -253,19 +287,21 @@ describe('Callable 送出與生命週期', () => {
     for (const io of [getFirebase, getDoc, getDocs, setDoc, updateDoc]) expect(io).not.toHaveBeenCalled();
   });
 
-  it.each(['docId', 'id'])('已有正取＋候補遞補＋名額立即用完：依 %s 同步後名單、席位與俱樂部標頭一致', async matchBy => {
+  it.each([['docId', true], ['id', true], ['docId', false], ['id', false]] as const)(
+    '已有正取＋候補遞補＋名額立即用完：依 %s、原有團隊標記 %s 同步名單與標頭', async (matchBy, tagged) => {
     const initialEvent = {
       ...event, current: 1, realCurrent: 1, waitlist: 1, max: 2, teamReservationSummaries: [],
       participants: ['原正取'], participantsWithUid: [{ uid: 'confirmed', name: '原正取' }],
       waitlistNames: ['遞補者'], waitlistWithUid: [{ uid: 'waiting', name: '遞補者' }],
     };
-    const registrations: RosterRegistrationInput[] = [
+    const registrations = [
       { id: 'reg-confirmed', _docId: 'confirmed-doc', userId: 'confirmed', userName: '原正取', status: 'confirmed', participantType: 'self' },
       {
         id: 'reg-wait', _docId: 'wait-doc', userId: 'waiting', userName: '遞補者', status: 'waitlisted', participantType: 'self',
-        teamReservationTeamId: 't1', teamReservationTeamName: '一隊', teamSeatSource: 'waitlist',
+        ...(tagged ? { teamReservationTeamId: 't1', teamReservationTeamName: '一隊' } : {}),
+        teamSeatSource: 'waitlist',
       },
-    ];
+    ] satisfies RosterRegistrationInput[];
     const fullOccupancy = {
       current: 2, realCurrent: 2, waitlist: 0, status: 'full',
       participants: ['原正取', '遞補者'], waitlistNames: [], waitlistWithUid: [],
@@ -292,17 +328,14 @@ describe('Callable 送出與生命週期', () => {
     expect(staleRoster.people.some(person => person.isTeamHeader)).toBe(false);
     expect(buildWaitlistRoster(nextEvent, registrations).totalCount).toBe(1);
 
-    // 模擬 T-074b 呼叫端只依 registration ID 套用回傳資料，不另讀 Firestore。
-    const nextRegistrations = registrations.map(registration => {
-      const promotion = result.promoted.find(item => (item.docId && item.docId === registration._docId)
-        || (item.id && item.id === registration.id));
-      return promotion ? {
-        ...registration, status: 'confirmed',
-        ...(promotion.teamSeatSource ? { teamSeatSource: promotion.teamSeatSource } : {}),
-      } : registration;
-    });
+    // 使用頁面真正的同步函式；歸屬只來自本次回傳，不另讀 Firestore。
+    const nextRegistrations = applyReservationPromotions(
+      registrations, result.promoted, initialEvent.id!, result.eventPatch.participantsWithUid,
+    );
     expect(nextRegistrations[0]).toBe(registrations[0]);
-    expect(nextRegistrations[1]).toMatchObject({ status: 'confirmed', teamSeatSource: 'reserved' });
+    expect(nextRegistrations[1]).toMatchObject({
+      status: 'confirmed', teamSeatSource: 'reserved', teamReservationTeamId: 't1', teamReservationTeamName: '一隊',
+    });
     expect(registrations[1]).toMatchObject({ status: 'waitlisted', teamSeatSource: 'waitlist' });
     const roster = buildConfirmedRoster(nextEvent, nextRegistrations);
     expect(roster.realCount).toBe(nextEvent.realCurrent);

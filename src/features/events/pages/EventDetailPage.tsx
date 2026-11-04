@@ -701,8 +701,8 @@ function EventDetailSession({
     return {
       ...current,
       event: { ...current.event, ...result.eventPatch },
-      registrations: applyReservationPromotions(current.registrations, result.promoted, eventId),
-      viewerRegistrations: applyReservationPromotions(current.viewerRegistrations, result.promoted, eventId),
+      registrations: applyReservationPromotions(current.registrations, result.promoted, eventId, result.eventPatch.participantsWithUid),
+      viewerRegistrations: applyReservationPromotions(current.viewerRegistrations, result.promoted, eventId, result.eventPatch.participantsWithUid),
     };
   }
 
@@ -730,7 +730,7 @@ function EventDetailSession({
       };
       setSnapshot(previous => previous ? applyReservationResult(previous, result) : previous);
       if (teamRowsRef.current) {
-        const rows = applyReservationPromotions(teamRowsRef.current, result.promoted, publicId);
+        const rows = applyReservationPromotions(teamRowsRef.current, result.promoted, publicId, result.eventPatch.participantsWithUid);
         teamRowsRef.current = rows;
         setTeamRegistrations(rows);
       }
@@ -796,7 +796,7 @@ function EventDetailSession({
     const reservationSeq = reservationCommits.current.length;
     const task = loadEventRegistrations(eventDocId).then(loaded => {
       const rows = reservationCommits.current.slice(reservationSeq).reduce(
-        (rows, result) => applyReservationPromotions(rows, result.promoted, publicId), loaded,
+        (rows, result) => applyReservationPromotions(rows, result.promoted, publicId, result.eventPatch.participantsWithUid), loaded,
       );
       if (alive.current && request === teamLoadSequence.current
         && headerState.current.snapshot?.eventDocId === eventDocId

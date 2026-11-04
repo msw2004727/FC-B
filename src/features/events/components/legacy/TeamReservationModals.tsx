@@ -28,14 +28,16 @@ function ReservationDialog({ id, title, onClose, children, actions }: {
   }, []);
   const titleId = id.replace(/-modal$/, '') + '-title';
   return createPortal(
-    <div id={id} class="team-reservation-overlay open" role="presentation">
-      <div class="team-reservation-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div class="team-reservation-dialog-header">
-          <h3 id={titleId}>{title}</h3>
-          <button type="button" class="team-reservation-close" onClick={onClose} aria-label="關閉">×</button>
+    <div class="legacy-ui">
+      <div id={id} class="team-reservation-overlay open" role="presentation">
+        <div class="team-reservation-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+          <div class="team-reservation-dialog-header">
+            <h3 id={titleId}>{title}</h3>
+            <button type="button" class="team-reservation-close" onClick={onClose} aria-label="關閉">×</button>
+          </div>
+          <div class="team-reservation-dialog-body">{children}</div>
+          <div class="team-reservation-dialog-actions">{actions}</div>
         </div>
-        <div class="team-reservation-dialog-body">{children}</div>
-        <div class="team-reservation-dialog-actions">{actions}</div>
       </div>
     </div>, document.body,
   );

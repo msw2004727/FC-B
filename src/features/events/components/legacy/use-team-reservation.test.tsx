@@ -1,3 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import postcss from 'postcss';
+// @ts-expect-error 純 JS 建置工具，與 vite.config.ts 使用同一個 scope 外掛。
+import { legacyCssScope, scopeSelector } from '../../../../../scripts/legacy-css-scope.mjs';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'preact/hooks';
@@ -55,6 +60,57 @@ afterEach(cleanup);
 
 describe('T-074b 畫面與 T-074a controller 接線', () => {
   it.each([
+    ['團隊報名', 'light'], ['團隊報名', 'dark'],
+    ['選擇報名俱樂部', 'light'], ['選擇報名俱樂部', 'dark'],
+  ])('%s portal 在 %s 主題能匹配實際 scope 後的 activity.css', async (title, theme) => {
+    const previousTheme = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      const view = render(<Harness />);
+      if (title === '團隊報名') await open();
+      else fireEvent.click(screen.getByText('測試報名'));
+      const dialog = screen.getByRole('dialog', { name: title });
+      expect(view.container.contains(dialog)).toBe(false);
+      const cssPath = resolve('src/features/events/legacy/activity.css');
+      const css = postcss([legacyCssScope()]).process(readFileSync(cssPath, 'utf8'), { from: cssPath }).sync().root;
+      const actualSelectors = new Set<string>();
+      css.walkRules(rule => { rule.selectors.forEach(selector => actualSelectors.add(selector)); });
+      const selectors = [
+        '.team-reservation-overlay', '.team-reservation-overlay.open',
+        '.team-reservation-dialog', '.team-reservation-overlay.open .team-reservation-dialog',
+        '.team-reservation-dialog-header', '.team-reservation-dialog-header h3',
+        '.team-reservation-close', '.team-reservation-dialog-body', '.team-reservation-note',
+        '.team-reservation-dialog-actions', '.team-reservation-dialog-actions button',
+        ...(title === '團隊報名' ? [
+          '.team-reservation-label', '.team-reservation-control', '.team-reservation-help',
+        ] : [
+          '.team-reservation-choice-list', '.team-reservation-choice-card',
+          '.team-reservation-choice-card.is-selected', '.team-reservation-choice-mark',
+          '.team-reservation-choice-card.is-selected .team-reservation-choice-mark',
+          '.team-reservation-choice-main', '.team-reservation-choice-name', '.team-reservation-choice-meta',
+        ]),
+        ...(theme === 'dark' ? [
+          '[data-theme="dark"] .team-reservation-dialog',
+          ...(title === '團隊報名' ? [] : [
+            '[data-theme="dark"] .team-reservation-choice-card',
+            '[data-theme="dark"] .team-reservation-choice-card.is-selected',
+            '[data-theme="dark"] .team-reservation-choice-card.is-selected .team-reservation-choice-mark',
+          ]),
+        ] : []),
+      ];
+      for (const selector of selectors) {
+        const scoped = scopeSelector(selector);
+        expect(actualSelectors.has(scoped), scoped).toBe(true);
+        const elements = document.querySelectorAll(selector);
+        expect(elements.length, selector).toBeGreaterThan(0);
+        for (const element of elements) expect(element.matches(scoped), scoped).toBe(true);
+      }
+    } finally {
+      if (previousTheme === null) document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', previousTheme);
+    }
+  });
+  it.each([
     ['一般成員', {}, false], ['隊長', { captainUid: 'u1' }, true],
     ['領隊', { leaderUids: ['u1'] }, true], ['教練', { coachUids: ['u1'] }, true],
     ['管理員非職員', { ownerUid: 'u1', creatorUid: 'u1' }, false],
@@ -111,7 +167,7 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     fireEvent.click(button); fireEvent.click(button);
     expect(mock.call).toHaveBeenCalledTimes(1);
     expect(mock.call).toHaveBeenCalledWith('adjustTeamReservation', {
-      eventId: 'e1', teamId: 't1', reservedSlots: 3, requestId: expect.stringMatching(/^team_res_u1_e1_t1_/),
+      eventId: 'e1', teamId: 't1', reservedSlots: 3, requestId: expect.stringMatching(/^team_res_\d+_[a-z0-9]{0,3}_u1_e1_t1$/),
     });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     resolve({ success: true, event: occupancy, promoted: [] });
@@ -179,6 +235,53 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     fireEvent.click(screen.getByText('測試報名'));
     await waitFor(() => expect(mock.chosen).toHaveBeenLastCalledWith('t1'));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('先按報名 ID 遞補，再按唯一的本人 UID 投影補歸屬；同名、同 UID 同行者與其他活動隔離', () => {
+    const self = { id: 'self', _docId: 'self-doc', eventId: 'e1', userId: 'u1', userName: '同名',
+      participantType: 'self', status: 'waitlisted' };
+    const companion = { ...self, id: 'companion', _docId: 'companion-doc', participantType: 'companion' };
+    const otherUser = { ...self, id: 'other', _docId: 'other-doc', userId: 'u2' };
+    const otherEvent = { ...self, eventId: 'e2' };
+    const rows = [self, companion, otherUser, otherEvent];
+    const promotion = { id: 'self', docId: 'self-doc', userId: 'u1', userName: '同名', teamSeatSource: 'reserved' as const };
+    const projection = [{ uid: 'u1', name: '同名', teamReservationTeamId: 't1', teamReservationTeamName: '一隊' }];
+    const next = applyReservationPromotions(rows, [promotion], 'e1', projection);
+    expect(next[0]).toMatchObject({ status: 'confirmed', teamSeatSource: 'reserved',
+      teamReservationTeamId: 't1', teamReservationTeamName: '一隊' });
+    for (const index of [1, 2, 3]) expect(next[index]).toBe(rows[index]);
+    expect(self).not.toHaveProperty('teamReservationTeamId');
+    expect(self.status).toBe('waitlisted');
+    // 同行者自己獲得遞補，也不能拿主報名人的 UID 投影補團隊。
+    const companionNext = applyReservationPromotions(rows,
+      [{ ...promotion, id: 'companion', docId: 'companion-doc' }], 'e1', projection);
+    expect(companionNext[1]).toMatchObject({ status: 'confirmed', teamSeatSource: 'reserved' });
+    expect(companionNext[1]).not.toHaveProperty('teamReservationTeamId');
+    expect(companionNext[0]).toBe(self);
+    expect(applyReservationPromotions(rows, [{ ...promotion, id: '', docId: '' }], 'e1', projection)).toEqual(rows);
+    expect(mock.read).not.toHaveBeenCalled();
+  });
+  it.each([
+    [], [null, [], 'private/raw'],
+    [{ uid: 'u2', name: '同名', teamReservationTeamId: 't1', teamReservationTeamName: '一隊' }],
+    [{ uid: 'u1', teamReservationTeamId: 1, teamReservationTeamName: '一隊' }],
+    [{ uid: 'u1', teamReservationTeamId: ' ', teamReservationTeamName: '一隊' }],
+    [{ uid: 'u1', teamReservationTeamId: 't1', teamReservationTeamName: {} }],
+    [
+      { uid: 'u1', teamReservationTeamId: 't1', teamReservationTeamName: '一隊' },
+      { uid: 'u1', teamReservationTeamId: 't2', teamReservationTeamName: '二隊' },
+    ],
+    [
+      { uid: 'u1', teamReservationTeamId: 't1', teamReservationTeamName: '一隊' },
+      { uid: 'u1' },
+    ],
+  ].map(projection => ({ projection })))('缺少、損壞或歧義投影只同步遞補，不猜團隊：$projection', ({ projection }) => {
+    const row = { id: 'r1', eventId: 'e1', userId: 'u1', userName: '同名', participantType: 'self',
+      status: 'waitlisted', teamReservationTeamId: 'existing', teamReservationTeamName: '既有隊名' };
+    const next = applyReservationPromotions([row], [{ id: 'r1', docId: '', userId: 'u1', userName: '同名',
+      teamSeatSource: 'reserved' }], 'e1', projection);
+    expect(next[0]).toEqual({ ...row, status: 'confirmed', teamSeatSource: 'reserved' });
+    expect(row.status).toBe('waitlisted');
+    expect(mock.read).not.toHaveBeenCalled();
   });
   it('promoted 僅依 docId／id 更新，保留同行者、其他活動與非空座位來源', () => {
     const rows = [

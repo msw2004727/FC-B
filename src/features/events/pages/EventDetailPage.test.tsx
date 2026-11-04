@@ -14,6 +14,8 @@ import type { DetailRegistration } from '../data/detail-model';
 import type { SettleAttendanceInput, SettleAttendanceResult } from '../data/attendance-settle';
 
 const mocks = vi.hoisted(() => ({
+  // 斷開未 mock 的裝飾性資料讀取，整個頁面測試不可初始化真實 Firebase。
+  offlineFirebase: vi.fn(async () => { throw new Error('offline page test'); }),
   detail: vi.fn(),
   reservationSignupEvent: {} as Record<string, unknown>,
   registrations: vi.fn(),
@@ -30,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   settleAttendance: vi.fn<(input: SettleAttendanceInput) => Promise<SettleAttendanceResult>>(),
   writeAttendanceOps: vi.fn(),
 }));
+
+vi.mock('@/data/firebase', () => ({ getFirebase: mocks.offlineFirebase, getFirebaseCore: mocks.offlineFirebase }));
 
 vi.mock('@/features/events/data/attendance-settle', () => ({
   settleAttendance: mocks.settleAttendance,
@@ -1838,6 +1842,54 @@ describe('T-074b 詳情頁整合', () => {
     expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
     expect([mocks.detail.mock.calls.length, mocks.registrations.mock.calls.length, mocks.history.mock.calls.length]).toEqual(calls);
     expect(callable).toHaveBeenCalledTimes(1);
+  });
+  it.each([false, true])('候補原無團隊標記，遞補耗盡席位仍保留俱樂部標頭與快速調整（舊讀取晚到 %s）', async lateRefresh => {
+    const untagged = { ...waiting, teamReservationTeamId: undefined, teamReservationTeamName: undefined };
+    const confirmed = { _docId: 'confirmed-doc', id: 'confirmed-id', eventId: detail.event.id,
+      userId: 'u2', userName: '原正取', participantType: 'self', status: 'confirmed' };
+    const rows = [confirmed, untagged];
+    mocks.detail.mockResolvedValue({ ...detail, event: { ...activity, current: 2, realCurrent: 1, max: 2,
+      teamReservationSummaries: [{ ...teams[0], reservedSlots: 1, usedSlots: 0, remainingSlots: 1 }] } });
+    mocks.registrations.mockResolvedValue(rows);
+    mocks.history.mockResolvedValue([untagged]);
+    const callable = vi.fn(async () => ({ ...success, event: { ...updated,
+      current: 2, realCurrent: 2, status: 'full', participants: ['原正取', '候補本人'],
+      participantsWithUid: [
+        { uid: 'u2', name: '原正取' },
+        { uid: 'u1', name: '候補本人', teamReservationTeamId: 't1', teamReservationTeamName: '一隊', teamSeatSource: 'reserved' },
+      ],
+      teamReservationSummaries: [{ ...teams[0], reservedSlots: 1, usedSlots: 1, remainingSlots: 0 }],
+    } }));
+    registerCallableMock('adjustTeamReservation', callable);
+    await openReservationRoster();
+    expect(screen.getByRole('button', { name: '取消候補' })).toBeTruthy();
+    let resolve: ((rows: unknown[]) => void) | undefined;
+    if (lateRefresh) {
+      mocks.registrations.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+      await waitFor(() => expect(resolve).toBeTypeOf('function'));
+    }
+    const reads = [mocks.detail.mock.calls.length, mocks.registrations.mock.calls.length, mocks.history.mock.calls.length, mocks.offlineFirebase.mock.calls.length];
+    await adjust('1');
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' }));
+    if (resolve) {
+      await act(async () => { resolve!([...rows, { ...confirmed, _docId: 'fresh-marker', id: 'fresh-marker',
+        userId: 'u3', userName: '晚到未標記快照記號' }]); });
+      await screen.findByText('晚到未標記快照記號');
+    }
+    expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '取消候補' })).toBeNull();
+    const headers = document.querySelectorAll('.team-reservation-header-row');
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.textContent).toContain('一隊');
+    expect(within(headers[0] as HTMLElement).getByRole('button', { name: '快速調整' })).toBeTruthy();
+    expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain('候補本人');
+    expect(document.querySelector('.team-reservation-placeholder-row')).toBeNull();
+    expect(document.querySelector('#detail-waitlist-container')?.textContent).not.toContain('候補本人');
+    expect([mocks.detail.mock.calls.length, mocks.registrations.mock.calls.length, mocks.history.mock.calls.length, mocks.offlineFirebase.mock.calls.length]).toEqual(reads);
+    expect(callable).toHaveBeenCalledTimes(1);
+    expect(untagged.teamReservationTeamId).toBeUndefined();
+    expect(untagged.status).toBe('waitlisted');
   });
   it('較早開始的重新整理晚到，保留最新摘要與遞補狀態', async () => {
     mocks.registrations.mockResolvedValue([waiting]);

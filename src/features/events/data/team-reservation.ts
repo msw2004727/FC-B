@@ -227,7 +227,8 @@ export type TeamReservationResult =
 /**
  * 每個詳情頁建立一個 controller；getSnapshot 只讀目前記憶體快照，不得查 Firestore。
  * T-074b 在回傳後仍須核對自身頁面世代，套用 eventPatch 並依 promoted 的 docId／id
- * 同步 registrations 的 confirmed 狀態及非空 teamSeatSource；卸載時讓快照回 null。
+ * 同步 registrations 的 confirmed 狀態及非空 teamSeatSource，並從 eventPatch 的唯一本人投影
+ * 補齊俱樂部歸屬；卸載時讓快照回 null。
  */
 export function createTeamReservationController(
   getSnapshot: () => TeamReservationSnapshot | null,
@@ -269,8 +270,9 @@ export function createTeamReservationController(
         if (reservedSlots > state.maxReserved) return { status: 'error', message: OVER_CAPACITY };
         const payload: AdjustTeamReservationRequest = {
           eventId: event.id, teamId, reservedSlots,
-          requestId: 'team_res_' + uid + '_' + event.id + '_' + teamId + '_' + now()
-            + '_' + (options.randomSuffix?.() ?? Math.random().toString(36).slice(2, 5)),
+          // 後端只保留前 100 字：時間與亂數須先於可能很長的身分／活動／俱樂部 ID。
+          requestId: ('team_res_' + now() + '_' + (options.randomSuffix?.() ?? Math.random().toString(36).slice(2, 5))
+            + '_' + uid + '_' + event.id + '_' + teamId).slice(0, 100),
         };
         key = busyKey;
         pending.add(key);
