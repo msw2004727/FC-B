@@ -502,6 +502,8 @@ export const ACTIVITY_CAPABILITY_CODES = Object.freeze([
   'user.activity.site_operate',
   'user.activity.delegate_assign',
   'user.activity.addons_use',
+  // T-090：一般用戶建立俱樂部（預設開，與 A ROLE_ACTIVITY_CAPABILITY_ITEMS、Rules userActivityCapData fallback、Functions DEFAULT_USER_ACTIVITY_CAPABILITIES 同步）。
+  'user.activity.team_create',
 ] as const);
 
 export type ActivityCapabilityCode = typeof ACTIVITY_CAPABILITY_CODES[number];

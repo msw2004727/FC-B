@@ -19,6 +19,8 @@ export interface StaffPickerApi {
 interface StaffPickerOptions {
   excludeUids: string[];
   enabled: boolean;
+  /** T-090：有值時只能從這些 UID 中選（自建俱樂部只能選現有成員）；null／未給＝不限。 */
+  allowUids?: readonly string[] | null;
 }
 
 /**
@@ -106,9 +108,11 @@ export function useScopedStaffPicker(
 
   const pick = async (rawUid: string): Promise<{ uid: string; name: string } | null> => {
     const uid = rawUid.trim();
+    const allow = latest.current.opts.allowUids;
     if (
       !uid || !mounted.current || !scope.active || !latest.current.opts.enabled
       || latest.current.scope !== scope || latest.current.opts.excludeUids.includes(uid)
+      || (allow && !allow.includes(uid))
     ) return null;
 
     const request = ++sequence.current;
@@ -150,9 +154,11 @@ export function useScopedStaffPicker(
   const normalizedQuery = query.trim().toLowerCase();
   // B searchUserDirectory 另比對 displayName，比 A 寬；先依 A 過濾，
   // 再交由 B 截取前五筆，避免 displayName-only 命中吃掉五筆名額。
+  const allowUids = opts.allowUids;
   const candidates = scope.users.filter(user =>
-    user.name.toLowerCase().includes(normalizedQuery)
-    || user.uid.toLowerCase().includes(normalizedQuery),
+    (!allowUids || allowUids.includes(user.uid))
+    && (user.name.toLowerCase().includes(normalizedQuery)
+      || user.uid.toLowerCase().includes(normalizedQuery)),
   );
 
   return {

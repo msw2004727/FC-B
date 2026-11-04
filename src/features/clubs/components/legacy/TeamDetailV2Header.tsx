@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { SPORTS } from '@/features/events/data/sports';
 import type { ClubViewer, TeamDoc, TeamPrimaryAction } from '../../data/types';
 import { canShowInviteQr } from '../../club-policy';
+import { isUserCapabilityTeam } from '../../data/team-source';
 import {
   getTeamCoverImageUrl,
   getTeamRank,
@@ -215,12 +216,17 @@ export function TeamDetailV2Header({
   const isMember = primaryAction === 'leave';
   const canInvite = canInviteToTeam(team, viewer);
 
-  const stats: ReadonlyArray<[string, string | number, string]> = [
+  // T-090：自建俱樂部不開放課程與戰績頁籤，統計列同步拿掉「課程」「勝率」。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
+  const allStats: ReadonlyArray<[string, string | number, string]> = [
     ['成員', memberCount, ''],
     ['課程', courseCount, ''],
     ['勝率', totalGames > 0 ? `${winRate}%` : '-', totalGames > 0 ? `${totalGames} 場` : ''],
     ['活動', eventCount, ''],
   ];
+  const stats = userCapabilityTeam
+    ? allStats.filter(([label]) => label !== '課程' && label !== '勝率')
+    : allStats;
 
   return (
     <>
@@ -403,7 +409,10 @@ export function TeamDetailV2Header({
         )}
       </div>
 
-      <div class="td-v2-stats">
+      <div
+        class="td-v2-stats"
+        style={stats.length === 4 ? undefined : `grid-template-columns:repeat(${stats.length},1fr)`}
+      >
         {stats.map(([label, val, sub]) => (
           <div key={label} class="td-v2-stat">
             <div class="td-v2-stat-num">{val}</div>

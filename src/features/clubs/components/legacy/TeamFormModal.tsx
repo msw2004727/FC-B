@@ -123,6 +123,8 @@ function StaffTags(props: {
   tags: TeamFormApi['leaders']['tags'];
   onRemove(key: string): void;
   style?: string;
+  /** T-090：唯讀時不顯示移除鈕。 */
+  readOnly?: boolean;
 }): JSX.Element {
   const lt = useLegacyT();
   const unresolved = lt('舊資料尚未連結用戶', '舊資料尚未連結用戶');
@@ -135,14 +137,16 @@ function StaffTags(props: {
           title={tag.uid ? undefined : unresolved}
         >
           {tag.name}
-          <button
-            type="button"
-            class="team-tag-x"
-            aria-label={lt('移除', '移除')}
-            onClick={() => props.onRemove(tag.key)}
-          >
-            ✕
-          </button>
+          {props.readOnly ? null : (
+            <button
+              type="button"
+              class="team-tag-x"
+              aria-label={lt('移除', '移除')}
+              onClick={() => props.onRemove(tag.key)}
+            >
+              ✕
+            </button>
+          )}
         </span>
       ))}
     </div>
@@ -540,6 +544,8 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               </div>
             </div>
 
+            {/* C-D1：一般用戶建立時後端寫 leaders:[]、經理＝本人，經理列已顯示本人，不再另列「領隊」。 */}
+            {api.leaders.allowed === false ? null : (
             <div class="ce-row" id="ct-leader-row" style="position:relative">
               <label for="ct-leader-search">
                 俱樂部領隊 {requiredMark()}
@@ -575,6 +581,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 />
               </div>
             </div>
+            )}
 
             <div class="ce-row">
               <label for="ct-team-contact">{lt('聯繫方式', '聯繫方式')}</label>
@@ -663,27 +670,37 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               </div>
             </div>
 
-            <div class="ce-row" style="position:relative">
-              <label for="ct-coach-search">{lt('教練（可多位）', '教練（可多位）')}</label>
-              <input
-                type="text"
-                id="ct-coach-search"
-                placeholder={lt('搜尋用戶...', '搜尋用戶...')}
-                autocomplete="off"
-                value={api.coaches.picker.query}
-                onInput={(event) => api.coaches.picker.setQuery(event.currentTarget.value)}
-              />
-              <UserSuggest
-                id="ct-coach-suggest"
-                users={api.coaches.picker.suggestions}
-                onPick={(uid) => settle(api.coaches.add(uid))}
-              />
-              <StaffTags
-                id="ct-coach-tags"
-                tags={api.coaches.tags}
-                onRemove={(key) => api.coaches.remove(key)}
-              />
-            </div>
+            {/* T-090d：不能指派教練時不給搜尋；沒有既有教練就整區不顯示（一般用戶建立＝無教練區）。 */}
+            {api.coaches.allowed || api.coaches.tags.length > 0 ? (
+              <div class="ce-row" id="ct-coach-row" style="position:relative">
+                <label for={api.coaches.allowed ? 'ct-coach-search' : undefined}>
+                  {lt('教練（可多位）', '教練（可多位）')}
+                </label>
+                {api.coaches.allowed ? (
+                  <>
+                    <input
+                      type="text"
+                      id="ct-coach-search"
+                      placeholder={lt('搜尋用戶...', '搜尋用戶...')}
+                      autocomplete="off"
+                      value={api.coaches.picker.query}
+                      onInput={(event) => api.coaches.picker.setQuery(event.currentTarget.value)}
+                    />
+                    <UserSuggest
+                      id="ct-coach-suggest"
+                      users={api.coaches.picker.suggestions}
+                      onPick={(uid) => settle(api.coaches.add(uid))}
+                    />
+                  </>
+                ) : null}
+                <StaffTags
+                  id="ct-coach-tags"
+                  tags={api.coaches.tags}
+                  onRemove={(key) => api.coaches.remove(key)}
+                  readOnly={!api.coaches.allowed}
+                />
+              </div>
+            ) : null}
 
             <div class="ce-row">
               <label for="ct-team-bio">{lt('俱樂部簡介', '俱樂部簡介')}</label>

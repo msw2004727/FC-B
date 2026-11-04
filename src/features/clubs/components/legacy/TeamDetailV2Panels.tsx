@@ -10,6 +10,7 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../../data/team-detail-model';
+import { isUserCapabilityTeam } from '../../data/team-source';
 import type { TeamDoc, TeamRosterRow } from '../../data/types';
 import { LegacyTeamMembersCard } from './LegacyTeamMembersCard';
 import {
@@ -186,11 +187,13 @@ export function TeamDetailV2Panels({
     }
     return days;
   }, [events]);
-  const showCourses = isTeamDetailSectionVisible(team, 'courses');
+  // T-090：自建俱樂部不開放教學（課程）與賽事，與 TeamDetailPage getTabsForTeam 一致。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
+  const showCourses = !userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses');
   const showEvents = isTeamDetailSectionVisible(team, 'events');
   const showMembers = isTeamDetailSectionVisible(team, 'members');
   const showRecord = isTeamDetailSectionVisible(team, 'record');
-  const showMatches = isTeamDetailSectionVisible(team, 'matches');
+  const showMatches = !userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches');
   const showBio = isTeamDetailSectionVisible(team, 'bio');
   const showInfo = isTeamDetailSectionVisible(team, 'info');
 

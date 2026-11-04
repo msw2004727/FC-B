@@ -10,7 +10,7 @@ import {
 import { getLastKnownAuthUid } from '@/data/auth';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
-import { useViewer } from '@/features/profile/data/viewer';
+import { requestViewerRefresh, useViewer } from '@/features/profile/data/viewer';
 import { SPORTS } from '@/features/events/data/sports';
 import { canCreateTeam, resolveClubDetailAccess } from '../club-policy';
 import { TeamFormModal } from '../components/legacy/TeamFormModal';
@@ -304,6 +304,8 @@ export default function TeamsPage(): JSX.Element {
     setCreateFormUid(null);
     // createTeamDoc 已 invalidateTeams；沿用本頁 attempt 重新載入並就地重繪。
     setAttempt((value) => value + 1);
+    // 建立者的 teamIds 已由伺服器／角色同步更新；重讀 viewer 讓「我的俱樂部」等依 teamIds 的畫面跟上。
+    requestViewerRefresh();
   }
 
   function handleToggleFilters(): void {

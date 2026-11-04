@@ -2,6 +2,7 @@ import { callFn } from '@/data/callables';
 import { generateId, ID_PREFIX } from '@/data/ids';
 import { deliverInboxMessage } from '@/data/inbox-delivery';
 import { writeOpLog } from '@/data/op-log';
+import { t } from '@/i18n/i18n';
 import {
   DEFAULT_EVENT_COVER_URL,
   uploadImageDataUrl,
@@ -14,6 +15,8 @@ import {
   canEditTeamSettings,
   canTransferCaptain,
   getTeamLeaderUidList,
+  isUserCapabilityTeam,
+  isUserCapabilityTeamCreator,
 } from '../club-policy';
 import {
   bestEffort,
@@ -32,7 +35,14 @@ import type {
   TeamFormValues,
   TeamStaffSnapshot,
 } from './team-form-model';
-import { createTeamDoc, updateTeamBasicDoc } from './teams-create';
+import {
+  createTeamDoc,
+  createUserTeamViaCallable,
+  pickUserTeamCreateFields,
+  updateTeamBasicDoc,
+} from './teams-create';
+import { loadTeamMembers } from './teams-repo';
+import { userTeamCreateErrorKey } from './user-team-errors';
 import type { TeamDoc } from './types';
 
 export type TeamFormImages = {
@@ -44,10 +54,19 @@ export interface TeamFormViewer {
   uid: string | null;
   displayName?: string;
   hasPermission(code: string): boolean;
+  /** T-090：判斷是否走一般用戶 Callable 建立路徑。 */
+  role?: string;
+  capabilities?: readonly string[];
 }
 
 export type SubmitTeamResult =
-  | { ok: true; teamId: string; roleSyncOk: boolean }
+  | {
+    ok: true;
+    teamId: string;
+    roleSyncOk: boolean;
+    /** T-090：俱樂部已建立但圖片上傳／寫回失敗，可稍後在編輯頁補圖。 */
+    imagePending?: boolean;
+  }
   | {
     ok: false;
     reason: 'forbidden' | 'invalid' | 'captain-mismatch' | 'verify-failed' | 'write-failed';
@@ -60,6 +79,8 @@ export interface SubmitCreateTeamInput {
   images: TeamFormImages;
   /** 圖片 Storage 時間後綴；ID 仍使用既有 generateId 的演算法。 */
   now?: () => number;
+  /** T-090：一般用戶 Callable 路徑的去重鍵；表單開啟時產生一次，重送沿用。 */
+  requestId?: string;
 }
 
 export interface SubmitEditTeamInput {
@@ -351,12 +372,14 @@ async function afterSave(
   values: TeamFormValues,
   prev: TeamStaffSnapshot | null,
   previousNames?: PreviousStaffNames,
+  skipRoleSync = false,
 ): Promise<boolean> {
   const diff = diffStaffForNotify(prev, fields);
   const tasks: Promise<unknown>[] = [];
   const completed = new Set<string>();
 
-  for (const uid of diff.recalcUids) {
+  // T-090（稽核 Q7）：自建俱樂部的幹部欄位不得觸發全站角色升級，不呼叫 autoPromoteTeamRole。
+  for (const uid of skipRoleSync ? [] : diff.recalcUids) {
     tasks.push(bestEffort('autoPromoteTeamRole', async () => {
       const response = await recalculateRole(uid, teamId);
       if (response && typeof response === 'object' && response.success !== false) {
@@ -408,7 +431,7 @@ async function afterSave(
 
   // role_upgrade 站內信及 role 操作日誌不屬本卡範圍。
   await Promise.allSettled(tasks);
-  return diff.recalcUids.every(uid => completed.has(uid));
+  return skipRoleSync || diff.recalcUids.every(uid => completed.has(uid));
 }
 
 function createFailure(error: unknown): SubmitTeamResult {
@@ -416,6 +439,97 @@ function createFailure(error: unknown): SubmitTeamResult {
     ? error.message
     : typeof error === 'string' && error ? error : '請稍後再試';
   return { ok: false, reason: 'write-failed', message: `儲存失敗：${reason}` };
+}
+
+/** T-090：Callable createUserTeam 的 requestId（/^[A-Za-z0-9_-]{8,64}$/）。 */
+export function createUserTeamRequestId(): string {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  return `utc_${Date.now().toString(36)}_${random}`.slice(0, 64);
+}
+
+/**
+ * T-090：一般用戶建立俱樂部。先呼叫 Callable 取得 teamId，再上傳圖片並以 updateTeamBasicDoc 寫回；
+ * 俱樂部建成之後的任何失敗都只標 imagePending，不回報失敗，避免使用者重複建立。
+ * 幹部欄位由伺服器決定（經理＝本人），不送領隊／教練、不呼叫角色升級、不發指派通知。
+ */
+async function submitCreateUserTeam(
+  viewer: TeamFormViewer,
+  values: TeamFormValues,
+  images: TeamFormImages,
+  requestId: string,
+  now?: () => number,
+): Promise<SubmitTeamResult> {
+  // 只允許本人：表單把領隊固定為本人；其他人（含未連結舊姓名）一律拒絕，不送伺服器。
+  if (
+    values.coaches.length > 0
+    || values.leaders.some(member => member.uid !== viewer.uid)
+    || values.unresolvedCoachNames.some(name => name.trim().length > 0)
+    || values.unresolvedLeaderNames.some(name => name.trim().length > 0)
+  ) {
+    return { ok: false, reason: 'forbidden', message: '權限不足' };
+  }
+  const captain = values.captain;
+  if (!captain || captain.uid !== viewer.uid) {
+    return { ok: false, reason: 'captain-mismatch' };
+  }
+  const validation = validateTeamFormValues({ ...values, leaders: [captain] }, 'create');
+  if (!validation.ok) {
+    return { ok: false, reason: 'invalid', message: validation.message };
+  }
+
+  // teamId 由伺服器產生；這裡只借用欄位組裝，id 等非基本欄位會被 pickUserTeamCreateFields 濾掉。
+  const payload = buildCreateTeamPayload({
+    teamId: 'pending',
+    values,
+    contactLinks: validation.contactLinks,
+    image: resolveDefaultTeamCoverImage(),
+    imageVariants: null,
+  });
+
+  let teamId: string;
+  try {
+    const created = await createUserTeamViaCallable(
+      requestId,
+      pickUserTeamCreateFields(payload as unknown as Record<string, unknown>),
+    );
+    teamId = created.teamId;
+  } catch (error: unknown) {
+    // 不露出原始錯誤；原因碼對照使用者文案。
+    return { ok: false, reason: 'write-failed', message: t(userTeamCreateErrorKey(error)) };
+  }
+
+  let imagePending = false;
+  const wantsImage = !!images.coverDataUrl || !!images.cardDataUrl;
+  if (wantsImage) {
+    try {
+      const variants = await uploadImages(teamId, images, now);
+      const complete = !!variants
+        && (!images.coverDataUrl || !!variants.cover)
+        && (!images.cardDataUrl || !!variants.card);
+      if (variants) {
+        // 與 buildCreateTeamPayload 相同：封面優先、沒有封面才用卡片圖。
+        await updateTeamBasicDoc({ id: teamId, _docId: teamId }, {
+          image: variants.cover || variants.card || null,
+          imageVariants: variants,
+        });
+      }
+      imagePending = !complete;
+    } catch {
+      imagePending = true;
+    }
+  }
+
+  await bestEffort('writeOpLog', () => writeOpLog({
+    type: 'team_create',
+    typeName: '建立俱樂部',
+    content: `建立「${payload.name}」`,
+    actorUid: viewer.uid,
+    operator: viewer.displayName || '系統',
+  }));
+
+  return { ok: true, teamId, roleSyncOk: true, ...(imagePending ? { imagePending: true } : {}) };
 }
 
 export async function submitCreateTeam(
@@ -427,6 +541,15 @@ export async function submitCreateTeam(
     // TeamFormImages 的欄位皆為字串；複製物件即與原輸入完全隔離。
     const images: TeamFormImages = { ...input.images };
     if (!canCreateTeam(viewer)) return { ok: false, reason: 'forbidden' };
+    if (isUserCapabilityTeamCreator(viewer)) {
+      return await submitCreateUserTeam(
+        viewer,
+        values,
+        images,
+        input.requestId || createUserTeamRequestId(),
+        now,
+      );
+    }
     if (
       (values.coaches.length > 0
         || values.unresolvedCoachNames.some(name => name.trim().length > 0))
@@ -510,6 +633,33 @@ export async function submitEditTeam(
       return { ok: false, reason: 'forbidden', message: '權限不足' };
     }
 
+    const userCapabilityTeam = isUserCapabilityTeam(team);
+    if (userCapabilityTeam) {
+      // T-090：自建俱樂部新增的領隊／教練必須是現有成員（不可輸入任意 UID）。
+      const previous = new Set([
+        ...(prev.leaderUids ?? []),
+        ...(prev.coachUids ?? []),
+        prev.captainUid?.trim() || '',
+      ].filter(Boolean));
+      const added = [...values.leaders, ...values.coaches]
+        .map(member => member.uid.trim())
+        .filter(uid => uid && !previous.has(uid));
+      if (added.length > 0) {
+        let members: Awaited<ReturnType<typeof loadTeamMembers>> = null;
+        try {
+          members = await loadTeamMembers(team);
+        } catch {
+          members = null;
+        }
+        const memberUids = members
+          ? new Set(members.map(member => String(member.uid ?? '').trim()))
+          : null;
+        if (!memberUids || added.some(uid => !memberUids.has(uid))) {
+          return { ok: false, reason: 'forbidden', message: t('clubs.staffMembersOnly') };
+        }
+      }
+    }
+
     const verifiedValues = await verifyStaff(values);
     if (!verifiedValues) {
       return { ok: false, reason: 'verify-failed', message: VERIFY_MESSAGE };
@@ -528,7 +678,7 @@ export async function submitEditTeam(
     let roleSyncOk = false;
     await bestEffort('afterEditTeam', async () => {
       roleSyncOk = await afterSave(
-        viewer, teamId, patch, verifiedValues, prev, previousNames,
+        viewer, teamId, patch, verifiedValues, prev, previousNames, userCapabilityTeam,
       );
     });
     return { ok: true, teamId, roleSyncOk };

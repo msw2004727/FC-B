@@ -1,3 +1,4 @@
+import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { teams as teamsCollection } from '@/data/paths';
 import type { CreateTeamPayload, UpdateTeamPatch } from './team-form-model';
@@ -22,6 +23,19 @@ const createKeys = new Set<string>([
   'id', 'members', 'active', 'pinned', 'pinOrder',
   'wins', 'draws', 'losses', 'gf', 'ga', 'history',
 ]);
+
+/**
+ * T-090：Callable createUserTeam 的 team 只接受基本欄位；幹部欄位（leader*／captain*／coach*）
+ * 伺服器會覆寫，B 不送，免得表單看起來能指派他人。
+ */
+const userCreateKeys = new Set<string>([
+  'name', 'nameEn', 'nationality', 'region', 'founded', 'contact', 'bio',
+  'contactLinksEnabled', 'contactLinks',
+  'type', 'sportTag', 'teachingEnabled', 'eduSettings',
+  'image', 'imageVariants',
+]);
+
+const USER_TEAM_REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
 function fail(message: string): never {
   throw new Error(`[teams-create] ${message}`);
@@ -83,7 +97,8 @@ export async function createTeamDoc(
 /** 編輯只寫 CONTRACT.md 第二節欄位；eduSettings:null 表示刪除。 */
 export async function updateTeamBasicDoc(
   target: TeamWriteTarget,
-  patch: TeamBasicPatch,
+  // T-090：一般用戶建立後只補寫 image／imageVariants，故接受部分欄位；鍵仍由 basicKeys 白名單把關。
+  patch: Partial<TeamBasicPatch>,
 ): Promise<void> {
   const docId = resolveDocId(target);
   assertKeys(patch, basicKeys);
@@ -99,4 +114,44 @@ export async function updateTeamBasicDoc(
     updatedAt: firestore.serverTimestamp(),
   });
   invalidateTeams();
+}
+
+export interface UserTeamCreateResult {
+  teamId: string;
+  created: boolean;
+}
+
+/** 從建立 payload 只挑 Callable 接受的基本欄位；值為 undefined 或 imageVariants 為 null 的不送。 */
+export function pickUserTeamCreateFields(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const team: Record<string, unknown> = {};
+  for (const key of userCreateKeys) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
+    const value = payload[key];
+    if (value === undefined) continue;
+    if (key === 'imageVariants' && value === null) continue;
+    team[key] = value;
+  }
+  return team;
+}
+
+/**
+ * T-090：一般用戶建立俱樂部唯一路徑（Callable createUserTeam，asia-east1）。
+ * requestId 由表單開啟時產生一次，重送沿用；伺服器以它去重（created:false 回原 teamId）。
+ * 錯誤原樣往外拋（CallableError），由呼叫端轉成使用者文案。
+ */
+export async function createUserTeamViaCallable(
+  requestId: string,
+  team: Record<string, unknown>,
+): Promise<UserTeamCreateResult> {
+  if (typeof requestId !== 'string' || !USER_TEAM_REQUEST_ID.test(requestId)) {
+    fail('invalid request id');
+  }
+  assertKeys(team, userCreateKeys);
+  const response = await callFn('createUserTeam', { requestId, team });
+  const teamId = typeof response?.teamId === 'string' ? response.teamId.trim() : '';
+  if (response?.ok !== true || !teamId) fail('unexpected response');
+  invalidateTeams();
+  return { teamId, created: response.created !== false };
 }

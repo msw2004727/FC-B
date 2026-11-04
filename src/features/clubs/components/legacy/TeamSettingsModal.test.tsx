@@ -982,3 +982,85 @@ describe('俱樂部設定彈窗', () => {
     expect(saveMock).not.toHaveBeenCalled();
   });
 });
+
+// T-090：修正前自建俱樂部的設定仍列出「教學」標籤與「俱樂部課程／俱樂部賽事」顯示開關（應失敗）。
+describe('T-090 自建俱樂部設定', () => {
+  it('不顯示教學標籤與課程、賽事開關；既有俱樂部照舊', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+
+    const own = setup(makeTeam({ type: 'education', createdVia: 'user_capability' }));
+    try {
+      expect(document.querySelector('.td-category-tag-education')).toBeNull();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部課程"]')).toBeNull();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部賽事"]')).toBeNull();
+      expect(checkbox('活動')).toBeTruthy();
+    } finally {
+      own.unmount();
+    }
+
+    const legacy = setup(makeTeam({ type: 'education' }));
+    try {
+      expect(document.querySelector('.td-category-tag-education')).not.toBeNull();
+      expect(checkbox('俱樂部課程')).toBeTruthy();
+      expect(checkbox('俱樂部賽事')).toBeTruthy();
+    } finally {
+      legacy.unmount();
+    }
+  });
+
+  // T-090d C-13：修正前自建俱樂部只剩三種標籤，仍顯示「四種標籤…只有教學標籤會開啟課程」說明（應失敗）。
+  it('標籤說明只在有教學選項時顯示', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    const hint = (): Element | null =>
+      document.querySelector('.td-category-settings-row > div > span');
+
+    const own = setup(makeTeam({ createdVia: 'user_capability' }));
+    try {
+      expect(hint()).toBeNull();
+      expect(document.body.textContent ?? '').not.toContain('四種標籤僅能擇一');
+    } finally {
+      own.unmount();
+    }
+
+    const legacy = setup(makeTeam());
+    try {
+      expect(hint()?.textContent).toContain('四種標籤僅能擇一');
+    } finally {
+      legacy.unmount();
+    }
+  });
+});
+
+// T-090d：修正前設定彈窗沒有刪除入口（應失敗）。是否顯示由父層傳 onDeleteTeam 決定。
+describe('T-090d 擁有者刪除鈕', () => {
+  it('未提供 onDeleteTeam 不顯示刪除鈕', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    setup(makeTeam({ createdVia: 'user_capability' }));
+    expect(screen.queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+  });
+
+  it('提供 onDeleteTeam：顯示刪除鈕，點擊呼叫父層且不寫入', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    const onDeleteTeam = vi.fn();
+    setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam });
+    fireEvent.click(screen.getByRole('button', { name: '刪除俱樂部' }));
+    expect(onDeleteTeam).toHaveBeenCalledTimes(1);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('deleting 時停用並顯示刪除中', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam: vi.fn(), deleting: true });
+    expect(screen.getByRole('button', { name: '刪除中...' }).hasAttribute('disabled')).toBe(true);
+  });
+});

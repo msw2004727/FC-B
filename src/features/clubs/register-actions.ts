@@ -17,6 +17,7 @@ import {
   type MessageActionHandler,
   type MessageActionViewer,
 } from '@/core/action-registry';
+import { isUserCapabilityTeam } from '@/features/clubs/data/team-source';
 import { approveTeamJoin, ignoreTeamJoin, rejectTeamJoin } from '@/features/clubs/data/membership';
 import { loadTeam } from '@/features/clubs/data/teams-repo';
 import type { TeamDoc } from '@/features/clubs/data/types';
@@ -61,6 +62,12 @@ function isTeamStaff(team: TeamDoc, uid: string): boolean {
   return coachUids.includes(uid);
 }
 
+/** T-090：自建俱樂部擁有者（captainUid／creatorUid／ownerUid 嚴格等於本人），同 FC team-membership-core。 */
+function isUserCapabilityTeamOwner(team: TeamDoc, uid: string): boolean {
+  if (!uid) return false;
+  return [team.captainUid, team.creatorUid, team.ownerUid].some((value) => value === uid);
+}
+
 /**
  * R-IAM-011：執行前用與顯示同一個 canAct 再檢查一次，無權限一律不寫（T-019 Codex 第二審 P1）。
  * 注意：FC Callable syncGroupActionStatus 本身只檢查登入，後端授權缺口另案回報，不在 B 修。
@@ -83,13 +90,11 @@ const handler: MessageActionHandler = {
     if (String(message?.actionStatus ?? '').trim() !== 'pending') return false;
 
     // A：若呼叫端提供 hasPermission，且兩個權限碼都沒授予，直接擋。
-    if (
-      viewer.hasPermission
+    // T-090：自建俱樂部（一般用戶沒有這兩個權限碼）例外，改由擁有者身分＋伺服器 reviewTeamJoin 把關；
+    // 既有俱樂部維持原判斷（顧問裁定：有 manage.entry 無 review_join 的舊隊長不能被擋）。
+    const lacksReviewPermission = !!viewer.hasPermission
       && !viewer.hasPermission('team.review_join')
-      && !viewer.hasPermission('team.manage.entry')
-    ) {
-      return false;
-    }
+      && !viewer.hasPermission('team.manage.entry');
 
     let team: TeamDoc;
     try {
@@ -97,6 +102,11 @@ const handler: MessageActionHandler = {
     } catch {
       // 找不到隊或 meta 不完整時不顯示操作（也避免 run 一定失敗）。
       return false;
+    }
+
+    if (lacksReviewPermission) {
+      // 對齊後端 reviewTeamJoin isUserCreatedTeamOwner：沒有權限碼時只認擁有者三欄嚴格等於本人（不 trim）。
+      return isUserCapabilityTeam(team) && isUserCapabilityTeamOwner(team, String(viewer.uid ?? ''));
     }
 
     if (isTeamStaff(team, uid)) return true;

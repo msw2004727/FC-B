@@ -42,6 +42,8 @@ import type {
   CreateCustomTokenResponse,
   CreateEventFromCourseLessonRequest,
   CreateEventFromCourseLessonResponse,
+  CreateUserTeamRequest,
+  CreateUserTeamResponse,
   DeleteTeamRequest,
   DeleteTeamResponse,
   DeliverToInboxRequest,
@@ -106,6 +108,8 @@ import type {
   RepairActivityRecordsManualResponse,
   RepairCompanionAttendanceRecordsRequest,
   RepairCompanionAttendanceRecordsResponse,
+  ReviewTeamJoinRequest,
+  ReviewTeamJoinResponse,
   RunUidHealthCheckRequest,
   RunUidHealthCheckResponse,
   SaveEduCourseSelfAttendanceRequest,
@@ -167,6 +171,7 @@ export interface CallableMap {
     req: CreateEventFromCourseLessonRequest;
     res: CreateEventFromCourseLessonResponse;
   };
+  createUserTeam: { req: CreateUserTeamRequest; res: CreateUserTeamResponse };
   deleteTeam: { req: DeleteTeamRequest; res: DeleteTeamResponse };
   deliverToInbox: { req: DeliverToInboxRequest; res: DeliverToInboxResponse };
   editPrivateMessage: { req: EditPrivateMessageRequest; res: EditPrivateMessageResponse };
@@ -247,6 +252,7 @@ export interface CallableMap {
     req: RepairCompanionAttendanceRecordsRequest;
     res: RepairCompanionAttendanceRecordsResponse;
   };
+  reviewTeamJoin: { req: ReviewTeamJoinRequest; res: ReviewTeamJoinResponse };
   runUidHealthCheck: { req: RunUidHealthCheckRequest; res: RunUidHealthCheckResponse };
   saveEduCourseSelfAttendance: {
     req: SaveEduCourseSelfAttendanceRequest;

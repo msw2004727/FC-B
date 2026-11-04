@@ -32,6 +32,7 @@ import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 
 import { canEditTeamSettings } from '../../club-policy';
+import { isUserCapabilityTeam } from '../../data/team-source';
 import { getTeamDetailVisibility } from '../../data/team-detail-model';
 import {
   getTeamCategoryMeta,
@@ -58,6 +59,10 @@ export interface TeamSettingsModalProps {
   onSaved: () => void | Promise<void>;
   /** 開啟基本資料編輯流程，由父層接線。 */
   onEditBasic: () => void;
+  /** T-090d：自建俱樂部擁有者的刪除入口，由父層判斷與接線；未提供時不顯示刪除鈕。 */
+  onDeleteTeam?: () => void;
+  /** 刪除進行中：按鈕停用並顯示「刪除中...」。 */
+  deleting?: boolean;
 }
 
 const CATEGORY_COPY: Record<TeamCategoryKey, { label: string; hint: string }> = {
@@ -145,6 +150,8 @@ function retainUnreflectedSettings(
 export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   const { team, viewer } = props;
   const lt = useLegacyT();
+  // T-090：自建俱樂部不開放教學（課程）與賽事，設定裡不出現這兩項。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
   const [pending, setPending] = useState<PendingSettings | null>(null);
   const confirmed = useRef<{ source: TeamDoc; patch: TeamSettingsPatch }>({
     source: team,
@@ -423,19 +430,24 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-row td-settings-row-primary td-category-settings-row">
                 <div>
                   <strong>{lt('俱樂部標籤', '俱樂部標籤')}</strong>
-                  <span>
-                    {lt(
-                      '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                      '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                    )}
-                  </span>
+                  {/* T-090：自建俱樂部沒有教學標籤，說明文字（四種、教學開課程）不成立，整段不顯示。 */}
+                  {userCapabilityTeam ? null : (
+                    <span>
+                      {lt(
+                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
+                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
+                      )}
+                    </span>
+                  )}
                 </div>
                 <div
                   class="td-category-tag-group"
                   role="radiogroup"
                   aria-label={lt('俱樂部標籤', '俱樂部標籤')}
                 >
-                  {getTeamCategoryOptions().map((option) => {
+                  {getTeamCategoryOptions()
+                    .filter((option) => !userCapabilityTeam || option.key !== 'education')
+                    .map((option) => {
                     // ASSUMPTION: 依附件實際簽章使用 labelKey / formHintKey，
                     // fallback 取 MiMo Q2 原文；分類 key 的回傳形狀無需調整。
                     const copy = CATEGORY_COPY[option.key];
@@ -537,6 +549,8 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-title">{lt('欄位容器顯示', '欄位容器顯示')}</div>
               {VISIBILITY_ITEMS
                 .filter((item) => item.key !== 'courses' || category === 'education')
+                .filter((item) => !userCapabilityTeam
+                  || (item.key !== 'courses' && item.key !== 'matches'))
                 .map((item) => {
                   const label = lt(item.label, item.label);
                   return (
@@ -561,6 +575,16 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
             >
               {lt('編輯基本資料', '編輯基本資料')}
             </button>
+            {props.onDeleteTeam ? (
+              <button
+                class="outline-btn td-settings-edit-btn td-settings-delete-btn"
+                type="button"
+                disabled={props.deleting === true}
+                onClick={() => latest.current.onDeleteTeam?.()}
+              >
+                {props.deleting === true ? lt('刪除中...', '刪除中...') : lt('刪除俱樂部', '刪除俱樂部')}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

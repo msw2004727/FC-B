@@ -19,5 +19,35 @@
   "roster": {
     "member": "Member"
   },
-  "actionError": "The action failed. Please retry."
+  "actionError": "The action failed. Please retry.",
+  "userCreate": {
+    "imagePending": "Club created, but the image was not uploaded. You can add it later from the edit page.",
+    "error": {
+      "authRequired": "Please log in first.",
+      "accountInvalid": "There is a problem with your account. Please log in again or contact an administrator.",
+      "roleDenied": "Please use the standard club creation option for your role.",
+      "roleUnverified": "Your role could not be verified. Please log in again.",
+      "disabled": "Club creation is not available right now.",
+      "ownLimit": "You can create up to 3 clubs.",
+      "membershipLimit": "You have already joined 10 clubs and cannot create another.",
+      "invalid": "Some information is invalid. Please check and try again.",
+      "typeNotAllowed": "This category is not available right now. Please choose another one.",
+      "retry": "The system is busy. Please try again.",
+      "failed": "Could not create the club. Please try again later."
+    }
+  },
+  "joinReview": {
+    "error": {
+      "authRequired": "Please log in first.",
+      "accountInvalid": "There is a problem with your account. Please log in again or contact an administrator.",
+      "denied": "You do not have permission to review this request.",
+      "notFound": "This request could not be found.",
+      "notPending": "This request has already been handled.",
+      "teamInvalid": "There is a problem with this club. Please contact an administrator.",
+      "selfReview": "You cannot review your own request.",
+      "retry": "Please try again.",
+      "failed": "Could not complete the review. Please try again later."
+    }
+  },
+  "staffMembersOnly": "You can only choose from current club members."
 }

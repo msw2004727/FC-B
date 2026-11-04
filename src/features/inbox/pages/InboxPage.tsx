@@ -24,6 +24,7 @@ import { formatPmTime } from '../components/pm-message-format';
 import { appConfirm } from '@/ui/AppConfirm';
 import { pushOverlay } from '@/core/overlay-back';
 import { toast } from '@/ui/Toast';
+import { getUserFacingMessage } from '@/features/clubs/data/user-team-errors';
 
 const STORAGE_TOTAL = 50;
 const SEARCH_DEBOUNCE_MS = 180;
@@ -486,9 +487,12 @@ export default function InboxPage(): JSX.Element {
       if (successKey) {
         toast.show({ message: lt(successKey, successKey) });
       }
-    } catch {
+    } catch (error) {
+      // T-090：reviewTeamJoin 等已轉成使用者文案的錯誤優先顯示（不含原始錯誤）。
       // ASSUMPTION: A message-actions-*.js 未附至此，暫用 B/A 通用失敗文字
-      toast.show({ message: lt('操作失敗，請重試。', '操作失敗，請重試。') });
+      toast.show({
+        message: getUserFacingMessage(error) ?? lt('操作失敗，請重試。', '操作失敗，請重試。'),
+      });
     } finally {
       if (mountedRef.current) {
         setActionUi((prev) => ({ ...prev, runningKey: null }));

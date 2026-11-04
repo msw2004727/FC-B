@@ -30,6 +30,12 @@ const ACTIONS = {
   canManageEvent,
 } as const;
 
+// T-090：oracle fixture 是 A 加入 user.activity.team_create 之前的快照，該碼不在比對範圍（活動操作也不讀它）。
+type OracleCapabilityCode = Exclude<ActivityCapabilityCode, 'user.activity.team_create'>;
+const ORACLE_CAPABILITY_CODES = ACTIVITY_CAPABILITY_CODES.filter(
+  (code): code is OracleCapabilityCode => code !== 'user.activity.team_create',
+);
+
 const EXPECTED_FIELDS = [
   ...Object.keys(ACTIONS),
   'hasActivityManageEntry',
@@ -160,11 +166,11 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
       };
 
       const capabilities = Object.fromEntries(
-        ACTIVITY_CAPABILITY_CODES.map(code => [
+        ORACLE_CAPABILITY_CODES.map(code => [
           code,
           hasUserActivityCapability(context, code),
         ]),
-      ) as Record<ActivityCapabilityCode, boolean>;
+      ) as Record<OracleCapabilityCode, boolean>;
 
       const actual = {
         canEditOwnActivityBasic: canEditOwnActivityBasic(context, event),
@@ -182,7 +188,7 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
       expect(
         Object.keys(testCase.expected.capabilities).sort(),
         `${testCase.id}: capability keys`,
-      ).toEqual([...ACTIVITY_CAPABILITY_CODES].sort());
+      ).toEqual([...ORACLE_CAPABILITY_CODES].sort());
 
       for (const field of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
         expect(actual[field], `${testCase.id}: ${field}`).toBe(testCase.expected[field]);
@@ -192,7 +198,7 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
         `${testCase.id}: hasActivityManageEntry`,
       ).toBe(testCase.expected.hasActivityManageEntry);
 
-      for (const code of ACTIVITY_CAPABILITY_CODES) {
+      for (const code of ORACLE_CAPABILITY_CODES) {
         expect(actual.capabilities[code], `${testCase.id}: ${code}`)
           .toBe(testCase.expected.capabilities[code]);
       }

@@ -5,11 +5,14 @@ import {
   getTeamStaffIdentity,
 } from './data/team-detail-model';
 import { isUserInTeam } from './data/team-list-model';
+import { isUserCapabilityTeam, USER_CAPABILITY_TEAM_SOURCE } from './data/team-source';
 import type { TeamUserLike } from './data/team-list-model';
 import type { ClubViewer as ClubMemberViewer, TeamDoc } from './data/types';
 
 /** M-119：俱樂部詳情是否要求登入（照 A js/modules/team/team-detail.js:997-1000）；改成 false 即開放訪客。 */
 export const CLUB_DETAIL_REQUIRES_LOGIN = true;
+
+export { isUserCapabilityTeam, USER_CAPABILITY_TEAM_SOURCE } from './data/team-source';
 
 /** M-117：加入申請「審核中」與「被拒絕」冷卻毫秒數（照 A js/modules/team/team-form-join.js _TEAM_JOIN_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000）。 */
 export const JOIN_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -440,15 +443,37 @@ export function canCreateClubEvent(
 export interface ClubCreateTeamViewer {
   readonly uid: string | null;
   hasPermission(code: string): boolean;
+  /** T-090：useViewer() 的 role／capabilities；未提供時視為沒有前台活動能力。 */
+  readonly role?: string;
+  readonly capabilities?: readonly string[];
 }
 
-/** 對應 A js/modules/team/team-list-helpers.js:_canCreateTeamByPermission */
-export function canCreateTeam(
+/** T-090：一般用戶建立俱樂部的前台活動能力碼。 */
+export const USER_TEAM_CREATE_CAPABILITY = 'user.activity.team_create';
+
+/**
+ * T-090：一般用戶（role=user）且有 user.activity.team_create 時，建立俱樂部只能走 Callable createUserTeam。
+ * 教練以上不走此開關（顧問裁定），仍用 team.create 既有路徑。
+ */
+export function isUserCapabilityTeamCreator(
   viewer: ClubCreateTeamViewer | null | undefined,
 ): boolean {
   return typeof viewer?.uid === 'string'
     && viewer.uid.trim().length > 0
-    && viewer.hasPermission('team.create');
+    && String(viewer.role ?? '').trim() === 'user'
+    && Array.isArray(viewer.capabilities)
+    && viewer.capabilities.includes(USER_TEAM_CREATE_CAPABILITY);
+}
+
+/**
+ * 對應 A js/modules/team/team-list-helpers.js:_canCreateTeamByPermission；
+ * T-090 另加一般用戶能力開關（isUserCapabilityTeamCreator），入口與 handler 共用（R-IAM-011）。
+ */
+export function canCreateTeam(
+  viewer: ClubCreateTeamViewer | null | undefined,
+): boolean {
+  if (typeof viewer?.uid !== 'string' || viewer.uid.trim().length === 0) return false;
+  return viewer.hasPermission('team.create') || isUserCapabilityTeamCreator(viewer);
 }
 
 /**
@@ -498,9 +523,32 @@ export function canDeleteTeam(
 ): boolean {
   if (!team || !isMemberViewerLoggedIn(viewer)) return false;
   if (viewer.role === 'super_admin') return true;
+  // T-090：自建俱樂部的擁有者（經理／建立者／擁有者 UID）可刪，伺服器 deleteTeam 已放寬；Rules 不允許直刪，一律走 Callable。
+  if (isUserCapabilityTeam(team)) {
+    const uid = viewer.uid.trim();
+    if ([team.captainUid, team.creatorUid, team.ownerUid]
+      .some((value) => String(value ?? '').trim() === uid)) {
+      return true;
+    }
+  }
   const coachPlus = viewer.roleLevel >= (BASE_ROLE_LEVEL_MAP.coach ?? 1)
     || viewer.hasPermission('admin.repair.team_join_repair');
   return coachPlus && canEditTeamSettings(viewer, team);
+}
+
+/**
+ * T-090d：詳情頁（俱樂部設定底部）「刪除俱樂部」鈕。只給自建俱樂部（createdVia 嚴格等於 'user_capability'）的
+ * 擁有者本人：captainUid／creatorUid／ownerUid 任一嚴格等於登入 UID（不 trim）。legacy 俱樂部不出此鈕，
+ * 維持管理頁原入口。實際刪除一律走 Callable deleteTeam（Rules 不允許擁有者直刪）。
+ */
+export function canOwnerDeleteUserTeam(
+  viewer: { readonly uid?: string | null } | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  const uid = viewer?.uid;
+  if (!team || typeof uid !== 'string' || uid.length === 0) return false;
+  if (team.createdVia !== USER_CAPABILITY_TEAM_SOURCE) return false;
+  return team.captainUid === uid || team.creatorUid === uid || team.ownerUid === uid;
 }
 
 /** A `editTeamMemberMatchData` 的守衛 `_canManageTeamMembers`（背號／位置）。 */
@@ -526,10 +574,12 @@ export function canAssignCoach(
 /** 對應 A js/modules/team/team-form-init.js:400-411（經理轉移區權限） */
 export function canTransferCaptain(
   viewer: ClubCreateTeamViewer | null | undefined,
-  team: Pick<TeamDoc, 'captainUid'> | null | undefined,
+  team: Pick<TeamDoc, 'captainUid' | 'createdVia'> | null | undefined,
 ): boolean {
   // ASSUMPTION: 附件未含該段函式名稱及完整原碼，依本卡指定條件；
   // trim 僅判 uid 是否非空，身分採 captainUid === uid，不以名稱或其他擁有者欄位代替。
   if (!team || typeof viewer?.uid !== 'string' || !viewer.uid.trim()) return false;
+  // T-090：自建俱樂部不開放經理轉移（Rules 不允許改經理），入口與送出一併關閉。
+  if (isUserCapabilityTeam(team)) return false;
   return viewer.hasPermission('team.manage_all') || team.captainUid === viewer.uid;
 }

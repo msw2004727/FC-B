@@ -35,7 +35,11 @@ vi.mock('@/features/events/data/user-directory', () => ({
 vi.mock('../../data/team-form-actions', () => ({
   submitCreateTeam: vi.fn(),
   submitEditTeam: vi.fn(),
+  // T-090d：use-team-form 開表單時產生 requestId，mock 需補上此匯出（測試同步更新）。
+  createUserTeamRequestId: vi.fn(() => 'req_test_00000001'),
 }));
+// T-090 P2-1：自建俱樂部編輯會載入成員名單；mock 避免連 Firestore（測試同步更新）。
+vi.mock('../../data/teams-repo', () => ({ loadTeamMembers: vi.fn() }));
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
 vi.mock('@/ui/AppConfirm', () => ({ appConfirm: vi.fn() }));
 vi.mock('@/features/events/components/event-form/ImageCropper', () => ({
@@ -503,6 +507,61 @@ describe('useTeamForm', () => {
     expect(api.showEduSettings).toBe(true);
     expect(api.categoryHint).toBe('教學標籤會啟用課程、學員與待審核功能。');
     expect(api.values.captain?.uid).toBe('me');
+  });
+
+  // T-090 P2-1：修正前 categoryOptions 一律是完整四類，一般用戶建立與自建俱樂部編輯仍可選「教學」。
+  it('一般用戶建立與自建俱樂部編輯不提供教學分類；既有權限建立仍提供', async () => {
+    const keys = () => api.categoryOptions.map(option => option.key);
+    render(<Harness {...props()} />);
+    await flush();
+    expect(keys()).toEqual(['none', 'competitive', 'education', 'leisure']);
+    cleanup();
+
+    render(<Harness {...props({
+      viewer: {
+        uid: 'me',
+        displayName: '一般用戶',
+        hasPermission: () => false,
+        role: 'user',
+        capabilities: ['user.activity.team_create'],
+      },
+    })} />);
+    await flush();
+    expect(keys()).toEqual(['none', 'competitive', 'leisure']);
+    cleanup();
+
+    render(<Harness {...props({
+      mode: 'edit',
+      team: { id: 'own-team', captainUid: 'me', createdVia: 'user_capability' },
+    })} />);
+    await flush();
+    expect(keys()).toEqual(['none', 'competitive', 'leisure']);
+  });
+
+  // T-090d C-04：修正前 coaches.allowed 只看 canAssignCoach，一般用戶建立若帶 team.manage.entry 仍為 true（應失敗）。
+  it('一般用戶建立不能指派教練（含帶教練權限碼）；既有權限建立仍可', async () => {
+    render(<Harness {...props()} />);
+    await flush();
+    expect(api.coaches.allowed).toBe(true);
+    cleanup();
+
+    render(<Harness {...props({
+      viewer: {
+        uid: 'me',
+        displayName: '一般用戶',
+        hasPermission: code => code === 'team.manage.entry',
+        role: 'user',
+        capabilities: ['user.activity.team_create'],
+      },
+    })} />);
+    await flush();
+    expect(api.coaches.allowed).toBe(false);
+    expect(api.leaders.allowed).toBe(false);
+    await act(async () => {
+      await api.coaches.add('coach');
+    });
+    expect(api.values.coaches).toEqual([]);
+    expect(verifyUserDirectorySelection).not.toHaveBeenCalled();
   });
 
   it('編輯預填、legacy UID 回退、未連結姓名不以同名配對', async () => {

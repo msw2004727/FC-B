@@ -135,7 +135,8 @@ describe('register-actions: team_join_request', () => {
     ).toBe(true);
   });
 
-  it('有 hasPermission 且兩個權限碼都沒授予時直接擋', async () => {
+  // 測試同步更新（T-090）：沒有權限碼時要先讀 team 才能分辨是否為自建俱樂部；既有俱樂部仍一律擋下。
+  it('有 hasPermission 且兩個權限碼都沒授予時，既有俱樂部擋下', async () => {
     loadTeamMock.mockResolvedValue(teamWith({ captainUid: CAPTAIN_UID }));
     const handler = getMessageAction('team_join_request')!;
     const deniedViewer: MessageActionViewer = {
@@ -144,8 +145,62 @@ describe('register-actions: team_join_request', () => {
       hasPermission: () => false,
     };
     expect(await handler.canAct(deniedViewer, makeMessage())).toBe(false);
-    // 沒有讀 team 就已經從 hasPermission 分支擋下
-    expect(loadTeamMock).not.toHaveBeenCalled();
+  });
+
+  // T-090：修正前一般用戶沒有 team.review_join／team.manage.entry，自建俱樂部的經理永遠看不到審核按鈕（應失敗）。
+  it('T-090：自建俱樂部經理沒有權限碼也可操作；非幹部仍不可', async () => {
+    loadTeamMock.mockResolvedValue(
+      teamWith({ captainUid: CAPTAIN_UID, createdVia: 'user_capability' }),
+    );
+    const handler = getMessageAction('team_join_request')!;
+    const noPerm = (uid: string): MessageActionViewer => ({
+      uid,
+      role: 'user',
+      hasPermission: () => false,
+    });
+    expect(await handler.canAct(noPerm(CAPTAIN_UID), makeMessage())).toBe(true);
+    expect(await handler.canAct(noPerm(RANDOM_UID), makeMessage())).toBe(false);
+  });
+
+  // T-090 P2-2：修正前沒有權限碼時用 isTeamStaff 判斷，自建俱樂部的領隊／教練也會看到審核按鈕，
+  // 但後端 reviewTeamJoin 只認擁有者（captainUid／creatorUid／ownerUid 嚴格等於本人），按下必失敗（應失敗）。
+  it('T-090：自建俱樂部沒有權限碼時只認擁有者三欄嚴格相等，領隊／教練不可', async () => {
+    const handler = getMessageAction('team_join_request')!;
+    const noPerm = (uid: string): MessageActionViewer => ({
+      uid,
+      role: 'user',
+      hasPermission: () => false,
+    });
+    loadTeamMock.mockResolvedValue(teamWith({
+      captainUid: 'Uother',
+      creatorUid: 'Ucreator',
+      ownerUid: 'Uowner',
+      leaderUids: [LEADER_IN_ARRAY],
+      coachUids: [COACH_UID],
+      createdVia: 'user_capability',
+    }));
+    expect(await handler.canAct(noPerm(LEADER_IN_ARRAY), makeMessage())).toBe(false);
+    expect(await handler.canAct(noPerm(COACH_UID), makeMessage())).toBe(false);
+    expect(await handler.canAct(noPerm('Ucreator'), makeMessage())).toBe(true);
+    expect(await handler.canAct(noPerm('Uowner'), makeMessage())).toBe(true);
+
+    loadTeamMock.mockResolvedValue(
+      teamWith({ captainUid: ` ${CAPTAIN_UID} `, createdVia: 'user_capability' }),
+    );
+    expect(await handler.canAct(noPerm(CAPTAIN_UID), makeMessage())).toBe(false);
+  });
+
+  it('T-090：自建俱樂部經理執行 approve 時交給 approveTeamJoin（內部走 reviewTeamJoin）', async () => {
+    loadTeamMock.mockResolvedValue(
+      teamWith({ captainUid: CAPTAIN_UID, createdVia: 'user_capability' }),
+    );
+    const handler = getMessageAction('team_join_request')!;
+    await handler.actions[0]!.run(makeMessage(), {
+      uid: CAPTAIN_UID,
+      role: 'user',
+      hasPermission: () => false,
+    });
+    expect(approveMock).toHaveBeenCalledTimes(1);
   });
 
   it('有 hasPermission 且其中一個權限碼授予時可繼續判定', async () => {

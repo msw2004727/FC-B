@@ -27,10 +27,13 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
+import { deleteTeamViaCallable } from '../data/teams-admin-write';
 import {
   canCreateClubEvent,
   canEditTeamSettings,
+  canOwnerDeleteUserTeam,
   canShowInviteQr,
+  isUserCapabilityTeam,
   resolveClubDetailAccess,
 } from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
@@ -72,7 +75,9 @@ interface EventResource {
 
 function getTabsForTeam(team: TeamDoc, courseCount: number, eventCount: number): V2TabDef[] {
   const tabs: V2TabDef[] = [{ key: 'overview', label: '總覽' }];
-  if (isTeamDetailSectionVisible(team, 'courses')) {
+  // T-090：自建俱樂部不開放教學（課程）與賽事入口。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
+  if (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
     tabs.push({ key: 'courses', label: '課程', badge: courseCount });
   }
   if (isTeamDetailSectionVisible(team, 'events')) {
@@ -83,7 +88,7 @@ function getTabsForTeam(team: TeamDoc, courseCount: number, eventCount: number):
   }
   if (
     isTeamDetailSectionVisible(team, 'record') ||
-    isTeamDetailSectionVisible(team, 'matches')
+    (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches'))
   ) {
     tabs.push({ key: 'record', label: '戰績' });
   }
@@ -131,6 +136,7 @@ function TeamDetailContent({
   const [pickedTab, setPickedTab] = useState<V2TabKey | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   // 單一狀態確保設定與基本資料表單不會同時掛載。
   const [teamOverlay, setTeamOverlay] = useState<'settings' | 'edit-basic' | null>(null);
@@ -603,6 +609,35 @@ function TeamDetailContent({
     }
   }
 
+  /** T-090d：自建俱樂部擁有者刪除。確認框與文案沿用管理頁；只走 Callable deleteTeam，成功導回列表並重讀 viewer。 */
+  async function handleOwnerDelete(): Promise<void> {
+    if (actionLock.current || !team || !canOwnerDeleteUserTeam(viewer, team)) return;
+    actionLock.current = true;
+    setBusy(true);
+    try {
+      if (!(await appConfirm(`確定要刪除「${team.name ?? ''}」？此操作無法復原。`))) return;
+      if (!alive.current) return;
+      setDeleting(true);
+      const result = await deleteTeamViaCallable(team);
+      if (result.status === 'partial') {
+        if (alive.current) toast.show({ message: '部分成員資料尚未清除，請再按一次刪除', tone: 'error' });
+        return;
+      }
+      requestViewerRefresh();
+      toast.show({ message: `已刪除「${team.name ?? ''}」` });
+      location.route('/teams', true);
+    } catch (error) {
+      console.error('[TeamDetailPage.ownerDelete]', error);
+      if (alive.current) toast.show({ message: '刪除俱樂部失敗，請稍後再試', tone: 'error' });
+    } finally {
+      actionLock.current = false;
+      if (alive.current) {
+        setDeleting(false);
+        setBusy(false);
+      }
+    }
+  }
+
   return (
     <div class="legacy-ui">
       <section class="page active td-v2-active" id="page-team-detail">
@@ -706,6 +741,10 @@ function TeamDetailContent({
                 onClose={() => setTeamOverlay(null)}
                 onSaved={() => reloadTeamSilently()}
                 onEditBasic={handleEditBasic}
+                onDeleteTeam={canOwnerDeleteUserTeam(viewer, team)
+                  ? () => { void handleOwnerDelete(); }
+                  : undefined}
+                deleting={deleting}
               />
             ) : teamOverlay === 'edit-basic' ? (
               <TeamFormModal

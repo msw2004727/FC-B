@@ -11,6 +11,9 @@
  * - 申請加入走 `deliverToInbox` + `enqueuePrivilegedLineNotification` + `writeAuditLog`。
  * - 同 groupId 其他幹部訊息同步走 `syncGroupActionStatus`。
  * - 名稱比對分支不移植（R-ID-002），只以 uid 判定。
+ * - T-090：自建俱樂部（createdVia === 'user_capability'）的核准／拒絕／忽略一律走 Callable `reviewTeamJoin`，
+ *   通知由伺服器代發（客戶端不再發，避免重複）、不呼叫 syncGroupActionStatus；
+ *   membershipAdded 為 true 才 best-effort 呼叫 recountTeamMembers。既有俱樂部維持原路徑。
  * - best-effort 副作用（audit log／推播／broadcast／syncGroupActionStatus）失敗只 warn，
  *   不得讓主結果失敗；主要寫入（users/updateDoc、deliverToInbox-of-request）失敗往外拋。
  *
@@ -25,13 +28,17 @@ import type { Firestore } from 'firebase/firestore';
 import { callFn } from '@/data/callables';
 import type {
   EnqueuePrivilegedLineNotificationRequest,
+  ReviewTeamJoinResponse,
   WriteAuditLogRequest,
 } from '@/data/contract/callables';
 import { deliverInboxMessage as deliverInbox, type InboxDeliveryExtra } from '@/data/inbox-delivery';
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
+import { t } from '@/i18n/i18n';
 
+import { isUserCapabilityTeam } from './team-source';
 import type { TeamDoc, TeamMember } from './types';
+import { teamJoinReviewErrorKey, UserFacingError } from './user-team-errors';
 
 /* ── 型別 ─────────────────────────────────────────── */
 
@@ -394,6 +401,63 @@ async function broadcastToOtherStaff(
   }
 }
 
+/* ── T-090：自建俱樂部審核走 Callable ─────────────── */
+
+async function reviewUserCapabilityTeamJoin(
+  team: TeamDoc,
+  applicantUid: string,
+  message: InboxMessageForReview,
+  action: 'approve' | 'reject' | 'ignore',
+): Promise<ReviewTeamJoinResponse> {
+  // 後端以申請的 meta.teamId 比對（舊格式俱樂部為公開 id）；沒有才用 team.id。
+  const teamId = trimUid(message?.meta?.teamId) || trimUid(team?.id);
+  const groupId = trimName(message?.meta?.groupId);
+  const targetApplicantUid = trimUid(applicantUid);
+  if (!teamId || !groupId || !targetApplicantUid) {
+    throw new UserFacingError(t('clubs.joinReview.error.notFound'));
+  }
+
+  let response: ReviewTeamJoinResponse;
+  try {
+    response = await callFn('reviewTeamJoin', {
+      teamId,
+      groupId,
+      applicantUid: targetApplicantUid,
+      action,
+    });
+  } catch (err) {
+    // 不露出原始錯誤；原因碼對照使用者文案。
+    throw new UserFacingError(t(teamJoinReviewErrorKey(err)));
+  }
+
+  if (response?.membershipAdded === true) {
+    await runBestEffort(
+      () => callFn('recountTeamMembers', { teamId }),
+      'reviewTeamJoin.recountTeamMembers',
+      teamId,
+    );
+  }
+  // 與既有俱樂部路徑相同的審計紀錄（忽略不寫）；只在本次真的做出決定時寫。
+  // 不等待：失敗只記 warn，不影響審核結果、不延後畫面更新（runBestEffort 不會 reject）。
+  if (action !== 'ignore' && response?.alreadyReviewed === false) {
+    const approved = action === 'approve';
+    void runBestEffort(
+      () =>
+        writeAudit({
+          action: approved ? 'team_join_approve' : 'team_join_reject',
+          targetType: 'team',
+          targetId: teamId,
+          targetLabel: trimName(message?.meta?.teamName) || trimName(team?.name),
+          result: 'success',
+          meta: { teamId, statusTo: approved ? 'approved' : 'rejected' },
+        }),
+      approved ? 'reviewTeamJoin.writeAuditLog.approve' : 'reviewTeamJoin.writeAuditLog.reject',
+      teamId,
+    );
+  }
+  return response;
+}
+
 /* ── 非同步：申請加入 ─────────────────────────────── */
 
 export async function requestTeamJoin({
@@ -487,6 +551,10 @@ export async function approveTeamJoin({
   message,
   reviewer,
 }: ApproveTeamJoinInput): Promise<{ changed: boolean }> {
+  if (isUserCapabilityTeam(team)) {
+    const response = await reviewUserCapabilityTeamJoin(team, applicantUid, message, 'approve');
+    return { changed: response?.membershipAdded === true };
+  }
   const teamId = trimUid(team?.id);
   const metaTeamName = trimName(message?.meta?.teamName);
   const teamName = metaTeamName || trimName(team?.name);
@@ -609,6 +677,10 @@ export async function rejectTeamJoin({
   message,
   reviewer,
 }: RejectTeamJoinInput): Promise<void> {
+  if (isUserCapabilityTeam(team)) {
+    await reviewUserCapabilityTeamJoin(team, applicantUid, message, 'reject');
+    return;
+  }
   const teamId = trimUid(team?.id);
   const metaTeamName = trimName(message?.meta?.teamName);
   const teamName = metaTeamName || trimName(team?.name);
@@ -700,6 +772,15 @@ export async function ignoreTeamJoin({
   message,
   reviewer,
 }: IgnoreTeamJoinInput): Promise<void> {
+  if (isUserCapabilityTeam(team)) {
+    await reviewUserCapabilityTeamJoin(
+      team,
+      trimUid(message?.meta?.applicantUid),
+      message,
+      'ignore',
+    );
+    return;
+  }
   const teamId = trimUid(team?.id);
   const groupId = trimName(message?.meta?.groupId);
   const reviewerUid = trimUid(reviewer?.uid);
