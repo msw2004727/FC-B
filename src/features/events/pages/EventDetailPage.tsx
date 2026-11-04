@@ -616,7 +616,7 @@ function EventDetailSession({
         ...current,
         event: {
           ...current.event,
-          current: active.filter((reg) => reg.status === 'confirmed').length,
+          // R-REG-002：current 沿用佔位重算的權威投影（含團隊剩餘預留），不可改成正取筆數。
           waitlist: active.filter((reg) => reg.status === 'waitlisted').length,
         },
         registrations,
@@ -706,6 +706,15 @@ function EventDetailSession({
     && canEditDetailActivity(operateContextFromViewer(viewer), event);
   const canShowDetailLog = visible && !!viewer.uid
     && canViewEventOperationLog(operateContextFromViewer(viewer), event);
+
+  // R-REG-002：current 只來自 Callable 回傳的佔位重算投影；名單重讀不再以正取筆數覆寫，
+  // 寫入成功後先套用回傳投影再重讀名單。
+  function adoptEventProjection(base: Snapshot, raw: unknown): Snapshot {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
+    const projection = raw as Partial<Snapshot['event']>;
+    setSnapshot(previous => previous && ({ ...previous, event: { ...previous.event, ...projection } }));
+    return { ...base, event: { ...base.event, ...projection } };
+  }
 
   // 僅供完整重讀完成前的即時顯示；重讀後不再重播 promoted 或推測其他會員歸屬。
   function applyReservationResult(current: Snapshot, result: ReservationSuccess): Snapshot {
@@ -1277,7 +1286,7 @@ function EventDetailSession({
         });
       }
       if (result.ok) {
-        await refresh(snapshot);
+        await refresh(adoptEventProjection(snapshot, result.response.event));
       }
     } finally {
       if (alive.current) {
@@ -1544,7 +1553,7 @@ function EventDetailSession({
         await refresh(current);
         return;
       }
-      void refreshInBackground(current);
+      void refreshInBackground(adoptEventProjection(current, result?.event));
     },
   });
 
@@ -1642,6 +1651,7 @@ function EventDetailSession({
     let waitlisted = 0;
     let cancelled = 0;
     let writeAttempted = false;
+    let projection: unknown = null;
     try {
       // 照 A _confirmCompanionRegisterUnlocked：先取消再加報（Gemini 審查 P1，原交件順序相反）。
       if (cancelRegistrationIds.length) {
@@ -1663,6 +1673,7 @@ function EventDetailSession({
           return;
         }
         cancelled = cancelRegistrationIds.length;
+        projection = response.event;
       }
       if (chosen.length) {
         if (!alive.current || currentViewer.current.uid !== uid) return;
@@ -1683,6 +1694,7 @@ function EventDetailSession({
         }
         confirmed = count(response.confirmed);
         waitlisted = count(response.waitlisted);
+        projection = response.event ?? projection;
       }
       const parts: string[] = [];
       if (confirmed + waitlisted > 0) parts.push(`新增 ${confirmed + waitlisted} 人`);
@@ -1692,7 +1704,7 @@ function EventDetailSession({
         message: parts.length ? `夥伴報名已更新：${parts.join('、')}` : '夥伴報名已更新',
       });
       setCompanionOpen(false);
-      await refresh(current);
+      await refresh(adoptEventProjection(current, projection));
     } catch (error) {
       if (!alive.current) return;
       const code = error instanceof SignupError ? error.originalCode : '';
@@ -1711,7 +1723,7 @@ function EventDetailSession({
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);
-        await refresh(current);
+        await refresh(adoptEventProjection(current, projection));
       }
     }
   }

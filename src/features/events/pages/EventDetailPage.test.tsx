@@ -753,6 +753,11 @@ describe('EventDetailPage', () => {
   });
 
   it('報名成功只更新名單、計數與按鈕，不重載活動', async () => {
+    // R-REG-002：正常成功由 Callable 回傳佔位投影，名單重讀不再自行改寫 current。
+    mocks.register.mockResolvedValue({ deduplicated: false, confirmed: 1, waitlisted: 0,
+      registrations: [self], event: { current: 1, realCurrent: 1, waitlist: 0, status: 'open',
+        participants: [self.userName], participantsWithUid: [{ uid: self.userId, name: self.userName }],
+        waitlistNames: [], waitlistWithUid: [], teamReservationSummaries: [] } });
     mocks.registrations.mockResolvedValue([self]);
     mocks.history.mockResolvedValueOnce([]).mockResolvedValue([self]);
     const view = mount();
@@ -835,6 +840,11 @@ describe('EventDetailPage', () => {
   });
 
   it('寫入成功但刷新失敗，重試只刷新不重送報名', async () => {
+    // R-REG-002：正常成功由 Callable 回傳佔位投影，名單重讀不再自行改寫 current。
+    mocks.register.mockResolvedValue({ deduplicated: false, confirmed: 1, waitlisted: 0,
+      registrations: [self], event: { current: 1, realCurrent: 1, waitlist: 0, status: 'open',
+        participants: [self.userName], participantsWithUid: [{ uid: self.userId, name: self.userName }],
+        waitlistNames: [], waitlistWithUid: [], teamReservationSummaries: [] } });
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-19T04:00:00+08:00'));
 
@@ -2261,6 +2271,88 @@ describe('T-074b 詳情頁整合', () => {
     expect(mocks.toastShow).toHaveBeenCalledTimes(toasts);
     expect(callable).toHaveBeenCalledTimes(1);
   });
+  it.each([false, true])('團隊預留→個人報名→再次調整保留權威佔位與上限（名單先展開 %s）', async expanded => {
+    const outsider = { ...self, _docId: 'outside-doc', userId: 'outside', userName: '一般正取會員' };
+    const member = { ...self, userId: 'u1', userName: '預留報名本人',
+      teamReservationTeamId: 't1', teamReservationTeamName: '一隊', teamSeatSource: 'reserved' };
+    const initial = { ...activity, current: 1, realCurrent: 1, waitlist: 0, teamReservationSummaries: [],
+      participants: [outsider.userName], participantsWithUid: [{ uid: outsider.userId, name: outsider.userName }],
+      waitlistNames: [], waitlistWithUid: [] };
+    const reserved = { ...initial, current: 4,
+      teamReservationSummaries: [{ ...teams[0]!, usedSlots: 0, remainingSlots: 3 }] };
+    const signedUp = { ...reserved, realCurrent: 2, teamReservationSummaries: [teams[0]!],
+      participants: [outsider.userName, member.userName],
+      participantsWithUid: [...reserved.participantsWithUid, { uid: member.userId, name: member.userName }] };
+    const rows = [outsider, member];
+    const callable = vi.fn(async () => ({ success: true, event: reserved, promoted: [] }));
+    registerCallableMock('adjustTeamReservation', callable);
+    mocks.viewer.mockReturnValue({ ...staffViewer, teamIds: new Set(['t1']), staffTeams: [staffViewer.staffTeams[0]] });
+    mocks.detail.mockResolvedValue({ ...detail, event: initial });
+    mocks.registrations.mockResolvedValue([outsider]);
+    mount();
+    const create = await screen.findByRole('button', { name: '團隊報名' });
+    await waitFor(() => expect((create as HTMLButtonElement).disabled).toBe(false));
+    if (expanded) {
+      fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+      await screen.findByText(outsider.userName);
+    }
+
+    // 先經真實調整入口建立三席預留，套用佔位重算的伺服器投影。
+    fireEvent.click(create);
+    fireEvent.input(screen.getByLabelText('團隊名額'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
+    await waitFor(() => expect(callable).toHaveBeenCalledTimes(1));
+    const adjustButton = await screen.findByRole('button', { name: '調整名額' });
+    await waitFor(() => expect((adjustButton as HTMLButtonElement).disabled).toBe(false));
+    expect(callable).toHaveBeenLastCalledWith(expect.objectContaining({ teamId: 't1', reservedSlots: 3 }));
+    fireEvent.click(adjustButton);
+    expect((screen.getByLabelText('團隊名額') as HTMLInputElement).max).toBe('9');
+    fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+
+    // 本人使用一席：正取兩人加剩餘兩席，權威 current 仍為 4。
+    const backgroundRows = deferredReservationRead();
+    const reads = mocks.registrations.mock.calls.length;
+    mocks.reservationSignupEvent = reserved;
+    mocks.registrations.mockReturnValueOnce(backgroundRows.promise);
+    mocks.history.mockResolvedValue([member]);
+    mocks.register.mockResolvedValue({ deduplicated: false, confirmed: 1, waitlisted: 0,
+      registrations: [member], event: signedUp });
+    const signup = screen.getByRole('button', { name: /立即報名|個人報名/ });
+    await waitFor(() => expect((signup as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(signup);
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
+    expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ preferredTeamReservationTeamId: 't1' }));
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    await act(async () => { backgroundRows.resolve(rows); });
+    await screen.findByRole('button', { name: '取消報名' });
+    await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
+
+    // 必須等背景重讀完成再開窗，不能只驗證 Callable 剛回應的瞬間。
+    fireEvent.click(screen.getByRole('button', { name: '調整名額' }));
+    const slots = screen.getByLabelText('團隊名額') as HTMLInputElement;
+    expect(slots.max).toBe('9');
+    expect(slots.min).toBe('1');
+    expect(slots.value).toBe('3');
+    expect(document.querySelector('.team-reservation-help')?.textContent).toContain('剩餘佔位：2');
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    fireEvent.input(slots, { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '團隊名額超過目前活動可用名額' }));
+    expect(callable).toHaveBeenCalledTimes(1);
+
+    // 正確上限仍可送出，避免用停用功能來掩蓋問題。
+    mocks.registrations.mockResolvedValue(rows);
+    callable.mockResolvedValueOnce({ success: true, promoted: [], event: { ...signedUp, current: 10,
+      teamReservationSummaries: [{ ...teams[0]!, reservedSlots: 9, remainingSlots: 8 }] } });
+    fireEvent.input(slots, { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
+    await waitFor(() => expect(callable).toHaveBeenCalledTimes(2));
+    expect(callable).toHaveBeenLastCalledWith(expect.objectContaining({ teamId: 't1', reservedSlots: 9 }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '團隊報名' })).toBeNull());
+    await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(mocks.registrations).toHaveBeenCalledTimes(reads + 2);
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+  });
   it('兩隊選擇送入個人報名 payload，取消選擇不送出', async () => {
     mount();
     const button = await screen.findByRole('button', { name: /立即報名|個人報名/ });
@@ -2294,6 +2386,24 @@ describe('T-074b 詳情頁整合', () => {
     await waitFor(() => expect(register).toHaveBeenCalledWith(expect.objectContaining({
       preferredTeamReservationTeamId: 't2', participants: [{ userId: 'u1', userName: '小明', companionId: 'c1', companionName: '同行小友' }],
     })));
+  });
+  it('同行者加報成功後計數採用 Callable 佔位投影，名單重讀不改寫 current', async () => {
+    mocks.viewer.mockReturnValue({ ...staffViewer, teamIds: new Set(['t1']) });
+    mocks.companions.mockResolvedValue([{ id: 'c1', name: '同行小友', gender: '女' }]);
+    const register = vi.fn(async () => ({ success: true, confirmed: 1, waitlisted: 0,
+      event: { ...activity, current: 5, realCurrent: 2, teamReservationSummaries: teams } }));
+    registerCallableMock('registerForEvent', register);
+    mount();
+    const companion = await screen.findByRole('button', { name: '幫夥伴報名' });
+    await waitFor(() => expect((companion as HTMLButtonElement).disabled).toBe(false));
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    const reads = mocks.registrations.mock.calls.length;
+    fireEvent.click(companion);
+    fireEvent.click(await screen.findByRole('checkbox', { name: /同行小友/ }));
+    fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
+    await waitFor(() => expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 5/10'));
   });
   it('只有一隊時直接帶入，不開選擇窗', async () => {
     mocks.viewer.mockReturnValue({ ...staffViewer, teamIds: new Set(['t1']) });
