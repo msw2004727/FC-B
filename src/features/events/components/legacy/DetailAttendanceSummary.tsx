@@ -7,6 +7,7 @@ export interface DetailAttendanceSummaryProps {
   max: number;
   canManage: boolean;
   canViewRecords: boolean;
+  disabled?: boolean;
   onOpen: () => void;
   onPrefetch?: () => void;
 }
@@ -21,6 +22,7 @@ export function DetailAttendanceSummary({
   max,
   canManage,
   canViewRecords,
+  disabled = false,
   onOpen,
   onPrefetch,
 }: DetailAttendanceSummaryProps): JSX.Element {
@@ -59,6 +61,7 @@ export function DetailAttendanceSummary({
           type="button"
           class="detail-toolbar-btn"
           data-detail-attendance-open-button={safeId}
+          disabled={disabled}
           onPointerDown={onPrefetch}
           onClick={onOpen}
         >

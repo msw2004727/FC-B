@@ -217,6 +217,10 @@ const DetailLineNotifyPrompt = lazy(() =>
 
 let nextSignupGeneration = 0;
 type RosterPhase = 'idle' | 'loading' | 'ready' | 'error';
+// T-074：展開與讀取共用一份狀態；已展開不可能仍是 idle。
+type RosterState =
+  | { expanded: false; phase: RosterPhase }
+  | { expanded: true; phase: Exclude<RosterPhase, 'idle'> };
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 
@@ -273,8 +277,14 @@ function EventDetailSession({
   const goBack = useGoBack('/activities');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
-  const [rosterPhase, setRosterPhase] = useState<RosterPhase>('idle');
-  const [rosterExpanded, setRosterExpanded] = useState(false);
+  const [rosterState, setRosterState] = useState<RosterState>({ expanded: false, phase: 'idle' });
+  const { phase: rosterPhase, expanded: rosterExpanded } = rosterState;
+  function setRosterPhase(update: RosterPhase | ((phase: RosterPhase) => RosterPhase)): void {
+    setRosterState(current => {
+      const phase = typeof update === 'function' ? update(current.phase) : update;
+      return phase === 'idle' ? { expanded: false, phase } : { ...current, phase };
+    });
+  }
   const [historyFailed, setHistoryFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -401,8 +411,7 @@ function EventDetailSession({
       !disposed && alive.current && request === sequence.current;
 
     setPhase('loading');
-    setRosterPhase('idle');
-    setRosterExpanded(false);
+    setRosterState({ expanded: false, phase: 'idle' });
     setHistoryFailed(false);
     setSnapshot(null);
 
@@ -475,10 +484,11 @@ function EventDetailSession({
     };
   }, [publicId, viewer.uid, reload]);
 
-  async function fetchRosterForSnapshot(current: Snapshot): Promise<void> {
+  async function fetchRosterForSnapshot(current: Snapshot, expand = false): Promise<void> {
+    // 讀取與展開在同一入口准入；被重讀鎖擋下時不改 UI 狀態。
     if (
-      !currentViewer.current.uid
-      || rosterPending.current
+      !alive.current
+      || !currentViewer.current.uid
       || reservation.isPending()
       || operation.current
       || refreshFailed
@@ -486,11 +496,17 @@ function EventDetailSession({
     ) {
       return;
     }
+    if (expand && (rosterPhase === 'ready' || rosterPending.current)) {
+      // 已有完整資料直接顯示；預讀仍在進行則接手同一個 Promise。
+      setRosterState({ expanded: true, phase: rosterPhase === 'ready' ? 'ready' : 'loading' });
+      return;
+    }
+    if (rosterPending.current) return;
     rosterPending.current = true;
     const request = ++rosterSequence.current;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
-    setRosterPhase('loading');
+    setRosterState(previous => ({ expanded: expand || previous.expanded, phase: 'loading' }));
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
       current.event,
@@ -524,9 +540,7 @@ function EventDetailSession({
   function handleOpenDetailAttendanceRecords(): void {
     const current = snapshot;
     if (!current || !currentViewer.current.uid) return;
-    setRosterExpanded(true);
-    if (rosterPhase === 'ready') return;
-    fetchRosterForSnapshot(current).catch(() => {});
+    fetchRosterForSnapshot(current, true).catch(() => {});
   }
 
   function prefetchDetailAttendanceRecords(): void {
@@ -1040,6 +1054,7 @@ function EventDetailSession({
     if (
       !currentViewer.current.uid
       || operation.current
+      || reservation.isPending()
       || refreshFailed
       || rosterPending.current
       || (backgroundRefreshSeq.current !== 0
@@ -1053,11 +1068,9 @@ function EventDetailSession({
       return;
     }
     rosterAutoOpened.current = true;
-    setRosterExpanded(true);
-    if (rosterPhase === 'ready') return;
-    fetchRosterForSnapshot(snapshot).catch(() => {});
+    fetchRosterForSnapshot(snapshot, true).catch(() => {});
   }, [phase, snapshot, canManageRoster, refreshFailed, busy, viewer.uid, rosterPhase,
-    backgroundRefreshTick]);
+    backgroundRefreshTick, reservation.busy]);
 
   const canRemoveConfirmed = Boolean(
     event && canRemoveConfirmedParticipant(operateCtx, event) === true,
@@ -2022,7 +2035,7 @@ function EventDetailSession({
               event={event}
               eventId={eventId}
               expanded={rosterExpanded}
-              onExpand={() => setRosterExpanded(true)}
+              onExpand={() => setRosterState({ expanded: true, phase: 'ready' })}
               onOpenProfile={profile}
               max={maximum}
               confirmedCount={confirmedCount}
@@ -2043,6 +2056,7 @@ function EventDetailSession({
                       max={maximum}
                       canManage={canManageRoster}
                       canViewRecords={canViewAttendanceDetails}
+                      disabled={busy || reservation.busy || refreshFailed}
                       onOpen={handleOpenDetailAttendanceRecords}
                       onPrefetch={prefetchDetailAttendanceRecords}
                     />
@@ -2065,7 +2079,7 @@ function EventDetailSession({
                         </button>
                       )}
                     </div>
-                  ) : (
+                  ) : rosterPhase === 'ready' ? (
                     <AttendanceRosterTable
                       event={event}
                       canAdjustTeamReservation={reservation.canAdjustTeam}
@@ -2097,7 +2111,7 @@ function EventDetailSession({
                       onToggleCheckbox={instantSave.onToggleCheckbox}
                       onChangeNote={instantSave.onChangeNote}
                     />
-                  )}
+                  ) : null}
                 </div>
               </div>
               <div

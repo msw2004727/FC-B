@@ -2079,6 +2079,96 @@ describe('T-074b 詳情頁整合', () => {
     expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain(member.userName);
     expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
   });
+  it.each([
+    'activity.view_noshow', 'admin.repair.no_show_adjust',
+  ].flatMap(permission => [true, false].flatMap(openBeforeRefresh =>
+    [true, false].map(registrationsFirst => ({ permission, openBeforeRefresh, registrationsFirst })),
+  )))('名額重讀鎖與完整出席載入：$permission，重讀完成前點擊 $openBeforeRefresh，報名先完成 $registrationsFirst', async ({ permission, openBeforeRefresh, registrationsFirst }) => {
+    mocks.viewer.mockReturnValue({ ...staffViewer, hasPermission: (code: string) => code === permission });
+    const member = { ...self, id: 'member-id', userName: '重讀後簽到會員',
+      teamReservationTeamId: 't1', teamReservationTeamName: '一隊', teamSeatSource: 'reserved' };
+    const waiter = { ...waiting, userId: 'u2', userName: '重讀後候補會員' };
+    const rows = [member, waiter];
+    const note = '完整出席重讀備註';
+    const attendanceRows = [
+      { _docId: 'checkin-member', uid: member.userId, type: 'checkin', status: 'active' },
+      { _docId: 'note-member', uid: member.userId, type: 'note', status: 'active', note },
+    ];
+    const refresh = deferredReservationRead();
+    const registrations = deferredReservationRead();
+    const attendance = deferredReservationRead();
+    mocks.registrations.mockReturnValueOnce(refresh.promise).mockReturnValueOnce(registrations.promise);
+    mocks.attendance.mockReturnValueOnce(attendance.promise);
+    mocks.history.mockResolvedValue([member]);
+    const callable = vi.fn(async () => ({ ...success, promoted: [], event: { ...updated,
+      waitlist: 1, participants: [member.userName],
+      participantsWithUid: [{ uid: member.userId, name: member.userName }],
+      waitlistNames: [waiter.userName], waitlistWithUid: [{ uid: waiter.userId, name: waiter.userName }],
+    } }));
+    registerCallableMock('adjustTeamReservation', callable);
+    mount();
+    const open = await screen.findByRole('button', { name: '查看出席紀錄' }) as HTMLButtonElement;
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
+    await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
+    await adjust();
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(open.disabled).toBe(true);
+    if (openBeforeRefresh) {
+      // 合成事件也必須被讀取入口拒絕，不能只依賴瀏覽器的 disabled 行為。
+      fireEvent.pointerDown(open);
+      fireEvent.click(open);
+      fireEvent.click(open);
+    }
+    expect(screen.getByRole('button', { name: '查看出席紀錄' })).toBe(open);
+    expect(document.querySelector('#detail-attendance-table table')).toBeNull();
+    expect(document.querySelector('[data-attendance-loading]')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.attendance).not.toHaveBeenCalled();
+
+    await act(async () => { refresh.resolve(rows); });
+    await waitFor(() => expect(open.disabled).toBe(false));
+    expect(screen.getByRole('button', { name: '查看出席紀錄' })).toBe(open);
+    expect(document.querySelector('#detail-attendance-table table')).toBeNull();
+    expect(mocks.registrations).toHaveBeenCalledTimes(1);
+    expect(mocks.attendance).not.toHaveBeenCalled();
+    fireEvent.pointerDown(open);
+    fireEvent.click(open);
+    fireEvent.click(open);
+    await waitFor(() => expect(mocks.attendance).toHaveBeenCalledTimes(1));
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[data-attendance-loading]')).toBeTruthy();
+    expect(document.querySelector('#detail-attendance-table table')).toBeNull();
+    expect(document.querySelector('#detail-waitlist-container table')).toBeNull();
+
+    await act(async () => {
+      if (registrationsFirst) registrations.resolve(rows);
+      else attendance.resolve(attendanceRows);
+    });
+    // 任一資料尚未完成，都不能顯示半套表格。
+    expect(document.querySelector('[data-attendance-loading]')).toBeTruthy();
+    expect(document.querySelector('#detail-attendance-table table')).toBeNull();
+    expect(document.querySelector('#detail-waitlist-container table')).toBeNull();
+    await act(async () => {
+      if (registrationsFirst) attendance.resolve(attendanceRows);
+      else registrations.resolve(rows);
+    });
+    const row = (await screen.findByText(member.userName)).closest('tr')!;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[1]!.textContent).toBe('✓');
+    expect(cells[2]!.textContent).toBe('');
+    expect(cells[3]!.textContent).toBe(note);
+    expect(document.querySelector('[data-attendance-loading]')).toBeNull();
+    expect(document.querySelector('#detail-waitlist-container')?.textContent).toContain(waiter.userName);
+    expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain(member.userName);
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(mocks.registrations).toHaveBeenLastCalledWith(detail.eventDocId);
+    expect(mocks.attendance).toHaveBeenCalledTimes(1);
+    expect(mocks.attendance).toHaveBeenLastCalledWith(detail.eventDocId);
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.history).toHaveBeenCalledTimes(1);
+    expect(callable).toHaveBeenCalledTimes(1);
+  });
   it('團隊名額完整重讀後，晚到的分隊預載不能覆蓋名單或分隊快取', async () => {
     const stale = deferredReservationRead();
     const member = { ...self, userName: '分隊正取會員', teamKey: 'A' };
