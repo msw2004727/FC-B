@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canCreateTeam,
   canDeleteTeam,
+  canOwnerDeleteUserTeam,
   canTransferCaptain,
   isUserCapabilityTeam,
   isUserCapabilityTeamCreator,
@@ -81,5 +82,28 @@ describe('自建俱樂部政策（T-090）', () => {
     expect(canDeleteTeam(deleter('u1', 'user', 0), own)).toBe(true);
     expect(canDeleteTeam(deleter('u9', 'user', 0), own)).toBe(false);
     expect(canDeleteTeam(deleter('u1', 'user', 0), legacy)).toBe(false);
+  });
+});
+
+// T-090d：修正前 canOwnerDeleteUserTeam 不存在（詳情頁沒有擁有者刪除鈕）。
+describe('canOwnerDeleteUserTeam（T-090d）', () => {
+  const base: TeamDoc = { id: 'tm_1', _docId: 'tm_1', createdVia: 'user_capability' };
+
+  it('三個擁有者欄位任一嚴格相符才回 true', () => {
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, captainUid: 'u1' })).toBe(true);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, creatorUid: 'u1' })).toBe(true);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, ownerUid: 'u1' })).toBe(true);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, captainUid: 'u2' })).toBe(false);
+  });
+
+  it('不 trim、legacy、未登入一律 false', () => {
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, captainUid: ' u1 ' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: ' u1' }, { ...base, captainUid: 'u1' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { ...base, createdVia: ' user_capability ', captainUid: 'u1' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, { id: 'tm_1', captainUid: 'u1' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: null }, { ...base, captainUid: 'u1' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: '' }, { ...base, captainUid: '' })).toBe(false);
+    expect(canOwnerDeleteUserTeam(null, { ...base, captainUid: 'u1' })).toBe(false);
+    expect(canOwnerDeleteUserTeam({ uid: 'u1' }, null)).toBe(false);
   });
 });

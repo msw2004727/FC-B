@@ -5,7 +5,7 @@ import {
   getTeamStaffIdentity,
 } from './data/team-detail-model';
 import { isUserInTeam } from './data/team-list-model';
-import { isUserCapabilityTeam } from './data/team-source';
+import { isUserCapabilityTeam, USER_CAPABILITY_TEAM_SOURCE } from './data/team-source';
 import type { TeamUserLike } from './data/team-list-model';
 import type { ClubViewer as ClubMemberViewer, TeamDoc } from './data/types';
 
@@ -534,6 +534,21 @@ export function canDeleteTeam(
   const coachPlus = viewer.roleLevel >= (BASE_ROLE_LEVEL_MAP.coach ?? 1)
     || viewer.hasPermission('admin.repair.team_join_repair');
   return coachPlus && canEditTeamSettings(viewer, team);
+}
+
+/**
+ * T-090d：詳情頁（俱樂部設定底部）「刪除俱樂部」鈕。只給自建俱樂部（createdVia 嚴格等於 'user_capability'）的
+ * 擁有者本人：captainUid／creatorUid／ownerUid 任一嚴格等於登入 UID（不 trim）。legacy 俱樂部不出此鈕，
+ * 維持管理頁原入口。實際刪除一律走 Callable deleteTeam（Rules 不允許擁有者直刪）。
+ */
+export function canOwnerDeleteUserTeam(
+  viewer: { readonly uid?: string | null } | null | undefined,
+  team: TeamDoc | null | undefined,
+): boolean {
+  const uid = viewer?.uid;
+  if (!team || typeof uid !== 'string' || uid.length === 0) return false;
+  if (team.createdVia !== USER_CAPABILITY_TEAM_SOURCE) return false;
+  return team.captainUid === uid || team.creatorUid === uid || team.ownerUid === uid;
 }
 
 /** A `editTeamMemberMatchData` 的守衛 `_canManageTeamMembers`（背號／位置）。 */

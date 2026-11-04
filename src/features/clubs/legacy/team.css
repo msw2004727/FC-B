@@ -2718,6 +2718,10 @@
   width: 100%;
   margin-top: .2rem;
 }
+.td-settings-edit-btn.td-settings-delete-btn {
+  margin-top: .6rem;
+  color: var(--danger);
+}
 
 /* Dark theme */
 [data-theme="dark"] .td-member-role.captain { background: rgba(251,191,36,.18); color: #fcd34d; }

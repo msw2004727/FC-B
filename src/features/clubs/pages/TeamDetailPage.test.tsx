@@ -13,6 +13,7 @@ import { renderEventRows, TeamDetailV2Panels, type TeamDetailV2PanelsProps } fro
 import type { TeamDetailWeekStripProps } from '../components/legacy/TeamDetailWeekStrip';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
+import { deleteTeamViaCallable } from '../data/teams-admin-write';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
@@ -124,6 +125,11 @@ vi.mock('../components/legacy/TeamSettingsModal', () => ({
         <button type="button" onClick={() => props.onEditBasic()}>
           編輯基本資料
         </button>
+        {props.onDeleteTeam ? (
+          <button type="button" disabled={props.deleting === true} onClick={() => props.onDeleteTeam?.()}>
+            刪除俱樂部
+          </button>
+        ) : null}
       </div>
     );
   },
@@ -146,6 +152,10 @@ vi.mock('../data/teams-repo', () => ({
 vi.mock('../data/membership', () => ({
   requestTeamJoin: vi.fn(),
   leaveTeam: vi.fn(),
+}));
+
+vi.mock('../data/teams-admin-write', () => ({
+  deleteTeamViaCallable: vi.fn(),
 }));
 
 vi.mock('@/features/profile/data/viewer', () => ({
@@ -1652,5 +1662,149 @@ describe('T-054c V1／V2：俱樂部活動日期與週條', () => {
     expect(cell?.querySelector('span')?.textContent).toBe('MON');
     expect(cell?.querySelector('i')).not.toBeNull();
     expect(strip?.querySelectorAll('.td-v2-day i')).toHaveLength(1);
+  });
+});
+
+// T-090d：自建俱樂部擁有者在俱樂部設定底部的「刪除俱樂部」鈕。
+// 修正前應失敗：設定彈窗沒有 onDeleteTeam，擁有者看不到刪除鈕，也無法經 Callable deleteTeam 刪除。
+describe('TeamDetailPage owner delete (T-090d)', () => {
+  const ownTeam: TeamDoc = { ...team, captainUid: 'other', createdVia: 'user_capability' };
+
+  async function openSettings(): Promise<HTMLElement> {
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    return screen.findByRole('dialog', { name: '俱樂部設定' });
+  }
+
+  it.each([
+    ['captainUid', { captainUid: 'u1' }],
+    ['creatorUid', { creatorUid: 'u1' }],
+    ['ownerUid', { ownerUid: 'u1' }],
+  ])('擁有者欄位 %s 相符時顯示刪除鈕', async (_field, patch) => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, ...patch });
+    const dialog = await openSettings();
+    expect(within(dialog).getByRole('button', { name: '刪除俱樂部' })).toBeTruthy();
+  });
+
+  it('非擁有者（team.manage_all 管理員）看得到設定但沒有刪除鈕', async () => {
+    vi.mocked(loadTeam).mockResolvedValue(ownTeam);
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('admin1'),
+      hasPermission: (code: string) => code === 'team.manage_all',
+    });
+    const dialog = await openSettings();
+    expect(within(dialog).queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+    expect(settingsModalMock.latestProps?.onDeleteTeam).toBeUndefined();
+  });
+
+  it('legacy 俱樂部的經理沒有刪除鈕（維持管理頁原入口）', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid: 'u1' });
+    const dialog = await openSettings();
+    expect(within(dialog).queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+  });
+
+  it('UID 不 trim：前後有空白的擁有者欄位不顯示刪除鈕', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: ' u1 ' });
+    const dialog = await openSettings();
+    expect(within(dialog).queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+  });
+
+  it('未登入：不開設定，也沒有刪除鈕', async () => {
+    // 同訪客名單案例：放行詳情閘門，模擬訪客看得到詳情頁。
+    authUid.value = null;
+    vi.mocked(canViewClubDetail).mockReturnValue(true);
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    expect(screen.queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+    expect(settingsModalMock.latestProps).toBeNull();
+  });
+
+  it('確認後呼叫 deleteTeam，成功導回列表並重讀 viewer', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    const target = { ...ownTeam, captainUid: 'u1' };
+    vi.mocked(loadTeam).mockResolvedValue(target);
+    vi.mocked(deleteTeamViaCallable).mockResolvedValue({ status: 'deleted', roleChangedUids: [] });
+    const dialog = await openSettings();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刪除俱樂部' }));
+
+    await waitFor(() => expect(routeState.route).toHaveBeenCalledWith('/teams', true));
+    expect(appConfirm).toHaveBeenCalledWith('確定要刪除「測試俱樂部」？此操作無法復原。');
+    expect(deleteTeamViaCallable).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(deleteTeamViaCallable).mock.calls[0]?.[0]).toMatchObject({ id: 'club', captainUid: 'u1' });
+    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
+    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ message: '已刪除「測試俱樂部」' }));
+  });
+
+  it('取消確認不呼叫 deleteTeam', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(appConfirm).mockResolvedValue(false);
+    const dialog = await openSettings();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刪除俱樂部' }));
+
+    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(deleteTeamViaCallable).not.toHaveBeenCalled();
+    expect(routeState.route).not.toHaveBeenCalled();
+    expect(requestViewerRefresh).not.toHaveBeenCalled();
+  });
+
+  it('失敗只顯示保底文案、不露原始錯誤，也不導頁', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(deleteTeamViaCallable).mockRejectedValue(new Error('TEAM_DELETE_DENIED raw-detail'));
+    const dialog = await openSettings();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刪除俱樂部' }));
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '刪除俱樂部失敗，請稍後再試', tone: 'error' }),
+    ));
+    expect(toastSpy.mock.calls.some(([arg]) => JSON.stringify(arg).includes('raw-detail'))).toBe(false);
+    expect(routeState.route).not.toHaveBeenCalled();
+    expect(requestViewerRefresh).not.toHaveBeenCalled();
+    await waitFor(() => expect(
+      within(dialog).getByRole('button', { name: '刪除俱樂部' }).hasAttribute('disabled'),
+    ).toBe(false));
+    errorSpy.mockRestore();
+  });
+
+  it('partial：提示再按一次，不導頁', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(deleteTeamViaCallable).mockResolvedValue({ status: 'partial', remaining: 2 });
+    const dialog = await openSettings();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刪除俱樂部' }));
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '部分成員資料尚未清除，請再按一次刪除' }),
+    ));
+    expect(routeState.route).not.toHaveBeenCalled();
+  });
+
+  it('防連點：確認框與 Callable 進行中再按都不重複觸發', async () => {
+    const confirm = deferred<boolean>();
+    const call = deferred<{ status: 'deleted'; roleChangedUids: string[] }>();
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(appConfirm).mockReturnValue(confirm.promise);
+    vi.mocked(deleteTeamViaCallable).mockReturnValue(call.promise);
+    const dialog = await openSettings();
+    const button = within(dialog).getByRole('button', { name: '刪除俱樂部' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(appConfirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => { confirm.resolve(true); await confirm.promise; });
+    await waitFor(() => expect(deleteTeamViaCallable).toHaveBeenCalledTimes(1));
+    expect(settingsModalMock.latestProps?.deleting).toBe(true);
+    settingsModalMock.latestProps?.onDeleteTeam?.();
+    expect(appConfirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => { call.resolve({ status: 'deleted', roleChangedUids: [] }); await call.promise; });
+    await waitFor(() => expect(routeState.route).toHaveBeenCalledWith('/teams', true));
+    expect(deleteTeamViaCallable).toHaveBeenCalledTimes(1);
   });
 });

@@ -59,6 +59,10 @@ export interface TeamSettingsModalProps {
   onSaved: () => void | Promise<void>;
   /** 開啟基本資料編輯流程，由父層接線。 */
   onEditBasic: () => void;
+  /** T-090d：自建俱樂部擁有者的刪除入口，由父層判斷與接線；未提供時不顯示刪除鈕。 */
+  onDeleteTeam?: () => void;
+  /** 刪除進行中：按鈕停用並顯示「刪除中...」。 */
+  deleting?: boolean;
 }
 
 const CATEGORY_COPY: Record<TeamCategoryKey, { label: string; hint: string }> = {
@@ -568,6 +572,16 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
             >
               {lt('編輯基本資料', '編輯基本資料')}
             </button>
+            {props.onDeleteTeam ? (
+              <button
+                class="outline-btn td-settings-edit-btn td-settings-delete-btn"
+                type="button"
+                disabled={props.deleting === true}
+                onClick={() => latest.current.onDeleteTeam?.()}
+              >
+                {props.deleting === true ? lt('刪除中...', '刪除中...') : lt('刪除俱樂部', '刪除俱樂部')}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

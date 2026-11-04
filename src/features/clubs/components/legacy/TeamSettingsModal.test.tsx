@@ -1010,3 +1010,33 @@ describe('T-090 自建俱樂部設定', () => {
     }
   });
 });
+
+// T-090d：修正前設定彈窗沒有刪除入口（應失敗）。是否顯示由父層傳 onDeleteTeam 決定。
+describe('T-090d 擁有者刪除鈕', () => {
+  it('未提供 onDeleteTeam 不顯示刪除鈕', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    setup(makeTeam({ createdVia: 'user_capability' }));
+    expect(screen.queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
+  });
+
+  it('提供 onDeleteTeam：顯示刪除鈕，點擊呼叫父層且不寫入', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    const onDeleteTeam = vi.fn();
+    setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam });
+    fireEvent.click(screen.getByRole('button', { name: '刪除俱樂部' }));
+    expect(onDeleteTeam).toHaveBeenCalledTimes(1);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('deleting 時停用並顯示刪除中', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam: vi.fn(), deleting: true });
+    expect(screen.getByRole('button', { name: '刪除中...' }).hasAttribute('disabled')).toBe(true);
+  });
+});
