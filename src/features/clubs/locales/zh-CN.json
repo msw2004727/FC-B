@@ -31,6 +31,7 @@
       "ownLimit": "每人最多创建 3 个俱乐部",
       "membershipLimit": "已加入 10 个俱乐部，无法再创建",
       "invalid": "资料格式有误，请检查后再提交",
+      "typeNotAllowed": "此分类目前不开放，请选择其他分类",
       "retry": "系统忙碌，请再试一次",
       "failed": "创建失败，请稍后再试"
     }
@@ -44,7 +45,7 @@
       "notPending": "这笔申请已处理过",
       "teamInvalid": "俱乐部资料异常，请联系管理员",
       "selfReview": "不能审核自己的申请",
-      "membershipLimit": "对方已加入 10 个俱乐部，无法再加入",
+      "retry": "请再试一次",
       "failed": "审核失败，请稍后再试"
     }
   },

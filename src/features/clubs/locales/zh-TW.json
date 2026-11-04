@@ -31,6 +31,7 @@
       "ownLimit": "每人最多建立 3 個俱樂部",
       "membershipLimit": "已加入 10 個俱樂部，無法再建立",
       "invalid": "資料格式有誤，請檢查後再送出",
+      "typeNotAllowed": "此分類目前不開放，請選擇其他分類",
       "retry": "系統忙碌，請再試一次",
       "failed": "建立失敗，請稍後再試"
     }
@@ -44,7 +45,7 @@
       "notPending": "這筆申請已處理過",
       "teamInvalid": "俱樂部資料異常，請聯繫管理員",
       "selfReview": "不能審核自己的申請",
-      "membershipLimit": "對方已加入 10 個俱樂部，無法再加入",
+      "retry": "請再試一次",
       "failed": "審核失敗，請稍後再試"
     }
   },

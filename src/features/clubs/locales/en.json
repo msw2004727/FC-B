@@ -31,6 +31,7 @@
       "ownLimit": "You can create up to 3 clubs.",
       "membershipLimit": "You have already joined 10 clubs and cannot create another.",
       "invalid": "Some information is invalid. Please check and try again.",
+      "typeNotAllowed": "This category is not available right now. Please choose another one.",
       "retry": "The system is busy. Please try again.",
       "failed": "Could not create the club. Please try again later."
     }
@@ -44,7 +45,7 @@
       "notPending": "This request has already been handled.",
       "teamInvalid": "There is a problem with this club. Please contact an administrator.",
       "selfReview": "You cannot review your own request.",
-      "membershipLimit": "This member has already joined 10 clubs and cannot join another.",
+      "retry": "Please try again.",
       "failed": "Could not complete the review. Please try again later."
     }
   },

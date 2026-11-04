@@ -30,6 +30,8 @@ describe('userTeamCreateErrorKey', () => {
     ['CREATE_USER_TEAM_INVALID_FIELD', 'clubs.userCreate.error.invalid'],
     ['CREATE_USER_TEAM_UNKNOWN_FIELD', 'clubs.userCreate.error.invalid'],
     ['CREATE_USER_TEAM_INVALID_REQUEST_ID', 'clubs.userCreate.error.invalid'],
+    // T-090 P2-1：後端將拒絕自建俱樂部選「教學」；修正前此碼會落到通用「建立失敗」（應失敗）。
+    ['CREATE_USER_TEAM_TYPE_NOT_ALLOWED', 'clubs.userCreate.error.typeNotAllowed'],
     ['TEAM_ID_COLLISION', 'clubs.userCreate.error.retry'],
     ['CREATE_USER_TEAM_RETRY', 'clubs.userCreate.error.retry'],
     ['CREATE_USER_TEAM_FAILED', 'clubs.userCreate.error.failed'],
@@ -62,9 +64,17 @@ describe('teamJoinReviewErrorKey', () => {
     ['TEAM_JOIN_REQUEST_NOT_PENDING', 'clubs.joinReview.error.notPending'],
     ['TEAM_ID_AMBIGUOUS', 'clubs.joinReview.error.teamInvalid'],
     ['TEAM_JOIN_SELF_REVIEW_DENIED', 'clubs.joinReview.error.selfReview'],
+    // T-090 P3：後端交易衝突回 TEAM_JOIN_REVIEW_RETRY；修正前落到通用「審核失敗」（應失敗）。
+    ['TEAM_JOIN_REVIEW_RETRY', 'clubs.joinReview.error.retry'],
+    ['TEAM_JOIN_REVIEW_FAILED', 'clubs.joinReview.error.failed'],
     ['SOMETHING_ELSE', 'clubs.joinReview.error.failed'],
   ])('%s → %s', (reason, key) => {
     expect(teamJoinReviewErrorKey(httpsError(reason))).toBe(key);
+  });
+
+  // T-090 P3：reviewTeamJoin 不會回這兩碼，審核映射已移除（建立映射保留），一律回通用文案。
+  it.each(['TEAM_MEMBERSHIP_LIMIT', 'USER_PROFILE_NOT_FOUND'])('%s 不在審核映射', (reason) => {
+    expect(teamJoinReviewErrorKey(httpsError(reason))).toBe('clubs.joinReview.error.failed');
   });
 });
 

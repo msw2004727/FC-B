@@ -106,30 +106,78 @@ describe('T-090 自建俱樂部入隊審核走 reviewTeamJoin', () => {
     expect(callFnMock).toHaveBeenCalledWith('recountTeamMembers', { teamId: TEAM_ID });
     expect(calledNames()).not.toContain('syncGroupActionStatus');
     expect(calledNames()).not.toContain('enqueuePrivilegedLineNotification');
-    expect(calledNames()).not.toContain('writeAuditLog');
+    // 測試同步更新（T-090 P2-4）：原斷言「不呼叫 writeAuditLog」；審查要求自建路徑補寫與既有路徑相同的審計紀錄。
+    expect(callFnMock).toHaveBeenCalledWith('writeAuditLog', {
+      action: 'team_join_approve',
+      targetType: 'team',
+      targetId: TEAM_ID,
+      targetLabel: '自建隊',
+      result: 'success',
+      meta: { teamId: TEAM_ID, statusTo: 'approved' },
+      source: 'web',
+    });
     expect(deliverMock).not.toHaveBeenCalled();
     expect(getDocMock).not.toHaveBeenCalled();
     expect(updateDocMock).not.toHaveBeenCalled();
   });
 
   it('approve：已是成員（membershipAdded=false）不重算人數', async () => {
+    // 測試同步更新（T-090 P2-4）：本次做出決定（alreadyReviewed=false）會補寫審計紀錄。
     callFnMock.mockResolvedValue(okResponse({ membershipAdded: false, alreadyMember: true }));
     const result = await approveTeamJoin({
       team: ownTeam(), applicantUid: 'Uapplicant', message: message(), reviewer,
     });
     expect(result).toEqual({ changed: false });
-    expect(calledNames()).toEqual(['reviewTeamJoin']);
+    expect(calledNames()).toEqual(['reviewTeamJoin', 'writeAuditLog']);
   });
 
-  it('reject／ignore：只呼叫 reviewTeamJoin（action 各自對應）', async () => {
+  it('reject／ignore：呼叫 reviewTeamJoin（action 各自對應），只有拒絕寫審計紀錄', async () => {
+    // 測試同步更新（T-090 P2-4）：拒絕補寫 team_join_reject；忽略照既有路徑不寫。
     callFnMock.mockResolvedValue(okResponse({ membershipAdded: false, actionStatus: 'rejected' }));
     await rejectTeamJoin({ team: ownTeam(), applicantUid: 'Uapplicant', message: message(), reviewer });
     await ignoreTeamJoin({ team: ownTeam(), message: message(), reviewer });
     expect(callFnMock.mock.calls).toEqual([
       ['reviewTeamJoin', { teamId: TEAM_ID, groupId: 'tjr_1', applicantUid: 'Uapplicant', action: 'reject' }],
+      ['writeAuditLog', {
+        action: 'team_join_reject',
+        targetType: 'team',
+        targetId: TEAM_ID,
+        targetLabel: '自建隊',
+        result: 'success',
+        meta: { teamId: TEAM_ID, statusTo: 'rejected' },
+        source: 'web',
+      }],
       ['reviewTeamJoin', { teamId: TEAM_ID, groupId: 'tjr_1', applicantUid: 'Uapplicant', action: 'ignore' }],
     ]);
     expect(deliverMock).not.toHaveBeenCalled();
+  });
+
+  // T-090 P2-4：修正前自建路徑完全不寫審計紀錄（應失敗）；先前已審過（alreadyReviewed=true）則不重寫。
+  it('先前已審過不重寫審計紀錄；審計失敗不影響審核結果', async () => {
+    callFnMock.mockResolvedValue(okResponse({ alreadyReviewed: true, membershipAdded: false }));
+    await approveTeamJoin({ team: ownTeam(), applicantUid: 'Uapplicant', message: message(), reviewer });
+    expect(calledNames()).toEqual(['reviewTeamJoin']);
+
+    callFnMock.mockReset();
+    callFnMock.mockImplementation(async (name: string) => {
+      if (name === 'writeAuditLog') throw new Error('audit down');
+      return name === 'reviewTeamJoin' ? okResponse({ membershipAdded: false }) : {};
+    });
+    await expect(approveTeamJoin({
+      team: ownTeam(), applicantUid: 'Uapplicant', message: message(), reviewer,
+    })).resolves.toEqual({ changed: false });
+    expect(calledNames()).toEqual(['reviewTeamJoin', 'writeAuditLog']);
+  });
+
+  // T-090 P3-6：修正前送 team.id；舊格式俱樂部（公開 id ≠ 文件 ID）時後端比對 meta.teamId 會不符（應失敗）。
+  it('送出的 teamId 以申請 meta.teamId 優先，沒有才用 team.id', async () => {
+    callFnMock.mockResolvedValue(okResponse({ alreadyReviewed: true, membershipAdded: false }));
+    await ignoreTeamJoin({ team: ownTeam({ id: 'doc_id_1' }), message: message(), reviewer });
+    const noMetaTeam = message();
+    noMetaTeam.meta = { ...noMetaTeam.meta, teamId: '' };
+    await ignoreTeamJoin({ team: ownTeam({ id: 'doc_id_1' }), message: noMetaTeam, reviewer });
+    expect(callFnMock.mock.calls.map(([, payload]) => (payload as { teamId: string }).teamId))
+      .toEqual([TEAM_ID, 'doc_id_1']);
   });
 
   it('錯誤碼轉成使用者文案（UserFacingError），不露出原始錯誤', async () => {

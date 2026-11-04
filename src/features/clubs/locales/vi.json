@@ -31,6 +31,7 @@
       "ownLimit": "Mỗi người tạo tối đa 3 câu lạc bộ.",
       "membershipLimit": "Bạn đã tham gia 10 câu lạc bộ, không thể tạo thêm.",
       "invalid": "Dữ liệu chưa hợp lệ. Vui lòng kiểm tra rồi gửi lại.",
+      "typeNotAllowed": "Phân loại này hiện chưa mở. Vui lòng chọn phân loại khác.",
       "retry": "Hệ thống đang bận. Vui lòng thử lại.",
       "failed": "Tạo thất bại. Vui lòng thử lại sau."
     }
@@ -44,7 +45,7 @@
       "notPending": "Yêu cầu này đã được xử lý.",
       "teamInvalid": "Dữ liệu câu lạc bộ có vấn đề. Vui lòng liên hệ quản trị viên.",
       "selfReview": "Không thể tự duyệt yêu cầu của chính mình.",
-      "membershipLimit": "Người này đã tham gia 10 câu lạc bộ, không thể tham gia thêm.",
+      "retry": "Vui lòng thử lại.",
       "failed": "Duyệt thất bại. Vui lòng thử lại sau."
     }
   },

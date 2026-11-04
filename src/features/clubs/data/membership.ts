@@ -409,7 +409,8 @@ async function reviewUserCapabilityTeamJoin(
   message: InboxMessageForReview,
   action: 'approve' | 'reject' | 'ignore',
 ): Promise<ReviewTeamJoinResponse> {
-  const teamId = trimUid(team?.id);
+  // 後端以申請的 meta.teamId 比對（舊格式俱樂部為公開 id）；沒有才用 team.id。
+  const teamId = trimUid(message?.meta?.teamId) || trimUid(team?.id);
   const groupId = trimName(message?.meta?.groupId);
   const targetApplicantUid = trimUid(applicantUid);
   if (!teamId || !groupId || !targetApplicantUid) {
@@ -433,6 +434,24 @@ async function reviewUserCapabilityTeamJoin(
     await runBestEffort(
       () => callFn('recountTeamMembers', { teamId }),
       'reviewTeamJoin.recountTeamMembers',
+      teamId,
+    );
+  }
+  // 與既有俱樂部路徑相同的審計紀錄（忽略不寫）；只在本次真的做出決定時寫。
+  // 不等待：失敗只記 warn，不影響審核結果、不延後畫面更新（runBestEffort 不會 reject）。
+  if (action !== 'ignore' && response?.alreadyReviewed === false) {
+    const approved = action === 'approve';
+    void runBestEffort(
+      () =>
+        writeAudit({
+          action: approved ? 'team_join_approve' : 'team_join_reject',
+          targetType: 'team',
+          targetId: teamId,
+          targetLabel: trimName(message?.meta?.teamName) || trimName(team?.name),
+          result: 'success',
+          meta: { teamId, statusTo: approved ? 'approved' : 'rejected' },
+        }),
+      approved ? 'reviewTeamJoin.writeAuditLog.approve' : 'reviewTeamJoin.writeAuditLog.reject',
       teamId,
     );
   }

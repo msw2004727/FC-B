@@ -13,7 +13,7 @@ import { resetClubListFilters } from './clubs-list-session';
 import { loginForClubs } from './clubs-session';
 import { loadTeams } from '../data/teams-repo';
 import { submitCreateTeam } from '../data/team-form-actions';
-import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
+import { requestViewerRefresh, useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { toast } from '@/ui/Toast';
 import type { TeamDoc } from '../data/types';
 
@@ -272,6 +272,8 @@ describe('TeamsPage 新增俱樂部接線', () => {
     expect(loadTeams).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(routeMock).not.toHaveBeenCalled();
+    // T-090 P3-5：修正前建立成功不重讀 viewer，「我的俱樂部」依舊 teamIds 不會更新（應失敗）。
+    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('新增失敗時保留表單與輸入，不重新載入列表', async () => {
@@ -298,5 +300,6 @@ describe('TeamsPage 新增俱樂部接線', () => {
     expect(nameInput(dialog).value).toBe('保留輸入俱樂部');
     expect(loadTeams).toHaveBeenCalledTimes(1);
     expect(routeMock).not.toHaveBeenCalled();
+    expect(requestViewerRefresh).not.toHaveBeenCalled();
   });
 });

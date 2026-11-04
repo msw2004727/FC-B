@@ -38,6 +38,7 @@ const USER_TEAM_CREATE_KEYS: Readonly<Record<string, string>> = {
   CREATE_USER_TEAM_INVALID_FIELD: 'clubs.userCreate.error.invalid',
   CREATE_USER_TEAM_UNKNOWN_FIELD: 'clubs.userCreate.error.invalid',
   CREATE_USER_TEAM_INVALID_REQUEST_ID: 'clubs.userCreate.error.invalid',
+  CREATE_USER_TEAM_TYPE_NOT_ALLOWED: 'clubs.userCreate.error.typeNotAllowed',
   TEAM_ID_COLLISION: 'clubs.userCreate.error.retry',
   CREATE_USER_TEAM_RETRY: 'clubs.userCreate.error.retry',
 };
@@ -53,7 +54,6 @@ export function userTeamCreateErrorKey(error: unknown): string {
 const TEAM_JOIN_REVIEW_KEYS: Readonly<Record<string, string>> = {
   AUTH_REQUIRED: 'clubs.joinReview.error.authRequired',
   INVALID_CALLER_UID: 'clubs.joinReview.error.accountInvalid',
-  USER_PROFILE_NOT_FOUND: 'clubs.joinReview.error.accountInvalid',
   USER_IDENTITY_MISMATCH: 'clubs.joinReview.error.accountInvalid',
   INVALID_MEMBERSHIP: 'clubs.joinReview.error.accountInvalid',
   TEAM_JOIN_REVIEW_DENIED: 'clubs.joinReview.error.denied',
@@ -61,7 +61,8 @@ const TEAM_JOIN_REVIEW_KEYS: Readonly<Record<string, string>> = {
   TEAM_JOIN_REQUEST_NOT_PENDING: 'clubs.joinReview.error.notPending',
   TEAM_ID_AMBIGUOUS: 'clubs.joinReview.error.teamInvalid',
   TEAM_JOIN_SELF_REVIEW_DENIED: 'clubs.joinReview.error.selfReview',
-  TEAM_MEMBERSHIP_LIMIT: 'clubs.joinReview.error.membershipLimit',
+  TEAM_JOIN_REVIEW_RETRY: 'clubs.joinReview.error.retry',
+  TEAM_JOIN_REVIEW_FAILED: 'clubs.joinReview.error.failed',
 };
 
 export const TEAM_JOIN_REVIEW_FALLBACK_KEY = 'clubs.joinReview.error.failed';

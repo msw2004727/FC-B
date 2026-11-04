@@ -676,6 +676,22 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(screen.getByText('本週正常團練')).toBeTruthy();
   });
 
+  // T-090 P2-1：修正前分頁已排除自建俱樂部的課程／賽事，但總覽快速導覽與面板仍依 isTeamDetailSectionVisible 顯示（應失敗）。
+  it('hides courses quick link and panels for a user-created club even when teaching is set', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...team,
+      createdVia: 'user_capability',
+      teachingEnabled: true,
+      detailVisibility: { record: false },
+    });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    expect(container.querySelector('.td-v2-quick[data-tab="courses"]')).toBeNull();
+    expect(container.querySelector('.td-v2-panel-courses')).toBeNull();
+    expect(container.querySelector('.td-v2-panel-record')).toBeNull();
+  });
+
   it('honours detailVisibility by hiding disabled tabs and sections', async () => {
     vi.mocked(loadTeam).mockResolvedValue({
       ...team,

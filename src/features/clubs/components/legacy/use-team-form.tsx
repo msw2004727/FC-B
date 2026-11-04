@@ -890,6 +890,10 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   }
 
   const category = TEAM_CATEGORY_OPTIONS.find(option => option.key === values.type);
+  // T-090：一般用戶建立與自建俱樂部編輯不開放「教學」分類（同 TeamSettingsModal）。
+  const categoryOptions = userCapabilityCreate || memberScoped
+    ? TEAM_CATEGORY_OPTIONS.filter(option => option.key !== 'education')
+    : TEAM_CATEGORY_OPTIONS;
   const oldCaptainName = originalCaptain.current.member?.name
     || originalCaptain.current.name || '（未設定）';
 
@@ -900,7 +904,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     busyLabel: props.mode === 'create' ? '建立中...' : '儲存中...',
     values,
     setValue,
-    categoryOptions: TEAM_CATEGORY_OPTIONS,
+    categoryOptions,
     categoryHint: category?.formHint || '',
     showEduSettings: category?.showEduSettings || false,
     sportOptions: [
