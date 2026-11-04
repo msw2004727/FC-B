@@ -28,7 +28,7 @@ import {
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
 import { deleteTeamViaCallable } from '../data/teams-admin-write';
-import { getTransferCandidates } from '../data/team-transfer';
+import { getTransferCandidates, resolveTransferTeamId } from '../data/team-transfer';
 import {
   canCreateClubEvent,
   canEditTeamSettings,
@@ -506,7 +506,7 @@ function TeamDetailContent({
 
   const transferCandidates = membersState.status === 'loading'
     ? null
-    : getTransferCandidates(roster, viewer.uid);
+    : getTransferCandidates(roster, viewer.uid, resolveTransferTeamId(team));
 
   const memberCount = getTeamMemberCount(team);
   const courseCount = 0;
@@ -646,11 +646,13 @@ function TeamDetailContent({
     }
   }
 
-  /** T-090h：轉移成功（toast 已由區塊顯示）後關閉設定、重讀俱樂部、成員名單與 viewer（本人已不是經理）。 */
+  /**
+   * T-090h：轉移成功（toast 已由區塊顯示）後關閉設定、重讀俱樂部與 viewer（本人已不是經理）。
+   * 成員名單不另外 +1 重讀：重讀後 captainUid 改變會讓 membersKey 變動，名單只讀一次（審查 P3-1）。
+   */
   async function handleTransferred(): Promise<void> {
     setTeamOverlay(null);
     requestViewerRefresh();
-    setMemberAttempt((v) => v + 1);
     await reloadTeamSilently();
   }
 
@@ -762,7 +764,11 @@ function TeamDetailContent({
                   : undefined}
                 deleting={deleting}
                 transfer={canOwnerDeleteUserTeam(viewer, team)
-                  ? { candidates: transferCandidates, onTransferred: handleTransferred }
+                  ? {
+                      candidates: transferCandidates,
+                      loadFailed: membersState.status === 'error',
+                      onTransferred: handleTransferred,
+                    }
                   : undefined}
               />
             ) : teamOverlay === 'edit-basic' ? (

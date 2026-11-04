@@ -103,6 +103,40 @@ describe('轉移經理區塊', () => {
     expect(button().disabled).toBe(true);
   });
 
+  // 審查 P3-4：修正前名單讀取失敗顯示「沒有可轉移的成員」（應失敗）。
+  it('名單讀取失敗：顯示載入失敗文案，不顯示空名單文案', () => {
+    setup({ candidates: [], loadFailed: true });
+    expect(select().disabled).toBe(true);
+    expect(select().options[0]?.textContent).toBe('clubs.loadError');
+    expect(screen.queryByText('clubs.transfer.empty')).toBeNull();
+    expect(button().disabled).toBe(true);
+  });
+
+  // 審查 P3-4：修正前 Callable 進行中關閉設定視窗，失敗時不提示（應失敗）。
+  it('Callable 進行中卸載，失敗仍以 toast 提示', async () => {
+    let rejectCall!: (reason: unknown) => void;
+    callMock.mockReturnValueOnce(new Promise((_, reject) => { rejectCall = reject; }));
+    const { unmount, props } = setup();
+    choose('m1');
+    fireEvent.click(button());
+    await waitFor(() => expect(callMock).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => { rejectCall(reasonError('NEW_OWNER_NOT_MEMBER')); });
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith({
+      message: 'clubs.transfer.error.notMember', tone: 'error',
+    }));
+    expect(props.onTransferred).not.toHaveBeenCalled();
+  });
+
+  it('把目前登入者 UID 當舊經理傳給資料層（更新快取用）', async () => {
+    setup({ viewerUid: 'self' });
+    choose('m1');
+    fireEvent.click(button());
+    await waitFor(() => expect(callMock).toHaveBeenCalledTimes(1));
+    expect(callMock.mock.calls[0]?.[0]).toMatchObject({ callerUid: 'self', newOwnerUid: 'm1' });
+  });
+
   it('disabled（刪除中）時停用下拉與按鈕', () => {
     setup({ disabled: true });
     expect(select().disabled).toBe(true);

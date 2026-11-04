@@ -69,7 +69,7 @@
       "conflict": "Vui lòng mở lại cài đặt rồi thử lại",
       "teamNotFound": "Không tìm thấy câu lạc bộ này",
       "notUserCreated": "Câu lạc bộ này không hỗ trợ chuyển quyền quản lý",
-      "denied": "Chỉ quản lý mới có thể chuyển",
+      "denied": "Chỉ người quản lý hiện tại mới có thể chuyển",
       "newOwnerNotFound": "Không tìm thấy thành viên này",
       "newOwnerInvalid": "Tài khoản của thành viên này có vấn đề, không thể chuyển",
       "notMember": "Người này không còn là thành viên câu lạc bộ",

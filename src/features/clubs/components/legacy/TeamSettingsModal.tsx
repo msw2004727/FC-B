@@ -65,7 +65,7 @@ export interface TeamSettingsModalProps {
   /** 刪除進行中：按鈕停用並顯示「刪除中...」。 */
   deleting?: boolean;
   /** T-090h：自建俱樂部擁有者的轉移經理區塊（刪除鈕上方），由父層判斷與接線；未提供時不顯示。 */
-  transfer?: Pick<TeamTransferSectionProps, 'candidates' | 'onTransferred'>;
+  transfer?: Pick<TeamTransferSectionProps, 'candidates' | 'loadFailed' | 'onTransferred'>;
 }
 
 const CATEGORY_COPY: Record<TeamCategoryKey, { label: string; hint: string }> = {
@@ -582,7 +582,9 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
             {props.transfer ? (
               <TeamTransferSection
                 team={team}
+                viewerUid={viewer.uid}
                 candidates={props.transfer.candidates}
+                loadFailed={props.transfer.loadFailed}
                 disabled={props.deleting === true}
                 onBusyChange={setTransferring}
                 onTransferred={props.transfer.onTransferred}

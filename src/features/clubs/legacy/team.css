@@ -2731,7 +2731,8 @@
   padding: .45rem .6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  /* 審查 P2：原 --surface 在 B 未定義，改 --bg-input（legacy base.css 深淺兩組皆有）。 */
+  background: var(--bg-input);
   color: var(--text-primary);
 }
 .td-transfer-btn {

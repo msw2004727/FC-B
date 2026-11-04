@@ -25,8 +25,12 @@ import type { TeamDoc } from '../../data/types';
 
 export interface TeamTransferSectionProps {
   team: TeamDoc;
+  /** 目前登入者（舊經理）UID；成功後從列表快取的領隊／教練名單移除。 */
+  viewerUid?: string | null;
   /** null＝成員名單載入中。 */
   candidates: readonly TransferCandidate[] | null;
+  /** 成員名單讀取失敗：顯示載入失敗，而不是「沒有可轉移的成員」。 */
+  loadFailed?: boolean;
   /** 其他動作（例如刪除）進行中時停用。 */
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -54,11 +58,14 @@ export function TeamTransferSection(props: TeamTransferSectionProps): JSX.Elemen
   const list = props.candidates ?? [];
   const target = list.find((candidate) => candidate.uid === selected) ?? null;
   const unnamed = t('clubs.transfer.unnamed');
-  const placeholder = props.candidates === null
-    ? t('clubs.transfer.loading')
-    : list.length === 0
-      ? t('clubs.transfer.empty')
-      : t('clubs.transfer.placeholder');
+  // 載入失敗沿用既有 clubs.loadError（七語皆有）。
+  const placeholder = props.loadFailed === true
+    ? t('clubs.loadError')
+    : props.candidates === null
+      ? t('clubs.transfer.loading')
+      : list.length === 0
+        ? t('clubs.transfer.empty')
+        : t('clubs.transfer.placeholder');
 
   function setBusyState(next: boolean): void {
     setBusy(next);
@@ -87,6 +94,7 @@ export function TeamTransferSection(props: TeamTransferSectionProps): JSX.Elemen
         teamId,
         newOwnerUid: target.uid,
         requestId,
+        callerUid: latest.current.viewerUid ?? null,
         newOwnerName: target.name,
       });
       pendingRequest.current = null;
@@ -100,7 +108,8 @@ export function TeamTransferSection(props: TeamTransferSectionProps): JSX.Elemen
     } catch (error) {
       if (extractCallableReason(error) === 'TRANSFER_REQUEST_ID_CONFLICT') pendingRequest.current = null;
       console.error('[TeamTransferSection]', extractCallableReason(error) || 'unknown');
-      if (alive.current) toast.show({ message: t(teamTransferErrorKey(error)), tone: 'error' });
+      // 審查 P3-4：Callable 進行中設定視窗被關閉，失敗仍要提示（toast 不依附彈窗）。
+      toast.show({ message: t(teamTransferErrorKey(error)), tone: 'error' });
     } finally {
       lock.current = false;
       if (alive.current) setBusyState(false);

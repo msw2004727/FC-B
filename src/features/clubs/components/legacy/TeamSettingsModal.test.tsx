@@ -16,6 +16,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { pushOverlay } from '@/core/overlay-back';
+import { appConfirm } from '@/ui/AppConfirm';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 
@@ -1090,6 +1091,32 @@ describe('T-090h 轉移經理區塊', () => {
     expect(transfer.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'clubs.transfer.select' })).toBeTruthy();
     expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  // 審查 P3-3：修正前轉移進行中刪除鈕仍可按（應失敗）。
+  it('轉移進行中（確認視窗未回覆）刪除鈕停用', async () => {
+    vi.mocked(appConfirm).mockReturnValue(new Promise<boolean>(() => undefined));
+    const onDeleteTeam = vi.fn();
+    setup(makeTeam({ createdVia: 'user_capability' }), {
+      onDeleteTeam,
+      transfer: { candidates, onTransferred: vi.fn() },
+    });
+    expect(screen.getByRole('button', { name: '刪除俱樂部' }).hasAttribute('disabled')).toBe(false);
+    // 同 changeColor：直接派送原生 change／input，避開 preact/compat 對 fireEvent.change 的映射（L-42）。
+    const picker = screen.getByRole('combobox', { name: 'clubs.transfer.select' });
+    if (!(picker instanceof HTMLSelectElement)) throw new Error('找不到新經理下拉');
+    act(() => {
+      picker.value = 'U-test-2';
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+      picker.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const transferButton = screen.getByRole('button', { name: 'clubs.transfer.title' });
+    await waitFor(() => expect(transferButton.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(transferButton);
+    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: '刪除俱樂部' }).hasAttribute('disabled'),
+    ).toBe(true));
   });
 
   it('刪除中時轉移區塊停用', () => {

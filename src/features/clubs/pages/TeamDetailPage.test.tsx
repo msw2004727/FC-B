@@ -1836,6 +1836,8 @@ describe('TeamDetailPage owner transfer (T-090h)', () => {
     { uid: 'm2', teamIds: ['club'], displayName: '成員乙' },
     { uid: 'm3', teamIds: ['club'], displayName: '成員丙' },
     { uid: 'x9', teamIds: ['other-club'], displayName: '外人' },
+    // 審查 P3-2：只有舊式 teamId、teamIds 不含本隊 → 伺服器會拒，不列入候選。
+    { uid: 'lg', teamId: 'club', displayName: '舊式成員' },
   ];
 
   async function openSettings(): Promise<HTMLElement> {
@@ -1920,7 +1922,8 @@ describe('TeamDetailPage owner transfer (T-090h)', () => {
     expect(settingsModalMock.latestProps?.transfer?.candidates).toBeNull();
   });
 
-  it('轉移成功後關閉設定、重讀俱樂部、成員與 viewer', async () => {
+  // 審查 P3-1：修正前 memberAttempt+1 與 membersKey 變動各觸發一次，成員名單讀兩次（應失敗）。
+  it('轉移成功後關閉設定、重讀俱樂部與 viewer，成員名單只重讀一次', async () => {
     vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
     vi.mocked(loadTeamMembers).mockResolvedValue(members);
     await openSettings();
@@ -1934,6 +1937,17 @@ describe('TeamDetailPage owner transfer (T-090h)', () => {
     expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
     expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
     expect(vi.mocked(loadTeam).mock.calls.length).toBe(loadTeamCalls + 1);
-    await waitFor(() => expect(vi.mocked(loadTeamMembers).mock.calls.length).toBeGreaterThan(memberCalls));
+    await waitFor(() => expect(vi.mocked(loadTeamMembers).mock.calls.length).toBe(memberCalls + 1));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(vi.mocked(loadTeamMembers).mock.calls.length).toBe(memberCalls + 1);
+  });
+
+  // 審查 P3-4：修正前名單讀取失敗只得到空候選，畫面顯示「沒有可轉移的成員」（應失敗）。
+  it('成員名單讀取失敗時標記 loadFailed', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(loadTeamMembers).mockRejectedValue(new Error('permission-denied'));
+    await openSettings();
+    await waitFor(() => expect(settingsModalMock.latestProps?.transfer?.loadFailed).toBe(true));
+    expect(settingsModalMock.latestProps?.transfer?.candidates).toEqual([]);
   });
 });
