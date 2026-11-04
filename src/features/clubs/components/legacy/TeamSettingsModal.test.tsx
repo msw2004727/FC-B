@@ -1009,6 +1009,30 @@ describe('T-090 自建俱樂部設定', () => {
       legacy.unmount();
     }
   });
+
+  // T-090d C-13：修正前自建俱樂部只剩三種標籤，仍顯示「四種標籤…只有教學標籤會開啟課程」說明（應失敗）。
+  it('標籤說明只在有教學選項時顯示', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+    const hint = (): Element | null =>
+      document.querySelector('.td-category-settings-row > div > span');
+
+    const own = setup(makeTeam({ createdVia: 'user_capability' }));
+    try {
+      expect(hint()).toBeNull();
+      expect(document.body.textContent ?? '').not.toContain('四種標籤僅能擇一');
+    } finally {
+      own.unmount();
+    }
+
+    const legacy = setup(makeTeam());
+    try {
+      expect(hint()?.textContent).toContain('四種標籤僅能擇一');
+    } finally {
+      legacy.unmount();
+    }
+  });
 });
 
 // T-090d：修正前設定彈窗沒有刪除入口（應失敗）。是否顯示由父層傳 onDeleteTeam 決定。

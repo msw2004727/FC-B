@@ -2721,6 +2721,12 @@
 .td-settings-edit-btn.td-settings-delete-btn {
   margin-top: .6rem;
   color: var(--danger);
+  border-color: var(--danger);
+}
+/* T-090d：外框與文字同為危險色（原本只設 color，外框沿用 outline-btn 灰框）；hover 不轉成 accent。 */
+.td-settings-edit-btn.td-settings-delete-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* Dark theme */

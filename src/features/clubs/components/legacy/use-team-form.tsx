@@ -513,7 +513,11 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     return mode === 'edit' && !!team && canTransferCaptain(viewer, team);
   };
 
-  const coachAllowed = (): boolean => canAssignCoach(latest.current.props.viewer);
+  // T-090d：一般用戶建立（createUserTeam）不能指派教練，與領隊同樣關閉；送出 payload 本來就濾掉幹部欄位。
+  const coachAllowed = (): boolean => canAssignCoach(latest.current.props.viewer) && !(
+    latest.current.props.mode === 'create'
+    && isUserCapabilityTeamCreator(latest.current.props.viewer)
+  );
   const leaderAllowed = (): boolean => !(
     latest.current.props.mode === 'create'
     && isUserCapabilityTeamCreator(latest.current.props.viewer)
@@ -522,7 +526,6 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
   const transferVisible = props.mode === 'edit'
     && !!props.team && canTransferCaptain(props.viewer, props.team);
-  const coachesAllowed = canAssignCoach(props.viewer);
   // T-090：自建俱樂部編輯時，領隊／教練只能從現有成員選；成員載入前不給任何候選。
   const memberScoped = props.mode === 'edit' && isUserCapabilityTeam(props.team);
   const [memberUids, setMemberUids] = useState<string[] | null>(null);
@@ -552,6 +555,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   const userCapabilityCreate = props.mode === 'create'
     && isUserCapabilityTeamCreator(props.viewer);
   const leadersAllowed = !userCapabilityCreate;
+  const coachesAllowed = canAssignCoach(props.viewer) && !userCapabilityCreate;
   const leaderPicker = useScopedStaffPicker({
     enabled: props.viewer.uid !== null && leadersAllowed && !busy,
     excludeUids: values.leaders.map(member => member.uid),

@@ -430,12 +430,15 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-row td-settings-row-primary td-category-settings-row">
                 <div>
                   <strong>{lt('俱樂部標籤', '俱樂部標籤')}</strong>
-                  <span>
-                    {lt(
-                      '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                      '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                    )}
-                  </span>
+                  {/* T-090：自建俱樂部沒有教學標籤，說明文字（四種、教學開課程）不成立，整段不顯示。 */}
+                  {userCapabilityTeam ? null : (
+                    <span>
+                      {lt(
+                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
+                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
+                      )}
+                    </span>
+                  )}
                 </div>
                 <div
                   class="td-category-tag-group"

@@ -454,6 +454,45 @@ describe('TeamFormModal', () => {
     expect(remove).toHaveBeenCalledWith('legacy:0');
   });
 
+  // T-090d C-04：修正前教練區不看 coaches.allowed，一般用戶建立仍顯示「教練（可多位）」與搜尋框（應失敗）。
+  it('不能指派教練且無既有教練時整個教練區不顯示；可指派時照舊顯示', () => {
+    renderModal({
+      coaches: {
+        allowed: false,
+        tags: [],
+        picker: makePicker(),
+        add: vi.fn(async () => undefined),
+        remove: vi.fn(),
+      },
+    });
+    expect(document.getElementById('ct-coach-row')).toBeNull();
+    expect(document.getElementById('ct-coach-search')).toBeNull();
+    expect(document.getElementById('ct-coach-tags')).toBeNull();
+    expect(visibleLabels()).not.toContain('教練（可多位）');
+    cleanup();
+
+    renderModal();
+    expect(document.getElementById('ct-coach-search')).not.toBeNull();
+    expect(document.getElementById('ct-coach-tags')).not.toBeNull();
+    expect(visibleLabels()).toContain('教練（可多位）');
+  });
+
+  it('不能指派教練但有既有教練時只唯讀列出，不給搜尋與移除', () => {
+    renderModal({
+      mode: 'edit',
+      coaches: {
+        allowed: false,
+        tags: [{ key: 'coach', uid: 'coach', name: '既有教練' }],
+        picker: makePicker(),
+        add: vi.fn(async () => undefined),
+        remove: vi.fn(),
+      },
+    });
+    expect(document.getElementById('ct-coach-search')).toBeNull();
+    expect(document.querySelector('#ct-coach-tags .team-tag')?.textContent).toContain('既有教練');
+    expect(document.querySelector('#ct-coach-tags .team-tag-x')).toBeNull();
+  });
+
   it('領隊建議用 mousedown 加入，click 不加入，姓名與 UID 是文字節點', () => {
     const add = vi.fn(async () => undefined);
     renderModal({

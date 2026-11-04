@@ -702,6 +702,24 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(container.querySelector('.td-v2-panel-record')).toBeNull();
   });
 
+  // T-090d C-11：修正前頁籤已隱藏課程／戰績，但上方統計列仍顯示「課程」「勝率」（應失敗）。
+  it('stats row drops 課程 and 勝率 for a user-created club; legacy keeps all four', async () => {
+    const statLabels = (root: Element): string[] =>
+      Array.from(root.querySelectorAll('.td-v2-stats .td-v2-stat-label'))
+        .map((el) => el.firstChild?.textContent ?? '');
+
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, createdVia: 'user_capability' });
+    const own = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(statLabels(own.container)).toEqual(['成員', '活動']);
+    own.unmount();
+
+    vi.mocked(loadTeam).mockResolvedValue({ ...team });
+    const legacy = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(statLabels(legacy.container)).toEqual(['成員', '課程', '勝率', '活動']);
+  });
+
   it('honours detailVisibility by hiding disabled tabs and sections', async () => {
     vi.mocked(loadTeam).mockResolvedValue({
       ...team,
