@@ -50,6 +50,7 @@ import type {
   TeamCategoryKey,
   TeamDoc,
 } from '../../data/types';
+import { TeamTransferSection, type TeamTransferSectionProps } from './TeamTransferSection';
 
 export interface TeamSettingsModalProps {
   team: TeamDoc;
@@ -63,6 +64,8 @@ export interface TeamSettingsModalProps {
   onDeleteTeam?: () => void;
   /** 刪除進行中：按鈕停用並顯示「刪除中...」。 */
   deleting?: boolean;
+  /** T-090h：自建俱樂部擁有者的轉移經理區塊（刪除鈕上方），由父層判斷與接線；未提供時不顯示。 */
+  transfer?: Pick<TeamTransferSectionProps, 'candidates' | 'onTransferred'>;
 }
 
 const CATEGORY_COPY: Record<TeamCategoryKey, { label: string; hint: string }> = {
@@ -153,6 +156,7 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   // T-090：自建俱樂部不開放教學（課程）與賽事，設定裡不出現這兩項。
   const userCapabilityTeam = isUserCapabilityTeam(team);
   const [pending, setPending] = useState<PendingSettings | null>(null);
+  const [transferring, setTransferring] = useState(false);
   const confirmed = useRef<{ source: TeamDoc; patch: TeamSettingsPatch }>({
     source: team,
     patch: {},
@@ -575,11 +579,20 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
             >
               {lt('編輯基本資料', '編輯基本資料')}
             </button>
+            {props.transfer ? (
+              <TeamTransferSection
+                team={team}
+                candidates={props.transfer.candidates}
+                disabled={props.deleting === true}
+                onBusyChange={setTransferring}
+                onTransferred={props.transfer.onTransferred}
+              />
+            ) : null}
             {props.onDeleteTeam ? (
               <button
                 class="outline-btn td-settings-edit-btn td-settings-delete-btn"
                 type="button"
-                disabled={props.deleting === true}
+                disabled={props.deleting === true || transferring}
                 onClick={() => latest.current.onDeleteTeam?.()}
               >
                 {props.deleting === true ? lt('刪除中...', '刪除中...') : lt('刪除俱樂部', '刪除俱樂部')}

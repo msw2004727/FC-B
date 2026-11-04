@@ -49,5 +49,33 @@
       "failed": "審核失敗，請稍後再試"
     }
   },
-  "staffMembersOnly": "只能從俱樂部成員中選擇"
+  "staffMembersOnly": "只能從俱樂部成員中選擇",
+  "transfer": {
+    "title": "轉移經理",
+    "select": "選擇新經理",
+    "placeholder": "選擇新經理",
+    "loading": "載入中…",
+    "empty": "沒有可轉移的成員",
+    "unnamed": "未命名成員",
+    "busy": "轉移中...",
+    "confirm": "確定要將經理轉移給「{name}」？",
+    "confirmFinal": "轉移後你將成為一般成員，無法自行取回經理身分，新經理可刪除俱樂部。確定要轉移？",
+    "success": "已將經理轉移給「{name}」",
+    "error": {
+      "authRequired": "請先登入",
+      "accountInvalid": "帳號資料異常，請重新登入或聯繫管理員",
+      "invalid": "資料格式有誤，請重新開啟設定再試",
+      "toSelf": "不能轉移給自己",
+      "conflict": "請重新開啟設定後再試",
+      "teamNotFound": "找不到這個俱樂部",
+      "notUserCreated": "此俱樂部不支援轉移經理",
+      "denied": "只有經理本人可以轉移",
+      "newOwnerNotFound": "找不到這位成員",
+      "newOwnerInvalid": "這位成員的帳號資料異常，無法轉移",
+      "notMember": "對方已不是俱樂部成員",
+      "newOwnerLimit": "對方擁有的俱樂部已達上限 3 個",
+      "retry": "系統忙碌，請再試一次",
+      "failed": "轉移失敗，請稍後再試"
+    }
+  }
 }

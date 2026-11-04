@@ -2718,6 +2718,26 @@
   width: 100%;
   margin-top: .2rem;
 }
+/* T-090h：轉移經理區塊（編輯基本資料與刪除鈕之間）；下拉樣式照 A 表單 select。 */
+.td-transfer-group {
+  margin: .8rem 0 0;
+}
+.td-transfer-row {
+  gap: .5rem;
+}
+.td-transfer-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: .45rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.td-transfer-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .td-settings-edit-btn.td-settings-delete-btn {
   margin-top: .6rem;
   color: var(--danger);

@@ -49,5 +49,33 @@
       "failed": "Duyệt thất bại. Vui lòng thử lại sau."
     }
   },
-  "staffMembersOnly": "Chỉ có thể chọn từ thành viên của câu lạc bộ."
+  "staffMembersOnly": "Chỉ có thể chọn từ thành viên của câu lạc bộ.",
+  "transfer": {
+    "title": "Chuyển quyền quản lý",
+    "select": "Chọn quản lý mới",
+    "placeholder": "Chọn quản lý mới",
+    "loading": "Đang tải…",
+    "empty": "Không có thành viên để chuyển",
+    "unnamed": "Thành viên chưa đặt tên",
+    "busy": "Đang chuyển...",
+    "confirm": "Chuyển quyền quản lý cho \"{name}\"?",
+    "confirmFinal": "Sau khi chuyển, bạn sẽ thành thành viên thường và không thể tự lấy lại quyền quản lý. Quản lý mới có thể xóa câu lạc bộ. Xác nhận chuyển?",
+    "success": "Đã chuyển quyền quản lý cho \"{name}\"",
+    "error": {
+      "authRequired": "Vui lòng đăng nhập trước",
+      "accountInvalid": "Tài khoản có vấn đề. Vui lòng đăng nhập lại hoặc liên hệ quản trị viên",
+      "invalid": "Thông tin không hợp lệ. Vui lòng mở lại cài đặt và thử lại",
+      "toSelf": "Không thể chuyển cho chính bạn",
+      "conflict": "Vui lòng mở lại cài đặt rồi thử lại",
+      "teamNotFound": "Không tìm thấy câu lạc bộ này",
+      "notUserCreated": "Câu lạc bộ này không hỗ trợ chuyển quyền quản lý",
+      "denied": "Chỉ quản lý mới có thể chuyển",
+      "newOwnerNotFound": "Không tìm thấy thành viên này",
+      "newOwnerInvalid": "Tài khoản của thành viên này có vấn đề, không thể chuyển",
+      "notMember": "Người này không còn là thành viên câu lạc bộ",
+      "newOwnerLimit": "Người này đã sở hữu tối đa 3 câu lạc bộ",
+      "retry": "Hệ thống đang bận, vui lòng thử lại",
+      "failed": "Chuyển thất bại, vui lòng thử lại sau"
+    }
+  }
 }

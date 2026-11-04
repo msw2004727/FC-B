@@ -49,5 +49,33 @@
       "failed": "Could not complete the review. Please try again later."
     }
   },
-  "staffMembersOnly": "You can only choose from current club members."
+  "staffMembersOnly": "You can only choose from current club members.",
+  "transfer": {
+    "title": "Transfer manager",
+    "select": "Choose new manager",
+    "placeholder": "Choose new manager",
+    "loading": "Loading…",
+    "empty": "No members to transfer to",
+    "unnamed": "Unnamed member",
+    "busy": "Transferring...",
+    "confirm": "Transfer the manager role to \"{name}\"?",
+    "confirmFinal": "You will become a regular member and cannot take the manager role back yourself. The new manager can delete the club. Transfer now?",
+    "success": "Manager role transferred to \"{name}\".",
+    "error": {
+      "authRequired": "Please log in first.",
+      "accountInvalid": "There is a problem with your account. Please log in again or contact an administrator.",
+      "invalid": "Some information is invalid. Please reopen settings and try again.",
+      "toSelf": "You cannot transfer to yourself.",
+      "conflict": "Please reopen settings and try again.",
+      "teamNotFound": "This club could not be found.",
+      "notUserCreated": "This club does not support manager transfer.",
+      "denied": "Only the manager can transfer this club.",
+      "newOwnerNotFound": "This member could not be found.",
+      "newOwnerInvalid": "There is a problem with this member's account, so the transfer cannot be made.",
+      "notMember": "This person is no longer a club member.",
+      "newOwnerLimit": "This person already owns the maximum of 3 clubs.",
+      "retry": "The system is busy. Please try again.",
+      "failed": "Could not transfer the manager role. Please try again later."
+    }
+  }
 }

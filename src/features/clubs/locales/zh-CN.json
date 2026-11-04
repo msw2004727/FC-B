@@ -49,5 +49,33 @@
       "failed": "审核失败，请稍后再试"
     }
   },
-  "staffMembersOnly": "只能从俱乐部成员中选择"
+  "staffMembersOnly": "只能从俱乐部成员中选择",
+  "transfer": {
+    "title": "转移经理",
+    "select": "选择新经理",
+    "placeholder": "选择新经理",
+    "loading": "加载中…",
+    "empty": "没有可转移的成员",
+    "unnamed": "未命名成员",
+    "busy": "转移中...",
+    "confirm": "确定要将经理转移给“{name}”？",
+    "confirmFinal": "转移后你将成为普通成员，无法自行取回经理身份，新经理可删除俱乐部。确定要转移？",
+    "success": "已将经理转移给“{name}”",
+    "error": {
+      "authRequired": "请先登录",
+      "accountInvalid": "账号资料异常，请重新登录或联系管理员",
+      "invalid": "资料格式有误，请重新打开设置再试",
+      "toSelf": "不能转移给自己",
+      "conflict": "请重新打开设置后再试",
+      "teamNotFound": "找不到这个俱乐部",
+      "notUserCreated": "此俱乐部不支持转移经理",
+      "denied": "只有经理本人可以转移",
+      "newOwnerNotFound": "找不到这位成员",
+      "newOwnerInvalid": "这位成员的账号资料异常，无法转移",
+      "notMember": "对方已不是俱乐部成员",
+      "newOwnerLimit": "对方拥有的俱乐部已达上限 3 个",
+      "retry": "系统繁忙，请再试一次",
+      "failed": "转移失败，请稍后再试"
+    }
+  }
 }

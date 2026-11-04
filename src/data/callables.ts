@@ -132,6 +132,8 @@ import type {
   SyncUserRoleResponse,
   TranslateTextsRequest,
   TranslateTextsResponse,
+  TransferUserTeamRequest,
+  TransferUserTeamResponse,
   UpdateCourseLinkedEventRequest,
   UpdateCourseLinkedEventResponse,
   UpdateEduCourseSessionRequest,
@@ -272,6 +274,7 @@ export interface CallableMap {
   syncGroupActionStatus: { req: SyncGroupActionStatusRequest; res: SyncGroupActionStatusResponse };
   syncUserRole: { req: SyncUserRoleRequest; res: SyncUserRoleResponse };
   translateTexts: { req: TranslateTextsRequest; res: TranslateTextsResponse };
+  transferUserTeam: { req: TransferUserTeamRequest; res: TransferUserTeamResponse };
   updateCourseLinkedEvent: {
     req: UpdateCourseLinkedEventRequest;
     res: UpdateCourseLinkedEventResponse;

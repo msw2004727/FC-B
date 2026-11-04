@@ -1826,3 +1826,114 @@ describe('TeamDetailPage owner delete (T-090d)', () => {
     expect(deleteTeamViaCallable).toHaveBeenCalledTimes(1);
   });
 });
+
+// T-090h：自建俱樂部擁有者在俱樂部設定（刪除鈕上方）的「轉移經理」入口。
+// 修正前應失敗：設定彈窗沒有 transfer 屬性，擁有者看不到轉移入口。
+describe('TeamDetailPage owner transfer (T-090h)', () => {
+  const ownTeam: TeamDoc = { ...team, captainUid: 'other', createdVia: 'user_capability' };
+  const members: TeamMember[] = [
+    { uid: 'u1', teamIds: ['club'], displayName: '小明' },
+    { uid: 'm2', teamIds: ['club'], displayName: '成員乙' },
+    { uid: 'm3', teamIds: ['club'], displayName: '成員丙' },
+    { uid: 'x9', teamIds: ['other-club'], displayName: '外人' },
+  ];
+
+  async function openSettings(): Promise<HTMLElement> {
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    return screen.findByRole('dialog', { name: '俱樂部設定' });
+  }
+
+  it.each([
+    ['captainUid', { captainUid: 'u1' }],
+    ['creatorUid', { creatorUid: 'u1' }],
+    ['ownerUid', { ownerUid: 'u1' }],
+  ])('擁有者欄位 %s 相符時提供轉移入口，候選人排除本人與非成員', async (_field, patch) => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, ...patch });
+    vi.mocked(loadTeamMembers).mockResolvedValue(members);
+    await openSettings();
+    await waitFor(() => expect(settingsModalMock.latestProps?.transfer?.candidates).toEqual([
+      { uid: 'm2', name: '成員乙' },
+      { uid: 'm3', name: '成員丙' },
+    ]));
+    expect(typeof settingsModalMock.latestProps?.transfer?.onTransferred).toBe('function');
+  });
+
+  it('legacy 俱樂部的經理沒有轉移入口', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, captainUid: 'u1' });
+    await openSettings();
+    expect(settingsModalMock.latestProps?.transfer).toBeUndefined();
+  });
+
+  it('非擁有者（team.manage_all 管理員）看得到設定但沒有轉移入口', async () => {
+    vi.mocked(loadTeam).mockResolvedValue(ownTeam);
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('admin1'),
+      hasPermission: (code: string) => code === 'team.manage_all',
+    });
+    await openSettings();
+    expect(settingsModalMock.latestProps?.transfer).toBeUndefined();
+  });
+
+  it('自建俱樂部的教練（非擁有者）沒有轉移入口', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, coachUids: ['u1'], coaches: ['小明'] });
+    vi.mocked(useViewer).mockReturnValue({ ...viewer('u1', ['club']), role: 'coach', roleLevel: 2 });
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
+    expect(settingsModalMock.latestProps?.transfer).toBeUndefined();
+
+    cleanup();
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('u1', ['club']),
+      role: 'coach',
+      roleLevel: 2,
+      hasPermission: (code: string) => code === 'team.manage_all',
+    });
+    await openSettings();
+    expect(settingsModalMock.latestProps?.transfer).toBeUndefined();
+  });
+
+  it('成員與資訊區塊都隱藏時，擁有者開設定才讀成員名單', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...ownTeam,
+      captainUid: 'u1',
+      detailVisibility: { members: false, info: false },
+    });
+    vi.mocked(loadTeamMembers).mockResolvedValue(members);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(loadTeamMembers).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    await screen.findByRole('dialog', { name: '俱樂部設定' });
+    await waitFor(() => expect(loadTeamMembers).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(settingsModalMock.latestProps?.transfer?.candidates).toHaveLength(2));
+  });
+
+  it('名單載入中候選人為 null', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(loadTeamMembers).mockReturnValue(new Promise(() => undefined));
+    await openSettings();
+    expect(settingsModalMock.latestProps?.transfer?.candidates).toBeNull();
+  });
+
+  it('轉移成功後關閉設定、重讀俱樂部、成員與 viewer', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'u1' });
+    vi.mocked(loadTeamMembers).mockResolvedValue(members);
+    await openSettings();
+    await waitFor(() => expect(settingsModalMock.latestProps?.transfer?.candidates).toHaveLength(2));
+    const loadTeamCalls = vi.mocked(loadTeam).mock.calls.length;
+    const memberCalls = vi.mocked(loadTeamMembers).mock.calls.length;
+
+    vi.mocked(loadTeam).mockResolvedValue({ ...ownTeam, captainUid: 'm2', creatorUid: 'm2', ownerUid: 'm2' });
+    await act(async () => { await settingsModalMock.latestProps?.transfer?.onTransferred(); });
+
+    expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
+    expect(requestViewerRefresh).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(loadTeam).mock.calls.length).toBe(loadTeamCalls + 1);
+    await waitFor(() => expect(vi.mocked(loadTeamMembers).mock.calls.length).toBeGreaterThan(memberCalls));
+  });
+});

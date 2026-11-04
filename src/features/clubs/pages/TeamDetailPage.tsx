@@ -28,6 +28,7 @@ import {
   isTeamDetailSectionVisible,
 } from '../data/team-detail-model';
 import { deleteTeamViaCallable } from '../data/teams-admin-write';
+import { getTransferCandidates } from '../data/team-transfer';
 import {
   canCreateClubEvent,
   canEditTeamSettings,
@@ -220,12 +221,15 @@ function TeamDetailContent({
   const showMembers = !!team && isTeamDetailSectionVisible(team, 'members');
   const showEvents = !!team && isTeamDetailSectionVisible(team, 'events');
   const showInfo = !!team && isTeamDetailSectionVisible(team, 'info');
+  // T-090h：轉移經理的候選人取自成員名單；成員與資訊都隱藏時，擁有者開設定才讀名單。
+  const needMembers = showMembers || showInfo
+    || (teamOverlay === 'settings' && canOwnerDeleteUserTeam(viewer, team));
 
   useEffect(() => {
     const sequence = ++memberSequence.current;
     let cancelled = false;
     setMembersState({ status: 'loading' });
-    if (!teamRef.current || (!showMembers && !showInfo)) return;
+    if (!teamRef.current || !needMembers) return;
 
     loadTeamMembers(teamRef.current).then(
       (members) => {
@@ -242,7 +246,7 @@ function TeamDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [membersKey, showMembers, showInfo, viewer.uid, memberAttempt]);
+  }, [membersKey, needMembers, viewer.uid, memberAttempt]);
 
   useEffect(() => {
     const sequence = ++eventSequence.current;
@@ -500,6 +504,10 @@ function TeamDetailContent({
           ? 'guest'
           : 'ready';
 
+  const transferCandidates = membersState.status === 'loading'
+    ? null
+    : getTransferCandidates(roster, viewer.uid);
+
   const memberCount = getTeamMemberCount(team);
   const courseCount = 0;
   const eventCount = visibleEvents.length;
@@ -638,6 +646,14 @@ function TeamDetailContent({
     }
   }
 
+  /** T-090h：轉移成功（toast 已由區塊顯示）後關閉設定、重讀俱樂部、成員名單與 viewer（本人已不是經理）。 */
+  async function handleTransferred(): Promise<void> {
+    setTeamOverlay(null);
+    requestViewerRefresh();
+    setMemberAttempt((v) => v + 1);
+    await reloadTeamSilently();
+  }
+
   return (
     <div class="legacy-ui">
       <section class="page active td-v2-active" id="page-team-detail">
@@ -745,6 +761,9 @@ function TeamDetailContent({
                   ? () => { void handleOwnerDelete(); }
                   : undefined}
                 deleting={deleting}
+                transfer={canOwnerDeleteUserTeam(viewer, team)
+                  ? { candidates: transferCandidates, onTransferred: handleTransferred }
+                  : undefined}
               />
             ) : teamOverlay === 'edit-basic' ? (
               <TeamFormModal

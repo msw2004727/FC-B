@@ -41,7 +41,10 @@ vi.mock('@/ui/Modal', () => ({
 }));
 vi.mock('@/i18n/i18n', () => ({
   useLegacyT: () => (_key: string, fallback: string): string => fallback,
+  // T-090h：轉移經理區塊用 useT；測試直接回 key。
+  useT: () => (key: string): string => key,
 }));
+vi.mock('@/ui/AppConfirm', () => ({ appConfirm: vi.fn() }));
 
 const saveMock = vi.mocked(saveTeamSettingsPatch);
 const policyMock = vi.mocked(canEditTeamSettings);
@@ -1062,5 +1065,39 @@ describe('T-090d 擁有者刪除鈕', () => {
     overlayMock.mockReturnValue(releaseBack);
     setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam: vi.fn(), deleting: true });
     expect(screen.getByRole('button', { name: '刪除中...' }).hasAttribute('disabled')).toBe(true);
+  });
+});
+
+// T-090h：修正前設定彈窗沒有轉移經理區塊（應失敗）。是否顯示由父層傳 transfer 決定。
+describe('T-090h 轉移經理區塊', () => {
+  const candidates = [{ uid: 'U-test-2', name: '成員乙' }];
+
+  it('未提供 transfer 不顯示轉移區塊', () => {
+    setup(makeTeam({ createdVia: 'user_capability' }), { onDeleteTeam: vi.fn() });
+    expect(screen.queryByRole('combobox', { name: 'clubs.transfer.select' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'clubs.transfer.title' })).toBeNull();
+  });
+
+  it('提供 transfer：區塊位於編輯基本資料與刪除鈕之間', () => {
+    setup(makeTeam({ createdVia: 'user_capability' }), {
+      onDeleteTeam: vi.fn(),
+      transfer: { candidates, onTransferred: vi.fn() },
+    });
+    const edit = screen.getByRole('button', { name: '編輯基本資料' });
+    const transfer = screen.getByRole('button', { name: 'clubs.transfer.title' });
+    const remove = screen.getByRole('button', { name: '刪除俱樂部' });
+    expect(edit.compareDocumentPosition(transfer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(transfer.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'clubs.transfer.select' })).toBeTruthy();
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('刪除中時轉移區塊停用', () => {
+    setup(makeTeam({ createdVia: 'user_capability' }), {
+      onDeleteTeam: vi.fn(),
+      deleting: true,
+      transfer: { candidates, onTransferred: vi.fn() },
+    });
+    expect(screen.getByRole('combobox', { name: 'clubs.transfer.select' }).hasAttribute('disabled')).toBe(true);
   });
 });
