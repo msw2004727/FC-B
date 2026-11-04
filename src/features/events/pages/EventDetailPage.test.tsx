@@ -2026,6 +2026,59 @@ describe('T-074b 詳情頁整合', () => {
     expect(document.querySelector('#detail-attendance-table')?.textContent).not.toContain(companion.companionName);
     expect(mocks.registrations).toHaveBeenCalledTimes(2);
   });
+  it.each([
+    { permission: 'activity.view_noshow', expanded: false },
+    { permission: 'admin.repair.no_show_adjust', expanded: false },
+    { permission: 'activity.view_noshow', expanded: true },
+    { permission: 'admin.repair.no_show_adjust', expanded: true },
+  ])('只有 $permission 的職員調整名額後保留簽到與備註，出席只讀一次（先展開 $expanded）', async ({ permission, expanded }) => {
+    mocks.viewer.mockReturnValue({ ...staffViewer, hasPermission: (code: string) => code === permission });
+    const member = { ...self, id: 'member-id', userName: '已簽到會員',
+      teamReservationTeamId: 't1', teamReservationTeamName: '一隊', teamSeatSource: 'reserved' };
+    const note = '調整名額前已填的出席備註';
+    mocks.registrations.mockResolvedValue([member]);
+    mocks.history.mockResolvedValue([member]);
+    mocks.attendance.mockResolvedValue([
+      { _docId: 'checkin-member', uid: member.userId, type: 'checkin', status: 'active' },
+      { _docId: 'note-member', uid: member.userId, type: 'note', status: 'active', note },
+    ]);
+    const callable = vi.fn(async () => ({ ...success, promoted: [], event: { ...updated,
+      participants: [member.userName], participantsWithUid: [{ uid: member.userId, name: member.userName }],
+    } }));
+    registerCallableMock('adjustTeamReservation', callable);
+    mount();
+    const open = await screen.findByRole('button', { name: '查看出席紀錄' });
+    expect(screen.queryByRole('button', { name: '管理名單 / 出席紀錄' })).toBeNull();
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.attendance).not.toHaveBeenCalled();
+    const expectAttendance = async () => {
+      const row = (await screen.findByText(member.userName)).closest('tr')!;
+      const cells = within(row).getAllByRole('cell');
+      expect(cells[1]!.textContent).toBe('✓');
+      expect(cells[2]!.textContent).toBe('');
+      expect(cells[3]!.textContent).toBe(note);
+    };
+    if (expanded) {
+      fireEvent.click(open);
+      await expectAttendance();
+    }
+    const reads = [mocks.registrations.mock.calls.length, mocks.detail.mock.calls.length,
+      mocks.history.mock.calls.length, mocks.attendance.mock.calls.length];
+    await adjust();
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
+    expect([mocks.registrations.mock.calls.length, mocks.detail.mock.calls.length,
+      mocks.history.mock.calls.length, mocks.attendance.mock.calls.length])
+      .toEqual([reads[0]! + 1, ...reads.slice(1)]);
+    if (!expanded) fireEvent.click(screen.getByRole('button', { name: '查看出席紀錄' }));
+    await expectAttendance();
+    expect(mocks.attendance).toHaveBeenCalledTimes(1);
+    expect(mocks.attendance).toHaveBeenLastCalledWith(detail.eventDocId);
+    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    expect(callable).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain(member.userName);
+    expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
+  });
   it('團隊名額完整重讀後，晚到的分隊預載不能覆蓋名單或分隊快取', async () => {
     const stale = deferredReservationRead();
     const member = { ...self, userName: '分隊正取會員', teamKey: 'A' };

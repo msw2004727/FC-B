@@ -755,7 +755,11 @@ function EventDetailSession({
             ...registrations.filter(row => registrationOwner(row) === uid),
           ],
         } : previous);
-        setRosterPhase('ready');
+        // 這次只載入報名；有出席查看權時保留原狀態，首次展開仍須補讀出席紀錄。
+        // 無出席查看權則報名資料已完整，可沿用這次重讀，避免首次展開重複查詢。
+        if (!canViewDetailAttendanceRecordDetails(currentViewer.current, current.event)) {
+          setRosterPhase('ready');
+        }
       } catch {
         if (!isCurrent()) return;
         // Callable 結果與已載入的名單仍保留；尚無名單時提供既有重試入口。
