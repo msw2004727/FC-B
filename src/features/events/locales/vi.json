@@ -122,8 +122,13 @@
     "retry": "Thử lại",
     "permissionDenied": "Không đủ quyền",
     "permissionDeniedBody": "Bạn không có quyền truy cập trang quản lý hoạt động.",
-    "lifecycle": {
-      "deleteInLegacy": "Phiên bản mới chưa hỗ trợ xóa hoạt động. Chuyển sang phiên bản cũ để xóa?"
+    "delete": {
+      "confirmFirst": "Xóa hoạt động này? Sau khi xóa sẽ không thể khôi phục.",
+      "confirmFinal": "Xóa \"{title}\"",
+      "untitled": "hoạt động này",
+      "check": "Tôi chắc chắn muốn xóa",
+      "ok": "Xóa",
+      "pending": "Đang xóa…"
     }
   },
   "roster": {

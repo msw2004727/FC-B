@@ -41,11 +41,16 @@ import {
   sortMyActivitiesByNearestTime,
   type MyActivityTab,
 } from '../data/my-activities-model';
-import { canManageAllActivities } from '../data/operate-permissions';
+import { DeleteEventConfirmDialog } from '../components/legacy/DeleteEventConfirmDialog';
+import {
+  DELETE_EVENT_MESSAGES,
+  deleteEventViaCallable,
+  getDeleteEventErrorMessage,
+} from '../data/event-delete';
+import { isCourseLinkedLifecycleLocked } from '../data/event-lifecycle';
+import { canDeleteActivity, canManageAllActivities } from '../data/operate-permissions';
 import type { EventDoc } from '../data/types';
 
-/** 第一版不做刪除（PM 決策）：刪除按鈕導回舊版。 */
-const LEGACY_SITE_URL = 'https://toosterx.com/';
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
 
 const TAB_CONFIG: readonly { id: MyActivityTab; text: string }[] = [
@@ -100,6 +105,9 @@ export default function MyActivitiesPage(): JSX.Element {
 
   const loadSeqRef = useRef(0);
   const lifecycleBusyRef = useRef<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<EventDoc | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deleteBusyRef = useRef(false);
   const historyLoadedRef = useRef(false);
 
   const syncFromRepo = useCallback(() => {
@@ -310,9 +318,45 @@ export default function MyActivitiesPage(): JSX.Element {
     });
   }
 
-  async function handleDeleteInLegacy(): Promise<void> {
-    if (!(await appConfirm(t('events.manage.lifecycle.deleteInLegacy')))) return;
-    window.open(LEGACY_SITE_URL, '_blank', 'noopener');
+  /**
+   * A `deleteMyActivity` 的畫面流程：課程連結 → 權限 → 第一次確認（A 文案）→ 第二次確認（B 新增，勾選後才能刪）
+   * → Callable deleteEvent → 從清單移除並重新整理 → 成功提示。
+   */
+  async function handleDelete(e: EventDoc): Promise<void> {
+    if (deleteBusyRef.current || deleteTarget) return;
+    if (isCourseLinkedLifecycleLocked(e)) {
+      toast.show({ message: DELETE_EVENT_MESSAGES.courseLinked, tone: 'error' });
+      return;
+    }
+    if (!canDeleteActivity(operateCtx, e)) {
+      toast.show({ message: DELETE_EVENT_MESSAGES.denied, tone: 'error' });
+      return;
+    }
+    if (!(await appConfirm(t('events.manage.delete.confirmFirst'), { danger: true }))) return;
+    setDeleteTarget(e);
+  }
+
+  async function confirmDelete(): Promise<void> {
+    const target = deleteTarget;
+    if (!target || deleteBusyRef.current) return;
+    deleteBusyRef.current = true;
+    setDeleteBusy(true);
+    try {
+      await deleteEventViaCallable(target);
+      const docId = eventDocIdOf(target);
+      const publicId = String(target.id ?? '');
+      setEvents((prev) => prev.filter((ev) => eventDocIdOf(ev) !== docId
+        && (!publicId || String(ev.id ?? '') !== publicId)));
+      toast.show({ message: DELETE_EVENT_MESSAGES.done, tone: 'success' });
+      void loadAll(activeTab, true);
+    } catch (err: unknown) {
+      console.error('[MyActivitiesPage.delete]', err instanceof Error ? err.message : 'unknown');
+      toast.show({ message: getDeleteEventErrorMessage(err), tone: 'error' });
+    } finally {
+      deleteBusyRef.current = false;
+      setDeleteBusy(false);
+      setDeleteTarget(null);
+    }
   }
 
   function handleUnavailable(): void {
@@ -503,8 +547,8 @@ export default function MyActivitiesPage(): JSX.Element {
                     onLifecycle={(kind, evDoc) => {
                       void handleLifecycle(kind, evDoc);
                     }}
-                    onDelete={() => {
-                      void handleDeleteInLegacy();
+                    onDelete={(evDoc) => {
+                      void handleDelete(evDoc);
                     }}
                     onPin={handleUnavailable}
                     onUnavailable={handleUnavailable}
@@ -551,6 +595,17 @@ export default function MyActivitiesPage(): JSX.Element {
           nowMs={nowMs}
           onClose={() => setStatsModalOpen(false)}
         />
+
+        {deleteTarget && (
+          <DeleteEventConfirmDialog
+            title={String(deleteTarget.title ?? '')}
+            busy={deleteBusy}
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={() => {
+              void confirmDelete();
+            }}
+          />
+        )}
 
         {createEntry.overlays}
         <EventFormModal

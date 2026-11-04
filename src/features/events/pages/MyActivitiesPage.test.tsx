@@ -31,7 +31,7 @@ const testDict: Record<string, string> = {
   'events.manage.retry': '重試',
   'events.manage.permissionDenied': '權限不足',
   'events.manage.permissionDeniedBody': '您沒有權限存取活動管理頁面。',
-  'events.manage.lifecycle.deleteInLegacy': '新版暫不提供刪除活動，要前往舊版刪除嗎？',
+  'events.manage.delete.confirmFirst': '確定要刪除此活動？刪除後無法恢復。',
   'ui.userTag.unknown': '用戶',
   'ui.userTag.role.user': '一般用戶',
   'ui.userTag.openProfile': '開啟 {name} 的個人頁',

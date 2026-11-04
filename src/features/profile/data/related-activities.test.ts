@@ -127,6 +127,16 @@ describe('buildRegisteredActivities（A 邏輯）', () => {
     const regs: RegistrationRecord[] = [reg({ eventId: 'e1', userId: 'other' })];
     expect(buildRegisteredActivities(regs, events, uidSet)).toHaveLength(0);
   });
+
+  it('父活動已刪除（查表沒有）的孤兒報名略過，其他報名照常', () => {
+    const events = new Map<string, EventRecord>([['e1', evt('e1')]]);
+    const regs: RegistrationRecord[] = [
+      reg({ eventId: 'deleted-event' }),
+      reg({ eventId: 'e1' }),
+    ];
+    const out = buildRegisteredActivities(regs, events, uidSet);
+    expect(out.map((x) => x.event.id)).toEqual(['e1']);
+  });
 });
 
 describe('buildHostedActivities（A 邏輯）', () => {

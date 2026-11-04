@@ -25,7 +25,7 @@ const toastShow = vi.fn();
 const testDict: Record<string, string> = {
   'common.ok': '確定',
   'common.cancel': '取消',
-  'events.manage.lifecycle.deleteInLegacy': '新版暫不提供刪除活動，要前往舊版刪除嗎？',
+  'events.manage.delete.confirmFirst': '確定要刪除此活動？刪除後無法恢復。',
   'ui.userTag.unknown': '用戶',
   'ui.userTag.role.user': '一般用戶',
   'ui.userTag.openProfile': '開啟 {name} 的個人頁',
@@ -193,13 +193,13 @@ describe('MyActivitiesPage 生命週期按鈕', () => {
     expect(reopenMock).not.toHaveBeenCalled();
   });
 
-  it('已結束：顯示上架；有 event.delete_self 時顯示刪除並導向舊版確認', async () => {
+  it('已結束：顯示上架；有 event.delete_self 時顯示刪除並開第一次確認（T-076b 不再導向舊版）', async () => {
     mockViewer = coachViewer(['event.delete_self']);
     mockTerminalEvents = [ownEvent({ status: 'ended', date: '2026/04/20 10:00' })];
     renderPage();
     expect(await screen.findByRole('button', { name: '上架' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '刪除' }));
-    expect(await screen.findByText('新版暫不提供刪除活動，要前往舊版刪除嗎？')).toBeTruthy();
+    expect(await screen.findByText('確定要刪除此活動？刪除後無法恢復。')).toBeTruthy();
   });
 
   it('沒有刪除權限時不顯示刪除', async () => {

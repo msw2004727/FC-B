@@ -36,6 +36,40 @@ const ORACLE_CAPABILITY_CODES = ACTIVITY_CAPABILITY_CODES.filter(
   (code): code is OracleCapabilityCode => code !== 'user.activity.team_create',
 );
 
+/**
+ * T-076b（測試同步更新）：canDeleteActivity 不再照 A `_canDeleteActivity`，改對齊伺服器
+ * Callable deleteEvent（FC functions/event-deletion.js）與 Rules events delete。
+ * A 的版本認 event.edit_all、套預設／固有權限、私密活動放行 delegate 與自訂高階角色，比伺服器寬（A 既有 bug，兩站同修）。
+ * 這裡逐案改比對下面這份照伺服器原始碼寫的判斷；fixture 的 A 預期值保留不動，作為 A 行為紀錄。
+ */
+function serverDeleteExpected(
+  input: {
+    uid: string | null;
+    role: string | null;
+    rolePermissions: readonly string[] | null;
+    userGrants: { uid?: unknown; enabled?: unknown; permissions?: unknown } | null;
+  },
+  event: Record<string, unknown>,
+): boolean {
+  // 'unknown' 是 A 缺 uid 的佔位字，B 保守不顯示（伺服器端 uid 來自登入，不會是這個值）。
+  if (input.role === null || !input.uid || input.uid === 'unknown') return false;
+  const uid = input.uid;
+  const role = input.role || 'user';
+  const isAdmin = role === 'admin' || role === 'super_admin';
+  const grant = input.userGrants;
+  const has = (code: string): boolean =>
+    (role !== 'user' && Array.isArray(input.rolePermissions) && input.rolePermissions.includes(code))
+    || (!!grant
+      && (grant.enabled === undefined || grant.enabled === true)
+      && grant.uid === uid
+      && Array.isArray(grant.permissions)
+      && grant.permissions.includes(code));
+  const isOwner = ['captainUid', 'creatorUid', 'ownerUid']
+    .some(field => typeof event[field] === 'string' && event[field] === uid);
+  const allowed = isAdmin || has('event.delete') || (isOwner && has('event.delete_self'));
+  return allowed && !(event.privateEvent === true && !isAdmin && !isOwner);
+}
+
 const EXPECTED_FIELDS = [
   ...Object.keys(ACTIONS),
   'hasActivityManageEntry',
@@ -190,8 +224,10 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
         `${testCase.id}: capability keys`,
       ).toEqual([...ORACLE_CAPABILITY_CODES].sort());
 
+      const deleteExpected = serverDeleteExpected(input, input.event as Record<string, unknown>);
       for (const field of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
-        expect(actual[field], `${testCase.id}: ${field}`).toBe(testCase.expected[field]);
+        const want = field === 'canDeleteActivity' ? deleteExpected : testCase.expected[field];
+        expect(actual[field], `${testCase.id}: ${field}`).toBe(want);
       }
       expect(
         actual.hasActivityManageEntry,
@@ -209,7 +245,8 @@ describe('O 階段：A 真實函式 432 案差分 oracle', () => {
         canManageTeamSplit: _teamSplit,
         ...baseExpected
       } = testCase.expected;
-      expect(actual, `${testCase.id}: complete expected`).toStrictEqual(baseExpected);
+      expect(actual, `${testCase.id}: complete expected`)
+        .toStrictEqual({ ...baseExpected, canDeleteActivity: deleteExpected });
     });
   }
 });

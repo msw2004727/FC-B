@@ -122,8 +122,13 @@
     "retry": "再試行",
     "permissionDenied": "権限が不足しています",
     "permissionDeniedBody": "イベント管理ページにアクセスする権限がありません。",
-    "lifecycle": {
-      "deleteInLegacy": "新バージョンではまだイベントを削除できません。旧バージョンで削除しますか？"
+    "delete": {
+      "confirmFirst": "このイベントを削除しますか？削除すると元に戻せません。",
+      "confirmFinal": "「{title}」を削除",
+      "untitled": "このイベント",
+      "check": "削除することを確認しました",
+      "ok": "削除",
+      "pending": "削除中…"
     }
   },
   "roster": {

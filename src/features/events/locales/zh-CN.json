@@ -112,8 +112,13 @@
     "retry": "重试",
     "permissionDenied": "权限不足",
     "permissionDeniedBody": "您没有权限访问活动管理页面。",
-    "lifecycle": {
-      "deleteInLegacy": "新版暂不提供删除活动，要前往旧版删除吗？"
+    "delete": {
+      "confirmFirst": "确定要删除此活动？删除后无法恢复。",
+      "confirmFinal": "删除「{title}」",
+      "untitled": "此活动",
+      "check": "我确定要删除",
+      "ok": "删除",
+      "pending": "删除中…"
     }
   },
   "roster": {
