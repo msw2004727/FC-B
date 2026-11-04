@@ -117,6 +117,15 @@ describe('isEventVisibleToUser（黑名單四態）', () => {
     expect(isEventVisibleToUser(e, viewer('u1'), [reg({ userId: 'u2' })])).toBe(false);
     expect(isEventVisibleToUser(e, viewer('u1'), [reg({ userId: 'u1' })])).toBe(true);
   });
+
+  it('T-087c：legacy 報名只有 uid（無 userId）也算報名歷史（同 A _isRegistrationOwnedByUser）', () => {
+    const e = event({ blockedUids: ['u1'] });
+    const legacy = reg({ userId: undefined, uid: 'u1', status: 'cancelled' });
+    expect(isEventVisibleToUser(e, viewer('u1'), [legacy])).toBe(true);
+    expect(isEventVisibleToUser(e, viewer('u1'), [reg({ userId: undefined, uid: 'u2' })])).toBe(false);
+    // eventId 仍須相同
+    expect(isEventVisibleToUser(e, viewer('u1'), [{ ...legacy, eventId: 'other' }])).toBe(false);
+  });
 });
 
 describe('filterVisibleEventsByBlocklist', () => {

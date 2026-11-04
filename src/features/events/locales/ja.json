@@ -75,6 +75,9 @@
       "profileIncomplete": "プロフィールを完成させてください",
       "teamReservationDenied": "このチーム予約枠は利用できません",
       "teamReservationUnavailable": "チーム予約枠は現在利用できません",
+      "eventUnavailable": "このイベントは現在申込できません", "ageRestricted": "このイベントには年齢制限があります",
+      "birthdayRequired": "申込前に生年月日を登録してください", "requestIdConflict": "再読み込みしてからもう一度お試しください",
+      "participantNotAllowed": "この操作を行う権限がありません",
       "unknown": "申込に失敗しました。再試行してください。"
     }
   },
@@ -82,6 +85,8 @@
     "error": {
       "alreadyCancelled": "申込は取消済みです", "regNotFound": "申込が見つかりません",
       "eventNotFound": "イベントが見つかりません", "permissionDenied": "この申込は取り消せません",
+      "eventEnded": "イベントが開始したため、申込を取り消せません", "eventStarted": "開始時刻を過ぎたため、申込を取り消せません",
+      "requestIdConflict": "再読み込みしてからもう一度お試しください",
       "unknown": "取消に失敗しました。再試行してください。"
     }
   },

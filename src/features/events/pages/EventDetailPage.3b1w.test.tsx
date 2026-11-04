@@ -244,6 +244,71 @@ describe('3b-1w 報名流程', () => {
     }));
   });
 
+  // T-087c：T-087a 伺服器新代碼；修正前落到「夥伴報名調整失敗，請稍後再試」。
+  function serverError(originalCode: string, message: string): SignupError {
+    return new SignupError({
+      code: 'failed-precondition',
+      originalCode,
+      messageKey: 'event.signup.error.unknown',
+      message,
+    });
+  }
+
+  async function openCompanionSelect(): Promise<{ confirm: HTMLElement; boxes: HTMLElement[] }> {
+    fireEvent.click(await screen.findByRole('button', { name: '幫夥伴報名' }));
+    const confirm = await screen.findByRole('button', { name: '確認', exact: true });
+    const overlay = document.querySelector('#companion-select-overlay');
+    if (!(overlay instanceof HTMLElement)) throw new Error('缺少同行者彈窗');
+    return { confirm, boxes: within(overlay).getAllByRole('checkbox') };
+  }
+
+  it('(T-087c) 同行者勾選取消被伺服器以 EVENT_STARTED 拒絕 → 顯示取消時限文案', async () => {
+    mocks.history.mockResolvedValue([self, companion]);
+    mocks.cancel.mockRejectedValue(serverError('EVENT_STARTED', '活動已於開始時間結束，無法取消報名'));
+    mount();
+    const { confirm, boxes } = await openCompanionSelect();
+    const first = boxes[0];
+    if (!first) throw new Error('缺少同行者');
+    fireEvent.click(first);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'companion',
+      companionToggle: true,
+    })));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '活動已於開始時間結束，無法取消報名',
+    }));
+    expect(mocks.selection).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['EVENT_UNAVAILABLE', '此活動目前無法報名'],
+    ['REQUEST_ID_CONFLICT', '請重新整理後再試'],
+    ['PARTICIPANT_NOT_ALLOWED', '無權限執行此操作'],
+  ] as const)('(T-087c) 同行者加報被伺服器以 %s 拒絕 → 顯示對應文案', async (code, text) => {
+    mocks.selection.mockRejectedValue(serverError(code, text));
+    mount();
+    const { confirm, boxes } = await openCompanionSelect();
+    const first = boxes[0];
+    if (!first) throw new Error('缺少同行者');
+    fireEvent.click(first);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.selection).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: text }));
+    expect(mocks.cancel).not.toHaveBeenCalled();
+  });
+
+  it('(T-087c) 本人取消被伺服器以 EVENT_STARTED 拒絕 → 顯示伺服器文案', async () => {
+    mocks.history.mockResolvedValue([self]);
+    mocks.cancel.mockRejectedValue(serverError('EVENT_STARTED', '活動已於開始時間結束，無法取消報名'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({ kind: 'self' })));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '活動已於開始時間結束，無法取消報名',
+    }));
+  });
+
   it('同名但不同 companionId 不視為已報名', async () => {
     mocks.history.mockResolvedValue([{
       ...companion, companionId: 'other-id',
