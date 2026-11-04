@@ -14,7 +14,7 @@ import { TeamReservationModal, TeamReservationSignupChoiceModal } from './TeamRe
 
 export type ReservationSuccess = Extract<TeamReservationResult, { deduplicated: false }>;
 
-/** 每個 EventDetailSession 一份；所有資料取自現有快照，沒有額外查詢。 */
+/** 每個 EventDetailSession 一份；成功後的名單刷新由頁面沿既有讀取路徑處理。 */
 export function useTeamReservation(props: {
   event: TeamReservationEvent | null;
   viewer: TeamReservationViewer;
@@ -22,7 +22,7 @@ export function useTeamReservation(props: {
   blocked: boolean;
   now: number;
   sessionKey?: number;
-  onSuccess: (result: ReservationSuccess) => void;
+  onSuccess: (result: ReservationSuccess) => void | Promise<void>;
 }) {
   const latest = useRef(props);
   latest.current = props;
@@ -95,8 +95,18 @@ export function useTeamReservation(props: {
         return;
       }
       if (result.status === 'success' && !result.deduplicated) {
-        latest.current.onSuccess(result);
         close();
+        const committedGeneration = generation.current;
+        toast.show({ message: result.message });
+        try {
+          // 保持 pending 到名單刷新結束；成功寫入後的讀取失敗不能誤報成調整失敗。
+          await latest.current.onSuccess(result);
+        } catch {
+          if (alive.current && committedGeneration === generation.current) {
+            toast.show({ message: '團隊名額已更新，但名單更新失敗，請重新整理' });
+          }
+        }
+        return;
       }
       toast.show({ message: result.message });
     } catch {

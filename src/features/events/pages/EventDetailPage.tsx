@@ -304,8 +304,6 @@ function EventDetailSession({
   const attendanceCommitSeq = useRef(0);
   // T-088：publishTeamRows 每次加一。讀取開始時記下，提交時若已變就重套 teamKey。
   const teamPublishSeq = useRef(0);
-  // 只重套讀取開始後收到的 Callable 結果；後續新讀取仍以伺服器為準。
-  const reservationCommits = useRef<ReservationSuccess[]>([]);
   const rosterPending = useRef(false);
   // 每個活動只自動展開一次；載入 effect 在交出新快照前會重置。不寫入持久化。
   const rosterAutoOpened = useRef(false);
@@ -481,6 +479,7 @@ function EventDetailSession({
     if (
       !currentViewer.current.uid
       || rosterPending.current
+      || reservation.isPending()
       || operation.current
       || refreshFailed
       || !isEventVisibleToUser(current.event, currentViewer.current, current.viewerRegistrations)
@@ -491,7 +490,6 @@ function EventDetailSession({
     const request = ++rosterSequence.current;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
-    const reservationSeq = reservationCommits.current.length;
     setRosterPhase('loading');
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
@@ -511,7 +509,7 @@ function EventDetailSession({
           ...previous,
           registrations,
           attendanceRecords,
-        }, attendanceSeq, teamSeq, reservationSeq);
+        }, attendanceSeq, teamSeq);
       });
       setRosterPhase('ready');
     } catch {
@@ -586,7 +584,6 @@ function EventDetailSession({
     if (!rosterExpanded) rosterPending.current = false;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
-    const reservationSeq = reservationCommits.current.length;
     const canViewDetails = canViewDetailAttendanceRecordDetails(
       currentViewer.current,
       current.event,
@@ -612,7 +609,7 @@ function EventDetailSession({
         viewerRegistrations: history,
         attendanceRecords,
       };
-      setSnapshot((previous) => adoptLoadedSnapshot(previous, next, attendanceSeq, teamSeq, reservationSeq));
+      setSnapshot((previous) => adoptLoadedSnapshot(previous, next, attendanceSeq, teamSeq));
       if (rosterExpanded) {
         setRosterPhase('ready');
       }
@@ -696,6 +693,7 @@ function EventDetailSession({
   const canShowDetailLog = visible && !!viewer.uid
     && canViewEventOperationLog(operateContextFromViewer(viewer), event);
 
+  // 僅供完整重讀完成前的即時顯示；重讀後不再重播 promoted 或推測其他會員歸屬。
   function applyReservationResult(current: Snapshot, result: ReservationSuccess): Snapshot {
     const eventId = current.event.id ?? publicId;
     return {
@@ -704,10 +702,6 @@ function EventDetailSession({
       registrations: applyReservationPromotions(current.registrations, result.promoted, eventId, result.eventPatch.participantsWithUid),
       viewerRegistrations: applyReservationPromotions(current.viewerRegistrations, result.promoted, eventId, result.eventPatch.participantsWithUid),
     };
-  }
-
-  function applyPendingReservationResults(current: Snapshot, since: number): Snapshot {
-    return reservationCommits.current.slice(since).reduce(applyReservationResult, current);
   }
 
   const reservation = useTeamReservation({
@@ -721,18 +715,52 @@ function EventDetailSession({
     blocked: busy || rosterSubmitting,
     now,
     sessionKey: reload,
-    onSuccess: result => {
-      if (!alive.current || !headerState.current.snapshot || !headerState.current.visible) return;
-      reservationCommits.current.push(result);
+    onSuccess: async result => {
+      const current = headerState.current.snapshot;
+      const uid = currentViewer.current.uid;
+      if (!alive.current || !current || !uid || !headerState.current.visible) return;
+      // 完整重讀取代補丁重播：先作廢寫入前開始的名單／分隊讀取，避免晚到舊資料覆蓋。
+      const request = ++rosterSequence.current;
+      const session = sequence.current;
+      const teamSeq = teamPublishSeq.current;
+      teamLoadSequence.current += 1;
+      teamLoadRef.current = null;
+      const isCurrent = () => alive.current && request === rosterSequence.current
+        && session === sequence.current && currentViewer.current.uid === uid
+        && headerState.current.snapshot?.eventDocId === current.eventDocId
+        && headerState.current.visible;
       headerState.current = {
         ...headerState.current,
-        snapshot: applyReservationResult(headerState.current.snapshot, result),
+        snapshot: applyReservationResult(current, result),
       };
       setSnapshot(previous => previous ? applyReservationResult(previous, result) : previous);
       if (teamRowsRef.current) {
         const rows = applyReservationPromotions(teamRowsRef.current, result.promoted, publicId, result.eventPatch.participantsWithUid);
         teamRowsRef.current = rows;
         setTeamRegistrations(rows);
+      }
+      try {
+        // 職員每次成功只重讀這個活動的 registrations 一次；不加活動、會員或出席查詢。
+        const loaded = await loadEventRegistrations(current.eventDocId);
+        if (!isCurrent()) return;
+        const registrations = registrationsWithPublishedTeams(loaded, teamSeq);
+        const eventId = current.event.id ?? publicId;
+        teamRowsRef.current = registrations;
+        setTeamRegistrations(registrations);
+        setSnapshot(previous => previous ? {
+          ...previous,
+          registrations,
+          viewerRegistrations: [
+            ...previous.viewerRegistrations.filter(row => row.eventId !== eventId),
+            ...registrations.filter(row => registrationOwner(row) === uid),
+          ],
+        } : previous);
+        setRosterPhase('ready');
+      } catch {
+        if (!isCurrent()) return;
+        // Callable 結果與已載入的名單仍保留；尚無名單時提供既有重試入口。
+        setRosterPhase(phase => phase === 'ready' ? phase : 'error');
+        throw new Error('reservation-roster-refresh-failed');
       }
     },
   });
@@ -759,10 +787,8 @@ function EventDetailSession({
     next: Snapshot,
     attendanceSeq: number,
     teamSeq: number,
-    reservationSeq: number,
   ): Snapshot | null {
     if (!previous) return null;
-    next = applyPendingReservationResults(next, reservationSeq);
     const registrations = registrationsWithPublishedTeams(next.registrations, teamSeq);
     const attendanceRecords = attendanceCommitSeq.current !== attendanceSeq
       ? previous.attendanceRecords
@@ -793,11 +819,7 @@ function EventDetailSession({
     if (teamRowsRef.current !== null) return Promise.resolve(teamRowsRef.current);
     if (teamLoadRef.current) return teamLoadRef.current;
     const request = ++teamLoadSequence.current;
-    const reservationSeq = reservationCommits.current.length;
-    const task = loadEventRegistrations(eventDocId).then(loaded => {
-      const rows = reservationCommits.current.slice(reservationSeq).reduce(
-        (rows, result) => applyReservationPromotions(rows, result.promoted, publicId, result.eventPatch.participantsWithUid), loaded,
-      );
+    const task = loadEventRegistrations(eventDocId).then(rows => {
       if (alive.current && request === teamLoadSequence.current
         && headerState.current.snapshot?.eventDocId === eventDocId
         && headerState.current.visible) {
@@ -944,14 +966,13 @@ function EventDetailSession({
     const current = headerState.current.snapshot;
     const uid = currentViewer.current.uid;
     if (!current || !uid || !headerState.current.visible || headerRefreshPending.current
-      || operation.current || reservation.busy || rosterSubmitting) return;
+      || operation.current || reservation.isPending() || rosterSubmitting) return;
     headerRefreshPending.current = true;
     const request = sequence.current;
     const rosterRequest = ++rosterSequence.current;
     rosterPending.current = false;
     const attendanceSeq = attendanceCommitSeq.current;
     const teamSeq = teamPublishSeq.current;
-    const reservationSeq = reservationCommits.current.length;
     try {
       // 照 A `_refreshEventDetail`＋`_forceRefreshEventDetailRosterData`（Promise.allSettled）：
       // 名單／紀錄重讀失敗只保留舊資料，不讓整次重新整理失敗（Gemini 審查 P2）。
@@ -995,7 +1016,7 @@ function EventDetailSession({
         viewerRegistrations: history,
         registrations,
         attendanceRecords,
-      }, attendanceSeq, teamSeq, reservationSeq));
+      }, attendanceSeq, teamSeq));
       if (!registrationsFailed) setRosterPhase('ready');
       else setRosterPhase((phase) => (phase === 'loading' ? 'error' : phase));
       setHistoryFailed(false);
@@ -1087,7 +1108,6 @@ function EventDetailSession({
       const uid = currentViewer.current.uid;
       if (!current || !uid) throw new Error('stale');
       const teamSeq = teamPublishSeq.current;
-      const reservationSeq = reservationCommits.current.length;
       const request = ++rosterSequence.current;
       const [fresh, registrations, history] = await Promise.all([
         loadEventDetail(current.event.id || eventId),
@@ -1103,13 +1123,13 @@ function EventDetailSession({
         throw new Error('PERMISSION_DENIED');
       }
       // 直接採用伺服器活動投影，保留團隊席位；不以報名筆數覆蓋 current。
-      const next = applyPendingReservationResults({
+      const next: Snapshot = {
         ...(headerState.current.snapshot ?? current),
         event: { ...fresh.event, id: fresh.event.id || eventId },
         eventDocId: current.eventDocId,
         registrations: registrationsWithPublishedTeams(registrations, teamSeq),
         viewerRegistrations: history,
-      }, reservationSeq);
+      };
       headerState.current = { snapshot: next, visible: true };
       setSnapshot(next);
       instantSave.resetInstantSave();

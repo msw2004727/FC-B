@@ -38,7 +38,7 @@ function Harness({ activity = event, who = viewer, loading = false }: {
 }) {
   const [current, setCurrent] = useState(activity);
   const flow = useTeamReservation({ event: current, viewer: who, loading, blocked: false, now: Date.now(),
-    onSuccess: result => { mock.applied(result); setCurrent(prev => ({ ...prev, ...result.eventPatch })); } });
+    onSuccess: result => { setCurrent(prev => ({ ...prev, ...result.eventPatch })); return mock.applied(result); } });
   const state = getSignupButtonState({ event: { id: current.id, status: current.status },
     viewer: { ...who, roleLevel: 0, hasPermission: () => false }, registrations: [], now: new Date(),
     profile: null, profileLoading: false, historyFailed: false, viewerTeamIds: who.teamIds });
@@ -175,6 +175,31 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(localStorage.getItem('teamReservationSlots:t1')).toBe('3');
     expect(mock.read).not.toHaveBeenCalled();
+  });
+  it.each(['成功', '失敗', '離頁'] as const)('成功後等待刷新期間仍鎖住連點，刷新%s不重送寫入', async mode => {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    mock.applied.mockImplementationOnce(() => new Promise<void>((done, fail) => { resolve = done; reject = fail; }));
+    const view = render(<Harness />);
+    await open(); input('3'); confirm();
+    await waitFor(() => expect(mock.applied).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mock.toast).toHaveBeenCalledWith({ message: '已更新團隊名額' });
+    const button = screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button); fireEvent.click(button);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mock.call).toHaveBeenCalledTimes(1);
+    if (mode === '離頁') view.unmount();
+    if (mode === '成功') resolve();
+    else reject(new Error('SECRET_REFRESH_STACK'));
+    await new Promise(done => setTimeout(done, 0));
+    if (mode !== '離頁') await waitFor(() => expect(button.disabled).toBe(false));
+    expect(mock.toast).toHaveBeenCalledTimes(mode === '失敗' ? 2 : 1);
+    if (mode === '失敗') expect(mock.toast).toHaveBeenLastCalledWith({ message: '團隊名額已更新，但名單更新失敗，請重新整理' });
+    expect(JSON.stringify(mock.toast.mock.calls)).not.toContain('SECRET_REFRESH_STACK');
+    expect(mock.toast).not.toHaveBeenCalledWith({ message: '團隊名額調整失敗，請稍後重試' });
+    expect(mock.call).toHaveBeenCalledTimes(1);
   });
   it('取消名額與 localStorage 不可用仍可送出並顯示成功', async () => {
     const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage-private'); });
