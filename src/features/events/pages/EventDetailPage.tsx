@@ -590,7 +590,9 @@ function EventDetailSession({
     if (alive.current) await auth.signIn();
   }
 
-  async function refresh(current: Snapshot): Promise<void> {
+  // outcomeUnknown：寫入結果未知（deduplicated／逾時／無投影）時一併重讀活動文件，
+  // 改用伺服器重算過的 current（R-REG-002）；正常成功路徑不多讀。
+  async function refresh(current: Snapshot, outcomeUnknown = false): Promise<void> {
     const uid = currentViewer.current.uid;
     if (!uid) return;
     const request = ++rosterSequence.current;
@@ -603,19 +605,34 @@ function EventDetailSession({
       current.event,
     );
     try {
-      const [registrations, history, attendanceRecords] = await Promise.all([
+      const [registrations, history, attendanceRecords, fresh] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
         loadViewerRegistrations(uid),
         rosterExpanded && canViewDetails
           ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve(current.attendanceRecords),
+        outcomeUnknown
+          ? loadEventDetail(current.event.id ?? publicId).catch(() => null)
+          : Promise.resolve(null),
       ]);
       if (!alive.current || request !== rosterSequence.current) return;
       const active = registrations.filter(isActiveRegistration);
+      // 活動文件重讀失敗或不符時沿用原投影，不讓名單重讀失敗。
+      const baseEvent = fresh && fresh.eventDocId === current.eventDocId
+        ? {
+          ...current.event,
+          ...fresh.event,
+          id: fresh.event.id ?? current.event.id,
+          viewCount: mergeViewCount(
+            (fresh.event as LegacyDetailEvent).viewCount,
+            (current.event as LegacyDetailEvent).viewCount,
+          ),
+        }
+        : current.event;
       const next: Snapshot = {
         ...current,
         event: {
-          ...current.event,
+          ...baseEvent,
           // R-REG-002：current 沿用佔位重算的權威投影（含團隊剩餘預留），不可改成正取筆數。
           waitlist: active.filter((reg) => reg.status === 'waitlisted').length,
         },
@@ -1286,7 +1303,10 @@ function EventDetailSession({
         });
       }
       if (result.ok) {
-        await refresh(adoptEventProjection(snapshot, result.response.event));
+        await refresh(
+          adoptEventProjection(snapshot, result.response.event),
+          result.response.deduplicated === true || !result.response.event,
+        );
       }
     } finally {
       if (alive.current) {
@@ -1447,7 +1467,7 @@ function EventDetailSession({
       if (error instanceof SignupError && error.originalCode === 'CALLABLE_TIMEOUT'
         && alive.current && currentViewer.current.uid === uid) {
         toast.show({ message: error.message });
-        await refresh(current);
+        await refresh(current, true);
         return;
       }
       throw error;
@@ -1455,7 +1475,7 @@ function EventDetailSession({
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (response.deduplicated) {
       toast.show({ message: '報名處理中，請稍候' });
-      await refresh(current);
+      await refresh(current, true);
       return;
     }
 
@@ -1536,7 +1556,7 @@ function EventDetailSession({
       if (!current) return;
       // T-086a：結果未知（deduplicated／逾時）時等重讀完成（顧問規則 3）；已確認成功改背景重讀。
       if (deduplicated) {
-        await refresh(current);
+        await refresh(current, true);
         return;
       }
       if (updatedEvent) {
@@ -1549,8 +1569,9 @@ function EventDetailSession({
     onBatchCancelled: async (result) => {
       const current = snapshot;
       if (!current) return;
-      if (result?.deduplicated) {
-        await refresh(current);
+      // 省略 result（ALREADY_CANCELLED）也沒有投影，同樣要重讀活動文件。
+      if (!result || result.deduplicated) {
+        await refresh(current, true);
         return;
       }
       void refreshInBackground(adoptEventProjection(current, result?.event));
@@ -1669,7 +1690,7 @@ function EventDetailSession({
         if (response.deduplicated) {
           toast.show({ message: '取消處理中，請稍候' });
           setCompanionOpen(false);
-          await refresh(current);
+          await refresh(current, true);
           return;
         }
         cancelled = cancelRegistrationIds.length;
@@ -1689,7 +1710,7 @@ function EventDetailSession({
         if (response.deduplicated) {
           toast.show({ message: '報名處理中，請稍候' });
           setCompanionOpen(false);
-          await refresh(current);
+          await refresh(adoptEventProjection(current, projection), true);
           return;
         }
         confirmed = count(response.confirmed);
@@ -1723,7 +1744,7 @@ function EventDetailSession({
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);
-        await refresh(adoptEventProjection(current, projection));
+        await refresh(adoptEventProjection(current, projection), true);
       }
     }
   }

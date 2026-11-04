@@ -40,7 +40,7 @@ export interface UseCancelRegistrationOptions {
     deduplicated: boolean;
     updatedEvent: DetailEvent | null;
   }): Promise<void>;
-  /** 同上；省略 result 視為伺服器已確認。 */
+  /** 同上；省略 result（ALREADY_CANCELLED）＝已確認但無投影，呼叫端須重讀活動文件。 */
   onBatchCancelled(result?: { deduplicated: boolean; event?: unknown }): Promise<void>;
 }
 
