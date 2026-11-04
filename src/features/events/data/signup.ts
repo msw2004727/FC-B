@@ -445,6 +445,12 @@ const REGISTER_ERROR_MESSAGE_KEYS: Record<string, string> = {
   PROFILE_INCOMPLETE: 'event.signup.error.profileIncomplete',
   TEAM_RESERVATION_TEAM_DENIED: 'event.signup.error.teamReservationDenied',
   TEAM_RESERVATION_TEAM_NOT_AVAILABLE: 'event.signup.error.teamReservationUnavailable',
+  // T-087a 伺服器檢查（details 代碼）
+  EVENT_UNAVAILABLE: 'event.signup.error.eventUnavailable',
+  AGE_RESTRICTED: 'event.signup.error.ageRestricted',
+  BIRTHDAY_REQUIRED: 'event.signup.error.birthdayRequired',
+  REQUEST_ID_CONFLICT: 'event.signup.error.requestIdConflict',
+  PARTICIPANT_NOT_ALLOWED: 'event.signup.error.participantNotAllowed',
 };
 
 const CANCEL_ERROR_MESSAGE_KEYS: Record<string, string> = {
@@ -452,6 +458,10 @@ const CANCEL_ERROR_MESSAGE_KEYS: Record<string, string> = {
   REG_NOT_FOUND: 'event.cancel.error.regNotFound',
   EVENT_NOT_FOUND: 'event.cancel.error.eventNotFound',
   PERMISSION_DENIED: 'event.cancel.error.permissionDenied',
+  // T-087a 伺服器取消時限與去重衝突（details 代碼）
+  EVENT_ENDED: 'event.cancel.error.eventEnded',
+  EVENT_STARTED: 'event.cancel.error.eventStarted',
+  REQUEST_ID_CONFLICT: 'event.cancel.error.requestIdConflict',
 };
 
 function extractOriginalCode(error: CallableError): string {

@@ -65,6 +65,9 @@
       "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完成个人资料",
       "teamReservationDenied": "无法使用此球队预留名额",
       "teamReservationUnavailable": "球队预留名额目前不可用",
+      "eventUnavailable": "此活动目前无法报名", "ageRestricted": "此活动有年龄限制",
+      "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
+      "participantNotAllowed": "无权限执行此操作",
       "unknown": "报名失败，请稍后重试"
     }
   },
@@ -72,6 +75,8 @@
     "error": {
       "alreadyCancelled": "报名已取消", "regNotFound": "找不到此报名",
       "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
+      "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
+      "requestIdConflict": "请重新整理后再试",
       "unknown": "取消失败，请稍后重试"
     }
   },

@@ -73,9 +73,10 @@ export function canListPrivateEvent(
 }
 
 /**
- * B 使用 canonical userId。
+ * B 使用 canonical userId，另認 legacy uid（同 A ApiService._isRegistrationOwnedByUser）。
  * oracle adapter 將 A stub 的 uid 映射為 userId，保留 UID 原值。
  * 不限制 status：cancelled、removed 也屬於歷史報名。
+ * A 另認 courseOwnerUids（教育課程家長報名）；新站不做教育課程，不補。
  */
 export function userHasRegistrationForEvent(
   eventId: string | null | undefined,
@@ -89,7 +90,7 @@ export function userHasRegistrationForEvent(
   return registrations.some(
     (registration) => registration != null
       && registration.eventId === eventId
-      && registration.userId === uid,
+      && (registration.userId === uid || registration.uid === uid),
   );
 }
 

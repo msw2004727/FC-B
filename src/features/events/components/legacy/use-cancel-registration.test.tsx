@@ -381,4 +381,59 @@ describe('useCancelRegistration', () => {
     expect(onBatchCancelled).toHaveBeenCalledTimes(3);
     expect(cancelRegistrationMock).toHaveBeenCalledTimes(3);
   });
+
+  function serverError(originalCode: string, message: string): SignupError {
+    return new SignupError({
+      code: 'failed-precondition',
+      originalCode,
+      messageKey: 'event.cancel.error.unknown',
+      message,
+    });
+  }
+
+  // T-087c：T-087a 伺服器對同行者取消（A10）也套取消時限；修正前 REQUEST_ID_CONFLICT 會落到逾時文案。
+  it.each([
+    ['EVENT_ENDED', '活動已開始，無法再取消報名'],
+    ['EVENT_STARTED', '活動已於開始時間結束，無法取消報名'],
+    ['REQUEST_ID_CONFLICT', '請重新整理後再試'],
+  ] as const)('(T-087c) 同行者取消被伺服器拒絕 %s → 顯示對應文案、不當成逾時重讀', async (code, text) => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [
+      makeReg({ id: 'selfA', userId: 'uidA', userName: '我' }),
+      makeReg({ id: 'compA', userId: 'uidA', companionName: '小明' }),
+    ];
+    cancelRegistrationMock.mockRejectedValueOnce(serverError(code, text));
+    const onBatchCancelled = vi.fn(async () => {});
+    const { getResult } = setup({ getViewerUid: () => 'uidA', onBatchCancelled });
+
+    await act(async () => {
+      await getResult().confirmCancel({ event, publicId: 'evtA', owned }, ['compA']);
+    });
+
+    expect(cancelRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({ kind: 'companion' }));
+    expect(toastShow).toHaveBeenCalledWith({ message: `取消失敗：${text}` });
+    expect(onBatchCancelled).not.toHaveBeenCalled();
+  });
+
+  it('(T-087c) 本人取消被伺服器以 EVENT_STARTED 拒絕 → 原錯誤（含伺服器文案）交給呼叫端顯示', async () => {
+    const event = makeEvent({ id: 'evtA' });
+    const owned = [makeReg({ id: 'targetA', userId: 'uidA' })];
+    isCompanionMock.mockReturnValue(false);
+    const rejection = serverError('EVENT_STARTED', '活動已於開始時間結束，無法取消報名');
+    cancelRegistrationMock.mockRejectedValueOnce(rejection);
+    const onSelfCancelled = vi.fn(async () => {});
+    const { getResult } = setup({ getViewerUid: () => 'uidA', onSelfCancelled });
+
+    let caught: unknown;
+    await act(async () => {
+      try {
+        await getResult().beginCancel({ event, publicId: 'evtA', owned });
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(caught).toBe(rejection);
+    expect(onSelfCancelled).not.toHaveBeenCalled();
+  });
 });

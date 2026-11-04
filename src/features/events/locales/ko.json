@@ -73,6 +73,9 @@
       "profileIncomplete": "프로필 정보를 먼저 완성해 주세요",
       "teamReservationDenied": "이 팀 예약 자리를 이용할 수 없습니다",
       "teamReservationUnavailable": "팀 예약 자리를 현재 이용할 수 없습니다",
+      "eventUnavailable": "현재 이 이벤트에 신청할 수 없습니다", "ageRestricted": "이 이벤트에는 연령 제한이 있습니다",
+      "birthdayRequired": "신청 전에 생년월일을 입력해 주세요", "requestIdConflict": "새로고침 후 다시 시도해 주세요",
+      "participantNotAllowed": "이 작업을 수행할 권한이 없습니다",
       "unknown": "신청하지 못했습니다. 다시 시도해 주세요."
     }
   },
@@ -80,6 +83,8 @@
     "error": {
       "alreadyCancelled": "이미 취소된 신청입니다", "regNotFound": "신청을 찾을 수 없습니다",
       "eventNotFound": "이벤트를 찾을 수 없습니다", "permissionDenied": "이 신청은 취소할 수 없습니다",
+      "eventEnded": "이벤트가 시작되어 신청을 취소할 수 없습니다", "eventStarted": "시작 시간이 지나 신청을 취소할 수 없습니다",
+      "requestIdConflict": "새로고침 후 다시 시도해 주세요",
       "unknown": "취소하지 못했습니다. 다시 시도해 주세요."
     }
   },

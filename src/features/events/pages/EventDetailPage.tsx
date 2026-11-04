@@ -1605,6 +1605,11 @@ function EventDetailSession({
         TEAM_RESTRICTED: '不符合球隊限定',
         PROFILE_INCOMPLETE: '請先補齊個人資料',
         ALREADY_CANCELLED: '報名狀態已更新',
+        // T-087a 伺服器檢查；文案同伺服器 message（A 原文）
+        EVENT_STARTED: '活動已於開始時間結束，無法取消報名',
+        EVENT_UNAVAILABLE: '此活動目前無法報名',
+        REQUEST_ID_CONFLICT: '請重新整理後再試',
+        PARTICIPANT_NOT_ALLOWED: '無權限執行此操作',
       };
       toast.show({ message: messages[code] || '夥伴報名調整失敗，請稍後再試' });
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。

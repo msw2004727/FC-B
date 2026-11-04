@@ -75,6 +75,9 @@
       "profileIncomplete": "Vui lòng hoàn thiện hồ sơ trước",
       "teamReservationDenied": "Bạn không thể sử dụng chỗ dành riêng cho đội này",
       "teamReservationUnavailable": "Chỗ dành riêng cho đội hiện không khả dụng",
+      "eventUnavailable": "Hiện không thể đăng ký sự kiện này", "ageRestricted": "Sự kiện này có giới hạn độ tuổi",
+      "birthdayRequired": "Vui lòng bổ sung ngày sinh trước khi đăng ký", "requestIdConflict": "Vui lòng tải lại trang rồi thử lại",
+      "participantNotAllowed": "Bạn không có quyền thực hiện thao tác này",
       "unknown": "Đăng ký thất bại. Vui lòng thử lại."
     }
   },
@@ -82,6 +85,8 @@
     "error": {
       "alreadyCancelled": "Đăng ký đã được hủy", "regNotFound": "Không tìm thấy đăng ký",
       "eventNotFound": "Không tìm thấy sự kiện", "permissionDenied": "Bạn không thể hủy đăng ký này",
+      "eventEnded": "Sự kiện đã bắt đầu, không thể hủy đăng ký", "eventStarted": "Đã qua giờ bắt đầu, không thể hủy đăng ký",
+      "requestIdConflict": "Vui lòng tải lại trang rồi thử lại",
       "unknown": "Hủy thất bại. Vui lòng thử lại."
     }
   },

@@ -70,6 +70,11 @@ export function registerSelection(
         PROFILE_INCOMPLETE: 'profileIncomplete',
         TEAM_RESERVATION_TEAM_DENIED: 'teamReservationDenied',
         TEAM_RESERVATION_TEAM_NOT_AVAILABLE: 'teamReservationUnavailable',
+        EVENT_UNAVAILABLE: 'eventUnavailable',
+        AGE_RESTRICTED: 'ageRestricted',
+        BIRTHDAY_REQUIRED: 'birthdayRequired',
+        REQUEST_ID_CONFLICT: 'requestIdConflict',
+        PARTICIPANT_NOT_ALLOWED: 'participantNotAllowed',
       };
       throw new SignupError({
         code: error instanceof CallableError ? error.code : 'unknown',

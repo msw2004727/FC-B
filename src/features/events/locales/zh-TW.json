@@ -131,6 +131,11 @@
       "profileIncomplete": "請先完成個人資料",
       "teamReservationDenied": "無法使用此球隊預留名額",
       "teamReservationUnavailable": "球隊預留名額目前不可用",
+      "eventUnavailable": "此活動目前無法報名",
+      "ageRestricted": "此活動有年齡限制",
+      "birthdayRequired": "請先補齊生日資料後再報名",
+      "requestIdConflict": "請重新整理後再試",
+      "participantNotAllowed": "無權限執行此操作",
       "unknown": "報名失敗，請稍後重試"
     }
   },
@@ -140,6 +145,9 @@
       "regNotFound": "找不到此報名",
       "eventNotFound": "找不到此活動",
       "permissionDenied": "無法取消此報名",
+      "eventEnded": "活動已開始，無法再取消報名",
+      "eventStarted": "活動已於開始時間結束，無法取消報名",
+      "requestIdConflict": "請重新整理後再試",
       "unknown": "取消失敗，請稍後重試"
     }
   },

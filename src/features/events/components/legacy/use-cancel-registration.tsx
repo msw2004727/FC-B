@@ -242,6 +242,7 @@ export function useCancelRegistration(
         PERMISSION_DENIED: '無權限執行此操作',
         EVENT_ENDED: '活動已開始，無法再取消報名',
         EVENT_STARTED: '活動已於開始時間結束，無法取消報名',
+        REQUEST_ID_CONFLICT: '請重新整理後再試',
       };
       const code = error instanceof SignupError ? error.originalCode : '';
       toast.show({ message: `取消失敗：${messages[code] || '連線逾時，請檢查網路後重新整理再試'}` });

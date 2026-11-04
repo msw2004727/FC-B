@@ -75,6 +75,11 @@
       "profileIncomplete": "Complete your profile first",
       "teamReservationDenied": "You cannot use these reserved team places",
       "teamReservationUnavailable": "Reserved team places are unavailable",
+      "eventUnavailable": "This event is not open for registration",
+      "ageRestricted": "This event has an age restriction",
+      "birthdayRequired": "Please add your birthday before registering",
+      "requestIdConflict": "Please refresh and try again",
+      "participantNotAllowed": "You do not have permission to do this",
       "unknown": "Registration failed. Please try again."
     }
   },
@@ -83,6 +88,9 @@
       "alreadyCancelled": "Registration was already cancelled",
       "regNotFound": "Registration not found", "eventNotFound": "Event not found",
       "permissionDenied": "You cannot cancel this registration",
+      "eventEnded": "The event has started, so registration can no longer be cancelled",
+      "eventStarted": "The event start time has passed, so registration cannot be cancelled",
+      "requestIdConflict": "Please refresh and try again",
       "unknown": "Cancellation failed. Please try again."
     }
   },

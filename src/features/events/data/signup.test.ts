@@ -58,6 +58,7 @@ import {
   type SignupParticipant,
   type SignupSnapshot,
 } from './signup';
+import { registerSelection } from './signup-selection';
 import type { EventDoc, RegistrationDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
 
@@ -1251,6 +1252,96 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     expect(harness.load).toHaveBeenCalledTimes(2);
     expect(requestIds).toHaveLength(2);
     expect(requestIds[0]).not.toBe(requestIds[1]);
+  });
+});
+
+// T-087c：T-087a 伺服器新檢查的 details 代碼（message＝中文、details＝代碼）。
+// 修正前這些代碼不在對照表，會落到通用失敗 key。
+describe('T-087c：伺服器新錯誤代碼對照', () => {
+  const REGISTER_CASES = [
+    ['EVENT_UNAVAILABLE', '此活動目前無法報名', 'eventUnavailable'],
+    ['AGE_RESTRICTED', '此活動限 18 歲以上報名', 'ageRestricted'],
+    ['BIRTHDAY_REQUIRED', '請先補齊生日資料後再報名', 'birthdayRequired'],
+    ['REQUEST_ID_CONFLICT', '請重新整理後再試', 'requestIdConflict'],
+    ['PARTICIPANT_NOT_ALLOWED', '無權限執行此操作', 'participantNotAllowed'],
+  ] as const;
+
+  it.each(REGISTER_CASES)('報名 %s → 專屬 key', async (code, message, key) => {
+    registerMock('registerForEvent', async () => {
+      throw new CallableError('failed-precondition', message, code);
+    });
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      context: signupContext().context,
+    })).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: code,
+      messageKey: `event.signup.error.${key}`,
+      message,
+    });
+  });
+
+  it.each(REGISTER_CASES)('只報同行者 %s → 專屬 key', async (code, message, key) => {
+    registerMock('registerForEvent', async () => {
+      throw new CallableError('failed-precondition', message, code);
+    });
+    await expect(registerSelection({
+      eventId: 'evt1',
+      user: { uid: 'u1' },
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+    }, false)).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: code,
+      messageKey: `event.signup.error.${key}`,
+    });
+  });
+
+  const CANCEL_CASES = [
+    ['EVENT_ENDED', '活動已開始，無法再取消報名', 'eventEnded'],
+    ['EVENT_STARTED', '活動已於開始時間結束，無法取消報名', 'eventStarted'],
+    ['REQUEST_ID_CONFLICT', '請重新整理後再試', 'requestIdConflict'],
+  ] as const;
+
+  // 本機快照仍未開始（伺服器時間或最新狀態先到），由伺服器擋下。
+  it.each([
+    ...CANCEL_CASES.map(([code, message, key]) => ['self', code, message, key] as const),
+    ...CANCEL_CASES.map(([code, message, key]) => ['companion', code, message, key] as const),
+  ])('取消（%s）%s → 專屬 key 並保留伺服器文案', async (kind, code, message, key) => {
+    registerMock('cancelRegistration', async () => {
+      throw new CallableError('failed-precondition', message, code);
+    });
+    await expect(cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind,
+      context: cancelContext().context,
+    })).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: code,
+      messageKey: `event.cancel.error.${key}`,
+      message,
+    });
+    expect(recorded('cancelRegistration')).toHaveLength(1);
+  });
+
+  it('同行者勾選取消（companion_toggle）EVENT_STARTED → 專屬 key', async () => {
+    registerMock('cancelRegistration', async () => {
+      throw new CallableError('failed-precondition', '活動已於開始時間結束，無法取消報名', 'EVENT_STARTED');
+    });
+    await expect(cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'companion',
+      companionToggle: true,
+      context: cancelContext().context,
+    })).rejects.toMatchObject({
+      originalCode: 'EVENT_STARTED',
+      messageKey: 'event.cancel.error.eventStarted',
+    });
+    expect(recorded('cancelRegistration')[0]?.request).toMatchObject({ reason: 'companion_toggle' });
   });
 });
 
