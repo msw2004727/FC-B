@@ -19,5 +19,34 @@
   "roster": {
     "member": "隊員"
   },
-  "actionError": "操作失敗，請重試。"
+  "actionError": "操作失敗，請重試。",
+  "userCreate": {
+    "imagePending": "俱樂部已建立，圖片未上傳成功，可稍後在編輯頁補圖",
+    "error": {
+      "authRequired": "請先登入",
+      "accountInvalid": "帳號資料異常，請重新登入或聯繫管理員",
+      "roleDenied": "您的身分請使用一般建立入口",
+      "roleUnverified": "無法確認身分，請重新登入",
+      "disabled": "目前未開放建立俱樂部",
+      "ownLimit": "每人最多建立 3 個俱樂部",
+      "membershipLimit": "已加入 10 個俱樂部，無法再建立",
+      "invalid": "資料格式有誤，請檢查後再送出",
+      "retry": "系統忙碌，請再試一次",
+      "failed": "建立失敗，請稍後再試"
+    }
+  },
+  "joinReview": {
+    "error": {
+      "authRequired": "請先登入",
+      "accountInvalid": "帳號資料異常，請重新登入或聯繫管理員",
+      "denied": "您沒有審核這筆申請的權限",
+      "notFound": "找不到這筆申請",
+      "notPending": "這筆申請已處理過",
+      "teamInvalid": "俱樂部資料異常，請聯繫管理員",
+      "selfReview": "不能審核自己的申請",
+      "membershipLimit": "對方已加入 10 個俱樂部，無法再加入",
+      "failed": "審核失敗，請稍後再試"
+    }
+  },
+  "staffMembersOnly": "只能從俱樂部成員中選擇"
 }

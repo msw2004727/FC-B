@@ -982,3 +982,31 @@ describe('俱樂部設定彈窗', () => {
     expect(saveMock).not.toHaveBeenCalled();
   });
 });
+
+// T-090：修正前自建俱樂部的設定仍列出「教學」標籤與「俱樂部課程／俱樂部賽事」顯示開關（應失敗）。
+describe('T-090 自建俱樂部設定', () => {
+  it('不顯示教學標籤與課程、賽事開關；既有俱樂部照舊', () => {
+    policyMock.mockReturnValue(true);
+    lockMock.mockReturnValue(unlockBody);
+    overlayMock.mockReturnValue(releaseBack);
+
+    const own = setup(makeTeam({ type: 'education', createdVia: 'user_capability' }));
+    try {
+      expect(document.querySelector('.td-category-tag-education')).toBeNull();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部課程"]')).toBeNull();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部賽事"]')).toBeNull();
+      expect(checkbox('活動')).toBeTruthy();
+    } finally {
+      own.unmount();
+    }
+
+    const legacy = setup(makeTeam({ type: 'education' }));
+    try {
+      expect(document.querySelector('.td-category-tag-education')).not.toBeNull();
+      expect(checkbox('俱樂部課程')).toBeTruthy();
+      expect(checkbox('俱樂部賽事')).toBeTruthy();
+    } finally {
+      legacy.unmount();
+    }
+  });
+});

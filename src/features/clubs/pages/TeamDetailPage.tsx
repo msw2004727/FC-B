@@ -31,6 +31,7 @@ import {
   canCreateClubEvent,
   canEditTeamSettings,
   canShowInviteQr,
+  isUserCapabilityTeam,
   resolveClubDetailAccess,
 } from '../club-policy';
 import { getTeamThemeColor } from '../data/team-list-model';
@@ -72,7 +73,9 @@ interface EventResource {
 
 function getTabsForTeam(team: TeamDoc, courseCount: number, eventCount: number): V2TabDef[] {
   const tabs: V2TabDef[] = [{ key: 'overview', label: '總覽' }];
-  if (isTeamDetailSectionVisible(team, 'courses')) {
+  // T-090：自建俱樂部不開放教學（課程）與賽事入口。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
+  if (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
     tabs.push({ key: 'courses', label: '課程', badge: courseCount });
   }
   if (isTeamDetailSectionVisible(team, 'events')) {
@@ -83,7 +86,7 @@ function getTabsForTeam(team: TeamDoc, courseCount: number, eventCount: number):
   }
   if (
     isTeamDetailSectionVisible(team, 'record') ||
-    isTeamDetailSectionVisible(team, 'matches')
+    (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches'))
   ) {
     tabs.push({ key: 'record', label: '戰績' });
   }

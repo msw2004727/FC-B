@@ -19,5 +19,34 @@
   "roster": {
     "member": "队员"
   },
-  "actionError": "操作失败，请重试。"
+  "actionError": "操作失败，请重试。",
+  "userCreate": {
+    "imagePending": "俱乐部已创建，图片未上传成功，可稍后在编辑页补图",
+    "error": {
+      "authRequired": "请先登录",
+      "accountInvalid": "账号资料异常，请重新登录或联系管理员",
+      "roleDenied": "您的身份请使用一般创建入口",
+      "roleUnverified": "无法确认身份，请重新登录",
+      "disabled": "目前未开放创建俱乐部",
+      "ownLimit": "每人最多创建 3 个俱乐部",
+      "membershipLimit": "已加入 10 个俱乐部，无法再创建",
+      "invalid": "资料格式有误，请检查后再提交",
+      "retry": "系统忙碌，请再试一次",
+      "failed": "创建失败，请稍后再试"
+    }
+  },
+  "joinReview": {
+    "error": {
+      "authRequired": "请先登录",
+      "accountInvalid": "账号资料异常，请重新登录或联系管理员",
+      "denied": "您没有审核这笔申请的权限",
+      "notFound": "找不到这笔申请",
+      "notPending": "这笔申请已处理过",
+      "teamInvalid": "俱乐部资料异常，请联系管理员",
+      "selfReview": "不能审核自己的申请",
+      "membershipLimit": "对方已加入 10 个俱乐部，无法再加入",
+      "failed": "审核失败，请稍后再试"
+    }
+  },
+  "staffMembersOnly": "只能从俱乐部成员中选择"
 }

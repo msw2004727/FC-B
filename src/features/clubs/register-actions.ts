@@ -17,6 +17,7 @@ import {
   type MessageActionHandler,
   type MessageActionViewer,
 } from '@/core/action-registry';
+import { isUserCapabilityTeam } from '@/features/clubs/data/team-source';
 import { approveTeamJoin, ignoreTeamJoin, rejectTeamJoin } from '@/features/clubs/data/membership';
 import { loadTeam } from '@/features/clubs/data/teams-repo';
 import type { TeamDoc } from '@/features/clubs/data/types';
@@ -83,13 +84,11 @@ const handler: MessageActionHandler = {
     if (String(message?.actionStatus ?? '').trim() !== 'pending') return false;
 
     // A：若呼叫端提供 hasPermission，且兩個權限碼都沒授予，直接擋。
-    if (
-      viewer.hasPermission
+    // T-090：自建俱樂部（一般用戶沒有這兩個權限碼）例外，改由幹部身分＋伺服器 reviewTeamJoin 把關；
+    // 既有俱樂部維持原判斷（顧問裁定：有 manage.entry 無 review_join 的舊隊長不能被擋）。
+    const lacksReviewPermission = !!viewer.hasPermission
       && !viewer.hasPermission('team.review_join')
-      && !viewer.hasPermission('team.manage.entry')
-    ) {
-      return false;
-    }
+      && !viewer.hasPermission('team.manage.entry');
 
     let team: TeamDoc;
     try {
@@ -97,6 +96,10 @@ const handler: MessageActionHandler = {
     } catch {
       // 找不到隊或 meta 不完整時不顯示操作（也避免 run 一定失敗）。
       return false;
+    }
+
+    if (lacksReviewPermission) {
+      return isUserCapabilityTeam(team) && isTeamStaff(team, uid);
     }
 
     if (isTeamStaff(team, uid)) return true;

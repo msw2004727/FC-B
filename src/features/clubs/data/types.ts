@@ -105,6 +105,8 @@ export interface TeamDoc {
 
   creatorUid?: string;
   ownerUid?: string;
+  /** T-090：'user_capability'＝一般用戶以能力開關自建（伺服器 createUserTeam 寫入）；其他值或缺＝既有俱樂部。 */
+  createdVia?: string;
 
   region?: string;
   sportTag?: string;

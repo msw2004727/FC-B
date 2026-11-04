@@ -32,6 +32,7 @@ import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 
 import { canEditTeamSettings } from '../../club-policy';
+import { isUserCapabilityTeam } from '../../data/team-source';
 import { getTeamDetailVisibility } from '../../data/team-detail-model';
 import {
   getTeamCategoryMeta,
@@ -145,6 +146,8 @@ function retainUnreflectedSettings(
 export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   const { team, viewer } = props;
   const lt = useLegacyT();
+  // T-090：自建俱樂部不開放教學（課程）與賽事，設定裡不出現這兩項。
+  const userCapabilityTeam = isUserCapabilityTeam(team);
   const [pending, setPending] = useState<PendingSettings | null>(null);
   const confirmed = useRef<{ source: TeamDoc; patch: TeamSettingsPatch }>({
     source: team,
@@ -435,7 +438,9 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                   role="radiogroup"
                   aria-label={lt('俱樂部標籤', '俱樂部標籤')}
                 >
-                  {getTeamCategoryOptions().map((option) => {
+                  {getTeamCategoryOptions()
+                    .filter((option) => !userCapabilityTeam || option.key !== 'education')
+                    .map((option) => {
                     // ASSUMPTION: 依附件實際簽章使用 labelKey / formHintKey，
                     // fallback 取 MiMo Q2 原文；分類 key 的回傳形狀無需調整。
                     const copy = CATEGORY_COPY[option.key];
@@ -537,6 +542,8 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-title">{lt('欄位容器顯示', '欄位容器顯示')}</div>
               {VISIBILITY_ITEMS
                 .filter((item) => item.key !== 'courses' || category === 'education')
+                .filter((item) => !userCapabilityTeam
+                  || (item.key !== 'courses' && item.key !== 'matches'))
                 .map((item) => {
                   const label = lt(item.label, item.label);
                   return (

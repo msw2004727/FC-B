@@ -25,6 +25,7 @@ import type { ViewerContext } from '@/features/events/data/types';
 import {
   buildPermissionCheckerInput,
   createPermissionChecker,
+  getDefaultRoleActivityCapabilities,
   isBuiltinRole,
   type CustomRole,
 } from './permissions';
@@ -136,9 +137,18 @@ function parseUserInfo(data: Record<string, unknown> | null | undefined): UserIn
   return { role, displayName, pictureUrl, isRestricted };
 }
 
-function parseCapabilities(data: Record<string, unknown> | null): string[] {
-  if (!data) return [];
-  const raw = Array.isArray(data.capabilities) ? data.capabilities : [];
+/**
+ * T-090：對齊 A `ApiService.getRoleActivityCapabilities` 與 viewer-operate.ts：
+ * 只有 role=user 才有前台活動能力；讀取失敗＝空（fail-closed，不顯示入口）；
+ * 文件不存在或 capabilities 不是陣列＝預設清單（取代原本文件不存在回 []，與 A／Rules／Functions 預設不一致）。
+ */
+function parseCapabilities(role: string, res: DocResult): string[] {
+  if (role !== 'user' || !res.ok) return [];
+  const data = res.data;
+  if (!data || !Array.isArray(data.capabilities)) {
+    return getDefaultRoleActivityCapabilities('user');
+  }
+  const raw: unknown[] = data.capabilities;
   const out: string[] = [];
   for (const code of raw) {
     if (typeof code !== 'string' || !code) continue;
@@ -342,7 +352,7 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
   // A 沒有獨立的 rolePermissionMeta 集合：FirebaseService 從 rolePermissions 文件（defaultPermissions 欄位）整理出 meta，這裡沿用同一份文件。
   const rolePermissionMetaDocs = rolePermissionDocs;
   const grantDoc = grantRes.ok ? grantRes.data : null;
-  const capabilities = parseCapabilities(capRes.ok ? capRes.data : null);
+  const capabilities = parseCapabilities(role, capRes);
 
   const checkerInput = buildPermissionCheckerInput({
     role,

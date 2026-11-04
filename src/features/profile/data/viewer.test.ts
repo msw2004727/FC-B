@@ -331,6 +331,53 @@ describe('loadViewer', () => {
     expect(v.capabilities).toEqual(['user.activity.basic_create']);
   });
 
+  // T-090：修正前 roleActivityCapabilities/user 文件不存在時回 []，與 A／Rules／Functions 的「預設開」不一致（應失敗）。
+  it('T-090：一般用戶的能力文件不存在 → 回預設清單（含 user.activity.team_create）', async () => {
+    mockFirestore({
+      users: { role: 'user' },
+      rolePermissions: null,
+      userPermissionGrants: null,
+      roleActivityCapabilities: null,
+    });
+    const v = await loadViewer('uid-default-caps');
+    expect(v.capabilities).toContain('user.activity.team_create');
+    expect(v.capabilities).toContain('user.activity.basic_create');
+    expect(v.capabilities).not.toContain('user.activity.addons_use');
+  });
+
+  it('T-090：能力文件 capabilities 不是陣列 → 回預設清單（對齊 A getRoleActivityCapabilities）', async () => {
+    mockFirestore({
+      users: { role: 'user' },
+      rolePermissions: null,
+      userPermissionGrants: null,
+      roleActivityCapabilities: { capabilities: 'oops' },
+    });
+    const v = await loadViewer('uid-bad-caps');
+    expect(v.capabilities).toContain('user.activity.team_create');
+  });
+
+  it('T-090：能力文件存在且為 [] → 全關（不補預設）', async () => {
+    mockFirestore({
+      users: { role: 'user' },
+      rolePermissions: null,
+      userPermissionGrants: null,
+      roleActivityCapabilities: { capabilities: [] },
+    });
+    const v = await loadViewer('uid-empty-caps');
+    expect(v.capabilities).toEqual([]);
+  });
+
+  it('T-090：非 user 角色即使能力文件不存在也沒有前台活動能力', async () => {
+    mockFirestore({
+      users: { role: 'coach' },
+      rolePermissions: { permissions: [] },
+      userPermissionGrants: null,
+      roleActivityCapabilities: null,
+    });
+    const v = await loadViewer('uid-coach-caps');
+    expect(v.capabilities).toEqual([]);
+  });
+
   it('自訂角色會讀 customRoles；私密列表 level 照 A 的 ROLE_LEVEL_MAP Proxy 插值', async () => {
     // 測試同步更新（R-QA-005）：可見性 oracle case-301／302 證實 A 的 ROLE_LEVEL_MAP 會解析自訂角色等級，
     // 取代原本「自訂角色退回 0」的保守決定。排在 captain 之後的自訂角色介於 captain(2) 與 venue_owner(3)。

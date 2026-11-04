@@ -19,5 +19,34 @@
   "roster": {
     "member": "Thành viên"
   },
-  "actionError": "Thao tác thất bại. Vui lòng thử lại."
+  "actionError": "Thao tác thất bại. Vui lòng thử lại.",
+  "userCreate": {
+    "imagePending": "Đã tạo câu lạc bộ nhưng chưa tải ảnh lên được. Bạn có thể thêm ảnh sau ở trang chỉnh sửa.",
+    "error": {
+      "authRequired": "Vui lòng đăng nhập trước.",
+      "accountInvalid": "Dữ liệu tài khoản có vấn đề. Vui lòng đăng nhập lại hoặc liên hệ quản trị viên.",
+      "roleDenied": "Với vai trò của bạn, vui lòng dùng mục tạo thông thường.",
+      "roleUnverified": "Không xác nhận được vai trò. Vui lòng đăng nhập lại.",
+      "disabled": "Hiện chưa mở chức năng tạo câu lạc bộ.",
+      "ownLimit": "Mỗi người tạo tối đa 3 câu lạc bộ.",
+      "membershipLimit": "Bạn đã tham gia 10 câu lạc bộ, không thể tạo thêm.",
+      "invalid": "Dữ liệu chưa hợp lệ. Vui lòng kiểm tra rồi gửi lại.",
+      "retry": "Hệ thống đang bận. Vui lòng thử lại.",
+      "failed": "Tạo thất bại. Vui lòng thử lại sau."
+    }
+  },
+  "joinReview": {
+    "error": {
+      "authRequired": "Vui lòng đăng nhập trước.",
+      "accountInvalid": "Dữ liệu tài khoản có vấn đề. Vui lòng đăng nhập lại hoặc liên hệ quản trị viên.",
+      "denied": "Bạn không có quyền duyệt yêu cầu này.",
+      "notFound": "Không tìm thấy yêu cầu này.",
+      "notPending": "Yêu cầu này đã được xử lý.",
+      "teamInvalid": "Dữ liệu câu lạc bộ có vấn đề. Vui lòng liên hệ quản trị viên.",
+      "selfReview": "Không thể tự duyệt yêu cầu của chính mình.",
+      "membershipLimit": "Người này đã tham gia 10 câu lạc bộ, không thể tham gia thêm.",
+      "failed": "Duyệt thất bại. Vui lòng thử lại sau."
+    }
+  },
+  "staffMembersOnly": "Chỉ có thể chọn từ thành viên của câu lạc bộ."
 }

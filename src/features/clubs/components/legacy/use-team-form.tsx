@@ -1,5 +1,5 @@
 import type { ComponentType, JSX } from 'preact';
-import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type {
   ImageCropperOptions,
   ImageCropperProps,
@@ -8,13 +8,18 @@ import type { DirectoryUser } from '@/features/events/data/user-directory';
 import { SPORTS } from '@/features/events/data/sports';
 import { toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
+import { t } from '@/i18n/i18n';
 import {
   canAssignCoach,
   canCreateTeam,
   canEditTeamSettings,
   canTransferCaptain,
+  isUserCapabilityTeam,
+  isUserCapabilityTeamCreator,
 } from '../../club-policy';
+import { loadTeamMembers } from '../../data/teams-repo';
 import {
+  createUserTeamRequestId,
   submitCreateTeam,
   submitEditTeam,
 } from '../../data/team-form-actions';
@@ -48,6 +53,9 @@ export interface TeamFormViewer {
   uid: string | null;
   displayName?: string | null;
   hasPermission(code: string): boolean;
+  /** T-090：一般用戶能力開關（role=user＋user.activity.team_create）判斷用。 */
+  role?: string;
+  capabilities?: readonly string[];
 }
 
 export interface TeamFormProps {
@@ -107,6 +115,8 @@ export interface TeamFormApi {
     clear(): void;
   };
   leaders: {
+    /** T-090：一般用戶建立俱樂部時幹部由伺服器決定，不顯示領隊選擇；只有 false 才隱藏（未給＝照舊）。 */
+    allowed?: boolean;
     tags: StaffTag[];
     picker: StaffPickerApi;
     add(uid: string): Promise<void>;
@@ -272,7 +282,10 @@ function initialValues(
       : captainUid
         ? { uid: captainUid, name: captainUser?.name || captainUser?.displayName || captainName }
         : null,
-    leaders: leaders.members,
+    // T-090：一般用戶建立時幹部由伺服器決定（經理＝本人），領隊固定顯示本人。
+    leaders: create && props.viewer.uid && isUserCapabilityTeamCreator(props.viewer)
+      ? [{ uid: props.viewer.uid, name: props.viewer.displayName || '' }]
+      : leaders.members,
     coaches: coaches.members,
     unresolvedLeaderNames: leaders.unresolved,
     unresolvedCoachNames: coaches.unresolved,
@@ -394,6 +407,8 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   const imageRequest = useRef(0);
   const cropStep = useRef(0);
   const readerRef = useRef<FileReader | null>(null);
+  // T-090：createUserTeam 去重鍵；每次開表單（下方 layout effect）產生一次，失敗重送沿用同一個。
+  const userCreateRequestId = useRef('');
 
   const current = (): boolean =>
     mounted.current && latest.current.scope === scope;
@@ -449,6 +464,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     setSequence(null);
     imageRequest.current += 1;
     cropStep.current = 0;
+    userCreateRequestId.current = createUserTeamRequestId();
 
     return () => {
       mounted.current = false;
@@ -498,18 +514,53 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   };
 
   const coachAllowed = (): boolean => canAssignCoach(latest.current.props.viewer);
+  const leaderAllowed = (): boolean => !(
+    latest.current.props.mode === 'create'
+    && isUserCapabilityTeamCreator(latest.current.props.viewer)
+  );
   const editable = (): boolean => current() && !locked.current;
 
   const transferVisible = props.mode === 'edit'
     && !!props.team && canTransferCaptain(props.viewer, props.team);
   const coachesAllowed = canAssignCoach(props.viewer);
+  // T-090：自建俱樂部編輯時，領隊／教練只能從現有成員選；成員載入前不給任何候選。
+  const memberScoped = props.mode === 'edit' && isUserCapabilityTeam(props.team);
+  const [memberUids, setMemberUids] = useState<string[] | null>(null);
+  useEffect(() => {
+    setMemberUids(null);
+    const team = props.team;
+    if (!memberScoped || !team) return undefined;
+    let alive = true;
+    const load = async (): Promise<void> => {
+      let uids: string[] = [];
+      try {
+        const members = await loadTeamMembers(team);
+        uids = (members ?? [])
+          .map(member => String(member.uid ?? '').trim())
+          .filter(Boolean);
+      } catch {
+        uids = [];
+      }
+      if (alive) setMemberUids(uids);
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [memberScoped, identity]);
+  const allowUids = memberScoped ? memberUids ?? [] : null;
+  const userCapabilityCreate = props.mode === 'create'
+    && isUserCapabilityTeamCreator(props.viewer);
+  const leadersAllowed = !userCapabilityCreate;
   const leaderPicker = useScopedStaffPicker({
-    enabled: props.viewer.uid !== null && !busy,
+    enabled: props.viewer.uid !== null && leadersAllowed && !busy,
     excludeUids: values.leaders.map(member => member.uid),
+    allowUids,
   }, scope);
   const coachPicker = useScopedStaffPicker({
     enabled: props.viewer.uid !== null && coachesAllowed && !busy,
     excludeUids: values.coaches.map(member => member.uid),
+    allowUids,
   }, scope);
   const transferPicker = useScopedStaffPicker({
     enabled: transferVisible && !busy,
@@ -533,6 +584,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       dirtyRoles.current.add('coaches');
     }
     if (key === 'leaders' || key === 'unresolvedLeaderNames') {
+      if (!leaderAllowed()) return;
       dirtyRoles.current.add('leaders');
     }
     if (key === 'contactLinkDrafts' && Array.isArray(value) && value.length > 5) {
@@ -548,6 +600,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
   const addStaff = async (role: 'leaders' | 'coaches', uid: string): Promise<void> => {
     if (!editable()) return;
+    if (role === 'leaders' && !leaderAllowed()) return;
     if (role === 'coaches' && !coachAllowed()) {
       toast.show({ message: '權限不足', tone: 'error' });
       return;
@@ -565,6 +618,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
 
   const removeStaff = (role: 'leaders' | 'coaches', key: string): void => {
     if (!editable()) return;
+    if (role === 'leaders' && !leaderAllowed()) return;
     if (role === 'coaches' && !coachAllowed()) {
       toast.show({ message: '權限不足', tone: 'error' });
       return;
@@ -693,6 +747,10 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       uid: submittedProps.viewer.uid,
       displayName: submittedProps.viewer.displayName ?? undefined,
       hasPermission: code => submittedProps.viewer.hasPermission(code),
+      ...(submittedProps.viewer.role !== undefined ? { role: submittedProps.viewer.role } : {}),
+      ...(submittedProps.viewer.capabilities
+        ? { capabilities: submittedProps.viewer.capabilities }
+        : {}),
     };
 
     locked.current = true;
@@ -732,7 +790,12 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       if (!current()) return;
 
       const result = submittedProps.mode === 'create'
-        ? await submitCreateTeam({ viewer, values: submittedValues, images: submittedImages })
+        ? await submitCreateTeam({
+          viewer,
+          values: submittedValues,
+          images: submittedImages,
+          requestId: userCreateRequestId.current,
+        })
         : submittedProps.team
           ? await submitEditTeam({
             viewer,
@@ -751,12 +814,14 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         return;
       }
       toast.show({
-        message: !result.roleSyncOk
-          ? '俱樂部已儲存，但角色同步尚未完成，請稍後再儲存一次'
-          : submittedProps.mode === 'create'
-            ? '俱樂部建立成功！'
-            : '俱樂部資料已更新',
-        tone: result.roleSyncOk ? 'success' : 'error',
+        message: result.imagePending
+          ? t('clubs.userCreate.imagePending')
+          : !result.roleSyncOk
+            ? '俱樂部已儲存，但角色同步尚未完成，請稍後再儲存一次'
+            : submittedProps.mode === 'create'
+              ? '俱樂部建立成功！'
+              : '俱樂部資料已更新',
+        tone: result.roleSyncOk && !result.imagePending ? 'success' : 'error',
       });
       try {
         await submittedProps.onSaved({
@@ -930,6 +995,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       clear: clearCaptain,
     },
     leaders: {
+      allowed: leadersAllowed,
       tags: tags(values.leaders, legacyNames.current?.leaders ?? []),
       picker: leaderPicker,
       add: uid => addStaff('leaders', uid),

@@ -123,6 +123,8 @@ function StaffTags(props: {
   tags: TeamFormApi['leaders']['tags'];
   onRemove(key: string): void;
   style?: string;
+  /** T-090：唯讀時不顯示移除鈕。 */
+  readOnly?: boolean;
 }): JSX.Element {
   const lt = useLegacyT();
   const unresolved = lt('舊資料尚未連結用戶', '舊資料尚未連結用戶');
@@ -135,14 +137,16 @@ function StaffTags(props: {
           title={tag.uid ? undefined : unresolved}
         >
           {tag.name}
-          <button
-            type="button"
-            class="team-tag-x"
-            aria-label={lt('移除', '移除')}
-            onClick={() => props.onRemove(tag.key)}
-          >
-            ✕
-          </button>
+          {props.readOnly ? null : (
+            <button
+              type="button"
+              class="team-tag-x"
+              aria-label={lt('移除', '移除')}
+              onClick={() => props.onRemove(tag.key)}
+            >
+              ✕
+            </button>
+          )}
         </span>
       ))}
     </div>
@@ -549,8 +553,9 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 tags={api.leaders.tags}
                 onRemove={(key) => api.leaders.remove(key)}
                 style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem"
+                readOnly={api.leaders.allowed === false}
               />
-              <div id="ct-leader-add-section">
+              <div id="ct-leader-add-section" hidden={api.leaders.allowed === false}>
                 <div
                   class="ct-leader-hint"
                   style="font-size:.75rem;color:var(--text-muted);margin-bottom:.3rem"
