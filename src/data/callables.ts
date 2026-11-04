@@ -42,6 +42,8 @@ import type {
   CreateCustomTokenResponse,
   CreateEventFromCourseLessonRequest,
   CreateEventFromCourseLessonResponse,
+  DeleteEventRequest,
+  DeleteEventResponse,
   DeleteTeamRequest,
   DeleteTeamResponse,
   DeliverToInboxRequest,
@@ -167,6 +169,7 @@ export interface CallableMap {
     req: CreateEventFromCourseLessonRequest;
     res: CreateEventFromCourseLessonResponse;
   };
+  deleteEvent: { req: DeleteEventRequest; res: DeleteEventResponse };
   deleteTeam: { req: DeleteTeamRequest; res: DeleteTeamResponse };
   deliverToInbox: { req: DeliverToInboxRequest; res: DeliverToInboxResponse };
   editPrivateMessage: { req: EditPrivateMessageRequest; res: EditPrivateMessageResponse };

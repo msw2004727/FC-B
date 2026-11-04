@@ -146,12 +146,44 @@ export function canReopenOrRelistActivity(context: OperateContext, event: EventI
     && (isOwner(context, event) || isDelegate(context, event) || all);
 }
 
+/**
+ * Rules hasEffectivePerm 語意：角色層只看 rolePermissions 文件（user 角色沒有、文件缺失不套預設），
+ * 加上啟用中的個別授權；不含 INHERENT_ROLE_PERMISSIONS 與預設權限。
+ */
+function hasRulesEffectivePerm(context: OperateContext, code: string): boolean {
+  const role = roleKey(context);
+  if (role !== 'user' && Array.isArray(context.rolePermissions)
+    && context.rolePermissions.includes(code)) return true;
+  const grant = context.userGrants;
+  const uid = String(context.uid || '').trim();
+  return !!uid && !!grant
+    && (grant.enabled === undefined || grant.enabled === true)
+    && String(grant.uid || '').trim() === uid
+    && Array.isArray(grant.permissions)
+    && grant.permissions.includes(code);
+}
+
+/**
+ * 刪除鈕與刪除流程共用（R-IAM-011），對齊 Callable deleteEvent（FC functions/event-deletion.js）
+ * 與 Rules events delete：admin／super_admin、有效 event.delete，或擁有者且有效 event.delete_self；
+ * 私密活動再限 admin 以上或擁有者（不含 delegate）。不認 event.edit_all。
+ * 取代原 A `_canDeleteActivity` 的照搬版（認 event.edit_all、套預設權限、私密含 delegate），
+ * 那是 A 前端比伺服器寬的既有 bug（T-076 Q-1，兩站同修，B 先修）。
+ */
 export function canDeleteActivity(context: OperateContext, event: EventInput): boolean {
-  if (!ready(context) || !event || !canOperatePrivate(context, event)) return false;
-  const check = permissionChecker(context);
-  return check('event.delete')
-    || check('event.edit_all')
-    || (check('event.delete_self') && isOwner(context, event));
+  if (!ready(context) || !event) return false;
+  const uid = String(context.uid || '');
+  // 'unknown' 是 A 缺 uid 時的佔位字（見 creatorUid），不是真實帳號；保守一律不顯示。
+  if (!uid || uid === 'unknown') return false;
+  const role = roleKey(context);
+  const admin = role === 'admin' || role === 'super_admin';
+  const owner = [event.captainUid, event.creatorUid, event.ownerUid]
+    .some(value => typeof value === 'string' && value === uid);
+  const allowed = admin
+    || hasRulesEffectivePerm(context, 'event.delete')
+    || (owner && hasRulesEffectivePerm(context, 'event.delete_self'));
+  if (!allowed) return false;
+  return !(event.privateEvent === true && !admin && !owner);
 }
 
 export function canOperateEventSite(context: OperateContext, event: EventInput): boolean {

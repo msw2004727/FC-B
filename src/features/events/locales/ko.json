@@ -120,8 +120,13 @@
     "retry": "다시 시도",
     "permissionDenied": "권한 부족",
     "permissionDeniedBody": "활동 관리 페이지에 접근할 권한이 없습니다.",
-    "lifecycle": {
-      "deleteInLegacy": "새 버전에서는 아직 활동을 삭제할 수 없습니다. 이전 버전에서 삭제하시겠습니까?"
+    "delete": {
+      "confirmFirst": "이 활동을 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.",
+      "confirmFinal": "\"{title}\" 삭제",
+      "untitled": "이 활동",
+      "check": "삭제하겠습니다",
+      "ok": "삭제",
+      "pending": "삭제 중…"
     }
   },
   "roster": {

@@ -123,8 +123,13 @@
     "retry": "Retry",
     "permissionDenied": "Insufficient Permissions",
     "permissionDeniedBody": "You do not have permission to access the activity management page.",
-    "lifecycle": {
-      "deleteInLegacy": "Deleting activities is not available in the new version yet. Go to the old version to delete it?"
+    "delete": {
+      "confirmFirst": "Delete this activity? This cannot be undone.",
+      "confirmFinal": "Delete \"{title}\"",
+      "untitled": "this activity",
+      "check": "I want to delete it",
+      "ok": "Delete",
+      "pending": "Deleting…"
     }
   },
   "roster": {
