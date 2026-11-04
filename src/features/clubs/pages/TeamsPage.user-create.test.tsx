@@ -1,6 +1,6 @@
 /**
  * T-090：一般用戶（role=user＋user.activity.team_create）在俱樂部頁看得到「新增俱樂部」入口，
- * 表單領隊固定為本人（不提供搜尋他人），失敗重送沿用同一個 requestId，圖片保底提示不重複建立。
+ * 表單不顯示領隊列（經理＝本人，C-D1），失敗重送沿用同一個 requestId，圖片保底提示不重複建立。
  *
  * 修正前應失敗的理由：
  * - 修正前 canCreateTeam 只看 team.create，按鈕不會出現；
@@ -111,14 +111,50 @@ describe('T-090 一般用戶建立俱樂部入口', () => {
     expect(screen.getByRole('button', { name: '新增俱樂部' })).toBeTruthy();
   });
 
-  it('領隊固定本人：不顯示搜尋他人、不顯示移除鈕', async () => {
+  // C-D1：後端 createUserTeam 寫 leaders:[]、captain＝本人，畫面不得宣稱本人是「領隊」。
+  // 修正前應失敗：修正前領隊列照常顯示「俱樂部領隊 *必填」並把本人列為領隊標籤。
+  it('一般用戶建立：不顯示領隊列，只由經理列顯示本人', async () => {
     vi.mocked(useViewer).mockReturnValue(userViewer(['user.activity.team_create']));
     const dialog = await openForm();
-    const addSection = dialog.querySelector<HTMLElement>('#ct-leader-add-section');
-    expect(addSection?.hidden).toBe(true);
-    const tags = dialog.querySelector('#ct-leaders-tags');
-    expect(tags?.textContent).toContain('我');
-    expect(tags?.querySelector('.team-tag-x')).toBeNull();
+    expect(dialog.querySelector('#ct-leader-row')).toBeNull();
+    expect(dialog.querySelector('#ct-leaders-tags')).toBeNull();
+    expect(dialog.querySelector('#ct-leader-search')).toBeNull();
+    expect(dialog.textContent).not.toContain('俱樂部領隊');
+    expect(dialog.querySelector('#ct-captain-row label')?.textContent?.trim())
+      .toBe('俱樂部經理 *必填');
+    expect(dialog.querySelector('#ct-captain-display')?.textContent)
+      .toBe('俱樂部經理（創立者）：我');
+    expect(dialog.querySelector('#ct-captain-locked')?.textContent)
+      .toBe('（創立者自動成為俱樂部經理）');
+  });
+
+  it('一般用戶建立：送出的表單值不因文案調整改變（領隊值仍只有本人、無教練）', async () => {
+    vi.mocked(useViewer).mockReturnValue(userViewer(['user.activity.team_create']));
+    vi.mocked(submitCreateTeam).mockResolvedValueOnce({ ok: true, teamId: 'tm_srv', roleSyncOk: true });
+    const dialog = await openForm();
+    fireEvent.click(submitButton(dialog));
+    await waitFor(() => expect(submitCreateTeam).toHaveBeenCalledTimes(1));
+    const sent = vi.mocked(submitCreateTeam).mock.calls[0]![0];
+    expect(sent.values.leaders).toEqual([{ uid: 'me', name: '我' }]);
+    expect(sent.values.coaches).toEqual([]);
+    expect(sent.values.captain).toEqual({ uid: 'me', name: '我' });
+  });
+
+  it('具 team.create 權限者建立：領隊列與文案維持原樣', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      ...userViewer([]),
+      role: 'coach',
+      roleLevel: 2,
+      hasPermission: (code: string) => code === 'team.create',
+    } as ViewerView);
+    const dialog = await openForm();
+    const row = dialog.querySelector('#ct-leader-row');
+    expect(row).not.toBeNull();
+    expect(row?.querySelector('label')?.textContent?.trim()).toBe('俱樂部領隊 *必填');
+    expect(dialog.querySelector<HTMLElement>('#ct-leader-add-section')?.hidden).toBe(false);
+    expect(dialog.querySelector('#ct-leader-search')).not.toBeNull();
+    expect(dialog.querySelector('.ct-leader-hint')?.textContent)
+      .toBe('搜尋俱樂部領隊：輸入暱稱後點選加入（可複數）');
   });
 
   it('失敗重送沿用同一個 requestId', async () => {

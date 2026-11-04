@@ -115,7 +115,7 @@ export interface TeamFormApi {
     clear(): void;
   };
   leaders: {
-    /** T-090：一般用戶建立俱樂部時幹部由伺服器決定，不顯示領隊選擇；只有 false 才隱藏（未給＝照舊）。 */
+    /** T-090：一般用戶建立俱樂部時幹部由伺服器決定，整個領隊列不顯示；只有 false 才隱藏（未給＝照舊）。 */
     allowed?: boolean;
     tags: StaffTag[];
     picker: StaffPickerApi;
@@ -282,7 +282,7 @@ function initialValues(
       : captainUid
         ? { uid: captainUid, name: captainUser?.name || captainUser?.displayName || captainName }
         : null,
-    // T-090：一般用戶建立時幹部由伺服器決定（經理＝本人），領隊固定顯示本人。
+    // T-090：一般用戶建立時幹部由伺服器決定（經理＝本人、leaders:[]）；此值不送出、畫面不顯示領隊列（C-D1）。
     leaders: create && props.viewer.uid && isUserCapabilityTeamCreator(props.viewer)
       ? [{ uid: props.viewer.uid, name: props.viewer.displayName || '' }]
       : leaders.members,

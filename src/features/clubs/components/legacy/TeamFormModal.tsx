@@ -544,6 +544,8 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               </div>
             </div>
 
+            {/* C-D1：一般用戶建立時後端寫 leaders:[]、經理＝本人，經理列已顯示本人，不再另列「領隊」。 */}
+            {api.leaders.allowed === false ? null : (
             <div class="ce-row" id="ct-leader-row" style="position:relative">
               <label for="ct-leader-search">
                 俱樂部領隊 {requiredMark()}
@@ -553,9 +555,8 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 tags={api.leaders.tags}
                 onRemove={(key) => api.leaders.remove(key)}
                 style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem"
-                readOnly={api.leaders.allowed === false}
               />
-              <div id="ct-leader-add-section" hidden={api.leaders.allowed === false}>
+              <div id="ct-leader-add-section">
                 <div
                   class="ct-leader-hint"
                   style="font-size:.75rem;color:var(--text-muted);margin-bottom:.3rem"
@@ -580,6 +581,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
                 />
               </div>
             </div>
+            )}
 
             <div class="ce-row">
               <label for="ct-team-contact">{lt('聯繫方式', '聯繫方式')}</label>
