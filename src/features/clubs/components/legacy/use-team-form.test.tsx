@@ -35,6 +35,8 @@ vi.mock('@/features/events/data/user-directory', () => ({
 vi.mock('../../data/team-form-actions', () => ({
   submitCreateTeam: vi.fn(),
   submitEditTeam: vi.fn(),
+  // T-090d：use-team-form 開表單時產生 requestId，mock 需補上此匯出（測試同步更新）。
+  createUserTeamRequestId: vi.fn(() => 'req_test_00000001'),
 }));
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
 vi.mock('@/ui/AppConfirm', () => ({ appConfirm: vi.fn() }));
