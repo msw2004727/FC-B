@@ -1,9 +1,10 @@
 // 依 UID 批次載入使用者角色（R-ID-002：不以名字查身分）。
 //
 // - 以 `where(documentId(), 'in', chunk)` 每次最多 30 個 UID 分批讀 `users/{uid}`。
-// - 只取 `role` 欄位；值屬於 `UserRole` 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
-// - 模組層 5 分鐘快取；同一批進行中的請求共用 Promise，避免重複讀。
-// - 讀取失敗：記一次 console.warn，回傳目前快取＋其餘 'user'，不丟例外。
+// - 同次讀取快取 role、exp 與放鴿子統計，不另開 users 查詢。
+// - role 屬於 UserRole 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
+// - 模組層 5 分鐘快取；依 UID 共用進行中的請求 Promise，避免重複讀。
+// - 讀取失敗：記一次 console.warn；角色回傳目前快取＋其餘 'user'，統計 reject。
 
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -36,21 +37,26 @@ function isUserRole(value: unknown): value is UserRole {
   return typeof value === 'string' && KNOWN_ROLES.has(value);
 }
 
-interface CacheEntry {
+/** Functions 寫回 users 的統計；只讀，不在前端重算或寫回。 */
+export interface UserNoShowStats {
+  noShowCount: number;
+  endedRegCount: number;
+  lastEventWasNoShow: boolean;
+}
+
+interface CacheEntry extends UserNoShowStats {
   role: UserRole;
   /** users.exp，給使用者膠囊算等級（A `_calcLevelFromExp`）。 */
   exp: number;
   expiresAt: number;
 }
 
-interface UserSummary {
+interface UserSummary extends UserNoShowStats {
   role: UserRole;
   exp: number;
 }
 
-interface FetchOutcome {
-  failed: boolean;
-}
+type FetchOutcome = { failed: false } | { failed: true; error: unknown };
 
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<FetchOutcome>>();
@@ -91,6 +97,22 @@ function readExp(data: Record<string, unknown> | undefined): number {
   return Math.max(0, Number(data?.exp || 0) || 0);
 }
 
+function readNoShowStats(data: Record<string, unknown> | undefined): UserNoShowStats {
+  return {
+    noShowCount: Number(data?.noShowCount || 0) || 0,
+    endedRegCount: Number(data?.endedRegCount || 0) || 0,
+    lastEventWasNoShow: Boolean(data?.lastEventWasNoShow),
+  };
+}
+
+function copyNoShowStats(entry: UserNoShowStats | undefined): UserNoShowStats {
+  return {
+    noShowCount: entry?.noShowCount ?? 0,
+    endedRegCount: entry?.endedRegCount ?? 0,
+    lastEventWasNoShow: entry?.lastEventWasNoShow ?? false,
+  };
+}
+
 /** A `profile-core.js#_calcLevelFromExp` 的等級。 */
 export function userLevelFromExp(totalExp: number): number {
   if (!(totalExp > 0)) return 0;
@@ -107,9 +129,15 @@ export function getCachedUserLevel(uid: string): number | undefined {
   return userLevelFromExp(entry.exp);
 }
 
-async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserSummary>> {
+/** 未過期的統計副本；未載入或過期回 undefined，絕不觸發查詢。 */
+export function getCachedUserNoShowStats(uid: string): UserNoShowStats | undefined {
+  const entry = cache.get(String(uid || '').trim());
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  return copyNoShowStats(entry);
+}
+
+async function fetchRoles(uids: readonly string[]): Promise<void> {
   const { db } = await getFirebase();
-  const result: Record<string, UserSummary> = {};
 
   for (const batch of chunk(uids, MAX_UIDS_PER_QUERY)) {
     // 只依 UID 精確匹配（R-ID-002），不依名字。
@@ -118,47 +146,59 @@ async function fetchRoles(uids: readonly string[]): Promise<Record<string, UserS
       where(documentId(), 'in', batch),
     );
     const snapshot = await getDocs(ref);
+    const result: Record<string, UserSummary> = {};
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as Record<string, unknown> | undefined;
-      result[docSnap.id] = { role: readRole(data), exp: readExp(data) };
+      result[docSnap.id] = { role: readRole(data), exp: readExp(data), ...readNoShowStats(data) };
+    }
+    // 每批成功後才寫入快取；後續批次失敗不丟棄已取得的資料。
+    const expiresAt = Date.now() + CACHE_TTL_MS;
+    for (const uid of batch) {
+      cache.set(uid, {
+        role: result[uid]?.role ?? DEFAULT_ROLE,
+        exp: result[uid]?.exp ?? 0,
+        ...copyNoShowStats(result[uid]),
+        expiresAt,
+      });
     }
   }
-
-  return result;
 }
 
-function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
-  const key = [...uidsToFetch].sort().join('\n');
-  const existing = inflight.get(key);
-  if (existing) return existing;
+async function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome> {
+  const pending = new Set<Promise<FetchOutcome>>();
+  const newUids: string[] = [];
+  for (const uid of uidsToFetch) {
+    const existing = inflight.get(uid);
+    if (existing) pending.add(existing);
+    else newUids.push(uid);
+  }
 
-  const promise = (async (): Promise<FetchOutcome> => {
-    try {
-      const fetched = await fetchRoles(uidsToFetch);
-      const expiresAt = Date.now() + CACHE_TTL_MS;
-      for (const uid of uidsToFetch) {
-        cache.set(uid, {
-          role: fetched[uid]?.role ?? DEFAULT_ROLE,
-          exp: fetched[uid]?.exp ?? 0,
-          expiresAt,
-        });
+  if (newUids.length > 0) {
+    const promise = (async (): Promise<FetchOutcome> => {
+      try {
+        await fetchRoles(newUids);
+        return { failed: false };
+      } catch (error) {
+        if (!warned) {
+          warned = true;
+          // eslint-disable-next-line no-console
+          console.warn('[user-roles] 讀取使用者角色失敗，回退為預設角色', error);
+        }
+        return { failed: true, error };
+      } finally {
+        // L-08：成功與失敗兩條路徑都清除 inflight。
+        for (const uid of newUids) inflight.delete(uid);
       }
-      return { failed: false };
-    } catch (error) {
-      if (!warned) {
-        warned = true;
-        // eslint-disable-next-line no-console
-        console.warn('[user-roles] 讀取使用者角色失敗，回退為預設角色', error);
-      }
-      return { failed: true };
-    } finally {
-      // L-08：成功與失敗兩條路徑都清除 inflight。
-      inflight.delete(key);
-    }
-  })();
+    })();
 
-  inflight.set(key, promise);
-  return promise;
+    // 逐 UID 登記整個分批請求，包含尚未開始讀取的後續批次。
+    // 前批寫入快取後，縮小的待查集合或重疊名單仍可共用未完成的請求。
+    for (const uid of newUids) inflight.set(uid, promise);
+    pending.add(promise);
+  }
+
+  const outcomes = await Promise.all(pending);
+  return outcomes.find((outcome) => outcome.failed) ?? { failed: false };
 }
 
 /**
@@ -186,10 +226,33 @@ export async function loadUserRoles(
 
   await startFetch(toFetch);
 
-  // 成功時 cache 已被填上；失敗時 cache 保持現狀（可能含舊的 stale 值）。
+  // 成功批次已寫入 cache；失敗批次沿用舊值（可能 stale）或預設角色。
   for (const uid of toFetch) {
     result[uid] = cache.get(uid)?.role ?? DEFAULT_ROLE;
   }
+  return result;
+}
+
+/**
+ * 與 loadUserRoles 共用同一個快取及逐 UID inflight，沒有另一條 users 查詢。
+ * 呼叫端傳入與 useUserRoles 相同的名單 UID，即使同時載入也只讀一次。
+ * 任一批讀取失敗就 reject，保留成功批次快取；新鮮度同為 5 分鐘。
+ */
+export async function loadUserNoShowStats(
+  uids: readonly string[],
+): Promise<Record<string, UserNoShowStats>> {
+  const normalized = normalizeUids(uids);
+  const now = Date.now();
+  const toFetch = normalized.filter((uid) => {
+    const cached = cache.get(uid);
+    return !cached || cached.expiresAt <= now;
+  });
+  if (toFetch.length > 0) {
+    const outcome = await startFetch(toFetch);
+    if (outcome.failed) throw outcome.error;
+  }
+  const result: Record<string, UserNoShowStats> = {};
+  for (const uid of normalized) result[uid] = copyNoShowStats(cache.get(uid));
   return result;
 }
 
@@ -197,27 +260,32 @@ function uidsKey(uids: readonly string[]): string {
   return normalizeUids(uids).sort().join('\n');
 }
 
-/** uids 內容改變才重查；元件卸載後不 setState。 */
-export function useUserRoles(uids: readonly string[]): Record<string, UserRole> {
+/** UID 或 refreshKey 改變時重驗快取；沿用 TTL／inflight，卸載後不 setState。 */
+export function useUserRoles(
+  uids: readonly string[],
+  refreshKey?: boolean,
+): Record<string, UserRole> {
   const [roles, setRoles] = useState<Record<string, UserRole>>({});
   const key = uidsKey(uids);
 
   useEffect(() => {
     let cancelled = false;
-    // 以內容 key 作為 dep：陣列身分改變但內容相同不會重查。
-    loadUserRoles(uids)
-      .then((next) => {
+    // 名單啟用狀態改變也重驗快取，避免 UID 未變但統計已過期；一般重繪不重查。
+    async function refresh(): Promise<void> {
+      try {
+        const next = await loadUserRoles(uids);
         if (cancelled) return;
         setRoles(next);
-      })
-      .catch(() => {
+      } catch {
         // loadUserRoles 內部已處理錯誤；此處僅作為安全網。
-      });
+      }
+    }
+    void refresh();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, refreshKey]);
 
   return roles;
 }
