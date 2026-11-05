@@ -39,7 +39,7 @@ export function PlayerCardImageOverlay({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const releaseRef = useRef<(() => void) | null>(null);
-  const firstBtnRef = useRef<HTMLButtonElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback((): void => {
     const release = releaseRef.current;
@@ -61,7 +61,8 @@ export function PlayerCardImageOverlay({
       }
     };
     document.addEventListener('keydown', onKeyDown);
-    firstBtnRef.current?.focus();
+    // 開啟時焦點移到右上角 X（取代原本的底部「關閉」按鈕）。
+    closeBtnRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       const release = releaseRef.current;
@@ -93,17 +94,31 @@ export function PlayerCardImageOverlay({
         aria-modal="true"
         aria-label={t('profile.playerCard.share')}
         onClick={(event) => {
-          if (event.target === event.currentTarget) close();
+          // 點遮罩空白處（圖片與按鈕以外）關閉；點圖片不關（LINE 要長按圖片存圖）。
+          const target = event.target as Element | null;
+          if (target && typeof target.closest === 'function' && target.closest('img, button')) return;
+          close();
         }}
       >
+        <button
+          ref={closeBtnRef}
+          type="button"
+          class="player-card-overlay-x"
+          aria-label={t('profile.playerCard.close')}
+          onClick={close}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        </button>
         <img src={state.src} alt={t('profile.playerCard.title')} />
         <div class="player-card-overlay-hint">
           {retry ? t('profile.playerCard.shareOrSave') : t('profile.playerCard.longPressSave')}
         </div>
-        <div class="player-card-overlay-actions">
-          {retry && (
+        {retry && (
+          <div class="player-card-overlay-actions">
             <button
-              ref={firstBtnRef}
               type="button"
               class="player-card-overlay-btn is-primary"
               id="player-card-share-again"
@@ -111,26 +126,16 @@ export function PlayerCardImageOverlay({
             >
               {t('profile.playerCard.shareAgain')}
             </button>
-          )}
-          {retry && (
             <button
               type="button"
-              class="player-card-overlay-btn"
+              class="player-card-overlay-btn is-secondary"
               id="player-card-save"
               onClick={save}
             >
               {t('profile.playerCard.save')}
             </button>
-          )}
-          <button
-            ref={retry ? undefined : firstBtnRef}
-            type="button"
-            class="player-card-overlay-btn player-card-overlay-close"
-            onClick={close}
-          >
-            {t('profile.playerCard.close')}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,

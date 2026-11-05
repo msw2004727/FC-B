@@ -52,6 +52,7 @@ import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { resolveShineMode } from './PlayerCard';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
+import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
 const profile = { exp: 0 } as unknown as UserProfile;
 
@@ -98,6 +99,7 @@ describe('T-092 球員卡（DOM）', () => {
     await setLocale('zh-TW');
     vi.clearAllMocks();
     _resetPlayerCardPreloadForTest();
+    _resetOverlayBackForTest();
     stubMatchMedia(false);
     identity.current = {
       displayName: '王小明',
@@ -211,7 +213,12 @@ describe('T-092 球員卡（DOM）', () => {
     expect(document.querySelector('.player-card-overlay img')?.getAttribute('src'))
       .toBe('data:image/png;base64,AAAA');
     expect(document.querySelector('.player-card-overlay')?.textContent).toContain('長按圖片即可儲存');
-    fireEvent.click(document.querySelector('.player-card-overlay-close')!);
+    // 底部「關閉」已移除，改右上角 X
+    expect(document.querySelector('.player-card-overlay-close')).toBeNull();
+    const x = document.querySelector('.player-card-overlay-x') as HTMLButtonElement;
+    expect(x.getAttribute('aria-label')).toBe('關閉');
+    await waitFor(() => expect(document.activeElement).toBe(x));
+    fireEvent.click(x);
     await waitFor(() => expect(document.querySelector('.player-card-overlay')).toBeNull());
   });
 
@@ -237,6 +244,49 @@ describe('T-092 球員卡（DOM）', () => {
     expect(document.querySelector('.player-card-overlay')?.textContent).toContain('長按圖片即可儲存');
     expect(document.querySelector('#player-card-share-again')).toBeNull();
     expect(document.querySelector('#player-card-save')).toBeNull();
+    // LINE 只有圖片＋提示＋右上 X
+    expect(document.querySelector('.player-card-overlay-actions')).toBeNull();
+    expect(document.querySelectorAll('.player-card-overlay button')).toHaveLength(1);
+    expect(document.querySelector('.player-card-overlay-x')).not.toBeNull();
+  });
+
+  it('覆蓋層關閉方式：點圖片不關、點提示或遮罩空白處關閉；Esc 關閉', async () => {
+    const open = async (): Promise<void> => {
+      shareMock.sharePlayerCardBlob.mockResolvedValueOnce('overlay');
+      fireEvent.click(document.querySelector('#player-card-share-btn')!);
+      await waitFor(() => expect(document.querySelector('.player-card-overlay')).not.toBeNull());
+      // 等覆蓋層的 effect（Esc、返回鍵登記與焦點）跑完
+      await waitFor(() => expect(document.activeElement).toBe(document.querySelector('.player-card-overlay-x')));
+    };
+    const gone = async (): Promise<void> => {
+      await waitFor(() => expect(document.querySelector('.player-card-overlay')).toBeNull());
+    };
+    renderTop(viewer());
+
+    await open();
+    fireEvent.click(document.querySelector('.player-card-overlay img')!);
+    expect(document.querySelector('.player-card-overlay')).not.toBeNull();
+    fireEvent.click(document.querySelector('.player-card-overlay')!);
+    await gone();
+
+    await open();
+    fireEvent.click(document.querySelector('.player-card-overlay-hint')!);
+    await gone();
+
+    await open();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await gone();
+  });
+
+  it('覆蓋層：返回鍵（popstate）關閉', async () => {
+    shareMock.sharePlayerCardBlob.mockResolvedValueOnce('overlay');
+    renderTop(viewer());
+    fireEvent.click(document.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(document.querySelector('.player-card-overlay')).not.toBeNull());
+    // 覆蓋層的 effect（登記返回鍵、Esc、焦點）跑完才送返回鍵：以焦點已到 X 為準
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('.player-card-overlay-x')));
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await waitFor(() => expect(document.querySelector('.player-card-overlay')).toBeNull());
   });
 
   it('P2-2：系統分享被拒（retry）→ 覆蓋層提示不寫長按，第二次點分享同步呼叫同一張 PNG，儲存走下載', async () => {
@@ -247,6 +297,19 @@ describe('T-092 球員卡（DOM）', () => {
     const overlay = document.querySelector('.player-card-overlay')!;
     expect(overlay.textContent).toContain('分享／儲存球員卡');
     expect(overlay.textContent).not.toContain('長按');
+    // 分享置中為主按鈕、儲存在下方為次要樣式；沒有底部「關閉」，焦點在右上 X
+    const actions = overlay.querySelector('.player-card-overlay-actions')!;
+    const shareBtn = actions.querySelector('#player-card-share-again')!;
+    const saveBtn = actions.querySelector('#player-card-save')!;
+    expect(shareBtn.classList.contains('is-primary')).toBe(true);
+    expect(saveBtn.classList.contains('is-secondary')).toBe(true);
+    expect(shareBtn.compareDocumentPosition(saveBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(overlay.querySelector('.player-card-overlay-close')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(overlay.querySelector('.player-card-overlay-x')));
+    // 點按鈕不會被當成點遮罩而關閉
+    fireEvent.click(saveBtn);
+    expect(document.querySelector('.player-card-overlay')).not.toBeNull();
+    shareMock.browserDownload.mockClear();
     const blob = await canvasMock.renderPlayerCardPng.mock.results[0]!.value;
 
     fireEvent.click(document.querySelector('#player-card-save')!);

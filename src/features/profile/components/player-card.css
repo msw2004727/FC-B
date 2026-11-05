@@ -295,7 +295,7 @@
   font-weight: 700;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
 }
-.player-card-overlay-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+.player-card-overlay-actions { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
 .player-card-overlay-btn {
   min-height: 44px;
   padding: .4rem 1.4rem;
@@ -306,5 +306,20 @@
   font-size: .85rem;
   font-weight: 700;
 }
-.player-card-overlay-btn.is-primary { background: #0D9488; color: #FFFFFF; }
-.player-card-overlay-btn.player-card-overlay-close { background: #374151; color: #FFFFFF; }
+.player-card-overlay-btn.is-primary { min-width: 160px; background: #0D9488; color: #FFFFFF; }
+.player-card-overlay-btn.is-secondary { min-height: 36px; padding: .3rem 1.1rem; font-size: .78rem; }
+/* 右上角關閉：白色圖示＋半透明深底圓鈕（取代原本底部「關閉」按鈕）。 */
+.player-card-overlay-x {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
