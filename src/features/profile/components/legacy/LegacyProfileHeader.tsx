@@ -4,10 +4,12 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
 import { useUserRoles } from '@/data/user-roles';
-import { lt } from '@/i18n/i18n';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
+import { buildPlayerCardModel } from '../../data/player-card-model';
+import { PlayerCard } from '../PlayerCard';
+import { PlayerCardShareButton } from '../PlayerCardShareButton';
 import { useIdentitySettings } from '@/data/identity-settings';
 import { getEffectiveIdentity } from '@/data/identity-resolver';
 import {
@@ -142,107 +144,91 @@ export function LegacyProfileTopSection({
 
   // 照 A `_buildTitleDisplayHtml` / `getCurrentBadgeCount`：頭部徽章數與稱號於資料載入後更新。
   //   動態 import 成就資料層，避免 firestore 進首屏。載入失敗保留 `--` 與純名字。
-  return (
-    <>
-      <div class="profile-header">
-        <LegacyAvatar
-          id="profile-avatar"
-          url={rawAvatar}
-          name={displayName}
-          baseClass="profile-avatar"
-          imageContainerClass="profile-avatar profile-avatar-img"
-          crown={isSecondary}
-        />
-        <div class="profile-title" id="profile-title" data-no-translate>
-          <span>{displayName}</span>
-        </div>
-        <div
-          id="profile-uid-wrap"
-          style="margin-top:.25rem;display:flex;align-items:center;justify-content:center;gap:.3rem"
-        >
-          {canViewRawUid && uid && (
-            <span style="font-size:.72rem;color:var(--text-muted);letter-spacing:.3px">
-              {uid}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => emit('qr:open', {})}
-            style="background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center"
-            title="顯示簽到 QR Code"
-            aria-label="顯示簽到 QR Code"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--text-muted)"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-              <rect x="14" y="14" width="3" height="3" />
-              <line x1="21" y1="14" x2="21" y2="17" />
-              <line x1="17" y1="21" x2="21" y2="21" />
-            </svg>
-          </button>
-        </div>
-        <div id="profile-role-tag-wrap" style="margin-top:.3rem">
-          <span
-            class="uc-role-tag"
-            style={`background:${roleInfo.color}22;color:${roleInfo.color}`}
-          >
-            {roleInfo.label}
-          </span>
-        </div>
-        {/* 新版關閉經驗值顯示時不畫等級條（src/core/exp-display.ts） */}
-        {SHOW_EXP && (
-          <div class="profile-level" id="profile-level">
-            <span id="profile-lv">{`Lv.${level}`}</span>
-            <div class="exp-bar">
-              <div
-                class="exp-fill"
-                id="profile-exp-fill"
-                style={`width:${percent}%`}
-              />
-            </div>
-            <span class="exp-text" id="profile-exp-text">
-              {`${progress.toLocaleString()} / ${needed.toLocaleString()}`}
-            </span>
-          </div>
-        )}
-      </div>
+  // T-092：頂部改成球員卡；UID＋QR、身分標籤、分享按鈕移到卡片外（不進 PNG）。
+  const cardModel = buildPlayerCardModel({
+    name: displayName,
+    avatarUrl: rawAvatar,
+    summary,
+    teamIds: viewer.teamIds,
+  });
 
-      <div class="profile-stats">
-        <div class="stat-item">
-          <span class="stat-num" id="profile-stat-total">
-            {summary ? String(summary.expectedCount) : '--'}
+  return (
+    <div class="profile-header player-card-header">
+      <PlayerCard
+        model={cardModel}
+        avatar={(
+          <LegacyAvatar
+            id="profile-avatar"
+            url={rawAvatar}
+            name={displayName}
+            baseClass="profile-avatar"
+            imageContainerClass="profile-avatar profile-avatar-img"
+            crown={isSecondary}
+          />
+        )}
+      />
+      <div
+        id="profile-uid-wrap"
+        style="margin-top:.25rem;display:flex;align-items:center;justify-content:center;gap:.3rem"
+      >
+        {canViewRawUid && uid && (
+          <span style="font-size:.72rem;color:var(--text-muted);letter-spacing:.3px">
+            {uid}
           </span>
-          <span class="stat-label" data-i18n="應到場次">
-            {lt('應到場次', '應到場次')}
-          </span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-num" id="profile-stat-done">
-            {summary ? String(summary.completedCount) : '--'}
-          </span>
-          <span class="stat-label" data-i18n="完成場次">
-            {lt('完成場次', '完成場次')}
-          </span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-num" id="profile-stat-rate">
-            {summary ? `${summary.attendRate}%` : '--'}
-          </span>
-          <span class="stat-label" data-i18n="profile.attendanceRate">
-            {lt('profile.attendanceRate', '出席率')}
-          </span>
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={() => emit('qr:open', {})}
+          style="background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center"
+          title="顯示簽到 QR Code"
+          aria-label="顯示簽到 QR Code"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--text-muted)"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="3" height="3" />
+            <line x1="21" y1="14" x2="21" y2="17" />
+            <line x1="17" y1="21" x2="21" y2="21" />
+          </svg>
+        </button>
       </div>
-    </>
+      <div id="profile-role-tag-wrap" style="margin-top:.3rem">
+        <span
+          class="uc-role-tag"
+          style={`background:${roleInfo.color}22;color:${roleInfo.color}`}
+        >
+          {roleInfo.label}
+        </span>
+      </div>
+      {/* 新版關閉經驗值顯示時不畫等級條（src/core/exp-display.ts） */}
+      {SHOW_EXP && (
+        <div class="profile-level" id="profile-level">
+          <span id="profile-lv">{`Lv.${level}`}</span>
+          <div class="exp-bar">
+            <div
+              class="exp-fill"
+              id="profile-exp-fill"
+              style={`width:${percent}%`}
+            />
+          </div>
+          <span class="exp-text" id="profile-exp-text">
+            {`${progress.toLocaleString()} / ${needed.toLocaleString()}`}
+          </span>
+        </div>
+      )}
+      <div>
+        <PlayerCardShareButton model={cardModel} />
+      </div>
+    </div>
   );
 }

@@ -79,5 +79,16 @@
   "secondaryAvatar": "Secondary identity avatar",
   "comingSoon": "This feature will be available later.",
   "emptyChildren": "Children are linked automatically after a club's education program approves them as students.",
-  "unlinkChild": "Unlink"
+  "unlinkChild": "Unlink",
+  "playerCard": {
+    "title": "Player Card",
+    "scheduled": "Scheduled",
+    "completed": "Completed",
+    "attendRate": "Attendance",
+    "clubs": "Clubs",
+    "share": "Share player card",
+    "shareFailed": "Could not create the player card image. Please try again.",
+    "longPressSave": "Press and hold the image to save it",
+    "close": "Close"
+  }
 }

@@ -79,5 +79,16 @@
   "secondaryAvatar": "第二身分頭像",
   "comingSoon": "此功能稍後開放",
   "emptyChildren": "子女由俱樂部教育課程審核學員後自動綁定。",
-  "unlinkChild": "解除綁定"
+  "unlinkChild": "解除綁定",
+  "playerCard": {
+    "title": "球員卡",
+    "scheduled": "應到",
+    "completed": "完成",
+    "attendRate": "出席率",
+    "clubs": "俱樂部",
+    "share": "分享球員卡",
+    "shareFailed": "球員卡圖片產生失敗，請再試一次",
+    "longPressSave": "長按圖片即可儲存",
+    "close": "關閉"
+  }
 }

@@ -79,5 +79,16 @@
   "secondaryAvatar": "Ảnh đại diện hồ sơ phụ",
   "comingSoon": "Tính năng này sẽ được mở sau.",
   "emptyChildren": "Con được tự động liên kết sau khi được chương trình giáo dục của câu lạc bộ duyệt làm học viên.",
-  "unlinkChild": "Hủy liên kết"
+  "unlinkChild": "Hủy liên kết",
+  "playerCard": {
+    "title": "Thẻ cầu thủ",
+    "scheduled": "Dự kiến",
+    "completed": "Hoàn thành",
+    "attendRate": "Tỷ lệ tham dự",
+    "clubs": "Câu lạc bộ",
+    "share": "Chia sẻ thẻ cầu thủ",
+    "shareFailed": "Không thể tạo ảnh thẻ cầu thủ. Vui lòng thử lại.",
+    "longPressSave": "Nhấn giữ ảnh để lưu",
+    "close": "Đóng"
+  }
 }

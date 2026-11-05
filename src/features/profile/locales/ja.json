@@ -79,5 +79,16 @@
   "secondaryAvatar": "セカンドプロフィールの画像",
   "comingSoon": "この機能は後日公開予定です。",
   "emptyChildren": "子どもは、クラブの教育プログラムで受講生として承認されると自動的に紐付けられます。",
-  "unlinkChild": "紐付けを解除"
+  "unlinkChild": "紐付けを解除",
+  "playerCard": {
+    "title": "選手カード",
+    "scheduled": "予定",
+    "completed": "完了",
+    "attendRate": "出席率",
+    "clubs": "クラブ",
+    "share": "選手カードを共有",
+    "shareFailed": "選手カード画像を作成できませんでした。もう一度お試しください。",
+    "longPressSave": "画像を長押しして保存",
+    "close": "閉じる"
+  }
 }

@@ -79,5 +79,16 @@
   "secondaryAvatar": "보조 프로필 사진",
   "comingSoon": "이 기능은 추후 제공됩니다.",
   "emptyChildren": "자녀는 클럽 교육 과정에서 수강생 승인이 완료되면 자동으로 연결됩니다.",
-  "unlinkChild": "연결 해제"
+  "unlinkChild": "연결 해제",
+  "playerCard": {
+    "title": "선수 카드",
+    "scheduled": "예정",
+    "completed": "완료",
+    "attendRate": "출석률",
+    "clubs": "클럽",
+    "share": "선수 카드 공유",
+    "shareFailed": "선수 카드 이미지를 만들지 못했습니다. 다시 시도해 주세요.",
+    "longPressSave": "이미지를 길게 눌러 저장하세요",
+    "close": "닫기"
+  }
 }

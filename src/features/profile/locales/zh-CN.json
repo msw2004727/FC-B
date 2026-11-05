@@ -79,5 +79,16 @@
   "secondaryAvatar": "第二身份头像",
   "comingSoon": "此功能稍后开放",
   "emptyChildren": "子女由俱乐部教育课程审核学员后自动绑定。",
-  "unlinkChild": "解除绑定"
+  "unlinkChild": "解除绑定",
+  "playerCard": {
+    "title": "球员卡",
+    "scheduled": "应到",
+    "completed": "完成",
+    "attendRate": "出席率",
+    "clubs": "俱乐部",
+    "share": "分享球员卡",
+    "shareFailed": "球员卡图片生成失败，请再试一次",
+    "longPressSave": "长按图片即可保存",
+    "close": "关闭"
+  }
 }
