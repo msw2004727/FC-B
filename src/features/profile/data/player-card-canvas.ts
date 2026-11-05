@@ -68,14 +68,19 @@ export interface PlayerCardRenderOptions {
  * PNG 左下 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
  * 四周 4 模組 quiet zone（QR 標準最小值；取代原本 2 模組，複審 P3）。
  * 位置（站長定案，取代原本左緣 x=14、底緣對齊 logo 底線）：中心 x＝三格第一欄「應到」欄中心，中心 y＝底部 logo 中心。
- * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 30.33～57.67、y 281.33～308.67（3 倍輸出 91～173、844～926px）。
+ * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 34.33～61.67、y 284.33～311.67（3 倍輸出 103～185、853～935px）。
  */
 export const QR_MODULE_PX = 2;
 export const QR_QUIET_MODULES = 4;
-export const LOGO_CENTER_Y = 295;
-export const LOGO_HEIGHT = 14;
-/** 三格欄中心 x（卡面單位）：分隔線在 77／143。 */
-export const STAT_COLUMNS = [44, 110, 176] as const;
+/*
+ * 以下版面數字照站長核可預覽（flip-sheen-preview.html，卡面 220×324）實測：文字給基線 y、區塊給框；
+ * 取代 11-05 先前自訂的字級與位置（字偏小、頭像偏低、計量條較短）。網頁卡面 player-card.css 為同一組 ×1.1。
+ */
+/** 預覽 logo 高 18、底緣貼 .in 內距（卡面 307），中心 298。 */
+export const LOGO_CENTER_Y = 298;
+export const LOGO_HEIGHT = 18;
+/** 三格欄中心 x（卡面單位）：三格寬 186（17～203）均分，分隔線在 79／141。 */
+export const STAT_COLUMNS = [48, 110, 172] as const;
 
 export interface QrLayout {
   /** quiet zone 外框（卡面單位）。 */
@@ -94,12 +99,16 @@ export function qrLayout(moduleCount: number, scale: number = PLAYER_CARD_PNG_SC
 /** 2x～3x：220×324 × 3 ＝ 660×972。 */
 export const PLAYER_CARD_PNG_SCALE = 3;
 
-const AVATAR = { cx: 110, cy: 112, outer: 50, inner: 46.5, photo: 43 } as const;
-const GAUGE = { x: 44, y: 204, width: 132, height: 4 } as const;
+/** 預覽外圈 100（上緣 47）、金圈 4、白圈 3：半徑 50／46／43，圓心 (110, 97)。 */
+const AVATAR = { cx: 110, cy: 97, outer: 50, inner: 46, photo: 43 } as const;
+/** 預覽計量條與三格同寬（17～203）、高 7、上緣 185。 */
+const GAUGE = { x: 17, y: 185, width: 186, height: 7 } as const;
+/** 三格：上緣 197、下緣 261（分隔線全高）；數字／中文／縮寫基線。 */
+const STATS = { top: 197, bottom: 261, numY: 216, labelY: 234, abbrY: 256, dividers: [79, 141] } as const;
 const STRIPE_STEP = 9 * Math.SQRT2; // 與 CSS repeating-linear-gradient(45deg) 間距 9 對齊
 const STRIPE_WIDTH = 1.5;
-/** 三格欄寬 66（分隔線 77／143）左右各留 3。 */
-export const STAT_CELL_MAX_WIDTH = 60;
+/** 三格欄寬 62（分隔線 79／141）左右各留 3。 */
+export const STAT_CELL_MAX_WIDTH = 56;
 export const NAME_MAX_WIDTH = 176;
 export const HEADER_TITLE_MAX_WIDTH = 100;
 
@@ -201,13 +210,24 @@ function drawBackground(ctx: Ctx, p: PlayerCardPalette): void {
   ctx.restore();
 }
 
+/** 左上大數字最寬（"100%" 約 75）；超過才縮字。 */
+const ATT_NUM_MAX_WIDTH = 84;
+
 function drawHeader(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p: PlayerCardPalette): void {
-  // 左上：出席率大數字＋ATT。
-  text(ctx, model.attendText, 18, 44, displayFont, 32, p.text, 'left', 0, 80);
-  text(ctx, PLAYER_CARD_ABBR.attend, 19, 56, displayFont, 10, p.subText, 'left', 1.5);
-  // 右上：球員卡＋PLAYER CARD。
-  text(ctx, labels.title, 202, 30, bodyFont, 12, p.text, 'right', 1, HEADER_TITLE_MAX_WIDTH);
-  text(ctx, PLAYER_CARD_ABBR.title, 202, 42, displayFont, 8, p.subText, 'right', 1.2);
+  // 左上：出席率大數字（44）＋ATT（12、字距 2），與預覽一樣兩行以較寬者置中、左緣 17。
+  ctx.font = displayFont(44);
+  setLetterSpacing(ctx, 0);
+  const numWidth = Math.min(ATT_NUM_MAX_WIDTH, ctx.measureText(model.attendText).width);
+  ctx.font = displayFont(12);
+  setLetterSpacing(ctx, 2);
+  const abbrWidth = ctx.measureText(PLAYER_CARD_ABBR.attend).width;
+  setLetterSpacing(ctx, 0);
+  const attCenter = 17 + Math.max(numWidth, abbrWidth) / 2;
+  text(ctx, model.attendText, attCenter, 48, displayFont, 44, p.text, 'center', 0, ATT_NUM_MAX_WIDTH);
+  text(ctx, PLAYER_CARD_ABBR.attend, attCenter, 68.5, displayFont, 12, p.subText, 'center', 2);
+  // 右上：球員卡（12、字重 500、字距 2）＋PLAYER CARD（11、字距 2），右緣 203。
+  text(ctx, labels.title, 203, 29, (s) => bodyFont(s, 500), 12, p.text, 'right', 2, HEADER_TITLE_MAX_WIDTH);
+  text(ctx, PLAYER_CARD_ABBR.title, 203, 46.8, displayFont, 11, p.subText, 'right', 2);
 }
 
 /** 沒有頭像（或載入失敗、tainted）：與畫面 LegacyAvatar 一致，金色漸層圓底＋白色姓名首字。 */
@@ -221,7 +241,7 @@ function drawDefaultAvatar(ctx: Ctx, initial: string): void {
   g.addColorStop(1, '#854F0B');
   ctx.fillStyle = g;
   ctx.fill();
-  ctx.font = bodyFont(30, 800);
+  ctx.font = bodyFont(36, 500);
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -261,25 +281,25 @@ function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, initial: string, p: 
 function drawClubBadge(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p: PlayerCardPalette): void {
   if (!model.showClubBadge) return;
   const w = model.clubBadgeWide ? 44 : 36;
-  const h = 32;
-  // 頭像外圈右側偏中下，破格壓在外圈上。
-  const x = AVATAR.cx + 30;
-  const y = AVATAR.cy + 14;
-  roundRectPath(ctx, x, y, w, h, 7);
+  const h = 38;
+  // 頭像外圈右側偏中下，破格壓在外圈上（預覽 left 136、top 101、36×38、2px 卡面底色框在方塊內側）。
+  const x = AVATAR.cx + 26;
+  const y = AVATAR.cy + 4;
+  roundRectPath(ctx, x + 1, y + 1, w - 2, h - 2, 6);
   ctx.fillStyle = p.clubBg;
   ctx.fill();
   ctx.strokeStyle = p.base; // 外描一圈卡面底色
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2;
   ctx.stroke();
   // 方塊內留 3px 邊：標籤與數字都縮到放得進。
   const inner = w - 6;
-  text(ctx, labels.clubs, x + w / 2, y + 12, bodyFont, 7.5, p.clubText, 'center', 0, inner);
-  text(ctx, String(model.clubCount), x + w / 2, y + 27, displayFont, 15, p.clubText, 'center', 0, inner);
+  text(ctx, labels.clubs, x + w / 2, y + 11.8, (s) => bodyFont(s, 500), 8, p.clubText, 'center', 0, inner);
+  text(ctx, String(model.clubCount), x + w / 2, y + 28.2, displayFont, 19, p.clubText, 'center', 0, inner);
 }
 
 function drawNameAndGauge(ctx: Ctx, model: PlayerCardModel, p: PlayerCardPalette): void {
-  // 名字過長時縮字，不超出內框。
-  text(ctx, model.name, 110, 190, bodyFont, 15, p.text, 'center', 2, NAME_MAX_WIDTH);
+  // 名字（17、字重 500、字距 2）過長時縮字，不超出內框。
+  text(ctx, model.name, 110, 173, (s) => bodyFont(s, 500), 17, p.text, 'center', 2, NAME_MAX_WIDTH);
 
   roundRectPath(ctx, GAUGE.x, GAUGE.y, GAUGE.width, GAUGE.height, GAUGE.height / 2);
   ctx.fillStyle = p.gaugeTrack;
@@ -300,16 +320,16 @@ function drawStats(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p
   ];
   cells.forEach(([value, label, abbr], index) => {
     const x = STAT_COLUMNS[index] ?? 110;
-    text(ctx, value, x, 240, displayFont, 22, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
-    text(ctx, label, x, 254, bodyFont, 8.5, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
-    text(ctx, abbr, x, 264, displayFont, 7.5, p.subText, 'center', 1, STAT_CELL_MAX_WIDTH);
+    text(ctx, value, x, STATS.numY, displayFont, 24, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, label, x, STATS.labelY, (s) => bodyFont(s, 400), 11, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, abbr, x, STATS.abbrY, displayFont, 11, p.subText, 'center', 1.5, STAT_CELL_MAX_WIDTH);
   });
   ctx.strokeStyle = p.stripe;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (const x of [77, 143]) {
-    ctx.moveTo(x, 224);
-    ctx.lineTo(x, 264);
+  for (const x of STATS.dividers) {
+    ctx.moveTo(x, STATS.top);
+    ctx.lineTo(x, STATS.bottom);
   }
   ctx.stroke();
 }

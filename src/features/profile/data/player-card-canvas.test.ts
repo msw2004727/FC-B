@@ -167,17 +167,38 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     }
   });
 
+  it('字級照站長核可預覽（卡面 220×324）：大數字 44、ATT 12、球員卡 12、PLAYER CARD 11、名字 17、三格 24／11／11、俱樂部 8／19', () => {
+    const fake = makeFakeCtx();
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), 'light', labels, {
+      avatar: avatarImg,
+      logo: logoImg,
+    });
+    const sizes = (value: string): number[] => fake.drawn.filter((d) => d.value === value).map((d) => d.size);
+    expect(sizes('85%')).toEqual([44, 24]);
+    expect(sizes('ATT')).toEqual([12, 11]);
+    expect(sizes('球員卡')).toEqual([12]);
+    expect(sizes('PLAYER CARD')).toEqual([11]);
+    expect(sizes('王小明')).toEqual([17]);
+    expect(sizes('26')).toEqual([24]);
+    expect(sizes('應到')).toEqual([11]);
+    expect(sizes('SCH')).toEqual([11]);
+    expect(sizes('俱樂部')).toEqual([8]);
+    expect(sizes('2')).toEqual([19]);
+  });
+
   it('計量條長度＝出席率', () => {
     const fake = makeFakeCtx();
     drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), 'dark', labels, {
       avatar: null,
       logo: logoImg,
     });
-    const gaugeFills = fake.fills.filter((f) => f.minY === 204 && f.maxY === 208);
+    // 照預覽：與三格同寬 186（17～203）、高 7、上緣 185
+    const gaugeFills = fake.fills.filter((f) => f.minY === 185 && f.maxY === 192);
     expect(gaugeFills).toHaveLength(2);
     const [track, bar] = gaugeFills;
-    expect(track!.maxX - track!.minX).toBeCloseTo(132);
-    expect(bar!.maxX - bar!.minX).toBeCloseTo(132 * 0.85);
+    expect(track!.minX).toBeCloseTo(17);
+    expect(track!.maxX - track!.minX).toBeCloseTo(186);
+    expect(bar!.maxX - bar!.minX).toBeCloseTo(186 * 0.85);
     expect(bar!.fillStyle).toBe(PLAYER_CARD_PALETTES.dark.gold);
   });
 
@@ -299,21 +320,21 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       logo: logoImg,
     });
     const attend = fake.drawn.find((d) => d.value === thai.attend)!;
-    expect(attend.size).toBeLessThan(8.5);
+    expect(attend.size).toBeLessThan(11);
     expect(attend.width).toBeLessThanOrEqual(STAT_CELL_MAX_WIDTH);
     const scheduled = fake.drawn.find((d) => d.value === thai.scheduled)!;
     expect(scheduled.width).toBeLessThanOrEqual(STAT_CELL_MAX_WIDTH);
     const clubs = fake.drawn.find((d) => d.value === thai.clubs)!;
     expect(clubs.width).toBeLessThanOrEqual(36 - 6);
-    expect(clubs.size).toBeLessThan(7.5);
-    // 短的中文標籤維持原字級
+    expect(clubs.size).toBeLessThan(8);
+    // 短的中文標籤維持預覽字級（三格中文 11、俱樂部 8）
     const zh = makeFakeCtx();
     drawPlayerCard(zh.ctx as unknown as CanvasRenderingContext2D, model(['t1']), 'light', labels, {
       avatar: avatarImg,
       logo: logoImg,
     });
-    expect(zh.drawn.find((d) => d.value === '出席率')!.size).toBe(8.5);
-    expect(zh.drawn.find((d) => d.value === '俱樂部')!.size).toBe(7.5);
+    expect(zh.drawn.find((d) => d.value === '出席率')!.size).toBe(11);
+    expect(zh.drawn.find((d) => d.value === '俱樂部')!.size).toBe(8);
   });
 
   it('圖片載入約 3 秒逾時視為失敗（頭像改畫首字）', async () => {
@@ -382,8 +403,8 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       // 整塊（含 4 模組 quiet zone）41 模組 × 2px ＝ 82px
       expect(QR_QUIET_MODULES).toBe(4);
       expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(82);
-      expect(layout.box.x).toBeCloseTo(30.333, 2);
-      expect(layout.box.y).toBeCloseTo(281.333, 2);
+      expect(layout.box.x).toBeCloseTo(34.333, 2);
+      expect(layout.box.y).toBeCloseTo(284.333, 2);
     });
 
     it('產圖時以網址呼叫 QR 產生並畫進 PNG（底色／碼色依深淺）', async () => {
@@ -433,8 +454,8 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       expect(box.x).toBeGreaterThan(6.75);
       expect(bottom).toBeLessThan(324 - 6.75);
       expect(box.x).toBeGreaterThan(18);
-      // 三格最下方縮寫基線 264（字級 7.5，下伸部不超過 2）
-      expect(box.y).toBeGreaterThan(264 + 2);
+      // 三格最下方縮寫基線 256、分隔線下緣 261（字級 11，下伸部不超過 3）
+      expect(box.y).toBeGreaterThan(261 + 3);
       // logo 寬最多 96，置中於 110：左緣 ≥ 62；退回文字商標也置中於 110
       expect(right).toBeLessThan(110 - 96 / 2);
       // 3 倍輸出時落在整數像素

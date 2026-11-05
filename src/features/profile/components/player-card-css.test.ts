@@ -107,6 +107,34 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(card.some((r) => /\.stat-item \+ \.stat-item$/.test(r.selector) && /border-left:/.test(r.body))).toBe(true);
   });
 
+  it('文字字級／字距照站長核可預覽 ×1.1（PLAYER_CARD_DOM_SCALE）', async () => {
+    const { PLAYER_CARD_DOM_SCALE } = await import('../data/player-card-model');
+    const px = (n: number): RegExp => new RegExp(`font-size:\\s*${+(n * PLAYER_CARD_DOM_SCALE).toFixed(2)}px`);
+    const ls = (n: number): RegExp => new RegExp(`letter-spacing:\\s*${+(n * PLAYER_CARD_DOM_SCALE).toFixed(2)}px`);
+    const body = (selector: string): string => {
+      const rule = card.find((r) => r.selector === selector);
+      if (!rule) throw new Error(`rule ${selector} not found`);
+      return rule.body;
+    };
+    expect(body('.player-card-att-num')).toMatch(px(44));
+    expect(body('.player-card-att .player-card-abbr')).toMatch(px(12));
+    expect(body('.player-card-att .player-card-abbr')).toMatch(ls(2));
+    expect(body('.player-card-title-zh')).toMatch(px(12));
+    expect(body('.player-card-title-zh')).toMatch(/font-weight:\s*500/);
+    expect(body('.player-card-title .player-card-abbr')).toMatch(px(11));
+    expect(body('.player-card-club-label')).toMatch(px(8));
+    expect(body('.player-card-club-num')).toMatch(px(19));
+    const name = cardOverride('player-card-name').body;
+    expect(name).toMatch(px(17));
+    expect(name).toMatch(ls(2));
+    expect(name).toMatch(/font-weight:\s*500/);
+    expect(cardOverride('stat-num').body).toMatch(px(24));
+    expect(cardOverride('stat-label').body).toMatch(px(11));
+    expect(cardOverride('stat-label').body).toMatch(/font-weight:\s*400/);
+    expect(body('.player-card-abbr')).toMatch(px(11));
+    expect(body('.player-card-abbr')).toMatch(ls(1.5));
+  });
+
   it('網頁卡面無動畫：沒有 @keyframes、animation、::after 光帶；顯示倍率與共用常數一致', async () => {
     const raw = readFileSync(resolve(root, 'src/features/profile/components/player-card.css'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '');
