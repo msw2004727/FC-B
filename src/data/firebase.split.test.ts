@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// 本檔直接測 data/firebase.ts（SDK 以 vi.doMock 模擬），解除 src/test-setup.ts 的全域 getter 擋網。
+vi.unmock('@/data/firebase');
+
 // T-041 A4④：Firebase 拆兩段載入。
 // - getFirebaseCore()：只載 app＋firestore，首頁資料路徑先到先用
 // - getFirebase()：core ＋ auth／functions 都就緒才 resolve（延後載入的模組「被呼叫時會 await 就緒」）

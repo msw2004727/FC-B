@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
+// 本檔直接測 data/firebase.ts（SDK 以 vi.doMock 模擬），解除 src/test-setup.ts 的全域 getter 擋網。
+vi.unmock('@/data/firebase');
+
 // T-041 退修 1（顧問定案的登入旗標閘）：
 // 上次已登入（localStorage 旗標 fcb:signed-in）→ 先走 Auth，等 Auth 的第一次狀態事件再初始化 Firestore；
 // 沒旗標（真訪客）→ 照「首頁公開讀取優先」立即初始化 Firestore，不等 Auth。

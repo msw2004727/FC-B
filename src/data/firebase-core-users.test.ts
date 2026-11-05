@@ -18,7 +18,8 @@ const ALLOWED_CORE_USERS = [
 
 describe('getFirebaseCore 的使用者', () => {
   it('只有清單內的檔案（非測試）引用 getFirebaseCore', () => {
-    const sources = import.meta.glob(['../**/*.ts', '../**/*.tsx', '!../**/*.test.*'], {
+    // test-setup.ts 是測試基礎設施（全域把 getFirebaseCore 換成 reject），不是執行期呼叫端。
+    const sources = import.meta.glob(['../**/*.ts', '../**/*.tsx', '!../**/*.test.*', '!../test-setup.ts'], {
       query: '?raw',
       import: 'default',
       eager: true,

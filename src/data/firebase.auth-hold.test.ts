@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// 本檔直接測 data/firebase.ts（SDK 以 vi.doMock 模擬），解除 src/test-setup.ts 的全域 getter 擋網。
+vi.unmock('@/data/firebase');
+
 // T-041：開在首頁時，先讓首頁的公開讀取（events／banners／announcements）跑完，再讓 Auth 註冊。
 // 原因見 data/firebase.ts 的「首頁公開讀取優先」：Auth 一註冊進 Firestore，Firestore 的非同步佇列就停到
 // Auth 初始化完成（登入者實測 2～4 秒），公開資料的查詢與回應也跟著排在後面。

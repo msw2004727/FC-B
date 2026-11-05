@@ -120,7 +120,9 @@ export class FirebaseTargetBlockedError extends Error {
  * 連線目標檢查（2026-10-19 事故後新增：本機預覽 PROD 建置時忽略 emulator 旗標、誤連正式 Firestore）。
  * 不連 emulator 時，若網址是本機或區網（localhost／127.0.0.1／::1／*.localhost／*.local／
  * 10.x、172.16～31.x、192.168.x 私有 IP）就拒絕初始化（2026-10-19 Fable 補：手機連開發機時是私有 IP）。
- * 單元測試（MODE=test）不檢查，因為測試一律 mock Firebase。
+ * 單元測試（MODE=test）不檢查（jsdom 網址是 localhost，檢查會擋掉所有測試）。測試不連正式資料庫靠的是
+ * src/test-setup.ts 的全域擋網（getFirebase／getFirebaseCore 預設 reject、fetch 擋 Firebase 網域、gRPC 導向不可達代理），不是這裡。
+ * （2026-11-05 取代原註解「測試一律 mock Firebase」：實查並非每個測試都 mock，曾有測試以正式設定連線。）
  */
 export function assertFirebaseTargetAllowed(
   useEmulator: boolean,
