@@ -351,7 +351,8 @@ export function TopBar({
   const handleLogout = (): void => {
     setUserMenuOpen(false);
     // 登入模組用到時才載入（與 App 相同，不放進首屏必經路徑）。
-    import('@/data/auth').then(({ signOut }) => signOut()).catch((err: unknown) => {
+    // 照 A `LineAuth.logout`：連 LINE 一起登出、清本機帳號資料後重新整理（signOutAndReload）。
+    import('@/data/auth').then(({ signOutAndReload }) => signOutAndReload()).catch((err: unknown) => {
       console.error('[TopBar] signOut failed', err);
     });
   };

@@ -300,8 +300,9 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(container.querySelector('#line-avatar-topbar')?.classList.contains('line-avatar-loading')).toBe(false);
   });
 
-  it('opens #user-menu-dropdown when clicking avatar, closes on outside click, and calls signOut on logout (M-017)', async () => {
-    const signOutSpy = vi.spyOn(authMod, 'signOut').mockResolvedValue();
+  // 測試同步更新：登出改走 signOutAndReload（照 A 連 LINE 一起登出並重新整理），不再只呼叫 signOut。
+  it('opens #user-menu-dropdown when clicking avatar, closes on outside click, and calls signOutAndReload on logout (M-017)', async () => {
+    const signOutSpy = vi.spyOn(authMod, 'signOutAndReload').mockResolvedValue();
     const { container } = render(
       <TopBar
         drawerOpen={false}

@@ -21,6 +21,7 @@ import { toast } from '@/ui/Toast';
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
+import { buildCleanLoginRedirectUri, cleanLoginParamsFromUrl } from './login-redirect';
 
 export interface AuthUser {
   /** Firebase Auth uid；依 R-ID-002，正式模式即 LINE userId。 */
@@ -64,25 +65,11 @@ export function acknowledgeMobileLoginHint(): void {
   mobileHintAcknowledged = true;
 }
 
-/** M-036：照 A `js/line-auth.js:595-605` 清理 OAuth 查詢參數並組出回跳網址。 */
-export function buildCleanLoginRedirectUri(href: string): string {
-  try {
-    const url = new URL(href);
-    [
-      'code',
-      'state',
-      'liffClientId',
-      'liffRedirectUri',
-      'error',
-      'error_description',
-    ].forEach((key) => {
-      url.searchParams.delete(key);
-    });
-    return url.toString();
-  } catch {
-    return href;
-  }
-}
+// 回跳網址清理搬到 login-redirect.ts（App 首屏要用、不必載入本檔的 Firebase 相依），這裡沿用並保留原匯出。
+export { buildCleanLoginRedirectUri };
+
+/** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
+let liffInitialized = false;
 
 function emitAuth(uid: string | null): void {
   lastKnownAuthUid = uid;
@@ -99,8 +86,11 @@ function emitAuth(uid: string | null): void {
 /**
  * 正式登入流程（LINE LIFF → Firebase custom token）。
  * 失敗時拋錯，呼叫端需自行處理 UI。
+ * interactive=false：開頁接手 LINE 授權回跳用；LIFF 沒有登入時不再導向 LINE（避免回跳失敗時無限重導），
+ * 改拋 LoginRedirectingError（呼叫端不顯示錯誤）。
  */
-export async function signIn(): Promise<AuthUser> {
+export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
+  const interactive = options.interactive !== false;
   if (shouldUseEmulator()) {
     throw new Error(
       '[auth] emulator 模式請改用 devSignIn(uid, claims)；正式 signIn 會呼叫 A 版 createCustomToken，' +
@@ -128,8 +118,14 @@ export async function signIn(): Promise<AuthUser> {
     toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
     throw err;
   }
+  liffInitialized = true;
+  // 回跳的 code 已由 liff.init 處理完，清掉網址參數（照 A initSDK 之後的 _cleanUrl）。
+  cleanLoginParamsFromUrl();
 
   if (!liff.isLoggedIn()) {
+    if (!interactive) {
+      throw new LoginRedirectingError('[auth] LINE 授權回跳後未取得登入');
+    }
     // M-036：手機外部瀏覽器先顯示 LINE 登入提示框（照 A `js/line-auth.js` login 的同一段檢查）
     let inClient = false;
     try {
@@ -213,10 +209,50 @@ export async function devSignIn(
   };
 }
 
-/** 登出 Firebase Auth；不主動 liff.logout（可由 UI 另行決定）。 */
+/** 登出 Firebase Auth；不主動 liff.logout（使用者按的登出走 signOutAndReload）。 */
 export async function signOut(): Promise<void> {
   const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
   await authMod.signOut(ctx.auth);
+}
+
+/** LIFF 已登入就登出（本次還沒 init 過先 init）；沒有 LIFF 設定時略過。 */
+async function logoutLiff(): Promise<void> {
+  const liffId = import.meta.env.VITE_LIFF_ID;
+  if (!liffId || shouldUseEmulator()) return;
+  const liff = (await import('@line/liff')).default;
+  if (!liffInitialized) {
+    await liff.init({ liffId });
+    liffInitialized = true;
+  }
+  if (liff.isLoggedIn()) liff.logout();
+}
+
+/**
+ * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → LIFF 已登入則 liff.logout()
+ * → 清本機帳號資料 → 清登入旗標 → 重新整理。任一步失敗其餘照做（只記錄，不擋登出）。
+ * QA 帳號的登出另走 signOutQa，不經這裡。
+ */
+export async function signOutAndReload(
+  reload: () => void = () => location.reload(),
+): Promise<void> {
+  try {
+    await signOut();
+  } catch (err) {
+    console.error('[auth] 登出 Firebase 失敗', err);
+  }
+  try {
+    await logoutLiff();
+  } catch (err) {
+    console.warn('[auth] LINE 登出失敗', err);
+  }
+  clearAccountLocalState();
+  lastKnownAuthUid = null;
+  writeAuthHint(false);
+  try {
+    reload();
+  } catch (err) {
+    console.error('[auth] 重新整理失敗', err);
+  }
 }
 
 export interface QaClaims {

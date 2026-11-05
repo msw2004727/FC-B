@@ -55,6 +55,7 @@ import {
   type AuthUser,
 } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
+import { cleanLoginParamsFromUrl, hasLoginRedirectParams } from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
 import {
   firebaseTargetLabel,
@@ -146,11 +147,17 @@ export function App({
   const currentUid = useRef<string | null>(null);
   // 內測模式只剩角落浮水印（2026-10-20 站長取消白名單閘門與寫入守門）。
   const internalTest = useMemo(() => isInternalTestMode(), []);
+  // 從 LINE 授權回來（網址帶 code＋liffClientId 或 liff.state）：登入狀態確認後自動接手登入一次。
+  const resumeLoginRef = useRef(
+    typeof location !== 'undefined' && hasLoginRedirectParams(location.href),
+  );
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   useEffect(() => {
+    // 回跳接手登入要等 Auth 還原結果，不等首頁公開讀取（T-041 暫緩）；冪等。
+    if (resumeLoginRef.current) releaseFirebaseAuthHold();
     initFontSize();
     const stopMultiTab = initMultiTabGuard();
     const stopOfflineGuard = installOfflineWriteGuard();
@@ -221,7 +228,8 @@ export function App({
     };
   }, []);
 
-  const handleLogin = useCallback((): void => {
+  // resume=true：開頁接手 LINE 授權回跳，不走外部 onLogin、LIFF 未登入時不再導向 LINE。
+  const runLogin = useCallback((resume: boolean): void => {
     // 首頁訪客路徑會暫緩 Auth 註冊（T-041）；按下登入代表使用者現在就要 Auth，
     // 登入流程的 callable 要等 getFirebase()，不立刻放行會多等 3～10 秒（冪等：沒有暫緩或已放行時是空操作）。
     releaseFirebaseAuthHold();
@@ -234,12 +242,12 @@ export function App({
 
     (async () => {
       try {
-        if (onLogin) {
+        if (onLogin && !resume) {
           await onLogin();
         } else {
           const auth = await import('@/data/auth');
           if (!mounted.current || sequence !== loginSequence.current) return;
-          const next = await auth.signIn();
+          const next = resume ? await auth.signIn({ interactive: false }) : await auth.signIn();
           if (!mounted.current || sequence !== loginSequence.current) return;
 
           if (authRevision.current === revision || currentUid.current === next.uid) {
@@ -266,6 +274,20 @@ export function App({
       if (mounted.current) setLoginError(true);
     });
   }, [externalPending, onLogin]);
+
+  const handleLogin = useCallback((): void => runLogin(false), [runLogin]);
+
+  // 照 A 開頁 liff.init 的效果：從 LINE 授權回來時，Auth 還原結果確定後接手登入一次。
+  // 已是登入狀態只清網址參數；之後使用者再按登入由 pendingRef 擋掉重複觸發。
+  useEffect(() => {
+    if (!authKnown || !resumeLoginRef.current) return;
+    resumeLoginRef.current = false;
+    if (currentUid.current !== null) {
+      cleanLoginParamsFromUrl();
+      return;
+    }
+    runLogin(true);
+  }, [authKnown, runLogin]);
 
   // M-036：手機外部瀏覽器登入提示框（回呼要穩定，彈窗的返回鍵登記才不會每次重繪重來）。
   const closeMobileHint = useCallback(() => setMobileHintOpen(false), []);
