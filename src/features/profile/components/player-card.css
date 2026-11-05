@@ -247,14 +247,20 @@
   object-fit: contain;
 }
 
-/* 固定斜光（無動畫）：位置、角度、寬度、顏色由 PlayerCard.tsx 依 PLAYER_CARD_SHINE 以 inline style 注入，與 PNG 同一組常數。
- * 取代原本 3 秒掃光（::after＋keyframes），站長 11-05 定案。 */
+/* 固定斜光（無動畫）：每層鋪滿卡面，115deg 漸層由 PlayerCard.tsx 依 PLAYER_CARD_SHINE 以 inline background 注入，與 PNG 同一組常數。
+ * 取代 11-05 先前 20.3° 柔光帶（固定寬度旋轉元素），改回站長預覽的 115deg 雙層光。
+ * soft-light 層只與卡面內容混色（.player-card／.player-card-back 有 isolation: isolate）。 */
 .player-card-shine {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   pointer-events: none;
   z-index: 3;
+}
+.player-card-shine.is-soft-light {
+  mix-blend-mode: soft-light;
 }
 
 /*

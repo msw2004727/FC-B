@@ -120,6 +120,12 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     const shine = card.find((r) => r.selector === '.player-card-shine')!;
     expect(shine.body).toMatch(/position:\s*absolute/);
     expect(shine.body).toMatch(/pointer-events:\s*none/);
+    // 每層鋪滿卡面（115deg 漸層百分比與 PNG 同一套換算）
+    for (const side of ['top', 'right', 'bottom', 'left']) expect(shine.body).toMatch(new RegExp(`${side}:\\s*0;`));
+    const soft = card.find((r) => r.selector === '.player-card-shine.is-soft-light')!;
+    expect(soft.body).toMatch(/mix-blend-mode:\s*soft-light/);
+    // soft-light 只與卡面內容混色
+    expect(base.body).toMatch(/isolation:\s*isolate/);
   });
 
   it('撥動翻面：舞台只讓垂直捲動、兩面隱藏背面（含 -webkit-）、背面與正面同底同框；鎖頭權重高於 .legacy-ui button', () => {

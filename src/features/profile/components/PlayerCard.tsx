@@ -8,13 +8,12 @@ import { useTheme } from '@/core/theme';
 import { useT } from '@/i18n/i18n';
 import {
   PLAYER_CARD_ABBR,
-  PLAYER_CARD_DOM_SCALE,
   playerCardLogoUrl,
   playerCardShineCssGradient,
-  playerCardShineGeometry,
-  playerCardShineTransform,
+  playerCardShineLayers,
   resolvePlayerCardTheme,
   type PlayerCardModel,
+  type PlayerCardShineFace,
   type PlayerCardTheme,
 } from '../data/player-card-model';
 import { readPlayerCardLocked, usePlayerCardSpin, writePlayerCardLocked } from './player-card-spin';
@@ -29,17 +28,20 @@ function LockIcon({ locked }: { locked: boolean }): JSX.Element {
   );
 }
 
-/** 固定斜光（與 PNG 同一組常數，無動畫）的 inline 樣式；寬高以網頁顯示倍率換算。 */
-export function playerCardShineStyle(theme: PlayerCardTheme): string {
-  const g = playerCardShineGeometry();
-  const width = +(g.bandWidth * PLAYER_CARD_DOM_SCALE).toFixed(3);
-  const height = Math.ceil(g.length * PLAYER_CARD_DOM_SCALE);
-  return [
-    `width:${width}px`,
-    `height:${height}px`,
-    `background:${playerCardShineCssGradient(theme)}`,
-    `transform:${playerCardShineTransform()}`,
-  ].join(';');
+/** 固定斜光（與 PNG 同一組常數，無動畫）：每層一個鋪滿卡面的元素，soft-light 層加 is-soft-light（CSS 設 mix-blend-mode）。 */
+function PlayerCardShine({ theme, face }: { theme: PlayerCardTheme; face: PlayerCardShineFace }): JSX.Element {
+  return (
+    <>
+      {playerCardShineLayers(theme, face).map((layer, i) => (
+        <div
+          key={i}
+          class={`player-card-shine${layer.blend === 'soft-light' ? ' is-soft-light' : ''}`}
+          aria-hidden="true"
+          style={`background:${playerCardShineCssGradient(layer)}`}
+        />
+      ))}
+    </>
+  );
 }
 
 export function PlayerCard({
@@ -62,7 +64,6 @@ export function PlayerCard({
     writePlayerCardLocked(next);
   };
   const logoUrl = playerCardLogoUrl(theme);
-  const shineStyle = playerCardShineStyle(theme);
 
   // 外層留出鎖頭列；只有舞台吃撥動手勢（鎖頭在舞台外，點它不會翻）。正面仍是 .player-card（既有測試與 PNG 對照不變）。
   return (
@@ -142,12 +143,12 @@ export function PlayerCard({
               decoding="async"
               loading="lazy"
             />
-            <div class="player-card-shine" aria-hidden="true" style={shineStyle} />
+            <PlayerCardShine theme={theme} face="front" />
           </div>
           <div class="player-card-back" data-theme-variant={theme} aria-hidden="true">
             <div class="player-card-frame" />
             <img class="player-card-back-logo" src={logoUrl} alt="" draggable={false} decoding="async" loading="lazy" />
-            <div class="player-card-shine" style={shineStyle} />
+            <PlayerCardShine theme={theme} face="back" />
           </div>
         </div>
       </div>

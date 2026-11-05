@@ -25,8 +25,9 @@ import {
 import {
   buildPlayerCardModel,
   PLAYER_CARD_PALETTES,
-  PLAYER_CARD_SHINE,
   playerCardShineCanvasStops,
+  playerCardShineGeometry,
+  playerCardShineLayers,
 } from './player-card-model';
 
 interface FillRecord {
@@ -48,7 +49,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const images: Array<{ image: unknown; args: number[] }> = [];
   const fills: FillRecord[] = [];
   const gradients: Array<{ args: number[]; stops: Array<[number, string]> }> = [];
-  const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number; seq: number }> = [];
+  const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number; seq: number; composite: string }> = [];
   let seq = 0;
   let points: Array<[number, number]> = [];
   const add = (x: number, y: number): void => {
@@ -62,6 +63,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     textAlign: 'start',
     textBaseline: 'alphabetic',
     letterSpacing: '0px',
+    globalCompositeOperation: 'source-over',
     save: vi.fn(),
     restore: vi.fn(),
     scale: vi.fn(),
@@ -97,7 +99,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
       });
     },
     fillRect: (x: number, y: number, w: number, h: number) => {
-      rects.push({ style: ctx.fillStyle, x, y, w, h, seq: seq++ });
+      rects.push({ style: ctx.fillStyle, x, y, w, h, seq: seq++, composite: ctx.globalCompositeOperation });
     },
     fillText: (value: string) => {
       texts.push(value);
@@ -477,20 +479,34 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       qr: matrix,
     });
     const shine = fake.rects.filter((r) => typeof r.style === 'object' && r.style !== null);
-    expect(shine).toHaveLength(1);
+    expect(shine).toHaveLength(2); // 淺色正面兩層
     const qrRects = fake.rects.filter((r) => r.style === '#FFFFFF' || r.style === '#412402');
     expect(qrRects.length).toBeGreaterThan(1);
-    expect(Math.min(...qrRects.map((r) => r.seq))).toBeGreaterThan(shine[0]!.seq);
+    expect(Math.min(...qrRects.map((r) => r.seq))).toBeGreaterThan(Math.max(...shine.map((r) => r.seq)));
+    // QR 不受 soft-light 影響
+    expect(qrRects.every((r) => r.composite === 'source-over')).toBe(true);
   });
 
-  it('PNG 固定斜光：方向與停點完全取自共用常數（淺深各自）', () => {
+  it('PNG 固定斜光：115deg 漸層線、停點與疊加方式完全取自共用常數（淺深各自），soft-light 畫完還原', () => {
+    const g = playerCardShineGeometry(220, 324);
     for (const theme of ['light', 'dark'] as const) {
       const fake = makeFakeCtx();
       drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), theme, labels, { avatar: null, logo: logoImg });
-      const { from, to } = PLAYER_CARD_SHINE;
-      const shine = fake.gradients.find((g) => g.args.join(',') === [from.x, from.y, to.x, to.y].join(','))!;
-      expect(shine).toBeTruthy();
-      expect(shine.stops).toEqual(playerCardShineCanvasStops(theme));
+      const layers = playerCardShineLayers(theme, 'front');
+      const shineGradients = fake.gradients.filter((gr) => gr.args.join(',') === [g.x0, g.y0, g.x1, g.y1].join(','));
+      expect(shineGradients).toHaveLength(layers.length);
+      shineGradients.forEach((gr, i) => expect(gr.stops).toEqual(playerCardShineCanvasStops(layers[i]!)));
+      const shineRects = fake.rects.filter((r) => typeof r.style === 'object' && r.style !== null);
+      expect(shineRects.map((r) => r.style)).toEqual(shineGradients);
+      expect(shineRects.map((r) => r.composite)).toEqual(
+        layers.map((l) => (l.blend === 'soft-light' ? 'soft-light' : 'source-over')),
+      );
+      shineRects.forEach((r) => expect([r.x, r.y, r.w, r.h]).toEqual([0, 0, 220, 324]));
+      // 畫完還原 composite
+      expect(fake.ctx.globalCompositeOperation).toBe('source-over');
     }
+    // 淺色有 soft-light 層，深色沒有
+    expect(playerCardShineLayers('light', 'front').some((l) => l.blend === 'soft-light')).toBe(true);
+    expect(playerCardShineLayers('dark', 'front').some((l) => l.blend === 'soft-light')).toBe(false);
   });
 });

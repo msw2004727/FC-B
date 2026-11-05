@@ -195,98 +195,126 @@ export function resolvePlayerCardTheme(): PlayerCardTheme {
 export const PLAYER_CARD_DOM_SCALE = 1.1;
 
 export interface PlayerCardShineStop {
-  /** 光帶內位置 0～1（沿光帶法線方向，0＝靠 from 端）。 */
+  /** 沿 CSS 漸層線的位置 0～1（＝CSS 百分比 / 100）。 */
   at: number;
   color: string;
 }
 
-/**
- * 固定斜光唯一參數來源：PNG（player-card-canvas.ts drawShine）與網頁卡面（PlayerCard.tsx 的 .player-card-shine）都由這裡推導，
- * 兩邊位置、角度、寬度、強度完全相同；網頁不做動畫（站長 11-05 定案，取代原本 3 秒掃光——那是另一套更寬更亮、角度不同的光）。
- * - 漸層方向 from→to（卡面座標），光帶佔該漸層的 bandStart～bandEnd。
- * - 光帶本身是斜線：與水平約 20.3 度、由左下往右上；寬約 55 單位。
- * - 深色：暖白光，峰值 0.22。
- * - 淺色：奶油底上白光對比低，改用「淡金暗邊＋白色高光」：兩側極淡金色暗邊（0.08）襯托中央白光（0.4），
- *   讓光帶看得出來但仍柔和（站長：淺色也要看得出反光；11-05 再要求淺色淡 50%，取代原 0.16／0.8）。
- */
-export const PLAYER_CARD_SHINE = {
-  from: { x: 30, y: 0 },
-  to: { x: 150, y: 324 },
-  bandStart: 0.42,
-  bandEnd: 0.58,
-  stops: {
-    light: [
-      { at: 0, color: 'rgba(186, 117, 23, 0)' },
-      { at: 0.2, color: 'rgba(186, 117, 23, 0.08)' },
-      { at: 0.5, color: 'rgba(255, 255, 255, 0.4)' },
-      { at: 0.8, color: 'rgba(186, 117, 23, 0.08)' },
-      { at: 1, color: 'rgba(186, 117, 23, 0)' },
-    ],
-    dark: [
-      { at: 0, color: 'rgba(255, 248, 225, 0)' },
-      { at: 0.5, color: 'rgba(255, 248, 225, 0.22)' },
-      { at: 1, color: 'rgba(255, 248, 225, 0)' },
-    ],
-  } as Record<PlayerCardTheme, readonly PlayerCardShineStop[]>,
-} as const;
+export type PlayerCardShineBlend = 'normal' | 'soft-light';
 
-export interface PlayerCardShineGeometry {
-  /** 漸層（光帶法線）方向角度，從 x 軸順時針，度。 */
-  normalDeg: number;
-  /** 光帶本身與水平的夾角（左下往右上），度。 */
-  bandAngleDeg: number;
-  /** 光帶寬（卡面單位）。 */
-  bandWidth: number;
-  /** 光帶中心線沿法線方向相對卡面中心的位移（卡面單位）。 */
-  offset: number;
-  /** 光帶長邊需涵蓋的長度（卡面單位，卡面對角線）。 */
-  length: number;
+export interface PlayerCardShineLayer {
+  /** 網頁 mix-blend-mode／Canvas globalCompositeOperation（normal＝source-over）。 */
+  blend: PlayerCardShineBlend;
+  stops: readonly PlayerCardShineStop[];
 }
 
-export function playerCardShineGeometry(): PlayerCardShineGeometry {
-  const { from, to, bandStart, bandEnd } = PLAYER_CARD_SHINE;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const len = Math.hypot(dx, dy);
-  const nx = dx / len;
-  const ny = dy / len;
-  const mid = (bandStart + bandEnd) / 2;
-  const cx = PLAYER_CARD_SIZE.width / 2;
-  const cy = PLAYER_CARD_SIZE.height / 2;
-  const centerX = from.x + dx * mid;
-  const centerY = from.y + dy * mid;
-  const bandWidth = (bandEnd - bandStart) * len;
-  const normalDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+export type PlayerCardShineFace = 'front' | 'back';
+
+/**
+ * 固定斜光唯一參數來源：PNG（player-card-canvas.ts drawShine）與網頁卡面（PlayerCard.tsx 的 .player-card-shine）都由這裡推導，
+ * 兩邊角度、停點、強度、疊加方式完全相同；網頁不做動畫。
+ * 取代 11-05 先前 20.3° 柔光帶（from／to＋bandStart／bandEnd 那一套），改回站長預覽的 115deg 雙層光；淺色 alpha 減半為站長要求。
+ * - 角度：CSS linear-gradient 115deg，漸層線通過卡面中心、長度依 CSS 規範 L＝|w·sinθ|＋|h·cosθ|，停點為該線上的百分比。
+ * - 淺色正面兩層：①金白高光帶（soft-light 疊加）＋②奶白柔光（一般疊加）；淺色背面只有第②層。
+ *   預覽原值 ①.75／.85／.75、②.45，站長 11-05 要求淺色再淡 50%，全部 alpha ×0.5。
+ * - 深色正背面同一層白光（預覽原值不變）。
+ * - 預覽的 `transparent` 一律寫成相鄰顏色的 alpha 0：CSS 以預乘 alpha 內插兩者看起來相同，
+ *   Canvas 部分瀏覽器不預乘、用透明黑會在光帶兩側拉出灰邊。
+ */
+const SHINE_LIGHT_SOFT: PlayerCardShineLayer = {
+  blend: 'soft-light',
+  stops: [
+    { at: 0.38, color: 'rgba(255, 236, 190, 0)' },
+    { at: 0.42, color: 'rgba(255, 236, 190, 0)' },
+    { at: 0.49, color: 'rgba(255, 241, 205, 0.375)' },
+    { at: 0.5, color: 'rgba(255, 255, 240, 0.425)' },
+    { at: 0.51, color: 'rgba(255, 241, 205, 0.375)' },
+    { at: 0.58, color: 'rgba(255, 236, 190, 0)' },
+    { at: 0.62, color: 'rgba(255, 236, 190, 0)' },
+  ],
+};
+
+const SHINE_LIGHT_GLOW: PlayerCardShineLayer = {
+  blend: 'normal',
+  stops: [
+    { at: 0.44, color: 'rgba(255, 250, 232, 0)' },
+    { at: 0.5, color: 'rgba(255, 250, 232, 0.225)' },
+    { at: 0.56, color: 'rgba(255, 250, 232, 0)' },
+  ],
+};
+
+const SHINE_DARK: PlayerCardShineLayer = {
+  blend: 'normal',
+  stops: [
+    { at: 0.42, color: 'rgba(255, 255, 255, 0)' },
+    { at: 0.49, color: 'rgba(255, 255, 255, 0.14)' },
+    { at: 0.5, color: 'rgba(255, 255, 255, 0.2)' },
+    { at: 0.51, color: 'rgba(255, 255, 255, 0.14)' },
+    { at: 0.58, color: 'rgba(255, 255, 255, 0)' },
+  ],
+};
+
+export const PLAYER_CARD_SHINE = {
+  /** CSS linear-gradient 角度（0deg 朝上、順時針）。 */
+  angleDeg: 115,
+  /** 由下往上疊：陣列前面的先畫。 */
+  layers: {
+    light: { front: [SHINE_LIGHT_SOFT, SHINE_LIGHT_GLOW], back: [SHINE_LIGHT_GLOW] },
+    dark: { front: [SHINE_DARK], back: [SHINE_DARK] },
+  } as Record<PlayerCardTheme, Record<PlayerCardShineFace, readonly PlayerCardShineLayer[]>>,
+} as const;
+
+/** 某主題某一面的光層（PNG 只畫正面）。 */
+export function playerCardShineLayers(
+  theme: PlayerCardTheme,
+  face: PlayerCardShineFace = 'front',
+): readonly PlayerCardShineLayer[] {
+  return PLAYER_CARD_SHINE.layers[theme][face];
+}
+
+export interface PlayerCardShineGeometry {
+  /** CSS 漸層角度（度）。 */
+  angleDeg: number;
+  /** CSS 規範漸層線長度 L＝|w·sinθ|＋|h·cosθ|。 */
+  length: number;
+  /** 漸層線起點（0%）與終點（100%），通過卡面中心。 */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** 依 CSS linear-gradient 規範把 115deg 換成 Canvas createLinearGradient 的起訖點（預設卡面原始尺寸）。 */
+export function playerCardShineGeometry(
+  width: number = PLAYER_CARD_SIZE.width,
+  height: number = PLAYER_CARD_SIZE.height,
+): PlayerCardShineGeometry {
+  const rad = (PLAYER_CARD_SHINE.angleDeg * Math.PI) / 180;
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad); // 螢幕座標 y 向下
+  const length = Math.abs(width * Math.sin(rad)) + Math.abs(height * Math.cos(rad));
+  const cx = width / 2;
+  const cy = height / 2;
+  const half = length / 2;
   return {
-    normalDeg,
-    bandAngleDeg: 90 - normalDeg,
-    bandWidth,
-    offset: (centerX - cx) * nx + (centerY - cy) * ny,
-    length: Math.hypot(PLAYER_CARD_SIZE.width, PLAYER_CARD_SIZE.height),
+    angleDeg: PLAYER_CARD_SHINE.angleDeg,
+    length,
+    x0: cx - dx * half,
+    y0: cy - dy * half,
+    x1: cx + dx * half,
+    y1: cy + dy * half,
   };
 }
 
-/** Canvas 漸層停點：光帶外透明，光帶內依主題停點。 */
-export function playerCardShineCanvasStops(theme: PlayerCardTheme): Array<[number, string]> {
-  const { bandStart, bandEnd } = PLAYER_CARD_SHINE;
-  const stops = PLAYER_CARD_SHINE.stops[theme];
-  const out: Array<[number, string]> = [[0, stops[0]!.color]];
-  for (const stop of stops) out.push([bandStart + stop.at * (bandEnd - bandStart), stop.color]);
-  out.push([1, stops[stops.length - 1]!.color]);
-  return out;
+/** Canvas 漸層停點：與 CSS 同一組百分比（CSS 首尾停點之外延伸首尾色，Canvas 行為相同）。 */
+export function playerCardShineCanvasStops(layer: PlayerCardShineLayer): Array<[number, string]> {
+  return layer.stops.map((stop) => [stop.at, stop.color]);
 }
 
-/** 網頁光帶元素的背景：沿元素寬（＝法線方向）同一組停點。 */
-export function playerCardShineCssGradient(theme: PlayerCardTheme): string {
-  const parts = PLAYER_CARD_SHINE.stops[theme].map((stop) => `${stop.color} ${+(stop.at * 100).toFixed(3)}%`);
-  return `linear-gradient(90deg, ${parts.join(', ')})`;
-}
-
-/** 網頁光帶 transform：以卡片中心為原點，轉到法線方向後沿法線平移到與 PNG 相同的位置。 */
-export function playerCardShineTransform(): string {
-  const g = playerCardShineGeometry();
-  const px = +(g.offset * PLAYER_CARD_DOM_SCALE).toFixed(3);
-  return `translate(-50%, -50%) rotate(${+g.normalDeg.toFixed(4)}deg) translateX(${px}px)`;
+/** 網頁光層背景：`linear-gradient(115deg, …)`，停點百分比與 Canvas 相同。 */
+export function playerCardShineCssGradient(layer: PlayerCardShineLayer): string {
+  const parts = layer.stops.map((stop) => `${stop.color} ${+(stop.at * 100).toFixed(3)}%`);
+  return `linear-gradient(${PLAYER_CARD_SHINE.angleDeg}deg, ${parts.join(', ')})`;
 }
 
 export function playerCardLogoUrl(theme: PlayerCardTheme): string {

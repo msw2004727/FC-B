@@ -50,7 +50,7 @@ import type { UserProfile } from '../data/profile-model';
 import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
-import { playerCardShineStyle } from './PlayerCard';
+import { playerCardShineCssGradient, playerCardShineLayers } from '../data/player-card-model';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
@@ -200,30 +200,55 @@ describe('T-092 球員卡（DOM）', () => {
       const lightView = renderTop(viewer());
       const card = lightView.container.querySelector('.player-card')!;
       expect([...card.classList].some((c) => c.startsWith('is-shine'))).toBe(false);
-      const shine = card.querySelector('.player-card-shine') as HTMLElement;
-      expect(shine.getAttribute('aria-hidden')).toBe('true');
-      expect(shine.style.cssText).toBe(cssTextOf(playerCardShineStyle('light')));
-      expect(shine.style.width).toBe('60.809px');
-      expect(shine.style.transform).toContain('rotate(69.6769deg)');
-      expect(shine.style.background).toContain('rgba(255, 255, 255, 0.4) 50%');
-      expect(shine.style.animation).toBe('');
-      const lightStyle = shine.style.cssText;
-      // 斜光是最後一層（與 PNG 一樣疊在內容上）
-      expect(card.lastElementChild).toBe(shine);
+      const shines = [...card.querySelectorAll(':scope > .player-card-shine')] as HTMLElement[];
+      const lightLayers = playerCardShineLayers('light', 'front');
+      expect(shines).toHaveLength(2);
+      shines.forEach((shine, i) => {
+        expect(shine.getAttribute('aria-hidden')).toBe('true');
+        expect(shine.style.cssText).toBe(cssTextOf(`background:${playerCardShineCssGradient(lightLayers[i]!)}`));
+        expect(shine.style.background).toContain('115deg');
+        expect(shine.style.width).toBe('');
+        expect(shine.style.transform).toBe('');
+        expect(shine.style.animation).toBe('');
+      });
+      // 第①層 soft-light（CSS class 設 mix-blend-mode），第②層一般疊加；淺色 alpha 為預覽減半
+      expect(shines[0]!.classList.contains('is-soft-light')).toBe(true);
+      expect(shines[1]!.classList.contains('is-soft-light')).toBe(false);
+      expect(shines[0]!.style.background).toContain('rgba(255, 255, 240, 0.425) 50%');
+      expect(shines[1]!.style.background).toContain('rgba(255, 250, 232, 0.225) 50%');
+      // 斜光是最後兩層（與 PNG 一樣疊在內容上）
+      expect(card.lastElementChild).toBe(shines[1]);
+      expect(shines[1]!.previousElementSibling).toBe(shines[0]);
+      // 淺色背面只有第②層
+      const back = lightView.container.querySelector('.player-card-back')!;
+      const backShines = [...back.querySelectorAll('.player-card-shine')] as HTMLElement[];
+      expect(backShines).toHaveLength(1);
+      expect(backShines[0]!.classList.contains('is-soft-light')).toBe(false);
+      expect(backShines[0]!.style.cssText).toBe(shines[1]!.style.cssText);
+      const lightStyle = shines[1]!.style.cssText;
       cleanup();
 
       stubMatchMedia(true);
       document.documentElement.setAttribute('data-theme', 'light');
       const reduced = renderTop(viewer());
-      expect((reduced.container.querySelector('.player-card-shine') as HTMLElement).style.cssText).toBe(lightStyle);
+      expect((reduced.container.querySelector('.player-card .player-card-shine:last-child') as HTMLElement).style.cssText)
+        .toBe(lightStyle);
       cleanup();
 
       document.documentElement.setAttribute('data-theme', 'dark');
       const darkView = renderTop(viewer());
-      const darkShine = darkView.container.querySelector('.player-card-shine') as HTMLElement;
-      expect(darkShine.style.cssText).toBe(cssTextOf(playerCardShineStyle('dark')));
+      const darkShines = [...darkView.container.querySelectorAll('.player-card > .player-card-shine')] as HTMLElement[];
+      expect(darkShines).toHaveLength(1);
+      const darkShine = darkShines[0]!;
+      expect(darkShine.style.cssText).toBe(
+        cssTextOf(`background:${playerCardShineCssGradient(playerCardShineLayers('dark', 'front')[0]!)}`),
+      );
+      expect(darkShine.classList.contains('is-soft-light')).toBe(false);
       expect(darkShine.style.cssText).not.toBe(lightStyle);
-      expect(darkShine.style.background).toContain('rgba(255, 248, 225, 0.22) 50%');
+      expect(darkShine.style.background).toContain('rgba(255, 255, 255, 0.2) 50%');
+      const darkBack = [...darkView.container.querySelectorAll('.player-card-back .player-card-shine')] as HTMLElement[];
+      expect(darkBack).toHaveLength(1);
+      expect(darkBack[0]!.style.cssText).toBe(darkShine.style.cssText);
 
       expect(animate).not.toHaveBeenCalled();
       expect(rafSpy).not.toHaveBeenCalled();

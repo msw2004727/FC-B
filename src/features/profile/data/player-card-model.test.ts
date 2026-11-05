@@ -6,13 +6,12 @@ import type { UserAttendanceSummary } from './attendance-summary';
 import {
   buildPlayerCardModel,
   countActiveClubs,
-  PLAYER_CARD_DOM_SCALE,
   PLAYER_CARD_SHINE,
   playerCardLogoUrl,
   playerCardShineCanvasStops,
   playerCardShineCssGradient,
   playerCardShineGeometry,
-  playerCardShineTransform,
+  playerCardShineLayers,
   resolvePlayerCardName,
   resolvePlayerCardTheme,
   roundAttendRate,
@@ -131,43 +130,71 @@ describe('T-092 球員卡資料模型', () => {
   });
 
   describe('固定斜光共用常數（網頁與 PNG 同一組）', () => {
-    it('角度、寬度、位置：光帶由左下往右上約 20.3 度、寬約 55.3 單位', () => {
+    it('角度 115deg：Canvas 漸層線依 CSS 規範換算（L＝|w·sinθ|＋|h·cosθ|、通過卡面中心）', () => {
+      expect(PLAYER_CARD_SHINE.angleDeg).toBe(115);
       const g = playerCardShineGeometry();
-      expect(g.normalDeg).toBeCloseTo(69.68, 2);
-      expect(g.bandAngleDeg).toBeCloseTo(20.32, 2);
-      expect(g.bandWidth).toBeCloseTo(55.28, 2);
-      expect(g.offset).toBeCloseTo(-6.95, 2);
+      const rad = (115 * Math.PI) / 180;
+      const L = 220 * Math.sin(rad) + 324 * Math.abs(Math.cos(rad));
+      expect(g.angleDeg).toBe(115);
+      expect(g.length).toBeCloseTo(L, 9);
+      expect(g.length).toBeCloseTo(336.32, 2);
+      expect((g.x0 + g.x1) / 2).toBeCloseTo(110, 9);
+      expect((g.y0 + g.y1) / 2).toBeCloseTo(162, 9);
+      expect(Math.hypot(g.x1 - g.x0, g.y1 - g.y0)).toBeCloseTo(L, 9);
+      // 115deg：往右、往下（螢幕座標）
+      expect(g.x1 - g.x0).toBeCloseTo(L * Math.sin(rad), 9);
+      expect(g.y1 - g.y0).toBeCloseTo(-L * Math.cos(rad), 9);
+      expect(g.y1).toBeGreaterThan(g.y0);
     });
 
-    it('網頁 CSS 漸層與 canvas 停點同一組（光帶內位置換算一致）', () => {
-      const { bandStart, bandEnd } = PLAYER_CARD_SHINE;
+    it('網頁 CSS 漸層與 Canvas 停點同一組百分比', () => {
       for (const theme of ['light', 'dark'] as const) {
-        const canvasBand = playerCardShineCanvasStops(theme).slice(1, -1);
-        const css = playerCardShineCssGradient(theme);
-        expect(css.startsWith('linear-gradient(90deg, ')).toBe(true);
-        const cssStops = css.slice('linear-gradient(90deg, '.length, -1).split(/,\s*(?=rgba)/);
-        expect(cssStops).toHaveLength(canvasBand.length);
-        cssStops.forEach((stop, i) => {
-          const [offset, color] = canvasBand[i]!;
-          const pct = Number(/([\d.]+)%$/.exec(stop)![1]);
-          expect(stop.startsWith(color)).toBe(true);
-          expect(bandStart + (pct / 100) * (bandEnd - bandStart)).toBeCloseTo(offset, 6);
-        });
+        for (const face of ['front', 'back'] as const) {
+          for (const layer of playerCardShineLayers(theme, face)) {
+            const canvas = playerCardShineCanvasStops(layer);
+            const css = playerCardShineCssGradient(layer);
+            expect(css.startsWith('linear-gradient(115deg, ')).toBe(true);
+            const cssStops = css.slice('linear-gradient(115deg, '.length, -1).split(/,\s*(?=rgba)/);
+            expect(cssStops).toHaveLength(canvas.length);
+            cssStops.forEach((stop, i) => {
+              const [offset, color] = canvas[i]!;
+              const pct = Number(/([\d.]+)%$/.exec(stop)![1]);
+              expect(stop.startsWith(color)).toBe(true);
+              expect(pct / 100).toBeCloseTo(offset, 9);
+            });
+          }
+        }
       }
     });
 
-    it('網頁 transform：轉到同一法線角度，平移到與 PNG 相同位置（顯示倍率 1.1）', () => {
-      const g = playerCardShineGeometry();
-      expect(playerCardShineTransform()).toBe(
-        `translate(-50%, -50%) rotate(${+g.normalDeg.toFixed(4)}deg) translateX(${+(g.offset * PLAYER_CARD_DOM_SCALE).toFixed(3)}px)`,
+    it('淺色正面兩層（soft-light 高光＋一般柔光）、背面只有柔光層；alpha 為預覽值減半', () => {
+      const front = playerCardShineLayers('light', 'front');
+      expect(front.map((l) => l.blend)).toEqual(['soft-light', 'normal']);
+      expect(playerCardShineCssGradient(front[0]!)).toBe(
+        'linear-gradient(115deg, rgba(255, 236, 190, 0) 38%, rgba(255, 236, 190, 0) 42%, rgba(255, 241, 205, 0.375) 49%, '
+          + 'rgba(255, 255, 240, 0.425) 50%, rgba(255, 241, 205, 0.375) 51%, rgba(255, 236, 190, 0) 58%, rgba(255, 236, 190, 0) 62%)',
       );
+      expect(playerCardShineCssGradient(front[1]!)).toBe(
+        'linear-gradient(115deg, rgba(255, 250, 232, 0) 44%, rgba(255, 250, 232, 0.225) 50%, rgba(255, 250, 232, 0) 56%)',
+      );
+      const back = playerCardShineLayers('light', 'back');
+      expect(back).toHaveLength(1);
+      expect(back[0]).toBe(front[1]);
+      // 預覽原值 .75／.85／.45 減半
+      const alphas = front.flatMap((l) => l.stops.map((s) => Number(/,\s*([\d.]+)\)$/.exec(s.color)![1])));
+      expect(Math.max(...alphas)).toBe(0.425);
+      expect(alphas).toEqual(expect.arrayContaining([0.375, 0.425, 0.225]));
     });
 
-    it('淺色版：白色高光峰值 0.4＋兩側淡金暗邊 0.08；深色版：暖白峰值 0.22', () => {
-      const light = PLAYER_CARD_SHINE.stops.light.map((s) => s.color);
-      expect(light).toContain('rgba(255, 255, 255, 0.4)');
-      expect(light.filter((c) => c === 'rgba(186, 117, 23, 0.08)')).toHaveLength(2);
-      expect(PLAYER_CARD_SHINE.stops.dark.map((s) => s.color)).toContain('rgba(255, 248, 225, 0.22)');
+    it('深色正背面同一層白光（預覽原值）', () => {
+      const front = playerCardShineLayers('dark', 'front');
+      expect(front).toHaveLength(1);
+      expect(playerCardShineLayers('dark', 'back')).toEqual(front);
+      expect(front[0]!.blend).toBe('normal');
+      expect(playerCardShineCssGradient(front[0]!)).toBe(
+        'linear-gradient(115deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, 0.14) 49%, rgba(255, 255, 255, 0.2) 50%, '
+          + 'rgba(255, 255, 255, 0.14) 51%, rgba(255, 255, 255, 0) 58%)',
+      );
     });
   });
 });

@@ -12,10 +12,11 @@ import {
   PLAYER_CARD_BODY_FONT,
   PLAYER_CARD_DISPLAY_FONT,
   PLAYER_CARD_PALETTES,
-  PLAYER_CARD_SHINE,
   PLAYER_CARD_SIZE,
   playerCardLogoUrl,
   playerCardShineCanvasStops,
+  playerCardShineGeometry,
+  playerCardShineLayers,
   type PlayerCardModel,
   type PlayerCardPalette,
   type PlayerCardTheme,
@@ -341,16 +342,21 @@ function drawQr(ctx: Ctx, qr: QrMatrix, p: PlayerCardPalette): void {
 }
 
 function drawShine(ctx: Ctx, theme: PlayerCardTheme): void {
-  // PNG 只有一道固定淡斜光；參數與網頁掃光共用 PLAYER_CARD_SHINE（player-card-model.ts）。
+  // PNG 畫正面光層；角度、停點、疊加方式與網頁共用 PLAYER_CARD_SHINE（player-card-model.ts）。
   const { width: W, height: H, radius } = PLAYER_CARD_SIZE;
-  const { from, to } = PLAYER_CARD_SHINE;
+  const { x0, y0, x1, y1 } = playerCardShineGeometry(W, H);
   ctx.save();
   roundRectPath(ctx, 0, 0, W, H, radius);
   ctx.clip();
-  const g = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
-  for (const [offset, color] of playerCardShineCanvasStops(theme)) g.addColorStop(offset, color);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
+  const prevComposite = ctx.globalCompositeOperation;
+  for (const layer of playerCardShineLayers(theme, 'front')) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    for (const [offset, color] of playerCardShineCanvasStops(layer)) g.addColorStop(offset, color);
+    ctx.globalCompositeOperation = layer.blend === 'soft-light' ? 'soft-light' : 'source-over';
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.globalCompositeOperation = prevComposite;
   ctx.restore();
 }
 
