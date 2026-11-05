@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  PLAYER_CARD_FONT_LOAD,
   PLAYER_CARD_PNG_SCALE,
   drawPlayerCard,
+  ensurePlayerCardFonts,
   loadSafeAvatar,
   renderPlayerCardPng,
   type CanvasLike,
@@ -214,5 +216,17 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(main.ctx.scale).toHaveBeenCalledWith(PLAYER_CARD_PNG_SCALE, PLAYER_CARD_PNG_SCALE);
     // 頭像 tainted → 主畫布只貼 logo，不貼頭像
     expect(main.images.map((i) => i.image)).toEqual([logoImg]);
+  });
+
+  it('產圖前載入自架 Bebas Neue（與 @font-face 同名），失敗或逾時不卡住', async () => {
+    const load = vi.fn(async () => []);
+    await ensurePlayerCardFonts({ load });
+    expect(load).toHaveBeenCalledWith("400 32px 'Bebas Neue'", PLAYER_CARD_FONT_LOAD.text);
+    // 取樣字元都在 @font-face 的 unicode-range（英數與 % -）內，才會真的觸發下載
+    expect(PLAYER_CARD_FONT_LOAD.text).toMatch(/^[0-9A-Za-z%\-]+$/);
+
+    await expect(ensurePlayerCardFonts({ load: async () => Promise.reject(new Error('404')) })).resolves.toBeUndefined();
+    await expect(ensurePlayerCardFonts({ load: () => new Promise(() => {}) }, 10)).resolves.toBeUndefined();
+    await expect(ensurePlayerCardFonts(undefined)).resolves.toBeUndefined();
   });
 });

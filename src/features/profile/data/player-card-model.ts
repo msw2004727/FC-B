@@ -130,7 +130,11 @@ export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = 
 /** 卡面原始尺寸（站長定案 220×324、圓角 18）。 */
 export const PLAYER_CARD_SIZE = { width: 220, height: 324, radius: 18 } as const;
 
-/** 運動窄體字：Bebas Neue 未自架時依序退回各平台內建窄體字。 */
+/**
+ * 運動窄體字：Bebas Neue 已自架於 public/fonts/（player-card.css 的 @font-face，英數子集）；
+ * 字型尚未載入或載入失敗時依序退回各平台內建窄體字。
+ * （取代原「未自架」註解：2026-11-05 已放入 @fontsource/bebas-neue 5.1.0 latin woff2。）
+ */
 export const PLAYER_CARD_DISPLAY_FONT =
   "'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif";
 

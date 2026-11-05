@@ -340,16 +340,38 @@ function browserLoadImage(url: string, crossOrigin: boolean): Promise<DrawableIm
   });
 }
 
-async function browserEnsureFonts(): Promise<void> {
-  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+/** 產 PNG 前要確認載入的自架字型（player-card.css 的 @font-face 'Bebas Neue'）與卡面會出現的字元。 */
+export const PLAYER_CARD_FONT_LOAD = {
+  font: "400 32px 'Bebas Neue'",
+  text: '0123456789%-ACDELMPRSTYHoserX',
+} as const;
+
+export interface FontFaceSetLike {
+  load: (font: string, text?: string) => Promise<unknown>;
+}
+
+export async function ensurePlayerCardFonts(
+  fonts: FontFaceSetLike | undefined,
+  timeoutMs = 1500,
+): Promise<void> {
   if (!fonts || typeof fonts.load !== 'function') return;
-  const load = Promise.all([
-    fonts.load(displayFont(32), '0123456789%-ATSCHMPLYERD'),
-    fonts.ready,
-  ]).then(() => undefined, () => undefined);
+  let load: Promise<void>;
+  try {
+    load = fonts.load(PLAYER_CARD_FONT_LOAD.font, PLAYER_CARD_FONT_LOAD.text).then(() => undefined, () => undefined);
+  } catch {
+    return;
+  }
   // 字型載不到也不能卡住分享：最多等 1.5 秒，之後用退回字型畫。
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
   await Promise.race([load, timeout]);
+  if (timer !== undefined) clearTimeout(timer);
+}
+
+function browserEnsureFonts(): Promise<void> {
+  return ensurePlayerCardFonts(typeof document !== 'undefined' ? document.fonts : undefined);
 }
 
 export const browserRenderDeps: PlayerCardRenderDeps = {

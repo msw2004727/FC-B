@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { UserAttendanceSummary } from './attendance-summary';
@@ -90,5 +92,12 @@ describe('T-092 球員卡資料模型', () => {
     expect(resolvePlayerCardTheme()).toBe('light');
     expect(playerCardLogoUrl('light')).toBe('/assets/logo-black.webp');
     expect(playerCardLogoUrl('dark')).toBe('/assets/logo-white.webp');
+  });
+
+  it('自架字型：@font-face 指向 public/fonts 的 woff2，授權檔一併存在', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/features/profile/components/player-card.css'), 'utf8');
+    expect(css).toMatch(/@font-face\s*\{[^}]*font-family:\s*'Bebas Neue'[^}]*font-display:\s*swap[^}]*url\('\/fonts\/bebas-neue-latin-400-normal\.woff2'\)\s*format\('woff2'\)/);
+    expect(existsSync(resolve(process.cwd(), 'public/fonts/bebas-neue-latin-400-normal.woff2'))).toBe(true);
+    expect(existsSync(resolve(process.cwd(), 'public/fonts/BebasNeue-OFL.txt'))).toBe(true);
   });
 });
