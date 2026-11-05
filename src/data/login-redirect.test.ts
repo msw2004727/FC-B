@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { hasLoginRedirectParams } from './login-redirect';
+import { hasLoginCancelParams, hasLoginRedirectParams } from './login-redirect';
+
+describe('hasLoginCancelParams（在 LINE 授權頁取消）', () => {
+  it.each([
+    ['https://x.test/?error=access_denied&error_description=x&state=s&liffClientId=c', true],
+    ['https://x.test/?error=access_denied', false],
+    ['https://x.test/?code=a&liffClientId=c', false],
+    ['not a url', false],
+  ])('%s → %s', (href, expected) => {
+    expect(hasLoginCancelParams(href)).toBe(expected);
+  });
+});
 
 describe('hasLoginRedirectParams（LINE 授權回跳網址）', () => {
   it.each([

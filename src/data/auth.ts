@@ -71,6 +71,19 @@ export { buildCleanLoginRedirectUri };
 /** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
 let liffInitialized = false;
 
+/** liff.init／LIFF 登出的等待上限（照 A `LineAuth.init` 的 8 秒 `_withTimeout`）。 */
+export const LIFF_STEP_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`[auth] ${label} 逾時（${ms}ms）`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 function emitAuth(uid: string | null): void {
   lastKnownAuthUid = uid;
   writeAuthHint(uid !== null);
@@ -113,8 +126,10 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
   }
 
   try {
-    await liff.init({ liffId });
+    await withTimeout(liff.init({ liffId }), LIFF_STEP_TIMEOUT_MS, 'liff.init()');
   } catch (err) {
+    // 初始化失敗也要清掉回跳參數：留著舊 code 會讓下次 init 再拿過期 code 失敗（照 A init 失敗分支的 _cleanUrl）。
+    cleanLoginParamsFromUrl();
     toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
     throw err;
   }
@@ -228,8 +243,9 @@ async function logoutLiff(): Promise<void> {
 }
 
 /**
- * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → LIFF 已登入則 liff.logout()
- * → 清本機帳號資料 → 清登入旗標 → 重新整理。任一步失敗其餘照做（只記錄，不擋登出）。
+ * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → 清本機帳號資料與登入旗標
+ * → LIFF 已登入則 liff.logout()（最多等 8 秒）→ 重新整理。任一步失敗其餘照做（只記錄，不擋登出）。
+ * 本機清理排在 LIFF 之前：LIFF 卡住或失敗時，帳號資料也已清掉（審查 P3-3）。
  * QA 帳號的登出另走 signOutQa，不經這裡。
  */
 export async function signOutAndReload(
@@ -240,14 +256,14 @@ export async function signOutAndReload(
   } catch (err) {
     console.error('[auth] 登出 Firebase 失敗', err);
   }
-  try {
-    await logoutLiff();
-  } catch (err) {
-    console.warn('[auth] LINE 登出失敗', err);
-  }
   clearAccountLocalState();
   lastKnownAuthUid = null;
   writeAuthHint(false);
+  try {
+    await withTimeout(logoutLiff(), LIFF_STEP_TIMEOUT_MS, 'LINE 登出');
+  } catch (err) {
+    console.warn('[auth] LINE 登出失敗', err);
+  }
   try {
     reload();
   } catch (err) {

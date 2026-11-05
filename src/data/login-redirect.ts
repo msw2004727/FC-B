@@ -12,6 +12,16 @@ export function hasLoginRedirectParams(href: string): boolean {
   }
 }
 
+/** 使用者在 LINE 授權頁取消（帶 error＋liffClientId 回來）：不必載入 LIFF，清掉參數即可。 */
+export function hasLoginCancelParams(href: string): boolean {
+  try {
+    const params = new URL(href).searchParams;
+    return params.has('error') && params.has('liffClientId');
+  } catch {
+    return false;
+  }
+}
+
 /** M-036：照 A `js/line-auth.js:595-605` 清理 OAuth 查詢參數並組出回跳網址。 */
 export function buildCleanLoginRedirectUri(href: string): string {
   try {

@@ -113,6 +113,23 @@ describe('LINE 授權回跳：開頁自動接手登入', () => {
     expect(view.container.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it('在 LINE 授權頁取消（error＋liffClientId）：不載 LIFF、不呼叫 signIn，直接清參數（審查 P3-1）', async () => {
+    history.replaceState(null, '', '/events/e1?error=access_denied&error_description=x&state=s&liffClientId=x&tab=2');
+    authRestoresAs(null);
+    render(<App />);
+    await waitFor(() => expect(location.search).toBe('?tab=2'));
+    await pause(40);
+    expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
+  it('開頁接手時已有外部登入進行中：不接手，但清掉回跳參數（審查 P3-4）', async () => {
+    history.replaceState(null, '', '/events/e1?code=c&state=s&liffClientId=x&tab=2');
+    authRestoresAs(null);
+    render(<App loginPending />);
+    await waitFor(() => expect(location.search).toBe('?tab=2'));
+    expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
   it('接手登入進行中再按登入：不重複觸發', async () => {
     history.replaceState(null, '', '/?code=c&state=s&liffClientId=x');
     authRestoresAs(null);

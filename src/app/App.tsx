@@ -55,7 +55,11 @@ import {
   type AuthUser,
 } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
-import { cleanLoginParamsFromUrl, hasLoginRedirectParams } from '@/data/login-redirect';
+import {
+  cleanLoginParamsFromUrl,
+  hasLoginCancelParams,
+  hasLoginRedirectParams,
+} from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
 import {
   firebaseTargetLabel,
@@ -158,6 +162,8 @@ export function App({
   useEffect(() => {
     // 回跳接手登入要等 Auth 還原結果，不等首頁公開讀取（T-041 暫緩）；冪等。
     if (resumeLoginRef.current) releaseFirebaseAuthHold();
+    // 在 LINE 授權頁取消（error＋liffClientId）：不載 LIFF，直接清參數（審查 P3-1）。
+    else if (typeof location !== 'undefined' && hasLoginCancelParams(location.href)) cleanLoginParamsFromUrl();
     initFontSize();
     const stopMultiTab = initMultiTabGuard();
     const stopOfflineGuard = installOfflineWriteGuard();
@@ -233,7 +239,11 @@ export function App({
     // 首頁訪客路徑會暫緩 Auth 註冊（T-041）；按下登入代表使用者現在就要 Auth，
     // 登入流程的 callable 要等 getFirebase()，不立刻放行會多等 3～10 秒（冪等：沒有暫緩或已放行時是空操作）。
     releaseFirebaseAuthHold();
-    if (pendingRef.current || externalPending || currentUid.current !== null) return;
+    if (pendingRef.current || externalPending || currentUid.current !== null) {
+      // 開頁接手但已有登入在進行或已登入：不接手，清掉回跳參數，避免舊 code 留在網址（審查 P3-4）。
+      if (resume) cleanLoginParamsFromUrl();
+      return;
+    }
     pendingRef.current = true;
     const sequence = ++loginSequence.current;
     const revision = authRevision.current;
