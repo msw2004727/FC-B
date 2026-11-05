@@ -7,7 +7,10 @@ import type { UserAttendanceSummary } from './attendance-summary';
 export type PlayerCardTheme = 'light' | 'dark';
 
 export interface PlayerCardModel {
+  /** 顯示名字；空白或等於 UID 時為 `-`（卡面與 PNG 不得出現 UID）。 */
   name: string;
+  /** 沒有頭像（或頭像載入失敗）時畫的首字，DOM 與 PNG 一致；名字被遮掉時為 `?`。 */
+  avatarInitial: string;
   /** 已過濾為 http/https 的頭像網址；null＝畫預設頭像。 */
   avatarUrl: string | null;
   /** 0～100 整數；summary 未載入為 null。 */
@@ -27,6 +30,8 @@ export interface PlayerCardModel {
 
 export interface PlayerCardModelInput {
   name: string;
+  /** 本人 UID：只用來比對名字，不會放進模型。 */
+  uid?: string | null;
   avatarUrl: string | null;
   summary: UserAttendanceSummary | null;
   teamIds?: Iterable<unknown> | null;
@@ -57,12 +62,26 @@ export function countActiveClubs(teamIds: Iterable<unknown> | null | undefined):
   return ids.size;
 }
 
+/**
+ * 卡面名字：getMainIdentity 在使用者沒有 displayName／name 時會退回 UID 當名字（A 舊行為，不改），
+ * 球員卡與 PNG 不得印出 UID，所以名字等於 UID（前後空白不計）或空白時一律顯示 `-`。
+ */
+export function resolvePlayerCardName(name: unknown, uid?: string | null): string {
+  const text = typeof name === 'string' ? name.trim() : '';
+  if (!text || text === '-') return '-';
+  const cleanUid = typeof uid === 'string' ? uid.trim() : '';
+  if (cleanUid && text === cleanUid) return '-';
+  return text;
+}
+
 export function buildPlayerCardModel(input: PlayerCardModelInput): PlayerCardModel {
   const summary = input.summary;
+  const name = resolvePlayerCardName(input.name, input.uid);
   const attendRate = summary ? roundAttendRate(summary.attendRate) : null;
   const clubCount = countActiveClubs(input.teamIds);
   return {
-    name: input.name.trim() || '-',
+    name,
+    avatarInitial: name === '-' ? '?' : name.charAt(0),
     avatarUrl: input.avatarUrl,
     attendRate,
     attendText: attendRate === null ? '--' : `${attendRate}%`,

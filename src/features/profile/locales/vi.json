@@ -89,6 +89,9 @@
     "share": "Chia sẻ thẻ cầu thủ",
     "shareFailed": "Không thể tạo ảnh thẻ cầu thủ. Vui lòng thử lại.",
     "longPressSave": "Nhấn giữ ảnh để lưu",
-    "close": "Đóng"
+    "close": "Đóng",
+    "shareOrSave": "Chia sẻ / lưu thẻ cầu thủ",
+    "shareAgain": "Chia sẻ",
+    "save": "Lưu"
   }
 }

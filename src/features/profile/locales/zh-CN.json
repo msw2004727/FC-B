@@ -89,6 +89,9 @@
     "share": "分享球员卡",
     "shareFailed": "球员卡图片生成失败，请再试一次",
     "longPressSave": "长按图片即可保存",
-    "close": "关闭"
+    "close": "关闭",
+    "shareOrSave": "分享／保存球员卡",
+    "shareAgain": "分享",
+    "save": "保存"
   }
 }

@@ -147,6 +147,7 @@ export function LegacyProfileTopSection({
   // T-092：頂部改成球員卡；UID＋QR、身分標籤、分享按鈕移到卡片外（不進 PNG）。
   const cardModel = buildPlayerCardModel({
     name: displayName,
+    uid,
     avatarUrl: rawAvatar,
     summary,
     teamIds: viewer.teamIds,
@@ -160,7 +161,7 @@ export function LegacyProfileTopSection({
           <LegacyAvatar
             id="profile-avatar"
             url={rawAvatar}
-            name={displayName}
+            name={cardModel.name === '-' ? '' : cardModel.name}
             baseClass="profile-avatar"
             imageContainerClass="profile-avatar profile-avatar-img"
             crown={isSecondary}

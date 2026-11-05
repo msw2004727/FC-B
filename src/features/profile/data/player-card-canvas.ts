@@ -56,6 +56,10 @@ const GAUGE = { x: 44, y: 204, width: 132, height: 4 } as const;
 const STAT_COLUMNS = [44, 110, 176] as const;
 const STRIPE_STEP = 9 * Math.SQRT2; // 與 CSS repeating-linear-gradient(45deg) 間距 9 對齊
 const STRIPE_WIDTH = 1.5;
+/** 三格欄寬 66（分隔線 77／143）左右各留 3。 */
+export const STAT_CELL_MAX_WIDTH = 60;
+export const NAME_MAX_WIDTH = 176;
+export const HEADER_TITLE_MAX_WIDTH = 100;
 
 function roundRectPath(ctx: Ctx, x: number, y: number, w: number, h: number, r: number): void {
   const radius = Math.min(r, w / 2, h / 2);
@@ -79,21 +83,37 @@ function setLetterSpacing(ctx: Ctx, px: number): void {
   }
 }
 
+/** 縮字下限：越南文、泰文等長標籤縮到這裡仍超寬就照畫（不截字）。 */
+const MIN_FONT_SIZE = 5;
+
+/**
+ * 畫一段文字；給 maxWidth 時用 measureText 由 size 往下縮到放得進欄寬
+ * （越南文、泰文的「出席率」「俱樂部」比中文長很多，固定字級會超框）。
+ */
 function text(
   ctx: Ctx,
   value: string,
   x: number,
   y: number,
-  font: string,
+  font: (size: number) => string,
+  size: number,
   color: string,
   align: CanvasTextAlign = 'center',
   spacing = 0,
+  maxWidth?: number,
 ): void {
-  ctx.font = font;
+  let fitted = size;
+  ctx.font = font(fitted);
+  setLetterSpacing(ctx, spacing);
+  if (maxWidth !== undefined) {
+    while (fitted > MIN_FONT_SIZE && ctx.measureText(value).width > maxWidth) {
+      fitted = Math.max(MIN_FONT_SIZE, fitted - 0.5);
+      ctx.font = font(fitted);
+    }
+  }
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = 'alphabetic';
-  setLetterSpacing(ctx, spacing);
   ctx.fillText(value, x, y);
   setLetterSpacing(ctx, 0);
 }
@@ -141,32 +161,34 @@ function drawBackground(ctx: Ctx, p: PlayerCardPalette): void {
 
 function drawHeader(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p: PlayerCardPalette): void {
   // 左上：出席率大數字＋ATT。
-  text(ctx, model.attendText, 18, 44, displayFont(32), p.text, 'left');
-  text(ctx, PLAYER_CARD_ABBR.attend, 19, 56, displayFont(10), p.subText, 'left', 1.5);
+  text(ctx, model.attendText, 18, 44, displayFont, 32, p.text, 'left', 0, 80);
+  text(ctx, PLAYER_CARD_ABBR.attend, 19, 56, displayFont, 10, p.subText, 'left', 1.5);
   // 右上：球員卡＋PLAYER CARD。
-  text(ctx, labels.title, 202, 30, bodyFont(12), p.text, 'right', 1);
-  text(ctx, PLAYER_CARD_ABBR.title, 202, 42, displayFont(8), p.subText, 'right', 1.2);
+  text(ctx, labels.title, 202, 30, bodyFont, 12, p.text, 'right', 1, HEADER_TITLE_MAX_WIDTH);
+  text(ctx, PLAYER_CARD_ABBR.title, 202, 42, displayFont, 8, p.subText, 'right', 1.2);
 }
 
-function drawDefaultAvatar(ctx: Ctx, p: PlayerCardPalette): void {
+/** 沒有頭像（或載入失敗、tainted）：與畫面 LegacyAvatar 一致，金色漸層圓底＋白色姓名首字。 */
+function drawDefaultAvatar(ctx: Ctx, initial: string): void {
   const { cx, cy, photo } = AVATAR;
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, photo, 0, Math.PI * 2);
-  ctx.fillStyle = p.gaugeTrack;
+  const g = ctx.createLinearGradient(cx - photo, cy - photo, cx + photo, cy + photo);
+  g.addColorStop(0, '#EF9F27');
+  g.addColorStop(1, '#854F0B');
+  ctx.fillStyle = g;
   ctx.fill();
-  ctx.clip();
-  ctx.fillStyle = p.gold;
-  ctx.beginPath();
-  ctx.arc(cx, cy - 8, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 30, 27, 21, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
+  ctx.font = bodyFont(30, 800);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initial, cx, cy + 1);
+  ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
 
-function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, p: PlayerCardPalette): void {
+function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, initial: string, p: PlayerCardPalette): void {
   const { cx, cy, outer, inner, photo } = AVATAR;
   // 兩層外圈：外＝主金色，內＝白／深底色。
   ctx.beginPath();
@@ -179,7 +201,7 @@ function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, p: PlayerCardPalette
   ctx.fill();
 
   if (!avatar || !(avatar.width > 0) || !(avatar.height > 0)) {
-    drawDefaultAvatar(ctx, p);
+    drawDefaultAvatar(ctx, initial);
     return;
   }
   // object-fit: cover
@@ -207,23 +229,15 @@ function drawClubBadge(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabel
   ctx.strokeStyle = p.base; // 外描一圈卡面底色
   ctx.lineWidth = 2.5;
   ctx.stroke();
-  text(ctx, labels.clubs, x + w / 2, y + 12, bodyFont(7.5), p.clubText, 'center');
-  text(ctx, String(model.clubCount), x + w / 2, y + 27, displayFont(15), p.clubText, 'center');
+  // 方塊內留 3px 邊：標籤與數字都縮到放得進。
+  const inner = w - 6;
+  text(ctx, labels.clubs, x + w / 2, y + 12, bodyFont, 7.5, p.clubText, 'center', 0, inner);
+  text(ctx, String(model.clubCount), x + w / 2, y + 27, displayFont, 15, p.clubText, 'center', 0, inner);
 }
 
 function drawNameAndGauge(ctx: Ctx, model: PlayerCardModel, p: PlayerCardPalette): void {
-  ctx.save();
-  ctx.font = bodyFont(15);
   // 名字過長時縮字，不超出內框。
-  let size = 15;
-  setLetterSpacing(ctx, 2);
-  while (size > 9 && ctx.measureText(model.name).width > 176) {
-    size -= 1;
-    ctx.font = bodyFont(size);
-  }
-  setLetterSpacing(ctx, 0);
-  ctx.restore();
-  text(ctx, model.name, 110, 190, bodyFont(size), p.text, 'center', 2);
+  text(ctx, model.name, 110, 190, bodyFont, 15, p.text, 'center', 2, NAME_MAX_WIDTH);
 
   roundRectPath(ctx, GAUGE.x, GAUGE.y, GAUGE.width, GAUGE.height, GAUGE.height / 2);
   ctx.fillStyle = p.gaugeTrack;
@@ -244,9 +258,9 @@ function drawStats(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p
   ];
   cells.forEach(([value, label, abbr], index) => {
     const x = STAT_COLUMNS[index] ?? 110;
-    text(ctx, value, x, 240, displayFont(22), p.text, 'center');
-    text(ctx, label, x, 254, bodyFont(8.5), p.text, 'center');
-    text(ctx, abbr, x, 264, displayFont(7.5), p.subText, 'center', 1);
+    text(ctx, value, x, 240, displayFont, 22, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, label, x, 254, bodyFont, 8.5, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, abbr, x, 264, displayFont, 7.5, p.subText, 'center', 1, STAT_CELL_MAX_WIDTH);
   });
   ctx.strokeStyle = p.stripe;
   ctx.lineWidth = 1;
@@ -267,7 +281,7 @@ function drawLogo(ctx: Ctx, logo: DrawableImage | null, p: PlayerCardPalette): v
     return;
   }
   // logo 載入失敗時退回文字商標。
-  text(ctx, 'ToosterX', 110, centerY + 5, displayFont(14), p.text, 'center', 1);
+  text(ctx, 'ToosterX', 110, centerY + 5, displayFont, 14, p.text, 'center', 1);
 }
 
 function drawShine(ctx: Ctx): void {
@@ -298,7 +312,7 @@ export function drawPlayerCard(
   const p = PLAYER_CARD_PALETTES[theme];
   drawBackground(ctx, p);
   drawHeader(ctx, model, labels, p);
-  drawAvatar(ctx, assets.avatar, p);
+  drawAvatar(ctx, assets.avatar, model.avatarInitial, p);
   drawClubBadge(ctx, model, labels, p);
   drawNameAndGauge(ctx, model, p);
   drawStats(ctx, model, labels, p);
@@ -328,14 +342,34 @@ export async function loadSafeAvatar(
   }
 }
 
-function browserLoadImage(url: string, crossOrigin: boolean): Promise<DrawableImage | null> {
+/** 圖片（頭像、logo）載入逾時：慢網路不能卡住分享，逾時當作載入失敗（頭像改畫首字）。 */
+export const PLAYER_CARD_IMAGE_TIMEOUT_MS = 3000;
+
+export function browserLoadImage(
+  url: string,
+  crossOrigin: boolean,
+  timeoutMs: number = PLAYER_CARD_IMAGE_TIMEOUT_MS,
+): Promise<DrawableImage | null> {
   return new Promise((resolve) => {
     const img = new Image();
+    let settled = false;
+    const finish = (value: DrawableImage | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(null);
+      img.removeAttribute('src'); // 停止下載
+    }, timeoutMs);
     if (crossOrigin) img.crossOrigin = 'anonymous';
     img.decoding = 'async';
     img.referrerPolicy = 'no-referrer';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload = () => finish(img);
+    img.onerror = () => finish(null);
     img.src = url;
   });
 }

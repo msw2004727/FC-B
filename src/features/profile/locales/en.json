@@ -89,6 +89,9 @@
     "share": "Share player card",
     "shareFailed": "Could not create the player card image. Please try again.",
     "longPressSave": "Press and hold the image to save it",
-    "close": "Close"
+    "close": "Close",
+    "shareOrSave": "Share or save your player card",
+    "shareAgain": "Share",
+    "save": "Save"
   }
 }

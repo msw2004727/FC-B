@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   PLAYER_CARD_FONT_LOAD,
+  PLAYER_CARD_IMAGE_TIMEOUT_MS,
   PLAYER_CARD_PNG_SCALE,
+  STAT_CELL_MAX_WIDTH,
+  browserLoadImage,
   drawPlayerCard,
   ensurePlayerCardFonts,
   loadSafeAvatar,
@@ -25,6 +28,11 @@ interface FillRecord {
 /** 假 2D context：記錄文字、貼圖與每次 fill 的路徑範圍。 */
 function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const texts: string[] = [];
+  /** 每次 fillText 當下的字級與量測寬度。 */
+  const drawn: Array<{ value: string; size: number; width: number }> = [];
+  const sizeOf = (font: string): number => Number(/([\d.]+)px/.exec(font)?.[1] ?? 10);
+  // 假量測：每字寬＝字級 × 0.6（足以驗證縮字邏輯）
+  const measure = (value: string): number => Array.from(value).length * sizeOf(ctx.font) * 0.6;
   const images: Array<{ image: unknown; args: number[] }> = [];
   const fills: FillRecord[] = [];
   let points: Array<[number, number]> = [];
@@ -76,8 +84,9 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     fillRect: vi.fn(),
     fillText: (value: string) => {
       texts.push(value);
+      drawn.push({ value, size: sizeOf(ctx.font), width: measure(value) });
     },
-    measureText: (value: string) => ({ width: value.length * 8 }),
+    measureText: (value: string) => ({ width: measure(value) }),
     drawImage: (image: unknown, ...args: number[]) => {
       images.push({ image, args });
     },
@@ -87,7 +96,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
       return { data: new Uint8ClampedArray(4) };
     },
   };
-  return { ctx, texts, images, fills };
+  return { ctx, texts, images, fills, drawn };
 }
 
 const labels: PlayerCardLabels = {
@@ -101,9 +110,10 @@ const labels: PlayerCardLabels = {
 const avatarImg: DrawableImage = { width: 200, height: 160 };
 const logoImg: DrawableImage = { width: 400, height: 80 };
 
-function model(teamIds: string[] = ['t1', 't2']) {
+function model(teamIds: string[] = ['t1', 't2'], name = '王小明') {
   return buildPlayerCardModel({
-    name: '王小明',
+    name,
+    uid: 'U-secret-uid',
     avatarUrl: 'https://profile.line-scdn.net/abc',
     summary: {
       uid: 'U-secret-uid',
@@ -214,8 +224,9 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(deps.loadImage).toHaveBeenCalledWith('/assets/logo-white.webp', false);
     expect(sizes).toContainEqual([220 * PLAYER_CARD_PNG_SCALE, 324 * PLAYER_CARD_PNG_SCALE]);
     expect(main.ctx.scale).toHaveBeenCalledWith(PLAYER_CARD_PNG_SCALE, PLAYER_CARD_PNG_SCALE);
-    // 頭像 tainted → 主畫布只貼 logo，不貼頭像
+    // 頭像 tainted → 主畫布只貼 logo，不貼頭像，改畫姓名首字（與畫面一致）
     expect(main.images.map((i) => i.image)).toEqual([logoImg]);
+    expect(main.texts).toContain('王');
   });
 
   it('產圖前載入自架 Bebas Neue（與 @font-face 同名），失敗或逾時不卡住', async () => {
@@ -228,5 +239,76 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     await expect(ensurePlayerCardFonts({ load: async () => Promise.reject(new Error('404')) })).resolves.toBeUndefined();
     await expect(ensurePlayerCardFonts({ load: () => new Promise(() => {}) }, 10)).resolves.toBeUndefined();
     await expect(ensurePlayerCardFonts(undefined)).resolves.toBeUndefined();
+  });
+
+  it('P2-1：名字等於 UID（身分解析退回 UID）時 PNG 不印出 UID，首字改 ?', () => {
+    const fake = makeFakeCtx();
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(['t1'], ' U-secret-uid '), 'light', labels, {
+      avatar: null,
+      logo: logoImg,
+    });
+    expect(fake.texts.join('|')).not.toContain('U-secret-uid');
+    expect(fake.texts).toContain('-');
+    expect(fake.texts).toContain('?');
+  });
+
+  it('沒有頭像時畫姓名首字（與畫面 LegacyAvatar 一致），不貼頭像圖', () => {
+    const fake = makeFakeCtx();
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), 'dark', labels, {
+      avatar: null,
+      logo: logoImg,
+    });
+    expect(fake.texts).toContain('王');
+    expect(fake.images.map((i) => i.image)).toEqual([logoImg]);
+  });
+
+  it('長標籤（泰文、越南文）自動縮字到欄寬：三格欄寬、俱樂部方塊 36px', () => {
+    const fake = makeFakeCtx();
+    const thai: PlayerCardLabels = {
+      title: 'การ์ดผู้เล่น',
+      scheduled: 'ที่ต้องเข้าร่วม',
+      completed: 'สำเร็จ',
+      attend: 'อัตราการเข้าร่วม',
+      clubs: 'Câu lạc bộ',
+    };
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(['t1']), 'light', thai, {
+      avatar: avatarImg,
+      logo: logoImg,
+    });
+    const attend = fake.drawn.find((d) => d.value === thai.attend)!;
+    expect(attend.size).toBeLessThan(8.5);
+    expect(attend.width).toBeLessThanOrEqual(STAT_CELL_MAX_WIDTH);
+    const scheduled = fake.drawn.find((d) => d.value === thai.scheduled)!;
+    expect(scheduled.width).toBeLessThanOrEqual(STAT_CELL_MAX_WIDTH);
+    const clubs = fake.drawn.find((d) => d.value === thai.clubs)!;
+    expect(clubs.width).toBeLessThanOrEqual(36 - 6);
+    expect(clubs.size).toBeLessThan(7.5);
+    // 短的中文標籤維持原字級
+    const zh = makeFakeCtx();
+    drawPlayerCard(zh.ctx as unknown as CanvasRenderingContext2D, model(['t1']), 'light', labels, {
+      avatar: avatarImg,
+      logo: logoImg,
+    });
+    expect(zh.drawn.find((d) => d.value === '出席率')!.size).toBe(8.5);
+    expect(zh.drawn.find((d) => d.value === '俱樂部')!.size).toBe(7.5);
+  });
+
+  it('圖片載入約 3 秒逾時視為失敗（頭像改畫首字）', async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = browserLoadImage('https://profile.line-scdn.net/slow', true);
+      await vi.advanceTimersByTimeAsync(PLAYER_CARD_IMAGE_TIMEOUT_MS - 1);
+      let settled = false;
+      pending.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(PLAYER_CARD_IMAGE_TIMEOUT_MS).toBe(3000);
   });
 });

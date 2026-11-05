@@ -89,6 +89,9 @@
     "share": "選手カードを共有",
     "shareFailed": "選手カード画像を作成できませんでした。もう一度お試しください。",
     "longPressSave": "画像を長押しして保存",
-    "close": "閉じる"
+    "close": "閉じる",
+    "shareOrSave": "選手カードを共有／保存",
+    "shareAgain": "共有",
+    "save": "保存"
   }
 }

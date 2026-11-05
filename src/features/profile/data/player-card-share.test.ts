@@ -4,6 +4,8 @@ import {
   PLAYER_CARD_FILE_NAME,
   choosePlayerCardShareRoute,
   isLineInAppBrowser,
+  makePlayerCardFile,
+  retrySharePlayerCardFile,
   sharePlayerCardBlob,
   type ShareNavigatorLike,
 } from './player-card-share';
@@ -59,7 +61,7 @@ describe('T-092 分享球員卡三條路', () => {
     expect(download).not.toHaveBeenCalled();
   });
 
-  it('使用者取消分享（AbortError）什麼都不做；其他錯誤退回覆蓋層', async () => {
+  it('使用者取消分享（AbortError）什麼都不做；NotAllowedError 等其他錯誤回 retry（覆蓋層再按一次分享）', async () => {
     const download = vi.fn();
     const aborted = await sharePlayerCardBlob(pngBlob(), {
       nav: {
@@ -82,7 +84,7 @@ describe('T-092 分享球員卡三條路', () => {
       },
       download,
     });
-    expect(denied).toBe('overlay');
+    expect(denied).toBe('retry');
     expect(download).not.toHaveBeenCalled();
   });
 
@@ -99,5 +101,30 @@ describe('T-092 分享球員卡三條路', () => {
     await expect(sharePlayerCardBlob(blob, { nav: { userAgent: CHROME_UA }, download }))
       .resolves.toBe('downloaded');
     expect(download).toHaveBeenCalledWith(blob, PLAYER_CARD_FILE_NAME);
+  });
+
+  it('覆蓋層再分享：同步呼叫 navigator.share、檔案是同一張 PNG', async () => {
+    const blob = pngBlob();
+    const file = makePlayerCardFile(blob);
+    expect(file.name).toBe(PLAYER_CARD_FILE_NAME);
+    expect(file.type).toBe('image/png');
+    const share = vi.fn(async (_data: ShareData) => undefined);
+    const pending = retrySharePlayerCardFile({ share }, file);
+    // 還沒 await 就已呼叫（吃得到這次點擊的手勢）
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(share.mock.calls[0]![0].files?.[0]).toBe(file);
+    await expect(pending).resolves.toBe('shared');
+
+    await expect(retrySharePlayerCardFile({
+      share: async () => {
+        throw new DOMException('cancel', 'AbortError');
+      },
+    }, file)).resolves.toBe('cancelled');
+    await expect(retrySharePlayerCardFile({
+      share: async () => {
+        throw new DOMException('no', 'NotAllowedError');
+      },
+    }, file)).resolves.toBe('failed');
+    await expect(retrySharePlayerCardFile({}, file)).resolves.toBe('failed');
   });
 });

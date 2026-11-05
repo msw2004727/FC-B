@@ -89,6 +89,9 @@
     "share": "선수 카드 공유",
     "shareFailed": "선수 카드 이미지를 만들지 못했습니다. 다시 시도해 주세요.",
     "longPressSave": "이미지를 길게 눌러 저장하세요",
-    "close": "닫기"
+    "close": "닫기",
+    "shareOrSave": "선수 카드 공유／저장",
+    "shareAgain": "공유",
+    "save": "저장"
   }
 }

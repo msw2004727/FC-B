@@ -3,7 +3,8 @@
  * 1. `navigator.canShare({ files })` 可用 → `navigator.share`（系統分享表）。
  * 2. LINE 內建瀏覽器（UA 含 `Line/`；LIFF 在 LINE 內開啟時 UA 同樣含 `Line/`）且不能分享檔案 → 圖片覆蓋層長按存圖。
  * 3. 其他（多半是桌機）→ 直接下載 PNG。
- * 系統分享被拒（例如產圖太久讓瀏覽器判定失去使用者手勢）時退回覆蓋層，讓使用者在覆蓋層內再存圖；
+ * 系統分享被拒（例如 iOS 產圖太久，讓瀏覽器判定已失去使用者手勢而丟 NotAllowedError）時回 'retry'：
+ * 呼叫端開覆蓋層並放一顆「分享」按鈕，讓使用者第二次點擊（新的手勢）再呼叫 navigator.share，檔案仍是同一張 PNG。
  * 使用者自己取消（AbortError）則什麼都不做。
  */
 
@@ -36,7 +37,12 @@ export function choosePlayerCardShareRoute(nav: ShareNavigatorLike, file: File):
   return 'download';
 }
 
-export type PlayerCardShareOutcome = 'shared' | 'cancelled' | 'overlay' | 'downloaded';
+/** overlay＝LINE 長按存圖；retry＝系統分享被拒，覆蓋層內再按一次分享。 */
+export type PlayerCardShareOutcome = 'shared' | 'cancelled' | 'overlay' | 'retry' | 'downloaded';
+
+export function makePlayerCardFile(blob: Blob): File {
+  return new File([blob], PLAYER_CARD_FILE_NAME, { type: 'image/png' });
+}
 
 export interface SharePlayerCardDeps {
   nav: ShareNavigatorLike;
@@ -47,12 +53,12 @@ function isAbortError(err: unknown): boolean {
   return Boolean(err && typeof err === 'object' && (err as { name?: unknown }).name === 'AbortError');
 }
 
-/** 回傳 'overlay' 時由呼叫端顯示圖片覆蓋層。 */
+/** 回傳 'overlay'／'retry' 時由呼叫端顯示圖片覆蓋層。 */
 export async function sharePlayerCardBlob(
   blob: Blob,
   deps: SharePlayerCardDeps,
 ): Promise<PlayerCardShareOutcome> {
-  const file = new File([blob], PLAYER_CARD_FILE_NAME, { type: 'image/png' });
+  const file = makePlayerCardFile(blob);
   const route = choosePlayerCardShareRoute(deps.nav, file);
   if (route === 'share' && deps.nav.share) {
     try {
@@ -60,12 +66,29 @@ export async function sharePlayerCardBlob(
       return 'shared';
     } catch (err) {
       if (isAbortError(err)) return 'cancelled';
-      return 'overlay';
+      return 'retry';
     }
   }
   if (route === 'overlay') return 'overlay';
   deps.download(blob, PLAYER_CARD_FILE_NAME);
   return 'downloaded';
+}
+
+/**
+ * 覆蓋層「分享」按鈕：必須在點擊事件內同步呼叫（async 函式在第一個 await 前同步執行，
+ * navigator.share 是第一個動作），才吃得到這次點擊的使用者手勢。
+ */
+export async function retrySharePlayerCardFile(
+  nav: ShareNavigatorLike,
+  file: File,
+): Promise<'shared' | 'cancelled' | 'failed'> {
+  if (typeof nav.share !== 'function') return 'failed';
+  try {
+    await nav.share({ files: [file] });
+    return 'shared';
+  } catch (err) {
+    return isAbortError(err) ? 'cancelled' : 'failed';
+  }
 }
 
 export function browserDownload(blob: Blob, fileName: string): void {

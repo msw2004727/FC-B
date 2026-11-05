@@ -7,6 +7,7 @@ import {
   buildPlayerCardModel,
   countActiveClubs,
   playerCardLogoUrl,
+  resolvePlayerCardName,
   resolvePlayerCardTheme,
   roundAttendRate,
 } from './player-card-model';
@@ -83,6 +84,18 @@ describe('T-092 球員卡資料模型', () => {
 
   it('名字空白時顯示 -', () => {
     expect(buildPlayerCardModel({ name: '  ', avatarUrl: null, summary: null }).name).toBe('-');
+  });
+
+  it('P2-1：名字等於 UID（含前後空白）時改顯示 -，首字為 ?；模型不含 UID', () => {
+    const m = buildPlayerCardModel({ name: ' U-abc ', uid: 'U-abc', avatarUrl: null, summary: null });
+    expect(m.name).toBe('-');
+    expect(m.avatarInitial).toBe('?');
+    expect(JSON.stringify(m)).not.toContain('U-abc');
+    expect(resolvePlayerCardName('U-abc', ' U-abc ')).toBe('-');
+    expect(resolvePlayerCardName('王小明', 'U-abc')).toBe('王小明');
+    expect(resolvePlayerCardName(' 王小明 ', null)).toBe('王小明');
+    expect(buildPlayerCardModel({ name: '王小明', uid: 'U-abc', avatarUrl: null, summary: null }).avatarInitial)
+      .toBe('王');
   });
 
   it('深淺色跟 <html data-theme>，logo 淺用黑、深用白', () => {

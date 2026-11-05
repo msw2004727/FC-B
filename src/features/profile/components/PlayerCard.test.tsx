@@ -11,21 +11,28 @@ vi.mock('@/data/user-roles', () => ({
 vi.mock('@/data/identity-settings', () => ({
   useIdentitySettings: () => ({}),
 }));
-vi.mock('@/data/identity-resolver', () => ({
-  getEffectiveIdentity: () => ({
+const identity = vi.hoisted(() => ({
+  current: {
     displayName: '王小明',
-    pictureUrl: 'https://profile.line-scdn.net/abc',
+    pictureUrl: 'https://profile.line-scdn.net/abc' as string | null,
     identityId: 'primary',
-  }),
+  },
+}));
+vi.mock('@/data/identity-resolver', () => ({
+  getEffectiveIdentity: () => identity.current,
 }));
 const canvasMock = vi.hoisted(() => ({
   renderPlayerCardPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+  ensurePlayerCardFonts: vi.fn(async () => undefined),
 }));
 vi.mock('../data/player-card-canvas', () => canvasMock);
 const shareMock = vi.hoisted(() => ({
-  sharePlayerCardBlob: vi.fn(async () => 'overlay'),
+  PLAYER_CARD_FILE_NAME: 'toosterx-player-card.png',
+  sharePlayerCardBlob: vi.fn(async (): Promise<string> => 'overlay'),
   browserDownload: vi.fn(),
   blobToDataUrl: vi.fn(async () => 'data:image/png;base64,AAAA'),
+  makePlayerCardFile: vi.fn((blob: Blob) => new File([blob], 'toosterx-player-card.png', { type: 'image/png' })),
+  retrySharePlayerCardFile: vi.fn(async (): Promise<string> => 'shared'),
 }));
 vi.mock('../data/player-card-share', () => shareMock);
 
@@ -35,6 +42,7 @@ import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { resolveShineMode } from './PlayerCard';
+import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 
 const profile = { exp: 0 } as unknown as UserProfile;
 
@@ -80,7 +88,13 @@ describe('T-092 球員卡（DOM）', () => {
     _setDictLoaderForTest(null);
     await setLocale('zh-TW');
     vi.clearAllMocks();
+    _resetPlayerCardPreloadForTest();
     stubMatchMedia(false);
+    identity.current = {
+      displayName: '王小明',
+      pictureUrl: 'https://profile.line-scdn.net/abc',
+      identityId: 'primary',
+    };
   });
 
   afterEach(() => {
@@ -190,5 +204,82 @@ describe('T-092 球員卡（DOM）', () => {
     expect(document.querySelector('.player-card-overlay')?.textContent).toContain('長按圖片即可儲存');
     fireEvent.click(document.querySelector('.player-card-overlay-close')!);
     await waitFor(() => expect(document.querySelector('.player-card-overlay')).toBeNull());
+  });
+
+  it('P2-1：沒有名字時身分解析退回 UID，卡面與 PNG 模型都不得出現 UID', async () => {
+    // getMainIdentity 在無 displayName／name 時以 uid 當名字（舊行為不改），卡片要自己擋。
+    identity.current = { displayName: ' U-me ', pictureUrl: null, identityId: 'primary' };
+    const { container } = renderTop(viewer('user', ['t1']));
+    const card = container.querySelector('.player-card')!;
+    expect(card.querySelector('#profile-title')?.textContent).toBe('-');
+    expect(card.textContent).not.toContain('U-me');
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
+    const [model] = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as [{ name: string }];
+    expect(model.name).toBe('-');
+    expect(JSON.stringify(model)).not.toContain('U-me');
+  });
+
+  it('LINE 覆蓋層：提示長按存圖，沒有分享／儲存按鈕', async () => {
+    shareMock.sharePlayerCardBlob.mockResolvedValueOnce('overlay');
+    const { container } = renderTop(viewer());
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(document.querySelector('.player-card-overlay')).not.toBeNull());
+    expect(document.querySelector('.player-card-overlay')?.textContent).toContain('長按圖片即可儲存');
+    expect(document.querySelector('#player-card-share-again')).toBeNull();
+    expect(document.querySelector('#player-card-save')).toBeNull();
+  });
+
+  it('P2-2：系統分享被拒（retry）→ 覆蓋層提示不寫長按，第二次點分享同步呼叫同一張 PNG，儲存走下載', async () => {
+    shareMock.sharePlayerCardBlob.mockResolvedValueOnce('retry');
+    const { container } = renderTop(viewer());
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(document.querySelector('#player-card-share-again')).not.toBeNull());
+    const overlay = document.querySelector('.player-card-overlay')!;
+    expect(overlay.textContent).toContain('分享／儲存球員卡');
+    expect(overlay.textContent).not.toContain('長按');
+    const blob = await canvasMock.renderPlayerCardPng.mock.results[0]!.value;
+
+    fireEvent.click(document.querySelector('#player-card-save')!);
+    expect(shareMock.browserDownload).toHaveBeenCalledWith(blob, 'toosterx-player-card.png');
+
+    fireEvent.click(document.querySelector('#player-card-share-again')!);
+    // 點擊當下（未經任何 await）就已呼叫分享
+    expect(shareMock.retrySharePlayerCardFile).toHaveBeenCalledTimes(1);
+    expect(shareMock.makePlayerCardFile).toHaveBeenCalledWith(blob);
+    await waitFor(() => expect(document.querySelector('.player-card-overlay')).toBeNull());
+  });
+
+  it('P2-2：掛載後閒置時預先載入產圖模組並預載字型；pointerdown 也會觸發', async () => {
+    const idle: Array<() => void> = [];
+    vi.stubGlobal('requestIdleCallback', (cb: () => void) => {
+      idle.push(cb);
+      return idle.length;
+    });
+    vi.stubGlobal('cancelIdleCallback', vi.fn());
+    const { container } = renderTop(viewer());
+    expect(canvasMock.ensurePlayerCardFonts).not.toHaveBeenCalled();
+    expect(idle).toHaveLength(1);
+    idle[0]!();
+    await waitFor(() => expect(canvasMock.ensurePlayerCardFonts).toHaveBeenCalledTimes(1));
+    expect(canvasMock.renderPlayerCardPng).not.toHaveBeenCalled();
+    cleanup();
+
+    _resetPlayerCardPreloadForTest();
+    canvasMock.ensurePlayerCardFonts.mockClear();
+    const again = renderTop(viewer());
+    fireEvent.pointerDown(again.container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.ensurePlayerCardFonts).toHaveBeenCalledTimes(1));
+    void container;
+  });
+
+  it('沒有頭像時畫面顯示姓名首字；名字被遮掉時顯示 ?', () => {
+    identity.current = { displayName: '王小明', pictureUrl: null, identityId: 'primary' };
+    const named = renderTop(viewer());
+    expect(named.container.querySelector('#profile-avatar')?.textContent).toBe('王');
+    cleanup();
+    identity.current = { displayName: 'U-me', pictureUrl: null, identityId: 'primary' };
+    const hidden = renderTop(viewer());
+    expect(hidden.container.querySelector('#profile-avatar')?.textContent).toBe('?');
   });
 });

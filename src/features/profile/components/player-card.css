@@ -289,7 +289,8 @@
   user-select: auto;
 }
 .player-card-overlay-hint { color: #fff; font-size: .85rem; }
-.player-card-overlay-close {
+.player-card-overlay-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+.player-card-overlay-btn {
   min-height: 44px;
   padding: .4rem 1.4rem;
   border-radius: var(--radius-full);
@@ -298,3 +299,4 @@
   font-size: .85rem;
   font-weight: 700;
 }
+.player-card-overlay-btn.is-primary { background: var(--primary-btn-bg, var(--accent)); color: #fff; }
