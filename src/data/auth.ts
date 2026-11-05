@@ -26,6 +26,7 @@ import {
   cleanLoginParamsFromUrl,
   hasLoginRedirectParams,
   markAutoLoginSuppressed,
+  suppressAutoLoginThisPage,
 } from './login-redirect';
 
 export interface AuthUser {
@@ -75,8 +76,32 @@ export { buildCleanLoginRedirectUri };
 
 /** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
 let liffInitialized = false;
-/** signOutAndReload 執行中：期間 signIn 一律不做。 */
+/** 登出（signOutAndReload、清除快取、QA 登出）執行中：期間 signIn 一律不做。 */
 let signingOut = false;
+/** 進行中的 signIn（共用同一支 Promise）。 */
+let inflightSignIn: Promise<AuthUser> | null = null;
+
+/** 測試用：歸零模組層的登入／登出狀態（同一測試檔多案共用模組時用）。 */
+export function _resetAuthForTest(): void {
+  lastKnownAuthUid = undefined;
+  signingOut = false;
+  inflightSignIn = null;
+  liffInitialized = false;
+}
+
+/**
+ * 登出開始：這一頁擋自動登入、進行中的換發作廢（世代 +1）、signIn 暫停。
+ * 回傳收尾函式：成功且即將重整時不放開閘門（重整前不再登入），失敗時放開。
+ */
+function beginSignOutGate(): (release: boolean) => void {
+  const wasGated = signingOut;
+  signingOut = true;
+  signInGeneration += 1;
+  suppressAutoLoginThisPage();
+  return (release) => {
+    if (release && !wasGated) signingOut = false;
+  };
+}
 /** 每次 signIn 的世代編號：換發逾時或有新的 signIn 之後，舊那次晚到的結果不採用。 */
 let signInGeneration = 0;
 
@@ -116,9 +141,37 @@ function emitAuth(uid: string | null): void {
 export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
   // 登出進行中（等 LIFF 登出或重整前）：不登入，頁面自動要求登入會在這裡停住（Opus P3-4）。
   if (signingOut) throw new LoginRedirectingError('[auth] 登出中，略過登入');
+  // 進行中的 signIn 共用同一支 Promise：各頁按鈕與 App 接手同時登入時只 liff.init 一次，
+  // 不會先完成的那次清掉另一次還沒讀到的 code（Grok 第三輪 P3）。
+  if (inflightSignIn) return inflightSignIn;
   // 網址還帶授權回跳參數時一律非互動：各頁按鈕直接呼叫 signIn() 也不會在 code 被處理前 liff.login()
   // （Grok 第二輪 P3）。
   const interactive = options.interactive !== false && !hasLoginRedirectParams(location.href);
+  const run = runSignIn(interactive);
+  inflightSignIn = run;
+  try {
+    return await run;
+  } finally {
+    if (inflightSignIn === run) inflightSignIn = null;
+  }
+}
+
+/** 目前登入者 uid（最後已知；未知時看 Firebase currentUser，最多等 Auth 還原 8 秒）；讀不到回 null。 */
+async function currentSignedInUid(): Promise<string | null> {
+  if (lastKnownAuthUid) return lastKnownAuthUid;
+  try {
+    const ctx = await withTimeout(getFirebase(), LIFF_STEP_TIMEOUT_MS, '讀取 Firebase');
+    const auth = ctx.auth as typeof ctx.auth & { authStateReady?: () => Promise<void> };
+    if (typeof auth.authStateReady === 'function') {
+      await withTimeout(auth.authStateReady(), LIFF_STEP_TIMEOUT_MS, '等待 Auth 還原');
+    }
+    return auth.currentUser?.uid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function runSignIn(interactive: boolean): Promise<AuthUser> {
   const generation = ++signInGeneration;
   // liff.init 之前就失敗的三處（emulator、缺設定、SDK 載入失敗）也先清回跳參數，
   // code 不留在網址被重整或分享（Grok 交叉審查 P2）。
@@ -173,6 +226,11 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
       emit('auth:mobile-login-hint', {});
       throw new LoginRedirectingError('[auth] 等待手機外部瀏覽器登入提示確認');
     }
+    // 導向 LINE 前再確認一次：Firebase 已有登入者（整頁打開時 Auth 晚一步還原）就不導向（Grok 第三輪 P1）。
+    // 登出在這段期間開始也不導向。
+    if (await currentSignedInUid() !== null || signingOut) {
+      throw new LoginRedirectingError('[auth] 已有登入者，不導向 LINE');
+    }
     // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
     // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
     const redirectUri = buildCleanLoginRedirectUri(location.href);
@@ -198,10 +256,20 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
       throw new Error('[auth] createCustomToken 未回傳 customToken');
     }
     const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
-    if (expired || signingOut || generation !== signInGeneration) {
+    const stale = (): boolean => expired || signingOut || generation !== signInGeneration;
+    if (stale()) {
       throw new Error('[auth] 登入換發已過期，略過晚到的結果');
     }
     const credential = await authMod.signInWithCustomToken(ctx.auth, rawCustomToken);
+    // 已送出的 signInWithCustomToken 在逾時或登出開始後才回來：立刻登出丟掉這次登入（Grok 第三輪 P3）。
+    if (stale()) {
+      try {
+        await authMod.signOut(ctx.auth);
+      } catch (err) {
+        console.error('[auth] 丟棄過期登入時登出失敗', err);
+      }
+      throw new Error('[auth] 登入換發已過期，已登出晚到的登入');
+    }
     return credential.user;
   })(), LOGIN_TOKEN_TIMEOUT_MS, '登入換發').catch((err: unknown) => {
     expired = true;
@@ -296,7 +364,9 @@ export async function signOutAndReload(
   reload: () => void = () => location.reload(),
 ): Promise<boolean> {
   if (signingOut) return false;
-  signingOut = true;
+  // 一開始就關閘：這一頁擋自動登入、進行中的換發作廢（Grok 第三輪 P1、P3）。
+  const endGate = beginSignOutGate();
+  let release = true;
   try {
     let status: QaAccountStatus;
     try {
@@ -326,6 +396,8 @@ export async function signOutAndReload(
     lastKnownAuthUid = null;
     writeAuthHint(false);
     markAutoLoginSuppressed('logout');
+    // 即將重整：閘門不放開，重整前這一頁不會再登入（Grok 第三輪 P3）。
+    release = false;
     try {
       reload();
     } catch (err) {
@@ -333,8 +405,31 @@ export async function signOutAndReload(
     }
     return true;
   } finally {
-    signingOut = false;
+    endGate(release);
   }
+}
+
+/**
+ * 抽屜「清除快取」的登出段：與 signOutAndReload 同一道閘（signOut 之前就擋這一頁的自動登入）→
+ * Firebase signOut → LINE 登出（最多 8 秒）→ 寫剛登出旗標。
+ * 回傳 false＝Firebase 登出失敗（已提示），呼叫端不可刪 LIFF*、不可重整（Grok 第三輪 P2）。
+ * 回傳 true 時閘門不放開（呼叫端接著清快取並重整）。
+ */
+export async function signOutForCacheClear(): Promise<boolean> {
+  const endGate = beginSignOutGate();
+  try {
+    await signOut();
+  } catch (err) {
+    console.error('[auth] 清除快取時登出 Firebase 失敗', err);
+    toast.show({ message: '登出失敗，請再試一次' });
+    endGate(true);
+    return false;
+  }
+  await logoutLineSession();
+  lastKnownAuthUid = null;
+  writeAuthHint(false);
+  markAutoLoginSuppressed('logout');
+  return true;
 }
 
 export interface QaClaims {
@@ -375,9 +470,13 @@ export function snapshotAccountLocalState(): AccountLocalSnapshot {
  * 帶 snapshot＝只清「快照時存在、且現在值沒被改寫」的 key：換帳號時 Firebase 的觀察者可能在
  * signInWithCustomToken 回傳前就觸發，新帳號當下寫入的同前綴 key（或改寫同名 key）不會被誤清。
  * sessionStorage `_lineLoginRetryCount` 兩種模式都清。
+ * options.keepLiff：保留 LIFF* key（QA 登出不碰 LINE 的工作階段，Grok 第三輪 P3）。
  * 儲存空間不可用或單一 key 移除失敗都靜默略過（其餘 key 照清）。
  */
-export function clearAccountLocalState(snapshot?: AccountLocalSnapshot): void {
+export function clearAccountLocalState(
+  snapshot?: AccountLocalSnapshot,
+  options: { keepLiff?: boolean } = {},
+): void {
   let targets: string[] = [];
   try {
     if (snapshot === undefined) {
@@ -394,6 +493,7 @@ export function clearAccountLocalState(snapshot?: AccountLocalSnapshot): void {
   } catch {
     /* ignore */
   }
+  if (options.keepLiff === true) targets = targets.filter((key) => !key.startsWith('LIFF'));
 
   for (const key of targets) {
     try {
@@ -516,18 +616,22 @@ export async function readQaClaims(expectedUid?: string): Promise<QaClaims | nul
 /**
  * 登出 QA：expectedUid 是按下登出當下要結束的使用者；
  * currentUser 為 null 或 uid 不符時不 signOut、不清任何 key 並回 false，
- * 相符且 signOut 成功並清完 localStorage 前綴與 sessionStorage `_lineLoginRetryCount` 後回 true，
- * signOut 拒絕則清理後照樣拒絕。
+ * 相符且 signOut 成功並清完 localStorage 前綴（LIFF* 保留）與 sessionStorage `_lineLoginRetryCount` 後回 true。
+ * 取代原「signOut 拒絕仍清理、LIFF* 一併清」：拒絕時使用者仍登入，不清任何 key 照樣拒絕；
+ * QA 登出不碰 LINE 工作階段，LIFF* 保留（Grok 第三輪 P3）。
+ * 執行期間與 signOutAndReload 同一道閘（這一頁擋自動登入、signIn 暫停），QA 橫幅登出也一樣（Grok 第三輪 P3）。
  */
 export async function signOutQa(expectedUid: string): Promise<boolean> {
   const ctx = await getFirebase();
   const currentUser = ctx.auth.currentUser;
   if (currentUser == null || currentUser.uid !== expectedUid) return false;
 
+  const endGate = beginSignOutGate();
   try {
     await signOut();
+    clearAccountLocalState(undefined, { keepLiff: true });
   } finally {
-    clearAccountLocalState();
+    endGate(true);
   }
 
   return true;

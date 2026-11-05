@@ -60,6 +60,7 @@ import {
   cleanLoginParamsFromUrl,
   consumeAutoLoginSuppressed,
   hasLoginCancelParams,
+  isAutoLoginSuppressedThisPage,
   markAutoLoginSuppressed,
   hasLoginRedirectParams,
 } from '@/data/login-redirect';
@@ -167,6 +168,10 @@ export function App({
     }
     skipAutoLoginRef.current = consumeAutoLoginSuppressed();
   }
+  // 自動要求登入要等 Auth 還原結果（authKnown）：整頁打開時 Auth 晚一步才知道是已登入者，
+  // 先發的自動要求記下，還原後仍是訪客才登入、已有人就丟掉（Grok 第三輪 P1）。
+  const authKnownRef = useRef(false);
+  const pendingAutoLoginRef = useRef(false);
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
@@ -188,6 +193,7 @@ export function App({
     const stopEvents = on('auth:changed', ({ uid }) => {
       const revision = ++authRevision.current;
       currentUid.current = uid;
+      authKnownRef.current = true;
       setAuthKnown(true);
       setLoginError(false);
       setUser((previous) => uid === null ? null :
@@ -227,6 +233,7 @@ export function App({
       });
     }).catch(() => {
       if (!cancelled) {
+        authKnownRef.current = true;
         setAuthKnown(true);
         setLoginError(true);
       }
@@ -321,20 +328,41 @@ export function App({
     handleLogin();
   }, [handleLogin]);
 
+  // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
+  // 這次開頁不可能呼叫 liff.login()，避免與接手互搶後無限重導（Grok 交叉審查 P1）。
+  const startRequestedLogin = useCallback((): void => {
+    if (typeof location !== 'undefined' && hasLoginRedirectParams(location.href)) {
+      runLogin(true);
+      return;
+    }
+    handleLogin();
+  }, [handleLogin, runLogin]);
+
   // M-034、M-035：監聽全域登入請求事件（如個人頁未登入 LINE 登入按鈕、底部分頁未登入守門）
   useEffect(() => {
     return on('auth:login-request', (payload) => {
-      // 頁面自動要求（auto）：剛取消授權／剛登出／本次接手失敗過就略過，避免反覆送去 LINE（Grok 第二輪 P1）。
-      if (payload?.auto === true && skipAutoLoginRef.current === true) return;
-      // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
-      // 這次開頁不可能呼叫 liff.login()，避免與接手互搶後無限重導（Grok 交叉審查 P1）。
-      if (typeof location !== 'undefined' && hasLoginRedirectParams(location.href)) {
-        runLogin(true);
-        return;
+      if (payload?.auto === true) {
+        // 頁面自動要求（auto）：剛取消授權／剛登出／本次接手失敗過／這一頁正在或已經登出就略過，
+        // 避免反覆送去 LINE（Grok 第二輪 P1、第三輪 P2）。
+        if (skipAutoLoginRef.current === true || isAutoLoginSuppressedThisPage()) return;
+        // Auth 還原結果還沒出來：先記下，還原後仍是訪客才登入（Grok 第三輪 P1）。
+        if (!authKnownRef.current) {
+          pendingAutoLoginRef.current = true;
+          return;
+        }
       }
-      handleLogin();
+      startRequestedLogin();
     });
-  }, [handleLogin, runLogin]);
+  }, [startRequestedLogin]);
+
+  // 記下的自動要求：Auth 還原後仍是訪客（且沒被略過）才登入；已有登入者就丟掉（Grok 第三輪 P1）。
+  useEffect(() => {
+    if (!authKnown || !pendingAutoLoginRef.current) return;
+    pendingAutoLoginRef.current = false;
+    if (currentUid.current !== null) return;
+    if (skipAutoLoginRef.current === true || isAutoLoginSuppressedThisPage()) return;
+    startRequestedLogin();
+  }, [authKnown, startRequestedLogin]);
 
   const [routeAccess, setRouteAccess] = useState<(RouteAccessContext & Partial<ViewerView>) | null>(null);
   const pending = loginPending || externalPending;

@@ -85,22 +85,41 @@ export function cleanLoginParamsFromUrl(): void {
 // 寫入：取消參數清掉前、登出重整前；讀取：App 開頁時讀一次並刪掉，下一次開頁恢復自動登入。
 const AUTO_LOGIN_SUPPRESS_KEY = 'fcb:suppress-auto-login';
 
+// 「這一頁不要自動登入」的記憶體旗標：登出／清除快取一開始就設（重整前這一頁也擋得住，Grok 第三輪 P2、P3），
+// 也是 sessionStorage 寫不進去時的退路（至少這一頁有效，Grok 第三輪 P3）。整頁重整後自然歸零。
+let suppressedThisPage = false;
+
+/** 只擋這一頁的自動登入（不留到下一次開頁）。 */
+export function suppressAutoLoginThisPage(): void {
+  suppressedThisPage = true;
+}
+
+export function isAutoLoginSuppressedThisPage(): boolean {
+  return suppressedThisPage;
+}
+
+/** 測試用：歸零記憶體旗標。 */
+export function _resetAutoLoginSuppressForTest(): void {
+  suppressedThisPage = false;
+}
+
 export function markAutoLoginSuppressed(reason: 'cancel' | 'logout'): void {
+  suppressedThisPage = true;
   try {
     sessionStorage.setItem(AUTO_LOGIN_SUPPRESS_KEY, reason);
   } catch {
-    /* 儲存不可用：退回原本行為 */
+    /* 儲存不可用：只剩記憶體旗標（這一頁有效） */
   }
 }
 
-/** 讀出並刪掉旗標；有旗標回 true（這次開頁不自動登入）。 */
+/** 讀出並刪掉旗標；有旗標（或這一頁已標記）回 true（這次開頁不自動登入）。 */
 export function consumeAutoLoginSuppressed(): boolean {
+  let stored = false;
   try {
-    const value = sessionStorage.getItem(AUTO_LOGIN_SUPPRESS_KEY);
-    if (value === null) return false;
-    sessionStorage.removeItem(AUTO_LOGIN_SUPPRESS_KEY);
-    return true;
+    stored = sessionStorage.getItem(AUTO_LOGIN_SUPPRESS_KEY) !== null;
+    if (stored) sessionStorage.removeItem(AUTO_LOGIN_SUPPRESS_KEY);
   } catch {
-    return false;
+    /* 儲存不可用：看記憶體旗標 */
   }
+  return stored || suppressedThisPage;
 }

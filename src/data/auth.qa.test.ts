@@ -473,22 +473,29 @@ describe('readQaClaims', () => {
 });
 
 describe('signOutQa', () => {
-  it('uid 相符時呼叫 firebase signOut 一次，並清掉帳號相關 storage', async () => {
+  // 測試同步更新（Grok 第三輪 P3）：QA 登出不碰 LINE 工作階段，LIFF* 保留；signOut 拒絕時使用者仍登入，不清任何 key。
+  it('uid 相符時呼叫 firebase signOut 一次，並清掉帳號相關 storage（LIFF* 保留）', async () => {
     authState.currentUser = { uid: 'uid-qa' };
     seedAccountStorage();
     await expect(signOutQa('uid-qa')).resolves.toBe(true);
     expect(firebaseSignOutMock).toHaveBeenCalledTimes(1);
     expect(firebaseSignOutMock).toHaveBeenCalledWith(authState);
-    expectAccountStorageCleared();
+    for (const key of CLEARED_KEYS.filter((k) => !k.startsWith('LIFF'))) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+    expect(localStorage.getItem('LIFFfoo')).toBe('value-LIFFfoo');
+    expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+    expect(localStorage.getItem('unrelated')).toBe('keep-me');
   });
 
-  it('uid 相符且 signOut 拒絕時一併拒絕，但清理仍會執行', async () => {
+  it('uid 相符且 signOut 拒絕時一併拒絕，且不清任何 key', async () => {
     authState.currentUser = { uid: 'uid-qa' };
     seedAccountStorage();
+    localStorage.setItem('LIFFx', 'still-here');
     firebaseSignOutMock.mockRejectedValueOnce(new Error('sign-out-failed'));
     await expect(signOutQa('uid-qa')).rejects.toThrow('sign-out-failed');
     expect(firebaseSignOutMock).toHaveBeenCalledTimes(1);
-    expectAccountStorageCleared();
+    expectAccountStorageKept();
   });
 
   it('currentUser 為 null 時不 signOut，LIFFx、shub_c_x 與 _lineLoginRetryCount 都還在', async () => {
@@ -590,7 +597,8 @@ describe('clearAccountLocalState（signOutQa 與 QA 切換帳號共用）', () =
     expectRegularAccountStorageCleared();
   });
 
-  it('清理結果與 signOutQa 完全一致', async () => {
+  // 測試同步更新（Grok 第三輪 P3）：signOutQa 保留 LIFF*，等同 clearAccountLocalState(undefined, { keepLiff: true })。
+  it('清理結果與 signOutQa 完全一致（keepLiff）', async () => {
     seedRegularAccountStorage();
     authState.currentUser = { uid: 'uid-qa' };
     await expect(signOutQa('uid-qa')).resolves.toBe(true);
@@ -599,7 +607,7 @@ describe('clearAccountLocalState（signOutQa 與 QA 切換帳號共用）', () =
     localStorage.clear();
     sessionStorage.clear();
     seedRegularAccountStorage();
-    clearAccountLocalState();
+    clearAccountLocalState(undefined, { keepLiff: true });
 
     expect(storageSnapshot()).toBe(afterSignOutQa);
   });

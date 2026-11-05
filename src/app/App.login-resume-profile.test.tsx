@@ -4,6 +4,8 @@ import { useEffect } from 'preact/hooks';
 import { emit } from '@/core/events';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import { _resetFirebaseForTest } from '@/data/firebase';
+import { _resetAutoLoginSuppressForTest } from '@/data/login-redirect';
+import { _resetAuthForTest } from '@/data/auth';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { App } from './App';
 
@@ -16,6 +18,8 @@ const h = vi.hoisted(() => ({
   openGate: (() => undefined) as () => void,
   initStarted: 0,
   searchAtInit: [] as string[],
+  fake: { auth: { currentUser: null as null | { uid: string } } },
+  stubPayload: { auto: true } as { auto?: boolean },
   liff: {
     sawCode: false,
     init: vi.fn(),
@@ -33,11 +37,10 @@ vi.mock('@/data/callables', () => ({ callFn: vi.fn(async () => ({ customToken: '
 // 換發登入成功：getFirebase 給假的 auth（其餘 firebase 匯出維持真實），signInWithCustomToken 回固定使用者。
 vi.mock('@/data/firebase', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/data/firebase')>();
-  const fake = { auth: { currentUser: null } };
   return {
     ...actual,
-    getFirebase: vi.fn(async () => fake),
-    getFirebaseCore: vi.fn(async () => fake),
+    getFirebase: vi.fn(async () => h.fake),
+    getFirebaseCore: vi.fn(async () => h.fake),
     shouldUseEmulator: () => false,
   };
 });
@@ -60,7 +63,7 @@ vi.mock('@/features/profile/data/viewer', () => ({
 /** 模擬 LegacyUserCard：訪客掛載就自動要求登入（auto）。 */
 function PublicProfileStub(): null {
   useEffect(() => {
-    emit('auth:login-request', { auto: true });
+    emit('auth:login-request', h.stubPayload);
   }, []);
   return null;
 }
@@ -68,6 +71,10 @@ function PublicProfileStub(): null {
 beforeEach(async () => {
   vi.stubEnv('VITE_LIFF_ID', 'test-liff-id');
   sessionStorage.clear();
+  _resetAutoLoginSuppressForTest();
+  h.fake.auth.currentUser = null;
+  h.stubPayload = { auto: true };
+  _resetAuthForTest();
   localStorage.clear();
   h.searchAtInit.length = 0;
   h.liff.sawCode = false;
@@ -107,8 +114,10 @@ afterEach(() => {
 });
 
 describe('公開個人頁從 LINE 授權回來（Grok 交叉審查 P1）', () => {
+  // 測試同步更新：自動要求（auto）現在等 Auth 還原才處理（Grok 第三輪 P1），這案改用「非 auto 的要求先發」保住原本的競態覆蓋。
   it('頁面先要求登入、Auth 晚一步還原：liff.init 讀得到 code，不呼叫 liff.login', async () => {
     history.replaceState(null, '', '/profile/U-public?code=c&state=s&liffClientId=x');
+    h.stubPayload = {};
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       render(<App />);
@@ -203,5 +212,41 @@ describe('公開個人頁：取消授權或剛登出後不再被送去 LINE（Gr
     });
     await settle();
     await waitFor(() => expect(h.liff.login).toHaveBeenCalledOnce(), { timeout: 3000 });
+  });
+});
+
+describe('已登入者整頁打開公開個人頁（Grok 第三輪 P1）', () => {
+  it('無回跳參數、先發 auto、Auth 晚一步還原出已登入：liff.login 0 次、不載 LIFF', async () => {
+    history.replaceState(null, '', '/profile/U-public');
+    render(<App />);
+    // 名片掛載先發 auto（Auth 還沒還原）
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    await act(async () => {
+      emit('auth:changed', { uid: 'U-existing' });
+    });
+    await act(async () => {
+      h.openGate();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(h.liff.init).not.toHaveBeenCalled();
+  });
+
+  it('auto 已開始登入、liff.init 還沒結束時 Firebase 還原出已登入者：仍不導向 LINE', async () => {
+    history.replaceState(null, '', '/profile/U-public');
+    render(<App />);
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+    });
+    await waitFor(() => expect(h.liff.init).toHaveBeenCalled(), { timeout: 3000 });
+    // init 還沒結束：Firebase 這時還原出已登入者
+    h.fake.auth.currentUser = { uid: 'U-existing' };
+    await act(async () => {
+      h.openGate();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(h.liff.login).not.toHaveBeenCalled();
   });
 });

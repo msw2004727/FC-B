@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { AuthUser } from '@/data/auth';
 import { _resetFirebaseForTest, armFirebaseAuthHold } from '@/data/firebase';
+import { _resetAutoLoginSuppressForTest } from '@/data/login-redirect';
 import { emit } from '@/core/events';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
@@ -44,6 +45,7 @@ async function pause(ms: number): Promise<void> {
 beforeEach(async () => {
   vi.resetAllMocks();
   sessionStorage.clear();
+  _resetAutoLoginSuppressForTest();
   localStorage.clear();
   _resetFirebaseForTest();
   auth.getCurrentUser.mockResolvedValue(null);

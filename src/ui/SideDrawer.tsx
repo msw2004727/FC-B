@@ -140,17 +140,19 @@ function lockBody(body: HTMLElement): () => void {
 
 /** 照 A `confirmClearCache` 清除快取與登出並重載。 */
 async function executeClearCache(): Promise<void> {
+  // 登出段走 signOutForCacheClear：signOut 之前就擋這一頁的自動登入、刪 LIFF* 之前先登出 LINE（最多 8 秒）、
+  // 寫剛登出旗標。Firebase 登出失敗（已提示）就停：不刪 LIFF*、不重整（Grok 第三輪 P2）。
+  // 登入模組載入失敗則照舊繼續清快取（與原本行為相同）。
+  let proceed = true;
   try {
-    try {
-      const auth = await import('@/data/auth');
-      if (typeof auth.signOut === 'function') await auth.signOut();
-      // 刪 LIFF* 之前先登出 LINE（最多 8 秒），清除快取後再登入才能換帳號（Grok 第二輪 P3）。
-      if (typeof auth.logoutLineSession === 'function') await auth.logoutLineSession();
-    } catch {
-      /* ignore */
-    }
-    // 重整後這次開頁不自動要求登入（公開個人頁不會又被送去 LINE）。
+    const auth = await import('@/data/auth');
+    if (typeof auth.signOutForCacheClear === 'function') proceed = await auth.signOutForCacheClear();
+    else markAutoLoginSuppressed('logout');
+  } catch {
     markAutoLoginSuppressed('logout');
+  }
+  if (!proceed) return;
+  try {
     if (typeof window !== 'undefined' && 'caches' in window) {
       try {
         const keys = await caches.keys();

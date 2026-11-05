@@ -204,6 +204,52 @@ describe('LINE 授權回跳接手登入', () => {
     expect(h.liff.login).not.toHaveBeenCalled();
   });
 
+  it('導向 LINE 前 Firebase 已有登入者（Auth 晚一步還原）：不導向（Grok 第三輪 P1）', async () => {
+    h.liff.isLoggedIn.mockReturnValue(false);
+    h.liff.init.mockImplementationOnce(async () => {
+      // liff.init 還沒結束時 Auth 還原出已登入者
+      h.currentUser = { uid: 'U-existing', getIdTokenResult: async () => ({ claims: {} }) };
+    });
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+  });
+
+  it('同時兩次 signIn 共用同一支流程：liff.init 只一次（Grok 第三輪 P3）', async () => {
+    history.replaceState(null, '', '/?code=c&state=s&liffClientId=x');
+    h.liff.isLoggedIn.mockReturnValue(true);
+    const [a, b] = await Promise.all([auth.signIn({ interactive: false }), auth.signIn()]);
+    expect(a.uid).toBe('U-login');
+    expect(b).toBe(a);
+    expect(h.liff.init).toHaveBeenCalledTimes(1);
+    expect(h.callFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('逾時當下 signInWithCustomToken 已送出：回來後立刻登出丟掉（Grok 第三輪 P3）', async () => {
+    vi.useFakeTimers();
+    try {
+      h.liff.isLoggedIn.mockReturnValue(true);
+      h.signInWithCustomToken.mockImplementationOnce(() => new Promise((resolve) => {
+        setTimeout(() => resolve({ user: { uid: 'U-late', displayName: null, photoURL: null } }),
+          auth.LOGIN_TOKEN_TIMEOUT_MS + 1000);
+      }));
+      const result = auth.signIn().catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(auth.LOGIN_TOKEN_TIMEOUT_MS);
+      expect(String((await result as Error).message)).toContain('逾時');
+      expect(h.signInWithCustomToken).toHaveBeenCalledOnce();
+      expect(h.fbSignOut).not.toHaveBeenCalled();
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        await vi.advanceTimersByTimeAsync(2000);
+      } finally {
+        error.mockRestore();
+      }
+      expect(h.fbSignOut).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('使用者按登入（interactive 預設）仍照舊導向 LINE', async () => {
     h.liff.isLoggedIn.mockReturnValue(false);
     const err = await auth.signIn().catch((e: unknown) => e);
@@ -331,6 +377,65 @@ describe('signOutAndReload（照 A LineAuth.logout）', () => {
     expect(h.liff.logout).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
     expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBeNull();
+    // QA 登出不碰 LINE 工作階段：LIFF* 保留（Grok 第三輪 P3）
+    expect(localStorage.getItem(LIFF_KEY)).toBe('token');
+  });
+
+  it('QA 登出期間也關閘：signIn 不做、不 liff.login（Grok 第三輪 P3）', async () => {
+    seedAccountState();
+    let releaseSignOut: () => void = () => undefined;
+    h.currentUser = { uid: 'qa-1', getIdTokenResult: async () => ({ claims: { qa: true } }) };
+    h.fbSignOut.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseSignOut = resolve; }));
+    const done = auth.signOutQa('qa-1');
+    await vi.waitFor(() => expect(h.fbSignOut).toHaveBeenCalledOnce());
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.init).not.toHaveBeenCalled();
+    releaseSignOut();
+    await expect(done).resolves.toBe(true);
+  });
+
+  it('清除快取（signOutForCacheClear）：Firebase 登出 → LINE 登出 → 剛登出旗標；閘門不放開', async () => {
+    seedAccountState();
+    liffFollowsStorage();
+    await expect(auth.signOutForCacheClear()).resolves.toBe(true);
+    expect(h.calls).toEqual(['firebase.signOut', 'liff.init', 'liff.logout']);
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBe('logout');
+    // 接著要清快取並重整：這段期間不再登入
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+  });
+
+  it('清除快取進行到 LINE 登出還沒返回：signIn 不做、liff.login 0 次（Grok 第三輪 P2）', async () => {
+    seedAccountState();
+    let releaseInit: () => void = () => undefined;
+    h.liff.init.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseInit = resolve; }));
+    const done = auth.signOutForCacheClear();
+    await vi.waitFor(() => expect(h.liff.init).toHaveBeenCalledOnce());
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+    releaseInit();
+    await expect(done).resolves.toBe(true);
+  });
+
+  it('清除快取時 Firebase 登出失敗：回 false、不寫旗標、LIFF* 保留、閘門放開（Grok 第三輪 P2）', async () => {
+    seedAccountState();
+    h.fbSignOut.mockRejectedValueOnce(new Error('network'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await expect(auth.signOutForCacheClear()).resolves.toBe(false);
+    } finally {
+      error.mockRestore();
+    }
+    expect(h.liff.init).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LIFF_KEY)).toBe('token');
+    expect(localStorage.getItem('fcb:signed-in')).toBe('1');
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBeNull();
+    // 閘門已放開：使用者之後仍可登入
+    h.liff.isLoggedIn.mockReturnValue(true);
+    await expect(auth.signIn()).resolves.toMatchObject({ uid: 'U-login' });
   });
 
   it('帳號狀態讀不到（unknown）：不 init LIFF，Firebase 登出、清理與重整照做（Grok 第二輪 P3）', async () => {

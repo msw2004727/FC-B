@@ -254,12 +254,14 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(document.getElementById('app-confirm-modal')).toBeNull();
   });
 
-  it('清除快取：刪 LIFF* 之前先 LINE 登出，並寫「剛登出」旗標（Grok 第二輪 P3）', async () => {
+  // 測試同步更新（Grok 第三輪 P2）：登出段改走 signOutForCacheClear（同一道閘、失敗就停），
+  // 其內部順序（Firebase → LINE 登出 → 旗標、閘門）由 auth.login-resume.test.ts 驗。
+  it('清除快取：先走 signOutForCacheClear（當時 LIFF* 還在），之後才刪 LIFF*', async () => {
     const order: string[] = [];
     localStorage.setItem('LIFF_STORE:test:accessToken', 'token');
-    const signOutSpy = vi.spyOn(authMod, 'signOut').mockImplementation(async () => { order.push('signOut'); });
-    const lineSpy = vi.spyOn(authMod, 'logoutLineSession').mockImplementation(async () => {
-      order.push(localStorage.getItem('LIFF_STORE:test:accessToken') ? 'line(LIFF 還在)' : 'line(LIFF 已刪)');
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockImplementation(async () => {
+      order.push(localStorage.getItem('LIFF_STORE:test:accessToken') ? 'signOut(LIFF 還在)' : 'signOut(LIFF 已刪)');
+      return true;
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
@@ -270,14 +272,34 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
-      expect(order).toEqual(['signOut', 'line(LIFF 還在)']);
+      expect(order).toEqual(['signOut(LIFF 還在)']);
       expect(localStorage.getItem('LIFF_STORE:test:accessToken')).toBeNull();
-      expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBe('logout');
     } finally {
-      signOutSpy.mockRestore();
-      lineSpy.mockRestore();
+      gateSpy.mockRestore();
       error.mockRestore();
-      sessionStorage.removeItem('fcb:suppress-auto-login');
+      localStorage.removeItem('LIFF_STORE:test:accessToken');
+    }
+  });
+
+  it('清除快取時 Firebase 登出失敗：不刪 LIFF*、不清快取（Grok 第三輪 P2）', async () => {
+    localStorage.setItem('LIFF_STORE:test:accessToken', 'token');
+    localStorage.setItem('shub_c_users', '[]');
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(false);
+    try {
+      render(<Harness />);
+      openDrawer();
+      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      await act(async () => {
+        fireEvent.click(document.getElementById('app-confirm-ok')!);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(gateSpy).toHaveBeenCalledOnce();
+      expect(localStorage.getItem('LIFF_STORE:test:accessToken')).toBe('token');
+      expect(localStorage.getItem('shub_c_users')).toBe('[]');
+    } finally {
+      gateSpy.mockRestore();
+      localStorage.removeItem('LIFF_STORE:test:accessToken');
+      localStorage.removeItem('shub_c_users');
     }
   });
 

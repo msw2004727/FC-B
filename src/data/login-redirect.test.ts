@@ -1,10 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  _resetAutoLoginSuppressForTest,
   buildCleanLoginRedirectUri,
   carryLoginRedirectParams,
+  consumeAutoLoginSuppressed,
   hasLoginCancelParams,
   hasLoginRedirectParams,
+  isAutoLoginSuppressedThisPage,
+  markAutoLoginSuppressed,
 } from './login-redirect';
+
+describe('自動登入略過旗標', () => {
+  afterEach(() => {
+    _resetAutoLoginSuppressForTest();
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('寫入 sessionStorage 並設這一頁的記憶體旗標；讀一次就刪', () => {
+    markAutoLoginSuppressed('logout');
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBe('logout');
+    expect(isAutoLoginSuppressedThisPage()).toBe(true);
+    expect(consumeAutoLoginSuppressed()).toBe(true);
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBeNull();
+  });
+
+  it('sessionStorage 寫不進去：退回記憶體旗標，這一頁仍有效（Grok 第三輪 P3）', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    markAutoLoginSuppressed('cancel');
+    expect(isAutoLoginSuppressedThisPage()).toBe(true);
+    expect(consumeAutoLoginSuppressed()).toBe(true);
+  });
+
+  it('沒有旗標：回 false', () => {
+    expect(consumeAutoLoginSuppressed()).toBe(false);
+  });
+});
 
 describe('buildCleanLoginRedirectUri 清掉 liff.state（Grok 交叉審查 P2）', () => {
   it('只有 liff.state 的網址清完後不再算回跳', () => {
