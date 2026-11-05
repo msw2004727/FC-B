@@ -4,9 +4,9 @@
  * 所有值與變更從 props 進出，只有 UI 狀態（說明視窗、地區晃動、運動下拉、搜尋字串）在內部。
  */
 import type { JSX } from 'preact';
+import { SportTagPicker } from './SportTagPicker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLegacyT } from '@/i18n/i18n';
-import { SportIcon } from '@/ui/SportIcon';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
 import type { EventType } from '../../data/event-create';
@@ -18,7 +18,6 @@ import {
   roleLabelOf,
   type EventFormState,
 } from '../../data/event-form-model';
-import { SPORTS } from '../../data/sports';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
@@ -113,13 +112,9 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
 
   const [activeInfoKey, setActiveInfoKey] = useState<CeInfoKey | null>(null);
   const [cityShakeCount, setCityShakeCount] = useState(0);
-  const [sportDropdownOpen, setSportDropdownOpen] = useState(false);
-  const [sportSearch, setSportSearch] = useState('');
 
-  const sportPickerRef = useRef<HTMLDivElement | null>(null);
   const citiesRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const sportSearchRef = useRef<HTMLInputElement | null>(null);
 
   const handleCloseInfo = useCallback(() => {
     setActiveInfoKey(null);
@@ -137,21 +132,6 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
     void el.offsetWidth;
     el.style.animation = 'region-shake .4s ease';
   }, [cityShakeCount]);
-
-  // 照 A event-create-sport-picker.js：點擊外部關閉下拉；打開時聚焦搜尋框（`els.search?.focus()`）。
-  useEffect(() => {
-    if (!sportDropdownOpen) return;
-    sportSearchRef.current?.focus();
-    const handler = (ev: MouseEvent): void => {
-      const picker = sportPickerRef.current;
-      if (picker && picker.contains(ev.target as Node)) return;
-      setSportDropdownOpen(false);
-    };
-    document.addEventListener('click', handler);
-    return () => {
-      document.removeEventListener('click', handler);
-    };
-  }, [sportDropdownOpen]);
 
   // 照 A image-upload.js `_initImageUpload`：用原生 change 事件讀取檔案（compat 下 onChange 綁 input）。
   useEffect(() => {
@@ -192,15 +172,6 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
     if (!effectiveRegionEnabled || !state.region) return [];
     return REGION_MAP[state.region] ? [...REGION_MAP[state.region]!] : [];
   }, [effectiveRegionEnabled, state.region]);
-
-  const selectedSport = SPORTS.find((s) => s.sportTag === state.sportTag) ?? null;
-
-  const filteredSports = useMemo(() => {
-    // 照 A _renderSportPickerOptions：只比對原始 label（中文）與 query。
-    const q = sportSearch.trim().toLowerCase();
-    if (!q) return SPORTS;
-    return SPORTS.filter((item) => item.label.toLowerCase().includes(q));
-  }, [sportSearch]);
 
   // 照 A _updateCreateTimeSummary（單日期模式）。
   const dateLabel = state.dateVal ? state.dateVal.replace(/-/g, '/') : '';
@@ -889,86 +860,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
           <label for="ce-sport-selected">{lt('運動 / 場景標籤')}</label>{' '}
           <span class="required">{lt('*必選')}</span>
         </div>
-        <div class="ce-sport-picker" id="ce-sport-picker" ref={sportPickerRef}>
-          <button
-            type="button"
-            class={`ce-sport-selected${sportDropdownOpen ? ' open' : ''}`}
-            id="ce-sport-selected"
-            aria-haspopup="listbox"
-            aria-expanded={sportDropdownOpen}
-            onClick={() => setSportDropdownOpen((v) => !v)}
-          >
-            <span class="ce-sport-selected-inner" id="ce-sport-selected-inner">
-              {selectedSport ? (
-                <span class="ce-sport-value">
-                  <SportIcon sportKey={selectedSport.key} />
-                  <span>{lt(selectedSport.label, selectedSport.label)}</span>
-                </span>
-              ) : (
-                <span class="ce-sport-placeholder">{lt('請選擇運動 / 場景標籤')}</span>
-              )}
-            </span>
-            <span class="ce-sport-arrow" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M6 9l6 6 6-6"></path>
-              </svg>
-            </span>
-          </button>
-          <div
-            class={`ce-sport-dropdown${sportDropdownOpen ? ' open' : ''}`}
-            id="ce-sport-dropdown"
-          >
-            <input
-              type="text"
-              id="ce-sport-search"
-              class="ce-sport-search"
-              placeholder={lt('搜尋運動 / 場景標籤')}
-              ref={sportSearchRef}
-              value={sportSearch}
-              onInput={(e) => setSportSearch(e.currentTarget.value)}
-              onKeyDown={(ev) => {
-                // 照 A：搜尋框按 Escape 關閉下拉。
-                if (ev.key === 'Escape') {
-                  ev.stopPropagation();
-                  setSportDropdownOpen(false);
-                }
-              }}
-            />
-            <div id="ce-sport-list" class="ce-sport-list" role="listbox">
-              {filteredSports.length === 0 ? (
-                <div class="ce-sport-empty">{lt('找不到符合的運動')}</div>
-              ) : (
-                filteredSports.map((item) => {
-                  const isActive = item.sportTag === state.sportTag;
-                  return (
-                    <button
-                      type="button"
-                      key={item.key}
-                      class={`ce-sport-option${isActive ? ' active' : ''}`}
-                      role="option"
-                      aria-selected={isActive}
-                      onClick={() => {
-                        onPatch({ sportTag: item.sportTag });
-                        setSportDropdownOpen(false);
-                      }}
-                    >
-                      <SportIcon sportKey={item.key} />
-                      <span>{lt(item.label, item.label)}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-          <input type="hidden" id="ce-sport-tag" value={state.sportTag} />
-        </div>
+        <SportTagPicker prefix="ce" value={state.sportTag} onChange={(sportTag) => onPatch({ sportTag })} />
         <div class="ce-sport-required-tip">
           {lt('* 必選，未選擇運動 / 場景標籤將無法儲存活動')}
         </div>

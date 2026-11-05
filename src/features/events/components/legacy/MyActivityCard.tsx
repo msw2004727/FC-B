@@ -86,7 +86,7 @@ export function MyActivityCard({
   const statusConf = STATUS_CONFIG[effStatus] ?? STATUS_CONFIG.open!;
 
   const canManage = canManageEvent(operateCtx, e);
-  // A `_canEditExternalActivity(e)`：有活動時就是 `_canEditOwnActivityBasic(e)`（event-list-helpers.js，已核對）。外部活動編輯本身下一批補。
+  // A `_canEditExternalActivity(e)`：有活動時就是 `_canEditOwnActivityBasic(e)`（event-list-helpers.js，已核對）。
   const canEdit = canEditOwnActivityBasic(operateCtx, e);
   const canCancel = canCancelOwnActivity(operateCtx, e);
   const canReopenRelist = canReopenOrRelistActivity(operateCtx, e);
@@ -111,8 +111,7 @@ export function MyActivityCard({
         style: BTN_STYLE,
         onClick: (ev) => {
           ev.stopPropagation();
-          // 下一批補：外部活動編輯（editExternalActivity）
-          onUnavailable();
+          onEdit(e);
         },
       });
     }

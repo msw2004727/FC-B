@@ -1,11 +1,12 @@
 import '../legacy/activity.css';
 import '@/styles/legacy/message.css';
 import '@/styles/legacy/manage-status.css';
-import type { JSX } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
+import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { useUserRoles } from '@/data/user-roles';
 import { useViewer } from '@/features/profile/data/viewer';
 import { lt, useT } from '@/i18n/i18n';
@@ -13,6 +14,7 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
 import { toast } from '@/ui/Toast';
 import { EventFormModal } from '../components/EventFormModal';
+import { ExternalEventEditModal } from '../components/ExternalEventEditModal';
 import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
 import {
   useEventFormPostSave,
@@ -48,7 +50,11 @@ import {
   getDeleteEventErrorMessage,
 } from '../data/event-delete';
 import { isCourseLinkedLifecycleLocked } from '../data/event-lifecycle';
-import { canDeleteActivity, canManageAllActivities } from '../data/operate-permissions';
+import {
+  canDeleteActivity,
+  canEditOwnActivityBasic,
+  canManageAllActivities,
+} from '../data/operate-permissions';
 import type { EventDoc } from '../data/types';
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
@@ -61,6 +67,55 @@ const TAB_CONFIG: readonly { id: MyActivityTab; text: string }[] = [
   { id: 'ended', text: '已結束' },
   { id: 'cancelled', text: '已取消' },
 ] as const;
+
+interface SwipeableActivityTabsProps {
+  activeTab: MyActivityTab;
+  onTabChange: (tab: MyActivityTab) => void;
+  children: ComponentChildren;
+}
+
+// T-075a：隨授權後的頁籤與列表掛載，避免 viewer 初值無權限時漏綁手勢。
+// 切頁狀態留在父層，滑動與點擊共用 setActiveTab 及既有載入／分頁流程。
+function SwipeableActivityTabs({
+  activeTab,
+  onTabChange,
+  children,
+}: SwipeableActivityTabsProps): JSX.Element {
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useSwipeTabs({
+    contentRef,
+    tabsRef,
+    onSwitch: (key) => {
+      const tab = TAB_CONFIG.find((item) => item.id === key);
+      if (tab) onTabChange(tab.id);
+    },
+    getKey: (btn) => btn.dataset.afilter ?? null,
+  });
+
+  return (
+    <>
+      <div class="tab-bar" id="my-activity-tabs" ref={tabsRef}>
+        {TAB_CONFIG.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            class={`tab${activeTab === tab.id ? ' active' : ''}`}
+            data-afilter={tab.id}
+            data-i18n={tab.text}
+            onClick={() => onTabChange(tab.id)}
+          >
+            {lt(tab.text, tab.text)}
+          </button>
+        ))}
+      </div>
+      <div class="card-list" id="my-activity-list" ref={contentRef}>
+        {children}
+      </div>
+    </>
+  );
+}
 
 function eventDocIdOf(e: EventDoc): string {
   return String(e._docId ?? e.docId ?? e.id ?? '');
@@ -99,7 +154,8 @@ export default function MyActivitiesPage(): JSX.Element {
 
   const createEntry = useCreateEventEntry(viewer);
   const [editingEvent, setEditingEvent] = useState<EventDoc | null>(null);
-  useEventFormSession(editingEvent !== null);
+  const [editingExternal, setEditingExternal] = useState<EventDoc | null>(null);
+  useEventFormSession(editingEvent !== null || editingExternal !== null);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [detailEvent, setDetailEvent] = useState<EventDoc | null>(null);
 
@@ -120,6 +176,12 @@ export default function MyActivitiesPage(): JSX.Element {
       const seq = ++loadSeqRef.current;
       setLoading(true);
       setError(false);
+      if (force) {
+        // 強制刷新會替換 Repo 的歷史清單與游標，畫面也必須回到第一頁並重新允許展開。
+        // 在 await 前重設：即使 active 失敗、terminal 成功，分頁仍與新快照一致。
+        setVisibleCounts({});
+        setHasRemoteMore(true);
+      }
       try {
         const repo = getEventsRepo();
         if (isHistoryTab(tab)) {
@@ -275,7 +337,8 @@ export default function MyActivitiesPage(): JSX.Element {
   }
 
   async function handleLoadMore(): Promise<void> {
-    if (loadingMore) return;
+    if (loading || loadingMore) return;
+    const seq = loadSeqRef.current;
     const key = getMyActivityPagingKey(activeTab, selectedCreatorUid);
     const nextLimit = visibleLimit + MY_ACTIVITY_DEFAULT_PAGE_SIZE;
     setVisibleCounts((prev) => ({
@@ -290,6 +353,7 @@ export default function MyActivitiesPage(): JSX.Element {
       setLoadingMore(true);
       try {
         const added = await getEventsRepo().loadMoreTerminalEvents();
+        if (seq !== loadSeqRef.current) return; // 刷新前的分頁回應不能覆寫新的分頁狀態。
         syncFromRepo();
         if (added === 0) {
           setHasRemoteMore(false);
@@ -359,8 +423,17 @@ export default function MyActivitiesPage(): JSX.Element {
     }
   }
 
+  function handleEdit(event: EventDoc): void {
+    if (event.type !== 'external') { setEditingEvent(event); return; }
+    if (!canEditOwnActivityBasic(operateCtx, event)) {
+      toast.show({ message: '您只能編輯自己的活動', tone: 'error' });
+      return;
+    }
+    setEditingExternal(event);
+  }
+
   function handleUnavailable(): void {
-    // 下一批補：置頂、外部活動編輯、外部活動分享
+    // 下一批補：置頂、外部活動分享
     toast.show({ message: UNAVAILABLE_MSG });
   }
 
@@ -494,22 +567,7 @@ export default function MyActivitiesPage(): JSX.Element {
         </div>
 
         {/* stats moved to modal: _showActivityStatsModal */}
-        <div class="tab-bar" id="my-activity-tabs">
-          {TAB_CONFIG.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              class={`tab${activeTab === tab.id ? ' active' : ''}`}
-              data-afilter={tab.id}
-              data-i18n={tab.text}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {lt(tab.text, tab.text)}
-            </button>
-          ))}
-        </div>
-
-        <div class="card-list" id="my-activity-list">
+        <SwipeableActivityTabs activeTab={activeTab} onTabChange={setActiveTab}>
           {loading && events.length === 0 ? null : error && events.length === 0 ? (
             <div
               role="alert"
@@ -543,7 +601,7 @@ export default function MyActivitiesPage(): JSX.Element {
                     nowMs={nowMs}
                     operateCtx={operateCtx}
                     creatorRole={roles[creatorUid]}
-                    onEdit={(evDoc) => setEditingEvent(evDoc)}
+                    onEdit={handleEdit}
                     onLifecycle={(kind, evDoc) => {
                       void handleLifecycle(kind, evDoc);
                     }}
@@ -566,7 +624,7 @@ export default function MyActivitiesPage(): JSX.Element {
                   <button
                     type="button"
                     class="outline-btn my-activity-load-more-btn"
-                    disabled={loadingMore}
+                    disabled={loading || loadingMore}
                     onClick={() => {
                       void handleLoadMore();
                     }}
@@ -577,7 +635,7 @@ export default function MyActivitiesPage(): JSX.Element {
               )}
             </>
           )}
-        </div>
+        </SwipeableActivityTabs>
 
         {/* 查看名單彈窗 */}
         <MyActivityDetailModal
@@ -606,6 +664,14 @@ export default function MyActivitiesPage(): JSX.Element {
             }}
           />
         )}
+
+        {editingExternal && <ExternalEventEditModal
+          key={eventDocIdOf(editingExternal)}
+          event={editingExternal}
+          viewer={viewer}
+          onClose={() => setEditingExternal(null)}
+          onSaved={() => { void loadAll(activeTab, true); }}
+        />}
 
         {createEntry.overlays}
         <EventFormModal
