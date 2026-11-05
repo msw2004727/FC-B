@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   PLAYER_CARD_FONT_LOAD,
   PLAYER_CARD_IMAGE_TIMEOUT_MS,
-  LOGO_BOTTOM,
+  LOGO_CENTER_Y,
+  STAT_COLUMNS,
   QR_QUIET_MODULES,
   browserCreateQrMatrix,
   PLAYER_CARD_PNG_SCALE,
@@ -379,8 +380,8 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       // 整塊（含 4 模組 quiet zone）41 模組 × 2px ＝ 82px
       expect(QR_QUIET_MODULES).toBe(4);
       expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(82);
-      expect(layout.box.x).toBe(14);
-      expect(layout.box.y).toBeCloseTo(274.667, 2);
+      expect(layout.box.x).toBeCloseTo(30.333, 2);
+      expect(layout.box.y).toBeCloseTo(281.333, 2);
     });
 
     it('產圖時以網址呼叫 QR 產生並畫進 PNG（底色／碼色依深淺）', async () => {
@@ -417,19 +418,22 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       expect(unused).not.toHaveBeenCalled();
     });
 
-    it('版面不重疊：QR 在內框左下、與 logo 同底線，不壓三格與 logo，且對齊像素格', async () => {
+    it('版面：QR 中心＝應到欄中心 x、logo 中心 y；不壓三格與 logo、在內框內、對齊像素格', async () => {
       const { matrix } = await realMatrix(PROFILE_URL);
       const { box } = qrLayout(matrix.size);
       const right = box.x + box.size;
       const bottom = box.y + box.size;
-      // 內框（離卡邊 6、線寬 1.5）之內；左下圓角（半徑 12，圓心 18,306）只影響 y>306 的區域
-      expect(box.x).toBeGreaterThan(6 + 1.5);
-      expect(bottom).toBeLessThan(324 - 6 - 12);
-      // 與 logo 同一底線
-      expect(bottom).toBeCloseTo(LOGO_BOTTOM);
+      // 中心對齊：x＝應到欄中心，y＝logo 中心（logo 實際貼圖的中心）
+      expect(box.x + box.size / 2).toBeCloseTo(STAT_COLUMNS[0], 9);
+      expect(box.y + box.size / 2).toBeCloseTo(LOGO_CENTER_Y, 9);
+      // 內框（離卡邊 6、線寬 1.5，內側 x≥6.75、y≤317.25）之內；
+      // 左下圓角（半徑 12，圓心 18,306）只影響 x<18 且 y>306 的區域，QR 左緣在 18 右邊
+      expect(box.x).toBeGreaterThan(6.75);
+      expect(bottom).toBeLessThan(324 - 6.75);
+      expect(box.x).toBeGreaterThan(18);
       // 三格最下方縮寫基線 264（字級 7.5，下伸部不超過 2）
       expect(box.y).toBeGreaterThan(264 + 2);
-      // logo 寬最多 96，置中於 110：左緣 ≥ 62
+      // logo 寬最多 96，置中於 110：左緣 ≥ 62；退回文字商標也置中於 110
       expect(right).toBeLessThan(110 - 96 / 2);
       // 3 倍輸出時落在整數像素
       expect(Math.abs(box.x * 3 - Math.round(box.x * 3))).toBeLessThan(1e-9);

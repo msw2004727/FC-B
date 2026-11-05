@@ -65,15 +65,16 @@ export interface PlayerCardRenderOptions {
 
 /**
  * PNG 左下 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
- * 四周 4 模組 quiet zone（QR 標準最小值；取代原本 2 模組，複審 P3）；左緣 x=14、底緣與 logo 底線對齊（y=302）。
- * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 14～41.33、y 274.67～302。
+ * 四周 4 模組 quiet zone（QR 標準最小值；取代原本 2 模組，複審 P3）。
+ * 位置（站長定案，取代原本左緣 x=14、底緣對齊 logo 底線）：中心 x＝三格第一欄「應到」欄中心，中心 y＝底部 logo 中心。
+ * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 30.33～57.67、y 281.33～308.67（3 倍輸出 91～173、844～926px）。
  */
 export const QR_MODULE_PX = 2;
 export const QR_QUIET_MODULES = 4;
-export const QR_LEFT = 14;
 export const LOGO_CENTER_Y = 295;
 export const LOGO_HEIGHT = 14;
-export const LOGO_BOTTOM = LOGO_CENTER_Y + LOGO_HEIGHT / 2;
+/** 三格欄中心 x（卡面單位）：分隔線在 77／143。 */
+export const STAT_COLUMNS = [44, 110, 176] as const;
 
 export interface QrLayout {
   /** quiet zone 外框（卡面單位）。 */
@@ -85,7 +86,8 @@ export interface QrLayout {
 export function qrLayout(moduleCount: number, scale: number = PLAYER_CARD_PNG_SCALE): QrLayout {
   const module = QR_MODULE_PX / scale;
   const size = (moduleCount + QR_QUIET_MODULES * 2) * module;
-  return { box: { x: QR_LEFT, y: LOGO_BOTTOM - size, size }, module };
+  // 中心對齊「應到」欄中心 x 與 logo 中心 y。
+  return { box: { x: STAT_COLUMNS[0] - size / 2, y: LOGO_CENTER_Y - size / 2, size }, module };
 }
 
 /** 2x～3x：220×324 × 3 ＝ 660×972。 */
@@ -93,7 +95,6 @@ export const PLAYER_CARD_PNG_SCALE = 3;
 
 const AVATAR = { cx: 110, cy: 112, outer: 50, inner: 46.5, photo: 43 } as const;
 const GAUGE = { x: 44, y: 204, width: 132, height: 4 } as const;
-const STAT_COLUMNS = [44, 110, 176] as const;
 const STRIPE_STEP = 9 * Math.SQRT2; // 與 CSS repeating-linear-gradient(45deg) 間距 9 對齊
 const STRIPE_WIDTH = 1.5;
 /** 三格欄寬 66（分隔線 77／143）左右各留 3。 */
