@@ -14,6 +14,7 @@ export interface EventDetailPrimaryButtonProps {
   busy: boolean;
   flip: SignupFlip | null;
   onClick: () => void;
+  teamReservation?: { label: string; busyLabel: string; busy: boolean; disabled?: boolean; onClick: () => void } | null;
 }
 
 // 照 A `event-detail-signup.js#handleSignup` 第 1950～1965 行的文字替換。
@@ -67,7 +68,31 @@ function renderGlowWrap(
   );
 }
 
-export function EventDetailPrimaryButton({
+export function EventDetailPrimaryButton(props: EventDetailPrimaryButtonProps): JSX.Element {
+  const team = props.teamReservation;
+  const personal = <PersonalSignupButton {...props} />;
+  if (!team) return personal;
+  return (
+    <div class="event-signup-action-row">
+      <div class="event-signup-personal-action">{personal}</div>
+      <div class="event-signup-team-action">
+        <div class={'signup-glow-wrap team-reservation-action' + (team.busy ? ' loading' : '')}
+          style="--glow-c:#2563eb;--glow-c-light:#60a5fa">
+          <div class="signup-glow-border" /><div class="signup-glow-shadow" />
+          <div class="signup-flipper">
+            <button type="button" class="event-signup-team-button" style="background:#2563eb;color:#fff"
+              disabled={props.busy || team.busy || team.disabled} aria-busy={team.busy || undefined}
+              onClick={team.onClick}>{team.label}</button>
+          </div>
+          <div class="signup-loading-hint"><div class="mini-spinner" />
+            <span class="mini-text">{team.busyLabel}</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PersonalSignupButton({
   state,
   disabled,
   busy,

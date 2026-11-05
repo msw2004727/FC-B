@@ -40,8 +40,8 @@ export interface UseCancelRegistrationOptions {
     deduplicated: boolean;
     updatedEvent: DetailEvent | null;
   }): Promise<void>;
-  /** 同上；省略 result 視為伺服器已確認。 */
-  onBatchCancelled(result?: { deduplicated: boolean }): Promise<void>;
+  /** 同上；省略 result（ALREADY_CANCELLED）＝已確認但無投影，呼叫端須重讀活動文件。 */
+  onBatchCancelled(result?: { deduplicated: boolean; event?: unknown }): Promise<void>;
 }
 
 interface CancelModalState {
@@ -227,7 +227,11 @@ export function useCancelRegistration(
       toast.show({ message: response.deduplicated
         ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
       setModal(null);
-      await onBatchCancelled({ deduplicated: response.deduplicated === true });
+      // R-REG-002：成功時把伺服器佔位投影交給呼叫端套用，名單重讀不再自行計數。
+      await onBatchCancelled({
+        deduplicated: response.deduplicated === true,
+        ...(response.event ? { event: response.event } : {}),
+      });
     } catch (error) {
       if (!isAlive()) return;
       if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {

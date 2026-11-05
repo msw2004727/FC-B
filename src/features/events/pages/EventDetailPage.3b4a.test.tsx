@@ -100,7 +100,11 @@ vi.mock('../data/signup', () => ({
 vi.mock('../data/signup-state', () => ({
   getSignupButtonState: () => ({ action: 'signup', disabled: false }),
 }));
-vi.mock('../data/signup-restrictions', () => ({ getEventEarlyBirdCost: () => 0 }));
+// T-074b 報名前會走真實俱樂部選擇；保留正規化函式，僅隔離本檔不測的早鳥費用。
+vi.mock('../data/signup-restrictions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../data/signup-restrictions')>()),
+  getEventEarlyBirdCost: () => 0,
+}));
 vi.mock('../components/legacy/EventDetailPrimaryButton', () => ({
   EventDetailPrimaryButton: ({ onClick, disabled }: {
     onClick: () => void;
@@ -233,6 +237,9 @@ describe('M-092 詳情整合', () => {
       teamKey: 'B',
       user: { uid: 'owner', displayName: '主辦' },
     })));
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    expect(mocks.register.mock.calls[0]?.[0]).not.toHaveProperty('preferredTeamReservationTeamId');
+    expect(screen.queryByRole('dialog', { name: '選擇報名俱樂部' })).toBeNull();
   });
 
   it('random 正取成功附隊名，候補不附分配訊息', async () => {
@@ -245,6 +252,7 @@ describe('M-092 詳情整合', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
       message: '報名成功！ 你被分配到 藍隊',
     }));
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
     first.unmount();
     mocks.toast.mockClear();
     mocks.register.mockResolvedValue({
@@ -256,6 +264,8 @@ describe('M-092 詳情整合', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
       message: '已加入候補名單',
     }));
+    expect(mocks.register).toHaveBeenCalledTimes(2);
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
   });
 
   it('舊活動預載較晚返回，不覆蓋新活動分隊人數', async () => {

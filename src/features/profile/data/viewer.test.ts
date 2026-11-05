@@ -439,6 +439,84 @@ describe('loadViewer', () => {
   });
 });
 
+describe('T-074 viewer 職員清單（重用既有查詢）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('四查詢取名稱、public ID 與文件 ID 保底，多職務去重，不增加 getDoc', async () => {
+    mockFirestore({
+      users: { role: 'user', teamIds: ['member'] },
+      teams: [
+        { id: 'captain', name: '隊長隊', captainUid: 'u1', coachUids: ['u1'] },
+        { id: 'leader', teamName: '領隊隊', leaderUids: ['u1'] },
+        { id: 'legacy', name: '舊領隊', leaderUid: 'u1' },
+        { id: 'coach', coachUids: ['u1'] },
+        { id: 'blocked-legacy', leaderUid: 'u1', leaderUids: [] },
+        { id: 'member', captainUid: 'other' },
+      ],
+    });
+    const v = await loadViewer('u1');
+    expect(v.staffTeams).toEqual([
+      { id: 'captain', name: '隊長隊' }, { id: 'legacy', name: '舊領隊' },
+      { id: 'leader', name: '領隊隊' }, { id: 'coach', name: 'coach' },
+    ]);
+    expect(v.teamIds.has('member')).toBe(true);
+    expect(v.teamIds.has('blocked-legacy')).toBe(false);
+    const queries = vi.mocked(getDocs).mock.calls.map(([query]) => query as unknown as QueryLike);
+    expect(queries.filter(q => q._collection === 'teams').map(q => q._constraints?.[0])).toEqual([
+      { field: 'captainUid', op: '==', value: 'u1' },
+      { field: 'leaderUid', op: '==', value: 'u1' },
+      { field: 'leaderUids', op: 'array-contains', value: 'u1' },
+      { field: 'coachUids', op: 'array-contains', value: 'u1' },
+    ]);
+    expect(getDocs).toHaveBeenCalledTimes(5); // 既有四個 teams + 一個 adminUsers
+    expect(getDoc).toHaveBeenCalledTimes(3); // users、roleActivityCapabilities、userPermissionGrants
+  });
+
+  it('無 public ID 使用 document ID，名稱不足用 ID', async () => {
+    mockFirestore({ users: { role: 'user' }, teams: [{ captainUid: 'u1', name: '' }] });
+    expect((await loadViewer('u1')).staffTeams).toEqual([{ id: 'team-0', name: 'team-0' }]);
+  });
+
+  it.each(['user', 'admin', 'super_admin'])('%s 非職員不因會員／adminUsers 取得入口', async role => {
+    mockFirestore({
+      users: { role, teamIds: ['member'], displayName: '同名' },
+      teams: [{ id: 'member', captainUid: 'other', captainName: '同名', creatorUid: 'u1', ownerUid: 'u1' }],
+      adminUsers: [{ uid: 'u1', teamIds: ['admin-member'] }, { uid: 'other', name: '同名', teamIds: ['wrong'] }],
+    });
+    const v = await loadViewer('u1');
+    expect(v.staffTeams).toEqual([]);
+    expect([...v.teamIds]).toEqual(['member', 'admin-member']);
+  });
+
+  it('查詢失敗回空職員清單，不另查詢補救', async () => {
+    mockFirestore({ users: { role: 'user', teamIds: ['member'] } });
+    vi.mocked(getDocs).mockRejectedValue(new Error('private backend error'));
+    const v = await loadViewer('u1');
+    expect(v.staffTeams).toEqual([]);
+    expect([...v.teamIds]).toEqual(['member']);
+    expect(getDocs).toHaveBeenCalledTimes(5);
+  });
+
+  it('部分查詢失敗仍保留其他已驗證的職員選項', async () => {
+    mockFirestore({ users: { role: 'user' }, teams: [{ id: 'coach', coachUids: ['u1'], name: '教練隊' }] });
+    vi.mocked(getDocs).mockRejectedValueOnce(new Error('captain query unavailable'));
+    const v = await loadViewer('u1');
+    expect(v.staffTeams).toEqual([{ id: 'coach', name: '教練隊' }]);
+    expect(getDocs).toHaveBeenCalledTimes(5);
+  });
+
+  it('訪客與使用者文件不存在的保底清單為空，不查 teams', async () => {
+    expect(createGuestViewer().staffTeams).toEqual([]);
+    mockFirestore({ users: null });
+    expect((await loadViewer('missing')).staffTeams).toEqual([]);
+    expect(getDocs).not.toHaveBeenCalled();
+  });
+});
+
 describe('createViewerLoader', () => {
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {

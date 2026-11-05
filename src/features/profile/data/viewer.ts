@@ -21,6 +21,7 @@ import { getFirebase } from '@/data/firebase';
 import { getCurrentUser } from '@/data/auth';
 import { emit, on } from '@/core/events';
 import type { ViewerContext } from '@/features/events/data/types';
+import { getStaffTeams, type StaffTeamCandidate, type StaffTeamOption } from '@/features/events/data/team-staff';
 
 import {
   buildPermissionCheckerInput,
@@ -32,7 +33,6 @@ import {
 import {
   computeVisibleTeamIds,
   getPrivateListRoleLevel,
-  type VisibilityTeamDoc,
   type VisibilityUserDoc,
 } from './viewer-visibility';
 
@@ -46,6 +46,8 @@ export interface ViewerPermissionSources {
 }
 
 export interface ViewerView extends ViewerContext {
+  /** T-074：重用四個既有 teams 查詢；缺省時視為無職員俱樂部。 */
+  staffTeams?: readonly StaffTeamOption[];
   role: string;
   displayName: string | null;
   pictureUrl: string | null;
@@ -73,6 +75,7 @@ export function createGuestViewer(): ViewerView {
   return {
     uid: null,
     teamIds: EMPTY_TEAM_IDS,
+    staffTeams: [],
     hasPermission: alwaysFalse,
     roleLevel: getPrivateListRoleLevel('guest'),
     role: 'guest',
@@ -88,6 +91,7 @@ export function createMinimalViewer(uid: string): ViewerView {
   return {
     uid,
     teamIds: EMPTY_TEAM_IDS,
+    staffTeams: [],
     hasPermission: alwaysFalse,
     roleLevel: getPrivateListRoleLevel('user'),
     role: 'user',
@@ -208,26 +212,28 @@ async function loadCustomRolesForRole(
  * leaderUid 查詢可能命中具有不同 leaderUids 陣列的舊文件。
  * 必須保留完整幹部欄位，交給純函式再次判定。
  */
-async function loadTeamIdsForUser(
+async function loadTeamsForUser(
   fs: FirestoreApi,
   db: Firestore,
   uid: string,
   userDoc: VisibilityUserDoc | null,
-): Promise<Set<string>> {
+): Promise<{ teamIds: Set<string>; staffTeams: StaffTeamOption[] }> {
   const { collection, getDocs, query, where } = fs;
-  if (!userDoc) return computeVisibleTeamIds(uid, null, []);
+  if (!userDoc) return { teamIds: computeVisibleTeamIds(uid, null, []), staffTeams: [] };
 
   const runTeamQuery = async (
     label: string,
     teamQuery: Query,
-  ): Promise<VisibilityTeamDoc[]> => {
+  ): Promise<StaffTeamCandidate[]> => {
     try {
       const snap = await getDocs(teamQuery);
-      return snap.docs.map((snapshot): VisibilityTeamDoc => {
+      return snap.docs.map((snapshot): StaffTeamCandidate => {
         const data = snapshot.data() as Record<string, unknown>;
         return {
           // 保留 public id；沒有 id 欄位時才使用 Firestore document ID。
           id: data.id ?? snapshot.id,
+          name: data.name,
+          teamName: data.teamName,
           captainUid: data.captainUid,
           leaderUids: data.leaderUids,
           leaderUid: data.leaderUid,
@@ -282,15 +288,16 @@ async function loadTeamIdsForUser(
     loadAdminUser(),
   ]);
 
+  const candidates = [...captains, ...legacyLeaders, ...leaders, ...coaches];
   const ids = computeVisibleTeamIds(
     uid,
     userDoc,
-    [...captains, ...legacyLeaders, ...leaders, ...coaches],
+    candidates,
   );
 
   // R-ID-002：僅補入 UID 精確匹配的 adminUsers 文件，不比對名稱。
   for (const id of computeVisibleTeamIds(uid, adminUser, [])) ids.add(id);
-  return ids;
+  return { teamIds: ids, staffTeams: getStaffTeams(uid, candidates) };
 }
 
 /**
@@ -334,12 +341,12 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     ? Promise.resolve([])
     : loadCustomRolesForRole(fs, db, role);
 
-  const [roleRes, grantRes, capRes, customRoles, teamIds] = await Promise.all([
+  const [roleRes, grantRes, capRes, customRoles, teams] = await Promise.all([
     roleDocPromise,
     safeGetDoc(getDoc(doc(db, 'userPermissionGrants', uid))),
     capDocPromise,
     customRolesPromise,
-    loadTeamIdsForUser(fs, db, uid, visibilityUser),
+    loadTeamsForUser(fs, db, uid, visibilityUser),
   ]);
 
   if (!roleRes.ok) warnOnce('rolePermissions', roleRes.error);
@@ -366,7 +373,8 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
 
   return {
     uid,
-    teamIds,
+    teamIds: teams.teamIds,
+    staffTeams: teams.staffTeams,
     hasPermission,
     roleLevel: getPrivateListRoleLevel(role, checkerInput.customRoles),
     role,

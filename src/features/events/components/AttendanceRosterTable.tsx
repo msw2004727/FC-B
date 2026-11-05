@@ -55,6 +55,8 @@ export interface AttendanceRosterTableProps {
   editing?: boolean;
   /** 是否正在 flush／送出中（顯示「儲存中...」並 disabled）。 */
   submitting?: boolean;
+  canAdjustTeamReservation?: (teamId: string) => boolean;
+  onAdjustTeamReservation?: (teamId: string) => void;
   onStartEdit?: () => void;
   onCloseEdit?: () => void;
   onKickParticipant?: (person: ConfirmedRosterPerson) => void;
@@ -92,6 +94,8 @@ export function AttendanceRosterTable({
   publicRosterOnly = false,
   editing = false,
   submitting = false,
+  canAdjustTeamReservation,
+  onAdjustTeamReservation,
   onStartEdit,
   onCloseEdit,
   onKickParticipant,
@@ -499,6 +503,11 @@ export function AttendanceRosterTable({
                         <span>{`已使用: ${Number(p.usedSlots || 0)}`}</span>
                         <span>{`剩餘: ${Number(p.remainingSlots || 0)}`}</span>
                       </span>
+                      {!submitting && p.teamReservationTeamId
+                        && canAdjustTeamReservation?.(p.teamReservationTeamId) && (
+                        <button type="button" class="team-reservation-adjust-btn"
+                          onClick={() => onAdjustTeamReservation?.(p.teamReservationTeamId!)}>快速調整</button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -707,4 +707,50 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     await act(async () => { resolveRegs([selfA]); });
     await waitFor(() => expect(busyButton(view.container)).toBeNull());
   });
+
+  // R-REG-002：結果未知且無 Callable 投影時，current 改用重讀的活動文件（伺服器重算值）。
+  function capacityText(container: Element): string | null | undefined {
+    return container.querySelector('[data-detail-field="capacity-count"]')?.textContent;
+  }
+
+  it('deduplicated 報名後人數改用重讀的活動文件', async () => {
+    const before = { ...detailA, event: { ...detailA.event, current: 0, max: 10 } };
+    const fresh = { ...detailA, event: { ...detailA.event, current: 1, max: 10 } };
+    // 送出寫入前一律讀到舊值；寫入後的重讀才拿到伺服器重算值。
+    mocks.detail.mockImplementation(async () => (mocks.register.mock.calls.length ? fresh : before));
+    mocks.register.mockResolvedValue({ deduplicated: true });
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名處理中，請稍候' }));
+    await waitFor(() => expect(capacityText(view.container)).toContain('已報 1/10'));
+  });
+
+  it('報名逾時後人數改用重讀的活動文件', async () => {
+    const before = { ...detailA, event: { ...detailA.event, current: 0, max: 10 } };
+    const fresh = { ...detailA, event: { ...detailA.event, current: 1, max: 10 } };
+    mocks.detail.mockImplementation(async () => (mocks.register.mock.calls.length ? fresh : before));
+    mocks.register.mockRejectedValue(new SignupError({
+      code: 'deadline-exceeded',
+      originalCode: 'CALLABLE_TIMEOUT',
+      messageKey: 'event.signup.error.unknown',
+      message: '連線逾時，請檢查網路後重新整理再試',
+    }));
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(capacityText(view.container)).toContain('已報 1/10'));
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicated 取消後人數改用重讀的活動文件', async () => {
+    const before = { ...detailA, event: { ...detailA.event, current: 1, max: 10 } };
+    const fresh = { ...detailA, event: { ...detailA.event, current: 0, max: 10 } };
+    mocks.detail.mockImplementation(async () => (mocks.cancel.mock.calls.length ? fresh : before));
+    mocks.history.mockResolvedValue([selfA]);
+    mocks.registrations.mockResolvedValue([selfA]);
+    mocks.cancel.mockResolvedValue({ deduplicated: true });
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '取消處理中，請稍候' }));
+    await waitFor(() => expect(capacityText(view.container)).toContain('已報 0/10'));
+  });
 });
