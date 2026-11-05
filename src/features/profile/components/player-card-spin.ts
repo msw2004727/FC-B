@@ -66,6 +66,7 @@ export interface PlayerCardSpinHandlers {
   onPointerMove: (e: PointerEvent) => void;
   onPointerUp: (e: PointerEvent) => void;
   onPointerCancel: (e: PointerEvent) => void;
+  onLostPointerCapture: (e: PointerEvent) => void;
 }
 
 export function usePlayerCardSpin(locked: boolean): {
@@ -109,9 +110,14 @@ export function usePlayerCardSpin(locked: boolean): {
       st.vel = 0;
       render();
     };
-    const settle = (): void => {
+    /** dir≠0（慣性收尾）時取轉動方向上的下一個 180° 倍數，避免最後倒轉；dir=0 取最近一面。 */
+    const settle = (dir = 0): void => {
       stop();
-      const target = nearestFace(st.angle);
+      const target = dir > 0
+        ? Math.ceil(st.angle / 180) * 180
+        : dir < 0
+          ? Math.floor(st.angle / 180) * 180
+          : nearestFace(st.angle);
       if (target === st.angle) return;
       if (prefersReducedMotion()) {
         snap(target);
@@ -134,6 +140,7 @@ export function usePlayerCardSpin(locked: boolean): {
     };
     const coast = (): void => {
       stop();
+      const dir = Math.sign(st.vel);
       let last = performance.now();
       const step = (t: number): void => {
         const dt = Math.min(MAX_FRAME_MS, Math.max(0, t - last));
@@ -144,7 +151,7 @@ export function usePlayerCardSpin(locked: boolean): {
         if (Math.abs(st.vel) > STOP_DEG_PER_MS) st.raf = requestAnimationFrame(step);
         else {
           st.raf = 0;
-          settle();
+          settle(dir);
         }
       };
       st.raf = requestAnimationFrame(step);
@@ -152,6 +159,8 @@ export function usePlayerCardSpin(locked: boolean): {
 
     const onPointerDown = (e: PointerEvent): void => {
       if (lockedRef.current) return;
+      // 已有一指在操作時，第二指不搶
+      if (st.mode !== 'idle') return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       stop();
       st.mode = 'pending';
@@ -163,6 +172,11 @@ export function usePlayerCardSpin(locked: boolean): {
     };
     const onPointerMove = (e: PointerEvent): void => {
       if (st.mode === 'idle' || e.pointerId !== st.pointerId) return;
+      // 滑鼠在卡外放開而沒收到 pointerup：移動時已無按鍵就視為放開
+      if (e.pointerType === 'mouse' && e.buttons === 0) {
+        release(e, true);
+        return;
+      }
       const dx = e.clientX - st.startX;
       const dy = e.clientY - st.startY;
       if (st.mode === 'pending') {
@@ -228,6 +242,7 @@ export function usePlayerCardSpin(locked: boolean): {
         onPointerMove,
         onPointerUp: (e) => release(e, false),
         onPointerCancel: (e) => release(e, true),
+        onLostPointerCapture: (e) => release(e, true),
       },
     };
   }

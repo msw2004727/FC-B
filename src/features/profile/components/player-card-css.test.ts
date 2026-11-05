@@ -124,7 +124,7 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
 
   it('撥動翻面：舞台只讓垂直捲動、兩面隱藏背面（含 -webkit-）、背面與正面同底同框；鎖頭權重高於 .legacy-ui button', () => {
     const stage = card.find((r) => r.selector === '.player-card-stage')!;
-    expect(stage.body).toMatch(/touch-action:\s*pan-y/);
+    expect(stage.body).toMatch(/touch-action:\s*pan-y pinch-zoom;/);
     expect(stage.body).toMatch(/-webkit-perspective:/);
     const flip = card.find((r) => r.selector === '.player-card-flip')!;
     expect(flip.body).toMatch(/-webkit-transform-style:\s*preserve-3d/);
@@ -139,6 +139,10 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(card.some((r) => r.selector === '[data-theme="dark"] .player-card-back')).toBe(true);
     const lock = card.find((r) => /\.player-card-lock$/.test(r.selector))!;
     expect(greater(specificity(lock.selector), specificity(scoped('button')))).toBe(true);
+    // 觸控擴大範圍的 ::before 必須有 content，否則偽元素不會產生
+    const hit = card.find((r) => /\.player-card-lock::before$/.test(r.selector))!;
+    expect(hit.body).toMatch(/content:\s*'';/);
+    expect(hit.body).toMatch(/inset:\s*-7px/);
   });
 });
 

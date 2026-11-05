@@ -71,7 +71,7 @@ export function PlayerCard({
         type="button"
         class={`player-card-lock${locked ? ' is-locked' : ''}`}
         aria-pressed={locked ? 'true' : 'false'}
-        aria-label={t(locked ? 'profile.playerCard.unlock' : 'profile.playerCard.lock')}
+        aria-label={t('profile.playerCard.lock')}
         onClick={toggleLock}
       >
         <LockIcon locked={locked} />
@@ -82,6 +82,8 @@ export function PlayerCard({
         onPointerMove={handlers.onPointerMove}
         onPointerUp={handlers.onPointerUp}
         onPointerCancel={handlers.onPointerCancel}
+        onLostPointerCapture={handlers.onLostPointerCapture}
+        onDragStart={(e) => e.preventDefault()}
       >
         <div class="player-card-flip" ref={flipRef}>
           <div class="player-card" data-theme-variant={theme}>
@@ -136,6 +138,7 @@ export function PlayerCard({
               class="player-card-logo"
               src={logoUrl}
               alt="ToosterX"
+              draggable={false}
               decoding="async"
               loading="lazy"
             />
@@ -143,7 +146,7 @@ export function PlayerCard({
           </div>
           <div class="player-card-back" data-theme-variant={theme} aria-hidden="true">
             <div class="player-card-frame" />
-            <img class="player-card-back-logo" src={logoUrl} alt="" decoding="async" loading="lazy" />
+            <img class="player-card-back-logo" src={logoUrl} alt="" draggable={false} decoding="async" loading="lazy" />
             <div class="player-card-shine" style={shineStyle} />
           </div>
         </div>

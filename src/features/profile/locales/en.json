@@ -94,7 +94,6 @@
     "shareAgain": "Share",
     "save": "Save",
     "shareUnavailable": "Sharing isn't available. Tap Save instead.",
-    "lock": "Lock rotation",
-    "unlock": "Unlock rotation"
+    "lock": "Lock rotation"
   }
 }

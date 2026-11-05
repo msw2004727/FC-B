@@ -94,7 +94,6 @@
     "shareAgain": "分享",
     "save": "儲存",
     "shareUnavailable": "無法開啟分享，請改按儲存",
-    "lock": "鎖定旋轉",
-    "unlock": "解除鎖定旋轉"
+    "lock": "鎖定旋轉"
   }
 }

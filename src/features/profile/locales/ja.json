@@ -94,7 +94,6 @@
     "shareAgain": "共有",
     "save": "保存",
     "shareUnavailable": "共有を開けません。「保存」を押してください。",
-    "lock": "回転をロック",
-    "unlock": "回転のロックを解除"
+    "lock": "回転をロック"
   }
 }

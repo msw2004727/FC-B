@@ -511,7 +511,8 @@ describe('T-092 球員卡（DOM）', () => {
       fireEvent.click(parts(first.container).lock);
       const lock = parts(first.container).lock;
       expect(lock.getAttribute('aria-pressed')).toBe('true');
-      expect(lock.getAttribute('aria-label')).toBe('解除鎖定旋轉');
+      // 文案固定，狀態只靠 aria-pressed
+      expect(lock.getAttribute('aria-label')).toBe('鎖定旋轉');
       expect(lock.classList.contains('is-locked')).toBe(true);
       expect(localStorage.getItem(LOCK_KEY)).toBe('1');
       cleanup();
@@ -601,6 +602,179 @@ describe('T-092 球員卡（DOM）', () => {
       expect(raf).not.toHaveBeenCalled();
     });
 
+    describe('慣性與收尾（手動推進 rAF 與時間）', () => {
+      let now = 0;
+      let pending: Map<number, FrameRequestCallback>;
+      let caf: ReturnType<typeof vi.fn>;
+      let nowSpy: { mockRestore: () => void };
+
+      beforeEach(() => {
+        now = 1000;
+        pending = new Map();
+        let nextId = 1;
+        raf = vi.fn((cb: FrameRequestCallback) => {
+          const id = nextId++;
+          pending.set(id, cb);
+          return id;
+        });
+        caf = vi.fn((id: number) => {
+          pending.delete(id);
+        });
+        vi.stubGlobal('requestAnimationFrame', raf);
+        vi.stubGlobal('cancelAnimationFrame', caf);
+        nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => now);
+      });
+
+      afterEach(() => {
+        nowSpy.mockRestore();
+      });
+
+      function flush(maxFrames = 5000): void {
+        for (let i = 0; i < maxFrames && pending.size; i++) {
+          const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+          pending.delete(id);
+          now += 16;
+          cb(now);
+        }
+        expect(pending.size).toBe(0);
+      }
+
+      /** 記錄每次寫入的 rotateY 角度。 */
+      function recordAngles(flip: HTMLElement): number[] {
+        const angles: number[] = [];
+        Object.defineProperty(flip.style, 'transform', {
+          configurable: true,
+          get: () => (angles.length ? `rotateY(${angles[angles.length - 1]}deg)` : ''),
+          set: (v: string) => {
+            angles.push(Number(/rotateY\((-?[\d.e+-]+)deg\)/.exec(v)![1]));
+          },
+        });
+        return angles;
+      }
+
+      const ptr = (x: number, extra: Record<string, unknown> = {}) => ({
+        pointerId: 7, pointerType: 'touch', clientX: x, clientY: 100, ...extra,
+      });
+
+      /** 30ms 內從 x=100 撥到 toX，模擬用力一撥。 */
+      function flick(stage: Element, toX: number): void {
+        fireEvent.pointerDown(stage, ptr(100));
+        const steps = 3;
+        for (let i = 1; i <= steps; i++) {
+          now += 10;
+          fireEvent.pointerMove(stage, ptr(100 + ((toX - 100) * i) / steps));
+        }
+        fireEvent.pointerUp(stage, ptr(toX));
+      }
+
+      for (const dir of [1, -1]) {
+        it(`用力撥（${dir > 0 ? '向右' : '向左'}）：轉多圈、全程不倒轉，停在 180° 倍數`, () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          flick(stage, 100 + dir * 100);
+          flush();
+          // 最後一筆是收尾後正規化到 0／180，前面是連續角度
+          const raw = angles.slice(0, -1);
+          for (let i = 1; i < raw.length; i++) {
+            expect((raw[i]! - raw[i - 1]!) * dir, `frame ${i}`).toBeGreaterThanOrEqual(0);
+          }
+          const target = raw[raw.length - 1]!;
+          expect(Math.abs(target)).toBeGreaterThan(360);
+          expect(Math.abs(target % 180)).toBe(0);
+          const final = angles[angles.length - 1]!;
+          expect([0, 180]).toContain(final);
+          expect(((target % 360) + 360) % 360).toBe(final);
+        });
+      }
+
+      it('pointercancel：不慣性，對齊最近一面', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        const angles = recordAngles(flip);
+        fireEvent.pointerDown(stage, ptr(100));
+        now += 10;
+        fireEvent.pointerMove(stage, ptr(160));
+        now += 10;
+        fireEvent.pointerMove(stage, ptr(250)); // 120°
+        fireEvent.pointerCancel(stage, ptr(250));
+        flush();
+        expect(Math.max(...angles)).toBe(180);
+        expect(angles[angles.length - 1]).toBe(180);
+      });
+
+      it('滑鼠在卡外放開（移動時 buttons=0）視為放開並對齊', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100, { pointerType: 'mouse', button: 0, buttons: 1 }));
+        now += 10;
+        fireEvent.pointerMove(stage, ptr(200, { pointerType: 'mouse', buttons: 1 })); // 80°
+        expect(flip.style.transform).toBe('rotateY(80deg)');
+        now += 10;
+        fireEvent.pointerMove(stage, ptr(400, { pointerType: 'mouse', buttons: 0 }));
+        expect(flip.style.transform).toBe('rotateY(80deg)');
+        flush();
+        expect(flip.style.transform).toBe('rotateY(0deg)');
+        // 之後再移動不再跟手
+        fireEvent.pointerMove(stage, ptr(300, { pointerType: 'mouse', buttons: 0 }));
+        expect(flip.style.transform).toBe('rotateY(0deg)');
+      });
+
+      it('lostpointercapture：視同取消並對齊', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerMove(stage, ptr(160));
+        fireEvent.pointerMove(stage, ptr(250)); // 120°
+        fireEvent(stage, new PointerEvent('lostpointercapture', { bubbles: true, pointerId: 7 }));
+        flush();
+        expect(flip.style.transform).toBe('rotateY(180deg)');
+      });
+
+      it('第二指不搶：已有一指拖曳時另一指的按下與移動被忽略', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerMove(stage, ptr(200)); // 80°
+        fireEvent.pointerDown(stage, ptr(0, { pointerId: 8 }));
+        fireEvent.pointerMove(stage, ptr(300, { pointerId: 8 }));
+        expect(flip.style.transform).toBe('rotateY(80deg)');
+        fireEvent.pointerMove(stage, ptr(225)); // 原手指仍跟手：100°
+        expect(flip.style.transform).toBe('rotateY(100deg)');
+      });
+
+      it('一般動畫路徑：轉到一半鎖上，動畫對齊到最近一面', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip, lock } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerMove(stage, ptr(160));
+        fireEvent.pointerMove(stage, ptr(250)); // 120°
+        fireEvent.click(lock);
+        expect(pending.size).toBe(1);
+        flush();
+        expect(flip.style.transform).toBe('rotateY(180deg)');
+        fireEvent.pointerUp(stage, ptr(250));
+        expect(pending.size).toBe(0);
+        expect(flip.style.transform).toBe('rotateY(180deg)');
+      });
+
+      it('轉動中卸載：取消排好的 rAF', () => {
+        const view = renderTop(viewer());
+        flick(parts(view.container).stage, 200);
+        for (let i = 0; i < 3; i++) {
+          const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+          pending.delete(id);
+          now += 16;
+          cb(now);
+        }
+        expect(pending.size).toBe(1);
+        const [lastId] = [...pending.keys()];
+        view.unmount();
+        expect(caf).toHaveBeenCalledWith(lastId);
+        expect(pending.size).toBe(0);
+      });
+    });
+
     it('背面：同尺寸外框＋原廠 logo（依深淺色），不含正面資料', () => {
       document.documentElement.setAttribute('data-theme', 'light');
       const light = renderTop(viewer('user', ['t1']));
@@ -610,6 +784,12 @@ describe('T-092 球員卡（DOM）', () => {
       expect(back.querySelector('.player-card-frame')).not.toBeNull();
       expect(back.querySelector('.player-card-back-logo')?.getAttribute('src')).toBe('/assets/logo-black.webp');
       expect(back.textContent).toBe('');
+      // 圖片不可被拖走（桌機拖曳時不會變成原生圖片拖放）
+      expect(back.querySelector('.player-card-back-logo')?.getAttribute('draggable')).toBe('false');
+      expect(light.container.querySelector('.player-card-logo')?.getAttribute('draggable')).toBe('false');
+      const dragStart = new Event('dragstart', { bubbles: true, cancelable: true });
+      light.container.querySelector('.player-card-stage')!.dispatchEvent(dragStart);
+      expect(dragStart.defaultPrevented).toBe(true);
       expect(back.querySelector('#profile-avatar, .player-card-club, .stat-item')).toBeNull();
       // 正面仍是第一個 .player-card，PNG 仍只畫正面
       expect(light.container.querySelector('.player-card')?.classList.contains('player-card-back')).toBe(false);

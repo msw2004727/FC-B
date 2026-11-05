@@ -94,7 +94,6 @@
     "shareAgain": "分享",
     "save": "保存",
     "shareUnavailable": "无法打开分享，请改按保存",
-    "lock": "锁定旋转",
-    "unlock": "解除锁定旋转"
+    "lock": "锁定旋转"
   }
 }

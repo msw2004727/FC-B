@@ -259,7 +259,7 @@
 
 /*
  * 撥動翻面＋鎖頭（站長 11-05 預覽定案）：外層留出鎖頭列（鎖頭在卡片右上方外側、不跟著轉），
- * 舞台負責透視與手勢（touch-action: pan-y 讓垂直捲動照常交給頁面），flip 繞 Y 軸轉，正背兩面隱藏背面。
+ * 舞台負責透視與手勢（touch-action: pan-y pinch-zoom 讓垂直捲動與雙指縮放照常交給頁面），flip 繞 Y 軸轉，正背兩面隱藏背面。
  * 角度由 player-card-spin.ts 直接寫 transform；PNG 另由 Canvas 畫正面，不受旋轉影響。
  */
 .player-card-spin {
@@ -273,7 +273,7 @@
   height: 356px;
   -webkit-perspective: 1000px;
   perspective: 1000px;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
   cursor: grab;
   -webkit-user-select: none;
   user-select: none;
@@ -335,7 +335,7 @@
 }
 /* 視覺 30px，觸控範圍擴到 44px。 */
 .legacy-ui .player-card-lock::before {
-  content: ;
+  content: '';
   position: absolute;
   inset: -7px;
 }
