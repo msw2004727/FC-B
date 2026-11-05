@@ -56,6 +56,7 @@ import {
 } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import {
+  carryLoginRedirectParams,
   cleanLoginParamsFromUrl,
   hasLoginCancelParams,
   hasLoginRedirectParams,
@@ -240,8 +241,9 @@ export function App({
     // 登入流程的 callable 要等 getFirebase()，不立刻放行會多等 3～10 秒（冪等：沒有暫緩或已放行時是空操作）。
     releaseFirebaseAuthHold();
     if (pendingRef.current || externalPending || currentUid.current !== null) {
-      // 開頁接手但已有登入在進行或已登入：不接手，清掉回跳參數，避免舊 code 留在網址（審查 P3-4）。
-      if (resume) cleanLoginParamsFromUrl();
+      // 開頁接手但已登入：清掉回跳參數（審查 P3-4）。登入進行中則不能清——進行中的 signIn
+      // 可能還沒跑到 liff.init，code 被清掉會讀不到而再導向 LINE（Grok 交叉審查 P1）。
+      if (resume && currentUid.current !== null) cleanLoginParamsFromUrl();
       return;
     }
     pendingRef.current = true;
@@ -310,9 +312,15 @@ export function App({
   // M-034、M-035：監聽全域登入請求事件（如個人頁未登入 LINE 登入按鈕、底部分頁未登入守門）
   useEffect(() => {
     return on('auth:login-request', () => {
+      // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
+      // 這次開頁不可能呼叫 liff.login()，避免與接手互搶後無限重導（Grok 交叉審查 P1）。
+      if (typeof location !== 'undefined' && hasLoginRedirectParams(location.href)) {
+        runLogin(true);
+        return;
+      }
       handleLogin();
     });
-  }, [handleLogin]);
+  }, [handleLogin, runLogin]);
 
   const [routeAccess, setRouteAccess] = useState<(RouteAccessContext & Partial<ViewerView>) | null>(null);
   const pending = loginPending || externalPending;
@@ -477,7 +485,8 @@ function RouteArea({
   const [stallRetryKey, setStallRetryKey] = useState(0);
 
   useLayoutEffect(() => {
-    if (redirect !== null) location.route(redirect, true);
+    // 帶 LINE 授權回跳參數時一併帶到目的網址，留給接手登入的 liff.init 讀（Grok 交叉審查 P2）。
+    if (redirect !== null) location.route(carryLoginRedirectParams(location.url, redirect), true);
   }, [redirect, location.route]);
 
   // 暫緩 Auth 註冊只為了讓「首頁」的公開讀取先跑完；人不在首頁（含分享連結導向）就立刻放行（T-041）。

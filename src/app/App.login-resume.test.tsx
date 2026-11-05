@@ -122,12 +122,53 @@ describe('LINE 授權回跳：開頁自動接手登入', () => {
     expect(auth.signIn).not.toHaveBeenCalled();
   });
 
-  it('開頁接手時已有外部登入進行中：不接手，但清掉回跳參數（審查 P3-4）', async () => {
+  // 測試同步更新：ddc5ad9（審查 P3-4）原本在「進行中」也清參數；Grok 交叉審查 P1 指出進行中的 signIn
+  // 可能還沒讀到 code，清掉會讓它再導向 LINE，改為只有已登入才清。
+  it('開頁接手時已有登入進行中：不接手，也不清回跳參數（留給進行中的 liff.init 讀）', async () => {
     history.replaceState(null, '', '/events/e1?code=c&state=s&liffClientId=x&tab=2');
     authRestoresAs(null);
     render(<App loginPending />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    await pause(40);
+    expect(location.search).toBe('?code=c&state=s&liffClientId=x&tab=2');
+    expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
+  it('已登入且網址只有 liff.state：清掉，之後不再進接手（Grok 交叉審查 P2）', async () => {
+    history.replaceState(null, '', '/?liff.state=%2Fevents%2Fabc&tab=2');
+    authRestoresAs('existing-user');
+    render(<App />);
     await waitFor(() => expect(location.search).toBe('?tab=2'));
     expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
+  it('分享連結 /?event=…＋回跳參數：改寫後的網址保留 code，接手時仍讀得到（Grok 交叉審查 P2）', async () => {
+    history.replaceState(null, '', '/?event=abc&code=c&state=s&liffClientId=x');
+    authRestoresAs(null);
+    let searchAtSignIn = '';
+    auth.signIn.mockImplementation(async () => {
+      searchAtSignIn = location.search;
+      return LOGIN_USER;
+    });
+    render(<App />);
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+    expect(location.pathname).toBe('/events/abc');
+    expect(searchAtSignIn).toContain('code=c');
+    expect(searchAtSignIn).toContain('liffClientId=x');
+  });
+
+  it('網址帶回跳參數時的 auth:login-request 走接手模式（Grok 交叉審查 P1）', async () => {
+    history.replaceState(null, '', '/events/e1?code=c&state=s&liffClientId=x');
+    // Auth 還原延遲：先發登入要求
+    auth.onAuthChanged.mockReturnValue(() => undefined);
+    auth.signIn.mockImplementation(() => new Promise<AuthUser>(() => undefined));
+    render(<App />);
+    await pause(20);
+    await act(async () => {
+      emit('auth:login-request', {});
+    });
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+    expect(auth.signIn).toHaveBeenCalledWith({ interactive: false });
   });
 
   it('接手登入進行中再按登入：不重複觸發', async () => {

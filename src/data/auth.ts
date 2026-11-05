@@ -73,6 +73,8 @@ let liffInitialized = false;
 
 /** liff.init／LIFF 登出的等待上限（照 A `LineAuth.init` 的 8 秒 `_withTimeout`）。 */
 export const LIFF_STEP_TIMEOUT_MS = 8000;
+/** createCustomToken＋signInWithCustomToken 的等待上限。 */
+export const LOGIN_TOKEN_TIMEOUT_MS = 15_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -104,7 +106,10 @@ function emitAuth(uid: string | null): void {
  */
 export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
   const interactive = options.interactive !== false;
+  // liff.init 之前就失敗的三處（emulator、缺設定、SDK 載入失敗）也先清回跳參數，
+  // code 不留在網址被重整或分享（Grok 交叉審查 P2）。
   if (shouldUseEmulator()) {
+    cleanLoginParamsFromUrl();
     throw new Error(
       '[auth] emulator 模式請改用 devSignIn(uid, claims)；正式 signIn 會呼叫 A 版 createCustomToken，' +
         '其會拒絕 localhost 來源。',
@@ -113,6 +118,7 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
 
   const liffId = import.meta.env.VITE_LIFF_ID;
   if (!liffId) {
+    cleanLoginParamsFromUrl();
     throw new Error('[auth] 缺少 VITE_LIFF_ID 設定（請見 .env.example）');
   }
 
@@ -121,6 +127,7 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
     const liffModule = await import('@line/liff');
     liff = liffModule.default;
   } catch (err) {
+    cleanLoginParamsFromUrl();
     toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
     throw err;
   }
@@ -168,15 +175,16 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
     throw new Error('[auth] 無法取得 LINE access token，LIFF session 可能失效');
   }
 
-  const { customToken: rawCustomToken } = await callFn('createCustomToken', { accessToken });
-  if (typeof rawCustomToken !== 'string' || !rawCustomToken) {
-    throw new Error('[auth] createCustomToken 未回傳 customToken');
-  }
-  const customToken = rawCustomToken;
-
-  const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
-  const credential = await authMod.signInWithCustomToken(ctx.auth, customToken);
-  const user = credential.user;
+  // 換發 Firebase 登入：Callable 預設約 70 秒才放棄，登入鈕會一直停著；設 15 秒上限（Grok 交叉審查 P3）。
+  const user = await withTimeout((async () => {
+    const { customToken: rawCustomToken } = await callFn('createCustomToken', { accessToken });
+    if (typeof rawCustomToken !== 'string' || !rawCustomToken) {
+      throw new Error('[auth] createCustomToken 未回傳 customToken');
+    }
+    const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
+    const credential = await authMod.signInWithCustomToken(ctx.auth, rawCustomToken);
+    return credential.user;
+  })(), LOGIN_TOKEN_TIMEOUT_MS, '登入換發');
 
   let displayName: string | null = null;
   let pictureUrl: string | null = null;
@@ -243,32 +251,40 @@ async function logoutLiff(): Promise<void> {
 }
 
 /**
- * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → 清本機帳號資料與登入旗標
- * → LIFF 已登入則 liff.logout()（最多等 8 秒）→ 重新整理。任一步失敗其餘照做（只記錄，不擋登出）。
- * 本機清理排在 LIFF 之前：LIFF 卡住或失敗時，帳號資料也已清掉（審查 P3-3）。
- * QA 帳號的登出另走 signOutQa，不經這裡。
+ * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → LIFF 已登入則 liff.logout()
+ * （本次沒 init 過先 init，最多等 8 秒）→ 清本機帳號資料（含 LIFF* key）與登入旗標 → 重新整理。
+ * 取代 ddc5ad9 的「先清本機再 LIFF」：先刪 LIFF* 會讓之後 init 認不出登入而跳過 liff.logout（Grok 交叉審查 P2）；
+ * LIFF 逾時或失敗時，重整前照樣刪 LIFF* key。
+ * Firebase signOut 失敗：使用者其實仍登入，不清旗標、不重整，提示重試，回傳 false（Grok 交叉審查 P2）。
+ * QA 帳號（claims.qa）不碰 LIFF（Grok 交叉審查 P3）；QA 橫幅的登出另走 signOutQa。
  */
 export async function signOutAndReload(
   reload: () => void = () => location.reload(),
-): Promise<void> {
+): Promise<boolean> {
+  const isQa = (await inspectQaAccount()).kind === 'qa';
   try {
     await signOut();
   } catch (err) {
     console.error('[auth] 登出 Firebase 失敗', err);
+    toast.show({ message: '登出失敗，請再試一次' });
+    return false;
+  }
+  if (!isQa) {
+    try {
+      await withTimeout(logoutLiff(), LIFF_STEP_TIMEOUT_MS, 'LINE 登出');
+    } catch (err) {
+      console.warn('[auth] LINE 登出失敗', err);
+    }
   }
   clearAccountLocalState();
   lastKnownAuthUid = null;
   writeAuthHint(false);
   try {
-    await withTimeout(logoutLiff(), LIFF_STEP_TIMEOUT_MS, 'LINE 登出');
-  } catch (err) {
-    console.warn('[auth] LINE 登出失敗', err);
-  }
-  try {
     reload();
   } catch (err) {
     console.error('[auth] 重新整理失敗', err);
   }
+  return true;
 }
 
 export interface QaClaims {
