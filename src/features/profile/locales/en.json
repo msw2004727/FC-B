@@ -92,6 +92,7 @@
     "close": "Close",
     "shareOrSave": "Share or save your player card",
     "shareAgain": "Share",
-    "save": "Save"
+    "save": "Save",
+    "shareUnavailable": "Sharing isn't available. Tap Save instead."
   }
 }

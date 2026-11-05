@@ -63,11 +63,11 @@ export interface PlayerCardRenderOptions {
 
 /**
  * PNG 左下 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
- * 四周 2 模組 quiet zone；左緣 x=14、底緣與 logo 底線對齊（y=302）。
- * 版本 4（33 模組，錯誤修正 L）時整塊 37×2＝74px，約卡面 24.7 單位。
+ * 四周 4 模組 quiet zone（QR 標準最小值；取代原本 2 模組，複審 P3）；左緣 x=14、底緣與 logo 底線對齊（y=302）。
+ * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 14～41.33、y 274.67～302。
  */
 export const QR_MODULE_PX = 2;
-export const QR_QUIET_MODULES = 2;
+export const QR_QUIET_MODULES = 4;
 export const QR_LEFT = 14;
 export const LOGO_CENTER_Y = 295;
 export const LOGO_HEIGHT = 14;
@@ -464,7 +464,7 @@ function browserEnsureFonts(): Promise<void> {
 }
 
 /** 本機 qrcode 套件（lazy import，與 data/qr.ts 同一套件）；錯誤修正 L 以取得最小版本。 */
-async function browserCreateQrMatrix(text: string): Promise<QrMatrix | null> {
+export async function browserCreateQrMatrix(text: string): Promise<QrMatrix | null> {
   type CreateFn = (value: string, options: { errorCorrectionLevel: 'L' }) => { modules: QrMatrix };
   const mod = (await import('qrcode')) as unknown as { create?: CreateFn; default?: { create?: CreateFn } };
   const create = mod.create || mod.default?.create;

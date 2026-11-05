@@ -36,8 +36,14 @@ const shareMock = vi.hoisted(() => ({
   retrySharePlayerCardFile: vi.fn(async (): Promise<string> => 'shared'),
 }));
 vi.mock('../data/player-card-share', () => shareMock);
+const qrcodeLoaded = vi.hoisted(() => ({ count: 0 }));
+vi.mock('qrcode', () => {
+  qrcodeLoaded.count += 1;
+  return { create: vi.fn(), default: { create: vi.fn() } };
+});
 
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
+import { toast } from '@/ui/Toast';
 import type { UserProfile } from '../data/profile-model';
 import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
@@ -263,6 +269,9 @@ describe('T-092 球員卡（DOM）', () => {
     expect(idle).toHaveLength(1);
     idle[0]!();
     await waitFor(() => expect(canvasMock.ensurePlayerCardFonts).toHaveBeenCalledTimes(1));
+    // 預載一併載入 qrcode 模組（只載不產碼）。本檔產圖模組已 mock、不會 import qrcode，
+    // 唯一的 import 來源就是 preloadPlayerCardShare；模組只評估一次，所以用 ≥1 判斷。
+    expect(qrcodeLoaded.count).toBeGreaterThanOrEqual(1);
     expect(canvasMock.renderPlayerCardPng).not.toHaveBeenCalled();
     cleanup();
 
@@ -304,5 +313,19 @@ describe('T-092 球員卡（DOM）', () => {
     await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
     const args = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as unknown[];
     expect(args[4]).toEqual({ qrText: null });
+  });
+
+  it('覆蓋層第二次分享仍失敗：提示改按儲存（shareUnavailable），不是「產生失敗」', async () => {
+    const show = vi.spyOn(toast, 'show');
+    shareMock.sharePlayerCardBlob.mockResolvedValueOnce('retry');
+    shareMock.retrySharePlayerCardFile.mockResolvedValueOnce('failed');
+    const { container } = renderTop(viewer());
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(document.querySelector('#player-card-share-again')).not.toBeNull());
+    fireEvent.click(document.querySelector('#player-card-share-again')!);
+    await waitFor(() => expect(show).toHaveBeenCalledWith({ message: '無法開啟分享，請改按儲存' }));
+    expect(show).not.toHaveBeenCalledWith({ message: '球員卡圖片產生失敗，請再試一次' });
+    expect(document.querySelector('.player-card-overlay')).not.toBeNull();
+    show.mockRestore();
   });
 });

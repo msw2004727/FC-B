@@ -92,6 +92,7 @@
     "close": "关闭",
     "shareOrSave": "分享／保存球员卡",
     "shareAgain": "分享",
-    "save": "保存"
+    "save": "保存",
+    "shareUnavailable": "无法打开分享，请改按保存"
   }
 }

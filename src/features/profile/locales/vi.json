@@ -92,6 +92,7 @@
     "close": "Đóng",
     "shareOrSave": "Chia sẻ / lưu thẻ cầu thủ",
     "shareAgain": "Chia sẻ",
-    "save": "Lưu"
+    "save": "Lưu",
+    "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu."
   }
 }

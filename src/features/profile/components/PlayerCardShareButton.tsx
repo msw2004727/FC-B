@@ -24,13 +24,18 @@ let modulesPromise: Promise<ShareModules> | null = null;
 /** 覆蓋層「分享」要在點擊內同步拿到已載入的模組。 */
 let loadedModules: ShareModules | null = null;
 
-/** 預先載入產圖與分享模組，並預載自架字型；重複呼叫共用同一次載入，失敗時下次重試。 */
+/**
+ * 預先載入產圖與分享模組、qrcode 套件（只載模組不產碼），並預載自架字型；
+ * 重複呼叫共用同一次載入，失敗時下次重試。qrcode 載不到不影響（產圖時 QR 失敗就不放）。
+ */
 export function preloadPlayerCardShare(): Promise<ShareModules> {
   if (!modulesPromise) {
     const pending = Promise.all([
       import('../data/player-card-canvas'),
       import('../data/player-card-share'),
-    ]).then((mods): ShareModules => {
+      import('qrcode').catch(() => null),
+    ]).then(([canvasMod, shareMod]): ShareModules => {
+      const mods: ShareModules = [canvasMod, shareMod];
       loadedModules = mods;
       const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
       mods[0].ensurePlayerCardFonts(fonts).catch(() => undefined);
@@ -120,7 +125,7 @@ function PlayerCardImageOverlay({
     const file = shareMod.makePlayerCardFile(state.blob);
     shareMod.retrySharePlayerCardFile(navigator, file).then((outcome) => {
       if (outcome === 'shared') close();
-      else if (outcome === 'failed') toast.show({ message: t('profile.playerCard.shareFailed') });
+      else if (outcome === 'failed') toast.show({ message: t('profile.playerCard.shareUnavailable') });
     }, () => undefined);
   };
 

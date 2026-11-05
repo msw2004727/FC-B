@@ -92,6 +92,7 @@
     "close": "닫기",
     "shareOrSave": "선수 카드 공유／저장",
     "shareAgain": "공유",
-    "save": "저장"
+    "save": "저장",
+    "shareUnavailable": "공유를 열 수 없습니다. 저장을 눌러 주세요."
   }
 }

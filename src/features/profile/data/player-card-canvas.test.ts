@@ -4,6 +4,8 @@ import {
   PLAYER_CARD_FONT_LOAD,
   PLAYER_CARD_IMAGE_TIMEOUT_MS,
   LOGO_BOTTOM,
+  QR_QUIET_MODULES,
+  browserCreateQrMatrix,
   PLAYER_CARD_PNG_SCALE,
   QR_MODULE_PX,
   STAT_CELL_MAX_WIDTH,
@@ -39,7 +41,8 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const measure = (value: string): number => Array.from(value).length * sizeOf(ctx.font) * 0.6;
   const images: Array<{ image: unknown; args: number[] }> = [];
   const fills: FillRecord[] = [];
-  const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number }> = [];
+  const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number; seq: number }> = [];
+  let seq = 0;
   let points: Array<[number, number]> = [];
   const add = (x: number, y: number): void => {
     points.push([x, y]);
@@ -87,7 +90,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
       });
     },
     fillRect: (x: number, y: number, w: number, h: number) => {
-      rects.push({ style: ctx.fillStyle, x, y, w, h });
+      rects.push({ style: ctx.fillStyle, x, y, w, h, seq: seq++ });
     },
     fillText: (value: string) => {
       texts.push(value);
@@ -357,14 +360,17 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       return count;
     }
 
-    it('個人名片網址以錯誤修正 L 產生版本 4（33 模組），每模組 2px', async () => {
+    it('個人名片網址以錯誤修正 L 產生版本 4（33 模組），每模組 2px、quiet zone 4 模組', async () => {
       const { matrix, version } = await realMatrix(PROFILE_URL);
       expect(version).toBe(4);
       expect(matrix.size).toBe(33);
       const layout = qrLayout(matrix.size);
       expect(layout.module * PLAYER_CARD_PNG_SCALE).toBeCloseTo(QR_MODULE_PX);
-      // 整塊（含 2 模組 quiet zone）37 模組 × 2px ＝ 74px
-      expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(74);
+      // 整塊（含 4 模組 quiet zone）41 模組 × 2px ＝ 82px
+      expect(QR_QUIET_MODULES).toBe(4);
+      expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(82);
+      expect(layout.box.x).toBe(14);
+      expect(layout.box.y).toBeCloseTo(274.667, 2);
     });
 
     it('產圖時以網址呼叫 QR 產生並畫進 PNG（底色／碼色依深淺）', async () => {
@@ -406,9 +412,9 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       const { box } = qrLayout(matrix.size);
       const right = box.x + box.size;
       const bottom = box.y + box.size;
-      // 內框（離卡邊 6、線寬 1.5）之內，且避開左下圓角（半徑 12）
+      // 內框（離卡邊 6、線寬 1.5）之內；左下圓角（半徑 12，圓心 18,306）只影響 y>306 的區域
       expect(box.x).toBeGreaterThan(6 + 1.5);
-      expect(bottom).toBeLessThan(324 - 6 - 1.5 - 4);
+      expect(bottom).toBeLessThan(324 - 6 - 12);
       // 與 logo 同一底線
       expect(bottom).toBeCloseTo(LOGO_BOTTOM);
       // 三格最下方縮寫基線 264（字級 7.5，下伸部不超過 2）
@@ -433,5 +439,33 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       const logoDraw = main.images.find((i) => i.image === logoImg)!;
       expect(logoDraw.args[0]!).toBeGreaterThan(right);
     });
+  });
+
+  it('browserCreateQrMatrix 用錯誤修正 L：個人名片網址得到 33 模組（M 會是 37）', async () => {
+    const url = 'https://miniapp.line.me/2009525300-AuPGQ0sh?profile=U0123456789abcdef0123456789abcdef';
+    const matrix = await browserCreateQrMatrix(url);
+    expect(matrix?.size).toBe(33);
+    const mod = (await import('qrcode')) as unknown as {
+      create: (t: string, o: { errorCorrectionLevel: string }) => { modules: { size: number } };
+    };
+    expect(mod.create(url, { errorCorrectionLevel: 'M' }).modules.size).toBe(37);
+  });
+
+  it('QR 在反光之後繪製（反光不蓋住 QR）', async () => {
+    const mod = (await import('qrcode')) as unknown as {
+      create: (t: string, o: { errorCorrectionLevel: 'L' }) => { modules: QrMatrix };
+    };
+    const matrix = mod.create('https://miniapp.line.me/x?profile=U1', { errorCorrectionLevel: 'L' }).modules;
+    const fake = makeFakeCtx();
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), 'light', labels, {
+      avatar: null,
+      logo: logoImg,
+      qr: matrix,
+    });
+    const shine = fake.rects.filter((r) => typeof r.style === 'object' && r.style !== null);
+    expect(shine).toHaveLength(1);
+    const qrRects = fake.rects.filter((r) => r.style === '#FFFFFF' || r.style === '#412402');
+    expect(qrRects.length).toBeGreaterThan(1);
+    expect(Math.min(...qrRects.map((r) => r.seq))).toBeGreaterThan(shine[0]!.seq);
   });
 });
