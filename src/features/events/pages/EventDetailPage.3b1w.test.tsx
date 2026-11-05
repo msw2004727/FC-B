@@ -754,3 +754,60 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     await waitFor(() => expect(capacityText(view.container)).toContain('已報 0/10'));
   });
 });
+
+describe('T-074 終驗 P3 補測', () => {
+  function capacityText(container: Element): string | null | undefined {
+    return container.querySelector('[data-detail-field="capacity-count"]')?.textContent;
+  }
+
+  // P3-1（R-REG-002）：批次取消成功後 current 必須等於 Callable 回傳的佔位投影；
+  // 改回用取消前快照背景重讀時，畫面會停在舊值。
+  it('批次取消成功：人數採用伺服器回傳投影，不被舊快照或本地正取筆數覆寫', async () => {
+    const before = { ...detail, event: { ...detail.event, current: 2, max: 10 } };
+    // 寫入後若重讀活動文件會拿到 0；投影是 3（含團隊剩餘預留），三者互不相同。
+    const reread = { ...detail, event: { ...detail.event, current: 0, max: 10 } };
+    mocks.detail.mockImplementation(async () => (mocks.cancel.mock.calls.length ? reread : before));
+    mocks.history.mockResolvedValue([self, companion]);
+    mocks.registrations.mockResolvedValue([self, companion]);
+    mocks.cancel.mockImplementation(async () => {
+      mocks.history.mockResolvedValue([]);
+      mocks.registrations.mockResolvedValue([]);
+      return { deduplicated: false, event: { current: 3, max: 10 } };
+    });
+    const view = mount();
+    await waitFor(() => expect(capacityText(view.container)).toContain('已報 2/10'));
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    fireEvent.click(await screen.findByRole('button', { name: '確認取消' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消 2 筆報名' }));
+    // 背景重讀完成（本人按鈕回到立即報名）後，人數仍是伺服器投影。
+    await screen.findByRole('button', { name: '立即報名' });
+    await waitFor(() => expect(capacityText(view.container)).toContain('已報 3/10'));
+    expect(mocks.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  // P3-4：同行者加報選隊被伺服器拒絕，沿用本人報名的 locale key（修正前落到通用失敗文案）。
+  it.each([
+    ['TEAM_RESERVATION_TEAM_DENIED', 'events.signup.error.teamReservationDenied'],
+    ['TEAM_RESERVATION_TEAM_NOT_AVAILABLE', 'events.signup.error.teamReservationUnavailable'],
+  ] as const)('同行者加報被伺服器以 %s 拒絕 → 顯示 %s', async (code, key) => {
+    mocks.selection.mockRejectedValue(new SignupError({
+      code: 'failed-precondition',
+      originalCode: code,
+      messageKey: 'event.signup.error.unknown',
+      message: code,
+    }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '幫夥伴報名' }));
+    const confirm = await screen.findByRole('button', { name: '確認', exact: true });
+    const overlay = document.querySelector('#companion-select-overlay');
+    if (!(overlay instanceof HTMLElement)) throw new Error('缺少同行者彈窗');
+    const first = within(overlay).getAllByRole('checkbox')[0];
+    if (!first) throw new Error('缺少同行者');
+    fireEvent.click(first);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.selection).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: key }));
+    expect(mocks.toast).not.toHaveBeenCalledWith({ message: '夥伴報名調整失敗，請稍後再試' });
+    expect(mocks.cancel).not.toHaveBeenCalled();
+  });
+});

@@ -2488,4 +2488,35 @@ describe('T-074b 詳情頁整合', () => {
     await waitFor(() => expect(document.querySelector('.team-reservation-header-row')).toBeTruthy());
     expect(screen.queryByRole('button', { name: /調整名額|團隊報名|快速調整/ })).toBeNull();
   });
+  // T-074 終驗 P3-2：同行者入口與批次取消確認鈕不看 reservation.busy，只能靠 run() 的 isPending 守衛擋。
+  it('團隊名額調整進行中不能開同行者報名或送出批次取消；完成後恢復', async () => {
+    const mate = { ...self, _docId: 'registration-mate', participantType: 'companion',
+      companionId: 'c1', companionName: '同行小友' };
+    mocks.history.mockResolvedValue([self, mate]);
+    mocks.registrations.mockResolvedValue([self, mate]);
+    mocks.companions.mockResolvedValue([{ id: 'c1', name: '同行小友', gender: '女' }]);
+    let finish: ((value: unknown) => void) | undefined;
+    registerCallableMock('adjustTeamReservation', () => new Promise(done => { finish = done; }));
+    mount();
+    const primary = await screen.findByRole('button', { name: '取消報名' }) as HTMLButtonElement;
+    await waitFor(() => expect(primary.disabled).toBe(false));
+    fireEvent.click(primary);
+    await screen.findByRole('button', { name: '確認取消' });
+    await adjust();
+    await waitFor(() => expect(finish).toBeTypeOf('function'));
+    fireEvent.click(screen.getByRole('button', { name: '確認取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '幫夥伴報名' }));
+    await act(async () => { await new Promise(done => setTimeout(done, 0)); });
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.companions).not.toHaveBeenCalled();
+    await act(async () => { finish!(success); });
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '幫夥伴報名' }));
+    await waitFor(() => expect(mocks.companions).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '確認取消' }));
+    await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({
+      registrationIds: ['registration-self', 'registration-mate'],
+    })));
+  });
 });

@@ -1758,6 +1758,9 @@ function EventDetailSession({
         EVENT_UNAVAILABLE: '此活動目前無法報名',
         REQUEST_ID_CONFLICT: '請重新整理後再試',
         PARTICIPANT_NOT_ALLOWED: '無權限執行此操作',
+        // T-074 同行者加報選隊被伺服器拒絕；沿用本人報名的 locale key。
+        TEAM_RESERVATION_TEAM_DENIED: t('events.signup.error.teamReservationDenied'),
+        TEAM_RESERVATION_TEAM_NOT_AVAILABLE: t('events.signup.error.teamReservationUnavailable'),
       };
       toast.show({ message: messages[code] || '夥伴報名調整失敗，請稍後再試' });
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
