@@ -7,13 +7,12 @@
  *   （提示不寫「長按」，桌機沒有長按）。
  */
 import type { JSX } from 'preact';
-import { createPortal } from 'preact/compat';
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
-import { pushOverlay } from '@/core/overlay-back';
 import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { resolvePlayerCardTheme, type PlayerCardModel } from '../data/player-card-model';
+import type { OverlayState, PlayerCardImageOverlay as OverlayComponent } from './PlayerCardImageOverlay';
 
 type ShareModules = [
   typeof import('../data/player-card-canvas'),
@@ -21,8 +20,6 @@ type ShareModules = [
 ];
 
 let modulesPromise: Promise<ShareModules> | null = null;
-/** 覆蓋層「分享」要在點擊內同步拿到已載入的模組。 */
-let loadedModules: ShareModules | null = null;
 
 /**
  * 預先載入產圖與分享模組、qrcode 套件（只載模組不產碼），並預載自架字型；
@@ -36,7 +33,6 @@ export function preloadPlayerCardShare(): Promise<ShareModules> {
       import('qrcode').catch(() => null),
     ]).then(([canvasMod, shareMod]): ShareModules => {
       const mods: ShareModules = [canvasMod, shareMod];
-      loadedModules = mods;
       const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
       mods[0].ensurePlayerCardFonts(fonts).catch(() => undefined);
       return mods;
@@ -52,7 +48,6 @@ export function preloadPlayerCardShare(): Promise<ShareModules> {
 /** 測試用：清掉預載快取。 */
 export function _resetPlayerCardPreloadForTest(): void {
   modulesPromise = null;
-  loadedModules = null;
 }
 
 function scheduleIdle(callback: () => void): () => void {
@@ -68,126 +63,6 @@ function preloadQuietly(): void {
   preloadPlayerCardShare().catch(() => undefined);
 }
 
-type OverlayMode = 'line' | 'retry';
-
-interface OverlayState {
-  mode: OverlayMode;
-  src: string;
-  blob: Blob;
-}
-
-function PlayerCardImageOverlay({
-  state,
-  onClose,
-}: {
-  state: OverlayState;
-  onClose: () => void;
-}): JSX.Element | null {
-  const t = useT();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const releaseRef = useRef<(() => void) | null>(null);
-  const firstBtnRef = useRef<HTMLButtonElement>(null);
-
-  const close = useCallback((): void => {
-    const release = releaseRef.current;
-    releaseRef.current = null;
-    release?.();
-    onCloseRef.current();
-  }, []);
-
-  useEffect(() => {
-    releaseRef.current = pushOverlay(() => {
-      releaseRef.current = null;
-      onCloseRef.current();
-      return true;
-    });
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    firstBtnRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      const release = releaseRef.current;
-      releaseRef.current = null;
-      release?.();
-    };
-  }, [close]);
-
-  const shareAgain = (): void => {
-    // 不得先 await 任何東西：navigator.share 要在這次點擊內同步呼叫，才吃得到新的使用者手勢。
-    const shareMod = loadedModules?.[1];
-    if (!shareMod) return;
-    const file = shareMod.makePlayerCardFile(state.blob);
-    shareMod.retrySharePlayerCardFile(navigator, file).then((outcome) => {
-      if (outcome === 'shared') close();
-      else if (outcome === 'failed') toast.show({ message: t('profile.playerCard.shareUnavailable') });
-    }, () => undefined);
-  };
-
-  const save = (): void => {
-    const shareMod = loadedModules?.[1];
-    shareMod?.browserDownload(state.blob, shareMod.PLAYER_CARD_FILE_NAME);
-  };
-
-  if (typeof document === 'undefined') return null;
-  const retry = state.mode === 'retry';
-  return createPortal(
-    <div class="legacy-ui">
-      <div
-        class="player-card-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('profile.playerCard.share')}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) close();
-        }}
-      >
-        <img src={state.src} alt={t('profile.playerCard.title')} />
-        <div class="player-card-overlay-hint">
-          {retry ? t('profile.playerCard.shareOrSave') : t('profile.playerCard.longPressSave')}
-        </div>
-        <div class="player-card-overlay-actions">
-          {retry && (
-            <button
-              ref={firstBtnRef}
-              type="button"
-              class="player-card-overlay-btn is-primary"
-              id="player-card-share-again"
-              onClick={shareAgain}
-            >
-              {t('profile.playerCard.shareAgain')}
-            </button>
-          )}
-          {retry && (
-            <button
-              type="button"
-              class="player-card-overlay-btn"
-              id="player-card-save"
-              onClick={save}
-            >
-              {t('profile.playerCard.save')}
-            </button>
-          )}
-          <button
-            ref={retry ? undefined : firstBtnRef}
-            type="button"
-            class="player-card-overlay-btn player-card-overlay-close"
-            onClick={close}
-          >
-            {t('profile.playerCard.close')}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export function PlayerCardShareButton({
   model,
   qrText = null,
@@ -198,7 +73,11 @@ export function PlayerCardShareButton({
 }): JSX.Element {
   const t = useT();
   const [busy, setBusy] = useState(false);
-  const [overlay, setOverlay] = useState<OverlayState | null>(null);
+  const [overlay, setOverlay] = useState<{
+    state: OverlayState;
+    shareMod: ShareModules[1];
+    Component: typeof OverlayComponent;
+  } | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -227,9 +106,17 @@ export function PlayerCardShareButton({
         download: shareMod.browserDownload,
       });
       if (outcome === 'overlay' || outcome === 'retry') {
-        const src = await shareMod.blobToDataUrl(blob);
+        // 覆蓋層（含 preact/compat）需要時才載入，見 PlayerCardImageOverlay.tsx 檔頭。
+        const [overlayMod, src] = await Promise.all([
+          import('./PlayerCardImageOverlay'),
+          shareMod.blobToDataUrl(blob),
+        ]);
         if (mountedRef.current) {
-          setOverlay({ mode: outcome === 'overlay' ? 'line' : 'retry', src, blob });
+          setOverlay({
+            state: { mode: outcome === 'overlay' ? 'line' : 'retry', src, blob },
+            shareMod,
+            Component: overlayMod.PlayerCardImageOverlay,
+          });
         }
       }
     } catch (err) {
@@ -263,7 +150,11 @@ export function PlayerCardShareButton({
         {t('profile.playerCard.share')}
       </button>
       {overlay && (
-        <PlayerCardImageOverlay state={overlay} onClose={() => setOverlay(null)} />
+        <overlay.Component
+          state={overlay.state}
+          shareMod={overlay.shareMod}
+          onClose={() => setOverlay(null)}
+        />
       )}
     </>
   );

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -327,5 +329,23 @@ describe('T-092 球員卡（DOM）', () => {
     expect(show).not.toHaveBeenCalledWith({ message: '球員卡圖片產生失敗，請再試一次' });
     expect(document.querySelector('.player-card-overlay')).not.toBeNull();
     show.mockRestore();
+  });
+
+  it('LegacyProfileHeader 的靜態 import 鏈不得帶入 preact/compat（覆蓋層需要時才動態載入）', () => {
+    // 帶入 compat 會讓 @testing-library/preact 把 fireEvent.change 改發 input，
+    // 所有 import LegacyAvatar 的測試（LegacyIdentityCard 上傳圖片）因此收不到 change。
+    const dir = resolve(process.cwd(), 'src/features/profile');
+    const staticCompat = /^\s*import\s+(?!type\b)[^;]*from\s+['"]preact\/compat['"]/m;
+    for (const file of [
+      'components/legacy/LegacyProfileHeader.tsx',
+      'components/PlayerCard.tsx',
+      'components/PlayerCardShareButton.tsx',
+      'data/player-card-model.ts',
+    ]) {
+      expect(staticCompat.test(readFileSync(resolve(dir, file), 'utf8')), file).toBe(false);
+    }
+    const button = readFileSync(resolve(dir, 'components/PlayerCardShareButton.tsx'), 'utf8');
+    expect(button).toContain("import('./PlayerCardImageOverlay')");
+    expect(button).not.toMatch(/^import\s+\{[^}]*\}\s+from\s+'\.\/PlayerCardImageOverlay'/m);
   });
 });
