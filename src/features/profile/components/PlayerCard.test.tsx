@@ -348,4 +348,18 @@ describe('T-092 球員卡（DOM）', () => {
     expect(button).toContain("import('./PlayerCardImageOverlay')");
     expect(button).not.toMatch(/^import\s+\{[^}]*\}\s+from\s+'\.\/PlayerCardImageOverlay'/m);
   });
+
+  it('名字為資料層預設 Unknown 時卡面顯示 -、頭像首字 ?，PNG 模型同樣', async () => {
+    identity.current = { displayName: ' unknown ', pictureUrl: null, identityId: 'primary' };
+    const { container } = renderTop(viewer());
+    const card = container.querySelector('.player-card')!;
+    expect(card.querySelector('#profile-title')?.textContent).toBe('-');
+    expect(card.querySelector('#profile-avatar')?.textContent).toBe('?');
+    expect(card.textContent?.toLowerCase()).not.toContain('unknown');
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
+    const [model] = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as [{ name: string; avatarInitial: string }];
+    expect(model.name).toBe('-');
+    expect(model.avatarInitial).toBe('?');
+  });
 });

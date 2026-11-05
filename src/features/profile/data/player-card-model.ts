@@ -64,11 +64,17 @@ export function countActiveClubs(teamIds: Iterable<unknown> | null | undefined):
 
 /**
  * 卡面名字：getMainIdentity 在使用者沒有 displayName／name 時會退回 UID 當名字（A 舊行為，不改），
- * 球員卡與 PNG 不得印出 UID，所以名字等於 UID（前後空白不計）或空白時一律顯示 `-`。
+ * 球員卡與 PNG 不得印出 UID，所以名字等於 UID（前後空白不計）或空白時一律顯示 `-`；
+ * 名字是資料層預設的 'Unknown'（不分大小寫、前後空白不計）也同樣顯示 `-`。
  */
+/** 資料層（profile-model.ts mapUserProfileDoc）缺名字時補的預設值。 */
+const PROFILE_UNKNOWN_NAME = 'Unknown';
+
 export function resolvePlayerCardName(name: unknown, uid?: string | null): string {
   const text = typeof name === 'string' ? name.trim() : '';
   if (!text || text === '-') return '-';
+  // profile-model.ts mapUserProfileDoc：users 文件沒有 displayName／name 時資料層補 'Unknown'，不是真名。
+  if (text.toLowerCase() === PROFILE_UNKNOWN_NAME.toLowerCase()) return '-';
   const cleanUid = typeof uid === 'string' ? uid.trim() : '';
   if (cleanUid && text === cleanUid) return '-';
   return text;

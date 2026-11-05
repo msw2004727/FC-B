@@ -86,6 +86,16 @@ describe('T-092 球員卡資料模型', () => {
     expect(buildPlayerCardModel({ name: '  ', avatarUrl: null, summary: null }).name).toBe('-');
   });
 
+  it('名字是資料層預設的 Unknown（不分大小寫、含前後空白）時顯示 -、首字 ?', () => {
+    // profile-model.ts mapUserProfileDoc：users 文件沒有 displayName／name 時補 'Unknown'。
+    for (const name of ['Unknown', ' unknown ', 'UNKNOWN', '  UnKnOwN  ']) {
+      const m = buildPlayerCardModel({ name, uid: 'U-abc', avatarUrl: null, summary: null });
+      expect(m.name).toBe('-');
+      expect(m.avatarInitial).toBe('?');
+    }
+    expect(resolvePlayerCardName('Unknown Player', 'U-abc')).toBe('Unknown Player');
+  });
+
   it('P2-1：名字等於 UID（含前後空白）時改顯示 -，首字為 ?；模型不含 UID', () => {
     const m = buildPlayerCardModel({ name: ' U-abc ', uid: 'U-abc', avatarUrl: null, summary: null });
     expect(m.name).toBe('-');

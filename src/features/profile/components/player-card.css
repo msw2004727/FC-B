@@ -269,11 +269,12 @@
 }
 .player-card-share-btn:disabled { opacity: .6; cursor: progress; }
 
+/* 覆蓋層掛在 document.body（portal），只套固定色，不依賴頁面變數（站長預覽定案：遮罩約 70% 黑、白字、按鈕實心底）。 */
 .player-card-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--overlay);
+  background: rgba(0, 0, 0, .7);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -288,15 +289,22 @@
   -webkit-touch-callout: default;
   user-select: auto;
 }
-.player-card-overlay-hint { color: #fff; font-size: .85rem; }
+.player-card-overlay-hint {
+  color: #FFFFFF;
+  font-size: .9rem;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
 .player-card-overlay-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
 .player-card-overlay-btn {
   min-height: 44px;
   padding: .4rem 1.4rem;
-  border-radius: var(--radius-full);
-  background: var(--bg-card);
-  color: var(--text-primary);
+  border: none;
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: #1A1D24;
   font-size: .85rem;
   font-weight: 700;
 }
-.player-card-overlay-btn.is-primary { background: var(--primary-btn-bg, var(--accent)); color: #fff; }
+.player-card-overlay-btn.is-primary { background: #0D9488; color: #FFFFFF; }
+.player-card-overlay-btn.player-card-overlay-close { background: #374151; color: #FFFFFF; }
