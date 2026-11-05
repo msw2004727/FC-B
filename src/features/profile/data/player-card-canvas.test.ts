@@ -21,7 +21,12 @@ import {
   type PlayerCardLabels,
   type PlayerCardRenderDeps,
 } from './player-card-canvas';
-import { buildPlayerCardModel, PLAYER_CARD_PALETTES } from './player-card-model';
+import {
+  buildPlayerCardModel,
+  PLAYER_CARD_PALETTES,
+  PLAYER_CARD_SHINE,
+  playerCardShineCanvasStops,
+} from './player-card-model';
 
 interface FillRecord {
   fillStyle: unknown;
@@ -41,6 +46,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const measure = (value: string): number => Array.from(value).length * sizeOf(ctx.font) * 0.6;
   const images: Array<{ image: unknown; args: number[] }> = [];
   const fills: FillRecord[] = [];
+  const gradients: Array<{ args: number[]; stops: Array<[number, string]> }> = [];
   const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number; seq: number }> = [];
   let seq = 0;
   let points: Array<[number, number]> = [];
@@ -100,13 +106,17 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     drawImage: (image: unknown, ...args: number[]) => {
       images.push({ image, args });
     },
-    createLinearGradient: () => ({ addColorStop: vi.fn() }),
+    createLinearGradient: (...args: number[]) => {
+      const g = { args, stops: [] as Array<[number, string]>, addColorStop: (o: number, c: string) => g.stops.push([o, c]) };
+      gradients.push(g);
+      return g;
+    },
     getImageData: () => {
       if (opts.taint) throw new DOMException('tainted', 'SecurityError');
       return { data: new Uint8ClampedArray(4) };
     },
   };
-  return { ctx, texts, images, fills, drawn, rects };
+  return { ctx, texts, images, fills, drawn, rects, gradients };
 }
 
 const labels: PlayerCardLabels = {
@@ -467,5 +477,16 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     const qrRects = fake.rects.filter((r) => r.style === '#FFFFFF' || r.style === '#412402');
     expect(qrRects.length).toBeGreaterThan(1);
     expect(Math.min(...qrRects.map((r) => r.seq))).toBeGreaterThan(shine[0]!.seq);
+  });
+
+  it('PNG 固定斜光：方向與停點完全取自共用常數（淺深各自）', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      const fake = makeFakeCtx();
+      drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), theme, labels, { avatar: null, logo: logoImg });
+      const { from, to } = PLAYER_CARD_SHINE;
+      const shine = fake.gradients.find((g) => g.args.join(',') === [from.x, from.y, to.x, to.y].join(','))!;
+      expect(shine).toBeTruthy();
+      expect(shine.stops).toEqual(playerCardShineCanvasStops(theme));
+    }
   });
 });

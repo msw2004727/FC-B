@@ -6,7 +6,13 @@ import type { UserAttendanceSummary } from './attendance-summary';
 import {
   buildPlayerCardModel,
   countActiveClubs,
+  PLAYER_CARD_DOM_SCALE,
+  PLAYER_CARD_SHINE,
   playerCardLogoUrl,
+  playerCardShineCanvasStops,
+  playerCardShineCssGradient,
+  playerCardShineGeometry,
+  playerCardShineTransform,
   resolvePlayerCardName,
   resolvePlayerCardTheme,
   roundAttendRate,
@@ -122,5 +128,46 @@ describe('T-092 球員卡資料模型', () => {
     expect(css).toMatch(/@font-face\s*\{[^}]*font-family:\s*'Bebas Neue'[^}]*font-display:\s*swap[^}]*url\('\/fonts\/bebas-neue-latin-400-normal\.woff2'\)\s*format\('woff2'\)/);
     expect(existsSync(resolve(process.cwd(), 'public/fonts/bebas-neue-latin-400-normal.woff2'))).toBe(true);
     expect(existsSync(resolve(process.cwd(), 'public/fonts/BebasNeue-OFL.txt'))).toBe(true);
+  });
+
+  describe('固定斜光共用常數（網頁與 PNG 同一組）', () => {
+    it('角度、寬度、位置：光帶由左下往右上約 20.3 度、寬約 55.3 單位', () => {
+      const g = playerCardShineGeometry();
+      expect(g.normalDeg).toBeCloseTo(69.68, 2);
+      expect(g.bandAngleDeg).toBeCloseTo(20.32, 2);
+      expect(g.bandWidth).toBeCloseTo(55.28, 2);
+      expect(g.offset).toBeCloseTo(-6.95, 2);
+    });
+
+    it('網頁 CSS 漸層與 canvas 停點同一組（光帶內位置換算一致）', () => {
+      const { bandStart, bandEnd } = PLAYER_CARD_SHINE;
+      for (const theme of ['light', 'dark'] as const) {
+        const canvasBand = playerCardShineCanvasStops(theme).slice(1, -1);
+        const css = playerCardShineCssGradient(theme);
+        expect(css.startsWith('linear-gradient(90deg, ')).toBe(true);
+        const cssStops = css.slice('linear-gradient(90deg, '.length, -1).split(/,\s*(?=rgba)/);
+        expect(cssStops).toHaveLength(canvasBand.length);
+        cssStops.forEach((stop, i) => {
+          const [offset, color] = canvasBand[i]!;
+          const pct = Number(/([\d.]+)%$/.exec(stop)![1]);
+          expect(stop.startsWith(color)).toBe(true);
+          expect(bandStart + (pct / 100) * (bandEnd - bandStart)).toBeCloseTo(offset, 6);
+        });
+      }
+    });
+
+    it('網頁 transform：轉到同一法線角度，平移到與 PNG 相同位置（顯示倍率 1.1）', () => {
+      const g = playerCardShineGeometry();
+      expect(playerCardShineTransform()).toBe(
+        `translate(-50%, -50%) rotate(${+g.normalDeg.toFixed(4)}deg) translateX(${+(g.offset * PLAYER_CARD_DOM_SCALE).toFixed(3)}px)`,
+      );
+    });
+
+    it('淺色版：白色高光峰值 0.8＋兩側淡金暗邊 0.16；深色版：暖白峰值 0.22', () => {
+      const light = PLAYER_CARD_SHINE.stops.light.map((s) => s.color);
+      expect(light).toContain('rgba(255, 255, 255, 0.8)');
+      expect(light.filter((c) => c === 'rgba(186, 117, 23, 0.16)')).toHaveLength(2);
+      expect(PLAYER_CARD_SHINE.stops.dark.map((s) => s.color)).toContain('rgba(255, 248, 225, 0.22)');
+    });
   });
 });

@@ -12,8 +12,10 @@ import {
   PLAYER_CARD_BODY_FONT,
   PLAYER_CARD_DISPLAY_FONT,
   PLAYER_CARD_PALETTES,
+  PLAYER_CARD_SHINE,
   PLAYER_CARD_SIZE,
   playerCardLogoUrl,
+  playerCardShineCanvasStops,
   type PlayerCardModel,
   type PlayerCardPalette,
   type PlayerCardTheme,
@@ -337,18 +339,15 @@ function drawQr(ctx: Ctx, qr: QrMatrix, p: PlayerCardPalette): void {
   }
 }
 
-function drawShine(ctx: Ctx): void {
-  // PNG 只有一道固定淡斜光。
+function drawShine(ctx: Ctx, theme: PlayerCardTheme): void {
+  // PNG 只有一道固定淡斜光；參數與網頁掃光共用 PLAYER_CARD_SHINE（player-card-model.ts）。
   const { width: W, height: H, radius } = PLAYER_CARD_SIZE;
+  const { from, to } = PLAYER_CARD_SHINE;
   ctx.save();
   roundRectPath(ctx, 0, 0, W, H, radius);
   ctx.clip();
-  const g = ctx.createLinearGradient(30, 0, 150, H);
-  g.addColorStop(0, 'rgba(255, 248, 225, 0)');
-  g.addColorStop(0.42, 'rgba(255, 248, 225, 0)');
-  g.addColorStop(0.5, 'rgba(255, 248, 225, 0.22)');
-  g.addColorStop(0.58, 'rgba(255, 248, 225, 0)');
-  g.addColorStop(1, 'rgba(255, 248, 225, 0)');
+  const g = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
+  for (const [offset, color] of playerCardShineCanvasStops(theme)) g.addColorStop(offset, color);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
@@ -370,7 +369,7 @@ export function drawPlayerCard(
   drawNameAndGauge(ctx, model, p);
   drawStats(ctx, model, labels, p);
   drawLogo(ctx, assets.logo, p);
-  drawShine(ctx);
+  drawShine(ctx, theme);
   // QR 畫在反光之後，避免斜光降低對比影響掃描。
   if (assets.qr && assets.qr.size > 0) drawQr(ctx, assets.qr, p);
 }

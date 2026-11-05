@@ -106,4 +106,20 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     // 分隔線
     expect(card.some((r) => /\.stat-item \+ \.stat-item$/.test(r.selector) && /border-left:/.test(r.body))).toBe(true);
   });
+
+  it('網頁卡面無動畫：沒有 @keyframes、animation、::after 光帶；顯示倍率與共用常數一致', async () => {
+    const raw = readFileSync(resolve(root, 'src/features/profile/components/player-card.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(raw).not.toMatch(/@keyframes/);
+    expect(raw).not.toMatch(/animation\s*:/);
+    expect(raw).not.toMatch(/\.player-card::after/);
+    const { PLAYER_CARD_DOM_SCALE, PLAYER_CARD_SIZE } = await import('../data/player-card-model');
+    const base = card.find((r) => r.selector === '.player-card')!;
+    expect(base.body).toMatch(new RegExp(`width:\\s*${Math.round(PLAYER_CARD_SIZE.width * PLAYER_CARD_DOM_SCALE)}px`));
+    expect(base.body).toMatch(new RegExp(`height:\\s*${Math.round(PLAYER_CARD_SIZE.height * PLAYER_CARD_DOM_SCALE)}px`));
+    const shine = card.find((r) => r.selector === '.player-card-shine')!;
+    expect(shine.body).toMatch(/position:\s*absolute/);
+    expect(shine.body).toMatch(/pointer-events:\s*none/);
+  });
 });
+

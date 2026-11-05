@@ -3,64 +3,32 @@
  * 三格保留 A 的 `.profile-stats .stat-item` 與 `#profile-stat-*` id，既有個人頁測試與 A 對照仍可用。
  */
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
-
 import { useTheme } from '@/core/theme';
 import { useT } from '@/i18n/i18n';
 import {
   PLAYER_CARD_ABBR,
+  PLAYER_CARD_DOM_SCALE,
   playerCardLogoUrl,
+  playerCardShineCssGradient,
+  playerCardShineGeometry,
+  playerCardShineTransform,
   resolvePlayerCardTheme,
   type PlayerCardModel,
+  type PlayerCardTheme,
 } from '../data/player-card-model';
 import './player-card.css';
 
-export type PlayerCardShineMode = 'sweep' | 'static' | 'paused';
-
-function prefersReducedMotion(): boolean {
-  try {
-    return typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
-
-function pageHidden(): boolean {
-  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
-}
-
-export function resolveShineMode(reducedMotion: boolean, hidden: boolean): PlayerCardShineMode {
-  if (reducedMotion) return 'static';
-  return hidden ? 'paused' : 'sweep';
-}
-
-/** 反光：頁面可見才掃光；使用者要求減少動態時改靜態斜光。 */
-export function usePlayerCardShine(): PlayerCardShineMode {
-  const [mode, setMode] = useState<PlayerCardShineMode>(() =>
-    resolveShineMode(prefersReducedMotion(), pageHidden()));
-
-  useEffect(() => {
-    const update = (): void => setMode(resolveShineMode(prefersReducedMotion(), pageHidden()));
-    update();
-    document.addEventListener('visibilitychange', update);
-    let mql: MediaQueryList | null = null;
-    try {
-      mql = typeof window.matchMedia === 'function'
-        ? window.matchMedia('(prefers-reduced-motion: reduce)')
-        : null;
-    } catch {
-      mql = null;
-    }
-    if (mql && typeof mql.addEventListener === 'function') mql.addEventListener('change', update);
-    return () => {
-      document.removeEventListener('visibilitychange', update);
-      if (mql && typeof mql.removeEventListener === 'function') mql.removeEventListener('change', update);
-    };
-  }, []);
-
-  return mode;
+/** 固定斜光（與 PNG 同一組常數，無動畫）的 inline 樣式；寬高以網頁顯示倍率換算。 */
+export function playerCardShineStyle(theme: PlayerCardTheme): string {
+  const g = playerCardShineGeometry();
+  const width = +(g.bandWidth * PLAYER_CARD_DOM_SCALE).toFixed(3);
+  const height = Math.ceil(g.length * PLAYER_CARD_DOM_SCALE);
+  return [
+    `width:${width}px`,
+    `height:${height}px`,
+    `background:${playerCardShineCssGradient(theme)}`,
+    `transform:${playerCardShineTransform()}`,
+  ].join(';');
 }
 
 export function PlayerCard({
@@ -72,13 +40,12 @@ export function PlayerCard({
   avatar: ComponentChildren;
 }): JSX.Element {
   const t = useT();
-  useTheme(); // 深淺色切換時重畫 logo
+  useTheme(); // 深淺色切換時重畫 logo 與斜光
   const theme = resolvePlayerCardTheme();
-  const shine = usePlayerCardShine();
   const gaugeWidth = `${Math.round(model.gaugeRatio * 100)}%`;
 
   return (
-    <div class={`player-card is-shine-${shine}`} data-theme-variant={theme}>
+    <div class="player-card" data-theme-variant={theme}>
       <div class="player-card-frame" aria-hidden="true" />
       <div class="player-card-att">
         <span class="player-card-att-num">{model.attendText}</span>
@@ -133,6 +100,7 @@ export function PlayerCard({
         decoding="async"
         loading="lazy"
       />
+      <div class="player-card-shine" aria-hidden="true" style={playerCardShineStyle(theme)} />
     </div>
   );
 }

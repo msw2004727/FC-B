@@ -50,7 +50,7 @@ import type { UserProfile } from '../data/profile-model';
 import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
-import { resolveShineMode } from './PlayerCard';
+import { playerCardShineStyle } from './PlayerCard';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
@@ -87,6 +87,13 @@ function stubMatchMedia(reduced: boolean): void {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
+}
+
+/** 把 inline style 字串正規化成瀏覽器序列化格式後比對。 */
+function cssTextOf(style: string): string {
+  const el = document.createElement('div');
+  el.setAttribute('style', style);
+  return el.style.cssText;
 }
 
 function renderTop(v: ViewerView, s: UserAttendanceSummary | null = summary) {
@@ -181,21 +188,53 @@ describe('T-092 球員卡（DOM）', () => {
     expect(container.querySelector('.player-card-att-num')?.textContent).toBe('--');
   });
 
-  it('反光：一般掃光；prefers-reduced-motion 改靜態斜光；頁面隱藏暫停', () => {
-    expect(resolveShineMode(false, false)).toBe('sweep');
-    expect(resolveShineMode(false, true)).toBe('paused');
-    expect(resolveShineMode(true, false)).toBe('static');
-    expect(resolveShineMode(true, true)).toBe('static');
+  it('固定斜光：網頁卡面無動畫、無計時器，淺深兩版都有斜光且與 PNG 同一組常數；減少動態時照常顯示同一道光', () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const rafSpy = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', rafSpy);
+    const animate = vi.fn();
+    (HTMLElement.prototype as unknown as { animate: unknown }).animate = animate;
+    try {
+      document.documentElement.setAttribute('data-theme', 'light');
+      const lightView = renderTop(viewer());
+      const card = lightView.container.querySelector('.player-card')!;
+      expect([...card.classList].some((c) => c.startsWith('is-shine'))).toBe(false);
+      const shine = card.querySelector('.player-card-shine') as HTMLElement;
+      expect(shine.getAttribute('aria-hidden')).toBe('true');
+      expect(shine.style.cssText).toBe(cssTextOf(playerCardShineStyle('light')));
+      expect(shine.style.width).toBe('60.809px');
+      expect(shine.style.transform).toContain('rotate(69.6769deg)');
+      expect(shine.style.background).toContain('rgba(255, 255, 255, 0.8) 50%');
+      expect(shine.style.animation).toBe('');
+      const lightStyle = shine.style.cssText;
+      // 斜光是最後一層（與 PNG 一樣疊在內容上）
+      expect(card.lastElementChild).toBe(shine);
+      cleanup();
 
-    const normal = renderTop(viewer());
-    expect(normal.container.querySelector('.player-card')?.classList.contains('is-shine-sweep')).toBe(true);
-    cleanup();
+      stubMatchMedia(true);
+      document.documentElement.setAttribute('data-theme', 'light');
+      const reduced = renderTop(viewer());
+      expect((reduced.container.querySelector('.player-card-shine') as HTMLElement).style.cssText).toBe(lightStyle);
+      cleanup();
 
-    stubMatchMedia(true);
-    const reduced = renderTop(viewer());
-    const card = reduced.container.querySelector('.player-card')!;
-    expect(card.classList.contains('is-shine-static')).toBe(true);
-    expect(card.classList.contains('is-shine-sweep')).toBe(false);
+      document.documentElement.setAttribute('data-theme', 'dark');
+      const darkView = renderTop(viewer());
+      const darkShine = darkView.container.querySelector('.player-card-shine') as HTMLElement;
+      expect(darkShine.style.cssText).toBe(cssTextOf(playerCardShineStyle('dark')));
+      expect(darkShine.style.cssText).not.toBe(lightStyle);
+      expect(darkShine.style.background).toContain('rgba(255, 248, 225, 0.22) 50%');
+
+      expect(animate).not.toHaveBeenCalled();
+      expect(rafSpy).not.toHaveBeenCalled();
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+      // 卡片本身不排計時器（分享按鈕的閒置預載另有 requestIdleCallback／setTimeout 1500，非動畫）
+      expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 3000)).toBe(false);
+    } finally {
+      delete (HTMLElement.prototype as unknown as { animate?: unknown }).animate;
+      setTimeoutSpy.mockRestore();
+      setIntervalSpy.mockRestore();
+    }
   });
 
   it('按分享球員卡：動態載入產圖，覆蓋層路徑顯示圖片供長按存圖', async () => {
