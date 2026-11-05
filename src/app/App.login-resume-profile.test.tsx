@@ -57,16 +57,18 @@ vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: () => viewer.guest,
 }));
 
-/** 模擬 LegacyUserCard：訪客掛載就要求登入。 */
+/** 模擬 LegacyUserCard：訪客掛載就自動要求登入（auto）。 */
 function PublicProfileStub(): null {
   useEffect(() => {
-    emit('auth:login-request', {});
+    emit('auth:login-request', { auto: true });
   }, []);
   return null;
 }
 
 beforeEach(async () => {
   vi.stubEnv('VITE_LIFF_ID', 'test-liff-id');
+  sessionStorage.clear();
+  localStorage.clear();
   h.searchAtInit.length = 0;
   h.liff.sawCode = false;
   h.gate = new Promise<void>((resolve) => { h.openGate = resolve; });
@@ -158,5 +160,48 @@ describe('公開個人頁從 LINE 授權回來（Grok 交叉審查 P1）', () =>
     expect(h.liff.login).not.toHaveBeenCalled();
     expect(h.searchAtInit[0]).toContain('code=c');
     expect(h.liff.init).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('公開個人頁：取消授權或剛登出後不再被送去 LINE（Grok 第二輪 P1）', () => {
+  async function settle(): Promise<void> {
+    await act(async () => {
+      h.openGate();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+  }
+
+  it('/profile/:uid?error=access_denied&liffClientId=x 掛載：不載 LIFF、liff.login 0 次、參數已清', async () => {
+    history.replaceState(null, '', '/profile/U-public?error=access_denied&error_description=x&state=s&liffClientId=x');
+    render(<App />);
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+    });
+    await settle();
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(h.liff.init).not.toHaveBeenCalled();
+    expect(location.search).toBe('');
+  });
+
+  it('登出後重整（旗標 logout）掛載：liff.login 0 次', async () => {
+    sessionStorage.setItem('fcb:suppress-auto-login', 'logout');
+    history.replaceState(null, '', '/profile/U-public');
+    render(<App />);
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+    });
+    await settle();
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(h.liff.init).not.toHaveBeenCalled();
+  });
+
+  it('沒有旗標的一般開頁：照 A 掛載就導向 LINE 登入（行為不變）', async () => {
+    history.replaceState(null, '', '/profile/U-public');
+    render(<App />);
+    await act(async () => {
+      emit('auth:changed', { uid: null });
+    });
+    await settle();
+    await waitFor(() => expect(h.liff.login).toHaveBeenCalledOnce(), { timeout: 3000 });
   });
 });

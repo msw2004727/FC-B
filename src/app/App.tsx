@@ -58,7 +58,9 @@ import { readAuthHint } from '@/data/auth-hint';
 import {
   carryLoginRedirectParams,
   cleanLoginParamsFromUrl,
+  consumeAutoLoginSuppressed,
   hasLoginCancelParams,
+  markAutoLoginSuppressed,
   hasLoginRedirectParams,
 } from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
@@ -156,6 +158,15 @@ export function App({
   const resumeLoginRef = useRef(
     typeof location !== 'undefined' && hasLoginRedirectParams(location.href),
   );
+  // 這次開頁略過「頁面自動要求登入」（auto）：剛在 LINE 授權頁取消、剛登出重整，或本次接手失敗過（Grok 第二輪 P1）。
+  // 使用者自己按的登入不受影響。旗標在開頁讀一次就刪，下一次開頁恢復。
+  const skipAutoLoginRef = useRef<boolean | null>(null);
+  if (skipAutoLoginRef.current === null) {
+    if (typeof location !== 'undefined' && hasLoginCancelParams(location.href)) {
+      markAutoLoginSuppressed('cancel'); // 清取消參數之前寫
+    }
+    skipAutoLoginRef.current = consumeAutoLoginSuppressed();
+  }
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
@@ -240,10 +251,12 @@ export function App({
     // 首頁訪客路徑會暫緩 Auth 註冊（T-041）；按下登入代表使用者現在就要 Auth，
     // 登入流程的 callable 要等 getFirebase()，不立刻放行會多等 3～10 秒（冪等：沒有暫緩或已放行時是空操作）。
     releaseFirebaseAuthHold();
-    if (pendingRef.current || externalPending || currentUid.current !== null) {
-      // 開頁接手但已登入：清掉回跳參數（審查 P3-4）。登入進行中則不能清——進行中的 signIn
-      // 可能還沒跑到 liff.init，code 被清掉會讀不到而再導向 LINE（Grok 交叉審查 P1）。
-      if (resume && currentUid.current !== null) cleanLoginParamsFromUrl();
+    // 登入進行中不能清回跳參數——進行中的 signIn 可能還沒跑到 liff.init，code 被清掉會讀不到
+    // 而再導向 LINE；交給它在 init 之後自己清（Grok 交叉審查 P1、第二輪 P2）。
+    if (pendingRef.current || externalPending) return;
+    if (currentUid.current !== null) {
+      // 開頁接手但已登入、也沒有進行中的登入：清掉回跳參數（審查 P3-4）。
+      if (resume) cleanLoginParamsFromUrl();
       return;
     }
     pendingRef.current = true;
@@ -268,6 +281,8 @@ export function App({
           }
         }
       } catch (err) {
+        // 接手失敗（含 LIFF 未登入的靜默失敗）：這次開頁之後的自動登入要求一律略過（Grok 第二輪 P1）。
+        if (resume) skipAutoLoginRef.current = true;
         // M-036：觸發 liff.login 重導向或手機外部瀏覽器說明框時不顯示「無法完成 LINE 登入」錯誤
         if (isLoginRedirectingError(err)) {
           return;
@@ -294,10 +309,7 @@ export function App({
   useEffect(() => {
     if (!authKnown || !resumeLoginRef.current) return;
     resumeLoginRef.current = false;
-    if (currentUid.current !== null) {
-      cleanLoginParamsFromUrl();
-      return;
-    }
+    // runLogin 自己處理：進行中不清、已登入且沒有進行中才清（Grok 第二輪 P2）。
     runLogin(true);
   }, [authKnown, runLogin]);
 
@@ -311,7 +323,9 @@ export function App({
 
   // M-034、M-035：監聽全域登入請求事件（如個人頁未登入 LINE 登入按鈕、底部分頁未登入守門）
   useEffect(() => {
-    return on('auth:login-request', () => {
+    return on('auth:login-request', (payload) => {
+      // 頁面自動要求（auto）：剛取消授權／剛登出／本次接手失敗過就略過，避免反覆送去 LINE（Grok 第二輪 P1）。
+      if (payload?.auto === true && skipAutoLoginRef.current === true) return;
       // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
       // 這次開頁不可能呼叫 liff.login()，避免與接手互搶後無限重導（Grok 交叉審查 P1）。
       if (typeof location !== 'undefined' && hasLoginRedirectParams(location.href)) {

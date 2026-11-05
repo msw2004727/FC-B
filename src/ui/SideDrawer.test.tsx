@@ -8,6 +8,7 @@ import { _resetForTest } from '@/core/feature-registry';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
 import { getToasts, toast } from './Toast';
+import * as authMod from '@/data/auth';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -251,6 +252,33 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(modal?.querySelector('.app-confirm-warning')?.textContent).toBe('⚠ Warning');
     fireEvent.click(document.getElementById('app-confirm-cancel')!);
     expect(document.getElementById('app-confirm-modal')).toBeNull();
+  });
+
+  it('清除快取：刪 LIFF* 之前先 LINE 登出，並寫「剛登出」旗標（Grok 第二輪 P3）', async () => {
+    const order: string[] = [];
+    localStorage.setItem('LIFF_STORE:test:accessToken', 'token');
+    const signOutSpy = vi.spyOn(authMod, 'signOut').mockImplementation(async () => { order.push('signOut'); });
+    const lineSpy = vi.spyOn(authMod, 'logoutLineSession').mockImplementation(async () => {
+      order.push(localStorage.getItem('LIFF_STORE:test:accessToken') ? 'line(LIFF 還在)' : 'line(LIFF 已刪)');
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<Harness />);
+      openDrawer();
+      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      await act(async () => {
+        fireEvent.click(document.getElementById('app-confirm-ok')!);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(order).toEqual(['signOut', 'line(LIFF 還在)']);
+      expect(localStorage.getItem('LIFF_STORE:test:accessToken')).toBeNull();
+      expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBe('logout');
+    } finally {
+      signOutSpy.mockRestore();
+      lineSpy.mockRestore();
+      error.mockRestore();
+      sessionStorage.removeItem('fcb:suppress-auto-login');
+    }
   });
 
   // 測試同步更新：照 A（M-055）sporthub_font_size 只存數字 16.5／18，最小級 15 時移除，開站腳本才能補上 px。

@@ -78,3 +78,29 @@ export function cleanLoginParamsFromUrl(): void {
     /* ignore */
   }
 }
+
+// 「下一次開頁不要自動登入」旗標（sessionStorage，只活在這個分頁）。
+// 公開個人頁掛載就自動要求登入（照 A `_requireProtectedActionLogin`）；剛在 LINE 授權頁取消、或剛登出重整時，
+// 若照常自動登入，桌面外部瀏覽器會被反覆送去 LINE、登出等於無效（Grok 第二輪 P1）。
+// 寫入：取消參數清掉前、登出重整前；讀取：App 開頁時讀一次並刪掉，下一次開頁恢復自動登入。
+const AUTO_LOGIN_SUPPRESS_KEY = 'fcb:suppress-auto-login';
+
+export function markAutoLoginSuppressed(reason: 'cancel' | 'logout'): void {
+  try {
+    sessionStorage.setItem(AUTO_LOGIN_SUPPRESS_KEY, reason);
+  } catch {
+    /* 儲存不可用：退回原本行為 */
+  }
+}
+
+/** 讀出並刪掉旗標；有旗標回 true（這次開頁不自動登入）。 */
+export function consumeAutoLoginSuppressed(): boolean {
+  try {
+    const value = sessionStorage.getItem(AUTO_LOGIN_SUPPRESS_KEY);
+    if (value === null) return false;
+    sessionStorage.removeItem(AUTO_LOGIN_SUPPRESS_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

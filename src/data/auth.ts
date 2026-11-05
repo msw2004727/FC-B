@@ -21,7 +21,12 @@ import { toast } from '@/ui/Toast';
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
-import { buildCleanLoginRedirectUri, cleanLoginParamsFromUrl } from './login-redirect';
+import {
+  buildCleanLoginRedirectUri,
+  cleanLoginParamsFromUrl,
+  hasLoginRedirectParams,
+  markAutoLoginSuppressed,
+} from './login-redirect';
 
 export interface AuthUser {
   /** Firebase Auth uid；依 R-ID-002，正式模式即 LINE userId。 */
@@ -70,6 +75,10 @@ export { buildCleanLoginRedirectUri };
 
 /** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
 let liffInitialized = false;
+/** signOutAndReload 執行中：期間 signIn 一律不做。 */
+let signingOut = false;
+/** 每次 signIn 的世代編號：換發逾時或有新的 signIn 之後，舊那次晚到的結果不採用。 */
+let signInGeneration = 0;
 
 /** liff.init／LIFF 登出的等待上限（照 A `LineAuth.init` 的 8 秒 `_withTimeout`）。 */
 export const LIFF_STEP_TIMEOUT_MS = 8000;
@@ -105,7 +114,12 @@ function emitAuth(uid: string | null): void {
  * 改拋 LoginRedirectingError（呼叫端不顯示錯誤）。
  */
 export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
-  const interactive = options.interactive !== false;
+  // 登出進行中（等 LIFF 登出或重整前）：不登入，頁面自動要求登入會在這裡停住（Opus P3-4）。
+  if (signingOut) throw new LoginRedirectingError('[auth] 登出中，略過登入');
+  // 網址還帶授權回跳參數時一律非互動：各頁按鈕直接呼叫 signIn() 也不會在 code 被處理前 liff.login()
+  // （Grok 第二輪 P3）。
+  const interactive = options.interactive !== false && !hasLoginRedirectParams(location.href);
+  const generation = ++signInGeneration;
   // liff.init 之前就失敗的三處（emulator、缺設定、SDK 載入失敗）也先清回跳參數，
   // code 不留在網址被重整或分享（Grok 交叉審查 P2）。
   if (shouldUseEmulator()) {
@@ -176,15 +190,23 @@ export async function signIn(options: { interactive?: boolean } = {}): Promise<A
   }
 
   // 換發 Firebase 登入：Callable 預設約 70 秒才放棄，登入鈕會一直停著；設 15 秒上限（Grok 交叉審查 P3）。
+  // 逾時、或之後又有新的 signIn／登出開始：這次晚到的 custom token 不再拿去登入（Grok 第二輪 P3）。
+  let expired = false;
   const user = await withTimeout((async () => {
     const { customToken: rawCustomToken } = await callFn('createCustomToken', { accessToken });
     if (typeof rawCustomToken !== 'string' || !rawCustomToken) {
       throw new Error('[auth] createCustomToken 未回傳 customToken');
     }
     const [authMod, ctx] = await Promise.all([import('firebase/auth'), getFirebase()]);
+    if (expired || signingOut || generation !== signInGeneration) {
+      throw new Error('[auth] 登入換發已過期，略過晚到的結果');
+    }
     const credential = await authMod.signInWithCustomToken(ctx.auth, rawCustomToken);
     return credential.user;
-  })(), LOGIN_TOKEN_TIMEOUT_MS, '登入換發');
+  })(), LOGIN_TOKEN_TIMEOUT_MS, '登入換發').catch((err: unknown) => {
+    expired = true;
+    throw err;
+  });
 
   let displayName: string | null = null;
   let pictureUrl: string | null = null;
@@ -250,41 +272,69 @@ async function logoutLiff(): Promise<void> {
   if (liff.isLoggedIn()) liff.logout();
 }
 
+/** 只做 LINE 登出（最多等 8 秒，失敗只記錄）；給抽屜「清除快取」在刪 LIFF* 之前用。 */
+export async function logoutLineSession(): Promise<void> {
+  try {
+    await withTimeout(logoutLiff(), LIFF_STEP_TIMEOUT_MS, 'LINE 登出');
+  } catch (err) {
+    console.warn('[auth] LINE 登出失敗', err);
+  }
+}
+
 /**
  * 使用者按「登出」：照 A `LineAuth.logout`——Firebase signOut → LIFF 已登入則 liff.logout()
  * （本次沒 init 過先 init，最多等 8 秒）→ 清本機帳號資料（含 LIFF* key）與登入旗標 → 重新整理。
  * 取代 ddc5ad9 的「先清本機再 LIFF」：先刪 LIFF* 會讓之後 init 認不出登入而跳過 liff.logout（Grok 交叉審查 P2）；
  * LIFF 逾時或失敗時，重整前照樣刪 LIFF* key。
  * Firebase signOut 失敗：使用者其實仍登入，不清旗標、不重整，提示重試，回傳 false（Grok 交叉審查 P2）。
- * QA 帳號（claims.qa）不碰 LIFF（Grok 交叉審查 P3）；QA 橫幅的登出另走 signOutQa。
+ * QA 帳號（claims.qa）：照橫幅「登出 QA」走 signOutQa（不 init LIFF、不重整，Grok 第二輪 P3）。
+ * 帳號狀態讀不到（unknown，最多等 8 秒）：不 init LIFF，其餘照做。
+ * 重整前寫「剛登出」旗標：重整後這次開頁不自動要求登入（公開個人頁不會又被送去 LINE，Grok 第二輪 P1）。
+ * 執行期間 signIn 一律不做（Opus P3-4）。
  */
 export async function signOutAndReload(
   reload: () => void = () => location.reload(),
 ): Promise<boolean> {
-  const isQa = (await inspectQaAccount()).kind === 'qa';
+  if (signingOut) return false;
+  signingOut = true;
   try {
-    await signOut();
-  } catch (err) {
-    console.error('[auth] 登出 Firebase 失敗', err);
-    toast.show({ message: '登出失敗，請再試一次' });
-    return false;
-  }
-  if (!isQa) {
+    let status: QaAccountStatus;
     try {
-      await withTimeout(logoutLiff(), LIFF_STEP_TIMEOUT_MS, 'LINE 登出');
-    } catch (err) {
-      console.warn('[auth] LINE 登出失敗', err);
+      status = await withTimeout(inspectQaAccount(), LIFF_STEP_TIMEOUT_MS, '讀取帳號狀態');
+    } catch {
+      status = { kind: 'unknown' };
     }
+    if (status.kind === 'qa') {
+      try {
+        const current = await getCurrentUser();
+        return current !== null && await signOutQa(current.uid);
+      } catch (err) {
+        console.error('[auth] QA 登出失敗', err);
+        toast.show({ message: '登出失敗，請再試一次' });
+        return false;
+      }
+    }
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('[auth] 登出 Firebase 失敗', err);
+      toast.show({ message: '登出失敗，請再試一次' });
+      return false;
+    }
+    if (status.kind !== 'unknown') await logoutLineSession();
+    clearAccountLocalState();
+    lastKnownAuthUid = null;
+    writeAuthHint(false);
+    markAutoLoginSuppressed('logout');
+    try {
+      reload();
+    } catch (err) {
+      console.error('[auth] 重新整理失敗', err);
+    }
+    return true;
+  } finally {
+    signingOut = false;
   }
-  clearAccountLocalState();
-  lastKnownAuthUid = null;
-  writeAuthHint(false);
-  try {
-    reload();
-  } catch (err) {
-    console.error('[auth] 重新整理失敗', err);
-  }
-  return true;
 }
 
 export interface QaClaims {

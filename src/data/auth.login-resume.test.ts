@@ -54,6 +54,7 @@ beforeEach(async () => {
   h.liff.logout.mockReset().mockImplementation(() => { h.calls.push('liff.logout'); });
   h.liff.isLoggedIn.mockReset().mockReturnValue(false);
   h.callFn.mockReset().mockResolvedValue({ customToken: 'custom-token' });
+  h.signInWithCustomToken.mockClear();
   h.fbSignOut.mockReset().mockImplementation(async () => { h.calls.push('firebase.signOut'); });
   localStorage.clear();
   sessionStorage.clear();
@@ -178,6 +179,31 @@ describe('LINE 授權回跳接手登入', () => {
     }
   });
 
+  it('換發逾時後晚到的 custom token 不拿去登入（世代編號，Grok 第二輪 P3）', async () => {
+    vi.useFakeTimers();
+    try {
+      h.liff.isLoggedIn.mockReturnValue(true);
+      h.callFn.mockImplementationOnce(() => new Promise((resolve) => {
+        setTimeout(() => resolve({ customToken: 'late-token' }), auth.LOGIN_TOKEN_TIMEOUT_MS + 1000);
+      }));
+      const result = auth.signIn().catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(auth.LOGIN_TOKEN_TIMEOUT_MS);
+      expect(String((await result as Error).message)).toContain('逾時');
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(h.signInWithCustomToken).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('網址帶回跳參數時，各頁按鈕直接呼叫 signIn() 也強制非互動，不 liff.login（Grok 第二輪 P3）', async () => {
+    history.replaceState(null, '', '/events/e1?code=c&state=s&liffClientId=x');
+    h.liff.isLoggedIn.mockReturnValue(false);
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+  });
+
   it('使用者按登入（interactive 預設）仍照舊導向 LINE', async () => {
     h.liff.isLoggedIn.mockReturnValue(false);
     const err = await auth.signIn().catch((e: unknown) => e);
@@ -293,7 +319,8 @@ describe('signOutAndReload（照 A LineAuth.logout）', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('QA 帳號（claims.qa）：不碰 LIFF，Firebase 登出與清理照做（Grok 交叉審查 P3）', async () => {
+  // 測試同步更新：2a4d9b2 的 QA 登出仍重整；Grok 第二輪 P3 改為照橫幅「登出 QA」走 signOutQa（不 init LIFF、不重整）。
+  it('QA 帳號（claims.qa）：走 signOutQa——Firebase 登出、不 init LIFF、不重整、不寫剛登出旗標', async () => {
     seedAccountState();
     liffFollowsStorage();
     h.currentUser = { uid: 'qa-1', getIdTokenResult: async () => ({ claims: { qa: true } }) };
@@ -302,7 +329,52 @@ describe('signOutAndReload（照 A LineAuth.logout）', () => {
     expect(h.fbSignOut).toHaveBeenCalledOnce();
     expect(h.liff.init).not.toHaveBeenCalled();
     expect(h.liff.logout).not.toHaveBeenCalled();
-    expect(localStorage.getItem('fcb:signed-in')).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBeNull();
+  });
+
+  it('帳號狀態讀不到（unknown）：不 init LIFF，Firebase 登出、清理與重整照做（Grok 第二輪 P3）', async () => {
+    seedAccountState();
+    h.currentUser = {
+      uid: 'U1',
+      getIdTokenResult: async () => { throw new Error('network'); },
+    };
+    const reload = vi.fn();
+    await expect(auth.signOutAndReload(reload)).resolves.toBe(true);
+    expect(h.fbSignOut).toHaveBeenCalledOnce();
+    expect(h.liff.init).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LIFF_KEY)).toBeNull();
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('重整前寫「剛登出」旗標，重整後這次開頁不自動要求登入（Grok 第二輪 P1）', async () => {
+    seedAccountState();
+    await auth.signOutAndReload(vi.fn());
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBe('logout');
+  });
+
+  it('登出進行中（等 LIFF）：signIn 直接不做、不會 liff.login（Opus P3-4）', async () => {
+    seedAccountState();
+    let releaseInit: () => void = () => undefined;
+    h.liff.init.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseInit = resolve; }));
+    const reload = vi.fn();
+    const done = auth.signOutAndReload(reload);
+    await vi.waitFor(() => expect(h.liff.init).toHaveBeenCalledOnce());
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+
+    releaseInit();
+    await done;
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('logoutLineSession：只做 LINE 登出（給抽屜清除快取）', async () => {
+    seedAccountState();
+    liffFollowsStorage();
+    await auth.logoutLineSession();
+    expect(h.liff.logout).toHaveBeenCalledOnce();
+    expect(h.fbSignOut).not.toHaveBeenCalled();
   });
 });

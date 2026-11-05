@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { AuthUser } from '@/data/auth';
 import { _resetFirebaseForTest, armFirebaseAuthHold } from '@/data/firebase';
 import { emit } from '@/core/events';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
-import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
+import { _setDictLoaderForTest, setLocale, t } from '@/i18n/i18n';
 import { App } from './App';
 
 // 照 A 開頁 liff.init 的效果：從 LINE 授權回來（網址帶 code＋liffClientId 或 liff.state）時，
@@ -43,6 +43,8 @@ async function pause(ms: number): Promise<void> {
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  sessionStorage.clear();
+  localStorage.clear();
   _resetFirebaseForTest();
   auth.getCurrentUser.mockResolvedValue(null);
   _resetForTest();
@@ -169,6 +171,84 @@ describe('LINE 授權回跳：開頁自動接手登入', () => {
     });
     await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
     expect(auth.signIn).toHaveBeenCalledWith({ interactive: false });
+  });
+
+  it('按登入後、liff.init 讀網址前 Auth 還原出已登入：不清 code，留給進行中的 signIn（Grok 第二輪 P2）', async () => {
+    history.replaceState(null, '', '/events/e1?code=c&state=s&liffClientId=x');
+    auth.onAuthChanged.mockReturnValue(() => undefined); // Auth 還原由測試手動發
+    auth.signIn.mockImplementation(() => new Promise<AuthUser>(() => undefined));
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.login') }));
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      emit('auth:changed', { uid: 'existing-user' });
+    });
+    await pause(40);
+    expect(location.search).toBe('?code=c&state=s&liffClientId=x');
+    expect(auth.signIn).toHaveBeenCalledOnce();
+  });
+
+  it('取消授權後這次開頁：頁面自動要求登入（auto）略過，使用者自己按的照常（Grok 第二輪 P1）', async () => {
+    history.replaceState(null, '', '/events/e1?error=access_denied&state=s&liffClientId=x');
+    authRestoresAs(null);
+    auth.signIn.mockResolvedValue(LOGIN_USER);
+    render(<App />);
+    await waitFor(() => expect(location.search).toBe(''));
+    await act(async () => {
+      emit('auth:login-request', { auto: true });
+    });
+    await pause(40);
+    expect(auth.signIn).not.toHaveBeenCalled();
+    // 旗標開頁就讀掉，不留到下一次開頁
+    expect(sessionStorage.getItem('fcb:suppress-auto-login')).toBeNull();
+
+    await act(async () => {
+      emit('auth:login-request', {});
+    });
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+  });
+
+  it('剛登出重整（旗標 logout）：這次開頁的自動要求登入略過', async () => {
+    sessionStorage.setItem('fcb:suppress-auto-login', 'logout');
+    history.replaceState(null, '', '/events/e1');
+    authRestoresAs(null);
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    await act(async () => {
+      emit('auth:login-request', { auto: true });
+    });
+    await pause(40);
+    expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
+  it('沒有旗標：頁面自動要求登入照常（下一次開頁恢復）', async () => {
+    history.replaceState(null, '', '/events/e1');
+    authRestoresAs(null);
+    auth.signIn.mockResolvedValue(LOGIN_USER);
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    await act(async () => {
+      emit('auth:login-request', { auto: true });
+    });
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+    expect(auth.signIn).toHaveBeenCalledWith();
+  });
+
+  it('本次接手失敗過：之後的自動要求登入略過（Grok 第二輪 P1）', async () => {
+    history.replaceState(null, '', '/?code=c&state=s&liffClientId=x');
+    authRestoresAs(null);
+    auth.signIn.mockRejectedValue(Object.assign(new Error('not logged in'), { isRedirecting: true }));
+    render(<App />);
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+    await pause(40);
+    history.replaceState(null, '', '/'); // 真的 signIn 會清參數
+    await act(async () => {
+      emit('auth:login-request', { auto: true });
+    });
+    await pause(40);
+    expect(auth.signIn).toHaveBeenCalledOnce();
   });
 
   it('接手登入進行中再按登入：不重複觸發', async () => {

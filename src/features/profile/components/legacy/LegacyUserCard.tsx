@@ -104,8 +104,9 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   }, [targetUid]);
 
   // 照 A `_requireProtectedActionLogin`：未登入用既有事件導向登入。
+  // auto：掛載自動要求，剛取消授權或剛登出時 App 會略過，避免反覆送去 LINE（Grok 第二輪 P1）。
   useEffect(() => {
-    if (!viewer.uid) emit('auth:login-request', {});
+    if (!viewer.uid) emit('auth:login-request', { auto: true });
   }, [viewer.uid]);
 
   // 活動紀錄（照 A `renderUserCardRecords`：初次以毛玻璃遮蔽，點擊後才讀）。

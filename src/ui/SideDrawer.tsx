@@ -27,6 +27,7 @@ import { APP_VERSION } from '@/version';
 import { isInternalTestMode } from '@/data/internal-test';
 import type { AuthUser } from '@/data/auth';
 import { getLastKnownAuthUid } from '@/data/auth';
+import { markAutoLoginSuppressed } from '@/data/login-redirect';
 import { toast } from '@/ui/Toast';
 import {
   buildDrawerRenderNodes,
@@ -143,9 +144,13 @@ async function executeClearCache(): Promise<void> {
     try {
       const auth = await import('@/data/auth');
       if (typeof auth.signOut === 'function') await auth.signOut();
+      // 刪 LIFF* 之前先登出 LINE（最多 8 秒），清除快取後再登入才能換帳號（Grok 第二輪 P3）。
+      if (typeof auth.logoutLineSession === 'function') await auth.logoutLineSession();
     } catch {
       /* ignore */
     }
+    // 重整後這次開頁不自動要求登入（公開個人頁不會又被送去 LINE）。
+    markAutoLoginSuppressed('logout');
     if (typeof window !== 'undefined' && 'caches' in window) {
       try {
         const keys = await caches.keys();

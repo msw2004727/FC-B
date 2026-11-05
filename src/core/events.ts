@@ -17,8 +17,11 @@ export interface AppEvents {
   'sport:picker-open': Record<string, never>;
   /** 開啟本人簽到／UID QR Code 彈窗（M-025、M-027）。 */
   'qr:open': Record<string, never>;
-  /** 請求觸發 App 全站 LINE 登入流程（M-034、M-035）。 */
-  'auth:login-request': Record<string, never>;
+  /**
+   * 請求觸發 App 全站 LINE 登入流程（M-034、M-035）。
+   * auto：頁面掛載就自動要求（不是使用者按的），剛取消授權／剛登出／接手失敗時 App 會略過。
+   */
+  'auth:login-request': { auto?: boolean };
   /** M-036：手機外部瀏覽器顯示 LINE 登入提示框。 */
   'auth:mobile-login-hint': Record<string, never>;
   /** M-049：更新頂部同步／離線狀態條。 */
