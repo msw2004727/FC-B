@@ -205,7 +205,7 @@ describe('T-092 球員卡（DOM）', () => {
       expect(shine.style.cssText).toBe(cssTextOf(playerCardShineStyle('light')));
       expect(shine.style.width).toBe('60.809px');
       expect(shine.style.transform).toContain('rotate(69.6769deg)');
-      expect(shine.style.background).toContain('rgba(255, 255, 255, 0.8) 50%');
+      expect(shine.style.background).toContain('rgba(255, 255, 255, 0.4) 50%');
       expect(shine.style.animation).toBe('');
       const lightStyle = shine.style.cssText;
       // 斜光是最後一層（與 PNG 一樣疊在內容上）

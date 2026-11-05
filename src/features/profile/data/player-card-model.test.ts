@@ -163,10 +163,10 @@ describe('T-092 球員卡資料模型', () => {
       );
     });
 
-    it('淺色版：白色高光峰值 0.8＋兩側淡金暗邊 0.16；深色版：暖白峰值 0.22', () => {
+    it('淺色版：白色高光峰值 0.4＋兩側淡金暗邊 0.08；深色版：暖白峰值 0.22', () => {
       const light = PLAYER_CARD_SHINE.stops.light.map((s) => s.color);
-      expect(light).toContain('rgba(255, 255, 255, 0.8)');
-      expect(light.filter((c) => c === 'rgba(186, 117, 23, 0.16)')).toHaveLength(2);
+      expect(light).toContain('rgba(255, 255, 255, 0.4)');
+      expect(light.filter((c) => c === 'rgba(186, 117, 23, 0.08)')).toHaveLength(2);
       expect(PLAYER_CARD_SHINE.stops.dark.map((s) => s.color)).toContain('rgba(255, 248, 225, 0.22)');
     });
   });
