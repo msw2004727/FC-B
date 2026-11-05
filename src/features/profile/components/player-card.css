@@ -117,16 +117,36 @@
 }
 [data-theme="dark"] .player-card-ring { background: #FAC775; }
 [data-theme="dark"] .player-card-ring-inner { background: #2C2C2A; }
-.player-card .profile-avatar {
-  width: 90px;
-  height: 90px;
+/*
+ * 與舊個人頁樣式的權重：卡片沿用 A 的 .profile-avatar／.profile-title／.profile-stats／.stat-* class（既有測試與 id 依賴），
+ * 但 A 的 profile.css 打包時被限定成 `.legacy-ui .stat-item` 等（權重 0,2,0），且在本檔之後載入，
+ * 原本寫 `.player-card .stat-item`（同為 0,2,0）會被蓋掉：三格變白底圓角框、綠色數字，頭像縮成 72px 留白，名字字級／間距也被換掉。
+ * 以下覆蓋一律加上 `.legacy-ui` 前綴（0,3,0 以上）；取代原本未加前綴的寫法（T-092 實機回報）。
+ */
+/* 照片（或首字）填滿內圈：尺寸跟內圈內容區走，不留白。 */
+.legacy-ui .player-card .profile-avatar {
+  width: 100%;
+  height: 100%;
   margin: 0;
+  padding: 0;
   font-size: 2rem;
   border: none;
   box-shadow: none;
+  border-radius: 50%;
+  overflow: hidden;
   background: linear-gradient(135deg, #EF9F27, #854F0B);
 }
-.player-card .profile-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.legacy-ui .player-card .profile-avatar.has-identity-crown { overflow: visible; }
+.legacy-ui .player-card .profile-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  object-fit: cover;
+  border-radius: 50%;
+}
 
 /* 俱樂部數：頭像外圈右側偏中下破格。 */
 .player-card-club {
@@ -161,7 +181,7 @@
   margin-top: 2px;
 }
 
-.player-card .player-card-name {
+.legacy-ui .player-card .player-card-name {
   margin: 12px 22px 0;
   font-size: 1.02rem;
   font-weight: 700;
@@ -183,30 +203,37 @@
 .player-card-gauge-fill { height: 100%; border-radius: 999px; background: #BA7517; }
 [data-theme="dark"] .player-card-gauge-fill { background: #FAC775; }
 
-.player-card .player-card-stats {
+.legacy-ui .player-card .profile-stats.player-card-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0;
   margin: 12px 14px 0;
   padding: 0;
 }
-.player-card .stat-item {
+/* 三格直接印在卡面：無底色、無框、無圓角、無陰影，中間細分隔線。 */
+.legacy-ui .player-card .profile-stats .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 1px;
   padding: 0 2px;
   background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
-.player-card .stat-item + .stat-item { border-left: 1px solid rgba(186, 117, 23, .35); }
-[data-theme="dark"] .player-card .stat-item + .stat-item { border-left-color: rgba(250, 199, 117, .3); }
-.player-card .stat-num {
+.legacy-ui .player-card .profile-stats .stat-item + .stat-item { border-left: 1px solid rgba(186, 117, 23, .35); }
+[data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-item + .stat-item { border-left-color: rgba(250, 199, 117, .3); }
+.legacy-ui .player-card .profile-stats .stat-num {
   font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
   font-size: 1.5rem;
   font-weight: 400;
   line-height: 1;
-  color: inherit;
+  color: #412402;
 }
-.player-card .stat-label { font-size: .6rem; font-weight: 700; color: inherit; }
+[data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-num { color: #FAEEDA; }
+.legacy-ui .player-card .profile-stats .stat-label { font-size: .6rem; font-weight: 700; color: #412402; }
+[data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-label { color: #FAEEDA; }
 
 .player-card-logo {
   position: absolute;
