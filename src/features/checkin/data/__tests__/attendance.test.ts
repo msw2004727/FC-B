@@ -8,7 +8,13 @@
  *  - 路徑：寫入走 docId（R-REG-014），eventId 欄位存 public id（R-ID-009）。
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// 測試擋網（A1）後 getFirebase 預設 reject；allowlist 檢查在 writeBatch 之前，給假 db 即可，不連正式 Firestore。
+vi.mock('@/data/firebase', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/data/firebase')>()),
+  getFirebase: async () => ({ db: {} }),
+}));
 
 import {
   ATTENDANCE_FIELD_ALLOWLIST,
