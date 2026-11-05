@@ -115,6 +115,9 @@ export interface PlayerCardPalette {
   gaugeTrack: string;
   clubBg: string;
   clubText: string;
+  /** PNG 左下 QR 的 quiet zone 底色與碼色（只在 PNG，網頁卡面不畫 QR）。 */
+  qrBg: string;
+  qrFg: string;
 }
 
 export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = {
@@ -130,6 +133,8 @@ export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = 
     gaugeTrack: 'rgba(186, 117, 23, 0.18)',
     clubBg: '#412402',
     clubText: '#FAC775',
+    qrBg: '#FFFFFF',
+    qrFg: '#412402',
   },
   dark: {
     base: '#2C2C2A',
@@ -143,6 +148,8 @@ export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = 
     gaugeTrack: 'rgba(250, 199, 117, 0.18)',
     clubBg: '#FAC775',
     clubText: '#2C2C2A',
+    qrBg: '#FAEEDA',
+    qrFg: '#2C2C2A',
   },
 };
 

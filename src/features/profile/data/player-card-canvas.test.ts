@@ -3,8 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   PLAYER_CARD_FONT_LOAD,
   PLAYER_CARD_IMAGE_TIMEOUT_MS,
+  LOGO_BOTTOM,
   PLAYER_CARD_PNG_SCALE,
+  QR_MODULE_PX,
   STAT_CELL_MAX_WIDTH,
+  qrLayout,
+  type QrMatrix,
   browserLoadImage,
   drawPlayerCard,
   ensurePlayerCardFonts,
@@ -35,6 +39,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const measure = (value: string): number => Array.from(value).length * sizeOf(ctx.font) * 0.6;
   const images: Array<{ image: unknown; args: number[] }> = [];
   const fills: FillRecord[] = [];
+  const rects: Array<{ style: unknown; x: number; y: number; w: number; h: number }> = [];
   let points: Array<[number, number]> = [];
   const add = (x: number, y: number): void => {
     points.push([x, y]);
@@ -81,7 +86,9 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
         maxY: Math.max(...ys),
       });
     },
-    fillRect: vi.fn(),
+    fillRect: (x: number, y: number, w: number, h: number) => {
+      rects.push({ style: ctx.fillStyle, x, y, w, h });
+    },
     fillText: (value: string) => {
       texts.push(value);
       drawn.push({ value, size: sizeOf(ctx.font), width: measure(value) });
@@ -96,7 +103,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
       return { data: new Uint8ClampedArray(4) };
     },
   };
-  return { ctx, texts, images, fills, drawn };
+  return { ctx, texts, images, fills, drawn, rects };
 }
 
 const labels: PlayerCardLabels = {
@@ -310,5 +317,121 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       vi.useRealTimers();
     }
     expect(PLAYER_CARD_IMAGE_TIMEOUT_MS).toBe(3000);
+  });
+
+  describe('PNG 左下 QR（本人名片分享網址）', () => {
+    const PROFILE_URL = 'https://miniapp.line.me/2009525300-AuPGQ0sh?profile='
+      + encodeURIComponent('U0123456789abcdef0123456789abcdef');
+
+    async function realMatrix(text: string): Promise<{ matrix: QrMatrix; version: number }> {
+      const mod = (await import('qrcode')) as unknown as {
+        create: (t: string, o: { errorCorrectionLevel: 'L' }) => { modules: QrMatrix; version: number };
+      };
+      const created = mod.create(text, { errorCorrectionLevel: 'L' });
+      return { matrix: created.modules, version: created.version };
+    }
+
+    function renderDeps(main: ReturnType<typeof makeFakeCtx>, qr: PlayerCardRenderDeps['createQrMatrix']) {
+      const probe = makeFakeCtx();
+      const deps: PlayerCardRenderDeps = {
+        createCanvas: (width, height) => ({
+          width,
+          height,
+          getContext: () => (width > 1 ? main.ctx : probe.ctx) as unknown as CanvasRenderingContext2D,
+          toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(['png'], { type: 'image/png' })),
+        }),
+        loadImage: async (url: string) => (url.includes('logo') ? logoImg : null),
+        ensureFonts: async () => undefined,
+        createQrMatrix: qr,
+      };
+      return deps;
+    }
+
+    function darkModules(matrix: QrMatrix): number {
+      let count = 0;
+      for (let r = 0; r < matrix.size; r++) {
+        for (let c = 0; c < matrix.size; c++) {
+          if (matrix.get(r, c)) count += 1;
+        }
+      }
+      return count;
+    }
+
+    it('個人名片網址以錯誤修正 L 產生版本 4（33 模組），每模組 2px', async () => {
+      const { matrix, version } = await realMatrix(PROFILE_URL);
+      expect(version).toBe(4);
+      expect(matrix.size).toBe(33);
+      const layout = qrLayout(matrix.size);
+      expect(layout.module * PLAYER_CARD_PNG_SCALE).toBeCloseTo(QR_MODULE_PX);
+      // 整塊（含 2 模組 quiet zone）37 模組 × 2px ＝ 74px
+      expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(74);
+    });
+
+    it('產圖時以網址呼叫 QR 產生並畫進 PNG（底色／碼色依深淺）', async () => {
+      const { matrix } = await realMatrix(PROFILE_URL);
+      const dark = darkModules(matrix);
+      const main = makeFakeCtx();
+      const createQrMatrix = vi.fn(async () => matrix);
+      await renderPlayerCardPng(model(), 'light', labels, renderDeps(main, createQrMatrix), { qrText: PROFILE_URL });
+      expect(createQrMatrix).toHaveBeenCalledWith(PROFILE_URL);
+      expect(main.rects.filter((r) => r.style === '#FFFFFF')).toHaveLength(1);
+      expect(main.rects.filter((r) => r.style === '#412402')).toHaveLength(dark);
+      // UID 只在 QR 裡，PNG 文字不出現 UID
+      expect(main.texts.join('|')).not.toContain('U0123456789abcdef');
+
+      const darkCtx = makeFakeCtx();
+      await renderPlayerCardPng(model(), 'dark', labels, renderDeps(darkCtx, async () => matrix), { qrText: PROFILE_URL });
+      expect(darkCtx.rects.filter((r) => r.style === '#FAEEDA')).toHaveLength(1);
+      expect(darkCtx.rects.filter((r) => r.style === '#2C2C2A')).toHaveLength(dark);
+    });
+
+    it('QR 產生失敗仍輸出 PNG、不放 QR；沒給網址時不產生 QR', async () => {
+      const main = makeFakeCtx();
+      const failing = vi.fn(async (): Promise<QrMatrix | null> => {
+        throw new Error('qr failed');
+      });
+      const blob = await renderPlayerCardPng(model(), 'light', labels, renderDeps(main, failing), { qrText: PROFILE_URL });
+      expect(failing).toHaveBeenCalledTimes(1);
+      expect(blob.type).toBe('image/png');
+      expect(main.rects.filter((r) => r.style === '#FFFFFF')).toHaveLength(0);
+
+      const none = makeFakeCtx();
+      const unused = vi.fn(async () => null);
+      await renderPlayerCardPng(model(), 'light', labels, renderDeps(none, unused));
+      expect(unused).not.toHaveBeenCalled();
+    });
+
+    it('版面不重疊：QR 在內框左下、與 logo 同底線，不壓三格與 logo，且對齊像素格', async () => {
+      const { matrix } = await realMatrix(PROFILE_URL);
+      const { box } = qrLayout(matrix.size);
+      const right = box.x + box.size;
+      const bottom = box.y + box.size;
+      // 內框（離卡邊 6、線寬 1.5）之內，且避開左下圓角（半徑 12）
+      expect(box.x).toBeGreaterThan(6 + 1.5);
+      expect(bottom).toBeLessThan(324 - 6 - 1.5 - 4);
+      // 與 logo 同一底線
+      expect(bottom).toBeCloseTo(LOGO_BOTTOM);
+      // 三格最下方縮寫基線 264（字級 7.5，下伸部不超過 2）
+      expect(box.y).toBeGreaterThan(264 + 2);
+      // logo 寬最多 96，置中於 110：左緣 ≥ 62
+      expect(right).toBeLessThan(110 - 96 / 2);
+      // 3 倍輸出時落在整數像素
+      expect(Math.abs(box.x * 3 - Math.round(box.x * 3))).toBeLessThan(1e-9);
+      expect(Math.abs(box.y * 3 - Math.round(box.y * 3))).toBeLessThan(1e-9);
+
+      // 實際畫出的矩形都在這個方塊內，logo 貼圖在方塊右邊
+      const main = makeFakeCtx();
+      await renderPlayerCardPng(model(), 'light', labels, renderDeps(main, async () => matrix), { qrText: PROFILE_URL });
+      const qrRects = main.rects.filter((r) => r.style === '#FFFFFF' || r.style === '#412402');
+      expect(qrRects.length).toBeGreaterThan(1);
+      for (const r of qrRects) {
+        expect(r.x).toBeGreaterThanOrEqual(box.x - 1e-9);
+        expect(r.y).toBeGreaterThanOrEqual(box.y - 1e-9);
+        expect(r.x + r.w).toBeLessThanOrEqual(right + 1e-9);
+        expect(r.y + r.h).toBeLessThanOrEqual(bottom + 1e-9);
+      }
+      const logoDraw = main.images.find((i) => i.image === logoImg)!;
+      expect(logoDraw.args[0]!).toBeGreaterThan(right);
+    });
   });
 });

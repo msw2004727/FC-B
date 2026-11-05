@@ -46,6 +46,44 @@ export interface PlayerCardRenderDeps {
   /** 載入失敗回 null；crossOrigin＝true 時以 anonymous 模式載入。 */
   loadImage: (url: string, crossOrigin: boolean) => Promise<DrawableImage | null>;
   ensureFonts: () => Promise<void>;
+  /** 本機產 QR 模組矩陣（R-SHARE-013 禁外部服務）；失敗回 null，PNG 照常輸出、不放 QR。 */
+  createQrMatrix?: (text: string) => Promise<QrMatrix | null>;
+}
+
+/** QR 模組矩陣（qrcode 套件 `create().modules` 的子集）。 */
+export interface QrMatrix {
+  size: number;
+  get: (row: number, col: number) => boolean | number;
+}
+
+export interface PlayerCardRenderOptions {
+  /** 個人名片分享網址（只有本人的球員卡才給）；null／空＝不放 QR。 */
+  qrText?: string | null;
+}
+
+/**
+ * PNG 左下 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
+ * 四周 2 模組 quiet zone；左緣 x=14、底緣與 logo 底線對齊（y=302）。
+ * 版本 4（33 模組，錯誤修正 L）時整塊 37×2＝74px，約卡面 24.7 單位。
+ */
+export const QR_MODULE_PX = 2;
+export const QR_QUIET_MODULES = 2;
+export const QR_LEFT = 14;
+export const LOGO_CENTER_Y = 295;
+export const LOGO_HEIGHT = 14;
+export const LOGO_BOTTOM = LOGO_CENTER_Y + LOGO_HEIGHT / 2;
+
+export interface QrLayout {
+  /** quiet zone 外框（卡面單位）。 */
+  box: { x: number; y: number; size: number };
+  /** 每模組卡面單位。 */
+  module: number;
+}
+
+export function qrLayout(moduleCount: number, scale: number = PLAYER_CARD_PNG_SCALE): QrLayout {
+  const module = QR_MODULE_PX / scale;
+  const size = (moduleCount + QR_QUIET_MODULES * 2) * module;
+  return { box: { x: QR_LEFT, y: LOGO_BOTTOM - size, size }, module };
 }
 
 /** 2x～3x：220×324 × 3 ＝ 660×972。 */
@@ -273,15 +311,30 @@ function drawStats(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p
 }
 
 function drawLogo(ctx: Ctx, logo: DrawableImage | null, p: PlayerCardPalette): void {
-  const centerY = 295;
+  const centerY = LOGO_CENTER_Y;
   if (logo && logo.width > 0 && logo.height > 0) {
-    const h = 14;
+    const h = LOGO_HEIGHT;
     const w = Math.min(96, (logo.width / logo.height) * h);
     ctx.drawImage(logo as CanvasImageSource, 110 - w / 2, centerY - h / 2, w, h);
     return;
   }
   // logo 載入失敗時退回文字商標。
   text(ctx, 'ToosterX', 110, centerY + 5, displayFont, 14, p.text, 'center', 1);
+}
+
+function drawQr(ctx: Ctx, qr: QrMatrix, p: PlayerCardPalette): void {
+  const { box, module } = qrLayout(qr.size);
+  ctx.fillStyle = p.qrBg;
+  ctx.fillRect(box.x, box.y, box.size, box.size);
+  ctx.fillStyle = p.qrFg;
+  const origin = QR_QUIET_MODULES * module;
+  for (let row = 0; row < qr.size; row++) {
+    for (let col = 0; col < qr.size; col++) {
+      if (qr.get(row, col)) {
+        ctx.fillRect(box.x + origin + col * module, box.y + origin + row * module, module, module);
+      }
+    }
+  }
 }
 
 function drawShine(ctx: Ctx): void {
@@ -307,7 +360,7 @@ export function drawPlayerCard(
   model: PlayerCardModel,
   theme: PlayerCardTheme,
   labels: PlayerCardLabels,
-  assets: { avatar: DrawableImage | null; logo: DrawableImage | null },
+  assets: { avatar: DrawableImage | null; logo: DrawableImage | null; qr?: QrMatrix | null },
 ): void {
   const p = PLAYER_CARD_PALETTES[theme];
   drawBackground(ctx, p);
@@ -318,6 +371,8 @@ export function drawPlayerCard(
   drawStats(ctx, model, labels, p);
   drawLogo(ctx, assets.logo, p);
   drawShine(ctx);
+  // QR 畫在反光之後，避免斜光降低對比影響掃描。
+  if (assets.qr && assets.qr.size > 0) drawQr(ctx, assets.qr, p);
 }
 
 /**
@@ -408,6 +463,15 @@ function browserEnsureFonts(): Promise<void> {
   return ensurePlayerCardFonts(typeof document !== 'undefined' ? document.fonts : undefined);
 }
 
+/** 本機 qrcode 套件（lazy import，與 data/qr.ts 同一套件）；錯誤修正 L 以取得最小版本。 */
+async function browserCreateQrMatrix(text: string): Promise<QrMatrix | null> {
+  type CreateFn = (value: string, options: { errorCorrectionLevel: 'L' }) => { modules: QrMatrix };
+  const mod = (await import('qrcode')) as unknown as { create?: CreateFn; default?: { create?: CreateFn } };
+  const create = mod.create || mod.default?.create;
+  if (typeof create !== 'function') return null;
+  return create(text, { errorCorrectionLevel: 'L' }).modules;
+}
+
 export const browserRenderDeps: PlayerCardRenderDeps = {
   createCanvas: (width, height) => {
     const canvas = document.createElement('canvas');
@@ -417,6 +481,7 @@ export const browserRenderDeps: PlayerCardRenderDeps = {
   },
   loadImage: browserLoadImage,
   ensureFonts: browserEnsureFonts,
+  createQrMatrix: browserCreateQrMatrix,
 };
 
 export async function renderPlayerCardPng(
@@ -424,18 +489,29 @@ export async function renderPlayerCardPng(
   theme: PlayerCardTheme,
   labels: PlayerCardLabels,
   deps: PlayerCardRenderDeps = browserRenderDeps,
+  options: PlayerCardRenderOptions = {},
 ): Promise<Blob> {
-  const [, avatar, logo] = await Promise.all([
+  const qrText = typeof options.qrText === 'string' ? options.qrText.trim() : '';
+  const loadQr = async (): Promise<QrMatrix | null> => {
+    if (!qrText || !deps.createQrMatrix) return null;
+    try {
+      return await deps.createQrMatrix(qrText);
+    } catch {
+      return null; // QR 失敗不中斷分享
+    }
+  };
+  const [, avatar, logo, qr] = await Promise.all([
     deps.ensureFonts(),
     loadSafeAvatar(model.avatarUrl, deps),
     deps.loadImage(playerCardLogoUrl(theme), false).catch(() => null),
+    loadQr(),
   ]);
   const scale = PLAYER_CARD_PNG_SCALE;
   const canvas = deps.createCanvas(PLAYER_CARD_SIZE.width * scale, PLAYER_CARD_SIZE.height * scale);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas 2d unavailable');
   ctx.scale(scale, scale);
-  drawPlayerCard(ctx, model, theme, labels, { avatar, logo });
+  drawPlayerCard(ctx, model, theme, labels, { avatar, logo, qr });
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);

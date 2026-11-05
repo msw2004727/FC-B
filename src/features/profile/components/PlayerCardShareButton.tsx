@@ -183,7 +183,14 @@ function PlayerCardImageOverlay({
   );
 }
 
-export function PlayerCardShareButton({ model }: { model: PlayerCardModel }): JSX.Element {
+export function PlayerCardShareButton({
+  model,
+  qrText = null,
+}: {
+  model: PlayerCardModel;
+  /** PNG 左下 QR 內容（本人個人名片分享網址）；null＝不放 QR。 */
+  qrText?: string | null;
+}): JSX.Element {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [overlay, setOverlay] = useState<OverlayState | null>(null);
@@ -209,7 +216,7 @@ export function PlayerCardShareButton({ model }: { model: PlayerCardModel }): JS
         completed: t('profile.playerCard.completed'),
         attend: t('profile.playerCard.attendRate'),
         clubs: t('profile.playerCard.clubs'),
-      });
+      }, canvasMod.browserRenderDeps, { qrText });
       const outcome = await shareMod.sharePlayerCardBlob(blob, {
         nav: navigator,
         download: shareMod.browserDownload,

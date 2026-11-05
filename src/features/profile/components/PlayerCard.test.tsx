@@ -24,6 +24,7 @@ vi.mock('@/data/identity-resolver', () => ({
 const canvasMock = vi.hoisted(() => ({
   renderPlayerCardPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
   ensurePlayerCardFonts: vi.fn(async () => undefined),
+  browserRenderDeps: { tag: 'browser-deps' },
 }));
 vi.mock('../data/player-card-canvas', () => canvasMock);
 const shareMock = vi.hoisted(() => ({
@@ -281,5 +282,27 @@ describe('T-092 球員卡（DOM）', () => {
     identity.current = { displayName: 'U-me', pictureUrl: null, identityId: 'primary' };
     const hidden = renderTop(viewer());
     expect(hidden.container.querySelector('#profile-avatar')?.textContent).toBe('?');
+  });
+
+  it('QR：網頁卡面不顯示；本人球員卡產 PNG 時帶個人名片分享網址', async () => {
+    const { container } = renderTop(viewer());
+    const card = container.querySelector('.player-card')!;
+    expect(card.querySelector('canvas')).toBeNull();
+    expect(card.querySelector('[class*="qr"], [id*="qr"]')).toBeNull();
+    expect(card.innerHTML).not.toContain('miniapp.line.me');
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
+    const args = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as unknown[];
+    expect(args[3]).toBe(canvasMock.browserRenderDeps);
+    expect(args[4]).toEqual({ qrText: 'https://miniapp.line.me/2009525300-AuPGQ0sh?profile=U-me' });
+  });
+
+  it('QR：不是本人的球員卡不放 QR', async () => {
+    const other = { ...viewer(), uid: 'U-other' } as ViewerView;
+    const { container } = renderTop(other);
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
+    const args = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as unknown[];
+    expect(args[4]).toEqual({ qrText: null });
   });
 });

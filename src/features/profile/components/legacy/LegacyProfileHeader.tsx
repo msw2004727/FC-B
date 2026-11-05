@@ -8,6 +8,7 @@ import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
 import { buildPlayerCardModel } from '../../data/player-card-model';
+import { buildShareUrl } from '@/features/events/data/event-share-builders';
 import { PlayerCard } from '../PlayerCard';
 import { PlayerCardShareButton } from '../PlayerCardShareButton';
 import { useIdentitySettings } from '@/data/identity-settings';
@@ -145,6 +146,9 @@ export function LegacyProfileTopSection({
   // 照 A `_buildTitleDisplayHtml` / `getCurrentBadgeCount`：頭部徽章數與稱號於資料載入後更新。
   //   動態 import 成就資料層，避免 firestore 進首屏。載入失敗保留 `--` 與純名字。
   // T-092：頂部改成球員卡；UID＋QR、身分標籤、分享按鈕移到卡片外（不進 PNG）。
+  // PNG 左下 QR：只有本人的球員卡才放，內容與 A `_buildProfileLiffUrl` 相同的個人名片分享網址
+  // （MINI_APP_BASE_URL + '?profile=' + encodeURIComponent(uid)，R-SHARE-001／004）。網頁卡面不顯示。
+  const cardQrText = uid && viewer.uid && uid === viewer.uid ? buildShareUrl('profile', uid) : null;
   const cardModel = buildPlayerCardModel({
     name: displayName,
     uid,
@@ -228,7 +232,7 @@ export function LegacyProfileTopSection({
         </div>
       )}
       <div>
-        <PlayerCardShareButton model={cardModel} />
+        <PlayerCardShareButton model={cardModel} qrText={cardQrText} />
       </div>
     </div>
   );
