@@ -731,6 +731,17 @@ describe('T-092 球員卡（DOM）', () => {
         expect(flip.style.transform).toBe('rotateY(180deg)');
       });
 
+      it('子元素冒泡上來的 lostpointercapture（Safari 隱式 capture）不取消拖曳', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        const child = stage.querySelector('.player-card') as HTMLElement;
+        fireEvent.pointerDown(child, ptr(100));
+        fireEvent.pointerMove(stage, ptr(160));
+        fireEvent(child, new PointerEvent('lostpointercapture', { bubbles: true, pointerId: 7 }));
+        fireEvent.pointerMove(stage, ptr(250)); // 仍跟手：120°
+        expect(flip.style.transform).toBe('rotateY(120deg)');
+      });
+
       it('第二指不搶：已有一指拖曳時另一指的按下與移動被忽略', () => {
         const { container } = renderTop(viewer());
         const { stage, flip } = parts(container);

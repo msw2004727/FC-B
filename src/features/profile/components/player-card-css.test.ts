@@ -124,7 +124,7 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
 
   it('撥動翻面：舞台只讓垂直捲動、兩面隱藏背面（含 -webkit-）、背面與正面同底同框；鎖頭權重高於 .legacy-ui button', () => {
     const stage = card.find((r) => r.selector === '.player-card-stage')!;
-    expect(stage.body).toMatch(/touch-action:\s*pan-y pinch-zoom;/);
+    expect(stage.body).toMatch(/touch-action:\s*pan-y;\s*touch-action:\s*pan-y pinch-zoom;/);
     expect(stage.body).toMatch(/-webkit-perspective:/);
     const flip = card.find((r) => r.selector === '.player-card-flip')!;
     expect(flip.body).toMatch(/-webkit-transform-style:\s*preserve-3d/);

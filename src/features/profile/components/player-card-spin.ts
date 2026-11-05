@@ -242,7 +242,11 @@ export function usePlayerCardSpin(locked: boolean): {
         onPointerMove,
         onPointerUp: (e) => release(e, false),
         onPointerCancel: (e) => release(e, true),
-        onLostPointerCapture: (e) => release(e, true),
+        // 只認舞台自己失去 capture：Safari 觸控的隱式 capture 在子元素上，舞台 setPointerCapture 時
+        // 子元素的 lostpointercapture 會冒泡上來，不能當成取消（否則一開始拖就被對齊回去）
+        onLostPointerCapture: (e) => {
+          if (e.target === e.currentTarget) release(e, true);
+        },
       },
     };
   }

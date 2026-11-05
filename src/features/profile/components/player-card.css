@@ -273,6 +273,8 @@
   height: 356px;
   -webkit-perspective: 1000px;
   perspective: 1000px;
+  /* Safari 不認 pinch-zoom 值，整條會被丟掉變回 auto（水平撥動被瀏覽器接走、送 pointercancel）；先寫 pan-y 當退路 */
+  touch-action: pan-y;
   touch-action: pan-y pinch-zoom;
   cursor: grab;
   -webkit-user-select: none;
