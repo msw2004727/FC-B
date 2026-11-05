@@ -2496,7 +2496,7 @@ describe('T-074b 詳情頁整合', () => {
     mocks.registrations.mockResolvedValue([self, mate]);
     mocks.companions.mockResolvedValue([{ id: 'c1', name: '同行小友', gender: '女' }]);
     let finish: ((value: unknown) => void) | undefined;
-    registerCallableMock('adjustTeamReservation', () => new Promise(done => { finish = done; }));
+    registerCallableMock('adjustTeamReservation', () => new Promise(done => { finish = done as (value: unknown) => void; }));
     mount();
     const primary = await screen.findByRole('button', { name: '取消報名' }) as HTMLButtonElement;
     await waitFor(() => expect(primary.disabled).toBe(false));
