@@ -121,5 +121,24 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(shine.body).toMatch(/position:\s*absolute/);
     expect(shine.body).toMatch(/pointer-events:\s*none/);
   });
+
+  it('撥動翻面：舞台只讓垂直捲動、兩面隱藏背面（含 -webkit-）、背面與正面同底同框；鎖頭權重高於 .legacy-ui button', () => {
+    const stage = card.find((r) => r.selector === '.player-card-stage')!;
+    expect(stage.body).toMatch(/touch-action:\s*pan-y/);
+    expect(stage.body).toMatch(/-webkit-perspective:/);
+    const flip = card.find((r) => r.selector === '.player-card-flip')!;
+    expect(flip.body).toMatch(/-webkit-transform-style:\s*preserve-3d/);
+    expect(flip.body).toMatch(/[^-]transform-style:\s*preserve-3d/);
+    for (const face of ['.player-card-flip > .player-card', '.player-card-flip > .player-card-back']) {
+      const rules = card.filter((r) => r.selector === face).map((r) => r.body).join('\n');
+      expect(rules, face).toMatch(/-webkit-backface-visibility:\s*hidden/);
+      expect(rules, face).toMatch(/[^-]backface-visibility:\s*hidden/);
+    }
+    const base = card.filter((r) => r.selector === '.player-card').map((r) => r.body)[0];
+    expect(card.filter((r) => r.selector === '.player-card-back').map((r) => r.body)[0]).toBe(base);
+    expect(card.some((r) => r.selector === '[data-theme="dark"] .player-card-back')).toBe(true);
+    const lock = card.find((r) => /\.player-card-lock$/.test(r.selector))!;
+    expect(greater(specificity(lock.selector), specificity(scoped('button')))).toBe(true);
+  });
 });
 

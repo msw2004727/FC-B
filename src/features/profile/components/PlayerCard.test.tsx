@@ -464,4 +464,160 @@ describe('T-092 球員卡（DOM）', () => {
     expect(model.name).toBe('-');
     expect(model.avatarInitial).toBe('?');
   });
+
+  describe('撥動翻面＋鎖頭', () => {
+    const LOCK_KEY = 'toosterx:player-card-locked';
+    let raf: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      localStorage.removeItem(LOCK_KEY);
+      raf = vi.fn(() => 1);
+      vi.stubGlobal('requestAnimationFrame', raf);
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    });
+
+    afterEach(() => {
+      localStorage.removeItem(LOCK_KEY);
+    });
+
+    const parts = (container: Element) => ({
+      lock: container.querySelector('.player-card-lock') as HTMLButtonElement,
+      stage: container.querySelector('.player-card-stage') as HTMLElement,
+      flip: container.querySelector('.player-card-flip') as HTMLElement,
+    });
+
+    function drag(el: Element, dx: number, dy = 0): void {
+      const base = { pointerId: 7, pointerType: 'touch', clientX: 100, clientY: 100 };
+      fireEvent.pointerDown(el, base);
+      fireEvent.pointerMove(el, { ...base, clientX: 100 + dx / 2, clientY: 100 + dy / 2 });
+      fireEvent.pointerMove(el, { ...base, clientX: 100 + dx, clientY: 100 + dy });
+    }
+    function lift(el: Element, dx: number): void {
+      fireEvent.pointerUp(el, { pointerId: 7, pointerType: 'touch', clientX: 100 + dx, clientY: 100 });
+    }
+
+    it('鎖頭預設解鎖，在卡片外、有 aria-label／aria-pressed', () => {
+      const { container } = renderTop(viewer());
+      const { lock, flip } = parts(container);
+      expect(lock.getAttribute('aria-pressed')).toBe('false');
+      expect(lock.getAttribute('aria-label')).toBe('鎖定旋轉');
+      expect(container.querySelector('.player-card')!.contains(lock)).toBe(false);
+      expect(flip.contains(lock)).toBe(false);
+      expect(flip.style.transform).toBe('');
+    });
+
+    it('點鎖頭切換並記在 localStorage，重新開啟仍維持', () => {
+      const first = renderTop(viewer());
+      fireEvent.click(parts(first.container).lock);
+      const lock = parts(first.container).lock;
+      expect(lock.getAttribute('aria-pressed')).toBe('true');
+      expect(lock.getAttribute('aria-label')).toBe('解除鎖定旋轉');
+      expect(lock.classList.contains('is-locked')).toBe(true);
+      expect(localStorage.getItem(LOCK_KEY)).toBe('1');
+      cleanup();
+
+      const again = renderTop(viewer());
+      expect(parts(again.container).lock.getAttribute('aria-pressed')).toBe('true');
+      fireEvent.click(parts(again.container).lock);
+      expect(parts(again.container).lock.getAttribute('aria-pressed')).toBe('false');
+      expect(localStorage.getItem(LOCK_KEY)).toBe('0');
+    });
+
+    it('localStorage 讀寫拋錯：預設解鎖，點擊照常切換', () => {
+      localStorage.setItem(LOCK_KEY, '1');
+      const getSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('blocked');
+      });
+      const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('blocked');
+      });
+      try {
+        const { container } = renderTop(viewer());
+        expect(parts(container).lock.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(parts(container).lock);
+        expect(parts(container).lock.getAttribute('aria-pressed')).toBe('true');
+        expect(setSpy).toHaveBeenCalled();
+      } finally {
+        getSpy.mockRestore();
+        setSpy.mockRestore();
+      }
+    });
+
+    it('解鎖時水平拖曳跟手旋轉；鎖定時拖曳不改變旋轉', () => {
+      const open = renderTop(viewer());
+      const a = parts(open.container);
+      drag(a.stage, 100);
+      expect(a.flip.style.transform).toBe('rotateY(80deg)');
+      lift(a.stage, 100);
+      cleanup();
+      raf.mockClear();
+
+      localStorage.setItem(LOCK_KEY, '1');
+      const shut = renderTop(viewer());
+      const b = parts(shut.container);
+      expect(b.stage.classList.contains('is-locked')).toBe(true);
+      drag(b.stage, 150);
+      lift(b.stage, 150);
+      expect(b.flip.style.transform).toBe('');
+      expect(raf).not.toHaveBeenCalled();
+    });
+
+    it('垂直為主的移動交給頁面捲動，不接管旋轉', () => {
+      const { container } = renderTop(viewer());
+      const { stage, flip } = parts(container);
+      drag(stage, 4, 60);
+      lift(stage, 4);
+      expect(flip.style.transform).toBe('');
+    });
+
+    it('點鎖頭（含按下與移動）不觸發旋轉', () => {
+      const { container } = renderTop(viewer());
+      const { lock, flip } = parts(container);
+      drag(lock, 150);
+      lift(lock, 150);
+      fireEvent.click(lock);
+      expect(flip.style.transform).toBe('');
+      expect(raf).not.toHaveBeenCalled();
+    });
+
+    it('轉到一半鎖上：停在對齊的一面', () => {
+      stubMatchMedia(true);
+      const { container } = renderTop(viewer());
+      const { stage, flip, lock } = parts(container);
+      drag(stage, 150); // 120°
+      fireEvent.click(lock);
+      expect(flip.style.transform).toBe('rotateY(180deg)');
+      lift(stage, 150);
+      expect(flip.style.transform).toBe('rotateY(180deg)');
+    });
+
+    it('減少動態：放手直接翻到正／背面，不跑慣性動畫', () => {
+      stubMatchMedia(true);
+      const { container } = renderTop(viewer());
+      const { stage, flip } = parts(container);
+      drag(stage, 150);
+      lift(stage, 150);
+      expect(flip.style.transform).toBe('rotateY(180deg)');
+      expect(raf).not.toHaveBeenCalled();
+    });
+
+    it('背面：同尺寸外框＋原廠 logo（依深淺色），不含正面資料', () => {
+      document.documentElement.setAttribute('data-theme', 'light');
+      const light = renderTop(viewer('user', ['t1']));
+      const back = light.container.querySelector('.player-card-flip > .player-card-back')!;
+      expect(back).not.toBeNull();
+      expect(back.getAttribute('aria-hidden')).toBe('true');
+      expect(back.querySelector('.player-card-frame')).not.toBeNull();
+      expect(back.querySelector('.player-card-back-logo')?.getAttribute('src')).toBe('/assets/logo-black.webp');
+      expect(back.textContent).toBe('');
+      expect(back.querySelector('#profile-avatar, .player-card-club, .stat-item')).toBeNull();
+      // 正面仍是第一個 .player-card，PNG 仍只畫正面
+      expect(light.container.querySelector('.player-card')?.classList.contains('player-card-back')).toBe(false);
+      cleanup();
+
+      document.documentElement.setAttribute('data-theme', 'dark');
+      const dark = renderTop(viewer());
+      expect(dark.container.querySelector('.player-card-back-logo')?.getAttribute('src')).toBe('/assets/logo-white.webp');
+    });
+  });
 });

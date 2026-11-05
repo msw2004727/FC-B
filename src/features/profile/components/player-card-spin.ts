@@ -1,0 +1,249 @@
+/**
+ * T-092 球員卡撥動翻面＋鎖頭（站長 11-05 預覽定案）。
+ * 手感參數照預覽：拖曳 0.8°/px、最近 90ms 取樣算速度、超過 0.35°/ms 才慣性、每 ms 乘 0.9965 減速、
+ * 低於 0.12°/ms 後以 420ms ease-out 對齊最近的 0°／180° 倍數。
+ * 旋轉角度直接寫進 DOM（不走 state），避免每格重畫整張卡。
+ */
+import { useEffect, useRef } from 'preact/hooks';
+
+export const PLAYER_CARD_LOCK_STORAGE_KEY = 'toosterx:player-card-locked';
+
+const DEG_PER_PX = 0.8;
+const SAMPLE_WINDOW_MS = 90;
+const FLICK_MIN_DEG_PER_MS = 0.35;
+const STOP_DEG_PER_MS = 0.12;
+const FRICTION_PER_MS = 0.9965;
+const MAX_FRAME_MS = 32;
+const SETTLE_MS = 420;
+/** 水平位移超過此值且大於垂直位移才接管；垂直先超過就交給頁面捲動。 */
+const AXIS_LOCK_PX = 6;
+/** 放手時總位移小於此值視為點一下，不翻。 */
+const TAP_PX = 4;
+
+/** 鎖頭狀態每台裝置記住；讀不到（隱私模式、被擋）一律視為解鎖。 */
+export function readPlayerCardLocked(): boolean {
+  try {
+    return localStorage.getItem(PLAYER_CARD_LOCK_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writePlayerCardLocked(locked: boolean): void {
+  try {
+    localStorage.setItem(PLAYER_CARD_LOCK_STORAGE_KEY, locked ? '1' : '0');
+  } catch {
+    /* 存不了只影響下次開啟，不擋操作 */
+  }
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function nearestFace(angle: number): number {
+  return Math.round(angle / 180) * 180;
+}
+
+interface SpinState {
+  angle: number;
+  vel: number;
+  raf: number;
+  mode: 'idle' | 'pending' | 'drag';
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startA: number;
+  samples: Array<{ x: number; t: number }>;
+}
+
+export interface PlayerCardSpinHandlers {
+  onPointerDown: (e: PointerEvent) => void;
+  onPointerMove: (e: PointerEvent) => void;
+  onPointerUp: (e: PointerEvent) => void;
+  onPointerCancel: (e: PointerEvent) => void;
+}
+
+export function usePlayerCardSpin(locked: boolean): {
+  flipRef: { current: HTMLDivElement | null };
+  handlers: PlayerCardSpinHandlers;
+} {
+  const flipRef = useRef<HTMLDivElement | null>(null);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const st = useRef<SpinState>({
+    angle: 0,
+    vel: 0,
+    raf: 0,
+    mode: 'idle',
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    startA: 0,
+    samples: [],
+  }).current;
+
+  const api = useRef<{
+    stop: () => void;
+    settle: () => void;
+    handlers: PlayerCardSpinHandlers;
+  } | null>(null);
+
+  if (!api.current) {
+    const render = (): void => {
+      const el = flipRef.current;
+      if (el) el.style.transform = `rotateY(${st.angle}deg)`;
+    };
+    const stop = (): void => {
+      if (st.raf) {
+        cancelAnimationFrame(st.raf);
+        st.raf = 0;
+      }
+    };
+    const snap = (target: number): void => {
+      st.angle = ((target % 360) + 360) % 360;
+      st.vel = 0;
+      render();
+    };
+    const settle = (): void => {
+      stop();
+      const target = nearestFace(st.angle);
+      if (target === st.angle) return;
+      if (prefersReducedMotion()) {
+        snap(target);
+        return;
+      }
+      const from = st.angle;
+      const t0 = performance.now();
+      const step = (t: number): void => {
+        const p = Math.min(1, (t - t0) / SETTLE_MS);
+        const eased = 1 - Math.pow(1 - p, 3);
+        st.angle = from + (target - from) * eased;
+        render();
+        if (p < 1) st.raf = requestAnimationFrame(step);
+        else {
+          st.raf = 0;
+          snap(target);
+        }
+      };
+      st.raf = requestAnimationFrame(step);
+    };
+    const coast = (): void => {
+      stop();
+      let last = performance.now();
+      const step = (t: number): void => {
+        const dt = Math.min(MAX_FRAME_MS, Math.max(0, t - last));
+        last = t;
+        st.angle += st.vel * dt;
+        st.vel *= Math.pow(FRICTION_PER_MS, dt);
+        render();
+        if (Math.abs(st.vel) > STOP_DEG_PER_MS) st.raf = requestAnimationFrame(step);
+        else {
+          st.raf = 0;
+          settle();
+        }
+      };
+      st.raf = requestAnimationFrame(step);
+    };
+
+    const onPointerDown = (e: PointerEvent): void => {
+      if (lockedRef.current) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      stop();
+      st.mode = 'pending';
+      st.pointerId = e.pointerId;
+      st.startX = e.clientX;
+      st.startY = e.clientY;
+      st.startA = st.angle;
+      st.samples = [{ x: e.clientX, t: performance.now() }];
+    };
+    const onPointerMove = (e: PointerEvent): void => {
+      if (st.mode === 'idle' || e.pointerId !== st.pointerId) return;
+      const dx = e.clientX - st.startX;
+      const dy = e.clientY - st.startY;
+      if (st.mode === 'pending') {
+        if (Math.abs(dx) >= AXIS_LOCK_PX && Math.abs(dx) > Math.abs(dy)) {
+          st.mode = 'drag';
+          try {
+            (e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId);
+          } catch {
+            /* 不支援 capture 時仍可跟手，只是手指滑出卡外會中斷 */
+          }
+        } else if (Math.abs(dy) >= AXIS_LOCK_PX) {
+          // 垂直為主：交給頁面捲動（touch-action: pan-y），若剛好攔停了轉動就對齊
+          st.mode = 'idle';
+          settle();
+          return;
+        } else {
+          return;
+        }
+      }
+      const now = performance.now();
+      st.angle = st.startA + dx * DEG_PER_PX;
+      st.samples.push({ x: e.clientX, t: now });
+      st.samples = st.samples.filter((s) => now - s.t < SAMPLE_WINDOW_MS);
+      render();
+    };
+    const release = (e: PointerEvent, cancelled: boolean): void => {
+      if (st.mode === 'idle' || e.pointerId !== st.pointerId) return;
+      const mode = st.mode;
+      st.mode = 'idle';
+      st.pointerId = -1;
+      if (mode !== 'drag' || cancelled) {
+        settle();
+        return;
+      }
+      const now = performance.now();
+      const first = st.samples.find((s) => now - s.t < SAMPLE_WINDOW_MS);
+      st.vel = first && now - first.t > 0 ? ((e.clientX - first.x) / (now - first.t)) * DEG_PER_PX : 0;
+      if (Math.abs(e.clientX - st.startX) < TAP_PX) {
+        st.angle = st.startA;
+        render();
+        settle();
+        return;
+      }
+      if (prefersReducedMotion()) {
+        // 減少動態：不做慣性多圈，直接翻到正／背面
+        let target = nearestFace(st.angle);
+        if (Math.abs(st.vel) > FLICK_MIN_DEG_PER_MS && target === nearestFace(st.startA)) {
+          target += Math.sign(st.vel) * 180;
+        }
+        stop();
+        snap(target);
+        return;
+      }
+      if (Math.abs(st.vel) > FLICK_MIN_DEG_PER_MS) coast();
+      else settle();
+    };
+
+    api.current = {
+      stop,
+      settle,
+      handlers: {
+        onPointerDown,
+        onPointerMove,
+        onPointerUp: (e) => release(e, false),
+        onPointerCancel: (e) => release(e, true),
+      },
+    };
+  }
+
+  const { stop, settle, handlers } = api.current;
+
+  useEffect(() => {
+    if (!locked) return;
+    // 鎖上：停止轉動、放掉拖曳，對齊最近一面
+    st.mode = 'idle';
+    st.pointerId = -1;
+    st.vel = 0;
+    settle();
+  }, [locked]);
+
+  useEffect(() => stop, []);
+
+  return { flipRef, handlers };
+}

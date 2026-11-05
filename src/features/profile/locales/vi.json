@@ -93,6 +93,8 @@
     "shareOrSave": "Chia sẻ / lưu thẻ cầu thủ",
     "shareAgain": "Chia sẻ",
     "save": "Lưu",
-    "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu."
+    "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu.",
+    "lock": "Khóa xoay",
+    "unlock": "Mở khóa xoay"
   }
 }

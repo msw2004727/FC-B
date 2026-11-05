@@ -15,7 +15,8 @@
 }
 .player-card-header { padding-top: 1rem; }
 
-.player-card {
+.player-card,
+.player-card-back {
   position: relative;
   width: 242px;
   height: 356px;
@@ -30,7 +31,8 @@
   box-shadow: 0 6px 18px rgba(65, 36, 2, .14);
   text-align: center;
 }
-[data-theme="dark"] .player-card {
+[data-theme="dark"] .player-card,
+[data-theme="dark"] .player-card-back {
   color: #FAEEDA;
   background-color: #2C2C2A;
   background-image: repeating-linear-gradient(45deg, transparent 0 7.5px, rgba(68, 68, 65, .55) 7.5px 9px);
@@ -253,6 +255,94 @@
   top: 50%;
   pointer-events: none;
   z-index: 3;
+}
+
+/*
+ * 撥動翻面＋鎖頭（站長 11-05 預覽定案）：外層留出鎖頭列（鎖頭在卡片右上方外側、不跟著轉），
+ * 舞台負責透視與手勢（touch-action: pan-y 讓垂直捲動照常交給頁面），flip 繞 Y 軸轉，正背兩面隱藏背面。
+ * 角度由 player-card-spin.ts 直接寫 transform；PNG 另由 Canvas 畫正面，不受旋轉影響。
+ */
+.player-card-spin {
+  position: relative;
+  width: 242px;
+  margin: 0 auto .7rem;
+  padding-top: 34px;
+}
+.player-card-stage {
+  width: 242px;
+  height: 356px;
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+  touch-action: pan-y;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.player-card-stage.is-locked { cursor: default; }
+.player-card-flip {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.player-card-flip > .player-card,
+.player-card-flip > .player-card-back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.player-card-flip > .player-card {
+  -webkit-transform: rotateY(0deg);
+  transform: rotateY(0deg);
+}
+.player-card-flip > .player-card-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-transform: rotateY(180deg);
+  transform: rotateY(180deg);
+}
+.player-card-back-logo {
+  position: relative;
+  height: 33px;
+  max-width: 180px;
+  object-fit: contain;
+}
+/* 舊站 base.css 的 `.legacy-ui button`（0,1,1）會清掉框線與底色，鎖頭加 .legacy-ui 前綴（0,2,0）。 */
+.legacy-ui .player-card-lock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+}
+/* 視覺 30px，觸控範圍擴到 44px。 */
+.legacy-ui .player-card-lock::before {
+  content: ;
+  position: absolute;
+  inset: -7px;
+}
+.legacy-ui .player-card-lock.is-locked {
+  background: var(--text-primary);
+  color: var(--bg-card);
+  border-color: var(--text-primary);
 }
 
 /* 卡片外：分享按鈕與 LINE 長按存圖覆蓋層。 */

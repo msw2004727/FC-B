@@ -93,6 +93,8 @@
     "shareOrSave": "Share or save your player card",
     "shareAgain": "Share",
     "save": "Save",
-    "shareUnavailable": "Sharing isn't available. Tap Save instead."
+    "shareUnavailable": "Sharing isn't available. Tap Save instead.",
+    "lock": "Lock rotation",
+    "unlock": "Unlock rotation"
   }
 }
