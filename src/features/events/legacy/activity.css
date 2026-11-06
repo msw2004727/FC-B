@@ -1944,14 +1944,26 @@ tr.att-row-failed { animation: att-flash-err 1.2s ease-out; }
 .reg-name-badges::-webkit-scrollbar { display: none; }
 .reg-name-badges { scrollbar-width: none; }
 .reg-name-text { flex-shrink: 0; white-space: nowrap; }
-/* 站長 11-06：管理名單時右側 🕊／簽到／簽退／備註固定寬度，名字欄吃掉壓縮、過長以省略號截斷。 */
-.att-roster-managing .reg-name-text,
-.att-roster-managing .reg-name-text .user-capsule {
+/* 站長 11-06：管理名單時右側 🕊／簽到／簽退／備註固定寬度，名字欄吃掉壓縮、過長以省略號截斷。
+ * 膠囊本身不可 overflow:hidden（會切掉右上角的分隊球衣，Opus 終審 P2），省略號放在膠囊內的名字 span。 */
+.att-roster-managing .reg-name-text {
   display: inline-block;
   max-width: 100%;
+  vertical-align: middle;
+}
+.att-roster-managing .reg-name-text:not(:has(.user-capsule)) {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.att-roster-managing .reg-name-text .user-capsule {
+  display: inline-flex;
+  max-width: 100%;
   vertical-align: middle;
+}
+.att-roster-managing .reg-name-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .att-roster-managing .reg-name-badges { min-width: 0; }
 .team-reservation-header-row {

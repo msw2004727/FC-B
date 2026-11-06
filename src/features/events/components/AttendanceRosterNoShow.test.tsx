@@ -76,14 +76,14 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     { canManage: false, editing: true },
   ])('非編輯或非管理者無 🕊 欄，也不染色／不出現泡泡（即使有查看權與資料）：%j', props => {
     render(<AttendanceRosterTable {...base} {...props} />);
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
     expect(document.querySelector(NO_DECORATION)).toBeNull();
     expect(document.querySelector('[title^="放鴿子"]')).toBeNull();
   });
 
   it.each([{ canViewNoShow: false }, { publicRosterOnly: true }])('守門即使收到資料仍不顯示：%j', props => {
     render(<AttendanceRosterTable {...base} {...props} />);
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
     expect(document.querySelector(NO_DECORATION)).toBeNull();
     expect(document.querySelector('[title^="放鴿子"]')).toBeNull();
   });
@@ -91,7 +91,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
   it('旗標關閉不顯示欄', () => {
     feature.enabled = false;
     render(<AttendanceRosterTable {...base} />);
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
     expect(document.querySelector(NO_DECORATION)).toBeNull();
   });
 
@@ -99,7 +99,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     const view = render(<AttendanceRosterTable {...base} />);
     expect(cellFor('甲').textContent).toBe('1/3');
     view.rerender(<AttendanceRosterTable {...base} noShowData={null} />);
-    expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '放鴿子／計入場次' })).toBeTruthy();
     expect(cellFor('甲').textContent).toBe('');
     expect(cellFor('乙').textContent).toBe('');
     expect(document.querySelector(NO_DECORATION)).toBeNull();
@@ -157,7 +157,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     }
     expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);
     expect(!!screen.queryByRole('columnheader', { name: '候' })).toBe(demote);
-    expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '放鴿子／計入場次' })).toBeTruthy();
     const columns = document.querySelectorAll('thead th').length;
     expect(columns).toBe(5 + Number(canRemoveConfirmed) + Number(demote));
     for (const row of document.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
@@ -187,7 +187,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
 
   it('空名單不畫表頭', () => {
     render(<AttendanceRosterTable {...base} registrations={[]} />);
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
     expect(screen.getByText('尚無報名')).toBeTruthy();
   });
 });

@@ -223,8 +223,13 @@ describe('T-073c：照 A 球衣徽章與名單排序', () => {
     expect(capsule.classList.contains('uc-att-warn')).toBe(false);
     expect(capsule.querySelector('.uc-recent-noshow')).toBeNull();
     expect(capsule.querySelector('.uc-team-jersey')).toBe(jerseyFor(container, 'alice'));
-    expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '放鴿子／計入場次' })).toBeTruthy();
     expect(capsule.closest('tr')?.querySelectorAll('td')[1]?.textContent).toBe('2/3');
+    // Opus 終審 P2：管理名單的省略號放在膠囊內的名字 span，膠囊與球衣不被裁切。
+    expect(capsule.closest('table')?.classList.contains('att-roster-managing')).toBe(true);
+    expect(capsule.querySelector('.reg-name-ellipsis')?.textContent).toBe('alice');
+    expect(capsule.closest('tr')?.querySelectorAll('td')[1]?.querySelector('span')?.getAttribute('aria-label'))
+      .toBe('放鴿子 2，計入 3');
   });
 
   it('反覆切換不觸發額外 Firestore 讀寫、持久化或父層事件；點球衣沿用 UID 名片', () => {

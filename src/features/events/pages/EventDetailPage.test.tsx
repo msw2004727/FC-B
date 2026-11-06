@@ -1816,7 +1816,7 @@ describe('T-073b 頁面共用權限與補正保底', () => {
       // 一般瀏覽（非管理名單）不讀 userCorrections／userAttendanceStats。
       expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
       expect(mocks.noShowCounted).not.toHaveBeenCalled();
-      expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+      expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
       expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
     },
   );
@@ -1828,7 +1828,7 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     await screen.findByText('小明');
     expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
   });
 
   it('主辦人共用現場操作權：一般模式不染色，管理模式才出現補正後「放鴿子/計入」', async () => {
@@ -1837,12 +1837,12 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     await screen.findByRole('button', { name: '管理名單', exact: true });
     await act(async () => {});
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '放鴿子／計入場次' })).toBeNull();
     // 一般瀏覽零讀取：補正與 userAttendanceStats 都等到進管理名單才讀。
     expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
     expect(mocks.noShowCounted).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
-    await screen.findByRole('columnheader', { name: '🕊' });
+    await screen.findByRole('columnheader', { name: '放鴿子／計入場次' });
     await waitFor(() => expect(mocks.noShowCounted).toHaveBeenCalledWith(['u1'], true));
     // 沒有 countedSince（v2 資料）→ 退回 users 三欄＋舊補正：2 次補正 -1、計入 3。
     await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('1/3'));
@@ -1855,7 +1855,7 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     mocks.noShowCounted.mockResolvedValue(new Map([['u1', { noShowCount: 6, countedCount: 10 }]]));
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
-    await screen.findByRole('columnheader', { name: '🕊' });
+    await screen.findByRole('columnheader', { name: '放鴿子／計入場次' });
     // 舊補正 -1 不套用：6/10（≥3 場且 ≥50% 標紅）
     await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('6/10'));
     expect((view.container.querySelector('tbody span[title^="放鴿子"]') as HTMLElement).style.color).toBe('var(--danger)');
@@ -1868,7 +1868,7 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     mocks.noShowCounted.mockRejectedValue(new Error('private counted failure'));
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
-    await screen.findByRole('columnheader', { name: '🕊' });
+    await screen.findByRole('columnheader', { name: '放鴿子／計入場次' });
     await waitFor(() => expect(mocks.noShowCounted).toHaveBeenCalled());
     await act(async () => {});
     expect(mocks.noShowCounted).toHaveBeenCalledTimes(1);
@@ -1884,7 +1884,7 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     mocks.noShowAdjustments.mockRejectedValue(new Error('private correction failure'));
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
-    await screen.findByRole('columnheader', { name: '🕊' });
+    await screen.findByRole('columnheader', { name: '放鴿子／計入場次' });
     await waitFor(() => expect(mocks.noShowAdjustments).toHaveBeenCalled());
     await act(async () => {});
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();

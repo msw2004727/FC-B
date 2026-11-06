@@ -234,6 +234,7 @@ export function AttendanceRosterTable({
       <td style="padding:.35rem .2rem;text-align:center;width:3rem">
         <span
           title="放鴿子／計入場次"
+          aria-label={count === null ? undefined : `放鴿子 ${count}，計入 ${counted}`}
           style={`font-size:.76rem;font-variant-numeric:tabular-nums;font-weight:${high ? '700' : '600'};color:${high ? 'var(--danger)' : 'var(--text-muted)'}`}
         >
           {text}
@@ -273,6 +274,7 @@ export function AttendanceRosterTable({
             name={p.displayName}
             role={roles[p.uid]}
             disabled={!p.uid}
+            nameClass="reg-name-ellipsis"
             jersey={showJersey ? (
               <Jersey
                 color={team?.color || ''}
@@ -493,7 +495,7 @@ export function AttendanceRosterTable({
               </div>
             </th>
             {showNoShowColumn && (
-              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:3rem" title="放鴿子／計入場次">🕊</th>
+              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:3rem" title="放鴿子／計入場次" aria-label="放鴿子／計入場次">🕊</th>
             )}
             {showAttendanceRecordColumns && (
               <>
