@@ -40,6 +40,8 @@ export function buildNoShowCountByUid(
   }
   for (const [uid, raw] of adjustments) {
     if (!uid) continue;
+    // 舊補正是對舊算法的終身次數做的加減，不套用到 v2（站長 11-06 定案）。
+    if (users[uid]?.v2) continue;
     const adjustment = Number(raw || 0);
     if (!Number.isFinite(adjustment) || adjustment === 0) continue;
     counts.set(uid, Math.max(0, (counts.get(uid) || 0) + Math.trunc(adjustment)));

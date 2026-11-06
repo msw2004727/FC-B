@@ -82,9 +82,10 @@
   "unlinkChild": "연결 해제",
   "playerCard": {
     "title": "선수 카드",
-    "scheduled": "예정",
+    "scheduled": "참여",
     "completed": "완료",
     "attendRate": "출석률",
+    "countedGames": "{n}경기 집계",
     "clubs": "클럽",
     "share": "선수 카드 공유",
     "shareFailed": "선수 카드 이미지를 만들지 못했습니다. 다시 시도해 주세요.",
@@ -122,7 +123,7 @@
     "pm": "메시지",
     "addFriend": "친구 추가",
     "follow": "팔로우",
-    "expected": "참석 예정",
+    "expected": "참여",
     "completed": "완료",
     "info": "정보",
     "records": "활동 내역"

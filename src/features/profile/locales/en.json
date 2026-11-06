@@ -82,9 +82,10 @@
   "unlinkChild": "Unlink",
   "playerCard": {
     "title": "Player Card",
-    "scheduled": "Scheduled",
+    "scheduled": "Played",
     "completed": "Completed",
     "attendRate": "Attendance",
+    "countedGames": "{n} counted",
     "clubs": "Clubs",
     "share": "Share player card",
     "shareFailed": "Could not create the player card image. Please try again.",
@@ -122,7 +123,7 @@
     "pm": "Message",
     "addFriend": "Add friend",
     "follow": "Follow",
-    "expected": "Expected",
+    "expected": "Played",
     "completed": "Completed",
     "info": "Profile",
     "records": "Activity history"

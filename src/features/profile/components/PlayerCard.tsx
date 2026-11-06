@@ -230,7 +230,14 @@ export function PlayerCard({
               <div class="stat-item">
                 <span class="stat-num" id="profile-stat-rate">{model.attendText}</span>
                 <span class="stat-label">{t('profile.playerCard.attendRate')}</span>
-                <span class="player-card-abbr">{PLAYER_CARD_ABBR.attend}</span>
+                {/* v2 計入場數放在 ATT 縮寫的位置，卡面版位與高度不變（站長 11-06 選新版 A）。 */}
+                {model.countedCount !== null ? (
+                  <span class="player-card-abbr player-card-counted">
+                    {t('profile.playerCard.countedGames', { n: model.countedCount })}
+                  </span>
+                ) : (
+                  <span class="player-card-abbr">{PLAYER_CARD_ABBR.attend}</span>
+                )}
               </div>
             </div>
 

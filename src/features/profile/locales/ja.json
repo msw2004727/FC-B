@@ -82,9 +82,10 @@
   "unlinkChild": "紐付けを解除",
   "playerCard": {
     "title": "選手カード",
-    "scheduled": "予定",
+    "scheduled": "参加",
     "completed": "完了",
     "attendRate": "出席率",
+    "countedGames": "{n}回で集計",
     "clubs": "クラブ",
     "share": "選手カードを共有",
     "shareFailed": "選手カード画像を作成できませんでした。もう一度お試しください。",
@@ -122,7 +123,7 @@
     "pm": "メッセージ",
     "addFriend": "友だち追加",
     "follow": "フォロー",
-    "expected": "参加予定",
+    "expected": "参加",
     "completed": "完了",
     "info": "プロフィール",
     "records": "活動履歴"

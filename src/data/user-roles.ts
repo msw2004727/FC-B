@@ -42,6 +42,8 @@ export interface UserNoShowStats {
   noShowCount: number;
   endedRegCount: number;
   lastEventWasNoShow: boolean;
+  /** 放鴿子 v2（站長 11-06）：伺服器已寫 `noShowV2` 時為 true，上面三欄改為 v2 的放鴿子／計入／最近一場。 */
+  v2?: boolean;
 }
 
 interface CacheEntry extends UserNoShowStats {
@@ -98,6 +100,17 @@ function readExp(data: Record<string, unknown> | undefined): number {
 }
 
 function readNoShowStats(data: Record<string, unknown> | undefined): UserNoShowStats {
+  // v2 只新增欄位、舊三欄維持舊算法給凍結的舊站 A；新站有 v2 就讀 v2。
+  const v2 = data?.noShowV2;
+  if (v2 && typeof v2 === 'object') {
+    const raw = v2 as Record<string, unknown>;
+    return {
+      noShowCount: Number(raw.count || 0) || 0,
+      endedRegCount: Number(raw.counted || 0) || 0,
+      lastEventWasNoShow: Boolean(raw.lastWasNoShow),
+      v2: true,
+    };
+  }
   return {
     noShowCount: Number(data?.noShowCount || 0) || 0,
     endedRegCount: Number(data?.endedRegCount || 0) || 0,
@@ -110,6 +123,7 @@ function copyNoShowStats(entry: UserNoShowStats | undefined): UserNoShowStats {
     noShowCount: entry?.noShowCount ?? 0,
     endedRegCount: entry?.endedRegCount ?? 0,
     lastEventWasNoShow: entry?.lastEventWasNoShow ?? false,
+    ...(entry?.v2 ? { v2: true } : {}),
   };
 }
 

@@ -2,7 +2,7 @@
  * T-092 球員卡資料模型（純函式）：卡片 DOM 與 Canvas 產圖共用同一份，避免兩邊數字不一致。
  * 只吃頁面已載入的資料（attendance summary、viewer.teamIds、有效身分名字與頭像），不讀不寫 Firestore。
  */
-import type { UserAttendanceSummary } from './attendance-summary';
+import { deriveAttendanceDisplay, type UserAttendanceSummary } from './attendance-summary';
 import { resolvePlayerCardMotif, type PlayerCardMotif } from './player-card-motifs';
 
 export type PlayerCardTheme = 'light' | 'dark';
@@ -14,13 +14,16 @@ export interface PlayerCardModel {
   avatarInitial: string;
   /** 已過濾為 http/https 的頭像網址；null＝畫預設頭像。 */
   avatarUrl: string | null;
-  /** 0～100 整數；summary 未載入為 null。 */
+  /** 0～100 整數；summary 未載入、或 v2 計入未滿 3 場／0 場時為 null。 */
   attendRate: number | null;
-  /** 卡面大數字與三格出席率共用；未載入為 `--`。 */
+  /** 卡面大數字與三格出席率共用；未載入或計入 0 場為 `--`，計入未滿 3 場為「完成/計入」。 */
   attendText: string;
+  /** 「參與」格（11-06 由「應到」改名；欄位名沿用）。 */
   scheduledText: string;
   completedText: string;
-  /** 計量條長度比例 0～1（＝出席率）。 */
+  /** v2 計入場數；舊資料或未載入為 null（不顯示「計 N 場」）。 */
+  countedCount: number | null;
+  /** 計量條長度比例 0～1（＝完成÷計入）。 */
   gaugeRatio: number;
   clubCount: number;
   /** 俱樂部數 0 不顯示迷你方塊。 */
@@ -42,12 +45,6 @@ export interface PlayerCardModelInput {
   role?: string | null;
   /** profile.gender；只認 trim 後等於「女」。 */
   gender?: unknown;
-}
-
-function toCount(value: unknown): number {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.trunc(num));
 }
 
 /** 出席率四捨五入成 0～100 整數。 */
@@ -90,17 +87,19 @@ export function resolvePlayerCardName(name: unknown, uid?: string | null): strin
 export function buildPlayerCardModel(input: PlayerCardModelInput): PlayerCardModel {
   const summary = input.summary;
   const name = resolvePlayerCardName(input.name, input.uid);
-  const attendRate = summary ? roundAttendRate(summary.attendRate) : null;
+  const display = deriveAttendanceDisplay(summary);
+  const attendRate = display && display.rateText.endsWith('%') ? roundAttendRate(display.ratio * 100) : null;
   const clubCount = countActiveClubs(input.teamIds);
   return {
     name,
     avatarInitial: name === '-' ? '?' : name.charAt(0),
     avatarUrl: input.avatarUrl,
     attendRate,
-    attendText: attendRate === null ? '--' : `${attendRate}%`,
-    scheduledText: summary ? String(toCount(summary.expectedCount)) : '--',
-    completedText: summary ? String(toCount(summary.completedCount)) : '--',
-    gaugeRatio: attendRate === null ? 0 : attendRate / 100,
+    attendText: display ? display.rateText : '--',
+    scheduledText: display ? display.participatedText : '--',
+    completedText: display ? display.completedText : '--',
+    countedCount: display ? display.countedCount : null,
+    gaugeRatio: display ? display.ratio : 0,
     clubCount,
     showClubBadge: clubCount > 0,
     clubBadgeWide: clubCount >= 10,
@@ -111,7 +110,8 @@ export function buildPlayerCardModel(input: PlayerCardModelInput): PlayerCardMod
 /** 卡面英文縮寫固定不翻（站長定案）。 */
 export const PLAYER_CARD_ABBR = {
   title: 'PLAYER CARD',
-  scheduled: 'SCH',
+  // 11-06「應到」改「參與」：縮寫由 SCH（scheduled）改 APP（appearances）。
+  scheduled: 'APP',
   completed: 'CMP',
   attend: 'ATT',
 } as const;

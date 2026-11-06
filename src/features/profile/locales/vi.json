@@ -82,9 +82,10 @@
   "unlinkChild": "Hủy liên kết",
   "playerCard": {
     "title": "Thẻ cầu thủ",
-    "scheduled": "Dự kiến",
+    "scheduled": "Tham gia",
     "completed": "Hoàn thành",
     "attendRate": "Tỷ lệ tham dự",
+    "countedGames": "Tính {n} buổi",
     "clubs": "Câu lạc bộ",
     "share": "Chia sẻ thẻ cầu thủ",
     "shareFailed": "Không thể tạo ảnh thẻ cầu thủ. Vui lòng thử lại.",
@@ -122,7 +123,7 @@
     "pm": "Nhắn tin",
     "addFriend": "Kết bạn",
     "follow": "Theo dõi",
-    "expected": "Dự kiến",
+    "expected": "Tham gia",
     "completed": "Hoàn thành",
     "info": "Thông tin",
     "records": "Lịch sử hoạt động"

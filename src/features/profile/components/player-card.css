@@ -72,6 +72,11 @@
   color: #854F0B;
 }
 [data-theme="dark"] .player-card-abbr { color: #FAC775; }
+.player-card-abbr.player-card-counted {
+  font-family: inherit;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
 
 /* 左上大數字＋ATT：預覽 left 16／top 14（含 1px 外框即卡面 17,15），兩行置中對齊。 */
 .player-card-att {

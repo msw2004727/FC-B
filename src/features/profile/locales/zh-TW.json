@@ -82,9 +82,10 @@
   "unlinkChild": "解除綁定",
   "playerCard": {
     "title": "球員卡",
-    "scheduled": "應到",
+    "scheduled": "參與",
     "completed": "完成",
     "attendRate": "出席率",
+    "countedGames": "計 {n} 場",
     "clubs": "俱樂部",
     "share": "分享球員卡",
     "shareFailed": "球員卡圖片產生失敗，請再試一次",
@@ -122,7 +123,7 @@
     "pm": "私訊",
     "addFriend": "加好友",
     "follow": "關注",
-    "expected": "應到",
+    "expected": "參與",
     "completed": "完成",
     "info": "資料",
     "records": "活動明細"

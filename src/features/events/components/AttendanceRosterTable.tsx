@@ -12,7 +12,7 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { getSplitTeams, getTeamSplit, type TeamSplitConfig } from '../data/team-split';
 import { Jersey } from './legacy/TeamSplitSection';
-import { NO_SHOW_FEATURE_ENABLED, attendanceFill, participantNoShowCount } from '../data/noshow-roster';
+import { NO_SHOW_FEATURE_ENABLED, participantNoShowCount } from '../data/noshow-roster';
 import type { RosterNoShowData } from './useRosterNoShow';
 import { LEGACY_SETTLE_URL } from './legacy-links';
 import { useT } from '@/i18n/i18n';
@@ -127,8 +127,8 @@ export function AttendanceRosterTable({
   const isSubmitting = Boolean(showManage && submitting);
   const showAttendanceRecordColumns = !publicRosterOnly;
   const showKickColumn = Boolean(tableEditing && canRemoveConfirmed);
-  const showAttendanceFill = showAttendanceRecordColumns && NO_SHOW_FEATURE_ENABLED && canViewNoShow;
-  const showNoShowColumn = showAttendanceFill && tableEditing;
+  const canShowNoShow = showAttendanceRecordColumns && NO_SHOW_FEATURE_ENABLED && canViewNoShow;
+  const showNoShowColumn = canShowNoShow && tableEditing;
   const t = useT();
   const showDemoteColumn = Boolean(tableEditing && rosterContext
     && canAdjustRosterStatus('demote', rosterContext, event));
@@ -226,14 +226,17 @@ export function AttendanceRosterTable({
       return <td style="padding:.35rem .2rem;text-align:center;color:var(--text-muted)">--</td>;
     }
     const count = participantNoShowCount(p, noShowData.counts);
-    const positive = count !== null && count > 0;
+    // 站長 11-06：🕊 只在管理名單顯示「放鴿子/計入」，計入滿 3 場且比例 ≥50% 才標紅。
+    const counted = count === null ? 0 : Number(noShowData.endedCounts.get(p.uid.trim()) || 0);
+    const high = count !== null && counted >= 3 && count / counted >= 0.5;
+    const text = count === null ? '—' : counted > 0 ? `${count}/${counted}` : count > 0 ? String(count) : '';
     return (
       <td style="padding:.35rem .2rem;text-align:center;width:3rem">
         <span
-          title="放鴿子次數（已結束、正式報名且未完成簽到）"
-          style={`font-size:.78rem;font-weight:${positive ? '700' : '600'};color:${positive ? 'var(--danger)' : 'var(--text-muted)'}`}
+          title="放鴿子／計入場次"
+          style={`font-size:.76rem;font-variant-numeric:tabular-nums;font-weight:${high ? '700' : '600'};color:${high ? 'var(--danger)' : 'var(--text-muted)'}`}
         >
-          {count === null ? '—' : positive ? count : ''}
+          {text}
         </span>
       </td>
     );
@@ -270,10 +273,6 @@ export function AttendanceRosterTable({
             name={p.displayName}
             role={roles[p.uid]}
             disabled={!p.uid}
-            attendanceFill={showAttendanceFill && noShowData
-              ? attendanceFill(p.uid, noShowData.counts, noShowData.endedCounts) ?? undefined
-              : undefined}
-            recentNoShow={Boolean(showAttendanceFill && p.uid.trim() && noShowData?.recentUids.has(p.uid.trim()))}
             jersey={showJersey ? (
               <Jersey
                 color={team?.color || ''}
@@ -423,7 +422,10 @@ export function AttendanceRosterTable({
     <div style="overflow-x:auto">
       {renderLegacySettleBanner()}
       <RosterStatusCourseNote event={event} editing={tableEditing} />
-      <table style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed">
+      <table
+        class={tableEditing ? 'att-roster-managing' : undefined}
+        style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed"
+      >
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
             {showKickColumn && (

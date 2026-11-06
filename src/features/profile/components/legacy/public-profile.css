@@ -98,6 +98,7 @@
   font-variant-numeric: tabular-nums;
 }
 .pp-card .pp-stats b small { font-size: 1.1rem; }
+.pp-card .pp-stats .pp-counted { font-size: .66rem; color: var(--text-muted); white-space: nowrap; }
 .pp-card .pp-stats span { font-size: .72rem; color: var(--text-muted); }
 .pp-card .pp-stats .pp-hi b { color: var(--accent); }
 

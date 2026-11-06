@@ -82,9 +82,10 @@
   "unlinkChild": "解除绑定",
   "playerCard": {
     "title": "球员卡",
-    "scheduled": "应到",
+    "scheduled": "参与",
     "completed": "完成",
     "attendRate": "出席率",
+    "countedGames": "计 {n} 场",
     "clubs": "俱乐部",
     "share": "分享球员卡",
     "shareFailed": "球员卡图片生成失败，请再试一次",
@@ -122,7 +123,7 @@
     "pm": "私信",
     "addFriend": "加好友",
     "follow": "关注",
-    "expected": "应到",
+    "expected": "参与",
     "completed": "完成",
     "info": "资料",
     "records": "活动明细"

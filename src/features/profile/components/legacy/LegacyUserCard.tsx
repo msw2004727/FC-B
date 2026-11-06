@@ -12,7 +12,7 @@ import { lt, useT } from '@/i18n/i18n';
 import { resolveDrawerRoleInfo, type CustomRoleInput } from '@/ui/drawer-menu';
 import { toast } from '@/ui/Toast';
 
-import type { UserAttendanceSummary } from '../../data/attendance-summary';
+import { deriveAttendanceDisplay, type UserAttendanceSummary } from '../../data/attendance-summary';
 import { getFilteredRecords, type UserStatsSnapshot } from '../../data/activity-records';
 import { BASE_ROLE_LEVEL_MAP } from '../../data/permissions';
 import { loadUserProfile, type UserProfile } from '../../data/profile-model';
@@ -360,16 +360,14 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const filteredRecords = recordsReady && stats
     ? getFilteredRecords(stats, activeFilter, true)
     : [];
-  // 「活動明細 N」固定用三格統計的應到場次，展開前後數字不跳（審查 P3-4）。
-  const recordCount = summary?.expectedCount ?? null;
+  // 「活動明細 N」固定用三格統計的參與場次（11-06 由應到改名），展開前後數字不跳（審查 P3-4）。
+  const recordCount = summary ? (summary.v2?.participatedCount ?? summary.expectedCount) : null;
+  const attendance = deriveAttendanceDisplay(summary);
 
   const handleShareClick = (): void => {
     // ASSUMPTION: B 尚無個人名片分享功能（本單範圍外），照 A 輸出按鈕但點擊 toast 提示。
     toast.show({ message: UNAVAILABLE_MSG });
   };
-
-  const statNum = (value: number | undefined): string =>
-    typeof value === 'number' ? String(value) : '--';
 
   const filters: { key: RecordFilter; label: string }[] = [
     { key: 'all', label: lt('全部', '全部') },
@@ -435,23 +433,26 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
       <div class="pp-sep" role="separator" />
       <div class="pp-stats" id="uc-record-stats">
         <div>
-          <b id="uc-stat-total">{statNum(summary?.expectedCount)}</b>
+          <b id="uc-stat-total">{attendance ? attendance.participatedText : '--'}</b>
           <span>{t('profile.pp.expected')}</span>
         </div>
         <div>
-          <b id="uc-stat-done">{statNum(summary?.completedCount)}</b>
+          <b id="uc-stat-done">{attendance ? attendance.completedText : '--'}</b>
           <span>{t('profile.pp.completed')}</span>
         </div>
         <div class="pp-hi">
           <b id="uc-stat-rate">
-            {summary ? (
+            {attendance && attendance.rateText.endsWith('%') ? (
               <>
-                {summary.attendRate}
+                {attendance.rateText.slice(0, -1)}
                 <small>%</small>
               </>
-            ) : '--'}
+            ) : (attendance ? attendance.rateText : '--')}
           </b>
           <span>{lt('出席率', '出席率')}</span>
+          {attendance && attendance.countedCount !== null && (
+            <small class="pp-counted">{t('profile.playerCard.countedGames', { n: attendance.countedCount })}</small>
+          )}
         </div>
       </div>
     </>
