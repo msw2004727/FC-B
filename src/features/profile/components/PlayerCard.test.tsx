@@ -872,22 +872,103 @@ describe('T-092 球員卡（DOM）', () => {
           expect(peaks[5]).toBeCloseTo(MAX_DEG_PER_MS, 5);
           flush();
           expect([0, 180]).toContain(angles[angles.length - 1]);
+          // 連撥到頂：最高記錄剛好 720（不受螢幕更新率影響），停下寫入 localStorage
+          expect(rpmParts(container).best.textContent).toBe('720');
+          expect(localStorage.getItem(BEST_KEY)).toBe('720');
         });
 
-        it('反向撥：抵銷剩餘轉速而減速（仍朝原方向收尾、不倒轉）', () => {
+        it('反向撥：丟掉剩餘轉速，只照本次撥速反向轉、全程不倒退', () => {
           const { container } = renderTop(viewer());
           const { stage, flip } = parts(container);
           const angles = recordAngles(flip);
           swipe(stage, 200); // 約 2.67°/ms 向右
-          const before = frames(angles, 3)[2]!;
+          frames(angles, 3);
           swipe(stage, 40); // 反向 1.6°/ms
           const after = frames(angles, 1)[0]!;
-          expect(after).toBeGreaterThan(0);
-          expect(after).toBeLessThan(before - 1);
+          expect(after).toBeCloseTo(-1.6, 5);
           const mark = angles.length;
           flush();
           const raw = angles.slice(mark, -1);
-          for (let i = 1; i < raw.length; i++) expect(raw[i]! - raw[i - 1]!).toBeGreaterThanOrEqual(0);
+          for (let i = 1; i < raw.length; i++) expect(raw[i]! - raw[i - 1]!).toBeLessThanOrEqual(0);
+        });
+
+        it('抓住超過 150ms 再撥：不疊加剩餘轉速（只照本次撥速）', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200);
+          frames(angles, 3);
+          fireEvent.pointerDown(stage, ptr(100));
+          now += 200; // 抓住不動
+          for (let i = 1; i <= 3; i++) {
+            now += 10;
+            fireEvent.pointerMove(stage, ptr(100 + (60 * i) / 3));
+          }
+          fireEvent.pointerUp(stage, ptr(160));
+          expect(frames(angles, 1)[0]!).toBeCloseTo(1.6, 5);
+        });
+
+        it('按住：立即拿掉 is-spinning、數字先維持；按住超過 300ms 數字歸 0', () => {
+          vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+          try {
+            const { container } = renderTop(viewer());
+            const { stage, flip } = parts(container);
+            const angles = recordAngles(flip);
+            const { box, num } = rpmParts(container);
+            swipe(stage, 200);
+            frames(angles, 3);
+            const shown = num.textContent;
+            expect(box.classList.contains('is-spinning')).toBe(true);
+            fireEvent.pointerDown(stage, ptr(100));
+            expect(box.classList.contains('is-spinning')).toBe(false);
+            expect(num.textContent).toBe(shown);
+            vi.advanceTimersByTime(299);
+            expect(num.textContent).toBe(shown);
+            vi.advanceTimersByTime(1);
+            expect(num.textContent).toBe('0');
+            fireEvent.pointerUp(stage, ptr(100));
+            flush();
+            expect(num.textContent).toBe('0');
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it('對齊階段 RPM 只遞減不回升', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          const { num } = rpmParts(container);
+          swipe(stage, 200);
+          const seen: number[] = [Number(num.textContent)];
+          while (pending.size) {
+            frames(angles, 1);
+            seen.push(Number(num.textContent));
+          }
+          for (let i = 1; i < seen.length; i++) expect(seen[i]!, `step ${i}`).toBeLessThanOrEqual(seen[i - 1]!);
+          expect(seen[seen.length - 1]).toBe(0);
+        });
+
+        it('轉到一半卸載：有新記錄就補寫 localStorage', () => {
+          const view = renderTop(viewer());
+          const { stage, flip } = parts(view.container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200);
+          frames(angles, 2);
+          expect(localStorage.getItem(BEST_KEY)).toBeNull();
+          view.unmount();
+          expect(Number(localStorage.getItem(BEST_KEY))).toBeGreaterThan(400);
+        });
+
+        it('寫入取較大值：其他分頁已寫入更高記錄時不被覆蓋', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          recordAngles(flip);
+          localStorage.setItem(BEST_KEY, '700'); // 掛載後另一分頁寫入
+          swipe(stage, 200); // 約 444 RPM
+          flush();
+          expect(localStorage.getItem(BEST_KEY)).toBe('700');
+          expect(rpmParts(container).best.textContent).toBe('700');
         });
 
         it('點一下＝煞車：不疊加，停在最近一面', () => {

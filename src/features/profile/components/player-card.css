@@ -330,6 +330,18 @@
   align-items: center;
   justify-content: center;
 }
+/* 身分標籤過長（自訂角色名、外語）時單行省略，不壓到兩側的轉速與鎖頭。 */
+.player-card-topbar > #profile-role-tag-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+.player-card-topbar #profile-role-tag-wrap .uc-role-tag {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
 /* 轉速（卡片左上方外側，與鎖頭對稱）：上行「{數字}/RPM」用卡面同款窄體字，下行最高記錄；
  * 靜止淡化、轉動時實色。數字由 player-card-spin.ts 直寫 DOM；不在卡面內，PNG 不會畫到。 */
 .player-card-rpm {
@@ -361,6 +373,7 @@
   color: var(--text-primary);
 }
 .player-card-rpm-best {
+  max-width: 100%;
   margin-top: 2px;
   font-size: 9.5px;
   overflow: hidden;
