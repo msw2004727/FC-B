@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
+import { cleanup, createEvent, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('preact-iso', () => ({
@@ -917,6 +917,40 @@ describe('T-092 球員卡（DOM）', () => {
           expect(sawUnder).toBe(true);
           expect(box.classList.contains('is-over')).toBe(false);
           expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
+        });
+
+        it('卡頓時同一刻送達多個 move＋up（事件時間差 <1ms）：撥速以事件時間計、分母至少 16ms，速度與最高記錄不暴衝', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          /** 送出帶指定事件時間（timeStamp）的指標事件；performance.now() 全程不動，模擬同一個 task 內處理。 */
+          const send = (type: 'pointerDown' | 'pointerMove' | 'pointerUp', x: number, ts: number): void => {
+            const ev = createEvent[type](stage, ptr(x));
+            Object.defineProperty(ev, 'timeStamp', { value: ts });
+            fireEvent(stage, ev);
+          };
+          now = 5000;
+          send('pointerDown', 100, 4999.0);
+          send('pointerMove', 166, 4999.1);
+          send('pointerMove', 233, 4999.2);
+          send('pointerMove', 300, 4999.3);
+          send('pointerUp', 300, 4999.3);
+          // 修正前：200px / 0.3ms ×0.8 ≈ 533°/ms（約 88,900 RPM）；修正後分母取 16ms：200/16×0.8＝10°/ms（約 1,667 RPM）
+          const v = frames(angles, 1)[0]!;
+          expect(v).toBeCloseTo(10, 6);
+          flush();
+          const best = Number(rpmParts(container).best.textContent);
+          expect(best).toBeLessThanOrEqual(1667);
+          expect(Number(localStorage.getItem(BEST_KEY))).toBeLessThanOrEqual(1667);
+
+          // 卡頓後才一起送達、但事件實際相隔 30ms：照事件時間算出真實撥速 200/30×0.8≈5.33°/ms
+          now = 9000;
+          send('pointerDown', 100, 8900);
+          send('pointerMove', 166, 8910);
+          send('pointerMove', 233, 8920);
+          send('pointerMove', 300, 8930);
+          send('pointerUp', 300, 8930);
+          expect(frames(angles, 1)[0]!).toBeCloseTo((200 / 30) * 0.8, 6);
         });
 
         it('反向撥：丟掉剩餘轉速，只照本次撥速反向轉、全程不倒退', () => {

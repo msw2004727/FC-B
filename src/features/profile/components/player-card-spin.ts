@@ -123,6 +123,20 @@ function prefersReducedMotion(): boolean {
   }
 }
 
+/**
+ * 撥速計時用事件實際發生時間（e.timeStamp），不用處理當下的 performance.now()：
+ * 卡頓時多個 pointermove＋pointerup 會在同一個 task 送達，用處理時間算分母只剩 ~0.3ms、撥速暴衝成數萬 RPM 並寫進最高記錄（審查 P2，11-06）。
+ * timeStamp 不在 performance.now() 同一時間軸（舊瀏覽器、jsdom 給 epoch 毫秒）或非有限值時退回 performance.now()。
+ */
+function eventTime(e: Event): number {
+  const now = performance.now();
+  const t = e.timeStamp;
+  return Number.isFinite(t) && t > 0 && t <= now + 1000 ? t : now;
+}
+
+/** 撥速分母下限（約一格 60Hz）：事件時間差再小也不會除出暴衝的速度。 */
+const MIN_FLICK_DT_MS = 16;
+
 function nearestFace(angle: number): number {
   return Math.round(angle / 180) * 180;
 }
@@ -390,7 +404,7 @@ export function usePlayerCardSpin(locked: boolean): {
       st.startX = e.clientX;
       st.startY = e.clientY;
       st.startA = st.angle;
-      st.samples = [{ x: e.clientX, t: performance.now() }];
+      st.samples = [{ x: e.clientX, t: eventTime(e) }];
     };
     const onPointerMove = (e: PointerEvent): void => {
       if (st.mode === 'idle' || e.pointerId !== st.pointerId) return;
@@ -420,7 +434,7 @@ export function usePlayerCardSpin(locked: boolean): {
           return;
         }
       }
-      const now = performance.now();
+      const now = eventTime(e);
       st.angle = st.startA + dx * DEG_PER_PX;
       st.samples.push({ x: e.clientX, t: now });
       st.samples = st.samples.filter((s) => now - s.t < SAMPLE_WINDOW_MS);
@@ -436,9 +450,10 @@ export function usePlayerCardSpin(locked: boolean): {
         settle();
         return;
       }
+      const at = eventTime(e);
+      const first = st.samples.find((s) => at - s.t < SAMPLE_WINDOW_MS);
+      const flickVel = first ? ((e.clientX - first.x) / Math.max(MIN_FLICK_DT_MS, at - first.t)) * DEG_PER_PX : 0;
       const now = performance.now();
-      const first = st.samples.find((s) => now - s.t < SAMPLE_WINDOW_MS);
-      const flickVel = first && now - first.t > 0 ? ((e.clientX - first.x) / (now - first.t)) * DEG_PER_PX : 0;
       // 疊加：只有快速撥（按住 ≤ CARRY_MAX_HOLD_MS）才把剩餘轉速（按住期間照摩擦衰減）加上本次撥速，只夾數值安全值；
       // 反向拖時剩餘轉速已在進入拖曳時丟掉
       const held = Math.max(0, now - st.carryT);
