@@ -96,11 +96,10 @@
   color: #633806;
 }
 [data-theme="dark"] .player-card-att-num { color: #FAC775; }
-.player-card-att .player-card-abbr,
-.player-card-title .player-card-abbr { color: #854F0B; }
 [data-theme="dark"] .player-card-att .player-card-abbr,
 [data-theme="dark"] .player-card-title .player-card-abbr { color: #EF9F27; }
 .player-card-att .player-card-abbr {
+  color: #854F0B;
   font-size: calc(12 * var(--pcu));
   letter-spacing: calc(2 * var(--pcu));
   padding-top: calc(4 * var(--pcu));
@@ -124,6 +123,7 @@
 }
 [data-theme="dark"] .player-card-title-zh { color: #FAC775; }
 .player-card-title .player-card-abbr {
+  color: #854F0B;
   font-size: calc(11 * var(--pcu));
   letter-spacing: calc(2 * var(--pcu));
   padding-top: calc(4.18 * var(--pcu));
