@@ -54,6 +54,12 @@ const COMMON_HEADERS = [
   '/sw.js',
   '  ! Cache-Control',
   '  Cache-Control: no-cache',
+  // 換站搬入的內容頁照 A `_headers`：快取一天（換站計畫書 B-01，Opus 終審 P2）。
+  ...['/seo/*', '/blog/*', '/privacy', '/privacy.html', '/terms', '/terms.html'].flatMap((path) => [
+    path,
+    '  ! Cache-Control',
+    '  Cache-Control: public, max-age=86400',
+  ]),
 ];
 const INTERNAL_TEST_HEADERS = [
   '/*',

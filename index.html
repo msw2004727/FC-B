@@ -95,7 +95,169 @@
         } catch (_) {}
       })();
     </script>
-    <title>ToosterX</title>
+    <title>ToosterX — 台灣運動揪團報名平台｜LINE 一鍵報名足球、籃球、羽球活動</title>
+    <!-- 換站前必修 I-01（2026-11-07）：搜尋與分享預覽用的 description、canonical、hreflang、OG、Twitter、JSON-LD 逐字照 A index.html；
+         內測建置另由 vite.config.ts 注入 noindex，next 不會被收錄。 -->
+    <meta name="description" content="ToosterX 是台灣領先的運動揪團報名平台。用 LINE 帳號一鍵登入，30 秒內完成足球、籃球、羽球、排球等運動活動報名。智慧候補自動遞補、俱樂部管理、賽事系統、QR Code 簽到、LINE 即時推播，一站搞定所有運動社交需求。完全免費使用。">
+    <meta name="keywords" content="運動揪團,運動報名,足球報名,籃球揪團,羽球報名,排球活動,網球揪人,運動平台,LINE報名,台灣運動,ToosterX,運動社群,球隊管理,賽事報名,QR簽到,運動俱樂部,候補遞補,揪人打球">
+    <link rel="canonical" href="https://toosterx.com/">
+    <link rel="alternate" hreflang="zh-TW" href="https://toosterx.com/">
+    <link rel="alternate" hreflang="x-default" href="https://toosterx.com/">
+    <!-- Open Graph -->
+    <meta property="og:title" content="ToosterX — 台灣運動揪團報名平台">
+    <meta property="og:description" content="用 LINE 一鍵登入，30 秒完成運動活動報名。智慧候補、俱樂部管理、賽事系統、QR Code 簽到，台灣運動愛好者的首選平台。免費使用。">
+    <meta property="og:image" content="https://toosterx.com/assets/og/default.png?v=20260707">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:url" content="https://toosterx.com">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:site_name" content="ToosterX">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ToosterX — 台灣運動揪團報名平台">
+    <meta name="twitter:description" content="LINE 一鍵登入，30 秒完成運動報名。智慧候補、俱樂部管理、QR 簽到，台灣運動愛好者的首選平台。">
+    <meta name="twitter:image" content="https://toosterx.com/assets/og/default.png?v=20260707">
+    <!-- SEO 結構化資料 -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "name": "ToosterX",
+          "alternateName": ["ToosterX 運動揪團報名平台", "ToosterX Sports Signup Platform"],
+          "url": "https://toosterx.com",
+          "description": "台灣領先的運動揪團報名平台。透過 LINE 一鍵登入，讓運動愛好者快速發起、搜尋並報名足球、籃球、羽球、排球等各類運動活動，並提供俱樂部經營、賽事管理、QR Code 智慧簽到與 LINE 即時推播通知。",
+          "applicationCategory": "SportsApplication",
+          "operatingSystem": "Web",
+          "browserRequirements": "Requires JavaScript. Requires HTML5.",
+          "inLanguage": ["zh-TW", "en"],
+          "image": "https://toosterx.com/assets/icons/icon-512x512.png",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "TWD",
+            "description": "平台完全免費使用，個別活動費用由發起者自訂"
+          },
+          "featureList": [
+            "10+ 種運動項目一鍵報名（足球、籃球、羽球、排球、網球、桌球、棒球、壘球、健身、跑步、游泳）",
+            "LINE 帳號一鍵登入，無需額外註冊",
+            "智慧候補系統：額滿自動排隊，有空位即時 LINE 通知遞補",
+            "揪團發起：自訂時間地點人數，一鍵產生 LINE 分享卡片",
+            "俱樂部經營：建立球隊、管理成員角色、追蹤出席統計",
+            "賽事管理：錦標賽與友誼賽組織、賽程表與戰績紀錄",
+            "QR Code 智慧簽到簽退：現場掃碼，自動記錄出席數據",
+            "個人運動履歷：參與場次、出席率、成就徽章、經驗等級",
+            "LINE 即時推播通知：報名確認、活動提醒、候補遞補、隊伍邀請",
+            "同行者報名：可幫朋友一起報名，一次搞定多人"
+          ],
+          "audience": {
+            "@type": "PeopleAudience",
+            "suggestedMinAge": 12,
+            "audienceType": "運動愛好者、球隊隊長、活動主辦方、運動教練"
+          },
+          "availableOnDevice": "Mobile",
+          "countriesSupported": "TW",
+          "softwareHelp": {
+            "@type": "CreativeWork",
+            "url": "https://toosterx.com/llms.txt"
+          }
+        },
+        {
+          "@type": "Organization",
+          "name": "ToosterX",
+          "url": "https://toosterx.com",
+          "logo": "https://toosterx.com/assets/icons/icon-512x512.png",
+          "description": "ToosterX 是台灣領先的運動揪團報名平台，致力於讓每個人都能輕鬆找到運動夥伴、加入球隊、參與賽事，享受運動的樂趣。",
+          "sameAs": [
+            "https://miniapp.line.me/2009525300-AuPGQ0sh",
+            "https://github.com/msw2004727/FC"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "name": "ToosterX",
+          "alternateName": "ToosterX 運動揪團報名平台",
+          "url": "https://toosterx.com",
+          "inLanguage": "zh-TW",
+          "publisher": {
+            "@type": "Organization",
+            "name": "ToosterX"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "ToosterX 是什麼？跟 LINE 群組揪團有什麼不同？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 是專為運動設計的揪團報名平台，解決 LINE 群組揪人的常見痛點：訊息被洗掉、報名人數不清楚、無法確認出席。在 ToosterX 上，每場活動有獨立頁面、即時報名人數、自動候補遞補機制、LINE 推播通知，主辦方還能用 QR Code 一鍵確認出席。用 LINE 帳號一鍵登入，不需另外註冊帳號。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "ToosterX 支援哪些運動項目？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 支援 10 種以上運動項目，包括足球、籃球、羽球、排球、網球、桌球、棒球、壘球、健身、跑步、游泳等。活動發起者也可以自由設定運動類型，平台會持續擴充支援項目。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "如何使用 ToosterX 報名運動活動？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "只要三步驟：(1) 在 LINE 中開啟 ToosterX，用 LINE 帳號自動登入；(2) 瀏覽附近的運動活動，查看時間、地點、費用與即時報名人數；(3) 點選報名按鈕，30 秒內完成報名，LINE 會即時收到確認通知。活動當天掃 QR Code 簽到即可。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "ToosterX 完全免費嗎？有隱藏費用嗎？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 平台本身完全免費，沒有任何隱藏費用。報名活動時，個別活動可能會收取場地費或參加費（例如場地租借分攤），這些費用由活動發起者自行設定，並在活動頁面上清楚標示，報名前就能看到。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "報名額滿了怎麼辦？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 提供智慧候補機制。報名額滿時，您可以選擇加入候補名單。一旦有人取消報名，系統會自動按報名時間順序遞補，並立即透過 LINE 推播通知您已成功遞補。全程自動化，不需要手動聯繫主辦方。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "我是球隊隊長，ToosterX 能幫我做什麼？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 的俱樂部功能專為球隊管理設計。您可以建立專屬俱樂部、邀請隊員加入、設定副隊長分擔管理工作。在俱樂部內發起專屬活動時，成員會收到 LINE 通知。系統自動追蹤每位成員的出席紀錄、參與場次與出席率，讓球隊管理不再靠記憶力。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "如何發起一場運動揪團活動？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "登入後點選建立活動，設定運動類型、日期時間、地點、人數上限與費用。建立後系統會自動產生精美的 LINE 分享卡片，一鍵分享到 LINE 群組或好友。報名者可直接點開查看詳情並報名，主辦方隨時查看報名狀況、管理名單、發送通知。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "ToosterX 可以在哪些裝置上使用？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ToosterX 是以行動裝置為優先設計的網頁應用程式，支援 LINE 內建瀏覽器、Safari 和 Chrome。透過 LINE Mini App 開啟，不需要額外下載 APP，開啟即用。支援離線瀏覽已載入的內容，即使在網路不穩定的環境也能正常使用。"
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
     <!-- 照 A index.html：圖示、加到主畫面（PWA）相關標籤；manifest 由 vite.config.ts 的 PWA 設定產生（內容照 A manifest.json） -->
     <link rel="icon" href="/assets/icons/icon-192x192.png" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
