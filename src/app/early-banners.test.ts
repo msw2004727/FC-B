@@ -879,7 +879,8 @@ describe('建置外掛 earlyBannersHtml', () => {
     // 其他註解與連線提示完全沒被誤刪。
     expect(out).toContain('首頁一開就會連的來源');
     expect(out).toContain('<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />');
-    expect(out).toContain('<title>ToosterX</title>');
+    // 測試同步更新（換站前必修 I-01，2026-11-07）：title 改照舊站完整標題。
+    expect(out).toContain('<title>ToosterX — 台灣運動揪團報名平台｜LINE 一鍵報名足球、籃球、羽球活動</title>');
     expect(Buffer.byteLength(rawHtml) - Buffer.byteLength(out)).toBeGreaterThan(400);
     // gzip 實際省下的量（防止之後註解被改回送出）。
     expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(150);
