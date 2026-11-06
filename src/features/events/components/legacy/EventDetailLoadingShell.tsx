@@ -139,7 +139,6 @@ interface ToolbarProps extends ShareBuilderContext {
 export function EventDetailToolbarActions({
   event,
   loggedIn,
-  heat,
   registrations,
   canScan,
   onScan,
@@ -163,7 +162,6 @@ export function EventDetailToolbarActions({
     try {
       await shareEvent(event, {
         loggedIn,
-        heat,
         registrations,
         signal: controller.current.signal,
         showToast: (message) => {

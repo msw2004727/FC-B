@@ -183,7 +183,7 @@ export function useEventFormPostSave(
           const detail = await loadEventDetail(eventId);
           if (!current() || !detail) return;
 
-          // ASSUMPTION: 無已載入的熱度與報名快照，使用 shareEvent 的選用欄位預設值。
+          // ASSUMPTION: 無已載入的報名快照，使用 shareEvent 的選用欄位預設值（名額取自剛讀回的活動文件）。
           await shareEvent({ ...detail.event, id: eventId }, {
             loggedIn: true,
             signal: run.signal,

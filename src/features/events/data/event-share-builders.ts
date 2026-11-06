@@ -1,3 +1,5 @@
+import { taipeiParts } from '@/core/taipei-time';
+
 type PickerMessages = Parameters<
   typeof import('@line/liff').default.shareTargetPicker
 >[0];
@@ -32,8 +34,6 @@ export interface ShareEvent {
   teamSplit?: unknown;
 }
 
-export type ShareHeat = 'hot' | 'warm' | 'normal' | 'cold';
-
 export interface ShareRegistration {
   status?: string;
   // 分隊重置後為 null（A _tsTeamKeyUpdatePayload）。
@@ -41,16 +41,27 @@ export interface ShareRegistration {
 }
 
 export interface ShareBuilderContext {
-  heat?: ShareHeat | null;
   registrations?: readonly ShareRegistration[];
+  /** 分享當下時間（毫秒）；名額以這個時間點為準，未給時用現在。 */
+  sharedAt?: number;
 }
 
-const HEAT_LABELS: Record<ShareHeat, string> = {
-  hot: '高人氣即將額滿',
-  warm: '報名熱烈增加中',
-  normal: '穩定開放報名中',
-  cold: '潛力場次招募中',
-};
+// 站長 2026-11-06：分享模板的「熱度」（推估形容詞）改為實際名額，並註明是分享當下的數字（分享後不會自動更新）。
+export function buildShareCapacityText(event: ShareEvent, sharedAt: number = Date.now()): string | null {
+  const current = Number(event.current);
+  const max = Number(event.max);
+  const hasMax = Number.isFinite(max) && max > 0;
+  if (!Number.isFinite(current) && !hasMax) return null;
+  const count = Number.isFinite(current) && current > 0 ? current : 0;
+  const body = !hasMax
+    ? `已報 ${count} 人`
+    : count >= max
+      ? `已額滿 ${count}／${max} 人`
+      : `已報 ${count}／${max} 人`;
+  const t = taipeiParts(sharedAt);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${body}（${pad(t.month)}/${pad(t.day)} ${pad(t.hour)}:${pad(t.minute)} 分享時）`;
+}
 
 // 照 A js/config.js#SPORT_ICON_EMOJI（Flex 訊息用 emoji；PM 依 A 原檔補齊）。
 const SPORT_ICON_EMOJI: Readonly<Record<string, string>> = {
@@ -130,14 +141,15 @@ function truncateAltText(text: string): string {
 export function buildEventShareAltText(
   event: ShareEvent,
   liffUrl: string,
-  heat?: ShareHeat | null,
+  sharedAt: number = Date.now(),
 ): string {
   const lines = [
     '＜' + (event.title || '') + '＞',
     '日期：' + (event.date || ''),
     '地點：' + (event.location || ''),
   ];
-  if (heat) lines.push('熱度：' + HEAT_LABELS[heat]);
+  const capacity = buildShareCapacityText(event, sharedAt);
+  if (capacity) lines.push('名額：' + capacity);
   lines.push(liffUrl);
   return truncateAltText(lines.join('\n'));
 }
@@ -262,7 +274,8 @@ function buildBubble(
   if (event.date) info.push(buildFlexInfoRow('日期', event.date));
   if (event.location) info.push(buildFlexInfoRow('地點', event.location));
   if (!external) {
-    if (context.heat) info.push(buildFlexInfoRow('熱度', HEAT_LABELS[context.heat]));
+    const capacity = buildShareCapacityText(event, context.sharedAt);
+    if (capacity) info.push(buildFlexInfoRow('名額', capacity));
     if (event.feeEnabled && (event.fee || 0) > 0) {
       info.push(buildFlexInfoRow('費用', '$' + event.fee));
     }

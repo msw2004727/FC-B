@@ -84,7 +84,9 @@ export async function shareEvent(
 
   try {
     const url = buildEventLiffUrl(event.id || '');
-    const altText = buildEventShareAltText(event, url, options.heat);
+    // 名額以按下分享的這一刻為準，替代文字、卡片、複製文字共用同一個時間。
+    const sharedAt = Date.now();
+    const altText = buildEventShareAltText(event, url, sharedAt);
     // 訪客且不在 LINE App 內：A 也沒有 LIFF session，不先等 SDK，保留 navigator.share 的使用者手勢。
     const maybeInLine = typeof navigator !== 'undefined' && /\bLine\//i.test(navigator.userAgent || '');
     const liff = options.loggedIn || maybeInLine || overrides.loadLiff
@@ -106,7 +108,7 @@ export async function shareEvent(
           const result = await liff.shareTargetPicker([{
             type: 'flex',
             altText,
-            contents: buildEventFlexMessage(event, url, options),
+            contents: buildEventFlexMessage(event, url, { ...options, sharedAt }),
           }]);
           notify(result ? '活動已分享到 LINE' : '分享已完成');
         } catch {
@@ -122,7 +124,7 @@ export async function shareEvent(
         const text = buildEventShareAltText(
           event,
           buildEventShareOgUrl(event.id || ''),
-          options.heat,
+          sharedAt,
         );
         const ok = await deps.copy(text);
         notify(ok ? '連結已複製' : '複製失敗');

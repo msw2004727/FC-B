@@ -93,7 +93,6 @@ import { GuestRosterSections } from '../components/legacy/GuestRosterSections';
 import {
   EventDetailCover,
   EventDetailInfoSection,
-  calcHeatPrediction,
   type LegacyDetailEvent,
 } from '../components/legacy/EventDetailMainView';
 import {
@@ -2003,7 +2002,6 @@ function EventDetailSession({
               <EventDetailToolbarActions
                 event={event}
                 loggedIn={Boolean(viewer.uid)}
-                heat={calcHeatPrediction(event, now)}
                 registrations={teamSplitEnabled ? teamDisplayRegistrations : snapshot.registrations}
                 canScan={() => Boolean(
                   currentViewer.current.uid

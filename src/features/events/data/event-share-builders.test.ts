@@ -7,6 +7,7 @@ import {
   buildExternalEventFlexMessage,
   buildExternalEventShareAltText,
   buildFlexInfoRow,
+  buildShareCapacityText,
   buildShareUrl,
   getEventShareImageUrl,
   getEventShareVersion,
@@ -35,15 +36,29 @@ describe('M-091：照 A 分享 builder', () => {
     );
   });
 
-  it('替代文字保留全形括號、換行、空地點及熱度', () => {
+  // 2026-11-06 18:30 台北時間（UTC 10:30）
+  const SHARED_AT = Date.UTC(2026, 10, 6, 10, 30);
+
+  it('替代文字保留全形括號、換行、空地點，並附分享當下名額', () => {
     expect(buildEventShareAltText(
-      { title: '週末場', date: '2026/10/25 10:00~12:00' },
+      { title: '週末場', date: '2026/10/25 10:00~12:00', current: 12, max: 20 },
       'URL',
-      'warm',
-    )).toBe('＜週末場＞\n日期：2026/10/25 10:00~12:00\n地點：\n熱度：報名熱烈增加中\nURL');
+      SHARED_AT,
+    )).toBe('＜週末場＞\n日期：2026/10/25 10:00~12:00\n地點：\n名額：已報 12／20 人（11/06 18:30 分享時）\nURL');
     const raw = '＜' + '😀'.repeat(410) + '＞\n日期：\n地點：\nURL';
     expect(buildEventShareAltText({ title: '😀'.repeat(410) }, 'URL'))
       .toBe(Array.from(raw).slice(0, 397).join('') + '...');
+  });
+
+  it('名額文字：額滿、無上限、沒有資料、台北跨日', () => {
+    expect(buildShareCapacityText({ current: 20, max: 20 }, SHARED_AT)).toBe('已額滿 20／20 人（11/06 18:30 分享時）');
+    expect(buildShareCapacityText({ current: 21, max: 20 }, SHARED_AT)).toBe('已額滿 21／20 人（11/06 18:30 分享時）');
+    expect(buildShareCapacityText({ current: 12, max: 0 }, SHARED_AT)).toBe('已報 12 人（11/06 18:30 分享時）');
+    expect(buildShareCapacityText({ max: 20 }, SHARED_AT)).toBe('已報 0／20 人（11/06 18:30 分享時）');
+    expect(buildShareCapacityText({}, SHARED_AT)).toBeNull();
+    // UTC 16:05＝台北隔天 00:05
+    expect(buildShareCapacityText({ current: 1, max: 2 }, Date.UTC(2026, 10, 6, 16, 5)))
+      .toBe('已報 1／2 人（11/07 00:05 分享時）');
   });
 
   it('圖片依 A 優先序，拒絕非 http(s)', () => {
@@ -122,12 +137,14 @@ describe('M-091：照 A 分享 builder', () => {
       location: '球場',
       feeEnabled: true,
       fee: 100,
+      current: 18,
+      max: 20,
       teamSplit: {
         enabled: true,
         teams: [{ key: 'a', name: '紅隊' }, { key: 'b', name: '藍隊' }],
       },
     }, 'URL', {
-      heat: 'hot',
+      sharedAt: SHARED_AT,
       registrations: [
         { status: 'confirmed', teamKey: 'a' },
         { status: 'waitlisted', teamKey: 'a' },
@@ -140,7 +157,7 @@ describe('M-091：照 A 分享 builder', () => {
       contents: [
         buildFlexInfoRow('日期', '今天'),
         buildFlexInfoRow('地點', '球場'),
-        buildFlexInfoRow('熱度', '高人氣即將額滿'),
+        buildFlexInfoRow('名額', '已報 18／20 人（11/06 18:30 分享時）'),
         buildFlexInfoRow('費用', '$100'),
         buildFlexInfoRow('分隊', '紅隊 1 vs 藍隊 0'),
       ],
