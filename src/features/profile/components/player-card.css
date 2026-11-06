@@ -381,7 +381,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 半圓轉速表（0～720 RPM，600 起紅區）：細線金色系同卡框（淺 #BA7517／深 #FAC775），指針用主文字色；
+/* 半圓轉速表（0～900 RPM，750 起紅區）：細線金色系同卡框（淺 #BA7517／深 #FAC775），指針用主文字色；
  * 指針角度由 player-card-spin.ts 直寫 transform 屬性（SVG 屬性，不靠 CSS transform，Safari 舊版也穩）。 */
 .player-card-rpm-gauge {
   display: block;

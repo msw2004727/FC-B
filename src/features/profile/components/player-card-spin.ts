@@ -5,7 +5,7 @@
  * 旋轉角度直接寫進 DOM（不走 state），避免每格重畫整張卡。
  * 加速（站長 11-06）：慣性中再快速撥（按住 ≤150ms）且同向，放手速度＝剩餘轉速（按住期間照摩擦衰減）＋本次撥速，越撥越快；
  * 反向拖或抓住超過 150ms 則丟掉剩餘轉速、只照本次撥速（審查 P3④取代原「反向抵銷減速」：避免倒退與抓住卻停不下），
- * 上限 MAX_DEG_PER_MS（720 RPM）；點一下＝煞車停最近一面。轉速以「{數字}/RPM」寫在卡片左上外側（同樣直寫 DOM、100ms 節流）。
+ * 上限 MAX_DEG_PER_MS（900 RPM）；點一下＝煞車停最近一面。轉速以「{數字}/RPM」寫在卡片左上外側（同樣直寫 DOM、100ms 節流）。
  */
 import { useEffect, useRef } from 'preact/hooks';
 
@@ -24,8 +24,8 @@ const SETTLE_MS = 420;
 const AXIS_LOCK_PX = 6;
 /** 放手時總位移小於此值視為點一下，不翻。 */
 const TAP_PX = 4;
-/** 轉速上限 720 RPM（=4.32°/ms）：連撥加速到此為止，避免失控與低階機掉幀。 */
-export const PLAYER_CARD_MAX_RPM = 720;
+/** 轉速上限 900 RPM（=5.4°/ms，站長 11-06 由 720 調高）：連撥加速到此為止，避免失控與低階機掉幀。 */
+export const PLAYER_CARD_MAX_RPM = 900;
 const MAX_DEG_PER_MS = (PLAYER_CARD_MAX_RPM * 360) / 60000;
 /** RPM 文字最快每 100ms 更新一次；歸零立即寫。 */
 const RPM_UPDATE_MS = 100;
@@ -34,8 +34,8 @@ const HOLD_ZERO_MS = 300;
 /** 按下到放手在此時間內才算「快速撥」，才疊加剩餘轉速；抓住停一下再撥不疊加，避免抓住卻停不下。 */
 const CARRY_MAX_HOLD_MS = 150;
 
-/** 轉速表紅色區間起點（到上限 720 為止）。 */
-export const PLAYER_CARD_RPM_REDLINE = 600;
+/** 轉速表紅色區間起點（到上限 900 為止）。 */
+export const PLAYER_CARD_RPM_REDLINE = 750;
 
 /** 轉速表指針角度：0 RPM 指向左（-90°）、上限指向右（+90°），超出上限夾住。 */
 export function rpmToNeedleDeg(rpm: number): number {

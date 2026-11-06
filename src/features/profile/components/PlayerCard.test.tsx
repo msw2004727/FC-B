@@ -801,7 +801,7 @@ describe('T-092 球員卡（DOM）', () => {
 
       describe('連撥加速＋RPM（站長 11-06）', () => {
         const BEST_KEY = 'toosterx:player-card-best-rpm';
-        const MAX_DEG_PER_MS = (720 * 360) / 60000;
+        const MAX_DEG_PER_MS = (900 * 360) / 60000;
         beforeEach(() => localStorage.removeItem(BEST_KEY));
         afterEach(() => localStorage.removeItem(BEST_KEY));
 
@@ -845,22 +845,26 @@ describe('T-092 球員卡（DOM）', () => {
           expect(box.classList.contains('is-spinning')).toBe(false);
         });
 
-        it('最高記錄讀到壞值當 0、超過上限夾到 720', () => {
+        it('最高記錄讀到壞值當 0、超過上限夾到 900；舊上限 720 的記錄照讀', () => {
           localStorage.setItem(BEST_KEY, 'abc');
           const a = renderTop(viewer());
           expect(rpmParts(a.container).best.textContent).toBe('0');
           cleanup();
           localStorage.setItem(BEST_KEY, '99999');
           const b = renderTop(viewer());
-          expect(rpmParts(b.container).best.textContent).toBe('720');
+          expect(rpmParts(b.container).best.textContent).toBe('900');
+          cleanup();
+          localStorage.setItem(BEST_KEY, '720');
+          const c = renderTop(viewer());
+          expect(rpmParts(c.container).best.textContent).toBe('720');
         });
 
-        it('慣性中同向連撥：轉速逐次疊加變快，且不超過 720 RPM 上限', () => {
+        it('慣性中同向連撥：轉速逐次疊加變快，且不超過 900 RPM 上限', () => {
           const { container } = renderTop(viewer());
           const { stage, flip } = parts(container);
           const angles = recordAngles(flip);
           const peaks: number[] = [];
-          for (let k = 0; k < 6; k++) {
+          for (let k = 0; k < 10; k++) {
             swipe(stage, 160); // 單次撥速 1.6°/ms（約 267 RPM）
             const v = frames(angles, 3);
             peaks.push(v[0]!);
@@ -870,12 +874,12 @@ describe('T-092 球員卡（DOM）', () => {
           expect(peaks[2]!).toBeGreaterThan(peaks[1]!);
           for (const p of peaks) expect(p).toBeLessThanOrEqual(MAX_DEG_PER_MS + 1e-9);
           // 撥到頂之後維持在上限
-          expect(peaks[5]).toBeCloseTo(MAX_DEG_PER_MS, 5);
+          expect(peaks[9]).toBeCloseTo(MAX_DEG_PER_MS, 5);
           flush();
           expect([0, 180]).toContain(angles[angles.length - 1]);
-          // 連撥到頂：最高記錄剛好 720（不受螢幕更新率影響），停下寫入 localStorage
-          expect(rpmParts(container).best.textContent).toBe('720');
-          expect(localStorage.getItem(BEST_KEY)).toBe('720');
+          // 連撥到頂：最高記錄剛好 900（不受螢幕更新率影響），停下寫入 localStorage
+          expect(rpmParts(container).best.textContent).toBe('900');
+          expect(localStorage.getItem(BEST_KEY)).toBe('900');
         });
 
         it('反向撥：丟掉剩餘轉速，只照本次撥速反向轉、全程不倒退', () => {
@@ -961,11 +965,11 @@ describe('T-092 球員卡（DOM）', () => {
           expect(Number(localStorage.getItem(BEST_KEY))).toBeGreaterThan(400);
         });
 
-        it('轉速表：半圓刻度、600 起紅區、靜止指 0；指針角度對應轉速，停下與鎖上歸 0', () => {
+        it('轉速表：半圓刻度、750 起紅區、靜止指 0；指針角度對應轉速，停下與鎖上歸 0', () => {
           expect(rpmToNeedleDeg(0)).toBe(-90);
-          expect(rpmToNeedleDeg(360)).toBe(0);
-          expect(rpmToNeedleDeg(720)).toBe(90);
+          expect(rpmToNeedleDeg(450)).toBe(0);
           expect(rpmToNeedleDeg(900)).toBe(90);
+          expect(rpmToNeedleDeg(1200)).toBe(90);
           expect(rpmToNeedleDeg(-5)).toBe(-90);
           const { container } = renderTop(viewer());
           const { stage, flip, lock } = parts(container);
@@ -977,7 +981,7 @@ describe('T-092 球員卡（DOM）', () => {
           const ticks = gauge.querySelectorAll('.player-card-rpm-gauge-tick');
           expect(ticks).toHaveLength(13);
           expect(gauge.querySelectorAll('.player-card-rpm-gauge-tick.is-major')).toHaveLength(5);
-          expect(gauge.querySelectorAll('.player-card-rpm-gauge-tick.is-red')).toHaveLength(3); // 600、660、720
+          expect(gauge.querySelectorAll('.player-card-rpm-gauge-tick.is-red')).toHaveLength(3); // 750、825、900
           const needle = gauge.querySelector('.player-card-rpm-needle')!;
           expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
           const { num } = rpmParts(container);
@@ -1036,7 +1040,7 @@ describe('T-092 球員卡（DOM）', () => {
             frames([0], 1);
             const first = Number(num.textContent);
             expect(first).toBeGreaterThan(400);
-            expect(first).toBeLessThanOrEqual(720);
+            expect(first).toBeLessThanOrEqual(900);
             expect(box.classList.contains('is-spinning')).toBe(true);
             expect(Number(best.textContent)).toBe(first);
             // 100ms 內不再改字

@@ -34,12 +34,12 @@ function gaugePoint(rpm: number, r: number): string {
 function gaugeArc(from: number, to: number): string {
   return `M${gaugePoint(from, 17)}A17 17 0 0 1 ${gaugePoint(to, 17)}`;
 }
-/** 每 60 RPM 一條細刻度，每 180 RPM 主刻度（較長）。模組層算一次，畫面不重算。 */
-const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_MAX_RPM / 60 + 1 }, (_, i) => {
-  const rpm = i * 60;
+/** 每 75 RPM 一條細刻度（共 13 條，與 720 版疏密相同），每 225 RPM 主刻度（0／225／450／675／900 共 5 條）。模組層算一次，畫面不重算。 */
+const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_MAX_RPM / 75 + 1 }, (_, i) => {
+  const rpm = i * 75;
   return {
-    d: `M${gaugePoint(rpm, rpm % 180 === 0 ? 12.5 : 14.5)}L${gaugePoint(rpm, 17)}`,
-    major: rpm % 180 === 0,
+    d: `M${gaugePoint(rpm, rpm % 225 === 0 ? 12.5 : 14.5)}L${gaugePoint(rpm, 17)}`,
+    major: rpm % 225 === 0,
     red: rpm >= PLAYER_CARD_RPM_REDLINE,
   };
 });
