@@ -156,6 +156,9 @@ export function LegacyProfileTopSection({
     avatarUrl: rawAvatar,
     summary,
     teamIds: viewer.teamIds,
+    // 身分圖案：沿用上方已算好的有效身分與已載入的 profile.gender，0 次額外讀取。
+    role: effectiveRole,
+    gender: profile['gender'],
   });
 
   return (

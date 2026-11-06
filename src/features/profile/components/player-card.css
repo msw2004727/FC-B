@@ -16,8 +16,9 @@
 }
 /* 頭部留白收小（舊站 .legacy-ui .profile-header 是 1.5rem 1rem .5rem，權重 0,2,0，這裡 0,3,0）：
  * 左右 .5rem 加上 .app-main 的 8px，手機上卡片離螢幕邊約 16px；
- * 取代原本未加前綴、實際被舊樣式蓋掉的 `.player-card-header { padding-top: 1rem; }`。 */
-.legacy-ui .profile-header.player-card-header { padding: .5rem .5rem .25rem; }
+ * 取代原本未加前綴、實際被舊樣式蓋掉的 `.player-card-header { padding-top: 1rem; }`。
+ * 下緣 12px＝分享球員卡按鈕到下方社群圖示列的間距（站長 11-06 定案；取代 .25rem＝3.75px，直接寫 px 不受根字級影響）。 */
+.legacy-ui .profile-header.player-card-header { padding: .5rem .5rem 12px; }
 
 .player-card,
 .player-card-back {
@@ -276,6 +277,20 @@
   max-width: calc(96 * var(--pcu));
   transform: translateX(-50%);
   object-fit: contain;
+}
+
+/* 右下身分圖案（站長 11-06 定案）：方框 (162, 264) 起 51.25×53.25，右下圓角 11.25＝內框內緣；
+ * 路徑與色票在 data/player-card-motifs.ts（PNG 同一份），這裡只定位與裁切；畫在 logo 之後、斜光（z-index 3）之下。 */
+.player-card-motif {
+  position: absolute;
+  left: calc(162 * var(--pcu));
+  top: calc(264 * var(--pcu));
+  width: calc(51.25 * var(--pcu));
+  height: calc(53.25 * var(--pcu));
+  overflow: hidden;
+  -webkit-clip-path: inset(0 round 0 0 calc(11.25 * var(--pcu)) 0);
+  clip-path: inset(0 round 0 0 calc(11.25 * var(--pcu)) 0);
+  pointer-events: none;
 }
 
 /* 固定斜光（無動畫）：每層鋪滿卡面，115deg 漸層由 PlayerCard.tsx 依 PLAYER_CARD_SHINE 以 inline background 注入，與 PNG 同一組常數。
