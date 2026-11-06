@@ -27,7 +27,7 @@ interface Options {
   roles: Readonly<Record<string, UserRole>>;
   canViewNoShow: boolean;
   enabled: boolean;
-  /** 管理名單（編輯模式）開啟；只有此時才讀 userAttendanceStats（站長 11-06 v2），一般瀏覽不讀。 */
+  /** 管理名單（編輯模式）開啟；只有此時才讀 userCorrections／userAttendanceStats 並回資料（站長 11-06 v2），一般瀏覽零讀取。 */
   managing?: boolean;
 }
 
@@ -40,9 +40,10 @@ const EMPTY_COUNTED: CountedNoShowByUid = new Map();
  * 每次名單載入週期，按登入者／活動／適用 UID 集合查補正，最多 ceil(n/30) 次。
  * 無自動重試；卸載重進、停用後重開或重新授權會重新讀補正。
  * 編輯切換與一般重繪不重讀。未載入、失敗、權限撤回一律回 null，無錯誤 UI。
- * v2（站長 11-06）：managing 時另讀 userAttendanceStats（每 30 個 UID 一塊），有 countedSince 的人用
+ * 站長 11-06：🕊 只在管理名單顯示，所以 userCorrections 與 userAttendanceStats 都只在 managing（管理名單開啟）時才讀，
+ * 一般瀏覽零讀取、回 null；同一名單載入週期只讀一次，編輯開關來回不重讀。
+ * v2：managing 時另讀 userAttendanceStats（每 30 個 UID 一塊），有 countedSince 的人用
  * 放鴿子／計入並略過舊補正，沒有的人退回 users 三欄與舊補正；managing 時全部載入成功才回資料。
- * 同一名單載入週期只讀一次，編輯開關來回不重讀。
  */
 export function useRosterNoShow({
   viewerUid, eventDocId, people, roles, canViewNoShow, enabled, managing = false,
@@ -64,9 +65,10 @@ export function useRosterNoShow({
   const requestKey = stats ? JSON.stringify([viewerUid, eventDocId, uidKey]) : '';
   // 使用物件世代，確保權限關閉再開啟也不會短暫顯示前一次補正。
   const request = useMemo(() => requestKey ? { key: requestKey } : null, [requestKey]);
+  // adjustments=null 代表這個 request 讀取失敗（記下來避免失敗後無限重試）。
   const [loaded, setLoaded] = useState<{
     request: NonNullable<typeof request>;
-    adjustments: NoShowAdjustmentsByUid;
+    adjustments: NoShowAdjustmentsByUid | null;
   } | null>(null);
 
   // counted=null 代表這個 request 讀取失敗（記下來避免失敗後無限重試）。
@@ -93,33 +95,34 @@ export function useRosterNoShow({
     return () => { cancelled = true; };
   }, [needCounted, request, uidKey, canViewNoShow]);
 
+  const needAdjustments = Boolean(managing && request && uidKey !== '[]' && loaded?.request !== request);
+
   useEffect(() => {
-    if (!request) return;
+    if (!needAdjustments || !request) return;
     const uids = JSON.parse(uidKey) as string[];
-    if (uids.length === 0) return;
     let cancelled = false;
     async function load(): Promise<void> {
       try {
         const adjustments = await loadNoShowAdjustments(uids, canViewNoShow);
         if (!cancelled) setLoaded({ request: request!, adjustments });
       } catch {
-        // 不回退 raw、不露補正錯誤、不接受部分批次結果。
-        if (!cancelled) setLoaded(null);
+        // 不回退 raw、不露補正錯誤、不接受部分批次結果；本週期不自動重試。
+        if (!cancelled) setLoaded({ request: request!, adjustments: null });
       }
     }
     void load();
     return () => { cancelled = true; };
-  }, [request, uidKey, canViewNoShow]);
+  }, [needAdjustments, request, uidKey, canViewNoShow]);
 
   return useMemo(() => {
-    if (!stats || !request) return null;
+    if (!stats || !request || !managing) return null;
     const adjustments = uidKey === '[]' ? EMPTY_ADJUSTMENTS
       : loaded?.request === request ? loaded.adjustments : null;
     if (!adjustments) return null;
     const counted: CountedNoShowByUid | undefined = uidKey === '[]' ? EMPTY_COUNTED
       : countedLoaded?.request === request ? countedLoaded.counted ?? undefined : undefined;
     // 管理名單要顯示 🕊，v2 資料沒到之前不用 users 三欄頂替。
-    if (managing && !counted) return null;
+    if (!counted) return null;
     return {
       counts: buildNoShowCountByUid(stats, adjustments, NO_SHOW_FEATURE_ENABLED, counted),
       endedCounts: buildEndedRegCountByUid(stats, NO_SHOW_FEATURE_ENABLED, counted),

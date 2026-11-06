@@ -1804,16 +1804,17 @@ describe('T-073b 頁面共用權限與補正保底', () => {
   });
 
   it.each(['activity.view_noshow', 'admin.repair.no_show_adjust'])(
-    '只有 %s：展開才讀補正，一般瀏覽不染色／不出泡泡，無管理欄（測試同步更新：站長 11-06 放鴿子／出席率 v2）', async permission => {
+    '只有 %s：展開名單也零讀取（不讀補正、不讀 userAttendanceStats），不染色／不出泡泡，無管理欄（測試同步更新：站長 11-06 放鴿子／出席率 v2）', async permission => {
       mocks.viewer.mockReturnValue({ ...viewer, hasPermission: (code: string) => code === permission });
       const view = mount();
       await screen.findByRole('heading', { level: 2 });
       expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: '查看出席紀錄' }));
-      await waitFor(() => expect(mocks.noShowAdjustments).toHaveBeenCalledWith(['u1'], true));
+      await screen.findByText('小明');
       await act(async () => {});
       expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
-      // 一般瀏覽（非管理名單）不讀 userAttendanceStats。
+      // 一般瀏覽（非管理名單）不讀 userCorrections／userAttendanceStats。
+      expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
       expect(mocks.noShowCounted).not.toHaveBeenCalled();
       expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
       expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
@@ -1837,6 +1838,8 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     await act(async () => {});
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    // 一般瀏覽零讀取：補正與 userAttendanceStats 都等到進管理名單才讀。
+    expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
     expect(mocks.noShowCounted).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
     await screen.findByRole('columnheader', { name: '🕊' });

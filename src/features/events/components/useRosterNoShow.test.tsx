@@ -72,7 +72,8 @@ interface Options {
 }
 const base: Options = {
   viewerUid: 'viewer1', eventDocId: 'event-doc-1', people: people(['u1']),
-  roleUids: ['u1'], canViewNoShow: true, enabled: true,
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：補正與 userAttendanceStats 只在管理名單（managing）才讀，既有案例預設 managing。
+  roleUids: ['u1'], canViewNoShow: true, enabled: true, managing: true,
 };
 function mount(options: Partial<Options> = {}) {
   return renderHook((opts: Options) => {
@@ -413,13 +414,16 @@ describe('v2：managing 時讀 userAttendanceStats', () => {
     });
   }
 
-  it('一般瀏覽（managing 未開）不讀 userAttendanceStats，仍用 users 三欄＋補正', async () => {
+  it('一般瀏覽（managing 未開）零讀取：不讀 userCorrections 也不讀 userAttendanceStats，回 null', async () => {
     implWith(() => v2Doc);
-    const view = mount();
-    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
-    expect(view.result.current.data?.endedCounts.get('u1')).toBe(3);
+    const view = mount({ managing: false });
+    await waitFor(() => expect(view.result.current.roles.u1).toBe('user'));
     await act(async () => {});
+    expect(view.result.current.data).toBeNull();
+    expect(callsTo('userCorrections')).toHaveLength(0);
     expect(callsTo(COUNTED)).toHaveLength(0);
+    // 只有既有角色查詢（users）會發生。
+    expect(callsTo('users')).toHaveLength(1);
   });
 
   it.each([[0, 0], [1, 1], [30, 1], [31, 2], [61, 3]])(
@@ -458,29 +462,33 @@ describe('v2：managing 時讀 userAttendanceStats', () => {
     expect([data.counts.get('u3'), data.endedCounts.get('u3')]).toEqual([1, 3]);
   });
 
-  it('managing 時 userAttendanceStats 到之前不回資料；開關來回同一名單只讀一次', async () => {
+  it('managing 時 userAttendanceStats 到之前不回資料；關閉回 null、再開同一名單不重讀補正與 userAttendanceStats', async () => {
     const pending = deferred<{ docs: unknown[] }>();
     getDocsMock.mockImplementation(async q => {
       const { path, uids } = request(q);
       if (path === COUNTED) return (await pending.promise) as never;
       return snapshot(uids, path === 'userCorrections') as never;
     });
-    const view = mount();
-    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    const view = mount({ managing: false });
+    await waitFor(() => expect(view.result.current.roles.u1).toBe('user'));
+    expect(callsTo('userCorrections')).toHaveLength(0);
     view.rerender({ ...base, managing: true });
     await waitFor(() => expect(callsTo(COUNTED)).toEqual([['u1']]));
+    await waitFor(() => expect(callsTo('userCorrections')).toEqual([['u1']]));
     expect(view.result.current.data).toBeNull();
     await act(async () => { pending.resolve({ docs: [{ id: 'u1', data: () => v2Doc }] }); });
     await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(6));
     view.rerender({ ...base, managing: false });
     await act(async () => {});
+    expect(view.result.current.data).toBeNull();
     view.rerender({ ...base, managing: true });
     await act(async () => {});
     expect(view.result.current.data?.counts.get('u1')).toBe(6);
     expect(callsTo(COUNTED)).toHaveLength(1);
+    expect(callsTo('userCorrections')).toHaveLength(1);
   });
 
-  it('讀取失敗：managing 回 null、不回退 users 三欄、不自動重試；關閉 managing 後一般瀏覽不受影響', async () => {
+  it('userAttendanceStats 讀取失敗：managing 回 null、不回退 users 三欄、不自動重試', async () => {
     getDocsMock.mockImplementation(async q => {
       const { path, uids } = request(q);
       if (path === COUNTED) throw new Error('counted failed');
@@ -493,8 +501,24 @@ describe('v2：managing 時讀 userAttendanceStats', () => {
     view.rerender({ ...base, managing: true });
     await act(async () => {});
     expect(callsTo(COUNTED)).toHaveLength(1);
-    view.rerender({ ...base, managing: false });
-    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(callsTo('userCorrections')).toHaveLength(1);
+  });
+
+  it('補正讀取失敗：managing 回 null、不自動重試；userAttendanceStats 照常只讀一次', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getDocsMock.mockImplementation(async q => {
+      const { path, uids } = request(q);
+      if (path === 'userCorrections') throw new Error('corrections failed');
+      if (path === COUNTED) return { docs: uids.map(id => ({ id, data: () => v2Doc })) } as never;
+      return snapshot(uids) as never;
+    });
+    const view = mount({ managing: true });
+    await waitFor(() => expect(callsTo('userCorrections')).toHaveLength(1));
+    await act(async () => {});
+    expect(view.result.current.data).toBeNull();
+    view.rerender({ ...base, managing: true });
+    await act(async () => {});
+    expect(callsTo('userCorrections')).toHaveLength(1);
     expect(callsTo(COUNTED)).toHaveLength(1);
   });
 
