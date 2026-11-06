@@ -1115,6 +1115,8 @@ function EventDetailSession({
     roles,
     canViewNoShow,
     enabled: noShowEnabled,
+    // 管理名單（編輯模式）才讀 userAttendanceStats，一般瀏覽不讀（站長 11-06 放鴿子 v2）。
+    managing: Boolean(canManageRoster && rosterEditing),
   });
 
   const reloadAttendanceOnly = async (): Promise<readonly EventAttendanceEntry[]> => {

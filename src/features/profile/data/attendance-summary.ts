@@ -20,6 +20,8 @@ export interface UserAttendanceSummary {
     participatedCount: number;
     countedCount: number;
     countedCompletedCount: number;
+    /** 計入場次中的放鴿子次數（名單 🕊 用；個人頁不顯示）。 */
+    countedNoShowCount: number;
   } | null;
 }
 
@@ -55,6 +57,7 @@ export function normalizeUserAttendanceSummary(
         participatedCount: toSafeCount(data?.['participatedCount']),
         countedCount: toSafeCount(data?.['countedCount']),
         countedCompletedCount: toSafeCount(data?.['countedCompletedCount']),
+        countedNoShowCount: toSafeCount(data?.['countedNoShowCount']),
       }
       : null,
   };

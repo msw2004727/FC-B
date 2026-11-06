@@ -8,8 +8,8 @@ import {
   type NoShowParticipant,
 } from './noshow-roster';
 
-function stats(noShowCount = 0, endedRegCount = 0, lastEventWasNoShow = false, v2?: true): UserNoShowStats {
-  return { noShowCount, endedRegCount, lastEventWasNoShow, ...(v2 ? { v2 } : {}) };
+function stats(noShowCount = 0, endedRegCount = 0, lastEventWasNoShow = false): UserNoShowStats {
+  return { noShowCount, endedRegCount, lastEventWasNoShow };
 }
 
 function person(overrides: Partial<NoShowParticipant> = {}): NoShowParticipant {
@@ -37,12 +37,24 @@ describe('buildNoShowCountByUid（A 補正語意）', () => {
     ]))).toEqual(new Map([['u1', 3], ['u2', 2], ['u3', 0], ['u4', 0]]));
   });
 
-  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：v2 使用者不套舊 userCorrections 補正。
-  it('v2 使用者不套舊補正，非 v2 使用者照舊補正', () => {
-    const users = { v2user: stats(2, 5, false, true), old: stats(2, 5) };
-    const adjustments = new Map([['v2user', -2], ['old', -1], ['v2none', 3]]);
+  // 新增（站長 11-06 放鴿子／出席率 v2）：userAttendanceStats 有 countedSince 的人（counted）改用放鴿子/計入且不套舊補正。
+  it('counted 來源的人用 countedNoShowCount 且不套舊補正；其餘照舊補正；計入 0 場不留次數', () => {
+    const users = { v2user: stats(2, 5), old: stats(2, 5), zero: stats(3, 4) };
+    const adjustments = new Map([['v2user', -2], ['old', -1], ['v2none', 3], ['zero', 2]]);
+    const counted = new Map([
+      ['v2user', { noShowCount: 6, countedCount: 10 }],
+      ['v2none', { noShowCount: 0, countedCount: 2 }],
+      ['zero', { noShowCount: 0, countedCount: 0 }],
+    ]);
+    expect(buildNoShowCountByUid(users, adjustments, true, counted)).toEqual(new Map([
+      ['v2user', 6], ['old', 1],
+    ]));
+    expect(buildEndedRegCountByUid(users, true, counted)).toEqual(new Map([
+      ['v2user', 10], ['old', 5], ['v2none', 2],
+    ]));
+    // 沒有 counted 時維持原行為。
     expect(buildNoShowCountByUid(users, adjustments)).toEqual(new Map([
-      ['v2user', 2], ['old', 1], ['v2none', 3],
+      ['v2user', 0], ['old', 1], ['zero', 5], ['v2none', 3],
     ]));
   });
 

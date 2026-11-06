@@ -177,7 +177,7 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       summary: {
         uid: 'U-secret-uid', exists: true, sourceVersion: 1, expectedCount: 26, attendedCount: 22,
         completedCount: 14, attendRate: 85, updatedAt: null,
-        v2: { since: '2026-11-06', participatedCount: 9, countedCount: 2, countedCompletedCount: 1 },
+        v2: { since: '2026-11-06', participatedCount: 9, countedCount: 2, countedCompletedCount: 1, countedNoShowCount: 0 },
       },
     });
     drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, v2Model, 'light', labels, {

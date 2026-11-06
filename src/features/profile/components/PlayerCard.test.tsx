@@ -178,7 +178,7 @@ describe('T-092 球員卡（DOM）', () => {
   ])('v2：參與／完成／出席率 $rate，「計 $counted 場」放在 ATT 縮寫位置', ({ counted, completed, rate, gauge }) => {
     const { container } = renderTop(viewer(), {
       ...summary,
-      v2: { since: '2026-11-06', participatedCount: 20, countedCount: counted, countedCompletedCount: completed },
+      v2: { since: '2026-11-06', participatedCount: 20, countedCount: counted, countedCompletedCount: completed, countedNoShowCount: 0 },
     });
     const card = container.querySelector('.player-card')!;
     expect(card.querySelector('#profile-stat-total')?.textContent).toBe('20');

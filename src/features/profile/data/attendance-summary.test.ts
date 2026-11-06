@@ -82,10 +82,10 @@ describe('normalizeUserAttendanceSummary', () => {
   it('有 countedSince 才算 v2，帶出參與／計入／計入完成；數字照一般規則正規化', () => {
     const result = normalizeUserAttendanceSummary('U-3', {
       expectedCount: 9, attendedCount: 5, completedCount: 5,
-      countedSince: '2026-11-06', participatedCount: 8.7, countedCount: '6', countedCompletedCount: -2,
+      countedSince: '2026-11-06', participatedCount: 8.7, countedCount: '6', countedCompletedCount: -2, countedNoShowCount: '2',
     });
     expect(result?.v2).toEqual({
-      since: '2026-11-06', participatedCount: 8, countedCount: 6, countedCompletedCount: 0,
+      since: '2026-11-06', participatedCount: 8, countedCount: 6, countedCompletedCount: 0, countedNoShowCount: 2,
     });
     expect(normalizeUserAttendanceSummary('U-4', { participatedCount: 5, countedCount: 5 })?.v2).toBeNull();
     expect(normalizeUserAttendanceSummary('U-5', { countedSince: '', countedCount: 5 })?.v2).toBeNull();
@@ -100,7 +100,7 @@ function legacy(overrides: Partial<UserAttendanceSummary> = {}): UserAttendanceS
 }
 function withV2(participated: number, counted: number, completed: number): UserAttendanceSummary {
   return legacy({
-    v2: { since: '2026-11-06', participatedCount: participated, countedCount: counted, countedCompletedCount: completed },
+    v2: { since: '2026-11-06', participatedCount: participated, countedCount: counted, countedCompletedCount: completed, countedNoShowCount: 0 },
   });
 }
 

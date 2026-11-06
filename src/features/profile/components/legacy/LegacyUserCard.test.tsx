@@ -13,7 +13,9 @@ vi.mock('../../data/activity-records', async (importOriginal) => {
     RECORDS_PAGE_SIZE: 10,
   };
 });
-vi.mock('../../data/attendance-summary', () => ({
+// 測試同步更新（站長 11-06 放鴿子／出席率 v2）：元件改用 deriveAttendanceDisplay，部分 mock 要保留真實匯出。
+vi.mock('../../data/attendance-summary', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../data/attendance-summary')>()),
   loadUserAttendanceSummary: vi.fn(),
 }));
 vi.mock('../../data/viewer', () => ({ useViewer: vi.fn() }));

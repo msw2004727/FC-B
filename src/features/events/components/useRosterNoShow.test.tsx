@@ -68,6 +68,7 @@ interface Options {
   roleUids: string[];
   canViewNoShow: boolean;
   enabled: boolean;
+  managing?: boolean;
 }
 const base: Options = {
   viewerUid: 'viewer1', eventDocId: 'event-doc-1', people: people(['u1']),
@@ -393,4 +394,117 @@ describe('T-073b 共用快取與補正載入', () => {
     expect(stateUpdates).not.toHaveBeenCalled();
     expect(callsTo('userCorrections')).toHaveLength(1);
   });
+});
+
+// 站長 11-06 放鴿子／出席率 v2：管理名單（managing）才讀 userAttendanceStats。
+describe('v2：managing 時讀 userAttendanceStats', () => {
+  const COUNTED = 'userAttendanceStats';
+  const v2Doc = { countedSince: '2026-11-06', countedCount: 10, countedNoShowCount: 6 };
+  function implWith(countedData: (uid: string) => Record<string, unknown> | null) {
+    getDocsMock.mockImplementation(async q => {
+      const { path, uids } = request(q);
+      if (path === COUNTED) {
+        return { docs: uids.flatMap(id => {
+          const data = countedData(id);
+          return data ? [{ id, data: () => data }] : [];
+        }) } as never;
+      }
+      return snapshot(uids, path === 'userCorrections') as never;
+    });
+  }
+
+  it('一般瀏覽（managing 未開）不讀 userAttendanceStats，仍用 users 三欄＋補正', async () => {
+    implWith(() => v2Doc);
+    const view = mount();
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(view.result.current.data?.endedCounts.get('u1')).toBe(3);
+    await act(async () => {});
+    expect(callsTo(COUNTED)).toHaveLength(0);
+  });
+
+  it.each([[0, 0], [1, 1], [30, 1], [31, 2], [61, 3]])(
+    '%i 位適用 UID：userAttendanceStats 分 %i 塊（每塊最多 30），v2 人用放鴿子/計入且不套舊補正', async (n, batches) => {
+      implWith(() => v2Doc);
+      const uids = Array.from({ length: n }, (_, i) => 'u' + i);
+      const view = mount({ people: people(uids), roleUids: uids, managing: true });
+      await waitFor(() => expect(view.result.current.data).not.toBeNull());
+      expect(callsTo(COUNTED)).toHaveLength(batches);
+      expect(callsTo(COUNTED).flat().sort()).toEqual(uids.slice().sort());
+      expect(callsTo(COUNTED).every(batch => batch.length <= 30)).toBe(true);
+      for (const uid of uids) {
+        expect(view.result.current.data?.counts.get(uid)).toBe(6);
+        expect(view.result.current.data?.endedCounts.get(uid)).toBe(10);
+      }
+    },
+  );
+
+  it('沒有 countedSince 的文件或沒有文件：退回 users 三欄與舊補正（2 次補正 -1、計入 3）', async () => {
+    implWith(uid => (uid === 'u1' ? { countedCount: 9, countedNoShowCount: 9 } : null));
+    const view = mount({ people: people(['u1', 'u2']), roleUids: ['u1', 'u2'], managing: true });
+    await waitFor(() => expect(view.result.current.data).not.toBeNull());
+    for (const uid of ['u1', 'u2']) {
+      expect(view.result.current.data?.counts.get(uid)).toBe(1);
+      expect(view.result.current.data?.endedCounts.get(uid)).toBe(3);
+    }
+  });
+
+  it('同一名單 v2 與舊資料並存：v2 的人不套補正、舊資料的人照補正；v2 計入 0 場不留次數', async () => {
+    implWith(uid => (uid === 'u1' ? v2Doc : uid === 'u2' ? { countedSince: '2026-11-06' } : null));
+    const view = mount({ people: people(['u1', 'u2', 'u3']), roleUids: ['u1', 'u2', 'u3'], managing: true });
+    await waitFor(() => expect(view.result.current.data).not.toBeNull());
+    const data = view.result.current.data!;
+    expect([data.counts.get('u1'), data.endedCounts.get('u1')]).toEqual([6, 10]);
+    expect([data.counts.get('u2'), data.endedCounts.get('u2')]).toEqual([undefined, undefined]);
+    expect([data.counts.get('u3'), data.endedCounts.get('u3')]).toEqual([1, 3]);
+  });
+
+  it('managing 時 userAttendanceStats 到之前不回資料；開關來回同一名單只讀一次', async () => {
+    const pending = deferred<{ docs: unknown[] }>();
+    getDocsMock.mockImplementation(async q => {
+      const { path, uids } = request(q);
+      if (path === COUNTED) return (await pending.promise) as never;
+      return snapshot(uids, path === 'userCorrections') as never;
+    });
+    const view = mount();
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    view.rerender({ ...base, managing: true });
+    await waitFor(() => expect(callsTo(COUNTED)).toEqual([['u1']]));
+    expect(view.result.current.data).toBeNull();
+    await act(async () => { pending.resolve({ docs: [{ id: 'u1', data: () => v2Doc }] }); });
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(6));
+    view.rerender({ ...base, managing: false });
+    await act(async () => {});
+    view.rerender({ ...base, managing: true });
+    await act(async () => {});
+    expect(view.result.current.data?.counts.get('u1')).toBe(6);
+    expect(callsTo(COUNTED)).toHaveLength(1);
+  });
+
+  it('讀取失敗：managing 回 null、不回退 users 三欄、不自動重試；關閉 managing 後一般瀏覽不受影響', async () => {
+    getDocsMock.mockImplementation(async q => {
+      const { path, uids } = request(q);
+      if (path === COUNTED) throw new Error('counted failed');
+      return snapshot(uids, path === 'userCorrections') as never;
+    });
+    const view = mount({ managing: true });
+    await waitFor(() => expect(callsTo(COUNTED)).toHaveLength(1));
+    await act(async () => {});
+    expect(view.result.current.data).toBeNull();
+    view.rerender({ ...base, managing: true });
+    await act(async () => {});
+    expect(callsTo(COUNTED)).toHaveLength(1);
+    view.rerender({ ...base, managing: false });
+    await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(1));
+    expect(callsTo(COUNTED)).toHaveLength(1);
+  });
+
+  it.each([{ canViewNoShow: false }, { enabled: false }, { viewerUid: null }])(
+    '未授權、未展開或未登入即使 managing 也不讀 userAttendanceStats：%j', async opts => {
+      implWith(() => v2Doc);
+      const view = mount({ ...opts, managing: true });
+      await act(async () => {});
+      expect(view.result.current.data).toBeNull();
+      expect(callsTo(COUNTED)).toHaveLength(0);
+    },
+  );
 });

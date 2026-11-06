@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   roles: vi.fn(),
   noShowStats: vi.fn(),
   noShowAdjustments: vi.fn(),
+  noShowCounted: vi.fn(),
 }));
 
 vi.mock('@/data/firebase', () => ({ getFirebase: mocks.offlineFirebase, getFirebaseCore: mocks.offlineFirebase }));
@@ -55,6 +56,8 @@ vi.mock('@/data/user-roles', async (importOriginal) => ({
 }));
 
 vi.mock('../data/noshow-corrections', () => ({ loadNoShowAdjustments: mocks.noShowAdjustments }));
+// 站長 11-06 放鴿子 v2：管理名單才讀 userAttendanceStats（資料層另有測試）。
+vi.mock('../data/noshow-counted', () => ({ loadCountedNoShowStats: mocks.noShowCounted }));
 
 const ZH_DICT: Record<string, string> = {
   'events.pageTitle': '活動列表',
@@ -250,6 +253,7 @@ beforeEach(async () => {
   history.replaceState(null, '', '/events/ce_123_abc');
   mocks.roles.mockReturnValue({});
   mocks.noShowAdjustments.mockResolvedValue(new Map());
+  mocks.noShowCounted.mockResolvedValue(new Map());
   mocks.viewer.mockReturnValue(viewer);
   mocks.detail.mockResolvedValue(detail);
   mocks.registrations.mockResolvedValue([]);
@@ -1809,6 +1813,8 @@ describe('T-073b 頁面共用權限與補正保底', () => {
       await waitFor(() => expect(mocks.noShowAdjustments).toHaveBeenCalledWith(['u1'], true));
       await act(async () => {});
       expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+      // 一般瀏覽（非管理名單）不讀 userAttendanceStats。
+      expect(mocks.noShowCounted).not.toHaveBeenCalled();
       expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
       expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
     },
@@ -1831,11 +1837,41 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     await act(async () => {});
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
+    expect(mocks.noShowCounted).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
     await screen.findByRole('columnheader', { name: '🕊' });
+    await waitFor(() => expect(mocks.noShowCounted).toHaveBeenCalledWith(['u1'], true));
+    // 沒有 countedSince（v2 資料）→ 退回 users 三欄＋舊補正：2 次補正 -1、計入 3。
     await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('1/3'));
     expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     expect(view.container.querySelector('#detail-attendance-table table')?.classList.contains('att-roster-managing')).toBe(true);
+  });
+
+  it('管理名單：userAttendanceStats 有 countedSince 的人顯示放鴿子/計入並標紅，且不套舊補正', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'host1', capabilities: ['user.activity.site_operate'] });
+    mocks.noShowCounted.mockResolvedValue(new Map([['u1', { noShowCount: 6, countedCount: 10 }]]));
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
+    await screen.findByRole('columnheader', { name: '🕊' });
+    // 舊補正 -1 不套用：6/10（≥3 場且 ≥50% 標紅）
+    await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('6/10'));
+    expect((view.container.querySelector('tbody span[title^="放鴿子"]') as HTMLElement).style.color).toBe('var(--danger)');
+    expect(mocks.noShowCounted).toHaveBeenCalledTimes(1);
+    expect(mocks.noShowAdjustments).toHaveBeenCalledTimes(1);
+  });
+
+  it('管理名單：userAttendanceStats 讀取失敗不回退 users 三欄、不露錯誤，管理欄留空', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'host1', capabilities: ['user.activity.site_operate'] });
+    mocks.noShowCounted.mockRejectedValue(new Error('private counted failure'));
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: '管理名單', exact: true }));
+    await screen.findByRole('columnheader', { name: '🕊' });
+    await waitFor(() => expect(mocks.noShowCounted).toHaveBeenCalled());
+    await act(async () => {});
+    expect(mocks.noShowCounted).toHaveBeenCalledTimes(1);
+    expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('');
+    expect(view.container.textContent).not.toContain('private counted failure');
+    expect(mocks.toastShow).not.toHaveBeenCalled();
   });
 
   it('補正讀取失敗不回退 raw、不顯示錯誤，管理欄留空', async () => {

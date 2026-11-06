@@ -13,17 +13,28 @@ export type UserNoShowStatsByUid = Readonly<Record<string, UserNoShowStats>>;
 /** 值為 userCorrections/{uid}.noShow.adjustment，於合併時照 A 轉數字及取整。 */
 export type NoShowAdjustmentsByUid = ReadonlyMap<string, unknown>;
 
+/** userAttendanceStats 有 countedSince 的人：放鴿子（countedNoShowCount）／計入（countedCount）。 */
+export interface CountedNoShowStat {
+  noShowCount: number;
+  countedCount: number;
+}
+export type CountedNoShowByUid = ReadonlyMap<string, CountedNoShowStat>;
+
 export type NoShowParticipant = Pick<
   ConfirmedRosterPerson,
   'uid' | 'isCompanion' | 'proxyOnly' | 'isProxyOnly'
   | 'isTeamPlaceholder' | 'isTeamHeader' | 'isTeamGeneralSeparator'
 >;
 
-/** A _buildNoShowCountByUid：raw > 0；有限且非零補正取整，總數最低為 0。 */
+/**
+ * A _buildNoShowCountByUid：raw > 0；有限且非零補正取整，總數最低為 0。
+ * counted（站長 11-06 v2）：有值的 UID 改用 countedNoShowCount，且不套舊補正（舊補正是對舊算法終身次數的加減）。
+ */
 export function buildNoShowCountByUid(
   users: UserNoShowStatsByUid,
   adjustments: NoShowAdjustmentsByUid = new Map(),
   featureEnabled = NO_SHOW_FEATURE_ENABLED,
+  counted?: CountedNoShowByUid,
 ): Map<string, number> {
   const counts = new Map<string, number>();
   if (!featureEnabled) return counts;
@@ -31,10 +42,14 @@ export function buildNoShowCountByUid(
     const count = Number(user.noShowCount || 0);
     if (uid && count > 0) counts.set(uid, count);
   }
+  for (const [uid, stat] of counted ?? []) {
+    if (uid && stat.noShowCount > 0) counts.set(uid, stat.noShowCount);
+    else counts.delete(uid);
+  }
   for (const [uid, raw] of adjustments) {
     if (!uid) continue;
-    // 舊補正是對舊算法的終身次數做的加減，不套用到 v2（站長 11-06 定案）。
-    if (users[uid]?.v2) continue;
+    // 舊補正是對舊算法的終身次數做的加減，不套用到 v2 來源的人（站長 11-06 定案）。
+    if (counted?.has(uid)) continue;
     const adjustment = Number(raw || 0);
     if (!Number.isFinite(adjustment) || adjustment === 0) continue;
     counts.set(uid, Math.max(0, (counts.get(uid) || 0) + Math.trunc(adjustment)));
@@ -46,12 +61,18 @@ export function buildNoShowCountByUid(
 export function buildEndedRegCountByUid(
   users: UserNoShowStatsByUid,
   featureEnabled = NO_SHOW_FEATURE_ENABLED,
+  counted?: CountedNoShowByUid,
 ): Map<string, number> {
   const counts = new Map<string, number>();
   if (!featureEnabled) return counts;
   for (const [uid, user] of Object.entries(users)) {
     const ended = Number(user.endedRegCount || 0);
     if (uid && ended > 0) counts.set(uid, ended);
+  }
+  // v2 來源的人，分母改用計入場次。
+  for (const [uid, stat] of counted ?? []) {
+    if (uid && stat.countedCount > 0) counts.set(uid, stat.countedCount);
+    else counts.delete(uid);
   }
   return counts;
 }

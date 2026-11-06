@@ -73,7 +73,7 @@ describe('T-092 球員卡資料模型', () => {
   ])('v2 計入 $counted 場完成 $completed：出席率 $attendText', ({ counted, completed, attendText, attendRate, gauge }) => {
     const m = buildPlayerCardModel({
       name: '王小明', avatarUrl: null,
-      summary: summary({ v2: { since: '2026-11-06', participatedCount: 12, countedCount: counted, countedCompletedCount: completed } }),
+      summary: summary({ v2: { since: '2026-11-06', participatedCount: 12, countedCount: counted, countedCompletedCount: completed, countedNoShowCount: 0 } }),
     });
     expect(m.scheduledText).toBe('12');
     expect(m.completedText).toBe(String(Math.min(completed, counted)));
