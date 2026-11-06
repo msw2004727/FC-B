@@ -520,46 +520,38 @@ export function TopBar({
                 id="line-user-topbar"
                 class={`line-user-topbar${crown ? ' has-identity-crown' : ''}`}
               >
-                {loadedAvatarUrl ? (
-                  <img
-                    ref={(el) => {
-                      avatarTriggerRef.current = el;
-                    }}
-                    id="line-avatar-topbar"
-                    class="line-avatar-topbar"
-                    src={loadedAvatarUrl}
-                    alt={displayName}
-                    referrerPolicy="no-referrer"
-                    onClick={handleToggleUserMenu}
-                    onError={handleAvatarImgError}
-                  />
-                ) : (
-                  <div
-                    ref={(el) => {
-                      avatarTriggerRef.current = el;
-                    }}
-                    id="line-avatar-topbar"
-                    class={`line-avatar-topbar line-avatar-fallback${syncingFallback ? ' line-avatar-loading' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={syncingFallback ? '同步中' : '使用者選單'}
-                    title={syncingFallback ? '同步中' : '使用者選單'}
-                    aria-expanded={userMenuOpen ? 'true' : 'false'}
-                    onClick={handleToggleUserMenu}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleToggleUserMenu(e);
-                      }
-                    }}
-                  >
-                    {syncingFallback ? (
-                      <span class="line-avatar-spinner" aria-hidden="true" />
-                    ) : (
-                      initial
-                    )}
-                  </div>
-                )}
+                {/* 頭像觸發元素一律是原生 <button>（2026-11-06 iPhone 頂部列點擊問題順帶修）：
+                    照片頭像原本是 <img>，替換元素不產生 ::before，topbar-extra.css 的 44px 可點範圍對它無效；
+                    改由 button 承接點擊與 aria-expanded，照片放在裡面。 */}
+                <button
+                  ref={(el) => {
+                    avatarTriggerRef.current = el;
+                  }}
+                  type="button"
+                  id="line-avatar-topbar"
+                  class={loadedAvatarUrl
+                    ? 'line-avatar-topbar line-avatar-photo'
+                    : `line-avatar-topbar line-avatar-fallback${syncingFallback ? ' line-avatar-loading' : ''}`}
+                  aria-label={syncingFallback ? '同步中' : '使用者選單'}
+                  title={syncingFallback ? '同步中' : '使用者選單'}
+                  aria-haspopup="menu"
+                  aria-expanded={userMenuOpen ? 'true' : 'false'}
+                  aria-controls="user-menu-dropdown"
+                  onClick={handleToggleUserMenu}
+                >
+                  {loadedAvatarUrl ? (
+                    <img
+                      src={loadedAvatarUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      onError={handleAvatarImgError}
+                    />
+                  ) : syncingFallback ? (
+                    <span class="line-avatar-spinner" aria-hidden="true" />
+                  ) : (
+                    initial
+                  )}
+                </button>
                 {/* ASSUMPTION: 第二身份皇冠 DOM 照 A `_identityCrownBadgeHtml()` 使用 `.identity-crown-badge` */}
                 {crown && (
                   <span class="identity-crown-badge" aria-hidden="true">

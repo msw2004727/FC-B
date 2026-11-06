@@ -99,8 +99,9 @@ function avatarEl(): HTMLElement | null {
 }
 
 function lineAvatarShown(): boolean {
-  const el = avatarEl();
-  return el instanceof HTMLImageElement && el.getAttribute('src') === LINE_PIC;
+  // 頭像觸發元素改成 button 包照片（2026-11-06），照片是裡面的 img
+  const img = avatarEl()?.querySelector('img');
+  return img instanceof HTMLImageElement && img.getAttribute('src') === LINE_PIC;
 }
 
 beforeEach(async () => {
@@ -178,7 +179,9 @@ describe('T-047 已用 LINE 登入後再切到 QA 帳號', () => {
       expect(document.querySelector('.user-menu-name')?.textContent).toBe(QA_NAME);
     });
     const avatar = avatarEl();
-    expect(avatar?.tagName).toBe('DIV');
+    // 頭像觸發元素改成 button（2026-11-06）；首字頭像以 fallback class＋無照片判斷
+    expect(avatar?.classList.contains('line-avatar-fallback')).toBe(true);
+    expect(avatar?.querySelector('img')).toBeNull();
     expect(avatar?.textContent).toBe('Q');
     expect(document.body.innerHTML).not.toContain(LINE_PIC);
     expect(document.body.textContent).not.toContain(LINE_NAME);

@@ -30,6 +30,11 @@
   padding: 0;
   min-height: 0;
   background: transparent;
+  /* iPhone Safari 頂部列整條點不動（2026-11-06）：A 的 body 規則 overflow-x:hidden 限定到 .legacy-ui 後，
+     這層外框變成捲動容器（overflow: hidden auto），頂部列／底部導覽等 position:fixed 元素都包在裡面；A 沒有這層。
+     外框只放 fixed 元素、本身高度 0，不需要裁切或捲動，改回 visible 讓 fixed 元素不再位於捲動容器內。
+     頁面本體 .app-main > .legacy-ui 不受影響。 */
+  overflow: visible;
 }
 
 .ui-top-bar,

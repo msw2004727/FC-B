@@ -334,4 +334,56 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     await waitFor(() => expect(signOutSpy).toHaveBeenCalledOnce());
     expect(menu.style.display).toBe('none');
   });
+
+  // 2026-11-06 iPhone 頂部列點擊問題順帶修：頭像觸發元素一律是原生 button（照片放在裡面），44px 可點範圍與 aria-expanded 才對照片頭像生效
+  it('照片頭像也是 type=button 的按鈕包 img，點擊切換選單與 aria-expanded', async () => {
+    class LoadedImage {
+      naturalWidth = 64;
+      complete = true;
+      referrerPolicy = '';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_v: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', LoadedImage);
+    try {
+      const { container } = render(
+        <TopBar
+          drawerOpen={false}
+          onMenuClick={() => undefined}
+          user={{ uid: 'u1', displayName: '王大明', pictureUrl: 'https://example.test/a.png' }}
+        />,
+      );
+      await waitFor(() => expect(container.querySelector('#line-avatar-topbar img')).not.toBeNull());
+      const avatar = container.querySelector<HTMLButtonElement>('#line-avatar-topbar')!;
+      expect(avatar.tagName).toBe('BUTTON');
+      expect(avatar.getAttribute('type')).toBe('button');
+      expect(avatar.classList.contains('line-avatar-topbar')).toBe(true);
+      expect(avatar.classList.contains('line-avatar-fallback')).toBe(false);
+      expect(avatar.querySelector('img')?.getAttribute('src')).toBe('https://example.test/a.png');
+      expect(avatar.getAttribute('aria-expanded')).toBe('false');
+
+      const menu = container.querySelector<HTMLElement>('#user-menu-dropdown')!;
+      fireEvent.click(avatar.querySelector('img')!);
+      expect(menu.style.display).toBe('');
+      expect(avatar.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.click(avatar);
+      expect(menu.style.display).toBe('none');
+      expect(avatar.getAttribute('aria-expanded')).toBe('false');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('首字頭像也是 type=button 的按鈕', () => {
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} user={{ uid: 'u1', displayName: '王大明', pictureUrl: null }} />,
+    );
+    const avatar = container.querySelector<HTMLElement>('#line-avatar-topbar')!;
+    expect(avatar.tagName).toBe('BUTTON');
+    expect(avatar.getAttribute('type')).toBe('button');
+    expect(avatar.textContent).toBe('王');
+  });
 });
