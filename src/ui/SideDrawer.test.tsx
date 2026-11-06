@@ -93,6 +93,16 @@ describe('SideDrawer 內測站功能進度圖示', () => {
   });
 });
 
+describe('SideDrawer 隱私權政策與服務條款連結', () => {
+  it('用根目錄絕對路徑：在 /events/xxx 這種兩層路徑點開不會變成 /events/privacy.html（Opus 終審 P2）', () => {
+    history.replaceState(null, '', '/events/ce_1');
+    render(<Harness />);
+    openDrawer();
+    expect(screen.getByRole('link', { name: '隱私權政策' }).getAttribute('href')).toBe('/privacy');
+    expect(screen.getByRole('link', { name: '服務條款' }).getAttribute('href')).toBe('/terms');
+  });
+});
+
 describe('SideDrawer (legacy A DOM & CSS)', () => {
   it('M-001：#drawer-overlay 與 #side-drawer 常駐 DOM，開關靠 .open class 切換', () => {
     render(<Harness />);
