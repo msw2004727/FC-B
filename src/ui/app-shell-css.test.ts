@@ -36,4 +36,12 @@ describe('app-shell.css：外框不是捲動容器', () => {
     const bodies = rulesFor(state, 'body .legacy-ui');
     expect(bodies.some((b) => /-webkit-overflow-scrolling\s*:\s*auto/.test(b))).toBe(true);
   });
+
+  it('A 的 .page 進場動畫是 fill both，body .legacy-ui .page 改 backwards（播完不留 transform，頁內彈窗相對視窗固定）', () => {
+    const legacyBase = readFileSync(resolve(process.cwd(), 'src/styles/legacy/base.css'), 'utf8');
+    expect(rulesFor(legacyBase, '.page').some((b) => /animation\s*:\s*pageIn\b[^;]*\bboth\b/.test(b))).toBe(true);
+    const state = readFileSync(resolve(process.cwd(), 'src/styles/legacy-body-state.css'), 'utf8');
+    const bodies = rulesFor(state, 'body .legacy-ui .page');
+    expect(bodies.some((b) => /animation-fill-mode\s*:\s*backwards/.test(b))).toBe(true);
+  });
 });

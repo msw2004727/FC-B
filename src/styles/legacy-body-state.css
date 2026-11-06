@@ -21,6 +21,13 @@ body .legacy-ui { overscroll-behavior-y: auto; }
  */
 body .legacy-ui { -webkit-overflow-scrolling: auto; }
 /*
+ * 2026-11-06 頁內彈窗跟著整頁跑（幫夥伴報名等）：A 的 `.page { animation: pageIn .22s ease-out both }` 播完後，
+ * fill-mode both 讓 transform: translateY(0) 一直留在 .page 上；transform 不是 none，.page 就成為
+ * position:fixed 子元素的定位基準，彈窗的 inset:0 變成「整頁大小」、置中在整頁中間。A 的彈窗放在 .page 外的
+ * #modal-container 不受影響；B 的彈窗多半畫在頁面元件裡。改成 backwards：進場動畫照播，播完不留 transform。
+ */
+body .legacy-ui .page { animation-fill-mode: backwards; }
+/*
  * T-038（2026-10-26，顧問必停點補驗）：真正擋下拉重新整理與回彈的是「根元素 html」的 overscroll-behavior。
  * 實測（Chromium 147）：只在 body 設 none，子頁捲到底後再滾，父頁仍被帶著捲；只在 html 設 none 才擋住——
  * body 的值不會傳給 viewport，A 正式站（toosterx.com）的 `body{overscroll-behavior:none}` 也是這樣，並沒有真正套到 viewport。
