@@ -355,7 +355,7 @@ export function AttendanceRosterTable({
     const used = Math.min(reserved, Math.max(0, Math.floor(Number(p.usedSlots || 0))));
     const remaining = Math.max(0, Math.floor(Number(p.remainingSlots || 0)));
     return (
-      <span class="team-reservation-seats" aria-label={`佔位 ${reserved}，已使用 ${used}，剩餘 ${remaining}`}>
+      <span class="team-reservation-seats" role="img" aria-label={`佔位 ${reserved}，已使用 ${used}，剩餘 ${remaining}`}>
         {reserved > 0 && reserved <= 10 ? (
           <span class="team-reservation-seat-dots" aria-hidden="true">
             {Array.from({ length: reserved }, (_, i) => (

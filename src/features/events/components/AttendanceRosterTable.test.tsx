@@ -127,6 +127,9 @@ describe('AttendanceRosterTable', () => {
     const seatPill = screen.getByTitle('FC One 保留席位');
     expect(seatPill.textContent).toBe('保留：FC One 保留席位');
     expect(seatPill.classList.contains('team-reservation-seat-pill')).toBe(true);
+    // 保留列的簽到／簽退／備註留白（不再寫「--」或「保留席位」）。
+    const seatCells = Array.from(seatPill.closest('tr')!.cells);
+    expect(seatCells.slice(-3).map(td => td.textContent)).toEqual(['', '', '']);
     expect(screen.getByText('一般報名')).toBeTruthy();
     expect(screen.getByText('ProxyParent')).toBeTruthy();
     expect(screen.getByText('僅代報')).toBeTruthy();
@@ -321,6 +324,7 @@ describe('T-074b 快速調整', () => {
     expect(screen.getByText('一隊')).toBeTruthy();
     expect(screen.getByText('二隊')).toBeTruthy();
     const button = screen.getByRole('button', { name: '快速調整' });
+    expect(button.textContent).toBe('調整');
     expect(button.closest('tr')?.textContent).toContain('二隊');
     fireEvent.click(button); expect(onAdjust).toHaveBeenCalledWith('t2');
     expect(onAdjust).toHaveBeenCalledTimes(1);
