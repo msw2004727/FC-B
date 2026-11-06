@@ -115,5 +115,15 @@
     "count": "{name}、{n} 件",
     "bound": "{name}、連携済み",
     "unbound": "{name}、未連携"
+  },
+  "pp": {
+    "actions": "アクション",
+    "pm": "メッセージ",
+    "addFriend": "友だち追加",
+    "follow": "フォロー",
+    "expected": "参加予定",
+    "completed": "完了",
+    "info": "プロフィール",
+    "records": "活動履歴"
   }
 }

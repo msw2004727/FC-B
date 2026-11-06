@@ -115,5 +115,15 @@
     "count": "{name}，{n} 条",
     "bound": "{name}，已绑定",
     "unbound": "{name}，未绑定"
+  },
+  "pp": {
+    "actions": "互动",
+    "pm": "私信",
+    "addFriend": "加好友",
+    "follow": "关注",
+    "expected": "应到",
+    "completed": "完成",
+    "info": "资料",
+    "records": "活动明细"
   }
 }

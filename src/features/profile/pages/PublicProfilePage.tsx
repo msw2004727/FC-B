@@ -4,6 +4,8 @@ import { useGoBack } from '@/core/back-guard';
 import { lt } from '@/i18n/i18n';
 import { LegacyUserCard } from '../components/legacy/LegacyUserCard';
 import QrPage from './QrPage';
+// 活動明細清單（.mini-activity-*）樣式在 activity.css，同我的個人頁；直接開名片網址時才不會沒樣式。
+import '@/features/events/legacy/activity.css';
 // A 的 .uc-* 與 .user-card-full 樣式在 profile.css。
 import '../legacy/profile.css';
 

@@ -115,5 +115,15 @@
     "count": "{name}, {n}건",
     "bound": "{name}, 연동됨",
     "unbound": "{name}, 미연동"
+  },
+  "pp": {
+    "actions": "작업",
+    "pm": "메시지",
+    "addFriend": "친구 추가",
+    "follow": "팔로우",
+    "expected": "참석 예정",
+    "completed": "완료",
+    "info": "정보",
+    "records": "활동 내역"
   }
 }

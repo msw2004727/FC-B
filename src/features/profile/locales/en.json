@@ -115,5 +115,15 @@
     "count": "{name}, {n} items",
     "bound": "{name}, linked",
     "unbound": "{name}, not linked"
+  },
+  "pp": {
+    "actions": "Actions",
+    "pm": "Message",
+    "addFriend": "Add friend",
+    "follow": "Follow",
+    "expected": "Expected",
+    "completed": "Completed",
+    "info": "Profile",
+    "records": "Activity history"
   }
 }

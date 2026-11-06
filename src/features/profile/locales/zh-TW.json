@@ -115,5 +115,15 @@
     "count": "{name}，{n} 筆",
     "bound": "{name}，已綁定",
     "unbound": "{name}，未綁定"
+  },
+  "pp": {
+    "actions": "互動",
+    "pm": "私訊",
+    "addFriend": "加好友",
+    "follow": "關注",
+    "expected": "應到",
+    "completed": "完成",
+    "info": "資料",
+    "records": "活動明細"
   }
 }

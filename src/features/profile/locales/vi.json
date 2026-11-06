@@ -115,5 +115,15 @@
     "count": "{name}, {n} mục",
     "bound": "{name}, đã liên kết",
     "unbound": "{name}, chưa liên kết"
+  },
+  "pp": {
+    "actions": "Thao tác",
+    "pm": "Nhắn tin",
+    "addFriend": "Kết bạn",
+    "follow": "Theo dõi",
+    "expected": "Dự kiến",
+    "completed": "Hoàn thành",
+    "info": "Thông tin",
+    "records": "Lịch sử hoạt động"
   }
 }
