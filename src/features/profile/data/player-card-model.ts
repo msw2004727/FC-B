@@ -145,7 +145,7 @@ export interface PlayerCardPalette {
   gaugeFill: string;
   clubBg: string;
   clubText: string;
-  /** PNG 左下 QR 的 quiet zone 底色與碼色（只在 PNG，網頁卡面不畫 QR）。 */
+  /** PNG「完成 CMP」欄下方 QR 的 quiet zone 底色與碼色（只在 PNG，網頁卡面不畫 QR）。 */
   qrBg: string;
   qrFg: string;
 }

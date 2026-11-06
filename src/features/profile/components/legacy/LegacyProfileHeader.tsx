@@ -147,7 +147,7 @@ export function LegacyProfileTopSection({
   //   動態 import 成就資料層，避免 firestore 進首屏。載入失敗保留 `--` 與純名字。
   // T-092：頂部改成球員卡；UID＋QR、身分標籤、分享按鈕移到卡片外（不進 PNG）。
   // 11-06 站長：身分標籤移到卡片上方（與鎖頭同一列），分享按鈕接在 UID＋QR 下方（原身分標籤位置）。
-  // PNG 左下 QR：只有本人的球員卡才放，內容與 A `_buildProfileLiffUrl` 相同的個人名片分享網址
+  // PNG CMP 欄下方 QR：只有本人的球員卡才放，內容與 A `_buildProfileLiffUrl` 相同的個人名片分享網址
   // （MINI_APP_BASE_URL + '?profile=' + encodeURIComponent(uid)，R-SHARE-001／004）。網頁卡面不顯示。
   const cardQrText = uid && viewer.uid && uid === viewer.uid ? buildShareUrl('profile', uid) : null;
   const cardModel = buildPlayerCardModel({

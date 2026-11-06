@@ -68,7 +68,7 @@ export function PlayerCardShareButton({
   qrText = null,
 }: {
   model: PlayerCardModel;
-  /** PNG 左下 QR 內容（本人個人名片分享網址）；null＝不放 QR。 */
+  /** PNG CMP 欄下方 QR 內容（本人個人名片分享網址）；null＝不放 QR。 */
   qrText?: string | null;
 }): JSX.Element {
   const t = useT();

@@ -49,7 +49,7 @@ interface FillRecord {
 function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const texts: string[] = [];
   /** 每次 fillText 當下的字級與量測寬度。 */
-  const drawn: Array<{ value: string; size: number; width: number; color: unknown }> = [];
+  const drawn: Array<{ value: string; size: number; width: number; color: unknown; y: number }> = [];
   /** 每次 stroke 當下的 strokeStyle（分隔線等）。 */
   const strokeStyles: unknown[] = [];
   const sizeOf = (font: string): number => Number(/([\d.]+)px/.exec(font)?.[1] ?? 10);
@@ -112,9 +112,9 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     fillRect: (x: number, y: number, w: number, h: number) => {
       rects.push({ style: ctx.fillStyle, x, y, w, h, seq: seq++, composite: ctx.globalCompositeOperation });
     },
-    fillText: (value: string) => {
+    fillText: (value: string, _x?: number, y?: number) => {
       texts.push(value);
-      drawn.push({ value, size: sizeOf(ctx.font), width: measure(value), color: ctx.fillStyle });
+      drawn.push({ value, size: sizeOf(ctx.font), width: measure(value), color: ctx.fillStyle, y: y ?? 0 });
     },
     measureText: (value: string) => ({ width: measure(value) }),
     drawImage: (image: unknown, ...args: number[]) => {
@@ -276,6 +276,12 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(fake.texts).not.toContain('俱樂部');
     // logo 載不到時退回文字商標
     expect(fake.texts).toContain('ToosterX');
+    // 測試同步更新（站長 11-06 PNG 版面）：備援文字縮到 logo 區（高 12）內：字級 9.5、基線落在 logo 上下緣之間
+    const fallback = fake.drawn.find((d) => d.value === 'ToosterX')!;
+    expect(fallback.size).toBe(9.5);
+    expect(fallback.y).toBeGreaterThan(LOGO_TOP_Y);
+    expect(fallback.y).toBeLessThanOrEqual(LOGO_BOTTOM_Y);
+    expect(fallback.y - fallback.size * 0.7).toBeGreaterThanOrEqual(LOGO_TOP_Y); // 全大寫字高約 0.7 字級
   });
 
   it('大頭照 tainted（getImageData 丟錯）時改用預設頭像', async () => {
@@ -420,7 +426,7 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(PLAYER_CARD_IMAGE_TIMEOUT_MS).toBe(3000);
   });
 
-  describe('PNG 左下 QR（本人名片分享網址）', () => {
+  describe('PNG CMP 欄下方 QR（本人名片分享網址）', () => {
     const PROFILE_URL = 'https://miniapp.line.me/2009525300-AuPGQ0sh?profile='
       + encodeURIComponent('U0123456789abcdef0123456789abcdef');
 
@@ -458,7 +464,7 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       return count;
     }
 
-    it('個人名片網址以錯誤修正 L 產生版本 4（33 模組），每模組 2px、quiet zone 4 模組', async () => {
+    it('示例 UID 的個人名片網址以錯誤修正 L 產生 QR，每模組 2px、quiet zone 4 模組', async () => {
       const { matrix, version } = await realMatrix(PROFILE_URL);
       expect(version).toBe(4);
       expect(matrix.size).toBe(33);
@@ -504,6 +510,19 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       const unused = vi.fn(async () => null);
       await renderPlayerCardPng(model(), 'light', labels, renderDeps(none, unused));
       expect(unused).not.toHaveBeenCalled();
+    });
+
+    // 測試同步更新（站長 11-06 PNG 版面）：版位公式依實際模組數計算，涵蓋 QR 版本 2～6（25～41 模組）。
+    it.each([25, 29, 33, 37, 41])('QR %i 模組：中心 x＝110、上下留白相等、不壓縮寫字與 logo、對齊像素格', (modules) => {
+      const { box } = qrLayout(modules);
+      const bottom = box.y + box.size;
+      expect(box.x + box.size / 2).toBeCloseTo(STAT_COLUMNS[1], 9);
+      expect(STAT_COLUMNS[1]).toBe(110);
+      expect(box.y).toBeGreaterThan(256); // 縮寫字下緣（基線 256）
+      expect(bottom).toBeLessThan(LOGO_TOP_Y);
+      expect(Math.abs((box.y - 256) - (LOGO_TOP_Y - bottom))).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(box.x * PLAYER_CARD_PNG_SCALE - Math.round(box.x * PLAYER_CARD_PNG_SCALE))).toBeLessThan(1e-9);
+      expect(Math.abs(box.y * PLAYER_CARD_PNG_SCALE - Math.round(box.y * PLAYER_CARD_PNG_SCALE))).toBeLessThan(1e-9);
     });
 
     // 測試同步更新（站長 11-06 PNG 版面）：取代原「QR 中心＝應到欄中心 x、logo 中心 y」。
