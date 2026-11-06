@@ -26,13 +26,17 @@ export function LegacyProfileInfoCard({
   uid,
   profile,
   onSaved,
+  embedded = false,
 }: {
   uid: string;
   profile: UserProfile;
   onSaved: (patch: Record<string, unknown>) => void;
+  /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
+  embedded?: boolean;
 }): JSX.Element {
   const location = useLocation();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -181,7 +185,10 @@ export function LegacyProfileInfoCard({
   };
 
   return (
-    <div class="info-card" id="profile-info-card">
+    <div class={embedded ? 'profile-quick-body' : 'info-card'} id="profile-info-card">
+      {embedded ? (
+        <div class="profile-quick-help"><ProfileInfoButton infoKey="myProfile" /></div>
+      ) : (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
@@ -202,6 +209,7 @@ export function LegacyProfileInfoCard({
         </span>
         <span class="profile-collapse-arrow">▶</span>
       </div>
+      )}
       <div class="profile-collapse-content" style={open ? undefined : 'display:none'}>
         <div id="profile-info-display" style={editing ? 'display:none' : undefined}>
           <div class="info-row">

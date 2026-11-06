@@ -95,5 +95,25 @@
     "save": "保存",
     "shareUnavailable": "无法打开分享，请改按保存",
     "lock": "锁定旋转"
+  },
+  "quick": {
+    "group": "个人设置",
+    "reg": "报名",
+    "regName": "我的报名",
+    "info": "资料",
+    "infoName": "我的资料",
+    "id2": "身份",
+    "id2Name": "第二身份",
+    "line": "推送",
+    "lineName": "LINE 推送",
+    "host": "开团",
+    "hostName": "开团（我开的团）",
+    "mate": "伙伴",
+    "mateName": "我的运动伙伴",
+    "apply": "申请",
+    "applyName": "我的俱乐部申请",
+    "count": "{name}，{n} 条",
+    "bound": "{name}，已绑定",
+    "unbound": "{name}，未绑定"
   }
 }

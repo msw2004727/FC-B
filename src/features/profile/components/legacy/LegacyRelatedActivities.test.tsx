@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ViewerView } from '../../data/viewer';
-import { LegacyRelatedActivities } from './LegacyProfileSocialAndRelated';
+import {
+  LegacyRelatedActivities,
+  useRelatedActivitiesData,
+  type RelatedSection,
+} from './LegacyProfileSocialAndRelated';
 
 // 全部外部依賴以 hoisted mock 提供，避免觸及真實 Firestore／Callable。
 const {
@@ -112,12 +116,11 @@ function setReady(payload: { registered?: unknown[]; hosted?: unknown[] }): void
   });
 }
 
-function expand(cardId: string): void {
-  const toggle = document.querySelector(
-    `#${cardId} .profile-collapse-toggle`,
-  ) as HTMLElement | null;
-  if (!toggle) throw new Error(`collapse toggle missing: ${cardId}`);
-  fireEvent.click(toggle);
+// 測試同步更新：11-06 個人頁改版，清單外殼改由 ProfileQuickBar 負責，資料由頁面 useRelatedActivitiesData 讀一次後傳入；
+// 這裡用同一支 hook 組出展開後的單一區段。
+function Section({ section }: { section: RelatedSection }) {
+  const data = useRelatedActivitiesData('u1');
+  return <LegacyRelatedActivities section={section} data={data} />;
 }
 
 describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
@@ -147,14 +150,12 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
 
     canEditMock.mockReturnValue(true);
     canCancelMock.mockReturnValue(false);
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
     expect(screen.queryByRole('button', { name: '編輯活動' })).not.toBeNull();
 
     cleanup();
     canEditMock.mockReturnValue(false);
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
     expect(screen.queryByRole('button', { name: '編輯活動' })).toBeNull();
   });
 
@@ -165,8 +166,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
         effectiveStatus: 'cancelled',
       }],
     });
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
     expect(screen.queryByRole('button', { name: '取消活動' })).toBeNull();
   });
 
@@ -174,8 +174,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     setReady({
       hosted: [{ event: { id: 'e1', title: '活動A', status: 'open' }, effectiveStatus: 'open' }],
     });
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
 
     fireEvent.click(screen.getByRole('button', { name: '取消活動' }));
     await waitFor(() => expect(runLifecycleMock).toHaveBeenCalledTimes(1));
@@ -201,8 +200,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
       { eventId: 'other', userId: 'u1', status: 'confirmed', _docId: 'r6' },
     ]);
 
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-registered-activities-card');
+    render(<Section section="registered" />);
 
     fireEvent.click(screen.getByRole('button', { name: '取消報名' }));
     await waitFor(() => expect(beginCancelMock).toHaveBeenCalledTimes(1));
@@ -220,8 +218,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     setReady({
       hosted: [{ event: { id: 'e1', title: '活動A', status: 'open' }, effectiveStatus: 'open' }],
     });
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
 
     fireEvent.click(screen.getByRole('button', { name: '取消活動' }));
     await waitFor(() => expect(runLifecycleMock).toHaveBeenCalledTimes(1));
@@ -236,8 +233,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     canEditMock.mockReturnValue(true);
     canCancelMock.mockReturnValue(false);
 
-    render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-hosted-activities-card');
+    render(<Section section="hosted" />);
 
     const editBtn = screen.getByRole('button', { name: '編輯活動' });
 
@@ -268,8 +264,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     loadEventDetailMock.mockReturnValueOnce(new Promise((r) => { resolveDetail = r; }));
     loadViewerRegistrationsMock.mockReturnValueOnce(new Promise((r) => { resolveRegs = r; }));
 
-    const { rerender } = render(<LegacyRelatedActivities uid="u1" />);
-    expand('profile-registered-activities-card');
+    const { rerender } = render(<Section section="registered" />);
     fireEvent.click(screen.getByRole('button', { name: '取消報名' }));
 
     await waitFor(() => {
@@ -282,7 +277,7 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
       ...viewerStub,
       uid: 'u2',
     } as unknown as ViewerView);
-    rerender(<LegacyRelatedActivities uid="u1" />);
+    rerender(<Section section="registered" />);
 
     // 現在才讓舊帳號的載入完成。
     resolveDetail({ event: { id: 'e1', title: '活動A', status: 'open' }, eventDocId: 'e1' });

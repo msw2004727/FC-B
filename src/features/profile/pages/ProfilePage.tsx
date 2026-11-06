@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { emit } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
-import { lt } from '@/i18n/i18n';
+import { lt, useT } from '@/i18n/i18n';
 import { useViewer, type ViewerView } from '../data/viewer';
 import { loadUserProfile, type UserProfile } from '../data/profile-model';
 import {
@@ -28,14 +28,20 @@ import { LegacyProfileTopSection } from '../components/legacy/LegacyProfileHeade
 import {
   LegacyRelatedActivities,
   LegacySocialGrid,
+  useRelatedActivitiesData,
 } from '../components/legacy/LegacyProfileSocialAndRelated';
 import { LegacyIdentityCard } from '../components/legacy/LegacyIdentityCard';
 import { LegacyLineNotifyCard } from '../components/legacy/LegacyLineNotifyCard';
 import { LegacyProfileInfoCard } from '../components/legacy/LegacyProfileCards';
 import { LegacyFavoritesCard } from '../components/legacy/LegacyFavoritesCard';
-import { LegacyApplicationsCard } from '../components/legacy/LegacyApplicationsCard';
+import {
+  LegacyApplicationsCard,
+  useMyTeamApplications,
+} from '../components/legacy/LegacyApplicationsCard';
 import { LegacyCompanionsCard } from '../components/legacy/LegacyCompanionsCard';
 import { LegacyActivityRecordsCard } from '../components/legacy/LegacyActivityRecordsCard';
+import { ProfileQuickBar, type QuickItem } from '../components/legacy/ProfileQuickBar';
+import { readLineNotify } from '../data/line-notify-settings';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '../legacy/profile.css';
@@ -89,8 +95,15 @@ function ProfileContent({
   const [editor, setEditor] = useState<Editor>(null);
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
 
+  const t = useT();
   const firstOpen = !dismissed && needsFirstLogin(profile);
   const canEditIdentity = viewer.hasPermission('profile.secondary_identity');
+
+  // 11-06 改版：徽章與「申請」是否顯示要在收合時就知道，資料由頁面讀一次、展開區共用（讀取次數同改版前）。
+  const related = useRelatedActivitiesData(uid);
+  const applications = useMyTeamApplications(uid, profile);
+  const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
+  const lineBound = readLineNotify(profile).bound;
 
   // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
   // 掛載讀取比刷新慢完成時，舊值不得蓋掉較新的頁首數字。
@@ -126,6 +139,80 @@ function ProfileContent({
     setEditor(null);
   }
 
+  const withCount = (name: string, n: number | null): string =>
+    n === null ? name : t('profile.quick.count', { name, n });
+
+  const quickItems: QuickItem[] = [
+    {
+      key: 'reg',
+      icon: 'reg',
+      label: t('profile.quick.reg'),
+      ariaLabel: withCount(t('profile.quick.regName'), relatedCounts ? relatedCounts.registered.length : null),
+      badge: relatedCounts?.registered.length ?? null,
+      render: () => <LegacyRelatedActivities section="registered" data={related} />,
+    },
+    {
+      key: 'info',
+      icon: 'info',
+      label: t('profile.quick.info'),
+      ariaLabel: t('profile.quick.infoName'),
+      render: () => <LegacyProfileInfoCard embedded uid={uid} profile={profile} onSaved={saved} />,
+    },
+    ...(canEditIdentity
+      ? [{
+          key: 'id2',
+          icon: 'id2',
+          label: t('profile.quick.id2'),
+          ariaLabel: t('profile.quick.id2Name'),
+          render: () => <LegacyIdentityCard embedded uid={uid} profile={profile} viewer={viewer} />,
+        } satisfies QuickItem]
+      : []),
+    {
+      key: 'line',
+      icon: 'bell',
+      label: t('profile.quick.line'),
+      ariaLabel: t(lineBound ? 'profile.quick.bound' : 'profile.quick.unbound', {
+        name: t('profile.quick.lineName'),
+      }),
+      dot: lineBound,
+      render: () => (
+        <LegacyLineNotifyCard
+          embedded
+          uid={uid}
+          profile={profile}
+          onSaved={(patch) => setProfile((p) => ({ ...p, ...patch }))}
+        />
+      ),
+    },
+    {
+      key: 'host',
+      icon: 'host',
+      label: t('profile.quick.host'),
+      ariaLabel: withCount(t('profile.quick.hostName'), relatedCounts ? relatedCounts.hosted.length : null),
+      badge: relatedCounts?.hosted.length ?? null,
+      render: () => <LegacyRelatedActivities section="hosted" data={related} />,
+    },
+    {
+      key: 'mate',
+      icon: 'mate',
+      label: t('profile.quick.mate'),
+      ariaLabel: t('profile.quick.mateName'),
+      render: () => <LegacyCompanionsCard embedded uid={uid} profile={profile} onSaved={saved} />,
+    },
+    // 照 A `_showApplicationsCard`：有申請紀錄才顯示。
+    ...(applications && applications.length > 0
+      ? [{
+          key: 'apply',
+          icon: 'apply',
+          label: t('profile.quick.apply'),
+          ariaLabel: t('profile.quick.applyName'),
+          render: () => (
+            <LegacyApplicationsCard embedded uid={uid} profile={profile} items={applications} />
+          ),
+        } satisfies QuickItem]
+      : []),
+  ];
+
   return (
     <div id="profile-content">
       <LegacyProfileTopSection
@@ -140,25 +227,11 @@ function ProfileContent({
         onEdit={(platform) => setEditor({ kind: 'social', platform })}
       />
 
-      <LegacyRelatedActivities uid={uid} />
-
-      {canEditIdentity && (
-        <LegacyIdentityCard uid={uid} profile={profile} viewer={viewer} />
-      )}
-
-      <LegacyProfileInfoCard uid={uid} profile={profile} onSaved={saved} />
-
-      <LegacyLineNotifyCard
-        uid={uid}
-        profile={profile}
-        onSaved={(patch) => setProfile((p) => ({ ...p, ...patch }))}
-      />
+      <ProfileQuickBar items={quickItems} groupLabel={t('profile.quick.group')} />
 
       {SHOW_FAVORITES && (
         <LegacyFavoritesCard uid={uid} profile={profile} />
       )}
-      <LegacyApplicationsCard uid={uid} profile={profile} />
-      <LegacyCompanionsCard uid={uid} profile={profile} onSaved={saved} />
       <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={summaryRefreshed} />
 
       {(firstOpen || editor?.kind === 'first') && (

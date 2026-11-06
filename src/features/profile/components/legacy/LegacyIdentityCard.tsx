@@ -150,9 +150,11 @@ export function LegacyIdentityCard(props: {
   uid: string;
   profile: UserProfile;
   viewer: ViewerView;
+  /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
+  embedded?: boolean;
 }): JSX.Element {
   // profile 為 API 契約保留，本卡不讀 users 文件上的身份欄位。
-  const { uid, viewer } = props;
+  const { uid, viewer, embedded = false } = props;
   const lt = useLegacyT();
 
   const settings = useIdentitySettings();
@@ -161,7 +163,8 @@ export function LegacyIdentityCard(props: {
   const secDisplayName = (secondary?.displayName ?? '').trim();
   const secAvatarUrl = (secondary?.avatarUrl ?? '').trim();
 
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [editing, setEditing] = useState(false);
   const [formEnabled, setFormEnabled] = useState<boolean>(secEnabled);
   const [formName, setFormName] = useState<string>(secDisplayName);
@@ -421,7 +424,7 @@ export function LegacyIdentityCard(props: {
   }
 
   const cardClass = [
-    'info-card',
+    embedded ? 'profile-quick-body' : 'info-card',
     formEnabled ? 'is-secondary-enabled' : '',
     editing ? 'is-identity-editing' : '',
     isDirty ? 'is-identity-dirty' : '',
@@ -457,6 +460,9 @@ export function LegacyIdentityCard(props: {
       id="profile-identity-card"
       data-permission-code="profile.secondary_identity"
     >
+      {embedded ? (
+        <div class="profile-quick-help"><ProfileInfoButton infoKey="secondaryIdentity" /></div>
+      ) : (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
@@ -476,6 +482,7 @@ export function LegacyIdentityCard(props: {
         </span>
         <span class="profile-collapse-arrow">▶</span>
       </div>
+      )}
       <div class="profile-collapse-content" style={open ? undefined : 'display:none'}>
         <div class="profile-identity-control">
           <label class={`profile-identity-toggle${formEnabled ? ' active' : ''}`}>

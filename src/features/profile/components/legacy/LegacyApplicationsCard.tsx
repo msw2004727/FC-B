@@ -29,6 +29,10 @@ import {
 export interface LegacyApplicationsCardProps {
   uid: string;
   profile: UserProfile;
+  /** 11-06 改版：頁面已用 useMyTeamApplications 讀好時直接傳入，卡片不再自己讀。 */
+  items?: LatestTeamApplication[] | null;
+  /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
+  embedded?: boolean;
 }
 
 function extractTeamIds(profile: UserProfile): string[] {
@@ -71,16 +75,19 @@ async function loadInboxMessages(uid: string): Promise<InboxMessage[]> {
   return out;
 }
 
-export function LegacyApplicationsCard(
-  props: LegacyApplicationsCardProps,
-): JSX.Element | null {
-  const { uid, profile } = props;
-  const lt = useLegacyT();
-
+/**
+ * 讀取「我的俱樂部申請」（一次 inbox＋俱樂部清單）。null＝讀取中；空陣列＝沒有申請（卡片／圖示不顯示）。
+ * 11-06 改版：從卡片抽出，讓個人頁圖示列在收合時就知道要不要顯示「申請」（讀取次數與原本卡片相同）。
+ */
+export function useMyTeamApplications(
+  uid: string,
+  profile: UserProfile,
+  enabled = true,
+): LatestTeamApplication[] | null {
   const [items, setItems] = useState<LatestTeamApplication[] | null>(null);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let cancelled = false;
     const run = async (): Promise<void> => {
       try {
@@ -104,7 +111,21 @@ export function LegacyApplicationsCard(
     return () => {
       cancelled = true;
     };
-  }, [uid, profile]);
+  }, [uid, profile, enabled]);
+
+  return items;
+}
+
+export function LegacyApplicationsCard(
+  props: LegacyApplicationsCardProps,
+): JSX.Element | null {
+  const { uid, profile, embedded = false } = props;
+  const lt = useLegacyT();
+
+  const loaded = useMyTeamApplications(uid, profile, props.items === undefined);
+  const items = props.items === undefined ? loaded : props.items;
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
 
   const toggleOpen = useCallback((): void => {
     setOpen((o) => !o);
@@ -124,7 +145,8 @@ export function LegacyApplicationsCard(
   if (items.length === 0) return null;
 
   return (
-    <div class="info-card" id="profile-applications-card">
+    <div class={embedded ? 'profile-quick-body' : 'info-card'} id="profile-applications-card">
+      {!embedded && (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
@@ -139,6 +161,7 @@ export function LegacyApplicationsCard(
         </span>
         <span class="profile-collapse-arrow">▶</span>
       </div>
+      )}
       <div
         class="profile-collapse-content"
         id="profile-applications-list"

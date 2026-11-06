@@ -95,5 +95,25 @@
     "save": "保存",
     "shareUnavailable": "共有を開けません。「保存」を押してください。",
     "lock": "回転をロック"
+  },
+  "quick": {
+    "group": "個人設定",
+    "reg": "申込",
+    "regName": "自分の申込",
+    "info": "情報",
+    "infoName": "自分の情報",
+    "id2": "別名",
+    "id2Name": "セカンドID",
+    "line": "通知",
+    "lineName": "LINE 通知",
+    "host": "主催",
+    "hostName": "主催（自分の主催）",
+    "mate": "仲間",
+    "mateName": "自分の運動仲間",
+    "apply": "申請",
+    "applyName": "自分のクラブ申請",
+    "count": "{name}、{n} 件",
+    "bound": "{name}、連携済み",
+    "unbound": "{name}、未連携"
   }
 }

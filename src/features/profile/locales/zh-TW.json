@@ -95,5 +95,25 @@
     "save": "儲存",
     "shareUnavailable": "無法開啟分享，請改按儲存",
     "lock": "鎖定旋轉"
+  },
+  "quick": {
+    "group": "個人設定",
+    "reg": "報名",
+    "regName": "我的報名",
+    "info": "資料",
+    "infoName": "我的資料",
+    "id2": "身份",
+    "id2Name": "第二身份",
+    "line": "推播",
+    "lineName": "LINE 推播",
+    "host": "開團",
+    "hostName": "開團（我開的團）",
+    "mate": "夥伴",
+    "mateName": "我的運動夥伴",
+    "apply": "申請",
+    "applyName": "我的俱樂部申請",
+    "count": "{name}，{n} 筆",
+    "bound": "{name}，已綁定",
+    "unbound": "{name}，未綁定"
   }
 }

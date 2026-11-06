@@ -51,12 +51,16 @@ export function LegacyLineNotifyCard({
   uid,
   profile,
   onSaved,
+  embedded = false,
 }: {
   uid: string;
   profile: UserProfile;
   onSaved: (patch: Record<string, unknown>) => void;
+  /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
+  embedded?: boolean;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [binding, setBinding] = useState(false);
   const [pendingKey, setPendingKey] = useState<LineNotifyKey | null>(null);
   const [unbinding, setUnbinding] = useState(false);
@@ -222,7 +226,10 @@ export function LegacyLineNotifyCard({
   }
 
   return (
-    <div class="info-card" id="profile-line-notify">
+    <div class={embedded ? 'profile-quick-body' : 'info-card'} id="profile-line-notify">
+      {embedded ? (
+        <div class="profile-quick-help"><ProfileInfoButton infoKey="lineNotify" /></div>
+      ) : (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
@@ -245,6 +252,7 @@ export function LegacyLineNotifyCard({
         </span>
         <span class="profile-collapse-arrow">▶</span>
       </div>
+      )}
 
       <div
         class="profile-collapse-content"

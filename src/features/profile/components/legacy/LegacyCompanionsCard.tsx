@@ -56,6 +56,8 @@ export interface LegacyCompanionsCardProps {
   uid: string;
   profile: UserProfile;
   onSaved: (patch: { companions: unknown[] }) => void;
+  /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
+  embedded?: boolean;
 }
 
 type ModalState =
@@ -66,9 +68,10 @@ type ModalState =
 export function LegacyCompanionsCard(
   props: LegacyCompanionsCardProps,
 ): JSX.Element {
-  const { uid, profile, onSaved } = props;
+  const { uid, profile, onSaved, embedded = false } = props;
   const lt = useLegacyT();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [modal, setModal] = useState<ModalState>(null);
   const [pending, setPending] = useState(false);
   // 避免連按：state 更新可能被批次合併，用 ref 立即鎖。
@@ -147,7 +150,10 @@ export function LegacyCompanionsCard(
   const titleText = lt('我的運動夥伴', '我的運動夥伴');
 
   return (
-    <div class="info-card" id="my-companions-card">
+    <div class={embedded ? 'profile-quick-body' : 'info-card'} id="my-companions-card">
+      {embedded ? (
+        <div class="profile-quick-help"><ProfileInfoButton infoKey="companions" /></div>
+      ) : (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
         role="button"
@@ -171,6 +177,7 @@ export function LegacyCompanionsCard(
         </span>
         <span class="profile-collapse-arrow">▶</span>
       </div>
+      )}
       <div
         class="profile-collapse-content"
         id="companions-list"

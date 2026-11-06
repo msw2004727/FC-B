@@ -95,5 +95,25 @@
     "save": "Lưu",
     "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu.",
     "lock": "Khóa xoay"
+  },
+  "quick": {
+    "group": "Cài đặt cá nhân",
+    "reg": "Đăng ký",
+    "regName": "Đăng ký của tôi",
+    "info": "Hồ sơ",
+    "infoName": "Hồ sơ của tôi",
+    "id2": "Danh tính",
+    "id2Name": "Danh tính thứ hai",
+    "line": "Thông báo",
+    "lineName": "Thông báo LINE",
+    "host": "Tổ chức",
+    "hostName": "Tổ chức (nhóm tôi mở)",
+    "mate": "Bạn",
+    "mateName": "Bạn tập của tôi",
+    "apply": "Xin vào",
+    "applyName": "Đơn xin vào CLB của tôi",
+    "count": "{name}, {n} mục",
+    "bound": "{name}, đã liên kết",
+    "unbound": "{name}, chưa liên kết"
   }
 }

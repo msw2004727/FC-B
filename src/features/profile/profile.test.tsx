@@ -111,8 +111,11 @@ vi.mock('@/ui/AppConfirm', () => ({
 vi.mock('./components/legacy/LegacyFavoritesCard', () => ({
   LegacyFavoritesCard: () => null,
 }));
+// 測試同步更新：11-06 個人頁改版，頁面用 useMyTeamApplications 決定圖示列是否顯示「申請」。
+const { useMyTeamApplicationsMock } = vi.hoisted(() => ({ useMyTeamApplicationsMock: vi.fn() }));
 vi.mock('./components/legacy/LegacyApplicationsCard', () => ({
   LegacyApplicationsCard: () => null,
+  useMyTeamApplications: useMyTeamApplicationsMock,
 }));
 vi.mock('./components/legacy/LegacyActivityRecordsCard', () => ({
   LegacyActivityRecordsCard: () => null,
@@ -158,6 +161,12 @@ function profile(overrides: Record<string, unknown> = {}): UserProfile {
     eduChildren: [],
     ...overrides,
   };
+}
+
+function quickBtn(key: string): HTMLButtonElement {
+  const el = document.getElementById(`profile-quick-btn-${key}`);
+  if (!(el instanceof HTMLButtonElement)) throw new Error(`quick button missing: ${key}`);
+  return el;
 }
 
 function deferred<T>() {
@@ -415,6 +424,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect(screen.queryByText('道具欄')).toBeNull();
   });
 
+  // 測試同步更新：11-06 個人頁改版，「我的報名」「我開的團」改成圖示列按鈕，展開區一次只開一個（仍是展開才渲染）。
   it('正常顯示俱樂部與活動連結，支援區塊收合', async () => {
     vi.mocked(loadRelatedActivities).mockResolvedValue({
       registered: [{
@@ -428,48 +438,52 @@ describe('我的個人頁（A 版結構）', () => {
     });
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
+    // 所屬俱樂部在「我的資料」展開區內（改版前是收折卡內的隱藏內容）。
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+    fireEvent.click(quickBtn('info'));
     expect(screen.getAllByText('測試俱樂部').length).toBeGreaterThan(0);
+    fireEvent.click(quickBtn('info'));
     await waitFor(() => expect(loadRelatedActivities).toHaveBeenCalledWith('U-me'));
 
-    // 測試同步更新：照 A（M-170）「我的報名」「我開的團」進頁預設收起，展開才渲染清單。
-    const regCard = document.getElementById('profile-registered-activities-card');
-    const regToggle = regCard?.querySelector('.profile-collapse-toggle') as HTMLElement;
-    expect(regToggle.classList.contains('open')).toBe(false);
+    const regBtn = quickBtn('reg');
+    expect(regBtn.getAttribute('aria-expanded')).toBe('false');
     expect(document.getElementById('profile-registered-activities-list')).toBeNull();
-    await waitFor(() => expect(document.getElementById('profile-registered-activities-count')?.textContent).toBe('1'));
+    await waitFor(() => expect(regBtn.querySelector('.profile-quick-badge')?.textContent).toBe('1'));
 
-    fireEvent.click(regToggle);
-    expect(regToggle.classList.contains('open')).toBe(true);
+    fireEvent.click(regBtn);
+    expect(regBtn.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById('profile-registered-activities-list')).not.toBeNull();
     // A 的活動卡整列可點（data-event-id），標題不另包連結。
     expect((await screen.findByText('週末足球')).closest('.profile-related-event-card')?.getAttribute('data-event-id'))
       .toBe('event-1');
 
-    const hostedCard = document.getElementById('profile-hosted-activities-card');
-    const hostedToggle = hostedCard?.querySelector('.profile-collapse-toggle') as HTMLElement;
-    expect(hostedToggle.classList.contains('open')).toBe(false);
+    const hostedBtn = quickBtn('host');
+    expect(hostedBtn.getAttribute('aria-expanded')).toBe('false');
     expect(document.getElementById('profile-hosted-activities-list')).toBeNull();
-    expect(document.getElementById('profile-hosted-activities-count')?.textContent).toBe('1');
+    expect(hostedBtn.querySelector('.profile-quick-badge')?.textContent).toBe('1');
 
-    fireEvent.click(hostedToggle);
-    expect(hostedToggle.classList.contains('open')).toBe(true);
+    // 點另一個直接換：我的報名收起、我開的團展開。
+    fireEvent.click(hostedBtn);
+    expect(hostedBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(regBtn.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById('profile-registered-activities-list')).toBeNull();
     expect(document.getElementById('profile-hosted-activities-list')).not.toBeNull();
     expect(screen.getByText('晨間慢跑').closest('.profile-related-event-card')?.getAttribute('data-event-id'))
       .toBe('event-2');
 
-    // 再點一次「我的報名」收起，清單從 DOM 移除。
-    fireEvent.click(regToggle);
-    expect(regToggle.classList.contains('open')).toBe(false);
-    expect(document.getElementById('profile-registered-activities-list')).toBeNull();
+    // 再點同一個收起，清單從 DOM 移除。
+    fireEvent.click(hostedBtn);
+    expect(hostedBtn.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById('profile-hosted-activities-list')).toBeNull();
+    // 展開／切換不重讀：整個過程只讀一次。
+    expect(loadRelatedActivities).toHaveBeenCalledTimes(1);
   });
 
   it('我的資料卡支援行內編輯、地區清單選擇、取消與儲存', async () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
 
-    const infoCard = document.getElementById('profile-info-card')!;
-    const toggle = infoCard.querySelector('.profile-collapse-toggle') as HTMLElement;
-    fireEvent.click(toggle);
+    fireEvent.click(quickBtn('info'));
 
     const editBtn = document.getElementById('profile-edit-btn') as HTMLButtonElement;
     fireEvent.click(editBtn);
@@ -517,8 +531,7 @@ describe('我的個人頁（A 版結構）', () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
 
-    const infoCard = document.getElementById('profile-info-card')!;
-    fireEvent.click(infoCard.querySelector('.profile-collapse-toggle') as HTMLElement);
+    fireEvent.click(quickBtn('info'));
     fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
 
     const saveBtn = screen.getByRole('button', { name: '儲存' }) as HTMLButtonElement;
@@ -532,11 +545,10 @@ describe('我的個人頁（A 版結構）', () => {
     expect(updateProfileFields).toHaveBeenCalledTimes(1);
   });
 
-  it('U-042：地區清單可用鍵盤選擇並以 Escape 收起', async () => {
+  it('U-042：地區清單可用鍵盤選擇並以 Escape 收起（Escape 不收合展開區）', async () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
-    const infoCard = document.getElementById('profile-info-card')!;
-    fireEvent.click(infoCard.querySelector('.profile-collapse-toggle') as HTMLElement);
+    fireEvent.click(quickBtn('info'));
     fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
 
     const regionInput = document.getElementById('profile-edit-region') as HTMLInputElement;
@@ -549,6 +561,9 @@ describe('我的個人頁（A 版結構）', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBe(0);
     });
+    // 輸入框內的 Escape 只收地區清單，「我的資料」展開區與編輯中的內容保留。
+    expect(quickBtn('info').getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('profile-edit-region')).toBe(regionInput);
 
     fireEvent.input(regionInput, { target: { value: '台' } });
     await waitFor(() => {
@@ -561,36 +576,196 @@ describe('我的個人頁（A 版結構）', () => {
     expect(regionInput.value).toBe(firstName);
   });
 
-  it('U-040：「我的資料」標題可用 Enter 展開', async () => {
+  // 測試同步更新：11-06 個人頁改版，「我的資料」標題列改成原生 button（Enter／Space 由瀏覽器觸發 click）。
+  it('U-040：「我的資料」是原生按鈕，帶 aria-expanded／aria-controls', async () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
-    const infoCard = document.getElementById('profile-info-card')!;
-    const title = infoCard.querySelector('.profile-collapse-toggle') as HTMLElement;
-    expect(title.getAttribute('role')).toBe('button');
-    expect(title.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.keyDown(title, { key: 'Enter' });
-    expect(title.getAttribute('aria-expanded')).toBe('true');
+    const btn = quickBtn('info');
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn.getAttribute('type')).toBe('button');
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    expect(btn.getAttribute('aria-controls')).toBe('profile-quick-panel');
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('M-121：「我的資料」的 ? 開啟說明視窗，了解後關閉且卡片不展開', async () => {
+  // 測試同步更新：11-06 個人頁改版，「?」移到展開區內（沒有標題列可誤觸展開）。
+  it('M-121：「我的資料」的 ? 開啟說明視窗，了解後關閉且展開區維持', async () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
+    const btn = quickBtn('info');
+    fireEvent.click(btn);
     const infoCard = document.getElementById('profile-info-card')!;
-    const title = infoCard.querySelector('.profile-collapse-toggle') as HTMLElement;
-    expect(title.getAttribute('aria-expanded')).toBe('false');
 
     const infoBtn = infoCard.querySelector('.edu-info-btn') as HTMLElement;
     fireEvent.click(infoBtn);
     await waitFor(() => {
       expect(document.querySelector('.edu-info-dialog-title')?.textContent).toBe('我的資料');
     });
-    expect(title.getAttribute('aria-expanded')).toBe('false');
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: '了解' }));
     await waitFor(() => {
       expect(document.querySelector('.edu-info-dialog-title')).toBeNull();
     });
-    expect(title.getAttribute('aria-expanded')).toBe('false');
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  describe('11-06 改版：圖示列＋單一展開區', () => {
+    it('圖示列在社群列下方、細線分隔；按鈕順序、兩字標籤與 aria 全名', async () => {
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+
+      const social = document.getElementById('social-grid')!;
+      const quick = document.querySelector('.profile-quick')!;
+      expect(social.nextElementSibling).toBe(quick);
+      expect(quick.querySelector('.profile-quick-sep')?.getAttribute('role')).toBe('separator');
+      const group = quick.querySelector('[role="group"]')!;
+      expect(group.getAttribute('aria-label')).toBe('個人設定');
+
+      const buttons = Array.from(group.querySelectorAll('button'));
+      expect(buttons.map((b) => b.dataset['key'])).toEqual(['reg', 'info', 'id2', 'line', 'host', 'mate']);
+      expect(buttons.map((b) => b.querySelector('.profile-quick-lb')?.textContent))
+        .toEqual(['報名', '資料', '身份', '推播', '開團', '夥伴']);
+      for (const b of buttons) {
+        expect(b.getAttribute('type')).toBe('button');
+        expect(b.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+        expect(b.querySelector('.profile-quick-lb')?.getAttribute('aria-hidden')).toBe('true');
+      }
+      expect(quickBtn('info').getAttribute('aria-label')).toBe('我的資料');
+      expect(quickBtn('id2').getAttribute('aria-label')).toBe('第二身份');
+      expect(quickBtn('mate').getAttribute('aria-label')).toBe('我的運動夥伴');
+      await waitFor(() => expect(quickBtn('reg').getAttribute('aria-label')).toBe('我的報名，0 筆'));
+      expect(quickBtn('host').getAttribute('aria-label')).toBe('開團（我開的團），0 筆');
+
+      // 收合時展開區存在但隱藏、沒有內容；報名紀錄仍是獨立區塊（本檔 mock 成空元件）。
+      const panel = document.getElementById('profile-quick-panel')!;
+      expect(panel.getAttribute('role')).toBe('region');
+      expect(panel.hidden).toBe(true);
+      expect(panel.childElementCount).toBe(0);
+    });
+
+    it('沒有 profile.secondary_identity 權限時不出現「身份」圖示', async () => {
+      vi.mocked(useViewer).mockReturnValue({
+        ...viewer(),
+        hasPermission: (code: string) => code !== 'profile.secondary_identity',
+      });
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      expect(document.getElementById('profile-quick-btn-id2')).toBeNull();
+      expect(document.getElementById('profile-identity-card')).toBeNull();
+      expect(document.querySelectorAll('.profile-quick-btn').length).toBe(5);
+    });
+
+    it('有申請紀錄才出現「申請」圖示（照 A _showApplicationsCard）', async () => {
+      useMyTeamApplicationsMock.mockReturnValue([{ messageId: 'm1', teamName: '大安羽球社', status: 'pending' }]);
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      const apply = quickBtn('apply');
+      expect(apply.getAttribute('aria-label')).toBe('我的俱樂部申請');
+      expect(apply.querySelector('.profile-quick-lb')?.textContent).toBe('申請');
+      expect(useMyTeamApplicationsMock).toHaveBeenCalledWith('U-me', expect.objectContaining({ uid: 'U-me' }));
+    });
+
+    it('一次只開一個：點另一個直接換、再點同一個收合', async () => {
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      const info = quickBtn('info');
+      const line = quickBtn('line');
+      const panel = document.getElementById('profile-quick-panel')!;
+
+      fireEvent.click(info);
+      expect(info.getAttribute('aria-expanded')).toBe('true');
+      expect(panel.hidden).toBe(false);
+      expect(panel.getAttribute('aria-labelledby')).toBe('profile-quick-btn-info');
+      expect(document.getElementById('profile-info-card')).not.toBeNull();
+
+      fireEvent.click(line);
+      expect(info.getAttribute('aria-expanded')).toBe('false');
+      expect(line.getAttribute('aria-expanded')).toBe('true');
+      expect(document.getElementById('profile-info-card')).toBeNull();
+      expect(document.getElementById('profile-line-notify')).not.toBeNull();
+      expect(document.querySelectorAll('.profile-quick-btn[aria-expanded="true"]').length).toBe(1);
+
+      fireEvent.click(line);
+      expect(line.getAttribute('aria-expanded')).toBe('false');
+      expect(panel.hidden).toBe(true);
+      expect(document.getElementById('profile-line-notify')).toBeNull();
+    });
+
+    it('Esc 收合並把焦點還給該按鈕', async () => {
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      const mate = quickBtn('mate');
+      fireEvent.click(mate);
+      const addBtn = screen.getByRole('button', { name: '+ 新增同行者' });
+      addBtn.focus();
+      fireEvent.keyDown(addBtn, { key: 'Escape' });
+      expect(mate.getAttribute('aria-expanded')).toBe('false');
+      expect(document.getElementById('my-companions-card')).toBeNull();
+      expect(document.activeElement).toBe(mate);
+
+      // 收合狀態下再按 Esc 不出錯、不改狀態。
+      fireEvent.keyDown(mate, { key: 'Escape' });
+      expect(mate.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('報名、開團顯示筆數徽章；推播已綁定顯示綠點，未綁定不顯示', async () => {
+      vi.mocked(loadRelatedActivities).mockResolvedValue({
+        registered: [
+          { event: { id: 'e1', title: 'A' }, registration: {}, registrationStatus: 'confirmed', effectiveStatus: 'open' },
+          { event: { id: 'e2', title: 'B' }, registration: {}, registrationStatus: 'waitlisted', effectiveStatus: 'open' },
+        ],
+        hosted: [{ event: { id: 'e3', title: 'C' }, effectiveStatus: 'open' }],
+        counts: { registered: 2, hosted: 1 },
+      });
+      vi.mocked(loadUserProfile).mockResolvedValue(profile({
+        lineNotify: { bound: true, boundAt: '2025/03/14', settings: { activity: true } },
+      }));
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+
+      await waitFor(() => expect(quickBtn('reg').querySelector('.profile-quick-badge')?.textContent).toBe('2'));
+      expect(quickBtn('reg').getAttribute('aria-label')).toBe('我的報名，2 筆');
+      expect(quickBtn('host').querySelector('.profile-quick-badge')?.textContent).toBe('1');
+      expect(quickBtn('host').getAttribute('aria-label')).toBe('開團（我開的團），1 筆');
+      expect(quickBtn('line').querySelector('.profile-quick-dot')).not.toBeNull();
+      expect(quickBtn('line').getAttribute('aria-label')).toBe('LINE 推播，已綁定');
+      // 其他項目沒有徽章或綠點。
+      for (const key of ['info', 'id2', 'mate']) {
+        expect(quickBtn(key).querySelector('.profile-quick-badge, .profile-quick-dot')).toBeNull();
+      }
+
+      cleanup();
+      vi.mocked(loadUserProfile).mockResolvedValue(profile());
+      vi.mocked(loadRelatedActivities).mockResolvedValue({ registered: [], hosted: [], counts: { registered: 0, hosted: 0 } });
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      expect(quickBtn('line').querySelector('.profile-quick-dot')).toBeNull();
+      expect(quickBtn('line').getAttribute('aria-label')).toBe('LINE 推播，未綁定');
+      await waitFor(() => expect(quickBtn('reg').getAttribute('aria-label')).toBe('我的報名，0 筆'));
+      expect(quickBtn('reg').querySelector('.profile-quick-badge')).toBeNull();
+    });
+
+    it('展開才渲染：收合時各區塊內容都不在 DOM，相關活動只讀一次（重繪不重讀）', async () => {
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      for (const id of [
+        'profile-registered-activities-list',
+        'profile-hosted-activities-list',
+        'profile-info-card',
+        'profile-identity-card',
+        'profile-line-notify',
+        'my-companions-card',
+      ]) {
+        expect(document.getElementById(id)).toBeNull();
+      }
+      await waitFor(() => expect(loadRelatedActivities).toHaveBeenCalledTimes(1));
+      // 多次切換與重繪後仍只讀一次。
+      for (const key of ['info', 'reg', 'line', 'host', 'mate', 'id2', 'id2']) fireEvent.click(quickBtn(key));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(loadRelatedActivities).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('第一次失敗後重試會重新呼叫 loader', async () => {

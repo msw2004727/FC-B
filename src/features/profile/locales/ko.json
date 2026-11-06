@@ -95,5 +95,25 @@
     "save": "저장",
     "shareUnavailable": "공유를 열 수 없습니다. 저장을 눌러 주세요.",
     "lock": "회전 잠금"
+  },
+  "quick": {
+    "group": "개인 설정",
+    "reg": "신청",
+    "regName": "내 신청",
+    "info": "정보",
+    "infoName": "내 정보",
+    "id2": "부캐",
+    "id2Name": "두 번째 신분",
+    "line": "알림",
+    "lineName": "LINE 알림",
+    "host": "주최",
+    "hostName": "주최(내가 연 모임)",
+    "mate": "동료",
+    "mateName": "내 운동 동료",
+    "apply": "가입",
+    "applyName": "내 클럽 가입 신청",
+    "count": "{name}, {n}건",
+    "bound": "{name}, 연동됨",
+    "unbound": "{name}, 미연동"
   }
 }

@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { Suspense, lazy } from 'preact/compat';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { lt, useT } from '@/i18n/i18n';
@@ -34,6 +34,7 @@ import {
   type EventRecord,
   type HostedActivity,
   type RegisteredActivity,
+  type RelatedActivities,
 } from '../../data/related-activities';
 import {
   Failure,
@@ -42,6 +43,7 @@ import {
   stringValue,
   useRemote,
   type Platform,
+  type Remote,
 } from '../../ui/shared';
 import { sanitizeHttpAvatarUrl } from './profile-legacy-helpers';
 
@@ -306,22 +308,50 @@ function RelatedActivityCardRow({
   );
 }
 
-export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
+// useRemote 的 loader 放 module 級保持同一參考：原本每次 render 都給新的箭頭函式，
+// useRemote 的 effect 依賴 loader，會在每次重繪後重新讀取（11-06 改版時發現並一併修正）。
+function loadRelatedByReloadKey(key: string): Promise<RelatedActivities> {
+  return loadRelatedActivities(key.split(':')[0] || '');
+}
+
+export interface RelatedActivitiesData {
+  state: Remote<RelatedActivities>;
+  retry: () => void;
+  reload: () => void;
+}
+
+/**
+ * 11-06 改版：「我的報名」「我開的團」的資料由頁面讀一次，圖示列徽章與展開區共用
+ * （與改版前進頁即讀一次相同，不多讀）。
+ */
+export function useRelatedActivitiesData(uid: string): RelatedActivitiesData {
+  // useRemote 以第一個參數值變動重跑載入；用拼上 reloadCount 的 key 觸發重新載入。
+  const [reloadCount, setReloadCount] = useState(0);
+  const reloadKey = uid ? `${uid}:${reloadCount}` : '';
+  const { state, retry } = useRemote(reloadKey, loadRelatedByReloadKey);
+  const reload = useCallback((): void => {
+    setReloadCount((n) => n + 1);
+  }, []);
+  return { state, retry, reload };
+}
+
+export type RelatedSection = 'registered' | 'hosted';
+
+/**
+ * 「我的報名」或「我開的團」清單（只在圖示列展開該區時掛載＝M-170 展開才渲染）。
+ */
+export function LegacyRelatedActivities({
+  section,
+  data,
+}: {
+  section: RelatedSection;
+  data: RelatedActivitiesData;
+}): JSX.Element {
   const location = useLocation();
   const viewer = useViewer();
   const operateCtx = useMemo(() => operateContextFromViewer(viewer), [viewer]);
+  const { state, retry, reload } = data;
 
-  // ASSUMPTION: useRemote 以第一個參數值變動重跑載入；用拼上 reloadCount 的 key 觸發重新載入。
-  const [reloadCount, setReloadCount] = useState(0);
-  const reloadKey = `${uid}:${reloadCount}`;
-  const { state, retry } = useRemote(reloadKey, (key: string) => {
-    const raw = key.split(':')[0] || uid;
-    return loadRelatedActivities(raw);
-  });
-
-  // M-170：預設收起（不記憶展開狀態）。
-  const [regOpen, setRegOpen] = useState(false);
-  const [hostedOpen, setHostedOpen] = useState(false);
   const [hostedLimit, setHostedLimit] = useState(HOSTED_PAGE_SIZE);
   const [editing, setEditing] = useState<EventDoc | null>(null);
   const [modalBusy, setModalBusy] = useState(false);
@@ -337,10 +367,6 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
       mountedRef.current = false;
     };
   }, []);
-
-  const reload = (): void => {
-    setReloadCount((n) => n + 1);
-  };
 
   // 讓 getViewer 每次都拿到最新 viewer，避免非同步流程取得舊值。
   const viewerRef = useRef(viewer);
@@ -506,48 +532,56 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
 
   return (
     <>
-      <div class="info-card profile-related-card" id="profile-registered-activities-card">
+      {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪）；外殼由 ProfileQuickBar 負責。 */}
+      {section === 'registered' && (
         <div
-          class={`info-title profile-collapse-toggle${regOpen ? ' open' : ''}`}
-          role="button"
-          tabIndex={0}
-          aria-expanded={regOpen}
-          onClick={() => setRegOpen((prev) => !prev)}
-          onKeyDown={(e) => {
-            if (e.target !== e.currentTarget) return;
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setRegOpen((prev) => !prev);
-            }
-          }}
+          class="profile-collapse-content profile-related-activity-list"
+          id="profile-registered-activities-list"
         >
-          <span style="display:flex;align-items:center;gap:.45rem">
-            我的報名
-            <span class="fav-count-badge" id="profile-registered-activities-count">
-              {String(registered.length)}
-            </span>
-          </span>
-          <span class="profile-collapse-arrow">▶</span>
+          {state.status === 'loading' && <Loading />}
+          {state.status === 'error' && <Failure retry={retry} />}
+          {state.status === 'ready' && (
+            registered.length === 0 ? (
+              <div class="profile-related-empty">目前沒有正取或候補中的報名活動</div>
+            ) : (
+              registered.map((item, idx) => (
+                <RelatedActivityCardRow
+                  key={item.event.id || `reg-${idx}`}
+                  event={item.event}
+                  effectiveStatus={item.effectiveStatus}
+                  kind="registered"
+                  registrationStatus={item.registrationStatus}
+                  onSelect={handleOpenEvent}
+                  operateCtx={operateCtx}
+                  onEditHosted={handleEditHosted}
+                  onCancelHosted={handleCancelHosted}
+                  onCancelRegistration={handleCancelRegistration}
+                  actionBusy={isActionBusy(item.event.id)}
+                />
+              ))
+            )
+          )}
         </div>
-        {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪） */}
-        {regOpen && (
-          <div
-            class="profile-collapse-content profile-related-activity-list"
-            id="profile-registered-activities-list"
-          >
-            {state.status === 'loading' && <Loading />}
-            {state.status === 'error' && <Failure retry={retry} />}
-            {state.status === 'ready' && (
-              registered.length === 0 ? (
-                <div class="profile-related-empty">目前沒有正取或候補中的報名活動</div>
-              ) : (
-                registered.map((item, idx) => (
+      )}
+
+      {section === 'hosted' && (
+        <div
+          class="profile-collapse-content profile-related-activity-list"
+          id="profile-hosted-activities-list"
+        >
+          {state.status === 'loading' && <Loading />}
+          {state.status === 'error' && <Failure retry={retry} />}
+          {state.status === 'ready' && (
+            hosted.length === 0 ? (
+              <div class="profile-related-empty">目前沒有報名中的主辦活動</div>
+            ) : (
+              <>
+                {hosted.slice(0, hostedLimit).map((item, idx) => (
                   <RelatedActivityCardRow
-                    key={item.event.id || `reg-${idx}`}
+                    key={item.event.id || `hosted-${idx}`}
                     event={item.event}
                     effectiveStatus={item.effectiveStatus}
-                    kind="registered"
-                    registrationStatus={item.registrationStatus}
+                    kind="hosted"
                     onSelect={handleOpenEvent}
                     operateCtx={operateCtx}
                     onEditHosted={handleEditHosted}
@@ -555,83 +589,26 @@ export function LegacyRelatedActivities({ uid }: { uid: string }): JSX.Element {
                     onCancelRegistration={handleCancelRegistration}
                     actionBusy={isActionBusy(item.event.id)}
                   />
-                ))
-              )
-            )}
-          </div>
-        )}
-      </div>
-
-      <div class="info-card profile-related-card" id="profile-hosted-activities-card">
-        <div
-          class={`info-title profile-collapse-toggle${hostedOpen ? ' open' : ''}`}
-          role="button"
-          tabIndex={0}
-          aria-expanded={hostedOpen}
-          onClick={() => setHostedOpen((prev) => !prev)}
-          onKeyDown={(e) => {
-            if (e.target !== e.currentTarget) return;
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setHostedOpen((prev) => !prev);
-            }
-          }}
-        >
-          <span style="display:flex;align-items:center;gap:.45rem">
-            我開的團
-            <span class="fav-count-badge" id="profile-hosted-activities-count">
-              {String(hosted.length)}
-            </span>
-          </span>
-          <span class="profile-collapse-arrow">▶</span>
-        </div>
-        {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪） */}
-        {hostedOpen && (
-          <div
-            class="profile-collapse-content profile-related-activity-list"
-            id="profile-hosted-activities-list"
-          >
-            {state.status === 'loading' && <Loading />}
-            {state.status === 'error' && <Failure retry={retry} />}
-            {state.status === 'ready' && (
-              hosted.length === 0 ? (
-                <div class="profile-related-empty">目前沒有報名中的主辦活動</div>
-              ) : (
-                <>
-                  {hosted.slice(0, hostedLimit).map((item, idx) => (
-                    <RelatedActivityCardRow
-                      key={item.event.id || `hosted-${idx}`}
-                      event={item.event}
-                      effectiveStatus={item.effectiveStatus}
-                      kind="hosted"
-                      onSelect={handleOpenEvent}
-                      operateCtx={operateCtx}
-                      onEditHosted={handleEditHosted}
-                      onCancelHosted={handleCancelHosted}
-                      onCancelRegistration={handleCancelRegistration}
-                      actionBusy={isActionBusy(item.event.id)}
-                    />
-                  ))}
-                  {hostedLimit < hosted.length && (
-                    <div class="profile-related-load-more">
-                      <div class="profile-related-load-more-note">
-                        {`已顯示 ${Math.min(hostedLimit, hosted.length)} / ${hosted.length}`}
-                      </div>
-                      <button
-                        type="button"
-                        class="outline-btn profile-related-load-more-btn"
-                        onClick={() => setHostedLimit((prev) => prev + HOSTED_PAGE_SIZE)}
-                      >
-                        查看更多
-                      </button>
+                ))}
+                {hostedLimit < hosted.length && (
+                  <div class="profile-related-load-more">
+                    <div class="profile-related-load-more-note">
+                      {`已顯示 ${Math.min(hostedLimit, hosted.length)} / ${hosted.length}`}
                     </div>
-                  )}
-                </>
-              )
-            )}
-          </div>
-        )}
-      </div>
+                    <button
+                      type="button"
+                      class="outline-btn profile-related-load-more-btn"
+                      onClick={() => setHostedLimit((prev) => prev + HOSTED_PAGE_SIZE)}
+                    >
+                      查看更多
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          )}
+        </div>
+      )}
 
       {/* 編輯活動：lazy 載入表單，不讓個人頁靜態依賴 EventFormModal。 */}
       {editing && (

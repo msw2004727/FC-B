@@ -55,15 +55,20 @@ vi.mock('../components/legacy/LegacyProfileHeader', () => ({
     <div id="stub-header-done">{summary ? String(summary.completedCount) : '--'}</div>
   ),
 }));
+// 測試同步更新：11-06 個人頁改版，頁面改用 useRelatedActivitiesData／useMyTeamApplications 讀資料給圖示列。
 vi.mock('../components/legacy/LegacyProfileSocialAndRelated', () => ({
   LegacyRelatedActivities: () => null,
   LegacySocialGrid: () => null,
+  useRelatedActivitiesData: () => ({ state: { status: 'loading' }, retry: () => {}, reload: () => {} }),
 }));
 vi.mock('../components/legacy/LegacyIdentityCard', () => ({ LegacyIdentityCard: () => null }));
 vi.mock('../components/legacy/LegacyLineNotifyCard', () => ({ LegacyLineNotifyCard: () => null }));
 vi.mock('../components/legacy/LegacyProfileCards', () => ({ LegacyProfileInfoCard: () => null }));
 vi.mock('../components/legacy/LegacyFavoritesCard', () => ({ LegacyFavoritesCard: () => null }));
-vi.mock('../components/legacy/LegacyApplicationsCard', () => ({ LegacyApplicationsCard: () => null }));
+vi.mock('../components/legacy/LegacyApplicationsCard', () => ({
+  LegacyApplicationsCard: () => null,
+  useMyTeamApplications: () => null,
+}));
 vi.mock('../components/legacy/LegacyCompanionsCard', () => ({ LegacyCompanionsCard: () => null }));
 
 import { callFn } from '@/data/callables';

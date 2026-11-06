@@ -95,5 +95,25 @@
     "save": "Save",
     "shareUnavailable": "Sharing isn't available. Tap Save instead.",
     "lock": "Lock rotation"
+  },
+  "quick": {
+    "group": "My settings",
+    "reg": "Signups",
+    "regName": "My signups",
+    "info": "Profile",
+    "infoName": "My profile",
+    "id2": "Alt ID",
+    "id2Name": "Secondary identity",
+    "line": "Notify",
+    "lineName": "LINE notifications",
+    "host": "Hosted",
+    "hostName": "Hosted (events I host)",
+    "mate": "Mates",
+    "mateName": "My sports mates",
+    "apply": "Apply",
+    "applyName": "My club applications",
+    "count": "{name}, {n} items",
+    "bound": "{name}, linked",
+    "unbound": "{name}, not linked"
   }
 }
