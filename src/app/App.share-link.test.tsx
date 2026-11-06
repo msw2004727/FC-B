@@ -13,6 +13,10 @@ vi.mock('@/core/feature-registry', () => ({
       path: '/teams/:id',
       load: async () => ({ default: () => <div>team-test</div> }),
     },
+    {
+      path: '/profile/:uid',
+      load: async () => ({ default: () => <div>profile-test</div> }),
+    },
   ],
 }));
 vi.mock('@/ui/TopBar', () => ({ TopBar: () => null }));
@@ -53,6 +57,20 @@ describe('App share links', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it('profile 深連結（名片 QR）以 replace 導向 /profile/:uid', async () => {
+    history.replaceState(null, '', '/?profile=U0123456789abcdef0123456789abcdef');
+    const push = vi.spyOn(history, 'pushState');
+    render(<App />);
+    await screen.findByText('profile-test');
+    expect(window.location.pathname).toBe('/profile/U0123456789abcdef0123456789abcdef');
+    expect(window.location.search).toBe('');
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('同時帶 team 與 profile 時 team 優先', () => {
+    expect(resolveShareLink('/?profile=U1&team=team_123')).toBe('/teams/team_123');
+  });
+
   it('非法 id 保留根網址，不導向', async () => {
     history.replaceState(null, '', '/?event=bad%2Fid');
     const push = vi.spyOn(history, 'pushState');
@@ -73,6 +91,9 @@ describe('App share links', () => {
     `/?event=${'a'.repeat(121)}`,
     '/?event=a&event=b',
     '/activities?event=ce_123_abc',
+    '/?profile=qr',
+    '/?profile=a%2Fb',
+    '/?profile=U1&profile=U2',
   ])('拒絕 %s', (url) => {
     expect(resolveShareLink(url)).toBeNull();
   });

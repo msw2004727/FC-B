@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "include": [
+    "/event-share",
+    "/event-share/*",
+    "/team-share",
+    "/team-share/*",
+    "/og.png"
+  ],
+  "exclude": []
+}

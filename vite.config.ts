@@ -136,7 +136,8 @@ const pwa = VitePWA({
   workbox: {
     globPatterns: ['**/*.{js,css,html,webp,svg}'],
     // manual.html（舊站手冊原文照搬）不進 precache：手冊改版要立即生效，HTML 不走快取優先（R-REL-013 精神）。
-    globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js', 'manual.html'],
+    // _worker.js 是 Cloudflare Pages 進階模式的邊緣程式、不對外提供，預存抓它會 404 讓 SW 安裝失敗。
+    globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js'],
     navigateFallback: null,
     // 預存路由預設會把「/」對應到預存的 index.html，首頁導覽因此搶在下面的 network-first 之前拿到舊版
     // （部署後第一次開會先閃出上一版畫面，2026-10-21 站長回報內測頁殘影）。設為空字串關掉這個對應，
