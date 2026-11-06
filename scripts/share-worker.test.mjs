@@ -84,9 +84,14 @@ describe('_worker.js 分享預覽代理', () => {
     const bot = await worker.fetch(new Request('https://toosterx.com/event-share/ce_1', { headers: { 'user-agent': BOT_UA } }), env, botCtx);
     expect(await bot.text()).toBe('bot-version');
     await Promise.all(botCtx.pending);
-    const human = await worker.fetch(new Request('https://toosterx.com/event-share/ce_1', { headers: { 'user-agent': HUMAN_UA } }), env, makeCtx());
+    const humanCtx = makeCtx();
+    const human = await worker.fetch(new Request('https://toosterx.com/event-share/ce_1', { headers: { 'user-agent': HUMAN_UA } }), env, humanCtx);
     expect(await human.text()).toBe('human-version');
-    expect([...cacheStore.keys()]).toEqual(['https://toosterx.com/event-share/ce_1?__ogbot=1']);
+    await Promise.all(humanCtx.pending);
+    expect([...cacheStore.keys()].sort()).toEqual([
+      'https://toosterx.com/event-share/ce_1?__ogbot=0',
+      'https://toosterx.com/event-share/ce_1?__ogbot=1',
+    ]);
   });
 
   it('HEAD 原樣轉給上游且不進快取', async () => {
