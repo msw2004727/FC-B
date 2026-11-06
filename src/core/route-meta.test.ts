@@ -43,12 +43,12 @@ describe('routeMetaFor（I-01 S2）', () => {
     expect(routeMetaFor(`/teams/${id}/`)).toEqual({
       canonicalPath: `/teams/${id}`,
       ogType: 'website',
-      indexable: true,
+      indexable: false,
     });
     expect(routeMetaFor(`/teams/${id}?from=share#top`)).toEqual({
       canonicalPath: `/teams/${id}`,
       ogType: 'website',
-      indexable: true,
+      indexable: false,
     });
     expect(routeMetaFor('/activities/?sport=football#list')).toEqual({
       canonicalPath: '/activities',
@@ -85,7 +85,7 @@ describe('routeMetaFor（I-01 S2）', () => {
     expect(routeMetaFor(`/events/${'a'.repeat(120)}`)?.ogType).toBe('event');
     expect(routeMetaFor(`/events/${'a'.repeat(120)}`)?.indexable).toBe(true);
     expect(routeMetaFor(`/teams/${'b'.repeat(120)}`)?.canonicalPath).toBe(`/teams/${'b'.repeat(120)}`);
-    expect(routeMetaFor(`/teams/${'b'.repeat(120)}`)?.indexable).toBe(true);
+    expect(routeMetaFor(`/teams/${'b'.repeat(120)}`)?.indexable).toBe(false);
   });
 
   it('其他路徑去掉查詢字串、hash 與尾斜線，og:type 為 website', () => {
@@ -124,14 +124,18 @@ describe('routeMetaFor（I-01 S2）', () => {
 
 describe('indexable 白名單（I-01 S3）', () => {
   it('白名單逐條 indexable 為 true', () => {
-    const pages = ['/', '/activities', '/teams', '/tournaments', '/events/ce_123', '/teams/ab_1'];
+    const pages = ['/', '/activities', '/teams', '/tournaments', '/events/ce_123'];
     for (const path of pages) {
       expect(routeMetaFor(path).indexable).toBe(true);
     }
     expect(routeMetaFor('/events/ce_123/?tab=1#roster').indexable).toBe(true);
-    expect(routeMetaFor('/teams/ab_1/?from=share#top').indexable).toBe(true);
     expect(routeMetaFor(`/events/${'a'.repeat(120)}`).indexable).toBe(true);
-    expect(routeMetaFor(`/teams/${'b'.repeat(120)}`).indexable).toBe(true);
+  });
+
+  it('俱樂部詳情要登入，合法 id 也不收錄（canonical 仍指自己）', () => {
+    expect(routeMetaFor('/teams/ab_1').indexable).toBe(false);
+    expect(routeMetaFor('/teams/ab_1/?from=share#top').indexable).toBe(false);
+    expect(routeMetaFor('/teams/ab_1').canonicalPath).toBe('/teams/ab_1');
   });
 
   it('私人路徑、/profile/qr、未知路徑與不合法 id 的 indexable 為 false', () => {

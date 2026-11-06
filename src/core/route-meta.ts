@@ -23,7 +23,11 @@ const STATIC_OG: Readonly<Record<string, RouteOgType>> = {
   '/profile': 'profile',
 };
 
-/** 靜態白名單。合法 id 的 /events/:id、/teams/:id 在 routeMetaFor 另外放行。 */
+/**
+ * 靜態白名單。合法 id 的 /events/:id 在 routeMetaFor 另外放行。
+ * /teams/:id 不收錄：俱樂部詳情要登入（club-policy CLUB_DETAIL_REQUIRES_LOGIN），爬蟲只看得到「請先登入」空殼
+ * （S3b Opus 審查 P1，取代 S3 把它放白名單）；改開放訪客時再放回。
+ */
 const INDEXABLE_PATHS: ReadonlySet<string> = new Set(['/', '/activities', '/teams', '/tournaments']);
 
 /**
@@ -95,7 +99,7 @@ export function routeMetaFor(path: string): RouteMeta {
     return { canonicalPath: '/teams', ogType: 'website', indexable: false };
   }
   if (teamMatch.status === 'ok') {
-    return { canonicalPath: `/teams/${teamMatch.id}`, ogType: 'website', indexable: true };
+    return { canonicalPath: `/teams/${teamMatch.id}`, ogType: 'website', indexable: false };
   }
 
   return { canonicalPath: pathname, ogType: 'website', indexable: false };
