@@ -1153,3 +1153,65 @@ describe('T-092 球員卡（DOM）', () => {
     });
   });
 });
+
+describe('球員卡身分圖案（網頁卡面）', () => {
+  beforeEach(async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW');
+    stubMatchMedia(false);
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  function renderWith(p: Record<string, unknown>) {
+    return render(
+      <LegacyProfileTopSection uid="U-me" profile={{ exp: 0, ...p } as unknown as UserProfile} viewer={viewer()} summary={summary} />,
+    );
+  }
+
+  it('教練・女：正面有粉色戰術板 svg（logo 之後、斜光之前），背面沒有', () => {
+    const { container } = renderWith({ role: 'coach', gender: '女' });
+    const front = container.querySelector('.player-card')!;
+    const svgs = front.querySelectorAll('svg.player-card-motif');
+    expect(svgs).toHaveLength(1);
+    const svg = svgs[0]!;
+    expect(svg.getAttribute('data-motif')).toBe('board');
+    expect(svg.getAttribute('data-motif-palette')).toBe('pink');
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 51.25 53.25');
+    const logo = front.querySelector('.player-card-logo')!;
+    const shine = front.querySelector('.player-card-shine')!;
+    expect(logo.compareDocumentPosition(svg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(svg.compareDocumentPosition(shine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 粉色線條＋花瓣點綴
+    const strokes = [...svg.querySelectorAll('path')].map((p) => p.getAttribute('stroke'));
+    expect(strokes).toContain('#B94A72');
+    expect(strokes).toContain('#D9849A');
+    expect(container.querySelector('.player-card-back .player-card-motif')).toBeNull();
+  });
+
+  it('教練・男：金色戰術板、無花瓣；深色主題用深色金線', () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const { container } = renderWith({ role: 'coach', gender: '男' });
+    const svg = container.querySelector('.player-card svg.player-card-motif')!;
+    expect(svg.getAttribute('data-motif-palette')).toBe('gold');
+    const strokes = [...svg.querySelectorAll('path')].map((p) => p.getAttribute('stroke'));
+    expect(strokes).toContain('#FAC775');
+    expect(strokes).not.toContain('#F9D3DC');
+  });
+
+  it('一般用戶・女＝櫻花枝；一般用戶・男與未填＝無圖案；隱身管理員照一般用戶', () => {
+    expect(renderWith({ gender: '女' }).container.querySelector('.player-card-motif')?.getAttribute('data-motif')).toBe('sakura');
+    cleanup();
+    expect(renderWith({ gender: '男' }).container.querySelector('.player-card-motif')).toBeNull();
+    cleanup();
+    expect(renderWith({}).container.querySelector('.player-card-motif')).toBeNull();
+    cleanup();
+    expect(renderWith({ role: 'admin', stealth: true, gender: '男' }).container.querySelector('.player-card-motif')).toBeNull();
+    cleanup();
+    expect(renderWith({ role: 'super_admin', stealth: true, gender: '女' }).container.querySelector('.player-card-motif')?.getAttribute('data-motif')).toBe('sakura');
+  });
+});

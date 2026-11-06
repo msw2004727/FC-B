@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   PLAYER_CARD_FONT_LOAD,
@@ -13,6 +13,7 @@ import {
   qrLayout,
   type QrMatrix,
   browserLoadImage,
+  drawMotif,
   drawPlayerCard,
   ensurePlayerCardFonts,
   loadSafeAvatar,
@@ -29,6 +30,7 @@ import {
   playerCardShineGeometry,
   playerCardShineLayers,
 } from './player-card-model';
+import { MOTIF_PALETTES, PLAYER_CARD_MOTIFS } from './player-card-motifs';
 
 interface FillRecord {
   fillStyle: unknown;
@@ -529,5 +531,90 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     // 淺色有 soft-light 層，深色沒有
     expect(playerCardShineLayers('light', 'front').some((l) => l.blend === 'soft-light')).toBe(true);
     expect(playerCardShineLayers('dark', 'front').some((l) => l.blend === 'soft-light')).toBe(false);
+  });
+});
+
+describe('球員卡身分圖案（PNG）', () => {
+  class FakePath2D {
+    constructor(public d: string) {}
+  }
+
+  function motifModel(role: string, gender: string) {
+    return buildPlayerCardModel({ name: '林雅婷', avatarUrl: null, summary: null, role, gender });
+  }
+
+  function instrument() {
+    const fake = makeFakeCtx();
+    const calls: string[] = [];
+    const strokes: Array<{ d: string; style: unknown; alpha: number }> = [];
+    const pathFills: Array<{ d: string; style: unknown }> = [];
+    const clipRects: Array<[number, number]> = [];
+    let lastPoints: Array<[number, number]> = [];
+    const c = fake.ctx as Record<string, unknown>;
+    const origMove = c['moveTo'] as (x: number, y: number) => void;
+    c['moveTo'] = (x: number, y: number) => { lastPoints.push([x, y]); origMove(x, y); };
+    const origBegin = c['beginPath'] as () => void;
+    c['beginPath'] = () => { lastPoints = []; origBegin(); };
+    c['globalAlpha'] = 1;
+    c['clip'] = () => { calls.push('clip'); clipRects.push(lastPoints[0] ?? [NaN, NaN]); };
+    c['translate'] = (x: number, y: number) => calls.push(`translate:${x},${y}`);
+    c['setLineDash'] = vi.fn();
+    const origFill = c['fill'] as () => void;
+    c['fill'] = (p?: unknown) => {
+      if (p instanceof FakePath2D) pathFills.push({ d: p.d, style: c['fillStyle'] });
+      else origFill();
+    };
+    c['stroke'] = (p?: unknown) => {
+      if (p instanceof FakePath2D) strokes.push({ d: p.d, style: c['strokeStyle'], alpha: c['globalAlpha'] as number });
+    };
+    const origGrad = c['createLinearGradient'] as (...a: number[]) => unknown;
+    c['createLinearGradient'] = (...a: number[]) => { calls.push('shine'); return origGrad(...a); };
+    return { fake, calls, strokes, pathFills, clipRects };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('Path2D', FakePath2D);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('教練・女：drawMotif 在斜光之前、先裁切右下圓角再畫粉色戰術板與花瓣', () => {
+    const t = instrument();
+    drawPlayerCard(t.fake.ctx as unknown as CanvasRenderingContext2D, motifModel('coach', '女'), 'light', labels, {
+      avatar: null,
+      logo: logoImg,
+    });
+    const translateAt = t.calls.indexOf('translate:162,264');
+    expect(translateAt).toBeGreaterThan(-1);
+    expect(t.calls[translateAt - 1]).toBe('clip');
+    // 斜光漸層在圖案之後
+    expect(t.calls.lastIndexOf('shine')).toBeGreaterThan(translateAt);
+    // 裁切框：(162-200+11.25, 264-300) 起點＝roundRectPath 的 moveTo(x + r, y)
+    expect(t.clipRects).toContainEqual([162 - 200 + 11.25, 264 - 300]);
+    const strokeColors = t.strokes.map((s) => s.style);
+    expect(strokeColors).toContain(MOTIF_PALETTES.pink.light.line);
+    expect(strokeColors).toContain(MOTIF_PALETTES.pink.light.petalEdge);
+    expect(t.pathFills.map((f) => f.style)).toContain(MOTIF_PALETTES.pink.light.petal);
+    expect(t.strokes.length + t.pathFills.length).toBeGreaterThan(PLAYER_CARD_MOTIFS.board.length);
+  });
+
+  it('一般用戶・女（深色）：櫻花枝金枝粉花瓣；一般用戶・男不畫', () => {
+    const t = instrument();
+    drawPlayerCard(t.fake.ctx as unknown as CanvasRenderingContext2D, motifModel('user', '女'), 'dark', labels, { avatar: null, logo: null });
+    expect(t.strokes.map((s) => s.style)).toContain(MOTIF_PALETTES.gold.dark.line);
+    expect(t.pathFills.map((f) => f.style)).toContain(MOTIF_PALETTES.gold.dark.petal);
+
+    const m = instrument();
+    drawPlayerCard(m.fake.ctx as unknown as CanvasRenderingContext2D, motifModel('user', '男'), 'dark', labels, { avatar: null, logo: null });
+    expect(m.calls.some((c) => c.startsWith('translate:'))).toBe(false);
+    expect(m.strokes).toHaveLength(0);
+  });
+
+  it('不支援 Path2D 的環境略過圖案、照常產圖', () => {
+    vi.stubGlobal('Path2D', undefined);
+    const t = instrument();
+    expect(() => drawMotif(t.fake.ctx as unknown as CanvasRenderingContext2D, { key: 'laurel', palette: 'gold' }, 'light')).not.toThrow();
+    expect(t.calls).toHaveLength(0);
   });
 });

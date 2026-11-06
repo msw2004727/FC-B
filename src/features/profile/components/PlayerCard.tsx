@@ -24,7 +24,42 @@ import {
   usePlayerCardSpin,
   writePlayerCardLocked,
 } from './player-card-spin';
+import {
+  PLAYER_CARD_MOTIF_BOX,
+  playerCardMotifColors,
+  playerCardMotifStrokes,
+  type PlayerCardMotif,
+} from '../data/player-card-motifs';
 import './player-card.css';
+
+/** 右下身分圖案（裝飾）：路徑與色票都來自 player-card-motifs，與 PNG 同一份；右下圓角裁切由 CSS clip-path 處理。 */
+function PlayerCardMotifSvg({ motif, theme }: { motif: PlayerCardMotif; theme: PlayerCardTheme }): JSX.Element {
+  const colors = playerCardMotifColors(motif, theme);
+  return (
+    <svg
+      class="player-card-motif"
+      data-motif={motif.key}
+      data-motif-palette={motif.palette}
+      viewBox={`0 0 ${PLAYER_CARD_MOTIF_BOX.width} ${PLAYER_CARD_MOTIF_BOX.height}`}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g stroke-linecap="round" stroke-linejoin="round">
+        {playerCardMotifStrokes(motif).map((s, i) => (
+          <path
+            key={i}
+            d={s.d}
+            fill={s.fill ? colors[s.fill] : 'none'}
+            stroke={s.stroke ? colors[s.stroke] : undefined}
+            stroke-width={s.stroke ? s.width : undefined}
+            stroke-dasharray={s.dash ? s.dash.join(' ') : undefined}
+            opacity={s.petal ? colors.petalOpacity : colors.opacity}
+          />
+        ))}
+      </g>
+    </svg>
+  );
+}
 
 /** 半圓轉速表幾何（viewBox 40×23，圓心 20,20，外弧半徑 17）：0 RPM 在左、上限在右。 */
 function gaugePoint(rpm: number, r: number): string {
@@ -206,6 +241,7 @@ export function PlayerCard({
               decoding="async"
               loading="lazy"
             />
+            {model.motif && <PlayerCardMotifSvg motif={model.motif} theme={theme} />}
             <PlayerCardShine theme={theme} face="front" />
           </div>
           <div class="player-card-back" data-theme-variant={theme} aria-hidden="true">

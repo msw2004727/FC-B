@@ -3,6 +3,7 @@
  * 只吃頁面已載入的資料（attendance summary、viewer.teamIds、有效身分名字與頭像），不讀不寫 Firestore。
  */
 import type { UserAttendanceSummary } from './attendance-summary';
+import { resolvePlayerCardMotif, type PlayerCardMotif } from './player-card-motifs';
 
 export type PlayerCardTheme = 'light' | 'dark';
 
@@ -26,6 +27,8 @@ export interface PlayerCardModel {
   showClubBadge: boolean;
   /** 兩位數以上時方塊加寬。 */
   clubBadgeWide: boolean;
+  /** 卡面右下身分圖案（player-card-motifs.ts）；null＝不畫。 */
+  motif: PlayerCardMotif | null;
 }
 
 export interface PlayerCardModelInput {
@@ -35,6 +38,10 @@ export interface PlayerCardModelInput {
   avatarUrl: string | null;
   summary: UserAttendanceSummary | null;
   teamIds?: Iterable<unknown> | null;
+  /** 有效身分（resolveEffectiveRole 結果，隱身管理員已回 user）；決定身分圖案。 */
+  role?: string | null;
+  /** profile.gender；只認 trim 後等於「女」。 */
+  gender?: unknown;
 }
 
 function toCount(value: unknown): number {
@@ -97,6 +104,7 @@ export function buildPlayerCardModel(input: PlayerCardModelInput): PlayerCardMod
     clubCount,
     showClubBadge: clubCount > 0,
     clubBadgeWide: clubCount >= 10,
+    motif: resolvePlayerCardMotif(input.role, input.gender),
   };
 }
 

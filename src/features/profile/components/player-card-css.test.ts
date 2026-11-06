@@ -193,3 +193,26 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
   });
 });
 
+
+describe('球員卡身分圖案與分享鈕間距（站長 11-06）', () => {
+  it('頭部下緣 12px：分享球員卡按鈕到社群圖示列間距（原 .25rem＝3.75px）', () => {
+    const header = card.find((r) => r.selector === '.legacy-ui .profile-header.player-card-header');
+    expect(header).toBeDefined();
+    expect(header!.body).toMatch(/padding:\s*\.5rem \.5rem 12px\s*;?/);
+  });
+
+  it('.player-card-motif 定位在 (162, 264) 51.25×53.25、右下圓角 11.25，依 --pcu 縮放、不吃點擊', () => {
+    const rule = card.find((r) => r.selector === '.player-card-motif');
+    expect(rule).toBeDefined();
+    const body = rule!.body;
+    expect(body).toMatch(/position:\s*absolute/);
+    expect(body).toMatch(/left:\s*calc\(162 \* var\(--pcu\)\)/);
+    expect(body).toMatch(/top:\s*calc\(264 \* var\(--pcu\)\)/);
+    expect(body).toMatch(/width:\s*calc\(51\.25 \* var\(--pcu\)\)/);
+    expect(body).toMatch(/height:\s*calc\(53\.25 \* var\(--pcu\)\)/);
+    expect(body).toMatch(/-webkit-clip-path:\s*inset\(0 round 0 0 calc\(11\.25 \* var\(--pcu\)\) 0\)/);
+    expect(body).toMatch(/(^|[^-])clip-path:\s*inset\(0 round 0 0 calc\(11\.25 \* var\(--pcu\)\) 0\)/);
+    expect(body).toMatch(/pointer-events:\s*none/);
+    expect(body).not.toMatch(/z-index/);
+  });
+});

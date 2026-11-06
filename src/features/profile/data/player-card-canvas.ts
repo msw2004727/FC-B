@@ -21,6 +21,12 @@ import {
   type PlayerCardPalette,
   type PlayerCardTheme,
 } from './player-card-model';
+import {
+  PLAYER_CARD_MOTIF_BOX,
+  playerCardMotifColors,
+  playerCardMotifStrokes,
+  type PlayerCardMotif,
+} from './player-card-motifs';
 
 export interface PlayerCardLabels {
   title: string;
@@ -361,6 +367,38 @@ function drawQr(ctx: Ctx, qr: QrMatrix, p: PlayerCardPalette): void {
   }
 }
 
+/**
+ * 右下身分圖案：與網頁 <svg class="player-card-motif"> 同一份路徑（Path2D 直接吃 d 字串）與色票，
+ * 裁切照設計預覽：方框右下圓角 11.25（上、左延伸出去不裁，路徑本身都在方框內）。
+ * 不支援 Path2D 的環境略過，不影響產圖。
+ */
+export function drawMotif(ctx: Ctx, motif: PlayerCardMotif | null, theme: PlayerCardTheme): void {
+  if (!motif || typeof Path2D !== 'function') return;
+  const { x, y, width, height, radius } = PLAYER_CARD_MOTIF_BOX;
+  const colors = playerCardMotifColors(motif, theme);
+  ctx.save();
+  roundRectPath(ctx, x - 200, y - 300, width + 200, height + 300, radius);
+  ctx.clip();
+  ctx.translate(x, y);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const s of playerCardMotifStrokes(motif)) {
+    const path = new Path2D(s.d);
+    ctx.globalAlpha = s.petal ? colors.petalOpacity : colors.opacity;
+    if (s.fill) {
+      ctx.fillStyle = colors[s.fill];
+      ctx.fill(path);
+    }
+    if (s.stroke) {
+      ctx.setLineDash(s.dash ? [...s.dash] : []);
+      ctx.strokeStyle = colors[s.stroke];
+      ctx.lineWidth = s.width ?? 1;
+      ctx.stroke(path);
+    }
+  }
+  ctx.restore();
+}
+
 function drawShine(ctx: Ctx, theme: PlayerCardTheme): void {
   // PNG 畫正面光層；角度、停點、疊加方式與網頁共用 PLAYER_CARD_SHINE（player-card-model.ts）。
   const { width: W, height: H, radius } = PLAYER_CARD_SIZE;
@@ -396,6 +434,7 @@ export function drawPlayerCard(
   drawNameAndGauge(ctx, model, p);
   drawStats(ctx, model, labels, p);
   drawLogo(ctx, assets.logo, p);
+  drawMotif(ctx, model.motif, theme);
   drawShine(ctx, theme);
   // QR 畫在反光之後，避免斜光降低對比影響掃描。
   if (assets.qr && assets.qr.size > 0) drawQr(ctx, assets.qr, p);
