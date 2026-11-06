@@ -10,6 +10,7 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 // 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
+import { NOINDEX_HEADER_PATHS } from './src/core/route-meta.ts';
 import { APP_VERSION } from './src/version.ts';
 
 /** 版本角標用的短 commit：Cloudflare Pages 建置提供 CF_PAGES_COMMIT_SHA，本機退回 git。 */
@@ -41,6 +42,7 @@ function buildId(): number {
  * Cloudflare Pages `_headers`。
  * - 一律：雜湊命名的 assets 長快取；runtime-config.json 不得快取（SW 遠端開關，改了要立即生效）；
  *   sw.js 每次向伺服器確認（瀏覽器檢查 SW 更新用）。
+ *   已知私人路徑另加 X-Robots-Tag: noindex（NOINDEX_HEADER_PATHS；內測與正式都輸出）。
  * - 內測期另加：全站不收錄；HTML 每次向伺服器確認新版（no-cache，未變更回 304）。
  * 2026-10-20 HTML 由 no-store 改 no-cache：一樣不會用到舊版 HTML，但可走 304 與瀏覽器「上一頁」快取（no-store 會讓 bfcache 失效）。
  */
@@ -59,6 +61,10 @@ const COMMON_HEADERS = [
     path,
     '  ! Cache-Control',
     '  Cache-Control: public, max-age=86400',
+  ]),
+  ...NOINDEX_HEADER_PATHS.flatMap((path) => [
+    path,
+    '  X-Robots-Tag: noindex',
   ]),
 ];
 const INTERNAL_TEST_HEADERS = [
@@ -95,6 +101,9 @@ function internalTestNoIndex(): Plugin {
         const routeMetaPath = fileURLToPath(new URL('./src/core/route-meta.ts', import.meta.url));
         if (!appSrc.includes('applyRouteMeta(') || !existsSync(routeMetaPath)) {
           throw new Error('S2 未完成，不可公開建置');
+        }
+        if (!readFileSync(routeMetaPath, 'utf8').includes('data-route-robots')) {
+          throw new Error('S3 未完成，不可公開建置');
         }
       }
     },
