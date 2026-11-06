@@ -16,8 +16,54 @@ import {
   type PlayerCardShineFace,
   type PlayerCardTheme,
 } from '../data/player-card-model';
-import { readPlayerCardLocked, usePlayerCardSpin, writePlayerCardLocked } from './player-card-spin';
+import {
+  PLAYER_CARD_MAX_RPM,
+  PLAYER_CARD_RPM_REDLINE,
+  readPlayerCardLocked,
+  rpmToNeedleDeg,
+  usePlayerCardSpin,
+  writePlayerCardLocked,
+} from './player-card-spin';
 import './player-card.css';
+
+/** 半圓轉速表幾何（viewBox 40×23，圓心 20,20，外弧半徑 17）：0 RPM 在左、上限在右。 */
+function gaugePoint(rpm: number, r: number): string {
+  const a = Math.PI * (1 - rpm / PLAYER_CARD_MAX_RPM);
+  return `${(20 + r * Math.cos(a)).toFixed(2)} ${(20 - r * Math.sin(a)).toFixed(2)}`;
+}
+function gaugeArc(from: number, to: number): string {
+  return `M${gaugePoint(from, 17)}A17 17 0 0 1 ${gaugePoint(to, 17)}`;
+}
+/** 每 60 RPM 一條細刻度，每 180 RPM 主刻度（較長）。模組層算一次，畫面不重算。 */
+const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_MAX_RPM / 60 + 1 }, (_, i) => {
+  const rpm = i * 60;
+  return {
+    d: `M${gaugePoint(rpm, rpm % 180 === 0 ? 12.5 : 14.5)}L${gaugePoint(rpm, 17)}`,
+    major: rpm % 180 === 0,
+    red: rpm >= PLAYER_CARD_RPM_REDLINE,
+  };
+});
+
+/** 轉速表（裝飾）：指針角度由 player-card-spin 直寫 transform，靜止指 0。 */
+function RpmGauge({ needleRef }: { needleRef: { current: SVGGElement | null } }): JSX.Element {
+  return (
+    <svg class="player-card-rpm-gauge" viewBox="0 0 40 23" aria-hidden="true" focusable="false">
+      <path class="player-card-rpm-gauge-arc" d={gaugeArc(0, PLAYER_CARD_MAX_RPM)} />
+      <path class="player-card-rpm-gauge-red" d={gaugeArc(PLAYER_CARD_RPM_REDLINE, PLAYER_CARD_MAX_RPM)} />
+      {GAUGE_TICKS.map((tick) => (
+        <path
+          key={tick.d}
+          class={`player-card-rpm-gauge-tick${tick.major ? ' is-major' : ''}${tick.red ? ' is-red' : ''}`}
+          d={tick.d}
+        />
+      ))}
+      <g class="player-card-rpm-needle" ref={needleRef} transform={`rotate(${rpmToNeedleDeg(0)} 20 20)`}>
+        <path d="M20 20L20 6" />
+      </g>
+      <circle class="player-card-rpm-gauge-hub" cx="20" cy="20" r="1.8" />
+    </svg>
+  );
+}
 
 function LockIcon({ locked }: { locked: boolean }): JSX.Element {
   return (
@@ -60,7 +106,7 @@ export function PlayerCard({
   const theme = resolvePlayerCardTheme();
   const gaugeWidth = `${Math.round(model.gaugeRatio * 100)}%`;
   const [locked, setLocked] = useState(readPlayerCardLocked);
-  const { flipRef, rpmRef, bestRef, initialBest, handlers } = usePlayerCardSpin(locked);
+  const { flipRef, rpmRef, bestRef, needleRef, initialBest, handlers } = usePlayerCardSpin(locked);
   const toggleLock = (): void => {
     const next = !locked;
     setLocked(next);
@@ -74,8 +120,11 @@ export function PlayerCard({
       {topBar != null && <div class="player-card-topbar">{topBar}</div>}
       {/* 轉速：數字由 player-card-spin 直寫 DOM（不重畫整卡）；裝飾性資訊，讀屏略過。 */}
       <div class="player-card-rpm" aria-hidden="true">
-        <span class="player-card-rpm-now">
-          <span class="player-card-rpm-num" ref={rpmRef}>0</span>/RPM
+        <span class="player-card-rpm-row">
+          <span class="player-card-rpm-now">
+            <span class="player-card-rpm-num" ref={rpmRef}>0</span>/RPM
+          </span>
+          <RpmGauge needleRef={needleRef} />
         </span>
         <span class="player-card-rpm-best">
           {t('profile.playerCard.bestRpm')}

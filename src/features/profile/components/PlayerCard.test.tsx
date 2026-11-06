@@ -51,6 +51,7 @@ import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { playerCardShineCssGradient, playerCardShineLayers } from '../data/player-card-model';
+import { rpmToNeedleDeg } from './player-card-spin';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
@@ -958,6 +959,42 @@ describe('T-092 球員卡（DOM）', () => {
           expect(localStorage.getItem(BEST_KEY)).toBeNull();
           view.unmount();
           expect(Number(localStorage.getItem(BEST_KEY))).toBeGreaterThan(400);
+        });
+
+        it('轉速表：半圓刻度、600 起紅區、靜止指 0；指針角度對應轉速，停下與鎖上歸 0', () => {
+          expect(rpmToNeedleDeg(0)).toBe(-90);
+          expect(rpmToNeedleDeg(360)).toBe(0);
+          expect(rpmToNeedleDeg(720)).toBe(90);
+          expect(rpmToNeedleDeg(900)).toBe(90);
+          expect(rpmToNeedleDeg(-5)).toBe(-90);
+          const { container } = renderTop(viewer());
+          const { stage, flip, lock } = parts(container);
+          const angles = recordAngles(flip);
+          const gauge = container.querySelector('.player-card-rpm .player-card-rpm-gauge')!;
+          expect(gauge.getAttribute('aria-hidden')).toBe('true');
+          expect(container.querySelector('.player-card')!.contains(gauge)).toBe(false);
+          expect(gauge.querySelector('.player-card-rpm-gauge-red')).not.toBeNull();
+          const ticks = gauge.querySelectorAll('.player-card-rpm-gauge-tick');
+          expect(ticks).toHaveLength(13);
+          expect(gauge.querySelectorAll('.player-card-rpm-gauge-tick.is-major')).toHaveLength(5);
+          expect(gauge.querySelectorAll('.player-card-rpm-gauge-tick.is-red')).toHaveLength(3); // 600、660、720
+          const needle = gauge.querySelector('.player-card-rpm-needle')!;
+          expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
+          const { num } = rpmParts(container);
+          swipe(stage, 200);
+          const rpm = Number(num.textContent);
+          expect(rpm).toBeGreaterThan(400);
+          expect(needle.getAttribute('transform')).toBe(`rotate(${rpmToNeedleDeg(rpm)} 20 20)`);
+          frames(angles, 3);
+          const deg = Number(/rotate\((-?[\d.]+) /.exec(needle.getAttribute('transform')!)![1]);
+          expect(deg).toBeLessThan(rpmToNeedleDeg(rpm)); // 每幀跟著減速
+          flush();
+          expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
+          swipe(stage, 200);
+          frames(angles, 2);
+          fireEvent.click(lock);
+          flush();
+          expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
         });
 
         it('寫入取較大值：其他分頁已寫入更高記錄時不被覆蓋', () => {

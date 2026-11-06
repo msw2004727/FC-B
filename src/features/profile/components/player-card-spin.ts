@@ -34,6 +34,15 @@ const HOLD_ZERO_MS = 300;
 /** 按下到放手在此時間內才算「快速撥」，才疊加剩餘轉速；抓住停一下再撥不疊加，避免抓住卻停不下。 */
 const CARRY_MAX_HOLD_MS = 150;
 
+/** 轉速表紅色區間起點（到上限 720 為止）。 */
+export const PLAYER_CARD_RPM_REDLINE = 600;
+
+/** 轉速表指針角度：0 RPM 指向左（-90°）、上限指向右（+90°），超出上限夾住。 */
+export function rpmToNeedleDeg(rpm: number): number {
+  const r = Math.max(0, Math.min(PLAYER_CARD_MAX_RPM, rpm));
+  return -90 + (r / PLAYER_CARD_MAX_RPM) * 180;
+}
+
 /** 角速度（°/ms）換算 RPM。 */
 export function degPerMsToRpm(vel: number): number {
   return Math.round((Math.abs(vel) * 60000) / 360);
@@ -106,6 +115,7 @@ interface SpinState {
   carryT: number;
   rpmText: string;
   rpmT: number;
+  needleRpm: number;
   best: number;
   bestDirty: boolean;
   /** 按住超過 HOLD_ZERO_MS 歸零用的計時器。 */
@@ -124,6 +134,8 @@ export function usePlayerCardSpin(locked: boolean): {
   flipRef: { current: HTMLDivElement | null };
   rpmRef: { current: HTMLSpanElement | null };
   bestRef: { current: HTMLSpanElement | null };
+  /** 轉速表指針（SVG <g>），角度每幀直寫 transform 屬性。 */
+  needleRef: { current: SVGGElement | null };
   /** 首次畫面用的最高記錄（之後由 DOM 直寫更新）。 */
   initialBest: number;
   handlers: PlayerCardSpinHandlers;
@@ -131,6 +143,7 @@ export function usePlayerCardSpin(locked: boolean): {
   const flipRef = useRef<HTMLDivElement | null>(null);
   const rpmRef = useRef<HTMLSpanElement | null>(null);
   const bestRef = useRef<HTMLSpanElement | null>(null);
+  const needleRef = useRef<SVGGElement | null>(null);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
   const st = useRef<SpinState>({
@@ -148,6 +161,7 @@ export function usePlayerCardSpin(locked: boolean): {
     carryT: 0,
     rpmText: '0',
     rpmT: -Infinity,
+    needleRpm: 0,
     best: 0,
     bestDirty: false,
     holdTimer: 0,
@@ -182,6 +196,11 @@ export function usePlayerCardSpin(locked: boolean): {
         st.bestDirty = true;
       }
       if (rpm === 0) flushBest();
+      // 指針每幀跟著轉（不節流，畫面才順）；只改這個 SVG 群組的屬性，不觸發 Preact 重繪
+      if (rpm !== st.needleRpm) {
+        st.needleRpm = rpm;
+        needleRef.current?.setAttribute('transform', `rotate(${rpmToNeedleDeg(rpm)} 20 20)`);
+      }
       const el = rpmRef.current;
       const text = String(rpm);
       if (!el || text === st.rpmText) return;
@@ -411,5 +430,5 @@ export function usePlayerCardSpin(locked: boolean): {
 
   useEffect(() => dispose, []);
 
-  return { flipRef, rpmRef, bestRef, initialBest: st.best, handlers };
+  return { flipRef, rpmRef, bestRef, needleRef, initialBest: st.best, handlers };
 }
