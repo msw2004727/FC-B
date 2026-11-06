@@ -24,7 +24,7 @@
   "notFound.home": "回到首頁",
   "feature.reserved": "此功能即將推出",
   "feature.external": "即將接入外部系統",
-  "internalTest.badge": "內測版 · {sha} · {target}",
+  "internalTest.badge": "ToosterX搶先試用版 {version}",
   "ui": {
     "shell": {
       "sportAll": "All",

@@ -24,7 +24,7 @@
   "notFound.home": "Về trang chủ",
   "feature.reserved": "Tính năng này sắp ra mắt",
   "feature.external": "Sắp kết nối hệ thống bên ngoài",
-  "internalTest.badge": "Bản thử nghiệm · {sha} · {target}",
+  "internalTest.badge": "ToosterX bản dùng thử sớm {version}",
   "ui": {
     "shell": {
       "sportAll": "All",
