@@ -48,11 +48,14 @@ export interface ShareBuilderContext {
 
 // 站長 2026-11-06：分享模板的「熱度」（推估形容詞）改為實際名額，並註明是分享當下的數字（分享後不會自動更新）。
 export function buildShareCapacityText(event: ShareEvent, sharedAt: number = Date.now()): string | null {
-  const current = Number(event.current);
-  const max = Number(event.max);
-  const hasMax = Number.isFinite(max) && max > 0;
-  if (!Number.isFinite(current) && !hasMax) return null;
-  const count = Number.isFinite(current) && current > 0 ? current : 0;
+  // 外部連結活動沒有站內名額（A 建立時 max／current 都是 0），不顯示。
+  if (event.type === 'external') return null;
+  const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const hasCurrent = isCount(event.current);
+  const max = isCount(event.max) ? Math.floor(event.max) : 0;
+  const hasMax = max > 0;
+  if (!hasCurrent && !hasMax) return null;
+  const count = hasCurrent ? Math.max(0, Math.floor(event.current as number)) : 0;
   const body = !hasMax
     ? `已報 ${count} 人`
     : count >= max

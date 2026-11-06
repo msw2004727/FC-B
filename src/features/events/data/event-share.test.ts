@@ -140,3 +140,31 @@ it('卸載後完成的非同步結果不再開選單或 toast', async () => {
   expect(showSheet).not.toHaveBeenCalled();
   expect(showToast).not.toHaveBeenCalled();
 });
+
+it('名額以按下分享那一刻為準，複製文字、替代文字、Flex 卡片一致', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(Date.UTC(2026, 10, 6, 10, 30)); // 台北 11/06 18:30
+  try {
+    const counted = { ...event, current: 12, max: 20 };
+    const capacity = '名額：已報 12／20 人（11/06 18:30 分享時）';
+    const copy = vi.fn(async () => true);
+    await shareEvent(counted, options(true), {
+      loadLiff: async () => null,
+      showSheet: async () => 'copy',
+      copy,
+    });
+    expect(copy).toHaveBeenCalledExactlyOnceWith(
+      `＜活動＞\n日期：今天\n地點：球場\n${capacity}\nhttps://toosterx.com/event-share/public-1?v=20260707`,
+    );
+    const liff = picker();
+    await shareEvent(counted, options(true), {
+      loadLiff: async () => liff,
+      showSheet: async () => 'line',
+    });
+    const [[messages]] = vi.mocked(liff.shareTargetPicker).mock.calls as unknown as [[Array<{ altText: string; contents: unknown }>]];
+    expect(messages[0]?.altText).toContain(capacity);
+    expect(JSON.stringify(messages[0]?.contents)).toContain('已報 12／20 人（11/06 18:30 分享時）');
+  } finally {
+    vi.useRealTimers();
+  }
+});

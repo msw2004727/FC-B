@@ -56,6 +56,9 @@ describe('M-091：照 A 分享 builder', () => {
     expect(buildShareCapacityText({ current: 12, max: 0 }, SHARED_AT)).toBe('已報 12 人（11/06 18:30 分享時）');
     expect(buildShareCapacityText({ max: 20 }, SHARED_AT)).toBe('已報 0／20 人（11/06 18:30 分享時）');
     expect(buildShareCapacityText({}, SHARED_AT)).toBeNull();
+    expect(buildShareCapacityText({ type: 'external', current: 0, max: 0 }, SHARED_AT)).toBeNull();
+    expect(buildShareCapacityText({ current: 12.7, max: 20 }, SHARED_AT)).toBe('已報 12／20 人（11/06 18:30 分享時）');
+    expect(buildShareCapacityText({ current: '12' as unknown as number }, SHARED_AT)).toBeNull();
     // UTC 16:05＝台北隔天 00:05
     expect(buildShareCapacityText({ current: 1, max: 2 }, Date.UTC(2026, 10, 6, 16, 5)))
       .toBe('已報 1／2 人（11/07 00:05 分享時）');
@@ -177,7 +180,11 @@ describe('M-091：照 A 分享 builder', () => {
     const bubble = buildExternalEventFlexMessage({
       externalUrl: 'https://external.test',
       image: 'https://img.test/a.jpg',
+      current: 0,
+      max: 0,
     });
+    expect(JSON.stringify(bubble.body)).not.toContain('名額');
+    expect(buildEventShareAltText({ type: 'external', current: 0, max: 0 }, 'URL')).not.toContain('名額');
     expect(JSON.stringify(bubble.footer)).toContain('"label":"查看活動"');
     expect(JSON.stringify(bubble.footer)).toContain('"uri":"https://external.test"');
     expect(JSON.stringify(bubble.body)).toContain('"width":"110px"');
