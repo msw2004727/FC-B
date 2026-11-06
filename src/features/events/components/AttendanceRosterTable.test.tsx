@@ -123,8 +123,10 @@ describe('AttendanceRosterTable', () => {
     expect(screen.getByText('簽退')).toBeTruthy();
     expect(screen.getByText('備註')).toBeTruthy();
     expect(screen.getByText('FC One')).toBeTruthy();
-    expect(screen.getByText('FC One 保留席位')).toBeTruthy();
-    expect(screen.getByText('保留席位')).toBeTruthy();
+    // 測試同步更新（站長 11-06 選「座位點」）：保留席位列改為「保留」膠囊，隊名放在 title 與讀屏文字。
+    const seatPill = screen.getByTitle('FC One 保留席位');
+    expect(seatPill.textContent).toBe('保留：FC One 保留席位');
+    expect(seatPill.classList.contains('team-reservation-seat-pill')).toBe(true);
     expect(screen.getByText('一般報名')).toBeTruthy();
     expect(screen.getByText('ProxyParent')).toBeTruthy();
     expect(screen.getByText('僅代報')).toBeTruthy();
@@ -328,5 +330,30 @@ describe('T-074b 快速調整', () => {
     view.rerender(<AttendanceRosterTable {...props} canAdjustTeamReservation={() => false} />);
     expect(screen.getByText('二隊')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '快速調整' })).toBeNull();
+  });
+});
+
+describe('座位點標頭（站長 11-06 選風格 B）', () => {
+  function renderSummary(reservedSlots: number, usedSlots: number, remainingSlots: number) {
+    return render(<AttendanceRosterTable publicRosterOnly event={{ id: 'e1', max: 30, teamReservationSummaries: [
+      { teamId: 't1', teamName: '飛鷹FC', reservedSlots, usedSlots, remainingSlots },
+    ] }} registrations={[]} attendanceRecords={[]} roles={{}} onOpenProfile={vi.fn()} />);
+  }
+
+  it('實心點＝已使用、空心點＝剩餘，旁邊「剩 N」，頭像取隊名首字', () => {
+    const { container } = renderSummary(5, 2, 3);
+    expect(container.querySelectorAll('.team-reservation-seat-dots i')).toHaveLength(5);
+    expect(container.querySelectorAll('.team-reservation-seat-dots i.is-used')).toHaveLength(2);
+    expect(container.querySelector('.team-reservation-seat-left')?.textContent).toBe('剩 3');
+    expect(screen.getByLabelText('佔位 5，已使用 2，剩餘 3')).toBeTruthy();
+    expect(container.querySelector('.team-reservation-section-avatar')?.textContent).toBe('飛');
+    expect(screen.queryByText(/佔位: /)).toBeNull();
+  });
+
+  it('超過 10 位改顯示「已用／總數」，不畫圓點', () => {
+    const { container } = renderSummary(12, 4, 8);
+    expect(container.querySelector('.team-reservation-seat-dots')).toBeNull();
+    expect(container.querySelector('.team-reservation-seat-count')?.textContent).toBe('4/12');
+    expect(container.querySelector('.team-reservation-seat-left')?.textContent).toBe('剩 8');
   });
 });

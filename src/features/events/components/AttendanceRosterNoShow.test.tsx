@@ -34,8 +34,13 @@ const base: AttendanceRosterTableProps = {
   canManage: true, canViewNoShow: true, editing: true, noShowData: data,
 };
 const title = '放鴿子次數（已結束、正式報名且未完成簽到）';
+// 測試同步更新（站長 11-06 選「座位點」）：保留席位列的名稱只在膠囊 title，改用 title 找列。
+function rowFor(name: string): HTMLTableRowElement {
+  return (screen.queryByText(name) ?? screen.getByTitle(name)).closest('tr')!;
+}
+
 function cellFor(name: string): HTMLTableCellElement {
-  const row = screen.getByText(name).closest('tr')!;
+  const row = rowFor(name);
   const index = Array.from(document.querySelectorAll('thead th')).findIndex(th => th.textContent === '🕊');
   return row.cells[index]!;
 }
@@ -132,7 +137,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     expect(cellFor('代報人').textContent).toBe('--');
     expect(cellFor('測試隊 保留席位').textContent).toBe('--');
     for (const name of ['↳ 同行者', '代報人', '測試隊 保留席位']) {
-      expect(screen.getByText(name).closest('tr')?.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+      expect(rowFor(name).querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     }
     expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);
     expect(!!screen.queryByRole('columnheader', { name: '候' })).toBe(demote);

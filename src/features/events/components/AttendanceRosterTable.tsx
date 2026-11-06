@@ -257,8 +257,8 @@ export function AttendanceRosterTable({
       );
     } else if (p.isTeamPlaceholder) {
       nameInner = (
-        <span class="reg-name-text team-reservation-placeholder-name">
-          {p.displayName}
+        <span class="team-reservation-seat-pill" title={p.displayName}>
+          保留<span class="team-reservation-sr">{`：${p.displayName}`}</span>
         </span>
       );
     } else if (p.hasSelfReg) {
@@ -334,6 +334,39 @@ export function AttendanceRosterTable({
           踢
         </button>
       </td>
+    );
+  }
+
+  // 站長 11-06 選「座位點」樣式：保留席位列只放「保留」膠囊，簽到／簽退／備註留白。
+  function renderBlankAttendanceCells(): JSX.Element | null {
+    if (!showAttendanceRecordColumns) return null;
+    return (
+      <>
+        <td />
+        <td />
+        <td />
+      </>
+    );
+  }
+
+  // 實心＝已使用、空心＝剩餘；超過 10 位改顯示「已用／總數」避免一長串圓點。
+  function renderSeatSummary(p: ConfirmedRosterPerson): JSX.Element {
+    const reserved = Math.max(0, Math.floor(Number(p.reservedSlots || 0)));
+    const used = Math.min(reserved, Math.max(0, Math.floor(Number(p.usedSlots || 0))));
+    const remaining = Math.max(0, Math.floor(Number(p.remainingSlots || 0)));
+    return (
+      <span class="team-reservation-seats" aria-label={`佔位 ${reserved}，已使用 ${used}，剩餘 ${remaining}`}>
+        {reserved > 0 && reserved <= 10 ? (
+          <span class="team-reservation-seat-dots" aria-hidden="true">
+            {Array.from({ length: reserved }, (_, i) => (
+              <i key={i} class={i < used ? 'is-used' : undefined} />
+            ))}
+          </span>
+        ) : (
+          <span class="team-reservation-seat-count" aria-hidden="true">{`${used}/${reserved}`}</span>
+        )}
+        <span class="team-reservation-seat-left" aria-hidden="true">{`剩 ${remaining}`}</span>
+      </span>
     );
   }
 
@@ -492,21 +525,18 @@ export function AttendanceRosterTable({
                     <div class="team-reservation-section-title">
                       <div class="team-reservation-section-main">
                         <span class="team-reservation-section-avatar" aria-hidden="true">
-                          俱
+                          {Array.from(p.teamReservationTeamName || p.displayName || '俱')[0]}
                         </span>
                         <strong class="team-reservation-section-name">
                           {p.teamReservationTeamName || p.displayName}
                         </strong>
                       </div>
-                      <span class="team-reservation-summary">
-                        <span>{`佔位: ${Number(p.reservedSlots || 0)}`}</span>
-                        <span>{`已使用: ${Number(p.usedSlots || 0)}`}</span>
-                        <span>{`剩餘: ${Number(p.remainingSlots || 0)}`}</span>
-                      </span>
+                      {renderSeatSummary(p)}
                       {!submitting && p.teamReservationTeamId
                         && canAdjustTeamReservation?.(p.teamReservationTeamId) && (
                         <button type="button" class="team-reservation-adjust-btn"
-                          onClick={() => onAdjustTeamReservation?.(p.teamReservationTeamId!)}>快速調整</button>
+                          aria-label="快速調整"
+                          onClick={() => onAdjustTeamReservation?.(p.teamReservationTeamId!)}>調整</button>
                       )}
                     </div>
                   </td>
@@ -544,7 +574,7 @@ export function AttendanceRosterTable({
                     {renderDemoteCell(p)}
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderNoShowCell(p)}
-                    {renderEmptyAttendanceCells('保留席位')}
+                    {renderBlankAttendanceCells()}
                   </tr>
                 );
               }
@@ -554,7 +584,7 @@ export function AttendanceRosterTable({
                   <tr key={rowKey} class="team-reservation-placeholder-row">
                     <td style="padding:.35rem .3rem;text-align:left">{renderNameCell(p)}</td>
                     {renderNoShowCell(p)}
-                    {renderEmptyAttendanceCells('保留席位')}
+                    {renderBlankAttendanceCells()}
                   </tr>
                 );
               }
