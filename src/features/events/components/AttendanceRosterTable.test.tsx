@@ -341,7 +341,7 @@ describe('座位點標頭（站長 11-06 選風格 B）', () => {
   function renderSummary(reservedSlots: number, usedSlots: number, remainingSlots: number, members = 0) {
     // 沒有剩餘席位時，model 只在有隊員報名時才畫標頭，所以超用情境要帶隊員報名。
     const registrations = Array.from({ length: members }, (_, i) => ({
-      _docId: `r${i}`, userId: `u${i}`, userName: `隊員${i}`, status: 'confirmed',
+      _docId: `r${i}`, userId: `u${i}`, userName: `隊員${i}`, status: 'confirmed', participantType: 'self',
       teamReservationTeamId: 't1', teamReservationTeamName: '飛鷹FC',
     }));
     return render(<AttendanceRosterTable publicRosterOnly event={{ id: 'e1', max: 30, teamReservationSummaries: [
