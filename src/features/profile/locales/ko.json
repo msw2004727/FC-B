@@ -94,7 +94,8 @@
     "shareAgain": "공유",
     "save": "저장",
     "shareUnavailable": "공유를 열 수 없습니다. 저장을 눌러 주세요.",
-    "lock": "회전 잠금"
+    "lock": "회전 잠금",
+    "bestRpm": "최고 기록: "
   },
   "quick": {
     "group": "개인 설정",

@@ -94,7 +94,8 @@
     "shareAgain": "Share",
     "save": "Save",
     "shareUnavailable": "Sharing isn't available. Tap Save instead.",
-    "lock": "Lock rotation"
+    "lock": "Lock rotation",
+    "bestRpm": "Best: "
   },
   "quick": {
     "group": "My settings",

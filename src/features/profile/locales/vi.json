@@ -94,7 +94,8 @@
     "shareAgain": "Chia sẻ",
     "save": "Lưu",
     "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu.",
-    "lock": "Khóa xoay"
+    "lock": "Khóa xoay",
+    "bestRpm": "Kỷ lục: "
   },
   "quick": {
     "group": "Cài đặt cá nhân",

@@ -798,6 +798,196 @@ describe('T-092 球員卡（DOM）', () => {
         expect(flip.style.transform).toBe('rotateY(180deg)');
       });
 
+      describe('連撥加速＋RPM（站長 11-06）', () => {
+        const BEST_KEY = 'toosterx:player-card-best-rpm';
+        const MAX_DEG_PER_MS = (720 * 360) / 60000;
+        beforeEach(() => localStorage.removeItem(BEST_KEY));
+        afterEach(() => localStorage.removeItem(BEST_KEY));
+
+        /** 30ms 內從 x=100 撥到 toX（不同於上面的 flick，可指定起點以外的位移）。 */
+        function swipe(stage: Element, toX: number): void {
+          fireEvent.pointerDown(stage, ptr(100));
+          for (let i = 1; i <= 3; i++) {
+            now += 10;
+            fireEvent.pointerMove(stage, ptr(100 + ((toX - 100) * i) / 3));
+          }
+          fireEvent.pointerUp(stage, ptr(toX));
+        }
+        /** 推進 n 格（每格 16ms），回傳每格角速度（°/ms）。 */
+        function frames(angles: number[], n: number): number[] {
+          const vels: number[] = [];
+          for (let i = 0; i < n && pending.size; i++) {
+            const before = angles[angles.length - 1]!;
+            const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+            pending.delete(id);
+            now += 16;
+            cb(now);
+            vels.push((angles[angles.length - 1]! - before) / 16);
+          }
+          return vels;
+        }
+        const rpmParts = (container: Element) => ({
+          box: container.querySelector('.player-card-rpm') as HTMLElement,
+          num: container.querySelector('.player-card-rpm-num') as HTMLElement,
+          best: container.querySelector('.player-card-rpm-best-num') as HTMLElement,
+        });
+
+        it('RPM 在卡片外、aria-hidden，靜止顯示 0/RPM 與最高記錄', () => {
+          localStorage.setItem(BEST_KEY, '345');
+          const { container } = renderTop(viewer());
+          const { box, num, best } = rpmParts(container);
+          expect(box.getAttribute('aria-hidden')).toBe('true');
+          expect(container.querySelector('.player-card')!.contains(box)).toBe(false);
+          expect(box.textContent).toBe('0/RPM最高記錄：345');
+          expect(num.textContent).toBe('0');
+          expect(best.textContent).toBe('345');
+          expect(box.classList.contains('is-spinning')).toBe(false);
+        });
+
+        it('最高記錄讀到壞值當 0、超過上限夾到 720', () => {
+          localStorage.setItem(BEST_KEY, 'abc');
+          const a = renderTop(viewer());
+          expect(rpmParts(a.container).best.textContent).toBe('0');
+          cleanup();
+          localStorage.setItem(BEST_KEY, '99999');
+          const b = renderTop(viewer());
+          expect(rpmParts(b.container).best.textContent).toBe('720');
+        });
+
+        it('慣性中同向連撥：轉速逐次疊加變快，且不超過 720 RPM 上限', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          const peaks: number[] = [];
+          for (let k = 0; k < 6; k++) {
+            swipe(stage, 160); // 單次撥速 1.6°/ms（約 267 RPM）
+            const v = frames(angles, 3);
+            peaks.push(v[0]!);
+          }
+          expect(peaks[0]).toBeCloseTo(1.6, 5);
+          expect(peaks[1]!).toBeGreaterThan(peaks[0]!);
+          expect(peaks[2]!).toBeGreaterThan(peaks[1]!);
+          for (const p of peaks) expect(p).toBeLessThanOrEqual(MAX_DEG_PER_MS + 1e-9);
+          // 撥到頂之後維持在上限
+          expect(peaks[5]).toBeCloseTo(MAX_DEG_PER_MS, 5);
+          flush();
+          expect([0, 180]).toContain(angles[angles.length - 1]);
+        });
+
+        it('反向撥：抵銷剩餘轉速而減速（仍朝原方向收尾、不倒轉）', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200); // 約 2.67°/ms 向右
+          const before = frames(angles, 3)[2]!;
+          swipe(stage, 40); // 反向 1.6°/ms
+          const after = frames(angles, 1)[0]!;
+          expect(after).toBeGreaterThan(0);
+          expect(after).toBeLessThan(before - 1);
+          const mark = angles.length;
+          flush();
+          const raw = angles.slice(mark, -1);
+          for (let i = 1; i < raw.length; i++) expect(raw[i]! - raw[i - 1]!).toBeGreaterThanOrEqual(0);
+        });
+
+        it('點一下＝煞車：不疊加，停在最近一面', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200);
+          frames(angles, 10);
+          const at = angles[angles.length - 1]!;
+          fireEvent.pointerDown(stage, ptr(100));
+          now += 40;
+          fireEvent.pointerUp(stage, ptr(100));
+          flush();
+          const raw = angles[angles.length - 2]!; // 正規化前的目標角
+          expect(Math.abs(raw - at)).toBeLessThanOrEqual(90);
+          expect(raw % 180).toBe(0);
+          expect(rpmParts(container).num.textContent).toBe('0');
+        });
+
+        it('RPM 文字隨轉速更新（節流 100ms），停下歸 0；最高記錄即時更新、停下才寫一次 localStorage', () => {
+          const setSpy = vi.spyOn(Storage.prototype, 'setItem');
+          try {
+            const { container } = renderTop(viewer());
+            const { stage, flip } = parts(container);
+            recordAngles(flip);
+            const { box, num, best } = rpmParts(container);
+            swipe(stage, 200);
+            frames([0], 1);
+            const first = Number(num.textContent);
+            expect(first).toBeGreaterThan(400);
+            expect(first).toBeLessThanOrEqual(720);
+            expect(box.classList.contains('is-spinning')).toBe(true);
+            expect(Number(best.textContent)).toBe(first);
+            // 100ms 內不再改字
+            frames([0], 3);
+            expect(Number(num.textContent)).toBe(first);
+            frames([0], 5);
+            expect(Number(num.textContent)).toBeLessThan(first);
+            expect(setSpy.mock.calls.filter((c) => c[0] === BEST_KEY)).toHaveLength(0);
+            flush();
+            expect(num.textContent).toBe('0');
+            expect(box.classList.contains('is-spinning')).toBe(false);
+            const bestCalls = setSpy.mock.calls.filter((c) => c[0] === BEST_KEY);
+            expect(bestCalls).toHaveLength(1);
+            expect(bestCalls[0]![1]).toBe(best.textContent);
+            // 較慢的一撥不刷新記錄、也不再寫
+            swipe(stage, 150);
+            flush();
+            expect(setSpy.mock.calls.filter((c) => c[0] === BEST_KEY)).toHaveLength(1);
+          } finally {
+            setSpy.mockRestore();
+          }
+        });
+
+        it('localStorage 寫入拋錯：轉動與 RPM 照常', () => {
+          const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('blocked');
+          });
+          try {
+            const { container } = renderTop(viewer());
+            const { stage, flip } = parts(container);
+            recordAngles(flip);
+            swipe(stage, 200);
+            flush();
+            expect(rpmParts(container).num.textContent).toBe('0');
+          } finally {
+            setSpy.mockRestore();
+          }
+        });
+
+        it('轉動中鎖上：停下且 RPM 歸 0，之後再撥也不轉', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip, lock } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200);
+          frames(angles, 8);
+          expect(rpmParts(container).num.textContent).not.toBe('0');
+          fireEvent.click(lock);
+          flush();
+          expect(rpmParts(container).num.textContent).toBe('0');
+          const n = angles.length;
+          swipe(stage, 200);
+          expect(pending.size).toBe(0);
+          expect(angles.length).toBe(n);
+        });
+
+        it('減少動態：連撥不加速、不跑動畫，RPM 維持 0、不留記錄', () => {
+          stubMatchMedia(true);
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 200);
+          swipe(stage, 200);
+          expect(raf).not.toHaveBeenCalled();
+          expect([0, 180]).toContain(angles[angles.length - 1]);
+          expect(rpmParts(container).num.textContent).toBe('0');
+          expect(localStorage.getItem(BEST_KEY)).toBeNull();
+        });
+      });
+
       it('轉動中卸載：取消排好的 rAF', () => {
         const view = renderTop(viewer());
         flick(parts(view.container).stage, 200);

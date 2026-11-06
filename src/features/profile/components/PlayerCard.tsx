@@ -60,7 +60,7 @@ export function PlayerCard({
   const theme = resolvePlayerCardTheme();
   const gaugeWidth = `${Math.round(model.gaugeRatio * 100)}%`;
   const [locked, setLocked] = useState(readPlayerCardLocked);
-  const { flipRef, handlers } = usePlayerCardSpin(locked);
+  const { flipRef, rpmRef, bestRef, initialBest, handlers } = usePlayerCardSpin(locked);
   const toggleLock = (): void => {
     const next = !locked;
     setLocked(next);
@@ -72,6 +72,16 @@ export function PlayerCard({
   return (
     <div class="player-card-spin">
       {topBar != null && <div class="player-card-topbar">{topBar}</div>}
+      {/* 轉速：數字由 player-card-spin 直寫 DOM（不重畫整卡）；裝飾性資訊，讀屏略過。 */}
+      <div class="player-card-rpm" aria-hidden="true">
+        <span class="player-card-rpm-now">
+          <span class="player-card-rpm-num" ref={rpmRef}>0</span>/RPM
+        </span>
+        <span class="player-card-rpm-best">
+          {t('profile.playerCard.bestRpm')}
+          <span class="player-card-rpm-best-num" ref={bestRef}>{String(initialBest)}</span>
+        </span>
+      </div>
       <button
         type="button"
         class={`player-card-lock${locked ? ' is-locked' : ''}`}

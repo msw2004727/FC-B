@@ -318,16 +318,53 @@
     container-type: inline-size;
   }
 }
-/* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。 */
+/* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。
+ * 左側放轉速（兩行，約 84px 寬），左右對稱各讓 92px（取代原本各 40px，因左側多了轉速）。 */
 .player-card-topbar {
   position: absolute;
   top: 0;
-  left: 40px;
-  right: 40px;
+  left: 92px;
+  right: 92px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* 轉速（卡片左上方外側，與鎖頭對稱）：上行「{數字}/RPM」用卡面同款窄體字，下行最高記錄；
+ * 靜止淡化、轉動時實色。數字由 player-card-spin.ts 直寫 DOM；不在卡面內，PNG 不會畫到。 */
+.player-card-rpm {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 84px;
+  height: 30px;
+  /* 固定尺寸＋containment：數字每 100ms 改一次時，重排只限這一小塊，不牽動卡片與頁面 */
+  contain: strict;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  opacity: .5;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.player-card-rpm.is-spinning { opacity: 1; }
+.player-card-rpm-now {
+  font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
+  font-size: 16px;
+  letter-spacing: .5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.player-card-rpm-best {
+  margin-top: 2px;
+  font-size: 9.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .player-card-stage {
   width: calc(220 * var(--pcu));

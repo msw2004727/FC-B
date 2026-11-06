@@ -3,10 +3,14 @@
  * 手感參數照預覽：拖曳 0.8°/px、最近 90ms 取樣算速度、超過 0.35°/ms 才慣性、每 ms 乘 0.9965 減速、
  * 低於 0.12°/ms 後以 420ms ease-out 對齊最近的 0°／180° 倍數。
  * 旋轉角度直接寫進 DOM（不走 state），避免每格重畫整張卡。
+ * 加速（站長 11-06）：慣性中再撥，放手速度＝剩餘轉速（按住期間照摩擦衰減）＋本次撥速，同向越撥越快、反向減速，
+ * 上限 MAX_DEG_PER_MS（720 RPM）；點一下＝煞車停最近一面。轉速以「{數字}/RPM」寫在卡片左上外側（同樣直寫 DOM、100ms 節流）。
  */
 import { useEffect, useRef } from 'preact/hooks';
 
 export const PLAYER_CARD_LOCK_STORAGE_KEY = 'toosterx:player-card-locked';
+/** 最高轉速記錄（每台裝置記住，不進 Firestore）；只在轉動停下時寫一次。 */
+export const PLAYER_CARD_BEST_RPM_STORAGE_KEY = 'toosterx:player-card-best-rpm';
 
 const DEG_PER_PX = 0.8;
 const SAMPLE_WINDOW_MS = 90;
@@ -19,6 +23,16 @@ const SETTLE_MS = 420;
 const AXIS_LOCK_PX = 6;
 /** 放手時總位移小於此值視為點一下，不翻。 */
 const TAP_PX = 4;
+/** 轉速上限 720 RPM（=4.32°/ms）：連撥加速到此為止，避免失控與低階機掉幀。 */
+export const PLAYER_CARD_MAX_RPM = 720;
+const MAX_DEG_PER_MS = (PLAYER_CARD_MAX_RPM * 360) / 60000;
+/** RPM 文字最快每 100ms 更新一次；歸零立即寫。 */
+const RPM_UPDATE_MS = 100;
+
+/** 角速度（°/ms）換算 RPM。 */
+export function degPerMsToRpm(vel: number): number {
+  return Math.round((Math.abs(vel) * 60000) / 360);
+}
 
 /** 鎖頭狀態每台裝置記住；讀不到（隱私模式、被擋）一律視為解鎖。 */
 export function readPlayerCardLocked(): boolean {
@@ -34,6 +48,24 @@ export function writePlayerCardLocked(locked: boolean): void {
     localStorage.setItem(PLAYER_CARD_LOCK_STORAGE_KEY, locked ? '1' : '0');
   } catch {
     /* 存不了只影響下次開啟，不擋操作 */
+  }
+}
+
+/** 讀不到或格式不對一律當 0。 */
+export function readPlayerCardBestRpm(): number {
+  try {
+    const n = Number(localStorage.getItem(PLAYER_CARD_BEST_RPM_STORAGE_KEY));
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), PLAYER_CARD_MAX_RPM) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePlayerCardBestRpm(rpm: number): void {
+  try {
+    localStorage.setItem(PLAYER_CARD_BEST_RPM_STORAGE_KEY, String(rpm));
+  } catch {
+    /* 存不了只是下次不記得，不擋轉動 */
   }
 }
 
@@ -59,6 +91,15 @@ interface SpinState {
   startY: number;
   startA: number;
   samples: Array<{ x: number; t: number }>;
+  /** 正在跑的是慣性（可疊加）還是對齊動畫。 */
+  anim: 'none' | 'coast' | 'settle';
+  /** 按下時攔下的慣性轉速與時間，放手時衰減後疊加。 */
+  carryVel: number;
+  carryT: number;
+  rpmText: string;
+  rpmT: number;
+  best: number;
+  bestDirty: boolean;
 }
 
 export interface PlayerCardSpinHandlers {
@@ -71,9 +112,15 @@ export interface PlayerCardSpinHandlers {
 
 export function usePlayerCardSpin(locked: boolean): {
   flipRef: { current: HTMLDivElement | null };
+  rpmRef: { current: HTMLSpanElement | null };
+  bestRef: { current: HTMLSpanElement | null };
+  /** 首次畫面用的最高記錄（之後由 DOM 直寫更新）。 */
+  initialBest: number;
   handlers: PlayerCardSpinHandlers;
 } {
   const flipRef = useRef<HTMLDivElement | null>(null);
+  const rpmRef = useRef<HTMLSpanElement | null>(null);
+  const bestRef = useRef<HTMLSpanElement | null>(null);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
   const st = useRef<SpinState>({
@@ -86,6 +133,13 @@ export function usePlayerCardSpin(locked: boolean): {
     startY: 0,
     startA: 0,
     samples: [],
+    anim: 'none',
+    carryVel: 0,
+    carryT: 0,
+    rpmText: '0',
+    rpmT: -Infinity,
+    best: 0,
+    bestDirty: false,
   }).current;
 
   const api = useRef<{
@@ -99,16 +153,45 @@ export function usePlayerCardSpin(locked: boolean): {
       const el = flipRef.current;
       if (el) el.style.transform = `rotateY(${st.angle}deg)`;
     };
+    st.best = readPlayerCardBestRpm();
+    /**
+     * 轉速寫進 DOM：最快每 RPM_UPDATE_MS 一次；歸零立即寫，靜止時 is-spinning 拿掉（CSS 淡化）。
+     * record=true（放手後的慣性）才刷新最高記錄，拖曳中的手指取樣雜訊不算；歸零時有新記錄才寫 localStorage 一次。
+     */
+    const showRpm = (vel: number, record = false): void => {
+      const rpm = degPerMsToRpm(vel);
+      if (record && rpm > st.best) {
+        st.best = rpm;
+        st.bestDirty = true;
+      }
+      if (rpm === 0 && st.bestDirty) {
+        st.bestDirty = false;
+        writePlayerCardBestRpm(st.best);
+      }
+      const el = rpmRef.current;
+      const text = String(rpm);
+      if (!el || text === st.rpmText) return;
+      const now = performance.now();
+      if (rpm !== 0 && now - st.rpmT < RPM_UPDATE_MS) return;
+      st.rpmText = text;
+      st.rpmT = now;
+      el.textContent = text;
+      el.closest('.player-card-rpm')?.classList.toggle('is-spinning', rpm !== 0);
+      const bestEl = bestRef.current;
+      if (bestEl && bestEl.textContent !== String(st.best)) bestEl.textContent = String(st.best);
+    };
     const stop = (): void => {
       if (st.raf) {
         cancelAnimationFrame(st.raf);
         st.raf = 0;
       }
+      st.anim = 'none';
     };
     const snap = (target: number): void => {
       st.angle = ((target % 360) + 360) % 360;
       st.vel = 0;
       render();
+      showRpm(0);
     };
     /** dir≠0（慣性收尾）時取轉動方向上的下一個 180° 倍數，避免最後倒轉；dir=0 取最近一面。 */
     const settle = (dir = 0): void => {
@@ -118,21 +201,29 @@ export function usePlayerCardSpin(locked: boolean): {
         : dir < 0
           ? Math.floor(st.angle / 180) * 180
           : nearestFace(st.angle);
-      if (target === st.angle) return;
+      if (target === st.angle) {
+        showRpm(0);
+        return;
+      }
       if (prefersReducedMotion()) {
         snap(target);
         return;
       }
       const from = st.angle;
       const t0 = performance.now();
+      st.anim = 'settle';
       const step = (t: number): void => {
         const p = Math.min(1, (t - t0) / SETTLE_MS);
         const eased = 1 - Math.pow(1 - p, 3);
         st.angle = from + (target - from) * eased;
         render();
-        if (p < 1) st.raf = requestAnimationFrame(step);
-        else {
+        if (p < 1) {
+          // ease-out 的瞬時角速度＝(target-from)·3(1-p)²／SETTLE_MS
+          showRpm(((target - from) * 3 * Math.pow(1 - p, 2)) / SETTLE_MS);
+          st.raf = requestAnimationFrame(step);
+        } else {
           st.raf = 0;
+          st.anim = 'none';
           snap(target);
         }
       };
@@ -140,6 +231,7 @@ export function usePlayerCardSpin(locked: boolean): {
     };
     const coast = (): void => {
       stop();
+      st.anim = 'coast';
       const dir = Math.sign(st.vel);
       let last = performance.now();
       const step = (t: number): void => {
@@ -148,9 +240,11 @@ export function usePlayerCardSpin(locked: boolean): {
         st.angle += st.vel * dt;
         st.vel *= Math.pow(FRICTION_PER_MS, dt);
         render();
+        showRpm(st.vel, true);
         if (Math.abs(st.vel) > STOP_DEG_PER_MS) st.raf = requestAnimationFrame(step);
         else {
           st.raf = 0;
+          st.anim = 'none';
           settle(dir);
         }
       };
@@ -162,6 +256,10 @@ export function usePlayerCardSpin(locked: boolean): {
       // 已有一指在操作時，第二指不搶
       if (st.mode !== 'idle') return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // 慣性中按下：先停住，把剩餘轉速記下，放手若是撥動就疊加回去（點一下則丟掉＝煞車）。
+      // RPM 文字在按住期間不更新，避免連撥時數字在每次按下歸零閃爍。
+      st.carryVel = st.anim === 'coast' ? st.vel : 0;
+      st.carryT = performance.now();
       stop();
       st.mode = 'pending';
       st.pointerId = e.pointerId;
@@ -213,7 +311,11 @@ export function usePlayerCardSpin(locked: boolean): {
       }
       const now = performance.now();
       const first = st.samples.find((s) => now - s.t < SAMPLE_WINDOW_MS);
-      st.vel = first && now - first.t > 0 ? ((e.clientX - first.x) / (now - first.t)) * DEG_PER_PX : 0;
+      const flickVel = first && now - first.t > 0 ? ((e.clientX - first.x) / (now - first.t)) * DEG_PER_PX : 0;
+      // 疊加：剩餘轉速按住期間照摩擦衰減，再加本次撥速；同向越撥越快、反向抵銷減速，夾在上限內
+      const carry = st.carryVel * Math.pow(FRICTION_PER_MS, Math.max(0, now - st.carryT));
+      st.carryVel = 0;
+      st.vel = Math.max(-MAX_DEG_PER_MS, Math.min(MAX_DEG_PER_MS, carry + flickVel));
       if (Math.abs(e.clientX - st.startX) < TAP_PX) {
         st.angle = st.startA;
         render();
@@ -259,10 +361,11 @@ export function usePlayerCardSpin(locked: boolean): {
     st.mode = 'idle';
     st.pointerId = -1;
     st.vel = 0;
+    st.carryVel = 0;
     settle();
   }, [locked]);
 
   useEffect(() => stop, []);
 
-  return { flipRef, handlers };
+  return { flipRef, rpmRef, bestRef, initialBest: st.best, handlers };
 }
