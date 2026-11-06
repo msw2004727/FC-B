@@ -33,6 +33,18 @@ describe('換站搬入的公開資產', () => {
     }
   });
 
+  it('搬入頁面的「瀏覽活動」連到 /activities，不再用舊站 hash #page-activities（新站不認得）', async () => {
+    const { readdirSync } = await import('node:fs');
+    for (const dir of ['blog', 'seo']) {
+      const base = new URL(`../public/${dir}/`, import.meta.url);
+      const walk = (url) => readdirSync(url, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(new URL(`${e.name}/`, url)) : e.name.endsWith('.html') ? [new URL(e.name, url)] : []);
+      for (const file of walk(base)) {
+        expect(readFileSync(file, 'utf8')).not.toContain('#page-activities');
+      }
+    }
+  });
+
   it('正式版 robots 照舊站：全站 Allow、封鎖內部工具、列 sitemap；不放 public/ 以免和內測版衝突', () => {
     const robots = read('scripts/robots-public.txt');
     expect(robots).toMatch(/^User-agent: \*\nAllow: \//m);
