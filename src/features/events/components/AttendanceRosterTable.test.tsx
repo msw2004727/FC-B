@@ -125,7 +125,7 @@ describe('AttendanceRosterTable', () => {
     expect(screen.getByText('FC One')).toBeTruthy();
     // 測試同步更新（站長 11-06 選「座位點」）：保留席位列改為「保留」膠囊，隊名放在 title 與讀屏文字。
     const seatPill = screen.getByTitle('FC One 保留席位');
-    expect(seatPill.textContent).toBe('保留：FC One 保留席位');
+    expect(seatPill.textContent).toBe('保留：FC One');
     expect(seatPill.classList.contains('team-reservation-seat-pill')).toBe(true);
     // 保留列的簽到／簽退／備註留白（不再寫「--」或「保留席位」）。
     const seatCells = Array.from(seatPill.closest('tr')!.cells);
@@ -359,5 +359,12 @@ describe('座位點標頭（站長 11-06 選風格 B）', () => {
     expect(container.querySelector('.team-reservation-seat-dots')).toBeNull();
     expect(container.querySelector('.team-reservation-seat-count')?.textContent).toBe('4/12');
     expect(container.querySelector('.team-reservation-seat-left')?.textContent).toBe('剩 8');
+  });
+
+  it('已使用超過佔位（後端允許超用）不截斷，改顯示「已用／總數」', () => {
+    const { container } = renderSummary(3, 5, 0);
+    expect(container.querySelector('.team-reservation-seat-dots')).toBeNull();
+    expect(container.querySelector('.team-reservation-seat-count')?.textContent).toBe('5/3');
+    expect(screen.getByLabelText('佔位 3，已使用 5，剩餘 0')).toBeTruthy();
   });
 });
