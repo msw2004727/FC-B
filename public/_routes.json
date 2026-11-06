@@ -4,8 +4,7 @@
     "/event-share",
     "/event-share/*",
     "/team-share",
-    "/team-share/*",
-    "/og.png"
+    "/team-share/*"
   ],
   "exclude": []
 }
