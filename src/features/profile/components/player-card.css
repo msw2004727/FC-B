@@ -318,17 +318,91 @@
     container-type: inline-size;
   }
 }
-/* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。 */
+/* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。
+ * 左側放轉速（數字＋小轉速表／最高記錄兩行，88px 寬），左右對稱各讓 96px（取代原本各 40px，因左側多了轉速與儀表）。 */
 .player-card-topbar {
   position: absolute;
   top: 0;
-  left: 40px;
-  right: 40px;
+  left: 96px;
+  right: 96px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+/* 身分標籤過長（自訂角色名、外語）時單行省略，不壓到兩側的轉速與鎖頭。 */
+.player-card-topbar > #profile-role-tag-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+.player-card-topbar #profile-role-tag-wrap .uc-role-tag {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+/* 轉速（卡片左上方外側，與鎖頭對稱）：上行「{數字}/RPM」用卡面同款窄體字，下行最高記錄；
+ * 靜止淡化、轉動時實色。數字由 player-card-spin.ts 直寫 DOM；不在卡面內，PNG 不會畫到。 */
+.player-card-rpm {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 88px;
+  height: 30px;
+  /* 固定尺寸＋containment：數字每 100ms 改一次時，重排只限這一小塊，不牽動卡片與頁面 */
+  contain: strict;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  opacity: .6;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.player-card-rpm.is-spinning { opacity: 1; }
+.player-card-rpm-row { display: flex; align-items: flex-end; gap: 3px; }
+.player-card-rpm-now {
+  min-width: 44px; /* 數字位數變動時儀表不左右跳 */
+  font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
+  font-size: 16px;
+  letter-spacing: .5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.player-card-rpm-best {
+  max-width: 100%;
+  margin-top: 2px;
+  font-size: 9.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 半圓轉速表（0～900 RPM，750 起紅區）：細線金色系同卡框（淺 #BA7517／深 #FAC775），指針用主文字色；
+ * 指針角度由 player-card-spin.ts 直寫 transform 屬性（SVG 屬性，不靠 CSS transform，Safari 舊版也穩）。 */
+.player-card-rpm-gauge {
+  display: block;
+  flex: none;
+  width: 30px;
+  height: 17.25px;
+  overflow: visible;
+  fill: none;
+  stroke-linecap: round;
+}
+.player-card-rpm-gauge-arc { stroke: #BA7517; stroke-width: 1; opacity: .55; }
+.player-card-rpm-gauge-red { stroke: #D93A26; stroke-width: 2.2; }
+.player-card-rpm-gauge-tick { stroke: #BA7517; stroke-width: .9; }
+.player-card-rpm-gauge-tick.is-major { stroke-width: 1.4; }
+.player-card-rpm-gauge-tick.is-red { stroke: #D93A26; }
+.player-card-rpm-needle { stroke: var(--text-primary); stroke-width: 1.6; }
+.player-card-rpm-gauge-hub { fill: var(--text-primary); stroke: none; }
+[data-theme="dark"] .player-card-rpm-gauge-arc,
+[data-theme="dark"] .player-card-rpm-gauge-tick { stroke: #FAC775; }
+[data-theme="dark"] .player-card-rpm-gauge-red,
+[data-theme="dark"] .player-card-rpm-gauge-tick.is-red { stroke: #FF6B57; }
 .player-card-stage {
   width: calc(220 * var(--pcu));
   height: calc(324 * var(--pcu));
