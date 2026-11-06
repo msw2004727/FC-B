@@ -534,7 +534,7 @@ export function TopBar({
                     : `line-avatar-topbar line-avatar-fallback${syncingFallback ? ' line-avatar-loading' : ''}`}
                   aria-label={syncingFallback ? '同步中' : '使用者選單'}
                   title={syncingFallback ? '同步中' : '使用者選單'}
-                  aria-haspopup="menu"
+                  aria-haspopup="true"
                   aria-expanded={userMenuOpen ? 'true' : 'false'}
                   aria-controls="user-menu-dropdown"
                   onClick={handleToggleUserMenu}

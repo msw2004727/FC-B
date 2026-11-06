@@ -15,6 +15,12 @@ body { overscroll-behavior: none; }
  */
 body .legacy-ui { overscroll-behavior-y: auto; }
 /*
+ * 2026-11-06 iPhone 頂部下拉選單看不見：A 的 body 規則也帶 -webkit-overflow-scrolling: touch，改寫到 .legacy-ui 後，
+ * iOS WebKit 會讓帶這個屬性的捲動容器各自成為 z=0 堆疊層，頁面本體的層畫在頂部列外框之上、蓋住往下展開的選單，
+ * 頁面內的彈窗（z 1100）也被關在頁面層裡而低於頂部列。iOS 13 起慣性捲動是預設，設回 auto 讓層級與 Chrome 一致。
+ */
+body .legacy-ui { -webkit-overflow-scrolling: auto; }
+/*
  * T-038（2026-10-26，顧問必停點補驗）：真正擋下拉重新整理與回彈的是「根元素 html」的 overscroll-behavior。
  * 實測（Chromium 147）：只在 body 設 none，子頁捲到底後再滾，父頁仍被帶著捲；只在 html 設 none 才擋住——
  * body 的值不會傳給 viewport，A 正式站（toosterx.com）的 `body{overscroll-behavior:none}` 也是這樣，並沒有真正套到 viewport。

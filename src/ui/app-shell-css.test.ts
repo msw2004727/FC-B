@@ -30,4 +30,10 @@ describe('app-shell.css：外框不是捲動容器', () => {
     const bodyRules = rulesFor(legacyBase, 'body');
     expect(bodyRules.some((b) => /overflow-x\s*:\s*hidden/.test(b))).toBe(true);
   });
+
+  it('body .legacy-ui 把 -webkit-overflow-scrolling 設回 auto（iOS 不再自成堆疊層）', () => {
+    const state = readFileSync(resolve(process.cwd(), 'src/styles/legacy-body-state.css'), 'utf8');
+    const bodies = rulesFor(state, 'body .legacy-ui');
+    expect(bodies.some((b) => /-webkit-overflow-scrolling\s*:\s*auto/.test(b))).toBe(true);
+  });
 });
