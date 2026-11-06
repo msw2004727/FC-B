@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-inv-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d9488">
+  <meta name="robots" content="noindex, nofollow">
+  <title>ToosterX 庫存管理</title>
+  <link rel="stylesheet" href="css/inventory.css?v=84">
+</head>
+<body>
+
+  <!-- Login -->
+  <section class="inv-page active" id="page-login">
+    <div class="inv-login-wrap">
+      <h1 class="inv-login-title">ToosterX</h1>
+      <p class="inv-login-sub">庫存管理系統</p>
+      <div id="inv-login-avatar-wrap" style="display:none">
+        <img id="inv-login-avatar" class="inv-avatar inv-avatar-lg" alt="avatar">
+        <span id="inv-login-name" style="display:block;text-align:center;margin-top:8px;font-weight:600"></span>
+      </div>
+      <button class="inv-btn-line full" id="inv-login-btn" onclick="if(typeof InvAuth!=='undefined')InvAuth.login();else this.textContent='載入中...'">LINE 登入</button>
+      <div id="inv-login-status" class="inv-login-status"></div>
+    </div>
+  </section>
+
+  <!-- Unauthorized -->
+  <section class="inv-page" id="page-unauthorized">
+    <div class="inv-login-wrap">
+      <h2>無操作權限</h2>
+      <p style="color:var(--text-muted);margin-top:.5rem">此帳號未被授權使用庫存系統</p>
+    </div>
+  </section>
+
+  <!-- Top Bar -->
+  <header class="inv-topbar" id="inv-topbar" style="display:none">
+    <div style="position:relative">
+      <div style="display:flex;align-items:center;gap:8px">
+        <img src="../assets/logo-black.png" alt="logo" style="height:28px" class="inv-logo-light">
+        <img src="../assets/logo-white.png" alt="logo" style="height:28px;display:none" class="inv-logo-dark">
+        <span class="inv-topbar-title" style="font-size:15px;font-weight:700;color:var(--text-primary)">庫存管理</span>
+      </div>
+      <span id="inv-page-label" style="position:absolute;left:4px;bottom:-18px;font-size:15px;font-weight:600;color:var(--text-primary);opacity:.4;pointer-events:none;white-space:nowrap"></span>
+    </div>
+    <div class="inv-topbar-right">
+      <div class="inv-toggle-switch" id="inv-theme-toggle" onclick="if(typeof InvApp!=='undefined')InvApp.toggleTheme()">
+        <div class="inv-toggle-knob"></div>
+      </div>
+      <div class="inv-user-menu-wrap">
+        <img class="inv-avatar inv-avatar-sm" id="inv-topbar-avatar" alt="user" onclick="if(typeof InvApp!=='undefined')InvApp.toggleUserMenu()">
+        <div class="inv-user-menu" id="inv-user-menu" style="display:none">
+          <div class="inv-user-menu-name" id="inv-menu-name"></div>
+          <div class="inv-user-menu-divider"></div>
+          <button class="inv-user-menu-item" onclick="if(typeof InvStore!=='undefined')InvStore.showSelector(async function(){if(typeof InvProducts!=='undefined')await InvProducts.loadGroupTabs();InvApp.showPage('page-dashboard')})">切換庫存</button>
+          <button class="inv-user-menu-item" onclick="if(typeof InvApp!=='undefined'){InvApp.showPage('page-settings');if(typeof InvSettings!=='undefined')InvSettings.render()}">設定</button>
+          <button class="inv-user-menu-item inv-user-menu-logout" onclick="if(typeof InvAuth!=='undefined')InvAuth.logout()">登出</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main id="inv-main">
+    <section class="inv-page" id="page-dashboard">
+      <div id="inv-dashboard-content"></div>
+      <div class="inv-quick-actions">
+        <button class="inv-action-card" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-stock-in')">
+          <span class="inv-action-icon" data-icon="package"></span><span>掃碼入庫</span>
+        </button>
+        <button class="inv-action-card" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-sale')">
+          <span class="inv-action-icon" data-icon="dollar"></span><span>掃碼銷售</span>
+        </button>
+        <button class="inv-action-card" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-products')">
+          <span class="inv-action-icon" data-icon="clipboard"></span><span>庫存管理</span>
+        </button>
+        <button class="inv-action-card" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-transactions')">
+          <span class="inv-action-icon" data-icon="stats"></span><span>銷售紀錄</span>
+        </button>
+      </div>
+      <div class="inv-version-tag" id="inv-version-tag"></div>
+    </section>
+
+    <section class="inv-page" id="page-stock-in">
+      <div id="inv-stockin-content"></div>
+    </section>
+
+    <section class="inv-page" id="page-sale">
+      <div id="inv-sale-content"></div>
+      <div id="inv-cart-bar" class="inv-cart-bar" style="display:none"></div>
+    </section>
+
+    <section class="inv-page" id="page-products">
+      <div id="inv-products-content"></div>
+    </section>
+
+    <section class="inv-page" id="page-product-detail">
+      <div id="inv-product-detail-content"></div>
+    </section>
+
+    <section class="inv-page" id="page-transactions">
+      <div id="inv-transactions-content"></div>
+    </section>
+
+    <section class="inv-page" id="page-stocktake">
+      <div id="inv-stocktake-content"></div>
+    </section>
+
+    <section class="inv-page" id="page-settings">
+      <div id="inv-settings-content"></div>
+    </section>
+  </main>
+
+  <!-- Bottom Tab Bar -->
+  <nav class="inv-bottombar" id="inv-bottombar" style="display:none">
+    <button class="inv-tab active" data-page="page-dashboard" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-dashboard')">
+      <span class="inv-tab-icon" data-icon="chart"></span><span>儀表板</span>
+    </button>
+    <button class="inv-tab" data-page="page-stock-in" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-stock-in')">
+      <span style="position:relative;display:inline-flex;align-items:center"><span class="inv-tab-icon" data-icon="package" style="color:#16a34a"></span><span style="position:absolute;right:-7px;top:2px;font-size:11px;font-weight:700;color:#16a34a;line-height:1">↓</span></span><span>入庫</span>
+    </button>
+    <button class="inv-tab" data-page="page-sale" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-sale')">
+      <span style="position:relative;display:inline-flex;align-items:center"><span class="inv-tab-icon" data-icon="dollar" style="color:#dc2626"></span><span style="position:absolute;right:-7px;top:2px;font-size:11px;font-weight:700;color:#dc2626;line-height:1">↑</span></span><span>銷售</span>
+    </button>
+    <button class="inv-tab" data-page="page-products" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-products')">
+      <span class="inv-tab-icon" data-icon="clipboard"></span><span>庫存</span>
+    </button>
+    <button class="inv-tab" data-page="page-transactions" onclick="if(typeof InvApp!=='undefined')InvApp.showPage('page-transactions')">
+      <span class="inv-tab-icon" data-icon="stats"></span><span>更多</span>
+    </button>
+  </nav>
+
+  <!-- Announcement Overlay -->
+  <div id="inv-announcement-overlay" class="inv-overlay" style="display:none"></div>
+
+  <!-- Toast -->
+  <div id="inv-toast" class="inv-toast"></div>
+
+  <!-- Scripts -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js" defer></script>
+  <script src="js/inv-config.js?v=84"></script>
+  <script src="js/inv-store.js?v=84"></script>
+  <script src="js/inv-icons.js?v=84"></script>
+  <script src="js/inv-utils.js?v=84"></script>
+  <script src="js/inv-auth.js?v=84"></script>
+  <script src="js/inv-permissions.js?v=84"></script>
+  <script src="js/inv-app.js?v=84"></script>
+  <script src="js/inv-scanner.js?v=84"></script>
+  <script src="js/inv-products.js?v=84"></script>
+  <script src="js/inv-stock-in.js?v=84"></script>
+  <script src="js/inv-cart.js?v=84"></script>
+  <script src="js/inv-sale.js?v=84"></script>
+  <script src="js/inv-sale-return.js?v=84"></script>
+  <script src="js/inv-transactions.js?v=84"></script>
+  <script src="js/inv-export.js?v=84"></script>
+  <script src="js/inv-stocktake.js?v=84"></script>
+  <script src="js/inv-dashboard.js?v=84"></script>
+  <script src="js/inv-settings.js?v=84"></script>
+</body>
+</html>

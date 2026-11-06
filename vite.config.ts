@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
@@ -96,8 +97,15 @@ function internalTestNoIndex(): Plugin {
       // 內測規則放前面：Pages 依序套用，後面的 `! Cache-Control` 才能覆蓋 /* 的 no-cache。
       const lines = enabled ? [...INTERNAL_TEST_HEADERS, ...COMMON_HEADERS] : COMMON_HEADERS;
       this.emitFile({ type: 'asset', fileName: '_headers', source: `${lines.join('\n')}\n` });
-      if (!enabled) return;
-      this.emitFile({ type: 'asset', fileName: 'robots.txt', source: 'User-agent: *\nDisallow: /\n' });
+      // 正式上線輸出舊站同款 robots（scripts/robots-public.txt，換站計畫書 I-02）；內測維持全站 Disallow。
+      // robots 不放 public/：避免與內測版同名衝突。
+      this.emitFile({
+        type: 'asset',
+        fileName: 'robots.txt',
+        source: enabled
+          ? 'User-agent: *\nDisallow: /\n'
+          : readFileSync(new URL('./scripts/robots-public.txt', import.meta.url), 'utf8'),
+      });
     },
   };
 }
@@ -138,7 +146,9 @@ const pwa = VitePWA({
     // manual.html（舊站手冊原文照搬）不進 precache：手冊改版要立即生效，HTML 不走快取優先（R-REL-013 精神）。
     // _worker.js 是 Cloudflare Pages 進階模式的邊緣程式、不對外提供，預存抓它會 404 讓 SW 安裝失敗。
     // assets/404.html 只給 Pages 讓 /assets/* 不存在的檔回真 404（顧問 §1.28），不進預存。
-    globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html'],
+    globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html',
+      // 換站搬入的舊站公開頁與資產（換站計畫書 B-01／B-02）：不屬 app shell，不進預存。
+      'blog/**', 'seo/**', 'roles/**', 'inventory/**', 'privacy.html', 'terms.html', 'LOGO/**', 'img/seo/**'],
     navigateFallback: null,
     // 預存路由預設會把「/」對應到預存的 index.html，首頁導覽因此搶在下面的 network-first 之前拿到舊版
     // （部署後第一次開會先閃出上一版畫面，2026-10-21 站長回報內測頁殘影）。設為空字串關掉這個對應，
