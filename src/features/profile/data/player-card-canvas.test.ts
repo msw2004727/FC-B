@@ -126,7 +126,8 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
 
 const labels: PlayerCardLabels = {
   title: '球員卡',
-  scheduled: '應到',
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：「應到」改「參與」、縮寫 SCH 改 APP。
+  scheduled: '參與',
   completed: '完成',
   attend: '出席率',
   clubs: '俱樂部',
@@ -163,10 +164,28 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     });
     expect(fake.images.some((i) => i.image === logoImg)).toBe(true);
     expect(fake.images.some((i) => i.image === avatarImg)).toBe(true);
-    for (const value of ['26', '14', '85%', '應到', '完成', '出席率', 'SCH', 'CMP', 'ATT',
+    for (const value of ['26', '14', '85%', '參與', '完成', '出席率', 'APP', 'CMP', 'ATT',
       '球員卡', 'PLAYER CARD', '俱樂部', '2', '王小明']) {
       expect(fake.texts).toContain(value);
     }
+  });
+
+  it('v2 摘要：出席率格畫「完成/計入」，仍保留 ATT 縮寫，沒有 SCH', () => {
+    const fake = makeFakeCtx();
+    const v2Model = buildPlayerCardModel({
+      name: '王小明', uid: 'U-secret-uid', avatarUrl: null, teamIds: [],
+      summary: {
+        uid: 'U-secret-uid', exists: true, sourceVersion: 1, expectedCount: 26, attendedCount: 22,
+        completedCount: 14, attendRate: 85, updatedAt: null,
+        v2: { since: '2026-11-06', participatedCount: 9, countedCount: 2, countedCompletedCount: 1 },
+      },
+    });
+    drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, v2Model, 'light', labels, {
+      avatar: null, logo: logoImg,
+    });
+    for (const value of ['9', '1', '1/2', 'ATT', 'APP']) expect(fake.texts).toContain(value);
+    expect(fake.texts).not.toContain('SCH');
+    expect(fake.texts).not.toContain('85%');
   });
 
   it('字級照站長核可預覽（卡面 220×324）：大數字 44、ATT 12、球員卡 12、PLAYER CARD 11、名字 17、三格 24／11／11、俱樂部 8／19', () => {
@@ -182,8 +201,8 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(sizes('PLAYER CARD')).toEqual([11]);
     expect(sizes('王小明')).toEqual([17]);
     expect(sizes('26')).toEqual([24]);
-    expect(sizes('應到')).toEqual([11]);
-    expect(sizes('SCH')).toEqual([11]);
+    expect(sizes('參與')).toEqual([11]);
+    expect(sizes('APP')).toEqual([11]);
     expect(sizes('俱樂部')).toEqual([8]);
     expect(sizes('2')).toEqual([19]);
   });

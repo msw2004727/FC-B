@@ -6,6 +6,7 @@ import type { UserAttendanceSummary } from './attendance-summary';
 import {
   buildPlayerCardModel,
   countActiveClubs,
+  PLAYER_CARD_ABBR,
   PLAYER_CARD_SHINE,
   playerCardLogoUrl,
   playerCardShineCanvasStops,
@@ -48,11 +49,38 @@ describe('T-092 球員卡資料模型', () => {
     expect(m.gaugeRatio).toBeCloseTo(0.67);
   });
 
-  it('三格與既有頁首同源：應到＝expectedCount、完成＝completedCount、出席率＝attendRate', () => {
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：「應到」改「參與」、縮寫 SCH 改 APP；沒有 v2 時仍退回舊算法。
+  it('沒有 v2 時三格與既有頁首同源：參與＝expectedCount、完成＝completedCount、出席率＝attendRate，不顯示計入場數', () => {
     const m = buildPlayerCardModel({ name: '王小明', avatarUrl: null, summary: summary() });
     expect(m.scheduledText).toBe('26');
+    expect(m.countedCount).toBeNull();
     expect(m.completedText).toBe('14');
     expect(m.attendText).toBe('85%');
+  });
+
+  it('縮寫：參與 APP（原 SCH）、完成 CMP、出席率 ATT', () => {
+    expect(PLAYER_CARD_ABBR.scheduled).toBe('APP');
+    expect(PLAYER_CARD_ABBR.completed).toBe('CMP');
+    expect(PLAYER_CARD_ABBR.attend).toBe('ATT');
+  });
+
+  it.each([
+    { counted: 0, completed: 0, attendText: '--', attendRate: null, gauge: 0 },
+    { counted: 1, completed: 1, attendText: '1/1', attendRate: null, gauge: 1 },
+    { counted: 2, completed: 1, attendText: '1/2', attendRate: null, gauge: 0.5 },
+    { counted: 3, completed: 2, attendText: '67%', attendRate: 67, gauge: 2 / 3 },
+    { counted: 4, completed: 9, attendText: '100%', attendRate: 100, gauge: 1 },
+  ])('v2 計入 $counted 場完成 $completed：出席率 $attendText', ({ counted, completed, attendText, attendRate, gauge }) => {
+    const m = buildPlayerCardModel({
+      name: '王小明', avatarUrl: null,
+      summary: summary({ v2: { since: '2026-11-06', participatedCount: 12, countedCount: counted, countedCompletedCount: completed } }),
+    });
+    expect(m.scheduledText).toBe('12');
+    expect(m.completedText).toBe(String(Math.min(completed, counted)));
+    expect(m.attendText).toBe(attendText);
+    expect(m.attendRate).toBe(attendRate);
+    expect(m.gaugeRatio).toBeCloseTo(gauge);
+    expect(m.countedCount).toBe(counted);
   });
 
   it('summary 未載入時三格顯示 --、計量條為 0', () => {
@@ -62,6 +90,7 @@ describe('T-092 球員卡資料模型', () => {
     expect(m.attendText).toBe('--');
     expect(m.attendRate).toBeNull();
     expect(m.gaugeRatio).toBe(0);
+    expect(m.countedCount).toBeNull();
   });
 
   it('俱樂部數 0 時不顯示方塊', () => {

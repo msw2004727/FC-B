@@ -7,7 +7,6 @@ import {
   NO_SHOW_FEATURE_ENABLED,
   buildNoShowCountByUid,
   buildEndedRegCountByUid,
-  buildLastNoShowSet,
   participantNoShowCount,
   type NoShowAdjustmentsByUid,
   type UserNoShowStatsByUid,
@@ -16,7 +15,6 @@ import {
 export interface RosterNoShowData {
   counts: ReadonlyMap<string, number>;
   endedCounts: ReadonlyMap<string, number>;
-  recentUids: ReadonlySet<string>;
 }
 
 interface Options {
@@ -89,7 +87,6 @@ export function useRosterNoShow({
     return {
       counts: buildNoShowCountByUid(stats, adjustments),
       endedCounts: buildEndedRegCountByUid(stats),
-      recentUids: buildLastNoShowSet(stats),
     };
   }, [stats, request, loaded, uidKey]);
 }

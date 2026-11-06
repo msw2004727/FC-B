@@ -144,6 +144,7 @@ describe('T-092 球員卡（DOM）', () => {
     expect(container.querySelector('.player-card-stage')!.contains(topbar)).toBe(false);
   });
 
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：「應到」改「參與」、縮寫 SCH 改 APP；沒有 v2 仍顯示 ATT、無「計 N 場」。
   it('卡面：三格中文＋英文縮寫、出席率大數字、計量條、球員卡標題、logo', () => {
     document.documentElement.setAttribute('data-theme', 'light');
     const { container } = renderTop(viewer());
@@ -154,12 +155,42 @@ describe('T-092 球員卡（DOM）', () => {
     expect(card.querySelector('.player-card-att-num')?.textContent).toBe('85%');
     expect(card.textContent).toContain('球員卡');
     expect(card.textContent).toContain('PLAYER CARD');
-    for (const label of ['應到', '完成', '出席率', 'SCH', 'CMP', 'ATT']) {
+    for (const label of ['參與', '完成', '出席率', 'APP', 'CMP', 'ATT']) {
       expect(card.textContent).toContain(label);
     }
     expect((card.querySelector('.player-card-gauge-fill') as HTMLElement).style.width).toBe('85%');
     expect(card.querySelector('.player-card-logo')?.getAttribute('src')).toBe('/assets/logo-black.webp');
     expect(card.querySelector('#profile-title')?.textContent).toBe('王小明');
+  });
+
+  it('沒有 v2：出席率下方是 ATT 縮寫，沒有「計 N 場」，也沒有 SCH', () => {
+    const { container } = renderTop(viewer());
+    const card = container.querySelector('.player-card')!;
+    expect(card.querySelector('.player-card-counted')).toBeNull();
+    expect(card.textContent).not.toContain('SCH');
+    expect(card.textContent).not.toMatch(/計 d+ 場/);
+  });
+
+  it.each([
+    { counted: 12, completed: 9, rate: '75%', gauge: '75%' },
+    { counted: 2, completed: 1, rate: '1/2', gauge: '50%' },
+    { counted: 0, completed: 0, rate: '--', gauge: '0%' },
+  ])('v2：參與／完成／出席率 $rate，「計 $counted 場」放在 ATT 縮寫位置', ({ counted, completed, rate, gauge }) => {
+    const { container } = renderTop(viewer(), {
+      ...summary,
+      v2: { since: '2026-11-06', participatedCount: 20, countedCount: counted, countedCompletedCount: completed },
+    });
+    const card = container.querySelector('.player-card')!;
+    expect(card.querySelector('#profile-stat-total')?.textContent).toBe('20');
+    expect(card.querySelector('#profile-stat-done')?.textContent).toBe(String(completed));
+    expect(card.querySelector('#profile-stat-rate')?.textContent).toBe(rate);
+    expect(card.querySelector('.player-card-att-num')?.textContent).toBe(rate);
+    const abbr = card.querySelector('#profile-stat-rate')!.parentElement!.querySelector('.player-card-abbr');
+    expect(abbr?.classList.contains('player-card-counted')).toBe(true);
+    expect(abbr?.textContent).toBe(`計 ${counted} 場`);
+    // 三格內出席率下方的 ATT 縮寫在 v2 由「計 N 場」取代（左上大數字的 ATT 不動）；SCH 已改 APP。
+    expect(card.textContent).not.toContain('SCH');
+    expect((card.querySelector('.player-card-gauge-fill') as HTMLElement).style.width).toBe(gauge);
   });
 
   it('深色模式 logo 換白色版', () => {

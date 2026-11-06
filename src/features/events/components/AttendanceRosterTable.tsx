@@ -460,7 +460,7 @@ export function AttendanceRosterTable({
               </div>
             </th>
             {showNoShowColumn && (
-              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:3rem" title="放鴿子次數（已結束、正式報名且未完成簽到）">🕊</th>
+              <th style="text-align:center;padding:.4rem .2rem;font-weight:600;width:3rem" title="放鴿子／計入場次">🕊</th>
             )}
             {showAttendanceRecordColumns && (
               <>

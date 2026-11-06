@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/preact';
 import { setLocale } from '@/i18n/i18n';
 import { AttendanceRosterTable, type AttendanceRosterTableProps } from './AttendanceRosterTable';
-import { buildNoShowCountByUid, buildEndedRegCountByUid, buildLastNoShowSet } from '../data/noshow-roster';
+import { buildNoShowCountByUid, buildEndedRegCountByUid } from '../data/noshow-roster';
 
 const feature = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../data/noshow-roster', async (original) => ({
@@ -22,7 +22,6 @@ const stats = {
 const data = {
   counts: buildNoShowCountByUid(stats, new Map([['u1', -1], ['u2', -3]])),
   endedCounts: buildEndedRegCountByUid(stats),
-  recentUids: buildLastNoShowSet(stats),
 };
 const base: AttendanceRosterTableProps = {
   event: { id: 'e1', max: 12 },
@@ -33,7 +32,9 @@ const base: AttendanceRosterTableProps = {
   attendanceRecords: [], roles: {}, onOpenProfile: () => {},
   canManage: true, canViewNoShow: true, editing: true, noShowData: data,
 };
-const title = '放鴿子次數（已結束、正式報名且未完成簽到）';
+// 測試同步更新（站長 11-06 放鴿子／出席率 v2）：一般瀏覽不再染色／紅泡泡，🕊 欄改顯示「放鴿子/計入」。
+const title = '放鴿子／計入場次';
+const NO_DECORATION = '.uc-att-warn, .uc-recent-noshow';
 function cellFor(name: string): HTMLTableCellElement {
   const row = screen.getByText(name).closest('tr')!;
   const index = Array.from(document.querySelectorAll('thead th')).findIndex(th => th.textContent === '🕊');
@@ -41,7 +42,7 @@ function cellFor(name: string): HTMLTableCellElement {
 }
 
 describe('T-073b 名單放鴿子 UI（A oracle）', () => {
-  it('編輯模式名字後、簽到前放 🕊 欄；2-1 顯示紅色粗體 1，1-3 歸零留白', () => {
+  it('編輯模式名字後、簽到前放 🕊 欄；2-1 計入 3 顯示 1/3、1-3 歸零計入 10 顯示 0/10，皆未達標紅門檻', () => {
     render(<AttendanceRosterTable {...base} />);
     const headers = Array.from(document.querySelectorAll('th'));
     const index = headers.findIndex(th => th.textContent === '🕊');
@@ -49,64 +50,79 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     expect(headers[index + 1]?.textContent).toBe('簽到');
     expect(headers[index]?.title).toBe(title);
     expect(headers[index]?.style.width).toBe('3rem');
-    expect(cellFor('甲').textContent).toBe('1');
-    expect(cellFor('甲').querySelector('span')?.style.fontWeight).toBe('700');
-    expect(cellFor('甲').querySelector('span')?.style.color).toBe('var(--danger)');
-    expect(cellFor('乙').textContent).toBe('');
-    expect(cellFor('乙').querySelector('span')?.style.fontWeight).toBe('600');
-    // 最近一場旗標不受補正後累計歸零影響。
-    expect(screen.getByText('乙').querySelector('.uc-recent-noshow')).toBeTruthy();
+    expect(cellFor('甲').textContent).toBe('1/3');
+    expect(cellFor('甲').querySelector('span')?.style.fontWeight).toBe('600');
+    expect(cellFor('甲').querySelector('span')?.style.color).toBe('var(--text-muted)');
+    expect(cellFor('乙').textContent).toBe('0/10');
+    expect(cellFor('乙').querySelector('span')?.style.color).toBe('var(--text-muted)');
+    // 一般瀏覽與管理名單都不再出現名字染色或紅色 🕊 泡泡。
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
+  });
+
+  it('管理名單（編輯模式）的 table 帶 att-roster-managing，一般瀏覽沒有', () => {
+    const view = render(<AttendanceRosterTable {...base} />);
+    expect(document.querySelector('table')?.classList.contains('att-roster-managing')).toBe(true);
+    view.rerender(<AttendanceRosterTable {...base} editing={false} />);
+    expect(document.querySelector('table')?.classList.contains('att-roster-managing')).toBe(false);
   });
 
   it.each([
     { canManage: true, editing: false },
     { canManage: false, editing: true },
-  ])('非編輯或非管理者無欄，但有查看權仍染色／泡泡：%j', props => {
+  ])('非編輯或非管理者無 🕊 欄，也不染色／不出現泡泡（即使有查看權與資料）：%j', props => {
     render(<AttendanceRosterTable {...base} {...props} />);
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
-    expect(document.querySelector('.uc-att-warn')).toBeTruthy();
-    expect(document.querySelector('.uc-recent-noshow')).toBeTruthy();
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
+    expect(document.querySelector('[title^="放鴿子"]')).toBeNull();
   });
 
   it.each([{ canViewNoShow: false }, { publicRosterOnly: true }])('守門即使收到資料仍不顯示：%j', props => {
     render(<AttendanceRosterTable {...base} {...props} />);
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
-    expect(document.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
     expect(document.querySelector('[title^="放鴿子"]')).toBeNull();
   });
 
-  it('旗標關閉不顯示欄、染色與泡泡', () => {
+  it('旗標關閉不顯示欄', () => {
     feature.enabled = false;
     render(<AttendanceRosterTable {...base} />);
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
-    expect(document.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
   });
 
-  it('補正未完成／失敗傳 null：欄位空白，沒有 raw 次數、染色、泡泡或錯誤', () => {
+  it('補正未完成／失敗傳 null：欄位空白，沒有 raw 次數或錯誤', () => {
     const view = render(<AttendanceRosterTable {...base} />);
-    expect(cellFor('甲').textContent).toBe('1');
+    expect(cellFor('甲').textContent).toBe('1/3');
     view.rerender(<AttendanceRosterTable {...base} noShowData={null} />);
     expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
     expect(cellFor('甲').textContent).toBe('');
     expect(cellFor('乙').textContent).toBe('');
-    expect(document.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it.each([
-    [2, 1, null, null],
-    [3, 2, '67%', 'rgba(220,38,38,.55)'],
-    [10, 3, '30%', 'rgba(239,68,68,.45)'],
-    [10, 1, '10%', 'rgba(251,146,60,.45)'],
-  ])('%i 場 %i 次的膠囊染色門檻、比例及色碼照 A', (ended, count, pct, color) => {
-    render(<AttendanceRosterTable {...base} editing={false} noShowData={{
+    [2, 2, '2/2', false],
+    [2, 1, '1/2', false],
+    [3, 1, '1/3', false],
+    [3, 2, '2/3', true],
+    [10, 4, '4/10', false],
+    [10, 5, '5/10', true],
+    [4, 2, '2/4', true],
+    [3, 3, '3/3', true],
+    [10, 0, '0/10', false],
+    [0, 2, '2', false],
+    [0, 0, '', false],
+  ])('管理名單 🕊：計入 %i 場放鴿子 %i 次 → %s，標紅=%s（計入 ≥3 且比例 ≥50%）', (counted, count, text, red) => {
+    render(<AttendanceRosterTable {...base} noShowData={{
       counts: new Map([['u1', count as number]]),
-      endedCounts: new Map([['u1', ended as number]]), recentUids: new Set(),
+      endedCounts: new Map(counted ? [['u1', counted as number]] : []),
     }} />);
-    const tag = screen.getByText('甲') as HTMLElement;
-    expect(tag.classList.contains('uc-att-warn')).toBe(pct !== null);
-    expect(tag.style.getPropertyValue('--att-fill-pct')).toBe(pct ?? '');
-    expect(tag.style.getPropertyValue('--att-fill-color')).toBe(color ?? '');
+    const span = cellFor('甲').querySelector('span')!;
+    expect(cellFor('甲').textContent).toBe(text);
+    expect(span.style.color).toBe(red ? 'var(--danger)' : 'var(--text-muted)');
+    expect(span.style.fontWeight).toBe(red ? '700' : '600');
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
   });
 
   it.each([
@@ -132,7 +148,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     expect(cellFor('代報人').textContent).toBe('--');
     expect(cellFor('測試隊 保留席位').textContent).toBe('--');
     for (const name of ['↳ 同行者', '代報人', '測試隊 保留席位']) {
-      expect(screen.getByText(name).closest('tr')?.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+      expect(screen.getByText(name).closest('tr')?.querySelector(NO_DECORATION)).toBeNull();
     }
     expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);
     expect(!!screen.queryByRole('columnheader', { name: '候' })).toBe(demote);
@@ -152,16 +168,16 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
       { ...base.registrations[0], _docId: 'course', userName: '課程甲', courseLinkSource: 'eduCourseLesson', courseStudentId: 'student1' },
     ]} />);
     expect(screen.getAllByText('請至課程點名')).toHaveLength(2);
-    expect(cellFor('甲').textContent).toBe('1');
-    expect(cellFor('課程甲').textContent).toBe('1');
+    expect(cellFor('甲').textContent).toBe('1/3');
+    expect(cellFor('課程甲').textContent).toBe('1/3');
   });
 
-  it('相同名字不同 UID 不借用另一人的次數或泡泡', () => {
+  it('相同名字不同 UID 不借用另一人的次數', () => {
     render(<AttendanceRosterTable {...base} registrations={[
       { ...base.registrations[0], userId: 'other' },
     ]} />);
     expect(cellFor('甲').textContent).toBe('');
-    expect(document.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+    expect(document.querySelector(NO_DECORATION)).toBeNull();
   });
 
   it('空名單不畫表頭', () => {

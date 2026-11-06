@@ -4,9 +4,12 @@ import { doc, getDoc } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
 import {
+  ATTEND_RATE_MIN_COUNTED,
   USER_ATTENDANCE_STATS_COLLECTION,
+  deriveAttendanceDisplay,
   loadUserAttendanceSummary,
   normalizeUserAttendanceSummary,
+  type UserAttendanceSummary,
 } from './attendance-summary';
 
 vi.mock('firebase/firestore', () => ({
@@ -50,6 +53,8 @@ describe('normalizeUserAttendanceSummary', () => {
       completedCount: 5,
       attendRate: 67,
       updatedAt: '2026-05-01T00:00:00Z',
+      // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：沒有 countedSince 時 v2 為 null。
+      v2: null,
     });
   });
 
@@ -69,7 +74,94 @@ describe('normalizeUserAttendanceSummary', () => {
       completedCount: 0,
       attendRate: 0,
       updatedAt: null,
+      v2: null,
     });
+  });
+
+  // 新增（站長 11-06 放鴿子／出席率 v2）
+  it('有 countedSince 才算 v2，帶出參與／計入／計入完成；數字照一般規則正規化', () => {
+    const result = normalizeUserAttendanceSummary('U-3', {
+      expectedCount: 9, attendedCount: 5, completedCount: 5,
+      countedSince: '2026-11-06', participatedCount: 8.7, countedCount: '6', countedCompletedCount: -2,
+    });
+    expect(result?.v2).toEqual({
+      since: '2026-11-06', participatedCount: 8, countedCount: 6, countedCompletedCount: 0,
+    });
+    expect(normalizeUserAttendanceSummary('U-4', { participatedCount: 5, countedCount: 5 })?.v2).toBeNull();
+    expect(normalizeUserAttendanceSummary('U-5', { countedSince: '', countedCount: 5 })?.v2).toBeNull();
+  });
+});
+
+function legacy(overrides: Partial<UserAttendanceSummary> = {}): UserAttendanceSummary {
+  return {
+    uid: 'U-1', exists: true, sourceVersion: 1, expectedCount: 26, attendedCount: 22,
+    completedCount: 14, attendRate: 85, updatedAt: null, v2: null, ...overrides,
+  };
+}
+function withV2(participated: number, counted: number, completed: number): UserAttendanceSummary {
+  return legacy({
+    v2: { since: '2026-11-06', participatedCount: participated, countedCount: counted, countedCompletedCount: completed },
+  });
+}
+
+describe('deriveAttendanceDisplay（站長 11-06 出席率 v2）', () => {
+  it('沒有 summary 回 null', () => {
+    expect(deriveAttendanceDisplay(null)).toBeNull();
+  });
+
+  it('沒有 v2 退回舊算法：應到／完成／attendRate%，不顯示計入場數', () => {
+    expect(deriveAttendanceDisplay(legacy())).toEqual({
+      participatedText: '26', completedText: '14', rateText: '85%', ratio: 0.85, countedCount: null,
+    });
+    // 舊 attendRate 夾在 0～100 並四捨五入
+    expect(deriveAttendanceDisplay(legacy({ attendRate: 130 }))?.rateText).toBe('100%');
+    expect(deriveAttendanceDisplay(legacy({ attendRate: -4 }))?.rateText).toBe('0%');
+    expect(deriveAttendanceDisplay(legacy({ attendRate: 66.6 }))?.rateText).toBe('67%');
+  });
+
+  it('v2 計入 0 場：出席率「--」、計量條 0，仍顯示參與與計入 0', () => {
+    expect(deriveAttendanceDisplay(withV2(4, 0, 0))).toEqual({
+      participatedText: '4', completedText: '0', rateText: '--', ratio: 0, countedCount: 0,
+    });
+  });
+
+  it.each([
+    [1, 1, '1/1'],
+    [1, 0, '0/1'],
+    [2, 2, '2/2'],
+    [2, 1, '1/2'],
+  ])('v2 計入 %i 場（未滿 3）完成 %i → 只顯示「完成/計入」%s', (counted, completed, text) => {
+    expect(counted).toBeLessThan(ATTEND_RATE_MIN_COUNTED);
+    const result = deriveAttendanceDisplay(withV2(9, counted, completed));
+    expect(result?.rateText).toBe(text);
+    expect(result?.countedCount).toBe(counted);
+    expect(result?.ratio).toBeCloseTo(completed / counted);
+  });
+
+  it.each([
+    [3, 3, '100%'],
+    [3, 2, '67%'],
+    [3, 1, '33%'],
+    [6, 5, '83%'],
+    [8, 1, '13%'],
+    [200, 1, '1%'],
+  ])('v2 計入 %i 場完成 %i → 百分比四捨五入 %s', (counted, completed, text) => {
+    expect(ATTEND_RATE_MIN_COUNTED).toBe(3);
+    const result = deriveAttendanceDisplay(withV2(counted + 2, counted, completed));
+    expect(result?.rateText).toBe(text);
+    expect(result?.participatedText).toBe(String(counted + 2));
+    expect(result?.completedText).toBe(String(completed));
+  });
+
+  it('v2 完成數大於計入時夾成計入（完成＝min(計入完成, 計入)）', () => {
+    const over = deriveAttendanceDisplay(withV2(10, 4, 7));
+    expect(over).toMatchObject({ completedText: '4', rateText: '100%', ratio: 1 });
+    expect(deriveAttendanceDisplay(withV2(10, 2, 5))).toMatchObject({ completedText: '2', rateText: '2/2' });
+  });
+
+  it('v2 時不看舊 attendRate 與 expectedCount', () => {
+    const result = deriveAttendanceDisplay({ ...withV2(7, 4, 3), expectedCount: 99, attendRate: 99 });
+    expect(result).toMatchObject({ participatedText: '7', rateText: '75%' });
   });
 });
 

@@ -209,20 +209,21 @@ describe('T-073c：照 A 球衣徽章與名單排序', () => {
     expect(container.querySelector('tbody tr')?.textContent).toContain('↳ 同行者');
   });
 
-  it('排序後簽到操作仍對正確 UID，放鴿子欄／染色／泡泡與球衣共存', () => {
+  it('排序後簽到操作仍對正確 UID，管理名單 🕊 欄（放鴿子/計入）與球衣共存，不染色不出泡泡（測試同步更新：站長 11-06 放鴿子／出席率 v2）', () => {
     const onToggleCheckbox = vi.fn();
     const { container } = renderTable({
       canManage: true, editing: true, canViewNoShow: true, onToggleCheckbox,
-      noShowData: { counts: new Map([['alice', 2]]), endedCounts: new Map([['alice', 3]]), recentUids: new Set(['alice']) },
+      noShowData: { counts: new Map([['alice', 2]]), endedCounts: new Map([['alice', 3]]) },
     });
     fireEvent.click(sortButton());
     fireEvent.click(screen.getByRole('checkbox', { name: 'bob 簽到' }));
     expect(onToggleCheckbox).toHaveBeenCalledWith(expect.objectContaining({ uid: 'bob' }), 'checkin', true);
     const capsule = container.querySelector('[data-uid="alice"]')!;
-    expect(capsule.classList.contains('uc-att-warn')).toBe(true);
-    expect(capsule.querySelector('.uc-recent-noshow')?.nextElementSibling).toBe(jerseyFor(container, 'alice'));
+    expect(capsule.classList.contains('uc-att-warn')).toBe(false);
+    expect(capsule.querySelector('.uc-recent-noshow')).toBeNull();
+    expect(capsule.querySelector('.uc-team-jersey')).toBe(jerseyFor(container, 'alice'));
     expect(screen.getByRole('columnheader', { name: '🕊' })).toBeTruthy();
-    expect(capsule.closest('tr')?.querySelectorAll('td')[1]?.textContent).toBe('2');
+    expect(capsule.closest('tr')?.querySelectorAll('td')[1]?.textContent).toBe('2/3');
   });
 
   it('反覆切換不觸發額外 Firestore 讀寫、持久化或父層事件；點球衣沿用 UID 名片', () => {

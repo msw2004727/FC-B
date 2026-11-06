@@ -265,6 +265,28 @@ describe('放鴿子統計共用角色快取', () => {
     expect(getDocsMock).toHaveBeenCalledTimes(1);
   });
 
+  // 新增（站長 11-06 放鴿子／出席率 v2）：users.noShowV2 有值就讀 v2，並標 v2: true；沒有仍讀舊三欄。
+  it('noShowV2 有值時改讀 v2（count／counted／lastWasNoShow）並標 v2，不混用舊三欄', async () => {
+    getDocsMock.mockResolvedValue({ docs: [
+      { id: 'v2user', data: () => ({
+        noShowCount: 9, endedRegCount: 20, lastEventWasNoShow: false,
+        noShowV2: { count: '6', counted: 10, lastWasNoShow: true },
+      }) },
+      { id: 'v2empty', data: () => ({ noShowCount: 5, noShowV2: {} }) },
+      { id: 'old', data: () => ({ noShowCount: 2, endedRegCount: 3, lastEventWasNoShow: true }) },
+      { id: 'badv2', data: () => ({ noShowCount: 4, noShowV2: 'x' }) },
+    ] } as never);
+    const stats = await loadUserNoShowStats(['v2user', 'v2empty', 'old', 'badv2']);
+    expect(stats.v2user).toEqual({ noShowCount: 6, endedRegCount: 10, lastEventWasNoShow: true, v2: true });
+    expect(stats.v2empty).toEqual({ noShowCount: 0, endedRegCount: 0, lastEventWasNoShow: false, v2: true });
+    expect(stats.old).toEqual({ noShowCount: 2, endedRegCount: 3, lastEventWasNoShow: true });
+    expect(stats.old).not.toHaveProperty('v2');
+    expect(stats.badv2).toEqual({ noShowCount: 4, endedRegCount: 0, lastEventWasNoShow: false });
+    // 快取 getter 回傳副本也保留 v2 標記。
+    expect(getCachedUserNoShowStats('v2user')).toEqual({ noShowCount: 6, endedRegCount: 10, lastEventWasNoShow: true, v2: true });
+    expect(getCachedUserNoShowStats('old')).not.toHaveProperty('v2');
+  });
+
   it('同步 getter 不查詢、回傳副本，修改回傳物件不污染快取', async () => {
     expect(getCachedUserNoShowStats('missing')).toBeUndefined();
     expect(getDocsMock).not.toHaveBeenCalled();

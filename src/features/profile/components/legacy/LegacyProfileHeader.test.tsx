@@ -55,7 +55,7 @@ describe('LegacyProfileHeader', () => {
     );
   }
 
-  it('頭部只顯示名字與應到／完成／出席率三個統計項', () => {
+  it('頭部只顯示名字與參與／完成／出席率三個統計項', () => {
     const { container } = renderHeader();
     expect(container.textContent).toContain('TestUser');
     expect(container.querySelectorAll('.profile-stats .stat-item')).toHaveLength(3);

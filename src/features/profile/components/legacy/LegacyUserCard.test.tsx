@@ -164,7 +164,8 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     expect(container.textContent).toContain('分享名片');
   });
 
-  it('三格統計開頁自動讀 1 次（應到／完成／出席率），明細不讀', async () => {
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：「應到」改「參與」；沒有 v2 退回舊算法、不顯示「計 N 場」。
+  it('三格統計開頁自動讀 1 次（參與／完成／出席率），明細不讀', async () => {
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(
       summaryOf(TARGET, { expectedCount: 26, attendedCount: 22, completedCount: 14, attendRate: 85 }),
     );
@@ -175,10 +176,32 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     expect(loadUserAttendanceSummary).toHaveBeenCalledTimes(1);
     expect(loadUserAttendanceSummary).toHaveBeenCalledWith(TARGET, {});
     expect(loadUserStats).not.toHaveBeenCalled();
-    // 明細收合時先顯示應到場次
+    expect(container.querySelector('#uc-record-stats')?.textContent).toContain('參與');
+    expect(container.querySelector('#uc-record-stats')?.textContent).not.toContain('應到');
+    expect(container.querySelector('.pp-counted')).toBeNull();
+    // 明細收合時先顯示參與場次
     expect(container.querySelector('.pp-cnt')?.textContent).toBe('26');
     expect(toggleOf(container).getAttribute('aria-expanded')).toBe('false');
     expect((container.querySelector('#uc-records-panel') as HTMLElement).hidden).toBe(true);
+  });
+
+  it.each([
+    { counted: 12, completed: 9, rate: '75%' },
+    { counted: 2, completed: 1, rate: '1/2' },
+    { counted: 0, completed: 0, rate: '--' },
+  ])('v2 摘要：參與／完成／出席率 $rate，出席率下方「計 $counted 場」', async ({ counted, completed, rate }) => {
+    vi.mocked(loadUserAttendanceSummary).mockResolvedValue(summaryOf(TARGET, {
+      expectedCount: 99, completedCount: 99, attendRate: 99,
+      v2: { since: '2026-11-06', participatedCount: 20, countedCount: counted, countedCompletedCount: completed },
+    }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('20'));
+    expect(container.querySelector('#uc-stat-done')?.textContent).toBe(String(completed));
+    expect(container.querySelector('#uc-stat-rate')?.textContent).toBe(rate);
+    expect(container.querySelector('#uc-stat-rate')?.parentElement?.querySelector('.pp-counted')?.textContent)
+      .toBe(`計 ${counted} 場`);
+    // 「活動明細 N」跟著參與場次
+    expect(container.querySelector('.pp-cnt')?.textContent).toBe('20');
   });
 
   it('活動明細點開才讀 loadUserStats；收合再展開不重讀；清單以公開模式過濾', async () => {
@@ -374,7 +397,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     expect(container.querySelector('[data-action="pm"]')).toBeNull();
   });
 
-  it('「活動明細 N」固定用應到場次，展開後也不變', async () => {
+  it('「活動明細 N」固定用參與場次，展開後也不變', async () => {
     vi.mocked(getFilteredRecords).mockReturnValue([
       { _docId: 'a', name: 'x', status: 'completed', _displayStatus: 'completed' },
     ]);

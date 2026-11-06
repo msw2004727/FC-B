@@ -169,10 +169,10 @@ describe('T-073b 共用快取與補正載入', () => {
   });
 
   it.each([
-    { elapsed: 299_999, batches: 1, count: 1, ended: 3, recent: true },
-    { elapsed: 300_000, batches: 2, count: 4, ended: 8, recent: false },
-    { elapsed: 300_001, batches: 2, count: 4, ended: 8, recent: false },
-  ])('角色預載後 $elapsed ms 才展開，相同 UID 集合依 TTL 恢復統計', async ({ elapsed, batches, count, ended, recent }) => {
+    { elapsed: 299_999, batches: 1, count: 1, ended: 3 },
+    { elapsed: 300_000, batches: 2, count: 4, ended: 8 },
+    { elapsed: 300_001, batches: 2, count: 4, ended: 8 },
+  ])('角色預載後 $elapsed ms 才展開，相同 UID 集合依 TTL 恢復統計', async ({ elapsed, batches, count, ended }) => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
     // 與頁面一致：關閉名單時已載入主辦、候補與參加者的角色。
     const opts = { ...base, roleUids: ['host', 'waiting', 'u1'] };
@@ -200,7 +200,8 @@ describe('T-073b 共用快取與補正載入', () => {
     }
     await waitFor(() => expect(view.result.current.data?.counts.get('u1')).toBe(count));
     expect(view.result.current.data?.endedCounts.get('u1')).toBe(ended);
-    expect(view.result.current.data?.recentUids.has('u1')).toBe(recent);
+    // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：最近一場旗標（recentUids）已移除，hook 不再提供。
+    expect(view.result.current.data).not.toHaveProperty('recentUids');
     expect(view.result.current.roles.u1).toBe(batches === 2 ? 'coach' : 'user');
     expect(callsTo('users')).toEqual(Array.from({ length: batches }, () => opts.roleUids));
     expect(callsTo('userCorrections')).toEqual([['u1']]);

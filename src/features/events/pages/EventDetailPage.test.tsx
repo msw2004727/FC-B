@@ -1800,15 +1800,15 @@ describe('T-073b 頁面共用權限與補正保底', () => {
   });
 
   it.each(['activity.view_noshow', 'admin.repair.no_show_adjust'])(
-    '只有 %s：展開才讀補正，有染色／泡泡，無管理欄', async permission => {
+    '只有 %s：展開才讀補正，一般瀏覽不染色／不出泡泡，無管理欄（測試同步更新：站長 11-06 放鴿子／出席率 v2）', async permission => {
       mocks.viewer.mockReturnValue({ ...viewer, hasPermission: (code: string) => code === permission });
       const view = mount();
       await screen.findByRole('heading', { level: 2 });
       expect(mocks.noShowAdjustments).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: '查看出席紀錄' }));
-      await waitFor(() => expect(view.container.querySelector('.uc-att-warn')).toBeTruthy());
-      expect(view.container.querySelector('.uc-recent-noshow')).toBeTruthy();
-      expect(mocks.noShowAdjustments).toHaveBeenCalledWith(['u1'], true);
+      await waitFor(() => expect(mocks.noShowAdjustments).toHaveBeenCalledWith(['u1'], true));
+      await act(async () => {});
+      expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
       expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
       expect(screen.queryByRole('button', { name: '管理名單', exact: true })).toBeNull();
     },
@@ -1824,17 +1824,21 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
   });
 
-  it('主辦人共用現場操作權：一般模式染色，管理模式才出現補正後次數', async () => {
+  it('主辦人共用現場操作權：一般模式不染色，管理模式才出現補正後「放鴿子/計入」', async () => {
     mocks.viewer.mockReturnValue({ ...viewer, uid: 'host1', capabilities: ['user.activity.site_operate'] });
     const view = mount();
-    await waitFor(() => expect(view.container.querySelector('.uc-att-warn')).toBeTruthy());
+    await screen.findByRole('button', { name: '管理名單', exact: true });
+    await act(async () => {});
+    expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '🕊' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '管理名單', exact: true }));
     await screen.findByRole('columnheader', { name: '🕊' });
-    await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子次數"]')?.textContent).toBe('1'));
+    await waitFor(() => expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('1/3'));
+    expect(view.container.querySelector('.uc-att-warn, .uc-recent-noshow')).toBeNull();
+    expect(view.container.querySelector('#detail-attendance-table table')?.classList.contains('att-roster-managing')).toBe(true);
   });
 
-  it('補正讀取失敗不回退 raw、不顯示錯誤或染色／泡泡，管理欄留空', async () => {
+  it('補正讀取失敗不回退 raw、不顯示錯誤，管理欄留空', async () => {
     mocks.viewer.mockReturnValue({ ...viewer, uid: 'host1', capabilities: ['user.activity.site_operate'] });
     mocks.noShowAdjustments.mockRejectedValue(new Error('private correction failure'));
     const view = mount();

@@ -13,13 +13,6 @@ export type UserNoShowStatsByUid = Readonly<Record<string, UserNoShowStats>>;
 /** 值為 userCorrections/{uid}.noShow.adjustment，於合併時照 A 轉數字及取整。 */
 export type NoShowAdjustmentsByUid = ReadonlyMap<string, unknown>;
 
-export interface AttendanceFill {
-  pct: number;
-  color: string;
-  ended: number;
-  noShow: number;
-}
-
 export type NoShowParticipant = Pick<
   ConfirmedRosterPerson,
   'uid' | 'isCompanion' | 'proxyOnly' | 'isProxyOnly'
@@ -63,19 +56,6 @@ export function buildEndedRegCountByUid(
   return counts;
 }
 
-/** A _buildLastNoShowSet：最近一場旗標獨立於補正後的累計次數。 */
-export function buildLastNoShowSet(
-  users: UserNoShowStatsByUid,
-  featureEnabled = NO_SHOW_FEATURE_ENABLED,
-): Set<string> {
-  const uids = new Set<string>();
-  if (!featureEnabled) return uids;
-  for (const [uid, user] of Object.entries(users)) {
-    if (uid && user.lastEventWasNoShow) uids.add(uid);
-  }
-  return uids;
-}
-
 /**
  * 合併 A _getParticipantNoShowCount 與表格的僅代報排除條件。
  * null 代表不適用；空 Map 仍回 0（A 的 Map 物件為 truthy）。
@@ -92,29 +72,4 @@ export function participantNoShowCount(
   const uid = person.uid.trim();
   if (!uid) return null;
   return counts.get(uid) || 0;
-}
-
-/**
- * A _getParticipantAttendanceFill；回傳型別可直接給 UserTag.attendanceFill。
- * 呼叫端仍須依 canViewNoShow 與列型別排除同行者、僅代報及保留席位。
- */
-export function attendanceFill(
-  uid: string,
-  noShowCounts: ReadonlyMap<string, number>,
-  endedRegCounts: ReadonlyMap<string, number>,
-  featureEnabled = NO_SHOW_FEATURE_ENABLED,
-): AttendanceFill | null {
-  if (!featureEnabled) return null;
-  const safeUid = uid.trim();
-  if (!safeUid) return null;
-  const ended = Number(endedRegCounts.get(safeUid) || 0);
-  if (ended < 3) return null;
-  const noShow = Number(noShowCounts.get(safeUid) || 0);
-  if (noShow <= 0) return null;
-  const ratio = Math.min(1, noShow / ended);
-  const pct = Math.round(ratio * 100);
-  const color = ratio >= 0.5 ? 'rgba(220,38,38,.55)'
-    : ratio >= 0.2 ? 'rgba(239,68,68,.45)'
-      : 'rgba(251,146,60,.45)';
-  return { pct, color, ended, noShow };
 }

@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { UserNoShowStats } from '@/data/user-roles';
-import type { UserTagProps } from '@/ui/UserTag';
 import {
   NO_SHOW_FEATURE_ENABLED,
-  attendanceFill,
   buildEndedRegCountByUid,
-  buildLastNoShowSet,
   buildNoShowCountByUid,
   participantNoShowCount,
   type NoShowParticipant,
 } from './noshow-roster';
 
-function stats(noShowCount = 0, endedRegCount = 0, lastEventWasNoShow = false): UserNoShowStats {
-  return { noShowCount, endedRegCount, lastEventWasNoShow };
+function stats(noShowCount = 0, endedRegCount = 0, lastEventWasNoShow = false, v2?: true): UserNoShowStats {
+  return { noShowCount, endedRegCount, lastEventWasNoShow, ...(v2 ? { v2 } : {}) };
 }
 
 function person(overrides: Partial<NoShowParticipant> = {}): NoShowParticipant {
@@ -38,6 +35,15 @@ describe('buildNoShowCountByUid（A 補正語意）', () => {
     expect(buildNoShowCountByUid({ u1: stats(4) }, new Map<string, unknown>([
       ['u1', '-1.9'], ['u2', '2.9'], ['u3', -4], ['u4', 0.9], ['', 4],
     ]))).toEqual(new Map([['u1', 3], ['u2', 2], ['u3', 0], ['u4', 0]]));
+  });
+
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：v2 使用者不套舊 userCorrections 補正。
+  it('v2 使用者不套舊補正，非 v2 使用者照舊補正', () => {
+    const users = { v2user: stats(2, 5, false, true), old: stats(2, 5) };
+    const adjustments = new Map([['v2user', -2], ['old', -1], ['v2none', 3]]);
+    expect(buildNoShowCountByUid(users, adjustments)).toEqual(new Map([
+      ['v2user', 2], ['old', 1], ['v2none', 3],
+    ]));
   });
 
   it.each([undefined, null, '', 0, '0', NaN, Infinity, -Infinity, 'invalid'])(
@@ -95,52 +101,14 @@ describe('participantNoShowCount（精確 UID）', () => {
   });
 });
 
-describe('分母、染色與最近放鴿子泡泡', () => {
-  it('分母只收正數；泡泡只看 lastEventWasNoShow，獨立於補正後次數', () => {
+describe('分母', () => {
+  // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：染色與最近一場泡泡已移除，只剩分母與補正後次數。
+  it('分母只收正數；補正後次數可歸零', () => {
     const users = {
       u1: stats(2, 3, true), u2: stats(1, 0), u3: stats(0, -1, true), u4: stats(0, NaN), '': stats(1, 3, true),
     };
     expect(buildEndedRegCountByUid(users)).toEqual(new Map([['u1', 3]]));
     expect(buildNoShowCountByUid(users, new Map([['u1', -2]])).get('u1')).toBe(0);
-    expect(buildLastNoShowSet(users)).toEqual(new Set(['u1', 'u3']));
-  });
-
-  it.each([
-    [2, 2, null, null],
-    [3, 2, 67, 'rgba(220,38,38,.55)'],
-    [10, 3, 30, 'rgba(239,68,68,.45)'],
-    [10, 1, 10, 'rgba(251,146,60,.45)'],
-    [10, 5, 50, 'rgba(220,38,38,.55)'],
-    [10, 2, 20, 'rgba(239,68,68,.45)'],
-    [3, 5, 100, 'rgba(220,38,38,.55)'],
-    [3, 0, null, null],
-    [3, -1, null, null],
-    [0, 2, null, null],
-  ] as const)('%i 場／%i 次 → %s%%', (ended, noShow, pct, color) => {
-    const result = attendanceFill('u1', new Map([['u1', noShow]]), new Map([['u1', ended]]));
-    expect(result).toEqual(pct === null ? null : { pct, color, ended, noShow });
-    // 靜態型別檢查：不必改 UserTag 即可傳入既有 prop。
-    const compatible: UserTagProps['attendanceFill'] = result ?? undefined;
-    expect(compatible).toEqual(result ?? undefined);
-  });
-
-  it('缺 UID、分母或次數均不染色；只按精確 UID，允許修剪空白', () => {
-    const counts = new Map([['u1', 2]]);
-    const ended = new Map([['u1', 3]]);
-    expect(attendanceFill('', counts, ended)).toBeNull();
-    expect(attendanceFill(' ', counts, ended)).toBeNull();
-    expect(attendanceFill('u2', counts, ended)).toBeNull();
-    expect(attendanceFill('u1', counts, new Map())).toBeNull();
-    expect(attendanceFill('u1', new Map(), ended)).toBeNull();
-    expect(attendanceFill(' u1 ', counts, ended)?.pct).toBe(67);
-  });
-
-  it('染色採用補正後次數，補正到零即不染色', () => {
-    const users = { u1: stats(2, 3) };
-    const ended = buildEndedRegCountByUid(users);
-    expect(attendanceFill('u1', buildNoShowCountByUid(users, new Map([['u1', -1]])), ended))
-      .toEqual({ pct: 33, color: 'rgba(239,68,68,.45)', ended: 3, noShow: 1 });
-    expect(attendanceFill('u1', buildNoShowCountByUid(users, new Map([['u1', -3]])), ended)).toBeNull();
   });
 });
 
@@ -149,11 +117,8 @@ describe('放鴿子旗標', () => {
     expect(NO_SHOW_FEATURE_ENABLED).toBe(true);
     const users = { u1: stats(2, 3, true) };
     const counts = new Map([['u1', 2]]);
-    const ended = new Map([['u1', 3]]);
     expect(buildNoShowCountByUid(users, new Map([['u1', 3]]), false)).toEqual(new Map());
     expect(buildEndedRegCountByUid(users, false)).toEqual(new Map());
-    expect(buildLastNoShowSet(users, false)).toEqual(new Set());
     expect(participantNoShowCount(person(), counts, false)).toBeNull();
-    expect(attendanceFill('u1', counts, ended, false)).toBeNull();
   });
 });
