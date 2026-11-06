@@ -7,7 +7,6 @@ import { SHOW_EXP } from '@/core/exp-display';
 import { LOCKED_FEATURE_MSG } from '@/core/unavailable';
 import { useIdentitySettings } from '@/data/identity-settings';
 import { getEffectiveIdentity } from '@/data/identity-resolver';
-import { useUserRoles } from '@/data/user-roles';
 import { openPmDialog } from '@/features/inbox/components/pm-dialog-store';
 import { lt, useT } from '@/i18n/i18n';
 import { resolveDrawerRoleInfo, type CustomRoleInput } from '@/ui/drawer-menu';
@@ -43,6 +42,9 @@ type RecordFilter = 'all' | 'completed' | 'cancelled';
 
 /** A `isValidLineUid`：私訊只開給合法 LINE UID。 */
 const LINE_UID_RE = /^U[0-9a-f]{32}$/i;
+/** 自訂角色色碼只收 #hex，其他退回 A 的預設色（色碼會寫進 style）。 */
+const HEX_COLOR_RE = /^#[0-9a-f]{3,8}$/i;
+const CUSTOM_ROLE_FALLBACK_COLOR = '#6366f1';
 
 export interface LegacyUserCardProps {
   uid: string;
@@ -74,7 +76,6 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const identitySettings = useIdentitySettings();
   const targetUid = uid;
   const isSelf = Boolean(viewer.uid && viewer.uid === targetUid);
-  const rolesMap = useUserRoles(targetUid ? [targetUid] : []);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
@@ -133,6 +134,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsError, setRecordsError] = useState(false);
   const [activeFilter, setActiveFilter] = useState<RecordFilter>('all');
   const [page, setPage] = useState(1);
 
@@ -143,6 +145,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     setSummary(null);
     setRecordsOpen(false);
     setRecordsLoading(false);
+    setRecordsError(false);
     setActiveFilter('all');
     setPage(1);
   }, [targetUid]);
@@ -170,13 +173,14 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
       });
   }, [dataUid]);
 
-  // 對方是自訂角色時才讀 customRoles（整個工作階段一次）。
+  // 對方是自訂角色、且已登入（customRoles 規則要登入才能讀）時才讀，整個工作階段一次。
   const rawRoleKey = profile && typeof profile['role'] === 'string' ? profile['role'].trim() : '';
   const isCustomRole = Boolean(rawRoleKey)
     && !Object.prototype.hasOwnProperty.call(ROLE_DISPLAY_MAP, rawRoleKey);
   const [customRoles, setCustomRoles] = useState<readonly CustomRoleInput[] | null>(null);
+  const signedIn = Boolean(viewer.uid);
   useEffect(() => {
-    if (!isCustomRole) return;
+    if (!isCustomRole || !signedIn) return;
     let cancelled = false;
     void loadCustomRolesCached().then((roles) => {
       if (!cancelled && mountedRef.current) setCustomRoles(roles);
@@ -184,7 +188,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [isCustomRole]);
+  }, [isCustomRole, signedIn]);
 
   // 換看另一個人的那一個 render（effect 清狀態之前）：資料不是為目前 uid 載入的，一律當載入中，不顯示上一人。
   if (status === 'loading' || loadedFor !== targetUid) {
@@ -256,12 +260,13 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     : (typeof profile['pictureUrl'] === 'string' ? profile['pictureUrl'] : null);
   const avatarUrl = sanitizeHttpAvatarUrl(rawAvatar);
 
-  // 身分標籤：同我的個人頁頁首（resolveEffectiveRole＋useUserRoles）。自訂角色照 A ROLES Proxy 顯示自訂名稱與顏色
-  // （useUserRoles 對非內建角色回 'user'，所以只在它沒給出內建非 user 角色時才採自訂角色；隱身管理員一律一般用戶）。
-  const cachedRole = rolesMap[targetUid];
-  const roleInfo = isCustomRole && (!cachedRole || cachedRole === 'user')
-    ? resolveDrawerRoleInfo(rawRoleKey, true, customRoles)
-    : (ROLE_DISPLAY_MAP[resolveEffectiveRole(profile, cachedRole)] ?? ROLE_DISPLAY_MAP.user);
+  // 身分標籤：直接用剛讀到的對方文件（resolveEffectiveRole 已處理隱身管理員）；不另用 useUserRoles，
+  // 省一次 users 讀取，也避免網址 uid 與文件 id 不同時查錯對象（審查 P2-1，取代原本同頁首的 useUserRoles 寫法）。
+  // 自訂角色照 A ROLES Proxy 顯示自訂名稱與顏色。
+  const customInfo = isCustomRole ? resolveDrawerRoleInfo(rawRoleKey, true, customRoles) : null;
+  const roleInfo = customInfo
+    ? { label: customInfo.label, color: HEX_COLOR_RE.test(customInfo.color) ? customInfo.color : CUSTOM_ROLE_FALLBACK_COLOR }
+    : (ROLE_DISPLAY_MAP[resolveEffectiveRole(profile)] ?? ROLE_DISPLAY_MAP.user);
 
   const gender = typeof profile['gender'] === 'string' ? profile['gender'] : '-';
   const birthday = typeof profile['birthday'] === 'string' ? profile['birthday'] : '-';
@@ -288,8 +293,10 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
 
   const { level, progress, needed, percent: expPct } = calcLevelFromExp(profile['exp'] ?? 0);
 
+  // 看自己：網址 uid 或讀到的文件 uid 任一等於登入者都算（不能私訊自己）。
+  const viewingSelf = isSelf || Boolean(viewer.uid && viewer.uid === profile.uid);
   const pmUid = String(profile.uid || '').trim();
-  const canPm = !isSelf && LINE_UID_RE.test(pmUid);
+  const canPm = !viewingSelf && LINE_UID_RE.test(pmUid);
 
   const handlePm = (): void => {
     if (!viewer.uid) {
@@ -312,6 +319,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     const seq = ++recordsSeqRef.current;
     const statsUid = profile.uid;
     setRecordsLoading(true);
+    setRecordsError(false);
     Promise.all([
       getPublicStats(statsUid, { force }),
       force ? getPublicSummary(statsUid, { force: true }) : Promise.resolve(null),
@@ -326,6 +334,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
         console.warn('[legacy-user-card] records load failed', err);
         // 照 A refreshUserCardRecords 失敗時 showToast('活動紀錄刷新失敗')；已換人或卸載就不提示。
         if (!mountedRef.current || seq !== recordsSeqRef.current) return;
+        setRecordsError(true);
         toast.show({ message: lt('活動紀錄刷新失敗', '活動紀錄刷新失敗') });
       })
       .finally(() => {
@@ -351,10 +360,8 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const filteredRecords = recordsReady && stats
     ? getFilteredRecords(stats, activeFilter, true)
     : [];
-  // 「活動明細 N」：明細讀到後是全部筆數；還沒讀時先用三格統計的應到場次。
-  const recordCount = recordsReady && stats
-    ? (activeFilter === 'all' ? filteredRecords.length : getFilteredRecords(stats, 'all', true).length)
-    : (summary?.expectedCount ?? null);
+  // 「活動明細 N」固定用三格統計的應到場次，展開前後數字不跳（審查 P3-4）。
+  const recordCount = summary?.expectedCount ?? null;
 
   const handleShareClick = (): void => {
     // ASSUMPTION: B 尚無個人名片分享功能（本單範圍外），照 A 輸出按鈕但點擊 toast 提示。
@@ -392,7 +399,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
           </span>
         </div>
       ) : null}
-      {!isSelf && !isSecondaryIdentity ? (
+      {!viewingSelf && !isSecondaryIdentity ? (
         <div class="pp-acts" role="group" aria-label={t('profile.pp.actions')}>
           {canPm ? (
             <button type="button" class="pp-ab pp-pri" data-action="pm" onClick={handlePm}>
@@ -561,6 +568,13 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
         <div class="mini-activity-list" id="uc-activity-records">
           {recordsReady ? (
             <ActivityRecordList items={filteredRecords} page={page} onPage={setPage} />
+          ) : recordsError && !recordsLoading ? (
+            <div class="pp-loading pp-error">
+              <span>{lt('活動紀錄刷新失敗', '活動紀錄刷新失敗')}</span>
+              <button type="button" class="pp-retry" onClick={() => loadRecords(false)}>
+                {lt('重試', '重試')}
+              </button>
+            </div>
           ) : (
             <div class="pp-loading">{lt('載入中...', '載入中...')}</div>
           )}
@@ -606,13 +620,9 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
 
   return (
     <div class="user-card-full pp-card" id="user-card-full">
-      <div class="pp-grid">
-        <div class="pp-left">
-          {header}
-          {statsBlock}
-        </div>
-        <div class="pp-right">{details}</div>
-      </div>
+      {header}
+      {statsBlock}
+      <div class="pp-right">{details}</div>
     </div>
   );
 }

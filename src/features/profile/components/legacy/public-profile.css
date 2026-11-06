@@ -216,6 +216,17 @@
 .pp-card .pp-refresh .pp-ic { width: 18px; height: 18px; }
 .pp-card .pp-refresh.spinning .pp-ic { animation: profile-record-refresh-spin .65s linear infinite; }
 .pp-card .pp-loading { padding: .5rem 0; font-size: .82rem; color: var(--text-muted); }
+.pp-card .pp-error { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.pp-card .pp-retry {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
 .pp-card .pp-share { padding: 1rem 0 .5rem; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
