@@ -47,10 +47,13 @@ function PlayerCardShine({ theme, face }: { theme: PlayerCardTheme; face: Player
 export function PlayerCard({
   model,
   avatar,
+  topBar,
 }: {
   model: PlayerCardModel;
   /** 頭像節點（沿用 LegacyAvatar，含第二身分皇冠）。 */
   avatar: ComponentChildren;
+  /** 卡片上方、與鎖頭同一列置中顯示的內容（個人頁放身分標籤）；不進卡面、不進 PNG。 */
+  topBar?: ComponentChildren;
 }): JSX.Element {
   const t = useT();
   useTheme(); // 深淺色切換時重畫 logo 與斜光
@@ -68,6 +71,7 @@ export function PlayerCard({
   // 外層留出鎖頭列；只有舞台吃撥動手勢（鎖頭在舞台外，點它不會翻）。正面仍是 .player-card（既有測試與 PNG 對照不變）。
   return (
     <div class="player-card-spin">
+      {topBar != null && <div class="player-card-topbar">{topBar}</div>}
       <button
         type="button"
         class={`player-card-lock${locked ? ' is-locked' : ''}`}

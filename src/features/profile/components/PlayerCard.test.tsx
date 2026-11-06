@@ -121,9 +121,9 @@ describe('T-092 球員卡（DOM）', () => {
     document.documentElement.removeAttribute('data-theme');
   });
 
-  it('卡片外順序：卡片 → UID＋QR → 身分標籤 → 分享球員卡', () => {
+  it('卡片外順序：身分標籤（卡片上方）→ 卡片 → UID＋QR → 分享球員卡', () => {
     const { container } = renderTop(viewer());
-    const order = ['.player-card', '#profile-uid-wrap', '#profile-role-tag-wrap', '#player-card-share-btn']
+    const order = ['#profile-role-tag-wrap', '.player-card', '#profile-uid-wrap', '#player-card-share-btn']
       .map((sel) => container.querySelector(sel));
     order.forEach((el) => expect(el).not.toBeNull());
     for (let i = 1; i < order.length; i++) {
@@ -136,6 +136,10 @@ describe('T-092 球員卡（DOM）', () => {
     expect(card.contains(container.querySelector('#profile-uid-wrap'))).toBe(false);
     expect(card.contains(container.querySelector('#profile-role-tag-wrap'))).toBe(false);
     expect(card.contains(container.querySelector('#player-card-share-btn'))).toBe(false);
+    // 身分標籤與鎖頭同一列（卡片上方外側），不在會旋轉的舞台裡
+    const topbar = container.querySelector('.player-card-topbar')!;
+    expect(topbar.contains(container.querySelector('#profile-role-tag-wrap'))).toBe(true);
+    expect(container.querySelector('.player-card-stage')!.contains(topbar)).toBe(false);
   });
 
   it('卡面：三格中文＋英文縮寫、出席率大數字、計量條、球員卡標題、logo', () => {

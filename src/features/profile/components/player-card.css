@@ -1,7 +1,8 @@
 /*
  * T-092 球員卡（站長 11-05 定案）。色碼與 src/features/profile/data/player-card-model.ts 的 PLAYER_CARD_PALETTES 同一組，
  * 改色要兩邊一起改（PNG 由 Canvas 依那份色票畫）。
- * 卡面 220×324 放大 1.1 倍顯示（242×356），圓角 18×1.1。
+ * 卡面尺寸一律寫成 calc(N * var(--pcu))，N 為站長預覽的 220×324 卡面數值，--pcu＝卡寬／220（定義在 .player-card-spin）。
+ * 取代原本固定放大 1.1 倍（242×356 px）：站長 11-06 要求卡片放大、減少四周留白，改成跟容器寬度等比例縮放。
  */
 /* 運動窄體字自架（@fontsource/bebas-neue 5.1.0 latin 子集，OFL 1.1，授權見 public/fonts/BebasNeue-OFL.txt）。
  * vite base 為 '/'，與 logo 同樣用站根絕對路徑；unicode-range 只含卡面用到的英數與符號，中文仍走系統字。 */
@@ -13,20 +14,23 @@
   src: url('/fonts/bebas-neue-latin-400-normal.woff2') format('woff2');
   unicode-range: U+0020, U+0025, U+002B, U+002D, U+002E, U+0030-0039, U+0041-005A, U+0061-007A;
 }
-.player-card-header { padding-top: 1rem; }
+/* 頭部留白收小（舊站 .legacy-ui .profile-header 是 1.5rem 1rem .5rem，權重 0,2,0，這裡 0,3,0）：
+ * 左右 .5rem 加上 .app-main 的 8px，手機上卡片離螢幕邊約 16px；
+ * 取代原本未加前綴、實際被舊樣式蓋掉的 `.player-card-header { padding-top: 1rem; }`。 */
+.legacy-ui .profile-header.player-card-header { padding: .5rem .5rem .25rem; }
 
 .player-card,
 .player-card-back {
   position: relative;
-  width: 242px;
-  height: 356px;
+  width: calc(220 * var(--pcu));
+  height: calc(324 * var(--pcu));
   margin: 0 auto .7rem;
-  border-radius: 20px;
+  border-radius: calc(18.18 * var(--pcu));
   overflow: hidden;
   isolation: isolate;
   color: #412402;
   background-color: #FAEEDA;
-  background-image: repeating-linear-gradient(45deg, transparent 0 7.5px, rgba(250, 199, 117, .28) 7.5px 9px);
+  background-image: repeating-linear-gradient(45deg, transparent 0 calc(6.82 * var(--pcu)), rgba(250, 199, 117, .28) calc(6.82 * var(--pcu)) calc(8.18 * var(--pcu)));
   border: 1px solid #EF9F27;
   box-shadow: 0 6px 18px rgba(65, 36, 2, .14);
   text-align: center;
@@ -35,7 +39,7 @@
 [data-theme="dark"] .player-card-back {
   color: #FAEEDA;
   background-color: #2C2C2A;
-  background-image: repeating-linear-gradient(45deg, transparent 0 7.5px, rgba(68, 68, 65, .55) 7.5px 9px);
+  background-image: repeating-linear-gradient(45deg, transparent 0 calc(6.82 * var(--pcu)), rgba(68, 68, 65, .55) calc(6.82 * var(--pcu)) calc(8.18 * var(--pcu)));
   border-color: #854F0B;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
 }
@@ -43,9 +47,9 @@
 /* 內框：固定離卡邊 6px（含外框 1px＝內距 5px）、1.5px。 */
 .player-card-frame {
   position: absolute;
-  inset: 5px;
-  border: 1.5px solid #BA7517;
-  border-radius: 14px;
+  inset: calc(4.55 * var(--pcu));
+  border: calc(1.36 * var(--pcu)) solid #BA7517;
+  border-radius: calc(12.73 * var(--pcu));
   pointer-events: none;
 }
 [data-theme="dark"] .player-card-frame { border-color: #FAC775; }
@@ -58,12 +62,12 @@
 .player-card-abbr {
   display: block;
   font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
-  font-size: 12.1px;
+  font-size: calc(11 * var(--pcu));
   font-weight: 400;
-  letter-spacing: 1.65px;
+  letter-spacing: calc(1.5 * var(--pcu));
   /* 預覽縮寫落在 24 高的中文行框裡、基線離行頂 19：以內距補到同一基線，總高仍 26.4。 */
-  padding-top: 9.9px;
-  line-height: 16.5px;
+  padding-top: calc(9 * var(--pcu));
+  line-height: calc(15 * var(--pcu));
   color: #854F0B;
 }
 [data-theme="dark"] .player-card-abbr { color: #FAC775; }
@@ -71,62 +75,62 @@
 /* 左上大數字＋ATT：預覽 left 16／top 14（含 1px 外框即卡面 17,15），兩行置中對齊。 */
 .player-card-att {
   position: absolute;
-  top: 15.5px;
-  left: 17.7px;
+  top: calc(14.09 * var(--pcu));
+  left: calc(16.09 * var(--pcu));
   text-align: center;
   line-height: .9;
 }
 .player-card-att-num {
   display: block;
   font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
-  font-size: 48.4px;
+  font-size: calc(44 * var(--pcu));
   font-weight: 400;
   line-height: .9;
 }
 .player-card-att .player-card-abbr {
-  font-size: 13.2px;
-  letter-spacing: 2.2px;
-  padding-top: 4.4px;
-  line-height: 15.84px;
+  font-size: calc(12 * var(--pcu));
+  letter-spacing: calc(2 * var(--pcu));
+  padding-top: calc(4 * var(--pcu));
+  line-height: calc(14.4 * var(--pcu));
 }
 
 .player-card-title {
   position: absolute;
-  top: 17.7px;
-  right: 17.7px;
+  top: calc(16.09 * var(--pcu));
+  right: calc(16.09 * var(--pcu));
   text-align: right;
   line-height: 1.15;
 }
 .player-card-title-zh {
   display: block;
-  font-size: 13.2px;
+  font-size: calc(12 * var(--pcu));
   font-weight: 500;
-  letter-spacing: 2.2px;
+  letter-spacing: calc(2 * var(--pcu));
   line-height: 1.15;
 }
 .player-card-title .player-card-abbr {
-  font-size: 12.1px;
-  letter-spacing: 2.2px;
-  padding-top: 4.6px;
-  line-height: 20.24px;
+  font-size: calc(11 * var(--pcu));
+  letter-spacing: calc(2 * var(--pcu));
+  padding-top: calc(4.18 * var(--pcu));
+  line-height: calc(18.4 * var(--pcu));
 }
 
 /* 頭像：預覽外圈 100px、上緣距卡頂 47（.in 內距 16＋margin 30＋外框 1）。 */
 .player-card-avatar-wrap {
   position: relative;
-  width: 110px;
-  height: 110px;
-  margin: 50.7px auto 0;
+  width: calc(100 * var(--pcu));
+  height: calc(100 * var(--pcu));
+  margin: calc(46.09 * var(--pcu)) auto 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 /* 兩層外圈：外＝主金色，內＝白／深底色。畫在外層容器上（LINE 頭像容器的 .profile-avatar-img 會以 !important 清掉框線與陰影）。 */
 .player-card-ring {
-  width: 110px;
-  height: 110px;
+  width: calc(100 * var(--pcu));
+  height: calc(100 * var(--pcu));
   box-sizing: border-box;
-  padding: 4.4px;
+  padding: calc(4 * var(--pcu));
   border-radius: 50%;
   background: #BA7517;
 }
@@ -134,7 +138,7 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  padding: 3.3px;
+  padding: calc(3 * var(--pcu));
   border-radius: 50%;
   background: #FFFFFF;
   display: flex;
@@ -155,7 +159,7 @@
   height: 100%;
   margin: 0;
   padding: 0;
-  font-size: 39.6px;
+  font-size: calc(36 * var(--pcu));
   font-weight: 500;
   border: none;
   box-shadow: none;
@@ -178,16 +182,16 @@
 /* 俱樂部數：頭像外圈右側偏中下破格（預覽 36×38、right -12、top 54，相對外圈）。 */
 .player-card-club {
   position: absolute;
-  left: 83.6px;
-  top: 59.4px;
-  min-width: 39.6px;
-  height: 41.8px;
-  padding: 0 3px;
+  left: calc(76 * var(--pcu));
+  top: calc(54 * var(--pcu));
+  min-width: calc(36 * var(--pcu));
+  height: calc(38 * var(--pcu));
+  padding: 0 calc(2.73 * var(--pcu));
   box-sizing: border-box;
-  border-radius: 7.7px;
+  border-radius: calc(7 * var(--pcu));
   background: #412402;
   color: #FAC775;
-  border: 2.2px solid #FAEEDA;
+  border: calc(2 * var(--pcu)) solid #FAEEDA;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -195,26 +199,26 @@
   line-height: 1.05;
   z-index: 2;
 }
-.player-card-club.is-wide { min-width: 48.4px; }
+.player-card-club.is-wide { min-width: calc(44 * var(--pcu)); }
 [data-theme="dark"] .player-card-club {
   background: #FAC775;
   color: #2C2C2A;
   border-color: #2C2C2A;
 }
-.player-card-club-label { font-size: 8.8px; font-weight: 500; line-height: 1.05; white-space: nowrap; }
+.player-card-club-label { font-size: calc(8 * var(--pcu)); font-weight: 500; line-height: 1.05; white-space: nowrap; }
 .player-card-club-num {
   font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
-  font-size: 20.9px;
+  font-size: calc(19 * var(--pcu));
   font-weight: 400;
   line-height: 1.05;
 }
 
 .legacy-ui .player-card .player-card-name {
-  margin: 6.6px 22px 0;
-  font-size: 18.7px;
+  margin: calc(6 * var(--pcu)) calc(20 * var(--pcu)) 0;
+  font-size: calc(17 * var(--pcu));
   font-weight: 500;
-  letter-spacing: 2.2px;
-  line-height: 27.5px;
+  letter-spacing: calc(2 * var(--pcu));
+  line-height: calc(25 * var(--pcu));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -222,8 +226,8 @@
 
 /* 計量條：預覽與三格同寬（卡面 17～203）、高 7，上 7 下 5。 */
 .player-card-gauge {
-  height: 7.7px;
-  margin: 7.7px 17.7px 0;
+  height: calc(7 * var(--pcu));
+  margin: calc(7 * var(--pcu)) calc(16.09 * var(--pcu)) 0;
   border-radius: 999px;
   background: rgba(186, 117, 23, .18);
   overflow: hidden;
@@ -236,7 +240,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0;
-  margin: 5.5px 17.7px 0;
+  margin: calc(5 * var(--pcu)) calc(16.09 * var(--pcu)) 0;
   padding: 0;
 }
 /* 三格直接印在卡面：無底色、無框、無圓角、無陰影，中間細分隔線（預覽數字 24／中文 11／縮寫 11，三行高 24＋16＋24）。 */
@@ -245,7 +249,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
-  padding: 0 2px;
+  padding: 0 calc(1.82 * var(--pcu));
   background: none;
   border: none;
   border-radius: 0;
@@ -255,21 +259,21 @@
 [data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-item + .stat-item { border-left-color: rgba(250, 199, 117, .3); }
 .legacy-ui .player-card .profile-stats .stat-num {
   font-family: 'Bebas Neue', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif-condensed, Impact, sans-serif;
-  font-size: 26.4px;
+  font-size: calc(24 * var(--pcu));
   font-weight: 400;
-  line-height: 26.4px;
+  line-height: calc(24 * var(--pcu));
   color: #412402;
 }
 [data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-num { color: #FAEEDA; }
-.legacy-ui .player-card .profile-stats .stat-label { font-size: 12.1px; font-weight: 400; line-height: 17.6px; color: #412402; }
+.legacy-ui .player-card .profile-stats .stat-label { font-size: calc(11 * var(--pcu)); font-weight: 400; line-height: calc(16 * var(--pcu)); color: #412402; }
 [data-theme="dark"] .legacy-ui .player-card .profile-stats .stat-label { color: #FAEEDA; }
 
 .player-card-logo {
   position: absolute;
   left: 50%;
-  bottom: 17.3px;
-  height: 19.8px;
-  max-width: 105.6px;
+  bottom: calc(15.73 * var(--pcu));
+  height: calc(18 * var(--pcu));
+  max-width: calc(96 * var(--pcu));
   transform: translateX(-50%);
   object-fit: contain;
 }
@@ -296,16 +300,40 @@
  * 角度由 player-card-spin.ts 直接寫 transform；PNG 另由 Canvas 畫正面，不受旋轉影響。
  */
 .player-card-spin {
+  --pcu: 1.1px;
   position: relative;
   width: 242px;
-  margin: 0 auto .7rem;
+  margin: 0 auto .5rem;
   padding-top: 34px;
 }
+/*
+ * 卡片撐滿頭部內容寬（手機 390 寬時左右各約 16px），桌機上限 360px；卡面所有尺寸跟著 --pcu 等比例。
+ * 不支援容器查詢單位的舊瀏覽器維持上面的 242px／1.1 倍（PLAYER_CARD_DOM_SCALE）。
+ */
+@supports (width: 1cqw) {
+  .player-card-spin {
+    --pcu: calc(100cqw / 220);
+    width: 100%;
+    max-width: 360px;
+    container-type: inline-size;
+  }
+}
+/* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。 */
+.player-card-topbar {
+  position: absolute;
+  top: 0;
+  left: 40px;
+  right: 40px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .player-card-stage {
-  width: 242px;
-  height: 356px;
-  -webkit-perspective: 1000px;
-  perspective: 1000px;
+  width: calc(220 * var(--pcu));
+  height: calc(324 * var(--pcu));
+  -webkit-perspective: calc(909 * var(--pcu));
+  perspective: calc(909 * var(--pcu));
   /* Safari 不認 pinch-zoom 值，整條會被丟掉變回 auto（水平撥動被瀏覽器接走、送 pointercancel）；先寫 pan-y 當退路 */
   touch-action: pan-y;
   touch-action: pan-y pinch-zoom;
@@ -346,8 +374,8 @@
 }
 .player-card-back-logo {
   position: relative;
-  height: 33px;
-  max-width: 180px;
+  height: calc(30 * var(--pcu));
+  max-width: calc(163.64 * var(--pcu));
   object-fit: contain;
 }
 /* 舊站 base.css 的 `.legacy-ui button`（0,1,1）會清掉框線與底色，鎖頭加 .legacy-ui 前綴（0,2,0）。 */

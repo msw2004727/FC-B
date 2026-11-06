@@ -191,7 +191,10 @@ export function resolvePlayerCardTheme(): PlayerCardTheme {
   return 'light';
 }
 
-/** 網頁卡面顯示倍率：卡面 220×324 以 242×356 顯示（player-card.css 的 .player-card 寬高）。 */
+/**
+ * 網頁卡面退路倍率：不支援容器查詢單位（cqw）的瀏覽器以 220×324 ×1.1＝242×356 顯示（player-card.css 的 --pcu 預設值）。
+ * 支援的瀏覽器改依容器寬度等比例縮放（--pcu＝卡寬／220，桌機上限 360px）；取代原本固定 1.1 倍（站長 11-06 要求卡片放大）。
+ */
 export const PLAYER_CARD_DOM_SCALE = 1.1;
 
 export interface PlayerCardShineStop {

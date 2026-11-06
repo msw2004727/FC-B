@@ -146,6 +146,7 @@ export function LegacyProfileTopSection({
   // 照 A `_buildTitleDisplayHtml` / `getCurrentBadgeCount`：頭部徽章數與稱號於資料載入後更新。
   //   動態 import 成就資料層，避免 firestore 進首屏。載入失敗保留 `--` 與純名字。
   // T-092：頂部改成球員卡；UID＋QR、身分標籤、分享按鈕移到卡片外（不進 PNG）。
+  // 11-06 站長：身分標籤移到卡片上方（與鎖頭同一列），分享按鈕接在 UID＋QR 下方（原身分標籤位置）。
   // PNG 左下 QR：只有本人的球員卡才放，內容與 A `_buildProfileLiffUrl` 相同的個人名片分享網址
   // （MINI_APP_BASE_URL + '?profile=' + encodeURIComponent(uid)，R-SHARE-001／004）。網頁卡面不顯示。
   const cardQrText = uid && viewer.uid && uid === viewer.uid ? buildShareUrl('profile', uid) : null;
@@ -170,6 +171,16 @@ export function LegacyProfileTopSection({
             imageContainerClass="profile-avatar profile-avatar-img"
             crown={isSecondary}
           />
+        )}
+        topBar={(
+          <div id="profile-role-tag-wrap">
+            <span
+              class="uc-role-tag"
+              style={`background:${roleInfo.color}22;color:${roleInfo.color}`}
+            >
+              {roleInfo.label}
+            </span>
+          </div>
         )}
       />
       <div
@@ -206,14 +217,6 @@ export function LegacyProfileTopSection({
             <line x1="17" y1="21" x2="21" y2="21" />
           </svg>
         </button>
-      </div>
-      <div id="profile-role-tag-wrap" style="margin-top:.3rem">
-        <span
-          class="uc-role-tag"
-          style={`background:${roleInfo.color}22;color:${roleInfo.color}`}
-        >
-          {roleInfo.label}
-        </span>
       </div>
       {/* 新版關閉經驗值顯示時不畫等級條（src/core/exp-display.ts） */}
       {SHOW_EXP && (

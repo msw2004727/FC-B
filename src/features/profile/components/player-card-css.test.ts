@@ -107,10 +107,10 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(card.some((r) => /\.stat-item \+ \.stat-item$/.test(r.selector) && /border-left:/.test(r.body))).toBe(true);
   });
 
-  it('文字字級／字距照站長核可預覽 ×1.1（PLAYER_CARD_DOM_SCALE）', async () => {
-    const { PLAYER_CARD_DOM_SCALE } = await import('../data/player-card-model');
-    const px = (n: number): RegExp => new RegExp(`font-size:\\s*${+(n * PLAYER_CARD_DOM_SCALE).toFixed(2)}px`);
-    const ls = (n: number): RegExp => new RegExp(`letter-spacing:\\s*${+(n * PLAYER_CARD_DOM_SCALE).toFixed(2)}px`);
+  it('文字字級／字距照站長核可預覽數值，跟卡寬等比例（calc(N * var(--pcu))）', () => {
+    const unit = (n: number): string => `calc\\(${String(n).replace('.', '\\.')} \\* var\\(--pcu\\)\\)`;
+    const px = (n: number): RegExp => new RegExp(`font-size:\\s*${unit(n)}`);
+    const ls = (n: number): RegExp => new RegExp(`letter-spacing:\\s*${unit(n)}`);
     const body = (selector: string): string => {
       const rule = card.find((r) => r.selector === selector);
       if (!rule) throw new Error(`rule ${selector} not found`);
@@ -135,7 +135,7 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(body('.player-card-abbr')).toMatch(ls(1.5));
   });
 
-  it('網頁卡面無動畫：沒有 @keyframes、animation、::after 光帶；顯示倍率與共用常數一致', async () => {
+  it('網頁卡面無動畫：沒有 @keyframes、animation、::after 光帶；卡面比例與共用常數一致、依容器寬度縮放', async () => {
     const raw = readFileSync(resolve(root, 'src/features/profile/components/player-card.css'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '');
     expect(raw).not.toMatch(/@keyframes/);
@@ -143,8 +143,21 @@ describe('T-092 球員卡 CSS 不被舊個人頁樣式蓋掉', () => {
     expect(raw).not.toMatch(/\.player-card::after/);
     const { PLAYER_CARD_DOM_SCALE, PLAYER_CARD_SIZE } = await import('../data/player-card-model');
     const base = card.find((r) => r.selector === '.player-card')!;
-    expect(base.body).toMatch(new RegExp(`width:\\s*${Math.round(PLAYER_CARD_SIZE.width * PLAYER_CARD_DOM_SCALE)}px`));
-    expect(base.body).toMatch(new RegExp(`height:\\s*${Math.round(PLAYER_CARD_SIZE.height * PLAYER_CARD_DOM_SCALE)}px`));
+    const sizeRe = (prop: string, n: number): RegExp => new RegExp(`${prop}:\\s*calc\\(${n} \\* var\\(--pcu\\)\\)`);
+    expect(base.body).toMatch(sizeRe('width', PLAYER_CARD_SIZE.width));
+    expect(base.body).toMatch(sizeRe('height', PLAYER_CARD_SIZE.height));
+    const stageBox = card.find((r) => r.selector === '.player-card-stage')!;
+    expect(stageBox.body).toMatch(sizeRe('width', PLAYER_CARD_SIZE.width));
+    expect(stageBox.body).toMatch(sizeRe('height', PLAYER_CARD_SIZE.height));
+    // --pcu：退路＝固定倍率（不支援 cqw 的瀏覽器 242px 寬）；支援時＝卡寬／220、撐滿容器、桌機上限 360px
+    const spin = card.filter((r) => r.selector === '.player-card-spin').map((r) => r.body);
+    expect(spin[0]).toMatch(new RegExp(`--pcu:\\s*${PLAYER_CARD_DOM_SCALE}px`));
+    expect(spin[0]).toMatch(new RegExp(`width:\\s*${Math.round(PLAYER_CARD_SIZE.width * PLAYER_CARD_DOM_SCALE)}px`));
+    expect(spin[1]).toMatch(new RegExp(`--pcu:\\s*calc\\(100cqw / ${PLAYER_CARD_SIZE.width}\\)`));
+    expect(spin[1]).toMatch(/container-type:\s*inline-size/);
+    expect(spin[1]).toMatch(/width:\s*100%/);
+    expect(spin[1]).toMatch(/max-width:\s*360px/);
+    expect(raw).toMatch(/@supports \(width: 1cqw\)/);
     const shine = card.find((r) => r.selector === '.player-card-shine')!;
     expect(shine.body).toMatch(/position:\s*absolute/);
     expect(shine.body).toMatch(/pointer-events:\s*none/);
