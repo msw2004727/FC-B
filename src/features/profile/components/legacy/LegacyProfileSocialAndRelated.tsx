@@ -338,14 +338,17 @@ export function useRelatedActivitiesData(uid: string): RelatedActivitiesData {
 export type RelatedSection = 'registered' | 'hosted';
 
 /**
- * 「我的報名」或「我開的團」清單（只在圖示列展開該區時掛載＝M-170 展開才渲染）。
+ * 「我的報名」或「我開的團」清單。圖示列切走後元件保持掛載（取消報名等流程跑完才會刷新），
+ * 清單本身只在 active（展開中）時渲染＝M-170 展開才渲染。
  */
 export function LegacyRelatedActivities({
   section,
   data,
+  active = true,
 }: {
   section: RelatedSection;
   data: RelatedActivitiesData;
+  active?: boolean;
 }): JSX.Element {
   const location = useLocation();
   const viewer = useViewer();
@@ -533,7 +536,7 @@ export function LegacyRelatedActivities({
   return (
     <>
       {/* M-170：只有展開時才渲染清單內容（照 A `toggleProfileSection` 展開才重繪）；外殼由 ProfileQuickBar 負責。 */}
-      {section === 'registered' && (
+      {active && section === 'registered' && (
         <div
           class="profile-collapse-content profile-related-activity-list"
           id="profile-registered-activities-list"
@@ -564,7 +567,7 @@ export function LegacyRelatedActivities({
         </div>
       )}
 
-      {section === 'hosted' && (
+      {active && section === 'hosted' && (
         <div
           class="profile-collapse-content profile-related-activity-list"
           id="profile-hosted-activities-list"

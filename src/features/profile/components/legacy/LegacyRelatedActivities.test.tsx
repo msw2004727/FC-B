@@ -118,9 +118,9 @@ function setReady(payload: { registered?: unknown[]; hosted?: unknown[] }): void
 
 // 測試同步更新：11-06 個人頁改版，清單外殼改由 ProfileQuickBar 負責，資料由頁面 useRelatedActivitiesData 讀一次後傳入；
 // 這裡用同一支 hook 組出展開後的單一區段。
-function Section({ section }: { section: RelatedSection }) {
+function Section({ section, active = true }: { section: RelatedSection; active?: boolean }) {
   const data = useRelatedActivitiesData('u1');
-  return <LegacyRelatedActivities section={section} data={data} />;
+  return <LegacyRelatedActivities section={section} data={data} active={active} />;
 }
 
 describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
@@ -212,6 +212,28 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     const ids = arg.owned.map(o => o._docId);
     // 排序依 _docId 字典序（registeredAt 全部 undefined → Infinity，promotionOrder 0）。
     expect(ids).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  // 審查 P2-2：取消流程進行中切到別的圖示（元件保持掛載、active=false），完成後仍會 reload 刷新清單。
+  it('切走（active=false）時清單不渲染，進行中的取消活動完成後仍會重新載入', async () => {
+    setReady({
+      hosted: [{ event: { id: 'e1', title: '活動A', status: 'open' }, effectiveStatus: 'open' }],
+    });
+    let finish!: () => void;
+    runLifecycleMock.mockImplementation((_kind: string, _event: unknown, opts: { onDone: () => void }) =>
+      new Promise<boolean>((resolve) => {
+        finish = () => { opts.onDone(); resolve(true); };
+      }));
+    const { rerender } = render(<Section section="hosted" />);
+    fireEvent.click(screen.getByRole('button', { name: '取消活動' }));
+    await waitFor(() => expect(runLifecycleMock).toHaveBeenCalledTimes(1));
+
+    rerender(<Section section="hosted" active={false} />);
+    expect(document.getElementById('profile-hosted-activities-list')).toBeNull();
+    expect(useRemoteMock.mock.calls.at(-1)?.[0]).toBe('u1:0');
+
+    finish();
+    await waitFor(() => expect(useRemoteMock.mock.calls.at(-1)?.[0]).toBe('u1:1'));
   });
 
   it('點動作鈕不會觸發開詳情', async () => {

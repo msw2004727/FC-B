@@ -149,7 +149,7 @@ function ProfileContent({
       label: t('profile.quick.reg'),
       ariaLabel: withCount(t('profile.quick.regName'), relatedCounts ? relatedCounts.registered.length : null),
       badge: relatedCounts?.registered.length ?? null,
-      render: () => <LegacyRelatedActivities section="registered" data={related} />,
+      render: (active) => <LegacyRelatedActivities section="registered" data={related} active={active} />,
     },
     {
       key: 'info',
@@ -190,7 +190,7 @@ function ProfileContent({
       label: t('profile.quick.host'),
       ariaLabel: withCount(t('profile.quick.hostName'), relatedCounts ? relatedCounts.hosted.length : null),
       badge: relatedCounts?.hosted.length ?? null,
-      render: () => <LegacyRelatedActivities section="hosted" data={related} />,
+      render: (active) => <LegacyRelatedActivities section="hosted" data={related} active={active} />,
     },
     {
       key: 'mate',

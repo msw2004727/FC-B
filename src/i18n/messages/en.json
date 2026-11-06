@@ -24,7 +24,7 @@
   "notFound.home": "Back to home",
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
-  "internalTest.badge": "Internal test · {sha} · {target}",
+  "internalTest.badge": "ToosterX Early Access {version}",
   "ui": {
     "shell": {
       "sportAll": "All",

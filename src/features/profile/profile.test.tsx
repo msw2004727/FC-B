@@ -102,6 +102,13 @@ vi.mock('@/features/events/data/line-notify-bind', () => ({
   buildLineNotifyPayload: vi.fn(() => ({})),
 }));
 
+// 審查 P2-1 回歸測試用：LINE 推播寫入可控制完成時間（其餘函式照原檔）。
+const { saveLineNotifyMock } = vi.hoisted(() => ({ saveLineNotifyMock: vi.fn() }));
+vi.mock('./data/line-notify-settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./data/line-notify-settings')>()),
+  saveLineNotify: saveLineNotifyMock,
+}));
+
 vi.mock('@/ui/AppConfirm', () => ({
   appConfirm: vi.fn().mockResolvedValue(true),
 }));
@@ -161,6 +168,13 @@ function profile(overrides: Record<string, unknown> = {}): UserProfile {
     eduChildren: [],
     ...overrides,
   };
+}
+
+/** 區塊仍在 DOM，但所在的分頁容器被 hidden 藏起來。 */
+function isHiddenPane(id: string): boolean {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`pane content missing: ${id}`);
+  return Boolean(el.closest('#profile-quick-panel > div')?.hasAttribute('hidden'));
 }
 
 function quickBtn(key: string): HTMLButtonElement {
@@ -683,14 +697,18 @@ describe('我的個人頁（A 版結構）', () => {
       fireEvent.click(line);
       expect(info.getAttribute('aria-expanded')).toBe('false');
       expect(line.getAttribute('aria-expanded')).toBe('true');
-      expect(document.getElementById('profile-info-card')).toBeNull();
-      expect(document.getElementById('profile-line-notify')).not.toBeNull();
+      // 測試同步更新（審查 P2-1～P3-1）：打開過的區塊切走後保持掛載、只用 hidden 藏起來。
+      expect(isHiddenPane('profile-info-card')).toBe(true);
+      expect(isHiddenPane('profile-line-notify')).toBe(false);
       expect(document.querySelectorAll('.profile-quick-btn[aria-expanded="true"]').length).toBe(1);
+      expect(panel.getAttribute('aria-labelledby')).toBe('profile-quick-btn-line');
 
       fireEvent.click(line);
       expect(line.getAttribute('aria-expanded')).toBe('false');
       expect(panel.hidden).toBe(true);
-      expect(document.getElementById('profile-line-notify')).toBeNull();
+      expect(isHiddenPane('profile-line-notify')).toBe(true);
+      // 沒打開過的區塊仍不掛載（展開才渲染）。
+      expect(document.getElementById('my-companions-card')).toBeNull();
     });
 
     it('Esc 收合並把焦點還給該按鈕', async () => {
@@ -702,12 +720,57 @@ describe('我的個人頁（A 版結構）', () => {
       addBtn.focus();
       fireEvent.keyDown(addBtn, { key: 'Escape' });
       expect(mate.getAttribute('aria-expanded')).toBe('false');
-      expect(document.getElementById('my-companions-card')).toBeNull();
+      expect(document.getElementById('profile-quick-panel')!.hidden).toBe(true);
+      expect(isHiddenPane('my-companions-card')).toBe(true);
       expect(document.activeElement).toBe(mate);
 
       // 收合狀態下再按 Esc 不出錯、不改狀態。
       fireEvent.keyDown(mate, { key: 'Escape' });
       expect(mate.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('審查 P2-1：推播開關寫入中切到別的圖示，寫入完成後仍更新頁面資料（不會把舊 lineNotify 整包寫回）', async () => {
+      vi.mocked(loadUserProfile).mockResolvedValue(profile({
+        lineNotify: { bound: true, boundAt: '2025/03/14', settings: { activity: false, system: true } },
+      }));
+      const pending = deferred<void>();
+      saveLineNotifyMock.mockReturnValueOnce(pending.promise);
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+
+      fireEvent.click(quickBtn('line'));
+      fireEvent.click(document.getElementById('line-toggle-activity') as HTMLInputElement);
+      await waitFor(() => expect(saveLineNotifyMock).toHaveBeenCalledTimes(1));
+
+      // 寫入還沒完成就切到「資料」。
+      fireEvent.click(quickBtn('info'));
+      expect(quickBtn('line').getAttribute('aria-expanded')).toBe('false');
+      await act(async () => {
+        pending.resolve();
+        await pending.promise;
+      });
+
+      // onSaved 有執行：回到推播，開關是新值；之後再切別的開關，是以新值為基準寫入。
+      fireEvent.click(quickBtn('line'));
+      expect((document.getElementById('line-toggle-activity') as HTMLInputElement).checked).toBe(true);
+      saveLineNotifyMock.mockResolvedValueOnce(undefined);
+      fireEvent.click(document.getElementById('line-toggle-system') as HTMLInputElement);
+      await waitFor(() => expect(saveLineNotifyMock).toHaveBeenCalledTimes(2));
+      const written = saveLineNotifyMock.mock.calls[1]?.[1] as { settings: Record<string, boolean> };
+      expect(written.settings).toMatchObject({ activity: true, system: false });
+    });
+
+    it('審查 P3-1：我的資料編輯到一半切走再回來，草稿還在', async () => {
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      fireEvent.click(quickBtn('info'));
+      fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
+      const phone = document.getElementById('profile-edit-phone') as HTMLInputElement;
+      fireEvent.input(phone, { target: { value: '0900-000-000' } });
+      fireEvent.click(quickBtn('mate'));
+      fireEvent.click(quickBtn('info'));
+      expect((document.getElementById('profile-edit-phone') as HTMLInputElement).value).toBe('0900-000-000');
+      expect((document.getElementById('profile-info-edit') as HTMLElement).style.display).not.toBe('none');
     });
 
     it('報名、開團顯示筆數徽章；推播已綁定顯示綠點，未綁定不顯示', async () => {

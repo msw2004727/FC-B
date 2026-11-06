@@ -24,7 +24,7 @@
   "notFound.home": "홈으로 돌아가기",
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
   "feature.external": "외부 시스템 연동 준비 중",
-  "internalTest.badge": "내부 테스트판 · {sha} · {target}",
+  "internalTest.badge": "ToosterX 얼리 액세스 {version}",
   "ui": {
     "shell": {
       "sportAll": "All",

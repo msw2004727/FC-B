@@ -24,7 +24,7 @@
   "notFound.home": "กลับหน้าแรก",
   "feature.reserved": "ฟีเจอร์นี้จะเปิดให้ใช้เร็วๆ นี้",
   "feature.external": "กำลังเชื่อมต่อระบบภายนอก",
-  "internalTest.badge": "รุ่นทดสอบภายใน · {sha} · {target}",
+  "internalTest.badge": "ToosterX รุ่นทดลองใช้ก่อน {version}",
   "ui": {
     "shell": {
       "sportAll": "All",

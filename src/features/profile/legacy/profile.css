@@ -1069,7 +1069,8 @@ a.social-btn { text-decoration: none; }
   box-shadow: 0 0 0 2px var(--bg-root);
 }
 .profile-quick-panel { padding: 4px 2px 0; margin-bottom: .65rem; }
-.profile-quick-panel[hidden] { display: none; }
+.profile-quick-panel[hidden],
+.profile-quick-panel > div[hidden] { display: none; }
 .profile-quick-panel > div { animation: profileQuickIn .2s ease-out; }
 @keyframes profileQuickIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .profile-quick-help { display: flex; justify-content: flex-end; }

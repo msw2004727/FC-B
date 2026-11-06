@@ -1,11 +1,13 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 /**
  * 11-06 個人頁改版（站長選定預覽「① 極簡線條、7 個圖示」）：
  * 原本一張張收折標題卡，改成「細線圖示列＋單一展開區」。
  * - 一次只開一個；點另一個直接換、再點同一個收合、Esc 收合並把焦點還給按鈕。
- * - 展開區只在展開時渲染內容（沿用 M-170「展開才渲染」，不因收合多讀資料）。
+ * - 區塊第一次展開才掛載（沿用 M-170「展開才渲染」，不因收合多讀資料）；打開過的區塊切走後保持掛載、
+ *   用 hidden 藏起來，寫入中的流程（onSaved／reload）與編輯草稿不會因切換而中斷或遺失（審查 P2-1～P2-3、P3-1）。
+ *   清單類內容可用 render(active) 的 active 只在展開時畫出清單。
  * - 各區塊內容元件沿用原卡片（embedded 模式），本元件只負責外殼。
  */
 
@@ -22,7 +24,8 @@ export interface QuickItem {
   badge?: number | null;
   /** 狀態綠點（LINE 推播已綁定）。 */
   dot?: boolean;
-  render: () => ComponentChildren;
+  /** active：目前是否為展開中的區塊（切走後仍掛載但隱藏時為 false）。 */
+  render: (active: boolean) => ComponentChildren;
 }
 
 // 24×24 自繪線條圖示（設計預覽 docs/previews/profile-redesign-2026-11-06 的 symbol 原樣搬入）。
@@ -93,10 +96,27 @@ export function ProfileQuickBar({
   groupLabel: string;
 }): JSX.Element {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // 打開過的區塊（保持掛載）。
+  const [mountedKeys, setMountedKeys] = useState<readonly string[]>([]);
   const buttonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // 項目消失（例如權限被收回）時，展開區一併收合。
   const active = items.find((item) => item.key === openKey) ?? null;
+  const itemKeys = items.map((item) => item.key).join('|');
+
+  // 項目消失（例如權限被收回）時收合並卸載它；之後再出現也不自動展開（審查 P3-2）。
+  useEffect(() => {
+    const present = new Set(itemKeys.split('|'));
+    if (openKey !== null && !present.has(openKey)) setOpenKey(null);
+    setMountedKeys((prev) => {
+      const next = prev.filter((key) => present.has(key));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [itemKeys, openKey]);
+
+  function toggle(key: string): void {
+    setOpenKey((prev) => (prev === key ? null : key));
+    setMountedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  }
 
   function handleKeyDown(e: KeyboardEvent): void {
     if (e.key !== 'Escape' || !active || e.defaultPrevented) return;
@@ -128,7 +148,7 @@ export function ProfileQuickBar({
                 aria-expanded={expanded ? 'true' : 'false'}
                 aria-controls={QUICK_PANEL_ID}
                 aria-label={item.ariaLabel}
-                onClick={() => setOpenKey((prev) => (prev === item.key ? null : item.key))}
+                onClick={() => toggle(item.key)}
               >
                 <span class="profile-quick-ic">
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -154,7 +174,13 @@ export function ProfileQuickBar({
         aria-labelledby={active ? `profile-quick-btn-${active.key}` : undefined}
         hidden={!active}
       >
-        {active && <div key={active.key}>{active.render()}</div>}
+        {items
+          .filter((item) => mountedKeys.includes(item.key))
+          .map((item) => (
+            <div key={item.key} data-key={item.key} hidden={item.key !== active?.key}>
+              {item.render(item.key === active?.key)}
+            </div>
+          ))}
       </div>
     </div>
   );
