@@ -10,7 +10,7 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 // 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
-import { NOINDEX_HEADER_PATHS } from './src/core/route-meta.ts';
+import { NOINDEX_HEADER_PATHS, routeMetaFor } from './src/core/route-meta.ts';
 import { APP_VERSION } from './src/version.ts';
 
 /** 版本角標用的短 commit：Cloudflare Pages 建置提供 CF_PAGES_COMMIT_SHA，本機退回 git。 */
@@ -102,7 +102,12 @@ function internalTestNoIndex(): Plugin {
         if (!appSrc.includes('applyRouteMeta(') || !existsSync(routeMetaPath)) {
           throw new Error('S2 未完成，不可公開建置');
         }
-        if (!readFileSync(routeMetaPath, 'utf8').includes('data-route-robots')) {
+        // 比對實際 selector 並實測白名單，避免只在註解留下字串就通過（Opus 審查 P3）。
+        const s3Ready =
+          readFileSync(routeMetaPath, 'utf8').includes('meta[name="robots"][data-route-robots]') &&
+          routeMetaFor('/admin/users').indexable === false &&
+          routeMetaFor('/').indexable === true;
+        if (!s3Ready) {
           throw new Error('S3 未完成，不可公開建置');
         }
       }

@@ -18,7 +18,8 @@ describe('公開建置防呆（I-01 S2）', () => {
 
 describe('私人路徑 _headers（I-01 S3）', () => {
   it('vite.config.ts 在公開建置時檢查 data-route-robots，不符合就丟錯', () => {
-    expect(config).toContain("includes('data-route-robots')");
+    expect(config).toContain(`includes('meta[name="robots"][data-route-robots]')`);
+    expect(config).toContain("routeMetaFor('/admin/users').indexable === false");
     expect(config).toContain("throw new Error('S3 未完成，不可公開建置')");
     expect(config).toContain("throw new Error('S2 未完成，不可公開建置')");
   });

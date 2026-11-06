@@ -171,11 +171,16 @@ describe('indexable 白名單（I-01 S3）', () => {
       '/profile/*',
       '/admin/*',
       '/inbox',
+      '/inbox/',
       '/my-activities',
+      '/my-activities/',
       '/me/*',
       '/checkin',
+      '/checkin/',
       '/team-manage',
+      '/team-manage/',
       '/qa-login',
+      '/qa-login/',
     ]);
   });
 });

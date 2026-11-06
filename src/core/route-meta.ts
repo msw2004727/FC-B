@@ -29,17 +29,23 @@ const INDEXABLE_PATHS: ReadonlySet<string> = new Set(['/', '/activities', '/team
 /**
  * Cloudflare `_headers` 用的私人路徑樣式。
  * 內測與正式建置都輸出 `X-Robots-Tag: noindex`。`/games` 等未列在這裡的路徑只靠前端 meta。
+ * 精確路徑另列尾斜線版本：`_headers` 不會把 `/inbox/` 當成 `/inbox`（Opus 審查 P3）。
  */
 export const NOINDEX_HEADER_PATHS: readonly string[] = [
   '/profile',
   '/profile/*',
   '/admin/*',
   '/inbox',
+  '/inbox/',
   '/my-activities',
+  '/my-activities/',
   '/me/*',
   '/checkin',
+  '/checkin/',
   '/team-manage',
+  '/team-manage/',
   '/qa-login',
+  '/qa-login/',
 ];
 
 /** 去掉查詢字串、hash 與尾斜線。空路徑與根路徑都是 `/`。 */
