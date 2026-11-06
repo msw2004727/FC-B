@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PLAYER_CARD_FONT_LOAD,
   PLAYER_CARD_IMAGE_TIMEOUT_MS,
+  LOGO_BOTTOM_Y,
   LOGO_CENTER_Y,
+  LOGO_HEIGHT,
+  LOGO_MAX_WIDTH,
+  LOGO_TOP_Y,
+  INNER_FRAME_INNER_EDGE_Y,
   STAT_COLUMNS,
   QR_QUIET_MODULES,
   browserCreateQrMatrix,
@@ -462,8 +467,9 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       // 整塊（含 4 模組 quiet zone）41 模組 × 2px ＝ 82px
       expect(QR_QUIET_MODULES).toBe(4);
       expect(Math.round(layout.box.size * PLAYER_CARD_PNG_SCALE)).toBe(82);
-      expect(layout.box.x).toBeCloseTo(34.333, 2);
-      expect(layout.box.y).toBeCloseTo(284.333, 2);
+      // 測試同步更新（站長 11-06 PNG 版面）：QR 改置中於「完成 CMP」欄，x＝110−size/2；y 為 (256+304.25)/2−size/2 再吸附到像素格
+      expect(layout.box.x).toBeCloseTo(110 - 82 / 3 / 2, 6);
+      expect(layout.box.y).toBeCloseTo(266.3333, 3);
     });
 
     it('產圖時以網址呼叫 QR 產生並畫進 PNG（底色／碼色依深淺）', async () => {
@@ -500,28 +506,37 @@ describe('T-092 球員卡 Canvas 產圖', () => {
       expect(unused).not.toHaveBeenCalled();
     });
 
-    it('版面：QR 中心＝應到欄中心 x、logo 中心 y；不壓三格與 logo、在內框內、對齊像素格', async () => {
+    // 測試同步更新（站長 11-06 PNG 版面）：取代原「QR 中心＝應到欄中心 x、logo 中心 y」。
+    it('版面：QR 中心 x＝完成欄中心；上下留白相等（縮寫字下緣與 logo 上緣之間）；logo 下緣距內框 1；不重疊', async () => {
       const { matrix } = await realMatrix(PROFILE_URL);
       const { box } = qrLayout(matrix.size);
       const right = box.x + box.size;
       const bottom = box.y + box.size;
-      // 中心對齊：x＝應到欄中心，y＝logo 中心（logo 實際貼圖的中心）
-      expect(box.x + box.size / 2).toBeCloseTo(STAT_COLUMNS[0], 9);
-      expect(box.y + box.size / 2).toBeCloseTo(LOGO_CENTER_Y, 9);
-      // 內框（離卡邊 6、線寬 1.5，內側 x≥6.75、y≤317.25）之內；
-      // 左下圓角（半徑 12，圓心 18,306）只影響 x<18 且 y>306 的區域，QR 左緣在 18 右邊
-      expect(box.x).toBeGreaterThan(6.75);
-      expect(bottom).toBeLessThan(324 - 6.75);
-      expect(box.x).toBeGreaterThan(18);
-      // 三格最下方縮寫基線 256、分隔線下緣 261（字級 11，下伸部不超過 3）
-      expect(box.y).toBeGreaterThan(261 + 3);
-      // logo 寬最多 96，置中於 110：左緣 ≥ 62；退回文字商標也置中於 110
-      expect(right).toBeLessThan(110 - 96 / 2);
+      // 內框內緣：框路徑在 324−6＝318、線寬 1.5，內緣 317.25
+      expect(INNER_FRAME_INNER_EDGE_Y).toBeCloseTo(317.25, 9);
+      expect(STAT_COLUMNS[1]).toBe(110);
+      expect(box.x + box.size / 2).toBeCloseTo(STAT_COLUMNS[1], 9);
+      // 縮寫字（Bebas Neue 全大寫）下緣＝基線 256；上留白＝QR 上緣 − 256，下留白＝logo 上緣 − QR 下緣，容差 0.5
+      const abbrBottom = 256;
+      const gapAbove = box.y - abbrBottom;
+      const gapBelow = LOGO_TOP_Y - bottom;
+      expect(gapAbove).toBeGreaterThan(0);
+      expect(gapBelow).toBeGreaterThan(0);
+      expect(Math.abs(gapAbove - gapBelow)).toBeLessThanOrEqual(0.5);
+      // logo：高 12、下緣離內框內緣 1、中心 y＝下緣 − 6
+      expect(LOGO_HEIGHT).toBe(12);
+      expect(INNER_FRAME_INNER_EDGE_Y - LOGO_BOTTOM_Y).toBeCloseTo(1, 9);
+      expect(LOGO_CENTER_Y).toBeCloseTo(LOGO_BOTTOM_Y - 6, 9);
+      expect(LOGO_TOP_Y).toBeCloseTo(304.25, 9);
+      expect(LOGO_MAX_WIDTH).toBe(64);
       // 3 倍輸出時落在整數像素
       expect(Math.abs(box.x * 3 - Math.round(box.x * 3))).toBeLessThan(1e-9);
       expect(Math.abs(box.y * 3 - Math.round(box.y * 3))).toBeLessThan(1e-9);
+      // 在內框之內（左右內緣 6.75～213.25）
+      expect(box.x).toBeGreaterThan(6.75);
+      expect(right).toBeLessThan(220 - 6.75);
 
-      // 實際畫出的矩形都在這個方塊內，logo 貼圖在方塊右邊
+      // 實際畫出的矩形都在這個方塊內；logo 實際貼圖：置中 x＝110、下緣離內框 1、與 QR 不重疊
       const main = makeFakeCtx();
       await renderPlayerCardPng(model(), 'light', labels, renderDeps(main, async () => matrix), { qrText: PROFILE_URL });
       const qrRects = main.rects.filter((r) => r.style === '#FFFFFF' || r.style === '#412402');
@@ -533,7 +548,12 @@ describe('T-092 球員卡 Canvas 產圖', () => {
         expect(r.y + r.h).toBeLessThanOrEqual(bottom + 1e-9);
       }
       const logoDraw = main.images.find((i) => i.image === logoImg)!;
-      expect(logoDraw.args[0]!).toBeGreaterThan(right);
+      const [lx, ly, lw, lh] = logoDraw.args as [number, number, number, number];
+      expect(lh).toBe(12);
+      expect(lw).toBeCloseTo(60, 9); // 400×80 照比例 → 12×5，未超過上限 64
+      expect(lx + lw / 2).toBeCloseTo(110, 9);
+      expect(ly + lh).toBeCloseTo(INNER_FRAME_INNER_EDGE_Y - 1, 9);
+      expect(ly).toBeGreaterThanOrEqual(bottom); // 不與 QR 重疊
     });
   });
 

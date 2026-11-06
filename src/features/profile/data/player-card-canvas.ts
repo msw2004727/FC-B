@@ -71,10 +71,10 @@ export interface PlayerCardRenderOptions {
 }
 
 /**
- * PNG 左下 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
+ * PNG 的 QR：每模組固定 2 實際像素（卡面 2/3 單位，3 倍輸出時剛好對齊像素格，不糊），
  * 四周 4 模組 quiet zone（QR 標準最小值；取代原本 2 模組，複審 P3）。
- * 位置（站長定案，取代原本左緣 x=14、底緣對齊 logo 底線）：中心 x＝三格第一欄「應到」欄中心，中心 y＝底部 logo 中心。
- * 版本 4（33 模組，錯誤修正 L）時整塊 41×2＝82px，約卡面 27.3 單位：x 34.33～61.67、y 284.33～311.67（3 倍輸出 103～185、853～935px）。
+ * 位置（站長 11-06 定案，取代原本左下 QR＋logo 中心 298）：中心 x＝三格第二欄「完成 CMP」欄中心（STAT_COLUMNS[1]＝110），
+ * 垂直放在「CMP 縮寫字下緣」與「logo 上緣」正中央，上下留白相等；大小依 QR 模組數動態計算（版本 4＝33 模組時整塊 82px、約 27.33 單位）。
  */
 export const QR_MODULE_PX = 2;
 export const QR_QUIET_MODULES = 4;
@@ -82,9 +82,19 @@ export const QR_QUIET_MODULES = 4;
  * 以下版面數字照站長核可預覽（flip-sheen-preview.html，卡面 220×324）實測：文字給基線 y、區塊給框；
  * 取代 11-05 先前自訂的字級與位置（字偏小、頭像偏低、計量條較短）。網頁卡面 player-card.css 為同一組 ×1.1。
  */
-/** 預覽 logo 高 18、底緣貼 .in 內距（卡面 307），中心 298。 */
-export const LOGO_CENTER_Y = 298;
-export const LOGO_HEIGHT = 18;
+/** 內框：離卡邊 6、線寬 1.5（drawBackground 與 logo 下緣共用）。內框內緣＝卡高 − 6 − 0.75＝317.25。 */
+const INNER_FRAME = { inset: 6, stroke: 1.5 } as const;
+export const INNER_FRAME_INNER_EDGE_Y = PLAYER_CARD_SIZE.height - INNER_FRAME.inset - INNER_FRAME.stroke / 2;
+/**
+ * logo（站長 11-06 定案，取代原本高 18、中心 y 298）：高 12、水平置中 x＝110，下緣離內框內緣只留 1 單位（＝316.25），
+ * 中心 y＝310.25、上緣 304.25；寬度照比例，上限 96×12/18＝64。
+ */
+export const LOGO_HEIGHT = 12;
+export const LOGO_BOTTOM_GAP = 1;
+export const LOGO_MAX_WIDTH = 64;
+export const LOGO_BOTTOM_Y = INNER_FRAME_INNER_EDGE_Y - LOGO_BOTTOM_GAP;
+export const LOGO_TOP_Y = LOGO_BOTTOM_Y - LOGO_HEIGHT;
+export const LOGO_CENTER_Y = LOGO_BOTTOM_Y - LOGO_HEIGHT / 2;
 /** 三格欄中心 x（卡面單位）：三格寬 186（17～203）均分，分隔線在 79／141。 */
 export const STAT_COLUMNS = [48, 110, 172] as const;
 
@@ -98,8 +108,11 @@ export interface QrLayout {
 export function qrLayout(moduleCount: number, scale: number = PLAYER_CARD_PNG_SCALE): QrLayout {
   const module = QR_MODULE_PX / scale;
   const size = (moduleCount + QR_QUIET_MODULES * 2) * module;
-  // 中心對齊「應到」欄中心 x 與 logo 中心 y。
-  return { box: { x: STAT_COLUMNS[0] - size / 2, y: LOGO_CENTER_Y - size / 2, size }, module };
+  // 中心 x＝「完成 CMP」欄中心；y＝縮寫字下緣與 logo 上緣的正中央（上下留白相等），
+  // 再吸附到輸出像素格（3 倍時最多移 1/6 單位）。
+  const x = STAT_COLUMNS[1] - size / 2;
+  const y = Math.round(((STATS_ABBR_BOTTOM_Y + LOGO_TOP_Y) / 2 - size / 2) * scale) / scale;
+  return { box: { x, y, size }, module };
 }
 
 /** 2x～3x：220×324 × 3 ＝ 660×972。 */
@@ -111,6 +124,13 @@ const AVATAR = { cx: 110, cy: 97, outer: 50, inner: 46, photo: 43 } as const;
 const GAUGE = { x: 17, y: 185, width: 186, height: 7 } as const;
 /** 三格：上緣 197、下緣 261（分隔線全高）；數字／中文／縮寫基線。 */
 const STATS = { top: 197, bottom: 261, numY: 216, labelY: 234, abbrY: 256, dividers: [79, 141] } as const;
+/**
+ * 三格縮寫（APP／CMP／ATT，Bebas Neue 11px 全大寫）字下緣：全大寫沒有下伸部，字形下緣＝基線 abbrY（256）加下伸值 0。
+ * 站長 11-06 量 11-05 舊 PNG 得 263.7，那是舊版版位（當時基線在 263.7）；現行版位已上移，以現行基線為準。
+ * 若日後換成有下伸的字型，把 ABBR_DESCENT 改成該字型的下伸值即可，QR 會自動重新置中。
+ */
+const ABBR_DESCENT = 0;
+const STATS_ABBR_BOTTOM_Y = STATS.abbrY + ABBR_DESCENT;
 const STRIPE_STEP = 9 * Math.SQRT2; // 與 CSS repeating-linear-gradient(45deg) 間距 9 對齊
 const STRIPE_WIDTH = 1.5;
 /** 三格欄寬 62（分隔線 79／141）左右各留 3。 */
@@ -209,9 +229,9 @@ function drawBackground(ctx: Ctx, p: PlayerCardPalette): void {
   ctx.lineWidth = 1;
   ctx.stroke();
   // 內框：固定離卡邊 6px、1.5px。
-  roundRectPath(ctx, 6, 6, W - 12, H - 12, radius - 6);
+  roundRectPath(ctx, INNER_FRAME.inset, INNER_FRAME.inset, W - INNER_FRAME.inset * 2, H - INNER_FRAME.inset * 2, radius - INNER_FRAME.inset);
   ctx.strokeStyle = p.innerFrame;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = INNER_FRAME.stroke;
   ctx.stroke();
   ctx.restore();
 }
@@ -341,12 +361,12 @@ function drawLogo(ctx: Ctx, logo: DrawableImage | null, p: PlayerCardPalette): v
   const centerY = LOGO_CENTER_Y;
   if (logo && logo.width > 0 && logo.height > 0) {
     const h = LOGO_HEIGHT;
-    const w = Math.min(96, (logo.width / logo.height) * h);
-    ctx.drawImage(logo as CanvasImageSource, 110 - w / 2, centerY - h / 2, w, h);
+    const w = Math.min(LOGO_MAX_WIDTH, (logo.width / logo.height) * h);
+    ctx.drawImage(logo as CanvasImageSource, 110 - w / 2, LOGO_TOP_Y, w, h);
     return;
   }
   // logo 載入失敗時退回文字商標。
-  text(ctx, 'ToosterX', 110, centerY + 5, displayFont, 14, p.text, 'center', 1);
+  text(ctx, 'ToosterX', 110, centerY + 3.3, displayFont, 9.5, p.text, 'center', 0.7);
 }
 
 function drawQr(ctx: Ctx, qr: QrMatrix, p: PlayerCardPalette): void {
