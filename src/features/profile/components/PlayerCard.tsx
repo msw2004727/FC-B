@@ -17,7 +17,7 @@ import {
   type PlayerCardTheme,
 } from '../data/player-card-model';
 import {
-  PLAYER_CARD_MAX_RPM,
+  PLAYER_CARD_GAUGE_MAX_RPM,
   PLAYER_CARD_RPM_REDLINE,
   readPlayerCardLocked,
   rpmToNeedleDeg,
@@ -63,14 +63,14 @@ function PlayerCardMotifSvg({ motif, theme }: { motif: PlayerCardMotif; theme: P
 
 /** 半圓轉速表幾何（viewBox 40×23，圓心 20,20，外弧半徑 17）：0 RPM 在左、上限在右。 */
 function gaugePoint(rpm: number, r: number): string {
-  const a = Math.PI * (1 - rpm / PLAYER_CARD_MAX_RPM);
+  const a = Math.PI * (1 - rpm / PLAYER_CARD_GAUGE_MAX_RPM);
   return `${(20 + r * Math.cos(a)).toFixed(2)} ${(20 - r * Math.sin(a)).toFixed(2)}`;
 }
 function gaugeArc(from: number, to: number): string {
   return `M${gaugePoint(from, 17)}A17 17 0 0 1 ${gaugePoint(to, 17)}`;
 }
 /** 每 75 RPM 一條細刻度（共 13 條，與 720 版疏密相同），每 225 RPM 主刻度（0／225／450／675／900 共 5 條）。模組層算一次，畫面不重算。 */
-const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_MAX_RPM / 75 + 1 }, (_, i) => {
+const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_GAUGE_MAX_RPM / 75 + 1 }, (_, i) => {
   const rpm = i * 75;
   return {
     d: `M${gaugePoint(rpm, rpm % 225 === 0 ? 12.5 : 14.5)}L${gaugePoint(rpm, 17)}`,
@@ -83,8 +83,8 @@ const GAUGE_TICKS = Array.from({ length: PLAYER_CARD_MAX_RPM / 75 + 1 }, (_, i) 
 function RpmGauge({ needleRef }: { needleRef: { current: SVGGElement | null } }): JSX.Element {
   return (
     <svg class="player-card-rpm-gauge" viewBox="0 0 40 23" aria-hidden="true" focusable="false">
-      <path class="player-card-rpm-gauge-arc" d={gaugeArc(0, PLAYER_CARD_MAX_RPM)} />
-      <path class="player-card-rpm-gauge-red" d={gaugeArc(PLAYER_CARD_RPM_REDLINE, PLAYER_CARD_MAX_RPM)} />
+      <path class="player-card-rpm-gauge-arc" d={gaugeArc(0, PLAYER_CARD_GAUGE_MAX_RPM)} />
+      <path class="player-card-rpm-gauge-red" d={gaugeArc(PLAYER_CARD_RPM_REDLINE, PLAYER_CARD_GAUGE_MAX_RPM)} />
       {GAUGE_TICKS.map((tick) => (
         <path
           key={tick.d}
@@ -109,7 +109,8 @@ function LockIcon({ locked }: { locked: boolean }): JSX.Element {
   );
 }
 
-/** 固定斜光（與 PNG 同一組常數，無動畫）：每層一個鋪滿卡面的元素，soft-light 層加 is-soft-light（CSS 設 mix-blend-mode）。 */
+/** 斜光（與 PNG 同一組常數）：每層一個鋪滿卡面的元素，soft-light 層加 is-soft-light（CSS 設 mix-blend-mode）；
+ * 轉動時由 player-card-spin 直寫 transform 讓光帶滑過（不重畫），靜止回到這裡的固定位置。 */
 function PlayerCardShine({ theme, face }: { theme: PlayerCardTheme; face: PlayerCardShineFace }): JSX.Element {
   return (
     <>

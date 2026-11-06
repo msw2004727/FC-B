@@ -51,7 +51,8 @@ import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { playerCardShineCssGradient, playerCardShineLayers } from '../data/player-card-model';
-import { rpmToNeedleDeg } from './player-card-spin';
+import { options } from 'preact';
+import { PLAYER_CARD_SAFE_MAX_RPM, playerCardShineOffsetPct, rpmToNeedleDeg } from './player-card-spin';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
@@ -801,7 +802,8 @@ describe('T-092 球員卡（DOM）', () => {
 
       describe('連撥加速＋RPM（站長 11-06）', () => {
         const BEST_KEY = 'toosterx:player-card-best-rpm';
-        const MAX_DEG_PER_MS = (900 * 360) / 60000;
+        const GAUGE_DEG_PER_MS = (900 * 360) / 60000;
+        const SAFE_DEG_PER_MS = (PLAYER_CARD_SAFE_MAX_RPM * 360) / 60000;
         beforeEach(() => localStorage.removeItem(BEST_KEY));
         afterEach(() => localStorage.removeItem(BEST_KEY));
 
@@ -845,21 +847,20 @@ describe('T-092 球員卡（DOM）', () => {
           expect(box.classList.contains('is-spinning')).toBe(false);
         });
 
-        it('最高記錄讀到壞值當 0、超過上限夾到 900；舊上限 720 的記錄照讀', () => {
-          localStorage.setItem(BEST_KEY, 'abc');
-          const a = renderTop(viewer());
-          expect(rpmParts(a.container).best.textContent).toBe('0');
-          cleanup();
-          localStorage.setItem(BEST_KEY, '99999');
-          const b = renderTop(viewer());
-          expect(rpmParts(b.container).best.textContent).toBe('900');
-          cleanup();
-          localStorage.setItem(BEST_KEY, '720');
-          const c = renderTop(viewer());
-          expect(rpmParts(c.container).best.textContent).toBe('720');
+        it('最高記錄：壞值／Infinity／負數當 0；不設上限（舊值 720／900 與 900 以上照讀），只夾在安全值 99999', () => {
+          const cases: Array<[string, string]> = [
+            ['abc', '0'], ['Infinity', '0'], ['-5', '0'], ['NaN', '0'],
+            ['720', '720'], ['900', '900'], ['1500', '1500'], ['99999', '99999'], ['1e9', '99999'],
+          ];
+          for (const [stored, shown] of cases) {
+            localStorage.setItem(BEST_KEY, stored);
+            const v = renderTop(viewer());
+            expect(rpmParts(v.container).best.textContent, stored).toBe(shown);
+            cleanup();
+          }
         });
 
-        it('慣性中同向連撥：轉速逐次疊加變快，且不超過 900 RPM 上限', () => {
+        it('上限解除：慣性中同向連撥轉速持續疊加、超過 900 RPM，最高記錄也超過 900', () => {
           const { container } = renderTop(viewer());
           const { stage, flip } = parts(container);
           const angles = recordAngles(flip);
@@ -870,16 +871,52 @@ describe('T-092 球員卡（DOM）', () => {
             peaks.push(v[0]!);
           }
           expect(peaks[0]).toBeCloseTo(1.6, 5);
-          expect(peaks[1]!).toBeGreaterThan(peaks[0]!);
-          expect(peaks[2]!).toBeGreaterThan(peaks[1]!);
-          for (const p of peaks) expect(p).toBeLessThanOrEqual(MAX_DEG_PER_MS + 1e-9);
-          // 撥到頂之後維持在上限
-          expect(peaks[9]).toBeCloseTo(MAX_DEG_PER_MS, 5);
+          for (let k = 1; k < peaks.length; k++) expect(peaks[k]!, `flick ${k}`).toBeGreaterThan(peaks[k - 1]!);
+          // 原本第 4～5 撥就夾在 900 RPM（5.4°/ms）；解除後第 10 撥超過（此撥法約在 1,050 RPM 與摩擦平衡）
+          expect(peaks[9]!).toBeGreaterThan(GAUGE_DEG_PER_MS);
           flush();
           expect([0, 180]).toContain(angles[angles.length - 1]);
-          // 連撥到頂：最高記錄剛好 900（不受螢幕更新率影響），停下寫入 localStorage
-          expect(rpmParts(container).best.textContent).toBe('900');
-          expect(localStorage.getItem(BEST_KEY)).toBe('900');
+          const best = Number(rpmParts(container).best.textContent);
+          expect(best).toBeGreaterThan(900);
+          expect(localStorage.getItem(BEST_KEY)).toBe(String(best));
+        });
+
+        it('數值安全值：異常超高撥速夾在 99999 RPM，數字與最高記錄 5 位數照實顯示', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          swipe(stage, 100 + 1e6); // 30ms 撥 100 萬 px
+          const v = frames(angles, 1)[0]!;
+          expect(v).toBeCloseTo(SAFE_DEG_PER_MS, 6);
+          const { num, best } = rpmParts(container);
+          expect(num.textContent).toBe('99999');
+          expect(best.textContent).toBe('99999');
+          flush();
+          expect(localStorage.getItem(BEST_KEY)).toBe('99999');
+          expect(Number.isFinite(angles[angles.length - 1]!)).toBe(true);
+        });
+
+        it('超表：超過 900 RPM 指針停在頂端、紅區發光（is-over），降回 900 以下與停下時拿掉', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          const { box } = rpmParts(container);
+          const needle = container.querySelector('.player-card-rpm-needle')!;
+          swipe(stage, 100 + 300); // 8°/ms＝1333 RPM
+          expect(box.classList.contains('is-over')).toBe(true);
+          expect(needle.getAttribute('transform')).toBe('rotate(90 20 20)');
+          let sawUnder = false;
+          while (pending.size) {
+            frames(angles, 1);
+            const deg = Number(/rotate\((-?[\d.]+) /.exec(needle.getAttribute('transform')!)![1]);
+            if (deg < 90) {
+              sawUnder = true;
+              expect(box.classList.contains('is-over')).toBe(false);
+            }
+          }
+          expect(sawUnder).toBe(true);
+          expect(box.classList.contains('is-over')).toBe(false);
+          expect(needle.getAttribute('transform')).toBe('rotate(-90 20 20)');
         });
 
         it('反向撥：丟掉剩餘轉速，只照本次撥速反向轉、全程不倒退', () => {
@@ -1040,7 +1077,7 @@ describe('T-092 球員卡（DOM）', () => {
             frames([0], 1);
             const first = Number(num.textContent);
             expect(first).toBeGreaterThan(400);
-            expect(first).toBeLessThanOrEqual(900);
+            expect(first).toBeLessThan(900);
             expect(box.classList.contains('is-spinning')).toBe(true);
             expect(Number(best.textContent)).toBe(first);
             // 100ms 內不再改字
@@ -1107,6 +1144,140 @@ describe('T-092 球員卡（DOM）', () => {
           expect([0, 180]).toContain(angles[angles.length - 1]);
           expect(rpmParts(container).num.textContent).toBe('0');
           expect(localStorage.getItem(BEST_KEY)).toBeNull();
+        });
+      });
+
+      describe('動態反光（站長 11-06 方案①）', () => {
+        const shineParts = (container: Element) => ({
+          front: [...container.querySelectorAll('.player-card > .player-card-shine')] as HTMLElement[],
+          back: [...container.querySelectorAll('.player-card-back > .player-card-shine')] as HTMLElement[],
+        });
+        const pct = (el: HTMLElement): number => {
+          const m = /^translateX\((-?[\d.]+)%\)$/.exec(el.style.transform);
+          return m ? Number(m[1]) : NaN;
+        };
+        /** 拖到指定角度（0.8°/px），不放手。 */
+        function dragTo(stage: Element, deg: number): void {
+          fireEvent.pointerDown(stage, ptr(100));
+          fireEvent.pointerMove(stage, ptr(100 + deg / 0.8 / 2));
+          fireEvent.pointerMove(stage, ptr(100 + deg / 0.8));
+        }
+
+        it('位移公式：sin(該面角度)×60%，正面 sin(θ)、背面 −sin(θ)；180° 倍數一律 0', () => {
+          expect(playerCardShineOffsetPct(45, 'front')).toBeCloseTo(42.4264, 3);
+          expect(playerCardShineOffsetPct(45, 'back')).toBeCloseTo(-42.4264, 3);
+          expect(playerCardShineOffsetPct(90, 'front')).toBeCloseTo(60, 6);
+          expect(playerCardShineOffsetPct(135, 'front')).toBeCloseTo(42.4264, 3);
+          expect(playerCardShineOffsetPct(-45, 'front')).toBeCloseTo(-42.4264, 3);
+          for (const a of [0, 180, -180, 360, 540, -720, 1800]) {
+            expect(playerCardShineOffsetPct(a, 'front'), String(a)).toBe(0);
+            expect(playerCardShineOffsetPct(a, 'back'), String(a)).toBe(0);
+          }
+        });
+
+        for (const theme of ['light', 'dark'] as const) {
+          it(`${theme}：拖到 45°／90°／135° 光帶跟著滑（正背兩面、只寫 transform）；0／180° 時回到與 PNG 相同的靜止值`, () => {
+            document.documentElement.setAttribute('data-theme', theme);
+            const { container } = renderTop(viewer());
+            const { stage, flip } = parts(container);
+            const { front, back } = shineParts(container);
+            expect(front.length).toBeGreaterThan(0);
+            expect(back).toHaveLength(1);
+            const restFront = front.map((el) => el.style.cssText);
+            const restBack = back.map((el) => el.style.cssText);
+            const restBg = front.map((el) => el.style.background);
+            expect(restFront[0]).not.toContain('transform');
+            dragTo(stage, 45);
+            expect(flip.style.transform).toBe('rotateY(45deg)');
+            expect(flip.classList.contains('is-turning')).toBe(true);
+            for (const el of front) expect(pct(el)).toBeCloseTo(42.426, 3);
+            for (const el of back) expect(pct(el)).toBeCloseTo(-42.426, 3);
+            // 漸層本身不重算：background 與靜止時相同
+            expect(front.map((el) => el.style.background)).toEqual(restBg);
+            fireEvent.pointerMove(stage, ptr(100 + 90 / 0.8));
+            for (const el of front) expect(pct(el)).toBeCloseTo(60, 3);
+            fireEvent.pointerMove(stage, ptr(100 + 135 / 0.8));
+            for (const el of front) expect(pct(el)).toBeCloseTo(42.426, 3);
+            for (const el of back) expect(pct(el)).toBeCloseTo(-42.426, 3);
+            // 剛好 180°：拖曳中也回到靜止值
+            fireEvent.pointerMove(stage, ptr(100 + 180 / 0.8));
+            expect(flip.style.transform).toBe('rotateY(180deg)');
+            expect(flip.classList.contains('is-turning')).toBe(false);
+            expect(front.map((el) => el.style.cssText)).toEqual(restFront);
+            expect(back.map((el) => el.style.cssText)).toEqual(restBack);
+            fireEvent.pointerMove(stage, ptr(100 + 135 / 0.8));
+            fireEvent.pointerUp(stage, ptr(100 + 135 / 0.8));
+            flush();
+            expect(flip.style.transform).toBe('rotateY(180deg)');
+            expect(flip.classList.contains('is-turning')).toBe(false);
+            expect(front.map((el) => el.style.cssText)).toEqual(restFront);
+            expect(back.map((el) => el.style.cssText)).toEqual(restBack);
+          });
+        }
+
+        it('用力撥：慣性每幀光帶位移＝sin(角度)×60%，停下（0／180°）回到靜止值', () => {
+          document.documentElement.setAttribute('data-theme', 'light');
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const angles = recordAngles(flip);
+          const { front, back } = shineParts(container);
+          const rest = front.map((el) => el.style.cssText);
+          flick(stage, 300);
+          let checked = 0;
+          for (let i = 0; i < 20 && pending.size; i++) {
+            const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+            pending.delete(id);
+            now += 16;
+            cb(now);
+            const a = angles[angles.length - 1]!;
+            if (a % 180 === 0) continue;
+            const expected = playerCardShineOffsetPct(a, 'front');
+            for (const el of front) expect(pct(el)).toBeCloseTo(expected, 2);
+            for (const el of back) expect(pct(el)).toBeCloseTo(-expected, 2);
+            checked++;
+          }
+          expect(checked).toBeGreaterThan(10);
+          flush();
+          expect([0, 180]).toContain(angles[angles.length - 1]);
+          expect(front.map((el) => el.style.cssText)).toEqual(rest);
+          expect(back.every((el) => el.style.transform === '')).toBe(true);
+          expect(flip.classList.contains('is-turning')).toBe(false);
+        });
+
+        it('減少動態：拖曳照樣跟手翻，但斜光完全不動（無 transform、無 is-turning）', () => {
+          stubMatchMedia(true);
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const { front, back } = shineParts(container);
+          dragTo(stage, 45);
+          expect(flip.style.transform).toBe('rotateY(45deg)');
+          expect(flip.classList.contains('is-turning')).toBe(false);
+          for (const el of [...front, ...back]) expect(el.style.transform).toBe('');
+          fireEvent.pointerUp(stage, ptr(100 + 45 / 0.8));
+          for (const el of [...front, ...back]) expect(el.style.transform).toBe('');
+        });
+
+        it('轉動全程不觸發 Preact 重繪（斜光、轉速、指針都直寫 DOM）', () => {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          recordAngles(flip);
+          const opts = options as { diffed?: (v: unknown) => void };
+          const prev = opts.diffed;
+          let diffs = 0;
+          opts.diffed = (v) => {
+            diffs++;
+            prev?.(v);
+          };
+          try {
+            dragTo(stage, 70);
+            fireEvent.pointerUp(stage, ptr(100 + 70 / 0.8));
+            flick(stage, 400);
+            flush();
+          } finally {
+            opts.diffed = prev;
+          }
+          expect(diffs).toBe(0);
+          expect(container.querySelector('.player-card-shine')!.isConnected).toBe(true);
         });
       });
 

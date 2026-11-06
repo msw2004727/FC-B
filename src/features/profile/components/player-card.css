@@ -293,8 +293,10 @@
   pointer-events: none;
 }
 
-/* 固定斜光（無動畫）：每層鋪滿卡面，115deg 漸層由 PlayerCard.tsx 依 PLAYER_CARD_SHINE 以 inline background 注入，與 PNG 同一組常數。
+/* 斜光：每層鋪滿卡面，115deg 漸層由 PlayerCard.tsx 依 PLAYER_CARD_SHINE 以 inline background 注入，與 PNG 同一組常數。
  * 取代 11-05 先前 20.3° 柔光帶（固定寬度旋轉元素），改回站長預覽的 115deg 雙層光。
+ * 轉動時 player-card-spin.ts 每幀直寫 translateX（只動 transform、漸層不重算），靜止清掉 transform＝與 PNG 同位置（站長 11-06 方案①）；
+ * 只在轉動中（.player-card-flip.is-turning）提示 will-change，靜止不多佔圖層記憶體。
  * soft-light 層只與卡面內容混色（.player-card／.player-card-back 有 isolation: isolate）。 */
 .player-card-shine {
   position: absolute;
@@ -307,6 +309,9 @@
 }
 .player-card-shine.is-soft-light {
   mix-blend-mode: soft-light;
+}
+.player-card-flip.is-turning .player-card-shine {
+  will-change: transform;
 }
 
 /*
@@ -334,12 +339,13 @@
   }
 }
 /* 鎖頭列中間放身分標籤（LegacyProfileHeader 傳入），與右側鎖頭同一列，不另占一行。
- * 左側放轉速（數字＋小轉速表／最高記錄兩行，88px 寬），左右對稱各讓 96px（取代原本各 40px，因左側多了轉速與儀表）。 */
+ * 左側放轉速（數字＋小轉速表／最高記錄兩行，96px 寬），左右對稱各讓 104px（取代原本各 40px，因左側多了轉速與儀表）。
+ * 11-06 解除轉速上限後數字最多 5 位（99999），轉速框由 88 加寬到 96、兩側讓位由 96 改 104，仍留 8px 間隔（320 寬實測不重疊）。 */
 .player-card-topbar {
   position: absolute;
   top: 0;
-  left: 96px;
-  right: 96px;
+  left: 104px;
+  right: 104px;
   height: 30px;
   display: flex;
   align-items: center;
@@ -363,7 +369,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 88px;
+  width: 96px;
   height: 30px;
   /* 固定尺寸＋containment：數字每 100ms 改一次時，重排只限這一小塊，不牽動卡片與頁面 */
   contain: strict;
@@ -418,6 +424,15 @@
 [data-theme="dark"] .player-card-rpm-gauge-tick { stroke: #FAC775; }
 [data-theme="dark"] .player-card-rpm-gauge-red,
 [data-theme="dark"] .player-card-rpm-gauge-tick.is-red { stroke: #FF6B57; }
+/* 超表（> 900 RPM，站長 11-06 解除上限）：指針停在頂端，紅區加粗發光、指針轉紅；只在跨越 900 時切 class，靜態樣式不跑動畫。
+ * 選發光不選抖動：抖動要每幀寫亂數角度，看起來像故障，也多一份每幀工作。 */
+.player-card-rpm.is-over .player-card-rpm-gauge-red {
+  stroke-width: 3;
+  -webkit-filter: drop-shadow(0 0 1.5px #FF3B2F);
+  filter: drop-shadow(0 0 1.5px #FF3B2F);
+}
+.player-card-rpm.is-over .player-card-rpm-needle { stroke: #D93A26; }
+[data-theme="dark"] .player-card-rpm.is-over .player-card-rpm-needle { stroke: #FF6B57; }
 .player-card-stage {
   width: calc(220 * var(--pcu));
   height: calc(324 * var(--pcu));

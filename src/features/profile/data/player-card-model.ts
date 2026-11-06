@@ -223,7 +223,8 @@ export type PlayerCardShineFace = 'front' | 'back';
 
 /**
  * 固定斜光唯一參數來源：PNG（player-card-canvas.ts drawShine）與網頁卡面（PlayerCard.tsx 的 .player-card-shine）都由這裡推導，
- * 兩邊角度、停點、強度、疊加方式完全相同；網頁不做動畫。
+ * 兩邊角度、停點、強度、疊加方式完全相同；網頁靜止時與 PNG 同位置，轉動時由 player-card-spin 直寫 translateX 讓光帶滑過
+ * （站長 11-06 方案①，取代原「網頁不做動畫」；PNG 維持固定斜光）。
  * 取代 11-05 先前 20.3° 柔光帶（from／to＋bandStart／bandEnd 那一套），改回站長預覽的 115deg 雙層光；淺色 alpha 減半為站長要求。
  * - 角度：CSS linear-gradient 115deg，漸層線通過卡面中心、長度依 CSS 規範 L＝|w·sinθ|＋|h·cosθ|，停點為該線上的百分比。
  * - 淺色正面兩層：①金白高光帶（soft-light 疊加）＋②奶白柔光（一般疊加）；淺色背面只有第②層。

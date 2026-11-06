@@ -5,7 +5,10 @@
  * 旋轉角度直接寫進 DOM（不走 state），避免每格重畫整張卡。
  * 加速（站長 11-06）：慣性中再快速撥（按住 ≤150ms）且同向，放手速度＝剩餘轉速（按住期間照摩擦衰減）＋本次撥速，越撥越快；
  * 反向拖或抓住超過 150ms 則丟掉剩餘轉速、只照本次撥速（審查 P3④取代原「反向抵銷減速」：避免倒退與抓住卻停不下），
- * 上限 MAX_DEG_PER_MS（900 RPM）；點一下＝煞車停最近一面。轉速以「{數字}/RPM」寫在卡片左上外側（同樣直寫 DOM、100ms 節流）。
+ * 點一下＝煞車停最近一面。轉速以「{數字}/RPM」寫在卡片左上外側（同樣直寫 DOM、100ms 節流）。
+ * 轉速上限（站長 11-06 第二次）：完全解除，取代原「疊加夾在 900 RPM」；只留 PLAYER_CARD_SAFE_MAX_RPM 防數值溢位。
+ * 動態反光（站長 11-06 方案①）：每幀寫 rotateY 時一併寫斜光層的 translateX（不走 state），靜止於 180° 倍數時清掉 transform，
+ * 回到與 PNG 相同的固定斜光；減少動態時斜光不動。
  */
 import { useEffect, useRef } from 'preact/hooks';
 
@@ -24,9 +27,24 @@ const SETTLE_MS = 420;
 const AXIS_LOCK_PX = 6;
 /** 放手時總位移小於此值視為點一下，不翻。 */
 const TAP_PX = 4;
-/** 轉速上限 900 RPM（=5.4°/ms，站長 11-06 由 720 調高）：連撥加速到此為止，避免失控與低階機掉幀。 */
-export const PLAYER_CARD_MAX_RPM = 900;
-const MAX_DEG_PER_MS = (PLAYER_CARD_MAX_RPM * 360) / 60000;
+/**
+ * 半圓轉速表滿刻度 900 RPM（刻度與紅區不變）；超過時指針停在頂端、紅區發光（.player-card-rpm.is-over）。
+ * 取代原 PLAYER_CARD_MAX_RPM＝900 兼作轉速上限：站長 11-06 決定完全解除上限，只保留刻度用途。
+ */
+export const PLAYER_CARD_GAUGE_MAX_RPM = 900;
+/**
+ * 數值安全值 99,999 RPM（≈600°/ms）：正常連撥到不了（摩擦下約數千 RPM 就平衡），只防異常輸入讓角度／文字溢位；
+ * 也是 RPM 數字的最大位數（5 位）。最高記錄讀寫同樣夾在此值。
+ */
+export const PLAYER_CARD_SAFE_MAX_RPM = 99999;
+const MAX_DEG_PER_MS = (PLAYER_CARD_SAFE_MAX_RPM * 360) / 60000;
+/**
+ * 斜光隨轉動的位移幅度（光層寬度的百分比）：位移＝sin(該面自身角度)×此值。
+ * 正面自身角度＝θ、背面＝θ+180°（背面在 θ=180° 時正對使用者），所以兩面正對時位移都是 0、轉到側面時光帶滑到卡邊。
+ */
+export const PLAYER_CARD_SHINE_SWEEP_PCT = 60;
+/** 轉動中掛在 .player-card-flip 的 class（CSS 只在轉動時讓斜光層 will-change，靜止不多佔圖層記憶體）。 */
+export const PLAYER_CARD_TURNING_CLASS = 'is-turning';
 /** RPM 文字最快每 100ms 更新一次；歸零立即寫。 */
 const RPM_UPDATE_MS = 100;
 /** 按住超過此時間，RPM 數字歸 0（卡片已被抓停）。 */
@@ -34,13 +52,24 @@ const HOLD_ZERO_MS = 300;
 /** 按下到放手在此時間內才算「快速撥」，才疊加剩餘轉速；抓住停一下再撥不疊加，避免抓住卻停不下。 */
 const CARRY_MAX_HOLD_MS = 150;
 
-/** 轉速表紅色區間起點（到上限 900 為止）。 */
+/** 轉速表紅色區間起點（到滿刻度 900 為止）。 */
 export const PLAYER_CARD_RPM_REDLINE = 750;
 
-/** 轉速表指針角度：0 RPM 指向左（-90°）、上限指向右（+90°），超出上限夾住。 */
+/** 轉速表指針角度：0 RPM 指向左（-90°）、滿刻度 900 指向右（+90°），超表停在右端。 */
 export function rpmToNeedleDeg(rpm: number): number {
-  const r = Math.max(0, Math.min(PLAYER_CARD_MAX_RPM, rpm));
-  return -90 + (r / PLAYER_CARD_MAX_RPM) * 180;
+  const r = Math.max(0, Math.min(PLAYER_CARD_GAUGE_MAX_RPM, rpm));
+  return -90 + (r / PLAYER_CARD_GAUGE_MAX_RPM) * 180;
+}
+
+/**
+ * 斜光層位移（%）：flip 角度 θ 時，正面 sin(θ)×幅度、背面 sin(θ+180°)＝−sin(θ)×幅度。
+ * 用 sin 而非線性：週期連續、正對時（0／180° 倍數）剛好 0 且附近最跟手，轉到側面（該面看不見）時平順減速，沒有折角跳動。
+ * θ 為 180° 倍數時回傳 0（不受浮點 sin(π)≈1e-16 影響）。
+ */
+export function playerCardShineOffsetPct(angle: number, face: 'front' | 'back'): number {
+  if (angle % 180 === 0) return 0;
+  const v = Math.sin((angle * Math.PI) / 180) * PLAYER_CARD_SHINE_SWEEP_PCT;
+  return face === 'front' ? v : -v;
 }
 
 /** 角速度（°/ms）換算 RPM。 */
@@ -65,11 +94,11 @@ export function writePlayerCardLocked(locked: boolean): void {
   }
 }
 
-/** 讀不到或格式不對一律當 0。 */
+/** 讀不到或格式不對（NaN、Infinity、負數）一律當 0；不設上限（舊值 720／900 照讀），只夾在數值安全值。 */
 export function readPlayerCardBestRpm(): number {
   try {
     const n = Number(localStorage.getItem(PLAYER_CARD_BEST_RPM_STORAGE_KEY));
-    return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), PLAYER_CARD_MAX_RPM) : 0;
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), PLAYER_CARD_SAFE_MAX_RPM) : 0;
   } catch {
     return 0;
   }
@@ -120,6 +149,12 @@ interface SpinState {
   bestDirty: boolean;
   /** 按住超過 HOLD_ZERO_MS 歸零用的計時器。 */
   holdTimer: ReturnType<typeof setTimeout> | 0;
+  /** 減少動態：斜光不跟著動（按下與對齊時重讀）。 */
+  reduced: boolean;
+  /** 斜光目前是否有位移（is-turning 已掛上）。 */
+  shineMoving: boolean;
+  /** 轉速表是否超表（is-over 已掛上）。 */
+  over: boolean;
 }
 
 export interface PlayerCardSpinHandlers {
@@ -165,6 +200,9 @@ export function usePlayerCardSpin(locked: boolean): {
     best: 0,
     bestDirty: false,
     holdTimer: 0,
+    reduced: false,
+    shineMoving: false,
+    over: false,
   }).current;
 
   const api = useRef<{
@@ -175,10 +213,36 @@ export function usePlayerCardSpin(locked: boolean): {
   } | null>(null);
 
   if (!api.current) {
+    /** 兩面的斜光層（live collection：深淺色切換重畫後自動換成新元素，每幀不用重查）。 */
+    let shineFlip: HTMLDivElement | null = null;
+    let shineFront: HTMLCollectionOf<Element> | null = null;
+    let shineBack: HTMLCollectionOf<Element> | null = null;
+    const writeShine = (el: HTMLDivElement): void => {
+      if (shineFlip !== el) {
+        shineFlip = el;
+        shineFront = el.querySelector('.player-card')?.getElementsByClassName('player-card-shine') ?? null;
+        shineBack = el.querySelector('.player-card-back')?.getElementsByClassName('player-card-shine') ?? null;
+      }
+      const moving = !st.reduced && st.angle % 180 !== 0;
+      if (!moving && !st.shineMoving) return;
+      if (moving !== st.shineMoving) {
+        st.shineMoving = moving;
+        el.classList.toggle(PLAYER_CARD_TURNING_CLASS, moving);
+      }
+      for (const [list, face] of [[shineFront, 'front'], [shineBack, 'back']] as const) {
+        if (!list) continue;
+        // 靜止清空 transform：與首次畫面（＝PNG 固定斜光）完全相同
+        const tf = moving ? `translateX(${playerCardShineOffsetPct(st.angle, face).toFixed(3)}%)` : '';
+        for (let i = 0; i < list.length; i++) (list[i] as HTMLElement).style.transform = tf;
+      }
+    };
     const render = (): void => {
       const el = flipRef.current;
-      if (el) el.style.transform = `rotateY(${st.angle}deg)`;
+      if (!el) return;
+      el.style.transform = `rotateY(${st.angle}deg)`;
+      writeShine(el);
     };
+    st.reduced = prefersReducedMotion();
     st.best = readPlayerCardBestRpm();
     /**
      * 轉速寫進 DOM：最快每 RPM_UPDATE_MS 一次；歸零立即寫，靜止時 is-spinning 拿掉（CSS 淡化）。
@@ -200,6 +264,12 @@ export function usePlayerCardSpin(locked: boolean): {
       if (rpm !== st.needleRpm) {
         st.needleRpm = rpm;
         needleRef.current?.setAttribute('transform', `rotate(${rpmToNeedleDeg(rpm)} 20 20)`);
+        // 超表（> 900）：指針已停在頂端，紅區發光；只在跨越時切 class，不每幀改樣式
+        const over = rpm > PLAYER_CARD_GAUGE_MAX_RPM;
+        if (over !== st.over) {
+          st.over = over;
+          rpmRef.current?.closest('.player-card-rpm')?.classList.toggle('is-over', over);
+        }
       }
       const el = rpmRef.current;
       const text = String(rpm);
@@ -235,6 +305,7 @@ export function usePlayerCardSpin(locked: boolean): {
     /** dir≠0（慣性收尾）時取轉動方向上的下一個 180° 倍數，避免最後倒轉；dir=0 取最近一面。 */
     const settle = (dir = 0): void => {
       stop();
+      st.reduced = prefersReducedMotion();
       const target = dir > 0
         ? Math.ceil(st.angle / 180) * 180
         : dir < 0
@@ -306,6 +377,7 @@ export function usePlayerCardSpin(locked: boolean): {
       // 按住時立即拿掉 is-spinning（數字先維持，避免連撥時每次按下都歸零閃爍）；按住超過 HOLD_ZERO_MS 數字才歸 0。
       st.carryVel = st.anim === 'coast' ? st.vel : 0;
       st.carryT = performance.now();
+      st.reduced = prefersReducedMotion();
       stop();
       rpmRef.current?.closest('.player-card-rpm')?.classList.remove('is-spinning');
       clearHoldTimer();
@@ -367,7 +439,7 @@ export function usePlayerCardSpin(locked: boolean): {
       const now = performance.now();
       const first = st.samples.find((s) => now - s.t < SAMPLE_WINDOW_MS);
       const flickVel = first && now - first.t > 0 ? ((e.clientX - first.x) / (now - first.t)) * DEG_PER_PX : 0;
-      // 疊加：只有快速撥（按住 ≤ CARRY_MAX_HOLD_MS）才把剩餘轉速（按住期間照摩擦衰減）加上本次撥速，夾在上限內；
+      // 疊加：只有快速撥（按住 ≤ CARRY_MAX_HOLD_MS）才把剩餘轉速（按住期間照摩擦衰減）加上本次撥速，只夾數值安全值；
       // 反向拖時剩餘轉速已在進入拖曳時丟掉
       const held = Math.max(0, now - st.carryT);
       const carry = held <= CARRY_MAX_HOLD_MS ? st.carryVel * Math.pow(FRICTION_PER_MS, held) : 0;
