@@ -39,6 +39,7 @@ import {
   ROUTE_STEP_TIMEOUT,
   ROUTE_TIMEOUT_MS,
 } from '@/core/route-loading';
+import { applyRouteMeta } from '@/core/route-meta';
 import { initMultiTabGuard } from '@/core/multi-tab-guard';
 import {
   markContentReady,
@@ -537,6 +538,11 @@ function RouteArea({
       releaseFirebaseAuthHold();
     }
   }, [redirect, location.path]);
+
+  // I-01 S2：只在路徑變動時更新 canonical／hreflang／og:url／og:type。
+  useEffect(() => {
+    applyRouteMeta(location.path || '/');
+  }, [location.path]);
 
   // M-045、M-046：標記返回起點；LINE／PWA 裝首頁返回保護哨兵（只在開站時一次）。
   useEffect(() => initBackGuard(), []);

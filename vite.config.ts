@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
@@ -89,6 +89,14 @@ function internalTestNoIndex(): Plugin {
     configResolved(config) {
       isBuild = config.command === 'build';
       enabled = config.env.VITE_PUBLIC_LAUNCH !== '1';
+      // 公開上線前硬性檢查：沒接上每頁 canonical 就讓建置失敗（不是警告）。
+      if (config.env.VITE_PUBLIC_LAUNCH === '1' && isBuild) {
+        const appSrc = readFileSync(new URL('./src/app/App.tsx', import.meta.url), 'utf8');
+        const routeMetaPath = fileURLToPath(new URL('./src/core/route-meta.ts', import.meta.url));
+        if (!appSrc.includes('applyRouteMeta(') || !existsSync(routeMetaPath)) {
+          throw new Error('S2 未完成，不可公開建置');
+        }
+      }
     },
     transformIndexHtml(html) {
       if (!isBuild || !enabled) return html;
