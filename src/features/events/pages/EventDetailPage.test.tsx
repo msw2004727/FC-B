@@ -1869,7 +1869,9 @@ describe('T-073b 頁面共用權限與補正保底', () => {
     await waitFor(() => expect(mocks.noShowCounted).toHaveBeenCalled());
     await act(async () => {});
     expect(mocks.noShowCounted).toHaveBeenCalledTimes(1);
-    expect(view.container.querySelector('tbody span[title^="放鴿子"]')?.textContent).toBe('');
+    const table = view.container.querySelector('#detail-attendance-table table') as HTMLTableElement;
+    const index = Array.from(table.querySelectorAll('th')).findIndex(th => th.textContent === '🕊');
+    expect(table.querySelector<HTMLTableRowElement>('tbody tr')?.cells[index]?.textContent).toBe('');
     expect(view.container.textContent).not.toContain('private counted failure');
     expect(mocks.toastShow).not.toHaveBeenCalled();
   });

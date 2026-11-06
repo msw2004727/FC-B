@@ -197,6 +197,7 @@ describe('loadUserAttendanceSummary', () => {
       completedCount: 7,
       attendRate: 80,
       updatedAt: null,
+      v2: null, // 測試同步更新（站長 11-06 v2）：沒有 countedSince
     });
   });
 
@@ -215,6 +216,7 @@ describe('loadUserAttendanceSummary', () => {
       completedCount: 0,
       attendRate: 0,
       updatedAt: null,
+      v2: null,
     });
   });
 

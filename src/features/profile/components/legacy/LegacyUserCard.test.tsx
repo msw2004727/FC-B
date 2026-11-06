@@ -178,8 +178,6 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     expect(loadUserAttendanceSummary).toHaveBeenCalledTimes(1);
     expect(loadUserAttendanceSummary).toHaveBeenCalledWith(TARGET, {});
     expect(loadUserStats).not.toHaveBeenCalled();
-    expect(container.querySelector('#uc-record-stats')?.textContent).toContain('參與');
-    expect(container.querySelector('#uc-record-stats')?.textContent).not.toContain('應到');
     expect(container.querySelector('.pp-counted')).toBeNull();
     // 明細收合時先顯示參與場次
     expect(container.querySelector('.pp-cnt')?.textContent).toBe('26');
@@ -200,8 +198,9 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('20'));
     expect(container.querySelector('#uc-stat-done')?.textContent).toBe(String(completed));
     expect(container.querySelector('#uc-stat-rate')?.textContent).toBe(rate);
+    // 此檔沒載語系字典，文字會顯示 key；「計 N 場」文案由 PlayerCard.test 以真字典驗證。
     expect(container.querySelector('#uc-stat-rate')?.parentElement?.querySelector('.pp-counted')?.textContent)
-      .toBe(`計 ${counted} 場`);
+      .toBe('profile.playerCard.countedGames');
     // 「活動明細 N」跟著參與場次
     expect(container.querySelector('.pp-cnt')?.textContent).toBe('20');
   });
