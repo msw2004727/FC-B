@@ -202,8 +202,9 @@ describe('T-073c：照 A 球衣徽章與名單排序', () => {
       }],
     });
     expect(container.querySelectorAll('.uc-team-jersey')).toHaveLength(1);
+    // 測試同步更新（站長 11-06 選「座位點」）：保留席位列名稱改在膠囊 title。
     for (const name of ['↳ 同行者', '僅代報者', '測試俱樂部 保留席位']) {
-      expect(screen.getByText(name).closest('tr')?.querySelector('.user-capsule')).toBeNull();
+      expect((screen.queryByText(name) ?? screen.getByTitle(name)).closest('tr')?.querySelector('.user-capsule')).toBeNull();
     }
     fireEvent.click(sortButton());
     expect(container.querySelector('tbody tr')?.textContent).toContain('↳ 同行者');

@@ -35,8 +35,13 @@ const base: AttendanceRosterTableProps = {
 // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：一般瀏覽不再染色／紅泡泡，🕊 欄改顯示「放鴿子/計入」。
 const title = '放鴿子／計入場次';
 const NO_DECORATION = '.uc-att-warn, .uc-recent-noshow';
+// 測試同步更新（站長 11-06 選「座位點」）：保留席位列的名稱只在膠囊 title，改用 title 找列。
+function rowFor(name: string): HTMLTableRowElement {
+  return (screen.queryByText(name) ?? screen.getByTitle(name)).closest('tr')!;
+}
+
 function cellFor(name: string): HTMLTableCellElement {
-  const row = screen.getByText(name).closest('tr')!;
+  const row = rowFor(name);
   const index = Array.from(document.querySelectorAll('thead th')).findIndex(th => th.textContent === '🕊');
   return row.cells[index]!;
 }
@@ -148,7 +153,7 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
     expect(cellFor('代報人').textContent).toBe('--');
     expect(cellFor('測試隊 保留席位').textContent).toBe('--');
     for (const name of ['↳ 同行者', '代報人', '測試隊 保留席位']) {
-      expect(screen.getByText(name).closest('tr')?.querySelector(NO_DECORATION)).toBeNull();
+      expect(rowFor(name).querySelector(NO_DECORATION)).toBeNull();
     }
     expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);
     expect(!!screen.queryByRole('columnheader', { name: '候' })).toBe(demote);

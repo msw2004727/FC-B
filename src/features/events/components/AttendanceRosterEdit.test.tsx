@@ -266,7 +266,11 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     expect(document.getElementById('manual-checkin-u_proxy')).toBeNull();
     expect(document.getElementById('manual-checkin-u_amb')).toBeNull();
     expect(screen.getByText('僅代報')).toBeTruthy();
-    expect(screen.getByText('保留席位')).toBeTruthy();
+    // 測試同步更新（站長 11-06 選「座位點」）：保留席位列只顯示「保留」膠囊。
+    const pill = document.querySelector('.team-reservation-seat-pill')!;
+    expect(pill.getAttribute('title')).toMatch(/ 保留席位$/);
+    expect(pill.firstChild?.textContent).toBe('保留');
+    expect(Array.from(pill.closest('tr')!.cells).slice(-3).map(td => td.textContent)).toEqual(['', '', '']);
     expect(screen.getAllByText('請至課程點名').length).toBeGreaterThan(0);
   });
 

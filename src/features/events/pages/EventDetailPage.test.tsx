@@ -1963,7 +1963,7 @@ describe('T-074b 詳情頁整合', () => {
     expect(screen.queryByRole('button', { name: '取消候補' })).toBeNull();
     expect(document.querySelector('#detail-attendance-table')?.textContent).toContain('候補本人');
     expect(document.querySelector('#detail-waitlist-container')?.textContent).not.toContain('候補本人');
-    expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
+    expect(document.querySelector('.team-reservation-seats')?.getAttribute('aria-label')).toContain('佔位 2，');
     expect([mocks.detail.mock.calls.length, mocks.registrations.mock.calls.length, mocks.history.mock.calls.length])
       .toEqual([calls[0], calls[1]! + 1, calls[2]]);
     expect(mocks.registrations).toHaveBeenLastCalledWith(detail.eventDocId);
@@ -2037,7 +2037,7 @@ describe('T-074b 詳情頁整合', () => {
     expect(screen.queryByText('晚到讀取記號')).toBeNull();
     expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
     expect(document.querySelector('#detail-waitlist-container')?.textContent).not.toContain('候補本人');
-    expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
+    expect(document.querySelector('.team-reservation-seats')?.getAttribute('aria-label')).toContain('佔位 2，');
   });
   function deferredReservationRead() {
     let resolve!: (rows: unknown[]) => void;
@@ -2098,7 +2098,7 @@ describe('T-074b 詳情頁整合', () => {
       const headers = document.querySelectorAll('.team-reservation-header-row');
       expect(headers).toHaveLength(1);
       expect(headers[0]!.textContent).toContain('一隊');
-      expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 1');
+      expect(document.querySelector('.team-reservation-seats')?.getAttribute('aria-label')).toContain('佔位 1，');
       expect(within(headers[0] as HTMLElement).getByRole('button', { name: '快速調整' })).toBeTruthy();
       expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain(member.userName);
       expect(document.querySelector('.team-reservation-placeholder-row')).toBeNull();
@@ -2200,7 +2200,7 @@ describe('T-074b 詳情頁整合', () => {
     expect(mocks.registrations).toHaveBeenCalledTimes(2);
     expect(callable).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.team-reservation-member-row')?.textContent).toContain(member.userName);
-    expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
+    expect(document.querySelector('.team-reservation-seats')?.getAttribute('aria-label')).toContain('佔位 2，');
   });
   it.each([
     'activity.view_noshow', 'admin.repair.no_show_adjust',
@@ -2336,7 +2336,7 @@ describe('T-074b 詳情頁整合', () => {
     await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '團隊名額已更新，但名單更新失敗，請重新整理' }));
     if (expanded) {
       await act(async () => { stale.resolve([waiting]); });
-      expect(document.querySelector('.team-reservation-summary')?.textContent).toContain('佔位: 2');
+      expect(document.querySelector('.team-reservation-seats')?.getAttribute('aria-label')).toContain('佔位 2，');
     }
     expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '取消候補' })).toBeNull();
