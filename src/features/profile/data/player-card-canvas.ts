@@ -229,26 +229,23 @@ function drawHeader(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, 
   const abbrWidth = ctx.measureText(PLAYER_CARD_ABBR.attend).width;
   setLetterSpacing(ctx, 0);
   const attCenter = 17 + Math.max(numWidth, abbrWidth) / 2;
-  text(ctx, model.attendText, attCenter, 48, displayFont, 44, p.text, 'center', 0, ATT_NUM_MAX_WIDTH);
-  text(ctx, PLAYER_CARD_ABBR.attend, attCenter, 68.5, displayFont, 12, p.subText, 'center', 2);
+  text(ctx, model.attendText, attCenter, 48, displayFont, 44, p.headline, 'center', 0, ATT_NUM_MAX_WIDTH);
+  text(ctx, PLAYER_CARD_ABBR.attend, attCenter, 68.5, displayFont, 12, p.headlineAbbr, 'center', 2);
   // 右上：球員卡（12、字重 500、字距 2）＋PLAYER CARD（11、字距 2），右緣 203。
-  text(ctx, labels.title, 203, 29, (s) => bodyFont(s, 500), 12, p.text, 'right', 2, HEADER_TITLE_MAX_WIDTH);
-  text(ctx, PLAYER_CARD_ABBR.title, 203, 46.8, displayFont, 11, p.subText, 'right', 2);
+  text(ctx, labels.title, 203, 29, (s) => bodyFont(s, 500), 12, p.headline, 'right', 2, HEADER_TITLE_MAX_WIDTH);
+  text(ctx, PLAYER_CARD_ABBR.title, 203, 46.8, displayFont, 11, p.headlineAbbr, 'right', 2);
 }
 
-/** 沒有頭像（或載入失敗、tainted）：與畫面 LegacyAvatar 一致，金色漸層圓底＋白色姓名首字。 */
-function drawDefaultAvatar(ctx: Ctx, initial: string): void {
+/** 沒有頭像（或載入失敗、tainted）：與畫面 LegacyAvatar 一致，預覽同款純色圓底＋姓名首字（色見 PlayerCardPalette）。 */
+function drawDefaultAvatar(ctx: Ctx, initial: string, p: PlayerCardPalette): void {
   const { cx, cy, photo } = AVATAR;
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, photo, 0, Math.PI * 2);
-  const g = ctx.createLinearGradient(cx - photo, cy - photo, cx + photo, cy + photo);
-  g.addColorStop(0, '#EF9F27');
-  g.addColorStop(1, '#854F0B');
-  ctx.fillStyle = g;
+  ctx.fillStyle = p.avatarFill;
   ctx.fill();
   ctx.font = bodyFont(36, 500);
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = p.avatarInitial;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(initial, cx, cy + 1);
@@ -269,7 +266,7 @@ function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, initial: string, p: 
   ctx.fill();
 
   if (!avatar || !(avatar.width > 0) || !(avatar.height > 0)) {
-    drawDefaultAvatar(ctx, initial);
+    drawDefaultAvatar(ctx, initial, p);
     return;
   }
   // object-fit: cover
@@ -313,7 +310,7 @@ function drawNameAndGauge(ctx: Ctx, model: PlayerCardModel, p: PlayerCardPalette
   const fillWidth = GAUGE.width * Math.min(1, Math.max(0, model.gaugeRatio));
   if (fillWidth > 0) {
     roundRectPath(ctx, GAUGE.x, GAUGE.y, fillWidth, GAUGE.height, GAUGE.height / 2);
-    ctx.fillStyle = p.gold;
+    ctx.fillStyle = p.gaugeFill;
     ctx.fill();
   }
 }
@@ -326,11 +323,11 @@ function drawStats(ctx: Ctx, model: PlayerCardModel, labels: PlayerCardLabels, p
   ];
   cells.forEach(([value, label, abbr], index) => {
     const x = STAT_COLUMNS[index] ?? 110;
-    text(ctx, value, x, STATS.numY, displayFont, 24, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
-    text(ctx, label, x, STATS.labelY, (s) => bodyFont(s, 400), 11, p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
-    text(ctx, abbr, x, STATS.abbrY, displayFont, 11, p.subText, 'center', 1.5, STAT_CELL_MAX_WIDTH);
+    text(ctx, value, x, STATS.numY, displayFont, 24, index === 2 ? p.statNumAtt : p.text, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, label, x, STATS.labelY, (s) => bodyFont(s, 400), 11, p.statLabel, 'center', 0, STAT_CELL_MAX_WIDTH);
+    text(ctx, abbr, x, STATS.abbrY, displayFont, 11, p.statAbbr, 'center', 1.5, STAT_CELL_MAX_WIDTH);
   });
-  ctx.strokeStyle = p.stripe;
+  ctx.strokeStyle = p.divider;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (const x of STATS.dividers) {

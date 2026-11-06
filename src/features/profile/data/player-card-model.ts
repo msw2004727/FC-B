@@ -116,7 +116,7 @@ export const PLAYER_CARD_ABBR = {
   attend: 'ATT',
 } as const;
 
-/** 站長定案色票（DOM 的 player-card.css 用同一組色碼）。 */
+/** 站長定案色票（DOM 的 player-card.css 用同一組色碼；player-card-palette-parity.test.ts 逐項比對兩邊）。 */
 export interface PlayerCardPalette {
   base: string;
   stripe: string;
@@ -124,9 +124,25 @@ export interface PlayerCardPalette {
   innerFrame: string;
   gold: string;
   avatarInnerRing: string;
+  /** 沒有頭像照片時的圓底與首字色（站長預覽：淺色橘金底白字、深色深咖啡底米色字，純色不漸層）。 */
+  avatarFill: string;
+  avatarInitial: string;
+  /** 名字與三格數字。 */
   text: string;
-  subText: string;
+  /** 三格第三格（出席率）數字：深色版預覽為金色，淺色版與其他格相同。 */
+  statNumAtt: string;
+  /** 左上大出席率數字與右上「球員卡」。 */
+  headline: string;
+  /** 左上 ATT 與右上 PLAYER CARD 縮寫。 */
+  headlineAbbr: string;
+  /** 三格中文標籤（參與／完成／出席率）。 */
+  statLabel: string;
+  /** 三格英文縮寫（APP／CMP／ATT）。 */
+  statAbbr: string;
+  /** 三格之間的分隔線（含透明度）。 */
+  divider: string;
   gaugeTrack: string;
+  gaugeFill: string;
   clubBg: string;
   clubText: string;
   /** PNG 左下 QR 的 quiet zone 底色與碼色（只在 PNG，網頁卡面不畫 QR）。 */
@@ -134,6 +150,10 @@ export interface PlayerCardPalette {
   qrFg: string;
 }
 
+/*
+ * 站長 11-06 T-092 顏色照預覽：色票依站長 11-05 核可預覽的實際像素重新取色。
+ * 取代原「頭像底色金色漸層、大數字／縮寫同色、計量條淡金底、深色數字米色、俱樂部方塊 #412402」。
+ */
 export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = {
   light: {
     base: '#FAEEDA',
@@ -142,10 +162,18 @@ export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = 
     innerFrame: '#BA7517',
     gold: '#BA7517',
     avatarInnerRing: '#FFFFFF',
+    avatarFill: '#EF9F27',
+    avatarInitial: '#FFFFFF',
     text: '#412402',
-    subText: '#854F0B',
-    gaugeTrack: 'rgba(186, 117, 23, 0.18)',
-    clubBg: '#412402',
+    statNumAtt: '#412402',
+    headline: '#633806',
+    headlineAbbr: '#854F0B',
+    statLabel: '#854F0B',
+    statAbbr: '#BA7517',
+    divider: 'rgba(186, 117, 23, 0.35)',
+    gaugeTrack: '#FAC775',
+    gaugeFill: '#854F0B',
+    clubBg: '#633806',
     clubText: '#FAC775',
     qrBg: '#FFFFFF',
     qrFg: '#412402',
@@ -157,11 +185,19 @@ export const PLAYER_CARD_PALETTES: Record<PlayerCardTheme, PlayerCardPalette> = 
     innerFrame: '#FAC775',
     gold: '#FAC775',
     avatarInnerRing: '#2C2C2A',
+    avatarFill: '#854F0B',
+    avatarInitial: '#FAEEDA',
     text: '#FAEEDA',
-    subText: '#FAC775',
-    gaugeTrack: 'rgba(250, 199, 117, 0.18)',
+    statNumAtt: '#FAC775',
+    headline: '#FAC775',
+    headlineAbbr: '#EF9F27',
+    statLabel: '#B4B2A9',
+    statAbbr: '#888780',
+    divider: 'rgba(250, 199, 117, 0.25)',
+    gaugeTrack: '#444441',
+    gaugeFill: '#FAC775',
     clubBg: '#FAC775',
-    clubText: '#2C2C2A',
+    clubText: '#412402',
     qrBg: '#FAEEDA',
     qrFg: '#2C2C2A',
   },

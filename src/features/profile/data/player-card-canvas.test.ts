@@ -44,7 +44,9 @@ interface FillRecord {
 function makeFakeCtx(opts: { taint?: boolean } = {}) {
   const texts: string[] = [];
   /** 每次 fillText 當下的字級與量測寬度。 */
-  const drawn: Array<{ value: string; size: number; width: number }> = [];
+  const drawn: Array<{ value: string; size: number; width: number; color: unknown }> = [];
+  /** 每次 stroke 當下的 strokeStyle（分隔線等）。 */
+  const strokeStyles: unknown[] = [];
   const sizeOf = (font: string): number => Number(/([\d.]+)px/.exec(font)?.[1] ?? 10);
   // 假量測：每字寬＝字級 × 0.6（足以驗證縮字邏輯）
   const measure = (value: string): number => Array.from(value).length * sizeOf(ctx.font) * 0.6;
@@ -70,7 +72,9 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     restore: vi.fn(),
     scale: vi.fn(),
     clip: vi.fn(),
-    stroke: vi.fn(),
+    stroke: () => {
+      strokeStyles.push(ctx.strokeStyle);
+    },
     closePath: vi.fn(),
     beginPath: () => {
       points = [];
@@ -105,7 +109,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     },
     fillText: (value: string) => {
       texts.push(value);
-      drawn.push({ value, size: sizeOf(ctx.font), width: measure(value) });
+      drawn.push({ value, size: sizeOf(ctx.font), width: measure(value), color: ctx.fillStyle });
     },
     measureText: (value: string) => ({ width: measure(value) }),
     drawImage: (image: unknown, ...args: number[]) => {
@@ -121,7 +125,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
       return { data: new Uint8ClampedArray(4) };
     },
   };
-  return { ctx, texts, images, fills, drawn, rects, gradients };
+  return { ctx, texts, images, fills, drawn, rects, gradients, strokeStyles };
 }
 
 const labels: PlayerCardLabels = {
@@ -220,8 +224,42 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     expect(track!.minX).toBeCloseTo(17);
     expect(track!.maxX - track!.minX).toBeCloseTo(186);
     expect(bar!.maxX - bar!.minX).toBeCloseTo(186 * 0.85);
-    expect(bar!.fillStyle).toBe(PLAYER_CARD_PALETTES.dark.gold);
+    expect(bar!.fillStyle).toBe(PLAYER_CARD_PALETTES.dark.gaugeFill);
+    expect(track!.fillStyle).toBe(PLAYER_CARD_PALETTES.dark.gaugeTrack);
   });
+
+  // 測試同步更新（站長 11-06 T-092 顏色照預覽）：PNG 各元素色碼對照 PLAYER_CARD_PALETTES（DOM 同組色碼見 player-card-palette-parity.test.ts）。
+  for (const theme of ['light', 'dark'] as const) {
+    it(`色碼照預覽（${theme}）：文字、計量條、分隔線、頭像底色、俱樂部方塊都取自色票`, () => {
+      const pal = PLAYER_CARD_PALETTES[theme];
+      const fake = makeFakeCtx();
+      drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(), theme, labels, {
+        avatar: null,
+        logo: logoImg,
+      });
+      const colorsOf = (value: string): unknown[] => fake.drawn.filter((d) => d.value === value).map((d) => d.color);
+      // '85%' 依序：左上大數字、三格第三格數字
+      expect(colorsOf('85%')).toEqual([pal.headline, pal.statNumAtt]);
+      expect(colorsOf('球員卡')).toEqual([pal.headline]);
+      expect(colorsOf('PLAYER CARD')).toEqual([pal.headlineAbbr]);
+      // 'ATT'：左上縮寫、三格縮寫
+      expect(colorsOf('ATT')).toEqual([pal.headlineAbbr, pal.statAbbr]);
+      expect(colorsOf('APP')).toEqual([pal.statAbbr]);
+      expect(colorsOf('CMP')).toEqual([pal.statAbbr]);
+      for (const label of ['參與', '完成', '出席率']) expect(colorsOf(label)).toEqual([pal.statLabel]);
+      expect(colorsOf('26')).toEqual([pal.text]);
+      expect(colorsOf('王小明')).toEqual([pal.text]);
+      expect(colorsOf('俱樂部')).toEqual([pal.clubText]);
+      expect(colorsOf('2')).toEqual([pal.clubText]);
+      // 沒頭像：純色圓底（不漸層）＋首字色
+      // 舊的頭像底色漸層範圍 (67,54)→(153,140) 不再出現（斜光漸層是另一條）
+      expect(fake.gradients.some((g) => g.args.join(',') === '67,54,153,140')).toBe(false);
+      expect(fake.fills.some((f) => f.fillStyle === pal.avatarFill)).toBe(true);
+      expect(colorsOf('王')).toEqual([pal.avatarInitial]);
+      expect(fake.fills.some((f) => f.fillStyle === pal.clubBg)).toBe(true);
+      expect(fake.strokeStyles).toContain(pal.divider);
+    });
+  }
 
   it('PNG 不含 UID；俱樂部數 0 不畫方塊', () => {
     const fake = makeFakeCtx();
