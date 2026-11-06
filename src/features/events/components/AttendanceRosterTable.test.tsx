@@ -338,10 +338,15 @@ describe('T-074b 快速調整', () => {
 });
 
 describe('座位點標頭（站長 11-06 選風格 B）', () => {
-  function renderSummary(reservedSlots: number, usedSlots: number, remainingSlots: number) {
+  function renderSummary(reservedSlots: number, usedSlots: number, remainingSlots: number, members = 0) {
+    // 沒有剩餘席位時，model 只在有隊員報名時才畫標頭，所以超用情境要帶隊員報名。
+    const registrations = Array.from({ length: members }, (_, i) => ({
+      _docId: `r${i}`, userId: `u${i}`, userName: `隊員${i}`, status: 'confirmed',
+      teamReservationTeamId: 't1', teamReservationTeamName: '飛鷹FC',
+    }));
     return render(<AttendanceRosterTable publicRosterOnly event={{ id: 'e1', max: 30, teamReservationSummaries: [
       { teamId: 't1', teamName: '飛鷹FC', reservedSlots, usedSlots, remainingSlots },
-    ] }} registrations={[]} attendanceRecords={[]} roles={{}} onOpenProfile={vi.fn()} />);
+    ] }} registrations={registrations} attendanceRecords={[]} roles={{}} onOpenProfile={vi.fn()} />);
   }
 
   it('實心點＝已使用、空心點＝剩餘，旁邊「剩 N」，頭像取隊名首字', () => {
@@ -362,7 +367,7 @@ describe('座位點標頭（站長 11-06 選風格 B）', () => {
   });
 
   it('已使用超過佔位（後端允許超用）不截斷，改顯示「已用／總數」', () => {
-    const { container } = renderSummary(3, 5, 0);
+    const { container } = renderSummary(3, 5, 0, 5);
     expect(container.querySelector('.team-reservation-seat-dots')).toBeNull();
     expect(container.querySelector('.team-reservation-seat-count')?.textContent).toBe('5/3');
     expect(screen.getByLabelText('佔位 3，已使用 5，剩餘 0')).toBeTruthy();
