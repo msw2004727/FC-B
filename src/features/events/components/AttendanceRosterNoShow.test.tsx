@@ -149,10 +149,11 @@ describe('T-073b 名單放鴿子 UI（A oracle）', () => {
         { _docId: 'comp', userId: 'proxy', userName: '代報人', companionId: 'c1', companionName: '同行者', participantType: 'companion', status: 'confirmed' },
       ]}
     />);
-    expect(cellFor('↳ 同行者').textContent).toBe('—');
+    // 測試同步更新：同行者改 B2 呈現
+    expect(cellFor('同行者').textContent).toBe('—');
     expect(cellFor('代報人').textContent).toBe('--');
     expect(cellFor('測試隊 保留席位').textContent).toBe('--');
-    for (const name of ['↳ 同行者', '代報人', '測試隊 保留席位']) {
+    for (const name of ['同行者', '代報人', '測試隊 保留席位']) {
       expect(rowFor(name).querySelector(NO_DECORATION)).toBeNull();
     }
     expect(!!screen.queryByRole('columnheader', { name: '踢' })).toBe(canRemoveConfirmed);

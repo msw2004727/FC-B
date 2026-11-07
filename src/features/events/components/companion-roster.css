@@ -1,0 +1,228 @@
+/*
+ * 出席名單 B2：連線樹＋配色膠囊。只使用既有主題變數。
+ * 名字欄 td 的 inline padding 左緣是 .3rem；垂直線中心 = 該左內距 + 11px。
+ */
+
+td.cr-name-cell {
+  position: relative;
+}
+
+.cr-lead,
+.cr-pair,
+.cr-proxy-line {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.cr-lead {
+  gap: .4rem;
+}
+
+.cr-lead > .user-capsule.user-capsule {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--cr-g) 45%, transparent);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cr-lead > .user-capsule.uc-user {
+  background: color-mix(in srgb, var(--cr-g) 14%, var(--bg-card));
+}
+
+.cr-plus {
+  flex-shrink: 0;
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--cr-g);
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-mate-text {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: 1.75rem;
+  vertical-align: middle;
+}
+
+.cr-pair {
+  gap: 0;
+}
+
+.cr-owner {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cr-g);
+  color: var(--bg-card);
+  font-size: .58rem;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg-card);
+  margin-right: -7px;
+  z-index: 1;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cr-cap {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: .22rem .66rem .22rem .72rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--cr-g) 55%, transparent);
+  color: var(--text-primary);
+}
+
+.cr-proxy-line {
+  gap: .4rem;
+}
+
+.cr-ghost {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: .22rem .66rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--bg-card);
+  border: 1.5px dashed color-mix(in srgb, var(--cr-g) 60%, transparent);
+  color: var(--text-muted);
+}
+
+.cr-proxy-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: .22rem;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.35;
+  padding: .14rem .5rem .14rem .4rem;
+  border-radius: 999px;
+  background: var(--warning);
+  color: var(--bg-card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+.cr-proxy-badge svg {
+  flex-shrink: 0;
+}
+
+/* 連線只畫在名字 td 裡，不占排版，避免擠壓簽到欄。 */
+.cr-link {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cr-link-down {
+  position: absolute;
+  left: calc(0.3rem + 11px);
+  top: calc(50% + 13px);
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--cr-g);
+  opacity: .6;
+}
+
+.cr-link-down.cr-link-dashed {
+  opacity: .9;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--cr-g) 0 6px,
+    transparent 6px 11px
+  );
+}
+
+.cr-link-mate {
+  position: absolute;
+  inset: 0;
+  opacity: .6;
+  color: var(--cr-g);
+}
+
+.cr-link-mate.cr-link-dashed {
+  opacity: .9;
+}
+
+.cr-v-top,
+.cr-v-bot {
+  position: absolute;
+  left: calc(0.3rem + 11px);
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--cr-g);
+}
+
+.cr-link-dashed .cr-v-top,
+.cr-link-dashed .cr-v-bot {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--cr-g) 0 6px,
+    transparent 6px 11px
+  );
+}
+
+.cr-v-top {
+  top: 0;
+  height: calc(50% - 9px);
+}
+
+.cr-v-bot {
+  top: 50%;
+  bottom: 0;
+}
+
+.cr-corner {
+  position: absolute;
+  left: calc(0.3rem + 11px - 1px);
+  top: calc(50% - 9px);
+  width: calc(1.75rem - 11px + 1px);
+  height: 11px;
+  overflow: hidden;
+  color: var(--cr-g);
+}
+
+/* 管理名單：名字欄壓縮，省略號留在膠囊內，連線仍是絕對定位。 */
+.att-roster-managing td.cr-name-cell > .reg-name-text.cr-mate-text {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: middle;
+}
+
+.att-roster-managing .cr-lead > .user-capsule {
+  min-width: 0;
+}
+
+.att-roster-managing .cr-proxy-line,
+.att-roster-managing .cr-lead {
+  max-width: 100%;
+  min-width: 0;
+}

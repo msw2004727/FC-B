@@ -173,6 +173,7 @@
     "empty": "아직 신청자가 없습니다",
     "reservedSeat": "예약석",
     "proxyOnly": "대리 신청만",
+    "proxyBadge": "대리",
     "courseRollcall": "수업에서 출석 확인",
     "generalSection": "일반 신청",
     "clubBadge": "클",

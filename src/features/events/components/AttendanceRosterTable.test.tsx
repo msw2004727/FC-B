@@ -9,6 +9,7 @@ vi.mock('@/i18n/i18n', async (importOriginal) => {
     'ui.userTag.role.coach': '教練',
     'ui.userTag.openProfile': '檢視 {name}',
     'ui.userTag.unknown': '未知用戶',
+    'events.roster.proxyBadge': '代報',
   };
   return {
     ...(await importOriginal<typeof import('@/i18n/i18n')>()),
@@ -44,7 +45,7 @@ describe('AttendanceRosterTable', () => {
 
   it('renders header count, UserTag, companion row, proxyOnly row, placeholder row, and checkin/checkout/note', () => {
     const onOpenProfile = vi.fn();
-    render(
+    const { container } = render(
       <AttendanceRosterTable
         event={{
           id: 'e1',
@@ -133,14 +134,84 @@ describe('AttendanceRosterTable', () => {
     expect(screen.getByText('一般報名')).toBeTruthy();
     expect(screen.getByText('ProxyParent')).toBeTruthy();
     expect(screen.getByText('僅代報')).toBeTruthy();
-    expect(screen.getByText('↳ Alice Kid')).toBeTruthy();
-    expect(screen.getByText('↳ ProxyKid')).toBeTruthy();
+    // 測試同步更新：同行者改 B2 呈現
+    expect(container.textContent).not.toContain('↳');
+    expect(screen.getByText('Alice Kid')).toBeTruthy();
+    expect(screen.getByText('ProxyKid')).toBeTruthy();
+    expect(screen.getByText('+1')).toBeTruthy();
+    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'P']);
+    expect(container.querySelector('.cr-ghost')?.textContent).toBe('ProxyParent');
+    expect(container.querySelector('.cr-proxy-badge')?.textContent).toContain('代報');
+    expect(seatPill.closest('td')?.querySelector('.cr-lead, .cr-pair, .cr-ghost, .cr-link')).toBeNull();
+    for (const link of container.querySelectorAll('.cr-link')) {
+      expect(link.getAttribute('aria-hidden')).toBe('true');
+    }
     expect(screen.getByText('✓')).toBeTruthy();
     expect(screen.getByText('遲到5分')).toBeTruthy();
 
     const userTagBtn = screen.getByRole('button', { name: /Alice/ });
     fireEvent.click(userTagBtn);
     expect(onOpenProfile).toHaveBeenCalledWith('u1');
+    expect(userTagBtn.closest('.cr-lead')).toBeTruthy();
+  });
+
+  it('B2：lead +2、代報虛線、solo 名字欄 DOM 不變、同行者不可點', () => {
+    const { container } = render(
+      <AttendanceRosterTable
+        event={{ id: 'e-b2', max: 10 }}
+        registrations={[
+          {
+            _docId: 'solo', userId: 'solo', userName: 'Solo', status: 'confirmed',
+            participantType: 'self', registeredAt: '2026-05-01T09:00:00Z',
+          },
+          {
+            _docId: 'a', userId: 'alice', userName: 'Alice', status: 'confirmed',
+            participantType: 'self', registeredAt: '2026-05-01T10:00:00Z',
+          },
+          {
+            _docId: 'c1', userId: 'alice', userName: 'Alice', companionId: 'k1', companionName: 'Kid One',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:01:00Z',
+          },
+          {
+            _docId: 'c2', userId: 'alice', userName: 'Alice', companionId: 'k2', companionName: 'Kid Two',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:02:00Z',
+          },
+          {
+            _docId: 'p', userId: 'proxy', userName: '王志明', companionId: 'pk', companionName: '王小寶',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T11:00:00Z',
+          },
+        ]}
+        attendanceRecords={[]}
+        roles={{ solo: 'user', alice: 'coach' }}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).not.toContain('↳');
+    expect(screen.getByText('+2')).toBeTruthy();
+    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'A', '王']);
+    expect(container.querySelector('.cr-ghost')?.textContent).toBe('王志明');
+    expect(container.querySelector('.cr-proxy-badge')?.textContent).toContain('代報');
+    expect(screen.queryByRole('button', { name: /Kid One/ })).toBeNull();
+
+    const soloTd = screen.getByRole('button', { name: /Solo/ }).closest('td');
+    expect(soloTd?.className ?? '').toBe('');
+    expect(soloTd?.querySelector('.reg-name-text .user-capsule')).toBeTruthy();
+    expect(soloTd?.querySelector('.cr-lead, .cr-pair, .cr-ghost, .cr-link, .cr-plus')).toBeNull();
+
+    const aliceRow = screen.getByText('+2').closest('tr');
+    expect(aliceRow?.querySelector('.cr-link-down')).toBeTruthy();
+    expect(aliceRow?.querySelector('.cr-link-dashed')).toBeNull();
+    expect(screen.getByText('Kid One').closest('td')?.querySelector('.cr-v-bot')).toBeTruthy();
+    expect(screen.getByText('Kid Two').closest('td')?.querySelector('.cr-v-bot')).toBeNull();
+    expect(screen.getByText('Kid Two').closest('td')?.querySelector('.cr-link')).toBeTruthy();
+
+    const proxyRow = screen.getByText('王志明').closest('tr');
+    expect(proxyRow?.querySelector('.cr-link')?.classList.contains('cr-link-dashed')).toBe(true);
+    expect(screen.getByText('王小寶').closest('td')?.querySelector('.cr-corner path')?.getAttribute('stroke-dasharray')).toBe('6 5');
+    for (const link of container.querySelectorAll('.cr-link')) {
+      expect(link.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 
   it('hides checkin/checkout/note columns when publicRosterOnly is true', () => {
