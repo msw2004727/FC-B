@@ -183,7 +183,7 @@ export function createDetailSignupContexts(
         };
         const registrationsPromise = loadRegistrations();
         // 只為避免活動先失敗時出現未處理的 rejection；報名失敗仍由下方 await 拋出。
-        registrationsPromise.catch(() => {});
+        void registrationsPromise.catch(() => {});
         const event: SignupEvent = await loadEvent(eventId);
         const registrations = await registrationsPromise;
         const now = deps.now?.() ?? new Date();

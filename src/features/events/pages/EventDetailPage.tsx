@@ -1164,6 +1164,8 @@ function EventDetailSession({
     adopt: (next) => {
       const current = headerState.current.snapshot;
       if (!current || !alive.current) return;
+      // 先作廢寫入前開始的名單讀取（比照 reservation.onSuccess），避免舊讀取蓋回投影。
+      rosterSequence.current += 1;
       const projected = adoptEventProjection(current, next.event);
       const registrations = next.registrations as DetailRegistration[];
       const updated: Snapshot = { ...projected, registrations };
@@ -1331,14 +1333,15 @@ function EventDetailSession({
         });
       }
       if (result.ok) {
-        // 按鈕加速①：比照 T-086a。已確認成功先套投影並背景重讀；deduplicated 或沒有投影仍等重讀。
+        // 按鈕加速①：已確認成功先顯示人數投影；名單重讀仍在鎖內做完，避免重讀前重複踢同一人（Opus／Gemini 審查）。
         const next = adoptEventProjection(snapshot, result.response.event);
         const outcomeUnknown = result.response.deduplicated === true || !result.response.event;
-        if (outcomeUnknown) {
-          await refresh(next, true);
-        } else {
-          void refreshInBackground(next);
+        if (!outcomeUnknown) {
+          setSnapshot((previous) => (
+            previous && previous.eventDocId === next.eventDocId ? { ...previous, event: next.event } : previous
+          ));
         }
+        await refresh(next, outcomeUnknown);
       }
     } finally {
       if (alive.current) {

@@ -40,6 +40,8 @@ export interface RosterStatusInput {
 export interface RosterStatusResult {
   message: string;
   tone: 'success' | 'error' | 'info' | 'warning';
+  /** 成功後的背景重讀；呼叫端先出 toast，等它結束才解鎖。不會 reject。 */
+  settled?: Promise<void>;
 }
 /** 名單狀態調整；兼容尚未提供 randomUUID 的 WebView。 */
 export function newRosterStatusRequestId(): string {
@@ -182,22 +184,25 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
       + msg('doneWithCount', { current: response.current, max: Number(sentSnapshot.event.max || 0) })
       + ('overCapacity' in response && response.overCapacity ? '\n' + msg('overCapacityNote') : '');
     // 按鈕加速①：伺服器已確認後先套投影，toast 不等日誌與整份重讀。重讀回來由 reload 照舊覆蓋。
-    input.adopt?.(projectRosterStatusResult(sentSnapshot, action, target.userId, response));
+    // 投影以「目前」快照為底（不用送出時的舊快照，避免蓋回期間別的重讀結果）；套用出錯不影響已提交的結果。
+    try {
+      input.adopt?.(projectRosterStatusResult(input.getLatest(), action, target.userId, response));
+    } catch (error) { console.warn('[名單狀態調整] 投影套用失敗', error); }
     const syncing = msg('rosterSyncing');
-    runInBackground(async () => {
-      try {
-        await writeOpLog({
-          type: demote ? 'force_demote' : 'force_promote',
-          typeName: demote ? '下放候補' : '手動正取',
-          content: demote ? `活動「${title}」將 ${target.name} 下放至候補`
-            : `活動「${title}」將 ${names.join('、')} 從候補升為正取`,
-          eventId: input.eventId, actorUid, operator: sentSnapshot.operatorName || '管理員',
-        });
-      } catch { console.warn('[名單狀態調整] 日誌寫入失敗'); }
+    // writeOpLog 自己吞錯；與重讀並行，縮短呼叫端持鎖時間。
+    runInBackground(() => writeOpLog({
+      type: demote ? 'force_demote' : 'force_promote',
+      typeName: demote ? '下放候補' : '手動正取',
+      content: demote ? `活動「${title}」將 ${target.name} 下放至候補`
+        : `活動「${title}」將 ${names.join('、')} 從候補升為正取`,
+      eventId: input.eventId, actorUid, operator: sentSnapshot.operatorName || '管理員',
+    }), '[名單狀態調整] 日誌寫入失敗');
+    // 重讀完成前呼叫端仍持鎖（Opus／Gemini 審查：提早解鎖會讓重讀清掉剛勾的簽到、蓋回下一次操作）。
+    const settled = (async () => {
       const fresh = await reloadSafely();
       if (!fresh) input.onSyncing?.(syncing);
-    }, '[名單狀態調整] 背景作業失敗');
-    return { message, tone: 'success' };
+    })();
+    return { message, tone: 'success', settled };
   } catch (error) {
     return await handleError(error);
   }

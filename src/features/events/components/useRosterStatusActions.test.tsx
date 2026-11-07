@@ -61,10 +61,27 @@ describe('名單狀態調整互動', () => {
     expect(adopt).toHaveBeenCalledOnce();
     expect(adopt.mock.calls[0]?.[0].registrations[0]?.status).toBe('waitlisted');
     expect(adopt.mock.calls[0]?.[0].event.current).toBe(4);
-    expect(reload).not.toHaveBeenCalled();
     expect(mocks.log).toHaveBeenCalledOnce();
-    releaseLog();
+    // 日誌與重讀並行，不等日誌寫完。
     await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    releaseLog();
+  });
+  it('背景重讀完成前維持 submitting，完成後才解鎖', async () => {
+    // Opus／Gemini 審查 P1：提早解鎖會讓重讀的 reset 清掉剛勾的簽到、或蓋回下一次操作。
+    const state = snapshot();
+    let releaseReload!: () => void;
+    const reload = vi.fn(() => new Promise<RosterStatusSnapshot>((resolve) => { releaseReload = () => resolve(state); }));
+    let submittingNow = false;
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    render(<Harness state={state} reload={reload} observe={(_, submitting) => { submittingNow = submitting; }} />);
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '已將 小明 下放至候補（4/2）', tone: 'success',
+    }));
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(submittingNow).toBe(true);
+    await act(async () => { releaseReload(); });
+    await waitFor(() => expect(submittingNow).toBe(false));
   });
   it('日誌失敗仍先顯示成功 toast', async () => {
     // 測試同步更新：按鈕加速①

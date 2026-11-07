@@ -47,9 +47,9 @@ describe('名單狀態調整', () => {
     expect(result).toEqual({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
     expect(order).toEqual(['adopt']);
     expect(mocks.log).toHaveBeenCalledOnce();
-    expect(input.reload).not.toHaveBeenCalled();
-    releaseLog();
+    // 日誌與重讀並行，不等日誌寫完；呼叫端等 settled 才解鎖。
     await vi.waitFor(() => expect(input.reload).toHaveBeenCalledOnce());
+    releaseLog();
   });
   it('正取成功套用同行者狀態與活動投影', async () => {
     // 測試同步更新：按鈕加速①

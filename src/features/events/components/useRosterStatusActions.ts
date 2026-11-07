@@ -60,6 +60,11 @@ export function useRosterStatusActions(options: RosterStatusActionsOptions) {
         },
       });
       if (valid() && result.message) toast.show({ message: result.message, tone: result.tone });
+      // 按鈕加速①：toast 先出；背景重讀做完才解鎖，名單操作與簽到欄在這段期間維持停用。
+      if (result.settled) {
+        setPending({});
+        await result.settled;
+      }
     } catch {
       if (valid()) toast.show({ message: t('events.roster.statusFailed'), tone: 'error' });
     } finally {

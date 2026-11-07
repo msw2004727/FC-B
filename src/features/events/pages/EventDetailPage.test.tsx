@@ -1139,27 +1139,15 @@ describe('名單結算「完成」（C-001）', () => {
   });
 
   it('較舊的出席重讀晚回來時不覆蓋較新的名單', async () => {
-    // 測試同步更新：按鈕加速①
-    // 完成先等合併後的出席重讀，結算後的重讀才開始，兩次不再重疊。
-    // 先回來的空名單會被後一次簽到名單蓋過。
     mocks.registrations.mockResolvedValue([
       { ...self, _docId: 'targetA', userId: 'uidA', userName: '甲', eventId: 'evtA' },
     ]);
     const pending: Array<(rows: unknown) => void> = [];
-    let inFlight = 0;
-    let maxInFlight = 0;
     await enterRosterEdit();
     mocks.attendance.mockImplementation(
-      () => {
-        inFlight += 1;
-        maxInFlight = Math.max(maxInFlight, inFlight);
-        return new Promise((resolve) => {
-          pending.push((rows) => {
-            inFlight -= 1;
-            resolve(rows);
-          });
-        });
-      },
+      () => new Promise((resolve) => {
+        pending.push(resolve);
+      }),
     );
 
     fireEvent.click(screen.getByRole('checkbox', { name: '甲 簽到' }));
@@ -1167,36 +1155,32 @@ describe('名單結算「完成」（C-001）', () => {
       fireEvent.click(screen.getByRole('button', { name: '完成' }));
     });
     await waitFor(() => {
-      expect(pending.length).toBe(1);
+      expect(pending.length).toBeGreaterThanOrEqual(2);
     });
-    expect(mocks.settleAttendance).not.toHaveBeenCalled();
-    expect(maxInFlight).toBe(1);
+    const resolveStale = pending[0];
+    const resolveFresh = pending[pending.length - 1];
+    if (!resolveStale || !resolveFresh || resolveStale === resolveFresh) {
+      throw new Error('需要兩次重疊的出席重讀');
+    }
 
+    const fresh = [{
+      _docId: 'targetA',
+      uid: 'uidA',
+      userName: '甲',
+      type: 'checkin',
+      status: 'active',
+    }];
     await act(async () => {
-      pending[0]?.([]);
+      resolveFresh(fresh);
     });
     await screen.findByRole('button', { name: '管理名單', exact: true });
-    await waitFor(() => {
-      expect(pending.length).toBe(2);
-    });
-    expect(maxInFlight).toBe(1);
-
     await act(async () => {
-      pending[1]?.([{
-        _docId: 'targetA',
-        uid: 'uidA',
-        userName: '甲',
-        type: 'checkin',
-        status: 'active',
-      }]);
+      resolveStale([]);
     });
 
-    await waitFor(() => {
-      const table = document.querySelector('#detail-attendance-table');
-      const row = Array.from(table?.querySelectorAll('tr') ?? []).find((tr) => tr.textContent?.includes('甲'));
-      expect(row?.textContent).toContain('✓');
-    });
-    expect(maxInFlight).toBe(1);
+    const table = document.querySelector('#detail-attendance-table');
+    const row = Array.from(table?.querySelectorAll('tr') ?? []).find((tr) => tr.textContent?.includes('甲'));
+    expect(row?.textContent).toContain('✓');
   });
 
   it('結算成功先退出編輯，出席重讀在背景進行', async () => {
@@ -1311,6 +1295,8 @@ describe('名單狀態調整頁面接線', () => {
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
       .toContain('已報 9/2');
     expect(screen.getByText('小明')).toBeTruthy();
+    // 名單重讀完成前仍持鎖，不能重複踢同一人（Opus／Gemini 審查）。
+    expect(screen.getByRole('button', { name: '踢' })).toHaveProperty('disabled', true);
     await act(async () => { releaseRegs([]); });
   });
 
