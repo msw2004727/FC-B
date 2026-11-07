@@ -682,6 +682,26 @@ describe('T-092 球員卡（DOM）', () => {
       expect(ev.defaultPrevented).toBe(false);
     });
 
+    it('touchmove：多指（雙指縮放、另一指壓在別處）不 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      drag(stage, 80);
+      const ev = new Event('touchmove', { cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [{ clientX: 180, clientY: 110 }, { clientX: 20, clientY: 300 }] });
+      stage.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('touchmove：不可取消（瀏覽器已開始捲動）時不 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      drag(stage, 80);
+      const ev = new Event('touchmove', { cancelable: false });
+      Object.defineProperty(ev, 'touches', { value: [{ clientX: 180, clientY: 110 }] });
+      stage.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
     it('touchmove：pending 斜撥（pointermove 尚未接手）也 preventDefault', () => {
       const { container } = renderTop(viewer());
       const { stage } = parts(container);
@@ -1464,6 +1484,32 @@ describe('T-092 球員卡（DOM）', () => {
         flush();
         expect(flip.style.transform).toBe('');
         expect(pending.size).toBe(0);
+      });
+
+      it('拖超過門檻又拖回原點放開：不算點翻，還原到原本那一面', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerMove(stage, ptr(110));
+        fireEvent.pointerMove(stage, ptr(103));
+        fireEvent.pointerUp(stage, ptr(102));
+        flush();
+        expect(flip.style.transform).toBe('rotateY(0deg)');
+      });
+
+      it('頁面剛捲動（200ms 內）點一下不翻；捲動停下後點一下照翻', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        window.dispatchEvent(new Event('scroll'));
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        expect(flip.style.transform).not.toBe('rotateY(180deg)');
+        now += 300;
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        expect(flip.style.transform).toBe('rotateY(180deg)');
       });
 
       it('轉動中（慣性）點一下是煞車，停在最近一面而不是多翻 180°', () => {

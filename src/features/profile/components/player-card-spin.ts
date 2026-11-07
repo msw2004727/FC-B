@@ -57,6 +57,8 @@ const RPM_UPDATE_MS = 100;
 const HOLD_ZERO_MS = 300;
 /** 按下到放手在此時間內才算「快速撥」，才疊加剩餘轉速；抓住停一下再撥不疊加，避免抓住卻停不下。 */
 const CARRY_MAX_HOLD_MS = 150;
+/** 頁面捲動後這段時間內按下不算點翻（慣性捲動中點一下是想停住頁面）。 */
+const RECENT_SCROLL_MS = 200;
 
 /** 轉速表紅色區間起點（到滿刻度 900 為止）。 */
 export const PLAYER_CARD_RPM_REDLINE = 750;
@@ -185,6 +187,8 @@ interface SpinState {
   downT: number;
   /** 按下當下是否靜止在一面（要在 stop() 之前記；轉動中點一下仍是煞車）。 */
   downAtRest: boolean;
+  /** 頁面最後一次捲動的時間（performance.now）。 */
+  lastScrollT: number;
   /** 減少動態：斜光不跟著動（按下與對齊時重讀）。 */
   reduced: boolean;
   /** 斜光目前是否有位移（is-turning 已掛上）。 */
@@ -241,6 +245,7 @@ export function usePlayerCardSpin(locked: boolean): {
     holdTimer: 0,
     downT: 0,
     downAtRest: false,
+    lastScrollT: -Infinity,
     reduced: false,
     shineMoving: false,
     over: false,
@@ -428,7 +433,9 @@ export function usePlayerCardSpin(locked: boolean): {
       st.carryT = performance.now();
       // 點一下翻面只認「按下時已靜止在一面」；必須在 stop() 之前記，stop 會把 anim 清成 none。
       st.downT = eventTime(e);
-      st.downAtRest = st.anim === 'none' && st.angle % 180 === 0;
+      // 頁面剛在捲動（慣性中點一下想停住）不算點翻（Opus 審 P2-3）
+      st.downAtRest = st.anim === 'none' && st.angle % 180 === 0
+        && performance.now() - st.lastScrollT > RECENT_SCROLL_MS;
       st.reduced = prefersReducedMotion();
       stop();
       rpmRef.current?.closest('.player-card-rpm')?.classList.remove('is-spinning');
@@ -485,9 +492,11 @@ export function usePlayerCardSpin(locked: boolean): {
       st.mode = 'idle';
       st.pointerId = -1;
       clearHoldTimer();
-      // 靜止短按翻到另一面（pending 與 drag 都算）。放在 mode !== 'drag' 之前；取消、按住太久、轉動中不走這裡。
+      // 靜止短按翻到另一面。只認 pending：已進 drag 又拖回原點是反悔，照原本還原 startA 對齊（Opus 審 P1-1，避免停在歪斜角度）。
+      // 取消、按住太久、轉動中或剛捲動頁面不走這裡。
       if (
         !cancelled
+        && mode === 'pending'
         && Math.abs(e.clientX - st.startX) < TAP_PX
         && Math.abs(e.clientY - st.startY) < TAP_PX
         && eventTime(e) - st.downT < HOLD_ZERO_MS
@@ -575,14 +584,22 @@ export function usePlayerCardSpin(locked: boolean): {
     if (!el) return;
     const onTouchMove = (e: TouchEvent): void => {
       if (st.mode === 'idle' || !e.cancelable) return;
-      const touch = e.touches?.[0];
-      if (!touch) return;
+      // 只處理單指：多指（雙指縮放、另一指壓在別處）不擋，縮放照常交給瀏覽器，也不會拿錯手指算位移（Opus 審 P2-1／P2-2）
+      if (e.touches?.length !== 1) return;
+      const touch = e.touches[0];
       const dx = touch.clientX - st.startX;
       const dy = touch.clientY - st.startY;
       if (st.mode === 'drag' || classifyPlayerCardGesture(dx, dy) === 'drag') e.preventDefault();
     };
+    const onScroll = (): void => {
+      st.lastScrollT = performance.now();
+    };
     el.addEventListener('touchmove', onTouchMove, { passive: false });
-    return () => el.removeEventListener('touchmove', onTouchMove);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
   return { flipRef, stageRef, rpmRef, bestRef, needleRef, initialBest: st.best, handlers };
