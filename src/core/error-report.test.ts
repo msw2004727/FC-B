@@ -122,6 +122,14 @@ describe('error-report', () => {
     expect(mockServerTimestamp).toHaveBeenCalledTimes(1);
   });
 
+  it('errorMessage 截到 1500 字', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    reportClientError('render', new Error('x'.repeat(5000)));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(String(payload.errorMessage)).toHaveLength(1500);
+  });
+
   it('沒有 displayName 時 userName 用 uid', async () => {
     currentUser = { uid: 'u-only', displayName: null };
     reportClientError('boot', new Error('no-name'));

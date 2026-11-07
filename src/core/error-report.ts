@@ -92,6 +92,8 @@ function parseError(err: unknown): ParsedError {
     errorMessage = String(err);
   }
   if (errorStack.length > STACK_LIMIT) errorStack = errorStack.slice(0, STACK_LIMIT);
+  // 訊息也截斷：JSON.stringify 的錯誤物件可能很大（Firestore 文件上限 1MB），也避免夾帶過多內容（Opus 審 P2）
+  if (errorMessage.length > STACK_LIMIT) errorMessage = errorMessage.slice(0, STACK_LIMIT);
   return { errorCode, errorMessage, errorStack };
 }
 
