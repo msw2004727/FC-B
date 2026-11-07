@@ -1336,11 +1336,6 @@ function EventDetailSession({
         // 按鈕加速①：已確認成功先顯示人數投影；名單重讀仍在鎖內做完，避免重讀前重複踢同一人（Opus／Gemini 審查）。
         const next = adoptEventProjection(snapshot, result.response.event);
         const outcomeUnknown = result.response.deduplicated === true || !result.response.event;
-        if (!outcomeUnknown) {
-          setSnapshot((previous) => (
-            previous && previous.eventDocId === next.eventDocId ? { ...previous, event: next.event } : previous
-          ));
-        }
         await refresh(next, outcomeUnknown);
       }
     } finally {

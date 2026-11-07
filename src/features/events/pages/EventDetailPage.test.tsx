@@ -1251,7 +1251,8 @@ describe('名單狀態調整頁面接線', () => {
     mocks.settleAttendance.mockResolvedValue({ ok: true, added: 0, removed: 0, targets: [],
       granted: [], skippedAlready: [], skippedZeroAmount: false, failed: [] });
     // 背景重讀完成、解鎖後才能按完成。
-    fireEvent.click(await screen.findByRole('button', { name: '完成' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '完成' })).toHaveProperty('disabled', false));
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
     await waitFor(() => expect(mocks.settleAttendance).toHaveBeenCalledOnce());
     expect(mocks.settleAttendance.mock.calls[0]?.[0].people.some(person => person.uid === 'uidB')).toBe(false);
   });

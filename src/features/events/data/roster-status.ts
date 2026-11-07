@@ -200,7 +200,8 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
     // 重讀完成前呼叫端仍持鎖（Opus／Gemini 審查：提早解鎖會讓重讀清掉剛勾的簽到、蓋回下一次操作）。
     const settled = (async () => {
       const fresh = await reloadSafely();
-      if (!fresh) input.onSyncing?.(syncing);
+      if (fresh) return;
+      try { input.onSyncing?.(syncing); } catch (error) { console.warn('[名單狀態調整] 同步提示失敗', error); }
     })();
     return { message, tone: 'success', settled };
   } catch (error) {
