@@ -16,17 +16,22 @@ import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
 import { installChunkReloadGuard } from './core/chunk-reload';
+import { installErrorReporter, reportClientError } from './core/error-report';
+import { runLegacyMigrationOnce } from './core/legacy-migration';
 import { initServiceWorker } from './core/sw-control';
 
 // 越早越好：首屏的路由 chunk 載入失敗也要能接住。
 installChunkReloadGuard();
+installErrorReporter();
+runLegacyMigrationOnce();
 
 /** index.html 的開頁骨架只負責首屏外觀；第一次 render 前同步清掉（同一個 task 內，不會閃白）。 */
 function clearBootShell(root: HTMLElement): void {
   if (root.querySelector('[data-boot-shell]')) root.textContent = '';
 }
 
-function renderBootError(root: HTMLElement): void {
+function renderBootError(root: HTMLElement, err: unknown): void {
+  reportClientError('boot', err);
   clearBootShell(root);
   render(<ErrorFallback fixed onRetry={() => location.reload()} />, root);
 }
@@ -50,7 +55,7 @@ async function boot(): Promise<void> {
     registerFeatures(ALL_FEATURES);
   } catch (err) {
     console.error('[boot] 功能註冊失敗', err);
-    renderBootError(root);
+    renderBootError(root, err);
     return;
   }
 
@@ -73,7 +78,7 @@ async function boot(): Promise<void> {
     render(<App />, root);
   } catch (err) {
     console.error('[boot] 首次 render 失敗', err);
-    renderBootError(root);
+    renderBootError(root, err);
   }
 
   // 首屏之後才處理 Service Worker（遠端開關＋註冊），不和首屏搶網路。

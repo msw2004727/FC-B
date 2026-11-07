@@ -46,6 +46,7 @@ import {
   setContentStallRetryHandler,
   startContentStallCheck,
 } from '@/core/content-stall';
+import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
@@ -660,6 +661,7 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 
   componentDidCatch(error: unknown): void {
     console.error('[app] route error', error);
+    reportClientError('render', error);
     // M-047 & M-048：換頁載入失敗時彈出 A 的 Toast（「頁面載入失敗，請稍後再試」或逾時訊息），
     // 若有上一個站內頁面則留在原頁並自動重設錯誤邊界。
     const msg = getRouteFailureToast(this.props.path, error);
