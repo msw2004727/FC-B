@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   EXTERNAL_WINDOW_NAME,
   _resetOpenExternalForTest,
+  _setLocationAssignForTest,
   openExternal,
   openHttpAnchor,
+  openStaticPage,
   setExternalLiffGetter,
 } from './open-external';
 
@@ -18,6 +20,12 @@ function stubUa(ua: string): void {
 afterEach(() => {
   _resetOpenExternalForTest();
   vi.restoreAllMocks();
+  try {
+    delete (window.navigator as { standalone?: boolean }).standalone;
+  } catch {
+    /* jsdom 不允許刪時略過 */
+  }
+  Reflect.deleteProperty(window, 'matchMedia');
 });
 
 describe('openExternal', () => {
@@ -129,17 +137,218 @@ describe('openExternal', () => {
   });
 });
 
+function anchorClick(extra: {
+  defaultPrevented?: boolean;
+  button?: number;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+} = {}): {
+  preventDefault: ReturnType<typeof vi.fn>;
+  defaultPrevented: boolean;
+  button: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+} {
+  return {
+    preventDefault: vi.fn(),
+    defaultPrevented: false,
+    button: 0,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...extra,
+  };
+}
+
+/** Vitest 的 Mock 帶建構簽章，TypeScript 7 不把它當成 () => void。行為仍是同一個 mock。 */
+function openAnchor(event: ReturnType<typeof anchorClick>, href: string): void {
+  openHttpAnchor(event as Parameters<typeof openHttpAnchor>[0], href);
+}
+
+function spyAssign(): ReturnType<typeof vi.fn> {
+  const assign = vi.fn();
+  _setLocationAssignForTest(assign);
+  return assign;
+}
+
+function stubMatchMedia(matchesStandalone: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: matchesStandalone && query === '(display-mode: standalone)',
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
+const LINE_URLS = [
+  'https://line.me/R/ti/p/@830utvza',
+  'https://liff.line.me/123-abc',
+  'https://miniapp.line.me/123',
+  'https://page.line.me/abc',
+  'https://lin.ee/abc',
+];
+
 describe('openHttpAnchor', () => {
   it('http(s) 阻止預設並開共用分頁；line: 不攔', () => {
     stubUa(CHROME);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    const httpEvent = { preventDefault: vi.fn() };
-    openHttpAnchor(httpEvent, 'https://example.com/a');
+    const httpEvent = anchorClick();
+    openAnchor(httpEvent, 'https://example.com/a');
     expect(httpEvent.preventDefault).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledOnce();
-    const lineEvent = { preventDefault: vi.fn() };
-    openHttpAnchor(lineEvent, 'line://ti/p/abc');
+    const lineEvent = anchorClick();
+    openAnchor(lineEvent, 'line://ti/p/abc');
     expect(lineEvent.preventDefault).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('defaultPrevented、非左鍵、修飾鍵直接返回', () => {
+    stubUa(CHROME);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    for (const extra of [
+      { defaultPrevented: true },
+      { button: 1 },
+      { button: 2 },
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+    ]) {
+      const event = anchorClick(extra);
+      openAnchor(event, 'https://example.com/a');
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('同源不攔截，留給站內換頁', () => {
+    stubUa(CHROME);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const event = anchorClick();
+    openAnchor(event, `${location.origin}/events/ce_1`);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('LINE 自家網址留在 LINE', () => {
+  it.each([
+    ['一般瀏覽器', CHROME],
+    ['LINE 內建瀏覽器', LINE_IAB],
+    ['Mini App', LINE_LIFF],
+  ] as const)('%s：openExternal 整頁 assign，不加 openExternalBrowser、不 openWindow', (_label, ua) => {
+    stubUa(ua);
+    const openWindow = vi.fn();
+    setExternalLiffGetter(() => ({ isInClient: () => ua === LINE_LIFF, openWindow }));
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    for (const url of LINE_URLS) openExternal(url);
+    expect(assign.mock.calls.map((call) => call[0])).toEqual(LINE_URLS);
+    expect(open).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+    for (const url of assign.mock.calls.map((call) => String(call[0]))) {
+      expect(url).not.toContain('openExternalBrowser');
+    }
+  });
+
+  it.each([
+    ['一般瀏覽器', CHROME],
+    ['LINE 內建瀏覽器', LINE_IAB],
+    ['Mini App', LINE_LIFF],
+  ] as const)('%s：openHttpAnchor 不 preventDefault', (_label, ua) => {
+    stubUa(ua);
+    setExternalLiffGetter(() => ({ isInClient: () => true, openWindow: vi.fn() }));
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    for (const url of LINE_URLS) {
+      const event = anchorClick();
+      openAnchor(event, url);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    expect(assign).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('同源不是外連', () => {
+  it('輪播連本站活動頁：openExternal 同分頁 assign，不開外連視窗', () => {
+    stubUa(LINE_IAB);
+    const openWindow = vi.fn();
+    setExternalLiffGetter(() => ({ isInClient: () => true, openWindow }));
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const href = `${location.origin}/events/ce_1?x=1#go`;
+    openExternal(href);
+    expect(assign).toHaveBeenCalledWith(href);
+    expect(open).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe('openExternalBrowser 字串拼接', () => {
+  it('保留 %20 與沒有等號的 query，加在 hash 前', () => {
+    stubUa(LINE_IAB);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    openExternal('https://example.com/a?q=hello%20world#top');
+    openExternal('https://example.com/a?a#z');
+    openExternal('https://example.com/a?b=1&c=2#top');
+    expect(open.mock.calls.map((call) => call[0])).toEqual([
+      'https://example.com/a?q=hello%20world&openExternalBrowser=1#top',
+      'https://example.com/a?a&openExternalBrowser=1#z',
+      'https://example.com/a?b=1&c=2&openExternalBrowser=1#top',
+    ]);
+  });
+});
+
+describe('openStaticPage', () => {
+  it('一般瀏覽器整頁 assign', () => {
+    stubUa(CHROME);
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    openStaticPage('/manual.html');
+    expect(assign).toHaveBeenCalledWith('/manual.html');
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('Mini App 另開並帶 noopener', () => {
+    stubUa(LINE_LIFF);
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    openStaticPage('/roles/');
+    expect(open).toHaveBeenCalledWith('/roles/', '_blank', 'noopener,noreferrer');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('PWA display-mode standalone 另開', () => {
+    stubUa(CHROME);
+    stubMatchMedia(true);
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    openStaticPage('/privacy');
+    expect(open).toHaveBeenCalledWith('/privacy', '_blank', 'noopener,noreferrer');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('navigator.standalone 另開', () => {
+    stubUa(CHROME);
+    Object.defineProperty(window.navigator, 'standalone', { configurable: true, value: true });
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    openStaticPage('/terms');
+    expect(open).toHaveBeenCalledWith('/terms', '_blank', 'noopener,noreferrer');
+    expect(assign).not.toHaveBeenCalled();
   });
 });

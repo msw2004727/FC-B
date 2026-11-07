@@ -1,6 +1,7 @@
 // 只在判斷得出是 LINE Mini App 時，首屏之後的閒置時間預先 liff.init。
 // 一般瀏覽器與 LINE 內建瀏覽器（UA 有 Line/ 但沒有 LIFF）不進這裡，不會下載 SDK（T-041）。
 
+import { ensureLiffInit } from './liff-init';
 import { isLikelyMiniAppUserAgent } from './login-redirect';
 
 type IdleWindow = Window & {
@@ -19,12 +20,9 @@ export function startMiniAppLiffPreinit(userAgent?: string): () => void {
 
   const run = (): void => {
     if (cancelled) return;
-    void import('./liff-init')
-      .then((mod) => {
-        if (cancelled) return undefined;
-        return mod.ensureLiffInit();
-      })
-      .catch(() => undefined);
+    // auth.ts 已靜態載入 liff-init，再動態 import 不會拆 chunk，建置還會警告。
+    // @line/liff 仍只在 liff-init 裡面動態載入。
+    void ensureLiffInit().catch(() => undefined);
   };
 
   const idleWindow = window as IdleWindow;

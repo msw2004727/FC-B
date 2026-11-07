@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -98,5 +100,17 @@ describe('Mini App 預先初始化', () => {
     expect(h.liff.init).toHaveBeenCalledTimes(1);
     cancel();
     vi.unstubAllGlobals();
+  });
+});
+
+describe('LIFF 不進首頁靜態鏈', () => {
+  it('liff-init 只動態載入 @line/liff；liff-preinit 改靜態 import liff-init', () => {
+    const initSrc = readFileSync(join(process.cwd(), 'src/data/liff-init.ts'), 'utf8');
+    const preSrc = readFileSync(join(process.cwd(), 'src/data/liff-preinit.ts'), 'utf8');
+    expect(initSrc).toContain("await import('@line/liff')");
+    expect(initSrc).not.toMatch(/from\s+['"]@line\/liff['"]/);
+    expect(preSrc).toMatch(/import\s*\{[^}]*ensureLiffInit[^}]*\}\s*from\s*['"]\.\/liff-init['"]/);
+    expect(preSrc).not.toContain("import('./liff-init')");
+    expect(preSrc).not.toContain('import("./liff-init")');
   });
 });

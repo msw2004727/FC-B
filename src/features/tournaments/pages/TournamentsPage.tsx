@@ -2,6 +2,7 @@ import '../tournaments.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -172,6 +173,7 @@ export default function TournamentsPage(): JSX.Element {
   };
 
   const handleCardClick = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>, url: string): void => {
+    if (shouldLeaveAnchorClick(event)) return;
     event.preventDefault();
     openCardLink(url);
   };

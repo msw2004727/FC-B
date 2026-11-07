@@ -1,6 +1,8 @@
 // 外連共用同一個分頁（視窗名稱 toosterx_external）。
 // 必須在點擊事件裡同步呼叫，不能先 await，否則瀏覽器會擋彈窗。
 
+import { isLikelyMiniAppUserAgent } from '@/data/login-redirect';
+
 export const EXTERNAL_WINDOW_NAME = 'toosterx_external';
 
 export interface ExternalLiffClient {
@@ -17,24 +19,48 @@ export function setExternalLiffGetter(getter: LiffGetter): void {
   getLiff = getter;
 }
 
-export function _resetOpenExternalForTest(): void {
-  getLiff = () => null;
+function assignLocation(url: string): void {
+  window.location.assign(url);
 }
 
-function parseHttpUrl(value: string): string | null {
+/** jsdom 的 location.assign 不可覆寫。測試換成這個；正式路徑仍是 window.location.assign。 */
+let assignImpl: (url: string) => void = assignLocation;
+
+export function _setLocationAssignForTest(fn: ((url: string) => void) | null): void {
+  assignImpl = fn ?? assignLocation;
+}
+
+export function _resetOpenExternalForTest(): void {
+  getLiff = () => null;
+  assignImpl = assignLocation;
+}
+
+function httpUrl(value: string): URL | null {
   try {
     const url = new URL(String(value ?? '').trim());
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.href;
+    return url;
   } catch {
     return null;
   }
 }
 
+/** line.me、*.line.me（含 liff.line.me、miniapp.line.me）、lin.ee。 */
+function isLineOwnedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'line.me' || host.endsWith('.line.me') || host === 'lin.ee';
+}
+
+/**
+ * 在 hash 前接上 openExternalBrowser=1。
+ * 不用 URLSearchParams：那會把 %20 編成 +、把 ?a 編成 ?a=。
+ */
 function addOpenExternalBrowser(href: string): string {
-  const url = new URL(href);
-  url.searchParams.set('openExternalBrowser', '1');
-  return url.toString();
+  const hashAt = href.indexOf('#');
+  const beforeHash = hashAt === -1 ? href : href.slice(0, hashAt);
+  const hash = hashAt === -1 ? '' : href.slice(hashAt);
+  const joiner = beforeHash.includes('?') ? '&' : '?';
+  return `${beforeHash}${joiner}openExternalBrowser=1${hash}`;
 }
 
 function lineUserAgent(): boolean {
@@ -68,16 +94,44 @@ function openNamed(url: string): void {
   }
 }
 
+/** 已處理、非左鍵、或修飾鍵：留給瀏覽器（另開分頁、選取文字）。 */
+export function shouldLeaveAnchorClick(event: {
+  defaultPrevented?: boolean;
+  button?: number;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+}): boolean {
+  return Boolean(
+    event.defaultPrevented
+    || event.button !== 0
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+    || event.altKey,
+  );
+}
+
 /**
  * 只開 http(s)。其他協定什麼都不做。
+ * LINE 自家網址留在 LINE：同分頁 assign，不加 openExternalBrowser、不呼叫 openWindow external。
+ * 與目前頁面同源：站內頁，同分頁 assign，不當外連。
  * Mini App（LIFF 已初始化且 isInClient）走 liff.openWindow external；丟錯則退回一般開法。
  * LINE 內建瀏覽器、或還不能判斷是不是 Mini App：網址加 openExternalBrowser=1 後開具名視窗。
  * 一般瀏覽器：同一個具名視窗。
  */
 export function openExternal(url: string): void {
-  const safe = parseHttpUrl(url);
-  if (!safe) return;
+  const raw = String(url ?? '').trim();
+  const parsed = httpUrl(raw);
+  if (!parsed) return;
 
+  if (isLineOwnedHost(parsed.hostname) || parsed.origin === location.origin) {
+    assignImpl(raw);
+    return;
+  }
+
+  const safe = parsed.href;
   const liff = readLiff();
   if (liff && inMiniApp(liff)) {
     try {
@@ -91,15 +145,64 @@ export function openExternal(url: string): void {
 
   // 尚未初始化時無法呼叫 isInClient，走 LINE 內建瀏覽器這條，不在點擊時 await init。
   if (lineUserAgent()) {
-    openNamed(addOpenExternalBrowser(safe));
+    openNamed(addOpenExternalBrowser(raw));
     return;
   }
   openNamed(safe);
 }
 
-/** http(s) 錨點改走 openExternal；line: 等其他協定不攔，留給系統。 */
-export function openHttpAnchor(event: { preventDefault: () => void }, href: string): void {
-  if (!parseHttpUrl(href)) return;
+/** http(s) 錨點改走 openExternal；line:、LINE 自家網址、同源連結不攔。修飾鍵與非左鍵保留瀏覽器另開。 */
+export function openHttpAnchor(
+  event: {
+    preventDefault: () => void;
+    defaultPrevented?: boolean;
+    button?: number;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+    altKey?: boolean;
+  },
+  href: string,
+): void {
+  if (shouldLeaveAnchorClick(event)) return;
+  const parsed = httpUrl(href);
+  if (!parsed) return;
+  if (isLineOwnedHost(parsed.hostname) || parsed.origin === location.origin) return;
   event.preventDefault();
   openExternal(href);
+}
+
+function staticPageInNewTab(): boolean {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent || '';
+  if (isLikelyMiniAppUserAgent(ua)) return true;
+  try {
+    if (
+      typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(display-mode: standalone)').matches
+    ) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const nav = navigator as Navigator & { standalone?: boolean };
+    if (nav.standalone === true) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * 說明書、角色說明、隱私、條款。
+ * Mini App 或 PWA 全螢幕沒有站內返回，維持另開；其他環境整頁過去。
+ */
+export function openStaticPage(path: string): void {
+  if (staticPageInNewTab()) {
+    window.open(path, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  assignImpl(path);
 }

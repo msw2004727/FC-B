@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import { useLayoutEffect } from 'preact/hooks';
 import type { BannerDoc } from '../../data/banners';
+import { _resetOpenExternalForTest, _setLocationAssignForTest } from '@/core/open-external';
 import { HomeBannerCarousel } from './HomeBannerCarousel';
 
 // T-042 橫幅圖「畫面」回到原本（a924c7b）的 slide inline background-image，不用 <img> 當畫面，載入失敗也維持原本畫面。
@@ -103,6 +104,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
   delete (FakeImage.prototype as { decode?: unknown }).decode;
   for (const link of preloadLinks()) link.remove();
+});
+
+describe('HomeBannerCarousel 本站活動頁', () => {
+  it('輪播連本站活動頁：點擊整頁過去，不開外連視窗', () => {
+    const assign = vi.fn();
+    _setLocationAssignForTest(assign);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      const [image] = urls(1) as [string];
+      const href = `${location.origin}/events/ce_1`;
+      const { container } = renderCarousel([banner('local', image, { linkUrl: href })]);
+      fireEvent.click(container.querySelector('#banner-track .banner-slide') as HTMLElement);
+      expect(assign).toHaveBeenCalledWith(href);
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      _resetOpenExternalForTest();
+      open.mockRestore();
+    }
+  });
 });
 
 describe('HomeBannerCarousel 載入策略', () => {

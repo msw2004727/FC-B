@@ -177,9 +177,34 @@ describe('清單與讀取預算', () => {
     expect(link.getAttribute('target')).toBeNull();
     fireEvent.click(link);
     expect(open).toHaveBeenCalledWith('https://cup.toosterx.com/', 'toosterx_external');
+    open.mockRestore();
     expect(link.textContent).toContain('2026/10/09～2026/10/11');
     expect(link.textContent).toContain('盃賽');
     expect((link.querySelector('img') as HTMLImageElement).getAttribute('src')).toBe('https://storage.example/feda.webp');
+  });
+
+  it('修飾鍵、非左鍵、已 preventDefault 的賽事卡不攔截', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await renderLoaded();
+    const link = document.querySelector('[data-card-id="tc_feda"] a') as HTMLAnchorElement;
+    const seen: boolean[] = [];
+    link.addEventListener('click', (event) => {
+      seen.push(event.defaultPrevented);
+    });
+    for (const init of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ]) {
+      fireEvent.click(link, { button: 0, ...init });
+    }
+    expect(seen).toEqual([false, false, false, false, false]);
+    link.addEventListener('click', (event) => event.preventDefault(), { capture: true });
+    fireEvent.click(link);
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
   });
 
   it('載入失敗顯示重試，按下才重讀', async () => {

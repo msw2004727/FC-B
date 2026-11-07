@@ -79,8 +79,6 @@ export function acknowledgeMobileLoginHint(): void {
 // 回跳網址清理搬到 login-redirect.ts（App 首屏要用、不必載入本檔的 Firebase 相依），這裡沿用並保留原匯出。
 export { buildCleanLoginRedirectUri };
 
-/** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
-let liffInitialized = false;
 /** 登出（signOutAndReload、清除快取、QA 登出）執行中：期間 signIn 一律不做。 */
 let signingOut = false;
 /** 進行中的 signIn（共用同一支 Promise）。 */
@@ -91,7 +89,6 @@ export function _resetAuthForTest(): void {
   lastKnownAuthUid = undefined;
   signingOut = false;
   inflightSignIn = null;
-  liffInitialized = false;
   _resetLiffInitForTest();
 }
 
@@ -211,7 +208,6 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
     throw err;
   }
-  liffInitialized = true;
   // 回跳的 code 已由 liff.init 處理完，清掉網址參數（照 A initSDK 之後的 _cleanUrl）。
   cleanLoginParamsFromUrl();
 
@@ -338,7 +334,6 @@ async function logoutLiff(): Promise<void> {
   if (!liffId || shouldUseEmulator()) return;
   // 走同一支 ensureLiffInit：預先初始化或剛登入過就不會再 init。
   const liff = await ensureLiffInit();
-  liffInitialized = true;
   if (liff.isLoggedIn()) liff.logout();
 }
 
