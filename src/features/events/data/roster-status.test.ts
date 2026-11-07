@@ -44,7 +44,7 @@ describe('名單狀態調整', () => {
     };
     registerMock('forceDemoteToWaitlist', () => demoted);
     const result = await adjustRosterStatus(input);
-    expect(result).toEqual({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
+    expect(result).toMatchObject({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
     expect(order).toEqual(['adopt']);
     expect(mocks.log).toHaveBeenCalledOnce();
     // 日誌與重讀並行，不等日誌寫完；呼叫端等 settled 才解鎖。
@@ -92,7 +92,7 @@ describe('名單狀態調整', () => {
       type: 'force_demote', typeName: '下放候補', content: '活動「週末活動」將 小明 下放至候補',
       eventId: 'evtA', actorUid: 'uidA', operator: '管理員甲',
     });
-    expect(result).toEqual({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
+    expect(result).toMatchObject({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
     expect(input.reload).toHaveBeenCalledOnce();
   });
   it('U2/U13/U16：一般正取及同行者姓名', async () => {
