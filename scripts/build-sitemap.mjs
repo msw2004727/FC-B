@@ -9,7 +9,7 @@
  * 首頁、著陸頁、Blog 等固定網址在 public/sitemap-static.xml（手動維護）。
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const FIRESTORE_PROJECT = 'fc-football-6c8dc';
@@ -181,9 +181,10 @@ async function main() {
   console.log('[build-sitemap] sitemap-events.xml updated');
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// realpath 比對：Windows junction／磁碟代號大小寫不同時也能判斷是直接執行
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   main().catch((err) => {
-    // 讀取失敗保留原檔，workflow 不因 Firestore／配額問題失敗
-    console.error(`[build-sitemap] failed, keep existing file: ${err.message}`);
+    // 讀取失敗保留原檔，workflow 不因 Firestore／配額問題失敗；::warning:: 讓 Actions 摘要看得到
+    console.error(`::warning::[build-sitemap] failed, keep existing file: ${err.message}`);
   });
 }

@@ -2,13 +2,14 @@ name: Build sitemap
 
 # 換站計畫書 I-03／D-5：從舊站 A 的 build-sitemap.yml 移植，只重建 public/sitemap-events.xml。
 # 何時跑：
-#   - schedule: 每天 UTC 03:17 跑一次
+#   - schedule: 每天 UTC 16:17（台北 00:17）跑一次；GitHub 排程常延遲數小時，排深夜避開白天人工推 main
+#     （bot 先推會讓人工 fast-forward 推送被拒，需 fetch＋rebase，rebase 後差異只能是 public/sitemap-events.xml）
 #   - workflow_dispatch: 允許手動觸發（首次部署／緊急更新）
 # 不用 secret：腳本只讀訪客讀得到的公開資料。
 # commit 訊息把 [skip ci] 放結尾：GitHub 不跑 CI；Cloudflare Pages 只認開頭的 skip 標記，照常部署。
 on:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '17 16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
