@@ -1,4 +1,5 @@
 import { parseEventRangeMs } from '@/core/event-time';
+import { openExternal } from '@/core/open-external';
 import { taipeiParts } from '@/core/taipei-time';
 import type { ShareEvent } from './event-share-builders';
 
@@ -10,13 +11,9 @@ interface CalendarEvent {
   end: Date;
 }
 
-type CalendarLiff = Pick<typeof import('@line/liff').default, 'isInClient' | 'openWindow'>;
-
 interface CalendarOptions {
   signal: AbortSignal;
   showToast: (message: string) => void;
-  loadLiff?: () => Promise<CalendarLiff | null>;
-  openWindow?: (url: string) => void;
 }
 
 let calendarInProgress = false;
@@ -105,33 +102,9 @@ export async function addEventToCalendar(
       description: buildCalendarDescription(event),
       ...parsed,
     });
-    let liff: CalendarLiff | null = null;
-    // 照 A 同步判斷：不在 LINE App 內就不等 LIFF，避免手勢權限過期讓 window.open 被擋。
-    const maybeInLine = typeof navigator !== 'undefined' && /\bLine\//i.test(navigator.userAgent || '');
-    if (maybeInLine || options.loadLiff) {
-      try {
-        liff = options.loadLiff
-          ? await options.loadLiff()
-          : (await import('@line/liff')).default;
-      } catch {
-        // 照 A：一般瀏覽器不依賴 LIFF。
-      }
-    }
     if (options.signal.aborted) return;
-
-    let inClient = false;
-    try {
-      inClient = Boolean(liff?.isInClient());
-    } catch {
-      inClient = false;
-    }
-    if (liff && inClient) {
-      liff.openWindow({ url, external: true });
-    } else if (options.openWindow) {
-      options.openWindow(url);
-    } else {
-      window.open(url, '_blank');
-    }
+    // 同步開窗，不先 await LIFF。openWindow 丟錯時 openExternal 退回具名分頁，不把錯誤丟給「操作失敗」。
+    openExternal(url);
     notify('正在開啟 Google 行事曆…');
   } finally {
     calendarInProgress = false;

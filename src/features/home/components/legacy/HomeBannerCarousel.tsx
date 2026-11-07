@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { openExternal } from '@/core/open-external';
 import {
   safeBannerColor,
   safeBannerGradient,
@@ -355,7 +356,7 @@ export function HomeBannerCarousel({
             const status = safeImg ? imageStatus[safeImg] : undefined;
             const handleSlideClick = safeLink
               ? () => {
-                  window.open(safeLink, 'sporthub_ad', 'noopener,noreferrer');
+                  openExternal(safeLink);
                 }
               : undefined;
 

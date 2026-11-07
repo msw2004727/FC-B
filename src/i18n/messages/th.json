@@ -25,6 +25,10 @@
   "feature.reserved": "ฟีเจอร์นี้จะเปิดให้ใช้เร็วๆ นี้",
   "feature.external": "กำลังเชื่อมต่อระบบภายนอก",
   "internalTest.badge": "ToosterX รุ่นทดลองใช้ก่อน {version}",
+  "lineLoginHint": {
+    "openInLine": "เปิดในแอป LINE",
+    "newTabNote": "เมื่อเข้าสู่ระบบเสร็จ จะเปิดในแท็บใหม่ แท็บเดิมปิดได้"
+  },
   "ui": {
     "shell": {
       "sportAll": "All",

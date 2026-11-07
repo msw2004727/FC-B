@@ -2,6 +2,15 @@
 // 外部瀏覽器走完 liff.login 會帶 code＋liffClientId 回到原頁；從 liff.line.me 開啟會帶 liff.state。
 // 只有這兩種情況開頁時才載入 LIFF 接手登入（照 A 開頁 liff.init 的效果），一般開頁仍不載 LIFF（T-041 首頁速度）。
 
+/**
+ * 保守判斷 LINE Mini App（LIFF 瀏覽器）。
+ * 既有程式只把 UA 的 Line/ 當成「可能在 LINE」（內建瀏覽器與 Mini App 都會中）。
+ * 預先載入 LIFF 要更窄：Line/ 之外還要有獨立的 LIFF 字樣。對不上就不算，呼叫端不得載 SDK（T-041）。
+ */
+export function isLikelyMiniAppUserAgent(userAgent: string): boolean {
+  return /\bLine\//i.test(userAgent) && /\bLIFF\b/.test(userAgent);
+}
+
 /** 網址是否帶 LINE 授權回跳參數。 */
 export function hasLoginRedirectParams(href: string): boolean {
   try {

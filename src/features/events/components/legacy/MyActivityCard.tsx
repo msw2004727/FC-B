@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { openExternal } from '@/core/open-external';
 import type { UserRole } from '@/ui/Avatar';
 import { UserTag } from '@/ui/UserTag';
 import { STATUS_CONFIG } from './TimelineEventCard';
@@ -282,7 +283,7 @@ export function MyActivityCard({
       return;
     }
     if (isExternal) {
-      window.open(e.externalUrl || '', '_blank');
+      openExternal(e.externalUrl || '');
       return;
     }
     const href = publicEventHref(e);
