@@ -172,10 +172,25 @@ export function createDetailSignupContexts(
             message: '請先登入',
           });
         }
-        const event = await loadEvent(eventId);
-        // 照 B 既有讀取層；避免新增 Firestore 的靜態依賴鏈。
-        const { loadViewerRegistrations } = await import('./viewer-registrations');
-        const registrations = await loadViewerRegistrations(viewer.uid);
+        // 按鈕加速①：活動與我的報名並行。這仍是 T-086a 送出前的那一次讀取。
+        // 活動失敗維持拋活動錯誤；報名歷史失敗維持拋歷史錯誤。
+        let registrationsError: unknown;
+        const registrationsPromise = import('./viewer-registrations')
+          .then((module) => module.loadViewerRegistrations(viewer.uid))
+          .catch((error: unknown) => {
+            registrationsError = error;
+            return [];
+          });
+        let event: SignupEvent;
+        try {
+          event = await loadEvent(eventId);
+        } catch (error) {
+          // 接住並行讀取的拒絕，避免活動錯誤之外再冒出未處理拒絕。不等它完成。
+          void registrationsPromise.then(() => undefined, () => undefined);
+          throw error;
+        }
+        const registrations = await registrationsPromise;
+        if (registrationsError) throw registrationsError;
         const now = deps.now?.() ?? new Date();
         return {
           event,

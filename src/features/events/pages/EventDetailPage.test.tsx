@@ -205,6 +205,7 @@ vi.mock('../data/team-split-writes', () => ({
   },
 }));
 
+import { writeOpLog } from '@/data/op-log';
 import EventDetailPage from './EventDetailPage';
 import { setLocale } from '@/i18n/i18n';
 import { SignupError } from '../data/signup';
@@ -1138,15 +1139,27 @@ describe('名單結算「完成」（C-001）', () => {
   });
 
   it('較舊的出席重讀晚回來時不覆蓋較新的名單', async () => {
+    // 測試同步更新：按鈕加速①
+    // 完成先等合併後的出席重讀，結算後的重讀才開始，兩次不再重疊。
+    // 先回來的空名單會被後一次簽到名單蓋過。
     mocks.registrations.mockResolvedValue([
       { ...self, _docId: 'targetA', userId: 'uidA', userName: '甲', eventId: 'evtA' },
     ]);
     const pending: Array<(rows: unknown) => void> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
     await enterRosterEdit();
     mocks.attendance.mockImplementation(
-      () => new Promise((resolve) => {
-        pending.push(resolve);
-      }),
+      () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return new Promise((resolve) => {
+          pending.push((rows) => {
+            inFlight -= 1;
+            resolve(rows);
+          });
+        });
+      },
     );
 
     fireEvent.click(screen.getByRole('checkbox', { name: '甲 簽到' }));
@@ -1154,32 +1167,36 @@ describe('名單結算「完成」（C-001）', () => {
       fireEvent.click(screen.getByRole('button', { name: '完成' }));
     });
     await waitFor(() => {
-      expect(pending.length).toBeGreaterThanOrEqual(2);
+      expect(pending.length).toBe(1);
     });
-    const resolveStale = pending[0];
-    const resolveFresh = pending[pending.length - 1];
-    if (!resolveStale || !resolveFresh || resolveStale === resolveFresh) {
-      throw new Error('需要兩次重疊的出席重讀');
-    }
+    expect(mocks.settleAttendance).not.toHaveBeenCalled();
+    expect(maxInFlight).toBe(1);
 
-    const fresh = [{
-      _docId: 'targetA',
-      uid: 'uidA',
-      userName: '甲',
-      type: 'checkin',
-      status: 'active',
-    }];
     await act(async () => {
-      resolveFresh(fresh);
+      pending[0]?.([]);
     });
     await screen.findByRole('button', { name: '管理名單', exact: true });
+    await waitFor(() => {
+      expect(pending.length).toBe(2);
+    });
+    expect(maxInFlight).toBe(1);
+
     await act(async () => {
-      resolveStale([]);
+      pending[1]?.([{
+        _docId: 'targetA',
+        uid: 'uidA',
+        userName: '甲',
+        type: 'checkin',
+        status: 'active',
+      }]);
     });
 
-    const table = document.querySelector('#detail-attendance-table');
-    const row = Array.from(table?.querySelectorAll('tr') ?? []).find((tr) => tr.textContent?.includes('甲'));
-    expect(row?.textContent).toContain('✓');
+    await waitFor(() => {
+      const table = document.querySelector('#detail-attendance-table');
+      const row = Array.from(table?.querySelectorAll('tr') ?? []).find((tr) => tr.textContent?.includes('甲'));
+      expect(row?.textContent).toContain('✓');
+    });
+    expect(maxInFlight).toBe(1);
   });
 
   it('結算成功先退出編輯，出席重讀在背景進行', async () => {
@@ -1269,6 +1286,59 @@ describe('名單狀態調整頁面接線', () => {
     expect((calls[0]?.request as { requestId: string }).requestId)
       .not.toBe((calls[1]?.request as { requestId: string }).requestId);
     expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toBeTruthy();
+  });
+
+  it('踢人成功：toast 與人數投影先於名單重讀', async () => {
+    // 測試同步更新：按鈕加速①
+    const view = await openRoster();
+    let releaseRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockImplementation(
+      () => new Promise((resolve) => { releaseRegs = resolve; }),
+    );
+    vi.mocked(writeOpLog).mockImplementation(() => new Promise(() => {}));
+    registerCallableMock('cancelRegistration', () => ({
+      success: true,
+      cancelled: 1,
+      event: { current: 9, max: 2, waitlist: 0 },
+    }));
+    fireEvent.click(screen.getByRole('button', { name: '踢' }));
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({
+      message: '已將 小明 從報名名單中移除', tone: 'success',
+    }));
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toContain('已報 9/2');
+    expect(screen.getByText('小明')).toBeTruthy();
+    await act(async () => { releaseRegs([]); });
+  });
+
+  it('踢人 deduplicated 仍等重讀，Callable 失敗不重讀', async () => {
+    // 測試同步更新：按鈕加速①
+    await openRoster();
+    const callsBefore = mocks.registrations.mock.calls.length;
+    let releaseRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockImplementation(
+      () => new Promise((resolve) => { releaseRegs = resolve; }),
+    );
+    registerCallableMock('cancelRegistration', () => ({ success: true, deduplicated: true }));
+    fireEvent.click(screen.getByRole('button', { name: '踢' }));
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({
+      message: '已將 小明 從報名名單中移除', tone: 'success',
+    }));
+    expect(screen.getByRole('button', { name: '踢' })).toHaveProperty('disabled', true);
+    expect(mocks.registrations.mock.calls.length).toBeGreaterThan(callsBefore);
+    await act(async () => { releaseRegs([{ ...rosterReg, status: 'confirmed' }]); });
+    await waitFor(() => expect(screen.getByRole('button', { name: '踢' })).toHaveProperty('disabled', false));
+
+    mocks.toastShow.mockClear();
+    const after = mocks.registrations.mock.calls.length;
+    registerCallableMock('cancelRegistration', () => {
+      throw new CallableFailure('permission-denied', 'PERMISSION_DENIED', { code: 'PERMISSION_DENIED' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '踢' }));
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith(expect.objectContaining({
+      tone: 'error',
+    })));
+    expect(mocks.registrations.mock.calls.length).toBe(after);
   });
 });
 

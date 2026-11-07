@@ -137,6 +137,26 @@ describe('managerRemoveRegistration', () => {
     });
   });
 
+  it('日誌失敗仍回成功結果', async () => {
+    // 測試同步更新：按鈕加速①
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockWriteOpLog.mockRejectedValue(new Error('offline'));
+    const res = await managerRemoveRegistration({
+      eventId: 'ce_100',
+      event: sampleEvent,
+      registration: { uid: 'u_player', name: '王大明', isCompanion: false },
+      registrations: sampleRegistrations,
+      operatorUid: 'u_admin',
+      operatorName: '總管A',
+      context: adminContext,
+      now: 1700000000123,
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.toastMessage).toBe('已將 王大明 從報名名單中移除');
+    expect(mockCallFn).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+  });
+
   it('uses companionId as uid in requestId when removing a companion registration', async () => {
     const res = await managerRemoveRegistration({
       eventId: 'ce_100',

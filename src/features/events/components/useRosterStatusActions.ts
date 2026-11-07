@@ -14,6 +14,8 @@ export interface RosterStatusActionsOptions {
   isCurrent: () => boolean;
   submitting: boolean;
   setSubmitting: (value: boolean) => void;
+  /** Callable 成功後、重讀前套用伺服器投影。 */
+  adopt?: (next: RosterStatusSnapshot) => void;
 }
 /** 名單狀態調整；同步鎖先於確認框，並與既有名單操作共用 submitting。 */
 export function useRosterStatusActions(options: RosterStatusActionsOptions) {
@@ -50,6 +52,12 @@ export function useRosterStatusActions(options: RosterStatusActionsOptions) {
         flush: () => latest.current.flush(),
         refreshPermissions: requestViewerRefresh,
         confirm: appConfirm,
+        adopt: (next) => {
+          if (valid()) latest.current.adopt?.(next);
+        },
+        onSyncing: (message) => {
+          if (valid()) toast.show({ message, tone: 'warning' });
+        },
       });
       if (valid() && result.message) toast.show({ message: result.message, tone: result.tone });
     } catch {

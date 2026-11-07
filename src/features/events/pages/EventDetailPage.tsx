@@ -1161,6 +1161,19 @@ function EventDetailSession({
       operatorName: resolveOperator(currentViewer.current),
     }),
     flush: instantSave.flushInstantSaves,
+    adopt: (next) => {
+      const current = headerState.current.snapshot;
+      if (!current || !alive.current) return;
+      const projected = adoptEventProjection(current, next.event);
+      const registrations = next.registrations as DetailRegistration[];
+      const updated: Snapshot = { ...projected, registrations };
+      headerState.current = { snapshot: updated, visible: headerState.current.visible };
+      setSnapshot((previous) => (
+        previous && previous.eventDocId === current.eventDocId
+          ? { ...previous, event: updated.event, registrations }
+          : previous
+      ));
+    },
     reload: async () => {
       const current = headerState.current.snapshot;
       const uid = currentViewer.current.uid;
@@ -1318,10 +1331,14 @@ function EventDetailSession({
         });
       }
       if (result.ok) {
-        await refresh(
-          adoptEventProjection(snapshot, result.response.event),
-          result.response.deduplicated === true || !result.response.event,
-        );
+        // 按鈕加速①：比照 T-086a。已確認成功先套投影並背景重讀；deduplicated 或沒有投影仍等重讀。
+        const next = adoptEventProjection(snapshot, result.response.event);
+        const outcomeUnknown = result.response.deduplicated === true || !result.response.event;
+        if (outcomeUnknown) {
+          await refresh(next, true);
+        } else {
+          void refreshInBackground(next);
+        }
       }
     } finally {
       if (alive.current) {

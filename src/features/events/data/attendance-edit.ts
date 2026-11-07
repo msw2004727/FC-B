@@ -407,6 +407,9 @@ export function collectAttendanceOps(
   return { adds, removes, grantExp };
 }
 
+/** 按鈕加速①：簽到連續寫入合併成一次重讀前的閒置時間。 */
+export const ATTENDANCE_RELOAD_IDLE_MS = 1500;
+
 // ── Firestore 批次寫入 ────────────────────────────
 
 async function resolveDb(): Promise<Firestore> {

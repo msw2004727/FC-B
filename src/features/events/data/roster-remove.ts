@@ -12,6 +12,7 @@
 import { callFn, CallableError } from '@/data/callables';
 import type { CancelRegistrationResponse } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
+import { runInBackground } from './background-work';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 import {
   canRemoveConfirmedParticipant,
@@ -284,14 +285,17 @@ export async function managerRemoveRegistration(
 
   const eventTitle = str(event.title);
   const targetName = str(registration.name);
-  await writeOpLog({
-    type: 'participant_removed',
-    typeName: '移除參加者',
-    content: `從「${eventTitle}」移除 ${targetName}`,
-    eventId,
-    actorUid: operatorUid,
-    operator: str(input.operatorName) || '管理員',
-  });
+  // 按鈕加速①：日誌不擋住成功結果。失敗只留下警告。
+  runInBackground(async () => {
+    await writeOpLog({
+      type: 'participant_removed',
+      typeName: '移除參加者',
+      content: `從「${eventTitle}」移除 ${targetName}`,
+      eventId,
+      actorUid: operatorUid,
+      operator: str(input.operatorName) || '管理員',
+    });
+  }, '[踢人] 日誌寫入失敗');
 
   return {
     ok: true,

@@ -30,6 +30,56 @@ describe('名單狀態調整', () => {
       expect(stopRecording()).toHaveLength(row[action] ? 1 : 0);
     }
   });
+  it('成功後先套伺服器投影，toast 不等日誌與重讀', async () => {
+    // 測試同步更新：按鈕加速①
+    const input = inputFor();
+    const order: string[] = [];
+    let releaseLog!: () => void;
+    mocks.log.mockImplementation(() => new Promise<void>((resolve) => { releaseLog = resolve; }));
+    input.reload = vi.fn(async () => input.getLatest());
+    input.adopt = (next) => {
+      order.push('adopt');
+      expect(next.event.current).toBe(4);
+      expect(next.registrations.filter(reg => reg.userId === 'uidB').every(reg => reg.status === 'waitlisted')).toBe(true);
+    };
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    const result = await adjustRosterStatus(input);
+    expect(result).toEqual({ message: '已將 小明 下放至候補（4/2）', tone: 'success' });
+    expect(order).toEqual(['adopt']);
+    expect(mocks.log).toHaveBeenCalledOnce();
+    expect(input.reload).not.toHaveBeenCalled();
+    releaseLog();
+    await vi.waitFor(() => expect(input.reload).toHaveBeenCalledOnce());
+  });
+  it('正取成功套用同行者狀態與活動投影', async () => {
+    // 測試同步更新：按鈕加速①
+    const input = inputFor('promote');
+    const state = input.getLatest();
+    state.registrations = [...state.registrations, {
+      userId: 'uidB', status: 'waitlisted', participantType: 'companion', companionName: '小華',
+    }];
+    input.adopt = vi.fn();
+    registerMock('forcePromoteWaitlist', () => ({ ...promoted, overCapacity: false }));
+    const result = await adjustRosterStatus(input);
+    expect(result.message).toBe('已正取（4/2）');
+    const applied = vi.mocked(input.adopt).mock.calls[0]?.[0];
+    expect(applied?.event).toMatchObject({ current: 4, waitlist: 0 });
+    expect(applied?.registrations.map(reg => reg.status)).toEqual(['confirmed', 'confirmed']);
+  });
+  it('日誌失敗不影響成功結果，重讀仍會做', async () => {
+    // 測試同步更新：按鈕加速①
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.log.mockRejectedValue(new Error('offline'));
+    const input = inputFor();
+    input.reload = vi.fn(async () => input.getLatest());
+    input.adopt = vi.fn();
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    const result = await adjustRosterStatus(input);
+    expect(result.tone).toBe('success');
+    expect(input.adopt).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(input.reload).toHaveBeenCalledOnce());
+    expect(stopRecording()).toHaveLength(1);
+  });
   it('U1/U13：精確請求與日誌欄位及回傳人數', async () => {
     const input = inputFor(); input.reload = vi.fn(input.reload);
     registerMock('forceDemoteToWaitlist', () => demoted);
