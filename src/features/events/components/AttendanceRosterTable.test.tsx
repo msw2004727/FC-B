@@ -189,7 +189,7 @@ describe('AttendanceRosterTable', () => {
 
     expect(container.textContent).not.toContain('↳');
     expect(screen.getByText('+2')).toBeTruthy();
-    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'A', '王']);
+    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'A', '志']);
     expect(container.querySelector('.cr-ghost')?.textContent).toBe('王志明');
     expect(container.querySelector('.cr-proxy-badge')?.textContent).toContain('代報');
     expect(screen.queryByRole('button', { name: /Kid One/ })).toBeNull();

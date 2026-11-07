@@ -30,6 +30,10 @@ td.cr-name-cell {
   max-width: 100%;
   border-radius: 6px;
   border-left: 3px solid var(--cr-g);
+}
+
+/* 底色表示角色（R-UI-021）：只有中性角色換成淡組色底，教練／隊長等保留角色底色（Opus 審 P2-4）。 */
+.att-roster .cr-lead > .user-capsule.uc-user {
   background-color: color-mix(in srgb, var(--cr-g) 14%, var(--bg-card));
 }
 
@@ -285,9 +289,16 @@ td.cr-name-cell {
   border-left-color: currentColor;
 }
 
-.att-roster .reg-name-badges-wrap,
+/*
+ * 徽章列維持可橫向捲動（不得溢出蓋到 🕊／簽到格，Opus 審 P2-2）；上緣用內距留空間給右上角球衣與 Lv，不被捲動容器切掉。
+ */
+.att-roster .reg-name-badges-wrap {
+  margin-top: -9px;
+}
 .att-roster .reg-name-badges {
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-top: 9px;
 }
 
 .att-name-line {
@@ -361,6 +372,10 @@ td.cr-name-cell {
 .att-roster tr.att-zebra-odd > td {
   background: color-mix(in srgb, var(--bg-elevated) 70%, var(--bg-card));
 }
+
+/* 斑馬底色畫在 td，會蓋住既有畫在 tr 的即時儲存閃色；閃色同步畫到 td（動畫期間壓過斑馬底，Opus 審 P2-1）。 */
+.att-roster tr.att-row-saved > td { animation: att-flash-ok .6s ease-out; }
+.att-roster tr.att-row-failed > td { animation: att-flash-err 1.2s ease-out; }
 
 .att-roster tr.att-zebra-odd > td:first-child,
 .att-roster tr.att-zebra-even > td:first-child {

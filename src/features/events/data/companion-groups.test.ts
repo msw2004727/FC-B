@@ -139,8 +139,12 @@ describe('buildCompanionRowMeta', () => {
     expect(meta[6]).toMatchObject({ connected: true, last: true, ownerInitial: 'B' });
   });
 
-  it('initial 取字：中文、英文大寫、空字串 ?', () => {
-    expect(ownerInitial('陳思妤')).toBe('陳');
+  it('initial 取字：中文略過姓取第二字、單字中文、英文大寫、空字串 ?', () => {
+    expect(ownerInitial('陳思妤')).toBe('思');
+    expect(ownerInitial('王志明')).toBe('志');
+    expect(ownerInitial('阿凱')).toBe('凱');
+    expect(ownerInitial('寶')).toBe('寶');
+    expect(ownerInitial('6-051范揚智')).toBe('6');
     expect(ownerInitial('alice')).toBe('A');
     expect(ownerInitial('')).toBe('?');
     const meta = buildCompanionRowMeta([
@@ -151,8 +155,21 @@ describe('buildCompanionRowMeta', () => {
       self('empty', ''),
       mate('c', 'Kid', 'empty'),
     ]);
-    expect(meta[1]).toMatchObject({ ownerInitial: '陳' });
+    expect(meta[1]).toMatchObject({ ownerInitial: '思' });
     expect(meta[3]).toMatchObject({ ownerInitial: 'A' });
     expect(meta[5]).toMatchObject({ ownerInitial: '?' });
+  });
+
+  it('同一 uid 有兩列（例如課程連動）：相連的同行者跟最近那一列的組色，不是第一次出現那列', () => {
+    const meta = buildCompanionRowMeta([
+      self('u', '甲乙'),
+      mate('a', 'x', 'u'),
+      self('v', '丙丁'),
+      self('u', '甲乙'),
+      mate('b', 'y', 'u'),
+    ]);
+    expect(meta[0]).toMatchObject({ kind: 'lead', slot: 0 });
+    expect(meta[3]).toMatchObject({ kind: 'lead', slot: 1 });
+    expect(meta[4]).toMatchObject({ kind: 'mate', connected: true, slot: 1 });
   });
 });

@@ -37,10 +37,19 @@ function soloMeta(): CompanionRowMeta {
   return { kind: 'solo', slot: 0 };
 }
 
-/** 第一個字；英文 a–z 轉大寫。沒有字（空字串或空白）回 `?`。 */
+const HAN = /\p{Script=Han}/u;
+
+/**
+ * 小頭像的字。中文名兩字以上取第二個字（略過姓，照站長核可預覽：陳思妤→思、王志明→志；
+ * 取代原「第一個字」，因為代報組的同行者常與主報名人同姓，顯示姓沒有辨識度，Opus 審 P2-3）；
+ * 其他取第一個字，英文 a–z 轉大寫。沒有字（空字串或空白）回 `?`。
+ */
 export function ownerInitial(name: string | null | undefined): string {
-  const ch = Array.from(name ?? '')[0];
-  if (!ch || !ch.trim()) return '?';
+  const chars = Array.from((name ?? '').trim());
+  const first = chars[0];
+  if (!first) return '?';
+  const second = chars[1];
+  const ch = HAN.test(first) && second && HAN.test(second) ? second : first;
   if (ch >= 'a' && ch <= 'z') return String.fromCharCode(ch.charCodeAt(0) - 32);
   return ch;
 }
@@ -97,7 +106,16 @@ export function buildCompanionRowMeta(rows: readonly ConfirmedRosterPerson[]): C
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
     if (!row?.isCompanion) continue;
-    const ownerIdx = row.ownerUid ? ownerAt.get(row.ownerUid) : undefined;
+    // 已相連的同行者往回找最近的 lead／proxyLead 當主報名人（同一 uid 有兩列時，ownerAt 只記第一列會配錯組色，Opus 審 P3）；
+    // 沒相連的才用 ownerAt。
+    let nearest: number | undefined;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      const m = metas[j];
+      if (m?.kind === 'mate' && rows[j]?.ownerUid === row.ownerUid) continue;
+      if ((m?.kind === 'lead' || m?.kind === 'proxyLead') && rows[j]?.uid === row.ownerUid) nearest = j;
+      break;
+    }
+    const ownerIdx = nearest ?? (row.ownerUid ? ownerAt.get(row.ownerUid) : undefined);
     if (ownerIdx === undefined) {
       metas[i] = {
         kind: 'mate', slot: 0, ownerInitial: '?', connected: false, last: false, dashed: false,
