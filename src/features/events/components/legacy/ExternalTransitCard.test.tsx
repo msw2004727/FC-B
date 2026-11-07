@@ -50,8 +50,12 @@ describe('ExternalTransitCard', () => {
 
     const link = container.querySelector('a.ext-transit-btn-primary');
     expect(link?.getAttribute('href')).toBe('https://example.com/event');
-    expect(link?.getAttribute('target')).toBe('_blank');
+    // 測試同步更新：外連共用分頁
+    expect(link?.getAttribute('target')).toBeNull();
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    fireEvent.click(link as Element);
+    expect(open).toHaveBeenCalledWith('https://example.com/event', 'toosterx_external');
   });
 
   it('renders YouTube embed + secondary button when URL is a YouTube video', () => {

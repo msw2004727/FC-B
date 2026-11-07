@@ -168,12 +168,15 @@ describe('清單與讀取預算', () => {
     expect(document.querySelector('[data-card-id="tc_friendly"]')?.classList.contains('ended')).toBe(false);
   });
 
-  it('整張卡片是新分頁連結（noopener）；日期與類型標籤', async () => {
+  // 測試同步更新：外連共用分頁
+  it('整張卡片保留 href，點擊同步走共用外連；日期與類型標籤', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
     await renderLoaded();
     const link = document.querySelector('[data-card-id="tc_feda"] a') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('https://cup.toosterx.com/');
-    expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link.getAttribute('target')).toBeNull();
+    fireEvent.click(link);
+    expect(open).toHaveBeenCalledWith('https://cup.toosterx.com/', 'toosterx_external');
     expect(link.textContent).toContain('2026/10/09～2026/10/11');
     expect(link.textContent).toContain('盃賽');
     expect((link.querySelector('img') as HTMLImageElement).getAttribute('src')).toBe('https://storage.example/feda.webp');

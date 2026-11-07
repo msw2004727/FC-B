@@ -28,7 +28,7 @@ import {
   uploadTournamentCardImage,
   type UploadedImage,
 } from '../data/cards-repo';
-import { openCardLinkInLine, shouldHandleCardLink } from '../data/open-card-link';
+import { openCardLink } from '../data/open-card-link';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -171,11 +171,9 @@ export default function TournamentsPage(): JSX.Element {
     }
   };
 
-  const handleCardClick = (event: Event, url: string): void => {
-    const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent || '';
-    if (!shouldHandleCardLink(url, userAgent)) return;
+  const handleCardClick = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>, url: string): void => {
     event.preventDefault();
-    void openCardLinkInLine(url);
+    openCardLink(url);
   };
 
   return (
@@ -265,8 +263,6 @@ export default function TournamentsPage(): JSX.Element {
                 <a
                   class="tc-card-link"
                   href={card.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   onClick={(event) => handleCardClick(event, card.url)}
                 >
                   {card.image ? (

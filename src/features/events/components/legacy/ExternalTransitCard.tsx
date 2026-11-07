@@ -9,6 +9,7 @@
 // ASSUMPTION：A 有 `SPORT_ICON_EMOJI` 全域表，B 尚未移植，標題前僅保留 A「sportEmoji + ' ' + title」的空白格式。
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { openHttpAnchor } from '@/core/open-external';
 import { pushOverlay } from '@/core/overlay-back';
 import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { toast } from '@/ui/Toast';
@@ -199,8 +200,10 @@ export function ExternalTransitCard({ event, onClose }: ExternalTransitCardProps
                   <a
                     class="ext-transit-btn ext-transit-btn-secondary"
                     href={rawExternalUrl}
-                    target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(event) => {
+                      openHttpAnchor(event, rawExternalUrl);
+                    }}
                   >
                     在 YouTube 開啟
                   </a>
@@ -226,8 +229,10 @@ export function ExternalTransitCard({ event, onClose }: ExternalTransitCardProps
                 <a
                   class="ext-transit-btn ext-transit-btn-primary"
                   href={rawExternalUrl}
-                  target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(event) => {
+                    openHttpAnchor(event, rawExternalUrl);
+                  }}
                 >
                   前往活動頁面
                 </a>

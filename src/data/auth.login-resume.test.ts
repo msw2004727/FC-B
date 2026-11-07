@@ -256,6 +256,23 @@ describe('LINE 授權回跳接手登入', () => {
     expect(auth.isLoginRedirectingError(err)).toBe(true);
     expect(h.liff.login).toHaveBeenCalledOnce();
   });
+
+  it('ensureLiffInit 與 signIn 共用同一支 Promise，成功後不再 init', async () => {
+    const liffInit = await import('./liff-init');
+    let release!: () => void;
+    h.liff.init.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+    const first = liffInit.ensureLiffInit();
+    expect(liffInit.ensureLiffInit()).toBe(first);
+    await vi.waitFor(() => expect(h.liff.init).toHaveBeenCalledOnce());
+    h.liff.isLoggedIn.mockReturnValue(true);
+    const signing = auth.signIn();
+    expect(h.liff.init).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+    await expect(signing).resolves.toMatchObject({ uid: 'U-login' });
+    await liffInit.ensureLiffInit();
+    expect(h.liff.init).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('signOutAndReload（照 A LineAuth.logout）', () => {

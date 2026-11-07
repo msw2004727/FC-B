@@ -21,6 +21,7 @@ import { toast } from '@/ui/Toast';
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
+import { _resetLiffInitForTest, ensureLiffInit, isLiffSdkLoadError } from './liff-init';
 import {
   buildCleanLoginRedirectUri,
   cleanLoginParamsFromUrl,
@@ -87,6 +88,7 @@ export function _resetAuthForTest(): void {
   signingOut = false;
   inflightSignIn = null;
   liffInitialized = false;
+  _resetLiffInitForTest();
 }
 
 /**
@@ -189,21 +191,19 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     throw new Error('[auth] 缺少 VITE_LIFF_ID 設定（請見 .env.example）');
   }
 
-  let liff: typeof import('@line/liff').default;
+  // 與 Mini App 預先初始化共用 ensureLiffInit：進行中與成功後都是同一支 Promise，不重複 init。
+  // 成功／失敗之後的登入判斷與 redirectUri 維持原樣。
+  let liff: Awaited<ReturnType<typeof ensureLiffInit>>;
   try {
-    const liffModule = await import('@line/liff');
-    liff = liffModule.default;
-  } catch (err) {
-    cleanLoginParamsFromUrl();
-    toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
-    throw err;
-  }
-
-  try {
-    await withTimeout(liff.init({ liffId }), LIFF_STEP_TIMEOUT_MS, 'liff.init()');
+    liff = await ensureLiffInit();
   } catch (err) {
     // 初始化失敗也要清掉回跳參數：留著舊 code 會讓下次 init 再拿過期 code 失敗（照 A init 失敗分支的 _cleanUrl）。
+    // SDK 載入失敗同樣先清（Grok 交叉審查 P2）。
     cleanLoginParamsFromUrl();
+    if (isLiffSdkLoadError(err)) {
+      toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
+      throw err.cause instanceof Error ? err.cause : err;
+    }
     toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
     throw err;
   }
@@ -332,11 +332,9 @@ export async function signOut(): Promise<void> {
 async function logoutLiff(): Promise<void> {
   const liffId = import.meta.env.VITE_LIFF_ID;
   if (!liffId || shouldUseEmulator()) return;
-  const liff = (await import('@line/liff')).default;
-  if (!liffInitialized) {
-    await liff.init({ liffId });
-    liffInitialized = true;
-  }
+  // 走同一支 ensureLiffInit：預先初始化或剛登入過就不會再 init。
+  const liff = await ensureLiffInit();
+  liffInitialized = true;
   if (liff.isLoggedIn()) liff.logout();
 }
 

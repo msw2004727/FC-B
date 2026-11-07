@@ -127,6 +127,6 @@ export function renderEventSocialLinksHtml(links: unknown): string {
   return normalizeEventSocialLinks(links).map(link => {
     const meta = detectEventSocialPlatform(link.url);
     const label = link.label || meta.label || '連結';
-    return `<a class="event-social-link-btn" data-platform="${escapeHtml(meta.key)}" href="${escapeHtml(link.url)}" target="sporthub_social" rel="noopener noreferrer" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${renderEventSocialIcon(link)}</a>`;
+    return `<a class="event-social-link-btn" data-platform="${escapeHtml(meta.key)}" href="${escapeHtml(link.url)}" rel="noopener noreferrer" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${renderEventSocialIcon(link)}</a>`;
   }).join('');
 }

@@ -406,9 +406,8 @@ export function SideDrawer({
       return;
     }
     if (entry.action === 'manual') {
-      if (typeof window !== 'undefined' && typeof window.open === 'function') {
-        window.open('/manual.html', '_blank', 'noopener,noreferrer');
-      }
+      // 靜態頁。這裡的 location 是 preact-iso，沒有 assign。
+      window.location.assign('/manual.html');
       onCloseRef.current();
       return;
     }
@@ -460,9 +459,7 @@ export function SideDrawer({
 
   const handleConfirmApplyRole = (): void => {
     setShowApplyNotice(false);
-    if (typeof window !== 'undefined' && typeof window.open === 'function') {
-      window.open('https://toosterx.com/roles', '_blank', 'noopener,noreferrer');
-    }
+    window.location.assign('/roles/');
     onCloseRef.current();
   };
 
@@ -758,10 +755,10 @@ export function SideDrawer({
               </div>
             </button>
             <div class="drawer-legal-row">
-              <a class="drawer-legal-btn" href="/privacy" target="_blank" rel="noopener noreferrer">
+              <a class="drawer-legal-btn" href="/privacy">
                 <span data-i18n="隱私權政策">{lt('隱私權政策', '隱私權政策')}</span>
               </a>
-              <a class="drawer-legal-btn" href="/terms" target="_blank" rel="noopener noreferrer">
+              <a class="drawer-legal-btn" href="/terms">
                 <span data-i18n="服務條款">{lt('服務條款', '服務條款')}</span>
               </a>
             </div>

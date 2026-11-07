@@ -7,8 +7,20 @@ import {
   hasLoginCancelParams,
   hasLoginRedirectParams,
   isAutoLoginSuppressedThisPage,
+  isLikelyMiniAppUserAgent,
   markAutoLoginSuppressed,
 } from './login-redirect';
+
+describe('Mini App UA（預先初始化用，判斷不出就不算）', () => {
+  it('要同時有 Line/ 與獨立的 LIFF', () => {
+    expect(isLikelyMiniAppUserAgent('Mozilla/5.0 Line/14.18.0 LIFF')).toBe(true);
+    expect(isLikelyMiniAppUserAgent('Mozilla/5.0 line/14.18.0 LIFF')).toBe(true);
+    expect(isLikelyMiniAppUserAgent('Mozilla/5.0 Line/14.18.0')).toBe(false);
+    expect(isLikelyMiniAppUserAgent('Mozilla/5.0 Chrome/130 LIFF')).toBe(false);
+    expect(isLikelyMiniAppUserAgent('Mozilla/5.0 Chrome/130')).toBe(false);
+    expect(isLikelyMiniAppUserAgent('')).toBe(false);
+  });
+});
 
 describe('自動登入略過旗標', () => {
   afterEach(() => {

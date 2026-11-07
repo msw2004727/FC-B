@@ -600,7 +600,8 @@ describe('HomeBannerCarousel 提早下載：動態 preload link', () => {
 });
 
 describe('HomeBannerCarousel 連結契約（儲存與使用同一個：只開 http/https）', () => {
-  it('http/https 連結：點橫幅開新分頁；站內路徑或不合格連結沒有 handler、點了什麼都不會發生', async () => {
+  // 測試同步更新：外連共用分頁
+  it('http/https 連結：點橫幅走共用外連；站內路徑或不合格連結沒有 handler、點了什麼都不會發生', async () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     const [u1, u2, u3] = urls(3) as [string, string, string];
     const { container } = renderCarousel([
@@ -613,7 +614,7 @@ describe('HomeBannerCarousel 連結契約（儲存與使用同一個：只開 ht
     expect(a.getAttribute('style')).toMatch(/cursor:\s*pointer/);
     fireEvent.click(a);
     expect(open).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledWith('https://example.com/go', 'sporthub_ad', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledWith('https://example.com/go', 'toosterx_external');
 
     for (const slide of [b, c]) {
       expect(slide.getAttribute('style') ?? '').not.toMatch(/cursor:\s*pointer/);

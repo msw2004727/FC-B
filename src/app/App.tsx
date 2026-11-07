@@ -49,6 +49,7 @@ import {
 import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
+import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import {
@@ -188,6 +189,8 @@ export function App({
     const stopMultiTab = initMultiTabGuard();
     const stopOfflineGuard = installOfflineWriteGuard();
     const stopIdlePrefetch = scheduleIdleRoutePrefetch();
+    // 只在 Mini App 閒置時預先 liff.init。一般瀏覽器這個函式立刻返回，不載入 LIFF（T-041）。
+    const stopLiffPreinit = startMiniAppLiffPreinit();
 
     mounted.current = true;
     let cancelled = false;
@@ -253,6 +256,7 @@ export function App({
       stopMultiTab();
       stopOfflineGuard();
       stopIdlePrefetch();
+      stopLiffPreinit();
     };
   }, []);
 
