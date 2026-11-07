@@ -57,7 +57,8 @@ const COMMON_HEADERS = [
   '  ! Cache-Control',
   '  Cache-Control: no-cache',
   // 換站搬入的內容頁照 A `_headers`：快取一天（換站計畫書 B-01，Opus 終審 P2）。
-  ...['/seo/*', '/blog/*', '/privacy', '/privacy.html', '/terms', '/terms.html'].flatMap((path) => [
+  // /assets/og/* 是非雜湊檔名的 OG 圖，放在 /assets/* 之後蓋掉一年 immutable，換圖不必 purge（顧問 11-07）。
+  ...['/seo/*', '/blog/*', '/privacy', '/privacy.html', '/terms', '/terms.html', '/assets/og/*'].flatMap((path) => [
     path,
     '  ! Cache-Control',
     '  Cache-Control: public, max-age=86400',

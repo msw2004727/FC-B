@@ -28,11 +28,13 @@ describe('換站前必修：首頁 head 與內容頁快取', () => {
     expect(html.match(/rel="canonical"/g)).toHaveLength(1);
   });
 
-  it('blog／seo／privacy／terms 照 A 快取一天', () => {
+  it('blog／seo／privacy／terms／OG 圖照 A 快取一天', () => {
     const config = read('vite.config.ts');
-    for (const path of ['/seo/*', '/blog/*', '/privacy', '/privacy.html', '/terms', '/terms.html']) {
+    for (const path of ['/seo/*', '/blog/*', '/privacy', '/privacy.html', '/terms', '/terms.html', '/assets/og/*']) {
       expect(config).toContain(`'${path}'`);
     }
+    // OG 圖規則必須在 /assets/* 之後，`! Cache-Control` 才會蓋掉一年 immutable
+    expect(config.indexOf("'/assets/og/*'")).toBeGreaterThan(config.indexOf("'/assets/*',"));
     expect(config).toContain("'  Cache-Control: public, max-age=86400'");
   });
 
