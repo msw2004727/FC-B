@@ -244,9 +244,33 @@ describe('openHttpAnchor', () => {
   });
 });
 
-describe('LINE 自家網址留在 LINE', () => {
+describe('LINE 自家網址：一般瀏覽器照外連開共用分頁（Opus 複審 P2-1）', () => {
+  it('openExternal 開具名共用分頁，不 assign、不加 openExternalBrowser', () => {
+    stubUa(CHROME);
+    setExternalLiffGetter(() => null);
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    for (const url of LINE_URLS) openExternal(url);
+    expect(assign).not.toHaveBeenCalled();
+    expect(open.mock.calls.map((call) => call[1])).toEqual(LINE_URLS.map(() => 'toosterx_external'));
+    for (const call of open.mock.calls) expect(String(call[0])).not.toContain('openExternalBrowser');
+  });
+
+  it('openHttpAnchor 攔下並開共用分頁', () => {
+    stubUa(CHROME);
+    setExternalLiffGetter(() => null);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    for (const url of LINE_URLS) {
+      const event = anchorClick();
+      openAnchor(event, url);
+      expect(event.preventDefault).toHaveBeenCalled();
+    }
+    expect(open).toHaveBeenCalledTimes(LINE_URLS.length);
+  });
+});
+
+describe('LINE 自家網址留在 LINE（只在 LINE 裡）', () => {
   it.each([
-    ['一般瀏覽器', CHROME],
     ['LINE 內建瀏覽器', LINE_IAB],
     ['Mini App', LINE_LIFF],
   ] as const)('%s：openExternal 整頁 assign，不加 openExternalBrowser、不 openWindow', (_label, ua) => {
@@ -265,7 +289,6 @@ describe('LINE 自家網址留在 LINE', () => {
   });
 
   it.each([
-    ['一般瀏覽器', CHROME],
     ['LINE 內建瀏覽器', LINE_IAB],
     ['Mini App', LINE_LIFF],
   ] as const)('%s：openHttpAnchor 不 preventDefault', (_label, ua) => {

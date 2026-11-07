@@ -126,7 +126,8 @@ export function openExternal(url: string): void {
   const parsed = httpUrl(raw);
   if (!parsed) return;
 
-  if (isLineOwnedHost(parsed.hostname) || parsed.origin === location.origin) {
+  // LINE 自家網址只在 LINE 裡（內建瀏覽器／Mini App）留在原層；一般瀏覽器照外連開共用分頁，不把本站換掉（Opus 複審 P2-1）。
+  if ((isLineOwnedHost(parsed.hostname) && lineUserAgent()) || parsed.origin === location.origin) {
     assignImpl(raw);
     return;
   }
@@ -167,7 +168,7 @@ export function openHttpAnchor(
   if (shouldLeaveAnchorClick(event)) return;
   const parsed = httpUrl(href);
   if (!parsed) return;
-  if (isLineOwnedHost(parsed.hostname) || parsed.origin === location.origin) return;
+  if ((isLineOwnedHost(parsed.hostname) && lineUserAgent()) || parsed.origin === location.origin) return;
   event.preventDefault();
   openExternal(href);
 }

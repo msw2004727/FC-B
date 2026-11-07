@@ -332,7 +332,17 @@ export function App({
   const confirmMobileHint = useCallback(() => {
     setMobileHintOpen(false);
     acknowledgeMobileLoginHint();
-    handleLogin();
+    // 關彈窗會在 setTimeout(0) 用 history.back() 退掉彈窗那筆紀錄；ensureLiffInit 快取後 liff.login 可能比它先開始導向，
+    // 被這次返回中止。等返回處理完（popstate，保底 400ms）再導向 LINE（Opus 複審 P2-2）。
+    let started = false;
+    const go = (): void => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('popstate', go);
+      handleLogin();
+    };
+    window.addEventListener('popstate', go);
+    setTimeout(go, 400);
   }, [handleLogin]);
 
   // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
