@@ -25,6 +25,10 @@
   "feature.reserved": "この機能は近日公開予定です",
   "feature.external": "外部システム連携準備中",
   "internalTest.badge": "ToosterX 先行体験版 {version}",
+  "lineLoginHint": {
+    "openInLine": "LINE アプリで開く",
+    "newTabNote": "ログインが完了すると新しいタブで開きます。元のタブは閉じて構いません。"
+  },
   "ui": {
     "shell": {
       "sportAll": "All",

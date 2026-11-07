@@ -5,6 +5,7 @@ import { LocationProvider } from 'preact-iso';
 import { SideDrawer, type SideDrawerProps } from './SideDrawer';
 import { TopBar } from './TopBar';
 import { _resetForTest } from '@/core/feature-registry';
+import { _resetOpenExternalForTest, _setLocationAssignForTest } from '@/core/open-external';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
 import { getToasts, toast } from './Toast';
@@ -62,6 +63,8 @@ afterEach(() => {
   cleanup();
   toast.clear();
   vi.restoreAllMocks();
+  _resetOpenExternalForTest();
+  Reflect.deleteProperty(window, 'matchMedia');
   _resetForTest();
   setTheme('light');
   document.documentElement.style.fontSize = '';
@@ -90,6 +93,65 @@ describe('SideDrawer 內測站功能進度圖示', () => {
     render(<Harness />);
     openDrawer();
     expect(document.querySelector('#drawer-menu svg.drawer-status')).toBeNull();
+  });
+});
+
+const CHROME_UA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36';
+const MINI_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari Line/14.18.0 LIFF';
+
+function spyAssign(): ReturnType<typeof vi.fn> {
+  const assign = vi.fn();
+  _setLocationAssignForTest(assign);
+  return assign;
+}
+
+function installStaticEnv(kind: 'browser' | 'mini' | 'pwa'): void {
+  vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(kind === 'mini' ? MINI_APP_UA : CHROME_UA);
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: kind === 'pwa' && query === '(display-mode: standalone)',
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
+describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）', () => {
+  it.each([
+    ['一般瀏覽器', 'browser'],
+    ['Mini App', 'mini'],
+    ['PWA 全螢幕', 'pwa'],
+  ] as const)('LocationProvider 內 %s：不走 SPA，走整頁或另開', (_label, kind) => {
+    history.replaceState(null, '', '/events/ce_1');
+    installStaticEnv(kind);
+    const assign = spyAssign();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<Harness />);
+    openDrawer();
+    fireEvent.click(document.querySelector('[data-action="manual"]') as HTMLElement);
+    // 說明書與角色說明成功後會關抽屜；法律連結只在打開時可點。
+    openDrawer();
+    fireEvent.click(document.querySelector('[data-action="apply-role"]') as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: '了解，前往聯繫' }));
+    openDrawer();
+    fireEvent.click(screen.getByRole('link', { name: '隱私權政策' }));
+    fireEvent.click(screen.getByRole('link', { name: '服務條款' }));
+    expect(location.pathname).toBe('/events/ce_1');
+    const paths = ['/manual.html', '/roles/', '/privacy', '/terms'];
+    if (kind === 'browser') {
+      expect(open).not.toHaveBeenCalled();
+      expect(assign.mock.calls.map((call) => call[0])).toEqual(paths);
+    } else {
+      expect(assign).not.toHaveBeenCalled();
+      expect(open.mock.calls).toEqual(paths.map((path) => [path, '_blank', 'noopener,noreferrer']));
+    }
   });
 });
 

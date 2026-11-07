@@ -49,6 +49,7 @@ import {
 import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
+import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import {
@@ -188,6 +189,8 @@ export function App({
     const stopMultiTab = initMultiTabGuard();
     const stopOfflineGuard = installOfflineWriteGuard();
     const stopIdlePrefetch = scheduleIdleRoutePrefetch();
+    // 只在 Mini App 閒置時預先 liff.init。一般瀏覽器這個函式立刻返回，不載入 LIFF（T-041）。
+    const stopLiffPreinit = startMiniAppLiffPreinit();
 
     mounted.current = true;
     let cancelled = false;
@@ -253,6 +256,7 @@ export function App({
       stopMultiTab();
       stopOfflineGuard();
       stopIdlePrefetch();
+      stopLiffPreinit();
     };
   }, []);
 
@@ -328,7 +332,17 @@ export function App({
   const confirmMobileHint = useCallback(() => {
     setMobileHintOpen(false);
     acknowledgeMobileLoginHint();
-    handleLogin();
+    // 關彈窗會在 setTimeout(0) 用 history.back() 退掉彈窗那筆紀錄；ensureLiffInit 快取後 liff.login 可能比它先開始導向，
+    // 被這次返回中止。等返回處理完（popstate，保底 400ms）再導向 LINE（Opus 複審 P2-2）。
+    let started = false;
+    const go = (): void => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('popstate', go);
+      handleLogin();
+    };
+    window.addEventListener('popstate', go);
+    setTimeout(go, 400);
   }, [handleLogin]);
 
   // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：

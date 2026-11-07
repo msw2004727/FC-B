@@ -52,7 +52,8 @@ describe('M-092 社群連結', () => {
     container.innerHTML = html;
     const links = container.querySelectorAll('a');
     expect(links).toHaveLength(1);
-    expect(links[0]?.target).toBe('sporthub_social');
+    // 測試同步更新：外連共用分頁（點擊由活動詳情攔截，HTML 不再指名視窗）
+    expect(links[0]?.getAttribute('target')).toBeNull();
     expect(links[0]?.rel).toBe('noopener noreferrer');
     expect(links[0]?.getAttribute('aria-label')).toBe('"><script>alert(1)</script>');
     expect(container.querySelector('script')).toBeNull();

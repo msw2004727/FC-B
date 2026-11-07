@@ -17,6 +17,7 @@ import {
 import type { RouteAccessContext } from '@/core/feature-types';
 import { isAuthRequiredRoute } from '@/core/back-guard';
 import { emit, on } from '@/core/events';
+import { openStaticPage, shouldLeaveAnchorClick } from '@/core/open-external';
 import { prefetchRouteByPath } from '@/core/route-prefetch';
 import {
   LOCKED_FEATURE_MSG,
@@ -236,6 +237,30 @@ function DrawerStatusIcon({ status }: { status: DrawerItemStatus }): preact.JSX.
   );
 }
 
+/**
+ * 隱私／條款是靜態頁，沒有 SPA 路由。
+ * preact-iso 的全域 click 不看 defaultPrevented，只 preventDefault 仍會被換成站內換頁，所以同時停掉冒泡。
+ * 修飾鍵與非左鍵留給瀏覽器。
+ */
+function handleStaticLink(
+  event: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+    defaultPrevented?: boolean;
+    button?: number;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+    altKey?: boolean;
+  },
+  path: string,
+): void {
+  if (shouldLeaveAnchorClick(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openStaticPage(path);
+}
+
 export function SideDrawer({
   open,
   onClose,
@@ -406,9 +431,8 @@ export function SideDrawer({
       return;
     }
     if (entry.action === 'manual') {
-      if (typeof window !== 'undefined' && typeof window.open === 'function') {
-        window.open('/manual.html', '_blank', 'noopener,noreferrer');
-      }
+      // 靜態頁。preact-iso 的 location 沒有 assign。
+      openStaticPage('/manual.html');
       onCloseRef.current();
       return;
     }
@@ -460,9 +484,7 @@ export function SideDrawer({
 
   const handleConfirmApplyRole = (): void => {
     setShowApplyNotice(false);
-    if (typeof window !== 'undefined' && typeof window.open === 'function') {
-      window.open('https://toosterx.com/roles', '_blank', 'noopener,noreferrer');
-    }
+    openStaticPage('/roles/');
     onCloseRef.current();
   };
 
@@ -758,10 +780,10 @@ export function SideDrawer({
               </div>
             </button>
             <div class="drawer-legal-row">
-              <a class="drawer-legal-btn" href="/privacy" target="_blank" rel="noopener noreferrer">
+              <a class="drawer-legal-btn" href="/privacy" onClick={(event) => handleStaticLink(event, '/privacy')}>
                 <span data-i18n="隱私權政策">{lt('隱私權政策', '隱私權政策')}</span>
               </a>
-              <a class="drawer-legal-btn" href="/terms" target="_blank" rel="noopener noreferrer">
+              <a class="drawer-legal-btn" href="/terms" onClick={(event) => handleStaticLink(event, '/terms')}>
                 <span data-i18n="服務條款">{lt('服務條款', '服務條款')}</span>
               </a>
             </div>

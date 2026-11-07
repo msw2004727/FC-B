@@ -21,6 +21,7 @@ import { toast } from '@/ui/Toast';
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
+import { _resetLiffInitForTest, ensureLiffInit, isLiffSdkLoadError } from './liff-init';
 import {
   buildCleanLoginRedirectUri,
   cleanLoginParamsFromUrl,
@@ -61,9 +62,13 @@ export function getLastKnownAuthUid(): string | null | undefined {
   return lastKnownAuthUid;
 }
 
-/** M-036：照 A `_isMobileExternalBrowser`——不在 LINE App 內、且是手機（含 PWA）。 */
+/**
+ * M-036：手機外部瀏覽器才顯示登入提示。
+ * LINE Mini App（inClient）與 LINE 內建瀏覽器（UA 含 Line/、非 Mini App）直接走 liff.login。
+ */
 export function isMobileExternalBrowser(inClient: boolean, userAgent: string): boolean {
   if (inClient) return false;
+  if (/\bLine\//i.test(userAgent)) return false;
   return /Android|iPhone|iPad|iPod/i.test(userAgent);
 }
 
@@ -74,8 +79,6 @@ export function acknowledgeMobileLoginHint(): void {
 // 回跳網址清理搬到 login-redirect.ts（App 首屏要用、不必載入本檔的 Firebase 相依），這裡沿用並保留原匯出。
 export { buildCleanLoginRedirectUri };
 
-/** 本次執行期 liff.init 是否已成功（登出時決定要不要先 init）。 */
-let liffInitialized = false;
 /** 登出（signOutAndReload、清除快取、QA 登出）執行中：期間 signIn 一律不做。 */
 let signingOut = false;
 /** 進行中的 signIn（共用同一支 Promise）。 */
@@ -86,7 +89,7 @@ export function _resetAuthForTest(): void {
   lastKnownAuthUid = undefined;
   signingOut = false;
   inflightSignIn = null;
-  liffInitialized = false;
+  _resetLiffInitForTest();
 }
 
 /**
@@ -189,25 +192,22 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     throw new Error('[auth] 缺少 VITE_LIFF_ID 設定（請見 .env.example）');
   }
 
-  let liff: typeof import('@line/liff').default;
+  // 與 Mini App 預先初始化共用 ensureLiffInit：進行中與成功後都是同一支 Promise，不重複 init。
+  // 成功／失敗之後的登入判斷與 redirectUri 維持原樣。
+  let liff: Awaited<ReturnType<typeof ensureLiffInit>>;
   try {
-    const liffModule = await import('@line/liff');
-    liff = liffModule.default;
-  } catch (err) {
-    cleanLoginParamsFromUrl();
-    toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
-    throw err;
-  }
-
-  try {
-    await withTimeout(liff.init({ liffId }), LIFF_STEP_TIMEOUT_MS, 'liff.init()');
+    liff = await ensureLiffInit();
   } catch (err) {
     // 初始化失敗也要清掉回跳參數：留著舊 code 會讓下次 init 再拿過期 code 失敗（照 A init 失敗分支的 _cleanUrl）。
+    // SDK 載入失敗同樣先清（Grok 交叉審查 P2）。
     cleanLoginParamsFromUrl();
+    if (isLiffSdkLoadError(err)) {
+      toast.show({ message: 'LIFF SDK 載入失敗、請重新整理頁面' });
+      throw err.cause instanceof Error ? err.cause : err;
+    }
     toast.show({ message: 'LINE 登入初始化失敗、請關閉 APP 重開' });
     throw err;
   }
-  liffInitialized = true;
   // 回跳的 code 已由 liff.init 處理完，清掉網址參數（照 A initSDK 之後的 _cleanUrl）。
   cleanLoginParamsFromUrl();
 
@@ -332,11 +332,8 @@ export async function signOut(): Promise<void> {
 async function logoutLiff(): Promise<void> {
   const liffId = import.meta.env.VITE_LIFF_ID;
   if (!liffId || shouldUseEmulator()) return;
-  const liff = (await import('@line/liff')).default;
-  if (!liffInitialized) {
-    await liff.init({ liffId });
-    liffInitialized = true;
-  }
+  // 走同一支 ensureLiffInit：預先初始化或剛登入過就不會再 init。
+  const liff = await ensureLiffInit();
   if (liff.isLoggedIn()) liff.logout();
 }
 
