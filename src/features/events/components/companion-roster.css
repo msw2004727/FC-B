@@ -1,0 +1,408 @@
+/*
+ * 出席名單：B2 連線樹＋定案版面（號碼牌、斑馬、斜方塊、組上下細線）。
+ * 只使用既有主題變數。連線的定位包含塊是 .att-name-anchor（在 td padding 裡面，
+ * 序號空位在錨點外面），所以垂直線中心 = 錨點左緣 + 11px，終點仍對齊小頭像左緣。
+ */
+
+td.cr-name-cell {
+  position: relative;
+}
+
+.cr-lead,
+.cr-pair,
+.cr-proxy-line {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.cr-lead {
+  gap: .4rem;
+}
+
+.att-roster .cr-lead > .user-capsule.user-capsule {
+  box-shadow: none;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 6px;
+  border-left: 3px solid var(--cr-g);
+}
+
+/* 底色表示角色（R-UI-021）：只有中性角色換成淡組色底，教練／隊長等保留角色底色（Opus 審 P2-4）。 */
+.att-roster .cr-lead > .user-capsule.uc-user {
+  background-color: color-mix(in srgb, var(--cr-g) 14%, var(--bg-card));
+}
+
+.cr-plus {
+  flex-shrink: 0;
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--cr-g);
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-mate-text {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: 1.75rem;
+  vertical-align: middle;
+}
+
+.cr-pair {
+  gap: 0;
+}
+
+.cr-owner {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cr-g);
+  color: var(--bg-card);
+  font-size: .58rem;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg-card);
+  margin-right: -7px;
+  z-index: 1;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cr-cap {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: .22rem .66rem .22rem .72rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--cr-g) 55%, transparent);
+  color: var(--text-primary);
+}
+
+.cr-proxy-line {
+  gap: .4rem;
+}
+
+.cr-ghost {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: .22rem .66rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--bg-card);
+  border: 1.5px dashed color-mix(in srgb, var(--cr-g) 60%, transparent);
+  color: var(--text-muted);
+}
+
+.cr-proxy-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: .22rem;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.35;
+  padding: .14rem .5rem .14rem .4rem;
+  border-radius: 5px;
+  background: var(--warning);
+  color: var(--bg-card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+.cr-proxy-badge svg {
+  flex-shrink: 0;
+}
+
+/* 連線只畫在名字 td 裡，不占排版，避免擠壓簽到欄。 */
+.cr-link {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cr-link-down {
+  position: absolute;
+  left: 11px;
+  top: calc(50% + 13px);
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--cr-g);
+  opacity: .6;
+}
+
+.cr-link-down.cr-link-dashed {
+  opacity: .9;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--cr-g) 0 6px,
+    transparent 6px 11px
+  );
+}
+
+.cr-link-mate {
+  position: absolute;
+  inset: 0;
+  opacity: .6;
+  color: var(--cr-g);
+}
+
+.cr-link-mate.cr-link-dashed {
+  opacity: .9;
+}
+
+.cr-v-top,
+.cr-v-bot {
+  position: absolute;
+  left: 11px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--cr-g);
+}
+
+.cr-link-dashed .cr-v-top,
+.cr-link-dashed .cr-v-bot {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--cr-g) 0 6px,
+    transparent 6px 11px
+  );
+}
+
+.cr-v-top {
+  top: 0;
+  height: calc(50% - 9px);
+}
+
+.cr-v-bot {
+  top: 50%;
+  bottom: 0;
+}
+
+.cr-corner {
+  position: absolute;
+  left: calc(11px - 1px);
+  top: calc(50% - 9px);
+  width: calc(1.75rem - 11px + 1px);
+  height: 11px;
+  overflow: hidden;
+  color: var(--cr-g);
+}
+
+/* 管理名單：名字欄壓縮，省略號留在名字上，代報標籤與 +N 不縮小。連線仍是絕對定位。 */
+.att-roster-managing .cr-name-cell .reg-name-text.cr-mate-text {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: middle;
+}
+
+.att-roster-managing .cr-lead > .user-capsule {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.att-roster-managing .cr-proxy-line,
+.att-roster-managing .cr-lead,
+.att-roster-managing .att-name-anchor > .reg-name-text,
+.att-roster-managing .att-name-anchor > .reg-name-badges-wrap {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.att-roster-managing .cr-proxy-line,
+.att-roster-managing .cr-lead {
+  flex: 0 1 auto;
+}
+
+.att-roster-managing .cr-ghost {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.att-roster-managing .cr-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.att-roster-managing .cr-cap .att-straight {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 列高 44px、上下置中。
+ * 膠囊偏下的原因：user-capsule.css 的 .user-capsule { margin-top: 7px } 是為了
+ * 給右上角球衣（top: -8px）與 Lv 徽章（top: -7px）留空，只墊上緣、沒有對稱下緣。
+ * 再加上 display: inline-block 貼基線，行盒底下還有字元下降部的空隙。
+ * 有徽章時 .reg-name-badges 雖然是 flex 置中，膠囊自己的 margin-top 仍把它往下推。
+ * 這裡只在名單表把 margin 歸零、改成 inline-flex 置中；球衣仍絕對定位，
+ * 44px 列在膠囊上下各留約 9px，夠接住 8px 的突出，不改 UserTag。
+ */
+.att-roster thead th {
+  border-bottom: 2px solid var(--border);
+}
+
+.att-roster tbody tr:not(.team-reservation-header-row):not(.team-reservation-general-row) > td {
+  height: 44px;
+  vertical-align: middle;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.att-roster .user-capsule.user-capsule {
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  max-width: 100%;
+  border-radius: 6px;
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-left-color: currentColor;
+}
+
+/*
+ * 徽章列維持可橫向捲動（不得溢出蓋到 🕊／簽到格，Opus 審 P2-2）；上緣用內距留空間給右上角球衣與 Lv，不被捲動容器切掉。
+ */
+.att-roster .reg-name-badges-wrap {
+  margin-top: -9px;
+}
+.att-roster .reg-name-badges {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-top: 9px;
+}
+
+.att-name-line {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  height: 100%;
+}
+
+.att-no {
+  box-sizing: border-box;
+  width: 1.3rem;
+  flex: 0 0 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-right: .4rem;
+  font-size: .7rem;
+  line-height: 1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.att-name-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+}
+
+/* 代報人：虛線空心，左側 3px 組色虛線。不斜。 */
+.att-roster .cr-ghost {
+  border-radius: 6px;
+  border-left-width: 3px;
+  border-left-style: dashed;
+  border-left-color: var(--cr-g);
+}
+
+/* 同行者斜方塊。主報名人與代報人沒有 .att-skew。 */
+.att-roster .cr-cap.att-skew {
+  border-radius: 4px;
+  padding: .24rem .7rem;
+  transform: skewX(-12deg);
+  transform-origin: center center;
+  overflow: hidden;
+}
+
+.att-roster .cr-owner.att-skew {
+  border-radius: 4px;
+  transform: skewX(-12deg);
+  transform-origin: center center;
+}
+
+.att-roster .att-straight {
+  display: inline-block;
+  transform: skewX(12deg);
+  transform-origin: center center;
+}
+
+/* 單獨列斑馬：奇數列淡底，偶數列留白。圓角在第一格與最後一格。列間不畫線。 */
+.att-roster tr.att-zebra-odd > td,
+.att-roster tr.att-zebra-even > td {
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.att-roster tr.att-zebra-odd > td {
+  background: color-mix(in srgb, var(--bg-elevated) 70%, var(--bg-card));
+}
+
+/* 斑馬底色畫在 td，會蓋住既有畫在 tr 的即時儲存閃色；閃色同步畫到 td（動畫期間壓過斑馬底，Opus 審 P2-1）。 */
+.att-roster tr.att-row-saved > td { animation: att-flash-ok .6s ease-out; }
+.att-roster tr.att-row-failed > td { animation: att-flash-err 1.2s ease-out; }
+
+.att-roster tr.att-zebra-odd > td:first-child,
+.att-roster tr.att-zebra-even > td:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.att-roster tr.att-zebra-odd > td:last-child,
+.att-roster tr.att-zebra-even > td:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* 組不吃斑馬。首列上緣、末列下緣各 1px，組內不畫線。淡組色只在名牌上。 */
+.att-roster tr.att-grp > td {
+  background: transparent;
+}
+
+.att-roster tr.att-grp-first > td {
+  border-top: 1px solid var(--border);
+}
+
+.att-roster tr.att-grp-last > td {
+  border-bottom: 1px solid var(--border);
+}
+
+/* separate 模式下 tr 的邊不繪製，保留席位的虛線改畫在格子上。 */
+.att-roster .team-reservation-placeholder-row > td {
+  border-bottom: 1px dashed var(--border);
+}

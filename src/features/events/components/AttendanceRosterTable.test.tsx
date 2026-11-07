@@ -9,6 +9,7 @@ vi.mock('@/i18n/i18n', async (importOriginal) => {
     'ui.userTag.role.coach': '教練',
     'ui.userTag.openProfile': '檢視 {name}',
     'ui.userTag.unknown': '未知用戶',
+    'events.roster.proxyBadge': '代報',
   };
   return {
     ...(await importOriginal<typeof import('@/i18n/i18n')>()),
@@ -44,7 +45,7 @@ describe('AttendanceRosterTable', () => {
 
   it('renders header count, UserTag, companion row, proxyOnly row, placeholder row, and checkin/checkout/note', () => {
     const onOpenProfile = vi.fn();
-    render(
+    const { container } = render(
       <AttendanceRosterTable
         event={{
           id: 'e1',
@@ -133,14 +134,84 @@ describe('AttendanceRosterTable', () => {
     expect(screen.getByText('一般報名')).toBeTruthy();
     expect(screen.getByText('ProxyParent')).toBeTruthy();
     expect(screen.getByText('僅代報')).toBeTruthy();
-    expect(screen.getByText('↳ Alice Kid')).toBeTruthy();
-    expect(screen.getByText('↳ ProxyKid')).toBeTruthy();
+    // 測試同步更新：同行者改 B2 呈現
+    expect(container.textContent).not.toContain('↳');
+    expect(screen.getByText('Alice Kid')).toBeTruthy();
+    expect(screen.getByText('ProxyKid')).toBeTruthy();
+    expect(screen.getByText('+1')).toBeTruthy();
+    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'P']);
+    expect(container.querySelector('.cr-ghost')?.textContent).toBe('ProxyParent');
+    expect(container.querySelector('.cr-proxy-badge')?.textContent).toContain('代報');
+    expect(seatPill.closest('td')?.querySelector('.cr-lead, .cr-pair, .cr-ghost, .cr-link')).toBeNull();
+    for (const link of container.querySelectorAll('.cr-link')) {
+      expect(link.getAttribute('aria-hidden')).toBe('true');
+    }
     expect(screen.getByText('✓')).toBeTruthy();
     expect(screen.getByText('遲到5分')).toBeTruthy();
 
     const userTagBtn = screen.getByRole('button', { name: /Alice/ });
     fireEvent.click(userTagBtn);
     expect(onOpenProfile).toHaveBeenCalledWith('u1');
+    expect(userTagBtn.closest('.cr-lead')).toBeTruthy();
+  });
+
+  it('B2：lead +2、代報虛線、solo 名字欄 DOM 不變、同行者不可點', () => {
+    const { container } = render(
+      <AttendanceRosterTable
+        event={{ id: 'e-b2', max: 10 }}
+        registrations={[
+          {
+            _docId: 'solo', userId: 'solo', userName: 'Solo', status: 'confirmed',
+            participantType: 'self', registeredAt: '2026-05-01T09:00:00Z',
+          },
+          {
+            _docId: 'a', userId: 'alice', userName: 'Alice', status: 'confirmed',
+            participantType: 'self', registeredAt: '2026-05-01T10:00:00Z',
+          },
+          {
+            _docId: 'c1', userId: 'alice', userName: 'Alice', companionId: 'k1', companionName: 'Kid One',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:01:00Z',
+          },
+          {
+            _docId: 'c2', userId: 'alice', userName: 'Alice', companionId: 'k2', companionName: 'Kid Two',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:02:00Z',
+          },
+          {
+            _docId: 'p', userId: 'proxy', userName: '王志明', companionId: 'pk', companionName: '王小寶',
+            status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T11:00:00Z',
+          },
+        ]}
+        attendanceRecords={[]}
+        roles={{ solo: 'user', alice: 'coach' }}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).not.toContain('↳');
+    expect(screen.getByText('+2')).toBeTruthy();
+    expect([...container.querySelectorAll('.cr-owner')].map((node) => node.textContent)).toEqual(['A', 'A', '志']);
+    expect(container.querySelector('.cr-ghost')?.textContent).toBe('王志明');
+    expect(container.querySelector('.cr-proxy-badge')?.textContent).toContain('代報');
+    expect(screen.queryByRole('button', { name: /Kid One/ })).toBeNull();
+
+    const soloTd = screen.getByRole('button', { name: /Solo/ }).closest('td');
+    expect(soloTd?.className ?? '').toBe('');
+    expect(soloTd?.querySelector('.reg-name-text .user-capsule')).toBeTruthy();
+    expect(soloTd?.querySelector('.cr-lead, .cr-pair, .cr-ghost, .cr-link, .cr-plus')).toBeNull();
+
+    const aliceRow = screen.getByText('+2').closest('tr');
+    expect(aliceRow?.querySelector('.cr-link-down')).toBeTruthy();
+    expect(aliceRow?.querySelector('.cr-link-dashed')).toBeNull();
+    expect(screen.getByText('Kid One').closest('td')?.querySelector('.cr-v-bot')).toBeTruthy();
+    expect(screen.getByText('Kid Two').closest('td')?.querySelector('.cr-v-bot')).toBeNull();
+    expect(screen.getByText('Kid Two').closest('td')?.querySelector('.cr-link')).toBeTruthy();
+
+    const proxyRow = screen.getByText('王志明').closest('tr');
+    expect(proxyRow?.querySelector('.cr-link')?.classList.contains('cr-link-dashed')).toBe(true);
+    expect(screen.getByText('王小寶').closest('td')?.querySelector('.cr-corner path')?.getAttribute('stroke-dasharray')).toBe('6 5');
+    for (const link of container.querySelectorAll('.cr-link')) {
+      expect(link.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 
   it('hides checkin/checkout/note columns when publicRosterOnly is true', () => {
@@ -252,6 +323,190 @@ describe('AttendanceRosterTable', () => {
     fireEvent.click(kickButtons[0]!);
     expect(onKick).toHaveBeenCalledTimes(1);
     expect(onKick.mock.calls[0]?.[0]?.uid).toBe('u1');
+  });
+});
+
+describe('名單定案版面', () => {
+  const layoutRegs = [
+    {
+      _docId: 's1', userId: 'n1', userName: 'Neil', status: 'confirmed',
+      participantType: 'self', registeredAt: '2026-05-01T09:00:00Z',
+    },
+    {
+      _docId: 's2', userId: 'n2', userName: '小孫', status: 'confirmed',
+      participantType: 'self', registeredAt: '2026-05-01T09:01:00Z',
+    },
+    {
+      _docId: 'a', userId: 'alice', userName: 'Alice', status: 'confirmed',
+      participantType: 'self', registeredAt: '2026-05-01T10:00:00Z',
+    },
+    {
+      _docId: 'k1', userId: 'alice', userName: 'Alice', companionId: 'k1', companionName: 'Kid One',
+      status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:01:00Z',
+    },
+    {
+      _docId: 'k2', userId: 'alice', userName: 'Alice', companionId: 'k2', companionName: 'Kid Two',
+      status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T10:02:00Z',
+    },
+    {
+      _docId: 's3', userId: 'n3', userName: '培亮', status: 'confirmed',
+      participantType: 'self', registeredAt: '2026-05-01T10:30:00Z',
+    },
+    {
+      _docId: 'p', userId: 'proxy', userName: '王志明', companionId: 'pk', companionName: '王小寶',
+      status: 'confirmed', participantType: 'companion', registeredAt: '2026-05-01T11:00:00Z',
+    },
+  ];
+
+  function rowOf(name: string): HTMLTableRowElement {
+    return screen.getByText(name).closest('tr')!;
+  }
+
+  it('一般檢視有序號，代報人沒有、同行者有；管理模式沒有序號，也不多一欄', () => {
+    const view = render(
+      <AttendanceRosterTable
+        event={{ id: 'e-final', max: 30 }}
+        registrations={layoutRegs}
+        attendanceRecords={[]}
+        roles={{ n2: 'coach', alice: 'coach' }}
+        onOpenProfile={vi.fn()}
+        canManage
+        canRemoveConfirmed
+      />,
+    );
+
+    expect(rowOf('Neil').querySelector('.att-no')?.textContent).toBe('1');
+    expect(rowOf('小孫').querySelector('.att-no')?.textContent).toBe('2');
+    expect(rowOf('Alice').querySelector('.att-no')?.textContent).toBe('3');
+    expect(rowOf('Kid One').querySelector('.att-no')?.textContent).toBe('4');
+    expect(rowOf('Kid Two').querySelector('.att-no')?.textContent).toBe('5');
+    expect(rowOf('培亮').querySelector('.att-no')?.textContent).toBe('6');
+    expect(rowOf('王志明').querySelector('.att-no')?.textContent).toBe('');
+    expect(rowOf('王小寶').querySelector('.att-no')?.textContent).toBe('7');
+
+    const viewColumns = document.querySelectorAll('thead th').length;
+    expect(viewColumns).toBe(4);
+    for (const tr of document.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+      expect(Array.from(tr.cells).reduce((sum, cell) => sum + cell.colSpan, 0)).toBe(viewColumns);
+    }
+
+    view.rerender(
+      <AttendanceRosterTable
+        event={{ id: 'e-final', max: 30 }}
+        registrations={layoutRegs}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+        canManage
+        canRemoveConfirmed
+        editing
+      />,
+    );
+    expect(document.querySelector('.att-no')).toBeNull();
+    expect(document.querySelector('table')?.classList.contains('att-roster-managing')).toBe(true);
+    const editColumns = document.querySelectorAll('thead th').length;
+    expect(editColumns).toBe(5);
+    expect(screen.getByRole('columnheader', { name: '踢' }).style.width).toBe('2rem');
+    expect(screen.getByRole('columnheader', { name: '簽到' }).style.width).toBe('2.5rem');
+    expect(screen.getByRole('columnheader', { name: '簽退' }).style.width).toBe('2.5rem');
+    expect(screen.getByRole('columnheader', { name: '備註' }).style.width).toBe('4.5rem');
+    for (const tr of document.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+      expect(Array.from(tr.cells).reduce((sum, cell) => sum + cell.colSpan, 0)).toBe(editColumns);
+    }
+  });
+
+  it('同行者名牌有斜方塊 class，主報名人與代報人沒有', () => {
+    render(
+      <AttendanceRosterTable
+        event={{ id: 'e-final', max: 30 }}
+        registrations={layoutRegs}
+        attendanceRecords={[]}
+        roles={{ alice: 'coach' }}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Kid One').closest('.cr-cap')?.classList.contains('att-skew')).toBe(true);
+    expect(screen.getByText('Kid Two').closest('.cr-cap')?.classList.contains('att-skew')).toBe(true);
+    expect(screen.getByText('王小寶').closest('.cr-cap')?.classList.contains('att-skew')).toBe(true);
+    expect(rowOf('Kid One').querySelector('.cr-owner')?.classList.contains('att-skew')).toBe(true);
+
+    const lead = screen.getByRole('button', { name: /Alice/ });
+    expect(lead.classList.contains('att-skew')).toBe(false);
+    expect(lead.closest('.att-skew')).toBeNull();
+    const ghost = screen.getByText('王志明');
+    expect(ghost.classList.contains('att-skew')).toBe(false);
+    expect(ghost.closest('.cr-ghost')?.classList.contains('att-skew')).toBe(false);
+    expect(ghost.closest('.att-skew')).toBeNull();
+  });
+
+  it('單獨列有斑馬奇偶 class，組列沒有；組首尾列有分隔線 class', () => {
+    render(
+      <AttendanceRosterTable
+        event={{ id: 'e-final', max: 30 }}
+        registrations={layoutRegs}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    expect(rowOf('Neil').classList.contains('att-zebra-odd')).toBe(true);
+    expect(rowOf('小孫').classList.contains('att-zebra-even')).toBe(true);
+    expect(rowOf('培亮').classList.contains('att-zebra-odd')).toBe(true);
+
+    for (const name of ['Alice', 'Kid One', 'Kid Two', '王志明', '王小寶']) {
+      const row = rowOf(name);
+      expect(row.classList.contains('att-zebra-odd')).toBe(false);
+      expect(row.classList.contains('att-zebra-even')).toBe(false);
+      expect(row.classList.contains('att-grp')).toBe(true);
+    }
+    expect(rowOf('Alice').classList.contains('att-grp-first')).toBe(true);
+    expect(rowOf('Alice').classList.contains('att-grp-last')).toBe(false);
+    expect(rowOf('Kid One').classList.contains('att-grp-first')).toBe(false);
+    expect(rowOf('Kid One').classList.contains('att-grp-last')).toBe(false);
+    expect(rowOf('Kid Two').classList.contains('att-grp-first')).toBe(false);
+    expect(rowOf('Kid Two').classList.contains('att-grp-last')).toBe(true);
+    expect(rowOf('王志明').classList.contains('att-grp-first')).toBe(true);
+    expect(rowOf('王志明').classList.contains('att-grp-last')).toBe(false);
+    expect(rowOf('王小寶').classList.contains('att-grp-last')).toBe(true);
+    expect(rowOf('王志明').getAttribute('style')).toBeNull();
+  });
+
+  it('保留席位不佔序號，下一個算名額的人接著編', () => {
+    render(
+      <AttendanceRosterTable
+        event={{
+          id: 'e-seat',
+          max: 10,
+          teamReservationSummaries: [
+            { teamId: 't1', teamName: 'FC One', reservedSlots: 2, usedSlots: 1, remainingSlots: 1 },
+          ],
+        }}
+        registrations={[
+          {
+            _docId: 'a', userId: 'alice', userName: 'Alice', status: 'confirmed',
+            participantType: 'self', teamReservationTeamId: 't1', teamReservationTeamName: 'FC One',
+            registeredAt: '2026-05-01T10:00:00Z',
+          },
+          {
+            _docId: 'b', userId: 'bob', userName: 'Bob', status: 'confirmed',
+            participantType: 'self', registeredAt: '2026-05-01T11:00:00Z',
+          },
+        ]}
+        attendanceRecords={[]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('報名名單（2/10）')).toBeTruthy();
+    expect(rowOf('Alice').querySelector('.att-no')?.textContent).toBe('1');
+    const seat = screen.getByTitle('FC One 保留席位').closest('tr')!;
+    expect(seat.querySelector('.att-no')?.textContent).toBe('');
+    expect(seat.classList.contains('att-zebra-odd')).toBe(false);
+    expect(seat.classList.contains('att-zebra-even')).toBe(false);
+    expect(rowOf('Bob').querySelector('.att-no')?.textContent).toBe('2');
   });
 });
 
