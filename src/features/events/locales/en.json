@@ -179,6 +179,7 @@
     "empty": "No registrations yet",
     "reservedSeat": "Reserved seat",
     "proxyOnly": "Proxy only",
+    "proxyBadge": "Proxy",
     "courseRollcall": "Check in via course",
     "generalSection": "General registration",
     "clubBadge": "C",
