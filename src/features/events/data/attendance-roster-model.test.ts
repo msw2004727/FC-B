@@ -510,4 +510,28 @@ describe('buildWaitlistRoster', () => {
     });
     expect(wl.totalCount).toBe(6);
   });
+
+  // 2026-11-07 站長定案 F3：被手動下放者由 Functions 寫 waitlistSortAt（排到候補最後），registeredAt 不改。
+  it('orders a manually demoted registration by waitlistSortAt (after earlier waitlisters, before later registrants)', () => {
+    const event: RosterEventInput = { id: 'ev1', max: 1 };
+    const regs: RosterRegistrationInput[] = [
+      { _docId: 'r-promoted', userId: 'uB', userName: 'B', status: 'confirmed', participantType: 'self', registeredAt: '2026-10-02T00:00:00Z' },
+      {
+        _docId: 'r-demoted', userId: 'uA', userName: 'A', status: 'waitlisted', participantType: 'self',
+        registeredAt: '2026-10-01T00:00:00Z', waitlistSortAt: { seconds: Date.parse('2026-10-05T00:00:00Z') / 1000, nanoseconds: 0 },
+      },
+      { _docId: 'r-c', userId: 'uC', userName: 'C', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-03T00:00:00Z' },
+      { _docId: 'r-d', userId: 'uD', userName: 'D', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-06T00:00:00Z' },
+    ];
+    expect(buildWaitlistRoster(event, regs).items.map((it) => it.userId)).toEqual(['uC', 'uA', 'uD']);
+  });
+
+  it('falls back to registeredAt when waitlistSortAt is missing or empty (Functions not yet deployed / legacy docs)', () => {
+    const event: RosterEventInput = { id: 'ev1', max: 1 };
+    const regs: RosterRegistrationInput[] = [
+      { _docId: 'r-2', userId: 'u2', userName: 'Two', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-02T00:00:00Z', waitlistSortAt: null },
+      { _docId: 'r-1', userId: 'u1', userName: 'One', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-01T00:00:00Z' },
+    ];
+    expect(buildWaitlistRoster(event, regs).items.map((it) => it.userId)).toEqual(['u1', 'u2']);
+  });
 });
