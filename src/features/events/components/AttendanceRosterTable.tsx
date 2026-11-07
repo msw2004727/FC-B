@@ -81,10 +81,76 @@ export interface AttendanceRosterTableProps {
   onChangeNote?: (person: ConfirmedRosterPerson, noteValue: string) => void;
 }
 
-const PROXY_ROW_STYLE =
-  'border-bottom:1px solid var(--border);background:linear-gradient(90deg, rgba(148,163,184,.16), rgba(148,163,184,.04) 55%, transparent)';
-
 const NAME_CELL_STYLE = 'padding:.35rem .3rem;text-align:left';
+
+interface RosterRowChrome {
+  /** null：這列不顯示序號（代報、保留席位、標頭）。 */
+  serial: number | null;
+  zebra: 'odd' | 'even' | null;
+  inGroup: boolean;
+  groupFirst: boolean;
+  groupLast: boolean;
+}
+
+/**
+ * 序號與表頭「報名名單（n/max）」同一套名額：
+ * `buildConfirmedRoster` 的 countablePeople 排除標頭、分隔、保留席位、代報人。
+ * 保留席位是尚未填人的預留空位，不計入 renderedRosterCount，因此不編序號。
+ * 單獨報名、主報名人、同行者都算。斑馬只在「不算組」的單獨列之間一深一淺。
+ */
+function countsTowardRosterQuota(person: ConfirmedRosterPerson): boolean {
+  return !person.isTeamHeader
+    && !person.isTeamGeneralSeparator
+    && !person.isTeamPlaceholder
+    && !person.proxyOnly
+    && !person.isProxyOnly;
+}
+
+function buildRosterRowChrome(
+  people: readonly ConfirmedRosterPerson[],
+  rowMeta: readonly CompanionRowMeta[],
+): RosterRowChrome[] {
+  const chrome: RosterRowChrome[] = people.map(() => ({
+    serial: null,
+    zebra: null,
+    inGroup: false,
+    groupFirst: false,
+    groupLast: false,
+  }));
+
+  for (let i = 0; i < people.length; i += 1) {
+    const meta = rowMeta[i];
+    if (!meta || (meta.kind !== 'lead' && meta.kind !== 'proxyLead')) continue;
+    const last = Math.min(people.length - 1, i + Math.max(0, meta.mateCount));
+    for (let j = i; j <= last; j += 1) {
+      const cell = chrome[j];
+      if (cell) cell.inGroup = true;
+    }
+    const firstCell = chrome[i];
+    const lastCell = chrome[last];
+    if (firstCell) firstCell.groupFirst = true;
+    if (lastCell) lastCell.groupLast = true;
+  }
+
+  let serial = 0;
+  let soloStripe = 0;
+  for (let i = 0; i < people.length; i += 1) {
+    const person = people[i];
+    const meta = rowMeta[i];
+    const cell = chrome[i];
+    if (!person || !meta || !cell) continue;
+    if (countsTowardRosterQuota(person)) {
+      serial += 1;
+      cell.serial = serial;
+    }
+    if (!cell.inGroup && meta.kind === 'solo' && countsTowardRosterQuota(person)) {
+      soloStripe += 1;
+      cell.zebra = soloStripe % 2 === 1 ? 'odd' : 'even';
+    }
+  }
+
+  return chrome;
+}
 
 function ProxyBadgeIcon(): JSX.Element {
   return (
@@ -179,6 +245,7 @@ export function AttendanceRosterTable({
   }
   // 含標頭與分隔列的實際順序。這些列是 solo，會打斷緊接，連線不跨區段。
   const rowMeta = buildCompanionRowMeta(people);
+  const rowChrome = buildRosterRowChrome(people, rowMeta);
   const maxCount = Number(event.max || 0) || 0;
   const showManage = Boolean(canManage && !publicRosterOnly);
   const tableEditing = Boolean(showManage && editing);
@@ -320,8 +387,8 @@ export function AttendanceRosterTable({
       nameInner = (
         <span class="reg-name-text cr-mate-text">
           <span class="cr-pair" style={groupStyle}>
-            <span class="cr-owner">{initial}</span>
-            <span class="cr-cap">{p.displayName}</span>
+            <span class="cr-owner att-skew">{initial}</span>
+            <span class="cr-cap att-skew"><span class="att-straight">{p.displayName}</span></span>
           </span>
         </span>
       );
@@ -393,18 +460,43 @@ export function AttendanceRosterTable({
 
   function renderNameTd(p: ConfirmedRosterPerson, index: number): JSX.Element {
     const meta = rowMeta[index] ?? { kind: 'solo' as const, slot: 0 as const };
+    const serial = rowChrome[index]?.serial;
+    // 序號在名字欄裡，不另開欄，表頭寬度與 colSpan 維持原樣。
+    // 代報與保留席位留白同寬的空位，連線仍對齊各列小頭像。
+    const body = (
+      <span class="att-name-line">
+        {!tableEditing && <span class="att-no" aria-hidden="true">{serial ?? ''}</span>}
+        <span class="att-name-anchor">
+          {meta.kind !== 'solo' && <GroupLink meta={meta} />}
+          {renderNameCell(p, meta)}
+        </span>
+      </span>
+    );
     if (meta.kind === 'solo') {
-      return <td style={NAME_CELL_STYLE}>{renderNameCell(p, meta)}</td>;
+      return <td style={NAME_CELL_STYLE}>{body}</td>;
     }
     return (
       <td
         class={`cr-name-cell${meta.kind === 'mate' ? ' cr-mate-cell' : ''}`}
         style={`${NAME_CELL_STYLE};--cr-g:${companionGroupColorVar(meta.slot)}`}
       >
-        <GroupLink meta={meta} />
-        {renderNameCell(p, meta)}
+        {body}
       </td>
     );
+  }
+
+  function chromeClass(index: number, ...extra: Array<string | false | undefined>): string | undefined {
+    const chrome = rowChrome[index];
+    const classes: string[] = [];
+    for (const item of extra) {
+      if (item) classes.push(item);
+    }
+    if (chrome?.zebra === 'odd') classes.push('att-zebra-odd');
+    else if (chrome?.zebra === 'even') classes.push('att-zebra-even');
+    if (chrome?.inGroup) classes.push('att-grp');
+    if (chrome?.groupFirst) classes.push('att-grp-first');
+    if (chrome?.groupLast) classes.push('att-grp-last');
+    return classes.length > 0 ? classes.join(' ') : undefined;
   }
 
   function renderEmptyKickCell(): JSX.Element | null {
@@ -548,8 +640,8 @@ export function AttendanceRosterTable({
       {renderLegacySettleBanner()}
       <RosterStatusCourseNote event={event} editing={tableEditing} />
       <table
-        class={tableEditing ? 'att-roster-managing' : undefined}
-        style="width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed"
+        class={`att-roster${tableEditing ? ' att-roster-managing' : ''}`}
+        style="width:100%;border-collapse:separate;border-spacing:0;font-size:.8rem;table-layout:fixed"
       >
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
@@ -647,7 +739,7 @@ export function AttendanceRosterTable({
                   <tr
                     key={rowKey}
                     data-attendance-key={attendanceKey}
-                    style={PROXY_ROW_STYLE}
+                    class={chromeClass(index)}
                   >
                     {renderEmptyKickCell()}
                     {renderDemoteCell(p)}
@@ -662,7 +754,7 @@ export function AttendanceRosterTable({
                   <tr
                     key={rowKey}
                     data-attendance-key={attendanceKey}
-                    class="team-reservation-placeholder-row"
+                    class={chromeClass(index, 'team-reservation-placeholder-row')}
                   >
                     {renderEmptyKickCell()}
                     {renderDemoteCell(p)}
@@ -675,7 +767,7 @@ export function AttendanceRosterTable({
             } else {
               if (p.isTeamPlaceholder) {
                 return (
-                  <tr key={rowKey} class="team-reservation-placeholder-row">
+                  <tr key={rowKey} class={chromeClass(index, 'team-reservation-placeholder-row')}>
                     {renderNameTd(p, index)}
                     {renderNoShowCell(p)}
                     {renderBlankAttendanceCells()}
@@ -684,7 +776,7 @@ export function AttendanceRosterTable({
               }
               if (isProxyOnly) {
                 return (
-                  <tr key={rowKey} style={PROXY_ROW_STYLE}>
+                  <tr key={rowKey} class={chromeClass(index)}>
                     {renderNameTd(p, index)}
                     {renderNoShowCell(p)}
                     {renderEmptyAttendanceCells('僅代報')}
@@ -699,20 +791,18 @@ export function AttendanceRosterTable({
               : failedFlashKeys?.[attendanceKey]
                 ? 'att-row-failed'
                 : '';
-            const rowClasses = [
-              p.teamReservationTeamId ? 'team-reservation-member-row' : '',
-              flashClass,
-            ]
-              .filter(Boolean)
-              .join(' ');
+            const rowClasses = chromeClass(
+              index,
+              p.teamReservationTeamId ? 'team-reservation-member-row' : undefined,
+              flashClass || undefined,
+            );
 
             if (state.ambiguous) {
               return (
                 <tr
                   key={rowKey}
                   data-attendance-key={tableEditing ? attendanceKey : undefined}
-                  class={rowClasses || undefined}
-                  style="border-bottom:1px solid var(--border)"
+                  class={rowClasses}
                 >
                   {tableEditing && renderKickCell(p)}
                   {renderDemoteCell(p)}
@@ -728,8 +818,7 @@ export function AttendanceRosterTable({
                 <tr
                   key={rowKey}
                   data-attendance-key={attendanceKey}
-                  class={rowClasses || undefined}
-                  style="border-bottom:1px solid var(--border)"
+                  class={rowClasses}
                 >
                   {renderKickCell(p)}
                   {renderDemoteCell(p)}
@@ -743,8 +832,7 @@ export function AttendanceRosterTable({
             return (
               <tr
                 key={rowKey}
-                class={rowClasses || undefined}
-                style="border-bottom:1px solid var(--border)"
+                class={rowClasses}
               >
                 {renderNameTd(p, index)}
                 {renderNoShowCell(p)}
