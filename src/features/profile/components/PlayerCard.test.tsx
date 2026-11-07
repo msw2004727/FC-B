@@ -52,7 +52,7 @@ import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { playerCardShineCssGradient, playerCardShineLayers } from '../data/player-card-model';
 import { options } from 'preact';
-import { PLAYER_CARD_SAFE_MAX_RPM, playerCardShineOffsetPct, rpmToNeedleDeg } from './player-card-spin';
+import { PLAYER_CARD_SAFE_MAX_RPM, classifyPlayerCardGesture, playerCardShineOffsetPct, rpmToNeedleDeg } from './player-card-spin';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 
@@ -557,6 +557,13 @@ describe('T-092 球員卡（DOM）', () => {
     function lift(el: Element, dx: number): void {
       fireEvent.pointerUp(el, { pointerId: 7, pointerType: 'touch', clientX: 100 + dx, clientY: 100 });
     }
+    /** jsdom 沒有 Touch 建構子：用可取消的 Event 掛上 touches。 */
+    function touchMove(el: Element, clientX: number, clientY: number): Event {
+      const ev = new Event('touchmove', { cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [{ clientX, clientY }] });
+      el.dispatchEvent(ev);
+      return ev;
+    }
 
     it('鎖頭預設解鎖，在卡片外、有 aria-label／aria-pressed', () => {
       const { container } = renderTop(viewer());
@@ -631,6 +638,56 @@ describe('T-092 球員卡（DOM）', () => {
       drag(stage, 4, 60);
       lift(stage, 4);
       expect(flip.style.transform).toBe('');
+    });
+
+    it('classifyPlayerCardGesture：60° 內為 drag，更陡為 scroll，未達門檻為 pending', () => {
+      expect(classifyPlayerCardGesture(6, 0)).toBe('drag');
+      expect(classifyPlayerCardGesture(6, 10)).toBe('drag'); // atan(10/6)≈59°
+      expect(classifyPlayerCardGesture(6, 11)).toBe('scroll');
+      expect(classifyPlayerCardGesture(3, 8)).toBe('scroll');
+      expect(classifyPlayerCardGesture(3, 3)).toBe('pending');
+      expect(classifyPlayerCardGesture(-6, 10)).toBe('drag');
+      // 垂直先滿門檻、水平未滿：仍照角度判（約 50° 算撥卡）
+      expect(classifyPlayerCardGesture(5, 6)).toBe('drag');
+      expect(classifyPlayerCardGesture(0, -6)).toBe('scroll');
+    });
+
+    it('斜撥約 40°（dx=60、dy=50）跟手旋轉', () => {
+      const { container } = renderTop(viewer());
+      const { stage, flip } = parts(container);
+      drag(stage, 60, 50);
+      expect(flip.style.transform).toBe('rotateY(48deg)');
+    });
+
+    it('touchmove：drag 中 cancelable 會 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      drag(stage, 80);
+      const ev = touchMove(stage, 180, 110);
+      expect(ev.defaultPrevented).toBe(true);
+    });
+
+    it('touchmove：pending 垂直移動（dx=2、dy=20）不 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      fireEvent.pointerDown(stage, { pointerId: 7, pointerType: 'touch', clientX: 100, clientY: 100 });
+      const ev = touchMove(stage, 102, 120);
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('touchmove：idle 不 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      const ev = touchMove(stage, 160, 100);
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('touchmove：pending 斜撥（pointermove 尚未接手）也 preventDefault', () => {
+      const { container } = renderTop(viewer());
+      const { stage } = parts(container);
+      fireEvent.pointerDown(stage, { pointerId: 7, pointerType: 'touch', clientX: 100, clientY: 100 });
+      const ev = touchMove(stage, 160, 150);
+      expect(ev.defaultPrevented).toBe(true);
     });
 
     it('點鎖頭（含按下與移動）不觸發旋轉', () => {
@@ -1360,6 +1417,106 @@ describe('T-092 球員卡（DOM）', () => {
         view.unmount();
         expect(caf).toHaveBeenCalledWith(lastId);
         expect(pending.size).toBe(0);
+      });
+
+      it('靜止點一下翻到背面，再點一下回到正面', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        expect(flip.style.transform).toBe('rotateY(180deg)');
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        expect(flip.style.transform).toBe('rotateY(0deg)');
+      });
+
+      it('減少動態：點一下直接翻面，不跑動畫', () => {
+        stubMatchMedia(true);
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        expect(flip.style.transform).toBe('rotateY(180deg)');
+        expect(pending.size).toBe(0);
+      });
+
+      it('按住超過 300ms 再放開不翻', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        const down = createEvent.pointerDown(stage, ptr(100));
+        Object.defineProperty(down, 'timeStamp', { value: now });
+        fireEvent(stage, down);
+        const up = createEvent.pointerUp(stage, ptr(100));
+        Object.defineProperty(up, 'timeStamp', { value: now + 350 });
+        fireEvent(stage, up);
+        expect(pending.size).toBe(0);
+        expect(flip.style.transform).toBe('');
+      });
+
+      it('鎖定時點一下不翻', () => {
+        localStorage.setItem(LOCK_KEY, '1');
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        expect(flip.style.transform).toBe('');
+        expect(pending.size).toBe(0);
+      });
+
+      it('轉動中（慣性）點一下是煞車，停在最近一面而不是多翻 180°', () => {
+        const { container } = renderTop(viewer());
+        const { stage, flip } = parts(container);
+        const angles = recordAngles(flip);
+        flick(stage, 220);
+        for (let i = 0; i < 4 && pending.size; i++) {
+          const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+          pending.delete(id);
+          now += 16;
+          cb(now);
+        }
+        const at = angles[angles.length - 1]!;
+        expect(at % 180).not.toBe(0);
+        fireEvent.pointerDown(stage, ptr(100));
+        fireEvent.pointerUp(stage, ptr(100));
+        flush();
+        const raw = angles[angles.length - 2]!;
+        expect(raw % 180).toBe(0);
+        expect(Math.abs(raw - at)).toBeLessThanOrEqual(90);
+        expect(Math.abs(raw - (at + 180))).toBeGreaterThan(90);
+        expect(flip.style.transform).toBe(`rotateY(${((raw % 360) + 360) % 360}deg)`);
+      });
+
+      it('點一下翻面不刷新最高轉速記錄，RPM 維持 0', () => {
+        const BEST_KEY = 'toosterx:player-card-best-rpm';
+        localStorage.setItem(BEST_KEY, '345');
+        const setSpy = vi.spyOn(Storage.prototype, 'setItem');
+        try {
+          const { container } = renderTop(viewer());
+          const { stage, flip } = parts(container);
+          const num = container.querySelector('.player-card-rpm-num') as HTMLElement;
+          const best = container.querySelector('.player-card-rpm-best-num') as HTMLElement;
+          expect(best.textContent).toBe('345');
+          expect(num.textContent).toBe('0');
+          fireEvent.pointerDown(stage, ptr(100));
+          fireEvent.pointerUp(stage, ptr(100));
+          while (pending.size) {
+            const [id, cb] = pending.entries().next().value as [number, FrameRequestCallback];
+            pending.delete(id);
+            now += 16;
+            cb(now);
+            expect(num.textContent).toBe('0');
+          }
+          expect(flip.style.transform).toBe('rotateY(180deg)');
+          expect(best.textContent).toBe('345');
+          expect(localStorage.getItem(BEST_KEY)).toBe('345');
+          expect(setSpy.mock.calls.filter((c) => c[0] === BEST_KEY)).toHaveLength(0);
+        } finally {
+          setSpy.mockRestore();
+          localStorage.removeItem(BEST_KEY);
+        }
       });
     });
 

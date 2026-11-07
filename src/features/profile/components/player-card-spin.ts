@@ -9,6 +9,7 @@
  * 轉速上限（站長 11-06 第二次）：完全解除，取代原「疊加夾在 900 RPM」；只留 PLAYER_CARD_SAFE_MAX_RPM 防數值溢位。
  * 動態反光（站長 11-06 方案①）：每幀寫 rotateY 時一併寫斜光層的 translateX（不走 state），靜止於 180° 倍數時清掉 transform，
  * 回到與 PNG 相同的固定斜光；減少動態時斜光不動。
+ * 11-07 站長方案 A：斜撥 60° 內算撥卡（取代原 45°）、touchmove 搶先 preventDefault 避免瀏覽器接走、靜止點一下翻面；原因：拇指畫弧斜撥常被判成捲動而翻不動。
  */
 import { useEffect, useRef } from 'preact/hooks';
 
@@ -23,9 +24,14 @@ const STOP_DEG_PER_MS = 0.12;
 const FRICTION_PER_MS = 0.9965;
 const MAX_FRAME_MS = 32;
 const SETTLE_MS = 420;
-/** 水平位移超過此值且大於垂直位移才接管；垂直先超過就交給頁面捲動。 */
+/** 任一軸位移達此值才判方向；斜角在 DRAG_MAX_DY_PER_DX 以內才接管，更陡就交給頁面捲動。 */
 const AXIS_LOCK_PX = 6;
-/** 放手時總位移小於此值視為點一下，不翻。 */
+/**
+ * 斜撥上限：與水平夾角 60° 以內（tan 60°≈1.732）都算撥卡。
+ * 11-07 方案 A 取代原 45°（|dx| > |dy|）；更陡才交給頁面捲動。拇指畫弧起手常帶垂直分量。
+ */
+const DRAG_MAX_DY_PER_DX = Math.tan((60 * Math.PI) / 180);
+/** 放手時水平與垂直位移都小於此值視為點一下：靜止翻到另一面，轉動中則是煞車。 */
 const TAP_PX = 4;
 /**
  * 半圓轉速表滿刻度 900 RPM（刻度與紅區不變）；超過時指針停在頂端、紅區發光（.player-card-rpm.is-over）。
@@ -47,7 +53,7 @@ export const PLAYER_CARD_SHINE_SWEEP_PCT = 60;
 export const PLAYER_CARD_TURNING_CLASS = 'is-turning';
 /** RPM 文字最快每 100ms 更新一次；歸零立即寫。 */
 const RPM_UPDATE_MS = 100;
-/** 按住超過此時間，RPM 數字歸 0（卡片已被抓停）。 */
+/** 按住超過此時間，RPM 數字歸 0（卡片已被抓停）；點一下翻面也必須短於這段時間。 */
 const HOLD_ZERO_MS = 300;
 /** 按下到放手在此時間內才算「快速撥」，才疊加剩餘轉速；抓住停一下再撥不疊加，避免抓住卻停不下。 */
 const CARRY_MAX_HOLD_MS = 150;
@@ -141,6 +147,18 @@ function nearestFace(angle: number): number {
   return Math.round(angle / 180) * 180;
 }
 
+/**
+ * 撥動方向（onPointerMove 與 touchmove 共用，不依賴兩種事件誰先到）。
+ * 任一軸位移達 AXIS_LOCK_PX 才判：與水平夾角在 60° 內 → drag，更陡 → scroll（交給頁面捲動）；都未達 → pending。
+ * 先看位移再看角度（PM 審 Grok 回報疑慮）：避免 dx=5、dy=6 這種約 50° 的斜撥因水平還沒滿門檻就被判成捲動。
+ */
+export function classifyPlayerCardGesture(dx: number, dy: number): 'drag' | 'scroll' | 'pending' {
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (adx < AXIS_LOCK_PX && ady < AXIS_LOCK_PX) return 'pending';
+  return ady <= adx * DRAG_MAX_DY_PER_DX ? 'drag' : 'scroll';
+}
+
 interface SpinState {
   angle: number;
   vel: number;
@@ -163,6 +181,10 @@ interface SpinState {
   bestDirty: boolean;
   /** 按住超過 HOLD_ZERO_MS 歸零用的計時器。 */
   holdTimer: ReturnType<typeof setTimeout> | 0;
+  /** 按下的事件時間，點一下必須短於 HOLD_ZERO_MS。 */
+  downT: number;
+  /** 按下當下是否靜止在一面（要在 stop() 之前記；轉動中點一下仍是煞車）。 */
+  downAtRest: boolean;
   /** 減少動態：斜光不跟著動（按下與對齊時重讀）。 */
   reduced: boolean;
   /** 斜光目前是否有位移（is-turning 已掛上）。 */
@@ -181,6 +203,8 @@ export interface PlayerCardSpinHandlers {
 
 export function usePlayerCardSpin(locked: boolean): {
   flipRef: { current: HTMLDivElement | null };
+  /** 舞台（.player-card-stage）：用來掛 non-passive touchmove。 */
+  stageRef: { current: HTMLDivElement | null };
   rpmRef: { current: HTMLSpanElement | null };
   bestRef: { current: HTMLSpanElement | null };
   /** 轉速表指針（SVG <g>），角度每幀直寫 transform 屬性。 */
@@ -190,6 +214,7 @@ export function usePlayerCardSpin(locked: boolean): {
   handlers: PlayerCardSpinHandlers;
 } {
   const flipRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const rpmRef = useRef<HTMLSpanElement | null>(null);
   const bestRef = useRef<HTMLSpanElement | null>(null);
   const needleRef = useRef<SVGGElement | null>(null);
@@ -214,6 +239,8 @@ export function usePlayerCardSpin(locked: boolean): {
     best: 0,
     bestDirty: false,
     holdTimer: 0,
+    downT: 0,
+    downAtRest: false,
     reduced: false,
     shineMoving: false,
     over: false,
@@ -316,20 +343,13 @@ export function usePlayerCardSpin(locked: boolean): {
       render();
       showRpm(0);
     };
-    /** dir≠0（慣性收尾）時取轉動方向上的下一個 180° 倍數，避免最後倒轉；dir=0 取最近一面。 */
-    const settle = (dir = 0): void => {
-      stop();
+    /**
+     * 420ms ease-out 轉到 target；減少動態直接 snap。
+     * settle 與靜止點一下翻面共用。RPM 以目前顯示值為上限、只遞減不回升（不帶 record，不刷新最高記錄）。
+     */
+    const animateTo = (target: number): void => {
       st.reduced = prefersReducedMotion();
-      const target = dir > 0
-        ? Math.ceil(st.angle / 180) * 180
-        : dir < 0
-          ? Math.floor(st.angle / 180) * 180
-          : nearestFace(st.angle);
-      if (target === st.angle) {
-        showRpm(0);
-        return;
-      }
-      if (prefersReducedMotion()) {
+      if (st.reduced) {
         snap(target);
         return;
       }
@@ -355,6 +375,21 @@ export function usePlayerCardSpin(locked: boolean): {
         }
       };
       st.raf = requestAnimationFrame(step);
+    };
+    /** dir≠0（慣性收尾）時取轉動方向上的下一個 180° 倍數，避免最後倒轉；dir=0 取最近一面。 */
+    const settle = (dir = 0): void => {
+      stop();
+      st.reduced = prefersReducedMotion();
+      const target = dir > 0
+        ? Math.ceil(st.angle / 180) * 180
+        : dir < 0
+          ? Math.floor(st.angle / 180) * 180
+          : nearestFace(st.angle);
+      if (target === st.angle) {
+        showRpm(0);
+        return;
+      }
+      animateTo(target);
     };
     const coast = (): void => {
       stop();
@@ -391,6 +426,9 @@ export function usePlayerCardSpin(locked: boolean): {
       // 按住時立即拿掉 is-spinning（數字先維持，避免連撥時每次按下都歸零閃爍）；按住超過 HOLD_ZERO_MS 數字才歸 0。
       st.carryVel = st.anim === 'coast' ? st.vel : 0;
       st.carryT = performance.now();
+      // 點一下翻面只認「按下時已靜止在一面」；必須在 stop() 之前記，stop 會把 anim 清成 none。
+      st.downT = eventTime(e);
+      st.downAtRest = st.anim === 'none' && st.angle % 180 === 0;
       st.reduced = prefersReducedMotion();
       stop();
       rpmRef.current?.closest('.player-card-rpm')?.classList.remove('is-spinning');
@@ -416,7 +454,8 @@ export function usePlayerCardSpin(locked: boolean): {
       const dx = e.clientX - st.startX;
       const dy = e.clientY - st.startY;
       if (st.mode === 'pending') {
-        if (Math.abs(dx) >= AXIS_LOCK_PX && Math.abs(dx) > Math.abs(dy)) {
+        const gesture = classifyPlayerCardGesture(dx, dy);
+        if (gesture === 'drag') {
           st.mode = 'drag';
           // 反方向拖：丟掉剩餘轉速，放手後只照本次撥速轉（不會先被舊轉速拖著倒退）
           if (Math.sign(dx) !== Math.sign(st.carryVel)) st.carryVel = 0;
@@ -425,8 +464,8 @@ export function usePlayerCardSpin(locked: boolean): {
           } catch {
             /* 不支援 capture 時仍可跟手，只是手指滑出卡外會中斷 */
           }
-        } else if (Math.abs(dy) >= AXIS_LOCK_PX) {
-          // 垂直為主：交給頁面捲動（touch-action: pan-y），若剛好攔停了轉動就對齊
+        } else if (gesture === 'scroll') {
+          // 比 60° 更陡：交給頁面捲動（touch-action: pan-y），若剛好攔停了轉動就對齊
           st.mode = 'idle';
           settle();
           return;
@@ -446,6 +485,18 @@ export function usePlayerCardSpin(locked: boolean): {
       st.mode = 'idle';
       st.pointerId = -1;
       clearHoldTimer();
+      // 靜止短按翻到另一面（pending 與 drag 都算）。放在 mode !== 'drag' 之前；取消、按住太久、轉動中不走這裡。
+      if (
+        !cancelled
+        && Math.abs(e.clientX - st.startX) < TAP_PX
+        && Math.abs(e.clientY - st.startY) < TAP_PX
+        && eventTime(e) - st.downT < HOLD_ZERO_MS
+        && st.downAtRest
+      ) {
+        stop();
+        animateTo(st.angle + 180);
+        return;
+      }
       if (mode !== 'drag' || cancelled) {
         settle();
         return;
@@ -517,5 +568,22 @@ export function usePlayerCardSpin(locked: boolean): {
 
   useEffect(() => dispose, []);
 
-  return { flipRef, rpmRef, bestRef, needleRef, initialBest: st.best, handlers };
+  // 斜撥時搶在瀏覽器把 touchmove 判成垂直捲動之前 preventDefault。CSS 仍是 pan-y，純垂直不擋。
+  // 不看 pointer／touch 誰先到：用目前 mode 與觸點相對按下點的位移自行判斷。
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent): void => {
+      if (st.mode === 'idle' || !e.cancelable) return;
+      const touch = e.touches?.[0];
+      if (!touch) return;
+      const dx = touch.clientX - st.startX;
+      const dy = touch.clientY - st.startY;
+      if (st.mode === 'drag' || classifyPlayerCardGesture(dx, dy) === 'drag') e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
+
+  return { flipRef, stageRef, rpmRef, bestRef, needleRef, initialBest: st.best, handlers };
 }

@@ -142,7 +142,7 @@ export function PlayerCard({
   const theme = resolvePlayerCardTheme();
   const gaugeWidth = `${Math.round(model.gaugeRatio * 100)}%`;
   const [locked, setLocked] = useState(readPlayerCardLocked);
-  const { flipRef, rpmRef, bestRef, needleRef, initialBest, handlers } = usePlayerCardSpin(locked);
+  const { flipRef, stageRef, rpmRef, bestRef, needleRef, initialBest, handlers } = usePlayerCardSpin(locked);
   const toggleLock = (): void => {
     const next = !locked;
     setLocked(next);
@@ -178,6 +178,7 @@ export function PlayerCard({
       </button>
       <div
         class={`player-card-stage${locked ? ' is-locked' : ''}`}
+        ref={stageRef}
         onPointerDown={handlers.onPointerDown}
         onPointerMove={handlers.onPointerMove}
         onPointerUp={handlers.onPointerUp}
