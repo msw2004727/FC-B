@@ -71,8 +71,9 @@ describe('buildCompanionRowMeta', () => {
       leadProxy('only-flag', 'Flag', { proxyOnly: false, isProxyOnly: true }),
     ]);
     expect(meta[0]).toEqual({ kind: 'proxyLead', slot: 0, mateCount: 2 });
-    expect(meta[1]).toMatchObject({ kind: 'mate', connected: true, last: false, dashed: true, ownerInitial: '王' });
-    expect(meta[2]).toMatchObject({ kind: 'mate', connected: true, last: true, dashed: true, ownerInitial: '王' });
+    // 測試同步更新：小頭像中文名取第二字（王志明→志，Opus 審 P2-3）
+    expect(meta[1]).toMatchObject({ kind: 'mate', connected: true, last: false, dashed: true, ownerInitial: '志' });
+    expect(meta[2]).toMatchObject({ kind: 'mate', connected: true, last: true, dashed: true, ownerInitial: '志' });
     expect(meta[3]).toEqual({ kind: 'proxyLead', slot: 1, mateCount: 0 });
   });
 
