@@ -1,0 +1,51 @@
+/* 首頁右下角聯繫站長浮球。預覽 A：50px 琥珀實心、信封、陰影 0 6px 18px。
+   z-index 高於 #floating-ads（50）、低於 #bottom-tabs（900），避免被右側浮動廣告蓋住。
+   掛在 document.body，不受首頁 .page 動畫 transform 把 fixed 困在內容層。 */
+.contact-owner-fab {
+  position: fixed;
+  right: .9rem;
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 20px);
+  z-index: 60;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--warning);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+  cursor: pointer;
+}
+
+.contact-owner-fab svg {
+  width: 24px;
+  height: 24px;
+}
+
+[data-theme="dark"] .contact-owner-fab {
+  color: var(--bg-card);
+}
+
+.contact-owner-fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.contact-owner-fab:active {
+  transform: scale(0.96);
+}
+
+/* 桌機導覽列置中（max-width 640px）後，浮球仍貼著導覽列右緣 .9rem，不跑到視窗外側空白。 */
+@media (min-width: 800px) {
+  .contact-owner-fab {
+    right: max(.9rem, calc(50vw - 320px + .9rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-owner-fab:active {
+    transform: none;
+  }
+}

@@ -23,5 +23,16 @@
   },
   "countUnavailable": "개수 확인 불가",
   "more": "더 보기",
-  "recentTitle": "최근 활동"
+  "recentTitle": "최근 활동",
+  "contactOwner": {
+    "label": "운영자에게 연락",
+    "name": "호칭",
+    "contact": "연락처 (Email / LINE ID / 전화)",
+    "content": "하고 싶은 말",
+    "submit": "보내기",
+    "submitting": "보내는 중",
+    "sent": "보냈습니다. 메시지 감사합니다",
+    "rateLimited": "너무 자주 보냈습니다. 잠시 후 다시 시도해 주세요",
+    "failed": "보내지 못했습니다. 잠시 후 다시 시도해 주세요"
+  }
 }

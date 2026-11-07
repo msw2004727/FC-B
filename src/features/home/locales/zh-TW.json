@@ -23,5 +23,16 @@
   },
   "countUnavailable": "數量暫無法取得",
   "more": "查看更多",
-  "recentTitle": "近期活動"
+  "recentTitle": "近期活動",
+  "contactOwner": {
+    "label": "聯繫站長",
+    "name": "稱呼",
+    "contact": "聯絡方式（Email／LINE ID／電話）",
+    "content": "想說的話",
+    "submit": "送出",
+    "submitting": "送出中",
+    "sent": "已送出，謝謝你的訊息",
+    "rateLimited": "送出太頻繁，請稍後再試",
+    "failed": "送出失敗，請稍後再試"
+  }
 }
