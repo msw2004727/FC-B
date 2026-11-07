@@ -62,9 +62,13 @@ export function getLastKnownAuthUid(): string | null | undefined {
   return lastKnownAuthUid;
 }
 
-/** M-036：照 A `_isMobileExternalBrowser`——不在 LINE App 內、且是手機（含 PWA）。 */
+/**
+ * M-036：手機外部瀏覽器才顯示登入提示。
+ * LINE Mini App（inClient）與 LINE 內建瀏覽器（UA 含 Line/、非 Mini App）直接走 liff.login。
+ */
 export function isMobileExternalBrowser(inClient: boolean, userAgent: string): boolean {
   if (inClient) return false;
+  if (/\bLine\//i.test(userAgent)) return false;
   return /Android|iPhone|iPad|iPod/i.test(userAgent);
 }
 

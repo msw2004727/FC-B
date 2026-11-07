@@ -25,6 +25,10 @@
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
   "internalTest.badge": "ToosterX Early Access {version}",
+  "lineLoginHint": {
+    "openInLine": "Open in LINE app",
+    "newTabNote": "After sign-in finishes, a new tab opens. You can close the old tab."
+  },
   "ui": {
     "shell": {
       "sportAll": "All",

@@ -257,6 +257,48 @@ describe('LINE 授權回跳接手登入', () => {
     expect(h.liff.login).toHaveBeenCalledOnce();
   });
 
+  it('LINE 內建瀏覽器不顯示登入提示，直接 liff.login', async () => {
+    // 測試同步更新：登入提示改版
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari Line/14.18.0',
+    );
+    h.liff.isInClient.mockReturnValue(false);
+    h.liff.isLoggedIn.mockReturnValue(false);
+    const events = await import('@/core/events');
+    const hints: number[] = [];
+    const stop = events.on('auth:mobile-login-hint', () => { hints.push(1); });
+    try {
+      const err = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLoginRedirectingError(err)).toBe(true);
+      expect(hints).toEqual([]);
+      expect(h.liff.login).toHaveBeenCalledOnce();
+    } finally {
+      stop();
+      ua.mockRestore();
+    }
+  });
+
+  it('一般手機瀏覽器仍顯示登入提示，不直接 liff.login', async () => {
+    // 測試同步更新：登入提示改版
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari',
+    );
+    h.liff.isInClient.mockReturnValue(false);
+    h.liff.isLoggedIn.mockReturnValue(false);
+    const events = await import('@/core/events');
+    const hints: number[] = [];
+    const stop = events.on('auth:mobile-login-hint', () => { hints.push(1); });
+    try {
+      const err = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLoginRedirectingError(err)).toBe(true);
+      expect(hints).toEqual([1]);
+      expect(h.liff.login).not.toHaveBeenCalled();
+    } finally {
+      stop();
+      ua.mockRestore();
+    }
+  });
+
   it('ensureLiffInit 與 signIn 共用同一支 Promise，成功後不再 init', async () => {
     const liffInit = await import('./liff-init');
     let release!: () => void;

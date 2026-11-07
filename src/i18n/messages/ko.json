@@ -25,6 +25,10 @@
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
   "feature.external": "외부 시스템 연동 준비 중",
   "internalTest.badge": "ToosterX 얼리 액세스 {version}",
+  "lineLoginHint": {
+    "openInLine": "LINE 앱에서 열기",
+    "newTabNote": "로그인이 끝나면 새 탭에서 열립니다. 이전 탭은 닫아도 됩니다."
+  },
   "ui": {
     "shell": {
       "sportAll": "All",
