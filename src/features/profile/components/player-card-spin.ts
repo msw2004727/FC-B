@@ -587,6 +587,7 @@ export function usePlayerCardSpin(locked: boolean): {
       // 只處理單指：多指（雙指縮放、另一指壓在別處）不擋，縮放照常交給瀏覽器，也不會拿錯手指算位移（Opus 審 P2-1／P2-2）
       if (e.touches?.length !== 1) return;
       const touch = e.touches[0];
+      if (!touch) return;
       const dx = touch.clientX - st.startX;
       const dy = touch.clientY - st.startY;
       if (st.mode === 'drag' || classifyPlayerCardGesture(dx, dy) === 'drag') e.preventDefault();
