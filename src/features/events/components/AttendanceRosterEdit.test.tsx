@@ -28,6 +28,7 @@ vi.mock('@/i18n/i18n', async (importOriginal) => ({
 
 import { useState } from 'preact/hooks';
 import { AttendanceRosterTable } from './AttendanceRosterTable';
+import { ATTENDANCE_RELOAD_IDLE_MS } from '../data/attendance-edit';
 import {
   CHECKBOX_DEBOUNCE_MS,
   NOTE_DEBOUNCE_MS,
@@ -473,6 +474,11 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     });
 
     expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    // 測試同步更新：按鈕加速①
+    expect(onReload).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ATTENDANCE_RELOAD_IDLE_MS);
+    });
     expect(onReload).toHaveBeenCalledTimes(1);
     expect(checkinBox.disabled).toBe(false);
     expect(checkinBox.checked).toBe(true);
@@ -604,8 +610,9 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
 
     await act(async () => {
       fireEvent.click(checkinBox);
-      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS + ATTENDANCE_RELOAD_IDLE_MS);
     });
+    // 測試同步更新：按鈕加速①
     expect(onReload).toHaveBeenCalledTimes(1);
     expect(checkinBox.checked).toBe(true);
 
@@ -634,8 +641,9 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
 
     await act(async () => {
       fireEvent.click(checkinBox);
-      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS + ATTENDANCE_RELOAD_IDLE_MS);
     });
+    // 測試同步更新：按鈕加速①
     expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
     expect(onReload).toHaveBeenCalledTimes(1);
     expect(onFailed).not.toHaveBeenCalled();
@@ -668,9 +676,11 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
 
     await act(async () => {
       fireEvent.click(checkinBox);
-      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS + ATTENDANCE_RELOAD_IDLE_MS);
     });
+    // 測試同步更新：按鈕加速①
     expect(checkinBox.checked).toBe(true);
+    expect(onReload).toHaveBeenCalledTimes(1);
     expect(onFailed).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -840,5 +850,66 @@ describe('AttendanceRosterTable & useAttendanceInstantSave', () => {
     } finally {
       add.mockRestore();
     }
+  });
+
+  it('連續 3 次寫入只在最後一次閒置後重讀一次', async () => {
+    // 測試同步更新：按鈕加速①
+    // 勾選／取消／再勾選要真的各寫一次：回傳的 removedDocIds 必須對上，否則取消寫入不會從本地清單拿掉。
+    mockWriteAttendanceOps.mockImplementation(async (_eventDocId: string, ops: {
+      adds: unknown[];
+      removes: Array<{ _docId?: string }>;
+    }) => ({
+      addedDocIds: ops.adds.map((_add, index) => `d${index + 1}`),
+      removedDocIds: ops.removes.map((rec) => rec._docId).filter((id): id is string => Boolean(id)),
+    }));
+    const onReload = vi.fn(async () => [] as readonly RosterAttendanceRecordInput[]);
+    render(<Harness onReload={onReload} />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+
+    for (let i = 1; i <= 3; i += 1) {
+      await act(async () => {
+        fireEvent.click(checkinBox);
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(i);
+      expect(onReload).not.toHaveBeenCalled();
+    }
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ATTENDANCE_RELOAD_IDLE_MS - 1);
+    });
+    expect(onReload).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('按下完成會先 flush 合併的重讀，不等 1500ms 閒置', async () => {
+    // 測試同步更新：按鈕加速①
+    const onReload = vi.fn(async () => [] as readonly RosterAttendanceRecordInput[]);
+    render(<Harness onReload={onReload} />);
+    const checkinBox = document.getElementById('manual-checkin-u_1') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(checkinBox);
+    });
+    expect(mockWriteAttendanceOps).not.toHaveBeenCalled();
+    expect(onReload).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '完成' }));
+      // 完成鈕不回傳 promise；用 fake timer 把 flush 的背景重讀接到 mock。
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '管理名單' })).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ATTENDANCE_RELOAD_IDLE_MS);
+    });
+    expect(onReload).toHaveBeenCalledTimes(1);
   });
 });

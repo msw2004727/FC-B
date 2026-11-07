@@ -168,6 +168,33 @@ describe('createDetailSignupContexts', () => {
     });
   });
 
+  it('讀活動與我的報名同時開始，任一失敗照原本拋出', async () => {
+    // 測試同步更新：按鈕加速①
+    const contexts = setup();
+    let releaseDetail!: (value: unknown) => void;
+    mocks.detail.mockReturnValue(new Promise((resolve) => { releaseDetail = resolve; }));
+    let historyStarted = false;
+    mocks.history.mockImplementation(() => {
+      historyStarted = true;
+      return new Promise(() => {});
+    });
+    const pending = contexts.signup.load('public-id', [{ type: 'self' }]);
+    const hung = pending.then(() => 'done', () => 'fail');
+    await vi.waitFor(() => expect(historyStarted).toBe(true));
+    expect(mocks.detail).toHaveBeenCalled();
+    releaseDetail(null);
+    await expect(hung).resolves.toBe('fail');
+    await expect(pending).rejects.toMatchObject({ originalCode: 'EVENT_NOT_FOUND' });
+
+    mocks.detail.mockResolvedValue({
+      eventDocId: 'document-id',
+      event: { id: 'wrong-id', date: '2030/02/01 12:00~14:00' },
+    });
+    mocks.history.mockRejectedValue(new Error('history failed'));
+    await expect(contexts.signup.load('public-id', [{ type: 'self' }]))
+      .rejects.toThrow('history failed');
+  });
+
   it('活動不存在時拋 SignupError', async () => {
     const contexts = setup();
     mocks.detail.mockResolvedValue(null);

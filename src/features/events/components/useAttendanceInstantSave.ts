@@ -10,7 +10,8 @@
  * - `_flushInstantSaves`：立即執行所有 debounce 中的計時器並等待所有 in-flight 寫入完成。
  *
  * 寫入成功後：用 `writeAttendanceOps` 回傳的文件 ID 局部更新本地出席清單，該列鎖只到 `batch.commit()`。
- * 整批重讀改為背景排程，不擋住該列。重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗；
+ * 整批重讀在最後一次寫入後閒置 1500ms 合併成一次，不擋住該列。flush 時改為立刻在背景重讀，不等它。
+ * 重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗；
  * 失敗後下一次頁面傳入的新清單要採用。開始或結束編輯且沒有寫入中項目時，也把本地清單對回頁面資料。
  * 離頁：`visibilitychange`（hidden）、`pagehide`、卸載與切換活動都會 flush 防抖中的寫入，不丟計時器。
  * 有待送或寫入中的變更時註冊 `beforeunload`，清空後解除；卸載之後不再掛回。
@@ -20,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import {
   applyAttendanceWriteResult,
+  ATTENDANCE_RELOAD_IDLE_MS,
   buildAttendanceBaseRecord,
   collectAttendanceOps,
   formatAttendanceDateTime,
@@ -185,7 +187,10 @@ export function useAttendanceInstantSave({
   const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
   const syncPendingRef = useRef<() => void>(() => {});
   const scheduleReloadRef = useRef<() => void>(() => {});
-  const reloadLoopRef = useRef({ running: false, again: false });
+  const flushReloadRef = useRef<() => Promise<void>>(async () => {});
+  const reloadIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadInFlightRef = useRef<Promise<void> | null>(null);
+  const reloadPendingRef = useRef(false);
   const eventResetSkipRef = useRef(true);
 
   const latestRef = useRef({
@@ -238,6 +243,11 @@ export function useAttendanceInstantSave({
     localEpochRef.current = 0;
     serverEpochRef.current = 0;
     adoptNextPropsRef.current = false;
+    reloadPendingRef.current = false;
+    if (reloadIdleTimerRef.current !== null) {
+      clearTimeout(reloadIdleTimerRef.current);
+      reloadIdleTimerRef.current = null;
+    }
   } else if (attendanceRecords !== seenPropsRecordsRef.current) {
     const writing = Object.keys(inFlightMapRef.current).length > 0
       || Object.keys(queuedMapRef.current).length > 0;
@@ -280,6 +290,10 @@ export function useAttendanceInstantSave({
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      if (reloadIdleTimerRef.current !== null) {
+        clearTimeout(reloadIdleTimerRef.current);
+        reloadIdleTimerRef.current = null;
+      }
       for (const timer of Object.values(flashTimersRef.current)) clearTimeout(timer);
       flashTimersRef.current = {};
     };
@@ -387,57 +401,82 @@ export function useAttendanceInstantSave({
     }
   }, []);
 
-  scheduleReloadRef.current = () => {
-    const loop = reloadLoopRef.current;
-    if (loop.running) {
-      loop.again = true;
+  const clearAttendanceReloadIdle = (): void => {
+    if (reloadIdleTimerRef.current !== null) {
+      clearTimeout(reloadIdleTimerRef.current);
+      reloadIdleTimerRef.current = null;
+    }
+  };
+
+  // 按鈕加速①：最後一次成功寫入後閒置 1500ms 才整份重讀；重讀期間又寫入則等下一次閒置。
+  const executeAttendanceReload = async (): Promise<void> => {
+    if (!aliveRef.current) return;
+    if (reloadInFlightRef.current) {
+      await reloadInFlightRef.current;
+      if (reloadPendingRef.current && aliveRef.current) await executeAttendanceReload();
       return;
     }
-    loop.running = true;
-    void (async () => {
+    reloadPendingRef.current = false;
+    const epoch = localEpochRef.current;
+    const gen = eventGenRef.current;
+    const docId = latestRef.current.eventDocId;
+    // onReloadAttendance 若同步丟錯，finally 會在 flight 指派前跑完；不能讓 ref 停在已完成的 promise。
+    let finished = false;
+    const flight = (async () => {
       try {
-        do {
-          loop.again = false;
-          if (!aliveRef.current) break;
-          const epoch = localEpochRef.current;
-          const gen = eventGenRef.current;
-          const docId = latestRef.current.eventDocId;
-          try {
-            const refreshed = await latestRef.current.onReloadAttendance();
-            if (
-              !aliveRef.current
-              || eventGenRef.current !== gen
-              || latestRef.current.eventDocId !== docId
-              || localEpochRef.current !== epoch
-              || loop.again
-            ) {
-              continue;
-            }
-            serverEpochRef.current = epoch;
-            recordsRef.current = refreshed;
-            adoptNextPropsRef.current = false;
-            for (const key of Object.keys(draftMapRef.current)) {
-              if (
-                queuedMapRef.current[key]
-                || noteTimersRef.current[key]
-                || saveTimersRef.current[key]
-                || inFlightMapRef.current[key]
-              ) {
-                continue;
-              }
-              setDraftForKey(key, null);
-            }
-          } catch {
-            // 重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗。
-            // 下一筆頁面傳入的新清單要採用，避免計數永遠追不平。
-            if (aliveRef.current) adoptNextPropsRef.current = true;
+        const refreshed = await latestRef.current.onReloadAttendance();
+        if (
+          !aliveRef.current
+          || eventGenRef.current !== gen
+          || latestRef.current.eventDocId !== docId
+          || localEpochRef.current !== epoch
+          || reloadPendingRef.current
+        ) {
+          return;
+        }
+        serverEpochRef.current = epoch;
+        recordsRef.current = refreshed;
+        adoptNextPropsRef.current = false;
+        for (const key of Object.keys(draftMapRef.current)) {
+          if (
+            queuedMapRef.current[key]
+            || noteTimersRef.current[key]
+            || saveTimersRef.current[key]
+            || inFlightMapRef.current[key]
+          ) {
+            continue;
           }
-        } while (loop.again && aliveRef.current);
+          setDraftForKey(key, null);
+        }
+      } catch {
+        // 重讀失敗保留本地清單與樂觀草稿，不當成寫入失敗。
+        // 下一筆頁面傳入的新清單要採用，避免計數永遠追不平。
+        if (aliveRef.current) adoptNextPropsRef.current = true;
       } finally {
-        loop.running = false;
-        if (loop.again && aliveRef.current) scheduleReloadRef.current();
+        finished = true;
+        reloadInFlightRef.current = null;
       }
     })();
+    if (!finished) reloadInFlightRef.current = flight;
+    await flight;
+  };
+
+  scheduleReloadRef.current = () => {
+    reloadPendingRef.current = true;
+    clearAttendanceReloadIdle();
+    // 回傳重讀 promise，讓等待這顆計時器的人能跟完 onReload，而不是只看到計時器啟動。
+    reloadIdleTimerRef.current = setTimeout(() => {
+      reloadIdleTimerRef.current = null;
+      if (!reloadPendingRef.current || !aliveRef.current) return undefined;
+      return executeAttendanceReload();
+    }, ATTENDANCE_RELOAD_IDLE_MS);
+  };
+
+  // 不等重讀（Opus 審查 P2-3）：送出寫入不被讀取卡住；新舊重讀順序交給 epoch／gen 守衛。
+  flushReloadRef.current = async () => {
+    if (!reloadPendingRef.current) return;
+    clearAttendanceReloadIdle();
+    if (aliveRef.current) void executeAttendanceReload();
   };
 
   const writeForKey = useCallback(
@@ -671,6 +710,8 @@ export function useAttendanceInstantSave({
       safety += 1;
       await Promise.allSettled(Object.values(inFlightMapRef.current));
     }
+    // 按鈕加速①：合併中的出席重讀改為立刻在背景開始，不留在 1500ms 計時器裡。
+    await flushReloadRef.current();
     syncPendingRef.current();
   }, [writeForKey]);
 

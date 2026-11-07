@@ -68,11 +68,16 @@ describe('名單狀態調整錯誤結果', () => {
     expect(log).not.toHaveBeenCalled();
   });
   it('一般成功後重讀失敗仍保留已完成結果與刷新提示', async () => {
-    const input = inputFor(); input.reload = async () => { throw new Error('offline'); };
+    // 測試同步更新：按鈕加速①
+    const syncing: string[] = [];
+    const input = inputFor();
+    input.reload = async () => { throw new Error('offline'); };
+    input.onSyncing = (message) => { syncing.push(message); };
     registerMock('forceDemoteToWaitlist', () => demoted);
     const actual = await adjustRosterStatus(input);
-    expect(actual.tone).toBe('warning');
-    expect(actual.message).toBe('已將 小明 下放至候補（4/2）\n名單資料同步中，請稍後重試');
+    expect(actual.tone).toBe('success');
+    expect(actual.message).toBe('已將 小明 下放至候補（4/2）');
+    await vi.waitFor(() => expect(syncing).toEqual(['名單資料同步中，請稍後重試']));
     expect(log).toHaveBeenCalledOnce();
   });
   it('確認框單人及含同行者逐字，取消不 flush', async () => {
