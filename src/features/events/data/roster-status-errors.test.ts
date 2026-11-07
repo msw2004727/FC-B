@@ -77,7 +77,7 @@ describe('名單狀態調整錯誤結果', () => {
     const actual = await adjustRosterStatus(input);
     expect(actual.tone).toBe('success');
     expect(actual.message).toBe('已將 小明 下放至候補（4/2）');
-    expect(syncing).toEqual(['名單資料同步中，請稍後重試']);
+    await vi.waitFor(() => expect(syncing).toEqual(['名單資料同步中，請稍後重試']));
     expect(log).toHaveBeenCalledOnce();
   });
   it('確認框單人及含同行者逐字，取消不 flush', async () => {

@@ -63,7 +63,8 @@ describe('名單狀態調整', () => {
     const result = await adjustRosterStatus(input);
     expect(result.message).toBe('已正取（4/2）');
     const applied = vi.mocked(input.adopt).mock.calls[0]?.[0];
-    expect(applied?.event).toMatchObject({ current: 4, waitlist: 0 });
+    // 投影照伺服器回傳的 response.event（fixture 的 event.waitlist 是 1）。
+    expect(applied?.event).toMatchObject({ current: 4, waitlist: promoted.event.waitlist });
     expect(applied?.registrations.map(reg => reg.status)).toEqual(['confirmed', 'confirmed']);
   });
   it('日誌失敗不影響成功結果，重讀仍會做', async () => {

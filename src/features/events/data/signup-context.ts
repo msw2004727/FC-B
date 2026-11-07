@@ -174,20 +174,18 @@ export function createDetailSignupContexts(
         }
         // 按鈕加速①：活動與我的報名並行。這仍是 T-086a 送出前的那一次讀取。
         // 活動失敗維持拋活動錯誤；報名歷史失敗維持拋歷史錯誤。
-        // 照 B 既有讀取層；避免新增 Firestore 的靜態依賴鏈。用 allSettled（R-CODE-001 不用 .then chain），兩邊都失敗時仍先拋活動錯誤。
+        // 照 B 既有讀取層；避免新增 Firestore 的靜態依賴鏈。
+        // 活動失敗立刻拋（不等報名讀完，取代 allSettled 版：副機測試證實會被卡住的報名讀取拖住）。
         const uid = viewer.uid;
         const loadRegistrations = async () => {
           const { loadViewerRegistrations } = await import('./viewer-registrations');
           return loadViewerRegistrations(uid);
         };
-        const [eventResult, registrationsResult] = await Promise.allSettled([
-          loadEvent(eventId),
-          loadRegistrations(),
-        ]);
-        if (eventResult.status === 'rejected') throw eventResult.reason;
-        if (registrationsResult.status === 'rejected') throw registrationsResult.reason;
-        const event: SignupEvent = eventResult.value;
-        const registrations = registrationsResult.value;
+        const registrationsPromise = loadRegistrations();
+        // 只為避免活動先失敗時出現未處理的 rejection；報名失敗仍由下方 await 拋出。
+        registrationsPromise.catch(() => {});
+        const event: SignupEvent = await loadEvent(eventId);
+        const registrations = await registrationsPromise;
         const now = deps.now?.() ?? new Date();
         return {
           event,

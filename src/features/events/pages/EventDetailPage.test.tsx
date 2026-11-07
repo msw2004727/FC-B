@@ -1245,7 +1245,10 @@ describe('名單狀態調整頁面接線', () => {
     registerCallableMock('forceDemoteToWaitlist', () => {
       mocks.registrations.mockResolvedValue([{ ...rosterReg, status: 'waitlisted' }]);
       mocks.detail.mockResolvedValue({ eventDocId: 'docA', event: { ...rosterEvent, current: 3, realCurrent: 0, waitlist: 1 } });
-      return demoteResponse;
+      // 測試同步更新：按鈕加速①先套伺服器投影，投影要和下放後的名單一致。
+      return { ...demoteResponse, current: 3, waitlist: 1, event: { ...demoteResponse.event,
+        current: 3, realCurrent: 0, waitlist: 1, participants: [], participantsWithUid: [],
+        waitlistNames: ['小明'], waitlistWithUid: [{ uid: 'uidB', name: '小明' }] } };
     });
     startCallableRecording();
     const originalPage = view.container.querySelector('#page-activity-detail');
