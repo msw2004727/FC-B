@@ -23,5 +23,17 @@
   },
   "countUnavailable": "Chưa rõ số lượng",
   "more": "Xem thêm",
-  "recentTitle": "Hoạt động gần đây"
+  "recentTitle": "Hoạt động gần đây",
+  "contactOwner": {
+    "label": "Liên hệ quản trị",
+    "name": "Cách xưng hô",
+    "contact": "Liên hệ (Email / LINE ID / điện thoại)",
+    "content": "Lời nhắn",
+    "submit": "Gửi",
+    "submitting": "Đang gửi",
+    "sent": "Đã gửi. Cảm ơn tin nhắn của bạn",
+    "rateLimited": "Bạn gửi quá thường xuyên. Vui lòng thử lại sau",
+    "failed": "Gửi không thành công. Vui lòng thử lại sau",
+    "loadFailed": "Tải không thành công, vui lòng thử lại sau."
+  }
 }

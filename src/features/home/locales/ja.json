@@ -23,5 +23,17 @@
   },
   "countUnavailable": "件数不明",
   "more": "もっと見る",
-  "recentTitle": "最近のイベント"
+  "recentTitle": "最近のイベント",
+  "contactOwner": {
+    "label": "運営者に連絡",
+    "name": "お名前",
+    "contact": "連絡先（Email／LINE ID／電話）",
+    "content": "メッセージ",
+    "submit": "送信",
+    "submitting": "送信中",
+    "sent": "送信しました。メッセージありがとうございます",
+    "rateLimited": "送信が多すぎます。しばらくしてからもう一度お試しください",
+    "failed": "送信できませんでした。しばらくしてからもう一度お試しください",
+    "loadFailed": "読み込みに失敗しました。しばらくしてからもう一度お試しください。"
+  }
 }

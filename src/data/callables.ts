@@ -126,6 +126,8 @@ import type {
   SearchPmAuditUsersResponse,
   SendPrivateMessageRequest,
   SendPrivateMessageResponse,
+  SubmitContactMessageRequest,
+  SubmitContactMessageResponse,
   SyncGroupActionStatusRequest,
   SyncGroupActionStatusResponse,
   SyncUserRoleRequest,
@@ -271,6 +273,7 @@ export interface CallableMap {
   saveRealtimeConfig: { req: SaveRealtimeConfigRequest; res: SaveRealtimeConfigResponse };
   searchPmAuditUsers: { req: SearchPmAuditUsersRequest; res: SearchPmAuditUsersResponse };
   sendPrivateMessage: { req: SendPrivateMessageRequest; res: SendPrivateMessageResponse };
+  submitContactMessage: { req: SubmitContactMessageRequest; res: SubmitContactMessageResponse };
   syncGroupActionStatus: { req: SyncGroupActionStatusRequest; res: SyncGroupActionStatusResponse };
   syncUserRole: { req: SyncUserRoleRequest; res: SyncUserRoleResponse };
   translateTexts: { req: TranslateTextsRequest; res: TranslateTextsResponse };
