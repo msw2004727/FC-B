@@ -1,0 +1,189 @@
+/*
+ * 活動詳情資訊區 C2「票根＋分區小卡」（站長 2026-11-08 預覽核可）。
+ * 新站自有樣式，不改 A 的 activity.css；路徑含 /legacy/，打包時限定成 `.legacy-ui .x`。
+ * 顏色只用既有變數（--accent／--primary／--info／--warning／--text-*／--bg-*／--border）。
+ */
+
+/* ── 票根卡 ── */
+.evd-ticket {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-card);
+  font-variant-numeric: tabular-nums;
+}
+.evd-ticket-stub {
+  flex: 0 0 76px;
+  width: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 10px 0;
+  background: var(--accent);
+  /* 亮色 accent 深、暗色 accent 淺：字色取卡片底色，兩種主題都有足夠對比 */
+  color: var(--bg-card);
+  border-right: 2px dashed var(--bg-card);
+}
+.evd-ticket-mo { font-size: .75rem; opacity: .9; }
+.evd-ticket-day { font-size: 1.85rem; font-weight: 800; line-height: 1.05; }
+.evd-ticket-wd { font-size: .8rem; }
+.evd-ticket-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 11px;
+}
+.evd-ticket-time {
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+}
+.evd-ticket-sub {
+  font-size: .8rem;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+.evd-ticket-loc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: .88rem;
+  color: var(--text-muted);
+}
+.evd-ticket-loc .evd-ticket-loc-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 共用：圖示、圖示按鈕 ── */
+.evd-icon { flex: 0 0 auto; display: block; }
+.evd-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.evd-icon-btn.evd-icon-btn-sm { flex-basis: 28px; width: 28px; height: 28px; }
+.evd-icon-btn:hover { background: var(--bg-elevated); }
+.evd-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 分區小卡 ── */
+.evd-card {
+  margin-top: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.evd-card .evd-card-title {
+  margin: 2px 0 4px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.evd-muted { font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
+
+/* 報名卡 */
+.evd-reg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.evd-reg-count { font-size: 1.06rem; font-weight: 700; color: var(--text-primary); }
+.evd-reg-meta { font-size: .8rem; color: var(--text-secondary); }
+.evd-progress {
+  display: flex;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+.evd-progress i { display: block; height: 100%; }
+.evd-progress .evd-progress-confirmed { background: var(--accent); }
+.evd-progress .evd-progress-reserved { background: var(--info); }
+.evd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.evd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: .75rem;
+  line-height: 1.4;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.evd-chip.evd-chip-fee {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+/* 熱度、早鳥：底色取字色淡化；不支援 color-mix 的舊 WebView 退回 --bg-elevated */
+.evd-chip.evd-chip-tint {
+  background: var(--bg-elevated);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.evd-chip.evd-chip-early { color: var(--warning); font-weight: 600; }
+
+/* 參加條件、聯繫方式 */
+.evd-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+  color: var(--text-primary);
+}
+.evd-line:last-child { border-bottom: none; }
+.evd-line .evd-icon { color: var(--text-muted); }
+.evd-line .evd-line-text { min-width: 0; overflow-wrap: break-word; }
+.evd-line .evd-team-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 主辦團隊 */
+.evd-host-row,
+.evd-delegate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.evd-host-row .evd-tag-list,
+.evd-delegate-row .evd-tag-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  min-width: 0;
+}
+.evd-host-row .evd-host-contact { margin-left: auto; }
+.evd-social-row { padding: 2px 0 4px; }

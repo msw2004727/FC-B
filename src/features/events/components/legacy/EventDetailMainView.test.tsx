@@ -44,28 +44,28 @@ describe('formatRegOpenInfo（開放報名列）', () => {
     expect(regOpenText(
       detailEvent({ status: 'upcoming', regOpenTime: '2026-10-19T09:00' }),
       Date.parse('2026-10-19T08:59:00+08:00'),
-    )).toBe('開放報名2026/10/19 09:00（1分後開放）');
+    )).toBe('2026/10/19 09:00（1分後開放）');
   });
 
   it('已開放的字串逐字相同', () => {
     expect(regOpenText(
       detailEvent({ status: 'open', regOpenTime: '2026-10-19T09:00' }),
       openAt,
-    )).toBe('開放報名2026/10/19 09:00（已開放）');
+    )).toBe('2026/10/19 09:00（已開放）');
   });
 
   it('帶 Z 的絕對時間在每個時區都顯示台北 09:00', () => {
     expect(regOpenText(
       detailEvent({ status: 'open', regOpenTime: '2026-10-19T01:00:00Z' }),
       openAt,
-    )).toBe('開放報名2026/10/19 09:00（已開放）');
+    )).toBe('2026/10/19 09:00（已開放）');
   });
 
   it('台北 00:30 不會變成前一天', () => {
     expect(regOpenText(
       detailEvent({ status: 'open', regOpenTime: '2026-10-19T00:30' }),
       Date.parse('2026-10-19T01:00:00+08:00'),
-    )).toBe('開放報名2026/10/19 00:30（已開放）');
+    )).toBe('2026/10/19 00:30（已開放）');
   });
 
   it('無法解析的 regOpenTime 不顯示開放報名列', () => {
@@ -78,12 +78,78 @@ describe('formatRegOpenInfo（開放報名列）', () => {
 
 describe('T-054c EV1 倒數（EV2 開放報名列沿用上方逐字案例）', () => {
   it.each([
-    ['2026-10-18T09:00:00+08:00', '剩餘 1日2時'],
-    ['2026-10-19T10:30:00+08:00', '剩餘 30分'],
+    ['2026-10-18T09:00:00+08:00', '距開始 1日2時'],
+    ['2026-10-19T10:30:00+08:00', '距開始 30分'],
     ['2026-10-19T11:00:00+08:00', '已結束'],
   ])('now=%s', (now, expected) => {
     regOpenText(detailEvent({ id: 'evtA', date: '2026/10/19 11:00~13:00' }), Date.parse(now));
-    const value = document.querySelector('[data-detail-field="countdown"] > span:last-child');
+    const value = document.querySelector('[data-detail-field="countdown"]');
     expect(value?.textContent).toBe(expected);
+  });
+});
+
+function renderInfo(event: LegacyDetailEvent, opts: { confirmed?: number; waitlist?: number; nowMs?: number } = {}): void {
+  render(
+    <EventDetailInfoSection
+      event={event}
+      confirmedCount={opts.confirmed ?? 0}
+      waitlistCount={opts.waitlist ?? 0}
+      nowMs={opts.nowMs ?? Date.parse('2026-10-01T09:00:00+08:00')}
+      roles={{}}
+      onOpenProfile={vi.fn()}
+      onContactHost={vi.fn()}
+      onOpenTeam={vi.fn()}
+    />,
+  );
+}
+
+describe('C2 票根＋分區小卡', () => {
+  it('票根用台北時區顯示月／日／星期與時間、時長（台北凌晨不退回前一天）', () => {
+    renderInfo(detailEvent({ date: '2026/11/09 00:30~02:00' }));
+    expect(document.querySelector('.evd-ticket-mo')?.textContent).toBe('11 月');
+    expect(document.querySelector('.evd-ticket-day')?.textContent).toBe('09');
+    expect(document.querySelector('.evd-ticket-wd')?.textContent).toBe('週一');
+    expect(document.querySelector('[data-detail-field="date"]')?.textContent).toBe('00:30–02:00');
+    expect(document.querySelector('.evd-ticket-sub')?.textContent).toContain('1 小時 30 分');
+  });
+
+  it('無法解析的日期不顯示票根，時間列保留原字串', () => {
+    renderInfo(detailEvent({ date: 'invalid' }));
+    expect(document.querySelector('.evd-ticket-stub')).toBeNull();
+    expect(document.querySelector('[data-detail-field="date"]')?.textContent).toBe('invalid');
+  });
+
+  it('沒有任何參加條件時整張參加條件卡不出現', () => {
+    renderInfo(detailEvent());
+    expect(document.querySelector('[data-evd-card="conditions"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('參加條件');
+  });
+
+  it('有年齡與私密條件時參加條件卡只列出有的項目', () => {
+    renderInfo(detailEvent({ minAge: 18, privateEvent: true }));
+    const card = document.querySelector('[data-evd-card="conditions"]');
+    expect(card?.querySelector('[data-detail-field="age-limit"]')?.textContent).toBe('18 歲以上');
+    expect(card?.querySelector('[data-detail-field="private-visibility"]')).toBeTruthy();
+    expect(card?.querySelector('[data-detail-field="gender-limit"]')).toBeNull();
+    expect(card?.querySelector('[data-detail-field="team-limit"]')).toBeNull();
+  });
+
+  it('沒有團隊保留與候補時報名卡不出現對應文字', () => {
+    renderInfo(detailEvent({ max: 24 }), { confirmed: 18 });
+    const row = document.querySelector('[data-detail-field="capacity-count"]');
+    expect(row?.textContent).toBe('已報 18/24剩 6');
+    expect(row?.textContent).not.toContain('團隊保留');
+    expect(row?.textContent).not.toContain('候補');
+    expect(document.querySelector('.evd-progress-reserved')).toBeNull();
+  });
+
+  it('有團隊保留與候補時報名卡列出剩餘、團隊保留、候補', () => {
+    renderInfo(detailEvent({
+      max: 24,
+      teamReservationSummaries: [{ teamId: 't1', remainingSlots: 4 }],
+    } as Partial<LegacyDetailEvent>), { confirmed: 18, waitlist: 3 });
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toBe('已報 18/24剩 2 · 團隊保留 4 · 候補 3');
+    expect(document.querySelector('.evd-progress-reserved')).toBeTruthy();
   });
 });
