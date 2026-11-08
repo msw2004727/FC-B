@@ -857,7 +857,9 @@ describe('建置外掛 earlyBannersHtml', () => {
 
   it('把兩個代號各換成一次真值、刪掉 script 上方的說明註解，其餘 HTML 一字不動', () => {
     const out = buildHtml();
-    expect(out).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
+    // T-093：#fcb-early-event 共用同一個專案代號，由自己的外掛替換。這個函式只保證橫幅 script 裡沒有留下代號。
+    const bannersBlock = /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(out)?.[0] ?? '';
+    expect(bannersBlock).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
     expect(out).not.toContain(EARLY_BANNERS_VERSION_TOKEN);
     expect(out).toContain(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`);
     expect(
@@ -909,8 +911,10 @@ describe('建置外掛 earlyBannersHtml', () => {
   it('emulator 建置：整段 script 移除（連 Firestore REST 網址都不留）', () => {
     const out = buildHtml(true);
     expect(out).not.toContain(`id="${EARLY_BANNERS_SCRIPT_ID}"`);
-    expect(out).not.toContain('firestore.googleapis.com/v1');
     expect(out).not.toContain('__fcbEarlyBanners =');
+    // T-093 批 4 的 #fcb-early-event 由 scripts/early-event-html.ts 整段移除。這個函式只處理橫幅 script。
+    const withoutEarlyEvent = out.replace(/<script id="fcb-early-event">[\s\S]*?<\/script>/, '');
+    expect(withoutEarlyEvent).not.toContain('firestore.googleapis.com/v1');
     // 其他腳本與骨架完全不受影響。
     expect(out).toContain('data-boot-shell');
     expect(out).toContain('<script type="module" src="/src/main.tsx"></script>');

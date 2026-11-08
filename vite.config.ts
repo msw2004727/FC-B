@@ -9,6 +9,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 // 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
+import { earlyEventHtml } from './scripts/early-event-html.ts';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
 import { NOINDEX_HEADER_PATHS, routeMetaFor } from './src/core/route-meta.ts';
 import { APP_VERSION } from './src/version.ts';
@@ -205,8 +206,8 @@ const pwa = VitePWA({
 });
 
 export default defineConfig({
-  // T-042d：index.html 的冷啟動提早 REST 內嵌 script，把 projectId／版號代號換成真值（emulator 建置整段移除）。
-  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION }), internalTestNoIndex(), pwa],
+  // T-042d／T-093：index.html 冷啟動提早 REST。橫幅與活動文件各一段 script、各自外掛；emulator 建置整段移除。
+  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), internalTestNoIndex(), pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },

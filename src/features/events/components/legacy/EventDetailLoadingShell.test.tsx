@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import {
@@ -26,14 +26,35 @@ vi.mock('@/i18n/i18n', async (o) => ({
 // ASSUMPTION: 本測試只使用 uid；可見性 helper 已獨立 mock。
 const viewer = { uid: 'u1' } as ViewerView;
 
+const EARLY_NAME = 'projects/p/databases/(default)/documents/events/public-1';
+
+function putEarly(fields: Record<string, unknown>, name = EARLY_NAME): Promise<unknown> {
+  const promise = Promise.resolve({ name, fields });
+  window.__fcbEarlyEvent = promise;
+  return promise;
+}
+
+async function settleEarly(): Promise<void> {
+  await act(async () => {
+    await window.__fcbEarlyEvent;
+    await Promise.resolve();
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.removeItem('fcb:signed-in');
+  delete window.__fcbEarlyEvent;
   mocks.authUid.mockReturnValue('u1');
   mocks.read.mockReturnValue(null);
   mocks.visible.mockReturnValue(true);
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  localStorage.removeItem('fcb:signed-in');
+  delete window.__fcbEarlyEvent;
+});
 
 it('無快取立即顯示 A 頁首、封面與三列骨架', () => {
   const goBack = vi.fn();
@@ -90,6 +111,87 @@ it('找不到只在 effect 提示與返回一次', () => {
   view.rerender(<EventDetailMissing goBack={() => goBack()} />);
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith({ message: '找不到此活動' });
   expect(goBack).toHaveBeenCalledOnce();
+});
+
+it('提早 REST 只填標題、地點、時間、https 圖片，載入中與 aria-busy 維持', async () => {
+  const promise = putEarly({
+    title: { stringValue: '提早標題' },
+    date: { stringValue: '2099/01/01 18:00' },
+    location: { stringValue: '提早地點' },
+    image: { stringValue: 'https://img.test/early.jpg' },
+  });
+  const view = render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.getByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+  expect(screen.getByText('提早地點')).toBeTruthy();
+  expect(screen.getByText('2099/01/01 18:00')).toBeTruthy();
+  expect(screen.getByRole('img').getAttribute('src')).toBe('https://img.test/early.jpg');
+  expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+  expect(view.container.querySelector('#page-activity-detail')?.getAttribute('aria-busy')).toBe('true');
+  expect(window.__fcbEarlyEvent).toBe(promise);
+});
+
+it('文件 name 不符時不填，也不改用 fields.id', async () => {
+  putEarly(
+    { id: { stringValue: 'public-1' }, title: { stringValue: '舊文件標題' } },
+    'projects/p/databases/(default)/documents/events/old-doc',
+  );
+  render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.getByRole('heading', { level: 2, name: '活動詳情' })).toBeTruthy();
+  expect(screen.queryByText('舊文件標題')).toBeNull();
+  expect(mocks.visible).not.toHaveBeenCalled();
+});
+
+it('登入線索且黑名單非空、uid 還沒到時不先畫', async () => {
+  localStorage.setItem('fcb:signed-in', '1');
+  mocks.authUid.mockReturnValue(null);
+  putEarly({
+    title: { stringValue: '黑名單標題' },
+    blockedUids: { arrayValue: { values: [{ stringValue: 'u1' }] } },
+  });
+  render(<EventDetailLoadingShell publicId="public-1" viewer={{ uid: null } as ViewerView} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.queryByText('黑名單標題')).toBeNull();
+  expect(screen.getByRole('heading', { level: 2, name: '活動詳情' })).toBeTruthy();
+  expect(mocks.visible).not.toHaveBeenCalled();
+});
+
+it('uid 確定後照可見性：不可見不畫，可見才畫', async () => {
+  putEarly({
+    title: { stringValue: '黑名單標題' },
+    blockedUids: { arrayValue: { values: [{ stringValue: 'u1' }] } },
+  });
+  mocks.visible.mockReturnValue(false);
+  const view = render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.queryByText('黑名單標題')).toBeNull();
+  expect(mocks.visible).toHaveBeenCalledWith(
+    { id: 'public-1', blockedUids: ['u1'] },
+    viewer,
+    [],
+  );
+  mocks.visible.mockReturnValue(true);
+  view.rerender(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.getByRole('heading', { level: 2, name: '黑名單標題' })).toBeTruthy();
+});
+
+it('非字串欄位忽略，javascript: 圖片不進 img', async () => {
+  putEarly({
+    title: { integerValue: '12' },
+    date: { stringValue: '今天' },
+    location: { mapValue: { fields: { city: { stringValue: '桃園' } } } },
+    image: { stringValue: 'javascript:alert(1)' },
+  });
+  const view = render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.getByRole('heading', { level: 2, name: '活動詳情' })).toBeTruthy();
+  expect(screen.getByText('今天')).toBeTruthy();
+  expect(screen.queryByText('桃園')).toBeNull();
+  expect(screen.queryByText('12')).toBeNull();
+  expect(view.container.querySelector('img')).toBeNull();
+  expect(view.container.innerHTML).not.toContain('javascript:');
 });
 
 it('簽到顯示和 handler 使用同一檢查，權限撤回立即拒絕', () => {
