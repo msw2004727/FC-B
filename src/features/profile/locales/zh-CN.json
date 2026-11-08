@@ -127,5 +127,14 @@
     "completed": "完成",
     "info": "资料",
     "records": "活动明细"
+  },
+  "dataTab": {
+    "basic": "基本资料",
+    "notSet": "未设置",
+    "age": "{n} 岁",
+    "clubCount": "{n} 个",
+    "showAll": "显示全部 {n} 个",
+    "collapse": "收起",
+    "noClubs": "无"
   }
 }

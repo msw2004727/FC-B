@@ -1,5 +1,6 @@
 import type { UserRole } from '@/ui/Avatar';
 import { userLevelFromExp } from '@/data/user-roles';
+import { taipeiParts } from '@/core/taipei-time';
 import type { UserProfile } from '../../data/profile-model';
 
 // U-020：共用 core/unavailable 的提示文字。
@@ -126,6 +127,26 @@ export function sanitizeHttpAvatarUrl(raw: unknown): string | null {
 export function getAvatarInitial(name: unknown): string {
   const text = String(name || '?').trim();
   return text ? text.charAt(0) : '?';
+}
+
+/**
+ * 「我的資料」顯示用年齡（P2 兩張卡，2026-11-08）：生日是純日曆日期（`YYYY/MM/DD` 或 `YYYY-MM-DD`），
+ * 基準日取台北今天，未過生日減一歲。格式不對、日期不存在或超出 0～129 歲回 null（畫面就不顯示年齡）。
+ */
+export function calcAgeFromBirthday(birthday: unknown, nowMs: number = Date.now()): number | null {
+  const match = String(birthday || '').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+    return null;
+  }
+  const ref = taipeiParts(Number.isFinite(nowMs) ? nowMs : Date.now());
+  let age = ref.year - year;
+  if (ref.month < month || (ref.month === month && ref.day < day)) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
 }
 
 /** A `profile-data-render.js#_fmtCreatedAt`。 */

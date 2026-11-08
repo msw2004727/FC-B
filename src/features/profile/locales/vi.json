@@ -127,5 +127,14 @@
     "completed": "Hoàn thành",
     "info": "Thông tin",
     "records": "Lịch sử hoạt động"
+  },
+  "dataTab": {
+    "basic": "Thông tin cơ bản",
+    "notSet": "Chưa đặt",
+    "age": "{n} tuổi",
+    "clubCount": "{n}",
+    "showAll": "Xem tất cả {n}",
+    "collapse": "Thu gọn",
+    "noClubs": "Không có"
   }
 }

@@ -127,5 +127,14 @@
     "completed": "Completed",
     "info": "Profile",
     "records": "Activity history"
+  },
+  "dataTab": {
+    "basic": "Basic info",
+    "notSet": "Not set",
+    "age": "{n} yrs",
+    "clubCount": "{n}",
+    "showAll": "Show all {n}",
+    "collapse": "Show less",
+    "noClubs": "None"
   }
 }
