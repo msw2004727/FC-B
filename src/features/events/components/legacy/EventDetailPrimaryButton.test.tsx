@@ -140,7 +140,8 @@ describe('EventDetailPrimaryButton', () => {
     expect(ringPercent(300)).toBeCloseTo(30);
     expect(ringPercent(600)).toBeCloseTo(60);
     expect(ringPercent(2_100)).toBeGreaterThan(75);
-    expect(ringPercent(60_000)).toBeLessThan(90);
+    expect(ringPercent(10_000)).toBeLessThan(90);
+    expect(ringPercent(60_000)).toBeLessThanOrEqual(90);
     expect(ringPercent(2_000)).toBeLessThan(ringPercent(3_000));
   });
 

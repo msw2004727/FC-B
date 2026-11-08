@@ -67,16 +67,18 @@ interface SignupRing {
 }
 
 /**
- * running 期間顯示進度環；running 結束時 successKey 與開始時不同＝成功 → 補滿＋✓＋展開，
- * 否則（失敗、結果未知、使用者取消確認）不打勾直接展開回原狀態。
+ * running 期間顯示進度環；running 結束時若期間看過 settling（成功後等重讀），或 successKey 與開始時不同，
+ * 就算成功 → 補滿＋✓＋展開；否則（失敗、結果未知、使用者取消確認）不打勾直接展開回原狀態。
+ * settling 另外判斷，是因為多次狀態更新被合併成一次 render 時，環可能在 serial 已加一後才開始。
  * 階段推進只用 setTimeout（不靠 transitionend），減少動態把轉場壓成 0.01ms 也不會卡住。
  */
-function useSignupRing(running: boolean, successKey: number): SignupRing {
+function useSignupRing(running: boolean, successKey: number, settling = false): SignupRing {
   const [phase, setPhase] = useState<RingPhase>('idle');
   const [reduced, setReduced] = useState(false);
   const phaseRef = useRef<RingPhase>('idle');
   const reducedRef = useRef(false);
   const started = useRef({ key: successKey, at: 0 });
+  const succeeded = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frame = useRef<number | null>(null);
   const arcRef = useRef<SVGCircleElement | null>(null);
@@ -105,8 +107,12 @@ function useSignupRing(running: boolean, successKey: number): SignupRing {
 
   useLayoutEffect(() => {
     if (running) {
-      if (phaseRef.current === 'progress') return;
+      if (phaseRef.current === 'progress') {
+        if (settling) succeeded.current = true;
+        return;
+      }
       clearTimer();
+      succeeded.current = settling;
       started.current = { key: successKey, at: now() };
       reducedRef.current = prefersReducedMotion();
       setReduced(reducedRef.current);
@@ -119,7 +125,7 @@ function useSignupRing(running: boolean, successKey: number): SignupRing {
       go('idle');
       return;
     }
-    if (successKey === started.current.key) {
+    if (!succeeded.current && successKey === started.current.key) {
       go('revert');
       after(RING_EXPAND_MS, () => go('idle'));
       return;
@@ -132,7 +138,7 @@ function useSignupRing(running: boolean, successKey: number): SignupRing {
         after(RING_EXPAND_MS, () => go('idle'));
       });
     });
-  }, [running, successKey]);
+  }, [running, successKey, settling]);
 
   // 進度環逐幀直接改 DOM（不觸發重繪）；離開 progress 或卸載時取消。
   useEffect(() => {
@@ -275,7 +281,8 @@ function PersonalSignupButton({
   settle,
   onClick,
 }: EventDetailPrimaryButtonProps): JSX.Element {
-  const ring = useSignupRing(running || settle?.pending === true, settle?.serial ?? 0);
+  const settling = settle?.pending === true;
+  const ring = useSignupRing(running || settling, settle?.serial ?? 0, settling);
   const ringActive = ring.phase !== 'idle';
   // 進度環期間凍結按下時的狀態（底色、忙碌文字）：環背後的資料會先變（例如額滿投影），
   // 展開完成回到 idle 才換成新狀態，避免環上閃過中間狀態的底色或先露出舊文字。
@@ -286,8 +293,7 @@ function PersonalSignupButton({
   // 減少動態或其他動作造成的頁面忙碌：沿用原本的靜態忙碌文字＋光跡。
   const staticBusy = !ringing && (busy || ringActive);
   const isDisabled = disabled || busy || state.disabled || ringActive;
-  const busyLabel = getBusyLabel(state);
-  const content = ringing ? renderRingContent(ring) : staticBusy ? busyLabel : state.label;
+  const content = ringing ? renderRingContent(ring) : staticBusy ? getBusyLabel(state) : state.label;
   const handleClick = isDisabled ? undefined : onClick;
   const srOnly = staticBusy ? <span class="fcb-sr-only">處理中</span> : null;
   const ringClass = ringButtonClass(ring);
@@ -315,7 +321,7 @@ function PersonalSignupButton({
   const ariaBusy = staticBusy || ringing ? 'true' : undefined;
   const ariaDisabled = staticBusy || ringing ? 'true' : undefined;
   // 環期間文字被拿掉，改用 aria-label 告知「報名中／取消中」。
-  const ariaLabel = ringing ? busyLabel : undefined;
+  const ariaLabel = ringing ? getBusyLabel(state) : undefined;
 
   // 照 A `_buildEventEarlyBirdSignupHtml`。
   if (state.variant === 'earlyBird') {
