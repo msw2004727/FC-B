@@ -246,9 +246,7 @@ describe('團隊預留自動釋出列', () => {
   });
 
   it('手動選擇送出 hours 並標記非自動；手動超過剩餘時間顯示 warning', () => {
-    // Preact 以事件時間戳過濾事件，固定 Date 會讓 change 被忽略；這個案例改用真實時間＋相對開始時間。
-    vi.useRealTimers();
-    const startMs = Date.now() + 5 * 3_600_000 + 10 * 60_000;
+    const startMs = NOW + 5 * 3_600_000 + 10 * 60_000;
     const onPatch = vi.fn();
     const state = {
       ...createDefaultFormState(),
@@ -256,7 +254,9 @@ describe('團隊預留自動釋出列', () => {
       startTime: formatTaipei(startMs, 'HH:mm'),
     };
     renderFields({ state, onPatch });
-    fireEvent.change(select(), { target: { value: '12' } });
+    // preact testing-library 的 fireEvent.change 在 compat 下會改送 input；select 需原生 change（同 use-team-reservation.test）。
+    select().value = '12';
+    fireEvent(select(), new Event('change', { bubbles: true }));
     expect(onPatch).toHaveBeenCalledWith({ teamReservationReleaseHours: 12, teamReservationReleaseAuto: false });
     cleanup();
     renderFields({ state: { ...state, teamReservationReleaseHours: 12, teamReservationReleaseAuto: false } });
