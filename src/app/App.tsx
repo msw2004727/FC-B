@@ -162,6 +162,7 @@ export function App({
   const internalTest = useMemo(() => isInternalTestMode(), []);
   // 從 LINE 授權回來（網址帶 code＋liffClientId 或 liff.state）：登入狀態確認後自動接手登入一次。
   // T-093：index.html 開頁已在 Mini App 內消掉 liff.state 時，以它設的旗標視同回跳（站長定案分享開頁要自動登入）。
+  // 旗標整頁有效；App 只掛載一次、useRef 初值只取第一次，所以只會接手一次。
   const resumeLoginRef = useRef(
     (typeof location !== 'undefined' && hasLoginRedirectParams(location.href))
       || (typeof window !== 'undefined'

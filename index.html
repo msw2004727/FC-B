@@ -16,10 +16,7 @@
     <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
     <link rel="dns-prefetch" href="https://www.googleapis.com" />
     <link rel="dns-prefetch" href="https://fc-football-6c8dc.firebaseapp.com" />
-    <!-- T-093：開頁同步處理 liff.state，少一次整頁載入。pathname 是 /、恰一個 liff.state、外層沒有 event／team／profile 時，
-         只接受 ?event=／?team=／?profile=（ID 與 share-link.ts 的 PUBLIC_ID 相同），history.replaceState 成最終路徑。
-         其餘查詢參數與 hash 原樣保留。全段 try/catch。next.toosterx.com 另把參數名稱（不含值）追加到 sessionStorage fcb:diag-loads。
-         測試：src/app/liff-state-inline.test.ts。 -->
+    <!-- T-093：開頁同步處理 liff.state（少一次整頁載入）。測試：src/app/liff-state-inline.test.ts。 -->
     <script id="fcb-liff-state">
       (function () {
         try {
@@ -29,9 +26,13 @@
           var hash = String(L.hash || '');
           var host = String(L.hostname || '');
           var params = new URLSearchParams(search);
+          // 診斷只記長得像參數名稱的鍵；其餘（可能是裸 token）記成 *。
+          var NAME = /^[A-Za-z0-9_.-]{1,40}$/;
+          var nameOf = function (key) { return NAME.test(key) ? key : '*'; };
           var q = [];
           params.forEach(function (_value, key) {
-            if (key && q.indexOf(key) === -1) q.push(key);
+            var qname = nameOf(key);
+            if (key && q.indexOf(qname) === -1) q.push(qname);
           });
           var h = [];
           var hashBody = hash.charAt(0) === '#' ? hash.slice(1) : hash;
@@ -42,7 +43,7 @@
               var cut = seg.indexOf('=');
               // 沒有「=」的片段可能是裸 token，不當成參數名稱。
               if (cut <= 0) continue;
-              var hname = seg.slice(0, cut);
+              var hname = nameOf(seg.slice(0, cut));
               if (h.indexOf(hname) === -1) h.push(hname);
             }
           }
@@ -74,6 +75,8 @@
               }
             }
           }
+          var ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
+          var auto = target !== '' && /\bLine\//i.test(ua) && /\bLIFF\b/.test(ua);
           try {
             if (host === 'next.toosterx.com') {
               var KEY = 'fcb:diag-loads';
@@ -86,7 +89,8 @@
               }
               var last = prev.length ? prev[prev.length - 1] : null;
               var n = last && typeof last.n === 'number' && last.n === last.n ? last.n + 1 : prev.length + 1;
-              prev.push({ n: n, path: path, q: q, h: h, rewrote: target !== '' });
+              var shownPath = path.replace(/^\/(events|teams|profile)\/[^/?#]+/, '/$1/:id');
+              prev.push({ n: n, path: shownPath, q: q, h: h, rewrote: target !== '', auto: auto });
               if (prev.length > 10) prev = prev.slice(prev.length - 10);
               sessionStorage.setItem(KEY, JSON.stringify(prev));
             }
@@ -95,8 +99,7 @@
             history.replaceState(history.state, '', target);
             // 站長 11-08 定案：Mini App 分享開頁要自動登入。只在 LINE Mini App（UA 同 login-redirect.ts#isLikelyMiniAppUserAgent）
             // 設旗標讓 App.tsx 照回跳流程接手；外部瀏覽器一律不設（SDK 不導向時非互動登入會失敗、反而擋掉整頁自動登入）。
-            var ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
-            if (/\bLine\//i.test(ua) && /\bLIFF\b/.test(ua)) window.__fcbLiffStateConsumed = true;
+            if (auto) window.__fcbLiffStateConsumed = true;
           }
         } catch (e) {}
       })();

@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 
 /** 內測站角標只在這個主機出現。正式站 toosterx.com 不渲染、也不讀寫這份紀錄。 */
@@ -10,6 +11,7 @@ interface DiagLoad {
   q?: unknown;
   h?: unknown;
   rewrote?: unknown;
+  auto?: unknown;
 }
 
 interface DiagLoadsBadgeProps {
@@ -51,12 +53,13 @@ function diagLoadText(item: DiagLoad): string {
   const n = typeof item.n === 'number' && Number.isFinite(item.n) ? String(item.n) : '?';
   const path = typeof item.path === 'string' ? item.path : '';
   const rewrote = item.rewrote === true ? 'rewrote' : 'kept';
-  return `${n} ${path} q:${namesOf(item.q).join(',')} h:${namesOf(item.h).join(',')} ${rewrote}`;
+  const auto = item.auto === true ? ' auto' : '';
+  return `${n} ${path} q:${namesOf(item.q).join(',')} h:${namesOf(item.h).join(',')} ${rewrote}${auto}`;
 }
 
 /**
  * 內測 LIFF 真機看開頁次數、路徑、查詢與 hash 的參數名稱。
- * 純文字，不碰 innerHTML。點一下收合，避免擋住操作。
+ * 純文字節點輸出。點一下收合，避免擋住操作。
  */
 export function DiagLoadsBadge({ hostname }: DiagLoadsBadgeProps = {}): JSX.Element | null {
   const [open, setOpen] = useState(true);

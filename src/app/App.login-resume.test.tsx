@@ -104,6 +104,22 @@ describe('LINE 授權回跳：開頁自動接手登入', () => {
     }
   });
 
+  it('T-093：有旗標但 Auth 還原為已登入 → 不呼叫 signIn，網址（含 hash）不變', async () => {
+    history.replaceState(null, '', '/events/abc#access_token=x');
+    (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed = true;
+    try {
+      authRestoresAs('login-user');
+      auth.getCurrentUser.mockResolvedValue(LOGIN_USER);
+      render(<App />);
+      await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+      await pause(40);
+      expect(auth.signIn).not.toHaveBeenCalled();
+      expect(`${location.pathname}${location.hash}`).toBe('/events/abc#access_token=x');
+    } finally {
+      delete (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed;
+    }
+  });
+
   it('T-093：同一網址沒有旗標（外部瀏覽器）→ 不接手', async () => {
     history.replaceState(null, '', '/events/abc');
     authRestoresAs(null);

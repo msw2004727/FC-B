@@ -253,7 +253,7 @@ describe('fcb-liff-state 內測角標紀錄', () => {
       expect(raw).not.toContain(secret);
     }
     expect(stored(result)).toEqual([
-      { n: 1, path: '/', q: ['liff.state', 'code'], h: ['access_token', 'id_token'], rewrote: true },
+      { n: 1, path: '/', q: ['liff.state', 'code'], h: ['access_token', 'id_token'], rewrote: true, auto: false },
     ]);
     expect(result.consoleCalls).toEqual([]);
   });
@@ -283,7 +283,7 @@ describe('fcb-liff-state 內測角標紀錄', () => {
     expect(raw).not.toContain('SECRET_Y');
     expect(raw).not.toContain('SECRET_H');
     expect(stored(result)).toEqual([
-      { n: 1, path: '/', q: ['liff.state', 'code'], h: ['access_token'], rewrote: false },
+      { n: 1, path: '/', q: ['liff.state', 'code'], h: ['access_token'], rewrote: false, auto: false },
     ]);
   });
 
@@ -292,8 +292,8 @@ describe('fcb-liff-state 內測角標紀錄', () => {
     run({ hostname: 'next.toosterx.com', session, pathname: '/' });
     run({ hostname: 'next.toosterx.com', session, pathname: '/events/x' });
     expect(JSON.parse(session.get('fcb:diag-loads') ?? 'null')).toEqual([
-      { n: 1, path: '/', q: [], h: [], rewrote: false },
-      { n: 2, path: '/events/x', q: [], h: [], rewrote: false },
+      { n: 1, path: '/', q: [], h: [], rewrote: false, auto: false },
+      { n: 2, path: '/events/:id', q: [], h: [], rewrote: false, auto: false },
     ]);
     const seed = Array.from({ length: 10 }, (_item, index) => ({
       n: index + 1,
@@ -309,7 +309,7 @@ describe('fcb-liff-state 內測角標紀錄', () => {
     expect(saved.map((item) => item.n)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     const last = saved[saved.length - 1];
     if (!last) throw new Error('缺少最後一筆診斷');
-    expect(last).toEqual({ n: 11, path: '/events/x', q: [], h: [], rewrote: false });
+    expect(last).toEqual({ n: 11, path: '/events/:id', q: [], h: [], rewrote: false, auto: false });
   });
 
   it('sessionStorage 壞掉或丟錯時仍改寫，且不往外拋', () => {
@@ -322,7 +322,7 @@ describe('fcb-liff-state 內測角標紀錄', () => {
     });
     expect(parsed.current).toBe('/events/X#a=1');
     expect(stored(parsed)).toEqual([
-      { n: 1, path: '/', q: ['liff.state'], h: ['a'], rewrote: true },
+      { n: 1, path: '/', q: ['liff.state'], h: ['a'], rewrote: true, auto: false },
     ]);
     const thrown = run({
       hostname: 'next.toosterx.com',
@@ -369,5 +369,34 @@ describe('fcb-liff-state 自動登入旗標（站長 11-08 定案 Mini App 分�
     const source = read('src/data/login-redirect.ts');
     expect(source).toContain(String.raw`/\bLine\//i.test(userAgent) && /\bLIFF\b/.test(userAgent)`);
     expect(script).toContain(String.raw`/\bLine\//i.test(ua) && /\bLIFF\b/.test(ua)`);
+  });
+});
+
+describe('fcb-liff-state 診斷名稱守門（Opus 終審 P2-1、P3-1、P3-2）', () => {
+  it('不像參數名稱的鍵（裸 token）記成 *，路徑 ID 遮成 :id', () => {
+    const result = run({
+      hostname: 'next.toosterx.com',
+      pathname: '/profile/SECRET_UID',
+      search: '?SECRET_BARE_TOKEN_THAT_IS_LONG_AND_NOT_A_PARAM_NAME_123456789',
+      hash: '#QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo+/abc==',
+    });
+    const raw = result.storage.get('fcb:diag-loads') ?? '';
+    expect(raw).not.toContain('SECRET_');
+    expect(raw).not.toContain('QUJD');
+    expect(stored(result)).toEqual([
+      { n: 1, path: '/profile/:id', q: ['*'], h: ['*'], rewrote: false, auto: false },
+    ]);
+  });
+
+  it('Mini App 改寫時記 auto: true', () => {
+    const result = run({
+      hostname: 'next.toosterx.com',
+      search: '?liff.state=%3Fevent%3DX',
+      userAgent: 'Mozilla/5.0 (iPhone) Line/26.16.1 LIFF',
+    });
+    expect(stored(result)).toEqual([
+      { n: 1, path: '/', q: ['liff.state'], h: [], rewrote: true, auto: true },
+    ]);
+    expect(result.win.__fcbLiffStateConsumed).toBe(true);
   });
 });
