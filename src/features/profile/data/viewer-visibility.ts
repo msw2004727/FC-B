@@ -5,7 +5,7 @@
  * 包含空陣列情況，不得將兩者聯集。
  *
  * R-ID-002：不移植 A 依 name 比對 adminUsers 的行為。
- * 本函式不讀 adminUsers；資料層僅可補入 UID 精確相符文件的隊伍。
+ * 本函式不讀 adminUsers。呼叫端只併入 users/{uid} 的 teamIds／teamId，不再另查 adminUsers。
  */
 import { getActivityRoleLevel, type CustomRole } from './permissions';
 
