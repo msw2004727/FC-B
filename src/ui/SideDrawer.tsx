@@ -52,6 +52,7 @@ import {
 } from '@/features/pwa/pwa-install';
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
 import { GuestAvatarIcon } from './GuestAvatarIcon';
+import { IdentityCrownSvg } from './IdentityCrown';
 
 export interface SideDrawerIdentity {
   readonly identityId?: 'primary' | 'secondary' | string;
@@ -642,7 +643,7 @@ export function SideDrawer({
           <div class="drawer-user">
             {activeAvatarUrl ? (
               <div
-                class={`drawer-avatar drawer-avatar-img${isSecondaryIdentity ? ' avatar-identity-crown' : ''}`}
+                class={`drawer-avatar drawer-avatar-img${isSecondaryIdentity ? ' has-identity-crown' : ''}`}
                 id="drawer-avatar"
                 data-identity-crown={isSecondaryIdentity ? '1' : undefined}
               >
@@ -657,10 +658,11 @@ export function SideDrawer({
                     });
                   }}
                 />
+                {isSecondaryIdentity && <IdentityCrownSvg />}
               </div>
             ) : (
               <div
-                class={`drawer-avatar${isSecondaryIdentity ? ' avatar-identity-crown' : ''}`}
+                class={`drawer-avatar${isSecondaryIdentity ? ' has-identity-crown' : ''}`}
                 id="drawer-avatar"
                 data-identity-crown={isSecondaryIdentity ? '1' : undefined}
                 style={isSignedIn
@@ -668,6 +670,7 @@ export function SideDrawer({
                   : { color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
               >
                 {isSignedIn ? avatarInitial : <GuestAvatarIcon />}
+                {isSecondaryIdentity && <IdentityCrownSvg />}
               </div>
             )}
             <div class="drawer-user-info">

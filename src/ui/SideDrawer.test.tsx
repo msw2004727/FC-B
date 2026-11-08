@@ -287,7 +287,9 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     );
     openDrawer();
     expect(document.getElementById('drawer-name')?.textContent).toBe('第二暱稱');
-    expect(document.getElementById('drawer-avatar')?.classList.contains('avatar-identity-crown')).toBe(true);
+    // 測試同步更新：抽屜皇冠改用 A 的 has-identity-crown＋SVG（原本只加 class、畫面上沒有皇冠）
+    expect(document.getElementById('drawer-avatar')?.classList.contains('has-identity-crown')).toBe(true);
+    expect(document.querySelector('#drawer-avatar svg.identity-crown')).toBeTruthy();
 
     const roleTag = document.getElementById('drawer-role-tag')!;
     expect(roleTag.textContent).toBe('管理員');
