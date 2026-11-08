@@ -1651,6 +1651,11 @@
 .signup-flipper.flipped {
   transform: rotateY(180deg);
 }
+/* 翻回時正反面已是同一個新狀態，直接歸位不再轉回來（A 是整個按鈕換新 DOM，同樣沒有回轉；
+   站長 11-08 實測：回轉那 0.75 秒看起來像多翻一次）。 */
+.signup-flipper:not(.flipped) {
+  transition: none;
+}
 
 /* 翻轉時隱藏光跡裝飾 */
 .signup-glow-wrap.flipped .signup-glow-border,
