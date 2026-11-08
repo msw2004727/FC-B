@@ -128,6 +128,32 @@ function mount() {
   );
 }
 
+// 11-09 翻牌改進度環：環期間主按鈕縮成圓、文字拿掉（aria-label 為忙碌標籤）。
+function ringButton(container: Element): HTMLButtonElement | null {
+  return container.querySelector('#detail-action-primary button.signup-ring-btn');
+}
+/** 環還在爬（尚未放行補滿）：仍是縮小的圓、沒有補滿也沒有打勾。 */
+function ringStillProgress(container: Element): boolean {
+  return container.querySelector('#detail-action-primary button.signup-ring-btn.is-collapsed') !== null
+    && container.querySelector('#detail-action-primary .signup-ring-arc.is-fill') === null
+    && container.querySelector('#detail-action-primary .signup-ring-check') === null;
+}
+/** 頁面層級 busy 已解除（工具列的幫夥伴報名只看頁面 busy）。 */
+function pageBusyReleased(): boolean {
+  return !(screen.getByRole('button', { name: '幫夥伴報名' }) as HTMLButtonElement).disabled;
+}
+/** 記錄主按鈕出現過的所有文字，用來證明環期間不會先露出舊狀態。 */
+function watchPrimaryLabels(container: Element): { labels: string[]; stop: () => void } {
+  const labels: string[] = [];
+  const read = (): void => {
+    const button = container.querySelector('#detail-action-primary button');
+    if (button) labels.push(button.textContent ?? '');
+  };
+  const observer = new MutationObserver(read);
+  observer.observe(container, { subtree: true, childList: true, characterData: true, attributes: true });
+  return { labels, stop: () => observer.disconnect() };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   history.replaceState(null, '', '/activities/public-event');
@@ -193,16 +219,19 @@ describe('3b-1w 報名流程', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消 2 筆報名' }));
   });
 
-  it('立即報名不開同行者彈窗；成功 toast 與翻牌', async () => {
+  // 測試同步更新：翻牌改進度環，背面文字不再顯示；改驗環期間的忙碌標籤與展開後的新狀態按鈕（含紅底）。
+  it('立即報名不開同行者彈窗；成功 toast 與進度環，展開後是取消報名', async () => {
+    mocks.history.mockImplementation(async () => (mocks.register.mock.calls.length ? [self] : []));
+    mocks.registrations.mockImplementation(async () => (mocks.register.mock.calls.length ? [self] : []));
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
     expect(mocks.companions).not.toHaveBeenCalled();
     expect(view.container.querySelector('#companion-select-overlay')).toBeNull();
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
-    expect(view.container.querySelector('.signup-flip-back')?.textContent).toBe('取消報名');
-    expect(view.container.querySelector('.signup-flip-back')?.getAttribute('style'))
-      .toContain('rgb(220, 38, 38)');
+    expect(ringButton(view.container)?.getAttribute('aria-label')).toBe('報名中...');
+    const cancel = await screen.findByRole('button', { name: '取消報名' });
+    expect(cancel.getAttribute('style')).toContain('rgb(220, 38, 38)');
   });
 
   // 測試同步更新：照 A _confirmCompanionRegisterUnlocked 先取消再加報（Gemini 審查 P1）。
@@ -370,12 +399,18 @@ describe('3b-1w 報名流程', () => {
     expect(mocks.register).not.toHaveBeenCalled();
   });
 
-  it('候補回應顯示候補 toast 與紫色翻牌', async () => {
+  // 測試同步更新：翻牌改進度環；改驗重讀後展開成紫色的取消候補。
+  it('候補回應顯示候補 toast，進度環展開後是紫色取消候補', async () => {
+    const waiting = { ...self, status: 'waitlisted' };
     mocks.register.mockResolvedValue({ waitlisted: 1 });
+    mocks.history.mockImplementation(async () => (mocks.register.mock.calls.length ? [waiting] : []));
+    mocks.registrations.mockImplementation(async () => (mocks.register.mock.calls.length ? [waiting] : []));
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已加入候補名單' }));
-    expect(view.container.querySelector('.signup-flip-back')?.textContent).toBe('取消候補');
+    expect(ringButton(view.container)).not.toBeNull();
+    const cancel = await screen.findByRole('button', { name: '取消候補' });
+    expect(cancel.getAttribute('style')).toContain('rgb(124, 58, 237)');
   });
 
   it.each([
@@ -472,7 +507,8 @@ describe('3b-1w 報名流程', () => {
     expect(mocks.companions).not.toHaveBeenCalled();
   });
 
-  it('翻牌到期清除，卸載後 context 失效', async () => {
+  // 測試同步更新：翻牌改進度環；750 ms 到且重讀完成即放行補滿（不再卡在爬升），再 660 ms 展開完畢。
+  it('進度環到期放行並展開，卸載後 context 失效', async () => {
     const view = mount();
     const button = await screen.findByRole('button', { name: '立即報名' });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -483,7 +519,9 @@ describe('3b-1w 報名流程', () => {
       await Promise.resolve();
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(750); });
-    expect(view.container.querySelector('.signup-flip-back')).toBeNull();
+    expect(ringStillProgress(view.container)).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(ringButton(view.container)).toBeNull();
     const input = mocks.register.mock.calls[0]?.[0] as {
       context: { getAuth: () => { uid: string | null } };
     } | undefined;
@@ -582,21 +620,41 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    // 測試同步更新：主按鈕在重讀完成前保持進度環（aria-busy），改用工具列確認頁面 busy 已解除。
+    await waitFor(() => expect(pageBusyReleased()).toBe(true));
+    expect(ringStillProgress(view.container)).toBe(true);
     expect(mocks.register).toHaveBeenCalledTimes(1);
     await act(async () => { resolveRegs([selfA]); });
     await screen.findByRole('button', { name: '取消報名' });
   });
 
-  it('成功後立刻再按報名：重讀後以已報名拒絕，不送第二次 Callable', async () => {
+  // 測試同步更新：重讀未完成時主按鈕是停用的進度環，按了不會再送；
+  // 重讀卡住到 15 秒上限放行後，畫面仍是舊的「立即報名」，再按仍以已報名拒絕、不送第二次 Callable。
+  it('成功後立刻再按報名：環期間按不動；逾時放行後再按以已報名拒絕，不送第二次 Callable', async () => {
     mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>(() => {}));
     mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValue([selfA]);
     const view = mountA();
-    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
-    await waitFor(() => expect(busyButton(view.container)).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '立即報名' }));
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '你已經報名這場活動' }));
+    const button = await screen.findByRole('button', { name: '立即報名' });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await act(async () => {
+      fireEvent.click(button);
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' });
+    const ring = ringButton(view.container);
+    expect(ring?.disabled).toBe(true);
+    await act(async () => {
+      if (ring) fireEvent.click(ring);
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_700); });
+    const stale = screen.getByRole('button', { name: '立即報名' });
+    await act(async () => {
+      fireEvent.click(stale);
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(mocks.toast).toHaveBeenCalledWith({ message: '你已經報名這場活動' });
     expect(mocks.register).toHaveBeenCalledTimes(1);
   });
 
@@ -614,12 +672,18 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     const view = mountA();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    // 測試同步更新：主按鈕要等這次背景重讀（舊）結束才展開，改用工具列確認頁面 busy 已解除；
+    // 較新的重新整理先寫入，舊讀取晚到被丟棄，展開後仍是取消報名、全程不露出立即報名。
+    await waitFor(() => expect(pageBusyReleased()).toBe(true));
+    const watch = watchPrimaryLabels(view.container);
     fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
-    await screen.findByRole('button', { name: '取消報名' });
-    expect(mocks.registrations).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(2));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { resolveStale([]); });
-    expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
+    await screen.findByRole('button', { name: '取消報名' });
+    watch.stop();
+    expect(watch.labels).not.toContain('立即報名');
     expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
   });
 
@@ -635,7 +699,8 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
     expect(busyButton(view.container)).not.toBeNull();
     expect(mocks.toast).not.toHaveBeenCalledWith({ message: '報名成功！' });
-    expect(view.container.querySelector('.signup-flip-back')).toBeNull();
+    // 測試同步更新：原驗「沒有翻牌」，改驗結果未知不打勾、環不放行補滿。
+    expect(ringStillProgress(view.container)).toBe(true);
     expect(screen.queryByRole('button', { name: '取消報名' })).toBeNull();
     await act(async () => { resolveRegs([]); });
     await waitFor(() => expect(busyButton(view.container)).toBeNull());
@@ -688,15 +753,15 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消報名' }));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(busyButton(view.container)).toBeNull());
+    // 測試同步更新：主按鈕在重讀完成前保持進度環，改用工具列確認頁面 busy 已解除。
+    await waitFor(() => expect(pageBusyReleased()).toBe(true));
+    expect(ringButton(view.container)?.getAttribute('aria-label')).toBe('取消報名中...');
   });
 
   // 站長 11-08 實測：翻牌 750 ms 就翻回，背景重讀還沒到時正面會先閃一次舊按鈕。
-  function flipBack(container: Element): string | null | undefined {
-    return container.querySelector('.signup-flip-back')?.textContent;
-  }
-
-  it('報名翻牌停到背景重讀完成才翻回，不閃回立即報名', async () => {
+  // 測試同步更新（11-09 翻牌改進度環）：同一保護改驗「環停在爬升、直到背景重讀完成才補滿＋✓＋展開」，
+  // 並全程記錄主按鈕文字，證明不會出現「取消報名→立即報名→取消報名」這種先舊後新的跳動。
+  it('報名進度環停到背景重讀完成才展開，不閃回立即報名', async () => {
     let resolveRegs!: (rows: DetailRegistration[]) => void;
     mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
       resolveRegs = resolve;
@@ -704,15 +769,21 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValue([selfA]);
     const view = mountA();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
-    await waitFor(() => expect(flipBack(view.container)).toBe('取消報名'));
+    await waitFor(() => expect(ringButton(view.container)).not.toBeNull());
+    const watch = watchPrimaryLabels(view.container);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '報名成功！' }));
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
-    expect(flipBack(view.container)).toBe('取消報名');
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { resolveRegs([selfA]); });
-    await waitFor(() => expect(flipBack(view.container)).toBeUndefined());
-    expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
+    await waitFor(() => expect(view.container.querySelector('.signup-ring-check')).not.toBeNull());
+    await screen.findByRole('button', { name: '取消報名' });
+    watch.stop();
+    expect(watch.labels).not.toContain('立即報名');
+    expect(ringButton(view.container)).toBeNull();
   });
 
-  it('取消翻牌停到背景重讀完成才翻回，不閃回取消報名', async () => {
+  it('取消進度環停到背景重讀完成才展開，不閃回取消報名', async () => {
     mocks.history.mockImplementation(async () => (mocks.cancel.mock.calls.length ? [] : [selfA]));
     let resolveRegs!: (rows: DetailRegistration[]) => void;
     mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
@@ -720,15 +791,21 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     }));
     const view = mountA();
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
-    await waitFor(() => expect(flipBack(view.container)).toBe('立即報名'));
+    await waitFor(() => expect(ringButton(view.container)).not.toBeNull());
+    const watch = watchPrimaryLabels(view.container);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: '已取消報名' }));
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
-    expect(flipBack(view.container)).toBe('立即報名');
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { resolveRegs([]); });
-    await waitFor(() => expect(flipBack(view.container)).toBeUndefined());
-    expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
+    await waitFor(() => expect(view.container.querySelector('.signup-ring-check')).not.toBeNull());
+    await screen.findByRole('button', { name: '立即報名' });
+    watch.stop();
+    expect(watch.labels).not.toContain('取消報名');
+    expect(ringButton(view.container)).toBeNull();
   });
 
-  it('背景重讀一直沒回：翻牌最多停 15 秒就翻回', async () => {
+  it('背景重讀一直沒回：進度環最多停 15 秒就放行展開', async () => {
     mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>(() => {}));
     const view = mountA();
     const button = await screen.findByRole('button', { name: '立即報名' });
@@ -740,9 +817,11 @@ describe('T-086a 本人報名／取消縮短往返', () => {
       await Promise.resolve();
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(14_000); });
-    expect(flipBack(view.container)).toBe('取消報名');
+    expect(ringStillProgress(view.container)).toBe(true);
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
-    expect(flipBack(view.container)).toBeUndefined();
+    expect(ringStillProgress(view.container)).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(ringButton(view.container)).toBeNull();
   });
 
   it('deduplicated 取消：不顯示成功，等重讀完成才解除忙碌', async () => {

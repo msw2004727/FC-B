@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import type { SignupButtonState } from '../../data/signup-state';
 import {
   EventDetailPrimaryButton,
+  ringPercent,
   type EventDetailPrimaryButtonProps,
 } from './EventDetailPrimaryButton';
 
@@ -10,6 +11,8 @@ vi.mock('./signup-a11y.css', () => ({}));
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function makeState(overrides: Partial<SignupButtonState> = {}): SignupButtonState {
@@ -34,11 +37,63 @@ function renderButton(overrides: Partial<EventDetailPrimaryButtonProps> = {}) {
     state: makeState(),
     disabled: false,
     busy: false,
-    flip: null,
     onClick: () => {},
     ...overrides,
   };
   return render(<EventDetailPrimaryButton {...props} />);
+}
+
+const cancelState = makeState({
+  kind: 'cancel',
+  label: '取消報名',
+  action: 'cancel',
+  tone: 'danger',
+  variant: 'styled',
+  bg: '#dc2626',
+  color: '#fff',
+  glow: '#dc2626',
+  glowLight: '#f87171',
+  hint: '正在取消報名',
+});
+
+/** 可重繪的按鈕：模擬頁面依序改 running／settle／state。 */
+function ringHarness(initial: Partial<EventDetailPrimaryButtonProps> = {}) {
+  let props: EventDetailPrimaryButtonProps = {
+    state: makeState(),
+    disabled: false,
+    busy: false,
+    running: false,
+    settle: { serial: 0, pending: false },
+    onClick: () => {},
+    ...initial,
+  };
+  const view = render(<EventDetailPrimaryButton {...props} />);
+  return {
+    view,
+    update(next: Partial<EventDetailPrimaryButtonProps>): void {
+      props = { ...props, ...next };
+      view.rerender(<EventDetailPrimaryButton {...props} />);
+    },
+    button: (): HTMLButtonElement => view.container.querySelector('button') as HTMLButtonElement,
+  };
+}
+
+function stubFrames() {
+  let id = 0;
+  const request = vi.fn((_callback: FrameRequestCallback) => ++id);
+  const cancel = vi.fn((_handle: number) => {});
+  vi.stubGlobal('requestAnimationFrame', request);
+  vi.stubGlobal('cancelAnimationFrame', cancel);
+  return { request, cancel };
+}
+
+function stubReducedMotion(reduce: boolean): void {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: reduce && query.includes('reduce'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
 }
 
 describe('EventDetailPrimaryButton', () => {
@@ -79,15 +134,167 @@ describe('EventDetailPrimaryButton', () => {
     expect(container.querySelector('button')?.textContent).toContain('取消候補中...');
   });
 
-  it('flip 非 null 時加 signup-flip-back 與 flipped', () => {
-    const { container } = renderButton({
-      flip: { text: '取消候補', background: '#7c3aed', serial: 1 },
+  // 測試同步更新：11-09 翻牌改進度環（站長核可 A＋B），原「flip 背面」案例改驗進度環各階段。
+  it('進度環曲線：0.6 秒到 60%，之後慢爬、永遠不到 100%', () => {
+    expect(ringPercent(0)).toBe(0);
+    expect(ringPercent(300)).toBeCloseTo(30);
+    expect(ringPercent(600)).toBeCloseTo(60);
+    expect(ringPercent(2_100)).toBeGreaterThan(75);
+    expect(ringPercent(60_000)).toBeLessThan(90);
+    expect(ringPercent(2_000)).toBeLessThan(ringPercent(3_000));
+  });
+
+  it('主按鈕動作進行中：縮成圓、畫進度環、aria-busy 與報名中標籤，拿掉文字與光跡', () => {
+    stubFrames();
+    const ring = ringHarness({ busy: true, running: true });
+    const button = ring.button();
+    expect(button.classList.contains('signup-ring-btn')).toBe(true);
+    expect(button.classList.contains('is-collapsed')).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.getAttribute('aria-label')).toBe('報名中...');
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe('');
+    expect(button.querySelector('.signup-ring-arc')?.getAttribute('stroke-dasharray')).toBe('94.25');
+    expect(ring.view.container.querySelector('.signup-glow-wrap')?.classList.contains('loading')).toBe(false);
+  });
+
+  it('取消類動作的環標籤是取消中', () => {
+    stubFrames();
+    const ring = ringHarness({ state: cancelState, busy: true, running: true });
+    expect(ring.button().getAttribute('aria-label')).toBe('取消報名中...');
+  });
+
+  it('成功：等 settle 放行才補滿＋✓＋展開，最後才換新狀態文字，途中不露出任何狀態文字', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubFrames();
+    const ring = ringHarness({ busy: true, running: true });
+    const seen: string[] = [];
+    const record = (): void => { seen.push(ring.button().textContent ?? ''); };
+    // 伺服器成功：頁面解除 busy、settle 進入 pending，背景重讀中狀態已先變（額滿投影）。
+    ring.update({
+      busy: false,
+      running: false,
+      settle: { serial: 1, pending: true },
+      state: makeState({ kind: 'waitlist', label: '報名候補', variant: 'styled', bg: '#7c3aed' }),
     });
-    const back = container.querySelector('.signup-flip-back');
-    expect(back?.textContent).toBe('取消候補');
-    expect(back?.getAttribute('style')).toContain('background');
-    expect(container.querySelector('.signup-flipper')?.classList.contains('flipped')).toBe(true);
-    expect(container.querySelector('.signup-glow-wrap')?.classList.contains('flipped')).toBe(true);
+    record();
+    expect(ring.button().classList.contains('is-collapsed')).toBe(true);
+    // 環上凍結按下時的狀態，不閃中間狀態的底色。
+    expect(ring.button().classList.contains('primary-btn')).toBe(true);
+    act(() => { vi.advanceTimersByTime(5_000); });
+    record();
+    expect(ring.view.container.querySelector('.signup-ring-check')).toBeNull();
+    // 重讀完成：資料已是新狀態才放行。
+    ring.update({ settle: { serial: 1, pending: false }, state: cancelState });
+    record();
+    expect(ring.view.container.querySelector('.signup-ring-arc.is-fill')).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(180); });
+    record();
+    expect(ring.view.container.querySelector('.signup-ring-check')?.textContent).toBe('✓');
+    expect(ring.button().classList.contains('is-collapsed')).toBe(true);
+    act(() => { vi.advanceTimersByTime(220); });
+    record();
+    expect(ring.button().classList.contains('is-collapsed')).toBe(false);
+    expect(ring.button().classList.contains('signup-ring-btn')).toBe(true);
+    expect(ring.view.container.querySelector('.signup-ring-check')).not.toBeNull();
+    expect(seen.every(text => text === '' || text === '✓')).toBe(true);
+    act(() => { vi.advanceTimersByTime(260); });
+    expect(ring.button().textContent).toBe('取消報名');
+    expect(ring.button().classList.contains('signup-ring-btn')).toBe(false);
+    expect(ring.button().getAttribute('aria-busy')).toBeNull();
+    expect(ring.button().getAttribute('aria-label')).toBeNull();
+    expect(ring.button().disabled).toBe(false);
+  });
+
+  it('失敗：不打勾，直接展開回原狀態', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubFrames();
+    const ring = ringHarness({ busy: true, running: true });
+    ring.update({ busy: false, running: false });
+    expect(ring.view.container.querySelector('.signup-ring-check')).toBeNull();
+    expect(ring.button().classList.contains('is-collapsed')).toBe(false);
+    expect(ring.button().textContent).toBe('');
+    act(() => { vi.advanceTimersByTime(260); });
+    expect(ring.button().textContent).toBe('立即報名');
+    expect(ring.button().classList.contains('signup-ring-btn')).toBe(false);
+  });
+
+  it('減少動態：不變形不畫環，靜態忙碌文字，結果出來直接切換', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const frames = stubFrames();
+    stubReducedMotion(true);
+    const ring = ringHarness({ busy: true, running: true });
+    expect(ring.button().classList.contains('signup-ring-btn')).toBe(false);
+    expect(ring.view.container.querySelector('svg')).toBeNull();
+    expect(ring.button().textContent).toContain('報名中...');
+    expect(ring.button().getAttribute('aria-busy')).toBe('true');
+    expect(ring.view.container.querySelector('.signup-glow-wrap')?.classList.contains('loading')).toBe(true);
+    ring.update({ busy: false, running: false, settle: { serial: 1, pending: true } });
+    expect(ring.button().textContent).toContain('報名中...');
+    ring.update({ settle: { serial: 1, pending: false }, state: cancelState });
+    expect(ring.button().textContent).toBe('取消報名');
+    expect(ring.button().getAttribute('aria-busy')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(frames.request).not.toHaveBeenCalled();
+  });
+
+  it('其他動作造成的頁面忙碌不變形，沿用靜態忙碌樣式', () => {
+    stubFrames();
+    const ring = ringHarness({ busy: true });
+    expect(ring.button().classList.contains('signup-ring-btn')).toBe(false);
+    expect(ring.button().textContent).toContain('報名中...');
+  });
+
+  it('卸載時取消進度環的 requestAnimationFrame 與計時器', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const frames = stubFrames();
+    const ring = ringHarness({ busy: true, running: true });
+    expect(frames.request).toHaveBeenCalled();
+    const lastFrame = frames.request.mock.results.at(-1)?.value;
+    ring.view.unmount();
+    expect(frames.cancel).toHaveBeenCalledWith(lastFrame);
+
+    const second = ringHarness({ busy: true, running: true });
+    second.update({ busy: false, running: false, settle: { serial: 1, pending: false } });
+    expect(vi.getTimerCount()).toBe(1);
+    second.view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('團隊報名按鈕：寫入中縮成環，成功才打勾後展開成新文字', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubFrames();
+    const team = {
+      label: '團隊報名',
+      busyLabel: '建立團隊名額中',
+      busy: true,
+      doneSerial: 0,
+      onClick: () => {},
+    };
+    const ring = ringHarness({ teamReservation: team });
+    const teamButton = (): HTMLButtonElement =>
+      ring.view.container.querySelector('.event-signup-team-button') as HTMLButtonElement;
+    expect(teamButton().classList.contains('is-collapsed')).toBe(true);
+    expect(teamButton().getAttribute('aria-label')).toBe('建立團隊名額中');
+    expect(teamButton().getAttribute('aria-busy')).toBe('true');
+    ring.update({ teamReservation: { ...team, busy: false, doneSerial: 1, label: '調整名額' } });
+    act(() => { vi.advanceTimersByTime(180); });
+    expect(teamButton().querySelector('.signup-ring-check')).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(480); });
+    expect(teamButton().textContent).toBe('調整名額');
+    expect(teamButton().classList.contains('signup-ring-btn')).toBe(false);
+  });
+
+  it('團隊報名失敗：不打勾直接展開', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubFrames();
+    const team = { label: '團隊報名', busyLabel: '建立團隊名額中', busy: true, onClick: () => {} };
+    const ring = ringHarness({ teamReservation: team });
+    ring.update({ teamReservation: { ...team, busy: false } });
+    const teamButton = ring.view.container.querySelector('.event-signup-team-button');
+    expect(teamButton?.querySelector('.signup-ring-check')).toBeNull();
+    act(() => { vi.advanceTimersByTime(260); });
+    expect(ring.view.container.querySelector('.event-signup-team-button')?.textContent).toBe('團隊報名');
   });
 
   it('早鳥可報 DOM', () => {

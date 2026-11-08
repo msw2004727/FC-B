@@ -1788,6 +1788,55 @@
   transition: transform .12s;
 }
 
+/* ─── 報名按鈕進度環（B 11-09，取代翻牌；站長核可「A＋B 變形加進度環」）───
+   按下 .25s 縮成 46px 圓，環照前快後慢爬；成功補滿＋✓＋展開，失敗直接展開。
+   顏色全用 currentColor（各狀態按鈕文字皆白色）：軌道 .3 透明度＝設計稿 rgba(255,255,255,.3)。
+   減少動態時 JS 不套這些 class，改用原本的靜態忙碌文字。 */
+.detail-action-primary .signup-glow-wrap .signup-flipper > button.signup-ring-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width .25s ease, border-radius .25s ease;
+}
+.detail-action-primary .signup-glow-wrap .signup-flipper > button.signup-ring-btn.is-collapsed {
+  width: 46px !important;
+  min-width: 46px;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 !important;
+  border-radius: 23px !important;
+}
+.signup-ring-svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -17px 0 0 -17px;
+}
+.signup-ring-track,
+.signup-ring-arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+}
+.signup-ring-track {
+  stroke-opacity: .3;
+}
+.signup-ring-arc {
+  stroke-linecap: round;
+}
+.signup-ring-arc.is-fill {
+  transition: stroke-dashoffset .15s;
+}
+.signup-ring-check {
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* ─── 分隊排序按鈕（報名名單表頭）─── */
 .att-team-sort-btn {
   width: 22px; height: 22px; border-radius: 50%;
