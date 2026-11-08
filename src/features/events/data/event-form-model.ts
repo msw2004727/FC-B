@@ -6,6 +6,11 @@ import type { EventFormAddonState } from '../components/event-form/form-types';
 import { TEAM_SPLIT_COLORS } from '../components/event-form/TeamJerseyIcon';
 import { normalizeEventSocialLinks, normalizeEventSocialUrl } from './event-social-links';
 import { getSportKeySafe } from './sports';
+import {
+  hasTeamReservationReleasedAt,
+  normalizeReleaseHours,
+  type TeamReservationReleaseHours,
+} from './team-reservation-release';
 
 /** A `js/config.js#REGION_MAP`：順序（地區與縣市）照 A，表單依此順序顯示。 */
 export const REGION_MAP: Readonly<Record<string, readonly string[]>> = {
@@ -89,6 +94,76 @@ export interface EventFormState extends EventFormAddonState {
   minAge: string;
   notes: string;
   sportTag: string;
+  /** 團隊預留自動釋出時數（手動選過或編輯既有活動時的值）。 */
+  teamReservationReleaseHours: number;
+  /** true：新建表單尚未手動選過，實際值依開始時間階梯計算（resolveTeamReservationReleaseHours）。 */
+  teamReservationReleaseAuto: boolean;
+  /** 編輯既有活動且已有 teamReservationReleasedAt：下拉鎖住。 */
+  teamReservationReleased: boolean;
+}
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * 新建表單的釋出時數預設（站長 11-09）：取 {12, 6, 3} 中嚴格小於剩餘小時的最大值，都不符回 0；
+ * 開始時間未知（日期或時間未填）視為充裕，回 12。
+ */
+export function defaultReleaseHours(startMs: number | null, nowMs: number): TeamReservationReleaseHours {
+  if (startMs === null || !Number.isFinite(startMs)) return 12;
+  const remainingH = (startMs - nowMs) / HOUR_MS;
+  for (const hours of [12, 6, 3] as const) {
+    if (hours < remainingH) return hours;
+  }
+  return 0;
+}
+
+/** 表單日期＋開始時間（台北牆鐘）；任一未填或無法解析回 null。 */
+export function formStartMs(dateVal: string, startTime: string): number | null {
+  const date = dateVal.trim();
+  const time = startTime.trim();
+  if (!date || !time) return null;
+  return parseTaipei(`${date}T${time}`);
+}
+
+/**
+ * 實際要寫入的釋出時數：新建且未手動選過 → 依該場開始時間走階梯；其餘（手動、編輯）→ 表單值。
+ * 多日期批次建立以每場自己的 dateVal 呼叫。
+ */
+export function resolveTeamReservationReleaseHours(
+  state: Pick<EventFormState, 'eventId' | 'startTime' | 'teamReservationReleaseHours' | 'teamReservationReleaseAuto'>,
+  dateVal: string,
+  nowMs: number,
+): TeamReservationReleaseHours {
+  if (state.teamReservationReleaseAuto && !state.eventId) {
+    return defaultReleaseHours(formStartMs(dateVal, state.startTime), nowMs);
+  }
+  return normalizeReleaseHours(state.teamReservationReleaseHours);
+}
+
+export type ReleaseHoursNote =
+  | { kind: 'released' }
+  | { kind: 'downgraded'; remainingHours: number; hours: number }
+  | { kind: 'off' }
+  | { kind: 'immediate'; hours: number };
+
+/**
+ * 下拉下方的一行提示（文案照 docs/previews/team-release-ui-2026-11-09.html）：
+ * 已釋出 → released；仍是自動值且降級 → downgraded；自動落到 0 → off；
+ * 非自動值且釋出時間已到（start − hours ≤ now < start）→ immediate；其餘不顯示。
+ */
+export function getReleaseHoursNote(state: EventFormState, nowMs: number): ReleaseHoursNote | null {
+  if (state.teamReservationReleased) return { kind: 'released' };
+  const startMs = formStartMs(state.dateVal, state.startTime);
+  if (startMs === null) return null;
+  const remainingMs = startMs - nowMs;
+  const hours = resolveTeamReservationReleaseHours(state, state.dateVal, nowMs);
+  if (state.teamReservationReleaseAuto && !state.eventId) {
+    if (hours === 0) return { kind: 'off' };
+    if (hours !== 12) return { kind: 'downgraded', remainingHours: Math.floor(remainingMs / HOUR_MS), hours };
+    return null;
+  }
+  if (hours > 0 && remainingMs > 0 && remainingMs <= hours * HOUR_MS) return { kind: 'immediate', hours };
+  return null;
 }
 
 export function createDefaultFormState(_now: Date = new Date()): EventFormState {
@@ -133,6 +208,9 @@ export function createDefaultFormState(_now: Date = new Date()): EventFormState 
     earlyBirdEnabled: false,
     earlyBirdCost: '10',
     gpsEnabled: false,
+    teamReservationReleaseHours: 12,
+    teamReservationReleaseAuto: true,
+    teamReservationReleased: false,
   };
 }
 
@@ -315,6 +393,10 @@ export function formStateFromEvent(
     earlyBirdCost: String(earlyBirdCost),
     gpsEnabled: !!options?.canUseAddons
       && (!!addons.gpsEnabled || addons.mapLocationConfirmed === true),
+    // 編輯既有活動不套用預設階梯：顯示目前值，缺欄位＝0（不自動釋出），不自動改成 12。
+    teamReservationReleaseHours: normalizeReleaseHours(event.teamReservationReleaseHours),
+    teamReservationReleaseAuto: false,
+    teamReservationReleased: hasTeamReservationReleasedAt(event.teamReservationReleasedAt),
   };
 }
 
@@ -477,6 +559,7 @@ export function buildMultiDateForms(
   base: CreateEventForm,
   dates: readonly string[],
   state: EventFormState,
+  nowMs: number = Date.now(),
 ): CreateEventForm[] {
   const days = Number.parseInt(state.regRelDays, 10) || 0;
   const hours = Number.parseInt(state.regRelHours, 10) || 0;
@@ -486,6 +569,8 @@ export function buildMultiDateForms(
     regOpenTime: state.regOpenEnabled
       ? calcRegOpenForDate(dateVal, base.startTime, days, hours)
       : null,
+    // 每一場依自己的開始時間走階梯（手動選過則各場同值）。
+    teamReservationReleaseHours: resolveTeamReservationReleaseHours(state, dateVal, nowMs),
   }));
 }
 
@@ -520,6 +605,8 @@ export function toCreateEventForm(
     imageVariants?: EventImageVariants;
     delegates?: DelegationEntry[];
     teamOnlySelection?: { ids: string[]; names: string[] };
+    /** 計算自動釋出時數用的現在時間；缺省 Date.now()。 */
+    nowMs?: number;
   },
 ): CreateEventForm {
   // A：parseInt 是有限數就照用，否則 20。
@@ -599,5 +686,9 @@ export function toCreateEventForm(
     earlyBirdCost: state.earlyBirdEnabled ? earlyBirdCost : 0,
     earlyBirdPolicyVersion: state.earlyBirdEnabled ? 1 : null,
     gpsEnabled: state.gpsEnabled,
+    // 一律明寫（含 0），不靠缺省。
+    teamReservationReleaseHours: resolveTeamReservationReleaseHours(
+      state, state.dateVal.trim(), extras?.nowMs ?? Date.now(),
+    ),
   };
 }

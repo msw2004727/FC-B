@@ -206,3 +206,79 @@ describe('EventFormFields', () => {
     expect(select.value).toBe('friendly');
   });
 });
+
+describe('團隊預留自動釋出列', () => {
+  const NOW = Date.parse('2026-06-01T10:00:00+08:00');
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const select = (): HTMLSelectElement => document.getElementById('ce-team-release-hours') as HTMLSelectElement;
+  const note = (): Element | null => document.getElementById('ce-team-release-note');
+
+  it('放在人數上限下面；選項與預設 12、時間充裕不顯示提示', () => {
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-05' } });
+    const max = document.getElementById('ce-max')!;
+    expect(Boolean(max.compareDocumentPosition(select()) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Array.from(select().options).map(option => option.textContent)).toEqual([
+      '不自動釋出', '開始前 3 小時', '開始前 6 小時', '開始前 12 小時', '開始前 24 小時', '開始前 48 小時', '開始前 72 小時',
+    ]);
+    expect(select().value).toBe('12');
+    expect(select().disabled).toBe(false);
+    expect(note()).toBeNull();
+  });
+
+  it('剩 11 小時自動降到 6；不足 3 小時落到不自動釋出', () => {
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '21:00' } });
+    expect(select().value).toBe('6');
+    expect(note()?.textContent).toBe('距開始剩 11 小時，已改為開始前 6 小時');
+    cleanup();
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '12:00' } });
+    expect(select().value).toBe('0');
+    expect(note()?.textContent).toBe('距開始不足 3 小時，預設不自動釋出');
+  });
+
+  it('手動選擇送出 hours 並標記非自動；手動超過剩餘時間顯示 warning', () => {
+    const onPatch = vi.fn();
+    const state = { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '15:00' };
+    renderFields({ state, onPatch });
+    fireEvent.change(select(), { target: { value: '12' } });
+    expect(onPatch).toHaveBeenCalledWith({ teamReservationReleaseHours: 12, teamReservationReleaseAuto: false });
+    cleanup();
+    renderFields({ state: { ...state, teamReservationReleaseHours: 12, teamReservationReleaseAuto: false } });
+    expect(select().value).toBe('12');
+    expect(note()?.textContent).toBe('距開始已不足 12 小時，儲存後會立即釋出');
+    expect((note() as HTMLElement).style.color).toBe('var(--warning)');
+  });
+
+  it('編輯舊活動顯示不自動釋出；已釋出時鎖住並說明', () => {
+    renderFields({
+      mode: 'edit',
+      state: { ...createDefaultFormState(), eventId: 'e1', dateVal: '2026-06-01', startTime: '21:00', teamReservationReleaseHours: 0, teamReservationReleaseAuto: false },
+    });
+    expect(select().value).toBe('0');
+    expect(note()).toBeNull();
+    cleanup();
+    renderFields({
+      mode: 'edit',
+      state: {
+        ...createDefaultFormState(),
+        eventId: 'e2',
+        dateVal: '2026-06-01',
+        startTime: '21:00',
+        teamReservationReleaseHours: 12,
+        teamReservationReleaseAuto: false,
+        teamReservationReleased: true,
+      },
+    });
+    expect(select().disabled).toBe(true);
+    expect(select().value).toBe('12');
+    expect(note()?.textContent).toBe('已釋出（每場只執行一次；之後手動預留不會再自動釋出）');
+  });
+});

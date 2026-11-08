@@ -2,8 +2,13 @@ import { cleanup } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   REGION_MAP,
+  buildMultiDateForms,
   calcRegOpenForDate,
   createDefaultFormState,
+  defaultReleaseHours,
+  formStartMs,
+  getReleaseHoursNote,
+  resolveTeamReservationReleaseHours,
   formStateFromEvent,
   toCreateEventForm,
   validateEventForm,
@@ -830,3 +835,95 @@ describe('calcRegOpenForDate 台北牆鐘', () => {
   });
 });
 
+
+describe('團隊預留自動釋出（FC 計畫書 §3.3）', () => {
+  const H = 3_600_000;
+  const NOW = Date.parse('2026-06-01T10:00:00+08:00');
+
+  it.each([
+    ['剩 30 小時', 30, 12],
+    ['剩 12 小時整', 12, 6],
+    ['剩 11 小時', 11, 6],
+    ['剩 5 小時', 5, 3],
+    ['剩 2.5 小時', 2.5, 0],
+  ])('defaultReleaseHours：%s → %i', (_label, remainingH, expected) => {
+    expect(defaultReleaseHours(NOW + remainingH * H, NOW)).toBe(expected);
+  });
+
+  it('defaultReleaseHours：日期或時間未填 → 12', () => {
+    expect(defaultReleaseHours(null, NOW)).toBe(12);
+    expect(formStartMs('', '14:00')).toBeNull();
+    expect(formStartMs('2026-06-01', '')).toBeNull();
+    expect(defaultReleaseHours(formStartMs('', '14:00'), NOW)).toBe(12);
+  });
+
+  it('formStartMs 以台北牆鐘計算（沿用 parseTaipei）', () => {
+    expect(formStartMs('2026-06-01', '22:00')).toBe(Date.parse('2026-06-01T22:00:00+08:00'));
+  });
+
+  it('新建預設：12、自動、未釋出', () => {
+    expect(createDefaultFormState()).toMatchObject({
+      teamReservationReleaseHours: 12,
+      teamReservationReleaseAuto: true,
+      teamReservationReleased: false,
+    });
+  });
+
+  it('新建自動值隨日期／開始時間重算；手動選過就固定', () => {
+    const base = { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '21:00' }; // 剩 11 小時
+    expect(resolveTeamReservationReleaseHours(base, base.dateVal, NOW)).toBe(6);
+    expect(resolveTeamReservationReleaseHours({ ...base, startTime: '15:00' }, base.dateVal, NOW)).toBe(3);
+    expect(resolveTeamReservationReleaseHours({ ...base, dateVal: '2026-06-03' }, '2026-06-03', NOW)).toBe(12);
+    const manual = { ...base, teamReservationReleaseHours: 24, teamReservationReleaseAuto: false };
+    expect(resolveTeamReservationReleaseHours(manual, manual.dateVal, NOW)).toBe(24);
+  });
+
+  it('編輯既有活動：顯示目前值，缺欄位為 0，不套階梯；已釋出鎖住', () => {
+    const old = formStateFromEvent({ id: 'e1', date: '2026/06/01 21:00~23:00' } as EventDoc);
+    expect(old).toMatchObject({
+      teamReservationReleaseHours: 0,
+      teamReservationReleaseAuto: false,
+      teamReservationReleased: false,
+    });
+    expect(resolveTeamReservationReleaseHours(old, old.dateVal, NOW)).toBe(0);
+    const set = formStateFromEvent({ id: 'e2', teamReservationReleaseHours: 48 } as EventDoc);
+    expect(set.teamReservationReleaseHours).toBe(48);
+    expect(formStateFromEvent({ id: 'e3', teamReservationReleaseHours: 5 } as EventDoc).teamReservationReleaseHours).toBe(0);
+    const released = formStateFromEvent({
+      id: 'e4',
+      teamReservationReleaseHours: 12,
+      teamReservationReleasedAt: { seconds: 1, nanoseconds: 0 },
+    } as EventDoc);
+    expect(released.teamReservationReleased).toBe(true);
+    expect(getReleaseHoursNote(released, NOW)).toEqual({ kind: 'released' });
+  });
+
+  it('提示：預設 12 且充裕不顯示；降級；落到 0；手動超過剩餘時間 warning', () => {
+    const base = { ...createDefaultFormState(), dateVal: '2026-06-03', startTime: '14:00' };
+    expect(getReleaseHoursNote(base, NOW)).toBeNull();
+    expect(getReleaseHoursNote({ ...base, dateVal: '' }, NOW)).toBeNull();
+    // 剩 11.5 小時 → 6，N 取 floor。
+    expect(getReleaseHoursNote({ ...base, dateVal: '2026-06-01', startTime: '21:30' }, NOW))
+      .toEqual({ kind: 'downgraded', remainingHours: 11, hours: 6 });
+    expect(getReleaseHoursNote({ ...base, dateVal: '2026-06-01', startTime: '12:30' }, NOW)).toEqual({ kind: 'off' });
+    // 手動選過：只剩 warning，不再顯示降級提示。
+    const manual = { ...base, dateVal: '2026-06-01', startTime: '15:00', teamReservationReleaseAuto: false };
+    expect(getReleaseHoursNote({ ...manual, teamReservationReleaseHours: 12 }, NOW))
+      .toEqual({ kind: 'immediate', hours: 12 });
+    expect(getReleaseHoursNote({ ...manual, teamReservationReleaseHours: 3 }, NOW)).toBeNull();
+    expect(getReleaseHoursNote({ ...manual, teamReservationReleaseHours: 0 }, NOW)).toBeNull();
+  });
+
+  it('送出：toCreateEventForm 明寫（含 0）；多日期每場依自己的開始時間', () => {
+    const state = makeValidState({ dateVal: '', startTime: '20:00' });
+    const base = toCreateEventForm(state, '主辦人', { nowMs: NOW });
+    expect(base.teamReservationReleaseHours).toBe(12);
+    // 2026-06-01 20:00 剩 10 小時 → 6；06-02 20:00 剩 34 小時 → 12。
+    const forms = buildMultiDateForms(base, ['2026-06-01', '2026-06-02'], state, NOW);
+    expect(forms.map(form => form.teamReservationReleaseHours)).toEqual([6, 12]);
+    const manual = { ...state, teamReservationReleaseAuto: false, teamReservationReleaseHours: 0 };
+    expect(toCreateEventForm(manual, '主辦人', { nowMs: NOW })).toHaveProperty('teamReservationReleaseHours', 0);
+    expect(buildMultiDateForms(base, ['2026-06-01', '2026-06-02'], manual, NOW)
+      .map(form => form.teamReservationReleaseHours)).toEqual([0, 0]);
+  });
+});

@@ -14,10 +14,13 @@ import {
   REGION_KEYS,
   REGION_MAP,
   LEGACY_FRIENDLY_TYPE_OPTION,
+  getReleaseHoursNote,
   parseMinAge,
+  resolveTeamReservationReleaseHours,
   roleLabelOf,
   type EventFormState,
 } from '../../data/event-form-model';
+import { TEAM_RESERVATION_RELEASE_HOURS } from '../../data/team-reservation-release';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
@@ -229,6 +232,31 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
   } else {
     ageLabelText = lt('已開啟 — 請填最低年齡');
     ageLabelColor = 'var(--warning)';
+  }
+
+  // 團隊預留自動釋出：新建且未手動選過時顯示階梯值（隨日期／開始時間重算）；編輯顯示目前值。
+  const renderNowMs = Date.now();
+  const releaseHours = resolveTeamReservationReleaseHours(state, state.dateVal, renderNowMs);
+  const releaseNote = getReleaseHoursNote(state, renderNowMs);
+  let releaseNoteText = '';
+  let releaseNoteWarn = false;
+  if (releaseNote?.kind === 'released') {
+    releaseNoteText = lt('已釋出（每場只執行一次；之後手動預留不會再自動釋出）');
+  } else if (releaseNote?.kind === 'downgraded') {
+    releaseNoteText = lt(
+      '距開始剩 {N} 小時，已改為開始前 {M} 小時',
+      '距開始剩 {N} 小時，已改為開始前 {M} 小時',
+      { N: releaseNote.remainingHours, M: releaseNote.hours },
+    );
+  } else if (releaseNote?.kind === 'off') {
+    releaseNoteText = lt('距開始不足 3 小時，預設不自動釋出');
+  } else if (releaseNote?.kind === 'immediate') {
+    releaseNoteText = lt(
+      '距開始已不足 {N} 小時，儲存後會立即釋出',
+      '距開始已不足 {N} 小時，儲存後會立即釋出',
+      { N: releaseNote.hours },
+    );
+    releaseNoteWarn = true;
   }
 
   const renderInfoBtn = (key: CeInfoKey): JSX.Element => (
@@ -705,6 +733,40 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
         />
       </div>
       <input type="hidden" id="ce-waitlist" value="0" />
+
+      {/* 團隊預留自動釋出（B 新增；FC 計畫書 §3.3，畫面照 docs/previews/team-release-ui-2026-11-09.html） */}
+      <div class="ce-row" id="ce-team-release-row">
+        <div class="ce-label-row">
+          {renderInfoBtn('teamReservationRelease')}
+          <label for="ce-team-release-hours">{lt('團隊預留自動釋出')}</label>
+        </div>
+        <select
+          id="ce-team-release-hours"
+          value={String(releaseHours)}
+          disabled={state.teamReservationReleased}
+          onChange={(e) => onPatch({
+            teamReservationReleaseHours: Number(e.currentTarget.value),
+            teamReservationReleaseAuto: false,
+          })}
+        >
+          {TEAM_RESERVATION_RELEASE_HOURS.map((hours) => (
+            <option key={hours} value={String(hours)}>
+              {hours === 0
+                ? lt('不自動釋出')
+                : lt('開始前 {N} 小時', '開始前 {N} 小時', { N: hours })}
+            </option>
+          ))}
+        </select>
+        {releaseNoteText && (
+          <div
+            class="ce-field-note"
+            id="ce-team-release-note"
+            style={releaseNoteWarn ? { color: 'var(--warning)' } : undefined}
+          >
+            {releaseNoteText}
+          </div>
+        )}
+      </div>
 
       {/* 年齡限制 */}
       <div class="ce-row">

@@ -540,6 +540,7 @@ function buildForm(overrides: Partial<CreateEventForm> = {}): CreateEventForm {
     earlyBirdEnabled: false,
     earlyBirdCost: 0,
     earlyBirdPolicyVersion: null,
+    teamReservationReleaseHours: 12,
     ...overrides,
   };
 }
@@ -587,6 +588,8 @@ describe('buildCreateEventPayload', () => {
       feeEnabled: true,
       fee: 100,
       privateEvent: true,
+      // golden 同時釘「選不自動釋出時明寫 0」。
+      teamReservationReleaseHours: 0,
     });
     const ctx = buildCtx({
       uid: 'uid_user_addons_golden',
@@ -594,6 +597,23 @@ describe('buildCreateEventPayload', () => {
     });
     const payload = buildCreateEventPayload(form, ctx, 'ce_golden_user_addons');
     expectMatchesGolden(payload, goldenData.createUserWithAddons.payload);
+  });
+
+  it('團隊預留自動釋出：選 0 明寫 0、非允許值視為 0、不受加值閘門影響', () => {
+    expect(buildCreateEventPayload(buildForm({ teamReservationReleaseHours: 0 }), buildCtx(), 'ce_golden_user_basic'))
+      .toHaveProperty('teamReservationReleaseHours', 0);
+    expect(buildCreateEventPayload(buildForm({ teamReservationReleaseHours: 72 }), buildCtx(), 'ce_golden_user_basic')
+      .teamReservationReleaseHours).toBe(72);
+    expect(buildCreateEventPayload(buildForm({ teamReservationReleaseHours: 5 }), buildCtx(), 'ce_golden_user_basic')
+      .teamReservationReleaseHours).toBe(0);
+    // 無加值權限且勾了加值：加值欄位被清，釋出時數照寫。
+    const stripped = buildCreateEventPayload(
+      buildForm({ privateEvent: true, teamReservationReleaseHours: 6 }),
+      buildCtx(),
+      'ce_golden_user_basic',
+    );
+    expect(stripped.privateEvent).toBe(false);
+    expect(stripped.teamReservationReleaseHours).toBe(6);
   });
 
   it('Date 型別：startTimestamp / endTimestamp 為 Date 實例', () => {
@@ -902,6 +922,27 @@ describe('buildEditEventUpdates', () => {
     const result = buildEditEventUpdates(existing(), editForm(), ownCtx());
     expectMatchesGolden(result.updates, goldenData.editOwnerBasic.updates);
     expect(result.capacityChange).toBeNull();
+  });
+
+  it('編輯寫入 teamReservationReleaseHours（含 0），且 updates 只用 Rules 編輯白名單欄位', () => {
+    const zero = buildEditEventUpdates(existing(), editForm({ teamReservationReleaseHours: 0 }), ownCtx());
+    expect(zero.updates).toHaveProperty('teamReservationReleaseHours', 0);
+    const coach = buildEditEventUpdates(existing(), editForm({ teamReservationReleaseHours: 24 }), coachCtx());
+    expect(coach.updates.teamReservationReleaseHours).toBe(24);
+    // FC firestore.rules eventScopedRoleFieldsOnly（origin/main 0068af374）白名單；updatedAt 由寫入端加。
+    const allowed = new Set([
+      'title', 'type', 'location', 'date', 'startTimestamp', 'endTimestamp', 'externalUrl', 'max', 'minAge', 'notes',
+      'image', 'imageVariants', 'sportTag', 'regOpenTime', 'gradient', 'icon', 'countdown',
+      'regionEnabled', 'region', 'cities', 'delegates', 'delegateUids',
+      'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt',
+      'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
+      'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
+      'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion', 'teamReservationReleaseHours',
+      'status', 'updatedAt',
+    ]);
+    for (const result of [zero, coach]) {
+      expect(Object.keys(result.updates).filter(key => !allowed.has(key))).toEqual([]);
+    }
   });
 
   it('不含 6 個 Rules 禁改欄位', () => {

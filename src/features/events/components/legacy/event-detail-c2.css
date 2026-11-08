@@ -111,6 +111,9 @@
 }
 .evd-reg-count { font-size: 1.06rem; font-weight: 700; color: var(--text-primary); }
 .evd-reg-meta { font-size: .8rem; color: var(--text-secondary); }
+/* 團隊預留自動釋出倒數：不到 1 小時或即將釋出改 warning */
+.evd-reg-release { color: var(--info); font-weight: 600; }
+.evd-reg-release.is-soon { color: var(--warning); }
 .evd-progress {
   display: flex;
   height: 7px;

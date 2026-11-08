@@ -169,7 +169,8 @@ export function EventFormModal({
   const batchIdsRef = useRef(new Map<string, string>());
   const batchGroupIdRef = useRef<string | null>(null);
   // 建立結果未確認（可能已寫入）時記住當次的單日／多日期與日期；重送必須是同一請求（照 A pending marker 的模式檢查）。
-  const unconfirmedCreateRef = useRef<{ kind: 'single' | 'multi'; datesKey: string } | null>(null);
+  // releaseNowMs：當次計算團隊預留自動釋出階梯用的時間；重送沿用，避免跨級距算出不同值造成內容衝突。
+  const unconfirmedCreateRef = useRef<{ kind: 'single' | 'multi'; datesKey: string; releaseNowMs: number } | null>(null);
 
   // 照 A event-create-template.js：從範本建立／儲存為範本。
   const templates = useEventTemplates({
@@ -479,10 +480,15 @@ export function EventFormModal({
         toast.show({ message: t('events.form.error.createNotAllowed'), tone: 'error' });
         return;
       }
-      const createRequest = current.mode === 'create'
-        ? { kind: submitDates ? 'multi' as const : 'single' as const, datesKey: (submitDates ?? []).join(',') }
-        : null;
       const unconfirmed = unconfirmedCreateRef.current;
+      const releaseNowMs = unconfirmed?.releaseNowMs ?? now.getTime();
+      const createRequest = current.mode === 'create'
+        ? {
+          kind: submitDates ? 'multi' as const : 'single' as const,
+          datesKey: (submitDates ?? []).join(','),
+          releaseNowMs,
+        }
+        : null;
       if (createRequest && unconfirmed) {
         if (createRequest.kind !== unconfirmed.kind) {
           // 照 A handleCreateEvent：待重新送出的請求不得切換模式，否則會用另一組 ID 重複建立。
@@ -518,6 +524,7 @@ export function EventFormModal({
           imageVariants: current.cover.value.imageVariants,
           delegates: current.delegates.value,
           teamOnlySelection: current.teamOnly.resolveSelection(),
+          nowMs: releaseNowMs,
         }),
         // 照 A _buildEventLocationPayload('ce', location)：功能未開時 mapPickerEnabled=false，8 個地圖欄位都不寫。
         ...locationValue,
@@ -586,7 +593,7 @@ export function EventFormModal({
           return id;
         });
         batchGroupIdRef.current ??= generateId('batch_');
-        const forms = buildMultiDateForms(payloadForm, submitDates, stateForSubmit);
+        const forms = buildMultiDateForms(payloadForm, submitDates, stateForSubmit, releaseNowMs);
         const result = await createEventsBatch(forms, ctx, ids, batchGroupIdRef.current, writeHooks);
         if (!isCurrent()) return;
         if (result.addonsStripped) {

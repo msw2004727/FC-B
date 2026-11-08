@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import { Fragment, type JSX } from 'preact';
 import { openHttpAnchor } from '@/core/open-external';
 import { UserTag } from '@/ui/UserTag';
 import { getEventParticipantStats } from '../../data/participant-stats';
@@ -9,6 +9,7 @@ import { parseEventDate, parseEventStartMs } from '@/core/event-time';
 import { renderEventSocialLinksHtml } from '../../data/event-social-links';
 import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
 import { getEventEarlyBirdCost, isEventEarlyBirdWindow } from '../../data/signup-restrictions';
+import { getTeamReservationReleaseMeta } from '../../data/team-reservation-release';
 import './event-detail-c2.css';
 import './signup-a11y.css'; // 報名卡「已報」讀屏文字用 .fcb-sr-only
 
@@ -342,11 +343,28 @@ export function EventDetailInfoSection({
 
   // C2 報名卡：剩餘＝上限扣正取與團隊保留（同 A 的 occupied 算法）；沒有的項目不出現。
   const remainingCount = maxCount > 0 ? Math.max(0, maxCount - confirmedCount - reservedCount) : 0;
-  const capacityMeta = [
+  // 團隊預留自動釋出：倒數用頁面既有的 nowMs（每 30 秒 tick），純顯示、不讀 Firestore。
+  const releaseMeta = getTeamReservationReleaseMeta(event, reservedCount, nowMs);
+  const reservedSegment: JSX.Element | string = releaseMeta.kind === 'released'
+    ? '團隊保留已釋出'
+    : releaseMeta.kind === 'countdown'
+      ? (
+        <>
+          {`團隊保留 ${reservedCount} · `}
+          <span class={`evd-reg-release${releaseMeta.soon ? ' is-soon' : ''}`}>{releaseMeta.text}</span>
+        </>
+      )
+      : reservedCount > 0 ? `團隊保留 ${reservedCount}` : '';
+  const capacityMetaParts = [
     maxCount > 0 ? `剩 ${remainingCount}` : '',
-    reservedCount > 0 ? `團隊保留 ${reservedCount}` : '',
+    reservedSegment,
     waitlistCount > 0 ? `候補 ${waitlistCount}` : '',
-  ].filter(Boolean).join(' · ');
+  ].filter(part => part !== '');
+  const capacityMeta = capacityMetaParts.length > 0
+    ? capacityMetaParts.map((part, index) => (
+      <Fragment key={index}>{index > 0 ? ' · ' : ''}{part}</Fragment>
+    ))
+    : null;
   const confirmedPct = maxCount > 0 ? Math.min(100, (confirmedCount / maxCount) * 100) : 0;
   const reservedPct = maxCount > 0 ? Math.min(100 - confirmedPct, (reservedCount / maxCount) * 100) : 0;
   const hasRegChips = feeEnabled || !!heatPrediction || earlyBirdCost > 0 || !!regOpen;
