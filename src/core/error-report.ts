@@ -145,15 +145,75 @@ function tryConsumeBudget(now: number): 'ok' | 'full' | 'broken' {
   }
 }
 
+/** LINE 開頁會把 access_token 等憑證放在網址片段／參數；只留鍵名，值一律遮掉。 */
+const SECRET_PARAM_RE = /token|code|state|secret|challenge|client_id|password|key/i;
+
+function redactPairs(raw: string, mask: (key: string) => boolean): string {
+  return raw.split('&').map((pair) => {
+    const eq = pair.indexOf('=');
+    if (eq < 0) return pair;
+    const key = pair.slice(0, eq);
+    return mask(key) ? `${key}=***` : pair;
+  }).join('&');
+}
+
+/** B 不用片段路由：有 key=value 的片段全部遮值（`#frag` 這類保留）。 */
+export function redactHash(hash: string): string {
+  if (!hash.includes('=')) return hash;
+  return '#' + redactPairs(hash.replace(/^#/, ''), () => true);
+}
+
+export function redactUrl(href: string): string {
+  const hashAt = href.indexOf('#');
+  const base = hashAt < 0 ? href : href.slice(0, hashAt);
+  const hash = hashAt < 0 ? '' : redactHash(href.slice(hashAt));
+  const queryAt = base.indexOf('?');
+  if (queryAt < 0) return base + hash;
+  return base.slice(0, queryAt + 1)
+    + redactPairs(base.slice(queryAt + 1), (key) => SECRET_PARAM_RE.test(key)) + hash;
+}
+
 function readLocation(): { page: string; url: string; hash: string } {
   try {
     return {
       page: location.pathname || '',
-      url: location.href || '',
-      hash: location.hash || '',
+      url: redactUrl(location.href || ''),
+      hash: redactHash(location.hash || ''),
     };
   } catch {
     return { page: '', url: '', hash: '' };
+  }
+}
+
+const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
+
+/**
+ * 程式檔載入失敗時的診斷（2026-11-08 iOS LINE 首頁大量載入失敗，原訊息不含檔名）：
+ * 是否受 Service Worker 控制、頁面已開多久，以及看起來沒載成功的 /assets 檔（名稱、狀態碼、大小）。
+ */
+function readModuleLoadDiag(): string {
+  try {
+    const sw = !('serviceWorker' in navigator) ? 'unsupported'
+      : navigator.serviceWorker.controller ? 'controlled' : 'none';
+    const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    const assets = entries
+      .filter((e) => e.name.includes('/assets/') && /\.(?:js|css)(?:$|\?)/.test(e.name))
+      .map((e) => ({
+        f: e.name.slice(e.name.lastIndexOf('/') + 1),
+        s: (e as PerformanceResourceTiming & { responseStatus?: number }).responseStatus ?? null,
+        b: e.decodedBodySize,
+        ms: Math.round(e.duration),
+      }));
+    const failed = assets.filter((a) => a.b === 0 || (a.s !== null && a.s >= 400));
+    return JSON.stringify({
+      sw,
+      vis: document.visibilityState,
+      t: Math.round(performance.now()),
+      n: assets.length,
+      failed: failed.slice(-5),
+    }).slice(0, STACK_LIMIT);
+  } catch {
+    return '';
   }
 }
 
@@ -211,6 +271,7 @@ async function persist(context: string, parsed: ParsedError, key: string): Promi
     }
     if (slot !== 'ok') return;
     const where = readLocation();
+    const diag = MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) ? readModuleLoadDiag() : '';
     const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
     const payload = {
       time: formatTaipei(now),
@@ -231,6 +292,7 @@ async function persist(context: string, parsed: ParsedError, key: string): Promi
       url: where.url,
       hash: where.hash,
       userAgent: readUserAgent(),
+      ...(diag ? { diag } : {}),
       createdAt: serverTimestamp(),
       source: 'fcb' as const,
     };

@@ -29,6 +29,8 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   _resetErrorReporterForTest,
   installErrorReporter,
+  redactHash,
+  redactUrl,
   reportClientError,
 } from './error-report';
 
@@ -256,5 +258,39 @@ describe('error-report', () => {
       context: 'unhandledrejection',
       errorMessage: 'from-rejection',
     });
+  });
+
+  it('LINE 開頁網址的憑證不寫入（片段全遮值、參數只遮憑證類）', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    window.history.replaceState(null, '', '/?code=abc&state=xyz&tab=2#access_token=AAA&context_token=BBB&client_id=1');
+    reportClientError('boot', new Error('boom'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.hash).toBe('#access_token=***&context_token=***&client_id=***');
+    expect(payload.url).toBe(`${location.origin}/?code=***&state=***&tab=2#access_token=***&context_token=***&client_id=***`);
+    expect(JSON.stringify(payload)).not.toMatch(/AAA|BBB|abc|xyz/);
+    expect(payload).not.toHaveProperty('diag');
+  });
+
+  it('程式檔載入失敗時附上診斷', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { name: `${location.origin}/assets/index-ok.js`, decodedBodySize: 100, duration: 10, responseStatus: 200 },
+      { name: `${location.origin}/assets/HomePage-bad.js`, decodedBodySize: 0, duration: 5.4, responseStatus: 404 },
+    ] as unknown as PerformanceEntryList);
+    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    const diag = JSON.parse(String(payload.diag)) as Record<string, unknown>;
+    expect(diag).toMatchObject({ n: 2, failed: [{ f: 'HomePage-bad.js', s: 404, b: 0, ms: 5 }] });
+    expect(diag.sw).toEqual(expect.any(String));
+  });
+});
+
+describe('redactUrl／redactHash', () => {
+  it('沒有參數與片段時原樣', () => {
+    expect(redactUrl('https://toosterx.com/events/x')).toBe('https://toosterx.com/events/x');
+    expect(redactHash('#frag')).toBe('#frag');
+    expect(redactHash('')).toBe('');
   });
 });
