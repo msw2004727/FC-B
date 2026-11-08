@@ -22,6 +22,18 @@ export const PM_MAX_BODY_LENGTH = 300;
 export const PM_MESSAGE_LIMIT = 50;
 export const PM_THREAD_LIMIT = 50;
 
+/**
+ * 私訊未讀合計（照 A `_pmUnreadTotal`：Σ max(0, unreadCount)）；非數字視為 0。
+ * 鈴鐺紅點與收件匣私訊頁籤共用這一份。
+ */
+export function pmUnreadTotal(threads: PmThread[]): number {
+  if (!Array.isArray(threads)) return 0;
+  return threads.reduce((sum, t) => {
+    const c = Number(t?.unreadCount ?? 0);
+    return sum + (Number.isFinite(c) && c > 0 ? c : 0);
+  }, 0);
+}
+
 const PM_ROLE_LEVELS: Record<string, number> = {
   user: 0,
   coach: 1,

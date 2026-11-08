@@ -6,8 +6,11 @@ const { mocks } = vi.hoisted(() => ({
   mocks: {
     subscribeInbox: vi.fn(),
     subscribeThreads: vi.fn(),
+    lastAuthUid: undefined as string | null | undefined,
   },
 }));
+
+vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => mocks.lastAuthUid }));
 
 vi.mock('./inbox-repo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./inbox-repo')>();
@@ -27,6 +30,12 @@ import {
   stopInboxStore,
 } from './inbox-store';
 import { getInboxBadgeCounts } from './inbox-badge';
+import { emit } from '@/core/events';
+
+function setVisibility(value: 'visible' | 'hidden'): void {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => value });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
 
 interface Sub<T> {
   uid: string;
@@ -39,6 +48,7 @@ let inboxSubs: Sub<InboxMessage>[] = [];
 let threadSubs: Sub<PmThread>[] = [];
 
 beforeEach(() => {
+  mocks.lastAuthUid = undefined;
   inboxSubs = [];
   threadSubs = [];
   mocks.subscribeInbox.mockReset();
@@ -61,6 +71,7 @@ beforeEach(() => {
 
 afterEach(() => {
   stopInboxStore();
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
   vi.restoreAllMocks();
 });
 
@@ -172,5 +183,67 @@ describe('inbox-store 共用訂閱', () => {
     startInboxStore('  ');
     expect(getInboxStoreState().uid).toBeNull();
     expect(inboxSubs[0]?.unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it('auth:changed 登出（null）時自己退訂並清空紅點，不靠呼叫端', () => {
+    startInboxStore('u1');
+    inboxSubs[0]?.onChange([{ id: 'm1', read: false }]);
+    emit('auth:changed', { uid: null });
+    expect(inboxSubs[0]?.unsub).toHaveBeenCalledTimes(1);
+    expect(threadSubs[0]?.unsub).toHaveBeenCalledTimes(1);
+    expect(getInboxStoreState().uid).toBeNull();
+    expect(getInboxBadgeCounts().inboxUnread).toBe(0);
+  });
+
+  it('auth:changed 換成別的帳號時退訂；同一帳號再發不退訂', () => {
+    startInboxStore('u1');
+    emit('auth:changed', { uid: 'u1' });
+    expect(inboxSubs[0]?.unsub).not.toHaveBeenCalled();
+    expect(getInboxStoreState().uid).toBe('u1');
+    emit('auth:changed', { uid: 'u2' });
+    expect(inboxSubs[0]?.unsub).toHaveBeenCalledTimes(1);
+    expect(getInboxStoreState().uid).toBeNull();
+  });
+
+  it('已確認登入帳號和要啟動的 uid 不同（畫面還停在舊帳號）時不啟動；登出後也不啟動', () => {
+    mocks.lastAuthUid = 'u2';
+    ensureInboxStore('u1');
+    startInboxStore('u1');
+    expect(mocks.subscribeInbox).not.toHaveBeenCalled();
+    expect(getInboxStoreState().uid).toBeNull();
+    mocks.lastAuthUid = null;
+    ensureInboxStore('u1');
+    expect(mocks.subscribeInbox).not.toHaveBeenCalled();
+    mocks.lastAuthUid = 'u1';
+    ensureInboxStore('u1');
+    expect(mocks.subscribeInbox).toHaveBeenCalledTimes(1);
+  });
+
+  it('監聽出錯後，分頁回到前景時自動重訂出錯的那條；正常的不動', () => {
+    startInboxStore('u1');
+    inboxSubs[0]?.onError(new Error('token expired'));
+    threadSubs[0]?.onChange([]);
+    setVisibility('hidden');
+    expect(mocks.subscribeInbox).toHaveBeenCalledTimes(1);
+    setVisibility('visible');
+    expect(mocks.subscribeInbox).toHaveBeenCalledTimes(2);
+    expect(mocks.subscribeThreads).toHaveBeenCalledTimes(1);
+    expect(inboxSubs[0]?.unsub).toHaveBeenCalledTimes(1);
+    inboxSubs[1]?.onChange([{ id: 'm1', read: false }]);
+    expect(getInboxStoreState().messagesStatus).toBe('ready');
+    expect(getInboxBadgeCounts().inboxUnread).toBe(1);
+    // 沒有錯誤時回到前景不重訂
+    setVisibility('visible');
+    expect(mocks.subscribeInbox).toHaveBeenCalledTimes(2);
+  });
+
+  it('退訂後不再聽前景與 auth 事件', () => {
+    startInboxStore('u1');
+    inboxSubs[0]?.onError(new Error('x'));
+    stopInboxStore();
+    setVisibility('visible');
+    emit('auth:changed', { uid: 'u9' });
+    expect(mocks.subscribeInbox).toHaveBeenCalledTimes(1);
+    expect(getInboxStoreState().uid).toBeNull();
   });
 });

@@ -19,9 +19,10 @@ import {
   markRead,
   type InboxMessage,
 } from '../data/inbox-repo';
-import type { PmThread } from '../data/pm-repo';
+import { pmUnreadTotal as sumPmUnread, type PmThread } from '../data/pm-repo';
 import {
   ensureInboxStore,
+  getInboxStoreState,
   retryInboxMessages,
   retryInboxThreads,
   useInboxStore,
@@ -143,9 +144,15 @@ export default function InboxPage(): JSX.Element {
     };
   }, []);
 
-  // App 層 lazy 主機尚未載入時的備援；已啟動（含其他 uid 過渡期）不重訂。
+  // App 層 lazy 主機尚未載入（或還在等閒置時間）時立即啟動；已啟動（含其他 uid 過渡期）不重訂。
+  // 進頁時共用訂閱若停在錯誤（背景太久、權杖失效），自動重訂一次。
   useEffect(() => {
-    if (uid) ensureInboxStore(uid);
+    if (!uid) return;
+    ensureInboxStore(uid);
+    const current = getInboxStoreState();
+    if (current.uid !== uid) return;
+    if (current.messagesStatus === 'error') retryInboxMessages();
+    if (current.threadsStatus === 'error') retryInboxThreads();
   }, [uid]);
 
   // U-043：搜尋 180ms 去抖；計時器卸載清掉
@@ -184,14 +191,7 @@ export default function InboxPage(): JSX.Element {
     return [...threads].sort((a, b) => pmTimeMs(b.lastMessageAt) - pmTimeMs(a.lastMessageAt));
   }, [threads]);
 
-  const pmUnreadTotal = useMemo(
-    () =>
-      threads.reduce((acc, item) => {
-        const c = Number(item.unreadCount ?? 0);
-        return acc + (Number.isFinite(c) && c > 0 ? c : 0);
-      }, 0),
-    [threads],
-  );
+  const pmUnreadTotal = useMemo(() => sumPmUnread(threads), [threads]);
 
   const selectedMessage = useMemo(
     () => messages.find((m) => m.id === selectedMsgId) ?? null,

@@ -204,13 +204,23 @@ describe('inbox-repo 訂閱', () => {
     expect(unsubInner).toHaveBeenCalled();
   });
 
-  it('subscribeInbox 照 A 用 orderBy(createdAt desc).limit(200)，不全量讀取', async () => {
+  it('subscribeInbox 照 A 用 orderBy(createdAt desc).limit(200)，不全量讀取（條件真的傳進 query、監聽的是 query）', async () => {
+    const orderMarker = { __marker: 'orderBy' };
+    const limitMarker = { __marker: 'limit' };
+    const queryMarker = { __marker: 'query' };
+    mocks.orderBy.mockReturnValueOnce(orderMarker);
+    mocks.limit.mockReturnValueOnce(limitMarker);
+    mocks.query.mockReturnValueOnce(queryMarker);
     const cleanup = subscribeInbox('user1', vi.fn(), vi.fn());
     await vi.waitFor(() => expect(mocks.onSnapshot).toHaveBeenCalled());
     expect(INBOX_LISTEN_LIMIT).toBe(200);
     expect(mocks.orderBy).toHaveBeenCalledWith('createdAt', 'desc');
     expect(mocks.limit).toHaveBeenCalledWith(200);
     expect(mocks.query).toHaveBeenCalledTimes(1);
+    const queryArgs = mocks.query.mock.calls[0] as unknown[];
+    expect(queryArgs[0]).toEqual({ _path: ['users/user1/inbox'] });
+    expect(queryArgs.slice(1)).toEqual([orderMarker, limitMarker]);
+    expect((mocks.onSnapshot.mock.calls[0] as unknown[])[0]).toBe(queryMarker);
     cleanup();
   });
 

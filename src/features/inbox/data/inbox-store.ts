@@ -5,10 +5,18 @@
 // 登出或換帳號時 `stopInboxStore()`；InboxPage 只讀這份狀態，不再自己訂閱。
 // 第二身份與主身份共用同一個 Auth uid 的收件匣（照 A，不分開）。
 
+// 自我保護（不依賴呼叫端）：
+//  - 訂 `auth:changed`：登出或換成別的帳號時自己退訂（App 主機或頁面備援任一方漏退訂都不會殘留）。
+//  - 啟動前比對最後確認的登入帳號，不用過時的 uid 重啟。
+//  - 監聽出錯後，分頁回到前景時自動重訂出錯的那條（照 A `_setupVisibilityRefresh` → `_resumeListeners`）。
+
 import { useEffect, useState } from 'preact/hooks';
 
+import { on } from '@/core/events';
+import { getLastKnownAuthUid } from '@/data/auth';
+
 import { countUnread, subscribeInbox, type InboxMessage } from './inbox-repo';
-import { subscribeThreads, type PmThread } from './pm-repo';
+import { pmUnreadTotal, subscribeThreads, type PmThread } from './pm-repo';
 import { setInboxBadgeCounts } from './inbox-badge';
 
 export type InboxStreamStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -39,13 +47,35 @@ let threadsUnsub: (() => void) | null = null;
 /** 每條訂閱各自的世代號；退訂或重訂後舊回呼一律丟棄。 */
 let inboxGen = 0;
 let threadsGen = 0;
+let stopAuthWatch: (() => void) | null = null;
+let stopVisibilityWatch: (() => void) | null = null;
 
-function pmUnreadTotal(threads: PmThread[]): number {
-  // 照 A `_pmUnreadTotal`：Σ max(0, unreadCount)
-  return threads.reduce((sum, t) => {
-    const c = Number(t.unreadCount ?? 0);
-    return sum + (Number.isFinite(c) && c > 0 ? c : 0);
-  }, 0);
+function retryErroredStreams(): void {
+  if (!state.uid) return;
+  if (state.messagesStatus === 'error') retryInboxMessages();
+  if (state.threadsStatus === 'error') retryInboxThreads();
+}
+
+function bindWatchers(): void {
+  if (!stopAuthWatch) {
+    stopAuthWatch = on('auth:changed', ({ uid }) => {
+      if (state.uid !== null && uid !== state.uid) stopInboxStore();
+    });
+  }
+  if (!stopVisibilityWatch && typeof document !== 'undefined') {
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') retryErroredStreams();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    stopVisibilityWatch = () => document.removeEventListener('visibilitychange', onVisibility);
+  }
+}
+
+function unbindWatchers(): void {
+  stopAuthWatch?.();
+  stopAuthWatch = null;
+  stopVisibilityWatch?.();
+  stopVisibilityWatch = null;
 }
 
 function commit(next: InboxStoreState): void {
@@ -124,6 +154,7 @@ function openThreads(uid: string): void {
 /**
  * 登入後啟動共用訂閱；同一 uid 重複呼叫不重訂（全站只建一次）。
  * 換 uid 時先退訂舊的、清空狀態再訂新的。
+ * 已確認的登入帳號（`getLastKnownAuthUid`）和 uid 不同時不啟動（畫面還停在舊帳號的過渡期）；尚未確認時照常啟動。
  */
 export function startInboxStore(uid: string): void {
   const safeUid = String(uid ?? '').trim();
@@ -132,7 +163,10 @@ export function startInboxStore(uid: string): void {
     return;
   }
   if (state.uid === safeUid) return;
+  const authUid = getLastKnownAuthUid();
+  if (authUid !== undefined && authUid !== safeUid) return;
   stopInboxStore();
+  bindWatchers();
   commit({
     uid: safeUid,
     messages: [],
@@ -161,6 +195,7 @@ export function stopInboxStore(): void {
   safeUnsub(threadsUnsub);
   inboxUnsub = null;
   threadsUnsub = null;
+  unbindWatchers();
   if (state === IDLE_STATE) return;
   commit(IDLE_STATE);
 }

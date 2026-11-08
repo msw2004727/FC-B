@@ -631,4 +631,43 @@ describe('InboxPage', () => {
     });
     expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('我的');
   });
+
+  it('共用訂閱停在錯誤時，進頁會自動重訂一次（收件匣與私訊各自）', () => {
+    startInboxStore('u1');
+    const firstInboxError = mockSubscribeInbox.mock.calls[0]?.[2] as (err: unknown) => void;
+    const firstThreadsError = mockSubscribeThreads.mock.calls[0]?.[2] as (err: unknown) => void;
+    act(() => {
+      firstInboxError(new Error('token expired'));
+      firstThreadsError(new Error('token expired'));
+    });
+    expect(getInboxStoreState().messagesStatus).toBe('error');
+
+    render(<InboxPage />);
+    expect(mockSubscribeInbox).toHaveBeenCalledTimes(2);
+    expect(mockSubscribeThreads).toHaveBeenCalledTimes(2);
+    expect(inboxUnsub).toHaveBeenCalled();
+    act(() => {
+      inboxCallback!([{ id: 'm1', _docId: 'm1', type: 'system', title: '恢復了', time: '2025/01/01 10:00' }]);
+    });
+    expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('恢復了');
+  });
+
+  it('樂觀已讀之後，只有私訊列表更新的快照不會讓訊息閃回未讀', async () => {
+    renderPage({
+      messages: [
+        { id: 'm1', _docId: 'm1', type: 'system', typeName: '系統', title: '未讀', time: '2025/01/01 10:00', read: false },
+      ],
+    });
+    const card = document.querySelector<HTMLElement>('.msg-card');
+    if (!card) throw new Error('msg card missing');
+    expect(card.classList.contains('msg-unread')).toBe(true);
+    fireEvent.click(card);
+    await waitFor(() => expect(mockMarkRead).toHaveBeenCalled());
+    expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
+
+    act(() => {
+      threadsCallback!([{ id: 'c1', conversationId: 'c1', peerUid: 'p1', unreadCount: 1 }]);
+    });
+    expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
+  });
 });

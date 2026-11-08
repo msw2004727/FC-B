@@ -164,6 +164,26 @@ describe('入口的靜態 import 圖', () => {
     expect(offenders.map((o) => `${rel(o.file)}\n  ← ${o.chain.map(rel).join(' → ')}`)).toEqual([]);
   });
 
+  it('收件匣：首屏只帶鈴鐺未讀數的 inbox-badge，共用訂閱與資料層（inbox-store、inbox-repo、pm-repo）都不在靜態圖裡', () => {
+    // 沿用同一個走訪器：包一層記下每個被走到的檔案。
+    const visited = new Set<string>();
+    const recordingIo: GraphIo = {
+      read: (file) => {
+        visited.add(rel(file));
+        return realIo.read(file);
+      },
+      resolve: realIo.resolve,
+    };
+    findFirebaseSdkImporters(ENTRY, recordingIo);
+    // 走訪器確實走到 TopBar 與 inbox-badge（避免空集合也算通過）
+    expect(visited).toContain('src/ui/TopBar.tsx');
+    expect(visited).toContain('src/features/inbox/data/inbox-badge.ts');
+    const forbidden = [...visited].filter((f) =>
+      /^src\/features\/inbox\/(data\/(inbox-store|inbox-repo|pm-repo)|components\/InboxStoreHost)\.tsx?$/.test(f),
+    );
+    expect(forbidden).toEqual([]);
+  });
+
   it('首頁路由同步載入：features/home/index.ts 靜態引入 HomePage（不再是入口執行完才發現的 lazy chunk）', () => {
     const source = readFileSync(join(SRC, 'features/home/index.ts'), 'utf8');
     expect(staticImportSpecs(source)).toContain('./pages/HomePage');
