@@ -7,6 +7,7 @@
 // Rules 僅允許本人讀、更新 `read`/`readAt`、刪除；本層不得寫其他欄位。
 // Firestore 一律動態 import；訂閱回傳 unsubscribe；錯誤往外拋，不吞。
 
+import { formatTaipei, parseTaipei } from '@/core/taipei-time';
 import { getFirebase } from '@/data/firebase';
 import { userInbox } from '@/data/paths';
 
@@ -37,6 +38,9 @@ const BATCH_LIMIT = 500;
 
 /** 清空訊息分批上限（照 A `clearAllMessages`：每次 450 筆）。 */
 const CLEAR_CHUNK = 450;
+
+/** 收件匣監聽筆數上限（照 A `_startMessagesListener`：`orderBy('createdAt','desc').limit(200)`）。 */
+export const INBOX_LISTEN_LIMIT = 200;
 
 // ── 純函式 ─────────────────────────────────────────
 
@@ -73,15 +77,71 @@ export function filterByType(messages: InboxMessage[], type: string): InboxMessa
 }
 
 /**
- * 排序：`time` 字串（`YYYY/MM/DD HH:MM`）降冪。
- * 照 A `renderMessageList`：`(b.time || '').localeCompare(a.time || '')`。
+ * 單一時間欄位 → 毫秒；照 A `_getMessageTimeMs` 的 `parseValue`：
+ * Timestamp（`toMillis`／`{seconds, nanoseconds}`）、數字毫秒、字串；缺值或無法解析回 0。
+ * 字串改用 `parseTaipei`（無時區字串當台北牆鐘），解析不了才退回 `Date.parse`。
+ */
+function parseMessageTimeValue(value: unknown): number {
+  if (!value) return 0;
+  const ms = parseTaipei(value);
+  if (ms !== null) return ms;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+/** 照 A `_getMessageTimeMs` 的前半：`timestamp` 優先、再 `createdAt`；都沒有回 0。 */
+function getDirectTimeMs(msg: InboxMessage | null | undefined): number {
+  return parseMessageTimeValue(msg?.timestamp) || parseMessageTimeValue(msg?.createdAt);
+}
+
+/**
+ * 照 A `_getMessageTimeMs`：`timestamp`／`createdAt` 優先，沒有才解析 `time` 字串（`YYYY/MM/DD HH:MM`）；
+ * 都沒有回 0。`time` 字串照 B 慣例當台北牆鐘（A 用裝置時區，見 taipei-time.ts）。
+ */
+export function getMessageTimeMs(msg: InboxMessage | null | undefined): number {
+  const direct = getDirectTimeMs(msg);
+  if (direct) return direct;
+  const timeStr = typeof msg?.time === 'string' ? msg.time.trim() : '';
+  if (timeStr) return parseTaipei(timeStr) ?? 0;
+  return 0;
+}
+
+/**
+ * 畫面顯示的時間字串：有 `time` 照 A 原樣顯示；沒有時（伺服器 `writeInboxNotification` 只寫 `createdAt`）
+ * 以 `timestamp`／`createdAt` 轉台北時間，格式同 A 的 `time`（`YYYY/MM/DD HH:mm`）。都沒有回空字串。
+ */
+export function getMessageDisplayTime(msg: InboxMessage | null | undefined): string {
+  const time = typeof msg?.time === 'string' ? msg.time : '';
+  if (time.trim()) return time;
+  const ms = getDirectTimeMs(msg);
+  return ms ? formatTaipei(ms) : '';
+}
+
+/**
+ * 日期篩選（`<input type="date">` 的 `YYYY-MM-DD`）。
+ * 照 A `renderMessageList`：比對顯示時間字串開頭 `YYYY/MM/DD`；沒有 `time` 的訊息用 `getMessageDisplayTime`。
+ * 篩選值格式不對時不過濾（照 A 只在三段都有時比對）。
+ */
+export function filterByDate(messages: InboxMessage[], filterDate: string): InboxMessage[] {
+  const arr = Array.isArray(messages) ? messages : [];
+  const parts = String(filterDate ?? '').trim().split('-');
+  if (parts.length !== 3) return arr;
+  const filterStr = `${parts[0]}/${parts[1]}/${parts[2]}`;
+  return arr.filter((m) => getMessageDisplayTime(m).startsWith(filterStr));
+}
+
+/**
+ * 排序：新的在前，時間值用 `getMessageTimeMs`（照 A `_getMessageTimeMs`）。
+ * A 畫面層只比 `time` 字串，會把只有 `createdAt` 的系統通知排到最後；這裡改用同一個時間值。
+ * 同時間保持原順序（Array.prototype.sort 穩定）。
  */
 export function sortByTimeDesc(messages: InboxMessage[]): InboxMessage[] {
-  return [...(Array.isArray(messages) ? messages : [])].sort((a, b) => {
-    const ta = a.time || '';
-    const tb = b.time || '';
-    return tb.localeCompare(ta);
-  });
+  return [...(Array.isArray(messages) ? messages : [])].sort(
+    (a, b) => getMessageTimeMs(b) - getMessageTimeMs(a),
+  );
 }
 
 /** 分類＋排序；對應 A 收件匣畫面「先篩分類、再依 time 降冪」的雙步驟。 */
@@ -117,8 +177,9 @@ export function normalizeInboxMessage(
 
 /**
  * 訂閱本人收件匣。
- * 照 A：不依賴查詢排序，仍以 `sortByTimeDesc` 於觸發時排序（等價於 A 於
- * `renderMessageList` 內的 client-side 排序）。
+ * 照 A `_startMessagesListener`：`orderBy('createdAt','desc').limit(200)`（單欄排序，用 Firestore 自動單欄索引）；
+ * 觸發時再以 `sortByTimeDesc` 排序（`timestamp` 優先時順序可能與查詢不同）。
+ * 一般頁面不要直接呼叫，改用 `inbox-store` 的共用訂閱。
  */
 export function subscribeInbox(
   uid: string,
@@ -139,7 +200,11 @@ export function subscribeInbox(
       getFirebase(),
     ]);
     if (cancelled) return;
-    const q = fs.collection(ctx.db, userInbox(safeUid));
+    const q = fs.query(
+      fs.collection(ctx.db, userInbox(safeUid)),
+      fs.orderBy('createdAt', 'desc'),
+      fs.limit(INBOX_LISTEN_LIMIT),
+    );
     unsubscribe = fs.onSnapshot(
       q,
       (snap) => {

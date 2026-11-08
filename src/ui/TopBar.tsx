@@ -16,6 +16,7 @@ import {
 } from '@/core/unavailable';
 import type { AuthUser } from '@/data/auth';
 import { eventSportTag } from '@/features/events/data/sports';
+import { useInboxBadgeCounts } from '@/features/inbox/data/inbox-badge';
 import { lt } from '@/i18n/i18n';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
@@ -107,6 +108,11 @@ export function TopBar({
   const [logoSrc, setLogoSrc] = useState<string>(primaryLogo);
 
   const [activeSport, setActiveSport] = useActiveSport();
+  // 照 A `updateNotifBadge`：收件匣未讀 + 私訊未讀合計，0 時隱藏、不設上限；
+  // 照 A `_syncPmUnreadIndicators`：有私訊未讀時鈴鐺加 has-pm-unread 並顯示私訊小圖。
+  const badgeCounts = useInboxBadgeCounts();
+  const notifUnread = badgeCounts.inboxUnread + badgeCounts.pmUnread;
+  const pmUnread = badgeCounts.pmUnread;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [loadedAvatarUrl, setLoadedAvatarUrl] = useState<string | null>(null);
@@ -500,6 +506,7 @@ export function TopBar({
 
           <a
             id="notif-btn"
+            class={pmUnread > 0 ? 'has-pm-unread' : undefined}
             href="/inbox"
             aria-label={lt('通知', '通知')}
             data-i18n-aria-label="通知"
@@ -509,8 +516,20 @@ export function TopBar({
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
               <path d="M13.73 21a2 2 0 01-3.46 0" />
             </svg>
-            <span class="notif-badge" id="notif-badge" style="display:none" />
-            <span class="pm-notif-hint" id="pm-notif-hint" aria-hidden="true" hidden>
+            <span
+              class="notif-badge"
+              id="notif-badge"
+              style={{ display: notifUnread > 0 ? '' : 'none' }}
+            >
+              {notifUnread > 0 ? String(notifUnread) : ''}
+            </span>
+            <span
+              class="pm-notif-hint"
+              id="pm-notif-hint"
+              aria-hidden={pmUnread > 0 ? 'false' : 'true'}
+              hidden={pmUnread <= 0}
+              data-count={pmUnread > 0 ? String(Math.min(pmUnread, 99)) : ''}
+            >
               <img src="/img/chat.png" alt="" loading="lazy" />
             </span>
           </a>

@@ -11,6 +11,7 @@ import { setTheme } from '@/core/theme';
 import * as authMod from '@/data/auth';
 import type { EventDoc } from '@/features/events/data/types';
 import { toast } from '@/ui/Toast';
+import { setInboxBadgeCounts } from '@/features/inbox/data/inbox-badge';
 
 // 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
 vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
@@ -44,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setInboxBadgeCounts({ inboxUnread: 0, pmUnread: 0 });
   setTheme('light');
   vi.restoreAllMocks();
 });
@@ -388,5 +390,58 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(avatar.tagName).toBe('BUTTON');
     expect(avatar.getAttribute('type')).toBe('button');
     expect(avatar.textContent).toBe('王');
+  });
+});
+
+describe('TopBar 鈴鐺未讀紅點（照 A updateNotifBadge／_syncPmUnreadIndicators）', () => {
+  const renderBar = () =>
+    render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} user={{ uid: 'u1', displayName: 'A', pictureUrl: null }} />,
+    );
+
+  it('未讀為 0 時隱藏紅點與私訊小圖', () => {
+    const { container } = renderBar();
+    const badge = container.querySelector<HTMLElement>('#notif-badge')!;
+    const hint = container.querySelector<HTMLElement>('#pm-notif-hint')!;
+    expect(badge.style.display).toBe('none');
+    expect(hint.hidden).toBe(true);
+    expect(hint.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('#notif-btn')!.classList.contains('has-pm-unread')).toBe(false);
+  });
+
+  it('收件匣未讀數顯示在紅點；更新後即時改變，歸零再隱藏', () => {
+    const { container } = renderBar();
+    const badge = container.querySelector<HTMLElement>('#notif-badge')!;
+    act(() => setInboxBadgeCounts({ inboxUnread: 3, pmUnread: 0 }));
+    expect(badge.style.display).toBe('');
+    expect(badge.textContent).toBe('3');
+    expect(container.querySelector<HTMLElement>('#pm-notif-hint')!.hidden).toBe(true);
+    act(() => setInboxBadgeCounts({ inboxUnread: 0, pmUnread: 0 }));
+    expect(badge.style.display).toBe('none');
+  });
+
+  it('紅點數字＝收件匣未讀＋私訊未讀；有私訊未讀時鈴鐺加 has-pm-unread 並顯示私訊小圖', () => {
+    const { container } = renderBar();
+    act(() => setInboxBadgeCounts({ inboxUnread: 2, pmUnread: 5 }));
+    const badge = container.querySelector<HTMLElement>('#notif-badge')!;
+    const hint = container.querySelector<HTMLElement>('#pm-notif-hint')!;
+    expect(badge.textContent).toBe('7');
+    expect(container.querySelector('#notif-btn')!.classList.contains('has-pm-unread')).toBe(true);
+    expect(hint.hidden).toBe(false);
+    expect(hint.getAttribute('aria-hidden')).toBe('false');
+    expect(hint.dataset.count).toBe('5');
+  });
+
+  it('上限：紅點照 A 顯示實際數字不截斷；私訊小圖 data-count 上限 99', () => {
+    const { container } = renderBar();
+    act(() => setInboxBadgeCounts({ inboxUnread: 150, pmUnread: 120 }));
+    expect(container.querySelector<HTMLElement>('#notif-badge')!.textContent).toBe('270');
+    expect(container.querySelector<HTMLElement>('#pm-notif-hint')!.dataset.count).toBe('99');
+  });
+
+  it('掛載前已有的未讀數也會顯示（L-04 補讀）', () => {
+    setInboxBadgeCounts({ inboxUnread: 4, pmUnread: 0 });
+    const { container } = renderBar();
+    expect(container.querySelector<HTMLElement>('#notif-badge')!.textContent).toBe('4');
   });
 });

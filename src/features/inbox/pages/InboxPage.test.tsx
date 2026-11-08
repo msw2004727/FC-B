@@ -103,6 +103,7 @@ vi.mock('@/core/overlay-back', async (importOriginal) => {
 });
 
 import InboxPage from './InboxPage';
+import { getInboxStoreState, startInboxStore, stopInboxStore } from '../data/inbox-store';
 
 describe('InboxPage', () => {
   let inboxCallback: ((msgs: InboxMessage[]) => void) | null = null;
@@ -153,6 +154,8 @@ describe('InboxPage', () => {
 
   afterEach(() => {
     cleanup();
+    // 共用訂閱是全站單例：每案結束退訂清空，避免下一案沿用。
+    stopInboxStore();
     vi.useRealTimers();
   });
 
@@ -517,5 +520,154 @@ describe('InboxPage', () => {
       expect(document.getElementById('msg-inbox-detail-modal')).toBeNull();
     });
     expect(document.activeElement).toBe(card);
+  });
+
+  it('只有 createdAt 的系統通知排最前、顯示台北時間，日期篩選也保留它（伺服器 writeInboxNotification）', async () => {
+    // 台北 2026/11/08 00:30（UTC 前一天 16:30），用來確認是台北日期不是 UTC 日期
+    const createdMs = Date.UTC(2026, 10, 7, 16, 30);
+    renderPage({
+      messages: [
+        {
+          id: 'old',
+          _docId: 'old',
+          type: 'system',
+          typeName: '系統',
+          title: '舊訊息',
+          time: '2026/11/07 20:00',
+          read: true,
+        },
+        {
+          id: 'sys',
+          _docId: 'sys',
+          type: 'activity',
+          typeName: '活動',
+          title: '系統通知',
+          createdAt: { toMillis: () => createdMs },
+          read: false,
+        },
+      ],
+    });
+
+    const titles = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('.msg-card .msg-title')).map((el) => el.textContent);
+    expect(titles()).toEqual(['系統通知', '舊訊息']);
+    const times = Array.from(document.querySelectorAll<HTMLElement>('.msg-card .msg-time')).map(
+      (el) => el.textContent,
+    );
+    expect(times).toEqual(['2026/11/08 00:30', '2026/11/07 20:00']);
+
+    const dateInput = document.getElementById('msg-filter-date') as HTMLInputElement | null;
+    if (!dateInput) throw new Error('date input missing');
+    await act(async () => {
+      dateInput.value = '2026-11-08';
+      dateInput.dispatchEvent(new Event('input', { bubbles: true }));
+      dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(() => {
+      expect(titles()).toEqual(['系統通知']);
+    });
+  });
+
+  it('App 層已啟動共用訂閱時頁面不另訂閱；離開頁面不退訂', () => {
+    startInboxStore('u1');
+    expect(mockSubscribeInbox).toHaveBeenCalledTimes(1);
+    expect(mockSubscribeThreads).toHaveBeenCalledTimes(1);
+
+    const view = render(<InboxPage />);
+    act(() => {
+      inboxCallback!([
+        { id: 'm1', _docId: 'm1', type: 'system', title: '共用資料', time: '2025/01/01 10:00', read: false },
+      ]);
+    });
+    expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('共用資料');
+    expect(mockSubscribeInbox).toHaveBeenCalledTimes(1);
+    expect(mockSubscribeThreads).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    expect(inboxUnsub).not.toHaveBeenCalled();
+    expect(getInboxStoreState().uid).toBe('u1');
+  });
+
+  it('uid 延後出現才載入（L-43）；共用訂閱屬於其他 uid 時不顯示其資料', () => {
+    mockUseViewer.mockReturnValue({
+      uid: null,
+      role: 'user',
+      displayName: null,
+      hasPermission: () => false,
+      teamIds: new Set<string>(),
+      roleLevel: 0,
+      pictureUrl: null,
+      capabilities: [],
+    });
+    const view = render(<InboxPage />);
+    expect(mockSubscribeInbox).not.toHaveBeenCalled();
+
+    // 共用訂閱目前是別的 uid（換帳號過渡期）：頁面不搶、不顯示別人的資料
+    startInboxStore('other');
+    act(() => {
+      inboxCallback!([{ id: 'x', _docId: 'x', type: 'system', title: '別人的', time: '2025/01/01 10:00' }]);
+    });
+
+    mockUseViewer.mockReturnValue({
+      uid: 'u1',
+      role: 'user',
+      displayName: 'Alice',
+      hasPermission: () => true,
+      teamIds: new Set<string>(),
+      roleLevel: 0,
+      pictureUrl: null,
+      capabilities: [],
+    });
+    view.rerender(<InboxPage />);
+    expect(getInboxStoreState().uid).toBe('other');
+    expect(document.querySelector('.msg-card')).toBeNull();
+
+    // App 層換成 u1 後顯示 u1 的資料
+    act(() => {
+      startInboxStore('u1');
+    });
+    act(() => {
+      inboxCallback!([{ id: 'm1', _docId: 'm1', type: 'system', title: '我的', time: '2025/01/01 10:00' }]);
+    });
+    expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('我的');
+  });
+
+  it('共用訂閱停在錯誤時，進頁會自動重訂一次（收件匣與私訊各自）', () => {
+    startInboxStore('u1');
+    const firstInboxError = mockSubscribeInbox.mock.calls[0]?.[2] as (err: unknown) => void;
+    const firstThreadsError = mockSubscribeThreads.mock.calls[0]?.[2] as (err: unknown) => void;
+    act(() => {
+      firstInboxError(new Error('token expired'));
+      firstThreadsError(new Error('token expired'));
+    });
+    expect(getInboxStoreState().messagesStatus).toBe('error');
+
+    render(<InboxPage />);
+    expect(mockSubscribeInbox).toHaveBeenCalledTimes(2);
+    expect(mockSubscribeThreads).toHaveBeenCalledTimes(2);
+    expect(inboxUnsub).toHaveBeenCalled();
+    act(() => {
+      inboxCallback!([{ id: 'm1', _docId: 'm1', type: 'system', title: '恢復了', time: '2025/01/01 10:00' }]);
+    });
+    expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('恢復了');
+  });
+
+  it('樂觀已讀之後，只有私訊列表更新的快照不會讓訊息閃回未讀', async () => {
+    renderPage({
+      messages: [
+        { id: 'm1', _docId: 'm1', type: 'system', typeName: '系統', title: '未讀', time: '2025/01/01 10:00', read: false },
+      ],
+    });
+    const card = document.querySelector<HTMLElement>('.msg-card');
+    if (!card) throw new Error('msg card missing');
+    expect(card.classList.contains('msg-unread')).toBe(true);
+    fireEvent.click(card);
+    await waitFor(() => expect(mockMarkRead).toHaveBeenCalled());
+    expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
+
+    act(() => {
+      threadsCallback!([{ id: 'c1', conversationId: 'c1', peerUid: 'p1', unreadCount: 1 }]);
+    });
+    expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
   });
 });
