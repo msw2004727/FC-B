@@ -1791,6 +1791,7 @@
 /* ─── 報名按鈕進度環（B 11-09，取代翻牌；站長核可「A＋B 變形加進度環」）───
    按下 .25s 縮成 46px 圓，環照前快後慢爬；成功補滿＋✓＋展開，失敗直接展開。
    顏色全用 currentColor（各狀態按鈕文字皆白色）：軌道 .3 透明度＝設計稿 rgba(255,255,255,.3)。
+   --signup-ring-h 是按下前的原高度（JS 量測）：縮成 46px 時用上下邊界補回原高度，下方版面不跳動。
    減少動態時 JS 不套這些 class，改用原本的靜態忙碌文字。 */
 .detail-action-primary .signup-glow-wrap .signup-flipper > button.signup-ring-btn {
   position: relative;
@@ -1801,13 +1802,16 @@
   margin-right: auto;
   overflow: hidden;
   white-space: nowrap;
-  transition: width .25s ease, border-radius .25s ease;
+  height: var(--signup-ring-h, auto);
+  transition: width .25s ease, border-radius .25s ease, height .25s ease, margin .25s ease;
 }
 .detail-action-primary .signup-glow-wrap .signup-flipper > button.signup-ring-btn.is-collapsed {
   width: 46px !important;
   min-width: 46px;
   height: 46px;
   min-height: 46px;
+  margin-top: calc((var(--signup-ring-h, 46px) - 46px) / 2);
+  margin-bottom: calc((var(--signup-ring-h, 46px) - 46px) / 2);
   padding: 0 !important;
   border-radius: 23px !important;
 }

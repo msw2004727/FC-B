@@ -64,6 +64,9 @@ interface SignupRing {
   /** 減少動態：不變形、不畫環，只用靜態忙碌文字，結果出來直接切換。 */
   reduced: boolean;
   arcRef: { current: SVGCircleElement | null };
+  buttonRef: { current: HTMLButtonElement | null };
+  /** 環期間掛在按鈕上的 inline 變數：按下前的原高度，CSS 用它補邊界，縮成 46px 圓時下方版面不跳動。 */
+  style: string;
 }
 
 /**
@@ -82,6 +85,8 @@ function useSignupRing(running: boolean, successKey: number, settling = false): 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frame = useRef<number | null>(null);
   const arcRef = useRef<SVGCircleElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const idleHeight = useRef(0);
 
   function go(next: RingPhase): void {
     phaseRef.current = next;
@@ -160,11 +165,19 @@ function useSignupRing(running: boolean, successKey: number, settling = false): 
     stopFrame();
   }, []);
 
+  // 閒置時記下按鈕原高度（各狀態、各平台字型不同：全寬按鈕約 36～40px，並排與早鳥是 46px）。
+  useLayoutEffect(() => {
+    if (phaseRef.current === 'idle' && !running && buttonRef.current) {
+      idleHeight.current = buttonRef.current.offsetHeight;
+    }
+  });
+
+  const style = idleHeight.current > 0 ? `--signup-ring-h:${idleHeight.current}px` : '';
   // running 剛變 true、layout effect 尚未推進的那一次 render 就先當成 progress，避免閃一次靜態忙碌樣式。
   if (running && phase === 'idle') {
-    return { phase: 'progress', reduced: prefersReducedMotion(), arcRef };
+    return { phase: 'progress', reduced: prefersReducedMotion(), arcRef, buttonRef, style };
   }
-  return { phase, reduced, arcRef };
+  return { phase, reduced, arcRef, buttonRef, style };
 }
 
 /** 圓圈內容：progress／fill 畫環，check／expand 顯示 ✓，revert 留白直到展開完成。 */
@@ -261,7 +274,8 @@ function TeamReservationButton({ team, pageBusy }: {
       <div class="signup-glow-border" /><div class="signup-glow-shadow" />
       <div class="signup-flipper">
         <button type="button" class={'event-signup-team-button' + ringButtonClass(ring)}
-          style="background:#2563eb;color:#fff"
+          ref={ring.buttonRef}
+          style={'background:#2563eb;color:#fff' + (ringing && ring.style ? `;${ring.style}` : '')}
           disabled={pageBusy || team.busy || team.disabled || ringing}
           aria-busy={team.busy || ringing || undefined}
           aria-label={ringing ? team.busyLabel : undefined}
@@ -297,6 +311,7 @@ function PersonalSignupButton({
   const handleClick = isDisabled ? undefined : onClick;
   const srOnly = staticBusy ? <span class="fcb-sr-only">處理中</span> : null;
   const ringClass = ringButtonClass(ring);
+  const ringStyle = ringing && ring.style ? ring.style : undefined;
 
   // 照 A `_buildEventSignupLoadingButton`（a-earlybird.js）。
   if (state.variant === 'syncing') {
@@ -332,6 +347,8 @@ function PersonalSignupButton({
       <button
         type="button"
         class={`event-early-bird-btn${earlyBirdDisabledClass}${ringClass}`}
+        ref={ring.buttonRef}
+        style={ringStyle}
         disabled={isDisabled}
         onClick={handleClick}
         aria-busy={ariaBusy}
@@ -359,6 +376,8 @@ function PersonalSignupButton({
       <button
         type="button"
         class={`primary-btn${ringClass}`}
+        ref={ring.buttonRef}
+        style={ringStyle}
         disabled={isDisabled}
         onClick={handleClick}
         aria-busy={ariaBusy}
@@ -385,10 +404,12 @@ function PersonalSignupButton({
   if (state.opacity != null && state.opacity !== 1) {
     styleParts.push(`opacity:${state.opacity}`);
   }
+  if (ringStyle) styleParts.push(ringStyle);
   const button = (
     <button
       type="button"
       class={ringClass ? ringClass.trim() : undefined}
+      ref={ring.buttonRef}
       style={styleParts.join(';')}
       disabled={isDisabled}
       onClick={handleClick}
