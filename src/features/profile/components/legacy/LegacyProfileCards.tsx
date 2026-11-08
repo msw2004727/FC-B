@@ -2,13 +2,14 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
-import { lt } from '@/i18n/i18n';
+import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import type { UserProfile } from '../../data/profile-model';
 import { updateProfileFields } from '../../data/profile-writes';
 import { stringValue } from '../../ui/shared';
 import {
   TW_REGIONS,
+  calcAgeFromBirthday,
   filterTwRegions,
   formatCreatedAt,
   getUserTeamEntries,
@@ -20,6 +21,16 @@ function daysInMonth(year: string, month: string): number {
   const m = Number(month);
   if (!Number.isInteger(y) || y < 1 || !Number.isInteger(m) || m < 1 || m > 12) return 31;
   return new Date(y, m, 0).getDate();
+}
+
+/** 所屬俱樂部卡預設只列前幾個，其餘按「顯示全部」展開（P2 兩張卡）。 */
+export const PROFILE_CLUBS_PREVIEW = 4;
+/** 俱樂部首字圖示依序輪用的色調（對應 profile.css `.pfi-logo[data-tone]`，只用既有色票變數）。 */
+const CLUB_TONES = 4;
+
+/** 取名稱第一個字（避開 emoji 等代理對被切半）。 */
+function firstGlyph(name: string): string {
+  return Array.from(name.trim())[0] ?? '?';
 }
 
 export function LegacyProfileInfoCard({
@@ -35,9 +46,11 @@ export function LegacyProfileInfoCard({
   embedded?: boolean;
 }): JSX.Element {
   const location = useLocation();
+  const t = useT();
   const [openState, setOpen] = useState(false);
   const open = embedded || openState;
   const [editing, setEditing] = useState(false);
+  const [showAllClubs, setShowAllClubs] = useState(false);
   const [pending, setPending] = useState(false);
 
   const [gender, setGender] = useState('');
@@ -61,6 +74,11 @@ export function LegacyProfileInfoCard({
   const currentYear = new Date().getFullYear();
   const teams = getUserTeamEntries(profile);
   const joinDateText = formatCreatedAt(profile['createdAt']);
+  // formatCreatedAt 沿用 A 的「-」表示沒有日期；P2 顯示模式改成「未設定」（編輯模式照舊）。
+  const joinDateShown = joinDateText === '-' ? '' : joinDateText;
+  const birthdayText = stringValue(profile['birthday']);
+  const age = calcAgeFromBirthday(birthdayText);
+  const shownTeams = showAllClubs ? teams : teams.slice(0, PROFILE_CLUBS_PREVIEW);
 
   function startEdit(): void {
     setGender(stringValue(profile['gender']));
@@ -165,6 +183,12 @@ export function LegacyProfileInfoCard({
     }
   }
 
+  /** 顯示值：空值一律淡色「未設定」（P2 取代原本的「-」）；不可信文字一律走 JSX 文字輸出。 */
+  const renderValue = (id: string, text: string, cls: string): JSX.Element => (
+    <span id={id} class={text ? cls : `${cls} pfi-empty`}>{text || t('profile.dataTab.notSet')}</span>
+  );
+
+  // 編輯模式沿用原本的俱樂部連結（不改）。
   const renderTeams = (): JSX.Element | string => {
     if (teams.length === 0) return '無';
     return (
@@ -184,10 +208,46 @@ export function LegacyProfileInfoCard({
     );
   };
 
+  // P2 顯示模式的俱樂部列：首字圖示＋名稱，一列一個。
+  const renderClubRows = (): JSX.Element => {
+    if (teams.length === 0) {
+      return <span class="pfi-empty">{t('profile.dataTab.noClubs')}</span>;
+    }
+    return (
+      <>
+        {shownTeams.map((team, idx) => {
+          const key = team.id || `${team.name}-${idx}`;
+          const body = (
+            <>
+              <span class="pfi-logo" data-tone={String(idx % CLUB_TONES)} aria-hidden="true">
+                {firstGlyph(team.name)}
+              </span>
+              <span class="pfi-club-name">{team.name}</span>
+            </>
+          );
+          // 有俱樂部 ID 才可點（同原本 uc-team-link：導到 /teams/{id}）；沒有 ID 的只顯示名稱。
+          return team.id ? (
+            <button
+              key={key}
+              type="button"
+              class="pfi-club"
+              onClick={() => location.route(`/teams/${encodeURIComponent(team.id)}`)}
+            >
+              {body}
+            </button>
+          ) : (
+            <div key={key} class="pfi-club">{body}</div>
+          );
+        })}
+      </>
+    );
+  };
+
   return (
     <div class={embedded ? 'profile-quick-body' : 'info-card'} id="profile-info-card">
       {embedded ? (
-        <div class="profile-quick-help"><ProfileInfoButton infoKey="myProfile" /></div>
+        // P2：顯示模式的說明「?」放在「基本資料」卡標題右側；編輯模式沒有那張卡，仍放頂端。
+        editing ? <div class="profile-quick-help"><ProfileInfoButton infoKey="myProfile" /></div> : null
       ) : (
       <div
         class={`info-title profile-collapse-toggle${open ? ' open' : ''}`}
@@ -211,36 +271,62 @@ export function LegacyProfileInfoCard({
       </div>
       )}
       <div class="profile-collapse-content" style={open ? undefined : 'display:none'}>
-        <div id="profile-info-display" style={editing ? 'display:none' : undefined}>
-          <div class="info-row">
-            <span data-i18n="profile.gender">{lt('profile.gender', '性別')}</span>
-            <span id="profile-gender">{stringValue(profile['gender']) || '-'}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.birthday">{lt('profile.birthday', '生日')}</span>
-            <span id="profile-birthday">{stringValue(profile['birthday']) || '-'}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.region">{lt('profile.region', '地區')}</span>
-            <span id="profile-region">{stringValue(profile['region']) || '-'}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>
-            <span id="profile-sports">{stringValue(profile['sports']) || '-'}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.team">{lt('profile.team', '所屬俱樂部')}</span>
-            <span id="profile-team">{renderTeams()}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.phone">{lt('profile.phone', '聯繫方式')}</span>
-            <span id="profile-phone">{stringValue(profile['phone']) || '-'}</span>
-          </div>
-          <div class="info-row">
-            <span data-i18n="profile.joinDate">{lt('profile.joinDate', '加入時間')}</span>
-            <span id="profile-join-date">{joinDateText}</span>
-          </div>
-          <div style="display:flex;justify-content:flex-end;margin-top:.4rem">
+        <div id="profile-info-display" class="pfi" style={editing ? 'display:none' : undefined}>
+          <section class="pfi-card">
+            <div class="pfi-hd">
+              <span class="pfi-title">{t('profile.dataTab.basic')}</span>
+              {embedded ? <ProfileInfoButton infoKey="myProfile" /> : null}
+            </div>
+            <div class="pfi-facts">
+              <div class="pfi-fact">
+                <span class="pfi-fact-lb" data-i18n="profile.gender">{lt('profile.gender', '性別')}</span>
+                {renderValue('profile-gender', stringValue(profile['gender']), 'pfi-fact-v')}
+              </div>
+              <div class="pfi-fact">
+                <span class="pfi-fact-lb">
+                  <span data-i18n="profile.birthday">{lt('profile.birthday', '生日')}</span>
+                  {age !== null ? <span class="pfi-age"> · {t('profile.dataTab.age', { n: age })}</span> : null}
+                </span>
+                {renderValue('profile-birthday', birthdayText, 'pfi-fact-v')}
+              </div>
+              <div class="pfi-fact">
+                <span class="pfi-fact-lb" data-i18n="profile.region">{lt('profile.region', '地區')}</span>
+                {renderValue('profile-region', stringValue(profile['region']), 'pfi-fact-v')}
+              </div>
+            </div>
+            <div class="pfi-kv">
+              <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>
+              {renderValue('profile-sports', stringValue(profile['sports']), 'pfi-kv-v')}
+            </div>
+            <div class="pfi-kv">
+              <span data-i18n="profile.phone">{lt('profile.phone', '聯繫方式')}</span>
+              {renderValue('profile-phone', stringValue(profile['phone']), 'pfi-kv-v')}
+            </div>
+            <div class="pfi-kv">
+              <span data-i18n="profile.joinDate">{lt('profile.joinDate', '加入時間')}</span>
+              {renderValue('profile-join-date', joinDateShown, 'pfi-kv-v')}
+            </div>
+          </section>
+          <section class="pfi-card">
+            <div class="pfi-hd">
+              <span class="pfi-title" data-i18n="profile.team">{lt('profile.team', '所屬俱樂部')}</span>
+              {teams.length > 0 ? (
+                <span class="pfi-count">{t('profile.dataTab.clubCount', { n: teams.length })}</span>
+              ) : null}
+            </div>
+            <div id="profile-team" class="pfi-clubs">{renderClubRows()}</div>
+            {teams.length > PROFILE_CLUBS_PREVIEW ? (
+              <button
+                type="button"
+                class="pfi-more"
+                aria-expanded={showAllClubs}
+                onClick={() => setShowAllClubs((prev) => !prev)}
+              >
+                {showAllClubs ? t('profile.dataTab.collapse') : t('profile.dataTab.showAll', { n: teams.length })}
+              </button>
+            ) : null}
+          </section>
+          <div class="pfi-actions">
             <button
               type="button"
               class="outline-btn"

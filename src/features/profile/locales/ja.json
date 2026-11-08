@@ -127,5 +127,14 @@
     "completed": "完了",
     "info": "プロフィール",
     "records": "活動履歴"
+  },
+  "dataTab": {
+    "basic": "基本情報",
+    "notSet": "未設定",
+    "age": "{n}歳",
+    "clubCount": "{n}件",
+    "showAll": "すべて表示（{n}件）",
+    "collapse": "閉じる",
+    "noClubs": "なし"
   }
 }

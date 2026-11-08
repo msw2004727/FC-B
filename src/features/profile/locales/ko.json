@@ -127,5 +127,14 @@
     "completed": "완료",
     "info": "정보",
     "records": "활동 내역"
+  },
+  "dataTab": {
+    "basic": "기본 정보",
+    "notSet": "미설정",
+    "age": "{n}세",
+    "clubCount": "{n}개",
+    "showAll": "전체 {n}개 보기",
+    "collapse": "접기",
+    "noClubs": "없음"
   }
 }

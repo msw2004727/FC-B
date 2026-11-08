@@ -127,5 +127,14 @@
     "completed": "完成",
     "info": "資料",
     "records": "活動明細"
+  },
+  "dataTab": {
+    "basic": "基本資料",
+    "notSet": "未設定",
+    "age": "{n} 歲",
+    "clubCount": "{n} 個",
+    "showAll": "顯示全部 {n} 個",
+    "collapse": "收合",
+    "noClubs": "無"
   }
 }
