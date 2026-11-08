@@ -18,6 +18,8 @@ import {
 } from '../data/submit-contact-message';
 
 const SENT_MS = 1600;
+/** 輸入框硬上限取碼位上限的兩倍（＝後端原始長度防線）；實際上限由碼位驗證與計數器把關，emoji 才打得滿。 */
+const INPUT_LIMIT_FACTOR = 2;
 
 export interface ContactOwnerModalProps {
   open: boolean;
@@ -105,12 +107,16 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
       if (seq !== requestSeq.current) return;
       const kind = classifyContactSubmitError(err);
       if (kind === 'unauthenticated') {
+        let auth: typeof import('@/data/auth') | null = null;
         try {
-          const auth = await import('@/data/auth');
+          auth = await import('@/data/auth');
           if (seq !== requestSeq.current) return;
           await auth.signIn();
-        } catch {
-          if (seq === requestSeq.current) toast.show({ message: t('home.contactOwner.failed') });
+        } catch (signInErr) {
+          // 導向 LINE／登入提示／已有登入者時 signIn 會丟 LoginRedirectingError，不算失敗（同 App.tsx）。
+          if (seq === requestSeq.current && !auth?.isLoginRedirectingError(signInErr)) {
+            toast.show({ message: t('home.contactOwner.failed') });
+          }
         }
         return;
       }
@@ -158,7 +164,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
             name="name"
             placeholder={t('home.contactOwner.name')}
             aria-label={t('home.contactOwner.name')}
-            maxLength={CONTACT_NAME_MAX}
+            maxLength={CONTACT_NAME_MAX * INPUT_LIMIT_FACTOR}
             value={name}
             aria-invalid={invalid('name')}
             onInput={(event) => setName(event.currentTarget.value)}
@@ -168,7 +174,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
             name="contact"
             placeholder={t('home.contactOwner.contact')}
             aria-label={t('home.contactOwner.contact')}
-            maxLength={CONTACT_CONTACT_MAX}
+            maxLength={CONTACT_CONTACT_MAX * INPUT_LIMIT_FACTOR}
             value={contact}
             aria-invalid={invalid('contact')}
             onInput={(event) => setContact(event.currentTarget.value)}
@@ -177,7 +183,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
             name="content"
             placeholder={t('home.contactOwner.content')}
             aria-label={t('home.contactOwner.content')}
-            maxLength={CONTACT_CONTENT_MAX}
+            maxLength={CONTACT_CONTENT_MAX * INPUT_LIMIT_FACTOR}
             value={content}
             aria-invalid={invalid('content')}
             onInput={(event) => setContent(event.currentTarget.value)}
