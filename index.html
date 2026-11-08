@@ -16,6 +16,94 @@
     <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
     <link rel="dns-prefetch" href="https://www.googleapis.com" />
     <link rel="dns-prefetch" href="https://fc-football-6c8dc.firebaseapp.com" />
+    <!-- T-093：開頁同步處理 liff.state（少一次整頁載入）。測試：src/app/liff-state-inline.test.ts。 -->
+    <script id="fcb-liff-state">
+      (function () {
+        try {
+          var L = location;
+          var path = String(L.pathname || '');
+          var search = String(L.search || '');
+          var hash = String(L.hash || '');
+          var host = String(L.hostname || '');
+          var params = new URLSearchParams(search);
+          // 診斷只記長得像參數名稱的鍵；其餘（可能是裸 token）記成 *。
+          var NAME = /^[A-Za-z0-9_.-]{1,40}$/;
+          var nameOf = function (key) { return NAME.test(key) ? key : '*'; };
+          var q = [];
+          params.forEach(function (_value, key) {
+            var qname = nameOf(key);
+            if (key && q.indexOf(qname) === -1) q.push(qname);
+          });
+          var h = [];
+          var hashBody = hash.charAt(0) === '#' ? hash.slice(1) : hash;
+          if (hashBody) {
+            var segs = hashBody.split('&');
+            for (var i = 0; i < segs.length; i++) {
+              var seg = segs[i];
+              var cut = seg.indexOf('=');
+              // 沒有「=」的片段可能是裸 token，不當成參數名稱。
+              if (cut <= 0) continue;
+              var hname = nameOf(seg.slice(0, cut));
+              if (h.indexOf(hname) === -1) h.push(hname);
+            }
+          }
+          var PUBLIC_ID = /^[A-Za-z0-9_-]{1,120}$/;
+          var target = '';
+          if (path === '/' && params.getAll('liff.state').length === 1 && params.getAll('event').length === 0 && params.getAll('team').length === 0 && params.getAll('profile').length === 0) {
+            var state = params.get('liff.state');
+            if (typeof state === 'string' && state.charAt(0) === '?') {
+              var eq = state.indexOf('=');
+              var kind = eq > 1 ? state.slice(1, eq) : '';
+              var id = eq > 1 ? state.slice(eq + 1) : '';
+              var dest = kind === 'event' ? '/events/' : kind === 'team' ? '/teams/' : kind === 'profile' ? '/profile/' : '';
+              if (dest && PUBLIC_ID.test(id) && !(kind === 'profile' && id === 'qr')) {
+                var raw = search.charAt(0) === '?' ? search.slice(1) : search;
+                var parts = raw ? raw.split('&') : [];
+                var kept = [];
+                var dropped = false;
+                for (var j = 0; j < parts.length; j++) {
+                  var part = parts[j];
+                  var peq = part.indexOf('=');
+                  var pkey = peq === -1 ? part : part.slice(0, peq);
+                  if (!dropped && pkey === 'liff.state') {
+                    dropped = true;
+                    continue;
+                  }
+                  kept.push(part);
+                }
+                if (dropped) target = dest + id + (kept.length ? '?' + kept.join('&') : '') + hash;
+              }
+            }
+          }
+          var ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
+          var auto = target !== '' && /\bLine\//i.test(ua) && /\bLIFF\b/.test(ua);
+          try {
+            if (host === 'next.toosterx.com') {
+              var KEY = 'fcb:diag-loads';
+              var prev = [];
+              try {
+                var parsed = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+                if (parsed && Object.prototype.toString.call(parsed) === '[object Array]') prev = parsed;
+              } catch (e1) {
+                prev = [];
+              }
+              var last = prev.length ? prev[prev.length - 1] : null;
+              var n = last && typeof last.n === 'number' && last.n === last.n ? last.n + 1 : prev.length + 1;
+              var shownPath = path.replace(/^\/(events|teams|profile)\/[^/?#]+/, '/$1/:id');
+              prev.push({ n: n, path: shownPath, q: q, h: h, rewrote: target !== '', auto: auto });
+              if (prev.length > 10) prev = prev.slice(prev.length - 10);
+              sessionStorage.setItem(KEY, JSON.stringify(prev));
+            }
+          } catch (e2) {}
+          if (target) {
+            history.replaceState(history.state, '', target);
+            // 站長 11-08 定案：Mini App 分享開頁要自動登入。只在 LINE Mini App（UA 同 login-redirect.ts#isLikelyMiniAppUserAgent）
+            // 設旗標讓 App.tsx 照回跳流程接手；外部瀏覽器一律不設（SDK 不導向時非互動登入會失敗、反而擋掉整頁自動登入）。
+            if (auto) window.__fcbLiffStateConsumed = true;
+          }
+        } catch (e) {}
+      })();
+    </script>
     <!-- T-042d：冷啟動提早發橫幅 REST、預載第一張橫幅圖。設計、發不發的條件、安全邊界見 scripts/early-banners-html.ts 檔頭；
          __FCB_*__ 代號由該外掛在建置時換成真值，這段註解也由它刪掉（不隨 HTML 送出）。測試：src/app/early-banners.test.ts。
          日後若加 CSP，必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com。 -->

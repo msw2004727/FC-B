@@ -4,7 +4,7 @@
  * V 階段：
  * - teamIds 由 computeVisibleTeamIds 計算，保留 leaderUids 優先序。
  * - 私密列表 roleLevel 僅使用內建角色，不讀 customRoles。
- * - R-ID-002：adminUsers 僅允許 UID 精確匹配，不比對 name。
+ * - teamIds 來自 users/{uid} 與隊伍查詢（computeVisibleTeamIds）。不查 adminUsers：Rules 沒有 match，查了一定被拒。
  *
  * P 階段：
  * - 透過 buildPermissionCheckerInput + createPermissionChecker 對齊 A 的完整後台權限語意。
@@ -246,29 +246,7 @@ async function loadTeamsForUser(
     }
   };
 
-  const loadAdminUser = async (): Promise<VisibilityUserDoc | null> => {
-    try {
-      const snap = await getDocs(
-        query(collection(db, 'adminUsers'), where('uid', '==', uid)),
-      );
-      // A 使用 find，只取第一個相符文件；不得聯集所有重複 UID 文件。
-      for (const snapshot of snap.docs) {
-        const data = snapshot.data() as Record<string, unknown>;
-        if (data.uid !== uid) continue;
-        return {
-          uid: data.uid,
-          teamIds: data.teamIds,
-          teamId: data.teamId,
-        };
-      }
-      return null;
-    } catch (err) {
-      warnOnce('adminUsers', err);
-      return null;
-    }
-  };
-
-  const [captains, legacyLeaders, leaders, coaches, adminUser] = await Promise.all([
+  const [captains, legacyLeaders, leaders, coaches] = await Promise.all([
     runTeamQuery(
       'teams.captainUid',
       query(collection(db, 'teams'), where('captainUid', '==', uid)),
@@ -285,7 +263,6 @@ async function loadTeamsForUser(
       'teams.coachUids',
       query(collection(db, 'teams'), where('coachUids', 'array-contains', uid)),
     ),
-    loadAdminUser(),
   ]);
 
   const candidates = [...captains, ...legacyLeaders, ...leaders, ...coaches];
@@ -294,9 +271,6 @@ async function loadTeamsForUser(
     userDoc,
     candidates,
   );
-
-  // R-ID-002：僅補入 UID 精確匹配的 adminUsers 文件，不比對名稱。
-  for (const id of computeVisibleTeamIds(uid, adminUser, [])) ids.add(id);
   return { teamIds: ids, staffTeams: getStaffTeams(uid, candidates) };
 }
 
