@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { EventFormFields } from './EventFormFields';
 import { createDefaultFormState, type EventFormState } from '../../data/event-form-model';
+import { formatTaipei } from '@/core/taipei-time';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 
 beforeEach(() => {
@@ -133,7 +134,7 @@ describe('EventFormFields', () => {
 
   it('? 開出對應 CE_INFO 標題（地點 →「活動地點」），點「了解」關閉', () => {
     renderFields();
-    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(13);
+    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(14);
     // ASSUMPTION: 地點輸入與其說明按鈕維持在同一個 .ce-row，以欄位鍵定位。
     const locationRow = document.getElementById('ce-location')?.closest('.ce-row');
     const buttons = locationRow?.querySelectorAll<HTMLButtonElement>('.edu-info-btn');
@@ -245,8 +246,15 @@ describe('團隊預留自動釋出列', () => {
   });
 
   it('手動選擇送出 hours 並標記非自動；手動超過剩餘時間顯示 warning', () => {
+    // Preact 以事件時間戳過濾事件，固定 Date 會讓 change 被忽略；這個案例改用真實時間＋相對開始時間。
+    vi.useRealTimers();
+    const startMs = Date.now() + 5 * 3_600_000 + 10 * 60_000;
     const onPatch = vi.fn();
-    const state = { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '15:00' };
+    const state = {
+      ...createDefaultFormState(),
+      dateVal: formatTaipei(startMs, 'YYYY-MM-DD'),
+      startTime: formatTaipei(startMs, 'HH:mm'),
+    };
     renderFields({ state, onPatch });
     fireEvent.change(select(), { target: { value: '12' } });
     expect(onPatch).toHaveBeenCalledWith({ teamReservationReleaseHours: 12, teamReservationReleaseAuto: false });
