@@ -248,6 +248,7 @@ function mount(): ReturnType<typeof render> {
 }
 
 beforeEach(async () => {
+  delete window.__fcbEarlyEvent;
   vi.resetAllMocks();
   mocks.reservationSignupEvent = {};
   await setLocale('zh-TW');
@@ -274,6 +275,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  delete window.__fcbEarlyEvent;
   cleanup();
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -1477,6 +1479,66 @@ describe('T-085 名單展開與進頁讀取', () => {
     resolveDetail(detail);
     await screen.findByRole('button', { name: '查看出席名單' });
     expect(mocks.registrations).not.toHaveBeenCalled();
+  });
+
+  it('提早 REST 只填載入外殼，phase 維持載入中、不出現立即報名', async () => {
+    let resolveDetail!: (value: LoadedEventDetail) => void;
+    let resolveHistory!: (value: DetailRegistration[]) => void;
+    mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
+      resolveDetail = resolve;
+    }));
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    window.__fcbEarlyEvent = Promise.resolve({
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        date: { stringValue: '2099/01/01 18:00' },
+        location: { stringValue: '提早地點' },
+        image: { stringValue: 'https://img.test/early.jpg' },
+      },
+    });
+    mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+    expect(screen.getByText('提早地點')).toBeTruthy();
+    expect(screen.getByText('2099/01/01 18:00')).toBeTruthy();
+    expect(screen.getByRole('img').getAttribute('src')).toBe('https://img.test/early.jpg');
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    resolveHistory([]);
+    resolveDetail(detail);
+    await screen.findByRole('button', { name: '立即報名' });
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+  });
+
+  it('uid 改變重新掛載時沿用 30 秒內的活動讀取，不閃錯誤，訪客名單狀態不帶進登入', async () => {
+    let resolveDetail!: (value: LoadedEventDetail) => void;
+    mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
+      resolveDetail = resolve;
+    }));
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledTimes(1));
+    expect(mocks.history).not.toHaveBeenCalled();
+    expect(mocks.signupProfile).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: '無法載入活動詳情，請重試。' })).toBeNull();
+
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(1));
+    expect(mocks.history).toHaveBeenCalledWith('u1');
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.signupProfile).toHaveBeenCalledWith('u1');
+    expect(screen.queryByRole('heading', { name: '無法載入活動詳情，請重試。' })).toBeNull();
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+
+    resolveDetail(detail);
+    await screen.findByText('青埔五人制');
+    expect(screen.queryByRole('heading', { name: '無法載入活動詳情，請重試。' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
+    await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
   });
 
   it('預讀被不會結束的 promise 卡住，報名刷新後再展開會重讀且不卡在載入中', async () => {
