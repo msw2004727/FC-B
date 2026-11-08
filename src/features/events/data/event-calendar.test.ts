@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { _resetOpenExternalForTest, setExternalLiffGetter } from '@/core/open-external';
 import {
   addEventToCalendar,
   buildCalendarDescription,
@@ -6,6 +7,11 @@ import {
   parseEventDateRange,
   toGcalDateStr,
 } from './event-calendar';
+
+afterEach(() => {
+  _resetOpenExternalForTest();
+  vi.restoreAllMocks();
+});
 
 describe('M-091：照 A Google 行事曆', () => {
   it('日期解析保留 A 分隔符、預設兩小時及未自動跨日語意', () => {
@@ -39,29 +45,42 @@ describe('M-091：照 A Google 行事曆', () => {
     );
   });
 
-  it('一般瀏覽器外開；LIFF 使用 external:true', async () => {
-    const openWindow = vi.fn();
+  // 測試同步更新：外連共用分頁
+  it('一般瀏覽器同步開共用分頁', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const showToast = vi.fn();
     const signal = new AbortController().signal;
     const event = { date: '2026/10/25 09:00' };
-    await addEventToCalendar(event, {
-      signal, showToast, openWindow, loadLiff: async () => null,
-    });
-    expect(openWindow).toHaveBeenCalledOnce();
+    await addEventToCalendar(event, { signal, showToast });
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0]?.[0]).toEqual(expect.stringContaining('ctz=Asia/Taipei'));
+    expect(open.mock.calls[0]?.[1]).toBe('toosterx_external');
+    expect(open.mock.calls[0]).toHaveLength(2);
     expect(showToast).toHaveBeenCalledWith('正在開啟 Google 行事曆…');
-    const liffOpen = vi.fn();
-    await addEventToCalendar(event, {
-      signal,
-      showToast,
-      loadLiff: async () => ({ isInClient: () => true, openWindow: liffOpen }),
-    });
-    expect(liffOpen).toHaveBeenCalledWith({
-      url: expect.stringContaining('ctz=Asia/Taipei'),
-      external: true,
-    });
   });
 
-  it('缺資料、日期錯誤及取消後不開窗', async () => {
+  // 測試同步更新：外連共用分頁
+  it('openWindow 丟錯時退回具名分頁，不把錯誤丟給呼叫端', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    setExternalLiffGetter(() => ({
+      isInClient: () => true,
+      openWindow: () => {
+        throw new Error('not init');
+      },
+    }));
+    const showToast = vi.fn();
+    await expect(addEventToCalendar(
+      { date: '2026/10/25 09:00' },
+      { signal: new AbortController().signal, showToast },
+    )).resolves.toBeUndefined();
+    expect(open).toHaveBeenCalledOnce();
+    expect(String(open.mock.calls[0]?.[0])).toContain('calendar.google.com');
+    expect(open.mock.calls[0]?.[1]).toBe('toosterx_external');
+    expect(showToast).toHaveBeenCalledWith('正在開啟 Google 行事曆…');
+  });
+
+  it('缺資料、日期錯誤及已取消不開窗', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const signal = new AbortController().signal;
     const showToast = vi.fn();
     await addEventToCalendar(null, { signal, showToast });
@@ -70,17 +89,12 @@ describe('M-091：照 A Google 行事曆', () => {
     expect(showToast).toHaveBeenCalledWith('無法解析活動時間');
 
     const controller = new AbortController();
-    const openWindow = vi.fn();
+    controller.abort();
     await addEventToCalendar({ date: '2026/10/25 09:00' }, {
       signal: controller.signal,
       showToast,
-      openWindow,
-      loadLiff: async () => {
-        controller.abort();
-        return null;
-      },
     });
-    expect(openWindow).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });
 

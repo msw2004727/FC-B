@@ -49,6 +49,7 @@ import {
 import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
+import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import {
@@ -83,6 +84,7 @@ import {
 } from '@/data/identity-settings';
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { SyncStatusBar } from './SyncStatusBar';
+import { DiagLoadsBadge } from './DiagLoadsBadge';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 // M-139：全站私訊即時泡泡與浮層外框一律 lazy 載入，避免首屏帶入 firestore。
@@ -159,8 +161,12 @@ export function App({
   // 內測模式只剩角落浮水印（2026-10-20 站長取消白名單閘門與寫入守門）。
   const internalTest = useMemo(() => isInternalTestMode(), []);
   // 從 LINE 授權回來（網址帶 code＋liffClientId 或 liff.state）：登入狀態確認後自動接手登入一次。
+  // T-093：index.html 開頁已在 Mini App 內消掉 liff.state 時，以它設的旗標視同回跳（站長定案分享開頁要自動登入）。
+  // 旗標整頁有效；App 只掛載一次、useRef 初值只取第一次，所以只會接手一次。
   const resumeLoginRef = useRef(
-    typeof location !== 'undefined' && hasLoginRedirectParams(location.href),
+    (typeof location !== 'undefined' && hasLoginRedirectParams(location.href))
+      || (typeof window !== 'undefined'
+        && (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed === true),
   );
   // 這次開頁略過「頁面自動要求登入」（auto）：剛在 LINE 授權頁取消、剛登出重整，或本次接手失敗過（Grok 第二輪 P1）。
   // 使用者自己按的登入不受影響。旗標在開頁讀一次就刪，下一次開頁恢復。
@@ -188,6 +194,8 @@ export function App({
     const stopMultiTab = initMultiTabGuard();
     const stopOfflineGuard = installOfflineWriteGuard();
     const stopIdlePrefetch = scheduleIdleRoutePrefetch();
+    // 只在 Mini App 閒置時預先 liff.init。一般瀏覽器這個函式立刻返回，不載入 LIFF（T-041）。
+    const stopLiffPreinit = startMiniAppLiffPreinit();
 
     mounted.current = true;
     let cancelled = false;
@@ -253,6 +261,7 @@ export function App({
       stopMultiTab();
       stopOfflineGuard();
       stopIdlePrefetch();
+      stopLiffPreinit();
     };
   }, []);
 
@@ -328,7 +337,17 @@ export function App({
   const confirmMobileHint = useCallback(() => {
     setMobileHintOpen(false);
     acknowledgeMobileLoginHint();
-    handleLogin();
+    // 關彈窗會在 setTimeout(0) 用 history.back() 退掉彈窗那筆紀錄；ensureLiffInit 快取後 liff.login 可能比它先開始導向，
+    // 被這次返回中止。等返回處理完（popstate，保底 400ms）再導向 LINE（Opus 複審 P2-2）。
+    let started = false;
+    const go = (): void => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('popstate', go);
+      handleLogin();
+    };
+    window.addEventListener('popstate', go);
+    setTimeout(go, 400);
   }, [handleLogin]);
 
   // 網址還帶 LINE 授權回跳參數時（例如公開個人頁掛載就要求登入），一律走接手模式：
@@ -444,6 +463,7 @@ export function App({
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}
           </div>
         )}
+        <DiagLoadsBadge />
       </div>
       <SideDrawer
         open={drawerOpen}

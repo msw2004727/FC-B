@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
+import { openHttpAnchor } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
@@ -131,7 +132,7 @@ export function LegacySocialGrid({
   );
 }
 
-/** 他人名片：只列已填的社群，點了開新分頁（網址經 socialHref 檢查，不合法的不列）。 */
+/** 他人名片：只列已填的社群。http(s) 點擊走共用外連；line: 不攔（網址經 socialHref 檢查，不合法的不列）。 */
 export function LegacySocialLinks({ profile }: { profile: UserProfile }): JSX.Element | null {
   const t = useT();
   const links = objectValue(profile['socialLinks']);
@@ -146,8 +147,10 @@ export function LegacySocialLinks({ profile }: { profile: UserProfile }): JSX.El
           class="social-btn active"
           data-platform={p}
           href={href}
-          target="_blank"
           rel="noopener noreferrer"
+          onClick={(event) => {
+            openHttpAnchor(event, href);
+          }}
           title={SOCIAL_ICONS[p].title}
           aria-label={t(`profile.platform.${p}`)}
         >

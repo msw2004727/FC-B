@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { openHttpAnchor } from '@/core/open-external';
 import { LEGACY_SETTLE_URL } from './legacy-links';
 import { useT } from '@/i18n/i18n';
 import { ROSTER_STATUS_CALLABLES_DEPLOYED } from '@/data/roster-status-deployed';
@@ -13,7 +14,8 @@ export function RosterStatusCourseNote({ event, editing }: {
   return <div role="note"
     style="display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.25rem 0 .45rem;padding:.25rem .5rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.14);color:var(--text-primary);font-size:.75rem;line-height:1.4">
     <span>{t('events.roster.useLegacyForCourse')}</span>
-    <a href={LEGACY_SETTLE_URL} target="_blank" rel="noopener noreferrer"
+    <a href={LEGACY_SETTLE_URL}
+      onClick={(event) => { openHttpAnchor(event, LEGACY_SETTLE_URL); }}
       style="color:var(--primary);font-weight:600;text-decoration:underline;white-space:nowrap">
       {t('events.roster.goLegacy')}
     </a>

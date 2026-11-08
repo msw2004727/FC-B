@@ -70,6 +70,7 @@ export function renderPmMessageBody(body: string): {
     if (offset > lastIndex) {
       nodes.push(text.slice(lastIndex, offset));
     }
+    // 使用者自填網址維持 noopener 的另開：具名視窗清 opener 在 window.open 回傳 null 時做不到。
     nodes.push(
       <a
         key={`link-${++keySeq}`}

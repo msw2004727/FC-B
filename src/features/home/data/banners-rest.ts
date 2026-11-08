@@ -81,7 +81,7 @@ function decodeTimestamp(text: string): { seconds: number; nanoseconds: number }
  * 解一個 Firestore REST Value。不認得或格式不符的型別（bytes、reference、geoPoint、損毀）回 `undefined`＝當作沒有這個欄位。
  * `integerValue` 是十進位字串；`doubleValue` 可能是數字或 `NaN`／`Infinity`／`-Infinity` 字串。
  */
-function decodeValue(value: unknown, depth: number): unknown {
+export function decodeValue(value: unknown, depth: number): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value) || depth > MAX_DECODE_DEPTH) return undefined;
   const v = value as Record<string, unknown>;
   if (typeof v.stringValue === 'string') return v.stringValue;

@@ -14,10 +14,16 @@ describe('LINE 登入導向（M-036）', () => {
   });
 
   it('照 A：不在 LINE App 內的手機才算外部瀏覽器', () => {
+    // 測試同步更新：登入提示改版
     const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari';
     expect(isMobileExternalBrowser(false, iphone)).toBe(true);
     expect(isMobileExternalBrowser(true, iphone)).toBe(false);
     expect(isMobileExternalBrowser(false, 'Mozilla/5.0 (Windows NT 10.0) Chrome')).toBe(false);
+    expect(isMobileExternalBrowser(false, 'Mozilla/5.0 (Linux; Android 14) Chrome/130')).toBe(true);
+    const lineIab = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari Line/14.18.0';
+    expect(isMobileExternalBrowser(false, lineIab)).toBe(false);
+    expect(isMobileExternalBrowser(false, 'Mozilla/5.0 (Linux; Android 14) Line/14.18.0')).toBe(false);
+    expect(isMobileExternalBrowser(true, `${lineIab} LIFF`)).toBe(false);
   });
 
   it('重導向中不算登入失敗', () => {

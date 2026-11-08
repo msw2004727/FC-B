@@ -25,6 +25,10 @@
   "feature.reserved": "此功能即将推出",
   "feature.external": "即将接入外部系统",
   "internalTest.badge": "ToosterX抢先试用版 {version}",
+  "lineLoginHint": {
+    "openInLine": "在 LINE App 打开",
+    "newTabNote": "登录完成会开在新标签页，旧标签页可关闭"
+  },
   "ui": {
     "shell": {
       "sportAll": "All",

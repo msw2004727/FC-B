@@ -90,6 +90,45 @@ describe('LINE 授權回跳：開頁自動接手登入', () => {
     await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce(), { timeout: 3000 });
   });
 
+  it('T-093：開頁 inline 在 Mini App 消掉 liff.state 而設旗標 → 落在活動頁並接手登入', async () => {
+    history.replaceState(null, '', '/events/abc');
+    (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed = true;
+    try {
+      authRestoresAs(null);
+      auth.signIn.mockResolvedValue(LOGIN_USER);
+      render(<App />);
+      await waitFor(() => expect(auth.signIn).toHaveBeenCalledOnce());
+      expect(auth.signIn).toHaveBeenCalledWith({ interactive: false });
+    } finally {
+      delete (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed;
+    }
+  });
+
+  it('T-093：有旗標但 Auth 還原為已登入 → 不呼叫 signIn，網址（含 hash）不變', async () => {
+    history.replaceState(null, '', '/events/abc#access_token=x');
+    (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed = true;
+    try {
+      authRestoresAs('login-user');
+      auth.getCurrentUser.mockResolvedValue(LOGIN_USER);
+      render(<App />);
+      await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+      await pause(40);
+      expect(auth.signIn).not.toHaveBeenCalled();
+      expect(`${location.pathname}${location.hash}`).toBe('/events/abc#access_token=x');
+    } finally {
+      delete (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed;
+    }
+  });
+
+  it('T-093：同一網址沒有旗標（外部瀏覽器）→ 不接手', async () => {
+    history.replaceState(null, '', '/events/abc');
+    authRestoresAs(null);
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    await pause(40);
+    expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
   it('一般開頁（沒有回跳參數）：不呼叫 signIn', async () => {
     history.replaceState(null, '', '/?event=abc');
     authRestoresAs(null);

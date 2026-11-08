@@ -460,6 +460,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
               <label for="fl-legal-consent">
                 {lt('我已閱讀並同意', '我已閱讀並同意')}
               </label>
+              {/* 條款／隱私維持另開：同分頁會丟掉這張尚未送出的首次登入表單。不用 openExternal（那是外站共用分頁）。 */}
               <a href="/terms" target="_blank" rel="noopener noreferrer">
                 {lt('服務條款', '服務條款')}
               </a>{' '}

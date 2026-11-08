@@ -2,6 +2,7 @@ import '../tournaments.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -28,7 +29,7 @@ import {
   uploadTournamentCardImage,
   type UploadedImage,
 } from '../data/cards-repo';
-import { openCardLinkInLine, shouldHandleCardLink } from '../data/open-card-link';
+import { openCardLink } from '../data/open-card-link';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -171,11 +172,10 @@ export default function TournamentsPage(): JSX.Element {
     }
   };
 
-  const handleCardClick = (event: Event, url: string): void => {
-    const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent || '';
-    if (!shouldHandleCardLink(url, userAgent)) return;
+  const handleCardClick = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>, url: string): void => {
+    if (shouldLeaveAnchorClick(event)) return;
     event.preventDefault();
-    void openCardLinkInLine(url);
+    openCardLink(url);
   };
 
   return (
@@ -265,8 +265,6 @@ export default function TournamentsPage(): JSX.Element {
                 <a
                   class="tc-card-link"
                   href={card.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   onClick={(event) => handleCardClick(event, card.url)}
                 >
                   {card.image ? (

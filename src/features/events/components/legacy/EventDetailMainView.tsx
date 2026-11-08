@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { openHttpAnchor } from '@/core/open-external';
 import { UserTag } from '@/ui/UserTag';
 import { getEventParticipantStats } from '../../data/participant-stats';
 import { eventStartMs } from '../../data/terminal';
@@ -270,9 +271,11 @@ export function EventDetailInfoSection({
         <span class="detail-label">地點</span>
         <a
           href={mapUrl}
-          target="sporthub_map"
           rel="noopener"
           style="color:var(--primary);text-decoration:none"
+          onClick={(event) => {
+            openHttpAnchor(event, mapUrl);
+          }}
         >
           {`${event.location ?? ''} 📍`}
         </a>
@@ -388,6 +391,13 @@ export function EventDetailInfoSection({
           <span
             class="event-social-link-list"
             dangerouslySetInnerHTML={{ __html: renderEventSocialLinksHtml(event.socialLinks) }}
+            onClick={(event) => {
+              const raw = event.target;
+              if (!(raw instanceof Element)) return;
+              const anchor = raw.closest('a');
+              if (!anchor || !event.currentTarget.contains(anchor)) return;
+              openHttpAnchor(event, anchor.getAttribute('href') ?? '');
+            }}
           />
         </div>
       )}

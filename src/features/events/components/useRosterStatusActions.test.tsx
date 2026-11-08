@@ -5,7 +5,7 @@ import { clearMocks, registerMock, startRecording, stopRecording, CallableError 
 import { useRosterStatusActions } from './useRosterStatusActions';
 import { AttendanceRosterTable } from './AttendanceRosterTable';
 import { WaitlistRosterTable } from './WaitlistRosterTable';
-import { snapshot, translate } from '../data/roster-status-test-fixtures';
+import { demoted, snapshot, translate } from '../data/roster-status-test-fixtures';
 import type { RosterStatusSnapshot } from '../data/roster-status';
 
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), toast: vi.fn(), log: vi.fn() }));
@@ -16,14 +16,15 @@ vi.mock('@/features/profile/data/viewer', () => ({ requestViewerRefresh: vi.fn()
 vi.mock('@/i18n/i18n', () => ({ useT: () => translate }));
 vi.mock('@/ui/UserTag', () => ({ UserTag: ({ name }: { name: string }) => <span>{name}</span> }));
 
-function Harness({ state, reload, flush = async () => {}, isCurrent = () => true, observe }: {
+function Harness({ state, reload, flush = async () => {}, isCurrent = () => true, adopt, observe }: {
   state: RosterStatusSnapshot; reload: () => Promise<RosterStatusSnapshot>; flush?: () => Promise<void>;
   isCurrent?: () => boolean;
+  adopt?: (next: RosterStatusSnapshot) => void;
   observe?: (actions: ReturnType<typeof useRosterStatusActions>, submitting: boolean) => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const actions = useRosterStatusActions({
-    eventId: 'evtA', getLatest: () => state, reload, flush,
+    eventId: 'evtA', getLatest: () => state, reload, flush, adopt,
     isCurrent, submitting, setSubmitting,
   });
   observe?.(actions, submitting);
@@ -44,6 +45,72 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); stopRecording(); });
 describe('名單狀態調整互動', () => {
+  it('成功 toast 在日誌與重讀完成前出現，並套用投影', async () => {
+    // 測試同步更新：按鈕加速①
+    const state = snapshot();
+    let releaseLog!: () => void;
+    mocks.log.mockImplementation(() => new Promise<void>((resolve) => { releaseLog = resolve; }));
+    const reload = vi.fn(() => new Promise<RosterStatusSnapshot>(() => {}));
+    const adopt = vi.fn();
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    render(<Harness state={state} reload={reload} adopt={adopt} />);
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '已將 小明 下放至候補（4/2）', tone: 'success',
+    }));
+    expect(adopt).toHaveBeenCalledOnce();
+    expect(adopt.mock.calls[0]?.[0].registrations[0]?.status).toBe('waitlisted');
+    expect(adopt.mock.calls[0]?.[0].event.current).toBe(4);
+    expect(mocks.log).toHaveBeenCalledOnce();
+    // 日誌與重讀並行，不等日誌寫完。
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    releaseLog();
+  });
+  it('背景重讀完成前維持 submitting，完成後才解鎖', async () => {
+    // Opus／Gemini 審查 P1：提早解鎖會讓重讀的 reset 清掉剛勾的簽到、或蓋回下一次操作。
+    const state = snapshot();
+    let releaseReload!: () => void;
+    const reload = vi.fn(() => new Promise<RosterStatusSnapshot>((resolve) => { releaseReload = () => resolve(state); }));
+    let submittingNow = false;
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    render(<Harness state={state} reload={reload} observe={(_, submitting) => { submittingNow = submitting; }} />);
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '已將 小明 下放至候補（4/2）', tone: 'success',
+    }));
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(submittingNow).toBe(true);
+    await act(async () => { releaseReload(); });
+    await waitFor(() => expect(submittingNow).toBe(false));
+  });
+  it('日誌失敗仍先顯示成功 toast', async () => {
+    // 測試同步更新：按鈕加速①
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const state = snapshot();
+    mocks.log.mockRejectedValue(new Error('offline'));
+    const reload = vi.fn(async () => state);
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    render(<Harness state={state} reload={reload} />);
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '已將 小明 下放至候補（4/2）', tone: 'success',
+    }));
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  });
+  it('背景重讀失敗另顯示既有同步中提示', async () => {
+    // 測試同步更新：按鈕加速①
+    const state = snapshot();
+    const reload = vi.fn(async () => { throw new Error('offline'); });
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    render(<Harness state={state} reload={reload} />);
+    fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '已將 小明 下放至候補（4/2）', tone: 'success',
+    }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
+      message: '名單資料同步中，請稍後重試', tone: 'warning',
+    }));
+  });
   it.each(['deduplicated', 'REGISTRATION_NOT_CONFIRMED', 'REGISTRATION_NOT_WAITLISTED'])('%s 只在刷新完成後提示', async code => {
     const promote = code === 'REGISTRATION_NOT_WAITLISTED';
     const state = snapshot(promote ? 'promote' : 'demote');

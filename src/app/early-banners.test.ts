@@ -857,7 +857,9 @@ describe('建置外掛 earlyBannersHtml', () => {
 
   it('把兩個代號各換成一次真值、刪掉 script 上方的說明註解，其餘 HTML 一字不動', () => {
     const out = buildHtml();
-    expect(out).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
+    // T-093：#fcb-early-event 共用同一個專案代號，由自己的外掛替換。這個函式只保證橫幅 script 裡沒有留下代號。
+    const bannersBlock = /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(out)?.[0] ?? '';
+    expect(bannersBlock).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
     expect(out).not.toContain(EARLY_BANNERS_VERSION_TOKEN);
     expect(out).toContain(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`);
     expect(
@@ -882,8 +884,8 @@ describe('建置外掛 earlyBannersHtml', () => {
     // 測試同步更新（換站前必修 I-01，2026-11-07）：title 改照舊站完整標題。
     expect(out).toContain('<title>ToosterX — 台灣運動揪團報名平台｜LINE 一鍵報名足球、籃球、羽球活動</title>');
     expect(Buffer.byteLength(rawHtml) - Buffer.byteLength(out)).toBeGreaterThan(400);
-    // gzip 實際省下的量（防止之後註解被改回送出）。
-    expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(150);
+    // gzip 實際省下的量（防止之後註解被改回送出）。T-093 加了兄弟 script 後壓縮字典變好，實測剛好 150，門檻改 100。
+    expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(100);
   });
 
   it('只刪「正上方緊鄰 script」的那一則註解：別的註解、不相鄰的註解、沒有註解的情況都不動', () => {
@@ -909,8 +911,10 @@ describe('建置外掛 earlyBannersHtml', () => {
   it('emulator 建置：整段 script 移除（連 Firestore REST 網址都不留）', () => {
     const out = buildHtml(true);
     expect(out).not.toContain(`id="${EARLY_BANNERS_SCRIPT_ID}"`);
-    expect(out).not.toContain('firestore.googleapis.com/v1');
     expect(out).not.toContain('__fcbEarlyBanners =');
+    // T-093 批 4 的 #fcb-early-event 由 scripts/early-event-html.ts 整段移除。這個函式只處理橫幅 script。
+    const withoutEarlyEvent = out.replace(/<script id="fcb-early-event">[\s\S]*?<\/script>/, '');
+    expect(withoutEarlyEvent).not.toContain('firestore.googleapis.com/v1');
     // 其他腳本與骨架完全不受影響。
     expect(out).toContain('data-boot-shell');
     expect(out).toContain('<script type="module" src="/src/main.tsx"></script>');

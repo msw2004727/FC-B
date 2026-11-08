@@ -1,0 +1,82 @@
+/* LINE 登入提示改版（站長 11-08 預覽）。
+   legacy `line-login-hint` 不改；這裡只覆寫這個彈窗的按鈕與「或」。
+   設計 token 沒有 LINE 綠，品牌色 #06C755 寫在本元件。 */
+
+#mobile-line-login-hint-modal .line-login-hint-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 12px;
+  background: #06C755;
+  color: #fff;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-open:hover,
+#mobile-line-login-hint-modal .line-login-hint-open:active {
+  background: #06C755;
+  color: #fff;
+  transform: none;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-open svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-login:hover,
+#mobile-line-login-hint-modal .line-login-hint-login:active {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-primary);
+  transform: none;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-or {
+  display: block;
+  margin: .55rem 0;
+  color: var(--text-muted);
+  font-size: .72rem;
+  text-align: center;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-or::before,
+#mobile-line-login-hint-modal .line-login-hint-or::after {
+  content: none;
+  border: 0;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-note {
+  margin: .35rem 0 .2rem;
+  color: var(--text-muted);
+  font-size: .74rem;
+  line-height: 1.5;
+  text-align: center;
+}

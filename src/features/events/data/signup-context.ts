@@ -172,10 +172,20 @@ export function createDetailSignupContexts(
             message: '請先登入',
           });
         }
-        const event = await loadEvent(eventId);
+        // 按鈕加速①：活動與我的報名並行。這仍是 T-086a 送出前的那一次讀取。
+        // 活動失敗維持拋活動錯誤；報名歷史失敗維持拋歷史錯誤。
         // 照 B 既有讀取層；避免新增 Firestore 的靜態依賴鏈。
-        const { loadViewerRegistrations } = await import('./viewer-registrations');
-        const registrations = await loadViewerRegistrations(viewer.uid);
+        // 活動失敗立刻拋（不等報名讀完，取代 allSettled 版：副機測試證實會被卡住的報名讀取拖住）。
+        const uid = viewer.uid;
+        const loadRegistrations = async () => {
+          const { loadViewerRegistrations } = await import('./viewer-registrations');
+          return loadViewerRegistrations(uid);
+        };
+        const registrationsPromise = loadRegistrations();
+        // 只為避免活動先失敗時出現未處理的 rejection；報名失敗仍由下方 await 拋出。
+        void registrationsPromise.catch(() => {});
+        const event: SignupEvent = await loadEvent(eventId);
+        const registrations = await registrationsPromise;
         const now = deps.now?.() ?? new Date();
         return {
           event,

@@ -1,10 +1,18 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { lt } from '@/i18n/i18n';
 import { getLastKnownAuthUid } from '@/data/auth';
+import { readAuthHint } from '@/data/auth-hint';
 import { toast } from '@/ui/Toast';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import { readEventsSnapshot } from '../../data/events-snapshot-cache';
+import {
+  readEarlyEventPromise,
+  readSettledEarlyEvent,
+  rememberEarlyEventResult,
+  selectEarlyEventShellText,
+  type EarlyEventShellText,
+} from '../../data/early-event-shell';
 import { isEventVisibleToUser } from '../../data/visibility';
 import { safeImageUrl } from '../../data/detail-model';
 import type { ShareBuilderContext, ShareEvent } from '../../data/event-share-builders';
@@ -19,6 +27,42 @@ interface ShellProps {
   children?: ComponentChildren;
 }
 
+/** 提早 REST 只填這次渲染的四個字串。Promise 留在 window 上，不刪、不寫進 snapshot。 */
+function useEarlyEventShell(publicId: string, viewer: ViewerView): EarlyEventShellText | null {
+  const [raw, setRaw] = useState<unknown>(() => {
+    const early = readEarlyEventPromise();
+    return early ? readSettledEarlyEvent(early)?.value ?? null : null;
+  });
+  const [ready, setReady] = useState(() => {
+    const early = readEarlyEventPromise();
+    return early === null || readSettledEarlyEvent(early) !== null;
+  });
+  useEffect(() => {
+    const early = readEarlyEventPromise();
+    if (!early) return;
+    let alive = true;
+    early.then(
+      (value) => {
+        rememberEarlyEventResult(early, value);
+        if (!alive) return;
+        setRaw(value);
+        setReady(true);
+      },
+      () => {
+        rememberEarlyEventResult(early, null);
+        if (!alive) return;
+        setRaw(null);
+        setReady(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [publicId]);
+  if (!ready) return null;
+  return selectEarlyEventShellText(raw, publicId, viewer, readAuthHint());
+}
+
 // 照 A _renderFastEventDetailShell／_renderEventDetailBelowFoldLoadingHtml。
 export function EventDetailLoadingShell({
   publicId,
@@ -27,15 +71,19 @@ export function EventDetailLoadingShell({
   loading = true,
   children,
 }: ShellProps): JSX.Element {
+  const early = useEarlyEventShell(publicId, viewer);
   const uid = viewer.uid || null;
   const candidate = getLastKnownAuthUid() === uid
     ? readEventsSnapshot(uid)?.find((event) => event.id === publicId)
     : undefined;
-  // 快取也先過可見性；無報名證據時不預覽受限活動。
+  // 快取也先過可見性；無報名證據時不預覽受限活動。REST 不併進這份活動物件。
   const event = candidate && isEventVisibleToUser(candidate, viewer, [])
     ? candidate
     : undefined;
-  const image = safeImageUrl(event?.imageVariants?.cover || event?.image);
+  const title = event?.title || early?.title;
+  const image = safeImageUrl(event?.imageVariants?.cover || event?.image) || safeImageUrl(early?.image);
+  const location = event?.location || early?.location;
+  const date = event?.date || early?.date;
 
   return (
     <div class="legacy-ui">
@@ -63,7 +111,7 @@ export function EventDetailLoadingShell({
               />
             </svg>
           </button>
-          <h2 id="detail-title">{event?.title || '活動詳情'}</h2>
+          <h2 id="detail-title">{title || '活動詳情'}</h2>
         </div>
         <div
           class="td-img-placeholder"
@@ -75,22 +123,22 @@ export function EventDetailLoadingShell({
           {image ? (
             <img
               src={image}
-              alt={event?.title || '活動封面'}
+              alt={title || '活動封面'}
               style="width:100%;height:100%;object-fit:cover;display:block;border-radius:var(--radius)"
             />
-          ) : (event?.title || '活動封面')}
+          ) : (title || '活動封面')}
         </div>
         <div class="detail-body" id="detail-body">
-          {event?.location && (
+          {location && (
             <div class="detail-row detail-row-wide">
               <span class="detail-label">地點</span>
-              {event.location}
+              {location}
             </div>
           )}
-          {event?.date && (
+          {date && (
             <div class="detail-row detail-row-wide">
               <span class="detail-label">時間</span>
-              {event.date}
+              {date}
             </div>
           )}
           {loading && (

@@ -1,5 +1,6 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { openHttpAnchor } from '@/core/open-external';
 import { useT } from '@/i18n/i18n';
 
 // ASSUMPTION: 元件索引未附匯入路徑；沿用 PlaceholderPage 的 @/ui/<元件名> 配置。
@@ -228,8 +229,10 @@ export function SocialLinks({
             key={platform}
             class="profile-social is-active"
             href={href}
-            target="_blank"
             rel="noopener noreferrer"
+            onClick={(event) => {
+              openHttpAnchor(event, href);
+            }}
           >
             <Text>{label}</Text>
           </a>
