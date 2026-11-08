@@ -10,6 +10,7 @@
 
 import type { Firestore } from 'firebase/firestore';
 
+import { RELOAD_AT_KEY } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
 import { APP_VERSION } from '@/version';
 
@@ -91,6 +92,9 @@ function parseError(err: unknown): ParsedError {
   } else if (err != null) {
     errorMessage = String(err);
   }
+  // iOS 內嵌 script 的 stack 會帶整個頁面網址（含 LINE 憑證）；非 Error 的 rejection 也可能夾帶。
+  errorMessage = scrubSecrets(errorMessage);
+  errorStack = scrubSecrets(errorStack);
   if (errorStack.length > STACK_LIMIT) errorStack = errorStack.slice(0, STACK_LIMIT);
   // 訊息也截斷：JSON.stringify 的錯誤物件可能很大（Firestore 文件上限 1MB），也避免夾帶過多內容（Opus 審 P2）
   if (errorMessage.length > STACK_LIMIT) errorMessage = errorMessage.slice(0, STACK_LIMIT);
@@ -145,15 +149,127 @@ function tryConsumeBudget(now: number): 'ok' | 'full' | 'broken' {
   }
 }
 
+/** LINE 開頁會把 access_token 等憑證放在網址片段／參數；只留鍵名，值一律遮掉。 */
+const SECRET_PARAM_RE = /token|code|state|secret|challenge|client_id|password|key/i;
+
+/** 文字裡任何 `?key=` `&key=` `#key=` `;key=`（或開頭、空白、引號後）且 key 像憑證的值都遮掉；JWT 形狀的字串也遮（errorMessage／errorStack 用）。 */
+const SECRET_WORDS = 'token|code|state|secret|challenge|client_id|password|key';
+const SECRET_IN_TEXT_RE = new RegExp(String.raw`((?:^|[?&#;\s'"(])[\w.%-]*(?:${SECRET_WORDS})=)[^&#;\s'"<>)]*`, 'gi');
+/** 非 Error 的 rejection 經 JSON.stringify 後是 "access_token":"…"。 */
+const SECRET_IN_JSON_RE = new RegExp(String.raw`("[\w.-]*(?:${SECRET_WORDS})"\s*:\s*")[^"]*`, 'gi');
+const JWT_RE = /eyJ[\w-]{8,}\.[\w.-]+/g;
+
+export function scrubSecrets(text: string): string {
+  return text.replace(SECRET_IN_TEXT_RE, '$1***').replace(SECRET_IN_JSON_RE, '$1***').replace(JWT_RE, '***');
+}
+
+function safeDecode(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function redactPairs(raw: string, mask: (key: string) => boolean): string {
+  return raw.split(/([&;])/).map((pair) => {
+    const eq = pair.indexOf('=');
+    if (eq < 0) return pair;
+    const key = pair.slice(0, eq);
+    const value = safeDecode(pair.slice(eq + 1));
+    // 值裡夾帶編碼過的網址（next=…%3Fcode%3D…）也算。
+    return mask(safeDecode(key)) || scrubSecrets(value) !== value ? `${key}=***` : pair;
+  }).join('');
+}
+
+/** B 不用片段路由：有 key=value 的片段全部遮值；沒有 = 的只留短錨點，其餘整段遮掉。 */
+export function redactHash(hash: string): string {
+  if (!hash.includes('=')) return /^#?[\w-]{0,40}$/.test(hash) ? hash : '#***';
+  return '#' + redactPairs(hash.replace(/^#/, ''), () => true);
+}
+
+export function redactUrl(href: string): string {
+  const hashAt = href.indexOf('#');
+  const base = hashAt < 0 ? href : href.slice(0, hashAt);
+  const hash = hashAt < 0 ? '' : redactHash(href.slice(hashAt));
+  const queryAt = base.indexOf('?');
+  if (queryAt < 0) return base + hash;
+  return base.slice(0, queryAt + 1)
+    + redactPairs(base.slice(queryAt + 1), (key) => SECRET_PARAM_RE.test(key)) + hash;
+}
+
 function readLocation(): { page: string; url: string; hash: string } {
   try {
     return {
       page: location.pathname || '',
-      url: location.href || '',
-      hash: location.hash || '',
+      url: scrubSecrets(redactUrl(location.href || '')),
+      hash: scrubSecrets(redactHash(location.hash || '')),
     };
   } catch {
     return { page: '', url: '', hash: '' };
+  }
+}
+
+const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
+
+const DIAG_ASSET_LIMIT = 8;
+/** pagehide 之後才發生的錯誤多半是跳頁中斷，不是真的載入失敗。 */
+let leaving = false;
+
+function readSwState(): string {
+  try {
+    if (!('serviceWorker' in navigator)) return 'unsupported';
+    return navigator.serviceWorker?.controller ? 'controlled' : 'none';
+  } catch {
+    return 'error';
+  }
+}
+
+function readSinceChunkReload(): number | null {
+  try {
+    const at = Number(sessionStorage.getItem(RELOAD_AT_KEY) || 0);
+    return at ? Date.now() - at : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 程式檔載入失敗時的診斷（2026-11-08 iOS LINE 首頁大量載入失敗，原訊息不含檔名）。
+ * iOS 沒有 responseStatus、失敗的檔常常不留 timing，所以不判斷哪個失敗，只列最後幾個同源 /assets 檔讓人對照。
+ */
+function readModuleLoadDiag(): string {
+  let assets: { f: string; b: number | null; ts: number | null; it: string }[] = [];
+  let n = 0;
+  try {
+    const prefix = `${location.origin}/assets/`;
+    const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    const code = entries.filter((e) => e.name.startsWith(prefix) && /\.(?:js|css)(?:$|\?)/.test(e.name));
+    n = code.length;
+    assets = code
+      .slice(-DIAG_ASSET_LIMIT)
+      .map((e) => ({
+        f: e.name.slice(prefix.length, prefix.length + 80),
+        b: typeof e.decodedBodySize === 'number' ? e.decodedBodySize : null,
+        ts: typeof e.transferSize === 'number' ? e.transferSize : null,
+        it: e.initiatorType || '',
+      }));
+  } catch {
+    // 沒有 Resource Timing：其餘欄位照寫
+  }
+  try {
+    return JSON.stringify({
+      sw: readSwState(),
+      rs: document.readyState,
+      vis: document.visibilityState,
+      leaving,
+      t: Math.round(performance.now()),
+      rl: readSinceChunkReload(),
+      n,
+      assets,
+    });
+  } catch {
+    return '';
   }
 }
 
@@ -198,7 +314,7 @@ async function readSignedIn(): Promise<SignedIn | null> {
   return { uid: user.uid, displayName, db: ctx.db };
 }
 
-async function persist(context: string, parsed: ParsedError, key: string): Promise<void> {
+async function persist(context: string, parsed: ParsedError, key: string, diag: string): Promise<void> {
   try {
     const session = await readSignedIn();
     if (!session) return;
@@ -231,6 +347,7 @@ async function persist(context: string, parsed: ParsedError, key: string): Promi
       url: where.url,
       hash: where.hash,
       userAgent: readUserAgent(),
+      ...(diag ? { diag } : {}),
       createdAt: serverTimestamp(),
       source: 'fcb' as const,
     };
@@ -253,7 +370,9 @@ function enqueue(context: string, err: unknown): void {
   if (isBudgetClosed(Date.now())) return;
   seen.add(key);
   reserved += 1;
-  const run = chain.then(() => persist(context, parsed, key));
+  // 出錯當下就讀：persist 前要等登入還原（最多 8 秒），那時頁面狀態已經變了。
+  const diag = MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) ? readModuleLoadDiag() : '';
+  const run = chain.then(() => persist(context, parsed, key, diag));
   chain = run.then(() => undefined, () => undefined);
   void run.finally(() => {
     reserved = Math.max(0, reserved - 1);
@@ -266,10 +385,21 @@ export function installErrorReporter(): void {
   try {
     window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
   } catch (err) {
     installed = false;
     warnFailure(err);
   }
+}
+
+function onPageHide(): void {
+  leaving = true;
+}
+
+/** 從 bfcache 還原時重設。 */
+function onPageShow(): void {
+  leaving = false;
 }
 
 function onWindowError(event: Event): void {
@@ -313,9 +443,12 @@ export function _resetErrorReporterForTest(): void {
   writing = 0;
   guard = 0;
   chain = Promise.resolve();
+  leaving = false;
   if (installed && typeof window !== 'undefined') {
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
   }
   installed = false;
 }

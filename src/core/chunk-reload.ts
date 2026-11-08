@@ -5,7 +5,7 @@
 
 import { requestSafeReload } from './reload-safety';
 
-const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
+export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
 
 export interface ChunkReloadDeps {
