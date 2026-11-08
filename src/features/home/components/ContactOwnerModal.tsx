@@ -10,7 +10,9 @@ import {
   CONTACT_CONTENT_MAX,
   CONTACT_NAME_MAX,
   classifyContactSubmitError,
+  contactCharCount,
   contactFieldErrors,
+  contactInvalidField,
   submitContactMessage,
   type ContactField,
 } from '../data/submit-contact-message';
@@ -70,10 +72,13 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
     return () => clearTimeout(timer);
   }, [sent]);
 
-  const dismiss = (): void => {
+  // 卸載後丟掉進行中請求的結果；送出中不能關（Modal busy），關閉不再作廢請求。
+  useEffect(() => () => {
     requestSeq.current += 1;
-    sendingRef.current = false;
-    setSending(false);
+  }, []);
+
+  const dismiss = (): void => {
+    if (sendingRef.current) return;
     if (sent) {
       resetFields();
       setSent(false);
@@ -100,11 +105,17 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
       if (seq !== requestSeq.current) return;
       const kind = classifyContactSubmitError(err);
       if (kind === 'unauthenticated') {
-        const auth = await import('@/data/auth');
-        if (seq !== requestSeq.current) return;
-        await auth.signIn().catch(() => undefined);
+        try {
+          const auth = await import('@/data/auth');
+          if (seq !== requestSeq.current) return;
+          await auth.signIn();
+        } catch {
+          if (seq === requestSeq.current) toast.show({ message: t('home.contactOwner.failed') });
+        }
         return;
       }
+      const field = contactInvalidField(err);
+      if (field) setErrors([field]);
       toast.show({
         message: t(kind === 'rate_limited' ? 'home.contactOwner.rateLimited' : 'home.contactOwner.failed'),
       });
@@ -125,6 +136,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
       open={open}
       title={t('home.contactOwner.label')}
       class="contact-owner-modal"
+      busy={sending}
       onClose={dismiss}
     >
       {sent ? (
@@ -138,7 +150,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            submit().catch(() => undefined);
           }}
         >
           <input
@@ -170,7 +182,7 @@ export function ContactOwnerModal({ open, onClose }: ContactOwnerModalProps): JS
             aria-invalid={invalid('content')}
             onInput={(event) => setContent(event.currentTarget.value)}
           />
-          <span class="contact-owner-modal__count">{content.length}／{CONTACT_CONTENT_MAX}</span>
+          <span class="contact-owner-modal__count">{contactCharCount(content)}／{CONTACT_CONTENT_MAX}</span>
           <button
             type="submit"
             class="contact-owner-modal__send"

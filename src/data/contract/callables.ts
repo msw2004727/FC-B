@@ -1681,11 +1681,11 @@ export interface WriteAuditLogResponse {
 
 /** 首頁聯繫站長（CM-B）。前端先檢查必填與長度；region 照既有 asia-east1。 */
 export interface SubmitContactMessageRequest {
-  /** 稱呼。前端上限 30。 */
+  /** 稱呼。上限 30（後端以碼位計；不得含 Tab／換行）。 */
   name: string;
-  /** Email／LINE ID／電話。前端上限 80。 */
+  /** Email／LINE ID／電話。上限 80（後端以碼位計；不得含 Tab／換行）。 */
   contact: string;
-  /** 想說的話。前端上限 1000。 */
+  /** 想說的話。上限 1000（後端以碼位計）。 */
   content: string;
   /** FC-B 固定 `fcb`。 */
   source: 'fcb';
@@ -1693,7 +1693,9 @@ export interface SubmitContactMessageRequest {
 
 export interface SubmitContactMessageResponse {
   /** @when 成功時 */
-  success?: true;
+  ok?: true;
+  /** @when 成功時；contactMessages 文件 ID */
+  id?: string;
 }
 
 export const CALLABLES = {

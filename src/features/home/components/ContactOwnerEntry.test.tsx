@@ -90,7 +90,7 @@ describe('ContactOwnerEntry', () => {
       for (let i = 0; i < 8; i += 1) await Promise.resolve();
     });
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(getToasts()[0]?.message).toBe('送出失敗，請稍後再試');
+    expect(getToasts()[0]?.message).toBe('載入失敗，請稍後再試');
   });
 
   it('浮球只掛在首頁，且首頁不靜態載入彈窗與 Callable', () => {

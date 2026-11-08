@@ -33,7 +33,7 @@ export function ContactOwnerEntry({ signedIn }: ContactOwnerEntryProps): JSX.Ele
       },
       () => {
         setOpen(false);
-        toast.show({ message: t('home.contactOwner.failed') });
+        toast.show({ message: t('home.contactOwner.loadFailed') });
       },
     );
   };

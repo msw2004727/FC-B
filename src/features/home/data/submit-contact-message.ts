@@ -24,21 +24,44 @@ export class ContactValidationError extends Error {
   }
 }
 
-/** 必填（去掉前後空白）與長度。空字串或超長都算該欄不通過。 */
+/** 碼位數（與後端 `Array.from(text).length` 一致；emoji 算 1 字）。 */
+export function contactCharCount(text: string): number {
+  return Array.from(text).length;
+}
+
+/** 與後端 `stripControlChars` 同範圍：碼位 0–8、11–31（保留 Tab 與換行）。 */
+function stripControlChars(text: string): string {
+  return Array.from(text)
+    .filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return !(code <= 8 || (code >= 11 && code <= 31));
+    })
+    .join('');
+}
+
+/** 後端 `CONTACT_BREAKS_RE`：稱呼與聯絡方式不得含 Tab（9）、換行（10）、歸位（13）。 */
+function hasLineBreak(text: string): boolean {
+  return Array.from(text).some((ch) => {
+    const code = ch.codePointAt(0);
+    return code === 9 || code === 10 || code === 13;
+  });
+}
+
+/** 去掉控制字元與前後空白後的送出值（與後端同一套正規化）。 */
+function normalizeContactText(text: string): string {
+  return stripControlChars(text).trim();
+}
+
+/** 與後端 `requireContactText` 同規則：剝控制字元並去掉前後空白後 1～上限碼位；稱呼與聯絡方式不得含 Tab／換行。 */
 export function contactFieldErrors(draft: ContactDraft): ContactField[] {
   const errors: ContactField[] = [];
-  const name = draft.name.trim();
-  const contact = draft.contact.trim();
-  const content = draft.content.trim();
-  if (!name || name.length > CONTACT_NAME_MAX || draft.name.length > CONTACT_NAME_MAX) {
-    errors.push('name');
-  }
-  if (!contact || contact.length > CONTACT_CONTACT_MAX || draft.contact.length > CONTACT_CONTACT_MAX) {
-    errors.push('contact');
-  }
-  if (!content || content.length > CONTACT_CONTENT_MAX || draft.content.length > CONTACT_CONTENT_MAX) {
-    errors.push('content');
-  }
+  const check = (field: ContactField, value: string, max: number, rejectBreaks: boolean): void => {
+    const length = contactCharCount(normalizeContactText(value));
+    if (length < 1 || length > max || (rejectBreaks && hasLineBreak(value))) errors.push(field);
+  };
+  check('name', draft.name, CONTACT_NAME_MAX, true);
+  check('contact', draft.contact, CONTACT_CONTACT_MAX, true);
+  check('content', draft.content, CONTACT_CONTENT_MAX, false);
   return errors;
 }
 
@@ -59,14 +82,31 @@ function errorParts(err: unknown): string[] {
   return parts;
 }
 
-/** `CONTACT_RATE_LIMITED` 優先於 `unauthenticated`。Firebase 的 `functions/` 前綴會去掉。 */
+/** 個人頻率（`CONTACT_RATE_LIMITED`）與全站每日上限（`CONTACT_DAILY_LIMIT`）都算太頻繁，優先於 `unauthenticated`。Firebase 的 `functions/` 前綴會去掉。 */
 export function classifyContactSubmitError(err: unknown): ContactSubmitErrorKind {
   const parts = errorParts(err);
-  if (parts.some((part) => part.includes('CONTACT_RATE_LIMITED'))) return 'rate_limited';
+  if (parts.some((part) => part.includes('CONTACT_RATE_LIMITED') || part.includes('CONTACT_DAILY_LIMIT'))) {
+    return 'rate_limited';
+  }
   if (parts.some((part) => part.replace(/^functions\//, '').trim().toLowerCase() === 'unauthenticated')) {
     return 'unauthenticated';
   }
   return 'other';
+}
+
+const INVALID_FIELD_CODES: ReadonlyArray<readonly [string, ContactField]> = [
+  ['INVALID_NAME', 'name'],
+  ['INVALID_CONTACT', 'contact'],
+  ['INVALID_CONTENT', 'content'],
+];
+
+/** 後端欄位驗證錯誤（`INVALID_NAME`／`INVALID_CONTACT`／`INVALID_CONTENT`）對回欄位；不是欄位錯誤回 null。 */
+export function contactInvalidField(err: unknown): ContactField | null {
+  const parts = errorParts(err);
+  for (const [code, field] of INVALID_FIELD_CODES) {
+    if (parts.some((part) => part === code)) return field;
+  }
+  return null;
 }
 
 /** 呼叫 Callable `submitContactMessage`。欄位不合法時不送出。 */
@@ -74,9 +114,9 @@ export async function submitContactMessage(draft: ContactDraft): Promise<void> {
   const errors = contactFieldErrors(draft);
   if (errors.length > 0) throw new ContactValidationError(errors);
   await callFn('submitContactMessage', {
-    name: draft.name.trim(),
-    contact: draft.contact.trim(),
-    content: draft.content.trim(),
+    name: normalizeContactText(draft.name),
+    contact: normalizeContactText(draft.contact),
+    content: normalizeContactText(draft.content),
     source: 'fcb',
   });
 }

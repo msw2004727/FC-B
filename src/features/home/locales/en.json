@@ -33,6 +33,7 @@
     "submitting": "Sending",
     "sent": "Sent. Thank you for your message",
     "rateLimited": "You are sending too often. Please try again later",
-    "failed": "Could not send. Please try again later"
+    "failed": "Could not send. Please try again later",
+    "loadFailed": "Failed to load. Please try again later."
   }
 }

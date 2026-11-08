@@ -41,7 +41,7 @@ beforeEach(async () => {
   mocks.callFn.mockReset();
   mocks.signIn.mockReset();
   mocks.signIn.mockResolvedValue({ uid: 'u1' });
-  mocks.callFn.mockResolvedValue({ success: true });
+  mocks.callFn.mockResolvedValue({ ok: true, id: 'm1' });
   toast.clear();
   await setLocale('zh-TW');
 });
@@ -174,6 +174,56 @@ describe('ContactOwnerModal', () => {
     await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
     expect(getToasts()).toEqual([]);
     expect((screen.getByRole('textbox', { name: '聯絡方式（Email／LINE ID／電話）' }) as HTMLInputElement).value).toBe('line-id');
+  });
+
+  it('送出中不能關（返回鍵擋下並提示），送完才結束', async () => {
+    let release: (value: unknown) => void = () => undefined;
+    mocks.callFn.mockImplementation(() => new Promise((resolve) => {
+      release = resolve;
+    }));
+    render(<Harness />);
+    fill();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '送出' }));
+      await Promise.resolve();
+    });
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(screen.getByRole('dialog', { name: '聯繫站長' })).toBeTruthy();
+    expect(getToasts().some((item) => item.message === '資料儲存中，請稍候')).toBe(true);
+
+    await act(async () => {
+      release({ ok: true, id: 'm1' });
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(screen.getByRole('status').textContent).toContain('已送出，謝謝你的訊息');
+  });
+
+  it('CONTACT_DAILY_LIMIT 顯示太頻繁；INVALID_* 標出對應欄位', async () => {
+    mocks.callFn.mockRejectedValueOnce({
+      code: 'functions/resource-exhausted',
+      details: { code: 'CONTACT_DAILY_LIMIT' },
+    });
+    render(<ContactOwnerModal open onClose={vi.fn()} />);
+    fill();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '送出' }));
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(getToasts()[0]?.message).toBe('送出太頻繁，請稍後再試');
+
+    toast.clear();
+    mocks.callFn.mockRejectedValueOnce({
+      code: 'functions/invalid-argument',
+      details: { code: 'INVALID_CONTACT' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '送出' }));
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(screen.getByRole('textbox', { name: '聯絡方式（Email／LINE ID／電話）' }).getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByRole('textbox', { name: '稱呼' }).getAttribute('aria-invalid')).toBeNull();
   });
 
   it('返回鍵關閉彈窗', () => {

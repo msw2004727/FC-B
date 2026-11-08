@@ -534,4 +534,17 @@ describe('buildWaitlistRoster', () => {
     ];
     expect(buildWaitlistRoster(event, regs).items.map((it) => it.userId)).toEqual(['u1', 'u2']);
   });
+
+  it('breaks waitlistSortAt ties by promotionOrder then docId, and puts entries with no time last (same as Functions sortWaitlistCandidates)', () => {
+    const event: RosterEventInput = { id: 'ev1', max: 1 };
+    const tie = { toMillis: () => Date.parse('2026-10-05T00:00:00Z') };
+    const regs: RosterRegistrationInput[] = [
+      { _docId: 'r-none', userId: 'uN', userName: 'N', status: 'waitlisted', participantType: 'self' },
+      { _docId: 'r-b', userId: 'uB', userName: 'B', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-01T00:00:00Z', waitlistSortAt: tie, promotionOrder: 1 },
+      { _docId: 'r-a2', userId: 'uA2', userName: 'A2', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-02T00:00:00Z', waitlistSortAt: tie, promotionOrder: 0 },
+      { _docId: 'r-a1', userId: 'uA1', userName: 'A1', status: 'waitlisted', participantType: 'self', registeredAt: '2026-10-03T00:00:00Z', waitlistSortAt: tie, promotionOrder: 0 },
+      { _docId: 'r-num', userId: 'uNum', userName: 'Num', status: 'waitlisted', participantType: 'self', registeredAt: Date.parse('2026-10-04T00:00:00Z') },
+    ];
+    expect(buildWaitlistRoster(event, regs).items.map((it) => it.userId)).toEqual(['uNum', 'uA1', 'uA2', 'uB', 'uN']);
+  });
 });

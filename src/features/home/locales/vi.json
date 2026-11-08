@@ -33,6 +33,7 @@
     "submitting": "Đang gửi",
     "sent": "Đã gửi. Cảm ơn tin nhắn của bạn",
     "rateLimited": "Bạn gửi quá thường xuyên. Vui lòng thử lại sau",
-    "failed": "Gửi không thành công. Vui lòng thử lại sau"
+    "failed": "Gửi không thành công. Vui lòng thử lại sau",
+    "loadFailed": "Tải không thành công, vui lòng thử lại sau."
   }
 }

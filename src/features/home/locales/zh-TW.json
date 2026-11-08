@@ -33,6 +33,7 @@
     "submitting": "送出中",
     "sent": "已送出，謝謝你的訊息",
     "rateLimited": "送出太頻繁，請稍後再試",
-    "failed": "送出失敗，請稍後再試"
+    "failed": "送出失敗，請稍後再試",
+    "loadFailed": "載入失敗，請稍後再試"
   }
 }
