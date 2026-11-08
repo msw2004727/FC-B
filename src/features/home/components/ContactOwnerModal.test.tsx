@@ -17,6 +17,9 @@ vi.mock('@/data/callables', () => ({
 
 vi.mock('@/data/auth', () => ({
   signIn: mocks.signIn,
+  isLoginRedirectingError: (err: unknown) => Boolean(
+    err && typeof err === 'object' && (err as { isRedirecting?: unknown }).isRedirecting === true,
+  ),
 }));
 
 function fill(values = { name: '小明', contact: 'line-id', content: '你好' }): void {
@@ -58,9 +61,9 @@ describe('ContactOwnerModal', () => {
     render(<ContactOwnerModal open onClose={vi.fn()} />);
     expect(screen.getByRole('dialog', { name: '聯繫站長' })).toBeTruthy();
     expect(screen.queryByText('請填寫')).toBeNull();
-    expect(screen.getByRole('textbox', { name: '稱呼' }).getAttribute('maxlength')).toBe('30');
-    expect(screen.getByRole('textbox', { name: '聯絡方式（Email／LINE ID／電話）' }).getAttribute('maxlength')).toBe('80');
-    expect(screen.getByRole('textbox', { name: '想說的話' }).getAttribute('maxlength')).toBe('1000');
+    expect(screen.getByRole('textbox', { name: '稱呼' }).getAttribute('maxlength')).toBe('60');
+    expect(screen.getByRole('textbox', { name: '聯絡方式（Email／LINE ID／電話）' }).getAttribute('maxlength')).toBe('160');
+    expect(screen.getByRole('textbox', { name: '想說的話' }).getAttribute('maxlength')).toBe('2000');
     expect(screen.getByText('0／1000')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
@@ -224,6 +227,26 @@ describe('ContactOwnerModal', () => {
     });
     expect(screen.getByRole('textbox', { name: '聯絡方式（Email／LINE ID／電話）' }).getAttribute('aria-invalid')).toBe('true');
     expect(screen.getByRole('textbox', { name: '稱呼' }).getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('重新登入正在導向時不提示送出失敗；登入真的失敗才提示', async () => {
+    mocks.callFn.mockRejectedValue({ code: 'functions/unauthenticated', message: 'auth' });
+    mocks.signIn.mockRejectedValueOnce({ isRedirecting: true });
+    render(<ContactOwnerModal open onClose={vi.fn()} />);
+    fill();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '送出' }));
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(mocks.signIn).toHaveBeenCalledTimes(1);
+    expect(getToasts()).toEqual([]);
+
+    mocks.signIn.mockRejectedValueOnce(new Error('popup closed'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '送出' }));
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(getToasts()[0]?.message).toBe('送出失敗，請稍後再試');
   });
 
   it('返回鍵關閉彈窗', () => {
