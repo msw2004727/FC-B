@@ -56,7 +56,7 @@ import { getEventParticipantStats } from '../data/participant-stats';
 import { eventStartMs } from '../data/terminal';
 import {
   EventDetailPrimaryButton,
-  type SignupFlip,
+  type SignupSettle,
 } from '../components/legacy/EventDetailPrimaryButton';
 import type { CompanionSelectItem } from '../components/legacy/CompanionSelectModal';
 import { useCancelRegistration } from '../components/legacy/use-cancel-registration';
@@ -319,7 +319,10 @@ function EventDetailSession({
   const [companionBusy, setCompanionBusy] = useState(false);
   const [signupProfile, setSignupProfile] = useState<SignupProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(viewer.uid));
-  const [flip, setFlip] = useState<SignupFlip | null>(null);
+  const [settle, setSettle] = useState<SignupSettle>({ serial: 0, pending: false });
+  // 主按鈕自己的動作進行中（進度環只跟這個走；幫夥伴報名等其他忙碌不變形）。
+  const [primaryBusy, setPrimaryBusy] = useState(false);
+  const [teamDoneSerial, setTeamDoneSerial] = useState(0);
   const [linePromptOpen, setLinePromptOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [rosterEditing, setRosterEditing] = useState(false);
@@ -356,6 +359,7 @@ function EventDetailSession({
   const profileSequence = useRef(0);
   const flipSequence = useRef(0);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringStartedAt = useRef(0);
   const lineAbort = useRef<AbortController | null>(null);
   const generation = useRef(0);
   if (!generation.current) generation.current = ++nextSignupGeneration;
@@ -609,6 +613,19 @@ function EventDetailSession({
     run(work).catch(() => show('events.detailPage.actionError'));
   }
 
+  // 主按鈕的報名／候補／早鳥／取消：同 start，另標記進度環起點（比照 startCompanion）。
+  function startPrimary(work: () => Promise<void>): void {
+    start(async () => {
+      ringStartedAt.current = Date.now();
+      setPrimaryBusy(true);
+      try {
+        await work();
+      } finally {
+        if (alive.current) setPrimaryBusy(false);
+      }
+    });
+  }
+
   async function login(): Promise<void> {
     const auth = await import('@/data/auth');
     if (alive.current) await auth.signIn();
@@ -779,6 +796,8 @@ function EventDetailSession({
     now,
     sessionKey: reload,
     onSuccess: async result => {
+      // 團隊報名按鈕的進度環：寫入成功才打勾（名單重讀仍在 busy 內，結束後才展開）。
+      if (alive.current) setTeamDoneSerial(value => value + 1);
       const current = headerState.current.snapshot;
       const uid = currentViewer.current.uid;
       if (!alive.current || !current || !uid || !headerState.current.visible) return;
@@ -1374,27 +1393,29 @@ function EventDetailSession({
       snapshot?.viewerRegistrations.filter((reg) => reg.eventId === eventId) ?? [],
     );
   const owned = actionRegistrations.filter((reg) => registrationOwner(reg) === viewer.uid);
-  // 照 A handleSignup／handleCancelSignup 的翻牌生命週期。
-  // T-086a 後名單改背景重讀：背面至少停 750 ms，且等 settled（背景重讀）完成才翻回，
-  // 否則正面會先閃一次舊狀態；重讀超過 FLIP_MAX_MS 仍未完成就直接翻回，不卡在背面。
-  function showFlip(text: string, background: string, settled?: Promise<unknown>): void {
+  // 照 A handleSignup／handleCancelSignup 的完成時機。11-09 起翻牌改成進度環（站長核可「A＋B 變形加進度環」）：
+  // 伺服器確認成功後環繼續爬，至少從按下起算 FLIP_MIN_MS、且 settled（背景重讀）完成，才放行補滿＋✓＋展開成新狀態，
+  // 否則會先露出舊狀態再跳新狀態（0.20261108i 修的「多翻一次」）；重讀超過 FLIP_MAX_MS 仍未完成就直接放行，不卡在環上。
+  // 最短時間改從按下起算（原本從翻牌起算）：環在按下時就開始，伺服器回來後不必再多等 0.75 秒。
+  function showFlip(settled?: Promise<unknown>): void {
     if (!alive.current) return;
     if (flipTimer.current !== null) clearTimeout(flipTimer.current);
     const serial = ++flipSequence.current;
-    setFlip({ text, background, serial });
+    setSettle({ serial, pending: true });
     let minElapsed = false;
     let dataSettled = !settled;
     const flipBack = (): void => {
       if (flipSequence.current !== serial) return;
       if (flipTimer.current !== null) clearTimeout(flipTimer.current);
       flipTimer.current = null;
-      if (alive.current) setFlip(null);
+      if (alive.current) setSettle({ serial, pending: false });
     };
+    const minDelay = Math.max(0, FLIP_MIN_MS - (Date.now() - ringStartedAt.current));
     flipTimer.current = setTimeout(() => {
       minElapsed = true;
       if (dataSettled) flipBack();
       else flipTimer.current = setTimeout(flipBack, FLIP_MAX_MS - FLIP_MIN_MS);
-    }, FLIP_MIN_MS);
+    }, minDelay);
     if (settled) {
       void (async () => {
         await settled;
@@ -1606,11 +1627,7 @@ function EventDetailSession({
         event: { ...previous.event, ...responseEvent },
       }));
     }
-    showFlip(
-      waitlisted ? '取消候補' : '取消報名',
-      waitlisted ? '#7c3aed' : '#dc2626',
-      refreshInBackground(next),
-    );
+    showFlip(refreshInBackground(next));
     // 照 A _maybeShowLineNotifyPrompt；引導失敗不改寫報名成功結果。
     maybeShowLinePrompt(uid).catch(() => {});
   }
@@ -1637,11 +1654,8 @@ function EventDetailSession({
       if (updatedEvent) {
         setSnapshot(previous => previous && ({ ...previous, event: updatedEvent }));
       }
-      const pending = refreshInBackground(updatedEvent ? { ...current, event: updatedEvent } : current);
-      if (updatedEvent) {
-        const full = getEventParticipantStats(updatedEvent, []).isCapacityFull;
-        showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)', pending);
-      }
+      // 原本只在有投影時翻牌（背面文字要靠投影判斷額滿）；進度環不需要文字，一律等重讀完成才展開。
+      showFlip(refreshInBackground(updatedEvent ? { ...current, event: updatedEvent } : current));
     },
     onBatchCancelled: async (result) => {
       const current = snapshot;
@@ -2089,10 +2103,12 @@ function EventDetailSession({
                 state={state}
                 disabled={state.disabled || busy || reservation.busy || refreshFailed}
                 busy={busy}
-                flip={flip}
+                running={primaryBusy}
+                settle={settle}
                 teamReservation={reservation.action ? {
                   ...reservation.action,
                   busy: reservation.busy,
+                  doneSerial: teamDoneSerial,
                   disabled: rosterSubmitting,
                   onClick: () => reservation.open(reservation.action?.preferredTeamId),
                 } : null}
@@ -2100,16 +2116,16 @@ function EventDetailSession({
                   if (state.action === 'cancel') {
                     const current = snapshot;
                     if (current) {
-                      start(() => cancelFlow.beginCancel({
+                      startPrimary(() => cancelFlow.beginCancel({
                         event: current.event,
                         publicId,
                         owned,
                       }));
                     }
                   }
-                  else if (state.action === 'signup') start(() => beginSelfSignup({}));
+                  else if (state.action === 'signup') startPrimary(() => beginSelfSignup({}));
                   else if (state.action === 'earlyBird') {
-                    start(() => beginSelfSignup({ earlyBird: true }));
+                    startPrimary(() => beginSelfSignup({ earlyBird: true }));
                   } else if (state.action === 'login') start(login);
                   else if (state.action === 'explain' && state.messageText) {
                     toast.show({ message: state.messageText });

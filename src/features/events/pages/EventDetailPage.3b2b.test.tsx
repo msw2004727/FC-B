@@ -173,7 +173,7 @@ describe('3b-2b 頁面串接', () => {
       eventDocId: 'doc-9',
     });
     render(<EventDetailPage id="public-1" />);
-    fireEvent.click(await screen.findByText('聯繫主辦'));
+    fireEvent.click(await screen.findByRole('button', { name: '聯繫主辦' }));
     expect(mocks.route).toHaveBeenCalledWith('/profile/uid%2Fa');
     fireEvent.click(screen.getByText('測試俱樂部'));
     expect(mocks.route).toHaveBeenCalledWith('/teams/team%2Fa');
@@ -181,7 +181,7 @@ describe('3b-2b 頁面串接', () => {
 
   it('缺主辦 UID 提示 A 原文；訪客即使 helper 回 true 也不顯示簽到', async () => {
     render(<EventDetailPage id="public-1" />);
-    fireEvent.click(await screen.findByText('聯繫主辦'));
+    fireEvent.click(await screen.findByRole('button', { name: '聯繫主辦' }));
     expect(mocks.toast).toHaveBeenCalledWith({ message: '暫時找不到主辦人資料。' });
     expect(screen.queryByText('現場簽到')).toBeNull();
   });
@@ -217,26 +217,26 @@ describe('M-088 資訊列', () => {
   ])('狀態 %s 照 A', (status, regOpenTime, expected) => {
     info(detailEvent({ status, regOpenTime }), Date.now());
     const row = document.querySelector('[data-detail-field="countdown"]');
-    expect(row?.textContent).toBe('倒數' + expected);
+    expect(row?.textContent).toBe(expected);
   });
 
   it.each([
-    [Date.parse('2099-10-23T07:00:00+08:00'), '剩餘 2日3時'],
-    [Date.parse('2099-10-25T07:30:00+08:00'), '剩餘 2時30分'],
-    [Date.parse('2099-10-25T09:45:00+08:00'), '剩餘 15分'],
+    [Date.parse('2099-10-23T07:00:00+08:00'), '距開始 2日3時'],
+    [Date.parse('2099-10-25T07:30:00+08:00'), '距開始 2時30分'],
+    [Date.parse('2099-10-25T09:45:00+08:00'), '距開始 15分'],
     [Date.parse('2099-10-25T10:00:00+08:00'), '已結束'],
   ])('時間 %s 顯示 %s', (nowMs, expected) => {
     info(detailEvent(), nowMs);
     expect(document.querySelector('[data-detail-field="countdown"]')?.textContent)
-      .toBe('倒數' + expected);
+      .toBe(expected);
   });
 
   it('無效日期倒數空白，空地點仍保留地圖連結與圖釘', () => {
     info(detailEvent({ date: 'invalid', location: '' }), Date.now());
     expect(document.querySelector('[data-detail-field="countdown"]')?.textContent)
-      .toBe('倒數');
+      .toBe('');
     const link = document.querySelector('[data-detail-field="location"] a');
-    expect(link?.textContent).toBe(' 📍');
+    expect(link?.textContent).toBe('');
     expect(link?.getAttribute('href')).toBe('https://www.google.com/maps/search/?api=1&query=');
     expect(screen.queryByText('地点未定')).toBeNull();
   });

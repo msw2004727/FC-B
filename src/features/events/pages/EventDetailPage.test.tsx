@@ -321,28 +321,29 @@ describe('EventDetailPage', () => {
     expect(view.container.querySelector('#detail-comments-container')).toBeTruthy();
 
     expect(view.container.querySelector('[data-detail-field="location"]')?.textContent)
-      .toContain('地點青埔籃足球共用球場 📍');
+      .toContain('青埔籃足球共用球場');
     expect(view.container.querySelector('[data-detail-field="date"]')?.textContent)
-      .toContain('時間2099/10/19 18:30~21:00');
+      .toBe('18:30–21:00');
+    expect(view.container.querySelector('.evd-ticket-stub')?.textContent).toBe('10 月19週一');
     expect(view.container.querySelector('[data-detail-field="registration-open"]')?.textContent)
-      .toContain('開放報名');
+      .toBe('2026/01/01 12:00（已開放）');
     expect(view.container.querySelector('[data-detail-field="fee"]')?.textContent)
-      .toBe('費用NT$150');
+      .toBe('NT$150');
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
-      .toBe('人數已報 8/10 候補 1');
+      .toBe('已報 8/10剩 2 · 候補 1');
     expect(view.container.querySelector('[data-detail-field="countdown"]')?.textContent)
-      .toContain('倒數');
+      .toContain('距開始');
     expect(view.container.querySelector('[data-detail-field="age-limit"]')?.textContent)
-      .toBe('年齡18 歲以上');
+      .toBe('18 歲以上');
     expect(view.container.querySelector('[data-detail-field="gender-limit"]')?.textContent)
-      .toBe('性別限女生');
+      .toBe('限女生');
     const heatEl = view.container.querySelector('[data-detail-field="heat"]');
-    expect(heatEl?.textContent).toBe('熱度高人氣即將額滿');
+    expect(heatEl?.textContent).toBe('高人氣即將額滿');
     expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(220, 38, 38)'); // jsdom 把 A 的 #dc2626 轉成 rgb
     expect(view.container.querySelector('[data-detail-field="delegates"]')?.textContent)
       .toContain('小幫手');
     expect(view.container.querySelector('[data-detail-field="contact"]')?.textContent)
-      .toBe('聯繫LINE: @sporthub');
+      .toBe('LINE: @sporthub');
     expect(view.container.querySelector('[data-detail-field="team-limit"]')?.textContent)
       .toContain('閃電隊 專屬活動');
   });
@@ -356,7 +357,7 @@ describe('EventDetailPage', () => {
     let view = mount();
     await screen.findByRole('heading', { level: 2 });
     let heatEl = view.container.querySelector('[data-detail-field="heat"]');
-    expect(heatEl?.textContent).toBe('熱度報名熱烈增加中');
+    expect(heatEl?.textContent).toBe('報名熱烈增加中');
     expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(245, 158, 11)'); // #f59e0b
     view.unmount();
 
@@ -368,7 +369,7 @@ describe('EventDetailPage', () => {
     view = mount();
     await screen.findByRole('heading', { level: 2 });
     heatEl = view.container.querySelector('[data-detail-field="heat"]');
-    expect(heatEl?.textContent).toBe('熱度穩定開放報名中');
+    expect(heatEl?.textContent).toBe('穩定開放報名中');
     expect(heatEl?.querySelector('span:last-child')?.getAttribute('style')).toContain('rgb(59, 130, 246)'); // #3b82f6
     view.unmount();
 
@@ -589,7 +590,7 @@ describe('EventDetailPage', () => {
     await screen.findByRole('heading', { level: 2 });
     fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
     await screen.findByText('小華', undefined, { timeout: 3000 });
-    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.queryByText('不可顯示')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
@@ -623,15 +624,17 @@ describe('EventDetailPage', () => {
 
     const view = mount();
     await screen.findByRole('heading', { level: 2 });
-    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.getByText('請攜帶飲水')).toBeTruthy();
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
       .toContain('已報 3/10');
     // 測試同步更新：照 A（M-087）訪客先看摘要卡，按下才展開膠囊。
     expect(screen.getByText('出席名單')).toBeTruthy();
-    expect(screen.getByText('3/10')).toBeTruthy();
-    expect(screen.getByText('候補 1')).toBeTruthy();
+    // 測試同步更新：C2 報名卡也顯示「3/10」大字，摘要卡的數字改在摘要卡範圍內查。
+    const attendanceSummary = view.container.querySelector('.detail-attendance-summary') as HTMLElement;
+    expect(within(attendanceSummary).getByText('3/10')).toBeTruthy();
+    expect(within(attendanceSummary).getByText('候補 1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
     await waitFor(() => expect(screen.getByText('公開正取')).toBeTruthy());
     expect(screen.getByText('公開候補')).toBeTruthy();
@@ -692,7 +695,7 @@ describe('EventDetailPage', () => {
     fireEvent.click(within(region).getByRole('button', { name: '查看出席名單' }));
     await within(region).findByText('無法載入參加名單，請重試。');
 
-    expect(screen.getByText('青埔籃足球共用球場 📍')).toBeTruthy();
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
     expect(screen.getByText('Neo')).toBeTruthy();
     expect(screen.queryByText('無法載入活動詳情，請重試。')).toBeNull();
     expect(screen.queryByText('private permission detail')).toBeNull();
@@ -885,8 +888,11 @@ describe('EventDetailPage', () => {
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenCalledTimes(1);
     expect(mocks.history).toHaveBeenCalledTimes(2);
-    expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
-      .toBe(true);
+    // 測試同步更新：主按鈕先跑完進度環（最短 0.75 秒＋展開）才回到文字，改為等待後再驗停用。
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
+        .toBe(true);
+    });
     const companionButton = screen.queryByRole('button', { name: '幫夥伴報名' }) as HTMLButtonElement | null;
     expect(companionButton === null || companionButton.disabled).toBe(true);
 
@@ -2216,7 +2222,8 @@ describe('T-074b 詳情頁整合', () => {
       expect(mocks.registrations).toHaveBeenLastCalledWith(detail.eventDocId);
       expect(document.querySelector('.team-reservation-header-row')).toBeNull();
       expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' });
-      const adjustButton = screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement;
+      // 測試同步更新：名單重讀期間團隊按鈕縮成進度環，無障礙名稱是忙碌標籤（同一顆按鈕）。
+      const adjustButton = screen.getByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
       expect(adjustButton.disabled).toBe(true);
       fireEvent.click(adjustButton); fireEvent.click(adjustButton);
       fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
@@ -2478,7 +2485,10 @@ describe('T-074b 詳情頁整合', () => {
     expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '團隊名額調整失敗，請稍後重試' });
     expect(JSON.stringify(mocks.toastShow.mock.calls) + document.body.textContent).not.toContain('SECRET_FIRESTORE_PATH_STACK');
     expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1);
-    expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false);
+    // 測試同步更新：團隊按鈕跑完進度環（打勾＋展開）才回到文字，改為等待。
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.click(screen.getByRole('button', { name: '調整名額' }));
     expect((screen.getByLabelText('團隊名額') as HTMLInputElement).value).toBe('2');
     expect(document.querySelector('.team-reservation-help')?.textContent).toContain('已被俱樂部成員使用：1');

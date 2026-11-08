@@ -36,6 +36,7 @@ import {
   uploadEventImageVariants,
   uploadImageDataUrl,
 } from './event-cover-upload';
+import { normalizeReleaseHours } from './team-reservation-release';
 
 // 供呼叫端由本模組取得 Callable 契約型別（與 `src/data/contract/callables.ts` 同源）。
 export type {
@@ -134,6 +135,8 @@ export interface CreateEventForm {
   mapProvider?: 'google' | 'manual' | null;
   mapLocationConfirmed?: boolean;
   mapLocationUpdatedAt?: string | null;
+  /** 團隊預留自動釋出時數（0／3／6／12／24／48／72；0＝不自動釋出）；建立與編輯一律明寫。 */
+  teamReservationReleaseHours: number;
 }
 
 export interface CreateEventContext {
@@ -211,6 +214,7 @@ export interface EventCreatePayload {
   earlyBirdEnabled: boolean;
   earlyBirdCost: number;
   earlyBirdPolicyVersion: 1 | null;
+  teamReservationReleaseHours: number;
   teamSplit?: TeamSplitPayload;
   gpsEnabled?: boolean;
   lat?: number | null;
@@ -258,6 +262,7 @@ export interface EventEditUpdates {
   earlyBirdEnabled?: boolean;
   earlyBirdCost?: number;
   earlyBirdPolicyVersion?: 1 | null;
+  teamReservationReleaseHours?: number;
   teamSplit?: TeamSplitPayload;
   gpsEnabled?: boolean;
   lat?: number | null;
@@ -572,6 +577,8 @@ export function buildCreateEventPayload(
     earlyBirdCost: form.earlyBirdEnabled ? form.earlyBirdCost : 0,
     // 照 A handleCreateEvent：啟用時版本固定為 1。
     earlyBirdPolicyVersion: form.earlyBirdEnabled ? 1 : null,
+    // 團隊預留自動釋出：一律明寫（含 0）；不是加值欄位，不受加值閘門影響。
+    teamReservationReleaseHours: normalizeReleaseHours(form.teamReservationReleaseHours),
   };
 
   const variants = buildImageVariants(form);
@@ -628,6 +635,8 @@ export function buildEditEventUpdates(
     regionEnabled: form.regionEnabled,
     region: form.region,
     cities: [...form.cities],
+    // Rules eventUpdateBasicFieldsOnly／eventScopedRoleFieldsOnly 已列此欄（FC 0068af374）；值未變時不算異動。
+    teamReservationReleaseHours: normalizeReleaseHours(form.teamReservationReleaseHours),
   };
 
   if (!preserve.image) {

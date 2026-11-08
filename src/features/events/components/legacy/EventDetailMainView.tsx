@@ -1,13 +1,17 @@
-import type { JSX } from 'preact';
+import { Fragment, type JSX } from 'preact';
 import { openHttpAnchor } from '@/core/open-external';
 import { UserTag } from '@/ui/UserTag';
 import { getEventParticipantStats } from '../../data/participant-stats';
 import { eventStartMs } from '../../data/terminal';
 import type { UserRole } from '@/ui/Avatar';
 import { count, safeImageUrl, type DetailEvent } from '../../data/detail-model';
-import { parseEventStartMs } from '@/core/event-time';
+import { parseEventDate, parseEventStartMs } from '@/core/event-time';
 import { renderEventSocialLinksHtml } from '../../data/event-social-links';
-import { formatTaipei, parseTaipei } from '@/core/taipei-time';
+import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
+import { getEventEarlyBirdCost, isEventEarlyBirdWindow } from '../../data/signup-restrictions';
+import { getTeamReservationReleaseMeta } from '../../data/team-reservation-release';
+import './event-detail-c2.css';
+import './signup-a11y.css'; // 報名卡「已報」讀屏文字用 .fcb-sr-only
 
 
 export type LegacyDetailEvent = DetailEvent & {
@@ -19,6 +23,8 @@ export type LegacyDetailEvent = DetailEvent & {
   socialLinksEnabled?: boolean;
   socialLinks?: unknown;
   viewCount?: number;
+  earlyBirdEnabled?: unknown;
+  earlyBirdCost?: unknown;
 };
 
 interface DelegateEntry {
@@ -120,9 +126,10 @@ function calcCountdown(event: LegacyDetailEvent, nowMs: number): string {
   const days = Math.floor(totalMin / 1440);
   const hours = Math.floor((totalMin % 1440) / 60);
   const mins = totalMin % 60;
-  if (days > 0) return `剩餘 ${days}日${hours}時`;
-  if (hours > 0) return `剩餘 ${hours}時${mins}分`;
-  return `剩餘 ${mins}分`;
+  // C2 票根：倒數是距離活動開始（不是報名截止），前綴由「剩餘」改為「距開始」，數字算法不變。
+  if (days > 0) return `距開始 ${days}日${hours}時`;
+  if (hours > 0) return `距開始 ${hours}時${mins}分`;
+  return `距開始 ${mins}分`;
 }
 
 function formatRegOpenInfo(
@@ -151,6 +158,78 @@ function formatRegOpenInfo(
 }
 
 
+
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
+
+interface TicketDate {
+  month: number;
+  day: string;
+  weekday: string;
+  time: string;
+  duration: string;
+}
+
+/** C2 票根：月／日／星期與時間一律用台北牆鐘；結束時間早於開始（跨日）時不推算時長。 */
+function getTicketDate(value: unknown): TicketDate | null {
+  const parsed = parseEventDate(value);
+  if (!parsed) return null;
+  const start = taipeiParts(parsed.startMs);
+  const end = parsed.explicitEndMs;
+  const hasEnd = parsed.hasTime && end !== null && end > parsed.startMs;
+  const time = parsed.hasTime
+    ? formatTaipei(parsed.startMs, 'HH:mm') + (hasEnd ? `–${formatTaipei(end, 'HH:mm')}` : '')
+    : '';
+  let duration = '';
+  if (hasEnd) {
+    const totalMin = Math.round((end - parsed.startMs) / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    duration = h > 0 ? `${h} 小時${m > 0 ? ` ${m} 分` : ''}` : `${m} 分鐘`;
+  }
+  return {
+    month: start.month,
+    day: String(start.day).padStart(2, '0'),
+    weekday: WEEKDAY_NAMES[start.weekday] ?? '',
+    time,
+    duration,
+  };
+}
+
+type EvdIconName = 'pin' | 'nav' | 'flame' | 'cake' | 'gender' | 'shield' | 'lock' | 'msg' | 'door' | 'phone';
+
+// 線條圖示（R-UI-002）；有 label 時給讀屏，沒有時當裝飾（外層按鈕自帶 aria-label）。
+const EVD_ICON_PATHS: Record<EvdIconName, JSX.Element> = {
+  pin: <><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></>,
+  nav: <path d="M3 11l18-8-8 18-2-8z" />,
+  flame: <path d="M12 21c4 0 7-2.7 7-6.5 0-3.6-3-5.5-4-9.5-2 1.5-3 3.5-3 5.5-1-1-2-2-2-3.5C7 9 5 11.5 5 14.5 5 18.3 8 21 12 21z" />,
+  cake: <path d="M4 20h16v-7H4zM4 16h16M12 13V9M12 6.5V6" />,
+  gender: <><circle cx="10" cy="14" r="5" /><path d="M14 10l6-6M15 4h5v5" /></>,
+  shield: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />,
+  lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+  msg: <path d="M4 5h16v11H9l-5 4z" />,
+  door: <path d="M5 21V4h11v17M3 21h18M13 12h.01" />,
+  phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />,
+};
+
+function EvdIcon({ name, label, size = 16 }: { name: EvdIconName; label?: string; size?: number }): JSX.Element {
+  return (
+    <svg
+      class="evd-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      focusable="false"
+      {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': 'true' })}
+    >
+      {EVD_ICON_PATHS[name]}
+    </svg>
+  );
+}
 
 export interface EventDetailCoverProps {
   event: LegacyDetailEvent;
@@ -245,204 +324,261 @@ export function EventDetailInfoSection({
   teamSplitSlot,
 }: EventDetailInfoSectionProps): JSX.Element {
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ?? '')}`;
+  const openMap = (click: JSX.TargetedMouseEvent<HTMLAnchorElement>): void => {
+    openHttpAnchor(click, mapUrl);
+  };
+  const ticket = getTicketDate(event.date);
   const regOpen = formatRegOpenInfo(event, nowMs);
   const feeEnabled = event.feeEnabled ?? count(event.fee) > 0;
   const fee = feeEnabled ? count(event.fee) : 0;
   const maxCount = count(event.max);
   const stats = getEventParticipantStats(event, []);
-  const reservedText = stats.reservedRemainingCount > 0
-    ? ` 預留 ${stats.reservedRemainingCount}`
-    : '';
-  const waitlistText = waitlistCount > 0 ? ` 候補 ${waitlistCount}` : '';
+  const reservedCount = stats.reservedRemainingCount;
   const isEnded = event.status === 'ended' || event.status === 'cancelled';
   const countdown = calcCountdown(event, nowMs);
   const minAge = count(event.minAge);
   const allowedGender = getAllowedGender(event);
   const heatPrediction = isEnded ? null : calcHeatPrediction(event, nowMs);
+  const earlyBirdCost = isEventEarlyBirdWindow(event, new Date(nowMs)) ? getEventEarlyBirdCost(event) : 0;
+
+  // C2 報名卡：剩餘＝上限扣正取與團隊保留（同 A 的 occupied 算法）；沒有的項目不出現。
+  const remainingCount = maxCount > 0 ? Math.max(0, maxCount - confirmedCount - reservedCount) : 0;
+  // 團隊預留自動釋出：倒數用頁面既有的 nowMs（每 30 秒 tick），純顯示、不讀 Firestore。
+  const releaseMeta = getTeamReservationReleaseMeta(event, reservedCount, nowMs);
+  const reservedSegment: JSX.Element | string = releaseMeta.kind === 'released'
+    ? '團隊保留已釋出'
+    : releaseMeta.kind === 'countdown'
+      ? (
+        <>
+          {`團隊保留 ${reservedCount} · `}
+          <span class={`evd-reg-release${releaseMeta.soon ? ' is-soon' : ''}`}>{releaseMeta.text}</span>
+        </>
+      )
+      : reservedCount > 0 ? `團隊保留 ${reservedCount}` : '';
+  const capacityMetaParts = [
+    maxCount > 0 ? `剩 ${remainingCount}` : '',
+    reservedSegment,
+    waitlistCount > 0 ? `候補 ${waitlistCount}` : '',
+  ].filter(part => part !== '');
+  const capacityMeta = capacityMetaParts.length > 0
+    ? capacityMetaParts.map((part, index) => (
+      <Fragment key={index}>{index > 0 ? ' · ' : ''}{part}</Fragment>
+    ))
+    : null;
+  const confirmedPct = maxCount > 0 ? Math.min(100, (confirmedCount / maxCount) * 100) : 0;
+  const reservedPct = maxCount > 0 ? Math.min(100 - confirmedPct, (reservedCount / maxCount) * 100) : 0;
+  const hasRegChips = feeEnabled || !!heatPrediction || earlyBirdCost > 0 || !!regOpen;
 
   const hostUid = (event.creatorUid ?? '').trim();
   const hostName = (event.creator || event.creatorName || hostUid).trim();
   const delegates = extractDelegates(event.delegates);
   const teamDisplayName = event.creatorTeamName || '俱樂部';
+  const hasConditions = minAge > 0 || !!allowedGender || !!event.teamOnly || !!event.privateEvent;
 
   return (
     <>
-      <div class="detail-row detail-row-wide" data-detail-field="location">
-        <span class="detail-label">地點</span>
-        <a
-          href={mapUrl}
-          rel="noopener"
-          style="color:var(--primary);text-decoration:none"
-          onClick={(event) => {
-            openHttpAnchor(event, mapUrl);
-          }}
-        >
-          {`${event.location ?? ''} 📍`}
-        </a>
-      </div>
-
-      <div class="detail-row detail-row-wide" data-detail-field="date">
-        <span class="detail-label">時間</span>
-        {event.date ?? ''}
-      </div>
-
-      {regOpen && (
-        <div class="detail-row detail-row-wide" data-detail-field="registration-open">
-          <span class="detail-label">開放報名</span>
-          {regOpen.isUpcoming ? (
-            <span style="color:var(--info);font-weight:600">
-              {`${regOpen.regStr}${regOpen.suffix}`}
-            </span>
-          ) : (
-            `${regOpen.regStr}${regOpen.suffix}`
-          )}
-        </div>
-      )}
-
-      <div class="detail-grid">
-        {feeEnabled && (
-          <div class="detail-row" data-detail-field="fee">
-            <span class="detail-label">費用</span>
-            {fee > 0 ? `NT$${fee}` : '免費'}
+      <div class="evd-ticket">
+        {ticket && (
+          <div class="evd-ticket-stub">
+            <span class="evd-ticket-mo">{`${ticket.month} 月`}</span>
+            <span class="evd-ticket-day">{ticket.day}</span>
+            <span class="evd-ticket-wd">{`週${ticket.weekday}`}</span>
           </div>
         )}
-        <div class="detail-row" data-detail-field="capacity-count">
-          <span class="detail-label">人數</span>
-          {`已報 ${confirmedCount}/${maxCount}${reservedText}${waitlistText}`}
+        <div class="evd-ticket-main">
+          <div class="evd-ticket-time" data-detail-field="date">
+            {ticket?.time || (event.date ?? '')}
+          </div>
+          <div class="evd-ticket-sub">
+            {ticket?.duration && <span>{ticket.duration}</span>}
+            {ticket?.duration && countdown && <span aria-hidden="true">{' · '}</span>}
+            <span
+              data-detail-field="countdown"
+              style={`color:${isEnded ? 'var(--text-muted)' : 'var(--primary)'};font-weight:600`}
+            >
+              {countdown}
+            </span>
+          </div>
+          <div class="evd-ticket-loc" data-detail-field="location">
+            <EvdIcon name="pin" label="地點" />
+            <a class="evd-ticket-loc-link" href={mapUrl} rel="noopener" onClick={openMap}>
+              {event.location ?? ''}
+            </a>
+            <a class="evd-icon-btn evd-icon-btn-sm" href={mapUrl} rel="noopener" aria-label="導航" title="導航" onClick={openMap}>
+              <EvdIcon name="nav" />
+            </a>
+          </div>
         </div>
-        <div class="detail-row" data-detail-field="countdown">
-          <span class="detail-label">倒數</span>
-          <span
-            style={`color:${isEnded ? 'var(--text-muted)' : 'var(--primary)'};font-weight:600`}
-          >
-            {countdown}
+      </div>
+
+      <section class="evd-card">
+        <h3 class="evd-card-title">報名</h3>
+        <div class="evd-reg-head" data-detail-field="capacity-count">
+          <span class="evd-reg-count">
+            <span class="fcb-sr-only">已報 </span>
+            {`${confirmedCount}/${maxCount}`}
           </span>
+          {capacityMeta && <span class="evd-reg-meta">{capacityMeta}</span>}
         </div>
-        {minAge > 0 && (
-          <div class="detail-row" data-detail-field="age-limit">
-            <span class="detail-label">年齡</span>
-            {`${minAge} 歲以上`}
+        {maxCount > 0 && (
+          <div class="evd-progress" aria-hidden="true">
+            <i class="evd-progress-confirmed" style={`width:${confirmedPct}%`} />
+            {reservedPct > 0 && <i class="evd-progress-reserved" style={`width:${reservedPct}%`} />}
           </div>
         )}
-        {allowedGender && (
-          <div class="detail-row" data-detail-field="gender-limit">
-            <span class="detail-label">性別</span>
-            <span style="color:#dc2626;font-weight:700">
-              {getGenderDetailText(allowedGender)}
-            </span>
-          </div>
-        )}
-        {heatPrediction && (
-          <div class="detail-row" data-detail-field="heat">
-            <span class="detail-label">熱度</span>
-            <span style={`color:${HEAT_COLORS[heatPrediction]};font-weight:600;white-space:nowrap`}>
-              {HEAT_LABELS[heatPrediction]}
-            </span>
-          </div>
-        )}
-        {teamSplitSlot}
-      </div>
-
-      <div class="detail-row detail-row-wide detail-host-row" data-detail-field="host">
-        <span class="detail-label">主辦</span>
-        <span class="participant-list" style="display:inline-flex;gap:.3rem;flex-wrap:wrap">
-          <UserTag
-            uid={hostUid}
-            name={hostName || '未命名使用者'}
-            role={roles[hostUid]}
-            disabled={!hostUid}
-            onOpenProfile={onOpenProfile}
-          />
-        </span>
-        {/* 照 A contactEventOrganizer */}
-        <button
-          type="button"
-          class="event-host-contact-pill"
-          onClick={onContactHost}
-        >
-          聯繫主辦
-        </button>
-      </div>
-
-      {delegates.length > 0 && (
-        <div class="detail-row detail-row-wide" data-detail-field="delegates">
-          <span class="detail-label">委託</span>
-          <span class="participant-list" style="display:inline-flex;gap:.3rem;flex-wrap:wrap">
-            {delegates.map((d, idx) => (
-              <UserTag
-                key={`${d.uid || d.name}-${idx}`}
-                uid={d.uid}
-                name={d.name}
-                role={d.uid ? roles[d.uid] : undefined}
-                disabled={!d.uid}
-                onOpenProfile={onOpenProfile}
-              />
-            ))}
-          </span>
-        </div>
-      )}
-
-      {event.socialLinksEnabled && (
-        <div
-          class="detail-row detail-row-wide detail-social-links-row"
-          data-detail-field="social-links"
-        >
-          <span class="detail-label">社群</span>
-          <span
-            class="event-social-link-list"
-            dangerouslySetInnerHTML={{ __html: renderEventSocialLinksHtml(event.socialLinks) }}
-            onClick={(event) => {
-              const raw = event.target;
-              if (!(raw instanceof Element)) return;
-              const anchor = raw.closest('a');
-              if (!anchor || !event.currentTarget.contains(anchor)) return;
-              openHttpAnchor(event, anchor.getAttribute('href') ?? '');
-            }}
-          />
-        </div>
-      )}
-
-      {event.contact && (
-        <div class="detail-row detail-row-wide" data-detail-field="contact">
-          <span class="detail-label">聯繫</span>
-          {event.contact}
-        </div>
-      )}
-
-      {event.teamOnly && (
-        <div class="detail-row detail-row-wide" data-detail-field="team-limit">
-          <span class="detail-label">限定</span>
-          <span style="color:#e11d48;font-weight:600">
-            {event.creatorTeamId ? (
-              <>
-                {/* 照 A showTeamDetail */}
-                <a
-                  href="javascript:void(0)"
-                  style="color:inherit;text-decoration:underline;text-underline-offset:2px"
-                  onClick={(ev) => {
-                    ev.preventDefault();
-                    if (event.creatorTeamId) onOpenTeam(event.creatorTeamId);
-                  }}
-                >
-                  {teamDisplayName}
-                </a>
-                {' 專屬活動'}
-              </>
-            ) : (
-              `${teamDisplayName} 專屬活動`
+        {hasRegChips && (
+          <div class="evd-chips">
+            {feeEnabled && (
+              <span class="evd-chip evd-chip-fee" data-detail-field="fee">
+                {fee > 0 ? `NT$${fee}` : '免費'}
+              </span>
             )}
-          </span>
-        </div>
+            {heatPrediction && (
+              <span class="evd-chip evd-chip-tint" data-detail-field="heat" style={`color:${HEAT_COLORS[heatPrediction]}`}>
+                <EvdIcon name="flame" label="熱度" size={14} />
+                <span style={`color:${HEAT_COLORS[heatPrediction]};font-weight:600;white-space:nowrap`}>
+                  {HEAT_LABELS[heatPrediction]}
+                </span>
+              </span>
+            )}
+            {earlyBirdCost > 0 && (
+              <span class="evd-chip evd-chip-tint evd-chip-early" data-detail-field="early-bird">
+                {`早鳥 ${earlyBirdCost} 積分`}
+              </span>
+            )}
+            {regOpen && (
+              <span class="evd-chip" data-detail-field="registration-open">
+                <EvdIcon name="door" label="開放報名" size={14} />
+                {regOpen.isUpcoming ? (
+                  <span style="color:var(--info);font-weight:600">
+                    {`${regOpen.regStr}${regOpen.suffix}`}
+                  </span>
+                ) : (
+                  `${regOpen.regStr}${regOpen.suffix}`
+                )}
+              </span>
+            )}
+          </div>
+        )}
+      </section>
+
+      {teamSplitSlot && <div class="detail-grid">{teamSplitSlot}</div>}
+
+      {hasConditions && (
+        <section class="evd-card" data-evd-card="conditions">
+          <h3 class="evd-card-title">參加條件</h3>
+          {minAge > 0 && (
+            <div class="evd-line" data-detail-field="age-limit">
+              <EvdIcon name="cake" label="年齡" />
+              <span>{`${minAge} 歲以上`}</span>
+            </div>
+          )}
+          {allowedGender && (
+            <div class="evd-line" data-detail-field="gender-limit">
+              <EvdIcon name="gender" label="性別" />
+              <span>{getGenderDetailText(allowedGender)}</span>
+            </div>
+          )}
+          {event.teamOnly && (
+            <div class="evd-line" data-detail-field="team-limit">
+              <EvdIcon name="shield" label="限定俱樂部" />
+              <span>
+                {event.creatorTeamId ? (
+                  <>
+                    {/* 照 A showTeamDetail */}
+                    <a
+                      href="javascript:void(0)"
+                      class="evd-team-link"
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        if (event.creatorTeamId) onOpenTeam(event.creatorTeamId);
+                      }}
+                    >
+                      {teamDisplayName}
+                    </a>
+                    {' 專屬活動'}
+                  </>
+                ) : (
+                  `${teamDisplayName} 專屬活動`
+                )}
+              </span>
+            </div>
+          )}
+          {event.privateEvent && (
+            <div class="evd-line" data-detail-field="private-visibility">
+              <EvdIcon name="lock" label="可見範圍" />
+              <span>私密活動，僅限連結</span>
+            </div>
+          )}
+        </section>
       )}
 
-      {event.privateEvent && (
-        <div class="detail-row detail-row-wide" data-detail-field="private-visibility">
-          <span class="detail-label">可見</span>
-          <span style="color:#7c3aed;font-weight:600">
-            🔒 私密活動 — 僅限連結分享
+      <section class="evd-card">
+        <h3 class="evd-card-title">主辦團隊</h3>
+        <div class="evd-host-row" data-detail-field="host">
+          <span class="participant-list evd-tag-list">
+            <UserTag
+              uid={hostUid}
+              name={hostName || '未命名使用者'}
+              role={roles[hostUid]}
+              disabled={!hostUid}
+              onOpenProfile={onOpenProfile}
+            />
           </span>
+          <span class="evd-muted">主辦</span>
+          {/* 照 A contactEventOrganizer */}
+          <button
+            type="button"
+            class="evd-icon-btn evd-host-contact"
+            aria-label="聯繫主辦"
+            title="聯繫主辦"
+            onClick={onContactHost}
+          >
+            <EvdIcon name="msg" />
+          </button>
         </div>
-      )}
+
+        {delegates.length > 0 && (
+          <div class="evd-delegate-row" data-detail-field="delegates">
+            <span class="participant-list evd-tag-list">
+              {delegates.map((d, idx) => (
+                <UserTag
+                  key={`${d.uid || d.name}-${idx}`}
+                  uid={d.uid}
+                  name={d.name}
+                  role={d.uid ? roles[d.uid] : undefined}
+                  disabled={!d.uid}
+                  onOpenProfile={onOpenProfile}
+                />
+              ))}
+            </span>
+            <span class="evd-muted">委託人</span>
+          </div>
+        )}
+
+        {event.contact && (
+          <div class="evd-line" data-detail-field="contact">
+            <EvdIcon name="phone" label="聯繫方式" />
+            <span class="evd-line-text">{event.contact}</span>
+          </div>
+        )}
+
+        {event.socialLinksEnabled && (
+          <div class="evd-social-row" data-detail-field="social-links">
+            <span
+              class="event-social-link-list"
+              dangerouslySetInnerHTML={{ __html: renderEventSocialLinksHtml(event.socialLinks) }}
+              onClick={(event) => {
+                const raw = event.target;
+                if (!(raw instanceof Element)) return;
+                const anchor = raw.closest('a');
+                if (!anchor || !event.currentTarget.contains(anchor)) return;
+                openHttpAnchor(event, anchor.getAttribute('href') ?? '');
+              }}
+            />
+          </div>
+        )}
+      </section>
 
       {/* A showEventDetail：有注意事項才顯示整個區塊 */}
       {event.notes && (
