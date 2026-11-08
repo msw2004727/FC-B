@@ -8,6 +8,8 @@ import type { ViewerView } from '@/features/profile/data/viewer';
 import { readEventsSnapshot } from '../../data/events-snapshot-cache';
 import {
   readEarlyEventPromise,
+  readSettledEarlyEvent,
+  rememberEarlyEventResult,
   selectEarlyEventShellText,
   type EarlyEventShellText,
 } from '../../data/early-event-shell';
@@ -27,19 +29,27 @@ interface ShellProps {
 
 /** 提早 REST 只填這次渲染的四個字串。Promise 留在 window 上，不刪、不寫進 snapshot。 */
 function useEarlyEventShell(publicId: string, viewer: ViewerView): EarlyEventShellText | null {
-  const [raw, setRaw] = useState<unknown>(null);
-  const [ready, setReady] = useState(() => readEarlyEventPromise() === null);
+  const [raw, setRaw] = useState<unknown>(() => {
+    const early = readEarlyEventPromise();
+    return early ? readSettledEarlyEvent(early)?.value ?? null : null;
+  });
+  const [ready, setReady] = useState(() => {
+    const early = readEarlyEventPromise();
+    return early === null || readSettledEarlyEvent(early) !== null;
+  });
   useEffect(() => {
     const early = readEarlyEventPromise();
     if (!early) return;
     let alive = true;
     early.then(
       (value) => {
+        rememberEarlyEventResult(early, value);
         if (!alive) return;
         setRaw(value);
         setReady(true);
       },
       () => {
+        rememberEarlyEventResult(early, null);
         if (!alive) return;
         setRaw(null);
         setReady(true);

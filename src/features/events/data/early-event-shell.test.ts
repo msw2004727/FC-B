@@ -118,4 +118,12 @@ describe('selectEarlyEventShellText', () => {
     const page = read('../pages/EventDetailPage.tsx');
     expect(page.match(/setPhase\('ready'\)/g)).toHaveLength(1);
   });
+
+  it('黑名單超過解碼上限（101 筆）時一律不畫，不當成空黑名單放行', () => {
+    const many = Array.from({ length: 101 }, (_v, i) => restStr(`u${i + 1}`));
+    const raw = doc('abc', { title: restStr('秘密'), blockedUids: restArray(many) });
+    expect(selectEarlyEventShellText(raw, 'abc', viewer(null), false)).toBeNull();
+    expect(selectEarlyEventShellText(raw, 'abc', viewer('u101'), false)).toBeNull();
+    expect(selectEarlyEventShellText(raw, 'abc', viewer('other'), false)).toBeNull();
+  });
 });

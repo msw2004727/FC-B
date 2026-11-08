@@ -31,6 +31,18 @@ export function readEarlyEventPromise(): Promise<unknown> | null {
   return early;
 }
 
+/** 已有結果的提早讀取（只在記憶體）：uid 改變重新掛載外殼時同步取用，不再閃佔位（Opus 終審 P2-1）。 */
+let settledEarly: { promise: Promise<unknown>; value: unknown } | null = null;
+
+export function rememberEarlyEventResult(promise: Promise<unknown>, value: unknown): void {
+  settledEarly = { promise, value };
+}
+
+/** 同一個 Promise 已有結果才回傳，否則 null。 */
+export function readSettledEarlyEvent(promise: Promise<unknown>): { value: unknown } | null {
+  return settledEarly?.promise === promise ? { value: settledEarly.value } : null;
+}
+
 /**
  * `name` 最後兩段是 `events` 與 publicId 才算同一份文件。
  * `…/events/abc` 對 `bc` 是後綴碰撞，不算；不看 `fields.id`。
@@ -71,6 +83,8 @@ export function selectEarlyEventShellText(
   const bag = fields as Record<string, unknown>;
 
   const blockedRaw = field(bag, 'blockedUids');
+  // 欄位在但解不出陣列（超過解碼器 100 筆上限或型別不符）一律不畫，不能當成空黑名單放行（Opus 終審 P1-1）。
+  if (Object.prototype.hasOwnProperty.call(bag, 'blockedUids') && !Array.isArray(blockedRaw)) return null;
   const blocked = Array.isArray(blockedRaw) ? blockedRaw : [];
   if (!viewer.uid) {
     if (authHint && blocked.length > 0) return null;

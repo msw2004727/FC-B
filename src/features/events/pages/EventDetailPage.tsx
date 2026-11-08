@@ -260,6 +260,12 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const viewer = useViewer();
   // 快取活在 key 外面：uid 改變會重掛 session，但同一頁的第一次讀取還在。頁面卸載就丟。
   const detailCache = useRef(new Map<string, SessionDetailCacheEntry<LoadedEventDetail>>());
+  // 換活動就清：preact-iso 同一路由元件不重掛，A → B → 返回 A 不能拿 A 的舊讀取（Opus 終審 P2-2）。
+  const cacheRouteId = useRef(routeId);
+  if (cacheRouteId.current !== routeId) {
+    detailCache.current.clear();
+    cacheRouteId.current = routeId;
+  }
 
   // UID/活動變更立即隔離 DOM 與所有未完成操作，避免 effect 清理前洩漏舊資料。
   return (

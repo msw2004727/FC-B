@@ -206,3 +206,13 @@ it('簽到顯示和 handler 使用同一檢查，權限撤回立即拒絕', () =
   fireEvent.click(button);
   expect(onScan).toHaveBeenCalledOnce();
 });
+
+it('提早讀取已有結果時，重新掛載（例如 uid 改變）第一幀就有標題，不閃佔位', async () => {
+  putEarly({ title: { stringValue: '已到標題' } });
+  const first = render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  await settleEarly();
+  expect(screen.getByRole('heading', { level: 2, name: '已到標題' })).toBeTruthy();
+  first.unmount();
+  render(<EventDetailLoadingShell publicId="public-1" viewer={viewer} goBack={vi.fn()} />);
+  expect(screen.getByRole('heading', { level: 2, name: '已到標題' })).toBeTruthy();
+});

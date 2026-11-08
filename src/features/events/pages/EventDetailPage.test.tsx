@@ -1541,6 +1541,17 @@ describe('T-085 名單展開與進頁讀取', () => {
     expect(mocks.detail).toHaveBeenCalledTimes(1);
   });
 
+  it('換活動 A → B → 返回 A 不沿用 A 的舊讀取（換活動清快取）', async () => {
+    mocks.detail.mockResolvedValue(detail);
+    const view = mount();
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledTimes(1));
+    view.rerender(<LocationProvider><EventDetailPage id="evtA" /></LocationProvider>);
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledTimes(2));
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledTimes(3));
+    expect(mocks.detail.mock.calls.map((call) => call[0])).toEqual(['ce_123_abc', 'evtA', 'ce_123_abc']);
+  });
+
   it('預讀被不會結束的 promise 卡住，報名刷新後再展開會重讀且不卡在載入中', async () => {
     let calls = 0;
     mocks.registrations.mockImplementation(() => {
