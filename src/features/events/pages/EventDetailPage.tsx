@@ -33,7 +33,11 @@ import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
 import { resolveOperator } from '../data/event-lifecycle';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
-import { loadEventDetail, loadEventRegistrations } from '../data/event-detail';
+import { loadEventDetail, loadEventRegistrations, type LoadedEventDetail } from '../data/event-detail';
+import {
+  loadEventDetailThroughSessionCache,
+  type SessionDetailCacheEntry,
+} from '../data/event-detail-session-cache';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
 import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
@@ -254,6 +258,20 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
   const routeId = id ?? location.path.split('/')[2] ?? '';
   const viewer = useViewer();
+  // 快取活在 key 外面：uid 改變會重掛 session，但同一頁的第一次讀取還在。頁面卸載就丟。
+  const detailCache = useRef(new Map<string, SessionDetailCacheEntry<LoadedEventDetail>>());
+  // 換活動就清：preact-iso 同一路由元件不重掛，A → B → 返回 A 不能拿 A 的舊讀取（Opus 終審 P2-2）。
+  const cacheRouteId = useRef(routeId);
+  if (cacheRouteId.current !== routeId) {
+    detailCache.current.clear();
+    cacheRouteId.current = routeId;
+  }
+  // 只有「訪客 → 登入」（登入確認那一次）沿用；換帳號或登出都重讀，保留帳號隔離。
+  const cacheUid = useRef(viewer.uid ?? null);
+  if (cacheUid.current !== (viewer.uid ?? null)) {
+    if (cacheUid.current !== null) detailCache.current.clear();
+    cacheUid.current = viewer.uid ?? null;
+  }
 
   // UID/活動變更立即隔離 DOM 與所有未完成操作，避免 effect 清理前洩漏舊資料。
   return (
@@ -261,6 +279,7 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
       key={`${routeId}:${viewer.uid ?? 'guest'}`}
       publicId={routeId}
       viewer={viewer}
+      detailCache={detailCache.current}
     />
   );
 }
@@ -268,9 +287,11 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
 function EventDetailSession({
   publicId,
   viewer,
+  detailCache,
 }: {
   publicId: string;
   viewer: ReturnType<typeof useViewer>;
+  detailCache: Map<string, SessionDetailCacheEntry<LoadedEventDetail>>;
 }): JSX.Element {
   const t = useT();
   const location = useLocation();
@@ -429,7 +450,7 @@ function EventDetailSession({
       try {
         if (uid) {
           const [loaded, historyResult] = await Promise.all([
-            loadEventDetail(publicId),
+            loadEventDetailThroughSessionCache(detailCache, publicId, reload, loadEventDetail),
             (async () => {
               try {
                 return { rows: await loadViewerRegistrations(uid), failed: false as const };
@@ -442,7 +463,7 @@ function EventDetailSession({
           history = historyResult.rows;
           failedHistory = historyResult.failed;
         } else {
-          detail = await loadEventDetail(publicId);
+          detail = await loadEventDetailThroughSessionCache(detailCache, publicId, reload, loadEventDetail);
         }
       } catch {
         if (current()) setPhase('error');
@@ -483,7 +504,7 @@ function EventDetailSession({
     return () => {
       disposed = true;
     };
-  }, [publicId, viewer.uid, reload]);
+  }, [publicId, viewer.uid, reload, detailCache]);
 
   async function fetchRosterForSnapshot(current: Snapshot, expand = false): Promise<void> {
     // 讀取與展開在同一入口准入；被重讀鎖擋下時不改 UI 狀態。
