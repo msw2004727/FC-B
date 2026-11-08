@@ -2,6 +2,7 @@
  * 活動詳情第一次載入的短時效 promise 快取（T-093 批 5）。
  *
  * 掛在頁面父層，不放進 `loadEventDetail`：簽到、收藏、重新整理與其他呼叫端維持每次真的讀。
+ * 前提：活動文件讀取與登入身分無關（events 公開可讀、loadEventDetail 不帶 uid）。哪天改成依身分不同，這層要加 uid 當鍵或拿掉。
  * 只服務新 session 的 `reload === 0`。進行中與剛完成都算；拒絕不快取；resolve `null`（找不到）要快取。
  */
 

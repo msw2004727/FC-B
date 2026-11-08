@@ -266,6 +266,12 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
     detailCache.current.clear();
     cacheRouteId.current = routeId;
   }
+  // 只有「訪客 → 登入」（登入確認那一次）沿用；換帳號或登出都重讀，保留帳號隔離。
+  const cacheUid = useRef(viewer.uid ?? null);
+  if (cacheUid.current !== (viewer.uid ?? null)) {
+    if (cacheUid.current !== null) detailCache.current.clear();
+    cacheUid.current = viewer.uid ?? null;
+  }
 
   // UID/活動變更立即隔離 DOM 與所有未完成操作，避免 effect 清理前洩漏舊資料。
   return (

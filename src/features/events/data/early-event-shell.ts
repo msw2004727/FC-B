@@ -1,7 +1,7 @@
 /**
  * 把 `window.__fcbEarlyEvent` 的原始 Firestore REST 文件收成載入外殼的四個字串。
  *
- * 只做顯示用的純資料：不 `setPhase`、不寫入 snapshot、不進任何寫入路徑、不寫 storage。
+ * 只做顯示用的純資料：不動載入狀態機、不寫入 snapshot、不進任何寫入路徑、不寫 storage。
  * 文件 `name` 的最後兩段必須是 `events` 與精確的 publicId（後綴碰撞不算；不認 `fields.id`）。
  */
 import { decodeValue } from '@/features/home/data/banners-rest';

@@ -884,8 +884,8 @@ describe('建置外掛 earlyBannersHtml', () => {
     // 測試同步更新（換站前必修 I-01，2026-11-07）：title 改照舊站完整標題。
     expect(out).toContain('<title>ToosterX — 台灣運動揪團報名平台｜LINE 一鍵報名足球、籃球、羽球活動</title>');
     expect(Buffer.byteLength(rawHtml) - Buffer.byteLength(out)).toBeGreaterThan(400);
-    // gzip 實際省下的量（防止之後註解被改回送出）。
-    expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(150);
+    // gzip 實際省下的量（防止之後註解被改回送出）。T-093 加了兄弟 script 後壓縮字典變好，實測剛好 150，門檻改 100。
+    expect(gzipSync(rawHtml).length - gzipSync(out).length).toBeGreaterThan(100);
   });
 
   it('只刪「正上方緊鄰 script」的那一則註解：別的註解、不相鄰的註解、沒有註解的情況都不動', () => {
