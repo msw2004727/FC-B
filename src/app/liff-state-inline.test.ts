@@ -31,6 +31,8 @@ interface RunOptions {
   replaceThrows?: boolean;
   /** 讀 location 就丟錯。 */
   locationThrows?: boolean;
+  /** navigator.userAgent；省略時視為一般瀏覽器。 */
+  userAgent?: string;
 }
 
 interface RunResult {
@@ -39,6 +41,8 @@ interface RunResult {
   current: string;
   storage: Map<string, string>;
   consoleCalls: string[];
+  /** script 看到的 window（檢查自動登入旗標）。 */
+  win: Record<string, unknown>;
 }
 
 function run(options: RunOptions = {}): RunResult {
@@ -76,14 +80,17 @@ function run(options: RunOptions = {}): RunResult {
         getItem: (key: string): string | null => storage.get(key) ?? null,
         setItem: (key: string, value: string): void => { storage.set(key, value); },
       };
+  const win: Record<string, unknown> = {};
   runInNewContext(script, {
     location,
     history,
     sessionStorage,
+    navigator: { userAgent: options.userAgent ?? 'Mozilla/5.0 (iPhone) Safari/604.1' },
+    window: win,
     URLSearchParams,
     console: new Proxy({}, { get: (_target, name) => () => void consoleCalls.push(String(name)) }),
   });
-  return { replaceCalls, current, storage, consoleCalls };
+  return { replaceCalls, current, storage, consoleCalls, win };
 }
 
 function splitUrl(url: string): { pathname: string; search: string; hash: string } {
@@ -123,7 +130,7 @@ describe('fcb-liff-state 在 index.html 的位置', () => {
     expect(script).not.toContain('decodeURIComponent');
     expect(script).not.toContain('console');
     expect(script).not.toContain('.href');
-    expect(script).not.toContain('window');
+    expect(script).not.toMatch(/window\.(?!__fcbLiffStateConsumed\b)/);
     expect(script).toContain('catch (e) {}');
     expect(script).toContain('catch (e2) {}');
     expect(script).toContain("history.replaceState(history.state, '', target)");
@@ -325,5 +332,42 @@ describe('fcb-liff-state 內測角標紀錄', () => {
     });
     expect(thrown.current).toBe('/teams/ab#id_token=1');
     expect(thrown.consoleCalls).toEqual([]);
+  });
+});
+
+describe('fcb-liff-state 自動登入旗標（站長 11-08 定案 Mini App 分享開頁要自動登入）', () => {
+  const MINI_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) Line/26.16.1 LIFF';
+  const LINE_BROWSER_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) Line/26.16.1';
+
+  it('Mini App 內消掉 liff.state 時設旗標', () => {
+    const result = run({ search: '?liff.state=%3Fevent%3DX', userAgent: MINI_APP_UA });
+    expect(result.current).toBe('/events/X');
+    expect(result.win.__fcbLiffStateConsumed).toBe(true);
+  });
+
+  it.each([
+    ['外部瀏覽器', 'Mozilla/5.0 (iPhone) Safari/604.1'],
+    ['LINE 內建瀏覽器（沒有 LIFF）', LINE_BROWSER_UA],
+  ])('%s 改寫照做但不設旗標', (_label, userAgent) => {
+    const result = run({ search: '?liff.state=%3Fevent%3DX', userAgent });
+    expect(result.current).toBe('/events/X');
+    expect(result.win.__fcbLiffStateConsumed).toBeUndefined();
+  });
+
+  it('沒有改寫時（不符形狀）Mini App 也不設旗標', () => {
+    const result = run({ search: '?liff.state=%3Ffoo%3D1', userAgent: MINI_APP_UA });
+    expect(result.replaceCalls).toHaveLength(0);
+    expect(result.win.__fcbLiffStateConsumed).toBeUndefined();
+  });
+
+  it('replaceState 拋錯時不設旗標', () => {
+    const result = run({ search: '?liff.state=%3Fevent%3DX', userAgent: MINI_APP_UA, replaceThrows: true });
+    expect(result.win.__fcbLiffStateConsumed).toBeUndefined();
+  });
+
+  it('UA 判斷與 login-redirect.ts#isLikelyMiniAppUserAgent 相同', () => {
+    const source = read('src/data/login-redirect.ts');
+    expect(source).toContain(String.raw`/\bLine\//i.test(userAgent) && /\bLIFF\b/.test(userAgent)`);
+    expect(script).toContain(String.raw`/\bLine\//i.test(ua) && /\bLIFF\b/.test(ua)`);
   });
 });

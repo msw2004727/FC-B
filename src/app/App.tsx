@@ -161,8 +161,11 @@ export function App({
   // 內測模式只剩角落浮水印（2026-10-20 站長取消白名單閘門與寫入守門）。
   const internalTest = useMemo(() => isInternalTestMode(), []);
   // 從 LINE 授權回來（網址帶 code＋liffClientId 或 liff.state）：登入狀態確認後自動接手登入一次。
+  // T-093：index.html 開頁已在 Mini App 內消掉 liff.state 時，以它設的旗標視同回跳（站長定案分享開頁要自動登入）。
   const resumeLoginRef = useRef(
-    typeof location !== 'undefined' && hasLoginRedirectParams(location.href),
+    (typeof location !== 'undefined' && hasLoginRedirectParams(location.href))
+      || (typeof window !== 'undefined'
+        && (window as Window & { __fcbLiffStateConsumed?: boolean }).__fcbLiffStateConsumed === true),
   );
   // 這次開頁略過「頁面自動要求登入」（auto）：剛在 LINE 授權頁取消、剛登出重整，或本次接手失敗過（Grok 第二輪 P1）。
   // 使用者自己按的登入不受影響。旗標在開頁讀一次就刪，下一次開頁恢復。

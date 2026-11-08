@@ -91,7 +91,13 @@
               sessionStorage.setItem(KEY, JSON.stringify(prev));
             }
           } catch (e2) {}
-          if (target) history.replaceState(history.state, '', target);
+          if (target) {
+            history.replaceState(history.state, '', target);
+            // 站長 11-08 定案：Mini App 分享開頁要自動登入。只在 LINE Mini App（UA 同 login-redirect.ts#isLikelyMiniAppUserAgent）
+            // 設旗標讓 App.tsx 照回跳流程接手；外部瀏覽器一律不設（SDK 不導向時非互動登入會失敗、反而擋掉整頁自動登入）。
+            var ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
+            if (/\bLine\//i.test(ua) && /\bLIFF\b/.test(ua)) window.__fcbLiffStateConsumed = true;
+          }
         } catch (e) {}
       })();
     </script>
