@@ -369,7 +369,7 @@ export function EventDetailInfoSection({
         )}
         <div class="evd-ticket-main">
           <div class="evd-ticket-time" data-detail-field="date">
-            {ticket ? ticket.time : (event.date ?? '')}
+            {ticket?.time || (event.date ?? '')}
           </div>
           <div class="evd-ticket-sub">
             {ticket?.duration && <span>{ticket.duration}</span>}

@@ -119,6 +119,27 @@ describe('C2 票根＋分區小卡', () => {
     expect(document.querySelector('[data-detail-field="date"]')?.textContent).toBe('invalid');
   });
 
+  // Gemini 審查 P2：只有日期沒有時間時，時間列不可留白。
+  it('只有日期沒有時間時，票根照常顯示、時間列退回原字串', () => {
+    renderInfo(detailEvent({ date: '2026/11/09' }));
+    expect(document.querySelector('.evd-ticket-day')?.textContent).toBe('09');
+    expect(document.querySelector('[data-detail-field="date"]')?.textContent).toBe('2026/11/09');
+  });
+
+  it('早鳥窗口內報名卡顯示早鳥積分標籤，窗口外不顯示', () => {
+    const event = detailEvent({
+      date: '2026/11/09 19:00~21:00',
+      regOpenTime: '2026/10/05 12:00',
+      earlyBirdEnabled: true,
+      earlyBirdCost: 20,
+    } as Partial<LegacyDetailEvent>);
+    renderInfo(event);
+    expect(document.querySelector('[data-detail-field="early-bird"]')?.textContent).toBe('早鳥 20 積分');
+    cleanup();
+    renderInfo(event, { nowMs: Date.parse('2026-10-06T09:00:00+08:00') });
+    expect(document.querySelector('[data-detail-field="early-bird"]')).toBeNull();
+  });
+
   it('沒有任何參加條件時整張參加條件卡不出現', () => {
     renderInfo(detailEvent());
     expect(document.querySelector('[data-evd-card="conditions"]')).toBeNull();
