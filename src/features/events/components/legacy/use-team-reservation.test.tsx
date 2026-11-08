@@ -42,8 +42,9 @@ function Harness({ activity = event, who = viewer, loading = false }: {
   const state = getSignupButtonState({ event: { id: current.id, status: current.status },
     viewer: { ...who, roleLevel: 0, hasPermission: () => false }, registrations: [], now: new Date(),
     profile: null, profileLoading: false, historyFailed: false, viewerTeamIds: who.teamIds });
+  // 測試同步更新：11-09 翻牌改進度環，元件已無 flip 屬性，拿掉原本的 flip={null}。
   return <>
-    <EventDetailPrimaryButton state={state} disabled={false} busy={false} flip={null} onClick={() => {}}
+    <EventDetailPrimaryButton state={state} disabled={false} busy={false} onClick={() => {}}
       teamReservation={flow.action ? { ...flow.action, busy: flow.busy, onClick: () => flow.open(flow.action?.preferredTeamId) } : null} />
     <button onClick={() => { void flow.chooseSignupTeam(current).then(mock.chosen); }}>測試報名</button>
     {flow.dialogs}
@@ -185,7 +186,9 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     await waitFor(() => expect(mock.applied).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(mock.toast).toHaveBeenCalledWith({ message: '已更新團隊名額' });
-    const button = screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement;
+    // 測試同步更新：寫入期間按鈕縮成進度環、文字拿掉，無障礙名稱改為忙碌標籤（同一顆按鈕）。
+    const button = screen.getByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
+    expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.disabled).toBe(true);
     fireEvent.click(button); fireEvent.click(button);
     expect(screen.queryByRole('dialog')).toBeNull();

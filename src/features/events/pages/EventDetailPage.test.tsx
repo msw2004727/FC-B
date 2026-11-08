@@ -888,8 +888,11 @@ describe('EventDetailPage', () => {
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenCalledTimes(1);
     expect(mocks.history).toHaveBeenCalledTimes(2);
-    expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
-      .toBe(true);
+    // 測試同步更新：主按鈕先跑完進度環（最短 0.75 秒＋展開）才回到文字，改為等待後再驗停用。
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '立即報名' }) as HTMLButtonElement).disabled)
+        .toBe(true);
+    });
     const companionButton = screen.queryByRole('button', { name: '幫夥伴報名' }) as HTMLButtonElement | null;
     expect(companionButton === null || companionButton.disabled).toBe(true);
 
@@ -2219,7 +2222,8 @@ describe('T-074b 詳情頁整合', () => {
       expect(mocks.registrations).toHaveBeenLastCalledWith(detail.eventDocId);
       expect(document.querySelector('.team-reservation-header-row')).toBeNull();
       expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' });
-      const adjustButton = screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement;
+      // 測試同步更新：名單重讀期間團隊按鈕縮成進度環，無障礙名稱是忙碌標籤（同一顆按鈕）。
+      const adjustButton = screen.getByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
       expect(adjustButton.disabled).toBe(true);
       fireEvent.click(adjustButton); fireEvent.click(adjustButton);
       fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
@@ -2481,7 +2485,10 @@ describe('T-074b 詳情頁整合', () => {
     expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '團隊名額調整失敗，請稍後重試' });
     expect(JSON.stringify(mocks.toastShow.mock.calls) + document.body.textContent).not.toContain('SECRET_FIRESTORE_PATH_STACK');
     expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1);
-    expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false);
+    // 測試同步更新：團隊按鈕跑完進度環（打勾＋展開）才回到文字，改為等待。
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.click(screen.getByRole('button', { name: '調整名額' }));
     expect((screen.getByLabelText('團隊名額') as HTMLInputElement).value).toBe('2');
     expect(document.querySelector('.team-reservation-help')?.textContent).toContain('已被俱樂部成員使用：1');
