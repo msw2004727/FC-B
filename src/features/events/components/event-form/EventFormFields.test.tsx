@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { EventFormFields } from './EventFormFields';
 import { createDefaultFormState, type EventFormState } from '../../data/event-form-model';
+import { formatTaipei } from '@/core/taipei-time';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 
 beforeEach(() => {
@@ -133,7 +134,7 @@ describe('EventFormFields', () => {
 
   it('? 開出對應 CE_INFO 標題（地點 →「活動地點」），點「了解」關閉', () => {
     renderFields();
-    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(13);
+    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(14);
     // ASSUMPTION: 地點輸入與其說明按鈕維持在同一個 .ce-row，以欄位鍵定位。
     const locationRow = document.getElementById('ce-location')?.closest('.ce-row');
     const buttons = locationRow?.querySelectorAll<HTMLButtonElement>('.edu-info-btn');
@@ -204,5 +205,88 @@ describe('EventFormFields', () => {
     const values = Array.from(select.options).map((o) => o.value);
     expect(values).toContain('friendly');
     expect(select.value).toBe('friendly');
+  });
+});
+
+describe('團隊預留自動釋出列', () => {
+  const NOW = Date.parse('2026-06-01T10:00:00+08:00');
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const select = (): HTMLSelectElement => document.getElementById('ce-team-release-hours') as HTMLSelectElement;
+  const note = (): Element | null => document.getElementById('ce-team-release-note');
+
+  it('放在人數上限下面；選項與預設 12、時間充裕不顯示提示', () => {
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-05' } });
+    const max = document.getElementById('ce-max')!;
+    expect(Boolean(max.compareDocumentPosition(select()) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Array.from(select().options).map(option => option.textContent)).toEqual([
+      '不自動釋出', '開始前 3 小時', '開始前 6 小時', '開始前 12 小時', '開始前 24 小時', '開始前 48 小時', '開始前 72 小時',
+    ]);
+    expect(select().value).toBe('12');
+    expect(select().disabled).toBe(false);
+    expect(note()).toBeNull();
+  });
+
+  it('剩 11 小時自動降到 6；不足 3 小時落到不自動釋出', () => {
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '21:00' } });
+    expect(select().value).toBe('6');
+    expect(note()?.textContent).toBe('距開始剩 11 小時，已改為開始前 6 小時');
+    cleanup();
+    renderFields({ state: { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '12:00' } });
+    expect(select().value).toBe('0');
+    expect(note()?.textContent).toBe('距開始不足 3 小時，預設不自動釋出');
+  });
+
+  it('手動選擇送出 hours 並標記非自動；手動超過剩餘時間顯示 warning', () => {
+    const startMs = NOW + 5 * 3_600_000 + 10 * 60_000;
+    const onPatch = vi.fn();
+    const state = {
+      ...createDefaultFormState(),
+      dateVal: formatTaipei(startMs, 'YYYY-MM-DD'),
+      startTime: formatTaipei(startMs, 'HH:mm'),
+    };
+    renderFields({ state, onPatch });
+    // preact testing-library 的 fireEvent.change 在 compat 下會改送 input；select 需原生 change（同 use-team-reservation.test）。
+    select().value = '12';
+    fireEvent(select(), new Event('change', { bubbles: true }));
+    expect(onPatch).toHaveBeenCalledWith({ teamReservationReleaseHours: 12, teamReservationReleaseAuto: false });
+    cleanup();
+    renderFields({ state: { ...state, teamReservationReleaseHours: 12, teamReservationReleaseAuto: false } });
+    expect(select().value).toBe('12');
+    expect(note()?.textContent).toBe('距開始已不足 12 小時，儲存後會立即釋出');
+    expect((note() as HTMLElement).style.color).toBe('var(--warning)');
+  });
+
+  it('編輯舊活動顯示不自動釋出；已釋出時鎖住並說明', () => {
+    renderFields({
+      mode: 'edit',
+      state: { ...createDefaultFormState(), eventId: 'e1', dateVal: '2026-06-01', startTime: '21:00', teamReservationReleaseHours: 0, teamReservationReleaseAuto: false },
+    });
+    expect(select().value).toBe('0');
+    expect(note()).toBeNull();
+    cleanup();
+    renderFields({
+      mode: 'edit',
+      state: {
+        ...createDefaultFormState(),
+        eventId: 'e2',
+        dateVal: '2026-06-01',
+        startTime: '21:00',
+        teamReservationReleaseHours: 12,
+        teamReservationReleaseAuto: false,
+        teamReservationReleased: true,
+      },
+    });
+    expect(select().disabled).toBe(true);
+    expect(select().value).toBe('12');
+    expect(note()?.textContent).toBe('已釋出（每場只執行一次；之後手動預留不會再自動釋出）');
   });
 });

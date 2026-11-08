@@ -174,3 +174,62 @@ describe('C2 票根＋分區小卡', () => {
     expect(document.querySelector('.evd-progress-reserved')).toBeTruthy();
   });
 });
+
+describe('C2 報名卡：團隊預留自動釋出', () => {
+  const START = Date.parse('2026-11-20T20:00:00+08:00');
+  const H = 3_600_000;
+  const base = {
+    max: 20,
+    date: '2026/11/20 20:00~22:00',
+    teamReservationSummaries: [{ teamId: 't1', remainingSlots: 4 }],
+  };
+  const meta = (): Element | null => document.querySelector('[data-detail-field="capacity-count"] .evd-reg-meta');
+
+  it('倒數接在「團隊保留 M」後面，span 帶顏色 class；剩不到 1 小時改 warning class', () => {
+    renderInfo(detailEvent({ ...base, teamReservationReleaseHours: 12 } as Partial<LegacyDetailEvent>), {
+      confirmed: 12, waitlist: 2, nowMs: START - 18 * H,
+    });
+    expect(meta()?.textContent).toBe('剩 4 · 團隊保留 4 · 6 小時後釋出 · 候補 2');
+    const span = meta()?.querySelector('.evd-reg-release');
+    expect(span?.textContent).toBe('6 小時後釋出');
+    expect(span?.classList.contains('is-soon')).toBe(false);
+    cleanup();
+    renderInfo(detailEvent({ ...base, teamReservationReleaseHours: 12 } as Partial<LegacyDetailEvent>), {
+      confirmed: 12, nowMs: START - 12 * H - 30 * 60_000,
+    });
+    expect(meta()?.querySelector('.evd-reg-release.is-soon')?.textContent).toBe('30 分鐘後釋出');
+  });
+
+  it('已釋出且摘要非空：「團隊保留已釋出」不帶數字；摘要空則維持原文字', () => {
+    renderInfo(detailEvent({
+      max: 20,
+      date: base.date,
+      teamReservationReleaseHours: 12,
+      teamReservationReleasedAt: { seconds: 1 },
+      teamReservationReleasedSummary: [{ teamId: 't1', teamName: 'A', releasedSlots: 3 }],
+    } as Partial<LegacyDetailEvent>), { confirmed: 18, waitlist: 1, nowMs: START - H });
+    expect(meta()?.textContent).toBe('剩 2 · 團隊保留已釋出 · 候補 1');
+    cleanup();
+    renderInfo(detailEvent({
+      max: 20,
+      date: base.date,
+      teamReservationReleaseHours: 12,
+      teamReservationReleasedAt: { seconds: 1 },
+      teamReservationReleasedSummary: [],
+    } as Partial<LegacyDetailEvent>), { confirmed: 18, waitlist: 1, nowMs: START - H });
+    expect(meta()?.textContent).toBe('剩 2 · 候補 1');
+    expect(meta()?.textContent).not.toContain('釋出');
+  });
+
+  it('hours 為 0 或沒有欄位：與原本文字完全相同', () => {
+    for (const extra of [{ teamReservationReleaseHours: 0 }, {}]) {
+      renderInfo(detailEvent({ ...base, ...extra } as Partial<LegacyDetailEvent>), {
+        confirmed: 12, waitlist: 2, nowMs: START - 18 * H,
+      });
+      expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+        .toBe('已報 12/20剩 4 · 團隊保留 4 · 候補 2');
+      expect(document.querySelector('.evd-reg-release')).toBeNull();
+      cleanup();
+    }
+  });
+});

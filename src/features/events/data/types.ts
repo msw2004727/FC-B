@@ -58,6 +58,13 @@ export interface EventDoc {
   ownerName?: string;
   organizer?: string;
   organizerDisplay?: string;
+  /* ── 團隊預留自動釋出（FC 計畫書 §3.1）：Hours 由建立／編輯寫；後兩者只由 Functions 寫，前端唯讀 ── */
+  /** number，允許 0/3/6/12/24/48/72；缺省或非允許值視為 0（不自動釋出）。 */
+  teamReservationReleaseHours?: unknown;
+  /** Firestore Timestamp；存在即終態。 */
+  teamReservationReleasedAt?: unknown;
+  /** `[{ teamId, teamName, releasedSlots }]`；讀取前先驗形狀。 */
+  teamReservationReleasedSummary?: unknown;
 }
 
 export interface RegistrationDoc {

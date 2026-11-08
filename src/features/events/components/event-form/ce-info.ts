@@ -13,6 +13,7 @@ export type CeInfoKey =
   | 'regOpen'
   | 'fee'
   | 'max'
+  | 'teamReservationRelease'
   | 'age'
   | 'teamOnly'
   | 'delegate'
@@ -62,6 +63,11 @@ export const CE_INFO: Readonly<Record<CeInfoKey, { title: string; body: string }
   max: {
     title: "人數上限",
     body: "設定最多可報名的人數。額滿後新報名者自動進入<b>候補名單</b>，有人取消時系統依報名順序自動遞補。",
+  },
+  // B 新增（非 A 原文；FC 計畫書 team-reservation-auto-release §3.3）。
+  teamReservationRelease: {
+    title: "團隊預留自動釋出",
+    body: "活動開始前指定時間，系統自動把各團隊尚未用到的預留名額釋出給所有人報名，候補依順序遞補。<p style=\"margin:.3rem 0 0;color:var(--text-muted);font-size:.8rem\">每場只執行一次；選「不自動釋出」則保留到活動開始。</p>",
   },
   age: {
     title: "年齡限制",
