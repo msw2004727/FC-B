@@ -873,7 +873,7 @@ describe('團隊預留自動釋出（FC 計畫書 §3.3）', () => {
     const base = { ...createDefaultFormState(), dateVal: '2026-06-01', startTime: '21:00' }; // 剩 11 小時
     expect(resolveTeamReservationReleaseHours(base, base.dateVal, NOW)).toBe(6);
     expect(resolveTeamReservationReleaseHours({ ...base, startTime: '15:00' }, base.dateVal, NOW)).toBe(3);
-    expect(resolveTeamReservationReleaseHours({ ...base, dateVal: '2026-06-03' }, '2026-06-03', NOW)).toBe(12);
+    expect(resolveTeamReservationReleaseHours(base, '2026-06-03', NOW)).toBe(12);
     const manual = { ...base, teamReservationReleaseHours: 24, teamReservationReleaseAuto: false };
     expect(resolveTeamReservationReleaseHours(manual, manual.dateVal, NOW)).toBe(24);
   });
