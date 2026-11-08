@@ -316,6 +316,9 @@ describe('TopBar (legacy A DOM & CSS)', () => {
 
     const userTopbar = container.querySelector('#line-user-topbar');
     expect(userTopbar?.classList.contains('has-identity-crown')).toBe(true);
+    // 皇冠是 SVG（.identity-crown），不是 emoji
+    expect(userTopbar?.querySelector('svg.identity-crown')).toBeTruthy();
+    expect(userTopbar?.textContent).not.toContain(String.fromCodePoint(0x1f451));
 
     const avatar = container.querySelector<HTMLElement>('#line-avatar-topbar')!;
     const menu = container.querySelector<HTMLElement>('#user-menu-dropdown')!;

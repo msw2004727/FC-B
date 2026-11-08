@@ -20,6 +20,7 @@ import { useInboxBadgeCounts } from '@/features/inbox/data/inbox-badge';
 import { lt } from '@/i18n/i18n';
 import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
+import { IdentityCrownSvg } from './IdentityCrown';
 
 export interface TopBarProps {
   onMenuClick: () => void;
@@ -571,12 +572,8 @@ export function TopBar({
                     initial
                   )}
                 </button>
-                {/* ASSUMPTION: 第二身份皇冠 DOM 照 A `_identityCrownBadgeHtml()` 使用 `.identity-crown-badge` */}
-                {crown && (
-                  <span class="identity-crown-badge" aria-hidden="true">
-                    👑
-                  </span>
-                )}
+                {/* 第二身份皇冠：照 A `_identityCrownBadgeHtml()` 的 SVG，疊在頭像正上方（原本誤用 emoji 排在頭像右側） */}
+                {crown && <IdentityCrownSvg />}
                 <div
                   ref={userMenuRef}
                   id="user-menu-dropdown"
