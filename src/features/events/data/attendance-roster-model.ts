@@ -51,6 +51,7 @@ export interface RosterRegistrationInput {
   companionId?: unknown;
   companionName?: unknown;
   registeredAt?: unknown;
+  waitlistSortAt?: unknown;
   promotionOrder?: unknown;
   displayBadges?: unknown;
   teamKey?: unknown;
@@ -191,7 +192,18 @@ function parseBadges(raw: unknown): RosterDisplayBadge[] {
 }
 
 function regTimeMs(reg: RosterRegistrationInput): number {
-  const v = reg?.registeredAt;
+  return timeValueMs(reg?.registeredAt);
+}
+
+/**
+ * 候補排序時間：被手動下放時 Functions 寫入的 `waitlistSortAt`（排到候補最後）優先，缺值退回 `registeredAt`。
+ * 與 Functions `sortWaitlistCandidates` 一致（2026-11-07 站長定案 F3／F6）。
+ */
+function waitlistTimeMs(reg: RosterRegistrationInput): number {
+  return timeValueMs(reg?.waitlistSortAt || reg?.registeredAt);
+}
+
+function timeValueMs(v: unknown): number {
   if (!v) return Number.POSITIVE_INFINITY;
   if (typeof v === 'object' && v !== null) {
     const obj = v as { toMillis?: () => number; seconds?: unknown; nanoseconds?: unknown };
@@ -816,7 +828,7 @@ export function attendanceStateFor(
 /**
  * 對照 A `event-detail.js#_renderGroupedWaitlistSection`（第 1726～1772 行）。
  *
- * 排序：`registeredAt` → `promotionOrder` → `_docId/id` → `userName`。
+ * 排序：`waitlistSortAt`（缺值用 `registeredAt`）→ `promotionOrder` → `_docId/id` → `userName`。
  * 分組：依 `userId`（`regOwnerUid`）分組。
  * R-ID-002 刻意不移植：不移植 `_getWaitlistFallbackNames` 與 `event.waitlistNames` 名字重排。
  */
@@ -833,8 +845,8 @@ export function buildWaitlistRoster(
     .filter((r) => str(r.status) === 'waitlisted')
     .slice()
     .sort((a, b) => {
-      const ta = regTimeMs(a);
-      const tb = regTimeMs(b);
+      const ta = waitlistTimeMs(a);
+      const tb = waitlistTimeMs(b);
       if (ta !== tb) return ta - tb;
       const pa = num(a.promotionOrder);
       const pb = num(b.promotionOrder);
