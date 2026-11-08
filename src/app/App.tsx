@@ -94,6 +94,10 @@ const LazyPmBubbleHost = lazyComponent(() =>
 const LazyPmDialogHost = lazyComponent(() =>
   import('@/features/inbox/components/PmDialogHost').then((m) => ({ default: m.PmDialogHost })),
 );
+// 收件匣共用訂閱（鈴鐺紅點與收件匣頁共用）：同樣 lazy，避免首屏帶入資料層。
+const LazyInboxStoreHost = lazyComponent(() =>
+  import('@/features/inbox/components/InboxStoreHost').then((m) => ({ default: m.InboxStoreHost })),
+);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
@@ -486,6 +490,10 @@ export function App({
       <IdentitySettingsBridge uid={chromeUid} />
       <Suspense fallback={null}>
         {chromeUid !== null && <LazyPmBubbleHost uid={chromeUid} />}
+      </Suspense>
+      <Suspense fallback={null}>
+        {/* 照 A 登入後常駐收件匣監聽；登出時卸載即退訂、紅點歸零。 */}
+        {chromeUid !== null && <LazyInboxStoreHost uid={chromeUid} />}
       </Suspense>
       <Suspense fallback={null}>
         {/* 私訊只在登入後可用；未登入不載入浮層外框。 */}

@@ -11,14 +11,21 @@ import {
   applyInboxView,
   clearAll,
   deleteMessage,
+  filterByDate,
+  getMessageDisplayTime,
   isPendingActionMessage,
   isUnread,
   markAllRead,
   markRead,
-  subscribeInbox,
   type InboxMessage,
 } from '../data/inbox-repo';
-import { subscribeThreads, type PmThread } from '../data/pm-repo';
+import type { PmThread } from '../data/pm-repo';
+import {
+  ensureInboxStore,
+  retryInboxMessages,
+  retryInboxThreads,
+  useInboxStore,
+} from '../data/inbox-store';
 import { openPmDialog } from '../components/pm-dialog-store';
 import { formatPmTime } from '../components/pm-message-format';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -52,6 +59,15 @@ const TEAM_JOIN_STATUS: Record<string, { style: string; label: string }> = {
   ignored: { style: 'background:var(--border);color:var(--text-secondary)', label: '已忽略' },
 };
 
+const EMPTY_MESSAGES: InboxMessage[] = [];
+const EMPTY_THREADS: PmThread[] = [];
+
+/** 共用訂閱狀態 → 畫面狀態（尚未啟動視同載入中）。 */
+function toViewStatus(status: string): 'loading' | 'ready' | 'error' {
+  if (status === 'ready' || status === 'error') return status;
+  return 'loading';
+}
+
 /** 照 A `_pmTimeMs`：取時間毫秒，用於私訊對話卡排序。 */
 function pmTimeMs(value: unknown): number {
   if (value && typeof value === 'object') {
@@ -79,10 +95,26 @@ export default function InboxPage(): JSX.Element {
   const viewer = useViewer();
   const uid = viewer.uid;
 
-  // 收件匣狀態
-  const [inboxStatus, setInboxStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [inboxAttempt, setInboxAttempt] = useState(0);
-  const [messages, setMessages] = useState<InboxMessage[]>([]);
+  // 收件匣與私訊對話：讀 App 層共用訂閱（inbox-store），不再自己訂閱。
+  const store = useInboxStore();
+  const storeReady = uid !== null && store.uid === uid;
+  const baseMessages = storeReady ? store.messages : EMPTY_MESSAGES;
+  const inboxStatus = toViewStatus(storeReady ? store.messagesStatus : 'loading');
+  const threads = storeReady ? store.threads : EMPTY_THREADS;
+  const threadsStatus = toViewStatus(storeReady ? store.threadsStatus : 'loading');
+
+  // 已讀／全讀的即時畫面更新：綁在當下那份訂閱資料上；下一次快照到來即以伺服器資料為準（同原本行為）。
+  const [optimistic, setOptimistic] = useState<{
+    base: InboxMessage[];
+    list: InboxMessage[];
+  } | null>(null);
+  const messages = optimistic && optimistic.base === baseMessages ? optimistic.list : baseMessages;
+  const setMessages = (update: (prev: InboxMessage[]) => InboxMessage[]): void => {
+    setOptimistic((prev) => {
+      const current = prev && prev.base === baseMessages ? prev.list : baseMessages;
+      return { base: baseMessages, list: update(current) };
+    });
+  };
 
   // 篩選與頁籤
   const [activeTab, setActiveTab] = useState<InboxTabKey>('all');
@@ -101,11 +133,6 @@ export default function InboxPage(): JSX.Element {
     runningKey: null,
   });
 
-  // 私訊對話列表
-  const [threadsStatus, setThreadsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [threadsAttempt, setThreadsAttempt] = useState(0);
-  const [threads, setThreads] = useState<PmThread[]>([]);
-
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
 
@@ -116,55 +143,10 @@ export default function InboxPage(): JSX.Element {
     };
   }, []);
 
-  // 訂閱收件匣
+  // App 層 lazy 主機尚未載入時的備援；已啟動（含其他 uid 過渡期）不重訂。
   useEffect(() => {
-    if (!uid) {
-      setMessages([]);
-      setInboxStatus('loading');
-      return;
-    }
-    setInboxStatus('loading');
-    const unsub = subscribeInbox(
-      uid,
-      (next) => {
-        if (!mountedRef.current) return;
-        setMessages(next);
-        setInboxStatus('ready');
-      },
-      () => {
-        if (!mountedRef.current) return;
-        setInboxStatus('error');
-      },
-    );
-    return () => {
-      unsub();
-    };
-  }, [uid, inboxAttempt]);
-
-  // 訂閱私訊對話列表（A `startPmThreadListener` 也是進站即啟動）
-  useEffect(() => {
-    if (!uid) {
-      setThreads([]);
-      setThreadsStatus('loading');
-      return;
-    }
-    setThreadsStatus('loading');
-    const unsub = subscribeThreads(
-      uid,
-      (next) => {
-        if (!mountedRef.current) return;
-        setThreads(next);
-        setThreadsStatus('ready');
-      },
-      () => {
-        if (!mountedRef.current) return;
-        setThreadsStatus('error');
-      },
-    );
-    return () => {
-      unsub();
-    };
-  }, [uid, threadsAttempt]);
+    if (uid) ensureInboxStore(uid);
+  }, [uid]);
 
   // U-043：搜尋 180ms 去抖；計時器卸載清掉
   useEffect(() => {
@@ -192,11 +174,7 @@ export default function InboxPage(): JSX.Element {
     }
     const df = filterDate.trim();
     if (df) {
-      const parts = df.split('-');
-      if (parts.length === 3) {
-        const filterStr = `${parts[0]}/${parts[1]}/${parts[2]}`;
-        list = list.filter((m) => String(m.time ?? '').startsWith(filterStr));
-      }
+      list = filterByDate(list, df);
     }
     return list;
   }, [messages, activeTab, debouncedSearchKeyword, filterDate]);
@@ -899,7 +877,7 @@ export default function InboxPage(): JSX.Element {
                     <span class="msg-title">{String(msg.title ?? '')}</span>
                   </div>
                   <div class="msg-preview">{String(msg.preview ?? '')}</div>
-                  <div class="msg-time">{String(msg.time ?? '')}</div>
+                  <div class="msg-time">{getMessageDisplayTime(msg)}</div>
                 </div>
               );
             })}
@@ -929,7 +907,7 @@ export default function InboxPage(): JSX.Element {
                 type="button"
                 class="outline-btn"
                 style={{ fontSize: '.72rem', padding: '.28rem .5rem', marginTop: '.4rem' }}
-                onClick={() => setInboxAttempt((v) => v + 1)}
+                onClick={retryInboxMessages}
               >
                 {lt('重試', '重試')}
               </button>
@@ -949,7 +927,7 @@ export default function InboxPage(): JSX.Element {
                 type="button"
                 class="outline-btn"
                 style={{ fontSize: '.72rem', padding: '.28rem .5rem', marginTop: '.4rem' }}
-                onClick={() => setThreadsAttempt((v) => v + 1)}
+                onClick={retryInboxThreads}
               >
                 {lt('重試', '重試')}
               </button>
@@ -1022,7 +1000,7 @@ export default function InboxPage(): JSX.Element {
                     {resolveTypeLabel(selectedMessage)}
                   </span>
                   <span style={{ marginLeft: '.4rem' }}>
-                    {String(selectedMessage.time ?? '')}
+                    {getMessageDisplayTime(selectedMessage)}
                   </span>
                   {selectedMessage.senderName && (
                     <span style={{ marginLeft: '.4rem' }} data-no-translate>

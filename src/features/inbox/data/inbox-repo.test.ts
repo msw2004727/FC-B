@@ -31,7 +31,11 @@ import {
   clearAll,
   countUnread,
   deleteMessage,
+  filterByDate,
   filterByType,
+  getMessageDisplayTime,
+  getMessageTimeMs,
+  INBOX_LISTEN_LIMIT,
   isUnread,
   markAllRead,
   markRead,
@@ -105,6 +109,76 @@ describe('inbox-repo 純函式', () => {
   });
 });
 
+// 台北 2026/11/08 10:00 的絕對毫秒（UTC 02:00）。
+const TPE_1108_1000 = Date.UTC(2026, 10, 8, 2, 0);
+const tsLike = (ms: number) => ({ toMillis: () => ms });
+const tsSeconds = (ms: number) => ({ seconds: Math.floor(ms / 1000), nanoseconds: (ms % 1000) * 1_000_000 });
+
+describe('inbox-repo 時間（照 A _getMessageTimeMs）', () => {
+  it('getMessageTimeMs：timestamp 優先，再 createdAt，最後 time 字串（台北牆鐘）；都沒有回 0', () => {
+    expect(getMessageTimeMs({ id: 'a', timestamp: tsLike(5000), createdAt: tsLike(9000) })).toBe(5000);
+    expect(getMessageTimeMs({ id: 'b', createdAt: tsLike(TPE_1108_1000) })).toBe(TPE_1108_1000);
+    expect(getMessageTimeMs({ id: 'c', createdAt: tsSeconds(TPE_1108_1000 + 123) })).toBe(TPE_1108_1000 + 123);
+    expect(getMessageTimeMs({ id: 'd', createdAt: TPE_1108_1000 })).toBe(TPE_1108_1000);
+    expect(getMessageTimeMs({ id: 'e', time: '2026/11/08 10:00' })).toBe(TPE_1108_1000);
+    // createdAt 缺值或壞值 → 退回 time
+    expect(getMessageTimeMs({ id: 'f', createdAt: null, time: '2026/11/08 10:00' })).toBe(TPE_1108_1000);
+    expect(getMessageTimeMs({ id: 'g', createdAt: 'not-a-date', time: '2026/11/08 10:00' })).toBe(TPE_1108_1000);
+    expect(getMessageTimeMs({ id: 'h' })).toBe(0);
+    expect(getMessageTimeMs({ id: 'i', time: '亂碼' })).toBe(0);
+    expect(getMessageTimeMs(null)).toBe(0);
+  });
+
+  it('sortByTimeDesc：有／沒有 time 混排，createdAt 為 Timestamp、毫秒或缺值，新的在前', () => {
+    const msgs: InboxMessage[] = [
+      { id: 'old-time', time: '2026/11/01 09:00' },
+      { id: 'sys-ts', createdAt: tsLike(TPE_1108_1000) }, // 伺服器通知：只有 createdAt
+      { id: 'missing' }, // 缺值排最後
+      { id: 'sys-ms', createdAt: TPE_1108_1000 - 60_000 },
+      { id: 'sys-sec', createdAt: tsSeconds(TPE_1108_1000 + 60_000) },
+      { id: 'mid-time', time: '2026/11/05 12:00' },
+    ];
+    expect(sortByTimeDesc(msgs).map((m) => m.id)).toEqual([
+      'sys-sec',
+      'sys-ts',
+      'sys-ms',
+      'mid-time',
+      'old-time',
+      'missing',
+    ]);
+  });
+
+  it('getMessageDisplayTime：有 time 原樣顯示；沒有時用 createdAt 轉台北時間（格式同 A 的 time）', () => {
+    expect(getMessageDisplayTime({ id: 'a', time: '2025/01/01 10:00', createdAt: tsLike(TPE_1108_1000) }))
+      .toBe('2025/01/01 10:00');
+    expect(getMessageDisplayTime({ id: 'b', createdAt: tsLike(TPE_1108_1000) })).toBe('2026/11/08 10:00');
+    expect(getMessageDisplayTime({ id: 'c', createdAt: tsSeconds(TPE_1108_1000) })).toBe('2026/11/08 10:00');
+    expect(getMessageDisplayTime({ id: 'd', createdAt: TPE_1108_1000 })).toBe('2026/11/08 10:00');
+    // 台北 00:30（UTC 前一天 16:30）要落在台北當天
+    expect(getMessageDisplayTime({ id: 'e', createdAt: Date.UTC(2026, 10, 7, 16, 30) })).toBe('2026/11/08 00:30');
+    expect(getMessageDisplayTime({ id: 'f', time: '' })).toBe('');
+    expect(getMessageDisplayTime({ id: 'g' })).toBe('');
+  });
+
+  it('filterByDate：比對顯示時間的 YYYY/MM/DD，含只有 createdAt 的通知', () => {
+    const msgs: InboxMessage[] = [
+      { id: 'with-time', time: '2026/11/08 09:00' },
+      { id: 'sys', createdAt: tsLike(TPE_1108_1000) },
+      { id: 'sys-late-night', createdAt: Date.UTC(2026, 10, 7, 16, 30) }, // 台北 11/08 00:30
+      { id: 'other-day', createdAt: tsLike(TPE_1108_1000 - 86_400_000) },
+      { id: 'none' },
+    ];
+    expect(filterByDate(msgs, '2026-11-08').map((m) => m.id)).toEqual([
+      'with-time',
+      'sys',
+      'sys-late-night',
+    ]);
+    expect(filterByDate(msgs, '2026-11-07').map((m) => m.id)).toEqual(['other-day']);
+    // 格式不對不過濾
+    expect(filterByDate(msgs, '')).toHaveLength(5);
+  });
+});
+
 describe('inbox-repo 訂閱', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -128,6 +202,39 @@ describe('inbox-repo 訂閱', () => {
     await vi.waitFor(() => expect(mocks.onSnapshot).toHaveBeenCalled());
     cleanup();
     expect(unsubInner).toHaveBeenCalled();
+  });
+
+  it('subscribeInbox 照 A 用 orderBy(createdAt desc).limit(200)，不全量讀取', async () => {
+    const cleanup = subscribeInbox('user1', vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(mocks.onSnapshot).toHaveBeenCalled());
+    expect(INBOX_LISTEN_LIMIT).toBe(200);
+    expect(mocks.orderBy).toHaveBeenCalledWith('createdAt', 'desc');
+    expect(mocks.limit).toHaveBeenCalledWith(200);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it('subscribeInbox 快照依時間排序後交出（只有 createdAt 的通知排前面）', async () => {
+    let emit: ((snap: unknown) => void) | null = null;
+    const onSnapshotMock = mocks.onSnapshot as unknown as {
+      mockImplementationOnce: (fn: (q: unknown, next: (snap: unknown) => void) => () => void) => void;
+    };
+    onSnapshotMock.mockImplementationOnce((_q, next) => {
+      emit = next;
+      return () => undefined;
+    });
+    const onChange = vi.fn();
+    const cleanup = subscribeInbox('user1', onChange, vi.fn());
+    await vi.waitFor(() => expect(emit).not.toBeNull());
+    const docs = [
+      { id: 'old', data: () => ({ time: '2025/01/01 10:00' }) },
+      { id: 'sys', data: () => ({ createdAt: tsLike(TPE_1108_1000) }) },
+    ];
+    (emit as unknown as (snap: unknown) => void)({ docs });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const out = onChange.mock.calls[0]?.[0] as InboxMessage[];
+    expect(out.map((m) => m.id)).toEqual(['sys', 'old']);
+    cleanup();
   });
 
   it('subscribeInbox 有 uid 為空時丟錯', () => {
