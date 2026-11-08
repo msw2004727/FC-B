@@ -648,7 +648,9 @@ describe('T-086a 本人報名／取消縮短往返', () => {
       await vi.advanceTimersByTimeAsync(200);
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(15_700); });
+    // act 內的 render 延到 act 結束才提交：先跑到 15 秒上限放行，再另開一次 act 跑完補滿＋✓＋展開。
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
     const stale = screen.getByRole('button', { name: '立即報名' });
     await act(async () => {
       fireEvent.click(stale);
