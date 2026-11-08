@@ -10,6 +10,7 @@
 
 import type { Firestore } from 'firebase/firestore';
 
+import { RELOAD_AT_KEY } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
 import { APP_VERSION } from '@/version';
 
@@ -151,12 +152,15 @@ function tryConsumeBudget(now: number): 'ok' | 'full' | 'broken' {
 /** LINE 開頁會把 access_token 等憑證放在網址片段／參數；只留鍵名，值一律遮掉。 */
 const SECRET_PARAM_RE = /token|code|state|secret|challenge|client_id|password|key/i;
 
-/** 文字裡任何 `?key=` `&key=` `#key=` `;key=` 且 key 像憑證的值都遮掉；JWT 形狀的字串也遮（errorMessage／errorStack 用）。 */
-const SECRET_IN_TEXT_RE = /([?&#;][\w.%-]*(?:token|code|state|secret|challenge|client_id|password)=)[^&#;\s'"<>)]*/gi;
+/** 文字裡任何 `?key=` `&key=` `#key=` `;key=`（或開頭、空白、引號後）且 key 像憑證的值都遮掉；JWT 形狀的字串也遮（errorMessage／errorStack 用）。 */
+const SECRET_WORDS = 'token|code|state|secret|challenge|client_id|password|key';
+const SECRET_IN_TEXT_RE = new RegExp(String.raw`((?:^|[?&#;\s'"(])[\w.%-]*(?:${SECRET_WORDS})=)[^&#;\s'"<>)]*`, 'gi');
+/** 非 Error 的 rejection 經 JSON.stringify 後是 "access_token":"…"。 */
+const SECRET_IN_JSON_RE = new RegExp(String.raw`("[\w.-]*(?:${SECRET_WORDS})"\s*:\s*")[^"]*`, 'gi');
 const JWT_RE = /eyJ[\w-]{8,}\.[\w.-]+/g;
 
 export function scrubSecrets(text: string): string {
-  return text.replace(SECRET_IN_TEXT_RE, '$1***').replace(JWT_RE, '***');
+  return text.replace(SECRET_IN_TEXT_RE, '$1***').replace(SECRET_IN_JSON_RE, '$1***').replace(JWT_RE, '***');
 }
 
 function safeDecode(raw: string): string {
@@ -198,8 +202,8 @@ function readLocation(): { page: string; url: string; hash: string } {
   try {
     return {
       page: location.pathname || '',
-      url: redactUrl(location.href || ''),
-      hash: redactHash(location.hash || ''),
+      url: scrubSecrets(redactUrl(location.href || '')),
+      hash: scrubSecrets(redactHash(location.hash || '')),
     };
   } catch {
     return { page: '', url: '', hash: '' };
@@ -208,8 +212,6 @@ function readLocation(): { page: string; url: string; hash: string } {
 
 const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
 
-/** 與 chunk-reload.ts 的 RELOAD_AT_KEY 相同（該常數未匯出）。 */
-const CHUNK_RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const DIAG_ASSET_LIMIT = 8;
 /** pagehide 之後才發生的錯誤多半是跳頁中斷，不是真的載入失敗。 */
 let leaving = false;
@@ -225,7 +227,7 @@ function readSwState(): string {
 
 function readSinceChunkReload(): number | null {
   try {
-    const at = Number(sessionStorage.getItem(CHUNK_RELOAD_AT_KEY) || 0);
+    const at = Number(sessionStorage.getItem(RELOAD_AT_KEY) || 0);
     return at ? Date.now() - at : null;
   } catch {
     return null;
@@ -238,11 +240,13 @@ function readSinceChunkReload(): number | null {
  */
 function readModuleLoadDiag(): string {
   let assets: { f: string; b: number | null; ts: number | null; it: string }[] = [];
+  let n = 0;
   try {
     const prefix = `${location.origin}/assets/`;
     const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
-    assets = entries
-      .filter((e) => e.name.startsWith(prefix))
+    const code = entries.filter((e) => e.name.startsWith(prefix) && /\.(?:js|css)(?:$|\?)/.test(e.name));
+    n = code.length;
+    assets = code
       .slice(-DIAG_ASSET_LIMIT)
       .map((e) => ({
         f: e.name.slice(prefix.length, prefix.length + 80),
@@ -261,6 +265,7 @@ function readModuleLoadDiag(): string {
       leaving,
       t: Math.round(performance.now()),
       rl: readSinceChunkReload(),
+      n,
       assets,
     });
   } catch {
@@ -381,6 +386,7 @@ export function installErrorReporter(): void {
     window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
   } catch (err) {
     installed = false;
     warnFailure(err);
@@ -389,6 +395,11 @@ export function installErrorReporter(): void {
 
 function onPageHide(): void {
   leaving = true;
+}
+
+/** 從 bfcache 還原時重設。 */
+function onPageShow(): void {
+  leaving = false;
 }
 
 function onWindowError(event: Event): void {
@@ -437,6 +448,7 @@ export function _resetErrorReporterForTest(): void {
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
     window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
   }
   installed = false;
 }

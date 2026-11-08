@@ -57,6 +57,7 @@ describe('error-report', () => {
   beforeEach(() => {
     _resetErrorReporterForTest();
     localStorage.clear();
+    sessionStorage.clear();
     currentUser = null;
     window.history.replaceState(null, '', '/');
     mockAddDoc.mockReset();
@@ -76,6 +77,7 @@ describe('error-report', () => {
     _resetErrorReporterForTest();
     vi.restoreAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('未登入不寫', async () => {
@@ -283,6 +285,25 @@ describe('error-report', () => {
     expect(payload.errorStack).toBe('global code@https://toosterx.com/?state=***#access_token=***&x=1');
   });
 
+  it('非 Error 的 rejection 物件與開頭就是憑證的字串也遮掉', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    reportClientError('unhandledrejection', { access_token: 'SECRET_J1', api_key: 'SECRET_J2', ok: 1 });
+    reportClientError('unhandledrejection', 'access_token=SECRET_J3 failed');
+    await waitForWrites(2);
+    expect(JSON.stringify(mockAddDoc.mock.calls)).not.toContain('SECRET_');
+  });
+
+  it('從 bfcache 還原後不再標成離開中', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    installErrorReporter();
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pageshow'));
+    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.parse(String(payload.diag))).toMatchObject({ leaving: false });
+  });
+
   it('程式檔載入失敗時附上診斷：只列同源 /assets，iOS 沒有 responseStatus 也照寫', async () => {
     currentUser = { uid: 'u1', displayName: '小明' };
     sessionStorage.setItem('fcb:chunk-reload-at', String(NOW - 3000));
@@ -300,13 +321,13 @@ describe('error-report', () => {
     expect(diag).toMatchObject({
       leaving: true,
       rl: 3000,
+      n: 2,
       assets: [
         { f: 'index-ok.js', b: 100, ts: 120, it: 'script' },
         { f: 'HomePage-x.js', b: 0, ts: 0, it: 'other' },
       ],
     });
     expect(diag.sw).toEqual(expect.any(String));
-    sessionStorage.clear();
   });
 
   it('Resource Timing 拋錯時仍寫入，診斷只少 assets', async () => {
