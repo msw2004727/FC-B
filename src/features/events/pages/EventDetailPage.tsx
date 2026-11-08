@@ -228,6 +228,8 @@ type RosterState =
   | { expanded: true; phase: Exclude<RosterPhase, 'idle'> };
 
 const UNAVAILABLE_MSG = '此功能尚未開放，請先使用舊版';
+const FLIP_MIN_MS = 750;
+const FLIP_MAX_MS = 15_000;
 
 /**
  * 照舊版 A `event-detail.js#_canManageDetailAttendanceRecords`（第 129～134 行）。
@@ -1373,14 +1375,33 @@ function EventDetailSession({
     );
   const owned = actionRegistrations.filter((reg) => registrationOwner(reg) === viewer.uid);
   // 照 A handleSignup／handleCancelSignup 的翻牌生命週期。
-  function showFlip(text: string, background: string): void {
+  // T-086a 後名單改背景重讀：背面至少停 750 ms，且等 settled（背景重讀）完成才翻回，
+  // 否則正面會先閃一次舊狀態；重讀超過 FLIP_MAX_MS 仍未完成就直接翻回，不卡在背面。
+  function showFlip(text: string, background: string, settled?: Promise<unknown>): void {
     if (!alive.current) return;
     if (flipTimer.current !== null) clearTimeout(flipTimer.current);
-    setFlip({ text, background, serial: ++flipSequence.current });
-    flipTimer.current = setTimeout(() => {
+    const serial = ++flipSequence.current;
+    setFlip({ text, background, serial });
+    let minElapsed = false;
+    let dataSettled = !settled;
+    const flipBack = (): void => {
+      if (flipSequence.current !== serial) return;
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current);
       flipTimer.current = null;
       if (alive.current) setFlip(null);
-    }, 750);
+    };
+    flipTimer.current = setTimeout(() => {
+      minElapsed = true;
+      if (dataSettled) flipBack();
+      else flipTimer.current = setTimeout(flipBack, FLIP_MAX_MS - FLIP_MIN_MS);
+    }, FLIP_MIN_MS);
+    if (settled) {
+      void (async () => {
+        await settled;
+        dataSettled = true;
+        if (minElapsed) flipBack();
+      })();
+    }
   }
 
   async function maybeShowLinePrompt(uid: string): Promise<void> {
@@ -1571,7 +1592,6 @@ function EventDetailSession({
       }
     }
     toast.show({ message: signupMessage });
-    showFlip(waitlisted ? '取消候補' : '取消報名', waitlisted ? '#7c3aed' : '#dc2626');
     // T-086a：額滿相關欄位先用伺服器回傳的活動投影；名單與「我的報名」仍以背景重讀為準，
     // 不把 response.registrations 當名單渲染。
     const rawEvent: unknown = response.event;
@@ -1586,7 +1606,11 @@ function EventDetailSession({
         event: { ...previous.event, ...responseEvent },
       }));
     }
-    void refreshInBackground(next);
+    showFlip(
+      waitlisted ? '取消候補' : '取消報名',
+      waitlisted ? '#7c3aed' : '#dc2626',
+      refreshInBackground(next),
+    );
     // 照 A _maybeShowLineNotifyPrompt；引導失敗不改寫報名成功結果。
     maybeShowLinePrompt(uid).catch(() => {});
   }
@@ -1611,11 +1635,13 @@ function EventDetailSession({
         return;
       }
       if (updatedEvent) {
-        const full = getEventParticipantStats(updatedEvent, []).isCapacityFull;
-        showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)');
         setSnapshot(previous => previous && ({ ...previous, event: updatedEvent }));
       }
-      void refreshInBackground(updatedEvent ? { ...current, event: updatedEvent } : current);
+      const pending = refreshInBackground(updatedEvent ? { ...current, event: updatedEvent } : current);
+      if (updatedEvent) {
+        const full = getEventParticipantStats(updatedEvent, []).isCapacityFull;
+        showFlip(full ? '報名候補' : '立即報名', full ? '#7c3aed' : 'var(--accent)', pending);
+      }
     },
     onBatchCancelled: async (result) => {
       const current = snapshot;

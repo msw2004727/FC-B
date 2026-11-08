@@ -691,6 +691,60 @@ describe('T-086a 本人報名／取消縮短往返', () => {
     await waitFor(() => expect(busyButton(view.container)).toBeNull());
   });
 
+  // 站長 11-08 實測：翻牌 750 ms 就翻回，背景重讀還沒到時正面會先閃一次舊按鈕。
+  function flipBack(container: Element): string | null | undefined {
+    return container.querySelector('.signup-flip-back')?.textContent;
+  }
+
+  it('報名翻牌停到背景重讀完成才翻回，不閃回立即報名', async () => {
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValue([selfA]);
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(flipBack(view.container)).toBe('取消報名'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    expect(flipBack(view.container)).toBe('取消報名');
+    await act(async () => { resolveRegs([selfA]); });
+    await waitFor(() => expect(flipBack(view.container)).toBeUndefined());
+    expect(screen.getByRole('button', { name: '取消報名' })).toBeTruthy();
+  });
+
+  it('取消翻牌停到背景重讀完成才翻回，不閃回取消報名', async () => {
+    mocks.history.mockImplementation(async () => (mocks.cancel.mock.calls.length ? [] : [selfA]));
+    let resolveRegs!: (rows: DetailRegistration[]) => void;
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveRegs = resolve;
+    }));
+    const view = mountA();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(flipBack(view.container)).toBe('立即報名'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    expect(flipBack(view.container)).toBe('立即報名');
+    await act(async () => { resolveRegs([]); });
+    await waitFor(() => expect(flipBack(view.container)).toBeUndefined());
+    expect(screen.getByRole('button', { name: '立即報名' })).toBeTruthy();
+  });
+
+  it('背景重讀一直沒回：翻牌最多停 15 秒就翻回', async () => {
+    mocks.registrations.mockReturnValue(new Promise<DetailRegistration[]>(() => {}));
+    const view = mountA();
+    const button = await screen.findByRole('button', { name: '立即報名' });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(14_000); });
+    expect(flipBack(view.container)).toBe('取消報名');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(flipBack(view.container)).toBeUndefined();
+  });
+
   it('deduplicated 取消：不顯示成功，等重讀完成才解除忙碌', async () => {
     mocks.history.mockResolvedValue([selfA]);
     let resolveRegs!: (rows: DetailRegistration[]) => void;
