@@ -19,6 +19,15 @@ import { installChunkReloadGuard } from './core/chunk-reload';
 import { installErrorReporter, reportClientError } from './core/error-report';
 import { runLegacyMigrationOnce } from './core/legacy-migration';
 import { initServiceWorker } from './core/sw-control';
+import { preloadEventDetailChunks } from './app/event-detail-preload';
+
+// T-093：分享網址落在 /events/<id> 時先下載詳情頁與 Firestore 模組（與路由 load 同一個 chunk）。
+// 只下載，不初始化 Firestore、不呼叫 getFirebase、不繞過登入暫緩。失敗吞掉，避免再多一個 unhandledrejection。
+preloadEventDetailChunks(
+  location.pathname,
+  () => import('./features/events/pages/EventDetailPage'),
+  () => import('firebase/firestore'),
+);
 
 // 越早越好：首屏的路由 chunk 載入失敗也要能接住。
 installChunkReloadGuard();
