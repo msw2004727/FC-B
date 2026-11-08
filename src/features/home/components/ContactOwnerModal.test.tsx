@@ -234,19 +234,15 @@ describe('ContactOwnerModal', () => {
     mocks.signIn.mockRejectedValueOnce({ isRedirecting: true });
     render(<ContactOwnerModal open onClose={vi.fn()} />);
     fill();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '送出' }));
-      for (let i = 0; i < 8; i += 1) await Promise.resolve();
-    });
-    expect(mocks.signIn).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByRole('button', { name: '送出' }) as HTMLButtonElement).disabled).toBe(false));
     expect(getToasts()).toEqual([]);
 
     mocks.signIn.mockRejectedValueOnce(new Error('popup closed'));
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '送出' }));
-      for (let i = 0; i < 8; i += 1) await Promise.resolve();
-    });
-    expect(getToasts()[0]?.message).toBe('送出失敗，請稍後再試');
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await waitFor(() => expect(getToasts()[0]?.message).toBe('送出失敗，請稍後再試'));
+    expect(mocks.signIn).toHaveBeenCalledTimes(2);
   });
 
   it('返回鍵關閉彈窗', () => {
