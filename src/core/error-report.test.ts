@@ -29,6 +29,8 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   _resetErrorReporterForTest,
   installErrorReporter,
+  redactHash,
+  redactUrl,
   reportClientError,
 } from './error-report';
 
@@ -55,6 +57,7 @@ describe('error-report', () => {
   beforeEach(() => {
     _resetErrorReporterForTest();
     localStorage.clear();
+    sessionStorage.clear();
     currentUser = null;
     window.history.replaceState(null, '', '/');
     mockAddDoc.mockReset();
@@ -74,6 +77,7 @@ describe('error-report', () => {
     _resetErrorReporterForTest();
     vi.restoreAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('未登入不寫', async () => {
@@ -256,5 +260,102 @@ describe('error-report', () => {
       context: 'unhandledrejection',
       errorMessage: 'from-rejection',
     });
+  });
+
+  it('LINE 開頁網址的憑證不寫入（片段全遮值、參數只遮憑證類）', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    window.history.replaceState(null, '', '/?code=SECRET_Q1&state=SECRET_Q2&tab=2#access_token=SECRET_H1&context_token=SECRET_H2&client_id=1');
+    reportClientError('boot', new Error('boom'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.hash).toBe('#access_token=***&context_token=***&client_id=***');
+    expect(payload.url).toBe(`${location.origin}/?code=***&state=***&tab=2#access_token=***&context_token=***&client_id=***`);
+    expect(JSON.stringify(payload)).not.toContain('SECRET_');
+    expect(payload).not.toHaveProperty('diag');
+  });
+
+  it('errorMessage／errorStack 夾帶的憑證網址與 JWT 也遮掉', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    const err = new Error('failed at https://toosterx.com/?code=SECRET_M1 token eyJhbGciOiJIUzI1NiJ9.SECRET_JWT');
+    err.stack = 'global code@https://toosterx.com/?state=SECRET_S1#access_token=SECRET_S2&x=1';
+    reportClientError('error', err);
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.stringify(payload)).not.toContain('SECRET_');
+    expect(payload.errorStack).toBe('global code@https://toosterx.com/?state=***#access_token=***&x=1');
+  });
+
+  it('非 Error 的 rejection 物件與開頭就是憑證的字串也遮掉', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    reportClientError('unhandledrejection', { access_token: 'SECRET_J1', api_key: 'SECRET_J2', ok: 1 });
+    reportClientError('unhandledrejection', 'access_token=SECRET_J3 failed');
+    await waitForWrites(2);
+    expect(JSON.stringify(mockAddDoc.mock.calls)).not.toContain('SECRET_');
+  });
+
+  it('從 bfcache 還原後不再標成離開中', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    installErrorReporter();
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pageshow'));
+    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.parse(String(payload.diag))).toMatchObject({ leaving: false });
+  });
+
+  it('程式檔載入失敗時附上診斷：只列同源 /assets，iOS 沒有 responseStatus 也照寫', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    sessionStorage.setItem('fcb:chunk-reload-at', String(NOW - 3000));
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { name: `${location.origin}/assets/index-ok.js`, decodedBodySize: 100, transferSize: 120, initiatorType: 'script' },
+      { name: 'https://cdn.example.com/assets/other.js', decodedBodySize: 0, transferSize: 0, initiatorType: 'script' },
+      { name: `${location.origin}/assets/HomePage-x.js`, decodedBodySize: 0, transferSize: 0, initiatorType: 'other' },
+    ] as unknown as PerformanceEntryList);
+    installErrorReporter();
+    window.dispatchEvent(new Event('pagehide'));
+    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    const diag = JSON.parse(String(payload.diag)) as Record<string, unknown>;
+    expect(diag).toMatchObject({
+      leaving: true,
+      rl: 3000,
+      n: 2,
+      assets: [
+        { f: 'index-ok.js', b: 100, ts: 120, it: 'script' },
+        { f: 'HomePage-x.js', b: 0, ts: 0, it: 'other' },
+      ],
+    });
+    expect(diag.sw).toEqual(expect.any(String));
+  });
+
+  it('Resource Timing 拋錯時仍寫入，診斷只少 assets', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    vi.spyOn(performance, 'getEntriesByType').mockImplementation(() => {
+      throw new Error('no timing');
+    });
+    reportClientError('unhandledrejection', new TypeError('Failed to fetch dynamically imported module: x'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.parse(String(payload.diag))).toMatchObject({ assets: [], leaving: false });
+  });
+});
+
+describe('redactUrl／redactHash', () => {
+  it('沒有參數與片段時原樣', () => {
+    expect(redactUrl('https://toosterx.com/events/x')).toBe('https://toosterx.com/events/x');
+    expect(redactHash('#frag')).toBe('#frag');
+    expect(redactHash('')).toBe('');
+  });
+
+  it('分號分隔、編碼過的鍵、值裡夾帶的編碼網址都遮', () => {
+    expect(redactUrl('https://a.test/?a=1;code=SECRET_1')).toBe('https://a.test/?a=1;code=***');
+    expect(redactUrl('https://a.test/?access%5Ftoken=SECRET_2&p=1')).toBe('https://a.test/?access%5Ftoken=***&p=1');
+    expect(redactUrl('https://a.test/?next=https%3A%2F%2Fb.test%2F%3Fcode%3DSECRET_3')).toBe('https://a.test/?next=***');
+  });
+
+  it('沒有 = 的長片段整段遮掉', () => {
+    expect(redactHash('#eyJhbGciOiJIUzI1NiJ9.payload.sig')).toBe('#***');
   });
 });
