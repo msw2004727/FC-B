@@ -30,6 +30,7 @@
     "pending": "审核中",
     "enrolled": "已报名",
     "unpaid": "未缴费",
+    "inactive": "已停用",
     "studentPending": "待核准"
   },
   "btn": {

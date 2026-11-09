@@ -18,6 +18,8 @@ export interface ViewerCourses {
   migrationCompleted: boolean;
   /** 我名下、非 inactive 的學員（本人與孩子）。 */
   myStudents: CourseStudent[];
+  /** 已退學（inactive）的本人學員；有它就不再替本人建新學員，避免同一 selfUid 兩筆（DeepSeek 審查 P3）。 */
+  inactiveSelf: CourseStudent | null;
   enrollmentsByPlan: Map<string, CourseEnrollment[]>;
   states: Map<string, ViewerPlanState>;
 }
@@ -47,6 +49,7 @@ export async function loadViewerCourses(
     summaries: {},
     migrationCompleted: false,
     myStudents: [],
+    inactiveSelf: null,
     enrollmentsByPlan: new Map(),
     states: new Map(),
   };
@@ -57,6 +60,9 @@ export async function loadViewerCourses(
     repo.listMyStudents(team, uid),
   ]);
   const myStudents = ownedStudents(students, uid);
+  const inactiveSelf = myStudents.some((s) => s.selfUid === uid)
+    ? null
+    : students.find((s) => s.selfUid === uid && s.enrollStatus === 'inactive') ?? null;
   const myIds = myStudents.map((s) => s.id);
   const relevant = plans.filter((p) => {
     const statuses = summaryResult.summaries[p.id]?.viewerStatuses ?? {};
@@ -84,6 +90,7 @@ export async function loadViewerCourses(
     summaries: summaryResult.summaries,
     migrationCompleted: summaryResult.migrationCompleted,
     myStudents,
+    inactiveSelf,
     enrollmentsByPlan,
     states,
   };

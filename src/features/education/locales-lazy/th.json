@@ -30,6 +30,7 @@
     "pending": "รออนุมัติ",
     "enrolled": "สมัครแล้ว",
     "unpaid": "ค้างชำระ",
+    "inactive": "ปิดใช้งาน",
     "studentPending": "รออนุมัติ"
   },
   "btn": {

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearMocks, registerMock, startRecording, stopRecording } from '@/data/callables';
 import { assertAllowedFields } from '@/data/write-guard';
-import { buildPendingStudentPayload, courseRepo, PENDING_STUDENT_FIELDS, toCourseTeam } from './course-repo';
+import { attendanceQueryFilters, buildPendingStudentPayload, courseRepo, PENDING_STUDENT_FIELDS, toCourseTeam } from './course-repo';
+import { createFakeCourseRepo } from '../testing/fake-course-repo';
+import { courseFixture } from '../testing/course-fixtures';
 import { normalizeSession, normalizeStudent } from './course-model';
 
 describe('course-repo：既有 Callable 的參數', () => {
@@ -65,6 +67,28 @@ describe('course-repo：既有 Callable 的參數', () => {
     expect(res.migrationCompleted).toBe(true);
     expect(Object.keys(res.summaries)).toHaveLength(51);
     expect(res.summaries.p0?.effectiveApprovedCount).toBe(1);
+  });
+});
+
+describe('eduAttendance 查詢條件（真實查詢與假資料共用，DeepSeek 審查 P2）', () => {
+  it('欄位名照伺服器寫入：teamId＝team.id、coursePlanId、studentId', () => {
+    const team = toCourseTeam({ id: 'tm_public', _docId: 'doc1', name: 'x' } as never);
+    expect(attendanceQueryFilters(team, 'p1', 'stu_a')).toEqual([
+      ['teamId', 'tm_public'],
+      ['coursePlanId', 'p1'],
+      ['studentId', 'stu_a'],
+    ]);
+  });
+
+  it('假資料照同一組條件篩：teamId、方案或學員不符的紀錄都不回', async () => {
+    const data = courseFixture();
+    data.attendance.push(
+      { id: 'x1', teamId: 'other_team', coursePlanId: 'p5', studentId: 'stu_an', sessionId: 'p5s2', date: '2026-11-08', kind: 'leave', status: 'active' },
+      { id: 'x2', teamId: 'tm_demo', planId: 'p5', studentId: 'stu_an', sessionId: 'p5s2', date: '2026-11-08', kind: 'leave', status: 'active' },
+    );
+    const repo = createFakeCourseRepo(data);
+    const list = await repo.listMyAttendance(toCourseTeam(data.team), 'p5', 'stu_an');
+    expect(list.map((r) => r.id).sort()).toEqual(['a1', 'a2', 'a3']);
   });
 });
 

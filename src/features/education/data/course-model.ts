@@ -402,6 +402,7 @@ export function courseErrorCode(error: unknown): string {
   }
   const fbCode = str(e.code, 80).replace(/^functions\//, '');
   if (fbCode === 'unauthenticated') return 'UNAUTHENTICATED';
+  if (fbCode === 'permission-denied') return 'PERMISSION_DENIED';
   if (fbCode === 'resource-exhausted') return 'COURSE_FULL';
   if (fbCode === 'already-exists') return 'ALREADY_ENROLLED';
   return 'UNKNOWN';

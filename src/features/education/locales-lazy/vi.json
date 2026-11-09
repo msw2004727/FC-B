@@ -30,6 +30,7 @@
     "pending": "Chờ duyệt",
     "enrolled": "Đã đăng ký",
     "unpaid": "Chưa trả",
+    "inactive": "Đã tắt",
     "studentPending": "Chờ duyệt"
   },
   "btn": {

@@ -112,6 +112,7 @@ type CourseTabComponent = typeof import('@/features/education/components/CourseT
 
 /** 課程頁籤按需載入（只有開關打開、切到課程頁籤才下載課程程式與字典）。 */
 function LazyCourseTab(props: Parameters<CourseTabComponent>[0]): JSX.Element {
+  const t = useT();
   const [Comp, setComp] = useState<CourseTabComponent | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -132,10 +133,10 @@ function LazyCourseTab(props: Parameters<CourseTabComponent>[0]): JSX.Element {
   if (Comp) return <Comp {...props} />;
   return (
     <div class="td-v2-empty" role={failed ? 'alert' : undefined}>
-      <div>{failed ? '載入失敗' : '載入中…'}</div>
+      <div>{t(failed ? 'common.error' : 'common.loading')}</div>
       {failed ? (
         <button type="button" class="primary-btn small" style="margin-top:8px" onClick={() => setAttempt((v) => v + 1)}>
-          重試
+          {t('common.retry')}
         </button>
       ) : null}
     </div>
@@ -758,7 +759,7 @@ function TeamDetailContent({
 
             <TeamDetailV2Panels
               team={team}
-              courseSlot={tabKeys.has('courses') && activeTab === 'courses' ? (
+              courseSlot={COURSES_ENABLED && tabKeys.has('courses') && activeTab === 'courses' ? (
                 <LazyCourseTab
                   team={team}
                   viewer={viewer}

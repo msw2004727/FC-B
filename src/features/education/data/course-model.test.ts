@@ -154,6 +154,8 @@ describe('錯誤碼轉換', () => {
     expect(courseErrorCode({ code: 'functions/already-exists', message: 'x', details: { code: 'ALREADY_ENROLLED' } })).toBe('ALREADY_ENROLLED');
     expect(courseErrorCode({ code: 'functions/permission-denied', message: 'STUDENT_NOT_IN_ROSTER' })).toBe('STUDENT_NOT_IN_ROSTER');
     expect(courseErrorCode({ code: 'functions/unauthenticated', message: 'Authentication required' })).toBe('UNAUTHENTICATED');
+    // Firestore 直寫被 Rules 拒（例如建 pending 學員）不能只顯示「操作失敗」。
+    expect(courseErrorCode({ code: 'permission-denied', message: 'Missing or insufficient permissions.' })).toBe('PERMISSION_DENIED');
     expect(courseErrorCode(new Error('network'))).toBe('UNKNOWN');
     expect(courseErrorCode(null)).toBe('UNKNOWN');
   });

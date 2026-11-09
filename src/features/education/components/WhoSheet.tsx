@@ -20,6 +20,8 @@ export interface WhoSheetProps {
   uid: string;
   displayName: string;
   myStudents: readonly CourseStudent[];
+  /** 已退學的本人學員：有的話「自己」顯示已停用、不能選，也不再建新的本人學員。 */
+  inactiveSelf?: CourseStudent | null;
   state: ViewerPlanState;
   onClose: () => void;
   /** 報名送出或名下學員有變（新增孩子）後重讀。 */
@@ -30,7 +32,7 @@ interface Option {
   key: string;
   label: string;
   student: CourseStudent | null;
-  chip: 'enrolled' | 'pending' | 'studentPending' | null;
+  chip: 'enrolled' | 'pending' | 'studentPending' | 'inactive' | null;
   disabled: boolean;
 }
 
@@ -40,6 +42,7 @@ export function buildWhoOptions(
   displayName: string,
   students: readonly CourseStudent[],
   state: ViewerPlanState,
+  inactiveSelf: CourseStudent | null = null,
 ): Option[] {
   const self = students.find((s) => s.selfUid === uid) ?? null;
   const children = students.filter((s) => s !== self && s.parentUid === uid);
@@ -53,10 +56,14 @@ export function buildWhoOptions(
     const chip = chipOf(s);
     return { key: s.id, label, student: s, chip, disabled: chip === 'enrolled' || chip === 'pending' };
   };
-  const selfName = (self?.name || displayName).trim();
+  const selfName = (self?.name || inactiveSelf?.name || displayName).trim();
   const selfLabel = selfName ? ct('sheet.self', { name: selfName }) : ct('sheet.selfBare');
   const options: Option[] = [
-    self ? toOption(self, selfLabel) : { key: SELF_NEW, label: selfLabel, student: null, chip: null, disabled: false },
+    self
+      ? toOption(self, selfLabel)
+      : inactiveSelf
+        ? { key: inactiveSelf.id, label: selfLabel, student: inactiveSelf, chip: 'inactive', disabled: true }
+        : { key: SELF_NEW, label: selfLabel, student: null, chip: null, disabled: false },
   ];
   for (const child of children) options.push(toOption(child, child.name));
   return options;
@@ -70,18 +77,19 @@ export function WhoSheet({
   uid,
   displayName,
   myStudents,
+  inactiveSelf = null,
   state,
   onClose,
   onChanged,
 }: WhoSheetProps): JSX.Element {
   const [students, setStudents] = useState<CourseStudent[]>(() => [...myStudents]);
   const options = useMemo(
-    () => buildWhoOptions(ct, uid, displayName, students, state),
-    [ct, uid, displayName, students, state],
+    () => buildWhoOptions(ct, uid, displayName, students, state, inactiveSelf),
+    [ct, uid, displayName, students, state, inactiveSelf],
   );
   // 審查 P2-1：只有名下完全沒有學員時才預設「自己」（照 A：沒有學員才自動建本人）；
   // 有孩子或本人資料時不預設，要明確點選才能送出，避免家長一鍵把自己報進去。
-  const [picked, setPicked] = useState<string | null>(() => (myStudents.length === 0 ? SELF_NEW : null));
+  const [picked, setPicked] = useState<string | null>(() => (myStudents.length === 0 && !inactiveSelf ? SELF_NEW : null));
   const [adding, setAdding] = useState(false);
   const [childName, setChildName] = useState('');
   const [selfName, setSelfName] = useState('');
@@ -183,7 +191,7 @@ export function WhoSheet({
             <span class="ck-opt-name">{o.label}</span>
             {o.chip ? (
               <span class={`ck-chip ${o.chip === 'enrolled' ? 'ck-chip-acc' : 'ck-chip-warn'}`}>
-                {ct(o.chip === 'enrolled' ? 'chip.enrolled' : o.chip === 'pending' ? 'chip.pending' : 'chip.studentPending')}
+                {ct(`chip.${o.chip}`)}
               </span>
             ) : null}
           </button>

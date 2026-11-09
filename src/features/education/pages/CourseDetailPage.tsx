@@ -1,6 +1,6 @@
 // 課程詳情（K1-2）：欄位精簡、長文字省略；介紹收在「更多」；底部報名／課堂／取消申請。
 import type { JSX } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { useT } from '@/i18n/i18n';
@@ -97,6 +97,8 @@ export function CourseDetailBody({
   const [moreOpen, setMoreOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 取消申請的同步鎖（DeepSeek 審查 P3）。
+  const cancelLock = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -167,11 +169,13 @@ export function CourseDetailBody({
   ];
 
   async function cancelPending(): Promise<void> {
-    if (busy || !team) return;
+    if (cancelLock.current || !team) return;
+    cancelLock.current = true;
     setBusy(true);
     try {
       if (await cancelPendingFlow({ ct, repo, team, plan, myStudents: vc.myStudents, state })) reload();
     } finally {
+      cancelLock.current = false;
       setBusy(false);
     }
   }
@@ -269,6 +273,7 @@ export function CourseDetailBody({
           uid={viewer.uid}
           displayName={viewer.displayName ?? ''}
           myStudents={vc.myStudents}
+          inactiveSelf={vc.inactiveSelf}
           state={state}
           onClose={() => setSheetOpen(false)}
           onChanged={reload}

@@ -64,6 +64,18 @@ export interface CourseRepo {
   createPendingStudent(team: CourseTeam, input: { name: string; uid: string; relation: 'self' | 'parent' }): Promise<CourseStudent>;
 }
 
+/**
+ * eduAttendance 學員端查詢條件（欄位名照伺服器寫入：teamId＝team.id、coursePlanId、studentId）。
+ * 真實查詢與測試假資料共用這一組，避免欄位名對不上而假綠（DeepSeek 審查 P2）。
+ */
+export function attendanceQueryFilters(team: CourseTeam, planId: string, studentId: string): Array<[string, string]> {
+  return [
+    ['teamId', team.apiId],
+    ['coursePlanId', planId],
+    ['studentId', studentId],
+  ];
+}
+
 async function fs() {
   const [{ getFirebase }, sdk] = await Promise.all([import('@/data/firebase'), import('firebase/firestore')]);
   const ctx = await getFirebase();
@@ -174,14 +186,8 @@ export const courseRepo: CourseRepo = {
 
   async listMyAttendance(team, planId, studentId) {
     const { db, sdk } = await fs();
-    const snap = await sdk.getDocs(
-      sdk.query(
-        sdk.collection(db, 'eduAttendance'),
-        sdk.where('teamId', '==', team.apiId),
-        sdk.where('coursePlanId', '==', planId),
-        sdk.where('studentId', '==', studentId),
-      ),
-    );
+    const filters = attendanceQueryFilters(team, planId, studentId).map(([field, value]) => sdk.where(field, '==', value));
+    const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'eduAttendance'), ...filters));
     return snap.docs.map((d) => normalizeAttendance(d.id, d.data() as Record<string, unknown>));
   },
 

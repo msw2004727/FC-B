@@ -72,13 +72,13 @@ export function courseFixture(): FakeCourseData {
       ],
     },
     attendance: [
-      { id: 'a1', planId: 'p5', studentId: 'stu_an', sessionId: 'p5s1', date: '2026-11-01', kind: 'signin', status: 'active' },
-      { id: 'a2', planId: 'p5', studentId: 'stu_an', sessionId: 'p5s3', date: '2026-11-15', kind: 'registered', status: 'active' },
-      { id: 'a3', planId: 'p5', studentId: 'stu_an', sessionId: 'p5s5', date: '2026-11-29', kind: 'leave', status: 'active' },
-      { id: 'a4', planId: 'p6', studentId: 'stu_an', sessionId: 'p6s1', date: '2026-11-02', kind: 'signin', status: 'active' },
-      { id: 'a5', planId: 'p6', studentId: 'stu_an', sessionId: 'p6s2', date: '2026-11-08', kind: 'leave', status: 'active' },
-      { id: 'a6', planId: 'p6', studentId: 'stu_an', sessionId: 'p6s4', date: '2026-11-23', kind: 'leave', status: 'active' },
-      { id: 'a7', planId: 'p6', studentId: 'stu_qing', sessionId: 'p6s1', date: '2026-11-02', kind: 'signin', status: 'active' },
+      { id: 'a1', teamId: 'tm_demo', coursePlanId: 'p5', studentId: 'stu_an', sessionId: 'p5s1', date: '2026-11-01', kind: 'signin', status: 'active' },
+      { id: 'a2', teamId: 'tm_demo', coursePlanId: 'p5', studentId: 'stu_an', sessionId: 'p5s3', date: '2026-11-15', kind: 'registered', status: 'active' },
+      { id: 'a3', teamId: 'tm_demo', coursePlanId: 'p5', studentId: 'stu_an', sessionId: 'p5s5', date: '2026-11-29', kind: 'leave', status: 'active' },
+      { id: 'a4', teamId: 'tm_demo', coursePlanId: 'p6', studentId: 'stu_an', sessionId: 'p6s1', date: '2026-11-02', kind: 'signin', status: 'active' },
+      { id: 'a5', teamId: 'tm_demo', coursePlanId: 'p6', studentId: 'stu_an', sessionId: 'p6s2', date: '2026-11-08', kind: 'leave', status: 'active' },
+      { id: 'a6', teamId: 'tm_demo', coursePlanId: 'p6', studentId: 'stu_an', sessionId: 'p6s4', date: '2026-11-23', kind: 'leave', status: 'active' },
+      { id: 'a7', teamId: 'tm_demo', coursePlanId: 'p6', studentId: 'stu_qing', sessionId: 'p6s1', date: '2026-11-02', kind: 'signin', status: 'active' },
     ],
   };
 }

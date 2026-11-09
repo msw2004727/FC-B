@@ -30,6 +30,7 @@
     "pending": "심사 중",
     "enrolled": "신청 완료",
     "unpaid": "미납",
+    "inactive": "중지됨",
     "studentPending": "승인 대기"
   },
   "btn": {

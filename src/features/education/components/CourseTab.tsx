@@ -56,6 +56,8 @@ export function CourseTabBody({
   const [sheetPlanId, setSheetPlanId] = useState<string | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const seq = useRef(0);
+  // 取消申請的同步鎖：busyPlanId 重繪前的連點不會開兩個確認框（DeepSeek 審查 P3）。
+  const cancelLock = useRef(false);
 
   useEffect(() => {
     const current = ++seq.current;
@@ -87,12 +89,14 @@ export function CourseTabBody({
 
   async function cancelPending(planId: string): Promise<void> {
     const plan = data.plans.find((p) => p.id === planId);
-    if (!plan || busyPlanId) return;
+    if (!plan || cancelLock.current) return;
+    cancelLock.current = true;
     setBusyPlanId(planId);
     try {
       const changed = await cancelPendingFlow({ ct, repo, team, plan, myStudents: data.myStudents, state: stateFor(data, planId) });
       if (changed) reload();
     } finally {
+      cancelLock.current = false;
       setBusyPlanId(null);
     }
   }
@@ -165,6 +169,7 @@ export function CourseTabBody({
           uid={viewer.uid}
           displayName={viewer.displayName ?? ''}
           myStudents={data.myStudents}
+          inactiveSelf={data.inactiveSelf}
           state={stateFor(data, sheetPlan.id)}
           onClose={() => setSheetPlanId(null)}
           onChanged={reload}

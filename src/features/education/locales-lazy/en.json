@@ -30,6 +30,7 @@
     "pending": "Pending",
     "enrolled": "Joined",
     "unpaid": "Unpaid",
+    "inactive": "Inactive",
     "studentPending": "Pending"
   },
   "btn": {

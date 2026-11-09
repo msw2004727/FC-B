@@ -44,7 +44,7 @@ describe.skipIf(!enabled)('K1 新增 pending 學員 × 未修改的 Firestore Ru
     sdk = createRequire(modulePath)('firebase/firestore') as typeof sdk;
     env = await testing.initializeTestEnvironment({
       projectId: 'demo-k1-student-create',
-      firestore: { host: host!, port: Number(port), rules: readFileSync(resolve('emulator/firestore.rules'), 'utf8') },
+      firestore: { host: host!, port: Number(port), rules: readFileSync(resolve(process.env.FIRESTORE_RULES_FILE || 'emulator/firestore.rules'), 'utf8') },
     });
   }, 120_000);
   beforeEach(async () => {

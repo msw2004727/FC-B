@@ -30,6 +30,7 @@
     "pending": "審査中",
     "enrolled": "申込済",
     "unpaid": "未払い",
+    "inactive": "停止中",
     "studentPending": "承認待ち"
   },
   "btn": {

@@ -3,15 +3,15 @@
 import type { TeamDoc } from '@/features/clubs/data/types';
 import { getApprovedStudentIdSet } from '../data/roster-union';
 import {
+  normalizeAttendance,
   normalizePlan,
   normalizeSession,
   normalizeStudent,
-  type AttendanceRecord,
   type CourseEnrollment,
   type CourseSession,
   type CourseStudent,
 } from '../data/course-model';
-import { buildPendingStudentPayload, type CourseRepo } from '../data/course-repo';
+import { attendanceQueryFilters, buildPendingStudentPayload, type CourseRepo } from '../data/course-repo';
 
 export interface FakeCourseData {
   team: TeamDoc;
@@ -19,7 +19,8 @@ export interface FakeCourseData {
   sessions: Record<string, Array<Record<string, unknown> & { id: string }>>;
   students: Array<Record<string, unknown> & { id: string }>;
   enrollments: Record<string, CourseEnrollment[]>;
-  attendance: Array<AttendanceRecord & { planId: string }>;
+  /** eduAttendance 文件（欄位照伺服器寫入：teamId、coursePlanId、studentId、sessionId、date、kind、status）。 */
+  attendance: Array<Record<string, unknown> & { id: string }>;
   migrationCompleted?: boolean;
 }
 
@@ -106,9 +107,12 @@ export function createFakeCourseRepo(data: FakeCourseData, options: { uid?: stri
         (data.sessions[planId] ?? []).map((s) => normalizeSession(s.id, s)),
       ),
     listMyAttendance: (team, planId, studentId) =>
-      track('listMyAttendance', [team.apiId, planId, studentId], () =>
-        data.attendance.filter((r) => r.planId === planId && r.studentId === studentId),
-      ),
+      track('listMyAttendance', [team.apiId, planId, studentId], () => {
+        const filters = attendanceQueryFilters(team, planId, studentId);
+        return data.attendance
+          .filter((doc) => filters.every(([field, value]) => doc[field] === value))
+          .map((doc) => normalizeAttendance(doc.id, doc));
+      }),
     register: (team, planId, studentIds) =>
       track('register', [team.apiId, planId, [...studentIds]], () => {
         const list = (data.enrollments[planId] ??= []);
@@ -122,19 +126,19 @@ export function createFakeCourseRepo(data: FakeCourseData, options: { uid?: stri
       }),
     saveSelfAttendance: ({ planId, session, student, kind }) =>
       track('saveSelfAttendance', [planId, session.id, student.id, kind], () => {
-        const mine = data.attendance.filter((r) => r.planId === planId && r.sessionId === session.id && r.studentId === student.id && r.status !== 'removed');
+        const mine = data.attendance.filter((r) => r.coursePlanId === planId && r.sessionId === session.id && r.studentId === student.id && r.status !== 'removed');
         if (mine.some((r) => r.kind === '' || r.kind === 'signin')) return { signedIn: true };
         for (const r of mine) if (r.kind !== kind) r.status = 'removed';
         if (!mine.some((r) => r.kind === kind && r.status !== 'removed')) {
-          data.attendance.push({ id: `att_${++seq}`, planId, studentId: student.id, sessionId: session.id, date: session.date, kind, status: 'active' });
+          data.attendance.push({ id: `att_${++seq}`, teamId: data.team.id, coursePlanId: planId, studentId: student.id, sessionId: session.id, date: session.date, kind, status: 'active' });
         }
         return { signedIn: false };
       }),
     saveSelfLeave: ({ planId, session, student, leave }) =>
       track('saveSelfLeave', [planId, session.id, student.id, leave], () => {
-        const active = data.attendance.filter((r) => r.planId === planId && r.sessionId === session.id && r.studentId === student.id && r.kind === 'leave' && r.status !== 'removed');
+        const active = data.attendance.filter((r) => r.coursePlanId === planId && r.sessionId === session.id && r.studentId === student.id && r.kind === 'leave' && r.status !== 'removed');
         if (leave && !active.length) {
-          data.attendance.push({ id: `att_${++seq}`, planId, studentId: student.id, sessionId: session.id, date: session.date, kind: 'leave', status: 'active' });
+          data.attendance.push({ id: `att_${++seq}`, teamId: data.team.id, coursePlanId: planId, studentId: student.id, sessionId: session.id, date: session.date, kind: 'leave', status: 'active' });
         }
         if (!leave) for (const r of active) r.status = 'removed';
       }),

@@ -125,6 +125,22 @@ describe('WhoSheet：家長代報', () => {
     expect(repo.calls.find((c) => c.method === 'createPendingStudent')?.args[1]).toEqual({ name: '林小明', uid: PARENT_UID, relation: 'self' });
   });
 
+  it('本人學員已退學（inactive）：「自己」顯示已停用、不能選，也不會再建一筆本人學員', () => {
+    const plan = normalizePlan('p1', repo.data.plans.p1!);
+    const inactiveSelf = normalizeStudent('stu_old', { name: '王示範', selfUid: PARENT_UID, enrollStatus: 'inactive' });
+    const state = getViewerPlanState(plan, [], [], false);
+    render(
+      <WhoSheet ct={ct} repo={repo} team={toCourseTeam(repo.data.team)} plan={plan} uid={PARENT_UID} displayName="王示範"
+        myStudents={[]} inactiveSelf={inactiveSelf} state={state} onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+    const sheet = screen.getByRole('radiogroup', { name: '幫誰報名？' });
+    const self = within(sheet).getByRole('radio', { name: '自己（王示範）已停用' }) as HTMLButtonElement;
+    expect(self.disabled).toBe(true);
+    expect(self.getAttribute('aria-checked')).toBe('false');
+    expect((within(sheet).getByRole('button', { name: '送出報名' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(repo.calls).toEqual([]);
+  });
+
   it('新增孩子連點兩下只建一筆（同步鎖，審查 P3-10）', async () => {
     const { sheet } = renderSheet('p1');
     fireEvent.click(within(sheet).getByRole('button', { name: '新增孩子' }));

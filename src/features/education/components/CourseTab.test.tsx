@@ -230,6 +230,19 @@ describe('CourseTab：報名、取消申請與錯誤碼', () => {
     await waitFor(() => expect(card(container, 'p5').dataset.state).toBe('enrolled'));
   });
 
+  it('取消申請連點兩下只開一個確認框（同步鎖）', async () => {
+    let resolveConfirm: (v: boolean) => void = () => undefined;
+    vi.mocked(appConfirm).mockImplementation(() => new Promise<boolean>((r) => { resolveConfirm = r; }));
+    const { container } = renderTab();
+    await screen.findAllByText('週日親子班');
+    const btn = within(card(container, 'p5')).getByRole('button', { name: '取消申請' });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+    resolveConfirm(true);
+    await waitFor(() => expect(repo.calls.filter((c) => c.method === 'cancelPending')).toHaveLength(1));
+  });
+
   it('取消申請按「保留」不呼叫 Callable', async () => {
     vi.mocked(appConfirm).mockResolvedValue(false);
     const { container } = renderTab();
