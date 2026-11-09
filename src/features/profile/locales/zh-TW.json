@@ -141,7 +141,9 @@
     "toggleActivity": "活動通知（報名、候補、異動）",
     "toggleSystem": "系統通知（站內信/公告）",
     "toggleTournament": "賽事通知（報名/賽程更新）",
-    "friendHint": "收不到通知？請確認已加入官方帳號好友",
-    "openOfficial": "開啟官方帳號"
+    "friendHint": "收不到通知？請先加好友",
+    "openOfficial": "開啟官方帳號",
+    "notFriendHint": "尚未加好友，收不到 LINE 通知",
+    "addFriend": "加入好友"
   }
 }

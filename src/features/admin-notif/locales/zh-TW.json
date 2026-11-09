@@ -1,0 +1,32 @@
+{
+  "title": "推播通知設定",
+  "back": "返回",
+  "note": "只影響 LINE 推播，站內信照常送出",
+  "sectionCategory": "分類",
+  "sectionType": "通知類型",
+  "sectionFixed": "固定送出",
+  "fixed": "固定",
+  "save": "儲存",
+  "saving": "儲存中...",
+  "saved": "推播通知設定已儲存",
+  "saveFailed": "儲存失敗，請稍後再試",
+  "noPermission": "權限不足",
+  "loading": "載入中...",
+  "loadError": "載入失敗",
+  "retry": "重新載入",
+  "row": {
+    "category_activity": "活動通知",
+    "category_system": "系統通知",
+    "category_tournament": "賽事通知",
+    "type_signup_success": "報名成功",
+    "type_cancel_signup": "取消報名",
+    "type_waitlist_demoted": "候補降級",
+    "type_event_relisted": "活動重新上架",
+    "type_role_upgrade": "角色升級",
+    "type_welcome": "歡迎通知",
+    "fixed_waitlist_promoted": "候補遞補",
+    "fixed_event_cancelled": "活動取消",
+    "fixed_event_changed": "活動異動",
+    "fixed_broadcast": "管理員主動廣播"
+  }
+}

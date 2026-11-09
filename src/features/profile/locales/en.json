@@ -141,7 +141,9 @@
     "toggleActivity": "Event notifications (signup, waitlist, changes)",
     "toggleSystem": "System notifications (inbox/announcements)",
     "toggleTournament": "Tournament notifications (signup/schedule updates)",
-    "friendHint": "Not getting notifications? Make sure you've added our official account as a friend.",
-    "openOfficial": "Open official account"
+    "friendHint": "No alerts? Add us first",
+    "openOfficial": "Open official account",
+    "notFriendHint": "Not friends yet: no LINE alerts",
+    "addFriend": "Add friend"
   }
 }

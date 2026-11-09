@@ -770,6 +770,12 @@ a.social-btn { text-decoration: none; }
 .line-notify-hint { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:.78rem; color:var(--text-muted); background:var(--bg-elevated); border-radius:10px; padding:.5rem .6rem; margin:.4rem 0; }
 .line-notify-friend-btn { flex:0 0 auto; white-space:nowrap; background:transparent; border:1px solid currentColor; border-radius:10px; font-family:inherit; font-size:.78rem; font-weight:600; padding:.3rem .8rem; cursor:pointer; }
 .line-notify-friend-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* 11-09 O-1：站長要求提示文字不可被瀏覽器自動折行（放不下就縮短文案）；查到未加好友時換 warning 色＋實心 LINE 綠按鈕 */
+.line-notify-hint > span { white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.line-notify-hint.warn { color:var(--warning); font-weight:600; }
+/* 實心按鈕的底色與框線取 currentColor（＝上面共用選擇器的 LINE 綠），不另寫色碼；白字放在內層 span */
+.line-notify-friend-btn.solid { background:currentColor; }
+.line-notify-friend-btn.solid > span { color:#fff; }
 /* Bind/unbind state transition animation */
 #line-notify-bound.fadeIn, #line-notify-unbound.fadeIn { animation: fadeIn .35s ease; }
 /* Login button loading state */

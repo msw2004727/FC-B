@@ -141,7 +141,9 @@
     "toggleActivity": "Thông báo hoạt động (đăng ký, danh sách chờ, thay đổi)",
     "toggleSystem": "Thông báo hệ thống (hộp thư/thông báo chung)",
     "toggleTournament": "Thông báo giải đấu (đăng ký/cập nhật lịch thi đấu)",
-    "friendHint": "Không nhận được thông báo? Hãy kiểm tra bạn đã kết bạn với tài khoản chính thức",
-    "openOfficial": "Mở tài khoản chính thức"
+    "friendHint": "Không nhận? Hãy kết bạn",
+    "openOfficial": "Mở tài khoản chính thức",
+    "notFriendHint": "Chưa kết bạn, không nhận thông báo",
+    "addFriend": "Kết bạn"
   }
 }

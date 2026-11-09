@@ -141,7 +141,9 @@
     "toggleActivity": "활동 알림(신청, 대기, 변경)",
     "toggleSystem": "시스템 알림(쪽지/공지)",
     "toggleTournament": "대회 알림(신청/일정 업데이트)",
-    "friendHint": "알림이 오지 않나요? 공식 계정을 친구로 추가했는지 확인해 주세요",
-    "openOfficial": "공식 계정 열기"
+    "friendHint": "알림이 안 오나요? 친구 추가",
+    "openOfficial": "공식 계정 열기",
+    "notFriendHint": "친구 미추가: LINE 알림 불가",
+    "addFriend": "친구 추가"
   }
 }

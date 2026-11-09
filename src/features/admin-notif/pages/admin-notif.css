@@ -1,0 +1,15 @@
+/* 後台「推播通知設定」：站長 11-09 核可的簡化版（FC docs/previews/notif-settings-b-2026-11-09.html）。
+   只用 A 原檔變數（legacy-vars.css）。站長 11-09：文字不得因視窗窄自動斷行，所有文字 nowrap，
+   列內文字過長時以省略號收尾（不溢出、不擠壓右側開關）。 */
+#page-admin-notif .notif-note { font-size: .78rem; color: var(--text-muted); margin: 0 .2rem .6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#page-admin-notif .notif-sec { font-size: .72rem; font-weight: 700; color: var(--text-muted); margin: .6rem .2rem .35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#page-admin-notif .notif-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .25rem .75rem; margin-bottom: .65rem; }
+#page-admin-notif .notif-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .62rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; white-space: nowrap; }
+#page-admin-notif .notif-row:last-child { border-bottom: none; }
+#page-admin-notif .notif-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-admin-notif .notif-row .toggle-switch { flex-shrink: 0; margin: 0; }
+#page-admin-notif .notif-row .toggle-switch input:disabled + .toggle-slider { cursor: default; opacity: .6; }
+#page-admin-notif .notif-fixed { flex-shrink: 0; font-size: .78rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+#page-admin-notif .notif-save { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#page-admin-notif .page-header h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#page-admin-notif .notif-state { text-align: center; padding: 2rem; color: var(--text-muted); white-space: nowrap; }
