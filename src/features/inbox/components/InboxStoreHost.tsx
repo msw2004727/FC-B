@@ -2,8 +2,12 @@
 // 由 App 以 lazy 動態載入，避免首屏帶入收件匣資料層與 Firestore。
 // 啟動延到瀏覽器閒置（沒有 requestIdleCallback 時 1.5 秒後），讓登入當下的收件匣初讀不和首頁首屏讀取搶連線；
 // 進收件匣頁不受影響（InboxPage 會立即啟動）。
+// 會員文件同步（照 A createOrUpdateUser）也借這個登入後才載入的延遲 chunk 掛載，不加首頁主程式；
+// 它要趕在首次資料表單與報名之前，所以不等閒置（2026-11-09 P1）。
 
 import { useEffect } from 'preact/hooks';
+
+import { startUserDocSync } from '@/data/user-doc-sync';
 
 import { startInboxStore, stopInboxStore } from '../data/inbox-store';
 
@@ -36,6 +40,10 @@ function scheduleIdle(run: () => void): () => void {
 }
 
 export function InboxStoreHost({ uid }: { uid: string | null }): null {
+  useEffect(() => {
+    if (uid) void startUserDocSync(uid);
+  }, [uid]);
+
   useEffect(() => {
     if (!uid) {
       stopInboxStore();

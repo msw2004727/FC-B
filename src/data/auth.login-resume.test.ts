@@ -82,6 +82,18 @@ describe('LINE 授權回跳接手登入', () => {
     expect(h.liff.login).not.toHaveBeenCalled();
   });
 
+  it('getProfile 只呼叫一次，結果掛在 liff.fcbProfile 交給會員文件同步沿用（審查 P3-2）', async () => {
+    h.liff.isLoggedIn.mockReturnValue(true);
+    h.liff.getProfile.mockClear();
+
+    const user = await auth.signIn({ interactive: false });
+
+    expect(user.displayName).toBe('王大明');
+    expect(h.liff.getProfile).toHaveBeenCalledTimes(1);
+    const stashed = (h.liff as { fcbProfile?: Promise<unknown> }).fcbProfile;
+    await expect(stashed).resolves.toEqual({ displayName: '王大明', pictureUrl: null });
+  });
+
   it('liff.state 也會被清掉（Grok 交叉審查 P2）', async () => {
     history.replaceState(null, '', '/?liff.state=%2Fevents%2Fabc&tab=2');
     h.liff.isLoggedIn.mockReturnValue(true);
