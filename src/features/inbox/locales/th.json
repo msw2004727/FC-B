@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status} ({reviewer})"
   },
+  "actions": {
+    "openEvent": "ไปที่กิจกรรม"
+  },
   "pm": {
     "emptyTitle": "ยังไม่มีการสนทนาส่วนตัว",
     "emptyBody": "ข้อความส่วนตัวของคุณจะแสดงที่นี่",

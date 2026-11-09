@@ -25,10 +25,20 @@ export interface InboxMessageLike {
   [key: string]: unknown;
 }
 
+/** 收件匣執行動作時提供的頁面能力（登錄檔不 import 路由）。 */
+export interface MessageActionContext {
+  /** 關閉訊息詳情並導向站內路徑。 */
+  navigate(path: string): void;
+}
+
 export interface MessageActionEntry {
   key: string;
   labelKey: string;
-  run(message: InboxMessageLike, viewer: MessageActionViewer): Promise<void>;
+  run(
+    message: InboxMessageLike,
+    viewer: MessageActionViewer,
+    ctx?: MessageActionContext,
+  ): Promise<void>;
 }
 
 export interface MessageActionHandler {
