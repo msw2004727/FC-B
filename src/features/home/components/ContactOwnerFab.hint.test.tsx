@@ -273,7 +273,7 @@ describe('ContactOwnerFab 每次回到首頁提示', () => {
       const needle = `rotate(${degrees})`;
       const lines = body.split('\n').filter((line) => line.includes(needle));
       expect(lines, needle).toHaveLength(1);
-      return lines[0].match(/\d+(?:\.\d+)?%/g) ?? [];
+      return lines[0]?.match(/\d+(?:\.\d+)?%/g) ?? [];
     };
     expect(fabCss.match(/@keyframes\s+contact-owner-fab-shake(?:-2)?\s*\{/g)).toHaveLength(2);
     const round = keyframeBody('contact-owner-fab-shake');
