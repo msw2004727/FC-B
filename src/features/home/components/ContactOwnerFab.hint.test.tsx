@@ -178,6 +178,38 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  // Gemini 審查 P2：1 秒到、提示 chunk 還在下載時，點浮球或卸下都不能再顯示泡泡、也不消耗提示額度。
+  it('提示 chunk 下載期間點了浮球，下載完不顯示泡泡、不記錄', async () => {
+    const onClick = vi.fn();
+    render(<ContactOwnerFab onClick={onClick} />);
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      fireEvent.click(fab());
+      await vi.dynamicImportSettled();
+    });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(hint()).toBeNull();
+    expect(fab().classList.contains('is-shaking')).toBe(false);
+    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+  });
+
+  it('提示 chunk 下載期間卸下又重新掛上，只由新的浮球顯示一次泡泡，卸下時收乾淨', async () => {
+    const first = render(<ContactOwnerFab onClick={() => undefined} />);
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      first.unmount();
+      await vi.dynamicImportSettled();
+    });
+    expect(hint()).toBeNull();
+    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    const second = render(<ContactOwnerFab onClick={() => undefined} />);
+    await advance(1000);
+    expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
+    second.unmount();
+    expect(hint()).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('CSS：reduced motion 關掉抖動與泡泡進場動畫；泡泡單行、在浮球上方', () => {
     expect(fabCss).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.contact-owner-fab\.is-shaking,\s*\.contact-owner-fab-hint\s*\{\s*animation:\s*none/);
     expect(fabCss).toMatch(/\.contact-owner-fab-hint\s*\{[^}]*white-space:\s*nowrap/);
