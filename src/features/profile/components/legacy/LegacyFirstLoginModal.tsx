@@ -339,7 +339,9 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       }
     }
 
-    // 照 A `_requireFirstLoginLegalConsent`：未勾選同意先跳 toast 並聚焦 checkbox。
+    // 照 A `_requireFirstLoginLegalConsent`：未勾選同意先跳 toast。
+    // 同時有漏填時不 focus 同意框，否則瀏覽器會把捲動帶去底部、蓋掉剛捲到的漏填欄位。
+    // 只有未勾同意時才 focus（照舊）。同意框樣式與錯誤文字都不改。
     if (!legalConsent) {
       toast.show({
         message: lt(
@@ -347,10 +349,12 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
           '請先勾選同意服務條款與隱私權政策。',
         ),
       });
-      try {
-        consentRef.current?.focus();
-      } catch {
-        // noop
+      if (!missing) {
+        try {
+          consentRef.current?.focus();
+        } catch {
+          // noop
+        }
       }
       return;
     }

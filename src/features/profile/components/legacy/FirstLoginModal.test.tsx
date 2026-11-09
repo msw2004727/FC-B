@@ -345,22 +345,40 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     expect(controlRule).toMatch(/border\s*:/);
   });
 
-  it('漏填且未勾同意時仍捲到並標紅第一個漏填欄位，同意錯誤提示照舊', () => {
+  it('漏填且未勾同意時仍捲到並標紅第一個漏填欄位，不 focus 同意框，同意錯誤提示照舊', () => {
     renderModal();
     const genderField = fieldOf('fl-gender');
     const gender = document.getElementById('fl-gender') as HTMLSelectElement;
+    const consent = document.getElementById('fl-legal-consent') as HTMLInputElement;
     const scrollIntoView = vi.fn();
+    const consentFocus = vi.spyOn(consent, 'focus');
     genderField.scrollIntoView = scrollIntoView;
     fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(consentFocus).not.toHaveBeenCalled();
     expect(genderField.classList.contains('fl-field--error')).toBe(true);
     expect(gender.classList.contains('fl-field--error')).toBe(true);
     expect(fieldOf('fl-region-input').classList.contains('fl-field--error')).toBe(false);
+    expect(consent.className).toBe('');
     expect(vi.mocked(toast.show)).toHaveBeenCalledWith({
       message: '請先勾選同意服務條款與隱私權政策。',
     });
     expect(vi.mocked(toast.show)).not.toHaveBeenCalledWith({
       message: '請填寫所有必填欄位（性別、生日、地區）',
+    });
+    expect(saveFirstLoginProfile).not.toHaveBeenCalled();
+  });
+
+  it('只有未勾同意、必填都有填時仍 focus 同意框', () => {
+    renderModal({
+      initial: { gender: '男', birthday: '1990/01/15', region: '台北市', email: '' },
+    });
+    const consent = document.getElementById('fl-legal-consent') as HTMLInputElement;
+    const consentFocus = vi.spyOn(consent, 'focus');
+    fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
+    expect(consentFocus).toHaveBeenCalledWith();
+    expect(vi.mocked(toast.show)).toHaveBeenCalledWith({
+      message: '請先勾選同意服務條款與隱私權政策。',
     });
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
   });
