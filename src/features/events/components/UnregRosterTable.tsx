@@ -612,7 +612,7 @@ export function UnregRosterTable({
     if (CALLABLES_DEPLOYED) finishRing.start();
     try {
       await flushInstantSaves();
-      await finishRing.succeed();
+      if (CALLABLES_DEPLOYED) await finishRing.succeed();
       if (CALLABLES_DEPLOYED && aliveRef.current) {
         latestRef.current.onToast?.('儲存完成');
       }

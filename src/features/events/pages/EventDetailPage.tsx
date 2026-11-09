@@ -1827,6 +1827,7 @@ function EventDetailSession({
       setCompanionOpen(false);
       await refresh(adoptEventProjection(current, projection));
     } catch (error) {
+      companionRing.fail();
       if (!alive.current) return;
       const code = error instanceof SignupError ? error.originalCode : '';
       const messages: Record<string, string> = {

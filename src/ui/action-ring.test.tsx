@@ -67,7 +67,7 @@ describe('useActionRingControl＋ActionRingButton', () => {
     expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.getAttribute('aria-label')).toBe('儲存中...');
     expect(button.disabled).toBe(true);
-    expect(button.getAttribute('style')).toContain('--action-ring-d:40px');
+    expect(button.getAttribute('style')).toMatch(/--action-ring-d:\s*40px/);
     expect(button.querySelector('.action-ring-mark .signup-ring-arc')).not.toBeNull();
     // 原內容留在 DOM 撐住寬度（CSS 隱藏），不換成別的文字。
     expect(button.querySelector('.action-ring-label')?.textContent).toBe('儲存中...');
@@ -168,7 +168,7 @@ describe('useActionRingControl＋ActionRingButton', () => {
     stubFrames();
     const h = harness(28);
     act(() => { h.control.start(); vi.advanceTimersByTime(0); });
-    expect(h.button().getAttribute('style')).toContain('--action-ring-d:28px');
+    expect(h.button().getAttribute('style')).toMatch(/--action-ring-d:\s*28px/);
     h.restore();
   });
 
