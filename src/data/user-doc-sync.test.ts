@@ -356,11 +356,58 @@ describe('Flash 審查 P2-3：確定會失敗的 24 小時內不重試，暫時�
     warn.mockRestore();
   });
 
-  it('文件不存在又拿不到 LINE profile：判定無法建檔，寫失敗記號', async () => {
+  it('文件不存在又拿不到 LINE profile（LIFF 暫未登入／getProfile 逾時）：暫時性，不寫失敗記號，下次進站重試', async () => {
     liffState.ensure.mockResolvedValue({ ...liff(), isLoggedIn: () => false });
     fs.getDoc.mockResolvedValue(missing);
     await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'line-profile-unavailable' });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+
+    liffState.ensure.mockResolvedValue(liff());
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+  });
+
+  it('backoff 期間剛重新 LINE 登入（有屬於這個 uid 的新鮮 fcbProfile）：略過 backoff 照常同步，成功後清掉失敗記號', async () => {
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    liffState.ready = { ...liff(), fcbProfile: Promise.resolve({ userId: 'U1', displayName: '小明', pictureUrl: 'https://p/1' }) };
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+  });
+
+  it('backoff 只擋沒有新 profile 的自動重試：LIFF 就緒但沒有 fcbProfile、或 fcbProfile 是別的帳號，都照樣 backoff', async () => {
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    liffState.ready = liff();
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    liffState.ready = { ...liff(), fcbProfile: Promise.resolve({ userId: 'U-other' }) };
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    expect(fs.getDoc).not.toHaveBeenCalled();
+  });
+
+  it('同一份 fcbProfile 只能略過 backoff 一次：略過後仍失敗（帳號不符）就照常 backoff', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    const stash = Promise.resolve({ userId: 'U1', displayName: '小明' });
+    liffState.ready = { ...liff(), fcbProfile: stash };
+    fs.getDoc.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+    await expect(syncUserDoc('U1')).rejects.toBeTruthy();
+    fs.getDoc.mockClear();
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    expect(fs.getDoc).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('登出時明確清掉這個帳號的失敗記號（不依賴帳號資料前綴清理），重新登入一定重試', async () => {
+    liffState.ready = liff({ userId: 'U-other', displayName: 'x' });
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'line-uid-mismatch' });
     expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).not.toBeNull();
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U2', String(NOW));
+
+    emit('auth:changed', { uid: null });
+
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+    // 只清這個帳號的，不動別的 uid。
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U2')).toBe(String(NOW));
   });
 
   it('LIFF 初始化失敗（暫時性）：不寫失敗記號', async () => {

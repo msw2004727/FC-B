@@ -99,7 +99,8 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
   });
 
   /**
-   * 與 A 的刻意差異（審查 P3-2）：已存在文件時 getProfile 名稱空白不用 uid 覆寫既有名稱。
+   * 與 A 的刻意差異：已存在文件時，LINE getProfile 回傳的名稱是空白就保留既有名稱，
+   * 不像 A 用 uid 覆寫（避免老會員名稱被換成一串 uid）。
    * 只有這裡列出的案例允許與 A 不同，且差異必須剛好是列出的欄位被省略。
    */
   const DELIBERATE_OMISSIONS: Readonly<Record<string, readonly string[]>> = {
@@ -179,7 +180,7 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     }
   });
 
-  it('B 已存在分支（buildExistingLoginUpdate）：真的 getProfile 有名稱時與 A 相同；名稱空白時不覆寫名稱（與 A 的刻意差異，審查 P3-2）', () => {
+  it('B 已存在分支（buildExistingLoginUpdate）：真的 getProfile 有名稱時與 A 相同；名稱空白時保留既有名稱、不用 uid 覆寫（與 A 的刻意差異）', () => {
     for (const c of fixture.cases.filter((x) => x.id.startsWith('existing-'))) {
       const existingDoc = decode(c.input.canonical) as Record<string, unknown>;
       const b = encode(buildExistingLoginUpdate(existingDoc, profileOf(c), c.input.nowMs, TS)) as Record<string, unknown>;

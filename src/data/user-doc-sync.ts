@@ -9,7 +9,8 @@
 // - 只是 Auth 還原的進站（沒有 LINE profile）：文件存在只補 lastLogin（超過 10 分鐘，同 A）；文件不存在才初始化 LIFF 取 profile 建檔。
 // - 失敗不阻斷登入：宿主（InboxStoreHost，登入後才載入的延遲 chunk）只記錄結構化警告；成功才寫本機記號，
 //   沒寫記號的下次進站會再試一次（不做批次回填，受影響的人下次登入／進站自動建檔）；
-//   確定會失敗的（帳號不符、無 profile、legacy 不可遷移）寫 uid 專屬失敗記號，24 小時內不重試。
+//   確定會失敗的（帳號不符、legacy 不可遷移）寫 uid 專屬失敗記號，24 小時內不自動重試；
+//   剛重新 LINE 登入（有新鮮 profile）或登出後再登入則照常重試。
 // - 本檔只能被延遲 chunk 靜態引用，不得進首頁靜態圖（entry-graph.test.ts 管制）。
 
 import type { Firestore } from 'firebase/firestore';
@@ -48,13 +49,12 @@ export const PERMANENT_FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 export type UserDocSyncResult = 'created' | 'migrated' | 'updated' | 'unchanged' | 'skipped' | 'backoff';
 
 /**
- * 重試也不會成功的失敗：LINE 帳號與登入帳號不符、拿不到 LINE profile 無法建檔、
- * legacy 不可自動遷移、payload 不符 Rules。網路／Firestore／LIFF 初始化等暫時性錯誤不在此列，下次進站照常重試。
+ * 自動重試也不會成功的失敗：LINE 帳號與登入帳號不符、legacy 不可自動遷移、payload 不符 Rules。
+ * 拿不到 LINE profile（getProfile 逾時、LIFF 暫未登入）與網路／Firestore／LIFF 初始化錯誤都是暫時性，下次進站照常重試。
  */
 export function isPermanentFailure(err: unknown): boolean {
   if (!(err instanceof UserDocSyncError)) return false;
   return err.reason === 'line-uid-mismatch'
-    || err.reason === 'line-profile-unavailable'
     || err.reason.startsWith('legacy-not-migratable')
     || err.reason.startsWith('create-');
 }
@@ -66,7 +66,7 @@ export interface LiffProfileSource {
   isLoggedIn(): boolean;
   getProfile(): Promise<LiffProfile>;
   getDecodedIDToken(): { sub?: string; name?: string; picture?: string; email?: string } | null;
-  /** signIn（auth.ts）已呼叫過的 getProfile；有就沿用，登入時只呼叫一次（審查 P3-2）。 */
+  /** signIn（auth.ts）已呼叫過的 getProfile；有就沿用，登入時只呼叫一次。 */
   fcbProfile?: Promise<LiffProfile>;
 }
 
@@ -121,12 +121,40 @@ export async function readLineProfile(liff: LiffProfileSource, expectedUid?: str
   return null;
 }
 
-/** 登出時丟掉 signIn 留下的 profile，下一位登入者不會沿用（Flash 審查 P2-1）。 */
+/** 這一頁最後同步（或登入）的帳號：登出時要清掉它的失敗記號。 */
+let sessionUid: string | null = null;
+
+/**
+ * 登出時丟掉 signIn 留下的 profile（下一位登入者不會沿用），並清掉這個帳號的失敗記號
+ * （不依賴外部的帳號資料前綴清理；重新登入一定重新嘗試）。
+ */
 on('auth:changed', ({ uid }) => {
-  if (uid !== null) return;
+  if (uid !== null) {
+    sessionUid = uid;
+    return;
+  }
   const liff = getReadyLiff() as LiffProfileSource | null;
   if (liff) delete liff.fcbProfile;
+  if (sessionUid) clearFailed(sessionUid);
+  sessionUid = null;
 });
+
+/** 已用來略過 backoff 的 fcbProfile；同一份只能略過一次（之後的自動重試照樣受 backoff 限制）。 */
+let bypassedStash: Promise<LiffProfile> | undefined;
+
+/** 本次有剛走 signIn 拿到、屬於這個 uid 的 profile：代表使用者剛重新 LINE 登入，略過 backoff。 */
+async function hasFreshProfileFor(liff: LiffProfileSource | null, uid: string): Promise<boolean> {
+  const stashed = liff?.fcbProfile;
+  if (!stashed || stashed === bypassedStash) return false;
+  try {
+    const p = await withTimeout(stashed, PROFILE_TIMEOUT_MS);
+    if (p?.userId !== uid) return false;
+  } catch {
+    return false;
+  }
+  bypassedStash = stashed;
+  return true;
+}
 
 function loggedIn(liff: unknown): LiffProfileSource | null {
   const source = liff as LiffProfileSource | null;
@@ -165,6 +193,14 @@ function recentlyFailed(uid: string, nowMs: number): boolean {
   }
 }
 
+function clearFailed(uid: string): void {
+  try {
+    localStorage.removeItem(USER_DOC_FAILED_KEY_PREFIX + uid);
+  } catch {
+    // 儲存空間不可用就沒有記號可清。
+  }
+}
+
 function markFailed(uid: string, nowMs: number): void {
   try {
     localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + uid, String(nowMs));
@@ -184,10 +220,12 @@ async function requireProfile(liff: LiffProfileSource | null, uid: string): Prom
 async function runSync(uid: string): Promise<UserDocSyncResult> {
   if (!uid) throw new UserDocSyncError('no-uid');
   const nowMs = Date.now();
-  if (recentlyFailed(uid, nowMs)) return 'backoff';
+  sessionUid = uid;
   // 剛用 LINE 登入（或 Mini App 已初始化 LIFF）時照 A 帶 LINE profile 同步；
   // 只是 Auth 還原的進站沒有 profile，只補 lastLogin（照 A 每次進站超過 10 分鐘更新）。
   const readyLiff = loggedIn(getReadyLiff());
+  // backoff 只擋沒有新 profile 的自動重試；剛重新 LINE 登入（有屬於這個 uid 的新鮮 profile）照常同步。
+  if (recentlyFailed(uid, nowMs) && !(await hasFreshProfileFor(readyLiff, uid))) return 'backoff';
   if (!readyLiff && recentlySynced(uid, nowMs)) return 'skipped';
 
   const [fs, ctx] = await Promise.all([import('firebase/firestore'), getFirebase()]);
@@ -293,4 +331,6 @@ export function startUserDocSync(uid: string): Promise<UserDocSyncResult | null>
 
 export function _resetUserDocSyncForTest(): void {
   inflight.clear();
+  sessionUid = null;
+  bypassedStash = undefined;
 }
