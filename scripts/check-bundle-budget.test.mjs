@@ -9,6 +9,7 @@ import {
   gzipByteLength,
   inspectHomeBundle,
   listHomeEntryJs,
+  listOtherModuleScripts,
   parseLimit,
   resolveDistHref,
 } from './check-bundle-budget.mjs';
@@ -23,7 +24,12 @@ const FIXTURE_HTML = [
   '</head></html>',
 ].join('');
 
-function makeDist(body, html = FIXTURE_HTML.replace('index-Ab12.js', 'index-test.js')) {
+// 預設 dist 只有一個 module script（vendor-aaa 在真實 dist 不會是 script，會被 inspectHomeBundle 判失敗）。
+const DEFAULT_HTML = FIXTURE_HTML
+  .replace('<script type="module" src="/assets/vendor-aaa.js"></script>', '')
+  .replace('index-Ab12.js', 'index-test.js');
+
+function makeDist(body, html = DEFAULT_HTML) {
   const dir = mkdtempSync(path.join(tmpdir(), 'bb-budget-'));
   mkdirSync(path.join(dir, 'assets'));
   writeFileSync(path.join(dir, 'index.html'), html);
@@ -106,6 +112,26 @@ describe('check-bundle-budget', () => {
     }
   });
 
+  it('出現不認得的 module script 時失敗，不靜默忽略；上限格式錯誤丟錯', () => {
+    expect(listOtherModuleScripts(FIXTURE_HTML)).toEqual(['/assets/vendor-aaa.js']);
+    const dir = makeDist(Buffer.from('x'), FIXTURE_HTML.replace('index-Ab12.js', 'index-test.js'));
+    try {
+      const r = inspectHomeBundle(dir, 60_000);
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain('不認得的 module script');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const onlyOther = makeDist(Buffer.from('x'), '<script type="module" src="/assets/main-zz.js"></script>');
+    try {
+      expect(inspectHomeBundle(onlyOther, 60_000).ok).toBe(false);
+    } finally {
+      rmSync(onlyOther, { recursive: true, force: true });
+    }
+    expect(() => parseLimit('abc')).toThrow();
+    expect(() => parseLimit('-5KB')).toThrow();
+  });
+
   it('CLI 真的執行 main：通過 exit 0、超標與缺檔 exit 1（不得靜默通過）', () => {
     // vitest 的 import.meta.url 不一定是 file: 協定，改以專案根（vitest 的 cwd）定位。
     const script = path.resolve(process.cwd(), 'scripts/check-bundle-budget.mjs');
@@ -119,6 +145,8 @@ describe('check-bundle-budget', () => {
       expect(over.stdout).toContain('超過上限');
       const bad = spawnSync(process.execPath, [script, path.join(dir, 'nope')], { encoding: 'utf8' });
       expect(bad.status).toBe(1);
+      const badLimit = spawnSync(process.execPath, [script, dir, 'abc'], { encoding: 'utf8' });
+      expect(badLimit.status).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -1,27 +1,26 @@
 /**
  * check-bundle-budget.mjs — 建置後檢查首頁主程式 gzip 是否超過預算。
  *
- * 口徑（ee2581c 建置到 C:/t/bb-dist 實測後選定，不要改成加總）：
+ * 口徑（不要改成加總）：
  *   只算 dist/index.html 裡 <script type="module" src> 的入口，檔名須為 index-*.js。
  *   不含 modulepreload、不含 CSS、不含 inline script。
  *   gzip = zlib.gzipSync(buf, { level: 9 }) 的位元組數；KB = 1000 bytes（不是 1024）。
  *   預設上限 60KB = 60000 bytes。大於上限才失敗，等於上限通過。
  *
- * 理由：同一產物、level 9——
- *   (a) 只算入口 index-KpBypRYB.js：54489 bytes = 54.49 KB（/1000）＝ 53.21 KiB（/1024）
- *   (b) 入口 + 全部 19 個 modulepreload：111737 bytes = 111.74 KB
- *   (c) (b) 再加 2 個 stylesheet：158306 bytes = 158.31 KB
- *   vite reporter 對同一入口印 gzip 54.97 kB（同樣以 1000 為單位）。
- *   背景的「約 54.88KB」只落在 (a) 且用 1000；(b)(c) 都超過 100KB，不是這個預算。
- *   54.49 與 54.88 差 0.39KB，是壓縮實作與這次建置的差距，不是另一種檔案集合。
+ * 理由：交接文件記載的「首頁主程式約 54.88KB、上限 60KB」只對得上入口檔這個口徑
+ *   （2026-11-10、基底 ee2581c 實測：入口約 54.5KB；加上全部 modulepreload 約 111.7KB，
+ *   再加 CSS 約 158KB，後兩者都不可能是低於 60KB 的那個數字）。
+ *   已知限制：入口縮小、內容搬進 modulepreload 的 chunk 時本檢查不會變紅，
+ *   日後可另加「入口＋modulepreload 合計」第二條上限（先只印出、觀察後再判失敗）。
  *
- * 找不到 index.html、沒有入口、入口不是剛好一個、路徑跳出 dist、檔案不存在：一律失敗（fail-closed）。
+ * fail-closed：找不到 index.html、沒有入口、入口不是剛好一個、HTML 內有任何其他
+ *   <script type="module" src>（不認得的入口一律失敗，不靜默忽略）、路徑跳出 dist、檔案不存在：一律失敗。
  *
  * 用法：
  *   node scripts/check-bundle-budget.mjs [dist 目錄] [上限]
  *   上限例：60KB（預設）、1KB。純數字也當 KB。
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
@@ -50,6 +49,22 @@ export function listHomeEntryJs(html) {
     found.push(clean);
   }
   return found;
+}
+
+/** HTML 內所有「有 src 的 module script」，且檔名不是 index-*.js 者（不認得的入口，視為失敗）。 */
+export function listOtherModuleScripts(html) {
+  /** @type {string[]} */
+  const others = [];
+  for (const m of String(html).matchAll(/<script\b([^>]*)>/gi)) {
+    const attrs = m[1] ?? '';
+    if (attr(attrs, 'type').toLowerCase() !== 'module') continue;
+    const src = attr(attrs, 'src').trim();
+    if (!src) continue;
+    const clean = src.split(/[?#]/)[0];
+    const base = clean.split('/').pop() ?? '';
+    if (!/^index-[^/]+\.js$/.test(base)) others.push(clean);
+  }
+  return others;
 }
 
 /** zlib.gzipSync(buf, { level: 9 }) 的位元組數。 */
@@ -111,6 +126,10 @@ export function inspectHomeBundle(distDir, limitBytes) {
     return failed(`讀不到 dist/index.html：${message}`, limitBytes);
   }
 
+  const others = listOtherModuleScripts(html);
+  if (others.length > 0) {
+    return failed(`index.html 有不認得的 module script，無法確定入口：${others.join(', ')}`, limitBytes);
+  }
   const hrefs = listHomeEntryJs(html);
   if (hrefs.length === 0) {
     return failed('找不到入口 JS（index.html 沒有 script type=module 且檔名為 index-*.js）', limitBytes);
@@ -179,7 +198,17 @@ function main() {
   process.exitCode = result.ok ? 0 : 1;
 }
 
-// 以實體路徑比對，避免 file URL 編碼差異讓 CLI 靜默不跑 main 而誤判通過；CLI 行為另有子行程測試。
-const isMain = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// 兩邊都取 realpath 再比：ESM 的 import.meta.url 已解析符號連結／junction，argv[1] 不會，
+// 只做 path.resolve 會讓經由連結執行時 main 靜默不跑而假綠。CLI 行為另有子行程測試。
+function isMainModule() {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try {
+    return realpathSync(path.resolve(argv1)) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+const isMain = isMainModule();
 
 if (isMain) main();
