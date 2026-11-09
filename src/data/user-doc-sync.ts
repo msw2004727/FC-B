@@ -137,6 +137,7 @@ on('auth:changed', ({ uid }) => {
   if (liff) delete liff.fcbProfile;
   if (sessionUid) clearFailed(sessionUid);
   sessionUid = null;
+  bypassedStash = undefined;
 });
 
 /** 已用來略過 backoff 的 fcbProfile；同一份只能略過一次（之後的自動重試照樣受 backoff 限制）。 */
@@ -220,12 +221,15 @@ async function requireProfile(liff: LiffProfileSource | null, uid: string): Prom
 async function runSync(uid: string): Promise<UserDocSyncResult> {
   if (!uid) throw new UserDocSyncError('no-uid');
   const nowMs = Date.now();
-  sessionUid = uid;
   // 剛用 LINE 登入（或 Mini App 已初始化 LIFF）時照 A 帶 LINE profile 同步；
   // 只是 Auth 還原的進站沒有 profile，只補 lastLogin（照 A 每次進站超過 10 分鐘更新）。
   const readyLiff = loggedIn(getReadyLiff());
-  // backoff 只擋沒有新 profile 的自動重試；剛重新 LINE 登入（有屬於這個 uid 的新鮮 profile）照常同步。
-  if (recentlyFailed(uid, nowMs) && !(await hasFreshProfileFor(readyLiff, uid))) return 'backoff';
+  // backoff 只擋沒有新 profile 的自動重試；剛重新 LINE 登入（有屬於這個 uid 的新鮮 profile）先清掉舊失敗記號再同步，
+  // 這次若只遇到暫時性錯誤，下次進站照常重試，不會被舊記號擋 24 小時。
+  if (recentlyFailed(uid, nowMs)) {
+    if (!(await hasFreshProfileFor(readyLiff, uid))) return 'backoff';
+    clearFailed(uid);
+  }
   if (!readyLiff && recentlySynced(uid, nowMs)) return 'skipped';
 
   const [fs, ctx] = await Promise.all([import('firebase/firestore'), getFirebase()]);
@@ -233,6 +237,7 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
     if (ctx.auth.currentUser?.uid !== uid) throw new UserDocSyncError('auth-uid-mismatch');
   };
   assertAuthUid();
+  sessionUid = uid;
   const db = ctx.db as unknown as Firestore;
   const ref = fs.doc(db, users, uid);
   const snap = await fs.getDoc(ref);

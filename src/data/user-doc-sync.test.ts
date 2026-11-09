@@ -383,17 +383,54 @@ describe('Flash 審查 P2-3：確定會失敗的 24 小時內不重試，暫時�
     expect(fs.getDoc).not.toHaveBeenCalled();
   });
 
-  it('同一份 fcbProfile 只能略過 backoff 一次：略過後仍失敗（帳號不符）就照常 backoff', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('同一份 fcbProfile 只能略過 backoff 一次：略過後又遇永久錯誤（legacy 不可遷移）就重寫記號、照常 backoff', async () => {
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    const stash = Promise.resolve({ userId: 'U1', displayName: '小明' });
+    liffState.ready = { ...liff(), fcbProfile: stash };
+    fs.getDoc.mockResolvedValue(missing);
+    fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', manualRole: 'admin' }) }] });
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'legacy-not-migratable:create-fields-not-allowed' });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBe(String(NOW));
+    fs.getDoc.mockClear();
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    expect(fs.getDoc).not.toHaveBeenCalled();
+  });
+
+  it('略過 backoff 時先清掉舊失敗記號：這次只遇暫時性錯誤，下次進站照常重試（不 backoff）', async () => {
     localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
     const stash = Promise.resolve({ userId: 'U1', displayName: '小明' });
     liffState.ready = { ...liff(), fcbProfile: stash };
     fs.getDoc.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
     await expect(syncUserDoc('U1')).rejects.toBeTruthy();
-    fs.getDoc.mockClear();
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+  });
+
+  it('登出時重設「已略過」紀錄：同一份 fcbProfile 在重新登入後可再略過一次', async () => {
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    const stash = Promise.resolve({ userId: 'U1', displayName: '小明' });
+    liffState.ready = { ...liff(), fcbProfile: stash };
+    fs.getDoc.mockResolvedValue(missing);
+    fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', manualRole: 'admin' }) }] });
+    await expect(syncUserDoc('U1')).rejects.toBeTruthy();
     await expect(syncUserDoc('U1')).resolves.toBe('backoff');
-    expect(fs.getDoc).not.toHaveBeenCalled();
-    warn.mockRestore();
+
+    emit('auth:changed', { uid: null });
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW - MIN));
+    liffState.ready = { ...liff(), fcbProfile: stash };
+    fs.getDocs.mockResolvedValue(noLegacy);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+  });
+
+  it('auth uid 不符時不記下這一頁的帳號：之後登出不會去清那個 uid 的記號', async () => {
+    fb.currentUid = 'U-other';
+    liffState.ready = liff();
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'auth-uid-mismatch' });
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + 'U1', String(NOW));
+    emit('auth:changed', { uid: null });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBe(String(NOW));
   });
 
   it('登出時明確清掉這個帳號的失敗記號（不依賴帳號資料前綴清理），重新登入一定重試', async () => {
