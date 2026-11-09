@@ -1164,6 +1164,17 @@ export interface RefreshMyActivityRecordsResponse {
 }
 
 export interface RegisterForEduCoursePlanRequest {
+  // K1 補：伺服器以 normalizeEduCourseRequestIds 讀 teamId／planId（FC functions/index.js registerForEduCoursePlan）。
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseRequestIds）
+   * @source const { teamId, planId } = normalizeEduCourseRequestIds(request.data || {});
+   */
+  teamId?: string;
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseRequestIds）
+   * @source const { teamId, planId } = normalizeEduCourseRequestIds(request.data || {});
+   */
+  planId?: string;
   /**
    * @validation 若為陣列則作為 requestedStudentIds；元素型別未驗證或轉換
    * @source const requestedStudentIds = Array.isArray(request.data?.studentIds) ? request.data.studentIds : [request.data?.studentId]
@@ -1322,6 +1333,22 @@ export interface RunUidHealthCheckResponse {
 }
 
 export interface SaveEduCourseSelfAttendanceRequest {
+  // K1 補：伺服器以 normalizeEduCourseSessionRequestIds 讀 teamId／planId／sessionId。
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  teamId?: string;
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  planId?: string;
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  sessionId?: string;
   /**
    * @validation sanitizeStr(request.data?.studentId, 100) 後不可空，否則 invalid-argument
    * @source const targetStudentId = sanitizeStr(request.data?.studentId, 100); if (!targetStudentId)
@@ -1364,6 +1391,22 @@ export interface SaveEduCourseSelfAttendanceResponse {
 }
 
 export interface SaveEduCourseSelfLeaveRequest {
+  // K1 補：伺服器以 normalizeEduCourseSessionRequestIds 讀 teamId／planId／sessionId。
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  teamId?: string;
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  planId?: string;
+  /**
+   * @validation sanitizeStr(..., 100)，空值 invalid-argument（normalizeEduCourseSessionRequestIds）
+   * @source const { teamId, planId, sessionId } = normalizeEduCourseSessionRequestIds(request.data || {});
+   */
+  sessionId?: string;
   /**
    * @validation sanitizeStr(request.data?.studentId, 100) 後不可空，否則 invalid-argument
    * @source const targetStudentId = sanitizeStr(request.data?.studentId, 100); if (!targetStudentId)
