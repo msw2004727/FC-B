@@ -33,6 +33,8 @@ describe('ops-dashboard manifest', () => {
     expect(ALL_FEATURES).toContain(manifest);
     expect(manifest.status).toBe('enabled');
     expect(manifest.routes.map((r) => r.path)).toEqual(['/admin/ops', '/admin/ops/participants']);
+    // 共用同一個 chunk：首頁主程式的延遲載入對應表只多一組檔名
+    expect(manifest.routes[0]!.load).toBe(manifest.routes[1]!.load);
   });
 
   it('抽屜「數據儀表板」指向 /admin/ops、admin.dashboard.entry，不再是佔位頁（done）', () => {
