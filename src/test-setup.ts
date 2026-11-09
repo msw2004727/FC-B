@@ -86,9 +86,19 @@ options.requestAnimationFrame = (flush: () => void) => {
   pendingFrames.add(entry);
 };
 afterEach(() => {
-  for (const entry of [...pendingFrames]) {
-    clearTimeout(entry.timer);
-    pendingFrames.delete(entry);
-    entry.run();
+  // 沖掉時 effect 可能再 setState、又排新的一輪，所以反覆沖到清空（上限 50 輪防無限迴圈）；
+  // 單一 flush 拋錯不得中斷其餘清理，全部沖完後再丟出第一個錯誤。
+  let firstError: unknown;
+  for (let round = 0; round < 50 && pendingFrames.size > 0; round++) {
+    for (const entry of [...pendingFrames]) {
+      clearTimeout(entry.timer);
+      pendingFrames.delete(entry);
+      try {
+        entry.run();
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
   }
+  if (firstError !== undefined) throw firstError;
 });
