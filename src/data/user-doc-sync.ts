@@ -136,12 +136,15 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
   const ts = fs.serverTimestamp();
 
   let result: UserDocSyncResult;
+  // 只有畫面看得到的資料變了（新建／遷移、名稱或頭像改變）才通知重讀 viewer；只補 lastLogin 不通知（省重讀）。
+  let visibleChange = true;
   if (snap.exists()) {
     const existing = (snap.data() ?? {}) as Data;
     const profile = readyLiff ? await requireProfile(readyLiff, uid) : null;
     const updates = profile
       ? buildLoginUpdate(existing, profile, nowMs, ts)
       : buildLastLoginUpdate(existing, nowMs, ts);
+    visibleChange = (['displayName', 'pictureUrl'] as const).some((key) => key in updates && existing[key] !== updates[key]);
     if (isNoopLoginUpdate(existing, updates)) {
       result = 'unchanged';
     } else {
@@ -179,7 +182,7 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
     }
   }
   markSynced(uid, nowMs);
-  if (result !== 'unchanged') emit('viewer:refresh', {});
+  if (result !== 'unchanged' && visibleChange) emit('viewer:refresh', {});
   return result;
 }
 

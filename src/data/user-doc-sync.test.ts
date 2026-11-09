@@ -164,6 +164,7 @@ describe('syncUserDoc：文件已存在', () => {
     });
     expect(fs.setDoc).not.toHaveBeenCalled();
     expect(fs.getDocs).not.toHaveBeenCalled();
+    expect(refreshes).toBe(1);
   });
 
   it('剛登入、10 分鐘內、名稱頭像相同：不寫入', async () => {
@@ -179,6 +180,8 @@ describe('syncUserDoc：文件已存在', () => {
     await expect(syncUserDoc('U1')).resolves.toBe('updated');
     expect(fs.updateDoc).toHaveBeenCalledWith({ path: 'users/U1' }, { lastLogin: TS });
     expect(liffState.ensure).not.toHaveBeenCalled();
+    // 只補 lastLogin：畫面資料沒變，不通知重讀 viewer。
+    expect(refreshes).toBe(0);
   });
 
   it('Auth 還原進站、10 分鐘內同步過：直接略過，不讀 Firestore', async () => {
