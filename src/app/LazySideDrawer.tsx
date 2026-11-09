@@ -17,9 +17,38 @@ let loaded: SideDrawerComponent | null = null;
 
 /**
  * 側邊選單（含選單設定、PWA 安裝教學框、隱身切換）的延遲載入。首屏只畫關閉狀態，
- * 所以不放進首頁主程式；App 第一次畫完就開始下載，下載完立刻掛上（關閉狀態），使用者點選單時通常已備妥。
+ * 所以不放進首頁主程式。關著時等瀏覽器閒置才預載，避免和首屏請求搶頻寬；已經打開則立刻下載。
  * 本檔不得靜態 import SideDrawer 或 drawer-menu。
  */
+
+/** 沒有 requestIdleCallback 時的退回延遲；也是閒置等待的上限。 */
+export const DRAWER_PRELOAD_DELAY_MS = 1500;
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  cancelIdleCallback?: (id: number) => void;
+};
+
+/** 首屏畫完後再預載。LINE 內建瀏覽器沒有 requestIdleCallback（R-CODE-005），改 setTimeout。 */
+function scheduleDrawerPreload(run: () => void): () => void {
+  let cancelled = false;
+  const guarded = (): void => {
+    if (!cancelled) run();
+  };
+  const idleWindow = window as IdleWindow;
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    const id = idleWindow.requestIdleCallback(guarded, { timeout: DRAWER_PRELOAD_DELAY_MS });
+    return () => {
+      cancelled = true;
+      idleWindow.cancelIdleCallback?.(id);
+    };
+  }
+  const timer = setTimeout(guarded, DRAWER_PRELOAD_DELAY_MS);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+}
 export function loadSideDrawer(): Promise<SideDrawerComponent> {
   if (!loading) {
     const promise = importer().then((mod) => {
@@ -131,26 +160,37 @@ export function LazySideDrawer(props: SideDrawerProps): JSX.Element | null {
   useEffect(() => {
     if (Drawer || failed) return undefined;
     let alive = true;
-    loadSideDrawer().then(
-      (component) => {
-        if (alive) setDrawer(() => component);
-      },
-      (err: unknown) => {
-        if (!alive) return;
-        console.error('[drawer] 載入側邊選單失敗', err);
-        setFailed(true);
-        // 使用者正在等選單打開：照換頁載入失敗的提示，並把選單狀態收回（再點一次會重試）。
-        // 換頁已取消的那次開啟 openRef 是 false，不再提示。
-        if (openRef.current) {
-          toast.show({ message: ROUTE_LOAD_FAILED_MSG, tone: 'error' });
-          onCloseRef.current();
-        }
-      },
-    );
+    const start = (): void => {
+      loadSideDrawer().then(
+        (component) => {
+          if (alive) setDrawer(() => component);
+        },
+        (err: unknown) => {
+          if (!alive) return;
+          console.error('[drawer] 載入側邊選單失敗', err);
+          setFailed(true);
+          // 使用者正在等選單打開：照換頁載入失敗的提示，並把選單狀態收回（再點一次會重試）。
+          // 換頁已取消的那次開啟 openRef 是 false，不再提示。
+          if (openRef.current) {
+            toast.show({ message: ROUTE_LOAD_FAILED_MSG, tone: 'error' });
+            onCloseRef.current();
+          }
+        },
+      );
+    };
+    // 已經打開：立刻下載，不等閒置。關著才排預載。
+    if (sessionOpen) {
+      start();
+      return () => {
+        alive = false;
+      };
+    }
+    const cancel = scheduleDrawerPreload(start);
     return () => {
       alive = false;
+      cancel();
     };
-  }, [Drawer, failed]);
+  }, [Drawer, failed, sessionOpen]);
 
   // 下載失敗後使用者再點選單（由關變開）：重新下載。
   const prevOpenRef = useRef(props.open);
