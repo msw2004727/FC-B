@@ -39,7 +39,7 @@ describe.skipIf(!enabled)('K1 新增 pending 學員 × 未修改的 Firestore Ru
     if (!/^(127\.0\.0\.1|localhost):\d+$/.test(address)) throw new Error('FIRESTORE_EMULATOR_HOST must explicitly target localhost');
     const [host, port] = address.split(':');
     const require = createRequire(resolve('package.json'));
-    const modulePath = require.resolve('@firebase/rules-unit-testing', { paths: [process.cwd(), resolve('../FC')] });
+    const modulePath = require.resolve('@firebase/rules-unit-testing', { paths: [process.cwd(), resolve('../FC'), resolve('../FCA')] });
     testing = require(modulePath) as RulesTesting;
     sdk = createRequire(modulePath)('firebase/firestore') as typeof sdk;
     env = await testing.initializeTestEnvironment({
