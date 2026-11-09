@@ -50,8 +50,9 @@ describe.skipIf(!enabled)('K1 新增 pending 學員 × 未修改的 Firestore Ru
   beforeEach(async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (ctx) => {
-      await sdk.setDoc(sdk.doc(ctx.firestore(), 'teams', 'tm_demo'), { id: 'tm_demo', name: '晨光', teachingEnabled: true, captainUid: 'cap' });
-      await sdk.setDoc(sdk.doc(ctx.firestore(), 'users', 'parent'), { uid: 'parent', role: 'user' });
+      const db = ctx.firestore(); // 同一個 context 只能取一次 firestore()，第二次會改設定而丟錯
+      await sdk.setDoc(sdk.doc(db, 'teams', 'tm_demo'), { id: 'tm_demo', name: '晨光', teachingEnabled: true, captainUid: 'cap' });
+      await sdk.setDoc(sdk.doc(db, 'users', 'parent'), { uid: 'parent', role: 'user' });
     });
   }, 60_000);
   afterAll(async () => { await env?.cleanup(); });
