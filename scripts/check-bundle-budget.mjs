@@ -23,14 +23,14 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 export const KB = 1000;
 export const DEFAULT_LIMIT_BYTES = 60 * KB;
 
 function attr(tagAttrs, name) {
-  const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
+  const re = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
   const m = re.exec(tagAttrs);
   return m ? (m[1] ?? m[2] ?? '') : '';
 }
@@ -80,7 +80,7 @@ export function parseLimit(raw) {
 /** 把 HTML 裡的路徑解到 dist 目錄內。跳出 dist、絕對網址、磁碟機路徑回傳 null。 */
 export function resolveDistHref(distDir, href) {
   const clean = String(href).split(/[?#]/)[0].trim();
-  if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || /^[a-zA-Z]:/.test(clean) || clean.startsWith('\\\\')) {
+  if (!clean || clean.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(clean) || /^[a-zA-Z]:/.test(clean) || clean.startsWith('\\\\')) {
     return null;
   }
   const rel = clean.replace(/^\/+/, '').replace(/\\/g, '/');
@@ -171,15 +171,15 @@ function main() {
     limitBytes = parseLimit(process.argv[3]);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const result = inspectHomeBundle(distDir, limitBytes);
   console.log(renderReport(result));
-  process.exit(result.ok ? 0 : 1);
+  process.exitCode = result.ok ? 0 : 1;
 }
 
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
+// 以實體路徑比對，避免 file URL 編碼差異讓 CLI 靜默不跑 main 而誤判通過；CLI 行為另有子行程測試。
+const isMain = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) main();

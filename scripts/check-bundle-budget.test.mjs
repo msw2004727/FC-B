@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   exceedsBudget,
@@ -9,6 +10,7 @@ import {
   inspectHomeBundle,
   listHomeEntryJs,
   parseLimit,
+  resolveDistHref,
 } from './check-bundle-budget.mjs';
 
 const FIXTURE_HTML = [
@@ -81,5 +83,44 @@ describe('check-bundle-budget', () => {
     expect(parseLimit('60KB')).toBe(60_000);
     expect(parseLimit('1KB')).toBe(1_000);
     expect(parseLimit(undefined)).toBe(60_000);
+  });
+
+  it('不把 data-src 當成入口，也拒絕協定相對網址與跳出 dist 的路徑', () => {
+    expect(listHomeEntryJs('<script type="module" data-src="/assets/index-fake.js"></script>')).toEqual([]);
+    expect(listHomeEntryJs("<script type='module' src='/assets/index-a1.js'></script>")).toEqual(['/assets/index-a1.js']);
+    expect(resolveDistHref('dist', '//cdn.example/assets/index-x.js')).toBeNull();
+    expect(resolveDistHref('dist', 'https://cdn.example/assets/index-x.js')).toBeNull();
+    expect(resolveDistHref('dist', '/assets/../../etc/passwd')).toBeNull();
+    expect(resolveDistHref('dist', '/assets/index-x.js')).not.toBeNull();
+  });
+
+  it('入口多於一個時失敗', () => {
+    const html = '<script type="module" src="/assets/index-a.js"></script><script type="module" src="/assets/index-b.js"></script>';
+    const dir = makeDist(Buffer.from('x'), html);
+    try {
+      const r = inspectHomeBundle(dir, 60_000);
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain('剛好一個');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('CLI 真的執行 main：通過 exit 0、超標與缺檔 exit 1（不得靜默通過）', () => {
+    // vitest 的 import.meta.url 不一定是 file: 協定，改以專案根（vitest 的 cwd）定位。
+    const script = path.resolve(process.cwd(), 'scripts/check-bundle-budget.mjs');
+    const dir = makeDist(Buffer.from('cli-fixture'));
+    try {
+      const ok = spawnSync(process.execPath, [script, dir], { encoding: 'utf8' });
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toContain('結果：通過');
+      const over = spawnSync(process.execPath, [script, dir, '0KB'], { encoding: 'utf8' });
+      expect(over.status).toBe(1);
+      expect(over.stdout).toContain('超過上限');
+      const bad = spawnSync(process.execPath, [script, path.join(dir, 'nope')], { encoding: 'utf8' });
+      expect(bad.status).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
