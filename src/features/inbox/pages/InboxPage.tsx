@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useLegacyT } from '@/i18n/i18n';
+import { t, useLegacyT } from '@/i18n/i18n';
+import { useLocation } from 'preact-iso';
 import { useViewer } from '@/features/profile/data/viewer';
 import {
   ensureMessageAction,
@@ -60,6 +61,23 @@ const TEAM_JOIN_STATUS: Record<string, { style: string; label: string }> = {
   ignored: { style: 'background:var(--border);color:var(--text-secondary)', label: '已忽略' },
 };
 
+// 連結類動作（不是審核）：不掛審核標籤。event_comment＝活動留言通知「前往活動」（計畫書 v3 §3.7）。
+const LINK_ACTION_TYPES = new Set(['event_comment']);
+
+/**
+ * 列表審核標籤：pending → 待審核；其他非空狀態 → 已審核。
+ * 不掛：連結類動作，以及 actionStatus 空值——審核類訊息建立時一律帶狀態
+ * （A 寫入端與 FC deliverToInbox 白名單都要求非空），空值代表不是審核。
+ * A message-render.js 只看 actionType，留言通知在 A 會顯示「已審核」（A 凍結，§3.7 已知副作用）。
+ */
+function reviewRibbon(msg: InboxMessage): 'pending' | 'reviewed' | null {
+  const actionType = String(msg.actionType ?? '').trim();
+  if (!actionType || LINK_ACTION_TYPES.has(actionType)) return null;
+  const status = String(msg.actionStatus ?? '').trim().toLowerCase();
+  if (!status) return null;
+  return status === 'pending' ? 'pending' : 'reviewed';
+}
+
 const EMPTY_MESSAGES: InboxMessage[] = [];
 const EMPTY_THREADS: PmThread[] = [];
 
@@ -93,6 +111,7 @@ function pmTimeMs(value: unknown): number {
 
 export default function InboxPage(): JSX.Element {
   const lt = useLegacyT();
+  const { route } = useLocation();
   const viewer = useViewer();
   const uid = viewer.uid;
 
@@ -452,12 +471,21 @@ export default function InboxPage(): JSX.Element {
     if (!selectedMessage || !uid || actionUi.runningKey) return;
     setActionUi((prev) => ({ ...prev, runningKey: entry.key }));
     try {
-      await entry.run(selectedMessage, {
-        uid,
-        role: viewer.role,
-        displayName: viewer.displayName ?? undefined,
-        hasPermission: viewer.hasPermission,
-      });
+      await entry.run(
+        selectedMessage,
+        {
+          uid,
+          role: viewer.role,
+          displayName: viewer.displayName ?? undefined,
+          hasPermission: viewer.hasPermission,
+        },
+        {
+          navigate: (path) => {
+            setSelectedMsgId(null);
+            route(path);
+          },
+        },
+      );
       if (!mountedRef.current) return;
       // 照 A `message-actions-team.js`：成功後依動作 key 顯示對應文字；
       // 無對照的動作（其他 actionType/未知 key）不顯示。
@@ -519,7 +547,9 @@ export default function InboxPage(): JSX.Element {
                 ? 'msg-action-approve'
                 : act.key === 'reject'
                 ? 'msg-action-reject'
-                : 'msg-action-ignore';
+                : act.key === 'ignore'
+                ? 'msg-action-ignore'
+                : 'primary-btn';
             const label =
               act.key === 'approve'
                 ? lt('同意', '同意')
@@ -527,13 +557,14 @@ export default function InboxPage(): JSX.Element {
                 ? lt('拒絕', '拒絕')
                 : act.key === 'ignore'
                 ? lt('忽略', '忽略')
-                : act.key;
+                : t(act.labelKey);
             const running = actionUi.runningKey === act.key;
             return (
               <button
                 key={act.key}
                 type="button"
                 class={btnClass}
+                style={btnClass === 'primary-btn' ? { whiteSpace: 'nowrap' } : undefined}
                 disabled={!!actionUi.runningKey}
                 onClick={() => {
                   handleRunAction(act).catch(() => {
@@ -843,9 +874,7 @@ export default function InboxPage(): JSX.Element {
           {!isPmTab &&
             visibleMessages.map((msg) => {
               const unread = isUnread(msg, uid);
-              const isPending =
-                !!msg.actionType &&
-                String(msg.actionStatus ?? '').trim().toLowerCase() === 'pending';
+              const ribbon = reviewRibbon(msg);
               return (
                 <div
                   key={msg.id}
@@ -860,13 +889,9 @@ export default function InboxPage(): JSX.Element {
                     }
                   }}
                 >
-                  {msg.actionType && (
-                    <div
-                      class={`msg-ribbon ${
-                        isPending ? 'msg-ribbon-pending' : 'msg-ribbon-reviewed'
-                      }`}
-                    >
-                      {isPending ? lt('待審核', '待審核') : lt('已審核', '已審核')}
+                  {ribbon && (
+                    <div class={`msg-ribbon msg-ribbon-${ribbon}`}>
+                      {ribbon === 'pending' ? lt('待審核', '待審核') : lt('已審核', '已審核')}
                     </div>
                   )}
                   <div class="msg-card-header">

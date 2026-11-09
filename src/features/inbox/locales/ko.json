@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status} ({reviewer})"
   },
+  "actions": {
+    "openEvent": "활동 보기"
+  },
   "pm": {
     "emptyTitle": "아직 개인 대화가 없습니다",
     "emptyBody": "새로운 개인 메시지 대화가 여기에 표시됩니다.",

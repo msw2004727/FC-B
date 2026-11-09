@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status} ({reviewer})"
   },
+  "actions": {
+    "openEvent": "View activity"
+  },
   "pm": {
     "emptyTitle": "No private conversations yet",
     "emptyBody": "Your private message threads will appear here.",
