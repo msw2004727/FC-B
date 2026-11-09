@@ -1,0 +1,134 @@
+{
+  "wd": {
+    "0": "CN",
+    "1": "T2",
+    "2": "T3",
+    "3": "T4",
+    "4": "T5",
+    "5": "T6",
+    "6": "T7"
+  },
+  "fmt": {
+    "weekly": "{days} hằng tuần {time}",
+    "daysSep": ", ",
+    "from": "Từ {date} · {wd} {time}",
+    "date": "{wd} {md} {time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · {count} buổi",
+    "count": "{count}/{max} người",
+    "countOnly": "{count} người",
+    "maxOnly": "{max} người",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/buổi",
+    "lessonNo": "Buổi {n}"
+  },
+  "type": {
+    "weekly": "Hằng tuần",
+    "sessions": "{count} buổi"
+  },
+  "chip": {
+    "pending": "Chờ duyệt",
+    "enrolled": "Đã đăng ký",
+    "unpaid": "Chưa trả",
+    "inactive": "Đã tắt",
+    "studentPending": "Chờ duyệt"
+  },
+  "btn": {
+    "signup": "Đăng ký",
+    "full": "Hết chỗ",
+    "closed": "Đã đóng",
+    "lessons": "Buổi học",
+    "cancelApply": "Rút đơn",
+    "manage": "Quản lý",
+    "create": "Mở lớp",
+    "submit": "Gửi",
+    "add": "Thêm",
+    "addChild": "Thêm con",
+    "more": "Thêm",
+    "less": "Thu gọn",
+    "leave": "Nghỉ",
+    "cancel": "Hủy",
+    "login": "Đăng nhập",
+    "back": "Quay lại"
+  },
+  "kv": {
+    "time": "Giờ",
+    "period": "Thời gian",
+    "place": "Địa điểm",
+    "capacity": "Số chỗ",
+    "fee": "Học phí",
+    "coach": "HLV"
+  },
+  "head": {
+    "intro": "Giới thiệu",
+    "upcoming": "Buổi sắp tới",
+    "mine": "Khóa của tôi"
+  },
+  "lesson": {
+    "signin": "Có mặt",
+    "leave": "Nghỉ",
+    "registered": "Đã đăng ký",
+    "unregistered": "Chưa đăng ký"
+  },
+  "sheet": {
+    "who": "Đăng ký cho ai?",
+    "self": "Tôi ({name})",
+    "selfBare": "Tôi",
+    "selfName": "Tên của bạn",
+    "childName": "Tên con"
+  },
+  "empty": {
+    "courses": "Chưa có khóa học",
+    "mine": "Chưa đăng ký khóa",
+    "lessons": "Chưa có buổi học",
+    "notFound": "Không tìm thấy khóa"
+  },
+  "hint": {
+    "contactCoach": "Liên hệ HLV để hủy"
+  },
+  "mine": {
+    "attend": "Có mặt {n}/{total}",
+    "next": "Tiếp theo {when}"
+  },
+  "confirm": {
+    "cancelApply": "Rút đơn của {names}?",
+    "leave": "Nghỉ {lesson}? ({name})"
+  },
+  "toast": {
+    "submitted": "Đã gửi, chờ duyệt",
+    "cancelled": "Đã hủy",
+    "registered": "Đã đăng ký",
+    "leaveDone": "Đã báo nghỉ",
+    "leaveCancelled": "Đã hủy báo nghỉ",
+    "signedIn": "Đã điểm danh",
+    "childAdded": "Đã thêm, chờ duyệt",
+    "childDup": "Đã thêm {name}",
+    "nameRequired": "Nhập tên",
+    "alreadyEnrolled": "Đã đăng ký"
+  },
+  "err": {
+    "COURSE_FULL": "Hết chỗ",
+    "SIGNUP_CLOSED": "Đã đóng đăng ký",
+    "PLAN_ENDED": "Khóa đã kết thúc",
+    "PLAN_INACTIVE": "Khóa đã tắt",
+    "PLAN_HIDDEN": "Khóa không công khai",
+    "PLAN_NOT_FOUND": "Không tìm thấy khóa",
+    "TEAM_NOT_FOUND": "Không tìm thấy CLB",
+    "ALREADY_ENROLLED": "Đã đăng ký",
+    "NO_STUDENTS": "Chọn học viên",
+    "NO_ELIGIBLE_STUDENTS": "Không ai đăng ký được",
+    "STUDENT_NOT_FOUND": "Không tìm thấy học viên",
+    "STUDENT_FORBIDDEN": "Không phải học viên của bạn",
+    "STUDENT_INACTIVE": "Học viên đã tắt",
+    "NO_PENDING_ENROLLMENTS": "Không còn chờ duyệt",
+    "ENROLLMENT_NOT_PENDING": "Không còn chờ duyệt",
+    "STUDENT_NOT_IN_ROSTER": "Không có trong danh sách",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "Buổi đã đóng",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "Không cần đăng ký",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "Đồng bộ thất bại",
+    "SESSION_NOT_FOUND": "Không tìm thấy buổi",
+    "PERMISSION_DENIED": "Không có quyền",
+    "UNAUTHENTICATED": "Vui lòng đăng nhập",
+    "UNKNOWN": "Thất bại, thử lại sau"
+  }
+}

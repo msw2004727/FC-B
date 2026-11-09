@@ -1005,6 +1005,58 @@
 }
 #first-login-modal .modal-header h3 { font-size: 1.08rem; letter-spacing: 0; }
 #first-login-modal .modal-body { padding: .2rem 1.2rem 1rem; color: var(--text-secondary); }
+/* 提示在彈窗（捲動容器）裡，position:sticky; bottom:0 貼可視區下緣。
+   高度是 0，不增加可捲高度。動作列原本就是 sticky bottom:0，
+   --fl-actions-h 把它的高度往上移，漸層才停在欄位下緣、不蓋住送出鈕。 */
+#first-login-modal .fl-scroll-hint {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  height: 0;
+  transform: translateY(calc(-1 * var(--fl-actions-h, 0px)));
+  pointer-events: none;
+}
+#first-login-modal .fl-scroll-hint::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3.4rem;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, .94));
+}
+[data-theme="dark"] #first-login-modal .fl-scroll-hint::before {
+  background: linear-gradient(to bottom, transparent, rgba(17, 24, 39, .94));
+}
+#first-login-modal .fl-scroll-hint__btn {
+  position: absolute;
+  left: 50%;
+  bottom: .45rem;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  max-width: 100%;
+  margin: 0;
+  padding: .2rem .35rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#first-login-modal .fl-scroll-hint__label { white-space: nowrap; }
+#first-login-modal .fl-scroll-hint__arrow {
+  width: .8rem;
+  height: .8rem;
+  flex: none;
+  display: block;
+}
 .fl-hint {
   font-size: .86rem;
   line-height: 1.55;
@@ -1031,6 +1083,14 @@
   background: rgba(248, 250, 252, .78);
 }
 [data-theme="dark"] .fl-field { background: rgba(31, 41, 55, .62); }
+/* 完整框線，淺色 --danger #dc2626、深色 #f87171 都看得到。套在欄位卡與裡面的 select／input。 */
+#first-login-modal .fl-field--error,
+#first-login-modal .fl-field--error:focus {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+/* 提示高 3.4rem；四邊都留得比它大，捲到欄位時不會被貼底提示蓋住。 */
+#first-login-modal .fl-field { scroll-margin: 5rem; }
 .fl-field label {
   display: flex;
   align-items: center;

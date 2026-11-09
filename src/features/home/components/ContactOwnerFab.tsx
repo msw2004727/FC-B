@@ -29,20 +29,17 @@ function EnvelopeIcon(): JSX.Element {
 
 export function ContactOwnerFab({ onClick }: ContactOwnerFabProps): JSX.Element | null {
   const t = useT();
-  // 提示顯示前已點過浮球就不再提示。
+  // 這一次停留裡，提示出現前已點過浮球就不再提示。
   const clicked = useRef(false);
-  // 首次提示：主程式只判斷「在首頁、未提示過、localStorage 可用」，符合才在 1 秒後下載提示 chunk（泡泡、抖動、CSS、文案都在 chunk）；
-  // 載入失敗靜默放棄。下載完成時已卸下、已點浮球或已離開首頁就不顯示（Gemini 審查 P2）。卸下時清計時器、收掉已顯示的提示。
+  // 每次回到首頁都提示：浮球只掛在首頁。preact-iso 換頁會卸下首頁，再回來會重新掛載，
+  // 所以掛載後約 1 秒下載提示 chunk 即可（泡泡、抖動、CSS、文案都在 chunk；之後由瀏覽器快取）。
+  // effect 依賴為空，同一次停留的重繪不重複排程。載入失敗靜默放棄。
+  // 下載完成時已卸下、已點浮球或已離開首頁就不顯示。卸下時清計時器、收掉已顯示的提示。
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
     const id = setTimeout(() => {
-      try {
-        // 記錄鍵與 contact-fab-hint.ts 的 CONTACT_FAB_HINT_KEY 同值；這裡寫字面值，主程式不多帶一個匯出（測試核對兩邊一致）。
-        if (clicked.current || location.pathname !== '/' || localStorage.getItem('fcb:contact-fab-hinted')) return;
-      } catch {
-        return;
-      }
+      if (clicked.current || location.pathname !== '/') return;
       import('./contact-fab-hint').then(
         (m) => {
           if (cancelled || clicked.current || location.pathname !== '/') return;

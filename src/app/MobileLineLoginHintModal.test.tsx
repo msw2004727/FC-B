@@ -2,10 +2,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
-import { getMiniAppShareUrl } from '@/ui/drawer-menu';
+import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
-vi.mock('@/ui/drawer-menu', () => ({
+vi.mock('@/ui/mini-app-share-url', () => ({
   getMiniAppShareUrl: () => 'https://miniapp.line.me/2008123456-AbCd',
 }));
 

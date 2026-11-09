@@ -2,7 +2,7 @@
 // DOM、class、id、inline style 逐字對齊 A；資料層呼叫 `saveFirstLoginProfile`（不改寫入）。
 import type { JSX } from 'preact';
 import { createPortal } from 'preact/compat';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
@@ -50,6 +50,31 @@ function daysInMonth(year: string, month: string): number {
   return new Date(y, m, 0).getDate();
 }
 
+type RequiredFieldKey = 'gender' | 'birthday' | 'region';
+
+/** 捲動到底的誤差。jsdom 與實機的次像素不要讓提示閃一下。 */
+const SCROLL_EDGE_PX = 1;
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia === 'function'
+      && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function scrollBehavior(): ScrollBehavior {
+  return prefersReducedMotion() ? 'auto' : 'smooth';
+}
+
+/** 內容比可視區高，而且還沒捲到下緣。 */
+function contentNeedsHint(el: HTMLElement): boolean {
+  const maxScroll = el.scrollHeight - el.clientHeight;
+  if (maxScroll <= SCROLL_EDGE_PX) return false;
+  return maxScroll - el.scrollTop > SCROLL_EDGE_PX;
+}
+
 export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.Element {
   const { uid, initial, onClose, onSaved } = props;
   const lt = useLegacyT();
@@ -67,6 +92,8 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [pending, setPending] = useState(false);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  const [invalidKey, setInvalidKey] = useState<RequiredFieldKey | null>(null);
   // 「同意並送出」進度環：本地檢查全過才轉，儲存成功打勾後才關窗。
   const submitRing = useActionRingControl();
 
@@ -81,6 +108,79 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const dayRef = useRef<HTMLSelectElement>(null);
   const regionRef = useRef<HTMLInputElement>(null);
   const regionBlurTimerRef = useRef<number | null>(null);
+  // 捲動容器是 #first-login-modal 本身（.modal 的 overflow-y:auto），不是 .modal-body。
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const genderFieldRef = useRef<HTMLDivElement>(null);
+  const birthdayFieldRef = useRef<HTMLDivElement>(null);
+  const regionFieldRef = useRef<HTMLDivElement>(null);
+
+  function syncScrollHint(): void {
+    const el = scrollRef.current;
+    if (!el) return;
+    const actions = el.querySelector('.fl-actions');
+    if (actions instanceof HTMLElement) {
+      el.style.setProperty('--fl-actions-h', `${Math.ceil(actions.offsetHeight)}px`);
+    }
+    setShowScrollHint(contentNeedsHint(el));
+  }
+
+  function scheduleScrollHint(): void {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      syncScrollHint();
+    });
+  }
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    syncScrollHint();
+    let observer: ResizeObserver | null = null;
+    let listening = false;
+    const onResize = (): void => syncScrollHint();
+    const armWindowResize = (): void => {
+      if (listening) return;
+      listening = true;
+      window.addEventListener('resize', onResize);
+    };
+    if (typeof ResizeObserver === 'function') {
+      try {
+        observer = new ResizeObserver(() => syncScrollHint());
+        observer.observe(el);
+        const form = el.querySelector('.fl-form');
+        if (form) observer.observe(form);
+        const actions = el.querySelector('.fl-actions');
+        if (actions) observer.observe(actions);
+      } catch {
+        observer?.disconnect();
+        observer = null;
+        armWindowResize();
+      }
+    } else {
+      armWindowResize();
+    }
+    return () => {
+      observer?.disconnect();
+      if (listening) window.removeEventListener('resize', onResize);
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (invalidKey === 'gender' && gender) setInvalidKey(null);
+    else if (invalidKey === 'birthday' && year && month && day) setInvalidKey(null);
+    else if (invalidKey === 'region' && region.trim()) setInvalidKey(null);
+  }, [invalidKey, gender, year, month, day, region]);
+
+  // 地區建議列表展開會改變內容高度；ResizeObserver 沒來時也要重算提示。
+  useEffect(() => {
+    syncScrollHint();
+  }, [regionOpen]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -176,6 +276,37 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     }
   }
 
+  function scrollFormToEnd(): void {
+    const el = scrollRef.current;
+    if (!el) return;
+    const behavior = scrollBehavior();
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+    setShowScrollHint(contentNeedsHint(el));
+  }
+
+  function fieldNode(key: RequiredFieldKey): HTMLDivElement | null {
+    if (key === 'gender') return genderFieldRef.current;
+    if (key === 'birthday') return birthdayFieldRef.current;
+    return regionFieldRef.current;
+  }
+
+  function focusMissingControl(key: RequiredFieldKey): void {
+    const target = key === 'gender'
+      ? genderRef.current
+      : key === 'birthday'
+        ? (!year ? yearRef.current : !month ? monthRef.current : dayRef.current)
+        : regionRef.current;
+    try {
+      target?.focus();
+    } catch {
+      // noop
+    }
+  }
+
   function handleDismiss(): void {
     if (pending) return;
     setErrorText('');
@@ -186,7 +317,31 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     if (pending) return;
     setErrorText('');
 
-    // 照 A `_requireFirstLoginLegalConsent`：未勾選同意先跳 toast 並聚焦 checkbox。
+    const birthday = year && month && day ? `${year}/${month}/${day}` : '';
+    const missing: RequiredFieldKey | null = !gender
+      ? 'gender'
+      : !birthday
+        ? 'birthday'
+        : !region.trim()
+          ? 'region'
+          : null;
+
+    // 純視覺：有漏填就先捲到並標紅。後面的驗證、toast 文字與順序不改。
+    if (missing) {
+      setInvalidKey(missing);
+      const field = fieldNode(missing);
+      if (field && typeof field.scrollIntoView === 'function') {
+        try {
+          field.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+        } catch {
+          // jsdom 不一定接受 scrollIntoView 的 options。
+        }
+      }
+    }
+
+    // 照 A `_requireFirstLoginLegalConsent`：未勾選同意先跳 toast。
+    // 同時有漏填時不 focus 同意框，否則瀏覽器會把捲動帶去底部、蓋掉剛捲到的漏填欄位。
+    // 只有未勾同意時才 focus（照舊）。同意框樣式與錯誤文字都不改。
     if (!legalConsent) {
       toast.show({
         message: lt(
@@ -194,36 +349,24 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
           '請先勾選同意服務條款與隱私權政策。',
         ),
       });
-      try {
-        consentRef.current?.focus({ preventScroll: false });
-      } catch {
-        // noop：jsdom 不支援 options 時退回預設。
+      if (!missing) {
+        try {
+          consentRef.current?.focus();
+        } catch {
+          // noop
+        }
       }
       return;
     }
 
-    const birthday = year && month && day ? `${year}/${month}/${day}` : '';
-    if (!gender || !birthday || !region.trim()) {
+    if (missing) {
       toast.show({
         message: lt(
           '請填寫所有必填欄位（性別、生日、地區）',
           '請填寫所有必填欄位（性別、生日、地區）',
         ),
       });
-      const target = !gender
-        ? genderRef.current
-        : !year
-          ? yearRef.current
-          : !month
-            ? monthRef.current
-            : !day
-              ? dayRef.current
-              : regionRef.current;
-      try {
-        target?.focus({ preventScroll: false });
-      } catch {
-        // noop
-      }
+      focusMissingControl(missing);
       return;
     }
 
@@ -287,6 +430,8 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       <div
         class="modal profile-complete-modal open"
         id="first-login-modal"
+        ref={scrollRef}
+        onScroll={scheduleScrollHint}
         role="dialog"
         aria-modal="true"
         aria-labelledby="first-login-title"
@@ -309,12 +454,16 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
             )}
           </p>
           <div class="ce-form fl-form">
-            <div class="ce-row fl-field">
+            <div
+              class={invalidKey === 'gender' ? 'ce-row fl-field fl-field--error' : 'ce-row fl-field'}
+              ref={genderFieldRef}
+            >
               <label for="fl-gender">
                 {lt('性別', '性別')} <span class="required">{lt('*必填', '*必填')}</span>
               </label>
               <select
                 id="fl-gender"
+                class={invalidKey === 'gender' ? 'fl-field--error' : undefined}
                 ref={genderRef}
                 value={gender}
                 disabled={pending}
@@ -326,13 +475,17 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 <option value="其他">{lt('其他', '其他')}</option>
               </select>
             </div>
-            <div class="ce-row fl-field">
+            <div
+              class={invalidKey === 'birthday' ? 'ce-row fl-field fl-field--error' : 'ce-row fl-field'}
+              ref={birthdayFieldRef}
+            >
               <label>
                 {lt('生日', '生日')} <span class="required">{lt('*必填', '*必填')}</span>
               </label>
               <div class="fl-birthday-row">
                 <select
                   id="fl-birthday-y"
+                  class={invalidKey === 'birthday' ? 'fl-field--error' : undefined}
                   ref={yearRef}
                   value={year}
                   disabled={pending}
@@ -345,6 +498,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 </select>
                 <select
                   id="fl-birthday-m"
+                  class={invalidKey === 'birthday' ? 'fl-field--error' : undefined}
                   ref={monthRef}
                   value={month}
                   disabled={pending}
@@ -362,6 +516,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 </select>
                 <select
                   id="fl-birthday-d"
+                  class={invalidKey === 'birthday' ? 'fl-field--error' : undefined}
                   ref={dayRef}
                   value={day}
                   disabled={pending}
@@ -374,13 +529,17 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 </select>
               </div>
             </div>
-            <div class="ce-row fl-field">
+            <div
+              class={invalidKey === 'region' ? 'ce-row fl-field fl-field--error' : 'ce-row fl-field'}
+              ref={regionFieldRef}
+            >
               <label for="fl-region-input">
                 {lt('地區', '地區')} <span class="required">{lt('*必填', '*必填')}</span>
               </label>
               <input
                 type="text"
                 id="fl-region-input"
+                class={invalidKey === 'region' ? 'fl-field--error' : undefined}
                 ref={regionRef}
                 placeholder={lt('輸入縣市名稱', '輸入縣市名稱')}
                 autoComplete="off"
@@ -510,6 +669,28 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
             </ActionRingButton>
           </div>
         </div>
+        {showScrollHint ? (
+          <div class="fl-scroll-hint">
+            <button type="button" class="fl-scroll-hint__btn" onClick={scrollFormToEnd}>
+              <svg
+                class="fl-scroll-hint__arrow"
+                viewBox="0 0 12 12"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M2 4.25 L6 8.25 L10 4.25"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span class="fl-scroll-hint__label">{lt('還有欄位', '還有欄位')}</span>
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,

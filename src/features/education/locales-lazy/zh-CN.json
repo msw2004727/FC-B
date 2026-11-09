@@ -1,0 +1,134 @@
+{
+  "wd": {
+    "0": "日",
+    "1": "一",
+    "2": "二",
+    "3": "三",
+    "4": "四",
+    "5": "五",
+    "6": "六"
+  },
+  "fmt": {
+    "weekly": "每周{days} {time}",
+    "daysSep": "、",
+    "from": "{date} 起 · {wd} {time}",
+    "date": "{md}（{wd}）{time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · 共 {count} 节",
+    "count": "{count}/{max} 人",
+    "countOnly": "{count} 人",
+    "maxOnly": "{max} 人",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/节",
+    "lessonNo": "第 {n} 节"
+  },
+  "type": {
+    "weekly": "固定周期",
+    "sessions": "{count} 节"
+  },
+  "chip": {
+    "pending": "审核中",
+    "enrolled": "已报名",
+    "unpaid": "未缴费",
+    "inactive": "已停用",
+    "studentPending": "待核准"
+  },
+  "btn": {
+    "signup": "报名",
+    "full": "额满",
+    "closed": "已截止",
+    "lessons": "课堂",
+    "cancelApply": "取消申请",
+    "manage": "管理",
+    "create": "开课",
+    "submit": "送出报名",
+    "add": "新增",
+    "addChild": "新增孩子",
+    "more": "更多",
+    "less": "收起",
+    "leave": "请假",
+    "cancel": "取消",
+    "login": "登录",
+    "back": "返回"
+  },
+  "kv": {
+    "time": "时间",
+    "period": "期间",
+    "place": "地点",
+    "capacity": "名额",
+    "fee": "费用",
+    "coach": "教练"
+  },
+  "head": {
+    "intro": "介绍",
+    "upcoming": "接下来的课堂",
+    "mine": "我的课程"
+  },
+  "lesson": {
+    "signin": "出席",
+    "leave": "请假",
+    "registered": "已报名",
+    "unregistered": "未报名"
+  },
+  "sheet": {
+    "who": "帮谁报名？",
+    "self": "自己（{name}）",
+    "selfBare": "自己",
+    "selfName": "你的姓名",
+    "childName": "孩子姓名"
+  },
+  "empty": {
+    "courses": "还没有课程",
+    "mine": "还没有报名课程",
+    "lessons": "还没有课堂",
+    "notFound": "找不到课程"
+  },
+  "hint": {
+    "contactCoach": "请联系教练取消"
+  },
+  "mine": {
+    "attend": "出席 {n}/{total} 节",
+    "next": "下一节 {when}"
+  },
+  "confirm": {
+    "cancelApply": "取消 {names} 的申请？",
+    "leave": "{lesson}请假？（{name}）"
+  },
+  "toast": {
+    "submitted": "已送出，等教练核准",
+    "cancelled": "已取消",
+    "registered": "已报名",
+    "leaveDone": "已请假",
+    "leaveCancelled": "已取消请假",
+    "signedIn": "已签到，保留签到状态",
+    "childAdded": "已新增，待核准",
+    "childDup": "「{name}」已经新增过",
+    "nameRequired": "请输入姓名",
+    "alreadyEnrolled": "已报名过"
+  },
+  "err": {
+    "COURSE_FULL": "名额已满",
+    "SIGNUP_CLOSED": "报名已截止",
+    "PLAN_ENDED": "课程已结束",
+    "PLAN_INACTIVE": "课程已停用",
+    "PLAN_HIDDEN": "课程未公开",
+    "PLAN_NOT_FOUND": "找不到课程",
+    "TEAM_NOT_FOUND": "找不到俱乐部",
+    "ALREADY_ENROLLED": "已报名过",
+    "NO_STUDENTS": "请选择学员",
+    "NO_ELIGIBLE_STUDENTS": "没有可报名的学员",
+    "STUDENT_NOT_FOUND": "找不到学员",
+    "STUDENT_FORBIDDEN": "不能帮这位学员操作",
+    "STUDENT_INACTIVE": "学员已停用",
+    "NO_PENDING_ENROLLMENTS": "已不在审核中",
+    "ENROLLMENT_NOT_PENDING": "已不在审核中",
+    "STUDENT_NOT_IN_ROSTER": "不在这节的名单",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "这节已关闭",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "这节不用报名",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "同步失败，请稍后再试",
+    "SESSION_NOT_FOUND": "找不到这节课",
+    "PERMISSION_DENIED": "没有权限",
+    "UNAUTHENTICATED": "请先登录",
+    "UNKNOWN": "操作失败，请稍后再试"
+  }
+}

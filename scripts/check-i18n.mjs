@@ -1,7 +1,7 @@
 // 掃描 src/i18n/messages/ 與每個 src/features/*/locales/
 // 以 zh-TW 為基準比對 7 個語系的 key 集合（含巢狀 key 攤平成 a.b）。
 // 值必須是非空字串、插值參數集合一致、攤平後不得有 key 衝突。
-// 有 index.ts 的 feature 必須有 locales/ 且 7 個語系檔都在。
+// 有 index.ts 的 feature 必須有 locales/ 且 7 個語系檔都在；另有 locales-lazy/（按需載入字典）時一併檢查。
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -182,6 +182,12 @@ function loadNamespaces() {
       name: id,
       files: readNamespaceFiles(join(featureDir, 'locales')),
     });
+
+    // 按需載入、不進主程式的字典（例如課程 education/locales-lazy）；有目錄就同樣要求 7 語系一致。
+    const lazyDir = join(featureDir, 'locales-lazy');
+    if (existsSync(lazyDir)) {
+      namespaces.push({ name: `${id}:lazy`, files: readNamespaceFiles(lazyDir) });
+    }
   }
 
   return namespaces;
