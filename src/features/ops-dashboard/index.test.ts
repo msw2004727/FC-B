@@ -29,12 +29,19 @@ function access(
 const entry = DRAWER_MENUS.find((e) => e.routePath === '/admin/ops')!;
 
 describe('ops-dashboard manifest', () => {
-  it('登記在 ALL_FEATURES；路由 /admin/ops 與 /admin/ops/participants，都延遲載入', () => {
+  it('登記在 ALL_FEATURES；一條路由（可選段）涵蓋 /admin/ops 與 /admin/ops/participants', () => {
     expect(ALL_FEATURES).toContain(manifest);
     expect(manifest.status).toBe('enabled');
-    expect(manifest.routes.map((r) => r.path)).toEqual(['/admin/ops', '/admin/ops/participants']);
-    // 共用同一個 chunk：首頁主程式的延遲載入對應表只多一組檔名
-    expect(manifest.routes[0]!.load).toBe(manifest.routes[1]!.load);
+    expect(manifest.routes.map((r) => r.path)).toEqual(['/admin/ops/:view?']);
+  });
+
+  it('preact-iso 路由比對：/admin/ops、/admin/ops/participants（含查詢字串）都進這條路由', async () => {
+    const { exec } = await import('preact-iso/router');
+    const route = manifest.routes[0]!.path;
+    expect(exec('/admin/ops', route, {})).toBeTruthy();
+    expect(exec('/admin/ops/participants', route, {})).toMatchObject({ params: { view: 'participants' } });
+    expect(exec('/admin/opsx', route, {})).toBeFalsy();
+    expect(exec('/admin/ops/a/b', route, {})).toBeFalsy();
   });
 
   it('抽屜「數據儀表板」指向 /admin/ops、admin.dashboard.entry，不再是佔位頁（done）', () => {
