@@ -1,9 +1,9 @@
 import type { FeatureManifest, FeatureRoute } from '@/core/feature-types';
-import { isCoursesEnabled } from './flags';
+import { COURSES_ENABLED } from './flags';
 
 // 課程（站長 11-09 推翻 10-27「不做」，方案丙；取代原本 reserved 的占位頁）。K3 驗收前由 flags.ts 的 SHOW_COURSES 關著：
 // 關閉時 reserved、不帶路由（建置期常數，關閉時課程頁面不進主程式），俱樂部頁也不出「課程」頁籤
-// （TeamDetailPage 以 isFeatureEnabled('education') 判斷）。頁面全部動態載入。
+// （TeamDetailPage 以同一個 COURSES_ENABLED 判斷；不 import feature-registry，避免打亂首頁分塊）。頁面全部動態載入。
 function courseRoutes(): FeatureRoute[] {
   const pages = () => import('./pages/course-pages');
   const titleKey = 'education.title';
@@ -18,7 +18,7 @@ function courseRoutes(): FeatureRoute[] {
 
 export const manifest: FeatureManifest = {
   id: 'education',
-  status: isCoursesEnabled() ? 'enabled' : 'reserved',
+  status: COURSES_ENABLED ? 'enabled' : 'reserved',
   dependsOn: ['clubs'],
-  routes: isCoursesEnabled() ? courseRoutes() : [],
+  routes: COURSES_ENABLED ? courseRoutes() : [],
 };

@@ -405,6 +405,10 @@
   gap: 10px;
   flex: 0 0 auto;
 }
+.ck-line-act .ck-chip,
+.ck-line-act .ck-btn {
+  max-width: none;
+}
 .ck-seg {
   display: flex;
   gap: 4px;

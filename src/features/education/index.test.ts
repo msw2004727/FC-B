@@ -8,7 +8,7 @@ import {
   registerFeatures,
 } from '@/core/feature-registry';
 import { manifest } from './index';
-import { SHOW_COURSES } from './flags';
+import { COURSES_ENABLED, SHOW_COURSES } from './flags';
 
 describe('education manifest（課程 K1：K3 驗收前開關關閉）', () => {
   beforeEach(() => {
@@ -21,6 +21,7 @@ describe('education manifest（課程 K1：K3 驗收前開關關閉）', () => {
 
   it('上線開關預設關閉：reserved、不帶任何路由，仍在功能清單內', () => {
     expect(SHOW_COURSES).toBe(false);
+    expect(COURSES_ENABLED).toBe(false);
     expect(manifest.status).toBe('reserved');
     expect(manifest.routes).toEqual([]);
     expect(ALL_FEATURES).toContain(manifest);

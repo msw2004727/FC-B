@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
-import { isFeatureEnabled } from '@/core/feature-registry';
+import { COURSES_ENABLED } from '@/features/education/flags';
 import { getLastKnownAuthUid } from '@/data/auth';
 import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -79,13 +79,13 @@ interface EventResource {
 
 /**
  * C1 頁籤：戰績沒有資料、動態沒有貼文就不出頁籤；頁籤不帶數字徽章。
- * 課程（K1）：課程功能開關打開（isFeatureEnabled('education')，K3 驗收前關閉）才出，條件照 A（自建俱樂部不開放、教學標籤＋區塊可見）。
+ * 課程（K1）：課程開關 COURSES_ENABLED 打開（K3 驗收前關閉）才出，條件照 A（自建俱樂部不開放、教學標籤＋區塊可見）。
  */
 function getTabsForTeam(team: TeamDoc, totalGames: number): V2TabDef[] {
   const tabs: V2TabDef[] = [{ key: 'overview', label: '總覽' }];
   // T-090：自建俱樂部不開放教學（課程）與賽事入口。
   const userCapabilityTeam = isUserCapabilityTeam(team);
-  if (isFeatureEnabled('education') && !userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
+  if (COURSES_ENABLED && !userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
     tabs.push({ key: 'courses', label: '課程' });
   }
   if (isTeamDetailSectionVisible(team, 'events')) {

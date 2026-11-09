@@ -208,6 +208,13 @@ vi.mock('../club-policy', async (importOriginal) => {
 });
 
 // K1：課程頁籤內容另有完整測試（education/components/CourseTab.test.tsx）；這裡只驗頁籤開關與按需載入。
+const courseFlag = vi.hoisted(() => ({ on: false }));
+vi.mock('@/features/education/flags', () => ({
+  SHOW_COURSES: false,
+  get COURSES_ENABLED() {
+    return courseFlag.on;
+  },
+}));
 vi.mock('@/features/education/components/CourseTab', () => ({
   CourseTab: (props: { team: TeamDoc }) => <div data-testid="course-tab-stub">{String(props.team.name ?? '')}</div>,
 }));
@@ -742,21 +749,18 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(screen.getByText('本週正常團練')).toBeTruthy();
   });
 
-  // K1：課程開關（isFeatureEnabled('education')）關閉時一般用戶看不到；打開時教學俱樂部才出「課程」頁籤並按需載入。
+  // K1：課程開關（education/flags COURSES_ENABLED）關閉時一般用戶看不到；打開時教學俱樂部才出「課程」頁籤並按需載入。
   it('K1 courses tab: hidden while the course switch is off, lazy panel when on', async () => {
-    const registry = await import('@/core/feature-registry');
-    const config = await import('@/features.config');
     vi.mocked(loadTeam).mockResolvedValue({ ...team, teachingEnabled: true });
     try {
-      registry._resetForTest();
-      registry.registerFeatures(config.ALL_FEATURES);
+      courseFlag.on = false;
       const off = render(<TeamDetailPage />);
       await screen.findByText('測試俱樂部');
       expect(screen.queryByRole('tab', { name: '課程' })).toBeNull();
       expect(off.container.querySelector('.td-v2-panel-courses')).toBeNull();
       off.unmount();
 
-      config.FEATURE_OVERRIDES.education = true;
+      courseFlag.on = true;
       const on = render(<TeamDetailPage />);
       await screen.findByText('測試俱樂部');
       const labels = Array.from(on.container.querySelectorAll('.td-v2-tab-list button')).map((b) => b.textContent);
@@ -774,8 +778,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
       expect(screen.queryByRole('tab', { name: '課程' })).toBeNull();
       userTeam.unmount();
     } finally {
-      delete config.FEATURE_OVERRIDES.education;
-      registry._resetForTest();
+      courseFlag.on = false;
     }
   });
 
