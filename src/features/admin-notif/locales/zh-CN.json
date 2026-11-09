@@ -1,0 +1,32 @@
+{
+  "title": "推送通知设置",
+  "back": "返回",
+  "note": "只影响 LINE 推送，站内信照常发送",
+  "sectionCategory": "分类",
+  "sectionType": "通知类型",
+  "sectionFixed": "固定发送",
+  "fixed": "固定",
+  "save": "保存",
+  "saving": "保存中...",
+  "saved": "推送通知设置已保存",
+  "saveFailed": "保存失败，请稍后再试",
+  "noPermission": "权限不足",
+  "loading": "加载中...",
+  "loadError": "加载失败",
+  "retry": "重新加载",
+  "row": {
+    "category_activity": "活动通知",
+    "category_system": "系统通知",
+    "category_tournament": "赛事通知",
+    "type_signup_success": "报名成功",
+    "type_cancel_signup": "取消报名",
+    "type_waitlist_demoted": "候补降级",
+    "type_event_relisted": "活动重新上架",
+    "type_role_upgrade": "角色升级",
+    "type_welcome": "欢迎通知",
+    "fixed_waitlist_promoted": "候补递补",
+    "fixed_event_cancelled": "活动取消",
+    "fixed_event_changed": "活动变更",
+    "fixed_broadcast": "管理员主动广播"
+  }
+}

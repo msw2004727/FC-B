@@ -192,7 +192,8 @@ export interface DrawerMenuEntry {
  * - page-admin-logs → /admin/logs
  * - page-admin-repair → /admin/repair
  * - page-team-manage → /team-manage
- * 推播、公告 B 尚未有對應管理路由，設為 null。站內信管理（/admin/messages）、無效資料查詢（/admin/inactive）由 Wave 1 各卡實作（2026-11-02）。
+ * - page-admin-notif → /admin/notif（2026-11-09 站長核可簡化版）
+ * 公告 B 尚未有對應管理路由，設為 null。站內信管理（/admin/messages）、無效資料查詢（/admin/inactive）由 Wave 1 各卡實作（2026-11-02）。
  */
 // SEO 儀表板、佈景主題、手動／自動 EXP 管理、成就/徽章管理、二手商品區／管理、賽事管理、小遊戲管理：站長 2026-11-02 決定新站不做或移除（賽事維持導向舊站），不放入抽屜（A 原有入口不照搬）。
 export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
@@ -210,7 +211,7 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '首頁管理', i18nKey: 'admin.adManage', page: 'page-admin-banners', routePath: '/admin/banners', minRole: 'admin', permissionCode: 'admin.banners.entry' },
   { icon: '', label: '站內信管理', i18nKey: 'admin.messageManage', page: 'page-admin-messages', routePath: '/admin/messages', minRole: 'admin', permissionCode: 'admin.messages.entry' },
   { icon: '', label: '數據儀表板', i18nKey: 'admin.dashboard', page: 'page-admin-dashboard', routePath: '/admin/ops', minRole: 'super_admin', permissionCode: 'admin.dashboard.entry' },
-  { icon: '', label: '推播通知設定', i18nKey: 'admin.notifSettings', page: 'page-admin-notif', routePath: null, minRole: 'super_admin', permissionCode: 'admin.notif.entry' },
+  { icon: '', label: '推播通知設定', i18nKey: 'admin.notifSettings', page: 'page-admin-notif', routePath: '/admin/notif', minRole: 'super_admin', permissionCode: 'admin.notif.entry' },
   { icon: '', label: '系統公告管理', i18nKey: 'admin.announcements', page: 'page-admin-announcements', routePath: null, minRole: 'super_admin', permissionCode: 'admin.announcements.entry' },
   { icon: '', label: '權限管理', i18nKey: 'admin.roles', page: 'page-admin-roles', routePath: '/admin/roles', minRole: 'super_admin' },
   { icon: '', label: '日誌中心', i18nKey: 'admin.logs', page: 'page-admin-logs', routePath: '/admin/logs', minRole: 'super_admin', permissionCode: 'admin.logs.entry' },

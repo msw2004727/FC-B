@@ -141,7 +141,9 @@
     "toggleActivity": "イベント通知（申込・キャンセル待ち・変更）",
     "toggleSystem": "システム通知（受信箱／お知らせ）",
     "toggleTournament": "大会通知（申込／日程更新）",
-    "friendHint": "通知が届かない場合は、公式アカウントを友だち追加しているかご確認ください",
-    "openOfficial": "公式アカウントを開く"
+    "friendHint": "通知が来ない？友だち追加を",
+    "openOfficial": "公式アカウント",
+    "notFriendHint": "友だち未追加：通知が届きません",
+    "addFriend": "友だち追加"
   }
 }

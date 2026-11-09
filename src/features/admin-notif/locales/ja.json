@@ -1,0 +1,32 @@
+{
+  "title": "プッシュ通知設定",
+  "back": "戻る",
+  "note": "LINEプッシュのみ対象、受信箱は通常送信",
+  "sectionCategory": "カテゴリ",
+  "sectionType": "通知タイプ",
+  "sectionFixed": "常に送信",
+  "fixed": "固定",
+  "save": "保存",
+  "saving": "保存中...",
+  "saved": "プッシュ通知設定を保存しました",
+  "saveFailed": "保存に失敗しました。後でもう一度お試しください",
+  "noPermission": "権限がありません",
+  "loading": "読み込み中...",
+  "loadError": "読み込みに失敗しました",
+  "retry": "再読み込み",
+  "row": {
+    "category_activity": "アクティビティ通知",
+    "category_system": "システム通知",
+    "category_tournament": "大会通知",
+    "type_signup_success": "申込完了",
+    "type_cancel_signup": "申込キャンセル",
+    "type_waitlist_demoted": "キャンセル待ち降格",
+    "type_event_relisted": "アクティビティ再公開",
+    "type_role_upgrade": "ロール昇格",
+    "type_welcome": "ウェルカム通知",
+    "fixed_waitlist_promoted": "キャンセル待ち繰り上げ",
+    "fixed_event_cancelled": "アクティビティ中止",
+    "fixed_event_changed": "アクティビティ変更",
+    "fixed_broadcast": "管理者ブロードキャスト"
+  }
+}

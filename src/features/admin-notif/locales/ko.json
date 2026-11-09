@@ -1,0 +1,32 @@
+{
+  "title": "푸시 알림 설정",
+  "back": "뒤로",
+  "note": "LINE 푸시에만 적용, 사이트 메시지는 정상 발송",
+  "sectionCategory": "분류",
+  "sectionType": "알림 유형",
+  "sectionFixed": "항상 발송",
+  "fixed": "고정",
+  "save": "저장",
+  "saving": "저장 중...",
+  "saved": "푸시 알림 설정이 저장되었습니다",
+  "saveFailed": "저장에 실패했습니다. 잠시 후 다시 시도해 주세요",
+  "noPermission": "권한이 없습니다",
+  "loading": "불러오는 중...",
+  "loadError": "불러오기 실패",
+  "retry": "다시 불러오기",
+  "row": {
+    "category_activity": "활동 알림",
+    "category_system": "시스템 알림",
+    "category_tournament": "대회 알림",
+    "type_signup_success": "신청 완료",
+    "type_cancel_signup": "신청 취소",
+    "type_waitlist_demoted": "대기 강등",
+    "type_event_relisted": "활동 재게시",
+    "type_role_upgrade": "역할 승급",
+    "type_welcome": "환영 알림",
+    "fixed_waitlist_promoted": "대기 승급",
+    "fixed_event_cancelled": "활동 취소",
+    "fixed_event_changed": "활동 변경",
+    "fixed_broadcast": "관리자 공지 발송"
+  }
+}
