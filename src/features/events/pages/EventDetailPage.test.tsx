@@ -2223,7 +2223,8 @@ describe('T-074b 詳情頁整合', () => {
       expect(document.querySelector('.team-reservation-header-row')).toBeNull();
       expect(mocks.toastShow).toHaveBeenCalledWith({ message: '已更新團隊名額' });
       // 測試同步更新：名單重讀期間團隊按鈕縮成進度環，無障礙名稱是忙碌標籤（同一顆按鈕）。
-      const adjustButton = screen.getByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
+      // 測試同步更新（11-09 審查）：團隊鈕延一個 0ms 才開始環，改用 findByRole 等環出現。
+      const adjustButton = await screen.findByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
       expect(adjustButton.disabled).toBe(true);
       fireEvent.click(adjustButton); fireEvent.click(adjustButton);
       fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
