@@ -146,6 +146,10 @@ describe('ProfilePage：個人資料讀取失敗／查無資料（真的 loadUse
     render(<ProfilePage />);
 
     expect(await screen.findByText(UNAVAILABLE)).toBeTruthy();
+    // preact 的 useEffect 在下一幀（rAF，保底 100ms）才執行：先等訂閱掛上，再發事件。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
     await act(async () => {
       emit('viewer:refresh', {});
     });
