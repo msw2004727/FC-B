@@ -1,0 +1,100 @@
+/*
+ * 營運儀表板（C1）。版面照站長 2026-11-09 核可的預覽 `docs/previews/ops-dashboard-2026-11-09.html`；
+ * 只用 A 的色票變數（legacy-vars.css／.legacy-ui 內 A base.css），不自創、不寫死主題色。
+ * 關鍵數字卡的漸層與陰影照 A `css/admin.css` 的 `.dash-card`（1446 行起）原值。
+ * 所有介面文字單行（R-UI-027）；使用者內容（名稱）用單行省略號。
+ */
+
+.ops-dash { display: flex; flex-direction: column; gap: .7rem; }
+.ops-dash .page-header { padding-bottom: 0; }
+.ops-dash .page-header h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 頁首＋期間切換 */
+.ops-dash .od-top { display: flex; flex-direction: column; gap: .55rem; }
+.ops-dash .od-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.ops-dash .od-updated { font-size: .74rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ops-dash .od-updated.stale { color: var(--warning); }
+.ops-dash .od-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 3px; gap: 3px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; }
+.ops-dash .od-seg button { min-height: 2.1rem; padding: 0 .4rem; border-radius: 8px; font-size: .8rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; transition: background var(--transition), color var(--transition); }
+.ops-dash .od-seg button[aria-pressed="true"] { background: var(--bg-card); color: var(--accent); box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
+
+/* 版面 */
+.ops-dash .od-grid { display: grid; gap: .7rem; grid-template-columns: minmax(0, 1fr); }
+
+/* 關鍵數字卡（A .dash-card） */
+.ops-dash .od-summary,
+.ops-dash .od-qsum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.ops-dash .od-qsum { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ops-dash .od-kpi {
+  position: relative;
+  min-height: 5.9rem;
+  padding: .7rem .7rem .65rem .85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .38)), var(--bg-card);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
+}
+[data-theme="dark"] .ops-dash .od-kpi {
+  background: linear-gradient(180deg, rgba(31, 41, 55, .8), rgba(17, 24, 39, .62)), var(--bg-card);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .18);
+}
+.ops-dash .od-kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }
+.ops-dash .od-qsum .od-kpi { min-height: 0; padding: .6rem .55rem .6rem .75rem; }
+.ops-dash .od-kpi-label { color: var(--text-secondary); font-size: .74rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-kpi-row { display: flex; align-items: baseline; gap: .4rem; margin-top: .3rem; white-space: nowrap; }
+.ops-dash .od-num { font-family: var(--font-display); font-size: 1.45rem; font-weight: 700; line-height: 1.05; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ops-dash .od-num small { font-size: .78rem; font-weight: 700; color: var(--text-secondary); margin-left: .2rem; }
+.ops-dash .od-qsum .od-num { font-size: 1.25rem; }
+
+/* 資訊卡（A .info-card，預覽版：無標題底線） */
+.ops-dash .od-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: .85rem; box-shadow: 0 8px 22px rgba(15, 23, 42, .06); min-width: 0; }
+[data-theme="dark"] .ops-dash .od-card { box-shadow: 0 8px 22px rgba(0, 0, 0, .18); }
+
+/* 參與查詢入口 */
+.ops-dash .od-entry { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; color: var(--text-primary); }
+.ops-dash .od-entry-icon { width: 2.1rem; height: 2.1rem; border-radius: 10px; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); flex: 0 0 auto; }
+.ops-dash .od-entry-icon svg { width: 17px; height: 17px; }
+.ops-dash .od-entry-text { flex: 1; min-width: 0; font-size: .88rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-chev { width: 14px; height: 14px; color: var(--text-muted); flex: 0 0 auto; }
+
+/* 狀態與錯誤 */
+.ops-dash .od-note { padding: 1.2rem .5rem; text-align: center; font-size: .82rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-failed { display: flex; align-items: center; justify-content: space-between; gap: .6rem; font-size: .84rem; font-weight: 700; color: var(--danger); white-space: nowrap; }
+.ops-dash .od-card .od-failed { padding: 0; border: 0; box-shadow: none; }
+.ops-dash .od-btn { min-height: 2.1rem; padding: 0 .9rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-secondary); font-size: .8rem; font-weight: 700; white-space: nowrap; flex: 0 0 auto; transition: background var(--transition), color var(--transition); }
+.ops-dash .od-btn:disabled { opacity: .5; cursor: default; }
+.ops-dash .od-btn.primary { background: var(--primary-btn-bg, var(--accent)); border-color: transparent; color: #fff; }
+
+/* 查詢表單 */
+.ops-dash .od-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.ops-dash .od-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.ops-dash .od-field-kw { grid-column: 1 / -1; }
+.ops-dash .od-field > span { font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-field input { width: 100%; min-width: 0; min-height: 2.3rem; padding: 0 .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 16px; font-family: inherit; }
+.ops-dash .od-field input:focus { outline: none; border-color: var(--accent); }
+.ops-dash .od-form-error { grid-column: 1 / -1; font-size: .78rem; font-weight: 700; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-actions { grid-column: 1 / -1; display: flex; gap: .5rem; justify-content: flex-end; }
+
+/* 名單（預覽排行列樣式） */
+.ops-dash .od-rank { list-style: none; margin: 0; padding: 0; }
+.ops-dash .od-rank li + li { border-top: 1px solid var(--border); }
+.ops-dash .od-rank-row { display: grid; grid-template-columns: 1.6rem 1.9rem minmax(0, 1fr) auto; align-items: center; gap: .55rem; width: 100%; padding: .48rem 0; text-align: left; color: var(--text-primary); }
+.ops-dash .od-rank li:first-child .od-rank-row { padding-top: .1rem; }
+.ops-dash .od-rank-no { font-size: .74rem; font-weight: 800; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.ops-dash .od-avatar { width: 1.9rem; height: 1.9rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); font-size: .78rem; font-weight: 800; }
+.ops-dash .od-rank-title { font-size: .82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ops-dash .od-rank-val { font-size: .78rem; font-weight: 800; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+.ops-dash .od-pager { display: flex; align-items: center; justify-content: center; gap: .8rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+.ops-dash .od-pager-at { font-size: .78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 外框最寬 640px（B 外殼），欄寬夠時關鍵數字一列 3 格 */
+@media (min-width: 600px) {
+  .ops-dash { gap: .85rem; }
+  .ops-dash .od-top { flex-direction: row; align-items: center; justify-content: space-between; gap: 1rem; }
+  .ops-dash .od-seg { width: 22rem; flex: 0 0 auto; }
+  .ops-dash .od-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
+  .ops-dash .od-form { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .ops-dash .od-field-kw { grid-column: auto; }
+}
