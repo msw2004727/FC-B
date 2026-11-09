@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status}（{reviewer}）"
   },
+  "actions": {
+    "openEvent": "イベントへ"
+  },
   "pm": {
     "emptyTitle": "ダイレクトメッセージはありません",
     "emptyBody": "新しいメッセージのやり取りがここに表示されます。",

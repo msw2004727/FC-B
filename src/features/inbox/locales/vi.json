@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status} ({reviewer})"
   },
+  "actions": {
+    "openEvent": "Xem hoạt động"
+  },
   "pm": {
     "emptyTitle": "Chưa có cuộc trò chuyện riêng nào",
     "emptyBody": "Các cuộc trò chuyện riêng tư của bạn sẽ hiển thị tại đây.",

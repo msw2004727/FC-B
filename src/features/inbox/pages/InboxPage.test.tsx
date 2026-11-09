@@ -25,8 +25,9 @@ vi.mock('@/features/profile/data/viewer', () => ({
   useViewer: () => mockUseViewer(),
 }));
 
+const mockRoute = vi.hoisted(() => vi.fn());
 vi.mock('preact-iso', () => ({
-  useLocation: () => ({ path: '/inbox', route: vi.fn() }),
+  useLocation: () => ({ path: '/inbox', route: mockRoute }),
 }));
 
 const mockSubscribeInbox = vi.fn();
@@ -669,5 +670,136 @@ describe('InboxPage', () => {
       threadsCallback!([{ id: 'c1', conversationId: 'c1', peerUid: 'p1', unreadCount: 1 }]);
     });
     expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
+  });
+
+  // §3.48②：活動留言通知（event_comment）＝前往活動，不是審核。
+  describe('event_comment 前往活動與審核標籤', () => {
+    function commentMessage(meta: Record<string, unknown> | null): InboxMessage {
+      return {
+        id: 'ecn_doc1_c1',
+        _docId: 'ecn_doc1_c1',
+        type: 'activity',
+        typeName: '活動',
+        title: '【活動留言】週六羽球',
+        body: '小明：幾點集合？',
+        time: '2026/11/09 10:00',
+        read: true,
+        actionType: 'event_comment',
+        actionStatus: null,
+        meta,
+      } as unknown as InboxMessage; // 寫入端 actionStatus 為 null
+    }
+
+    function teamJoin(id: string, actionStatus: string): InboxMessage {
+      return {
+        id,
+        _docId: id,
+        type: 'system',
+        typeName: '系統',
+        title: `俱樂部申請 ${id}`,
+        body: '申請內容',
+        time: '2025/01/01 10:00',
+        read: true,
+        actionType: 'team_join_request',
+        actionStatus,
+      } as InboxMessage;
+    }
+
+    async function useRealEventCommentHandler(): Promise<void> {
+      const registry = await vi.importActual<typeof import('@/core/action-registry')>('@/core/action-registry');
+      await import('@/features/events/register-actions');
+      mockEnsureMessageAction.mockImplementation(async (type: string) => registry.getMessageAction(type));
+    }
+
+    async function openDetail(title: string): Promise<void> {
+      const card = Array.from(document.querySelectorAll<HTMLElement>('.msg-card')).find((el) =>
+        el.textContent?.includes(title),
+      );
+      if (!card) throw new Error(`msg card missing: ${title}`);
+      fireEvent.click(card);
+      await waitFor(() => {
+        expect(document.getElementById('msg-inbox-detail-modal')).toBeTruthy();
+      });
+    }
+
+    it('列表不掛審核標籤；team_join_request 的待審核／已審核維持不變', () => {
+      renderPage({
+        messages: [
+          commentMessage({ eventDocId: 'doc1', eventId: 'ev1' }),
+          teamJoin('tj-pending', 'pending'),
+          teamJoin('tj-approved', 'approved'),
+        ],
+      });
+      const cards = Array.from(document.querySelectorAll<HTMLElement>('.msg-card'));
+      const ribbonOf = (text: string): string | null => {
+        const card = cards.find((el) => el.textContent?.includes(text));
+        if (!card) throw new Error(`card missing: ${text}`);
+        const ribbon = card.querySelector('.msg-ribbon');
+        return ribbon ? `${ribbon.className}|${ribbon.textContent}` : null;
+      };
+      expect(ribbonOf('週六羽球')).toBeNull();
+      expect(ribbonOf('tj-pending')).toBe('msg-ribbon msg-ribbon-pending|待審核');
+      expect(ribbonOf('tj-approved')).toBe('msg-ribbon msg-ribbon-reviewed|已審核');
+    });
+
+    it('詳情有「前往活動」按鈕，點了關閉詳情並導向 /events/{eventDocId}', async () => {
+      await useRealEventCommentHandler();
+      renderPage({ messages: [commentMessage({ eventDocId: 'doc1', eventId: 'ev1' })] });
+      await openDetail('週六羽球');
+
+      const btn = await waitFor(() => {
+        const el = document.querySelector<HTMLButtonElement>('.msg-action-btns button');
+        if (!el) throw new Error('openEvent button missing');
+        return el;
+      });
+      expect(btn.className).toBe('primary-btn');
+      expect(btn.style.whiteSpace).toBe('nowrap');
+      expect(document.querySelector('.msg-action-status')).toBeNull();
+
+      await act(async () => {
+        fireEvent.click(btn);
+      });
+      await waitFor(() => {
+        expect(mockRoute).toHaveBeenCalledWith('/events/doc1');
+        expect(document.getElementById('msg-inbox-detail-modal')).toBeNull();
+      });
+      expect(mockToastShow).not.toHaveBeenCalled();
+    });
+
+    it('只有 meta.eventId 時導向 /events/{eventId}', async () => {
+      await useRealEventCommentHandler();
+      renderPage({ messages: [commentMessage({ eventId: 'ev1' })] });
+      await openDetail('週六羽球');
+      const btn = await waitFor(() => {
+        const el = document.querySelector<HTMLButtonElement>('.msg-action-btns button');
+        if (!el) throw new Error('openEvent button missing');
+        return el;
+      });
+      await act(async () => {
+        fireEvent.click(btn);
+      });
+      await waitFor(() => expect(mockRoute).toHaveBeenCalledWith('/events/ev1'));
+    });
+
+    it('meta 缺活動 id 時不顯示按鈕', async () => {
+      await useRealEventCommentHandler();
+      renderPage({ messages: [commentMessage({ commentId: 'c1' })] });
+      await openDetail('週六羽球');
+      await waitFor(() => expect(mockEnsureMessageAction).toHaveBeenCalledWith('event_comment'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.querySelector('.msg-action-btns')).toBeNull();
+      expect(document.querySelector('.msg-action-status')).toBeNull();
+      expect(mockRoute).not.toHaveBeenCalled();
+    });
+
+    it('team_join_request 已審核的詳情仍顯示狀態、不顯示按鈕', async () => {
+      renderPage({ messages: [teamJoin('tj-approved', 'approved')] });
+      await openDetail('tj-approved');
+      expect(document.querySelector('.msg-action-status')?.textContent).toBe('已同意');
+      expect(document.querySelector('.msg-action-btns')).toBeNull();
+      expect(mockEnsureMessageAction).not.toHaveBeenCalled();
+    });
   });
 });

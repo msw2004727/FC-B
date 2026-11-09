@@ -19,7 +19,7 @@ export interface TeamFormCategoryOption {
 export const TEAM_CATEGORY_OPTIONS: readonly TeamFormCategoryOption[] = [
   {
     key: 'none',
-    label: '無',
+    label: '其他',
     description: '不顯示標籤',
     formHint: '不顯示任何標籤與緞帶，也不啟用課程功能。',
     showEduSettings: false,

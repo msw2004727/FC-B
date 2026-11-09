@@ -23,4 +23,7 @@ export const manifest: FeatureManifest = {
     },
   ],
   nav: [{ path: '/activities', labelKey: 'nav.events', icon: 'calendar', order: 3 }],
+  messageActions: {
+    event_comment: () => import('./register-actions'),
+  },
 };
