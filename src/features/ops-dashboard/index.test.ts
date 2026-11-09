@@ -38,10 +38,10 @@ describe('ops-dashboard manifest', () => {
   it('preact-iso 路由比對：/admin/ops、/admin/ops/participants（含查詢字串）都進這條路由', async () => {
     const { exec } = await import('preact-iso/router');
     const route = manifest.routes[0]!.path;
-    expect(exec('/admin/ops', route, {})).toBeTruthy();
-    expect(exec('/admin/ops/participants', route, {})).toMatchObject({ params: { view: 'participants' } });
-    expect(exec('/admin/opsx', route, {})).toBeFalsy();
-    expect(exec('/admin/ops/a/b', route, {})).toBeFalsy();
+    expect(exec('/admin/ops', route)).toBeTruthy();
+    expect(exec('/admin/ops/participants', route)).toMatchObject({ params: { view: 'participants' } });
+    expect(exec('/admin/opsx', route)).toBeFalsy();
+    expect(exec('/admin/ops/a/b', route)).toBeFalsy();
   });
 
   it('抽屜「數據儀表板」指向 /admin/ops、admin.dashboard.entry，不再是佔位頁（done）', () => {
