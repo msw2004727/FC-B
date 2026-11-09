@@ -11,6 +11,7 @@ import {
 import type { PmMessage } from '../data/pm-repo';
 import { closePmDialog, openPmDialog } from './pm-dialog-store';
 import PmDialogOverlay from './PmDialogOverlay';
+import { stubReducedMotion, watchActionRing } from '@/ui/action-ring-test-utils';
 
 const MY_UID = `U${'b'.repeat(32)}`;
 const PEER_UID = `U${'a'.repeat(32)}`;
@@ -183,5 +184,93 @@ describe('PmDialogOverlay', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
+  });
+});
+
+describe('PmDialogOverlay「送出」進度環', () => {
+  const sendButton = (): HTMLButtonElement =>
+    document.querySelector('.pm-dialog-send') as HTMLButtonElement;
+  function typeAndSend(text: string): void {
+    const input = screen.getByPlaceholderText('輸入訊息，最多 300 字') as HTMLTextAreaElement;
+    fireEvent.input(input, { target: { value: text } });
+    const form = sendButton().closest('form');
+    if (!form) throw new Error('form not found');
+    fireEvent.submit(form);
+  }
+  function deferSend() {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    pmRepoMock.sendPrivateMessage.mockImplementationOnce(
+      () => new Promise<void>((done, fail) => { resolve = done; reject = fail; }),
+    );
+    return { resolve: () => resolve(), reject: (error: Error) => reject(error) };
+  }
+
+  it('成功：小按鈕縮成環，送達打勾後展開回「送出」', async () => {
+    const send = deferSend();
+    render(<PmDialogOverlay />);
+    setConversation([]);
+    const watch = watchActionRing();
+    typeAndSend('hello');
+    await waitFor(() => expect(sendButton().classList.contains('is-collapsed')).toBe(true));
+    expect(sendButton().getAttribute('aria-label')).toBe('送出中');
+    expect(sendButton().getAttribute('aria-busy')).toBe('true');
+    send.resolve();
+    await waitFor(() => expect(sendButton().querySelector('.signup-ring-check')).not.toBeNull());
+    await waitFor(() => expect(sendButton().classList.contains('action-ring-btn')).toBe(false));
+    expect(sendButton().textContent).toBe('送出');
+    expect(watch.seen.has('check')).toBe(true);
+    watch.stop();
+  });
+
+  it('失敗：不打勾展開回原狀，訊息放回輸入框並照舊提示', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    try {
+      const send = deferSend();
+      render(<PmDialogOverlay />);
+      setConversation([]);
+      const watch = watchActionRing();
+      typeAndSend('hello');
+      await waitFor(() => expect(sendButton().classList.contains('is-collapsed')).toBe(true));
+      send.reject(new Error('boom'));
+      await waitFor(() => expect(alert).toHaveBeenCalledWith('私訊送出失敗'));
+      await waitFor(() => expect(sendButton().classList.contains('action-ring-btn')).toBe(false));
+      expect((screen.getByPlaceholderText('輸入訊息，最多 300 字') as HTMLTextAreaElement).value).toBe('hello');
+      expect(watch.seen.has('check')).toBe(false);
+      watch.stop();
+    } finally { alert.mockRestore(); }
+  });
+
+  it('本地驗證失敗（空白訊息）：不送出、不縮圓', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    try {
+      render(<PmDialogOverlay />);
+      setConversation([]);
+      const watch = watchActionRing();
+      typeAndSend('   ');
+      expect(alert).toHaveBeenCalledWith('請輸入訊息');
+      await new Promise(done => setTimeout(done, 20));
+      expect(pmRepoMock.sendPrivateMessage).not.toHaveBeenCalled();
+      expect(watch.seen.size).toBe(0);
+      watch.stop();
+    } finally { alert.mockRestore(); }
+  });
+
+  it('減少動態：顯示原本「送出中」文字，不變形', async () => {
+    stubReducedMotion();
+    try {
+      const send = deferSend();
+      render(<PmDialogOverlay />);
+      setConversation([]);
+      const watch = watchActionRing();
+      typeAndSend('hello');
+      await waitFor(() => expect(sendButton().textContent).toBe('送出中'));
+      await new Promise(done => setTimeout(done, 20));
+      expect(sendButton().classList.contains('action-ring-btn')).toBe(false);
+      send.resolve();
+      await waitFor(() => expect(sendButton().textContent).toBe('送出'));
+      expect(watch.seen.size).toBe(0);
+      watch.stop();
+    } finally { vi.unstubAllGlobals(); }
   });
 });

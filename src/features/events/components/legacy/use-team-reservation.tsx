@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { toast } from '@/ui/Toast';
+import { useActionRingControl } from '@/ui/action-ring';
 import {
   createTeamReservationController,
   getTeamReservationAction,
@@ -31,6 +32,8 @@ export function useTeamReservation(props: {
   const pending = useRef(false);
   const rejected = useRef(false);
   const [busy, setBusy] = useState(false);
+  // 團隊報名彈窗「確認」的進度環：本地檢查沒過（同步回傳）不縮圓，寫入成功才打勾後關窗。
+  const ring = useActionRingControl();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [courseRejected, setCourseRejected] = useState(false);
   const [choices, setChoices] = useState<NormalizedTeamReservationSummary[] | null>(null);
@@ -84,6 +87,7 @@ export function useTeamReservation(props: {
     const request = generation.current;
     pending.current = true;
     setBusy(true);
+    ring.start();
     try {
       const result = await controller.current!.submit(teamId, slots);
       if (!alive.current || request !== generation.current) return;
@@ -95,6 +99,8 @@ export function useTeamReservation(props: {
         return;
       }
       if (result.status === 'success' && !result.deduplicated) {
+        // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+        if (!(await ring.succeed())) return;
         close();
         const committedGeneration = generation.current;
         toast.show({ message: result.message });
@@ -114,6 +120,7 @@ export function useTeamReservation(props: {
         toast.show({ message: '團隊名額調整失敗，請稍後重試' });
       }
     } finally {
+      ring.fail();
       pending.current = false;
       if (alive.current) setBusy(false);
     }
@@ -145,7 +152,7 @@ export function useTeamReservation(props: {
       && !!props.viewer.staffTeams?.some(team => team.id === id),
     dialogs: <>
       {modalState && <TeamReservationModal key={modalState.selectedTeam.id + ':' + generation.current}
-        state={modalState} busy={busy} onSelectTeam={open} onClose={close}
+        state={modalState} busy={busy} ring={ring} onSelectTeam={open} onClose={close}
         onConfirm={slots => { void submit(slots); }} />}
       {choices && <TeamReservationSignupChoiceModal choices={choices}
         onClose={() => finishChoice(null)} onConfirm={finishChoice} />}

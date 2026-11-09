@@ -4,6 +4,7 @@ import { useLocation } from 'preact-iso';
 
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import type { UserProfile } from '../../data/profile-model';
 import { updateProfileFields } from '../../data/profile-writes';
 import { stringValue } from '../../ui/shared';
@@ -64,6 +65,8 @@ export function LegacyProfileInfoCard({
 
   // U-041：避免連按兩次呼叫 updateProfileFields。
   const pendingRef = useRef(false);
+  // 「儲存」進度環：地區檢查通過才轉，成功打勾後才收起編輯。
+  const saveRing = useActionRingControl();
   // U-042：輸入框失焦後延遲收起清單。
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -169,15 +172,20 @@ export function LegacyProfileInfoCard({
 
     pendingRef.current = true;
     setPending(true);
+    saveRing.start();
     try {
       await updateProfileFields(uid, patch);
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await saveRing.succeed())) return;
       onSaved(patch);
       setEditing(false);
       setRegionMatches([]);
       toast.show({ message: '個人資料已更新', tone: 'success' });
     } catch {
+      saveRing.fail();
       toast.show({ message: '個人資料更新失敗，請稍後再試', tone: 'error' });
     } finally {
+      saveRing.fail();
       pendingRef.current = false;
       setPending(false);
     }
@@ -494,7 +502,9 @@ export function LegacyProfileInfoCard({
             >
               {lt('取消', '取消')}
             </button>
-            <button
+            <ActionRingButton
+              control={saveRing}
+              busyLabel={lt('儲存中...', '儲存中...')}
               type="button"
               class="primary-btn small"
               disabled={pending}
@@ -504,7 +514,7 @@ export function LegacyProfileInfoCard({
               }}
             >
               {pending ? lt('儲存中...', '儲存中...') : lt('儲存', '儲存')}
-            </button>
+            </ActionRingButton>
           </div>
         </div>
       </div>

@@ -4,7 +4,8 @@
 // - 綁定流程直接呼叫 `line-notify-bind.ts#bindLineNotify`（首次 window.open 在其同步階段），
 //   本卡不重寫綁定或經驗值邏輯。
 // - 開關／解除只寫 `users/{uid}.lineNotify` + `updatedAt`，透過 `saveLineNotify`。
-// - legacy 畫面：inline style 與 A 一致；可見文字一律 `lt()`。
+// - legacy 畫面：inline style 與 A 一致；A 原文用 `lt()`，B 改寫或新增的文字走 `t('profile.lineNotifyCard.*')`
+//   （A 翻譯包沒有简中、也不在 check:i18n 範圍，7 語系只能放功能字典）。
 //
 // fix-1：畫面狀態由最新 props.profile['lineNotify'] 推導；只有寫入進行中疊加樂觀值，
 //   寫入完成或失敗即清掉。切換時以原始 lineNotify 為基準，不覆寫其他欄位。
@@ -15,8 +16,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   bindLineNotify,
   buildLineNotifyPayload,
+  LINE_BOT_BASIC_ID,
 } from '@/features/events/data/line-notify-bind';
-import { lt } from '@/i18n/i18n';
+import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 
@@ -31,15 +33,16 @@ import {
 } from '../../data/line-notify-settings';
 import { ProfileInfoButton } from './ProfileInfoButton';
 
-const LINE_TOGGLE_ROWS: ReadonlyArray<{ key: LineNotifyKey; text: string }> = [
-  { key: 'activity', text: '活動提醒（報名成功/開始前）' },
-  { key: 'system', text: '系統通知（站內信/公告）' },
-  { key: 'tournament', text: '賽事通知（報名/賽程更新）' },
+// 11-09 站長預覽核可：activity 改「活動通知（報名、候補、異動）」（新站沒有開始前提醒）；三列改走 7 語系字典。
+const LINE_TOGGLE_ROWS: ReadonlyArray<{ key: LineNotifyKey; textKey: string }> = [
+  { key: 'activity', textKey: 'profile.lineNotifyCard.toggleActivity' },
+  { key: 'system', textKey: 'profile.lineNotifyCard.toggleSystem' },
+  { key: 'tournament', textKey: 'profile.lineNotifyCard.toggleTournament' },
 ];
 
-/** 照 A `toggleLineNotify` 的 labels。 */
+/** 照 A `toggleLineNotify` 的 labels；activity 跟著開關列改名「活動通知」，toast 與開關名稱一致。 */
 const TOGGLE_LABELS: Record<LineNotifyKey, string> = {
-  activity: '活動提醒',
+  activity: '活動通知',
   system: '系統通知',
   tournament: '賽事通知',
 };
@@ -59,6 +62,7 @@ export function LegacyLineNotifyCard({
   /** 11-06 改版：放進個人頁圖示列的展開區時只渲染內容（外殼由 ProfileQuickBar 負責）。 */
   embedded?: boolean;
 }): JSX.Element {
+  const t = useT();
   const [openState, setOpen] = useState(false);
   const open = embedded || openState;
   const [binding, setBinding] = useState(false);
@@ -115,6 +119,11 @@ export function LegacyLineNotifyCard({
       e.preventDefault();
       setOpen((prev) => !prev);
     }
+  }
+
+  // 已綁定但沒加好友（或封鎖）時收不到推播：重開加好友頁，開法同 bindLineNotify；不寫任何資料。
+  function handleOpenOfficialAccount(): void {
+    window.open(`https://line.me/R/ti/p/${LINE_BOT_BASIC_ID}`, 'sporthub_line');
   }
 
   function handleBind(): void {
@@ -272,6 +281,16 @@ export function LegacyLineNotifyCard({
             <span data-i18n="綁定時間">{lt('綁定時間', '綁定時間')}</span>
             <span id="line-notify-time">{boundAtText}</span>
           </div>
+          <div class="line-notify-hint" id="line-notify-friend-hint">
+            <span>{t('profile.lineNotifyCard.friendHint')}</span>
+            <button
+              type="button"
+              class="line-notify-friend-btn"
+              onClick={handleOpenOfficialAccount}
+            >
+              {t('profile.lineNotifyCard.openOfficial')}
+            </button>
+          </div>
           <div style="border-top:1px solid var(--border);margin:.5rem 0"></div>
           <div
             style="font-size:.78rem;font-weight:600;margin-bottom:.35rem"
@@ -282,13 +301,14 @@ export function LegacyLineNotifyCard({
           {LINE_TOGGLE_ROWS.map((row) => (
             <div class="line-notify-row" key={row.key}>
               <span>
-                {row.text}
+                {t(row.textKey)}
                 <span class="line-notify-sub"></span>
               </span>
               <label class="toggle-switch">
                 <input
                   type="checkbox"
                   id={`line-toggle-${row.key}`}
+                  aria-label={t(row.textKey)}
                   checked={!!view.settings[row.key]}
                   disabled={pendingKey === row.key}
                   onChange={(e) => {

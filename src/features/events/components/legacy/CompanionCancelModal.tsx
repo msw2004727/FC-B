@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 
 export interface CompanionCancelTarget {
   registrationId: string;
@@ -17,6 +18,8 @@ export interface CompanionCancelModalProps {
   targets: readonly CompanionCancelTarget[];
   selectAll: boolean;
   busy: boolean;
+  /** 「確認取消」的進度環；由取消流程在真正送出時 start、依結果 succeed／fail。 */
+  ring?: ActionRingControl;
   /** 照 A：標題「取消報名 — ${e.title}」。 */
   eventTitle?: string;
   onClose: () => void;
@@ -75,10 +78,12 @@ export function CompanionCancelModal({
   targets,
   selectAll,
   busy,
+  ring,
   eventTitle,
   onClose,
   onConfirm,
 }: CompanionCancelModalProps): JSX.Element | null {
+  const idleRing = useActionRingControl();
   const [checked, setChecked] = useState<Set<string>>(
     () => initialChecked(open, selectAll, targets),
   );
@@ -219,7 +224,9 @@ export function CompanionCancelModal({
           >
             返回
           </button>
-          <button
+          <ActionRingButton
+            control={ring ?? idleRing}
+            busyLabel="取消報名中..."
             type="button"
             class="primary-btn"
             style="background:var(--danger)"
@@ -233,7 +240,7 @@ export function CompanionCancelModal({
             }}
           >
             確認取消
-          </button>
+          </ActionRingButton>
         </div>
       </div>
     </div>

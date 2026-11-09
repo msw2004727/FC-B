@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
 import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
@@ -66,6 +67,8 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [pending, setPending] = useState(false);
+  // 「同意並送出」進度環：本地檢查全過才轉，儲存成功打勾後才關窗。
+  const submitRing = useActionRingControl();
 
   const aliveRef = useRef(true);
   const onCloseRef = useRef(onClose);
@@ -248,25 +251,35 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     };
 
     setPending(true);
-    saveFirstLoginProfile(uid, input)
-      .then(() => {
-        if (!aliveRef.current) return;
-        // legalConsent 是提交條件，不回填為已保存的個資。
-        const { legalConsent: _consent, ...patch } = input;
-        onSaved(patch);
-        toast.show({ message: lt('個人資料已儲存', '個人資料已儲存') });
-        onCloseRef.current();
-      })
-      .catch(() => {
-        if (!aliveRef.current) return;
-        setErrorText(
-          lt(
-            '儲存失敗，請檢查網路後重試。若持續失敗可重新整理頁面。',
-            '儲存失敗，請檢查網路後重試。若持續失敗可重新整理頁面。',
-          ),
-        );
-        setPending(false);
-      });
+    submitRing.start();
+    persist(input).catch(() => {});
+  }
+
+  // 原 .then／.catch 鏈改 async/await（加進度環 ✓ 停留），成功與失敗的處理順序不變。
+  async function persist(input: FirstLoginInput): Promise<void> {
+    try {
+      await saveFirstLoginProfile(uid, input);
+      if (!aliveRef.current) return;
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await submitRing.succeed())) return;
+      // legalConsent 是提交條件，不回填為已保存的個資。
+      const { legalConsent: _consent, ...patch } = input;
+      onSaved(patch);
+      toast.show({ message: lt('個人資料已儲存', '個人資料已儲存') });
+      onCloseRef.current();
+    } catch {
+      submitRing.fail();
+      if (!aliveRef.current) return;
+      setErrorText(
+        lt(
+          '儲存失敗，請檢查網路後重試。若持續失敗可重新整理頁面。',
+          '儲存失敗，請檢查網路後重試。若持續失敗可重新整理頁面。',
+        ),
+      );
+      setPending(false);
+    } finally {
+      submitRing.fail();
+    }
   }
 
   return createPortal(
@@ -485,14 +498,16 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
             >
               {lt('稍後填寫', '稍後填寫')}
             </button>
-            <button
+            <ActionRingButton
+              control={submitRing}
+              busyLabel={lt('儲存中...', '儲存中...')}
               type="button"
               class="primary-btn fl-submit-btn"
               disabled={pending}
               onClick={handleSubmit}
             >
               {pending ? lt('儲存中...', '儲存中...') : lt('同意並送出', '同意並送出')}
-            </button>
+            </ActionRingButton>
           </div>
         </div>
       </div>

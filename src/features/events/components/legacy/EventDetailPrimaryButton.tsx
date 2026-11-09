@@ -1,5 +1,11 @@
 import type { JSX } from 'preact';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
+import {
+  renderRingContent,
+  ringButtonClass,
+  useActionRing,
+  useDeferredStart,
+} from '@/ui/action-ring';
 import type { SignupButtonState } from '../../data/signup-state';
 import './signup-a11y.css';
 
@@ -12,6 +18,8 @@ export interface SignupSettle {
   serial: number;
   pending: boolean;
 }
+
+export { ringPercent } from '@/ui/action-ring';
 
 export interface EventDetailPrimaryButtonProps {
   state: SignupButtonState;
@@ -31,185 +39,6 @@ export interface EventDetailPrimaryButtonProps {
     doneSerial?: number;
     onClick: () => void;
   } | null;
-}
-
-// 站長 11-08 核可「A＋B 變形加進度環」（FC docs/previews/signup-speed-feel-2026-11-08.html 的 k=6）。
-// expand＝成功打勾後展開；revert＝失敗或結果未知，不打勾直接展開回原狀態。
-type RingPhase = 'idle' | 'progress' | 'fill' | 'check' | 'expand' | 'revert';
-const RING_LENGTH = 94.25; // 2π × r15
-const RING_FILL_MS = 180; // 環 .15s 補滿，多留一點給轉場收尾（同設計稿）
-const RING_CHECK_MS = 220;
-const RING_EXPAND_MS = 260;
-
-/** 前 0.6 秒線性衝到 60%，之後 60+30×(1−e^(−(s−0.6)/1.5)) 慢慢爬，永遠到不了 100%。 */
-export function ringPercent(elapsedMs: number): number {
-  const s = Math.max(0, elapsedMs) / 1000;
-  return s < 0.6 ? (s / 0.6) * 60 : 60 + 30 * (1 - Math.exp(-(s - 0.6) / 1.5));
-}
-
-function prefersReducedMotion(): boolean {
-  try {
-    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
-
-function now(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
-}
-
-interface SignupRing {
-  phase: RingPhase;
-  /** 減少動態：不變形、不畫環，只用靜態忙碌文字，結果出來直接切換。 */
-  reduced: boolean;
-  arcRef: { current: SVGCircleElement | null };
-  buttonRef: { current: HTMLButtonElement | null };
-  /** 環期間掛在按鈕上的 inline 變數：按下前的原高度，CSS 用它補邊界，縮成 46px 圓時下方版面不跳動。 */
-  style: string;
-}
-
-/**
- * running 期間顯示進度環；running 結束時若期間看過 settling（成功後等重讀），或 successKey 與開始時不同，
- * 就算成功 → 補滿＋✓＋展開；否則（失敗、結果未知、使用者取消確認）不打勾直接展開回原狀態。
- * settling 另外判斷，是因為多次狀態更新被合併成一次 render 時，環可能在 serial 已加一後才開始。
- * 階段推進只用 setTimeout（不靠 transitionend），減少動態把轉場壓成 0.01ms 也不會卡住。
- */
-function useSignupRing(running: boolean, successKey: number, settling = false): SignupRing {
-  const [phase, setPhase] = useState<RingPhase>('idle');
-  const [reduced, setReduced] = useState(false);
-  const phaseRef = useRef<RingPhase>('idle');
-  const reducedRef = useRef(false);
-  const started = useRef({ key: successKey, at: 0 });
-  const succeeded = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const frame = useRef<number | null>(null);
-  const arcRef = useRef<SVGCircleElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const idleHeight = useRef(0);
-
-  function go(next: RingPhase): void {
-    phaseRef.current = next;
-    setPhase(next);
-  }
-  function clearTimer(): void {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-  }
-  function after(ms: number, next: () => void): void {
-    clearTimer();
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      next();
-    }, ms);
-  }
-  function stopFrame(): void {
-    if (frame.current !== null && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(frame.current);
-    }
-    frame.current = null;
-  }
-
-  useLayoutEffect(() => {
-    if (running) {
-      if (phaseRef.current === 'progress') {
-        if (settling) succeeded.current = true;
-        return;
-      }
-      clearTimer();
-      succeeded.current = settling;
-      started.current = { key: successKey, at: now() };
-      reducedRef.current = prefersReducedMotion();
-      setReduced(reducedRef.current);
-      go('progress');
-      return;
-    }
-    if (phaseRef.current !== 'progress') return;
-    stopFrame();
-    if (reducedRef.current) {
-      go('idle');
-      return;
-    }
-    if (!succeeded.current && successKey === started.current.key) {
-      go('revert');
-      after(RING_EXPAND_MS, () => go('idle'));
-      return;
-    }
-    go('fill');
-    after(RING_FILL_MS, () => {
-      go('check');
-      after(RING_CHECK_MS, () => {
-        go('expand');
-        after(RING_EXPAND_MS, () => go('idle'));
-      });
-    });
-  }, [running, successKey, settling]);
-
-  // 進度環逐幀直接改 DOM（不觸發重繪）；離開 progress 或卸載時取消。
-  useEffect(() => {
-    if (phase !== 'progress' || reduced || typeof requestAnimationFrame !== 'function') return;
-    const tick = (): void => {
-      const arc = arcRef.current;
-      if (arc) {
-        const percent = ringPercent(now() - started.current.at);
-        arc.style.strokeDashoffset = String(RING_LENGTH * (1 - percent / 100));
-      }
-      frame.current = requestAnimationFrame(tick);
-    };
-    frame.current = requestAnimationFrame(tick);
-    return stopFrame;
-  }, [phase, reduced]);
-
-  useEffect(() => () => {
-    clearTimer();
-    stopFrame();
-  }, []);
-
-  // 閒置時記下按鈕原高度（各狀態、各平台字型不同：全寬按鈕約 36～40px，並排與早鳥是 46px）。
-  useLayoutEffect(() => {
-    if (phaseRef.current === 'idle' && !running && buttonRef.current) {
-      idleHeight.current = buttonRef.current.offsetHeight;
-    }
-  });
-
-  const style = idleHeight.current > 0 ? `--signup-ring-h:${idleHeight.current}px` : '';
-  // running 剛變 true、layout effect 尚未推進的那一次 render 就先當成 progress，避免閃一次靜態忙碌樣式。
-  if (running && phase === 'idle') {
-    return { phase: 'progress', reduced: prefersReducedMotion(), arcRef, buttonRef, style };
-  }
-  return { phase, reduced, arcRef, buttonRef, style };
-}
-
-/** 圓圈內容：progress／fill 畫環，check／expand 顯示 ✓，revert 留白直到展開完成。 */
-function renderRingContent(ring: SignupRing): JSX.Element | null {
-  if (ring.phase === 'revert') return null;
-  if (ring.phase === 'check' || ring.phase === 'expand') {
-    return <span class="signup-ring-check" aria-hidden="true">✓</span>;
-  }
-  const filled = ring.phase === 'fill';
-  return (
-    <svg class="signup-ring-svg" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
-      <circle class="signup-ring-track" cx="17" cy="17" r="15" />
-      <circle
-        ref={ring.arcRef}
-        class={`signup-ring-arc${filled ? ' is-fill' : ''}`}
-        cx="17"
-        cy="17"
-        r="15"
-        transform="rotate(-90 17 17)"
-        stroke-dasharray={String(RING_LENGTH)}
-        style={{ strokeDashoffset: filled ? '0' : String(RING_LENGTH) }}
-      />
-    </svg>
-  );
-}
-
-/** 進度環期間（非減少動態）套到按鈕上的 class；expand／revert 拿掉 is-collapsed、保留轉場，寬度與圓角回到原樣。 */
-function ringButtonClass(ring: SignupRing): string {
-  if (ring.phase === 'idle' || ring.reduced) return '';
-  return ring.phase === 'expand' || ring.phase === 'revert'
-    ? ' signup-ring-btn'
-    : ' signup-ring-btn is-collapsed';
 }
 
 // 照 A `event-detail-signup.js#handleSignup` 第 1950～1965 行的文字替換。
@@ -265,9 +94,12 @@ function TeamReservationButton({ team, pageBusy }: {
   team: NonNullable<EventDetailPrimaryButtonProps['teamReservation']>;
   pageBusy: boolean;
 }): JSX.Element {
-  const ring = useSignupRing(team.busy, team.doneSerial ?? 0);
+  // 團隊名額本地檢查沒過時 busy 同一輪就收回：延一個 0ms 才開始環，避免閃一次展開回原狀（11-09 審查）。
+  const started = useDeferredStart(team.busy);
+  const ring = useActionRing(started, team.doneSerial ?? 0);
   const ringing = ring.phase !== 'idle' && !ring.reduced;
-  const loading = team.busy && !ringing;
+  // 等那一個 0ms 的期間不切靜態忙碌樣式（同一輪就結束時畫面完全不動）。
+  const loading = started && !ringing;
   return (
     <div class={'signup-glow-wrap team-reservation-action' + (loading ? ' loading' : '')}
       style="--glow-c:#2563eb;--glow-c-light:#60a5fa">
@@ -296,7 +128,7 @@ function PersonalSignupButton({
   onClick,
 }: EventDetailPrimaryButtonProps): JSX.Element {
   const settling = settle?.pending === true;
-  const ring = useSignupRing(running || settling, settle?.serial ?? 0, settling);
+  const ring = useActionRing(running || settling, settle?.serial ?? 0, settling);
   const ringActive = ring.phase !== 'idle';
   // 進度環期間凍結按下時的狀態（底色、忙碌文字）：環背後的資料會先變（例如額滿投影），
   // 展開完成回到 idle 才換成新狀態，避免環上閃過中間狀態的底色或先露出舊文字。

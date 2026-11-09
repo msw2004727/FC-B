@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from '@testing-library/preact';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
@@ -13,6 +13,8 @@ import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import type { UserProfile } from '../../data/profile-model';
 import { LegacyProfileInfoCard, PROFILE_CLUBS_PREVIEW } from './LegacyProfileCards';
 import { calcAgeFromBirthday } from './profile-legacy-helpers';
+import { updateProfileFields } from '../../data/profile-writes';
+import { toast } from '@/ui/Toast';
 
 /** 台北牆鐘 → 絕對毫秒（台北固定 UTC+8）。 */
 function taipeiMs(y: number, m: number, d: number, h = 12, mi = 0): number {
@@ -51,6 +53,11 @@ describe('calcAgeFromBirthday（台北時區）', () => {
     expect(calcAgeFromBirthday('1985/11/21', taipeiMs(2026, 11, 21, 0, 30))).toBe(41);
     // 台北 2026/11/20 23:59 仍是前一天。
     expect(calcAgeFromBirthday('1985/11/21', taipeiMs(2026, 11, 20, 23, 59))).toBe(40);
+  });
+
+  it('閏年 2/29 生日：平年 2/28 還沒滿、3/1 才滿', () => {
+    expect(calcAgeFromBirthday('2000/02/29', taipeiMs(2026, 2, 28))).toBe(25);
+    expect(calcAgeFromBirthday('2000/02/29', taipeiMs(2026, 3, 1))).toBe(26);
   });
 
   it('格式不對、日期不存在、未來日期回 null', () => {
@@ -161,5 +168,25 @@ describe('我的資料 P2 兩張卡（顯示模式）', () => {
     expect(container.querySelector('#profile-join-date-edit')?.textContent).toBe('-');
     // 編輯中沒有基本資料卡標題，說明「?」回到頂端。
     expect(container.querySelector('.profile-quick-help .edu-info-btn')).not.toBeNull();
+  });
+});
+
+describe('我的資料「儲存」進度環', () => {
+  it('等 ✓ 期間卸載：不再回填、提示、收起編輯', async () => {
+    let resolve!: () => void;
+    vi.mocked(updateProfileFields).mockImplementationOnce(() => new Promise<void>((done) => { resolve = done; }));
+    vi.mocked(toast.show).mockClear();
+    const onSaved = vi.fn();
+    const view = render(<LegacyProfileInfoCard embedded uid="U-me" profile={mk()} onSaved={onSaved} />);
+    fireEvent.click(view.container.querySelector('#profile-edit-btn') as HTMLElement);
+    const save = (): HTMLButtonElement => view.container.querySelector('button[data-i18n="儲存"]') as HTMLButtonElement;
+    fireEvent.click(save());
+    await waitFor(() => expect(save().classList.contains('is-collapsed')).toBe(true));
+    resolve();
+    await waitFor(() => expect(save().querySelector('.signup-ring-check')).not.toBeNull());
+    view.unmount();
+    await new Promise(done => setTimeout(done, 600));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.show)).not.toHaveBeenCalled();
   });
 });

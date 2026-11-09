@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 
 import { LegacySocialLinkModal } from './LegacySocialLinkModal';
 import type { Platform } from '../../ui/shared';
+import { stubReducedMotion, watchActionRing } from '@/ui/action-ring-test-utils';
 
 vi.mock('../../data/profile-writes', () => ({
   clearSocialLink: vi.fn().mockResolvedValue(undefined),
@@ -20,6 +21,7 @@ vi.mock('@/ui/Toast', () => ({
 }));
 
 import { clearSocialLink, saveSocialLink } from '../../data/profile-writes';
+import { toast } from '@/ui/Toast';
 
 // ASSUMPTION: 附件未給 Platform union；測試以已知 alias 傳入，透過 unknown 轉型避免型別耦合。
 const ig = 'ig' as unknown as Platform;
@@ -179,5 +181,119 @@ describe('LegacySocialLinkModal（M-130 照 A pages/profile.html#social-link-mod
     fireEvent.click(document.getElementById('social-clear-btn') as HTMLButtonElement);
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(clearSocialLink).toHaveBeenCalledWith('u1', 'ig');
+  });
+});
+
+describe('LegacySocialLinkModal「儲存」進度環', () => {
+  const saveButton = (): HTMLButtonElement =>
+    document.querySelector('#social-link-modal .primary-btn') as HTMLButtonElement;
+  function deferSave() {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    vi.mocked(saveSocialLink).mockImplementationOnce(
+      () => new Promise<void>((done, fail) => { resolve = done; reject = fail; }),
+    );
+    return { resolve: () => resolve(), reject: (error: Error) => reject(error) };
+  }
+  function renderModal(onClose = vi.fn(), onSaved = vi.fn()) {
+    render(
+      <LegacySocialLinkModal uid="u1" platform={ig} socialLinks={{}} onClose={onClose} onSaved={onSaved} />,
+    );
+    fireEvent.input(document.getElementById('social-link-input') as HTMLInputElement, { target: { value: 'me' } });
+    return { onClose, onSaved };
+  }
+
+  it('成功：縮成環，儲存成功打勾停留後才回填並關窗', async () => {
+    const save = deferSave();
+    const { onClose, onSaved } = renderModal();
+    const watch = watchActionRing();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(saveButton().classList.contains('is-collapsed')).toBe(true));
+    expect(saveButton().getAttribute('aria-label')).toBe('儲存中...');
+    save.resolve();
+    await waitFor(() => expect(saveButton().querySelector('.signup-ring-check')).not.toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.show)).toHaveBeenCalledWith({ message: '社群連結已儲存' });
+    expect(watch.seen.has('check')).toBe(true);
+    watch.stop();
+  });
+
+  it('失敗：不打勾展開回「儲存」，照舊提示且不關窗', async () => {
+    const save = deferSave();
+    const { onClose } = renderModal();
+    const watch = watchActionRing();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(saveButton().classList.contains('is-collapsed')).toBe(true));
+    save.reject(new Error('boom'));
+    await waitFor(() => expect(vi.mocked(toast.show)).toHaveBeenCalledWith({ message: '儲存失敗，請稍後再試。' }));
+    await waitFor(() => expect(saveButton().classList.contains('action-ring-btn')).toBe(false));
+    expect(saveButton().textContent).toBe('儲存');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(watch.seen.has('check')).toBe(false);
+    watch.stop();
+  });
+
+  it('本地驗證失敗（不合法 ID）：不送出、不縮圓', async () => {
+    render(<LegacySocialLinkModal uid="u1" platform={ig} socialLinks={{}} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.input(document.getElementById('social-link-input') as HTMLInputElement,
+      { target: { value: 'javascript:alert(1)' } });
+    const watch = watchActionRing();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(document.querySelector('[role="alert"]')).not.toBeNull());
+    await new Promise(done => setTimeout(done, 20));
+    expect(saveSocialLink).not.toHaveBeenCalled();
+    expect(watch.seen.size).toBe(0);
+    watch.stop();
+  });
+
+  it('減少動態：維持「儲存中...」文字不變形，成功直接關窗', async () => {
+    stubReducedMotion();
+    try {
+      const save = deferSave();
+      const { onClose } = renderModal();
+      const watch = watchActionRing();
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(saveButton().textContent).toBe('儲存中...'));
+      await new Promise(done => setTimeout(done, 20));
+      expect(saveButton().classList.contains('action-ring-btn')).toBe(false);
+      save.resolve();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(watch.seen.size).toBe(0);
+      watch.stop();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('等 ✓ 期間卸載：不再回填、提示、關窗', async () => {
+    const save = deferSave();
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    const view = render(
+      <LegacySocialLinkModal uid="u1" platform={ig} socialLinks={{}} onClose={onClose} onSaved={onSaved} />,
+    );
+    fireEvent.input(document.getElementById('social-link-input') as HTMLInputElement, { target: { value: 'me' } });
+    vi.mocked(toast.show).mockClear();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(saveButton().classList.contains('is-collapsed')).toBe(true));
+    save.resolve();
+    await waitFor(() => expect(saveButton().querySelector('.signup-ring-check')).not.toBeNull());
+    view.unmount();
+    await new Promise(done => setTimeout(done, 600));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.show)).not.toHaveBeenCalled();
+  });
+
+  it('送出中（含 ✓ 停留）Esc 與點遮罩都不關窗', async () => {
+    const save = deferSave();
+    const { onClose } = renderModal();
+    fireEvent.click(saveButton());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(document.getElementById('social-link-modal') as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+    save.resolve();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

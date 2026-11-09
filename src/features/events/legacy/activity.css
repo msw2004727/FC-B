@@ -1815,31 +1815,7 @@
   padding: 0 !important;
   border-radius: 23px !important;
 }
-.signup-ring-svg {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  margin: -17px 0 0 -17px;
-}
-.signup-ring-track,
-.signup-ring-arc {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-}
-.signup-ring-track {
-  stroke-opacity: .3;
-}
-.signup-ring-arc {
-  stroke-linecap: round;
-}
-.signup-ring-arc.is-fill {
-  transition: stroke-dashoffset .15s;
-}
-.signup-ring-check {
-  font-size: 22px;
-  line-height: 1;
-}
+/* 環內容（.signup-ring-svg／track／arc／check）11-09 搬到 src/ui/action-ring.css 共用。 */
 
 /* ─── 分隊排序按鈕（報名名單表頭）─── */
 .att-team-sort-btn {

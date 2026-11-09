@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 
 export interface CompanionSelectItem {
   id: string;
@@ -30,6 +31,8 @@ export interface CompanionSelectModalProps {
   genderDetailText: string;
   items: readonly CompanionSelectItem[];
   busy: boolean;
+  /** 「確認」的進度環；由頁面在真正送出時 start、依原流程 succeed／fail。 */
+  ring?: ActionRingControl;
   onClose: () => void;
   onConfirm: (result: { addCompanionIds: string[]; cancelRegistrationIds: string[] }) => void;
 }
@@ -89,9 +92,12 @@ export function CompanionSelectModal({
   genderDetailText,
   items,
   busy,
+  ring,
   onClose,
   onConfirm,
 }: CompanionSelectModalProps): JSX.Element | null {
+  const idleRing = useActionRingControl();
+  const confirmRing = ring ?? idleRing;
   const [checked, setChecked] = useState<Set<string>>(() => initialChecked(open ? items : []));
   const prevOpen = useRef(open);
   const busyRef = useRef(busy);
@@ -253,7 +259,9 @@ export function CompanionSelectModal({
           >
             取消
           </button>
-          <button
+          <ActionRingButton
+            control={confirmRing}
+            busyLabel="寫入中..."
             type="button"
             class="primary-btn"
             id="companion-select-confirm-btn"
@@ -268,7 +276,7 @@ export function CompanionSelectModal({
             }}
           >
             確認
-          </button>
+          </ActionRingButton>
         </div>
       </div>
     </div>

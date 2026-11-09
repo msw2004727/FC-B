@@ -14,6 +14,7 @@ import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import type { TeamFormApi, TeamFormProps } from './use-team-form';
 import { useTeamForm } from './use-team-form';
@@ -156,6 +157,7 @@ function StaffTags(props: {
 function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Element {
   const api = useTeamForm(props);
   const lt = useLegacyT();
+  const idleRing = useActionRingControl();
   const latest = useRef(props);
   latest.current = props;
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -725,7 +727,9 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
           >
             {lt('取消', '取消')}
           </button>
-          <button
+          <ActionRingButton
+            control={api.submitRing ?? idleRing}
+            busyLabel={lt(api.busyLabel, api.busyLabel)}
             type="button"
             class="primary-btn"
             id="ct-team-save-btn"
@@ -737,7 +741,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
             }}
           >
             {api.busy ? lt(api.busyLabel, api.busyLabel) : lt(api.submitLabel, api.submitLabel)}
-          </button>
+          </ActionRingButton>
         </div>
       </div>
       {api.image.cropper}

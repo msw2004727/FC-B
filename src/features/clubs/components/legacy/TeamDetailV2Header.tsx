@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { SPORTS } from '@/features/events/data/sports';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import type { ClubViewer, TeamDoc, TeamPrimaryAction } from '../../data/types';
 import { canShowInviteQr } from '../../club-policy';
 import { isUserCapabilityTeam } from '../../data/team-source';
@@ -164,6 +165,8 @@ export interface TeamDetailV2HeaderProps {
   onEditCover: () => void;
   imageBusyKind: 'avatar' | 'cover' | null;
   onJoin: () => void;
+  /** 「加入俱樂部」的進度環；由頁面在送出申請時 start、依結果 succeed／fail。 */
+  joinRing?: ActionRingControl;
   onJoined: () => void;
   onJoinPending: () => void;
   onLeave: () => void;
@@ -192,11 +195,14 @@ export function TeamDetailV2Header({
   onEditCover,
   imageBusyKind,
   onJoin,
+  joinRing,
   onJoined,
   onJoinPending,
   onLeave,
   onSelectTab,
 }: TeamDetailV2HeaderProps): JSX.Element {
+  const idleJoinRing = useActionRingControl();
+  const ring = joinRing ?? idleJoinRing;
   const sportLabel = getSportLabel(team);
   const subtitle = team.nameEn || sportLabel || team.region || 'Club detail';
   const logoUrl = getTeamDetailAvatarUrl(team);
@@ -331,7 +337,9 @@ export function TeamDetailV2Header({
 
       <div class={`td-v2-cta-bar${isMember ? ' has-leave' : ''}`}>
         {primaryAction === 'pending' ? (
-          <button
+          <ActionRingButton
+            control={ring}
+            busyLabel="送出申請中..."
             class="td-v2-cta-primary pending"
             type="button"
             data-td-v2-action="join-pending"
@@ -340,9 +348,11 @@ export function TeamDetailV2Header({
           >
             <SvgIcon name="check" />
             <span>審核中</span>
-          </button>
+          </ActionRingButton>
         ) : isMember ? (
-          <button
+          <ActionRingButton
+            control={ring}
+            busyLabel="送出申請中..."
             class="td-v2-cta-primary joined"
             type="button"
             data-td-v2-action="joined"
@@ -351,9 +361,11 @@ export function TeamDetailV2Header({
           >
             <SvgIcon name="check" />
             <span>已加入</span>
-          </button>
+          </ActionRingButton>
         ) : (
-          <button
+          <ActionRingButton
+            control={ring}
+            busyLabel="送出申請中..."
             class="td-v2-cta-primary"
             type="button"
             data-td-v2-action="join"
@@ -362,7 +374,7 @@ export function TeamDetailV2Header({
           >
             <SvgIcon name="join" />
             <span>加入俱樂部</span>
-          </button>
+          </ActionRingButton>
         )}
         {/* 下一批補：分享俱樂部 */}
         <button

@@ -15,8 +15,8 @@ import { toast } from '@/ui/Toast';
 import { loadSignupProfile } from './signup-profile';
 
 const DISMISS_KEY = '_dismissLineNotifyPrompt';
-/** A `LINE_CONFIG.BOT_BASIC_ID`。 */
-const LINE_BOT_BASIC_ID = '@830utvza';
+/** A `LINE_CONFIG.BOT_BASIC_ID`。個人頁 LINE 卡「開啟官方帳號」也用這個。 */
+export const LINE_BOT_BASIC_ID = '@830utvza';
 
 /** A `_completeLineBinding`：`YYYY/MM/DD`。取代本地 getFullYear／getMonth／getDate，改寫台北牆鐘。 */
 export function formatBoundAt(date: Date): string {

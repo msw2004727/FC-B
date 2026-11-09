@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 import { pushOverlay } from '@/core/overlay-back';
+import { useT } from '@/i18n/i18n';
 import { dismissLineNotifyPrompt } from '../../data/line-notify-bind';
 
 export interface LineNotifyPromptProps {
@@ -24,6 +25,7 @@ export function LineNotifyPrompt({
   onBind,
   onClosed,
 }: LineNotifyPromptProps): JSX.Element | null {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -147,12 +149,11 @@ export function LineNotifyPrompt({
     >
       <div className="ln-prompt-card">
         <div className="ln-prompt-icon">🔔</div>
-        <h3 className="ln-prompt-title">開啟活動提醒，不再錯過！</h3>
+        {/* 11-09 站長預覽核可：拿掉新站沒有的開場前提醒、關注活動、成就徽章，改寫實際會收到的通知 */}
+        <h3 className="ln-prompt-title">{t('events.lineNotifyPrompt.title')}</h3>
         <p className="ln-prompt-desc">
-          綁定 LINE 推播通知，<br />
-          活動開場前自動提醒、關注活動秒通知。<br />
-          完成綁定還能獲得<br />
-          「LINE推播」專屬成就徽章！
+          {t('events.lineNotifyPrompt.descLine1')}<br />
+          {t('events.lineNotifyPrompt.descLine2')}
         </p>
         <div className="ln-prompt-actions">
           <button

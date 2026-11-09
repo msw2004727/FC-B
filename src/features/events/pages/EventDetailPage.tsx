@@ -27,6 +27,7 @@ import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
 import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
+import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
@@ -327,6 +328,9 @@ function EventDetailSession({
   const [now, setNow] = useState(() => Date.now());
   const [rosterEditing, setRosterEditing] = useState(false);
   const [rosterSubmitting, setRosterSubmitting] = useState(false);
+  // 幫夥伴報名「確認」與名單「完成」的進度環（只在真正送出時轉、成功才打勾）。
+  const companionRing = useActionRingControl();
+  const rosterRing = useActionRingControl();
   const [selectedTeamKey, setSelectedTeamKey] = useState<string | null>(null);
   const [teamRegistrations, setTeamRegistrations] = useState<TeamRegistration[] | null>(null);
   const teamRowsRef = useRef<TeamRegistration[] | null>(null);
@@ -1300,6 +1304,7 @@ function EventDetailSession({
       return;
     }
 
+    rosterRing.start();
     try {
       await instantSave.flushInstantSaves();
       if (!alive.current) return;
@@ -1319,6 +1324,9 @@ function EventDetailSession({
         return;
       }
 
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+
+      if (!(await rosterRing.succeed())) return;
       show('events.roster.settleSuccess');
       if (result.failed.length > 0) {
         toast.show({
@@ -1336,6 +1344,7 @@ function EventDetailSession({
     } catch {
       show('events.roster.settleFailed');
     } finally {
+      rosterRing.fail();
       if (alive.current) setRosterSubmitting(false);
     }
   }
@@ -1726,6 +1735,7 @@ function EventDetailSession({
       companionId: item.id,
       companionName: item.name,
     }));
+    companionRing.start();
     const latest = await contexts.signup.load(current.event.id ?? publicId, participants);
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (!isEventVisibleToUser(latest.event, latest.viewer, latest.registrations)) {
@@ -1808,6 +1818,8 @@ function EventDetailSession({
         waitlisted = count(response.waitlisted);
         projection = response.event ?? projection;
       }
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await companionRing.succeed())) return;
       const parts: string[] = [];
       if (confirmed + waitlisted > 0) parts.push(`新增 ${confirmed + waitlisted} 人`);
       if (waitlisted > 0) parts.push(`候補 ${waitlisted} 人`);
@@ -1818,6 +1830,7 @@ function EventDetailSession({
       setCompanionOpen(false);
       await refresh(adoptEventProjection(current, projection));
     } catch (error) {
+      companionRing.fail();
       if (!alive.current) return;
       const code = error instanceof SignupError ? error.originalCode : '';
       const messages: Record<string, string> = {
@@ -1854,6 +1867,7 @@ function EventDetailSession({
       try {
         await work();
       } finally {
+        companionRing.fail();
         if (alive.current) setCompanionBusy(false);
       }
     });
@@ -2236,6 +2250,7 @@ function EventDetailSession({
                       publicRosterOnly={publicRosterOnly}
                       editing={rosterEditing}
                       submitting={rosterSubmitting || reservation.busy}
+                      finishRing={rosterRing}
                       onStartEdit={handleStartRosterEdit}
                       onCloseEdit={() => { handleCloseRosterEdit().catch(() => {}); }}
                       onKickParticipant={(person) => { handleKickParticipant(person).catch(() => {}); }}
@@ -2326,6 +2341,7 @@ function EventDetailSession({
                 ? (allowedGender === '男' ? '限男性報名' : '限女性報名') : ''}
               items={companionItems}
               busy={busy}
+              ring={companionRing}
               onClose={() => { if (!busy) setCompanionOpen(false); }}
               onConfirm={selection => startCompanion(() => confirmCompanions(selection))}
             />
