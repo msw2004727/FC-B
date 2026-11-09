@@ -26,6 +26,7 @@
   "recentTitle": "Recent activities",
   "contactOwner": {
     "label": "Contact the owner",
+    "hint": "Questions? Tap to contact the owner",
     "name": "Name",
     "contact": "Contact (Email / LINE ID / phone)",
     "content": "Message",

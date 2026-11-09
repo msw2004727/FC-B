@@ -26,6 +26,7 @@
   "recentTitle": "近期活动",
   "contactOwner": {
     "label": "联系站长",
+    "hint": "有问题？点这里联系站长",
     "name": "称呼",
     "contact": "联系方式（Email／LINE ID／电话）",
     "content": "想说的话",

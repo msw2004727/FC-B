@@ -26,6 +26,7 @@
   "recentTitle": "Hoạt động gần đây",
   "contactOwner": {
     "label": "Liên hệ quản trị",
+    "hint": "Có thắc mắc? Chạm để liên hệ quản trị",
     "name": "Cách xưng hô",
     "contact": "Liên hệ (Email / LINE ID / điện thoại)",
     "content": "Lời nhắn",
