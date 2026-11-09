@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTE_LOAD_FAILED_MSG } from '@/core/unavailable';
@@ -75,6 +75,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   _resetSideDrawerLoaderForTest();
+  document.body.style.removeProperty('overflow');
 });
 
 describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式）', () => {
@@ -260,5 +261,136 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
     expect(last.loginPending).toBe(true);
     expect(last.loginError).toBe(true);
     expect(last.identity).toBe(identity);
+  });
+
+  it('佔位期間按 Esc：呼叫 onClose，焦點回到 returnFocusRef（與 SideDrawer 相同）', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    function FocusHarness() {
+      const [open, setOpen] = useState(false);
+      const menuRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={menuRef} type="button" onClick={() => setOpen(true)}>選單</button>
+          <button type="button">其他</button>
+          <LazySideDrawer
+            open={open}
+            returnFocusRef={menuRef}
+            onClose={() => {
+              onClose();
+              setOpen(false);
+            }}
+          />
+        </>
+      );
+    }
+    render(<FocusHarness />, { wrapper });
+    const menu = screen.getByRole('button', { name: '選單' });
+    const other = screen.getByRole('button', { name: '其他' });
+    other.focus();
+    fireEvent.click(menu);
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(overlay()).toBeNull());
+    expect(document.activeElement).toBe(menu);
+  });
+
+  it('佔位期間鎖住背景捲動，關閉後解除；真的 Drawer 掛上後不與 SideDrawer 的鎖疊加', async () => {
+    document.body.style.overflow = 'scroll';
+    const { SideDrawer } = await import('@/ui/SideDrawer');
+    let resolve!: () => void;
+    const promise = new Promise<{ SideDrawer: SideDrawerComponent }>((res) => {
+      resolve = () => res({ SideDrawer });
+    });
+    _resetSideDrawerLoaderForTest(() => promise);
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+    expect(document.body.style.getPropertyValue('overflow')).toBe('hidden');
+
+    fireEvent.click(overlay()!);
+    await waitFor(() => expect(overlay()).toBeNull());
+    expect(document.body.style.getPropertyValue('overflow')).toBe('scroll');
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(document.body.style.getPropertyValue('overflow')).toBe('hidden'));
+
+    await act(async () => {
+      resolve();
+    });
+    await waitFor(() => expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true));
+    // 佔位鎖已先還原，只剩 SideDrawer 自己那一把：仍是 hidden，且它記到的原值不是 hidden。
+    expect(document.body.style.getPropertyValue('overflow')).toBe('hidden');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false));
+    // 若佔位與 SideDrawer 疊加，SideDrawer 會把 hidden 當成原值，關掉後仍是 hidden。
+    expect(document.body.style.getPropertyValue('overflow')).toBe('scroll');
+  });
+
+  it('換頁與 Drawer resolve 同一批：新頁面選單不是開啟狀態', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    await act(async () => {
+      d.resolve();
+      fireEvent.click(screen.getByRole('button', { name: '換頁' }));
+    });
+
+    await waitFor(() => expect(location.pathname).toBe('/teams'));
+    await waitFor(() => expect(document.getElementById('side-drawer')).not.toBeNull());
+    expect(document.getElementById('side-drawer')?.className).toBe('');
+    expect(renders.every((open) => open === false)).toBe(true);
+    expect(overlay()).toBeNull();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('換頁取消後 chunk 才失敗：不顯示載入失敗 toast', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    // parent 不把 open 改回 false，模擬 onClose 已呼叫但還沒 render 下來。
+    function StickyHarness() {
+      const [open, setOpen] = useState(false);
+      const { route } = useLocation();
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>選單</button>
+          <button type="button" onClick={() => route('/teams')}>換頁</button>
+          <LazySideDrawer
+            open={open}
+            onClose={() => {
+              onClose();
+            }}
+          />
+        </>
+      );
+    }
+    render(<StickyHarness />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '換頁' }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(overlay()).toBeNull();
+
+    await act(async () => {
+      d.reject(new Error('chunk 下載失敗'));
+    });
+    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    expect(toastShow).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
