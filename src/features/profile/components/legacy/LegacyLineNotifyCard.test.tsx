@@ -12,6 +12,7 @@ vi.mock('@/ui/AppConfirm', () => ({
 vi.mock('@/features/events/data/line-notify-bind', () => ({
   bindLineNotify: vi.fn(),
   buildLineNotifyPayload: vi.fn(),
+  LINE_BOT_BASIC_ID: '@830utvza',
 }));
 
 vi.mock('../../data/line-notify-settings', async (importOriginal) => {
@@ -36,6 +37,7 @@ import {
   bindLineNotify,
   buildLineNotifyPayload,
 } from '@/features/events/data/line-notify-bind';
+import { setLocale } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 
@@ -45,6 +47,7 @@ import {
   type LineNotifyState,
 } from '../../data/line-notify-settings';
 import { LegacyLineNotifyCard } from './LegacyLineNotifyCard';
+import { PROFILE_INFO } from './profile-info';
 
 function makeProfile(overrides: Record<string, unknown> = {}): UserProfile {
   return {
@@ -83,7 +86,8 @@ function findUnbindButton(container: Element): HTMLButtonElement {
   return btn as HTMLButtonElement;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await setLocale('zh-TW');
   document.documentElement.lang = 'zh-TW';
   vi.mocked(saveLineNotify).mockReset();
   vi.mocked(saveLineNotify).mockResolvedValue(undefined);
@@ -414,5 +418,102 @@ describe('LegacyLineNotifyCard — 綁定 LINE', () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+});
+
+describe('LegacyLineNotifyCard — 11-09 文案與「收不到通知？」提示', () => {
+  it('已綁定：綁定時間下方、分隔線上方出現提示列與「開啟官方帳號」按鈕', () => {
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    const hint = container.querySelector('#line-notify-friend-hint') as HTMLElement | null;
+    expect(hint).toBeTruthy();
+    expect(hint?.closest('#line-notify-bound')).toBeTruthy();
+    expect(hint?.querySelector('span')?.textContent).toBe('收不到通知？請確認已加入官方帳號好友');
+    const btn = hint?.querySelector('button.line-notify-friend-btn') as HTMLButtonElement | null;
+    expect(btn?.type).toBe('button');
+    expect(btn?.textContent).toBe('開啟官方帳號');
+    // 位置：綁定時間那列之後、分隔線之前
+    const timeRow = container.querySelector('#line-notify-time')?.parentElement;
+    expect(timeRow?.nextElementSibling).toBe(hint);
+    expect((hint?.nextElementSibling as HTMLElement | null)?.style.borderTop).toContain('1px solid');
+  });
+
+  it('未綁定：不顯示提示列', () => {
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={UNBOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    const hint = container.querySelector('#line-notify-friend-hint') as HTMLElement | null;
+    // 已綁定區整塊隱藏（照 A 用 display:none 切換），提示列在其中
+    expect(hint?.closest('#line-notify-bound')).toBeTruthy();
+    expect((container.querySelector('#line-notify-bound') as HTMLElement).style.display).toBe('none');
+    expect((container.querySelector('#line-notify-unbound') as HTMLElement).style.display).not.toBe('none');
+  });
+
+  it('按「開啟官方帳號」開啟加好友網址，不寫任何資料', () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const onSaved = vi.fn();
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={onSaved} />,
+    );
+    expand(container);
+    fireEvent.click(container.querySelector('.line-notify-friend-btn') as HTMLButtonElement);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith('https://line.me/R/ti/p/@830utvza', 'sporthub_line');
+    expect(saveLineNotify).not.toHaveBeenCalled();
+    expect(bindLineNotify).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('三個開關列文字照新文案，checkbox 的 aria-label 與列文字一致', () => {
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    const expected: Record<string, string> = {
+      activity: '活動通知（報名、候補、異動）',
+      system: '系統通知（站內信/公告）',
+      tournament: '賽事通知（報名/賽程更新）',
+    };
+    for (const [key, text] of Object.entries(expected)) {
+      const cb = container.querySelector(`#line-toggle-${key}`) as HTMLInputElement;
+      expect(cb.getAttribute('aria-label')).toBe(text);
+      const row = cb.closest('.line-notify-row') as HTMLElement;
+      expect(row.firstElementChild?.textContent).toBe(text);
+    }
+  });
+
+  it('切換活動開關的 toast 用「活動通知」', async () => {
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    fireEvent.click(container.querySelector('#line-toggle-activity') as HTMLInputElement);
+    await waitFor(() => {
+      expect(toast.show).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '已關閉活動通知' }),
+      );
+    });
+  });
+
+  it('舊文案（開始前、開場前、成就徽章）不再出現在卡片與「？」說明', () => {
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    const text = container.textContent ?? '';
+    const body = PROFILE_INFO.lineNotify.body;
+    for (const old of ['開始前', '開場前', '成就徽章']) {
+      expect(text).not.toContain(old);
+      expect(body).not.toContain(old);
+    }
+    // 未綁定區說明「即可接收活動提醒與系統通知推播」不在本次預覽範圍，只檢查說明框
+    expect(body).not.toContain('活動提醒');
+    expect(body).toContain('• <b>活動通知</b> — 報名成功、候補遞補、活動異動或取消<br>');
+    expect(body).toContain('• <b>系統通知</b> — 站內信、公告<br>');
+    expect(body).toContain('• <b>賽事通知</b> — 賽程更新、對戰結果');
   });
 });

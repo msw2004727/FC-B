@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
+import { setLocale } from '@/i18n/i18n';
 import { LineNotifyPrompt } from './LineNotifyPrompt';
 
 vi.mock('../../data/line-notify-bind', () => ({
@@ -9,6 +10,10 @@ vi.mock('../../data/line-notify-bind', () => ({
 }));
 
 import { dismissLineNotifyPrompt } from '../../data/line-notify-bind';
+
+beforeEach(async () => {
+  await setLocale('zh-TW');
+});
 
 afterEach(() => {
   cleanup();
@@ -39,15 +44,17 @@ describe('LineNotifyPrompt（照 A `_showLineNotifyPrompt`）', () => {
     const card = overlay?.querySelector('.ln-prompt-card');
     expect(card).toBeTruthy();
     expect(card?.querySelector('.ln-prompt-icon')?.textContent).toBe('🔔');
+    // 測試同步更新：11-09 站長預覽核可的新文案（拿掉開場前提醒、關注活動、成就徽章）
     expect(card?.querySelector('.ln-prompt-title')?.textContent).toBe(
-      '開啟活動提醒，不再錯過！',
+      '開啟 LINE 通知，不再錯過！',
     );
     const desc = card?.querySelector('.ln-prompt-desc')?.textContent ?? '';
-    expect(desc).toContain('綁定 LINE 推播通知，');
-    expect(desc).toContain('活動開場前自動提醒、關注活動秒通知。');
-    expect(desc).toContain('完成綁定還能獲得');
-    expect(desc).toContain('「LINE推播」專屬成就徽章！');
-    expect(card?.querySelectorAll('.ln-prompt-desc br').length).toBe(3);
+    expect(desc).toBe('報名成功、候補遞補、活動異動或取消，都會即時通知你。');
+    expect(card?.querySelectorAll('.ln-prompt-desc br').length).toBe(1);
+    const cardText = card?.textContent ?? '';
+    for (const old of ['開場前', '開始前', '成就徽章', '關注活動']) {
+      expect(cardText).not.toContain(old);
+    }
 
     const actions = card?.querySelector('.ln-prompt-actions');
     expect(actions).toBeTruthy();

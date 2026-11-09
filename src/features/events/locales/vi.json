@@ -203,5 +203,10 @@
     "modeLocked": "Hoạt động đang chờ gửi lại không thể đổi chế độ một ngày/nhiều ngày. Hãy đổi về chế độ ban đầu rồi thử lại.",
     "datesLocked": "Hoạt động đang chờ gửi lại không thể thay đổi ngày. Hãy khôi phục ngày ban đầu rồi thử lại.",
     "contentConflict": "Hoạt động có thể đã được tạo nhưng nội dung khác với lần gửi trước. Vui lòng kiểm tra danh sách hoạt động trước khi chỉnh sửa."
+  },
+  "lineNotifyPrompt": {
+    "title": "Bật thông báo LINE, không bỏ lỡ điều gì!",
+    "descLine1": "Đăng ký thành công, được lên từ danh sách chờ,",
+    "descLine2": "hoạt động thay đổi hoặc bị hủy — đều được báo ngay."
   }
 }
