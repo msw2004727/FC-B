@@ -298,6 +298,45 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
     expect(document.activeElement).toBe(menu);
   });
 
+  it('佔位期間換頁取消開啟：不呼叫選單按鈕的 focus，onClose 照常被呼叫', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    function FocusHarness() {
+      const [open, setOpen] = useState(false);
+      const menuRef = useRef<HTMLButtonElement>(null);
+      const { route } = useLocation();
+      return (
+        <>
+          <button ref={menuRef} type="button" onClick={() => setOpen(true)}>選單</button>
+          <button type="button" onClick={() => route('/teams')}>換頁</button>
+          <LazySideDrawer
+            open={open}
+            returnFocusRef={menuRef}
+            onClose={() => {
+              onClose();
+              setOpen(false);
+            }}
+          />
+        </>
+      );
+    }
+    render(<FocusHarness />, { wrapper });
+    const menu = screen.getByRole('button', { name: '選單' });
+    const focus = vi.spyOn(menu, 'focus');
+    fireEvent.click(menu);
+    await waitFor(() => expect(overlay()).not.toBeNull());
+    focus.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '換頁' }));
+    });
+    await waitFor(() => expect(location.pathname).toBe('/teams'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(overlay()).toBeNull());
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it('佔位期間鎖住背景捲動，關閉後解除；真的 Drawer 掛上後不與 SideDrawer 的鎖疊加', async () => {
     document.body.style.overflow = 'scroll';
     const { SideDrawer } = await import('@/ui/SideDrawer');

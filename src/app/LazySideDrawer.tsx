@@ -114,7 +114,8 @@ export function LazySideDrawer(props: SideDrawerProps): JSX.Element | null {
   const sessionOpen = props.open && !navCancelledRef.current;
   openRef.current = sessionOpen;
   // 佔位關掉才還焦點。交給已開啟的 SideDrawer 時不還，避免把它剛放上面板的焦點搶回來。
-  restoreFocusRef.current = !sessionOpen;
+  // 換頁取消開啟也不還：新頁面可能自己管理焦點，不能把焦點搶回選單按鈕。
+  restoreFocusRef.current = !sessionOpen && !navCancelledRef.current;
 
   const releasePlaceholderLock = (): void => {
     const unlock = unlockBodyRef.current;
