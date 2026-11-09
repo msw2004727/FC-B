@@ -18,8 +18,8 @@
   margin: 0;
 }
 .team-filter-toggle-btn {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -62,7 +62,9 @@
 }
 
 @media (max-width: 520px) {
-  .team-search-bar { grid-template-columns: 1fr; }
+  /* C1：搜尋一列、運動與地區並排一列（原本 1fr 三列各佔一整列）。 */
+  .team-search-bar { grid-template-columns: 1fr 1fr; }
+  .team-search-bar input { grid-column: 1 / -1; }
 }
 
 /* ─── Team Grid (vertical cards — 3 per row) ─── */
@@ -149,25 +151,6 @@
   transition: width .3s ease-out;
   box-shadow: 0 0 6px rgba(96,165,250,.4);
 }
-.tc-loading-panel {
-  position: absolute;
-  left: .65rem;
-  right: .65rem;
-  bottom: .65rem;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: .55rem;
-  min-height: 46px;
-  padding: .55rem .65rem;
-  border: 1px solid rgba(255,255,255,.48);
-  border-radius: 12px;
-  background: rgba(255,255,255,.86);
-  color: var(--text-primary);
-  box-shadow: 0 10px 26px rgba(15,23,42,.18);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-}
 .tc-loading-spinner {
   width: 18px;
   height: 18px;
@@ -176,27 +159,6 @@
   border-radius: 50%;
   animation: tc-loading-spin .75s linear infinite;
   flex: 0 0 auto;
-}
-.tc-loading-copy {
-  display: flex;
-  flex-direction: column;
-  gap: .06rem;
-  min-width: 0;
-}
-.tc-loading-copy strong {
-  font-size: .76rem;
-  line-height: 1.15;
-  font-weight: 900;
-  color: var(--text-primary);
-}
-.tc-loading-copy span {
-  font-size: .66rem;
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 @keyframes tc-loading-spin { to { transform: rotate(360deg); } }
 .tc-card.tc-pinned {
@@ -2350,12 +2312,12 @@
   transition: color .2s;
 }
 .team-type-tab:hover {
-  color: var(--primary);
+  color: var(--accent);
 }
 .team-type-tab.active {
-  color: var(--primary);
+  color: var(--accent);
   font-weight: 700;
-  border-bottom-color: var(--primary);
+  border-bottom-color: var(--accent);
   background: transparent;
 }
 
@@ -2576,8 +2538,10 @@
 .td-category-tag-btn {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: .08rem;
   width: 100%;
+  min-height: 40px; /* C1：說明句拿掉後保留 40px 觸控高度 */
   padding: .44rem .52rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -2896,11 +2860,6 @@
 [data-theme="dark"] .td-record-stat {
   background: rgba(30, 41, 59, .8);
 }
-[data-theme="dark"] .tc-loading-panel {
-  border-color: rgba(255,255,255,.14);
-  background: rgba(15, 23, 42, .84);
-  box-shadow: 0 14px 30px rgba(0,0,0,.34);
-}
 [data-theme="dark"] .tc-loading-bar {
   background: rgba(148,163,184,.28);
 }
@@ -2957,7 +2916,8 @@
   background: #e5e7eb;
 }
 [data-theme="dark"] .ct-type-tag-btn,
-[data-theme="dark"] .td-category-tag-btn {
+/* C1：深色原本蓋掉選中狀態的漸層（同權重、在後），選中的類型看不出來；只套在未選中的按鈕 */
+[data-theme="dark"] .td-category-tag-btn:not(.active) {
   background: rgba(15, 23, 42, .86);
   border-color: rgba(255, 255, 255, .14);
 }
@@ -3208,6 +3168,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-height: 40px;
   padding: 6px 13px;
   border: 1px solid var(--td-mm-line-2);
   border-radius: var(--radius-full);
@@ -3772,3 +3733,99 @@
     font-size: 10px;
   }
 }
+
+/* ── C1 乙案：俱樂部列表單列卡（只用既有色票變數） ── */
+#page-teams .page-header .back-btn {
+  flex-basis: 40px;
+  width: 40px;
+  height: 40px;
+}
+#page-teams .team-grid {
+  grid-template-columns: 1fr;
+  gap: .5rem;
+  /* 底部避開中央 QR 浮鈕 */
+  padding-bottom: calc(1rem + 36px);
+}
+.tc-card.tc-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-height: 68px;
+  padding: .5rem .65rem .5rem .5rem;
+}
+@supports (content-visibility: auto) {
+  .tc-card.tc-row { contain-intrinsic-size: 0 68px; }
+}
+.tc-card.tc-row:hover { transform: none; }
+.tc-row .tc-row-thumb,
+.tc-row .tc-row-thumb.tc-img-placeholder {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  aspect-ratio: auto;
+  border: 0 !important;
+  border-radius: 12px;
+  background: var(--team-theme-color, var(--accent));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tc-row .tc-row-initial {
+  color: var(--bg-card);
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.tc-row .tc-loading-bar { left: 6px; right: 6px; bottom: 4px; }
+.tc-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tc-row .tc-name {
+  font-size: .9rem;
+  line-height: 1.3;
+}
+.tc-row-meta {
+  margin-top: .15rem;
+  font-size: .74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tc-row-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .3rem;
+}
+.tc-row-tag {
+  padding: .12rem .5rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: .66rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.tc-row-tag-competitive,
+.tc-row-tag-leisure {
+  background: var(--bg-elevated);
+  color: var(--warning);
+}
+.tc-row-side .tc-pin-rail {
+  display: inline-flex;
+  align-items: center;
+  gap: .28rem;
+  padding: .12rem .45rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--warning);
+  font-size: .62rem;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.tc-row .tc-row-spinner { flex: 0 0 auto; }

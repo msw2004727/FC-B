@@ -86,10 +86,11 @@ describe('分類：對應 A _normalizeTeamCategory / _getTeamCategoryOptions', (
     expect(normalizeTeamCategory(input)).toBe(expected);
   });
 
+  // 測試同步更新（C1）：「無」顯示文字改「其他」，key 仍是 none。
   it('選項文案、順序與教學設定逐字一致', () => {
     expect(TEAM_CATEGORY_OPTIONS).toEqual([
       {
-        key: 'none', label: '無', description: '不顯示標籤',
+        key: 'none', label: '其他', description: '不顯示標籤',
         formHint: '不顯示任何標籤與緞帶，也不啟用課程功能。',
         showEduSettings: false,
       },

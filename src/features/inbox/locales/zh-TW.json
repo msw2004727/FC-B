@@ -67,6 +67,9 @@
     },
     "statusWithReviewer": "{status}（{reviewer}）"
   },
+  "actions": {
+    "openEvent": "前往活動"
+  },
   "pm": {
     "emptyTitle": "目前沒有私訊對話",
     "emptyBody": "當有新的私訊往來時會顯示於此。",

@@ -153,12 +153,15 @@ describe('TeamsPage (Legacy A DOM & CSS)', () => {
     expect(alphaCard.getAttribute('data-team-id')).toBe('alpha');
     expect(screen.queryByRole('link', { name: 'Inactive' })).toBeNull();
 
-    // 驗證卡片內容（圖片、EXP 等級、斜角標、成員數、地區）
+    // 驗證卡片內容（圖片、類型標籤、成員數、地區）
+    // 測試同步更新（C1 乙案單列）：斜緞帶改類型標籤；EXP 徽章跟 SHOW_EXP=false 不顯示。
+    expect(alphaCard.classList.contains('tc-row')).toBe(true);
     expect(alphaCard.querySelector('.tc-card-media img')?.getAttribute('src')).toBe(
       'https://example.com/alpha.jpg',
     );
-    expect(alphaCard.querySelector('.tc-type-ribbon-competitive')?.textContent).toBe('競技');
-    expect(alphaCard.querySelector('.tc-rank-score')?.textContent).toBe('2,500');
+    expect(alphaCard.querySelector('.tc-row-tag-competitive')?.textContent).toBe('競技');
+    expect(alphaCard.querySelector('.tc-rank-score')).toBeNull();
+    expect(alphaCard.textContent).not.toContain('俱樂部圖片');
     expect(alphaCard.textContent).toContain('8 人');
     expect(alphaCard.textContent).toContain('台北市');
 
@@ -181,7 +184,8 @@ describe('TeamsPage (Legacy A DOM & CSS)', () => {
     await screen.findByRole('link', { name: 'Alpha' });
 
     const cases: Array<[string, string, string]> = [
-      ['none', '無', 'Untagged'],
+      // 測試同步更新（C1）：「無」改「其他」（clubs.category.none）。
+      ['none', 'clubs.category.none', 'Untagged'],
       ['competitive', '競技', 'Alpha'],
       ['education', '教學', 'Beta'],
       ['leisure', '休閒', 'Casual'],
@@ -538,9 +542,10 @@ describe('TeamsPage M-115 card pending', () => {
     expect(card.classList.contains('is-pending')).toBe(true);
     expect(card.getAttribute('aria-busy')).toBe('true');
     expect(card.querySelector('.tc-card-media .tc-loading-bar')).toBeTruthy();
-    expect(card.querySelector('.tc-loading-panel')).toBeTruthy();
-    expect(card.querySelector('.tc-loading-copy strong')?.textContent).toBe('資料更新中');
-    expect(card.querySelector('.tc-loading-copy span')?.textContent).toBe('正在整理俱樂部最新內容');
+    // 測試同步更新（C1，R-UI-026）：載入面板兩行說明拿掉，只留轉圈。
+    expect(card.querySelector('.tc-loading-spinner')).toBeTruthy();
+    expect(card.querySelector('.tc-loading-copy')).toBeNull();
+    expect(card.textContent).not.toContain('資料更新中');
 
     const widths: number[] = [];
     for (let i = 0; i < 120; i += 1) {

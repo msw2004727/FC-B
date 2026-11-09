@@ -43,6 +43,15 @@ describe('canAccessTeamManagePage（A _canAccessPage → team.manage.entry）', 
   it('擁有俱樂部但沒有入口碼的一般用戶看不到（A 只看權限碼）', () => {
     expect(canAccessTeamManagePage(viewer('U-creator'))).toBe(false);
   });
+
+  // C1（P3）：自建俱樂部擁有者（role=user＋user.activity.team_create）也能進管理頁，條件同 canCreateTeam。
+  it('一般用戶有建俱樂部能力時放行；教練以上或沒有能力照舊只看權限碼', () => {
+    const cap = ['user.activity.team_create'];
+    expect(canAccessTeamManagePage({ ...viewer('U-creator'), role: 'user', capabilities: cap })).toBe(true);
+    expect(canAccessTeamManagePage({ ...viewer('U-creator'), role: 'coach', capabilities: cap })).toBe(false);
+    expect(canAccessTeamManagePage({ ...viewer('U-creator'), role: 'user', capabilities: [] })).toBe(false);
+    expect(canAccessTeamManagePage({ ...viewer(null), role: 'user', capabilities: cap })).toBe(false);
+  });
 });
 
 describe('canManageAllTeams（置頂／上下架／光跡）', () => {

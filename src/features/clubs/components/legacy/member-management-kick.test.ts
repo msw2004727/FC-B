@@ -82,10 +82,11 @@ describe('kickTeamMember', () => {
   it('Callable 錯誤往外拋，錯誤碼轉成 A 文案', async () => {
     mocks.callFn.mockRejectedValue(new Error('COACH_PLUS_REQUIRED'));
     await expect(kickTeamMember({ team, viewer: viewer('U-cap'), targetUid: 'U-mem' })).rejects.toThrow();
-    expect(getKickErrorMessage(new Error('COACH_PLUS_REQUIRED'))).toBe('您沒有移除隊員的權限');
-    expect(getKickErrorMessage(new Error('TEAM_MANAGE_DENIED'))).toBe('您沒有移除隊員的權限');
-    expect(getKickErrorMessage(new Error('TARGET_IS_STAFF'))).toBe('僅可移除一般隊員');
-    expect(getKickErrorMessage(new Error('MEMBER_NOT_FOUND'))).toBe('隊員資料不存在或已不在球隊中');
+    // 測試同步更新（C1）：顯示文字「隊員」統一為「成員」。
+    expect(getKickErrorMessage(new Error('COACH_PLUS_REQUIRED'))).toBe('您沒有移除成員的權限');
+    expect(getKickErrorMessage(new Error('TEAM_MANAGE_DENIED'))).toBe('您沒有移除成員的權限');
+    expect(getKickErrorMessage(new Error('TARGET_IS_STAFF'))).toBe('僅可移除一般成員');
+    expect(getKickErrorMessage(new Error('MEMBER_NOT_FOUND'))).toBe('成員資料不存在或已不在俱樂部中');
     expect(getKickErrorMessage(new Error('TEAM_ID_MISMATCH'))).toBe('此俱樂部資料格式較舊，請聯繫管理員處理');
     expect(getKickErrorMessage(new Error('boom'))).toBe('移除失敗，請稍後再試');
   });

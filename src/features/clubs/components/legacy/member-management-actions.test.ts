@@ -598,11 +598,12 @@ describe('儲存活動備註', () => {
   });
 });
 
+// 測試同步更新（C1）：降級到一般身分的顯示文字「隊員」改「成員」。
 describe('角色文字與 UID 角色辨識', () => {
   const labelCases: Array<{
     target: MemberRoleTarget;
     actionText: '晉升' | '降級';
-    roleName: '教練' | '領隊' | '隊員';
+    roleName: '教練' | '領隊' | '成員';
   }> = [
     {
       target: { key: 'coach', level: 1, direction: 'promote' },
@@ -618,7 +619,7 @@ describe('角色文字與 UID 角色辨識', () => {
     },
     {
       target: { key: 'member', level: 0, direction: 'demote' },
-      actionText: '降級', roleName: '隊員',
+      actionText: '降級', roleName: '成員',
     },
   ];
 
