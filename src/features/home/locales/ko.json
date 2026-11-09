@@ -26,6 +26,7 @@
   "recentTitle": "최근 활동",
   "contactOwner": {
     "label": "운영자에게 연락",
+    "hint": "궁금한 점은 여기서 운영자에게 연락",
     "name": "호칭",
     "contact": "연락처 (Email / LINE ID / 전화)",
     "content": "하고 싶은 말",

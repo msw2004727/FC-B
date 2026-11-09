@@ -2,6 +2,7 @@ import './contact-owner-fab.css';
 import type { JSX } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useT } from '@/i18n/i18n';
+import { useContactFabHint } from './use-contact-fab-hint';
 
 export interface ContactOwnerFabProps {
   onClick: () => void;
@@ -28,16 +29,28 @@ function EnvelopeIcon(): JSX.Element {
 
 export function ContactOwnerFab({ onClick }: ContactOwnerFabProps): JSX.Element | null {
   const t = useT();
+  const [hint, shaking, dismiss] = useContactFabHint();
   if (typeof document === 'undefined') return null;
+  const open = (): void => {
+    dismiss();
+    onClick();
+  };
   return createPortal(
-    <button
-      type="button"
-      class="contact-owner-fab"
-      aria-label={t('home.contactOwner.label')}
-      onClick={onClick}
-    >
-      <EnvelopeIcon />
-    </button>,
+    <>
+      <button
+        type="button"
+        class={`contact-owner-fab${shaking ? ' is-shaking' : ''}`}
+        aria-label={t('home.contactOwner.label')}
+        onClick={open}
+      >
+        <EnvelopeIcon />
+      </button>
+      {hint ? (
+        <div class="contact-owner-fab-hint" role="status" onClick={open}>
+          {t('home.contactOwner.hint')}
+        </div>
+      ) : null}
+    </>,
     document.body,
   );
 }
