@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
-import { emit } from '@/core/events';
+import { emit, on } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
@@ -267,6 +267,9 @@ function AuthenticatedProfile({
   viewer: ViewerView;
 }): JSX.Element {
   const { state, retry } = useRemote(uid, loadUserProfile);
+  // 剛登入時會員文件可能還在建立（data/user-doc-sync.ts 完成後發 viewer:refresh）：查無資料時收到就重讀一次。
+  const missing = state.status === 'ready' && !state.data;
+  useEffect(() => (missing ? on('viewer:refresh', () => retry()) : undefined), [missing]);
   if (state.status === 'loading') return <Loading />;
   if (state.status === 'error') return <Failure retry={retry} />;
   // 查無個人資料：單一區塊＝「找不到資料」＋重試。loadUserProfile 會吞掉 I/O 錯誤回 null，
