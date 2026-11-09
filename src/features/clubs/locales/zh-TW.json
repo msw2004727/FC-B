@@ -4,7 +4,7 @@
   "detail": "俱樂部詳情",
   "manage": "俱樂部管理",
   "category": {
-    "none": "無",
+    "none": "其他",
     "competitive": "競技",
     "education": "教學",
     "leisure": "休閒"
@@ -12,12 +12,12 @@
   "loadError": "無法載入俱樂部資料，請重試。",
   "retry": "重試",
   "role": {
-    "captain": "球經",
+    "captain": "經理",
     "leader": "領隊",
     "coach": "教練"
   },
   "roster": {
-    "member": "隊員"
+    "member": "成員"
   },
   "actionError": "操作失敗，請重試。",
   "userCreate": {
@@ -77,5 +77,26 @@
       "retry": "系統忙碌，請再試一次",
       "failed": "轉移失敗，請稍後再試"
     }
+  },
+  "copyLink": {
+    "label": "複製連結",
+    "done": "已複製連結",
+    "failed": "複製失敗，請手動複製"
+  },
+  "info": {
+    "coach": "教練",
+    "social": "社群"
+  },
+  "section": {
+    "events": "活動",
+    "info": "俱樂部資訊",
+    "bio": "簡介",
+    "members": "成員"
+  },
+  "settings": {
+    "type": "類型",
+    "memberInvite": "成員可邀請",
+    "themeColor": "主題色",
+    "detailSections": "詳情頁顯示區塊"
   }
 }

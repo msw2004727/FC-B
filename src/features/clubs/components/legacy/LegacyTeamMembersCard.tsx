@@ -162,7 +162,7 @@ export function LegacyTeamMembersCard({
   const showPrivateNotes = canViewMemberNote(viewer, team);
 
   const showNoteForbidden = (): void => {
-    toast.show({ message: '您沒有編輯隊員的權限', tone: 'error' });
+    toast.show({ message: '您沒有編輯成員的權限', tone: 'error' });
   };
 
   const toggleEditMode = (event: JSX.TargetedMouseEvent<HTMLButtonElement>): void => {
@@ -265,7 +265,7 @@ export function LegacyTeamMembersCard({
         await refreshTeam();
       } else {
         toast.show({
-          message: result.reason === 'forbidden' ? '您沒有編輯隊員的權限' : '更新失敗，請稍後再試',
+          message: result.reason === 'forbidden' ? '您沒有編輯成員的權限' : '更新失敗，請稍後再試',
           tone: 'error',
         });
       }
@@ -284,12 +284,12 @@ export function LegacyTeamMembersCard({
     if (!effectiveEditMode || actionLock.current) return;
     if (!canKickMember(viewer, team, row.uid)) {
       toast.show({
-        message: policyCanManageMembers(viewer, team) ? '僅可移除一般隊員' : '您沒有移除隊員的權限',
+        message: policyCanManageMembers(viewer, team) ? '僅可移除一般成員' : '您沒有移除成員的權限',
         tone: 'error',
       });
       return;
     }
-    const memberName = getMemberDisplayName(row).trim() || '隊員';
+    const memberName = getMemberDisplayName(row).trim() || '成員';
     actionLock.current = true;
     const version = contextVersion.current;
     const isCurrent = (): boolean =>
@@ -305,12 +305,12 @@ export function LegacyTeamMembersCard({
       if (!isCurrent()) return;
       if (!result.ok) {
         toast.show({
-          message: result.reason === 'forbidden' ? '您沒有移除隊員的權限' : '僅可移除一般隊員',
+          message: result.reason === 'forbidden' ? '您沒有移除成員的權限' : '僅可移除一般成員',
           tone: 'error',
         });
         return;
       }
-      toast.show({ message: `已移除隊員「${memberName}」`, tone: 'success' });
+      toast.show({ message: `已移除成員「${memberName}」`, tone: 'success' });
       onMemberRemoved?.(row.uid);
       await refreshTeam();
     } catch (error: unknown) {
@@ -369,7 +369,7 @@ export function LegacyTeamMembersCard({
       } else {
         toast.show({
           message: result.reason === 'forbidden'
-            ? '您沒有編輯隊員的權限'
+            ? '您沒有編輯成員的權限'
             : '更新失敗，請稍後再試',
           tone: 'error',
         });
@@ -531,10 +531,7 @@ export function LegacyTeamMembersCard({
           class={`td-member-list-shell td-member-list-shell-summary${effectiveEditMode ? ' is-editing' : ''} td-member-filter-${activeFilter}`}
         >
           <div class="td-member-list-head">
-            <span class="td-member-list-label">成員資料</span>
-            {showPrivateNotes && (
-              <span class="td-member-list-note-hint">備註僅職員可見</span>
-            )}
+            <span class="td-member-list-label">成員</span>
           </div>
           <div class="td-member-list">
             {visibleRoster.length > 0 ? (

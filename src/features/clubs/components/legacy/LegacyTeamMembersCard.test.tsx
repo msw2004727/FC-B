@@ -143,7 +143,8 @@ describe('LegacyTeamMembersCard', () => {
         '.td-member-list-shell.td-member-list-shell-summary.td-member-filter-all',
       ),
     ).not.toBeNull();
-    expect(container.querySelector('.td-member-list-label')?.textContent).toBe('成員資料');
+    // 測試同步更新（C1）：名單標題「成員資料」統一為「成員」。
+    expect(container.querySelector('.td-member-list-label')?.textContent).toBe('成員');
     expect(container.querySelectorAll('.td-member-row')).toHaveLength(2);
   });
 
@@ -165,7 +166,8 @@ describe('LegacyTeamMembersCard', () => {
     );
 
     const chips = Array.from(container.querySelectorAll('.td-member-filter-chip'));
-    expect(chips.map((c) => c.textContent)).toEqual(['全部3', '球經1', '教練1']);
+    // 測試同步更新（C1）：「球經」改「經理」；A 的「學員」（B 永遠 0）改成「成員」＝沒有幹部身分的人。
+    expect(chips.map((c) => c.textContent)).toEqual(['全部3', '經理1', '教練1', '成員1']);
 
     const coachChip = chips[2]!;
     fireEvent.click(coachChip);
@@ -270,9 +272,8 @@ describe('LegacyTeamMembersCard', () => {
       />,
     );
 
-    expect(container.querySelector('.td-member-list-note-hint')?.textContent).toBe(
-      '備註僅職員可見',
-    );
+    // 測試同步更新（C1，R-UI-026）：「備註僅職員可見」提示拿掉，備註本身照舊只給職員看。
+    expect(container.querySelector('.td-member-list-note-hint')).toBeNull();
     const notes = Array.from(container.querySelectorAll('.td-member-line3 .td-member-note'));
     expect(notes).toHaveLength(2);
     expect(notes[0]?.textContent).toBe('活動常駐先發');
@@ -429,7 +430,7 @@ describe('LegacyTeamMembersCard', () => {
     const coach = rowElement(container, 'coach');
     expect(coach.querySelector('.td-member-role-action-cell')).toBeNull();
     expect(within(coach).queryByRole('button', { name: '晉升為領隊' })).toBeNull();
-    expect(within(coach).queryByRole('button', { name: '降級為隊員' })).toBeNull();
+    expect(within(coach).queryByRole('button', { name: '降級為成員' })).toBeNull();
     expect(within(coach).getByRole('button', { name: '編輯活動備註' })).toBeTruthy();
     expect(changeMemberRole).not.toHaveBeenCalled();
   });
@@ -437,7 +438,7 @@ describe('LegacyTeamMembersCard', () => {
   // 測試同步更新：確認時必須重讀最新 roster 的 user，不能沿用開框時的文件。
   it.each([
     { buttonName: '晉升為領隊', message: '此成員目前無法晉升' },
-    { buttonName: '降級為隊員', message: '此成員目前無法降級' },
+    { buttonName: '降級為成員', message: '此成員目前無法降級' },
   ])('開啟 $buttonName 後目標離隊，確認時拒絕寫入', async ({ buttonName, message }) => {
     const team: TeamDoc = { ...managementTeam, coachUids: ['coach'] };
     const roster = [
@@ -540,7 +541,7 @@ describe('LegacyTeamMembersCard', () => {
 
     const coach = rowElement(container, 'coach');
     expect(within(coach).getByRole('button', { name: '晉升為領隊' }).title).toBe('晉升為領隊');
-    expect(within(coach).getByRole('button', { name: '降級為隊員' }).title).toBe('降級為隊員');
+    expect(within(coach).getByRole('button', { name: '降級為成員' }).title).toBe('降級為成員');
 
     const leader = rowElement(container, 'leader');
     expect(within(leader).getByRole('button', { name: '降級為教練' }).title).toBe('降級為教練');
@@ -647,7 +648,7 @@ describe('LegacyTeamMembersCard', () => {
   });
 
   it.each([
-    ['forbidden', '您沒有編輯隊員的權限'],
+    ['forbidden', '您沒有編輯成員的權限'],
     ['invalid', '更新失敗，請稍後再試'],
   ] as const)('備註回傳 %s 保持對話框，解鎖後可重試', async (reason, message) => {
     vi.mocked(saveMemberActivityNote).mockResolvedValueOnce({ ok: false, reason });
@@ -910,7 +911,7 @@ describe('LegacyTeamMembersCard', () => {
     const { container, onTeamChanged } = renderManagement();
     enterEditMode();
     fireEvent.click(
-      within(rowElement(container, 'coach')).getByRole('button', { name: '降級為隊員' }),
+      within(rowElement(container, 'coach')).getByRole('button', { name: '降級為成員' }),
     );
     fireEvent.click(dialogButton(/確認/));
     await waitFor(() => expect(onTeamChanged).toHaveBeenCalledTimes(1));
@@ -923,16 +924,15 @@ describe('LegacyTeamMembersCard', () => {
       displayName: '教練丙',
       direction: 'demote',
     });
-    expect(toast.show).toHaveBeenCalledWith({ message: '已降級為隊員', tone: 'success' });
+    expect(toast.show).toHaveBeenCalledWith({ message: '已降級為成員', tone: 'success' });
   });
 
   it.each(['manager', 'leader', 'coach', 'creator', 'owner'])(
     'UID 身分 %s 可看備註與提示',
     (uid) => {
       const { container } = renderManagement(makeViewer(uid));
-      expect(container.querySelector('.td-member-list-note-hint')?.textContent).toBe(
-        '備註僅職員可見',
-      );
+      // 測試同步更新（C1）：提示句拿掉，只驗備註可見。
+      expect(container.querySelector('.td-member-list-note-hint')).toBeNull();
       expect(rowElement(container, 'member').querySelector('.td-member-line3')?.textContent).toBe(
         '活動目前活動備註',
       );

@@ -4,7 +4,7 @@
   "detail": "俱乐部详情",
   "manage": "俱乐部管理",
   "category": {
-    "none": "无",
+    "none": "其他",
     "competitive": "竞技",
     "education": "教学",
     "leisure": "休闲"
@@ -12,12 +12,12 @@
   "loadError": "无法加载俱乐部资料，请重试。",
   "retry": "重试",
   "role": {
-    "captain": "球队经理",
+    "captain": "经理",
     "leader": "领队",
     "coach": "教练"
   },
   "roster": {
-    "member": "队员"
+    "member": "成员"
   },
   "actionError": "操作失败，请重试。",
   "userCreate": {
@@ -77,5 +77,26 @@
       "retry": "系统繁忙，请再试一次",
       "failed": "转移失败，请稍后再试"
     }
+  },
+  "copyLink": {
+    "label": "复制链接",
+    "done": "已复制链接",
+    "failed": "复制失败，请手动复制"
+  },
+  "info": {
+    "coach": "教练",
+    "social": "社群"
+  },
+  "section": {
+    "events": "活动",
+    "info": "俱乐部信息",
+    "bio": "简介",
+    "members": "成员"
+  },
+  "settings": {
+    "type": "类型",
+    "memberInvite": "成员可邀请",
+    "themeColor": "主题色",
+    "detailSections": "详情页显示区块"
   }
 }

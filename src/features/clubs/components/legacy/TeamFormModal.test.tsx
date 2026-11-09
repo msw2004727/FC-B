@@ -323,8 +323,9 @@ describe('TeamFormModal', () => {
     expect(buttons.map((button) => button.getAttribute('data-team-type-option'))).toEqual([
       'none', 'competitive', 'education', 'leisure',
     ]);
+    // 測試同步更新（C1）：「無」改「其他」。
     expect(buttons.map((button) => button.textContent?.replace(/\s+/g, ''))).toEqual([
-      '無不顯示標籤',
+      '其他不顯示標籤',
       '競技賽事與戰績分類',
       '教學啟用課程功能',
       '休閒休閒交流分類',

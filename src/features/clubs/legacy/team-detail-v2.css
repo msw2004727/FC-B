@@ -46,6 +46,10 @@
 .td-v2-cta-icon:disabled{opacity:.45}
 .td-v2-stats{display:grid;grid-template-columns:repeat(4,1fr);margin:16px 14px 6px;background:#fff;border:1px solid #eef2f7;border-radius:14px;overflow:hidden}
 .td-v2-stat{position:relative;text-align:center;padding:14px 4px}
+button.td-v2-stat{display:block;width:100%;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}
+button.td-v2-stat:disabled{cursor:default}
+.td-v2-stat .td-v2-stat-num,.td-v2-stat .td-v2-stat-label{display:block;white-space:nowrap}
+.td-v2-stat.is-link .td-v2-stat-label,[data-theme="dark"] .td-v2-stat.is-link .td-v2-stat-label{color:var(--accent)}
 .td-v2-stat+.td-v2-stat:before{content:"";position:absolute;left:0;top:18%;width:1px;height:64%;background:#eef2f7}
 .td-v2-stat-num{font-size:21px;font-weight:900;line-height:1}
 .td-v2-stat-label{margin-top:5px;font-size:11px;color:#64748b}
@@ -53,7 +57,7 @@
 .td-v2-tab-rail{position:sticky;top:61px;z-index:24;padding:8px 14px 0;background:#f5f7fb}
 .td-v2-tab-list{display:flex;gap:4px;overflow-x:auto;padding:4px;border-radius:13px;background:#fff;box-shadow:0 8px 16px rgba(15,23,42,.04);scrollbar-width:none}
 .td-v2-tab-list::-webkit-scrollbar{display:none}
-.td-v2-tab-list button{border:0;flex:1 0 auto;min-width:64px;padding:9px 10px;border-radius:10px;background:transparent;color:#64748b;font-size:13px;font-weight:800;white-space:nowrap}
+.td-v2-tab-list button{border:0;flex:1 0 auto;min-width:64px;min-height:40px;padding:9px 10px;border-radius:10px;background:transparent;color:#64748b;font-size:13px;font-weight:800;white-space:nowrap}
 .td-v2-tab-list button.active{background:#111827;color:#fff}
 .td-v2-tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-left:4px;padding:0 4px;border-radius:999px;background:#f97316;color:#fff;font-size:10px}
 .td-v2-tab-list button.td-course-tab-live{position:relative;overflow:hidden;isolation:isolate;background:linear-gradient(135deg,#facc15 0%,#fef3c7 42%,#f59e0b 100%);color:#713f12;box-shadow:0 8px 18px rgba(245,158,11,.25),inset 0 1px 0 rgba(255,255,255,.78)}
@@ -69,10 +73,6 @@
 .td-v2-section-head h3{flex:1;margin:0;font-size:15px;font-weight:900}
 .td-v2-section-head span,.td-v2-section-head button{border:0;background:transparent;color:#64748b;font-size:12px;font-weight:700}
 .td-v2-section-head button{color:#0d9488}
-.td-v2-quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.td-v2-quick{border:0;border-radius:12px;background:#f7f9fc;padding:10px 4px;text-align:center;color:#334155}
-.td-v2-quick strong{display:block;font-size:19px;font-weight:900;color:#0f172a}
-.td-v2-quick span{display:block;margin-top:2px;font-size:11px;color:#64748b}
 .td-v2-bio{margin:0;color:#334155;font-size:13.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
 .td-v2-empty,.td-v2-empty-card{padding:16px;text-align:center;color:#64748b;font-size:13px;background:#f8fafc;border-radius:12px}
 .td-v2-fast-shell{min-height:100vh;padding:16px 14px calc(96px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;background:linear-gradient(180deg,#f8fafc,#eef6f8)}
@@ -242,7 +242,7 @@
 [data-theme="dark"] .td-v2-tab-list button{color:#94a3b8}
 [data-theme="dark"] .td-v2-tab-list button.active,[data-theme="dark"] .td-v2-day.active{background:#e5e7eb;color:#0f172a}
 [data-theme="dark"] .td-v2-tab-list button.td-course-tab-live,[data-theme="dark"] .td-v2-tab-list button.td-course-tab-live.active{background:linear-gradient(135deg,#f59e0b 0%,#fde68a 45%,#b45309 100%);color:#1c1917;box-shadow:0 8px 18px rgba(251,191,36,.22),inset 0 1px 0 rgba(255,255,255,.62)}
-[data-theme="dark"] .td-v2-quick,[data-theme="dark"] .td-v2-empty,[data-theme="dark"] .td-v2-empty-card,[data-theme="dark"] .td-v2-day,[data-theme="dark"] .td-v2-modal-grid div{background:#1e293b;color:#cbd5e1}
+[data-theme="dark"] .td-v2-empty,[data-theme="dark"] .td-v2-empty-card,[data-theme="dark"] .td-v2-day,[data-theme="dark"] .td-v2-modal-grid div{background:#1e293b;color:#cbd5e1}
 [data-theme="dark"] .td-v2-day strong{color:#e5e7eb}
 [data-theme="dark"] .td-v2-day.weekend-sat{background:rgba(16,185,129,.16);color:#4ade80}
 [data-theme="dark"] .td-v2-day.weekend-sat span,[data-theme="dark"] .td-v2-day.weekend-sat strong{color:#4ade80}
@@ -262,7 +262,7 @@
 [data-theme="dark"] .td-v2-fast-preview-stats{border-color:rgba(148,163,184,.16);background:#111827;box-shadow:0 14px 30px rgba(0,0,0,.28)}
 [data-theme="dark"] .td-v2-fast-preview-stats span+span:before{background:rgba(148,163,184,.16)}
 [data-theme="dark"] .td-v2-fast-preview-stats b{color:#f8fafc}[data-theme="dark"] .td-v2-fast-preview-stats small{color:#94a3b8}
-[data-theme="dark"] .td-v2-quick strong,[data-theme="dark"] .td-v2-course-row strong,[data-theme="dark"] .td-v2-event-main strong,[data-theme="dark"] .td-v2-kv strong,[data-theme="dark"] .td-v2-post-head strong,[data-theme="dark"] .td-v2-modal-grid strong,[data-theme="dark"] .td-v2-contact-text{color:#e5e7eb}
+[data-theme="dark"] .td-v2-course-row strong,[data-theme="dark"] .td-v2-event-main strong,[data-theme="dark"] .td-v2-kv strong,[data-theme="dark"] .td-v2-post-head strong,[data-theme="dark"] .td-v2-modal-grid strong,[data-theme="dark"] .td-v2-contact-text{color:#e5e7eb}
 [data-theme="dark"] .td-v2-bio,[data-theme="dark"] .td-v2-post p,[data-theme="dark"] .td-v2-modal-desc{color:#cbd5e1}
 [data-theme="dark"] .td-v2-course-row,[data-theme="dark"] .td-v2-post,[data-theme="dark"] .td-v2-modal-head,[data-theme="dark"] .td-v2-modal-foot{border-color:rgba(148,163,184,.18)}
 [data-theme="dark"] .td-v2-course-row{background:linear-gradient(135deg,rgba(15,23,42,.98),rgba(30,41,59,.92))}
@@ -285,4 +285,15 @@
 [data-theme="dark"] .td-v2-panel-courses .edu-course-card .edu-cp-visual.has-cover .edu-cp-status-ended,
 [data-theme="dark"] .td-v2-panel-courses .edu-course-card .edu-cp-visual.has-cover .edu-cp-group-pill{background:rgba(255,255,255,.14);color:rgba(255,255,255,.86);border-color:rgba(255,255,255,.16)}
 @media(max-width:520px){.td-v2-event-card{grid-template-columns:86px 1fr}.td-v2-event-card-body{gap:8px}.td-v2-event-date{display:none}}
-@media(max-width:420px){.td-v2-quick-grid,.td-v2-member-grid,.td-v2-info-staff-grid{grid-template-columns:repeat(2,1fr)}.td-v2-record-hero{grid-template-columns:1fr}.td-v2-donut{margin:auto}.td-v2-hero-name{font-size:21px}.td-v2-cta-bar{grid-template-columns:1fr repeat(3,42px)}.td-v2-cta-bar.has-leave{grid-template-columns:1fr repeat(4,42px)}.td-v2-cta-primary.joined{gap:5px;padding-left:10px;padding-right:10px}.td-v2-cta-primary.joined span{font-size:11.5px}.td-v2-hero-text{padding-right:58px}}
+@media(max-width:420px){.td-v2-member-grid,.td-v2-info-staff-grid{grid-template-columns:repeat(2,1fr)}.td-v2-record-hero{grid-template-columns:1fr}.td-v2-donut{margin:auto}.td-v2-hero-name{font-size:21px}.td-v2-cta-bar{grid-template-columns:1fr repeat(3,42px)}.td-v2-cta-bar.has-leave{grid-template-columns:1fr repeat(4,42px)}.td-v2-cta-primary.joined{gap:5px;padding-left:10px;padding-right:10px}.td-v2-cta-primary.joined span{font-size:11.5px}.td-v2-hero-text{padding-right:58px}}
+
+/* C1：非管理者頂欄不出「⋯」時保留同寬空位讓標題置中；教練整列；社群按鈕多筆換行（R-UI-027） */
+.td-v2-icon-spacer{width:40px;height:40px;flex:0 0 auto}
+.td-v2-staff-row-wide{grid-column:1/-1}
+.td-v2-social-list{display:flex;flex-wrap:wrap;gap:6px;row-gap:6px;min-width:0}
+.td-v2-social-btn{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:36px;padding:3px 12px 3px 3px;border:1px solid var(--border);border-radius:var(--radius-full);background:var(--bg-card);color:var(--text-primary);font-size:12.5px;font-weight:700;line-height:1;text-decoration:none;white-space:nowrap}
+.td-v2-social-btn .event-social-link-icon{flex:0 0 28px;width:28px;height:28px;border-radius:50%;overflow:hidden}
+.td-v2-social-btn .event-social-link-icon img{width:100%;height:100%;object-fit:cover}
+.td-v2-social-btn span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* C1（R-UI-027）：近期活動的時間・地點・人數在 375px 會被折成兩行，改一行、放不下用「…」 */
+.td-v2-event-main em{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

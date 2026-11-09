@@ -104,7 +104,8 @@ describe('K4 剔除一般隊員', () => {
     expect(appConfirm).toHaveBeenCalledWith('確定要剔除「隊員丁」？');
     expect(kickTeamMember).toHaveBeenCalledWith(expect.objectContaining({ targetUid: 'member' }));
     expect(onTeamChanged).toHaveBeenCalledTimes(1);
-    expect(toast.show).toHaveBeenCalledWith({ message: '已移除隊員「隊員丁」', tone: 'success' });
+    // 測試同步更新（C1）：顯示文字「隊員」統一為「成員」。
+    expect(toast.show).toHaveBeenCalledWith({ message: '已移除成員「隊員丁」', tone: 'success' });
   });
 
   it('取消確認框不呼叫 Callable', async () => {
@@ -117,11 +118,11 @@ describe('K4 剔除一般隊員', () => {
     expect(onMemberRemoved).not.toHaveBeenCalled();
   });
 
-  it('伺服器回 TARGET_IS_STAFF 時提示「僅可移除一般隊員」，不移除列', async () => {
+  it('伺服器回 TARGET_IS_STAFF 時提示「僅可移除一般成員」，不移除列', async () => {
     vi.mocked(kickTeamMember).mockRejectedValue(Object.assign(new Error('TARGET_IS_STAFF'), { code: 'failed-precondition' }));
     const { container, onMemberRemoved } = renderCard();
     fireEvent.click(within(rowEl(container, 'member')).getByRole('button', { name: '剔除成員' }));
-    await waitFor(() => expect(toast.show).toHaveBeenCalledWith({ message: '僅可移除一般隊員', tone: 'error' }));
+    await waitFor(() => expect(toast.show).toHaveBeenCalledWith({ message: '僅可移除一般成員', tone: 'error' }));
     expect(onMemberRemoved).not.toHaveBeenCalled();
   });
 });

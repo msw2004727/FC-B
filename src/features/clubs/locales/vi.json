@@ -4,7 +4,7 @@
   "detail": "Chi tiết câu lạc bộ",
   "manage": "Quản lý câu lạc bộ",
   "category": {
-    "none": "Không có",
+    "none": "Khác",
     "competitive": "Thi đấu",
     "education": "Đào tạo",
     "leisure": "Giải trí"
@@ -77,5 +77,26 @@
       "retry": "Hệ thống đang bận, vui lòng thử lại",
       "failed": "Chuyển thất bại, vui lòng thử lại sau"
     }
+  },
+  "copyLink": {
+    "label": "Sao chép liên kết",
+    "done": "Đã sao chép liên kết",
+    "failed": "Sao chép thất bại, vui lòng sao chép thủ công"
+  },
+  "info": {
+    "coach": "Huấn luyện viên",
+    "social": "Mạng xã hội"
+  },
+  "section": {
+    "events": "Hoạt động",
+    "info": "Thông tin CLB",
+    "bio": "Giới thiệu",
+    "members": "Thành viên"
+  },
+  "settings": {
+    "type": "Loại",
+    "memberInvite": "Thành viên được mời",
+    "themeColor": "Màu chủ đề",
+    "detailSections": "Mục ở trang chi tiết"
   }
 }

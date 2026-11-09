@@ -4,7 +4,6 @@ import { SPORTS } from '@/features/events/data/sports';
 import {
   getTeamCategoryMeta,
   getTeamCoverImageUrl,
-  getTeamRank,
   getTeamThemeColor,
 } from '../../data/team-list-model';
 import type { TeamCategoryKey, TeamDoc } from '../../data/types';
@@ -44,12 +43,17 @@ function sanitizeHttpImageUrl(rawUrl: string): string {
   }
 }
 
-function getSportSymbol(sportTag: string | undefined): string {
+function getSportLabel(sportTag: string | undefined): string {
   const key = String(sportTag ?? '').trim();
   if (!key) return '';
-  return SPORTS.find((s) => s.sportTag === key)?.symbol ?? '';
+  return SPORTS.find((s) => s.sportTag === key)?.label ?? '';
 }
 
+/**
+ * C1 乙案「單列」俱樂部卡：縮圖（無圖用首字色塊）＋名稱＋「運動 · 地區 · 人數」＋類型標籤。
+ * 拿掉 EXP 徽章（SHOW_EXP=false）、斜緞帶、「俱樂部圖片」佔位字、成員／地區欄名與載入面板說明句（R-UI-026）。
+ * 置頂、光跡、主題色、點卡載入條的行為與資料欄位不變。
+ */
 export function LegacyTeamCard({
   team,
   onSelect,
@@ -58,26 +62,14 @@ export function LegacyTeamCard({
 }: LegacyTeamCardProps): JSX.Element {
   const teamId = String(team.id || team._docId || '').trim();
   const pinnedClass = team.pinned ? ' tc-pinned' : '';
-  const rank = getTeamRank(team.teamExp);
   const categoryMeta = getTeamCategoryMeta(team);
   const categoryLabel = CATEGORY_LABELS[categoryMeta.key] || '';
-  const hasCategoryRibbon = Boolean(categoryMeta.ribbonClass && categoryLabel);
-  const categoryRibbonClass =
-    hasCategoryRibbon && categoryMeta.key === 'education'
-      ? `tc-type-ribbon tc-edu-ribbon ${categoryMeta.ribbonClass}`
-      : hasCategoryRibbon
-        ? `tc-type-ribbon ${categoryMeta.ribbonClass}`
-        : '';
 
-  const sportSymbol = getSportSymbol(team.sportTag);
   const attentionEnabled = team.attentionEffectEnabled === true;
   const attentionClass = attentionEnabled ? ' tc-attention-effect' : '';
   const attentionColor = normalizeAttentionColor(team.attentionEffectColor);
   const themeColor = getTeamThemeColor(team).toLowerCase();
-  const themeOverlayEnabled = !themeColor || team.themeOverlayEnabled !== false;
-  const themeClass = themeColor
-    ? ` tc-themed${themeOverlayEnabled ? '' : ' tc-theme-no-overlay'}`
-    : '';
+  const themeClass = themeColor ? ' tc-themed' : '';
 
   const styleVars: Record<string, string> = {};
   if (attentionEnabled) {
@@ -92,15 +84,20 @@ export function LegacyTeamCard({
   const memberCount = typeof team.members === 'number' && Number.isFinite(team.members)
     ? team.members
     : 0;
-  const expText = (team.teamExp ?? 0).toLocaleString();
+  const name = team.name ?? '';
+  const initial = name.trim().charAt(0) || 'T';
+  const region = String(team.region ?? '').trim();
+  const meta = [
+    getSportLabel(team.sportTag),
+    region ? lt(region, region) : '',
+    `${memberCount} ${lt('人', '人')}`,
+  ].filter(Boolean).join(' · ');
 
   const handleActivate = (): void => {
     if (!teamId) return;
     onSelect(teamId);
   };
 
-  // ASSUMPTION: B 的卡片一律有 .tc-card-media（無圖時同時帶 .tc-img-placeholder），
-  // 載入條放在該節點內，等同 A 先查 .tc-card-media 再 fallback .tc-img-placeholder。
   const loadingBar = isPending ? (
     <div class="tc-loading-bar">
       <div class="tc-loading-fill" style={{ width: `${pendingProgress}%` }} />
@@ -109,7 +106,7 @@ export function LegacyTeamCard({
 
   return (
     <div
-      class={`tc-card${pinnedClass}${attentionClass}${themeClass}${isPending ? ' is-pending' : ''}`}
+      class={`tc-card tc-row${pinnedClass}${attentionClass}${themeClass}${isPending ? ' is-pending' : ''}`}
       style={Object.keys(styleVars).length > 0 ? styleVars : undefined}
       data-team-id={teamId}
       role="link"
@@ -124,74 +121,39 @@ export function LegacyTeamCard({
         }
       }}
     >
-      {team.pinned && (
-        <div class="tc-pin-rail" aria-label="置頂俱樂部">
-          <span class="tc-pin-mark" aria-hidden="true" />
-          <span>置頂</span>
-        </div>
-      )}
-      {cardImage ? (
-        <div class="tc-card-media">
-          {sportSymbol && (
-            <span class="tc-sport-badge">
-              <span class="sport-emoji" aria-hidden="true">{sportSymbol}</span>
-            </span>
-          )}
+      <div class={`tc-card-media tc-row-thumb${cardImage ? '' : ' tc-img-placeholder'}`}>
+        {cardImage ? (
           <img
             src={cardImage}
             alt=""
-            width={1000}
-            height={1000}
+            width={104}
+            height={104}
             loading="lazy"
             decoding="async"
           />
-          <span class="tc-rank-badge" style={{ color: rank.color }}>
-            <span class="tc-rank-score">{expText}</span>
-            {rank.rank}
-          </span>
-          {hasCategoryRibbon && (
-            <span class={categoryRibbonClass}>{categoryLabel}</span>
-          )}
-          {loadingBar}
-        </div>
-      ) : (
-        <div class="tc-card-media tc-img-placeholder">
-          {sportSymbol && (
-            <span class="tc-sport-badge">
-              <span class="sport-emoji" aria-hidden="true">{sportSymbol}</span>
-            </span>
-          )}
-          俱樂部圖片
-          <span class="tc-rank-badge" style={{ color: rank.color }}>
-            <span class="tc-rank-score">{expText}</span>
-            {rank.rank}
-          </span>
-          {hasCategoryRibbon && (
-            <span class={categoryRibbonClass}>{categoryLabel}</span>
-          )}
-          {loadingBar}
-        </div>
-      )}
-      <div class="tc-body">
-        <div class="tc-name">{team.name ?? ''}</div>
-        <div class="tc-info-row">
-          <span class="tc-label">{lt('成員', '成員')}</span>
-          <span>{`${memberCount} ${lt('人', '人')}`}</span>
-        </div>
-        <div class="tc-info-row">
-          <span class="tc-label">{lt('地區', '地區')}</span>
-          <span>{team.region ?? ''}</span>
-        </div>
+        ) : (
+          <span class="tc-row-initial" aria-hidden="true">{initial}</span>
+        )}
+        {loadingBar}
       </div>
-      {isPending && (
-        <div class="tc-loading-panel">
-          <span class="tc-loading-spinner" aria-hidden="true" />
-          <span class="tc-loading-copy">
-            <strong>資料更新中</strong>
-            <span>正在整理俱樂部最新內容</span>
-          </span>
+      <div class="tc-row-main">
+        <div class="tc-name">{name}</div>
+        <div class="tc-row-meta">{meta}</div>
+      </div>
+      {team.pinned || categoryLabel ? (
+        <div class="tc-row-side">
+          {team.pinned && (
+            <div class="tc-pin-rail" aria-label="置頂俱樂部">
+              <span class="tc-pin-mark" aria-hidden="true" />
+              <span>置頂</span>
+            </div>
+          )}
+          {categoryLabel ? (
+            <span class={`tc-row-tag tc-row-tag-${categoryMeta.key}`}>{categoryLabel}</span>
+          ) : null}
         </div>
-      )}
+      ) : null}
+      {isPending && <span class="tc-loading-spinner tc-row-spinner" aria-hidden="true" />}
     </div>
   );
 }

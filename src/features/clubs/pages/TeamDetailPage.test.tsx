@@ -486,11 +486,12 @@ describe('TeamDetailPage (Legacy V2)', () => {
     });
 
     fireEvent.click(screen.getByRole('tab', { name: '總覽' }));
-    const quick = container.querySelector<HTMLButtonElement>(
-      '.td-v2-quick[data-tab="events"]',
+    // 測試同步更新（C1）：快速導覽拿掉，改由數字列的「活動」切頁籤。
+    const stat = container.querySelector<HTMLButtonElement>(
+      '.td-v2-stats .td-v2-stat[data-tab="events"]',
     );
-    if (!quick) throw new Error('缺少活動快速導覽');
-    fireEvent.click(quick);
+    if (!stat) throw new Error('缺少數字列的活動捷徑');
+    fireEvent.click(stat);
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
     expect(container.querySelector('.td-v2-panel-events.active')).toBeTruthy();
   });
@@ -637,9 +638,19 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(screen.getByText('Test FC')).toBeTruthy();
     expect(screen.getByText('足球')).toBeTruthy();
     expect(screen.getByText('台北市')).toBeTruthy();
-    expect(screen.getByText('一般俱樂部 · 歡迎查看活動與成員')).toBeTruthy();
-    expect(screen.getByText('3,500')).toBeTruthy();
-    expect(screen.getByText('B')).toBeTruthy();
+    // 測試同步更新（C1）：一般俱樂部不放招募句（R-UI-026）；EXP 徽章跟 SHOW_EXP=false 不顯示。
+    expect(screen.queryByText('一般俱樂部 · 歡迎查看活動與成員')).toBeNull();
+    expect(screen.queryByText('3,500')).toBeNull();
+    expect(container.querySelector('.td-v2-hero-rank')).toBeNull();
+    expect(container.querySelector('.td-v2-hero-status')).toBeNull();
+    // 測試同步更新（C1）：數字列只留成員、活動、勝率；快速導覽與開發備註拿掉、頁籤不帶數字徽章。
+    expect(
+      Array.from(container.querySelectorAll('.td-v2-stats .td-v2-stat-label'))
+        .map((el) => el.firstChild?.textContent ?? ''),
+    ).toEqual(['成員', '活動', '勝率']);
+    expect(container.querySelector('.td-v2-quick')).toBeNull();
+    expect(screen.queryByText('所有原有內容都保留在分頁內')).toBeNull();
+    expect(container.querySelector('.td-v2-tab-badge')).toBeNull();
 
     expect(screen.getByText('俱樂部介紹')).toBeTruthy();
     expect(screen.getByText('LINE: @testfc')).toBeTruthy();
@@ -653,6 +664,50 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(leaderTag.getAttribute('data-uid')).toBe('leader1');
   });
 
+  // C1（P-08）：俱樂部資訊補上教練與社群連結（A 有輸出、B 漏掉），兩者都可多筆換行。
+  it('shows coaches and social links in the club info card', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...team,
+      coachUids: ['coach1', 'coach2', 'coach3'],
+      coaches: ['教練甲', '教練乙', '教練丙'],
+      contactLinksEnabled: true,
+      contactLinks: [
+        { url: 'https://line.me/R/ti/g/abc', platform: 'line', label: 'LINE', host: 'line.me' },
+        { url: 'https://instagram.com/testfc', platform: 'instagram', label: 'Instagram', host: 'instagram.com' },
+        { url: 'javascript:alert(1)', platform: 'link', label: '壞連結', host: '' },
+      ],
+    });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+
+    const coachRow = container.querySelector('.td-v2-staff-row[data-staff="coach"]');
+    expect(coachRow?.querySelector('.td-v2-staff-label')?.textContent).toBe('教練');
+    expect(within(coachRow as HTMLElement).getByRole('button', { name: '教練丙' })).toBeTruthy();
+
+    const social = container.querySelector('[data-detail-field="social-links"]');
+    expect(social?.querySelector('.td-v2-contact-label')?.textContent).toBe('社群');
+    const links = Array.from(social?.querySelectorAll('a.td-v2-social-btn') ?? []);
+    expect(links.map((el) => el.getAttribute('href'))).toEqual([
+      'https://line.me/R/ti/g/abc',
+      'https://instagram.com/testfc',
+    ]);
+    // LINE 用文字圖示、Instagram 用圖片圖示，後面接平台名稱。
+    expect(links.map((el) => el.textContent)).toEqual(['LINELINE', 'Instagram']);
+  });
+
+  it('hides social links when the club turned them off', async () => {
+    vi.mocked(loadTeam).mockResolvedValue({
+      ...team,
+      contactLinksEnabled: false,
+      contactLinks: [{ url: 'https://line.me/R/ti/g/abc', platform: 'line', label: 'LINE', host: 'line.me' }],
+    });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(container.querySelector('[data-detail-field="social-links"]')).toBeNull();
+    expect(container.querySelector('.td-v2-staff-row[data-staff="coach"]')).toBeNull();
+  });
+
+  // 測試同步更新（C1）：課程頁籤先隱藏（課程上線後再開），不再出現「請先使用舊版」。
   it('switches tabs and respects section visibility including courses, record and feed', async () => {
     vi.mocked(loadTeam).mockResolvedValue({
       ...team,
@@ -665,17 +720,13 @@ describe('TeamDetailPage (Legacy V2)', () => {
     const tabButtons = container.querySelectorAll('.td-v2-tab-list button');
     expect(Array.from(tabButtons).map((b) => b.textContent)).toEqual([
       '總覽',
-      '課程',
       '活動',
       '成員',
       '戰績',
       '動態',
     ]);
-
-    fireEvent.click(screen.getByRole('tab', { name: '課程' }));
-    expect(container.querySelector('.td-v2-panel-courses.active')).toBeTruthy();
-    expect(screen.getByText('接受新學員報名')).toBeTruthy();
-    expect(screen.getByText('此功能尚未開放，請先使用舊版')).toBeTruthy();
+    expect(container.querySelector('.td-v2-panel-courses')).toBeNull();
+    expect(screen.queryByText('此功能尚未開放，請先使用舊版')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: '戰績' }));
     expect(container.querySelector('.td-v2-panel-record.active')).toBeTruthy();
@@ -717,7 +768,16 @@ describe('TeamDetailPage (Legacy V2)', () => {
     vi.mocked(loadTeam).mockResolvedValue({ ...team });
     const legacy = render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
-    expect(statLabels(legacy.container)).toEqual(['成員', '課程', '勝率', '活動']);
+    // 測試同步更新（C1）：數字列拿掉課程，順序成員、活動、勝率。
+    expect(statLabels(legacy.container)).toEqual(['成員', '活動', '勝率']);
+    legacy.unmount();
+
+    // C1：沒有戰績資料就不出戰績頁籤，勝率一起隱藏。
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, wins: 0, draws: 0, losses: 0 });
+    const noRecord = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    expect(statLabels(noRecord.container)).toEqual(['成員', '活動']);
+    expect(screen.queryByRole('tab', { name: '戰績' })).toBeNull();
   });
 
   it('honours detailVisibility by hiding disabled tabs and sections', async () => {
@@ -735,8 +795,9 @@ describe('TeamDetailPage (Legacy V2)', () => {
     const { container } = render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
 
+    // 測試同步更新（C1）：沒有貼文的「動態」不出頁籤。
     const tabButtons = container.querySelectorAll('.td-v2-tab-list button');
-    expect(Array.from(tabButtons).map((b) => b.textContent)).toEqual(['總覽', '動態']);
+    expect(Array.from(tabButtons).map((b) => b.textContent)).toEqual(['總覽']);
     expect(screen.queryByText('俱樂部介紹')).toBeNull();
     expect(loadTeamMembers).not.toHaveBeenCalled();
     expect(loadEvents).not.toHaveBeenCalled();
@@ -870,6 +931,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     );
   });
 
+  // 測試同步更新（C1，P-09）：經理、領隊在確認框之前就被擋，不再先跳確認框。
   it('blocks captain and leader from leaving with legacy toast messages', async () => {
     const toastSpy = vi.spyOn(toast, 'show');
     vi.mocked(useViewer).mockReturnValue(viewer('captain', ['club']));
@@ -877,7 +939,8 @@ describe('TeamDetailPage (Legacy V2)', () => {
     await screen.findByText('測試俱樂部');
 
     fireEvent.click(screen.getByRole('button', { name: '退出俱樂部' }));
-    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledTimes(1));
+    expect(appConfirm).not.toHaveBeenCalled();
     expect(leaveTeam).not.toHaveBeenCalled();
     expect(toastSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -889,7 +952,8 @@ describe('TeamDetailPage (Legacy V2)', () => {
     view.rerender(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
     fireEvent.click(screen.getByRole('button', { name: '退出俱樂部' }));
-    await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledTimes(2));
+    expect(appConfirm).not.toHaveBeenCalled();
     expect(leaveTeam).not.toHaveBeenCalled();
     expect(toastSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -922,17 +986,22 @@ describe('TeamDetailPage (Legacy V2)', () => {
     );
   });
 
-  it('shows unavailable toast for unimplemented actions and respects invite disabled rule', async () => {
+  // 測試同步更新（C1）：拿掉「尚未開放」的分享鈕，改成所有人都能按的「複製連結」（網址同邀請 QR）。
+  it('lets a non-member copy the club link and respects invite disabled rule', async () => {
     const toastSpy = vi.spyOn(toast, 'show');
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     // 非成員且非經理/教練：invite 應 disabled
     const view = render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
 
     const inviteBtn = screen.getByRole('button', { name: '邀請 QR' }) as HTMLButtonElement;
     expect(inviteBtn.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '分享俱樂部' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '分享俱樂部' }));
-    expect(toastSpy).toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+    fireEvent.click(screen.getByRole('button', { name: '複製連結' }));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith({ message: '已複製連結', tone: 'success' }));
+    expect(writeText).toHaveBeenCalledWith('https://miniapp.line.me/2009525300-AuPGQ0sh?team=club');
 
     fireEvent.click(screen.getByRole('button', { name: '聯繫負責人' }));
     // 測試同步更新：聯繫負責人已接線
@@ -953,6 +1022,27 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(pickMock).toHaveBeenNthCalledWith(2, 'avatar');
     expect(pickMock).toHaveBeenCalledTimes(2);
     expect(toastSpy).toHaveBeenCalledTimes(1);
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('shows a copy failure toast when the clipboard is unavailable', async () => {
+    const toastSpy = vi.spyOn(toast, 'show');
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const execCommand = vi.fn(() => false);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    try {
+      render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+      fireEvent.click(screen.getByRole('button', { name: '複製連結' }));
+      await waitFor(() => expect(toastSpy).toHaveBeenCalledWith({
+        message: '複製失敗，請手動複製',
+        tone: 'error',
+      }));
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard');
+      Reflect.deleteProperty(document, 'execCommand');
+    }
   });
 
   it('opens settings for the manager without an unavailable toast and closes it', async () => {
@@ -975,8 +1065,9 @@ describe('TeamDetailPage (Legacy V2)', () => {
     );
   });
 
+  // 測試同步更新（C1）：非管理者頂欄不出「⋯」，也就不會再跳「尚未開放」。
   it.each(['u1', 'leader1', 'coach1'])(
-    'shows unavailable toast instead of settings for non-manager %s',
+    'hides the more button instead of settings for non-manager %s',
     async (uid) => {
       const toastSpy = vi.spyOn(toast, 'show');
       vi.mocked(loadTeam).mockResolvedValue({
@@ -988,14 +1079,12 @@ describe('TeamDetailPage (Legacy V2)', () => {
       render(<TeamDetailPage />);
       await screen.findByText('測試俱樂部');
 
-      fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+      expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+      expect(document.querySelector('.td-v2-topbar .td-v2-icon-spacer')).toBeTruthy();
 
       expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
       expect(settingsModalMock.latestProps).toBeNull();
-      expect(toastSpy).toHaveBeenCalledTimes(1);
-      expect(toastSpy).toHaveBeenCalledWith({
-        message: '此功能尚未開放，請先使用舊版',
-      });
+      expect(toastSpy).not.toHaveBeenCalled();
     },
   );
 
@@ -1664,13 +1753,15 @@ describe('T-054c V1／V2：俱樂部活動日期與週條', () => {
     // 只經既有 today prop 注入時刻；日期鍵與週條 DOM 均走正式元件。
     weekToday.value = '2026-10-19T00:30:00+08:00';
     const props: TeamDetailV2PanelsProps = {
-      team: { id: 'targetA' }, activeTab: 'events', roster: [], membersStatus: 'ready',
+      // 測試同步更新（C1）：面板改吃頁面決定的 tabKeys，拿掉快速導覽用的人數／課程數與未開放回呼。
+      team: { id: 'targetA' }, activeTab: 'events', tabKeys: new Set(['overview', 'events', 'members']),
+      roster: [], membersStatus: 'ready',
       events: [{ id: 'evtA', date: '2026/10/19 00:30~02:00' }], eventsStatus: 'ready',
-      memberCount: 0, courseCount: 0, totalGames: 0, winRate: 0,
+      totalGames: 0, winRate: 0,
       viewer: { uid: 'uidA', teamIds: new Set<string>(), hasPermission: () => false },
       onTeamChanged: vi.fn(), canCreateEvent: false, onCreateEvent: vi.fn(), busy: false,
       onSelectTab: vi.fn(), onSelectEvent: vi.fn(), onOpenProfile: vi.fn(),
-      onRetryMembers: vi.fn(), onRetryEvents: vi.fn(), onLogin: vi.fn(), onUnavailable: vi.fn(),
+      onRetryMembers: vi.fn(), onRetryEvents: vi.fn(), onLogin: vi.fn(),
     };
     const { container } = render(<TeamDetailV2Panels {...props} />);
     const strip = container.querySelector('.td-v2-week');
@@ -1736,7 +1827,8 @@ describe('TeamDetailPage owner delete (T-090d)', () => {
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
-    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    // 測試同步更新（C1）：不能編輯的人沒有「⋯」。
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
     expect(screen.queryByRole('button', { name: '刪除俱樂部' })).toBeNull();
     expect(settingsModalMock.latestProps).toBeNull();
   });
@@ -1883,7 +1975,8 @@ describe('TeamDetailPage owner transfer (T-090h)', () => {
     vi.mocked(useViewer).mockReturnValue({ ...viewer('u1', ['club']), role: 'coach', roleLevel: 2 });
     render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
-    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    // 測試同步更新（C1）：不能編輯的教練沒有「⋯」。
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: '俱樂部設定' })).toBeNull();
     expect(settingsModalMock.latestProps?.transfer).toBeUndefined();
 

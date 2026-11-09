@@ -4,7 +4,7 @@
   "detail": "클럽 상세",
   "manage": "클럽 관리",
   "category": {
-    "none": "없음",
+    "none": "기타",
     "competitive": "경기",
     "education": "교육",
     "leisure": "여가"
@@ -77,5 +77,26 @@
       "retry": "시스템이 혼잡합니다. 다시 시도해 주세요",
       "failed": "양도에 실패했습니다. 잠시 후 다시 시도해 주세요"
     }
+  },
+  "copyLink": {
+    "label": "링크 복사",
+    "done": "링크를 복사했습니다",
+    "failed": "복사하지 못했습니다. 직접 복사해 주세요"
+  },
+  "info": {
+    "coach": "코치",
+    "social": "소셜"
+  },
+  "section": {
+    "events": "이벤트",
+    "info": "클럽 정보",
+    "bio": "소개",
+    "members": "멤버"
+  },
+  "settings": {
+    "type": "유형",
+    "memberInvite": "멤버 초대 허용",
+    "themeColor": "테마 색상",
+    "detailSections": "상세 페이지 표시 영역"
   }
 }

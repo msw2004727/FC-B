@@ -116,16 +116,17 @@ function checkbox(label: string): HTMLInputElement {
   }
   return node;
 }
+// 測試同步更新（C1）：設定標籤改走 clubs.settings.*／clubs.section.*（測試的 useT 直接回 key）。
 
 function categoryButton(label: string): HTMLButtonElement {
-  const group = screen.getByRole('radiogroup', { name: '俱樂部標籤' });
+  const group = screen.getByRole('radiogroup', { name: 'clubs.settings.type' });
   const node = within(group).getByRole('button', { name: new RegExp(`^${label}`) });
   if (!(node instanceof HTMLButtonElement)) throw new Error('找不到分類按鈕');
   return node;
 }
 
 function colorInput(): HTMLInputElement {
-  const node = screen.getByLabelText('俱樂部主題色');
+  const node = screen.getByLabelText('clubs.settings.themeColor');
   if (!(node instanceof HTMLInputElement)) throw new Error('找不到主題色輸入');
   return node;
 }
@@ -197,18 +198,26 @@ describe('俱樂部設定彈窗', () => {
     expect(screen.getByRole('heading', { name: '俱樂部設定' }).id)
       .toBe('team-detail-settings-title');
 
-    const group = screen.getByRole('radiogroup', { name: '俱樂部標籤' });
+    const group = screen.getByRole('radiogroup', { name: 'clubs.settings.type' });
     expect(within(group).getAllByRole('button')).toHaveLength(4);
-    for (const label of ['無', '競技', '教學', '休閒']) {
+    // 測試同步更新（C1）：「無」改「其他」（走 clubs.category.none）；分類按鈕不再帶說明句。
+    for (const label of ['clubs.category.none', '競技', '教學', '休閒']) {
       const button = categoryButton(label);
       expect(button.classList.contains('active')).toBe(label === '教學');
       expect(button.getAttribute('aria-pressed')).toBe(String(label === '教學'));
+      expect(button.querySelector('span')).toBeNull();
     }
 
-    for (const label of ['活動', '俱樂部課程', '俱樂部賽事', '俱樂部資訊', '簡介', '戰績', '成員列表']) {
+    // 測試同步更新（C1）：課程（上線前）、賽事、戰績、半透明遮罩不出；區塊標題改「詳情頁顯示區塊」。
+    for (const label of ['clubs.section.events', 'clubs.section.info', 'clubs.section.bio', 'clubs.section.members']) {
       expect(checkbox(label).checked).toBe(true);
     }
-    expect(screen.getAllByRole('checkbox')).toHaveLength(9);
+    for (const hidden of ['俱樂部課程', '俱樂部賽事', '戰績', '半透明遮罩']) {
+      expect(document.querySelector(`label.td-settings-switch[aria-label="${hidden}"]`)).toBeNull();
+    }
+    expect(screen.getAllByRole('checkbox')).toHaveLength(5);
+    expect(screen.getByText('clubs.settings.detailSections')).toBeTruthy();
+    expect(document.querySelector('.td-settings-row > div:first-child > span')).toBeNull();
     expect(screen.getByRole('button', { name: '編輯基本資料' })).toBeTruthy();
     await waitFor(() => {
       expect(document.activeElement).toBe(screen.getByRole('button', { name: '關閉' }));
@@ -219,7 +228,8 @@ describe('俱樂部設定彈窗', () => {
   it('非教學分類不渲染俱樂部課程列', () => {
     setup();
     expect(screen.queryByText('俱樂部課程')).toBeNull();
-    expect(screen.getAllByRole('checkbox')).toHaveLength(8);
+    // 測試同步更新（C1）：邀請＋4 個詳情頁顯示區塊。
+    expect(screen.getAllByRole('checkbox')).toHaveLength(5);
   });
 
   it('Esc、關閉鈕與返回鍵關閉，但點遮罩不關閉', async () => {
@@ -252,7 +262,7 @@ describe('俱樂部設定彈窗', () => {
   });
 
   it.each([
-    '分類', '邀請', '主題色', '預設', '遮罩', '欄位',
+    '分類', '邀請', '主題色', '預設', '欄位',
   ])('無權限操作%s時拒絕寫入並使用相同權限 helper', (control) => {
     policyMock.mockReturnValue(false);
     const team = makeTeam();
@@ -263,8 +273,8 @@ describe('俱樂部設定彈窗', () => {
         fireEvent.click(categoryButton('教學'));
         break;
       case '邀請':
-        fireEvent.click(checkbox('隊員可邀請'));
-        expect(checkbox('隊員可邀請').checked).toBe(true);
+        fireEvent.click(checkbox('clubs.settings.memberInvite'));
+        expect(checkbox('clubs.settings.memberInvite').checked).toBe(true);
         break;
       case '主題色':
         changeColor('#112233');
@@ -272,13 +282,9 @@ describe('俱樂部設定彈窗', () => {
       case '預設':
         fireEvent.click(screen.getByRole('button', { name: '預設' }));
         break;
-      case '遮罩':
-        fireEvent.click(checkbox('半透明遮罩'));
-        expect(checkbox('半透明遮罩').checked).toBe(true);
-        break;
       case '欄位':
-        fireEvent.click(checkbox('活動'));
-        expect(checkbox('活動').checked).toBe(true);
+        fireEvent.click(checkbox('clubs.section.events'));
+        expect(checkbox('clubs.section.events').checked).toBe(true);
         break;
     }
 
@@ -340,11 +346,11 @@ describe('俱樂部設定彈窗', () => {
     const team = makeTeam();
     setup(team);
 
-    expect(checkbox('隊員可邀請').checked).toBe(true);
-    fireEvent.click(checkbox('隊員可邀請'));
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(true);
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     expect(saveMock).toHaveBeenCalledExactlyOnceWith(team, { allowMemberInvite: false });
     await expectSuccess();
-    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
   });
 
   it.each(['#112233', '#ABCDEF'])('合法主題色 %s 依實際 helper 保留大小寫', async (color) => {
@@ -401,22 +407,20 @@ describe('俱樂部設定彈窗', () => {
     expect(colorInput().value).toBe('#0d9488');
   });
 
-  it('遮罩缺欄位預設開啟，切換寫入 false', async () => {
-    const team = makeTeam();
-    setup(team);
-
-    expect(checkbox('半透明遮罩').checked).toBe(true);
-    fireEvent.click(checkbox('半透明遮罩'));
-    expect(saveMock).toHaveBeenCalledExactlyOnceWith(team, { themeOverlayEnabled: false });
-    await expectSuccess();
+  // 測試同步更新（C1）：半透明遮罩開關隱藏（B 沒有作用），資料欄位不動、不寫入。
+  it('不顯示半透明遮罩開關，既有 themeOverlayEnabled 不被寫入', () => {
+    setup(makeTeam({ themeOverlayEnabled: false }));
+    expect(document.querySelector('.td-theme-overlay-row')).toBeNull();
+    expect(screen.queryByText('半透明遮罩')).toBeNull();
+    expect(saveMock).not.toHaveBeenCalled();
   });
 
   it('欄位顯示以完整物件寫入並保留原有 bio 設定', async () => {
     const team = makeTeam({ detailVisibility: { bio: false } });
     setup(team);
 
-    expect(checkbox('簡介').checked).toBe(false);
-    fireEvent.click(checkbox('活動'));
+    expect(checkbox('clubs.section.bio').checked).toBe(false);
+    fireEvent.click(checkbox('clubs.section.events'));
     expect(saveMock).toHaveBeenCalledExactlyOnceWith(team, {
       detailVisibility: { bio: false, events: false },
     });
@@ -435,23 +439,23 @@ describe('俱樂部設定彈窗', () => {
       const team = makeTeam({ detailVisibility: { events: true, members: true } });
       setup(team, { onSaved });
 
-      fireEvent.click(checkbox('活動'));
+      fireEvent.click(checkbox('clubs.section.events'));
       await waitFor(() => {
         expect(onSaved).toHaveBeenCalledTimes(1);
-        expect(checkbox('活動').disabled).toBe(false);
+        expect(checkbox('clubs.section.events').disabled).toBe(false);
       });
-      expect(checkbox('活動').checked).toBe(false);
+      expect(checkbox('clubs.section.events').checked).toBe(false);
 
-      fireEvent.click(checkbox('成員列表'));
+      fireEvent.click(checkbox('clubs.section.members'));
       expect(saveMock).toHaveBeenNthCalledWith(2, team, {
         detailVisibility: { events: false, members: false },
       });
       await waitFor(() => {
         expect(onSaved).toHaveBeenCalledTimes(2);
-        expect(checkbox('成員列表').disabled).toBe(false);
+        expect(checkbox('clubs.section.members').disabled).toBe(false);
       });
-      expect(checkbox('活動').checked).toBe(false);
-      expect(checkbox('成員列表').checked).toBe(false);
+      expect(checkbox('clubs.section.events').checked).toBe(false);
+      expect(checkbox('clubs.section.members').checked).toBe(false);
       expect(team.detailVisibility).toEqual({ events: true, members: true });
     },
   );
@@ -463,28 +467,28 @@ describe('俱樂部設定彈窗', () => {
     const original = makeTeam({ detailVisibility: { events: true, members: true } });
     const { rerender, props } = setup(original, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
 
     const stale = makeTeam({ detailVisibility: { events: true, members: true } });
     expect(stale).not.toBe(original);
     expect(stale.id).toBe(original.id);
     rerender(<TeamSettingsModal {...props} team={stale} />);
-    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
 
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
     expect(saveMock).toHaveBeenNthCalledWith(2, stale, {
       detailVisibility: { events: false, members: false },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
     });
-    expect(checkbox('活動').checked).toBe(false);
-    expect(checkbox('成員列表').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
+    expect(checkbox('clubs.section.members').checked).toBe(false);
   });
 
   // 測試同步更新：先確認第二次 patch，再用後續 prop 變更證明已同步項目確實移除。
@@ -493,21 +497,21 @@ describe('俱樂部設定彈窗', () => {
     const original = makeTeam({ detailVisibility: { events: true, members: true } });
     const { rerender, props } = setup(original, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
 
     const reflected = makeTeam({ detailVisibility: { events: false, members: true } });
     rerender(<TeamSettingsModal {...props} team={reflected} />);
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
     expect(saveMock).toHaveBeenNthCalledWith(2, reflected, {
       detailVisibility: { events: false, members: false },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
     });
 
     rerender(
@@ -522,8 +526,8 @@ describe('俱樂部設定彈窗', () => {
         team={makeTeam({ detailVisibility: { events: true, members: true } })}
       />,
     );
-    expect(checkbox('活動').checked).toBe(true);
-    expect(checkbox('成員列表').checked).toBe(true);
+    expect(checkbox('clubs.section.events').checked).toBe(true);
+    expect(checkbox('clubs.section.members').checked).toBe(true);
     expect(saveMock).toHaveBeenCalledTimes(2);
   });
 
@@ -534,23 +538,23 @@ describe('俱樂部設定彈窗', () => {
     const original = makeTeam({ detailVisibility: { events: true, members: true } });
     const { rerender, props } = setup(original, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
 
     const write = deferred();
     saveMock.mockReturnValueOnce(write.promise);
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
     expect(saveMock).toHaveBeenNthCalledWith(2, original, {
       detailVisibility: { events: false, members: false },
     });
 
     const stale = makeTeam({ detailVisibility: { events: true, members: true } });
     rerender(<TeamSettingsModal {...props} team={stale} />);
-    expect(checkbox('活動').checked).toBe(false);
-    expect(checkbox('成員列表').disabled).toBe(true);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
+    expect(checkbox('clubs.section.members').disabled).toBe(true);
 
     await act(async () => {
       write.resolve();
@@ -558,18 +562,18 @@ describe('俱樂部設定彈窗', () => {
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('成員列表').disabled).toBe(false);
-      expect(checkbox('活動').checked).toBe(false);
-      expect(checkbox('成員列表').checked).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').checked).toBe(false);
+      expect(checkbox('clubs.section.members').checked).toBe(false);
     });
 
-    fireEvent.click(checkbox('簡介'));
+    fireEvent.click(checkbox('clubs.section.bio'));
     expect(saveMock).toHaveBeenNthCalledWith(3, stale, {
       detailVisibility: { events: false, members: false, bio: false },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(3);
-      expect(checkbox('簡介').disabled).toBe(false);
+      expect(checkbox('clubs.section.bio').disabled).toBe(false);
     });
   });
 
@@ -579,15 +583,15 @@ describe('俱樂部設定彈窗', () => {
     const original = makeTeam({ detailVisibility: { events: true, members: true } });
     const { rerender, props } = setup(original, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
     });
 
     rerender(
@@ -596,20 +600,20 @@ describe('俱樂部設定彈窗', () => {
         team={makeTeam({ detailVisibility: { events: false, members: true } })}
       />,
     );
-    expect(checkbox('活動').checked).toBe(false);
-    expect(checkbox('成員列表').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
+    expect(checkbox('clubs.section.members').checked).toBe(false);
 
     const next = makeTeam({ detailVisibility: { events: true, members: true } });
     rerender(<TeamSettingsModal {...props} team={next} />);
-    expect(checkbox('活動').checked).toBe(true);
-    expect(checkbox('成員列表').checked).toBe(false);
-    fireEvent.click(checkbox('簡介'));
+    expect(checkbox('clubs.section.events').checked).toBe(true);
+    expect(checkbox('clubs.section.members').checked).toBe(false);
+    fireEvent.click(checkbox('clubs.section.bio'));
     expect(saveMock).toHaveBeenNthCalledWith(3, next, {
       detailVisibility: { events: true, members: false, bio: false },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(3);
-      expect(checkbox('簡介').disabled).toBe(false);
+      expect(checkbox('clubs.section.bio').disabled).toBe(false);
     });
   });
 
@@ -669,27 +673,27 @@ describe('俱樂部設定彈窗', () => {
     const onSaved = vi.fn();
     const { rerender, props } = setup(original, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
 
     const refreshed = makeTeam({
       detailVisibility: { events: false, members: true, bio: false },
     });
     rerender(<TeamSettingsModal {...props} team={refreshed} />);
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
 
     expect(saveMock).toHaveBeenNthCalledWith(2, refreshed, {
       detailVisibility: { events: false, members: false, bio: false },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
     });
-    expect(checkbox('活動').checked).toBe(false);
-    expect(checkbox('簡介').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
+    expect(checkbox('clubs.section.bio').checked).toBe(false);
   });
 
   it('visibility 寫入失敗不污染 confirmed，也不清除前次成功設定', async () => {
@@ -698,32 +702,32 @@ describe('俱樂部設定彈窗', () => {
     const onSaved = vi.fn().mockRejectedValue(new Error('重讀失敗'));
     setup(team, { onSaved });
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
 
     saveMock.mockRejectedValueOnce(new Error('寫入失敗'));
-    fireEvent.click(checkbox('成員列表'));
+    fireEvent.click(checkbox('clubs.section.members'));
     await waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith({
         message: '設定更新失敗，請稍後再試',
         tone: 'error',
       });
-      expect(checkbox('成員列表').disabled).toBe(false);
+      expect(checkbox('clubs.section.members').disabled).toBe(false);
     });
-    expect(checkbox('活動').checked).toBe(false);
-    expect(checkbox('成員列表').checked).toBe(true);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
+    expect(checkbox('clubs.section.members').checked).toBe(true);
     expect(onSaved).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     expect(saveMock).toHaveBeenNthCalledWith(3, team, {
       detailVisibility: { events: true, members: true },
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2);
-      expect(checkbox('活動').disabled).toBe(false);
+      expect(checkbox('clubs.section.events').disabled).toBe(false);
     });
   });
 
@@ -742,22 +746,19 @@ describe('俱樂部設定彈窗', () => {
       });
     };
 
-    fireEvent.click(checkbox('隊員可邀請'));
-    await settled();
-    fireEvent.click(checkbox('半透明遮罩'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await settled();
     changeColor('#112233');
     await settled();
     fireEvent.click(categoryButton('教學'));
     await settled();
-    fireEvent.click(checkbox('活動'));
+    fireEvent.click(checkbox('clubs.section.events'));
     await settled();
 
-    expect(checkbox('隊員可邀請').checked).toBe(false);
-    expect(checkbox('半透明遮罩').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
     expect(colorInput().value).toBe('#112233');
     expect(categoryButton('教學').getAttribute('aria-pressed')).toBe('true');
-    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
 
     saveMock.mockRejectedValueOnce(new Error('主題色寫入失敗'));
     changeColor('#778899');
@@ -769,10 +770,9 @@ describe('俱樂部設定彈窗', () => {
       expect(colorInput().disabled).toBe(false);
     });
     expect(colorInput().value).toBe('#112233');
-    expect(checkbox('隊員可邀請').checked).toBe(false);
-    expect(checkbox('半透明遮罩').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
     expect(categoryButton('教學').getAttribute('aria-pressed')).toBe('true');
-    expect(checkbox('活動').checked).toBe(false);
+    expect(checkbox('clubs.section.events').checked).toBe(false);
   });
 
   it('依序等待寫入、onSaved，再顯示成功通知', async () => {
@@ -793,7 +793,7 @@ describe('俱樂部設定彈窗', () => {
     });
     setup(makeTeam(), { onSaved });
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     expect(order).toEqual(['寫入']);
     await act(async () => {
       write.resolve();
@@ -801,7 +801,7 @@ describe('俱樂部設定彈窗', () => {
     });
     expect(order).toEqual(['寫入', 'onSaved']);
     expect(onSaved).toHaveBeenCalledTimes(1);
-    expect(checkbox('隊員可邀請').disabled).toBe(true);
+    expect(checkbox('clubs.settings.memberInvite').disabled).toBe(true);
 
     await act(async () => {
       refresh.resolve();
@@ -809,7 +809,7 @@ describe('俱樂部設定彈窗', () => {
     });
     await expectSuccess();
     expect(order).toEqual(['寫入', 'onSaved', 'toast']);
-    expect(checkbox('隊員可邀請').disabled).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').disabled).toBe(false);
     toastMock.mockReset();
   });
 
@@ -819,19 +819,19 @@ describe('俱樂部設定彈窗', () => {
     saveMock.mockRejectedValueOnce(error).mockResolvedValueOnce(undefined);
     const { props } = setup();
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith({
         message: '設定更新失敗，請稍後再試',
         tone: 'error',
       });
     });
-    expect(checkbox('隊員可邀請').checked).toBe(true);
-    expect(checkbox('隊員可邀請').disabled).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(true);
+    expect(checkbox('clubs.settings.memberInvite').disabled).toBe(false);
     expect(props.onSaved).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith('[TeamSettingsModal]', error);
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await expectSuccess();
     expect(saveMock).toHaveBeenCalledTimes(2);
     expect(props.onSaved).toHaveBeenCalledTimes(1);
@@ -875,13 +875,13 @@ describe('俱樂部設定彈窗', () => {
     const onSaved = vi.fn().mockRejectedValue(error);
     setup(makeTeam(), { onSaved });
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await expectSuccess();
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledWith('[TeamSettingsModal] onSaved', error);
     expect(toastMock).toHaveBeenCalledTimes(1);
-    expect(checkbox('隊員可邀請').checked).toBe(false);
-    expect(checkbox('隊員可邀請').disabled).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').disabled).toBe(false);
   });
 
   it('寫入中停用來源控制項，重複操作及其他控制項操作不再寫入', async () => {
@@ -889,15 +889,16 @@ describe('俱樂部設定彈窗', () => {
     saveMock.mockReturnValueOnce(write.promise);
     setup();
 
-    const invite = checkbox('隊員可邀請');
+    const invite = checkbox('clubs.settings.memberInvite');
     fireEvent.click(invite);
     expect(invite.disabled).toBe(true);
     fireEvent.click(invite);
 
     // 其他控制項仍可接收事件，但共用 ref 鎖必須拒絕第二筆寫入。
-    const overlay = checkbox('半透明遮罩');
-    fireEvent.click(overlay);
-    expect(overlay.checked).toBe(true);
+    // 測試同步更新（C1）：遮罩開關已隱藏，改用詳情頁顯示區塊的開關驗證共用鎖。
+    const events = checkbox('clubs.section.events');
+    fireEvent.click(events);
+    expect(events.checked).toBe(true);
     expect(saveMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -912,9 +913,9 @@ describe('俱樂部設定彈窗', () => {
   // 測試同步更新：純量成功值須等 prop 反映後才移除。
   it('成功後收到未反映成功值的新 team，保留成功值直到同步', async () => {
     const { rerender, props } = setup();
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await expectSuccess();
-    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
 
     rerender(
       <TeamSettingsModal
@@ -922,18 +923,18 @@ describe('俱樂部設定彈窗', () => {
         team={makeTeam({ allowMemberInvite: true, themeColor: '#445566' })}
       />,
     );
-    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
     expect(colorInput().value).toBe('#445566');
 
     rerender(
       <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: false })} />,
     );
-    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
 
     rerender(
       <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: true })} />,
     );
-    expect(checkbox('隊員可邀請').checked).toBe(true);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(true);
   });
 
   // 測試同步更新：onSaved 尚未完成時收到舊內容新引用也不能清除成功值。
@@ -942,20 +943,20 @@ describe('俱樂部設定彈窗', () => {
     const onSaved = vi.fn(() => refresh.promise);
     const { rerender, props } = setup(makeTeam(), { onSaved });
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     rerender(
       <TeamSettingsModal {...props} team={makeTeam({ allowMemberInvite: true })} />,
     );
-    expect(checkbox('隊員可邀請').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
 
     await act(async () => {
       refresh.resolve();
       await refresh.promise;
     });
     await expectSuccess();
-    expect(checkbox('隊員可邀請').checked).toBe(false);
-    expect(checkbox('隊員可邀請').disabled).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').checked).toBe(false);
+    expect(checkbox('clubs.settings.memberInvite').disabled).toBe(false);
   });
 
   it.each(['成功', '失敗'])('卸載後寫入%s不再通知或呼叫 onSaved', async (outcome) => {
@@ -964,7 +965,7 @@ describe('俱樂部設定彈窗', () => {
     saveMock.mockReturnValueOnce(write.promise);
     const { unmount, props } = setup();
 
-    fireEvent.click(checkbox('隊員可邀請'));
+    fireEvent.click(checkbox('clubs.settings.memberInvite'));
     unmount();
 
     await act(async () => {
@@ -999,23 +1000,24 @@ describe('T-090 自建俱樂部設定', () => {
       expect(document.querySelector('.td-category-tag-education')).toBeNull();
       expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部課程"]')).toBeNull();
       expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部賽事"]')).toBeNull();
-      expect(checkbox('活動')).toBeTruthy();
+      expect(checkbox('clubs.section.events')).toBeTruthy();
     } finally {
       own.unmount();
     }
 
+    // 測試同步更新（C1）：課程開關等課程上線再出現、賽事開關隱藏，既有俱樂部也一樣。
     const legacy = setup(makeTeam({ type: 'education' }));
     try {
       expect(document.querySelector('.td-category-tag-education')).not.toBeNull();
-      expect(checkbox('俱樂部課程')).toBeTruthy();
-      expect(checkbox('俱樂部賽事')).toBeTruthy();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部課程"]')).toBeNull();
+      expect(document.querySelector('label.td-settings-switch[aria-label="俱樂部賽事"]')).toBeNull();
     } finally {
       legacy.unmount();
     }
   });
 
-  // T-090d C-13：修正前自建俱樂部只剩三種標籤，仍顯示「四種標籤…只有教學標籤會開啟課程」說明（應失敗）。
-  it('標籤說明只在有教學選項時顯示', () => {
+  // T-090d C-13；測試同步更新（C1）：標籤說明句全刪（R-UI-026），自建與既有俱樂部都不顯示。
+  it('標籤說明不再顯示', () => {
     policyMock.mockReturnValue(true);
     lockMock.mockReturnValue(unlockBody);
     overlayMock.mockReturnValue(releaseBack);
@@ -1032,7 +1034,8 @@ describe('T-090 自建俱樂部設定', () => {
 
     const legacy = setup(makeTeam());
     try {
-      expect(hint()?.textContent).toContain('四種標籤僅能擇一');
+      expect(hint()).toBeNull();
+      expect(document.body.textContent ?? '').not.toContain('四種標籤僅能擇一');
     } finally {
       legacy.unmount();
     }

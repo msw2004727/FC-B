@@ -4,7 +4,7 @@
   "detail": "Club details",
   "manage": "Club Management",
   "category": {
-    "none": "None",
+    "none": "Other",
     "competitive": "Competitive",
     "education": "Training",
     "leisure": "Recreational"
@@ -77,5 +77,26 @@
       "retry": "The system is busy. Please try again.",
       "failed": "Could not transfer the manager role. Please try again later."
     }
+  },
+  "copyLink": {
+    "label": "Copy link",
+    "done": "Link copied",
+    "failed": "Copy failed. Please copy it manually."
+  },
+  "info": {
+    "coach": "Coach",
+    "social": "Social"
+  },
+  "section": {
+    "events": "Events",
+    "info": "Club info",
+    "bio": "About",
+    "members": "Members"
+  },
+  "settings": {
+    "type": "Type",
+    "memberInvite": "Members can invite",
+    "themeColor": "Theme color",
+    "detailSections": "Detail page sections"
   }
 }
