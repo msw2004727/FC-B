@@ -23,6 +23,7 @@ import { RosterStatusCell, RosterStatusCourseNote } from './RosterStatusControls
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { UserTag } from '@/ui/UserTag';
 import type { UserRole } from '@/ui/Avatar';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import {
   getAttendancePersonKey,
   type AttendanceSelection,
@@ -65,6 +66,8 @@ export interface AttendanceRosterTableProps {
   onAdjustTeamReservation?: (teamId: string) => void;
   onStartEdit?: () => void;
   onCloseEdit?: () => void;
+  /** 「完成」的進度環；由頁面在結算送出時 start、依結算結果 succeed／fail。 */
+  finishRing?: ActionRingControl;
   onKickParticipant?: (person: ConfirmedRosterPerson) => void;
   rosterContext?: OperateContext;
   demotePendingKeys?: Readonly<Record<string, boolean>>;
@@ -220,6 +223,7 @@ export function AttendanceRosterTable({
   onAdjustTeamReservation,
   onStartEdit,
   onCloseEdit,
+  finishRing,
   onKickParticipant,
   rosterContext,
   demotePendingKeys,
@@ -232,6 +236,7 @@ export function AttendanceRosterTable({
   onChangeNote,
 }: AttendanceRosterTableProps): JSX.Element {
   const [, redrawSort] = useState(0);
+  const idleFinishRing = useActionRingControl();
   const sortByTeam = attendanceSortByTeam;
   const { people, count: renderedRosterCount } = buildConfirmedRoster(event, registrations);
   const showJersey = Boolean(getTeamSplit(event)?.enabled);
@@ -284,14 +289,16 @@ export function AttendanceRosterTable({
         isSubmitting ? 'cursor:not-allowed;opacity:.72' : 'cursor:pointer'
       }`;
       return (
-        <button
+        <ActionRingButton
+          control={finishRing ?? idleFinishRing}
+          busyLabel="儲存中..."
           type="button"
           style={finishStyle}
           disabled={isSubmitting}
           onClick={() => onCloseEdit?.()}
         >
           {isSubmitting ? '儲存中...' : CALLABLES_DEPLOYED ? '完成' : '關閉編輯'}
-        </button>
+        </ActionRingButton>
       );
     }
     return (

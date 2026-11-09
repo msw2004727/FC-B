@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'preact/compat';
 import { useRef, useState } from 'preact/hooks';
 import { toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
+import { useActionRingControl } from '@/ui/action-ring';
 import {
   isCompanion,
   registrationId,
@@ -70,6 +71,8 @@ export function useCancelRegistration(
   options: UseCancelRegistrationOptions,
 ): UseCancelRegistrationResult {
   const [modal, setModal] = useState<CancelModalState | null>(null);
+  // 同行者取消彈窗「確認取消」的進度環：寫入成功才打勾後關窗。
+  const ring = useActionRingControl();
   // 呼叫端最新值：每次 render 更新 ref，避免非同步流程拿到舊的 options。
   const ref = useRef(options);
   ref.current = options;
@@ -215,6 +218,7 @@ export function useCancelRegistration(
       return;
     }
     const eventId = snapshot.event.id ?? snapshot.publicId;
+    ring.start();
     try {
       const response = await cancelRegistration({
         eventId,
@@ -224,6 +228,9 @@ export function useCancelRegistration(
         context: cancelContext,
       });
       if (!isAlive()) return;
+      // deduplicated＝結果未知：不打勾、直接展開回原狀，照原流程提示後關窗。
+      if (response.deduplicated) ring.fail();
+      else await ring.succeed();
       toast.show({ message: response.deduplicated
         ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
       setModal(null);
@@ -235,6 +242,7 @@ export function useCancelRegistration(
     } catch (error) {
       if (!isAlive()) return;
       if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {
+        await ring.succeed();
         toast.show({ message: `已取消 ${ids.length} 筆報名` });
         setModal(null);
         await onBatchCancelled();
@@ -249,9 +257,12 @@ export function useCancelRegistration(
         REQUEST_ID_CONFLICT: '請重新整理後再試',
       };
       const code = error instanceof SignupError ? error.originalCode : '';
+      ring.fail();
       toast.show({ message: `取消失敗：${messages[code] || '連線逾時，請檢查網路後重新整理再試'}` });
       // T-086a：逾時＝結果未知，訊息後重讀名單；不自動重送。
       if (code === 'CALLABLE_TIMEOUT') await onBatchCancelled({ deduplicated: true });
+    } finally {
+      ring.fail();
     }
   }
 
@@ -274,6 +285,7 @@ export function useCancelRegistration(
           targets={targets}
           selectAll={selectAll}
           busy={props.busy}
+          ring={ring}
           eventTitle={props.eventTitle}
           onClose={() => { if (!props.busy) setModal(null); }}
           onConfirm={props.onConfirm}

@@ -7,6 +7,7 @@ import type { ViewerView } from '@/features/profile/data/viewer';
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import { operateContextFromViewer } from '../data/event-create-context';
 import { roleLabelOf } from '../data/event-form-model';
 import { canEditOwnActivityBasic } from '../data/operate-permissions';
@@ -31,6 +32,8 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
   const lt = useLegacyT();
   const [form, setForm] = useState(() => externalEventEditForm(props.event));
   const [submitting, setSubmitting] = useState(false);
+  // 「儲存修改」進度環：本地檢查通過才轉，成功打勾後才關窗。
+  const submitRing = useActionRingControl();
   const [readingImage, setReadingImage] = useState(false);
   const [crop, setCrop] = useState<{ src: string; Component: ComponentType<ImageCropperProps> } | null>(null);
   const alive = useRef(false);
@@ -140,6 +143,7 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
     if (validation) { message(validation); return; }
     busy.current = true;
     setSubmitting(true);
+    submitRing.start();
     let saved: { title: string };
     try {
       saved = await saveExternalEventEdit(props.event, form, location.buildValue(new Date()), () => {
@@ -151,10 +155,14 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
             || roleLabelOf(viewer.role, viewer.permissionSources?.customRoles ?? []) || '系統',
         };
       });
+      // 仍在送出鎖內等 ✓ 停留完（期間不能關窗或重送），之後照原流程提示並關窗。
+      if (alive.current) await submitRing.succeed();
     } catch (error) {
+      submitRing.fail();
       if (alive.current) message(error instanceof ExternalEventEditError ? error.userMessage : EXTERNAL_EDIT_FAILED);
       return;
     } finally {
+      submitRing.fail();
       busy.current = false;
       if (alive.current) setSubmitting(false);
     }
@@ -261,8 +269,9 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
         </div>
         <div class="modal-actions">
           <button type="button" class="outline-btn" onClick={close}>{lt('取消')}</button>
-          <button type="button" class="primary-btn" id="cee-submit-btn" disabled={submitting || readingImage || crop !== null}
-            onClick={() => { void submit(); }}>{submitting ? lt('儲存中...') : lt('儲存修改')}</button>
+          <ActionRingButton control={submitRing} busyLabel={lt('儲存中...')} type="button" class="primary-btn"
+            id="cee-submit-btn" disabled={submitting || readingImage || crop !== null}
+            onClick={() => { void submit(); }}>{submitting ? lt('儲存中...') : lt('儲存修改')}</ActionRingButton>
         </div>
       </div>
       {location.picker}

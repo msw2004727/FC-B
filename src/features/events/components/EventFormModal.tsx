@@ -7,6 +7,7 @@ import { useLegacyT, useT } from '@/i18n/i18n';
 import { pushOverlay } from '@/core/overlay-back';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import {
   ADDON_UPSELL_MESSAGE,
@@ -137,6 +138,8 @@ export function EventFormModal({
   const [formState, setFormState] = useState<EventFormState>(() => createDefaultFormState());
   const [generatedEventId, setGeneratedEventId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // 建立／儲存鈕的進度環：所有本地檢查通過、真正寫入時才轉，成功打勾後才交給 onSaved 關窗。
+  const submitRing = useActionRingControl();
   const [, setSubmitRevision] = useState(0);
   const submitInFlightRef = useRef(false);
   const wasOpenRef = useRef(false);
@@ -547,6 +550,7 @@ export function EventFormModal({
         }
 
         // 照 A handleCreateEvent：加值欄位由表單送出，資料層依權限移除 updates。
+        submitRing.start();
         const result = await updateEventBasics(existingForEdit, payloadForm, ctx);
         if (!isCurrent()) return;
         if (result.addonsStripped) {
@@ -577,6 +581,7 @@ export function EventFormModal({
             console.warn('[EventFormModal] event_changed notify failed', error);
           });
         }
+        await submitRing.succeed();
         current.onSaved({
           mode: 'edit',
           eventId: existingForEdit.id,
@@ -594,6 +599,7 @@ export function EventFormModal({
         });
         batchGroupIdRef.current ??= generateId('batch_');
         const forms = buildMultiDateForms(payloadForm, submitDates, stateForSubmit, releaseNowMs);
+        submitRing.start();
         const result = await createEventsBatch(forms, ctx, ids, batchGroupIdRef.current, writeHooks);
         if (!isCurrent()) return;
         if (result.addonsStripped) {
@@ -601,6 +607,7 @@ export function EventFormModal({
         }
         unconfirmedCreateRef.current = null;
         // 照 A：成功提示「已建立 N 場「X」活動！」、分享詢問用第一場。
+        await submitRing.succeed();
         current.onSaved({
           mode: 'create',
           eventId: result.eventIds[0] ?? ids[0] ?? '',
@@ -613,12 +620,14 @@ export function EventFormModal({
           targetEventId = newEventId(ctx);
           setGeneratedEventId(targetEventId);
         }
+        submitRing.start();
         const result = await createEvent(payloadForm, ctx, targetEventId, writeHooks);
         if (!isCurrent()) return;
         unconfirmedCreateRef.current = null;
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
+        await submitRing.succeed();
         current.onSaved({
           mode: 'create',
           eventId: result.eventId,
@@ -642,6 +651,7 @@ export function EventFormModal({
         toast.show({ message: t('events.form.error.submitFailed'), tone: 'error' });
       }
     } finally {
+      submitRing.fail();
       if (isCurrent()) {
         submitInFlightRef.current = false;
         setSubmitting(false);
@@ -654,10 +664,11 @@ export function EventFormModal({
   const modalTitle = mode === 'edit'
     ? lt('編輯活動', '編輯活動')
     : lt('新增活動', '新增活動');
+  const submitBusyLabel = mode === 'edit'
+    ? lt('儲存中', '儲存中')
+    : lt('建立中...', '建立中...');
   const submitLabel = submitting
-    ? mode === 'edit'
-      ? lt('儲存中', '儲存中')
-      : lt('建立中...', '建立中...')
+    ? submitBusyLabel
     : mode === 'edit'
       ? lt('儲存修改', '儲存修改')
       : lt('建立活動', '建立活動');
@@ -758,7 +769,9 @@ export function EventFormModal({
           >
             {lt('取消', '取消')}
           </button>
-          <button
+          <ActionRingButton
+            control={submitRing}
+            busyLabel={submitBusyLabel}
             type="button"
             class="primary-btn"
             id="ce-submit-btn"
@@ -773,7 +786,7 @@ export function EventFormModal({
             }}
           >
             {submitLabel}
-          </button>
+          </ActionRingButton>
         </div>
       </div>
       {cover.cropper}

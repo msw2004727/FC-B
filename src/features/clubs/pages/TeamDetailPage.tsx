@@ -7,6 +7,7 @@ import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
+import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { EventFormModal } from '@/features/events/components/EventFormModal';
@@ -144,6 +145,8 @@ function TeamDetailContent({
   const [, setPendingRevision] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
+  // 「加入俱樂部」進度環：確認後送出申請才轉，成功打勾後展開成「審核中」。
+  const joinRing = useActionRingControl();
   const teamSequence = useRef(0);
   const memberSequence = useRef(0);
   const eventSequence = useRef(0);
@@ -565,7 +568,9 @@ function TeamDetailContent({
 
       const uid = viewer.uid;
       const self: TeamMember = { uid, displayName: viewer.displayName ?? '' };
+      joinRing.start();
       await requestTeamJoin({ team, applicant: self });
+      await joinRing.succeed();
       rememberPendingJoin(teamId, uid);
       requestViewerRefresh();
       if (alive.current) {
@@ -576,6 +581,7 @@ function TeamDetailContent({
       if (!alive.current) return;
       toast.show({ message: t('clubs.actionError'), tone: 'error' });
     } finally {
+      joinRing.fail();
       actionLock.current = false;
       if (alive.current) setBusy(false);
     }
@@ -690,6 +696,7 @@ function TeamDetailContent({
               onJoin={() => {
                 void handleJoin();
               }}
+              joinRing={joinRing}
               onJoined={handleJoined}
               onJoinPending={handleJoinPending}
               onLeave={() => {

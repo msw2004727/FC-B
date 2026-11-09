@@ -21,6 +21,7 @@ import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { writeOpLog } from '@/data/op-log';
 import { removeAttendance } from '@/features/checkin/data/attendance';
 import { appConfirm } from '@/ui/AppConfirm';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import {
   applyAttendanceWriteResult,
   collectAttendanceOps,
@@ -133,6 +134,8 @@ export function UnregRosterTable({
 }: UnregRosterTableProps): JSX.Element | null {
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // 「完成」的進度環：flush 真的有寫入時才轉，完成才打勾後退出編輯。
+  const finishRing = useActionRingControl();
   const [draftByUid, setDraftByUid] = useState<Record<string, AttendanceSelection>>({});
   const [inFlightUids, setInFlightUids] = useState<Record<string, boolean>>({});
   const [savedFlashUids, setSavedFlashUids] = useState<Record<string, boolean>>({});
@@ -606,12 +609,15 @@ export function UnregRosterTable({
   async function handleCloseEdit(): Promise<void> {
     if (submitting) return;
     setSubmitting(true);
+    if (CALLABLES_DEPLOYED) finishRing.start();
     try {
       await flushInstantSaves();
+      await finishRing.succeed();
       if (CALLABLES_DEPLOYED && aliveRef.current) {
         latestRef.current.onToast?.('儲存完成');
       }
     } finally {
+      finishRing.fail();
       resetInstantSave();
       if (aliveRef.current) {
         setSubmitting(false);
@@ -672,7 +678,9 @@ export function UnregRosterTable({
         isSubmitting ? 'cursor:not-allowed;opacity:.72' : 'cursor:pointer'
       }`;
       return (
-        <button
+        <ActionRingButton
+          control={finishRing}
+          busyLabel="儲存中..."
           type="button"
           style={finishStyle}
           disabled={isSubmitting}
@@ -681,7 +689,7 @@ export function UnregRosterTable({
           }}
         >
           {isSubmitting ? '儲存中...' : CALLABLES_DEPLOYED ? '完成' : '關閉編輯'}
-        </button>
+        </ActionRingButton>
       );
     }
     return (

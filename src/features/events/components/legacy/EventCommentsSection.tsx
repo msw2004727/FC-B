@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import {
   buildLikerSummary,
   canManageComments,
@@ -185,6 +186,11 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
   const [replyBodies, setReplyBodies] = useState<Record<string, string>>({});
   const [openReplies, setOpenReplies] = useState<ReadonlySet<string>>(new Set());
   const [busyKey, setBusyKey] = useState('');
+  // 「送出」進度環：留言一個、回覆共用一個（同時只會有一筆寫入），replyRingId 指向正在送出的回覆框。
+  const commentRing = useActionRingControl();
+  const replyRing = useActionRingControl();
+  const idleRing = useActionRingControl();
+  const [replyRingId, setReplyRingId] = useState('');
   const [, setClock] = useState(0);
 
   function commit(next: CommentItem[]): void {
@@ -285,9 +291,10 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
     return false;
   }
 
+  /** ring：送出鈕的進度環；holdCheck＝成功後會收起輸入框，先等 ✓ 停留完再收。 */
   async function write(
     key: string, task: () => Promise<void>, success: string, failure: string,
-    after?: () => void,
+    after?: () => void, ring?: ActionRingControl, holdCheck = false,
   ): Promise<void> {
     if (!requireUser()) return;
     if (writeBusy.current) {
@@ -296,15 +303,20 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
     }
     writeBusy.current = true;
     setBusyKey(key);
+    ring?.start();
     try {
       await task();
       if (!alive.current) return;
+      const shown = ring ? ring.succeed() : Promise.resolve();
+      if (holdCheck) await shown;
       after?.();
       message(success);
       load(0, Date.now(), true);
     } catch (error) {
+      ring?.fail();
       message(error instanceof CommentActionError ? error.message : failure);
     } finally {
+      ring?.fail();
       writeBusy.current = false;
       if (alive.current) setBusyKey('');
     }
@@ -315,7 +327,7 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
       '留言已送出', '留言送出失敗，請稍後再試', () => {
         setBody('');
         setPrivateComment(false);
-      }).catch(() => message('留言送出失敗，請稍後再試'));
+      }, commentRing).catch(() => message('留言送出失敗，請稍後再試'));
   }
 
   function submitReply(commentId: string): void {
@@ -329,6 +341,7 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
       message('權限不足');
       return;
     }
+    setReplyRingId(commentId);
     write(`reply:${commentId}`,
       () => submitEventCommentReply(current.current, comment, replyBodies[commentId] || ''),
       '回覆已送出', '回覆送出失敗，請稍後再試', () => {
@@ -338,7 +351,7 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
           next.delete(commentId);
           return next;
         });
-      }).catch(() => message('回覆送出失敗，請稍後再試'));
+      }, replyRing, true).catch(() => message('回覆送出失敗，請稍後再試'));
   }
 
   function toggleReply(commentId: string): void {
@@ -494,9 +507,10 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
                   onChange={(e) => setPrivateComment(e.currentTarget.checked)}
                 /> 私密留言（僅主辦與委託能見）
               </label>
-              <button type="submit" class="event-comment-submit" disabled={busyKey === 'comment'}>
+              <ActionRingButton control={commentRing} busyLabel="送出中" type="submit"
+                class="event-comment-submit" disabled={busyKey === 'comment'}>
                 {busyKey === 'comment' ? '送出中' : '送出'}
-              </button>
+              </ActionRingButton>
             </div>
           </form>
         )}
@@ -567,9 +581,10 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
                       setReplyBodies((previous) => ({ ...previous, [comment.id]: value }));
                     }}
                   />
-                  <button type="submit" disabled={busyKey === `reply:${comment.id}`}>
+                  <ActionRingButton control={replyRingId === comment.id ? replyRing : idleRing}
+                    busyLabel="送出中" type="submit" disabled={busyKey === `reply:${comment.id}`}>
                     {busyKey === `reply:${comment.id}` ? '送出中' : '送出'}
-                  </button>
+                  </ActionRingButton>
                 </form>
               )}
               {!!comment.replies.length && (

@@ -53,6 +53,11 @@ describe('calcAgeFromBirthday（台北時區）', () => {
     expect(calcAgeFromBirthday('1985/11/21', taipeiMs(2026, 11, 20, 23, 59))).toBe(40);
   });
 
+  it('閏年 2/29 生日：平年 2/28 還沒滿、3/1 才滿', () => {
+    expect(calcAgeFromBirthday('2000/02/29', taipeiMs(2026, 2, 28))).toBe(25);
+    expect(calcAgeFromBirthday('2000/02/29', taipeiMs(2026, 3, 1))).toBe(26);
+  });
+
   it('格式不對、日期不存在、未來日期回 null', () => {
     const now = taipeiMs(2026, 11, 8);
     expect(calcAgeFromBirthday('', now)).toBeNull();

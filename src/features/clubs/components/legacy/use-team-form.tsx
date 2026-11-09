@@ -8,6 +8,7 @@ import type { DirectoryUser } from '@/features/events/data/user-directory';
 import { SPORTS } from '@/features/events/data/sports';
 import { toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
+import { useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import { t } from '@/i18n/i18n';
 import {
   canAssignCoach,
@@ -81,6 +82,8 @@ export interface TeamFormApi {
   title: string;
   submitLabel: string;
   busyLabel: string;
+  /** 建立／儲存鈕的進度環：寫入時才轉，成功打勾後才交給 onSaved 關窗。 */
+  submitRing?: ActionRingControl;
   values: TeamFormValues;
   setValue<K extends keyof TeamFormValues>(key: K, value: TeamFormValues[K]): void;
   categoryOptions: typeof TEAM_CATEGORY_OPTIONS;
@@ -397,6 +400,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
   });
   const [pendingName, setPendingName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitRing = useActionRingControl();
   const locked = useRef(false);
   const [regionSuggestions, setRegionSuggestions] = useState<string[]>([]);
   const [regionOpen, setRegionOpen] = useState(false);
@@ -793,6 +797,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
       }
       if (!current()) return;
 
+      submitRing.start();
       const result = submittedProps.mode === 'create'
         ? await submitCreateTeam({
           viewer,
@@ -817,6 +822,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         });
         return;
       }
+      await submitRing.succeed();
       toast.show({
         message: result.imagePending
           ? t('clubs.userCreate.imagePending')
@@ -845,6 +851,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         });
       }
     } finally {
+      submitRing.fail();
       if (current()) {
         locked.current = false;
         setBusy(false);
@@ -906,6 +913,7 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
     title: props.mode === 'create' ? '新增俱樂部' : '編輯俱樂部',
     submitLabel: props.mode === 'create' ? '建立俱樂部' : '儲存變更',
     busyLabel: props.mode === 'create' ? '建立中...' : '儲存中...',
+    submitRing,
     values,
     setValue,
     categoryOptions,

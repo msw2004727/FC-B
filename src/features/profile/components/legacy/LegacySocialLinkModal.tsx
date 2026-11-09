@@ -8,6 +8,7 @@ import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import {
   clearSocialLink,
@@ -105,6 +106,8 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
   const [value, setValue] = useState(() => socialInputValue(platform, currentValue));
   const [invalid, setInvalid] = useState(false);
   const [pending, setPending] = useState(false);
+  // 「儲存」進度環（「清除」鈕不轉）：送出才轉，成功打勾後才關窗。
+  const saveRing = useActionRingControl();
 
   const aliveRef = useRef(true);
   const onCloseRef = useRef(onClose);
@@ -133,22 +136,33 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
     };
   }, []);
 
-  function commitClear(): void {
+  /** fromSave：由「儲存」鈕清空輸入觸發時，環轉在「儲存」鈕上。 */
+  function commitClear(fromSave = false): void {
     if (pending) return;
     setInvalid(false);
     setPending(true);
-    clearSocialLink(uid, platform)
-      .then(() => {
-        if (!aliveRef.current) return;
-        onSaved({ socialLinks: { ...socialLinks, [platform]: '' } });
-        toast.show({ message: lt('社群連結已清除', '社群連結已清除') });
-        onCloseRef.current();
-      })
-      .catch(() => {
-        if (!aliveRef.current) return;
-        toast.show({ message: lt('儲存失敗，請稍後再試。', '儲存失敗，請稍後再試。') });
-        setPending(false);
-      });
+    if (fromSave) saveRing.start();
+    persist(() => clearSocialLink(uid, platform), { socialLinks: { ...socialLinks, [platform]: '' } },
+      lt('社群連結已清除', '社群連結已清除')).catch(() => {});
+  }
+
+  // 原 .then／.catch 鏈改 async/await（加進度環 ✓ 停留），成功與失敗的處理順序不變。
+  async function persist(write: () => Promise<void>, patch: Record<string, unknown>, done: string): Promise<void> {
+    try {
+      await write();
+      if (!aliveRef.current) return;
+      await saveRing.succeed();
+      onSaved(patch);
+      toast.show({ message: done });
+      onCloseRef.current();
+    } catch {
+      saveRing.fail();
+      if (!aliveRef.current) return;
+      toast.show({ message: lt('儲存失敗，請稍後再試。', '儲存失敗，請稍後再試。') });
+      setPending(false);
+    } finally {
+      saveRing.fail();
+    }
   }
 
   function commitSave(raw: string): void {
@@ -159,23 +173,15 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
     }
     const trimmed = raw.trim();
     if (!trimmed) {
-      commitClear();
+      commitClear(true);
       return;
     }
     setInvalid(false);
     setPending(true);
-    saveSocialLink(uid, platform, trimmed)
-      .then(() => {
-        if (!aliveRef.current) return;
-        onSaved({ socialLinks: { ...socialLinks, [platform]: storedValue(platform, trimmed) } });
-        toast.show({ message: lt('社群連結已儲存', '社群連結已儲存') });
-        onCloseRef.current();
-      })
-      .catch(() => {
-        if (!aliveRef.current) return;
-        toast.show({ message: lt('儲存失敗，請稍後再試。', '儲存失敗，請稍後再試。') });
-        setPending(false);
-      });
+    saveRing.start();
+    persist(() => saveSocialLink(uid, platform, trimmed),
+      { socialLinks: { ...socialLinks, [platform]: storedValue(platform, trimmed) } },
+      lt('社群連結已儲存', '社群連結已儲存')).catch(() => {});
   }
 
   const clearVisible = currentValue.length > 0;
@@ -233,7 +239,7 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
             class="outline-btn"
             id="social-clear-btn"
             disabled={pending}
-            onClick={commitClear}
+            onClick={() => commitClear()}
             style={{
               color: 'var(--danger)',
               borderColor: 'var(--danger)',
@@ -242,14 +248,16 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
           >
             {lt('清除', '清除')}
           </button>
-          <button
+          <ActionRingButton
+            control={saveRing}
+            busyLabel={lt('儲存中...', '儲存中...')}
             type="button"
             class="primary-btn"
             disabled={pending}
             onClick={() => commitSave(value)}
           >
             {pending ? lt('儲存中...', '儲存中...') : lt('儲存', '儲存')}
-          </button>
+          </ActionRingButton>
         </div>
       </div>
     </div>,

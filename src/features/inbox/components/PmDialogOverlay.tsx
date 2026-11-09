@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'preact-iso';
 
 import { pushOverlay } from '@/core/overlay-back';
+import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import { useLegacyT } from '@/i18n/i18n';
 import { useViewer } from '@/features/profile/data/viewer';
 import {
@@ -139,6 +140,9 @@ export function PmDialogOverlay(): JSX.Element | null {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [sending, setSending] = useState(false);
+  // 私訊「送出」進度環：本地檢查通過才轉，送達才打勾。
+  const sendRing = useActionRingControl();
+  const { start: startSendRing, succeed: succeedSendRing, fail: failSendRing } = sendRing;
   const [busyAction, setBusyAction] = useState<{
     messageId: string;
     type: 'editing' | 'recalling';
@@ -461,9 +465,13 @@ export function PmDialogOverlay(): JSX.Element | null {
 
     setComposeBody('');
     setSending(true);
+    startSendRing();
     try {
       await sendPrivateMessage(target.uid, body);
+      // 留在對話框：✓ 停留與展開自己跑完，不擋後續流程。
+      succeedSendRing().catch(() => {});
     } catch (err) {
+      failSendRing();
       console.warn('[pm-dialog] send failed', err);
       if (!mountedRef.current) return;
       setComposeBody((previous) => previous || body);
@@ -476,9 +484,10 @@ export function PmDialogOverlay(): JSX.Element | null {
         showToast(lt('私訊送出失敗', '私訊送出失敗'));
       }
     } finally {
+      failSendRing();
       if (mountedRef.current) setSending(false);
     }
-  }, [target, sending, composeBody, lt]);
+  }, [target, sending, composeBody, lt, startSendRing, succeedSendRing, failSendRing]);
 
   const handleEdit = useCallback(
     async (message: PmMessage): Promise<void> => {
@@ -757,9 +766,10 @@ export function PmDialogOverlay(): JSX.Element | null {
                 resizeInput();
               }}
             />
-            <button type="submit" class="pm-dialog-send" disabled={sending}>
+            <ActionRingButton control={sendRing} busyLabel={lt('送出中', '送出中')} type="submit"
+              class="pm-dialog-send" disabled={sending}>
               {sending ? lt('送出中', '送出中') : lt('送出', '送出')}
-            </button>
+            </ActionRingButton>
           </form>
         </section>
       </div>

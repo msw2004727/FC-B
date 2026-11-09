@@ -1,0 +1,93 @@
+/* 變形加進度環（共用，見 action-ring.tsx）。
+   環與 ✓ 一律用 currentColor：軌道 .3 透明度＝設計稿 rgba(255,255,255,.3)。
+   報名主按鈕的縮圓（改寬度、補邊界）留在 activity.css；這裡是內容與一般按鈕。
+   （11-09 從 activity.css 搬來：取代原本只給主按鈕用的 .signup-ring-svg／track／arc／check。） */
+.signup-ring-svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -17px 0 0 -17px;
+}
+.signup-ring-track,
+.signup-ring-arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+}
+.signup-ring-track {
+  stroke-opacity: .3;
+}
+.signup-ring-arc {
+  stroke-linecap: round;
+}
+.signup-ring-arc.is-fill {
+  transition: stroke-dashoffset .15s;
+}
+.signup-ring-check {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* 一般按鈕：外框大小與位置不動（不撐高、不擠旁邊按鈕），只用 clip-path 裁成正中的圓。
+   --action-ring-d＝圓直徑（JS 取 min(46px, 按鈕原高度)）；原內容保留在 .action-ring-label 撐住寬度但隱藏。
+   減少動態時 JS 不套這些 class。 */
+.action-ring-label {
+  display: contents;
+}
+/* 環期間不沿用 :disabled／inline 的半透明（同主按鈕：圓與環維持原色）。 */
+.action-ring-btn {
+  position: relative;
+  opacity: 1 !important;
+}
+.action-ring-btn > .action-ring-label {
+  visibility: hidden;
+}
+.action-ring-btn.is-collapsed {
+  -webkit-clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+  clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+  animation: action-ring-collapse .25s ease;
+}
+.action-ring-btn.is-expanding {
+  animation: action-ring-expand .26s ease both;
+}
+@keyframes action-ring-collapse {
+  from {
+    -webkit-clip-path: inset(0 0 round 0);
+    clip-path: inset(0 0 round 0);
+  }
+  to {
+    -webkit-clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+    clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+  }
+}
+@keyframes action-ring-expand {
+  from {
+    -webkit-clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+    clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
+  }
+  to {
+    -webkit-clip-path: inset(0 0 round 0);
+    clip-path: inset(0 0 round 0);
+  }
+}
+.action-ring-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--action-ring-d) * .74);
+  height: calc(var(--action-ring-d) * .74);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.action-ring-mark .signup-ring-svg {
+  position: static;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+.action-ring-mark .signup-ring-check {
+  font-size: calc(var(--action-ring-d) * .48);
+}

@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { pushOverlay } from '@/core/overlay-back';
+import { ActionRingButton, type ActionRingControl } from '@/ui/action-ring';
 import {
   getTeamReservationInitialSlots,
   type getTeamReservationModalState,
@@ -44,9 +45,10 @@ function ReservationDialog({ id, title, onClose, children, actions }: {
 }
 
 /** A openTeamReservationModal：沿用 activity.css 與原有文案。 */
-export function TeamReservationModal({ state, busy, onSelectTeam, onClose, onConfirm }: {
+export function TeamReservationModal({ state, busy, ring, onSelectTeam, onClose, onConfirm }: {
   state: NonNullable<ReturnType<typeof getTeamReservationModalState>>;
   busy: boolean;
+  ring: ActionRingControl;
   onSelectTeam: (teamId: string) => void;
   onClose: () => void;
   onConfirm: (slots: string) => void;
@@ -56,8 +58,9 @@ export function TeamReservationModal({ state, busy, onSelectTeam, onClose, onCon
     <ReservationDialog id="team-reservation-modal" title="團隊報名" onClose={onClose} actions={
       <>
         <button type="button" class="outline-btn" onClick={onClose}>取消</button>
-        <button type="button" class="primary-btn" id="team-reservation-confirm-btn"
-          disabled={busy} onClick={() => onConfirm(slots)}>{busy ? '處理中...' : '確認'}</button>
+        <ActionRingButton control={ring} busyLabel="處理中..." type="button" class="primary-btn"
+          id="team-reservation-confirm-btn" disabled={busy}
+          onClick={() => onConfirm(slots)}>{busy ? '處理中...' : '確認'}</ActionRingButton>
       </>
     }>
       <div class="team-reservation-note">團隊名額不包含你本人；如果你也要參加，請再點「個人報名」。</div>

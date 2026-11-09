@@ -11,6 +11,7 @@ import { EventDetailPrimaryButton } from './EventDetailPrimaryButton';
 import { getSignupButtonState } from '../../data/signup-state';
 import { getTeamReservationStaffTeams, type TeamReservationEvent, type TeamReservationViewer } from '../../data/team-reservation';
 import { applyReservationPromotions } from './team-reservation-sync';
+import { stubReducedMotion, watchActionRing } from '@/ui/action-ring-test-utils';
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), toast: vi.fn(), applied: vi.fn(), chosen: vi.fn(), read: vi.fn() }));
 vi.mock('@/data/callables', () => ({ callFn: mock.call, CallableError: class extends Error {} }));
@@ -322,5 +323,78 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     expect(result[1]).toBe(rows[1]); expect(result[2]).toBe(rows[2]);
     const byId = applyReservationPromotions(rows, [{ id: 'r2', docId: '', userId: '', userName: '', teamSeatSource: null }], 'e1');
     expect(byId[1]).toMatchObject({ status: 'confirmed', teamSeatSource: 'reserved' });
+  });
+});
+
+describe('團隊報名彈窗「確認」進度環', () => {
+  const confirmButton = (): HTMLButtonElement =>
+    document.getElementById('team-reservation-confirm-btn') as HTMLButtonElement;
+  function deferCall() {
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: Error) => void;
+    mock.call.mockImplementationOnce(() => new Promise((done, fail) => { resolve = done; reject = fail; }));
+    return { resolve: (value: unknown) => resolve(value), reject: (error: Error) => reject(error) };
+  }
+
+  it('成功：送出後縮成環，寫入成功打勾停留後才關窗', async () => {
+    const call = deferCall();
+    render(<Harness />); await open(); input('3');
+    const watch = watchActionRing();
+    confirm();
+    await waitFor(() => expect(confirmButton().classList.contains('is-collapsed')).toBe(true));
+    expect(confirmButton().getAttribute('aria-busy')).toBe('true');
+    expect(confirmButton().getAttribute('aria-label')).toBe('處理中...');
+    call.resolve({ success: true, event: occupancy, promoted: [] });
+    await waitFor(() => expect(confirmButton()?.querySelector('.signup-ring-check')).not.toBeNull());
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(mock.applied).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(mock.applied).toHaveBeenCalledTimes(1));
+    expect(mock.toast).toHaveBeenCalledWith({ message: '已更新團隊名額' });
+    expect(watch.seen.has('check')).toBe(true);
+    watch.stop();
+  });
+
+  it('失敗：不打勾，展開回原狀並照舊提示', async () => {
+    const call = deferCall();
+    render(<Harness />); await open(); input('3');
+    const watch = watchActionRing();
+    confirm();
+    await waitFor(() => expect(confirmButton().classList.contains('is-collapsed')).toBe(true));
+    call.reject(new Error('SECRET_STACK'));
+    await waitFor(() => expect(mock.toast).toHaveBeenCalledWith({ message: '團隊名額調整失敗，請稍後重試' }));
+    await waitFor(() => expect(confirmButton().classList.contains('action-ring-btn')).toBe(false));
+    expect(confirmButton().textContent).toBe('確認');
+    expect(confirmButton().disabled).toBe(false);
+    expect(watch.seen.has('check')).toBe(false);
+    watch.stop();
+  });
+
+  it('本地驗證失敗：不送 Callable、按鈕完全不縮圓', async () => {
+    render(<Harness />); await open(); input('1');
+    const watch = watchActionRing();
+    confirm();
+    await waitFor(() => expect(mock.toast).toHaveBeenCalledWith({ message: '團隊名額不能低於已使用人數' }));
+    await new Promise(done => setTimeout(done, 20));
+    expect(mock.call).not.toHaveBeenCalled();
+    expect(watch.seen.size).toBe(0);
+    watch.stop();
+  });
+
+  it('減少動態：維持「處理中...」文字不變形，成功直接關窗', async () => {
+    stubReducedMotion();
+    try {
+      const call = deferCall();
+      render(<Harness />); await open(); input('3');
+      const watch = watchActionRing();
+      confirm();
+      await waitFor(() => expect(confirmButton().textContent).toBe('處理中...'));
+      await new Promise(done => setTimeout(done, 20));
+      expect(confirmButton().classList.contains('action-ring-btn')).toBe(false);
+      call.resolve({ success: true, event: occupancy, promoted: [] });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(watch.seen.size).toBe(0);
+      watch.stop();
+    } finally { vi.unstubAllGlobals(); }
   });
 });

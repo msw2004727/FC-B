@@ -754,6 +754,7 @@ a.social-btn { text-decoration: none; }
   text-align: left;
   cursor: pointer;
 }
+#profile-info-card .pfi-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #profile-info-card .pfi-actions { display: flex; justify-content: flex-end; }
 
 /* ─── LINE Notify Card ─── */
