@@ -143,6 +143,14 @@ describe('syncUserDoc：文件不存在', () => {
     expect(fs.setDoc).not.toHaveBeenCalled();
   });
 
+  it('審查 P3-5：新建送出的 payload 一定帶本次 serverTimestamp 的 createdAt', async () => {
+    liffState.ready = liff();
+    fs.getDoc.mockResolvedValue(missing);
+    await syncUserDoc('U1');
+    const payload = fs.setDoc.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload.createdAt).toBe(TS);
+  });
+
   it('LINE 未登入（拿不到 profile）：不建檔、拋錯', async () => {
     liffState.ensure.mockResolvedValue({ ...liff(), isLoggedIn: () => false });
     fs.getDoc.mockResolvedValue(missing);
@@ -245,11 +253,50 @@ describe('syncUserDoc：拒絕寫入與失敗處理', () => {
   });
 });
 
+describe('審查 P3-2：已存在文件只用真的 getProfile 結果更新名稱頭像', () => {
+  it('getProfile 失敗、退回 ID token（沒有 name）：不用 LINE User 覆寫既有名稱，只補 lastLogin', async () => {
+    liffState.ready = liff(new Error('timeout'), { sub: 'U1' });
+    fs.getDoc.mockResolvedValue(existing({ displayName: '老會員', pictureUrl: 'https://p/old', lastLogin: ts(NOW - 30 * MIN) }));
+    await expect(syncUserDoc('U1')).resolves.toBe('updated');
+    expect(fs.updateDoc).toHaveBeenCalledWith({ path: 'users/U1' }, { lastLogin: TS });
+    expect(refreshes).toBe(0);
+  });
+
+  it('退回 ID token 且有 name／picture：仍不覆寫既有名稱頭像（10 分鐘內就不寫）', async () => {
+    liffState.ready = liff(new Error('timeout'), { sub: 'U1', name: '別名', picture: 'https://p/new' });
+    fs.getDoc.mockResolvedValue(existing({ displayName: '老會員', pictureUrl: 'https://p/old', lastLogin: ts(NOW - MIN) }));
+    await expect(syncUserDoc('U1')).resolves.toBe('unchanged');
+    expect(fs.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('getProfile 名稱空白：保留既有名稱（不用 uid 覆寫），頭像照 getProfile 更新', async () => {
+    liffState.ready = liff({ userId: 'U1', displayName: '  ', pictureUrl: 'https://p/new' });
+    fs.getDoc.mockResolvedValue(existing({ displayName: '老會員', pictureUrl: 'https://p/old', lastLogin: ts(NOW - MIN) }));
+    await expect(syncUserDoc('U1')).resolves.toBe('updated');
+    expect(fs.updateDoc).toHaveBeenCalledWith({ path: 'users/U1' }, { pictureUrl: 'https://p/new' });
+  });
+
+  it('文件不存在、只能退回 ID token：新建照 A 後備（LINE User）', async () => {
+    liffState.ready = liff(new Error('timeout'), { sub: 'U1' });
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+    expect(fs.setDoc.mock.calls[0]![1]).toMatchObject({ displayName: 'LINE User', pictureUrl: null });
+  });
+
+  it('signIn 已取得的 profile（liff.fcbProfile）直接沿用，不再呼叫 getProfile', async () => {
+    const source = { ...liff(), fcbProfile: Promise.resolve({ userId: 'U1', displayName: '小明', pictureUrl: 'https://p/1' }) };
+    liffState.ready = source;
+    fs.getDoc.mockResolvedValue(existing({ displayName: '小明', pictureUrl: 'https://p/1', lastLogin: ts(NOW - MIN) }));
+    await expect(syncUserDoc('U1')).resolves.toBe('unchanged');
+    expect(source.getProfile).not.toHaveBeenCalled();
+  });
+});
+
 describe('readLineProfile', () => {
   it('getProfile 失敗時退回 ID token（照 A Fallback 2）', async () => {
     const source = liff(new Error('blocked'), { sub: 'U1', name: '小華', picture: 'https://p/2', email: 'b@example.test' });
     await expect(readLineProfile(source)).resolves.toEqual({
-      userId: 'U1', displayName: '小華', pictureUrl: 'https://p/2', email: 'b@example.test',
+      userId: 'U1', displayName: '小華', pictureUrl: 'https://p/2', email: 'b@example.test', source: 'idToken',
     });
   });
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import oracleFixture from './__fixtures__/user-doc-oracle.json';
 import {
   assertUserRootCreate,
+  buildExistingLoginUpdate,
   buildLegacyMigration,
   buildLoginUpdate,
   buildNewUserDoc,
@@ -63,6 +64,7 @@ function profileOf(c: OracleCase): LineLoginProfile {
     displayName: p.displayName ?? null,
     pictureUrl: p.pictureUrl ?? null,
     email: p.email ?? null,
+    source: 'getProfile',
   };
 }
 
@@ -121,6 +123,21 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     }
   });
 
+  it('審查 P3-5：建立一定要帶本次 serverTimestamp 的 createdAt，缺少或換成其他值都拒寫（保證只建立、不覆寫）', () => {
+    const c = fixture.cases.find((x) => x.id === 'new-basic')!;
+    const payload = buildNewUserDoc(c.input.authUid, profileOf(c), TS);
+    expect(() => assertUserRootCreate(payload, c.input.authUid, TS, USER_DOC_CREATE_FIELDS)).not.toThrow();
+    const withoutCreatedAt = { ...payload };
+    delete withoutCreatedAt.createdAt;
+    expect(() => assertUserRootCreate(withoutCreatedAt, c.input.authUid, TS, USER_DOC_CREATE_FIELDS))
+      .toThrow(/create-values-not-allowed:createdAt$/);
+    expect(() => assertUserRootCreate({ ...payload, createdAt: { toMillis: () => 1 } }, c.input.authUid, TS, USER_DOC_CREATE_FIELDS))
+      .toThrow(/create-values-not-allowed:createdAt$/);
+    // legacy 遷移也一樣：舊文件沒有 createdAt 時 B 會補本次時間；有就照抄而被拒。
+    const legacy = buildLegacyMigration({ lineUserId: c.input.authUid }, c.input.authUid, profileOf(c), TS);
+    expect(legacy.createdAt).toBe(TS);
+  });
+
   it('legacy：沒有 createdAt 的舊文件可遷移；A 照抄舊 createdAt／非 user 角色的 payload 會被 Rules 擋，B 不送', () => {
     const ok = fixture.cases.find((c) => c.id === 'legacy-no-createdAt')!;
     expect(() => assertUserRootCreate(
@@ -139,6 +156,23 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
       expect(keys.every((k) => ['displayName', 'pictureUrl', 'lastLogin'].includes(k))).toBe(true);
       expect(keys).toEqual(expect.arrayContaining(['displayName', 'pictureUrl']));
     }
+  });
+
+  it('B 已存在分支（buildExistingLoginUpdate）：真的 getProfile 有名稱時與 A 相同；名稱空白時不覆寫名稱（與 A 的刻意差異，審查 P3-2）', () => {
+    for (const c of fixture.cases.filter((x) => x.id.startsWith('existing-'))) {
+      const existingDoc = decode(c.input.canonical) as Record<string, unknown>;
+      const b = encode(buildExistingLoginUpdate(existingDoc, profileOf(c), c.input.nowMs, TS)) as Record<string, unknown>;
+      const a = c.expected.writes[0]!.payload;
+      if (String(c.input.profile.displayName ?? '').trim()) {
+        expect(b).toEqual(a);
+      } else {
+        const rest = { ...a };
+        delete rest.displayName;
+        expect(b).toEqual(rest);
+      }
+    }
+    const idTokenProfile = { ...profileOf(fixture.cases.find((c) => c.id === 'existing-old-login')!), source: 'idToken' as const };
+    expect(buildExistingLoginUpdate({ lastLogin: { toMillis: () => 0 } }, idTokenProfile, 11 * 60_000, TS)).toEqual({ lastLogin: TS });
   });
 
   it('已存在且內容相同：A 仍送一次相同內容的 update，B 判定為無變更不送（結果相同）', () => {

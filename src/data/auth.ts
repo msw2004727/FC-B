@@ -279,7 +279,8 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
   let displayName: string | null = null;
   let pictureUrl: string | null = null;
   try {
-    const profile = await liff.getProfile();
+    // 同一份結果交給會員文件同步（user-doc-sync.ts 讀 fcbProfile），登入時只呼叫一次 getProfile。
+    const profile = await ((liff as { fcbProfile?: unknown }).fcbProfile = liff.getProfile());
     displayName = profile.displayName ?? null;
     pictureUrl = profile.pictureUrl ?? null;
   } catch (err) {

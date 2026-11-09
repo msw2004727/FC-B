@@ -37,6 +37,8 @@ export interface LineLoginProfile {
   displayName: string | null;
   pictureUrl: string | null;
   email: string | null;
+  /** 名稱頭像來源：getProfile＝LINE 回傳的真資料；idToken＝退回 ID token（名稱可能是預設值）。省略視為 getProfile。 */
+  source?: 'getProfile' | 'idToken';
 }
 
 export class UserDocSyncError extends Error {
@@ -107,6 +109,18 @@ export function buildLoginUpdate(existing: Data, profile: LineLoginProfile, nowM
   return updates;
 }
 
+/**
+ * B 已存在分支實際送出的更新（審查 P3-2，與 A 的刻意差異）：名稱頭像只用真的 getProfile 結果更新；
+ * 退回 ID token（名稱可能是 'LINE User' 預設值）時只補 lastLogin；getProfile 名稱空白時保留既有名稱，不用 uid 覆寫。
+ * 其餘照 A `buildLoginUpdate`。新建時的後備仍照 A。
+ */
+export function buildExistingLoginUpdate(existing: Data, profile: LineLoginProfile, nowMs: number, ts: unknown): Data {
+  if (profile.source === 'idToken') return buildLastLoginUpdate(existing, nowMs, ts);
+  const updates = buildLoginUpdate(existing, profile, nowMs, ts);
+  if (!(typeof profile.displayName === 'string' && profile.displayName.trim())) delete updates.displayName;
+  return updates;
+}
+
 /** 沒有 LINE profile 的進站（Auth 還原）：只補 lastLogin，條件同 A（超過 10 分鐘）。 */
 export function buildLastLoginUpdate(existing: Data, nowMs: number, ts: unknown): Data {
   return nowMs - toMillis(existing.lastLogin) > LAST_LOGIN_REFRESH_MS ? { lastLogin: ts } : {};
@@ -119,7 +133,12 @@ export function isNoopLoginUpdate(existing: Data, updates: Data): boolean {
   );
 }
 
-/** 寫入前對照 Rules `isSafeUserRootCreate()`：欄位白名單＋值限制；不符就不送（避免必被拒的寫入）。 */
+/**
+ * 寫入前對照 Rules `isSafeUserRootCreate()`：欄位白名單＋值限制；不符就不送（避免必被拒的寫入）。
+ * createdAt 必填且必須是本次 serverTimestamp（審查 P3-5）：文件若其實已存在（例如離線快取誤判不存在），
+ * setDoc 會變成 update，而改動 createdAt 被所有 update 路徑拒絕（含 super_admin 的 isSafeSuperAdminUserUpdate），
+ * 所以「只建立、不覆寫」由這條斷言明確保證，不靠呼叫端剛好帶了 createdAt。
+ */
 export function assertUserRootCreate(payload: Data, uid: string, ts: unknown, allowed: readonly string[]): void {
   try {
     assertAllowedFields('users.create', payload, allowed);
@@ -134,7 +153,8 @@ export function assertUserRootCreate(payload: Data, uid: string, ts: unknown, al
   if (has('role') && payload.role !== 'user') bad.push('role');
   if (has('exp') && payload.exp !== 0) bad.push('exp');
   if (has('level') && payload.level !== 1) bad.push('level');
-  for (const key of ['createdAt', 'lastLogin', 'updatedAt']) {
+  if (payload.createdAt !== ts) bad.push('createdAt');
+  for (const key of ['lastLogin', 'updatedAt']) {
     if (has(key) && payload[key] !== ts) bad.push(key);
   }
   if (bad.length > 0) throw new UserDocSyncError(`create-values-not-allowed:${bad.join(',')}`);

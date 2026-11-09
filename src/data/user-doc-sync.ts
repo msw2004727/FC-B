@@ -2,7 +2,8 @@
 //
 // 2026-11-09 P1：B 登入流程原本不建會員文件，換站後的新會員報名名字變「用戶」、個人頁「找不到用戶資料」。
 // - 不存在：先找 legacy（where lineUserId == uid limit 1），沒有就照 A 新建欄位建立；有就照 A 合併遷移。
-// - 已存在：只更新 A 會更新的 displayName／pictureUrl，lastLogin 超過 10 分鐘才更新（Rules isSafeLoginUpdate）。
+// - 已存在：只更新 A 會更新的 displayName／pictureUrl（只用真的 getProfile 結果，見 buildExistingLoginUpdate），
+//   lastLogin 超過 10 分鐘才更新（Rules isSafeLoginUpdate）。
 //   role、exp、level、lineNotify 等其他欄位一律不寫。
 // - auth uid 與 LINE userId 不一致：照 A 拒絕寫入。
 // - 只是 Auth 還原的進站（沒有 LINE profile）：文件存在只補 lastLogin（超過 10 分鐘，同 A）；文件不存在才初始化 LIFF 取 profile 建檔。
@@ -19,9 +20,9 @@ import { ensureLiffInit, getReadyLiff } from './liff-init';
 import { users } from './paths';
 import {
   assertUserRootCreate,
+  buildExistingLoginUpdate,
   buildLastLoginUpdate,
   buildLegacyMigration,
-  buildLoginUpdate,
   buildNewUserDoc,
   isNoopLoginUpdate,
   LAST_LOGIN_REFRESH_MS,
@@ -42,11 +43,15 @@ export const USER_DOC_SYNCED_KEY = 'toosterx:auth:user-doc';
 
 export type UserDocSyncResult = 'created' | 'migrated' | 'updated' | 'unchanged' | 'skipped';
 
+type LiffProfile = { userId?: string; displayName?: string; pictureUrl?: string };
+
 /** 只用到的 LIFF 介面（getProfile、ID token）。 */
 export interface LiffProfileSource {
   isLoggedIn(): boolean;
-  getProfile(): Promise<{ userId?: string; displayName?: string; pictureUrl?: string }>;
+  getProfile(): Promise<LiffProfile>;
   getDecodedIDToken(): { sub?: string; name?: string; picture?: string; email?: string } | null;
+  /** signIn（auth.ts）已呼叫過的 getProfile；有就沿用，登入時只呼叫一次（審查 P3-2）。 */
+  fcbProfile?: Promise<LiffProfile>;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -59,7 +64,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** 照 A `LineAuth` 取 LINE profile：getProfile，失敗退回 ID token；email 一律取自 ID token。 */
+/** 照 A `LineAuth` 取 LINE profile：getProfile（signIn 已呼叫過就沿用），失敗退回 ID token；email 一律取自 ID token。 */
 export async function readLineProfile(liff: LiffProfileSource): Promise<LineLoginProfile | null> {
   let idToken: ReturnType<LiffProfileSource['getDecodedIDToken']> = null;
   try {
@@ -69,15 +74,19 @@ export async function readLineProfile(liff: LiffProfileSource): Promise<LineLogi
   }
   const email = idToken?.email || null;
   try {
-    const p = await withTimeout(liff.getProfile(), PROFILE_TIMEOUT_MS);
+    const p = await withTimeout(liff.fcbProfile ?? liff.getProfile(), PROFILE_TIMEOUT_MS);
     if (p?.userId) {
-      return { userId: p.userId, displayName: p.displayName ?? null, pictureUrl: p.pictureUrl || null, email };
+      return {
+        userId: p.userId, displayName: p.displayName ?? null, pictureUrl: p.pictureUrl || null, email, source: 'getProfile',
+      };
     }
   } catch {
     // 退回 ID token（照 A Fallback 2）。
   }
   if (idToken?.sub) {
-    return { userId: idToken.sub, displayName: idToken.name || 'LINE User', pictureUrl: idToken.picture || null, email };
+    return {
+      userId: idToken.sub, displayName: idToken.name || 'LINE User', pictureUrl: idToken.picture || null, email, source: 'idToken',
+    };
   }
   return null;
 }
@@ -142,7 +151,7 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
     const existing = (snap.data() ?? {}) as Data;
     const profile = readyLiff ? await requireProfile(readyLiff, uid) : null;
     const updates = profile
-      ? buildLoginUpdate(existing, profile, nowMs, ts)
+      ? buildExistingLoginUpdate(existing, profile, nowMs, ts)
       : buildLastLoginUpdate(existing, nowMs, ts);
     visibleChange = (['displayName', 'pictureUrl'] as const).some((key) => key in updates && existing[key] !== updates[key]);
     if (isNoopLoginUpdate(existing, updates)) {
