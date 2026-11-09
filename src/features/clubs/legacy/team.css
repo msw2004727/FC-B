@@ -2915,8 +2915,8 @@
 [data-theme="dark"] .td-settings-switch-thumb {
   background: #e5e7eb;
 }
-[data-theme="dark"] .ct-type-tag-btn,
-/* C1：深色原本蓋掉選中狀態的漸層（同權重、在後），選中的類型看不出來；只套在未選中的按鈕 */
+/* C1／0.20261109f：深色原本蓋掉選中狀態的漸層（同權重、在後），選中的類型看不出來；只套在未選中的按鈕（設定彈窗 td- 與建立表單 ct- 兩處） */
+[data-theme="dark"] .ct-type-tag-btn:not(.active),
 [data-theme="dark"] .td-category-tag-btn:not(.active) {
   background: rgba(15, 23, 42, .86);
   border-color: rgba(255, 255, 255, .14);
