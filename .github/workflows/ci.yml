@@ -1,5 +1,6 @@
-# FC-B CI：型別檢查＋vitest 全套＋i18n 檢查（T-051）。
-# 刻意不做的事：不執行任何建置（FC-B 的 build 預設連 PROD）、不部署、不用 secret、不用第三方 action。
+# FC-B CI：型別檢查＋vitest 全套＋i18n 檢查（T-051），另加首頁 gzip 預算。
+# 只有 bundle-budget 這個 job 會建置。建置輸出只拿來量大小：不部署、不上傳 artifact、不用 secret、
+# 不連網路服務（建置不連 Firestore，只是把 PROD 設定寫進檔案）。其餘 job 不建置。不用第三方 action。
 # 本機（Windows）不再跑全測，Playwright 與速度量測仍在本機。
 name: CI
 
@@ -113,3 +114,29 @@ jobs:
 
       - name: 時區敏感測試（vitest）
         run: npx vitest run src/core/taipei-time.test.ts src/features/home/data/announcements.test.ts src/features/events/data/event-create.test.ts src/features/events/data/event-form-model.test.ts src/features/events/data/signup-restrictions.test.ts src/features/events/data/my-activities-model.test.ts src/features/events/components/legacy/EventDetailMainView.test.tsx src/data/inbox-delivery.test.ts src/features/checkin/data/__tests__/attendance.test.ts src/features/events/data/attendance-edit.test.ts src/data/op-log.test.ts src/features/events/data/line-notify-bind.test.ts src/features/admin-banners/data/banner-model.test.ts src/features/admin-banners/data/banner-admin.test.ts src/core/event-time.test.ts src/features/checkin/CheckinPage.shell.test.tsx src/features/checkin/data/__tests__/scan-events.test.ts src/features/clubs/components/legacy/TeamDetailWeekStrip.test.tsx src/features/clubs/data/team-detail-model.test.ts src/features/clubs/pages/TeamDetailPage.test.tsx src/features/events/components/legacy/ActivityCalendar.test.tsx src/features/events/data/attendance-settle.test.ts src/features/events/data/calendar-model.test.ts src/features/events/data/event-calendar.test.ts src/features/events/data/event-comments.test.ts src/features/events/data/event-lifecycle.test.ts src/features/events/data/signup.test.ts src/features/events/data/terminal.test.ts src/features/events/pages/ActivitiesPage.test.tsx src/features/events/pages/EventDetailPage.3b2b.test.tsx src/features/home/data/next-activity.test.ts src/features/profile/data/activity-records.test.ts src/core/taipei-guard.test.ts
+
+  # 首頁主程式 gzip 預算。只有這個 job 建置。
+  # 輸出只量大小：不部署、不上傳 artifact、不用 secret、不連網路服務
+  # （vite build 不連 Firestore，只是把 PROD 設定寫進檔案）。
+  bundle-budget:
+    name: 首頁 gzip 預算
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      - name: 建置（只為量首頁 JS gzip）
+        run: npx vite build
+
+      - name: 檢查首頁 gzip 預算
+        run: node scripts/check-bundle-budget.mjs dist

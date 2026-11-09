@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:bundle": "node scripts/check-bundle-budget.mjs dist",
     "check": "npm run typecheck && npm run test && npm run check:i18n",
     "emulators": "firebase emulators:start --only firestore,auth,storage --config emulator/firebase.json",
     "sync:rules": "node scripts/sync-rules.mjs",
