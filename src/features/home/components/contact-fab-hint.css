@@ -1,0 +1,62 @@
+/* 首次提示（每台裝置一次）：浮球抖 2 下＋浮球正上方一行泡泡，小三角朝下指向浮球。
+   放在浮球上方而不是左側：左側會與底部導覽列中央的半圓凸起（#bottom-tabs::before，高 61px、z-index 900）重疊。
+   泡泡以外不攔點擊。只隨提示 chunk（contact-fab-hint.ts）延遲載入，不進首頁主程式。 */
+.contact-owner-fab.is-shaking {
+  animation: contact-owner-fab-shake .6s ease-in-out;
+}
+
+@keyframes contact-owner-fab-shake {
+  0%, 100% { transform: rotate(0); }
+  12.5%, 62.5% { transform: rotate(-14deg); }
+  37.5%, 87.5% { transform: rotate(14deg); }
+}
+
+.contact-owner-fab-hint {
+  position: fixed;
+  right: .9rem;
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 80px);
+  z-index: 60;
+  padding: 7px 12px;
+  border: 1.5px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: contact-owner-fab-hint-in .2s ease-out;
+}
+
+.contact-owner-fab-hint::after {
+  content: '';
+  position: absolute;
+  right: 20px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: inherit;
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0 0 2px 0;
+  transform: rotate(45deg);
+}
+
+@keyframes contact-owner-fab-hint-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (min-width: 800px) {
+  .contact-owner-fab-hint {
+    right: max(.9rem, calc(50vw - 320px + .9rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-owner-fab.is-shaking,
+  .contact-owner-fab-hint {
+    animation: none;
+  }
+}

@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import { setLocale } from '@/i18n/i18n';
 import { ContactOwnerFab } from './ContactOwnerFab';
-import { CONTACT_FAB_HINT_KEY } from './use-contact-fab-hint';
+import { CONTACT_FAB_HINT_KEY } from './contact-fab-hint';
 
 const HINT = '有問題？點這裡聯繫站長';
-const fabCss = readFileSync(join(process.cwd(), 'src/features/home/components/contact-owner-fab.css'), 'utf8');
+const fabCss = readFileSync(join(process.cwd(), 'src/features/home/components/contact-fab-hint.css'), 'utf8');
 
 function setReducedMotion(reduce: boolean): void {
   Object.defineProperty(window, 'matchMedia', {
@@ -28,6 +28,8 @@ const hint = (): HTMLElement | null => document.querySelector('.contact-owner-fa
 async function advance(ms: number): Promise<void> {
   await act(async () => {
     vi.advanceTimersByTime(ms);
+    // 提示 chunk 是動態 import：等它載完、掛上（不推進時間）
+    await vi.dynamicImportSettled();
   });
 }
 
