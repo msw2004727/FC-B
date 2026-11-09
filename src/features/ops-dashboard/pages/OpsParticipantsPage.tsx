@@ -28,11 +28,14 @@ type RunState =
 
 type NamesState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ok'; names: Record<string, string> };
 
-function readUrlQuery(query: Record<string, string> | undefined): ParticipantQuery | null {
+/** 分享網址的條件；缺的日期用預設區間補上。網址沒有任何條件回 null（不自動查）。 */
+function readUrlQuery(query: Record<string, string> | undefined, nowMs: number): ParticipantQuery | null {
   const keyword = query?.['q'] ?? '';
   const from = query?.['from'] ?? '';
   const to = query?.['to'] ?? '';
-  return keyword || from || to ? { keyword, from, to } : null;
+  if (!keyword && !from && !to) return null;
+  const fallback = defaultQueryRange(nowMs);
+  return { keyword, from: from || fallback.from, to: to || fallback.to };
 }
 
 /**
@@ -44,7 +47,8 @@ export default function OpsParticipantsPage(): JSX.Element {
   const gate = useOpsGate();
   const { route, query } = useLocation();
   const asOf = useMemo(() => participantsAsOf(Date.now()), []);
-  const initial = useMemo(() => readUrlQuery(query) ?? { keyword: '', ...defaultQueryRange(Date.now()) }, []);
+  const fromUrl = useMemo(() => readUrlQuery(query, Date.now()), []);
+  const initial = useMemo(() => fromUrl ?? { keyword: '', ...defaultQueryRange(Date.now()) }, [fromUrl]);
   const [form, setForm] = useState<ParticipantQuery>(initial);
   const [formError, setFormError] = useState<QueryErrorKey | null>(null);
   const [run, setRun] = useState<RunState>({ kind: 'idle' });
@@ -83,7 +87,7 @@ export default function OpsParticipantsPage(): JSX.Element {
   useEffect(() => {
     if (gate !== 'allowed' || autoRan.current) return;
     autoRan.current = true;
-    if (readUrlQuery(query)) void search(initial);
+    if (fromUrl) void search(fromUrl);
   }, [gate]);
 
   useEffect(() => () => {

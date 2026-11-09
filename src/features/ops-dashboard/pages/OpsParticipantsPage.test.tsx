@@ -143,10 +143,12 @@ describe('查詢', () => {
     state.viewer = viewer('super_admin');
     render(<OpsParticipantsPage />);
     fireEvent.input(document.querySelector('input[type="search"]')!, { target: { value: '羽球' } });
+    // 起日改成 30 天前（避免月初時前一天的索引落在預設區間外）
+    fireEvent.input(document.querySelector('input[type="date"]')!, { target: { value: shareQuery().from } });
     fireEvent.click(screen.getByRole('button', { name: '查詢' }));
     await screen.findByText('名U00');
     const url = String(replace.mock.calls[replace.mock.calls.length - 1]?.[2]);
-    expect(url).toMatch(/^\/admin\/ops\/participants\?q=%E7%BE%BD%E7%90%83&from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/);
+    expect(url).toBe(`/admin/ops/participants?q=%E7%BE%BD%E7%90%83&from=${shareQuery().from}&to=${ASOF}`);
     expect(document.querySelectorAll('.od-rank li')).toHaveLength(50);
     expect(screen.getByText('1/2')).toBeTruthy();
     // U00、U01 參加 2 次排最前
@@ -160,6 +162,17 @@ describe('查詢', () => {
     fireEvent.click(screen.getByText('名U59'));
     expect(state.route).toHaveBeenCalledWith('/profile/U59');
     replace.mockRestore();
+  });
+
+  it('分享網址只有 q：日期用預設區間補上並自動查詢', async () => {
+    state.query = { q: '羽球' };
+    state.viewer = viewer('super_admin');
+    render(<OpsParticipantsPage />);
+    await screen.findByText('符合活動');
+    const dates = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="date"]'));
+    expect(dates[0]!.value).toBe(`${ASOF.slice(0, 8)}01`);
+    expect(dates[1]!.value).toBe(ASOF);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('索引被 Rules 擋：顯示讀取失敗（不顯示 0）', async () => {

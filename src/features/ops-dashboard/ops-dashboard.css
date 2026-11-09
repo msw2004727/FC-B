@@ -5,7 +5,8 @@
  * 所有介面文字單行（R-UI-027）；使用者內容（名稱）用單行省略號。
  */
 
-.ops-dash { display: flex; flex-direction: column; gap: .7rem; }
+/* .legacy-ui .page.active 是 display:block（A base.css），要更高一級才能改成直向 flex＋間距 */
+.legacy-ui .page.active.ops-dash { display: flex; flex-direction: column; gap: .7rem; }
 .ops-dash .page-header { padding-bottom: 0; }
 .ops-dash .page-header h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
@@ -74,6 +75,7 @@
 .ops-dash .od-field > span { font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ops-dash .od-field input { width: 100%; min-width: 0; min-height: 2.3rem; padding: 0 .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 16px; font-family: inherit; }
 .ops-dash .od-field input:focus { outline: none; border-color: var(--accent); }
+[data-theme="dark"] .ops-dash .od-field input { color-scheme: dark; }
 .ops-dash .od-form-error { grid-column: 1 / -1; font-size: .78rem; font-weight: 700; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ops-dash .od-actions { grid-column: 1 / -1; display: flex; gap: .5rem; justify-content: flex-end; }
 
@@ -91,7 +93,7 @@
 
 /* 外框最寬 640px（B 外殼），欄寬夠時關鍵數字一列 3 格 */
 @media (min-width: 600px) {
-  .ops-dash { gap: .85rem; }
+  .legacy-ui .page.active.ops-dash { gap: .85rem; }
   .ops-dash .od-top { flex-direction: row; align-items: center; justify-content: space-between; gap: 1rem; }
   .ops-dash .od-seg { width: 22rem; flex: 0 0 auto; }
   .ops-dash .od-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
