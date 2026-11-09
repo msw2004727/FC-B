@@ -5,8 +5,8 @@ import { act, cleanup, render } from '@testing-library/preact';
 import { setLocale } from '@/i18n/i18n';
 import { ContactOwnerFab } from './ContactOwnerFab';
 
-// 不靜態 import './contact-fab-hint'（會先觸發 mock factory，算成已下載）；記錄鍵寫字面值，最後一案核對兩邊一致。
-const CONTACT_FAB_HINT_KEY = 'fcb:contact-fab-hinted';
+// 不靜態 import './contact-fab-hint'（會先觸發 mock factory，算成已下載）。
+const LEGACY_HINT_KEY = 'fcb:contact-fab-hinted';
 const read = (file: string): string => readFileSync(join(process.cwd(), 'src/features/home/components', file), 'utf8');
 
 // 提示 chunk 被下載（動態 import 求值）的次數；fail 為 true 時模擬 chunk 載入失敗。
@@ -31,6 +31,7 @@ beforeEach(async () => {
   await setLocale('zh-TW');
   localStorage.clear();
   window.history.replaceState(null, '', '/');
+  chunk.fail = false;
   vi.useFakeTimers();
 });
 
@@ -41,26 +42,22 @@ afterEach(() => {
   localStorage.clear();
 });
 
-// 模組 mock 的 factory 只會求值一次，所以「不下載」的案例必須排在第一次真正載入之前。
+// factory 拋錯後這支模組可能被快取成失敗，成功顯示改在 ContactOwnerFab.hint.test.tsx（不 mock chunk）驗證。
+// 這裡只留「第一次載入就失敗」與原始碼守門，而且失敗案例必須是這支檔案第一次真正的 dynamic import。
 describe('ContactOwnerFab 提示 chunk 延遲載入', () => {
-  it('已提示過就不下載提示 chunk', async () => {
-    localStorage.setItem(CONTACT_FAB_HINT_KEY, '1');
-    render(<ContactOwnerFab onClick={() => undefined} />);
-    await advance(6000);
-    expect(chunk.loads).toBe(0);
-    expect(hint()).toBeNull();
+  it('不讀寫 localStorage：兩個檔都沒有記錄鍵，主程式仍動態載入提示 chunk、不靜態載入它與 CSS', () => {
+    const hintSrc = read('contact-fab-hint.ts');
+    const fab = read('ContactOwnerFab.tsx');
+    expect(hintSrc).not.toContain(LEGACY_HINT_KEY);
+    expect(fab).not.toContain(LEGACY_HINT_KEY);
+    expect(hintSrc).not.toContain('localStorage');
+    expect(fab).not.toContain('localStorage');
+    expect(fab).toContain("import('./contact-fab-hint')");
+    expect(fab).not.toMatch(/^import\s+(?!type\b)[^;]*contact-fab-hint/m);
+    expect(read('contact-owner-fab.css')).not.toContain('contact-owner-fab-hint');
   });
 
-  it('localStorage 讀取丟錯就不下載提示 chunk', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('SecurityError');
-    });
-    render(<ContactOwnerFab onClick={() => undefined} />);
-    await advance(6000);
-    expect(chunk.loads).toBe(0);
-  });
-
-  it('chunk 載入失敗時靜默放棄：不顯示、不記錄、浮球照常可點', async () => {
+  it('chunk 載入失敗時靜默放棄：不顯示、不寫記錄鍵、浮球照常可點', async () => {
     chunk.fail = true;
     const onClick = vi.fn();
     render(<ContactOwnerFab onClick={onClick} />);
@@ -68,19 +65,10 @@ describe('ContactOwnerFab 提示 chunk 延遲載入', () => {
     expect(chunk.loads).toBe(1);
     await advance(6000);
     expect(hint()).toBeNull();
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
     const fab = document.querySelector('.contact-owner-fab') as HTMLElement;
     expect(fab.classList.contains('is-shaking')).toBe(false);
     fab.click();
     expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('主程式的記錄鍵字面值與提示 chunk 的 CONTACT_FAB_HINT_KEY 一致；主程式不靜態載入提示 chunk 與其 CSS', () => {
-    expect(read('contact-fab-hint.ts')).toContain(`export const CONTACT_FAB_HINT_KEY = '${CONTACT_FAB_HINT_KEY}';`);
-    const fab = read('ContactOwnerFab.tsx');
-    expect(fab).toContain(`localStorage.getItem('${CONTACT_FAB_HINT_KEY}')`);
-    expect(fab).toContain("import('./contact-fab-hint')");
-    expect(fab).not.toMatch(/^import\s+(?!type)[^;]*contact-fab-hint/m);
-    expect(read('contact-owner-fab.css')).not.toContain('contact-owner-fab-hint');
   });
 });

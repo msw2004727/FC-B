@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import { setLocale } from '@/i18n/i18n';
 import { ContactOwnerFab } from './ContactOwnerFab';
-import { CONTACT_FAB_HINT_KEY } from './contact-fab-hint';
 
 const HINT = '有問題？點這裡聯繫站長';
+/** 舊的「每台裝置一次」記錄鍵。提示不再讀、不再寫；殘留值留著不管。 */
+const LEGACY_HINT_KEY = 'fcb:contact-fab-hinted';
 const fabCss = readFileSync(join(process.cwd(), 'src/features/home/components/contact-fab-hint.css'), 'utf8');
 
 function setReducedMotion(reduce: boolean): void {
@@ -48,8 +49,8 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('ContactOwnerFab 首次提示', () => {
-  it('首次進首頁約 1 秒後抖動並顯示泡泡，0.6 秒後停抖、4 秒後泡泡消失', async () => {
+describe('ContactOwnerFab 每次回到首頁提示', () => {
+  it('進首頁約 1 秒後抖動並顯示泡泡，0.6 秒後停抖、4 秒後泡泡消失，且不寫記錄鍵', async () => {
     render(<ContactOwnerFab onClick={() => undefined} />);
     await advance(999);
     expect(hint()).toBeNull();
@@ -58,7 +59,7 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(hint()?.textContent).toBe(HINT);
     expect(hint()?.getAttribute('role')).toBe('status');
     expect(fab().classList.contains('is-shaking')).toBe(true);
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBe('1');
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
     await advance(600);
     expect(fab().classList.contains('is-shaking')).toBe(false);
     expect(hint()).not.toBeNull();
@@ -68,34 +69,40 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(hint()).toBeNull();
   });
 
-  it('同一台裝置第二次不再提示', async () => {
+  it('離開首頁再回來會再提示一次', async () => {
     const first = render(<ContactOwnerFab onClick={() => undefined} />);
     await advance(1000);
-    expect(hint()).not.toBeNull();
+    expect(hint()?.textContent).toBe(HINT);
     first.unmount();
-    render(<ContactOwnerFab onClick={() => undefined} />);
-    await advance(6000);
     expect(hint()).toBeNull();
-    expect(fab().classList.contains('is-shaking')).toBe(false);
+    window.history.replaceState(null, '', '/activities');
+    window.history.replaceState(null, '', '/');
+    render(<ContactOwnerFab onClick={() => undefined} />);
+    await advance(999);
+    expect(hint()).toBeNull();
+    await advance(1);
+    expect(hint()?.textContent).toBe(HINT);
+    expect(fab().classList.contains('is-shaking')).toBe(true);
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
   });
 
-  it('localStorage 讀取丟錯時視為已提示過，不顯示', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+  it('不讀寫 localStorage 也能提示：讀寫丟錯或殘留舊鍵都不影響，且不再寫入記錄鍵', async () => {
+    localStorage.setItem(LEGACY_HINT_KEY, '1');
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('SecurityError');
     });
-    render(<ContactOwnerFab onClick={() => undefined} />);
-    await advance(6000);
-    expect(hint()).toBeNull();
-    expect(fab().classList.contains('is-shaking')).toBe(false);
-  });
-
-  it('localStorage 寫入丟錯時也不顯示', async () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
     render(<ContactOwnerFab onClick={() => undefined} />);
-    await advance(6000);
-    expect(hint()).toBeNull();
+    await advance(1000);
+    expect(hint()?.textContent).toBe(HINT);
+    expect(fab().classList.contains('is-shaking')).toBe(true);
+    expect(getItem.mock.calls.some((args) => args[0] === LEGACY_HINT_KEY)).toBe(false);
+    expect(setItem.mock.calls.some((args) => args[0] === LEGACY_HINT_KEY)).toBe(false);
+    getItem.mockRestore();
+    setItem.mockRestore();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBe('1');
   });
 
   it('reduced motion 只顯示泡泡，不抖動', async () => {
@@ -155,7 +162,23 @@ describe('ContactOwnerFab 首次提示', () => {
     render(<ContactOwnerFab onClick={() => undefined} />);
     await advance(6000);
     expect(hint()).toBeNull();
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
+  });
+
+  it('同一次停留期間重繪不重複觸發', async () => {
+    const view = render(<ContactOwnerFab onClick={() => undefined} />);
+    await advance(500);
+    view.rerender(<ContactOwnerFab onClick={() => undefined} />);
+    await advance(500);
+    expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
+    view.rerender(<ContactOwnerFab onClick={() => undefined} />);
+    expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
+    await advance(4000);
+    expect(hint()).toBeNull();
+    view.rerender(<ContactOwnerFab onClick={() => undefined} />);
+    await advance(6000);
+    expect(hint()).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('unmount 時清掉計時器，不再觸發也不記錄', async () => {
@@ -167,7 +190,7 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(vi.getTimerCount()).toBe(0);
     await advance(6000);
     expect(hint()).toBeNull();
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
   });
 
   it('顯示中 unmount 也清掉停抖與消失計時器', async () => {
@@ -178,7 +201,7 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  // Gemini 審查 P2：1 秒到、提示 chunk 還在下載時，點浮球或卸下都不能再顯示泡泡、也不消耗提示額度。
+  // 1 秒到、提示 chunk 還在下載時，點浮球或卸下都不能再顯示泡泡。
   it('提示 chunk 下載期間點了浮球，下載完不顯示泡泡、不記錄', async () => {
     const onClick = vi.fn();
     render(<ContactOwnerFab onClick={onClick} />);
@@ -190,7 +213,7 @@ describe('ContactOwnerFab 首次提示', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(hint()).toBeNull();
     expect(fab().classList.contains('is-shaking')).toBe(false);
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
   });
 
   it('提示 chunk 下載期間卸下又重新掛上，只由新的浮球顯示一次泡泡，卸下時收乾淨', async () => {
@@ -201,7 +224,7 @@ describe('ContactOwnerFab 首次提示', () => {
       await vi.dynamicImportSettled();
     });
     expect(hint()).toBeNull();
-    expect(localStorage.getItem(CONTACT_FAB_HINT_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
     const second = render(<ContactOwnerFab onClick={() => undefined} />);
     await advance(1000);
     expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
