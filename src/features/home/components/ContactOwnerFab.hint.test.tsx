@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('ContactOwnerFab 每次回到首頁提示', () => {
-  it('進首頁約 1 秒後抖動並顯示泡泡，0.6 秒後停抖、4 秒後泡泡消失，且不寫記錄鍵', async () => {
+  it('進首頁約 1 秒後抖動並顯示泡泡，4.8 秒後停抖、6 秒後泡泡消失，且不寫記錄鍵', async () => {
     render(<ContactOwnerFab onClick={() => undefined} />);
     await advance(999);
     expect(hint()).toBeNull();
@@ -60,10 +60,13 @@ describe('ContactOwnerFab 每次回到首頁提示', () => {
     expect(hint()?.getAttribute('role')).toBe('status');
     expect(fab().classList.contains('is-shaking')).toBe(true);
     expect(localStorage.getItem(LEGACY_HINT_KEY)).toBeNull();
-    await advance(600);
+    await advance(4799);
+    expect(fab().classList.contains('is-shaking')).toBe(true);
+    expect(hint()).not.toBeNull();
+    await advance(1);
     expect(fab().classList.contains('is-shaking')).toBe(false);
     expect(hint()).not.toBeNull();
-    await advance(3399);
+    await advance(1199);
     expect(hint()).not.toBeNull();
     await advance(1);
     expect(hint()).toBeNull();
@@ -173,7 +176,7 @@ describe('ContactOwnerFab 每次回到首頁提示', () => {
     expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
     view.rerender(<ContactOwnerFab onClick={() => undefined} />);
     expect(document.querySelectorAll('.contact-owner-fab-hint')).toHaveLength(1);
-    await advance(4000);
+    await advance(6000);
     expect(hint()).toBeNull();
     view.rerender(<ContactOwnerFab onClick={() => undefined} />);
     await advance(6000);
@@ -233,7 +236,29 @@ describe('ContactOwnerFab 每次回到首頁提示', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('CSS：reduced motion 關掉抖動與泡泡進場動畫；泡泡單行、在浮球上方', () => {
+  it('CSS：兩組相同抖動 keyframes、第二輪延遲 3.2 秒；reduced motion 仍 none；泡泡單行、在浮球上方', () => {
+    const keyframeBody = (name: string): string => {
+      const marker = `@keyframes ${name} {`;
+      const start = fabCss.indexOf(marker);
+      expect(start).toBeGreaterThanOrEqual(0);
+      let depth = 0;
+      for (let i = start + marker.length - 1; i < fabCss.length; i += 1) {
+        if (fabCss[i] === '{') depth += 1;
+        else if (fabCss[i] === '}') {
+          depth -= 1;
+          if (depth === 0) return fabCss.slice(start + marker.length, i);
+        }
+      }
+      throw new Error(`unclosed @keyframes ${name}`);
+    };
+    expect(fabCss.match(/@keyframes\s+contact-owner-fab-shake(?:-2)?\s*\{/g)).toHaveLength(2);
+    const round = keyframeBody('contact-owner-fab-shake');
+    expect(round).toBe(keyframeBody('contact-owner-fab-shake-2'));
+    expect(round).toContain('rotate(-14deg)');
+    expect(round).toContain('rotate(14deg)');
+    expect(fabCss).toMatch(
+      /\.contact-owner-fab\.is-shaking\s*\{[^}]*animation:\s*contact-owner-fab-shake\s+1\.6s\s+ease-in-out\s+0s\s*,\s*contact-owner-fab-shake-2\s+1\.6s\s+ease-in-out\s+3\.2s/,
+    );
     expect(fabCss).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.contact-owner-fab\.is-shaking,\s*\.contact-owner-fab-hint\s*\{\s*animation:\s*none/);
     expect(fabCss).toMatch(/\.contact-owner-fab-hint\s*\{[^}]*white-space:\s*nowrap/);
     expect(fabCss).toMatch(/\.contact-owner-fab-hint\s*\{[^}]*\+\s*80px\)/);

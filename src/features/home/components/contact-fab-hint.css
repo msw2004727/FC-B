@@ -1,14 +1,21 @@
-/* 首次提示（每台裝置一次）：浮球抖 2 下＋浮球正上方一行泡泡，小三角朝下指向浮球。
+/* 每次回到首頁的提示：浮球抖兩輪（每輪 8 下、1.6 秒，中間停 1.6 秒）＋浮球正上方一行泡泡（6 秒），小三角朝下指向浮球。
    放在浮球上方而不是左側：左側會與底部導覽列中央的半圓凸起（#bottom-tabs::before，高 61px、z-index 900）重疊。
    泡泡以外不攔點擊。只隨提示 chunk（contact-fab-hint.ts）延遲載入，不進首頁主程式。 */
 .contact-owner-fab.is-shaking {
-  animation: contact-owner-fab-shake .6s ease-in-out;
+  animation: contact-owner-fab-shake 1.6s ease-in-out 0s, contact-owner-fab-shake-2 1.6s ease-in-out 3.2s;
 }
 
 @keyframes contact-owner-fab-shake {
   0%, 100% { transform: rotate(0); }
-  12.5%, 62.5% { transform: rotate(-14deg); }
-  37.5%, 87.5% { transform: rotate(14deg); }
+  3.125%, 15.625%, 28.125%, 40.625%, 53.125%, 65.625%, 78.125%, 90.625% { transform: rotate(-14deg); }
+  9.375%, 21.875%, 34.375%, 46.875%, 59.375%, 71.875%, 84.375%, 96.875% { transform: rotate(14deg); }
+}
+
+/* 與 contact-owner-fab-shake 內容相同。名稱必須不同，animation-delay 才能在兩輪之間空出 1.6 秒。 */
+@keyframes contact-owner-fab-shake-2 {
+  0%, 100% { transform: rotate(0); }
+  3.125%, 15.625%, 28.125%, 40.625%, 53.125%, 65.625%, 78.125%, 90.625% { transform: rotate(-14deg); }
+  9.375%, 21.875%, 34.375%, 46.875%, 59.375%, 71.875%, 84.375%, 96.875% { transform: rotate(14deg); }
 }
 
 .contact-owner-fab-hint {
