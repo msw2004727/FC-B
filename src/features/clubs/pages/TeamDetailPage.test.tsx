@@ -207,6 +207,11 @@ vi.mock('../club-policy', async (importOriginal) => {
   };
 });
 
+// K1：課程頁籤內容另有完整測試（education/components/CourseTab.test.tsx）；這裡只驗頁籤開關與按需載入。
+vi.mock('@/features/education/components/CourseTab', () => ({
+  CourseTab: (props: { team: TeamDoc }) => <div data-testid="course-tab-stub">{String(props.team.name ?? '')}</div>,
+}));
+
 vi.mock('@/ui/AppConfirm', () => ({
   appConfirm: vi.fn(),
 }));
@@ -735,6 +740,43 @@ describe('TeamDetailPage (Legacy V2)', () => {
     fireEvent.click(screen.getByRole('tab', { name: '動態' }));
     expect(container.querySelector('.td-v2-panel-feed.active')).toBeTruthy();
     expect(screen.getByText('本週正常團練')).toBeTruthy();
+  });
+
+  // K1：課程開關（isFeatureEnabled('education')）關閉時一般用戶看不到；打開時教學俱樂部才出「課程」頁籤並按需載入。
+  it('K1 courses tab: hidden while the course switch is off, lazy panel when on', async () => {
+    const registry = await import('@/core/feature-registry');
+    const config = await import('@/features.config');
+    vi.mocked(loadTeam).mockResolvedValue({ ...team, teachingEnabled: true });
+    try {
+      registry._resetForTest();
+      registry.registerFeatures(config.ALL_FEATURES);
+      const off = render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+      expect(screen.queryByRole('tab', { name: '課程' })).toBeNull();
+      expect(off.container.querySelector('.td-v2-panel-courses')).toBeNull();
+      off.unmount();
+
+      config.FEATURE_OVERRIDES.education = true;
+      const on = render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+      const labels = Array.from(on.container.querySelectorAll('.td-v2-tab-list button')).map((b) => b.textContent);
+      expect(labels.slice(0, 2)).toEqual(['總覽', '課程']);
+      expect(screen.queryByTestId('course-tab-stub')).toBeNull();
+      fireEvent.click(screen.getByRole('tab', { name: '課程' }));
+      expect(on.container.querySelector('.td-v2-panel-courses.active')).toBeTruthy();
+      expect(await screen.findByTestId('course-tab-stub')).toBeTruthy();
+      on.unmount();
+
+      // 自建俱樂部照 A 不開放課程。
+      vi.mocked(loadTeam).mockResolvedValue({ ...team, teachingEnabled: true, createdVia: 'user_capability' });
+      const userTeam = render(<TeamDetailPage />);
+      await screen.findByText('測試俱樂部');
+      expect(screen.queryByRole('tab', { name: '課程' })).toBeNull();
+      userTeam.unmount();
+    } finally {
+      delete config.FEATURE_OVERRIDES.education;
+      registry._resetForTest();
+    }
   });
 
   // T-090 P2-1：修正前分頁已排除自建俱樂部的課程／賽事，但總覽快速導覽與面板仍依 isTeamDetailSectionVisible 顯示（應失敗）。

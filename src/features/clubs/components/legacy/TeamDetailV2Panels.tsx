@@ -131,8 +131,10 @@ function resolvePersonName(
 export interface TeamDetailV2PanelsProps {
   team: TeamDoc;
   activeTab: V2TabKey;
-  /** C1：頁籤由頁面決定（課程先隱藏、沒資料的戰績與動態不出），面板跟著同一份清單。 */
+  /** C1：頁籤由頁面決定（課程依開關、沒資料的戰績與動態不出），面板跟著同一份清單。 */
   tabKeys: ReadonlySet<V2TabKey>;
+  /** K1：課程頁籤內容（頁面按需載入後傳入；切到課程頁籤才有值）。 */
+  courseSlot?: import('preact').ComponentChildren;
   roster: readonly TeamRosterRow[];
   membersStatus: 'loading' | 'error' | 'guest' | 'ready';
   events: readonly EventDoc[];
@@ -159,6 +161,7 @@ export function TeamDetailV2Panels({
   team,
   activeTab,
   tabKeys,
+  courseSlot,
   roster,
   membersStatus,
   events,
@@ -350,7 +353,15 @@ export function TeamDetailV2Panels({
         )}
       </section>
 
-      {/* 課程：C1 先隱藏，課程上線（K3）後再開。 */}
+      {/* 課程：K1 依課程開關顯示（K3 驗收後才對一般用戶打開）。 */}
+      {tabKeys.has('courses') && (
+        <section
+          class={`td-v2-panel td-v2-panel-courses${activeTab === 'courses' ? ' active' : ''}`}
+          data-panel="courses"
+        >
+          {courseSlot}
+        </section>
+      )}
 
       {/* 活動 */}
       {showEvents && (

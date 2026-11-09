@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
+import { isFeatureEnabled } from '@/core/feature-registry';
 import { getLastKnownAuthUid } from '@/data/auth';
 import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -77,12 +78,16 @@ interface EventResource {
 }
 
 /**
- * C1 頁籤：課程先隱藏（課程上線後再開）；戰績沒有資料、動態沒有貼文就不出頁籤；頁籤不帶數字徽章。
+ * C1 頁籤：戰績沒有資料、動態沒有貼文就不出頁籤；頁籤不帶數字徽章。
+ * 課程（K1）：課程功能開關打開（isFeatureEnabled('education')，K3 驗收前關閉）才出，條件照 A（自建俱樂部不開放、教學標籤＋區塊可見）。
  */
 function getTabsForTeam(team: TeamDoc, totalGames: number): V2TabDef[] {
   const tabs: V2TabDef[] = [{ key: 'overview', label: '總覽' }];
-  // T-090：自建俱樂部不開放賽事入口。
+  // T-090：自建俱樂部不開放教學（課程）與賽事入口。
   const userCapabilityTeam = isUserCapabilityTeam(team);
+  if (isFeatureEnabled('education') && !userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
+    tabs.push({ key: 'courses', label: '課程' });
+  }
   if (isTeamDetailSectionVisible(team, 'events')) {
     tabs.push({ key: 'events', label: '活動' });
   }
@@ -101,6 +106,40 @@ function getTabsForTeam(team: TeamDoc, totalGames: number): V2TabDef[] {
     tabs.push({ key: 'feed', label: '動態' });
   }
   return tabs;
+}
+
+type CourseTabComponent = typeof import('@/features/education/components/CourseTab').CourseTab;
+
+/** 課程頁籤按需載入（只有開關打開、切到課程頁籤才下載課程程式與字典）。 */
+function LazyCourseTab(props: Parameters<CourseTabComponent>[0]): JSX.Element {
+  const [Comp, setComp] = useState<CourseTabComponent | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setFailed(false);
+    import('@/features/education/components/CourseTab')
+      .then((m) => {
+        if (alive) setComp(() => m.CourseTab);
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [attempt]);
+  if (Comp) return <Comp {...props} />;
+  return (
+    <div class="td-v2-empty" role={failed ? 'alert' : undefined}>
+      <div>{failed ? '載入失敗' : '載入中…'}</div>
+      {failed ? (
+        <button type="button" class="primary-btn small" style="margin-top:8px" onClick={() => setAttempt((v) => v + 1)}>
+          重試
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function ShellState({
@@ -719,6 +758,15 @@ function TeamDetailContent({
 
             <TeamDetailV2Panels
               team={team}
+              courseSlot={tabKeys.has('courses') && activeTab === 'courses' ? (
+                <LazyCourseTab
+                  team={team}
+                  viewer={viewer}
+                  onLogin={() => {
+                    void login();
+                  }}
+                />
+              ) : null}
               activeTab={activeTab}
               tabKeys={tabKeys}
               roster={roster}
