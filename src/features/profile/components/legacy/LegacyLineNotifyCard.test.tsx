@@ -25,6 +25,11 @@ vi.mock('../../data/line-notify-settings', async (importOriginal) => {
   };
 });
 
+// O-1：只 mock 取得已初始化 LIFF 的入口；line-friendship.ts 的判斷與逾時走真實程式。
+vi.mock('@/data/liff-init', () => ({
+  getReadyLiff: vi.fn(() => null),
+}));
+
 vi.mock('./ProfileInfoButton', () => ({
   ProfileInfoButton: ({ infoKey }: { infoKey: string }) => (
     <button type="button" data-testid={`info-btn-${infoKey}`}>
@@ -37,6 +42,7 @@ import {
   bindLineNotify,
   buildLineNotifyPayload,
 } from '@/features/events/data/line-notify-bind';
+import { getReadyLiff } from '@/data/liff-init';
 import { setLocale } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -104,6 +110,8 @@ beforeEach(async () => {
     },
   });
   vi.mocked(toast.show).mockReset();
+  vi.mocked(getReadyLiff).mockReset();
+  vi.mocked(getReadyLiff).mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -430,7 +438,7 @@ describe('LegacyLineNotifyCard — 11-09 文案與「收不到通知？」提示
     const hint = container.querySelector('#line-notify-friend-hint') as HTMLElement | null;
     expect(hint).toBeTruthy();
     expect(hint?.closest('#line-notify-bound')).toBeTruthy();
-    expect(hint?.querySelector('span')?.textContent).toBe('收不到通知？請確認已加入官方帳號好友');
+    expect(hint?.querySelector('span')?.textContent).toBe('收不到通知？請先加好友');
     const btn = hint?.querySelector('button.line-notify-friend-btn') as HTMLButtonElement | null;
     expect(btn?.type).toBe('button');
     expect(btn?.textContent).toBe('開啟官方帳號');
@@ -515,5 +523,229 @@ describe('LegacyLineNotifyCard — 11-09 文案與「收不到通知？」提示
     expect(body).toContain('• <b>活動通知</b> — 報名成功、候補遞補、活動異動或取消<br>');
     expect(body).toContain('• <b>系統通知</b> — 站內信、公告<br>');
     expect(body).toContain('• <b>賽事通知</b> — 賽程更新、對戰結果');
+  });
+});
+
+type FakeLiff = {
+  isLoggedIn: ReturnType<typeof vi.fn>;
+  getFriendship: ReturnType<typeof vi.fn>;
+};
+
+function fakeLiff(friendship: () => Promise<{ friendFlag: boolean }>, loggedIn = true): FakeLiff {
+  return {
+    isLoggedIn: vi.fn(() => loggedIn),
+    getFriendship: vi.fn(friendship),
+  };
+}
+
+function useLiff(liff: FakeLiff | null): void {
+  vi.mocked(getReadyLiff).mockReturnValue(
+    liff as unknown as ReturnType<typeof getReadyLiff>,
+  );
+}
+
+function setVisibility(state: 'visible' | 'hidden'): void {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+function hintOf(container: Element): HTMLElement | null {
+  return container.querySelector('#line-notify-friend-hint') as HTMLElement | null;
+}
+
+describe('LegacyLineNotifyCard — O-1 自動確認有沒有加好友', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+  });
+
+  it('未加好友：換成警示列＋實心「加入好友」，按下開加好友頁且不寫資料', async () => {
+    const liff = fakeLiff(async () => ({ friendFlag: false }));
+    useLiff(liff);
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const onSaved = vi.fn();
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={onSaved} />,
+    );
+    expand(container);
+    await waitFor(() => {
+      expect(hintOf(container)?.classList.contains('warn')).toBe(true);
+    });
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    const hint = hintOf(container) as HTMLElement;
+    expect(hint.querySelector('span')?.textContent).toBe('尚未加好友，收不到 LINE 通知');
+    const btn = hint.querySelector('button.line-notify-friend-btn') as HTMLButtonElement;
+    expect(btn.classList.contains('solid')).toBe(true);
+    expect(btn.textContent).toBe('加入好友');
+    fireEvent.click(btn);
+    expect(openSpy).toHaveBeenCalledWith('https://line.me/R/ti/p/@830utvza', 'sporthub_line');
+    expect(saveLineNotify).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('已加好友：整列提示不顯示', async () => {
+    const liff = fakeLiff(async () => ({ friendFlag: true }));
+    useLiff(liff);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await waitFor(() => {
+      expect(hintOf(container)).toBeNull();
+    });
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+  });
+
+  it('收合時不查；未綁定時不查', () => {
+    const liff = fakeLiff(async () => ({ friendFlag: false }));
+    useLiff(liff);
+    render(<LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />);
+    expect(liff.getFriendship).not.toHaveBeenCalled();
+    cleanup();
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={UNBOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    expect(liff.getFriendship).not.toHaveBeenCalled();
+  });
+
+  it('不在 LIFF（未初始化）：維持一般提示列', async () => {
+    useLiff(null);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await waitFor(() => {
+      expect(getReadyLiff).toHaveBeenCalled();
+    });
+    const hint = hintOf(container) as HTMLElement;
+    expect(hint.classList.contains('warn')).toBe(false);
+    expect(hint.querySelector('span')?.textContent).toBe('收不到通知？請先加好友');
+    expect(hint.querySelector('button')?.textContent).toBe('開啟官方帳號');
+  });
+
+  it('LIFF 未登入：不呼叫 getFriendship，維持一般提示列', async () => {
+    const liff = fakeLiff(async () => ({ friendFlag: false }), false);
+    useLiff(liff);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await waitFor(() => {
+      expect(liff.isLoggedIn).toHaveBeenCalled();
+    });
+    expect(liff.getFriendship).not.toHaveBeenCalled();
+    expect(hintOf(container)?.classList.contains('warn')).toBe(false);
+  });
+
+  it('getFriendship 失敗：維持一般提示列，不顯示錯誤', async () => {
+    const liff = fakeLiff(async () => {
+      throw new Error('bot link missing');
+    });
+    useLiff(liff);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await waitFor(() => {
+      expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    });
+    await Promise.resolve();
+    const hint = hintOf(container) as HTMLElement;
+    expect(hint.classList.contains('warn')).toBe(false);
+    expect(hint.querySelector('span')?.textContent).toBe('收不到通知？請先加好友');
+    expect(toast.show).not.toHaveBeenCalled();
+  });
+
+  it('getFriendship 逾時（5 秒）：維持一般提示列', async () => {
+    vi.useFakeTimers();
+    const liff = fakeLiff(() => new Promise(() => {}));
+    useLiff(liff);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    const hint = hintOf(container) as HTMLElement;
+    expect(hint.classList.contains('warn')).toBe(false);
+    expect(hint.querySelector('span')?.textContent).toBe('收不到通知？請先加好友');
+  });
+
+  it('回前景：30 秒內不重查，超過 30 秒才重查；切到背景不查', async () => {
+    vi.useFakeTimers();
+    const liff = fakeLiff(async () => ({ friendFlag: false }));
+    useLiff(liff);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    setVisibility('hidden');
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(21_000);
+    setVisibility('hidden');
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(2);
+  });
+
+  it('按加好友按鈕後第一次回前景不受節流，查到已加好友就收起提示列', async () => {
+    vi.useFakeTimers();
+    let flag = false;
+    const liff = fakeLiff(async () => ({ friendFlag: flag }));
+    useLiff(liff);
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hintOf(container)?.classList.contains('warn')).toBe(true);
+
+    fireEvent.click(hintOf(container)?.querySelector('button') as HTMLButtonElement);
+    flag = true;
+    setVisibility('hidden');
+    await vi.advanceTimersByTimeAsync(3_000);
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(2);
+    expect(hintOf(container)).toBeNull();
+    openSpy.mockRestore();
+  });
+
+  it('unmount 後移除 visibilitychange listener，進行中的查詢結果不再更新畫面', async () => {
+    const pending: { resolve?: (v: { friendFlag: boolean }) => void } = {};
+    const liff = fakeLiff(
+      () => new Promise<{ friendFlag: boolean }>((resolve) => {
+        pending.resolve = resolve;
+      }),
+    );
+    useLiff(liff);
+    const removeSpy = vi.spyOn(document, 'removeEventListener');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { container, unmount } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(removeSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    pending.resolve?.({ friendFlag: false });
+    await Promise.resolve();
+    await Promise.resolve();
+    setVisibility('visible');
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    removeSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

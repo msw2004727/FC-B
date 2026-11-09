@@ -141,7 +141,9 @@
     "toggleActivity": "活动通知（报名、候补、变更）",
     "toggleSystem": "系统通知（站内信/公告）",
     "toggleTournament": "赛事通知（报名/赛程更新）",
-    "friendHint": "收不到通知？请确认已添加官方账号为好友",
-    "openOfficial": "打开官方账号"
+    "friendHint": "收不到通知？请先加好友",
+    "openOfficial": "打开官方账号",
+    "notFriendHint": "尚未加好友，收不到 LINE 通知",
+    "addFriend": "添加好友"
   }
 }

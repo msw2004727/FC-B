@@ -72,6 +72,11 @@ export function ensureLiffInit(): Promise<LiffSdk> {
   return run;
 }
 
+/** 已初始化完成的 LIFF；尚未 init 或 init 失敗回 null。不觸發 init，也不下載 SDK（個人頁查好友狀態用）。 */
+export function getReadyLiff(): LiffSdk | null {
+  return ready;
+}
+
 export function _resetLiffInitForTest(): void {
   generation += 1;
   pending = null;
