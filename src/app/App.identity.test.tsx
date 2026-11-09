@@ -150,6 +150,8 @@ describe('M-123 App 身份外框（surface chrome）', () => {
       expect(topUser?.pictureUrl).toBe('off.jpg');
     });
 
+    // 選單 chunk 改閒置後才預載（N2），先等它掛上再讀 props。
+    await waitFor(() => expect(sideDrawerProps.last).toBeTruthy(), { timeout: 4000 });
     const identity = sideDrawerProps.last?.identity as
       | { identityId?: string; displayName?: string; avatarCandidates?: string[] }
       | null
@@ -181,6 +183,8 @@ describe('M-123 App 身份外框（surface chrome）', () => {
     const topUser = topBarProps.last?.user as { displayName?: string } | null | undefined;
     expect(topUser?.displayName).toBe('小明');
 
+    // 選單 chunk 改閒置後才預載（N2），先等它掛上再讀 props。
+    await waitFor(() => expect(sideDrawerProps.last).toBeTruthy(), { timeout: 4000 });
     const identity = sideDrawerProps.last?.identity as
       | { identityId?: string; displayName?: string }
       | null
@@ -220,6 +224,8 @@ describe('T-033 頂部頭像主身份與抽屜用同一份姓名／頭像', () =
       expect(topUser?.pictureUrl).toBe('fs.jpg');
     });
     expect(topBarProps.last?.crown).toBe(false);
+    // 選單 chunk 改閒置後才預載（N2），先等它掛上再讀 props。
+    await waitFor(() => expect(sideDrawerProps.last).toBeTruthy(), { timeout: 4000 });
     const drawerIdentity = sideDrawerProps.last?.identity as { displayName?: string } | null | undefined;
     expect(drawerIdentity?.displayName).toBe('小明');
   });
