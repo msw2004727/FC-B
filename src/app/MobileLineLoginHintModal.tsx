@@ -4,7 +4,7 @@ import type { JSX } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { lt, useT } from '@/i18n/i18n';
-import { getMiniAppShareUrl } from '@/ui/drawer-menu';
+import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
 import './MobileLineLoginHintModal.css';
 
 export interface MobileLineLoginHintModalProps {

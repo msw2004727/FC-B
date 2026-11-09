@@ -184,6 +184,28 @@ describe('入口的靜態 import 圖', () => {
     expect(forbidden).toEqual([]);
   });
 
+  it('首頁瘦身：側邊選單（SideDrawer、選單設定、PWA 安裝教學框、隱身切換）不在靜態圖裡，由 LazySideDrawer 在首屏後下載', () => {
+    const visited = new Set<string>();
+    const recordingIo: GraphIo = {
+      read: (file) => {
+        visited.add(rel(file));
+        return realIo.read(file);
+      },
+      resolve: realIo.resolve,
+    };
+    findFirebaseSdkImporters(ENTRY, recordingIo);
+    // 走訪器確實走到延遲載入外殼、登入提示框與它要的 Mini App 網址（避免空集合也算通過）
+    expect(visited).toContain('src/app/LazySideDrawer.tsx');
+    expect(visited).toContain('src/app/MobileLineLoginHintModal.tsx');
+    expect(visited).toContain('src/ui/mini-app-share-url.ts');
+    // 開站就要接住 beforeinstallprompt：pwa-install 仍在靜態圖
+    expect(visited).toContain('src/features/pwa/pwa-install.ts');
+    const forbidden = [...visited].filter((f) =>
+      /^src\/(ui\/(SideDrawer\.tsx|drawer-menu\.ts)|features\/pwa\/PwaModals\.tsx|data\/stealth\.ts)$/.test(f),
+    );
+    expect(forbidden).toEqual([]);
+  });
+
   it('首頁路由同步載入：features/home/index.ts 靜態引入 HomePage（不再是入口執行完才發現的 lazy chunk）', () => {
     const source = readFileSync(join(SRC, 'features/home/index.ts'), 'utf8');
     expect(staticImportSpecs(source)).toContain('./pages/HomePage');

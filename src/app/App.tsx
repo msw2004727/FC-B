@@ -14,7 +14,6 @@ import { LocationProvider, Router, Route, lazy, useLocation } from 'preact-iso';
 import { TopBar } from '@/ui/TopBar';
 import { QaBanner } from '@/features/qa-login/components/QaBanner';
 import { BottomNav } from '@/ui/BottomNav';
-import { SideDrawer } from '@/ui/SideDrawer';
 import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
 import { AppConfirmHost } from '@/ui/AppConfirm';
@@ -50,6 +49,7 @@ import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
 import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
+import { initPwaInstallListener } from '@/features/pwa/pwa-install';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import {
@@ -83,6 +83,7 @@ import {
   useIdentitySettings,
 } from '@/data/identity-settings';
 import { LazyUidQrModal } from './LazyUidQrModal';
+import { LazySideDrawer } from './LazySideDrawer';
 import { SyncStatusBar } from './SyncStatusBar';
 import { DiagLoadsBadge } from './DiagLoadsBadge';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
@@ -200,6 +201,8 @@ export function App({
     const stopIdlePrefetch = scheduleIdleRoutePrefetch();
     // 只在 Mini App 閒置時預先 liff.init。一般瀏覽器這個函式立刻返回，不載入 LIFF（T-041）。
     const stopLiffPreinit = startMiniAppLiffPreinit();
+    // 側邊選單改成延遲載入後，Android 的安裝提示事件仍要在開站時就接住（原本由選單掛載時綁定）。
+    initPwaInstallListener();
 
     mounted.current = true;
     let cancelled = false;
@@ -469,7 +472,7 @@ export function App({
         )}
         <DiagLoadsBadge />
       </div>
-      <SideDrawer
+      <LazySideDrawer
         open={drawerOpen}
         onClose={closeDrawer}
         returnFocusRef={menuRef}

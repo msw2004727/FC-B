@@ -391,9 +391,5 @@ export function buildDrawerRenderNodes(
   return nodes;
 }
 
-/** 取得 Mini App 分享連結（照 A `MINI_APP_BASE_URL`）。 */
-export function getMiniAppShareUrl(): string {
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const liffId = env?.VITE_LIFF_ID || '';
-  return `https://miniapp.line.me/${liffId}`;
-}
+// 實作搬到 mini-app-share-url.ts（登入提示框單獨引用，不帶整份選單設定進首頁主程式）。
+export { getMiniAppShareUrl } from './mini-app-share-url';
