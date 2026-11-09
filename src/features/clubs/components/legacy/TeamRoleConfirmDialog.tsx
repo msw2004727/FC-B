@@ -34,10 +34,10 @@ const ROLE_CLASSES = {
 } as const;
 
 const ROLE_NAMES = {
-  captain: '球經',
+  captain: '經理',
   leader: '領隊',
   coach: '教練',
-  member: '隊員',
+  member: '成員',
 } as const;
 
 export function TeamRoleConfirmDialog(props: TeamRoleConfirmDialogProps): JSX.Element {

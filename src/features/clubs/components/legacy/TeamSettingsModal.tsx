@@ -27,7 +27,7 @@ import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { pushOverlay } from '@/core/overlay-back';
-import { useLegacyT } from '@/i18n/i18n';
+import { useLegacyT, useT } from '@/i18n/i18n';
 import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 
@@ -68,36 +68,24 @@ export interface TeamSettingsModalProps {
   transfer?: Pick<TeamTransferSectionProps, 'candidates' | 'loadFailed' | 'onTransferred'>;
 }
 
-const CATEGORY_COPY: Record<TeamCategoryKey, { label: string; hint: string }> = {
-  none: {
-    label: '無',
-    hint: '不顯示任何標籤與緞帶，也不啟用課程功能。',
-  },
-  competitive: {
-    label: '競技',
-    hint: '競技標籤只作為俱樂部分類，賽事系統設定已預留。',
-  },
-  education: {
-    label: '教學',
-    hint: '教學標籤會啟用課程、學員與待審核功能。',
-  },
-  leisure: {
-    label: '休閒',
-    hint: '休閒標籤只作為俱樂部分類，未來可銜接友誼賽或休閒賽事設定。',
-  },
+// C1（R-UI-026）：A 搬來的每列說明句全刪（站長核可）；「無」改「其他」。
+// 「俱樂部課程」等課程上線再出現；「俱樂部賽事」「戰績」「半透明遮罩」B 沒有作用，先隱藏（資料照舊保留）。
+const CATEGORY_LABEL: Record<TeamCategoryKey, string> = {
+  none: '其他',
+  competitive: '競技',
+  education: '教學',
+  leisure: '休閒',
 };
 
-const VISIBILITY_ITEMS = [
-  { key: 'events', label: '活動', desc: '俱樂部活動列表' },
-  { key: 'courses', label: '俱樂部課程', desc: '課程、分組、學員與待審核頁籤' },
-  { key: 'matches', label: '俱樂部賽事', desc: '與俱樂部關聯的賽事列表' },
-  { key: 'info', label: '俱樂部資訊', desc: '經理、領隊、教練與地區' },
-  { key: 'bio', label: '簡介', desc: '俱樂部介紹文字' },
-  { key: 'record', label: '戰績', desc: '勝敗與進失球資料' },
-  { key: 'members', label: '成員列表', desc: '隊員與管理名單' },
-] as const;
+const VISIBILITY_KEYS = ['events', 'courses', 'matches', 'info', 'bio', 'record', 'members'] as const;
+const VISIBILITY_ITEMS: ReadonlyArray<{ key: VisibilityKey; labelKey: string }> = [
+  { key: 'events', labelKey: 'clubs.section.events' },
+  { key: 'info', labelKey: 'clubs.section.info' },
+  { key: 'bio', labelKey: 'clubs.section.bio' },
+  { key: 'members', labelKey: 'clubs.section.members' },
+];
 
-type VisibilityKey = (typeof VISIBILITY_ITEMS)[number]['key'];
+type VisibilityKey = (typeof VISIBILITY_KEYS)[number];
 type Control = HTMLInputElement | HTMLButtonElement;
 
 interface PendingSettings {
@@ -108,7 +96,7 @@ interface PendingSettings {
 }
 
 function isVisibilityKey(key: string): key is VisibilityKey {
-  return VISIBILITY_ITEMS.some((item) => item.key === key);
+  return (VISIBILITY_KEYS as readonly string[]).includes(key);
 }
 
 function isSameSettingsTeam(left: TeamDoc, right: TeamDoc): boolean {
@@ -153,6 +141,7 @@ function retainUnreflectedSettings(
 export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
   const { team, viewer } = props;
   const lt = useLegacyT();
+  const t = useT();
   // T-090：自建俱樂部不開放教學（課程）與賽事，設定裡不出現這兩項。
   const userCapabilityTeam = isUserCapabilityTeam(team);
   const [pending, setPending] = useState<PendingSettings | null>(null);
@@ -221,7 +210,6 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     ...detailVisibility,
   };
   const memberInvite = patch.allowMemberInvite ?? (team.allowMemberInvite !== false);
-  const overlayEnabled = patch.themeOverlayEnabled ?? (team.themeOverlayEnabled !== false);
   const themeColor = patch.themeColor !== undefined
     ? patch.themeColor ?? ''
     : getTeamThemeColor(team);
@@ -349,14 +337,12 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     label: string,
     checked: boolean,
     makePatch: (next: boolean) => TeamSettingsPatch,
-    field: 'allowMemberInvite' | 'themeOverlayEnabled' | VisibilityKey,
+    field: 'allowMemberInvite' | VisibilityKey,
   ): JSX.Element {
     const disabled = !!pending?.busy && (
       field === 'allowMemberInvite'
         ? pending.patch.allowMemberInvite !== undefined
-        : field === 'themeOverlayEnabled'
-          ? pending.patch.themeOverlayEnabled !== undefined
-          : pending.control.getAttribute('data-visibility-key') === field
+        : pending.control.getAttribute('data-visibility-key') === field
     );
 
     return (
@@ -401,9 +387,9 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
     }, button);
   }
 
-  const memberInviteLabel = lt('teamDetail.memberCanInvite', '隊員可邀請');
-  const themeLabel = lt('俱樂部主題色', '俱樂部主題色');
-  const overlayLabel = lt('半透明遮罩', '半透明遮罩');
+  const memberInviteLabel = t('clubs.settings.memberInvite');
+  const themeLabel = t('clubs.settings.themeColor');
+  const typeLabel = t('clubs.settings.type');
 
   return createPortal(
     <div class="legacy-ui">
@@ -433,28 +419,16 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
             <div class="td-settings-group">
               <div class="td-settings-row td-settings-row-primary td-category-settings-row">
                 <div>
-                  <strong>{lt('俱樂部標籤', '俱樂部標籤')}</strong>
-                  {/* T-090：自建俱樂部沒有教學標籤，說明文字（四種、教學開課程）不成立，整段不顯示。 */}
-                  {userCapabilityTeam ? null : (
-                    <span>
-                      {lt(
-                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                        '四種標籤僅能擇一；「無」不顯示標籤與緞帶，只有教學標籤會開啟課程與學員功能。',
-                      )}
-                    </span>
-                  )}
+                  <strong>{typeLabel}</strong>
                 </div>
                 <div
                   class="td-category-tag-group"
                   role="radiogroup"
-                  aria-label={lt('俱樂部標籤', '俱樂部標籤')}
+                  aria-label={typeLabel}
                 >
                   {getTeamCategoryOptions()
                     .filter((option) => !userCapabilityTeam || option.key !== 'education')
                     .map((option) => {
-                    // ASSUMPTION: 依附件實際簽章使用 labelKey / formHintKey，
-                    // fallback 取 MiMo Q2 原文；分類 key 的回傳形狀無需調整。
-                    const copy = CATEGORY_COPY[option.key];
                     const active = option.key === category;
                     return (
                       <button
@@ -466,8 +440,11 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                           && pending.control.classList.contains(`td-category-tag-${option.key}`)}
                         onClick={(event) => changeCategory(option.key, event.currentTarget)}
                       >
-                        <strong>{lt(option.labelKey, copy.label)}</strong>
-                        <span>{lt(option.formHintKey, copy.hint)}</span>
+                        <strong>
+                          {option.key === 'none'
+                            ? t('clubs.category.none')
+                            : lt(option.labelKey, CATEGORY_LABEL[option.key])}
+                        </strong>
                       </button>
                     );
                   })}
@@ -476,12 +453,6 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-row">
                 <div>
                   <strong>{memberInviteLabel}</strong>
-                  <span>
-                    {lt(
-                      '開啟後，現有隊員可以產生邀請 QR Code。',
-                      '開啟後，現有隊員可以產生邀請 QR Code。',
-                    )}
-                  </span>
                 </div>
                 {renderSwitch(
                   memberInviteLabel,
@@ -493,12 +464,6 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
               <div class="td-settings-row td-theme-settings-row">
                 <div>
                   <strong>{themeLabel}</strong>
-                  <span>
-                    {lt(
-                      '選擇後會套用在俱樂部卡片與詳情重點容器；留空則使用系統預設配色。',
-                      '選擇後會套用在俱樂部卡片與詳情重點容器；留空則使用系統預設配色。',
-                    )}
-                  </span>
                 </div>
                 <div class="td-theme-control">
                   <span
@@ -531,41 +496,20 @@ export function TeamSettingsModal(props: TeamSettingsModalProps): JSX.Element {
                   </button>
                 </div>
               </div>
-              <div class="td-settings-row td-theme-overlay-row">
-                <div>
-                  <strong>{overlayLabel}</strong>
-                  <span>
-                    {lt(
-                      '開啟後會在主題色與文字之間加上淺色或深色遮罩，讓文字更清楚；關閉後顏色會更接近實際選色，但文字對比可能降低。',
-                      '開啟後會在主題色與文字之間加上淺色或深色遮罩，讓文字更清楚；關閉後顏色會更接近實際選色，但文字對比可能降低。',
-                    )}
-                  </span>
-                </div>
-                {renderSwitch(
-                  overlayLabel,
-                  overlayEnabled,
-                  (checked) => ({ themeOverlayEnabled: checked }),
-                  'themeOverlayEnabled',
-                )}
-              </div>
             </div>
             <div class="td-settings-group">
-              <div class="td-settings-title">{lt('欄位容器顯示', '欄位容器顯示')}</div>
+              <div class="td-settings-title">{t('clubs.settings.detailSections')}</div>
               {VISIBILITY_ITEMS
-                .filter((item) => item.key !== 'courses' || category === 'education')
-                .filter((item) => !userCapabilityTeam
-                  || (item.key !== 'courses' && item.key !== 'matches'))
                 .map((item) => {
-                  const label = lt(item.label, item.label);
+                  const label = t(item.labelKey);
                   return (
                     <div class="td-settings-row" key={item.key}>
                       <div>
                         <strong>{label}</strong>
-                        <span>{lt(item.desc, item.desc)}</span>
                       </div>
                       {renderSwitch(label, visibility[item.key] !== false, (checked) => {
                         const current = { ...detailVisibility };
-                        if (isVisibilityKey(item.key)) current[item.key] = checked;
+                        current[item.key] = checked;
                         return { detailVisibility: current };
                       }, item.key)}
                     </div>

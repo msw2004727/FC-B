@@ -16,6 +16,7 @@ import { lockBody } from '@/ui/Modal';
 import { toast } from '@/ui/Toast';
 import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
+import { PlatformGlyph } from './TeamContactGlyph';
 import type { TeamFormApi, TeamFormProps } from './use-team-form';
 import { useTeamForm } from './use-team-form';
 
@@ -25,25 +26,6 @@ export function TeamFormModal(
   if (!props.open) return null;
   return <TeamFormModalBody {...props} />;
 }
-
-const PLATFORM_GLYPH: Record<string, string> = {
-  line: 'LINE',
-  facebook: 'f',
-  instagram: 'IG',
-  threads: '@',
-  x: 'X',
-  youtube: '▶',
-  tiktok: '♪',
-  discord: 'D',
-  telegram: '✈',
-  linktree: 'LT',
-  link: '↗',
-};
-
-const PLATFORM_IMAGE: Record<string, string> = {
-  instagram: '/img/Instagram-Logo--Streamline-Plump-Gradient.png',
-  threads: '/img/Thread-Block-Logo--Streamline-Ultimate.png',
-};
 
 function settle(task: Promise<void>): void {
   // hook 內部已 toast；這裡只避免未處理拒絕（L-07）。
@@ -74,18 +56,6 @@ function CaptainLine({ text }: { text: string }): JSX.Element {
   const prefix = text.slice(0, splitAt + 1);
   const name = text.slice(splitAt + 1);
   return <>{prefix}<span style="color:var(--accent)">{name}</span></>;
-}
-
-function PlatformGlyph({ platform }: { platform: string }): JSX.Element {
-  const key = Object.prototype.hasOwnProperty.call(PLATFORM_GLYPH, platform)
-    ? platform
-    : 'link';
-  const image = PLATFORM_IMAGE[key];
-  return (
-    <span class={`event-social-link-icon event-social-link-icon-${key}`} aria-hidden="true">
-      {image ? <img src={image} alt="" /> : PLATFORM_GLYPH[key]}
-    </span>
-  );
 }
 
 function UserSuggest(props: {

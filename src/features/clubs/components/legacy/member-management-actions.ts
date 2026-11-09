@@ -62,12 +62,12 @@ export interface SaveMemberNoteInput {
 
 export function getRoleChangeLabels(target: MemberRoleTarget): {
   actionText: '晉升' | '降級';
-  roleName: '教練' | '領隊' | '隊員';
+  roleName: '教練' | '領隊' | '成員';
 } {
   const roleNames = {
     coach: '教練',
     leader: '領隊',
-    member: '隊員',
+    member: '成員',
   } as const;
   return {
     actionText: target.direction === 'promote' ? '晉升' : '降級',
@@ -255,12 +255,12 @@ export function getKickErrorMessage(error: unknown): string {
   const message = error && typeof error === 'object' && 'message' in error
     ? String((error as { message?: unknown }).message ?? '')
     : '';
-  if (message.includes('TARGET_IS_STAFF')) return '僅可移除一般隊員';
-  if (message.includes('MEMBER_NOT_FOUND')) return '隊員資料不存在或已不在球隊中';
+  if (message.includes('TARGET_IS_STAFF')) return '僅可移除一般成員';
+  if (message.includes('MEMBER_NOT_FOUND')) return '成員資料不存在或已不在俱樂部中';
   // 伺服器拒絕文件 id 與 id 欄位不一致的舊格式俱樂部（與刪除俱樂部同一 resolver）；重試無效，不叫人重試
   if (message.includes('TEAM_ID_MISMATCH')) return '此俱樂部資料格式較舊，請聯繫管理員處理';
   if (message.includes('TEAM_MANAGE_DENIED') || message.includes('COACH_PLUS_REQUIRED')) {
-    return '您沒有移除隊員的權限';
+    return '您沒有移除成員的權限';
   }
   return '移除失敗，請稍後再試';
 }

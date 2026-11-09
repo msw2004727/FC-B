@@ -1,4 +1,6 @@
 import type { JSX } from 'preact';
+import { SHOW_EXP } from '@/core/exp-display';
+import { useT } from '@/i18n/i18n';
 import { SPORTS } from '@/features/events/data/sports';
 import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import type { ClubViewer, TeamDoc, TeamPrimaryAction } from '../../data/types';
@@ -10,15 +12,11 @@ import {
   isTeamTeachingTagged,
 } from '../../data/team-list-model';
 
-// U-020：共用 core/unavailable 的提示文字。
-export { UNAVAILABLE_FEATURE_MSG as UNAVAILABLE_MSG } from '@/core/unavailable';
-
 export type V2TabKey = 'overview' | 'courses' | 'events' | 'members' | 'record' | 'feed';
 
 export interface V2TabDef {
   key: V2TabKey;
   label: string;
-  badge?: number;
 }
 
 export function sanitizeHttpImageUrl(rawUrl: unknown): string {
@@ -42,7 +40,8 @@ export function getSportLabel(team: TeamDoc | null | undefined): string {
 }
 
 export function getRecruitText(team: TeamDoc | null | undefined, courseCount = 0): string {
-  if (!isTeamTeachingTagged(team)) return '一般俱樂部 · 歡迎查看活動與成員';
+  // C1（R-UI-026）：一般俱樂部不放招募說明句。
+  if (!isTeamTeachingTagged(team)) return '';
   const accepting = team?.eduSettings?.acceptingStudents !== false;
   if (!accepting) return '目前暫停招收新學員';
   return courseCount > 0 ? `正在招收新學員 · ${courseCount} 個課程接受報名` : '正在招收新學員';
@@ -70,7 +69,7 @@ export function canInviteToTeam(
   return canShowInviteQr(viewer, team);
 }
 
-function SvgIcon({ name }: { name: 'back' | 'more' | 'camera' | 'join' | 'check' | 'share' | 'contact' | 'qr' | 'leave' }): JSX.Element {
+function SvgIcon({ name }: { name: 'back' | 'more' | 'camera' | 'join' | 'check' | 'link' | 'contact' | 'qr' | 'leave' }): JSX.Element {
   switch (name) {
     case 'back':
       return (
@@ -108,12 +107,11 @@ function SvgIcon({ name }: { name: 'back' | 'more' | 'camera' | 'join' | 'check'
           <path d="M20 6 9 17l-5-5" />
         </svg>
       );
-    case 'share':
+    case 'link':
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
-          <path d="M16 6l-4-4-4 4" />
-          <path d="M12 2v14" />
+          <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+          <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
         </svg>
       );
     case 'contact':
@@ -157,10 +155,12 @@ export interface TeamDetailV2HeaderProps {
   tabs: readonly V2TabDef[];
   activeTab: V2TabKey;
   onBack: () => void;
-  onMore: () => void;
+  /** C1：只有可編輯者才有「⋯」（開設定）；未提供時不顯示。 */
+  onMore?: () => void;
   onContact: () => void;
   onInvite: () => void;
-  onUnavailable: () => void;
+  /** C1：所有人都能複製俱樂部連結（取代未開放的分享鈕）。 */
+  onCopyLink: () => void;
   onEditAvatar: () => void;
   onEditCover: () => void;
   imageBusyKind: 'avatar' | 'cover' | null;
@@ -190,7 +190,7 @@ export function TeamDetailV2Header({
   onMore,
   onContact,
   onInvite,
-  onUnavailable,
+  onCopyLink,
   onEditAvatar,
   onEditCover,
   imageBusyKind,
@@ -201,10 +201,11 @@ export function TeamDetailV2Header({
   onLeave,
   onSelectTab,
 }: TeamDetailV2HeaderProps): JSX.Element {
+  const t = useT();
   const idleJoinRing = useActionRingControl();
   const ring = joinRing ?? idleJoinRing;
   const sportLabel = getSportLabel(team);
-  const subtitle = team.nameEn || sportLabel || team.region || 'Club detail';
+  const subtitle = team.nameEn || sportLabel || team.region || '';
   const logoUrl = getTeamDetailAvatarUrl(team);
   const coverUrl = sanitizeHttpImageUrl(getTeamCoverImageUrl(team, 'cover'));
   const detailRank = getTeamRank(Number(team.teamExp || 0));
@@ -222,17 +223,16 @@ export function TeamDetailV2Header({
   const isMember = primaryAction === 'leave';
   const canInvite = canInviteToTeam(team, viewer);
 
-  // T-090：自建俱樂部不開放課程與戰績頁籤，統計列同步拿掉「課程」「勝率」。
-  const userCapabilityTeam = isUserCapabilityTeam(team);
-  const allStats: ReadonlyArray<[string, string | number, string]> = [
-    ['成員', memberCount, ''],
-    ['課程', courseCount, ''],
-    ['勝率', totalGames > 0 ? `${winRate}%` : '-', totalGames > 0 ? `${totalGames} 場` : ''],
-    ['活動', eventCount, ''],
+  // C1：數字列只留成員、活動、勝率，點了切到對應頁籤（頁籤沒開就不能點）。
+  // 勝率只在戰績頁籤存在（有戰績資料）時顯示；T-090 自建俱樂部照舊不顯示勝率。
+  const tabKeys = new Set(tabs.map((item) => item.key));
+  const showWinRate = tabKeys.has('record') && !isUserCapabilityTeam(team);
+  const allStats: ReadonlyArray<[string, string | number, string, V2TabKey]> = [
+    ['成員', memberCount, '', 'members'],
+    ['活動', eventCount, '', 'events'],
+    ['勝率', `${winRate}%`, `${totalGames} 場`, 'record'],
   ];
-  const stats = userCapabilityTeam
-    ? allStats.filter(([label]) => label !== '課程' && label !== '勝率')
-    : allStats;
+  const stats = allStats.filter(([, , , tab]) => tab !== 'record' || showWinRate);
 
   return (
     <>
@@ -248,17 +248,21 @@ export function TeamDetailV2Header({
         </button>
         <div class="td-v2-title-wrap">
           <div class="td-v2-title">{team.name || '俱樂部名稱'}</div>
-          <div class="td-v2-subtitle">{subtitle}</div>
+          {subtitle ? <div class="td-v2-subtitle">{subtitle}</div> : null}
         </div>
-        <button
-          class="td-v2-icon-btn"
-          type="button"
-          data-td-v2-action="more"
-          aria-label="更多操作"
-          onClick={onMore}
-        >
-          <SvgIcon name="more" />
-        </button>
+        {onMore ? (
+          <button
+            class="td-v2-icon-btn"
+            type="button"
+            data-td-v2-action="more"
+            aria-label="更多操作"
+            onClick={onMore}
+          >
+            <SvgIcon name="more" />
+          </button>
+        ) : (
+          <span class="td-v2-icon-spacer" aria-hidden="true" />
+        )}
       </div>
 
       <section class="td-v2-hero">
@@ -322,17 +326,26 @@ export function TeamDetailV2Header({
             </div>
           </div>
         </div>
-        <div class="td-v2-hero-status">
-          <span class="td-v2-pulse" />
-          <span class="td-v2-hero-status-text">{recruitText}</span>
-          <span
-            class="td-v2-hero-rank"
-            style={{ '--td-v2-rank-color': detailRank.color || '#94a3b8' }}
-          >
-            <span>{exp.toLocaleString()}</span>
-            <strong>{detailRank.rank || 'E'}</strong>
-          </span>
-        </div>
+        {/* C1：EXP 徽章跟著全站 SHOW_EXP；一般俱樂部沒有招募句時整列不出。 */}
+        {recruitText || SHOW_EXP ? (
+          <div class="td-v2-hero-status">
+            {recruitText ? (
+              <>
+                <span class="td-v2-pulse" />
+                <span class="td-v2-hero-status-text">{recruitText}</span>
+              </>
+            ) : null}
+            {SHOW_EXP ? (
+              <span
+                class="td-v2-hero-rank"
+                style={{ '--td-v2-rank-color': detailRank.color || '#94a3b8' }}
+              >
+                <span>{exp.toLocaleString()}</span>
+                <strong>{detailRank.rank || 'E'}</strong>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <div class={`td-v2-cta-bar${isMember ? ' has-leave' : ''}`}>
@@ -376,15 +389,16 @@ export function TeamDetailV2Header({
             <span>加入俱樂部</span>
           </ActionRingButton>
         )}
-        {/* 下一批補：分享俱樂部 */}
+        {/* C1：LINE 分享留 C2 與邀請合併；先讓所有人都能複製俱樂部連結。 */}
         <button
           class="td-v2-cta-icon"
           type="button"
-          data-td-v2-action="share"
-          aria-label="分享俱樂部"
-          onClick={onUnavailable}
+          data-td-v2-action="copy-link"
+          aria-label={t('clubs.copyLink.label')}
+          title={t('clubs.copyLink.label')}
+          onClick={onCopyLink}
         >
-          <SvgIcon name="share" />
+          <SvgIcon name="link" />
         </button>
         <button
           class="td-v2-cta-icon"
@@ -423,25 +437,35 @@ export function TeamDetailV2Header({
 
       <div
         class="td-v2-stats"
-        style={stats.length === 4 ? undefined : `grid-template-columns:repeat(${stats.length},1fr)`}
+        style={`grid-template-columns:repeat(${stats.length},1fr)`}
       >
-        {stats.map(([label, val, sub]) => (
-          <div key={label} class="td-v2-stat">
-            <div class="td-v2-stat-num">{val}</div>
-            <div class="td-v2-stat-label">
-              {label}
-              {sub ? <span>{sub}</span> : null}
-            </div>
-          </div>
-        ))}
+        {stats.map(([label, val, sub, tab]) => {
+          const linked = tabKeys.has(tab);
+          return (
+            <button
+              key={label}
+              type="button"
+              class={`td-v2-stat${linked ? ' is-link' : ''}`}
+              data-td-v2-action="tab"
+              data-tab={tab}
+              disabled={!linked}
+              onClick={() => onSelectTab(tab)}
+            >
+              <span class="td-v2-stat-num">{val}</span>
+              <span class="td-v2-stat-label">
+                {label}
+                {sub ? <span>{sub}</span> : null}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div class="td-v2-tab-rail">
         <div class="td-v2-tab-list" role="tablist">
           {tabs.map((item) => {
             const isActive = activeTab === item.key;
-            const liveClass = item.key === 'courses' && (item.badge ?? 0) > 0 ? 'td-course-tab-live' : '';
-            const cls = [isActive ? 'active' : '', liveClass].filter(Boolean).join(' ');
+            const cls = isActive ? 'active' : '';
             return (
               <button
                 key={item.key}
@@ -454,7 +478,6 @@ export function TeamDetailV2Header({
                 onClick={() => onSelectTab(item.key)}
               >
                 {item.label}
-                {item.badge ? <span class="td-v2-tab-badge">{item.badge}</span> : null}
               </button>
             );
           })}

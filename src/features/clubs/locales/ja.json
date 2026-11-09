@@ -4,7 +4,7 @@
   "detail": "クラブ詳細",
   "manage": "クラブ管理",
   "category": {
-    "none": "なし",
+    "none": "その他",
     "competitive": "競技",
     "education": "指導",
     "leisure": "レクリエーション"
@@ -77,5 +77,26 @@
       "retry": "システムが混み合っています。もう一度お試しください",
       "failed": "譲渡に失敗しました。しばらくしてから再度お試しください"
     }
+  },
+  "copyLink": {
+    "label": "リンクをコピー",
+    "done": "リンクをコピーしました",
+    "failed": "コピーできませんでした。手動でコピーしてください"
+  },
+  "info": {
+    "coach": "コーチ",
+    "social": "SNS"
+  },
+  "section": {
+    "events": "イベント",
+    "info": "クラブ情報",
+    "bio": "紹介",
+    "members": "メンバー"
+  },
+  "settings": {
+    "type": "タイプ",
+    "memberInvite": "メンバーも招待可",
+    "themeColor": "テーマカラー",
+    "detailSections": "詳細ページの表示項目"
   }
 }

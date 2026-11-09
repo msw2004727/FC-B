@@ -17,6 +17,8 @@ import { getSportKeySafe } from '@/features/events/data/sports';
 import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
+import { copyToClipboard } from '@/features/events/data/activity-share';
+import { buildShareUrl } from '@/features/events/data/event-share-builders';
 import { loadTeam, loadTeamMembers } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import {
@@ -49,7 +51,6 @@ import {
 } from './clubs-session';
 import {
   TeamDetailV2Header,
-  UNAVAILABLE_MSG,
   type V2TabDef,
   type V2TabKey,
 } from '../components/legacy/TeamDetailV2Header';
@@ -75,26 +76,30 @@ interface EventResource {
   registrations: RegistrationDoc[];
 }
 
-function getTabsForTeam(team: TeamDoc, courseCount: number, eventCount: number): V2TabDef[] {
+/**
+ * C1 頁籤：課程先隱藏（課程上線後再開）；戰績沒有資料、動態沒有貼文就不出頁籤；頁籤不帶數字徽章。
+ */
+function getTabsForTeam(team: TeamDoc, totalGames: number): V2TabDef[] {
   const tabs: V2TabDef[] = [{ key: 'overview', label: '總覽' }];
-  // T-090：自建俱樂部不開放教學（課程）與賽事入口。
+  // T-090：自建俱樂部不開放賽事入口。
   const userCapabilityTeam = isUserCapabilityTeam(team);
-  if (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses')) {
-    tabs.push({ key: 'courses', label: '課程', badge: courseCount });
-  }
   if (isTeamDetailSectionVisible(team, 'events')) {
-    tabs.push({ key: 'events', label: '活動', badge: eventCount });
+    tabs.push({ key: 'events', label: '活動' });
   }
   if (isTeamDetailSectionVisible(team, 'members')) {
     tabs.push({ key: 'members', label: '成員' });
   }
   if (
-    isTeamDetailSectionVisible(team, 'record') ||
-    (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches'))
+    totalGames > 0 && (
+      isTeamDetailSectionVisible(team, 'record') ||
+      (!userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches'))
+    )
   ) {
     tabs.push({ key: 'record', label: '戰績' });
   }
-  tabs.push({ key: 'feed', label: '動態' });
+  if (Array.isArray(team['feed']) && team['feed'].length > 0) {
+    tabs.push({ key: 'feed', label: '動態' });
+  }
   return tabs;
 }
 
@@ -300,17 +305,20 @@ function TeamDetailContent({
   // M-045：共用返回（前面有本站頁就退回，否則回俱樂部列表）。
   const handleBack = useGoBack('/teams');
 
-  function handleUnavailable(): void {
-    toast.show({ message: UNAVAILABLE_MSG });
+  // C1：「⋯」只給可編輯者（開設定）；其他人頂欄不出「⋯」。
+  function handleMore(): void {
+    if (team && canEditTeamSettings(viewer, team)) setTeamOverlay('settings');
   }
 
-  function handleMore(): void {
-    if (team && canEditTeamSettings(viewer, team)) {
-      setTeamOverlay('settings');
-      return;
-    }
-    // 保留既有非經理的分享入口行為。
-    handleUnavailable();
+  /** C1：所有人都能複製俱樂部連結；網址與邀請 QR 相同（buildShareUrl('team', id)）。 */
+  async function handleCopyLink(): Promise<void> {
+    const targetId = String(team?.id ?? '').trim();
+    if (!targetId) return;
+    const copied = await copyToClipboard(buildShareUrl('team', targetId));
+    toast.show({
+      message: t(copied ? 'clubs.copyLink.done' : 'clubs.copyLink.failed'),
+      tone: copied ? 'success' : 'error',
+    });
   }
 
   function handleEditBasic(): void {
@@ -520,7 +528,8 @@ function TeamDetailContent({
   const totalGames = wins + draws + losses;
   const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
 
-  const tabs = getTabsForTeam(team, courseCount, eventCount);
+  const tabs = getTabsForTeam(team, totalGames);
+  const tabKeys = new Set(tabs.map((item) => item.key));
   const activeTab = pickedTab && tabs.some((item) => item.key === pickedTab)
     ? pickedTab
     : getRememberedTeamTab(teamId, tabs.map((item) => item.key));
@@ -548,7 +557,7 @@ function TeamDetailContent({
       return;
     }
     if (viewer.teamIds.has(teamId)) {
-      toast.show({ message: `您已是「${teamName}」隊員，無需重複申請` });
+      toast.show({ message: `您已是「${teamName}」成員，無需重複申請` });
       return;
     }
     const currentJoinState = getSessionJoinState(teamId, viewer.uid);
@@ -590,22 +599,22 @@ function TeamDetailContent({
 
   async function handleLeave(): Promise<void> {
     if (actionLock.current || !team || !viewer.uid) return;
+    const uid = viewer.uid;
+    // C1（P-09）：經理、領隊先擋，不必先按確認框才被告知不能退。
+    const staff = getTeamStaffIdentity(team);
+    if (staff.captainUids.has(uid)) {
+      toast.show({ message: '經理無法退出俱樂部，請先轉移經理職務', tone: 'warning' });
+      return;
+    }
+    if (staff.leaderUids.has(uid)) {
+      toast.show({ message: '領隊無法退出俱樂部，請先轉移領隊職務', tone: 'warning' });
+      return;
+    }
     actionLock.current = true;
     setBusy(true);
     try {
       const confirmed = await appConfirm(`確定要退出「${teamName}」俱樂部？退出後如需重新加入，可能需要再次送出申請。`);
       if (!confirmed || !alive.current) return;
-
-      const uid = viewer.uid;
-      const staff = getTeamStaffIdentity(team);
-      if (staff.captainUids.has(uid)) {
-        toast.show({ message: '經理無法退出俱樂部，請先轉移經理職務', tone: 'warning' });
-        return;
-      }
-      if (staff.leaderUids.has(uid)) {
-        toast.show({ message: '領隊無法退出俱樂部，請先轉移領隊職務', tone: 'warning' });
-        return;
-      }
 
       const self: TeamMember = { uid, displayName: viewer.displayName ?? '' };
       await leaveTeam({ team, self });
@@ -687,10 +696,12 @@ function TeamDetailContent({
               tabs={tabs}
               activeTab={activeTab}
               onBack={handleBack}
-              onMore={handleMore}
+              onMore={canEdit ? handleMore : undefined}
               onContact={handleContact}
               onInvite={handleInvite}
-              onUnavailable={handleUnavailable}
+              onCopyLink={() => {
+                void handleCopyLink().catch(() => undefined);
+              }}
               onEditAvatar={() => imageUpload.pick('avatar')}
               onEditCover={() => imageUpload.pick('cover')}
               imageBusyKind={imageUpload.busyKind}
@@ -709,12 +720,11 @@ function TeamDetailContent({
             <TeamDetailV2Panels
               team={team}
               activeTab={activeTab}
+              tabKeys={tabKeys}
               roster={roster}
               membersStatus={membersStatus}
               events={visibleEvents}
               eventsStatus={eventsState.status}
-              memberCount={memberCount}
-              courseCount={courseCount}
               totalGames={totalGames}
               winRate={winRate}
               viewer={viewer}
@@ -733,7 +743,6 @@ function TeamDetailContent({
               onLogin={() => {
                 void login();
               }}
-              onUnavailable={handleUnavailable}
             />
 
             <div class="td-v2-course-modal" hidden aria-hidden="true">

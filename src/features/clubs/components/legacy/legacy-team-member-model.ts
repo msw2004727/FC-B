@@ -2,7 +2,7 @@ import type { UserRole } from '@/ui/Avatar';
 import { isTeamDetailSectionVisible } from '../../data/team-detail-model';
 import type { TeamDoc, TeamRosterRow } from '../../data/types';
 
-export type LegacyMemberFilterKey = 'all' | 'manager' | 'leader' | 'coach' | 'student';
+export type LegacyMemberFilterKey = 'all' | 'manager' | 'leader' | 'coach' | 'member';
 
 export interface LegacyMemberFilterOption {
   key: LegacyMemberFilterKey;
@@ -83,11 +83,9 @@ export function teamMemberMatchesFilter(
   filter: LegacyMemberFilterKey,
 ): boolean {
   if (filter === 'all') return true;
-  if (filter === 'student') {
-    // B 尚無教育學員資料，student 固定為 false。
-    return false;
-  }
   const roles = mapRosterRolesToLegacyFilterKeys(row.roles);
+  // C1：A 的「學員」篩選在 B 永遠是 0 人（沒有教育學員資料），改成「成員」＝沒有幹部身分的一般成員。
+  if (filter === 'member') return roles.size === 0;
   return roles.has(filter);
 }
 
@@ -99,10 +97,10 @@ export function getTeamMemberFilterOptions(
     roster.filter((row) => teamMemberMatchesFilter(row, key)).length;
   const allOptions: LegacyMemberFilterOption[] = [
     { key: 'all', label: '全部', count: roster.length },
-    { key: 'manager', label: '球經', count: count('manager') },
+    { key: 'manager', label: '經理', count: count('manager') },
     { key: 'leader', label: '領隊', count: count('leader') },
     { key: 'coach', label: '教練', count: count('coach') },
-    { key: 'student', label: '學員', count: count('student') },
+    { key: 'member', label: '成員', count: count('member') },
   ];
   return allOptions.filter((item) => item.key === 'all' || item.count > 0);
 }

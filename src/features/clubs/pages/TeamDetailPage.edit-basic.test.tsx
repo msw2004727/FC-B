@@ -333,10 +333,10 @@ describe('TeamDetailPage 編輯基本資料：真表單 jsdom 整頁流程', () 
     expect(routeState.route).not.toHaveBeenCalled();
   });
 
+  // 測試同步更新（C1）：非管理者頂欄不再出「⋯」（原本按了只跳「尚未開放」）。
   it.each(['member', 'leader', 'coach'])(
-    '非經理 %s 的更多維持分享行為，不出現基本資料編輯',
+    '非經理 %s 沒有「⋯」，不出現基本資料編輯',
     async (uid) => {
-      const toastSpy = vi.spyOn(toast, 'show');
       vi.mocked(useViewer).mockReturnValue(viewer(uid));
       vi.mocked(loadTeam).mockResolvedValue({
         ...team,
@@ -348,16 +348,11 @@ describe('TeamDetailPage 編輯基本資料：真表單 jsdom 整頁流程', () 
 
       render(<TeamDetailPage />);
       await screen.findByText('原俱樂部名稱');
-      fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+      expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
 
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(screen.queryByRole('button', { name: '編輯基本資料' })).toBeNull();
       expect(updateTeamBasicDoc).not.toHaveBeenCalled();
-
-      // 附件現況的分享尚未實作；保留它既有的提示，不在本卡增加分享邏輯。
-      expect(toastSpy).toHaveBeenCalledWith({
-        message: '此功能尚未開放，請先使用舊版',
-      });
     },
   );
 
@@ -369,7 +364,8 @@ describe('TeamDetailPage 編輯基本資料：真表單 jsdom 整頁流程', () 
 
     render(<TeamDetailPage />);
     await screen.findByText('原俱樂部名稱');
-    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    // 測試同步更新（C1）：不能編輯的人頂欄沒有「⋯」。
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('button', { name: '編輯基本資料' })).toBeNull();

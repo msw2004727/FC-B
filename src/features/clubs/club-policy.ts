@@ -479,13 +479,15 @@ export function canCreateTeam(
 /**
  * 俱樂部管理頁入口（抽屜與頁面共用）。對應 A `_canAccessPage('page-team-manage')`：
  * 該頁在 DRAWER_MENUS 有 permissionCode，A 只看 `hasPermission('team.manage.entry')`（含個別授權），不另看擁有俱樂部。
+ * C1：另放行可自建俱樂部的一般用戶（與 canCreateTeam 的 isUserCapabilityTeamCreator 相同），
+ * 抽屜條件見 core/drawer-access `drawerTeamManage`；頁面只列 canAccessTeamManageRecord 的俱樂部。
  */
 export function canAccessTeamManagePage(
   viewer: ClubCreateTeamViewer | null | undefined,
 ): boolean {
   return typeof viewer?.uid === 'string'
     && viewer.uid.trim().length > 0
-    && viewer.hasPermission('team.manage.entry');
+    && (viewer.hasPermission('team.manage.entry') || isUserCapabilityTeamCreator(viewer));
 }
 
 /** A `renderTeamManage` 的 isAdmin（`team.manage_all`）：看全部俱樂部，並可置頂、上下架、光跡。 */

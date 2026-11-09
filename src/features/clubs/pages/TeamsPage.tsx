@@ -530,7 +530,7 @@ export default function TeamsPage(): JSX.Element {
               <circle cx="12" cy="12" r="8" />
               <path d="m7.5 16.5 9-9" />
             </svg>
-            <span data-i18n="無">{lt('無', '無')}</span>
+            <span>{t('clubs.category.none')}</span>
           </button>
           <button
             type="button"

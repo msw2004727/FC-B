@@ -22,6 +22,20 @@ export function drawerSuperAdminOnly(access: RouteAccessContext): boolean {
   return access.role === 'super_admin';
 }
 
+/** 一般用戶自建俱樂部的前台活動能力碼（與 clubs/club-policy `USER_TEAM_CREATE_CAPABILITY` 同值）。 */
+const USER_TEAM_CREATE_CAPABILITY = 'user.activity.team_create';
+
+/**
+ * 俱樂部管理入口（抽屜與頁面共用條件）：持 `team.manage.entry`，
+ * 或一般用戶（role=user）有建立俱樂部能力（與 `isUserCapabilityTeamCreator` 相同判斷），
+ * 讓自建俱樂部的擁有者也找得到管理頁（C1／P3）。頁面內只列自己能管的俱樂部。
+ */
+export function drawerTeamManage(access: RouteAccessContext): boolean {
+  if (!access.uid || !access.uid.trim()) return false;
+  return access.hasPermission('team.manage.entry')
+    || (access.role === 'user' && access.capabilities.includes(USER_TEAM_CREATE_CAPABILITY));
+}
+
 /**
  * A `_canAccessOwnActivityManageEntry`（活動管理入口）：
  * 活動管理入口權限、coach 以上（含自訂角色等級）、跨活動編輯，或一般用戶擁有 own_manage_entry。

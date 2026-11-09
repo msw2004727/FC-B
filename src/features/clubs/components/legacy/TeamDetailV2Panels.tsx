@@ -3,6 +3,8 @@ import { parseEventStartMs } from '@/core/event-time';
 import { formatTaipei, taipeiParts } from '@/core/taipei-time';
 import { useMemo } from 'preact/hooks';
 import { TeamDetailWeekStrip } from './TeamDetailWeekStrip';
+import { openHttpAnchor } from '@/core/open-external';
+import { useT } from '@/i18n/i18n';
 import { effectiveEventStatus } from '@/features/events/data/my-activities-model';
 import { UserTag } from '@/ui/UserTag';
 import type { EventDoc } from '@/features/events/data/types';
@@ -10,13 +12,12 @@ import {
   getTeamStaffIdentity,
   isTeamDetailSectionVisible,
 } from '../../data/team-detail-model';
-import { isUserCapabilityTeam } from '../../data/team-source';
+import { normalizeTeamContactLinks } from '../../data/team-contact-links';
 import type { TeamDoc, TeamRosterRow } from '../../data/types';
 import { LegacyTeamMembersCard } from './LegacyTeamMembersCard';
+import { PlatformGlyph } from './TeamContactGlyph';
 import {
-  getRecruitText,
   sanitizeHttpImageUrl,
-  UNAVAILABLE_MSG,
   type V2TabKey,
 } from './TeamDetailV2Header';
 
@@ -65,11 +66,12 @@ export function renderEventRows(
           statusKey === 'full' ? '已額滿' : statusKey === 'upcoming' ? '即將開放' : '報名中';
         const max = readEventCount(e, 'max');
         const current = readEventCount(e, 'current');
-        const countText = max > 0 ? ` · ${current}/${max} 名` : '';
+        const countText = max > 0 ? `${current}/${max} 名` : '';
         const image = getEventCoverImage(e);
-        const metaText =
-          [dateStr.split(' ')[1] || '', String(e.location ?? '')].filter(Boolean).join(' · ') +
-          countText;
+        // C1（R-UI-027）：原本「時間 · 地點 · 人數」一行在 375px 會被折行；改在語意斷點分兩行：
+        // 時間 · 人數／地點（地點過長以「…」收尾），人數不會被截掉。
+        const timeText = [dateStr.split(' ')[1] || '', countText].filter(Boolean).join(' · ');
+        const locationText = String(e.location ?? '').trim();
         return (
           <button
             key={eventId || `ev-${idx}`}
@@ -101,7 +103,8 @@ export function renderEventRows(
                   {e.title || '未命名活動'}
                   <i class={statusKey === 'full' ? 'full' : ''}>{status}</i>
                 </strong>
-                <em>{metaText}</em>
+                {timeText ? <em>{timeText}</em> : null}
+                {locationText ? <em>{locationText}</em> : null}
               </span>
               <b>›</b>
             </span>
@@ -128,12 +131,12 @@ function resolvePersonName(
 export interface TeamDetailV2PanelsProps {
   team: TeamDoc;
   activeTab: V2TabKey;
+  /** C1：頁籤由頁面決定（課程先隱藏、沒資料的戰績與動態不出），面板跟著同一份清單。 */
+  tabKeys: ReadonlySet<V2TabKey>;
   roster: readonly TeamRosterRow[];
   membersStatus: 'loading' | 'error' | 'guest' | 'ready';
   events: readonly EventDoc[];
   eventsStatus: 'loading' | 'error' | 'ready';
-  memberCount: number;
-  courseCount: number;
   totalGames: number;
   winRate: number;
   // ASSUMPTION: 未附介面原文，既有宣告為此單行；使用 import type 運算式避免假設檔頭 import 排列。
@@ -150,18 +153,16 @@ export interface TeamDetailV2PanelsProps {
   onRetryMembers: () => void;
   onRetryEvents: () => void;
   onLogin: () => void;
-  onUnavailable: () => void;
 }
 
 export function TeamDetailV2Panels({
   team,
   activeTab,
+  tabKeys,
   roster,
   membersStatus,
   events,
   eventsStatus,
-  memberCount,
-  courseCount,
   totalGames,
   winRate,
   // ASSUMPTION: 未附完整解構，既有成員管理 prop 採此單行解構。
@@ -177,8 +178,8 @@ export function TeamDetailV2Panels({
   onRetryMembers,
   onRetryEvents,
   onLogin,
-  onUnavailable,
 }: TeamDetailV2PanelsProps): JSX.Element {
+  const t = useT();
   const eventDaySet = useMemo(() => {
     const days = new Set<string>();
     for (const event of events) {
@@ -187,19 +188,22 @@ export function TeamDetailV2Panels({
     }
     return days;
   }, [events]);
-  // T-090：自建俱樂部不開放教學（課程）與賽事，與 TeamDetailPage getTabsForTeam 一致。
-  const userCapabilityTeam = isUserCapabilityTeam(team);
-  const showCourses = !userCapabilityTeam && isTeamDetailSectionVisible(team, 'courses');
-  const showEvents = isTeamDetailSectionVisible(team, 'events');
-  const showMembers = isTeamDetailSectionVisible(team, 'members');
-  const showRecord = isTeamDetailSectionVisible(team, 'record');
-  const showMatches = !userCapabilityTeam && isTeamDetailSectionVisible(team, 'matches');
+  const showEvents = tabKeys.has('events');
+  const showMembers = tabKeys.has('members');
+  const showRecord = tabKeys.has('record');
+  const showFeed = tabKeys.has('feed');
   const showBio = isTeamDetailSectionVisible(team, 'bio');
   const showInfo = isTeamDetailSectionVisible(team, 'info');
 
   const staff = getTeamStaffIdentity(team);
   const captainUids = [...staff.captainUids];
   const leaderUids = [...staff.leaderUids];
+  const coachUids = [...staff.coachUids];
+  const coachNames = Array.isArray(team.coaches)
+    ? team.coaches.map((n) => String(n ?? '').trim())
+    : [];
+  // A：contactLinksEnabled 才輸出社群按鈕（team-detail-v2-panels.js _buildTeamDetailV2InfoGrid）。
+  const contactLinks = team.contactLinksEnabled ? normalizeTeamContactLinks(team.contactLinks) : [];
   const leaderNames = Array.isArray(team.leaders)
     ? team.leaders.map((n) => String(n ?? '').trim())
     : team.leader
@@ -217,72 +221,13 @@ export function TeamDetailV2Panels({
   const rawFeed = team['feed'];
   const feedPosts = Array.isArray(rawFeed) ? rawFeed.slice(0, 10) : [];
 
-  const accepting = team.eduSettings?.acceptingStudents !== false;
-
   return (
     <main class="td-v2-content">
-      {/* 總覽 */}
+      {/* 總覽（C1：拿掉與數字列重複的「快速導覽」） */}
       <section
         class={`td-v2-panel td-v2-panel-overview${activeTab === 'overview' ? ' active' : ''}`}
         data-panel="overview"
       >
-        <div class="td-v2-card">
-          <div class="td-v2-section-head">
-            <h3>快速導覽</h3>
-            <span>所有原有內容都保留在分頁內</span>
-          </div>
-          <div class="td-v2-quick-grid">
-            {showCourses && (
-              <button
-                class="td-v2-quick"
-                type="button"
-                data-td-v2-action="tab"
-                data-tab="courses"
-                onClick={() => onSelectTab('courses')}
-              >
-                <strong>{courseCount}</strong>
-                <span>課程方案</span>
-              </button>
-            )}
-            {showEvents && (
-              <button
-                class="td-v2-quick"
-                type="button"
-                data-td-v2-action="tab"
-                data-tab="events"
-                onClick={() => onSelectTab('events')}
-              >
-                <strong>{events.length}</strong>
-                <span>近期活動</span>
-              </button>
-            )}
-            {showMembers && (
-              <button
-                class="td-v2-quick"
-                type="button"
-                data-td-v2-action="tab"
-                data-tab="members"
-                onClick={() => onSelectTab('members')}
-              >
-                <strong>{memberCount}</strong>
-                <span>成員總數</span>
-              </button>
-            )}
-            {showRecord && (
-              <button
-                class="td-v2-quick"
-                type="button"
-                data-td-v2-action="tab"
-                data-tab="record"
-                onClick={() => onSelectTab('record')}
-              >
-                <strong>{totalGames > 0 ? `${winRate}%` : '-'}</strong>
-                <span>勝率</span>
-              </button>
-            )}
-          </div>
-        </div>
-
         {showBio &&
           (bioText ? (
             <div class="td-v2-card">
@@ -337,12 +282,48 @@ export function TeamDetailV2Panels({
                   )}
                 </div>
               </div>
+              {coachUids.length > 0 ? (
+                <div class="td-v2-staff-row td-v2-staff-row-wide" data-staff="coach">
+                  <span class="td-v2-staff-label">{t('clubs.info.coach')}</span>
+                  <div class="td-v2-person-tags">
+                    {coachUids.map((uid, idx) => (
+                      <UserTag
+                        key={uid}
+                        uid={uid}
+                        name={resolvePersonName(uid, roster, coachNames[idx])}
+                        role="coach"
+                        onOpenProfile={onOpenProfile}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             {contactText ? (
               <div class="td-v2-contact-card">
                 <span class="td-v2-contact-label">聯繫方式</span>
                 <div class="td-v2-contact-actions">
                   <span class="td-v2-contact-text">{contactText}</span>
+                </div>
+              </div>
+            ) : null}
+            {contactLinks.length > 0 ? (
+              <div class="td-v2-contact-card" data-detail-field="social-links">
+                <span class="td-v2-contact-label">{t('clubs.info.social')}</span>
+                <div class="td-v2-social-list">
+                  {contactLinks.map((link) => (
+                    <a
+                      key={link.url}
+                      class="td-v2-social-btn"
+                      data-platform={link.platform}
+                      href={link.url}
+                      rel="noopener noreferrer"
+                      onClick={(event) => openHttpAnchor(event, link.url)}
+                    >
+                      <PlatformGlyph platform={link.platform} />
+                      <span>{link.label}</span>
+                    </a>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -369,37 +350,7 @@ export function TeamDetailV2Panels({
         )}
       </section>
 
-      {/* 課程 */}
-      {showCourses && (
-        <section
-          class={`td-v2-panel td-v2-panel-courses${activeTab === 'courses' ? ' active' : ''}`}
-          data-panel="courses"
-        >
-          <div class={`td-v2-recruit-banner ${accepting ? 'open' : 'closed'}`}>
-            <div>
-              <strong>{accepting ? '接受新學員報名' : '暫停招收新學員'}</strong>
-              <span>{getRecruitText(team, courseCount)}</span>
-            </div>
-          </div>
-          <div class="td-v2-card td-v2-edu-card">
-            <div class="td-v2-section-head td-v2-course-section-head">
-              <div class="td-v2-course-title-wrap">
-                <h3>課程方案</h3>
-                <button
-                  type="button"
-                  class="edu-info-btn td-v2-course-info-btn"
-                  title="課程方案說明"
-                  aria-label="課程方案說明"
-                  onClick={onUnavailable}
-                >
-                  ?
-                </button>
-              </div>
-            </div>
-            <div class="td-v2-empty">{UNAVAILABLE_MSG}</div>
-          </div>
-        </section>
-      )}
+      {/* 課程：C1 先隱藏，課程上線（K3）後再開。 */}
 
       {/* 活動 */}
       {showEvents && (
@@ -499,7 +450,7 @@ export function TeamDetailV2Panels({
       )}
 
       {/* 戰績 */}
-      {(showRecord || showMatches) && (
+      {showRecord && (
         <section
           class={`td-v2-panel td-v2-panel-record${activeTab === 'record' ? ' active' : ''}`}
           data-panel="record"
@@ -551,20 +502,12 @@ export function TeamDetailV2Panels({
         </section>
       )}
 
-      {/* 動態 */}
+      {/* 動態：C1 沒有貼文就不出頁籤 */}
+      {showFeed && (
       <section
         class={`td-v2-panel td-v2-panel-feed${activeTab === 'feed' ? ' active' : ''}`}
         data-panel="feed"
       >
-        {feedPosts.length === 0 ? (
-          <div class="td-v2-card">
-            <div class="td-v2-section-head">
-              <h3>俱樂部動態</h3>
-              <span>公告與貼文</span>
-            </div>
-            <div class="td-v2-empty">目前沒有公開動態</div>
-          </div>
-        ) : (
           <div class="td-v2-card">
             <div class="td-v2-section-head">
               <h3>俱樂部動態</h3>
@@ -595,8 +538,8 @@ export function TeamDetailV2Panels({
               );
             })}
           </div>
-        )}
       </section>
+      )}
     </main>
   );
 }

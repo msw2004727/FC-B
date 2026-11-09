@@ -2,7 +2,7 @@
 // 完全對齊 A `js/config.js`（ROLES、DRAWER_MENUS）與 `js/modules/role.js`（_canAccessDrawerItem、renderDrawerMenu）。
 
 import type { RouteAccessContext } from '@/core/feature-types';
-import { drawerByRolePermission, drawerOwnActivityManage } from '@/core/drawer-access';
+import { drawerByRolePermission, drawerOwnActivityManage, drawerTeamManage } from '@/core/drawer-access';
 
 export interface RoleInfo {
   readonly level: number;
@@ -270,6 +270,11 @@ export function canAccessDrawerItem(
 
   if (item.page === 'page-my-activities') {
     return drawerOwnActivityManage(ctx);
+  }
+
+  if (item.page === 'page-team-manage') {
+    // C1：自建俱樂部的一般用戶擁有者也要看得到（條件與建俱樂部的 user capability 一致）。
+    return drawerTeamManage(ctx);
   }
 
   if (item.page === 'page-admin-repair') {

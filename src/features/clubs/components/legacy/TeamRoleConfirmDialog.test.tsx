@@ -107,11 +107,12 @@ describe('職務確認對話框', () => {
     expect(screen.getByRole('button', { name: '確認降級' })).toBeTruthy();
   });
 
-  it('降為隊員顯示隊員文字與預設配色', () => {
+  // 測試同步更新（C1）：「隊員」統一為「成員」、「球經」統一為「經理」（只改顯示文字，角色鍵不變）。
+  it('降為成員顯示成員文字與預設配色', () => {
     render(<TeamRoleConfirmDialog {...makeProps({
       target: { key: 'member', level: 0, direction: 'demote' },
     })} />);
-    expect(screen.getByText('降級為 隊員').className).toBe('td-role-confirm-role-pill role-default');
+    expect(screen.getByText('降級為 成員').className).toBe('td-role-confirm-role-pill role-default');
   });
 
   const roles: Array<{
@@ -119,10 +120,10 @@ describe('職務確認對話框', () => {
     label: string;
     className: string;
   }> = [
-    { role: 'captain', label: '球經', className: 'role-manager' },
+    { role: 'captain', label: '經理', className: 'role-manager' },
     { role: 'leader', label: '領隊', className: 'role-leader' },
     { role: 'coach', label: '教練', className: 'role-coach' },
-    { role: 'member', label: '隊員', className: 'role-default' },
+    { role: 'member', label: '成員', className: 'role-default' },
   ];
 
   it.each(roles)('目前 $label 的名稱與角色 pill 使用 $className', ({
