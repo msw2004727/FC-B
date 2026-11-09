@@ -136,5 +136,12 @@
     "showAll": "전체 {n}개 보기",
     "collapse": "접기",
     "noClubs": "없음"
+  },
+  "lineNotifyCard": {
+    "toggleActivity": "활동 알림(신청, 대기, 변경)",
+    "toggleSystem": "시스템 알림(쪽지/공지)",
+    "toggleTournament": "대회 알림(신청/일정 업데이트)",
+    "friendHint": "알림이 오지 않나요? 공식 계정을 친구로 추가했는지 확인해 주세요",
+    "openOfficial": "공식 계정 열기"
   }
 }

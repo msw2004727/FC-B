@@ -22,7 +22,7 @@ export const PROFILE_INFO: Readonly<Record<ProfileInfoKey, { title: string; body
   },
   lineNotify: {
     title: "LINE 推播通知",
-    body: "綁定 LINE 帳號並加入官方好友後，系統會透過 LINE 推送即時通知。<p style=\"margin:.4rem 0 .15rem;font-weight:600\">通知類型</p>• <b>活動提醒</b> — 報名成功確認、活動開始前提醒<br>• <b>系統通知</b> — 站內信、公告、候補遞補通知<br>• <b>賽事通知</b> — 賽程更新、對戰結果<p style=\"margin:.4rem 0 0;font-size:.78rem;color:var(--text-muted)\">綁定後可個別開關各類通知，隨時可解除綁定。</p>",
+    body: "綁定 LINE 帳號並加入官方好友後，系統會透過 LINE 推送即時通知。<p style=\"margin:.4rem 0 .15rem;font-weight:600\">通知類型</p>• <b>活動通知</b> — 報名成功、候補遞補、活動異動或取消<br>• <b>系統通知</b> — 站內信、公告<br>• <b>賽事通知</b> — 賽程更新、對戰結果<p style=\"margin:.4rem 0 0;font-size:.78rem;color:var(--text-muted)\">綁定後可個別開關各類通知，隨時可解除綁定。</p>",
   },
   favorites: {
     title: "我的收藏",

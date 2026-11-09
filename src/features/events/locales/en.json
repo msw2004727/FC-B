@@ -207,5 +207,10 @@
     "modeLocked": "An event awaiting resubmission cannot switch between single-date and multi-date modes. Switch back to the original mode and try again.",
     "datesLocked": "An event awaiting resubmission cannot change its dates. Restore the original dates and try again.",
     "contentConflict": "The event may already have been created, but its details differ from what you submitted earlier. Check the event list before editing."
+  },
+  "lineNotifyPrompt": {
+    "title": "Turn on LINE notifications and never miss out!",
+    "descLine1": "Signup confirmations, waitlist promotions,",
+    "descLine2": "event changes or cancellations — we'll notify you right away."
   }
 }

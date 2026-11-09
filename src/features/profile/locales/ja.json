@@ -136,5 +136,12 @@
     "showAll": "すべて表示（{n}件）",
     "collapse": "閉じる",
     "noClubs": "なし"
+  },
+  "lineNotifyCard": {
+    "toggleActivity": "イベント通知（申込・キャンセル待ち・変更）",
+    "toggleSystem": "システム通知（受信箱／お知らせ）",
+    "toggleTournament": "大会通知（申込／日程更新）",
+    "friendHint": "通知が届かない場合は、公式アカウントを友だち追加しているかご確認ください",
+    "openOfficial": "公式アカウントを開く"
   }
 }
