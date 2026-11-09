@@ -206,6 +206,29 @@ describe('入口的靜態 import 圖', () => {
     expect(forbidden).toEqual([]);
   });
 
+  it('功能註冊表不靜態連到功能清單：引用註冊表的延遲 chunk（收件匣頁、側邊選單）不會帶到 features.config 與首頁', () => {
+    const reach = (from: string): Set<string> => {
+      const visited = new Set<string>();
+      findFirebaseSdkImporters(join(SRC, from), {
+        read: (file) => {
+          visited.add(rel(file));
+          return realIo.read(file);
+        },
+        resolve: realIo.resolve,
+      });
+      return visited;
+    };
+    for (const from of ['core/feature-registry.ts', 'features/inbox/pages/InboxPage.tsx', 'ui/SideDrawer.tsx']) {
+      const visited = reach(from);
+      // 確實有走訪（不是空集合）
+      expect(visited.size, from).toBeGreaterThan(1);
+      expect([...visited].filter((f) => f === 'src/features.config.ts' || f === 'src/features/home/pages/HomePage.tsx'), from)
+        .toEqual([]);
+    }
+    // 收件匣頁確實經 action-registry 用到註冊表（守門的路徑真的存在）
+    expect(reach('features/inbox/pages/InboxPage.tsx')).toContain('src/core/feature-registry.ts');
+  });
+
   it('首頁路由同步載入：features/home/index.ts 靜態引入 HomePage（不再是入口執行完才發現的 lazy chunk）', () => {
     const source = readFileSync(join(SRC, 'features/home/index.ts'), 'utf8');
     expect(staticImportSpecs(source)).toContain('./pages/HomePage');

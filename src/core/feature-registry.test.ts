@@ -5,9 +5,8 @@ const mocks = vi.hoisted(() => ({
   overrides: {} as Record<string, boolean | undefined>,
 }));
 
-vi.mock('@/features.config', () => ({
+vi.mock('@/feature-overrides', () => ({
   FEATURE_OVERRIDES: mocks.overrides,
-  ALL_FEATURES: [],
 }));
 
 import {

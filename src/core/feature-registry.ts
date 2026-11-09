@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { FeatureManifest, FeatureNavItem, FeatureRoute } from './feature-types';
-import { FEATURE_OVERRIDES } from '@/features.config';
+// 不從 features.config 取：那會讓引用註冊表的延遲 chunk 靜態連到全部功能清單與首頁（見 feature-overrides.ts）。
+import { FEATURE_OVERRIDES } from '@/feature-overrides';
 
 const manifests = new Map<string, FeatureManifest>();
 const registeredPaths = new Set<string>();
