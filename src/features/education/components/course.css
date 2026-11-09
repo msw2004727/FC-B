@@ -259,6 +259,20 @@
   min-width: 0;
 }
 
+/* 已核准：請聯繫教練取消（一行，不折行） */
+.ck-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-hint-page {
+  text-align: center;
+  margin-top: 10px;
+}
+
 /* 空狀態、載入、錯誤 */
 .ck-empty {
   background: var(--bg-card);

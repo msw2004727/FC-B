@@ -81,6 +81,9 @@
     "lessons": "No classes yet",
     "notFound": "Course not found"
   },
+  "hint": {
+    "contactCoach": "Ask your coach to cancel"
+  },
   "mine": {
     "attend": "Attended {n}/{total}",
     "next": "Next {when}"

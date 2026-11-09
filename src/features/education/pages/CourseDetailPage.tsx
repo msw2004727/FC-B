@@ -258,6 +258,8 @@ export function CourseDetailBody({
         </div>
       ) : null}
       <div class="ck-btn-row">{buttons}</div>
+      {/* 顧問 §3.60 (c)：已核准不提供學員自行取消，改一行請聯繫教練。 */}
+      {state.approvedIds.size > 0 ? <div class="ck-hint ck-hint-page" data-hint="contact-coach">{ct('hint.contactCoach')}</div> : null}
       {sheetOpen && viewer.uid ? (
         <WhoSheet
           ct={ct}

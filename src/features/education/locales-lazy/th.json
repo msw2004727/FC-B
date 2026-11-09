@@ -81,6 +81,9 @@
     "lessons": "ยังไม่มีคลาส",
     "notFound": "ไม่พบคอร์ส"
   },
+  "hint": {
+    "contactCoach": "ติดต่อโค้ชเพื่อยกเลิก"
+  },
   "mine": {
     "attend": "มาเรียน {n}/{total}",
     "next": "ถัดไป {when}"

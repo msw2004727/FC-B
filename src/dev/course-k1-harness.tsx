@@ -1,6 +1,6 @@
 // 課程 K1 截圖用元件 harness（只在本機 vite dev 開 /dev-harness/course-k1.html；正式 build 不含）。
 // 資料全部是記憶體假資料（testing/fake-course-repo），不連 Firestore、不呼叫 Functions。
-// 參數：?screen=tab|staff|empty|empty-staff|detail|lessons-weekly|lessons-session&theme=light|dark
+// 參數：?screen=tab|staff|empty|empty-staff|detail|lessons-weekly|lessons-session&theme=light|dark&plan=<detail 的方案>&lang=<語系>
 import { render } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import '../styles/legacy-vars.css';
@@ -72,7 +72,7 @@ function ClubFrame() {
 
 function Screen() {
   if (screenName === 'detail') {
-    return <CourseDetail teamId="tm_demo" planId="p1" viewer={viewer} repo={repo} now={now} navigate={noop} onBack={noop} />;
+    return <CourseDetail teamId="tm_demo" planId={params.get('plan') || 'p1'} viewer={viewer} repo={repo} now={now} navigate={noop} onBack={noop} />;
   }
   if (screenName === 'lessons-weekly' || screenName === 'lessons-session') {
     const planId = screenName === 'lessons-weekly' ? 'p5' : 'p6';

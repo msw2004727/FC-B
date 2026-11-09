@@ -81,6 +81,9 @@
     "lessons": "還沒有課堂",
     "notFound": "找不到課程"
   },
+  "hint": {
+    "contactCoach": "請聯繫教練取消"
+  },
   "mine": {
     "attend": "出席 {n}/{total} 堂",
     "next": "下一堂 {when}"

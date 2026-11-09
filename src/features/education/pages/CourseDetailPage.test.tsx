@@ -87,6 +87,8 @@ describe('課程詳情', () => {
     await screen.findByText('週日親子班');
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('.ck-btn-row button')).map((b) => b.dataset.action);
     expect(buttons).toEqual(['lessons', 'cancel-pending', 'signup']);
+    // 已核准的小安不能自行取消：只顯示一行請聯繫教練（顧問 §3.60 c）；取消申請只針對審核中的小晴。
+    expect(container.querySelector('[data-hint="contact-coach"]')?.textContent).toBe('請聯繫教練取消');
     fireEvent.click(screen.getByRole('button', { name: '課堂' }));
     expect(navigate).toHaveBeenCalledWith('/courses/tm_demo/p5/lessons');
     fireEvent.click(screen.getByRole('button', { name: '取消申請' }));
@@ -96,6 +98,7 @@ describe('課程詳情', () => {
   it('額滿與已截止只有停用鈕；幹部多一顆管理', async () => {
     const a = renderDetail('p3');
     await screen.findByText('週三體能班');
+    expect(a.container.querySelector('[data-hint="contact-coach"]')).toBeNull();
     expect((screen.getByRole('button', { name: '額滿' }) as HTMLButtonElement).disabled).toBe(true);
     a.unmount();
     const b = renderDetail('p4');

@@ -81,6 +81,9 @@
     "lessons": "还没有课堂",
     "notFound": "找不到课程"
   },
+  "hint": {
+    "contactCoach": "请联系教练取消"
+  },
   "mine": {
     "attend": "出席 {n}/{total} 节",
     "next": "下一节 {when}"

@@ -81,6 +81,9 @@
     "lessons": "수업이 없습니다",
     "notFound": "수업을 찾을 수 없음"
   },
+  "hint": {
+    "contactCoach": "취소는 코치에게 문의"
+  },
   "mine": {
     "attend": "출석 {n}/{total}회",
     "next": "다음 {when}"

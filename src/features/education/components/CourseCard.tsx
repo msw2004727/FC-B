@@ -115,6 +115,8 @@ export function CourseCard({
         {price ? <span class="ck-price">{price}</span> : null}
         {action}
       </div>
+      {/* 顧問 §3.60 (c)：已核准不提供學員自行取消（伺服器只取消審核中的報名），改一行請聯繫教練；教練移除留 K3。 */}
+      {state === 'enrolled' && !staff ? <div class="ck-hint" data-hint="contact-coach">{ct('hint.contactCoach')}</div> : null}
     </div>
   );
 }

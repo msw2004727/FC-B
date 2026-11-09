@@ -81,6 +81,9 @@
     "lessons": "レッスンなし",
     "notFound": "コースが見つかりません"
   },
+  "hint": {
+    "contactCoach": "取消はコーチへ連絡"
+  },
   "mine": {
     "attend": "出席 {n}/{total}回",
     "next": "次回 {when}"

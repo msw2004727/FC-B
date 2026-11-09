@@ -81,6 +81,9 @@
     "lessons": "Chưa có buổi học",
     "notFound": "Không tìm thấy khóa"
   },
+  "hint": {
+    "contactCoach": "Liên hệ HLV để hủy"
+  },
   "mine": {
     "attend": "Có mặt {n}/{total}",
     "next": "Tiếp theo {when}"

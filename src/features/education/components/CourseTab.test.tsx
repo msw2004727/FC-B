@@ -95,6 +95,19 @@ describe('CourseTab：課程卡 6 種狀態', () => {
     expect(p6.getByRole('button', { name: '課堂' })).toBeTruthy();
   });
 
+  it('已報名（已核准）不給學員取消，只顯示一行「請聯繫教練取消」；其他狀態與幹部不顯示（顧問 §3.60 c）', async () => {
+    const { container } = renderTab();
+    await screen.findByText('守門員進階', { selector: '.ck-card[data-plan-id] b' });
+    const p6 = card(container, 'p6');
+    expect(within(p6).getByText('請聯繫教練取消')).toBeTruthy();
+    expect(within(p6).queryByRole('button', { name: /取消/ })).toBeNull();
+    expect(container.querySelectorAll('.ck-card[data-plan-id] [data-hint="contact-coach"]')).toHaveLength(1);
+    cleanup();
+    const staff = renderTab(viewer(COACH_UID));
+    await screen.findByText('週六兒童足球班');
+    expect(staff.container.querySelector('[data-hint="contact-coach"]')).toBeNull();
+  });
+
   it('只讀有關的方案的報名（viewerStatuses 有我的學員才讀）', async () => {
     renderTab();
     await screen.findByText('週六兒童足球班');
