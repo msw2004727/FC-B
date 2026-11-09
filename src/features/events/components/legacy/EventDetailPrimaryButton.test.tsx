@@ -275,6 +275,9 @@ describe('EventDetailPrimaryButton', () => {
     const ring = ringHarness({ teamReservation: team });
     const teamButton = (): HTMLButtonElement =>
       ring.view.container.querySelector('.event-signup-team-button') as HTMLButtonElement;
+    // 測試同步更新：11-09 審查後團隊鈕延一個 0ms 才開始環（本地驗證失敗不閃），先推進 0ms。
+    expect(teamButton().classList.contains('is-collapsed')).toBe(false);
+    act(() => { vi.advanceTimersByTime(0); });
     expect(teamButton().classList.contains('is-collapsed')).toBe(true);
     expect(teamButton().getAttribute('aria-label')).toBe('建立團隊名額中');
     expect(teamButton().getAttribute('aria-busy')).toBe('true');
@@ -291,6 +294,9 @@ describe('EventDetailPrimaryButton', () => {
     stubFrames();
     const team = { label: '團隊報名', busyLabel: '建立團隊名額中', busy: true, onClick: () => {} };
     const ring = ringHarness({ teamReservation: team });
+    // 測試同步更新：同上，先推進 0ms 讓環真的開始，再驗失敗不打勾。
+    act(() => { vi.advanceTimersByTime(0); });
+    expect(ring.view.container.querySelector('.event-signup-team-button.is-collapsed')).not.toBeNull();
     ring.update({ teamReservation: { ...team, busy: false } });
     const teamButton = ring.view.container.querySelector('.event-signup-team-button');
     expect(teamButton?.querySelector('.signup-ring-check')).toBeNull();
@@ -343,5 +349,22 @@ describe('EventDetailPrimaryButton', () => {
     expect(button).not.toBeNull();
     if (button) fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('團隊報名本地檢查沒過（busy 同一輪就收回）：不縮圓、不閃展開', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubFrames();
+    const team = { label: '團隊報名', busyLabel: '建立團隊名額中', busy: false, onClick: () => {} };
+    const ring = ringHarness({ teamReservation: team });
+    const teamButton = (): HTMLButtonElement =>
+      ring.view.container.querySelector('.event-signup-team-button') as HTMLButtonElement;
+    ring.update({ teamReservation: { ...team, busy: true } });
+    expect(teamButton().classList.contains('signup-ring-btn')).toBe(false);
+    ring.update({ teamReservation: { ...team, busy: false } });
+    expect(teamButton().classList.contains('signup-ring-btn')).toBe(false);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(teamButton().classList.contains('signup-ring-btn')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(teamButton().textContent).toBe('團隊報名');
   });
 });

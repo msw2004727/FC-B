@@ -307,8 +307,9 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
     try {
       await task();
       if (!alive.current) return;
-      const shown = ring ? ring.succeed() : Promise.resolve();
-      if (holdCheck) await shown;
+      const shown = ring ? ring.succeed() : Promise.resolve(true);
+      // 等 ✓ 期間卸載（false）就不再收框、提示、重讀。
+      if (holdCheck && !(await shown)) return;
       after?.();
       message(success);
       load(0, Date.now(), true);

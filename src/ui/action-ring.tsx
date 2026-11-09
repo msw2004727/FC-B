@@ -210,12 +210,34 @@ export function ringButtonClass(ring: ActionRing): string {
     : ' signup-ring-btn is-collapsed';
 }
 
+/**
+ * 宣告式用：value 變 true 後等一個 0ms 計時器才回 true，變 false 立即回 false。
+ * 本地驗證失敗時忙碌旗標同一輪就收回，進度環不會開始（也就不會閃一次展開回原狀）。
+ */
+export function useDeferredStart(value: boolean): boolean {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!value) {
+      setArmed(false);
+      return;
+    }
+    const timer = setTimeout(() => setArmed(true), 0);
+    return () => clearTimeout(timer);
+  }, [value]);
+  return value && armed;
+}
+
 export interface ActionRingControl {
   ring: ActionRing;
   /** 真正送出時才呼叫（本地驗證通過後）；同一輪內就失敗或成功（同步驗證丟錯）不會縮成圓。 */
   start(): void;
-  /** 伺服器確認成功：補滿＋✓；回傳的 Promise 在 ✓ 停留結束時完成（減少動態、未成環或卸載時立即完成）。 */
-  succeed(): Promise<void>;
+  /**
+   * 伺服器確認成功：補滿＋✓。回傳的 Promise 在 ✓ 停留結束時完成（減少動態、未成環時立即完成），
+   * 值＝元件是否仍掛載：等 ✓ 期間卸載會立即以 false 完成，呼叫端看到 false 就不再跑關窗、回填、提示。
+   * （11-09 審查：取代原本卸載時以 void 放行、讓後續流程跑在已卸載元件上的做法；
+   *   不選「卸載時永不完成」，是因為呼叫端的 finally 要照常解開送出鎖。）
+   */
+  succeed(): Promise<boolean>;
   /** 失敗或結果未知：不打勾直接展開；沒有進行中的環時不做事，可放在 finally。 */
   fail(): void;
 }
@@ -227,19 +249,22 @@ export interface ActionRingControl {
 export function useActionRingControl(): ActionRingControl {
   const [running, setRunning] = useState(false);
   const [key, setKey] = useState(0);
-  const waiters = useRef<Array<() => void>>([]);
+  const waiters = useRef<Array<(mounted: boolean) => void>>([]);
   const state = useRef({
     active: false,
     visible: false,
     mounted: true,
     arm: null as ReturnType<typeof setTimeout> | null,
   });
-  const flush = (): void => {
+  const flush = (mounted: boolean): void => {
     const list = waiters.current;
     waiters.current = [];
-    for (const resolve of list) resolve();
+    for (const resolve of list) resolve(mounted);
   };
-  const ring = useActionRing(running, key, false, { checkMs: ACTION_CHECK_MS, onSettled: flush });
+  const ring = useActionRing(running, key, false, {
+    checkMs: ACTION_CHECK_MS,
+    onSettled: () => flush(state.current.mounted),
+  });
 
   const methods = useRef<Omit<ActionRingControl, 'ring'> | null>(null);
   if (!methods.current) {
@@ -262,12 +287,12 @@ export function useActionRingControl(): ActionRingControl {
           setRunning(true);
         }, 0);
       },
-      succeed(): Promise<void> {
-        if (!s.active) return Promise.resolve();
+      succeed(): Promise<boolean> {
+        if (!s.active) return Promise.resolve(s.mounted);
         s.active = false;
-        if (disarm() || !s.visible || !s.mounted) return Promise.resolve();
+        if (disarm() || !s.visible || !s.mounted) return Promise.resolve(s.mounted);
         s.visible = false;
-        return new Promise<void>((resolve) => {
+        return new Promise<boolean>((resolve) => {
           waiters.current.push(resolve);
           setKey(value => value + 1);
           setRunning(false);
@@ -290,7 +315,7 @@ export function useActionRingControl(): ActionRingControl {
       s.mounted = false;
       if (s.arm !== null) clearTimeout(s.arm);
       s.arm = null;
-      flush();
+      flush(false);
     };
   }, []);
 
@@ -306,7 +331,7 @@ export interface ActionRingButtonProps
   busyLabel: string;
   class?: string;
   style?: string;
-  /** 照原本的內容（含原本的忙碌文字）；環期間隱藏但保留寬度，版面不跳動。 */
+  /** 照原本的內容（含原本的忙碌文字）；環期間包一層透明 span 保留寬度，版面不跳動。 */
   children: ComponentChildren;
 }
 
@@ -348,7 +373,8 @@ export function ActionRingButton({
       aria-busy={ringing ? 'true' : rest['aria-busy']}
       aria-label={ringing ? busyLabel : rest['aria-label']}
     >
-      <span class="action-ring-label">{children}</span>
+      {/* 閒置時原樣輸出內容（DOM 與原本相同）；環期間才包透明 span 撐住原寬度，讀屏器改讀 aria-label。 */}
+      {ringing ? <span class="action-ring-label" aria-hidden="true">{children}</span> : children}
       {ringing ? <span class="action-ring-mark" aria-hidden="true">{renderRingContent(ring)}</span> : null}
     </button>
   );

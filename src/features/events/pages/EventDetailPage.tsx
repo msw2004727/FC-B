@@ -1324,7 +1324,9 @@ function EventDetailSession({
         return;
       }
 
-      await rosterRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+
+      if (!(await rosterRing.succeed())) return;
       show('events.roster.settleSuccess');
       if (result.failed.length > 0) {
         toast.show({
@@ -1816,7 +1818,8 @@ function EventDetailSession({
         waitlisted = count(response.waitlisted);
         projection = response.event ?? projection;
       }
-      await companionRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await companionRing.succeed())) return;
       const parts: string[] = [];
       if (confirmed + waitlisted > 0) parts.push(`新增 ${confirmed + waitlisted} 人`);
       if (waitlisted > 0) parts.push(`候補 ${waitlisted} 人`);

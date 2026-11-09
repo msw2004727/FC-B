@@ -581,7 +581,8 @@ export function EventFormModal({
             console.warn('[EventFormModal] event_changed notify failed', error);
           });
         }
-        await submitRing.succeed();
+        // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+        if (!(await submitRing.succeed())) return;
         current.onSaved({
           mode: 'edit',
           eventId: existingForEdit.id,
@@ -607,7 +608,8 @@ export function EventFormModal({
         }
         unconfirmedCreateRef.current = null;
         // 照 A：成功提示「已建立 N 場「X」活動！」、分享詢問用第一場。
-        await submitRing.succeed();
+        // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+        if (!(await submitRing.succeed())) return;
         current.onSaved({
           mode: 'create',
           eventId: result.eventIds[0] ?? ids[0] ?? '',
@@ -627,7 +629,8 @@ export function EventFormModal({
         if (result.addonsStripped) {
           toast.show({ message: ADDON_UPSELL_MESSAGE, tone: 'info' });
         }
-        await submitRing.succeed();
+        // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+        if (!(await submitRing.succeed())) return;
         current.onSaved({
           mode: 'create',
           eventId: result.eventId,

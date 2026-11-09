@@ -4,6 +4,7 @@ import {
   renderRingContent,
   ringButtonClass,
   useActionRing,
+  useDeferredStart,
 } from '@/ui/action-ring';
 import type { SignupButtonState } from '../../data/signup-state';
 import './signup-a11y.css';
@@ -93,9 +94,12 @@ function TeamReservationButton({ team, pageBusy }: {
   team: NonNullable<EventDetailPrimaryButtonProps['teamReservation']>;
   pageBusy: boolean;
 }): JSX.Element {
-  const ring = useActionRing(team.busy, team.doneSerial ?? 0);
+  // 團隊名額本地檢查沒過時 busy 同一輪就收回：延一個 0ms 才開始環，避免閃一次展開回原狀（11-09 審查）。
+  const started = useDeferredStart(team.busy);
+  const ring = useActionRing(started, team.doneSerial ?? 0);
   const ringing = ring.phase !== 'idle' && !ring.reduced;
-  const loading = team.busy && !ringing;
+  // 等那一個 0ms 的期間不切靜態忙碌樣式（同一輪就結束時畫面完全不動）。
+  const loading = started && !ringing;
   return (
     <div class={'signup-glow-wrap team-reservation-action' + (loading ? ' loading' : '')}
       style="--glow-c:#2563eb;--glow-c-light:#60a5fa">

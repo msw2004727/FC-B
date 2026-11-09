@@ -73,10 +73,11 @@ describe('useActionRingControl＋ActionRingButton', () => {
     expect(button.querySelector('.action-ring-label')?.textContent).toBe('儲存中...');
 
     let released = false;
+    let mounted: boolean | null = null;
     let done: Promise<void> = Promise.resolve();
     act(() => {
       done = (async () => {
-        await h.control.succeed();
+        mounted = await h.control.succeed();
         released = true;
       })();
     });
@@ -89,6 +90,7 @@ describe('useActionRingControl＋ActionRingButton', () => {
     await act(async () => { vi.advanceTimersByTime(1); });
     await done;
     expect(released).toBe(true);
+    expect(mounted).toBe(true);
     expect(button.classList.contains('is-expanding')).toBe(true);
     h.setBusy(false);
     act(() => { vi.advanceTimersByTime(260); });
@@ -172,24 +174,23 @@ describe('useActionRingControl＋ActionRingButton', () => {
     h.restore();
   });
 
-  it('卸載時清掉計時器與 rAF，等待中的 ✓ 也放行', async () => {
+  it('卸載時清掉計時器與 rAF，等待中的 ✓ 以 false 放行（呼叫端據此不再跑後續流程）', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const frames = stubFrames();
     const h = harness();
     act(() => { h.control.start(); vi.advanceTimersByTime(0); });
     const lastFrame = frames.request.mock.results.at(-1)?.value;
-    let released = false;
+    let mounted: boolean | null = null;
     let done: Promise<void> = Promise.resolve();
     act(() => {
       done = (async () => {
-        await h.control.succeed();
-        released = true;
+        mounted = await h.control.succeed();
       })();
     });
     expect(vi.getTimerCount()).toBe(1);
     h.view.unmount();
     await done;
-    expect(released).toBe(true);
+    expect(mounted).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     expect(frames.cancel).toHaveBeenCalledWith(lastFrame);
     h.restore();

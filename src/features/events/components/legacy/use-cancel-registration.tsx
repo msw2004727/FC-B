@@ -230,7 +230,7 @@ export function useCancelRegistration(
       if (!isAlive()) return;
       // deduplicated＝結果未知：不打勾、直接展開回原狀，照原流程提示後關窗。
       if (response.deduplicated) ring.fail();
-      else await ring.succeed();
+      else if (!(await ring.succeed())) return; // 等 ✓ 期間卸載就不再關窗、提示、重讀。
       toast.show({ message: response.deduplicated
         ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
       setModal(null);
@@ -242,7 +242,7 @@ export function useCancelRegistration(
     } catch (error) {
       if (!isAlive()) return;
       if (error instanceof SignupError && error.originalCode === 'ALREADY_CANCELLED') {
-        await ring.succeed();
+        if (!(await ring.succeed())) return;
         toast.show({ message: `已取消 ${ids.length} 筆報名` });
         setModal(null);
         await onBatchCancelled();

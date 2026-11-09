@@ -822,7 +822,8 @@ export function useTeamForm(props: TeamFormProps): TeamFormApi {
         });
         return;
       }
-      await submitRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await submitRing.succeed())) return;
       toast.show({
         message: result.imagePending
           ? t('clubs.userCreate.imagePending')

@@ -570,7 +570,8 @@ function TeamDetailContent({
       const self: TeamMember = { uid, displayName: viewer.displayName ?? '' };
       joinRing.start();
       await requestTeamJoin({ team, applicant: self });
-      await joinRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await joinRing.succeed())) return;
       rememberPendingJoin(teamId, uid);
       requestViewerRefresh();
       if (alive.current) {

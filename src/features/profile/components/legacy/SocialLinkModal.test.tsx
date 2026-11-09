@@ -265,4 +265,35 @@ describe('LegacySocialLinkModal「儲存」進度環', () => {
       watch.stop();
     } finally { vi.unstubAllGlobals(); }
   });
+
+  it('等 ✓ 期間卸載：不再回填、提示、關窗', async () => {
+    const save = deferSave();
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    const view = render(
+      <LegacySocialLinkModal uid="u1" platform={ig} socialLinks={{}} onClose={onClose} onSaved={onSaved} />,
+    );
+    fireEvent.input(document.getElementById('social-link-input') as HTMLInputElement, { target: { value: 'me' } });
+    vi.mocked(toast.show).mockClear();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(saveButton().classList.contains('is-collapsed')).toBe(true));
+    save.resolve();
+    await waitFor(() => expect(saveButton().querySelector('.signup-ring-check')).not.toBeNull());
+    view.unmount();
+    await new Promise(done => setTimeout(done, 600));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.show)).not.toHaveBeenCalled();
+  });
+
+  it('送出中（含 ✓ 停留）Esc 與點遮罩都不關窗', async () => {
+    const save = deferSave();
+    const { onClose } = renderModal();
+    fireEvent.click(saveButton());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(document.getElementById('social-link-modal') as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+    save.resolve();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
 });

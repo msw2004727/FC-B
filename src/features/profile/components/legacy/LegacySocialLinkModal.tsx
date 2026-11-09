@@ -112,11 +112,16 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
   const aliveRef = useRef(true);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // 送出中（含 ✓ 停留）不讓返回鍵、Esc、點遮罩關窗：同 ✕ 鈕在 pending 時 disabled，
+  // 避免已寫入卻因卸載略過 onSaved 回填（11-09 審查）。
+  const pendingRef = useRef(false);
+  pendingRef.current = pending;
 
   useEffect(() => {
     aliveRef.current = true;
     const unlock = lockBody(document.body);
     const releaseBack = pushOverlay(() => {
+      if (pendingRef.current) return false;
       onCloseRef.current();
       return true;
     });
@@ -124,7 +129,7 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
       if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
-        onCloseRef.current();
+        if (!pendingRef.current) onCloseRef.current();
       }
     };
     document.addEventListener('keydown', handleKey, true);
@@ -151,7 +156,8 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
     try {
       await write();
       if (!aliveRef.current) return;
-      await saveRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await saveRing.succeed())) return;
       onSaved(patch);
       toast.show({ message: done });
       onCloseRef.current();
@@ -192,7 +198,7 @@ export function LegacySocialLinkModal(props: LegacySocialLinkModalProps): JSX.El
         class="modal open"
         id="social-link-modal"
         onClick={(event) => {
-          if (event.target !== event.currentTarget) return;
+          if (event.target !== event.currentTarget || pendingRef.current) return;
           // 照 A：非 `data-no-backdrop-close` modal 可點遮罩關閉。
           onCloseRef.current();
         }}

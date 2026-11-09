@@ -175,7 +175,8 @@ export function LegacyProfileInfoCard({
     saveRing.start();
     try {
       await updateProfileFields(uid, patch);
-      await saveRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await saveRing.succeed())) return;
       onSaved(patch);
       setEditing(false);
       setRegionMatches([]);

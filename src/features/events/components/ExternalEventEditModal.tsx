@@ -156,7 +156,7 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
         };
       });
       // 仍在送出鎖內等 ✓ 停留完（期間不能關窗或重送），之後照原流程提示並關窗。
-      if (alive.current) await submitRing.succeed();
+      if (alive.current && !(await submitRing.succeed())) return;
     } catch (error) {
       submitRing.fail();
       if (alive.current) message(error instanceof ExternalEventEditError ? error.userMessage : EXTERNAL_EDIT_FAILED);
@@ -268,7 +268,7 @@ export function ExternalEventEditModal(props: ExternalEventEditModalProps): JSX.
           </div>
         </div>
         <div class="modal-actions">
-          <button type="button" class="outline-btn" onClick={close}>{lt('取消')}</button>
+          <button type="button" class="outline-btn" disabled={submitting} onClick={close}>{lt('取消')}</button>
           <ActionRingButton control={submitRing} busyLabel={lt('儲存中...')} type="button" class="primary-btn"
             id="cee-submit-btn" disabled={submitting || readingImage || crop !== null}
             onClick={() => { void submit(); }}>{submitting ? lt('儲存中...') : lt('儲存修改')}</ActionRingButton>

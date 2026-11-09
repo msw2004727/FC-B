@@ -99,7 +99,8 @@ export function useTeamReservation(props: {
         return;
       }
       if (result.status === 'success' && !result.deduplicated) {
-        await ring.succeed();
+        // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+        if (!(await ring.succeed())) return;
         close();
         const committedGeneration = generation.current;
         toast.show({ message: result.message });

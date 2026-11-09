@@ -260,7 +260,8 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     try {
       await saveFirstLoginProfile(uid, input);
       if (!aliveRef.current) return;
-      await submitRing.succeed();
+      // 等 ✓ 期間卸載（succeed 回 false）就不再跑後續的關窗、回填、提示。
+      if (!(await submitRing.succeed())) return;
       // legalConsent 是提交條件，不回填為已保存的個資。
       const { legalConsent: _consent, ...patch } = input;
       onSaved(patch);

@@ -188,7 +188,8 @@ describe('T-074b 畫面與 T-074a controller 接線', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(mock.toast).toHaveBeenCalledWith({ message: '已更新團隊名額' });
     // 測試同步更新：寫入期間按鈕縮成進度環、文字拿掉，無障礙名稱改為忙碌標籤（同一顆按鈕）。
-    const button = screen.getByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
+    // 測試同步更新（11-09 審查）：團隊鈕延一個 0ms 才開始環，改用 findByRole 等環出現。
+    const button = await screen.findByRole('button', { name: '調整團隊名額中' }) as HTMLButtonElement;
     expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.disabled).toBe(true);
     fireEvent.click(button); fireEvent.click(button);

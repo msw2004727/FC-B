@@ -29,18 +29,22 @@
 }
 
 /* 一般按鈕：外框大小與位置不動（不撐高、不擠旁邊按鈕），只用 clip-path 裁成正中的圓。
-   --action-ring-d＝圓直徑（JS 取 min(46px, 按鈕原高度)）；原內容保留在 .action-ring-label 撐住寬度但隱藏。
+   --action-ring-d＝圓直徑（JS 取 min(46px, 按鈕原高度)）；環期間原內容包在 .action-ring-label 撐住寬度但透明。
+   （11-09 審查：取代 display:contents＋visibility:hidden，避開 WebKit 對 contents 節點隱藏不重繪的風險；
+     改成只在環期間才包一層 inline-flex，閒置時 DOM 與原本完全相同。）
    減少動態時 JS 不套這些 class。 */
 .action-ring-label {
-  display: contents;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+  opacity: 0;
+  pointer-events: none;
 }
 /* 環期間不沿用 :disabled／inline 的半透明（同主按鈕：圓與環維持原色）。 */
 .action-ring-btn {
   position: relative;
   opacity: 1 !important;
-}
-.action-ring-btn > .action-ring-label {
-  visibility: hidden;
 }
 .action-ring-btn.is-collapsed {
   -webkit-clip-path: inset(calc(50% - var(--action-ring-d) / 2) calc(50% - var(--action-ring-d) / 2) round calc(var(--action-ring-d) / 2));
