@@ -47,7 +47,7 @@ describe.skipIf(!enabled)('K1 我的報名直查 × 未修改的 Firestore Rules
       projectId: 'demo-k1-enrollment-read',
       firestore: { host: host!, port: Number(port), rules: readFileSync(resolve('emulator/firestore.rules'), 'utf8') },
     });
-  });
+  }, 120_000);
   beforeEach(async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (ctx) => {
@@ -62,7 +62,7 @@ describe.skipIf(!enabled)('K1 我的報名直查 × 未修改的 Firestore Rules
       await sdk.setDoc(sdk.doc(db, ENR, 'e_kid'), { id: 'e_kid', studentId: 'stu_kid', status: 'pending' });
       await sdk.setDoc(sdk.doc(db, ENR, 'e_ghost'), { id: 'e_ghost', studentId: 'stu_ghost', selfUid: 'self', status: 'approved' });
     });
-  });
+  }, 60_000);
   afterAll(async () => { await env?.cleanup(); });
 
   const query = (uid: string, studentId: string) => {

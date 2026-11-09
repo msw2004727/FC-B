@@ -46,14 +46,14 @@ describe.skipIf(!enabled)('K1 新增 pending 學員 × 未修改的 Firestore Ru
       projectId: 'demo-k1-student-create',
       firestore: { host: host!, port: Number(port), rules: readFileSync(resolve('emulator/firestore.rules'), 'utf8') },
     });
-  });
+  }, 120_000);
   beforeEach(async () => {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (ctx) => {
       await sdk.setDoc(sdk.doc(ctx.firestore(), 'teams', 'tm_demo'), { id: 'tm_demo', name: '晨光', teachingEnabled: true, captainUid: 'cap' });
       await sdk.setDoc(sdk.doc(ctx.firestore(), 'users', 'parent'), { uid: 'parent', role: 'user' });
     });
-  });
+  }, 60_000);
   afterAll(async () => { await env?.cleanup(); });
 
   const write = (db: Firestore, id: string, data: Record<string, unknown>) =>
