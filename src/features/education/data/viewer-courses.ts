@@ -62,13 +62,22 @@ export async function loadViewerCourses(
     const statuses = summaryResult.summaries[p.id]?.viewerStatuses ?? {};
     return myIds.some((id) => statuses[id] !== undefined);
   });
-  const enrollmentLists = await Promise.all(relevant.map((p) => repo.listMyEnrollments(team, p.id, myIds)));
+  const settled = await Promise.allSettled(relevant.map((p) => repo.listMyEnrollments(team, p.id, myIds)));
   const enrollmentsByPlan = new Map<string, CourseEnrollment[]>();
   const states = new Map<string, ViewerPlanState>();
   relevant.forEach((plan, index) => {
-    const list = enrollmentLists[index] ?? [];
-    enrollmentsByPlan.set(plan.id, list);
-    states.set(plan.id, getViewerPlanState(plan, myStudents, list, summaryResult.migrationCompleted));
+    const result = settled[index];
+    if (result && result.status === 'fulfilled') {
+      enrollmentsByPlan.set(plan.id, result.value);
+      states.set(plan.id, getViewerPlanState(plan, myStudents, result.value, summaryResult.migrationCompleted));
+      return;
+    }
+    // 審查 P2-2：單一方案的報名讀不到時，不讓整頁報錯，退回伺服器算好的 viewerStatuses
+    // （已含分組舊制的 approved）；這時不知道繳費狀態，未繳費不顯示。
+    console.warn('[course.enrollments] fallback to viewerStatuses', plan.id, result?.status === 'rejected' ? result.reason : null);
+    const statuses = summaryResult.summaries[plan.id]?.viewerStatuses ?? {};
+    const pseudo: CourseEnrollment[] = Object.entries(statuses).map(([studentId, status]) => ({ id: `vs_${studentId}`, studentId, status, paidAt: '' }));
+    states.set(plan.id, { ...getViewerPlanState(plan, myStudents, pseudo, true), paymentUnknown: true });
   });
   return {
     plans,

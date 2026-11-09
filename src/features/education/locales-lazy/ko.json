@@ -73,6 +73,7 @@
     "who": "누구를 신청?",
     "self": "본인({name})",
     "selfBare": "본인",
+    "selfName": "본인 이름",
     "childName": "자녀 이름"
   },
   "empty": {

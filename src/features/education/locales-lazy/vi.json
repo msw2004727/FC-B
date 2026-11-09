@@ -73,6 +73,7 @@
     "who": "Đăng ký cho ai?",
     "self": "Tôi ({name})",
     "selfBare": "Tôi",
+    "selfName": "Tên của bạn",
     "childName": "Tên con"
   },
   "empty": {

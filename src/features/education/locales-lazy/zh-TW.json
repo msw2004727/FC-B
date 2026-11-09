@@ -73,6 +73,7 @@
     "who": "幫誰報名？",
     "self": "自己（{name}）",
     "selfBare": "自己",
+    "selfName": "你的姓名",
     "childName": "孩子姓名"
   },
   "empty": {

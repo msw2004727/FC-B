@@ -73,6 +73,7 @@
     "who": "Sign up for?",
     "self": "Me ({name})",
     "selfBare": "Me",
+    "selfName": "Your name",
     "childName": "Child name"
   },
   "empty": {

@@ -78,7 +78,8 @@ export function CourseLessonsBody({
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [pickedId, setPickedId] = useState<string | null>(null);
-  const [records, setRecords] = useState<AttendanceRecord[] | null>(null);
+  // null＝載入中、'error'＝讀取失敗（審查 P3-3：失敗不能當成「沒有紀錄」顯示未報名）。
+  const [records, setRecords] = useState<AttendanceRecord[] | 'error' | null>(null);
   const [recordsAttempt, setRecordsAttempt] = useState(0);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const uid = viewer.uid;
@@ -133,7 +134,7 @@ export function CourseLessonsBody({
       })
       .catch((error: unknown) => {
         console.error('[course.lessons.attendance]', error);
-        if (alive) setRecords([]);
+        if (alive) setRecords('error');
       });
     return () => {
       alive = false;
@@ -212,6 +213,8 @@ export function CourseLessonsBody({
         <CourseStatus kind="empty" text={ct('empty.lessons')} />
       ) : records === null ? (
         <CourseStatus kind="loading" text={t('common.loading')} />
+      ) : records === 'error' ? (
+        <CourseStatus kind="error" text={t('common.error')} onRetry={() => setRecordsAttempt((n) => n + 1)} retryText={t('common.retry')} />
       ) : (
         <div class="ck-card" data-section="lessons">
           {mySessions.map((session) => {

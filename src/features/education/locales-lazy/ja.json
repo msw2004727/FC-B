@@ -73,6 +73,7 @@
     "who": "誰の申込？",
     "self": "自分（{name}）",
     "selfBare": "自分",
+    "selfName": "あなたの名前",
     "childName": "子どもの名前"
   },
   "empty": {

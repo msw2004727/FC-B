@@ -108,6 +108,23 @@ describe('CourseTab：課程卡 6 種狀態', () => {
     expect(staff.container.querySelector('[data-hint="contact-coach"]')).toBeNull();
   });
 
+  it('審查 P2-2：某方案的報名讀取失敗時不整頁報錯，退回 viewerStatuses，未繳費不顯示', async () => {
+    const original = repo.listMyEnrollments.bind(repo);
+    repo.listMyEnrollments = async (team, planId, ids) => {
+      if (planId === 'p6') throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+      return original(team, planId, ids);
+    };
+    const { container } = renderTab();
+    await screen.findByText('週六兒童足球班');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(card(container, 'p6').dataset.state).toBe('enrolled');
+    expect(card(container, 'p5').dataset.state).toBe('pending');
+    const qing6 = container.querySelector<HTMLElement>('[data-my-course="p6:stu_qing"]')!;
+    expect(within(qing6).queryByText('未繳費')).toBeNull();
+    // 其他方案照常（p5 讀得到，分組舊制的小安仍標未繳費）。
+    expect(within(container.querySelector<HTMLElement>('[data-my-course="p5:stu_an"]')!).getByText('未繳費')).toBeTruthy();
+  });
+
   it('只讀有關的方案的報名（viewerStatuses 有我的學員才讀）', async () => {
     renderTab();
     await screen.findByText('週六兒童足球班');
@@ -185,6 +202,7 @@ describe('CourseTab：報名、取消申請與錯誤碼', () => {
     repo.failNext('register', callableError(code));
     fireEvent.click(within(card(container, 'p1')).getByRole('button', { name: '報名' }));
     const sheet = await screen.findByRole('radiogroup', { name: '幫誰報名？' });
+    fireEvent.click(within(sheet).getByRole('radio', { name: '陳小晴' }));
     fireEvent.click(within(sheet).getByRole('button', { name: '送出報名' }));
     await waitFor(() => expect(toast.show).toHaveBeenCalledWith(expect.objectContaining({ message: text, tone: 'error' })));
   });
@@ -195,6 +213,7 @@ describe('CourseTab：報名、取消申請與錯誤碼', () => {
     repo.failNext('register', Object.assign(new Error('ALREADY_ENROLLED'), { code: 'functions/already-exists', details: { code: 'ALREADY_ENROLLED' } }));
     fireEvent.click(within(card(container, 'p1')).getByRole('button', { name: '報名' }));
     const sheet = await screen.findByRole('radiogroup', { name: '幫誰報名？' });
+    fireEvent.click(within(sheet).getByRole('radio', { name: '陳小晴' }));
     fireEvent.click(within(sheet).getByRole('button', { name: '送出報名' }));
     await waitFor(() => expect(toast.show).toHaveBeenCalledWith({ message: '已報名過' }));
     await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());

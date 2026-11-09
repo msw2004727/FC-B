@@ -231,6 +231,8 @@ export interface ViewerPlanState {
   pendingIds: Set<string>;
   /** studentId → approved 報名（繳費判斷用）。 */
   approvedEnrollment: Map<string, CourseEnrollment>;
+  /** 報名讀取失敗、改用 viewerStatuses 時為 true：不知道繳費狀態，不顯示未繳費。 */
+  paymentUnknown?: boolean;
 }
 
 export function getViewerPlanState(
@@ -279,7 +281,7 @@ export function tracksPayment(plan: CoursePlan): boolean {
 
 /** 在名冊（聯集）內但沒有已繳費的 approved 報名，就是未繳費（分組舊制學員沒有報名文件，一律算未繳）。 */
 export function isUnpaid(plan: CoursePlan, studentId: string, state: ViewerPlanState): boolean {
-  if (!tracksPayment(plan) || !state.approvedIds.has(studentId)) return false;
+  if (state.paymentUnknown || !tracksPayment(plan) || !state.approvedIds.has(studentId)) return false;
   return !state.approvedEnrollment.get(studentId)?.paidAt;
 }
 

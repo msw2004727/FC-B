@@ -100,6 +100,19 @@ describe('課堂列表：固定週期（單堂報名、請假）', () => {
   });
 });
 
+describe('課堂列表：出缺席讀取失敗（審查 P3-3）', () => {
+  it('讀不到出缺席時顯示錯誤與重試，沒有課堂列也不顯示「未報名」；重試後恢復', async () => {
+    repo.failNext('listMyAttendance', new Error('offline'));
+    const { container } = renderLessons('p5');
+    const retry = await screen.findByRole('button', { name: '重新嘗試' });
+    expect(container.querySelector('[data-session-id]')).toBeNull();
+    expect(screen.queryByText('未報名')).toBeNull();
+    fireEvent.click(retry);
+    await waitFor(() => expect(container.querySelectorAll('[data-session-id]').length).toBe(5));
+    expect(row(container, 'p5s4').dataset.display).toBe('unregistered');
+  });
+});
+
 describe('課堂列表：堂數制（請假）與多位學員', () => {
   it('兩位孩子都在名冊時出切換；請假＝saveEduCourseSelfLeave(true)，取消＝(false)', async () => {
     const { container } = renderLessons('p6');
