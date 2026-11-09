@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTE_LOAD_FAILED_MSG } from '@/core/unavailable';
 import type { SideDrawerProps } from '@/ui/SideDrawer';
 import {
+  DRAWER_PRELOAD_DELAY_MS,
   LazySideDrawer,
   _resetSideDrawerLoaderForTest,
   loadSideDrawer,
@@ -74,17 +75,32 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   _resetSideDrawerLoaderForTest();
   document.body.style.removeProperty('overflow');
 });
 
 describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式）', () => {
-  it('掛上就開始下載；下載完以關閉狀態掛上，之後開關照 props', async () => {
+  it('首屏當下不預載；requestIdleCallback 之後才下載一次，下載完以關閉狀態掛上，之後開關照 props', async () => {
+    const callbacks: Array<() => void> = [];
+    const ric = vi.fn((cb: () => void, _opts?: { timeout: number }) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    vi.stubGlobal('requestIdleCallback', ric);
+    vi.stubGlobal('cancelIdleCallback', vi.fn());
     const d = deferred();
     const importer = vi.fn(() => d.promise);
     _resetSideDrawerLoaderForTest(importer);
     const view = render(<LazySideDrawer open={false} onClose={() => undefined} />, { wrapper });
 
+    expect(ric).toHaveBeenCalledTimes(1);
+    expect(ric.mock.calls[0]?.[1]).toEqual({ timeout: DRAWER_PRELOAD_DELAY_MS });
+    expect(importer).not.toHaveBeenCalled();
+    callbacks[0]!();
+    expect(importer).toHaveBeenCalledTimes(1);
+    callbacks[0]!();
     expect(importer).toHaveBeenCalledTimes(1);
     expect(view.container.ownerDocument.getElementById('side-drawer')).toBeNull();
 
@@ -96,6 +112,22 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
 
     view.rerender(<LazySideDrawer open onClose={() => undefined} />);
     await waitFor(() => expect(document.getElementById('side-drawer')?.className).toBe('open'));
+    expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it('沒有 requestIdleCallback 時改 setTimeout：首屏當下不預載，到點只觸發一次', async () => {
+    vi.useFakeTimers();
+    expect(typeof window.requestIdleCallback).not.toBe('function');
+    const importer = vi.fn(async () => ({ SideDrawer: FakeDrawer }));
+    _resetSideDrawerLoaderForTest(importer);
+    render(<LazySideDrawer open={false} onClose={() => undefined} />, { wrapper });
+
+    expect(importer).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(DRAWER_PRELOAD_DELAY_MS - 1);
+    expect(importer).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(importer).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(DRAWER_PRELOAD_DELAY_MS * 3);
     expect(importer).toHaveBeenCalledTimes(1);
   });
 
@@ -213,6 +245,12 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
   });
 
   it('選單關著時下載失敗：不打擾使用者（不提示、不呼叫 onClose），之後打開才重試', async () => {
+    const idle: Array<() => void> = [];
+    vi.stubGlobal('requestIdleCallback', (cb: () => void) => {
+      idle.push(cb);
+      return idle.length;
+    });
+    vi.stubGlobal('cancelIdleCallback', vi.fn());
     const first = deferred();
     const importer = vi.fn()
       .mockImplementationOnce(() => first.promise)
@@ -220,6 +258,8 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
     _resetSideDrawerLoaderForTest(importer);
     const onClose = vi.fn();
     const view = render(<LazySideDrawer open={false} onClose={onClose} />, { wrapper });
+    expect(importer).not.toHaveBeenCalled();
+    idle[0]!();
 
     await act(async () => {
       first.reject(new Error('chunk 下載失敗'));
