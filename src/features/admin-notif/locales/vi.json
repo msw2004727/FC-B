@@ -1,0 +1,32 @@
+{
+  "title": "Cài đặt thông báo đẩy",
+  "back": "Quay lại",
+  "note": "Chỉ áp dụng cho LINE, hộp thư vẫn gửi",
+  "sectionCategory": "Danh mục",
+  "sectionType": "Loại thông báo",
+  "sectionFixed": "Luôn gửi",
+  "fixed": "Cố định",
+  "save": "Lưu",
+  "saving": "Đang lưu...",
+  "saved": "Đã lưu cài đặt thông báo đẩy",
+  "saveFailed": "Lưu thất bại, vui lòng thử lại sau",
+  "noPermission": "Không có quyền",
+  "loading": "Đang tải...",
+  "loadError": "Tải thất bại",
+  "retry": "Tải lại",
+  "row": {
+    "category_activity": "Hoạt động",
+    "category_system": "Hệ thống",
+    "category_tournament": "Giải đấu",
+    "type_signup_success": "Đăng ký thành công",
+    "type_cancel_signup": "Hủy đăng ký",
+    "type_waitlist_demoted": "Chuyển xuống danh sách chờ",
+    "type_event_relisted": "Mở lại hoạt động",
+    "type_role_upgrade": "Nâng vai trò",
+    "type_welcome": "Chào mừng",
+    "fixed_waitlist_promoted": "Lên từ danh sách chờ",
+    "fixed_event_cancelled": "Hủy hoạt động",
+    "fixed_event_changed": "Thay đổi hoạt động",
+    "fixed_broadcast": "Quản trị viên phát tin"
+  }
+}

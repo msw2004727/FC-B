@@ -1,0 +1,32 @@
+{
+  "title": "ตั้งค่าการแจ้งเตือนแบบพุช",
+  "back": "กลับ",
+  "note": "มีผลเฉพาะพุช LINE ข้อความในเว็บยังส่งตามปกติ",
+  "sectionCategory": "หมวดหมู่",
+  "sectionType": "ประเภทการแจ้งเตือน",
+  "sectionFixed": "ส่งเสมอ",
+  "fixed": "คงที่",
+  "save": "บันทึก",
+  "saving": "กำลังบันทึก...",
+  "saved": "บันทึกการตั้งค่าการแจ้งเตือนแล้ว",
+  "saveFailed": "บันทึกไม่สำเร็จ โปรดลองอีกครั้งภายหลัง",
+  "noPermission": "ไม่มีสิทธิ์",
+  "loading": "กำลังโหลด...",
+  "loadError": "โหลดไม่สำเร็จ",
+  "retry": "โหลดใหม่",
+  "row": {
+    "category_activity": "กิจกรรม",
+    "category_system": "ระบบ",
+    "category_tournament": "การแข่งขัน",
+    "type_signup_success": "สมัครสำเร็จ",
+    "type_cancel_signup": "ยกเลิกการสมัคร",
+    "type_waitlist_demoted": "ลดจากตัวจริงเป็นสำรอง",
+    "type_event_relisted": "เปิดกิจกรรมอีกครั้ง",
+    "type_role_upgrade": "เลื่อนบทบาท",
+    "type_welcome": "ต้อนรับ",
+    "fixed_waitlist_promoted": "เลื่อนจากสำรองเป็นตัวจริง",
+    "fixed_event_cancelled": "ยกเลิกกิจกรรม",
+    "fixed_event_changed": "เปลี่ยนแปลงกิจกรรม",
+    "fixed_broadcast": "ประกาศจากผู้ดูแล"
+  }
+}

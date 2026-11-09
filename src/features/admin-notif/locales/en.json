@@ -1,0 +1,32 @@
+{
+  "title": "Push Notification Settings",
+  "back": "Back",
+  "note": "LINE push only; inbox messages still sent",
+  "sectionCategory": "Categories",
+  "sectionType": "Notification types",
+  "sectionFixed": "Always sent",
+  "fixed": "Fixed",
+  "save": "Save",
+  "saving": "Saving...",
+  "saved": "Push notification settings saved",
+  "saveFailed": "Save failed. Please try again later.",
+  "noPermission": "Permission denied",
+  "loading": "Loading...",
+  "loadError": "Failed to load",
+  "retry": "Reload",
+  "row": {
+    "category_activity": "Activity",
+    "category_system": "System",
+    "category_tournament": "Tournament",
+    "type_signup_success": "Signup success",
+    "type_cancel_signup": "Signup cancelled",
+    "type_waitlist_demoted": "Waitlist demoted",
+    "type_event_relisted": "Event relisted",
+    "type_role_upgrade": "Role upgrade",
+    "type_welcome": "Welcome",
+    "fixed_waitlist_promoted": "Waitlist promoted",
+    "fixed_event_cancelled": "Event cancelled",
+    "fixed_event_changed": "Event changed",
+    "fixed_broadcast": "Admin broadcast"
+  }
+}

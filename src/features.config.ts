@@ -27,6 +27,7 @@ import { manifest as miniGames } from './features/mini-games/index';
 import { manifest as tournaments } from './features/tournaments/index';
 import { manifest as qaLogin } from './features/qa-login/index';
 import { manifest as adminInactive } from './features/admin-inactive/index';
+import { manifest as adminNotif } from './features/admin-notif/index';
 
 export const FEATURE_OVERRIDES: Record<string, boolean> = {};
 
@@ -53,4 +54,5 @@ export const ALL_FEATURES: FeatureManifest[] = [
   tournaments,
   qaLogin,
   adminInactive,
+  adminNotif,
 ];
