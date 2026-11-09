@@ -11,6 +11,10 @@ import {
   normalizeReleaseHours,
   type TeamReservationReleaseHours,
 } from './team-reservation-release';
+import { roleLabelOf } from './role-label';
+
+// roleLabelOf 實作搬到 role-label.ts（首頁開團入口單獨引用，不帶整份表單模型進首屏）；這裡照舊轉出。
+export { roleLabelOf };
 
 /** A `js/config.js#REGION_MAP`：順序（地區與縣市）照 A，表單依此順序顯示。 */
 export const REGION_MAP: Readonly<Record<string, readonly string[]>> = {
@@ -21,16 +25,6 @@ export const REGION_MAP: Readonly<Record<string, readonly string[]>> = {
 };
 
 export const REGION_KEYS = ['中部', '北部', '南部', '東部&外島'] as const;
-
-/** A `_BASE_ROLES` 的中文名稱；寫進活動 `creator` 欄位的是這個原值，不走翻譯。 */
-const BASE_ROLE_LABELS: Readonly<Record<string, string>> = {
-  user: '一般用戶',
-  coach: '教練',
-  captain: '領隊',
-  venue_owner: '場主',
-  admin: '管理員',
-  super_admin: '總管',
-};
 
 /**
  * A `_getEventCreatorName()`：有暱稱用暱稱，否則用目前角色名稱（含自訂角色），再不然「一般用戶」。
@@ -44,15 +38,6 @@ export function resolveCreatorName(
   // A：`if (user && user.displayName) return user.displayName;`（不 trim）
   if (displayName) return displayName;
   return roleLabelOf(role, customRoles) ?? '一般用戶';
-}
-
-/** A `ROLES[role]?.label`：內建角色中文名，或自訂角色 label（缺時用 key）；找不到回 null。 */
-export function roleLabelOf(role: string, customRoles: readonly CustomRole[] = []): string | null {
-  if (Object.prototype.hasOwnProperty.call(BASE_ROLE_LABELS, role)) return BASE_ROLE_LABELS[role]!;
-  // A 的 ROLES Proxy：自訂角色 label 缺時用 key（normalizeCustomRoles）
-  const custom = customRoles.find((item) => item.key === role);
-  if (custom) return custom.label || custom.key;
-  return null;
 }
 
 /** A `bindRegionToggle`：只有後台用戶管理／後台入口權限者看得到地區開關，其他人一律開啟。 */

@@ -206,6 +206,25 @@ describe('入口的靜態 import 圖', () => {
     expect(forbidden).toEqual([]);
   });
 
+  it('首頁瘦身：首頁開團入口只帶權限判斷與角色名稱，開團資料層（event-create）與表單模型（event-form-model）不在靜態圖裡', () => {
+    const visited = new Set<string>();
+    findFirebaseSdkImporters(ENTRY, {
+      read: (file) => {
+        visited.add(rel(file));
+        return realIo.read(file);
+      },
+      resolve: realIo.resolve,
+    });
+    // 走訪器確實走到開團入口與搬出來的小模組（避免空集合也算通過）
+    expect(visited).toContain('src/features/events/components/event-form/use-create-event-entry.tsx');
+    expect(visited).toContain('src/features/events/data/event-create-guard.ts');
+    expect(visited).toContain('src/features/events/data/role-label.ts');
+    const forbidden = [...visited].filter((f) =>
+      /^src\/features\/events\/(data\/(event-create|event-form-model|event-cover-upload)\.ts|components\/EventFormModal\.tsx)$/.test(f),
+    );
+    expect(forbidden).toEqual([]);
+  });
+
   it('功能註冊表不靜態連到功能清單：引用註冊表的延遲 chunk（收件匣頁、側邊選單）不會帶到 features.config 與首頁', () => {
     const reach = (from: string): Set<string> => {
       const visited = new Set<string>();

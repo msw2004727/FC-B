@@ -5,7 +5,7 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { EventFormSavedResult } from '../EventFormModal';
-import { roleLabelOf } from '../../data/event-form-model';
+import { roleLabelOf } from '../../data/role-label';
 
 /** 照 A ApiService._writeOpLog：暱稱 → 角色名稱（含自訂角色）→「系統」（Codex 第二審 P3）。 */
 function opLogOperator(viewer: ViewerView): string {

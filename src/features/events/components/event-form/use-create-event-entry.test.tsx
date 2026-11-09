@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/ui/Toast', () => ({ toast: { show: mocks.show } }));
 vi.mock('@/core/overlay-back', () => ({ pushOverlay: () => () => undefined }));
-vi.mock('../../data/event-create', () => ({
+vi.mock('../../data/event-create-guard', () => ({
   canCreateEvent: () => mocks.allowed,
 }));
 vi.mock('../../data/event-create-context', () => ({

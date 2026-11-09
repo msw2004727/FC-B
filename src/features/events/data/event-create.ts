@@ -18,17 +18,13 @@ import type {
   AdjustEventCapacityRequest,
   AdjustEventCapacityResponse,
 } from '@/data/contract/callables';
-import {
-  createPermissionChecker,
-  type CustomRole,
-} from '@/features/profile/data/permissions';
+import type { CustomRole } from '@/features/profile/data/permissions';
 import {
   canEditOwnActivityBasic,
   canManageAllActivities,
   canManageEventDelegates,
   canUseActivityAddons,
   hasActivityManageEntry,
-  type OperateContext,
 } from './operate-permissions';
 import {
   pickEventImage,
@@ -37,6 +33,11 @@ import {
   uploadImageDataUrl,
 } from './event-cover-upload';
 import { normalizeReleaseHours } from './team-reservation-release';
+import { EventCreateError, assertCreateAllowed, toOperateContext } from './event-create-guard';
+
+// 開團權限判斷（canCreateEvent／assertCreateAllowed）與 EventCreateError 原樣搬到 event-create-guard.ts：
+// 首頁開團入口只需要權限判斷，不必為它把整個資料層（Callable、封面上傳）帶進首屏。這裡照舊轉出。
+export { EventCreateError, canCreateEvent } from './event-create-guard';
 
 // 供呼叫端由本模組取得 Callable 契約型別（與 `src/data/contract/callables.ts` 同源）。
 export type {
@@ -291,13 +292,6 @@ export interface EditResult {
   addonsStripped: boolean;
 }
 
-/** 可辨識錯誤（供呼叫端 switch code 顯示／降級）。 */
-export class EventCreateError extends Error {
-  constructor(public readonly code: string, message: string) {
-    super(message);
-    this.name = 'EventCreateError';
-  }
-}
 
 // ── 常數與小工具 ─────────────────────────────────────
 
@@ -330,21 +324,6 @@ const FORBIDDEN_EDIT_FIELDS = [
   'payloadRevision',
   'payloadDigest',
 ] as const;
-
-function toOperateContext(ctx: CreateEventContext): OperateContext {
-  return {
-    uid: ctx.uid,
-    role: ctx.role,
-    rolePermissions: ctx.rolePermissions,
-    userGrants: ctx.userGrants,
-    capabilities: ctx.capabilities,
-    customRoles: (ctx.customRoles as readonly CustomRole[]) || [],
-  };
-}
-
-function hasCapability(ctx: CreateEventContext, code: string): boolean {
-  return ctx.capabilities.includes(code);
-}
 
 /**
  * A `_isEventTrulyFull` 的等價判斷。
@@ -460,47 +439,6 @@ export function applyAddonGate(
   };
 }
 
-/** UI 用：是否顯示「我要開團」入口（與送出時的 assertCreateAllowed 同一套規則）。 */
-export function canCreateEvent(ctx: CreateEventContext): boolean {
-  try {
-    assertCreateAllowed(ctx);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function assertCreateAllowed(ctx: CreateEventContext): void {
-  const checker = createPermissionChecker({
-    role: ctx.role,
-    rolePermissions: ctx.rolePermissions ? { [ctx.role]: ctx.rolePermissions } : {},
-    userGrants:
-      ctx.userGrants && ctx.userGrants.enabled !== false &&
-      String(ctx.userGrants.uid || '').trim() === ctx.uid
-        ? (ctx.userGrants.permissions ?? [])
-        : [],
-    customRoles: (ctx.customRoles as readonly CustomRole[]) || [],
-  });
-  if (ctx.role === 'user') {
-    const hasBasicCreate = hasCapability(ctx, 'user.activity.basic_create');
-    const hasCreateGrant = checker('event.create');
-    if (!hasBasicCreate && !hasCreateGrant) {
-      throw new EventCreateError(
-        'BASIC_CREATE_REQUIRED',
-        'User lacks user.activity.basic_create capability or event.create grant.',
-      );
-    }
-    return;
-  }
-  // coach+ / manage entry / event.create grant
-  const hasManageEntry = hasActivityManageEntry(toOperateContext(ctx));
-  if (!hasManageEntry && !checker('event.create')) {
-    throw new EventCreateError(
-      'CREATE_NOT_ALLOWED',
-      'User lacks activity manage entry or event.create permission.',
-    );
-  }
-}
 
 // ── 純函式：建立 payload ──────────────────────────────
 

@@ -4,7 +4,7 @@ import { useLegacyT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { UserProfile } from '@/features/profile/data/profile-model';
-import { canCreateEvent } from '../../data/event-create';
+import { canCreateEvent } from '../../data/event-create-guard';
 import { createEventContextFromViewer } from '../../data/event-create-context';
 import { CreateEventTypeSheet } from './CreateEventTypeSheet';
 import type { EventFormPreset } from '../EventFormModal';

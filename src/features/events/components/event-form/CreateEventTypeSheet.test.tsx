@@ -17,7 +17,7 @@ vi.mock('@/core/overlay-back', () => ({
     return mocks.release;
   },
 }));
-vi.mock('../../data/event-create', () => ({
+vi.mock('../../data/event-create-guard', () => ({
   canCreateEvent: () => mocks.allowed,
 }));
 vi.mock('../../data/event-create-context', () => ({
