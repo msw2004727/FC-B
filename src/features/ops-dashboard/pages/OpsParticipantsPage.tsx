@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
+import { copyToClipboard } from '@/features/events/data/activity-share';
 import { toast } from '@/ui/Toast';
 
 import { OpsShell, ReadFailed, StatusNote, useOpsGate } from '../components/OpsShell';
@@ -24,33 +25,6 @@ type RunState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'done'; query: ParticipantQuery; outcome: ParticipantOutcome };
-
-/**
- * 複製文字（同 events/data/activity-share 的 copyToClipboard：先 Clipboard API，失敗退回 execCommand）。
- * 不 import 那支：多一個 chunk 相依會讓首頁主程式的延遲載入清單變長（首頁 gzip 已貼近上限）。
- */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // 退回 execCommand
-  }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
-    document.body.appendChild(ta);
-    try {
-      ta.select();
-      return Boolean(document.execCommand('copy'));
-    } finally {
-      document.body.removeChild(ta);
-    }
-  } catch {
-    return false;
-  }
-}
 
 type NamesState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ok'; names: Record<string, string> };
 
@@ -147,7 +121,7 @@ export default function OpsParticipantsPage(): JSX.Element {
   }, [loadNames]);
 
   async function copyLink(q: ParticipantQuery): Promise<void> {
-    const ok = await copyText(new URL(participantsPath(q), location.origin).toString());
+    const ok = await copyToClipboard(new URL(participantsPath(q), location.origin).toString());
     toast.show({ message: t(ok ? 'copied' : 'copyFailed'), tone: ok ? 'success' : 'error' });
   }
 

@@ -2,13 +2,12 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
+import { formatTaipei, taipeiStartOfDay } from '@/core/taipei-time';
 import { t as appT } from '@/i18n/i18n';
 
 import { OpsShell, ReadFailed, StatusNote, useOpsGate } from '../components/OpsShell';
 import { loadDashboard, type DashboardLoad } from '../data/ops-data';
 import { useOpsT, type OpsT } from '../ops-strings';
-// 放最後：chunk 相依清單的順序跟著 import 順序，與其他後台頁一致時首頁主程式的檔名清單壓縮較好。
-import { formatTaipei, taipeiStartOfDay } from '@/core/taipei-time';
 
 export const OPS_PERIODS = ['d7', 'd30', 'd90', 'm12'] as const;
 export type OpsPeriod = (typeof OPS_PERIODS)[number];
