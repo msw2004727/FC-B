@@ -8,12 +8,13 @@
 // - auth uid 與 LINE userId 不一致：照 A 拒絕寫入。
 // - 只是 Auth 還原的進站（沒有 LINE profile）：文件存在只補 lastLogin（超過 10 分鐘，同 A）；文件不存在才初始化 LIFF 取 profile 建檔。
 // - 失敗不阻斷登入：宿主（InboxStoreHost，登入後才載入的延遲 chunk）只記錄結構化警告；成功才寫本機記號，
-//   沒寫記號的下次進站會再試一次（不做批次回填，受影響的人下次登入／進站自動建檔）。
+//   沒寫記號的下次進站會再試一次（不做批次回填，受影響的人下次登入／進站自動建檔）；
+//   確定會失敗的（帳號不符、無 profile、legacy 不可遷移）寫 uid 專屬失敗記號，24 小時內不重試。
 // - 本檔只能被延遲 chunk 靜態引用，不得進首頁靜態圖（entry-graph.test.ts 管制）。
 
 import type { Firestore } from 'firebase/firestore';
 
-import { emit } from '@/core/events';
+import { emit, on } from '@/core/events';
 
 import { getFirebase } from './firebase';
 import { ensureLiffInit, getReadyLiff } from './liff-init';
@@ -40,8 +41,23 @@ type Data = Record<string, unknown>;
 const PROFILE_TIMEOUT_MS = 8000;
 /** 成功同步的本機記號（前綴 toosterx:auth，登出時隨帳號資料一併清掉）。 */
 export const USER_DOC_SYNCED_KEY = 'toosterx:auth:user-doc';
+/** 確定會失敗的本機記號（uid 專屬，同樣登出時清掉）：24 小時內不重試（Flash 審查 P2-3）。 */
+export const USER_DOC_FAILED_KEY_PREFIX = 'toosterx:auth:user-doc-fail:';
+export const PERMANENT_FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
-export type UserDocSyncResult = 'created' | 'migrated' | 'updated' | 'unchanged' | 'skipped';
+export type UserDocSyncResult = 'created' | 'migrated' | 'updated' | 'unchanged' | 'skipped' | 'backoff';
+
+/**
+ * 重試也不會成功的失敗：LINE 帳號與登入帳號不符、拿不到 LINE profile 無法建檔、
+ * legacy 不可自動遷移、payload 不符 Rules。網路／Firestore／LIFF 初始化等暫時性錯誤不在此列，下次進站照常重試。
+ */
+export function isPermanentFailure(err: unknown): boolean {
+  if (!(err instanceof UserDocSyncError)) return false;
+  return err.reason === 'line-uid-mismatch'
+    || err.reason === 'line-profile-unavailable'
+    || err.reason.startsWith('legacy-not-migratable')
+    || err.reason.startsWith('create-');
+}
 
 type LiffProfile = { userId?: string; displayName?: string; pictureUrl?: string };
 
@@ -64,8 +80,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** 照 A `LineAuth` 取 LINE profile：getProfile（signIn 已呼叫過就沿用），失敗退回 ID token；email 一律取自 ID token。 */
-export async function readLineProfile(liff: LiffProfileSource): Promise<LineLoginProfile | null> {
+/**
+ * 照 A `LineAuth` 取 LINE profile：getProfile，失敗退回 ID token；email 一律取自 ID token。
+ * signIn 已取得的 `fcbProfile` 只有 userId 等於 expectedUid 時才沿用；不符或失敗就丟棄、重新呼叫 getProfile（Flash 審查 P2-1）。
+ */
+export async function readLineProfile(liff: LiffProfileSource, expectedUid?: string): Promise<LineLoginProfile | null> {
   let idToken: ReturnType<LiffProfileSource['getDecodedIDToken']> = null;
   try {
     idToken = liff.getDecodedIDToken();
@@ -73,8 +92,19 @@ export async function readLineProfile(liff: LiffProfileSource): Promise<LineLogi
     idToken = null;
   }
   const email = idToken?.email || null;
+  let p: LiffProfile | null = null;
+  const stashed = liff.fcbProfile;
+  if (stashed) {
+    try {
+      const s = await withTimeout(stashed, PROFILE_TIMEOUT_MS);
+      if (s?.userId && (expectedUid === undefined || s.userId === expectedUid)) p = s;
+    } catch {
+      p = null;
+    }
+    if (!p && liff.fcbProfile === stashed) delete liff.fcbProfile;
+  }
   try {
-    const p = await withTimeout(liff.fcbProfile ?? liff.getProfile(), PROFILE_TIMEOUT_MS);
+    if (!p) p = await withTimeout(liff.getProfile(), PROFILE_TIMEOUT_MS);
     if (p?.userId) {
       return {
         userId: p.userId, displayName: p.displayName ?? null, pictureUrl: p.pictureUrl || null, email, source: 'getProfile',
@@ -90,6 +120,13 @@ export async function readLineProfile(liff: LiffProfileSource): Promise<LineLogi
   }
   return null;
 }
+
+/** 登出時丟掉 signIn 留下的 profile，下一位登入者不會沿用（Flash 審查 P2-1）。 */
+on('auth:changed', ({ uid }) => {
+  if (uid !== null) return;
+  const liff = getReadyLiff() as LiffProfileSource | null;
+  if (liff) delete liff.fcbProfile;
+});
 
 function loggedIn(liff: unknown): LiffProfileSource | null {
   const source = liff as LiffProfileSource | null;
@@ -113,13 +150,31 @@ function recentlySynced(uid: string, nowMs: number): boolean {
 function markSynced(uid: string, nowMs: number): void {
   try {
     localStorage.setItem(USER_DOC_SYNCED_KEY, `${uid}|${nowMs}`);
+    localStorage.removeItem(USER_DOC_FAILED_KEY_PREFIX + uid);
   } catch {
     // 寫不進去只代表下次進站會再確認一次。
   }
 }
 
+function recentlyFailed(uid: string, nowMs: number): boolean {
+  try {
+    const at = Number(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + uid));
+    return at > 0 && nowMs - at < PERMANENT_FAILURE_BACKOFF_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markFailed(uid: string, nowMs: number): void {
+  try {
+    localStorage.setItem(USER_DOC_FAILED_KEY_PREFIX + uid, String(nowMs));
+  } catch {
+    // 寫不進去只代表下次進站會再試一次。
+  }
+}
+
 async function requireProfile(liff: LiffProfileSource | null, uid: string): Promise<LineLoginProfile> {
-  const profile = liff ? await readLineProfile(liff) : null;
+  const profile = liff ? await readLineProfile(liff, uid) : null;
   if (!profile) throw new UserDocSyncError('line-profile-unavailable');
   // 照 A：auth uid 必須等於 LINE userId，否則拒絕寫入。
   if (profile.userId !== uid) throw new UserDocSyncError('line-uid-mismatch');
@@ -129,6 +184,7 @@ async function requireProfile(liff: LiffProfileSource | null, uid: string): Prom
 async function runSync(uid: string): Promise<UserDocSyncResult> {
   if (!uid) throw new UserDocSyncError('no-uid');
   const nowMs = Date.now();
+  if (recentlyFailed(uid, nowMs)) return 'backoff';
   // 剛用 LINE 登入（或 Mini App 已初始化 LIFF）時照 A 帶 LINE profile 同步；
   // 只是 Auth 還原的進站沒有 profile，只補 lastLogin（照 A 每次進站超過 10 分鐘更新）。
   const readyLiff = loggedIn(getReadyLiff());
@@ -149,7 +205,9 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
   let visibleChange = true;
   if (snap.exists()) {
     const existing = (snap.data() ?? {}) as Data;
-    const profile = readyLiff ? await requireProfile(readyLiff, uid) : null;
+    // 拿不到 profile 時只補 lastLogin；拿到但不是這個帳號照 A 拒寫。
+    const profile = readyLiff ? await readLineProfile(readyLiff, uid) : null;
+    if (profile && profile.userId !== uid) throw new UserDocSyncError('line-uid-mismatch');
     const updates = profile
       ? buildExistingLoginUpdate(existing, profile, nowMs, ts)
       : buildLastLoginUpdate(existing, nowMs, ts);
@@ -184,8 +242,14 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
       result = 'created';
     } else {
       // A 用 set merge；目標文件不存在，Rules 走 create，必須通過 isSafeUserRootCreate。
+      // 舊文件只要有一個欄位不在 Rules 白名單、值或型別不符，就判定不可自動遷移，不送寫入（Flash 審查 P2-2）。
       const payload = buildLegacyMigration((legacyDoc.data() ?? {}) as Data, uid, profile, ts);
-      assertUserRootCreate(payload, uid, ts, USER_ROOT_CREATE_RULES_FIELDS);
+      try {
+        assertUserRootCreate(payload, uid, ts, USER_ROOT_CREATE_RULES_FIELDS);
+      } catch (err) {
+        const reason = err instanceof UserDocSyncError ? err.reason : 'unknown';
+        throw new UserDocSyncError(`legacy-not-migratable:${reason}`, err);
+      }
       await fs.setDoc(ref, payload, { merge: true });
       result = 'migrated';
     }
@@ -201,19 +265,25 @@ const inflight = new Map<string, Promise<UserDocSyncResult>>();
 export function syncUserDoc(uid: string): Promise<UserDocSyncResult> {
   const running = inflight.get(uid);
   if (running) return running;
-  const run = runSync(uid).finally(() => {
-    if (inflight.get(uid) === run) inflight.delete(uid);
-  });
+  const run = runSync(uid)
+    .catch((err: unknown) => {
+      if (isPermanentFailure(err)) markFailed(uid, Date.now());
+      throw err;
+    })
+    .finally(() => {
+      if (inflight.get(uid) === run) inflight.delete(uid);
+    });
   inflight.set(uid, run);
   return run;
 }
 
-/** 宿主用：不阻斷登入，失敗只留結構化警告（不含 uid），下次進站重試。 */
+/** 宿主用：不阻斷登入，失敗只留結構化警告（不含 uid）；暫時性錯誤下次進站重試，確定會失敗的 24 小時內不重試。 */
 export function startUserDocSync(uid: string): Promise<UserDocSyncResult | null> {
   return syncUserDoc(uid).catch((err: unknown) => {
     const cause = err instanceof UserDocSyncError ? err.cause : err;
-    console.warn('[user-doc-sync] 會員文件同步失敗，下次進站重試', {
+    console.warn('[user-doc-sync] 會員文件同步失敗', {
       reason: err instanceof UserDocSyncError ? err.reason : 'firestore-failed',
+      retry: isPermanentFailure(err) ? 'after-24h' : 'next-visit',
       code: (cause as { code?: unknown } | null | undefined)?.code ?? null,
       message: cause instanceof Error ? cause.message : String(cause ?? ''),
     });

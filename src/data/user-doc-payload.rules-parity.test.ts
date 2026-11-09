@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  findCreateTypeViolations,
   USER_DOC_CREATE_FIELDS,
   USER_DOC_LOGIN_UPDATE_FIELDS,
   USER_ROOT_CREATE_RULES_FIELDS,
@@ -86,6 +87,28 @@ describe('會員文件欄位白名單 × Rules users 區塊', () => {
     }
     expect(block).toContain('request.resource.data.uid == userId');
     expect(block).toContain('request.resource.data.lineUserId == userId');
+  });
+
+  it('型別守門涵蓋 Rules isSafeUserRootCreate 裡每個有型別條件的欄位（Flash 審查 P2-2）', () => {
+    const block = usersBlock();
+    const start = block.indexOf('function isSafeUserRootCreate()');
+    const body = block.slice(start, block.indexOf('function existingSecondaryAvatarUrlMatches', start));
+    const typed = [...body.matchAll(/request\.resource\.data\.(\w+) is (?:string|list|int|number|bool|map)/g)].map((m) => m[1]!);
+    const typedSet = [...new Set(typed)].sort();
+    const probe: Record<string, unknown> = {};
+    for (const key of typedSet) probe[key] = Symbol('wrong-type');
+    expect(findCreateTypeViolations(probe).sort()).toEqual(typedSet);
+  });
+
+  it('型別守門的允許／拒絕範例', () => {
+    expect(findCreateTypeViolations({
+      gender: null, sports: '足球', teamIds: [], totalGames: 3, attendanceRate: 0.5, profileCompleted: true,
+      stealth: null, favorites: [], socialLinks: { line: 'x' }, lineNotify: null,
+    })).toEqual([]);
+    expect(findCreateTypeViolations({
+      sports: ['足球'], teamIds: 'a', totalGames: 1.5, attendanceRate: '1', profileCompleted: null,
+      socialLinks: [], lineNotify: new Date(0),
+    }).sort()).toEqual(['attendanceRate', 'lineNotify', 'profileCompleted', 'socialLinks', 'sports', 'teamIds', 'totalGames']);
   });
 
   it('parser 對非純字串清單拒絕，不默認空集合', () => {

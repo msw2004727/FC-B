@@ -134,7 +134,7 @@ export function isNoopLoginUpdate(existing: Data, updates: Data): boolean {
 }
 
 /**
- * 寫入前對照 Rules `isSafeUserRootCreate()`：欄位白名單＋值限制；不符就不送（避免必被拒的寫入）。
+ * 寫入前對照 Rules `isSafeUserRootCreate()`：欄位白名單＋值限制＋型別；不符就不送（避免必被拒的寫入）。
  * createdAt 必填且必須是本次 serverTimestamp（審查 P3-5）：文件若其實已存在（例如離線快取誤判不存在），
  * setDoc 會變成 update，而改動 createdAt 被所有 update 路徑拒絕（含 super_admin 的 isSafeSuperAdminUserUpdate），
  * 所以「只建立、不覆寫」由這條斷言明確保證，不靠呼叫端剛好帶了 createdAt。
@@ -158,4 +158,34 @@ export function assertUserRootCreate(payload: Data, uid: string, ts: unknown, al
     if (has(key) && payload[key] !== ts) bad.push(key);
   }
   if (bad.length > 0) throw new UserDocSyncError(`create-values-not-allowed:${bad.join(',')}`);
+  const badTypes = findCreateTypeViolations(payload);
+  if (badTypes.length > 0) throw new UserDocSyncError(`create-types-not-allowed:${badTypes.join(',')}`);
+}
+
+const isMap = (v: unknown): boolean =>
+  v !== null && typeof v === 'object' && !Array.isArray(v)
+  && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+const isStringOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
+const isListOrNull = (v: unknown): boolean => v === null || Array.isArray(v);
+
+/** 逐欄對照 Rules `isSafeUserRootCreate()` 的型別條件（欄位有出現才檢查，同 Rules 的 `!(k in data) || …`）。 */
+const CREATE_TYPE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
+  photoURL: isStringOrNull, pictureUrl: isStringOrNull, phone: isStringOrNull, email: isStringOrNull,
+  gender: isStringOrNull, birthday: isStringOrNull, region: isStringOrNull, sports: isStringOrNull,
+  teamId: isStringOrNull, teamName: isStringOrNull, titleBig: isStringOrNull, titleNormal: isStringOrNull,
+  teamIds: isListOrNull, teamNames: isListOrNull, companions: isListOrNull, eduChildren: isListOrNull,
+  totalGames: Number.isInteger, completedGames: Number.isInteger, badgeCount: Number.isInteger,
+  attendanceRate: (v) => typeof v === 'number',
+  profileCompleted: (v) => typeof v === 'boolean',
+  stealth: (v) => v === null || typeof v === 'boolean',
+  favorites: (v) => v === null || isMap(v) || Array.isArray(v),
+  socialLinks: (v) => v === null || isMap(v),
+  lineNotify: (v) => v === null || isMap(v),
+};
+
+/** payload 裡型別不符 Rules 建立條件的欄位（Flash 審查 P2-2）。 */
+export function findCreateTypeViolations(payload: Data): string[] {
+  return Object.keys(CREATE_TYPE_RULES).filter(
+    (key) => Object.prototype.hasOwnProperty.call(payload, key) && !CREATE_TYPE_RULES[key]!(payload[key]),
+  );
 }

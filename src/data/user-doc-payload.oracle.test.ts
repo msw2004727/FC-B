@@ -5,7 +5,6 @@ import {
   assertUserRootCreate,
   buildExistingLoginUpdate,
   buildLegacyMigration,
-  buildLoginUpdate,
   buildNewUserDoc,
   isNoopLoginUpdate,
   USER_DOC_CREATE_FIELDS,
@@ -68,14 +67,17 @@ function profileOf(c: OracleCase): LineLoginProfile {
   };
 }
 
-/** B 依同一輸入算出的寫入（不含「內容相同時省略寫入」的最佳化，那一段另外驗）。 */
+/**
+ * B 依同一輸入算出的寫入，已存在分支用 production 實際用的 buildExistingLoginUpdate（Flash 審查 P3-1）。
+ * 不含「內容相同時省略寫入」的最佳化，那一段另外驗。
+ */
 function bWrite(c: OracleCase): OracleWrite | null {
   const { authUid, canonical, legacy, nowMs } = c.input;
   if (authUid !== c.input.profile.userId) return null;
   const profile = profileOf(c);
   const path = `users/${authUid}`;
   if (canonical) {
-    return { op: 'update', path, payload: buildLoginUpdate(decode(canonical) as Record<string, unknown>, profile, nowMs, TS) };
+    return { op: 'update', path, payload: buildExistingLoginUpdate(decode(canonical) as Record<string, unknown>, profile, nowMs, TS) };
   }
   if (legacy) {
     return {
@@ -96,7 +98,20 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     expect(ids).toContain('uid-mismatch');
   });
 
-  it.each(fixture.cases.map((c) => [c.id, c] as const))('%s：B 寫入與 A 逐欄相同', (_id, c) => {
+  /**
+   * 與 A 的刻意差異（審查 P3-2）：已存在文件時 getProfile 名稱空白不用 uid 覆寫既有名稱。
+   * 只有這裡列出的案例允許與 A 不同，且差異必須剛好是列出的欄位被省略。
+   */
+  const DELIBERATE_OMISSIONS: Readonly<Record<string, readonly string[]>> = {
+    'existing-no-lastLogin-empty-name': ['displayName'],
+  };
+
+  it('刻意差異清單只列 fixture 裡真的存在的案例', () => {
+    const ids = new Set(fixture.cases.map((c) => c.id));
+    expect(Object.keys(DELIBERATE_OMISSIONS).filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  it.each(fixture.cases.map((c) => [c.id, c] as const))('%s：B 寫入與 A 逐欄相同（刻意差異明列）', (_id, c) => {
     const write = bWrite(c);
     if (c.expected.error) {
       // A 拒絕（uid 不一致）時不寫入；B 也不產生寫入。
@@ -110,9 +125,15 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     expect(write!.op).toBe(a.op);
     expect(write!.path).toBe(a.path);
     expect(write!.options).toEqual(a.options);
-    expect(encode(write!.payload)).toEqual(a.payload);
+    const omitted = DELIBERATE_OMISSIONS[c.id] ?? [];
+    const expected = { ...a.payload };
+    for (const key of omitted) {
+      expect(Object.prototype.hasOwnProperty.call(a.payload, key)).toBe(true);
+      delete expected[key];
+    }
+    expect(encode(write!.payload)).toEqual(expected);
     // 鍵的集合也要一樣（toEqual 不在乎 undefined 鍵，另外比一次）。
-    expect(Object.keys(write!.payload).sort()).toEqual(Object.keys(a.payload).sort());
+    expect(Object.keys(write!.payload).sort()).toEqual(Object.keys(expected).sort());
   });
 
   it('新建：A 的欄位正好是 USER_DOC_CREATE_FIELDS，且通過 Rules 建立條件', () => {

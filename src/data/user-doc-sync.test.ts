@@ -31,13 +31,15 @@ vi.mock('./liff-init', () => ({
   ensureLiffInit: liffState.ensure,
 }));
 
-import { on } from '@/core/events';
+import { emit, on } from '@/core/events';
 import { USER_DOC_CREATE_FIELDS } from './user-doc-payload';
 import {
   _resetUserDocSyncForTest,
+  PERMANENT_FAILURE_BACKOFF_MS,
   readLineProfile,
   startUserDocSync,
   syncUserDoc,
+  USER_DOC_FAILED_KEY_PREFIX,
   USER_DOC_SYNCED_KEY,
 } from './user-doc-sync';
 
@@ -130,7 +132,9 @@ describe('syncUserDoc：文件不存在', () => {
     liffState.ready = liff();
     fs.getDoc.mockResolvedValue(missing);
     fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', role: 'coach', createdAt: ts(1) }) }] });
-    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'create-values-not-allowed:role,createdAt' });
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({
+      reason: 'legacy-not-migratable:create-values-not-allowed:role,createdAt',
+    });
     expect(fs.setDoc).not.toHaveBeenCalled();
     expect(localStorage.getItem(USER_DOC_SYNCED_KEY)).toBeNull();
   });
@@ -139,7 +143,7 @@ describe('syncUserDoc：文件不存在', () => {
     liffState.ready = liff();
     fs.getDoc.mockResolvedValue(missing);
     fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', manualRole: 'admin' }) }] });
-    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'create-fields-not-allowed' });
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'legacy-not-migratable:create-fields-not-allowed' });
     expect(fs.setDoc).not.toHaveBeenCalled();
   });
 
@@ -231,11 +235,13 @@ describe('syncUserDoc：拒絕寫入與失敗處理', () => {
     fs.setDoc.mockRejectedValueOnce(Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }));
 
     await expect(startUserDocSync('U1')).resolves.toBeNull();
-    expect(warn).toHaveBeenCalledWith('[user-doc-sync] 會員文件同步失敗，下次進站重試', {
-      reason: 'firestore-failed', code: 'permission-denied', message: 'Missing or insufficient permissions.',
+    expect(warn).toHaveBeenCalledWith('[user-doc-sync] 會員文件同步失敗', {
+      reason: 'firestore-failed', retry: 'next-visit', code: 'permission-denied', message: 'Missing or insufficient permissions.',
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain('U1');
     expect(localStorage.getItem(USER_DOC_SYNCED_KEY)).toBeNull();
+    // 暫時性錯誤不寫失敗記號，下次進站照常重試。
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
     expect(refreshes).toBe(0);
 
     await expect(startUserDocSync('U1')).resolves.toBe('created');
@@ -289,6 +295,112 @@ describe('審查 P3-2：已存在文件只用真的 getProfile 結果更新名�
     fs.getDoc.mockResolvedValue(existing({ displayName: '小明', pictureUrl: 'https://p/1', lastLogin: ts(NOW - MIN) }));
     await expect(syncUserDoc('U1')).resolves.toBe('unchanged');
     expect(source.getProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('Flash 審查 P2-1：signIn 留下的 fcbProfile 要屬於目前帳號', () => {
+  it('fcbProfile 是別的帳號：丟棄並重新呼叫 getProfile', async () => {
+    const source = {
+      ...liff({ userId: 'U1', displayName: '新帳號', pictureUrl: 'https://p/1' }),
+      fcbProfile: Promise.resolve({ userId: 'U-old', displayName: '舊帳號', pictureUrl: 'https://p/old' }),
+    } as Parameters<typeof readLineProfile>[0] & { getProfile: ReturnType<typeof vi.fn> };
+    await expect(readLineProfile(source, 'U1')).resolves.toMatchObject({ userId: 'U1', displayName: '新帳號', source: 'getProfile' });
+    expect(source.getProfile).toHaveBeenCalledTimes(1);
+    expect(source.fcbProfile).toBeUndefined();
+  });
+
+  it('fcbProfile 失敗（signIn 時 getProfile 被拒）：丟棄並重新呼叫 getProfile', async () => {
+    const rejected = Promise.reject(new Error('signIn getProfile failed'));
+    rejected.catch(() => undefined);
+    const source = { ...liff(), fcbProfile: rejected } as Parameters<typeof readLineProfile>[0] & { getProfile: ReturnType<typeof vi.fn> };
+    await expect(readLineProfile(source, 'U1')).resolves.toMatchObject({ userId: 'U1', source: 'getProfile' });
+    expect(source.getProfile).toHaveBeenCalledTimes(1);
+    expect(source.fcbProfile).toBeUndefined();
+  });
+
+  it('登出（auth:changed uid=null）時清掉 LIFF 上的 fcbProfile', () => {
+    const source = { ...liff(), fcbProfile: Promise.resolve({ userId: 'U1' }) } as Parameters<typeof readLineProfile>[0];
+    liffState.ready = source;
+    emit('auth:changed', { uid: 'U1' });
+    expect(source.fcbProfile).toBeDefined();
+    emit('auth:changed', { uid: null });
+    expect(source.fcbProfile).toBeUndefined();
+  });
+});
+
+describe('Flash 審查 P2-3：確定會失敗的 24 小時內不重試，暫時性錯誤下次重試', () => {
+  it('LINE 帳號不符：寫 uid 專屬失敗記號；24 小時內再進站直接 backoff 不讀 Firestore；過了才重試', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    liffState.ready = liff({ userId: 'U-other', displayName: 'x' });
+    fs.getDoc.mockResolvedValue(missing);
+
+    await expect(startUserDocSync('U1')).resolves.toBeNull();
+    expect(warn.mock.calls[0]![1]).toMatchObject({ reason: 'line-uid-mismatch', retry: 'after-24h' });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBe(String(NOW));
+
+    fs.getDoc.mockClear();
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    expect(fs.getDoc).not.toHaveBeenCalled();
+    // 記號是 uid 專屬：別的帳號不受影響。
+    fb.currentUid = 'U2';
+    liffState.ready = liff({ userId: 'U2', displayName: '乙' });
+    await expect(syncUserDoc('U2')).resolves.toBe('created');
+
+    vi.setSystemTime(NOW + PERMANENT_FAILURE_BACKOFF_MS + 1);
+    fb.currentUid = 'U1';
+    liffState.ready = liff();
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+    // 成功後清掉失敗記號。
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+    warn.mockRestore();
+  });
+
+  it('文件不存在又拿不到 LINE profile：判定無法建檔，寫失敗記號', async () => {
+    liffState.ensure.mockResolvedValue({ ...liff(), isLoggedIn: () => false });
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'line-profile-unavailable' });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).not.toBeNull();
+  });
+
+  it('LIFF 初始化失敗（暫時性）：不寫失敗記號', async () => {
+    liffState.ensure.mockRejectedValue(new Error('network'));
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'liff-init-failed' });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+  });
+
+  it('legacy 欄位型別不符 Rules：判定不可自動遷移、不送寫入、寫失敗記號', async () => {
+    liffState.ready = liff();
+    fs.getDoc.mockResolvedValue(missing);
+    fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', sports: ['football'], totalGames: 1.5 }) }] });
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({
+      reason: 'legacy-not-migratable:create-types-not-allowed:sports,totalGames',
+    });
+    expect(fs.setDoc).not.toHaveBeenCalled();
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).not.toBeNull();
+  });
+
+  it('文件已存在、LIFF 就緒但拿不到 profile：不當成失敗，只補 lastLogin', async () => {
+    liffState.ready = liff(new Error('timeout'), null);
+    fs.getDoc.mockResolvedValue(existing({ displayName: '老會員', lastLogin: ts(NOW - 30 * MIN) }));
+    await expect(syncUserDoc('U1')).resolves.toBe('updated');
+    expect(fs.updateDoc).toHaveBeenCalledWith({ path: 'users/U1' }, { lastLogin: TS });
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBeNull();
+  });
+});
+
+describe('Flash 審查 P3-3：viewer:refresh 的 listener 拋錯不影響同步結果', () => {
+  it('listener 拋錯：emit 自行隔離（core/events），同步仍回 created、寫成功記號', async () => {
+    const stopBad = on('viewer:refresh', () => { throw new Error('listener boom'); });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    liffState.ready = liff();
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+    expect(localStorage.getItem(USER_DOC_SYNCED_KEY)).toBe(`U1|${NOW}`);
+    expect(refreshes).toBe(1);
+    stopBad();
+    error.mockRestore();
   });
 });
 
