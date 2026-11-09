@@ -1056,7 +1056,6 @@ describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始
   test.each([
     { role: 'creator' as const, field: 'creatorUid', op: '==' },
     { role: 'owner' as const, field: 'ownerUid', op: '==' },
-    { role: 'delegate' as const, field: 'delegateUids', op: 'array-contains' },
   ])('$role：100 場同一人、文件 id 依建立時間遞增，選到最近的未開始活動', async ({ role, field, op }) => {
     const total = 100;
     const events = oddThenEven(Array.from({ length: total }, (_, index) => (
@@ -1073,7 +1072,7 @@ describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始
     expect(mine?.ids).toEqual(newestManagedIds(total, EVENT_QUERY_LIMIT));
     expect(mine?.ids).not.toContain(managedEventDocId(0));
     expect(result?.event.id).toBe(managedEventDocId(92));
-    expect(result?.managedRole).toBe(role === 'delegate' ? 'delegate' : 'owner');
+    expect(result?.managedRole).toBe('owner');
     expect(seen.map((item) => ({
       field: item.field,
       op: item.op,
@@ -1082,10 +1081,44 @@ describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始
     }))).toEqual([
       { field: 'creatorUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
       { field: 'ownerUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
-      { field: 'delegateUids', op: 'array-contains', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+      { field: 'delegateUids', op: 'array-contains', orderDir: null, limit: EVENT_QUERY_LIMIT },
     ]);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toContain(`${role} query hit the limit`);
+    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
+    expect(mockedGetDocs).toHaveBeenCalledTimes(4);
+  });
+
+  test('delegate：100 場同一人、查詢不帶 orderBy，假 Firestore 依文件 id 升冪 limit', async () => {
+    const total = 100;
+    const events = oddThenEven(Array.from({ length: total }, (_, index) => (
+      managedEventDoc(index, MANAGED_UID, 'delegate', managedSchedule(index))
+    )));
+    const seen = installManagedEventStore(events);
+    const warn = vi.fn();
+
+    await resolveNextActivity({ ...deps(warn), now: () => NOW }, MANAGED_UID);
+
+    const mine = seen.find((item) => item.field === 'delegateUids');
+    expect(mine?.op).toBe('array-contains');
+    expect(mine?.orderDir).toBeNull();
+    // 假 Firestore 沒有 orderBy 時依文件 id 升冪，limit 留下最早的 80 場。
+    expect(mine?.ids).toEqual(
+      Array.from({ length: EVENT_QUERY_LIMIT }, (_, index) => managedEventDocId(index)),
+    );
+    expect(mine?.limit).toBe(EVENT_QUERY_LIMIT);
+    expect(seen.map((item) => ({
+      field: item.field,
+      op: item.op,
+      orderDir: item.orderDir,
+      limit: item.limit,
+    }))).toEqual([
+      { field: 'creatorUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+      { field: 'ownerUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+      { field: 'delegateUids', op: 'array-contains', orderDir: null, limit: EVENT_QUERY_LIMIT },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('delegate query hit the limit');
     expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
     expect(mockedGetDocs).toHaveBeenCalledTimes(4);
   });

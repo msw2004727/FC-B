@@ -419,7 +419,7 @@ export async function loadNextActivityInputs(
   // 1b) 使用者管理的活動（creator／owner／delegate）。
   // 新活動文件 id 是 ce_<建立毫秒>_…，降冪才是「最新建立的在前」。
   // 沒有 orderBy 時 Firestore 依文件 id 升冪，limit(80) 只留最早的 80 場，下一場會被截掉。
-  // 等號或 array-contains 再只依文件 id 排序，走該欄位的自動索引（索引項已含 __name__），不需複合索引。
+  // creatorUid／ownerUid 等號查詢再依文件 id 降冪，走該欄位的自動單欄索引（索引項已含 __name__），不需複合索引。
   // 回傳筆數打到上限只警告一次，不印 uid。舊文件 id 可能不是 ce_ 格式（R-ID-008），排序位置不代表建立時間。
   const fetchManaged = async (
     label: 'creator' | 'owner' | 'delegate',
@@ -439,17 +439,22 @@ export async function loadNextActivityInputs(
       return null;
     }
   };
-  const managedEventsQuery = (field: 'creatorUid' | 'ownerUid' | 'delegateUids', op: '==' | 'array-contains') =>
+  const managedEventsQuery = (field: 'creatorUid' | 'ownerUid') =>
     query(
       collection(db, eventsCollectionPath),
-      where(field, op, safeUid),
+      where(field, '==', safeUid),
       orderBy(documentId(), 'desc'),
       limit(EVENT_QUERY_LIMIT),
     );
   const managedPromise = Promise.all([
-    fetchManaged('creator', () => managedEventsQuery('creatorUid', '==')),
-    fetchManaged('owner', () => managedEventsQuery('ownerUid', '==')),
-    fetchManaged('delegate', () => managedEventsQuery('delegateUids', 'array-contains')),
+    fetchManaged('creator', () => managedEventsQuery('creatorUid')),
+    fetchManaged('owner', () => managedEventsQuery('ownerUid')),
+    // 不排序：缺 (delegateUids, __name__ DESC) 索引；要排序須先在 FC firestore.indexes.json 加索引並部署。
+    fetchManaged('delegate', () => query(
+      collection(db, eventsCollectionPath),
+      where('delegateUids', 'array-contains', safeUid),
+      limit(EVENT_QUERY_LIMIT),
+    )),
   ]);
 
   const [registrations, managedSnaps] = await Promise.all([registrationsPromise, managedPromise]);
