@@ -61,6 +61,7 @@ vi.mock('../components/legacy/LegacyApplicationsCard', () => ({
 vi.mock('../components/legacy/LegacyCompanionsCard', () => ({ LegacyCompanionsCard: () => null }));
 vi.mock('../components/legacy/LegacyActivityRecordsCard', () => ({ LegacyActivityRecordsCard: () => null }));
 
+import { emit } from '@/core/events';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import ProfilePage from './ProfilePage';
 
@@ -137,5 +138,29 @@ describe('ProfilePage：個人資料讀取失敗／查無資料（真的 loadUse
       fireEvent.click(screen.getByRole('button', { name: RETRY }));
     });
     await waitFor(() => expect(firestore.getDoc.mock.calls.length).toBeGreaterThan(callsBefore));
+  });
+
+  it('剛登入會員文件還在建立：查無資料時收到 viewer:refresh（建檔完成）自動重讀，顯示個人頁', async () => {
+    firestore.getDoc.mockResolvedValueOnce(missingDoc).mockResolvedValue(existingDoc());
+    firestore.getDocs.mockResolvedValue(emptyQuery);
+    render(<ProfilePage />);
+
+    expect(await screen.findByText(UNAVAILABLE)).toBeTruthy();
+    await act(async () => {
+      emit('viewer:refresh', {});
+    });
+    await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
+  it('已顯示個人頁時 viewer:refresh 不會重讀個人資料', async () => {
+    firestore.getDoc.mockResolvedValue(existingDoc());
+    render(<ProfilePage />);
+    await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
+    const callsBefore = firestore.getDoc.mock.calls.length;
+    await act(async () => {
+      emit('viewer:refresh', {});
+    });
+    expect(firestore.getDoc.mock.calls.length).toBe(callsBefore);
   });
 });

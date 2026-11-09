@@ -1,0 +1,565 @@
+{
+  "meta": {
+    "source": "FC js/firebase-crud.js#createOrUpdateUser",
+    "sourceSha256": "73ef393c96f4f121dab218b79ce87ab3eabd461b39dc2bdec34f19a666fb9cbf",
+    "fcHead": "55c2fb1175717cd417230ae82d19d3395a888434",
+    "serverTimestamp": "__SERVER_TIMESTAMP__",
+    "caseCount": 12
+  },
+  "cases": [
+    {
+      "id": "new-basic",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "  小明  ",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": "a@example.test"
+        },
+        "canonical": null,
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "小明",
+              "pictureUrl": "https://profile.line-scdn.net/a",
+              "email": "a@example.test",
+              "role": "user",
+              "exp": 0,
+              "level": 1,
+              "gender": null,
+              "birthday": null,
+              "region": null,
+              "sports": null,
+              "teamId": null,
+              "teamName": null,
+              "phone": null,
+              "titleBig": null,
+              "titleNormal": null,
+              "totalGames": 0,
+              "completedGames": 0,
+              "attendanceRate": 0,
+              "badgeCount": 0,
+              "createdAt": "__SERVER_TIMESTAMP__",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "new-empty-name",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "",
+          "pictureUrl": null,
+          "email": null
+        },
+        "canonical": null,
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": null,
+              "email": null,
+              "role": "user",
+              "exp": 0,
+              "level": 1,
+              "gender": null,
+              "birthday": null,
+              "region": null,
+              "sports": null,
+              "teamId": null,
+              "teamName": null,
+              "phone": null,
+              "titleBig": null,
+              "titleNormal": null,
+              "totalGames": 0,
+              "completedGames": 0,
+              "attendanceRate": 0,
+              "badgeCount": 0,
+              "createdAt": "__SERVER_TIMESTAMP__",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "new-blank-name-no-picture",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "   ",
+          "pictureUrl": "",
+          "email": ""
+        },
+        "canonical": null,
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": null,
+              "email": null,
+              "role": "user",
+              "exp": 0,
+              "level": 1,
+              "gender": null,
+              "birthday": null,
+              "region": null,
+              "sports": null,
+              "teamId": null,
+              "teamName": null,
+              "phone": null,
+              "titleBig": null,
+              "titleNormal": null,
+              "totalGames": 0,
+              "completedGames": 0,
+              "attendanceRate": 0,
+              "badgeCount": 0,
+              "createdAt": "__SERVER_TIMESTAMP__",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "new-null-name",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": null,
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": null,
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": "https://profile.line-scdn.net/a",
+              "email": null,
+              "role": "user",
+              "exp": 0,
+              "level": 1,
+              "gender": null,
+              "birthday": null,
+              "region": null,
+              "sports": null,
+              "teamId": null,
+              "teamName": null,
+              "phone": null,
+              "titleBig": null,
+              "titleNormal": null,
+              "totalGames": 0,
+              "completedGames": 0,
+              "attendanceRate": 0,
+              "badgeCount": 0,
+              "createdAt": "__SERVER_TIMESTAMP__",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "legacy-no-createdAt",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "新名字",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": null,
+        "legacy": {
+          "id": "legacy-doc-1",
+          "data": {
+            "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "displayName": "舊名",
+            "role": "user",
+            "exp": 0,
+            "level": 1,
+            "gender": "男",
+            "region": "台北市"
+          }
+        },
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "新名字",
+              "role": "user",
+              "exp": 0,
+              "level": 1,
+              "gender": "男",
+              "region": "台北市",
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": "https://profile.line-scdn.net/a",
+              "email": null,
+              "lastLogin": "__SERVER_TIMESTAMP__",
+              "createdAt": "__SERVER_TIMESTAMP__"
+            },
+            "options": {
+              "merge": true
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "legacy-with-createdAt",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "新名字",
+          "pictureUrl": null,
+          "email": null
+        },
+        "canonical": null,
+        "legacy": {
+          "id": "legacy-doc-2",
+          "data": {
+            "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "displayName": "舊名",
+            "role": "coach",
+            "exp": 120,
+            "createdAt": {
+              "__timestamp": 1759644000000
+            }
+          }
+        },
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "set",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "lineUserId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "displayName": "新名字",
+              "role": "coach",
+              "exp": 120,
+              "createdAt": {
+                "__timestamp": 1759644000000
+              },
+              "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": null,
+              "email": null,
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            },
+            "options": {
+              "merge": true
+            }
+          }
+        ],
+        "queries": [
+          {
+            "op": "query",
+            "field": "lineUserId",
+            "opr": "==",
+            "value": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "id": "existing-recent-login",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": " 改名 ",
+          "pictureUrl": "https://profile.line-scdn.net/b",
+          "email": null
+        },
+        "canonical": {
+          "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "role": "admin",
+          "exp": 300,
+          "level": 5,
+          "lineNotify": {
+            "bound": true
+          },
+          "lastLogin": {
+            "__timestamp": 1794203700000
+          }
+        },
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "update",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "displayName": "改名",
+              "pictureUrl": "https://profile.line-scdn.net/b"
+            }
+          }
+        ],
+        "queries": [],
+        "error": null
+      }
+    },
+    {
+      "id": "existing-old-login",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": {
+          "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "role": "user",
+          "exp": 0,
+          "lastLogin": {
+            "__timestamp": 1794203340000
+          }
+        },
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "update",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "displayName": "原名",
+              "pictureUrl": "https://profile.line-scdn.net/a",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [],
+        "error": null
+      }
+    },
+    {
+      "id": "existing-iso-lastLogin",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": null,
+          "email": null
+        },
+        "canonical": {
+          "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "lastLogin": "2026-01-01T00:00:00.000Z"
+        },
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "update",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "displayName": "原名",
+              "pictureUrl": null,
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [],
+        "error": null
+      }
+    },
+    {
+      "id": "existing-no-lastLogin-empty-name",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": {
+          "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名"
+        },
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "update",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "displayName": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              "pictureUrl": "https://profile.line-scdn.net/a",
+              "lastLogin": "__SERVER_TIMESTAMP__"
+            }
+          }
+        ],
+        "queries": [],
+        "error": null
+      }
+    },
+    {
+      "id": "existing-same-values",
+      "input": {
+        "authUid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": {
+          "uid": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "原名",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "lastLogin": {
+            "__timestamp": 1794203940000
+          }
+        },
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [
+          {
+            "op": "update",
+            "path": "users/Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "payload": {
+              "displayName": "原名",
+              "pictureUrl": "https://profile.line-scdn.net/a"
+            }
+          }
+        ],
+        "queries": [],
+        "error": null
+      }
+    },
+    {
+      "id": "uid-mismatch",
+      "input": {
+        "authUid": "Ubbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+        "profile": {
+          "userId": "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+          "displayName": "小明",
+          "pictureUrl": "https://profile.line-scdn.net/a",
+          "email": null
+        },
+        "canonical": null,
+        "legacy": null,
+        "nowMs": 1794204000000
+      },
+      "expected": {
+        "writes": [],
+        "queries": [],
+        "error": {
+          "code": "permission-denied",
+          "message": "Firebase auth uid mismatch with LINE userId. Please re-login."
+        }
+      }
+    }
+  ]
+}

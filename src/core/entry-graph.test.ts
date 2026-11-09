@@ -184,6 +184,20 @@ describe('入口的靜態 import 圖', () => {
     expect(forbidden).toEqual([]);
   });
 
+  it('會員文件同步（user-doc-sync、user-doc-payload）不在首頁靜態圖裡（延遲 chunk，不加首頁主程式）', () => {
+    const visited = new Set<string>();
+    const recordingIo: GraphIo = {
+      read: (file) => {
+        visited.add(rel(file));
+        return realIo.read(file);
+      },
+      resolve: realIo.resolve,
+    };
+    findFirebaseSdkImporters(ENTRY, recordingIo);
+    expect(visited).toContain('src/data/auth.ts');
+    expect([...visited].filter((f) => /^src\/data\/user-doc-(sync|payload)\.ts$/.test(f))).toEqual([]);
+  });
+
   it('首頁路由同步載入：features/home/index.ts 靜態引入 HomePage（不再是入口執行完才發現的 lazy chunk）', () => {
     const source = readFileSync(join(SRC, 'features/home/index.ts'), 'utf8');
     expect(staticImportSpecs(source)).toContain('./pages/HomePage');

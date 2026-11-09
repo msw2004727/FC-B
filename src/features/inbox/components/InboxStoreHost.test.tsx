@@ -9,8 +9,11 @@ const { mocks } = vi.hoisted(() => ({
     subscribeThreads: vi.fn(),
     inboxUnsubs: [] as Array<ReturnType<typeof vi.fn>>,
     threadUnsubs: [] as Array<ReturnType<typeof vi.fn>>,
+    startUserDocSync: vi.fn(),
   },
 }));
+
+vi.mock('@/data/user-doc-sync', () => ({ startUserDocSync: mocks.startUserDocSync }));
 
 vi.mock('../data/inbox-repo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/inbox-repo')>();
@@ -27,6 +30,7 @@ import { ensureInboxStore, getInboxStoreState, stopInboxStore } from '../data/in
 beforeEach(() => {
   mocks.inboxUnsubs = [];
   mocks.threadUnsubs = [];
+  mocks.startUserDocSync.mockReset().mockResolvedValue(null);
   mocks.subscribeInbox.mockReset();
   mocks.subscribeThreads.mockReset();
   mocks.subscribeInbox.mockImplementation(() => {
@@ -139,6 +143,18 @@ describe('InboxStoreHost（App 層收件匣訂閱）', () => {
     view.rerender(<InboxStoreHost uid={null} />);
     expect(mocks.inboxUnsubs[1]).toHaveBeenCalledTimes(1);
     expect(getInboxStoreState().uid).toBeNull();
+  });
+
+  it('會員文件同步：登入就立即啟動（不等閒置）；重繪同 uid 不重跑，換帳號再跑；未登入不跑', () => {
+    const view = render(<InboxStoreHost uid="u1" />);
+    expect(mocks.startUserDocSync).toHaveBeenCalledTimes(1);
+    expect(mocks.startUserDocSync).toHaveBeenLastCalledWith('u1');
+    view.rerender(<InboxStoreHost uid="u1" />);
+    expect(mocks.startUserDocSync).toHaveBeenCalledTimes(1);
+    view.rerender(<InboxStoreHost uid="u2" />);
+    expect(mocks.startUserDocSync).toHaveBeenLastCalledWith('u2');
+    view.rerender(<InboxStoreHost uid={null} />);
+    expect(mocks.startUserDocSync).toHaveBeenCalledTimes(2);
   });
 
   it('守門：App 以 lazy 掛上主機；InboxPage 不自己訂閱；相關檔不用 innerHTML（首屏靜態圖見 entry-graph.test.ts）', () => {
