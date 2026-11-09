@@ -6,7 +6,8 @@
 //   2) data/firebase.ts 的連線 getter 全域換成立即 reject（測試要用 Firebase 必須自己 mock）；
 //   3) fetch：Firestore REST、Functions、Auth、Storage 網域一律立即失敗。
 import { configure } from '@testing-library/preact';
-import { vi } from 'vitest';
+import { options } from 'preact';
+import { afterEach, vi } from 'vitest';
 
 // 1) gRPC 第二道保險（getter 被繞過時仍連不出去）。@grpc/grpc-js 在「建立 channel 時」才讀 grpc_proxy
 //    （優先於 https_proxy／http_proxy），setup 又先於每個測試檔執行，所以對之後任何 Firestore 連線都生效；
@@ -64,3 +65,30 @@ if (typeof realFetch === 'function') {
     return realFetch(input, init);
   }) as typeof fetch;
 }
+
+// 4) Preact 的 useEffect 排程（hooks 的 afterNextFrame）會同時掛 35ms 計時器與 requestAnimationFrame，
+//    任一個觸發時都會呼叫 cancelAnimationFrame 與 setTimeout(flush)。測試裡 act() 之外的非同步 setState
+//    （例如 mock 的 getDocs 解析後更新狀態）會把這串排進去；測試一結束 jsdom 就被拆掉，
+//    計時器晚到時就報 ReferenceError（cancelAnimationFrame／document is not defined），
+//    CI 顯示「Unhandled errors」而測試全過（2026-11-09 useRosterNoShow、App.recovery 各見一次）。
+//    做法：用 Preact 官方的 options.requestAnimationFrame 掛鉤，改成立即的 setTimeout(0)，
+//    並在每個測試結束時把還沒觸發的排程同步跑完，不留任何晚到的計時器。
+//    取代：先前沒有任何處理，靠運氣。
+const pendingFrames = new Set<{ timer: ReturnType<typeof setTimeout>; run: () => void }>();
+options.requestAnimationFrame = (flush: () => void) => {
+  const entry = {
+    timer: setTimeout(() => {
+      pendingFrames.delete(entry);
+      flush();
+    }, 0),
+    run: flush,
+  };
+  pendingFrames.add(entry);
+};
+afterEach(() => {
+  for (const entry of [...pendingFrames]) {
+    clearTimeout(entry.timer);
+    pendingFrames.delete(entry);
+    entry.run();
+  }
+});
