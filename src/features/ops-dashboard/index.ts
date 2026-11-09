@@ -12,8 +12,7 @@ export const manifest: FeatureManifest = {
       titleKey: 'ops-dashboard.title',
       // 照 A DRAWER_MENUS 的權限決定選單是否顯示（頁面本身另擋，同一權限碼；分享網址開啟者也一樣）。
       drawerVisibleIf: drawerByPermission('admin.dashboard.entry'),
-      // 兩段延遲載入：見 pages/ops-entry.ts。
-      load: async () => (await import('./pages/ops-entry')).loadOpsPage(),
+      load: () => import('./pages/OpsPage'),
     },
   ],
 };

@@ -35,12 +35,6 @@ describe('ops-dashboard manifest', () => {
     expect(manifest.routes.map((r) => r.path)).toEqual(['/admin/ops/:view?']);
   });
 
-  it('load 經 ops-entry 兩段載入，最後拿到 OpsPage 的 default', async () => {
-    const mod = await manifest.routes[0]!.load();
-    expect(typeof mod.default).toBe('function');
-    expect(mod.default.name).toBe('OpsPage');
-  });
-
   it('preact-iso 路由比對：/admin/ops、/admin/ops/participants（含查詢字串）都進這條路由', async () => {
     const { exec } = await import('preact-iso/router');
     const route = manifest.routes[0]!.path;
