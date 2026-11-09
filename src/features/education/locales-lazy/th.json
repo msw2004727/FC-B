@@ -1,0 +1,129 @@
+{
+  "wd": {
+    "0": "อา.",
+    "1": "จ.",
+    "2": "อ.",
+    "3": "พ.",
+    "4": "พฤ.",
+    "5": "ศ.",
+    "6": "ส."
+  },
+  "fmt": {
+    "weekly": "ทุก {days} {time}",
+    "daysSep": ", ",
+    "from": "เริ่ม {date} · {wd} {time}",
+    "date": "{wd} {md} {time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · {count} ครั้ง",
+    "count": "{count}/{max} คน",
+    "countOnly": "{count} คน",
+    "maxOnly": "{max} คน",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/ครั้ง",
+    "lessonNo": "ครั้งที่ {n}"
+  },
+  "type": {
+    "weekly": "รายสัปดาห์",
+    "sessions": "{count} ครั้ง"
+  },
+  "chip": {
+    "pending": "รออนุมัติ",
+    "enrolled": "สมัครแล้ว",
+    "unpaid": "ค้างชำระ",
+    "studentPending": "รออนุมัติ"
+  },
+  "btn": {
+    "signup": "สมัคร",
+    "full": "เต็ม",
+    "closed": "ปิดรับ",
+    "lessons": "คลาส",
+    "cancelApply": "ยกเลิก",
+    "manage": "จัดการ",
+    "create": "เปิดคอร์ส",
+    "submit": "ส่งใบสมัคร",
+    "add": "เพิ่ม",
+    "addChild": "เพิ่มลูก",
+    "more": "เพิ่มเติม",
+    "less": "ย่อ",
+    "leave": "ลา",
+    "cancel": "ยกเลิก",
+    "login": "เข้าสู่ระบบ",
+    "back": "กลับ"
+  },
+  "kv": {
+    "time": "เวลา",
+    "period": "ช่วง",
+    "place": "สถานที่",
+    "capacity": "ที่นั่ง",
+    "fee": "ค่าเรียน",
+    "coach": "โค้ช"
+  },
+  "head": {
+    "intro": "รายละเอียด",
+    "upcoming": "คลาสถัดไป",
+    "mine": "คอร์สของฉัน"
+  },
+  "lesson": {
+    "signin": "มาเรียน",
+    "leave": "ลา",
+    "registered": "สมัครแล้ว",
+    "unregistered": "ยังไม่สมัคร"
+  },
+  "sheet": {
+    "who": "สมัครให้ใคร?",
+    "self": "ตัวเอง ({name})",
+    "selfBare": "ตัวเอง",
+    "childName": "ชื่อลูก"
+  },
+  "empty": {
+    "courses": "ยังไม่มีคอร์ส",
+    "mine": "ยังไม่ได้สมัคร",
+    "lessons": "ยังไม่มีคลาส",
+    "notFound": "ไม่พบคอร์ส"
+  },
+  "mine": {
+    "attend": "มาเรียน {n}/{total}",
+    "next": "ถัดไป {when}"
+  },
+  "confirm": {
+    "cancelApply": "ยกเลิกใบสมัคร {names}?",
+    "leave": "ลา{lesson}? ({name})"
+  },
+  "toast": {
+    "submitted": "ส่งแล้ว รออนุมัติ",
+    "cancelled": "ยกเลิกแล้ว",
+    "registered": "สมัครแล้ว",
+    "leaveDone": "ลาแล้ว",
+    "leaveCancelled": "ยกเลิกการลา",
+    "signedIn": "เช็กอินแล้ว",
+    "childAdded": "เพิ่มแล้ว รออนุมัติ",
+    "childDup": "เพิ่ม {name} แล้ว",
+    "nameRequired": "กรอกชื่อ",
+    "alreadyEnrolled": "สมัครแล้ว"
+  },
+  "err": {
+    "COURSE_FULL": "คอร์สเต็ม",
+    "SIGNUP_CLOSED": "ปิดรับสมัคร",
+    "PLAN_ENDED": "คอร์สจบแล้ว",
+    "PLAN_INACTIVE": "คอร์สปิดใช้",
+    "PLAN_HIDDEN": "คอร์สไม่เปิดเผย",
+    "PLAN_NOT_FOUND": "ไม่พบคอร์ส",
+    "TEAM_NOT_FOUND": "ไม่พบคลับ",
+    "ALREADY_ENROLLED": "สมัครแล้ว",
+    "NO_STUDENTS": "เลือกผู้เรียน",
+    "NO_ELIGIBLE_STUDENTS": "ไม่มีผู้ที่สมัครได้",
+    "STUDENT_NOT_FOUND": "ไม่พบผู้เรียน",
+    "STUDENT_FORBIDDEN": "ไม่ใช่ผู้เรียนของคุณ",
+    "STUDENT_INACTIVE": "ผู้เรียนถูกปิด",
+    "NO_PENDING_ENROLLMENTS": "ไม่ได้รออนุมัติแล้ว",
+    "ENROLLMENT_NOT_PENDING": "ไม่ได้รออนุมัติแล้ว",
+    "STUDENT_NOT_IN_ROSTER": "ไม่อยู่ในรายชื่อ",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "คลาสนี้ปิดแล้ว",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "ไม่ต้องสมัคร",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "ซิงก์ไม่สำเร็จ",
+    "SESSION_NOT_FOUND": "ไม่พบคลาส",
+    "PERMISSION_DENIED": "ไม่มีสิทธิ์",
+    "UNAUTHENTICATED": "กรุณาเข้าสู่ระบบ",
+    "UNKNOWN": "ไม่สำเร็จ ลองใหม่"
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "wd": {
+    "0": "Sun",
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat"
+  },
+  "fmt": {
+    "weekly": "{days} {time}",
+    "daysSep": ", ",
+    "from": "From {date} · {wd} {time}",
+    "date": "{wd} {md} {time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · {count} classes",
+    "count": "{count}/{max}",
+    "countOnly": "{count}",
+    "maxOnly": "Max {max}",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/class",
+    "lessonNo": "#{n}"
+  },
+  "type": {
+    "weekly": "Weekly",
+    "sessions": "{count} classes"
+  },
+  "chip": {
+    "pending": "Pending",
+    "enrolled": "Joined",
+    "unpaid": "Unpaid",
+    "studentPending": "Pending"
+  },
+  "btn": {
+    "signup": "Sign up",
+    "full": "Full",
+    "closed": "Closed",
+    "lessons": "Classes",
+    "cancelApply": "Withdraw",
+    "manage": "Manage",
+    "create": "New",
+    "submit": "Submit",
+    "add": "Add",
+    "addChild": "Add child",
+    "more": "More",
+    "less": "Less",
+    "leave": "Absent",
+    "cancel": "Undo",
+    "login": "Log in",
+    "back": "Back"
+  },
+  "kv": {
+    "time": "Time",
+    "period": "Dates",
+    "place": "Venue",
+    "capacity": "Seats",
+    "fee": "Fee",
+    "coach": "Coach"
+  },
+  "head": {
+    "intro": "About",
+    "upcoming": "Upcoming",
+    "mine": "My courses"
+  },
+  "lesson": {
+    "signin": "Present",
+    "leave": "Absent",
+    "registered": "Joined",
+    "unregistered": "Not joined"
+  },
+  "sheet": {
+    "who": "Sign up for?",
+    "self": "Me ({name})",
+    "selfBare": "Me",
+    "childName": "Child name"
+  },
+  "empty": {
+    "courses": "No courses yet",
+    "mine": "No courses yet",
+    "lessons": "No classes yet",
+    "notFound": "Course not found"
+  },
+  "mine": {
+    "attend": "Attended {n}/{total}",
+    "next": "Next {when}"
+  },
+  "confirm": {
+    "cancelApply": "Withdraw {names}?",
+    "leave": "Absent for {lesson}? ({name})"
+  },
+  "toast": {
+    "submitted": "Sent, awaiting approval",
+    "cancelled": "Withdrawn",
+    "registered": "Joined",
+    "leaveDone": "Marked absent",
+    "leaveCancelled": "Absence undone",
+    "signedIn": "Already checked in",
+    "childAdded": "Added, pending",
+    "childDup": "{name} already added",
+    "nameRequired": "Enter a name",
+    "alreadyEnrolled": "Already signed up"
+  },
+  "err": {
+    "COURSE_FULL": "Course is full",
+    "SIGNUP_CLOSED": "Sign-up closed",
+    "PLAN_ENDED": "Course has ended",
+    "PLAN_INACTIVE": "Course is inactive",
+    "PLAN_HIDDEN": "Course not public",
+    "PLAN_NOT_FOUND": "Course not found",
+    "TEAM_NOT_FOUND": "Club not found",
+    "ALREADY_ENROLLED": "Already signed up",
+    "NO_STUDENTS": "Pick a student",
+    "NO_ELIGIBLE_STUDENTS": "No one can sign up",
+    "STUDENT_NOT_FOUND": "Student not found",
+    "STUDENT_FORBIDDEN": "Not your student",
+    "STUDENT_INACTIVE": "Student inactive",
+    "NO_PENDING_ENROLLMENTS": "No longer pending",
+    "ENROLLMENT_NOT_PENDING": "No longer pending",
+    "STUDENT_NOT_IN_ROSTER": "Not on this roster",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "Class is closed",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "No sign-up needed",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "Sync failed, try later",
+    "SESSION_NOT_FOUND": "Class not found",
+    "PERMISSION_DENIED": "No permission",
+    "UNAUTHENTICATED": "Please log in",
+    "UNKNOWN": "Failed, try again later"
+  }
+}

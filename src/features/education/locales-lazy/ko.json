@@ -1,0 +1,129 @@
+{
+  "wd": {
+    "0": "일",
+    "1": "월",
+    "2": "화",
+    "3": "수",
+    "4": "목",
+    "5": "금",
+    "6": "토"
+  },
+  "fmt": {
+    "weekly": "매주 {days} {time}",
+    "daysSep": "·",
+    "from": "{date}부터 · {wd} {time}",
+    "date": "{md}({wd}) {time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · 총 {count}회",
+    "count": "{count}/{max}명",
+    "countOnly": "{count}명",
+    "maxOnly": "{max}명",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/회",
+    "lessonNo": "{n}회차"
+  },
+  "type": {
+    "weekly": "정기",
+    "sessions": "{count}회"
+  },
+  "chip": {
+    "pending": "심사 중",
+    "enrolled": "신청 완료",
+    "unpaid": "미납",
+    "studentPending": "승인 대기"
+  },
+  "btn": {
+    "signup": "신청",
+    "full": "마감",
+    "closed": "종료",
+    "lessons": "수업",
+    "cancelApply": "신청 취소",
+    "manage": "관리",
+    "create": "개설",
+    "submit": "신청하기",
+    "add": "추가",
+    "addChild": "자녀 추가",
+    "more": "더보기",
+    "less": "접기",
+    "leave": "결석",
+    "cancel": "취소",
+    "login": "로그인",
+    "back": "뒤로"
+  },
+  "kv": {
+    "time": "시간",
+    "period": "기간",
+    "place": "장소",
+    "capacity": "정원",
+    "fee": "비용",
+    "coach": "코치"
+  },
+  "head": {
+    "intro": "소개",
+    "upcoming": "다음 수업",
+    "mine": "내 수업"
+  },
+  "lesson": {
+    "signin": "출석",
+    "leave": "결석",
+    "registered": "신청 완료",
+    "unregistered": "미신청"
+  },
+  "sheet": {
+    "who": "누구를 신청?",
+    "self": "본인({name})",
+    "selfBare": "본인",
+    "childName": "자녀 이름"
+  },
+  "empty": {
+    "courses": "수업이 없습니다",
+    "mine": "신청한 수업 없음",
+    "lessons": "수업이 없습니다",
+    "notFound": "수업을 찾을 수 없음"
+  },
+  "mine": {
+    "attend": "출석 {n}/{total}회",
+    "next": "다음 {when}"
+  },
+  "confirm": {
+    "cancelApply": "{names} 신청을 취소?",
+    "leave": "{lesson} 결석?({name})"
+  },
+  "toast": {
+    "submitted": "전송됨, 승인 대기",
+    "cancelled": "취소됨",
+    "registered": "신청됨",
+    "leaveDone": "결석 처리됨",
+    "leaveCancelled": "결석 취소됨",
+    "signedIn": "이미 출석 처리됨",
+    "childAdded": "추가됨, 승인 대기",
+    "childDup": "{name}은(는) 이미 추가됨",
+    "nameRequired": "이름을 입력하세요",
+    "alreadyEnrolled": "이미 신청함"
+  },
+  "err": {
+    "COURSE_FULL": "정원 마감",
+    "SIGNUP_CLOSED": "신청 마감",
+    "PLAN_ENDED": "종료된 수업",
+    "PLAN_INACTIVE": "중지된 수업",
+    "PLAN_HIDDEN": "비공개 수업",
+    "PLAN_NOT_FOUND": "수업을 찾을 수 없음",
+    "TEAM_NOT_FOUND": "클럽을 찾을 수 없음",
+    "ALREADY_ENROLLED": "이미 신청함",
+    "NO_STUDENTS": "수강생을 선택하세요",
+    "NO_ELIGIBLE_STUDENTS": "신청 가능한 사람 없음",
+    "STUDENT_NOT_FOUND": "수강생을 찾을 수 없음",
+    "STUDENT_FORBIDDEN": "이 수강생은 불가",
+    "STUDENT_INACTIVE": "중지된 수강생",
+    "NO_PENDING_ENROLLMENTS": "심사 중이 아님",
+    "ENROLLMENT_NOT_PENDING": "심사 중이 아님",
+    "STUDENT_NOT_IN_ROSTER": "이 회차 명단에 없음",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "마감된 회차",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "신청 불필요",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "동기화 실패",
+    "SESSION_NOT_FOUND": "수업을 찾을 수 없음",
+    "PERMISSION_DENIED": "권한 없음",
+    "UNAUTHENTICATED": "로그인하세요",
+    "UNKNOWN": "실패했습니다"
+  }
+}

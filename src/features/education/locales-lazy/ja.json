@@ -1,0 +1,129 @@
+{
+  "wd": {
+    "0": "日",
+    "1": "月",
+    "2": "火",
+    "3": "水",
+    "4": "木",
+    "5": "金",
+    "6": "土"
+  },
+  "fmt": {
+    "weekly": "毎週{days} {time}",
+    "daysSep": "・",
+    "from": "{date}から · {wd} {time}",
+    "date": "{md}（{wd}）{time}",
+    "period": "{start}–{end}",
+    "periodCount": "{start}–{end} · 全{count}回",
+    "count": "{count}/{max}人",
+    "countOnly": "{count}人",
+    "maxOnly": "{max}人",
+    "price": "NT${price}",
+    "pricePer": "NT${price}/回",
+    "lessonNo": "第{n}回"
+  },
+  "type": {
+    "weekly": "毎週",
+    "sessions": "{count}回"
+  },
+  "chip": {
+    "pending": "審査中",
+    "enrolled": "申込済",
+    "unpaid": "未払い",
+    "studentPending": "承認待ち"
+  },
+  "btn": {
+    "signup": "申込",
+    "full": "満員",
+    "closed": "締切",
+    "lessons": "レッスン",
+    "cancelApply": "申込取消",
+    "manage": "管理",
+    "create": "開講",
+    "submit": "申し込む",
+    "add": "追加",
+    "addChild": "子どもを追加",
+    "more": "もっと見る",
+    "less": "閉じる",
+    "leave": "欠席",
+    "cancel": "取消",
+    "login": "ログイン",
+    "back": "戻る"
+  },
+  "kv": {
+    "time": "時間",
+    "period": "期間",
+    "place": "場所",
+    "capacity": "定員",
+    "fee": "料金",
+    "coach": "コーチ"
+  },
+  "head": {
+    "intro": "紹介",
+    "upcoming": "次のレッスン",
+    "mine": "マイコース"
+  },
+  "lesson": {
+    "signin": "出席",
+    "leave": "欠席",
+    "registered": "申込済",
+    "unregistered": "未申込"
+  },
+  "sheet": {
+    "who": "誰の申込？",
+    "self": "自分（{name}）",
+    "selfBare": "自分",
+    "childName": "子どもの名前"
+  },
+  "empty": {
+    "courses": "コースはまだありません",
+    "mine": "申込コースなし",
+    "lessons": "レッスンなし",
+    "notFound": "コースが見つかりません"
+  },
+  "mine": {
+    "attend": "出席 {n}/{total}回",
+    "next": "次回 {when}"
+  },
+  "confirm": {
+    "cancelApply": "{names}の申込を取消？",
+    "leave": "{lesson}を欠席？（{name}）"
+  },
+  "toast": {
+    "submitted": "送信済み、承認待ち",
+    "cancelled": "取消しました",
+    "registered": "申込みました",
+    "leaveDone": "欠席にしました",
+    "leaveCancelled": "欠席を取消",
+    "signedIn": "出席済みのため保持",
+    "childAdded": "追加済み、承認待ち",
+    "childDup": "{name}は追加済み",
+    "nameRequired": "名前を入力",
+    "alreadyEnrolled": "申込済みです"
+  },
+  "err": {
+    "COURSE_FULL": "満員です",
+    "SIGNUP_CLOSED": "受付終了",
+    "PLAN_ENDED": "コース終了",
+    "PLAN_INACTIVE": "コース停止中",
+    "PLAN_HIDDEN": "非公開コース",
+    "PLAN_NOT_FOUND": "コースが見つかりません",
+    "TEAM_NOT_FOUND": "クラブが見つかりません",
+    "ALREADY_ENROLLED": "申込済みです",
+    "NO_STUDENTS": "受講者を選択",
+    "NO_ELIGIBLE_STUDENTS": "申込できる人がいません",
+    "STUDENT_NOT_FOUND": "受講者が見つかりません",
+    "STUDENT_FORBIDDEN": "この受講者は操作不可",
+    "STUDENT_INACTIVE": "受講者は停止中",
+    "NO_PENDING_ENROLLMENTS": "審査中ではありません",
+    "ENROLLMENT_NOT_PENDING": "審査中ではありません",
+    "STUDENT_NOT_IN_ROSTER": "この回の名簿外",
+    "SELF_ATTENDANCE_SESSION_CLOSED": "この回は終了",
+    "ONLY_WEEKLY_COURSE_SELF_ATTENDANCE": "申込不要の回です",
+    "COURSE_EVENT_ATTENDANCE_SYNC_FAILED": "同期失敗、後で再試行",
+    "SESSION_NOT_FOUND": "レッスンが見つかりません",
+    "PERMISSION_DENIED": "権限がありません",
+    "UNAUTHENTICATED": "ログインしてください",
+    "UNKNOWN": "失敗しました"
+  }
+}
