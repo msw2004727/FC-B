@@ -388,7 +388,7 @@ export async function loadNextActivityInputs(
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger: NextActivityLogger = deps.logger ?? console;
   const [{ db }, sdk] = await Promise.all([getFB(), loadFirestoreSdk()]);
-  const { collection, collectionGroup, getDocs, limit, query, where } = sdk;
+  const { collection, collectionGroup, documentId, getDocs, limit, orderBy, query, where } = sdk;
 
   // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
   const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
@@ -416,38 +416,40 @@ export async function loadNextActivityInputs(
     return registrations;
   })();
 
-  // 1b) 使用者管理的活動（owner / creator / delegate）
+  // 1b) 使用者管理的活動（creator／owner／delegate）。
+  // 新活動文件 id 是 ce_<建立毫秒>_…，降冪才是「最新建立的在前」。
+  // 沒有 orderBy 時 Firestore 依文件 id 升冪，limit(80) 只留最早的 80 場，下一場會被截掉。
+  // 等號或 array-contains 再只依文件 id 排序，走該欄位的自動索引（索引項已含 __name__），不需複合索引。
+  // 回傳筆數打到上限只警告一次，不印 uid。舊文件 id 可能不是 ce_ 格式（R-ID-008），排序位置不代表建立時間。
+  const fetchManaged = async (
+    label: 'creator' | 'owner' | 'delegate',
+    build: () => Query<DocumentData>,
+  ) => {
+    try {
+      const snap = await getDocs(build());
+      if (snap.docs.length >= EVENT_QUERY_LIMIT) {
+        logger.warn(
+          `[NextActivity] ${label} query hit the limit; older events may be missing:`,
+          EVENT_QUERY_LIMIT,
+        );
+      }
+      return snap;
+    } catch (err) {
+      logger.warn(`[NextActivity] ${label} query skipped:`, err);
+      return null;
+    }
+  };
+  const managedEventsQuery = (field: 'creatorUid' | 'ownerUid' | 'delegateUids', op: '==' | 'array-contains') =>
+    query(
+      collection(db, eventsCollectionPath),
+      where(field, op, safeUid),
+      orderBy(documentId(), 'desc'),
+      limit(EVENT_QUERY_LIMIT),
+    );
   const managedPromise = Promise.all([
-    getDocs(
-      query(
-        collection(db, eventsCollectionPath),
-        where('creatorUid', '==', safeUid),
-        limit(EVENT_QUERY_LIMIT),
-      ),
-    ).catch((err) => {
-      logger.warn('[NextActivity] creator query skipped:', err);
-      return null;
-    }),
-    getDocs(
-      query(
-        collection(db, eventsCollectionPath),
-        where('ownerUid', '==', safeUid),
-        limit(EVENT_QUERY_LIMIT),
-      ),
-    ).catch((err) => {
-      logger.warn('[NextActivity] owner query skipped:', err);
-      return null;
-    }),
-    getDocs(
-      query(
-        collection(db, eventsCollectionPath),
-        where('delegateUids', 'array-contains', safeUid),
-        limit(EVENT_QUERY_LIMIT),
-      ),
-    ).catch((err) => {
-      logger.warn('[NextActivity] delegate query skipped:', err);
-      return null;
-    }),
+    fetchManaged('creator', () => managedEventsQuery('creatorUid', '==')),
+    fetchManaged('owner', () => managedEventsQuery('ownerUid', '==')),
+    fetchManaged('delegate', () => managedEventsQuery('delegateUids', 'array-contains')),
   ]);
 
   const [registrations, managedSnaps] = await Promise.all([registrationsPromise, managedPromise]);

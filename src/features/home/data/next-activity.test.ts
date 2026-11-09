@@ -30,14 +30,18 @@ vi.mock('firebase/firestore', () => ({
   where: vi.fn((field: string, op: string, value: unknown) => ({ kind: 'where', field, op, value })),
   limit: vi.fn((n: number) => ({ kind: 'limit', n })),
   documentId: vi.fn(() => ({ kind: 'documentId' })),
-  orderBy: vi.fn(),
+  orderBy: vi.fn((field: unknown, direction: 'asc' | 'desc' = 'asc') => ({
+    kind: 'orderBy',
+    field,
+    dir: direction,
+  })),
   startAfter: vi.fn(),
   getDocs: vi.fn(),
   doc: vi.fn(),
   getDoc: vi.fn(),
 }));
 
-import { collectionGroup, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, documentId, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { parseEventDateRange as parseTerminalRange } from '@/features/events/data/terminal';
 import { formatNextActivityDateRange } from '../components/legacy/HomeNextActivity';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
@@ -46,6 +50,7 @@ import {
   isUpcomingEvent,
   ACTIVE_REGISTRATION_STATUSES,
   EVENT_IN_QUERY_CHUNK,
+  EVENT_QUERY_LIMIT,
   REGISTRATION_QUERY_LIMIT,
   isValidFirestoreDocId,
   isActiveRegistration,
@@ -326,6 +331,7 @@ interface FakeConstraint {
   op?: string;
   value?: unknown;
   n?: number;
+  dir?: string;
 }
 
 /** 照 Firestore 語意執行 collectionGroup('registrations') 查詢：依完整路徑排序 → where（==、in）→ limit。 */
@@ -343,6 +349,54 @@ function runRegistrationQuery(store: StoreDoc[], constraints: FakeConstraint[]):
   }
   const lim = constraints.find((c) => c.kind === 'limit')?.n;
   return { docs: lim === undefined ? docs : docs.slice(0, lim) };
+}
+
+function isDocumentIdConstraintField(field: unknown): boolean {
+  return typeof field === 'object' && field !== null && (field as { kind?: string }).kind === 'documentId';
+}
+
+/** 沒有 orderBy 時依文件 id 升冪（Firestore 預設）；orderBy(documentId) 才改方向。先排序再 limit。 */
+function documentIdDirection(constraints: FakeConstraint[]): 'asc' | 'desc' {
+  const order = constraints.find((c) => c.kind === 'orderBy');
+  if (!order) return 'asc';
+  if (!isDocumentIdConstraintField(order.field)) {
+    throw new Error('fake firestore only orders managed events by document id');
+  }
+  return order.dir === 'desc' ? 'desc' : 'asc';
+}
+
+function eventMatches(doc: { id: string; data: Record<string, unknown> }, c: FakeConstraint): boolean {
+  if (c.kind !== 'where') return true;
+  if (c.op === '==' && typeof c.field === 'string') return doc.data[c.field] === c.value;
+  if (c.op === 'array-contains' && typeof c.field === 'string') {
+    const value = doc.data[c.field];
+    return Array.isArray(value) && value.includes(c.value);
+  }
+  if (c.op === 'in') {
+    const ids = Array.isArray(c.value) ? c.value : [];
+    if (typeof c.field === 'string') return ids.includes(doc.data[c.field]);
+    if (isDocumentIdConstraintField(c.field)) return ids.includes(doc.id);
+  }
+  return false;
+}
+
+/**
+ * 活動 collection 查詢的假 Firestore：where（==、array-contains、in）之後依文件 id 排序，再 limit。
+ * 插入順序不影響結果。拿掉 orderBy 會回到升冪，最新的文件會被 limit 截掉。
+ */
+function runEventCollectionQuery(
+  store: ReadonlyArray<{ id: string; data: Record<string, unknown> }>,
+  constraints: FakeConstraint[],
+): { docs: FakeEvent[] } {
+  const matched = store.filter((doc) => constraints.every((c) => eventMatches(doc, c)));
+  const direction = documentIdDirection(constraints);
+  matched.sort((a, b) => {
+    const cmp = a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    return direction === 'desc' ? -cmp : cmp;
+  });
+  const lim = constraints.find((c) => c.kind === 'limit')?.n;
+  const window = lim === undefined ? matched : matched.slice(0, lim);
+  return { docs: window.map((doc) => makeEventSnap(doc.id, doc.data)) };
 }
 
 interface EventInQuery {
@@ -883,5 +937,177 @@ describe('T-054c N1–N3：首頁台北活動時間', () => {
 
   test.each(['Oct 19, 2026', '2026/02/30 11:00~13:00'])('刻意與舊版不同：拒絕 %s', (date) => {
     expect(parseEventDateRange(date)).toBeNull();
+  });
+});
+
+// ── 管理活動：依文件 id 降冪取最新 80 場 ─────────────────
+
+const MANAGED_UID = 'U0000000000000000000000000000099';
+const MANAGED_ID_BASE_MS = 1_700_000_000_000;
+
+function managedEventDocId(index: number): string {
+  return `ce_${MANAGED_ID_BASE_MS + index}_aaaaaa`;
+}
+
+type ManagedRoleKey = 'creator' | 'owner' | 'delegate';
+
+function managedEventDoc(
+  index: number,
+  uid: string,
+  role: ManagedRoleKey | 'all',
+  schedule?: { date: string; status: string },
+): { id: string; data: Record<string, unknown> } {
+  const id = managedEventDocId(index);
+  const data: Record<string, unknown> = {
+    id,
+    title: `Managed ${index}`,
+    date: schedule?.date ?? '2000/01/01 09:00~11:00',
+    status: schedule?.status ?? 'open',
+  };
+  if (role === 'creator' || role === 'all') data.creatorUid = uid;
+  if (role === 'owner' || role === 'all') data.ownerUid = uid;
+  if (role === 'delegate' || role === 'all') data.delegateUids = [uid];
+  return { id, data };
+}
+
+/** 最新幾場才是未開始；更近但已取消、以及 id 最新但已開始的，挑選邏輯都要跳過。 */
+function managedSchedule(index: number): { date: string; status: string } {
+  if (index === 90) return { date: '2099/05/20 18:00~20:00', status: 'open' };
+  if (index === 92) return { date: '2099/01/02 09:00~11:00', status: 'open' };
+  if (index === 93) return { date: '2099/03/01 18:00~20:00', status: 'open' };
+  if (index === 96) return { date: '2099/01/01 10:00~12:00', status: 'cancelled' };
+  return { date: '2000/01/01 09:00~11:00', status: 'open' };
+}
+
+function newestManagedIds(total: number, take: number): string[] {
+  const ids: string[] = [];
+  for (let index = total - 1; index >= total - take; index -= 1) ids.push(managedEventDocId(index));
+  return ids;
+}
+
+/** 奇數索引在前、偶數在後，避免插入順序碰巧等於文件 id 升冪或降冪。 */
+function oddThenEven<T>(items: readonly T[]): T[] {
+  return [
+    ...items.filter((_, index) => index % 2 === 1),
+    ...items.filter((_, index) => index % 2 === 0),
+  ];
+}
+
+interface ManagedQueryProbe {
+  field: string;
+  op: string;
+  ids: string[];
+  orderDir: string | null;
+  limit: number | undefined;
+}
+
+function installManagedEventStore(
+  events: ReadonlyArray<{ id: string; data: Record<string, unknown> }>,
+): ManagedQueryProbe[] {
+  const seen: ManagedQueryProbe[] = [];
+  mockedGetDocs.mockImplementation(((q: unknown) => {
+    const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
+    if (base?.kind === 'collectionGroup') return Promise.resolve(makeSnap([])) as never;
+    if (base?.kind !== 'collection') return Promise.resolve(makeSnap([])) as never;
+    const snap = runEventCollectionQuery(events, constraints);
+    const filter = constraints.find((c) => c.kind === 'where' && (c.op === '==' || c.op === 'array-contains'));
+    if (filter && typeof filter.field === 'string') {
+      const order = constraints.find((c) => c.kind === 'orderBy');
+      seen.push({
+        field: filter.field,
+        op: filter.op ?? '',
+        ids: snap.docs.map((doc) => doc.id),
+        orderDir: order && isDocumentIdConstraintField(order.field) ? (order.dir ?? 'asc') : null,
+        limit: constraints.find((c) => c.kind === 'limit')?.n,
+      });
+    }
+    return Promise.resolve(snap) as never;
+  }) as never);
+  return seen;
+}
+
+describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始活動', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  test('假 Firestore 先依文件 id 排序再 limit；沒有 orderBy 是升冪，orderBy(documentId, desc) 是降冪', () => {
+    const store = [2, 0, 1].map((index) => managedEventDoc(index, MANAGED_UID, 'creator'));
+    const ascending = query(
+      collection({} as never, 'events'),
+      where('creatorUid', '==', MANAGED_UID),
+      limit(2),
+    ) as unknown as { constraints: FakeConstraint[] };
+    expect(runEventCollectionQuery(store, ascending.constraints).docs.map((doc) => doc.id)).toEqual([
+      managedEventDocId(0),
+      managedEventDocId(1),
+    ]);
+
+    const descending = query(
+      collection({} as never, 'events'),
+      where('creatorUid', '==', MANAGED_UID),
+      orderBy(documentId(), 'desc'),
+      limit(2),
+    ) as unknown as { constraints: FakeConstraint[] };
+    expect(runEventCollectionQuery(store, descending.constraints).docs.map((doc) => doc.id)).toEqual([
+      managedEventDocId(2),
+      managedEventDocId(1),
+    ]);
+  });
+
+  test.each([
+    { role: 'creator' as const, field: 'creatorUid', op: '==' },
+    { role: 'owner' as const, field: 'ownerUid', op: '==' },
+    { role: 'delegate' as const, field: 'delegateUids', op: 'array-contains' },
+  ])('$role：100 場同一人、文件 id 依建立時間遞增，選到最近的未開始活動', async ({ role, field, op }) => {
+    const total = 100;
+    const events = oddThenEven(Array.from({ length: total }, (_, index) => (
+      managedEventDoc(index, MANAGED_UID, role, managedSchedule(index))
+    )));
+    const seen = installManagedEventStore(events);
+    const warn = vi.fn();
+
+    const result = await resolveNextActivity({ ...deps(warn), now: () => NOW }, MANAGED_UID);
+
+    const mine = seen.find((item) => item.field === field);
+    expect(mine?.op).toBe(op);
+    // 沒有 orderBy 時假資料層改回文件 id 升冪，這裡會拿到最早的 80 場，斷言失敗。
+    expect(mine?.ids).toEqual(newestManagedIds(total, EVENT_QUERY_LIMIT));
+    expect(mine?.ids).not.toContain(managedEventDocId(0));
+    expect(result?.event.id).toBe(managedEventDocId(92));
+    expect(result?.managedRole).toBe(role === 'delegate' ? 'delegate' : 'owner');
+    expect(seen.map((item) => ({
+      field: item.field,
+      op: item.op,
+      orderDir: item.orderDir,
+      limit: item.limit,
+    }))).toEqual([
+      { field: 'creatorUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+      { field: 'ownerUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+      { field: 'delegateUids', op: 'array-contains', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(`${role} query hit the limit`);
+    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
+    expect(mockedGetDocs).toHaveBeenCalledTimes(4);
+  });
+
+  test.each([
+    { n: 79, warns: false },
+    { n: EVENT_QUERY_LIMIT, warns: true },
+  ])('三條查詢各回 $n 筆時，打到上限才各警告一次且不印 uid', async ({ n, warns }) => {
+    const events = Array.from({ length: n }, (_, index) => managedEventDoc(index, MANAGED_UID, 'all'));
+    installManagedEventStore(events);
+    const warn = vi.fn();
+
+    await loadNextActivityInputs(deps(warn), MANAGED_UID);
+
+    if (!warns) {
+      expect(warn).not.toHaveBeenCalled();
+      return;
+    }
+    expect(warn).toHaveBeenCalledTimes(3);
+    for (const label of ['creator', 'owner', 'delegate']) {
+      expect(warn.mock.calls.some(([msg]) => String(msg).includes(`${label} query hit the limit`))).toBe(true);
+    }
+    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
   });
 });
