@@ -722,6 +722,44 @@ describe('LegacyLineNotifyCard — O-1 自動確認有沒有加好友', () => {
     openSpy.mockRestore();
   });
 
+  it('首次查詢還在進行時按加好友：回前景仍強制重查，以最新結果為準，舊查詢晚到丟棄（審查 P2-2）', async () => {
+    const calls: Array<(v: { friendFlag: boolean }) => void> = [];
+    const liff = fakeLiff(
+      () => new Promise<{ friendFlag: boolean }>((resolve) => {
+        calls.push(resolve);
+      }),
+    );
+    useLiff(liff);
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { container } = render(
+      <LegacyLineNotifyCard uid="u1" profile={BOUND_PROFILE} onSaved={() => {}} />,
+    );
+    expand(container);
+    expect(liff.getFriendship).toHaveBeenCalledTimes(1);
+
+    // 首次查詢未回來（inFlight），使用者按「開啟官方帳號」去加好友再回來
+    fireEvent.click(hintOf(container)?.querySelector('button') as HTMLButtonElement);
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect(liff.getFriendship).toHaveBeenCalledTimes(2);
+
+    // 新查詢先回：已加好友 → 提示列收起
+    calls[1]?.({ friendFlag: true });
+    await waitFor(() => {
+      expect(hintOf(container)).toBeNull();
+    });
+    // 舊查詢晚到（加好友前的結果 false）→ 丟棄，不把警示列帶回來
+    calls[0]?.({ friendFlag: false });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hintOf(container)).toBeNull();
+
+    // 強制重查只用一次：之後 30 秒內回前景照常節流
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect(liff.getFriendship).toHaveBeenCalledTimes(2);
+    openSpy.mockRestore();
+  });
+
   it('unmount 後移除 visibilitychange listener，進行中的查詢結果不再更新畫面', async () => {
     const pending: { resolve?: (v: { friendFlag: boolean }) => void } = {};
     const liff = fakeLiff(

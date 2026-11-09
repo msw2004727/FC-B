@@ -80,7 +80,8 @@ export function LegacyLineNotifyCard({
   const fadeTimerRef = useRef<number | null>(null);
   // O-1：true＝已加好友（不顯示提示列）、false＝未加（警示列）、null＝查不到（維持一般提示列）。
   const [friend, setFriend] = useState<boolean | null>(null);
-  const friendCheckRef = useRef<{ inFlight: boolean; lastAt: number }>({ inFlight: false, lastAt: 0 });
+  // gen：請求世代，只採用最新一次查詢的結果；forceNext：按過加好友按鈕，下一次回前景強制重查（不受 inFlight 與節流擋）。
+  const friendCheckRef = useRef({ gen: 0, inFlight: false, lastAt: 0, forceNext: false });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -121,16 +122,18 @@ export function LegacyLineNotifyCard({
   // O-1：已綁定區展開時查一次 liff.getFriendship()，回前景時再查（30 秒節流）。只讀，不寫資料。
   async function runFriendCheck(force: boolean): Promise<void> {
     const state = friendCheckRef.current;
-    if (state.inFlight) return;
     const now = Date.now();
-    if (!force && now - state.lastAt < FRIEND_RECHECK_MS) return;
+    if (!force && (state.inFlight || now - state.lastAt < FRIEND_RECHECK_MS)) return;
+    // force 時不理會進行中的舊查詢；舊查詢晚到時世代已過期，結果丟棄（審查 P2-2）。
+    state.gen += 1;
+    const gen = state.gen;
     state.inFlight = true;
     state.lastAt = now;
     try {
       const flag = await checkLineFriendship();
-      if (mountedRef.current) setFriend(flag);
+      if (mountedRef.current && gen === state.gen) setFriend(flag);
     } finally {
-      state.inFlight = false;
+      if (gen === state.gen) state.inFlight = false;
     }
   }
 
@@ -138,7 +141,11 @@ export function LegacyLineNotifyCard({
     if (!open || !bound) return undefined;
     runFriendCheck(true).catch(() => {});
     const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') runFriendCheck(false).catch(() => {});
+      if (document.visibilityState !== 'visible') return;
+      const state = friendCheckRef.current;
+      const force = state.forceNext;
+      state.forceNext = false;
+      runFriendCheck(force).catch(() => {});
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -159,8 +166,8 @@ export function LegacyLineNotifyCard({
 
   // 已綁定但沒加好友（或封鎖）時收不到推播：重開加好友頁，開法同 bindLineNotify；不寫任何資料。
   function handleOpenOfficialAccount(): void {
-    // 從加好友頁回來的第一次回前景一定重查，不受節流擋。
-    friendCheckRef.current.lastAt = 0;
+    // 從加好友頁回來的第一次回前景一定重查，不受節流與進行中的舊查詢擋（審查 P2-2）。
+    friendCheckRef.current.forceNext = true;
     window.open(`https://line.me/R/ti/p/${LINE_BOT_BASIC_ID}`, 'sporthub_line');
   }
 
@@ -335,7 +342,7 @@ export function LegacyLineNotifyCard({
                 onClick={handleOpenOfficialAccount}
               >
                 {friend === false
-                  ? t('profile.lineNotifyCard.addFriend')
+                  ? <span>{t('profile.lineNotifyCard.addFriend')}</span>
                   : t('profile.lineNotifyCard.openOfficial')}
               </button>
             </div>

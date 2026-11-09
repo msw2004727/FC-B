@@ -773,7 +773,9 @@ a.social-btn { text-decoration: none; }
 /* 11-09 O-1：站長要求提示文字不可被瀏覽器自動折行（放不下就縮短文案）；查到未加好友時換 warning 色＋實心 LINE 綠按鈕 */
 .line-notify-hint > span { white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .line-notify-hint.warn { color:var(--warning); font-weight:600; }
-.line-notify-friend-btn.solid { background:#06C755; border-color:#06C755; color:#fff; }
+/* 實心按鈕的底色與框線取 currentColor（＝上面共用選擇器的 LINE 綠），不另寫色碼；白字放在內層 span */
+.line-notify-friend-btn.solid { background:currentColor; }
+.line-notify-friend-btn.solid > span { color:#fff; }
 /* Bind/unbind state transition animation */
 #line-notify-bound.fadeIn, #line-notify-unbound.fadeIn { animation: fadeIn .35s ease; }
 /* Login button loading state */
