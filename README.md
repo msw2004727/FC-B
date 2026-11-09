@@ -71,6 +71,6 @@ scripts/check-i18n.mjs     # 語系 key 檢查
 
 ## 關閉功能
 
-- **建置期**：在 `src/features.config.ts` 的 `FEATURE_OVERRIDES` 加入 `<id>: false`；對 `reserved` 功能則設 `<id>: true` 才會開啟。
+- **建置期**：在 `src/feature-overrides.ts` 的 `FEATURE_OVERRIDES` 加入 `<id>: false`；對 `reserved` 功能則設 `<id>: true` 才會開啟。
 - **執行期**：呼叫 `setRemoteFlags({ <id>: false })`（預設全部 `true`）。任一個 `dependsOn` 被關閉，依賴它的功能也會自動關閉。
 - 未啟用功能的路由 chunk 不會被下載。

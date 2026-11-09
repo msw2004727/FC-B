@@ -1,5 +1,7 @@
 import type { JSX } from 'preact';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import { ROUTE_LOAD_FAILED_MSG } from '@/core/unavailable';
 import { toast } from '@/ui/Toast';
 import type { SideDrawerProps } from '@/ui/SideDrawer';
@@ -42,8 +44,6 @@ export function _resetSideDrawerLoaderForTest(next?: SideDrawerImporter): void {
 export function LazySideDrawer(props: SideDrawerProps): JSX.Element | null {
   const [Drawer, setDrawer] = useState<SideDrawerComponent | null>(() => loaded);
   const [failed, setFailed] = useState(false);
-  // 下載完時選單若已是「開」：先以關閉狀態掛上一次再打開，滑入動畫才和原本一樣。
-  const [armed, setArmed] = useState(() => loaded !== null);
   const openRef = useRef(props.open);
   const onCloseRef = useRef(props.onClose);
   openRef.current = props.open;
@@ -80,13 +80,27 @@ export function LazySideDrawer(props: SideDrawerProps): JSX.Element | null {
     if (opening && failed) setFailed(false);
   }, [props.open, failed]);
 
-  useLayoutEffect(() => {
-    if (!Drawer || armed) return;
-    // 先讓瀏覽器算出關閉狀態的樣式，之後加上 open 才會有轉場。
-    void document.getElementById('side-drawer')?.offsetWidth;
-    setArmed(true);
-  }, [Drawer, armed]);
+  // 選單還沒下載完時換頁：照選單本身「換頁就關」的規則收回，下載完才不會在新頁面滑出來
+  // （選單掛上後由 SideDrawer 自己處理換頁）。
+  const { path } = useLocation();
+  const pathRef = useRef(path);
+  useEffect(() => {
+    if (pathRef.current === path) return;
+    pathRef.current = path;
+    if (!Drawer && openRef.current) onCloseRef.current();
+  }, [path, Drawer]);
 
-  if (!Drawer) return null;
-  return <Drawer {...props} open={props.open && armed} />;
+  if (Drawer) {
+    // 等待期間已顯示遮罩時直接以開啟狀態掛上：遮罩接續不閃，選單直接出現（不再滑入）。
+    return <Drawer {...props} />;
+  }
+  if (!props.open || typeof document === 'undefined') return null;
+  // 下載中按了選單：先蓋上和選單同一個遮罩（#drawer-overlay，樣式在首屏 layout.css），
+  // 讓使用者知道有按到、也不會點到底下的頁面；點遮罩可取消。
+  return createPortal(
+    <div class="legacy-ui legacy-chrome">
+      <div id="drawer-overlay" class="open" onClick={() => onCloseRef.current()} />
+    </div>,
+    document.body,
+  );
 }

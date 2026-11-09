@@ -1,4 +1,7 @@
-import { act, cleanup, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import type { ComponentChildren } from 'preact';
+import { useState } from 'preact/hooks';
+import { LocationProvider, useLocation } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTE_LOAD_FAILED_MSG } from '@/core/unavailable';
 import type { SideDrawerProps } from '@/ui/SideDrawer';
@@ -12,7 +15,7 @@ import {
 const toastShow = vi.hoisted(() => vi.fn());
 vi.mock('@/ui/Toast', () => ({ toast: { show: toastShow } }));
 
-/** 記下每次 render 收到的 open，確認「先關後開」的順序。 */
+/** 記下每次 render 收到的 open。 */
 const renders: boolean[] = [];
 const FakeDrawer = ((props: SideDrawerProps) => {
   renders.push(props.open);
@@ -33,7 +36,36 @@ function deferred(): {
   return { promise, resolve, reject };
 }
 
+/** LazySideDrawer 用 useLocation 判斷換頁，和 App 一樣放在 LocationProvider 裡。 */
+function wrapper({ children }: { children?: ComponentChildren }) {
+  return <LocationProvider>{children}</LocationProvider>;
+}
+
+function overlay(): HTMLElement | null {
+  return document.getElementById('drawer-overlay');
+}
+
+/** 模擬 App：open 由狀態控制、onClose 會真的關；另有一顆換頁按鈕（像點底部分頁）。 */
+function Harness({ onClose }: { onClose?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { route } = useLocation();
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>選單</button>
+      <button type="button" onClick={() => route('/teams')}>換頁</button>
+      <LazySideDrawer
+        open={open}
+        onClose={() => {
+          onClose?.();
+          setOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
 beforeEach(() => {
+  history.replaceState(null, '', '/');
   renders.length = 0;
   toastShow.mockReset();
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -50,7 +82,7 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
     const d = deferred();
     const importer = vi.fn(() => d.promise);
     _resetSideDrawerLoaderForTest(importer);
-    const view = render(<LazySideDrawer open={false} onClose={() => undefined} />);
+    const view = render(<LazySideDrawer open={false} onClose={() => undefined} />, { wrapper });
 
     expect(importer).toHaveBeenCalledTimes(1);
     expect(view.container.ownerDocument.getElementById('side-drawer')).toBeNull();
@@ -66,24 +98,86 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
     expect(importer).toHaveBeenCalledTimes(1);
   });
 
-  it('下載完之前就按了選單：先以關閉狀態畫一次，再打開（保留滑入動畫）', async () => {
+  it('下載完之前就按了選單：先蓋上遮罩；下載完選單直接以開啟狀態掛上，遮罩換成選單自己的', async () => {
     const d = deferred();
     _resetSideDrawerLoaderForTest(() => d.promise);
-    render(<LazySideDrawer open onClose={() => undefined} />);
+    render(<Harness />, { wrapper });
+    expect(overlay()).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()?.className).toBe('open'));
+    // 和選單同一個遮罩：放在 .legacy-ui 裡才吃得到首屏 layout.css 的樣式
+    expect(overlay()?.closest('.legacy-ui.legacy-chrome')).not.toBeNull();
+    expect(document.getElementById('side-drawer')).toBeNull();
 
     await act(async () => {
       d.resolve();
     });
     await waitFor(() => expect(document.getElementById('side-drawer')?.className).toBe('open'));
-    expect(renders[0]).toBe(false);
-    expect(renders[renders.length - 1]).toBe(true);
+    expect(renders).toEqual([true]);
+    expect(overlay()).toBeNull(); // 假選單沒有遮罩：佔位遮罩已拿掉，不會疊兩層
   });
 
-  it('已下載過：再次掛上直接用快取，不重新下載、不經過關閉狀態', async () => {
+  it('下載中點遮罩：關閉（呼叫 onClose），遮罩消失；下載完以關閉狀態掛上', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    fireEvent.click(overlay()!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(overlay()).toBeNull());
+
+    await act(async () => {
+      d.resolve();
+    });
+    await waitFor(() => expect(document.getElementById('side-drawer')).not.toBeNull());
+    expect(document.getElementById('side-drawer')?.className).toBe('');
+  });
+
+  it('下載中換頁：選單收回；下載完不會在新頁面打開', async () => {
+    const d = deferred();
+    _resetSideDrawerLoaderForTest(() => d.promise);
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    // 遮罩擋住畫面時理論上點不到底下的分頁；這裡直接換頁，模擬返回鍵等其他換頁途徑
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '換頁' }));
+    });
+    await waitFor(() => expect(location.pathname).toBe('/teams'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(overlay()).toBeNull());
+
+    await act(async () => {
+      d.resolve();
+    });
+    await waitFor(() => expect(document.getElementById('side-drawer')).not.toBeNull());
+    expect(document.getElementById('side-drawer')?.className).toBe('');
+    expect(renders.every((open) => open === false)).toBe(true);
+  });
+
+  it('選單關著時換頁：不呼叫 onClose', async () => {
+    _resetSideDrawerLoaderForTest(() => new Promise(() => undefined));
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />, { wrapper });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '換頁' }));
+    });
+    await waitFor(() => expect(location.pathname).toBe('/teams'));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(overlay()).toBeNull();
+  });
+
+  it('已下載過：再次掛上直接用快取，不重新下載、不顯示佔位遮罩', async () => {
     const importer = vi.fn(async () => ({ SideDrawer: FakeDrawer }));
     _resetSideDrawerLoaderForTest(importer);
     await loadSideDrawer();
-    render(<LazySideDrawer open onClose={() => undefined} />);
+    render(<LazySideDrawer open onClose={() => undefined} />, { wrapper });
 
     expect(document.getElementById('side-drawer')?.className).toBe('open');
     expect(renders).toEqual([true]);
@@ -98,7 +192,7 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
       .mockImplementationOnce(() => second.promise);
     _resetSideDrawerLoaderForTest(importer);
     const onClose = vi.fn();
-    const view = render(<LazySideDrawer open onClose={onClose} />);
+    const view = render(<LazySideDrawer open onClose={onClose} />, { wrapper });
 
     await act(async () => {
       first.reject(new Error('chunk 下載失敗'));
@@ -124,7 +218,7 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
       .mockImplementationOnce(async () => ({ SideDrawer: FakeDrawer }));
     _resetSideDrawerLoaderForTest(importer);
     const onClose = vi.fn();
-    const view = render(<LazySideDrawer open={false} onClose={onClose} />);
+    const view = render(<LazySideDrawer open={false} onClose={onClose} />, { wrapper });
 
     await act(async () => {
       first.reject(new Error('chunk 下載失敗'));
@@ -157,6 +251,7 @@ describe('LazySideDrawer（首頁瘦身：側邊選單不放進首頁主程式�
         loginError
         identity={identity}
       />,
+      { wrapper },
     );
     await waitFor(() => expect(seen.length).toBeGreaterThan(0));
     const last = seen[seen.length - 1]!;
