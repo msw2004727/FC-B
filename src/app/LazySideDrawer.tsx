@@ -29,7 +29,7 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (id: number) => void;
 };
 
-/** 首屏畫完後再預載。LINE 內建瀏覽器沒有 requestIdleCallback（R-CODE-005），改 setTimeout。 */
+/** 首屏畫完後再預載。Safari／iOS（含 iOS 版 LINE 內建瀏覽器）沒有 requestIdleCallback（R-CODE-005），改 setTimeout。 */
 function scheduleDrawerPreload(run: () => void): () => void {
   let cancelled = false;
   const guarded = (): void => {

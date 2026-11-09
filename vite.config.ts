@@ -180,7 +180,7 @@ const pwa = VitePWA({
       // 換站搬入的舊站公開頁與資產（換站計畫書 B-01／B-02）：不屬 app shell，不進預存。
       'blog/**', 'seo/**', 'roles/**', 'inventory/**', 'privacy.html', 'terms.html', 'LOGO/**', 'img/seo/**',
       // 課程旗標關閉時沒有任何 JS／HTML 引用的孤兒 chunk（N3）。K3 打開且建置確認已被動態 import 引用後要拿掉，否則 SW 不會預存。
-      '**/CourseTab-*.js', '**/course-pages-*.js', '**/course-actions-*.css'],
+      '**/CourseTab-*.js', '**/course-pages-*.js', '**/course-actions-*.js', '**/course-actions-*.css'],
     navigateFallback: null,
     // 預存路由預設會把「/」對應到預存的 index.html，首頁導覽因此搶在下面的 network-first 之前拿到舊版
     // （部署後第一次開會先閃出上一版畫面，2026-10-21 站長回報內測頁殘影）。設為空字串關掉這個對應，

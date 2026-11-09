@@ -41,10 +41,20 @@ describe('education manifest（課程 K1：K3 驗收前開關關閉）', () => {
     const ignores = /globIgnores:\s*\[([^\]]*)\]/.exec(viteConfig)?.[1] ?? '';
     expect(ignores).toContain("'**/CourseTab-*.js'");
     expect(ignores).toContain("'**/course-pages-*.js'");
+    expect(ignores).toContain("'**/course-actions-*.js'");
     expect(ignores).toContain("'**/course-actions-*.css'");
     expect(ignores).not.toMatch(/CourseTab-[A-Za-z0-9_-]{8}\.js/);
     expect(ignores).not.toMatch(/course-pages-[A-Za-z0-9_-]{8}\.js/);
     expect(ignores).not.toMatch(/course-actions-[A-Za-z0-9_-]{8}\.css/);
+  });
+
+  it('K3 守門：SHOW_COURSES 改 true 時，必須先拿掉 vite.config.ts globIgnores 的課程孤兒條目', () => {
+    const flags = readFileSync(resolve(__dirname, './flags.ts'), 'utf8');
+    const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.ts'), 'utf8');
+    const ignores = /globIgnores:\s*\[([^\]]*)\]/.exec(viteConfig)?.[1] ?? '';
+    if (/export const SHOW_COURSES = true/.test(flags)) {
+      expect(ignores).not.toMatch(/CourseTab-|course-pages-|course-actions-/);
+    }
   });
 
   it('開發／截圖用建置變數打開時：啟用並帶詳情、課堂、管理入口四條路由', async () => {
