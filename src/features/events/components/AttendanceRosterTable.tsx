@@ -176,7 +176,7 @@ function ProxyBadgeIcon(): JSX.Element {
 }
 
 /** 連線畫在名字 td 內。代報組的圓弧與水平段是同一條虛線路徑。 */
-function GroupLink({ meta }: { meta: CompanionRowMeta }): JSX.Element | null {
+export function GroupLink({ meta }: { meta: CompanionRowMeta }): JSX.Element | null {
   if ((meta.kind === 'lead' || meta.kind === 'proxyLead') && meta.mateCount > 0) {
     const dashed = meta.kind === 'proxyLead';
     return <span class={`cr-link cr-link-down${dashed ? ' cr-link-dashed' : ''}`} aria-hidden="true" />;

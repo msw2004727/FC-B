@@ -8,12 +8,14 @@
   --wl: #7e22ce;
   --wl-soft: rgba(126, 34, 206, .10);
   --wl-line: rgba(126, 34, 206, .45);
+  --wl-on: #fff;
 }
 
 [data-theme="dark"] .att-wl-section {
   --wl: #c4a3ff;
   --wl-soft: rgba(196, 163, 255, .14);
   --wl-line: rgba(196, 163, 255, .5);
+  --wl-on: #1a1d24;
 }
 
 .att-wl-section .att-wl-title {
@@ -63,8 +65,14 @@
 .att-roster-waitlist .att-name-line {
   position: relative;
   z-index: 1;
-  align-items: center;
   width: 100%;
+}
+
+/* 沒有號碼的列（註記）：留同寬空位，讓名字欄對齊。 */
+.att-roster-waitlist .att-wl-gap {
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  margin-right: .5rem;
 }
 
 .att-roster-waitlist .att-no {
@@ -74,6 +82,7 @@
   flex: 0 0 1.35rem;
   height: 1.35rem;
   margin-right: .5rem;
+  align-self: center;
   border-radius: 50%;
   justify-content: center;
   background: var(--bg-card);
@@ -86,7 +95,7 @@
 /* 第 1 位＝下一位遞補：實心紫底白字，外圈光暈。 */
 .att-roster-waitlist .att-no.att-wl-next {
   background: var(--wl);
-  color: #fff;
+  color: var(--wl-on);
   border-color: var(--wl);
   box-shadow: 0 0 0 3px var(--wl-soft);
 }
@@ -111,9 +120,15 @@
   bottom: 50%;
 }
 
-.att-roster-waitlist .att-name-line > .user-capsule.user-capsule {
-  display: inline-block;
-  flex: 1 1 auto;
+/* 名字過長：膠囊收成省略號，不撐破表格。 */
+.att-roster-waitlist .reg-name-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.att-roster-waitlist .reg-name-text > .user-capsule,
+.att-roster-waitlist .cr-lead > .user-capsule {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -121,7 +136,6 @@
   white-space: nowrap;
 }
 
-.att-roster-waitlist .att-wl-follow,
 .att-roster-waitlist .att-wl-note {
   flex: 1 1 auto;
   min-width: 0;
@@ -129,20 +143,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-left: calc(1.35rem + .5rem);
-}
-
-.att-roster-waitlist .att-wl-follow {
-  color: var(--text-secondary);
-}
-
-.att-roster-waitlist .att-wl-note {
+  padding-left: 1.75rem;
   font-size: .72rem;
   color: var(--text-muted);
 }
 
 .att-roster-waitlist .att-wl-note-deep {
-  padding-left: calc(1.35rem + .5rem + 1.2rem);
+  padding-left: 2.35rem;
+}
+
+/* 註記列夾在同行組中間：組色連線往下貫穿（與 .cr-v-top／.cr-v-bot 同一條線的位置）。 */
+.att-roster-waitlist .att-wl-pass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.att-roster-waitlist .att-wl-pass::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--cr-g);
+  opacity: .6;
 }
 
 .att-roster-waitlist .att-wl-ok {

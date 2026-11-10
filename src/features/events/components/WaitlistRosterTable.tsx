@@ -22,6 +22,12 @@ import {
   type WaitlistRosterItem,
   type RosterRegistrationInput,
 } from '../data/attendance-roster-model';
+import { GroupLink } from './AttendanceRosterTable';
+import {
+  companionGroupColorVar,
+  ownerInitial,
+  type CompanionRowMeta,
+} from '../data/companion-groups';
 import './companion-roster.css';
 import './waitlist-roster.css';
 
@@ -45,22 +51,47 @@ interface WlRow {
   item: WaitlistRosterItem;
   itemIndex: number;
   companion?: WaitlistCompanionItem;
-  zebra: 'att-zebra-odd' | 'att-zebra-even';
-  /** 空字串＝不畫連線（只有一列）。 */
+  /** 順位（每個人一個號碼，同行者也算；註記列沒有）。 */
+  serial: number | null;
+  /** 組色與連線資訊，與正取名單同一套（companion-groups）。 */
+  meta: CompanionRowMeta;
+  /** 同行組的列（主報名人、同行者、註記）：不吃斑馬，改用組的上下細線。 */
+  grp: string;
+  /** 斑馬只在「單獨報名」的列之間交替。 */
+  zebra: '' | 'att-zebra-odd' | 'att-zebra-even';
+  /** 註記列在組內：連線要往下貫穿。 */
+  pass: boolean;
+  /** 空字串＝不畫排隊連線（只有一列）。 */
   link: string;
 }
 
 function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
-  const draft: Array<Omit<WlRow, 'zebra' | 'link'>> = [];
+  const draft: Array<Omit<WlRow, 'zebra' | 'link' | 'grp'>> = [];
+  let serial = 0;
+  let nextSlot = 0;
   items.forEach((item, itemIndex) => {
     const rowKey = `${item.registrationId || item.userId || item.name}:${itemIndex}`;
-    draft.push({ key: rowKey, kind: 'main', item, itemIndex });
+    const mateCount = item.companions.length;
+    const slot = mateCount > 0 ? nextSlot % 4 : 0;
+    if (mateCount > 0) nextSlot += 1;
+    const ownerMeta: CompanionRowMeta = mateCount > 0
+      ? { kind: 'lead', slot, mateCount }
+      : { kind: 'solo', slot: 0 };
+    serial += 1;
+    draft.push({ key: rowKey, kind: 'main', item, itemIndex, serial, meta: ownerMeta, pass: false });
     if (item.selfOrphanInfo) {
-      draft.push({ key: `${rowKey}:self-orphan`, kind: 'self-orphan', item, itemIndex });
+      draft.push({
+        key: `${rowKey}:self-orphan`, kind: 'self-orphan', item, itemIndex, serial: null, meta: ownerMeta, pass: mateCount > 0,
+      });
     }
     item.companions.forEach((companion, cIdx) => {
       const cKey = `${rowKey}:comp:${companion.companionId || cIdx}`;
-      draft.push({ key: cKey, kind: 'companion', item, itemIndex, companion });
+      const last = cIdx === mateCount - 1;
+      const mateMeta: CompanionRowMeta = {
+        kind: 'mate', slot, ownerInitial: ownerInitial(item.name), connected: true, last, dashed: false,
+      };
+      serial += 1;
+      draft.push({ key: cKey, kind: 'companion', item, itemIndex, companion, serial, meta: mateMeta, pass: false });
       if (companion.orphanInfo) {
         draft.push({
           key: `${cKey}:orphan`,
@@ -68,11 +99,16 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
           item,
           itemIndex,
           companion,
+          serial: null,
+          meta: mateMeta,
+          pass: !last,
         });
       }
     });
   });
   const multi = draft.length > 1;
+  let soloStripe = 0;
+  const soloStripeOf = new Map<number, number>();
   return draft.map((row, index) => {
     let link = '';
     if (multi) {
@@ -80,11 +116,24 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
       else if (index === draft.length - 1) link = 'att-wl-link att-wl-link-last';
       else link = 'att-wl-link';
     }
-    return {
-      ...row,
-      zebra: row.itemIndex % 2 === 0 ? 'att-zebra-odd' : 'att-zebra-even',
-      link,
-    };
+    const inGroup = items[row.itemIndex] !== undefined && (items[row.itemIndex]?.companions.length ?? 0) > 0;
+    let grp = '';
+    let zebra: WlRow['zebra'] = '';
+    if (inGroup) {
+      const groupRows = draft.filter((d) => d.itemIndex === row.itemIndex);
+      grp = 'att-grp';
+      if (groupRows[0] === row) grp += ' att-grp-first';
+      if (groupRows[groupRows.length - 1] === row) grp += ' att-grp-last';
+    } else {
+      let stripe = soloStripeOf.get(row.itemIndex);
+      if (stripe === undefined) {
+        soloStripe += 1;
+        stripe = soloStripe;
+        soloStripeOf.set(row.itemIndex, stripe);
+      }
+      zebra = stripe % 2 === 1 ? 'att-zebra-odd' : 'att-zebra-even';
+    }
+    return { ...row, zebra, grp, link };
   });
 }
 
@@ -128,39 +177,71 @@ export function WaitlistRosterTable({
 
   const rows = buildRows(items);
 
-  function renderMain(row: WlRow): JSX.Element {
-    return (
-      <span class="att-name-line">
-        <span class={`att-no${row.itemIndex === 0 ? ' att-wl-next' : ''}`}>{row.itemIndex + 1}</span>
+  function renderSerial(row: WlRow): JSX.Element {
+    if (row.serial === null) return <span class="att-wl-gap" aria-hidden="true" />;
+    return <span class={`att-no${row.serial === 1 ? ' att-wl-next' : ''}`}>{row.serial}</span>;
+  }
+
+  function renderName(row: WlRow): JSX.Element {
+    const groupStyle = `--cr-g:${companionGroupColorVar(row.meta.slot)}`;
+    if (row.kind === 'main') {
+      const tag = (
         <UserTag
           uid={row.item.userId}
           name={row.item.name}
           role={roles[row.item.userId]}
           disabled={!row.item.userId}
+          nameClass="reg-name-ellipsis"
           onOpenProfile={onOpenProfile}
         />
-      </span>
-    );
-  }
-
-  function renderFollow(row: WlRow): JSX.Element {
+      );
+      return row.meta.kind === 'lead' ? (
+        <span class="reg-name-text">
+          <span class="cr-lead" style={groupStyle}>
+            {tag}
+            <span class="cr-plus">{`+${row.meta.mateCount}`}</span>
+          </span>
+        </span>
+      ) : (
+        <span class="reg-name-text">{tag}</span>
+      );
+    }
     if (row.kind === 'companion') {
+      const initial = row.meta.kind === 'mate' ? row.meta.ownerInitial : '?';
       return (
-        <span class="att-name-line">
-          <span class="att-wl-follow">{`↳ ${row.companion?.name ?? ''}`}</span>
+        <span class="reg-name-text cr-mate-text">
+          <span class="cr-pair" style={groupStyle}>
+            <span class="cr-owner att-skew">{initial}</span>
+            <span class="cr-cap att-skew"><span class="att-straight">{row.companion?.name ?? ''}</span></span>
+          </span>
         </span>
       );
     }
     const who = row.kind === 'self-orphan' ? row.item.selfOrphanInfo : row.companion?.orphanInfo;
     const noteClass = row.kind === 'companion-orphan' ? 'att-wl-note att-wl-note-deep' : 'att-wl-note';
     return (
-      <span class="att-name-line">
-        <span class={noteClass}>
-          {`↳ 報名人：${who ?? ''}（`}
-          <span class="att-wl-ok">已正取</span>
-          {'）'}
-        </span>
+      <span class={noteClass}>
+        {`↳ 報名人：${who ?? ''}（`}
+        <span class="att-wl-ok">已正取</span>
+        {'）'}
       </span>
+    );
+  }
+
+  function renderNameTd(row: WlRow, className: string): JSX.Element {
+    const isNote = row.kind === 'self-orphan' || row.kind === 'companion-orphan';
+    const style = `padding:.35rem .3rem;text-align:left;--cr-g:${companionGroupColorVar(row.meta.slot)}`;
+    return (
+      <td class={`cr-name-cell ${className}`} style={style} data-no-translate={isNote ? true : undefined}>
+        <span class="att-name-line">
+          {renderSerial(row)}
+          <span class="att-name-anchor">
+            {row.pass && <span class="att-wl-pass" aria-hidden="true" />}
+            {!isNote && row.meta.kind !== 'solo' && <GroupLink meta={row.meta} />}
+            {renderName(row)}
+          </span>
+        </span>
+      </td>
     );
   }
 
@@ -184,8 +265,9 @@ export function WaitlistRosterTable({
           <tbody>
             {rows.map((row) => {
               const nameClass = row.link ? `att-wl-name ${row.link}` : 'att-wl-name';
+              const trClass = [row.zebra, row.grp].filter(Boolean).join(' ');
               return (
-                <tr key={row.key} class={row.zebra}>
+                <tr key={row.key} class={trClass || undefined}>
                   {showPromoteColumn && (row.kind === 'main' ? (
                     <RosterStatusCell
                       action="promote"
@@ -199,11 +281,7 @@ export function WaitlistRosterTable({
                   ) : (
                     <td />
                   ))}
-                  {row.kind === 'main' ? (
-                    <td class={nameClass}>{renderMain(row)}</td>
-                  ) : (
-                    <td class={nameClass} data-no-translate>{renderFollow(row)}</td>
-                  )}
+                  {renderNameTd(row, nameClass)}
                 </tr>
               );
             })}
