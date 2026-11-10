@@ -142,6 +142,15 @@ describe('T-092 球員卡資料模型', () => {
       .toBe('王');
   });
 
+  it('沒傳人氣星等時為 null；有限非負數保留，NaN 與負數不畫', () => {
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null }).popularityStars).toBeNull();
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null, popularityStars: null }).popularityStars).toBeNull();
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null, popularityStars: 0 }).popularityStars).toBe(0);
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null, popularityStars: 3.5 }).popularityStars).toBe(3.5);
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null, popularityStars: Number.NaN }).popularityStars).toBeNull();
+    expect(buildPlayerCardModel({ name: 'A', avatarUrl: null, summary: null, popularityStars: -1 }).popularityStars).toBeNull();
+  });
+
   it('深淺色跟 <html data-theme>，logo 淺用黑、深用白', () => {
     document.documentElement.setAttribute('data-theme', 'dark');
     expect(resolvePlayerCardTheme()).toBe('dark');

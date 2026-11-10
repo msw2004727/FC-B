@@ -96,7 +96,8 @@
     "save": "儲存",
     "shareUnavailable": "無法開啟分享，請改按儲存",
     "lock": "鎖定旋轉",
-    "bestRpm": "最高記錄："
+    "bestRpm": "最高記錄：",
+    "popularityAria": "人氣指數 {stars} 顆星"
   },
   "quick": {
     "group": "個人設定",

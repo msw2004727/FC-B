@@ -43,6 +43,10 @@ vi.mock('qrcode', () => {
   qrcodeLoaded.count += 1;
   return { create: vi.fn(), default: { create: vi.fn() } };
 });
+const popularityMock = vi.hoisted(() => ({
+  loadProfilePopularityViews: vi.fn(async (): Promise<number | null> => null),
+}));
+vi.mock('../data/profile-popularity', () => popularityMock);
 
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -51,6 +55,7 @@ import type { ViewerView } from '../data/viewer';
 import type { UserAttendanceSummary } from '../data/attendance-summary';
 import { LegacyProfileTopSection } from './legacy/LegacyProfileHeader';
 import { playerCardShineCssGradient, playerCardShineLayers } from '../data/player-card-model';
+import { popularityStars } from '../data/popularity-tiers';
 import { options } from 'preact';
 import { PLAYER_CARD_SAFE_MAX_RPM, classifyPlayerCardGesture, playerCardShineOffsetPct, rpmToNeedleDeg } from './player-card-spin';
 import { _resetPlayerCardPreloadForTest } from './PlayerCardShareButton';
@@ -107,6 +112,8 @@ describe('T-092 球員卡（DOM）', () => {
     _setDictLoaderForTest(null);
     await setLocale('zh-TW');
     vi.clearAllMocks();
+    popularityMock.loadProfilePopularityViews.mockReset();
+    popularityMock.loadProfilePopularityViews.mockResolvedValue(null);
     _resetPlayerCardPreloadForTest();
     _resetOverlayBackForTest();
     stubMatchMedia(false);
@@ -1597,6 +1604,8 @@ describe('球員卡身分圖案（網頁卡面）', () => {
   beforeEach(async () => {
     _setDictLoaderForTest(null);
     await setLocale('zh-TW');
+    popularityMock.loadProfilePopularityViews.mockReset();
+    popularityMock.loadProfilePopularityViews.mockResolvedValue(null);
     stubMatchMedia(false);
   });
   afterEach(() => {
@@ -1652,5 +1661,65 @@ describe('球員卡身分圖案（網頁卡面）', () => {
     expect(renderWith({ role: 'admin', stealth: true, gender: '男' }).container.querySelector('.player-card-motif')).toBeNull();
     cleanup();
     expect(renderWith({ role: 'super_admin', stealth: true, gender: '女' }).container.querySelector('.player-card-motif')?.getAttribute('data-motif')).toBe('sakura');
+  });
+});
+
+describe('球員卡人氣（看自己才讀，載入完才出現）', () => {
+  beforeEach(async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW');
+    vi.clearAllMocks();
+    popularityMock.loadProfilePopularityViews.mockReset();
+    popularityMock.loadProfilePopularityViews.mockResolvedValue(null);
+    _resetPlayerCardPreloadForTest();
+    stubMatchMedia(false);
+    identity.current = {
+      displayName: '王小明',
+      pictureUrl: 'https://profile.line-scdn.net/abc',
+      identityId: 'primary',
+    };
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function cardOf(container: Element): HTMLElement {
+    const card = container.querySelector('.player-card');
+    if (!card) throw new Error('missing .player-card');
+    return card as HTMLElement;
+  }
+
+  it('讀取失敗或還沒載入：卡面沒有人氣元素，與看別人的卡 outerHTML 相同', async () => {
+    popularityMock.loadProfilePopularityViews.mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+    const self = renderTop(viewer());
+    expect(cardOf(self.container).classList.contains('has-popularity')).toBe(false);
+    expect(cardOf(self.container).querySelector('.player-card-popularity')).toBeNull();
+    await waitFor(() => expect(popularityMock.loadProfilePopularityViews).toHaveBeenCalledWith('U-me'));
+    const selfHtml = cardOf(self.container).outerHTML;
+    self.unmount();
+
+    const other = renderTop({ ...viewer(), uid: 'U-other' });
+    expect(popularityMock.loadProfilePopularityViews).toHaveBeenCalledTimes(1);
+    expect(cardOf(other.container).outerHTML).toBe(selfHtml);
+    expect(selfHtml).not.toContain('player-card-popularity');
+    expect(selfHtml).not.toContain('has-popularity');
+  });
+
+  it('有人氣：出現星星與數字，分享 PNG 的 model 帶星等、不帶人數', async () => {
+    popularityMock.loadProfilePopularityViews.mockResolvedValue(250);
+    const { container } = renderTop(viewer());
+    expect(cardOf(container).querySelector('.player-card-popularity')).toBeNull();
+    await waitFor(() => expect(cardOf(container).querySelector('.player-card-popularity-num')?.textContent).toBe('250'));
+    expect(cardOf(container).classList.contains('has-popularity')).toBe(true);
+    expect(cardOf(container).querySelectorAll('.popularity-stars svg')).toHaveLength(5);
+    expect(cardOf(container).querySelector('.player-card-popularity')?.textContent?.replace(/\s/g, '')).toBe('250');
+
+    fireEvent.click(container.querySelector('#player-card-share-btn')!);
+    await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));
+    const [model] = canvasMock.renderPlayerCardPng.mock.calls[0] as unknown as [{ popularityStars: number | null }];
+    expect(model.popularityStars).toBe(popularityStars(250));
+    expect(model.popularityStars).toBe(1.5);
   });
 });

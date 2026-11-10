@@ -96,7 +96,8 @@
     "save": "Save",
     "shareUnavailable": "Sharing isn't available. Tap Save instead.",
     "lock": "Lock rotation",
-    "bestRpm": "Best: "
+    "bestRpm": "Best: ",
+    "popularityAria": "Popularity {stars} stars"
   },
   "quick": {
     "group": "My settings",

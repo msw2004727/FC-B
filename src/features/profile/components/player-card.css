@@ -241,6 +241,31 @@
   text-overflow: ellipsis;
 }
 
+/* 人氣（只有有資料時才有 .has-popularity 與這塊）。星星掛在頭像下緣；名字上緣 6→31，計量條與三格跟著名字流動。 */
+.player-card-popularity {
+  position: absolute;
+  left: 50%;
+  bottom: calc(-22 * var(--pcu));
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(4 * var(--pcu));
+  pointer-events: none;
+  white-space: nowrap;
+}
+.player-card-popularity-num {
+  font-weight: 800;
+  font-size: calc(11 * var(--pcu));
+  line-height: 1;
+  color: #8a5a00;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .2px;
+}
+[data-theme="dark"] .player-card-popularity-num { color: #fbd27a; }
+.legacy-ui .player-card.has-popularity .player-card-name { margin-top: calc(31 * var(--pcu)); }
+
 /* 計量條：預覽與三格同寬（卡面 17～203）、高 7，上 7 下 5。 */
 .player-card-gauge {
   height: calc(7 * var(--pcu));

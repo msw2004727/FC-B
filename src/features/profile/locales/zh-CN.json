@@ -96,7 +96,8 @@
     "save": "保存",
     "shareUnavailable": "无法打开分享，请改按保存",
     "lock": "锁定旋转",
-    "bestRpm": "最高记录："
+    "bestRpm": "最高记录：",
+    "popularityAria": "人气指数 {stars} 颗星"
   },
   "quick": {
     "group": "个人设置",

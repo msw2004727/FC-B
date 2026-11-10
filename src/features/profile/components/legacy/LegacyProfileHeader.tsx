@@ -8,6 +8,8 @@ import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
 import { buildPlayerCardModel } from '../../data/player-card-model';
+import { loadProfilePopularityViews } from '../../data/profile-popularity';
+import { popularityStars } from '../../data/popularity-tiers';
 import { buildShareUrl } from '@/features/events/data/event-share-builders';
 import { PlayerCard } from '../PlayerCard';
 import { PlayerCardShareButton } from '../PlayerCardShareButton';
@@ -124,7 +126,28 @@ export function LegacyProfileTopSection({
   // 11-06 站長：身分標籤移到卡片上方（與鎖頭同一列），分享按鈕接在 UID＋QR 下方（原身分標籤位置）。
   // PNG CMP 欄下方 QR：只有本人的球員卡才放，內容與 A `_buildProfileLiffUrl` 相同的個人名片分享網址
   // （MINI_APP_BASE_URL + '?profile=' + encodeURIComponent(uid)，R-SHARE-001／004）。網頁卡面不顯示。
-  const cardQrText = uid && viewer.uid && uid === viewer.uid ? buildShareUrl('profile', uid) : null;
+  const isSelf = Boolean(uid && viewer.uid && uid === viewer.uid);
+  const cardQrText = isSelf ? buildShareUrl('profile', uid) : null;
+  // 人氣只在看自己時背景讀；失敗或尚未部署維持 null，球員卡首屏先照舊畫，載入完才出現星星。
+  const [popularityViews, setPopularityViews] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isSelf) {
+      setPopularityViews(null);
+      return undefined;
+    }
+    let alive = true;
+    loadProfilePopularityViews(uid).then(
+      (views) => {
+        if (alive) setPopularityViews(views);
+      },
+      () => {
+        if (alive) setPopularityViews(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [isSelf, uid]);
   const cardModel = buildPlayerCardModel({
     name: displayName,
     uid,
@@ -134,12 +157,14 @@ export function LegacyProfileTopSection({
     // 身分圖案：沿用上方已算好的有效身分與已載入的 profile.gender，0 次額外讀取。
     role: effectiveRole,
     gender: profile['gender'],
+    popularityStars: popularityViews == null ? null : popularityStars(popularityViews),
   });
 
   return (
     <div class="profile-header player-card-header">
       <PlayerCard
         model={cardModel}
+        popularityViews={isSelf ? popularityViews : undefined}
         avatar={(
           <LegacyAvatar
             id="profile-avatar"
