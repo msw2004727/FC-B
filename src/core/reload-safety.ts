@@ -1,6 +1,7 @@
 // M-052：新版本更新提示與安全重載（照 A `app.js:1148-1272`）
 // - 檢查彈窗開啟、表單輸入編輯中、非安全主頁等狀態
 // - 不安全時不自動重載，改顯示 A 的 `#sw-reload-deferred-prompt`（「有新版本可用／現在更新／稍後」）
+// - 視覺特效在 update-prompt-fx（動態 import）。載入失敗就維持這份舊外觀，不得讓提示框消失。
 
 import { toast } from '@/ui/Toast';
 
@@ -97,7 +98,7 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
 let promptShown = false;
 let pendingReloadFn: (() => void) | null = null;
 
-/** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部深色新版本更新提示框。 */
+/** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部新版本更新提示框。 */
 export function showSwReloadPrompt(onReload: () => void, reason?: string): void {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || !doc.body) return;
@@ -110,6 +111,7 @@ export function showSwReloadPrompt(onReload: () => void, reason?: string): void 
   prompt.setAttribute('role', 'status');
   prompt.setAttribute('aria-live', 'polite');
   if (reason) prompt.dataset.reason = reason;
+  // 先用舊外觀、opacity 0。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
   prompt.style.cssText = [
     'position:fixed',
     'left:50%',
@@ -128,6 +130,7 @@ export function showSwReloadPrompt(onReload: () => void, reason?: string): void 
     'gap:10px',
     'font-size:14px',
     'line-height:1.35',
+    'opacity:0',
   ].join(';');
 
   prompt.innerHTML =
@@ -144,6 +147,13 @@ export function showSwReloadPrompt(onReload: () => void, reason?: string): void 
       'font-weight:700;padding:8px 9px;cursor:pointer' +
     '">稍後</button>';
 
+  let cleanup: (() => void) | undefined;
+  const closePrompt = (): void => {
+    cleanup?.();
+    prompt.remove();
+    promptShown = false;
+  };
+
   prompt.querySelector('[data-sw-reload-now]')?.addEventListener('click', () => {
     // 使用者主動點「現在更新」：檢查是否仍有進行中的寫入送出，否則立即更新
     const writing = doc.querySelector('[data-submitting="true"]');
@@ -152,17 +162,29 @@ export function showSwReloadPrompt(onReload: () => void, reason?: string): void 
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
-    prompt.remove();
-    promptShown = false;
+    closePrompt();
     fn();
   });
 
   prompt.querySelector('[data-sw-reload-later]')?.addEventListener('click', () => {
-    prompt.remove();
-    promptShown = false;
+    closePrompt();
   });
 
   doc.body.appendChild(prompt);
+
+  void import('./update-prompt-fx').then(
+    (m) => {
+      if (!prompt.isConnected) return;
+      try {
+        cleanup = m.applyUpdatePromptFx(prompt);
+      } catch {
+        prompt.style.opacity = '1';
+      }
+    },
+    () => {
+      if (prompt.isConnected) prompt.style.opacity = '1';
+    },
+  );
 }
 
 /** 若目前安全則立即執行 reload，否則顯示「有新版本可用」提示框延後更新。 */
@@ -182,7 +204,9 @@ export function requestSafeReload(
 export function _resetReloadSafetyForTest(): void {
   promptShown = false;
   pendingReloadFn = null;
-  if (typeof document !== 'undefined') {
-    document.getElementById('sw-reload-deferred-prompt')?.remove();
-  }
+  if (typeof document === 'undefined') return;
+  document.getElementById('sw-reload-deferred-prompt')?.remove();
+  document.querySelectorAll('style[data-sw-reload-fx-instance]').forEach((node) => {
+    node.remove();
+  });
 }
