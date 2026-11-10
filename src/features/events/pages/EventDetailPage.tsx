@@ -40,7 +40,7 @@ import {
   loadEventDetailThroughSessionCache,
   type SessionDetailCacheEntry,
 } from '../data/event-detail-session-cache';
-import { readEarlyEventDetail, readEarlyEventPromise } from '../data/early-event-shell';
+import { markEarlyEventDetailAdopted, readEarlyEventDetail, readEarlyEventPromise } from '../data/early-event-shell';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
 import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
@@ -529,6 +529,7 @@ function EventDetailSession({
           const early = await readEarlyEventDetail(publicId);
           if (!current()) return;
           if (early && !earlyAuthWithheld(early.event, uid)) {
+            markEarlyEventDetailAdopted();
             detail = early;
             if (!detailCache.has(publicId)) {
               detailCache.set(publicId, { at: Date.now(), promise: Promise.resolve(early) });
@@ -822,10 +823,11 @@ function EventDetailSession({
     paintedUid.current !== undefined
     && paintedUid.current !== null
     && paintedUid.current !== uidNow;
-  const visible = snapshot !== null && (
-    regsPending
-    || isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations)
-  );
+  // 只有 uid 在黑名單時，結論才需要等本場報名；這段期間畫載入外殼，不讓任何以 visible 為條件的 effect 觸發。
+  const blockedPending = regsPending && uidNow !== null && snapshot !== null
+    && Array.isArray(snapshot.event.blockedUids) && snapshot.event.blockedUids.includes(uidNow);
+  const visible = snapshot !== null && !blockedPending
+    && isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
   const event = snapshot?.event as LegacyDetailEvent | undefined;
   const active = sortRegistrations(snapshot?.registrations ?? []);
 
@@ -1986,7 +1988,7 @@ function EventDetailSession({
     />
   );
 
-  if (phase === 'loading' || accountReset) {
+  if (phase === 'loading' || accountReset || blockedPending) {
     return (
       <EventDetailLoadingShell publicId={publicId} viewer={viewer} goBack={goBack}>
         {noticeToast}

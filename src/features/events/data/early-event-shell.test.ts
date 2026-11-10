@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { restArray, restInt, restMap, restStr } from '@/features/home/data/__fixtures__/banners-rest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { restArray, restBool, restInt, restMap, restStr } from '@/features/home/data/__fixtures__/banners-rest';
 import {
+  EARLY_EVENT_DETAIL_MAX_AGE_MS,
   earlyEventDocumentNameMatches,
+  markEarlyEventDetailAdopted,
   readEarlyEventDetail,
   readSettledEarlyEvent,
+  resetEarlyEventDetailForTest,
   selectEarlyEventDetail,
   selectEarlyEventShellText,
 } from './early-event-shell';
@@ -24,6 +27,11 @@ function doc(id: string, fields: Record<string, unknown>, name?: string): Record
     fields,
   };
 }
+
+beforeEach(() => {
+  resetEarlyEventDetailForTest();
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -193,6 +201,57 @@ describe('selectEarlyEventDetail', () => {
     selectEarlyEventDetail(doc('abc', { title: restStr('提早') }), 'abc');
     expect(setItem).not.toHaveBeenCalled();
   });
+
+  it('正常巢狀的 teamSplit、delegates 整份保留', () => {
+    const detail = selectEarlyEventDetail(doc('abc', {
+      title: restStr('提早'),
+      teamSplit: restMap({
+        enabled: restBool(true),
+        mode: restStr('random'),
+        teams: restArray([
+          restMap({ key: restStr('A'), color: restStr('#111111'), name: restStr('甲隊') }),
+        ]),
+      }),
+      delegates: restArray([
+        restMap({ uid: restStr('host1'), name: restStr('小幫手') }),
+      ]),
+    }), 'abc');
+    expect(detail?.event).toMatchObject({
+      title: '提早',
+      teamSplit: {
+        enabled: true,
+        mode: 'random',
+        teams: [{ key: 'A', color: '#111111', name: '甲隊' }],
+      },
+      delegates: [{ uid: 'host1', name: '小幫手' }],
+    });
+  });
+
+  it('巢狀 map 有 bytesValue、深度 5、巢狀陣列 101 筆時整份回 null', () => {
+    expect(selectEarlyEventDetail(doc('abc', {
+      title: restStr('提早'),
+      teamSplit: restMap({
+        enabled: restBool(true),
+        blob: { bytesValue: 'qq' },
+      }),
+    }), 'abc')).toBeNull();
+
+    let leaf: Record<string, unknown> = restStr('太深');
+    for (let i = 0; i < 5; i += 1) leaf = restMap({ n: leaf });
+    expect(selectEarlyEventDetail(doc('abc', {
+      title: restStr('提早'),
+      teamSplit: leaf,
+    }), 'abc')).toBeNull();
+
+    const many = Array.from({ length: 101 }, () => restStr('x'));
+    expect(selectEarlyEventDetail(doc('abc', {
+      title: restStr('提早'),
+      teamSplit: restMap({
+        enabled: restBool(true),
+        tags: restArray(many),
+      }),
+    }), 'abc')).toBeNull();
+  });
 });
 
 describe('readEarlyEventDetail', () => {
@@ -210,6 +269,39 @@ describe('readEarlyEventDetail', () => {
       fields: { title: { stringValue: '提早' } },
     });
     await expect(readEarlyEventDetail('abc')).resolves.toMatchObject({ eventDocId: 'abc' });
+  });
+
+  it('開頁超過 30 秒回 null，未滿 30 秒仍可用', async () => {
+    const now = vi.spyOn(performance, 'now');
+    window.__fcbEarlyEvent = Promise.resolve(doc('abc', {
+      title: restStr('提早'),
+      status: restStr('open'),
+    }));
+    now.mockReturnValue(EARLY_EVENT_DETAIL_MAX_AGE_MS - 1);
+    await expect(readEarlyEventDetail('abc')).resolves.toMatchObject({ eventDocId: 'abc' });
+    now.mockReturnValue(EARLY_EVENT_DETAIL_MAX_AGE_MS);
+    await expect(readEarlyEventDetail('abc')).resolves.toBeNull();
+  });
+
+  it('等待期間超過 30 秒就丟棄，不把過期文件交出去', async () => {
+    let resolve!: (value: unknown) => void;
+    const promise = new Promise((done) => { resolve = done; });
+    window.__fcbEarlyEvent = promise;
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const pending = readEarlyEventDetail('abc');
+    now.mockReturnValue(EARLY_EVENT_DETAIL_MAX_AGE_MS);
+    resolve(doc('abc', { title: restStr('提早'), status: restStr('open') }));
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('採用後第二次呼叫回 null', async () => {
+    window.__fcbEarlyEvent = Promise.resolve(doc('abc', {
+      title: restStr('提早'),
+      status: restStr('open'),
+    }));
+    await expect(readEarlyEventDetail('abc')).resolves.toMatchObject({ eventDocId: 'abc' });
+    markEarlyEventDetailAdopted();
+    await expect(readEarlyEventDetail('abc')).resolves.toBeNull();
   });
 
   it('拒絕時記成 null，不把拒絕丟出去', async () => {

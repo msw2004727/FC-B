@@ -13,6 +13,8 @@ import type { LoadedEventDetail } from '../data/event-detail';
 import type { DetailRegistration } from '../data/detail-model';
 import type { SettleAttendanceInput, SettleAttendanceResult } from '../data/attendance-settle';
 
+const viewCountCalls = vi.hoisted(() => ({ increment: 0 }));
+
 const mocks = vi.hoisted(() => ({
   // 斷開未 mock 的裝飾性資料讀取，整個頁面測試不可初始化真實 Firebase。
   offlineFirebase: vi.fn(async () => { throw new Error('offline page test'); }),
@@ -138,6 +140,16 @@ vi.mock('@/features/events/data/event-detail', () => ({
   loadEventDetail: mocks.detail,
   loadEventRegistrations: mocks.registrations,
 }));
+vi.mock('../data/event-view-count', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../data/event-view-count')>();
+  return {
+    ...original,
+    incrementEventViewCount: () => {
+      viewCountCalls.increment += 1;
+      return Promise.resolve(null);
+    },
+  };
+});
 vi.mock('@/features/checkin/data/attendance', () => ({
   loadEventAttendance: mocks.attendance,
 }));
@@ -207,6 +219,7 @@ vi.mock('../data/team-split-writes', () => ({
 
 import { writeOpLog } from '@/data/op-log';
 import EventDetailPage from './EventDetailPage';
+import { resetEarlyEventDetailForTest } from '../data/early-event-shell';
 import { setLocale } from '@/i18n/i18n';
 import { SignupError } from '../data/signup';
 
@@ -248,8 +261,11 @@ function mount(): ReturnType<typeof render> {
 }
 
 beforeEach(async () => {
+  resetEarlyEventDetailForTest();
   delete window.__fcbEarlyEvent;
   vi.resetAllMocks();
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  viewCountCalls.increment = 0;
   mocks.reservationSignupEvent = {};
   await setLocale('zh-TW');
   history.replaceState(null, '', '/events/ce_123_abc');
@@ -1724,6 +1740,131 @@ describe('T-085 名單展開與進頁讀取', () => {
     expect(mocks.detail).not.toHaveBeenCalled();
     expect(mocks.history).not.toHaveBeenCalled();
     localStorage.removeItem('fcb:signed-in');
+  });
+
+  it('卸載再掛載同一個 publicId 時，早取已採用就改走 loadEventDetail', async () => {
+    window.__fcbEarlyEvent = Promise.resolve({
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
+        location: { stringValue: '提早地點' },
+        status: { stringValue: 'open' },
+      },
+    });
+    const first = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    first.unmount();
+
+    mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.detail).toHaveBeenCalledWith('ce_123_abc');
+  });
+
+  it('訪客已畫出後，黑名單 uid 到位先畫載入外殼，不計瀏覽、不讀分隊；沒有本場報名則找不到', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['u1'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '青埔五人制' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '報名狀態同步中' })).toBeNull();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    resolveHistory([]);
+    await waitFor(() => {
+      expect(mocks.toastShow).toHaveBeenCalledWith({ message: '找不到此活動' });
+    });
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+  });
+
+  it('黑名單 uid 有本場報名時，等報名查回後顯示內容', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['u1'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    resolveHistory([{ ...self, status: 'confirmed' }]);
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+  });
+
+  it('uid 不在黑名單時，內容持續顯示，報名按鈕維持同步中', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['other-user'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    const heading = await screen.findByRole('heading', { level: 2, name: '青埔五人制' });
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '報名狀態同步中' })).toHaveProperty('disabled', true);
+    });
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    expect(viewCountCalls.increment).toBeGreaterThan(0);
+
+    resolveHistory([]);
+    await screen.findByRole('button', { name: '立即報名' });
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
   });
 
   it('換活動 A → B → 返回 A 不沿用 A 的舊讀取（換活動清快取）', async () => {
