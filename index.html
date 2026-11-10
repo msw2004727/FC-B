@@ -105,11 +105,11 @@
       })();
     </script>
     <!-- T-042d：冷啟動提早發橫幅 REST、預載第一張橫幅圖。設計、發不發的條件、安全邊界見 scripts/early-banners-html.ts 檔頭；
-         __FCB_*__ 代號由該外掛在建置時換成真值，這段註解也由它刪掉（不隨 HTML 送出）。測試：src/app/early-banners.test.ts。
+         __FCB_*__ 代號由該外掛在建置時換成真值（橫幅期限與格式版本 v 與 home-snapshot 同一個常數），這段註解也由它刪掉（不隨 HTML 送出）。測試：src/app/early-banners.test.ts。
          日後若加 CSP，必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com。 -->
     <script id="fcb-early-banners">
       (function () {
-        var P = '__FCB_PROJECT_ID__', V = '__FCB_APP_VERSION__', L = location, M = 262144, K = /^home-(info|layout)$/;
+        var P = '__FCB_PROJECT_ID__', L = location, M = 262144, K = /^home-(info|layout)$/, A = __FCB_BANNER_MAX_AGE_MS__, V = __FCB_SNAPSHOT_V__, S = __FCB_SNAPSHOT_SKEW_MS__;
         function str(f, k) {
           var v = (f || 0)[k];
           return v && typeof v.stringValue === 'string' ? v.stringValue : '';
@@ -121,8 +121,8 @@
           try {
             var s = localStorage.getItem('fcb:home-banners:v1'), t = Date.now();
             s = s && s.length <= 100000 && JSON.parse(s);
-            return s && s.v === 1 && s.appVersion === V && Array.isArray(s.items) && s.items.length > 0 &&
-              s.savedAt === +s.savedAt && t - s.savedAt <= 1800000 && s.savedAt <= t + 60000;
+            return s && s.v === V && Array.isArray(s.items) && s.items.length > 0 &&
+              s.savedAt === +s.savedAt && t - s.savedAt <= A && s.savedAt <= t + S;
           } catch (_) {}
         }
         function body(r) {
@@ -212,7 +212,7 @@
           var m = /^\/events\/([A-Za-z0-9_-]{1,120})$/.exec(L.pathname);
           if (!m || local(L.hostname)) return;
           var id = m[1], c = new AbortController(), t = setTimeout(function () { c.abort(); }, 4000);
-          window.__fcbEarlyEvent = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents/events/' + id + '?mask.fieldPaths=title&mask.fieldPaths=date&mask.fieldPaths=location&mask.fieldPaths=image&mask.fieldPaths=imageVariants&mask.fieldPaths=blockedUids', {
+          window.__fcbEarlyEvent = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents/events/' + id, {
             method: 'GET',
             credentials: 'omit',
             signal: c.signal

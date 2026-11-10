@@ -13,6 +13,8 @@ import type { LoadedEventDetail } from '../data/event-detail';
 import type { DetailRegistration } from '../data/detail-model';
 import type { SettleAttendanceInput, SettleAttendanceResult } from '../data/attendance-settle';
 
+const viewCountCalls = vi.hoisted(() => ({ increment: 0 }));
+
 const mocks = vi.hoisted(() => ({
   // 斷開未 mock 的裝飾性資料讀取，整個頁面測試不可初始化真實 Firebase。
   offlineFirebase: vi.fn(async () => { throw new Error('offline page test'); }),
@@ -138,6 +140,16 @@ vi.mock('@/features/events/data/event-detail', () => ({
   loadEventDetail: mocks.detail,
   loadEventRegistrations: mocks.registrations,
 }));
+vi.mock('../data/event-view-count', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../data/event-view-count')>();
+  return {
+    ...original,
+    incrementEventViewCount: () => {
+      viewCountCalls.increment += 1;
+      return Promise.resolve(null);
+    },
+  };
+});
 vi.mock('@/features/checkin/data/attendance', () => ({
   loadEventAttendance: mocks.attendance,
 }));
@@ -207,6 +219,7 @@ vi.mock('../data/team-split-writes', () => ({
 
 import { writeOpLog } from '@/data/op-log';
 import EventDetailPage from './EventDetailPage';
+import { resetEarlyEventDetailForTest } from '../data/early-event-shell';
 import { setLocale } from '@/i18n/i18n';
 import { SignupError } from '../data/signup';
 
@@ -248,8 +261,11 @@ function mount(): ReturnType<typeof render> {
 }
 
 beforeEach(async () => {
+  resetEarlyEventDetailForTest();
   delete window.__fcbEarlyEvent;
   vi.resetAllMocks();
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  viewCountCalls.increment = 0;
   mocks.reservationSignupEvent = {};
   await setLocale('zh-TW');
   history.replaceState(null, '', '/events/ce_123_abc');
@@ -276,6 +292,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete window.__fcbEarlyEvent;
+  localStorage.removeItem('fcb:signed-in');
   cleanup();
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -753,8 +770,8 @@ describe('EventDetailPage', () => {
     await screen.findByRole('heading', { name: '無法載入活動詳情，請重試。' });
     expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
     expect(mocks.registrations).not.toHaveBeenCalled();
-    // T-085：活動讀取與本人報名改為同時發出，失敗時 history 也已啟動。
-    expect(mocks.history).toHaveBeenCalledTimes(1);
+    // 活動文件還沒有 docId 時不查報名。
+    expect(mocks.history).not.toHaveBeenCalled();
   });
 
   it('本人歷史讀取失敗不顯示活動整頁錯誤，也不繞過報名前置檢查', async () => {
@@ -1466,7 +1483,7 @@ describe('T-085 名單展開與進頁讀取', () => {
     expect(mocks.registrations).toHaveBeenCalledWith('doc-evtA');
   });
 
-  it('登入者進頁時活動讀取與本人報名同時發出', async () => {
+  it('登入者等活動文件確定後才查本場報名', async () => {
     let resolveDetail!: (value: LoadedEventDetail) => void;
     let resolveHistory!: (value: DetailRegistration[]) => void;
     mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
@@ -1476,23 +1493,18 @@ describe('T-085 名單展開與進頁讀取', () => {
       resolveHistory = resolve;
     }));
     mount();
-    await waitFor(() => {
-      expect(mocks.detail).toHaveBeenCalledTimes(1);
-      expect(mocks.history).toHaveBeenCalledTimes(1);
-      expect(mocks.history).toHaveBeenCalledWith('u1');
-    });
-    resolveHistory([]);
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledTimes(1));
+    expect(mocks.history).not.toHaveBeenCalled();
     resolveDetail(detail);
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    resolveHistory([]);
     await screen.findByRole('button', { name: '查看出席名單' });
     expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
   });
 
-  it('提早 REST 只填載入外殼，phase 維持載入中、不出現立即報名', async () => {
-    let resolveDetail!: (value: LoadedEventDetail) => void;
+  it('提早 REST 完整文件就是首屏；登入者等本場報名後才出按鈕', async () => {
     let resolveHistory!: (value: DetailRegistration[]) => void;
-    mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
-      resolveDetail = resolve;
-    }));
     mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
       resolveHistory = resolve;
     }));
@@ -1500,25 +1512,30 @@ describe('T-085 名單展開與進頁讀取', () => {
       name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
       fields: {
         title: { stringValue: '提早標題' },
-        date: { stringValue: '2099/01/01 18:00' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
         location: { stringValue: '提早地點' },
         image: { stringValue: 'https://img.test/early.jpg' },
+        status: { stringValue: 'open' },
       },
     });
     mount();
     expect(await screen.findByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
     expect(screen.getByText('提早地點')).toBeTruthy();
-    expect(screen.getByText('2099/01/01 18:00')).toBeTruthy();
+    expect(screen.getByText('2099/10/19 18:30~21:00')).toBeTruthy();
     expect(screen.getByRole('img').getAttribute('src')).toBe('https://img.test/early.jpg');
     expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    expect(mocks.detail).not.toHaveBeenCalled();
     resolveHistory([]);
-    resolveDetail(detail);
     await screen.findByRole('button', { name: '立即報名' });
-    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: '青埔五人制' })).toBeNull();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    expect(mocks.history).toHaveBeenCalledWith('u1', 'ce_123_abc');
   });
 
-  it('uid 改變重新掛載時沿用 30 秒內的活動讀取，不閃錯誤，訪客名單狀態不帶進登入', async () => {
+  it('uid 尚未畫出時沿用 30 秒內的活動讀取，文件確定後才查本場報名', async () => {
     let resolveDetail!: (value: LoadedEventDetail) => void;
     mocks.detail.mockReturnValue(new Promise<LoadedEventDetail>((resolve) => {
       resolveDetail = resolve;
@@ -1532,19 +1549,322 @@ describe('T-085 名單展開與進頁讀取', () => {
 
     mocks.viewer.mockReturnValue(viewer);
     view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
-    await waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(1));
-    expect(mocks.history).toHaveBeenCalledWith('u1');
+    expect(mocks.history).not.toHaveBeenCalled();
     expect(mocks.detail).toHaveBeenCalledTimes(1);
     expect(mocks.signupProfile).toHaveBeenCalledWith('u1');
     expect(screen.queryByRole('heading', { name: '無法載入活動詳情，請重試。' })).toBeNull();
     expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
 
     resolveDetail(detail);
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
     await screen.findByText('青埔五人制');
     expect(screen.queryByRole('heading', { name: '無法載入活動詳情，請重試。' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '查看出席名單' }));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(1));
     expect(mocks.detail).toHaveBeenCalledTimes(1);
+  });
+
+  it('訪客頁已畫出後 uid 到位不重掛，補本場報名，按鈕不先出現立即報名', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    const heading = await screen.findByRole('heading', { level: 2, name: '青埔五人制' });
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.history).not.toHaveBeenCalled();
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '報名狀態同步中' })).toHaveProperty('disabled', true);
+    });
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+
+    resolveHistory([]);
+    await screen.findByRole('button', { name: '立即報名' });
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+  });
+
+  it('正取、候補、取消都看得到活動，按鈕照狀態', async () => {
+    mocks.history.mockResolvedValueOnce([{ ...self, status: 'confirmed' }]);
+    let view = mount();
+    expect(await screen.findByRole('button', { name: '取消報名' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a');
+    view.unmount();
+
+    mocks.history.mockResolvedValueOnce([{ ...self, status: 'waitlisted' }]);
+    view = mount();
+    expect(await screen.findByRole('button', { name: '取消候補' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    view.unmount();
+
+    mocks.history.mockResolvedValueOnce([{ ...self, status: 'cancelled' }]);
+    view = mount();
+    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+    view.unmount();
+  });
+
+  it('黑名單有報名（含取消與舊 registered）仍看得到，沒報名則與找不到相同且不讀名單', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: { ...detail.event, blockedUids: ['u1'] },
+    });
+    mocks.history.mockResolvedValueOnce([{ ...self, status: 'cancelled' }]);
+    let view = mount();
+    expect(await screen.findByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a');
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+    view.unmount();
+
+    mocks.toastShow.mockClear();
+    mocks.history.mockResolvedValueOnce([{ ...self, status: 'registered' }]);
+    view = mount();
+    expect(await screen.findByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+    view.unmount();
+
+    mocks.toastShow.mockClear();
+    mocks.registrations.mockClear();
+    mocks.history.mockResolvedValueOnce([]);
+    view = mount();
+    await waitFor(() => {
+      expect(mocks.toastShow).toHaveBeenCalledWith({ message: '找不到此活動' });
+    });
+    expect(mocks.registrations).not.toHaveBeenCalled();
+    expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a');
+    view.unmount();
+  });
+
+  it('私密活動在詳情頁仍顯示僅限連結，不當成找不到', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: { ...detail.event, privateEvent: true, creatorUid: 'someone-else' },
+    });
+    mount();
+    expect(await screen.findByText('私密活動，僅限連結')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+  });
+
+  it('訪客用早取完整文件畫首屏，不打 SDK、不查報名', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    window.__fcbEarlyEvent = Promise.resolve({
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
+        location: { stringValue: '提早地點' },
+        status: { stringValue: 'open' },
+        current: { integerValue: '3' },
+        max: { integerValue: '10' },
+        privateEvent: { booleanValue: true },
+      },
+    });
+    const view = mount();
+    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toContain('已報 3/10');
+    expect(screen.getByText('私密活動，僅限連結')).toBeTruthy();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
+  });
+
+  it('早取失敗或解不開時退回 SDK，標題用 SDK 的', async () => {
+    const rejected = Promise.reject(new Error('rest down'));
+    const swallowed = rejected.catch(() => undefined);
+    window.__fcbEarlyEvent = rejected;
+    const first = mount();
+    expect(await screen.findByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    await swallowed;
+    first.unmount();
+
+    mocks.detail.mockClear();
+    const many = Array.from({ length: 101 }, (_v, i) => ({ stringValue: `u${i}` }));
+    window.__fcbEarlyEvent = Promise.resolve({
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        status: { stringValue: 'open' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
+        blockedUids: { arrayValue: { values: many } },
+      },
+    });
+    mount();
+    expect(await screen.findByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '提早標題' })).toBeNull();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+  });
+
+  it('登入線索且黑名單非空的訪客不拿早取文件畫首屏，沒線索才畫', async () => {
+    localStorage.setItem('fcb:signed-in', '1');
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const early = {
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        status: { stringValue: 'open' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
+        blockedUids: { arrayValue: { values: [{ stringValue: 'u1' }] } },
+      },
+    };
+    window.__fcbEarlyEvent = Promise.resolve(early);
+    const hinted = mount();
+    expect(await screen.findByRole('heading', { name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    hinted.unmount();
+
+    localStorage.removeItem('fcb:signed-in');
+    mocks.detail.mockClear();
+    window.__fcbEarlyEvent = Promise.resolve(early);
+    mount();
+    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '提早標題' })).toBeTruthy();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
+    localStorage.removeItem('fcb:signed-in');
+  });
+
+  it('卸載再掛載同一個 publicId 時，早取已採用就改走 loadEventDetail', async () => {
+    window.__fcbEarlyEvent = Promise.resolve({
+      name: 'projects/p/databases/(default)/documents/events/ce_123_abc',
+      fields: {
+        title: { stringValue: '提早標題' },
+        date: { stringValue: '2099/10/19 18:30~21:00' },
+        location: { stringValue: '提早地點' },
+        status: { stringValue: 'open' },
+      },
+    });
+    const first = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    first.unmount();
+
+    mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(mocks.detail).toHaveBeenCalledWith('ce_123_abc');
+  });
+
+  it('訪客已畫出後，黑名單 uid 到位先畫載入外殼，不計瀏覽、不讀分隊；沒有本場報名則找不到', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['u1'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '青埔五人制' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '報名狀態同步中' })).toBeNull();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    resolveHistory([]);
+    await waitFor(() => {
+      expect(mocks.toastShow).toHaveBeenCalledWith({ message: '找不到此活動' });
+    });
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+  });
+
+  it('黑名單 uid 有本場報名時，等報名查回後顯示內容', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['u1'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('u1', 'firestore-doc-a'));
+    expect(screen.getByText('活動資訊載入中...')).toBeTruthy();
+    expect(viewCountCalls.increment).toBe(0);
+    expect(mocks.registrations).not.toHaveBeenCalled();
+
+    resolveHistory([{ ...self, status: 'confirmed' }]);
+    expect(await screen.findByRole('heading', { level: 2, name: '青埔五人制' })).toBeTruthy();
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    expect(screen.getByText('青埔籃足球共用球場')).toBeTruthy();
+    expect(mocks.toastShow).not.toHaveBeenCalledWith({ message: '找不到此活動' });
+  });
+
+  it('uid 不在黑名單時，內容持續顯示，報名按鈕維持同步中', async () => {
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        blockedUids: ['other-user'],
+        teamSplit: { enabled: true },
+      },
+    });
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    const view = mount();
+    const heading = await screen.findByRole('heading', { level: 2, name: '青埔五人制' });
+
+    let resolveHistory!: (rows: DetailRegistration[]) => void;
+    mocks.history.mockReturnValue(new Promise<DetailRegistration[]>((resolve) => {
+      resolveHistory = resolve;
+    }));
+    mocks.viewer.mockReturnValue(viewer);
+    view.rerender(<LocationProvider><EventDetailPage id="ce_123_abc" /></LocationProvider>);
+
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
+    expect(screen.queryByText('活動資訊載入中...')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '報名狀態同步中' })).toHaveProperty('disabled', true);
+    });
+    expect(screen.queryByRole('button', { name: '立即報名' })).toBeNull();
+    expect(viewCountCalls.increment).toBeGreaterThan(0);
+
+    resolveHistory([]);
+    await screen.findByRole('button', { name: '立即報名' });
+    expect(screen.getByRole('heading', { level: 2, name: '青埔五人制' })).toBe(heading);
   });
 
   it('換活動 A → B → 返回 A 不沿用 A 的舊讀取（換活動清快取）', async () => {

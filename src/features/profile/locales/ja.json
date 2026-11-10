@@ -96,7 +96,8 @@
     "save": "保存",
     "shareUnavailable": "共有を開けません。「保存」を押してください。",
     "lock": "回転をロック",
-    "bestRpm": "最高記録："
+    "bestRpm": "最高記録：",
+    "popularityAria": "人気指数 {stars} 個"
   },
   "quick": {
     "group": "個人設定",

@@ -5,6 +5,7 @@ import { getLastKnownAuthUid } from '@/data/auth';
 import { useViewer } from '@/features/profile/data/viewer';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { useT } from '@/i18n/i18n';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { loadRolesData } from '../data/role-admin';
 import {
@@ -131,7 +132,7 @@ export default function RolesAdminPage({ confirmEnabled = ROLES_WRITE_CONFIRM_EN
           </svg>
         </button><h2>{t('roles.title')}</h2>
       </div>
-      {loading ? <div role="status">{t('roles.ui.loading')}</div>
+      {loading ? <PageSpinner />
         : !allowed ? <div role="alert">{t('roles.ui.denied')}</div>
         : failed ? <div role="alert">{t('roles.ui.loadFailed')}</div>
         : !ownsData ? <div role="status">{t('roles.ui.loading')}</div>

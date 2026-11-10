@@ -12,6 +12,7 @@
   "locale.label": "ภาษา",
   "locale.loadFailed": "โหลดภาษาไม่สำเร็จ กรุณาลองใหม่ภายหลัง",
   "common.loading": "กำลังโหลด…",
+  "common.loadingHint": "อย่าเร่งนะ กำลังพยายามโหลดอยู่!",
   "common.retry": "ลองอีกครั้ง",
   "common.cancel": "ยกเลิก",
   "common.ok": "ตกลง",

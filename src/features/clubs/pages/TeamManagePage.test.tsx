@@ -155,7 +155,7 @@ describe('讀取預算', () => {
     state.viewer = createMinimalViewer('U-admin');
     const { container } = render(<TeamManagePage />);
     await act(async () => { await Promise.resolve(); });
-    expect(container.querySelector('.skeleton[role="status"]')).not.toBeNull();
+    expect(container.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('權限不足')).toBeNull();
     expect(sdk.getDocs).not.toHaveBeenCalled();
     expect(document.getElementById('team-manage-create-btn')).toBeNull();
@@ -168,6 +168,25 @@ describe('讀取預算', () => {
     await act(async () => { await Promise.resolve(); });
     expect(sdk.getDocs).not.toHaveBeenCalled();
     expect(document.getElementById('team-manage-create-btn')).toBeNull();
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    state.viewer = createMinimalViewer('U-admin');
+    const view = render(<TeamManagePage />);
+    expect(view.container.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(sdk.getDocs).not.toHaveBeenCalled();
+
+    state.viewer = makeViewer('U-user', []);
+    view.rerender(<TeamManagePage />);
+    expect(view.container.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByText('權限不足')).toBeTruthy();
+    expect(sdk.getDocs).not.toHaveBeenCalled();
+
+    state.viewer = makeViewer('U-admin', ADMIN);
+    view.rerender(<TeamManagePage />);
+    await waitFor(() => expect(view.container.querySelector('[data-team-id="tm_a"]')).not.toBeNull());
+    expect(screen.queryByText('權限不足')).toBeNull();
   });
 
   it('置頂、上下架、光跡、刪除後都不重讀清單', async () => {

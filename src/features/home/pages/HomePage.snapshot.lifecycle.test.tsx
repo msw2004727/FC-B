@@ -9,6 +9,7 @@ import { loadActiveBanners, type BannerDeps, type BannerDoc } from '../data/bann
 import { guestRowsOf } from '../data/__fixtures__/guest-rows';
 import {
   BANNERS_SNAPSHOT_KEY,
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
   HOME_SNAPSHOT_MAX_AGE_MS,
   SPORTS_SNAPSHOT_KEY,
   _clearHomeSnapshotForTest,
@@ -161,7 +162,8 @@ describe('選用快照當下的期限檢查', () => {
 
   it('時鐘往前跳：畫面上來自快照的橫幅在下一次 render 就不畫，不等計時器', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    seedBanners([banner({ id: 'b1', title: '快照橫幅' })], T0 - 5 * MIN);
+    // 到期時間 = T0 + 25 分（與運動統計同一跳點）。橫幅期限 24 小時，寫入時間往前扣。
+    seedBanners([banner({ id: 'b1', title: '快照橫幅' })], T0 + 25 * MIN - BANNERS_SNAPSHOT_MAX_AGE_MS);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
     mockEvents(() => new Promise(() => undefined));
     const { container } = render(<HomePage />);
@@ -179,7 +181,8 @@ describe('選用快照當下的期限檢查', () => {
 describe('正式資料取代快照與舊到期時間交錯', () => {
   it('橫幅：正式資料在快照到期前一刻取代它；舊的到期時間之後到了，不會把正式資料清掉', async () => {
     vi.useFakeTimers({ now: T0 });
-    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0);
+    // 剩餘壽命維持 30 分鐘：既有的 advance 仍落在真正到期前，不必把假時鐘推進 24 小時。
+    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + HOME_SNAPSHOT_MAX_AGE_MS);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;
@@ -238,7 +241,8 @@ describe('正式資料在快照到期前一刻取代它（臨界時間點）', (
   // 所以統計不做核對（沒有對應的變異；這個案例驗的是臨界時間點的最終狀態）。
   it('橫幅：到期前 5 ms 正式資料取代快照，之後不會被舊到期時間清掉', async () => {
     vi.useFakeTimers({ now: T0 });
-    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0);
+    // 剩餘壽命維持 30 分鐘：既有的 advance 仍落在真正到期前，不必把假時鐘推進 24 小時。
+    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + HOME_SNAPSHOT_MAX_AGE_MS);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;

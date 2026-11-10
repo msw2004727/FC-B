@@ -12,6 +12,7 @@
   "locale.label": "语言",
   "locale.loadFailed": "语言加载失败，请稍后再试",
   "common.loading": "加载中…",
+  "common.loadingHint": "别催啦，已经在努力加载中！",
   "common.retry": "重试",
   "common.cancel": "取消",
   "common.ok": "确定",

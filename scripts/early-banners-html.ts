@@ -20,7 +20,9 @@
  * ## 建置期處理（這個檔案做的事）
  * 內嵌 script 無法 import，所以兩個會變動的常數用代號留在原始碼裡，建置（與 dev server）時由這裡換成真值：
  * - `__FCB_PROJECT_ID__` → `FIREBASE_CONFIG.projectId`（不在 script 裡另外硬編一份）
- * - `__FCB_APP_VERSION__` → `APP_VERSION`（script 要用它判斷首屏快照是否因版本不同而失效，同 `home-snapshot.ts#isFresh`）
+ * - `__FCB_BANNER_MAX_AGE_MS__` → `BANNERS_SNAPSHOT_MAX_AGE_MS`（橫幅快照 24 小時；與 home-snapshot.ts 同一個常數）
+ * - `__FCB_SNAPSHOT_V__` → `HOME_SNAPSHOT_FORMAT_V`（只看資料格式版本，不看 app 版號）
+ * - `__FCB_SNAPSHOT_SKEW_MS__` → `HOME_SNAPSHOT_FUTURE_SKEW_MS`（寫入時間可比現在晚多久；與 home-snapshot.ts 同一個常數）
  * emulator 模式（非 PROD 建置且 `VITE_FIREBASE_EMULATOR=1`，同 `data/firebase.ts#shouldUseEmulator`）整段移除：
  * REST 會繞過 SDK 的連線目標守門，emulator 下絕不能對正式 Firestore 發請求。
  * script 正上方那段中文說明註解也在這裡刪掉（約 0.6 KB gzip，不需要隨 HTML 送給每個訪客；script 本身不動、不壓縮）。
@@ -28,10 +30,13 @@
  * 找不到 script 區塊、代號數量不對、值格式不合一律丟錯讓建置失敗，不靜默發出一個指向錯誤專案的請求。
  */
 import type { Plugin } from 'vite';
+import { BANNERS_SNAPSHOT_MAX_AGE_MS, HOME_SNAPSHOT_FORMAT_V, HOME_SNAPSHOT_FUTURE_SKEW_MS } from '../src/features/home/data/home-snapshot-ttl.ts';
 
 export const EARLY_BANNERS_SCRIPT_ID = 'fcb-early-banners';
 export const EARLY_BANNERS_PROJECT_TOKEN = '__FCB_PROJECT_ID__';
-export const EARLY_BANNERS_VERSION_TOKEN = '__FCB_APP_VERSION__';
+export const EARLY_BANNERS_MAX_AGE_TOKEN = '__FCB_BANNER_MAX_AGE_MS__';
+export const EARLY_BANNERS_FORMAT_V_TOKEN = '__FCB_SNAPSHOT_V__';
+export const EARLY_BANNERS_SKEW_TOKEN = '__FCB_SNAPSHOT_SKEW_MS__';
 
 /** 整個 `<script id="fcb-early-banners">…</script>` 區塊（含前面的縮排與後面的換行）。 */
 const SCRIPT_BLOCK = new RegExp(`[ \\t]*<script id="${EARLY_BANNERS_SCRIPT_ID}">[\\s\\S]*?</script>[ \\t]*\\r?\\n?`);
@@ -40,13 +45,18 @@ const SCRIPT_BLOCK = new RegExp(`[ \\t]*<script id="${EARLY_BANNERS_SCRIPT_ID}">
  * 且後面只能隔空白與換行就是 script，所以只會刪到說明這個 script 的那一則。
  */
 const LEADING_COMMENT = new RegExp(`[ \\t]*<!--(?:(?!-->)[\\s\\S])*-->[ \\t]*\\r?\\n(?=[ \\t]*<script id="${EARLY_BANNERS_SCRIPT_ID}">)`);
-/** Firebase 專案 ID 與 `APP_VERSION` 的格式：只准字母、數字、`-`、`.`，不可能帶出引號或標籤。 */
+/** Firebase 專案 ID：只准小寫字母、數字、`-`，不可能帶出引號或標籤。注入的數字只准十進位整數。 */
 const PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const APP_VERSION_PATTERN = /^[0-9A-Za-z.]{1,40}$/;
 
 export interface EarlyBannersHtmlOptions {
   projectId: string;
-  appVersion: string;
+}
+
+export function formatInjectedNumber(name: string, value: number): string {
+  if (!Number.isInteger(value) || value < 0 || value > 999_999_999_999) {
+    throw new Error(`early-banners：${name} 格式不合`);
+  }
+  return String(value);
 }
 
 function replaceToken(source: string, token: string, value: string): string {
@@ -62,9 +72,10 @@ export function transformEarlyBannersHtml(source: string, options: EarlyBannersH
   if (!block) throw new Error(`index.html 找不到 <script id="${EARLY_BANNERS_SCRIPT_ID}">`);
   if (options.emulator) return html.replace(SCRIPT_BLOCK, '');
   if (!PROJECT_ID_PATTERN.test(options.projectId)) throw new Error('early-banners：projectId 格式不合');
-  if (!APP_VERSION_PATTERN.test(options.appVersion)) throw new Error('early-banners：appVersion 格式不合');
   let script = replaceToken(block[0], EARLY_BANNERS_PROJECT_TOKEN, options.projectId);
-  script = replaceToken(script, EARLY_BANNERS_VERSION_TOKEN, options.appVersion);
+  script = replaceToken(script, EARLY_BANNERS_MAX_AGE_TOKEN, formatInjectedNumber('橫幅快照期限', BANNERS_SNAPSHOT_MAX_AGE_MS));
+  script = replaceToken(script, EARLY_BANNERS_FORMAT_V_TOKEN, formatInjectedNumber('快照格式版本', HOME_SNAPSHOT_FORMAT_V));
+  script = replaceToken(script, EARLY_BANNERS_SKEW_TOKEN, formatInjectedNumber('快照時鐘容忍度', HOME_SNAPSHOT_FUTURE_SKEW_MS));
   return html.replace(SCRIPT_BLOCK, () => script);
 }
 

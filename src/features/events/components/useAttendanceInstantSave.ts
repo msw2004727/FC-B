@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { beginSubmitting } from '@/core/submit-guard';
 import {
   applyAttendanceWriteResult,
   ATTENDANCE_RELOAD_IDLE_MS,
@@ -99,11 +100,12 @@ interface PendingAttendanceWriteContext {
  */
 export function useAttendanceLeaveGuard(
   scopeKey: string,
-  flushRef: { readonly current: () => void },
+  flushRef: { readonly current: () => void | Promise<void> },
 ): (pending: boolean) => void {
   const boundRef = useRef(false);
   const mountedRef = useRef(false);
   const handlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
+  const submitReleaseRef = useRef<(() => void) | null>(null);
   if (handlerRef.current === null) {
     handlerRef.current = (event: BeforeUnloadEvent): void => {
       event.preventDefault();
@@ -121,6 +123,15 @@ export function useAttendanceLeaveGuard(
     } else if (!pending && boundRef.current) {
       window.removeEventListener('beforeunload', handler);
       boundRef.current = false;
+    }
+    if (pending) {
+      if (submitReleaseRef.current === null) {
+        submitReleaseRef.current = beginSubmitting('attendance-save');
+      }
+    } else if (submitReleaseRef.current !== null) {
+      const release = submitReleaseRef.current;
+      submitReleaseRef.current = null;
+      release();
     }
   }, []);
 
@@ -143,7 +154,21 @@ export function useAttendanceLeaveGuard(
         window.removeEventListener('beforeunload', handler);
         boundRef.current = false;
       }
-      flushRef.current();
+      // 卸載或換活動時，待送的勾選與備註會在這裡 flush；標記要撐到寫入結束才釋放，
+      // 否則計數歸零會立刻觸發強制更新重載，把還沒送出的資料一起丟掉。
+      // 一律新取一個標記（90 秒從現在重新算），再釋放舊的：先取後放，計數不會中途歸零。
+      const hold = beginSubmitting('attendance-save');
+      const previous = submitReleaseRef.current;
+      submitReleaseRef.current = null;
+      previous?.();
+      let flushed: void | Promise<void>;
+      try {
+        flushed = flushRef.current();
+      } catch (error) {
+        hold();
+        throw error;
+      }
+      void Promise.resolve(flushed).finally(hold);
     };
   }, [scopeKey, flushRef]);
 
@@ -183,7 +208,7 @@ export function useAttendanceInstantSave({
   const eventGenRef = useRef(0);
   const pendingCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
   const queuedCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
-  const flushRef = useRef<() => void>(() => {});
+  const flushRef = useRef<() => void | Promise<void>>(() => {});
   const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
   const syncPendingRef = useRef<() => void>(() => {});
   const scheduleReloadRef = useRef<() => void>(() => {});
@@ -737,9 +762,7 @@ export function useAttendanceInstantSave({
     syncPendingRef.current();
   }, []);
 
-  flushRef.current = () => {
-    void flushInstantSaves();
-  };
+  flushRef.current = () => flushInstantSaves();
 
   return {
     getRowSelection,

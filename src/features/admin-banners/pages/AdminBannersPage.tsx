@@ -2,10 +2,13 @@ import '@/styles/legacy/admin-banners.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useGoBack } from '@/core/back-guard';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { useT } from '@/i18n/i18n';
+import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { BannerForm } from '../components/BannerForm';
 import { BannerSlotCard } from '../components/BannerSlotCard';
@@ -57,7 +60,9 @@ export default function AdminBannersPage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
   const goBack = useGoBack('/');
-  const canManage = canManageBanners(viewer);
+  // L-43：最小 viewer 權限全 false。到位前先轉圈，不閃「權限不足」、不讀資料。
+  const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
+  const canManage = !waiting && canManageBanners(viewer);
   const uid = viewer.uid;
 
   const [open, setOpen] = useState(false);
@@ -308,6 +313,17 @@ export default function AdminBannersPage(): JSX.Element {
       <h2>{t('admin-banners.title')}</h2>
     </div>
   );
+
+  if (waiting) {
+    return (
+      <div class="legacy-ui">
+        <section class="page active" id="page-admin-banners">
+          {header}
+          <PageSpinner />
+        </section>
+      </div>
+    );
+  }
 
   if (!canManage) {
     return (

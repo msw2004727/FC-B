@@ -1,8 +1,10 @@
 // M-052：新版本更新提示與安全重載（照 A `app.js:1148-1272`）
 // - 檢查彈窗開啟、表單輸入編輯中、非安全主頁等狀態
 // - 不安全時不自動重載，改顯示 A 的 `#sw-reload-deferred-prompt`（「有新版本可用／現在更新／稍後」）
+// - 視覺特效在 update-prompt-fx（動態 import）。載入失敗就維持這份舊外觀，不得讓提示框消失。
 
 import { toast } from '@/ui/Toast';
+import { isSubmitting } from './submit-guard';
 
 const SAFE_PATHS = new Set(['/', '/activities', '/teams', '/profile']);
 
@@ -77,7 +79,7 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
     return { safe: false, reason: 'form-editing' };
   }
 
-  if (doc.querySelector('[data-form-dirty="true"], [aria-busy="true"][data-submitting="true"]')) {
+  if (isSubmitting() || doc.querySelector('[data-form-dirty="true"], [data-submitting="true"]')) {
     return { safe: false, reason: 'write-pending' };
   }
 
@@ -96,13 +98,88 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
 
 let promptShown = false;
 let pendingReloadFn: (() => void) | null = null;
+let promptCleanup: (() => void) | undefined;
 
-/** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部深色新版本更新提示框。 */
-export function showSwReloadPrompt(onReload: () => void, reason?: string): void {
+export interface SwReloadPromptOptions {
+  /** 強制更新：不提供「稍後」。已顯示的一般提示框會被升級，已是強制則維持強制。 */
+  forced?: boolean;
+}
+
+const PROMPT_CSS = [
+  'position:fixed',
+  'left:50%',
+  'bottom:calc(72px + env(safe-area-inset-bottom, 0px))',
+  'transform:translateX(-50%)',
+  'z-index:100000',
+  'width:min(420px, calc(100vw - 32px))',
+  'background:#111827',
+  'color:#fff',
+  'border:1px solid rgba(255,255,255,.16)',
+  'border-radius:12px',
+  'box-shadow:0 16px 40px rgba(0,0,0,.28)',
+  'padding:12px',
+  'display:flex',
+  'align-items:center',
+  'gap:10px',
+  'font-size:14px',
+  'line-height:1.35',
+  'opacity:0',
+].join(';');
+
+const NOW_BUTTON_HTML =
+  '<button type="button" data-sw-reload-now style="' +
+    'border:0;border-radius:8px;background:#0d9488;color:#fff;' +
+    'font-weight:700;padding:8px 10px;cursor:pointer;white-space:nowrap' +
+  '">現在更新</button>';
+
+const LATER_BUTTON_HTML =
+  '<button type="button" data-sw-reload-later aria-label="稍後" style="' +
+    'border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;' +
+    'font-weight:700;padding:8px 9px;cursor:pointer' +
+  '">稍後</button>';
+
+function detachPrompt(): void {
+  const cleanup = promptCleanup;
+  promptCleanup = undefined;
+  cleanup?.();
+  if (typeof document !== 'undefined') {
+    document.getElementById('sw-reload-deferred-prompt')?.remove();
+  }
+  promptShown = false;
+  pendingReloadFn = null;
+}
+
+/** 收掉強制更新提示框。一般「有新版本」提示（沒有 data-mode=forced）留著。 */
+export function dismissForcedUpdatePrompt(): void {
+  if (typeof document === 'undefined') return;
+  const prompt = document.getElementById('sw-reload-deferred-prompt');
+  if (!prompt || prompt.dataset.mode !== 'forced') return;
+  detachPrompt();
+}
+
+function upgradeToForced(prompt: HTMLElement): void {
+  prompt.dataset.mode = 'forced';
+  prompt.querySelectorAll('[data-sw-reload-later]').forEach((node) => {
+    node.remove();
+  });
+}
+
+/** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部新版本更新提示框。 */
+export function showSwReloadPrompt(
+  onReload: () => void,
+  reason?: string,
+  opts?: SwReloadPromptOptions,
+): void {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || !doc.body) return;
   pendingReloadFn = onReload;
-  if (promptShown && doc.getElementById('sw-reload-deferred-prompt')) return;
+  const wantForced = opts?.forced === true;
+  const existing = doc.getElementById('sw-reload-deferred-prompt');
+  if (promptShown && existing) {
+    // 強制優先：後來的一般呼叫不得把「稍後」加回去。
+    if (wantForced || existing.dataset.mode === 'forced') upgradeToForced(existing);
+    return;
+  }
   promptShown = true;
 
   const prompt = doc.createElement('div');
@@ -110,59 +187,48 @@ export function showSwReloadPrompt(onReload: () => void, reason?: string): void 
   prompt.setAttribute('role', 'status');
   prompt.setAttribute('aria-live', 'polite');
   if (reason) prompt.dataset.reason = reason;
-  prompt.style.cssText = [
-    'position:fixed',
-    'left:50%',
-    'bottom:calc(72px + env(safe-area-inset-bottom, 0px))',
-    'transform:translateX(-50%)',
-    'z-index:100000',
-    'width:min(420px, calc(100vw - 32px))',
-    'background:#111827',
-    'color:#fff',
-    'border:1px solid rgba(255,255,255,.16)',
-    'border-radius:12px',
-    'box-shadow:0 16px 40px rgba(0,0,0,.28)',
-    'padding:12px',
-    'display:flex',
-    'align-items:center',
-    'gap:10px',
-    'font-size:14px',
-    'line-height:1.35',
-  ].join(';');
+  if (wantForced) prompt.dataset.mode = 'forced';
+  // 先用舊外觀、opacity 0。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
+  prompt.style.cssText = PROMPT_CSS;
 
   prompt.innerHTML =
     '<div style="flex:1;min-width:0">' +
       '<div style="font-weight:700;margin-bottom:2px">有新版本可用</div>' +
       '<div style="opacity:.84">完成目前操作後會自動更新。</div>' +
     '</div>' +
-    '<button type="button" data-sw-reload-now style="' +
-      'border:0;border-radius:8px;background:#0d9488;color:#fff;' +
-      'font-weight:700;padding:8px 10px;cursor:pointer;white-space:nowrap' +
-    '">現在更新</button>' +
-    '<button type="button" data-sw-reload-later aria-label="稍後" style="' +
-      'border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;' +
-      'font-weight:700;padding:8px 9px;cursor:pointer' +
-    '">稍後</button>';
+    NOW_BUTTON_HTML +
+    (wantForced ? '' : LATER_BUTTON_HTML);
 
   prompt.querySelector('[data-sw-reload-now]')?.addEventListener('click', () => {
-    // 使用者主動點「現在更新」：檢查是否仍有進行中的寫入送出，否則立即更新
-    const writing = doc.querySelector('[data-submitting="true"]');
-    if (writing) {
+    // 使用者主動點「現在更新」：送出中不重載。
+    if (isSubmitting() || doc.querySelector('[data-submitting="true"]')) {
       toast.show({ message: '目前操作尚未完成，稍後再更新', duration: 3000 });
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
-    prompt.remove();
-    promptShown = false;
+    detachPrompt();
     fn();
   });
 
   prompt.querySelector('[data-sw-reload-later]')?.addEventListener('click', () => {
-    prompt.remove();
-    promptShown = false;
+    detachPrompt();
   });
 
   doc.body.appendChild(prompt);
+
+  void import('./update-prompt-fx').then(
+    (m) => {
+      if (!prompt.isConnected) return;
+      try {
+        promptCleanup = m.applyUpdatePromptFx(prompt);
+      } catch {
+        prompt.style.opacity = '1';
+      }
+    },
+    () => {
+      if (prompt.isConnected) prompt.style.opacity = '1';
+    },
+  );
 }
 
 /** 若目前安全則立即執行 reload，否則顯示「有新版本可用」提示框延後更新。 */
@@ -180,9 +246,9 @@ export function requestSafeReload(
 }
 
 export function _resetReloadSafetyForTest(): void {
-  promptShown = false;
-  pendingReloadFn = null;
-  if (typeof document !== 'undefined') {
-    document.getElementById('sw-reload-deferred-prompt')?.remove();
-  }
+  detachPrompt();
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll('style[data-sw-reload-fx-instance]').forEach((node) => {
+    node.remove();
+  });
 }

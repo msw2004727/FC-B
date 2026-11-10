@@ -82,10 +82,14 @@ describe('loadEventDetailThroughSessionCache', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('頁面保留 uid key，只有第一次載入走這層快取', () => {
+  // 測試同步更新（SPEED-1-3）：訪客→登入時不整頁重掛，所以 key 只留路線 id；換帳號、登出仍由頁內 paintedUid／accountReset
+  // 與序號整頁重讀（L-43）。取代原本守「key 含 uid」的原始碼斷言。
+  it('頁面 key 只留路線 id，只有第一次載入走這層快取', () => {
     const page = readFileSync(resolve(__dirname, '../pages/EventDetailPage.tsx'), 'utf8');
-    expect(page).toContain('key={`${routeId}:${viewer.uid ?? \'guest\'}`}');
-    expect(page.match(/loadEventDetailThroughSessionCache\(/g)).toHaveLength(2);
+    expect(page).toContain('key={routeId}');
+    expect(page).not.toContain("viewer.uid ?? 'guest'}`}");
+    // SPEED-1-3：早取完整文件取代了「首屏先打一次 SDK 活動文件」，快取層只剩早取失敗／過期後的退回那一次。
+    expect(page.match(/loadEventDetailThroughSessionCache\(/g)).toHaveLength(1);
     expect(page.match(/loadEventDetail\(/g)).toHaveLength(3);
     expect(page).toContain("setRosterPhase('ready')");
     expect(page).toContain('rosterAutoHold.current = true');

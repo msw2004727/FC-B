@@ -661,95 +661,146 @@ body.home-activity-search-open {
   }
 }
 
-.home-next-empty {
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  padding: .1rem .2rem .15rem;
-}
-
-.home-next-empty-illustration {
+/* 沒有下一場時的空狀態（站長 2026-11-10 選定：G2-2 版面＋T3 字體）。
+   銅金色只用在這張卡，色值定義在 .is-empty 內並隨深淺色主題切換；取代原本的藍色日曆插圖、置中大標題與兩顆大按鈕。 */
+.home-next-card.is-empty {
+  --hne-a: rgba(214, 162, 74, .30);
+  --hne-b: rgba(176, 122, 46, .10);
+  --hne-line: rgba(176, 122, 46, .5);
+  --hne-ink: #8a5a14;
+  --hne-g1: #e8b95f;
+  --hne-g2: #b9822f;
+  --hne-btn-text: #2b1a08;
+  --hne-glow: rgba(255, 214, 130, .55);
   position: relative;
-  width: min(172px, 70%);
-  aspect-ratio: 1.75 / 1;
-  margin: -.12rem auto .42rem;
-}
-
-.home-next-calendar-art {
-  position: absolute;
-  inset: 8px 30px 4px 12px;
-  border-radius: 18px;
-  background: linear-gradient(145deg, #dbeafe, #bfdbfe);
-  border: 1px solid rgba(37, 99, 235, .18);
-  box-shadow: 0 14px 22px rgba(37, 99, 235, .18);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 1fr;
-  gap: 8px;
-  padding: 28px 18px 14px;
-}
-
-.home-next-calendar-art::before {
-  content: '';
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  top: 14px;
-  height: 8px;
-  border-radius: 999px;
-  background: repeating-linear-gradient(90deg, #2563eb 0 12px, transparent 12px 26px);
-}
-
-.home-next-calendar-art span,
-.home-next-calendar-art strong {
-  border-radius: 6px;
-  background: rgba(255, 255, 255, .72);
-}
-
-.home-next-calendar-art strong {
-  display: grid;
-  place-items: center;
-  background: #22c55e;
-  color: #fff;
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.home-next-ball-art {
-  position: absolute;
-  right: 14px;
-  bottom: 2px;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  isolation: isolate;
+  padding: .7rem .75rem .75rem;
+  border-color: var(--hne-line);
   background:
-    radial-gradient(circle at 50% 50%, #111827 0 14%, transparent 15%),
-    radial-gradient(circle at 35% 30%, #111827 0 10%, transparent 11%),
-    radial-gradient(circle at 70% 35%, #111827 0 10%, transparent 11%),
-    radial-gradient(circle at 35% 72%, #111827 0 10%, transparent 11%),
-    radial-gradient(circle at 72% 70%, #111827 0 10%, transparent 11%),
-    #fff;
-  border: 2px solid #e5e7eb;
-  box-shadow: 0 8px 16px rgba(15, 23, 42, .18);
+    radial-gradient(120% 90% at 0% 0%, var(--hne-glow), transparent 55%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .05) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--hne-a), var(--hne-b)),
+    var(--bg-card);
+  box-shadow: 0 2px 14px rgba(176, 122, 46, .14), inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+
+[data-theme="dark"] .home-next-card.is-empty {
+  --hne-a: rgba(224, 177, 90, .24);
+  --hne-b: rgba(176, 122, 46, .08);
+  --hne-line: rgba(224, 177, 90, .5);
+  --hne-ink: #e8bf6a;
+  --hne-g1: #f3c876;
+  --hne-g2: #c58a33;
+  --hne-glow: rgba(240, 196, 110, .30);
+}
+
+.is-empty .home-next-head {
+  position: relative;
+  z-index: 2;
+  margin-bottom: .4rem;
+}
+
+.is-empty .home-next-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  color: var(--hne-ink);
+}
+
+.is-empty .home-next-head h3::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--hne-g1), var(--hne-g2));
+}
+
+.is-empty .home-next-view-all {
+  color: var(--hne-ink);
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.is-empty .home-next-empty {
+  display: block;
+  padding: 0;
+  text-align: left;
+}
+
+.home-next-empty-art {
+  position: absolute;
+  z-index: 0;
+  right: -8px;
+  bottom: -14px;
+  width: 134px;
+  height: 110px;
+  opacity: .5;
+  pointer-events: none;
+}
+
+.home-next-empty-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  max-width: 72%;
+  margin-bottom: .65rem;
+  white-space: nowrap;
 }
 
 .home-next-empty-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
-  font-size: 1.05rem;
+  font-size: 1.24rem;
   font-weight: 900;
-  line-height: 1.25;
+  line-height: 1.2;
+  letter-spacing: -.005em;
 }
 
 .home-next-empty-sub {
-  margin-top: .34rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: .3rem;
   color: var(--text-secondary);
-  font-size: .82rem;
-  line-height: 1.35;
+  font-size: .76rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: .015em;
 }
 
-.home-next-empty-actions {
-  width: min(100%, 340px);
-  margin-top: .85rem;
+.is-empty .home-next-empty-actions {
+  position: relative;
+  z-index: 2;
+  width: auto;
+  margin-top: 0;
+  gap: .5rem;
+}
+
+.home-next-card.is-empty .home-next-primary,
+.home-next-card.is-empty .home-next-outline {
+  min-height: 38px;
+  padding: 0 .8rem;
+  border-radius: 999px;
+  font-size: .88rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+
+.home-next-card.is-empty .home-next-primary {
+  border: 0;
+  background: linear-gradient(180deg, var(--hne-g1), var(--hne-g2));
+  color: var(--hne-btn-text);
+  box-shadow: 0 4px 12px rgba(176, 122, 46, .3), inset 0 1px 0 rgba(255, 255, 255, .4);
+}
+
+.home-next-card.is-empty .home-next-outline {
+  border: 1px solid var(--hne-line);
+  background: color-mix(in srgb, var(--bg-card) 62%, transparent);
+  color: var(--hne-ink);
 }
 
 .home-next-loading {

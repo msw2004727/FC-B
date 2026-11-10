@@ -12,7 +12,7 @@ import type { Firestore } from 'firebase/firestore';
 
 import { RELOAD_AT_KEY } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
-import { APP_VERSION } from '@/version';
+import { readAppVersion } from './app-meta';
 
 const ERROR_LOGS = 'errorLogs';
 const BUDGET_KEY = 'fcb:errlog-budget';
@@ -343,7 +343,7 @@ async function persist(context: string, parsed: ParsedError, key: string, diag: 
       severityHint: '',
       noise: false,
       page: where.page,
-      appVersion: APP_VERSION,
+      appVersion: readAppVersion(),
       url: where.url,
       hash: where.hash,
       userAgent: readUserAgent(),

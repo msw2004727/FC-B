@@ -1,0 +1,155 @@
+/*
+ * 候補名單 W3（排隊連線）。列高、斑馬、表頭底線、姓名列骨架重用 companion-roster.css 的 .att-roster。
+ * 這裡只放候補專屬樣式。
+ */
+
+.att-wl-section {
+  /* 站長 2026-11-10 選定 W3；R-UI-005 例外（沿用候補一貫的紫色） */
+  --wl: #7e22ce;
+  --wl-soft: rgba(126, 34, 206, .10);
+  --wl-line: rgba(126, 34, 206, .45);
+  --wl-on: #fff;
+}
+
+[data-theme="dark"] .att-wl-section {
+  --wl: #c4a3ff;
+  --wl-soft: rgba(196, 163, 255, .14);
+  --wl-line: rgba(196, 163, 255, .5);
+  --wl-on: #1a1d24;
+}
+
+.att-wl-section .att-wl-title {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--wl);
+}
+
+.att-wl-section .att-wl-hourglass {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.att-wl-scroll {
+  overflow-x: auto;
+}
+
+.att-roster.att-roster-waitlist {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: .8rem;
+  table-layout: fixed;
+}
+
+.att-roster-waitlist .att-wl-promote-h {
+  width: 3rem;
+  text-align: center;
+  padding: .4rem .3rem;
+  font-weight: 600;
+}
+
+/* 預覽表頭只有一條底線，欄標題不另寫文字。 */
+.att-roster-waitlist .att-wl-name-h {
+  padding: 0;
+}
+
+.att-roster-waitlist td.att-wl-name {
+  position: relative;
+  padding-left: .3rem;
+  padding-right: .3rem;
+  text-align: left;
+}
+
+.att-roster-waitlist .att-name-line {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+/* 本人已正取的組頭：沒有排隊號碼，留同寬空位讓名字欄對齊。 */
+.att-roster-waitlist .att-wl-gap {
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  margin-right: .5rem;
+}
+
+.att-roster-waitlist .att-no {
+  position: relative;
+  z-index: 1;
+  width: 1.35rem;
+  flex: 0 0 1.35rem;
+  height: 1.35rem;
+  margin-right: .5rem;
+  align-self: center;
+  border-radius: 50%;
+  justify-content: center;
+  background: var(--bg-card);
+  color: var(--wl);
+  border: 1.5px solid var(--wl);
+  font-weight: 800;
+  font-size: .68rem;
+}
+
+/* 第 1 位＝下一位遞補：實心紫底白字，外圈光暈。 */
+.att-roster-waitlist .att-no.att-wl-next {
+  background: var(--wl);
+  color: var(--wl-on);
+  border-color: var(--wl);
+  box-shadow: 0 0 0 3px var(--wl-soft);
+}
+
+/* 虛線中心對齊圓點：姓名欄左內距 .3rem + 圓點半徑 .675rem。圓點蓋住線的中段。 */
+.att-roster-waitlist td.att-wl-link::after {
+  content: "";
+  position: absolute;
+  left: calc(.3rem + .675rem - .75px);
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px dotted var(--wl-line);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.att-roster-waitlist td.att-wl-link-first::after {
+  top: 50%;
+}
+
+.att-roster-waitlist td.att-wl-link-last::after {
+  bottom: 50%;
+}
+
+/* 名字過長：膠囊收成省略號，不撐破表格。 */
+.att-roster-waitlist .reg-name-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.att-roster-waitlist .reg-name-text > .user-capsule,
+.att-roster-waitlist .cr-lead > .user-capsule {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「已正取」：報名人本人已在正取名單，標籤接在名片右邊，與名片等高，同一條水平中線，字在標籤內水平置中（站長 2026-11-10 指定）。 */
+.att-roster-waitlist .att-wl-confirmed {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0 .55rem;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+}

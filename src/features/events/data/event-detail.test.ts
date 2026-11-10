@@ -4,16 +4,21 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getDocMock, getDocsMock, whereMock, limitMock } = vi.hoisted(() => ({
+const guestDb = { __role: 'guest' };
+const signedDb = { __role: 'signed-in' };
+
+const { getDocMock, getDocsMock, whereMock, limitMock, getFirebaseMock, getFirebaseCoreMock } = vi.hoisted(() => ({
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
   whereMock: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
   limitMock: vi.fn((n: number) => ({ limit: n })),
+  getFirebaseMock: vi.fn(),
+  getFirebaseCoreMock: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
-  doc: (_db: unknown, ...paths: string[]) => ({ path: paths.join('/') }),
-  collection: (_db: unknown, ...paths: string[]) => ({ path: paths.join('/') }),
+  doc: (db: unknown, ...paths: string[]) => ({ db, path: paths.join('/') }),
+  collection: (db: unknown, ...paths: string[]) => ({ db, path: paths.join('/') }),
   query: (ref: unknown) => ref,
   where: whereMock,
   limit: limitMock,
@@ -23,7 +28,8 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(async () => ({ db: { __fake: true }, auth: null, functions: null })),
+  getFirebase: getFirebaseMock,
+  getFirebaseCore: getFirebaseCoreMock,
 }));
 
 import { resolveEventDocId } from '@/data/paths';
@@ -35,6 +41,10 @@ beforeEach(() => {
   getDocsMock.mockReset();
   whereMock.mockClear();
   limitMock.mockClear();
+  getFirebaseMock.mockReset();
+  getFirebaseCoreMock.mockReset();
+  getFirebaseMock.mockResolvedValue({ db: guestDb, auth: null, functions: null });
+  getFirebaseCoreMock.mockResolvedValue({ app: {}, db: guestDb });
 });
 
 describe('resolveEventDocId', () => {
@@ -164,5 +174,123 @@ describe('loadEventRegistrations', () => {
 
     const q = getDocsMock.mock.calls[0]?.[0] as { path?: string } | undefined;
     expect(q?.path).toBe('events/docId123/registrations');
+  });
+});
+
+describe('訪客：公開活動文件只等 app＋firestore', () => {
+  beforeEach(() => {
+    getFirebaseCoreMock.mockResolvedValue({ app: {}, db: guestDb });
+    // 公開讀取若誤等完整 context，這個 Promise 不會完成。
+    getFirebaseMock.mockReturnValue(new Promise(() => undefined));
+  });
+
+  it('resolveEventDocId 只用 core 的 db，不呼叫 getFirebase', async () => {
+    getDocMock.mockResolvedValueOnce({
+      exists: () => true,
+      id: 'evtA',
+      data: () => ({ id: 'evtA', title: '訪客' }),
+    });
+
+    await expect(resolveEventDocId('evtA')).resolves.toBe('evtA');
+    expect(getFirebaseCoreMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseMock).not.toHaveBeenCalled();
+    expect(getDocMock.mock.calls[0]?.[0]).toMatchObject({ db: guestDb, path: 'events/evtA' });
+  });
+
+  it('loadEventDetail 直接沒有時，where 仍用 core 的 db', async () => {
+    getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'publicEvt', data: () => undefined });
+    getDocsMock.mockResolvedValueOnce({
+      docs: [{ id: 'docId123', data: () => ({ id: 'publicEvt', title: '舊活動' }) }],
+    });
+
+    const result = await loadEventDetail('publicEvt');
+    expect(result?.eventDocId).toBe('docId123');
+    expect(result?.event.title).toBe('舊活動');
+    expect(getFirebaseCoreMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseMock).not.toHaveBeenCalled();
+    expect(getDocMock.mock.calls[0]?.[0]).toMatchObject({ db: guestDb, path: 'events/publicEvt' });
+    expect(getDocsMock.mock.calls[0]?.[0]).toMatchObject({ db: guestDb, path: 'events' });
+  });
+
+  it('報名子集合仍等完整 context：core 先好也不查詢', async () => {
+    let releaseFirebase!: (value: { db: typeof signedDb; auth: { uid: null }; functions: object }) => void;
+    getFirebaseMock.mockReturnValue(new Promise((resolve) => {
+      releaseFirebase = resolve;
+    }));
+    getFirebaseCoreMock.mockClear();
+
+    const pending = loadEventRegistrations('docId123');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(getDocsMock).not.toHaveBeenCalled();
+    expect(getFirebaseCoreMock).not.toHaveBeenCalled();
+    expect(getFirebaseMock).toHaveBeenCalledTimes(1);
+
+    getDocsMock.mockResolvedValueOnce({
+      forEach: (cb: (doc: { id: string; data: () => RegistrationDoc }) => void) => {
+        cb({ id: 'r1', data: () => ({ userId: 'u1', status: 'confirmed' }) });
+      },
+    });
+    releaseFirebase({ db: signedDb, auth: { uid: null }, functions: {} });
+
+    await expect(pending).resolves.toEqual([
+      { userId: 'u1', status: 'confirmed', _docId: 'r1' },
+    ]);
+    expect(getDocsMock.mock.calls[0]?.[0]).toMatchObject({
+      db: signedDb,
+      path: 'events/docId123/registrations',
+    });
+  });
+});
+
+describe('登入者：公開讀取仍等 core（不拆 waitForFirstAuthState），報名走完整 context', () => {
+  it('活動文件在 core 就緒前不查詢，也不等 getFirebase', async () => {
+    let releaseCore!: (value: { app: object; db: typeof signedDb }) => void;
+    getFirebaseCoreMock.mockReturnValue(new Promise((resolve) => {
+      releaseCore = resolve;
+    }));
+    getFirebaseMock.mockReturnValue(new Promise(() => undefined));
+    getDocMock.mockResolvedValueOnce({
+      exists: () => true,
+      id: 'evtA',
+      data: () => ({ id: 'evtA', title: '登入' }),
+    });
+
+    const loading = loadEventDetail('evtA');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(getFirebaseCoreMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseMock).not.toHaveBeenCalled();
+    expect(getDocMock).not.toHaveBeenCalled();
+
+    releaseCore({ app: {}, db: signedDb });
+    const result = await loading;
+    expect(result?.eventDocId).toBe('evtA');
+    expect(result?.event.title).toBe('登入');
+    expect(getDocMock.mock.calls[0]?.[0]).toMatchObject({ db: signedDb, path: 'events/evtA' });
+  });
+
+  it('報名子集合使用 getFirebase 的 db，不改走 core', async () => {
+    getFirebaseMock.mockResolvedValue({
+      db: signedDb,
+      auth: { uid: 'u1' },
+      functions: {},
+    });
+    getFirebaseCoreMock.mockClear();
+    getDocsMock.mockResolvedValueOnce({
+      forEach: (cb: (doc: { id: string; data: () => RegistrationDoc }) => void) => {
+        cb({ id: 'r1', data: () => ({ userId: 'u1', status: 'confirmed' }) });
+      },
+    });
+
+    const regs = await loadEventRegistrations('docId123');
+
+    expect(regs).toEqual([{ userId: 'u1', status: 'confirmed', _docId: 'r1' }]);
+    expect(getFirebaseMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseCoreMock).not.toHaveBeenCalled();
+    expect(getDocsMock.mock.calls[0]?.[0]).toMatchObject({
+      db: signedDb,
+      path: 'events/docId123/registrations',
+    });
   });
 });

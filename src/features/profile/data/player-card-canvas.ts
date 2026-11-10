@@ -120,6 +120,20 @@ export const PLAYER_CARD_PNG_SCALE = 3;
 
 /** 預覽外圈 100（上緣 47）、金圈 4、白圈 3：半徑 50／46／43，圓心 (110, 97)。 */
 const AVATAR = { cx: 110, cy: 97, outer: 50, inner: 46, photo: 43 } as const;
+/**
+ * PNG 人氣星（與畫面同一條路徑與色）。不畫數字、不移動其他元素。
+ * 星盒 17、間距 1、五顆水平置中，壓在金圈下緣（破格）：位置與畫面一致，星盒上緣在金圈下緣上方 10
+ * （畫面是 bottom:-22 的「星＋間距＋數字」整塊，扣掉數字 11 與間距 4，星盒上緣落在 -10）。
+ */
+const POP_STAR = {
+  size: 17,
+  gap: 1,
+  viewBox: 24,
+  path: 'M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z',
+  fill: '#f5b82e',
+  stroke: '#d89a12',
+  empty: { light: '#d9dde5', dark: '#4a5266' },
+} as const;
 /** 預覽計量條與三格同寬（17～203）、高 7、上緣 185。 */
 const GAUGE = { x: 17, y: 185, width: 186, height: 7 } as const;
 /** 三格：上緣 197、下緣 261（分隔線全高）；數字／中文／縮寫基線。 */
@@ -416,6 +430,57 @@ export function drawMotif(ctx: Ctx, motif: PlayerCardMotif | null, theme: Player
   ctx.restore();
 }
 
+type StarKind = 'full' | 'half' | 'empty';
+
+function popularityStarKinds(score: number): StarKind[] {
+  const halves = Math.round(Math.min(5, Math.max(0, score)) * 2);
+  const full = Math.floor(halves / 2);
+  const half = halves % 2 === 1;
+  return Array.from({ length: 5 }, (_, i): StarKind => {
+    if (i < full) return 'full';
+    if (half && i === full) return 'half';
+    return 'empty';
+  });
+}
+
+/** null＝不碰 ctx（與沒有這功能時的繪圖呼叫序列相同）。不支援 Path2D 時略過，與身分圖案相同。 */
+function drawPopularityStars(ctx: Ctx, score: number | null, theme: PlayerCardTheme): void {
+  if (score == null || !Number.isFinite(score)) return;
+  if (typeof Path2D !== 'function') return;
+  const empty = POP_STAR.empty[theme];
+  const total = 5 * POP_STAR.size + 4 * POP_STAR.gap;
+  const left = AVATAR.cx - total / 2;
+  const top = AVATAR.cy + AVATAR.outer - 10;
+  const scale = POP_STAR.size / POP_STAR.viewBox;
+  const kinds = popularityStarKinds(score);
+  for (let i = 0; i < 5; i += 1) {
+    const kind = kinds[i] ?? 'empty';
+    ctx.save();
+    ctx.translate(left + i * (POP_STAR.size + POP_STAR.gap), top);
+    ctx.scale(scale, scale);
+    const path = new Path2D(POP_STAR.path);
+    if (kind === 'half') {
+      const g = ctx.createLinearGradient(0, 0, POP_STAR.viewBox, 0);
+      g.addColorStop(0, POP_STAR.fill);
+      g.addColorStop(0.5, POP_STAR.fill);
+      g.addColorStop(0.5, empty);
+      g.addColorStop(1, empty);
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = kind === 'full' ? POP_STAR.fill : empty;
+    }
+    ctx.fill(path);
+    // 站長核可的預覽：空星沒有描邊，有金色的星（滿星、半星）才描邊。
+    if (kind !== 'empty') {
+      ctx.strokeStyle = POP_STAR.stroke;
+      ctx.lineWidth = 0.8;
+      ctx.lineJoin = 'round';
+      ctx.stroke(path);
+    }
+    ctx.restore();
+  }
+}
+
 function drawShine(ctx: Ctx, theme: PlayerCardTheme): void {
   // PNG 畫正面光層；角度、停點、疊加方式與網頁共用 PLAYER_CARD_SHINE（player-card-model.ts）。
   const { width: W, height: H, radius } = PLAYER_CARD_SIZE;
@@ -453,6 +518,8 @@ export function drawPlayerCard(
   drawLogo(ctx, assets.logo, p);
   drawMotif(ctx, model.motif, theme);
   drawShine(ctx, theme);
+  // 星星在斜光之上（畫面 z-index 5 > 斜光 3）。null 時這個函式不呼叫 ctx。
+  drawPopularityStars(ctx, model.popularityStars, theme);
   // QR 畫在反光之後，避免斜光降低對比影響掃描。
   if (assets.qr && assets.qr.size > 0) drawQr(ctx, assets.qr, p);
 }

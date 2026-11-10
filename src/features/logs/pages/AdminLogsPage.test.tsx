@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ViewerView } from '@/features/profile/data/viewer';
+import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import type { OperationLogDoc } from '../data/operation-logs';
 import AdminLogsPage from './AdminLogsPage';
 
@@ -10,10 +10,14 @@ vi.mock('@/core/back-guard', () => ({
   useGoBack: (fallbackPath: string) => () => mockGoBack(fallbackPath),
 }));
 
+const authState = vi.hoisted(() => ({ lastUid: null as string | null | undefined }));
+vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => authState.lastUid }));
+
 const mockUseViewer = vi.fn<() => ViewerView>();
-vi.mock('@/features/profile/data/viewer', () => ({
-  useViewer: () => mockUseViewer(),
-}));
+vi.mock('@/features/profile/data/viewer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/profile/data/viewer')>();
+  return { ...actual, useViewer: () => mockUseViewer() };
+});
 
 const mockToast = vi.fn<(arg: { message: string; tone?: string }) => void>();
 vi.mock('@/ui/Toast', () => ({
@@ -158,6 +162,7 @@ async function chooseType(value: string): Promise<void> {
 describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.lastUid = null;
     mockUseViewer.mockReturnValue(makeViewer());
     mockFetchOperationLogs.mockResolvedValue([]);
     mockCopyDiagnostic.mockResolvedValue(undefined);
@@ -206,6 +211,30 @@ describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
         }
       });
     }
+
+    it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+      authState.lastUid = 'u_admin';
+      mockUseViewer.mockReturnValue(createMinimalViewer('u_admin'));
+      mockFetchOperationLogs.mockResolvedValue([makeLog(1)]);
+      const view = render(<AdminLogsPage />);
+      expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+      expect(screen.queryByText('權限不足')).toBeNull();
+      expect(mockFetchOperationLogs).not.toHaveBeenCalled();
+
+      mockUseViewer.mockReturnValue(makeViewer({ hasPermission: () => false }));
+      view.rerender(<AdminLogsPage />);
+      expect(document.querySelector('.ui-page-spinner')).toBeNull();
+      expect(screen.getByText('權限不足')).toBeTruthy();
+      expect(mockFetchOperationLogs).not.toHaveBeenCalled();
+
+      mockUseViewer.mockReturnValue(makeViewer());
+      view.rerender(<AdminLogsPage />);
+      await waitFor(() => {
+        expect(screen.getByText('操作者1：內容1')).toBeTruthy();
+      });
+      expect(screen.queryByText('權限不足')).toBeNull();
+      expect(mockFetchOperationLogs).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('頁首與篩選列（逐項照 A pages/admin-system.html）', () => {

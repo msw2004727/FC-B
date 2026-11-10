@@ -30,6 +30,8 @@ import {
   playerCardMotifStrokes,
   type PlayerCardMotif,
 } from '../data/player-card-motifs';
+import { popularityStars } from '../data/popularity-tiers';
+import { PopularityStars } from './PopularityStars';
 import './player-card.css';
 
 /** 右下身分圖案（裝飾）：路徑與色票都來自 player-card-motifs，與 PNG 同一份；右下圓角裁切由 CSS clip-path 處理。 */
@@ -130,12 +132,18 @@ export function PlayerCard({
   model,
   avatar,
   topBar,
+  popularityViews,
 }: {
   model: PlayerCardModel;
   /** 頭像節點（沿用 LegacyAvatar，含第二身分皇冠）。 */
   avatar: ComponentChildren;
   /** 卡片上方、與鎖頭同一列置中顯示的內容（個人頁放身分標籤）；不進卡面、不進 PNG。 */
   topBar?: ComponentChildren;
+  /**
+   * 人氣瀏覽人數。省略或 null＝完全不畫（不加元素、不加 class）。
+   * 有限非負數才顯示星星與數字。
+   */
+  popularityViews?: number | null;
 }): JSX.Element {
   const t = useT();
   useTheme(); // 深淺色切換時重畫 logo 與斜光
@@ -149,6 +157,11 @@ export function PlayerCard({
     writePlayerCardLocked(next);
   };
   const logoUrl = playerCardLogoUrl(theme);
+  const popularityCount = typeof popularityViews === 'number'
+    && Number.isFinite(popularityViews)
+    && popularityViews >= 0
+    ? Math.trunc(popularityViews)
+    : null;
 
   // 外層留出鎖頭列；只有舞台吃撥動手勢（鎖頭在舞台外，點它不會翻）。正面仍是 .player-card（既有測試與 PNG 對照不變）。
   return (
@@ -187,7 +200,7 @@ export function PlayerCard({
         onDragStart={(e) => e.preventDefault()}
       >
         <div class="player-card-flip" ref={flipRef}>
-          <div class="player-card" data-theme-variant={theme}>
+          <div class={popularityCount !== null ? 'player-card has-popularity' : 'player-card'} data-theme-variant={theme}>
             <div class="player-card-frame" aria-hidden="true" />
             <div class="player-card-att">
               <span class="player-card-att-num">{model.attendText}</span>
@@ -206,6 +219,12 @@ export function PlayerCard({
                 <div class={`player-card-club${model.clubBadgeWide ? ' is-wide' : ''}`}>
                   <span class="player-card-club-label">{t('profile.playerCard.clubs')}</span>
                   <span class="player-card-club-num">{String(model.clubCount)}</span>
+                </div>
+              )}
+              {popularityCount !== null && (
+                <div class="player-card-popularity">
+                  <PopularityStars score={popularityStars(popularityCount)} />
+                  <span class="player-card-popularity-num">{String(popularityCount)}</span>
                 </div>
               )}
             </div>

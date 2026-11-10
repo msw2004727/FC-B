@@ -25,6 +25,7 @@ import { getLastKnownAuthUid } from '@/data/auth';
 import { useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -78,7 +79,7 @@ export default function AdminMessagesPage(): JSX.Element {
   const viewer = useViewer();
   const goBack = useGoBack('/');
 
-  // 完整 viewer 到位前顯示骨架，不閃「權限不足」、不讀資料（同俱樂部管理頁）。
+  // 完整 viewer 到位前顯示轉圈，不閃「權限不足」、不讀資料（同俱樂部管理頁）。
   const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
   const canAccess = !waiting && canAccessMessagesPage(viewer);
   const showCompose = canComposeMessage(viewer);
@@ -255,9 +256,7 @@ export default function AdminMessagesPage(): JSX.Element {
     return (
       <div class="legacy-ui">
         <section class="page active" id="page-admin-messages">
-          <div role="status" aria-busy="true" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.82rem">
-            {t('inbox.admin.loading')}
-          </div>
+          <PageSpinner />
         </section>
       </div>
     );

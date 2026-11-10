@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import { CreateEventTypeSheet } from './CreateEventTypeSheet';
+
+const sheetCss = readFileSync(resolve(__dirname, 'create-event-type-sheet.css'), 'utf8');
 
 const mocks = vi.hoisted(() => ({
   show: vi.fn(),
@@ -59,7 +63,8 @@ describe('CreateEventTypeSheet', () => {
     const external = document.getElementById('cets-external');
     expect(external?.getAttribute('aria-disabled')).toBe('true');
     expect(external?.getAttribute('data-feature-locked')).toBe('true');
-    expect(external?.style.opacity).toBe('0.62');
+    expect(external?.classList.contains('cets-option-lock')).toBe(true);
+    expect(external?.getAttribute('style')).toBeNull();
   });
 
   it('活動連結只顯示尚未開放', () => {
@@ -129,5 +134,61 @@ describe('CreateEventTypeSheet', () => {
     expect(mocks.show).toHaveBeenCalledWith({
       message: '權限不足：需要建立活動權限',
     });
+  });
+
+  it('銅金面板 class：橫槓、兩個選項、取消，沒有 emoji，鎖頭只在活動連結', () => {
+    render(
+      <CreateEventTypeSheet open viewer={viewer} onClose={vi.fn()} onCustom={vi.fn()} />,
+    );
+    const overlay = document.getElementById('create-event-type-sheet');
+    if (!overlay) throw new Error('缺少 sheet');
+    expect(overlay.classList.contains('cets-overlay')).toBe(true);
+    expect(overlay.getAttribute('style')).toBeNull();
+    expect(overlay.querySelector('.cets-panel')).toBeTruthy();
+    expect(overlay.querySelector('.cets-grab')).toBeTruthy();
+    expect(overlay.querySelectorAll('.cets-option').length).toBe(2);
+    expect(document.getElementById('cets-cancel')?.classList.contains('cets-cancel')).toBe(true);
+
+    const custom = document.getElementById('cets-custom');
+    const external = document.getElementById('cets-external');
+    expect(custom?.classList.contains('cets-option-main')).toBe(true);
+    expect(custom?.querySelector('.cets-chev')).toBeTruthy();
+    expect(custom?.querySelector('.cets-lock')).toBeNull();
+    expect(external?.getAttribute('aria-disabled')).toBe('true');
+    expect(external?.querySelector('.cets-lock')).toBeTruthy();
+    expect(external?.querySelector('.cets-chev')).toBeNull();
+
+    const html = overlay.innerHTML;
+    expect(html).not.toContain('📋');
+    expect(html).not.toContain('🔗');
+    expect(overlay.querySelectorAll('svg').length).toBe(4);
+    for (const svg of overlay.querySelectorAll('svg')) {
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('進場動畫用 backwards，不用 both／forwards（否則終點 opacity／transform 會蓋掉反灰與按下縮放）', () => {
+    const lines = sheetCss.split('\n').filter((line) => /^\s*animation:/.test(line));
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    for (const line of lines) {
+      if (line.includes('cets-')) {
+        expect(line).toContain('backwards');
+        expect(line).not.toMatch(/\b(both|forwards)\b/);
+      }
+    }
+  });
+
+  it('樣式檔含減少動態、webkit 毛玻璃與不支援 backdrop-filter 的退回', () => {
+    expect(sheetCss).toContain('prefers-reduced-motion');
+    expect(sheetCss).toContain('-webkit-backdrop-filter');
+    expect(sheetCss).toContain('@supports not');
+    expect(sheetCss).toContain('blur(18px) saturate(160%)');
+    expect(sheetCss).toContain('rgba(17,24,39,.95)');
+    expect(sheetCss).toContain('rgba(0,0,0,.6)');
+    expect(sheetCss).toContain('position: fixed');
+    expect(sheetCss).toContain('z-index: 1300');
+    expect(sheetCss).toContain('animation-delay: .10s');
+    expect(sheetCss).toContain('animation-delay: .18s');
+    expect(sheetCss).toContain('站長 2026-11-10 選定 B 銅金；R-UI-005 例外');
   });
 });

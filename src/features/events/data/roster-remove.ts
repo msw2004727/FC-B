@@ -10,6 +10,7 @@
  */
 
 import { callFn, CallableError } from '@/data/callables';
+import { beginSubmitting } from '@/core/submit-guard';
 import type { CancelRegistrationResponse } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
 import { runInBackground } from './background-work';
@@ -193,6 +194,8 @@ function findTargetRegistrations(
 export async function managerRemoveRegistration(
   input: ManagerRemoveRegistrationInput,
 ): Promise<ManagerRemoveRegistrationResult> {
+  const release = beginSubmitting('roster-remove');
+  try {
   const { eventId, event, registration, registrations = [], operatorUid, context } = input;
   if (!event) {
     return {
@@ -303,4 +306,7 @@ export async function managerRemoveRegistration(
     response,
     toastMessage: `已將 ${targetName} 從報名名單中移除`,
   };
+  } finally {
+    release();
+  }
 }

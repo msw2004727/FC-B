@@ -2,6 +2,7 @@
  * 唯一直接存取活動 Firestore 的模組。
  * 保留 preview/history、fallback、分頁與過期回應丟棄語意。
  * 查詢失敗會 reject；成功分支仍更新自己的快取，失敗分支保留舊快取。
+ * preview／history：active 一拿到就提交（畫面可先畫），terminal 稍後補上；terminal 失敗仍 reject，但不回滾已提交的 active。
  */
 import {
   collection,
@@ -28,6 +29,8 @@ export const TERMINAL_PREVIEW_LIMIT = 50;
 export const TERMINAL_HISTORY_LIMIT = 10;
 export const TERMINAL_PAGE_SIZE_DEFAULT = 100;
 export const ACTIVE_EVENTS_LIMIT = 200;
+/** 列表沿用剛成功載入的 active（首頁進來）的短時效。對齊活動詳情 session 快取。 */
+export const ACTIVE_LIST_REUSE_TTL_MS = 30_000;
 
 export type TerminalMode = 'preview' | 'history' | 'none';
 
@@ -39,6 +42,8 @@ export interface EventsRepoLogger {
 export interface EventsRepoDeps {
   getFirebase: () => Promise<{ db: Firestore }>;
   logger?: EventsRepoLogger;
+  /** 測試注入時鐘；預設 Date.now。 */
+  now?: () => number;
 }
 
 export interface EventsSnapshot {
@@ -54,6 +59,14 @@ export interface EventsSnapshot {
 export interface LoadEventsStaticOptions {
   terminalMode?: TerminalMode;
   forceTerminalRefresh?: boolean;
+  /**
+   * 短 TTL 內若 active 已成功載入，略過 active 查詢，只補 terminal。
+   * `forceTerminalRefresh` 時不沿用（手動重新整理）。
+   * 沿用成功的回條是 `['terminal']`，不是 `['events']`：這次沒有確認新取得 active。
+   */
+  reuseActiveIfFresh?: boolean;
+  /** active 已可畫（含沿用）且這次 active 沒失敗時呼叫。此時 terminal 可能還沒回來。 */
+  onActiveCommitted?: () => void;
 }
 
 export interface EnsureTerminalEventsLoadedOptions {
@@ -90,6 +103,8 @@ interface InternalState {
   loadingMoreTerminal: boolean;
   loadSeq: number;
   moreSeq: number;
+  /** 最近一次「真的查到並提交」active 的時間。沿用不更新，TTL 才不會被延長。 */
+  activeLoadedAt: number | null;
 }
 
 export class EventsLoadError extends Error {
@@ -116,7 +131,12 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     loadingMoreTerminal: false,
     loadSeq: 0,
     moreSeq: 0,
+    activeLoadedAt: null,
   };
+
+  function nowMs(): number {
+    return deps.now?.() ?? Date.now();
+  }
 
   function mapDoc(snapshot: QueryDocumentSnapshot<DocumentData>): EventDoc {
     return {
@@ -167,6 +187,13 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     return { result: fallback, ordered: false, pageSize };
   }
 
+  function canReuseActive(options: LoadEventsStaticOptions): boolean {
+    if (options.reuseActiveIfFresh !== true || options.forceTerminalRefresh === true) return false;
+    if (state.activeLoadedAt === null) return false;
+    const age = nowMs() - state.activeLoadedAt;
+    return age >= 0 && age < ACTIVE_LIST_REUSE_TTL_MS;
+  }
+
   async function loadEventsStatic(
     options: LoadEventsStaticOptions = {},
   ): Promise<string[]> {
@@ -180,6 +207,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
       ? TERMINAL_HISTORY_LIMIT
       : TERMINAL_PREVIEW_LIMIT;
     const sequence = ++state.loadSeq;
+    const reuseActive = canReuseActive(options);
 
     let db: Firestore;
     try {
@@ -190,26 +218,44 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     }
     if (sequence !== state.loadSeq) return [];
 
-    const [active, terminal] = await Promise.all([
-      fetchSnapshot(
-        'active',
-        query(
-          collection(db, eventsCollectionPath),
-          where('status', 'in', [...ACTIVE_EVENT_STATUSES]),
-          limit(ACTIVE_EVENTS_LIMIT),
-        ),
-      ),
-      shouldLoadTerminal
-        ? fetchTerminal(db, terminalLimit)
-        : Promise.resolve<TerminalResult | null>(null),
-    ]);
+    // 兩個查詢仍平行發出。active 先提交，不等 terminal，畫面才能先畫進行中的活動。
+    const activePromise = reuseActive
+      ? null
+      : fetchSnapshot(
+          'active',
+          query(
+            collection(db, eventsCollectionPath),
+            where('status', 'in', [...ACTIVE_EVENT_STATUSES]),
+            limit(ACTIVE_EVENTS_LIMIT),
+          ),
+        );
+    const terminalPromise = shouldLoadTerminal ? fetchTerminal(db, terminalLimit) : null;
 
+    let activeFailed = false;
+    if (activePromise) {
+      const active = await activePromise;
+      if (sequence !== state.loadSeq) return [];
+      if (active.ok) {
+        state.active = active.docs.map(mapDoc);
+        state.activeFromCache = active.fromCache;
+        state.activeLoadedAt = nowMs();
+      } else {
+        activeFailed = true;
+      }
+    }
+
+    if (!activeFailed && sequence === state.loadSeq) {
+      try {
+        options.onActiveCommitted?.();
+      } catch {
+        /* 畫面更新失敗不影響載入 */
+      }
+    }
     if (sequence !== state.loadSeq) return [];
 
-    if (active.ok) {
-      state.active = active.docs.map(mapDoc);
-      state.activeFromCache = active.fromCache;
-    }
+    const terminal = terminalPromise ? await terminalPromise : null;
+    if (sequence !== state.loadSeq) return [];
+
     if (terminal?.result.ok) {
       state.terminal = terminal.result.docs.map(mapDoc);
       state.terminalLoadedMode = mode === 'history' ? 'history' : 'preview';
@@ -222,10 +268,11 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
     }
 
     const terminalFailed = terminal !== null && !terminal.result.ok;
-    if (!active.ok || terminalFailed) {
-      throw new EventsLoadError(!active.ok, terminalFailed);
+    if (activeFailed || terminalFailed) {
+      throw new EventsLoadError(activeFailed, terminalFailed);
     }
-    return ['events'];
+    // 沿用 active 時這次沒有確認新取得，回條用 terminal，呼叫端才不會把它當成新的 active。
+    return reuseActive ? ['terminal'] : ['events'];
   }
 
   async function ensureTerminalEventsLoaded(

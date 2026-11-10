@@ -96,7 +96,8 @@
     "save": "Lưu",
     "shareUnavailable": "Không thể mở chia sẻ. Hãy nhấn Lưu.",
     "lock": "Khóa xoay",
-    "bestRpm": "Kỷ lục: "
+    "bestRpm": "Kỷ lục: ",
+    "popularityAria": "Độ nổi tiếng {stars} sao"
   },
   "quick": {
     "group": "Cài đặt cá nhân",

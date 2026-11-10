@@ -27,6 +27,16 @@ export interface UseEventsOptions {
 interface Inflight {
   mode: UseEventsTerminalMode;
   promise: Promise<EventDoc[]>;
+  listeners: Set<(active: EventDoc[]) => void>;
+  /** active 已先畫、terminal 可能還沒到。後加入的畫面補畫這份。 */
+  activePaint: EventDoc[] | null;
+}
+
+interface LoadRequest {
+  /** 手動重新整理：不沿用短 TTL 的 active，terminal 也重抓。 */
+  force?: boolean;
+  /** preview：active 已可畫時呼叫（terminal 可能還沒到）。 */
+  onActive?: (active: EventDoc[]) => void;
 }
 
 // 同一 singleton 上的同型 UI 請求共用 Promise，避免首頁／列表互相作廢請求。
@@ -39,6 +49,7 @@ let lastLoaded: { uid: string | null; events: EventDoc[] } | null = null;
  * stale-first 的上次資料：記憶體 → 本機快照（30 分鐘內）。
  * 只有 viewer 帳號等於登入模組確認的帳號時才給（使用者資料載入前不以訪客身分先畫，Fable 2026-10-19）。
  * 首頁（none）寫入的快照沒有 ended／cancelled 預覽；活動列表拿來先畫後，仍會照常載入預覽再更新。
+ * 短 TTL 內列表沿用 repo 剛成功的 active，不再讀一次 active；手動重新整理（retry）不沿用。
  */
 function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   const known = getLastKnownAuthUid();
@@ -94,54 +105,116 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
 /**
  * 回傳的結果陣列（key）→ 這一次呼叫「確認向伺服器新取得」的進行中（active）清單。沒有登記＝不是確認新取得的。
  * 依賴 events-repo 的 `loadEventsStatic` 回傳契約（`events-repo.test.ts` 與 `use-events.repo-contract.test.tsx` 用真實 repo 驗證）：
- * - 回傳值（`receipt`）是**完成回條，不是活動陣列**：這次呼叫自己成功（含成功但零筆）回 `['events']`（非空）；
- *   被較新請求取代回 `[]`（這次呼叫沒有提交任何資料）；底層查詢失敗丟 `EventsLoadError`（不會走到這裡）——
+ * - 回傳值（`receipt`）是**完成回條，不是活動陣列**：這次呼叫自己成功（含成功但零筆）且有查 active 回 `['events']`；
+ *   短 TTL 沿用已成功的 active、只補 terminal 回 `['terminal']`（這次沒有確認新取得 active）；
+ *   被較新請求取代回 `[]`（這次呼叫沒有提交任何資料）；active 查詢失敗丟 `EventsLoadError`（不會走到組清單）——
  *   但「失敗丟錯」只在這次呼叫沒被取代時成立：被取代的呼叫即使底層失敗，也是先判斷被取代而回 `[]`（所以 `[]` 不一定代表沒失敗，
- *   只代表這次呼叫的結果不算數）。
+ *   只代表這次呼叫的結果不算數）。只有 terminal 失敗時 active 已提交，`start` 改回傳目前快照，整頁不報錯（見 `isTerminalOnlyFailure`）。
  * - 成功的呼叫在回傳前、通過 sequence 檢查之後，同步把 **active 清單與 `activeFromCache`** 一起提交；所以緊接著 `getSnapshot()`
  *   讀到的 active 與旗標，就是這一次呼叫剛提交的。被取代的呼叫沒有提交，那時共用 snapshot 仍是上一次的 active 與旗標，不能算這次新取得。
- *   terminal 不在這個保證裡（`none` 模式不更新它；`preview` 的 terminal 也沒有獨立旗標），所以只登記 active。
- * 因此條件是：`receipt` 非空（這次自己成功）且 `activeFromCache === false`（不是離線時的本機快取）。見 `UseEventsOptions.onFresh`。
+ *   沿用 TTL 時這次沒有重交 active。terminal 不在這個保證裡（`none` 模式不更新它；`preview` 的 terminal 也沒有獨立旗標），所以只登記 active。
+ * 因此條件是：`receipt` 含 `'events'`（這次自己查了 active 且成功）且 `activeFromCache === false`（不是離線時的本機快取）。見 `UseEventsOptions.onFresh`。
  */
 const serverConfirmedActive = new WeakMap<EventDoc[], EventDoc[]>();
 
-function start(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+/** 不靜態 import events-repo（那會把 Firestore SDK 帶進首頁）。terminal 失敗、active 已成功：整頁不報錯。 */
+function isTerminalOnlyFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const fields = error as { name?: unknown; activeFailed?: unknown; terminalFailed?: unknown };
+  return fields.name === 'EventsLoadError' && fields.activeFailed === false && fields.terminalFailed === true;
+}
+
+function start(mode: UseEventsTerminalMode, request: LoadRequest): Promise<EventDoc[]> {
   return (async () => {
     const { getEventsRepo } = await loadRepoModule();
     const repo = getEventsRepo();
     // preview：結束後六小時內仍在一般列表（R-EVT-002）；none：首頁用不到 terminal，不載。
-    const receipt = await repo.loadEventsStatic({ terminalMode: mode });
+    // 列表在短 TTL 內沿用首頁剛載入的 active，只補 terminal。手動重新整理不沿用。
+    const reuse = mode === 'preview' && request.force !== true;
+    let receipt: string[] = [];
+    try {
+      receipt = await repo.loadEventsStatic({
+        terminalMode: mode,
+        ...(request.force && mode !== 'none' ? { forceTerminalRefresh: true } : {}),
+        ...(reuse ? { reuseActiveIfFresh: true } : {}),
+        ...(mode === 'preview'
+          ? {
+              onActiveCommitted: () => {
+                request.onActive?.([...repo.getSnapshot().active]);
+              },
+            }
+          : {}),
+      });
+    } catch (error) {
+      // active 已提交。terminal 失敗保留 repo 裡的舊 terminal，整頁仍算這次有資料可畫。
+      if (!isTerminalOnlyFailure(error)) throw error;
+    }
     const snapshot = repo.getSnapshot();
     const events = [...snapshot.active, ...snapshot.terminal];
-    if (Array.isArray(receipt) && receipt.length > 0 && snapshot.activeFromCache === false) {
+    // 回條含 'events' 才是這次真的查了 active。沿用時回條是 ['terminal']，不算確認新取得。
+    if (Array.isArray(receipt) && receipt.includes('events') && snapshot.activeFromCache === false) {
       serverConfirmedActive.set(events, snapshot.active);
     }
     return events;
   })();
 }
 
-function load(mode: UseEventsTerminalMode): Promise<EventDoc[]> {
+function load(mode: UseEventsTerminalMode, request: LoadRequest = {}): Promise<EventDoc[]> {
   const current = inflight;
   // preview 是 none 的超集：進行中的是 preview，或這次只要 none，都直接共用。
-  if (current && (current.mode === 'preview' || mode === 'none')) return current.promise;
+  // 進行中的請求不因手動重新整理再平行開一輪（loadSeq 會讓較早的那輪作廢）。
+  if (current && (current.mode === 'preview' || mode === 'none')) {
+    if (request.onActive) {
+      current.listeners.add(request.onActive);
+      if (current.activePaint) request.onActive(current.activePaint);
+    }
+    return current.promise;
+  }
+
+  const entry: Inflight = {
+    mode,
+    promise: undefined as never,
+    listeners: new Set(),
+    activePaint: null,
+  };
+  if (request.onActive) entry.listeners.add(request.onActive);
+  const publish = (active: EventDoc[]): void => {
+    entry.activePaint = active;
+    for (const listener of entry.listeners) {
+      try {
+        listener(active);
+      } catch {
+        /* 呼叫端失敗不影響載入 */
+      }
+    }
+  };
 
   // 進行中的是 none、這次要 preview：等它結束再補載 terminal，
   // 不並行（repo 的 loadSeq 會讓較早的請求作廢）。
-  const request = current
-    ? current.promise.then(
-      () => start(mode),
-      () => start(mode),
-    )
-    : start(mode);
-  // 首頁的活動讀取是公開讀取：登記後，首頁公開讀取全部處理完才讓 Auth 註冊（見 data/firebase.ts）。
-  trackPublicRead(request);
-  const entry: Inflight = { mode, promise: request };
+  const run = (): Promise<EventDoc[]> => start(mode, { force: request.force === true, onActive: publish });
+  const loading = current ? current.promise.then(run, run) : run();
+  entry.promise = loading;
   inflight = entry;
+  // 首頁的活動讀取是公開讀取：登記後，首頁公開讀取全部處理完才讓 Auth 註冊（見 data/firebase.ts）。
+  trackPublicRead(loading);
   const clear = (): void => {
     if (inflight === entry) inflight = null;
   };
-  request.then(clear, clear);
-  return request;
+  loading.then(clear, clear);
+  return loading;
+}
+
+/** 先畫新的 active，畫面上已有的 ended／cancelled 先留著，等這次 terminal 回來再整份換掉。 */
+function mergeActiveKeepTerminal(previous: readonly EventDoc[], active: readonly EventDoc[]): EventDoc[] {
+  const activeIds = new Set(
+    active.map((event) => event._docId || event.id).filter((id): id is string => !!id),
+  );
+  const kept = previous.filter((event) => {
+    const id = event._docId || event.id;
+    if (id && activeIds.has(id)) return false;
+    return event.status === 'ended' || event.status === 'cancelled';
+  });
+  return [...active, ...kept];
 }
 
 /**
@@ -167,12 +240,28 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   const onFreshRef = useRef(options.onFresh);
   onFreshRef.current = options.onFresh;
   const stale = useMemo(() => (fresh ? null : staleEventsFor(viewerUid)), [fresh, viewerUid]);
+  const shownRef = useRef<EventDoc[]>([]);
+  shownRef.current = fresh ?? stale ?? [];
 
   useEffect(() => {
     let current = true;
     setPending(true);
     setFailed(false);
-    load(terminalModeRef.current).then(
+    const mode = terminalModeRef.current;
+    // attempt > 0 是 retry()（錯誤重試、表單存檔後重新整理）。TTL 內仍要真的重抓。
+    const force = attempt > 0;
+    load(mode, {
+      force,
+      onActive: mode === 'preview'
+        ? (active) => {
+            if (!current) return;
+            setFresh(mergeActiveKeepTerminal(shownRef.current, active));
+            setNow(Date.now());
+            setPending(false);
+            setFailed(false);
+          }
+        : undefined,
+    }).then(
       (next) => {
         const owner = viewerUidRef.current;
         if (getLastKnownAuthUid() === owner) {
@@ -195,8 +284,14 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
         setNow(Date.now());
         setPending(false);
       },
-      () => {
+      (error: unknown) => {
         if (!current) return;
+        // 後備：start() 已把「只有 terminal 失敗」收成成功。這裡再擋一次，避免整頁報錯。
+        if (isTerminalOnlyFailure(error)) {
+          setFailed(false);
+          setPending(false);
+          return;
+        }
         setFailed(true);
         setPending(false);
       },

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
-import { APP_VERSION } from '@/version';
+
 import { fakeResponse, jsonResponse } from '@/features/home/data/__fixtures__/banners-rest';
 import {
   EARLY_BANNERS_SCRIPT_ID,
@@ -105,17 +105,8 @@ function run(options: RunOptions = {}): RunResult {
   };
 }
 
-const MASK = [
-  'mask.fieldPaths=title',
-  'mask.fieldPaths=date',
-  'mask.fieldPaths=location',
-  'mask.fieldPaths=image',
-  'mask.fieldPaths=imageVariants',
-  'mask.fieldPaths=blockedUids',
-].join('&');
-
 function eventUrl(id: string): string {
-  return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/events/${id}?${MASK}`;
+  return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/events/${id}`;
 }
 
 async function expectNoUnhandled(work: () => Promise<void>): Promise<void> {
@@ -158,12 +149,13 @@ describe('fcb-early-event 發不發', () => {
     }
   });
 
-  it('/events/<id> 在正式主機發一次匿名 GET，網址含專案與六個 mask', () => {
+  it('/events/<id> 在正式主機發一次匿名 GET，網址是完整文件、不含欄位 mask', () => {
     const result = run({ pathname: '/events/abc_DEF-123', search: '?utm=1' });
     expect(result.fetchCalls).toHaveLength(1);
     const call = result.fetchCalls[0];
     if (!call) throw new Error('沒有請求');
     expect(call.url).toBe(eventUrl('abc_DEF-123'));
+    expect(call.url).not.toContain('mask.fieldPaths');
     expect(call.init.method).toBe('GET');
     expect(call.init.credentials).toBe('omit');
     expect(call.init.headers).toBeUndefined();
@@ -269,10 +261,12 @@ describe('建置外掛 earlyEventHtml', () => {
     const opts = { projectId: FIREBASE_CONFIG.projectId, emulator: false };
     expect(() => transformEarlyEventHtml('<html></html>', opts)).toThrow(/找不到/);
     expect(() => transformEarlyEventHtml('<html></html>', { ...opts, emulator: true })).toThrow(/找不到/);
-    const doubled = rawHtml.replace(
+    const eventBlock = new RegExp(`<script id="${EARLY_EVENT_SCRIPT_ID}">[\\s\\S]*?</script>`);
+    const doubled = rawHtml.replace(eventBlock, (block) => block.replace(
       `var P = '${EARLY_EVENT_PROJECT_TOKEN}', L = location`,
       `var P = '${EARLY_EVENT_PROJECT_TOKEN}', Q = '${EARLY_EVENT_PROJECT_TOKEN}', L = location`,
-    );
+    ));
+    expect(doubled).not.toBe(rawHtml);
     expect(() => transformEarlyEventHtml(doubled, opts)).toThrow(/恰好有一個/);
     for (const projectId of ['', 'A-B', "x'y", 'a b', '-abc', 'a'.repeat(64)]) {
       expect(() => transformEarlyEventHtml(rawHtml, { ...opts, projectId }), projectId).toThrow(/projectId/);
@@ -302,7 +296,6 @@ describe('建置外掛 earlyEventHtml', () => {
     const chain = (emulator: boolean): string => {
       const banners = transformEarlyBannersHtml(rawHtml, {
         projectId: FIREBASE_CONFIG.projectId,
-        appVersion: APP_VERSION,
         emulator,
       });
       return transformEarlyEventHtml(banners, { projectId: FIREBASE_CONFIG.projectId, emulator });

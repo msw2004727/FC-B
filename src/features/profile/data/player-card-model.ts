@@ -32,6 +32,8 @@ export interface PlayerCardModel {
   clubBadgeWide: boolean;
   /** 卡面右下身分圖案（player-card-motifs.ts）；null＝不畫。 */
   motif: PlayerCardMotif | null;
+  /** 人氣星等（0～5、0.5 階）。null＝PNG 不畫星星、也不畫數字。 */
+  popularityStars: number | null;
 }
 
 export interface PlayerCardModelInput {
@@ -45,6 +47,13 @@ export interface PlayerCardModelInput {
   role?: string | null;
   /** profile.gender；只認 trim 後等於「女」。 */
   gender?: unknown;
+  /** 看自己且人氣已載入時的星等；省略、null、非有限或負數＝不畫。 */
+  popularityStars?: number | null;
+}
+
+function normalizePopularityStars(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return value;
 }
 
 /** 出席率四捨五入成 0～100 整數。 */
@@ -104,6 +113,7 @@ export function buildPlayerCardModel(input: PlayerCardModelInput): PlayerCardMod
     showClubBadge: clubCount > 0,
     clubBadgeWide: clubCount >= 10,
     motif: resolvePlayerCardMotif(input.role, input.gender),
+    popularityStars: normalizePopularityStars(input.popularityStars),
   };
 }
 

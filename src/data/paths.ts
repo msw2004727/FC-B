@@ -5,7 +5,7 @@
 //   collectionGroup 查詢結果一律先過濾，以排除 legacy root 文件。
 //   回傳陣列，不偽裝成 QuerySnapshot。
 
-import { getFirebase } from './firebase';
+import { getFirebaseCore } from './firebase';
 
 // ── 集合常數 ──────────────────────────────────────────
 
@@ -82,11 +82,14 @@ export interface ResolvedEventDoc {
  *  1. `events/{eventId}` 存在就用這次 getDoc 的內容。
  *  2. 否則 `where('id', '==', eventId)` 取第一筆，用查詢結果的內容。
  *  3. 都沒有回 `null`。
+ *
+ * `events` 公開可讀（Rules：`allow read: if true`）。這裡只用 `db`，不取 auth／functions，
+ * 所以走 `getFirebaseCore()`。登入者的 `waitForFirstAuthState` 閘在該函式裡，這裡不另開連線。
  */
 export async function resolveEventDocSnapshot(eventId: string): Promise<ResolvedEventDoc | null> {
   const [{ doc, getDoc, collection, query, where, limit, getDocs }, ctx] = await Promise.all([
     import('firebase/firestore'),
-    getFirebase(),
+    getFirebaseCore(),
   ]);
 
   const directRef = doc(ctx.db, events, eventId);

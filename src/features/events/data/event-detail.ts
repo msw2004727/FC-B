@@ -24,6 +24,9 @@ export interface LoadedEventDetail {
 /**
  * 依 public eventId 載入活動詳情。
  *
+ * 公開讀取：活動文件 Rules 是 `allow read: if true`。解析在 `resolveEventDocSnapshot`，
+ * 只取 app＋firestore，不讀報名子集合。
+ *
  * @returns `null` 表示 publicId 無法解析（直接文件與 where 都沒有）。
  */
 export async function loadEventDetail(publicId: string): Promise<LoadedEventDetail | null> {
@@ -41,6 +44,9 @@ export async function loadEventDetail(publicId: string): Promise<LoadedEventDeta
  * 讀取 `events/{docId}/registrations` 子集合。
  *
  * 只讀子集合，不做 root fallback（R-REG-014）。
+ * Rules 是 `allow read: if isAuth()`（子集合與根集合同條件）。
+ * 要等完整 Firebase context（auth 已註冊）再查；只拿 app＋firestore 會在憑證還沒附上時變成權限錯誤。
+ * 因此維持 `getFirebase()`。
  */
 export async function loadEventRegistrations(eventDocId: string): Promise<RegistrationDoc[]> {
   const [{ collection, getDocs, query }, ctx] = await Promise.all([

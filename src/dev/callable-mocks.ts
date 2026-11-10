@@ -39,6 +39,8 @@ registerMock('listUserDirectory', async (req) => {
   return { users };
 });
 
+registerMock('recordProfileView', async () => ({ status: 'counted' as const }));
+
 registerMock('incrementEventViewCount', async (req) => {
   const [{ getFirebase }, fs] = await Promise.all([
     import('@/data/firebase'),

@@ -9,6 +9,7 @@ import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 
 import {
@@ -191,7 +192,7 @@ export default function AdminNotifPage(): JSX.Element {
 
   let body: JSX.Element;
   if (waiting) {
-    body = <div class="notif-state" role="status">{t('admin-notif.loading')}</div>;
+    body = <PageSpinner />;
   } else if (!canEnter) {
     body = <EmptyState title={t('admin-notif.noPermission')} />;
   } else {

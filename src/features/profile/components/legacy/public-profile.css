@@ -27,6 +27,9 @@
 
 /* 頭部：頭像、名字、身分置中 */
 .pp-card .pp-hd { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 1rem 0 0; text-align: center; }
+/* 有人氣資料才掛 .pp-has-pop。星星絕對定位，中心落在頭像下緣；不改頭像、不加 overflow。 */
+.pp-card .pp-hd.pp-has-pop { position: relative; }
+.pp-card .pp-hd.pp-has-pop .pp-pop { position: absolute; left: 50%; top: calc(1rem + 88px - 9px); transform: translateX(-50%); z-index: 5; display: inline-flex; pointer-events: none; --pop-star-size: 17px; }
 .pp-card .pp-hd > .uc-avatar-circle {
   width: 88px;
   height: 88px;

@@ -211,7 +211,7 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(screen.queryByText('Hidden private')).toBeNull();
     expect(screen.queryByText('Hidden team')).toBeNull();
     expect(screen.queryByText('Hidden blocked')).toBeNull();
-    expect(load).toHaveBeenCalledWith({ terminalMode: 'preview' });
+    expect(load).toHaveBeenCalledWith(expect.objectContaining({ terminalMode: 'preview' }));
   });
 
   it('shows a blocked event when the viewer only has a cancelled registration', async () => {

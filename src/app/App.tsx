@@ -68,7 +68,7 @@ import {
   hasLoginRedirectParams,
 } from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
-import { APP_VERSION } from '@/version';
+import { readAppVersion } from '@/core/app-meta';
 import {
   firebaseTargetLabel,
   releaseFirebaseAuthHold,
@@ -464,7 +464,7 @@ export function App({
         />
         {internalTest && (
           <div class="internal-test-badge" aria-hidden="true">
-            {t('internalTest.badge', { version: APP_VERSION })}
+            {t('internalTest.badge', { version: readAppVersion() })}
             {/* 站長 11-06 改名「ToosterX搶先試用版[版號]」，取代原「內測版 · sha · 連線目標」；
                 連 emulator 時仍附目標，連錯資料庫能被看見（Fable 2026-10-19） */}
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}
@@ -518,6 +518,7 @@ export function App({
 /**
  * 只在通過內測閘門後掛載：讀登入者權限交給側邊選單篩選入口。
  * 放成獨立元件，是為了讓閘門前完全不觸發 viewer 的 Firestore 讀取。
+ * 這裡與各頁都呼叫 useViewer，但讀取走模組層同一份快取與 inflight，不會再各打一輪。
  */
 function ViewerAccessBridge({ onChange }: { onChange: (access: ViewerView) => void }): null {
   const viewer = useViewer();

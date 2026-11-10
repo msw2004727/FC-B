@@ -18,10 +18,11 @@
  * - 運動統計：用訪客視角算（不含私密／俱樂部限定／黑名單判斷），不帶任何帳號資料。
  * - 已知且已接受：被某活動黑名單擋住的登入者，在活動讀回之前會短暫看到訪客視角的統計（與 T-041 P3-4 同一件事）。
  *
- * 新鮮度守門（顧問 2026-10-26 加的第四條原則）：每段快照都帶 `appVersion` 與 `savedAt`；
- * 讀取時版本和 `APP_VERSION` 不同、或寫入超過 30 分鐘（沿用 A 的 `publicBootSnapshotMaxAgeMs` 語意），
- * 一律視為沒有快照——畫面維持原本的骨架／空白，**不拿舊資料顯示任何活動狀態文字**（例如「N 活動」）。
- * 讀取結果帶 `expiresAt`（寫入時間＋30 分鐘），頁面掛載後要自己在到期時撤掉（見 `use-snapshot-expiry.ts`），
+ * 新鮮度守門：只看資料格式版本 `v` 與 `savedAt`，不看 app 版號（改版不清快照；格式或語意改變時把
+ * `HOME_SNAPSHOT_FORMAT_V` 加 1，舊快照自動作廢）。橫幅可沿用 24 小時（站長 2026-11-10）；
+ * 運動統計（「N 活動」）維持 30 分鐘（沿用 A 的 `publicBootSnapshotMaxAgeMs`）。超過期限一律視為沒有快照——
+ * 畫面維持原本的骨架／空白，**不拿舊資料顯示任何活動狀態文字**。
+ * 讀取結果帶 `expiresAt`（寫入時間＋該段自己的期限），頁面掛載後要自己在到期時撤掉（見 `use-snapshot-expiry.ts`），
  * 選用快照當下也要再檢查一次期限，不能只在第一次讀取時檢查。
  *
  * 只有「確認向伺服器新取得」的資料才可以寫快照／更新 `savedAt`（呼叫端以 Firestore 的 `fromCache === false`，
@@ -36,19 +37,29 @@
  * 讀寫失敗（私密模式、容量滿、被停用）一律忽略，退回等伺服器；寫入失敗時盡量刪掉舊的，免得留著比剛取得的資料還舊的快照。
  */
 import { SPORTS } from '@/features/events/data/sports';
-import { APP_VERSION } from '@/version';
 import { isHomeCarouselBanner, safeBannerGradient, safeBannerLinkUrl, sanitizeHttpUrl, type BannerDoc } from './banners';
+import {
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_FORMAT_V,
+  HOME_SNAPSHOT_FUTURE_SKEW_MS,
+  HOME_SNAPSHOT_MAX_AGE_MS,
+  SPORTS_SNAPSHOT_MAX_AGE_MS,
+} from './home-snapshot-ttl';
 import { isGuestSportRows, type GuestSportRows, type SportRow } from './sport-rows';
+
+export {
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_FORMAT_V,
+  HOME_SNAPSHOT_FUTURE_SKEW_MS,
+  HOME_SNAPSHOT_MAX_AGE_MS,
+  SPORTS_SNAPSHOT_MAX_AGE_MS,
+};
 
 export const BANNERS_SNAPSHOT_KEY = 'fcb:home-banners:v1';
 export const SPORTS_SNAPSHOT_KEY = 'fcb:home-sports:v1';
-export const HOME_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 /** 單段快照字數上限（LINE WebView 的 localStorage 額度小）；寫入超過就不存並刪掉舊的，讀取時超過也直接不用（解析前先擋）。 */
 export const HOME_SNAPSHOT_MAX_CHARS = 100_000;
 const MAX_ITEMS = 50;
-/** 允許的時鐘偏差：寫入時間比現在晚超過這個值，視為不可信。 */
-const FUTURE_SKEW_MS = 60_000;
-
 /** 欄位長度上限（超過的欄位整個丟掉，不截斷）。 */
 const MAX_ID_CHARS = 200;
 const MAX_TITLE_CHARS = 500;
@@ -57,37 +68,85 @@ const MAX_URL_CHARS = 2000;
 const MAX_SHORT_CHARS = 100;
 const MAX_SPORT_COUNT = 1_000_000;
 
-interface StoredSection<T> {
-  v: 1;
-  appVersion: string;
+/** 寫進 localStorage 的信封。多出來的舊欄位（例如 appVersion）讀取時忽略。 */
+export interface HomeSnapshotSection<T> {
+  v: number;
   savedAt: number;
   items: T[];
 }
 
-/** 讀到的有效快照：`expiresAt`（毫秒時間戳）是寫入時間＋30 分鐘，到期後頁面要撤掉。 */
+/** 橫幅快照一筆的欄位。與 projectBanner 的回傳、format-lock.json 必須一致。 */
+export interface BannerSnapshotItem {
+  id: string;
+  _docId: string;
+  status: string;
+  type?: string;
+  title?: string;
+  subtitle?: string;
+  titleColor?: string;
+  subtitleColor?: string;
+  image: string;
+  linkUrl: string;
+  slotName?: string;
+  slot?: string | number;
+  sortOrder?: string | number;
+  gradient?: string;
+}
+
+export interface SportSnapshotItem {
+  key: string;
+  count: number;
+}
+
+function exactFields<Shape>() {
+  return <const List extends readonly (keyof Shape)[]>(
+    list: Exclude<keyof Shape, List[number]> extends never ? List : never,
+  ): List => list;
+}
+
+export const HOME_SNAPSHOT_SECTION_FIELDS = exactFields<HomeSnapshotSection<unknown>>()(['v', 'savedAt', 'items']);
+export const BANNER_SNAPSHOT_FIELDS = exactFields<BannerSnapshotItem>()([
+  'id',
+  '_docId',
+  'status',
+  'type',
+  'title',
+  'subtitle',
+  'titleColor',
+  'subtitleColor',
+  'image',
+  'linkUrl',
+  'slotName',
+  'slot',
+  'sortOrder',
+  'gradient',
+]);
+export const SPORT_SNAPSHOT_FIELDS = exactFields<SportSnapshotItem>()(['key', 'count']);
+
+/** 讀到的有效快照：`expiresAt` 是寫入時間＋該段期限，到期後頁面要撤掉。 */
 export interface SnapshotRead<T> {
   items: T[];
   expiresAt: number;
 }
 
-function isFresh(entry: Partial<StoredSection<unknown>>, nowMs: number): boolean {
-  if (entry.v !== 1) return false;
-  if (entry.appVersion !== APP_VERSION) return false;
+function isFresh(entry: Partial<HomeSnapshotSection<unknown>>, nowMs: number, maxAgeMs: number): boolean {
+  if (entry.v !== HOME_SNAPSHOT_FORMAT_V) return false;
   if (typeof entry.savedAt !== 'number' || !Number.isFinite(entry.savedAt)) return false;
-  if (nowMs - entry.savedAt > HOME_SNAPSHOT_MAX_AGE_MS) return false;
-  return entry.savedAt <= nowMs + FUTURE_SKEW_MS;
+  if (nowMs - entry.savedAt > maxAgeMs) return false;
+  return entry.savedAt <= nowMs + HOME_SNAPSHOT_FUTURE_SKEW_MS;
 }
 
-function readSection(key: string, nowMs: number): SnapshotRead<unknown> | null {
+function readSection(key: string, nowMs: number, maxAgeMs: number): SnapshotRead<unknown> | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw || raw.length > HOME_SNAPSHOT_MAX_CHARS) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredSection<unknown>> | null;
+    const parsed = JSON.parse(raw) as Partial<HomeSnapshotSection<unknown>> | null;
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return null;
-    if (!isFresh(parsed, nowMs)) return null;
+    if (parsed.items.length === 0) return null;
+    if (!isFresh(parsed, nowMs, maxAgeMs)) return null;
     return {
       items: parsed.items.slice(0, MAX_ITEMS),
-      expiresAt: (parsed.savedAt as number) + HOME_SNAPSHOT_MAX_AGE_MS,
+      expiresAt: (parsed.savedAt as number) + maxAgeMs,
     };
   } catch {
     return null;
@@ -108,9 +167,8 @@ function writeSection(key: string, items: readonly unknown[], nowMs: number): vo
     return;
   }
   try {
-    const payload: StoredSection<unknown> = {
-      v: 1,
-      appVersion: APP_VERSION,
+    const payload: HomeSnapshotSection<unknown> = {
+      v: HOME_SNAPSHOT_FORMAT_V,
       savedAt: nowMs,
       items: [...items],
     };
@@ -140,7 +198,7 @@ function boundedScalar(value: unknown, max: number): string | number | undefined
  * 巢狀物件、陣列、多餘欄位（uid、email、Timestamp 時間欄位…）一律不會出現在輸出。回傳的是新建的物件，不是輸入的任何參照。
  * 圖片只收 http/https、連結用 `safeBannerLinkUrl`（與輪播點擊同一個契約）、漸層用 `safeBannerGradient`。
  */
-export function projectBanner(raw: unknown): BannerDoc | null {
+export function projectBanner(raw: unknown): BannerSnapshotItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
   const id = boundedString(row.id, MAX_ID_CHARS)?.trim();
@@ -171,7 +229,7 @@ export function projectBanner(raw: unknown): BannerDoc | null {
 }
 
 /** 運動統計投影：key 必須是 SPORTS 內的運動，count 必須是 1～1,000,000 的整數；否則整筆丟掉。 */
-export function projectSportItem(raw: unknown): { key: string; count: number } | null {
+export function projectSportItem(raw: unknown): SportSnapshotItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
   const sport = SPORTS.find((s) => s.key === row.key);
@@ -204,9 +262,9 @@ export function toPublicBanners(banners: readonly BannerDoc[]): PublicBannerList
   return list as PublicBannerList;
 }
 
-/** 讀橫幅快照：沒有、過期、版本不同或格式不符都回 null（畫面維持骨架）。 */
+/** 讀橫幅快照：沒有、過期、格式版本不同或格式不符都回 null（畫面維持骨架）。版號不同仍可用。 */
 export function readBannersSnapshot(nowMs: number = Date.now()): SnapshotRead<BannerDoc> | null {
-  const section = readSection(BANNERS_SNAPSHOT_KEY, nowMs);
+  const section = readSection(BANNERS_SNAPSHOT_KEY, nowMs, BANNERS_SNAPSHOT_MAX_AGE_MS);
   if (!section) return null;
   const items: BannerDoc[] = [];
   for (const item of section.items) {
@@ -235,15 +293,15 @@ export function writeBannersSnapshot(banners: PublicBannerList, nowMs: number = 
 
 /**
  * 後台（M-145）儲存／下架／上架／清空橫幅後，同一用戶端立刻丟掉橫幅快照，下次開首頁改走伺服器。
- * 只清橫幅一段；其他裝置的快照仍受 30 分鐘期限限制（已知）。
+ * 只清橫幅一段；其他裝置的橫幅快照仍受 24 小時期限限制（已知）。
  */
 export function invalidateBannersSnapshot(): void {
   removeSection(BANNERS_SNAPSHOT_KEY);
 }
 
-/** 讀運動統計快照：沒有、過期、版本不同或格式不符都回 null；未知的運動 key 略過。 */
+/** 讀運動統計快照：沒有、超過 30 分鐘、格式版本不同或格式不符都回 null；未知的運動 key 略過。版號不同仍可用。 */
 export function readSportsSnapshot(nowMs: number = Date.now()): SnapshotRead<SportRow> | null {
-  const section = readSection(SPORTS_SNAPSHOT_KEY, nowMs);
+  const section = readSection(SPORTS_SNAPSHOT_KEY, nowMs, SPORTS_SNAPSHOT_MAX_AGE_MS);
   if (!section) return null;
   const items: SportRow[] = [];
   for (const item of section.items) {

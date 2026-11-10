@@ -1,0 +1,148 @@
+/*
+ * 營運儀表板（C1 骨架＋C3a 關鍵數字／需要注意＋C3b 趨勢圖＋C3c 排行／費用卡）。
+ * 版面照站長 2026-11-09 核可的預覽；只用 A 的色票變數，不自創、不寫死主題色。
+ * 關鍵數字卡的漸層與陰影照 A `css/admin.css` 的 `.dash-card`（1446 行起）原值。
+ * 所有介面文字單行（R-UI-027）；使用者內容（活動標題、主辦人名稱）用單行省略號。
+ */
+
+/* .legacy-ui .page.active 是 display:block（A base.css），要更高一級才能改成直向 flex＋間距 */
+.legacy-ui .page.active.ops-dash { display: flex; flex-direction: column; gap: .7rem; }
+.ops-dash .page-header { padding-bottom: 0; }
+.ops-dash .page-header h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 頁首＋期間切換 */
+.ops-dash .od-top { display: flex; flex-direction: column; gap: .55rem; }
+.ops-dash .od-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.ops-dash .od-updated { font-size: .74rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ops-dash .od-updated.stale { color: var(--warning); }
+.ops-dash .od-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 3px; gap: 3px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; }
+.ops-dash .od-seg button { min-height: 2.1rem; padding: 0 .4rem; border-radius: 8px; font-size: .8rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; transition: background var(--transition), color var(--transition); }
+.ops-dash .od-seg button[aria-pressed="true"] { background: var(--bg-card); color: var(--accent); box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
+
+/* 版面 */
+.ops-dash .od-grid { display: grid; gap: .7rem; grid-template-columns: minmax(0, 1fr); }
+
+/* 關鍵數字卡（A .dash-card） */
+.ops-dash .od-summary,
+.ops-dash .od-qsum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.ops-dash .od-qsum { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ops-dash .od-kpi {
+  position: relative;
+  min-height: 5.9rem;
+  padding: .7rem .7rem .65rem .85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .38)), var(--bg-card);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
+}
+[data-theme="dark"] .ops-dash .od-kpi {
+  background: linear-gradient(180deg, rgba(31, 41, 55, .8), rgba(17, 24, 39, .62)), var(--bg-card);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .18);
+}
+.ops-dash .od-kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }
+.ops-dash .od-qsum .od-kpi { min-height: 0; padding: .6rem .55rem .6rem .75rem; }
+.ops-dash .od-kpi-label { color: var(--text-secondary); font-size: .74rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-kpi-row { display: flex; align-items: baseline; gap: .35rem; margin-top: .3rem; white-space: nowrap; min-width: 0; }
+.ops-dash .od-num { font-family: var(--font-display); font-size: 1.45rem; font-weight: 700; line-height: 1.05; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-num small { font-size: .78rem; font-weight: 700; color: var(--text-secondary); margin-left: .2rem; }
+.ops-dash .od-qsum .od-num { font-size: 1.25rem; }
+.ops-dash .od-kpi-sub { margin-top: .22rem; font-size: .72rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-delta { flex: 0 0 auto; font-size: .72rem; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ops-dash .od-delta.na,
+.ops-dash .od-delta.flat { color: var(--text-muted); font-weight: 700; }
+.ops-dash .od-delta.good { color: var(--success); }
+.ops-dash .od-delta.bad { color: var(--danger); }
+/* 5 格（沒有放鴿子）：手機 2 欄，最後一列 1 格滿寬。桌機 3 欄不拉滿。 */
+@media (max-width: 599px) {
+  .ops-dash .od-summary[data-kpi-count="5"] > .od-kpi:last-child { grid-column: 1 / -1; }
+}
+
+/* 資訊卡（A .info-card，預覽版：無標題底線） */
+.ops-dash .od-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: .85rem; box-shadow: 0 8px 22px rgba(15, 23, 42, .06); min-width: 0; }
+[data-theme="dark"] .ops-dash .od-card { box-shadow: 0 8px 22px rgba(0, 0, 0, .18); }
+
+/* 需要注意（無標題；使用者內容單行省略） */
+.ops-dash .od-attn { list-style: none; margin: 0; padding: 0; }
+.ops-dash .od-attn li + li { border-top: 1px solid var(--border); }
+.ops-dash .od-attn-row { display: flex; align-items: center; gap: .45rem; width: 100%; min-width: 0; padding: .48rem 0; text-align: left; color: var(--text-primary); white-space: nowrap; }
+.ops-dash .od-attn li:first-child .od-attn-row { padding-top: .1rem; }
+.ops-dash .od-attn-label { flex: 0 0 auto; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.ops-dash .od-attn-title { flex: 1; min-width: 0; font-size: .82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-attn-val { margin-left: auto; flex: 0 0 auto; font-size: .78rem; font-weight: 800; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* 參與查詢入口 */
+.ops-dash .od-entry { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; color: var(--text-primary); }
+.ops-dash .od-entry-icon { width: 2.1rem; height: 2.1rem; border-radius: 10px; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); flex: 0 0 auto; }
+.ops-dash .od-entry-icon svg { width: 17px; height: 17px; }
+.ops-dash .od-entry-text { flex: 1; min-width: 0; font-size: .88rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-chev { width: 14px; height: 14px; color: var(--text-muted); flex: 0 0 auto; }
+
+/* 狀態與錯誤 */
+.ops-dash .od-note { padding: 1.2rem .5rem; text-align: center; font-size: .82rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-failed { display: flex; align-items: center; justify-content: space-between; gap: .6rem; font-size: .84rem; font-weight: 700; color: var(--danger); white-space: nowrap; }
+.ops-dash .od-card .od-failed { padding: 0; border: 0; box-shadow: none; }
+.ops-dash .od-btn { min-height: 2.1rem; padding: 0 .9rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-secondary); font-size: .8rem; font-weight: 700; white-space: nowrap; flex: 0 0 auto; transition: background var(--transition), color var(--transition); }
+.ops-dash .od-btn:disabled { opacity: .5; cursor: default; }
+.ops-dash .od-btn.primary { background: var(--primary-btn-bg, var(--accent)); border-color: transparent; color: #fff; }
+
+/* 查詢表單 */
+.ops-dash .od-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.ops-dash .od-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.ops-dash .od-field-kw { grid-column: 1 / -1; }
+.ops-dash .od-field > span { font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-field input { width: 100%; min-width: 0; min-height: 2.3rem; padding: 0 .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 16px; font-family: inherit; }
+.ops-dash .od-field input:focus { outline: none; border-color: var(--accent); }
+[data-theme="dark"] .ops-dash .od-field input { color-scheme: dark; }
+.ops-dash .od-form-error { grid-column: 1 / -1; font-size: .78rem; font-weight: 700; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-actions { grid-column: 1 / -1; display: flex; gap: .5rem; justify-content: flex-end; }
+
+/* 排行（§2.4）。標題是卡名，不加排序副標。使用者內容單行省略。 */
+.ops-dash .od-rank-head { margin: 0 0 .15rem; font-size: .78rem; font-weight: 800; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 本月雲端費用（§2.5，一卡三數字）。標籤與金額都不換行。 */
+.ops-dash .od-cost { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; }
+.ops-dash .od-cost-label { display: block; font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-dash .od-cost-num { display: block; margin-top: .2rem; font-family: var(--font-display); font-size: .95rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 名單（預覽排行列樣式） */
+.ops-dash .od-rank { list-style: none; margin: 0; padding: 0; }
+.ops-dash .od-rank li + li { border-top: 1px solid var(--border); }
+.ops-dash .od-rank-row { display: grid; grid-template-columns: 1.6rem 1.9rem minmax(0, 1fr) auto; align-items: center; gap: .55rem; width: 100%; padding: .48rem 0; text-align: left; color: var(--text-primary); }
+.ops-dash .od-rank li:first-child .od-rank-row { padding-top: .1rem; }
+.ops-dash .od-rank-no { font-size: .74rem; font-weight: 800; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.ops-dash .od-avatar { width: 1.9rem; height: 1.9rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); font-size: .78rem; font-weight: 800; }
+.ops-dash .od-rank-title { font-size: .82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ops-dash .od-rank-val { font-size: .78rem; font-weight: 800; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+.ops-dash .od-pager { display: flex; align-items: center; justify-content: center; gap: .8rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+.ops-dash .od-pager-at { font-size: .78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 外框最寬 640px（B 外殼），欄寬夠時關鍵數字一列 3 格 */
+@media (min-width: 600px) {
+  .legacy-ui .page.active.ops-dash { gap: .85rem; }
+  .ops-dash .od-top { flex-direction: row; align-items: center; justify-content: space-between; gap: 1rem; }
+  .ops-dash .od-seg { width: 22rem; flex: 0 0 auto; }
+  .ops-dash .od-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
+  .ops-dash .od-form { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .ops-dash .od-field-kw { grid-column: auto; }
+}
+
+/* 趨勢圖（§2.3）。色只用既有 token；文字 nowrap（R-UI-027）；圖本身不橫向溢出。 */
+.ops-dash .od-trend { display: flex; flex-direction: column; gap: .4rem; min-width: 0; max-width: 100%; }
+.ops-dash .od-trend-metrics { display: grid; grid-template-columns: repeat(3, minmax(min-content, 1fr)); gap: 4px; }
+.ops-dash .od-trend-metrics button { min-height: 2rem; padding: 0 .1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated); color: var(--text-secondary); font-size: .72rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+.ops-dash .od-trend-metrics button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+.ops-dash .od-trend-readout { display: flex; align-items: baseline; gap: .4rem; min-height: 1.15rem; min-width: 0; font-size: .75rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ops-dash .od-trend-caliber { color: var(--text-muted); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.ops-dash .od-trend-value { white-space: nowrap; }
+.ops-dash .od-trend-plot { min-width: 0; max-width: 100%; overflow: hidden; }
+.ops-dash .od-trend-svg { display: block; width: 100%; max-width: 100%; height: auto; }
+.ops-dash .od-trend-area { opacity: .16; }
+[data-theme="dark"] .ops-dash .od-trend-area { opacity: .3; }
+.ops-dash .od-trend-hit { cursor: pointer; }
+.ops-dash .od-trend-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (min-width: 760px) {
+  .ops-dash .od-trend-metrics { grid-template-columns: repeat(6, minmax(min-content, 1fr)); }
+  .ops-dash .od-trend-metrics[data-count="5"] { grid-template-columns: repeat(5, minmax(min-content, 1fr)); }
+}

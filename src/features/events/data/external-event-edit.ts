@@ -1,4 +1,5 @@
 import { getFirebase } from '@/data/firebase';
+import { beginSubmitting } from '@/core/submit-guard';
 import {
   buildEventLocationValue, resetLocationDraft, type EventLocationValue,
 } from '../components/event-form/use-event-location';
@@ -118,6 +119,8 @@ export async function saveExternalEventEdit(
   location: EventLocationValue,
   getActor: () => ExternalEventEditActor,
 ): Promise<{ title: string }> {
+  const release = beginSubmitting('event-save');
+  try {
   const initialActor = getActor();
   const allowed = (event: EventDoc): ExternalEventEditActor => {
     const actor = getActor();
@@ -161,4 +164,7 @@ export async function saveExternalEventEdit(
     actorUid: actor.context.uid, operator: actor.operator,
   }, () => undefined)).catch(() => undefined);
   return { title };
+  } finally {
+    release();
+  }
 }

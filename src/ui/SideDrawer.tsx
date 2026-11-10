@@ -24,7 +24,7 @@ import {
   LOGIN_PENDING_MSG,
   UNAVAILABLE_FEATURE_MSG,
 } from '@/core/unavailable';
-import { APP_VERSION } from '@/version';
+import { readAppVersion } from '@/core/app-meta';
 import { isInternalTestMode } from '@/data/internal-test';
 import type { AuthUser } from '@/data/auth';
 import { getLastKnownAuthUid } from '@/data/auth';
@@ -715,7 +715,7 @@ export function SideDrawer({
                 >
                   <span data-i18n="下載APP">{lt('下載APP', '下載APP')}</span>
                 </button>
-                <div class="home-version-tag" id="home-version-tag">{`v${APP_VERSION}`}</div>
+                <div class="home-version-tag" id="home-version-tag">{`v${readAppVersion()}`}</div>
               </div>
             </div>
           </div>

@@ -714,3 +714,141 @@ describe('球員卡身分圖案（PNG）', () => {
     expect(t.calls).toHaveLength(0);
   });
 });
+
+describe('球員卡 PNG 人氣星（只加星星、不畫數字）', () => {
+  class FakePath2D {
+    constructor(public d: string) {}
+  }
+
+  const CALLS = [
+    'save', 'restore', 'scale', 'translate', 'beginPath', 'moveTo', 'lineTo',
+    'arc', 'arcTo', 'fill', 'stroke', 'fillRect', 'fillText', 'drawImage',
+    'createLinearGradient', 'clip', 'closePath', 'ellipse',
+  ] as const;
+
+  function traced() {
+    const fake = makeFakeCtx();
+    const ctx = fake.ctx as unknown as Record<string, unknown>;
+    ctx['translate'] = () => {};
+    const log: string[] = [];
+    const translates: Array<[number, number]> = [];
+    const starFills: Array<{ style: unknown; d: string }> = [];
+    const starStrokes: Array<{ style: unknown; width: number; join: unknown }> = [];
+    for (const name of CALLS) {
+      const orig = ctx[name];
+      if (typeof orig !== 'function') continue;
+      ctx[name] = (...args: unknown[]) => {
+        log.push(name);
+        if (name === 'translate') translates.push([args[0] as number, args[1] as number]);
+        if (name === 'fill' && args[0] instanceof FakePath2D) {
+          starFills.push({ style: ctx['fillStyle'], d: (args[0] as FakePath2D).d });
+          return undefined;
+        }
+        if (name === 'stroke' && args[0] instanceof FakePath2D) {
+          starStrokes.push({
+            style: ctx['strokeStyle'],
+            width: ctx['lineWidth'] as number,
+            join: ctx['lineJoin'],
+          });
+          return undefined;
+        }
+        return (orig as (...a: unknown[]) => unknown).apply(ctx, args);
+      };
+    }
+    return { fake, log, translates, starFills, starStrokes };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('Path2D', FakePath2D);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function card(stars: number | null | undefined) {
+    const base = model();
+    return stars === undefined ? base : { ...base, popularityStars: stars };
+  }
+
+  it('沒有星等時繪圖呼叫序列與省略欄位相同，也不畫星星', () => {
+    const omitted = traced();
+    drawPlayerCard(omitted.fake.ctx as unknown as CanvasRenderingContext2D, card(undefined), 'light', labels, {
+      avatar: avatarImg,
+      logo: logoImg,
+    });
+    const none = traced();
+    drawPlayerCard(none.fake.ctx as unknown as CanvasRenderingContext2D, card(null), 'light', labels, {
+      avatar: avatarImg,
+      logo: logoImg,
+    });
+    expect(none.log).toEqual(omitted.log);
+    expect(none.starFills).toHaveLength(0);
+    expect(none.translates).toHaveLength(0);
+    expect(none.fake.texts).toEqual(omitted.fake.texts);
+  });
+
+  it('有星等時畫 5 顆星、不畫人數、名字與三格的 y 不變', () => {
+    const plain = traced();
+    drawPlayerCard(plain.fake.ctx as unknown as CanvasRenderingContext2D, card(null), 'light', labels, {
+      avatar: null,
+      logo: logoImg,
+    });
+    const starred = traced();
+    drawPlayerCard(starred.fake.ctx as unknown as CanvasRenderingContext2D, card(3.5), 'light', labels, {
+      avatar: null,
+      logo: logoImg,
+    });
+    expect(starred.log.slice(0, plain.log.length)).toEqual(plain.log);
+    const per = (kind: 'full' | 'half' | 'empty'): string[] => [
+      'save', 'translate', 'scale',
+      ...(kind === 'half' ? ['createLinearGradient'] : []),
+      // 測試同步更新（站長核可預覽：空星沒有描邊）：只有金色的星（滿、半）才 stroke。
+      'fill', ...(kind === 'empty' ? [] : ['stroke']), 'restore',
+    ];
+    expect(starred.log.slice(plain.log.length)).toEqual([
+      ...per('full'), ...per('full'), ...per('full'), ...per('half'), ...per('empty'),
+    ]);
+    expect(starred.fake.texts).toEqual(plain.fake.texts);
+    expect(starred.fake.texts).not.toContain('3.5');
+    const nameY = (drawn: typeof plain.fake.drawn): number[] => drawn.filter((d) => d.value === '王小明').map((d) => d.y);
+    expect(nameY(starred.fake.drawn)).toEqual(nameY(plain.fake.drawn));
+    expect(starred.starFills).toHaveLength(5);
+    expect(starred.starFills.map((f) => f.d).every((d) => d.startsWith('M12 2.5'))).toBe(true);
+    expect(starred.starFills.slice(0, 3).every((f) => f.style === '#f5b82e')).toBe(true);
+    expect(starred.starFills[4]?.style).toBe('#d9dde5');
+    expect(starred.starStrokes).toHaveLength(4);
+    expect(starred.starStrokes.every((s) => s.style === '#d89a12' && s.width === 0.8 && s.join === 'round')).toBe(true);
+    // 壓在金圈下緣（97+50＝147）：星盒上緣在其上方 10（與畫面一致，星盒 17 高、中心在下緣上方 1.5）＝137；五顆寬 17、距 1、置中於 110。
+    expect(starred.translates).toEqual([
+      [65.5, 137],
+      [83.5, 137],
+      [101.5, 137],
+      [119.5, 137],
+      [137.5, 137],
+    ]);
+    const half = starred.fake.gradients.find((g) => g.args.join(',') === '0,0,24,0');
+    expect(half?.stops).toEqual([
+      [0, '#f5b82e'],
+      [0.5, '#f5b82e'],
+      [0.5, '#d9dde5'],
+      [1, '#d9dde5'],
+    ]);
+  });
+
+  it('深色空星用 #4a5266；星等 0 仍畫五顆空星、不畫數字', () => {
+    const dark = traced();
+    drawPlayerCard(dark.fake.ctx as unknown as CanvasRenderingContext2D, card(0), 'dark', labels, {
+      avatar: null,
+      logo: null,
+    });
+    expect(dark.starFills).toHaveLength(5);
+    expect(dark.starFills.every((f) => f.style === '#4a5266')).toBe(true);
+    expect(dark.fake.gradients.some((g) => g.args.join(',') === '0,0,24,0')).toBe(false);
+    const textsBefore = traced();
+    drawPlayerCard(textsBefore.fake.ctx as unknown as CanvasRenderingContext2D, card(null), 'dark', labels, {
+      avatar: null,
+      logo: null,
+    });
+    expect(dark.fake.texts).toEqual(textsBefore.fake.texts);
+  });
+});

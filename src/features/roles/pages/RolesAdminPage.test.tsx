@@ -95,7 +95,8 @@ describe('T-079a 權限管理頁', () => {
     knownUid = undefined;
     viewer = actor('guest', null);
     const view = render(<RolesAdminPage />);
-    expect(screen.getByRole('status').textContent).toBe('載入中');
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
     viewer = createMinimalViewer('test-actor');
     view.rerender(<RolesAdminPage />);
     expect(screen.queryByRole('alert')).toBeNull();
@@ -103,6 +104,26 @@ describe('T-079a 權限管理頁', () => {
     viewer = actor();
     view.rerender(<RolesAdminPage />);
     await chooseRole();
+    expect(mockLoad).toHaveBeenCalledOnce();
+  });
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    knownUid = 'test-actor';
+    viewer = createMinimalViewer('test-actor');
+    const view = render(<RolesAdminPage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(mockLoad).not.toHaveBeenCalled();
+
+    viewer = actor('admin');
+    view.rerender(<RolesAdminPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('權限不足');
+    expect(mockLoad).not.toHaveBeenCalled();
+
+    viewer = actor();
+    view.rerender(<RolesAdminPage />);
+    await chooseRole();
+    expect(screen.queryByText('權限不足')).toBeNull();
     expect(mockLoad).toHaveBeenCalledOnce();
   });
   it('只有權限設定與個別授權，沒有新增／刪除角色、權限測試', async () => {

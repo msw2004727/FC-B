@@ -21,6 +21,7 @@ import { getDocs, limit, orderBy, startAfter, where } from 'firebase/firestore';
 import {
   ACTIVE_EVENTS_LIMIT,
   ACTIVE_EVENT_STATUSES,
+  ACTIVE_LIST_REUSE_TTL_MS,
   TERMINAL_EVENT_STATUSES,
   TERMINAL_HISTORY_LIMIT,
   TERMINAL_PREVIEW_LIMIT,
@@ -57,10 +58,11 @@ function defer<T>(): {
   return { promise, resolve, reject };
 }
 
-function makeRepo() {
+function makeRepo(now?: () => number) {
   return createEventsRepo({
     getFirebase: async () => ({ db: {} as never }),
     logger: { warn: vi.fn(), error: vi.fn() },
+    now,
   });
 }
 
@@ -381,5 +383,114 @@ describe('loadEventsStatic 回傳契約與 getSnapshot() 的關係（首屏快�
     await expect(repo.loadEventsStatic({ terminalMode: 'none' })).rejects.toBeInstanceOf(EventsLoadError);
     expect(repo.getSnapshot().active.map((e) => e._docId)).toEqual(['prev']);
     expect(repo.getSnapshot().activeFromCache).toBe(true);
+  });
+});
+
+describe('SPEED-1-4 先提交 active、短 TTL 沿用', () => {
+  test('active 提交並通知後，terminal 還沒回來；回來後才補上', async () => {
+    const active = defer<FakeSnap>();
+    const terminal = defer<FakeSnap>();
+    docs
+      .mockImplementationOnce(() => active.promise as never)
+      .mockImplementationOnce(() => terminal.promise as never);
+    const repo = makeRepo();
+    const seen: string[][] = [];
+    let terminalAtNotify: string[] = ['pending'];
+    const pending = repo.loadEventsStatic({
+      terminalMode: 'preview',
+      onActiveCommitted: () => {
+        seen.push(repo.getSnapshot().active.map((event) => event._docId ?? ''));
+        terminalAtNotify = repo.getSnapshot().terminal.map((event) => event._docId ?? '');
+      },
+    });
+
+    active.resolve(snap([makeDoc('live', { status: 'open', blockedUids: ['U1'] })]));
+    await vi.waitFor(() => expect(seen).toEqual([['live']]));
+    expect(terminalAtNotify).toEqual([]);
+    expect(repo.getSnapshot().active[0]).toMatchObject({ blockedUids: ['U1'] });
+
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    terminal.resolve(snap([makeDoc('ended-doc', { status: 'ended' })]));
+    await expect(pending).resolves.toEqual(['events']);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('live');
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('ended-doc');
+    expect(repo.getSnapshot().active[0]).toMatchObject({ blockedUids: ['U1'] });
+  });
+
+  test('terminal 兩段都失敗仍 reject，但 active 已提交、舊 terminal 保留', async () => {
+    const repo = makeRepo();
+    docs
+      .mockResolvedValueOnce(snap() as never)
+      .mockResolvedValueOnce(snap([makeDoc('saved-terminal')]) as never);
+    await repo.loadEventsStatic();
+
+    const seen: string[] = [];
+    docs
+      .mockResolvedValueOnce(snap([makeDoc('fresh-active', { blockedUids: ['U1'] })]) as never)
+      .mockRejectedValueOnce(new Error('ordered failure'))
+      .mockRejectedValueOnce(new Error('fallback failure'));
+    await expect(repo.loadEventsStatic({
+      onActiveCommitted: () => {
+        seen.push(repo.getSnapshot().active[0]?._docId ?? '');
+      },
+    })).rejects.toMatchObject({ activeFailed: false, terminalFailed: true });
+    expect(seen).toEqual(['fresh-active']);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('fresh-active');
+    expect(repo.getSnapshot().active[0]).toMatchObject({ blockedUids: ['U1'] });
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('saved-terminal');
+  });
+
+  test('TTL 內沿用 active 只讀 terminal；到期與手動重新整理會再讀 active，沿用不延長 TTL', async () => {
+    let now = 1_000_000;
+    const repo = makeRepo(() => now);
+    docs.mockResolvedValueOnce(snap([makeDoc('home', { status: 'open', blockedUids: ['U1'] })]) as never);
+    await expect(repo.loadEventsStatic({ terminalMode: 'none' })).resolves.toEqual(['events']);
+    const afterHome = docs.mock.calls.length;
+
+    docs.mockResolvedValueOnce(snap([makeDoc('ended-doc', { status: 'ended' })]) as never);
+    await expect(repo.loadEventsStatic({
+      terminalMode: 'preview',
+      reuseActiveIfFresh: true,
+    })).resolves.toEqual(['terminal']);
+    expect(docs.mock.calls.length).toBe(afterHome + 1);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('home');
+    expect(repo.getSnapshot().active[0]).toMatchObject({ blockedUids: ['U1'] });
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('ended-doc');
+
+    now += 10_000;
+    docs.mockResolvedValueOnce(snap([makeDoc('ended-doc', { status: 'ended' })]) as never);
+    await repo.loadEventsStatic({ terminalMode: 'preview', reuseActiveIfFresh: true });
+    expect(docs.mock.calls.length).toBe(afterHome + 2);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('home');
+
+    const beforeForce = docs.mock.calls.length;
+    docs
+      .mockResolvedValueOnce(snap([makeDoc('fresh-active')]) as never)
+      .mockResolvedValueOnce(snap([makeDoc('fresh-terminal')]) as never);
+    await expect(repo.loadEventsStatic({
+      terminalMode: 'preview',
+      reuseActiveIfFresh: true,
+      forceTerminalRefresh: true,
+    })).resolves.toEqual(['events']);
+    expect(docs.mock.calls.length).toBe(beforeForce + 2);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('fresh-active');
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('fresh-terminal');
+
+    now += ACTIVE_LIST_REUSE_TTL_MS;
+    const beforeExpiry = docs.mock.calls.length;
+    docs
+      .mockResolvedValueOnce(snap([makeDoc('later-active')]) as never)
+      .mockResolvedValueOnce(snap([makeDoc('later-terminal')]) as never);
+    await expect(repo.loadEventsStatic({
+      terminalMode: 'preview',
+      reuseActiveIfFresh: true,
+    })).resolves.toEqual(['events']);
+    expect(docs.mock.calls.length).toBe(beforeExpiry + 2);
+    expect(repo.getSnapshot().active[0]?._docId).toBe('later-active');
+    expect(repo.getSnapshot().terminal[0]?._docId).toBe('later-terminal');
   });
 });

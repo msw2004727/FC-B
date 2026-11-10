@@ -1,0 +1,27 @@
+/* 人氣星列。填色走 CSS 變數，深色空星由 [data-theme="dark"] 切換，元件不判斷主題。
+   星大小預設 calc(17 * var(--pcu))（球員卡）。公開頁沒有 --pcu，由外層設 --pop-star-size。
+   不要在 .popularity-stars 上寫 --pop-star-size，否則會蓋掉外層傳入的 17px。 */
+.popularity-stars {
+  display: flex;
+  align-items: center;
+  gap: calc(1 * var(--pcu));
+  filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.4));
+  --pop-star-fill: #f5b82e;
+  --pop-star-stroke: #d89a12;
+  --pop-star-empty: #d9dde5;
+}
+[data-theme="dark"] .popularity-stars {
+  --pop-star-empty: #4a5266;
+}
+.popularity-stars svg {
+  width: var(--pop-star-size, calc(17 * var(--pcu)));
+  height: var(--pop-star-size, calc(17 * var(--pcu)));
+  display: block;
+  flex: none;
+}
+/* 線寬 .8、圓角接合寫在 SVG 屬性（viewBox 使用者單位）。這裡只負責描邊色，深淺色不用改。 */
+.popularity-stars path {
+  stroke: var(--pop-star-stroke);
+}
+.popularity-stars .is-full { fill: var(--pop-star-fill); }
+.popularity-stars .is-empty { fill: var(--pop-star-empty); stroke: none; }

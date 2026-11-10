@@ -21,6 +21,14 @@ vi.mock('@/data/auth', () => ({
   onAuthChanged: auth.onAuthChanged,
 }));
 
+// App 登入後會懶載入 InboxStoreHost，1.5 秒後呼叫 startInboxStore；上面的 auth mock 沒有 getLastKnownAuthUid，
+// 整包滿載時只要某個測試跨過 1.5 秒，就會在測試中丟 Uncaught Exception（2026-11-10 CI 見過一次）。
+// 這個檔只驗身份外框，不驗收件匣訂閱，所以只把 startInboxStore 換成空函式，其餘維持真實匯出。
+vi.mock('@/features/inbox/data/inbox-store', async (original) => ({
+  ...(await original<typeof import('@/features/inbox/data/inbox-store')>()),
+  startInboxStore: vi.fn(),
+}));
+
 const identityMocks = vi.hoisted(() => ({
   useIdentitySettings: vi.fn<() => IdentitySettings | null>(),
   startIdentitySettings: vi.fn(),

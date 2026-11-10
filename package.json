@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:bundle": "node scripts/check-bundle-budget.mjs dist",
     "check": "npm run typecheck && npm run test && npm run check:i18n",
     "emulators": "firebase emulators:start --only firestore,auth,storage --config emulator/firebase.json",
     "sync:rules": "node scripts/sync-rules.mjs",
@@ -20,7 +21,8 @@
     "check:parity": "node scripts/check-permission-parity.mjs ../FC",
     "seed:emulator": "node scripts/seed-emulator.mjs --reset",
     "e2e:shots": "node scripts/e2e-shots.mjs e2e-out",
-    "bump-version": "node scripts/bump-version.mjs"
+    "bump-version": "node scripts/bump-version.mjs",
+    "force-update": "node scripts/force-update.mjs"
   },
   "dependencies": {
     "@line/liff": "^2.31.2",
