@@ -1,5 +1,6 @@
 import { CallableError, callFn } from '@/data/callables';
 import { emit } from '@/core/events';
+import { beginSubmitting } from '@/core/submit-guard';
 import {
   buildRegisterPayload,
   registerForEvent,
@@ -26,6 +27,7 @@ export function registerSelection(
   const existing = inflight.get(input.eventId);
   if (existing) return existing;
 
+  const release = beginSubmitting('signup');
   const inner = (async (): Promise<RegisterResult> => {
     const payload: RegisterPayload = buildRegisterPayload(input);
     payload.participants = payload.participants.filter((person) => Boolean(person.companionId));
@@ -88,6 +90,7 @@ export function registerSelection(
   let tracked: Promise<RegisterResult>;
   tracked = inner.finally(() => {
     if (inflight.get(input.eventId) === tracked) inflight.delete(input.eventId);
+    release();
   });
   inflight.set(input.eventId, tracked);
   return tracked;

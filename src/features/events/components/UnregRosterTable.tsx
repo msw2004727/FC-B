@@ -154,7 +154,7 @@ export function UnregRosterTable({
   const localEpochRef = useRef(0);
   const serverEpochRef = useRef(0);
   const adoptNextPropsRef = useRef(false);
-  const flushRef = useRef<() => void>(() => {});
+  const flushRef = useRef<() => void | Promise<void>>(() => {});
   const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
   const syncPendingRef = useRef<() => void>(() => {});
   const scheduleReloadRef = useRef<() => void>(() => {});
@@ -580,9 +580,7 @@ export function UnregRosterTable({
     syncPendingRef.current();
   }, []);
 
-  flushRef.current = () => {
-    void flushInstantSaves();
-  };
+  flushRef.current = () => flushInstantSaves();
 
   if (people.length === 0) {
     return null;
