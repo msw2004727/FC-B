@@ -37,9 +37,11 @@ async function listFiles(dir) {
   return out.sort();
 }
 
-function build(outDir, buildId) {
+function build(outDir, buildId, versionOverride) {
   // vitest 會把 NODE_ENV=test 傳進來。子行程必須是正式打包，否則沒有壓縮、入口 gzip 會虛高。
   const env = { ...process.env, FCB_BUILD_ID: buildId, NODE_ENV: 'production' };
+  if (versionOverride) env.FCB_VERSION_FILE = versionOverride;
+  else delete env.FCB_VERSION_FILE;
   delete env.CF_PAGES;
   delete env.VITEST;
   return execFileAsync(process.execPath, [viteBin, 'build', '--outDir', outDir, '--emptyOutDir'], {
@@ -64,8 +66,9 @@ describe('換版號與建置時間後 assets 檔名不變', () => {
     expect(swapped).not.toBe(original);
     try {
       await build(dirA, '202601010101');
-      await writeFile(versionFile, swapped, 'utf8');
-      await build(dirB, '202612312359');
+      const swappedFile = path.join(parent, 'version.ts');
+      await writeFile(swappedFile, swapped, 'utf8'); // 暫存檔；不碰受版控的 src/version.ts
+      await build(dirB, '202612312359', swappedFile);
 
       const assetsA = await listFiles(path.join(dirA, 'assets'));
       const assetsB = await listFiles(path.join(dirB, 'assets'));
@@ -113,7 +116,6 @@ describe('換版號與建置時間後 assets 檔名不變', () => {
         }
       }
     } finally {
-      await writeFile(versionFile, original, 'utf8');
       await rm(parent, { recursive: true, force: true });
     }
   }, 600_000);

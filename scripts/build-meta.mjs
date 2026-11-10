@@ -2,7 +2,8 @@
  * build-meta.mjs — 把版號、建置編號、commit 短碼寫進 index.html 的 meta 與 dist/version.json。
  *
  * 不透過 Vite define 塞進 JS。版號只讀 src/version.ts（bump-version.mjs 的唯一來源）。
- * 建置編號是台北時間 YYYYMMDDHHmm。本機可用 FCB_BUILD_ID 覆寫（檔名穩定測試要換建置時間）；
+ * 建置編號是台北時間 YYYYMMDDHHmm。
+ * 本機可用 FCB_VERSION_FILE 改讀暫存版號檔（Pages 上忽略）。本機可用 FCB_BUILD_ID 覆寫（檔名穩定測試要換建置時間）；
  * Cloudflare Pages（CF_PAGES=1）出現這個變數就讓建置失敗，避免平台端寫死編號。
  */
 import { execSync } from 'node:child_process';
@@ -139,7 +140,8 @@ function readMeta(env, versionFile, now) {
  */
 export function appBuildMeta(options = {}) {
   const env = options.env ?? process.env;
-  const versionFile = options.versionFile;
+  // 本機測試可用 FCB_VERSION_FILE 指向暫存版號檔（檔名穩定測試用，不必改 src/version.ts）；Pages 上忽略。
+  const versionFile = options.versionFile ?? (isCloudflarePages(env) ? undefined : env.FCB_VERSION_FILE?.trim() || undefined);
   const now = options.now ?? (() => new Date());
   let isBuild = false;
   /** @type {{ version: string, build: string, sha: string } | null} */

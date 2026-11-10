@@ -95,11 +95,32 @@ describe('injectAppMeta', () => {
   });
 });
 
+async function generated(plugin) {
+  const files = [];
+  plugin.configResolved({ command: 'build' });
+  plugin.generateBundle.call({ emitFile(file) { files.push(file); } });
+  return files[0].source;
+}
+
 describe('appBuildMeta 外掛', () => {
   it('Pages 上 config() 就失敗，不會進到 define', () => {
     const plugin = appBuildMeta({ env: { CF_PAGES: '1', FCB_BUILD_ID: '202601010101' } });
     expect(() => plugin.config()).toThrow(/FCB_BUILD_ID/);
     expect(plugin.config.toString()).not.toContain('VITE_BUILD_ID');
+  });
+
+  it('FCB_VERSION_FILE 本機改讀暫存版號檔；Pages 上忽略、讀 src/version.ts', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'fcb-meta-'));
+    temps.push(dir);
+    const versionFile = path.join(dir, 'version.ts');
+    await writeFile(versionFile, "export const APP_VERSION = '0.20260101z';\n", 'utf8');
+    const now = () => new Date('2020-01-01T00:00:00Z');
+    const local = appBuildMeta({ env: { FCB_VERSION_FILE: versionFile }, now });
+    local.buildStart();
+    expect(JSON.parse(await generated(local)).version).toBe('0.20260101z');
+    const pages = appBuildMeta({ env: { CF_PAGES: '1', FCB_VERSION_FILE: versionFile }, now });
+    pages.buildStart();
+    expect(JSON.parse(await generated(pages)).version).not.toBe('0.20260101z');
   });
 
   it('建置時寫 meta 與 version.json，且不靠 define', async () => {
