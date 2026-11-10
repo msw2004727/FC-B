@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { beginSubmitting } from '@/core/submit-guard';
 import {
   applyAttendanceWriteResult,
   ATTENDANCE_RELOAD_IDLE_MS,
@@ -104,6 +105,7 @@ export function useAttendanceLeaveGuard(
   const boundRef = useRef(false);
   const mountedRef = useRef(false);
   const handlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
+  const submitReleaseRef = useRef<(() => void) | null>(null);
   if (handlerRef.current === null) {
     handlerRef.current = (event: BeforeUnloadEvent): void => {
       event.preventDefault();
@@ -121,6 +123,15 @@ export function useAttendanceLeaveGuard(
     } else if (!pending && boundRef.current) {
       window.removeEventListener('beforeunload', handler);
       boundRef.current = false;
+    }
+    if (pending) {
+      if (submitReleaseRef.current === null) {
+        submitReleaseRef.current = beginSubmitting('attendance-save');
+      }
+    } else if (submitReleaseRef.current !== null) {
+      const release = submitReleaseRef.current;
+      submitReleaseRef.current = null;
+      release();
     }
   }, []);
 
@@ -143,6 +154,9 @@ export function useAttendanceLeaveGuard(
         window.removeEventListener('beforeunload', handler);
         boundRef.current = false;
       }
+      const release = submitReleaseRef.current;
+      submitReleaseRef.current = null;
+      release?.();
       flushRef.current();
     };
   }, [scopeKey, flushRef]);

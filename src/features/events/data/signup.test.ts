@@ -1177,9 +1177,10 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     });
     await flushMicrotasks();
     expect(calls).toBe(1);
-    expect(vi.getTimerCount()).toBe(1);
+    // Callable 15 秒逾時之外，送出標記還有一顆 90 秒上限計時器。
+    expect(vi.getTimerCount()).toBe(2);
     await vi.advanceTimersByTimeAsync(14_999);
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(2);
     await vi.advanceTimersByTimeAsync(1);
     await assertion;
     expect(vi.getTimerCount()).toBe(0);

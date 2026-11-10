@@ -12,6 +12,7 @@
 // (e) 雙邊時間窗含開始前 24h 至結束後 72h，上界排除下一場同名活動紀錄；取不到結束時間則用開始 + 24h。同名活動在開始前 24h 內也辦、一天兩場同名仍刻意不處理，寧可漏發。
 
 import { callFn, CallableError } from '@/data/callables';
+import { beginSubmitting } from '@/core/submit-guard';
 import type {
   ConfirmEventAttendanceDesiredState,
   ConfirmEventAttendanceResponse,
@@ -358,6 +359,8 @@ async function grantOneCompleteActivityExp(
 export async function settleAttendance(
   input: SettleAttendanceInput,
 ): Promise<SettleAttendanceResult> {
+  const release = beginSubmitting('attendance-settle');
+  try {
   const { event, operatorUid, operatorName } = input;
   let desired: Record<string, ConfirmEventAttendanceDesiredState>;
   let res: ConfirmEventAttendanceResponse;
@@ -476,4 +479,7 @@ export async function settleAttendance(
   }
 
   return result;
+  } finally {
+    release();
+  }
 }
