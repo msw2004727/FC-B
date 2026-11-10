@@ -213,6 +213,8 @@ describe('decideForceUpdate 規則順序', () => {
       kind: 'prompt-only',
       why: 'no-session-storage',
     });
+    expect(decideForceUpdate({ ...base, localOk: false })).toEqual({ kind: 'prompt-only', why: 'no-local-storage' });
+    expect(decideForceUpdate({ ...base, localOk: true })).toEqual({ kind: 'go', attempt: 1 });
     expect(decideForceUpdate({ ...base, recentGlobal: 6 })).toEqual({ kind: 'prompt-only', why: 'global-brake' });
     expect(decideForceUpdate({ ...base, recentGlobal: 5 })).toEqual({ kind: 'go', attempt: 1 });
     const t = now - 59_999;
@@ -642,7 +644,7 @@ describe('T10 設定、meta、離線', () => {
     expect(h.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('只有 localStorage 壞仍會自動重載；兩個都不能寫就只顯示按鈕', () => {
+  it('localStorage 不能讀寫就只顯示按鈕（重載若清掉分頁紀錄，就沒有任何持久煞車）；兩個都不能寫也一樣', () => {
     const localOnly = startAt({
       path: '/',
       local: {
@@ -650,7 +652,9 @@ describe('T10 設定、meta、離線', () => {
         setItem: () => { throw new Error('no-local'); },
       },
     });
-    expect(localOnly.reload).toHaveBeenCalledTimes(1);
+    expect(localOnly.reload).not.toHaveBeenCalled();
+    expect(promptEl()?.querySelector('[data-sw-reload-later]')).toBeNull();
+    expect(promptEl()?.querySelector('[data-sw-reload-now]')).toBeTruthy();
 
     const both = startAt({ path: '/', session: throwingStore(), local: throwingStore() });
     expect(both.reload).not.toHaveBeenCalled();

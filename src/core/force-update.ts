@@ -31,7 +31,7 @@ export type ForceDecision =
   | { kind: 'exhausted' }
   | { kind: 'cooldown'; retryAt: number }
   | { kind: 'offline' }
-  | { kind: 'prompt-only'; why: 'no-session-storage' | 'global-brake' }
+  | { kind: 'prompt-only'; why: 'no-session-storage' | 'no-local-storage' | 'global-brake' }
   | { kind: 'quiet'; why: 'checkin' }
   | { kind: 'go'; attempt: 1 | 2 };
 
@@ -95,11 +95,14 @@ export function decideForceUpdate(input: {
   now: number;
   online: boolean;
   sessionOk: boolean;
+  /** localStorage 能讀寫（跨分頁煞車要靠它）；沒傳視為可用。不可用時只跳提示，不自動重整。 */
+  localOk?: boolean;
   /** 同一個 minBuild 已發生的自動重整次數（不隨時間減少）。 */
   recentGlobal: number;
   pathname: string;
 }): ForceDecision {
   const { minBuild, buildId, state, now, online, sessionOk, recentGlobal, pathname } = input;
+  const localOk = input.localOk !== false;
   let decision: ForceDecision;
   if (minBuild <= 0) decision = { kind: 'none', why: 'no-min-build' };
   else if (buildId <= 0) decision = { kind: 'none', why: 'no-build-id' };
@@ -107,6 +110,7 @@ export function decideForceUpdate(input: {
   else if (state?.m === minBuild && state.n >= 2) decision = { kind: 'exhausted' };
   else if (!online) decision = { kind: 'offline' };
   else if (!sessionOk) decision = { kind: 'prompt-only', why: 'no-session-storage' };
+  else if (!localOk) decision = { kind: 'prompt-only', why: 'no-local-storage' };
   else if (recentGlobal >= GLOBAL_AUTO_RELOAD_LIMIT) decision = { kind: 'prompt-only', why: 'global-brake' };
   else if (state?.m === minBuild && state.n === 1) {
     const retryAt = state.t + COOLDOWN_MS;
@@ -139,6 +143,7 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
   let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
   const reported = new Set<string>();
   const sessionOk = probeSession();
+  const localOk = probeLocal();
 
   const doc = deps.target.doc;
   const win = deps.target.win;
@@ -166,6 +171,17 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
         // 探針刪不掉不影響讀寫驗證
       }
       return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function probeLocal(): boolean {
+    const local = deps.local;
+    if (!local) return false;
+    try {
+      local.setItem(PROBE_KEY, '1');
+      return local.getItem(PROBE_KEY) === '1';
     } catch {
       return false;
     }
@@ -276,7 +292,7 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
 
   function armCooldown(retryAt: number): void {
     clearCooldown();
-    const delay = Math.max(0, retryAt - deps.now());
+    const delay = Math.min(COOLDOWN_MS, Math.max(0, retryAt - deps.now()));
     cooldownTimer = setTimeout(() => {
       cooldownTimer = null;
       evaluate('cooldown');
@@ -335,6 +351,7 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
       now: deps.now(),
       online: deps.online(),
       sessionOk,
+      localOk,
       recentGlobal: readRecentGlobal(config.minBuild),
       pathname: currentPath(),
     });
@@ -369,6 +386,7 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
     if (decision.kind === 'offline') {
       offlineWaiting = true;
       deferred = false;
+      clearCooldown();
       stopPoll();
       return;
     }
