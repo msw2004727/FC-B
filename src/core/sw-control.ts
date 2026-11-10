@@ -112,6 +112,9 @@ export async function runSwControl(
   }
 }
 
+/** 離線快取流程最多等這麼久，之後不論結果都啟動 minBuild 檢查。 */
+const SW_BOOT_WAIT_MS = 8_000;
+
 export interface SwForceBootInput {
   config: RuntimeConfig | null;
   swSupported: boolean;
@@ -126,7 +129,15 @@ export interface SwForceBootInput {
  */
 export async function bootSwAndForceUpdate(input: SwForceBootInput): Promise<void> {
   if (input.swSupported) {
-    await runSwControl(input.config ?? parseRuntimeConfig(null), input.swDeps);
+    try {
+      // 停用／註冊卡住或丟錯時，minBuild 檢查照樣要啟動（不得被離線快取流程擋住）
+      await Promise.race([
+        runSwControl(input.config ?? parseRuntimeConfig(null), input.swDeps),
+        new Promise<void>((resolve) => setTimeout(resolve, SW_BOOT_WAIT_MS)),
+      ]);
+    } catch (err) {
+      console.warn('[sw] 啟動流程失敗，仍檢查 minBuild', err);
+    }
   }
   try {
     await input.startForce(input.config);

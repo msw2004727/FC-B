@@ -209,6 +209,41 @@ describe('bootSwAndForceUpdate', () => {
     })).resolves.toBeUndefined();
   });
 
+  it('離線快取流程丟錯或一直沒結束，minBuild 檢查照樣啟動', async () => {
+    const startForce = vi.fn(async () => {});
+    const throwing = deps({
+      serviceWorker: {
+        getRegistrations: async () => { throw new Error('boom'); },
+      },
+    });
+    await bootSwAndForceUpdate({
+      config: { swEnabled: false, minBuild: 202611111200 },
+      swSupported: true,
+      swDeps: throwing,
+      startForce,
+    });
+    expect(startForce).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    try {
+      const hanging = vi.fn(async () => {});
+      const stuck = deps({
+        serviceWorker: { getRegistrations: () => new Promise<ServiceWorkerRegistration[]>(() => {}) },
+      });
+      const p = bootSwAndForceUpdate({
+        config: { swEnabled: false, minBuild: 202611111200 },
+        swSupported: true,
+        swDeps: stuck,
+        startForce: hanging,
+      });
+      await vi.advanceTimersByTimeAsync(8_001);
+      await p;
+      expect(hanging).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('swEnabled false 時先停用，然後才把同一份設定交給強制更新', async () => {
     const order: string[] = [];
     const unregister = vi.fn(async () => {
