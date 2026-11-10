@@ -105,17 +105,8 @@ function run(options: RunOptions = {}): RunResult {
   };
 }
 
-const MASK = [
-  'mask.fieldPaths=title',
-  'mask.fieldPaths=date',
-  'mask.fieldPaths=location',
-  'mask.fieldPaths=image',
-  'mask.fieldPaths=imageVariants',
-  'mask.fieldPaths=blockedUids',
-].join('&');
-
 function eventUrl(id: string): string {
-  return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/events/${id}?${MASK}`;
+  return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/events/${id}`;
 }
 
 async function expectNoUnhandled(work: () => Promise<void>): Promise<void> {
@@ -158,12 +149,13 @@ describe('fcb-early-event 發不發', () => {
     }
   });
 
-  it('/events/<id> 在正式主機發一次匿名 GET，網址含專案與六個 mask', () => {
+  it('/events/<id> 在正式主機發一次匿名 GET，網址是完整文件、不含欄位 mask', () => {
     const result = run({ pathname: '/events/abc_DEF-123', search: '?utm=1' });
     expect(result.fetchCalls).toHaveLength(1);
     const call = result.fetchCalls[0];
     if (!call) throw new Error('沒有請求');
     expect(call.url).toBe(eventUrl('abc_DEF-123'));
+    expect(call.url).not.toContain('mask.fieldPaths');
     expect(call.init.method).toBe('GET');
     expect(call.init.credentials).toBe('omit');
     expect(call.init.headers).toBeUndefined();

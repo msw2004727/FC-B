@@ -212,7 +212,7 @@
           var m = /^\/events\/([A-Za-z0-9_-]{1,120})$/.exec(L.pathname);
           if (!m || local(L.hostname)) return;
           var id = m[1], c = new AbortController(), t = setTimeout(function () { c.abort(); }, 4000);
-          window.__fcbEarlyEvent = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents/events/' + id + '?mask.fieldPaths=title&mask.fieldPaths=date&mask.fieldPaths=location&mask.fieldPaths=image&mask.fieldPaths=imageVariants&mask.fieldPaths=blockedUids', {
+          window.__fcbEarlyEvent = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents/events/' + id, {
             method: 'GET',
             credentials: 'omit',
             signal: c.signal

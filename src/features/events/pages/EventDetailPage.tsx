@@ -22,6 +22,7 @@ import {
 import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staff';
 import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
 import type { RegLogRegistration } from '../data/event-reg-log';
+import { readAuthHint } from '@/data/auth-hint';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
@@ -39,6 +40,7 @@ import {
   loadEventDetailThroughSessionCache,
   type SessionDetailCacheEntry,
 } from '../data/event-detail-session-cache';
+import { readEarlyEventDetail, readEarlyEventPromise } from '../data/early-event-shell';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
 import { isEventVisibleToUser } from '../data/visibility';
 import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
@@ -257,11 +259,21 @@ function canViewDetailAttendanceRecordDetails(
   );
 }
 
+/**
+ * 登入線索為真、uid 還沒到、黑名單非空：先不拿早取文件畫首屏。
+ * 沒有 uid 時可見性會放行；外殼同一條也先不畫標題。改走原本的 SDK 讀取，不永久停住。
+ */
+function earlyAuthWithheld(event: { blockedUids?: unknown }, uid: string | null): boolean {
+  if (uid || !readAuthHint()) return false;
+  const blocked = event.blockedUids;
+  return Array.isArray(blocked) && blocked.length > 0;
+}
+
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
   const routeId = id ?? location.path.split('/')[2] ?? '';
   const viewer = useViewer();
-  // 快取活在 key 外面：uid 改變會重掛 session，但同一頁的第一次讀取還在。頁面卸載就丟。
+  // 快取活在 session 外面。訪客 → 第一次登入不重掛；換帳號或登出才清。頁面卸載就丟。
   const detailCache = useRef(new Map<string, SessionDetailCacheEntry<LoadedEventDetail>>());
   // 換活動就清：preact-iso 同一路由元件不重掛，A → B → 返回 A 不能拿 A 的舊讀取（Opus 終審 P2-2）。
   const cacheRouteId = useRef(routeId);
@@ -276,10 +288,10 @@ export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
     cacheUid.current = viewer.uid ?? null;
   }
 
-  // UID/活動變更立即隔離 DOM 與所有未完成操作，避免 effect 清理前洩漏舊資料。
+  // 換活動才重掛。訪客 → 第一次登入不重掛；換帳號或登出由上面清快取，session effect 整頁重讀（L-43）。
   return (
     <EventDetailSession
-      key={`${routeId}:${viewer.uid ?? 'guest'}`}
+      key={routeId}
       publicId={routeId}
       viewer={viewer}
       detailCache={detailCache.current}
@@ -367,6 +379,13 @@ function EventDetailSession({
   const lineAbort = useRef<AbortController | null>(null);
   const generation = useRef(0);
   if (!generation.current) generation.current = ++nextSignupGeneration;
+  // undefined＝還沒交出過畫面；null＝以訪客交出。換帳號比對這個，不靠整頁重掛。
+  const paintedUid = useRef<string | null | undefined>(undefined);
+  const keepForUid = useRef<string | null>(null);
+  const snapshotNow = useRef(snapshot);
+  snapshotNow.current = snapshot;
+  const phaseNow = useRef(phase);
+  phaseNow.current = phase;
   const signupContexts = useRef<ReturnType<typeof createDetailSignupContexts> | null>(null);
   if (!signupContexts.current) {
     signupContexts.current = createDetailSignupContexts({
@@ -442,38 +461,84 @@ function EventDetailSession({
     const current = (): boolean =>
       !disposed && alive.current && request === sequence.current;
 
-    setPhase('loading');
-    setRosterState({ expanded: false, phase: 'idle' });
-    setHistoryFailed(false);
-    setSnapshot(null);
+    const uid = viewer.uid ?? null;
+    const painted = snapshotNow.current;
+    // 訪客已畫出、第一次 uid 到位：不把 phase 打回載入中，只補本場報名。換帳號或尚未畫出則整頁重讀。
+    const keep =
+      paintedUid.current === null
+      && uid !== null
+      && phaseNow.current === 'ready'
+      && painted !== null
+      && (painted.event.id ?? publicId) === publicId
+      && (keepForUid.current === null || keepForUid.current === uid);
 
-    async function load(): Promise<void> {
-      if (!/^[A-Za-z0-9_-]{1,120}$/.test(publicId)) {
-        if (current()) setPhase('missing');
-        return;
-      }
+    if (!keep) {
+      paintedUid.current = undefined;
+      keepForUid.current = null;
+      setPhase('loading');
+      setRosterState({ expanded: false, phase: 'idle' });
+      setHistoryFailed(false);
+      setSnapshot(null);
+    } else {
+      keepForUid.current = uid;
+      setRosterState({ expanded: false, phase: 'idle' });
+      rosterAutoOpened.current = false;
+      setHistoryFailed(false);
+    }
 
-      const uid = viewer.uid;
-      let detail: Awaited<ReturnType<typeof loadEventDetail>>;
+    async function loadKept(paintedSnapshot: Snapshot, nextUid: string): Promise<void> {
       let history: RegistrationDoc[] = [];
       let failedHistory = false;
       try {
-        if (uid) {
-          const [loaded, historyResult] = await Promise.all([
-            loadEventDetailThroughSessionCache(detailCache, publicId, reload, loadEventDetail),
-            (async () => {
-              try {
-                return { rows: await loadViewerRegistrations(uid), failed: false as const };
-              } catch {
-                return { rows: [] as RegistrationDoc[], failed: true as const };
-              }
-            })(),
-          ]);
-          detail = loaded;
-          history = historyResult.rows;
-          failedHistory = historyResult.failed;
-        } else {
-          detail = await loadEventDetailThroughSessionCache(detailCache, publicId, reload, loadEventDetail);
+        history = await loadViewerRegistrations(nextUid, paintedSnapshot.eventDocId);
+      } catch {
+        failedHistory = true;
+      }
+      if (!current()) return;
+      paintedUid.current = nextUid;
+      keepForUid.current = null;
+      if (!isEventVisibleToUser(paintedSnapshot.event, currentViewer.current, history)) {
+        setSnapshot(null);
+        setPhase('missing');
+        return;
+      }
+      setSnapshot((prev) => (prev ? { ...prev, viewerRegistrations: history } : prev));
+      setHistoryFailed(failedHistory);
+      rosterAutoOpened.current = false;
+      rosterAutoHold.current = false;
+    }
+
+    async function load(): Promise<void> {
+      if (keep && painted && uid) {
+        await loadKept(painted, uid);
+        return;
+      }
+
+      if (!/^[A-Za-z0-9_-]{1,120}$/.test(publicId)) {
+        if (current()) {
+          paintedUid.current = uid;
+          setPhase('missing');
+        }
+        return;
+      }
+
+      let detail: LoadedEventDetail | null = null;
+      try {
+        // 沒有提早 Promise 時同步開 SDK，不先空等一個微任務。
+        if (reload === 0 && readEarlyEventPromise()) {
+          const early = await readEarlyEventDetail(publicId);
+          if (!current()) return;
+          if (early && !earlyAuthWithheld(early.event, uid)) {
+            detail = early;
+            if (!detailCache.has(publicId)) {
+              detailCache.set(publicId, { at: Date.now(), promise: Promise.resolve(early) });
+            }
+          }
+        }
+        if (!detail) {
+          detail = await loadEventDetailThroughSessionCache(
+            detailCache, publicId, reload, loadEventDetail,
+          );
         }
       } catch {
         if (current()) setPhase('error');
@@ -481,11 +546,24 @@ function EventDetailSession({
       }
       if (!current()) return;
       if (!detail) {
+        paintedUid.current = uid;
         setPhase('missing');
         return;
       }
 
+      let history: RegistrationDoc[] = [];
+      let failedHistory = false;
+      if (uid) {
+        try {
+          history = await loadViewerRegistrations(uid, detail.eventDocId);
+        } catch {
+          failedHistory = true;
+        }
+        if (!current()) return;
+      }
+
       if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
+        paintedUid.current = uid;
         setPhase('missing');
         return;
       }
@@ -502,14 +580,22 @@ function EventDetailSession({
       rosterAutoOpened.current = false;
       rosterAutoHold.current = false;
       setPhase('ready');
+      paintedUid.current = uid;
 
-      if (!viewer.uid) {
+      if (!uid) {
         setRosterPhase('ready');
       }
     }
 
     load().catch(() => {
-      if (current()) setPhase('error');
+      if (!current()) return;
+      if (keep) {
+        paintedUid.current = uid;
+        keepForUid.current = null;
+        setHistoryFailed(true);
+        return;
+      }
+      setPhase('error');
     });
     return () => {
       disposed = true;
@@ -723,8 +809,23 @@ function EventDetailSession({
     }
   }
 
-  const visible = snapshot !== null &&
-    isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
+  const uidNow = viewer.uid ?? null;
+  // 訪客頁已畫出、本場報名還沒回來：按鈕維持同步中，且先不要因空報名把黑名單打成找不到。
+  const regsPending =
+    paintedUid.current === null
+    && uidNow !== null
+    && phase === 'ready'
+    && snapshot !== null
+    && (snapshot.event.id ?? publicId) === publicId;
+  // 已畫出的登入者換人或登出：這一幀就改畫載入外殼，不等 effect 清掉舊畫面。
+  const accountReset =
+    paintedUid.current !== undefined
+    && paintedUid.current !== null
+    && paintedUid.current !== uidNow;
+  const visible = snapshot !== null && (
+    regsPending
+    || isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations)
+  );
   const event = snapshot?.event as LegacyDetailEvent | undefined;
   const active = sortRegistrations(snapshot?.registrations ?? []);
 
@@ -794,7 +895,7 @@ function EventDetailSession({
       status: snapshot.event.status === 'upcoming' ? 'upcoming' : effectiveEventStatus(snapshot.event, now),
     } : null,
     viewer,
-    loading: phase !== 'ready' || !visible || profileLoading || historyFailed
+    loading: phase !== 'ready' || !visible || profileLoading || historyFailed || regsPending
       || refreshFailed || rosterPhase === 'loading',
     blocked: busy || rosterSubmitting,
     now,
@@ -1478,7 +1579,7 @@ function EventDetailSession({
       return;
     }
     if (!current || refreshFailed || !alive.current) return;
-    if (profileLoading || historyFailed) return;
+    if (profileLoading || historyFailed || regsPending) return;
 
     // T-086a：讀取開始時間與世代（同 contexts 的 generation）交給 registerForEvent，3 秒內可省掉函式內的重讀。
     const latestLoadedAt = Date.now();
@@ -1885,7 +1986,7 @@ function EventDetailSession({
     />
   );
 
-  if (phase === 'loading') {
+  if (phase === 'loading' || accountReset) {
     return (
       <EventDetailLoadingShell publicId={publicId} viewer={viewer} goBack={goBack}>
         {noticeToast}
@@ -1940,7 +2041,7 @@ function EventDetailSession({
     now: new Date(now),
     profile: signupProfile,
     profileLoading,
-    historyFailed,
+    historyFailed: historyFailed || regsPending,
     viewerTeamIds: viewer.teamIds,
   });
   const maximum = count(event.max);

@@ -1,13 +1,21 @@
 /**
- * 把 `window.__fcbEarlyEvent` 的原始 Firestore REST 文件收成載入外殼的四個字串。
+ * 把 `window.__fcbEarlyEvent` 的原始 Firestore REST 文件收成兩種純資料：
+ * 載入外殼的四個字串，以及首屏用的完整活動文件。
  *
- * 只做顯示用的純資料：不動載入狀態機、不寫入 snapshot、不進任何寫入路徑、不寫 storage。
+ * 只做顯示用的純資料：不動載入狀態機、不寫入頁面 snapshot、不進任何寫入路徑、不寫 storage。
  * 文件 `name` 的最後兩段必須是 `events` 與精確的 publicId（後綴碰撞不算；不認 `fields.id`）。
+ * 完整文件任一頂層欄位解不開就整份丟棄，呼叫端改走 SDK，避免先畫半份再換掉。
  */
 import { decodeValue } from '@/features/home/data/banners-rest';
 import { safeImageUrl } from './detail-model';
-import type { ViewerContext } from './types';
+import type { EventDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
+
+/** 與 `loadEventDetail` 同形，給首屏直接當這次活動文件。型別只依賴 EventDoc，不從 event-detail 引執行期。 */
+export interface EarlyEventDetail {
+  event: EventDoc;
+  eventDocId: string;
+}
 
 export interface EarlyEventShellText {
   title?: string;
@@ -104,4 +112,62 @@ export function selectEarlyEventShellText(
   };
   if (!text.title && !text.date && !text.location && !text.image) return null;
   return text;
+}
+
+function topLevelUndecodable(value: unknown): boolean {
+  if (value === undefined) return true;
+  return Array.isArray(value) && value.some((item) => item === undefined);
+}
+
+/**
+ * 原始 REST 文件 → 活動文件。`name` 不符、任一頂層欄位解不開、或 `blockedUids` 不是乾淨字串陣列時回 `null`。
+ * 不解到一半就拿去畫。不呼叫可見性、不寫 storage、不碰 phase。巢狀 map 裡被解碼器丟掉的壞鍵不在這裡擋（頂層失敗才整份退回）。
+ */
+export function selectEarlyEventDetail(raw: unknown, publicId: string): EarlyEventDetail | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const doc = raw as { name?: unknown; fields?: unknown };
+  if (!earlyEventDocumentNameMatches(doc.name, publicId)) return null;
+  const fields = doc.fields;
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
+  const bag = fields as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  for (const key of Object.keys(bag)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    const decoded = decodeValue(bag[key], 0);
+    if (topLevelUndecodable(decoded)) return null;
+    data[key] = decoded;
+  }
+  if (Object.prototype.hasOwnProperty.call(bag, 'blockedUids')) {
+    const blocked = data.blockedUids;
+    if (!Array.isArray(blocked) || blocked.some((item) => typeof item !== 'string')) return null;
+  }
+  const parts = (doc.name as string).split('/');
+  const eventDocId = parts[parts.length - 1] ?? '';
+  if (!eventDocId) return null;
+  return {
+    event: { ...data, _docId: eventDocId } as EventDoc,
+    eventDocId,
+  };
+}
+
+/**
+ * 讀已掛上的提早文件。已有結果就同步用記憶體；否則等 Promise。
+ * 成功與拒絕都記進記憶體（拒絕記 `null`），這個函式本身不 throw。
+ */
+export async function readEarlyEventDetail(publicId: string): Promise<EarlyEventDetail | null> {
+  const promise = readEarlyEventPromise();
+  if (!promise) return null;
+  const settled = readSettledEarlyEvent(promise);
+  let raw: unknown;
+  if (settled) {
+    raw = settled.value;
+  } else {
+    try {
+      raw = await promise;
+    } catch {
+      raw = null;
+    }
+    rememberEarlyEventResult(promise, raw);
+  }
+  return selectEarlyEventDetail(raw, publicId);
 }
