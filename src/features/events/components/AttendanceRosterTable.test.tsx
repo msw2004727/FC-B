@@ -568,15 +568,23 @@ describe('WaitlistRosterTable', () => {
     const table = document.querySelector('table');
     expect(table?.classList.contains('att-roster')).toBe(true);
     expect(table?.classList.contains('att-roster-waitlist')).toBe(true);
-    // 每個人一號：Alice 的同行者 Alice Jr 排第 1（Alice 本人已正取，只有註記列沒有號碼）。
+    // 每個人一號：Alice 本人（已正取、仍排在候補組內）1、同行者 Alice Jr 2。
     expect([...document.querySelectorAll('.att-no')].map((el) => el.textContent)).toEqual(['1', '2']);
-    expect(document.querySelector('.att-no')?.classList.contains('att-wl-next')).toBe(true);
+    // 本人已正取的報名人只是組頭，「下一位遞補」落在真正排隊的 Alice Jr。
+    const aliceDots = [...document.querySelectorAll('.att-no')];
+    expect(aliceDots[0]?.classList.contains('att-wl-next')).toBe(false);
+    expect(aliceDots[1]?.classList.contains('att-wl-next')).toBe(true);
     for (const row of document.querySelectorAll('tbody tr')) {
       expect(row.classList.contains('att-grp')).toBe(true);
     }
     expect(screen.getByText('Alice Jr').closest('.cr-cap')).toBeTruthy();
-    expect(screen.getAllByText('已正取').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/↳ 報名人：Alice/).length).toBeGreaterThanOrEqual(1);
+    // 報名人本人已在正取名單：只在報名人名字右上角掛一個「已正取」小標籤，不再有「↳ 報名人」註記列。
+    const confirmedTags = document.querySelectorAll('.att-wl-confirmed');
+    expect(confirmedTags).toHaveLength(1);
+    expect(confirmedTags[0]?.textContent).toBe('已正取');
+    expect(confirmedTags[0]?.closest('.cr-lead')?.textContent).toContain('Alice');
+    expect(screen.queryByText(/↳ 報名人/)).toBeNull();
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(2);
     const hourglass = document.querySelector('.att-wl-title svg');
     expect(hourglass?.getAttribute('aria-hidden')).toBe('true');
     expect(hourglass?.getAttribute('width')).toBe('16');
@@ -636,13 +644,13 @@ describe('WaitlistRosterTable', () => {
 
     // 同行組：報名人「+N」、同行者斜方塊加組色連線，列不吃斑馬、組有上下細線（與正取名單同一套 class）。
     const rows = [...document.querySelectorAll('tbody tr')];
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(4);
     expect(rows.every((row) => row.classList.contains('att-grp'))).toBe(true);
     expect(rows.some((row) => row.classList.contains('att-zebra-odd') || row.classList.contains('att-zebra-even'))).toBe(false);
     expect(rows[0]?.classList.contains('att-grp-first')).toBe(true);
     expect(rows[1]?.classList.contains('att-grp-last')).toBe(true);
     expect(rows[2]?.classList.contains('att-grp-first')).toBe(true);
-    expect(rows[5]?.classList.contains('att-grp-last')).toBe(true);
+    expect(rows[3]?.classList.contains('att-grp-last')).toBe(true);
     expect([...document.querySelectorAll('.cr-plus')].map((el) => el.textContent)).toEqual(['+1', '+1']);
     expect(document.querySelectorAll('.cr-link-down')).toHaveLength(2);
     expect(document.querySelectorAll('.cr-link-mate')).toHaveLength(2);
@@ -650,9 +658,10 @@ describe('WaitlistRosterTable', () => {
     // 兩組組色不同（slot 0、1）。
     const groupVars = [...document.querySelectorAll('td.cr-name-cell')].map((td) => (td as HTMLElement).style.getPropertyValue('--cr-g'));
     expect(new Set(groupVars).size).toBe(2);
-    // 註記列夾在組內：組色連線貫穿（Cara 的「已正取」註記在報名人與同行者之間）。
-    expect(document.querySelectorAll('.att-wl-pass')).toHaveLength(1);
-    expect(document.querySelector('.att-wl-pass')?.closest('tr')?.textContent).toContain('已正取');
+    // 只有 Cara 本人已正取：她的名字右上角一個「已正取」小標籤，沒有註記列。
+    expect(document.querySelectorAll('.att-wl-confirmed')).toHaveLength(1);
+    expect(document.querySelector('.att-wl-confirmed')?.closest('tr')?.textContent).toContain('Cara');
+    expect(document.querySelector('.att-wl-pass')).toBeNull();
 
     const linked = rows;
     expect(linked[0]?.querySelector('.att-wl-link-first')).toBeTruthy();

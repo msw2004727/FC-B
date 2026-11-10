@@ -68,13 +68,6 @@
   width: 100%;
 }
 
-/* 沒有號碼的列（註記）：留同寬空位，讓名字欄對齊。 */
-.att-roster-waitlist .att-wl-gap {
-  flex: 0 0 1.35rem;
-  width: 1.35rem;
-  margin-right: .5rem;
-}
-
 .att-roster-waitlist .att-no {
   position: relative;
   z-index: 1;
@@ -136,42 +129,19 @@
   white-space: nowrap;
 }
 
-.att-roster-waitlist .att-wl-note {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* 「已正取」：報名人本人已在正取名單，小標籤掛在名字右上角。 */
+.att-roster-waitlist .att-wl-confirmed {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin-left: -.5rem;
+  transform: translateY(-.55rem);
+  padding: .02rem .4rem;
+  border-radius: 999px;
+  font-size: .6rem;
+  font-weight: 700;
+  line-height: 1.5;
   white-space: nowrap;
-  padding-left: 1.75rem;
-  font-size: .72rem;
-  color: var(--text-muted);
-}
-
-.att-roster-waitlist .att-wl-note-deep {
-  padding-left: 2.35rem;
-}
-
-/* 註記列夾在同行組中間：組色連線往下貫穿（與 .cr-v-top／.cr-v-bot 同一條線的位置）。 */
-.att-roster-waitlist .att-wl-pass {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.att-roster-waitlist .att-wl-pass::before {
-  content: "";
-  position: absolute;
-  left: 11px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  transform: translateX(-50%);
-  background: var(--cr-g);
-  opacity: .6;
-}
-
-.att-roster-waitlist .att-wl-ok {
   color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
 }

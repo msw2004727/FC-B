@@ -43,7 +43,7 @@ export interface WaitlistRosterTableProps {
   onPromoteParticipant?: (item: WaitlistRosterItem) => void;
 }
 
-type WlRowKind = 'main' | 'self-orphan' | 'companion' | 'companion-orphan';
+type WlRowKind = 'main' | 'companion';
 
 interface WlRow {
   key: string;
@@ -51,16 +51,14 @@ interface WlRow {
   item: WaitlistRosterItem;
   itemIndex: number;
   companion?: WaitlistCompanionItem;
-  /** 順位（每個人一個號碼，同行者也算；註記列沒有）。 */
-  serial: number | null;
+  /** 順位（每個人一個號碼，同行者也算）。 */
+  serial: number;
   /** 組色與連線資訊，與正取名單同一套（companion-groups）。 */
   meta: CompanionRowMeta;
   /** 同行組的列（主報名人、同行者、註記）：不吃斑馬，改用組的上下細線。 */
   grp: string;
   /** 斑馬只在「單獨報名」的列之間交替。 */
   zebra: '' | 'att-zebra-odd' | 'att-zebra-even';
-  /** 註記列在組內：連線要往下貫穿。 */
-  pass: boolean;
   /** 空字串＝不畫排隊連線（只有一列）。 */
   link: string;
 }
@@ -78,12 +76,7 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
       ? { kind: 'lead', slot, mateCount }
       : { kind: 'solo', slot: 0 };
     serial += 1;
-    draft.push({ key: rowKey, kind: 'main', item, itemIndex, serial, meta: ownerMeta, pass: false });
-    if (item.selfOrphanInfo) {
-      draft.push({
-        key: `${rowKey}:self-orphan`, kind: 'self-orphan', item, itemIndex, serial: null, meta: ownerMeta, pass: mateCount > 0,
-      });
-    }
+    draft.push({ key: rowKey, kind: 'main', item, itemIndex, serial, meta: ownerMeta });
     item.companions.forEach((companion, cIdx) => {
       const cKey = `${rowKey}:comp:${companion.companionId || cIdx}`;
       const last = cIdx === mateCount - 1;
@@ -91,19 +84,7 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
         kind: 'mate', slot, ownerInitial: ownerInitial(item.name), connected: true, last, dashed: false,
       };
       serial += 1;
-      draft.push({ key: cKey, kind: 'companion', item, itemIndex, companion, serial, meta: mateMeta, pass: false });
-      if (companion.orphanInfo) {
-        draft.push({
-          key: `${cKey}:orphan`,
-          kind: 'companion-orphan',
-          item,
-          itemIndex,
-          companion,
-          serial: null,
-          meta: mateMeta,
-          pass: !last,
-        });
-      }
+      draft.push({ key: cKey, kind: 'companion', item, itemIndex, companion, serial, meta: mateMeta });
     });
   });
   const multi = draft.length > 1;
@@ -176,10 +157,11 @@ export function WaitlistRosterTable({
   if (items.length === 0) return null;
 
   const rows = buildRows(items);
+  // 「下一位遞補」＝隊伍裡第一個真的在排隊的人；本人已正取的報名人只是同行組的組頭，不算。
+  const nextKey = rows.find((r) => !(r.kind === 'main' && r.item.selfOrphanInfo))?.key;
 
   function renderSerial(row: WlRow): JSX.Element {
-    if (row.serial === null) return <span class="att-wl-gap" aria-hidden="true" />;
-    return <span class={`att-no${row.serial === 1 ? ' att-wl-next' : ''}`}>{row.serial}</span>;
+    return <span class={`att-no${row.key === nextKey ? ' att-wl-next' : ''}`}>{row.serial}</span>;
   }
 
   function renderName(row: WlRow): JSX.Element {
@@ -195,10 +177,12 @@ export function WaitlistRosterTable({
           onOpenProfile={onOpenProfile}
         />
       );
+      // 報名人本人已在正取名單（只會出現在有同行者的組）：名字右上角掛「已正取」小標籤（站長 2026-11-10 指定位置）。
       return row.meta.kind === 'lead' ? (
         <span class="reg-name-text">
           <span class="cr-lead" style={groupStyle}>
             {tag}
+            {row.item.selfOrphanInfo && <span class="att-wl-confirmed" data-no-translate>已正取</span>}
             <span class="cr-plus">{`+${row.meta.mateCount}`}</span>
           </span>
         </span>
@@ -206,38 +190,25 @@ export function WaitlistRosterTable({
         <span class="reg-name-text">{tag}</span>
       );
     }
-    if (row.kind === 'companion') {
-      const initial = row.meta.kind === 'mate' ? row.meta.ownerInitial : '?';
-      return (
-        <span class="reg-name-text cr-mate-text">
-          <span class="cr-pair" style={groupStyle}>
-            <span class="cr-owner att-skew">{initial}</span>
-            <span class="cr-cap att-skew"><span class="att-straight">{row.companion?.name ?? ''}</span></span>
-          </span>
-        </span>
-      );
-    }
-    const who = row.kind === 'self-orphan' ? row.item.selfOrphanInfo : row.companion?.orphanInfo;
-    const noteClass = row.kind === 'companion-orphan' ? 'att-wl-note att-wl-note-deep' : 'att-wl-note';
+    const initial = row.meta.kind === 'mate' ? row.meta.ownerInitial : '?';
     return (
-      <span class={noteClass}>
-        {`↳ 報名人：${who ?? ''}（`}
-        <span class="att-wl-ok">已正取</span>
-        {'）'}
+      <span class="reg-name-text cr-mate-text">
+        <span class="cr-pair" style={groupStyle}>
+          <span class="cr-owner att-skew">{initial}</span>
+          <span class="cr-cap att-skew"><span class="att-straight">{row.companion?.name ?? ''}</span></span>
+        </span>
       </span>
     );
   }
 
   function renderNameTd(row: WlRow, className: string): JSX.Element {
-    const isNote = row.kind === 'self-orphan' || row.kind === 'companion-orphan';
     const style = `padding:.35rem .3rem;text-align:left;--cr-g:${companionGroupColorVar(row.meta.slot)}`;
     return (
-      <td class={`cr-name-cell ${className}`} style={style} data-no-translate={isNote ? true : undefined}>
+      <td class={`cr-name-cell ${className}`} style={style}>
         <span class="att-name-line">
           {renderSerial(row)}
           <span class="att-name-anchor">
-            {row.pass && <span class="att-wl-pass" aria-hidden="true" />}
-            {!isNote && row.meta.kind !== 'solo' && <GroupLink meta={row.meta} />}
+            {row.meta.kind !== 'solo' && <GroupLink meta={row.meta} />}
             {renderName(row)}
           </span>
         </span>
