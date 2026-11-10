@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { AttendanceRosterTable } from './AttendanceRosterTable';
 import { WaitlistRosterTable } from './WaitlistRosterTable';
+import { snapshot } from '../data/roster-status-test-fixtures';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => {
   const dict: Record<string, string> = {
@@ -10,6 +13,10 @@ vi.mock('@/i18n/i18n', async (importOriginal) => {
     'ui.userTag.openProfile': '檢視 {name}',
     'ui.userTag.unknown': '未知用戶',
     'events.roster.proxyBadge': '代報',
+    'events.roster.promoteColumn': '正取',
+    'events.roster.promoteButton': '正取',
+    'events.roster.promotePending': '...',
+    'events.roster.promoteAria': '將 {name} 正取',
   };
   return {
     ...(await importOriginal<typeof import('@/i18n/i18n')>()),
@@ -556,12 +563,165 @@ describe('WaitlistRosterTable', () => {
     );
 
     expect(screen.getByText('候補名單（2）')).toBeTruthy();
-    expect(screen.getByText('#')).toBeTruthy();
-    expect(screen.getByText('姓名')).toBeTruthy();
-    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: '#' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '姓名' })).toBeNull();
+    const table = document.querySelector('table');
+    expect(table?.classList.contains('att-roster')).toBe(true);
+    expect(table?.classList.contains('att-roster-waitlist')).toBe(true);
+    expect(document.querySelectorAll('.att-no')).toHaveLength(1);
+    expect(document.querySelector('.att-no')?.textContent).toBe('1');
+    expect(document.querySelector('.att-no')?.classList.contains('att-wl-next')).toBe(true);
+    const zebra = document.querySelector('.att-no')?.closest('tr')?.className;
+    for (const row of document.querySelectorAll('tbody tr')) {
+      expect(row.className).toBe(zebra);
+    }
     expect(screen.getByText('↳ Alice Jr')).toBeTruthy();
     expect(screen.getAllByText('已正取').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/↳ 報名人：Alice/).length).toBeGreaterThanOrEqual(1);
+    const hourglass = document.querySelector('.att-wl-title svg');
+    expect(hourglass?.getAttribute('aria-hidden')).toBe('true');
+    expect(hourglass?.getAttribute('width')).toBe('16');
+  });
+
+  it('順位圓點依組編號，同行者與註記跟主列同一斑馬紋，連線貫穿', () => {
+    render(
+      <WaitlistRosterTable
+        event={{ id: 'e1' }}
+        registrations={[
+          {
+            _docId: 'a',
+            userId: 'ua',
+            userName: 'Bob',
+            status: 'waitlisted',
+            participantType: 'self',
+            registeredAt: '2026-05-01T09:00:00Z',
+          },
+          {
+            _docId: 'ac',
+            userId: 'ua',
+            userName: 'Bob',
+            companionId: 'k1',
+            companionName: 'Kid',
+            status: 'waitlisted',
+            participantType: 'companion',
+            registeredAt: '2026-05-01T09:01:00Z',
+          },
+          {
+            _docId: 'b-self',
+            userId: 'ub',
+            userName: 'Cara',
+            status: 'confirmed',
+            participantType: 'self',
+            registeredAt: '2026-05-01T08:00:00Z',
+          },
+          {
+            _docId: 'b',
+            userId: 'ub',
+            userName: 'Cara',
+            companionId: 'k2',
+            companionName: 'Cara Jr',
+            status: 'waitlisted',
+            participantType: 'companion',
+            registeredAt: '2026-05-02T09:00:00Z',
+          },
+        ]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    const dots = [...document.querySelectorAll('.att-no')];
+    expect(dots.map((dot) => dot.textContent)).toEqual(['1', '2']);
+    expect(dots[0]?.classList.contains('att-wl-next')).toBe(true);
+    expect(dots[1]?.classList.contains('att-wl-next')).toBe(false);
+
+    const bobRows = [...document.querySelectorAll('tbody tr')].filter((row) =>
+      row.textContent?.includes('Bob') || row.textContent?.includes('Kid'));
+    expect(bobRows.length).toBeGreaterThan(1);
+    for (const row of bobRows) {
+      expect(row.classList.contains('att-zebra-odd')).toBe(true);
+      expect(row.classList.contains('att-zebra-even')).toBe(false);
+    }
+    const caraRows = [...document.querySelectorAll('tbody tr')].filter((row) =>
+      row.textContent?.includes('Cara'));
+    expect(caraRows.length).toBeGreaterThan(1);
+    for (const row of caraRows) {
+      expect(row.classList.contains('att-zebra-even')).toBe(true);
+    }
+
+    const linked = [...document.querySelectorAll('tbody tr')];
+    expect(linked[0]?.querySelector('.att-wl-link-first')).toBeTruthy();
+    expect(linked[linked.length - 1]?.querySelector('.att-wl-link-last')).toBeTruthy();
+    expect(linked.every((row) => row.querySelector('.att-wl-link'))).toBe(true);
+    expect(screen.getByText('候補名單（4）')).toBeTruthy();
+  });
+
+  it('只有一位時不畫連線', () => {
+    render(
+      <WaitlistRosterTable
+        event={{ id: 'e1' }}
+        registrations={[
+          { _docId: 's', userId: 'us', userName: 'Solo', status: 'waitlisted', participantType: 'self' },
+        ]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+    expect(document.querySelectorAll('.att-no')).toHaveLength(1);
+    expect(document.querySelector('.att-wl-next')?.textContent).toBe('1');
+    expect(document.querySelector('.att-wl-link')).toBeNull();
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(1);
+  });
+
+  it('編輯模式遞補欄在最左，連線留在姓名欄，點擊仍送出該候補', () => {
+    const state = snapshot('promote');
+    const base = state.registrations[0];
+    if (!base) throw new Error('missing fixture');
+    const onPromote = vi.fn();
+    render(
+      <WaitlistRosterTable
+        event={state.event}
+        registrations={[
+          { ...base, registeredAt: '2026-05-01T00:00:00Z' },
+          {
+            _docId: 'regC',
+            userId: 'uidC',
+            userName: '小華',
+            status: 'waitlisted',
+            participantType: 'self',
+            registeredAt: '2026-06-01T00:00:00Z',
+          },
+        ]}
+        roles={{}}
+        onOpenProfile={vi.fn()}
+        editing
+        rosterContext={state.context}
+        onPromoteParticipant={onPromote}
+      />,
+    );
+    expect(screen.getByRole('columnheader', { name: '正取' })).toBeTruthy();
+    const button = screen.getByRole('button', { name: '將 小明 正取' });
+    const promoteCell = button.closest('td');
+    expect(promoteCell?.classList.contains('att-wl-link')).toBe(false);
+    expect(promoteCell?.querySelector('.att-no')).toBeNull();
+    expect(promoteCell?.parentElement?.querySelector('.att-wl-name.att-wl-link')).toBeTruthy();
+    fireEvent.click(button);
+    expect(onPromote).toHaveBeenCalledOnce();
+    expect(onPromote.mock.calls[0]?.[0]).toMatchObject({ userId: 'uidB', name: '小明' });
+  });
+
+  it('候補樣式檔含紫色變數與虛線連線', () => {
+    const css = readFileSync(resolve(__dirname, 'waitlist-roster.css'), 'utf8');
+    const source = readFileSync(resolve(__dirname, 'WaitlistRosterTable.tsx'), 'utf8');
+    expect(css).toContain('--wl');
+    expect(css).toContain('dotted');
+    expect(css).toContain('#7e22ce');
+    expect(css).toContain('#c4a3ff');
+    expect(css).toContain('[data-theme="dark"]');
+    expect(css).toContain('站長 2026-11-10 選定 W3；R-UI-005 例外（沿用候補一貫的紫色）');
+    expect(source).toContain("import './companion-roster.css'");
+    expect(source).toContain("import './waitlist-roster.css'");
+    expect(css).not.toContain('.att-zebra-odd');
   });
 });
 
