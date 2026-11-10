@@ -80,7 +80,8 @@ export function resolveCommitSha(env, gitShortSha = defaultGitShortSha) {
   const fromCi = env.CF_PAGES_COMMIT_SHA;
   if (fromCi != null && String(fromCi).trim() !== '') return String(fromCi).trim().slice(0, 7);
   try {
-    const sha = String(gitShortSha()).trim();
+    // git 的 --short 長度依倉庫大小與設定會變（副機實測 8 碼），一律截成 7 碼，與 Pages 路徑一致。
+    const sha = String(gitShortSha()).trim().slice(0, 7);
     return sha || 'local';
   } catch {
     return 'local';
