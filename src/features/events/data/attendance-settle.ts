@@ -359,7 +359,8 @@ async function grantOneCompleteActivityExp(
 export async function settleAttendance(
   input: SettleAttendanceInput,
 ): Promise<SettleAttendanceResult> {
-  const release = beginSubmitting('attendance-settle');
+  // 結算可能含逐批發經驗值（每批 5 人、每人 15 秒逾時），預設 90 秒不夠，放寬到 5 分鐘
+  const release = beginSubmitting('attendance-settle', 300_000);
   try {
   const { event, operatorUid, operatorName } = input;
   let desired: Record<string, ConfirmEventAttendanceDesiredState>;

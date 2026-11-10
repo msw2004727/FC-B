@@ -100,7 +100,7 @@ interface PendingAttendanceWriteContext {
  */
 export function useAttendanceLeaveGuard(
   scopeKey: string,
-  flushRef: { readonly current: () => void },
+  flushRef: { readonly current: () => void | Promise<void> },
 ): (pending: boolean) => void {
   const boundRef = useRef(false);
   const mountedRef = useRef(false);
@@ -154,10 +154,18 @@ export function useAttendanceLeaveGuard(
         window.removeEventListener('beforeunload', handler);
         boundRef.current = false;
       }
-      const release = submitReleaseRef.current;
+      // 卸載或換活動時，待送的勾選與備註會在這裡 flush；標記要撐到寫入結束才釋放，
+      // 否則計數歸零會立刻觸發強制更新重載，把還沒送出的資料一起丟掉。
+      const hold = submitReleaseRef.current ?? beginSubmitting('attendance-save');
       submitReleaseRef.current = null;
-      release?.();
-      flushRef.current();
+      let flushed: void | Promise<void>;
+      try {
+        flushed = flushRef.current();
+      } catch (error) {
+        hold();
+        throw error;
+      }
+      void Promise.resolve(flushed).finally(hold);
     };
   }, [scopeKey, flushRef]);
 
@@ -197,7 +205,7 @@ export function useAttendanceInstantSave({
   const eventGenRef = useRef(0);
   const pendingCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
   const queuedCtxRef = useRef<Record<string, PendingAttendanceWriteContext>>({});
-  const flushRef = useRef<() => void>(() => {});
+  const flushRef = useRef<() => void | Promise<void>>(() => {});
   const syncLeaveGuardRef = useRef<(pending: boolean) => void>(() => {});
   const syncPendingRef = useRef<() => void>(() => {});
   const scheduleReloadRef = useRef<() => void>(() => {});
@@ -751,9 +759,7 @@ export function useAttendanceInstantSave({
     syncPendingRef.current();
   }, []);
 
-  flushRef.current = () => {
-    void flushInstantSaves();
-  };
+  flushRef.current = () => flushInstantSaves();
 
   return {
     getRowSelection,

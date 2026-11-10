@@ -170,13 +170,33 @@ describe('T6d useAttendanceLeaveGuard 送出中', () => {
     expectHold(false);
   });
 
-  it('元件卸載後釋放', () => {
+  it('元件卸載時待送的寫入還沒結束就仍算送出中，寫入結束才釋放（不讓強制更新搶在 flush 前重載）', async () => {
+    const pending = deferred<{ addedDocIds: string[]; removedDocIds: string[] }>();
+    mockWriteAttendanceOps.mockReturnValue(pending.promise);
     const view = renderSave();
     act(() => {
       view.result.current.onToggleCheckbox(person(), 'checkin', true);
     });
     expectHold(true);
     view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockWriteAttendanceOps).toHaveBeenCalledTimes(1);
+    expectHold(true);
+    pending.resolve({ addedDocIds: ['d1'], removedDocIds: [] });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expectHold(false);
+  });
+
+  it('元件卸載時沒有待送的寫入：很快釋放', async () => {
+    const view = renderSave();
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expectHold(false);
   });
 });
