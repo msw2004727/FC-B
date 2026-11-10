@@ -60,7 +60,10 @@ describe('useEvents terminalMode', () => {
     const view = render(h(Probe, null));
     await waitFor(() => expect(view.getByTestId('p').textContent).toBe('-:進行中'));
     expect(loadEventsStatic).toHaveBeenCalledTimes(1);
-    expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'preview' });
+    expect(loadEventsStatic).toHaveBeenCalledWith(expect.objectContaining({
+      terminalMode: 'preview',
+      reuseActiveIfFresh: true,
+    }));
   });
 
   it("首頁傳 { terminalMode: 'none' } 時不載 terminal", async () => {
@@ -90,7 +93,7 @@ describe('useEvents terminalMode', () => {
     await waitFor(() => expect(loadEventsStatic).toHaveBeenCalled());
     await settle();
     expect(loadEventsStatic).toHaveBeenCalledTimes(1);
-    expect(loadEventsStatic).toHaveBeenCalledWith({ terminalMode: 'preview' });
+    expect(loadEventsStatic).toHaveBeenCalledWith(expect.objectContaining({ terminalMode: 'preview' }));
     d.resolve();
   });
 
@@ -108,7 +111,10 @@ describe('useEvents terminalMode', () => {
 
     first.resolve();
     await waitFor(() => expect(loadEventsStatic).toHaveBeenCalledTimes(2));
-    expect(loadEventsStatic).toHaveBeenLastCalledWith({ terminalMode: 'preview' });
+    expect(loadEventsStatic).toHaveBeenLastCalledWith(expect.objectContaining({
+      terminalMode: 'preview',
+      reuseActiveIfFresh: true,
+    }));
 
     terminal = [ev('t1', '剛結束', 'ended')];
     second.resolve();
