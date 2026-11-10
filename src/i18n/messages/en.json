@@ -12,6 +12,7 @@
   "locale.label": "Language",
   "locale.loadFailed": "Failed to load language. Please try again later.",
   "common.loading": "Loading…",
+  "common.loadingHint": "Hang on, we're working hard to load!",
   "common.retry": "Retry",
   "common.cancel": "Cancel",
   "common.ok": "OK",

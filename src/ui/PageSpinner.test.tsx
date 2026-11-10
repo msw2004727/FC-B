@@ -17,18 +17,20 @@ afterEach(() => {
 });
 
 describe('PageSpinner', () => {
-  it('置中轉圈：role=status、既有載入文案只在 aria-label、沒有可見文字', async () => {
+  it('置中轉圈：role=status、載入文案在 aria-label、下方只有一行安撫小字', async () => {
     render(<PageSpinner />);
     const status = screen.getByRole('status');
     expect(status.classList.contains('ui-page-spinner')).toBe(true);
     expect(status.getAttribute('aria-label')).toBe('載入中…');
-    expect(status.textContent).toBe('');
+    expect(status.textContent).toBe('不要催，已經在努力加載中！');
+    expect(status.querySelector('.ui-page-spinner__hint')?.textContent).toBe('不要催，已經在努力加載中！');
     const ring = status.querySelector('svg');
     expect(ring?.classList.contains('ui-page-spinner__ring')).toBe(true);
     expect(ring?.getAttribute('width')).toBe('28');
     expect(ring?.getAttribute('height')).toBe('28');
     expect(ring?.getAttribute('aria-hidden')).toBe('true');
     expect(css).toContain('color: var(--accent)');
+    expect(css).toContain('white-space: nowrap');
     expect(css).toContain('animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite');
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*animation:\s*none/);
   });

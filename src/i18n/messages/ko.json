@@ -12,6 +12,7 @@
   "locale.label": "언어",
   "locale.loadFailed": "언어를 불러오지 못했습니다. 나중에 다시 시도해 주세요.",
   "common.loading": "불러오는 중…",
+  "common.loadingHint": "재촉하지 마세요, 열심히 불러오는 중이에요!",
   "common.retry": "다시 시도",
   "common.cancel": "취소",
   "common.ok": "확인",

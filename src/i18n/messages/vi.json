@@ -12,6 +12,7 @@
   "locale.label": "Ngôn ngữ",
   "locale.loadFailed": "Không tải được ngôn ngữ. Vui lòng thử lại sau.",
   "common.loading": "Đang tải…",
+  "common.loadingHint": "Đừng giục nhé, đang cố gắng tải rồi!",
   "common.retry": "Thử lại",
   "common.cancel": "Hủy",
   "common.ok": "OK",

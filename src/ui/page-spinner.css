@@ -1,10 +1,20 @@
 /* 後台頁權限尚未到位：置中圓形轉圈，沿用按鈕載入的 ui-spin 與時長／緩動 token。 */
 .ui-page-spinner {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: .6rem;
   padding: 2rem;
   color: var(--accent);
+}
+
+.ui-page-spinner__hint {
+  color: var(--text-muted);
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  white-space: nowrap;
 }
 
 .ui-page-spinner__ring {
