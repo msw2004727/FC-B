@@ -562,18 +562,19 @@ describe('WaitlistRosterTable', () => {
       />,
     );
 
-    expect(screen.getByText('候補名單（2）')).toBeTruthy();
+    // 標題人數只算真的在排隊的人：Alice 本人已正取，只有 Alice Jr 在排隊。
+    expect(screen.getByText('候補名單（1）')).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: '#' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '姓名' })).toBeNull();
     const table = document.querySelector('table');
     expect(table?.classList.contains('att-roster')).toBe(true);
     expect(table?.classList.contains('att-roster-waitlist')).toBe(true);
-    // 每個人一號：Alice 本人（已正取、仍排在候補組內）1、同行者 Alice Jr 2。
-    expect([...document.querySelectorAll('.att-no')].map((el) => el.textContent)).toEqual(['1', '2']);
-    // 本人已正取的報名人只是組頭，「下一位遞補」落在真正排隊的 Alice Jr。
+    // 本人已正取的報名人沒有排隊號碼（只留空位），排隊號碼從真正在排隊的 Alice Jr 起算，並且是「下一位遞補」。
     const aliceDots = [...document.querySelectorAll('.att-no')];
-    expect(aliceDots[0]?.classList.contains('att-wl-next')).toBe(false);
-    expect(aliceDots[1]?.classList.contains('att-wl-next')).toBe(true);
+    expect(aliceDots.map((el) => el.textContent)).toEqual(['1']);
+    expect(aliceDots[0]?.classList.contains('att-wl-next')).toBe(true);
+    expect(aliceDots[0]?.closest('tr')?.textContent).toContain('Alice Jr');
+    expect(document.querySelectorAll('.att-wl-gap')).toHaveLength(1);
     for (const row of document.querySelectorAll('tbody tr')) {
       expect(row.classList.contains('att-grp')).toBe(true);
     }
@@ -638,7 +639,8 @@ describe('WaitlistRosterTable', () => {
     );
 
     const dots = [...document.querySelectorAll('.att-no')];
-    expect(dots.map((dot) => dot.textContent)).toEqual(['1', '2', '3', '4']);
+    // Cara 本人已正取：沒有號碼，只有 Bob、Kid、Cara Jr 三個人在排隊。
+    expect(dots.map((dot) => dot.textContent)).toEqual(['1', '2', '3']);
     expect(dots[0]?.classList.contains('att-wl-next')).toBe(true);
     expect(dots.slice(1).some((dot) => dot.classList.contains('att-wl-next'))).toBe(false);
 
@@ -667,7 +669,7 @@ describe('WaitlistRosterTable', () => {
     expect(linked[0]?.querySelector('.att-wl-link-first')).toBeTruthy();
     expect(linked[linked.length - 1]?.querySelector('.att-wl-link-last')).toBeTruthy();
     expect(linked.every((row) => row.querySelector('.att-wl-link'))).toBe(true);
-    expect(screen.getByText('候補名單（4）')).toBeTruthy();
+    expect(screen.getByText('候補名單（3）')).toBeTruthy();
   });
 
   it('單獨報名的候補才吃斑馬紋，且只在單獨列之間交替', () => {

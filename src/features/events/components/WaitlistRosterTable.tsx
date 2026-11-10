@@ -51,8 +51,8 @@ interface WlRow {
   item: WaitlistRosterItem;
   itemIndex: number;
   companion?: WaitlistCompanionItem;
-  /** 順位（每個人一個號碼，同行者也算）。 */
-  serial: number;
+    /** 排隊號碼；本人已正取的報名人只是同行組的組頭，沒有號碼。 */
+  serial: number | null;
   /** 組色與連線資訊，與正取名單同一套（companion-groups）。 */
   meta: CompanionRowMeta;
   /** 同行組的列（主報名人、同行者、註記）：不吃斑馬，改用組的上下細線。 */
@@ -75,8 +75,9 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
     const ownerMeta: CompanionRowMeta = mateCount > 0
       ? { kind: 'lead', slot, mateCount }
       : { kind: 'solo', slot: 0 };
-    serial += 1;
-    draft.push({ key: rowKey, kind: 'main', item, itemIndex, serial, meta: ownerMeta });
+    const ownerConfirmed = Boolean(item.selfOrphanInfo);
+    if (!ownerConfirmed) serial += 1;
+    draft.push({ key: rowKey, kind: 'main', item, itemIndex, serial: ownerConfirmed ? null : serial, meta: ownerMeta });
     item.companions.forEach((companion, cIdx) => {
       const cKey = `${rowKey}:comp:${companion.companionId || cIdx}`;
       const last = cIdx === mateCount - 1;
@@ -87,14 +88,18 @@ function buildRows(items: readonly WaitlistRosterItem[]): WlRow[] {
       draft.push({ key: cKey, kind: 'companion', item, itemIndex, companion, serial, meta: mateMeta });
     });
   });
-  const multi = draft.length > 1;
+  // 排隊連線只串有號碼的列：第一個號碼往下、最後一個號碼往上，中間（含沒有號碼的組頭列）貫穿。
+  const numbered = draft.flatMap((row, index) => (row.serial === null ? [] : [index]));
+  const firstNo = numbered[0] ?? -1;
+  const lastNo = numbered[numbered.length - 1] ?? -1;
+  const multi = numbered.length > 1;
   let soloStripe = 0;
   const soloStripeOf = new Map<number, number>();
   return draft.map((row, index) => {
     let link = '';
-    if (multi) {
-      if (index === 0) link = 'att-wl-link att-wl-link-first';
-      else if (index === draft.length - 1) link = 'att-wl-link att-wl-link-last';
+    if (multi && index >= firstNo && index <= lastNo) {
+      if (index === firstNo) link = 'att-wl-link att-wl-link-first';
+      else if (index === lastNo) link = 'att-wl-link att-wl-link-last';
       else link = 'att-wl-link';
     }
     const inGroup = items[row.itemIndex] !== undefined && (items[row.itemIndex]?.companions.length ?? 0) > 0;
@@ -151,16 +156,19 @@ export function WaitlistRosterTable({
   const t = useT();
   const showPromoteColumn = Boolean(editing && rosterContext
     && canAdjustRosterStatus('promote', rosterContext, event));
-  const { items, totalCount } = buildWaitlistRoster(event, registrations);
+  const { items } = buildWaitlistRoster(event, registrations);
 
   // 對照 A：if (items.length === 0) { container.innerHTML = ''; return; }
   if (items.length === 0) return null;
 
   const rows = buildRows(items);
-  // 「下一位遞補」＝隊伍裡第一個真的在排隊的人；本人已正取的報名人只是同行組的組頭，不算。
-  const nextKey = rows.find((r) => !(r.kind === 'main' && r.item.selfOrphanInfo))?.key;
+  // 「下一位遞補」＝第一個有排隊號碼的人。
+  const nextKey = rows.find((r) => r.serial !== null)?.key;
+  // 標題人數只算真的在排隊的人（本人已正取的組頭不是在排隊）。
+  const waitingCount = rows.filter((r) => r.serial !== null).length;
 
   function renderSerial(row: WlRow): JSX.Element {
+    if (row.serial === null) return <span class="att-wl-gap" aria-hidden="true" />;
     return <span class={`att-no${row.key === nextKey ? ' att-wl-next' : ''}`}>{row.serial}</span>;
   }
 
@@ -220,7 +228,7 @@ export function WaitlistRosterTable({
     <div class="detail-section att-wl-section">
       <div class="detail-section-title att-wl-title">
         <Hourglass />
-        <span>{`候補名單（${totalCount}）`}</span>
+        <span>{`候補名單（${waitingCount}）`}</span>
       </div>
       <RosterStatusCourseNote event={event} editing={editing} />
       <div class="att-wl-scroll">

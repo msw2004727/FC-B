@@ -68,6 +68,13 @@
   width: 100%;
 }
 
+/* 本人已正取的組頭：沒有排隊號碼，留同寬空位讓名字欄對齊。 */
+.att-roster-waitlist .att-wl-gap {
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  margin-right: .5rem;
+}
+
 .att-roster-waitlist .att-no {
   position: relative;
   z-index: 1;
