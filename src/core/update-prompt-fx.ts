@@ -567,27 +567,40 @@ export function applyUpdatePromptFx(prompt: HTMLElement): () => void {
   prompt.replaceChildren(orbit, burst, row, acts);
   prompt.style.cssText = 'opacity:0';
 
-  const w = prompt.offsetWidth > 0 ? prompt.offsetWidth : FALLBACK_W;
-  const h = prompt.offsetHeight > 0 ? prompt.offsetHeight : FALLBACK_H;
-  const geom = computeOrbit(w, h);
-  orbit.setAttribute('viewBox', `0 0 ${geom.w} ${geom.h}`);
-  orbit.append(
-    orbitRect('base', geom),
-    orbitRect('tail', geom),
-    orbitRect('mid', geom),
-    orbitRect('head', geom),
-  );
-
   const style = document.createElement('style');
   style.setAttribute('data-sw-reload-fx-instance', id);
-  style.textContent = buildKeyframes(id, geom);
   (document.head ?? document.documentElement).appendChild(style);
+
+  // 光軌座標與星芒時間點取決於卡片實際尺寸；字型載入、旋轉螢幕、視窗縮放都會改變尺寸，所以尺寸一變就重新量測重算
+  // （取代：原本只在掛載當下量一次，之後框線會和卡片錯位）。
+  let lastW = -1;
+  let lastH = -1;
+  const layout = (): void => {
+    const w = prompt.offsetWidth > 0 ? prompt.offsetWidth : FALLBACK_W;
+    const h = prompt.offsetHeight > 0 ? prompt.offsetHeight : FALLBACK_H;
+    if (w === lastW && h === lastH) return;
+    lastW = w;
+    lastH = h;
+    const geom = computeOrbit(w, h);
+    orbit.setAttribute('viewBox', `0 0 ${geom.w} ${geom.h}`);
+    orbit.replaceChildren(
+      orbitRect('base', geom),
+      orbitRect('tail', geom),
+      orbitRect('mid', geom),
+      orbitRect('head', geom),
+    );
+    style.textContent = buildKeyframes(id, geom);
+  };
+  layout();
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(layout) : null;
+  observer?.observe(prompt);
   fadeIn(prompt);
 
   let gone = false;
   return () => {
     if (gone) return;
     gone = true;
+    observer?.disconnect();
     style.remove();
     orbit.remove();
     burst.remove();
