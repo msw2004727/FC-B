@@ -12,6 +12,7 @@
  * - 角色非內建角色時讀 customRoles。
  * ViewerContext 與 useViewer() 簽名不變。
  * - M-038：暴露 isRestricted 供底部分頁與換頁攔截「帳號限制中」。
+ * - 全站 useViewer（含 App 的 ViewerAccessBridge 與各頁）共用一份模組快取與 inflight，不各打一輪讀取。
  */
 
 import { useEffect, useState } from 'preact/hooks';
@@ -367,6 +368,7 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
 /**
  * 只有最新請求可以提交。
  * UID 改變立即送出最小權限；同 UID 載入失敗保留上一份快照。
+ * useViewer 不再各建一條 loader；全站共用作下方模組快取。此函式保留給自訂 load 與測試。
  */
 export function createViewerLoader(
   load: (uid: string) => Promise<ViewerView>,
@@ -406,44 +408,166 @@ export function requestViewerRefresh(): void {
   emit('viewer:refresh', {});
 }
 
-/** 先訂閱再補讀；舊補讀結果不得覆蓋新登入事件。 */
+/**
+ * 全站一份 viewer。做法是模組層單例加 inflight，不是 React context：
+ * 各頁與 ViewerAccessBridge 仍呼叫 useViewer，但不各開一輪 Firestore。
+ *
+ * L-43：uid 一變立刻改送該 uid 的最小權限（清掉前一個人的權限），序號對不上的結果丟棄。
+ * L-08：這次請求成功或失敗都清掉 inflight；失敗不留被拒絕的 Promise，下次才能重試。
+ * 同 uid 已在飛的非強制讀取合併成同一筆；viewer:refresh 只有這一個 listener，所以只重讀一次。
+ * 同 uid 重讀失敗保留上一份完整快照；換 uid 後失敗則停在最小權限。
+ */
+type ViewerListener = (viewer: ViewerView) => void;
+
+interface ViewerSubscription {
+  authVersion: number;
+  /** undefined＝登入狀態尚未確定，此時 viewer:refresh 不讀。 */
+  knownUid: string | null | undefined;
+  stop: () => void;
+}
+
+const viewerListeners = new Set<ViewerListener>();
+let viewerSnapshot: ViewerView = createGuestViewer();
+let viewerUid: string | null = null;
+let viewerGeneration = 0;
+let viewerInflight: Promise<void> | null = null;
+let viewerInflightUid: string | null = null;
+let viewerLoadFailed = false;
+let viewerLive: ViewerSubscription | null = null;
+
+function publishViewer(next: ViewerView): void {
+  viewerSnapshot = next;
+  viewerUid = next.uid;
+  for (const listener of [...viewerListeners]) listener(next);
+}
+
+function settleViewerInflight(run: Promise<void>): void {
+  if (viewerInflight === run) {
+    viewerInflight = null;
+    viewerInflightUid = null;
+  }
+}
+
+function beginViewerLoad(uid: string | null, force: boolean): void {
+  if (!uid) {
+    viewerGeneration += 1;
+    viewerInflight = null;
+    viewerInflightUid = null;
+    viewerLoadFailed = false;
+    if (viewerUid !== null) publishViewer(createGuestViewer());
+    return;
+  }
+
+  if (uid !== viewerUid) {
+    viewerLoadFailed = false;
+    publishViewer(createMinimalViewer(uid));
+  }
+
+  // 同一 uid 已在讀：後到的掛載／補讀合併，不再開一輪。refresh 必須重讀，不合併。
+  if (!force && viewerInflight && viewerInflightUid === uid) return;
+
+  const generation = ++viewerGeneration;
+  viewerLoadFailed = false;
+  const run = loadViewer(uid).then(
+    (next) => {
+      settleViewerInflight(run);
+      if (generation !== viewerGeneration) return;
+      if (!viewerLive || viewerLive.knownUid !== uid) return;
+      if (next.uid !== uid) return;
+      viewerLoadFailed = false;
+      publishViewer(next);
+    },
+    (err: unknown) => {
+      // L-08：失敗路徑也要清，且只能清掉自己這筆，不能清掉較新的請求。
+      settleViewerInflight(run);
+      if (generation !== viewerGeneration) return;
+      viewerLoadFailed = true;
+      // eslint-disable-next-line no-console
+      console.warn('[viewer] load failed', err);
+    },
+  );
+  viewerInflight = run;
+  viewerInflightUid = uid;
+}
+
+function ensureViewerSubscription(): void {
+  if (viewerLive) return;
+  const state: ViewerSubscription = {
+    authVersion: 0,
+    knownUid: undefined,
+    stop: () => undefined,
+  };
+  viewerLive = state;
+
+  const offAuth = on('auth:changed', ({ uid }) => {
+    state.authVersion += 1;
+    state.knownUid = uid;
+    beginViewerLoad(uid, false);
+  });
+  // 全站只掛一次：N 個 useViewer 收到同一個 viewer:refresh 也只重讀一次。
+  const offRefresh = on('viewer:refresh', () => {
+    if (state.knownUid !== undefined) beginViewerLoad(state.knownUid, true);
+  });
+
+  const initialVersion = state.authVersion;
+  getCurrentUser()
+    .then((current) => {
+      if (viewerLive !== state) return;
+      if (state.authVersion !== initialVersion) return;
+      state.knownUid = current ? current.uid : null;
+      beginViewerLoad(state.knownUid, false);
+    })
+    .catch(() => {
+      if (viewerLive !== state) return;
+      if (state.authVersion !== initialVersion) return;
+      state.knownUid = null;
+      beginViewerLoad(null, false);
+    });
+
+  state.stop = () => {
+    offAuth();
+    offRefresh();
+    if (viewerLive === state) viewerLive = null;
+    viewerGeneration += 1;
+    viewerInflight = null;
+    viewerInflightUid = null;
+    viewerLoadFailed = false;
+  };
+}
+
+function resetViewerIdle(): void {
+  viewerLive?.stop();
+  viewerSnapshot = createGuestViewer();
+  viewerUid = null;
+  viewerLoadFailed = false;
+}
+
+function releaseViewerSubscription(): void {
+  if (viewerListeners.size > 0) return;
+  resetViewerIdle();
+}
+
+/** 測試用：清掉共用快取、inflight 與登入訂閱，避免案例互相殘留權限。 */
+export function resetViewerCacheForTest(): void {
+  viewerListeners.clear();
+  resetViewerIdle();
+}
+
+/** 先訂閱再補讀目前快照（L-04）。登入訂閱全站一份；沒有訂閱者時卸下並還原訪客。 */
 export function useViewer(): ViewerView {
-  const [viewer, setViewer] = useState<ViewerView>(() => createGuestViewer());
+  const [viewer, setViewer] = useState<ViewerView>(() => viewerSnapshot);
 
   useEffect(() => {
-    const loader = createViewerLoader(loadViewer, setViewer);
-    let authVersion = 0;
-    // 最後已知的登入 uid（undefined = 尚未確定），供 viewer:refresh 重讀同一帳號。
-    let knownUid: string | null | undefined;
-
-    const off = on('auth:changed', ({ uid }) => {
-      authVersion += 1;
-      knownUid = uid;
-      loader(uid);
-    });
-
-    const initialVersion = authVersion;
-    getCurrentUser()
-      .then((current) => {
-        if (authVersion !== initialVersion) return;
-        knownUid = current ? current.uid : null;
-        loader(knownUid);
-      })
-      .catch(() => {
-        if (authVersion !== initialVersion) return;
-        knownUid = null;
-        loader(null);
-      });
-
-    // 重讀目前登入者；同一個 loader 的序號保護確保較舊的結果不會覆蓋較新的。
-    // 登入狀態尚未確定時忽略（初次讀取完成後自然會載入）。
-    const offRefresh = on('viewer:refresh', () => {
-      if (knownUid !== undefined) loader(knownUid);
-    });
-
+    viewerListeners.add(setViewer);
+    // render 與 effect 之間快照可能已換人，訂閱後再讀一次。
+    setViewer(viewerSnapshot);
+    ensureViewerSubscription();
+    if (viewerLoadFailed && viewerLive?.knownUid && viewerInflight === null) {
+      beginViewerLoad(viewerLive.knownUid, false);
+    }
     return () => {
-      off();
-      offRefresh();
+      viewerListeners.delete(setViewer);
+      releaseViewerSubscription();
     };
   }, []);
 
