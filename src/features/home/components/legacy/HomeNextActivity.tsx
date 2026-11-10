@@ -113,7 +113,7 @@ export function HomeNextActivity({
 
   return (
     <section class="home-next-activity-section" id="home-next-activity" aria-live="polite">
-      <div class="home-next-card">
+      <div class={!loading && !visibleEvent ? 'home-next-card is-empty' : 'home-next-card'}>
         <div class="home-next-head">
           <h3>我的下一場活動</h3>
           <button
@@ -228,17 +228,45 @@ export function HomeNextActivity({
           </div>
         ) : (
           <div class="home-next-empty">
-            <div class="home-next-empty-illustration" aria-hidden="true">
-              <div class="home-next-calendar-art">
-                <span />
-                <span />
-                <span />
-                <span />
-                <strong>+</strong>
-              </div>
+            <svg class="home-next-empty-art" viewBox="0 0 160 130" fill="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="hne-art-a" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="var(--hne-g1)" />
+                  <stop offset="1" stop-color="var(--hne-g2)" />
+                </linearGradient>
+                <linearGradient id="hne-art-b" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="var(--hne-g1)" stop-opacity=".5" />
+                  <stop offset="1" stop-color="var(--hne-g2)" stop-opacity=".12" />
+                </linearGradient>
+              </defs>
+              <circle cx="104" cy="70" r="52" stroke="url(#hne-art-a)" stroke-opacity=".35" stroke-width="1.6" />
+              <circle cx="104" cy="70" r="36" stroke="url(#hne-art-a)" stroke-opacity=".25" stroke-width="1.4" stroke-dasharray="3 5" />
+              <rect x="40" y="26" width="86" height="78" rx="14" fill="url(#hne-art-b)" stroke="url(#hne-art-a)" stroke-width="2.6" />
+              <path d="M40 50h86" stroke="url(#hne-art-a)" stroke-width="2.6" />
+              <path d="M64 18v16M102 18v16" stroke="url(#hne-art-a)" stroke-width="3.4" stroke-linecap="round" />
+              <g fill="url(#hne-art-a)" opacity=".85">
+                <rect x="52" y="62" width="12" height="11" rx="3.5" />
+                <rect x="71" y="62" width="12" height="11" rx="3.5" />
+                <rect x="90" y="62" width="12" height="11" rx="3.5" />
+                <rect x="52" y="81" width="12" height="11" rx="3.5" />
+                <rect x="71" y="81" width="12" height="11" rx="3.5" />
+              </g>
+              <rect x="90" y="81" width="12" height="11" rx="3.5" stroke="url(#hne-art-a)" stroke-width="2" stroke-dasharray="3 2.5" />
+              <g transform="translate(122 96)">
+                <circle r="22" fill="var(--bg-card)" fill-opacity=".85" stroke="url(#hne-art-a)" stroke-width="2.6" />
+                <path d="M0-9l8.8 6.4-3.4 10.3H-5.4l-3.4-10.3z" fill="url(#hne-art-a)" />
+                <path d="M0-9V-22M8.8-2.6l12-3.9M5.4 7.7l7.4 10.2M-5.4 7.7l-7.4 10.2M-8.8-2.6l-12-3.9" stroke="url(#hne-art-a)" stroke-width="2.2" stroke-linecap="round" />
+              </g>
+              <g fill="url(#hne-art-a)">
+                <path d="M140 22l2.6 6.8 6.8 2.6-6.8 2.6-2.6 6.8-2.6-6.8-6.8-2.6 6.8-2.6z" />
+                <path d="M26 14l1.5 3.8 3.8 1.5-3.8 1.5L26 24.6l-1.5-3.8-3.8-1.5 3.8-1.5z" opacity=".7" />
+                <circle cx="148" cy="56" r="2.4" opacity=".6" />
+              </g>
+            </svg>
+            <div class="home-next-empty-copy">
+              <div class="home-next-empty-title">你目前還沒有報名活動</div>
+              <div class="home-next-empty-sub">找一場活動，或建立你的第一場活動</div>
             </div>
-            <div class="home-next-empty-title">你目前還沒有報名活動</div>
-            <div class="home-next-empty-sub">找一場活動，或建立你的第一場活動</div>
             <div class="home-next-empty-actions">
               <button
                 class="home-next-primary"
