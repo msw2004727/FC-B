@@ -117,7 +117,42 @@ describe('update-prompt-fx 軌道幾何與時序', () => {
     expect(b).toContain('@keyframes swfxBruntail');
     expect(a).not.toContain('swfxB');
   });
+
+  it('moveSec 預設 3.6，輸出與更新提示框既有快照字串相同', () => {
+    const orbit = computeOrbit(360, 140);
+    const css = buildKeyframes('box', orbit);
+    expect(css).toBe(UPDATE_PROMPT_BOX_360_140);
+    expect(buildKeyframes('box', orbit, 3.6)).toBe(css);
+    expect(computeOrbit(360, 140, 16)).toEqual(orbit);
+  });
+
+  it('moveSec 4.2 只改週期與淡出比例，圈頭圈尾仍相差 100', () => {
+    const orbit = computeOrbit(360, 140);
+    const base = computeOrbitMotion(orbit);
+    const slow = computeOrbitMotion(orbit, 4.2);
+    expect(base.p1).toBeCloseTo(orbit.ec, 8);
+    expect(slow.p1).toBeCloseTo(orbit.ec, 8);
+    expect(base.p4).toBeCloseTo(base.pTail + (0.7 / 3.6) * 100, 8);
+    expect(slow.p4).toBeCloseTo(slow.pTail + (0.7 / 4.2) * 100, 8);
+    expect(slow.p4).toBeLessThan(base.p4);
+
+    const css = buildKeyframes('mt', orbit, 4.2, '.multi-tab-modal[data-fx-id="mt"]');
+    expect(css).toContain('4.2s linear infinite');
+    expect(css).toContain('.multi-tab-modal[data-fx-id="mt"] .burst');
+    expect(css).not.toContain('#sw-reload-deferred-prompt');
+    expect(css).not.toContain('3.6s');
+    for (const name of ['tail', 'mid', 'head'] as const) {
+      const stops = dashStops(css, `mtrun${name}`);
+      const first = stops[0]?.offset ?? 0;
+      const last = stops[stops.length - 1]?.offset ?? 0;
+      expect(first - last).toBe(100);
+    }
+  });
 });
+
+/** 改參數前 `buildKeyframes('box', computeOrbit(360, 140))` 的完整輸出。預設不得漂移。 */
+const UPDATE_PROMPT_BOX_360_140 =
+  '@keyframes boxruntail{0%{stroke-dashoffset:12.000}35.06%{stroke-dashoffset:-23.060}100.00%{stroke-dashoffset:-88.000}}#sw-reload-deferred-prompt[data-fx-id="box"] .orbit .tail{stroke-dasharray:12 88;animation:boxruntail 3.6s linear infinite}@keyframes boxrunmid{0%{stroke-dashoffset:7.440}35.06%{stroke-dashoffset:-27.620}100.00%{stroke-dashoffset:-92.560}}#sw-reload-deferred-prompt[data-fx-id="box"] .orbit .mid{stroke-dasharray:7.44 92.56;animation:boxrunmid 3.6s linear infinite}@keyframes boxrunhead{0%{stroke-dashoffset:1.680}35.06%{stroke-dashoffset:-33.380}100.00%{stroke-dashoffset:-98.320}}#sw-reload-deferred-prompt[data-fx-id="box"] .orbit .head{stroke-dasharray:1.68 98.32;animation:boxrunhead 3.6s linear infinite}@keyframes boxburst{0%{opacity:0;transform:scale(.55) rotate(-6deg)}35.05%{opacity:0;transform:scale(.55) rotate(-6deg)}35.76%{opacity:1;transform:scale(1.18) rotate(0deg)}41.41%{opacity:.95;transform:scale(1.02) rotate(2deg)}47.06%{opacity:1;transform:scale(1.06) rotate(4deg)}66.50%{opacity:0;transform:scale(.8) rotate(8deg)}100.00%{opacity:0;transform:scale(.8) rotate(8deg)}}#sw-reload-deferred-prompt[data-fx-id="box"] .burst{animation:boxburst 3.6s linear infinite}';
 
 function expectBurstTimeline(burst: readonly BurstStop[], p1: number, pTail: number, p4: number): void {
   const before = burst.filter((stop) => stop.pct < p1);

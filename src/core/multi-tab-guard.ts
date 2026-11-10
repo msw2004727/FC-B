@@ -1,13 +1,22 @@
 // M-050：多分頁警告（照 A `js/modules/multi-tab-guard.js:14-89`）
 // 使用 BroadcastChannel('toosterx-tab-guard') 偵測多分頁，顯示「我知道了／關閉其他分頁」。
+// 視覺特效在 multi-tab-fx（動態 import）。載入失敗就維持這份舊外觀，不得讓提示框消失。
 
 let multiTabId: string | null = null;
 let multiTabChannel: BroadcastChannel | null = null;
 let multiTabOthers: Set<string> | null = null;
 let multiTabWarningShown = false;
+let multiTabFxCleanup: (() => void) | undefined;
+
+function dropMultiTabFx(): void {
+  const fn = multiTabFxCleanup;
+  multiTabFxCleanup = undefined;
+  fn?.();
+}
 
 function dismissMultiTabWarning(): void {
   if (typeof document === 'undefined') return;
+  dropMultiTabFx();
   const el = document.getElementById('multi-tab-warning');
   if (el) el.remove();
 }
@@ -43,6 +52,8 @@ export function showMultiTabWarning(): void {
   const overlay = document.createElement('div');
   overlay.id = 'multi-tab-warning';
   overlay.className = 'multi-tab-overlay';
+  // 先藏起來。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
+  overlay.style.opacity = '0';
   overlay.innerHTML =
     '<div class="multi-tab-modal">' +
       '<div class="multi-tab-title">偵測到多個分頁開啟</div>' +
@@ -64,12 +75,28 @@ export function showMultiTabWarning(): void {
   const dismissBtn = document.getElementById('multi-tab-dismiss');
   const closeBtn = document.getElementById('multi-tab-close');
   dismissBtn?.addEventListener('click', () => {
+    dropMultiTabFx();
     wrapper.remove();
   });
   closeBtn?.addEventListener('click', () => {
+    dropMultiTabFx();
     requestCloseOthers();
     wrapper.remove();
   });
+
+  void import('./multi-tab-fx').then(
+    (m) => {
+      if (!overlay.isConnected) return;
+      try {
+        multiTabFxCleanup = m.applyMultiTabFx(overlay);
+      } catch {
+        overlay.style.opacity = '1';
+      }
+    },
+    () => {
+      if (overlay.isConnected) overlay.style.opacity = '1';
+    },
+  );
 }
 
 export function initMultiTabGuard(): () => void {
@@ -148,8 +175,12 @@ export function _resetMultiTabGuardForTest(): void {
   multiTabChannel = null;
   multiTabOthers = null;
   multiTabWarningShown = false;
+  dropMultiTabFx();
   if (typeof document !== 'undefined') {
     document.getElementById('multi-tab-warning')?.parentElement?.remove();
     document.getElementById('multi-tab-warning')?.remove();
+    document.querySelectorAll('style[data-multi-tab-fx-instance]').forEach((node) => {
+      node.remove();
+    });
   }
 }

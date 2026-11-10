@@ -1,6 +1,6 @@
 // 更新通知彈窗特效（站長 2026-11-10 選定 B 銅金；預覽 update-prompt-orbit-v3）。
 // 由 reload-safety 動態 import，不進首頁入口的靜態圖。
-// 幾何與 keyframes 是純函式，DOM 套用集中在 applyUpdatePromptFx。
+// 幾何與 keyframes 是純函式。光軌掛載在 bindOrbitLayout，更新提示的 DOM 套用在 applyUpdatePromptFx。
 
 /** 靜態樣式只注入一次，id 固定，關閉提示框時留著。 */
 export const UPDATE_PROMPT_FX_STYLE_ID = 'sw-reload-prompt-fx-style';
@@ -14,7 +14,6 @@ const HOLD_SEC = 0;
 const FADE_SEC = 0.7;
 /** 彗尾長度佔周長的百分比。 */
 const TAIL_PCT = 12;
-const CYCLE_SEC = MOVE_SEC + HOLD_SEC;
 
 /** jsdom 沒有版面、或尚未排到尺寸時的設計盒，讓光軌仍能畫出來。實機一律量 offset。 */
 const FALLBACK_W = 372;
@@ -75,11 +74,12 @@ export interface OrbitMotion {
 }
 
 /**
- * 照預覽 `wire()`：描邊內縮 0.5px，圓角 16。
+ * 照預覽 `wire()`：描邊內縮 0.5px。
+ * 圓角預設 16（更新提示）。多分頁傳 18，不改預設輸出。
  * 右上角（順時針走到頂邊直線結束、再加四分之一圓角的一半）的周長比例。
  */
-export function computeOrbit(w: number, h: number): OrbitGeom {
-  const r = RADIUS;
+export function computeOrbit(w: number, h: number, radius = RADIUS): OrbitGeom {
+  const r = radius;
   const inset = INSET;
   const rw = w - 2 * inset;
   const rh = h - 2 * inset;
@@ -102,13 +102,14 @@ function pushIncreasing<T extends { pct: number }>(stops: T[], stop: T): void {
  * 相差剛好一個周長，圈尾位置等於圈頭位置，循環無縫。
  * HOLD 為 0，所以 p1 與 p2 重合，中間不插停頓幀。
  */
-export function computeOrbitMotion(orbit: OrbitGeom): OrbitMotion {
+export function computeOrbitMotion(orbit: OrbitGeom, moveSec = MOVE_SEC): OrbitMotion {
+  const cycleSec = moveSec + HOLD_SEC;
   const total = 100;
-  const t1 = (MOVE_SEC * orbit.ec) / total;
-  const p1 = (t1 / CYCLE_SEC) * 100;
-  const p2 = ((t1 + HOLD_SEC) / CYCLE_SEC) * 100;
-  const pTail = p2 + ((MOVE_SEC * (TAIL_PCT / 100)) / CYCLE_SEC) * 100;
-  const p4 = pTail + (FADE_SEC / CYCLE_SEC) * 100;
+  const t1 = (moveSec * orbit.ec) / total;
+  const p1 = (t1 / cycleSec) * 100;
+  const p2 = ((t1 + HOLD_SEC) / cycleSec) * 100;
+  const pTail = p2 + ((moveSec * (TAIL_PCT / 100)) / cycleSec) * 100;
+  const p4 = pTail + (FADE_SEC / cycleSec) * 100;
   const pre = Math.max(p1 - 0.01, 0);
   const popAt = p1 + 0.7;
   const breathPct = (popAt + pTail) / 2;
@@ -192,10 +193,20 @@ function emitStops(stops: readonly { pct: number }[]): string[] {
   return texts;
 }
 
-/** 該實例的光軌與星芒 keyframes（百分比隨實測尺寸變，所以不能放進靜態樣式）。 */
-export function buildKeyframes(id: string, orbit: OrbitGeom): string {
-  const motion = computeOrbitMotion(orbit);
-  const sel = `#sw-reload-deferred-prompt[data-fx-id="${id}"]`;
+/**
+ * 該實例的光軌與星芒 keyframes（百分比隨實測尺寸變，所以不能放進靜態樣式）。
+ * `moveSec` 預設 3.6（更新提示一圈）。省略時輸出與改前相同。
+ * `selector` 省略時套更新提示框；多分頁傳自己的卡片選擇器。
+ */
+export function buildKeyframes(
+  id: string,
+  orbit: OrbitGeom,
+  moveSec = MOVE_SEC,
+  selector?: string,
+): string {
+  const motion = computeOrbitMotion(orbit, moveSec);
+  const cycleSec = moveSec + HOLD_SEC;
+  const sel = selector ?? `#sw-reload-deferred-prompt[data-fx-id="${id}"]`;
   let css = '';
   for (const layer of motion.layers) {
     const pcts = emitStops(layer.stops);
@@ -207,21 +218,21 @@ export function buildKeyframes(id: string, orbit: OrbitGeom): string {
     const dash = layer.name === 'tail'
       ? `${layer.len} ${gap}`
       : `${layer.len.toFixed(2)} ${gap.toFixed(2)}`;
-    css += `${sel} .orbit .${layer.name}{stroke-dasharray:${dash};animation:${id}run${layer.name} ${CYCLE_SEC}s linear infinite}`;
+    css += `${sel} .orbit .${layer.name}{stroke-dasharray:${dash};animation:${id}run${layer.name} ${cycleSec}s linear infinite}`;
   }
   const burstPcts = emitStops(motion.burst);
   const burstBody = motion.burst.map((stop, i) => (
     `${burstPcts[i] ?? '0'}%{opacity:${fmtOpacity(stop.opacity)};transform:${stop.transform}}`
   )).join('');
   css += `@keyframes ${id}burst{${burstBody}}`;
-  css += `${sel} .burst{animation:${id}burst ${CYCLE_SEC}s linear infinite}`;
+  css += `${sel} .burst{animation:${id}burst ${cycleSec}s linear infinite}`;
   return css;
 }
 
 const REFRESH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>';
 
 /** 鏡頭星芒：亮白核心、細長放射光線（對角最長）、柔光暈。照預覽 `flare()`。 */
-function buildFlareSvg(uid: string): string {
+export function buildFlareSvg(uid: string): string {
   const rays: ReadonlyArray<readonly [number, number, number, number]> = [
     [-45, 98, 1.5, 0.95], [45, 90, 1.4, 0.85], [0, 72, 1.9, 0.6], [90, 64, 1.7, 0.55],
     [-22, 58, 1.1, 0.7], [22, 60, 1.1, 0.7], [-68, 54, 1, 0.6], [68, 56, 1, 0.6],
@@ -478,6 +489,59 @@ function orbitRect(cls: string, geom: OrbitGeom): SVGRectElement {
   return rect;
 }
 
+export interface OrbitLayoutOptions {
+  /** 圓角。更新提示 16、多分頁 18。 */
+  radius?: number;
+  /** 繞一圈的秒數。更新提示 3.6、多分頁 4.2。 */
+  moveSec?: number;
+  /** keyframes 選擇器。省略則套更新提示框。 */
+  selector?: string;
+  fallbackW?: number;
+  fallbackH?: number;
+}
+
+/**
+ * 光軌座標與星芒時間點取決於卡片實際尺寸；字型載入、旋轉螢幕、視窗縮放都會改變尺寸，所以尺寸一變就重新量測重算
+ * （取代：原本只在掛載當下量一次，之後框線會和卡片錯位）。
+ * 尺寸沒變不重畫。回傳停止觀察（不移除 style 與 SVG，由呼叫端清理）。
+ */
+export function bindOrbitLayout(
+  host: HTMLElement,
+  orbit: SVGSVGElement,
+  style: HTMLStyleElement,
+  id: string,
+  options: OrbitLayoutOptions = {},
+): () => void {
+  const radius = options.radius ?? RADIUS;
+  const moveSec = options.moveSec ?? MOVE_SEC;
+  const fallbackW = options.fallbackW ?? FALLBACK_W;
+  const fallbackH = options.fallbackH ?? FALLBACK_H;
+  let lastW = -1;
+  let lastH = -1;
+  const layout = (): void => {
+    const w = host.offsetWidth > 0 ? host.offsetWidth : fallbackW;
+    const h = host.offsetHeight > 0 ? host.offsetHeight : fallbackH;
+    if (w === lastW && h === lastH) return;
+    lastW = w;
+    lastH = h;
+    const geom = computeOrbit(w, h, radius);
+    orbit.setAttribute('viewBox', `0 0 ${geom.w} ${geom.h}`);
+    orbit.replaceChildren(
+      orbitRect('base', geom),
+      orbitRect('tail', geom),
+      orbitRect('mid', geom),
+      orbitRect('head', geom),
+    );
+    style.textContent = buildKeyframes(id, geom, moveSec, options.selector);
+  };
+  layout();
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(layout) : null;
+  observer?.observe(host);
+  return () => {
+    observer?.disconnect();
+  };
+}
+
 function readCopy(prompt: HTMLElement): { title: string; sub: string } {
   const blocks = prompt.querySelectorAll(':scope > div > div');
   const title = blocks.item(0)?.textContent ?? '';
@@ -571,36 +635,14 @@ export function applyUpdatePromptFx(prompt: HTMLElement): () => void {
   style.setAttribute('data-sw-reload-fx-instance', id);
   (document.head ?? document.documentElement).appendChild(style);
 
-  // 光軌座標與星芒時間點取決於卡片實際尺寸；字型載入、旋轉螢幕、視窗縮放都會改變尺寸，所以尺寸一變就重新量測重算
-  // （取代：原本只在掛載當下量一次，之後框線會和卡片錯位）。
-  let lastW = -1;
-  let lastH = -1;
-  const layout = (): void => {
-    const w = prompt.offsetWidth > 0 ? prompt.offsetWidth : FALLBACK_W;
-    const h = prompt.offsetHeight > 0 ? prompt.offsetHeight : FALLBACK_H;
-    if (w === lastW && h === lastH) return;
-    lastW = w;
-    lastH = h;
-    const geom = computeOrbit(w, h);
-    orbit.setAttribute('viewBox', `0 0 ${geom.w} ${geom.h}`);
-    orbit.replaceChildren(
-      orbitRect('base', geom),
-      orbitRect('tail', geom),
-      orbitRect('mid', geom),
-      orbitRect('head', geom),
-    );
-    style.textContent = buildKeyframes(id, geom);
-  };
-  layout();
-  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(layout) : null;
-  observer?.observe(prompt);
+  const unobserve = bindOrbitLayout(prompt, orbit, style, id);
   fadeIn(prompt);
 
   let gone = false;
   return () => {
     if (gone) return;
     gone = true;
-    observer?.disconnect();
+    unobserve();
     style.remove();
     orbit.remove();
     burst.remove();
