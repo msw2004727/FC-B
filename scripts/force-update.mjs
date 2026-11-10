@@ -8,7 +8,10 @@
  *
  * 強制更新須顧問三行裁定（R-UPD-022）。
  *
- * 用法：node scripts/force-update.mjs
+ * 用法：node scripts/force-update.mjs [--online-url <url>]
+ * --online-url 預設 https://toosterx.com/version.json。
+ * 只接受 https 的 toosterx.com 與 next.toosterx.com 的 /version.json。
+ * 其他值（http、其他網域、帳密、子網域、連接埠）失敗且不寫檔。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +19,55 @@ import { fileURLToPath } from 'node:url';
 import { taipeiBuildId } from './build-meta.mjs';
 
 export const ONLINE_VERSION_URL = 'https://toosterx.com/version.json';
+
+const ALLOWED_ONLINE_HOSTS = new Set(['toosterx.com', 'next.toosterx.com']);
+
+/**
+ * 只接受兩個正式主機的 https /version.json。
+ * 回傳標準網址。不合法就丟錯（呼叫端不得寫檔）。
+ */
+export function assertAllowedOnlineUrl(raw) {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new Error('--online-url 不是可用的網址，未寫入');
+  }
+  const text = raw.trim();
+  if (text.includes('@') || text.includes('\\')) {
+    throw new Error('--online-url 不可帶帳密或其他主機，未寫入');
+  }
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new Error(`--online-url 不是可用的網址（${text}），未寫入`);
+  }
+  if (url.protocol !== 'https:') {
+    throw new Error(`--online-url 只接受 https（${text}），未寫入`);
+  }
+  if (url.username || url.password) {
+    throw new Error('--online-url 不可帶帳密，未寫入');
+  }
+  if (url.port !== '') {
+    throw new Error('--online-url 不可指定連接埠，未寫入');
+  }
+  if (!ALLOWED_ONLINE_HOSTS.has(url.hostname)) {
+    throw new Error(`--online-url 只接受 toosterx.com 與 next.toosterx.com（${url.hostname}），未寫入`);
+  }
+  if (url.pathname !== '/version.json' || url.search !== '' || url.hash !== '') {
+    throw new Error('--online-url 只接受該主機的 /version.json，未寫入');
+  }
+  return `https://${url.hostname}/version.json`;
+}
+
+/** 沒有 --online-url 時用預設。有旗標但沒值、或網址不在允許名單，丟錯。 */
+export function onlineUrlFromArgv(argv) {
+  const idx = argv.indexOf('--online-url');
+  if (idx < 0) return ONLINE_VERSION_URL;
+  const value = argv[idx + 1];
+  if (value == null || value.startsWith('--')) {
+    throw new Error('--online-url 需要網址，未寫入');
+  }
+  return assertAllowedOnlineUrl(value);
+}
 
 /** 目前檔案實際有的欄位。更新開關只有前兩個；地圖鍵是活動地圖在用的，不能當成未知欄位刪掉。 */
 export const RUNTIME_CONFIG_KEYS = [
@@ -102,8 +154,8 @@ export function replaceMinBuild(source, nextId) {
   return next;
 }
 
-async function defaultFetchOnline() {
-  const res = await fetch(ONLINE_VERSION_URL, { cache: 'no-store' });
+async function defaultFetchOnline(url) {
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (!data || typeof data !== 'object' || !('build' in data)) {
@@ -116,15 +168,17 @@ async function defaultFetchOnline() {
  * @param {{
  *   filePath?: string,
  *   now?: Date,
+ *   onlineUrl?: string,
  *   fetchOnline?: () => Promise<unknown>,
  *   readFile?: (filePath: string) => string,
  *   writeFile?: (filePath: string, text: string) => void,
  * }} [options]
  */
 export async function runForceUpdate(options = {}) {
+  const onlineUrl = assertAllowedOnlineUrl(options.onlineUrl ?? ONLINE_VERSION_URL);
   const filePath = options.filePath ?? CONFIG_FILE;
   const now = options.now ?? new Date();
-  const fetchOnline = options.fetchOnline ?? defaultFetchOnline;
+  const fetchOnline = options.fetchOnline ?? (() => defaultFetchOnline(onlineUrl));
   const readFile = options.readFile ?? ((file) => fs.readFileSync(file, 'utf8'));
   const writeFile = options.writeFile ?? ((file, text) => fs.writeFileSync(file, text));
 
@@ -152,7 +206,15 @@ export async function runForceUpdate(options = {}) {
 }
 
 function main() {
-  runForceUpdate()
+  let onlineUrl;
+  try {
+    onlineUrl = onlineUrlFromArgv(process.argv.slice(2));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+    return;
+  }
+  runForceUpdate({ onlineUrl })
     .then(({ previous, next }) => {
       console.log(`minBuild：${previous} → ${next}`);
       console.log('提醒：強制更新須顧問三行裁定（R-UPD-022）。確認裁定後才提交 public/runtime-config.json。');
