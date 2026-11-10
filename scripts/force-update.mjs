@@ -60,6 +60,11 @@ export function assertAllowedOnlineUrl(raw) {
 
 /** 沒有 --online-url 時用預設。有旗標但沒值、或網址不在允許名單，丟錯。 */
 export function onlineUrlFromArgv(argv) {
+  // 任何寫法不是剛好 `--online-url <網址>`（例如 `--online-url=…`）或旗標重複，一律失敗，不能靜默改用預設網址。
+  const flagged = argv.filter((arg) => arg.startsWith('--online-url'));
+  if (flagged.some((arg) => arg !== '--online-url') || flagged.length > 1) {
+    throw new Error('--online-url 只接受「--online-url <網址>」且只能給一次，未寫入');
+  }
   const idx = argv.indexOf('--online-url');
   if (idx < 0) return ONLINE_VERSION_URL;
   const value = argv[idx + 1];

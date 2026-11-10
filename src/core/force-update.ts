@@ -114,7 +114,7 @@ export function decideForceUpdate(input: {
   else if (recentGlobal >= GLOBAL_AUTO_RELOAD_LIMIT) decision = { kind: 'prompt-only', why: 'global-brake' };
   else if (state?.m === minBuild && state.n === 1) {
     const retryAt = state.t + COOLDOWN_MS;
-    decision = now - state.t < COOLDOWN_MS ? { kind: 'cooldown', retryAt } : { kind: 'go', attempt: 2 };
+    decision = state.t <= now && now - state.t < COOLDOWN_MS ? { kind: 'cooldown', retryAt } : { kind: 'go', attempt: 2 };
   } else decision = { kind: 'go', attempt: 1 };
 
   if (isCheckinPath(pathname) && (decision.kind === 'go' || decision.kind === 'prompt-only')) {
@@ -336,6 +336,15 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
         sleep(PURGE_WAIT_MS),
       ]);
       if (stopped) return;
+      if (deps.isSubmitting()) {
+        // 清快取期間使用者開始送出：等送出結束再重載（次數已記，不能改回延後再評）
+        let off: () => void = () => {};
+        await new Promise<void>((resolve) => {
+          off = deps.onSubmittingIdle(() => resolve());
+        });
+        off();
+        if (stopped) return;
+      }
     }
     deps.reload();
   }
@@ -403,6 +412,7 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
     if (decision.kind === 'prompt-only') {
       offlineWaiting = false;
       clearCooldown();
+      reportOnce(`min-build-brake:${decision.why}`);
       const blocked = temporarilyBlocked(safety());
       if (blocked) {
         deferred = true;
