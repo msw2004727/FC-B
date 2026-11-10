@@ -67,6 +67,7 @@ describe('版號與 version.json', () => {
   it('commit SHA 沿用 7 碼：Pages 優先，否則 git', () => {
     expect(resolveCommitSha({ CF_PAGES_COMMIT_SHA: '0123456789abcdef' }, () => 'ignored')).toBe('0123456');
     expect(resolveCommitSha({}, () => 'deadbee\n')).toBe('deadbee');
+    expect(resolveCommitSha({}, () => '47a97938\n')).toBe('47a9793');
     expect(resolveCommitSha({}, () => { throw new Error('no git'); })).toBe('local');
   });
 });
