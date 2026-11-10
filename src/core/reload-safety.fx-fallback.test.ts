@@ -36,6 +36,20 @@ describe('showSwReloadPrompt 特效載入失敗', () => {
     expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
   });
 
+  it('強制提示框在特效失敗時也沒有稍後，現在更新仍可用', async () => {
+    const reload = vi.fn();
+    showSwReloadPrompt(reload, 'min-build', { forced: true });
+    const prompt = document.getElementById('sw-reload-deferred-prompt');
+    expect(prompt?.dataset.mode).toBe('forced');
+    expect(prompt?.querySelector('[data-sw-reload-later]')).toBeNull();
+    await vi.waitFor(() => {
+      expect(prompt?.style.opacity).toBe('1');
+    });
+    expect(prompt?.querySelector('[data-sw-reload-later]')).toBeNull();
+    (prompt?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it('import 失敗時點「稍後」仍可關掉', async () => {
     showSwReloadPrompt(vi.fn(), 'modal-open');
     const prompt = document.getElementById('sw-reload-deferred-prompt');

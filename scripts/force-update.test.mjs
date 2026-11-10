@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { taipeiBuildId } from './build-meta.mjs';
 import {
+  assertAllowedOnlineUrl,
   assertNewerThanOnline,
   assertRuntimeConfigShape,
+  ONLINE_VERSION_URL,
+  onlineUrlFromArgv,
   replaceMinBuild,
   runForceUpdate,
   RUNTIME_CONFIG_KEYS,
@@ -108,6 +111,60 @@ describe('force-update', () => {
 
   it('swEnabled 不是布林就失敗', () => {
     expect(() => assertRuntimeConfigShape({ swEnabled: 'true', minBuild: 0 })).toThrow(/布林/);
+  });
+
+  it('沒有 --online-url 時仍用正式站 version.json', () => {
+    expect(ONLINE_VERSION_URL).toBe('https://toosterx.com/version.json');
+    expect(onlineUrlFromArgv([])).toBe(ONLINE_VERSION_URL);
+    expect(onlineUrlFromArgv(['--dry-run'])).toBe(ONLINE_VERSION_URL);
+    expect(assertAllowedOnlineUrl('https://next.toosterx.com/version.json'))
+      .toBe('https://next.toosterx.com/version.json');
+  });
+
+  it('--online-url 接受 next 站並寫檔', async () => {
+    let written = '';
+    const result = await runForceUpdate({
+      now: NOW,
+      onlineUrl: 'https://next.toosterx.com/version.json',
+      readFile: () => SOURCE,
+      writeFile: (_file, text) => { written = text; },
+      fetchOnline: async () => '202611101200',
+    });
+    expect(result.next).toBe(Number(NEXT));
+    expect(written).toContain(`"minBuild": ${NEXT}`);
+  });
+
+  it.each([
+    'http://toosterx.com/version.json',
+    'http://next.toosterx.com/version.json',
+    'https://evil.com/version.json',
+    'https://toosterx.com.evil.com/version.json',
+    'https://evil.toosterx.com/version.json',
+    'https://next.toosterx.com.evil.com/version.json',
+    'https://nottoosterx.com/version.json',
+    'https://user:pass@toosterx.com/version.json',
+    'https://toosterx.com@evil.com/version.json',
+    'https://toosterx.com:444/version.json',
+    'https://toosterx.com/version.json?x=1',
+    'https://toosterx.com/version.json#frag',
+    'https://toosterx.com/other.json',
+    'https://toosterx.com./version.json',
+    'not a url',
+  ])('拒絕 %s，且不寫檔', async (onlineUrl) => {
+    let wrote = false;
+    await expect(runForceUpdate({
+      now: NOW,
+      onlineUrl,
+      readFile: () => SOURCE,
+      writeFile: () => { wrote = true; },
+      fetchOnline: async () => '0',
+    })).rejects.toThrow(/未寫入/);
+    expect(wrote).toBe(false);
+  });
+
+  it('--online-url 沒給網址就失敗', () => {
+    expect(() => onlineUrlFromArgv(['--online-url'])).toThrow(/需要網址/);
+    expect(() => onlineUrlFromArgv(['--online-url', '--help'])).toThrow(/需要網址/);
   });
 });
 
