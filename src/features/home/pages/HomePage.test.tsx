@@ -18,6 +18,8 @@ import {
   resolveNextActivity,
   type NextActivityResult,
 } from '../data/next-activity';
+import { openExternal } from '@/core/open-external';
+import { _resetCalendarModuleForTest } from '../data/home-calendar';
 import HomePage from './HomePage';
 
 const hiddenFeatures = vi.hoisted(() => ({
@@ -59,6 +61,11 @@ vi.mock('@/features/profile/data/viewer', () => ({
 vi.mock('@/features/profile/data/profile-model', () => ({
   loadUserProfile: async () => null,
 }));
+
+vi.mock('@/core/open-external', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/open-external')>();
+  return { ...actual, openExternal: vi.fn() };
+});
 
 vi.mock('@/features/home/data/next-activity', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/home/data/next-activity')>();
@@ -420,5 +427,71 @@ describe('HomePage (legacy A DOM & CSS)', () => {
       await waitFor(() => expect(allowed).toBe(true));
     },
   );
+
+
+  describe('我的下一場：加入行事曆（與活動頁同一個函式）', () => {
+    const NEXT: NextActivityResult = {
+      event: {
+        id: 'cal1',
+        _docId: 'cal1',
+        title: '週三夜間足球',
+        date: '2099/06/03 19:30~21:30',
+        location: '大安運動中心',
+        type: 'play',
+        status: 'active',
+        max: 20,
+        current: 8,
+        fee: 200,
+        notes: '請帶護腿',
+      },
+      registration: { status: 'confirmed', eventId: 'cal1', userId: 'u1' },
+      managedRole: '',
+    } as unknown as NextActivityResult;
+
+    beforeEach(() => {
+      _resetCalendarModuleForTest();
+      vi.mocked(resolveNextActivity).mockResolvedValue(NEXT);
+    });
+
+    it('點「加入行事曆」開啟預填好標題、台北時間、地點與說明的 Google 行事曆，不再顯示未開放', async () => {
+      const toastSpy = vi.spyOn(toast, 'show');
+      render(<HomePage />);
+      const btn = await screen.findByRole('button', { name: '加入行事曆' });
+      fireEvent.click(btn);
+      await waitFor(() => expect(vi.mocked(openExternal)).toHaveBeenCalledTimes(1));
+      const url = String(vi.mocked(openExternal).mock.calls[0]?.[0]);
+      expect(url).toContain('https://calendar.google.com/calendar/render?');
+      expect(url).toContain('action=TEMPLATE');
+      expect(url).toContain('text=' + encodeURIComponent('週三夜間足球'));
+      expect(url).toContain('dates=20990603T193000/20990603T213000');
+      expect(url).toContain('ctz=Asia/Taipei');
+      expect(url).toContain('location=' + encodeURIComponent('大安運動中心'));
+      expect(url).toContain(encodeURIComponent('名額：8/20 人'));
+      expect(url).toContain(encodeURIComponent('費用：$200'));
+      expect(url).toContain(encodeURIComponent('請帶護腿'));
+      expect(toastSpy).not.toHaveBeenCalledWith({ message: '此功能尚未開放，請先使用舊版' });
+    });
+
+    it('連按兩次只開一次（處理中不重複）', async () => {
+      render(<HomePage />);
+      const btn = await screen.findByRole('button', { name: '加入行事曆' });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await waitFor(() => expect(vi.mocked(openExternal)).toHaveBeenCalled());
+      expect(vi.mocked(openExternal)).toHaveBeenCalledTimes(1);
+    });
+
+    it('活動時間無法解析時只提示，不開窗', async () => {
+      vi.mocked(resolveNextActivity).mockResolvedValue({
+        ...NEXT,
+        event: { ...(NEXT.event as object), date: '時間未定' },
+      } as unknown as NextActivityResult);
+      const toastSpy = vi.spyOn(toast, 'show');
+      render(<HomePage />);
+      fireEvent.click(await screen.findByRole('button', { name: '加入行事曆' }));
+      await waitFor(() => expect(toastSpy).toHaveBeenCalledWith({ message: '無法解析活動時間' }));
+      expect(vi.mocked(openExternal)).not.toHaveBeenCalled();
+    });
+  });
 
 });

@@ -42,6 +42,7 @@ import {
 } from '../data/home-snapshot';
 import { computeGuestSportRows, computeSportRows, type SportRow } from '../data/sport-rows';
 import { useSnapshotExpiry } from '../data/use-snapshot-expiry';
+import { addNextActivityToCalendar, preloadCalendarModule } from '../data/home-calendar';
 // 首頁兩顆「我要開團」按鈕（.home-create-event-btn：金色旋轉外框、藍色漸層、光暈動畫、鎖定狀態）的樣式定義在
 // activity.css。表單改 lazy 後它不再隨 EventFormModal 進首頁，所以在這裡明確引入，並放在 home.css 之前，
 // 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
@@ -119,6 +120,20 @@ export default function HomePage(): JSX.Element {
   const [selectedAnn, setSelectedAnn] = useState<AnnouncementDoc | null>(null);
   const [activeSport, setActiveSport] = useActiveSport();
   const createEntry = useCreateEventEntry(viewer);
+  // 「我的下一場」的「加入行事曆」：與活動頁同一個函式；頁面載入後閒置時預載模組，讓點擊時能同步開窗。
+  const calendarAbort = useRef<AbortController | null>(null);
+  const calendarBusy = useRef(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    calendarAbort.current = controller;
+    const run = (): void => void preloadCalendarModule().catch(() => undefined);
+    const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+    const timer = typeof idle === 'function' ? idle.call(window, run) : window.setTimeout(run, 1500);
+    return () => {
+      controller.abort();
+      if (typeof idle !== 'function') window.clearTimeout(timer);
+    };
+  }, []);
   const onFormSaved = useEventFormPostSave({
     viewer,
     close: createEntry.closeForm,
@@ -246,6 +261,24 @@ export default function HomePage(): JSX.Element {
       e.stopPropagation();
     }
     toast.show({ message: UNAVAILABLE_FEATURE_MSG });
+  }
+
+  async function handleAddToCalendar(event: EventDoc): Promise<void> {
+    const controller = calendarAbort.current;
+    if (!controller || controller.signal.aborted || calendarBusy.current) return;
+    calendarBusy.current = true;
+    try {
+      await addNextActivityToCalendar(event, {
+        signal: controller.signal,
+        showToast: (message) => toast.show({ message }),
+      });
+    } catch {
+      if (!controller.signal.aborted) {
+        toast.show({ message: lt('events.detailPage.actionError', '操作失敗，請稍後重試。') });
+      }
+    } finally {
+      calendarBusy.current = false;
+    }
   }
 
   function handleOpenCreateEvent(e?: Event): void {
@@ -422,7 +455,7 @@ export default function HomePage(): JSX.Element {
           onFindActivity={() => location.route('/activities')}
           onCreateEvent={handleOpenCreateEvent}
           onOpenDetail={handleOpenEventDetail}
-          onAddToCalendar={() => handleUnavailableFeature()}
+          onAddToCalendar={(event) => void handleAddToCalendar(event)}
         />
 
         {/* Sport Quick Entry */}
