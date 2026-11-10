@@ -96,6 +96,8 @@ import type {
   RecallPrivateMessageResponse,
   RecountTeamMembersRequest,
   RecountTeamMembersResponse,
+  RecordProfileViewRequest,
+  RecordProfileViewResponse,
   RecordUserLoginIpRequest,
   RecordUserLoginIpResponse,
   RefreshMyActivityRecordsRequest,
@@ -240,6 +242,7 @@ export interface CallableMap {
   migrateUidFields: { req: MigrateUidFieldsRequest; res: MigrateUidFieldsResponse };
   recallPrivateMessage: { req: RecallPrivateMessageRequest; res: RecallPrivateMessageResponse };
   recountTeamMembers: { req: RecountTeamMembersRequest; res: RecountTeamMembersResponse };
+  recordProfileView: { req: RecordProfileViewRequest; res: RecordProfileViewResponse };
   recordUserLoginIp: { req: RecordUserLoginIpRequest; res: RecordUserLoginIpResponse };
   refreshMyActivityRecords: {
     req: RefreshMyActivityRecordsRequest;

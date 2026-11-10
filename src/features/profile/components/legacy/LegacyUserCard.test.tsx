@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render as preactRender } from 'preact';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
@@ -26,6 +28,12 @@ vi.mock('preact-iso', async (importOriginal) => ({
   useLocation: () => ({ route: routeMock }),
 }));
 vi.mock('@/features/inbox/components/pm-dialog-store', () => ({ openPmDialog: vi.fn() }));
+vi.mock('../../data/profile-popularity', () => ({
+  loadProfilePopularityViews: vi.fn(async () => null),
+}));
+vi.mock('../../data/record-profile-view', () => ({
+  scheduleProfileViewRecord: vi.fn(() => () => undefined),
+}));
 vi.mock('@/core/events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/core/events')>()),
   emit: vi.fn(),
@@ -45,6 +53,8 @@ import { toast } from '@/ui/Toast';
 import { loadUserStats, getFilteredRecords } from '../../data/activity-records';
 import { loadUserAttendanceSummary } from '../../data/attendance-summary';
 import { loadUserProfile, type UserProfile } from '../../data/profile-model';
+import { loadProfilePopularityViews } from '../../data/profile-popularity';
+import { scheduleProfileViewRecord } from '../../data/record-profile-view';
 import { _resetPublicProfileCacheForTest } from '../../data/public-profile-cache';
 import { useViewer, type ViewerView } from '../../data/viewer';
 
@@ -121,6 +131,8 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     vi.mocked(loadUserAttendanceSummary).mockImplementation(async (uid: string) => summaryOf(uid));
     vi.mocked(getFilteredRecords).mockReturnValue([]);
     vi.mocked(useViewer).mockReturnValue(makeViewer());
+    vi.mocked(loadProfilePopularityViews).mockResolvedValue(null);
+    vi.mocked(scheduleProfileViewRecord).mockReturnValue(() => undefined);
   });
 
   afterEach(() => {
@@ -503,5 +515,157 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     const { container } = await renderCard();
     expect(container.textContent).toContain('Bob');
     expect(container.querySelector('.pp-rows')).toBeTruthy();
+  });
+
+  async function cardHtmlWhen(settle: () => void): Promise<{ before: string; after: string; hdClass: string; cardClass: string }> {
+    const view = await renderCard();
+    await waitFor(() => expect(view.container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    const before = (view.container.querySelector('.pp-card') as HTMLElement).outerHTML;
+    await act(async () => {
+      settle();
+      await Promise.resolve();
+    });
+    const after = (view.container.querySelector('.pp-card') as HTMLElement).outerHTML;
+    const hdClass = view.container.querySelector('.pp-hd')?.className ?? '';
+    const cardClass = view.container.querySelector('.pp-card')?.className ?? '';
+    view.unmount();
+    return { before, after, hdClass, cardClass };
+  }
+
+  it('null／讀取失敗時 .pp-card outerHTML 與載入前一致，不加元素、不加 class', async () => {
+    let resolveViews: (views: number | null) => void = () => {};
+    vi.mocked(loadProfilePopularityViews).mockImplementation(
+      () => new Promise((resolve) => {
+        resolveViews = resolve;
+      }),
+    );
+    const pending = await cardHtmlWhen(() => resolveViews(null));
+    expect(pending.after).toBe(pending.before);
+    expect(pending.after).not.toContain('pp-pop');
+    expect(pending.after).not.toContain('pp-has-pop');
+    expect(pending.after).not.toContain('popularity-stars');
+    expect(pending.hdClass).toBe('uc-header pp-hd');
+    expect(pending.cardClass).toBe('user-card-full pp-card');
+
+    let rejectViews: (err: Error) => void = () => {};
+    vi.mocked(loadProfilePopularityViews).mockImplementation(
+      () => new Promise((_, reject) => {
+        rejectViews = reject;
+      }),
+    );
+    const failed = await cardHtmlWhen(() => rejectViews(new Error('permission-denied')));
+    expect(failed.after).toBe(failed.before);
+    expect(failed.after).not.toContain('pp-has-pop');
+    expect(failed.after).toBe(pending.after);
+  });
+
+  it('有人氣（含 0）才出現 .pp-pop 與 .pp-has-pop，星星在頭部最後，不顯示人數', async () => {
+    vi.mocked(loadProfilePopularityViews).mockResolvedValue(0);
+    const zero = await renderCard();
+    await waitFor(() => expect(zero.container.querySelector('.pp-pop')).toBeTruthy());
+    expect(zero.container.querySelector('.pp-hd')?.className).toBe('uc-header pp-hd pp-has-pop');
+    expect(zero.container.querySelector('.pp-hd')?.lastElementChild?.classList.contains('pp-pop')).toBe(true);
+    expect(zero.container.querySelectorAll('.pp-pop .popularity-stars svg')).toHaveLength(5);
+    expect(zero.container.querySelector('.pp-pop')?.textContent?.trim()).toBe('');
+    zero.unmount();
+
+    vi.mocked(loadProfilePopularityViews).mockResolvedValue(250);
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('.pp-pop')).toBeTruthy());
+    expect(container.querySelector('.pp-has-pop')).toBeTruthy();
+    expect(container.querySelector('.pp-hd')?.lastElementChild).toBe(container.querySelector('.pp-pop'));
+    expect(container.querySelector('.pp-pop')?.textContent?.replace(/\s/g, '')).toBe('');
+    expect(container.querySelector('.pp-hd')?.textContent).not.toContain('250');
+    expect(container.querySelector('.player-card-popularity-num')).toBeNull();
+    const order = [
+      '.pp-hd',
+      '.pp-acts',
+      '.pp-sep',
+      '.pp-stats',
+      '.pp-h',
+      '.pp-rows',
+      '#uc-records-toggle',
+      '#uc-records-panel',
+      '.pp-share',
+    ].map((sel) => container.querySelector(sel));
+    order.forEach((el) => expect(el).toBeTruthy());
+    for (let i = 1; i < order.length; i++) {
+      const prev = order[i - 1] as Element;
+      const cur = order[i] as Element;
+      // eslint-disable-next-line no-bitwise
+      expect(prev.compareDocumentPosition(cur) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    const pop = container.querySelector('.pp-pop') as Element;
+    const acts = container.querySelector('.pp-acts') as Element;
+    // eslint-disable-next-line no-bitwise
+    expect(acts.compareDocumentPosition(pop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('看自己也只有星星、不呼叫計數', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
+    vi.mocked(loadProfilePopularityViews).mockResolvedValue(100);
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('.pp-pop')).toBeTruthy());
+    expect(container.querySelector('.pp-pop')?.textContent?.trim()).toBe('');
+    expect(container.querySelector('.pp-hd')?.textContent).not.toContain('100');
+    expect(scheduleProfileViewRecord).not.toHaveBeenCalled();
+  });
+
+  it('未登入不呼叫計數；看別人已登入才排程，參數是 viewer 與 profile.uid', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: null as unknown as string }));
+    vi.mocked(loadProfilePopularityViews).mockResolvedValue(80);
+    const guest = await renderCard();
+    await waitFor(() => expect(guest.container.querySelector('.pp-pop')).toBeTruthy());
+    expect(scheduleProfileViewRecord).not.toHaveBeenCalled();
+    guest.unmount();
+
+    vi.mocked(useViewer).mockReturnValue(makeViewer());
+    vi.mocked(loadUserProfile).mockResolvedValue(
+      makeProfile({ uid: 'doc-uid', _docId: 'doc-uid', name: 'Carol', displayName: 'Carol' }),
+    );
+    render(<LegacyUserCard uid="line-user-id" />);
+    await waitFor(() => expect(scheduleProfileViewRecord).toHaveBeenCalledWith(VIEWER, 'doc-uid'));
+    expect(loadProfilePopularityViews).toHaveBeenCalledWith('doc-uid');
+    expect(scheduleProfileViewRecord).not.toHaveBeenCalledWith(VIEWER, 'line-user-id');
+  });
+
+  it('網址 uid 不同但文件是自己：不呼叫計數', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
+    await renderCard('line-user-id');
+    expect(scheduleProfileViewRecord).not.toHaveBeenCalled();
+  });
+
+  it('卸載取消尚未送出的計數，晚到的人氣結果不 setState', async () => {
+    const cancel = vi.fn();
+    vi.mocked(scheduleProfileViewRecord).mockReset();
+    vi.mocked(scheduleProfileViewRecord).mockReturnValue(cancel);
+    let resolveViews: (views: number | null) => void = () => {};
+    vi.mocked(loadProfilePopularityViews).mockImplementation(
+      () => new Promise((resolve) => {
+        resolveViews = resolve;
+      }),
+    );
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const view = await renderCard();
+    await waitFor(() => expect(scheduleProfileViewRecord).toHaveBeenCalledWith(VIEWER, TARGET));
+    view.unmount();
+    expect(cancel).toHaveBeenCalled();
+    await act(async () => {
+      resolveViews(10);
+      await Promise.resolve();
+    });
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('公開頁星星 CSS 照規格，只在有資料時定位', () => {
+    const css = readFileSync(
+      resolve(process.cwd(), 'src/features/profile/components/legacy/public-profile.css'),
+      'utf8',
+    );
+    expect(css).toContain('.pp-card .pp-hd.pp-has-pop { position: relative; }');
+    expect(css).toContain(
+      '.pp-card .pp-hd.pp-has-pop .pp-pop { position: absolute; left: 50%; top: calc(1rem + 88px - 9px); transform: translateX(-50%); z-index: 5; display: inline-flex; pointer-events: none; --pop-star-size: 17px; }',
+    );
   });
 });

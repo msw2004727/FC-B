@@ -1,4 +1,6 @@
-/* 人氣星列。填色走 CSS 變數，深色空星由 [data-theme="dark"] 切換，元件不判斷主題。 */
+/* 人氣星列。填色走 CSS 變數，深色空星由 [data-theme="dark"] 切換，元件不判斷主題。
+   星大小預設 calc(17 * var(--pcu))（球員卡）。公開頁沒有 --pcu，由外層設 --pop-star-size。
+   不要在 .popularity-stars 上寫 --pop-star-size，否則會蓋掉外層傳入的 17px。 */
 .popularity-stars {
   display: flex;
   align-items: center;
@@ -12,8 +14,8 @@
   --pop-star-empty: #4a5266;
 }
 .popularity-stars svg {
-  width: calc(17 * var(--pcu));
-  height: calc(17 * var(--pcu));
+  width: var(--pop-star-size, calc(17 * var(--pcu)));
+  height: var(--pop-star-size, calc(17 * var(--pcu)));
   display: block;
   flex: none;
 }

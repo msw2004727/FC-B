@@ -16,6 +16,9 @@ import { deriveAttendanceDisplay, type UserAttendanceSummary } from '../../data/
 import { getFilteredRecords, type UserStatsSnapshot } from '../../data/activity-records';
 import { BASE_ROLE_LEVEL_MAP } from '../../data/permissions';
 import { loadUserProfile, type UserProfile } from '../../data/profile-model';
+import { loadProfilePopularityViews } from '../../data/profile-popularity';
+import { popularityStars } from '../../data/popularity-tiers';
+import { scheduleProfileViewRecord } from '../../data/record-profile-view';
 import {
   getPublicStats,
   getPublicSummary,
@@ -24,6 +27,7 @@ import {
   peekPublicSummary,
 } from '../../data/public-profile-cache';
 import { useViewer } from '../../data/viewer';
+import { PopularityStars } from '../PopularityStars';
 import { ActivityRecordList } from './ActivityRecordList';
 import { LegacyAvatar } from './LegacyProfileHeader';
 import { LegacySocialLinks } from './LegacyProfileSocialAndRelated';
@@ -68,6 +72,9 @@ function LineIcon({ children }: { children: ComponentChildren }): JSX.Element {
  * - 聯繫方式只在本人或全域管理員（role level >= admin）時輸出到 DOM（站長改良，沿用）。
  * - 私訊照 A `_buildUserCardActionPanel`＋`pm-entry.js`：看自己不顯示整排動作；對方不是合法 LINE UID 不顯示私訊；
  *   未登入按私訊改導登入。加好友、關注照 A 顯示「功能尚未開放」。
+ * - 人氣：背景讀 profilePopularity。結果非 null（含 0）才在頭部末尾加星星，不顯示人數。
+ *   讀取失敗不加元素、不加 class。看自己、看別人都顯示星星。
+ * - 看別人且已登入：閒置時呼叫 recordProfileView。看自己、未登入不呼叫。
  */
 export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   const t = useT();
@@ -82,6 +89,8 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
   // status／profile 是為哪個「請求 uid」載入的。不能拿 profile.uid 比對：它可能是 lineUserId 或 doc id
   // （mapUserProfileDoc 的 uid || lineUserId || docId），不一定等於請求的 uid。
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  // 只記「這次讀的是誰」。對不上目前名片就不顯示，換人時不會閃過上一人的星星。
+  const [popularity, setPopularity] = useState<{ uid: string; views: number } | null>(null);
   const mountedRef = useRef(true);
   // 統計／明細載入世代：換看另一個人時遞增，前一人還在飛的結果不得寫進新的名片。
   const recordsSeqRef = useRef(0);
@@ -152,6 +161,38 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
 
   // 讀到資料的那個 uid（可能是 lineUserId／doc id 後備查到的 profile.uid）。
   const dataUid = status === 'ready' && loadedFor === targetUid && profile ? profile.uid : '';
+  const popularityViews =
+    popularity != null && popularity.uid === dataUid ? popularity.views : null;
+
+  // 人氣背景讀。null／失敗不 setState（本來就是空的），畫面維持原樣。
+  useEffect(() => {
+    if (!dataUid) return undefined;
+    let alive = true;
+    const uid = dataUid;
+    loadProfilePopularityViews(uid).then(
+      (views) => {
+        if (!alive) return;
+        if (typeof views !== 'number') {
+          setPopularity((prev) => (prev && prev.uid === uid ? null : prev));
+          return;
+        }
+        setPopularity({ uid, views });
+      },
+      () => {
+        if (!alive) return;
+        setPopularity((prev) => (prev && prev.uid === uid ? null : prev));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [dataUid]);
+
+  // 已登入且不是看自己才計瀏覽。卸載時取消尚未送出的閒置呼叫。
+  useEffect(() => {
+    if (!dataUid || !viewer.uid || viewer.uid === dataUid) return undefined;
+    return scheduleProfileViewRecord(viewer.uid, dataUid);
+  }, [dataUid, viewer.uid]);
 
   // 三格統計：開頁自動讀一次（快取命中不讀）。
   useEffect(() => {
@@ -375,8 +416,9 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     { key: 'cancelled', label: lt('取消', '取消') },
   ];
 
+  // 沒有人氣資料時 class 與子元素都跟原本一樣。有數字（含 0）才加星星，不顯示人數。
   const header = (
-    <div class="uc-header pp-hd">
+    <div class={popularityViews != null ? 'uc-header pp-hd pp-has-pop' : 'uc-header pp-hd'}>
       <div class="uc-avatar-circle">
         <LegacyAvatar url={avatarUrl} name={displayName} baseClass="uc-avatar-circle" />
       </div>
@@ -423,6 +465,11 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
             <span>{t('profile.pp.follow')}</span>
           </button>
         </div>
+      ) : null}
+      {popularityViews != null ? (
+        <span class="pp-pop">
+          <PopularityStars score={popularityStars(popularityViews)} />
+        </span>
       ) : null}
     </div>
   );

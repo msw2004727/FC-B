@@ -74,6 +74,7 @@ describe('PopularityStars', () => {
     expect(css).toContain('#4a5266');
     expect(css).toContain('[data-theme="dark"]');
     expect(css).toContain('calc(17 * var(--pcu))');
+    expect(css).toContain('var(--pop-star-size, calc(17 * var(--pcu)))');
     expect(css).toContain('calc(1 * var(--pcu))');
     expect(css).toContain('drop-shadow(0 1px 1.5px rgba(0,0,0,.4))');
   });
