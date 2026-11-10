@@ -167,6 +167,17 @@ describe('CreateEventTypeSheet', () => {
     }
   });
 
+  it('進場動畫用 backwards，不用 both／forwards（否則終點 opacity／transform 會蓋掉反灰與按下縮放）', () => {
+    const lines = sheetCss.split('\n').filter((line) => /^\s*animation:/.test(line));
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    for (const line of lines) {
+      if (line.includes('cets-')) {
+        expect(line).toContain('backwards');
+        expect(line).not.toMatch(/\b(both|forwards)\b/);
+      }
+    }
+  });
+
   it('樣式檔含減少動態、webkit 毛玻璃與不支援 backdrop-filter 的退回', () => {
     expect(sheetCss).toContain('prefers-reduced-motion');
     expect(sheetCss).toContain('-webkit-backdrop-filter');
