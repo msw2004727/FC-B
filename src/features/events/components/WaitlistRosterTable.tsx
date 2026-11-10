@@ -185,7 +185,7 @@ export function WaitlistRosterTable({
           onOpenProfile={onOpenProfile}
         />
       );
-      // 報名人本人已在正取名單（只會出現在有同行者的組）：名字右上角掛「已正取」小標籤（站長 2026-11-10 指定位置）。
+      // 報名人本人已在正取名單（只會出現在有同行者的組）：名片右邊掛「已正取」小標籤（站長 2026-11-10 指定位置）。
       return row.meta.kind === 'lead' ? (
         <span class="reg-name-text">
           <span class="cr-lead" style={groupStyle}>

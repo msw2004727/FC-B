@@ -136,17 +136,18 @@
   white-space: nowrap;
 }
 
-/* 「已正取」：報名人本人已在正取名單，小標籤掛在名字右上角。 */
+/* 「已正取」：報名人本人已在正取名單，標籤接在名片右邊，與名片等高，同一條水平中線，字在標籤內水平置中（站長 2026-11-10 指定）。 */
 .att-roster-waitlist .att-wl-confirmed {
-  align-self: flex-start;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  margin-left: -.5rem;
-  transform: translateY(-.55rem);
-  padding: .02rem .4rem;
-  border-radius: 999px;
-  font-size: .6rem;
+  padding: 0 .55rem;
+  border-radius: 6px;
+  font-size: .75rem;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1;
   white-space: nowrap;
   color: var(--success);
   background: color-mix(in srgb, var(--success) 14%, var(--bg-card));

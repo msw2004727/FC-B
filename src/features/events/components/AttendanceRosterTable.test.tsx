@@ -579,7 +579,7 @@ describe('WaitlistRosterTable', () => {
       expect(row.classList.contains('att-grp')).toBe(true);
     }
     expect(screen.getByText('Alice Jr').closest('.cr-cap')).toBeTruthy();
-    // 報名人本人已在正取名單：只在報名人名字右上角掛一個「已正取」小標籤，不再有「↳ 報名人」註記列。
+    // 報名人本人已在正取名單：只在報名人名片右邊接一個「已正取」小標籤，不再有「↳ 報名人」註記列。
     const confirmedTags = document.querySelectorAll('.att-wl-confirmed');
     expect(confirmedTags).toHaveLength(1);
     expect(confirmedTags[0]?.textContent).toBe('已正取');
@@ -660,7 +660,7 @@ describe('WaitlistRosterTable', () => {
     // 兩組組色不同（slot 0、1）。
     const groupVars = [...document.querySelectorAll('td.cr-name-cell')].map((td) => (td as HTMLElement).style.getPropertyValue('--cr-g'));
     expect(new Set(groupVars).size).toBe(2);
-    // 只有 Cara 本人已正取：她的名字右上角一個「已正取」小標籤，沒有註記列。
+    // 只有 Cara 本人已正取：她的名片右邊一個「已正取」小標籤，沒有註記列。
     expect(document.querySelectorAll('.att-wl-confirmed')).toHaveLength(1);
     expect(document.querySelector('.att-wl-confirmed')?.closest('tr')?.textContent).toContain('Cara');
     expect(document.querySelector('.att-wl-pass')).toBeNull();
