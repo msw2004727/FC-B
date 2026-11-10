@@ -40,6 +40,7 @@ import {
   EARLY_BANNERS_MAX_AGE_TOKEN,
   EARLY_BANNERS_PROJECT_TOKEN,
   EARLY_BANNERS_SCRIPT_ID,
+  EARLY_BANNERS_SKEW_TOKEN,
   earlyBannersHtml,
   formatInjectedNumber,
   transformEarlyBannersHtml,
@@ -309,7 +310,10 @@ describe('內嵌 script：首屏快照條件與 readBannersSnapshot() 一致', (
   it('快照 key 與 home-snapshot.ts 一致；期限由代號注入同一個常數', () => {
     expect(rawScript).toContain(`localStorage.getItem('${BANNERS_SNAPSHOT_KEY}')`);
     expect(rawScript).toContain(`s.length <= ${HOME_SNAPSHOT_MAX_CHARS}`);
-    expect(rawScript).toContain(`s.savedAt <= t + ${HOME_SNAPSHOT_FUTURE_SKEW_MS}`);
+    expect(rawScript).toContain('s.savedAt <= t + S');
+    expect(rawScript).not.toContain(String(HOME_SNAPSHOT_FUTURE_SKEW_MS));
+    expect(rawScript).toContain(EARLY_BANNERS_SKEW_TOKEN);
+    expect(builtScript()).toContain(`S = ${HOME_SNAPSHOT_FUTURE_SKEW_MS}`);
     expect(rawScript).toContain('t - s.savedAt <= A');
     expect(rawScript).toContain('s.v === V');
     expect(rawScript).toContain(EARLY_BANNERS_MAX_AGE_TOKEN);
@@ -407,6 +411,7 @@ describe('內嵌 script：請求內容與 banners-rest.ts 一致', () => {
     expect(rawScript.split(EARLY_BANNERS_PROJECT_TOKEN)).toHaveLength(2);
     expect(rawScript.split(EARLY_BANNERS_MAX_AGE_TOKEN)).toHaveLength(2);
     expect(rawScript.split(EARLY_BANNERS_FORMAT_V_TOKEN)).toHaveLength(2);
+    expect(rawScript.split(EARLY_BANNERS_SKEW_TOKEN)).toHaveLength(2);
     expect(builtScript()).toContain(FIREBASE_CONFIG.projectId);
     expect(builtScript()).not.toMatch(/__FCB_/);
   });
@@ -885,11 +890,12 @@ describe('建置外掛 earlyBannersHtml', () => {
     const out = buildHtml();
     // T-093：#fcb-early-event 共用同一個專案代號，由自己的外掛替換。這個函式只保證橫幅 script 裡沒有留下代號。
     const bannersBlock = /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(out)?.[0] ?? '';
-    const injected = `var P = '${FIREBASE_CONFIG.projectId}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${BANNERS_SNAPSHOT_MAX_AGE_MS}, V = ${HOME_SNAPSHOT_FORMAT_V}`;
-    const tokens = `var P = '${EARLY_BANNERS_PROJECT_TOKEN}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN}`;
+    const injected = `var P = '${FIREBASE_CONFIG.projectId}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${BANNERS_SNAPSHOT_MAX_AGE_MS}, V = ${HOME_SNAPSHOT_FORMAT_V}, S = ${HOME_SNAPSHOT_FUTURE_SKEW_MS}`;
+    const tokens = `var P = '${EARLY_BANNERS_PROJECT_TOKEN}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN}, S = ${EARLY_BANNERS_SKEW_TOKEN}`;
     expect(bannersBlock).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
     expect(out).not.toContain(EARLY_BANNERS_MAX_AGE_TOKEN);
     expect(out).not.toContain(EARLY_BANNERS_FORMAT_V_TOKEN);
+    expect(out).not.toContain(EARLY_BANNERS_SKEW_TOKEN);
     expect(out).toContain(injected);
     expect(out.replace(injected, tokens)).toBe(rawWithoutDocComment());
   });
@@ -906,7 +912,8 @@ describe('建置外掛 earlyBannersHtml', () => {
       scriptOf(rawHtml)
         .replace(EARLY_BANNERS_PROJECT_TOKEN, FIREBASE_CONFIG.projectId)
         .replace(EARLY_BANNERS_MAX_AGE_TOKEN, String(BANNERS_SNAPSHOT_MAX_AGE_MS))
-        .replace(EARLY_BANNERS_FORMAT_V_TOKEN, String(HOME_SNAPSHOT_FORMAT_V)),
+        .replace(EARLY_BANNERS_FORMAT_V_TOKEN, String(HOME_SNAPSHOT_FORMAT_V))
+        .replace(EARLY_BANNERS_SKEW_TOKEN, String(HOME_SNAPSHOT_FUTURE_SKEW_MS)),
     );
     // 其他註解與連線提示完全沒被誤刪。
     expect(out).toContain('首頁一開就會連的來源');
@@ -920,7 +927,7 @@ describe('建置外掛 earlyBannersHtml', () => {
 
   it('只刪「正上方緊鄰 script」的那一則註解：別的註解、不相鄰的註解、沒有註解的情況都不動', () => {
     const opts = { projectId: FIREBASE_CONFIG.projectId, emulator: false };
-    const script = `<script id="${EARLY_BANNERS_SCRIPT_ID}">var P = '${EARLY_BANNERS_PROJECT_TOKEN}', A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN};</script>`;
+    const script = `<script id="${EARLY_BANNERS_SCRIPT_ID}">var P = '${EARLY_BANNERS_PROJECT_TOKEN}', A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN}, S = ${EARLY_BANNERS_SKEW_TOKEN};</script>`;
     const out = transformEarlyBannersHtml(`<head>\n  <!-- keep 1 -->\n  <link a />\n  <!-- keep 2 -->\n  <meta b />\n  <!-- doc -->\n  ${script}\n  <title>t</title>\n</head>`, opts);
     expect(out).toContain('<!-- keep 1 -->');
     expect(out).toContain('<!-- keep 2 -->');

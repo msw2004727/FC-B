@@ -142,6 +142,7 @@ function readSection(key: string, nowMs: number, maxAgeMs: number): SnapshotRead
     if (!raw || raw.length > HOME_SNAPSHOT_MAX_CHARS) return null;
     const parsed = JSON.parse(raw) as Partial<HomeSnapshotSection<unknown>> | null;
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return null;
+    if (parsed.items.length === 0) return null;
     if (!isFresh(parsed, nowMs, maxAgeMs)) return null;
     return {
       items: parsed.items.slice(0, MAX_ITEMS),

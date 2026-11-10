@@ -109,7 +109,7 @@
          日後若加 CSP，必須放行 connect-src https://firestore.googleapis.com 與 img-src https://firebasestorage.googleapis.com。 -->
     <script id="fcb-early-banners">
       (function () {
-        var P = '__FCB_PROJECT_ID__', L = location, M = 262144, K = /^home-(info|layout)$/, A = __FCB_BANNER_MAX_AGE_MS__, V = __FCB_SNAPSHOT_V__;
+        var P = '__FCB_PROJECT_ID__', L = location, M = 262144, K = /^home-(info|layout)$/, A = __FCB_BANNER_MAX_AGE_MS__, V = __FCB_SNAPSHOT_V__, S = __FCB_SNAPSHOT_SKEW_MS__;
         function str(f, k) {
           var v = (f || 0)[k];
           return v && typeof v.stringValue === 'string' ? v.stringValue : '';
@@ -122,7 +122,7 @@
             var s = localStorage.getItem('fcb:home-banners:v1'), t = Date.now();
             s = s && s.length <= 100000 && JSON.parse(s);
             return s && s.v === V && Array.isArray(s.items) && s.items.length > 0 &&
-              s.savedAt === +s.savedAt && t - s.savedAt <= A && s.savedAt <= t + 60000;
+              s.savedAt === +s.savedAt && t - s.savedAt <= A && s.savedAt <= t + S;
           } catch (_) {}
         }
         function body(r) {

@@ -22,6 +22,7 @@
  * - `__FCB_PROJECT_ID__` → `FIREBASE_CONFIG.projectId`（不在 script 裡另外硬編一份）
  * - `__FCB_BANNER_MAX_AGE_MS__` → `BANNERS_SNAPSHOT_MAX_AGE_MS`（橫幅快照 24 小時；與 home-snapshot.ts 同一個常數）
  * - `__FCB_SNAPSHOT_V__` → `HOME_SNAPSHOT_FORMAT_V`（只看資料格式版本，不看 app 版號）
+ * - `__FCB_SNAPSHOT_SKEW_MS__` → `HOME_SNAPSHOT_FUTURE_SKEW_MS`（寫入時間可比現在晚多久；與 home-snapshot.ts 同一個常數）
  * emulator 模式（非 PROD 建置且 `VITE_FIREBASE_EMULATOR=1`，同 `data/firebase.ts#shouldUseEmulator`）整段移除：
  * REST 會繞過 SDK 的連線目標守門，emulator 下絕不能對正式 Firestore 發請求。
  * script 正上方那段中文說明註解也在這裡刪掉（約 0.6 KB gzip，不需要隨 HTML 送給每個訪客；script 本身不動、不壓縮）。
@@ -29,12 +30,13 @@
  * 找不到 script 區塊、代號數量不對、值格式不合一律丟錯讓建置失敗，不靜默發出一個指向錯誤專案的請求。
  */
 import type { Plugin } from 'vite';
-import { BANNERS_SNAPSHOT_MAX_AGE_MS, HOME_SNAPSHOT_FORMAT_V } from '../src/features/home/data/home-snapshot-ttl.ts';
+import { BANNERS_SNAPSHOT_MAX_AGE_MS, HOME_SNAPSHOT_FORMAT_V, HOME_SNAPSHOT_FUTURE_SKEW_MS } from '../src/features/home/data/home-snapshot-ttl.ts';
 
 export const EARLY_BANNERS_SCRIPT_ID = 'fcb-early-banners';
 export const EARLY_BANNERS_PROJECT_TOKEN = '__FCB_PROJECT_ID__';
 export const EARLY_BANNERS_MAX_AGE_TOKEN = '__FCB_BANNER_MAX_AGE_MS__';
 export const EARLY_BANNERS_FORMAT_V_TOKEN = '__FCB_SNAPSHOT_V__';
+export const EARLY_BANNERS_SKEW_TOKEN = '__FCB_SNAPSHOT_SKEW_MS__';
 
 /** 整個 `<script id="fcb-early-banners">…</script>` 區塊（含前面的縮排與後面的換行）。 */
 const SCRIPT_BLOCK = new RegExp(`[ \\t]*<script id="${EARLY_BANNERS_SCRIPT_ID}">[\\s\\S]*?</script>[ \\t]*\\r?\\n?`);
@@ -73,6 +75,7 @@ export function transformEarlyBannersHtml(source: string, options: EarlyBannersH
   let script = replaceToken(block[0], EARLY_BANNERS_PROJECT_TOKEN, options.projectId);
   script = replaceToken(script, EARLY_BANNERS_MAX_AGE_TOKEN, formatInjectedNumber('橫幅快照期限', BANNERS_SNAPSHOT_MAX_AGE_MS));
   script = replaceToken(script, EARLY_BANNERS_FORMAT_V_TOKEN, formatInjectedNumber('快照格式版本', HOME_SNAPSHOT_FORMAT_V));
+  script = replaceToken(script, EARLY_BANNERS_SKEW_TOKEN, formatInjectedNumber('快照時鐘容忍度', HOME_SNAPSHOT_FUTURE_SKEW_MS));
   return html.replace(SCRIPT_BLOCK, () => script);
 }
 

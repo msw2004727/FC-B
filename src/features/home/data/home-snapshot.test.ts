@@ -200,6 +200,13 @@ describe('橫幅快照', () => {
     expect(stored.items[0]?.gradient).toBeUndefined();
   });
 
+  it('檔案裡的 items 是空陣列：讀取當沒有快照（與提早腳本的 items.length > 0 一致）', () => {
+    putRaw(BANNERS_SNAPSHOT_KEY, { v: 1, savedAt: NOW, items: [] });
+    expect(readBannersSnapshot(NOW)).toBeNull();
+    putRaw(SPORTS_SNAPSHOT_KEY, { v: 1, savedAt: NOW, items: [] });
+    expect(readSportsSnapshot(NOW)).toBeNull();
+  });
+
   it('空清單（伺服器說目前沒有橫幅）會刪掉舊快照', () => {
     putBanners([banner({ id: 'b1', title: 'x' })], NOW);
     expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).not.toBeNull();
