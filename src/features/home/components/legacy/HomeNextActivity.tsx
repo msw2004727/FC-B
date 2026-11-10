@@ -231,12 +231,12 @@ export function HomeNextActivity({
             <svg class="home-next-empty-art" viewBox="0 0 160 130" fill="none" aria-hidden="true">
               <defs>
                 <linearGradient id="hne-art-a" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="var(--hne-g1)" />
-                  <stop offset="1" stop-color="var(--hne-g2)" />
+                  <stop offset="0" style="stop-color:var(--hne-g1)" />
+                  <stop offset="1" style="stop-color:var(--hne-g2)" />
                 </linearGradient>
                 <linearGradient id="hne-art-b" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stop-color="var(--hne-g1)" stop-opacity=".5" />
-                  <stop offset="1" stop-color="var(--hne-g2)" stop-opacity=".12" />
+                  <stop offset="0" style="stop-color:var(--hne-g1)" stop-opacity=".5" />
+                  <stop offset="1" style="stop-color:var(--hne-g2)" stop-opacity=".12" />
                 </linearGradient>
               </defs>
               <circle cx="104" cy="70" r="52" stroke="url(#hne-art-a)" stroke-opacity=".35" stroke-width="1.6" />
@@ -253,7 +253,7 @@ export function HomeNextActivity({
               </g>
               <rect x="90" y="81" width="12" height="11" rx="3.5" stroke="url(#hne-art-a)" stroke-width="2" stroke-dasharray="3 2.5" />
               <g transform="translate(122 96)">
-                <circle r="22" fill="var(--bg-card)" fill-opacity=".85" stroke="url(#hne-art-a)" stroke-width="2.6" />
+                <circle r="22" style="fill:var(--bg-card)" fill-opacity=".85" stroke="url(#hne-art-a)" stroke-width="2.6" />
                 <path d="M0-9l8.8 6.4-3.4 10.3H-5.4l-3.4-10.3z" fill="url(#hne-art-a)" />
                 <path d="M0-9V-22M8.8-2.6l12-3.9M5.4 7.7l7.4 10.2M-5.4 7.7l-7.4 10.2M-8.8-2.6l-12-3.9" stroke="url(#hne-art-a)" stroke-width="2.2" stroke-linecap="round" />
               </g>
