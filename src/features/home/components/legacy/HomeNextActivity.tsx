@@ -58,7 +58,7 @@ export function HomeNextActivity({
     result: null,
   }));
 
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const uid = viewer.uid;
@@ -104,10 +104,8 @@ export function HomeNextActivity({
     || visibleEvent?.imageVariants?.cover
     || visibleEvent?.image
     || FALLBACK_IMAGE;
-
-  useEffect(() => {
-    setImgSrc(rawImage);
-  }, [rawImage]);
+  // 第一張就用活動圖。預設封面只在這張網址載入失敗後才換，避免先打一趟 LOGO 再換真圖。
+  const imgSrc = brokenUrl === rawImage ? FALLBACK_IMAGE : rawImage;
 
   const statusMeta = registrationStatusMeta(
     candidate?.registration ?? (candidate?.managedRole ? { managedRole: candidate.managedRole } : null),
@@ -158,14 +156,14 @@ export function HomeNextActivity({
               onClick={() => onOpenDetail(visibleEvent)}
             >
               <img
-                src={imgSrc || FALLBACK_IMAGE}
+                src={imgSrc}
                 alt={visibleEvent.title || '未命名活動'}
                 width={1000}
                 height={750}
                 loading="lazy"
                 decoding="async"
                 onError={() => {
-                  if (imgSrc !== FALLBACK_IMAGE) setImgSrc(FALLBACK_IMAGE);
+                  if (rawImage !== FALLBACK_IMAGE) setBrokenUrl(rawImage);
                 }}
               />
             </button>

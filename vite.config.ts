@@ -64,6 +64,13 @@ const COMMON_HEADERS = [
     '  ! Cache-Control',
     '  Cache-Control: public, max-age=86400',
   ]),
+  // /img/*、/fonts/* 引用的是固定檔名（同名覆蓋即換圖），不設一年 immutable。
+  // 短快取一天 + stale-while-revalidate；`! Cache-Control` 蓋過內測 /* 的 no-cache（SPEED-1-7）。
+  ...['/img/*', '/fonts/*'].flatMap((path) => [
+    path,
+    '  ! Cache-Control',
+    '  Cache-Control: public, max-age=86400, stale-while-revalidate=86400',
+  ]),
   ...NOINDEX_HEADER_PATHS.flatMap((path) => [
     path,
     '  X-Robots-Tag: noindex',

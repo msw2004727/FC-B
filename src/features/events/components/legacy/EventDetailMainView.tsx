@@ -279,7 +279,8 @@ export function EventDetailCover({
             alt={event.title ?? ''}
             width={1200}
             height={450}
-            loading="lazy"
+            loading="eager"
+            fetchPriority="high"
             decoding="async"
           />
           <span class={`detail-cover-ribbon detail-cover-ribbon-${ribbonMeta.typeKey}`}>
