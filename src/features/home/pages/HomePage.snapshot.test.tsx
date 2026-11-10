@@ -4,12 +4,13 @@ import { _resetFirebaseForTest } from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { _resetUseEventsForTest } from '@/features/events/data/use-events';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
-import { APP_VERSION } from '@/version';
 import { loadActiveAnnouncements } from '../data/announcements';
 import { loadActiveBanners, type BannerDeps, type BannerDoc } from '../data/banners';
 import { guestRowsOf } from '../data/__fixtures__/guest-rows';
 import {
   BANNERS_SNAPSHOT_KEY,
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_FORMAT_V,
   HOME_SNAPSHOT_MAX_AGE_MS,
   SPORTS_SNAPSHOT_KEY,
   _clearHomeSnapshotForTest,
@@ -20,7 +21,7 @@ import {
 import { resolveNextActivity } from '../data/next-activity';
 import HomePage from './HomePage';
 
-// T-042 首屏快照：回訪時第一次 render 就畫橫幅與運動統計；過期／版本不同只留骨架（掛載後跨過 30 分鐘也要撤掉）；
+// T-042 首屏快照：回訪時第一次 render 就畫橫幅與運動統計；過期／格式版本不同只留骨架（橫幅 24 小時、運動統計 30 分鐘，掛載後跨過該段期限也要撤掉）；
 // 背景讀取照常進行；只有「確認向伺服器新取得」的結果才更新快照；快照為訪客視角的公開資料、沒有帳號歸屬，登入者的最終畫面一律以正式資料取代快照。
 
 let capturedRefresh: (() => void) | null = null;
@@ -146,7 +147,8 @@ function mockEvents(
 }
 
 const MIN = 60 * 1000;
-const staleAt = (): number => Date.now() - HOME_SNAPSHOT_MAX_AGE_MS - MIN;
+const staleBannersAt = (): number => Date.now() - BANNERS_SNAPSHOT_MAX_AGE_MS - MIN;
+const staleSportsAt = (): number => Date.now() - HOME_SNAPSHOT_MAX_AGE_MS - MIN;
 const footballChip = (container: Element): Element | null =>
   container.querySelector('.home-sport-chip[data-home-sport="football"]');
 const footballCount = (container: Element): string | undefined =>
@@ -179,7 +181,7 @@ afterEach(() => {
 });
 
 describe('HomePage 首屏快照：橫幅', () => {
-  it('30 分鐘內、同版本的快照在第一次 render 就畫出橫幅文字，網路還沒回來也不顯示骨架；背景讀取照常發出', () => {
+  it('24 小時內的快照在第一次 render 就畫出橫幅文字，網路還沒回來也不顯示骨架；背景讀取照常發出', () => {
     seedBanners([banner({ id: 'b1', title: '週末熱血開踢', subtitle: '立即加入附近球局' })]);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
@@ -210,11 +212,12 @@ describe('HomePage 首屏快照：橫幅', () => {
 
     expect(await screen.findByRole('heading', { name: '新橫幅' })).toBeTruthy();
     const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as {
-      appVersion: string;
+      v: number;
       savedAt: number;
       items: Array<{ id: string }>;
     };
-    expect(stored.appVersion).toBe(APP_VERSION);
+    expect(stored.v).toBe(HOME_SNAPSHOT_FORMAT_V);
+    expect(stored).not.toHaveProperty('appVersion');
     expect(stored.items.map((i) => i.id)).toEqual(['new']);
     // 時間戳也更新了（原本是 10 分鐘前寫的）
     expect(Date.now() - stored.savedAt).toBeLessThan(MIN);
@@ -259,8 +262,8 @@ describe('HomePage 首屏快照：橫幅', () => {
     expect(localStorage.getItem(BANNERS_SNAPSHOT_KEY)).toBeNull();
   });
 
-  it('超過 30 分鐘的快照只留骨架：不畫橫幅文字', () => {
-    seedBanners([banner({ id: 'b1', title: '過期橫幅' })], staleAt());
+  it('超過 24 小時的快照只留骨架：不畫橫幅文字', () => {
+    seedBanners([banner({ id: 'b1', title: '過期橫幅' })], staleBannersAt());
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
     const { container } = render(<HomePage />);
@@ -269,11 +272,11 @@ describe('HomePage 首屏快照：橫幅', () => {
     expect(screen.queryByText('過期橫幅')).toBeNull();
   });
 
-  it('版本不同的快照只留骨架', () => {
+  it('app 版號不同仍畫出橫幅；格式版本不同只留骨架', () => {
     localStorage.setItem(
       BANNERS_SNAPSHOT_KEY,
       JSON.stringify({
-        v: 1,
+        v: HOME_SNAPSHOT_FORMAT_V,
         appVersion: '0.20200101',
         savedAt: Date.now(),
         items: [{ id: 'b1', _docId: 'b1', title: '舊版寫的橫幅' }],
@@ -281,10 +284,23 @@ describe('HomePage 首屏快照：橫幅', () => {
     );
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
-    const { container } = render(<HomePage />);
+    const first = render(<HomePage />);
+    expect(screen.getByRole('heading', { name: '舊版寫的橫幅' })).toBeTruthy();
+    expect(first.container.querySelector('.skeleton-slide')).toBeNull();
+    first.unmount();
+    cleanup();
 
-    expect(container.querySelector('.skeleton-slide')).toBeTruthy();
-    expect(screen.queryByText('舊版寫的橫幅')).toBeNull();
+    localStorage.setItem(
+      BANNERS_SNAPSHOT_KEY,
+      JSON.stringify({
+        v: HOME_SNAPSHOT_FORMAT_V + 1,
+        savedAt: Date.now(),
+        items: [{ id: 'b1', _docId: 'b1', title: '格式已變的橫幅' }],
+      }),
+    );
+    const second = render(<HomePage />);
+    expect(second.container.querySelector('.skeleton-slide')).toBeTruthy();
+    expect(screen.queryByText('格式已變的橫幅')).toBeNull();
   });
 
   it('伺服器讀取失敗時，保留畫面上的快照橫幅，也不動快照', async () => {
@@ -358,7 +374,7 @@ describe('HomePage 首屏快照：橫幅', () => {
   });
 });
 
-describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用假時鐘，不真的等）', () => {
+describe('HomePage 首屏快照：掛載後跨過該段期限就撤掉（時間用假時鐘，不真的等）', () => {
   const T0 = Date.UTC(2026, 9, 27, 3, 0, 0);
   // 首頁每分鐘會因為 useEvents 的計時器重新 render 一次（整分鐘對齊掛載時間），而選用快照時會再檢查期限——
   // 所以到期時間刻意放在「整分鐘之間」，並且把頁面其他會觸發 render 的非同步工作先做完（settle）：
@@ -371,8 +387,9 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('橫幅：計時器在到期那一刻就撤掉（不等下一分鐘的 render），回到骨架', async () => {
     vi.useFakeTimers({ now: T0 });
-    // 到期時間 = T0 + 25 分 17 秒
-    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 5 * MIN + 17_000);
+    // 到期時間仍是 T0 + 25 分 17 秒。橫幅期限是 24 小時，寫入時間往前扣掉多出來的那段，
+    // 假時鐘才不用一次推進 24 小時（useEvents 每分鐘一個計時器）。
+    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 + 25 * MIN + 17_000 - BANNERS_SNAPSHOT_MAX_AGE_MS);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
     mockEvents(() => new Promise(() => undefined));
 
@@ -394,7 +411,8 @@ describe('HomePage 首屏快照：掛載後跨過 30 分鐘就撤掉（時間用
 
   it('橫幅：背景分頁的計時器被延後時，回到可見（visibilitychange）立刻撤掉', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 - 29 * MIN);
+    // 到期時間 = T0 + 1 分。寫入時間扣掉 24 小時與 30 分鐘的差，畫面在 T0 仍新鮮、T0+2 分已過期。
+    seedBanners([banner({ id: 'b1', title: '快到期的橫幅' })], T0 + MIN - BANNERS_SNAPSHOT_MAX_AGE_MS);
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
     mockEvents(() => new Promise(() => undefined));
 
@@ -639,7 +657,7 @@ describe('HomePage 首屏快照：運動統計', () => {
   });
 
   it('超過 30 分鐘的快照只留骨架：不顯示任何「N 活動」', () => {
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), staleAt());
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), staleSportsAt());
     mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);

@@ -68,7 +68,7 @@ import {
   hasLoginRedirectParams,
 } from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
-import { APP_VERSION } from '@/version';
+import { readAppVersion } from '@/core/app-meta';
 import {
   firebaseTargetLabel,
   releaseFirebaseAuthHold,
@@ -464,7 +464,7 @@ export function App({
         />
         {internalTest && (
           <div class="internal-test-badge" aria-hidden="true">
-            {t('internalTest.badge', { version: APP_VERSION })}
+            {t('internalTest.badge', { version: readAppVersion() })}
             {/* 站長 11-06 改名「ToosterX搶先試用版[版號]」，取代原「內測版 · sha · 連線目標」；
                 連 emulator 時仍附目標，連錯資料庫能被看見（Fable 2026-10-19） */}
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}

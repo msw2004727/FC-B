@@ -15,7 +15,9 @@ import { EXCLUDED_KEYS, EXCLUDED_TYPES } from '@/features/home/data/banners';
 import { canUseBannersRest } from '@/features/home/data/banners-rest-guard';
 import {
   BANNERS_SNAPSHOT_KEY,
-  HOME_SNAPSHOT_MAX_AGE_MS,
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_FORMAT_V,
+  HOME_SNAPSHOT_FUTURE_SKEW_MS,
   HOME_SNAPSHOT_MAX_CHARS,
   _clearHomeSnapshotForTest,
   readBannersSnapshot,
@@ -34,10 +36,12 @@ import {
 } from '@/features/home/data/__fixtures__/banners-rest';
 import { APP_VERSION } from '@/version';
 import {
+  EARLY_BANNERS_FORMAT_V_TOKEN,
+  EARLY_BANNERS_MAX_AGE_TOKEN,
   EARLY_BANNERS_PROJECT_TOKEN,
   EARLY_BANNERS_SCRIPT_ID,
-  EARLY_BANNERS_VERSION_TOKEN,
   earlyBannersHtml,
+  formatInjectedNumber,
   transformEarlyBannersHtml,
 } from '../../scripts/early-banners-html';
 
@@ -61,7 +65,7 @@ const rawHtml = read('index.html');
 const viteConfig = read('vite.config.ts');
 
 function buildHtml(emulator = false): string {
-  return transformEarlyBannersHtml(rawHtml, { projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION, emulator });
+  return transformEarlyBannersHtml(rawHtml, { projectId: FIREBASE_CONFIG.projectId, emulator });
 }
 
 /** 建置後內嵌 script 的程式碼（代號已換成真值）。 */
@@ -260,13 +264,14 @@ interface SnapshotCase {
 const SNAPSHOT_CASES: SnapshotCase[] = [
   { name: '沒有快照', raw: null },
   { name: '有效快照', raw: sectionJson() },
-  { name: '寫入 30 分鐘整（邊界，仍有效）', raw: sectionJson({ savedAt: NOW - HOME_SNAPSHOT_MAX_AGE_MS }) },
-  { name: '超過 30 分鐘 1 毫秒（過期）', raw: sectionJson({ savedAt: NOW - HOME_SNAPSHOT_MAX_AGE_MS - 1 }) },
-  { name: '寫入時間比現在晚 60 秒整（邊界，仍有效）', raw: sectionJson({ savedAt: NOW + 60_000 }) },
-  { name: '寫入時間比現在晚超過 60 秒（不可信）', raw: sectionJson({ savedAt: NOW + 60_001 }) },
-  { name: '版號不同（部署後的舊快照）', raw: sectionJson({ appVersion: '0.19990101' }) },
-  { name: '版號缺少', raw: sectionJson({ appVersion: undefined }) },
-  { name: 'v 不是 1', raw: sectionJson({ v: 2 }) },
+  { name: '寫入橫幅期限整（邊界，仍有效）', raw: sectionJson({ savedAt: NOW - BANNERS_SNAPSHOT_MAX_AGE_MS }) },
+  { name: '超過橫幅期限 1 毫秒（過期）', raw: sectionJson({ savedAt: NOW - BANNERS_SNAPSHOT_MAX_AGE_MS - 1 }) },
+  { name: '寫入 30 分鐘仍有效（橫幅已拉到 24 小時）', raw: sectionJson({ savedAt: NOW - 30 * 60 * 1000 }) },
+  { name: '寫入時間比現在晚 60 秒整（邊界，仍有效）', raw: sectionJson({ savedAt: NOW + HOME_SNAPSHOT_FUTURE_SKEW_MS }) },
+  { name: '寫入時間比現在晚超過 60 秒（不可信）', raw: sectionJson({ savedAt: NOW + HOME_SNAPSHOT_FUTURE_SKEW_MS + 1 }) },
+  { name: '版號不同仍可用', raw: sectionJson({ appVersion: '0.19990101' }) },
+  { name: '版號缺少仍可用', raw: sectionJson({ appVersion: undefined }) },
+  { name: 'v 不是目前格式版本', raw: sectionJson({ v: HOME_SNAPSHOT_FORMAT_V + 1 }) },
   { name: 'savedAt 是字串', raw: sectionJson({ savedAt: String(NOW) }) },
   { name: 'savedAt 是 null', raw: sectionJson({ savedAt: null }) },
   { name: 'items 是空陣列', raw: sectionJson({}, []) },
@@ -301,10 +306,30 @@ describe('內嵌 script：首屏快照條件與 readBannersSnapshot() 一致', (
     expect(run().fired).toBe(true);
   });
 
-  it('快照 key 與 home-snapshot.ts 一致（寫在 script 裡的字串）', () => {
+  it('快照 key 與 home-snapshot.ts 一致；期限由代號注入同一個常數', () => {
     expect(rawScript).toContain(`localStorage.getItem('${BANNERS_SNAPSHOT_KEY}')`);
     expect(rawScript).toContain(`s.length <= ${HOME_SNAPSHOT_MAX_CHARS}`);
-    expect(rawScript).toContain(`t - s.savedAt <= ${HOME_SNAPSHOT_MAX_AGE_MS}`);
+    expect(rawScript).toContain(`s.savedAt <= t + ${HOME_SNAPSHOT_FUTURE_SKEW_MS}`);
+    expect(rawScript).toContain('t - s.savedAt <= A');
+    expect(rawScript).toContain('s.v === V');
+    expect(rawScript).toContain(EARLY_BANNERS_MAX_AGE_TOKEN);
+    expect(rawScript).toContain(EARLY_BANNERS_FORMAT_V_TOKEN);
+    expect(rawScript).not.toContain('1800000');
+    expect(rawScript).not.toContain(String(BANNERS_SNAPSHOT_MAX_AGE_MS));
+    expect(builtScript()).toContain(`A = ${BANNERS_SNAPSHOT_MAX_AGE_MS}`);
+    expect(builtScript()).toContain('t - s.savedAt <= A');
+    expect(builtScript()).toContain(`V = ${HOME_SNAPSHOT_FORMAT_V}`);
+    expect(builtScript()).toContain('s.v === V');
+    expect(BANNERS_SNAPSHOT_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('橫幅期限邊界：兩邊結論相同（剛好 24 小時可用、超過就發請求）', () => {
+    localStorage.setItem(BANNERS_SNAPSHOT_KEY, sectionJson({ savedAt: NOW - BANNERS_SNAPSHOT_MAX_AGE_MS }));
+    expect(readBannersSnapshot(NOW)).not.toBeNull();
+    expect(run().fired).toBe(false);
+    localStorage.setItem(BANNERS_SNAPSHOT_KEY, sectionJson({ savedAt: NOW - BANNERS_SNAPSHOT_MAX_AGE_MS - 1 }));
+    expect(readBannersSnapshot(NOW)).toBeNull();
+    expect(run().fired).toBe(true);
   });
 
   it('讀取 localStorage 丟錯（私密模式、被停用）：和 readBannersSnapshot() 一樣當作沒有快照，仍然發', () => {
@@ -380,7 +405,8 @@ describe('內嵌 script：請求內容與 banners-rest.ts 一致', () => {
       expect(rawScript).not.toContain(literal);
     }
     expect(rawScript.split(EARLY_BANNERS_PROJECT_TOKEN)).toHaveLength(2);
-    expect(rawScript.split(EARLY_BANNERS_VERSION_TOKEN)).toHaveLength(2);
+    expect(rawScript.split(EARLY_BANNERS_MAX_AGE_TOKEN)).toHaveLength(2);
+    expect(rawScript.split(EARLY_BANNERS_FORMAT_V_TOKEN)).toHaveLength(2);
     expect(builtScript()).toContain(FIREBASE_CONFIG.projectId);
     expect(builtScript()).not.toMatch(/__FCB_/);
   });
@@ -859,12 +885,13 @@ describe('建置外掛 earlyBannersHtml', () => {
     const out = buildHtml();
     // T-093：#fcb-early-event 共用同一個專案代號，由自己的外掛替換。這個函式只保證橫幅 script 裡沒有留下代號。
     const bannersBlock = /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(out)?.[0] ?? '';
+    const injected = `var P = '${FIREBASE_CONFIG.projectId}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${BANNERS_SNAPSHOT_MAX_AGE_MS}, V = ${HOME_SNAPSHOT_FORMAT_V}`;
+    const tokens = `var P = '${EARLY_BANNERS_PROJECT_TOKEN}', L = location, M = 262144, K = /^home-(info|layout)$/, A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN}`;
     expect(bannersBlock).not.toContain(EARLY_BANNERS_PROJECT_TOKEN);
-    expect(out).not.toContain(EARLY_BANNERS_VERSION_TOKEN);
-    expect(out).toContain(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`);
-    expect(
-      out.replace(`var P = '${FIREBASE_CONFIG.projectId}', V = '${APP_VERSION}'`, `var P = '${EARLY_BANNERS_PROJECT_TOKEN}', V = '${EARLY_BANNERS_VERSION_TOKEN}'`),
-    ).toBe(rawWithoutDocComment());
+    expect(out).not.toContain(EARLY_BANNERS_MAX_AGE_TOKEN);
+    expect(out).not.toContain(EARLY_BANNERS_FORMAT_V_TOKEN);
+    expect(out).toContain(injected);
+    expect(out.replace(injected, tokens)).toBe(rawWithoutDocComment());
   });
 
   it('建置後輸出不含那段中文說明註解（約 0.6 KB gzip 不送給每個訪客），script 內容與連線提示等其他內容不變', () => {
@@ -876,7 +903,10 @@ describe('建置外掛 earlyBannersHtml', () => {
     // script 本體逐字相同（只換代號）：沒有被壓縮、沒有被改寫。
     const scriptOf = (html: string): string => /<script id="fcb-early-banners">[\s\S]*?<\/script>/.exec(html)?.[0] ?? '';
     expect(scriptOf(out)).toBe(
-      scriptOf(rawHtml).replace(EARLY_BANNERS_PROJECT_TOKEN, FIREBASE_CONFIG.projectId).replace(EARLY_BANNERS_VERSION_TOKEN, APP_VERSION),
+      scriptOf(rawHtml)
+        .replace(EARLY_BANNERS_PROJECT_TOKEN, FIREBASE_CONFIG.projectId)
+        .replace(EARLY_BANNERS_MAX_AGE_TOKEN, String(BANNERS_SNAPSHOT_MAX_AGE_MS))
+        .replace(EARLY_BANNERS_FORMAT_V_TOKEN, String(HOME_SNAPSHOT_FORMAT_V)),
     );
     // 其他註解與連線提示完全沒被誤刪。
     expect(out).toContain('首頁一開就會連的來源');
@@ -889,8 +919,8 @@ describe('建置外掛 earlyBannersHtml', () => {
   });
 
   it('只刪「正上方緊鄰 script」的那一則註解：別的註解、不相鄰的註解、沒有註解的情況都不動', () => {
-    const opts = { projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION, emulator: false };
-    const script = `<script id="${EARLY_BANNERS_SCRIPT_ID}">var P = '${EARLY_BANNERS_PROJECT_TOKEN}', V = '${EARLY_BANNERS_VERSION_TOKEN}';</script>`;
+    const opts = { projectId: FIREBASE_CONFIG.projectId, emulator: false };
+    const script = `<script id="${EARLY_BANNERS_SCRIPT_ID}">var P = '${EARLY_BANNERS_PROJECT_TOKEN}', A = ${EARLY_BANNERS_MAX_AGE_TOKEN}, V = ${EARLY_BANNERS_FORMAT_V_TOKEN};</script>`;
     const out = transformEarlyBannersHtml(`<head>\n  <!-- keep 1 -->\n  <link a />\n  <!-- keep 2 -->\n  <meta b />\n  <!-- doc -->\n  ${script}\n  <title>t</title>\n</head>`, opts);
     expect(out).toContain('<!-- keep 1 -->');
     expect(out).toContain('<!-- keep 2 -->');
@@ -921,7 +951,7 @@ describe('建置外掛 earlyBannersHtml', () => {
   });
 
   it('plugin 的 emulator 判斷與 shouldUseEmulator() 同條件：只有「非 PROD 且 VITE_FIREBASE_EMULATOR=1」才移除', () => {
-    const plugin = earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION });
+    const plugin = earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId });
     const configResolved = plugin.configResolved as unknown as (config: unknown) => void;
     const transform = plugin.transformIndexHtml as unknown as (html: string) => string;
     const hasScript = (): boolean => transform(rawHtml).includes(`id="${EARLY_BANNERS_SCRIPT_ID}"`);
@@ -939,25 +969,30 @@ describe('建置外掛 earlyBannersHtml', () => {
   });
 
   it('找不到 script、代號數量不對、值格式不合 → 丟錯讓建置失敗', () => {
-    const opts = { projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION, emulator: false };
+    const opts = { projectId: FIREBASE_CONFIG.projectId, emulator: false };
     expect(() => transformEarlyBannersHtml('<html></html>', opts)).toThrow(/找不到/);
     expect(() => transformEarlyBannersHtml('<html></html>', { ...opts, emulator: true })).toThrow(/找不到/);
     const noProject = rawHtml.replace(EARLY_BANNERS_PROJECT_TOKEN, 'literal-project');
     expect(() => transformEarlyBannersHtml(noProject, opts)).toThrow(/恰好有一個/);
-    const twoVersions = rawHtml.replace('K = /', `K2 = '${EARLY_BANNERS_VERSION_TOKEN}', K = /`);
-    expect(() => transformEarlyBannersHtml(twoVersions, opts)).toThrow(/恰好有一個/);
+    const twoAges = rawHtml.replace('K = /', `K2 = ${EARLY_BANNERS_MAX_AGE_TOKEN}, K = /`);
+    expect(() => transformEarlyBannersHtml(twoAges, opts)).toThrow(/恰好有一個/);
     for (const projectId of ['', 'A-B', "x'y", 'x"y', 'a b', '<b>', '-abc', 'a'.repeat(64)]) {
       expect(() => transformEarlyBannersHtml(rawHtml, { ...opts, projectId }), projectId).toThrow(/projectId/);
     }
-    for (const appVersion of ['', '0.2026 1027', "0.1'", '0.1</script>', '0.'.repeat(30)]) {
-      expect(() => transformEarlyBannersHtml(rawHtml, { ...opts, appVersion }), appVersion).toThrow(/appVersion/);
-    }
+    expect(() => formatInjectedNumber('橫幅快照期限', Number.NaN)).toThrow(/格式不合/);
+    expect(() => formatInjectedNumber('橫幅快照期限', -1)).toThrow(/格式不合/);
+    expect(() => formatInjectedNumber('橫幅快照期限', 1.5)).toThrow(/格式不合/);
   });
 
-  it('vite.config.ts 用 FIREBASE_CONFIG.projectId 與 APP_VERSION 註冊外掛（script 內的值與資料層同一個來源）', () => {
+  it('提早腳本的期限與格式版本來自 home-snapshot-ttl，vite 不再把版號傳進去', () => {
     expect(viteConfig).toContain("import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';");
-    expect(viteConfig).toContain("import { APP_VERSION } from './src/version.ts';");
-    expect(viteConfig).toMatch(/plugins:\s*\[[^\]]*earlyBannersHtml\(\{ projectId: FIREBASE_CONFIG\.projectId, appVersion: APP_VERSION \}\)/);
+    expect(viteConfig).toContain('earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId })');
+    expect(viteConfig).not.toContain('appVersion: APP_VERSION');
+    expect(viteConfig).not.toMatch(/import\.meta\.env\.VITE_BUILD_ID/);
+    expect(viteConfig).not.toMatch(/import\.meta\.env\.VITE_BUILD_SHA/);
+    expect(read('scripts/early-banners-html.ts')).toContain('home-snapshot-ttl.ts');
+    expect(read('scripts/early-banners-html.ts')).toContain('BANNERS_SNAPSHOT_MAX_AGE_MS');
+    expect(read('scripts/early-banners-html.ts')).toContain('HOME_SNAPSHOT_FORMAT_V');
   });
 });
 

@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 import { fileURLToPath, URL } from 'node:url';
-import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -10,38 +9,14 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 // 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { earlyEventHtml } from './scripts/early-event-html.ts';
+// @ts-expect-error 純 JS 建置工具，無型別宣告
+import { appBuildMeta } from './scripts/build-meta.mjs';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
 import { NOINDEX_HEADER_PATHS, routeMetaFor } from './src/core/route-meta.ts';
-import { APP_VERSION } from './src/version.ts';
-
-/** 版本角標用的短 commit：Cloudflare Pages 建置提供 CF_PAGES_COMMIT_SHA，本機退回 git。 */
-function buildSha(): string {
-  const fromCi = process.env.CF_PAGES_COMMIT_SHA;
-  if (fromCi) return fromCi.slice(0, 7);
-  try {
-    return execSync('git rev-parse --short HEAD', {
-      cwd: fileURLToPath(new URL('.', import.meta.url)),
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString().trim();
-  } catch {
-    return 'local';
-  }
-}
-
-/**
- * 建置編號（台北時間 YYYYMMDDHHmm，數字可比大小）：給 runtime-config.json 的 minBuild 比對用。
- * 環境變數 FCB_BUILD_ID 可覆寫（測試用）。
- */
-function buildId(): number {
-  const fromEnv = Number(process.env.FCB_BUILD_ID);
-  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  const t = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
-  return Number(t.slice(0, 16).replace(/[-T:]/g, ''));
-}
 
 /**
  * Cloudflare Pages `_headers`。
- * - 一律：雜湊命名的 assets 長快取；runtime-config.json 不得快取（SW 遠端開關，改了要立即生效）；
+ * - 一律：雜湊命名的 assets 長快取；runtime-config.json 與 version.json 不得快取（改了要立即生效）；
  *   sw.js 每次向伺服器確認（瀏覽器檢查 SW 更新用）。
  *   已知私人路徑另加 X-Robots-Tag: noindex（NOINDEX_HEADER_PATHS；內測與正式都輸出）。
  * - 內測期另加：全站不收錄；HTML 每次向伺服器確認新版（no-cache，未變更回 304）。
@@ -52,6 +27,9 @@ const COMMON_HEADERS = [
   '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable',
   '/runtime-config.json',
+  '  ! Cache-Control',
+  '  Cache-Control: no-store',
+  '/version.json',
   '  ! Cache-Control',
   '  Cache-Control: no-store',
   '/sw.js',
@@ -85,7 +63,7 @@ const INTERNAL_TEST_HEADERS = [
 /**
  * 內測期間的搜尋引擎隔離：建置變數 VITE_PUBLIC_LAUNCH 不是 '1' 時（預設），
  * 注入 noindex meta，並輸出 robots.txt（全站 Disallow）與 `_headers`。
- * 正式上線時設 VITE_PUBLIC_LAUNCH=1 即不產生。另注入 VITE_BUILD_SHA 給「內測版」角標。
+ * 正式上線時設 VITE_PUBLIC_LAUNCH=1 即不產生。版號與建置編號由 appBuildMeta 寫進 HTML，不 define 進 JS。
  * 內測模式其他防護見 src/data/internal-test.ts。
  */
 function internalTestNoIndex(): Plugin {
@@ -93,14 +71,6 @@ function internalTestNoIndex(): Plugin {
   let isBuild = false;
   return {
     name: 'fcb-internal-test-noindex',
-    config() {
-      return {
-        define: {
-          'import.meta.env.VITE_BUILD_SHA': JSON.stringify(buildSha()),
-          'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId()),
-        },
-      };
-    },
     configResolved(config) {
       isBuild = config.command === 'build';
       enabled = config.env.VITE_PUBLIC_LAUNCH !== '1';
@@ -183,7 +153,7 @@ const pwa = VitePWA({
     // manual.html（舊站手冊原文照搬）不進 precache：手冊改版要立即生效，HTML 不走快取優先（R-REL-013 精神）。
     // _worker.js 是 Cloudflare Pages 進階模式的邊緣程式、不對外提供，預存抓它會 404 讓 SW 安裝失敗。
     // assets/404.html 只給 Pages 讓 /assets/* 不存在的檔回真 404（顧問 §1.28），不進預存。
-    globIgnores: ['**/runtime-config.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html',
+    globIgnores: ['**/runtime-config.json', '**/version.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html',
       // 換站搬入的舊站公開頁與資產（換站計畫書 B-01／B-02）：不屬 app shell，不進預存。
       'blog/**', 'seo/**', 'roles/**', 'inventory/**', 'privacy.html', 'terms.html', 'LOGO/**', 'img/seo/**',
       // 課程旗標關閉時沒有任何 JS／HTML 引用的孤兒 chunk（N3）。K3 打開且建置確認已被動態 import 引用後要拿掉，否則 SW 不會預存。
@@ -216,7 +186,7 @@ const pwa = VitePWA({
 
 export default defineConfig({
   // T-042d／T-093：index.html 冷啟動提早 REST。橫幅與活動文件各一段 script、各自外掛；emulator 建置整段移除。
-  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId, appVersion: APP_VERSION }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), internalTestNoIndex(), pwa],
+  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), appBuildMeta(), internalTestNoIndex(), pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },

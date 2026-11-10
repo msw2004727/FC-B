@@ -21,7 +21,8 @@
     "check:parity": "node scripts/check-permission-parity.mjs ../FC",
     "seed:emulator": "node scripts/seed-emulator.mjs --reset",
     "e2e:shots": "node scripts/e2e-shots.mjs e2e-out",
-    "bump-version": "node scripts/bump-version.mjs"
+    "bump-version": "node scripts/bump-version.mjs",
+    "force-update": "node scripts/force-update.mjs"
   },
   "dependencies": {
     "@line/liff": "^2.31.2",

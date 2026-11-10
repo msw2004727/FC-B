@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { APP_VERSION } from '@/version';
+import { setAppMetaForTest } from './app-meta';
 
 interface FakeUser {
   uid: string;
@@ -71,9 +71,11 @@ describe('error-report', () => {
     }) as never);
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    setAppMetaForTest({ version: 'from-meta' });
   });
 
   afterEach(() => {
+    setAppMetaForTest(null);
     _resetErrorReporterForTest();
     vi.restoreAllMocks();
     localStorage.clear();
@@ -115,7 +117,7 @@ describe('error-report', () => {
       severityHint: '',
       noise: false,
       page: '/activities',
-      appVersion: APP_VERSION,
+      appVersion: 'from-meta',
       url: location.href,
       hash: '#frag',
       userAgent: navigator.userAgent,

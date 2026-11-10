@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
-import { APP_VERSION } from '@/version';
+
 import { fakeResponse, jsonResponse } from '@/features/home/data/__fixtures__/banners-rest';
 import {
   EARLY_BANNERS_SCRIPT_ID,
@@ -261,10 +261,12 @@ describe('建置外掛 earlyEventHtml', () => {
     const opts = { projectId: FIREBASE_CONFIG.projectId, emulator: false };
     expect(() => transformEarlyEventHtml('<html></html>', opts)).toThrow(/找不到/);
     expect(() => transformEarlyEventHtml('<html></html>', { ...opts, emulator: true })).toThrow(/找不到/);
-    const doubled = rawHtml.replace(
+    const eventBlock = new RegExp(`<script id="${EARLY_EVENT_SCRIPT_ID}">[\\s\\S]*?</script>`);
+    const doubled = rawHtml.replace(eventBlock, (block) => block.replace(
       `var P = '${EARLY_EVENT_PROJECT_TOKEN}', L = location`,
       `var P = '${EARLY_EVENT_PROJECT_TOKEN}', Q = '${EARLY_EVENT_PROJECT_TOKEN}', L = location`,
-    );
+    ));
+    expect(doubled).not.toBe(rawHtml);
     expect(() => transformEarlyEventHtml(doubled, opts)).toThrow(/恰好有一個/);
     for (const projectId of ['', 'A-B', "x'y", 'a b', '-abc', 'a'.repeat(64)]) {
       expect(() => transformEarlyEventHtml(rawHtml, { ...opts, projectId }), projectId).toThrow(/projectId/);
@@ -294,7 +296,6 @@ describe('建置外掛 earlyEventHtml', () => {
     const chain = (emulator: boolean): string => {
       const banners = transformEarlyBannersHtml(rawHtml, {
         projectId: FIREBASE_CONFIG.projectId,
-        appVersion: APP_VERSION,
         emulator,
       });
       return transformEarlyEventHtml(banners, { projectId: FIREBASE_CONFIG.projectId, emulator });

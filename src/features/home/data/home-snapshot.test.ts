@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { APP_VERSION } from '@/version';
 import type { BannerDoc } from './banners';
 import { guestRowsOf } from './__fixtures__/guest-rows';
 import { computeSportRows } from './sport-rows';
 import {
   BANNERS_SNAPSHOT_KEY,
-  HOME_SNAPSHOT_MAX_AGE_MS,
+  BANNERS_SNAPSHOT_MAX_AGE_MS,
+  HOME_SNAPSHOT_FORMAT_V,
   HOME_SNAPSHOT_MAX_CHARS,
   SPORTS_SNAPSHOT_KEY,
+  SPORTS_SNAPSHOT_MAX_AGE_MS,
   _clearHomeSnapshotForTest,
   readBannersSnapshot,
   projectBanner,
@@ -43,7 +44,7 @@ afterEach(() => {
 });
 
 describe('橫幅快照', () => {
-  it('寫入後在 30 分鐘內讀得回來，只留畫面用得到的欄位，並帶到期時間', () => {
+  it('寫入後在 24 小時內讀得回來，只留畫面用得到的欄位，並帶到期時間', () => {
     putBanners([
         {
           ...banner({
@@ -65,7 +66,7 @@ describe('橫幅快照', () => {
     );
 
     const read = readBannersSnapshot(NOW + 5 * 60 * 1000);
-    expect(read?.expiresAt).toBe(NOW + HOME_SNAPSHOT_MAX_AGE_MS);
+    expect(read?.expiresAt).toBe(NOW + BANNERS_SNAPSHOT_MAX_AGE_MS);
     expect(read?.items.map((b) => b.id)).toEqual(['b1', 'b2']);
     expect(read?.items[0]).toMatchObject({
       id: 'b1',
@@ -82,26 +83,42 @@ describe('橫幅快照', () => {
     expect(read?.items[0]).not.toHaveProperty('endAt');
   });
 
-  it('快照內容與帳號無關：存的只有版本、時間與橫幅欄位', () => {
+  it('快照內容與帳號無關：存的只有格式版本、時間與橫幅欄位', () => {
     putBanners([banner({ id: 'b1', title: 'x' })], NOW);
     const stored = JSON.parse(localStorage.getItem(BANNERS_SNAPSHOT_KEY) as string) as Record<string, unknown>;
-    expect(Object.keys(stored).sort()).toEqual(['appVersion', 'items', 'savedAt', 'v']);
-    expect(stored.appVersion).toBe(APP_VERSION);
+    expect(Object.keys(stored).sort()).toEqual(['items', 'savedAt', 'v']);
+    expect(stored.v).toBe(HOME_SNAPSHOT_FORMAT_V);
+    expect(stored).not.toHaveProperty('appVersion');
     expect(stored.savedAt).toBe(NOW);
   });
 
-  it('剛好 30 分鐘仍可用；超過 30 分鐘一律當沒有快照（只留骨架）', () => {
+  it('剛好 24 小時仍可用；超過 24 小時一律當沒有快照（30 分鐘內當然仍可用）', () => {
     putBanners([banner({ id: 'b1', title: 'x' })], NOW);
-    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS)?.items).toHaveLength(1);
-    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
+    expect(readBannersSnapshot(NOW + 30 * 60 * 1000)?.items).toHaveLength(1);
+    expect(readBannersSnapshot(NOW + BANNERS_SNAPSHOT_MAX_AGE_MS)?.items).toHaveLength(1);
+    expect(readBannersSnapshot(NOW + BANNERS_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
   });
 
-  it('版本和目前不同一律當沒有快照（即使剛寫入）', () => {
+  it('app 版號不同或缺少仍可用；格式版本不同一律當沒有快照', () => {
     putRaw(BANNERS_SNAPSHOT_KEY, {
-      v: 1,
+      v: HOME_SNAPSHOT_FORMAT_V,
       appVersion: '0.20200101',
       savedAt: NOW,
       items: [{ id: 'b1', _docId: 'b1', title: '舊版寫的' }],
+    });
+    expect(readBannersSnapshot(NOW)?.items.map((b) => b.id)).toEqual(['b1']);
+
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: HOME_SNAPSHOT_FORMAT_V,
+      savedAt: NOW,
+      items: [{ id: 'b1', _docId: 'b1', title: '沒有 app 版號' }],
+    });
+    expect(readBannersSnapshot(NOW)?.items.map((b) => b.title)).toEqual(['沒有 app 版號']);
+
+    putRaw(BANNERS_SNAPSHOT_KEY, {
+      v: HOME_SNAPSHOT_FORMAT_V + 1,
+      savedAt: NOW,
+      items: [{ id: 'b1', _docId: 'b1', title: '格式已變' }],
     });
     expect(readBannersSnapshot(NOW)).toBeNull();
   });
@@ -109,16 +126,16 @@ describe('橫幅快照', () => {
   it('寫入時間在未來太遠（時鐘不可信）、格式不符、壞 JSON 都當沒有快照', () => {
     putRaw(BANNERS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW + 10 * 60 * 1000,
       items: [{ id: 'b1', _docId: 'b1' }],
     });
     expect(readBannersSnapshot(NOW)).toBeNull();
 
-    putRaw(BANNERS_SNAPSHOT_KEY, { v: 2, appVersion: APP_VERSION, savedAt: NOW, items: [{ id: 'b1', _docId: 'b1' }] });
+    putRaw(BANNERS_SNAPSHOT_KEY, { v: 2, appVersion: '0.20200101', savedAt: NOW, items: [{ id: 'b1', _docId: 'b1' }] });
     expect(readBannersSnapshot(NOW)).toBeNull();
 
-    putRaw(BANNERS_SNAPSHOT_KEY, { v: 1, appVersion: APP_VERSION, savedAt: NOW, items: 'nope' });
+    putRaw(BANNERS_SNAPSHOT_KEY, { v: 1, appVersion: '0.20200101', savedAt: NOW, items: 'nope' });
     expect(readBannersSnapshot(NOW)).toBeNull();
 
     localStorage.setItem(BANNERS_SNAPSHOT_KEY, '{not json');
@@ -129,7 +146,7 @@ describe('橫幅快照', () => {
     const parse = vi.spyOn(JSON, 'parse');
     const huge = JSON.stringify({
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: [{ id: 'b1', _docId: 'b1', title: 'y'.repeat(HOME_SNAPSHOT_MAX_CHARS) }],
     });
@@ -141,7 +158,7 @@ describe('橫幅快照', () => {
   it('圖片與連結只接受 http/https（本機資料被竄改也不會變成 javascript: 等協定）；缺 id 的項目略過', () => {
     putRaw(BANNERS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: [
         { id: 'b1', _docId: 'b1', image: 'javascript:alert(1)', linkUrl: 'data:text/html,x', title: 'ok' },
@@ -167,7 +184,7 @@ describe('橫幅快照', () => {
     ];
     putRaw(BANNERS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: [
         ...evil.map((gradient, i) => ({ id: `e${i}`, _docId: `e${i}`, gradient })),
@@ -213,16 +230,25 @@ describe('運動統計快照', () => {
     ]);
     const read = readSportsSnapshot(NOW + 1000);
     expect(read?.items).toEqual(rows);
-    expect(read?.expiresAt).toBe(NOW + HOME_SNAPSHOT_MAX_AGE_MS);
+    expect(read?.expiresAt).toBe(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS);
+    expect(stored).not.toHaveProperty('appVersion');
   });
 
-  it('超過 30 分鐘或版本不同：不回任何統計（不顯示「N 活動」之類的狀態文字）', () => {
+  it('剛好 30 分鐘仍可用；超過 30 分鐘不回任何統計。app 版號不同仍可用，格式版本不同則沒有', () => {
     writeSportsSnapshot(rows, NOW);
-    expect(readSportsSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
+    expect(readSportsSnapshot(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS)?.items).toEqual(rows);
+    expect(readSportsSnapshot(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
 
     putRaw(SPORTS_SNAPSHOT_KEY, {
-      v: 1,
+      v: HOME_SNAPSHOT_FORMAT_V,
       appVersion: '0.20200101',
+      savedAt: NOW,
+      items: [{ key: 'football', count: 3 }],
+    });
+    expect(readSportsSnapshot(NOW)?.items.map((r) => [r.key, r.count])).toEqual([['football', 3]]);
+
+    putRaw(SPORTS_SNAPSHOT_KEY, {
+      v: HOME_SNAPSHOT_FORMAT_V + 1,
       savedAt: NOW,
       items: [{ key: 'football', count: 3 }],
     });
@@ -239,7 +265,7 @@ describe('運動統計快照', () => {
   it('未知運動 key、數量不是正整數的項目略過', () => {
     putRaw(SPORTS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: [
         { key: 'football', count: 2 },
@@ -292,9 +318,9 @@ describe('localStorage 不可用', () => {
 
     const read = readBannersSnapshot(NOW + 21 * 60 * 1000);
     expect(read?.items.map((b) => b.id)).toEqual(['old']);
-    // 到期時間仍是舊的寫入時間＋30 分鐘（沒有因為「嘗試寫新的」而延後）
-    expect(read?.expiresAt).toBe(NOW + HOME_SNAPSHOT_MAX_AGE_MS);
-    expect(readBannersSnapshot(NOW + HOME_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
+    // 到期時間仍是舊的寫入時間＋橫幅 24 小時（沒有因為「嘗試寫新的」而延後）
+    expect(read?.expiresAt).toBe(NOW + BANNERS_SNAPSHOT_MAX_AGE_MS);
+    expect(readBannersSnapshot(NOW + BANNERS_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
   });
 
   it('讀寫丟錯一律忽略，回 null', () => {
@@ -376,7 +402,7 @@ describe('寫入守門（顧問裁定 P1-1 採 A：快照為訪客視角公開�
     // 讀取端：本機資料被竄改也一樣被擋
     putRaw(BANNERS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: cases.map(([linkUrl], i) => ({ id: `t${i}`, _docId: `t${i}`, linkUrl })),
     });
@@ -406,7 +432,7 @@ describe('寫入守門（顧問裁定 P1-1 採 A：快照為訪客視角公開�
     // 讀取端相容舊格式（缺 status 視為 active），但特殊文件仍然排除
     putRaw(BANNERS_SNAPSHOT_KEY, {
       v: 1,
-      appVersion: APP_VERSION,
+      appVersion: '0.20200101',
       savedAt: NOW,
       items: [
         { id: 'old', _docId: 'old', title: '舊格式' },

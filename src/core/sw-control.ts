@@ -9,6 +9,7 @@
 // - Workbox 偵測到 waiting 新版 SW 時，顯示「有新版本可用／現在更新／稍後」提示框。
 // 只在正式打包執行；開發與測試環境不註冊。
 
+import { readAppBuildId } from './app-meta';
 import { requestSafeReload, showSwReloadPrompt } from './reload-safety';
 
 const RUNTIME_CONFIG_URL = '/runtime-config.json';
@@ -121,7 +122,7 @@ export function initServiceWorker(): void {
       storage: (() => {
         try { return sessionStorage; } catch { return null; }
       })(),
-      buildId: Number(import.meta.env.VITE_BUILD_ID) || 0,
+      buildId: readAppBuildId(),
     });
   };
   // 等頁面載入完再做，不和首屏搶網路。

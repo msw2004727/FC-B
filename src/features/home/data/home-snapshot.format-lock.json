@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "section": ["items", "savedAt", "v"],
+  "banner": [
+    "_docId",
+    "gradient",
+    "id",
+    "image",
+    "linkUrl",
+    "slot",
+    "slotName",
+    "sortOrder",
+    "status",
+    "subtitle",
+    "subtitleColor",
+    "title",
+    "titleColor",
+    "type"
+  ],
+  "sport": ["count", "key"]
+}
