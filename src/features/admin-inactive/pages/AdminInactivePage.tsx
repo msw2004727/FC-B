@@ -8,8 +8,9 @@ import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-re
 import { useViewer } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 
-import { CenterNote, InactiveEventsPanel, InactiveTeamsPanel } from '../components/InactiveLists';
+import { InactiveEventsPanel, InactiveTeamsPanel } from '../components/InactiveLists';
 import { UserStatusPanel } from '../components/UserStatusPanel';
 
 /** 入口與頁面同一判斷（照 A `DRAWER_MENUS` `admin.inactive.entry`；super_admin 經權限檢查器自動持有全部權限碼）。 */
@@ -51,7 +52,7 @@ export default function AdminInactivePage(): JSX.Element {
 
   let body: JSX.Element;
   if (waiting) {
-    body = <CenterNote role="status" text={t('admin-inactive.loading')} />;
+    body = <PageSpinner />;
   } else if (!canAccess) {
     body = <EmptyState title={t('admin-inactive.noPermission')} />;
   } else {

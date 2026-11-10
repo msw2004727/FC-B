@@ -100,8 +100,27 @@ describe('權限（照 A：admin.inactive.entry，minRole super_admin）', () =>
     render(<AdminInactivePage />);
     await act(async () => { await Promise.resolve(); });
     expect(screen.queryByText('權限不足')).toBeNull();
-    expect(screen.getByRole('status')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(calls).toHaveLength(0);
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    state.viewer = createMinimalViewer('U-super');
+    const view = render(<AdminInactivePage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(calls).toHaveLength(0);
+
+    state.viewer = viewer('user');
+    view.rerender(<AdminInactivePage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByText('權限不足')).toBeTruthy();
+    expect(document.querySelector('.tab-bar')).toBeNull();
+
+    state.viewer = viewer('super_admin');
+    view.rerender(<AdminInactivePage />);
+    await waitFor(() => expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual(['俱樂部', '活動', '用戶狀態']));
+    expect(screen.queryByText('權限不足')).toBeNull();
   });
 
   it('viewer 延後到位：最小 viewer 時 0 讀，完整 viewer 到位後才開始讀', async () => {

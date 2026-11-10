@@ -102,9 +102,29 @@ describe('路由守門（直接輸入網址也擋；與抽屜同一判斷 admin.
   it('權限尚未載入（最小 viewer）：只顯示載入中，不先閃「權限不足」也不讀資料', () => {
     state.viewer = createMinimalViewer('U-super');
     render(<AdminNotifPage />);
-    expect(screen.getByRole('status').textContent).toBe('載入中...');
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('權限不足')).toBeNull();
     expect(sdk.getDoc).not.toHaveBeenCalled();
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    state.viewer = createMinimalViewer('U-super');
+    const view = render(<AdminNotifPage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(sdk.getDoc).not.toHaveBeenCalled();
+
+    state.viewer = viewer('user');
+    view.rerender(<AdminNotifPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByText('權限不足')).toBeTruthy();
+    expect(sdk.getDoc).not.toHaveBeenCalled();
+
+    state.viewer = viewer('super_admin');
+    view.rerender(<AdminNotifPage />);
+    await waitFor(() => expect(document.getElementById('notif-settings-save-btn')).toBeTruthy());
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(document.querySelectorAll('[data-notif-toggle-key]')).toHaveLength(9);
   });
 });
 

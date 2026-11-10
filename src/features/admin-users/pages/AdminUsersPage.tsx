@@ -11,6 +11,7 @@ import { isAdminPlusRole } from '@/features/profile/components/legacy/profile-le
 import { useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { getRuntimeRoleSequence, type CustomRoleInput } from '@/ui/drawer-menu';
 import { toast } from '@/ui/Toast';
 
@@ -446,10 +447,10 @@ export default function AdminUsersPage({
     if (getLastKnownAuthUid() === null) {
       return shell(<EmptyState title={t('admin-users.access.deniedTitle')} body={t('admin-users.access.deniedBody')} />);
     }
-    return shell(<div style={CENTER_NOTE} role="status">{t('admin-users.list.loading')}</div>);
+    return shell(<PageSpinner />);
   }
   if (!permsLoaded) {
-    return shell(<div style={CENTER_NOTE} role="status">{t('admin-users.list.loading')}</div>);
+    return shell(<PageSpinner />);
   }
   if (!canAccess) {
     return shell(<EmptyState title={t('admin-users.access.deniedTitle')} body={t('admin-users.access.deniedBody')} />);

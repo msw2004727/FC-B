@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ViewerView } from '@/features/profile/data/viewer';
+import { createMinimalViewer, type ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
 import { BannerWriteError } from '../data/banner-admin';
 import type { BannerSlot } from '../data/banner-model';
@@ -32,8 +32,14 @@ vi.mock('@/i18n/i18n', () => ({
 const mockGoBack = vi.fn();
 vi.mock('@/core/back-guard', () => ({ useGoBack: () => mockGoBack }));
 
+const authState = vi.hoisted(() => ({ lastUid: null as string | null | undefined }));
+vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => authState.lastUid }));
+
 const mockUseViewer = vi.fn<() => ViewerView>();
-vi.mock('@/features/profile/data/viewer', () => ({ useViewer: () => mockUseViewer() }));
+vi.mock('@/features/profile/data/viewer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/profile/data/viewer')>();
+  return { ...actual, useViewer: () => mockUseViewer() };
+});
 
 const mockLoad = vi.fn<() => Promise<BannerSlot[]>>();
 const mockApplyDue = vi.fn();
@@ -203,8 +209,14 @@ async function confirmCrop() {
   });
 }
 
+function expectSpinner(): void {
+  expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+  expect(screen.queryByText('權限不足')).toBeNull();
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  authState.lastUid = null;
   mockUseViewer.mockReturnValue(viewer());
   mockLoad.mockResolvedValue([ACTIVE, SCHEDULED, EMPTY]);
   mockApplyDue.mockResolvedValue({ applied: [], failed: 0 });
@@ -237,6 +249,27 @@ describe('權限', () => {
     render(<AdminBannersPage />);
     expect(screen.getByTestId('empty-state')).toBeTruthy();
     expect(mockLoad).not.toHaveBeenCalled();
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    authState.lastUid = 'u_admin';
+    mockUseViewer.mockReturnValue(createMinimalViewer('u_admin'));
+    const view = render(<AdminBannersPage />);
+    expectSpinner();
+    expect(mockLoad).not.toHaveBeenCalled();
+    expect(mockApplyDue).not.toHaveBeenCalled();
+
+    mockUseViewer.mockReturnValue(viewer({ role: 'coach', hasPermission: () => false }));
+    view.rerender(<AdminBannersPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByTestId('empty-state').textContent).toContain('權限不足');
+    expect(mockLoad).not.toHaveBeenCalled();
+
+    mockUseViewer.mockReturnValue(viewer());
+    view.rerender(<AdminBannersPage />);
+    await waitFor(() => expect(document.querySelector('.banner-manage-card')).not.toBeNull());
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(mockLoad).toHaveBeenCalledTimes(1);
   });
 
   it('L-43：uid／權限延後出現才載入，且只載入一次', async () => {

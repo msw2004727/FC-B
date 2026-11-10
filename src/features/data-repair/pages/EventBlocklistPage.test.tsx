@@ -72,8 +72,26 @@ describe('黑名單管理', () => {
   it('尚未就緒', () => {
     mocks.viewer = createMinimalViewer('uidA');
     render(<EventBlocklistPage />);
-    expect(screen.getByText('載入中...')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('權限不足')).toBeNull();
+  });
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', () => {
+    mocks.viewer = createMinimalViewer('uidA');
+    const view = render(<EventBlocklistPage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(mocks.users).not.toHaveBeenCalled();
+
+    mocks.viewer = { ...mocks.viewer, uid: 'uidA', hasPermission: () => false,
+      permissionSources: { rolePermissions: [], userGrants: [], customRoles: [] } };
+    view.rerender(<EventBlocklistPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByText('權限不足')).toBeTruthy();
+
+    mocks.viewer = { ...mocks.viewer, hasPermission: () => true };
+    view.rerender(<EventBlocklistPage />);
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(screen.getByRole('button', { name: '加入黑名單' })).toBeTruthy();
   });
   it('未登入', () => {
     mocks.viewer = { ...mocks.viewer, uid: null }; mocks.lastUid = null;

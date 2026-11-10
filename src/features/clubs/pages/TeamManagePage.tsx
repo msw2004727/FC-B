@@ -19,6 +19,7 @@ import { getLastKnownAuthUid } from '@/data/auth';
 import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { SportIcon } from '@/ui/SportIcon';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { requestViewerRefresh, useViewer } from '@/features/profile/data/viewer';
@@ -78,7 +79,7 @@ export default function TeamManagePage(): JSX.Element {
   const busyRef = useRef<Set<string>>(new Set());
   const alive = useRef(true);
 
-  // L-43：useViewer() 先給權限全 false 的最小 viewer；完整 viewer 到位前顯示骨架，不閃「權限不足」、不讀資料。
+  // L-43：useViewer() 先給權限全 false 的最小 viewer；完整 viewer 到位前顯示轉圈，不閃「權限不足」、不讀資料。
   const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
   const canAccess = !waiting && canAccessTeamManagePage(viewer);
   const isAdmin = canManageAllTeams(viewer);
@@ -406,7 +407,7 @@ export default function TeamManagePage(): JSX.Element {
 
   function renderBody(): JSX.Element {
     if (!canAccess) {
-      if (waiting) return <div class="skeleton skeleton-team-card" role="status" />;
+      if (waiting) return <PageSpinner />;
       return (
         <div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:.85rem">權限不足</div>
       );

@@ -216,7 +216,8 @@ describe('入口權限（四身分）', () => {
 
     lastKnownUid = undefined;
     render(<AdminUsersPage />);
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
     expect(mockLoadUsers).not.toHaveBeenCalled();
   });
 
@@ -237,7 +238,7 @@ describe('入口權限（四身分）', () => {
     mockUseViewer.mockReturnValue(createMinimalViewer('me'));
     mockLoadUsers.mockResolvedValue(loadOf([makeUser('a', { name: 'Ann' })]));
     const view = render(<AdminUsersPage />);
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('權限不足')).toBeNull();
     expect(mockLoadUsers).not.toHaveBeenCalled();
 
@@ -257,6 +258,26 @@ describe('入口權限（四身分）', () => {
     view.rerender(<AdminUsersPage />);
     expect(await screen.findByText('權限不足')).toBeTruthy();
     expect(mockLoadUsers).not.toHaveBeenCalled();
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    mockLoadUsers.mockResolvedValue(loadOf([makeUser('a', { name: 'Ann' })]));
+    mockUseViewer.mockReturnValue(createMinimalViewer('me'));
+    const view = render(<AdminUsersPage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(mockLoadUsers).not.toHaveBeenCalled();
+
+    mockUseViewer.mockReturnValue(loadedViewerOf('coach', []));
+    view.rerender(<AdminUsersPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(await screen.findByText('權限不足')).toBeTruthy();
+    expect(mockLoadUsers).not.toHaveBeenCalled();
+
+    mockUseViewer.mockReturnValue(loadedViewerOf('admin', FULL_ADMIN_PERMS));
+    view.rerender(<AdminUsersPage />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card')).toHaveLength(1));
+    expect(screen.queryByText('權限不足')).toBeNull();
   });
 });
 

@@ -172,8 +172,28 @@ describe('讀取預算（進頁 ≤ 54）', () => {
     await act(async () => {
       await Promise.resolve();
     });
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('權限不足')).toBeNull();
     expect(totalReads()).toBe(0);
+  });
+
+  it('viewer 尚未到位時不出現權限不足、出現轉圈；到位且無權限才出現權限不足；到位且有權限顯示內容', async () => {
+    state.viewer = createMinimalViewer('U-admin');
+    const view = render(<AdminMessagesPage />);
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+    expect(screen.queryByText('權限不足')).toBeNull();
+    expect(totalReads()).toBe(0);
+
+    state.viewer = makeViewer('coach', []);
+    view.rerender(<AdminMessagesPage />);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.getByText('權限不足')).toBeTruthy();
+    expect(totalReads()).toBe(0);
+
+    state.viewer = makeViewer('admin', ADMIN);
+    view.rerender(<AdminMessagesPage />);
+    await waitFor(() => expect(screen.getByRole('heading', { name: '站內信管理' })).toBeTruthy());
+    expect(screen.queryByText('權限不足')).toBeNull();
   });
 
   it('載入更多：第二頁帶游標、每次 ≤ 50', async () => {

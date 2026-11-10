@@ -3,9 +3,12 @@ import '../legacy/admin-log-tabs.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useGoBack } from '@/core/back-guard';
+import { getLastKnownAuthUid } from '@/data/auth';
+import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { useViewer } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { PmAuditPanel } from '../components/PmAuditPanel';
 import {
@@ -46,7 +49,9 @@ export default function AdminLogsPage(): JSX.Element {
   const t = useT();
   const viewer = useViewer();
 
-  const canAccessPage = viewer.hasPermission('admin.logs.entry');
+  // L-43：最小 viewer 權限全 false。到位前先轉圈，不閃「權限不足」、不讀資料。
+  const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
+  const canAccessPage = !waiting && viewer.hasPermission('admin.logs.entry');
   const tabs = useMemo(
     () => getAvailableAdminLogTabs(viewer.role).filter((tab) => BUILT_LOG_TABS.includes(tab.key)),
     [viewer.role],
@@ -129,6 +134,16 @@ export default function AdminLogsPage(): JSX.Element {
       console.error('[copyOperationLogDiagnostic]', err);
       toast.show({ message: t('logs.operation.copyError'), tone: 'error' });
     }
+  }
+
+  if (waiting) {
+    return (
+      <div class="legacy-ui">
+        <section class="page active" id="page-admin-logs">
+          <PageSpinner />
+        </section>
+      </div>
+    );
   }
 
   if (!canAccessPage) {
