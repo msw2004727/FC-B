@@ -14,6 +14,7 @@ import {
   toPublicBanners,
   writeBannersSnapshot,
 } from '../data/home-snapshot';
+import { BANNERS_SNAPSHOT_MAX_AGE_MS } from '../data/home-snapshot-ttl';
 import { resolveNextActivity } from '../data/next-activity';
 import { fakeResponse, jsonResponse, restActiveFields, restDoc, restEmptyMarker, restStr } from '../data/__fixtures__/banners-rest';
 import HomePage from './HomePage';
@@ -434,7 +435,7 @@ describe('HomePage 暖啟動與卸載', () => {
   });
 
   it('快照過期（等同冷啟動）：照樣發 REST', () => {
-    writeBannersSnapshot(toPublicBanners([banner({ id: 'old', title: '過期橫幅' })]), Date.now() - 31 * 60 * 1000);
+    writeBannersSnapshot(toPublicBanners([banner({ id: 'old', title: '過期橫幅' })]), Date.now() - BANNERS_SNAPSHOT_MAX_AGE_MS - 60 * 1000);
     fetchMock.mockImplementation(hangingUntilAborted());
     vi.mocked(loadActiveBanners).mockReturnValue(deferred<BannerDoc[]>().promise);
 
