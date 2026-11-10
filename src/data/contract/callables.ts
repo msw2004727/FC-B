@@ -73,9 +73,9 @@ export interface RecordProfileViewRequest {
   targetUid: string;
 }
 
-/** counted 新計入；already 已計過；self 看自己；excluded 排除。views 可省略。 */
+/** counted 新計入；already 已計過；self 看自己。views 可省略。（站長 11-10：規則最簡單，沒有管理員／新帳號排除。） */
 export interface RecordProfileViewResponse {
-  status: 'counted' | 'already' | 'self' | 'excluded';
+  status: 'counted' | 'already' | 'self';
   views?: number;
 }
 
@@ -1796,7 +1796,7 @@ export const CALLABLES = {
   migrateUidFields: { region: 'asia-east1', auth: 'required', idempotency: '部分：已是合法 UID 會跳過（alreadyCorrect）；未見 requestId 去重' },
   recallPrivateMessage: { region: 'asia-east1', auth: 'required', idempotency: 'none（重複撤回會因 status 已 recalled 丟 failed-precondition）' },
   recountTeamMembers: { region: 'asia-east1', auth: 'required', idempotency: '冪等：每次依伺服器資料重算並覆寫 members' },
-  recordProfileView: { region: 'asia-east1', auth: 'required', idempotency: '後端另卡；前端本機 key 只在 status 為 counted 或 already 時寫入（excluded、self、失敗不寫）' },
+  recordProfileView: { region: 'asia-east1', auth: 'required', idempotency: '後端另卡；前端本機 key 只在 status 為 counted 或 already 時寫入（self、失敗不寫）' },
   recordUserLoginIp: { region: 'asia-east1', auth: 'required', idempotency: '部分：same_ip 會回傳 skipped: \'same_ip\'；其他去重機制未在附件顯示' },
   refreshMyActivityRecords: { region: 'asia-east1', auth: 'required', idempotency: 'none（僅有手動刷新冷卻限制，非 requestId/去重機制）' },
   registerForEduCoursePlan: { region: 'asia-east1', auth: 'required', idempotency: 'none（未見 requestId 或去重集合；僅使用交易與 deterministic enrollment doc id）' },

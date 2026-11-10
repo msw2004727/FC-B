@@ -31,7 +31,7 @@ describe('recordProfileView', () => {
     const mocksSrc = readFileSync(resolve(process.cwd(), 'src/dev/callable-mocks.ts'), 'utf8');
     expect(contract).toContain('export interface RecordProfileViewRequest');
     expect(contract).toContain('export interface RecordProfileViewResponse');
-    expect(contract).toContain("status: 'counted' | 'already' | 'self' | 'excluded'");
+    expect(contract).toContain("status: 'counted' | 'already' | 'self'");
     expect(contract).toContain('recordProfileView:');
     expect(entry).toContain('RecordProfileViewRequest');
     expect(entry).toContain('recordProfileView:');
@@ -72,8 +72,8 @@ describe('recordProfileView', () => {
     expect(localStorage.getItem(KEY)).toBe('1');
   });
 
-  it('excluded／self／其他狀態不寫 key', async () => {
-    for (const status of ['excluded', 'self', 'nope', '']) {
+  it('self／其他狀態不寫 key', async () => {
+    for (const status of ['self', 'nope', '']) {
       localStorage.clear();
       mocks.callFn.mockResolvedValueOnce({ status });
       await recordProfileView('viewer', 'target');
