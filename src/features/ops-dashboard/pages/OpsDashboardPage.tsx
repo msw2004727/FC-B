@@ -144,6 +144,8 @@ export default function OpsDashboardPage(): JSX.Element {
           </div>
         )}
         {failed && <ReadFailed onRetry={() => void reload()} />}
+        {/* 顧問 §3.83②：opsSummary 還沒產生（每日 03:00 首跑前）時要有說明，不是空白頁。 */}
+        {!failed && load.latest.kind === 'absent' && <StatusNote text={t('summaryAbsent')} />}
         <div class="od-grid">
           {cards && <OpsKpiGrid cards={cards} t={t} />}
           <OpsAttention rows={rows} t={t} onOpen={(href) => route(href)} />

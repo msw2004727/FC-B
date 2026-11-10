@@ -139,6 +139,15 @@ describe('內容（C1）', () => {
     expect(screen.queryByText('讀取失敗')).toBeNull();
     expect(screen.getByText('活動參與查詢')).toBeTruthy();
     expect(document.querySelector('[data-trend]')).toBeNull();
+    // 顧問 §3.83②：彙總還沒產生要有說明，不是空白頁。
+    expect(screen.getByText('彙總資料還沒有產生（每天凌晨 3 點更新），明天再來看看')).toBeTruthy();
+  });
+
+  it('opsSummary 有資料時不顯示「彙總還沒有」說明', async () => {
+    seed(true);
+    await openAs(viewer('super_admin'));
+    await screen.findByText(/^資料更新於 /);
+    expect(screen.queryByText(/彙總資料還沒有產生/)).toBeNull();
   });
 
   it('opsSummary 權限錯誤：顯示讀取失敗（不當成沒有資料），重試會重讀', async () => {
