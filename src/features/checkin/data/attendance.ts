@@ -11,6 +11,7 @@ import type { Firestore } from 'firebase/firestore';
 
 import { formatTaipei } from '@/core/taipei-time';
 import { getFirebase } from '@/data/firebase';
+import { beginSubmitting } from '@/core/submit-guard';
 import { attendanceRecords as attendanceRecordsPath } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
 
@@ -428,6 +429,8 @@ export async function commitAttendanceBatch(
   eventDocId: string,
   records: readonly AttendanceWritePayload[],
 ): Promise<string[]> {
+  const release = beginSubmitting('checkin');
+  try {
   if (!eventDocId) throw new Error('[checkin] commitAttendanceBatch 需要 eventDocId（R-REG-014）');
   if (records.length === 0) return [];
   for (const record of records) {
@@ -462,6 +465,9 @@ export async function commitAttendanceBatch(
   }
   await batch.commit();
   return ids;
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -474,6 +480,8 @@ export async function removeAttendance(
   recordDocId: string,
   operatorUid: string,
 ): Promise<void> {
+  const release = beginSubmitting('checkin');
+  try {
   if (!eventDocId) throw new Error('[checkin] removeAttendance 需要 eventDocId（R-REG-014）');
   if (!recordDocId) throw new Error('[checkin] removeAttendance 需要 recordDocId');
   if (!operatorUid) throw new Error('[checkin] removeAttendance 需要 operatorUid（removedByUid，A24）');
@@ -492,6 +500,9 @@ export async function removeAttendance(
 
   const docRef = fsDoc(db, attendanceRecordsPath(eventDocId), recordDocId);
   await updateDoc(docRef, updates);
+  } finally {
+    release();
+  }
 }
 
 // ── Firestore 讀取 ───────────────────────────────

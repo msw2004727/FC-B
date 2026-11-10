@@ -13,6 +13,7 @@
 
 import { getFirebase } from '@/data/firebase';
 import { callFn } from '@/data/callables';
+import { beginSubmitting } from '@/core/submit-guard';
 import { parseTaipei } from '@/core/taipei-time';
 import type {
   AdjustEventCapacityRequest,
@@ -752,6 +753,8 @@ export async function createEvent(
   alreadyExisted: boolean;
   addonsStripped: boolean;
 }> {
+  const release = beginSubmitting('event-save');
+  try {
   if (!EVENT_ID_PATTERN.test(eventId)) {
     throw new EventCreateError('INVALID_ID', `Event ID does not match Rules pattern: ${eventId}`);
   }
@@ -792,6 +795,9 @@ export async function createEvent(
     alreadyExisted,
     addonsStripped: applyAddonGate(form, ctx, null).stripped,
   };
+  } finally {
+    release();
+  }
 }
 
 /** 照 A addEventsAtomic：先全部讀取及判斷，再全部寫入。 */
@@ -802,6 +808,8 @@ export async function createEventsBatch(
   batchGroupId: string,
   hooks: CreateWriteHooks = {},
 ): Promise<{ eventIds: string[]; alreadyExisted: boolean; addonsStripped: boolean }> {
+  const release = beginSubmitting('event-save');
+  try {
   if (forms.length < 2 || forms.length > 30 || eventIds.length !== forms.length) {
     throw new EventCreateError('BATCH_SIZE_INVALID', 'Event batch must contain 2 to 30 forms and matching IDs.');
   }
@@ -895,6 +903,9 @@ export async function createEventsBatch(
   });
 
   return { eventIds: ids, alreadyExisted, addonsStripped };
+  } finally {
+    release();
+  }
 }
 
 export async function updateEventBasics(
@@ -903,6 +914,8 @@ export async function updateEventBasics(
   ctx: CreateEventContext,
   preserve: EditPreserveOptions = {},
 ): Promise<EditResult> {
+  const release = beginSubmitting('event-save');
+  try {
   const result = buildEditEventUpdates(existing, form, ctx, preserve);
   const { updates, capacityChange } = result;
 
@@ -942,13 +955,17 @@ export async function updateEventBasics(
   }
 
   return result;
+  } finally {
+    release();
+  }
 }
 
 export async function changeEventCapacity(
   eventId: string,
   newMax: number,
 ): Promise<AdjustEventCapacityResponse> {
-  return callAdjustEventCapacity({ eventId, newMax });
+  const release = beginSubmitting('event-save');
+  return callAdjustEventCapacity({ eventId, newMax }).finally(release);
 }
 
 // TODO(B-1)：課程連結活動編輯（updateCourseLinkedEvent Callable）本版不做。

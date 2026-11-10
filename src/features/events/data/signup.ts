@@ -32,6 +32,7 @@ import type {
 } from '@/data/contract/callables';
 import { emit } from '@/core/events';
 import { parseEventStartMs } from '@/core/event-time';
+import { beginSubmitting } from '@/core/submit-guard';
 
 import type { EventDoc, RegistrationDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
@@ -727,6 +728,7 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
       return response;
     });
 
+    const release = beginSubmitting('signup');
     let tracked: Promise<RegisterForEventResponse>;
     tracked = inner
       .catch((error: unknown) => {
@@ -734,6 +736,7 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
       })
       .finally(() => {
         if (inflightRegister.get(key) === tracked) inflightRegister.delete(key);
+        release();
       });
     inflightRegister.set(key, tracked);
     return tracked;
@@ -788,6 +791,7 @@ export function cancelRegistration(input: CancelRegistrationInput): Promise<Canc
       return response;
     });
 
+    const release = beginSubmitting('cancel');
     let tracked: Promise<CancelRegistrationResponse>;
     tracked = inner
       .catch((error: unknown) => {
@@ -795,6 +799,7 @@ export function cancelRegistration(input: CancelRegistrationInput): Promise<Canc
       })
       .finally(() => {
         if (inflightCancel.get(key) === tracked) inflightCancel.delete(key);
+        release();
       });
     inflightCancel.set(key, tracked);
     return tracked;
