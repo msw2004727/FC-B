@@ -176,8 +176,13 @@ describe('drawerItemStatus（內測站功能進度標記）', () => {
   });
 
   // 測試同步更新：W1C-M 補上 public/manual.html，使用手冊改為 done（由下方「public/manual.html 存在才能標 done」把關）。
+  // 測試同步更新：營運儀表板 C1 取代佔位頁，數據儀表板改為 done；佔位清單改逐項檢查（目前為空）。
   it('佔位頁路由不得標成 done（點開只會看到「即將推出」）', () => {
-    expect(drawerItemStatus(byLabel('數據儀表板'))).toBe('wip');
+    for (const path of DRAWER_PLACEHOLDER_ROUTES) {
+      const entry = DRAWER_MENUS.find((e) => e.routePath === path && !e.locked);
+      if (entry) expect(drawerItemStatus(entry)).toBe('wip');
+    }
+    expect(drawerItemStatus(byLabel('數據儀表板'))).toBe('done');
     expect(drawerItemStatus(byLabel('用戶管理'))).toBe('done');
   });
 
