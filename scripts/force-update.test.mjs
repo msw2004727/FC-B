@@ -162,6 +162,15 @@ describe('force-update', () => {
     expect(wrote).toBe(false);
   });
 
+  it('--online-url=<網址> 等號寫法、旗標重複都失敗（不能靜默改用預設網址）', () => {
+    expect(() => onlineUrlFromArgv(['--online-url=https://next.toosterx.com/version.json'])).toThrow(/只接受/);
+    expect(() => onlineUrlFromArgv([
+      '--online-url', 'https://next.toosterx.com/version.json',
+      '--online-url', 'https://toosterx.com/version.json',
+    ])).toThrow(/只能給一次/);
+    expect(() => onlineUrlFromArgv(['--online-urlx', 'https://next.toosterx.com/version.json'])).toThrow(/只接受/);
+  });
+
   it('--online-url 沒給網址就失敗', () => {
     expect(() => onlineUrlFromArgv(['--online-url'])).toThrow(/需要網址/);
     expect(() => onlineUrlFromArgv(['--online-url', '--help'])).toThrow(/需要網址/);

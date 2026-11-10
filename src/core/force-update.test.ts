@@ -217,6 +217,7 @@ describe('decideForceUpdate 規則順序', () => {
     expect(decideForceUpdate({ ...base, localOk: true })).toEqual({ kind: 'go', attempt: 1 });
     expect(decideForceUpdate({ ...base, recentGlobal: 6 })).toEqual({ kind: 'prompt-only', why: 'global-brake' });
     expect(decideForceUpdate({ ...base, recentGlobal: 5 })).toEqual({ kind: 'go', attempt: 1 });
+    expect(decideForceUpdate({ ...base, state: { m: MIN, n: 1, t: now + 3_600_000 } })).toEqual({ kind: 'go', attempt: 2 });
     const t = now - 59_999;
     expect(decideForceUpdate({ ...base, state: { m: MIN, n: 1, t } })).toEqual({
       kind: 'cooldown',
@@ -434,6 +435,31 @@ describe('T4 第 2 次先清快取', () => {
     expect(order).toEqual(['disable', 'reload']);
     expect(JSON.parse(session.getItem(RELOAD_KEY) ?? '')).toMatchObject({ m: MIN, n: 2 });
     expect(JSON.parse(local.getItem(GUARD_KEY) ?? '')).toEqual({ m: MIN, n: 2 });
+  });
+
+  it('清快取期間使用者開始送出：等送出結束才重載', async () => {
+    const session = memory();
+    const now = Date.now();
+    session.setItem(RELOAD_KEY, JSON.stringify({ m: MIN, n: 1, t: now - 60_000 }));
+    let release: () => void = () => {};
+    const h = startAt({
+      session,
+      path: '/',
+      disableSw: async () => { release = beginSubmitting('attendance-save'); },
+    });
+    await advance(10);
+    expect(h.reload).not.toHaveBeenCalled();
+    release();
+    await advance(10);
+    expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('跨分頁上限到了只跳提示時回報一次原因', () => {
+    const local = memory();
+    local.setItem(GUARD_KEY, JSON.stringify({ m: MIN, n: 6 }));
+    const h = startAt({ local, path: '/' });
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.report.mock.calls.filter((c) => String(c[0]).includes('min-build-brake:global-brake'))).toHaveLength(1);
   });
 
   it('disableSw 一直不完成時，5 秒後仍重載', async () => {
