@@ -156,8 +156,11 @@ export function useAttendanceLeaveGuard(
       }
       // 卸載或換活動時，待送的勾選與備註會在這裡 flush；標記要撐到寫入結束才釋放，
       // 否則計數歸零會立刻觸發強制更新重載，把還沒送出的資料一起丟掉。
-      const hold = submitReleaseRef.current ?? beginSubmitting('attendance-save');
+      // 一律新取一個標記（90 秒從現在重新算），再釋放舊的：先取後放，計數不會中途歸零。
+      const hold = beginSubmitting('attendance-save');
+      const previous = submitReleaseRef.current;
       submitReleaseRef.current = null;
+      previous?.();
       let flushed: void | Promise<void>;
       try {
         flushed = flushRef.current();
