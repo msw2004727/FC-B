@@ -3,6 +3,8 @@
  * 由 TimelineEventCard 動態 `import()` 使用（可見時才載入），避免把 Firestore 靜態拉進活動頁。
  *
  * 移植自 A `event-list-timeline.js` 260～482 行：可讀全部判斷、加總、快取、併發限制。
+ * SPEED-2-11a：同一個 microtask 裡的徽章查詢收成一批；相同活動只讀一次。
+ * 不改計數欄位、不放寬併發 2（不同活動仍各查各的子集合）。
  */
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
@@ -37,7 +39,33 @@ interface CacheEntry { cachedAt: number; eventId: string; count: number }
 
 const cache = new Map<string, CacheEntry>();
 const cacheGenerations = new Map<string, number>();
+const queue: BatchJob[] = [];
+const inflight = new Map<string, InflightEntry>();
 let activeCount = 0;
+let flushScheduled = false;
+let batchEpoch = 0;
+
+type BadgeSdk = {
+  firebase: Awaited<ReturnType<typeof defaultGetFirebase>>;
+  fs: typeof import('firebase/firestore');
+};
+
+/** 同一輪徽章共用一次 Firebase 載入。失敗就清掉，下次才能重試（L-08）。 */
+let sdkFlight: Promise<BadgeSdk> | null = null;
+
+function loadBadgeSdk(): Promise<BadgeSdk> {
+  if (!sdkFlight) {
+    const pending = Promise.all([defaultGetFirebase(), import('firebase/firestore')]).then(
+      ([firebase, fs]) => ({ firebase, fs }),
+    );
+    sdkFlight = pending;
+    pending.then(
+      () => { if (sdkFlight === pending) sdkFlight = null; },
+      () => { if (sdkFlight === pending) sdkFlight = null; },
+    );
+  }
+  return sdkFlight;
+}
 
 /** 照 A _clearActivityCommentBadgeCacheForEvent；阻止舊查詢回填失效快取。 */
 export function clearCommentBadgeCacheForEvent(eventId: string): void {
@@ -47,16 +75,30 @@ export function clearCommentBadgeCacheForEvent(eventId: string): void {
   for (const [key, entry] of cache) {
     if (entry.eventId === target) cache.delete(key);
   }
+  // 進行中的舊查詢不能讓下一次呼叫直接合併，否則清完仍拿到舊數字。
+  for (const [key, flight] of inflight) {
+    if (flight.eventId === target) inflight.delete(key);
+  }
 }
 
-interface QueueItem {
-  query: CommentBadgeQuery;
+interface Waiter {
   resolve: (n: number) => void;
   reject: (e: unknown) => void;
   cancelled: boolean;
+  settled: boolean;
 }
 
-const queue: QueueItem[] = [];
+interface BatchJob {
+  query: CommentBadgeQuery;
+  waiters: Waiter[];
+  started: boolean;
+}
+
+interface InflightEntry {
+  eventId: string;
+  eventDocId: string;
+  promise: Promise<number>;
+}
 
 /** 快取 key：`${eventId}|${uid}|${scope}`。 */
 export function getCommentBadgeCacheKey(eventId: string, uid: string, scope: CommentScope): string {
@@ -124,12 +166,23 @@ function setCachedCount(key: string, eventId: string, count: number): void {
   cache.set(key, { cachedAt: Date.now(), eventId, count: Math.max(0, Number(count) || 0) });
 }
 
+function sameBadgeQuery(a: CommentBadgeQuery, b: CommentBadgeQuery): boolean {
+  return a.cacheKey === b.cacheKey
+    && a.eventId === b.eventId
+    && a.eventDocId === b.eventDocId
+    && a.viewerUid === b.viewerUid;
+}
+
+function cancelledError(): Error {
+  return new Error('comment_badge_cancelled');
+}
+
 /** 照 A `_fetchActivityCommentBadgeCount`。 */
 export async function fetchCommentCount(query: CommentBadgeQuery): Promise<number> {
   if (!query.viewerUid || !query.eventId) return 0;
   if (query.event.type === 'external') return 0;
   if (!query.eventDocId) return 0;
-  const [firebase, fs] = await Promise.all([defaultGetFirebase(), import('firebase/firestore')]);
+  const { firebase, fs } = await loadBadgeSdk();
   const commentsRef = fs.collection(firebase.db, 'events', query.eventDocId, 'comments');
 
   if (canManageEventComments(query.event, query.viewerUid, query.viewerRoleLevel)) {
@@ -160,11 +213,124 @@ export interface CommentBadgeRequest {
   cancel: () => void;
 }
 
+function dropQueuedJob(job: BatchJob): void {
+  const idx = queue.indexOf(job);
+  if (idx >= 0) queue.splice(idx, 1);
+}
+
+function attachWaiter(job: BatchJob): CommentBadgeRequest {
+  let waiter!: Waiter;
+  const promise = new Promise<number>((resolve, reject) => {
+    waiter = { resolve, reject, cancelled: false, settled: false };
+    job.waiters.push(waiter);
+  });
+  return {
+    promise,
+    cancel: () => {
+      if (waiter.settled) return;
+      waiter.cancelled = true;
+      waiter.settled = true;
+      waiter.reject(cancelledError());
+      if (job.started) return;
+      job.waiters = job.waiters.filter((entry) => entry !== waiter);
+      if (job.waiters.length === 0) dropQueuedJob(job);
+    },
+  };
+}
+
+function listenFlight(shared: Promise<number>): CommentBadgeRequest {
+  let cancelled = false;
+  let rejectWait: (error: unknown) => void = () => {};
+  const promise = new Promise<number>((resolve, reject) => {
+    rejectWait = reject;
+    shared.then(
+      (count) => { if (!cancelled) resolve(count); },
+      (error: unknown) => { if (!cancelled) reject(error); },
+    );
+  });
+  return {
+    promise,
+    cancel: () => {
+      if (cancelled) return;
+      cancelled = true;
+      rejectWait(cancelledError());
+    },
+  };
+}
+
+function settleWaiters(job: BatchJob, count: number | null, error: unknown): void {
+  for (const waiter of job.waiters) {
+    if (waiter.cancelled || waiter.settled) continue;
+    waiter.settled = true;
+    if (error) waiter.reject(error);
+    else waiter.resolve(count ?? 0);
+  }
+}
+
+function startJob(job: BatchJob, epoch: number): void {
+  job.started = true;
+  activeCount += 1;
+  const query = job.query;
+  const generation = cacheGenerations.get(query.eventId) ?? 0;
+  let promise!: Promise<number>;
+  promise = (async (): Promise<number> => {
+    try {
+      const count = await fetchCommentCount(query);
+      if (epoch === batchEpoch && generation === (cacheGenerations.get(query.eventId) ?? 0)) {
+        setCachedCount(query.cacheKey, query.eventId, count);
+      }
+      settleWaiters(job, count, null);
+      return count;
+    } catch (error) {
+      settleWaiters(job, null, error);
+      throw error;
+    } finally {
+      // finally 不能 return，否則會蓋掉上面的數字。過期的測試重置直接跳過收尾。
+      if (epoch === batchEpoch) {
+        const current = inflight.get(query.cacheKey);
+        if (current?.promise === promise) inflight.delete(query.cacheKey);
+        activeCount = Math.max(0, activeCount - 1);
+        drainQueue(epoch);
+      }
+    }
+  })();
+  inflight.set(query.cacheKey, {
+    eventId: query.eventId,
+    eventDocId: query.eventDocId,
+    promise,
+  });
+  // 等候者已接到拒絕；這條只避免失敗變成未處理的拒絕（L-07、L-08）。
+  promise.catch(() => undefined);
+}
+
+function drainQueue(epoch: number): void {
+  if (epoch !== batchEpoch) return;
+  while (activeCount < COMMENT_BADGE_MAX_CONCURRENT && queue.length > 0) {
+    const job = queue.shift();
+    if (!job) break;
+    if (job.waiters.length === 0 || job.waiters.every((waiter) => waiter.cancelled)) continue;
+    startJob(job, epoch);
+  }
+}
+
+function scheduleFlush(): void {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  const epoch = batchEpoch;
+  queueMicrotask(() => {
+    flushScheduled = false;
+    if (epoch !== batchEpoch) return;
+    drainQueue(epoch);
+  });
+}
+
 /**
  * 排隊查詢留言數：
- * - 命中快取 → 直接解析（有 TTL 300000ms）。
- * - 未命中 → 排入全域佇列；同時最多 `COMMENT_BADGE_MAX_CONCURRENT`（2）個查詢。
- * - 呼叫 `cancel()` 會盡量移除佇列中尚未開始的項目；若已在執行，結果仍由呼叫端決定是否採用。
+ * - 命中快取 → 直接解析（TTL 300000ms）。鑰匙含 uid，換帳號不沿用（L-43）。
+ * - 同一活動已在讀 → 合併到進行中的那一筆（失敗會清掉，下次才能重試，L-08）。
+ * - 否則收進同頁批次：同一個 microtask 裡的請求一起去重後再打。
+ * - 同時最多 `COMMENT_BADGE_MAX_CONCURRENT`（2）個活動。不同活動的子集合無法合成一筆查詢。
+ * - `cancel()` 在還沒開始時拿掉這位等候者；都取消就不讀。已開始的讀取仍會完成並可寫入快取。
  */
 export function requestCommentCount(query: CommentBadgeQuery): CommentBadgeRequest {
   const cached = getCachedCount(query.cacheKey);
@@ -172,52 +338,36 @@ export function requestCommentCount(query: CommentBadgeQuery): CommentBadgeReque
     return { promise: Promise.resolve(cached), cancel: () => { /* 已解析，無需取消 */ } };
   }
 
-  let itemRef: QueueItem | null = null;
-  const promise = new Promise<number>((resolve, reject) => {
-    itemRef = { query, resolve, reject, cancelled: false };
-    queue.push(itemRef);
-    drainQueue();
-  });
-
-  return {
-    promise,
-    cancel: () => {
-      if (!itemRef) return;
-      itemRef.cancelled = true;
-      const idx = queue.indexOf(itemRef);
-      if (idx >= 0) queue.splice(idx, 1);
-    },
-  };
-}
-
-function drainQueue(): void {
-  while (activeCount < COMMENT_BADGE_MAX_CONCURRENT && queue.length > 0) {
-    const item = queue.shift();
-    if (!item) break;
-    if (item.cancelled) continue;
-    activeCount += 1;
-    const run = async (): Promise<void> => {
-      const generation = cacheGenerations.get(item.query.eventId) ?? 0;
-      try {
-        const count = await fetchCommentCount(item.query);
-        if (generation === (cacheGenerations.get(item.query.eventId) ?? 0)) {
-          setCachedCount(item.query.cacheKey, item.query.eventId, count);
-        }
-        item.resolve(count);
-      } catch (err) {
-        item.reject(err);
-      } finally {
-        activeCount = Math.max(0, activeCount - 1);
-        drainQueue();
-      }
-    };
-    void run();
+  const flight = inflight.get(query.cacheKey);
+  if (flight && flight.eventId === query.eventId && flight.eventDocId === query.eventDocId) {
+    return listenFlight(flight.promise);
   }
+
+  const queued = queue.find((job) => !job.started && sameBadgeQuery(job.query, query));
+  if (queued) return attachWaiter(queued);
+
+  const job: BatchJob = { query, waiters: [], started: false };
+  queue.push(job);
+  scheduleFlush();
+  return attachWaiter(job);
 }
 
-/** 測試用：清空快取與佇列。 */
+/** 測試用：清空快取、進行中請求與同頁批次。 */
 export function _resetCommentBadgeForTest(): void {
-  cache.clear();
+  batchEpoch += 1;
+  flushScheduled = false;
+  for (const job of queue) {
+    for (const waiter of job.waiters) {
+      if (waiter.settled) continue;
+      waiter.settled = true;
+      waiter.cancelled = true;
+      waiter.reject(new Error('comment_badge_reset'));
+    }
+  }
   queue.length = 0;
+  cache.clear();
+  cacheGenerations.clear();
+  inflight.clear();
+  sdkFlight = null;
   activeCount = 0;
 }

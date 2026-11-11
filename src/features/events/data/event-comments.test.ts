@@ -20,6 +20,7 @@ import {
   submitEventComment,
   submitEventCommentReply,
   writeEventCommentLike,
+  _resetEventCommentsForTest,
   type CommentContext,
 } from './event-comments';
 import { getEventCommentAuthor } from './identity-snapshot';
@@ -83,6 +84,7 @@ function snap(id: string, data: Record<string, unknown>) {
 beforeEach(() => {
   vi.resetAllMocks();
   _resetCommentBadgeForTest();
+  _resetEventCommentsForTest();
   mock.getFirebase.mockResolvedValue({ db: {} });
   mock.addDoc.mockResolvedValue({});
   mock.updateDoc.mockResolvedValue(undefined);
@@ -379,5 +381,152 @@ describe('T-054c CM1～CM3', () => {
     expect(commentEventEndMs('2026/10/19 11:00~25:00')).toBeNull();
     expect(isEventCommentsClosed({ date: '2026/10/19 11:00~24:00', status: 'open' }, nextDay)).toBe(false);
     expect(isEventCommentsClosed({ date: '2026/10/19 11:00~25:00', status: 'open' }, nextDay)).toBe(false);
+  });
+});
+
+describe('SPEED-2-11a 留言讀取', () => {
+  it('空留言不讀回覆與讚', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    await expect(loadEventComments(context)).resolves.toEqual([]);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
+    expect(mock.getDoc).not.toHaveBeenCalled();
+  });
+
+  it('留言查詢失敗會拋出，清掉進行中請求後重試會再讀（L-08）', async () => {
+    mock.getDocs.mockRejectedValueOnce(new Error('offline'));
+    await expect(loadEventComments(context)).rejects.toThrow('offline');
+    const afterFailure = mock.getDocs.mock.calls.length;
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    await expect(loadEventComments(context)).resolves.toEqual([]);
+    expect(mock.getDocs.mock.calls.length).toBeGreaterThan(afterFailure);
+  });
+
+  it('同一把鑰匙的進行中讀取只打一輪查詢', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    await Promise.all([loadEventComments(context), loadEventComments(context)]);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('單筆回覆失敗仍回傳留言', async () => {
+    mock.getDocs.mockImplementation((ref: { path: string }) => {
+      if (ref.path.endsWith('/bad/replies')) return Promise.reject(new Error('reply down'));
+      if (ref.path.endsWith('/comments')) {
+        return Promise.resolve({ docs: [
+          snap('ok', { visibility: 'public', createdAt: 2, likeCount: 0, recentLikers: [] }),
+          snap('bad', { visibility: 'public', createdAt: 1, likeCount: 0, recentLikers: [] }),
+        ] });
+      }
+      return Promise.resolve({ docs: [] });
+    });
+    const result = await loadEventComments(context);
+    expect(result.map((entry) => entry.id)).toEqual(['ok', 'bad']);
+    expect(result.find((entry) => entry.id === 'bad')?.replies).toEqual([]);
+  });
+
+  it('送出留言後，進行中的讀取不會讓下一次沿用', async () => {
+    const pending: Array<(value: { docs: [] }) => void> = [];
+    mock.getDocs.mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+    const first = loadEventComments(context);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    const callsBefore = mock.getDocs.mock.calls.length;
+    await submitEventComment(context, '新留言', false);
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    const second = loadEventComments(context);
+    for (const resolve of pending) resolve({ docs: [] });
+    await first;
+    await second;
+    expect(mock.getDocs.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it('一進入就同時讀回覆與留言讚，不等回覆全部回來', async () => {
+    let releaseReply: (value: { docs: [] }) => void = () => {};
+    mock.getDocs.mockImplementation((ref: { path: string }) => {
+      if (ref.path.endsWith('/replies')) {
+        return new Promise((resolve) => { releaseReply = resolve; });
+      }
+      if (ref.path.endsWith('/comments')) {
+        return Promise.resolve({ docs: [
+          snap('c', { visibility: 'public', createdAt: 1, likeCount: 1, recentLikers: [] }),
+        ] });
+      }
+      return Promise.resolve({ docs: [] });
+    });
+    const pending = loadEventComments(context);
+    await vi.waitFor(() => expect(mock.getDoc).toHaveBeenCalledWith({
+      path: 'events/different-document/comments/c/likes/member',
+    }));
+    releaseReply({ docs: [] });
+    await expect(pending).resolves.toHaveLength(1);
+  });
+});
+
+describe('SPEED-2-11a 徽章同頁批次', () => {
+  function badgeQuery(eventId: string, uid = 'member', roleLevel = 4): CommentBadgeQuery {
+    const scope = roleLevel >= 4 ? 'manage' : 'member';
+    return {
+      cacheKey: `${eventId}|${uid}|${scope}`,
+      eventId,
+      eventDocId: `doc-${eventId}`,
+      event: { id: eventId },
+      viewerUid: uid,
+      viewerRoleLevel: roleLevel,
+    };
+  }
+
+  it('同一輪重複的活動只讀一次，空結果寫入快取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    const query = badgeQuery('alpha');
+    const first = requestCommentCount(query);
+    const second = requestCommentCount(query);
+    await expect(Promise.all([first.promise, second.promise])).resolves.toEqual([0, 0]);
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
+    await requestCommentCount(query).promise;
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('同一輪不同活動各自讀取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [snap('a', { replyCount: 1 })] });
+    await Promise.all([
+      requestCommentCount(badgeQuery('alpha')).promise,
+      requestCommentCount(badgeQuery('beta')).promise,
+    ]);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('取消後立刻再要只讀一次', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    const query = badgeQuery('alpha');
+    const first = requestCommentCount(query);
+    const settled = first.promise.catch((error: unknown) => error);
+    first.cancel();
+    await requestCommentCount(query).promise;
+    await expect(settled).resolves.toMatchObject({ message: 'comment_badge_cancelled' });
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('失敗不寫入快取，重試會再讀（L-08）', async () => {
+    const query = badgeQuery('alpha');
+    mock.getDocs.mockRejectedValueOnce(new Error('offline'));
+    await expect(requestCommentCount(query).promise).rejects.toThrow('offline');
+    mock.getDocs.mockResolvedValue({ docs: [snap('a', { replyCount: 2 })] });
+    await expect(requestCommentCount(query).promise).resolves.toBe(3);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('不同 uid 不共用快取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
+    await requestCommentCount(badgeQuery('alpha', 'u1')).promise;
+    await requestCommentCount(badgeQuery('alpha', 'u2')).promise;
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('還沒開始就全部取消時不讀', async () => {
+    const query = badgeQuery('alpha');
+    const request = requestCommentCount(query);
+    const settled = request.promise.catch((error: unknown) => error);
+    request.cancel();
+    await expect(settled).resolves.toMatchObject({ message: 'comment_badge_cancelled' });
+    await Promise.resolve();
+    expect(mock.getDocs).not.toHaveBeenCalled();
   });
 });
