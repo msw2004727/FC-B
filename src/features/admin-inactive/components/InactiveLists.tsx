@@ -20,7 +20,18 @@ export function CenterNote(props: { text: string; role?: 'status' | 'alert' }): 
 
 export function LoadState(props: { status: 'loading' | 'error'; onRetry: () => void }): JSX.Element {
   const t = useT();
-  if (props.status === 'loading') return <CenterNote role="status" text={lt('common.loading', '載入中...')} />;
+  if (props.status === 'loading') {
+    return (
+      <>
+        <div class="reg-loading" role="status" aria-busy="true">{lt('common.loading', '載入中...')}</div>
+        <div class="reg-loading-skeleton" aria-hidden="true">
+          <div class="reg-loading-skeleton-row" />
+          <div class="reg-loading-skeleton-row" />
+          <div class="reg-loading-skeleton-row" />
+        </div>
+      </>
+    );
+  }
   return (
     <div role="alert" style={EMPTY_STYLE}>
       <div>{t('admin-inactive.loadError')}</div>

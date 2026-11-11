@@ -382,6 +382,31 @@ describe('名單、分頁與篩選', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card')).toHaveLength(1));
   });
 
+  it('名單載入中有圈與骨架和「載入中…」，完成後換成用戶卡，失敗沿用錯誤列', async () => {
+    mockUseViewer.mockReturnValue(viewerOf('admin', FULL_ADMIN_PERMS));
+    let release!: (value: AdminUsersLoad) => void;
+    mockLoadUsers.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const view = render(<AdminUsersPage />);
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.textContent).toBe('載入中…');
+    expect(document.querySelectorAll('#admin-user-list .reg-loading-skeleton-row')).toHaveLength(3);
+    expect(document.querySelector('.admin-user-card')).toBeNull();
+
+    await act(async () => { release(loadOf([makeUser('a', { name: 'Ann' })])); });
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card')).toHaveLength(1));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    view.unmount();
+
+    mockLoadUsers.mockRejectedValue(new Error('network'));
+    render(<AdminUsersPage />);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('載入用戶資料失敗');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.queryByText('重試')).toBeNull();
+  });
+
   it('旗標關（預設）：載入失敗只顯示純文字錯誤訊息，沒有重試鈕', async () => {
     mockUseViewer.mockReturnValue(viewerOf('admin', FULL_ADMIN_PERMS));
     mockLoadUsers.mockRejectedValue(new Error('network'));
