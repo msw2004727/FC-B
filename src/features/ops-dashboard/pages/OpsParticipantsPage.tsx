@@ -169,9 +169,7 @@ export default function OpsParticipantsPage(): JSX.Element {
                 <ol
                   class="od-rank"
                   start={page * PARTICIPANT_PAGE_SIZE + 1}
-                  role={names.kind === 'loading' ? 'status' : undefined}
                   aria-busy={names.kind === 'loading' ? 'true' : undefined}
-                  aria-label={names.kind === 'loading' ? t('loading') : undefined}
                 >
                   {pageRows.map((row, i) => {
                     const pending = names.kind !== 'ok';

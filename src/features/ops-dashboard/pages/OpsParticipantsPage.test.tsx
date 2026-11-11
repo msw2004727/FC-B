@@ -302,9 +302,9 @@ describe('查詢', () => {
     const spins = document.querySelectorAll('.od-rank-title .line-avatar-spinner');
     expect(spins.length).toBe(50);
     const list = document.querySelector('.od-rank');
-    expect(list?.getAttribute('role')).toBe('status');
+    // 載入中只標 aria-busy，不把整份名單設成 live region（避免朗讀整串名單與次數）。
+    expect(list?.getAttribute('role')).toBeNull();
     expect(list?.getAttribute('aria-busy')).toBe('true');
-    expect(list?.getAttribute('aria-label')).toBe('載入中...');
     expect(document.querySelectorAll('.od-avatar')).toHaveLength(50);
     expect(screen.queryByText('名U00')).toBeNull();
     held.release();
