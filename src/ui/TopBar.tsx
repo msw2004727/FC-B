@@ -569,7 +569,7 @@ export function TopBar({
                     />
                   ) : syncingFallback ? (
                     <span class="line-avatar-spinner" aria-hidden="true" />
-                  ) : initial === '?' ? (
+                  ) : initial === '?' && !user?.displayName?.trim() ? (
                     <GuestAvatarIcon size="100%" fill />
                   ) : (
                     initial

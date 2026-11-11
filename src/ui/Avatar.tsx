@@ -168,7 +168,7 @@ function AvatarImage({
       aria-label={decorative ? undefined : altName}
       aria-hidden={decorative || undefined}
     >
-      {initial === '?'
+      {initial === '?' && !(rawName ?? '').trim()
         ? <GuestAvatarIcon size="66%" />
         : <Text class="ui-avatar__initial">{initial}</Text>}
     </span>

@@ -69,7 +69,7 @@ export function LegacyAvatar({
           decoding="async"
           onError={() => setImgBroken(true)}
         />
-      ) : getAvatarInitial(name) === '?' ? (
+      ) : getAvatarInitial(name) === '?' && !String(name ?? '').trim() ? (
         fillCircle ? <GuestAvatarIcon size="100%" fill /> : <GuestAvatarIcon size="62%" />
       ) : (
         getAvatarInitial(name)

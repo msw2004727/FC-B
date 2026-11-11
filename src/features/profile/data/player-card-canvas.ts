@@ -296,7 +296,8 @@ function drawDefaultAvatar(ctx: Ctx, initial: string, p: PlayerCardPalette): voi
 
 /** 人形剪影（GuestAvatarIcon 的圖形，頭圓＋肩膀半橢圓），貼邊放大填滿頭像圓（對應畫面的 fill 版，viewBox 3 2 18 19.5），呼叫端先 clip 成圓。 */
 function drawPersonSilhouette(ctx: Ctx, cx: number, cy: number, photo: number, color: string): void {
-  const k = (photo * 2) / 18;
+  // 與畫面 fill 版 SVG（viewBox 3 2 18 19.5，正方容器內 meet、以高縮放）同一個比例，PNG 與畫面人形大小一致。
+  const k = (photo * 2) / 19.5;
   const ox = cx - 12 * k;
   const oy = cy - 11.75 * k;
   ctx.fillStyle = color;
