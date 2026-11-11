@@ -42,14 +42,22 @@ vi.mock('firebase/firestore', () => ({
   getDoc: vi.fn(),
 }));
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { getDocs } from 'firebase/firestore';
+import type { ViewerContext } from '@/features/events/data/types';
 import {
+  NEXT_ACTIVITY_SNAPSHOT_FORMAT,
   NEXT_ACTIVITY_SNAPSHOT_MAX_AGE_MS,
+  adopt,
+  nextActivitySnapshotKey,
+} from './next-activity-snapshot';
+import {
   _resetNextActivityCacheForTest,
   loadNextActivityInputs,
-  nextActivitySnapshotKey,
   readNextActivitySnapshot,
   resolveNextActivity,
+  whenNextActivitySnapshotReady,
 } from './next-activity';
 
 const UID_A = 'uid-a';
@@ -137,24 +145,65 @@ const deps = {
   now: () => NOW,
 };
 
-function seed(uid: string, event: EventDoc, savedAt = NOW, registration: Record<string, unknown> | null = null, managedRole = ''): void {
+function seed(
+  uid: string,
+  event: EventDoc,
+  savedAt = NOW,
+  registration: Record<string, unknown> | null = null,
+  managedRole = '',
+): void {
+  const owners = [event.creatorUid, event.ownerUid, event.captainUid].map((value) => String(value ?? '').trim());
+  const delegates = Array.isArray(event.delegateUids)
+    ? event.delegateUids.map((value) => String(value ?? '').trim())
+    : [];
+  const reg = registration && typeof registration === 'object' ? registration : null;
   localStorage.setItem(nextActivitySnapshotKey(uid), JSON.stringify({
-    v: 1,
+    v: NEXT_ACTIVITY_SNAPSHOT_FORMAT,
     uid,
     savedAt,
-    event,
-    registration,
+    event: {
+      id: event.id,
+      _docId: event._docId,
+      docId: event.docId,
+      title: event.title,
+      date: event.date,
+      status: event.status,
+      location: event.location,
+      image: event.image,
+      startAt: event.startAt,
+      startTime: event.startTime,
+      imageVariants: event.imageVariants,
+      teamOnly: event.teamOnly === true ? true : undefined,
+      isPublic: event.isPublic === true ? true : undefined,
+      privateEvent: event.privateEvent === true ? true : undefined,
+      creatorTeamId: event.creatorTeamId,
+      creatorTeamIds: event.creatorTeamIds,
+      viewerBlocked: Array.isArray(event.blockedUids) && event.blockedUids.includes(uid) ? true : undefined,
+      viewerIsOwner: owners.includes(uid) || managedRole === 'owner' ? true : undefined,
+      viewerIsDelegate: delegates.includes(uid) || managedRole === 'delegate' ? true : undefined,
+    },
+    registration: reg && {
+      eventId: reg.eventId,
+      status: reg.status,
+      participantType: reg.participantType,
+      managedRole: reg.managedRole ?? (managedRole || undefined),
+    },
     managedRole,
   }));
 }
 
-beforeEach(() => {
+function viewerOf(uid: string, teamIds: string[] = [], roleLevel = 0): ViewerContext {
+  return { uid, teamIds: new Set(teamIds), hasPermission: () => false, roleLevel };
+}
+
+beforeEach(async () => {
   vi.clearAllMocks();
   h.authUid = undefined;
   h.active = [];
   h.terminal = [];
-  _resetNextActivityCacheForTest();
   _clearEventsSnapshotForTest();
+  await whenNextActivitySnapshotReady();
+  _resetNextActivityCacheForTest();
 });
 
 describe('本機快照：帳號、登出、過期', () => {
@@ -170,29 +219,32 @@ describe('本機快照：帳號、登出、過期', () => {
   test('帳號還沒確認時不讀快照，鑰匙留著', () => {
     h.authUid = undefined;
     seed(UID_A, eventDoc());
+    adopt();
     expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
     expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeTruthy();
   });
 
-  test('換成 A 時刪掉 B 的鑰匙，只留 A', () => {
+  test('第一次讀的當下 uid 是 A：刪掉 B 的鑰匙，只留 A', () => {
     seed(UID_A, eventDoc({ title: 'A 的場' }));
     seed(UID_B, eventDoc({ id: 'evt-b', _docId: 'evt-b', title: 'B 的場' }));
     setAuth(UID_A);
-    expect(localStorage.getItem(nextActivitySnapshotKey(UID_B))).toBeNull();
     expect(readNextActivitySnapshot(UID_A, NOW)?.event.title).toBe('A 的場');
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_B))).toBeNull();
     expect(readNextActivitySnapshot(UID_B, NOW)).toBeNull();
   });
 
-  test('換成 B 時刪掉 A 的鑰匙，只留 B', () => {
+  test('第一次讀的當下 uid 是 B：刪掉 A 的鑰匙，只留 B', () => {
     seed(UID_A, eventDoc({ title: 'A 的場' }));
     seed(UID_B, eventDoc({ id: 'evt-b', _docId: 'evt-b', title: 'B 的場' }));
     setAuth(UID_B);
+    expect(readNextActivitySnapshot(UID_B, NOW)?.event.title).toBe('B 的場');
     expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
     expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
-    expect(readNextActivitySnapshot(UID_B, NOW)?.event.title).toBe('B 的場');
   });
 
-  test('登出刪掉全部下一場快照', () => {
+  test('已經訂閱之後登出，立刻刪掉全部下一場快照', () => {
+    h.authUid = UID_A;
+    readNextActivitySnapshot(UID_A, NOW);
     seed(UID_A, eventDoc());
     seed(UID_B, eventDoc({ id: 'evt-b', _docId: 'evt-b' }));
     setAuth(null);
@@ -200,6 +252,15 @@ describe('本機快照：帳號、登出、過期', () => {
     expect(localStorage.getItem(nextActivitySnapshotKey(UID_B))).toBeNull();
     h.authUid = UID_A;
     expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+  });
+
+  test('整頁重載後 uid 已是 null：不發 auth:changed 也清掉殘留', () => {
+    seed(UID_A, eventDoc());
+    seed(UID_B, eventDoc({ id: 'evt-b', _docId: 'evt-b' }));
+    h.authUid = null;
+    adopt();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_B))).toBeNull();
   });
 
   test('期限剛好仍顯示', () => {
@@ -239,7 +300,7 @@ describe('本機快照：帳號、登出、過期', () => {
   test('快照裡的 uid 與登入者不符：不顯示並刪掉', () => {
     setAuth(UID_A);
     localStorage.setItem(nextActivitySnapshotKey(UID_A), JSON.stringify({
-      v: 1,
+      v: NEXT_ACTIVITY_SNAPSHOT_FORMAT,
       uid: UID_B,
       savedAt: NOW,
       event: eventDoc(),
@@ -383,5 +444,204 @@ describe('沿用已載入活動', () => {
     const inputs = await loadNextActivityInputs(deps, UID_A);
     expect(inputs.events.map((event) => event.title)).toEqual(['自己的查詢']);
     expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(2);
+  });
+
+  test('沿用的 open 不壓過伺服器的 full，舊欄位也不留', async () => {
+    setAuth(UID_A);
+    writeEventsSnapshot(UID_A, [eventDoc({
+      status: 'open',
+      title: '舊狀態',
+      location: '舊地點',
+      image: 'old.png',
+      creatorUid: UID_A,
+    })], NOW);
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const query = queryOf(q);
+      if (query.base?.kind === 'collectionGroup') {
+        return Promise.resolve({ docs: [makeReg('evt-next')] }) as never;
+      }
+      if (isInQuery(q)) return Promise.resolve({ docs: [] }) as never;
+      return Promise.resolve({
+        docs: [makeEventSnap(eventDoc({
+          status: 'full',
+          title: '伺服器',
+          location: '新地點',
+          creatorUid: UID_A,
+        }))],
+      }) as never;
+    }) as never);
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.status).toBe('full');
+    expect(result?.event.title).toBe('伺服器');
+    expect(result?.event.location).toBe('新地點');
+    expect(result?.event.image).toBeUndefined();
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(0);
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.status).toBe('full');
+  });
+
+  test('有沿用、伺服器這場已取消：結果是空，舊快照也清掉', async () => {
+    setAuth(UID_A);
+    seed(UID_A, eventDoc({ title: '舊快照' }));
+    writeEventsSnapshot(UID_A, [eventDoc({ status: 'open', title: '沿用', creatorUid: UID_A })], NOW);
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const query = queryOf(q);
+      if (query.base?.kind === 'collectionGroup') {
+        return Promise.resolve({ docs: [makeReg('evt-next')] }) as never;
+      }
+      if (isInQuery(q)) return Promise.resolve({ docs: [] }) as never;
+      return Promise.resolve({
+        docs: [makeEventSnap(eventDoc({ status: 'cancelled', title: '伺服器已取消', creatorUid: UID_A }))],
+      }) as never;
+    }) as never);
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result).toBeNull();
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(0);
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+});
+
+describe('管理查詢失敗不寫快照', () => {
+  test('creator 查詢失敗時，即使補抓到下一場也不覆寫舊快照', async () => {
+    setAuth(UID_A);
+    seed(UID_A, eventDoc({ title: '還在' }));
+    mockedGetDocs.mockImplementation(((q: unknown) => {
+      const query = queryOf(q);
+      if (query.base?.kind === 'collectionGroup') {
+        return Promise.resolve({ docs: [makeReg('evt-next')] }) as never;
+      }
+      const creator = query.constraints.some((c) => c.kind === 'where' && c.field === 'creatorUid');
+      if (creator) return Promise.reject(new Error('creator down')) as never;
+      if (isInQuery(q)) {
+        return Promise.resolve({ docs: [makeEventSnap(eventDoc({ title: '新的' }))] }) as never;
+      }
+      return Promise.resolve({ docs: [] }) as never;
+    }) as never);
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.title).toBe('新的');
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.title).toBe('還在');
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).not.toContain('新的');
+  });
+});
+
+describe('快照不落盤他人 UID', () => {
+  test('黑名單、creator、delegate 的他人 UID 不進 localStorage', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({
+      title: '可顯示',
+      blockedUids: [UID_A, 'other-blocked-uid'],
+      creatorUid: 'other-creator-uid',
+      ownerUid: 'other-owner-uid',
+      organizerUid: 'other-organizer-uid',
+      delegateUids: ['other-delegate-uid'],
+    }));
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    const raw = localStorage.getItem(nextActivitySnapshotKey(UID_A)) ?? '';
+    expect(raw).toContain('viewerBlocked');
+    expect(raw).not.toContain('other-blocked-uid');
+    expect(raw).not.toContain('other-creator-uid');
+    expect(raw).not.toContain('other-owner-uid');
+    expect(raw).not.toContain('other-organizer-uid');
+    expect(raw).not.toContain('other-delegate-uid');
+    expect(raw).not.toContain('blockedUids');
+    expect(raw).not.toContain('delegateUids');
+    expect(raw).not.toContain('creatorUid');
+    const shown = readNextActivitySnapshot(UID_A, NOW);
+    expect(shown?.event.id).toBe('evt-next');
+    expect(JSON.stringify(shown?.event)).not.toContain('other-blocked-uid');
+    expect(JSON.stringify(shown?.event)).not.toContain('other-delegate-uid');
+  });
+});
+
+describe('隊伍限定與私密', () => {
+  test('沒有 viewer 時，隊伍限定且非主辦、非公開：不進快照，查詢結果仍回傳', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+
+  test('沒有 viewer 時，本人是主辦的隊伍限定活動仍進快照', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({ teamOnly: true, creatorTeamIds: ['team-1'], creatorUid: UID_A }));
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.id).toBe('evt-next');
+  });
+
+  test('沒有 viewer 時，teamOnly 且 isPublic 仍進快照', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({
+      teamOnly: true,
+      isPublic: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    await resolveNextActivity(deps, UID_A);
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.id).toBe('evt-next');
+  });
+
+  test('帶了隊伍的 viewer：成員看得到，非成員看不到，省略 viewer 不刪快照', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const member = viewerOf(UID_A, ['team-1']);
+    const result = await resolveNextActivity({ ...deps, viewer: member }, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW, member)?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeTruthy();
+    expect(readNextActivitySnapshot(UID_A, NOW, viewerOf(UID_A, ['other-team']))).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+
+  test('帶了不含該隊的 viewer：隊伍限定活動不進快照', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const result = await resolveNextActivity({ ...deps, viewer: viewerOf(UID_A, ['other-team']) }, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW, viewerOf(UID_A, ['other-team']))).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+
+  test('私密活動：委託人進快照；路人沒有 viewer 時不進', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc({ privateEvent: true, delegateUids: [UID_A], creatorUid: 'other-owner-uid' }));
+    await resolveNextActivity(deps, UID_A);
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.id).toBe('evt-next');
+
+    _resetNextActivityCacheForTest();
+    installServer(eventDoc({ privateEvent: true, creatorUid: 'other-owner-uid', delegateUids: ['other-delegate-uid'] }));
+    const hidden = await resolveNextActivity(deps, UID_A);
+    expect(hidden?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+});
+
+describe('入口靜態圖', () => {
+  test('next-activity.ts 只動態載入快照模組，檔尾沒有訂閱', () => {
+    const dir = join(process.cwd(), 'src/features/home/data');
+    const source = readFileSync(join(dir, 'next-activity.ts'), 'utf8');
+    expect(source.includes("from './next-activity-snapshot'")).toBe(false);
+    expect(source.includes("import('./next-activity-snapshot')")).toBe(true);
+    expect(source.includes('watchNextActivityAuth()')).toBe(false);
+    const snap = readFileSync(join(dir, 'next-activity-snapshot.ts'), 'utf8');
+    expect(snap.split('\n').some((line) => line.startsWith('adopt();'))).toBe(false);
+    expect(snap.split('\n').some((line) => line.startsWith('ensureNextActivityAuthWatch();'))).toBe(false);
   });
 });
