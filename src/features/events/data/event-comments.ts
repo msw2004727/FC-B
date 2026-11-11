@@ -303,8 +303,72 @@ async function hydrateLikes(
   if (item.likedByMe) item.likeCount = Math.max(1, item.likeCount);
 }
 
+const COMMENT_CHILD_BATCH = 8;
+
+interface CommentFlight {
+  eventId: string;
+  promise: Promise<CommentItem[]>;
+}
+
+const commentInflight = new Map<string, CommentFlight>();
+
+function commentLoadKey(context: CommentContext): string {
+  const uid = context.viewer.uid?.trim() || '';
+  const manage = canManageComments(context) ? 'm' : 'u';
+  return `${context.eventDocId}\n${context.event.id ?? ''}\n${uid}\n${manage}`;
+}
+
+function dropCommentInflightForEvent(eventId: string): void {
+  for (const [key, flight] of commentInflight) {
+    if (flight.eventId === eventId) commentInflight.delete(key);
+  }
+}
+
+/** 寫入後徽章與進行中的留言讀取一起失效，下一次才會重讀。 */
+function invalidateEventCommentCaches(eventId: string): void {
+  clearCommentBadgeCacheForEvent(eventId);
+  dropCommentInflightForEvent(eventId);
+}
+
+async function hydrateTargets(
+  fs: FirestoreModule,
+  targets: ReadonlyArray<{ item: CommentItem; ref: Ref }>,
+  uid: string,
+): Promise<void> {
+  for (let offset = 0; offset < targets.length; offset += COMMENT_CHILD_BATCH) {
+    await Promise.all(targets.slice(offset, offset + COMMENT_CHILD_BATCH).map(
+      ({ item, ref }) => hydrateLikes(fs, ref, item, uid),
+    ));
+  }
+}
+
+/** 測試用：清掉進行中的留言讀取。 */
+export function _resetEventCommentsForTest(): void {
+  commentInflight.clear();
+}
+
+/**
+ * 詳情留言區一被呼叫就讀（頁面 ready／canLoad 由呼叫端決定，本函式不再排隊）。
+ * 同一把鑰匙的進行中請求合併；失敗會在結束時清掉，下次才能重試（L-08）。
+ * 不做成功快取：重試與寫入後重讀必須打到網路。
+ */
+export function loadEventComments(context: CommentContext): Promise<CommentItem[]> {
+  const uid = context.viewer.uid?.trim() || '';
+  if (!uid) return Promise.resolve([]);
+  const key = commentLoadKey(context);
+  const existing = commentInflight.get(key);
+  if (existing) return existing.promise;
+  const eventId = context.event.id ?? '';
+  const promise = readEventComments(context).finally(() => {
+    const current = commentInflight.get(key);
+    if (current?.promise === promise) commentInflight.delete(key);
+  });
+  commentInflight.set(key, { eventId, promise });
+  return promise;
+}
+
 /** 照 A _fetchEventComments／_loadEventCommentRepliesForList；保留軟刪除佔位。 */
-export async function loadEventComments(context: CommentContext): Promise<CommentItem[]> {
+async function readEventComments(context: CommentContext): Promise<CommentItem[]> {
   const uid = context.viewer.uid?.trim() || '';
   // 現行 Rules canReadCommentData 要求登入，照 A _renderEventComments 顯示登入提示。
   if (!uid) return [];
@@ -322,34 +386,38 @@ export async function loadEventComments(context: CommentContext): Promise<Commen
   const list = [...byId.values()]
     .sort((a, b) => eventCommentTimeMs(b.createdAt) - eventCommentTimeMs(a.createdAt))
     .slice(0, 80);
-  for (let offset = 0; offset < list.length; offset += 8) {
-    await Promise.all(list.slice(offset, offset + 8).map(async (comment) => {
-      const ref = fs.doc(comments, comment.id);
-      comment.repliesLoaded = true;
-      if (!comment.deleted) {
-        try {
-          const replies = await fs.getDocs(fs.query(fs.collection(ref, 'replies'), fs.limit(20)));
-          comment.replies = replies.docs.map((entry) => mapComment(entry.id, entry.data(), uid))
-            .sort((a, b) => eventCommentTimeMs(a.createdAt) - eventCommentTimeMs(b.createdAt));
-          comment.replyCount = Math.max(comment.replyCount, comment.replies.length);
-        } catch {
-          // 照 A：個別回覆載入失敗不阻止其他留言。
+  // 留言本身的讚不依賴回覆，和回覆一起讀，頁面 ready 後少等一輪。
+  const repliesTask = (async (): Promise<void> => {
+    for (let offset = 0; offset < list.length; offset += COMMENT_CHILD_BATCH) {
+      await Promise.all(list.slice(offset, offset + COMMENT_CHILD_BATCH).map(async (comment) => {
+        const ref = fs.doc(comments, comment.id);
+        comment.repliesLoaded = true;
+        if (!comment.deleted) {
+          try {
+            const replies = await fs.getDocs(fs.query(fs.collection(ref, 'replies'), fs.limit(20)));
+            comment.replies = replies.docs.map((entry) => mapComment(entry.id, entry.data(), uid))
+              .sort((a, b) => eventCommentTimeMs(a.createdAt) - eventCommentTimeMs(b.createdAt));
+            comment.replyCount = Math.max(comment.replyCount, comment.replies.length);
+          } catch {
+            // 照 A：個別回覆載入失敗不阻止其他留言。
+          }
         }
-      }
-    }));
-  }
-  const targets = list.flatMap((comment) => [
-    { item: comment, ref: fs.doc(comments, comment.id) },
-    ...comment.replies.filter((reply) => !reply.deleted).map((reply) => ({
+      }));
+    }
+  })();
+  await Promise.all([
+    repliesTask,
+    hydrateTargets(fs, list.map((comment) => ({
+      item: comment,
+      ref: fs.doc(comments, comment.id),
+    })), uid),
+  ]);
+  await hydrateTargets(fs, list.flatMap((comment) => comment.replies
+    .filter((reply) => !reply.deleted)
+    .map((reply) => ({
       item: reply,
       ref: fs.doc(comments, comment.id, 'replies', reply.id),
-    })),
-  ]);
-  for (let offset = 0; offset < targets.length; offset += 8) {
-    await Promise.all(targets.slice(offset, offset + 8).map(
-      ({ item, ref }) => hydrateLikes(fs, ref, item, uid),
-    ));
-  }
+    }))), uid);
   return list;
 }
 
@@ -373,7 +441,7 @@ export async function submitEventComment(
     const { replyCount: _replyCount, likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
     await fs.addDoc(comments, legacy);
   }
-  clearCommentBadgeCacheForEvent(context.event.id!);
+  invalidateEventCommentCaches(context.event.id!);
 }
 
 /** 照 A _submitEventCommentReply。 */
@@ -398,7 +466,7 @@ export async function submitEventCommentReply(
     const { likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
     await fs.addDoc(replies, legacy);
   }
-  clearCommentBadgeCacheForEvent(context.event.id!);
+  invalidateEventCommentCaches(context.event.id!);
 }
 
 /** 照 A _writeEventCommentLikeWithSummary。 */
@@ -466,7 +534,7 @@ export async function writeEventCommentLike(
     const existing = await fs.getDoc(likeRef).catch(() => null);
     if (!existing?.exists()) throw error;
   }
-  clearCommentBadgeCacheForEvent(eventId);
+  invalidateEventCommentCaches(eventId);
 }
 
 /** 照 A _setEventCommentReplyLocked。 */
@@ -479,7 +547,7 @@ export async function setEventCommentReplyLocked(
   await fs.updateDoc(fs.doc(comments, commentId), {
     replyLocked: !!locked, updatedAt: fs.serverTimestamp(),
   });
-  clearCommentBadgeCacheForEvent(context.event.id!);
+  invalidateEventCommentCaches(context.event.id!);
 }
 
 /** 照 A _deleteEventComment／_deleteEventCommentReply，均為軟刪除。 */
@@ -498,5 +566,5 @@ export async function deleteEventComment(
     deletedAt: fs.serverTimestamp(),
     updatedAt: fs.serverTimestamp(),
   });
-  clearCommentBadgeCacheForEvent(context.event.id!);
+  invalidateEventCommentCaches(context.event.id!);
 }
