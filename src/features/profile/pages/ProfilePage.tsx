@@ -104,7 +104,6 @@ function ProfileContent({
   const applications = useMyTeamApplications(uid, profile);
   const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
-  const applicationsLoading = applications === null;
   const lineBound = readLineNotify(profile).bound;
 
   // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
@@ -214,16 +213,14 @@ function ProfileContent({
       ariaLabel: t('profile.quick.mateName'),
       render: () => <LegacyCompanionsCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
-    // 照 A `_showApplicationsCard`：有申請才留。null＝還在讀，先畫鈕＋圈；0 筆或失敗（[]）拿掉。
-    ...(applicationsLoading || (applications?.length ?? 0) > 0
+    // 照 A `_showApplicationsCard`：有申請才留。讀取中（null）不畫鈕：多數使用者沒有申請，
+    // 讀取中先畫、讀完才拿掉會讓置中的快捷列整排左右位移一次（Opus 交叉審 P2-1，站長「不造成版面位移」原則）。
+    ...((applications?.length ?? 0) > 0
       ? [{
           key: 'apply',
           icon: 'apply',
           label: t('profile.quick.apply'),
-          ariaLabel: applicationsLoading
-            ? t('profile.quick.loading', { name: t('profile.quick.applyName') })
-            : t('profile.quick.applyName'),
-          loading: applicationsLoading,
+          ariaLabel: t('profile.quick.applyName'),
           render: () => (
             <LegacyApplicationsCard embedded uid={uid} profile={profile} items={applications} />
           ),

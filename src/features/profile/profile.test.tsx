@@ -903,15 +903,11 @@ describe('我的個人頁（A 版結構）', () => {
       expect(document.querySelector('#profile-registered-activities-list .profile-state')).not.toBeNull();
     });
 
-    it('申請讀取中先畫鈕與旋轉圈，讀完 0 筆拿掉，有筆數才留鈕且不轉圈', async () => {
+    it('申請讀取中不畫鈕（多數人沒有申請，先畫再拿掉會讓置中的快捷列整排位移），讀完 0 筆仍沒有，有筆數才出現且不轉圈', async () => {
       useMyTeamApplicationsMock.mockReturnValue(null);
       const view = render(<ProfilePage />);
       expect(await screen.findByText('王小明')).toBeTruthy();
-      const apply = quickBtn('apply');
-      expect(apply.querySelector('.profile-quick-spin')).not.toBeNull();
-      expect(apply.getAttribute('aria-busy')).toBe('true');
-      expect(apply.getAttribute('aria-label')).toBe('我的俱樂部申請，讀取中');
-      expect(apply.querySelector('.profile-quick-badge:not(.profile-quick-badge--loading)')).toBeNull();
+      expect(document.getElementById('profile-quick-btn-apply')).toBeNull();
 
       useMyTeamApplicationsMock.mockReturnValue([]);
       view.rerender(<ProfilePage />);

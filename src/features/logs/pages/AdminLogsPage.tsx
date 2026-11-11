@@ -240,7 +240,7 @@ export default function AdminLogsPage(): JSX.Element {
             <div class="log-list" id="operation-log-list">
               {status === 'loading' ? (
                 <>
-                  <div class="reg-loading" role="status" aria-busy="true">{t('logs.operation.loading')}</div>
+                  <div class="reg-loading" role="status">{t('logs.operation.loading')}</div>
                   <div class="reg-loading-skeleton" aria-hidden="true">
                     <div class="reg-loading-skeleton-row" />
                     <div class="reg-loading-skeleton-row" />

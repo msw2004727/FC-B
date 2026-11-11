@@ -23,7 +23,7 @@ export function LoadState(props: { status: 'loading' | 'error'; onRetry: () => v
   if (props.status === 'loading') {
     return (
       <>
-        <div class="reg-loading" role="status" aria-busy="true">{lt('common.loading', '載入中...')}</div>
+        <div class="reg-loading" role="status">{lt('common.loading', '載入中...')}</div>
         <div class="reg-loading-skeleton" aria-hidden="true">
           <div class="reg-loading-skeleton-row" />
           <div class="reg-loading-skeleton-row" />

@@ -312,7 +312,7 @@ export default function AdminMessagesPage(): JSX.Element {
         <div class="card-list" id="msg-manage-list">
           {list.status === 'loading' ? (
             <>
-              <div class="reg-loading" role="status" aria-busy="true">{t('inbox.admin.loading')}</div>
+              <div class="reg-loading" role="status">{t('inbox.admin.loading')}</div>
               <div class="reg-loading-skeleton" aria-hidden="true">
                 <div class="reg-loading-skeleton-row" />
                 <div class="reg-loading-skeleton-row" />

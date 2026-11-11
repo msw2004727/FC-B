@@ -525,7 +525,7 @@ export default function AdminUsersPage({
         <div class="admin-card-list" id="admin-user-list">
           {status === 'loading' && (
             <>
-              <div class="reg-loading" role="status" aria-busy="true">{t('admin-users.list.loading')}</div>
+              <div class="reg-loading" role="status">{t('admin-users.list.loading')}</div>
               <div class="reg-loading-skeleton" aria-hidden="true">
                 <div class="reg-loading-skeleton-row" />
                 <div class="reg-loading-skeleton-row" />
