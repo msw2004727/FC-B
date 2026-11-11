@@ -54,6 +54,7 @@ import {
 } from './next-activity-snapshot';
 import {
   _resetNextActivityCacheForTest,
+  _setNextActivitySnapshotImporterForTest,
   loadNextActivityInputs,
   readNextActivitySnapshot,
   resolveNextActivity,
@@ -202,6 +203,7 @@ beforeEach(async () => {
   h.active = [];
   h.terminal = [];
   _clearEventsSnapshotForTest();
+  _resetNextActivityCacheForTest();
   await whenNextActivitySnapshotReady();
   _resetNextActivityCacheForTest();
 });
@@ -427,6 +429,60 @@ describe('沿用已載入活動', () => {
     expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(0);
   });
 
+  test('登入狀態不是這位時，不拿 repo 記憶體', async () => {
+    setAuth(UID_B);
+    h.active = [eventDoc({ title: '上一個人的 repo' })];
+    installServer(eventDoc({ title: '自己的查詢' }));
+    const inputs = await loadNextActivityInputs(deps, UID_A);
+    expect(inputs.events.map((event) => event.title)).toEqual(['自己的查詢']);
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(2);
+  });
+
+  test('帳號還沒確認時，不拿 repo 記憶體', async () => {
+    h.authUid = undefined;
+    h.active = [eventDoc({ title: '還沒確認是誰' })];
+    installServer(eventDoc({ title: '自己的查詢' }));
+    const inputs = await loadNextActivityInputs(deps, UID_A);
+    expect(inputs.events.map((event) => event.title)).toEqual(['自己的查詢']);
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(2);
+  });
+
+  test('repo 裡的隊伍限定活動：成員沿用，非成員改補抓', async () => {
+    setAuth(UID_A);
+    h.active = [eventDoc({
+      title: '隊伍限定',
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    })];
+    installServer(eventDoc({
+      title: '伺服器',
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const memberInputs = await loadNextActivityInputs(
+      { ...deps, viewer: viewerOf(UID_A, ['team-1']) },
+      UID_A,
+    );
+    expect(memberInputs.events.map((event) => event.title)).toEqual(['隊伍限定']);
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(0);
+
+    mockedGetDocs.mockClear();
+    installServer(eventDoc({
+      title: '伺服器',
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const outsiderInputs = await loadNextActivityInputs(
+      { ...deps, viewer: viewerOf(UID_A, ['other-team']) },
+      UID_A,
+    );
+    expect(outsiderInputs.events.map((event) => event.title)).toEqual(['伺服器']);
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(2);
+  });
+
   test('副本已取消：不沿用，仍補抓', async () => {
     setAuth(UID_A);
     h.active = [eventDoc({ status: 'cancelled' })];
@@ -631,6 +687,44 @@ describe('隊伍限定與私密', () => {
     expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
     expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
   });
+
+  test('隊伍成員看得到隊伍限定快照，非成員看不到', () => {
+    setAuth(UID_A);
+    seed(UID_A, eventDoc({
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const member = viewerOf(UID_A, ['team-1']);
+    expect(readNextActivitySnapshot(UID_A, NOW, member)?.event.id).toBe('evt-next');
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeTruthy();
+    expect(readNextActivitySnapshot(UID_A, NOW, viewerOf(UID_A, ['other-team']))).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+  });
+
+  test('私密活動委託人看得到快照', () => {
+    setAuth(UID_A);
+    seed(UID_A, eventDoc({
+      privateEvent: true,
+      delegateUids: [UID_A],
+      creatorUid: 'other-owner-uid',
+    }));
+    expect(readNextActivitySnapshot(UID_A, NOW, viewerOf(UID_A))?.event.id).toBe('evt-next');
+  });
+
+  test('沒有 viewer 且要看隊伍才知道時，不清掉舊快照', async () => {
+    setAuth(UID_A);
+    seed(UID_A, eventDoc({ id: 'evt-old', _docId: 'evt-old', title: '舊的公開場' }));
+    installServer(eventDoc({
+      teamOnly: true,
+      creatorTeamIds: ['team-1'],
+      creatorUid: 'other-owner-uid',
+    }));
+    const result = await resolveNextActivity(deps, UID_A);
+    expect(result?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.title).toBe('舊的公開場');
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toContain('舊的公開場');
+  });
 });
 
 describe('入口靜態圖', () => {
@@ -640,8 +734,53 @@ describe('入口靜態圖', () => {
     expect(source.includes("from './next-activity-snapshot'")).toBe(false);
     expect(source.includes("import('./next-activity-snapshot')")).toBe(true);
     expect(source.includes('watchNextActivityAuth()')).toBe(false);
+    expect(source.split('\n').some((line) => line.startsWith('loadNextActivitySnapshotModule();'))).toBe(false);
     const snap = readFileSync(join(dir, 'next-activity-snapshot.ts'), 'utf8');
     expect(snap.split('\n').some((line) => line.startsWith('adopt();'))).toBe(false);
     expect(snap.split('\n').some((line) => line.startsWith('ensureNextActivityAuthWatch();'))).toBe(false);
+  });
+});
+
+describe('快照 chunk 載入失敗', () => {
+  test('還沒載入時讀取立刻回 null', () => {
+    _setNextActivitySnapshotImporterForTest(() => new Promise(() => undefined));
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+  });
+
+  test('載入失敗退回原本補抓，重置後下一次還能寫快照', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc());
+    _setNextActivitySnapshotImporterForTest(() => Promise.reject(new Error('chunk')));
+    const missed = await resolveNextActivity(deps, UID_A);
+    expect(missed?.event.id).toBe('evt-next');
+    expect(mockedGetDocs.mock.calls.filter(([q]) => isInQuery(q))).toHaveLength(2);
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
+    expect(localStorage.getItem(nextActivitySnapshotKey(UID_A))).toBeNull();
+
+    _resetNextActivityCacheForTest();
+    setAuth(UID_A);
+    installServer(eventDoc());
+    const again = await resolveNextActivity(deps, UID_A);
+    expect(again?.event.id).toBe('evt-next');
+    expect(readNextActivitySnapshot(UID_A, NOW)?.event.id).toBe('evt-next');
+  });
+
+  test('同一頁連續失敗只再試有限次', async () => {
+    setAuth(UID_A);
+    installServer(eventDoc());
+    const source = readFileSync(join(process.cwd(), 'src/features/home/data/next-activity.ts'), 'utf8');
+    const limit = Number(/SNAPSHOT_LOAD_ATTEMPT_LIMIT = (\d+)/.exec(source)?.[1]);
+    expect(limit).toBeGreaterThan(0);
+    let calls = 0;
+    _setNextActivitySnapshotImporterForTest(() => {
+      calls += 1;
+      return Promise.reject(new Error('chunk'));
+    });
+    for (let i = 0; i < limit + 2; i += 1) {
+      const result = await resolveNextActivity(deps, UID_A);
+      expect(result?.event.id).toBe('evt-next');
+    }
+    expect(calls).toBe(limit);
+    expect(readNextActivitySnapshot(UID_A, NOW)).toBeNull();
   });
 });

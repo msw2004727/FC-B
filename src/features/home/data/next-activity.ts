@@ -260,8 +260,9 @@ export interface NextActivityDeps {
   now?: () => number;
   /**
    * 有帶才用這份視角決定能不能進快照。
-   * 沒帶時只用空隊伍、無權限、roleLevel 0：公開、本人主辦／委託、teamOnly 且 isPublic 仍可進；
-   * 只有隊伍成員才看得到的場不進快照（空 context 會誤顯示）。查詢結果仍原樣回傳。
+   * 沒帶時，公開、本人主辦／委託、teamOnly 且 isPublic 仍可進。
+   * 要靠隊伍或私密名單才分得清的場：不寫進快照，也不清掉可能正確的舊快照。
+   * 查詢結果仍原樣回傳，給畫面用真實 viewer 再濾。
    */
   viewer?: ViewerContext;
 }
@@ -421,6 +422,9 @@ async function loadNextActivityInputsDetailed(
     return { registrations: [], events: [], ok: false };
   }
 
+  // 第一次真正要快照時才載入（跟這次查詢一起開始）。不在模組求值時載，也不等它才發查詢。
+  const snapshotReady = loadNextActivitySnapshotModule();
+
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger: NextActivityLogger = deps.logger ?? console;
   const [{ db }, sdk] = await Promise.all([getFB(), loadFirestoreSdk()]);
@@ -496,8 +500,8 @@ async function loadNextActivityInputsDetailed(
   ]);
 
   // 沿用邏輯在快照 chunk。查詢同時進行；chunk 失敗就改走下面的原本補抓。
-  const reusePromise = loadNextActivitySnapshotModule().then((api) =>
-    api ? api.reuse(safeUid, nowMs) : null,
+  const reusePromise = snapshotReady.then((api) =>
+    api ? api.reuse(safeUid, nowMs, deps.viewer) : null,
   );
   const [registrations, managedResults, reuse] = await Promise.all([
     registrationsPromise,
@@ -572,26 +576,38 @@ export async function resolveNextActivity(
 
 type NextActivitySnapshotModule = typeof import('./next-activity-snapshot');
 
+/** 同一頁連續失敗到這個次數就停止再打動態 import。下次進頁（或測試重置）才再試。 */
+const SNAPSHOT_LOAD_ATTEMPT_LIMIT = 3;
+
+type SnapshotImporter = () => Promise<NextActivitySnapshotModule>;
+
+const defaultImportNextActivitySnapshot: SnapshotImporter = () => import('./next-activity-snapshot');
+
+let importNextActivitySnapshot: SnapshotImporter = defaultImportNextActivitySnapshot;
 let snapshotApi: NextActivitySnapshotModule | null = null;
 let snapshotLoad: Promise<NextActivitySnapshotModule | null> | null = null;
+let snapshotLoadAttempts = 0;
 
 function loadNextActivitySnapshotModule(): Promise<NextActivitySnapshotModule | null> {
   if (snapshotApi) return Promise.resolve(snapshotApi);
-  if (!snapshotLoad) {
-    snapshotLoad = import('./next-activity-snapshot')
-      .then((mod) => {
-        snapshotApi = mod;
-        // 新頁若已確認登出（uid === null），這裡清殘留。未確定則不動，也不在這一層訂閱。
-        mod.adopt();
-        return mod;
-      })
-      .catch(() => null);
-  }
+  if (snapshotLoad) return snapshotLoad;
+  if (snapshotLoadAttempts >= SNAPSHOT_LOAD_ATTEMPT_LIMIT) return Promise.resolve(null);
+  snapshotLoadAttempts += 1;
+  const promise = importNextActivitySnapshot()
+    .then((mod) => {
+      snapshotApi = mod;
+      // 新頁若已確認登出（uid === null），這裡清殘留。未確定則不動，也不在這一層訂閱。
+      mod.adopt();
+      return mod;
+    })
+    .catch(() => {
+      // 失敗把進行中的 promise 清掉，下一次查詢才能再試。同一頁超過上限就不再打。
+      if (snapshotLoad === promise) snapshotLoad = null;
+      return null;
+    });
+  snapshotLoad = promise;
   return snapshotLoad;
 }
-
-// 模組載入後立刻抓快照 chunk，第一次 render 不等它。失敗就退回沒有快照。
-loadNextActivitySnapshotModule();
 
 export function whenNextActivitySnapshotReady(): Promise<void> {
   return loadNextActivitySnapshotModule().then(() => undefined);
@@ -607,7 +623,18 @@ export function readNextActivitySnapshot(
   return snapshotApi.readNextActivitySnapshot(uid, nowMs, viewer);
 }
 
-/** 測試用。 */
+/** 測試可替換載入器。傳 null 恢復動態 import，並清掉這一頁的失敗次數。 */
+export function _setNextActivitySnapshotImporterForTest(importer: SnapshotImporter | null): void {
+  importNextActivitySnapshot = importer ?? defaultImportNextActivitySnapshot;
+  snapshotApi = null;
+  snapshotLoad = null;
+  snapshotLoadAttempts = 0;
+}
+
+/** 測試用。一併清掉進行中的載入與失敗次數，避免案例互相污染。 */
 export function _resetNextActivityCacheForTest(): void {
+  snapshotLoad = null;
+  snapshotLoadAttempts = 0;
+  importNextActivitySnapshot = defaultImportNextActivitySnapshot;
   snapshotApi?.resetNextActivitySnapshotForTest();
 }
