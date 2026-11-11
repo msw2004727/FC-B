@@ -9,7 +9,7 @@
  *   - 'calendar button lazy-loads ...'（UI 按鈕）
  *   - cache 相關（'renders a fresh stored cache ...', 'does not reuse a stored cache record from another uid ...',
  *     'ignores display-expired stored cache ...', 'renders displayable stale cache first ...',
- *     'invalidateHomeNextActivityCache ...'）：B 的資料層不做 localStorage 快取。
+ *     'invalidateHomeNextActivityCache ...'）：那些是畫面案例。資料層快照見 next-activity.snapshot.test.ts。
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -21,6 +21,16 @@ vi.mock('@/data/firebase', () => ({
     auth: {},
     functions: {},
   })),
+}));
+
+vi.mock('@/data/auth', () => ({
+  getLastKnownAuthUid: () => undefined,
+}));
+
+vi.mock('@/features/events/data/events-repo', () => ({
+  getEventsRepo: () => ({
+    getSnapshot: () => ({ active: [], terminal: [], activeFromCache: false }),
+  }),
 }));
 
 vi.mock('firebase/firestore', () => ({
