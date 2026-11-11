@@ -121,7 +121,12 @@ function loadEventsRepoModule(): Promise<typeof import('@/features/events/data/e
   return repoModule;
 }
 
-/** 首頁／列表已經有的活動。失敗當沒有，不擋報名查詢。 */
+/**
+ * 首頁／列表已經有的活動。失敗當沒有，不擋報名查詢。
+ * 列表快照有 owner。events-repo 是沒有 uid 的單例，訪客先載入或換帳號沒整頁重載時，
+ * 記憶體可能不是這位 viewer 的這一輪。只有 getLastKnownAuthUid() 已是這位才讀，
+ * 之後還要再過可見性，對不上就改走補抓。
+ */
 async function loadReusedEvents(uid: string, nowMs: number): Promise<EventDoc[]> {
   const found: EventDoc[] = [];
   const known = getLastKnownAuthUid();
@@ -133,12 +138,14 @@ async function loadReusedEvents(uid: string, nowMs: number): Promise<EventDoc[]>
       /* 列表快照壞了就當沒有 */
     }
   }
-  try {
-    const { getEventsRepo } = await loadEventsRepoModule();
-    const snap = getEventsRepo().getSnapshot();
-    found.push(...snap.active, ...snap.terminal);
-  } catch {
-    /* repo 載入失敗：這次改走補抓 */
+  if (known === uid) {
+    try {
+      const { getEventsRepo } = await loadEventsRepoModule();
+      const snap = getEventsRepo().getSnapshot();
+      found.push(...snap.active, ...snap.terminal);
+    } catch {
+      /* repo 載入失敗：這次改走補抓 */
+    }
   }
   return found;
 }
@@ -150,13 +157,44 @@ function addEventIds(event: EventDoc, into: Set<string>): void {
   }
 }
 
+function registrationOf(
+  registrations: readonly { eventId?: unknown }[],
+  eventId: string,
+): RegistrationDoc | undefined {
+  for (const record of registrations) {
+    if (String(record.eventId ?? '').trim() === eventId) return record as RegistrationDoc;
+  }
+  return undefined;
+}
+
+/**
+ * 沿用前再判一次。確定不可見（黑名單、之後還會被 isStillUpcoming 擋下的結束場）不用。
+ * 要看 viewer 才分得清、又沒有 viewer：不當成看得到，改走補抓。
+ * 有 viewer 就用 getVisibleEvents。
+ */
+function visibleEnoughToReuse(
+  event: EventDoc,
+  uid: string,
+  viewer: ViewerContext | undefined,
+  registration: RegistrationDoc | undefined,
+): boolean {
+  const regs = registration
+    ? [{ ...registration, userId: registration.userId ?? registration.uid ?? uid }]
+    : [];
+  if (!isEventVisibleToUser(event, emptyViewer(uid), regs)) return false;
+  if (viewer === undefined && needsViewerContext(event, uid)) return false;
+  const effective = viewer ?? emptyViewer(uid);
+  return getVisibleEvents([event], effective, regs).length > 0;
+}
+
 /**
  * 先把已載入活動讀進來，再交給呼叫端（查詢回來之後）決定哪些報名不用補抓。
- * 沿用副本只限仍是即將到來的場。呼叫端在這個 chunk 載入失敗時改走原本的補抓。
+ * 沿用副本只限仍是即將到來、而且這位 viewer 用得到的場。呼叫端在這個 chunk 載入失敗時改走原本的補抓。
  */
 export function reuse(
   uid: string,
   nowMs: number,
+  viewer?: ViewerContext,
 ): Promise<(registrations: readonly { eventId?: unknown }[], managedEvents: readonly EventDoc[]) => [EventDoc[], string[]]> {
   return loadReusedEvents(uid, nowMs).then((reusedEvents) => (registrations, managedEvents) => {
     const haveIds = new Set<string>();
@@ -176,7 +214,7 @@ export function reuse(
       const id = String(registration.eventId ?? '').trim();
       if (!id || haveIds.has(id) || seen.has(id)) continue;
       const standIn = reusedById.get(id);
-      if (standIn) {
+      if (standIn && visibleEnoughToReuse(standIn, uid, viewer, registrationOf(registrations, id))) {
         fromReuse.push(standIn);
         addEventIds(standIn, haveIds);
         seen.add(id);
@@ -235,14 +273,21 @@ function judge(
   allowKeep: boolean,
 ): Verdict {
   const event = result.event;
+  // ① 確定不可見才 drop：已取消／已結束／已開始，或報名已失效且沒有管理角色。
   if (!isStillUpcoming(event, nowMs)) return 'drop';
   if (result.registration && !isActiveRegistration(result.registration, uid) && !result.managedRole) return 'drop';
   const regs = visibilityRegs(result, uid);
   const baseline = emptyViewer(uid);
+  // isEventVisibleToUser 只看黑名單，不看隊伍或私密。黑名單且沒有這場報名才是確定不可見。
   if (!isEventVisibleToUser(event, baseline, regs)) return 'drop';
+  // ② 要看 viewer 才分得清，而現在沒有：留鑰匙或略過，不得當成確定不可見。
+  // allowKeep 為真是讀取（留鑰匙）。為假是寫入（略過、不覆寫）。兩邊都不是 drop。
+  if (viewer === undefined && needsViewerContext(event, uid)) {
+    return allowKeep ? 'keep' : 'keep';
+  }
+  // ③ 有 viewer 用這份。沒有、且不需要 context（公開、主辦、委託、teamOnly 且 isPublic）才用空 context。
   const effective = viewer ?? baseline;
   if (getVisibleEvents([event], effective, regs).length > 0) return 'show';
-  if (allowKeep && viewer === undefined && needsViewerContext(event, uid)) return 'keep';
   return 'drop';
 }
 
@@ -563,8 +608,9 @@ function beginWrite(uid: string): number | null {
 
 /**
  * 伺服器結果可用時呼叫。
- * 看得到就覆寫；沒有下一場、已取消／結束、或這個 viewer 確定看不到就清掉。
- * 不因「曾沿用列表副本」而留下舊快照。
+ * 看得到就覆寫。沒有下一場、已取消／結束、黑名單，或這個 viewer 確定看不到，才清掉。
+ * 活動要看 viewer 才分得清、呼叫端卻沒帶 viewer：略過，不清可能還對的舊快照。
+ * 不因「曾沿用列表副本」而留下舊快照——那條路是確定沒有下一場或確定不可見才清。
  */
 function commitResult(
   token: number,
@@ -574,11 +620,16 @@ function commitResult(
   viewer?: ViewerContext,
 ): void {
   if (token !== generation || boundUid !== uid || getLastKnownAuthUid() !== uid) return;
-  if (result && judge(result, uid, nowMs, viewer, false) === 'show') {
+  if (!result) {
+    forgetNextActivity(uid);
+    return;
+  }
+  const verdict = judge(result, uid, nowMs, viewer, false);
+  if (verdict === 'show') {
     storeNextActivity(uid, result, nowMs);
     return;
   }
-  forgetNextActivity(uid);
+  if (verdict === 'drop') forgetNextActivity(uid);
 }
 
 /** 查詢結束後才落盤。登出或帳號不符時 beginWrite 回 null，不會寫。 */
