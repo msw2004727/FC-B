@@ -4,4 +4,4 @@
 // 顯示位置與 A 相同：側邊選單最下方「下載APP」下方的 #home-version-tag（文字 `v{版號}`）。
 // 執行時不 import 這個常數（避免版號進主程式）。打包把它寫進 index.html 的
 // <meta name="app-version"> 與 dist/version.json；畫面用 readAppVersion()。
-export const APP_VERSION = '0.20261111f';
+export const APP_VERSION = '0.20261111g';
