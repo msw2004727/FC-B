@@ -40,5 +40,8 @@ describe('GuestAvatarIcon（M-168）', () => {
     const { container } = render(<GuestAvatarIcon size="100%" fill />);
     expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('3 2 18 19.5');
     expect(container.querySelector('path')?.getAttribute('d')).toContain('v4H4z');
+    // 外層容器不一定有 overflow:hidden，fill 版自己裁成圓，肩角不會凸出圓外。
+    expect(container.querySelector('svg')?.getAttribute('style') ?? '').toContain('clip-path: circle(50%)');
+    expect(normal.querySelector('svg')?.getAttribute('style') ?? '').not.toContain('clip-path');
   });
 });

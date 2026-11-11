@@ -17,6 +17,8 @@ export function GuestAvatarIcon(props: { size?: number | string; fill?: boolean 
       aria-hidden="true"
       focusable="false"
       fill="currentColor"
+      // fill 版肩膀貼邊放大，靠圓形裁切；外層容器不一定有 overflow:hidden（右上角按鈕、第二身分球員卡），所以由 SVG 自己裁成內圓。
+      style={props.fill ? { clipPath: 'circle(50%)' } : undefined}
     >
       {/* 頭 */}
       <circle cx="12" cy="8" r="4" />
