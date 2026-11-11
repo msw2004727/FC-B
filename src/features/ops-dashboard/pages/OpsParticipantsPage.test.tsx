@@ -26,6 +26,21 @@ import { createPermissionChecker } from '@/features/profile/data/permissions';
 import { calls, failures, FORBIDDEN_APIS, resetStore, sdk, totalReads } from '../ops-test-utils';
 import OpsParticipantsPage from './OpsParticipantsPage';
 
+const rawGetDocs = sdk.getDocs.getMockImplementation() ?? (async () => {
+  throw new Error('getDocs mock missing');
+});
+
+/** 擋住某一集合的 getDocs，方便斷言查詢中或人名未到。 */
+function holdDocs(collectionName: string): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  sdk.getDocs.mockImplementation(async (q) => {
+    if (q.name === collectionName) await gate;
+    return rawGetDocs(q);
+  });
+  return { release };
+}
+
 const ASOF = formatTaipei(addTaipeiDays(Date.now(), -1), 'YYYY-MM-DD');
 const ASOF_ID = ASOF.replace(/-/g, '');
 const PREV_ID = formatTaipei(addTaipeiDays(Date.now(), -2), 'YYYY-MM-DD').replace(/-/g, '');
@@ -75,7 +90,10 @@ beforeEach(() => {
   state.query = {};
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  sdk.getDocs.mockImplementation(rawGetDocs);
+});
 
 function shareQuery() {
   return { q: '羽球', from: formatTaipei(addTaipeiDays(Date.now(), -30), 'YYYY-MM-DD'), to: ASOF };
@@ -202,6 +220,8 @@ describe('查詢', () => {
     render(<OpsParticipantsPage />);
     expect(await screen.findByText('讀取失敗')).toBeTruthy();
     expect(document.querySelectorAll('.od-qsum .od-num')).toHaveLength(3);
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
+    expect(document.querySelector('.od-rank')).toBeNull();
   });
 
   it('區間內沒有索引：該日沒有活動，不是讀取失敗', async () => {
@@ -237,5 +257,61 @@ describe('查詢', () => {
     fireEvent.click(screen.getByRole('button', { name: /未知/ }));
     expect(state.route).toHaveBeenCalledWith('/profile/secret00');
     replace.mockRestore();
+  });
+
+  it('查詢中結果區是轉圈（按鈕仍寫查詢中），完成後換成三個數字', async () => {
+    const held = holdDocs('opsParticipantDays');
+    state.viewer = viewer('super_admin');
+    render(<OpsParticipantsPage />);
+    fireEvent.input(document.querySelector('input[type="search"]')!, { target: { value: '羽球' } });
+    fireEvent.input(document.querySelector('input[type="date"]')!, { target: { value: shareQuery().from } });
+    fireEvent.click(screen.getByRole('button', { name: '查詢' }));
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(screen.getByRole('button', { name: '查詢中...' })).toBeTruthy();
+    expect(document.querySelector('.od-qsum')).toBeNull();
+    held.release();
+    expect(await screen.findByText('符合活動')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    const nums = Array.from(document.querySelectorAll('.od-qsum .od-num')).map((n) => n.textContent);
+    expect(nums).toEqual(['2', '60', '62']);
+  });
+
+  it('查詢被擋：轉圈換成既有讀取失敗', async () => {
+    const held = holdDocs('opsParticipantDays');
+    failures['opsParticipantDays'] = 'permission-denied';
+    state.query = shareQuery();
+    state.viewer = viewer('super_admin');
+    render(<OpsParticipantsPage />);
+    expect((await screen.findByRole('status')).querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    held.release();
+    expect(await screen.findByText('讀取失敗')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.queryByText('該日沒有活動')).toBeNull();
+    expect(document.querySelector('.od-qsum')).toBeNull();
+  });
+
+  it('人名未到：名字格是 14px 圈，到了換成名字，頭像盒還在', async () => {
+    const held = holdDocs('users');
+    state.query = shareQuery();
+    state.viewer = viewer('super_admin');
+    render(<OpsParticipantsPage />);
+    await screen.findByText('符合活動');
+    const spins = document.querySelectorAll('.od-rank-title .line-avatar-spinner');
+    expect(spins.length).toBe(50);
+    const list = document.querySelector('.od-rank');
+    expect(list?.getAttribute('role')).toBe('status');
+    expect(list?.getAttribute('aria-busy')).toBe('true');
+    expect(list?.getAttribute('aria-label')).toBe('載入中...');
+    expect(document.querySelectorAll('.od-avatar')).toHaveLength(50);
+    expect(screen.queryByText('名U00')).toBeNull();
+    held.release();
+    expect(await screen.findByText('名U00')).toBeTruthy();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
+    expect(document.querySelector('.od-rank')?.getAttribute('role')).toBeNull();
+    expect(document.querySelector('.od-rank')?.getAttribute('aria-busy')).toBeNull();
+    expect(document.querySelectorAll('.od-rank li')).toHaveLength(50);
   });
 });

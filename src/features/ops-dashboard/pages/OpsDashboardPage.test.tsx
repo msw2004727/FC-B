@@ -22,6 +22,21 @@ import { calls, failures, FORBIDDEN_APIS, resetStore, sdk, totalReads, ts } from
 import OpsDashboardPage, { formatUpdatedAt } from './OpsDashboardPage';
 import { opsT } from '../ops-strings';
 
+const rawGetDoc = sdk.getDoc.getMockImplementation() ?? (async () => {
+  throw new Error('getDoc mock missing');
+});
+
+/** 擋住 opsSummary 的 getDoc，方便斷言彙總還沒回來時的轉圈。 */
+function holdGetDoc(): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  sdk.getDoc.mockImplementation(async (ref) => {
+    await gate;
+    return rawGetDoc(ref);
+  });
+  return { release };
+}
+
 const HOUR = 60 * 60 * 1000;
 
 function viewer(role: string, rolePermissions?: Record<string, readonly string[]>): ViewerView {
@@ -55,7 +70,10 @@ beforeEach(() => {
   state.route = vi.fn();
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  sdk.getDoc.mockImplementation(rawGetDoc);
+});
 
 async function openAs(v: ViewerView): Promise<void> {
   state.viewer = v;
@@ -103,10 +121,15 @@ describe('權限（admin.dashboard.entry；四身分）', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('權限還沒載完（最小 viewer）：顯示載入中、不判沒權限、不讀任何資料', async () => {
+  it('權限還沒載完（最小 viewer）：顯示載入圈與載入文字、不判沒權限、不讀任何資料', async () => {
     state.viewer = createMinimalViewer('U-admin');
     render(<OpsDashboardPage />);
-    expect(screen.getByRole('status').textContent).toBe('載入中...');
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(status.getAttribute('aria-label')).toBe('載入中…');
+    expect(opsT('loading')).toBe('載入中...');
     expect(screen.queryByText('權限不足')).toBeNull();
     await new Promise((r) => setTimeout(r, 20));
     expect(calls).toHaveLength(0);
@@ -139,8 +162,10 @@ describe('內容（C1）', () => {
     expect(screen.queryByText('讀取失敗')).toBeNull();
     expect(screen.getByText('活動參與查詢')).toBeTruthy();
     expect(document.querySelector('[data-trend]')).toBeNull();
-    // 顧問 §3.83②：彙總還沒產生要有說明，不是空白頁。
+    // 顧問 §3.83②：彙總還沒產生要有說明，不是空白頁，也不是轉圈。
     expect(screen.getByText('彙總資料還沒有產生（每天凌晨 3 點更新），明天再來看看')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(document.querySelector('.od-note')?.textContent).toContain('彙總資料還沒有產生');
   });
 
   it('opsSummary 有資料時不顯示「彙總還沒有」說明', async () => {
@@ -148,6 +173,36 @@ describe('內容（C1）', () => {
     await openAs(viewer('super_admin'));
     await screen.findByText(/^資料更新於 /);
     expect(screen.queryByText(/彙總資料還沒有產生/)).toBeNull();
+  });
+
+  it('彙總還沒回來：整頁轉圈，回來後換成內容', async () => {
+    const held = holdGetDoc();
+    state.viewer = viewer('super_admin');
+    render(<OpsDashboardPage />);
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(opsT('loading')).toBe('載入中...');
+    expect(screen.queryByText('報名中')).toBeNull();
+    expect(screen.queryByText('彙總資料還沒有產生（每天凌晨 3 點更新），明天再來看看')).toBeNull();
+    held.release();
+    expect(await screen.findByText('報名中')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(document.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('彙總讀取失敗：轉圈換成既有讀取失敗，不是彙總說明', async () => {
+    const held = holdGetDoc();
+    failures['opsSummary'] = 'permission-denied';
+    state.viewer = viewer('super_admin');
+    render(<OpsDashboardPage />);
+    expect((await screen.findByRole('status')).querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    held.release();
+    expect(await screen.findByText('讀取失敗')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(screen.queryByText(/彙總資料還沒有產生/)).toBeNull();
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
   });
 
   it('opsSummary 權限錯誤：顯示讀取失敗（不當成沒有資料），重試會重讀', async () => {
