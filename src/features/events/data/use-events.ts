@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { getLastKnownAuthUid } from '@/data/auth';
 import { trackPublicRead } from '@/data/firebase';
 import { on } from '@/core/events';
-import { readEventsSnapshot, writeEventsSnapshot } from './events-snapshot-cache';
+import { eventsRetainedForSnapshot, readEventsSnapshot, writeEventsSnapshot } from './events-snapshot-cache';
 import { isEventInEndedTab } from './terminal';
 import { sortEvents } from './presentation';
 import type { EventDoc } from './types';
@@ -47,13 +47,18 @@ let lastLoaded: { uid: string | null; events: EventDoc[] } | null = null;
 
 /**
  * stale-first 的上次資料：記憶體 → 本機快照（30 分鐘內）。
- * 只有 viewer 帳號等於登入模組確認的帳號時才給（使用者資料載入前不以訪客身分先畫，Fable 2026-10-19）。
+ * 訪客（viewerUid === null）第一次 render 就讀 owner 為 guest 的快照，不等 getLastKnownAuthUid()
+ * （那個值從「尚未確定」變成 null 時，memo 的依賴不會變，等下去就永遠畫不到）。
+ * 登入者仍要 viewer 帳號等於登入模組確認的帳號才給（Fable 2026-10-19）：不拿登入者快照給訪客，
+ * 也不在帳號未確認時畫登入者快照。記憶體那份也必須是同一個 uid。
  * 首頁（none）寫入的快照沒有 ended／cancelled 預覽；活動列表拿來先畫後，仍會照常載入預覽再更新。
  * 短 TTL 內列表沿用 repo 剛成功的 active，不再讀一次 active；手動重新整理（retry）不沿用。
  */
 function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
-  const known = getLastKnownAuthUid();
-  if (known === undefined || known !== viewerUid) return null;
+  if (viewerUid !== null) {
+    const known = getLastKnownAuthUid();
+    if (known === undefined || known !== viewerUid) return null;
+  }
   if (lastLoaded && lastLoaded.uid === viewerUid) return lastLoaded.events;
   return readEventsSnapshot(viewerUid);
 }
@@ -61,13 +66,15 @@ function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
 /**
  * 網路資料比登入確認更早回來時（首頁的公開讀取不等 Auth，T-041）暫存在這裡，
  * 等登入帳號確定、且與畫面使用者相同才寫入記憶體與本機快照——快取歸屬守門不放寬（Fable 2026-10-19）。
- * 活動本身是公開資料，哪個帳號確認後寫都一樣；守門保證的是「快照只掛在確認過的帳號底下」。
+ * 寫入時訪客會拿掉私密／俱樂部限定，登入者保留原清單。守門保證快照只掛在確認過的帳號底下。
  */
 let pendingSnapshot: EventDoc[] | null = null;
 
 function commitSnapshot(owner: string | null, events: EventDoc[]): void {
-  lastLoaded = { uid: owner, events };
-  writeEventsSnapshot(owner, events);
+  // 訪客只把可見活動留在記憶體與 localStorage。登入者維持原清單，頁面再濾。
+  const stored = eventsRetainedForSnapshot(owner, events);
+  lastLoaded = { uid: owner, events: stored };
+  writeEventsSnapshot(owner, stored);
 }
 
 function flushPendingSnapshot(viewerUid: string | null): void {
@@ -305,10 +312,13 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   }, [viewerUid]);
   useEffect(() => on('auth:changed', () => flushPendingSnapshot(viewerUidRef.current)), []);
 
-  const events = fresh ?? stale ?? [];
-  // 已有上次資料時更新失敗不顯示錯誤（A 的快取模式也是如此）。
-  const loading = pending && events.length === 0;
-  const error = failed && events.length === 0;
+  const raw = fresh ?? stale ?? [];
+  // 訪客的回傳（畫面資料來源）再濾一次：伺服器清單、記憶體、本機快照都不含私密／俱樂部限定。
+  // 登入者沿用原清單（長度判斷與 SPEED-1-4 相同，不把已結束頁籤提前算成沒資料）。
+  const listed = viewerUid === null ? eventsRetainedForSnapshot(null, raw) : raw;
+  // 已有可畫的資料時，更新失敗不顯示錯誤（A 的快取模式也是如此）。
+  const loading = pending && listed.length === 0;
+  const error = failed && listed.length === 0;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -318,7 +328,7 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
 
   return {
-    events: sortEvents(events.filter((event) => !isEventInEndedTab(event, now))),
+    events: sortEvents(listed.filter((event) => !isEventInEndedTab(event, now))),
     loading,
     error,
     retry,
