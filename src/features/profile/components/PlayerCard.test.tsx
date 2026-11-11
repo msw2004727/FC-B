@@ -456,14 +456,19 @@ describe('T-092 球員卡（DOM）', () => {
     void container;
   });
 
-  it('沒有頭像時畫面顯示姓名首字；名字被遮掉時顯示 ?', () => {
+  it('沒有頭像時畫面顯示姓名首字；名字被遮掉時畫貼邊放大的人形剪影（不是 ?）', () => {
     identity.current = { displayName: '王小明', pictureUrl: null, identityId: 'primary' };
     const named = renderTop(viewer());
     expect(named.container.querySelector('#profile-avatar')?.textContent).toBe('王');
     cleanup();
     identity.current = { displayName: 'U-me', pictureUrl: null, identityId: 'primary' };
     const hidden = renderTop(viewer());
-    expect(hidden.container.querySelector('#profile-avatar')?.textContent).toBe('?');
+    const hiddenAvatar = hidden.container.querySelector('#profile-avatar');
+    expect(hiddenAvatar?.textContent).toBe('');
+    const icon = hiddenAvatar?.querySelector('svg.guest-avatar-icon');
+    expect(icon?.getAttribute('viewBox')).toBe('3 2 18 19.5');
+    // 貼邊版肩膀往下多畫（超出 viewBox 被裁掉），圓底邊不留縫隙。
+    expect(icon?.querySelector('path')?.getAttribute('d')).toContain('v4H4z');
   });
 
   it('QR：網頁卡面不顯示；本人球員卡產 PNG 時帶個人名片分享網址', async () => {
@@ -520,12 +525,13 @@ describe('T-092 球員卡（DOM）', () => {
     expect(button).not.toMatch(/^import\s+\{[^}]*\}\s+from\s+'\.\/PlayerCardImageOverlay'/m);
   });
 
-  it('名字為資料層預設 Unknown 時卡面顯示 -、頭像首字 ?，PNG 模型同樣', async () => {
+  it('名字為資料層預設 Unknown 時卡面顯示 -、頭像為人形剪影，PNG 模型的首字仍是 ?（畫布端改畫人形）', async () => {
     identity.current = { displayName: ' unknown ', pictureUrl: null, identityId: 'primary' };
     const { container } = renderTop(viewer());
     const card = container.querySelector('.player-card')!;
     expect(card.querySelector('#profile-title')?.textContent).toBe('-');
-    expect(card.querySelector('#profile-avatar')?.textContent).toBe('?');
+    expect(card.querySelector('#profile-avatar')?.textContent).toBe('');
+    expect(card.querySelector('#profile-avatar svg.guest-avatar-icon')).not.toBeNull();
     expect(card.textContent?.toLowerCase()).not.toContain('unknown');
     fireEvent.click(container.querySelector('#player-card-share-btn')!);
     await waitFor(() => expect(canvasMock.renderPlayerCardPng).toHaveBeenCalledTimes(1));

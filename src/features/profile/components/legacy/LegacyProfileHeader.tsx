@@ -3,6 +3,7 @@ import { SHOW_EXP } from '@/core/exp-display';
 import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
+import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { useUserRoles } from '@/data/user-roles';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
@@ -32,6 +33,7 @@ export function LegacyAvatar({
   imageContainerClass,
   crown = false,
   id,
+  fillCircle = false,
 }: {
   url: string | null;
   name: string;
@@ -39,6 +41,8 @@ export function LegacyAvatar({
   imageContainerClass?: string;
   crown?: boolean;
   id?: string;
+  /** 沒名字也沒圖時，人形剪影貼邊放大填滿圓（球員卡用）。 */
+  fillCircle?: boolean;
 }): JSX.Element {
   const safeUrl = sanitizeHttpAvatarUrl(url);
   const [imgBroken, setImgBroken] = useState(false);
@@ -65,6 +69,8 @@ export function LegacyAvatar({
           decoding="async"
           onError={() => setImgBroken(true)}
         />
+      ) : getAvatarInitial(name) === '?' ? (
+        fillCircle ? <GuestAvatarIcon size="100%" fill /> : <GuestAvatarIcon size="62%" />
       ) : (
         getAvatarInitial(name)
       )}
@@ -173,6 +179,7 @@ export function LegacyProfileTopSection({
             baseClass="profile-avatar"
             imageContainerClass="profile-avatar profile-avatar-img"
             crown={isSecondary}
+            fillCircle
           />
         )}
         topBar={(

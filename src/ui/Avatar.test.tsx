@@ -104,10 +104,11 @@ describe('Avatar', () => {
   });
 
   // 測試同步更新：照 A（M-059）沒名字時視覺顯示「?」，無障礙 aria-label 仍維持翻譯文案
-  it('displays "?" when name is missing while keeping translated aria-label', () => {
+  it('沒有名字時畫人形剪影（不再是「?」），仍保留翻譯後的 aria-label', () => {
     const { getByRole } = render(<Avatar />);
     expect(getByRole('img').getAttribute('aria-label')).toBe(t('ui.avatar.unknown'));
     expect(getByRole('img').getAttribute('aria-label')).toBe('未提供名稱');
-    expect(getByRole('img').textContent).toBe('?');
+    expect(getByRole('img').textContent).toBe('');
+    expect(getByRole('img').querySelector('svg.guest-avatar-icon')).not.toBeNull();
   });
 });

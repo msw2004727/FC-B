@@ -288,12 +288,15 @@ describe('TopBar (legacy A DOM & CSS)', () => {
     expect(avatar()?.textContent).toBe('小');
   });
 
-  it('T-033：資料同步完成、兩邊都沒有名稱 → 顯示「?」而不是轉圈', () => {
+  it('T-033：資料同步完成、兩邊都沒有名稱 → 顯示人形剪影（不是「?」也不是轉圈）', () => {
     const user = { uid: 'U0000000000000000000000000000001', displayName: null, pictureUrl: null };
     const { container } = render(<TopBar drawerOpen={false} onMenuClick={() => undefined} user={user} isSyncing={false} />);
     const avatar = container.querySelector('#line-avatar-topbar');
     expect(avatar?.classList.contains('line-avatar-loading')).toBe(false);
-    expect(avatar?.textContent).toBe('?');
+    expect(avatar?.textContent).toBe('');
+    const icon = avatar?.querySelector('svg.guest-avatar-icon');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('viewBox')).toBe('3 2 18 19.5');
   });
 
   it('T-033：isSyncing 但已有頭像網址 → 不轉圈（照 A：只有「同步中且尚無頭像網址」才轉）', () => {
