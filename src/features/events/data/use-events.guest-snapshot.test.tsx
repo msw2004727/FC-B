@@ -59,6 +59,14 @@ describe('SPEED-1-1 訪客先畫 guest 快照，且不畫登入者快照', () =>
     expect(knownUid).toBeUndefined();
   });
 
+  it('已知有登入者但畫面 viewer 還是 null（auth 尚未同步回來）：不先畫 guest 快照，避免登入者看到訪客版再跳動', () => {
+    writeEventsSnapshot(null, [ev('g', '訪客公開場')]);
+    knownUid = 'U1';
+    const view = render(h(Probe, { uid: null }));
+    expect(view.getByTestId('p').textContent).toBe('L-:');
+    expect(shown).toEqual([]);
+  });
+
   it('先寫登入者快照，再以訪客開頁：畫面與回傳都不含該內容', () => {
     writeEventsSnapshot('U1', [
       ev('seen', '只有會員看過的場'),
