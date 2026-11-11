@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/data/callables', () => ({ callFn: mocks.callFn }));
-vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: {} }) }));
+vi.mock('@/data/firebase', () => ({
+  getFirebase: async () => ({ db: {} }),
+  getFirebaseCore: async () => ({ db: {} }),
+}));
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(() => ({})),
   getDocs: mocks.getDocs,
