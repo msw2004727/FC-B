@@ -58,6 +58,11 @@ function staleEventsFor(viewerUid: string | null): EventDoc[] | null {
   if (viewerUid !== null) {
     const known = getLastKnownAuthUid();
     if (known === undefined || known !== viewerUid) return null;
+  } else {
+    // 訪客視角：只有「尚未確定」或「確定是訪客」才先畫 guest 快照。
+    // 已知有登入者（auth 還沒同步回畫面）時不畫，避免登入者先看到訪客版列表再跳動。
+    const known = getLastKnownAuthUid();
+    if (known !== undefined && known !== null) return null;
   }
   if (lastLoaded && lastLoaded.uid === viewerUid) return lastLoaded.events;
   return readEventsSnapshot(viewerUid);
