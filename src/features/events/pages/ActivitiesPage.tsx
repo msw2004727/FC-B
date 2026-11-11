@@ -72,7 +72,7 @@ function EventFormLoadingShell(props: { onClose: () => void }): JSX.Element {
           <h3 id="ce-form-loading-title" style="white-space:nowrap">
             {lt('新增活動', '新增活動')}
           </h3>
-          <button type="button" class="modal-close" onClick={props.onClose}>✕</button>
+          <button type="button" class="modal-close" aria-label={lt('關閉', '關閉')} onClick={props.onClose}>✕</button>
         </div>
         <div class="modal-body">
           <div class="reg-loading" role="status" data-i18n="活動資料載入中..." style="white-space:nowrap">
