@@ -8,7 +8,7 @@
  *   不得靜默回空陣列掩蓋權限/網路錯誤。
  */
 
-import { getFirebase } from '@/data/firebase';
+import { getFirebase, getFirebaseCore } from '@/data/firebase';
 import { teams as teamsCollection, users as usersCollection } from '@/data/paths';
 import { getTeamStaffIdentity } from './team-detail-model';
 import type { TeamDoc, TeamMember } from './types';
@@ -51,7 +51,9 @@ export function removeCachedTeam(teamKey: string): void {
 /**
  * 讀取 `teams` 全集合。
  *
- * A 也是全量快取；teams 公開可讀（無需登入）。
+ * A 也是全量快取；teams 公開可讀（Rules `allow read: if true`），只用 db。
+ * 走 getFirebaseCore()：沒有登入旗標的訪客不等 auth／functions。
+ * 有登入旗標時，核心初始化仍等第一次 auth 狀態，本函式不拆該閘。
  * 同一 session 內記憶化；跨頁共用同一陣列參照。
  */
 export async function loadTeams(): Promise<TeamDoc[]> {
@@ -59,7 +61,7 @@ export async function loadTeams(): Promise<TeamDoc[]> {
 
   const [{ collection, getDocs }, ctx] = await Promise.all([
     import('firebase/firestore'),
-    getFirebase(),
+    getFirebaseCore(),
   ]);
 
   const snap = await getDocs(collection(ctx.db, teamsCollection));
@@ -77,6 +79,8 @@ export async function loadTeams(): Promise<TeamDoc[]> {
  * 以路由上的俱樂部 ID 讀取。R-ID-004 新建俱樂部的文件 ID 等於 `id`，先讀 `teams/{teamId}`；
  * 找不到時照活動 `resolveEventDocId` 的做法以 `where('id','==',teamId)` 補查，涵蓋 public id 與文件 ID 不同的舊資料。
  *
+ * 公開讀取，與 `loadTeams` 同一條核心路徑（不需 auth／functions）。
+ *
  * @returns `null` 表示兩種方式都找不到。
  */
 export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
@@ -84,7 +88,7 @@ export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
 
   const [{ doc, getDoc, collection, query, where, limit, getDocs }, ctx] = await Promise.all([
     import('firebase/firestore'),
-    getFirebase(),
+    getFirebaseCore(),
   ]);
 
   const snap = await getDoc(doc(ctx.db, teamsCollection, teamId));
@@ -107,7 +111,11 @@ export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
  *   2. 併查 `users where teamIds array-contains teamId`（現行）與
  *      `users where teamId == teamId`（legacy）。
  *   3. 以 `getDoc(users/{uid})` 補齊幹部 UID（可能不在上兩查詢結果內）。
- *   4. 以 uid 去重。
+ *      缺席的幹部同時讀，不循序等。讀取筆數不變。
+ *   4. 以 uid 去重。順序仍是查詢結果，再依隊長、領隊、教練補上。
+ *
+ * `users` 的 Rules 是 `allow read: if isAuth()`，所以這支維持 `getFirebase()`，
+ * 等 auth 註冊後再查。公開的俱樂部文件不走這支。
  *
  * 錯誤契約：任一 Firestore 查詢失敗一律往外拋（不吞）。
  */
@@ -158,20 +166,28 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
   for (const uid of staff.leaderUids) staffUids.add(uid);
   for (const uid of staff.coachUids) staffUids.add(uid);
 
-  for (const uid of staffUids) {
-    if (byUid.has(uid)) continue;
-    const snap = await getDoc(doc(ctx.db, usersCollection, uid));
-    if (!snap.exists()) {
-      // ASSUMPTION: 幹部 UID 沒有對應 user doc 時仍輸出 stub，
-      // 讓呼叫端可顯示佔位列；`buildTeamRoster` 亦會處理 `user = null`。
-      byUid.set(uid, { uid, _docId: uid });
-      continue;
-    }
-    const data = (snap.data() ?? {}) as Record<string, unknown>;
-    byUid.set(uid, {
-      ...(data as TeamMember),
-      uid,
-      _docId: snap.id,
+  const missingStaffUids = [...staffUids].filter((uid) => !byUid.has(uid));
+  if (missingStaffUids.length > 0) {
+    const snaps = await Promise.all(
+      missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid))),
+    );
+    missingStaffUids.forEach((uid, index) => {
+      const snap = snaps[index];
+      if (!snap) {
+        throw new Error('[loadTeamMembers] staff read missing');
+      }
+      if (!snap.exists()) {
+        // ASSUMPTION: 幹部 UID 沒有對應 user doc 時仍輸出 stub，
+        // 讓呼叫端可顯示佔位列；`buildTeamRoster` 亦會處理 `user = null`。
+        byUid.set(uid, { uid, _docId: uid });
+        return;
+      }
+      const data = (snap.data() ?? {}) as Record<string, unknown>;
+      byUid.set(uid, {
+        ...(data as TeamMember),
+        uid,
+        _docId: snap.id,
+      });
     });
   }
 

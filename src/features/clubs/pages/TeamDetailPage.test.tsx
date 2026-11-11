@@ -566,6 +566,10 @@ describe('TeamDetailPage (Legacy V2)', () => {
     render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
     await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(1));
+    expect(loadEvents).toHaveBeenNthCalledWith(1, {
+      terminalMode: 'none',
+      reuseActiveIfFresh: true,
+    });
 
     const call = vi.mocked(useEventFormPostSave).mock.calls.at(-1);
     if (!call) throw new Error('缺少表單儲存後 hook 呼叫');
@@ -577,6 +581,32 @@ describe('TeamDetailPage (Legacy V2)', () => {
 
     await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(loadCalls + 1));
     expect(getEventsRepo).toHaveBeenCalledTimes(repoCalls + 1);
+    expect(loadEvents).toHaveBeenLastCalledWith({ terminalMode: 'none' });
+  });
+
+  it('重試活動時不沿用 30 秒內的 active 快照', async () => {
+    loadEvents.mockReset();
+    loadEvents.mockRejectedValueOnce(new Error('fail'));
+    loadEvents.mockResolvedValue(['events']);
+    vi.mocked(useViewer).mockReturnValue({
+      ...viewer('captain', ['club']),
+      role: 'coach',
+    });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(1));
+    expect(loadEvents).toHaveBeenNthCalledWith(1, {
+      terminalMode: 'none',
+      reuseActiveIfFresh: true,
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: /活動/ }));
+    const panel = container.querySelector('.td-v2-panel-events');
+    if (!panel) throw new Error('缺少活動面板');
+    const retry = await within(panel as HTMLElement).findByRole('button', { name: '重試' });
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(2));
     expect(loadEvents).toHaveBeenLastCalledWith({ terminalMode: 'none' });
   });
 
@@ -607,6 +637,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     });
     const view = render(<TeamDetailPage />);
     await screen.findByText('測試俱樂部');
+    await screen.findByTestId('event-form-stub');
 
     expect(eventFormMock.latestProps?.preset).toBe(preset);
     expect(eventFormMock.latestProps?.open).toBe(true);

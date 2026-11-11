@@ -13,7 +13,10 @@ import { toast } from '@/ui/Toast';
 import { requestViewerRefresh, useViewer } from '@/features/profile/data/viewer';
 import { SPORTS } from '@/features/events/data/sports';
 import { canCreateTeam, resolveClubDetailAccess } from '../club-policy';
-import { TeamFormModal } from '../components/legacy/TeamFormModal';
+import {
+  loadTeamFormModal,
+  type TeamFormModalComponent,
+} from '../components/legacy/team-form-loader';
 import { LegacyTeamCard } from '../components/legacy/LegacyTeamCard';
 import {
   filterTeams,
@@ -143,10 +146,30 @@ export default function TeamsPage(): JSX.Element {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [createFormUid, setCreateFormUid] = useState<string | null>(null);
+  const [TeamForm, setTeamForm] = useState<TeamFormModalComponent | null>(null);
 
   useEffect(() => {
     setCreateFormUid(null);
   }, [viewer.uid]);
+
+  const teamFormRequested = createFormUid !== null && createFormUid === viewer.uid;
+  useEffect(() => {
+    if (!teamFormRequested || TeamForm) return undefined;
+    let alive = true;
+    loadTeamFormModal().then(
+      (component) => {
+        if (alive) setTeamForm(() => component);
+      },
+      () => {
+        if (!alive) return;
+        toast.show({ message: t('clubs.actionError'), tone: 'error' });
+        setCreateFormUid(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [teamFormRequested, TeamForm, t]);
   // M-114：返回列表時還原搜尋字、地區、類型頁籤、篩選面板。運動不在這份記憶裡。
   const [restoredFilters] = useState(() => getClubListFilters());
   const [filtersOpen, setFiltersOpen] = useState(restoredFilters.filtersOpen);
@@ -648,8 +671,8 @@ export default function TeamsPage(): JSX.Element {
             ))}
         </div>
       </section>
-      {createFormUid !== null && createFormUid === viewer.uid ? (
-        <TeamFormModal
+      {TeamForm && createFormUid !== null && createFormUid === viewer.uid ? (
+        <TeamForm
           key={createFormUid}
           open
           mode="create"

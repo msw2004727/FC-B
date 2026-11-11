@@ -11,7 +11,10 @@ import { toast } from '@/ui/Toast';
 import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
 import { getEventsRepo } from '@/features/events/data/events-repo';
-import { EventFormModal } from '@/features/events/components/EventFormModal';
+import {
+  loadEventFormModal,
+  type EventFormModalComponent,
+} from '@/features/home/data/event-form-loader';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import { getSportKeySafe } from '@/features/events/data/sports';
@@ -62,7 +65,10 @@ import {
 } from '../components/legacy/team-detail-tab-memory';
 import { TeamInviteQrOverlay } from '../components/legacy/TeamInviteQrOverlay';
 import { TeamSettingsModal } from '../components/legacy/TeamSettingsModal';
-import { TeamFormModal } from '../components/legacy/TeamFormModal';
+import {
+  loadTeamFormModal,
+  type TeamFormModalComponent,
+} from '../components/legacy/team-form-loader';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
@@ -187,6 +193,8 @@ function TeamDetailContent({
   const [inviteOpen, setInviteOpen] = useState(false);
   // 單一狀態確保設定與基本資料表單不會同時掛載。
   const [teamOverlay, setTeamOverlay] = useState<'settings' | 'edit-basic' | null>(null);
+  const [TeamForm, setTeamForm] = useState<TeamFormModalComponent | null>(null);
+  const [EventForm, setEventForm] = useState<EventFormModalComponent | null>(null);
   const [, setPendingRevision] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
@@ -255,6 +263,42 @@ function TeamDetailContent({
     close: createEntry.closeForm,
     refresh: () => setEventAttempt((v) => v + 1),
   });
+  const eventFormOpen = createEntry.formOpen;
+  const closeEventForm = createEntry.closeForm;
+  useEffect(() => {
+    if (!eventFormOpen || EventForm) return undefined;
+    let alive = true;
+    loadEventFormModal().then(
+      (component) => {
+        if (alive) setEventForm(() => component);
+      },
+      () => {
+        if (!alive) return;
+        toast.show({ message: t('clubs.actionError'), tone: 'error' });
+        closeEventForm();
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [eventFormOpen, EventForm, closeEventForm, t]);
+  useEffect(() => {
+    if (teamOverlay !== 'edit-basic' || TeamForm) return undefined;
+    let alive = true;
+    loadTeamFormModal().then(
+      (component) => {
+        if (alive) setTeamForm(() => component);
+      },
+      () => {
+        if (!alive) return;
+        toast.show({ message: t('clubs.actionError'), tone: 'error' });
+        setTeamOverlay(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [teamOverlay, TeamForm, t]);
   const canCreateEvent = canCreateClubEvent(viewer, team);
   // 同一批資料切換頁籤或開啟 overlay 時保留 events 與日期 Set 的參照。
   const visibleEvents = useMemo(
@@ -303,8 +347,14 @@ function TeamDetailContent({
     if (!teamId || !showEvents) return;
 
     const repo = getEventsRepo();
+    // 第一次載入沿用 30 秒內已成功的 active（上限 200 筆），避免從首頁或列表再查一次。
+    // 重試與開團後刷新（eventAttempt > 0）不沿用，新活動才不會被快取擋到。
+    const reuseActiveIfFresh = eventAttempt === 0;
     Promise.all([
-      repo.loadEventsStatic({ terminalMode: 'none' }).then(() => repo.getSnapshot().active),
+      repo.loadEventsStatic({
+        terminalMode: 'none',
+        ...(reuseActiveIfFresh ? { reuseActiveIfFresh: true } : {}),
+      }).then(() => repo.getSnapshot().active),
       viewer.uid ? loadViewerRegistrations(viewer.uid) : Promise.resolve<RegistrationDoc[]>([]),
     ]).then(
       ([events, registrations]) => {
@@ -802,14 +852,16 @@ function TeamDetailContent({
               </div>
             </div>
             {createEntry.overlays}
-            <EventFormModal
-              open={createEntry.formOpen}
-              mode="create"
-              viewer={viewer}
-              preset={createEntry.preset}
-              onClose={createEntry.closeForm}
-              onSaved={onFormSaved}
-            />
+            {EventForm ? (
+              <EventForm
+                open={createEntry.formOpen}
+                mode="create"
+                viewer={viewer}
+                preset={createEntry.preset}
+                onClose={createEntry.closeForm}
+                onSaved={onFormSaved}
+              />
+            ) : null}
             {imageUpload.overlay}
             {inviteOpen && team ? (
               <TeamInviteQrOverlay
@@ -837,8 +889,8 @@ function TeamDetailContent({
                     }
                   : undefined}
               />
-            ) : teamOverlay === 'edit-basic' ? (
-              <TeamFormModal
+            ) : teamOverlay === 'edit-basic' && TeamForm && team ? (
+              <TeamForm
                 open
                 mode="edit"
                 team={team}

@@ -31,7 +31,10 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('firebase/firestore', () => sdk);
-vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
+vi.mock('@/data/firebase', () => ({
+  getFirebase: async () => ({ db: { __db: true } }),
+  getFirebaseCore: async () => ({ db: { __db: true } }),
+}));
 vi.mock('@/data/callables', () => ({ callFn: state.callFn }));
 vi.mock('@/data/auth', () => ({ getLastKnownAuthUid: () => 'resolved' }));
 vi.mock('@/features/profile/data/viewer', async (importOriginal) => {
