@@ -10,7 +10,8 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 
-import { useLegacyT } from '@/i18n/i18n';
+import { useLegacyT, useT } from '@/i18n/i18n';
+import { Text } from '@/ui/Text';
 import { getFirebase } from '@/data/firebase';
 import { userInbox } from '@/data/paths';
 import { loadTeams } from '@/features/clubs/data/teams-repo';
@@ -76,7 +77,9 @@ async function loadInboxMessages(uid: string): Promise<InboxMessage[]> {
 }
 
 /**
- * 讀取「我的俱樂部申請」（一次 inbox＋俱樂部清單）。null＝讀取中；空陣列＝沒有申請（卡片／圖示不顯示）。
+ * 讀取「我的俱樂部申請」（一次 inbox＋俱樂部清單）。
+ * null＝讀取中：個人頁圖示列先畫鈕並在徽章位置轉圈；本卡嵌入時展開區顯示既有 .reg-loading，
+ * 非嵌入（舊卡片）仍不畫。空陣列＝沒有申請，或讀取失敗（catch 收成 []）：圖示與卡片都不出現。
  * 11-06 改版：從卡片抽出，讓個人頁圖示列在收合時就知道要不要顯示「申請」（讀取次數與原本卡片相同）。
  */
 export function useMyTeamApplications(
@@ -121,6 +124,7 @@ export function LegacyApplicationsCard(
 ): JSX.Element | null {
   const { uid, profile, embedded = false } = props;
   const lt = useLegacyT();
+  const t = useT();
 
   const loaded = useMyTeamApplications(uid, profile, props.items === undefined);
   const items = props.items === undefined ? loaded : props.items;
@@ -141,7 +145,15 @@ export function LegacyApplicationsCard(
     [toggleOpen],
   );
 
-  if (items === null) return null;
+  if (items === null) {
+    // 非嵌入的舊卡片維持讀完才出現。嵌入圖示列時，讀取中展開區用跟報名清單同一顆圈，避免空白。
+    if (!embedded) return null;
+    return (
+      <div class="profile-quick-body" id="profile-applications-card">
+        <div class="reg-loading" role="status"><Text>{t('profile.loading')}</Text></div>
+      </div>
+    );
+  }
   if (items.length === 0) return null;
 
   return (

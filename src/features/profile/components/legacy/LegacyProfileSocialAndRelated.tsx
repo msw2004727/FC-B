@@ -5,6 +5,7 @@ import { useLocation } from 'preact-iso';
 
 import { openHttpAnchor } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
+import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
 import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
 import { runEventLifecycleAction } from '@/features/events/components/legacy/event-lifecycle-action';
@@ -39,7 +40,6 @@ import {
 } from '../../data/related-activities';
 import {
   Failure,
-  Loading,
   objectValue,
   PLATFORMS,
   socialHref,
@@ -368,6 +368,7 @@ export function LegacyRelatedActivities({
 }): JSX.Element {
   const location = useLocation();
   const viewer = useViewer();
+  const t = useT();
   const operateCtx = useMemo(() => operateContextFromViewer(viewer), [viewer]);
   const { state, retry, reload } = data;
 
@@ -557,7 +558,9 @@ export function LegacyRelatedActivities({
           class="profile-collapse-content profile-related-activity-list"
           id="profile-registered-activities-list"
         >
-          {state.status === 'loading' && <Loading />}
+          {state.status === 'loading' && (
+            <div class="reg-loading" role="status"><Text>{t('profile.loading')}</Text></div>
+          )}
           {state.status === 'error' && <Failure retry={retry} />}
           {state.status === 'ready' && (
             registered.length === 0 ? (
@@ -588,7 +591,9 @@ export function LegacyRelatedActivities({
           class="profile-collapse-content profile-related-activity-list"
           id="profile-hosted-activities-list"
         >
-          {state.status === 'loading' && <Loading />}
+          {state.status === 'loading' && (
+            <div class="reg-loading" role="status"><Text>{t('profile.loading')}</Text></div>
+          )}
           {state.status === 'error' && <Failure retry={retry} />}
           {state.status === 'ready' && (
             hosted.length === 0 ? (

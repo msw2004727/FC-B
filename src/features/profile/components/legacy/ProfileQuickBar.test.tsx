@@ -126,4 +126,32 @@ describe('ProfileQuickBar', () => {
     fireEvent.click(btn('o'));
     expect(document.querySelector('#profile-quick-panel p')?.textContent).toBe('隱藏中');
   });
+
+  it('loading 時有 .profile-quick-spin、不畫筆數徽章、按鈕 aria-busy', () => {
+    const { rerender } = render(
+      <ProfileQuickBar
+        items={items({ loading: true, badge: 8, ariaLabel: '我的報名，讀取中' })}
+        groupLabel="個人設定"
+      />,
+    );
+    const reg = btn('a');
+    expect(reg.getAttribute('aria-busy')).toBe('true');
+    expect(reg.getAttribute('aria-label')).toBe('我的報名，讀取中');
+    expect(reg.querySelector('.profile-quick-spin')).not.toBeNull();
+    expect(reg.querySelector('.profile-quick-badge--loading')).not.toBeNull();
+    expect(reg.textContent).not.toContain('8');
+    expect(reg.querySelector('.profile-quick-badge:not(.profile-quick-badge--loading)')).toBeNull();
+    expect(btn('b').hasAttribute('aria-busy')).toBe(false);
+    expect(btn('b').querySelector('.profile-quick-spin')).toBeNull();
+
+    rerender(
+      <ProfileQuickBar
+        items={items({ loading: false, badge: 8, ariaLabel: '我的報名，8 筆' })}
+        groupLabel="個人設定"
+      />,
+    );
+    expect(btn('a').hasAttribute('aria-busy')).toBe(false);
+    expect(btn('a').querySelector('.profile-quick-spin')).toBeNull();
+    expect(btn('a').querySelector('.profile-quick-badge')?.textContent).toBe('8');
+  });
 });

@@ -24,6 +24,8 @@ export interface QuickItem {
   badge?: number | null;
   /** 狀態綠點（LINE 推播已綁定）。 */
   dot?: boolean;
+  /** 筆數還在讀取：徽章位置畫小旋轉圈（讀完才換成筆數或不畫）。 */
+  loading?: boolean;
   /** active：目前是否為展開中的區塊（切走後仍掛載但隱藏時為 false）。 */
   render: (active: boolean) => ComponentChildren;
 }
@@ -148,17 +150,22 @@ export function ProfileQuickBar({
                 aria-expanded={expanded ? 'true' : 'false'}
                 aria-controls={QUICK_PANEL_ID}
                 aria-label={item.ariaLabel}
+                aria-busy={item.loading ? 'true' : undefined}
                 onClick={() => toggle(item.key)}
               >
                 <span class="profile-quick-ic">
                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     {ICONS[item.icon]}
                   </svg>
-                  {badge > 0 && (
+                  {item.loading ? (
+                    <span class="profile-quick-badge profile-quick-badge--loading" aria-hidden="true">
+                      <span class="profile-quick-spin" />
+                    </span>
+                  ) : badge > 0 ? (
                     <span class="profile-quick-badge" aria-hidden="true">
                       {badge > 99 ? '99+' : String(badge)}
                     </span>
-                  )}
+                  ) : null}
                   {item.dot && <span class="profile-quick-dot" aria-hidden="true" />}
                 </span>
                 <span class="profile-quick-lb" aria-hidden="true">{item.label}</span>
