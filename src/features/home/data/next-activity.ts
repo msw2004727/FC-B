@@ -20,7 +20,7 @@ import type { DocumentData, Firestore, Query } from 'firebase/firestore';
 import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath, filterSubcollectionDocs } from '@/data/paths';
-import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
+import type { EventDoc, RegistrationDoc, ViewerContext } from '@/features/events/data/types';
 
 // ── 常數（與 A 對齊） ─────────────────────────────────
 
@@ -76,6 +76,12 @@ export interface DateRange {
 export function parseEventDateRange(value: unknown): DateRange | null {
   return parseEventRangeMs(value);
 }
+
+// 放在這行之後，避免把上面 parseEventDateRange 的行號往下推（台北時間守門鎖第 77 行）。
+import { getLastKnownAuthUid } from '@/data/auth';
+import { on } from '@/core/events';
+import { readEventsSnapshot } from '@/features/events/data/events-snapshot-cache';
+import { isEventVisibleToUser } from '@/features/events/data/visibility';
 
 export function eventStartMs(event: EventDoc | null | undefined): number {
   if (!event) return 0;
@@ -262,6 +268,15 @@ export interface NextActivityInputs {
   events: EventDoc[];
 }
 
+/** 查詢是否完整成功。沒全部成功就不寫、也不清本機快照。 */
+interface NextActivityLoadDetail extends NextActivityInputs {
+  registrationsFetched: boolean;
+  managedFetched: boolean;
+  missingFetched: boolean;
+  /** 至少有一場用列表／repo 裡的文件頂掉補抓。 */
+  usedReusedStandIn: boolean;
+}
+
 function mapDoc(docSnap: { id: string; data: () => DocumentData }): EventDoc {
   return { ...(docSnap.data() as Record<string, unknown>), _docId: docSnap.id } as EventDoc;
 }
@@ -316,7 +331,7 @@ async function fetchMissingEvents(
   db: Firestore,
   missingEventIds: readonly string[],
   logger: NextActivityLogger,
-): Promise<EventDoc[]> {
+): Promise<{ events: EventDoc[]; complete: boolean }> {
   const { collection, documentId, getDocs, query, where } = sdk;
   interface BatchResult {
     /** 查詢（含建查詢）是否成功；失敗時 events 一定是空的。 */
@@ -367,7 +382,8 @@ async function fetchMissingEvents(
       const publicId = String(event.id ?? '').trim();
       return !resolvedDocIds.has(publicId) && !unconfirmedIds.has(publicId);
     });
-  return [...byPublicId, ...byDocId];
+  const complete = [...byDocIdResults, ...byPublicIdResults].every((result) => result.ok);
+  return { events: [...byPublicId, ...byDocId], complete };
 }
 
 /**
@@ -382,8 +398,27 @@ export async function loadNextActivityInputs(
   deps: NextActivityDeps,
   uid: string,
 ): Promise<NextActivityInputs> {
+  const nowMs = deps.now?.() ?? Date.now();
+  const loaded = await loadNextActivityInputsDetailed(deps, uid, nowMs);
+  return { registrations: loaded.registrations, events: loaded.events };
+}
+
+async function loadNextActivityInputsDetailed(
+  deps: NextActivityDeps,
+  uid: string,
+  nowMs: number,
+): Promise<NextActivityLoadDetail> {
   const safeUid = String(uid ?? '').trim();
-  if (!safeUid) return { registrations: [], events: [] };
+  if (!safeUid) {
+    return {
+      registrations: [],
+      events: [],
+      registrationsFetched: false,
+      managedFetched: false,
+      missingFetched: false,
+      usedReusedStandIn: false,
+    };
+  }
 
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger: NextActivityLogger = deps.logger ?? console;
@@ -391,6 +426,7 @@ export async function loadNextActivityInputs(
   const { collection, collectionGroup, documentId, getDocs, limit, orderBy, query, where } = sdk;
 
   // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
+  let registrationsFetched = false;
   const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
     const registrations: RegistrationDoc[] = [];
     try {
@@ -402,6 +438,7 @@ export async function loadNextActivityInputs(
           limit(REGISTRATION_QUERY_LIMIT),
         ),
       );
+      registrationsFetched = true;
       if (regSnap.docs.length >= REGISTRATION_QUERY_LIMIT) {
         logger.warn(
           '[NextActivity] registration query hit the limit; later registrations may be missing:',
@@ -457,37 +494,79 @@ export async function loadNextActivityInputs(
     )),
   ]);
 
-  const [registrations, managedSnaps] = await Promise.all([registrationsPromise, managedPromise]);
+  const reusedPromise = loadReusedEvents(safeUid, nowMs);
+  const [registrations, managedSnaps, reusedEvents] = await Promise.all([
+    registrationsPromise,
+    managedPromise,
+    reusedPromise,
+  ]);
 
   const managedEvents: EventDoc[] = [];
-  managedSnaps.forEach((snap) => {
-    snap?.docs.forEach((d) => managedEvents.push(mapDoc(d)));
-  });
+  let managedFetched = true;
+  for (const snap of managedSnaps) {
+    if (!snap) {
+      managedFetched = false;
+      continue;
+    }
+    snap.docs.forEach((d) => managedEvents.push(mapDoc(d)));
+  }
 
-  // 2) 報名指向、但 managed/cache 未涵蓋的活動 → 依 id 一次補抓
+  // 2) 報名指向、但管理查詢沒涵蓋的活動。已在首頁／列表載入且仍是即將到來的，不再補抓。
   const haveIds = new Set<string>();
-  managedEvents.forEach((event) => {
+  const remember = (event: EventDoc): void => {
     [event.id, event._docId, event.docId].forEach((raw) => {
       const v = String(raw ?? '').trim();
       if (v) haveIds.add(v);
     });
-  });
+  };
+  managedEvents.forEach(remember);
+
+  const reusedById = new Map<string, EventDoc>();
+  for (const event of reusedEvents) {
+    if (!isUpcomingEvent(event, nowMs)) continue;
+    [event.id, event._docId, event.docId].forEach((raw) => {
+      const key = String(raw ?? '').trim();
+      if (key && !reusedById.has(key)) reusedById.set(key, event);
+    });
+  }
 
   const missingEventIds: string[] = [];
   const seenMissing = new Set<string>();
+  const fromReuse: EventDoc[] = [];
+  let usedReusedStandIn = false;
   registrations.forEach((r) => {
     const id = String(r.eventId ?? '').trim();
     if (!id || haveIds.has(id) || seenMissing.has(id)) return;
+    const standIn = reusedById.get(id);
+    if (standIn) {
+      usedReusedStandIn = true;
+      fromReuse.push(standIn);
+      remember(standIn);
+      seenMissing.add(id);
+      return;
+    }
     seenMissing.add(id);
     missingEventIds.push(id);
   });
 
-  const missingEvents = missingEventIds.length > 0
-    ? await fetchMissingEvents(sdk, db, missingEventIds, logger)
-    : [];
+  let missingFetched = true;
+  let missingEvents: EventDoc[] = [];
+  if (missingEventIds.length > 0) {
+    const fetched = await fetchMissingEvents(sdk, db, missingEventIds, logger);
+    missingEvents = fetched.events;
+    missingFetched = fetched.complete;
+  }
 
-  const mergedEvents = mergeEventsByIdentity([...managedEvents, ...missingEvents]);
-  return { registrations, events: mergedEvents };
+  // 伺服器文件放後面，同一場的欄位以這次查到的為準。
+  const mergedEvents = mergeEventsByIdentity([...fromReuse, ...managedEvents, ...missingEvents]);
+  return {
+    registrations,
+    events: mergedEvents,
+    registrationsFetched,
+    managedFetched,
+    missingFetched,
+    usedReusedStandIn,
+  };
 }
 
 export async function resolveNextActivity(
@@ -497,6 +576,346 @@ export async function resolveNextActivity(
   const safeUid = String(uid ?? '').trim();
   if (!safeUid) return null;
   const nowMs = deps.now?.() ?? Date.now();
-  const inputs = await loadNextActivityInputs(deps, safeUid);
-  return pickNextActivityCandidate(inputs.registrations, inputs.events, safeUid, nowMs);
+  const knownAtStart = getLastKnownAuthUid();
+  if (knownAtStart === safeUid) noteAuth(safeUid);
+  const gen = generation;
+  const loaded = await loadNextActivityInputsDetailed(deps, safeUid, nowMs);
+  const result = pickNextActivityCandidate(loaded.registrations, loaded.events, safeUid, nowMs);
+  const serverPicture = loaded.registrationsFetched && loaded.managedFetched && loaded.missingFetched;
+  if (
+    getLastKnownAuthUid() === safeUid
+    && gen === generation
+    && boundUid === safeUid
+    && serverPicture
+  ) {
+    if (result && isDisplayableNextActivity(result, safeUid, nowMs)) {
+      storeNextActivity(safeUid, result, nowMs);
+    } else if (!loaded.usedReusedStandIn) {
+      forgetNextActivity(safeUid);
+    }
+  }
+  return result;
+}
+
+// ── 沿用已載入活動、本機快照 ─────────────────────────
+
+/** 與活動列表本機快照同一段期限。 */
+export const NEXT_ACTIVITY_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
+export const NEXT_ACTIVITY_SNAPSHOT_FORMAT = 1;
+export const NEXT_ACTIVITY_SNAPSHOT_KEY_PREFIX = 'fcb:next-activity:v1:';
+const NEXT_ACTIVITY_FUTURE_SKEW_MS = 60_000;
+const NEXT_ACTIVITY_SNAPSHOT_MAX_CHARS = 20_000;
+const EMPTY_TEAMS: ReadonlySet<string> = new Set();
+
+export function nextActivitySnapshotKey(uid: string): string {
+  return NEXT_ACTIVITY_SNAPSHOT_KEY_PREFIX + uid;
+}
+
+interface MemorySnapshot {
+  uid: string;
+  savedAt: number;
+  result: NextActivityResult;
+}
+
+interface StoredNextActivity {
+  v: number;
+  uid: string;
+  savedAt: number;
+  event: EventDoc;
+  registration: RegistrationDoc | null;
+  managedRole: string;
+}
+
+let generation = 0;
+let boundUid: string | null = null;
+let memory: MemorySnapshot | null = null;
+let repoModule: Promise<typeof import('@/features/events/data/events-repo')> | null = null;
+let authWatchStarted = false;
+
+function loadEventsRepoModule(): Promise<typeof import('@/features/events/data/events-repo')> {
+  if (!repoModule) {
+    const promise = import('@/features/events/data/events-repo');
+    repoModule = promise;
+    promise.catch(() => {
+      if (repoModule === promise) repoModule = null;
+    });
+  }
+  return repoModule;
+}
+
+/** 首頁／列表已經有的活動文件。失敗當沒有，不擋報名查詢（L-08：載入失敗清掉 inflight）。 */
+async function loadReusedEvents(uid: string, nowMs: number): Promise<EventDoc[]> {
+  const found: EventDoc[] = [];
+  const known = getLastKnownAuthUid();
+  if (known === undefined || known === uid) {
+    try {
+      const cached = readEventsSnapshot(uid, nowMs);
+      if (cached) found.push(...cached);
+    } catch {
+      /* 列表快照壞了就當沒有 */
+    }
+  }
+  try {
+    const { getEventsRepo } = await loadEventsRepoModule();
+    const snap = getEventsRepo().getSnapshot();
+    found.push(...snap.active, ...snap.terminal);
+  } catch {
+    /* repo 載入失敗：這次改走補抓 */
+  }
+  return found;
+}
+
+function text(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > max) return undefined;
+  return trimmed;
+}
+
+function plainTime(value: unknown): string | number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return text(value, 200);
+}
+
+function stringList(value: unknown, maxItems: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (out.length >= maxItems) break;
+    const id = text(item, 200);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** 黑名單只留字串。本人若在名單裡就排最前，避免被長度上限截掉。 */
+function projectBlocked(value: unknown, uid: string): string[] | undefined {
+  const list = stringList(value, 80);
+  if (list.length === 0) return undefined;
+  if (!Array.isArray(value) || !value.includes(uid)) return list;
+  return [uid, ...list.filter((id) => id !== uid)].slice(0, 80);
+}
+
+function projectEvent(event: EventDoc, uid: string): EventDoc | null {
+  const id = text(event.id, 200);
+  const docId = text(event._docId, 200);
+  const legacyDocId = text(event.docId, 200);
+  if (!id && !docId && !legacyDocId) return null;
+  const projected: EventDoc = {};
+  if (id) projected.id = id;
+  if (docId) projected._docId = docId;
+  if (legacyDocId) projected.docId = legacyDocId;
+  const title = text(event.title, 500);
+  if (title) projected.title = title;
+  const date = text(event.date, 200);
+  if (date) projected.date = date;
+  const status = text(event.status, 40);
+  if (status) projected.status = status;
+  const location = text(event.location, 500);
+  if (location) projected.location = location;
+  const image = text(event.image, 2000);
+  if (image) projected.image = image;
+  const startAt = plainTime(event.startAt);
+  if (startAt !== undefined) projected.startAt = startAt;
+  const startTime = plainTime(event.startTime);
+  if (startTime !== undefined) projected.startTime = startTime;
+  const variants = event.imageVariants;
+  const homeNext = variants && text(variants.homeNext, 2000);
+  const cover = variants && text(variants.cover, 2000);
+  if (homeNext || cover) {
+    projected.imageVariants = {
+      ...(homeNext ? { homeNext } : {}),
+      ...(cover ? { cover } : {}),
+    };
+  }
+  const blocked = projectBlocked(event.blockedUids, uid);
+  if (blocked) projected.blockedUids = blocked;
+  for (const field of ['creatorUid', 'ownerUid', 'createdByUid', 'creatorId', 'ownerId', 'organizerUid'] as const) {
+    const value = text(event[field], 200);
+    if (value) projected[field] = value;
+  }
+  const delegates = stringList(event.delegateUids, 40);
+  if (delegates.length > 0) projected.delegateUids = delegates;
+  return projected;
+}
+
+function projectRegistration(value: unknown, managedRole: string): RegistrationDoc | null {
+  const role = text(managedRole, 40) ?? '';
+  if (!value || typeof value !== 'object') return role ? { managedRole: role } : null;
+  const record = value as RegistrationDoc;
+  const out: RegistrationDoc = {};
+  const eventId = text(record.eventId, 200);
+  if (eventId) out.eventId = eventId;
+  const userId = text(record.userId, 200);
+  if (userId) out.userId = userId;
+  const status = text(record.status, 40);
+  if (status) out.status = status;
+  const participantType = text(record.participantType, 40);
+  if (participantType) out.participantType = participantType;
+  const recordRole = text(record.managedRole, 40) ?? (role || undefined);
+  if (recordRole) out.managedRole = recordRole;
+  if (!eventId && !userId && !status && !recordRole) return null;
+  return out;
+}
+
+function viewerFor(uid: string): ViewerContext {
+  return { uid, teamIds: EMPTY_TEAMS, hasPermission: () => false, roleLevel: 0 };
+}
+
+function isDisplayableNextActivity(result: NextActivityResult, uid: string, nowMs: number): boolean {
+  if (!isUpcomingEvent(result.event, nowMs)) return false;
+  const registration = result.registration;
+  if (registration && !isActiveRegistration(registration, uid) && !result.managedRole) return false;
+  const regs = registration ? [registration] : [];
+  return isEventVisibleToUser(result.event, viewerFor(uid), regs);
+}
+
+function removeAllStored(): void {
+  memory = null;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(NEXT_ACTIVITY_SNAPSHOT_KEY_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+function forgetNextActivity(uid: string): void {
+  if (memory?.uid === uid) memory = null;
+  try {
+    localStorage.removeItem(nextActivitySnapshotKey(uid));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 換帳號只留這位的鑰匙。登出由 noteAuth(null) 全部刪除。 */
+function removeExcept(uid: string): void {
+  const keep = nextActivitySnapshotKey(uid);
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(NEXT_ACTIVITY_SNAPSHOT_KEY_PREFIX) && key !== keep) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    /* 忽略 */
+  }
+  if (memory && memory.uid !== uid) memory = null;
+}
+
+function noteAuth(uid: string | null): void {
+  const next = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
+  if (next === null) {
+    generation += 1;
+    boundUid = null;
+    removeAllStored();
+    return;
+  }
+  if (next !== boundUid) generation += 1;
+  boundUid = next;
+  removeExcept(next);
+}
+
+function storeNextActivity(uid: string, result: NextActivityResult, nowMs: number): void {
+  const event = projectEvent(result.event, uid);
+  if (!event) return;
+  const registration = projectRegistration(result.registration, result.managedRole);
+  const managedRole = text(result.managedRole, 40) ?? '';
+  const stored: NextActivityResult = { event, registration, managedRole };
+  if (!isDisplayableNextActivity(stored, uid, nowMs)) return;
+  const payload: StoredNextActivity = {
+    v: NEXT_ACTIVITY_SNAPSHOT_FORMAT,
+    uid,
+    savedAt: nowMs,
+    event,
+    registration,
+    managedRole,
+  };
+  memory = { uid, savedAt: nowMs, result: stored };
+  try {
+    const raw = JSON.stringify(payload);
+    if (raw.length > NEXT_ACTIVITY_SNAPSHOT_MAX_CHARS) {
+      forgetNextActivity(uid);
+      return;
+    }
+    localStorage.setItem(nextActivitySnapshotKey(uid), raw);
+  } catch {
+    forgetNextActivity(uid);
+  }
+}
+
+function ageOk(savedAt: number, nowMs: number): boolean {
+  return nowMs - savedAt <= NEXT_ACTIVITY_SNAPSHOT_MAX_AGE_MS && savedAt <= nowMs + NEXT_ACTIVITY_FUTURE_SKEW_MS;
+}
+
+function readStored(uid: string, nowMs: number): NextActivityResult | null {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(nextActivitySnapshotKey(uid));
+  } catch {
+    return null;
+  }
+  if (!raw || raw.length > NEXT_ACTIVITY_SNAPSHOT_MAX_CHARS) return null;
+  let parsed: Partial<StoredNextActivity> | null = null;
+  try {
+    parsed = JSON.parse(raw) as Partial<StoredNextActivity>;
+  } catch {
+    return null;
+  }
+  if (!parsed || parsed.v !== NEXT_ACTIVITY_SNAPSHOT_FORMAT || parsed.uid !== uid) return null;
+  if (typeof parsed.savedAt !== 'number' || !Number.isFinite(parsed.savedAt) || !ageOk(parsed.savedAt, nowMs)) {
+    return null;
+  }
+  if (!parsed.event || typeof parsed.event !== 'object') return null;
+  const event = projectEvent(parsed.event, uid);
+  if (!event) return null;
+  const managedRole = text(parsed.managedRole, 40) ?? '';
+  const registration = projectRegistration(parsed.registration, managedRole);
+  const result: NextActivityResult = { event, registration, managedRole };
+  if (!isDisplayableNextActivity(result, uid, nowMs)) return null;
+  memory = { uid, savedAt: parsed.savedAt, result };
+  return result;
+}
+
+/** 回訪先畫用的同步讀取。帳號未確認、登出、過期、不可見都回 null。 */
+export function readNextActivitySnapshot(uid: string, nowMs: number = Date.now()): NextActivityResult | null {
+  const safeUid = String(uid ?? '').trim();
+  if (!safeUid || getLastKnownAuthUid() !== safeUid) return null;
+  if (memory?.uid === safeUid && ageOk(memory.savedAt, nowMs) && isDisplayableNextActivity(memory.result, safeUid, nowMs)) {
+    return memory.result;
+  }
+  if (memory?.uid === safeUid) memory = null;
+  const result = readStored(safeUid, nowMs);
+  if (!result) {
+    forgetNextActivity(safeUid);
+    return null;
+  }
+  return result;
+}
+
+function watchNextActivityAuth(): void {
+  if (authWatchStarted) return;
+  authWatchStarted = true;
+  on('auth:changed', ({ uid }) => {
+    noteAuth(uid);
+  });
+}
+
+watchNextActivityAuth();
+
+/** 測試用。 */
+export function _resetNextActivityCacheForTest(): void {
+  generation = 0;
+  boundUid = null;
+  memory = null;
+  removeAllStored();
 }
