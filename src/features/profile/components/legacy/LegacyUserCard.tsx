@@ -236,7 +236,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     return (
       <div class="user-card-full" id="user-card-full">
         <div class="info-card">
-          <div style="font-size:.82rem;color:var(--text-muted);padding:.5rem 0">
+          <div class="reg-loading" role="status" style="white-space:nowrap">
             {lt('載入中...', '載入中...')}
           </div>
         </div>
@@ -624,7 +624,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
               </button>
             </div>
           ) : (
-            <div class="pp-loading">{lt('載入中...', '載入中...')}</div>
+            <div class="pp-loading reg-loading" role="status" style="white-space:nowrap">{lt('載入中...', '載入中...')}</div>
           )}
         </div>
       </div>

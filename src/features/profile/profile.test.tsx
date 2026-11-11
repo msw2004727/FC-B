@@ -374,10 +374,37 @@ describe('我的個人頁（A 版結構）', () => {
     expectNoWrites();
   });
 
-  it('顯示載入狀態', () => {
-    vi.mocked(loadUserProfile).mockReturnValue(new Promise(() => {}));
+  it('顯示載入狀態', async () => {
+    // 本檔字典只有 profile.*。PageSpinner 的圈下文案在 common.*，這裡補上既有兩句，不斷言新文案。
+    _setDictLoaderForTest(async () => ({
+      ...flatten(zh),
+      'common.loading': zh.loading,
+      'common.loadingHint': '不要催，已經在努力加載中！',
+    }));
+    await setLocale('zh-TW');
+    let resolveLoad: (value: UserProfile | null) => void = () => {};
+    vi.mocked(loadUserProfile).mockReturnValue(new Promise((resolve) => {
+      resolveLoad = resolve;
+    }));
     render(<ProfilePage />);
-    expect(screen.getByRole('status').textContent).toContain(zh.loading);
+    const status = screen.getByRole('status');
+    expect(status.querySelector('.ui-page-spinner__ring')).toBeTruthy();
+    expect(status.getAttribute('aria-label')).toContain(zh.loading);
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(document.getElementById('profile-content')).toBeNull();
+
+    resolveLoad(profile());
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+  });
+
+  it('載入失敗沿用既有失敗畫面，不再轉圈', async () => {
+    vi.mocked(loadUserProfile).mockRejectedValue(new Error('boom'));
+    render(<ProfilePage />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(zh.loadError)).toBeTruthy();
+    expect(screen.getByRole('button', { name: zh.retry })).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
   });
 
   it('輸出 A 主要 id/class、等級計算、UID 權限控制與出席統計', async () => {
@@ -1236,8 +1263,10 @@ describe('公開名片', () => {
   it('載入時顯示狀態', () => {
     vi.mocked(loadUserProfile).mockReturnValue(new Promise(() => {}));
     render(<PublicProfilePage uid="U-public" />);
-    // 測試同步更新：照 A（M-133）改為 LegacyUserCard 的載入文字。
-    expect(screen.getByText('載入中...')).toBeTruthy();
+    // 測試同步更新：照 A（M-133）改為 LegacyUserCard 的載入文字；圈用既有 .reg-loading。
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.textContent).toContain('載入中...');
   });
 
   // 測試同步更新：照 A（M-133）LegacyUserCard 未提供重試按鈕，刪除「錯誤後可重試」測試。
@@ -1281,6 +1310,8 @@ describe('本機 QR', () => {
   it('產生中顯示狀態', () => {
     vi.mocked(renderQrToCanvas).mockReturnValue(new Promise(() => {}));
     render(<QrPage />);
+    const box = document.getElementById('page-qr-canvas');
+    expect(box?.querySelector('.line-avatar-spinner')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(zh.qrLoading);
   });
 
@@ -1292,6 +1323,7 @@ describe('本機 QR', () => {
     render(<QrPage />);
 
     expect(await screen.findByRole('img', { name: zh.qr })).toBeTruthy();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
     expect(buildIdentityQrPayload).toHaveBeenCalledWith('U-me');
     expect(renderQrToCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 'U-me');
     expect(loadUserProfile).not.toHaveBeenCalled();
@@ -1308,6 +1340,7 @@ describe('本機 QR', () => {
       .mockResolvedValueOnce(undefined);
     render(<QrPage />);
     expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
     expect(document.querySelector('img')).toBeNull();
     await clickButton(zh.retry);
     expect(await screen.findByRole('img', { name: zh.qr })).toBeTruthy();

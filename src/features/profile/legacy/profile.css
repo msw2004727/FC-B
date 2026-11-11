@@ -347,10 +347,14 @@ a.social-btn { text-decoration: none; }
 /* ─── QR Code Page ─── */
 .center-content { display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
 .qr-placeholder { text-align: center; }
-.qr-box { width: 90vw; max-width: 400px; aspect-ratio: 1; background: #fff; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: #333; font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; margin: 0 auto 1rem; border: 3px solid var(--accent); box-sizing: border-box; }
+.qr-box { position: relative; width: 90vw; max-width: 400px; aspect-ratio: 1; background: #fff; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: #333; font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; margin: 0 auto 1rem; border: 3px solid var(--accent); box-sizing: border-box; }
+.qr-box-canvas { position: absolute; inset: 0; }
 .qr-box canvas, .qr-box img { width: 100% !important; height: 100% !important; }
+/* 方塊是白底。頭頂像的 .line-avatar-spinner 是白圈，這裡改成與 .reg-loading 相同的框色才看得到。方塊尺寸不變。 */
+.qr-box-mark { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; white-space: nowrap; }
+.qr-box .line-avatar-spinner { border-color: var(--border); border-top-color: var(--primary); flex: 0 0 auto; }
 .uid-text { font-family: monospace; color: var(--text-secondary); font-size: .85rem; margin-bottom: .3rem; }
-.qr-hint { font-size: .78rem; color: var(--text-muted); }
+.qr-hint { font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
 
 /* ─── (Paper Doll removed) ─── */
 
@@ -1284,4 +1288,5 @@ a.social-btn { text-decoration: none; }
   .profile-quick-panel > div { animation: none; }
   .profile-quick-btn, .profile-quick-lb::after { transition: none; }
   .profile-quick-spin { animation: none; border-top-color: var(--text-muted); }
+  .qr-box .line-avatar-spinner { animation: none; }
 }
