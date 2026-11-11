@@ -3,9 +3,15 @@
 // 「SPORTHUB_GET_VERSION」，等不到 SPORTHUB_VERSION 回覆就一直停在「更新尚未完成，點我重試載入最新版」。
 // 這裡回一個「比舊站最後版本新」的版號，舊頁面就會判定可以重載，重載後走新站。
 // 版號格式必須符合舊站的 /^0\.\d{8}[a-z]*$/，且字串比較大於舊站 V（0.20261030a）；固定值即可，不隨新站版號變動。
+// 只為舊站 A 的頁面一次性相容：新站頁面不使用這組握手（新站不得依賴或沿用 SPORTHUB_* 訊息）。
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'SPORTHUB_GET_VERSION') return;
   const port = event.ports && event.ports[0];
-  if (port) port.postMessage({ type: 'SPORTHUB_VERSION', version: '0.20261111z' });
+  if (!port) return;
+  try {
+    port.postMessage({ type: 'SPORTHUB_VERSION', version: '0.20261111z' });
+  } catch {
+    /* 舊頁面的 port 已關閉：略過 */
+  }
 });
