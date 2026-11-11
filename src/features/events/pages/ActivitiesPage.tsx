@@ -3,6 +3,7 @@ import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import { useLocation } from 'preact-iso';
 import type { ComponentType } from 'preact';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
@@ -52,6 +53,37 @@ import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
 import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
+
+/** 表單 chunk 還沒到：沿用建立活動彈窗殼與列表的 `.reg-loading`，不另做樣式。 */
+function EventFormLoadingShell(props: { onClose: () => void }): JSX.Element {
+  return createPortal(
+    <div class="legacy-ui create-event-modal-open">
+      <div id="modal-overlay" class="modal-overlay open" />
+      <div
+        class="modal create-event-modal-v2-shell ce-v2-enabled open"
+        id="create-event-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-busy="true"
+        aria-labelledby="ce-form-loading-title"
+        data-no-backdrop-close="1"
+      >
+        <div class="modal-header">
+          <h3 id="ce-form-loading-title" style="white-space:nowrap">
+            {lt('新增活動', '新增活動')}
+          </h3>
+          <button type="button" class="modal-close" onClick={props.onClose}>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="reg-loading" role="status" data-i18n="活動資料載入中..." style="white-space:nowrap">
+            {lt('活動資料載入中...', '活動資料載入中...')}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 // M-071：月曆載入中骨架（同 A pages/activity.html #activity-calendar 內容）。
 function CalendarSkeleton(): JSX.Element {
@@ -294,6 +326,8 @@ export default function ActivitiesPage(): JSX.Element {
   }, [createEntry.canCreate]);
 
   function handleOpenCreateEvent(): void {
+    // chunk 還沒到時再點會重開類型選擇。只擋這次等待，表單掛上後恢復原行為。
+    if (formOpen && !FormModal) return;
     loadEventFormModal().catch(() => undefined);
     createEntry.onClick();
   }
@@ -1102,6 +1136,7 @@ export default function ActivitiesPage(): JSX.Element {
         </div>
 
         {createEntry.overlays}
+        {formOpen && !FormModal ? <EventFormLoadingShell onClose={closeForm} /> : null}
         {FormModal && (
           <FormModal
             open={createEntry.formOpen}
