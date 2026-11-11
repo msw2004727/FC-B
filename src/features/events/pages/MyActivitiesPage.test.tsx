@@ -598,6 +598,79 @@ describe('MyActivitiesPage', () => {
     });
   });
 
+  it('初次空白顯示圈與三條骨架，完成後換成活動，失敗沿用錯誤畫面，更多鈕仍寫讀取中', async () => {
+    mockViewer = coachViewer();
+    const pending: Array<(value: string[]) => void> = [];
+    ensureTerminalMock.mockReset();
+    ensureTerminalMock.mockImplementation(
+      () => new Promise<string[]>((resolve) => { pending.push(resolve); }),
+    );
+
+    const { container } = render(<MyActivitiesPage />);
+    const status = container.querySelector('#my-activity-list .reg-loading');
+    expect(status).toBeTruthy();
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.hasAttribute('aria-busy')).toBe(false);
+    expect(status?.textContent).toBe('活動資料載入中...');
+    expect(container.querySelector('#my-activity-list [aria-busy="true"]')).toBeTruthy();
+    expect(container.querySelectorAll('#my-activity-list .reg-loading-skeleton-row')).toHaveLength(3);
+    expect(screen.queryByText('此分類沒有活動')).toBeNull();
+    expect(screen.queryByText('無法載入活動，請重試。')).toBeNull();
+    expect(screen.queryByRole('button', { name: '讀取中...' })).toBeNull();
+
+    mockActiveEvents = [{
+      id: 'ev-loaded',
+      title: '載入完成的活動',
+      status: 'open',
+      creatorUid: 'u-coach',
+      date: '2026/05/10 14:00~16:00',
+    }];
+    await act(async () => {
+      pending.forEach((resolve) => resolve(['events']));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('載入完成的活動')).toBeTruthy();
+    });
+    expect(container.querySelector('.reg-loading')).toBeNull();
+    expect(screen.queryByText('此分類沒有活動')).toBeNull();
+    expect(screen.getByRole('button', { name: '查看更多' })).toBeTruthy();
+
+    const morePending: Array<(count: number) => void> = [];
+    loadMoreMock.mockImplementation(
+      () => new Promise<number>((resolve) => { morePending.push(resolve); }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '查看更多' }));
+    expect(screen.getByRole('button', { name: '讀取中...' })).toBeTruthy();
+    expect(container.querySelector('#my-activity-list .reg-loading')).toBeNull();
+    await act(async () => {
+      morePending.forEach((resolve) => resolve(1));
+    });
+    loadMoreMock.mockImplementation(async () => 0);
+
+    cleanup();
+    mockActiveEvents = [];
+    mockTerminalEvents = [];
+    ensureTerminalMock.mockReset();
+    ensureTerminalMock.mockRejectedValue(new Error('fail'));
+    const failed = render(<MyActivitiesPage />);
+    await waitFor(() => {
+      expect(screen.getByText('無法載入活動，請重試。')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
+    expect(failed.container.querySelector('.reg-loading')).toBeNull();
+    expect(screen.queryByText('此分類沒有活動')).toBeNull();
+
+    cleanup();
+    ensureTerminalMock.mockReset();
+    ensureTerminalMock.mockResolvedValue(['events']);
+    const empty = render(<MyActivitiesPage />);
+    await waitFor(() => {
+      expect(screen.getByText('此分類沒有活動')).toBeTruthy();
+    });
+    expect(empty.container.querySelector('.reg-loading')).toBeNull();
+    expect(screen.queryByText('無法載入活動，請重試。')).toBeNull();
+  });
+
   describe('T-075a swipe integration (real useSwipeTabs)', () => {
     beforeEach(() => {
       mockViewer = coachViewer();

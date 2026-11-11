@@ -1,3 +1,4 @@
+import '@/styles/legacy/reg-loading.css';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { t, useLegacyT } from '@/i18n/i18n';
@@ -80,6 +81,19 @@ function reviewRibbon(msg: InboxMessage): 'pending' | 'reviewed' | null {
 
 const EMPTY_MESSAGES: InboxMessage[] = [];
 const EMPTY_THREADS: PmThread[] = [];
+
+/** 名單還沒到：圈＋兩條骨架。busy 放外層列表，不跟 role="status" 疊在同一節點。 */
+function InboxListLoading(props: { label: string }): JSX.Element {
+  return (
+    <>
+      <div class="reg-loading" role="status" style="white-space:nowrap">{props.label}</div>
+      <div class="reg-loading-skeleton" aria-hidden="true">
+        <div class="reg-loading-skeleton-row" />
+        <div class="reg-loading-skeleton-row" />
+      </div>
+    </>
+  );
+}
 
 /** 共用訂閱狀態 → 畫面狀態（尚未啟動視同載入中）。 */
 function toViewStatus(status: string): 'loading' | 'ready' | 'error' {
@@ -802,7 +816,17 @@ export default function InboxPage(): JSX.Element {
           class={`card-list${isPmTab ? ' pm-thread-list' : ''}`}
           id="message-list"
           role={isPmTab ? 'list' : undefined}
+          aria-busy={
+            (isPmTab
+              ? threadsStatus === 'loading' && threads.length === 0
+              : inboxStatus === 'loading' && messages.length === 0)
+              ? true
+              : undefined
+          }
         >
+          {isPmTab && threadsStatus === 'loading' && threads.length === 0 && (
+            <InboxListLoading label={lt('common.loading', '載入中...')} />
+          )}
           {isPmTab
             ? sortedThreads.map((thread) => {
                 const conversationId = String(
@@ -871,6 +895,9 @@ export default function InboxPage(): JSX.Element {
             <div class="pm-empty">{lt('目前沒有私訊對話', '目前沒有私訊對話')}</div>
           )}
 
+          {!isPmTab && inboxStatus === 'loading' && messages.length === 0 && (
+            <InboxListLoading label={lt('common.loading', '載入中...')} />
+          )}
           {!isPmTab &&
             visibleMessages.map((msg) => {
               const unread = isUnread(msg, uid);

@@ -568,7 +568,18 @@ export default function MyActivitiesPage(): JSX.Element {
 
         {/* stats moved to modal: _showActivityStatsModal */}
         <SwipeableActivityTabs activeTab={activeTab} onTabChange={setActiveTab}>
-          {loading && events.length === 0 ? null : error && events.length === 0 ? (
+          {loading && events.length === 0 ? (
+            <div aria-busy="true">
+              <div class="reg-loading" role="status" data-i18n="活動資料載入中..." style="white-space:nowrap">
+                {lt('活動資料載入中...', '活動資料載入中...')}
+              </div>
+              <div class="reg-loading-skeleton" aria-hidden="true">
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+              </div>
+            </div>
+          ) : error && events.length === 0 ? (
             <div
               role="alert"
               style="padding:1rem;font-size:.82rem;color:var(--text-muted);text-align:center"
