@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { pushOverlay } from '@/core/overlay-back';
-import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import {
   canOperateEventSite,
@@ -29,7 +28,6 @@ import {
 } from './data/attendance';
 import type { QrScanner, ScannerFailure } from './scanner';
 import { fillText, useCheckinText, type CheckinTextKey } from './useCheckinText';
-import '@/styles/legacy/reg-loading.css';
 
 interface Popup {
   tone: 'success' | 'warning' | 'error';
@@ -188,7 +186,6 @@ export function buildScanView(
 
 export function ScanSession({ entry, context, mode }: SessionProps) {
   const t = useCheckinText();
-  const tCommon = useT();
   const permitted = !!context.uid && canOperateEventSite(context, entry.event);
   const video = useRef<HTMLVideoElement>(null);
   const scanner = useRef<QrScanner | null>(null);
@@ -865,9 +862,6 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
       )}
 
       <div class="scan-results" id="scan-results" aria-busy={busy}>
-        {busy ? (
-          <div class="reg-loading" role="status" style="white-space:nowrap">{tCommon('common.loading')}</div>
-        ) : null}
         {view.results.map(({ record, name }) => (
           <div
             key={record._docId}

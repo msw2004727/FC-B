@@ -1,7 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { setLocale } from '@/i18n/i18n';
 import type { OperateContext } from '@/features/events/data/operate-permissions';
 import type { EventDoc } from '@/features/events/data/types';
 import type {
@@ -819,54 +818,10 @@ describe('ScanSession', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
       '無法載入最新資料，請重試。',
     ));
-    expect(document.querySelector('.reg-loading')).toBeNull();
     await startCamera();
     await scan();
     expect(element('#scan-result-title').textContent).toBe('Member 簽到成功');
     expect(mocks.toast).not.toHaveBeenCalledWith('寫入失敗：請確認登入狀態與網路');
-  });
-
-  it('查人時結果區有載入圈與「載入中…」，查完換成結果', async () => {
-    await setLocale('zh-TW');
-    let releaseUser!: (user: { uid: string; name: string } | null) => void;
-    mocks.user.mockImplementation(() => new Promise((resolve) => {
-      releaseUser = resolve;
-    }));
-    renderSession();
-    await ready();
-    expect(document.querySelector('.reg-loading')).toBeNull();
-    await startCamera();
-    const options = mocks.options;
-    if (!options) throw new Error('掃描器尚未啟動');
-    let pending!: Promise<unknown>;
-    act(() => {
-      pending = Promise.resolve(options.onScan('member'));
-    });
-    const status = screen.getByRole('status');
-    expect(status.classList.contains('reg-loading')).toBe(true);
-    expect(status.textContent).toContain('載入中…');
-    expect(status.getAttribute('aria-busy')).toBeNull();
-    expect(element('#scan-results').getAttribute('aria-busy')).toBe('true');
-    expect(status.parentElement).toBe(element('#scan-results'));
-    releaseUser({ uid: 'member', name: 'Member' });
-    await act(async () => {
-      await pending;
-    });
-    await waitFor(() => expect(element('#scan-result-title').textContent).toBe('Member 簽到成功'));
-    expect(element('#scan-results').querySelector('.reg-loading')).toBeNull();
-    expect(element('#scan-results').getAttribute('aria-busy')).toBe('false');
-    expect(element('#scan-results').textContent).toContain('Member 簽到成功');
-  });
-
-  it('查人失敗沿用既有錯誤提示，載入圈收掉', async () => {
-    mocks.user.mockRejectedValueOnce(new Error('offline'));
-    renderSession();
-    await ready();
-    await startCamera();
-    await scan('member');
-    expect(mocks.toast).toHaveBeenCalledWith('無法載入最新資料，請重試。');
-    expect(element('#scan-results').querySelector('.reg-loading')).toBeNull();
-    expect(element('#scan-results').getAttribute('aria-busy')).toBe('false');
   });
 
   // 測試同步更新：照 A（M-108／R-STAT）：A `_processAttendance` 的 userRegsForCheck 以 userId 或 userName 比對 confirmed 報名，
