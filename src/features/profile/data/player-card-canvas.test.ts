@@ -86,6 +86,7 @@ function makeFakeCtx(opts: { taint?: boolean } = {}) {
     },
     moveTo: add,
     lineTo: add,
+    bezierCurveTo: vi.fn(),
     arcTo: (x1: number, y1: number, x2: number, y2: number) => {
       add(x1, y1);
       add(x2, y2);
@@ -355,7 +356,7 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     await expect(ensurePlayerCardFonts(undefined)).resolves.toBeUndefined();
   });
 
-  it('P2-1：名字等於 UID（身分解析退回 UID）時 PNG 不印出 UID，首字改 ?', () => {
+  it('P2-1：名字等於 UID（身分解析退回 UID）時 PNG 不印出 UID，頭像改畫人形剪影（不印 ?）', () => {
     const fake = makeFakeCtx();
     drawPlayerCard(fake.ctx as unknown as CanvasRenderingContext2D, model(['t1'], ' U-secret-uid '), 'light', labels, {
       avatar: null,
@@ -363,7 +364,10 @@ describe('T-092 球員卡 Canvas 產圖', () => {
     });
     expect(fake.texts.join('|')).not.toContain('U-secret-uid');
     expect(fake.texts).toContain('-');
-    expect(fake.texts).toContain('?');
+    expect(fake.texts).not.toContain('?');
+    // 人形剪影：先 clip 成頭像圓，再畫頭與肩膀（肩膀貼邊放大、往下多畫，圓底邊不留縫隙）。
+    expect(fake.ctx.clip).toHaveBeenCalled();
+    expect(fake.ctx.bezierCurveTo).toHaveBeenCalled();
   });
 
   it('沒有頭像時畫姓名首字（與畫面 LegacyAvatar 一致），不貼頭像圖', () => {

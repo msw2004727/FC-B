@@ -278,6 +278,13 @@ function drawDefaultAvatar(ctx: Ctx, initial: string, p: PlayerCardPalette): voi
   ctx.arc(cx, cy, photo, 0, Math.PI * 2);
   ctx.fillStyle = p.avatarFill;
   ctx.fill();
+  if (initial === '?') {
+    // 沒有名字也沒有頭像：畫人形剪影（與畫面 GuestAvatarIcon 同形：頭＋肩膀），不畫問號。
+    ctx.clip();
+    drawPersonSilhouette(ctx, cx, cy, photo, p.avatarInitial);
+    ctx.restore();
+    return;
+  }
   ctx.font = bodyFont(36, 500);
   ctx.fillStyle = p.avatarInitial;
   ctx.textAlign = 'center';
@@ -285,6 +292,26 @@ function drawDefaultAvatar(ctx: Ctx, initial: string, p: PlayerCardPalette): voi
   ctx.fillText(initial, cx, cy + 1);
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
+}
+
+/** 人形剪影（GuestAvatarIcon 的圖形，頭圓＋肩膀半橢圓），貼邊放大填滿頭像圓（對應畫面的 fill 版，viewBox 3 2 18 19.5），呼叫端先 clip 成圓。 */
+function drawPersonSilhouette(ctx: Ctx, cx: number, cy: number, photo: number, color: string): void {
+  const k = (photo * 2) / 18;
+  const ox = cx - 12 * k;
+  const oy = cy - 11.75 * k;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(ox + 12 * k, oy + 8 * k, 4 * k, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(ox + 4 * k, oy + 20 * k);
+  ctx.bezierCurveTo(ox + 4 * k, oy + 15.58 * k, ox + 7.58 * k, oy + 12 * k, ox + 12 * k, oy + 12 * k);
+  ctx.bezierCurveTo(ox + 16.42 * k, oy + 12 * k, ox + 20 * k, oy + 15.58 * k, ox + 20 * k, oy + 20 * k);
+  // 肩膀往下多畫（呼叫端已 clip 成圓），圓底邊不會露出底色縫隙。
+  ctx.lineTo(ox + 20 * k, oy + 24 * k);
+  ctx.lineTo(ox + 4 * k, oy + 24 * k);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawAvatar(ctx: Ctx, avatar: DrawableImage | null, initial: string, p: PlayerCardPalette): void {
