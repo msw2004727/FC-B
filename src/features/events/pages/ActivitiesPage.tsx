@@ -15,7 +15,11 @@ import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
-import { EventFormModal } from '../components/EventFormModal';
+import {
+  loadEventFormModal,
+  scheduleEventFormPrefetch,
+  type EventFormModalComponent,
+} from '@/features/home/data/event-form-loader';
 import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '../components/event-form/use-event-form-post-save';
 import {
@@ -258,6 +262,41 @@ export default function ActivitiesPage(): JSX.Element {
   const petalsCanvasRef = useRef<HTMLCanvasElement>(null);
   // M-074：切到女生專屬頁籤時在既有 canvas 上飄花瓣（照 A `_startActivityFemalePetals`）。
   useFemalePetals(petalsCanvasRef, activeTab === 'female');
+
+  // 開團表單改為打開時才下載，與首頁共用 loadEventFormModal（單例；失敗清掉 inflight，L-08）。
+  // 列表的 activity.css 仍由本頁直接引入，不跟表單 chunk 走。
+  const [FormModal, setFormModal] = useState<EventFormModalComponent | null>(null);
+  const formOpen = createEntry.formOpen;
+  const closeForm = createEntry.closeForm;
+  useEffect(() => {
+    if (!formOpen || FormModal) return undefined;
+    let active = true;
+    loadEventFormModal().then(
+      (component) => {
+        // 元件是函式，包一層才不會被 setState 當成 updater。
+        if (active) setFormModal(() => component);
+      },
+      () => {
+        if (!active) return;
+        toast.show({
+          message: lt('活動建立功能載入失敗，請稍後再試', '活動建立功能載入失敗，請稍後再試'),
+        });
+        closeForm();
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [formOpen, FormModal]);
+  useEffect(() => {
+    if (!createEntry.canCreate) return undefined;
+    return scheduleEventFormPrefetch();
+  }, [createEntry.canCreate]);
+
+  function handleOpenCreateEvent(): void {
+    loadEventFormModal().catch(() => undefined);
+    createEntry.onClick();
+  }
 
   // 當外部改變 location.url（例如首次進入帶 ?sport=、?region=、?type=、?tab=）時同步進狀態與全站運動
   useEffect(() => {
@@ -720,7 +759,7 @@ export default function ActivitiesPage(): JSX.Element {
               data-profile-incomplete={createEntry.buttonProps['data-profile-incomplete']}
               title={createEntry.buttonProps.title}
               data-i18n-aria-label="＋我要開團"
-              onClick={createEntry.onClick}
+              onClick={handleOpenCreateEvent}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -1063,13 +1102,15 @@ export default function ActivitiesPage(): JSX.Element {
         </div>
 
         {createEntry.overlays}
-        <EventFormModal
-          open={createEntry.formOpen}
-          mode="create"
-          viewer={viewer}
-          onClose={createEntry.closeForm}
-          onSaved={onFormSaved}
-        />
+        {FormModal && (
+          <FormModal
+            open={createEntry.formOpen}
+            mode="create"
+            viewer={viewer}
+            onClose={createEntry.closeForm}
+            onSaved={onFormSaved}
+          />
+        )}
 
         {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}
         {transitEvent && (
