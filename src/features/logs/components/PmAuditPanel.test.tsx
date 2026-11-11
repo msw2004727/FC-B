@@ -156,6 +156,93 @@ describe('PmAuditPanel', () => {
     expect(container.querySelectorAll('.pm-audit-log')).toHaveLength(2);
   });
 
+  it('四段載入中有圈與骨架和既有文字，完成後換成內容，失敗沿用既有失敗文字', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    type Waiter = { resolve: () => void; reject: (error: unknown) => void };
+    const waiters: Record<string, Waiter[]> = {};
+    const take = (name: string): Waiter => {
+      const waiter = waiters[name]?.shift();
+      if (!waiter) throw new Error(`missing ${name}`);
+      return waiter;
+    };
+    callFn.mockImplementation((name: string, req: Record<string, unknown>) => new Promise((resolve, reject) => {
+      (waiters[name] ??= []).push({
+        resolve: () => resolve(respond(name, req)),
+        reject,
+      });
+    }));
+    render(<PmAuditPanel />);
+    const logsBox = document.getElementById('pm-audit-logs')!;
+    const usersBox = document.getElementById('pm-audit-users')!;
+    const threadsBox = document.getElementById('pm-audit-threads')!;
+    const convo = document.getElementById('pm-audit-conversation')!;
+    const expectLoading = (box: HTMLElement, text: string): void => {
+      const status = box.querySelector('.reg-loading');
+      expect(status?.getAttribute('role')).toBe('status');
+      expect(status?.getAttribute('aria-busy')).toBeNull();
+      expect(status?.textContent).toBe(text);
+      expect(box.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    };
+
+    expectLoading(logsBox, '載入中...');
+    await act(async () => {
+      take('getPrivateMessageSettings').resolve();
+      take('getPmAuditLogs').resolve();
+    });
+    await waitFor(() => expect(logsBox.querySelector('.pm-audit-log strong')?.textContent).toBe('send'));
+    expect(logsBox.querySelector('.reg-loading')).toBeNull();
+
+    const input = document.getElementById('pm-audit-user-query') as HTMLInputElement;
+    await act(async () => {
+      input.value = '示意';
+      fireEvent.input(input);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '搜尋' }));
+    expectLoading(usersBox, '搜尋中...');
+    await act(async () => { take('searchPmAuditUsers').resolve(); });
+    await waitFor(() => expect(usersBox.querySelectorAll('.pm-audit-user')).toHaveLength(2));
+    expect(usersBox.querySelector('.reg-loading')).toBeNull();
+
+    fireEvent.click(usersBox.querySelectorAll<HTMLElement>('.pm-audit-user')[0]!);
+    expectLoading(threadsBox, '載入中...');
+    await act(async () => { take('listPmAuditThreads').resolve(); });
+    await waitFor(() => expect(threadsBox.querySelector('.pm-audit-thread strong')?.textContent).toBe('隊員甲 / 教練丙'));
+    expect(threadsBox.querySelector('.reg-loading')).toBeNull();
+
+    fireEvent.click(threadsBox.querySelector<HTMLElement>('.pm-audit-thread')!);
+    expectLoading(convo, '載入中...');
+    await act(async () => { take('getPmAuditConversation').resolve(); });
+    await waitFor(() => expect(convo.querySelectorAll('.pm-audit-message')).toHaveLength(2));
+    expect(convo.querySelector('.reg-loading')).toBeNull();
+    await waitFor(() => expect(logsBox.querySelector('.reg-loading')?.textContent).toBe('載入中...'));
+    await act(async () => { take('getPmAuditLogs').resolve(); });
+    await waitFor(() => expect(logsBox.querySelector('.pm-audit-log strong')?.textContent).toBe('send'));
+
+    fireEvent.click(threadsBox.querySelector<HTMLElement>('.pm-audit-thread')!);
+    expectLoading(convo, '載入中...');
+    await act(async () => { take('getPmAuditConversation').reject(new Error('convo')); });
+    await waitFor(() => expect(convo.textContent).toContain('載入對話內容失敗'));
+    expect(convo.querySelector('.reg-loading')).toBeNull();
+
+    fireEvent.click(usersBox.querySelectorAll<HTMLElement>('.pm-audit-user')[0]!);
+    expectLoading(threadsBox, '載入中...');
+    await act(async () => { take('listPmAuditThreads').reject(new Error('threads')); });
+    await waitFor(() => expect(threadsBox.textContent).toContain('載入對話列表失敗'));
+    expect(threadsBox.querySelector('.reg-loading')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '搜尋' }));
+    expectLoading(usersBox, '搜尋中...');
+    await act(async () => { take('searchPmAuditUsers').reject(new Error('search')); });
+    await waitFor(() => expect(usersBox.textContent).toContain('搜尋失敗'));
+    expect(usersBox.querySelector('.reg-loading')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '重新整理' }));
+    expectLoading(logsBox, '載入中...');
+    await act(async () => { take('getPmAuditLogs').reject(new Error('logs')); });
+    await waitFor(() => expect(logsBox.textContent).toContain('載入 log 失敗'));
+    expect(logsBox.querySelector('.reg-loading')).toBeNull();
+  });
+
   it('設定讀取失敗：顯示失敗狀態', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     callFn.mockImplementation(async (name: string, req: Record<string, unknown>) => {

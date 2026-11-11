@@ -135,7 +135,7 @@ export default function RolesAdminPage({ confirmEnabled = ROLES_WRITE_CONFIRM_EN
       {loading ? <PageSpinner />
         : !allowed ? <div role="alert">{t('roles.ui.denied')}</div>
         : failed ? <div role="alert">{t('roles.ui.loadFailed')}</div>
-        : !ownsData ? <div role="status">{t('roles.ui.loading')}</div>
+        : !ownsData ? <PageSpinner />
         : <>
           <div class="role-admin-tabs">
             <button type="button" id="role-admin-tab-settings" class={'role-admin-tab' + (tab === 'settings' ? ' active' : '')}

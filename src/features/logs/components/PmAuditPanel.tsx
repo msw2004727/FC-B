@@ -7,6 +7,8 @@
  * - 與 A 差異：頭像只接受 https 網址；晚到的回應不覆蓋較新的操作結果。
  */
 import '@/styles/legacy/message.css';
+// 四段查詢載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
+import '@/styles/legacy/reg-loading.css';
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -43,6 +45,19 @@ interface LogState {
 
 function safeAvatar(url: string): string | null {
   return /^https:\/\//i.test(url) ? url : null;
+}
+
+function loadingLine(text: string): JSX.Element {
+  return (
+    <>
+      <div class="reg-loading" role="status" style="white-space:nowrap">{text}</div>
+      <div class="reg-loading-skeleton" aria-hidden="true">
+        <div class="reg-loading-skeleton-row" />
+        <div class="reg-loading-skeleton-row" />
+        <div class="reg-loading-skeleton-row" />
+      </div>
+    </>
+  );
 }
 
 export function PmAuditPanel(): JSX.Element {
@@ -258,7 +273,7 @@ export function PmAuditPanel(): JSX.Element {
           </button>
         </div>
         <div id="pm-audit-users" class="pm-audit-results">
-          {users.status === 'loading' ? muted(t('logs.chat.searching')) : null}
+          {users.status === 'loading' ? loadingLine(t('logs.chat.searching')) : null}
           {users.status === 'error' ? muted(t('logs.chat.searchFailed')) : null}
           {users.status === 'ready' && users.items.length === 0 ? muted(t('logs.chat.noUsers')) : null}
           {users.status === 'ready'
@@ -280,7 +295,7 @@ export function PmAuditPanel(): JSX.Element {
         <h3>{t('logs.chat.threadsTitle')}</h3>
         <div id="pm-audit-threads" class={`pm-audit-results${threads.status === 'idle' ? ' muted' : ''}`}>
           {threads.status === 'idle' ? t('logs.chat.threadsIdle') : null}
-          {threads.status === 'loading' ? muted(t('logs.chat.loading')) : null}
+          {threads.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
           {threads.status === 'error' ? muted(t('logs.chat.threadsFailed')) : null}
           {threads.status === 'ready' && threads.items.length === 0 ? muted(t('logs.chat.threadsEmpty')) : null}
           {threads.status === 'ready'
@@ -299,7 +314,7 @@ export function PmAuditPanel(): JSX.Element {
         <h3>{t('logs.chat.conversationTitle')}</h3>
         <div id="pm-audit-conversation" class={`pm-audit-conversation${conversation.status === 'idle' ? ' muted' : ''}`}>
           {conversation.status === 'idle' ? t('logs.chat.conversationIdle') : null}
-          {conversation.status === 'loading' ? muted(t('logs.chat.loading')) : null}
+          {conversation.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
           {conversation.status === 'error' ? muted(t('logs.chat.conversationFailed')) : null}
           {conversation.status === 'ready' && conversation.items.length === 0 ? muted(t('logs.chat.conversationEmpty')) : null}
           {conversation.status === 'ready'
@@ -335,7 +350,7 @@ export function PmAuditPanel(): JSX.Element {
           </button>
         </div>
         <div id="pm-audit-logs" class="pm-audit-results">
-          {logs.status === 'loading' ? muted(t('logs.chat.loading')) : null}
+          {logs.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
           {logs.status === 'error' ? muted(t('logs.chat.logsFailed')) : null}
           {logs.status === 'ready' && logs.items.length === 0 ? muted(t('logs.chat.logsEmpty')) : null}
           {logs.status === 'ready' && logs.items.length > 0 ? (

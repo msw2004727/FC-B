@@ -321,6 +321,28 @@ describe('T-079a 權限管理頁', () => {
     expect(document.querySelector<HTMLInputElement>('input[aria-label$="(event.publish)"]')?.checked).toBe(false);
     expect(mockToast).not.toHaveBeenCalledWith(expect.objectContaining({ message: '權限已更新' }));
   });
+  it('文件還沒對上 uid 時用 PageSpinner，完成後換成權限設定，失敗沿用載入失敗', async () => {
+    let release!: (value: RolesData) => void;
+    mockLoad.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const view = render(<RolesAdminPage />);
+    const spinner = document.querySelector('.ui-page-spinner[role="status"]');
+    expect(spinner).not.toBeNull();
+    expect(spinner?.getAttribute('aria-busy')).toBeNull();
+    expect(document.querySelector('.role-admin-tabs')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    await act(async () => { release(rolesFixture()); });
+    await screen.findByRole('button', { name: '權限設定' });
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    view.unmount();
+
+    mockLoad.mockRejectedValue(new Error('offline'));
+    render(<RolesAdminPage />);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('載入失敗，請重新進入此頁。');
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(document.querySelector('.role-admin-tabs')).toBeNull();
+  });
   it('換帳號與離頁後丟棄晚到載入結果', async () => {
     let resolve!: (value: RolesData) => void;
     mockLoad.mockImplementationOnce(() => new Promise(resolvePromise => { resolve = resolvePromise; }));
