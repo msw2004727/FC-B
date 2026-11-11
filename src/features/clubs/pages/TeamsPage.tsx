@@ -135,7 +135,6 @@ function toTeamSportValue(globalSport: string): string {
 }
 
 export default function TeamsPage(): JSX.Element {
-  throw new Error('drill: V_bad2（staging 壞版演練第二次，演練完 revert）');
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
