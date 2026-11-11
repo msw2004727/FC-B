@@ -207,10 +207,31 @@ describe('清單與讀取預算', () => {
     open.mockRestore();
   });
 
+  it('載入中有圈、骨架與「載入中...」，讀完換成賽事卡', async () => {
+    let release!: (value: { docs: Array<{ id: string; data: () => unknown }> }) => void;
+    sdk.getDocs.mockReturnValueOnce(new Promise((resolve) => {
+      release = resolve;
+    }));
+    render(<TournamentsPage />);
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.textContent).toContain('載入中...');
+    expect(status.getAttribute('aria-busy')).toBeNull();
+    expect(status.parentElement?.getAttribute('aria-busy')).toBe('true');
+    expect(document.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    expect(document.querySelector('.tc-card')).toBeNull();
+    release({ docs: DOCS.map((d) => ({ id: d.id, data: () => d.data })) });
+    await waitFor(() => expect(names().length).toBe(3));
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.querySelector('[role="status"]')).toBeNull();
+  });
+
   it('載入失敗顯示重試，按下才重讀', async () => {
     sdk.getDocs.mockRejectedValueOnce(new Error('offline'));
     render(<TournamentsPage />);
     await waitFor(() => expect(screen.getByText('載入失敗，請稍後重試')).toBeTruthy());
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('載入失敗，請稍後重試');
     fireEvent.click(screen.getByText('重試'));
     await waitFor(() => expect(names().length).toBe(3));
     expect(sdk.getDocs).toHaveBeenCalledTimes(2);

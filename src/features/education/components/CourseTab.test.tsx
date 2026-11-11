@@ -5,6 +5,7 @@ import type { ViewerView } from '@/features/profile/data/viewer';
 import { toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { CourseTab } from './CourseTab';
+import { _resetCourseDictForTest } from '../i18n';
 import { callableError, createFakeCourseRepo, type FakeCourseRepo } from '../testing/fake-course-repo';
 import { COACH_UID, courseFixture, emptyCourseFixture, FIXTURE_NOW, PARENT_UID } from '../testing/course-fixtures';
 
@@ -167,8 +168,39 @@ describe('CourseTab：課程卡 6 種狀態', () => {
   it('讀取失敗顯示重試，重試後恢復', async () => {
     repo.failNext('listPlans', new Error('offline'));
     renderTab();
-    fireEvent.click(await screen.findByRole('button', { name: '重新嘗試' }));
+    const retry = await screen.findByRole('button', { name: '重新嘗試' });
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(retry.closest('[role="alert"]')).toBeTruthy();
+    fireEvent.click(retry);
     expect(await screen.findByText('週六兒童足球班')).toBeTruthy();
+  });
+
+  it('字典還沒到與名單還沒回：圈與骨架加「載入中…」，讀完換成課程卡', async () => {
+    _resetCourseDictForTest();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let asked = false;
+    const inner = repo.listPlans.bind(repo);
+    repo.listPlans = (team) => {
+      asked = true;
+      return gate.then(() => inner(team));
+    };
+    const { container } = renderTab();
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.textContent).toContain('載入中…');
+    expect(status.getAttribute('aria-busy')).toBeNull();
+    expect(container.querySelector('[data-course-loading]')?.getAttribute('aria-busy')).toBe('true');
+    expect(container.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    expect(container.querySelector('.ck-card')).toBeNull();
+    await waitFor(() => expect(asked).toBe(true));
+    expect(container.querySelector('.reg-loading')).toBeTruthy();
+    release();
+    expect(await screen.findByText('週六兒童足球班')).toBeTruthy();
+    expect(container.querySelector('.reg-loading')).toBeNull();
+    expect(container.querySelector('.reg-loading-skeleton')).toBeNull();
   });
 });
 
