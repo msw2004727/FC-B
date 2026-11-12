@@ -1,7 +1,6 @@
 {
   "title": "Inactive Data",
   "back": "Back",
-  "loading": "Loading...",
   "noPermission": "Permission denied",
   "loadError": "Could not load. Please retry.",
   "retry": "Retry",

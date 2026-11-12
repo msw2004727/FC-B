@@ -11,7 +11,6 @@
   "viewAll": "すべて見る",
   "signedOutTitle": "ログインして次のイベントを確認",
   "signedOutBody": "画面上部の LINE ログインボタンから参加予定を確認できます。",
-  "loading": "次のイベントを読み込み中…",
   "loadError": "次のイベントを読み込めませんでした。",
   "retry": "再試行",
   "emptyTitle": "まだ参加予定のイベントはありません",

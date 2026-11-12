@@ -33,7 +33,6 @@
     "pending": "待審核",
     "reviewed": "已審核"
   },
-  "loading": "訊息載入中...",
   "loadError": "無法載入訊息，請重試。",
   "retry": "重試",
   "emptyTitle": "此分類沒有訊息",

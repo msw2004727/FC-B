@@ -11,7 +11,6 @@
   "viewAll": "查看全部",
   "signedOutTitle": "登录后查看你的下一场活动",
   "signedOutBody": "点击上方 LINE 登录，即可查看你的报名活动。",
-  "loading": "正在载入下一场活动…",
   "loadError": "无法载入下一场活动，请重试。",
   "retry": "重试",
   "emptyTitle": "你目前还没有报名活动",

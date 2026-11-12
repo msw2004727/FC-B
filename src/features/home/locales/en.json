@@ -11,7 +11,6 @@
   "viewAll": "View all",
   "signedOutTitle": "Sign in to see your next activity",
   "signedOutBody": "Use the LINE sign-in button at the top to see your registrations.",
-  "loading": "Loading your next activity…",
   "loadError": "Your next activity could not be loaded.",
   "retry": "Retry",
   "emptyTitle": "You have not joined an activity yet",

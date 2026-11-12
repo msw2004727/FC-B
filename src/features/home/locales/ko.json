@@ -11,7 +11,6 @@
   "viewAll": "모두 보기",
   "signedOutTitle": "로그인하고 다음 활동을 확인하세요",
   "signedOutBody": "상단 LINE 로그인 버튼으로 참가 신청 내역을 확인하세요.",
-  "loading": "다음 활동을 불러오는 중…",
   "loadError": "다음 활동을 불러오지 못했습니다.",
   "retry": "다시 시도",
   "emptyTitle": "아직 신청한 활동이 없습니다",

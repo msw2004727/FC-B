@@ -33,7 +33,6 @@
     "pending": "Chờ duyệt",
     "reviewed": "Đã duyệt"
   },
-  "loading": "Đang tải tin nhắn...",
   "loadError": "Không thể tải tin nhắn. Vui lòng thử lại.",
   "retry": "Thử lại",
   "emptyTitle": "Không có tin nhắn trong danh mục này",
