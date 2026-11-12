@@ -23,6 +23,7 @@ import {
 } from '../data/inbox-repo';
 import { pmUnreadTotal as sumPmUnread, type PmThread } from '../data/pm-repo';
 import {
+  beginOptimisticInboxRead,
   ensureInboxStore,
   getInboxStoreState,
   retryInboxMessages,
@@ -348,13 +349,23 @@ export default function InboxPage(): JSX.Element {
   const handleOpenMessage = (msg: InboxMessage): void => {
     if (isUnread(msg, uid ?? undefined)) {
       if (msg._docId && uid) {
-        markRead(uid, msg).catch(() => {
-          // 照 A readMessage：單次標記已讀失敗不還原、不干擾閱讀
-        });
+        // 照 A readMessage：先改快取、鈴鐺立刻扣（共用訂閱樂觀已讀，列表同步變已讀）；寫入失敗不跳提示、
+        // 不干擾閱讀，紅點與列表回到伺服器資料（Firestore 被拒的寫入本來就會回滾）。
+        // 不再疊頁面自己的已讀標記：還原時共用訂閱會交回同一份伺服器陣列，頁面標記會被誤套回去。
+        const settleRead = beginOptimisticInboxRead(uid, [msg.id]);
+        void (async () => {
+          try {
+            await markRead(uid, msg);
+            settleRead(true);
+          } catch {
+            settleRead(false);
+          }
+        })();
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, read: true, unread: false } : m)),
+        );
       }
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msg.id ? { ...m, read: true, unread: false } : m)),
-      );
     }
     // 照 A readMessage：無 body 不開詳情彈窗
     if (msg.body) {
@@ -380,8 +391,13 @@ export default function InboxPage(): JSX.Element {
     setMessages((prev) =>
       prev.map((m) => (isUnread(m, uid) ? { ...m, read: true, unread: false } : m)),
     );
+    const settleRead = beginOptimisticInboxRead(
+      uid,
+      unreadMsgs.map((m) => m.id),
+    );
     try {
       await markAllRead(uid, unreadMsgs);
+      settleRead(true);
       if (!mountedRef.current) return;
       // 照 A `markAllRead`：已將 N 則訊息標為已讀。
       toast.show({
@@ -390,6 +406,7 @@ export default function InboxPage(): JSX.Element {
         }),
       });
     } catch {
+      settleRead(false);
       if (!mountedRef.current) return;
       const snapshotMap = new Map(snapshot.map((m) => [m.id, m]));
       setMessages((prev) => prev.map((m) => snapshotMap.get(m.id) ?? m));

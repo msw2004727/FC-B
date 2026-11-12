@@ -105,6 +105,7 @@ vi.mock('@/core/overlay-back', async (importOriginal) => {
 
 import InboxPage from './InboxPage';
 import { getInboxStoreState, startInboxStore, stopInboxStore } from '../data/inbox-store';
+import { getInboxBadgeCounts } from '../data/inbox-badge';
 
 describe('InboxPage', () => {
   let inboxCallback: ((msgs: InboxMessage[]) => void) | null = null;
@@ -287,6 +288,95 @@ describe('InboxPage', () => {
       expect(mockMarkRead).toHaveBeenCalled();
     });
     expect(document.getElementById('msg-inbox-detail-modal')).toBeNull();
+  });
+
+  describe('鈴鐺樂觀已讀（照 A readMessage 先改快取再 updateNotifBadge）', () => {
+    const twoUnread = (): InboxMessage[] => [
+      { id: 'm1', _docId: 'm1', type: 'system', title: 'A', time: '2025/01/01 00:00', read: false },
+      { id: 'm2', _docId: 'm2', type: 'system', title: 'B', time: '2025/01/02 00:00', read: false },
+    ];
+
+    function cardOf(title: string): HTMLElement {
+      const card = Array.from(document.querySelectorAll<HTMLElement>('.msg-card')).find((c) =>
+        c.textContent?.includes(title),
+      );
+      if (!card) throw new Error(`card ${title} missing`);
+      return card;
+    }
+
+    it('點一則未讀：寫入還沒完成鈴鐺就 -1', async () => {
+      mockMarkRead.mockImplementation(() => new Promise<void>(() => {}));
+      renderPage({ messages: twoUnread() });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(2);
+      act(() => {
+        fireEvent.click(cardOf('A'));
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(1);
+      expect(mockMarkRead).toHaveBeenCalledTimes(1);
+    });
+
+    it('寫入失敗：鈴鐺與卡片還原成未讀', async () => {
+      let rejectRead!: (err: unknown) => void;
+      mockMarkRead.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectRead = reject;
+          }),
+      );
+      renderPage({ messages: twoUnread() });
+      act(() => {
+        fireEvent.click(cardOf('A'));
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(1);
+      expect(cardOf('A').classList.contains('msg-unread')).toBe(false);
+      await act(async () => {
+        rejectRead(new Error('denied'));
+        await Promise.resolve();
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(2);
+      expect(cardOf('A').classList.contains('msg-unread')).toBe(true);
+    });
+
+    it('快速連讀兩則再收到伺服器已讀快照：鈴鐺 0，不重複扣', async () => {
+      renderPage({ messages: twoUnread() });
+      act(() => {
+        fireEvent.click(cardOf('A'));
+      });
+      act(() => {
+        fireEvent.click(cardOf('B'));
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(0);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        inboxCallback!(twoUnread().map((m) => ({ ...m, read: true })));
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(0);
+      expect(mockMarkRead).toHaveBeenCalledTimes(2);
+    });
+
+    it('一鍵全讀：送出當下鈴鐺歸零，失敗還原', async () => {
+      let rejectAll!: (err: unknown) => void;
+      mockMarkAllRead.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectAll = reject;
+          }),
+      );
+      renderPage({ messages: twoUnread() });
+      const btn = screen.getByText('一鍵全讀').closest('button');
+      if (!btn) throw new Error('mark all read button missing');
+      act(() => {
+        fireEvent.click(btn);
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(0);
+      await act(async () => {
+        rejectAll(new Error('boom'));
+        await Promise.resolve();
+      });
+      expect(getInboxBadgeCounts().inboxUnread).toBe(2);
+    });
   });
 
   it('清空訊息先 appConfirm 且文字含實際可清空數量（照 A M-138）', async () => {
