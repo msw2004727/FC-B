@@ -279,7 +279,6 @@ export function createTeamReservationController(
         pending.add(key);
         rememberSlots(teamId, reservedSlots, options.storage);
         const response = await callFn('adjustTeamReservation', payload);
-        invalidateViewerRegistrations();
         if (!isCurrent()) return { status: 'ignored', message: '' };
         if (response?.deduplicated === true) return { status: 'success', deduplicated: true, message: PENDING };
         const patch = response?.success === true ? eventPatch(response.event) : null;
@@ -297,6 +296,8 @@ export function createTeamReservationController(
         return { status: 'error', message: teamReservationErrorMessage(error) };
       } finally {
         if (key) pending.delete(key);
+        // key 有值＝已送出 adjustTeamReservation；寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+        if (key) invalidateViewerRegistrations();
       }
     },
   };

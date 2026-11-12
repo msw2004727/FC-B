@@ -229,6 +229,22 @@ describe('O5 全歷史共用快取', () => {
     ]);
   });
 
+  it('回傳的報名物件是淺複製：呼叫端改單筆欄位不影響快取', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+
+    const first = await loadViewerRegistrations('user-1');
+    first[0]!.status = 'cancelled';
+    const second = await loadViewerRegistrations('user-1');
+    second[0]!.eventId = 'mutated';
+    const third = await loadViewerRegistrations('user-1');
+
+    expect(getDocs).toHaveBeenCalledTimes(1);
+    expect(second[0]).not.toBe(first[0]);
+    expect(third).toEqual([
+      { eventId: 'e1', userId: 'user-1', status: 'confirmed', _docId: 'reg-user-1-e1' },
+    ]);
+  });
+
   it('TTL 到期後重讀', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(1_000_000);

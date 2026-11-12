@@ -285,8 +285,9 @@ export async function managerRemoveRegistration(
     };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+    invalidateViewerRegistrations();
   }
-  invalidateViewerRegistrations();
 
   const eventTitle = str(event.title);
   const targetName = str(registration.name);

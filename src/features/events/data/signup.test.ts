@@ -1352,7 +1352,7 @@ describe('T-087c：伺服器新錯誤代碼對照', () => {
 
 // 第 6 項若解讀為 A10 同樣要求取消時間守衛則不成立：附件 A10 的 _confirmCompanionCancelUnlocked 未檢查活動狀態或開始時間，故只為 A08 本人取消補上該守衛。
 
-describe('O5：寫入成功後失效登入者全歷史快取', () => {
+describe('O5：寫入呼叫結束後（成功或失敗）失效登入者全歷史快取', () => {
   async function primeCache() {
     invalidateViewerRegistrations();
     const loader = vi.fn(async (): Promise<RegistrationDoc[]> => []);
@@ -1401,7 +1401,7 @@ describe('O5：寫入成功後失效登入者全歷史快取', () => {
     expect(loader).toHaveBeenCalledTimes(2);
   });
 
-  it('報名失敗不失效（沒有寫入）', async () => {
+  it('報名失敗也失效（伺服器可能已寫入）', async () => {
     registerMock('registerForEvent', async () => {
       throw new CallableError('failed-precondition', 'REG_NOT_OPEN', 'REG_NOT_OPEN');
     });
@@ -1412,6 +1412,40 @@ describe('O5：寫入成功後失效登入者全歷史快取', () => {
       context: signupContext().context,
     })).rejects.toBeInstanceOf(SignupError);
     await readViewerRegistrationsCached('u1', loader);
-    expect(loader).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('只選同行者的報名失敗也失效', async () => {
+    registerMock('registerForEvent', async () => {
+      throw new CallableError('internal', 'boom', 'boom');
+    });
+    const loader = await primeCache();
+    await expect(registerSelection({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+      context: signupContext({ registrations: [activeSelf] }).context,
+    }, false)).rejects.toBeInstanceOf(SignupError);
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('取消逾時（CALLABLE_TIMEOUT）也失效', async () => {
+    const loader = await primeCache();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    registerMock('cancelRegistration', () => new Promise<CancelRegistrationResponse>(() => {}));
+    const operation = cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self',
+      context: cancelContext().context,
+    });
+    const assertion = expect(operation).rejects.toMatchObject({ originalCode: 'CALLABLE_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    vi.useRealTimers();
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(2);
   });
 });

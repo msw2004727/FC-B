@@ -117,6 +117,8 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
       ? 'statusFailed' : 'regMissing');
   };
   const handleError = async (error: unknown): Promise<RosterStatusResult> => {
+    // 送出失敗（含 TIMEOUT）也失效：伺服器可能已寫入。成功路徑在送出後失效。
+    invalidateViewerRegistrations();
     const code = rosterStatusErrorCode(error);
     if (code === 'REGISTRATION_NOT_CONFIRMED' || code === 'REGISTRATION_NOT_WAITLISTED') {
       return reconcile();

@@ -719,8 +719,13 @@ export function registerForEvent(input: RegisterForEventInput): Promise<Register
         ...frozenInput,
         now: requestTimestamp(operationNow(frozenInput.now)),
       });
-      const response = await withCallableTimeout(callFn('registerForEvent', payload), 'signup');
-      invalidateViewerRegistrations();
+      let response: RegisterForEventResponse;
+      try {
+        response = await withCallableTimeout(callFn('registerForEvent', payload), 'signup');
+      } finally {
+        // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+        invalidateViewerRegistrations();
+      }
 
       // Callable 可能已在伺服器完成；身分改變時拒絕沿用結果，也不發布舊身分事件。
       assertCurrentAuth(context, captured, 'signup');
@@ -785,8 +790,13 @@ export function cancelRegistration(input: CancelRegistrationInput): Promise<Canc
         ...frozenInput,
         now: requestTimestamp(operationNow(frozenInput.now)),
       });
-      const response = await withCallableTimeout(callFn('cancelRegistration', payload), 'cancel');
-      invalidateViewerRegistrations();
+      let response: CancelRegistrationResponse;
+      try {
+        response = await withCallableTimeout(callFn('cancelRegistration', payload), 'cancel');
+      } finally {
+        // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+        invalidateViewerRegistrations();
+      }
       assertCurrentAuth(context, captured, 'cancel');
       if (!response.deduplicated) {
         emit('registration:cancelled', { eventId: frozenInput.eventId, userId: frozenInput.userId });

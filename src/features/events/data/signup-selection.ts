@@ -43,7 +43,6 @@ export function registerSelection(
 
     try {
       const result = await callFn('registerForEvent', payload);
-      invalidateViewerRegistrations();
       if (!result.deduplicated) {
         emit('registration:created', { eventId: input.eventId, userId: input.user.uid });
       }
@@ -86,6 +85,9 @@ export function registerSelection(
         messageKey: `event.signup.error.${keys[originalCode] ?? 'unknown'}`,
         message: error instanceof Error ? error.message : 'Registration failed',
       });
+    } finally {
+      // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+      invalidateViewerRegistrations();
     }
   })();
 

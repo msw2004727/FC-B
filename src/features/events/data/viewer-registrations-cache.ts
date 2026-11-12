@@ -6,7 +6,7 @@
  * - TTL 30 秒（從開始讀取起算，偏保守）；過期重讀。
  * - 進行中請求合併（inflight）；成功、失敗都清掉（L-08），失敗不留快取，下次重新呼叫 loader。
  * - 登出或換帳號（auth:changed 帶不同 uid）立即全部清除；清除後才回來的舊請求不寫入快取（L-43）。
- * - 報名、取消、名單移除／升降、團隊名額、人數調整成功後由資料層呼叫 invalidateViewerRegistrations()。
+ * - 報名、取消、名單移除／升降、團隊名額、人數調整的寫入呼叫一結束（成功、失敗、逾時都算）由資料層呼叫 invalidateViewerRegistrations()。
  *
  * 本檔刻意不 import firebase/firestore：報名資料層要能靜態引用失效函式，不把 Firestore 拉進它們的靜態依賴鏈。
  * 報名判斷（signup-context）不走這份快取，維持即時讀。
@@ -32,7 +32,8 @@ export function invalidateViewerRegistrations(): void {
 
 /**
  * 依 uid 讀快取；未命中或過期才呼叫 loader，同 uid 進行中只呼叫一次。
- * 每次回傳新陣列（淺拷貝），呼叫端改陣列不會汙染快取。
+ * 每次回傳新陣列，且每筆報名物件做一層淺複製（{...r}）：呼叫端改陣列或改單筆頂層欄位不會汙染快取。
+ * 只複製一層；巢狀物件（如 Timestamp）仍共用，呼叫端不得就地改巢狀內容。
  */
 export function readViewerRegistrationsCached(
   uid: string,
@@ -42,7 +43,7 @@ export function readViewerRegistrationsCached(
   const startedAt = now();
   const hit = cache.get(uid);
   if (hit && startedAt - hit.at < VIEWER_REGISTRATIONS_TTL_MS) {
-    return Promise.resolve([...hit.docs]);
+    return Promise.resolve(copyDocs(hit.docs));
   }
   if (hit) cache.delete(uid);
 
@@ -63,7 +64,11 @@ export function readViewerRegistrationsCached(
       },
     );
   }
-  return request.then((docs) => [...docs]);
+  return request.then(copyDocs);
+}
+
+function copyDocs(docs: readonly RegistrationDoc[]): RegistrationDoc[] {
+  return docs.map((r) => ({ ...r }));
 }
 
 on('auth:changed', ({ uid }) => {

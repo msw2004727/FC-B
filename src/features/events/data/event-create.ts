@@ -665,15 +665,16 @@ async function callAdjustEventCapacity(
   req: AdjustEventCapacityRequest,
 ): Promise<AdjustEventCapacityResponse> {
   try {
-    const response = await callFn('adjustEventCapacity', req);
-    invalidateViewerRegistrations();
-    return response;
+    return await callFn('adjustEventCapacity', req);
   } catch (err) {
     const message =
       err && typeof err === 'object' && 'message' in err
         ? String((err as { message: unknown }).message)
         : String(err);
     throw new EventCreateError('CAPACITY_ADJUST_FAILED', message);
+  } finally {
+    // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+    invalidateViewerRegistrations();
   }
 }
 
