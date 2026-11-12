@@ -165,7 +165,7 @@ const pwa = VitePWA({
     directoryIndex: '',
     // 換站相容：舊站 A 的頁面會問 SW 版本（SPORTHUB_GET_VERSION），沒回覆就卡在「更新尚未完成」。
     importScripts: ['sw-legacy-compat.js'],
-    skipWaiting: false, // UPD-1b 演練專用（staging）：讓新 SW 停在等待中以觸發一般提示；演練完還原
+    skipWaiting: true,
     clientsClaim: true,
     cleanupOutdatedCaches: true,
     runtimeCaching: [
