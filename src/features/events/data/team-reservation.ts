@@ -3,6 +3,7 @@
  * A oracle：event-detail-signup.js 567、1276、1475、1603、1703；firebase-crud.js 3187。
  */
 import { callFn } from '@/data/callables';
+import { beginSubmitting } from '@/core/submit-guard';
 import type { AdjustTeamReservationRequest } from '@/data/contract/callables';
 import type { EventDoc } from './types';
 import type { StaffTeamOption } from './team-staff';
@@ -278,7 +279,13 @@ export function createTeamReservationController(
         key = busyKey;
         pending.add(key);
         rememberSlots(teamId, reservedSlots, options.storage);
-        const response = await callFn('adjustTeamReservation', payload);
+        const release = beginSubmitting('event-save');
+        let response: Awaited<ReturnType<typeof callFn<'adjustTeamReservation'>>>;
+        try {
+          response = await callFn('adjustTeamReservation', payload);
+        } finally {
+          release();
+        }
         if (!isCurrent()) return { status: 'ignored', message: '' };
         if (response?.deduplicated === true) return { status: 'success', deduplicated: true, message: PENDING };
         const patch = response?.success === true ? eventPatch(response.event) : null;
