@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { openExternal } from '@/core/open-external';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import type { UserRole } from '@/ui/Avatar';
 import { UserTag } from '@/ui/UserTag';
 import { STATUS_CONFIG } from './TimelineEventCard';
@@ -32,7 +33,8 @@ export interface MyActivityCardProps {
   operateCtx: OperateContext;
   creatorRole?: UserRole;
   onEdit: (event: EventDoc) => void;
-  onLifecycle: (kind: LifecycleKind, event: EventDoc) => void;
+  /** ring＝這張卡取消／重新開放／上架按鈕的進度環，交給生命週期流程在確認後 start。 */
+  onLifecycle: (kind: LifecycleKind, event: EventDoc, ring: ActionRingControl) => void;
   onDelete: (event: EventDoc) => void;
   onPin: (event: EventDoc) => void;
   onUnavailable: () => void;
@@ -93,12 +95,16 @@ export function MyActivityCard({
   const canReopenRelist = canReopenOrRelistActivity(operateCtx, e);
   const canDelete = canDeleteActivity(operateCtx, e);
   const canPin = canManageAllActivities(operateCtx) && canManage;
+  // 一張卡同時只會有一顆生命週期按鈕（取消／重新開放／上架），共用一個進度環。
+  const lifecycleRing = useActionRingControl();
 
   type ActionBtn = {
     key: string;
     label: string;
     style: string;
     title?: string;
+    /** 有值＝生命週期按鈕，套進度環；值為環期間的 aria-label。 */
+    busyLabel?: string;
     onClick: (ev: MouseEvent) => void;
   };
 
@@ -121,9 +127,10 @@ export function MyActivityCard({
         key: 'cancel',
         label: '取消',
         style: `${BTN_STYLE};color:var(--danger)`,
+        busyLabel: '取消中...',
         onClick: (ev) => {
           ev.stopPropagation();
-          onLifecycle('cancel', e);
+          onLifecycle('cancel', e, lifecycleRing);
         },
       });
     } else if (effStatus === 'cancelled' && canReopenRelist) {
@@ -131,9 +138,10 @@ export function MyActivityCard({
         key: 'reopen',
         label: '重新開放',
         style: `${BTN_STYLE};color:var(--success)`,
+        busyLabel: '重新開放中...',
         onClick: (ev) => {
           ev.stopPropagation();
-          onLifecycle('reopen', e);
+          onLifecycle('reopen', e, lifecycleRing);
         },
       });
     }
@@ -177,9 +185,10 @@ export function MyActivityCard({
         key: 'cancel',
         label: '取消',
         style: `${BTN_STYLE};color:var(--danger)`,
+        busyLabel: '取消中...',
         onClick: (ev) => {
           ev.stopPropagation();
-          onLifecycle('cancel', e);
+          onLifecycle('cancel', e, lifecycleRing);
         },
       });
     }
@@ -200,9 +209,10 @@ export function MyActivityCard({
         key: 'relist',
         label: '上架',
         style: `${BTN_STYLE};color:var(--success)`,
+        busyLabel: '上架中...',
         onClick: (ev) => {
           ev.stopPropagation();
-          onLifecycle('relist', e);
+          onLifecycle('relist', e, lifecycleRing);
         },
       });
     }
@@ -223,9 +233,10 @@ export function MyActivityCard({
         key: 'reopen',
         label: '重新開放',
         style: `${BTN_STYLE};color:var(--success)`,
+        busyLabel: '重新開放中...',
         onClick: (ev) => {
           ev.stopPropagation();
-          onLifecycle('reopen', e);
+          onLifecycle('reopen', e, lifecycleRing);
         },
       });
     }
@@ -360,7 +371,20 @@ export function MyActivityCard({
         >
           <span class="sport-emoji">{symbol}</span>
         </span>
-        {actionBtns.map((btn) => (
+        {actionBtns.map((btn) => (btn.busyLabel ? (
+          <ActionRingButton
+            key={btn.key}
+            control={lifecycleRing}
+            busyLabel={btn.busyLabel}
+            type="button"
+            class="outline-btn"
+            style={btn.style}
+            title={btn.title}
+            onClick={btn.onClick}
+          >
+            {btn.label}
+          </ActionRingButton>
+        ) : (
           <button
             key={btn.key}
             type="button"
@@ -371,7 +395,7 @@ export function MyActivityCard({
           >
             {btn.label}
           </button>
-        ))}
+        )))}
         {showFeeSummary && !isExternal && (
           <ManageFeeBox event={e} confirmedDisplay={confirmedDisplay} />
         )}
