@@ -9,6 +9,7 @@ const {
   mockAppConfirm,
   mockSettleAttendance,
   mockCollectAttendanceOps,
+  mockReportClientError,
 } = vi.hoisted(() => ({
   mockRemoveAttendance: vi.fn(),
   mockWriteAttendanceOps: vi.fn(),
@@ -16,6 +17,11 @@ const {
   mockAppConfirm: vi.fn(),
   mockSettleAttendance: vi.fn(),
   mockCollectAttendanceOps: vi.fn(),
+  mockReportClientError: vi.fn(),
+}));
+
+vi.mock('@/core/error-report', () => ({
+  reportClientError: mockReportClientError,
 }));
 
 vi.mock('../data/attendance-settle', () => ({
@@ -484,10 +490,12 @@ describe('UnregRosterTable', () => {
     expect(checkinBox.checked).toBe(true);
   });
 
-  it('防抖觸發的寫入同步拋錯時只記警告，不留未處理拒絕（L-07）', async () => {
+  it('防抖觸發的寫入同步拋錯時記警告並上報一次，不留未處理拒絕（L-07）', async () => {
+    const collectError = new Error('collect failed');
     mockCollectAttendanceOps.mockImplementationOnce(() => {
-      throw new Error('collect failed');
+      throw collectError;
     });
+    mockReportClientError.mockClear();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const reasons: unknown[] = [];
     const onUnhandled = (reason: unknown): void => { reasons.push(reason); };
@@ -517,6 +525,8 @@ describe('UnregRosterTable', () => {
       expect(mockCollectAttendanceOps).toHaveBeenCalledTimes(1);
       expect(mockWriteAttendanceOps).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith('[UnregRosterTable] writeForUid failed', expect.any(Error));
+      expect(mockReportClientError).toHaveBeenCalledTimes(1);
+      expect(mockReportClientError).toHaveBeenCalledWith('unreg-roster-write', collectError);
       expect(reasons).toEqual([]);
     } finally {
       process.off('unhandledRejection', onUnhandled);

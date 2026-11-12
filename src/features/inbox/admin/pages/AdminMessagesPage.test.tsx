@@ -555,6 +555,36 @@ describe('撰寫與發送（Callable 用 mock，不送真推播）', () => {
     }
   });
 
+  it('指定用戶：名單載入拒絕且無符合時顯示載入失敗，不停在載入中（L-07）', async () => {
+    const { loadUserDirectory } = await import('@/features/events/data/user-directory');
+    // 晚一拍才拒絕（比照真實取登入者要等網路），讓輸入框的查詢字串先完成渲染。
+    vi.mocked(loadUserDirectory).mockImplementationOnce(() => new Promise<boolean>((_resolve, reject) => {
+      setTimeout(() => reject(new Error('firebase init failed')), 0);
+    }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const reasons: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { reasons.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      await renderPage();
+      fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
+      await screen.findByRole('dialog');
+      const target = document.getElementById('msg-target') as HTMLSelectElement;
+      await act(async () => {
+        target.value = 'individual';
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await typeInto('msg-individual-target', '查無此人');
+      await waitFor(() => expect(document.getElementById('msg-user-dropdown')?.textContent).toBe('用戶資料載入失敗，請稍後重試'));
+      await new Promise((resolvePromise) => { setTimeout(resolvePromise, 0); });
+      expect(reasons).toEqual([]);
+      expect(warn.mock.calls.map((c) => c[0])).toContain('[MessageAdmin] user directory load failed:');
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      warn.mockRestore();
+    }
+  });
+
   it('俱樂部搜尋：連續打字只載入一次俱樂部清單', async () => {
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
