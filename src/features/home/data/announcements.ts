@@ -9,6 +9,13 @@ export const ANNOUNCEMENTS_COLLECTION = 'announcements';
 
 // 查詢維持 main 的原語意：整個集合不加 limit。有效公告是在客戶端依狀態與排序篩出，
 // 沒有 orderBy 的 limit 是「先截取、再篩選」，集合超過上限時可能漏掉有效公告（退修 4 移除 T-041 先前加的 limit(200)）。
+//
+// O6：查詢只取 status 為 'active'／'scheduled' 的文件——只有這兩種儲存狀態可能算出「有效」（見 getAnnouncementEffectiveStatus；
+// 'expired'、草稿、停用等一律不顯示）。時間判斷（排程到點、unpublishAt 到期）仍在客戶端做，不能只信 status（到期改狀態靠後台開頁）。
+// `in` 不是不等式，SDK 隱含排序仍是文件 ID 升冪，與舊查詢同序；單一欄位篩選用自動單欄索引，不需複合索引；Rules 是 allow read: if true。
+// 已知邊界：status 缺欄位／空字串／前後空白在舊做法會被當成 'active'，新查詢讀不到；A 後台（announcement.js）只寫
+// 'active'／'scheduled'／'expired' 字面值、B 沒有公告寫入端，所以實際資料不會出現。對照測試見 home-public-query.parity.test.ts。
+export const ANNOUNCEMENT_QUERY_STATUSES: readonly string[] = ['active', 'scheduled'];
 
 export interface AnnouncementDoc {
   id: string;
@@ -155,11 +162,13 @@ export async function loadActiveAnnouncements(
   const logger = deps.logger ?? console;
   const nowMs = deps.now?.() ?? Date.now();
   try {
-    const [{ db }, { collection, getDocs, query }] = await Promise.all([
+    const [{ db }, { collection, getDocs, query, where }] = await Promise.all([
       getFB(),
       loadFirestoreSdk(),
     ]);
-    const snap = await getDocs(query(collection(db, ANNOUNCEMENTS_COLLECTION)));
+    const snap = await getDocs(
+      query(collection(db, ANNOUNCEMENTS_COLLECTION), where('status', 'in', ANNOUNCEMENT_QUERY_STATUSES)),
+    );
     const docs = snap.docs.map((d) => mapAnnouncementDoc(d));
     return filterAndSortAnnouncements(docs, nowMs);
   } catch (err) {

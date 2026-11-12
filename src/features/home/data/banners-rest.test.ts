@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { collection, getDocs, limit, query, type Firestore } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where, type Firestore } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { BANNERS_COLLECTION, loadActiveBanners, type BannerDoc } from './banners';
@@ -40,6 +40,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
   limit: vi.fn((n: number) => ({ kind: 'limit', n })),
+  where: vi.fn((field: string, op: string, value: unknown) => ({ kind: 'where', field, op, value })),
   getDocs: vi.fn(),
 }));
 
@@ -91,7 +92,7 @@ function firstCall(fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>): { url: st
 }
 
 describe('請求內容：匿名、公開讀取、與 SDK 路徑同一個查詢', () => {
-  it('POST runQuery：網址、body（collectionId＋limit 200）、credentials omit', async () => {
+  it('POST runQuery：網址、body（collectionId＋status == active＋limit 200）、credentials omit', async () => {
     const fetchImpl = mockFetch(() => jsonResponse(ONE_DOC).response);
     const result = await fetchBannersViaRest({ fetchImpl });
 
@@ -106,19 +107,35 @@ describe('請求內容：匿名、公開讀取、與 SDK 路徑同一個查詢',
     // text/plain＝跨來源簡單請求，不觸發 CORS preflight（Firestore SDK 對同一端點的做法）；body 仍是 JSON 字串。
     expect(init.headers).toEqual({ 'Content-Type': 'text/plain' });
     expect(JSON.parse(String(init.body))).toEqual({
-      structuredQuery: { from: [{ collectionId: 'banners' }], limit: 200 },
+      structuredQuery: {
+        from: [{ collectionId: 'banners' }],
+        where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
+        limit: 200,
+      },
     });
     expect(String(init.body)).toBe(bannersRestBody());
     expect(result?.map((b) => b.id)).toEqual(['b1']);
   });
 
-  it('與 SDK 路徑同一個查詢：同一個集合名稱常數與 limit(200)', async () => {
+  it('與 SDK 路徑同一個查詢：同一個集合名稱常數、status 等值篩選與 limit(200)', async () => {
     vi.mocked(getDocs).mockResolvedValue({ docs: [], metadata: { fromCache: false } } as unknown as Awaited<ReturnType<typeof getDocs>>);
     await loadActiveBanners({ getFirebase: async () => ({ db: fakeDb }) });
     const sdkLimit = vi.mocked(limit).mock.calls[0]?.[0];
     const sdkCollection = vi.mocked(collection).mock.calls[0]?.[1];
+    const sdkWhere = vi.mocked(where).mock.calls[0];
 
-    const body = JSON.parse(bannersRestBody()) as { structuredQuery: { from: Array<{ collectionId: string }>; limit: number } };
+    const body = JSON.parse(bannersRestBody()) as {
+      structuredQuery: {
+        from: Array<{ collectionId: string }>;
+        where: { fieldFilter: { field: { fieldPath: string }; op: string; value: { stringValue: string } } };
+        limit: number;
+      };
+    };
+    expect(vi.mocked(where)).toHaveBeenCalledTimes(1);
+    expect(sdkWhere?.[1]).toBe('==');
+    expect(body.structuredQuery.where.fieldFilter.op).toBe('EQUAL');
+    expect(body.structuredQuery.where.fieldFilter.field.fieldPath).toBe(sdkWhere?.[0]);
+    expect(body.structuredQuery.where.fieldFilter.value.stringValue).toBe(sdkWhere?.[2]);
     expect(body.structuredQuery.limit).toBe(sdkLimit);
     expect(body.structuredQuery.from[0]?.collectionId).toBe(sdkCollection);
     expect(sdkCollection).toBe(BANNERS_COLLECTION);

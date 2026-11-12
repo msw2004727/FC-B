@@ -10,20 +10,20 @@
  * - 這個模組直接連正式端點、不經 SDK 初始化，所以繞過了 `data/firebase.ts` 的「本機只能連 emulator」守門；呼叫端（HomePage）
  *   必須先過 `banners-rest-guard.ts` 的 `canUseBannersRest()`（emulator 或本機／區網網址一律不發）。
  *   另外每次頁面載入只發一次（`startBannersRestFetch` 的模組層旗標）。
- * - 與 SDK 路徑同一個查詢（`collection('banners').limit(200)`）、同一個文件映射（`mapBannerDoc`）、同一個篩選（`filterAndSortBanners`）；
+ * - 與 SDK 路徑同一個查詢（`collection('banners').where('status','==','active').limit(200)`，O6）、同一個文件映射（`mapBannerDoc`）、同一個篩選（`filterAndSortBanners`）；
  *   REST 的欄位值（`stringValue`／`integerValue`…）先解成 SDK `data()` 同形的 JS 值，再交給 `mapBannerDoc`，所以映射語意由同一份程式碼保證。
  *   只解碼 `mapBannerDoc` 會讀的欄位，未知欄位一律丟棄；單筆損毀只丟該筆。
  * - 任何失敗（網路、非 2xx、逾時 4 秒、回應超過 256 KB、JSON 損毀、格式不符）都回 `null`，呼叫端靜默退回 SDK 路徑；不重試、不 `console.error`。
  * - 這個模組只回傳「資料」；怎麼畫、寫不寫快照由呼叫端決定（HomePage 走既有的 `toPublicBanners()` 白名單與寫入守門）。
  */
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
-import { BANNERS_COLLECTION, filterAndSortBanners, mapBannerDoc, type BannerDoc } from './banners';
+import { BANNER_QUERY_STATUS, BANNERS_COLLECTION, filterAndSortBanners, mapBannerDoc, type BannerDoc } from './banners';
 
 /** 逾時（毫秒）：超過就放棄，退回 SDK 路徑。 */
 export const BANNERS_REST_TIMEOUT_MS = 4000;
 /** 回應大小上限（位元組，解壓後實際讀到的量）：超過整個丟棄。 */
 export const BANNERS_REST_MAX_BYTES = 256 * 1024;
-/** 與 SDK 路徑相同：`collection('banners').limit(200)`（見 `banners.ts#loadActiveBanners`）。 */
+/** 與 SDK 路徑相同：`collection('banners').where('status','==','active').limit(200)`（見 `banners.ts#loadActiveBanners`）。 */
 const QUERY_LIMIT = 200;
 /** 解碼巢狀值的深度與單一容器筆數上限（只有穿透欄位會用到；防敵意回應拖垮解碼）。 */
 const MAX_DECODE_DEPTH = 4;
@@ -54,8 +54,15 @@ export function bannersRestUrl(projectId: string = FIREBASE_CONFIG.projectId): s
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery`;
 }
 
+/** index.html `#fcb-early-banners` 手寫同一字串，`src/app/early-banners.test.ts` 逐字比對。 */
 export function bannersRestBody(): string {
-  return JSON.stringify({ structuredQuery: { from: [{ collectionId: BANNERS_COLLECTION }], limit: QUERY_LIMIT } });
+  return JSON.stringify({
+    structuredQuery: {
+      from: [{ collectionId: BANNERS_COLLECTION }],
+      where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: BANNER_QUERY_STATUS } } },
+      limit: QUERY_LIMIT,
+    },
+  });
 }
 
 // ── 欄位值解碼（Firestore REST Value → 與 SDK `data()` 同形的 JS 值）──────────────────────────
