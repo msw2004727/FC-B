@@ -25,7 +25,7 @@
     "locationUnknown": "Location to be confirmed", "capacity": "{current}/{max} people"
   },
   "detailPage": {
-    "notFound": "Event not found", 
+    "notFound": "Event not found",
     "loadError": "Event details could not be loaded. Please retry.",
     "actionError": "The action failed. Please try again.",
     "refreshError": "The participant list has not synced. Retry the update. Registration is temporarily disabled to prevent duplicate actions.",

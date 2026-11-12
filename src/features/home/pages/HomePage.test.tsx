@@ -342,7 +342,9 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     const { container } = render(<HomePage />);
     const entry = container.querySelector('#home-sport-entry')!;
     const status = entry.querySelector('.reg-loading');
-    expect(status?.getAttribute('role')).toBe('status');
+    // 外層 #home-sport-entry 已是 aria-live polite，內層不再重複 role="status"。
+    expect(status).toBeTruthy();
+    expect(status?.hasAttribute('role')).toBe(false);
     expect(entry.querySelector('.home-sport-chip[data-home-sport="football"]')).toBeNull();
     await act(async () => { release(); });
     await waitFor(() => expect(entry.querySelector('.home-sport-chip[data-home-sport="football"]')).toBeTruthy());

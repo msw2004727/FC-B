@@ -181,9 +181,8 @@ export default function CheckinPage() {
     toast.show(tRef.current('noPermission'));
   }, [eventId, snapshot, context, total]);
 
-  // 已登入但角色還沒到位（role 為 null）時，活動清單尚未開始讀，也算載入中，預設不留空白。
-  const eventsPending = Boolean(context.uid) && !loadError
-    && (context.role === null || !snapshot || snapshot.uid !== context.uid);
+  const eventsPending = Boolean(context.uid) && context.role !== null && !loadError
+    && (!snapshot || snapshot.uid !== context.uid);
   const presetPending = presetMode && preset.status === 'loading';
   const eventListLoading = eventsPending || presetPending;
 

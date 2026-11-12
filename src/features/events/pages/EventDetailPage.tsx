@@ -110,7 +110,6 @@ import {
 import type { RegistrationDoc } from '../data/types';
 import { useTeamReservation, type ReservationSuccess } from '../components/legacy/use-team-reservation';
 import { applyReservationPromotions } from '../components/legacy/team-reservation-sync';
-import { PageSpinner } from '@/ui/PageSpinner';
 import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
 import { EventFormPostSaveBoundary } from '../components/event-form/use-event-form-post-save';
@@ -2475,7 +2474,7 @@ function EventDetailSession({
           </Suspense>
         )}
         {detailLogOpen && canShowDetailLog && (
-          <Suspense fallback={<PageSpinner />}>
+          <Suspense fallback={<div role="status">載入中…</div>}>
             <DetailEventRegLogModal
               eventId={eventId}
               eventDocId={snapshot.eventDocId}
@@ -2485,7 +2484,7 @@ function EventDetailSession({
           </Suspense>
         )}
         {editingDetail && canEditCover && (
-          <Suspense fallback={<PageSpinner />}>
+          <Suspense fallback={<div role="status">載入中…</div>}>
             <EventFormPostSaveBoundary
               viewer={viewer}
               close={() => {

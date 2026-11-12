@@ -25,7 +25,7 @@
     "locationUnknown": "Chưa xác định địa điểm", "capacity": "{current}/{max} người"
   },
   "detailPage": {
-    "notFound": "Không tìm thấy sự kiện", 
+    "notFound": "Không tìm thấy sự kiện",
     "loadError": "Không thể tải chi tiết sự kiện. Vui lòng thử lại.",
     "actionError": "Thao tác thất bại. Vui lòng thử lại.",
     "refreshError": "Danh sách chưa đồng bộ. Vui lòng thử cập nhật lại. Đăng ký tạm dừng để tránh thao tác trùng lặp.",

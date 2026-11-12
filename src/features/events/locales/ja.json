@@ -25,7 +25,7 @@
     "locationUnknown": "場所未定", "capacity": "{current}/{max}人"
   },
   "detailPage": {
-    "notFound": "イベントが見つかりません", 
+    "notFound": "イベントが見つかりません",
     "loadError": "イベント詳細を読み込めません。再試行してください。",
     "actionError": "操作に失敗しました。再試行してください。",
     "refreshError": "参加者一覧が未同期です。更新を再試行してください。重複操作を防ぐため受付を一時停止しています。",
