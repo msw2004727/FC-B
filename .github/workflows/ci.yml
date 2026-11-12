@@ -135,10 +135,19 @@ jobs:
       - name: 安裝依賴（npm ci）
         run: npm ci --no-audit --no-fund
 
+      # FCB_CHUNK_GRAPH：同一次建置順便把 chunk 圖寫到 dist 外（UPD-2 不變式用），不另外建置。
       - name: 建置（只為量首頁 JS gzip）
         run: npx vite build
+        env:
+          FCB_CHUNK_GRAPH: ${{ runner.temp }}/chunk-graph.json
 
       # 同一支腳本：第一條只算入口 index-*.js（60KB）；第二條印出入口＋modulepreload 合計，
       # 超過寬鬆上限才失敗。正式門檻等這段日誌再由 PM 收緊，不要另寫第二支腳本。
       - name: 檢查首頁 gzip 預算（入口 60KB；入口＋modulepreload 寬鬆上限）
         run: node scripts/check-bundle-budget.mjs dist
+
+      # UPD-2：入口不得被任何 chunk 匯入、app-shared 不依賴 App 程式 chunk、六個語系檔仍在（scripts/check-chunk-graph.mjs）。
+      # 預算步驟紅了也照跑，一次看到兩邊結果。
+      - name: 檢查分塊不變式（UPD-2）
+        if: ${{ !cancelled() }}
+        run: node scripts/check-chunk-graph.mjs "$RUNNER_TEMP/chunk-graph.json"

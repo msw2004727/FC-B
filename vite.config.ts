@@ -9,10 +9,13 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 // 帶副檔名：Vite 日後預設的原生 config loader 不接受省略副檔名的相對 import（tsconfig 的 allowImportingTsExtensions 允許）。
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { earlyEventHtml } from './scripts/early-event-html.ts';
+import { chunkGraphPlugin, createCodeSplitting, renameProbePlugin } from './scripts/chunk-groups.ts';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
 import { appBuildMeta } from './scripts/build-meta.mjs';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
 import { NOINDEX_HEADER_PATHS, routeMetaFor } from './src/core/route-meta.ts';
+
+const PROJECT_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 /**
  * Cloudflare Pages `_headers`。
@@ -188,7 +191,8 @@ const pwa = VitePWA({
 
 export default defineConfig({
   // T-042d／T-093：index.html 冷啟動提早 REST。橫幅與活動文件各一段 script、各自外掛；emulator 建置整段移除。
-  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), appBuildMeta(), internalTestNoIndex(), pwa],
+  // chunkGraphPlugin／renameProbePlugin 只在 FCB_CHUNK_GRAPH／FCB_RENAME_PROBE 有值時動作（UPD-2 檢查用）。
+  plugins: [renameProbePlugin(PROJECT_ROOT), preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), appBuildMeta(), internalTestNoIndex(), chunkGraphPlugin(PROJECT_ROOT), pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },
@@ -203,14 +207,12 @@ export default defineConfig({
     target: ['es2020', 'chrome87', 'safari14'],
     cssCodeSplit: true,
     sourcemap: false,
-    rollupOptions: {
+    // UPD-2：rollupOptions 改 rolldownOptions（前者已標 deprecated）、manualChunks 改 codeSplitting.groups
+    // （兩者並存時 manualChunks 會被忽略）。語系分組原樣搬進 scripts/chunk-groups.ts：同一語系一個 chunk，
+    // zh-TW 不拆。另把主程式與分頁共用的模組搬出入口，讓「只改一頁」不再連帶幾十個檔改名（R-UPD-041 高風險）。
+    rolldownOptions: {
       output: {
-        // 同一語系的核心、各功能與舊版 A 字典合併成一個 chunk，切換語系只需一次請求。
-        // 預設語系 zh-TW 不分出去：i18n.ts 以 eager 方式直接打包進主程式（首屏不等字典）。
-        manualChunks(id: string) {
-          const m = id.match(/[\\/](?:messages|locales|legacy)[\\/](zh-CN|en|ja|vi|th|ko)\.json$/);
-          return m ? `i18n-${m[1]}` : undefined;
-        },
+        codeSplitting: createCodeSplitting(PROJECT_ROOT),
       },
     },
   },
