@@ -15,7 +15,14 @@ export function endedFoldKey(events: readonly EventDoc[]): 'ended' | 'cancelled'
   return cancelled > 0 ? 'mixed' : 'ended';
 }
 
+/** 收合列的 key：當天收合場次的 id 組合。篩選改變了收合的場次時元件重建、展開狀態重置（Opus 審查 P3）。 */
+export function endedFoldInstanceKey(events: readonly EventDoc[]): string {
+  return events.map((e, i) => e.id || e._docId || `#${i}`).join('|');
+}
+
 export function EndedFold<T extends EventDoc>(props: {
+  /** 展開區塊的 id（aria-controls 指向它），呼叫端用日期錨點組成，頁內唯一。 */
+  listId: string;
   events: readonly T[];
   renderCard: (event: T, index: number) => JSX.Element;
 }): JSX.Element {
@@ -28,12 +35,15 @@ export function EndedFold<T extends EventDoc>(props: {
         type="button"
         class="tl-ended-fold-btn"
         aria-expanded={open ? 'true' : 'false'}
+        aria-controls={props.listId}
         onClick={() => setOpen((v) => !v)}
       >
-        <span>{label}</span>
+        <span class="tl-ended-fold-label">{label}</span>
         <span class="tl-ended-fold-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
       </button>
-      {open && props.events.map(props.renderCard)}
+      <div class="tl-ended-fold-list" id={props.listId} hidden={!open}>
+        {open && props.events.map(props.renderCard)}
+      </div>
     </div>
   );
 }

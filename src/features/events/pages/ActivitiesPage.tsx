@@ -29,7 +29,7 @@ import {
   isTimelineCardEnded,
   type LegacyEventDoc,
 } from '../components/legacy/TimelineEventCard';
-import { EndedFold } from '../components/legacy/EndedFold';
+import { EndedFold, endedFoldInstanceKey } from '../components/legacy/EndedFold';
 import { ExternalTransitCard } from '../components/legacy/ExternalTransitCard';
 import {
   NEARBY_DISABLED_MSG,
@@ -1137,7 +1137,14 @@ export default function ActivitiesPage(): JSX.Element {
                               : sortedDayEvents;
                             return (
                               <>
-                                {ended.length > 0 && <EndedFold events={ended} renderCard={renderCard} />}
+                                {ended.length > 0 && (
+                                  <EndedFold
+                                    key={endedFoldInstanceKey(ended)}
+                                    listId={`tl-ended-${anchorKey}`}
+                                    events={ended}
+                                    renderCard={renderCard}
+                                  />
+                                )}
                                 {rest.map(renderCard)}
                               </>
                             );

@@ -10,6 +10,7 @@ import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
 import { timelineBarStyle } from '../../data/timeline-capacity-bar';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
 import { getViewerEventRegState } from '../../data/viewer-reg-state';
+import './signup-a11y.css'; // 計量條讀屏人數用 .fcb-sr-only
 import './timeline-card-extra.css';
 
 export type LegacyEventDoc = EventDoc & {
@@ -378,8 +379,8 @@ export function TimelineEventCard({
         {showBar && (
           // 沒縮圖的卡資訊欄較寬，is-no-thumb 讓條讓出縮圖寬度，所有卡的條同起點、同長度。
           <div class={eventImage ? 'tl-gbar-wrap' : 'tl-gbar-wrap is-no-thumb'}>
-            <div class="tl-gbar" aria-hidden="true" style={timelineBarStyle(barModel)} />
-            <span class="tl-gbar-sr">{barLabel}</span>
+            <div class="tl-gbar" aria-hidden="true" style={timelineBarStyle(barModel, stats.maxCount)} />
+            <span class="fcb-sr-only tl-gbar-sr">{barLabel}</span>
           </div>
         )}
         <div class="tl-event-meta">

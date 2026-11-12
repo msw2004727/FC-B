@@ -56,15 +56,4 @@
 [data-theme="dark"] .tl-gbar::after {
   background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 70%);
 }
-/* 條旁不寫人數；讀屏讀這段 */
-.tl-gbar-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
+/* 條旁不寫人數；讀屏人數用專案既有的 .fcb-sr-only（signup-a11y.css） */

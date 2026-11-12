@@ -220,16 +220,16 @@
     "barSeparator": ", ",
     "fold": {
       "ended": {
-        "one": "{count} ended event",
-        "other": "{count} ended events"
+        "one": "{count} ended",
+        "other": "{count} ended"
       },
       "cancelled": {
-        "one": "{count} cancelled event",
-        "other": "{count} cancelled events"
+        "one": "{count} cancelled",
+        "other": "{count} cancelled"
       },
       "mixed": {
-        "one": "{count} ended or cancelled event",
-        "other": "{count} ended or cancelled events"
+        "one": "{count} ended/cancelled",
+        "other": "{count} ended/cancelled"
       }
     }
   }

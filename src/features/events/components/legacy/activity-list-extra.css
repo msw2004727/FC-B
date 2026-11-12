@@ -23,11 +23,13 @@
   background: var(--bg-root);
 }
 
-/* 月份標題貼在篩選列下方；top 由 ActivitiesPage 量篩選列實際高度後寫在行內 style（沒量到前不黏）。 */
+/* 月份標題貼在篩選列下方；top 由 ActivitiesPage 量篩選列實際高度後寫在行內 style（沒量到前不黏）。
+ * z-index 6：高於卡片的正取／候補／不公開印章（3）與開啟中遮罩（3、5），捲動時印章不會蓋過月份；
+ * 篩選列在外層（#activity-list 是 z-index 1 的堆疊層），月份不會蓋過篩選列（Opus 審查 P2，2026-11-13）。 */
 #page-activities .tl-month-header {
   position: -webkit-sticky;
   position: sticky;
-  z-index: 3;
+  z-index: 6;
 }
 
 /* 已結束／已取消收合列 */
@@ -54,6 +56,21 @@
   white-space: nowrap;
   cursor: pointer;
 }
+/* R-UI-027：不讓瀏覽器自動斷行；各語系文案已縮短到 360px 一行放得下，超出時以省略號收尾（最後防線）。 */
+.tl-ended-fold-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tl-ended-fold-caret {
+  flex-shrink: 0;
   font-size: .7rem;
+}
+.tl-ended-fold-list {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.tl-ended-fold-list[hidden] {
+  display: none;
 }

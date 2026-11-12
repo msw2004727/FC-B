@@ -28,12 +28,18 @@ function segmentColor(key: RegBarSegmentKey, modern: boolean): string {
   return modern ? TEAM_OPEN_COLOR : TEAM_OPEN_FALLBACK;
 }
 
+/** 色標位置限制在 0～100%（超收時各段比例加總因四捨五入可能略超過 100）。 */
 function pct(n: number): string {
-  return `${Math.round(n * 100) / 100}%`;
+  return `${Math.min(100, Math.max(0, Math.round(n * 100) / 100))}%`;
 }
 
-/** 計量條的 background-image（光澤由 CSS ::after 疊上）。 */
-export function timelineBarBackground(model: RegBarModel, modern = true): string {
+/**
+ * 計量條的 background-image（光澤由 CSS ::after 疊上）。
+ * 是否畫滿看人數（正取＋團隊未報 ≥ 上限），不看百分比，199/200 不會被畫成滿（Grok 審查 2026-11-13）。
+ */
+export function timelineBarBackground(model: RegBarModel, maxCount: number, modern = true): string {
+  const filledCount = model.segments.reduce((sum, seg) => sum + seg.count, 0);
+  const isFull = maxCount > 0 && filledCount >= maxCount;
   const stops: string[] = [];
   let pos = 0;
   const segs = model.segments.map((seg) => {
@@ -51,7 +57,7 @@ export function timelineBarBackground(model: RegBarModel, modern = true): string
   const last = segs[segs.length - 1];
   if (!last) {
     stops.push('transparent 0%');
-  } else if (last.end >= 99.5) {
+  } else if (isFull) {
     // 額滿：最後一段畫到底，條是滿的。
     stops[stops.length - 1] = `${last.color} 100%`;
   } else {
@@ -69,10 +75,10 @@ export function timelineBarBackground(model: RegBarModel, modern = true): string
 }
 
 /** 行內 style：先寫舊瀏覽器版本，再寫 color-mix 版本（不支援時後一條被丟棄、保留前一條）。 */
-export function timelineBarStyle(model: RegBarModel | null): string | undefined {
+export function timelineBarStyle(model: RegBarModel | null, maxCount: number): string | undefined {
   if (!model) return undefined;
-  const fallback = timelineBarBackground(model, false);
-  const modern = timelineBarBackground(model, true);
+  const fallback = timelineBarBackground(model, maxCount, false);
+  const modern = timelineBarBackground(model, maxCount, true);
   return fallback === modern
     ? `background-image:${modern}`
     : `background-image:${fallback};background-image:${modern}`;

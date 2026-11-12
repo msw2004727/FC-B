@@ -215,16 +215,16 @@
     "barSeparator": ", ",
     "fold": {
       "ended": {
-        "one": "จบแล้ว {count} รายการ",
-        "other": "จบแล้ว {count} รายการ"
+        "one": "จบแล้ว {count}",
+        "other": "จบแล้ว {count}"
       },
       "cancelled": {
-        "one": "ยกเลิก {count} รายการ",
-        "other": "ยกเลิก {count} รายการ"
+        "one": "ยกเลิก {count}",
+        "other": "ยกเลิก {count}"
       },
       "mixed": {
-        "one": "จบหรือยกเลิก {count} รายการ",
-        "other": "จบหรือยกเลิก {count} รายการ"
+        "one": "จบ/ยกเลิก {count}",
+        "other": "จบ/ยกเลิก {count}"
       }
     }
   }

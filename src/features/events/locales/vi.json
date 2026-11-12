@@ -216,16 +216,16 @@
     "barSeparator": ", ",
     "fold": {
       "ended": {
-        "one": "{count} sự kiện đã kết thúc",
-        "other": "{count} sự kiện đã kết thúc"
+        "one": "{count} đã xong",
+        "other": "{count} đã xong"
       },
       "cancelled": {
-        "one": "{count} sự kiện đã hủy",
-        "other": "{count} sự kiện đã hủy"
+        "one": "{count} đã hủy",
+        "other": "{count} đã hủy"
       },
       "mixed": {
-        "one": "{count} sự kiện đã kết thúc hoặc hủy",
-        "other": "{count} sự kiện đã kết thúc hoặc hủy"
+        "one": "{count} xong/hủy",
+        "other": "{count} xong/hủy"
       }
     }
   }
