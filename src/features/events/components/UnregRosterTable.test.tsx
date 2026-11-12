@@ -8,12 +8,14 @@ const {
   mockWriteOpLog,
   mockAppConfirm,
   mockSettleAttendance,
+  mockCollectAttendanceOps,
 } = vi.hoisted(() => ({
   mockRemoveAttendance: vi.fn(),
   mockWriteAttendanceOps: vi.fn(),
   mockWriteOpLog: vi.fn(),
   mockAppConfirm: vi.fn(),
   mockSettleAttendance: vi.fn(),
+  mockCollectAttendanceOps: vi.fn(),
 }));
 
 vi.mock('../data/attendance-settle', () => ({
@@ -34,8 +36,11 @@ vi.mock('../data/attendance-edit', async () => {
   const actual = await vi.importActual<typeof import('../data/attendance-edit')>(
     '../data/attendance-edit',
   );
+  // 預設照真實邏輯；個別案例用 mockImplementationOnce 製造同步拋錯。
+  mockCollectAttendanceOps.mockImplementation(actual.collectAttendanceOps);
   return {
     ...actual,
+    collectAttendanceOps: mockCollectAttendanceOps,
     writeAttendanceOps: mockWriteAttendanceOps,
   };
 });
@@ -477,6 +482,46 @@ describe('UnregRosterTable', () => {
     expect(onToast).toHaveBeenCalledWith('陳路人 儲存失敗，已還原');
     expect(checkoutBox.checked).toBe(false);
     expect(checkinBox.checked).toBe(true);
+  });
+
+  it('防抖觸發的寫入同步拋錯時只記警告，不留未處理拒絕（L-07）', async () => {
+    mockCollectAttendanceOps.mockImplementationOnce(() => {
+      throw new Error('collect failed');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const reasons: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { reasons.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      render(
+        <UnregRosterTable
+          eventId="ce_1"
+          eventDocId="doc_1"
+          eventTitle="週五夜球"
+          attendanceRecords={sampleUnregRecords}
+          canManage={true}
+          operatorUid="u_admin"
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: '編輯' }));
+      const checkoutBox = document.getElementById('unreg-checkout-u_unreg_1') as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.click(checkoutBox);
+        await vi.advanceTimersByTimeAsync(CHECKBOX_DEBOUNCE_MS);
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+      await new Promise((resolvePromise) => { setTimeout(resolvePromise, 0); });
+
+      expect(mockCollectAttendanceOps).toHaveBeenCalledTimes(1);
+      expect(mockWriteAttendanceOps).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith('[UnregRosterTable] writeForUid failed', expect.any(Error));
+      expect(reasons).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      warn.mockRestore();
+    }
   });
 
   it('beforeunload 在有待寫入時註冊，清空後解除', async () => {

@@ -49,6 +49,12 @@ export interface UnregPerson {
   name: string;
 }
 
+/** 背景觸發的 writeForUid：寫入失敗已在內部還原，這裡只接住同步拋錯，不留未處理拒絕（L-07）。 */
+function warnWriteForUidFailed(err: unknown): void {
+  // eslint-disable-next-line no-console
+  console.warn('[UnregRosterTable] writeForUid failed', err);
+}
+
 export interface UnregRosterTableProps {
   /** public eventId（R-ID-009）。 */
   eventId: string;
@@ -460,7 +466,7 @@ export function UnregRosterTable({
             }
             if (queuedMapRef.current[uid]) {
               delete queuedMapRef.current[uid];
-              void writeForUid(uid);
+              void writeForUid(uid).catch(warnWriteForUidFailed);
             }
           }
         })();
@@ -479,7 +485,7 @@ export function UnregRosterTable({
       if (saveTimersRef.current[uid]) clearTimeout(saveTimersRef.current[uid]);
       saveTimersRef.current[uid] = setTimeout(() => {
         delete saveTimersRef.current[uid];
-        void writeForUid(uid);
+        void writeForUid(uid).catch(warnWriteForUidFailed);
       }, CHECKBOX_DEBOUNCE_MS);
       syncPendingRef.current();
     },
