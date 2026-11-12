@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildEventEntries, buildSitemapXml, isIndexableEvent, OUTPUT_URL, regenerateSitemap } from './build-sitemap.mjs';
+import { buildEventEntries, buildSitemapXml, fetchAllEvents, isIndexableEvent, OUTPUT_URL, regenerateSitemap } from './build-sitemap.mjs';
 
 const NOW = Date.parse('2026-11-07T00:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -113,20 +113,86 @@ describe('build-sitemap（I-03）', () => {
       });
     });
 
+    it('合格公開活動 0 筆（讀到的文件都不公開）：寫成空 urlset，不視為失敗', async () => {
+      await withTempDir(async (dir) => {
+        const out = path.join(dir, 'sitemap-events.xml');
+        const logger = makeLogger();
+        const result = await regenerateSitemap({
+          fetchEvents: async () => [{ id: 'ce_private_01', privateEvent: true }],
+          outputUrl: pathToFileURL(out), nowMs: NOW, logger,
+        });
+        expect(result).toEqual({ status: 'regenerated', count: 0 });
+        expect(readFileSync(out, 'utf8')).toBe(buildSitemapXml([]));
+        expect(logger.lines.at(-1)).toBe('sitemap：重產 0 筆');
+      });
+    });
+
+    describe('fetchAllEvents（假 fetch，不連網）', () => {
+      const page = (n, next) => ({
+        status: 200,
+        json: async () => ({
+          documents: [{ name: `projects/p/databases/(default)/documents/events/ce_page_${n}`, fields: {} }],
+          ...(next ? { nextPageToken: `t${n}` } : {}),
+        }),
+      });
+
+      it('正常分頁到最後一頁', async () => {
+        let n = 0;
+        const events = await fetchAllEvents({ apiKey: 'k', fetchImpl: async () => { n += 1; return page(n, n < 3); } });
+        expect(events.map((e) => e.id)).toEqual(['ce_page_1', 'ce_page_2', 'ce_page_3']);
+      });
+
+      it('超過 30 頁丟錯（不寫部分清單），regenerateSitemap 走沿用舊檔（交叉審 P3-2）', async () => {
+        let n = 0;
+        const fetchImpl = async () => { n += 1; return page(n, true); };
+        await expect(fetchAllEvents({ apiKey: 'k', fetchImpl })).rejects.toThrow(/超過 30 頁/);
+        expect(n).toBe(30);
+        await withTempDir(async (dir) => {
+          const out = path.join(dir, 'sitemap-events.xml');
+          writeFileSync(out, 'OLD', 'utf8');
+          const logger = makeLogger();
+          n = 0;
+          const result = await regenerateSitemap({
+            fetchEvents: () => fetchAllEvents({ apiKey: 'k', fetchImpl }),
+            outputUrl: pathToFileURL(out), nowMs: NOW, logger,
+          });
+          expect(result.status).toBe('kept');
+          expect(readFileSync(out, 'utf8')).toBe('OLD');
+          expect(logger.lines.at(-1)).toBe('sitemap：沿用舊檔');
+        });
+      });
+
+      it('總期限 60 秒：時間用完就丟錯，單頁逾時不超過剩餘時間（交叉審 P3-1）', async () => {
+        let clock = 0;
+        const signals = [];
+        const fetchImpl = async (_url, opts) => { signals.push(opts.signal); clock += 25_000; return page(signals.length, true); };
+        await expect(fetchAllEvents({ apiKey: 'k', fetchImpl, nowFn: () => clock })).rejects.toThrow(/總期限 60 秒/);
+        // 0、25、50 秒各抓一頁，第 4 頁開始前已到 75 秒 > 60 秒
+        expect(signals).toHaveLength(3);
+        expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
+      });
+    });
+
     it('不保留 GitHub Actions 排程（顧問 §3.129 第 1 項）', () => {
       expect(existsSync(new URL('../.github/workflows/build-sitemap.yml', import.meta.url))).toBe(false);
     });
   });
 
-  it('現行活動子表：每筆都是 toosterx.com/events/{合法 id}', () => {
+  // 合格公開活動真的是 0 筆時，空 urlset 是正確且合法的 sitemap（讀到 0 筆「文件」才視為異常沿用舊檔），
+  // 所以這裡允許 0 筆，避免正式站剛好沒有公開活動時 CI 變紅（交叉審 P3-4）。
+  it('現行活動子表：合法 urlset，每筆都是 toosterx.com/events/{合法 id}（允許 0 筆）', () => {
     const xml = readFileSync(new URL('../public/sitemap-events.xml', import.meta.url), 'utf8');
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')).toBe(true);
+    expect(xml.endsWith('</urlset>\n')).toBe(true);
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(locs.length).toBeGreaterThan(0);
     for (const loc of locs) expect(loc).toMatch(/^https:\/\/toosterx\.com\/events\/[A-Za-z0-9_-]{3,80}$/);
   });
 
   it('索引只列靜態與活動子表（俱樂部要登入、B 無賽事詳情頁）', () => {
     const index = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    // 註解要和實際重產時機一致：不是每日排程，是上線批次 bump-version（交叉審 P3-3）
+    expect(index).toContain('每個上線批次 npm run bump-version');
+    expect(index).not.toContain('每日');
     const locs = [...index.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs).toEqual([
       'https://toosterx.com/sitemap-static.xml',

@@ -8,7 +8,7 @@
  * 移植自舊站 A `scripts/build-sitemap.js`，篩選條件照 A；差異：
  *   - 只產活動子表、只寫 sitemap-events.xml。俱樂部詳情要登入（S3c 一律 noindex），B 沒有賽事詳情頁，兩個子表都不產。
  *   - 只用公開 Firestore REST 唯讀列出（Rules `events` 為 allow read: if true），不需要任何 secret。
- *   - 讀取失敗、逾時或讀到 0 筆時保留原檔並以 exit 0 結束（不擋上線），不像 A 會寫成空表。
+ *   - 讀取失敗、逾時（單頁 15 秒／總計 60 秒）、超過頁數上限或讀到 0 筆時保留原檔並以 exit 0 結束（不擋上線），不像 A 會寫成空表。
  *   - 結束時印一行可貼進上線 evidence：「sitemap：重產 N 筆」或「sitemap：沿用舊檔」。
  * 首頁、著陸頁、Blog 等固定網址在 public/sitemap-static.xml，索引在 public/sitemap.xml（都手動維護，本腳本不碰）。
  */
@@ -26,6 +26,7 @@ const URLS_PER_FILE_CAP = 5000;
 const PAGE_SIZE = 300;
 const MAX_PAGES = 30;
 const FETCH_TIMEOUT_MS = 15_000;
+const TOTAL_TIMEOUT_MS = 60_000;
 
 function readFirebaseApiKey() {
   const match = readFileSync(FIREBASE_CONFIG_URL, 'utf8').match(/apiKey:\s*["']([^"']+)["']/);
@@ -58,25 +59,37 @@ function fromFirestoreDoc(doc) {
   return obj;
 }
 
-async function fetchAllEvents() {
-  const apiKey = readFirebaseApiKey();
+/**
+ * 分頁列出 events。逾時（單頁 15 秒、總計 60 秒）或超過 MAX_PAGES 一律丟錯，
+ * 由 regenerateSitemap 走「沿用舊檔」，不寫部分清單（REST list 依文件名排序，截掉的是隨機活動）。
+ * fetchImpl／nowFn／apiKey 可注入，單元測試不連網。
+ */
+export async function fetchAllEvents({
+  fetchImpl = fetch,
+  nowFn = Date.now,
+  apiKey = readFirebaseApiKey(),
+  totalTimeoutMs = TOTAL_TIMEOUT_MS,
+} = {}) {
   if (!apiKey) throw new Error('找不到 Firebase apiKey');
+  const deadline = nowFn() + totalTimeoutMs;
   const all = [];
   let pageToken = '';
   let page = 0;
   do {
+    if (page >= MAX_PAGES) throw new Error(`活動超過 ${MAX_PAGES} 頁（${MAX_PAGES * PAGE_SIZE} 筆），不寫部分清單`);
+    const remaining = deadline - nowFn();
+    if (remaining <= 0) throw new Error(`讀取超過總期限 ${totalTimeoutMs / 1000} 秒`);
     page += 1;
     const params = new URLSearchParams({ pageSize: String(PAGE_SIZE), key: apiKey });
     if (pageToken) params.set('pageToken', pageToken);
     const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents/events?${params}`;
-    // 逾時改走「保留舊檔」，不讓上線步驟卡住
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    // 單頁逾時取「15 秒」與「總期限剩餘」較小者，逾時改走「保留舊檔」，不讓上線步驟卡住
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(Math.min(FETCH_TIMEOUT_MS, remaining)) });
     if (res.status !== 200) throw new Error(`Firestore events fetch failed (${res.status})`);
     const body = await res.json();
     all.push(...(body.documents || []).map(fromFirestoreDoc));
     pageToken = body.nextPageToken || '';
-  } while (pageToken && page < MAX_PAGES);
-  if (pageToken) console.warn(`[build-sitemap] events exceeded ${MAX_PAGES} pages; truncated`);
+  } while (pageToken);
   return all;
 }
 

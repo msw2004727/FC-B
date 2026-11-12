@@ -3,7 +3,7 @@
   <!--
     新站 Sitemap Index（換站計畫書 I-03）
     - sitemap-static.xml  手動維護的首頁、SEO 著陸頁、Blog、政策頁等（沿用舊站）
-    - sitemap-events.xml  由 scripts/build-sitemap.mjs 每日自動產生（公開活動）
+    - sitemap-events.xml  每個上線批次 npm run bump-version 時由 scripts/build-sitemap.mjs 重產（公開活動）
     不放俱樂部子表：俱樂部詳情要登入、一律 noindex；開放訪客時再加回。B 無賽事詳情頁，也不放賽事子表。
   -->
   <sitemap>
