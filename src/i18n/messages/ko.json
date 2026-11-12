@@ -26,6 +26,7 @@
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
   "feature.external": "외부 시스템 연동 준비 중",
   "internalTest.badge": "ToosterX 얼리 액세스 {version}",
+  "swUpdate": { "title": "새 버전", "forcedTitle": "업데이트 필요", "now": "업데이트", "later": "나중에", "busy": "작업이 아직 끝나지 않았습니다. 나중에 업데이트하세요" },
   "lineLoginHint": {
     "openInLine": "LINE 앱에서 열기",
     "newTabNote": "로그인이 끝나면 새 탭에서 열립니다. 이전 탭은 닫아도 됩니다."

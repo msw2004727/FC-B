@@ -26,6 +26,7 @@
   "feature.reserved": "この機能は近日公開予定です",
   "feature.external": "外部システム連携準備中",
   "internalTest.badge": "ToosterX 先行体験版 {version}",
+  "swUpdate": { "title": "新バージョン", "forcedTitle": "更新してください", "now": "今すぐ更新", "later": "あとで", "busy": "操作が完了していません。あとで更新してください" },
   "lineLoginHint": {
     "openInLine": "LINE アプリで開く",
     "newTabNote": "ログインが完了すると新しいタブで開きます。元のタブは閉じて構いません。"
