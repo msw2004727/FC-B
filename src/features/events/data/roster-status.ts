@@ -1,4 +1,5 @@
 import { callFn } from '@/data/callables';
+import { withSubmitting } from '@/core/submit-guard';
 import type {
   ForceDemoteToWaitlistAppliedResponse,
   ForceDemoteToWaitlistResponse,
@@ -132,9 +133,9 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
   };
   const send = (allowOverCapacity = false) => {
     const payload = { eventId: input.eventId, userId: target.userId, requestId: newRosterStatusRequestId() };
-    return withTimeout<ForceDemoteToWaitlistResponse | ForcePromoteWaitlistResponse>(demote
+    return withSubmitting('roster-remove', () => withTimeout<ForceDemoteToWaitlistResponse | ForcePromoteWaitlistResponse>(demote
       ? callFn('forceDemoteToWaitlist', payload)
-      : callFn('forcePromoteWaitlist', { ...payload, ...(allowOverCapacity ? { allowOverCapacity: true } : {}) }));
+      : callFn('forcePromoteWaitlist', { ...payload, ...(allowOverCapacity ? { allowOverCapacity: true } : {}) })));
   };
   try {
     const blocked = guard();
