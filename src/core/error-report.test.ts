@@ -314,14 +314,15 @@ describe('error-report', () => {
       { name: 'https://cdn.example.com/assets/other.js', decodedBodySize: 0, transferSize: 0, initiatorType: 'script' },
       { name: `${location.origin}/assets/HomePage-x.js`, decodedBodySize: 0, transferSize: 0, initiatorType: 'other' },
     ] as unknown as PerformanceEntryList);
+    // 測試同步更新（R-QA-005）：DIAG-IOS-IMPORT 修法 B 起 pagehide 之後的程式檔載入失敗不上報，這裡改在前景觸發。
     installErrorReporter();
-    window.dispatchEvent(new Event('pagehide'));
     reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
     await waitForWrites(1);
     const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
     const diag = JSON.parse(String(payload.diag)) as Record<string, unknown>;
     expect(diag).toMatchObject({
-      leaving: true,
+      leaving: false,
+      vis: 'visible',
       rl: 3000,
       n: 2,
       assets: [
@@ -330,6 +331,58 @@ describe('error-report', () => {
       ],
     });
     expect(diag.sw).toEqual(expect.any(String));
+  });
+
+  describe('背景中的程式檔載入失敗（DIAG-IOS-IMPORT 修法 B）', () => {
+    let visibility: DocumentVisibilityState = 'visible';
+
+    beforeEach(() => {
+      visibility = 'visible';
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+    });
+
+    afterEach(() => {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+    });
+
+    it('pagehide 之後不上報；bfcache 還原回前景後仍失敗照常上報', async () => {
+      currentUser = { uid: 'u1', displayName: '小明' };
+      installErrorReporter();
+      window.dispatchEvent(new Event('pagehide'));
+      reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+      await drain();
+      expect(mockGetFirebase).not.toHaveBeenCalled();
+      expect(mockAddDoc).not.toHaveBeenCalled();
+
+      // 同一則訊息沒有被記進去重：回前景再失敗要寫得進去。
+      window.dispatchEvent(new Event('pageshow'));
+      reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+      await waitForWrites(1);
+      const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(JSON.parse(String(payload.diag))).toMatchObject({ leaving: false, vis: 'visible' });
+    });
+
+    it('頁面隱藏（vis=hidden）時不上報；回前景後仍失敗照常上報', async () => {
+      currentUser = { uid: 'u1', displayName: '小明' };
+      visibility = 'hidden';
+      reportClientError('render', new TypeError('Importing a module script failed.'));
+      reportClientError('unhandledrejection', new TypeError('Failed to fetch dynamically imported module: x'));
+      await drain();
+      expect(mockAddDoc).not.toHaveBeenCalled();
+
+      visibility = 'visible';
+      reportClientError('render', new TypeError('Importing a module script failed.'));
+      await waitForWrites(1);
+      expect(mockAddDoc.mock.calls[0]?.[1]).toMatchObject({ context: 'render' });
+    });
+
+    it('隱藏時其他錯誤照常上報（只略過程式檔載入失敗）', async () => {
+      currentUser = { uid: 'u1', displayName: '小明' };
+      visibility = 'hidden';
+      reportClientError('render', new Error('real-bug'));
+      await waitForWrites(1);
+      expect(mockAddDoc.mock.calls[0]?.[1]).toMatchObject({ errorMessage: 'real-bug' });
+    });
   });
 
   it('Resource Timing 拋錯時仍寫入，診斷只少 assets', async () => {

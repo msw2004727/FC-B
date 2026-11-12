@@ -273,6 +273,15 @@ function readModuleLoadDiag(): string {
   }
 }
 
+function isBackground(): boolean {
+  if (leaving) return true;
+  try {
+    return document.visibilityState === 'hidden';
+  } catch {
+    return false;
+  }
+}
+
 function readUserAgent(): string {
   try {
     return navigator.userAgent || '';
@@ -365,6 +374,9 @@ async function persist(context: string, parsed: ParsedError, key: string, diag: 
 function enqueue(context: string, err: unknown): void {
   const parsed = parseError(err);
   if (isNoise(parsed.errorMessage)) return;
+  // DIAG-IOS-IMPORT 修法 B：背景中（vis=hidden 或 pagehide 之後）的程式檔載入失敗是切背景中斷的雜訊，不寫、也不記去重；
+  // 回前景後再失敗照常上報。
+  if (MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) && isBackground()) return;
   const key = `${context}|${parsed.errorCode}|${parsed.errorMessage}`;
   if (seen.has(key)) return;
   if (isBudgetClosed(Date.now())) return;
