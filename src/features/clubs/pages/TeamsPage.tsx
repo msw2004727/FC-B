@@ -138,7 +138,6 @@ function toTeamSportValue(globalSport: string): string {
 }
 
 export default function TeamsPage(): JSX.Element {
-  if (typeof window !== "undefined") throw new Error("drill V_bad");
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
