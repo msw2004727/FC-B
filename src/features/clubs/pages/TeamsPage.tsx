@@ -138,6 +138,8 @@ function toTeamSportValue(globalSport: string): string {
 }
 
 export default function TeamsPage(): JSX.Element {
+  // UPD-1b 演練專用（staging V_bad）：俱樂部頁故意出錯，入口不受影響；下一個演練 commit 移除
+  if (Date.now() > 0) throw new Error('UPD-1b 演練 V_bad：俱樂部頁故意出錯');
   const t = useT();
   const viewer = useViewer();
   const location = useLocation();
