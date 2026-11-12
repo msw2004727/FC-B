@@ -435,13 +435,16 @@ export async function submitEventComment(
   const payload = buildCommentPayload(
     context.event.id!, author, body, privateComment, fs.serverTimestamp(), fs.serverTimestamp(),
   );
-  try {
-    await withSubmitting('event-save', () => fs.addDoc(comments, payload));
-  } catch (error) {
-    if (!isCommentPermissionDenied(error)) throw error;
-    const { replyCount: _replyCount, likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
-    await withSubmitting('event-save', () => fs.addDoc(comments, legacy));
-  }
+  // 首送與權限拒絕重送包在同一段送出中，兩次之間計數不歸零。
+  await withSubmitting('event-save', async () => {
+    try {
+      await fs.addDoc(comments, payload);
+    } catch (error) {
+      if (!isCommentPermissionDenied(error)) throw error;
+      const { replyCount: _replyCount, likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
+      await fs.addDoc(comments, legacy);
+    }
+  });
   invalidateEventCommentCaches(context.event.id!);
 }
 
@@ -460,13 +463,15 @@ export async function submitEventCommentReply(
     context.event.id!, comment.id, author, body, fs.serverTimestamp(), fs.serverTimestamp(),
   );
   const replies = fs.collection(fs.doc(comments, comment.id), 'replies');
-  try {
-    await withSubmitting('event-save', () => fs.addDoc(replies, payload));
-  } catch (error) {
-    if (!isCommentPermissionDenied(error)) throw error;
-    const { likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
-    await withSubmitting('event-save', () => fs.addDoc(replies, legacy));
-  }
+  await withSubmitting('event-save', async () => {
+    try {
+      await fs.addDoc(replies, payload);
+    } catch (error) {
+      if (!isCommentPermissionDenied(error)) throw error;
+      const { likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
+      await fs.addDoc(replies, legacy);
+    }
+  });
   invalidateEventCommentCaches(context.event.id!);
 }
 

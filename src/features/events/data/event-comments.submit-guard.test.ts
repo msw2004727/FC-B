@@ -1,4 +1,4 @@
-/** 留言新增與刪除寫入進行中要擋住強制更新，成功與失敗都釋放。 */
+/** 留言新增、回覆與刪除寫入進行中要擋住強制更新，成功與失敗都釋放。 */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({ getFirebase: vi.fn(), addDoc: vi.fn(), updateDoc: vi.fn() }));
@@ -11,9 +11,10 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: mock.updateDoc,
 }));
 
-import { _resetSubmitGuardForTest, isSubmitting } from '@/core/submit-guard';
+import { _resetSubmitGuardForTest, isSubmitting, onSubmittingIdle } from '@/core/submit-guard';
 import {
-  deleteEventComment, submitEventComment, _resetEventCommentsForTest, type CommentContext,
+  deleteEventComment, mapComment, submitEventComment, submitEventCommentReply,
+  _resetEventCommentsForTest, type CommentContext,
 } from './event-comments';
 
 const context: CommentContext = {
@@ -59,6 +60,60 @@ describe('留言寫入送出中', () => {
 
     mock.updateDoc.mockRejectedValue(new Error('denied'));
     await expect(deleteEventComment(context, 'c1')).rejects.toThrow('denied');
+    expect(isSubmitting()).toBe(false);
+  });
+  it.each([
+    ['新增留言', () => submitEventComment(context, '你好', false)],
+    ['回覆留言', () => submitEventCommentReply(context, mapComment('c1', {}, 'host'), '回覆')],
+  ] as const)('%s：permission-denied 重送期間不歸零，完成後只釋放一次', async (_name, run) => {
+    const idle = vi.fn();
+    onSubmittingIdle(idle);
+    let resolve!: (value: unknown) => void;
+    const seen: boolean[] = [];
+    mock.addDoc
+      .mockImplementationOnce(async () => {
+        seen.push(isSubmitting());
+        throw { code: 'permission-denied' };
+      })
+      .mockImplementationOnce(() => {
+        seen.push(isSubmitting());
+        return new Promise((r) => { resolve = r; });
+      });
+    const operation = run();
+    await vi.waitFor(() => expect(mock.addDoc).toHaveBeenCalledTimes(2));
+    expect(seen).toEqual([true, true]);
+    expect(isSubmitting()).toBe(true);
+    expect(idle).not.toHaveBeenCalled();
+    resolve({});
+    await expect(operation).resolves.toBeUndefined();
+    expect(isSubmitting()).toBe(false);
+    expect(idle).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['新增留言', () => submitEventComment(context, '你好', false)],
+    ['回覆留言', () => submitEventCommentReply(context, mapComment('c1', {}, 'host'), '回覆')],
+  ] as const)('%s：permission-denied 重送也失敗時釋放', async (_name, run) => {
+    mock.addDoc
+      .mockRejectedValueOnce({ code: 'permission-denied' })
+      .mockRejectedValueOnce(new Error('legacy failed'));
+    await expect(run()).rejects.toThrow('legacy failed');
+    expect(mock.addDoc).toHaveBeenCalledTimes(2);
+    expect(isSubmitting()).toBe(false);
+  });
+
+  it('回覆留言：addDoc 進行中為 true，成功與丟錯後都釋放', async () => {
+    let resolve!: (value: unknown) => void;
+    mock.addDoc.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const operation = submitEventCommentReply(context, mapComment('c1', {}, 'host'), '回覆');
+    await vi.waitFor(() => expect(mock.addDoc).toHaveBeenCalledTimes(1));
+    expect(isSubmitting()).toBe(true);
+    resolve({});
+    await expect(operation).resolves.toBeUndefined();
+    expect(isSubmitting()).toBe(false);
+
+    mock.addDoc.mockRejectedValue(new Error('offline'));
+    await expect(submitEventCommentReply(context, mapComment('c1', {}, 'host'), '回覆')).rejects.toThrow('offline');
     expect(isSubmitting()).toBe(false);
   });
 });

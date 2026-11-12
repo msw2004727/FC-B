@@ -215,4 +215,61 @@ describe('showSwReloadPrompt 銅金光軌', () => {
     dismissForcedUpdatePrompt();
     expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
   });
+
+  it('一般提示先出再升強制，收掉強制框時還原一般提示（有「稍後」、用 SW 函式）', () => {
+    const swFn = vi.fn();
+    const forcedFn = vi.fn();
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    showSwReloadPrompt(forcedFn, 'min-build', { forced: true });
+    expect(promptEl().dataset.mode).toBe('forced');
+    dismissForcedUpdatePrompt();
+    const prompt = promptEl();
+    expect(prompt.dataset.mode).toBeUndefined();
+    expect(prompt.querySelector('[data-sw-reload-later]')).toBeTruthy();
+    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(swFn).toHaveBeenCalledTimes(1);
+    expect(forcedFn).not.toHaveBeenCalled();
+  });
+
+  it('強制框按現在更新後真的重載：不留任何提示框', () => {
+    const swFn = vi.fn();
+    const forcedFn = vi.fn();
+    showSwReloadPrompt(forcedFn, 'min-build', { forced: true });
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    (promptEl().querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(forcedFn).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+  });
+
+  it('強制框按現在更新但沒進入重載而重顯強制框：之後收掉強制框仍還原 SW 一般提示', () => {
+    const swFn = vi.fn();
+    const retryFn = vi.fn();
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    showSwReloadPrompt(() => {
+      showSwReloadPrompt(retryFn, 'min-build', { forced: true });
+    }, 'min-build', { forced: true });
+    (promptEl().querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(promptEl().dataset.mode).toBe('forced');
+    dismissForcedUpdatePrompt();
+    const prompt = promptEl();
+    expect(prompt.dataset.mode).toBeUndefined();
+    expect(prompt.querySelector('[data-sw-reload-later]')).toBeTruthy();
+    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(swFn).toHaveBeenCalledTimes(1);
+    expect(retryFn).not.toHaveBeenCalled();
+  });
+
+  it('強制框按現在更新但沒進入重載而改延後收框：立即還原 SW 一般提示', () => {
+    const swFn = vi.fn();
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    showSwReloadPrompt(() => {
+      dismissForcedUpdatePrompt();
+    }, 'min-build', { forced: true });
+    (promptEl().querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    const prompt = promptEl();
+    expect(prompt.dataset.mode).toBeUndefined();
+    expect(prompt.querySelector('[data-sw-reload-later]')).toBeTruthy();
+    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(swFn).toHaveBeenCalledTimes(1);
+  });
 });
