@@ -51,7 +51,8 @@ interface AllowedLine {
 const ALLOWED_LINES: readonly AllowedLine[] = [
   {
     file: 'src/features/events/data/detail-model.ts',
-    line: 152,
+    // 測試同步更新（2026-11-12）：detail-model.ts 新增 actualConfirmedCount，該行由 152 移到 184。
+    line: 184,
     source: "const endMs = Date.parse(`${year}-${month}-${day}T${endHour}:${endMinute}:00+08:00`);",
     reason: '模板字串帶明確 +08:00 偏移，結果是台北絕對時間，不是本地解析（顧問 10-31 裁定保留）。',
   },

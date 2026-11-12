@@ -76,16 +76,34 @@ export function guestConfirmedCount(event: DetailEvent): number {
 }
 
 /**
- * 報名卡「N/M」的 N：實際正取人數，不含團隊保留尚未報名的名額。
- * 照 A 訪客 confirmedSummary（event-detail.js showEventDetail）：先 `_getEventActualConfirmedCount`
+ * 報名卡「N/M」與名單摘要的 N：實際正取人數，不含團隊保留尚未報名的名額。
+ * 照 A 訪客 confirmedSummary（event-detail.js showEventDetail）：`_getEventActualConfirmedCount`
  * （有 realCurrent 用它，否則 current 扣團隊未報），再退回 participantsWithUid／participants 筆數。
+ * 與 A 的差異（2026-11-12 審查 P2）：A 以 `||` 串接，正取算出 0 也會誤退回名單筆數；
+ * B 算出 0 就是 0，名單筆數只在 realCurrent 與 current 都缺欄（null、空字串、非數字）時才用。
  * 不可改用 event.current：Functions 寫入的 current＝realCurrent＋團隊未報，報名卡再扣一次會讓「剩 N」少算。
  * guestConfirmedCount 仍保留給報名按鈕判斷（覆寫 current 後交給 getEventParticipantStats，改了會重複扣）。
  */
 export function actualConfirmedCount(event: DetailEvent): number {
-  return getEventParticipantStats(event, []).confirmedCount ||
-    (Array.isArray(event.participantsWithUid) ? event.participantsWithUid.length : 0) ||
+  const realCurrent = presentCount((event as DetailEvent & { realCurrent?: unknown }).realCurrent);
+  if (realCurrent !== null) return realCurrent;
+  const current = presentCount(event.current);
+  if (current !== null) {
+    // reservedRemainingCount 已把負數與非數字的 remainingSlots 當 0，正取不會因此變多。
+    return Math.max(0, current - getEventParticipantStats(event, []).reservedRemainingCount);
+  }
+  return (Array.isArray(event.participantsWithUid) ? event.participantsWithUid.length : 0) ||
     (Array.isArray(event.participants) ? event.participants.length : 0);
+}
+
+/** 有填且為非負有限數字才算有欄位；null、空字串、非數字視為缺欄。 */
+function presentCount(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  return null;
 }
 
 export function isActiveRegistration(reg: RegistrationDoc): boolean {

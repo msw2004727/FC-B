@@ -101,8 +101,22 @@ describe('actualConfirmedCount（報名卡 N）', () => {
   it('沒有團隊保留時等於 current', () => {
     expect(actualConfirmedCount(ev({ current: 7 }))).toBe(7);
   });
-  it('計數為 0 時退回 participantsWithUid／participants 筆數（同 A 訪客）', () => {
-    expect(actualConfirmedCount(ev({ current: 0, participantsWithUid: [{ uid: 'a' }, { uid: 'b' }] }))).toBe(2);
-    expect(actualConfirmedCount(ev({ participants: ['甲'] }))).toBe(1);
+  // 審查 P2 修正：A 以 `||` 串接會讓 0 誤退回名單筆數；B 算出 0 就是 0。
+  it('realCurrent 為 0 時就是 0，即使名單非空', () => {
+    expect(actualConfirmedCount(ev({ realCurrent: 0, current: 3, participantsWithUid: [{ uid: 'a' }], participants: ['甲'] }))).toBe(0);
+  });
+  it('current 扣團隊未報後為 0 時就是 0，不退回名單', () => {
+    expect(actualConfirmedCount(ev({ current: 3, teamReservationSummaries: [team(3, 0)], participants: ['甲'] }))).toBe(0);
+  });
+  it('realCurrent 為 null／空字串視為缺欄，改用 current 扣團隊未報', () => {
+    expect(actualConfirmedCount(ev({ realCurrent: null, current: 5, teamReservationSummaries: [team(4, 2)] }))).toBe(3);
+    expect(actualConfirmedCount(ev({ realCurrent: '', current: 5 }))).toBe(5);
+  });
+  it('realCurrent 與 current 都缺欄時才退回 participantsWithUid／participants 筆數', () => {
+    expect(actualConfirmedCount(ev({ participantsWithUid: [{ uid: 'a' }, { uid: 'b' }], participants: ['甲'] }))).toBe(2);
+    expect(actualConfirmedCount(ev({ current: null, realCurrent: 'x', participants: ['甲'] }))).toBe(1);
+  });
+  it('remainingSlots 為負數或非數字時正取不增加', () => {
+    expect(actualConfirmedCount(ev({ current: 5, teamReservationSummaries: [{ remainingSlots: -3 }, { remainingSlots: 'x' }] }))).toBe(5);
   });
 });

@@ -2025,6 +2025,8 @@ function EventDetailSession({
   }
 
   const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
+  // 報名卡與訪客名單摘要顯示實際正取（照 A _getEventActualConfirmedCount）；confirmedCount 只給報名按鈕判斷。
+  const displayConfirmedCount = actualConfirmedCount(event);
   const waitlistCount = !viewer.uid && Array.isArray(event.waitlistNames)
     ? event.waitlistNames.length : count(event.waitlist);
 
@@ -2146,7 +2148,7 @@ function EventDetailSession({
         <div class="detail-body" id="detail-body">
           <EventDetailInfoSection
             event={event}
-            confirmedCount={actualConfirmedCount(event)}
+            confirmedCount={displayConfirmedCount}
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}
@@ -2290,7 +2292,7 @@ function EventDetailSession({
               onExpand={() => setRosterState({ expanded: true, phase: 'ready' })}
               onOpenProfile={profile}
               max={maximum}
-              confirmedCount={confirmedCount}
+              confirmedCount={displayConfirmedCount}
               waitlistCount={waitlistCount}
             />
           ) : (

@@ -192,6 +192,9 @@ describe('C2 票根＋分區小卡', () => {
     expect(widths).toEqual(['is-general:41.667%', 'is-team:16.667%', 'is-team-open:16.667%']);
     expect(document.querySelector('.evd-regbar-track.is-wait')).toBeNull();
     expect(document.querySelector('.evd-regbar-legend')?.textContent).toBe('一般 10團隊 4保留 4');
+    // 審查 P2：色條 aria-hidden，圖例留給讀屏（「團隊 N」只在圖例出現）。
+    expect(document.querySelector('.evd-regbar-row')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.evd-regbar-legend')?.closest('[aria-hidden="true"]')).toBeNull();
   });
 
   it('上限為 0 時不畫計量條', () => {

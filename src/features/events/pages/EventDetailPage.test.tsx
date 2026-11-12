@@ -615,6 +615,28 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
   });
 
+  // 審查 P2（2026-11-12）：訪客報名卡與名單摘要同用實際正取（照 A _getEventActualConfirmedCount），不含團隊未報。
+  it('訪客：有團隊保留時報名卡與名單摘要都顯示實際正取', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.registrations.mockRejectedValue(new Error('permission-denied'));
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        isPublic: true,
+        current: 18,
+        realCurrent: 14,
+        max: 24,
+        teamReservationSummaries: [{ teamId: 't1', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+      },
+    });
+    const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toBe('已報 14/24剩 6 · 團隊保留 4');
+    const attendanceSummary = view.container.querySelector('.detail-attendance-summary') as HTMLElement;
+    expect(within(attendanceSummary).getByText('14/24')).toBeTruthy();
+  });
   it('訪客：不讀 registrations，主要資訊與報名按鈕顯示，名單依 A 使用活動文件', async () => {
     mocks.viewer.mockReturnValue({ ...viewer, uid: null });
     mocks.registrations.mockRejectedValue(new Error('permission-denied'));
@@ -1260,6 +1282,8 @@ describe('名單狀態調整頁面接線', () => {
     });
     startCallableRecording();
     const originalPage = view.container.querySelector('#page-activity-detail');
+    // 審查 P2：N 改顯示實際正取後前後都是 0/2，改以候補數區分下放投影是否套用。
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).not.toContain('候補');
     fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定將 小明 下放到候補嗎？'));
     expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toHaveProperty('disabled', true);
@@ -1270,6 +1294,7 @@ describe('名單狀態調整頁面接線', () => {
     expect(screen.getByRole('button', { name: '將 小明 正取' })).toBeTruthy();
     // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('0/2');
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('候補 1');
     const calls = stopCallableRecording();
     expect(calls).toHaveLength(1); expect(calls[0]?.request).toMatchObject({ eventId: 'evtA', userId: 'uidB' });
     expect(mocks.writeAttendanceOps).not.toHaveBeenCalled();

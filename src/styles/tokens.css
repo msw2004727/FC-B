@@ -75,11 +75,6 @@
   --palette-blue-dark-fg: #93C5FD;
   --palette-blue-soft: #60A5FA;
 
-  /* 候補紫（2026-11-12 站長同意新增）：淺色同角色紫 #6D28D9；深色取 400 階 #A78BFA，
-     與深色 --accent #34D399／--info #60A5FA 同亮度，當色條比 #C4B5FD 飽和、不會發白。 */
-  --palette-violet-base: #6D28D9;
-  --palette-violet-soft: #A78BFA;
-
   /* Role palettes */
   --palette-role-user-light-bg: #ECEEF2;
   --palette-role-user-light-fg: #5A6478;
@@ -161,8 +156,9 @@
   --color-info-bg:     var(--palette-blue-light-bg);
   --color-info-fg:     var(--palette-blue-light-fg);
 
-  /* 2026-11-12 站長同意新增：活動報名卡計量條的候補段 */
-  --color-waitlist:    var(--palette-violet-base);
+  /* 2026-11-12 站長同意新增：活動報名卡計量條的候補段（只新增這一個色票，色碼直接寫入）。
+     淺色同角色紫 #6D28D9；深色取 400 階 #A78BFA，與深色 --accent／--info 同亮度，當色條不發白。 */
+  --color-waitlist:    #6D28D9;
 
   --color-overlay:      rgba(0,0,0,.35);
   --color-overlay-heavy: rgba(0,0,0,.65);
@@ -319,7 +315,7 @@
   --color-info-bg:     var(--palette-blue-dark-bg);
   --color-info-fg:     var(--palette-blue-dark-fg);
 
-  --color-waitlist:    var(--palette-violet-soft);
+  --color-waitlist:    #A78BFA;
 
   --color-overlay:      rgba(0,0,0,.65);
   --color-overlay-heavy: rgba(0,0,0,.65);
@@ -395,7 +391,7 @@
     --color-info-bg:     var(--palette-blue-dark-bg);
     --color-info-fg:     var(--palette-blue-dark-fg);
 
-    --color-waitlist:    var(--palette-violet-soft);
+    --color-waitlist:    #A78BFA;
 
     --color-overlay:      rgba(0,0,0,.65);
     --color-overlay-heavy: rgba(0,0,0,.65);
