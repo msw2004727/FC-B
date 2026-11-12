@@ -3,6 +3,7 @@
  * 伺服器只硬刪 events/{docId} 主文件並寫稽核；子集合不動（與 A 的連帶清理刻意不同，資料契約 A05）。
  */
 import type { EventDoc } from './types';
+import { withSubmitting } from '@/core/submit-guard';
 
 /** 傳公開 event.id 優先（R-ID-009）；沒有才退回文件 ID，伺服器另有橋接與 EVENT_ID_MISMATCH 保護。 */
 export function deleteEventRequestId(event: EventDoc): string {
@@ -14,7 +15,7 @@ export async function deleteEventViaCallable(event: EventDoc): Promise<{ already
   const eventId = deleteEventRequestId(event);
   if (!eventId) throw new Error('EVENT_ID_INVALID');
   const { callFn } = await import('@/data/callables');
-  const res = await callFn('deleteEvent', { eventId });
+  const res = await withSubmitting('event-save', () => callFn('deleteEvent', { eventId }));
   return { alreadyDeleted: res?.alreadyDeleted === true };
 }
 
