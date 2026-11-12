@@ -27,7 +27,7 @@ import {
   type DetailRegistration,
 } from '@/features/events/data/detail-model';
 import type { EventDoc } from '@/features/events/data/types';
-import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
+import { loadViewerRegistrationsFresh } from '@/features/events/data/viewer-registrations';
 
 import { useViewer } from '../../data/viewer';
 import type { UserProfile } from '../../data/profile-model';
@@ -493,7 +493,8 @@ export function LegacyRelatedActivities({
     try {
       const [detail, regs] = await Promise.all([
         loadEventDetail(publicId),
-        loadViewerRegistrations(currentUid),
+        // O5：取消前要即時的報名 ID，不走全歷史快取。
+        loadViewerRegistrationsFresh(currentUid),
       ]);
       if (!mountedRef.current) return;
       // 非同步期間登入者改變：丟棄結果、不呼叫 beginCancel。

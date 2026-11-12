@@ -922,7 +922,8 @@ describe('EventDetailPage', () => {
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenNthCalledWith(2, 'firestore-doc-a');
-    expect(mocks.history).toHaveBeenNthCalledWith(3, 'u1');
+    // O5：操作後重讀改查本場（與首次載入同一查詢）。
+    expect(mocks.history).toHaveBeenNthCalledWith(3, 'u1', 'firestore-doc-a');
 
     resolveRetry([self]);
 

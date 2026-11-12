@@ -178,8 +178,9 @@ export function createDetailSignupContexts(
         // 活動失敗立刻拋（不等報名讀完，取代 allSettled 版：副機測試證實會被卡住的報名讀取拖住）。
         const uid = viewer.uid;
         const loadRegistrations = async () => {
-          const { loadViewerRegistrations } = await import('./viewer-registrations');
-          return loadViewerRegistrations(uid);
+          // O5：報名判斷不走全歷史快取，維持即時讀。
+          const { loadViewerRegistrationsFresh } = await import('./viewer-registrations');
+          return loadViewerRegistrationsFresh(uid);
         };
         const registrationsPromise = loadRegistrations();
         // 只為避免活動先失敗時出現未處理的 rejection；報名失敗仍由下方 await 拋出。

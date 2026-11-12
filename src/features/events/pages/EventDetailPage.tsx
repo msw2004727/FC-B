@@ -739,7 +739,8 @@ function EventDetailSession({
     try {
       const [registrations, history, attendanceRecords, fresh] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
-        loadViewerRegistrations(uid),
+        // O5：只查本場（與首次載入同一查詢），不讀全歷史；操作後永遠即時。
+        loadViewerRegistrations(uid, current.eventDocId),
         rosterExpanded && canViewDetails
           ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve(current.attendanceRecords),
@@ -1176,7 +1177,7 @@ function EventDetailSession({
           registrationsFailed = true;
           return current.registrations;
         }),
-        loadViewerRegistrations(uid).catch(() => current.viewerRegistrations),
+        loadViewerRegistrations(uid, current.eventDocId).catch(() => current.viewerRegistrations),
         canViewDetailAttendanceRecordDetails(currentViewer.current, current.event)
           ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve([] as EventAttendanceEntry[]),
@@ -1334,7 +1335,7 @@ function EventDetailSession({
       const [fresh, registrations, history] = await Promise.all([
         loadEventDetail(current.event.id || eventId),
         loadEventRegistrations(current.eventDocId),
-        loadViewerRegistrations(uid),
+        loadViewerRegistrations(uid, current.eventDocId),
       ]);
       if (!alive.current || currentViewer.current.uid !== uid || request !== rosterSequence.current
         || headerState.current.snapshot?.eventDocId !== current.eventDocId) throw new Error('stale');

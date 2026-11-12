@@ -5,11 +5,14 @@ import type { SignupProfile } from './signup-profile';
 const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   history: vi.fn(),
+  cachedHistory: vi.fn(),
 }));
 
 vi.mock('./event-detail', () => ({ loadEventDetail: mocks.detail }));
+// O5：報名判斷走即時讀 loadViewerRegistrationsFresh；快取版不得被呼叫。
 vi.mock('./viewer-registrations', () => ({
-  loadViewerRegistrations: mocks.history,
+  loadViewerRegistrationsFresh: mocks.history,
+  loadViewerRegistrations: mocks.cachedHistory,
 }));
 
 import {
@@ -81,6 +84,7 @@ describe('createDetailSignupContexts', () => {
     await contexts.signup.load('public-id', [{ type: 'self' }]);
     expect(mocks.detail).toHaveBeenCalledTimes(2);
     expect(mocks.history).toHaveBeenNthCalledWith(2, 'u1');
+    expect(mocks.cachedHistory).not.toHaveBeenCalled();
     expect(contexts.signup.getAuth()).toEqual({ uid: 'u1', generation: 7 });
   });
 

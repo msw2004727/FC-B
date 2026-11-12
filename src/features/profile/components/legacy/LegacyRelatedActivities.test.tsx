@@ -79,7 +79,7 @@ vi.mock('@/features/events/data/event-detail', () => ({
 }));
 
 vi.mock('@/features/events/data/viewer-registrations', () => ({
-  loadViewerRegistrations: loadViewerRegistrationsMock,
+  loadViewerRegistrationsFresh: loadViewerRegistrationsMock,
 }));
 
 vi.mock('../../data/viewer', () => ({ useViewer: useViewerMock }));
