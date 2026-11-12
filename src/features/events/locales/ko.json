@@ -205,5 +205,26 @@
     "title": "LINE 알림을 켜고 놓치지 마세요!",
     "descLine1": "신청 완료, 대기 순번 승급,",
     "descLine2": "활동 변경이나 취소를 바로 알려 드려요."
+  },
+  "listCard": {
+    "barConfirmed": "신청 {confirmed}/{max}명",
+    "barConfirmedNoMax": "신청 {confirmed}명",
+    "barReserved": "팀 예약 {reserved}",
+    "barWaitlist": "대기 {waitlist}",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "종료 {count}건",
+        "other": "종료 {count}건"
+      },
+      "cancelled": {
+        "one": "취소 {count}건",
+        "other": "취소 {count}건"
+      },
+      "mixed": {
+        "one": "종료·취소 {count}건",
+        "other": "종료·취소 {count}건"
+      }
+    }
   }
 }

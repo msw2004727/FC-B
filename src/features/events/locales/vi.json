@@ -207,5 +207,26 @@
     "title": "Bật thông báo LINE, không bỏ lỡ điều gì!",
     "descLine1": "Đăng ký thành công, được lên từ danh sách chờ,",
     "descLine2": "hoạt động thay đổi hoặc bị hủy — đều được báo ngay."
+  },
+  "listCard": {
+    "barConfirmed": "Đã đăng ký {confirmed}/{max} người",
+    "barConfirmedNoMax": "Đã đăng ký {confirmed} người",
+    "barReserved": "Giữ chỗ cho đội {reserved}",
+    "barWaitlist": "Chờ {waitlist}",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "{count} sự kiện đã kết thúc",
+        "other": "{count} sự kiện đã kết thúc"
+      },
+      "cancelled": {
+        "one": "{count} sự kiện đã hủy",
+        "other": "{count} sự kiện đã hủy"
+      },
+      "mixed": {
+        "one": "{count} sự kiện đã kết thúc hoặc hủy",
+        "other": "{count} sự kiện đã kết thúc hoặc hủy"
+      }
+    }
   }
 }

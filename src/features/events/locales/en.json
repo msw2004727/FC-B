@@ -211,5 +211,26 @@
     "title": "Turn on LINE notifications and never miss out!",
     "descLine1": "Signup confirmations, waitlist promotions,",
     "descLine2": "event changes or cancellations — we'll notify you right away."
+  },
+  "listCard": {
+    "barConfirmed": "{confirmed} of {max} signed up",
+    "barConfirmedNoMax": "{confirmed} signed up",
+    "barReserved": "{reserved} reserved for teams",
+    "barWaitlist": "{waitlist} on waitlist",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "{count} ended event",
+        "other": "{count} ended events"
+      },
+      "cancelled": {
+        "one": "{count} cancelled event",
+        "other": "{count} cancelled events"
+      },
+      "mixed": {
+        "one": "{count} ended or cancelled event",
+        "other": "{count} ended or cancelled events"
+      }
+    }
   }
 }

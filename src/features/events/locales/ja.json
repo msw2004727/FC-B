@@ -207,5 +207,26 @@
     "title": "LINE 通知をオンにして、見逃しゼロ！",
     "descLine1": "申込完了、キャンセル待ちの繰り上げ、",
     "descLine2": "イベントの変更や中止をすぐにお知らせします。"
+  },
+  "listCard": {
+    "barConfirmed": "申込 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "申込 {confirmed} 人",
+    "barReserved": "チーム枠 {reserved}",
+    "barWaitlist": "キャンセル待ち {waitlist}",
+    "barSeparator": "、",
+    "fold": {
+      "ended": {
+        "one": "終了 {count} 件",
+        "other": "終了 {count} 件"
+      },
+      "cancelled": {
+        "one": "中止 {count} 件",
+        "other": "中止 {count} 件"
+      },
+      "mixed": {
+        "one": "終了・中止 {count} 件",
+        "other": "終了・中止 {count} 件"
+      }
+    }
   }
 }

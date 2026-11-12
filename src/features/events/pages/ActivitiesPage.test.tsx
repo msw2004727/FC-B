@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { ACTIVE_SPORT_STORAGE_KEY, _resetSportFilterForTest, setActiveSport } from '@/core/sport-filter';
@@ -454,4 +456,139 @@ describe('T-054c AP1：時間軸的台北今天', () => {
       }
     },
   );
+});
+
+// 2026-11-13 站長選定：計量條風格 A（同長、不寫人數）、已結束收合、篩選列＋月份黏頂。
+describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', () => {
+  const ROOT = resolve(__dirname, '../../../..');
+  const readCss = (file: string): string => readFileSync(resolve(ROOT, file), 'utf8');
+
+  function mountWith(events: EventDoc[]): ReturnType<typeof render> {
+    active = events;
+    return mount();
+  }
+
+  it('計量條：不寫人數、讀屏有人數；有縮圖與沒縮圖的卡用同一條規則對齊（同起點、同長度）', async () => {
+    const full = {
+      ...football,
+      id: 'full-team',
+      title: 'Full with team',
+      status: 'full',
+      current: 27,
+      max: 27,
+      realCurrent: 23,
+      waitlist: 7,
+      teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+    } as SportEvent;
+    const { container } = mountWith([football, pickleball, full]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="full-team"]')).toBeTruthy());
+
+    const withThumb = container.querySelector('.tl-event-row[data-event-id="public-football"]')!;
+    const wrap = withThumb.querySelector('.tl-gbar-wrap')!;
+    expect(wrap).toBeTruthy();
+    expect(wrap.classList.contains('is-no-thumb')).toBe(false);
+    expect(wrap.querySelector('.tl-gbar')?.getAttribute('aria-hidden')).toBe('true');
+    // 條旁不寫人數：外框裡只有讀屏文字
+    expect(wrap.querySelector('.tl-gbar-sr')?.textContent).toBe('已報 6／12 人');
+    expect(wrap.textContent).toBe('已報 6／12 人');
+    // 條下方那行不動
+    expect(withThumb.querySelector('.tl-event-meta')?.textContent).toContain('6/12人');
+
+    const noThumb = container.querySelector('.tl-event-row[data-event-id="public-pickleball"]')!;
+    expect(noThumb.querySelector('.tl-event-thumb')).toBeNull();
+    expect(noThumb.querySelector('.tl-gbar-wrap')?.classList.contains('is-no-thumb')).toBe(true);
+
+    // 口徑同詳情頁：實際正取 23（realCurrent），團隊保留、候補只給讀屏
+    expect(container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-gbar-sr')?.textContent)
+      .toBe('已報 23／27 人，團隊保留 4，候補 7');
+    expect(container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-event-status.full')?.textContent).toBe('已額滿');
+
+    // 同長：沒縮圖的卡讓出的寬度＝縮圖寬＋卡片 gap（與 A 的 activity.css 對照，任一邊改了測試會紅）
+    const activityCss = readCss('src/features/events/legacy/activity.css');
+    const thumbW = activityCss.match(/\.tl-event-thumb\s*\{[^}]*?width:\s*([\d.]+px)/)?.[1];
+    const rowGap = activityCss.match(/\.tl-event-row\s*\{[^}]*?gap:\s*([\d.]+rem)/)?.[1];
+    expect(thumbW).toBe('48px');
+    expect(rowGap).toBe('.55rem');
+    const cardCss = readCss('src/features/events/components/legacy/timeline-card-extra.css');
+    expect(cardCss).toContain(`.tl-gbar-wrap.is-no-thumb {\n  margin-left: calc(${thumbW} + ${rowGap});`);
+    expect(cardCss).toMatch(/\.tl-gbar \{[^}]*flex: 1 1 auto;/);
+  });
+
+  it('已結束／已取消以日期群組收成一行，點開才畫卡片；語系切換跟著換', async () => {
+    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended' };
+    const cancelled: SportEvent = { ...football, id: 'cancel-1', title: 'Cancelled one', status: 'cancelled' };
+    const cancelledOther: SportEvent = { ...pickleball, id: 'cancel-2', title: 'Cancelled two', status: 'cancelled' };
+    const { container } = mountWith([football, ended, cancelled, pickleball, cancelledOther]);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')).toBeTruthy());
+
+    const day19 = container.querySelector('.tl-day-group[data-date-anchor="2030-10-19"]')!;
+    const btn19 = day19.querySelector('.tl-ended-fold-btn') as HTMLButtonElement;
+    expect(btn19.textContent).toBe('已結束或取消 2 場▸');
+    expect(btn19.getAttribute('aria-expanded')).toBe('false');
+    expect(day19.querySelector('[data-event-id="ended-1"]')).toBeNull();
+    expect(day19.querySelector('[data-event-id="cancel-1"]')).toBeNull();
+    expect(day19.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    // 收合列在當天最前面
+    expect(day19.querySelector('.tl-events-col')?.firstElementChild?.classList.contains('tl-ended-fold')).toBe(true);
+
+    const day20 = container.querySelector('.tl-day-group[data-date-anchor="2030-10-20"]')!;
+    expect(day20.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已取消 1 場▸');
+
+    fireEvent.click(btn19);
+    await waitFor(() => expect(day19.querySelector('[data-event-id="ended-1"]')).toBeTruthy());
+    expect(day19.querySelector('[data-event-id="cancel-1"]')).toBeTruthy();
+    expect(btn19.getAttribute('aria-expanded')).toBe('true');
+    expect(btn19.textContent).toBe('已結束或取消 2 場▾');
+    // 已結束的卡沒有計量條
+    expect(day19.querySelector('[data-event-id="ended-1"] .tl-gbar-wrap')).toBeNull();
+
+    await act(async () => { await setLocale('en'); });
+    await waitFor(() => expect(day20.querySelector('.tl-ended-fold-btn')?.textContent).toBe('1 cancelled event▸'));
+    expect(btn19.textContent).toBe('2 ended or cancelled events▾');
+    expect(day19.querySelector('[data-event-id="public-football"] .tl-gbar-sr')?.textContent).toBe('6 of 12 signed up');
+  });
+
+  it('沒有已結束場次時不出收合列', async () => {
+    const { container } = mountWith([football, pickleball]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    expect(container.querySelector('.tl-ended-fold')).toBeNull();
+  });
+
+  it('黏頂：頁籤列＋地區列包在黏頂外框；量到篩選列高度後月份標題 top 貼在它下方', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const h = this.classList.contains('activity-sticky-filters') ? 80 : 0;
+      return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: h, width: 0, height: h, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      const { container } = mountWith([football]);
+      await waitFor(() => expect(container.querySelector('.tl-month-header')).toBeTruthy());
+      const sticky = container.querySelector('#page-activities > .activity-sticky-filters')!;
+      expect(sticky.querySelector('#activity-tabs')).toBeTruthy();
+      expect(sticky.querySelector('#activity-region-tabs')).toBeTruthy();
+      expect(container.querySelector('.legacy-ui.activities-root')).toBeTruthy();
+      await waitFor(() => expect(container.querySelector('.tl-month-header')?.getAttribute('style') ?? '').toContain('78px'));
+      // 新手友善／高強度維持灰色未開放
+      expect(container.querySelector('[data-atab="beginner"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
+      expect(container.querySelector('[data-atab="high-intensity"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('黏頂樣式：只覆寫活動列表三層的 overflow（保留 hidden 再以 clip 覆蓋），不影響其他頁', () => {
+    const css = readCss('src/features/events/components/legacy/activity-list-extra.css').replace(/\r\n/g, '\n');
+    expect(css).toMatch(/\.legacy-ui\.activities-root,\n#page-activities,\n#page-activities \.timeline-calendar \{\n {2}overflow-x: hidden;\n {2}overflow-x: clip;\n {2}overflow-y: visible;/);
+    expect(css).toMatch(/#page-activities\.page > \.activity-sticky-filters \{[^}]*position: sticky;/);
+    expect(css).toMatch(/#page-activities \.tl-month-header \{[^}]*position: sticky;/);
+    // 不得自創 CSS 變數（只用既有的 --topbar-h／--qa-*／--bg-root…）
+    expect(css).not.toMatch(/--[\w-]+\s*:/);
+    // 所有 overflow 覆寫都限定在活動列表
+    const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const selectors = [...noComments.matchAll(/([^{}]+)\{[^}]*overflow/g)]
+      .flatMap((m) => m[1]!.split(',').map((s) => s.trim()));
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const sel of selectors) {
+      expect(sel.startsWith('#page-activities') || sel === '.legacy-ui.activities-root').toBe(true);
+    }
+  });
 });

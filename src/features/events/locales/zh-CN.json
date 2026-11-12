@@ -197,5 +197,26 @@
     "title": "开启 LINE 通知，不再错过！",
     "descLine1": "报名成功、候补递补、",
     "descLine2": "活动变更或取消，都会即时通知你。"
+  },
+  "listCard": {
+    "barConfirmed": "已报 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "已报 {confirmed} 人",
+    "barReserved": "团队保留 {reserved}",
+    "barWaitlist": "候补 {waitlist}",
+    "barSeparator": "，",
+    "fold": {
+      "ended": {
+        "one": "已结束 {count} 场",
+        "other": "已结束 {count} 场"
+      },
+      "cancelled": {
+        "one": "已取消 {count} 场",
+        "other": "已取消 {count} 场"
+      },
+      "mixed": {
+        "one": "已结束或取消 {count} 场",
+        "other": "已结束或取消 {count} 场"
+      }
+    }
   }
 }

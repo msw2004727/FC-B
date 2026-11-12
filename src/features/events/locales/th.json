@@ -206,5 +206,26 @@
     "title": "เปิดการแจ้งเตือน LINE ไม่พลาดทุกความเคลื่อนไหว!",
     "descLine1": "สมัครสำเร็จ เลื่อนจากคิวสำรอง",
     "descLine2": "กิจกรรมเปลี่ยนแปลงหรือยกเลิก เราจะแจ้งคุณทันที"
+  },
+  "listCard": {
+    "barConfirmed": "สมัครแล้ว {confirmed}/{max} คน",
+    "barConfirmedNoMax": "สมัครแล้ว {confirmed} คน",
+    "barReserved": "สำรองให้ทีม {reserved}",
+    "barWaitlist": "รอคิว {waitlist}",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "จบแล้ว {count} รายการ",
+        "other": "จบแล้ว {count} รายการ"
+      },
+      "cancelled": {
+        "one": "ยกเลิก {count} รายการ",
+        "other": "ยกเลิก {count} รายการ"
+      },
+      "mixed": {
+        "one": "จบหรือยกเลิก {count} รายการ",
+        "other": "จบหรือยกเลิก {count} รายการ"
+      }
+    }
   }
 }

@@ -266,5 +266,26 @@
     "title": "開啟 LINE 通知，不再錯過！",
     "descLine1": "報名成功、候補遞補、",
     "descLine2": "活動異動或取消，都會即時通知你。"
+  },
+  "listCard": {
+    "barConfirmed": "已報 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "已報 {confirmed} 人",
+    "barReserved": "團隊保留 {reserved}",
+    "barWaitlist": "候補 {waitlist}",
+    "barSeparator": "，",
+    "fold": {
+      "ended": {
+        "one": "已結束 {count} 場",
+        "other": "已結束 {count} 場"
+      },
+      "cancelled": {
+        "one": "已取消 {count} 場",
+        "other": "已取消 {count} 場"
+      },
+      "mixed": {
+        "one": "已結束或取消 {count} 場",
+        "other": "已結束或取消 {count} 場"
+      }
+    }
   }
 }
