@@ -517,6 +517,44 @@ describe('撰寫與發送（Callable 用 mock，不送真推播）', () => {
     expect(item.textContent).toContain('U9');
   });
 
+  it('指定用戶：名單載入與選取驗證拒絕時不留未處理拒絕，選取改顯示驗證失敗（L-07）', async () => {
+    const { loadUserDirectory, verifyUserDirectorySelection } = await import('@/features/events/data/user-directory');
+    vi.mocked(loadUserDirectory).mockRejectedValueOnce(new Error('firebase init failed'));
+    vi.mocked(verifyUserDirectorySelection).mockRejectedValueOnce(new Error('firebase init failed'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const reasons: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { reasons.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      await renderPage();
+      fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));
+      await screen.findByRole('dialog');
+      const target = document.getElementById('msg-target') as HTMLSelectElement;
+      await act(async () => {
+        target.value = 'individual';
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await typeInto('msg-individual-target', '阿');
+      const item = await waitFor(() => {
+        const el = document.querySelector<HTMLElement>('#msg-user-dropdown .ce-delegate-item');
+        if (!el) throw new Error('no item');
+        return el;
+      });
+      fireEvent.mouseDown(item);
+      await waitFor(() => expect(vi.mocked(toast.show)).toHaveBeenCalledWith({ message: '用戶驗證失敗，請檢查網路後再試', tone: 'error' }));
+      await new Promise((resolvePromise) => { setTimeout(resolvePromise, 0); });
+      expect(reasons).toEqual([]);
+      expect(warn.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining([
+        '[MessageAdmin] user directory load failed:',
+        '[MessageAdmin] user select verify failed:',
+      ]));
+      expect(document.getElementById('msg-target-result')?.textContent).toBe('');
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      warn.mockRestore();
+    }
+  });
+
   it('俱樂部搜尋：連續打字只載入一次俱樂部清單', async () => {
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: '＋ 發送' }));

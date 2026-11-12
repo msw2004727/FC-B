@@ -337,7 +337,12 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
               data-uid={u.uid}
               onMouseDown={(event) => {
                 event.preventDefault();
-                void selectUser(u.uid);
+                // 驗證前取登入者（getFirebase）可能拒絕；沿用驗證失敗提示，不留未處理拒絕（L-07）。
+                void selectUser(u.uid).catch((err: unknown) => {
+                  // eslint-disable-next-line no-console
+                  console.warn('[MessageAdmin] user select verify failed:', err);
+                  if (alive.current) toast.show({ message: t('inbox.admin.validation.selectVerifyFailed'), tone: 'error' });
+                });
               }}
             >
               <span class="ce-delegate-item-name">{u.name}</span>
@@ -429,7 +434,10 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
               autocomplete="off"
               value={userQuery}
               onInput={(e) => {
-                void onUserInput(e.currentTarget.value);
+                void onUserInput(e.currentTarget.value).catch((err: unknown) => {
+                  // eslint-disable-next-line no-console
+                  console.warn('[MessageAdmin] user directory load failed:', err);
+                });
               }}
             />
             {renderDropdown(userDropdown, 'msg-user-dropdown')}
