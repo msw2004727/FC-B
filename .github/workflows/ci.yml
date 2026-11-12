@@ -146,7 +146,7 @@ jobs:
       - name: 檢查首頁 gzip 預算（入口 60KB；入口＋modulepreload 寬鬆上限）
         run: node scripts/check-bundle-budget.mjs dist
 
-      # UPD-2：入口不得被任何 chunk 匯入、app-shared 不依賴 App 程式 chunk、六個語系檔仍在（scripts/check-chunk-graph.mjs）。
+      # UPD-2：入口不得被任何 chunk 匯入、app-shared 不依賴 App 程式 chunk、六個語系檔仍在、入口不含 CSS、app-dyn 匯入者有上限（scripts/check-chunk-graph.mjs）。
       # 預算步驟紅了也照跑，一次看到兩邊結果。
       - name: 檢查分塊不變式（UPD-2）
         if: ${{ !cancelled() }}

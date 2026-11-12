@@ -7,7 +7,9 @@
  *   - i18n-<語系>：非預設語系字典，一語系一個（原 manualChunks 搬過來；zh-TW 不拆，留在 i18n 靜態匯入處）。
  *   - vendor-preact：首屏的 preact／preact-iso（版本不變就永遠同名）。
  *   - app-shared：主程式靜態閉包中、也被任一動態載入目標（分頁、lazy 元件、lazy 資料模組）用到的 src 模組。
+ *     另含主程式靜態閉包裡的全部 .css：首屏 CSS 只有這一個檔，規則先後＝匯入先後（入口不含 CSS）。
  *   - app-dyn：上一類裡「會動態匯入其他 App 模組」的少數模組（及靜態匯入它們的模組，往上收到不動點）。
+ *     動態匯入的 i18n-<語系> 字典不算（不含 App 程式，算進來會把 i18n.ts 及其所有匯入者拉進來）。
  *     若留在 app-shared，app-shared 的內容會含那些 lazy 檔名，任一 lazy 檔改名就讓所有分頁連鎖改名。
  *   - 其餘主程式專用模組留在入口（Rolldown 預設）。
  * 優先序一定要 app-shared 高於 app-dyn：includeDependenciesRecursively 預設 true，app-dyn 先抓會把共用模組全拉進去。
@@ -37,6 +39,11 @@ export function normalizeId(id: string): string {
   const q = s.indexOf('?');
   if (q >= 0) s = s.slice(0, q);
   return s.replace(/^([A-Za-z]):\//, (_m, d: string) => `${d.toLowerCase()}:/`);
+}
+
+/** 一般 CSS 匯入（不帶 ?query）。 */
+function isPlainCss(id: string): boolean {
+  return /\.css$/i.test(String(id));
 }
 
 function srcPrefix(srcDir: string): string {
@@ -107,17 +114,24 @@ export function classifyAppModules(entryId: string, srcDir: string, info: InfoFn
   staticClosure(lazyRoots, lazyReach);
 
   // 4. shared 候選：initial ∩ lazyReach ∩ src（不含入口本身）
+  //    另外 initial 裡的每個 .css 一律是 shared（不論分頁有沒有用到）：首屏 CSS 全部集中在 app-shared 一個檔，
+  //    規則先後與原匯入順序（基底 5dd7c54 單一入口 CSS）相同。只收一部分會讓那幾支排到入口 CSS 之前、
+  //    同權重規則勝負翻轉（UPD-2 Opus 終審 P1：.page-header h2 的 flex、建立活動彈窗 ≤480px 的 position）。
+  //    帶 ?inline／?url 的 id 不以 .css 結尾，是 JS 字串模組，照一般規則分類。
   const entryKey = normalizeId(entryId);
   const candidates = new Map<string, string>();
   for (const [key, raw] of initial) {
-    if (key !== entryKey && lazyReach.has(key) && inSrc(raw)) candidates.set(key, raw);
+    if (key === entryKey) continue;
+    if ((lazyReach.has(key) && inSrc(raw)) || isPlainCss(raw)) candidates.set(key, raw);
   }
 
-  // 5. dynSeed：候選中動態匯入了「src 下且不屬於候選」的模組
+  // 5. dynSeed：候選中動態匯入了「src 下、不屬於候選、也不是 i18n-<語系> 字典」的模組。
+  //    語系字典由 i18n 分組各自成檔，不含 App 程式、不隨分頁改名；算進來會把 i18n.ts 及所有靜態匯入它的
+  //    共用模組（Text、Toast、AppConfirm…）全拉進 app-dyn，讓匯入 app-dyn 的檔從個位數變幾十個（終審 P2）。
   const dyn = new Set<string>();
   for (const [key, raw] of candidates) {
     const targets = get(raw)?.dynamicallyImportedIds ?? [];
-    if (targets.some((t) => inSrc(t) && !candidates.has(normalizeId(t)))) dyn.add(key);
+    if (targets.some((t) => inSrc(t) && !candidates.has(normalizeId(t)) && i18nChunkName(t) == null)) dyn.add(key);
   }
   // 6. 往上收：候選中經靜態匯入可走到 dyn 的模組也是 dyn（反覆到不動點）
   let changed = dyn.size > 0;
@@ -238,9 +252,12 @@ export function chunkGraphPlugin(root: string, outFile = process.env.FCB_CHUNK_G
 }
 
 export const RENAME_PROBE_LINE = ';globalThis.__fcbRenameProbe=(globalThis.__fcbRenameProbe||0)+1;';
+/** CSS 探針：加一條不會被壓縮掉的規則（註解會被壓縮刪掉，等於沒改）。 */
+export const RENAME_PROBE_CSS_LINE = '.fcb-rename-probe{--fcb-rename-probe:1}';
 
 /**
- * FCB_RENAME_PROBE=<src 相對路徑，例 src/features/clubs/pages/TeamsPage.tsx> 有值時，在該檔尾端加一行有副作用的程式。
+ * FCB_RENAME_PROBE=<src 相對路徑，例 src/features/clubs/pages/TeamsPage.tsx> 有值時，在該檔尾端加一行有副作用的程式
+ * （.css 檔改加一條規則）。
  * 沒對到任何模組就讓建置失敗（防探針沒生效的假綠）。正式建置沒有該變數，外掛不做事。
  */
 export function renameProbePlugin(root: string, probe = process.env.FCB_RENAME_PROBE): Plugin {
@@ -253,7 +270,7 @@ export function renameProbePlugin(root: string, probe = process.env.FCB_RENAME_P
     transform(code, id) {
       if (!target || normalizeId(id) !== target) return null;
       hit = true;
-      return { code: `${code}\n${RENAME_PROBE_LINE}\n`, map: null };
+      return { code: `${code}\n${isPlainCss(id) ? RENAME_PROBE_CSS_LINE : RENAME_PROBE_LINE}\n`, map: null };
     },
     buildEnd() {
       if (target && !hit) throw new Error(`FCB_RENAME_PROBE 沒有對到任何模組：${probe}`);

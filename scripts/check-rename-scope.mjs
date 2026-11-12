@@ -7,7 +7,7 @@
  *
  * 必過探針（改名 ≤ 3，且改名清單必須含該頁自己的 chunk，防探針沒生效的假綠）：
  *   TeamsPage、AdminLogsPage、ActivitiesPage。
- * 參考探針（只印不擋）：EventFormModal、profile/ui/editors、profile/data/viewer。
+ * 參考探針（只印不擋）：EventFormModal、profile/ui/editors、profile/data/viewer、events/legacy/activity.css（CSS 探針加一條規則）。
  *
  * 成本：1＋探針數次 vite build（每次約數十秒）。正式建置不設 FCB_RENAME_PROBE，探針外掛不做事。
  * 用法：node scripts/check-rename-scope.mjs [--hard-only]
@@ -30,6 +30,8 @@ export const INFO_PROBES = [
   'src/features/events/components/EventFormModal.tsx',
   'src/features/profile/ui/editors.tsx',
   'src/features/profile/data/viewer.ts',
+  // 首屏 CSS 全在 app-shared（終審 P1），改共用 CSS 會讓 app-shared 改名、連帶所有匯入它的檔；量出來供取捨，不擋。
+  'src/features/events/legacy/activity.css',
 ];
 const FIXED_BUILD_ID = '202601010000';
 

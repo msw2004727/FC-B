@@ -4,11 +4,15 @@
  * 輸入：建置時設 FCB_CHUNK_GRAPH=<路徑> 由 scripts/chunk-groups.ts#chunkGraphPlugin 寫出的 JSON。
  * 斷言（任一不成立就失敗）：
  *   (a) 入口以外的 chunk，imports 都不含入口檔（入口是沒人匯入的葉子；漏抓的共用模組會讓這條變紅）。
- *   (b) app-shared 的 imports／dynamicImports 只能指向「不含 src/ 模組」的 chunk 或它自己
- *       （設計稿只寫 dynamicImports；靜態匯入一併查，app-shared 不得依賴任何會隨 App 程式改名的檔）。
+ *   (b) app-shared 的 imports／dynamicImports 只能指向「不含 src/ 模組」的 chunk、i18n-<語系> 字典檔或它自己
+ *       （設計稿只寫 dynamicImports；靜態匯入一併查，app-shared 不得依賴任何會隨 App 程式改名的檔；
+ *       語系字典只含 JSON、不隨分頁改名，i18n.ts 的 import.meta.glob 指向它們是預期的）。
  *   (c) app-shared、vendor-preact 各剛好一個檔；app-dyn 至多一個（可不存在）。入口剛好一個。
  *   (d) 6 個 i18n-<語系> 檔存在；沒有 i18n-zh-TW。
  *   (e) 印出入口仍含的 src 模組清單（只印不擋），供審查比對主程式專用清單。
+ *   (f) 入口 chunk 不含 .css 模組（首屏 CSS 全在 app-shared，規則先後與匯入順序一致；UPD-2 終審 P1）。
+ *   (g) app-dyn 不含 src/i18n/i18n.ts，且匯入 app-dyn 的 chunk ≤ APP_DYN_IMPORTER_LIMIT（終審 P2：
+ *       語系 glob 被當成 lazy 目標時 i18n.ts 與其匯入者全進 app-dyn，匯入者變幾十個，改一頁又連鎖改名）。
  *
  * 用法：node scripts/check-chunk-graph.mjs <chunk-graph.json>
  */
@@ -17,6 +21,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const I18N_LANGS = ['zh-CN', 'en', 'ja', 'vi', 'th', 'ko'];
+/** 設計稿 §1.3：app-dyn 只有三個 hook，用到的頁約 4 個；留一倍餘裕。 */
+export const APP_DYN_IMPORTER_LIMIT = 8;
+const I18N_STEMS = new Set(I18N_LANGS.map((lang) => `i18n-${lang}`));
+const isCss = (id) => /\.css$/i.test(String(id));
 
 const baseName = (fileName) => String(fileName).split('/').pop() ?? '';
 /**
@@ -67,6 +75,7 @@ export function checkChunkGraph(graph) {
         errors.push(`(b) app-shared 指向不在 chunk 圖裡的檔：${target}`);
         continue;
       }
+      if (I18N_STEMS.has(chunkStem(target))) continue;
       const srcMods = (t.moduleIds ?? []).filter(isSrc);
       if (srcMods.length > 0) {
         errors.push(`(b) app-shared 指向含 App 程式的 chunk ${target}（${srcMods.slice(0, 3).join(', ')}${srcMods.length > 3 ? '…' : ''}）`);
@@ -79,6 +88,23 @@ export function checkChunkGraph(graph) {
     if (byStem(`i18n-${lang}`).length !== 1) errors.push(`(d) i18n-${lang} 必須剛好一個檔，目前 ${byStem(`i18n-${lang}`).length} 個`);
   }
   if (byStem('i18n-zh-TW').length > 0) errors.push('(d) 不得有 i18n-zh-TW（預設語系要留在 i18n 靜態匯入處）');
+
+  // (f)
+  if (entry) {
+    const css = (entry.moduleIds ?? []).filter(isCss);
+    if (css.length > 0) {
+      errors.push(`(f) 入口含 CSS ${css.length} 個（首屏 CSS 要全在 app-shared）：${css.slice(0, 3).join(', ')}${css.length > 3 ? '…' : ''}`);
+    }
+  }
+
+  // (g)
+  for (const d of dyn) {
+    if ((d.moduleIds ?? []).includes('src/i18n/i18n.ts')) errors.push('(g) app-dyn 含 src/i18n/i18n.ts（語系字典不該算 lazy 目標）');
+    const importers = chunks.filter((c) => (c.imports ?? []).includes(d.fileName));
+    if (importers.length > APP_DYN_IMPORTER_LIMIT) {
+      errors.push(`(g) 匯入 app-dyn 的 chunk ${importers.length} 個 > 上限 ${APP_DYN_IMPORTER_LIMIT}`);
+    }
+  }
 
   // (e)
   const entrySrcModules = entry ? (entry.moduleIds ?? []).filter(isSrc).sort() : [];

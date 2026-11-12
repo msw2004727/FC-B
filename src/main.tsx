@@ -1,4 +1,7 @@
 import { render } from 'preact';
+// 首屏 CSS 全部在 app-shared 一個檔、依匯入先後串接（scripts/chunk-groups.ts）。toast.css 以前被拆在入口 CSS 之前，
+// 這裡先匯入，讓規則先後與拆檔前的正式版完全相同（UPD-2 終審 P1；Toast.tsx 仍自己匯入它）。
+import './ui/toast.css';
 // 舊版 A 的色票變數（全域；名稱重疊者由後面的 B tokens 覆蓋），給全站共用的 A 外觀元件用
 import './styles/legacy-vars.css';
 import './styles/tokens.css';

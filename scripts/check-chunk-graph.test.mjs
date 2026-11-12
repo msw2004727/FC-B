@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { I18N_LANGS, checkChunkGraph, chunkStem, renderChunkGraphReport } from './check-chunk-graph.mjs';
+import { APP_DYN_IMPORTER_LIMIT, I18N_LANGS, checkChunkGraph, chunkStem, renderChunkGraphReport } from './check-chunk-graph.mjs';
 
 const H = 'Ab-12_xY'; // 8 字元雜湊，含 - 與 _
 const f = (stem) => `assets/${stem}-${H}.js`;
@@ -59,6 +59,33 @@ describe('checkChunkGraph', () => {
     const msg = checkChunkGraph(g).errors.join('\n');
     expect(msg).toMatch(/\(b\).*app-dyn/);
     expect(msg).toMatch(/\(b\).*missing/);
+  });
+
+  it('(b) app-shared 動態匯入 i18n-<語系> 字典檔 → 允許（i18n.ts 的語系 glob）', () => {
+    const g = goodGraph();
+    g.chunks.find((c) => c.name === 'app-shared').dynamicImports.push(...I18N_LANGS.map((lang) => f(`i18n-${lang}`)));
+    expect(checkChunkGraph(g).errors).toEqual([]);
+  });
+
+  it('(f) 入口含 CSS 模組 → 失敗（首屏 CSS 要全在 app-shared）', () => {
+    const g = goodGraph();
+    g.chunks.find((c) => c.name === 'index').moduleIds.push('src/styles/legacy/base.css');
+    expect(checkChunkGraph(g).errors.join('\n')).toMatch(/\(f\).*legacy\/base\.css/);
+  });
+
+  it('(g) app-dyn 含 i18n.ts、或匯入 app-dyn 的 chunk 超過上限 → 失敗', () => {
+    const g = goodGraph();
+    g.chunks.find((c) => c.name === 'app-dyn').moduleIds.push('src/i18n/i18n.ts');
+    expect(checkChunkGraph(g).errors.join('\n')).toMatch(/\(g\).*i18n\.ts/);
+
+    const g2 = goodGraph();
+    for (let i = 0; i < APP_DYN_IMPORTER_LIMIT; i++) {
+      g2.chunks.push(chunk(`Page${i}`, { isDynamicEntry: true, moduleIds: [`src/p${i}.tsx`], imports: [f('app-dyn')] }));
+    }
+    // 入口＋上限個分頁＝上限＋1
+    expect(checkChunkGraph(g2).errors.join('\n')).toMatch(new RegExp(`\\(g\\).*${APP_DYN_IMPORTER_LIMIT + 1} 個`));
+    g2.chunks.pop();
+    expect(checkChunkGraph(g2).ok).toBe(true);
   });
 
   it('(c) 沒有 app-shared（分組沒生效、退回自動切法）→ 失敗', () => {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  RENAME_PROBE_CSS_LINE,
   RENAME_PROBE_LINE,
   chunkGraphPlugin,
   classifyAppModules,
@@ -96,6 +97,40 @@ describe('classifyAppModules', () => {
     const kinds = classifyAppModules(p('main.tsx'), S, graph(g));
     expect(kinds.get(p('i18n/messages/zh-TW.json'))).toBe('shared');
     expect(kinds.get(p('ui/Toast.css'))).toBe('shared');
+  });
+
+  it('主程式靜態閉包裡的 .css 不論分頁有沒有用到都歸 shared；?inline 與 lazy 專用的 CSS 不歸（終審 P1）', () => {
+    const g = {
+      ...base,
+      [p('main.tsx')]: [[p('styles/base.css'), '/r/node_modules/lib/lib.css', p('ui/x.css?inline'), ...base[p('main.tsx')][0]], base[p('main.tsx')][1]],
+      [p('styles/base.css')]: [[]],
+      '/r/node_modules/lib/lib.css': [[]],
+      [p('ui/x.css?inline')]: [[]],
+      [p('PageB.tsx')]: [[p('shared.ts'), p('pages/b.css')]],
+      [p('pages/b.css')]: [[]],
+    };
+    const kinds = classifyAppModules(p('main.tsx'), S, graph(g));
+    expect(kinds.get(p('styles/base.css'))).toBe('shared');
+    expect(kinds.get('/r/node_modules/lib/lib.css')).toBe('shared');
+    expect(kinds.has(p('ui/x.css'))).toBe(false);
+    expect(kinds.has(p('pages/b.css'))).toBe(false);
+  });
+
+  it('動態匯入 i18n-<語系> 字典的共用模組仍是 shared，不把匯入者拉進 dyn（終審 P2）', () => {
+    const g = {
+      ...base,
+      [p('main.tsx')]: [[...base[p('main.tsx')][0], p('ui/Text.tsx')], base[p('main.tsx')][1]],
+      [p('ui/Text.tsx')]: [[p('i18n/i18n.ts')]],
+      [p('i18n/i18n.ts')]: [[], [p('i18n/messages/en.json'), p('features/a/locales/ja.json'), p('i18n/legacy/ko.json')]],
+      [p('PageB.tsx')]: [[p('shared.ts'), p('ui/Text.tsx')]],
+    };
+    const kinds = classifyAppModules(p('main.tsx'), S, graph(g));
+    expect(kinds.get(p('i18n/i18n.ts'))).toBe('shared');
+    expect(kinds.get(p('ui/Text.tsx'))).toBe('shared');
+    expect(kinds.get(p('hook.ts'))).toBe('dyn');
+    // 非語系字典的 lazy 目標照舊算 dyn
+    const g2 = { ...g, [p('i18n/i18n.ts')]: [[], [p('i18n/messages/en.json'), p('i18n/extra.ts')]] };
+    expect(classifyAppModules(p('main.tsx'), S, graph(g2)).get(p('ui/Text.tsx'))).toBe('dyn');
   });
 
   it('Windows 反斜線與大寫磁碟代號的 id 也對得上', () => {
@@ -238,5 +273,13 @@ describe('renameProbePlugin', () => {
     const out = plugin.transform('a', `${path.resolve(root, 'src/features/clubs/pages/TeamsPage.tsx')}?v=1`);
     expect(out.code).toBe(`a\n${RENAME_PROBE_LINE}\n`);
     expect(() => plugin.buildEnd()).not.toThrow();
+  });
+
+  it('CSS 探針加一條規則，不加 JS', () => {
+    const root = path.resolve('/r');
+    const plugin = renameProbePlugin(root, 'src/features/events/legacy/activity.css');
+    const out = plugin.transform('.a{}', path.resolve(root, 'src/features/events/legacy/activity.css'));
+    expect(out.code).toBe(`.a{}\n${RENAME_PROBE_CSS_LINE}\n`);
+    expect(out.code).not.toContain('globalThis');
   });
 });
