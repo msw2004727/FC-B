@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getByRole, queryByRole } from '@testing-library/preact';
-import { setLocale } from '@/i18n/i18n';
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import {
   UPDATE_PROMPT_OPEN_CLASS,
@@ -437,6 +437,33 @@ describe('UPD-3P 單行提示框（方案乙）', () => {
       expect(reduce).toContain(`#sw-reload-deferred-prompt.sw-reload-fx ${sel}`);
     }
     expect(reduce).toContain('animation: none !important');
+  });
+
+  it('字典沒載入（t() 回傳鍵名）時改用 zh-TW 原文：標題、強制標題、按鈕、吐司', async () => {
+    _setDictLoaderForTest(async () => ({}));
+    await setLocale('en');
+    const spy = vi.spyOn(toast, 'show');
+    const release = beginSubmitting('event-save');
+    try {
+      showSwReloadPrompt(vi.fn(), 'sw-waiting');
+      const prompt = promptEl();
+      expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('有新版本可用');
+      expect(getByRole(prompt, 'button', { name: '現在更新' })).toBeTruthy();
+      expect(getByRole(prompt, 'button', { name: '稍後' })).toBeTruthy();
+      expect(prompt.textContent).not.toContain('swUpdate.');
+      (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+      expect(spy).toHaveBeenCalledWith({ message: '目前操作尚未完成，稍後再更新', duration: 3000 });
+      showSwReloadPrompt(vi.fn(), 'min-build', { forced: true });
+      expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('請更新到新版');
+      _resetReloadSafetyForTest();
+      showSwReloadPrompt(vi.fn(), 'min-build', { forced: true });
+      expect(promptEl().querySelector('[data-sw-reload-title]')?.textContent).toBe('請更新到新版');
+    } finally {
+      release();
+      spy.mockRestore();
+      _setDictLoaderForTest(null);
+      await setLocale('zh-TW');
+    }
   });
 
   it('語系切換後新開的提示框用該語系文字', async () => {

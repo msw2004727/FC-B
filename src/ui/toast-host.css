@@ -7,7 +7,7 @@
 
   position: fixed;
   z-index: 10001;
-  inset: auto auto calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px + var(--update-prompt-space, 0px)) 50%;
+  inset: auto auto calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px) 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -24,3 +24,7 @@
   overflow: visible;
 }
 
+/* 吐司掛進開啟中的 <dialog> 時仍在 body 底下，這條同樣有效。 */
+body.fcb-update-open .ui-toast-host {
+  bottom: calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px + 68px);
+}

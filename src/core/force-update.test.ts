@@ -1,6 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import { t } from '@/i18n/i18n';
 import { evaluateReloadSafety } from './reload-safety';
 import { dismissForcedUpdatePrompt, showSwReloadPrompt, _resetReloadSafetyForTest } from './reload-safety';
 import {
@@ -391,8 +390,8 @@ describe('T3 不安全頁先不記、安全後才重載', () => {
     expect(prompt).toBeTruthy();
     expect(prompt?.dataset.mode).toBe('forced');
     expect(prompt?.querySelector('[data-sw-reload-later]')).toBeNull();
-    // UPD-3P：強制版改用強制標題（t() 鍵；測試同步更新）
-    expect(prompt?.querySelector('[data-sw-reload-title]')?.textContent).toBe(t('swUpdate.forcedTitle'));
+    // UPD-3P：強制版改用強制標題；本檔沒載字典，走 zh-TW 原文備援（測試同步更新）
+    expect(prompt?.querySelector('[data-sw-reload-title]')?.textContent).toBe('請更新到新版');
     window.history.pushState(null, '', '/');
     await advance(2_999);
     expect(h.reload).not.toHaveBeenCalled();

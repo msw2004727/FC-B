@@ -146,6 +146,21 @@ const BUTTON_CSS =
   'border:0;border-radius:8px;color:#fff;font-weight:700;min-height:40px;padding:0 10px;' +
   'cursor:pointer;white-space:nowrap;flex:0 0 auto;background:';
 
+/** 字典沒載入（t() 回傳 key 本身）時的 zh-TW 原文：救援路徑不得只顯示鍵名。 */
+const COPY_ZH_TW = {
+  title: '有新版本可用',
+  forcedTitle: '請更新到新版',
+  now: '現在更新',
+  later: '稍後',
+  busy: '目前操作尚未完成，稍後再更新',
+} as const;
+
+function copy(name: keyof typeof COPY_ZH_TW): string {
+  const key = `swUpdate.${name}`;
+  const text = t(key);
+  return text === key ? COPY_ZH_TW[name] : text;
+}
+
 function promptButton(doc: Document, attr: string, label: string, background: string): HTMLButtonElement {
   const button = doc.createElement('button');
   button.type = 'button';
@@ -186,7 +201,7 @@ function upgradeToForced(prompt: HTMLElement): void {
     node.remove();
   });
   const title = prompt.querySelector('[data-sw-reload-title]');
-  if (title) title.textContent = t('swUpdate.forcedTitle');
+  if (title) title.textContent = copy('forcedTitle');
 }
 
 /** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部新版本更新提示框。 */
@@ -230,16 +245,16 @@ export function showSwReloadPrompt(
   const title = doc.createElement('div');
   title.setAttribute('data-sw-reload-title', '');
   title.style.cssText = TITLE_CSS;
-  title.textContent = t(wantForced ? 'swUpdate.forcedTitle' : 'swUpdate.title');
-  prompt.append(title, promptButton(doc, 'data-sw-reload-now', t('swUpdate.now'), '#0d9488'));
+  title.textContent = copy(wantForced ? 'forcedTitle' : 'title');
+  prompt.append(title, promptButton(doc, 'data-sw-reload-now', copy('now'), '#0d9488'));
   if (!wantForced) {
-    prompt.append(promptButton(doc, 'data-sw-reload-later', t('swUpdate.later'), 'rgba(255,255,255,.12)'));
+    prompt.append(promptButton(doc, 'data-sw-reload-later', copy('later'), 'rgba(255,255,255,.12)'));
   }
 
   prompt.querySelector('[data-sw-reload-now]')?.addEventListener('click', () => {
     // 使用者主動點「現在更新」：送出中不重載。
     if (isSubmitting() || doc.querySelector('[data-submitting="true"]')) {
-      toast.show({ message: t('swUpdate.busy'), duration: 3000 });
+      toast.show({ message: copy('busy'), duration: 3000 });
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
