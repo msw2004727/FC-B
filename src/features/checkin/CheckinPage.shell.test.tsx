@@ -315,6 +315,20 @@ describe('CheckinPage shell（卡 4-1）', () => {
     expect(document.querySelector('.reg-loading')).toBeNull();
   });
 
+  it('已登入但角色還沒到位時下拉旁就有載入圈，不讀活動；角色到位讀完後收掉', async () => {
+    const ready = mocks.context;
+    mocks.documents.mockResolvedValue([event({ id: 'today-1', _docId: 'today-1', title: '今日活動', date: dayOffset(0) })]);
+    mocks.context = { ...ready, role: null };
+    const view = render(<CheckinPage />);
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(mocks.documents).not.toHaveBeenCalled();
+    mocks.context = ready;
+    view.rerender(<CheckinPage />);
+    await screen.findByTestId('scan-session');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+  });
+
   it('活動文件未回時下拉旁有載入圈，下拉仍在原位；讀完換成選項', async () => {
     let release!: (events: EventDoc[]) => void;
     mocks.documents.mockReturnValue(new Promise((resolve) => {
