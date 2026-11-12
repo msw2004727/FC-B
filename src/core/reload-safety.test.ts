@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from '@/ui/Toast';
-import { _resetReloadSafetyForTest, evaluateReloadSafety, requestSafeReload, showSwReloadPrompt } from './reload-safety';
+import { _resetReloadSafetyForTest, dismissForcedUpdatePrompt, evaluateReloadSafety, requestSafeReload, showSwReloadPrompt } from './reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 
 describe('reload-safety（M-052 新版本安全重載）', () => {
@@ -184,5 +184,35 @@ describe('showSwReloadPrompt 銅金光軌', () => {
     expect(second).toBeTruthy();
     expect(document.querySelectorAll('#sw-reload-prompt-fx-style')).toHaveLength(1);
     expect(document.getElementById('sw-reload-prompt-fx-style')).toBe(style);
+  });
+
+  it('強制提示框已顯示時，SW 等待中的一般呼叫不得換掉強制路徑的重載函式', () => {
+    const forcedFn = vi.fn();
+    const swFn = vi.fn();
+    showSwReloadPrompt(forcedFn, 'min-build', { forced: true });
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    (promptEl().querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(forcedFn).toHaveBeenCalledTimes(1);
+    expect(swFn).not.toHaveBeenCalled();
+  });
+
+  it('minBuild 改回 0 收掉強制框時，等待中的 SW 一般提示還原（有「稍後」、用 SW 函式）', () => {
+    const forcedFn = vi.fn();
+    const swFn = vi.fn();
+    showSwReloadPrompt(forcedFn, 'min-build', { forced: true });
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    dismissForcedUpdatePrompt();
+    const prompt = promptEl();
+    expect(prompt.dataset.mode).toBeUndefined();
+    expect(prompt.querySelector('[data-sw-reload-later]')).toBeTruthy();
+    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(swFn).toHaveBeenCalledTimes(1);
+    expect(forcedFn).not.toHaveBeenCalled();
+  });
+
+  it('沒有等待中的 SW 提示時，收掉強制框後不留任何提示', () => {
+    showSwReloadPrompt(vi.fn(), 'min-build', { forced: true });
+    dismissForcedUpdatePrompt();
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
   });
 });
