@@ -70,6 +70,7 @@ import {
 } from '../data/operate-permissions';
 import { managerRemoveRegistration } from '../data/roster-remove';
 import {
+  actualConfirmedCount,
   count,
   guestConfirmedCount,
   guestEventPeople,
@@ -2145,7 +2146,7 @@ function EventDetailSession({
         <div class="detail-body" id="detail-body">
           <EventDetailInfoSection
             event={event}
-            confirmedCount={confirmedCount}
+            confirmedCount={actualConfirmedCount(event)}
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}

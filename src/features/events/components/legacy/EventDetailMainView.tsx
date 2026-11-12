@@ -10,6 +10,8 @@ import { renderEventSocialLinksHtml } from '../../data/event-social-links';
 import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
 import { getEventEarlyBirdCost, isEventEarlyBirdWindow } from '../../data/signup-restrictions';
 import { getTeamReservationReleaseMeta } from '../../data/team-reservation-release';
+import { buildRegCapacityBar } from '../../data/reg-capacity-bar';
+import { RegCapacityBar } from './RegCapacityBar';
 import './event-detail-c2.css';
 import './signup-a11y.css'; // 報名卡「已報」讀屏文字用 .fcb-sr-only
 
@@ -303,6 +305,7 @@ export function EventDetailCover({
 
 export interface EventDetailInfoSectionProps {
   event: LegacyDetailEvent;
+  /** 實際正取（detail-model#actualConfirmedCount），不可傳已含團隊未報的 event.current。 */
   confirmedCount: number;
   waitlistCount: number;
   nowMs: number;
@@ -366,8 +369,13 @@ export function EventDetailInfoSection({
       <Fragment key={index}>{index > 0 ? ' · ' : ''}{part}</Fragment>
     ))
     : null;
-  const confirmedPct = maxCount > 0 ? Math.min(100, (confirmedCount / maxCount) * 100) : 0;
-  const reservedPct = maxCount > 0 ? Math.min(100 - confirmedPct, (reservedCount / maxCount) * 100) : 0;
+  const regBar = buildRegCapacityBar({
+    teamReservationSummaries: (event as { teamReservationSummaries?: unknown }).teamReservationSummaries,
+    confirmedCount,
+    reservedRemainingCount: reservedCount,
+    waitlistCount,
+    maxCount,
+  });
   const hasRegChips = feeEnabled || !!heatPrediction || earlyBirdCost > 0 || !!regOpen;
 
   const hostUid = (event.creatorUid ?? '').trim();
@@ -421,12 +429,7 @@ export function EventDetailInfoSection({
           </span>
           {capacityMeta && <span class="evd-reg-meta">{capacityMeta}</span>}
         </div>
-        {maxCount > 0 && (
-          <div class="evd-progress" aria-hidden="true">
-            <i class="evd-progress-confirmed" style={`width:${confirmedPct}%`} />
-            {reservedPct > 0 && <i class="evd-progress-reserved" style={`width:${reservedPct}%`} />}
-          </div>
-        )}
+        {regBar && <RegCapacityBar model={regBar} />}
         {hasRegChips && (
           <div class="evd-chips">
             {feeEnabled && (

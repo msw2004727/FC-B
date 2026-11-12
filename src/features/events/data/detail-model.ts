@@ -1,4 +1,5 @@
 import type { EventDoc, RegistrationDoc } from './types';
+import { getEventParticipantStats } from './participant-stats';
 
 /**
  * A 原始碼已提供這些唯讀欄位的使用證據。
@@ -70,6 +71,19 @@ export function guestEventPeople(
 /** 依據 A 的 showEventDetail 訪客 confirmedSummary 計數回退順序。 */
 export function guestConfirmedCount(event: DetailEvent): number {
   return count(event.current) ||
+    (Array.isArray(event.participantsWithUid) ? event.participantsWithUid.length : 0) ||
+    (Array.isArray(event.participants) ? event.participants.length : 0);
+}
+
+/**
+ * 報名卡「N/M」的 N：實際正取人數，不含團隊保留尚未報名的名額。
+ * 照 A 訪客 confirmedSummary（event-detail.js showEventDetail）：先 `_getEventActualConfirmedCount`
+ * （有 realCurrent 用它，否則 current 扣團隊未報），再退回 participantsWithUid／participants 筆數。
+ * 不可改用 event.current：Functions 寫入的 current＝realCurrent＋團隊未報，報名卡再扣一次會讓「剩 N」少算。
+ * guestConfirmedCount 仍保留給報名按鈕判斷（覆寫 current 後交給 getEventParticipantStats，改了會重複扣）。
+ */
+export function actualConfirmedCount(event: DetailEvent): number {
+  return getEventParticipantStats(event, []).confirmedCount ||
     (Array.isArray(event.participantsWithUid) ? event.participantsWithUid.length : 0) ||
     (Array.isArray(event.participants) ? event.participants.length : 0);
 }

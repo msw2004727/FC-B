@@ -1268,7 +1268,8 @@ describe('名單狀態調整頁面接線', () => {
     expect(view.container.querySelector('#page-activity-detail')).toBe(originalPage);
     expect(screen.queryByRole('button', { name: '將 小明 下放到候補' })).toBeNull();
     expect(screen.getByRole('button', { name: '將 小明 正取' })).toBeTruthy();
-    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('3/2');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('0/2');
     const calls = stopCallableRecording();
     expect(calls).toHaveLength(1); expect(calls[0]?.request).toMatchObject({ eventId: 'evtA', userId: 'uidB' });
     expect(mocks.writeAttendanceOps).not.toHaveBeenCalled();
@@ -2899,7 +2900,8 @@ describe('T-074b 詳情頁整合', () => {
     fireEvent.click(signup);
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
     expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ preferredTeamReservationTeamId: 't1' }));
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10');
     await act(async () => { backgroundRows.resolve(rows); });
     await screen.findByRole('button', { name: '取消報名' });
     await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
@@ -2911,7 +2913,7 @@ describe('T-074b 詳情頁整合', () => {
     expect(slots.min).toBe('1');
     expect(slots.value).toBe('3');
     expect(document.querySelector('.team-reservation-help')?.textContent).toContain('剩餘佔位：2');
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10');
     fireEvent.input(slots, { target: { value: '11' } });
     fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
     await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '團隊名額超過目前活動可用名額' }));
@@ -2973,14 +2975,15 @@ describe('T-074b 詳情頁整合', () => {
     mount();
     const companion = await screen.findByRole('button', { name: '幫夥伴報名' });
     await waitFor(() => expect((companion as HTMLButtonElement).disabled).toBe(false));
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 1/10');
     const reads = mocks.registrations.mock.calls.length;
     fireEvent.click(companion);
     fireEvent.click(await screen.findByRole('checkbox', { name: /同行小友/ }));
     fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
     await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
-    await waitFor(() => expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 5/10'));
+    await waitFor(() => expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10'));
   });
   it('只有一隊時直接帶入，不開選擇窗', async () => {
     mocks.viewer.mockReturnValue({ ...staffViewer, teamIds: new Set(['t1']) });
