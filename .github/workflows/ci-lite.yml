@@ -1,17 +1,17 @@
 # FC-B 非 main 分支的輕量檢查（2026-11-12 ci-cost-trim 新增）。
 # 取代原本「任何分支 push 都跑 ci.yml 全套 7 個 job」：分支的全測以副機 pn60-1 為準，
-# 雲端只留型別與 i18n 兩道快檢（約 1～2 分鐘）。
-# 積極版：自動觸發只剩 staging（Cloudflare 演練分支）；其他分支要快檢就手動 Run workflow。
-# 取代保守版「所有非 main 分支 push 都跑」，因為功能分支的全測已由副機負責。
+# 雲端只留型別與 i18n 兩道快檢（約 1～2 分鐘）。main、backup/**、promo 分支不跑本檔。
 # 要在分支跑全套：Actions 頁對 ci.yml 按 Run workflow 選分支，或開 PR。
 # 刻意不做的事同 ci.yml：不建置、不部署、不用 secret、不用第三方 action。
 name: CI lite
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - staging
+    branches-ignore:
+      - main
+      - 'backup/**'
+      - 'promo-*'
+      - 'promo/**'
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
