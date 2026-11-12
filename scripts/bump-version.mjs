@@ -6,6 +6,8 @@
  *   格式 0.YYYYMMDD{suffix}，日期用台北時區。
  *   例：0.20260422 → 0.20260422a → … → 0.20260422z → 0.20260422za；跨日重置為 0.新日期。
  * B 的程式檔名帶雜湊，不需要像 A 同步 ?v= 等四處，只更新 src/version.ts 一處。
+ * 改完版號接著重產 public/sitemap-events.xml（顧問 §3.129：sitemap 重產與 bump 同一步；
+ * 讀取失敗保留舊檔、不擋上線，最後一行「sitemap：重產 N 筆／沿用舊檔」貼進上線 evidence）。
  *
  * 用法：
  *   node scripts/bump-version.mjs              → 自動遞增（跨日重置、同日遞增後綴）
@@ -14,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { regenerateSitemap } from './build-sitemap.mjs';
 
 export const VERSION_PATTERN = /^0\.(\d{8})([a-z]*)$/;
 
@@ -46,7 +49,7 @@ export function incrementVersion(current, today) {
 const VERSION_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'version.ts');
 const DECLARATION = /export const APP_VERSION = '([^']*)';/;
 
-function main() {
+async function main() {
   const source = fs.readFileSync(VERSION_FILE, 'utf8');
   const found = source.match(DECLARATION);
   if (!found) throw new Error('src/version.ts 找不到 APP_VERSION');
@@ -62,6 +65,8 @@ function main() {
   }
   fs.writeFileSync(VERSION_FILE, source.replace(DECLARATION, `export const APP_VERSION = '${next}';`), 'utf8');
   console.log(`版號：${current} → ${next}`);
+  // 版號已寫入才重產；regenerateSitemap 永不拋錯，失敗只印「sitemap：沿用舊檔」
+  await regenerateSitemap();
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

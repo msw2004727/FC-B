@@ -3,7 +3,7 @@
 - 本 repo 只放前端，不得部署任何後端。
 - 任何 push 需站長授權。
 - **設計方針（2026-10-20 站長定案）**：新版所有畫面、入口、互動與文字都要和舊版 A 相同；新舊只差在架構、輕量化、速度與穩定性。做法是輸出 A 的 DOM 與 class、照搬 A 的 CSS 原檔（見 `src/styles/legacy/README.md`），不另行設計。
-- 版號規則與舊版 A 相同（`0.YYYYMMDD{suffix}`，台北日期；當日第一次無後綴，同日再上線 a…z、za…，跨日重置）：每個上線批次在推送前執行一次 `npm run bump-version`（只改 `src/version.ts`），不得手改；版號顯示在側邊選單底部（同 A 的 `#home-version-tag`）。
+- 版號規則與舊版 A 相同（`0.YYYYMMDD{suffix}`，台北日期；當日第一次無後綴，同日再上線 a…z、za…，跨日重置）：每個上線批次在推送前執行一次 `npm run bump-version`（改 `src/version.ts`，並一併重產 `public/sitemap-events.xml`；讀取失敗保留舊檔不擋上線，最後一行「sitemap：重產 N 筆／沿用舊檔」貼進 evidence；顧問 §3.129，取代原「只改 src/version.ts」），不得手改；版號顯示在側邊選單底部（同 A 的 `#home-version-tag`）。
 - 資料寫入遵守 FC 的動作級資料契約：有 Callable 一律走 Callable，不實作 A 的 fallback，不移植鎖定邏輯，②a 直寫須有 Rules emulator 測試。
 - 新功能一律做成 `src/features/<id>` 模組，並在 `src/features.config.ts` 的 `ALL_FEATURES` 登記。
 - 7 語系必須同時更新；`npm run check:i18n` 失敗不得交付。
