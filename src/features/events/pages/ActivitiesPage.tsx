@@ -26,10 +26,10 @@ import { useEventFormPostSave } from '../components/event-form/use-event-form-po
 import {
   TimelineEventCard,
   getEventAllowedGender,
-  isTimelineCardEnded,
   type LegacyEventDoc,
 } from '../components/legacy/TimelineEventCard';
 import { EndedFold, endedFoldInstanceKey } from '../components/legacy/EndedFold';
+import { shouldFoldTimelineEvent } from '../data/timeline-fold';
 import { ExternalTransitCard } from '../components/legacy/ExternalTransitCard';
 import {
   NEARBY_DISABLED_MSG,
@@ -1130,8 +1130,8 @@ export default function ActivitiesPage(): JSX.Element {
                         </div>
                         <div class="tl-events-col">
                           {(() => {
-                            // 同一天的已結束／已取消場次收成一行放在當天最前面（點開才畫卡片），其餘照原順序。
-                            const ended = sortedDayEvents.filter((ev) => isTimelineCardEnded(ev, nowMs));
+                            // 同一天結束時間已過或已取消的場次收成一行放在當天最前面（點開才畫卡片），進行中的不收（顧問 §3.136）。
+                            const ended = sortedDayEvents.filter((ev) => shouldFoldTimelineEvent(ev, nowMs));
                             const rest = ended.length > 0
                               ? sortedDayEvents.filter((ev) => !ended.includes(ev))
                               : sortedDayEvents;

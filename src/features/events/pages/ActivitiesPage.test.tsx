@@ -460,6 +460,17 @@ describe('T-054c AP1：時間軸的台北今天', () => {
 
 // 2026-11-13 站長選定：計量條風格 A（同長、不寫人數）、已結束收合、篩選列＋月份黏頂。
 describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', () => {
+  // 測試同步更新（2026-11-13 顧問 §3.136）：收合改看「結束時間已過或已取消」，不再只看 status。
+  // 本組固定台北 2030/10/19 12:00；「已結束」場次用當天 08:00~10:00（結束已過、仍在 6 小時內留在列表）。
+  const ENDED_MORNING = '2030/10/19 08:00~10:00';
+  let fixedNow: ReturnType<typeof vi.spyOn> | null = null;
+  beforeEach(() => {
+    fixedNow = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2030-10-19T12:00:00+08:00'));
+  });
+  afterEach(() => {
+    fixedNow?.mockRestore();
+    fixedNow = null;
+  });
   const ROOT = resolve(__dirname, '../../../..');
   const readCss = (file: string): string => readFileSync(resolve(ROOT, file), 'utf8');
 
@@ -540,7 +551,7 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
   });
 
   it('已結束／已取消以日期群組收成一行，點開才畫卡片；aria-controls 指向展開區；語系切換跟著換', async () => {
-    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended' };
+    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended', date: ENDED_MORNING };
     const cancelled: SportEvent = { ...football, id: 'cancel-1', title: 'Cancelled one', status: 'cancelled' };
     const cancelledOther: SportEvent = { ...pickleball, id: 'cancel-2', title: 'Cancelled two', status: 'cancelled' };
     const { container } = mountWith([football, ended, cancelled, pickleball, cancelledOther]);
@@ -583,6 +594,18 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     expect(day19.querySelector('[data-event-id="public-football"] .tl-gbar-sr')?.textContent).toBe('6 of 12 signed up');
   });
 
+  it('進行中（已開始、未結束）不收合，卡片狀態膠囊照舊顯示「已結束」；結束後才收合（顧問 §3.136）', async () => {
+    const live: SportEvent = { ...football, id: 'live', title: 'Live now', date: '2030/10/19 11:00~13:00' };
+    const done: SportEvent = { ...football, id: 'done', title: 'Done', date: ENDED_MORNING };
+    const { container } = mountWith([live, done, football]);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')).toBeTruthy());
+    expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸');
+    const liveCard = container.querySelector('.tl-events-col > [data-event-id="live"]');
+    expect(liveCard).toBeTruthy();
+    expect(liveCard?.querySelector('.tl-event-status')?.textContent).toBe('已結束');
+    expect(container.querySelector('[data-event-id="done"]')).toBeNull();
+  });
+
   it('沒有已結束場次時不出收合列', async () => {
     const { container } = mountWith([football, pickleball]);
     await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
@@ -590,8 +613,8 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
   });
 
   it('切換篩選讓收合的場次改變時，展開狀態重置（不跟位置走）', async () => {
-    const north: SportEvent = { ...football, id: 'ended-north', title: 'Ended north', status: 'ended', regionEnabled: true, region: '北部' };
-    const south: SportEvent = { ...football, id: 'ended-south', title: 'Ended south', status: 'ended', regionEnabled: true, region: '南部' };
+    const north: SportEvent = { ...football, id: 'ended-north', title: 'Ended north', status: 'ended', date: ENDED_MORNING, regionEnabled: true, region: '北部' };
+    const south: SportEvent = { ...football, id: 'ended-south', title: 'Ended south', status: 'ended', date: ENDED_MORNING, regionEnabled: true, region: '南部' };
     const { container } = mountWith([football, north, south]);
     await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 2 場▸'));
     fireEvent.click(container.querySelector('.tl-ended-fold-btn') as HTMLElement);
@@ -609,7 +632,7 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     const original = (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scrollIntoView;
     try {
-      const endedToday: SportEvent = { ...football, id: 'ended-today', title: 'Ended today', status: 'ended' };
+      const endedToday: SportEvent = { ...football, id: 'ended-today', title: 'Ended today', status: 'ended', date: ENDED_MORNING };
       const nextMonth: SportEvent = { ...pickleball, id: 'next-month', title: 'Next month', date: '2030/11/01 18:00~20:00' };
       const { container } = mountWith([endedToday, pickleball, nextMonth]);
       await waitFor(() => expect(container.querySelector('.tl-day-group[data-date-anchor="2030-11-01"]')).toBeTruthy());

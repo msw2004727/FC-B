@@ -83,17 +83,6 @@ function getEventDisplayTypeKey(event: LegacyEventDoc): string {
   return 'friendly';
 }
 
-/**
- * 卡片是否顯示為「已結束／已取消」（與卡片內 isEnded 同口徑：外部活動看 status，其餘看有效狀態）。
- * 列表用它把同一天的已結束場次收成一行。
- */
-export function isTimelineCardEnded(event: LegacyEventDoc, nowMs: number): boolean {
-  const status = getEventDisplayTypeKey(event) === 'external'
-    ? (event.status || 'open')
-    : effectiveEventStatus(event, nowMs);
-  return status === 'ended' || status === 'cancelled';
-}
-
 /** M-077：照 A 進度條公式（每 100ms 加 4 / 2 / 0.5 / 0.15，最高 85）。 */
 function nextProgress(p: number): number {
   const inc = p < 30 ? 4 : p < 60 ? 2 : p < 80 ? 0.5 : 0.15;
