@@ -17,6 +17,7 @@
  */
 
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { withSubmitting } from '@/core/submit-guard';
 
 import { parseEventStartMs } from '@/core/event-time';
 import { getFirebase } from '@/data/firebase';
@@ -160,10 +161,10 @@ async function writeEventStatus(
   status: 'cancelled' | 'open' | 'full',
 ): Promise<void> {
   const { db } = await getFirebase();
-  await updateDoc(doc(db, 'events', eventDocId), {
+  await withSubmitting('event-save', () => updateDoc(doc(db, 'events', eventDocId), {
     status,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 // ── 取消活動（A `cancelMyActivity`） ──────────────────
