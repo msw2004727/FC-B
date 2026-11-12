@@ -296,6 +296,8 @@ function RelatedActivityCardRow({
       class={`tl-event-row profile-related-event-card ${rowBaseClass}${isEnded ? ' tl-past' : ''}`}
       data-event-id={id}
       onClick={() => {
+        // 進度環期間按鈕被 clip-path 裁成小圓，裁掉的區域點擊會落到這一列；處理中不開詳情。
+        if (cancelEventRing.ring.phase !== 'idle') return;
         if (id) onSelect(id);
       }}
     >

@@ -289,6 +289,8 @@ export function MyActivityCard({
     : '';
 
   function handleCardClick(ev: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+    // 進度環期間按鈕被 clip-path 裁成小圓，裁掉的區域點擊會落到卡片上；處理中不開詳情／外部網址。
+    if (lifecycleRing.ring.phase !== 'idle') return;
     const target = ev.target as HTMLElement | null;
     if (target?.closest('button') || target?.closest('.user-capsule') || target?.closest('.ui-user-tag')) {
       return;

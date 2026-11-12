@@ -5,11 +5,13 @@ import type { EventDoc } from '../../data/types';
 
 // 11-12 站長回報：「我的活動」按取消後沒反應、過一陣子才刷新。
 // 卡片的取消／重新開放按鈕接上共用進度環，這裡用真的 runEventLifecycleAction 串起來測。
-const { appConfirmMock, cancelEventMock, toastShowMock } = vi.hoisted(() => ({
+const { appConfirmMock, cancelEventMock, toastShowMock, openExternalMock } = vi.hoisted(() => ({
   appConfirmMock: vi.fn(),
   cancelEventMock: vi.fn(),
   toastShowMock: vi.fn(),
+  openExternalMock: vi.fn(),
 }));
+vi.mock('@/core/open-external', () => ({ openExternal: openExternalMock }));
 vi.mock('@/ui/AppConfirm', () => ({ appConfirm: appConfirmMock }));
 vi.mock('@/ui/Toast', () => ({ toast: { show: toastShowMock } }));
 vi.mock('../../data/event-lifecycle', async (importOriginal) => ({
@@ -38,11 +40,11 @@ function deferred(): { promise: Promise<void>; resolve(): void; reject(e: unknow
   return { promise, resolve, reject };
 }
 
-function renderCard(onDone: () => void) {
+function renderCard(onDone: () => void, opts: { ev?: EventDoc; onNavigate?: (href: string) => void } = {}) {
   const busy = new Set<string>();
   const view = render(
     <MyActivityCard
-      event={event}
+      event={opts.ev ?? event}
       nowMs={Date.now()}
       operateCtx={ctx}
       onEdit={() => {}}
@@ -58,7 +60,7 @@ function renderCard(onDone: () => void) {
       onDelete={() => {}}
       onPin={() => {}}
       onUnavailable={() => {}}
-      onNavigate={() => {}}
+      onNavigate={opts.onNavigate ?? (() => {})}
     />,
   );
   const cancelButton = (): HTMLButtonElement =>
@@ -168,5 +170,58 @@ describe('MyActivityCard 取消活動：按下確認後立即顯示進度環', (
     expect(cancelEventMock).not.toHaveBeenCalled();
     expect(cancelButton().className).not.toContain('action-ring-btn');
     expect(cancelButton().disabled).toBe(false);
+  });
+
+  // 審查 P2：環期間按鈕被 clip-path 裁成小圓，裁掉的區域點擊會落到卡片上。
+  it('處理中點卡片不開活動詳情；閒置時照常開', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const write = deferred();
+    appConfirmMock.mockResolvedValue(true);
+    cancelEventMock.mockReturnValueOnce(write.promise);
+    const onNavigate = vi.fn();
+    const { cancelButton, container } = renderCard(vi.fn(), { onNavigate });
+    const card = container.querySelector<HTMLElement>('.msg-manage-card')!;
+
+    fireEvent.click(card);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(cancelButton());
+    await settle();
+    act(() => { vi.advanceTimersByTime(0); });
+    expect(cancelButton().className).toContain('is-collapsed');
+    fireEvent.click(card);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+
+    await act(async () => { write.reject(new Error('offline')); });
+    await settle();
+    act(() => { vi.advanceTimersByTime(260); });
+    fireEvent.click(card);
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it('外部活動：處理中點卡片不開外部網址；閒置時照常開', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const write = deferred();
+    appConfirmMock.mockResolvedValue(true);
+    cancelEventMock.mockReturnValueOnce(write.promise);
+    const external = { ...event, type: 'external', externalUrl: 'https://example.com/ev' } as EventDoc;
+    const { cancelButton, container } = renderCard(vi.fn(), { ev: external });
+    const card = container.querySelector<HTMLElement>('.msg-manage-card')!;
+
+    fireEvent.click(card);
+    expect(openExternalMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(cancelButton());
+    await settle();
+    act(() => { vi.advanceTimersByTime(0); });
+    expect(cancelButton().className).toContain('is-collapsed');
+    fireEvent.click(card);
+    expect(openExternalMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => { write.reject(new Error('offline')); });
+    await settle();
+    act(() => { vi.advanceTimersByTime(260); });
+    fireEvent.click(card);
+    expect(openExternalMock).toHaveBeenCalledTimes(2);
   });
 });

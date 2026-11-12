@@ -306,6 +306,41 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     }
   });
 
+  // 審查 P2：環期間按鈕被 clip-path 裁成小圓，裁掉的區域點擊會落到卡片列上。
+  it('我開的團：處理中點卡片列不開詳情；閒置時照常開', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      setReady({
+        hosted: [{ event: { id: 'e1', title: '活動A', status: 'open' }, effectiveStatus: 'open' }],
+      });
+      let resolveDetail!: (v: unknown) => void;
+      loadEventDetailMock.mockReturnValueOnce(new Promise((r) => { resolveDetail = r; }));
+      runLifecycleMock.mockResolvedValueOnce(false);
+      const flush = async (): Promise<void> => {
+        await act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+      };
+
+      render(<Section section="hosted" />);
+      const row = document.querySelector<HTMLElement>('.profile-related-event-card')!;
+      fireEvent.click(row);
+      expect(routeMock).toHaveBeenCalledTimes(1);
+      expect(routeMock).toHaveBeenLastCalledWith('/events/e1');
+
+      fireEvent.click(screen.getByRole('button', { name: '取消活動' }));
+      act(() => { vi.advanceTimersByTime(0); });
+      fireEvent.click(row);
+      expect(routeMock).toHaveBeenCalledTimes(1);
+
+      resolveDetail({ event: { id: 'e1', title: '活動A', status: 'open' }, eventDocId: 'e1' });
+      await flush();
+      act(() => { vi.advanceTimersByTime(260); });
+      fireEvent.click(row);
+      expect(routeMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('我開的團：重讀活動失敗 → 環展開回原狀；再按一次會重新讀取', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
