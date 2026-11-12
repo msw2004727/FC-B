@@ -630,6 +630,8 @@ function RouteArea({
   const stopStallRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     setContentStallRetryHandler(() => {
+      // 使用者手勢（卡住提示的「再試一次」）：同錯誤邊界重試，視為前景並先處理背景中延後的失敗。
+      noteUserRetry();
       lazyCache.clear();
       setStallRetryKey((k) => k + 1);
     });

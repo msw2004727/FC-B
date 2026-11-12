@@ -19,6 +19,13 @@ vi.mock('@/core/route-loading', async (importOriginal) => {
   return { ...actual, beginRouteLoading: vi.fn(() => 41), endRouteLoading: vi.fn() };
 });
 import { endRouteLoading } from '@/core/route-loading';
+import { showContentStallHint } from '@/core/content-stall';
+import {
+  _resetGestureForegroundForTest,
+  installChunkReloadGuard,
+  isGestureForeground,
+  RELOAD_AT_KEY,
+} from '@/core/chunk-reload';
 
 function Fine(): preact.JSX.Element {
   return <p data-testid="fine">fine page</p>;
@@ -114,5 +121,43 @@ describe('App 路由程式檔載入失敗', () => {
 
     expect(await findByTestId('lazy-page')).toBeTruthy();
     expect(loadLazy).toHaveBeenCalledTimes(2);
+  });
+
+  it('卡住提示按「再試一次」：視為前景，背景中延後的失敗立即處理；之後的失敗照前景規則（不再延後）', async () => {
+    let visibility: DocumentVisibilityState = 'hidden'; // iOS 卡在 hidden、不送 visible
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+    const onStuck = vi.fn();
+    installChunkReloadGuard(onStuck);
+    _resetGestureForegroundForTest(); // 前面案例按過錯誤邊界重試，旗標還在
+    // 60 秒內已重載過：處理延後的失敗時不重載、改補報（可同步觀察「已處理」）。
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+    try {
+      const { findByTestId } = render(<App />);
+      await waitFor(() => expect(rejectFirst).not.toBeNull());
+      rejectFirst?.(new TypeError('Importing a module script failed.'));
+      const error = new TypeError('Importing a module script failed.');
+      window.dispatchEvent(Object.assign(new Event('vite:preloadError', { cancelable: true }), { payload: error }));
+      expect(onStuck).not.toHaveBeenCalled();
+
+      showContentStallHint();
+      (document.getElementById('stall-reload-btn') as HTMLButtonElement).click();
+      await waitFor(() => expect(onStuck).toHaveBeenCalledTimes(1));
+      expect(onStuck).toHaveBeenCalledWith(expect.objectContaining({ error, vis: 'hidden' }));
+      expect(isGestureForeground()).toBe(true); // error-report 因此照常上報（見 error-report.test P2-2）
+      expect(await findByTestId('lazy-page')).toBeTruthy();
+
+      // 之後仍 hidden 再失敗：照前景規則處理、不延後，回前景也不會再補報一次。
+      const later = Object.assign(new Event('vite:preloadError', { cancelable: true }), { payload: error });
+      window.dispatchEvent(later);
+      expect(later.defaultPrevented).toBe(false);
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(onStuck).toHaveBeenCalledTimes(1);
+    } finally {
+      document.getElementById('content-stall-hint')?.remove();
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      sessionStorage.clear();
+      _resetGestureForegroundForTest();
+    }
   });
 });
