@@ -790,18 +790,36 @@ describe('回前景停用 SW，以及設定稍後才讀到', () => {
     expect(order).toEqual(['off', 'reload']);
   });
 
-  it('啟動時設定為 null 不做；滿 10 分鐘重讀成功才重載', async () => {
+  it('首讀失敗（設定為 null）不做；回前景未滿 10 分鐘即重讀，成功才重載', async () => {
     const fetchConfig = vi.fn(async () => ({ swEnabled: true, minBuild: MIN }));
     const h = startAt({ initialConfig: null, path: '/', fetchConfig });
     expect(h.reload).not.toHaveBeenCalled();
-    await advance(599_000);
-    fireVisible();
-    await advance(0);
-    expect(fetchConfig).not.toHaveBeenCalled();
     await advance(1_000);
     fireVisible();
     await advance(0);
     expect(fetchConfig).toHaveBeenCalledTimes(1);
     expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('首讀失敗後重讀仍失敗：之後 10 分鐘內不再打網路', async () => {
+    const fetchConfig = vi.fn(async () => null);
+    startAt({ initialConfig: null, path: '/', fetchConfig });
+    await advance(1_000);
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).toHaveBeenCalledTimes(1);
+    fireHidden();
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('首讀成功：未滿 10 分鐘回前景不重讀', async () => {
+    const fetchConfig = vi.fn(async () => ({ swEnabled: true, minBuild: 0 }));
+    startAt({ minBuild: 0, path: '/', fetchConfig });
+    await advance(599_000);
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).not.toHaveBeenCalled();
   });
 });
