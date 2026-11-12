@@ -1,5 +1,6 @@
 import { getFirebase } from '@/data/firebase';
 import { parseTaipei } from '@/core/taipei-time';
+import { withSubmitting } from '@/core/submit-guard';
 import {
   canManageEventComments,
   clearCommentBadgeCacheForEvent,
@@ -437,11 +438,11 @@ export async function submitEventComment(
     context.event.id!, author, body, privateComment, fs.serverTimestamp(), fs.serverTimestamp(),
   );
   try {
-    await fs.addDoc(comments, payload);
+    await withSubmitting('event-save', () => fs.addDoc(comments, payload));
   } catch (error) {
     if (!isCommentPermissionDenied(error)) throw error;
     const { replyCount: _replyCount, likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
-    await fs.addDoc(comments, legacy);
+    await withSubmitting('event-save', () => fs.addDoc(comments, legacy));
   }
   invalidateEventCommentCaches(context.event.id!);
 }
@@ -462,11 +463,11 @@ export async function submitEventCommentReply(
   );
   const replies = fs.collection(fs.doc(comments, comment.id), 'replies');
   try {
-    await fs.addDoc(replies, payload);
+    await withSubmitting('event-save', () => fs.addDoc(replies, payload));
   } catch (error) {
     if (!isCommentPermissionDenied(error)) throw error;
     const { likeCount: _likeCount, recentLikers: _recentLikers, ...legacy } = payload;
-    await fs.addDoc(replies, legacy);
+    await withSubmitting('event-save', () => fs.addDoc(replies, legacy));
   }
   invalidateEventCommentCaches(context.event.id!);
 }
@@ -562,11 +563,11 @@ export async function deleteEventComment(
   const target = replyId
     ? fs.doc(comments, commentId, 'replies', replyId)
     : fs.doc(comments, commentId);
-  await fs.updateDoc(target, {
+  await withSubmitting('event-save', () => fs.updateDoc(target, {
     deleted: true,
     deletedByUid: author.uid,
     deletedAt: fs.serverTimestamp(),
     updatedAt: fs.serverTimestamp(),
-  });
+  }));
   invalidateEventCommentCaches(context.event.id!);
 }
