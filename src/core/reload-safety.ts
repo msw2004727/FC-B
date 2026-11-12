@@ -156,7 +156,8 @@ function detachPrompt(): void {
 export function dismissForcedUpdatePrompt(): void {
   if (typeof document === 'undefined') return;
   const prompt = document.getElementById('sw-reload-deferred-prompt');
-  if (!prompt || prompt.dataset.mode !== 'forced') return;
+  // 沒有提示框但留有 SW 函式：強制框按「現在更新」後沒進入重載而改延後（見點擊處理），照樣還原。
+  if (prompt ? prompt.dataset.mode !== 'forced' : !deferredSwReloadFn) return;
   const swFn = deferredSwReloadFn;
   detachPrompt();
   // 強制期間若有 SW 新版等待中，收掉強制框後還原成一般提示（含「稍後」）。
@@ -220,7 +221,10 @@ export function showSwReloadPrompt(
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
+    const swFn = deferredSwReloadFn;
     detachPrompt();
+    // 強制框按下不一定真的重載（寫分頁紀錄失敗會重顯強制框或改延後），SW 一般提示的函式先留著。
+    deferredSwReloadFn = swFn;
     fn();
   });
 
