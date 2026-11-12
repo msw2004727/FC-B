@@ -59,6 +59,10 @@ import {
   type SignupSnapshot,
 } from './signup';
 import { registerSelection } from './signup-selection';
+import {
+  invalidateViewerRegistrations,
+  readViewerRegistrationsCached,
+} from './viewer-registrations-cache';
 import type { EventDoc, RegistrationDoc, ViewerContext } from './types';
 import { isEventVisibleToUser } from './visibility';
 
@@ -1347,3 +1351,67 @@ describe('T-087c：伺服器新錯誤代碼對照', () => {
 });
 
 // 第 6 項若解讀為 A10 同樣要求取消時間守衛則不成立：附件 A10 的 _confirmCompanionCancelUnlocked 未檢查活動狀態或開始時間，故只為 A08 本人取消補上該守衛。
+
+describe('O5：寫入成功後失效登入者全歷史快取', () => {
+  async function primeCache() {
+    invalidateViewerRegistrations();
+    const loader = vi.fn(async (): Promise<RegistrationDoc[]> => []);
+    await readViewerRegistrationsCached('u1', loader);
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(1);
+    return loader;
+  }
+
+  it('報名成功後下一次讀取重新呼叫 loader', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const loader = await primeCache();
+    await registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      context: signupContext().context,
+    });
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('只選同行者的報名成功也失效', async () => {
+    registerMock('registerForEvent', async () => ({ success: true }));
+    const loader = await primeCache();
+    await registerSelection({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      participants: [{ type: 'companion', companionId: 'c1', companionName: 'Bob' }],
+      context: signupContext({ registrations: [activeSelf] }).context,
+    }, false);
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('取消成功後下一次讀取重新呼叫 loader（deduplicated 也失效）', async () => {
+    registerMock('cancelRegistration', async () => ({ success: true, deduplicated: true }));
+    const loader = await primeCache();
+    await cancelRegistration({
+      eventId: 'evt1',
+      userId: 'u1',
+      registrationIds: ['r1'],
+      kind: 'self',
+      context: cancelContext().context,
+    });
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('報名失敗不失效（沒有寫入）', async () => {
+    registerMock('registerForEvent', async () => {
+      throw new CallableError('failed-precondition', 'REG_NOT_OPEN', 'REG_NOT_OPEN');
+    });
+    const loader = await primeCache();
+    await expect(registerForEvent({
+      eventId: 'evt1',
+      user: { uid: 'u1', displayName: 'Alice' },
+      context: signupContext().context,
+    })).rejects.toBeInstanceOf(SignupError);
+    await readViewerRegistrationsCached('u1', loader);
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+});

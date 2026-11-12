@@ -14,6 +14,7 @@ import { beginSubmitting } from '@/core/submit-guard';
 import type { CancelRegistrationResponse } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
 import { runInBackground } from './background-work';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 import {
   canRemoveConfirmedParticipant,
@@ -285,6 +286,7 @@ export async function managerRemoveRegistration(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+  invalidateViewerRegistrations();
 
   const eventTitle = str(event.title);
   const targetName = str(registration.name);

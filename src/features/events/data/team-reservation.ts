@@ -8,6 +8,7 @@ import type { EventDoc } from './types';
 import type { StaffTeamOption } from './team-staff';
 import { canDetailTeamSignup } from './signup-context';
 import { eventStartMs } from './terminal';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import { normalizeTeamReservationSummaries, type NormalizedTeamReservationSummary } from './signup-restrictions';
 
 export { getStaffTeams as getTeamReservationStaffTeams } from './team-staff';
@@ -278,6 +279,7 @@ export function createTeamReservationController(
         pending.add(key);
         rememberSlots(teamId, reservedSlots, options.storage);
         const response = await callFn('adjustTeamReservation', payload);
+        invalidateViewerRegistrations();
         if (!isCurrent()) return { status: 'ignored', message: '' };
         if (response?.deduplicated === true) return { status: 'success', deduplicated: true, message: PENDING };
         const patch = response?.success === true ? eventPatch(response.event) : null;

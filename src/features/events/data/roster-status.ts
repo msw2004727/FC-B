@@ -7,6 +7,7 @@ import type {
 } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
 import { runInBackground } from './background-work';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 import type { OperateContext } from './operate-permissions';
 import {
@@ -175,6 +176,7 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
       sentSnapshot = latest;
       try { response = await send(true); } catch (secondError) { return await handleError(secondError); }
     }
+    invalidateViewerRegistrations();
     if ('deduplicated' in response) return await reconcile();
     const targets = rosterStatusTargets(action, sentSnapshot.registrations, target.userId);
     const names = targets.map(reg => reg.participantType === 'companion'

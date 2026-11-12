@@ -7,6 +7,7 @@ import {
   SignupError,
   type RegisterForEventInput,
 } from './signup';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 
 type RegisterResult = Awaited<ReturnType<typeof registerForEvent>>;
 type RegisterPayload = ReturnType<typeof buildRegisterPayload>;
@@ -42,6 +43,7 @@ export function registerSelection(
 
     try {
       const result = await callFn('registerForEvent', payload);
+      invalidateViewerRegistrations();
       if (!result.deduplicated) {
         emit('registration:created', { eventId: input.eventId, userId: input.user.uid });
       }

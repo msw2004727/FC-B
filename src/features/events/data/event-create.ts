@@ -35,6 +35,7 @@ import {
 } from './event-cover-upload';
 import { normalizeReleaseHours } from './team-reservation-release';
 import { EventCreateError, assertCreateAllowed, toOperateContext } from './event-create-guard';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 
 // 開團權限判斷（canCreateEvent／assertCreateAllowed）與 EventCreateError 原樣搬到 event-create-guard.ts：
 // 首頁開團入口只需要權限判斷，不必為它把整個資料層（Callable、封面上傳）帶進首屏。這裡照舊轉出。
@@ -664,7 +665,9 @@ async function callAdjustEventCapacity(
   req: AdjustEventCapacityRequest,
 ): Promise<AdjustEventCapacityResponse> {
   try {
-    return await callFn('adjustEventCapacity', req);
+    const response = await callFn('adjustEventCapacity', req);
+    invalidateViewerRegistrations();
+    return response;
   } catch (err) {
     const message =
       err && typeof err === 'object' && 'message' in err
