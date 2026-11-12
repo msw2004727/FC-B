@@ -374,6 +374,81 @@ describe('我的個人頁（A 版結構）', () => {
     expectNoWrites();
   });
 
+  // L-43：重新整理時登入狀態還沒判定（authPending），不得先閃「尚未登入」。
+  it('登入狀態尚未判定時顯示載入中，不顯示未登入畫面；判定未登入後才顯示', () => {
+    vi.mocked(useViewer).mockReturnValue({ ...viewer(null), authPending: true });
+    const view = render(<ProfilePage />);
+    expect(document.getElementById('profile-login-prompt')).toBeNull();
+    expect(screen.queryByText('尚未登入')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeTruthy();
+    expect(loadUserProfile).not.toHaveBeenCalled();
+
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    view.rerender(<ProfilePage />);
+    expect(document.getElementById('profile-login-prompt')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+  });
+
+  it('登入狀態尚未判定、隨後判定已登入：全程不出現未登入畫面', async () => {
+    vi.mocked(useViewer).mockReturnValue({ ...viewer(null), authPending: true });
+    const view = render(<ProfilePage />);
+    expect(document.getElementById('profile-login-prompt')).toBeNull();
+
+    vi.mocked(useViewer).mockReturnValue(viewer('U-me'));
+    view.rerender(<ProfilePage />);
+    expect(document.getElementById('profile-login-prompt')).toBeNull();
+    await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('U-me'));
+    expect(document.getElementById('profile-login-prompt')).toBeNull();
+  });
+
+  it('未登入畫面（版本 A）：人形 SVG 取代 emoji，圖示、標題、說明、按鈕都在置中容器內', () => {
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    render(<ProfilePage />);
+    const prompt = document.getElementById('profile-login-prompt')!;
+    expect(prompt.className).toBe('profile-login-prompt');
+    expect(prompt.dataset.variant).toBeUndefined();
+    const content = prompt.querySelector(':scope > .login-prompt-content')!;
+    expect(content).toBeTruthy();
+    expect(content.querySelector(':scope > .login-prompt-icon > svg.guest-avatar-icon')).toBeTruthy();
+    expect(content.textContent).not.toContain('👤');
+    expect(content.querySelector(':scope > h3')?.textContent).toBe('尚未登入');
+    expect(content.querySelector(':scope > p')?.textContent).toBe('請先使用 LINE 帳號登入以查看個人資料');
+    expect(content.querySelector(':scope > button.line-login-btn.large')?.textContent).toContain('LINE 登入');
+  });
+
+  it('版本 B 只在開發環境以 ?guestCardVariant=b 預覽：卡片內只有圓形人形、標題、按鈕', () => {
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    window.history.replaceState(null, '', '/profile?guestCardVariant=b');
+    vi.stubEnv('DEV', true);
+    try {
+      render(<ProfilePage />);
+      const prompt = document.getElementById('profile-login-prompt')!;
+      expect(prompt.dataset.variant).toBe('b');
+      const card = prompt.querySelector(':scope > .login-prompt-card')!;
+      expect(card.querySelector(':scope > .login-prompt-avatar > svg.guest-avatar-icon')).toBeTruthy();
+      expect(card.querySelector(':scope > h3')?.textContent).toBe('尚未登入');
+      expect(card.querySelector(':scope > button.line-login-btn')).toBeTruthy();
+      expect(card.querySelector('p')).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('正式建置（DEV=false）忽略 ?guestCardVariant=b，一律顯示版本 A', () => {
+    vi.mocked(useViewer).mockReturnValue(viewer(null));
+    window.history.replaceState(null, '', '/profile?guestCardVariant=b');
+    vi.stubEnv('DEV', false);
+    try {
+      render(<ProfilePage />);
+      const prompt = document.getElementById('profile-login-prompt')!;
+      expect(prompt.dataset.variant).toBeUndefined();
+      expect(prompt.querySelector('.login-prompt-content')).toBeTruthy();
+      expect(prompt.querySelector('.login-prompt-card')).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('顯示載入狀態', async () => {
     // 本檔字典只有 profile.*。PageSpinner 的圈下文案在 common.*，這裡補上既有兩句，不斷言新文案。
     _setDictLoaderForTest(async () => ({

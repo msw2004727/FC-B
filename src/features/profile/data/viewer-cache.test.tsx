@@ -272,3 +272,80 @@ describe('viewer 全站共用快取', () => {
     await waitFor(() => expect(textOf('a')).toBe(FULL_U1_NEXT));
   });
 });
+
+// L-43：開頁時 uid 為 null 有兩種意思——「登入狀態還沒判定」與「確定是訪客」，頁面要能分辨（authPending）。
+describe('viewer 登入狀態判定（authPending）', () => {
+  function AuthProbe() {
+    const viewer = useViewer();
+    return <output data-testid="auth">{`${viewer.uid ?? 'guest'}|${viewer.authPending === true ? 'pending' : 'settled'}`}</output>;
+  }
+
+  it('getCurrentUser 還沒回來前是 pending；確定是訪客後才變 settled', async () => {
+    const current = deferred<Awaited<ReturnType<typeof getCurrentUser>>>();
+    vi.mocked(getCurrentUser).mockReturnValue(current.promise);
+    render(<AuthProbe />);
+    expect(textOf('auth')).toBe('guest|pending');
+    await settle();
+    expect(textOf('auth')).toBe('guest|pending');
+
+    current.resolve(null);
+    await waitFor(() => expect(textOf('auth')).toBe('guest|settled'));
+  });
+
+  it('currentUser 為 null 但 Auth 還在還原：等 authStateReady 之後才判定，還原出 uid 就直接是登入者、不經過訪客', async () => {
+    const ready = deferred<void>();
+    const auth: { currentUser: { uid: string } | null; authStateReady: () => Promise<void> } = {
+      currentUser: null,
+      authStateReady: () => ready.promise,
+    };
+    vi.mocked(getFirebase).mockResolvedValue({ db: {}, auth } as unknown as Awaited<ReturnType<typeof getFirebase>>);
+    vi.mocked(getCurrentUser).mockResolvedValue(null);
+    const seen: string[] = [];
+    function Recorder() {
+      const viewer = useViewer();
+      seen.push(`${viewer.uid ?? 'guest'}|${viewer.authPending === true ? 'pending' : 'settled'}`);
+      return null;
+    }
+    render(<><AuthProbe /><Recorder /></>);
+    await settle();
+    expect(textOf('auth')).toBe('guest|pending');
+
+    auth.currentUser = { uid: 'u1' };
+    await act(async () => {
+      ready.resolve();
+    });
+    await waitFor(() => expect(textOf('auth')).toBe('u1|settled'));
+    expect(seen).not.toContain('guest|settled');
+  });
+
+  it('還在 pending 時收到 auth:changed(null) 立刻判定為訪客；收到 uid 則直接是登入者', async () => {
+    const current = deferred<Awaited<ReturnType<typeof getCurrentUser>>>();
+    vi.mocked(getCurrentUser).mockReturnValue(current.promise);
+    render(<AuthProbe />);
+    expect(textOf('auth')).toBe('guest|pending');
+
+    act(() => emit('auth:changed', { uid: null }));
+    expect(textOf('auth')).toBe('guest|settled');
+
+    act(() => emit('auth:changed', { uid: 'u2' }));
+    expect(textOf('auth')).toBe('u2|settled');
+    // 晚到的初始讀值不得蓋掉較新的 auth:changed。
+    current.resolve(null);
+    await settle();
+    expect(textOf('auth')).toBe('u2|settled');
+  });
+
+  it('所有訂閱者卸載後還原成 pending，下次掛載重新判定', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(null);
+    const first = render(<AuthProbe />);
+    await waitFor(() => expect(textOf('auth')).toBe('guest|settled'));
+    first.unmount();
+
+    const current = deferred<Awaited<ReturnType<typeof getCurrentUser>>>();
+    vi.mocked(getCurrentUser).mockReturnValue(current.promise);
+    render(<AuthProbe />);
+    expect(textOf('auth')).toBe('guest|pending');
+    current.resolve(null);
+    await waitFor(() => expect(textOf('auth')).toBe('guest|settled'));
+  });
+});

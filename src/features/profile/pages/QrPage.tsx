@@ -23,8 +23,10 @@ export default function QrPage(): JSX.Element {
 
   const canvasBoxRef = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
+  // L-43：登入狀態還沒判定（authPending）時當載入中，不先閃「登入後即可顯示」與登入鈕。
+  const authPending = !uid && viewer.authPending === true;
   const [status, setStatus] = useState<'guest' | 'loading' | 'ready' | 'error'>(
-    uid ? 'loading' : 'guest',
+    uid || authPending ? 'loading' : 'guest',
   );
   const [loginPending, setLoginPending] = useState(false);
 
@@ -32,7 +34,7 @@ export default function QrPage(): JSX.Element {
     const host = canvasBoxRef.current;
     if (!uid) {
       host?.replaceChildren();
-      setStatus('guest');
+      setStatus(authPending ? 'loading' : 'guest');
       return;
     }
 
@@ -65,7 +67,7 @@ export default function QrPage(): JSX.Element {
       const currentHost = canvasBoxRef.current;
       if (currentHost) currentHost.replaceChildren();
     };
-  }, [uid, attempt, t]);
+  }, [uid, authPending, attempt, t]);
 
   const handleBack = useCallback((): void => {
     if (typeof window !== 'undefined' && window.history.length > 1) {

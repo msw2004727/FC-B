@@ -19,6 +19,8 @@ export interface CommentEvent extends CommentBadgeEvent {
 
 export interface CommentViewer extends IdentityUser {
   roleLevel: number;
+  /** 登入狀態尚未判定（useViewer 的 authPending）；省略＝已判定。 */
+  authPending?: boolean;
 }
 
 export interface CommentContext {

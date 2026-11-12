@@ -679,6 +679,28 @@ describe('InboxPage', () => {
     expect(getInboxStoreState().uid).toBe('u1');
   });
 
+  it('登入狀態尚未判定（authPending）顯示列表載入中，不先閃「請先登入」；判定未登入後才顯示（L-43）', () => {
+    const guest = {
+      uid: null,
+      role: 'guest',
+      displayName: null,
+      hasPermission: () => false,
+      teamIds: new Set<string>(),
+      roleLevel: 0,
+      pictureUrl: null,
+      capabilities: [],
+    };
+    mockUseViewer.mockReturnValue({ ...guest, authPending: true });
+    const view = render(<InboxPage />);
+    expect(screen.queryByText('請先登入以查看訊息')).toBeNull();
+    expect(document.querySelector('.reg-loading-skeleton')).toBeTruthy();
+
+    mockUseViewer.mockReturnValue(guest);
+    view.rerender(<InboxPage />);
+    expect(screen.getByText('請先登入以查看訊息')).toBeTruthy();
+    expect(document.querySelector('.reg-loading-skeleton')).toBeNull();
+  });
+
   it('uid 延後出現才載入（L-43）；共用訂閱屬於其他 uid 時不顯示其資料', () => {
     mockUseViewer.mockReturnValue({
       uid: null,

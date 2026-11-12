@@ -652,9 +652,14 @@ export default function InboxPage(): JSX.Element {
             {backButton}
             <h2 class="page-header-title">{lt('訊息', '訊息')}</h2>
           </div>
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            {lt('請先登入以查看訊息', '請先登入以查看訊息')}
-          </div>
+          {/* L-43：登入狀態還沒判定（authPending）時沿用列表載入中畫面，確定未登入才請他登入。 */}
+          {viewer.authPending ? (
+            <InboxListLoading label={lt('common.loading', '載入中...')} />
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              {lt('請先登入以查看訊息', '請先登入以查看訊息')}
+            </div>
+          )}
         </section>
       </div>
     );

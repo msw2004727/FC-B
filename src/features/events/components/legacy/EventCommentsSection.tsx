@@ -460,6 +460,9 @@ function CommentsSession(props: EventCommentsSectionProps): JSX.Element {
   let content: JSX.Element;
   if (!props.canLoad) {
     content = <div class="reg-loading">留言將在報名名單完成後載入...</div>;
+  } else if (!props.viewer.uid && props.viewer.authPending) {
+    // L-43：登入狀態還沒判定時顯示載入中，不先閃「登入後可查看與留言」。
+    content = <div class="reg-loading">留言載入中...</div>;
   } else if (!props.viewer.uid) {
     content = <div class="event-comments-empty">登入後可查看與留言</div>;
   } else if (status === 'loading' || status === 'reloading') {
