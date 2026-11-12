@@ -72,8 +72,11 @@ function LineLoginButton(): JSX.Element {
   );
 }
 
-/** 版本 A：原版面，圖示改人形 SVG（取代 👤 emoji），圖示、文字、按鈕整塊置中。 */
-function LegacyLoginPrompt(): JSX.Element {
+/**
+ * 未登入畫面（站長 11-12 選定版本 A、不放說明句）：人形 SVG（取代 👤 emoji）、標題、LINE 登入按鈕整塊置中。
+ * 取代了開發環境限定的卡片式 B 版預覽，以及 A 在標題下的登入說明句（舊版翻譯包同步刪除該鍵）。
+ */
+function GuestLoginPrompt(): JSX.Element {
   return (
     <div id="profile-login-prompt" class="profile-login-prompt">
       <div class="login-prompt-content">
@@ -83,43 +86,10 @@ function LegacyLoginPrompt(): JSX.Element {
         <h3 data-i18n="profilePage.notLoggedIn">
           {lt('profilePage.notLoggedIn', '尚未登入')}
         </h3>
-        <p data-i18n="請先使用 LINE 帳號登入以查看個人資料">
-          {lt('請先使用 LINE 帳號登入以查看個人資料', '請先使用 LINE 帳號登入以查看個人資料')}
-        </p>
         <LineLoginButton />
       </div>
     </div>
   );
-}
-
-// ── 版本 B（卡片式）：只在開發環境以 ?guestCardVariant=b 預覽，供站長二選一。──
-// 正式建置 import.meta.env.DEV 為 false，下列判斷、元件與樣式都會被移除；站長選定後刪掉未選的版本與這段切換。
-if (import.meta.env.DEV) void import('../legacy/login-prompt-variant-b.css');
-
-function readGuestCardVariantB(): boolean {
-  if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('guestCardVariant') === 'b';
-}
-
-/** 版本 B：卡片式，圓形淡底人形 SVG＋標題＋按鈕，不放說明句、留白較緊湊。 */
-function LoginPromptCardB(): JSX.Element {
-  return (
-    <div id="profile-login-prompt" class="profile-login-prompt" data-variant="b">
-      <div class="login-prompt-card">
-        <span class="login-prompt-avatar">
-          <GuestAvatarIcon size={40} />
-        </span>
-        <h3 data-i18n="profilePage.notLoggedIn">
-          {lt('profilePage.notLoggedIn', '尚未登入')}
-        </h3>
-        <LineLoginButton />
-      </div>
-    </div>
-  );
-}
-
-function GuestLoginPrompt(): JSX.Element {
-  return import.meta.env.DEV && readGuestCardVariantB() ? <LoginPromptCardB /> : <LegacyLoginPrompt />;
 }
 
 function ProfileContent({

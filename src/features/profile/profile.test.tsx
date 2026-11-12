@@ -401,52 +401,27 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-login-prompt')).toBeNull();
   });
 
-  it('未登入畫面（版本 A）：人形 SVG 取代 emoji，圖示、標題、說明、按鈕都在置中容器內', () => {
+  it('未登入畫面（站長 11-12 定稿：版本 A、無說明句）：置中容器內依序只有人形 SVG、標題、LINE 登入按鈕', () => {
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     render(<ProfilePage />);
     const prompt = document.getElementById('profile-login-prompt')!;
     expect(prompt.className).toBe('profile-login-prompt');
     expect(prompt.dataset.variant).toBeUndefined();
+    expect(prompt.children).toHaveLength(1);
     const content = prompt.querySelector(':scope > .login-prompt-content')!;
     expect(content).toBeTruthy();
+    expect(Array.from(content.children).map((el) => el.tagName.toLowerCase() + '.' + el.className)).toEqual([
+      'div.login-prompt-icon',
+      'h3.',
+      'button.line-login-btn large',
+    ]);
     expect(content.querySelector(':scope > .login-prompt-icon > svg.guest-avatar-icon')).toBeTruthy();
     expect(content.textContent).not.toContain('👤');
     expect(content.querySelector(':scope > h3')?.textContent).toBe('尚未登入');
-    expect(content.querySelector(':scope > p')?.textContent).toBe('請先使用 LINE 帳號登入以查看個人資料');
+    expect(content.querySelector('p')).toBeNull();
+    expect(content.textContent).not.toContain('請先使用 LINE 帳號登入');
     expect(content.querySelector(':scope > button.line-login-btn.large')?.textContent).toContain('LINE 登入');
-  });
-
-  it('版本 B 只在開發環境以 ?guestCardVariant=b 預覽：卡片內只有圓形人形、標題、按鈕', () => {
-    vi.mocked(useViewer).mockReturnValue(viewer(null));
-    window.history.replaceState(null, '', '/profile?guestCardVariant=b');
-    vi.stubEnv('DEV', true);
-    try {
-      render(<ProfilePage />);
-      const prompt = document.getElementById('profile-login-prompt')!;
-      expect(prompt.dataset.variant).toBe('b');
-      const card = prompt.querySelector(':scope > .login-prompt-card')!;
-      expect(card.querySelector(':scope > .login-prompt-avatar > svg.guest-avatar-icon')).toBeTruthy();
-      expect(card.querySelector(':scope > h3')?.textContent).toBe('尚未登入');
-      expect(card.querySelector(':scope > button.line-login-btn')).toBeTruthy();
-      expect(card.querySelector('p')).toBeNull();
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it('正式建置（DEV=false）忽略 ?guestCardVariant=b，一律顯示版本 A', () => {
-    vi.mocked(useViewer).mockReturnValue(viewer(null));
-    window.history.replaceState(null, '', '/profile?guestCardVariant=b');
-    vi.stubEnv('DEV', false);
-    try {
-      render(<ProfilePage />);
-      const prompt = document.getElementById('profile-login-prompt')!;
-      expect(prompt.dataset.variant).toBeUndefined();
-      expect(prompt.querySelector('.login-prompt-content')).toBeTruthy();
-      expect(prompt.querySelector('.login-prompt-card')).toBeNull();
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    expect(prompt.querySelector('.login-prompt-card')).toBeNull();
   });
 
   it('顯示載入狀態', async () => {

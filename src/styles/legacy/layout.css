@@ -969,17 +969,17 @@
 /* ─── Profile Login Prompt ─── */
 .profile-login-prompt {
   display: flex; align-items: center; justify-content: center;
-  min-height: 60vh; padding: 2rem 1rem; /* 左右原 2rem：360 寬＋大字級時說明句會被擠到換行 */
+  min-height: 60vh; padding: 2rem 1rem; /* 左右原 2rem：360 寬＋大字級時文字會被擠到換行 */
 }
-/* 圖示、標題、說明、按鈕整塊水平置中（.line-login-btn 是 flex 盒，text-align 置不了中，原本會靠左）。 */
+/* 圖示、標題、按鈕整塊水平置中（.line-login-btn 是 flex 盒，text-align 置不了中，原本會靠左）。 */
 .login-prompt-content {
   display: flex; flex-direction: column; align-items: center; text-align: center;
 }
 /* 人形剪影 SVG（GuestAvatarIcon），取代 A 的 👤 emoji。 */
 .login-prompt-content .login-prompt-icon { display: flex; color: var(--text-muted); margin-bottom: .5rem; }
 .login-prompt-content .line-login-btn { justify-content: center; min-height: 44px; }
-.login-prompt-content h3 { font-size: 1.1rem; margin-bottom: .3rem; color: var(--text-primary); }
-.login-prompt-content p { font-size: .82rem; color: var(--text-muted); margin-bottom: 1rem; }
+/* 11-12 拿掉說明句：標題下距由 .3rem 改 --space-4（16px＝原說明句下距 1rem），按鈕不貼標題。 */
+.login-prompt-content h3 { font-size: 1.1rem; margin-bottom: var(--space-4); color: var(--text-primary); }
 
 /* ─── First Login Modal ─── */
 #modal-overlay[data-profile-complete="1"] {
