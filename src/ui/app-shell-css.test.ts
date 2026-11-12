@@ -71,12 +71,12 @@ describe('app-shell.css／toast-host.css：更新提示框出現時內容上推'
     ));
   });
 
-  it('body.fcb-update-open 時吐司底部位置 + 68px', () => {
+  it('body.fcb-update-open 時吐司底部位置 + 68px＋安全區（與提示框同一參考，iPhone 主畫面不被蓋）', () => {
     expect(rulesFor(host, '.ui-toast-host')).toContainEqual(expect.stringMatching(
       /inset:\s*auto auto calc\(var\(--bottombar-h, var\(--bottomnav-h, 64px\)\) \+ 16px\) 50%;/,
     ));
     expect(rulesFor(host, 'body.fcb-update-open .ui-toast-host')).toContainEqual(expect.stringMatching(
-      /bottom:\s*calc\(var\(--bottombar-h, var\(--bottomnav-h, 64px\)\) \+ 16px \+ 68px\);/,
+      /bottom:\s*calc\(var\(--bottombar-h, var\(--bottomnav-h, 64px\)\) \+ 16px \+ 68px \+ env\(safe-area-inset-bottom, 0px\)\);/,
     ));
   });
 });
