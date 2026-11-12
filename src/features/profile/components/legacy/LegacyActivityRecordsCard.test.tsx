@@ -98,12 +98,15 @@ describe('LegacyActivityRecordsCard', () => {
     fireEvent.click(getCollapseToggle());
 
     expect(mockedLoadUserStats).toHaveBeenCalledWith('u1');
-    expect(screen.getByText('載入紀錄中...')).toBeTruthy();
+    const loading = screen.getByRole('status');
+    expect(loading.classList.contains('reg-loading')).toBe(true);
+    expect(loading.textContent).toContain('載入紀錄中...');
 
     resolveLoad(emptyStats());
     await waitFor(() => {
       expect(screen.getByText('點擊頁籤查看紀錄')).toBeTruthy();
     });
+    expect(document.querySelector('.reg-loading')).toBeNull();
   });
 
   it('載入失敗顯示「紀錄載入失敗，請按重新整理」', async () => {
@@ -116,6 +119,7 @@ describe('LegacyActivityRecordsCard', () => {
     await waitFor(() => {
       expect(screen.getByText('紀錄載入失敗，請按重新整理')).toBeTruthy();
     });
+    expect(document.querySelector('.reg-loading')).toBeNull();
   });
 
   it('切換頁籤會重算清單', async () => {

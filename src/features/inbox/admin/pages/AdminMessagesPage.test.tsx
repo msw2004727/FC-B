@@ -208,6 +208,50 @@ describe('讀取預算（進頁 ≤ 54）', () => {
   });
 });
 
+describe('名單載入', () => {
+  it('載入中有圈與骨架和「載入中...」，完成後換成信件，失敗沿用錯誤列', async () => {
+    const original = fakeSdk.getDocs.getMockImplementation();
+    if (!original) throw new Error('getDocs 沒有原始實作');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    fakeSdk.getDocs.mockImplementation(async (target: unknown) => {
+      await gate;
+      return original(target);
+    });
+    try {
+      state.viewer = makeViewer('admin', ADMIN);
+      const view = render(<AdminMessagesPage />);
+      const status = screen.getByRole('status');
+      expect(status.classList.contains('reg-loading')).toBe(true);
+      expect(status.textContent).toBe('載入中...');
+      expect(view.container.querySelectorAll('#msg-manage-list .reg-loading-skeleton-row')).toHaveLength(3);
+      expect(view.container.querySelector('[data-msg-id]')).toBeNull();
+
+      release();
+      await waitFor(() => expect(view.container.querySelector('[data-msg-id="d1"]')).not.toBeNull());
+      expect(view.container.querySelector('.reg-loading')).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+      view.unmount();
+    } finally {
+      fakeSdk.getDocs.mockImplementation(original);
+    }
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fakeSdk.getDocs.mockRejectedValueOnce(new Error('boom'));
+    try {
+      state.viewer = makeViewer('admin', ADMIN);
+      render(<AdminMessagesPage />);
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('載入失敗，請重試');
+      expect(document.querySelector('.reg-loading')).toBeNull();
+      expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
+    } finally {
+      errorSpy.mockRestore();
+      fakeSdk.getDocs.mockImplementation(original);
+    }
+  });
+});
+
 describe('畫面（照 A renderMsgManage）', () => {
   it('頁首、計數列、四頁籤；已發送頁籤的卡片與按鈕', async () => {
     const { container } = await renderPage();

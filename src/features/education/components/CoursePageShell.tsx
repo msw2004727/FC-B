@@ -1,5 +1,6 @@
 import './course.css';
 import type { ComponentChildren, JSX } from 'preact';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { IconBack } from './icons';
 
 export function CoursePageShell({
@@ -38,6 +39,14 @@ export function CourseStatus({
   onRetry?: () => void;
   retryText?: string;
 }): JSX.Element {
+  // 課程詳情、課堂、登入未定都走這裡：整區等待用既有 PageSpinner。空與錯誤維持虛線框。
+  if (kind === 'loading') {
+    return (
+      <div data-status="loading">
+        <PageSpinner />
+      </div>
+    );
+  }
   return (
     <div class="ck-empty" role={kind === 'error' ? 'alert' : undefined} data-status={kind}>
       <div>{text}</div>

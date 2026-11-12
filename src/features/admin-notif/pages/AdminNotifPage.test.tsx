@@ -135,7 +135,11 @@ describe('載入', () => {
     state.viewer = viewer('super_admin');
     render(<AdminNotifPage />);
     await waitFor(() => expect(sdk.getDoc).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('status').textContent).toBe('載入中...');
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).not.toBeNull();
+    expect(status.getAttribute('aria-label')).toBe('載入中…');
+    expect(status.textContent).toBe('不要催，已經在努力加載中！');
     expect(document.querySelector('[data-notif-toggle-key]')).toBeNull();
     expect(document.getElementById('notif-settings-save-btn')).toBeNull();
     release();
@@ -147,6 +151,7 @@ describe('載入', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await openAs(viewer('super_admin'));
     expect(screen.getByRole('alert').textContent).toContain('載入失敗');
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
     expect(document.querySelector('[data-notif-toggle-key]')).toBeNull();
     expect(document.getElementById('notif-settings-save-btn')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '重新載入' }));

@@ -116,6 +116,7 @@
     "apply": "Xin vào",
     "applyName": "Đơn xin vào CLB của tôi",
     "count": "{name}, {n} mục",
+    "loading": "{name}, đang tải",
     "bound": "{name}, đã liên kết",
     "unbound": "{name}, chưa liên kết"
   },

@@ -239,12 +239,14 @@ export default function AdminLogsPage(): JSX.Element {
 
             <div class="log-list" id="operation-log-list">
               {status === 'loading' ? (
-                <div
-                  role="status"
-                  style="text-align:center;padding:2rem;color:var(--text-muted)"
-                >
-                  {t('logs.operation.loading')}
-                </div>
+                <>
+                  <div class="reg-loading" role="status">{t('logs.operation.loading')}</div>
+                  <div class="reg-loading-skeleton" aria-hidden="true">
+                    <div class="reg-loading-skeleton-row" />
+                    <div class="reg-loading-skeleton-row" />
+                    <div class="reg-loading-skeleton-row" />
+                  </div>
+                </>
               ) : status === 'error' ? (
                 <div
                   role="alert"

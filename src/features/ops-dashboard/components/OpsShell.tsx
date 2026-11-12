@@ -6,6 +6,7 @@ import { getLastKnownAuthUid } from '@/data/auth';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import { useViewer } from '@/features/profile/data/viewer';
 import { EmptyState } from '@/ui/EmptyState';
+import { PageSpinner } from '@/ui/PageSpinner';
 
 import { useOpsT } from '../ops-strings';
 
@@ -50,7 +51,7 @@ export function OpsShell({ id, title, backTo, gate, children }: OpsShellProps): 
   const t = useOpsT();
   const goBack = useGoBack(backTo);
   let body: ComponentChildren;
-  if (gate === 'waiting') body = <StatusNote role="status" text={t('loading')} />;
+  if (gate === 'waiting') body = <PageSpinner />;
   else if (gate === 'denied') body = <EmptyState title={t('noPermission')} />;
   else body = children;
   return (

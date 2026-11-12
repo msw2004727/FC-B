@@ -116,6 +116,7 @@
     "apply": "申請",
     "applyName": "我的俱樂部申請",
     "count": "{name}，{n} 筆",
+    "loading": "{name}，讀取中",
     "bound": "{name}，已綁定",
     "unbound": "{name}，未綁定"
   },

@@ -1,3 +1,5 @@
+// 點人後的授權快照沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
+import '@/styles/legacy/reg-loading.css';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useT } from '@/i18n/i18n';
 import { useViewer } from '@/features/profile/data/viewer';
@@ -103,7 +105,7 @@ export function GrantsTab({ active, data, confirmEnabled }: { active: boolean; d
       </div>
       <div id="user-permission-grant-editor" class="permission-audit-report" style={{ marginTop: '.85rem' }}>
         {!selected ? <div class="permission-audit-empty">{t('roles.grants.selectFirst')}</div>
-          : loading ? <div class="permission-audit-empty" role="status">{t('roles.grants.loading')}</div>
+          : loading ? <div class="reg-loading" role="status" style="white-space:nowrap">{t('roles.grants.loading')}</div>
           : failed ? <div role="alert">{t('roles.grants.loadFailed')}<button type="button" class="text-btn"
               onClick={() => { select(selected).catch(showError); }}>{t('roles.grants.retry')}</button></div>
           : snapshot && <>

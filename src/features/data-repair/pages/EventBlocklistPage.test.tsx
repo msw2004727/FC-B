@@ -240,6 +240,34 @@ describe('黑名單管理', () => {
     expect(mocks.write).toHaveBeenCalledTimes(1);
     await act(async () => finish({ changed: true, event: { ...event(), blockedUids: ['targetA'] } }));
   });
+  it('黑名單名單載入中有圈與骨架和「載入中...」，完成後換成空狀態，失敗沿用活動載入失敗', async () => {
+    mocks.events = [];
+    let release!: () => void;
+    mocks.loadEvents.mockReturnValue(new Promise((resolve) => { release = () => resolve([]); }));
+    const view = render(<EventBlocklistPage />);
+    const list = document.getElementById('eb-existing-list')!;
+    const status = list.querySelector('.reg-loading');
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.getAttribute('aria-busy')).toBeNull();
+    expect(status?.textContent).toBe('載入中...');
+    expect(list.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    expect(list.querySelector('.eb-empty')).toBeNull();
+    expect(list.querySelector('.eb-group')).toBeNull();
+
+    await act(async () => { release(); });
+    await screen.findByText('目前沒有任何活動黑名單項目');
+    expect(list.querySelector('.reg-loading')).toBeNull();
+    expect(list.querySelector('.reg-loading-skeleton')).toBeNull();
+    view.unmount();
+
+    mocks.events = [];
+    mocks.loadEvents.mockRejectedValue(new Error('offline'));
+    render(<EventBlocklistPage />);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('活動載入失敗，請稍後重新進入。');
+    expect(document.querySelector('#eb-existing-list .reg-loading')).toBeNull();
+    expect(screen.getByText('目前沒有任何活動黑名單項目')).toBeTruthy();
+  });
   it('活動未載入時沿用既有來源', async () => {
     mocks.events = [];
     render(<EventBlocklistPage />);

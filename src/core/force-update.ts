@@ -123,6 +123,10 @@ export function decideForceUpdate(input: {
   return decision;
 }
 
+function logAsyncError(error: unknown): void {
+  console.error('[force-update] 非同步流程失敗', error);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -433,14 +437,14 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
     if (page.safe) {
       deferred = false;
       stopPoll();
-      void executeReload(decision.attempt, 'auto');
+      executeReload(decision.attempt, 'auto').catch(logAsyncError);
       return;
     }
     deferred = true;
     if (page.reason === 'unsafe-page') {
       const attempt = decision.attempt;
       showPrompt(() => {
-        void executeReload(attempt, 'user');
+        executeReload(attempt, 'user').catch(logAsyncError);
       });
     }
     ensurePoll();
@@ -485,12 +489,12 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
       return;
     }
     if (deferred) ensurePoll();
-    void onForeground();
+    onForeground().catch(logAsyncError);
   }
 
   function onPageShow(event: Event): void {
     if (!('persisted' in event) || (event as PageTransitionEvent).persisted !== true) return;
-    void onForeground();
+    onForeground().catch(logAsyncError);
   }
 
   function onFocusOut(): void {
@@ -515,8 +519,12 @@ export function startForceUpdate(deps: ForceUpdateDeps): () => void {
   win.addEventListener('popstate', onPopState, { signal: ac.signal });
   win.addEventListener('online', onOnline, { signal: ac.signal });
 
-  markConfigRead(deps.now());
-  if (lastConfig) evaluate('load');
+  // 開頁已讀到設定才記讀取時間；首讀失敗（initialConfig 為 null）不記，回前景時可重讀。
+  // 防狂讀：onForeground 每次讀取（成功或失敗）完成後都會記時間，之後 10 分鐘內不再打網路。
+  if (lastConfig) {
+    markConfigRead(deps.now());
+    evaluate('load');
+  }
 
   return () => {
     stopped = true;

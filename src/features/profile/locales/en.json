@@ -116,6 +116,7 @@
     "apply": "Apply",
     "applyName": "My club applications",
     "count": "{name}, {n} items",
+    "loading": "{name}, loading",
     "bound": "{name}, linked",
     "unbound": "{name}, not linked"
   },

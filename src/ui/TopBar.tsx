@@ -2,6 +2,7 @@ import './topbar-extra.css';
 import type { JSX, RefObject } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { SHOW_EXP } from '@/core/exp-display';
 import {
   PICKER_SPORT_OPTIONS,
@@ -568,6 +569,8 @@ export function TopBar({
                     />
                   ) : syncingFallback ? (
                     <span class="line-avatar-spinner" aria-hidden="true" />
+                  ) : initial === '?' && !user?.displayName?.trim() ? (
+                    <GuestAvatarIcon size="100%" fill />
                   ) : (
                     initial
                   )}

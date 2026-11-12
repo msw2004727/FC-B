@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { useGoBack } from '@/core/back-guard';
+import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useOperateContext } from '@/features/profile/data/viewer-operate';
 import {
@@ -22,6 +23,7 @@ import { loadScanEventDocuments } from './data/scan-reads';
 import type { ScanMode } from './data/attendance';
 import { ScanSession } from './ScanSession';
 import { useCheckinText } from './useCheckinText';
+import '@/styles/legacy/reg-loading.css';
 import '@/styles/legacy/scan.css';
 import './checkin.css';
 
@@ -49,6 +51,7 @@ function defaultSelection(entries: readonly ScanEventEntry[]): string {
 
 export default function CheckinPage() {
   const t = useCheckinText();
+  const tCommon = useT();
   const context = useOperateContext();
   const goBack = useGoBack('/');
   const location = useLocation();
@@ -178,6 +181,11 @@ export default function CheckinPage() {
     toast.show(tRef.current('noPermission'));
   }, [eventId, snapshot, context, total]);
 
+  const eventsPending = Boolean(context.uid) && context.role !== null && !loadError
+    && (!snapshot || snapshot.uid !== context.uid);
+  const presetPending = presetMode && preset.status === 'loading';
+  const eventListLoading = eventsPending || presetPending;
+
   const sessionEntry = selected && canOperateEventSite(context, selected.event) ? selected : null;
 
   return (
@@ -213,26 +221,38 @@ export default function CheckinPage() {
         )}
 
         <div class="scan-content">
-          <select
-            id="scan-event-select"
-            class="scan-event-select"
-            value={selected?.value ?? ''}
-            disabled={presetMode}
-            onChange={(event) => setSelectedId(event.currentTarget.value)}
-          >
-            <option value="">{t('selectEvent')}</option>
-            {presetMode
-              ? preset.entry && (
-                <option key={preset.entry.docId} value={preset.entry.value}>
-                  {optionText(preset.entry)}
-                </option>
-              )
-              : list.map((entry) => (
-                <option key={entry.docId} value={entry.value}>
-                  {optionText(entry)}
-                </option>
-              ))}
-          </select>
+          {/* 圈疊在下拉右側既有空白，不佔位，下拉盒與下方頁籤不位移。 */}
+          <div class="scan-event-slot" style="position:relative" aria-busy={eventListLoading}>
+            <select
+              id="scan-event-select"
+              class="scan-event-select"
+              value={selected?.value ?? ''}
+              disabled={presetMode}
+              onChange={(event) => setSelectedId(event.currentTarget.value)}
+            >
+              <option value="">{t('selectEvent')}</option>
+              {presetMode
+                ? preset.entry && (
+                  <option key={preset.entry.docId} value={preset.entry.value}>
+                    {optionText(preset.entry)}
+                  </option>
+                )
+                : list.map((entry) => (
+                  <option key={entry.docId} value={entry.value}>
+                    {optionText(entry)}
+                  </option>
+                ))}
+            </select>
+            {eventListLoading ? (
+              <div
+                class="reg-loading scan-event-loading"
+                role="status"
+                style="position:absolute;z-index:1;top:.42rem;right:1.8rem;padding:0;margin:0;white-space:nowrap;pointer-events:none;background:var(--bg-card);line-height:1.2"
+              >
+                {tCommon('common.loading')}
+              </div>
+            ) : null}
+          </div>
 
           <div
             id="scan-date-filter"

@@ -107,6 +107,31 @@ describe('T-079b 個別授權頁面', () => {
     fireEvent.click(screen.getByRole('button', { name: '了解' }));
     fireEvent.click(screen.getByRole('button', { name: '顯示全部權限' })); expect(input()).toBeTruthy();
   });
+  it('點人後載入中有圈和「讀取個別授權中...」，完成後換成編輯器，失敗沿用讀取失敗', async () => {
+    let release!: (value: UserGrantSnapshot) => void;
+    h.read.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    renderPage();
+    await openGrants();
+    search();
+    fireEvent.click(await screen.findByRole('button', { name: /合成用戶/ }));
+    const editor = document.getElementById('user-permission-grant-editor')!;
+    const status = editor.querySelector('.reg-loading');
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.getAttribute('aria-busy')).toBeNull();
+    expect(status?.textContent).toBe('讀取個別授權中...');
+    expect(editor.querySelector('input')).toBeNull();
+
+    await act(async () => { release(fixture()); });
+    await waitFor(() => expect(editor.querySelector('input')).not.toBeNull());
+    expect(editor.querySelector('.reg-loading')).toBeNull();
+
+    h.read.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(screen.getByRole('button', { name: /合成用戶/ }));
+    const alert = await within(editor).findByRole('alert');
+    expect(alert.textContent).toContain('個別授權讀取失敗');
+    expect(editor.querySelector('.reg-loading')).toBeNull();
+    expect(within(editor).getByRole('button', { name: '重試' })).toBeTruthy();
+  });
   it('P10 連點確認只寫一次', async () => {
     let finish!: (value: { document: Record<string, unknown>; refreshFailed: boolean }) => void;
     h.permission.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'preact-iso';
 
 import { copyToClipboard } from '@/features/events/data/activity-share';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 
 import { OpsShell, ReadFailed, StatusNote, useOpsGate } from '../components/OpsShell';
@@ -135,7 +136,7 @@ export default function OpsParticipantsPage(): JSX.Element {
 
   let result: JSX.Element | null = null;
   if (run.kind === 'loading') {
-    result = <StatusNote role="status" text={t('searching')} />;
+    result = <PageSpinner />;
   } else if (run.kind === 'error') {
     result = <ReadFailed onRetry={() => void search(form)} />;
   } else if (run.kind === 'done') {
@@ -165,15 +166,22 @@ export default function OpsParticipantsPage(): JSX.Element {
               {names.kind === 'error' ? (
                 <ReadFailed onRetry={() => void loadNames()} />
               ) : (
-                <ol class="od-rank" start={page * PARTICIPANT_PAGE_SIZE + 1}>
+                <ol
+                  class="od-rank"
+                  start={page * PARTICIPANT_PAGE_SIZE + 1}
+                  aria-busy={names.kind === 'loading' ? 'true' : undefined}
+                >
                   {pageRows.map((row, i) => {
+                    const pending = names.kind !== 'ok';
                     const name = names.kind === 'ok' ? names.names[row.uid] ?? t('unknownUser') : '';
                     return (
                       <li key={row.uid}>
                         <button type="button" class="od-rank-row" onClick={() => route(`/profile/${encodeURIComponent(row.uid)}`)}>
                           <span class="od-rank-no">{page * PARTICIPANT_PAGE_SIZE + i + 1}</span>
                           <span class="od-avatar" aria-hidden="true">{name.charAt(0)}</span>
-                          <span class="od-rank-title">{name}</span>
+                          <span class="od-rank-title">
+                            {pending ? <span class="line-avatar-spinner" aria-hidden="true" /> : name}
+                          </span>
                           <span class="od-rank-val">{t('times', { count: row.count })}</span>
                         </button>
                       </li>

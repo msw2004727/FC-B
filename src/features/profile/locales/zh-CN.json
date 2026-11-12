@@ -116,6 +116,7 @@
     "apply": "申请",
     "applyName": "我的俱乐部申请",
     "count": "{name}，{n} 条",
+    "loading": "{name}，读取中",
     "bound": "{name}，已绑定",
     "unbound": "{name}，未绑定"
   },

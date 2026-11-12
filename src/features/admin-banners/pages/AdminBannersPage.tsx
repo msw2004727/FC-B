@@ -1,4 +1,6 @@
 import '@/styles/legacy/admin-banners.css';
+// 展開區名單載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
+import '@/styles/legacy/reg-loading.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useGoBack } from '@/core/back-guard';
@@ -366,9 +368,16 @@ export default function AdminBannersPage(): JSX.Element {
           <div class="ad-collapse-content" style={open ? undefined : 'display:none'}>
             <div class="card-list" id="banner-manage-list">
               {state === 'loading' && slots.length === 0 ? (
-                <p style="color:var(--text-muted);padding:.5rem" role="status">
-                  {t('admin-banners.loading')}
-                </p>
+                <>
+                  <div class="reg-loading" role="status" style="white-space:nowrap">
+                    {t('admin-banners.loading')}
+                  </div>
+                  <div class="reg-loading-skeleton" aria-hidden="true">
+                    <div class="reg-loading-skeleton-row" />
+                    <div class="reg-loading-skeleton-row" />
+                    <div class="reg-loading-skeleton-row" />
+                  </div>
+                </>
               ) : null}
               {state === 'error' ? (
                 <div style="padding:.5rem" role="alert">

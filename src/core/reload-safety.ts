@@ -98,6 +98,8 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
 
 let promptShown = false;
 let pendingReloadFn: (() => void) | null = null;
+// 強制提示框顯示期間收到的「SW 有新版等待中」重載函式；強制提示收掉時用它還原一般提示。
+let deferredSwReloadFn: (() => void) | null = null;
 let promptCleanup: (() => void) | undefined;
 
 export interface SwReloadPromptOptions {
@@ -147,14 +149,19 @@ function detachPrompt(): void {
   }
   promptShown = false;
   pendingReloadFn = null;
+  deferredSwReloadFn = null;
 }
 
 /** 收掉強制更新提示框。一般「有新版本」提示（沒有 data-mode=forced）留著。 */
 export function dismissForcedUpdatePrompt(): void {
   if (typeof document === 'undefined') return;
   const prompt = document.getElementById('sw-reload-deferred-prompt');
-  if (!prompt || prompt.dataset.mode !== 'forced') return;
+  // 沒有提示框但留有 SW 函式：強制框按「現在更新」後沒進入重載而改延後（見點擊處理），照樣還原。
+  if (prompt ? prompt.dataset.mode !== 'forced' : !deferredSwReloadFn) return;
+  const swFn = deferredSwReloadFn;
   detachPrompt();
+  // 強制期間若有 SW 新版等待中，收掉強制框後還原成一般提示（含「稍後」）。
+  if (swFn) showSwReloadPrompt(swFn);
 }
 
 function upgradeToForced(prompt: HTMLElement): void {
@@ -172,14 +179,22 @@ export function showSwReloadPrompt(
 ): void {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || !doc.body) return;
-  pendingReloadFn = onReload;
   const wantForced = opts?.forced === true;
   const existing = doc.getElementById('sw-reload-deferred-prompt');
   if (promptShown && existing) {
+    if (existing.dataset.mode === 'forced' && !wantForced) {
+      // 強制提示框已顯示：一般（SW 等待中）呼叫不得換掉強制路徑的重載函式，記下待還原。
+      deferredSwReloadFn = onReload;
+      return;
+    }
+    // 一般提示升級成強制：舊的重載函式留著，強制提示收掉時還原。
+    if (wantForced && existing.dataset.mode !== 'forced' && pendingReloadFn) deferredSwReloadFn = pendingReloadFn;
+    pendingReloadFn = onReload;
     // 強制優先：後來的一般呼叫不得把「稍後」加回去。
     if (wantForced || existing.dataset.mode === 'forced') upgradeToForced(existing);
     return;
   }
+  pendingReloadFn = onReload;
   promptShown = true;
 
   const prompt = doc.createElement('div');
@@ -206,7 +221,10 @@ export function showSwReloadPrompt(
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
+    const swFn = deferredSwReloadFn;
     detachPrompt();
+    // 強制框按下不一定真的重載（寫分頁紀錄失敗會重顯強制框或改延後），SW 一般提示的函式先留著。
+    deferredSwReloadFn = swFn;
     fn();
   });
 

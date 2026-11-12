@@ -5,6 +5,7 @@ import { useT } from '@/i18n/i18n';
 
 // ASSUMPTION: 元件索引未附匯入路徑；沿用 PlaceholderPage 的 @/ui/<元件名> 配置。
 import { Avatar } from '@/ui/Avatar';
+import { PageSpinner } from '@/ui/PageSpinner';
 import { Text } from '@/ui/Text';
 import { UserTag } from '@/ui/UserTag';
 
@@ -109,9 +110,9 @@ export function LoginGuide() {
   );
 }
 
+/** 個人頁外殼整頁等待。沿用後台同一顆 PageSpinner（圈＋既有安撫句），不另寫視覺。 */
 export function Loading() {
-  const t = useT();
-  return <div class="profile-state" role="status"><Text>{t('profile.loading')}</Text></div>;
+  return <PageSpinner />;
 }
 
 export function Failure({ retry }: { retry: () => void }) {

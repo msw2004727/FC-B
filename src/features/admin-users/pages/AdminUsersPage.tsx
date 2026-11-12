@@ -523,7 +523,16 @@ export default function AdminUsersPage({
           </div>
         )}
         <div class="admin-card-list" id="admin-user-list">
-          {status === 'loading' && <div style={CENTER_NOTE} role="status">{t('admin-users.list.loading')}</div>}
+          {status === 'loading' && (
+            <>
+              <div class="reg-loading" role="status">{t('admin-users.list.loading')}</div>
+              <div class="reg-loading-skeleton" aria-hidden="true">
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+              </div>
+            </>
+          )}
           {status === 'error' && (
             <div style={CENTER_NOTE} role="alert">
               <div>{t('admin-users.list.loadFailed')}</div>

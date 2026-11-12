@@ -12,7 +12,7 @@ import PublicProfilePage from './pages/PublicProfilePage';
 import QrPage from './pages/QrPage';
 import { manifest } from './index';
 import { loadUserProfile, type UserProfile } from './data/profile-model';
-import { loadRelatedActivities } from './data/related-activities';
+import { loadRelatedActivities, type RelatedActivities } from './data/related-activities';
 import { loadUserAttendanceSummary } from './data/attendance-summary';
 import { buildIdentityQrPayload, renderQrToCanvas } from './data/qr';
 import {
@@ -374,10 +374,37 @@ describe('我的個人頁（A 版結構）', () => {
     expectNoWrites();
   });
 
-  it('顯示載入狀態', () => {
-    vi.mocked(loadUserProfile).mockReturnValue(new Promise(() => {}));
+  it('顯示載入狀態', async () => {
+    // 本檔字典只有 profile.*。PageSpinner 的圈下文案在 common.*，這裡補上既有兩句，不斷言新文案。
+    _setDictLoaderForTest(async () => ({
+      ...flatten(zh),
+      'common.loading': zh.loading,
+      'common.loadingHint': '不要催，已經在努力加載中！',
+    }));
+    await setLocale('zh-TW');
+    let resolveLoad: (value: UserProfile | null) => void = () => {};
+    vi.mocked(loadUserProfile).mockReturnValue(new Promise((resolve) => {
+      resolveLoad = resolve;
+    }));
     render(<ProfilePage />);
-    expect(screen.getByRole('status').textContent).toContain(zh.loading);
+    const status = screen.getByRole('status');
+    expect(status.querySelector('.ui-page-spinner__ring')).toBeTruthy();
+    expect(status.getAttribute('aria-label')).toContain(zh.loading);
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(document.getElementById('profile-content')).toBeNull();
+
+    resolveLoad(profile());
+    expect(await screen.findByText('王小明')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+  });
+
+  it('載入失敗沿用既有失敗畫面，不再轉圈', async () => {
+    vi.mocked(loadUserProfile).mockRejectedValue(new Error('boom'));
+    render(<ProfilePage />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(zh.loadError)).toBeTruthy();
+    expect(screen.getByRole('button', { name: zh.retry })).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
   });
 
   it('輸出 A 主要 id/class、等級計算、UID 權限控制與出席統計', async () => {
@@ -812,6 +839,87 @@ describe('我的個人頁（A 版結構）', () => {
       expect(quickBtn('reg').querySelector('.profile-quick-badge')).toBeNull();
     });
 
+    it('報名與開團讀取中有旋轉圈，讀完換成筆數', async () => {
+      const pending = deferred<RelatedActivities>();
+      vi.mocked(loadRelatedActivities).mockReturnValue(pending.promise);
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+
+      const reg = quickBtn('reg');
+      const host = quickBtn('host');
+      expect(reg.querySelector('.profile-quick-spin')).not.toBeNull();
+      expect(host.querySelector('.profile-quick-spin')).not.toBeNull();
+      expect(reg.getAttribute('aria-busy')).toBe('true');
+      expect(host.getAttribute('aria-busy')).toBe('true');
+      expect(reg.getAttribute('aria-label')).toBe('我的報名，讀取中');
+      expect(host.getAttribute('aria-label')).toBe('開團（我開的團），讀取中');
+      expect(reg.querySelector('.profile-quick-badge:not(.profile-quick-badge--loading)')).toBeNull();
+      expect(host.querySelector('.profile-quick-badge:not(.profile-quick-badge--loading)')).toBeNull();
+      expect(quickBtn('info').hasAttribute('aria-busy')).toBe(false);
+
+      fireEvent.click(reg);
+      const loading = document.querySelector('#profile-registered-activities-list .reg-loading');
+      expect(loading?.getAttribute('role')).toBe('status');
+      expect(loading?.textContent).toContain(zh.loading);
+      expect(document.querySelector('#profile-registered-activities-list .profile-state')).toBeNull();
+
+      await act(async () => {
+        pending.resolve({
+          registered: [
+            { event: { id: 'e1', title: '讀取後的報名' }, registration: {}, registrationStatus: 'confirmed', effectiveStatus: 'open' },
+            { event: { id: 'e2', title: '第二筆報名' }, registration: {}, registrationStatus: 'waitlisted', effectiveStatus: 'open' },
+          ],
+          hosted: [{ event: { id: 'e3', title: '讀取後的開團' }, effectiveStatus: 'open' }],
+          counts: { registered: 2, hosted: 1 },
+        });
+        await pending.promise;
+      });
+      await waitFor(() => expect(reg.querySelector('.profile-quick-badge')?.textContent).toBe('2'));
+      expect(reg.querySelector('.profile-quick-spin')).toBeNull();
+      expect(reg.hasAttribute('aria-busy')).toBe(false);
+      expect(reg.getAttribute('aria-label')).toBe('我的報名，2 筆');
+      expect(host.querySelector('.profile-quick-badge')?.textContent).toBe('1');
+      expect(host.querySelector('.profile-quick-spin')).toBeNull();
+      expect(host.getAttribute('aria-label')).toBe('開團（我開的團），1 筆');
+      expect(document.querySelector('.reg-loading')).toBeNull();
+      expect(screen.getByText('讀取後的報名')).toBeTruthy();
+    });
+
+    it('報名與開團讀取失敗不顯示圈也不顯示徽章，展開區沿用既有失敗畫面', async () => {
+      vi.mocked(loadRelatedActivities).mockRejectedValue(new Error('offline'));
+      render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      await waitFor(() => expect(quickBtn('reg').getAttribute('aria-label')).toBe('我的報名'));
+      expect(quickBtn('reg').querySelector('.profile-quick-spin')).toBeNull();
+      expect(quickBtn('reg').querySelector('.profile-quick-badge')).toBeNull();
+      expect(quickBtn('reg').hasAttribute('aria-busy')).toBe(false);
+      expect(quickBtn('host').getAttribute('aria-label')).toBe('開團（我開的團）');
+      expect(quickBtn('host').querySelector('.profile-quick-spin')).toBeNull();
+      expect(quickBtn('host').querySelector('.profile-quick-badge')).toBeNull();
+
+      fireEvent.click(quickBtn('reg'));
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(document.querySelector('#profile-registered-activities-list .reg-loading')).toBeNull();
+      expect(document.querySelector('#profile-registered-activities-list .profile-state')).not.toBeNull();
+    });
+
+    it('申請讀取中不畫鈕（多數人沒有申請，先畫再拿掉會讓置中的快捷列整排位移），讀完 0 筆仍沒有，有筆數才出現且不轉圈', async () => {
+      useMyTeamApplicationsMock.mockReturnValue(null);
+      const view = render(<ProfilePage />);
+      expect(await screen.findByText('王小明')).toBeTruthy();
+      expect(document.getElementById('profile-quick-btn-apply')).toBeNull();
+
+      useMyTeamApplicationsMock.mockReturnValue([]);
+      view.rerender(<ProfilePage />);
+      await waitFor(() => expect(document.getElementById('profile-quick-btn-apply')).toBeNull());
+
+      useMyTeamApplicationsMock.mockReturnValue([{ messageId: 'm1', teamName: '大安羽球社', status: 'pending' }]);
+      view.rerender(<ProfilePage />);
+      await waitFor(() => expect(quickBtn('apply').querySelector('.profile-quick-spin')).toBeNull());
+      expect(quickBtn('apply').hasAttribute('aria-busy')).toBe(false);
+      expect(quickBtn('apply').getAttribute('aria-label')).toBe('我的俱樂部申請');
+    });
+
     it('展開才渲染：收合時各區塊內容都不在 DOM，相關活動只讀一次（重繪不重讀）', async () => {
       render(<ProfilePage />);
       expect(await screen.findByText('王小明')).toBeTruthy();
@@ -1151,8 +1259,10 @@ describe('公開名片', () => {
   it('載入時顯示狀態', () => {
     vi.mocked(loadUserProfile).mockReturnValue(new Promise(() => {}));
     render(<PublicProfilePage uid="U-public" />);
-    // 測試同步更新：照 A（M-133）改為 LegacyUserCard 的載入文字。
-    expect(screen.getByText('載入中...')).toBeTruthy();
+    // 測試同步更新：照 A（M-133）改為 LegacyUserCard 的載入文字；圈用既有 .reg-loading。
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.textContent).toContain('載入中...');
   });
 
   // 測試同步更新：照 A（M-133）LegacyUserCard 未提供重試按鈕，刪除「錯誤後可重試」測試。
@@ -1196,6 +1306,8 @@ describe('本機 QR', () => {
   it('產生中顯示狀態', () => {
     vi.mocked(renderQrToCanvas).mockReturnValue(new Promise(() => {}));
     render(<QrPage />);
+    const box = document.getElementById('page-qr-canvas');
+    expect(box?.querySelector('.line-avatar-spinner')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(zh.qrLoading);
   });
 
@@ -1207,6 +1319,7 @@ describe('本機 QR', () => {
     render(<QrPage />);
 
     expect(await screen.findByRole('img', { name: zh.qr })).toBeTruthy();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
     expect(buildIdentityQrPayload).toHaveBeenCalledWith('U-me');
     expect(renderQrToCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 'U-me');
     expect(loadUserProfile).not.toHaveBeenCalled();
@@ -1223,6 +1336,7 @@ describe('本機 QR', () => {
       .mockResolvedValueOnce(undefined);
     render(<QrPage />);
     expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
     expect(document.querySelector('img')).toBeNull();
     await clickButton(zh.retry);
     expect(await screen.findByRole('img', { name: zh.qr })).toBeTruthy();

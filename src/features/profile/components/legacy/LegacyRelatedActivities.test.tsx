@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
+
 import type { ViewerView } from '../../data/viewer';
 import {
   LegacyRelatedActivities,
@@ -98,6 +100,13 @@ const viewerStub = {
   pictureUrl: null,
   capabilities: [],
 } as unknown as ViewerView;
+
+function setLoading(): void {
+  useRemoteMock.mockReturnValue({
+    state: { status: 'loading' },
+    retry: vi.fn(),
+  });
+}
 
 function setReady(payload: { registered?: unknown[]; hosted?: unknown[] }): void {
   useRemoteMock.mockReturnValue({
@@ -307,5 +316,34 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
 
     await new Promise(r => setTimeout(r, 30));
     expect(beginCancelMock).not.toHaveBeenCalled();
+  });
+
+  it('我的報名讀取中是 .reg-loading（圈＋原載入文字），讀完換成清單', async () => {
+    _setDictLoaderForTest(async () => ({ 'profile.loading': '載入中…' }));
+    await setLocale('zh-TW');
+    setLoading();
+    const view = render(<Section section="registered" />);
+    const loading = document.querySelector('#profile-registered-activities-list .reg-loading');
+    expect(loading?.getAttribute('role')).toBe('status');
+    expect(loading?.textContent).toContain('載入中…');
+    expect(document.querySelector('.profile-state')).toBeNull();
+
+    setReady({ registered: [] });
+    view.rerender(<Section section="registered" />);
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.getByText('目前沒有正取或候補中的報名活動')).toBeTruthy();
+    _setDictLoaderForTest(null);
+  });
+
+  it('我開的團讀取中是 .reg-loading，失敗改回既有失敗畫面', () => {
+    setLoading();
+    const view = render(<Section section="hosted" />);
+    expect(document.querySelector('#profile-hosted-activities-list .reg-loading')?.getAttribute('role')).toBe('status');
+
+    useRemoteMock.mockReturnValue({ state: { status: 'error' }, retry: vi.fn() });
+    view.rerender(<Section section="hosted" />);
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(document.querySelector('#profile-hosted-activities-list .profile-state button')).not.toBeNull();
   });
 });

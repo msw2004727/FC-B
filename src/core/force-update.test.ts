@@ -729,6 +729,56 @@ describe('T11 sessionStorage 不可用', () => {
   });
 });
 
+describe('強制框按現在更新但寫分頁紀錄失敗：SW 一般提示不遺失', () => {
+  function lyingSession(): MemStore {
+    const map = new Map<string, string>();
+    return {
+      getItem: (key) => map.get(key) ?? null,
+      setItem: (key, value) => { map.set(key, key === RELOAD_KEY ? 'lie' : value); },
+      removeItem: (key) => { map.delete(key); },
+    };
+  }
+
+  it('重顯強制框後 minBuild 改回 0，還原 SW 一般提示並用 SW 函式', async () => {
+    const swFn = vi.fn();
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    let minBuild = MIN;
+    const h = startAt({
+      path: '/events/x',
+      session: lyingSession(),
+      fetchConfig: async () => ({ swEnabled: true, minBuild }),
+    });
+    expect(promptEl()?.dataset.mode).toBe('forced');
+    (promptEl()?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(promptEl()?.dataset.mode).toBe('forced');
+    minBuild = 0;
+    await advance(600_000);
+    fireVisible();
+    await advance(0);
+    const prompt = promptEl();
+    expect(prompt?.dataset.mode).toBeUndefined();
+    expect(prompt?.querySelector('[data-sw-reload-later]')).toBeTruthy();
+    (prompt?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(swFn).toHaveBeenCalledTimes(1);
+    expect(h.reload).not.toHaveBeenCalled();
+  });
+
+  it('在掃碼頁按下而改延後：立即還原 SW 一般提示', () => {
+    const swFn = vi.fn();
+    showSwReloadPrompt(swFn, 'sw-waiting');
+    const h = startAt({ path: '/events/x', session: lyingSession() });
+    expect(promptEl()?.dataset.mode).toBe('forced');
+    window.history.pushState(null, '', '/checkin');
+    (promptEl()?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(swFn).not.toHaveBeenCalled();
+    const prompt = promptEl();
+    expect(prompt?.dataset.mode).toBeUndefined();
+    expect(prompt?.querySelector('[data-sw-reload-later]')).toBeTruthy();
+  });
+});
+
 describe('顧問：不需更新時收掉強制提示框', () => {
   it('先顯示強制提示框，回前景讀到 minBuild 0 後移除並停止輪詢', async () => {
     const now = vi.fn(() => Date.now());
@@ -790,18 +840,36 @@ describe('回前景停用 SW，以及設定稍後才讀到', () => {
     expect(order).toEqual(['off', 'reload']);
   });
 
-  it('啟動時設定為 null 不做；滿 10 分鐘重讀成功才重載', async () => {
+  it('首讀失敗（設定為 null）不做；回前景未滿 10 分鐘即重讀，成功才重載', async () => {
     const fetchConfig = vi.fn(async () => ({ swEnabled: true, minBuild: MIN }));
     const h = startAt({ initialConfig: null, path: '/', fetchConfig });
     expect(h.reload).not.toHaveBeenCalled();
-    await advance(599_000);
-    fireVisible();
-    await advance(0);
-    expect(fetchConfig).not.toHaveBeenCalled();
     await advance(1_000);
     fireVisible();
     await advance(0);
     expect(fetchConfig).toHaveBeenCalledTimes(1);
     expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('首讀失敗後重讀仍失敗：之後 10 分鐘內不再打網路', async () => {
+    const fetchConfig = vi.fn(async () => null);
+    startAt({ initialConfig: null, path: '/', fetchConfig });
+    await advance(1_000);
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).toHaveBeenCalledTimes(1);
+    fireHidden();
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('首讀成功：未滿 10 分鐘回前景不重讀', async () => {
+    const fetchConfig = vi.fn(async () => ({ swEnabled: true, minBuild: 0 }));
+    startAt({ minBuild: 0, path: '/', fetchConfig });
+    await advance(599_000);
+    fireVisible();
+    await advance(0);
+    expect(fetchConfig).not.toHaveBeenCalled();
   });
 });

@@ -195,6 +195,46 @@ describe('讀取預算（每頁籤進頁 ≤ 26）', () => {
     expectReadOnly();
   });
 
+  it('名單載入中有圈與骨架和「載入中...」，完成後換成俱樂部卡，失敗沿用錯誤列', async () => {
+    const original = sdk.getDocs.getMockImplementation();
+    if (!original) throw new Error('getDocs 沒有原始實作');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    sdk.getDocs.mockImplementation(async (q: unknown) => {
+      await gate;
+      return original(q);
+    });
+    try {
+      state.viewer = viewer('super_admin');
+      const { container } = render(<AdminInactivePage />);
+      const status = screen.getByRole('status');
+      expect(status.classList.contains('reg-loading')).toBe(true);
+      expect(status.textContent).toBe('載入中...');
+      expect(container.querySelectorAll('#inactive-list .reg-loading-skeleton-row')).toHaveLength(3);
+      expect(container.querySelector('[data-team-id]')).toBeNull();
+
+      release();
+      await waitFor(() => expect(container.querySelectorAll('[data-team-id]')).toHaveLength(20));
+      expect(container.querySelector('.reg-loading')).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+    } finally {
+      sdk.getDocs.mockImplementation(original);
+    }
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sdk.getCountFromServer.mockRejectedValueOnce(new Error('synthetic'));
+    try {
+      cleanup();
+      state.viewer = viewer('super_admin');
+      render(<AdminInactivePage />);
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('載入失敗，請重試');
+      expect(document.querySelector('.reg-loading')).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('讀取失敗顯示重試，重試後成功', async () => {
     sdk.getCountFromServer.mockRejectedValueOnce(new Error('synthetic'));
     state.viewer = viewer('super_admin');

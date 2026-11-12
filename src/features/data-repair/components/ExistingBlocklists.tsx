@@ -1,3 +1,5 @@
+// 黑名單名單載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
+import '@/styles/legacy/reg-loading.css';
 import { useT } from '@/i18n/i18n';
 import {
   additionTime, blockedUsers, existingBlocklists, lastAddition, userLabel,
@@ -13,7 +15,14 @@ export function ExistingBlocklists({ events, users, disabled, loading, onRemove 
   return <div class="form-card">
     <h2 class="eb-step">{t('data-repair.blocklist.existingTitle')}</h2>
     <div id="eb-existing-list">
-      {loading ? <div role="status">{t('data-repair.blocklist.loading')}</div>
+      {loading ? <>
+        <div class="reg-loading" role="status" style="white-space:nowrap">{t('data-repair.blocklist.loading')}</div>
+        <div class="reg-loading-skeleton" aria-hidden="true">
+          <div class="reg-loading-skeleton-row" />
+          <div class="reg-loading-skeleton-row" />
+          <div class="reg-loading-skeleton-row" />
+        </div>
+      </>
         : groups.length === 0 ? <div class="eb-empty">{t('data-repair.blocklist.empty')}</div>
         : groups.map(event => <div class="eb-group" key={event._docId || event.id}>
           <div class="eb-group-heading">{event.title} <span>{event.date}</span></div>

@@ -153,7 +153,7 @@ const pwa = VitePWA({
     // manual.html（舊站手冊原文照搬）不進 precache：手冊改版要立即生效，HTML 不走快取優先（R-REL-013 精神）。
     // _worker.js 是 Cloudflare Pages 進階模式的邊緣程式、不對外提供，預存抓它會 404 讓 SW 安裝失敗。
     // assets/404.html 只給 Pages 讓 /assets/* 不存在的檔回真 404（顧問 §1.28），不進預存。
-    globIgnores: ['**/runtime-config.json', '**/version.json', 'sw.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html',
+    globIgnores: ['**/runtime-config.json', '**/version.json', 'sw.js', 'sw-legacy-compat.js', 'workbox-*.js', 'manual.html', '_worker.js', 'assets/404.html',
       // 換站搬入的舊站公開頁與資產（換站計畫書 B-01／B-02）：不屬 app shell，不進預存。
       'blog/**', 'seo/**', 'roles/**', 'inventory/**', 'privacy.html', 'terms.html', 'LOGO/**', 'img/seo/**',
       // 課程旗標關閉時沒有任何 JS／HTML 引用的孤兒 chunk（N3）。K3 打開且建置確認已被動態 import 引用後要拿掉，否則 SW 不會預存。
@@ -163,6 +163,8 @@ const pwa = VitePWA({
     // （部署後第一次開會先閃出上一版畫面，2026-10-21 站長回報內測頁殘影）。設為空字串關掉這個對應，
     // 讓「/」也走 network-first；index.html 仍留在預存裡給離線退回用。
     directoryIndex: '',
+    // 換站相容：舊站 A 的頁面會問 SW 版本（SPORTHUB_GET_VERSION），沒回覆就卡在「更新尚未完成」。
+    importScripts: ['sw-legacy-compat.js'],
     skipWaiting: true,
     clientsClaim: true,
     cleanupOutdatedCaches: true,

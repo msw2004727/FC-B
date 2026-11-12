@@ -75,7 +75,7 @@ function NotifSettingsPanel({ viewer }: { viewer: ViewerView }): JSX.Element {
   }, [loadSeq]);
 
   if (load.status === 'loading') {
-    return <div class="notif-state" role="status">{t('admin-notif.loading')}</div>;
+    return <PageSpinner />;
   }
   if (load.status === 'error') {
     return (

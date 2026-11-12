@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 // 這份清單是「只用 db、不碰 auth／functions」的呼叫端；新增者要先確認這一點，再更新這份清單。
 // `paths.ts` 的 `resolveEventDocSnapshot` 讀 `events`（allow read: if true），只用 db。
 // 報名子集合（allow read: if isAuth()）不在這份清單，仍走 `getFirebase()`。
+// `teams-repo.ts` 的 `loadTeams`／`loadTeam` 讀 `teams`（allow read: if true），只用 db。
+// 同檔的 `loadTeamMembers` 讀 `users`（allow read: if isAuth()），仍走 `getFirebase()`。
+// 允許清單以檔案為單位，所以整檔在清單內；該檔不得從 context 取出 auth／functions。
 // 例外（不是「只讀公開資料」）：`activity-map-config.ts` 讀 `siteConfig/featureFlags`，Rules 是 `allow read: if isAuth()`
 // （FC/firestore.rules 的「Site Config」段）——需要登入身分，但 Firestore 客戶端自己附 token，程式不取 auth。
 // 呼叫鏈：`loadActivityMapLocationPickerEnabled` ← `use-event-location.ts` 的 `useEventLocation` effect ← `EventFormModal`；
@@ -15,6 +18,7 @@ const ALLOWED_CORE_USERS = [
   'src/data/paths.ts',
   'src/features/events/data/activity-map-config.ts',
   'src/features/events/data/events-repo.ts',
+  'src/features/clubs/data/teams-repo.ts',
   'src/features/home/data/announcements.ts',
   'src/features/home/pages/HomePage.tsx',
 ];
@@ -43,13 +47,14 @@ describe('getFirebaseCore 的使用者', () => {
         './paths.ts',
         '../features/events/data/activity-map-config.ts',
         '../features/events/data/events-repo.ts',
+        '../features/clubs/data/teams-repo.ts',
         '../features/home/data/announcements.ts',
         '../features/home/pages/HomePage.tsx',
       ],
       { query: '?raw', import: 'default', eager: true },
     ) as Record<string, string>;
 
-    expect(Object.keys(sources)).toHaveLength(5);
+    expect(Object.keys(sources)).toHaveLength(6);
     for (const [file, source] of Object.entries(sources)) {
       expect(source, file).not.toMatch(/\{[^}]*\b(auth|functions)\b[^}]*\}\s*=\s*await\s+\w*[Ff]irebase/);
       expect(source, file).not.toMatch(/\bctx\.(auth|functions)\b/);

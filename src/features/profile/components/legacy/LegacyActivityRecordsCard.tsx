@@ -411,7 +411,7 @@ export function LegacyActivityRecordsCard(
               onPage={handlePage}
             />
           ) : status === 'loading' ? (
-            <div style="font-size:.82rem;color:var(--text-muted);padding:.5rem 0">
+            <div class="reg-loading" role="status" style="white-space:nowrap">
               {lt('載入紀錄中...', '載入紀錄中...')}
             </div>
           ) : status === 'error' ? (

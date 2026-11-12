@@ -116,6 +116,7 @@
     "apply": "가입",
     "applyName": "내 클럽 가입 신청",
     "count": "{name}, {n}건",
+    "loading": "{name}, 불러오는 중",
     "bound": "{name}, 연동됨",
     "unbound": "{name}, 미연동"
   },

@@ -9,10 +9,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getDocsMock, getDocMock, getCurrentUserMock } = vi.hoisted(() => ({
+const { getDocsMock, getDocMock, getCurrentUserMock, getFirebaseMock, getFirebaseCoreMock } = vi.hoisted(() => ({
   getDocsMock: vi.fn(),
   getDocMock: vi.fn(),
   getCurrentUserMock: vi.fn(),
+  getFirebaseMock: vi.fn(async () => ({ db: { __fake: true, kind: 'full' }, auth: null, functions: null })),
+  getFirebaseCoreMock: vi.fn(async () => ({ db: { __fake: true, kind: 'core' } })),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -29,7 +31,8 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 vi.mock('@/data/firebase', () => ({
-  getFirebase: vi.fn(async () => ({ db: { __fake: true }, auth: null, functions: null })),
+  getFirebase: getFirebaseMock,
+  getFirebaseCore: getFirebaseCoreMock,
 }));
 
 vi.mock('@/data/auth', () => ({
@@ -56,6 +59,8 @@ beforeEach(() => {
   getDocsMock.mockReset();
   getDocMock.mockReset();
   getCurrentUserMock.mockReset();
+  getFirebaseMock.mockClear();
+  getFirebaseCoreMock.mockClear();
   invalidateTeams();
 });
 
@@ -250,6 +255,86 @@ describe('loadTeamMembers', () => {
   it('team 缺 id 時回空陣列（不打查詢）', async () => {
     const result = await loadTeamMembers({} as TeamDoc);
     expect(result).toEqual([]);
+    expect(getDocsMock).not.toHaveBeenCalled();
+  });
+
+  it('缺席的幹部同時讀取，合併順序仍是隊長、領隊、教練', async () => {
+    const team: TeamDoc = {
+      id: 't1',
+      captainUid: 'cap',
+      leaderUids: ['lead'],
+      coachUids: ['coach'],
+    };
+    getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+    routeGetDocs({ teamIds: [], teamId: [] });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    getDocMock.mockImplementation((ref: { path: string }) => gate.then(() => ({
+      exists: () => true,
+      id: ref.path.split('/').at(-1),
+      data: () => ({ name: ref.path }),
+    })));
+
+    const pending = loadTeamMembers(team);
+    await vi.waitFor(() => expect(getDocMock).toHaveBeenCalledTimes(3));
+    expect(getDocMock.mock.calls.map((call) => (call[0] as { path: string }).path)).toEqual([
+      'users/cap',
+      'users/lead',
+      'users/coach',
+    ]);
+    if (!release) throw new Error('缺少釋放');
+    release();
+
+    const members = await pending;
+    expect(members?.map((member) => member.uid)).toEqual(['cap', 'lead', 'coach']);
+  });
+
+  it('幹部補齊任一 getDoc 失敗時往外拋', async () => {
+    const team: TeamDoc = {
+      id: 't1',
+      captainUid: 'cap',
+      leaderUids: ['lead'],
+    };
+    getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+    routeGetDocs({ teamIds: [], teamId: [] });
+    getDocMock.mockImplementation((ref: { path: string }) => {
+      if (ref.path.endsWith('/lead')) return Promise.reject(new Error('staff-read-failed'));
+      return Promise.resolve({
+        exists: () => true,
+        id: 'cap',
+        data: () => ({ name: 'Captain' }),
+      });
+    });
+
+    await expect(loadTeamMembers(team)).rejects.toThrow('staff-read-failed');
+  });
+});
+
+describe('公開讀取與成員讀取的 Firebase 入口', () => {
+  it('loadTeams／loadTeam 走 getFirebaseCore，不呼叫 getFirebase', async () => {
+    getDocsMock.mockResolvedValueOnce(makeSnapshotDocs([]));
+    await loadTeams();
+    expect(getFirebaseCoreMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseMock).not.toHaveBeenCalled();
+
+    getFirebaseCoreMock.mockClear();
+    getDocMock.mockResolvedValueOnce({
+      exists: () => true,
+      id: 't1',
+      data: () => ({ name: 'Team 1' }),
+    });
+    await loadTeam('t1');
+    expect(getFirebaseCoreMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseMock).not.toHaveBeenCalled();
+  });
+
+  it('loadTeamMembers 仍走 getFirebase（users 要等 auth），不呼叫 getFirebaseCore', async () => {
+    getCurrentUserMock.mockResolvedValueOnce(null);
+    await loadTeamMembers({ id: 't1', captainUid: 'cap' });
+    expect(getFirebaseMock).toHaveBeenCalledTimes(1);
+    expect(getFirebaseCoreMock).not.toHaveBeenCalled();
     expect(getDocsMock).not.toHaveBeenCalled();
   });
 });

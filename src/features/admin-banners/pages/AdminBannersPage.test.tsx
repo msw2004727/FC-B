@@ -334,6 +334,36 @@ describe('載入與顯示（照 A renderBannerManage）', () => {
     await waitFor(() => expect(mockLoad).toHaveBeenCalledTimes(2));
   });
 
+  it('展開區載入中有圈與骨架和「載入中...」，完成後換成廣告卡，失敗沿用重試', async () => {
+    let release!: (slots: BannerSlot[]) => void;
+    mockLoad.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const view = render(<AdminBannersPage />);
+    const toggle = screen.getByText('Banner 廣告（3 個廣告位）').closest('.ad-collapse-toggle') as HTMLElement;
+    await act(async () => { fireEvent.click(toggle); });
+    const list = document.getElementById('banner-manage-list')!;
+    const status = list.querySelector('.reg-loading');
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.getAttribute('aria-busy')).toBeNull();
+    expect(status?.textContent).toBe('載入中...');
+    expect(list.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    expect(list.querySelector('.banner-manage-card')).toBeNull();
+
+    await act(async () => { release([ACTIVE]); });
+    await waitFor(() => expect(list.querySelector('.banner-manage-card')).not.toBeNull());
+    expect(list.querySelector('.reg-loading')).toBeNull();
+    expect(list.querySelector('.reg-loading-skeleton')).toBeNull();
+    view.unmount();
+
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockLoad.mockRejectedValue(new Error('offline'));
+    render(<AdminBannersPage />);
+    const toggleAgain = screen.getByText('Banner 廣告（3 個廣告位）').closest('.ad-collapse-toggle') as HTMLElement;
+    await act(async () => { fireEvent.click(toggleAgain); });
+    expect(await screen.findByText('橫幅載入失敗，請稍後重試')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
+    expect(document.querySelector('#banner-manage-list .reg-loading')).toBeNull();
+  });
+
   it('讀取失敗顯示重試，重試成功後顯示卡片（L-30）', async () => {
     mockLoad.mockRejectedValueOnce(new Error('offline'));
     render(<AdminBannersPage />);

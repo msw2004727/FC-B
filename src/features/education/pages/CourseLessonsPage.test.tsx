@@ -101,12 +101,34 @@ describe('課堂列表：固定週期（單堂報名、請假）', () => {
 });
 
 describe('課堂列表：出缺席讀取失敗（審查 P3-3）', () => {
+  it('出缺席還沒回：圈與載入文字，回來換成課堂列', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inner = repo.listMyAttendance.bind(repo);
+    repo.listMyAttendance = (...args) => gate.then(() => inner(...args));
+    const { container } = renderLessons('p5');
+    await screen.findByText('週日親子班');
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).toBeTruthy();
+    expect(status.getAttribute('aria-label')).toBe('載入中…');
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(container.querySelector('[data-session-id]')).toBeNull();
+    release();
+    await waitFor(() => expect(container.querySelectorAll('[data-session-id]').length).toBe(5));
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+  });
+
   it('讀不到出缺席時顯示錯誤與重試，沒有課堂列也不顯示「未報名」；重試後恢復', async () => {
     repo.failNext('listMyAttendance', new Error('offline'));
     const { container } = renderLessons('p5');
     const retry = await screen.findByRole('button', { name: '重新嘗試' });
     expect(container.querySelector('[data-session-id]')).toBeNull();
     expect(screen.queryByText('未報名')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    expect(retry.closest('[role="alert"]')).toBeTruthy();
     fireEvent.click(retry);
     await waitFor(() => expect(container.querySelectorAll('[data-session-id]').length).toBe(5));
     expect(row(container, 'p5s4').dataset.display).toBe('unregistered');
@@ -143,12 +165,18 @@ describe('課堂列表：堂數制（請假）與多位學員', () => {
 describe('課堂列表：登入狀態（L-43）', () => {
   it('登入狀態未定：載入中、不讀資料；確定未登入才請登入', async () => {
     const a = renderLessons('p5', null, undefined);
-    expect(await screen.findByText('載入中…')).toBeTruthy();
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('ui-page-spinner')).toBe(true);
+    expect(status.querySelector('.ui-page-spinner__ring')).toBeTruthy();
+    expect(status.getAttribute('aria-label')).toBe('載入中…');
+    expect(status.textContent).toContain('不要催，已經在努力加載中！');
+    expect(status.getAttribute('aria-busy')).toBeNull();
     expect(repo.calls).toEqual([]);
     a.unmount();
     renderLessons('p5', null, null);
     fireEvent.click(await screen.findByRole('button', { name: '登入' }));
     expect(login).toHaveBeenCalled();
     expect(repo.calls).toEqual([]);
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
   });
 });

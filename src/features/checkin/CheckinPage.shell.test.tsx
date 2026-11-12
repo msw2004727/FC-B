@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OperateContext } from '@/features/events/data/operate-permissions';
 import type { EventDoc } from '@/features/events/data/types';
@@ -77,6 +77,7 @@ vi.mock('./ScanSession', () => ({
 }));
 
 import { addTaipeiDays, formatTaipei, taipeiStartOfDay } from '@/core/taipei-time';
+import { setLocale } from '@/i18n/i18n';
 import CheckinPage from './CheckinPage';
 
 function dayOffset(offset: number): string {
@@ -106,6 +107,10 @@ function optionTexts(): string[] {
 }
 
 describe('CheckinPage shell（卡 4-1）', () => {
+  beforeAll(async () => {
+    await setLocale('zh-TW');
+  });
+
   beforeEach(() => {
     mocks.context = {
       uid: 'operator',
@@ -307,6 +312,53 @@ describe('CheckinPage shell（卡 4-1）', () => {
     await Promise.resolve();
     expect(mocks.documents).not.toHaveBeenCalled();
     expect(mocks.toast).not.toHaveBeenCalled();
+    expect(document.querySelector('.reg-loading')).toBeNull();
+  });
+
+  it('活動文件未回時下拉旁有載入圈，下拉仍在原位；讀完換成選項', async () => {
+    let release!: (events: EventDoc[]) => void;
+    mocks.documents.mockReturnValue(new Promise((resolve) => {
+      release = resolve;
+    }));
+    renderPage();
+    const select = document.querySelector('#scan-event-select') as HTMLSelectElement;
+    const slot = select.parentElement;
+    const filter = document.querySelector('#scan-date-filter');
+    const status = await screen.findByRole('status');
+    expect(status.classList.contains('reg-loading')).toBe(true);
+    expect(status.classList.contains('scan-event-loading')).toBe(true);
+    expect(status.textContent).toContain('載入中…');
+    expect(status.getAttribute('aria-busy')).toBeNull();
+    expect((status as HTMLElement).style.position).toBe('absolute');
+    expect(slot?.classList.contains('scan-event-slot')).toBe(true);
+    expect(filter?.previousElementSibling).toBe(slot);
+    expect(optionTexts()).toEqual(['— 請選擇活動 —']);
+    release([event({ id: 'today-1', _docId: 'today-1', title: '今日活動', date: dayOffset(0) })]);
+    await screen.findByTestId('scan-session');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(filter?.previousElementSibling).toBe(select.parentElement);
+    expect(optionTexts().length).toBeGreaterThan(1);
+  });
+
+  it('帶入活動還在讀時下拉旁有載入圈，失敗後沿用權限不足且圈收掉', async () => {
+    mocks.location.query = { eventId: 'preset-public' };
+    mocks.documents.mockResolvedValue([]);
+    let release!: (value: unknown) => void;
+    mocks.loadEventDetail.mockReturnValue(new Promise((resolve) => {
+      release = resolve;
+    }));
+    renderPage();
+    await waitFor(() => expect(mocks.loadEventDetail).toHaveBeenCalledWith('preset-public'));
+    const select = document.querySelector('#scan-event-select') as HTMLSelectElement;
+    const status = screen.getByRole('status');
+    expect(status.classList.contains('scan-event-loading')).toBe(true);
+    expect((status as HTMLElement).style.position).toBe('absolute');
+    expect(select.disabled).toBe(true);
+    expect(select.parentElement?.nextElementSibling?.id).toBe('scan-date-filter');
+    release(null);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('權限不足'));
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.queryByTestId('scan-session')).toBeNull();
   });
 
   // 自舊 CheckinPage.test.tsx 移入（B 獨有：活動清單讀取失敗可重試）。
@@ -315,7 +367,10 @@ describe('CheckinPage shell（卡 4-1）', () => {
       .mockResolvedValueOnce([event({ id: 'today-1', _docId: 'today-1', date: dayOffset(0) })]);
 
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: '重試' }));
+    expect(await screen.findByRole('button', { name: '重試' })).toBeTruthy();
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(screen.getByText('無法載入最新資料，請重試。')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
     await screen.findByTestId('scan-session');
     expect(mocks.documents).toHaveBeenCalledTimes(2);
   });

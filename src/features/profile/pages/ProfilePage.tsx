@@ -102,6 +102,7 @@ function ProfileContent({
   // 11-06 改版：徽章與「申請」是否顯示要在收合時就知道，資料由頁面讀一次、展開區共用（讀取次數同改版前）。
   const related = useRelatedActivitiesData(uid);
   const applications = useMyTeamApplications(uid, profile);
+  const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
   const lineBound = readLineNotify(profile).bound;
 
@@ -139,16 +140,24 @@ function ProfileContent({
     setEditor(null);
   }
 
-  const withCount = (name: string, n: number | null): string =>
-    n === null ? name : t('profile.quick.count', { name, n });
+  // 讀取中接在名稱後面。快捷列沒有現成句子，句式比照 profile.quick.count，文案在 7 語系的 profile.quick.loading。
+  const withCount = (name: string, n: number | null, loading = false): string => {
+    if (loading) return t('profile.quick.loading', { name });
+    return n === null ? name : t('profile.quick.count', { name, n });
+  };
 
   const quickItems: QuickItem[] = [
     {
       key: 'reg',
       icon: 'reg',
       label: t('profile.quick.reg'),
-      ariaLabel: withCount(t('profile.quick.regName'), relatedCounts ? relatedCounts.registered.length : null),
-      badge: relatedCounts?.registered.length ?? null,
+      ariaLabel: withCount(
+        t('profile.quick.regName'),
+        relatedCounts ? relatedCounts.registered.length : null,
+        relatedLoading,
+      ),
+      badge: relatedLoading ? null : (relatedCounts?.registered.length ?? null),
+      loading: relatedLoading,
       render: (active) => <LegacyRelatedActivities section="registered" data={related} active={active} />,
     },
     {
@@ -188,8 +197,13 @@ function ProfileContent({
       key: 'host',
       icon: 'host',
       label: t('profile.quick.host'),
-      ariaLabel: withCount(t('profile.quick.hostName'), relatedCounts ? relatedCounts.hosted.length : null),
-      badge: relatedCounts?.hosted.length ?? null,
+      ariaLabel: withCount(
+        t('profile.quick.hostName'),
+        relatedCounts ? relatedCounts.hosted.length : null,
+        relatedLoading,
+      ),
+      badge: relatedLoading ? null : (relatedCounts?.hosted.length ?? null),
+      loading: relatedLoading,
       render: (active) => <LegacyRelatedActivities section="hosted" data={related} active={active} />,
     },
     {
@@ -199,8 +213,9 @@ function ProfileContent({
       ariaLabel: t('profile.quick.mateName'),
       render: () => <LegacyCompanionsCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
-    // 照 A `_showApplicationsCard`：有申請紀錄才顯示。
-    ...(applications && applications.length > 0
+    // 照 A `_showApplicationsCard`：有申請才留。讀取中（null）不畫鈕：多數使用者沒有申請，
+    // 讀取中先畫、讀完才拿掉會讓置中的快捷列整排左右位移一次（Opus 交叉審 P2-1，站長「不造成版面位移」原則）。
+    ...((applications?.length ?? 0) > 0
       ? [{
           key: 'apply',
           icon: 'apply',

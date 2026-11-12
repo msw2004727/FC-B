@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/preact';
 
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import type { UserProfile } from '../../data/profile-model';
+import type { LatestTeamApplication } from '../../data/profile-applications';
 import type { TeamDoc } from '@/features/clubs/data/types';
 
 vi.mock('@/data/firebase', () => ({
@@ -121,5 +123,49 @@ describe('LegacyApplicationsCard', () => {
     expect(toggle.classList.contains('open')).toBe(true);
     fireEvent.click(toggle);
     expect(toggle.classList.contains('open')).toBe(false);
+  });
+
+  it('讀取失敗收成空陣列，卡片不出現', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(loadTeams).mockRejectedValue(new Error('offline'));
+    vi.mocked(getDocs).mockResolvedValue(makeSnap([]));
+
+    const { container } = render(<LegacyApplicationsCard uid={uid} profile={profile} />);
+    await waitFor(() => expect(errSpy).toHaveBeenCalled());
+    expect(String(errSpy.mock.calls[0]?.[0])).toContain('[LegacyApplicationsCard] load failed');
+    expect(container.querySelector('#profile-applications-card')).toBeNull();
+    expect(container.querySelector('.reg-loading')).toBeNull();
+    errSpy.mockRestore();
+  });
+
+  it('非嵌入且 items 為 null 不畫卡', () => {
+    const { container } = render(<LegacyApplicationsCard uid={uid} profile={profile} items={null} />);
+    expect(container.querySelector('#profile-applications-card')).toBeNull();
+    expect(container.querySelector('.reg-loading')).toBeNull();
+  });
+
+  it('嵌入且還在讀時有 .reg-loading，0 筆拿掉，有資料換成清單', async () => {
+    _setDictLoaderForTest(async () => ({ 'profile.loading': '載入中…' }));
+    await setLocale('zh-TW');
+    const item: LatestTeamApplication = {
+      messageId: 'm1',
+      teamId: 't1',
+      teamName: 'Alpha',
+      status: 'pending',
+      timeMs: 1000,
+    };
+    const view = render(<LegacyApplicationsCard embedded uid={uid} profile={profile} items={null} />);
+    const loading = view.container.querySelector('.reg-loading');
+    expect(loading?.getAttribute('role')).toBe('status');
+    expect(loading?.textContent).toContain('載入中…');
+
+    view.rerender(<LegacyApplicationsCard embedded uid={uid} profile={profile} items={[]} />);
+    expect(view.container.querySelector('#profile-applications-card')).toBeNull();
+    expect(view.container.querySelector('.reg-loading')).toBeNull();
+
+    view.rerender(<LegacyApplicationsCard embedded uid={uid} profile={profile} items={[item]} />);
+    expect(view.container.querySelector('.reg-loading')).toBeNull();
+    expect(view.container.textContent).toContain('Alpha');
+    _setDictLoaderForTest(null);
   });
 });

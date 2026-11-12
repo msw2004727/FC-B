@@ -1,4 +1,5 @@
 import '../tournaments.css';
+import '@/styles/legacy/reg-loading.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -244,7 +245,14 @@ export default function TournamentsPage(): JSX.Element {
           </div>
 
           {state === 'loading' && cards.length === 0 ? (
-            <p class="tc-status" role="status">{t('tournaments.loading')}</p>
+            <div aria-busy="true">
+              <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
+              <div class="reg-loading-skeleton" aria-hidden="true">
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+              </div>
+            </div>
           ) : null}
           {state === 'error' ? (
             <div class="tc-status" role="alert">

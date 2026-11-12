@@ -398,9 +398,27 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     );
     await waitFor(() => expect(container.querySelector('#uc-activity-records .pp-retry')).toBeTruthy());
     expect(container.querySelector('#uc-activity-records')?.textContent).not.toContain('載入中');
+    expect(container.querySelector('#uc-activity-records .reg-loading')).toBeNull();
     fireEvent.click(container.querySelector('#uc-activity-records .pp-retry') as Element);
     await waitFor(() => expect(loadUserStats).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(container.querySelector('#uc-activity-records .pp-loading')).toBeNull());
+  });
+
+  it('活動明細載入中有圈與「載入中...」，讀完換成清單', async () => {
+    let resolveStats: (value: { uid: string; activityRecords: never[]; attendanceRecords: never[] }) => void = () => {};
+    vi.mocked(loadUserStats).mockReturnValue(new Promise((resolve) => {
+      resolveStats = resolve;
+    }));
+    const { container } = await renderCard();
+    fireEvent.click(toggleOf(container));
+    const loading = container.querySelector('#uc-activity-records .reg-loading');
+    expect(loading?.getAttribute('role')).toBe('status');
+    expect(loading?.classList.contains('pp-loading')).toBe(true);
+    expect(loading?.textContent).toContain('載入中...');
+
+    resolveStats({ uid: TARGET, activityRecords: [], attendanceRecords: [] });
+    await waitFor(() => expect(container.querySelector('#uc-activity-records .reg-loading')).toBeNull());
+    expect(container.querySelector('#uc-activity-records .pp-loading')).toBeNull();
   });
 
   it('網址 uid 與登入者不同、但讀到的文件就是自己：不顯示動作列（不能私訊自己）', async () => {
@@ -488,11 +506,14 @@ describe('LegacyUserCard（11-06 名片型）', () => {
 
       preactRender(<LegacyUserCard uid="uid-b" />, container);
       expect(container.textContent).not.toContain('Alice');
-      expect(container.textContent).toContain('載入中...');
+      const loading = container.querySelector('.info-card .reg-loading');
+      expect(loading?.getAttribute('role')).toBe('status');
+      expect(loading?.textContent).toContain('載入中...');
 
       await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('uid-b'));
       resolveB(makeProfile({ uid: 'uid-b', _docId: 'uid-b', name: 'Bob2', displayName: 'Bob2' }));
       await waitFor(() => expect(container.textContent).toContain('Bob2'));
+      expect(container.querySelector('.info-card .reg-loading')).toBeNull();
     } finally {
       preactRender(null, container);
       container.remove();

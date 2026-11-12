@@ -120,5 +120,33 @@ describe('QrPage (/profile/qr legacy #page-qrcode DOM, M-028)', () => {
     expect(getByText('登入後即可顯示簽到 QR Code')).not.toBeNull();
     expect(getByText('LINE 登入')).not.toBeNull();
     expect(mockRenderQrToCanvas).not.toHaveBeenCalled();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
+  });
+
+  it('產生中方塊內有既有旋轉圈，完成後換成 canvas', async () => {
+    const uid = 'Uuser1234567890abcdef1234567890ab';
+    mockViewerState.current = createMinimalViewer(uid);
+    let resolveQr: (() => void) | undefined;
+    mockRenderQrToCanvas.mockReturnValue(new Promise((resolve) => {
+      resolveQr = resolve;
+    }));
+
+    const { container } = render(
+      <LocationProvider>
+        <QrPage />
+      </LocationProvider>,
+    );
+
+    const box = container.querySelector('#page-qr-canvas');
+    expect(box?.getAttribute('aria-busy')).toBe('true');
+    expect(box?.querySelector('.line-avatar-spinner')).toBeTruthy();
+    expect(box?.textContent).toContain('QR');
+
+    resolveQr?.();
+    await waitFor(() => {
+      expect(container.querySelector('#page-qr-canvas canvas')).not.toBeNull();
+    });
+    expect(container.querySelector('.line-avatar-spinner')).toBeNull();
+    expect(container.querySelector('#page-qr-canvas')?.getAttribute('aria-busy')).toBe('false');
   });
 });

@@ -438,7 +438,8 @@ export interface QaClaims {
 }
 
 // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源與主題等與帳號無關的設定。
-const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth'];
+// 'fcb:events-snapshot:'：活動列表快照以登入者 uid 分隔，內含他人的 blockedUids／creatorUid 等欄位，登出（整頁重載後是訪客）時不會再被讀到也不會被覆寫，必須在這裡清掉（顧問 §3.106，L-43）。
+const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:'];
 const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
 
 /** 換帳號前拍下的帳號相關 localStorage（key → 當時的值）。 */

@@ -672,6 +672,83 @@ describe('InboxPage', () => {
     expect(document.querySelector('.msg-card')?.classList.contains('msg-unread')).toBe(false);
   });
 
+  it('收件匣與私訊載入中有圈和兩條骨架，完成後換成內容，失敗沿用既有失敗畫面', async () => {
+    render(<InboxPage />);
+    const list = () => document.getElementById('message-list');
+    const status = () => list()?.querySelector('.reg-loading');
+
+    expect(status()?.classList.contains('reg-loading')).toBe(true);
+    expect(status()?.getAttribute('role')).toBe('status');
+    expect(status()?.hasAttribute('aria-busy')).toBe(false);
+    // 測試的 useLegacyT 回傳 key；正式畫面是既有 legacy common.loading「載入中...」。
+    expect(status()?.textContent).toBe('common.loading');
+    expect(list()?.getAttribute('aria-busy')).toBe('true');
+    expect(list()?.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(2);
+    expect(document.body.textContent).not.toContain('此分類沒有訊息');
+    expect(document.body.textContent).not.toContain('載入訊息失敗，請重試。');
+
+    act(() => {
+      inboxCallback!([
+        { id: 'm1', _docId: 'm1', type: 'system', title: '到了', time: '2025/01/01 10:00', read: false },
+      ]);
+    });
+    expect(document.querySelector('.msg-card .msg-title')?.textContent).toBe('到了');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(list()?.hasAttribute('aria-busy')).toBe(false);
+    expect(document.body.textContent).not.toContain('此分類沒有訊息');
+
+    act(() => {
+      inboxCallback!([]);
+    });
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.body.textContent).toContain('此分類沒有訊息');
+
+    const inboxErr = mockSubscribeInbox.mock.calls[0]?.[2] as ((err: unknown) => void) | undefined;
+    if (!inboxErr) throw new Error('inbox error handler missing');
+    act(() => {
+      inboxErr(new Error('fail'));
+    });
+    expect(document.body.textContent).toContain('載入訊息失敗，請重試。');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.body.textContent).not.toContain('此分類沒有訊息');
+
+    const pmTab = document.querySelector<HTMLElement>(
+      '#msg-inbox-tabs .tab[data-msgtype="pm-conversation"]',
+    );
+    if (!pmTab) throw new Error('pm tab missing');
+    fireEvent.click(pmTab);
+    expect(status()?.getAttribute('role')).toBe('status');
+    expect(status()?.hasAttribute('aria-busy')).toBe(false);
+    expect(list()?.getAttribute('aria-busy')).toBe('true');
+    expect(list()?.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(2);
+    expect(document.body.textContent).not.toContain('目前沒有私訊對話');
+    expect(document.querySelector('.pm-thread-card')).toBeNull();
+
+    act(() => {
+      threadsCallback!([
+        { id: 'c1', conversationId: 'c1', peerUid: 'peer1', peerName: 'Bob', lastMessageBody: 'hi' },
+      ]);
+    });
+    expect(document.querySelector('.pm-thread-name')?.textContent).toBe('Bob');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.body.textContent).not.toContain('目前沒有私訊對話');
+
+    act(() => {
+      threadsCallback!([]);
+    });
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.body.textContent).toContain('目前沒有私訊對話');
+
+    const threadErr = mockSubscribeThreads.mock.calls[0]?.[2] as ((err: unknown) => void) | undefined;
+    if (!threadErr) throw new Error('threads error handler missing');
+    act(() => {
+      threadErr(new Error('fail'));
+    });
+    expect(document.body.textContent).toContain('載入私訊列表失敗，請重試。');
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    expect(document.body.textContent).not.toContain('目前沒有私訊對話');
+  });
+
   // §3.48②：活動留言通知（event_comment）＝前往活動，不是審核。
   describe('event_comment 前往活動與審核標籤', () => {
     function commentMessage(meta: Record<string, unknown> | null): InboxMessage {

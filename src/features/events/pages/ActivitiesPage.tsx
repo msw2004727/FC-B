@@ -3,6 +3,7 @@ import { UNAVAILABLE_FEATURE_MSG } from '@/core/unavailable';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import { useLocation } from 'preact-iso';
 import type { ComponentType } from 'preact';
 import { drawerOwnActivityManage } from '@/core/drawer-access';
@@ -15,7 +16,11 @@ import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { useViewer } from '@/features/profile/data/viewer';
-import { EventFormModal } from '../components/EventFormModal';
+import {
+  loadEventFormModal,
+  scheduleEventFormPrefetch,
+  type EventFormModalComponent,
+} from '@/features/home/data/event-form-loader';
 import { useCreateEventEntry } from '../components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '../components/event-form/use-event-form-post-save';
 import {
@@ -48,6 +53,37 @@ import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
 import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
+
+/** 表單 chunk 還沒到：沿用建立活動彈窗殼與列表的 `.reg-loading`，不另做樣式。 */
+function EventFormLoadingShell(props: { onClose: () => void }): JSX.Element {
+  return createPortal(
+    <div class="legacy-ui create-event-modal-open">
+      <div id="modal-overlay" class="modal-overlay open" />
+      <div
+        class="modal create-event-modal-v2-shell ce-v2-enabled open"
+        id="create-event-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-busy="true"
+        aria-labelledby="ce-form-loading-title"
+        data-no-backdrop-close="1"
+      >
+        <div class="modal-header">
+          <h3 id="ce-form-loading-title" style="white-space:nowrap">
+            {lt('新增活動', '新增活動')}
+          </h3>
+          <button type="button" class="modal-close" aria-label={lt('關閉', '關閉')} onClick={props.onClose}>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="reg-loading" role="status" data-i18n="活動資料載入中..." style="white-space:nowrap">
+            {lt('活動資料載入中...', '活動資料載入中...')}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 // M-071：月曆載入中骨架（同 A pages/activity.html #activity-calendar 內容）。
 function CalendarSkeleton(): JSX.Element {
@@ -258,6 +294,43 @@ export default function ActivitiesPage(): JSX.Element {
   const petalsCanvasRef = useRef<HTMLCanvasElement>(null);
   // M-074：切到女生專屬頁籤時在既有 canvas 上飄花瓣（照 A `_startActivityFemalePetals`）。
   useFemalePetals(petalsCanvasRef, activeTab === 'female');
+
+  // 開團表單改為打開時才下載，與首頁共用 loadEventFormModal（單例；失敗清掉 inflight，L-08）。
+  // 列表的 activity.css 仍由本頁直接引入，不跟表單 chunk 走。
+  const [FormModal, setFormModal] = useState<EventFormModalComponent | null>(null);
+  const formOpen = createEntry.formOpen;
+  const closeForm = createEntry.closeForm;
+  useEffect(() => {
+    if (!formOpen || FormModal) return undefined;
+    let active = true;
+    loadEventFormModal().then(
+      (component) => {
+        // 元件是函式，包一層才不會被 setState 當成 updater。
+        if (active) setFormModal(() => component);
+      },
+      () => {
+        if (!active) return;
+        toast.show({
+          message: lt('活動建立功能載入失敗，請稍後再試', '活動建立功能載入失敗，請稍後再試'),
+        });
+        closeForm();
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [formOpen, FormModal]);
+  useEffect(() => {
+    if (!createEntry.canCreate) return undefined;
+    return scheduleEventFormPrefetch();
+  }, [createEntry.canCreate]);
+
+  function handleOpenCreateEvent(): void {
+    // chunk 還沒到時再點會重開類型選擇。只擋這次等待，表單掛上後恢復原行為。
+    if (formOpen && !FormModal) return;
+    loadEventFormModal().catch(() => undefined);
+    createEntry.onClick();
+  }
 
   // 當外部改變 location.url（例如首次進入帶 ?sport=、?region=、?type=、?tab=）時同步進狀態與全站運動
   useEffect(() => {
@@ -720,7 +793,7 @@ export default function ActivitiesPage(): JSX.Element {
               data-profile-incomplete={createEntry.buttonProps['data-profile-incomplete']}
               title={createEntry.buttonProps.title}
               data-i18n-aria-label="＋我要開團"
-              onClick={createEntry.onClick}
+              onClick={handleOpenCreateEvent}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -1063,13 +1136,16 @@ export default function ActivitiesPage(): JSX.Element {
         </div>
 
         {createEntry.overlays}
-        <EventFormModal
-          open={createEntry.formOpen}
-          mode="create"
-          viewer={viewer}
-          onClose={createEntry.closeForm}
-          onSaved={onFormSaved}
-        />
+        {formOpen && !FormModal ? <EventFormLoadingShell onClose={closeForm} /> : null}
+        {FormModal && (
+          <FormModal
+            open={createEntry.formOpen}
+            mode="create"
+            viewer={viewer}
+            onClose={createEntry.closeForm}
+            onSaved={onFormSaved}
+          />
+        )}
 
         {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}
         {transitEvent && (

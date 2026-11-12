@@ -752,13 +752,17 @@ describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
       mockFetchOperationLogs.mockReturnValue(pending.promise);
 
       render(<AdminLogsPage />);
-      expect(screen.getByRole('status').textContent).toBe('載入中...');
+      const status = screen.getByRole('status');
+      expect(status.textContent).toBe('載入中...');
+      expect(status.classList.contains('reg-loading')).toBe(true);
+      expect(document.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
 
       await act(async () => {
         pending.resolve([]);
       });
       expect(screen.getByText('沒有符合條件的紀錄')).toBeTruthy();
       expect(screen.queryByRole('status')).toBeNull();
+      expect(document.querySelector('.reg-loading')).toBeNull();
     });
 
     it('沒有任何紀錄時顯示「沒有符合條件的紀錄」', async () => {
@@ -810,6 +814,8 @@ describe('AdminLogsPage（操作日誌，照 A 外觀）', () => {
       await waitFor(() => {
         expect(screen.getByRole('status').textContent).toBe('載入中...');
       });
+      expect(screen.getByRole('status').classList.contains('reg-loading')).toBe(true);
+      expect(document.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
       expect(screen.queryByRole('alert')).toBeNull();
       expect(mockFetchOperationLogs).toHaveBeenCalledTimes(2);
 

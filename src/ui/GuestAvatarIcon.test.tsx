@@ -27,4 +27,21 @@ describe('GuestAvatarIcon（M-168）', () => {
     expect(s2?.getAttribute('width')).toBe('40');
     expect(s2?.getAttribute('height')).toBe('40');
   });
+  it('size 可給百分比字串（隨外層頭像圓縮放）', () => {
+    const { container } = render(<GuestAvatarIcon size="62%" />);
+    expect(container.querySelector('svg')?.getAttribute('width')).toBe('62%');
+  });
+
+  it('fill 版：貼邊放大的 viewBox，肩膀往下多畫（圓底邊不留縫隙）；一般版不變', () => {
+    const { container: normal } = render(<GuestAvatarIcon />);
+    expect(normal.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(normal.querySelector('path')?.getAttribute('d')).toContain('v1H4z');
+    cleanup();
+    const { container } = render(<GuestAvatarIcon size="100%" fill />);
+    expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('3 2 18 19.5');
+    expect(container.querySelector('path')?.getAttribute('d')).toContain('v4H4z');
+    // 外層容器不一定有 overflow:hidden，fill 版自己裁成圓，肩角不會凸出圓外。
+    expect(container.querySelector('svg')?.getAttribute('style') ?? '').toContain('clip-path: circle(50%)');
+    expect(normal.querySelector('svg')?.getAttribute('style') ?? '').not.toContain('clip-path');
+  });
 });

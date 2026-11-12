@@ -6,6 +6,7 @@ import { formatTaipei, taipeiStartOfDay } from '@/core/taipei-time';
 import { NO_SHOW_FEATURE_ENABLED } from '@/features/events/data/noshow-roster';
 import { useViewer } from '@/features/profile/data/viewer';
 import { t as appT } from '@/i18n/i18n';
+import { PageSpinner } from '@/ui/PageSpinner';
 
 import { OpsAttention } from '../components/OpsAttention';
 import { OpsCostCard } from '../components/OpsCostCard';
@@ -82,7 +83,7 @@ export default function OpsDashboardPage(): JSX.Element {
 
   let content: JSX.Element;
   if (!load) {
-    content = <StatusNote role="status" text={t('loading')} />;
+    content = <PageSpinner />;
   } else {
     const { summary, openEvents, noshow, lowFillEvents } = load;
     const failed = summary.kind === 'error'

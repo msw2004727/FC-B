@@ -55,6 +55,8 @@ const CLEARED_KEYS = [
   'shub_cache_x',
   'LIFFfoo',
   'toosterx:auth:z',
+  'fcb:events-snapshot:v2',
+  'fcb:events-snapshot:v1',
   'sporthub_auto_exp_rules',
   'sporthub_auto_exp_logs',
 ] as const;

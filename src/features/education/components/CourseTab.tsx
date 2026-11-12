@@ -1,5 +1,6 @@
 // 俱樂部「課程」頁籤（K1-1）。由 TeamDetailPage 在課程開關打開時按需載入，不進首頁主程式。
 import './course.css';
+import '@/styles/legacy/reg-loading.css';
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
@@ -36,6 +37,20 @@ export interface CourseTabProps {
 }
 
 type Load = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: ViewerCourses };
+
+/** 課程名單還沒到（含字典還沒到）：沿用活動名單的圈＋三條骨架，不另做視覺。 */
+function CourseListLoading({ text }: { text: string }): JSX.Element {
+  return (
+    <div class="ck" data-course-loading aria-busy="true">
+      <div class="reg-loading" role="status" style="white-space:nowrap">{text}</div>
+      <div class="reg-loading-skeleton" aria-hidden="true">
+        <div class="reg-loading-skeleton-row" />
+        <div class="reg-loading-skeleton-row" />
+        <div class="reg-loading-skeleton-row" />
+      </div>
+    </div>
+  );
+}
 
 export function CourseTabBody({
   ct,
@@ -74,7 +89,7 @@ export function CourseTabBody({
 
   const reload = (): void => setAttempt((n) => n + 1);
 
-  if (load.status === 'loading') return <div class="ck-empty">{t('common.loading')}</div>;
+  if (load.status === 'loading') return <CourseListLoading text={t('common.loading')} />;
   if (load.status === 'error') {
     return (
       <div class="ck-empty" role="alert">
@@ -189,7 +204,7 @@ export function CourseTab(props: CourseTabProps): JSX.Element {
         <button type="button" class="ck-btn ck-btn-o" onClick={retry}>{t('common.retry')}</button>
       </div>
     ) : (
-      <div class="ck ck-empty">{t('common.loading')}</div>
+      <CourseListLoading text={t('common.loading')} />
     );
   }
   return <CourseTabBody {...props} ct={ct} />;

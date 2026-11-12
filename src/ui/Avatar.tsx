@@ -2,6 +2,7 @@ import './avatar.css';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Text } from '@/ui/Text';
+import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { useT } from '@/i18n/i18n';
 
 export type UserRole =
@@ -167,7 +168,9 @@ function AvatarImage({
       aria-label={decorative ? undefined : altName}
       aria-hidden={decorative || undefined}
     >
-      <Text class="ui-avatar__initial">{initial}</Text>
+      {initial === '?' && !(rawName ?? '').trim()
+        ? <GuestAvatarIcon size="66%" />
+        : <Text class="ui-avatar__initial">{initial}</Text>}
     </span>
   );
 }

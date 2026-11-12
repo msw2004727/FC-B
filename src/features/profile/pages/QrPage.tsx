@@ -119,16 +119,22 @@ export default function QrPage(): JSX.Element {
         <div class="center-content">
           <div class="qr-placeholder">
             <div
-              ref={canvasBoxRef}
               class="qr-box"
               id="page-qr-canvas"
               aria-busy={status === 'loading'}
             >
+              {/* canvas 宿主與提示分開：effect 會 replaceChildren 清掉舊畫布，不能把圈放進同一個節點。 */}
+              <div ref={canvasBoxRef} class="qr-box-canvas" />
               {status !== 'ready' && (
-                <span>
-                  QR
-                  <br />
-                  CODE
+                <span class="qr-box-mark">
+                  {status === 'loading' && (
+                    <span class="line-avatar-spinner" aria-hidden="true" />
+                  )}
+                  <span>
+                    QR
+                    <br />
+                    CODE
+                  </span>
                 </span>
               )}
             </div>

@@ -114,6 +114,17 @@
 .ops-dash .od-rank-no { font-size: .74rem; font-weight: 800; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
 .ops-dash .od-avatar { width: 1.9rem; height: 1.9rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); font-size: .78rem; font-weight: 800; }
 .ops-dash .od-rank-title { font-size: .82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* 人名未到：名字格放既有 14px 圈。列高由旁邊 1.9rem 頭像決定，圈不另佔一行。
+   這個 class 原色是白圈（綠頭像用），卡底上看不到，改成跟名單載入圈一樣的邊框色。 */
+.ops-dash .od-rank-title .line-avatar-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  border-color: var(--border);
+  border-top-color: var(--primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ops-dash .od-rank-title .line-avatar-spinner { animation: none; }
+}
 .ops-dash .od-rank-val { font-size: .78rem; font-weight: 800; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
 .ops-dash .od-pager { display: flex; align-items: center; justify-content: center; gap: .8rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 .ops-dash .od-pager-at { font-size: .78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }

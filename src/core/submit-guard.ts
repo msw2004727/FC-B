@@ -27,7 +27,13 @@ function syncDom(): void {
 
 function notifyIdle(): void {
   if (count !== 0) return;
-  for (const cb of [...idleListeners]) cb();
+  for (const cb of [...idleListeners]) {
+    try {
+      cb();
+    } catch (error) {
+      console.error('[submit-guard] idle 回呼失敗', error);
+    }
+  }
 }
 
 /** 開始一段寫入。回傳的 release 可重複呼叫，只生效一次。逾時自動釋放。 */

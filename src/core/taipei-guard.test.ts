@@ -117,7 +117,7 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   },
   {
     file: 'src/features/events/data/event-comments.ts',
-    line: 89,
+    line: 90,
     source: "return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;",
     reason: 'D 類格式化：留言的絕對時間沿用裝置時區顯示，不參與活動結束判斷。',
   },
@@ -183,13 +183,13 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
-    line: 569,
+    line: 642,
     source: "const dateObj = new Date(y, m - 1, day);",
     reason: '純日曆算術：由活動日期的年月日建構日曆值，只供星期標籤。',
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
-    line: 570,
+    line: 643,
     source: "const dayName = DAY_NAMES[dateObj.getDay()] ?? '日';",
     reason: '純日曆算術：讀取活動日期的星期；今天判斷另用台北欄位。',
   },
