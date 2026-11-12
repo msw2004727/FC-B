@@ -14,11 +14,12 @@ class FakeResizeObserver {
   observe(): void {}
 }
 
+// UPD-3P：提示框改單行、沒有說明行，標題節點帶 data-sw-reload-title（測試同步更新）。
 function buildPrompt(): HTMLElement {
   const prompt = document.createElement('div');
   prompt.id = 'sw-reload-deferred-prompt';
   prompt.innerHTML =
-    '<div><div>有新版本可用</div><div>完成目前操作後會自動更新。</div></div>' +
+    '<div data-sw-reload-title>有新版本可用</div>' +
     '<button type="button" data-sw-reload-now>現在更新</button>' +
     '<button type="button" data-sw-reload-later>稍後</button>';
   document.body.appendChild(prompt);

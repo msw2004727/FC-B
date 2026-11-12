@@ -4,20 +4,36 @@
 # 本機（Windows）不再跑全測，Playwright 與速度量測仍在本機。
 name: CI
 
+# 2026-11-12 CI 省時（ci-cost-trim）：取代原本「任何分支 push 都跑全套」。
+# - push 只在 main 觸發完整 CI（上線證據 8 項＝本檔 7 個 job＋Cloudflare Pages，數量不變）。
+#   其他分支 push 改走 ci-lite.yml 輕量檢查；backup/**、promo 分支完全不跑。
+# - PR 照跑完整 CI；要在分支上跑全套，用 Actions 頁 workflow_dispatch 選分支。
+# - 只改 Markdown／docs／.claude 的 push 或 PR 不觸發；同一次 push 只要有任一檔不在清單內就照跑全套。
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
   workflow_dispatch:
 
 # 最小權限：只讀 repo 內容。
 permissions:
   contents: read
 
-# 同一分支的舊 run 自動取消。PR 事件用 head_ref、push 事件用 ref_name，
-# 兩者同為分支名，所以「分支 push＋該分支的 PR」只會留最新的一個 run。
+# 同一分支（或同一 PR）同一種事件的舊 run 自動取消；群組加 event_name，避免 PR run 與手動 run 互相取消。
+# main 的群組含 github.sha、每個 SHA 自成一組且不取消：cancel-in-progress: false 只保護執行中的 run，
+# 同群組「排隊中」的 run 仍會被更新的 run 擠掉，連推多次 main 時中間 SHA 會沒有 CI 紀錄（顧問 §3.119）。
+# PR 的 ref 是 refs/pull/N/merge（每個 PR 一組）；取代原本 head_ref || ref_name（不同 PR 同分支名會撞組）。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check:

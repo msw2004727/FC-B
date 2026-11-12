@@ -5,6 +5,7 @@ import { attendanceQueryFilters, buildPendingStudentPayload, courseRepo, PENDING
 import { createFakeCourseRepo } from '../testing/fake-course-repo';
 import { courseFixture } from '../testing/course-fixtures';
 import { normalizeSession, normalizeStudent } from './course-model';
+import { invalidateViewerRegistrations, readViewerRegistrationsCached } from '@/features/events/data/viewer-registrations-cache';
 
 describe('course-repo：既有 Callable 的參數', () => {
   beforeEach(() => {
@@ -48,6 +49,23 @@ describe('course-repo：既有 Callable 的參數', () => {
       ['saveEduCourseSelfAttendance', { teamId: 'tm_public', planId: 'p1', sessionId: 's3', date: '2026-11-15', studentId: 'stu_a', studentName: '陳小安', kind: 'registered' }],
       ['saveEduCourseSelfLeave', { teamId: 'tm_public', planId: 'p1', sessionId: 's3', date: '2026-11-15', studentId: 'stu_a', studentName: '陳小安', leave: false }],
     ]);
+  });
+
+  it('O5：單堂報名／請假會改連動活動報名，成功或失敗都失效登入者全歷史快取', async () => {
+    invalidateViewerRegistrations();
+    const loader = vi.fn(async () => []);
+    const readAgain = async () => {
+      await readViewerRegistrationsCached('u1', loader);
+      return loader.mock.calls.length;
+    };
+    expect(await readAgain()).toBe(1);
+    registerMock('saveEduCourseSelfAttendance', async () => ({ success: true, kind: 'registered' }));
+    await courseRepo.saveSelfAttendance({ team, planId: 'p1', session, student, kind: 'registered' });
+    expect(await readAgain()).toBe(2);
+    registerMock('saveEduCourseSelfLeave', async () => { throw new Error('boom'); });
+    await expect(courseRepo.saveSelfLeave({ team, planId: 'p1', session, student, leave: true })).rejects.toThrow();
+    expect(await readAgain()).toBe(3);
+    expect(await readAgain()).toBe(3);
   });
 
   it('listEduCourseEnrollmentSummaries 每批最多 50 個方案，合併 migrationCompleted', async () => {

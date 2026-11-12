@@ -2,7 +2,7 @@
   "title": "이벤트", "nav": "이벤트", "detail": "이벤트 상세", "pageTitle": "활동 목록",
   "backHome": "홈으로 돌아가기", "search": "검색", "filter": "필터",
   "searchPlaceholder": "활동 이름 또는 장소 검색", "tabsLabel": "활동 목록 선택",
-  "normal": "모집 중", "chooseSport": "스포츠 선택", "loading": "활동을 불러오는 중…",
+  "normal": "모집 중", "chooseSport": "스포츠 선택",
   "loadError": "활동을 불러오지 못했습니다.", "retry": "다시 시도",
   "emptyTitle": "일치하는 활동이 없습니다", "emptyBody": "다른 스포츠나 검색어를 선택해 보세요.",
   "sport": {
@@ -23,12 +23,11 @@
     "locationUnknown": "장소 미정", "capacity": "{current}/{max}명"
   },
   "detailPage": {
-    "notFound": "이벤트를 찾을 수 없습니다", "loading": "이벤트 상세를 불러오는 중…",
+    "notFound": "이벤트를 찾을 수 없습니다",
     "loadError": "이벤트 상세를 불러오지 못했습니다. 다시 시도해 주세요.",
     "actionError": "처리하지 못했습니다. 다시 시도해 주세요.",
     "refreshError": "참가자 명단이 동기화되지 않았습니다. 새로고침을 다시 시도해 주세요. 중복 처리를 막기 위해 신청이 잠시 중지되었습니다.",
     "roster": "참가자 명단",
-    "rosterLoading": "참가자 명단을 불러오는 중…",
     "rosterError": "참가자 명단을 불러오지 못했습니다. 다시 시도해 주세요.",
     "historyError": "신청 상태를 동기화하지 못했습니다. 다시 시도한 후 신청해 주세요.",
     "location": "장소", "map": "지도에서 열기", "time": "시간", "opens": "신청 시작",
@@ -206,5 +205,26 @@
     "title": "LINE 알림을 켜고 놓치지 마세요!",
     "descLine1": "신청 완료, 대기 순번 승급,",
     "descLine2": "활동 변경이나 취소를 바로 알려 드려요."
+  },
+  "listCard": {
+    "barConfirmed": "신청 {confirmed}/{max}명",
+    "barConfirmedNoMax": "신청 {confirmed}명",
+    "barReserved": "팀 예약 {reserved}",
+    "barWaitlist": "대기 {waitlist}",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "종료 {count}건",
+        "other": "종료 {count}건"
+      },
+      "cancelled": {
+        "one": "취소 {count}건",
+        "other": "취소 {count}건"
+      },
+      "mixed": {
+        "one": "종료·취소 {count}건",
+        "other": "종료·취소 {count}건"
+      }
+    }
   }
 }

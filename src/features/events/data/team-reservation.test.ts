@@ -16,6 +16,7 @@ import {
   isTeamReservationCourseManaged, resolveTeamReservationSignupChoice, teamReservationErrorMessage,
   type TeamReservationEvent, type TeamReservationSnapshot, type TeamReservationViewer,
 } from './team-reservation';
+import { invalidateViewerRegistrations, readViewerRegistrationsCached } from './viewer-registrations-cache';
 
 const now = Date.parse('2026-11-04T00:00:00Z');
 const viewer: TeamReservationViewer = {
@@ -451,5 +452,43 @@ describe('Callable 送出與生命週期', () => {
     expect(await controller.submit('t1', 7)).toEqual({ status: 'course-managed', message: '' });
     expect(await controller.submit('t1', 7)).toEqual({ status: 'course-managed', message: '' });
     expect(callFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** O5：先讓登入者全歷史快取命中一次，回傳「再讀一次後 loader 共被呼叫幾次」。 */
+async function primeViewerCache(): Promise<() => Promise<number>> {
+  invalidateViewerRegistrations();
+  const loader = vi.fn(async () => []);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  expect(loader).toHaveBeenCalledTimes(1);
+  return async () => {
+    await readViewerRegistrationsCached('viewer-o5', loader);
+    return loader.mock.calls.length;
+  };
+}
+
+describe('O5：團隊名額送出後失效登入者全歷史快取', () => {
+  it('成功後失效', async () => {
+    const { controller } = fixture();
+    const readAgain = await primeViewerCache();
+    expect(await controller.submit('t1', 7)).toMatchObject({ status: 'success' });
+    expect(await readAgain()).toBe(2);
+  });
+
+  it('失敗後也失效（伺服器可能已寫入）', async () => {
+    vi.mocked(callFn).mockRejectedValueOnce(new Error('raw private error'));
+    const { controller } = fixture();
+    const readAgain = await primeViewerCache();
+    expect(await controller.submit('t1', 7)).toMatchObject({ status: 'error' });
+    expect(await readAgain()).toBe(2);
+  });
+
+  it('沒送出（前端預檢擋下）不失效', async () => {
+    const { controller } = fixture();
+    const readAgain = await primeViewerCache();
+    expect(await controller.submit('t1', 2)).toMatchObject({ status: 'error' });
+    expect(callFn).not.toHaveBeenCalled();
+    expect(await readAgain()).toBe(1);
   });
 });

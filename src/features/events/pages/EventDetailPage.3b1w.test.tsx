@@ -28,7 +28,11 @@ vi.mock('../data/event-detail', () => ({
   loadEventDetail: mocks.detail,
   loadEventRegistrations: mocks.registrations,
 }));
-vi.mock('../data/viewer-registrations', () => ({ loadViewerRegistrations: mocks.history }));
+// O5：報名判斷改走即時讀 loadViewerRegistrationsFresh，沿用同一個 mock。
+vi.mock('../data/viewer-registrations', () => ({
+  loadViewerRegistrations: mocks.history,
+  loadViewerRegistrationsFresh: mocks.history,
+}));
 vi.mock('../data/signup-profile', () => ({ loadSignupProfile: mocks.profile }));
 vi.mock('../data/companions', () => ({ loadSignupCompanions: mocks.companions }));
 vi.mock('../data/signup-selection', () => ({ registerSelection: mocks.selection }));

@@ -85,6 +85,7 @@ import {
 } from '@/features/events/data/event-create';
 import goldenData from './__fixtures__/event-create-golden.json';
 import { DEFAULT_EVENT_COVER_URL } from './event-cover-upload';
+import { invalidateViewerRegistrations, readViewerRegistrationsCached } from './viewer-registrations-cache';
 import {
   canManageAllActivities,
   hasActivityManageEntry,
@@ -1424,6 +1425,19 @@ describe('changeEventCapacity', () => {
     });
   });
 
+  it('O5：人數調整成功後失效登入者全歷史快取', async () => {
+    const readAgain = await primeViewerCache();
+    await changeEventCapacity('ce_test_1', 30);
+    expect(await readAgain()).toBe(2);
+  });
+
+  it('O5：人數調整失敗後也失效（伺服器可能已寫入）', async () => {
+    callFnMock.mockRejectedValueOnce(new Error('boom'));
+    const readAgain = await primeViewerCache();
+    await expect(changeEventCapacity('ce_test_1', 30)).rejects.toBeInstanceOf(EventCreateError);
+    expect(await readAgain()).toBe(2);
+  });
+
   it('callFn 失敗 → 包成 EventCreateError("CAPACITY_ADJUST_FAILED")', async () => {
     callFnMock.mockRejectedValueOnce(new Error('boom'));
     try {
@@ -1591,3 +1605,16 @@ describe('createEvent', () => {
     expect(txSetMock).not.toHaveBeenCalled();
   });
 });
+
+/** O5：先讓登入者全歷史快取命中一次，回傳「再讀一次後 loader 共被呼叫幾次」。 */
+async function primeViewerCache(): Promise<() => Promise<number>> {
+  invalidateViewerRegistrations();
+  const loader = vi.fn(async () => []);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  expect(loader).toHaveBeenCalledTimes(1);
+  return async () => {
+    await readViewerRegistrationsCached('viewer-o5', loader);
+    return loader.mock.calls.length;
+  };
+}

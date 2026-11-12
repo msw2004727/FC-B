@@ -65,7 +65,6 @@ const ZH_DICT: Record<string, string> = {
   'events.pageTitle': '活動列表',
   'events.retry': '重試',
   'events.card.untitled': '未命名活動',
-  'events.detailPage.loading': '活動資料載入中...',
   'events.detailPage.loadError': '無法載入活動詳情，請重試。',
   'events.detailPage.notFound': '找不到此活動',
   'events.detailPage.unnamed': '未命名使用者',
@@ -73,7 +72,6 @@ const ZH_DICT: Record<string, string> = {
   'events.detailPage.waitlisted': '候補名單',
   'events.detailPage.emptyRoster': '尚無參加者',
   'events.detailPage.roster': '參加名單',
-  'events.detailPage.rosterLoading': '參加名單載入中…',
   'events.detailPage.rosterError': '無法載入參加名單，請重試。',
   'events.detailPage.historyError': '無法同步你的報名狀態，請重試後再報名。',
   'events.detailPage.refreshError': '無法更新名單，請重試。',
@@ -617,6 +615,28 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).toHaveBeenCalledWith('firestore-doc-a');
   });
 
+  // 審查 P2（2026-11-12）：訪客報名卡與名單摘要同用實際正取（照 A _getEventActualConfirmedCount），不含團隊未報。
+  it('訪客：有團隊保留時報名卡與名單摘要都顯示實際正取', async () => {
+    mocks.viewer.mockReturnValue({ ...viewer, uid: null });
+    mocks.registrations.mockRejectedValue(new Error('permission-denied'));
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        isPublic: true,
+        current: 18,
+        realCurrent: 14,
+        max: 24,
+        teamReservationSummaries: [{ teamId: 't1', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+      },
+    });
+    const view = mount();
+    await screen.findByRole('heading', { level: 2 });
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toBe('已報 14/24剩 6 · 團隊保留 4');
+    const attendanceSummary = view.container.querySelector('.detail-attendance-summary') as HTMLElement;
+    expect(within(attendanceSummary).getByText('14/24')).toBeTruthy();
+  });
   it('訪客：不讀 registrations，主要資訊與報名按鈕顯示，名單依 A 使用活動文件', async () => {
     mocks.viewer.mockReturnValue({ ...viewer, uid: null });
     mocks.registrations.mockRejectedValue(new Error('permission-denied'));
@@ -922,7 +942,8 @@ describe('EventDetailPage', () => {
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
     expect(mocks.registrations).toHaveBeenNthCalledWith(2, 'firestore-doc-a');
-    expect(mocks.history).toHaveBeenNthCalledWith(3, 'u1');
+    // O5：操作後重讀改查本場（與首次載入同一查詢）。
+    expect(mocks.history).toHaveBeenNthCalledWith(3, 'u1', 'firestore-doc-a');
 
     resolveRetry([self]);
 
@@ -1261,6 +1282,8 @@ describe('名單狀態調整頁面接線', () => {
     });
     startCallableRecording();
     const originalPage = view.container.querySelector('#page-activity-detail');
+    // 審查 P2：N 改顯示實際正取後前後都是 0/2，改以候補數區分下放投影是否套用。
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).not.toContain('候補');
     fireEvent.click(screen.getByRole('button', { name: '將 小明 下放到候補' }));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定將 小明 下放到候補嗎？'));
     expect(screen.getByRole('button', { name: '將 小明 下放到候補' })).toHaveProperty('disabled', true);
@@ -1269,7 +1292,9 @@ describe('名單狀態調整頁面接線', () => {
     expect(view.container.querySelector('#page-activity-detail')).toBe(originalPage);
     expect(screen.queryByRole('button', { name: '將 小明 下放到候補' })).toBeNull();
     expect(screen.getByRole('button', { name: '將 小明 正取' })).toBeTruthy();
-    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('3/2');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('0/2');
+    expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('候補 1');
     const calls = stopCallableRecording();
     expect(calls).toHaveLength(1); expect(calls[0]?.request).toMatchObject({ eventId: 'evtA', userId: 'uidB' });
     expect(mocks.writeAttendanceOps).not.toHaveBeenCalled();
@@ -2900,7 +2925,8 @@ describe('T-074b 詳情頁整合', () => {
     fireEvent.click(signup);
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
     expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ preferredTeamReservationTeamId: 't1' }));
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10');
     await act(async () => { backgroundRows.resolve(rows); });
     await screen.findByRole('button', { name: '取消報名' });
     await waitFor(() => expect((screen.getByRole('button', { name: '調整名額' }) as HTMLButtonElement).disabled).toBe(false));
@@ -2912,7 +2938,7 @@ describe('T-074b 詳情頁整合', () => {
     expect(slots.min).toBe('1');
     expect(slots.value).toBe('3');
     expect(document.querySelector('.team-reservation-help')?.textContent).toContain('剩餘佔位：2');
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10');
     fireEvent.input(slots, { target: { value: '11' } });
     fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
     await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledWith({ message: '團隊名額超過目前活動可用名額' }));
@@ -2974,14 +3000,15 @@ describe('T-074b 詳情頁整合', () => {
     mount();
     const companion = await screen.findByRole('button', { name: '幫夥伴報名' });
     await waitFor(() => expect((companion as HTMLButtonElement).disabled).toBe(false));
-    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 4/10');
+    // 測試同步更新（2026-11-12）：報名卡 N 改照 A 顯示實際正取（realCurrent），不再用已含團隊未報的 current。
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 1/10');
     const reads = mocks.registrations.mock.calls.length;
     fireEvent.click(companion);
     fireEvent.click(await screen.findByRole('checkbox', { name: /同行小友/ }));
     fireEvent.click(screen.getByRole('button', { name: '確認', exact: true }));
     await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mocks.registrations).toHaveBeenCalledTimes(reads + 1));
-    await waitFor(() => expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 5/10'));
+    await waitFor(() => expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent).toContain('已報 2/10'));
   });
   it('只有一隊時直接帶入，不開選擇窗', async () => {
     mocks.viewer.mockReturnValue({ ...staffViewer, teamIds: new Set(['t1']) });

@@ -57,6 +57,11 @@ export interface ViewerView extends ViewerContext {
   isRestricted?: boolean;
   /** 選填：測試替身可省略，使用端視為「無任何權限來源」。 */
   permissionSources?: ViewerPermissionSources;
+  /**
+   * L-43：true＝開頁時登入狀態還在還原（Auth 尚未判定），uid 為 null 不代表訪客，頁面要顯示載入中、不得顯示「尚未登入」。
+   * 確定是訪客或已有 uid 時省略；測試替身省略＝已判定。
+   */
+  authPending?: boolean;
 }
 
 const EMPTY_PERMISSION_SOURCES: ViewerPermissionSources = Object.freeze({
@@ -86,6 +91,11 @@ export function createGuestViewer(): ViewerView {
     isRestricted: false,
     permissionSources: EMPTY_PERMISSION_SOURCES,
   };
+}
+
+/** 登入狀態尚未判定時的快照：權限同訪客，但標記 authPending，頁面不得把它當成「確定未登入」。 */
+function createAuthPendingViewer(): ViewerView {
+  return { ...createGuestViewer(), authPending: true };
 }
 
 export function createMinimalViewer(uid: string): ViewerView {
@@ -427,7 +437,7 @@ interface ViewerSubscription {
 }
 
 const viewerListeners = new Set<ViewerListener>();
-let viewerSnapshot: ViewerView = createGuestViewer();
+let viewerSnapshot: ViewerView = createAuthPendingViewer();
 let viewerUid: string | null = null;
 let viewerGeneration = 0;
 let viewerInflight: Promise<void> | null = null;
@@ -454,7 +464,8 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
     viewerInflight = null;
     viewerInflightUid = null;
     viewerLoadFailed = false;
-    if (viewerUid !== null) publishViewer(createGuestViewer());
+    // 判定未登入：之前是別人或還在「尚未判定」都要發一次確定的訪客快照，頁面才會從載入中換成未登入畫面。
+    if (viewerUid !== null || viewerSnapshot.authPending) publishViewer(createGuestViewer());
     return;
   }
 
@@ -490,6 +501,33 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
   viewerInflightUid = uid;
 }
 
+/** Auth 還原的等待上限（同 data/firebase.ts 首頁暫緩 Auth 的整體上限）；逾時視為訪客，頁面不會永遠停在載入中。 */
+const AUTH_SETTLE_MAX_MS = 10_000;
+
+/**
+ * 「確定」的登入 uid。currentUser 有值就是它；為 null 時可能只是 Auth 還在還原
+ * （有登入旗標但還原超過 data/firebase.ts 的 3 秒閘門），要等 authStateReady() 之後才算確定是訪客（L-43）。
+ */
+async function readSettledAuthUid(): Promise<string | null> {
+  const current = await getCurrentUser();
+  if (current) return current.uid;
+  const { auth } = await getFirebase();
+  const restorable = auth as (typeof auth & { authStateReady?: () => Promise<void> }) | undefined;
+  if (typeof restorable?.authStateReady !== 'function') return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      restorable.authStateReady(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, AUTH_SETTLE_MAX_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  return restorable.currentUser?.uid ?? null;
+}
+
 function ensureViewerSubscription(): void {
   if (viewerLive) return;
   const state: ViewerSubscription = {
@@ -510,11 +548,11 @@ function ensureViewerSubscription(): void {
   });
 
   const initialVersion = state.authVersion;
-  getCurrentUser()
-    .then((current) => {
+  readSettledAuthUid()
+    .then((uid) => {
       if (viewerLive !== state) return;
       if (state.authVersion !== initialVersion) return;
-      state.knownUid = current ? current.uid : null;
+      state.knownUid = uid;
       beginViewerLoad(state.knownUid, false);
     })
     .catch(() => {
@@ -537,7 +575,7 @@ function ensureViewerSubscription(): void {
 
 function resetViewerIdle(): void {
   viewerLive?.stop();
-  viewerSnapshot = createGuestViewer();
+  viewerSnapshot = createAuthPendingViewer();
   viewerUid = null;
   viewerLoadFailed = false;
 }

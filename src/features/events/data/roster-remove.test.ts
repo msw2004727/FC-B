@@ -23,6 +23,7 @@ import {
   REMOVE_PARTICIPANT_TIMEOUT_MESSAGE,
 } from './roster-remove';
 import type { OperateContext } from './operate-permissions';
+import { invalidateViewerRegistrations, readViewerRegistrationsCached } from './viewer-registrations-cache';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 
 const adminContext: OperateContext = {
@@ -323,5 +324,47 @@ describe('managerRemoveRegistration', () => {
     expect(res.ok).toBe(false);
     expect(res.toastMessage).toContain(REMOVE_PARTICIPANT_TIMEOUT_MESSAGE);
     expect(mockWriteOpLog).not.toHaveBeenCalled();
+  });
+});
+
+/** O5：先讓登入者全歷史快取命中一次，回傳「再讀一次後 loader 共被呼叫幾次」。 */
+async function primeViewerCache(): Promise<() => Promise<number>> {
+  invalidateViewerRegistrations();
+  const loader = vi.fn(async () => []);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  expect(loader).toHaveBeenCalledTimes(1);
+  return async () => {
+    await readViewerRegistrationsCached('viewer-o5', loader);
+    return loader.mock.calls.length;
+  };
+}
+
+describe('O5：移除報名後失效登入者全歷史快取', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteOpLog.mockResolvedValue(undefined);
+  });
+  const input = () => ({
+    eventId: 'ce_100',
+    event: sampleEvent,
+    registration: { uid: 'u_player', name: '王大明', isCompanion: false },
+    registrations: sampleRegistrations,
+    operatorUid: 'u_admin',
+    context: adminContext,
+  });
+
+  it('成功後失效', async () => {
+    mockCallFn.mockResolvedValue({ ok: true });
+    const readAgain = await primeViewerCache();
+    expect((await managerRemoveRegistration(input())).ok).toBe(true);
+    expect(await readAgain()).toBe(2);
+  });
+
+  it('失敗後也失效（伺服器可能已寫入）', async () => {
+    mockCallFn.mockRejectedValue(new CallableError('internal', 'boom', 'boom'));
+    const readAgain = await primeViewerCache();
+    expect((await managerRemoveRegistration(input())).ok).toBe(false);
+    expect(await readAgain()).toBe(2);
   });
 });

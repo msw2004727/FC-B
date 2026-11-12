@@ -17,6 +17,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
   limit: vi.fn((n: number) => ({ kind: 'limit', n })),
+  where: vi.fn((field: string, op: string, value: unknown) => ({ kind: 'where', field, op, value })),
   getDocs: vi.fn(),
 }));
 
@@ -37,7 +38,7 @@ beforeEach(() => {
 
 describe('banners data layer', () => {
   // 測試同步更新（R-QA-005）：PM 對照 A 修正——A 只看 status === 'active' 並排除特殊文件，沒有時間區間、不另外排序。
-  it('照 A：limit(200) 查詢、保留查詢順序、只留 active，不看時間區間', async () => {
+  it('照 A：limit(200) 查詢（O6 加 status == active）、保留查詢順序、只留 active，不看時間區間', async () => {
     const mockDocs = [
       { id: 'b1', data: () => ({ status: 'active', title: 'First', image: 'https://example.com/b1.jpg', linkUrl: 'javascript:alert(1)', endAt: '2000-01-01T00:00:00Z' }) },
       { id: 'b2', data: () => ({ status: 'active', title: 'Second', linkUrl: 'https://example.com/target2' }) },
@@ -48,7 +49,11 @@ describe('banners data layer', () => {
     const result = await loadActiveBanners();
 
     expect(collection).toHaveBeenCalledWith(fakeDb, BANNERS_COLLECTION);
-    expect(query).toHaveBeenCalledWith('banners-col-ref', { kind: 'limit', n: 200 });
+    expect(query).toHaveBeenCalledWith(
+      'banners-col-ref',
+      { kind: 'where', field: 'status', op: '==', value: 'active' },
+      { kind: 'limit', n: 200 },
+    );
     expect(result.map((b) => b.id)).toEqual(['b1', 'b2']);
     expect(result[0]?.linkUrl).toBe('');
   });

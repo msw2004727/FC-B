@@ -390,7 +390,8 @@ describe('T3 不安全頁先不記、安全後才重載', () => {
     expect(prompt).toBeTruthy();
     expect(prompt?.dataset.mode).toBe('forced');
     expect(prompt?.querySelector('[data-sw-reload-later]')).toBeNull();
-    expect(prompt?.textContent).toContain('有新版本可用');
+    // UPD-3P：強制版改用強制標題；本檔沒載字典，走 zh-TW 原文備援（測試同步更新）
+    expect(prompt?.querySelector('[data-sw-reload-title]')?.textContent).toBe('請更新到新版');
     window.history.pushState(null, '', '/');
     await advance(2_999);
     expect(h.reload).not.toHaveBeenCalled();

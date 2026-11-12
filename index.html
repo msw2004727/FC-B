@@ -171,7 +171,7 @@
           window.__fcbEarlyBanners = fetch('https://firestore.googleapis.com/v1/projects/' + P + '/databases/(default)/documents:runQuery', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: '{"structuredQuery":{"from":[{"collectionId":"banners"}],"limit":200}}',
+            body: '{"structuredQuery":{"from":[{"collectionId":"banners"}],"where":{"fieldFilter":{"field":{"fieldPath":"status"},"op":"EQUAL","value":{"stringValue":"active"}}},"limit":200}}',
             credentials: 'omit',
             signal: c.signal
           }).then(body).then(function (x) {

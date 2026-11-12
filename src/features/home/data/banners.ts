@@ -5,6 +5,14 @@ import { loadFirestoreSdk } from '@/data/firestore-sdk';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
 export const BANNERS_COLLECTION = 'banners';
+/**
+ * O6：查詢只取 `status == 'active'`（首頁輪播唯一的狀態條件，見 `isHomeCarouselBanner`），不再讀空白／排程／下架等文件。
+ * SDK 與 REST（`banners-rest.ts`、index.html `#fcb-early-banners`）共用這個值。單一欄位等值＋隱含文件 ID 升冪，自動單欄索引即可，
+ * 不需複合索引；Rules `banners` 是 `allow read: if true`。客戶端篩選照舊保留（排除特殊文件）。
+ * 與舊查詢（不篩、limit 200）結果相同的前提：寫入端只寫精確的 'active'（A／B 後台皆是字面值），且集合不超過 200 筆；
+ * 對照測試見 `home-public-query.parity.test.ts`。
+ */
+export const BANNER_QUERY_STATUS = 'active';
 
 export interface BannerDoc {
   id: string;
@@ -266,12 +274,14 @@ export async function loadActiveBanners(deps: BannerDeps = {}): Promise<BannerDo
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger = deps.logger ?? console;
   try {
-    const [{ db }, { collection, getDocs, limit, query }] = await Promise.all([
+    const [{ db }, { collection, getDocs, limit, query, where }] = await Promise.all([
       getFB(),
       loadFirestoreSdk(),
     ]);
-    // A `_buildCollectionQuery`：banners 沒有特別排序，db.collection(name).limit(200)。
-    const snap = await getDocs(query(collection(db, BANNERS_COLLECTION), limit(200)));
+    // A `_buildCollectionQuery`：banners 沒有特別排序，db.collection(name).limit(200)；O6 加 status 等值篩選（見 BANNER_QUERY_STATUS）。
+    const snap = await getDocs(
+      query(collection(db, BANNERS_COLLECTION), where('status', '==', BANNER_QUERY_STATUS), limit(200)),
+    );
     const docs = snap.docs.map((d) => mapBannerDoc(d));
     const banners = filterAndSortBanners(docs);
     // 回報這份結果是不是「確認向伺服器新取得」：離線時 getDocs 會回持久快取（fromCache=true）；沒有 metadata（例如測試替身）回 undefined。

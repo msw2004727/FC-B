@@ -110,6 +110,17 @@ async function safelyLoadRecipients(eventDocId: string): Promise<string[]> {
   }
 }
 
+/** 一批同時送幾人。 */
+export const NOTIFY_CONCURRENCY = 5;
+/**
+ * 收件人超過這個數就退回逐人送。理由：Functions `notification-guard-limits.js` 對一般層呼叫者
+ * （教練以下，自訂角色也算）有每分鐘上限——LINE 入列 150 次、站內信 300 次，且入列的分鐘計數連
+ * 被略過（未綁 LINE）的收件人也算。逐人送每人 4 次往返，一分鐘到不了上限；並行後大活動可能超過，
+ * 讓後段收件人的 LINE 被擋。100 人以內這次操作的總呼叫數不超過 100，並行也碰不到 150／300。
+ * （11-12 取代原本一律逐人送：10 人約要 7～25 秒才刷新，站長回報按了像沒反應。）
+ */
+export const NOTIFY_PARALLEL_MAX_RECIPIENTS = 100;
+
 async function notifyRecipients(
   senderUid: string | null,
   recipientUids: readonly string[],
@@ -121,7 +132,7 @@ async function notifyRecipients(
     date: event.date ?? '',
     location: event.location ?? '',
   };
-  for (const uid of recipientUids) {
+  const sendOne = async (uid: string): Promise<void> => {
     try {
       await sendTemplateNotification({
         key: templateKey,
@@ -135,6 +146,11 @@ async function notifyRecipients(
       // eslint-disable-next-line no-console
       console.warn('[event-lifecycle] notify failed', { templateKey, uid, err });
     }
+  };
+  // 單人失敗只 warn、不影響同批其他人；一批全部結束才送下一批，全部送完才回到呼叫端寫操作日誌（照 A 順序）。
+  const batchSize = recipientUids.length <= NOTIFY_PARALLEL_MAX_RECIPIENTS ? NOTIFY_CONCURRENCY : 1;
+  for (let start = 0; start < recipientUids.length; start += batchSize) {
+    await Promise.allSettled(recipientUids.slice(start, start + batchSize).map(sendOne));
   }
 }
 

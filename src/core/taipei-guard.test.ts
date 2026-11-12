@@ -51,7 +51,8 @@ interface AllowedLine {
 const ALLOWED_LINES: readonly AllowedLine[] = [
   {
     file: 'src/features/events/data/detail-model.ts',
-    line: 152,
+    // 測試同步更新（2026-11-12）：detail-model.ts 新增 actualConfirmedCount，該行由 152 移到 184。
+    line: 184,
     source: "const endMs = Date.parse(`${year}-${month}-${day}T${endHour}:${endMinute}:00+08:00`);",
     reason: '模板字串帶明確 +08:00 偏移，結果是台北絕對時間，不是本地解析（顧問 10-31 裁定保留）。',
   },
@@ -117,7 +118,7 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   },
   {
     file: 'src/features/events/data/event-comments.ts',
-    line: 90,
+    line: 92,
     source: "return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;",
     reason: 'D 類格式化：留言的絕對時間沿用裝置時區顯示，不參與活動結束判斷。',
   },
@@ -183,13 +184,15 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
-    line: 642,
+    // 測試同步更新（2026-11-13）：ActivitiesPage 新增篩選列黏頂量測，該行由 642 移到 658。
+    line: 658,
     source: "const dateObj = new Date(y, m - 1, day);",
     reason: '純日曆算術：由活動日期的年月日建構日曆值，只供星期標籤。',
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
-    line: 643,
+    // 測試同步更新（2026-11-13）：同上，643 移到 659。
+    line: 659,
     source: "const dayName = DAY_NAMES[dateObj.getDay()] ?? '日';",
     reason: '純日曆算術：讀取活動日期的星期；今天判斷另用台北欄位。',
   },

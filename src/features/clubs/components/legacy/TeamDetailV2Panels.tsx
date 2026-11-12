@@ -7,6 +7,8 @@ import { openHttpAnchor } from '@/core/open-external';
 import { useT } from '@/i18n/i18n';
 import { effectiveEventStatus } from '@/features/events/data/my-activities-model';
 import { UserTag } from '@/ui/UserTag';
+// 俱樂部活動／成員載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
+import '@/styles/legacy/reg-loading.css';
 import type { EventDoc } from '@/features/events/data/types';
 import {
   getTeamStaffIdentity,
@@ -382,7 +384,13 @@ export function TeamDetailV2Panels({
               <span>{`${events.length} 場`}</span>
             </div>
             {eventsStatus === 'loading' ? (
-              <div class="td-v2-empty">載入中…</div>
+              <div class="td-v2-empty">
+                <div class="reg-loading" role="status" style="white-space:nowrap;justify-content:center">載入中…</div>
+                <div class="reg-loading-skeleton" aria-hidden="true">
+                  <div class="reg-loading-skeleton-row" />
+                  <div class="reg-loading-skeleton-row" />
+                </div>
+              </div>
             ) : eventsStatus === 'error' ? (
               <div class="td-v2-empty" role="alert">
                 <div>載入失敗</div>
@@ -420,7 +428,13 @@ export function TeamDetailV2Panels({
         >
           <div class="td-v2-member-management">
             {membersStatus === 'loading' ? (
-              <div class="td-v2-empty">載入中…</div>
+              <div class="td-v2-empty">
+                <div class="reg-loading" role="status" style="white-space:nowrap;justify-content:center">載入中…</div>
+                <div class="reg-loading-skeleton" aria-hidden="true">
+                  <div class="reg-loading-skeleton-row" />
+                  <div class="reg-loading-skeleton-row" />
+                </div>
+              </div>
             ) : membersStatus === 'error' ? (
               <div class="td-v2-empty" role="alert">
                 <div>載入失敗</div>

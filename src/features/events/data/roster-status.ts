@@ -8,6 +8,7 @@ import type {
 } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
 import { runInBackground } from './background-work';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 import type { OperateContext } from './operate-permissions';
 import {
@@ -117,6 +118,8 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
       ? 'statusFailed' : 'regMissing');
   };
   const handleError = async (error: unknown): Promise<RosterStatusResult> => {
+    // 送出失敗（含 TIMEOUT）也失效：伺服器可能已寫入。成功路徑在送出後失效。
+    invalidateViewerRegistrations();
     const code = rosterStatusErrorCode(error);
     if (code === 'REGISTRATION_NOT_CONFIRMED' || code === 'REGISTRATION_NOT_WAITLISTED') {
       return reconcile();
@@ -176,6 +179,7 @@ export async function adjustRosterStatus(input: RosterStatusInput): Promise<Rost
       sentSnapshot = latest;
       try { response = await send(true); } catch (secondError) { return await handleError(secondError); }
     }
+    invalidateViewerRegistrations();
     if ('deduplicated' in response) return await reconcile();
     const targets = rosterStatusTargets(action, sentSnapshot.registrations, target.userId);
     const names = targets.map(reg => reg.participantType === 'companion'

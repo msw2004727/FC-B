@@ -11,7 +11,6 @@
   "viewAll": "查看全部",
   "signedOutTitle": "登入後查看你的下一場活動",
   "signedOutBody": "點擊上方 LINE 登入，即可查看你的報名活動。",
-  "loading": "正在載入下一場活動…",
   "loadError": "無法載入下一場活動，請重試。",
   "retry": "重試",
   "emptyTitle": "你目前還沒有報名活動",

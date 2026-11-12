@@ -10,7 +10,6 @@
   "tabsLabel": "活動列表分頁",
   "normal": "報名中",
   "chooseSport": "選擇運動",
-  "loading": "活動資料載入中…",
   "loadError": "無法載入活動，請重試。",
   "retry": "重試",
   "emptyTitle": "目前沒有符合條件的活動",
@@ -55,12 +54,10 @@
   },
   "detailPage": {
     "notFound": "找不到此活動",
-    "loading": "活動詳情載入中…",
     "loadError": "無法載入活動詳情，請重試。",
     "actionError": "操作失敗，請稍後重試。",
     "refreshError": "名單尚未同步，請重試更新。為避免重複操作，報名暫時停用。",
     "roster": "參加名單",
-    "rosterLoading": "參加名單載入中…",
     "rosterError": "無法載入參加名單，請重試。",
     "historyError": "無法同步你的報名狀態，請重試後再報名。",
     "location": "地點",
@@ -269,5 +266,26 @@
     "title": "開啟 LINE 通知，不再錯過！",
     "descLine1": "報名成功、候補遞補、",
     "descLine2": "活動異動或取消，都會即時通知你。"
+  },
+  "listCard": {
+    "barConfirmed": "已報 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "已報 {confirmed} 人",
+    "barReserved": "團隊保留 {reserved}",
+    "barWaitlist": "候補 {waitlist}",
+    "barSeparator": "，",
+    "fold": {
+      "ended": {
+        "one": "已結束 {count} 場",
+        "other": "已結束 {count} 場"
+      },
+      "cancelled": {
+        "one": "已取消 {count} 場",
+        "other": "已取消 {count} 場"
+      },
+      "mixed": {
+        "one": "已結束或取消 {count} 場",
+        "other": "已結束或取消 {count} 場"
+      }
+    }
   }
 }

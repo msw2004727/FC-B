@@ -14,6 +14,7 @@ import { beginSubmitting } from '@/core/submit-guard';
 import type { CancelRegistrationResponse } from '@/data/contract/callables';
 import { writeOpLog } from '@/data/op-log';
 import { runInBackground } from './background-work';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import type { RosterRegistrationInput } from './attendance-roster-model';
 import {
   canRemoveConfirmedParticipant,
@@ -284,6 +285,8 @@ export async function managerRemoveRegistration(
     };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+    invalidateViewerRegistrations();
   }
 
   const eventTitle = str(event.title);

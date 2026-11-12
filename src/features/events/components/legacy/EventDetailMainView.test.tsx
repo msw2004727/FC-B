@@ -161,7 +161,11 @@ describe('C2 票根＋分區小卡', () => {
     expect(row?.textContent).toBe('已報 18/24剩 6');
     expect(row?.textContent).not.toContain('團隊保留');
     expect(row?.textContent).not.toContain('候補');
-    expect(document.querySelector('.evd-progress-reserved')).toBeNull();
+    // 測試同步更新（2026-11-12 計量條改方案 C）：原 .evd-progress-reserved 改為 .evd-regbar-seg.is-team-open。
+    expect(document.querySelector('.evd-regbar-seg.is-team-open')).toBeNull();
+    expect((document.querySelector('.evd-regbar-seg.is-general') as HTMLElement | null)?.style.width).toBe('75%');
+    // 只有一般已報一種時不出圖例
+    expect(document.querySelector('.evd-regbar-legend')).toBeNull();
   });
 
   it('有團隊保留與候補時報名卡列出剩餘、團隊保留、候補', () => {
@@ -171,7 +175,31 @@ describe('C2 票根＋分區小卡', () => {
     } as Partial<LegacyDetailEvent>), { confirmed: 18, waitlist: 3 });
     expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent)
       .toBe('已報 18/24剩 2 · 團隊保留 4 · 候補 3');
-    expect(document.querySelector('.evd-progress-reserved')).toBeTruthy();
+    // 測試同步更新（2026-11-12 計量條改方案 C）：原 .evd-progress-reserved 改為 .evd-regbar-seg.is-team-open。
+    expect(document.querySelector('.evd-regbar-seg.is-team-open')).toBeTruthy();
+    expect(document.querySelector('.evd-regbar-track.is-wait')).toBeTruthy();
+  });
+
+  it('方案 C：團隊已報／未報／候補各自成段，圖例只列 > 0 的項目且數字與上方一致', () => {
+    renderInfo(detailEvent({
+      max: 24,
+      teamReservationSummaries: [{ teamId: 't1', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+    } as Partial<LegacyDetailEvent>), { confirmed: 14 });
+    expect(document.querySelector('[data-detail-field="capacity-count"]')?.textContent)
+      .toBe('已報 14/24剩 6 · 團隊保留 4');
+    const widths = Array.from(document.querySelectorAll('.evd-regbar-seg'))
+      .map(el => `${el.className.replace('evd-regbar-seg ', '')}:${(el as HTMLElement).style.width}`);
+    expect(widths).toEqual(['is-general:41.667%', 'is-team:16.667%', 'is-team-open:16.667%']);
+    expect(document.querySelector('.evd-regbar-track.is-wait')).toBeNull();
+    expect(document.querySelector('.evd-regbar-legend')?.textContent).toBe('一般 10團隊 4保留 4');
+    // 審查 P2：色條 aria-hidden，圖例留給讀屏（「團隊 N」只在圖例出現）。
+    expect(document.querySelector('.evd-regbar-row')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.evd-regbar-legend')?.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('上限為 0 時不畫計量條', () => {
+    renderInfo(detailEvent({ max: 0 }), { confirmed: 3, waitlist: 1 });
+    expect(document.querySelector('.evd-regbar')).toBeNull();
   });
 });
 

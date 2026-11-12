@@ -1,7 +1,6 @@
 {
   "title": "無效資料查詢",
   "back": "返回",
-  "loading": "載入中...",
   "noPermission": "權限不足",
   "loadError": "載入失敗，請重試。",
   "retry": "重試",

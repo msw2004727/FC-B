@@ -315,6 +315,16 @@ describe('CheckinPage shell（卡 4-1）', () => {
     expect(document.querySelector('.reg-loading')).toBeNull();
   });
 
+  it('已登入但角色為 null（users 文件不存在或讀取失敗）時不轉圈、不讀活動', async () => {
+    // role 為 null 可能永遠不會到位且沒有重試，轉圈會變成永久載入，所以維持不轉圈。
+    mocks.context = { ...mocks.context, role: null };
+
+    renderPage();
+    await Promise.resolve();
+    expect(mocks.documents).not.toHaveBeenCalled();
+    expect(document.querySelector('.reg-loading')).toBeNull();
+  });
+
   it('活動文件未回時下拉旁有載入圈，下拉仍在原位；讀完換成選項', async () => {
     let release!: (events: EventDoc[]) => void;
     mocks.documents.mockReturnValue(new Promise((resolve) => {

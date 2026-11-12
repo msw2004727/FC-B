@@ -3,7 +3,7 @@
   "backHome": "Về trang chủ", "search": "Tìm kiếm", "filter": "Bộ lọc",
   "searchPlaceholder": "Tìm theo tên hoạt động hoặc địa điểm", "tabsLabel": "Danh sách hoạt động",
   "normal": "Đang nhận đăng ký", "chooseSport": "Chọn môn thể thao",
-  "loading": "Đang tải hoạt động…", "loadError": "Không thể tải hoạt động.",
+  "loadError": "Không thể tải hoạt động.",
   "retry": "Thử lại", "emptyTitle": "Không có hoạt động phù hợp",
   "emptyBody": "Hãy chọn môn thể thao hoặc từ khóa khác.",
   "sport": {
@@ -25,12 +25,11 @@
     "locationUnknown": "Chưa xác định địa điểm", "capacity": "{current}/{max} người"
   },
   "detailPage": {
-    "notFound": "Không tìm thấy sự kiện", "loading": "Đang tải chi tiết sự kiện…",
+    "notFound": "Không tìm thấy sự kiện",
     "loadError": "Không thể tải chi tiết sự kiện. Vui lòng thử lại.",
     "actionError": "Thao tác thất bại. Vui lòng thử lại.",
     "refreshError": "Danh sách chưa đồng bộ. Vui lòng thử cập nhật lại. Đăng ký tạm dừng để tránh thao tác trùng lặp.",
     "roster": "Danh sách người tham gia",
-    "rosterLoading": "Đang tải danh sách người tham gia…",
     "rosterError": "Không thể tải danh sách người tham gia. Vui lòng thử lại.",
     "historyError": "Không thể đồng bộ trạng thái đăng ký của bạn. Vui lòng thử lại trước khi đăng ký.",
     "location": "Địa điểm", "map": "Mở bản đồ", "time": "Thời gian", "opens": "Mở đăng ký",
@@ -208,5 +207,26 @@
     "title": "Bật thông báo LINE, không bỏ lỡ điều gì!",
     "descLine1": "Đăng ký thành công, được lên từ danh sách chờ,",
     "descLine2": "hoạt động thay đổi hoặc bị hủy — đều được báo ngay."
+  },
+  "listCard": {
+    "barConfirmed": "Đã đăng ký {confirmed}/{max} người",
+    "barConfirmedNoMax": "Đã đăng ký {confirmed} người",
+    "barReserved": "Giữ chỗ cho đội {reserved}",
+    "barWaitlist": "Chờ {waitlist}",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "{count} đã xong",
+        "other": "{count} đã xong"
+      },
+      "cancelled": {
+        "one": "{count} đã hủy",
+        "other": "{count} đã hủy"
+      },
+      "mixed": {
+        "one": "{count} xong/hủy",
+        "other": "{count} xong/hủy"
+      }
+    }
   }
 }

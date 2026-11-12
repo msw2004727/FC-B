@@ -9,6 +9,7 @@ import type { EventDoc } from './types';
 import type { StaffTeamOption } from './team-staff';
 import { canDetailTeamSignup } from './signup-context';
 import { eventStartMs } from './terminal';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import { normalizeTeamReservationSummaries, type NormalizedTeamReservationSummary } from './signup-restrictions';
 
 export { getStaffTeams as getTeamReservationStaffTeams } from './team-staff';
@@ -302,6 +303,8 @@ export function createTeamReservationController(
         return { status: 'error', message: teamReservationErrorMessage(error) };
       } finally {
         if (key) pending.delete(key);
+        // key 有值＝已送出 adjustTeamReservation；寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+        if (key) invalidateViewerRegistrations();
       }
     },
   };

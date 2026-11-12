@@ -11,7 +11,6 @@
   "saved": "푸시 알림 설정이 저장되었습니다",
   "saveFailed": "저장에 실패했습니다. 잠시 후 다시 시도해 주세요",
   "noPermission": "권한이 없습니다",
-  "loading": "불러오는 중...",
   "loadError": "불러오기 실패",
   "retry": "다시 불러오기",
   "row": {

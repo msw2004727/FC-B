@@ -471,6 +471,9 @@ export default function HomePage(): JSX.Element {
             />
           </div>
           <div class="home-sport-entry" id="home-sport-entry" aria-live="polite">
+            {eventsData.loading && sportRows.length === 0 ? (
+              <div class="reg-loading" style="white-space:nowrap">載入中…</div>
+            ) : null}
             {sportRows.map((item) => (
               <button
                 key={item.key}

@@ -15,9 +15,10 @@ const FADE_SEC = 0.7;
 /** 彗尾長度佔周長的百分比。 */
 const TAIL_PCT = 12;
 
-/** jsdom 沒有版面、或尚未排到尺寸時的設計盒，讓光軌仍能畫出來。實機一律量 offset。 */
-const FALLBACK_W = 372;
-const FALLBACK_H = 132;
+/** jsdom 沒有版面、或尚未排到尺寸時的設計盒，讓光軌仍能畫出來。實機一律量 offset。
+ *  UPD-3P 改單行（360px 寬時約 328×60），取代原本兩行加按鈕列的 372×132。 */
+const FALLBACK_W = 328;
+const FALLBACK_H = 60;
 
 const LAYER_LEN = {
   tail: TAIL_PCT,
@@ -280,15 +281,16 @@ export const UPDATE_PROMPT_FX_CSS = `
   --b2: #c58a33;
   --btn-text: #2b1a08;
   --tint: #fde68a;
+  /* UPD-3P 方案乙：單行停靠在底部導覽上方 8px（取代原本離底 72px、兩行加按鈕列）；位置與 reload-safety 備用外觀相同 */
   position: fixed;
   left: 50%;
-  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--bottombar-h, 64px) + 8px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 100000;
-  width: min(420px, calc(100vw - 48px));
+  width: min(420px, calc(100vw - 32px));
   box-sizing: border-box;
   border-radius: 16px;
-  padding: 14px;
+  padding: 10px 8px;
   color: #fff;
   isolation: isolate;
   overflow: visible;
@@ -303,17 +305,20 @@ export const UPDATE_PROMPT_FX_CSS = `
     inset 0 0 0 1px rgba(255, 255, 255, .14),
     inset 0 1px 0 rgba(255, 255, 255, .22);
 }
+#sw-reload-deferred-prompt.sw-reload-fx[data-dock="bare"] {
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
 #sw-reload-deferred-prompt.sw-reload-fx .row {
   display: flex;
   align-items: center;
-  gap: .7rem;
+  gap: .4rem;
   position: relative;
   z-index: 2;
 }
 #sw-reload-deferred-prompt.sw-reload-fx .ico {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -321,35 +326,23 @@ export const UPDATE_PROMPT_FX_CSS = `
   box-shadow: 0 0 18px var(--glow);
 }
 #sw-reload-deferred-prompt.sw-reload-fx .ico svg {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   color: #fff;
   animation: sw-reload-fx-spin 6s linear infinite;
 }
 @keyframes sw-reload-fx-spin { to { transform: rotate(360deg); } }
-#sw-reload-deferred-prompt.sw-reload-fx .txt { min-width: 0; flex: 1; }
+/* 標題一行、不用省略號：七語系用短句保證放得下（預覽腳本量 scrollWidth ≤ clientWidth） */
 #sw-reload-deferred-prompt.sw-reload-fx .t1 {
-  font-size: 1rem;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: .9rem;
   font-weight: 900;
   letter-spacing: .02em;
   line-height: 1.25;
   text-shadow: 0 1px 6px rgba(0, 0, 0, .35);
-}
-#sw-reload-deferred-prompt.sw-reload-fx .t2 {
-  font-size: .78rem;
-  opacity: .86;
-  margin-top: .15rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, .35);
-}
-#sw-reload-deferred-prompt.sw-reload-fx .acts {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  gap: .5rem;
-  margin-top: .8rem;
 }
 #sw-reload-deferred-prompt.sw-reload-fx button {
   font: inherit;
@@ -361,15 +354,16 @@ export const UPDATE_PROMPT_FX_CSS = `
 #sw-reload-deferred-prompt.sw-reload-fx .go {
   position: relative;
   overflow: hidden;
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 40px;
+  padding: 0 .75rem;
+  white-space: nowrap;
   border-radius: 999px;
   font-weight: 900;
-  font-size: .9rem;
-  letter-spacing: .04em;
+  font-size: .85rem;
   color: var(--btn-text);
   background: linear-gradient(180deg, var(--b1), var(--b2));
   box-shadow: 0 6px 18px var(--glow), inset 0 1px 0 rgba(255, 255, 255, .5);
@@ -390,14 +384,16 @@ export const UPDATE_PROMPT_FX_CSS = `
   85%, 100% { left: 120%; }
 }
 #sw-reload-deferred-prompt.sw-reload-fx .later {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 40px;
-  padding: 0 1rem;
+  padding: 0 .7rem;
+  white-space: nowrap;
   border-radius: 999px;
   font-weight: 800;
-  font-size: .85rem;
+  font-size: .8rem;
   color: rgba(255, 255, 255, .9);
   border: 1px solid rgba(255, 255, 255, .28);
   background: rgba(255, 255, 255, .10);
@@ -542,16 +538,6 @@ export function bindOrbitLayout(
   };
 }
 
-function readCopy(prompt: HTMLElement): { title: string; sub: string } {
-  const blocks = prompt.querySelectorAll(':scope > div > div');
-  const title = blocks.item(0)?.textContent ?? '';
-  const sub = blocks.item(1)?.textContent ?? '';
-  return {
-    title: title || '有新版本可用',
-    sub: sub || '完成目前操作後會自動更新。',
-  };
-}
-
 function prefersReducedMotion(): boolean {
   try {
     return typeof window.matchMedia === 'function'
@@ -577,7 +563,8 @@ let fxSeq = 0;
 
 /**
  * 把銅金毛玻璃、光軌、星芒套到既有提示框上。
- * 不重建按鈕節點，點擊監聽保持原樣。
+ * 不重建標題與按鈕節點（點擊監聽、強制升級改標題都沿用同一個節點），排成單行「圖示｜標題｜現在更新｜稍後」。
+ * 取代：原本另建標題與說明行（從舊 DOM 讀文字），按鈕放第二列。
  * 回傳清理函式：移除這個實例的 keyframes `<style>`、光軌與星芒。
  */
 export function applyUpdatePromptFx(prompt: HTMLElement): () => void {
@@ -585,7 +572,7 @@ export function applyUpdatePromptFx(prompt: HTMLElement): () => void {
   const id = `swfx${++fxSeq}`;
   const nowBtn = prompt.querySelector<HTMLButtonElement>('[data-sw-reload-now]');
   const laterBtn = prompt.querySelector<HTMLButtonElement>('[data-sw-reload-later]');
-  const copy = readCopy(prompt);
+  const t1 = prompt.querySelector<HTMLElement>('[data-sw-reload-title]') ?? document.createElement('div');
 
   const orbit = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   orbit.setAttribute('class', 'orbit');
@@ -602,33 +589,24 @@ export function applyUpdatePromptFx(prompt: HTMLElement): () => void {
   ico.className = 'ico';
   ico.setAttribute('aria-hidden', 'true');
   ico.innerHTML = REFRESH_SVG;
-  const txt = document.createElement('div');
-  txt.className = 'txt';
-  const t1 = document.createElement('div');
   t1.className = 't1';
-  t1.textContent = copy.title;
-  const t2 = document.createElement('div');
-  t2.className = 't2';
-  t2.textContent = copy.sub;
-  txt.append(t1, t2);
-  row.append(ico, txt);
+  t1.removeAttribute('style');
+  row.append(ico, t1);
 
-  const acts = document.createElement('div');
-  acts.className = 'acts';
   if (nowBtn) {
     nowBtn.classList.add('go');
     nowBtn.removeAttribute('style');
-    acts.append(nowBtn);
+    row.append(nowBtn);
   }
   if (laterBtn) {
     laterBtn.classList.add('later');
     laterBtn.removeAttribute('style');
-    acts.append(laterBtn);
+    row.append(laterBtn);
   }
 
   prompt.classList.add('sw-reload-fx');
   prompt.setAttribute('data-fx-id', id);
-  prompt.replaceChildren(orbit, burst, row, acts);
+  prompt.replaceChildren(orbit, burst, row);
   prompt.style.cssText = 'opacity:0';
 
   const style = document.createElement('style');

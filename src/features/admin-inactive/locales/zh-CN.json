@@ -1,7 +1,6 @@
 {
   "title": "无效数据查询",
   "back": "返回",
-  "loading": "加载中...",
   "noPermission": "权限不足",
   "loadError": "加载失败，请重试。",
   "retry": "重试",

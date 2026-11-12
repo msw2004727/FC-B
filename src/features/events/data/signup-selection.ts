@@ -7,6 +7,7 @@ import {
   SignupError,
   type RegisterForEventInput,
 } from './signup';
+import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 
 type RegisterResult = Awaited<ReturnType<typeof registerForEvent>>;
 type RegisterPayload = ReturnType<typeof buildRegisterPayload>;
@@ -84,6 +85,9 @@ export function registerSelection(
         messageKey: `event.signup.error.${keys[originalCode] ?? 'unknown'}`,
         message: error instanceof Error ? error.message : 'Registration failed',
       });
+    } finally {
+      // 寫入呼叫一結束就失效（成功、失敗、逾時都算）：伺服器可能已寫入。
+      invalidateViewerRegistrations();
     }
   })();
 

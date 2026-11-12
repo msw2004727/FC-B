@@ -3,7 +3,7 @@
   "backHome": "Back to home", "search": "Search", "filter": "Filter",
   "searchPlaceholder": "Search by event or location", "tabsLabel": "Activity lists",
   "normal": "Registration open", "chooseSport": "Choose a sport",
-  "loading": "Loading activities…", "loadError": "Activities could not be loaded.",
+  "loadError": "Activities could not be loaded.",
   "retry": "Retry", "emptyTitle": "No matching activities",
   "emptyBody": "Try another sport or search term.",
   "sport": {
@@ -25,12 +25,11 @@
     "locationUnknown": "Location to be confirmed", "capacity": "{current}/{max} people"
   },
   "detailPage": {
-    "notFound": "Event not found", "loading": "Loading event details…",
+    "notFound": "Event not found",
     "loadError": "Event details could not be loaded. Please retry.",
     "actionError": "The action failed. Please try again.",
     "refreshError": "The participant list has not synced. Retry the update. Registration is temporarily disabled to prevent duplicate actions.",
     "roster": "Participant list",
-    "rosterLoading": "Loading the participant list…",
     "rosterError": "The participant list could not be loaded. Please retry.",
     "historyError": "Your registration status could not be synced. Please retry before registering.",
     "location": "Location", "map": "Open in Maps", "time": "Time", "opens": "Registration opens",
@@ -212,5 +211,26 @@
     "title": "Turn on LINE notifications and never miss out!",
     "descLine1": "Signup confirmations, waitlist promotions,",
     "descLine2": "event changes or cancellations — we'll notify you right away."
+  },
+  "listCard": {
+    "barConfirmed": "{confirmed} of {max} signed up",
+    "barConfirmedNoMax": "{confirmed} signed up",
+    "barReserved": "{reserved} reserved for teams",
+    "barWaitlist": "{waitlist} on waitlist",
+    "barSeparator": ", ",
+    "fold": {
+      "ended": {
+        "one": "{count} ended",
+        "other": "{count} ended"
+      },
+      "cancelled": {
+        "one": "{count} cancelled",
+        "other": "{count} cancelled"
+      },
+      "mixed": {
+        "one": "{count} ended/cancelled",
+        "other": "{count} ended/cancelled"
+      }
+    }
   }
 }

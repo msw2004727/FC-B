@@ -1,0 +1,76 @@
+/* 活動列表（2026-11-13 站長選定）：篩選列＋月份標題黏頂、已結束場次收合。B 新增，不加進 A 的 activity.css。
+ * 本檔路徑含 /legacy/，打包時 legacy-css-scope 會自動加上 .legacy-ui（以 .legacy-ui 開頭的選擇器不改寫）。 */
+
+/* 黏頂前提：A 的 body 規則（改寫到 .legacy-ui）、.page、.timeline-calendar 都帶 overflow-x:hidden／overflow:hidden，
+ * 會讓這幾層變成捲動容器、sticky 失效。只在活動列表這三層保留 hidden 再以 clip 覆蓋（只裁切、不產生捲動容器）；
+ * 不支援 clip 的舊瀏覽器（Safari < 16、Chrome < 90）忽略該宣告退回 hidden，只是不黏頂，不會破版（PM 2026-11-13 裁定）。 */
+.legacy-ui.activities-root,
+#page-activities,
+#page-activities .timeline-calendar {
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+/* 頁籤列＋地區列：貼在頂欄下方（頂欄高度算法同 app-shell.css 的 .app-main padding-top）。
+ * 特異度需高於 activity.css 的 #page-activities > :not(.activity-female-petals)（position: relative）。 */
+#page-activities.page > .activity-sticky-filters {
+  position: -webkit-sticky;
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--qa-banner-h, 0px) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
+  z-index: 5;
+  padding-top: .25rem;
+  background: var(--bg-root);
+}
+
+/* 月份標題貼在篩選列下方；top 由 ActivitiesPage 量篩選列實際高度後寫在行內 style（沒量到前不黏）。
+ * z-index 6：高於卡片的正取／候補／不公開印章（3）與開啟中遮罩（3、5），捲動時印章不會蓋過月份；
+ * 篩選列在外層（#activity-list 是 z-index 1 的堆疊層），月份不會蓋過篩選列（Opus 審查 P2，2026-11-13）。 */
+#page-activities .tl-month-header {
+  position: -webkit-sticky;
+  position: sticky;
+  z-index: 6;
+}
+
+/* 已結束／已取消收合列 */
+.tl-ended-fold {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.tl-ended-fold-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: .42rem .65rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* R-UI-027：不讓瀏覽器自動斷行；各語系文案已縮短到 360px 一行放得下，超出時以省略號收尾（最後防線）。 */
+.tl-ended-fold-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-ended-fold-caret {
+  flex-shrink: 0;
+  font-size: .7rem;
+}
+.tl-ended-fold-list {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.tl-ended-fold-list[hidden] {
+  display: none;
+}

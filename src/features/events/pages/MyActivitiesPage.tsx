@@ -10,6 +10,7 @@ import { useSwipeTabs } from '@/core/use-swipe-tabs';
 import { useUserRoles } from '@/data/user-roles';
 import { useViewer } from '@/features/profile/data/viewer';
 import { lt, useT } from '@/i18n/i18n';
+import type { ActionRingControl } from '@/ui/action-ring';
 import { appConfirm } from '@/ui/AppConfirm';
 import { EmptyState } from '@/ui/EmptyState';
 import { toast } from '@/ui/Toast';
@@ -371,11 +372,12 @@ export default function MyActivitiesPage(): JSX.Element {
    * A `cancelMyActivity`／`reopenMyActivity`／`relistMyActivity` 的畫面流程：
    * 課程連結 → 權限 →（重開／上架）時間已過提示 → 確認框 → 寫入 → 重新整理列表 → 成功提示。
    */
-  async function handleLifecycle(kind: LifecycleKind, e: EventDoc): Promise<void> {
+  async function handleLifecycle(kind: LifecycleKind, e: EventDoc, ring: ActionRingControl): Promise<void> {
     await runEventLifecycleAction(kind, e, {
       viewer,
       operateCtx,
       busy: lifecycleBusyRef.current,
+      ring,
       onDone: () => {
         void loadAll(activeTab, true);
       },
@@ -613,8 +615,8 @@ export default function MyActivitiesPage(): JSX.Element {
                     operateCtx={operateCtx}
                     creatorRole={roles[creatorUid]}
                     onEdit={handleEdit}
-                    onLifecycle={(kind, evDoc) => {
-                      void handleLifecycle(kind, evDoc);
+                    onLifecycle={(kind, evDoc, ring) => {
+                      void handleLifecycle(kind, evDoc, ring);
                     }}
                     onDelete={(evDoc) => {
                       void handleDelete(evDoc);

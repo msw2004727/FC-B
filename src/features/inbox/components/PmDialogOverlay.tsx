@@ -16,6 +16,7 @@ import {
   subscribeConversation,
   type PmMessage,
 } from '../data/pm-repo';
+import { beginOptimisticPmRead } from '../data/inbox-store';
 import { closePmDialog, usePmDialogTarget } from './pm-dialog-store';
 import { formatPmTime, renderPmMessageBody } from './pm-message-format';
 
@@ -359,6 +360,8 @@ export function PmDialogOverlay(): JSX.Element | null {
     let active = true;
     let hasReceivedSnapshot = false;
     let unsubscribe: (() => void) | null = null;
+    // 鈴鐺樂觀已讀：看到未讀就先扣，已讀寫入結束再結算（失敗還原成伺服器資料）。
+    let settleOptimisticRead: ((ok: boolean) => void) | null = null;
 
     const clearReadTimer = (): void => {
       if (readTimerRef.current) {
@@ -370,6 +373,9 @@ export function PmDialogOverlay(): JSX.Element | null {
     const runMarkRead = async (): Promise<void> => {
       if (!active || readRunningRef.current) return;
       readRunningRef.current = true;
+      const settleRead = settleOptimisticRead;
+      settleOptimisticRead = null;
+      let ok = false;
       try {
         let guard = 0;
         while (active && guard < 20) {
@@ -382,15 +388,18 @@ export function PmDialogOverlay(): JSX.Element | null {
             break;
           }
         }
+        ok = true;
       } catch (err) {
         if (active) console.warn('[pm-dialog] mark read failed', err);
       } finally {
         readRunningRef.current = false;
+        settleRead?.(ok);
       }
     };
 
     const scheduleMarkRead = (): void => {
       if (!active) return;
+      settleOptimisticRead = beginOptimisticPmRead(myUid, conversationId);
       clearReadTimer();
       readTimerRef.current = setTimeout(() => {
         readTimerRef.current = null;
@@ -428,6 +437,9 @@ export function PmDialogOverlay(): JSX.Element | null {
     return () => {
       active = false;
       clearReadTimer();
+      // 還沒送出已讀就關閉：撤掉樂觀標記，鈴鐺回到伺服器資料。
+      settleOptimisticRead?.(false);
+      settleOptimisticRead = null;
       if (unsubscribe) {
         try {
           unsubscribe();

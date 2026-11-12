@@ -6,6 +6,7 @@ import { generateId } from '@/data/ids';
 import { coursePlans, coursePlanEnrollments, coursePlanSessions } from '@/data/paths';
 import { assertAllowedFields } from '@/data/write-guard';
 import type { TeamDoc } from '@/features/clubs/data/types';
+import { invalidateViewerRegistrations } from '@/features/events/data/viewer-registrations-cache';
 import {
   normalizeAttendance,
   normalizeEnrollment,
@@ -200,28 +201,39 @@ export const courseRepo: CourseRepo = {
   },
 
   async saveSelfAttendance({ team, planId, session, student, kind }) {
-    const res = await callFn('saveEduCourseSelfAttendance', {
-      teamId: team.apiId,
-      planId,
-      sessionId: session.id,
-      date: session.date,
-      studentId: student.id,
-      studentName: student.name,
-      kind,
-    });
+    let res;
+    try {
+      res = await callFn('saveEduCourseSelfAttendance', {
+        teamId: team.apiId,
+        planId,
+        sessionId: session.id,
+        date: session.date,
+        studentId: student.id,
+        studentName: student.name,
+        kind,
+      });
+    } finally {
+      // O5：伺服器會同步改連動活動的 events/{id}/registrations；呼叫一結束（成功或失敗）就失效登入者全歷史快取。
+      invalidateViewerRegistrations();
+    }
     return { signedIn: res.signedIn === true || res.kind === 'signin' };
   },
 
   async saveSelfLeave({ team, planId, session, student, leave }) {
-    await callFn('saveEduCourseSelfLeave', {
-      teamId: team.apiId,
-      planId,
-      sessionId: session.id,
-      date: session.date,
-      studentId: student.id,
-      studentName: student.name,
-      leave,
-    });
+    try {
+      await callFn('saveEduCourseSelfLeave', {
+        teamId: team.apiId,
+        planId,
+        sessionId: session.id,
+        date: session.date,
+        studentId: student.id,
+        studentName: student.name,
+        leave,
+      });
+    } finally {
+      // O5：同 saveSelfAttendance，請假會同步改連動活動報名。
+      invalidateViewerRegistrations();
+    }
   },
 
   async createPendingStudent(team, input) {

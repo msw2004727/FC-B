@@ -326,6 +326,31 @@ describe('HomePage (legacy A DOM & CSS)', () => {
     expect(typeof registrationStatusMeta).toBe('function');
   });
 
+  it('運動入口活動還在載入時顯示圈，完成後換成各運動數量', async () => {
+    let release!: () => void;
+    const pending = new Promise<string[]>((resolve) => { release = () => resolve(['events']); });
+    let loaded = false;
+    const events = [{
+      id: 'e1', title: 'Football 1', status: 'open', date: '2030/10/20 18:00~20:00', sportTag: 'football',
+    }];
+    vi.mocked(getEventsRepo).mockReturnValue({
+      loadEventsStatic: vi.fn().mockImplementation(() => pending.then((v) => { loaded = true; return v; })),
+      ensureTerminalEventsLoaded: vi.fn().mockResolvedValue(['events']),
+      loadMoreTerminalEvents: vi.fn().mockResolvedValue(0),
+      getSnapshot: () => ({ active: loaded ? events : [], terminal: [] }),
+    });
+    const { container } = render(<HomePage />);
+    const entry = container.querySelector('#home-sport-entry')!;
+    const status = entry.querySelector('.reg-loading');
+    // 外層 #home-sport-entry 已是 aria-live polite，內層不再重複 role="status"。
+    expect(status).toBeTruthy();
+    expect(status?.hasAttribute('role')).toBe(false);
+    expect(entry.querySelector('.home-sport-chip[data-home-sport="football"]')).toBeNull();
+    await act(async () => { release(); });
+    await waitFor(() => expect(entry.querySelector('.home-sport-chip[data-home-sport="football"]')).toBeTruthy());
+    expect(entry.querySelector('.reg-loading')).toBeNull();
+  });
+
   it('renders sport quick entry counts from visible active events and navigates on click', async () => {
     const events = [
       {

@@ -159,10 +159,19 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
     if (matchedUser && matchedUser.name.trim() !== raw && matchedUser.uid.trim() !== raw) setMatchedUser(null);
     const q = raw.toLowerCase();
     renderUserMatches(raw, q, false, false);
-    const ready = await loadUserDirectory();
-    if (!alive.current || seq !== userSeq.current || userQueryRef.current.trim() !== raw || targetRef.current !== 'individual') return;
-    const hasMatch = matchUsers(getUserDirectory(), q, canViewRawUid).length > 0;
-    renderUserMatches(raw, q, true, !ready && !hasMatch);
+    // 名單載入拒絕（取登入者失敗等）比照 ready=false 收尾顯示「載入失敗」，不停在載入中；拒絕仍往外拋給呼叫端記警告（L-07）。
+    let ready = false;
+    let loadError: unknown = null;
+    try {
+      ready = await loadUserDirectory();
+    } catch (err) {
+      loadError = err ?? new Error('user directory load failed');
+    }
+    if (alive.current && seq === userSeq.current && userQueryRef.current.trim() === raw && targetRef.current === 'individual') {
+      const hasMatch = matchUsers(getUserDirectory(), q, canViewRawUid).length > 0;
+      renderUserMatches(raw, q, true, !ready && !hasMatch);
+    }
+    if (loadError) throw loadError;
   }
 
   async function selectUser(uid: string): Promise<void> {
@@ -337,7 +346,12 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
               data-uid={u.uid}
               onMouseDown={(event) => {
                 event.preventDefault();
-                void selectUser(u.uid);
+                // 驗證前取登入者（getFirebase）可能拒絕；沿用驗證失敗提示，不留未處理拒絕（L-07）。
+                void selectUser(u.uid).catch((err: unknown) => {
+                  // eslint-disable-next-line no-console
+                  console.warn('[MessageAdmin] user select verify failed:', err);
+                  if (alive.current) toast.show({ message: t('inbox.admin.validation.selectVerifyFailed'), tone: 'error' });
+                });
               }}
             >
               <span class="ce-delegate-item-name">{u.name}</span>
@@ -429,7 +443,10 @@ export function MessageComposeModal(props: MessageComposeModalProps): JSX.Elemen
               autocomplete="off"
               value={userQuery}
               onInput={(e) => {
-                void onUserInput(e.currentTarget.value);
+                void onUserInput(e.currentTarget.value).catch((err: unknown) => {
+                  // eslint-disable-next-line no-console
+                  console.warn('[MessageAdmin] user directory load failed:', err);
+                });
               }}
             />
             {renderDropdown(userDropdown, 'msg-user-dropdown')}

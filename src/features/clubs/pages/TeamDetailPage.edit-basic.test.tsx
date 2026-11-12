@@ -312,7 +312,7 @@ describe('TeamDetailPage 編輯基本資料：真表單 jsdom 整頁流程', () 
     // reload 尚未完成時保留原詳情，不跳回 loading shell。
     expect(view.container.querySelector('.td-v2-title')).toBe(title);
     expect(title.textContent).toBe('原俱樂部名稱');
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
 
     await act(async () => {
       pendingReload.resolve({

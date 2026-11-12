@@ -200,7 +200,11 @@ describe('HomePage 冷啟動：橫幅 REST 讀取', () => {
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('omit');
     expect(JSON.parse(String(init.body))).toEqual({
-      structuredQuery: { from: [{ collectionId: 'banners' }], limit: 200 },
+      structuredQuery: {
+        from: [{ collectionId: 'banners' }],
+        where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
+        limit: 200,
+      },
     });
     expect(init.headers).toEqual({ 'Content-Type': 'text/plain' }); // 簡單請求，不觸發 preflight
     const headerNames = Object.keys((init.headers ?? {}) as Record<string, string>).map((k) => k.toLowerCase());

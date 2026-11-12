@@ -35,6 +35,8 @@ import { createGuestViewer, type ViewerView } from '@/features/profile/data/view
 import { loadEventNotifyRecipientUids } from './event-change-notify';
 import { loadEventRegistrations } from './event-detail';
 import {
+  NOTIFY_CONCURRENCY,
+  NOTIFY_PARALLEL_MAX_RECIPIENTS,
   cancelEvent,
   isCourseLinkedLifecycleLocked,
   isEventStartPassed,
@@ -251,6 +253,128 @@ describe('cancelEvent', () => {
     });
     expect(mockSendNotify).not.toHaveBeenCalled();
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 通知小批並行（11-12：≤100 人一次 5 人，>100 人逐人，避開一般層每分鐘上限） ──
+
+describe('cancelEvent 通知小批並行', () => {
+  type Result = Awaited<ReturnType<typeof sendTemplateNotification>>;
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 30; i += 1) await Promise.resolve();
+  };
+  const uids = (n: number): string[] => Array.from({ length: n }, (_, i) => `r${i}`);
+  /** 每次呼叫回傳一個可手動完成的 Promise，並記錄同時進行中的最大數。 */
+  function controllableNotify() {
+    const pending: Array<{ uid: string; resolve(): void; reject(e: unknown): void }> = [];
+    const state = { inFlight: 0, maxInFlight: 0 };
+    mockSendNotify.mockImplementation((input) => {
+      state.inFlight += 1;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      return new Promise<Result>((resolve, reject) => {
+        pending.push({
+          uid: input.targetUid,
+          resolve: () => { state.inFlight -= 1; resolve({ delivered: true, linePushed: false }); },
+          reject: (e) => { state.inFlight -= 1; reject(e); },
+        });
+      });
+    });
+    return { pending, state };
+  }
+
+  it('門檻常數：一次 5 人、100 人以內才並行', () => {
+    expect(NOTIFY_CONCURRENCY).toBe(5);
+    expect(NOTIFY_PARALLEL_MAX_RECIPIENTS).toBe(100);
+  });
+
+  it('10 人：同時最多 5 人、每人一次；單人失敗其餘照送；全部完成後才寫操作日誌', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const list = uids(10);
+      mockLoadRecipients.mockResolvedValue(list);
+      const { pending, state } = controllableNotify();
+      let done = false;
+      const running = cancelEvent({ event: ev(), eventDocId: 'doc-1', viewer: adminViewer(), now: new Date() })
+        .then(() => { done = true; });
+
+      await flush();
+      expect(mockSendNotify).toHaveBeenCalledTimes(5);
+      expect(state.inFlight).toBe(5);
+      expect(mockSetDoc).not.toHaveBeenCalled();
+
+      // 第一批：第 2 人失敗，其餘成功；同批未全部結束前不送下一批。
+      const failure = new Error('net');
+      pending[0]!.resolve();
+      pending[1]!.reject(failure);
+      pending[2]!.resolve();
+      pending[3]!.resolve();
+      await flush();
+      expect(mockSendNotify).toHaveBeenCalledTimes(5);
+      pending[4]!.resolve();
+      await flush();
+      expect(mockSendNotify).toHaveBeenCalledTimes(10);
+      expect(mockSetDoc).not.toHaveBeenCalled();
+
+      for (const item of pending.slice(5, 9)) item.resolve();
+      await flush();
+      // 最後一人還沒完成：仍不寫操作日誌、cancelEvent 未結束。
+      expect(mockSetDoc).not.toHaveBeenCalled();
+      expect(done).toBe(false);
+
+      pending[9]!.resolve();
+      await running;
+      expect(mockSetDoc).toHaveBeenCalledTimes(1);
+      expect(state.maxInFlight).toBe(5);
+      expect(mockSendNotify.mock.calls.map(([input]) => input.targetUid)).toEqual(list);
+      // 失敗處理同舊版：只 warn（同樣的訊息與欄位），不往外拋。
+      expect(warn).toHaveBeenCalledWith('[event-lifecycle] notify failed', {
+        templateKey: 'event_cancelled',
+        uid: 'r1',
+        err: failure,
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('101 人（超過門檻）：退回逐人送，同時最多 1 人、每人一次', async () => {
+    const list = uids(NOTIFY_PARALLEL_MAX_RECIPIENTS + 1);
+    mockLoadRecipients.mockResolvedValue(list);
+    const state = { inFlight: 0, maxInFlight: 0 };
+    mockSendNotify.mockImplementation(async () => {
+      state.inFlight += 1;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      await Promise.resolve();
+      await Promise.resolve();
+      state.inFlight -= 1;
+      return { delivered: true, linePushed: false };
+    });
+
+    await cancelEvent({ event: ev(), eventDocId: 'doc-1', viewer: adminViewer(), now: new Date() });
+
+    expect(state.maxInFlight).toBe(1);
+    expect(mockSendNotify).toHaveBeenCalledTimes(list.length);
+    expect(mockSendNotify.mock.calls.map(([input]) => input.targetUid)).toEqual(list);
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('剛好 100 人：仍並行（同時最多 5 人）', async () => {
+    const list = uids(NOTIFY_PARALLEL_MAX_RECIPIENTS);
+    mockLoadRecipients.mockResolvedValue(list);
+    const state = { inFlight: 0, maxInFlight: 0 };
+    mockSendNotify.mockImplementation(async () => {
+      state.inFlight += 1;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      await Promise.resolve();
+      state.inFlight -= 1;
+      return { delivered: true, linePushed: false };
+    });
+
+    await cancelEvent({ event: ev(), eventDocId: 'doc-1', viewer: adminViewer(), now: new Date() });
+
+    expect(state.maxInFlight).toBe(5);
+    expect(new Set(mockSendNotify.mock.calls.map(([input]) => input.targetUid)).size).toBe(100);
+    expect(mockSendNotify).toHaveBeenCalledTimes(100);
   });
 });
 

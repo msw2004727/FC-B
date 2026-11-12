@@ -123,6 +123,29 @@ describe('QrPage (/profile/qr legacy #page-qrcode DOM, M-028)', () => {
     expect(document.querySelector('.line-avatar-spinner')).toBeNull();
   });
 
+  // L-43：登入狀態還沒判定時當載入中，不先閃登入提示與登入鈕；判定未登入後才顯示。
+  it('登入狀態尚未判定時顯示載入圈，不顯示登入提示；判定後才顯示', () => {
+    mockViewerState.current = { ...createGuestViewer(), authPending: true };
+    const view = render(
+      <LocationProvider>
+        <QrPage />
+      </LocationProvider>,
+    );
+    expect(view.queryByText('登入後即可顯示簽到 QR Code')).toBeNull();
+    expect(view.queryByText('LINE 登入')).toBeNull();
+    expect(document.querySelector('.line-avatar-spinner')).not.toBeNull();
+    expect(mockRenderQrToCanvas).not.toHaveBeenCalled();
+
+    mockViewerState.current = createGuestViewer();
+    view.rerender(
+      <LocationProvider>
+        <QrPage />
+      </LocationProvider>,
+    );
+    expect(view.getByText('登入後即可顯示簽到 QR Code')).not.toBeNull();
+    expect(document.querySelector('.line-avatar-spinner')).toBeNull();
+  });
+
   it('產生中方塊內有既有旋轉圈，完成後換成 canvas', async () => {
     const uid = 'Uuser1234567890abcdef1234567890ab';
     mockViewerState.current = createMinimalViewer(uid);

@@ -70,6 +70,7 @@ import {
   type TeamFormModalComponent,
 } from '../components/legacy/team-form-loader';
 import { useTeamImageUpload } from '../components/legacy/use-team-image-upload';
+import { PageSpinner } from '@/ui/PageSpinner';
 import '../legacy/team.css';
 import '../legacy/team-detail-v2.css';
 
@@ -540,9 +541,7 @@ function TeamDetailContent({
   if (access === 'pending' || teamState.status === 'loading') {
     return (
       <ShellState teamId={id}>
-        <div class="td-v2-empty" role="status">
-          載入中…
-        </div>
+        <PageSpinner />
       </ShellState>
     );
   }

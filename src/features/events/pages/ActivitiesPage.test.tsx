@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { ACTIVE_SPORT_STORAGE_KEY, _resetSportFilterForTest, setActiveSport } from '@/core/sport-filter';
@@ -454,4 +456,266 @@ describe('T-054c AP1：時間軸的台北今天', () => {
       }
     },
   );
+});
+
+// 2026-11-13 站長選定：計量條風格 A（同長、不寫人數）、已結束收合、篩選列＋月份黏頂。
+describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', () => {
+  // 測試同步更新（2026-11-13 顧問 §3.136）：收合改看「結束時間已過或已取消」，不再只看 status。
+  // 本組固定台北 2030/10/19 12:00；「已結束」場次用當天 08:00~10:00（結束已過、仍在 6 小時內留在列表）。
+  const ENDED_MORNING = '2030/10/19 08:00~10:00';
+  let fixedNow: ReturnType<typeof vi.spyOn> | null = null;
+  beforeEach(() => {
+    fixedNow = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2030-10-19T12:00:00+08:00'));
+  });
+  afterEach(() => {
+    fixedNow?.mockRestore();
+    fixedNow = null;
+  });
+  const ROOT = resolve(__dirname, '../../../..');
+  const readCss = (file: string): string => readFileSync(resolve(ROOT, file), 'utf8');
+
+  /** 去掉註解、壓平空白後拆成 { 選擇器清單, 宣告 }，CSS 測試不逐字比對排版。 */
+  function cssRules(file: string): Array<{ selectors: string[]; body: string }> {
+    const flat = readCss(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+    return [...flat.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({
+      selectors: m[1]!.split(',').map((s) => s.trim()).filter(Boolean),
+      body: m[2]!.trim(),
+    }));
+  }
+  function ruleFor(file: string, selector: string): string {
+    const rule = cssRules(file).find((r) => r.selectors.includes(selector));
+    if (!rule) throw new Error(`找不到 ${selector}`);
+    return rule.body;
+  }
+  function decl(body: string, prop: string): string | undefined {
+    return body.split(';').map((d) => d.trim()).find((d) => d.startsWith(`${prop}:`))?.slice(prop.length + 1).trim();
+  }
+
+  function mountWith(events: EventDoc[]): ReturnType<typeof render> {
+    active = events;
+    return mount();
+  }
+
+  it('計量條：不寫人數、讀屏有人數；有縮圖與沒縮圖的卡用同一條規則對齊（同起點、同長度）', async () => {
+    const full = {
+      ...football,
+      id: 'full-team',
+      title: 'Full with team',
+      status: 'full',
+      current: 27,
+      max: 27,
+      realCurrent: 23,
+      waitlist: 7,
+      teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+    } as SportEvent;
+    const { container } = mountWith([football, pickleball, full]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="full-team"]')).toBeTruthy());
+
+    const withThumb = container.querySelector('.tl-event-row[data-event-id="public-football"]')!;
+    const wrap = withThumb.querySelector('.tl-gbar-wrap')!;
+    expect(wrap).toBeTruthy();
+    expect(wrap.classList.contains('is-no-thumb')).toBe(false);
+    expect(wrap.querySelector('.tl-gbar')?.getAttribute('aria-hidden')).toBe('true');
+    // 條旁不寫人數：外框裡只有讀屏文字（專案既有 .fcb-sr-only）
+    const sr = wrap.querySelector('.tl-gbar-sr')!;
+    expect(sr.classList.contains('fcb-sr-only')).toBe(true);
+    expect(sr.textContent).toBe('已報 6／12 人');
+    expect(wrap.textContent).toBe('已報 6／12 人');
+    // 條下方那行不動
+    expect(withThumb.querySelector('.tl-event-meta')?.textContent).toContain('6/12人');
+
+    const noThumb = container.querySelector('.tl-event-row[data-event-id="public-pickleball"]')!;
+    expect(noThumb.querySelector('.tl-event-thumb')).toBeNull();
+    expect(noThumb.querySelector('.tl-gbar-wrap')?.classList.contains('is-no-thumb')).toBe(true);
+
+    // 口徑同詳情頁：實際正取 23（realCurrent），團隊保留、候補只給讀屏
+    expect(container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-gbar-sr')?.textContent)
+      .toBe('已報 23／27 人，團隊保留 4，候補 7');
+    expect(container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-event-status.full')?.textContent).toBe('已額滿');
+
+    // 同長：沒縮圖的卡讓出的寬度＝縮圖寬＋卡片 gap（與 A 的 activity.css 對照，任一邊改了測試會紅）
+    const activityCss = 'src/features/events/legacy/activity.css';
+    const thumbW = decl(ruleFor(activityCss, '.tl-event-thumb'), 'width');
+    const rowGap = decl(ruleFor(activityCss, '.tl-event-row'), 'gap');
+    const cardCss = 'src/features/events/components/legacy/timeline-card-extra.css';
+    expect(decl(ruleFor(cardCss, '.tl-gbar-wrap.is-no-thumb'), 'margin-left')).toBe(`calc(${thumbW} + ${rowGap})`);
+    expect(decl(ruleFor(cardCss, '.tl-gbar'), 'flex')).toBe('1 1 auto');
+  });
+
+  it('沒有上限（max＝0）：條只剩軌道、讀屏只讀已報人數', async () => {
+    const noMax: SportEvent = { ...football, id: 'no-max', title: 'No max', current: 3, max: 0 };
+    const { container } = mountWith([noMax]);
+    await waitFor(() => expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')).toBeTruthy());
+    expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')?.getAttribute('style')).toBeFalsy();
+    expect(container.querySelector('[data-event-id="no-max"] .tl-gbar-sr')?.textContent).toBe('已報 3 人');
+  });
+
+  it('已結束／已取消以日期群組收成一行，點開才畫卡片；aria-controls 指向展開區；語系切換跟著換', async () => {
+    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended', date: ENDED_MORNING };
+    const cancelled: SportEvent = { ...football, id: 'cancel-1', title: 'Cancelled one', status: 'cancelled' };
+    const cancelledOther: SportEvent = { ...pickleball, id: 'cancel-2', title: 'Cancelled two', status: 'cancelled' };
+    const { container } = mountWith([football, ended, cancelled, pickleball, cancelledOther]);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')).toBeTruthy());
+
+    const day19 = container.querySelector('.tl-day-group[data-date-anchor="2030-10-19"]')!;
+    const btn19 = day19.querySelector('.tl-ended-fold-btn') as HTMLButtonElement;
+    expect(btn19.textContent).toBe('已結束或取消 2 場▸');
+    expect(btn19.getAttribute('aria-expanded')).toBe('false');
+    const list = container.querySelector(`#${btn19.getAttribute('aria-controls')}`) as HTMLElement;
+    expect(list).toBeTruthy();
+    expect(list.hidden).toBe(true);
+    expect(day19.querySelector('[data-event-id="ended-1"]')).toBeNull();
+    expect(day19.querySelector('[data-event-id="cancel-1"]')).toBeNull();
+    expect(day19.querySelector('[data-event-id="public-football"]')).toBeTruthy();
+    // 收合列在當天最前面
+    expect(day19.querySelector('.tl-events-col')?.firstElementChild?.classList.contains('tl-ended-fold')).toBe(true);
+
+    const day20 = container.querySelector('.tl-day-group[data-date-anchor="2030-10-20"]')!;
+    expect(day20.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已取消 1 場▸');
+
+    // 鍵盤可操作：原生 button（Enter／空白鍵由瀏覽器轉成 click），可取得焦點
+    expect(btn19.tagName).toBe('BUTTON');
+    expect(btn19.getAttribute('type')).toBe('button');
+    btn19.focus();
+    expect(document.activeElement).toBe(btn19);
+
+    fireEvent.click(btn19);
+    await waitFor(() => expect(list.querySelector('[data-event-id="ended-1"]')).toBeTruthy());
+    expect(list.hidden).toBe(false);
+    expect(list.querySelector('[data-event-id="cancel-1"]')).toBeTruthy();
+    expect(btn19.getAttribute('aria-expanded')).toBe('true');
+    expect(btn19.textContent).toBe('已結束或取消 2 場▾');
+    // 已結束的卡沒有計量條
+    expect(day19.querySelector('[data-event-id="ended-1"] .tl-gbar-wrap')).toBeNull();
+
+    await act(async () => { await setLocale('en'); });
+    await waitFor(() => expect(day20.querySelector('.tl-ended-fold-btn')?.textContent).toBe('1 cancelled▸'));
+    expect(btn19.textContent).toBe('2 ended/cancelled▾');
+    expect(day19.querySelector('[data-event-id="public-football"] .tl-gbar-sr')?.textContent).toBe('6 of 12 signed up');
+  });
+
+  it('進行中（已開始、未結束）不收合，卡片狀態膠囊照舊顯示「已結束」；結束後才收合（顧問 §3.136）', async () => {
+    const live: SportEvent = { ...football, id: 'live', title: 'Live now', date: '2030/10/19 11:00~13:00' };
+    const done: SportEvent = { ...football, id: 'done', title: 'Done', date: ENDED_MORNING };
+    const { container } = mountWith([live, done, football]);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')).toBeTruthy());
+    expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸');
+    const liveCard = container.querySelector('.tl-events-col > [data-event-id="live"]');
+    expect(liveCard).toBeTruthy();
+    expect(liveCard?.querySelector('.tl-event-status')?.textContent).toBe('已結束');
+    expect(container.querySelector('[data-event-id="done"]')).toBeNull();
+  });
+
+  it('沒有已結束場次時不出收合列', async () => {
+    const { container } = mountWith([football, pickleball]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    expect(container.querySelector('.tl-ended-fold')).toBeNull();
+  });
+
+  it('切換篩選讓收合的場次改變時，展開狀態重置（不跟位置走）', async () => {
+    const north: SportEvent = { ...football, id: 'ended-north', title: 'Ended north', status: 'ended', date: ENDED_MORNING, regionEnabled: true, region: '北部' };
+    const south: SportEvent = { ...football, id: 'ended-south', title: 'Ended south', status: 'ended', date: ENDED_MORNING, regionEnabled: true, region: '南部' };
+    const { container } = mountWith([football, north, south]);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 2 場▸'));
+    fireEvent.click(container.querySelector('.tl-ended-fold-btn') as HTMLElement);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('true'));
+
+    fireEvent.click(container.querySelector('.region-tab[data-region="北部"]') as HTMLElement);
+    await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸'));
+    expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('[data-event-id="ended-north"]')).toBeNull();
+  });
+
+  it('跨月且整天都已結束：日期錨點與今天標記保留；月曆跳日仍捲到該日', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2030-10-19T12:00:00+08:00'));
+    const scrollIntoView = vi.fn();
+    const original = (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scrollIntoView;
+    try {
+      const endedToday: SportEvent = { ...football, id: 'ended-today', title: 'Ended today', status: 'ended', date: ENDED_MORNING };
+      const nextMonth: SportEvent = { ...pickleball, id: 'next-month', title: 'Next month', date: '2030/11/01 18:00~20:00' };
+      const { container } = mountWith([endedToday, pickleball, nextMonth]);
+      await waitFor(() => expect(container.querySelector('.tl-day-group[data-date-anchor="2030-11-01"]')).toBeTruthy());
+      expect([...container.querySelectorAll('.tl-month-header')].map((h) => h.textContent)).toEqual(['2030 年 10 月', '2030 年 11 月']);
+      const today = container.querySelector('.tl-day-group[data-date-anchor="2030-10-19"]')!;
+      expect(today.querySelector('.tl-date-col')?.classList.contains('today')).toBe(true);
+      expect(today.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸');
+      expect(today.querySelector('.tl-event-row')).toBeNull();
+
+      fireEvent.click(container.querySelector('[data-atab="calendar"]') as HTMLElement);
+      await waitFor(() => {
+        expect(container.querySelector('.evt-cal-sport-summary[data-jump-date="2030-10-19"]')).toBeTruthy();
+      }, { timeout: 10_000 });
+      fireEvent.click(container.querySelector('.evt-cal-sport-summary[data-jump-date="2030-10-19"]') as HTMLElement);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+      expect(scrollIntoView.mock.contexts[0]).toBe(container.querySelector('.tl-day-group[data-date-anchor="2030-10-19"]'));
+    } finally {
+      (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = original;
+      clock.mockRestore();
+    }
+  }, 15_000);
+
+  it('黏頂：頁籤列＋地區列包在黏頂外框；量到篩選列高度後月份標題 top 貼在它下方', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const h = this.classList.contains('activity-sticky-filters') ? 80 : 0;
+      return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: h, width: 0, height: h, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      const { container } = mountWith([football]);
+      await waitFor(() => expect(container.querySelector('.tl-month-header')).toBeTruthy());
+      const sticky = container.querySelector('#page-activities > .activity-sticky-filters')!;
+      expect(sticky.querySelector('#activity-tabs')).toBeTruthy();
+      expect(sticky.querySelector('#activity-region-tabs')).toBeTruthy();
+      expect(container.querySelector('.legacy-ui.activities-root')).toBeTruthy();
+      await waitFor(() => expect(container.querySelector('.tl-month-header')?.getAttribute('style') ?? '').toContain('78px'));
+      // 新手友善／高強度維持灰色未開放
+      expect(container.querySelector('[data-atab="beginner"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
+      expect(container.querySelector('[data-atab="high-intensity"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('黏頂量測：ResizeObserver 觀察篩選列，頁面卸載時 disconnect', async () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      observe = observe;
+      unobserve = vi.fn();
+      disconnect = disconnect;
+    });
+    try {
+      const { container, unmount } = mountWith([football]);
+      await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+      expect(observe).toHaveBeenCalledWith(container.querySelector('.activity-sticky-filters'));
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('樣式：只覆寫活動列表三層的 overflow（保留 hidden 再以 clip 覆蓋）；月份標題層級高於卡片印章', () => {
+    const file = 'src/features/events/components/legacy/activity-list-extra.css';
+    const overflowRules = cssRules(file).filter((r) => /overflow-[xy]?:|overflow:/.test(r.body) && !r.selectors.some((s) => s.includes('tl-ended')));
+    expect(overflowRules.flatMap((r) => r.selectors).sort())
+      .toEqual(['#page-activities', '#page-activities .timeline-calendar', '.legacy-ui.activities-root'].sort());
+    const body = overflowRules[0]!.body;
+    expect(body.indexOf('overflow-x: hidden')).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf('overflow-x: clip')).toBeGreaterThan(body.indexOf('overflow-x: hidden'));
+    expect(decl(body, 'overflow-y')).toBe('visible');
+
+    expect(ruleFor(file, '#page-activities.page > .activity-sticky-filters')).toContain('position: sticky');
+    const month = ruleFor(file, '#page-activities .tl-month-header');
+    expect(month).toContain('position: sticky');
+    // 卡片印章、開啟中遮罩最高 5（activity.css），月份標題要更高
+    const stampZ = ['.tl-stamp-confirmed', '.tl-stamp-waitlisted', '.tl-stamp-private']
+      .map((s) => Number(decl(ruleFor('src/features/events/legacy/activity.css', s), 'z-index') ?? 0));
+    expect(Number(decl(month, 'z-index'))).toBeGreaterThan(Math.max(...stampZ, 5));
+    // 不得自創 CSS 變數（只用既有的 --topbar-h／--qa-*／--bg-root…）
+    expect(cssRules(file).some((r) => /(^|;)\s*--[\w-]+\s*:/.test(r.body))).toBe(false);
+    // 收合鈕不讓瀏覽器自動斷行，caret 不縮
+    expect(decl(ruleFor(file, '.tl-ended-fold-btn'), 'white-space')).toBe('nowrap');
+    expect(decl(ruleFor(file, '.tl-ended-fold-caret'), 'flex-shrink')).toBe('0');
+  });
 });

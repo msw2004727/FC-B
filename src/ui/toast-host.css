@@ -1,6 +1,7 @@
 /* M-040 & M-041：照 A css/base.css:1042-1056
    底部導覽上方置中單顆膠囊，z-index 10001 高於 modal 與 app-confirm；
-   有開啟中的 <dialog> 時 ToastHost 會掛進該 dialog，才不會被 showModal() 蓋住。 */
+   有開啟中的 <dialog> 時 ToastHost 會掛進該 dialog，才不會被 showModal() 蓋住。
+   UPD-3P：更新提示框顯示時（body.fcb-update-open，見 app-shell.css）再往上移 68px，不被提示框蓋住。 */
 .ui-toast-host {
   --comp-toast-host-text-default: var(--color-text-primary);
 
@@ -23,3 +24,7 @@
   overflow: visible;
 }
 
+/* 吐司掛進開啟中的 <dialog> 時仍在 body 底下，這條同樣有效。 */
+body.fcb-update-open .ui-toast-host {
+  bottom: calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px + 68px);
+}

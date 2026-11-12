@@ -33,7 +33,6 @@
     "pending": "Pending",
     "reviewed": "Reviewed"
   },
-  "loading": "Loading messages...",
   "loadError": "Unable to load messages. Please try again.",
   "retry": "Retry",
   "emptyTitle": "No messages in this category",

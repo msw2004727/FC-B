@@ -1,11 +1,16 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
+import { useT } from '@/i18n/i18n';
+import { actualConfirmedCount, type DetailEvent } from '../../data/detail-model';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import { getEventParticipantStats } from '../../data/participant-stats';
+import { buildRegCapacityBar } from '../../data/reg-capacity-bar';
 import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
+import { timelineBarStyle } from '../../data/timeline-capacity-bar';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
 import { getViewerEventRegState } from '../../data/viewer-reg-state';
+import './signup-a11y.css'; // 計量條讀屏人數用 .fcb-sr-only
 import './timeline-card-extra.css';
 
 export type LegacyEventDoc = EventDoc & {
@@ -105,6 +110,7 @@ export function TimelineEventCard({
   onSelect,
   onToggleFavorite,
 }: TimelineEventCardProps): JSX.Element {
+  const t = useT();
   const [failedImg, setFailedImg] = useState<string | null>(null);
   const [showPending, setShowPending] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -269,12 +275,28 @@ export function TimelineEventCard({
   const sportLabel = sportObj?.label ?? '足球';
   const symbol = sportSymbol(sportTag);
 
-  const pPct = stats.maxCount > 0
-    ? Math.min(100, Math.round(((stats.occupiedCount ?? stats.confirmedCount) / stats.maxCount) * 100))
-    : 0;
-  const pClr = pPct >= 100 ? 'var(--danger)' : pPct >= 70 ? 'var(--warning)' : 'var(--success)';
-  const wTag = stats.waitlistCount > 0 ? ` · 候補 ${stats.waitlistCount}` : '';
-  const rTag = stats.reservedRemainingCount > 0 ? ` · 預留 ${stats.reservedRemainingCount}` : '';
+  // 2026-11-13 站長選定風格 A：計量條每張卡同長、不寫人數（人數給讀屏）；口徑同詳情頁報名卡
+  // （實際正取＝actualConfirmedCount，不含團隊未報；團隊已報／未報分段）。取代原單色條＋「N/M人 · 預留 · 候補」。
+  const showBar = !isExternal && !isEnded;
+  const barConfirmed = showBar ? actualConfirmedCount(event as DetailEvent) : 0;
+  const barModel = showBar
+    ? buildRegCapacityBar({
+      teamReservationSummaries: (event as { teamReservationSummaries?: unknown }).teamReservationSummaries,
+      confirmedCount: barConfirmed,
+      reservedRemainingCount: stats.reservedRemainingCount,
+      waitlistCount: stats.waitlistCount,
+      maxCount: stats.maxCount,
+    })
+    : null;
+  const barLabel = showBar
+    ? [
+      stats.maxCount > 0
+        ? t('events.listCard.barConfirmed', { confirmed: barConfirmed, max: stats.maxCount })
+        : t('events.listCard.barConfirmedNoMax', { confirmed: barConfirmed }),
+      stats.reservedRemainingCount > 0 ? t('events.listCard.barReserved', { reserved: stats.reservedRemainingCount }) : '',
+      stats.waitlistCount > 0 ? t('events.listCard.barWaitlist', { waitlist: stats.waitlistCount }) : '',
+    ].filter(Boolean).join(t('events.listCard.barSeparator'))
+    : '';
 
   const classList = [
     'tl-event-row',
@@ -343,14 +365,11 @@ export function TimelineEventCard({
             )}
           </div>
         </div>
-        {!isExternal && !isEnded && (
-          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem">
-            <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
-              <div style={`width:${pPct}%;height:100%;background:${pClr};border-radius:3px`} />
-            </div>
-            <span style="font-size:.65rem;color:var(--text-muted);white-space:nowrap">
-              {`${stats.confirmedCount}/${stats.maxCount}人${rTag}${wTag}`}
-            </span>
+        {showBar && (
+          // 沒縮圖的卡資訊欄較寬，is-no-thumb 讓條讓出縮圖寬度，所有卡的條同起點、同長度。
+          <div class={eventImage ? 'tl-gbar-wrap' : 'tl-gbar-wrap is-no-thumb'}>
+            <div class="tl-gbar" aria-hidden="true" style={timelineBarStyle(barModel, stats.maxCount)} />
+            <span class="fcb-sr-only tl-gbar-sr">{barLabel}</span>
           </div>
         )}
         <div class="tl-event-meta">

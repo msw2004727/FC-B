@@ -25,6 +25,13 @@ describe('bump-version（規則照 A scripts/bump-version.js）', () => {
   it('台北日期：UTC 16:00 已是台北隔天', () => {
     expect(todayTaipei(new Date('2026-10-19T16:30:00Z'))).toBe('20261020');
   });
+  it('改完版號才重產 sitemap（顧問 §3.129：與 bump 同一步）', () => {
+    const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'bump-version.mjs'), 'utf8');
+    expect(src).toContain("import { regenerateSitemap } from './build-sitemap.mjs';");
+    const write = src.indexOf('fs.writeFileSync(VERSION_FILE');
+    expect(write).toBeGreaterThan(0);
+    expect(src.indexOf('await regenerateSitemap()', write)).toBeGreaterThan(write);
+  });
   it('src/version.ts 目前的版號符合格式', () => {
     const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'version.ts'), 'utf8');
     const v = src.match(/APP_VERSION = '([^']+)'/)?.[1] ?? '';

@@ -2,7 +2,7 @@
   "title": "活动", "nav": "活动", "detail": "活动详情", "pageTitle": "活动列表",
   "backHome": "返回首页", "search": "搜索", "filter": "筛选",
   "searchPlaceholder": "搜索活动名称或地点", "tabsLabel": "活动列表分页",
-  "normal": "报名中", "chooseSport": "选择运动", "loading": "活动资料载入中…",
+  "normal": "报名中", "chooseSport": "选择运动",
   "loadError": "无法载入活动，请重试。", "retry": "重试",
   "emptyTitle": "目前没有符合条件的活动", "emptyBody": "试试其他运动项目或搜索词。",
   "sport": {
@@ -23,11 +23,10 @@
     "locationUnknown": "地点待确认", "capacity": "{current}/{max}人"
   },
   "detailPage": {
-    "notFound": "找不到此活动", "loading": "活动详情载入中…",
+    "notFound": "找不到此活动",
     "loadError": "无法载入活动详情，请重试。", "actionError": "操作失败，请稍后重试。",
     "refreshError": "名单尚未同步，请重试更新。为避免重复操作，报名暂时停用。",
     "roster": "参加名单",
-    "rosterLoading": "参加名单载入中…",
     "rosterError": "无法载入参加名单，请重试。",
     "historyError": "无法同步你的报名状态，请重试后再报名。",
     "location": "地点", "map": "在地图打开", "time": "时间", "opens": "开放报名",
@@ -198,5 +197,26 @@
     "title": "开启 LINE 通知，不再错过！",
     "descLine1": "报名成功、候补递补、",
     "descLine2": "活动变更或取消，都会即时通知你。"
+  },
+  "listCard": {
+    "barConfirmed": "已报 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "已报 {confirmed} 人",
+    "barReserved": "团队保留 {reserved}",
+    "barWaitlist": "候补 {waitlist}",
+    "barSeparator": "，",
+    "fold": {
+      "ended": {
+        "one": "已结束 {count} 场",
+        "other": "已结束 {count} 场"
+      },
+      "cancelled": {
+        "one": "已取消 {count} 场",
+        "other": "已取消 {count} 场"
+      },
+      "mixed": {
+        "one": "已结束或取消 {count} 场",
+        "other": "已结束或取消 {count} 场"
+      }
+    }
   }
 }

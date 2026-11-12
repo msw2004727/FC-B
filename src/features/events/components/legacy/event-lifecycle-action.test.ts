@@ -168,3 +168,114 @@ describe('runEventLifecycleAction', () => {
     expect(deps.onDone).not.toHaveBeenCalled();
   });
 });
+
+// 11-12 站長回報：按下取消活動後沒反應、過一陣子才刷新。觸發按鈕改在確認後立即轉進度環。
+describe('runEventLifecycleAction 進度環', () => {
+  function deferred<T>(): { promise: Promise<T>; resolve(v: T): void; reject(e: unknown): void } {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+  function makeRing(mounted = true) {
+    const log: string[] = [];
+    let releaseCheck: () => void = () => {};
+    const ring = {
+      start: vi.fn(() => { log.push('start'); }),
+      succeed: vi.fn(() => {
+        log.push('succeed');
+        return new Promise<boolean>((resolve) => { releaseCheck = () => resolve(mounted); });
+      }),
+      fail: vi.fn(() => { log.push('fail'); }),
+    };
+    return { ring, log, releaseCheck: () => releaseCheck() };
+  }
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    mockAppConfirm.mockResolvedValue(true);
+  });
+
+  it('確認後、寫入完成前就 start；寫入完成先等 ✓ 停留，才重讀與提示', async () => {
+    const write = deferred<void>();
+    mockAppConfirm.mockResolvedValue(true);
+    mockCancelEvent.mockReturnValueOnce(write.promise);
+    const { ring, log, releaseCheck } = makeRing();
+    const deps = makeDeps({ ring });
+
+    const running = runEventLifecycleAction('cancel', makeEvent({ _docId: 'evt-r', id: 'evt-r' }), deps);
+    await flush();
+    // 寫入（含通知迴圈）尚未完成：環已開始、按鈕所在流程仍在 busy 中、尚未重讀。
+    expect(ring.start).toHaveBeenCalledTimes(1);
+    expect(mockCancelEvent).toHaveBeenCalledTimes(1);
+    expect(ring.succeed).not.toHaveBeenCalled();
+    expect(deps.busy.has('evt-r')).toBe(true);
+    expect(deps.onDone).not.toHaveBeenCalled();
+
+    // 處理中再按一次：busy 擋下，不再跳確認框、不重送。
+    expect(await runEventLifecycleAction('cancel', makeEvent({ _docId: 'evt-r', id: 'evt-r' }), deps)).toBe(false);
+    expect(mockAppConfirm).toHaveBeenCalledTimes(1);
+
+    write.resolve();
+    await flush();
+    expect(ring.succeed).toHaveBeenCalledTimes(1);
+    expect(deps.onDone).not.toHaveBeenCalled();
+    expect(mockToastShow).not.toHaveBeenCalled();
+
+    releaseCheck();
+    expect(await running).toBe(true);
+    expect(deps.onDone).toHaveBeenCalledTimes(1);
+    expect(mockToastShow).toHaveBeenCalledWith({ message: '活動已取消', tone: 'success' });
+    expect(log).toEqual(['start', 'succeed', 'fail']);
+    expect(deps.busy.has('evt-r')).toBe(false);
+  });
+
+  it('等 ✓ 期間按鈕卸載（succeed 回 false）仍照原流程重讀與提示', async () => {
+    const { ring, releaseCheck } = makeRing(false);
+    const deps = makeDeps({ ring });
+    const running = runEventLifecycleAction('reopen', makeEvent(), deps);
+    await flush();
+    releaseCheck();
+    expect(await running).toBe(true);
+    expect(mockReopenEvent).toHaveBeenCalledTimes(1);
+    expect(deps.onDone).toHaveBeenCalledTimes(1);
+    expect(mockToastShow).toHaveBeenCalledWith({ message: '活動已重新開放', tone: 'success' });
+  });
+
+  it('確認框按取消：不 start、不寫入', async () => {
+    mockAppConfirm.mockResolvedValue(false);
+    const { ring } = makeRing();
+    const result = await runEventLifecycleAction('cancel', makeEvent(), makeDeps({ ring }));
+    expect(result).toBe(false);
+    expect(ring.start).not.toHaveBeenCalled();
+    expect(ring.succeed).not.toHaveBeenCalled();
+    expect(mockCancelEvent).not.toHaveBeenCalled();
+  });
+
+  it('第一次寫入失敗 → fail 展開並提示失敗；第二次重按成功 → 重新呼叫寫入並打勾', async () => {
+    const { ring, log, releaseCheck } = makeRing();
+    const deps = makeDeps({ ring });
+    const event = makeEvent({ _docId: 'evt-retry', id: 'evt-retry' });
+    mockCancelEvent.mockRejectedValueOnce(new Error('offline'));
+
+    expect(await runEventLifecycleAction('cancel', event, deps)).toBe(false);
+    expect(log).toEqual(['start', 'fail', 'fail']);
+    expect(ring.succeed).not.toHaveBeenCalled();
+    expect(mockToastShow).toHaveBeenCalledWith({ message: '取消失敗，請重試', tone: 'error' });
+    expect(deps.onDone).not.toHaveBeenCalled();
+    expect(deps.busy.has('evt-retry')).toBe(false);
+
+    mockCancelEvent.mockResolvedValueOnce(undefined);
+    const second = runEventLifecycleAction('cancel', event, deps);
+    await flush();
+    releaseCheck();
+    expect(await second).toBe(true);
+    expect(mockCancelEvent).toHaveBeenCalledTimes(2);
+    expect(ring.start).toHaveBeenCalledTimes(2);
+    expect(ring.succeed).toHaveBeenCalledTimes(1);
+    expect(deps.onDone).toHaveBeenCalledTimes(1);
+  });
+});

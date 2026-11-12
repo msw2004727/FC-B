@@ -7,6 +7,7 @@
  * 從 `MyActivitiesPage#handleLifecycle` 原樣抽出（M-122 前置，卡 2Y）。
  */
 
+import type { ActionRingControl } from '@/ui/action-ring';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 
@@ -63,6 +64,11 @@ export interface LifecycleActionDeps {
   operateCtx: ReturnType<typeof operateContextFromViewer>;
   busy: Set<string>;
   onDone(): void;
+  /**
+   * 觸發按鈕的進度環（11-12 站長回報按下後沒反應）：確認後真正送出時 start，
+   * 寫入成功 succeed（✓ 停留後才重讀與提示），失敗或確認框按取消 fail。
+   */
+  ring?: Pick<ActionRingControl, 'start' | 'succeed' | 'fail'>;
 }
 
 function eventDocIdOf(e: EventDoc): string {
@@ -104,14 +110,19 @@ export async function runEventLifecycleAction(
   deps.busy.add(docId);
   try {
     if (!(await appConfirm(msgs.confirm))) return false;
+    deps.ring?.start();
     const input = { event, eventDocId: docId, viewer: deps.viewer };
     if (kind === 'cancel') await cancelEvent(input);
     else if (kind === 'reopen') await reopenEvent(input);
     else await relistEvent(input);
+    // ✓ 停留後才照原流程重讀與提示。不看回傳的「按鈕是否仍掛載」：按鈕在清單列裡，
+    // 個人頁切走圖示時列會卸載，但頁面的重讀（onDone）與全域提示仍要照跑（同改前）。
+    await deps.ring?.succeed();
     deps.onDone();
     toast.show({ message: msgs.done, tone: 'success' });
     return true;
   } catch (err: unknown) {
+    deps.ring?.fail();
     if (err instanceof EventLifecycleError && err.code === 'COURSE_LINKED') {
       toast.show({
         message:
@@ -127,6 +138,7 @@ export async function runEventLifecycleAction(
     }
     return false;
   } finally {
+    deps.ring?.fail();
     deps.busy.delete(docId);
   }
 }

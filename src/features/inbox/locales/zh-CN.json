@@ -33,7 +33,6 @@
     "pending": "待审核",
     "reviewed": "已审核"
   },
-  "loading": "消息加载中...",
   "loadError": "无法加载消息，请重试。",
   "retry": "重试",
   "emptyTitle": "此分类没有消息",

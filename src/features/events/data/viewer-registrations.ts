@@ -19,6 +19,7 @@ import {
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 import { filterSubcollectionDocs, registrations } from '@/data/paths';
 import type { RegistrationDoc } from './types';
+import { readViewerRegistrationsCached } from './viewer-registrations-cache';
 
 const REGISTRATIONS_COLLECTION = 'registrations';
 
@@ -29,14 +30,16 @@ const REGISTRATIONS_COLLECTION = 'registrations';
  * Rules `allow read: if isAuth()` 允許這筆查詢，單欄索引是自動的，不必新複合索引。
  * Firestore 以索引或權限拒絕時退回全歷史；拒絕不留快取。其他錯誤照舊 reject。
  * 查詢失敗時直接 reject，由呼叫端決定如何降級。
+ * O5：沒有 eventDocId 的全歷史讀取走 viewer-registrations-cache（同 uid 30 秒內共用）；
+ * 本場查詢與退回全歷史仍即時讀。報名判斷要即時資料時改用 loadViewerRegistrationsFresh。
  */
 export async function loadViewerRegistrations(
   uid: string,
   eventDocId?: string,
 ): Promise<RegistrationDoc[]> {
-  const { db } = await defaultGetFirebase();
   const parent = typeof eventDocId === 'string' ? eventDocId : '';
   if (parent.length > 0 && !parent.includes('/')) {
+    const { db } = await defaultGetFirebase();
     try {
       return await loadViewerEventRegistrationsWithDb(db, uid, parent);
     } catch (error) {
@@ -44,6 +47,12 @@ export async function loadViewerRegistrations(
       return loadViewerRegistrationsWithDb(db, uid);
     }
   }
+  return readViewerRegistrationsCached(uid, loadViewerRegistrationsFresh);
+}
+
+/** 全歷史即時讀（不經快取、也不寫入快取）：報名送出前的判斷用。 */
+export async function loadViewerRegistrationsFresh(uid: string): Promise<RegistrationDoc[]> {
+  const { db } = await defaultGetFirebase();
   return loadViewerRegistrationsWithDb(db, uid);
 }
 

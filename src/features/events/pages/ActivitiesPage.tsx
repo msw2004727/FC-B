@@ -28,6 +28,8 @@ import {
   getEventAllowedGender,
   type LegacyEventDoc,
 } from '../components/legacy/TimelineEventCard';
+import { EndedFold, endedFoldInstanceKey } from '../components/legacy/EndedFold';
+import { shouldFoldTimelineEvent } from '../data/timeline-fold';
 import { ExternalTransitCard } from '../components/legacy/ExternalTransitCard';
 import {
   NEARBY_DISABLED_MSG,
@@ -52,6 +54,7 @@ import { useDebouncedValue } from '../data/use-debounced-value';
 import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
+import '../components/legacy/activity-list-extra.css';
 import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
 
 /** 表單 chunk 還沒到：沿用建立活動彈窗殼與列表的 `.reg-loading`，不另做樣式。 */
@@ -277,6 +280,19 @@ export default function ActivitiesPage(): JSX.Element {
   const [transitEvent, setTransitEvent] = useState<LegacyEventDoc | null>(null);
   const activityListRef = useRef<HTMLDivElement>(null);
   const activityTabsRef = useRef<HTMLDivElement>(null);
+  // 2026-11-13 黏頂：量篩選列實際高度（字級、語系、換行都會變），月份標題貼在它下方。
+  const stickyFiltersRef = useRef<HTMLDivElement>(null);
+  const [stickyFiltersHeight, setStickyFiltersHeight] = useState(0);
+  useEffect(() => {
+    const el = stickyFiltersRef.current;
+    if (!el) return undefined;
+    const measure = (): void => setStickyFiltersHeight(Math.ceil(el.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver !== 'function') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const showCreateButton = createEntry.canCreate;
   const showManageEntry = useMemo(
@@ -653,6 +669,27 @@ export default function ActivitiesPage(): JSX.Element {
   const today = taipeiParts(Date.now());
   const todayStr = `${today.year}/${today.month}/${today.day}`;
   const sortedMonthKeys = Object.keys(monthGroups).sort((a, b) => a.localeCompare(b));
+  const nowMs = Date.now();
+  // 頂欄高度算法同 activity-list-extra.css 的篩選列 top；往上疊 2px 藏進篩選列底下，避免小數像素漏出一條卡片。
+  const monthHeaderStyle = stickyFiltersHeight > 0
+    ? `top:calc(var(--topbar-h) + var(--qa-banner-h, 0px) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)) + ${stickyFiltersHeight - 2}px)`
+    : undefined;
+
+  function renderCard(ev: LegacyEventDoc, idx: number): JSX.Element {
+    return (
+      <TimelineEventCard
+        key={ev.id ?? ev._docId ?? `ev-${idx}`}
+        event={ev}
+        viewerUid={viewer.uid}
+        viewerRoleLevel={viewer.roleLevel}
+        viewerRegistrations={registrations}
+        isPending={Boolean(ev.id && pendingEventId === ev.id)}
+        isFavorited={Boolean(ev.id && favorites.events.includes(ev.id))}
+        onSelect={handleSelectCard}
+        onToggleFavorite={handleToggleFavorite}
+      />
+    );
+  }
 
   // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；活動頁 getKey 排除未開放頁籤（beginner、high-intensity）
   useSwipeTabs({
@@ -668,7 +705,7 @@ export default function ActivitiesPage(): JSX.Element {
   });
 
   return (
-    <div class="legacy-ui">
+    <div class="legacy-ui activities-root">
       <section
         class={`page active${activeTab === 'female' ? ' activity-female-theme' : ''}`}
         id="page-activities"
@@ -868,6 +905,8 @@ export default function ActivitiesPage(): JSX.Element {
           </div>
         )}
 
+        {/* 2026-11-13：頁籤列＋地區列捲動時黏在頂欄下方（activity-list-extra.css） */}
+        <div class="activity-sticky-filters" ref={stickyFiltersRef}>
         <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
           <button
             type="button"
@@ -1003,6 +1042,7 @@ export default function ActivitiesPage(): JSX.Element {
             尋找附近活動
           </button>
         </div>
+        </div>
 
         <div
           class="timeline-calendar"
@@ -1064,7 +1104,7 @@ export default function ActivitiesPage(): JSX.Element {
 
               return (
                 <div class="tl-month-group" key={monthKey}>
-                  <div class="tl-month-header">{monthLabel}</div>
+                  <div class="tl-month-header" style={monthHeaderStyle}>{monthLabel}</div>
                   {days.map((dayInfo) => {
                     const isToday = todayStr === `${y}/${monthInt}/${dayInfo.day}`;
                     const anchorKey = `${y}-${String(monthInt).padStart(2, '0')}-${String(dayInfo.day).padStart(2, '0')}`;
@@ -1089,19 +1129,26 @@ export default function ActivitiesPage(): JSX.Element {
                           <div class="tl-day-name">{`週${dayInfo.dayName}`}</div>
                         </div>
                         <div class="tl-events-col">
-                          {sortedDayEvents.map((ev, idx) => (
-                            <TimelineEventCard
-                              key={ev.id ?? ev._docId ?? `ev-${idx}`}
-                              event={ev}
-                              viewerUid={viewer.uid}
-                              viewerRoleLevel={viewer.roleLevel}
-                              viewerRegistrations={registrations}
-                              isPending={Boolean(ev.id && pendingEventId === ev.id)}
-                              isFavorited={Boolean(ev.id && favorites.events.includes(ev.id))}
-                              onSelect={handleSelectCard}
-                              onToggleFavorite={handleToggleFavorite}
-                            />
-                          ))}
+                          {(() => {
+                            // 同一天結束時間已過或已取消的場次收成一行放在當天最前面（點開才畫卡片），進行中的不收（顧問 §3.136）。
+                            const ended = sortedDayEvents.filter((ev) => shouldFoldTimelineEvent(ev, nowMs));
+                            const rest = ended.length > 0
+                              ? sortedDayEvents.filter((ev) => !ended.includes(ev))
+                              : sortedDayEvents;
+                            return (
+                              <>
+                                {ended.length > 0 && (
+                                  <EndedFold
+                                    key={endedFoldInstanceKey(ended)}
+                                    listId={`tl-ended-${anchorKey}`}
+                                    events={ended}
+                                    renderCard={renderCard}
+                                  />
+                                )}
+                                {rest.map(renderCard)}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     );

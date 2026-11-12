@@ -8,7 +8,12 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
-import { loadViewerRegistrations } from './viewer-registrations';
+import { emit } from '@/core/events';
+import { loadViewerRegistrations, loadViewerRegistrationsFresh } from './viewer-registrations';
+import {
+  invalidateViewerRegistrations,
+  VIEWER_REGISTRATIONS_TTL_MS,
+} from './viewer-registrations-cache';
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
@@ -53,6 +58,8 @@ const whereToken = { kind: 'where' };
 const queryToken = { kind: 'query' };
 
 beforeEach(() => {
+  vi.useRealTimers();
+  invalidateViewerRegistrations();
   vi.resetAllMocks();
   vi.mocked(getFirebase).mockResolvedValue({ db } as never);
   vi.mocked(collection).mockReturnValue(collectionToken as never);
@@ -189,5 +196,180 @@ describe('loadViewerRegistrations', () => {
 
     await expect(loadViewerRegistrations('user-1', 'event-1')).rejects.toThrow('offline');
     expect(collectionGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe('O5 全歷史共用快取', () => {
+  function snap(uid: string, eventId: string): unknown {
+    return {
+      docs: [snapshotDoc(`reg-${uid}-${eventId}`, { eventId, userId: uid, status: 'confirmed' }, subcollectionRef())],
+    };
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('30 秒內同 uid 命中快取，只讀一次；回傳的陣列改了不影響快取', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+
+    const first = await loadViewerRegistrations('user-1');
+    first.push({ eventId: 'mutated' } as never);
+    const second = await loadViewerRegistrations('user-1');
+
+    expect(getDocs).toHaveBeenCalledTimes(1);
+    expect(second).toEqual([
+      { eventId: 'e1', userId: 'user-1', status: 'confirmed', _docId: 'reg-user-1-e1' },
+    ]);
+  });
+
+  it('回傳的報名物件是淺複製：呼叫端改單筆欄位不影響快取', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+
+    const first = await loadViewerRegistrations('user-1');
+    first[0]!.status = 'cancelled';
+    const second = await loadViewerRegistrations('user-1');
+    second[0]!.eventId = 'mutated';
+    const third = await loadViewerRegistrations('user-1');
+
+    expect(getDocs).toHaveBeenCalledTimes(1);
+    expect(second[0]).not.toBe(first[0]);
+    expect(third).toEqual([
+      { eventId: 'e1', userId: 'user-1', status: 'confirmed', _docId: 'reg-user-1-e1' },
+    ]);
+  });
+
+  it('TTL 到期後重讀', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(1_000_000);
+    vi.mocked(getDocs)
+      .mockResolvedValueOnce(snap('user-1', 'old') as never)
+      .mockResolvedValueOnce(snap('user-1', 'new') as never);
+
+    await loadViewerRegistrations('user-1');
+    vi.setSystemTime(1_000_000 + VIEWER_REGISTRATIONS_TTL_MS - 1);
+    expect((await loadViewerRegistrations('user-1'))[0]?.eventId).toBe('old');
+    expect(getDocs).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(1_000_000 + VIEWER_REGISTRATIONS_TTL_MS);
+    expect((await loadViewerRegistrations('user-1'))[0]?.eventId).toBe('new');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('進行中的請求合併：同時兩次只讀一次，兩邊拿到同樣資料', async () => {
+    const pending = deferred<unknown>();
+    vi.mocked(getDocs).mockReturnValueOnce(pending.promise as never);
+
+    const a = loadViewerRegistrations('user-1');
+    const b = loadViewerRegistrations('user-1');
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(1));
+    pending.resolve(snap('user-1', 'e1'));
+
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(ra).toEqual(rb);
+    expect(ra).not.toBe(rb);
+    expect(getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('第一次失敗不留快取也不留進行中請求，第二次重新呼叫並成功（L-08、L-30）', async () => {
+    vi.mocked(getDocs)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(snap('user-1', 'e1') as never);
+
+    await expect(loadViewerRegistrations('user-1')).rejects.toThrow('offline');
+    await expect(loadViewerRegistrations('user-1')).resolves.toHaveLength(1);
+    expect(getDocs).toHaveBeenCalledTimes(2);
+    // 成功後才進快取
+    await loadViewerRegistrations('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('uid 切換不串資料：各自讀各自的', async () => {
+    vi.mocked(getDocs)
+      .mockResolvedValueOnce(snap('user-1', 'e1') as never)
+      .mockResolvedValueOnce(snap('user-2', 'e2') as never);
+
+    const one = await loadViewerRegistrations('user-1');
+    const two = await loadViewerRegistrations('user-2');
+
+    expect(one.map((r) => r.userId)).toEqual(['user-1']);
+    expect(two.map((r) => r.userId)).toEqual(['user-2']);
+    expect(where).toHaveBeenNthCalledWith(2, 'userId', '==', 'user-2');
+  });
+
+  it('登出（auth:changed uid=null）立即清除，下次重讀', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+    await loadViewerRegistrations('user-1');
+    emit('auth:changed', { uid: null });
+    await loadViewerRegistrations('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('同一 uid 再次通知登入不清快取；換成別的 uid 則清除', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+    await loadViewerRegistrations('user-1');
+    emit('auth:changed', { uid: 'user-1' });
+    await loadViewerRegistrations('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(1);
+
+    emit('auth:changed', { uid: 'user-2' });
+    await loadViewerRegistrations('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('非同步回來時 uid 已變：結果照交原呼叫端，但不寫入快取；之後的請求不接舊請求', async () => {
+    const pending = deferred<unknown>();
+    vi.mocked(getDocs)
+      .mockReturnValueOnce(pending.promise as never)
+      .mockResolvedValue(snap('user-1', 'fresh') as never);
+
+    const stale = loadViewerRegistrations('user-1');
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(1));
+    emit('auth:changed', { uid: 'user-2' });
+    emit('auth:changed', { uid: 'user-1' });
+    // 換帳號後的新請求不會接上換帳號前的進行中請求
+    const next = loadViewerRegistrations('user-1');
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(2));
+    pending.resolve(snap('user-1', 'stale'));
+
+    expect((await stale)[0]?.eventId).toBe('stale');
+    expect((await next)[0]?.eventId).toBe('fresh');
+    expect((await loadViewerRegistrations('user-1'))[0]?.eventId).toBe('fresh');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('寫入後失效：進行中的舊讀取晚回來也不寫回快取', async () => {
+    const pending = deferred<unknown>();
+    vi.mocked(getDocs)
+      .mockReturnValueOnce(pending.promise as never)
+      .mockResolvedValue(snap('user-1', 'after-write') as never);
+
+    const beforeWrite = loadViewerRegistrations('user-1');
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(1));
+    invalidateViewerRegistrations();
+    pending.resolve(snap('user-1', 'before-write'));
+    await beforeWrite;
+
+    expect((await loadViewerRegistrations('user-1'))[0]?.eventId).toBe('after-write');
+    expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('本場查詢與即時讀不經快取', async () => {
+    vi.mocked(getDocs).mockResolvedValue(snap('user-1', 'e1') as never);
+    await loadViewerRegistrations('user-1');
+    await loadViewerRegistrations('user-1', 'event-1');
+    await loadViewerRegistrations('user-1', 'event-1');
+    await loadViewerRegistrationsFresh('user-1');
+    await loadViewerRegistrationsFresh('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(5);
+    // 即時讀不寫入、不清除快取
+    await loadViewerRegistrations('user-1');
+    expect(getDocs).toHaveBeenCalledTimes(5);
   });
 });

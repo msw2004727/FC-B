@@ -156,6 +156,10 @@
   --color-info-bg:     var(--palette-blue-light-bg);
   --color-info-fg:     var(--palette-blue-light-fg);
 
+  /* 2026-11-12 站長同意新增：活動報名卡計量條的候補段（只新增這一個色票，色碼直接寫入）。
+     淺色同角色紫 #6D28D9；深色取 400 階 #A78BFA，與深色 --accent／--info 同亮度，當色條不發白。 */
+  --color-waitlist:    #6D28D9;
+
   --color-overlay:      rgba(0,0,0,.35);
   --color-overlay-heavy: rgba(0,0,0,.65);
   --color-focus-ring:   var(--palette-emerald-400);
@@ -311,6 +315,8 @@
   --color-info-bg:     var(--palette-blue-dark-bg);
   --color-info-fg:     var(--palette-blue-dark-fg);
 
+  --color-waitlist:    #A78BFA;
+
   --color-overlay:      rgba(0,0,0,.65);
   --color-overlay-heavy: rgba(0,0,0,.65);
   --color-focus-ring:   var(--palette-emerald-200);
@@ -384,6 +390,8 @@
     --color-info:        var(--palette-blue-soft);
     --color-info-bg:     var(--palette-blue-dark-bg);
     --color-info-fg:     var(--palette-blue-dark-fg);
+
+    --color-waitlist:    #A78BFA;
 
     --color-overlay:      rgba(0,0,0,.65);
     --color-overlay-heavy: rgba(0,0,0,.65);

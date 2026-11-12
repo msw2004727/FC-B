@@ -26,6 +26,7 @@
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
   "internalTest.badge": "ToosterX Early Access {version}",
+  "swUpdate": { "title": "New version", "forcedTitle": "Please update", "now": "Update now", "later": "Later", "busy": "Action in progress. Please update later." },
   "lineLoginHint": {
     "openInLine": "Open in LINE app",
     "newTabNote": "After sign-in finishes, a new tab opens. You can close the old tab."

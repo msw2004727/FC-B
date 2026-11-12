@@ -28,6 +28,14 @@ const pmRepoMock = vi.hoisted(() => ({
 
 vi.mock('../data/pm-repo', () => pmRepoMock);
 
+const inboxStoreMock = vi.hoisted(() => ({
+  settles: [] as Array<ReturnType<typeof vi.fn>>,
+  beginOptimisticPmRead: vi.fn(),
+}));
+vi.mock('../data/inbox-store', () => ({
+  beginOptimisticPmRead: inboxStoreMock.beginOptimisticPmRead,
+}));
+
 const routeMock = vi.hoisted(() => vi.fn());
 vi.mock('preact-iso', () => ({
   useLocation: () => ({ route: routeMock }),
@@ -72,6 +80,13 @@ beforeEach(() => {
     },
   );
   pmRepoMock.markConversationRead.mockResolvedValue({ readCount: 1, hasMore: false });
+  inboxStoreMock.settles = [];
+  inboxStoreMock.beginOptimisticPmRead.mockReset();
+  inboxStoreMock.beginOptimisticPmRead.mockImplementation(() => {
+    const settle = vi.fn();
+    inboxStoreMock.settles.push(settle);
+    return settle;
+  });
   pmRepoMock.sendPrivateMessage.mockResolvedValue({
     conversationId: EXPECTED_CID,
     messageId: 'server-message',
@@ -125,6 +140,92 @@ describe('PmDialogOverlay', () => {
 
     fireEvent.click(screen.getByLabelText('關閉'));
     expect(unsubscribeMock).toHaveBeenCalled();
+  });
+
+  describe('鈴鐺樂觀已讀', () => {
+    const unreadIncoming: PmMessage = {
+      id: 'm1',
+      messageId: 'm1',
+      fromUid: PEER_UID,
+      direction: 'in',
+      read: false,
+      body: 'hello',
+      createdAt: '2024-01-02T03:04:05Z',
+    };
+
+    it('看到未讀立即開始樂觀已讀（不等 500ms），寫入成功後結算成功', async () => {
+      vi.useFakeTimers();
+      render(<PmDialogOverlay />);
+      setConversation([unreadIncoming]);
+      expect(inboxStoreMock.beginOptimisticPmRead).toHaveBeenCalledWith(MY_UID, EXPECTED_CID);
+      expect(pmRepoMock.markConversationRead).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledWith(true);
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledTimes(1);
+    });
+
+    it('已讀寫入失敗→結算失敗（還原紅點）', async () => {
+      vi.useFakeTimers();
+      pmRepoMock.markConversationRead.mockRejectedValueOnce(new Error('internal'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      render(<PmDialogOverlay />);
+      setConversation([unreadIncoming]);
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledWith(false);
+      warn.mockRestore();
+    });
+
+    it('還沒送出已讀就關閉→撤掉標記；不呼叫已讀寫入', () => {
+      vi.useFakeTimers();
+      render(<PmDialogOverlay />);
+      setConversation([unreadIncoming]);
+      fireEvent.click(screen.getByLabelText('關閉'));
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledWith(false);
+      vi.advanceTimersByTime(1000);
+      expect(pmRepoMock.markConversationRead).not.toHaveBeenCalled();
+    });
+
+    it('寫入途中關閉：仍依伺服器結果結算，不被關閉改成失敗', async () => {
+      vi.useFakeTimers();
+      let resolveRead!: (value: { readCount: number; hasMore: boolean }) => void;
+      pmRepoMock.markConversationRead.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRead = resolve;
+          }),
+      );
+      render(<PmDialogOverlay />);
+      setConversation([unreadIncoming]);
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+        await Promise.resolve();
+      });
+      expect(pmRepoMock.markConversationRead).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByLabelText('關閉'));
+      expect(inboxStoreMock.settles[0]).not.toHaveBeenCalled();
+      await act(async () => {
+        resolveRead({ readCount: 1, hasMore: false });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledWith(true);
+      expect(inboxStoreMock.settles[0]).toHaveBeenCalledTimes(1);
+    });
+
+    it('沒有未讀進來的訊息時不開始樂觀已讀', () => {
+      render(<PmDialogOverlay />);
+      setConversation([{ ...unreadIncoming, read: true }]);
+      expect(inboxStoreMock.beginOptimisticPmRead).not.toHaveBeenCalled();
+    });
   });
 
   it('撤回訊息顯示「訊息已撤回」', () => {

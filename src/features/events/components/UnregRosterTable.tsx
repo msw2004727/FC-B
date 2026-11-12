@@ -17,6 +17,7 @@
 import type { JSX } from 'preact';
 import { LEGACY_SETTLE_URL } from './legacy-links';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { reportClientError } from '@/core/error-report';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { writeOpLog } from '@/data/op-log';
 import { removeAttendance } from '@/features/checkin/data/attendance';
@@ -47,6 +48,13 @@ import {
 export interface UnregPerson {
   uid: string;
   name: string;
+}
+
+/** 背景觸發的 writeForUid：寫入失敗已在內部還原，這裡只接住同步拋錯，不留未處理拒絕（L-07）；仍上報 errorLogs，取代原本靠 unhandledrejection 上報。 */
+function warnWriteForUidFailed(err: unknown): void {
+  // eslint-disable-next-line no-console
+  console.warn('[UnregRosterTable] writeForUid failed', err);
+  reportClientError('unreg-roster-write', err);
 }
 
 export interface UnregRosterTableProps {
@@ -460,7 +468,7 @@ export function UnregRosterTable({
             }
             if (queuedMapRef.current[uid]) {
               delete queuedMapRef.current[uid];
-              void writeForUid(uid);
+              void writeForUid(uid).catch(warnWriteForUidFailed);
             }
           }
         })();
@@ -479,7 +487,7 @@ export function UnregRosterTable({
       if (saveTimersRef.current[uid]) clearTimeout(saveTimersRef.current[uid]);
       saveTimersRef.current[uid] = setTimeout(() => {
         delete saveTimersRef.current[uid];
-        void writeForUid(uid);
+        void writeForUid(uid).catch(warnWriteForUidFailed);
       }, CHECKBOX_DEBOUNCE_MS);
       syncPendingRef.current();
     },

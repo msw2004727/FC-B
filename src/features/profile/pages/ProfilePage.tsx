@@ -5,6 +5,7 @@ import { emit, on } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
+import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { useViewer, type ViewerView } from '../data/viewer';
 import { loadUserProfile, type UserProfile } from '../data/profile-model';
 import {
@@ -53,29 +54,39 @@ type Editor =
   | { kind: 'social'; platform: Platform }
   | null;
 
-function LegacyLoginPrompt(): JSX.Element {
+const LINE_ICON_PATH =
+  'M12 2C6.48 2 2 5.83 2 10.5c0 4.18 3.66 7.68 8.58 8.38.33.07.78.22.9.5.1.26.07.66.03.92l-.15.86c-.04.26-.2 1.01.88.55s5.88-3.47 8.03-5.93C22.08 13.79 22 12.18 22 10.5 22 5.83 17.52 2 12 2z';
+
+function LineLoginButton(): JSX.Element {
   // M-035：接上 App 的 LINE 登入流程（發送 auth:login-request，由 App 統一處理）
   const handleLoginClick = (): void => {
     emit('auth:login-request', {});
   };
+  return (
+    <button type="button" class="line-login-btn large" onClick={handleLoginClick}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true" focusable="false">
+        <path d={LINE_ICON_PATH} />
+      </svg>
+      LINE 登入
+    </button>
+  );
+}
 
+/**
+ * 未登入畫面（站長 11-12 選定版本 A、不放說明句）：人形 SVG（取代 👤 emoji）、標題、LINE 登入按鈕整塊置中。
+ * 取代了開發環境限定的卡片式 B 版預覽，以及 A 在標題下的登入說明句（舊版翻譯包同步刪除該鍵）。
+ */
+function GuestLoginPrompt(): JSX.Element {
   return (
     <div id="profile-login-prompt" class="profile-login-prompt">
       <div class="login-prompt-content">
-        <div class="login-prompt-icon">👤</div>
+        <div class="login-prompt-icon">
+          <GuestAvatarIcon size={56} />
+        </div>
         <h3 data-i18n="profilePage.notLoggedIn">
           {lt('profilePage.notLoggedIn', '尚未登入')}
         </h3>
-        <p data-i18n="請先使用 LINE 帳號登入以查看個人資料">
-          {lt('請先使用 LINE 帳號登入以查看個人資料', '請先使用 LINE 帳號登入以查看個人資料')}
-        </p>
-        {/* ASSUMPTION: 沿用 B 現有 LoginGuide 契約（不虛構全域 LineAuth API），保留 A 的按鈕結構與 SVG */}
-        <button type="button" class="line-login-btn large" onClick={handleLoginClick}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
-            <path d="M12 2C6.48 2 2 5.83 2 10.5c0 4.18 3.66 7.68 8.58 8.38.33.07.78.22.9.5.1.26.07.66.03.92l-.15.86c-.04.26-.2 1.01.88.55s5.88-3.47 8.03-5.93C22.08 13.79 22 12.18 22 10.5 22 5.83 17.52 2 12 2z" />
-          </svg>
-          LINE 登入
-        </button>
+        <LineLoginButton />
       </div>
     </div>
   );
@@ -330,10 +341,13 @@ export default function ProfilePage(): JSX.Element {
           </h2>
         </div>
 
+        {/* L-43：登入狀態還沒判定（authPending）先顯示載入中，確定未登入才顯示登入畫面，重新整理不再閃「尚未登入」。 */}
         {viewer.uid ? (
           <AuthenticatedProfile key={viewer.uid} uid={viewer.uid} viewer={viewer} />
+        ) : viewer.authPending ? (
+          <Loading />
         ) : (
-          <LegacyLoginPrompt />
+          <GuestLoginPrompt />
         )}
       </section>
     </div>

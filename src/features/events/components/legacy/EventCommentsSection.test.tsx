@@ -71,6 +71,14 @@ describe('M-093 留言區', () => {
     expect(screen.queryByPlaceholderText('輸入留言，最多 300 字')).toBeNull();
   });
 
+  it('登入狀態尚未判定（authPending）顯示載入中，不先閃未登入提示（L-43）', () => {
+    const view = render(<EventCommentsSection {...props} viewer={{ uid: null, roleLevel: 0, authPending: true }} />);
+    expect(screen.getByText('留言載入中...')).toBeTruthy();
+    expect(screen.queryByText('登入後可查看與留言')).toBeNull();
+    view.rerender(<EventCommentsSection {...props} viewer={{ uid: null, roleLevel: 0 }} />);
+    expect(screen.getByText('登入後可查看與留言')).toBeTruthy();
+  });
+
   it('公開／私密送出、防連點、送出後強制重讀', async () => {
     const pending = deferred<void>();
     mock.submit.mockReturnValueOnce(pending.promise);

@@ -3,7 +3,7 @@
   "backHome": "ホームへ戻る", "search": "検索", "filter": "絞り込み",
   "searchPlaceholder": "イベント名・場所で検索", "tabsLabel": "イベント一覧の切り替え",
   "normal": "参加受付中", "chooseSport": "スポーツを選択",
-  "loading": "イベントを読み込み中…", "loadError": "イベントを読み込めませんでした。",
+  "loadError": "イベントを読み込めませんでした。",
   "retry": "再試行", "emptyTitle": "該当するイベントはありません",
   "emptyBody": "別のスポーツや検索語をお試しください。",
   "sport": {
@@ -25,12 +25,11 @@
     "locationUnknown": "場所未定", "capacity": "{current}/{max}人"
   },
   "detailPage": {
-    "notFound": "イベントが見つかりません", "loading": "イベント詳細を読み込み中…",
+    "notFound": "イベントが見つかりません",
     "loadError": "イベント詳細を読み込めません。再試行してください。",
     "actionError": "操作に失敗しました。再試行してください。",
     "refreshError": "参加者一覧が未同期です。更新を再試行してください。重複操作を防ぐため受付を一時停止しています。",
     "roster": "参加者一覧",
-    "rosterLoading": "参加者一覧を読み込み中…",
     "rosterError": "参加者一覧を読み込めません。再試行してください。",
     "historyError": "申込状況を同期できませんでした。再試行してからお申し込みください。",
     "location": "場所", "map": "地図で開く", "time": "日時", "opens": "受付開始",
@@ -208,5 +207,26 @@
     "title": "LINE 通知をオンにして、見逃しゼロ！",
     "descLine1": "申込完了、キャンセル待ちの繰り上げ、",
     "descLine2": "イベントの変更や中止をすぐにお知らせします。"
+  },
+  "listCard": {
+    "barConfirmed": "申込 {confirmed}／{max} 人",
+    "barConfirmedNoMax": "申込 {confirmed} 人",
+    "barReserved": "チーム枠 {reserved}",
+    "barWaitlist": "キャンセル待ち {waitlist}",
+    "barSeparator": "、",
+    "fold": {
+      "ended": {
+        "one": "終了 {count} 件",
+        "other": "終了 {count} 件"
+      },
+      "cancelled": {
+        "one": "中止 {count} 件",
+        "other": "中止 {count} 件"
+      },
+      "mixed": {
+        "one": "終了・中止 {count} 件",
+        "other": "終了・中止 {count} 件"
+      }
+    }
   }
 }

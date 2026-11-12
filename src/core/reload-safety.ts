@@ -2,7 +2,11 @@
 // - 檢查彈窗開啟、表單輸入編輯中、非安全主頁等狀態
 // - 不安全時不自動重載，改顯示 A 的 `#sw-reload-deferred-prompt`（「有新版本可用／現在更新／稍後」）
 // - 視覺特效在 update-prompt-fx（動態 import）。載入失敗就維持這份舊外觀，不得讓提示框消失。
+// - UPD-3P 方案乙（站長 2026-11-12 選定）：底部單行停靠在導覽列上方，沒有說明行；顯示期間 body 加
+//   `fcb-update-open`，主內容底部空白與吐司一起上推（app-shell.css、toast-host.css）。
+//   取代：原本離底 72px、兩行加按鈕列，蓋住活動詳情的報名鈕與最後一段內容。
 
+import { t } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import { isSubmitting } from './submit-guard';
 
@@ -107,38 +111,64 @@ export interface SwReloadPromptOptions {
   forced?: boolean;
 }
 
+/** 提示框顯示期間掛在 body 上；app-shell.css 依此加大主內容底部空白、toast-host.css 把吐司往上移。 */
+export const UPDATE_PROMPT_OPEN_CLASS = 'fcb-update-open';
+
+/** 停在底部導覽上方 8px；沒有底部導覽（#bottom-tabs）的頁面離底 16px。fx 樣式以 data-dock 對應同一組位置。 */
+const DOCK_NAV = 'calc(var(--bottombar-h, 64px) + 8px + env(safe-area-inset-bottom, 0px))';
+const DOCK_BARE = 'calc(16px + env(safe-area-inset-bottom, 0px))';
+
+// 特效載入失敗時的備用外觀：同位置、同樣單行（標題｜現在更新｜稍後），高約 60px。
 const PROMPT_CSS = [
   'position:fixed',
   'left:50%',
-  'bottom:calc(72px + env(safe-area-inset-bottom, 0px))',
   'transform:translateX(-50%)',
   'z-index:100000',
   'width:min(420px, calc(100vw - 32px))',
+  'box-sizing:border-box',
   'background:#111827',
   'color:#fff',
   'border:1px solid rgba(255,255,255,.16)',
   'border-radius:12px',
   'box-shadow:0 16px 40px rgba(0,0,0,.28)',
-  'padding:12px',
+  'padding:10px 8px',
   'display:flex',
   'align-items:center',
-  'gap:10px',
+  'gap:6px',
   'font-size:14px',
   'line-height:1.35',
   'opacity:0',
 ].join(';');
 
-const NOW_BUTTON_HTML =
-  '<button type="button" data-sw-reload-now style="' +
-    'border:0;border-radius:8px;background:#0d9488;color:#fff;' +
-    'font-weight:700;padding:8px 10px;cursor:pointer;white-space:nowrap' +
-  '">現在更新</button>';
+const TITLE_CSS = 'flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden';
 
-const LATER_BUTTON_HTML =
-  '<button type="button" data-sw-reload-later aria-label="稍後" style="' +
-    'border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;' +
-    'font-weight:700;padding:8px 9px;cursor:pointer' +
-  '">稍後</button>';
+const BUTTON_CSS =
+  'border:0;border-radius:8px;color:#fff;font-weight:700;min-height:40px;padding:0 10px;' +
+  'cursor:pointer;white-space:nowrap;flex:0 0 auto;background:';
+
+/** 字典沒載入（t() 回傳 key 本身）時的 zh-TW 原文：救援路徑不得只顯示鍵名。 */
+const COPY_ZH_TW = {
+  title: '有新版本可用',
+  forcedTitle: '請更新到新版',
+  now: '現在更新',
+  later: '稍後',
+  busy: '目前操作尚未完成，稍後再更新',
+} as const;
+
+function copy(name: keyof typeof COPY_ZH_TW): string {
+  const key = `swUpdate.${name}`;
+  const text = t(key);
+  return text === key ? COPY_ZH_TW[name] : text;
+}
+
+function promptButton(doc: Document, attr: string, label: string, background: string): HTMLButtonElement {
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.setAttribute(attr, '');
+  button.style.cssText = BUTTON_CSS + background;
+  button.textContent = label;
+  return button;
+}
 
 function detachPrompt(): void {
   const cleanup = promptCleanup;
@@ -146,6 +176,7 @@ function detachPrompt(): void {
   cleanup?.();
   if (typeof document !== 'undefined') {
     document.getElementById('sw-reload-deferred-prompt')?.remove();
+    document.body?.classList.remove(UPDATE_PROMPT_OPEN_CLASS);
   }
   promptShown = false;
   pendingReloadFn = null;
@@ -169,6 +200,8 @@ function upgradeToForced(prompt: HTMLElement): void {
   prompt.querySelectorAll('[data-sw-reload-later]').forEach((node) => {
     node.remove();
   });
+  const title = prompt.querySelector('[data-sw-reload-title]');
+  if (title) title.textContent = copy('forcedTitle');
 }
 
 /** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部新版本更新提示框。 */
@@ -203,21 +236,25 @@ export function showSwReloadPrompt(
   prompt.setAttribute('aria-live', 'polite');
   if (reason) prompt.dataset.reason = reason;
   if (wantForced) prompt.dataset.mode = 'forced';
+  const bare = !doc.getElementById('bottom-tabs');
+  if (bare) prompt.dataset.dock = 'bare';
   // 先用舊外觀、opacity 0。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
   prompt.style.cssText = PROMPT_CSS;
+  prompt.style.bottom = bare ? DOCK_BARE : DOCK_NAV;
 
-  prompt.innerHTML =
-    '<div style="flex:1;min-width:0">' +
-      '<div style="font-weight:700;margin-bottom:2px">有新版本可用</div>' +
-      '<div style="opacity:.84">完成目前操作後會自動更新。</div>' +
-    '</div>' +
-    NOW_BUTTON_HTML +
-    (wantForced ? '' : LATER_BUTTON_HTML);
+  const title = doc.createElement('div');
+  title.setAttribute('data-sw-reload-title', '');
+  title.style.cssText = TITLE_CSS;
+  title.textContent = copy(wantForced ? 'forcedTitle' : 'title');
+  prompt.append(title, promptButton(doc, 'data-sw-reload-now', copy('now'), '#0d9488'));
+  if (!wantForced) {
+    prompt.append(promptButton(doc, 'data-sw-reload-later', copy('later'), 'rgba(255,255,255,.12)'));
+  }
 
   prompt.querySelector('[data-sw-reload-now]')?.addEventListener('click', () => {
     // 使用者主動點「現在更新」：送出中不重載。
     if (isSubmitting() || doc.querySelector('[data-submitting="true"]')) {
-      toast.show({ message: '目前操作尚未完成，稍後再更新', duration: 3000 });
+      toast.show({ message: copy('busy'), duration: 3000 });
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
@@ -233,6 +270,7 @@ export function showSwReloadPrompt(
   });
 
   doc.body.appendChild(prompt);
+  doc.body.classList.add(UPDATE_PROMPT_OPEN_CLASS);
 
   void import('./update-prompt-fx').then(
     (m) => {

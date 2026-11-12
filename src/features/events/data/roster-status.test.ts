@@ -4,6 +4,7 @@ import { adjustRosterStatus, ROSTER_STATUS_TIMEOUT_MS } from './roster-status';
 import { demoted, promoted, inputFor, snapshot } from './roster-status-test-fixtures';
 import type { RosterStatusAction } from './roster-status-policy';
 import { matrix, matrixInput } from './__fixtures__/roster-status-matrix';
+import { invalidateViewerRegistrations, readViewerRegistrationsCached } from './viewer-registrations-cache';
 
 const mocks = vi.hoisted(() => ({ log: vi.fn(), enabled: true }));
 vi.mock('@/data/op-log', () => ({ writeOpLog: mocks.log }));
@@ -237,5 +238,34 @@ describe('名單狀態調整', () => {
     expect((await adjustRosterStatus(input)).message).toBe('權限不足');
     expect(stopRecording()).toHaveLength(action === 'demote' ? 0 : 1);
     expect(mocks.log).not.toHaveBeenCalled();
+  });
+});
+
+/** O5：先讓登入者全歷史快取命中一次，回傳「再讀一次後 loader 共被呼叫幾次」。 */
+async function primeViewerCache(): Promise<() => Promise<number>> {
+  invalidateViewerRegistrations();
+  const loader = vi.fn(async () => []);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  await readViewerRegistrationsCached('viewer-o5', loader);
+  expect(loader).toHaveBeenCalledTimes(1);
+  return async () => {
+    await readViewerRegistrationsCached('viewer-o5', loader);
+    return loader.mock.calls.length;
+  };
+}
+
+describe('O5：名單升降後失效登入者全歷史快取', () => {
+  it('成功後失效', async () => {
+    registerMock('forceDemoteToWaitlist', () => demoted);
+    const readAgain = await primeViewerCache();
+    expect((await adjustRosterStatus(inputFor())).tone).toBe('success');
+    expect(await readAgain()).toBe(2);
+  });
+
+  it('失敗後也失效（伺服器可能已寫入）', async () => {
+    registerMock('forceDemoteToWaitlist', () => { throw fail('INTERNAL'); });
+    const readAgain = await primeViewerCache();
+    expect((await adjustRosterStatus(inputFor())).tone).not.toBe('success');
+    expect(await readAgain()).toBe(2);
   });
 });

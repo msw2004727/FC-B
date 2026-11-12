@@ -7,6 +7,7 @@ import { openHttpAnchor } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
+import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
 import { runEventLifecycleAction } from '@/features/events/components/legacy/event-lifecycle-action';
 import {
@@ -27,7 +28,7 @@ import {
   type DetailRegistration,
 } from '@/features/events/data/detail-model';
 import type { EventDoc } from '@/features/events/data/types';
-import { loadViewerRegistrations } from '@/features/events/data/viewer-registrations';
+import { loadViewerRegistrationsFresh } from '@/features/events/data/viewer-registrations';
 
 import { useViewer } from '../../data/viewer';
 import type { UserProfile } from '../../data/profile-model';
@@ -169,7 +170,8 @@ interface RelatedActivityCardRowProps {
   onSelect: (id: string) => void;
   operateCtx: OperateContext;
   onEditHosted: (event: EventRecord) => void;
-  onCancelHosted: (event: EventRecord) => void;
+  /** ring＝這一列「取消活動」鈕的進度環，按下當下就 start（按下後要先重讀活動才跳確認框）。 */
+  onCancelHosted: (event: EventRecord, ring: ActionRingControl) => void;
   onCancelRegistration: (event: EventRecord) => void;
   actionBusy: boolean;
 }
@@ -209,6 +211,7 @@ function RelatedActivityCardRow({
   const rowBaseClass = teamOnly ? 'tl-type-teamonly' : `tl-type-${typeKey}`;
   const metaParts = [typeLabel, timeText, locationText].filter(Boolean);
   const isWaitlisted = registrationStatus === 'waitlisted';
+  const cancelEventRing = useActionRingControl();
 
   // 照 A `_renderProfileRelatedActivityActions` / `_profileRelatedActionIcon`
   const actions: JSX.Element[] = [];
@@ -262,8 +265,10 @@ function RelatedActivityCardRow({
       }
       if (!isEnded && canCancelOwnActivity(operateCtx, event)) {
         actions.push(
-          <button
+          <ActionRingButton
             key="cancel-event"
+            control={cancelEventRing}
+            busyLabel="取消活動中..."
             type="button"
             class="profile-related-icon-btn danger"
             data-event-id={id}
@@ -272,7 +277,7 @@ function RelatedActivityCardRow({
             title={lt('取消活動', '取消活動')}
             onClick={(e) => {
               e.stopPropagation();
-              onCancelHosted(event);
+              onCancelHosted(event, cancelEventRing);
             }}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -280,7 +285,7 @@ function RelatedActivityCardRow({
               <path d="M8 8l8 8" />
               <path d="M16 8l-8 8" />
             </svg>
-          </button>,
+          </ActionRingButton>,
         );
       }
     }
@@ -291,6 +296,8 @@ function RelatedActivityCardRow({
       class={`tl-event-row profile-related-event-card ${rowBaseClass}${isEnded ? ' tl-past' : ''}`}
       data-event-id={id}
       onClick={() => {
+        // 進度環期間按鈕被 clip-path 裁成小圓，裁掉的區域點擊會落到這一列；處理中不開詳情。
+        if (cancelEventRing.ring.phase !== 'idle') return;
         if (id) onSelect(id);
       }}
     >
@@ -378,6 +385,8 @@ export function LegacyRelatedActivities({
   const [actionIds, setActionIds] = useState<Record<string, true>>({});
 
   const busyRef = useRef<Set<string>>(new Set());
+  // 取消活動從按下（重讀活動前）就算進行中；連點第二下不再重讀，也不會在第一輪確認中把環收掉。
+  const hostedCancelRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
   const snapshotRef = useRef<CancelFlowSnapshot | null>(null);
 
@@ -458,9 +467,12 @@ export function LegacyRelatedActivities({
     setEditing(event as unknown as EventDoc);
   };
 
-  const handleCancelHosted = async (event: EventRecord): Promise<void> => {
+  const handleCancelHosted = async (event: EventRecord, ring: ActionRingControl): Promise<void> => {
     const publicId = String(event.id ?? '').trim();
-    if (!publicId) return;
+    if (!publicId || hostedCancelRef.current.has(publicId)) return;
+    hostedCancelRef.current.add(publicId);
+    // 按下當下就轉環：確認框出現前要先重讀活動（一次網路往返）；確認框按取消時展開回原狀。
+    ring.start();
     try {
       // 重讀活動以取得正確 `_docId`（related-activities 的 EventRecord 可能缺 `_docId`）。
       const detail = await loadEventDetail(publicId);
@@ -474,10 +486,14 @@ export function LegacyRelatedActivities({
         viewer,
         operateCtx,
         busy: busyRef.current,
+        ring,
         onDone: reload,
       });
     } catch {
       // L-12：獨立非同步流程自行吞錯，不依賴 ErrorBoundary。
+    } finally {
+      hostedCancelRef.current.delete(publicId);
+      ring.fail();
     }
   };
 
@@ -493,7 +509,8 @@ export function LegacyRelatedActivities({
     try {
       const [detail, regs] = await Promise.all([
         loadEventDetail(publicId),
-        loadViewerRegistrations(currentUid),
+        // O5：取消前要即時的報名 ID，不走全歷史快取。
+        loadViewerRegistrationsFresh(currentUid),
       ]);
       if (!mountedRef.current) return;
       // 非同步期間登入者改變：丟棄結果、不呼叫 beginCancel。

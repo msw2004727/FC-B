@@ -70,6 +70,7 @@ import {
 } from '../data/operate-permissions';
 import { managerRemoveRegistration } from '../data/roster-remove';
 import {
+  actualConfirmedCount,
   count,
   guestConfirmedCount,
   guestEventPeople,
@@ -739,7 +740,8 @@ function EventDetailSession({
     try {
       const [registrations, history, attendanceRecords, fresh] = await Promise.all([
         loadEventRegistrations(current.eventDocId),
-        loadViewerRegistrations(uid),
+        // O5：只查本場（與首次載入同一查詢），不讀全歷史；操作後永遠即時。
+        loadViewerRegistrations(uid, current.eventDocId),
         rosterExpanded && canViewDetails
           ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve(current.attendanceRecords),
@@ -1176,7 +1178,7 @@ function EventDetailSession({
           registrationsFailed = true;
           return current.registrations;
         }),
-        loadViewerRegistrations(uid).catch(() => current.viewerRegistrations),
+        loadViewerRegistrations(uid, current.eventDocId).catch(() => current.viewerRegistrations),
         canViewDetailAttendanceRecordDetails(currentViewer.current, current.event)
           ? loadEventAttendance(current.eventDocId).catch(() => current.attendanceRecords)
           : Promise.resolve([] as EventAttendanceEntry[]),
@@ -1334,7 +1336,7 @@ function EventDetailSession({
       const [fresh, registrations, history] = await Promise.all([
         loadEventDetail(current.event.id || eventId),
         loadEventRegistrations(current.eventDocId),
-        loadViewerRegistrations(uid),
+        loadViewerRegistrations(uid, current.eventDocId),
       ]);
       if (!alive.current || currentViewer.current.uid !== uid || request !== rosterSequence.current
         || headerState.current.snapshot?.eventDocId !== current.eventDocId) throw new Error('stale');
@@ -2023,6 +2025,8 @@ function EventDetailSession({
   }
 
   const confirmedCount = viewer.uid ? count(event.current) : guestConfirmedCount(event);
+  // 報名卡與訪客名單摘要顯示實際正取（照 A _getEventActualConfirmedCount）；confirmedCount 只給報名按鈕判斷。
+  const displayConfirmedCount = actualConfirmedCount(event);
   const waitlistCount = !viewer.uid && Array.isArray(event.waitlistNames)
     ? event.waitlistNames.length : count(event.waitlist);
 
@@ -2144,7 +2148,7 @@ function EventDetailSession({
         <div class="detail-body" id="detail-body">
           <EventDetailInfoSection
             event={event}
-            confirmedCount={confirmedCount}
+            confirmedCount={displayConfirmedCount}
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}
@@ -2288,7 +2292,7 @@ function EventDetailSession({
               onExpand={() => setRosterState({ expanded: true, phase: 'ready' })}
               onOpenProfile={profile}
               max={maximum}
-              confirmedCount={confirmedCount}
+              confirmedCount={displayConfirmedCount}
               waitlistCount={waitlistCount}
             />
           ) : (
