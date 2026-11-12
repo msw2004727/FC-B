@@ -7,12 +7,17 @@
 //
 // 判斷邏輯拆成純函式（buildRegisteredActivities / buildHostedActivities / getEventEffectiveStatus /
 // isProfileHostedActivity），方便測試；load* 只負責 I/O。
+//
+// 2026-11-12 O2：原本每次進個人頁讀整個 events 集合（約 850 份）再過濾主辦；改成只讀與該使用者相關的活動
+// （主辦欄位條件查詢＋有效報名指向的活動用 documentId() in 分批）。純函式不動，結果集合與排序與舊版相同，
+// 對照測試見 related-activities.load.test.ts。
 
-import type { Firestore } from 'firebase/firestore';
+import type { DocumentData, Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
 import {
   collection,
   collectionGroup,
   doc,
+  documentId,
   getDoc,
   getDocs,
   query,
@@ -162,6 +167,11 @@ function isActiveParticipantRegistration(
   return true;
 }
 
+/** 報名指向的活動 key（build 時用它查 eventsById）。 */
+function registrationEventKey(reg: RegistrationRecord): string {
+  return normalizeString(reg.eventId) || normalizeString(reg.activityId);
+}
+
 function compareRegistered(a: RegisteredActivity, b: RegisteredActivity): number {
   const diff = activityDateMs(a.event) - activityDateMs(b.event);
   if (diff !== 0) return diff;
@@ -194,8 +204,7 @@ export function buildRegisteredActivities(
   for (const reg of registrations) {
     if (!isActiveParticipantRegistration(reg, allowedUids)) continue;
     const status = normalizeString(reg.status) as ActiveRegistrationStatus;
-    const eventId =
-      normalizeString(reg.eventId) || normalizeString(reg.activityId);
+    const eventId = registrationEventKey(reg);
     if (!eventId) continue;
     const event = eventsById.get(eventId);
     if (!event) continue;
@@ -222,19 +231,21 @@ export function buildRegisteredActivities(
  * 對應 A `_isProfileHostedActivity` 前端邏輯（B 端以 UID 比對 host 欄位）。
  * 檢查 creatorUid / hostUid / ownerUid，及 hostUids / creatorUids 陣列。
  * 只使用 UID 比對；名稱比對一律禁止（R-ID-002）。
+ * 欄位清單與 loadHostedCandidateEvents 的條件查詢共用，避免判斷與查詢欄位不同步。
  */
+const HOSTED_SINGLE_FIELDS = ['creatorUid', 'hostUid', 'ownerUid'] as const;
+const HOSTED_LIST_FIELDS = ['hostUids', 'creatorUids'] as const;
+
 export function isProfileHostedActivity(
   eventRecord: EventRecord | null | undefined,
   allowedUids: ReadonlySet<string>,
 ): boolean {
   if (!eventRecord) return false;
-  const singles = ['creatorUid', 'hostUid', 'ownerUid'] as const;
-  for (const f of singles) {
+  for (const f of HOSTED_SINGLE_FIELDS) {
     const v = eventRecord[f];
     if (typeof v === 'string' && allowedUids.has(v)) return true;
   }
-  const lists = ['hostUids', 'creatorUids'] as const;
-  for (const f of lists) {
+  for (const f of HOSTED_LIST_FIELDS) {
     const v = eventRecord[f];
     if (Array.isArray(v)) {
       for (const entry of v) {
@@ -299,44 +310,122 @@ async function loadUserRegistrations(uid: string): Promise<RegistrationRecord[]>
   return out;
 }
 
-async function loadEventsByIds(ids: readonly string[]): Promise<Map<string, EventRecord>> {
-  const firebase = await getFirebase();
-  const db = firebase.db as unknown as Firestore;
+/** Firestore `in` 查詢一次最多 30 個值（同首頁 next-activity 的 EVENT_IN_QUERY_CHUNK）。 */
+const EVENT_IN_QUERY_CHUNK = 30;
 
+/**
+ * 能不能放進 `documentId() in [...]`（同 next-activity `isValidFirestoreDocId`）：
+ * 不合法的 id 放進去，SDK 建查詢時就同步丟錯。
+ */
+function isQueryableDocId(id: string): boolean {
+  if (!id || id === '.' || id === '..') return false;
+  if (id.includes('/')) return false;
+  if (/^__.*__$/.test(id)) return false;
+  return new TextEncoder().encode(id).length <= 1500;
+}
+
+/** 舊做法：單一 id 各自 getDoc，失敗只記警告、略過該筆。 */
+async function loadEventById(
+  db: Firestore,
+  id: string,
+): Promise<{ id: string; data: EventRecord } | null> {
+  try {
+    const snap = (await getDoc(doc(db, eventsCollection, id))) as unknown as SnapLike;
+    if (!snap.exists()) return null;
+    const data = snap.data() as Record<string, unknown>;
+    return { id, data: { ...data, id } as EventRecord };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[related-activities] load event failed', id, err);
+    return null;
+  }
+}
+
+/**
+ * 依文件 id 讀活動；map 的 key 與 `data.id` 都是傳入的 id（同舊版逐筆 getDoc）。
+ * 合法文件 id 以 `documentId() in` 每 30 個一批並行讀；某批查詢失敗時該批退回逐筆 getDoc，
+ * 讓失敗範圍與舊版一致（只缺讀不到的那幾筆）。不能放進 `in` 的 id 直接走逐筆 getDoc。
+ */
+async function loadEventsByIds(ids: readonly string[]): Promise<Map<string, EventRecord>> {
   const unique = Array.from(new Set(ids.filter((id) => !!id)));
   const map = new Map<string, EventRecord>();
   if (unique.length === 0) return map;
 
-  const results = await Promise.all(
-    unique.map(async (id) => {
-      try {
-        const snap = (await getDoc(doc(db, eventsCollection, id))) as unknown as SnapLike;
-        if (!snap.exists()) return null;
-        const data = snap.data() as Record<string, unknown>;
-        return { id, data: { ...data, id } as EventRecord };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[related-activities] load event failed', id, err);
-        return null;
-      }
-    }),
-  );
+  const firebase = await getFirebase();
+  const db = firebase.db as unknown as Firestore;
 
-  for (const r of results) if (r) map.set(r.id, r.data);
+  const queryable = unique.filter(isQueryableDocId);
+  const singles = unique.filter((id) => !isQueryableDocId(id));
+  const chunks: string[][] = [];
+  for (let i = 0; i < queryable.length; i += EVENT_IN_QUERY_CHUNK) {
+    chunks.push(queryable.slice(i, i + EVENT_IN_QUERY_CHUNK));
+  }
+
+  const loadChunk = async (
+    chunk: string[],
+  ): Promise<Array<{ id: string; data: EventRecord } | null>> => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, eventsCollection), where(documentId(), 'in', chunk)),
+      );
+      return snap.docs.map((d) => {
+        const data = d.data() as Record<string, unknown>;
+        return { id: d.id, data: { ...data, id: d.id } as EventRecord };
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[related-activities] batch event load failed, fallback to per-id', chunk.length, err);
+      return Promise.all(chunk.map((id) => loadEventById(db, id)));
+    }
+  };
+
+  const results = await Promise.all([
+    ...chunks.map(loadChunk),
+    Promise.all(singles.map((id) => loadEventById(db, id))),
+  ]);
+
+  for (const batch of results) for (const r of batch) if (r) map.set(r.id, r.data);
   return map;
 }
 
-async function loadAllEvents(): Promise<EventRecord[]> {
+function mapEventDoc(d: QueryDocumentSnapshot<DocumentData>): EventRecord {
+  const data = d.data() as Record<string, unknown>;
+  const id = typeof data['id'] === 'string' && data['id'] ? data['id'] : d.id;
+  return { ...data, id };
+}
+
+function compareDocId(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+/**
+ * 主辦候選活動：`isProfileHostedActivity` 檢查的五個欄位各一條條件查詢
+ * （單值欄位 `==`、陣列欄位 `array-contains`），都只用單欄自動索引、不需複合索引，也不加 limit
+ * （舊版讀全集合沒有上限）。合併後依文件 id 去重，並依文件 id 升冪排列——舊版讀全集合的順序就是
+ * 文件 id 升冪，排序同分（同日同標題）時才與舊版同序。任一條查詢失敗整體失敗，同舊版全集合讀取失敗。
+ * 最後仍由 buildHostedActivities 以同一組判斷過濾，查詢只負責縮小讀取範圍。
+ */
+async function loadHostedCandidateEvents(uid: string): Promise<EventRecord[]> {
   const firebase = await getFirebase();
   const db = firebase.db as unknown as Firestore;
-  const snap = await getDocs(collection(db, eventsCollection));
-  const out: EventRecord[] = [];
-  for (const d of snap.docs) {
-    const data = d.data() as Record<string, unknown>;
-    const id = typeof data['id'] === 'string' && data['id'] ? data['id'] : d.id;
-    out.push({ ...data, id });
+  const eventsRef = collection(db, eventsCollection);
+
+  const snaps = await Promise.all([
+    ...HOSTED_SINGLE_FIELDS.map((field) => getDocs(query(eventsRef, where(field, '==', uid)))),
+    ...HOSTED_LIST_FIELDS.map((field) =>
+      getDocs(query(eventsRef, where(field, 'array-contains', uid))),
+    ),
+  ]);
+
+  const byDocId = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  for (const snap of snaps) {
+    for (const d of snap.docs) if (!byDocId.has(d.id)) byDocId.set(d.id, d);
   }
-  return out;
+  return Array.from(byDocId.keys())
+    .sort(compareDocId)
+    .map((docId) => mapEventDoc(byDocId.get(docId) as QueryDocumentSnapshot<DocumentData>));
 }
 
 /**
@@ -353,18 +442,26 @@ export async function loadRelatedActivities(
   }
   const allowedUids: ReadonlySet<string> = new Set([safeUid]);
 
-  const [registrations, indexedEvents] = await Promise.all([
+  const [registrations, hostedCandidates] = await Promise.all([
     loadUserRegistrations(safeUid),
-    loadAllEvents(),
+    loadHostedCandidateEvents(safeUid),
   ]);
 
+  // 舊版讀「所有報名的 eventId」。只有被有效報名查到的 key 會影響結果，所以只讀兩者交集：
+  // 取消／同行者等報名指向的活動不再讀，結果不變。
+  const lookupKeys = new Set(
+    registrations
+      .filter((r) => isActiveParticipantRegistration(r, allowedUids))
+      .map(registrationEventKey)
+      .filter((v) => !!v),
+  );
   const regEventIds = registrations
     .map((r) => (typeof r.eventId === 'string' ? r.eventId : ''))
-    .filter((v) => !!v);
+    .filter((v) => !!v && lookupKeys.has(v));
   const eventsById = await loadEventsByIds(regEventIds);
 
   const registered = buildRegisteredActivities(registrations, eventsById, allowedUids, now);
-  const hosted = buildHostedActivities(indexedEvents, allowedUids, now);
+  const hosted = buildHostedActivities(hostedCandidates, allowedUids, now);
 
   return {
     registered,
