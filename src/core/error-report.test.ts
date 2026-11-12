@@ -28,11 +28,14 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 import {
   _resetErrorReporterForTest,
+  CHUNK_DEFERRED_CONTEXT,
   installErrorReporter,
   redactHash,
   redactUrl,
   reportClientError,
+  reportDeferredChunkFailure,
 } from './error-report';
+import { _resetGestureForegroundForTest, noteUserRetry } from './chunk-reload';
 
 const mockAddDoc = vi.mocked(addDoc);
 const mockCollection = vi.mocked(collection);
@@ -314,15 +317,24 @@ describe('error-report', () => {
       { name: 'https://cdn.example.com/assets/other.js', decodedBodySize: 0, transferSize: 0, initiatorType: 'script' },
       { name: `${location.origin}/assets/HomePage-x.js`, decodedBodySize: 0, transferSize: 0, initiatorType: 'other' },
     ] as unknown as PerformanceEntryList);
-    // 測試同步更新（R-QA-005）：DIAG-IOS-IMPORT 修法 B 起 pagehide 之後的程式檔載入失敗不上報，這裡改在前景觸發。
+    // 測試同步更新（R-QA-005）：DIAG-IOS-IMPORT 修法 B 起 pagehide 之後的失敗改由回前景補報（chunk-deferred），恢復「pagehide 後附 diag」語意。
     installErrorReporter();
-    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    window.dispatchEvent(new Event('pagehide'));
+    reportDeferredChunkFailure({
+      error: new TypeError('Importing a module script failed.'),
+      vis: 'hidden',
+      leaving: true,
+      waitMs: 4200,
+    });
     await waitForWrites(1);
     const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload).toMatchObject({ context: CHUNK_DEFERRED_CONTEXT, errorMessage: 'Importing a module script failed.' });
     const diag = JSON.parse(String(payload.diag)) as Record<string, unknown>;
     expect(diag).toMatchObject({
-      leaving: false,
-      vis: 'visible',
+      leaving: true,
+      dvis: 'hidden',
+      dleaving: true,
+      dwait: 4200,
       rl: 3000,
       n: 2,
       assets: [
@@ -343,6 +355,39 @@ describe('error-report', () => {
 
     afterEach(() => {
       delete (document as unknown as Record<string, unknown>).visibilityState;
+      _resetGestureForegroundForTest();
+    });
+
+    it('P2-1：背景中略過的同一則訊息不吃掉回前景補報；前景已報過同訊息也不吃掉（context 分開去重）', async () => {
+      currentUser = { uid: 'u1', displayName: '小明' };
+      const error = new TypeError('Importing a module script failed.');
+      reportClientError('render', error); // 前景先報一次
+      await waitForWrites(1);
+      visibility = 'hidden';
+      reportClientError('render', error);
+      reportClientError('unhandledrejection', error);
+      await drain();
+      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+
+      visibility = 'visible';
+      reportDeferredChunkFailure({ error, vis: 'hidden', leaving: false, waitMs: 9000 });
+      await waitForWrites(2);
+      const payload = mockAddDoc.mock.calls[1]?.[1] as Record<string, unknown>;
+      expect(payload).toMatchObject({ context: CHUNK_DEFERRED_CONTEXT });
+      expect(JSON.parse(String(payload.diag))).toMatchObject({ vis: 'visible', dvis: 'hidden', dleaving: false, dwait: 9000 });
+    });
+
+    it('P2-2：visibilityState 卡在 hidden，按過重試後的程式檔載入失敗照常上報', async () => {
+      currentUser = { uid: 'u1', displayName: '小明' };
+      visibility = 'hidden';
+      reportClientError('render', new TypeError('Importing a module script failed.'));
+      await drain();
+      expect(mockAddDoc).not.toHaveBeenCalled();
+
+      noteUserRetry();
+      reportClientError('render', new TypeError('Importing a module script failed.'));
+      await waitForWrites(1);
+      expect(mockAddDoc.mock.calls[0]?.[1]).toMatchObject({ context: 'render' });
     });
 
     it('pagehide 之後不上報；bfcache 還原回前景後仍失敗照常上報', async () => {

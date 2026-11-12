@@ -43,12 +43,18 @@ describe('createChunkReloadGuard（DIAG-IOS-IMPORT 修法 B）', () => {
   function setup(start = 1_000_000) {
     const storage = memoryStorage();
     const reload = vi.fn();
+    const onStuck = vi.fn();
     let now = start;
     let hidden = false;
-    const guard = createChunkReloadGuard({ storage, now: () => now, reload }, () => hidden);
+    const guard = createChunkReloadGuard(
+      { storage, now: () => now, reload },
+      () => hidden,
+      { readState: () => ({ vis: hidden ? 'hidden' : 'visible', leaving: false }), onStuck },
+    );
     return {
       guard,
       reload,
+      onStuck,
       storage,
       setHidden: (value: boolean) => { hidden = value; },
       advance: (ms: number) => { now += ms; },
@@ -98,6 +104,57 @@ describe('createChunkReloadGuard（DIAG-IOS-IMPORT 修法 B）', () => {
     t.advance(5_000);
     t.setHidden(false);
     expect(t.guard.onForeground()).toBe(false);
+    expect(t.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('P2-1：回前景因 60 秒窗口不重載時補報一筆，帶延後當下的 vis／leaving 與等待毫秒數', () => {
+    const t = setup();
+    t.guard.onPreloadError(); // 可見時第一次失敗 → 重載
+    t.advance(5_000);
+    t.setHidden(true);
+    const first = new TypeError('Importing a module script failed.');
+    t.guard.onPreloadError(first);
+    t.advance(1_000);
+    t.guard.onPreloadError(new TypeError('second')); // 只記第一筆
+    t.advance(2_000);
+    expect(t.onStuck).not.toHaveBeenCalled(); // 背景當下不報
+    t.setHidden(false);
+    expect(t.guard.onForeground()).toBe(false);
+    expect(t.onStuck).toHaveBeenCalledTimes(1);
+    expect(t.onStuck).toHaveBeenCalledWith({ error: first, vis: 'hidden', leaving: false, waitMs: 3_000 });
+  });
+
+  it('回前景有重載時不補報', () => {
+    const t = setup();
+    t.setHidden(true);
+    t.guard.onPreloadError(new TypeError('x'));
+    t.setHidden(false);
+    expect(t.guard.onForeground()).toBe(true);
+    expect(t.onStuck).not.toHaveBeenCalled();
+  });
+
+  it('P3：延後超過 5 分鐘才回前景，作廢不重載（仍補報，waitMs 可分辨）', () => {
+    const t = setup();
+    t.setHidden(true);
+    t.guard.onPreloadError(new TypeError('x'));
+    t.advance(5 * 60_000 + 1);
+    t.setHidden(false);
+    expect(t.guard.onForeground()).toBe(false);
+    expect(t.reload).not.toHaveBeenCalled();
+    expect(t.storage.getItem('fcb:chunk-reload-at')).toBeNull();
+    expect(t.onStuck).toHaveBeenCalledWith(expect.objectContaining({ waitMs: 5 * 60_000 + 1 }));
+    // 作廢後不再殘留：之後回前景什麼都不做。
+    expect(t.guard.onForeground()).toBe(false);
+    expect(t.onStuck).toHaveBeenCalledTimes(1);
+  });
+
+  it('延後剛好 5 分鐘：仍照第一次失敗規則重載', () => {
+    const t = setup();
+    t.setHidden(true);
+    t.guard.onPreloadError();
+    t.advance(5 * 60_000);
+    t.setHidden(false);
+    expect(t.guard.onForeground()).toBe(true);
     expect(t.reload).toHaveBeenCalledTimes(1);
   });
 

@@ -8,6 +8,18 @@ import type { FeatureManifest } from '@/core/feature-types';
 vi.mock('@/core/error-report', () => ({ reportClientError: vi.fn(), installErrorReporter: vi.fn() }));
 import { reportClientError } from '@/core/error-report';
 
+// Opus 終審 P3：觀察重試畫面出現時的副作用（收掉載入指示、停掉卡住檢查）。
+const stopStall = vi.fn();
+vi.mock('@/core/content-stall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/content-stall')>();
+  return { ...actual, startContentStallCheck: vi.fn(() => stopStall) };
+});
+vi.mock('@/core/route-loading', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/route-loading')>();
+  return { ...actual, beginRouteLoading: vi.fn(() => 41), endRouteLoading: vi.fn() };
+});
+import { endRouteLoading } from '@/core/route-loading';
+
 function Fine(): preact.JSX.Element {
   return <p data-testid="fine">fine page</p>;
 }
@@ -34,6 +46,8 @@ describe('App 路由程式檔載入失敗', () => {
     registerFeatures(manifests);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(reportClientError).mockClear();
+    vi.mocked(endRouteLoading).mockClear();
+    stopStall.mockClear();
     unhandled.mockClear();
     window.addEventListener('unhandledrejection', unhandled);
     window.history.replaceState({}, '', '/lazy');
@@ -66,5 +80,39 @@ describe('App 路由程式檔載入失敗', () => {
     expect(container.querySelector('.error-fallback')).toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it('顯示重試畫面時收掉換頁載入指示、停掉卡住檢查（onFallback）', async () => {
+    const { container } = render(<App />);
+    await waitFor(() => expect(rejectFirst).not.toBeNull());
+    vi.mocked(endRouteLoading).mockClear();
+    stopStall.mockClear();
+    rejectFirst?.(new TypeError('Importing a module script failed.'));
+
+    await waitFor(() => expect(container.querySelector('.error-fallback')).not.toBeNull());
+    expect(endRouteLoading).toHaveBeenCalledWith(41);
+    expect(stopStall).toHaveBeenCalled();
+  });
+
+  it('import 回 undefined（preloadError 已擋下）：從快取移除，換頁回來重新下載', async () => {
+    let resolveFirst = null as ((mod: undefined) => void) | null;
+    loadLazy.mockReset();
+    loadLazy
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementation(() => Promise.resolve({ default: Lazy }));
+    const { findByTestId, queryByTestId } = render(<App />);
+    await waitFor(() => expect(resolveFirst).not.toBeNull());
+    resolveFirst?.(undefined);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(queryByTestId('lazy-page')).toBeNull();
+
+    window.history.pushState({}, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(await findByTestId('fine')).toBeTruthy();
+    window.history.pushState({}, '', '/lazy');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(await findByTestId('lazy-page')).toBeTruthy();
+    expect(loadLazy).toHaveBeenCalledTimes(2);
   });
 });

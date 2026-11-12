@@ -16,7 +16,7 @@ import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
 import { installChunkReloadGuard } from './core/chunk-reload';
-import { installErrorReporter, reportClientError } from './core/error-report';
+import { installErrorReporter, reportClientError, reportDeferredChunkFailure } from './core/error-report';
 import { runLegacyMigrationOnce } from './core/legacy-migration';
 import { initServiceWorker } from './core/sw-control';
 import { preloadEventDetailChunks } from './app/event-detail-preload';
@@ -31,7 +31,7 @@ preloadEventDetailChunks(
 );
 
 // 越早越好：首屏的路由 chunk 載入失敗也要能接住。
-installChunkReloadGuard();
+installChunkReloadGuard(reportDeferredChunkFailure);
 installErrorReporter();
 runLegacyMigrationOnce();
 

@@ -10,7 +10,7 @@
 
 import type { Firestore } from 'firebase/firestore';
 
-import { RELOAD_AT_KEY } from './chunk-reload';
+import { isGestureForeground, RELOAD_AT_KEY, type DeferredChunkFailure } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
 import { readAppVersion } from './app-meta';
 
@@ -238,7 +238,7 @@ function readSinceChunkReload(): number | null {
  * 程式檔載入失敗時的診斷（2026-11-08 iOS LINE 首頁大量載入失敗，原訊息不含檔名）。
  * iOS 沒有 responseStatus、失敗的檔常常不留 timing，所以不判斷哪個失敗，只列最後幾個同源 /assets 檔讓人對照。
  */
-function readModuleLoadDiag(): string {
+function readModuleLoadDiag(deferred?: DeferredChunkFailure): string {
   let assets: { f: string; b: number | null; ts: number | null; it: string }[] = [];
   let n = 0;
   try {
@@ -267,6 +267,8 @@ function readModuleLoadDiag(): string {
       rl: readSinceChunkReload(),
       n,
       assets,
+      // 背景中延後的失敗（context chunk-deferred）：延後當下的 vis／leaving 與延後到回前景的毫秒數。
+      ...(deferred ? { dvis: deferred.vis, dleaving: deferred.leaving, dwait: deferred.waitMs } : {}),
     });
   } catch {
     return '';
@@ -274,6 +276,8 @@ function readModuleLoadDiag(): string {
 }
 
 function isBackground(): boolean {
+  // 使用者按過重試（手勢）：一律視為前景，iOS 可能不送 visible、visibilityState 卡在 hidden（Opus 終審 P2-2）。
+  if (isGestureForeground()) return false;
   if (leaving) return true;
   try {
     return document.visibilityState === 'hidden';
@@ -371,19 +375,19 @@ async function persist(context: string, parsed: ParsedError, key: string, diag: 
   }
 }
 
-function enqueue(context: string, err: unknown): void {
+function enqueue(context: string, err: unknown, deferred?: DeferredChunkFailure): void {
   const parsed = parseError(err);
   if (isNoise(parsed.errorMessage)) return;
   // DIAG-IOS-IMPORT 修法 B：背景中（vis=hidden 或 pagehide 之後）的程式檔載入失敗是切背景中斷的雜訊，不寫、也不記去重；
-  // 回前景後再失敗照常上報。
-  if (MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) && isBackground()) return;
+  // 回前景後再失敗照常上報；回前景後停在重試畫面的，由 chunk-reload 補送 chunk-deferred 一筆（不受這裡略過）。
+  if (!deferred && MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) && isBackground()) return;
   const key = `${context}|${parsed.errorCode}|${parsed.errorMessage}`;
   if (seen.has(key)) return;
   if (isBudgetClosed(Date.now())) return;
   seen.add(key);
   reserved += 1;
   // 出錯當下就讀：persist 前要等登入還原（最多 8 秒），那時頁面狀態已經變了。
-  const diag = MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) ? readModuleLoadDiag() : '';
+  const diag = deferred || MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) ? readModuleLoadDiag(deferred) : '';
   const run = chain.then(() => persist(context, parsed, key, diag));
   chain = run.then(() => undefined, () => undefined);
   void run.finally(() => {
@@ -442,6 +446,24 @@ export function reportClientError(context: string, err: unknown): void {
     enqueue(context, err);
   } catch (failure) {
     warnFailure(failure);
+  } finally {
+    guard -= 1;
+  }
+}
+
+export const CHUNK_DEFERRED_CONTEXT = 'chunk-deferred';
+
+/**
+ * 背景中延後的程式檔載入失敗，回前景處理時沒有重載（畫面停在重試）時由 chunk-reload 呼叫，補送一筆（Opus 終審 P2-1）。
+ * context 用 chunk-deferred，和 render／unhandledrejection 分開去重；呼叫時已在前景，不受背景略過。
+ */
+export function reportDeferredChunkFailure(failure: DeferredChunkFailure): void {
+  if (guard > 0) return;
+  guard += 1;
+  try {
+    enqueue(CHUNK_DEFERRED_CONTEXT, failure.error, failure);
+  } catch (err) {
+    warnFailure(err);
   } finally {
     guard -= 1;
   }
