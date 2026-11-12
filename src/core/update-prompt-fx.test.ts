@@ -186,9 +186,28 @@ describe('update-prompt-fx 靜態 CSS', () => {
     expect(UPDATE_PROMPT_FX_CSS).toContain('站長 2026-11-10 選定 B 銅金；R-UI-005 例外');
     expect(UPDATE_PROMPT_FX_CSS).toContain('--c1: #f3c876');
     expect(UPDATE_PROMPT_FX_CSS).toContain('--c2: #c58a33');
-    expect(UPDATE_PROMPT_FX_CSS).toContain('min(420px, calc(100vw - 48px))');
-    expect(UPDATE_PROMPT_FX_CSS).toContain('bottom: calc(72px + env(safe-area-inset-bottom, 0px))');
+    // UPD-3P 方案乙：寬度、位置改成單行停靠在底部導覽上方（測試同步更新）
+    expect(UPDATE_PROMPT_FX_CSS).toContain('min(420px, calc(100vw - 32px))');
+    expect(UPDATE_PROMPT_FX_CSS).toContain('bottom: calc(var(--bottombar-h, 64px) + 8px + env(safe-area-inset-bottom, 0px))');
     expect(UPDATE_PROMPT_FX_CSS).toContain('z-index: 100000');
     expect(UPDATE_PROMPT_FX_CSS).toContain('mix-blend-mode: screen');
+  });
+
+  it('UPD-3P 單行：沒有底部導覽時離底 16px；標題不換行、不用省略號；沒有說明行與按鈕列', () => {
+    expect(UPDATE_PROMPT_FX_CSS).toMatch(
+      /#sw-reload-deferred-prompt\.sw-reload-fx\[data-dock="bare"\] \{\s*bottom: calc\(16px \+ env\(safe-area-inset-bottom, 0px\)\);/,
+    );
+    const t1 = UPDATE_PROMPT_FX_CSS.match(/\.sw-reload-fx \.t1 \{([^}]*)\}/)?.[1] ?? '';
+    expect(t1).toContain('white-space: nowrap');
+    expect(UPDATE_PROMPT_FX_CSS).not.toContain('text-overflow: ellipsis');
+    expect(UPDATE_PROMPT_FX_CSS).not.toContain('.t2');
+    expect(UPDATE_PROMPT_FX_CSS).not.toContain('.acts');
+    for (const cls of ['go', 'later']) {
+      const body = UPDATE_PROMPT_FX_CSS.match(new RegExp(`\\.sw-reload-fx \\.${cls} \\{([^}]*)\\}`))?.[1] ?? '';
+      expect(body).toContain('min-height: 40px');
+      expect(body).toContain('white-space: nowrap');
+    }
+    const ico = UPDATE_PROMPT_FX_CSS.match(/\.sw-reload-fx \.ico \{([^}]*)\}/)?.[1] ?? '';
+    expect(ico).toContain('width: 32px');
   });
 });

@@ -45,3 +45,24 @@ describe('app-shell.css：外框不是捲動容器', () => {
     expect(bodies.some((b) => /animation-fill-mode\s*:\s*backwards/.test(b))).toBe(true);
   });
 });
+
+// UPD-3P 方案乙：更新提示框顯示時 body 加 fcb-update-open（reload-safety.ts），主內容底部空白與吐司一起上推 68px。
+describe('app-shell.css／toast-host.css：更新提示框出現時內容上推', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/ui/app-shell.css'), 'utf8');
+
+  it('body.fcb-update-open 定義 --update-prompt-space: 68px（提示框高 60＋與導覽列間距 8）', () => {
+    const bodies = rulesFor(css, 'body.fcb-update-open');
+    expect(bodies.some((b) => /--update-prompt-space\s*:\s*68px/.test(b))).toBe(true);
+  });
+
+  it('.app-main 的底部空白加上 --update-prompt-space（預設 0，沒提示框時不變）', () => {
+    const bodies = rulesFor(css, '.ui-app-shell .app-main');
+    expect(bodies.some((b) => /padding-bottom\s*:[^;]*var\(--update-prompt-space,\s*0px\)/.test(b))).toBe(true);
+  });
+
+  it('吐司的底部位置也加上 --update-prompt-space', () => {
+    const host = readFileSync(resolve(process.cwd(), 'src/ui/toast-host.css'), 'utf8');
+    const bodies = rulesFor(host, '.ui-toast-host');
+    expect(bodies.some((b) => /inset\s*:[^;]*var\(--update-prompt-space,\s*0px\)/.test(b))).toBe(true);
+  });
+});

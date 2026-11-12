@@ -5,6 +5,12 @@
   --qa-banner-h: 0px;
 }
 
+/* UPD-3P 方案乙：更新提示框（單行、高約 60px，停在底部導覽上方 8px）顯示期間 reload-safety 在 body 加這個 class，
+   主內容底部空白與吐司（toast-host.css）一起上推 68px，報名鈕與最後一段內容都能捲到提示框上方。 */
+body.fcb-update-open {
+  --update-prompt-space: 68px;
+}
+
 .ui-app-shell {
   width: 100%;
   /* M-058：照 A css/base.css:129,1401——800px 以下最大寬度 560px，800px 以上 640px */
@@ -21,7 +27,7 @@
   flex: 1 1 auto;
   min-width: 0;
   padding-top: calc(var(--topbar-h, 56px) + var(--qa-banner-h, 0px) + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
-  padding-bottom: calc(var(--bottombar-h, 64px) + 55px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--bottombar-h, 64px) + 55px + var(--update-prompt-space, 0px) + env(safe-area-inset-bottom, 0px));
   padding-left: calc(var(--space-2) + var(--safe-left));
   padding-right: calc(var(--space-2) + var(--safe-right));
 }
