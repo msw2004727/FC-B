@@ -89,4 +89,19 @@ describe('submit-guard（T6）', () => {
     release();
     expect(idle).toHaveBeenCalledTimes(1);
   });
+
+  it('idle 回呼丟錯時其餘回呼仍被呼叫，release 不拋錯', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first = vi.fn(() => { throw new Error('boom'); });
+    const second = vi.fn();
+    onSubmittingIdle(first);
+    onSubmittingIdle(second);
+    const release = beginSubmitting('signup');
+    expect(() => release()).not.toThrow();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(err).toHaveBeenCalled();
+    expect(isSubmitting()).toBe(false);
+    err.mockRestore();
+  });
 });

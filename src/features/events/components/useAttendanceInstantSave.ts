@@ -168,7 +168,11 @@ export function useAttendanceLeaveGuard(
         hold();
         throw error;
       }
-      void Promise.resolve(flushed).finally(hold);
+      Promise.resolve(flushed)
+        .catch((error: unknown) => {
+          console.warn('[attendance-instant-save] 卸載時 flush 失敗', error);
+        })
+        .finally(hold);
     };
   }, [scopeKey, flushRef]);
 
