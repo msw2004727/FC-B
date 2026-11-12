@@ -46,6 +46,7 @@ import {
   startContentStallCheck,
 } from '@/core/content-stall';
 import { reportClientError } from '@/core/error-report';
+import { settleRouteLoad } from '@/core/chunk-reload';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
 import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
@@ -115,13 +116,18 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
     }, ROUTE_TIMEOUT_MS);
     const p = Promise.resolve().then(() => load());
     p.then(
-      () => clearTimeout(timer),
+      (mod) => {
+        clearTimeout(timer);
+        // vite:preloadError 已擋下（等重載）時回 undefined：下次換頁重建，不沿用一直載入中的那份。
+        if (!mod) lazyCache.delete(load);
+      },
       () => {
         clearTimeout(timer);
         lazyCache.delete(load);
       },
     );
-    return p;
+    // DIAG-IOS-IMPORT 修法 B：失敗改交路由錯誤邊界顯示重試畫面，不再停在上一頁或留白。
+    return settleRouteLoad(p);
   };
   const component = lazy(wrappedLoad);
   lazyCache.set(load, component);
@@ -642,6 +648,12 @@ function RouteArea({
       path={location.path}
       previousPath={prevPathRef.current}
       onReset={() => lazyCache.clear()}
+      onRetry={() => setStallRetryKey((k) => k + 1)}
+      onFallback={() => {
+        // 已顯示重試畫面：收掉換頁載入指示與卡住提示，避免同一畫面出現兩個重試。
+        endRouteLoading(loadingSeqRef.current);
+        stopStallRef.current?.();
+      }}
       onNavigateBack={(fallback) => {
         endRouteLoading(loadingSeqRef.current);
         location.route(fallback, true);
@@ -675,6 +687,10 @@ interface RouteErrorBoundaryProps {
   path: string;
   previousPath?: string;
   onReset: () => void;
+  /** 按重試：重建路由元件（失敗的 lazy 會記住失敗結果，只重設錯誤邊界不會重新下載）。 */
+  onRetry?: () => void;
+  /** 顯示錯誤畫面（沒有上一頁可退回）時呼叫。 */
+  onFallback?: () => void;
   onNavigateBack?: (targetPath: string) => void;
   children: ComponentChildren;
 }
@@ -703,6 +719,8 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
       this.props.onReset();
       this.setState({ error: null, resetKey: this.state.resetKey + 1 });
       this.props.onNavigateBack(prev);
+    } else {
+      this.props.onFallback?.();
     }
   }
 
@@ -717,6 +735,7 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 
   private handleRetry = (): void => {
     this.reset();
+    this.props.onRetry?.();
   };
 
   render(): preact.JSX.Element {
