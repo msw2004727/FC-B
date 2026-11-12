@@ -126,7 +126,10 @@ it('M-089：owner 基本編輯開 lazy 表單；補文件 ID，成功重讀', as
   }));
   render(<EventDetailPage id="public" />);
   fireEvent.click(await screen.findByRole('button', { name: '活動編輯' }));
+  // 表單程式下載中顯示轉圈（PageSpinner），載入完成後換成表單。
+  expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
   fireEvent.click(await screen.findByRole('button', { name: '測試存檔' }));
+  expect(document.querySelector('.ui-page-spinner')).toBeNull();
   await waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(2));
   expect(mocks.form).toHaveBeenCalledWith(expect.objectContaining({
     mode: 'edit',
@@ -145,7 +148,10 @@ it('M-089：scoped coach 有編輯、Log、refresh；teamOnly 加公開', async 
   expect(screen.getByRole('checkbox', { name: '活動公開' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '重新整理' })).toBeTruthy();
   fireEvent.click(screen.getByText('Log'));
+  // 紀錄視窗程式下載中顯示轉圈（PageSpinner），載入完成後換成視窗。
+  expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
   expect(await screen.findByRole('dialog')).toBeTruthy();
+  expect(document.querySelector('.ui-page-spinner')).toBeNull();
 });
 
 it('M-089：refresh 重讀活動與名單；失敗保留畫面及 A 提示', async () => {

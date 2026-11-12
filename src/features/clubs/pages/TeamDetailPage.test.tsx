@@ -972,7 +972,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(loadTeam).toHaveBeenLastCalledWith('club');
     expect(screen.getByText('測試俱樂部')).toBe(title);
     expect(screen.getByTestId('legacy-members-card')).toBe(card);
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
 
     await act(async () => {
       pendingLoad.resolve({ ...team, name: '成員管理更新後俱樂部' });
@@ -981,7 +981,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
 
     expect(await screen.findByText('成員管理更新後俱樂部')).toBe(title);
     expect(screen.getByTestId('legacy-members-card')).toBe(card);
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
   });
 
   it('confirms join via appConfirm, shows toast and retains pending state', async () => {
@@ -1200,7 +1200,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
     expect(container.querySelector('.td-v2-title')).toBe(title);
     expect(screen.getByText('測試俱樂部')).toBe(title);
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
 
     const updatedTeam: TeamDoc = { ...team, name: '設定更新後俱樂部' };
     await act(async () => {
@@ -1211,7 +1211,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(await screen.findByText('設定更新後俱樂部')).toBe(title);
     expect(container.querySelector('.td-v2-title')).toBe(title);
     expect(screen.getByRole('dialog', { name: '俱樂部設定' })).toBe(dialog);
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
     expect(settingsModalMock.latestProps?.team).toEqual(updatedTeam);
     expect(settingsModalMock.latestProps?.team).not.toBe(originalTeam);
   });
@@ -1526,7 +1526,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     const pendingLoad = deferred<TeamDoc | null>();
     vi.mocked(loadTeam).mockReturnValueOnce(pendingLoad.promise);
     render(<TeamDetailPage />);
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
 
     await act(async () => pendingLoad.reject(new Error('network')));
     await screen.findByText('載入失敗');
@@ -1582,7 +1582,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     expect(screen.getByRole('button', { name: '返回' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '登入' }).className).toContain('primary-btn');
     expect(screen.queryByText('測試俱樂部')).toBeNull();
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
     expect(loadTeam).not.toHaveBeenCalled();
     expect(loadTeamMembers).not.toHaveBeenCalled();
     expect(getEventsRepo).not.toHaveBeenCalled();
@@ -1614,7 +1614,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     const view = render(<TeamDetailPage />);
 
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('請先登入 LINE 帳號')).toBeNull();
     expect(screen.queryByRole('button', { name: '登入' })).toBeNull();
     expect(loginForClubs).not.toHaveBeenCalled();
@@ -1627,7 +1627,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(screen.queryByText('請先登入 LINE 帳號')).toBeNull();
     expect(loginForClubs).not.toHaveBeenCalled();
     expect(loadTeam).not.toHaveBeenCalled();
@@ -1646,7 +1646,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     const view = render(<TeamDetailPage />);
 
-    expect(screen.getByText('載入中…')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
     expect(loadTeam).not.toHaveBeenCalled();
     expect(loginForClubs).not.toHaveBeenCalled();
 
@@ -1656,7 +1656,7 @@ describe('TeamDetailPage (Legacy V2)', () => {
 
     expect(await screen.findByText('請先登入 LINE 帳號')).toBeTruthy();
     expect(screen.getByRole('button', { name: '登入' })).toBeTruthy();
-    expect(screen.queryByText('載入中…')).toBeNull();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
     expect(screen.queryByText('測試俱樂部')).toBeNull();
     expect(loadTeam).not.toHaveBeenCalled();
     expect(loginForClubs).not.toHaveBeenCalled();
@@ -1823,6 +1823,27 @@ describe('T-054c V1／V2：俱樂部活動日期與週條', () => {
     ], 1, vi.fn()));
     expect(container.querySelector('.td-v2-event-date em')?.textContent).toBe('10月');
     expect(container.querySelector('.td-v2-event-date strong')?.textContent).toBe('19');
+  });
+
+  it('面板載入中顯示圈與骨架，完成後消失', () => {
+    const props: TeamDetailV2PanelsProps = {
+      team: { id: 'targetA' }, activeTab: 'events', tabKeys: new Set(['overview', 'events', 'members']),
+      roster: [], membersStatus: 'loading',
+      events: [], eventsStatus: 'loading',
+      totalGames: 0, winRate: 0,
+      viewer: { uid: 'uidA', teamIds: new Set<string>(), hasPermission: () => false },
+      onTeamChanged: vi.fn(), canCreateEvent: false, onCreateEvent: vi.fn(), busy: false,
+      onSelectTab: vi.fn(), onSelectEvent: vi.fn(), onOpenProfile: vi.fn(),
+      onRetryMembers: vi.fn(), onRetryEvents: vi.fn(), onLogin: vi.fn(),
+    };
+    const view = render(<TeamDetailV2Panels {...props} />);
+    const statuses = view.container.querySelectorAll('.reg-loading[role="status"]');
+    expect(statuses).toHaveLength(2);
+    statuses.forEach((node) => expect(node.textContent).toBe('載入中…'));
+    expect(view.container.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(4);
+    view.rerender(<TeamDetailV2Panels {...props} membersStatus="ready" eventsStatus="ready" />);
+    expect(view.container.querySelector('.reg-loading')).toBeNull();
+    expect(view.container.querySelector('.reg-loading-skeleton')).toBeNull();
   });
 
   it('V2：真實 Panels 的 eventDaySet 對到真實週條的台北今天', () => {
