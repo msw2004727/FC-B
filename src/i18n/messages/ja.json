@@ -42,7 +42,8 @@
       "font_medium": "中",
       "font_large": "大",
       "fontAction": "文字サイズ：{current}。{next}に切り替える",
-      "loginError": "LINEログインを完了できませんでした。もう一度お試しください。"
+      "loginError": "LINEログインを完了できませんでした。もう一度お試しください。",
+      "loginExpired": "LINEログインの有効期限が切れました。再読み込みしてからログインしてください"
     },
     "topBar": {
       "label": "上部ナビゲーション",

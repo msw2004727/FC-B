@@ -42,7 +42,8 @@
       "font_medium": "Vừa",
       "font_large": "Lớn",
       "fontAction": "Cỡ chữ hiện tại: {current}. Chuyển sang {next}",
-      "loginError": "Không thể hoàn tất đăng nhập LINE. Vui lòng thử lại."
+      "loginError": "Không thể hoàn tất đăng nhập LINE. Vui lòng thử lại.",
+      "loginExpired": "Phiên đăng nhập LINE đã hết hạn. Vui lòng tải lại trang rồi đăng nhập"
     },
     "topBar": {
       "label": "Điều hướng phía trên",

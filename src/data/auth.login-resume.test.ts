@@ -554,3 +554,179 @@ describe('signOutAndReload（照 A LineAuth.logout）', () => {
     expect(h.fbSignOut).not.toHaveBeenCalled();
   });
 });
+
+describe('LINE 權杖失效的自動復原（B1-02）', () => {
+  const RETRY_KEY = '_lineLoginRetryCount';
+
+  function unauthenticated(code = 'functions/unauthenticated'): Error {
+    return Object.assign(new Error('LINE 驗證失敗'), { code });
+  }
+
+  function lineRejects(code: string): void {
+    h.liff.getProfile.mockRejectedValue(Object.assign(new Error('Authentication failed'), { code }));
+  }
+
+  beforeEach(() => {
+    h.liff.isLoggedIn.mockReturnValue(true);
+    h.liff.isInClient.mockReset().mockReturnValue(false);
+    h.liff.getProfile.mockReset().mockResolvedValue({ displayName: '王大明', pictureUrl: null });
+  });
+
+  it('第一次失效（LINE 回 401）：登出 LINE 並自動導向一次，計數記 1', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.logout).toHaveBeenCalledOnce();
+    expect(h.liff.login).toHaveBeenCalledOnce();
+    expect(h.callFn).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(RETRY_KEY)).toBe('1');
+  });
+
+  it('同一分頁第二次失效：不再導向，改拋專屬錯誤並通知 App 顯示文案', async () => {
+    sessionStorage.setItem(RETRY_KEY, '1');
+    h.callFn.mockRejectedValueOnce(unauthenticated('unauthenticated'));
+    lineRejects('401');
+    const events = await import('@/core/events');
+    const expired: number[] = [];
+    const stop = events.on('auth:line-session-expired', () => { expired.push(1); });
+    try {
+      const err = await auth.signIn().catch((e: unknown) => e);
+
+      expect(auth.isLineSessionExpiredError(err)).toBe(true);
+      expect(auth.isLoginRedirectingError(err)).toBe(false);
+      expect(expired).toEqual([1]);
+      expect(h.liff.logout).toHaveBeenCalledOnce();
+      expect(h.liff.login).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem(RETRY_KEY)).toBe('1');
+    } finally {
+      stop();
+    }
+  });
+
+  it('暫時性失敗（LINE 確認權杖有效）：不登出，用同一顆權杖重試一次即登入', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+
+    const user = await auth.signIn();
+
+    expect(user.uid).toBe('U-login');
+    expect(h.callFn).toHaveBeenCalledTimes(2);
+    expect(h.callFn).toHaveBeenNthCalledWith(2, 'createCustomToken', { accessToken: 'line-access-token' });
+    expect(h.liff.logout).not.toHaveBeenCalled();
+    expect(h.liff.login).not.toHaveBeenCalled();
+  });
+
+  it('暫時性失敗（向 LINE 確認也失敗，非 401）：不登出、不導向、不重試，照原錯誤拋出', async () => {
+    const original = unauthenticated();
+    h.callFn.mockRejectedValueOnce(original);
+    h.liff.getProfile.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(err).toBe(original);
+    expect(auth.isLineSessionExpiredError(err)).toBe(false);
+    expect(h.callFn).toHaveBeenCalledTimes(1);
+    expect(h.liff.logout).not.toHaveBeenCalled();
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('非 unauthenticated 的錯誤：不向 LINE 確認、不登出', async () => {
+    h.callFn.mockRejectedValueOnce(Object.assign(new Error('internal'), { code: 'functions/internal' }));
+
+    await expect(auth.signIn()).rejects.toThrow('internal');
+    expect(h.liff.getProfile).not.toHaveBeenCalled();
+    expect(h.liff.logout).not.toHaveBeenCalled();
+  });
+
+  it('sessionStorage 不可用：不導向，只拋專屬錯誤', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+    try {
+      const err = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLineSessionExpiredError(err)).toBe(true);
+      expect(h.liff.login).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('sessionStorage 讀取丟錯：不導向，只拋專屬錯誤', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('SecurityError');
+    });
+    try {
+      const err = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLineSessionExpiredError(err)).toBe(true);
+      expect(h.liff.login).not.toHaveBeenCalled();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
+  it('網址帶回跳參數（一律非互動）：不導向、不動計數，只拋專屬錯誤', async () => {
+    history.replaceState(null, '', '/?code=c&state=s&liffClientId=x');
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(auth.isLineSessionExpiredError(err)).toBe(true);
+    expect(h.liff.logout).toHaveBeenCalledOnce();
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('開頁接手（interactive:false）：不導向', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+
+    const err = await auth.signIn({ interactive: false }).catch((e: unknown) => e);
+
+    expect(auth.isLineSessionExpiredError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+  });
+
+  it('LINE App 內（Mini App）：不自動導向，只拋專屬錯誤', async () => {
+    h.liff.isInClient.mockReturnValue(true);
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(auth.isLineSessionExpiredError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('登入成功時清掉重試計數', async () => {
+    sessionStorage.setItem(RETRY_KEY, '1');
+
+    await auth.signIn();
+
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('向 LINE 確認期間開始登出：不登出 LINE、不導向', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    let rejectProfile!: (err: unknown) => void;
+    h.liff.getProfile.mockImplementationOnce(() => new Promise((_, reject) => { rejectProfile = reject; }));
+    const signing = auth.signIn().catch((e: unknown) => e);
+    await vi.waitFor(() => expect(h.liff.getProfile).toHaveBeenCalledOnce());
+    const done = auth.signOutForCacheClear();
+    rejectProfile(Object.assign(new Error('expired'), { code: '401' }));
+    const err = await signing;
+    await done;
+
+    expect(auth.isLineSessionExpiredError(err)).toBe(false);
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+});

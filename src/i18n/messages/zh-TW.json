@@ -42,7 +42,8 @@
       "font_medium": "中",
       "font_large": "大",
       "fontAction": "目前字級為{current}，切換為{next}",
-      "loginError": "無法完成 LINE 登入，請重新嘗試。"
+      "loginError": "無法完成 LINE 登入，請重新嘗試。",
+      "loginExpired": "LINE 登入已過期，請重新整理後再登入"
     },
     "topBar": {
       "label": "頂部導覽",

@@ -27,7 +27,7 @@ import {
 import { readAppVersion } from '@/core/app-meta';
 import { isInternalTestMode } from '@/data/internal-test';
 import type { AuthUser } from '@/data/auth';
-import { getLastKnownAuthUid } from '@/data/auth';
+import { clearAccountLocalState, getLastKnownAuthUid } from '@/data/auth';
 import { markAutoLoginSuppressed } from '@/data/login-redirect';
 import { toast } from '@/ui/Toast';
 import {
@@ -67,7 +67,8 @@ export interface SideDrawerProps {
   user?: AuthUser | null;
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
-  loginError?: boolean;
+  /** 'expired'＝LINE 權杖已失效（B1-02），顯示專屬文案。 */
+  loginError?: boolean | 'expired';
   /** 登入者權限與 Viewer 資料（含 Firestore displayName、pictureUrl、permissionSources）。 */
   routeAccess?: (RouteAccessContext & {
     displayName?: string | null;
@@ -171,24 +172,9 @@ async function executeClearCache(): Promise<void> {
         /* ignore */
       }
     }
-    try {
-      const lsKeys = Object.keys(localStorage);
-      for (const k of lsKeys) {
-        if (
-          k.startsWith('shub_c_')
-          || k.startsWith('shub_ts_')
-          || k.startsWith('shub_cache_')
-          || k.startsWith('LIFF')
-          || k.startsWith('toosterx:auth')
-        ) {
-          localStorage.removeItem(k);
-        }
-      }
-      localStorage.removeItem('sporthub_auto_exp_rules');
-      localStorage.removeItem('sporthub_auto_exp_logs');
-    } catch {
-      /* ignore */
-    }
+    // B1-05：帳號相關 localStorage 與 sessionStorage `_lineLoginRetryCount` 改用登出共用的同一份清單，
+    // 取代原本這裡自己列的前綴（漏了活動列表快照等，兩份清單會漂移）；儲存空間不可用時內部靜默略過。
+    clearAccountLocalState();
     try {
       const idb = indexedDB as IDBFactory & {
         databases?: () => Promise<Array<{ name?: string }>>;
@@ -199,11 +185,6 @@ async function executeClearCache(): Promise<void> {
           if (db?.name) indexedDB.deleteDatabase(db.name);
         });
       }
-    } catch {
-      /* ignore */
-    }
-    try {
-      sessionStorage.removeItem('_lineLoginRetryCount');
     } catch {
       /* ignore */
     }
@@ -721,7 +702,7 @@ export function SideDrawer({
           </div>
           {loginError && (
             <div role="alert" style={{ marginTop: '.5rem', fontSize: '.78rem', color: 'var(--danger)' }}>
-              {t('ui.shell.loginError')}
+              {t(loginError === 'expired' ? 'ui.shell.loginExpired' : 'ui.shell.loginError')}
             </div>
           )}
         </div>

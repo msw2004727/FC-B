@@ -42,7 +42,8 @@
       "font_medium": "中",
       "font_large": "大",
       "fontAction": "当前字号为{current}，切换为{next}",
-      "loginError": "无法完成 LINE 登录，请重试。"
+      "loginError": "无法完成 LINE 登录，请重试。",
+      "loginExpired": "LINE 登录已过期，请刷新后再登录"
     },
     "topBar": {
       "label": "顶部导航",

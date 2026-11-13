@@ -53,6 +53,47 @@ export function isLoginRedirectingError(err: unknown): boolean {
   );
 }
 
+/** B1-02：LINE 權杖經 LINE 確認無效、這次不自動重新登入時拋出；App 顯示「LINE 登入已過期」文案。 */
+export class LineSessionExpiredError extends Error {
+  readonly isLineSessionExpired = true;
+  constructor(message = '[auth] LINE 登入已過期') {
+    super(message);
+    this.name = 'LineSessionExpiredError';
+  }
+}
+
+export function isLineSessionExpiredError(err: unknown): boolean {
+  return Boolean(
+    err && typeof err === 'object' && (err as { isLineSessionExpired?: unknown }).isLineSessionExpired === true,
+  );
+}
+
+/**
+ * B1-02：同一分頁自動重新登入 LINE 的次數（照 A profile-form.js 的 `_lineLoginRetryCount`，最多 1 次）。
+ * 讀不到、寫不進或寫完讀回不符（儲存空間不可用）一律回 false＝不自動導向，避免重導迴圈。
+ */
+const LINE_LOGIN_RETRY_KEY = '_lineLoginRetryCount';
+
+function claimLineLoginRetry(): boolean {
+  try {
+    const count = Number(sessionStorage.getItem(LINE_LOGIN_RETRY_KEY) || 0);
+    if (!(count < 1)) return false;
+    const next = String(count + 1);
+    sessionStorage.setItem(LINE_LOGIN_RETRY_KEY, next);
+    return sessionStorage.getItem(LINE_LOGIN_RETRY_KEY) === next;
+  } catch {
+    return false;
+  }
+}
+
+function clearLineLoginRetry(): void {
+  try {
+    sessionStorage.removeItem(LINE_LOGIN_RETRY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 最後一次確認的登入帳號；undefined＝登入狀態尚未確定。 */
 let lastKnownAuthUid: string | null | undefined;
 let mobileHintAcknowledged = false;
@@ -215,31 +256,7 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     if (!interactive) {
       throw new LoginRedirectingError('[auth] LINE 授權回跳後未取得登入');
     }
-    // M-036：手機外部瀏覽器先顯示 LINE 登入提示框（照 A `js/line-auth.js` login 的同一段檢查）
-    let inClient = false;
-    try {
-      inClient = liff.isInClient();
-    } catch {
-      inClient = false;
-    }
-    if (!mobileHintAcknowledged && isMobileExternalBrowser(inClient, navigator.userAgent)) {
-      emit('auth:mobile-login-hint', {});
-      throw new LoginRedirectingError('[auth] 等待手機外部瀏覽器登入提示確認');
-    }
-    // 導向 LINE 前再確認一次：Firebase 已有登入者（整頁打開時 Auth 晚一步還原）就不導向（Grok 第三輪 P1）。
-    // 登出在這段期間開始也不導向。
-    if (await currentSignedInUid() !== null || signingOut) {
-      throw new LoginRedirectingError('[auth] 已有登入者，不導向 LINE');
-    }
-    // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
-    // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
-    const redirectUri = buildCleanLoginRedirectUri(location.href);
-    if (redirectUri === new URL('/', location.origin).toString()) {
-      liff.login();
-    } else {
-      liff.login({ redirectUri });
-    }
-    throw new LoginRedirectingError();
+    return redirectToLineLogin(liff);
   }
 
   const accessToken = liff.getAccessToken();
@@ -247,10 +264,137 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     throw new Error('[auth] 無法取得 LINE access token，LIFF session 可能失效');
   }
 
-  // 換發 Firebase 登入：Callable 預設約 70 秒才放棄，登入鈕會一直停著；設 15 秒上限（Grok 交叉審查 P3）。
-  // 逾時、或之後又有新的 signIn／登出開始：這次晚到的 custom token 不再拿去登入（Grok 第二輪 P3）。
+  let user: Awaited<ReturnType<typeof exchangeLineAccessToken>>;
+  try {
+    user = await exchangeLineAccessToken(accessToken, generation);
+  } catch (err) {
+    // B1-02：Functions 對任何 LINE 驗證例外都回 unauthenticated（含 LINE API 暫時失敗），
+    // 不能一收到就登出 LINE；先向 LINE 確認這顆權杖本身：有效＝暫時失敗，同一顆重試一次；
+    // LINE 明確回 401＝權杖已失效，才登出 LINE（必要時自動重新登入一次）；確認不了照原錯誤拋出。
+    if (!isUnauthenticatedError(err)) throw err;
+    const verdict = await probeLineAccessToken(liff);
+    if (verdict === 'valid') {
+      if (signingOut || generation !== signInGeneration) throw err;
+      user = await exchangeLineAccessToken(accessToken, generation);
+    } else if (verdict === 'invalid') {
+      return recoverInvalidLineSession(liff, interactive, generation);
+    } else {
+      throw err;
+    }
+  }
+
+  let displayName: string | null = null;
+  let pictureUrl: string | null = null;
+  try {
+    // 同一份結果交給會員文件同步（user-doc-sync.ts 讀 fcbProfile），登入時只呼叫一次 getProfile。
+    const profile = await ((liff as { fcbProfile?: unknown }).fcbProfile = liff.getProfile());
+    displayName = profile.displayName ?? null;
+    pictureUrl = profile.pictureUrl ?? null;
+  } catch (err) {
+    console.warn('[auth] liff.getProfile() 失敗，僅使用 Firebase Auth 身份', err);
+  }
+
+  const authUser: AuthUser = {
+    uid: user.uid,
+    displayName: displayName ?? user.displayName ?? null,
+    pictureUrl: pictureUrl ?? user.photoURL ?? null,
+  };
+  clearLineLoginRetry();
+  emitAuth(authUser.uid);
+  return authUser;
+}
+
+type LiffClient = Awaited<ReturnType<typeof ensureLiffInit>>;
+
+/** LIFF 未登入且是互動式登入：導向 LINE 登入（原 runSignIn 內的同一段，B1-02 自動重新登入共用）。 */
+async function redirectToLineLogin(liff: LiffClient): Promise<never> {
+  // M-036：手機外部瀏覽器先顯示 LINE 登入提示框（照 A `js/line-auth.js` login 的同一段檢查）
+  let inClient = false;
+  try {
+    inClient = liff.isInClient();
+  } catch {
+    inClient = false;
+  }
+  if (!mobileHintAcknowledged && isMobileExternalBrowser(inClient, navigator.userAgent)) {
+    emit('auth:mobile-login-hint', {});
+    throw new LoginRedirectingError('[auth] 等待手機外部瀏覽器登入提示確認');
+  }
+  // 導向 LINE 前再確認一次：Firebase 已有登入者（整頁打開時 Auth 晚一步還原）就不導向（Grok 第三輪 P1）。
+  // 登出在這段期間開始也不導向。
+  if (await currentSignedInUid() !== null || signingOut) {
+    throw new LoginRedirectingError('[auth] 已有登入者，不導向 LINE');
+  }
+  // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
+  // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
+  const redirectUri = buildCleanLoginRedirectUri(location.href);
+  if (redirectUri === new URL('/', location.origin).toString()) {
+    liff.login();
+  } else {
+    liff.login({ redirectUri });
+  }
+  throw new LoginRedirectingError();
+}
+
+function isUnauthenticatedError(err: unknown): boolean {
+  const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+  return code === 'unauthenticated' || code === 'functions/unauthenticated';
+}
+
+/**
+ * 用同一顆權杖向 LINE 取個人資料，判斷權杖本身是否有效。
+ * LIFF 對 HTTP 401 拋 code '401'，本機沒有權杖時拋 'UNAUTHORIZED'：這兩種才算明確失效；
+ * 其他錯誤（網路、逾時、5xx、未知代碼）一律 unknown，不登出。
+ */
+async function probeLineAccessToken(liff: LiffClient): Promise<'valid' | 'invalid' | 'unknown'> {
+  try {
+    await withTimeout(liff.getProfile(), LIFF_STEP_TIMEOUT_MS, '確認 LINE 權杖');
+    return 'valid';
+  } catch (err) {
+    const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+    return code === '401' || code === 'UNAUTHORIZED' ? 'invalid' : 'unknown';
+  }
+}
+
+/**
+ * LINE 權杖已確認失效：登出 LINE（清掉 LIFF 存的失效權杖，之後按登入會走正常的 liff.login）。
+ * 只有「使用者按的互動式登入、不在 LINE App 內、這個分頁還沒自動重試過、sessionStorage 可用」時才自動導向 LINE 一次；
+ * 其餘（帶回跳參數＝非互動、已重試過、儲存空間不可用、Mini App）只顯示專屬文案，不導向。
+ */
+async function recoverInvalidLineSession(
+  liff: LiffClient,
+  interactive: boolean,
+  generation: number,
+): Promise<never> {
+  // 等 LINE 確認期間開始登出或有新的登入：這次的結果作廢，不登出 LINE、不導向。
+  if (signingOut || generation !== signInGeneration) {
+    throw new Error('[auth] 登入換發已過期，略過');
+  }
+  try {
+    liff.logout();
+  } catch (err) {
+    console.warn('[auth] 清除失效的 LINE 登入失敗', err);
+  }
+  let inClient = true;
+  try {
+    inClient = liff.isInClient();
+  } catch {
+    inClient = true;
+  }
+  if (interactive && !inClient && claimLineLoginRetry()) {
+    return redirectToLineLogin(liff);
+  }
+  emit('auth:line-session-expired', {});
+  throw new LineSessionExpiredError();
+}
+
+/**
+ * createCustomToken＋signInWithCustomToken（每次各自 15 秒上限）。
+ * 換發 Firebase 登入：Callable 預設約 70 秒才放棄，登入鈕會一直停著；設 15 秒上限（Grok 交叉審查 P3）。
+ * 逾時、或之後又有新的 signIn／登出開始：這次晚到的 custom token 不再拿去登入（Grok 第二輪 P3）。
+ */
+async function exchangeLineAccessToken(accessToken: string, generation: number) {
   let expired = false;
-  const user = await withTimeout((async () => {
+  return withTimeout((async () => {
     const { customToken: rawCustomToken } = await callFn('createCustomToken', { accessToken });
     if (typeof rawCustomToken !== 'string' || !rawCustomToken) {
       throw new Error('[auth] createCustomToken 未回傳 customToken');
@@ -275,25 +419,6 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
     expired = true;
     throw err;
   });
-
-  let displayName: string | null = null;
-  let pictureUrl: string | null = null;
-  try {
-    // 同一份結果交給會員文件同步（user-doc-sync.ts 讀 fcbProfile），登入時只呼叫一次 getProfile。
-    const profile = await ((liff as { fcbProfile?: unknown }).fcbProfile = liff.getProfile());
-    displayName = profile.displayName ?? null;
-    pictureUrl = profile.pictureUrl ?? null;
-  } catch (err) {
-    console.warn('[auth] liff.getProfile() 失敗，僅使用 Firebase Auth 身份', err);
-  }
-
-  const authUser: AuthUser = {
-    uid: user.uid,
-    displayName: displayName ?? user.displayName ?? null,
-    pictureUrl: pictureUrl ?? user.photoURL ?? null,
-  };
-  emitAuth(authUser.uid);
-  return authUser;
 }
 
 /**
@@ -439,8 +564,9 @@ export interface QaClaims {
 
 // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源與主題等與帳號無關的設定。
 // 'fcb:events-snapshot:'：活動列表快照以登入者 uid 分隔，內含他人的 blockedUids／creatorUid 等欄位，登出（整頁重載後是訪客）時不會再被讀到也不會被覆寫，必須在這裡清掉（顧問 §3.106，L-43）。
-const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:'];
-const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs'];
+// B1-05：補 'shub_qr_'（UidQrModal 的本人 QR 快取）與 admin_stealth（stealth.ts 的隱身開關），登出與清除快取共用這份清單。
+const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:'];
+const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs', 'admin_stealth'];
 
 /** 換帳號前拍下的帳號相關 localStorage（key → 當時的值）。 */
 export type AccountLocalSnapshot = ReadonlyMap<string, string | null>;

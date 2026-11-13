@@ -355,6 +355,33 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     }
   });
 
+  it('清除快取與登出清同一份帳號資料清單（B1-05）：含活動快照、本人 QR、隱身開關與重試計數，主題不動', async () => {
+    const seeded = ['fcb:events-snapshot:u1', 'shub_qr_uid', 'shub_qr_data', 'admin_stealth', 'shub_c_users'];
+    for (const key of seeded) localStorage.setItem(key, 'x');
+    localStorage.setItem('fcb-test-keep', 'keep');
+    sessionStorage.setItem('_lineLoginRetryCount', '1');
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<Harness />);
+      openDrawer();
+      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      await act(async () => {
+        fireEvent.click(document.getElementById('app-confirm-ok')!);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      for (const key of seeded) expect(localStorage.getItem(key)).toBeNull();
+      expect(localStorage.getItem('fcb-test-keep')).toBe('keep');
+      expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
+    } finally {
+      gateSpy.mockRestore();
+      error.mockRestore();
+      for (const key of seeded) localStorage.removeItem(key);
+      localStorage.removeItem('fcb-test-keep');
+      sessionStorage.removeItem('_lineLoginRetryCount');
+    }
+  });
+
   it('清除快取時 Firebase 登出失敗：不刪 LIFF*、不清快取（Grok 第三輪 P2）', async () => {
     localStorage.setItem('LIFF_STORE:test:accessToken', 'token');
     localStorage.setItem('shub_c_users', '[]');

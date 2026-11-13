@@ -42,7 +42,8 @@
       "font_medium": "보통",
       "font_large": "크게",
       "fontAction": "현재 글자 크기: {current}. {next}(으)로 변경",
-      "loginError": "LINE 로그인을 완료하지 못했습니다. 다시 시도해 주세요."
+      "loginError": "LINE 로그인을 완료하지 못했습니다. 다시 시도해 주세요.",
+      "loginExpired": "LINE 로그인이 만료되었습니다. 새로고침 후 다시 로그인해 주세요"
     },
     "topBar": {
       "label": "상단 탐색",

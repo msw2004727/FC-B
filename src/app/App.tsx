@@ -154,7 +154,8 @@ export function App({
   const [authKnown, setAuthKnown] = useState(false);
   const expectSignedIn = useMemo(() => readAuthHint(), []);
   const [loginPending, setLoginPending] = useState(false);
-  const [loginError, setLoginError] = useState(false);
+  // 'expired'＝LINE 權杖已失效（B1-02），顯示專屬文案；true＝一般登入失敗。
+  const [loginError, setLoginError] = useState<boolean | 'expired'>(false);
   const [mobileHintOpen, setMobileHintOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -240,6 +241,10 @@ export function App({
     const stopMobileHint = on('auth:mobile-login-hint', () => {
       if (!cancelled) setMobileHintOpen(true);
     });
+    // 各頁按鈕直接呼叫 signIn() 時也顯示專屬文案（B1-02）。
+    const stopLineExpired = on('auth:line-session-expired', () => {
+      if (!cancelled && currentUid.current === null) setLoginError('expired');
+    });
 
     // 開在首頁且沒有登入旗標（真訪客）時，等首頁的公開讀取（events／banners／announcements）處理完才還原登入狀態：
     // Auth 一註冊進 Firestore，Firestore 的非同步佇列就會停到 Auth 初始化完成（T-041，見 data/firebase.ts）。
@@ -264,6 +269,7 @@ export function App({
       loginSequence.current += 1;
       stopEvents();
       stopMobileHint();
+      stopLineExpired();
       stopAuth?.();
       stopMultiTab();
       stopOfflineGuard();
@@ -315,7 +321,10 @@ export function App({
         }
         if (mounted.current && sequence === loginSequence.current &&
           currentUid.current === null) {
-          setLoginError(true);
+          // 不從 @/data/auth 靜態匯入判斷函式：既有測試的 auth mock 沒有這個匯出（同 isLineSessionExpiredError 的判斷）。
+          const expired = Boolean(err && typeof err === 'object' &&
+            (err as { isLineSessionExpired?: unknown }).isLineSessionExpired === true);
+          setLoginError(expired ? 'expired' : true);
         }
       } finally {
         if (sequence === loginSequence.current) {
@@ -452,7 +461,9 @@ export function App({
         <SyncStatusBar />
         <main class="app-main">
           {loginError && !drawerOpen && (
-            <div role="alert"><Text>{t('ui.shell.loginError')}</Text></div>
+            <div role="alert">
+              <Text>{t(loginError === 'expired' ? 'ui.shell.loginExpired' : 'ui.shell.loginError')}</Text>
+            </div>
           )}
           <RouteArea routes={routes} isRestricted={isRestricted} />
         </main>

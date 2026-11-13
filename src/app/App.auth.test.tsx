@@ -17,6 +17,8 @@ vi.mock('@/data/auth', () => ({
   signIn: auth.signIn,
   getCurrentUser: auth.getCurrentUser,
   onAuthChanged: auth.onAuthChanged,
+  // 測試同步更新（B1-02）：補上 App 實際會用到的判斷，失敗才會走到文案分流（缺匯出時會被外層 catch 吞成一般錯誤）。
+  isLoginRedirectingError: () => false,
 }));
 
 beforeEach(async () => {
@@ -105,5 +107,22 @@ describe('App authentication', () => {
     expect(document.body.textContent).not.toContain('private provider details');
     fireEvent.click(button);
     await waitFor(() => expect(auth.signIn).toHaveBeenCalledTimes(2));
+  });
+
+  it('LINE 權杖已失效（B1-02）：顯示專屬文案', async () => {
+    auth.signIn.mockRejectedValue(Object.assign(new Error('expired'), { isLineSessionExpired: true }));
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.login') }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toBe(t('ui.shell.loginExpired'));
+    });
+  });
+
+  it('各頁直接登入遇到 LINE 權杖失效（事件）：也顯示專屬文案（B1-02）', async () => {
+    render(<App />);
+    await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalledOnce());
+    await act(() => emit('auth:line-session-expired', {}));
+    expect(screen.getByRole('alert').textContent).toBe(t('ui.shell.loginExpired'));
   });
 });

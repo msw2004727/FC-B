@@ -42,7 +42,8 @@
       "font_medium": "Medium",
       "font_large": "Large",
       "fontAction": "Text size: {current}. Switch to {next}",
-      "loginError": "Unable to complete LINE login. Please try again."
+      "loginError": "Unable to complete LINE login. Please try again.",
+      "loginExpired": "LINE login has expired. Please refresh and log in again."
     },
     "topBar": {
       "label": "Top navigation",
