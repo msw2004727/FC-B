@@ -18,6 +18,7 @@ import {
 import type { RouteAccessContext } from '@/core/feature-types';
 import { isAuthRequiredRoute } from '@/core/back-guard';
 import { emit, on } from '@/core/events';
+import { pushOverlay } from '@/core/overlay-back';
 import { openStaticPage, shouldLeaveAnchorClick } from '@/core/open-external';
 import { prefetchRouteByPath } from '@/core/route-prefetch';
 import {
@@ -264,6 +265,14 @@ export function SideDrawer({
   const internalTest = useMemo(() => isInternalTestMode(), []);
   const [showApplyNotice, setShowApplyNotice] = useState(false);
   const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
+  /** 抽屜的 Esc 先看確認框：開著就交給確認框只關框（Grok 初審 P2）。 */
+  const confirmOpenRef = useRef(false);
+  confirmOpenRef.current = showClearCacheConfirm;
+  const drawerOpenRef = useRef(open);
+  drawerOpenRef.current = open;
+  const resetBtnRef = useRef<HTMLButtonElement>(null);
+  const confirmCancelRef = useRef<HTMLButtonElement>(null);
+  const themeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dragOffsetX, setDragOffsetX] = useState<number | null>(null);
 
   const loadingRef = useRef(false);
@@ -277,8 +286,36 @@ export function SideDrawer({
   }, []);
 
   useEffect(() => {
-    if (!open) setDragOffsetX(null);
+    if (!open) {
+      setDragOffsetX(null);
+      // 抽屜因換頁等原因關掉時，確認框不留在畫面上
+      setShowClearCacheConfirm(false);
+    }
   }, [open]);
+
+  // 重設確認框（比照 AppConfirm）：開框焦點放「取消」；Esc 與實體返回鍵同一路徑「只關框、不執行」；關框把焦點還給重設鈕。
+  useLayoutEffect(() => {
+    if (!showClearCacheConfirm) return undefined;
+    confirmCancelRef.current?.focus({ preventScroll: true });
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setShowClearCacheConfirm(false);
+    };
+    document.addEventListener('keydown', onKey, true);
+    const releaseBack = pushOverlay(() => {
+      setShowClearCacheConfirm(false);
+      return true;
+    });
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      releaseBack();
+      // 抽屜已關（例如換頁）時焦點交給抽屜自己還給選單鈕，不搶回藏起來的重設鈕
+      const btn = resetBtnRef.current;
+      if (drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
+    };
+  }, [showClearCacheConfirm]);
 
   useEffect(() => {
     const unsubscribe = on('locale:changed', ({ locale: next }) => {
@@ -340,6 +377,8 @@ export function SideDrawer({
 
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        // 確認框開著：交給確認框自己的 Esc（只關框），抽屜不動
+        if (confirmOpenRef.current) return;
         event.preventDefault();
         event.stopPropagation();
         onCloseRef.current();
@@ -528,6 +567,19 @@ export function SideDrawer({
     if (shouldClose) {
       onCloseRef.current();
     }
+  };
+
+  // 主題三段（radiogroup）：方向鍵移動選取並切換主題，焦點跟著走；選中項才在 Tab 順序（roving tabindex，Grok 初審 P3）。
+  const handleThemeKeyDown = (event: KeyboardEvent): void => {
+    const step = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+      ? 1
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const current = Math.max(0, THEME_CHOICES.indexOf(theme));
+    const next = (current + step + THEME_CHOICES.length) % THEME_CHOICES.length;
+    setTheme(THEME_CHOICES[next]!);
+    themeBtnRefs.current[next]?.focus();
   };
 
   if (typeof document === 'undefined') return null;
@@ -736,14 +788,21 @@ export function SideDrawer({
             取代 A 的深色模式開關＋粉紅膠囊＋語言下拉＋清除快取鈕（泰、越文聲明膠囊會撐出抽屜、從畫面左緣露出）。 */}
         <div class="drawer-footer drawer-foot">
           <div class="drawer-foot-slab">
-            <div class="drawer-theme-seg" role="radiogroup" aria-label={t('ui.sideDrawer.theme')}>
-              {THEME_CHOICES.map((mode) => {
+            <div
+              class="drawer-theme-seg"
+              role="radiogroup"
+              aria-label={t('ui.sideDrawer.theme')}
+              onKeyDown={handleThemeKeyDown}
+            >
+              {THEME_CHOICES.map((mode, index) => {
                 const label = t(`ui.sideDrawer.theme_${mode}`);
                 return (
                   <button
                     key={mode}
+                    ref={(el) => { themeBtnRefs.current[index] = el; }}
                     type="button"
                     role="radio"
+                    tabIndex={theme === mode ? 0 : -1}
                     class="drawer-theme-btn"
                     data-theme-choice={mode}
                     aria-checked={theme === mode ? 'true' : 'false'}
@@ -798,7 +857,12 @@ export function SideDrawer({
             </a>
           </div>
           <div class="drawer-foot-fine">
-            <button type="button" class="drawer-reset-btn" onClick={() => setShowClearCacheConfirm(true)}>
+            <button
+              type="button"
+              class="drawer-reset-btn"
+              ref={resetBtnRef}
+              onClick={() => setShowClearCacheConfirm(true)}
+            >
               <ResetIcon cls="drawer-reset-icon" />
               <span>{t('ui.sideDrawer.reset')}</span>
             </button>
@@ -881,6 +945,7 @@ export function SideDrawer({
                 type="button"
                 class="app-confirm-cancel"
                 id="app-confirm-cancel"
+                ref={confirmCancelRef}
                 onClick={() => setShowClearCacheConfirm(false)}
               >
                 {t('common.cancel')}

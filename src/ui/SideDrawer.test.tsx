@@ -344,6 +344,69 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     }
   });
 
+  // Grok 初審 P2／P3：確認框焦點進框、Esc 與實體返回鍵只關框不執行、抽屜不跟著關，關框焦點回重設鈕。
+  it('重設確認框：開框焦點在取消鈕；Esc 只關框（不執行、抽屜仍開），焦點回重設鈕', () => {
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
+    try {
+      render(<Harness />);
+      openDrawer();
+      const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
+      act(() => { fireEvent.click(resetBtn); });
+      expect(document.activeElement?.id).toBe('app-confirm-cancel');
+      act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); });
+      expect(document.getElementById('app-confirm-modal')).toBeNull();
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+      expect(document.activeElement).toBe(resetBtn);
+      // 框關了之後再按 Esc 才關抽屜
+      act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
+      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
+    } finally {
+      gateSpy.mockRestore();
+    }
+  });
+
+  it('重設確認框：實體返回鍵（popstate）只關框、不執行、抽屜仍開', () => {
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
+    try {
+      render(<Harness />);
+      openDrawer();
+      act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
+      expect(document.getElementById('app-confirm-modal')).not.toBeNull();
+      act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+      expect(document.getElementById('app-confirm-modal')).toBeNull();
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+    } finally {
+      gateSpy.mockRestore();
+    }
+  });
+
+  it('主題三段：選中項才在 Tab 順序；方向鍵移動選取、切換主題、焦點跟著走（循環）', () => {
+    setTheme('light');
+    render(<Harness />);
+    openDrawer();
+    const radios = Array.from(document.querySelectorAll('#side-drawer [role="radio"]')) as HTMLButtonElement[];
+    const tabs = (): number[] => radios.map((r) => r.tabIndex);
+    expect(tabs()).toEqual([0, -1, -1]);
+    radios[0]!.focus();
+    act(() => { fireEvent.keyDown(radios[0]!, { key: 'ArrowRight' }); });
+    expect(getTheme()).toBe('dark');
+    expect(document.activeElement).toBe(radios[1]);
+    expect(tabs()).toEqual([-1, 0, -1]);
+    act(() => { fireEvent.keyDown(radios[1]!, { key: 'ArrowDown' }); });
+    expect(getTheme()).toBe('system');
+    expect(document.activeElement).toBe(radios[2]);
+    act(() => { fireEvent.keyDown(radios[2]!, { key: 'ArrowRight' }); });
+    expect(getTheme()).toBe('light');
+    expect(document.activeElement).toBe(radios[0]);
+    act(() => { fireEvent.keyDown(radios[0]!, { key: 'ArrowLeft' }); });
+    expect(getTheme()).toBe('system');
+    act(() => { fireEvent.keyDown(radios[2]!, { key: 'ArrowUp' }); });
+    expect(getTheme()).toBe('dark');
+    expect(tabs()).toEqual([-1, 0, -1]);
+  });
+
   // 測試同步更新（Grok 第三輪 P2）：登出段改走 signOutForCacheClear（同一道閘、失敗就停），
   // 其內部順序（Firebase → LINE 登出 → 旗標、閘門）由 auth.login-resume.test.ts 驗。
   it('清除快取：先走 signOutForCacheClear（當時 LIFF* 還在），之後才刪 LIFF*', async () => {
