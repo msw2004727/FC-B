@@ -257,6 +257,13 @@
   right: 0;
   z-index: 2;
   min-width: 176px;
+  /* 短視窗（橫向約 375px 高）時停在底部導覽與 QR 鈕上方、選單內捲動（Grok 初審 P2）；不抬 z-index，避免蓋住底部導覽。
+   * 黏頂列已改實色底、沒有 backdrop-filter（看圖審查 P2），不會裁到選單。 */
+  max-height: min(332px, calc(100vh - var(--topbar-h) - var(--bottombar-h) - 110px));
+  max-height: min(332px, calc(100dvh - var(--topbar-h) - var(--bottombar-h) - 110px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 14px;

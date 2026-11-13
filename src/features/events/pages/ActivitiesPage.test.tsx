@@ -747,7 +747,11 @@ describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', 
     expect(menu.hidden).toBe(false);
     const items = [...menu.querySelectorAll('.activity-region-item')].map((el) => el.textContent);
     expect(items).toEqual(['全部', '中部', '北部', '南部', '東部&外島', '尋找附近活動']);
-    expect(menu.querySelector('[data-region="全部"]')?.getAttribute('aria-pressed')).toBe('true');
+    // 測試同步更新（Grok 初審 P2）：改成 listbox／option，打開時焦點進目前地區
+    expect(btn.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(menu.querySelector('[role="listbox"]')?.querySelectorAll('[role="option"]').length).toBe(5);
+    expect(menu.querySelector('[data-region="全部"]')?.getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(menu.querySelector('[data-region="全部"]')));
 
     fireEvent.click(menu.querySelector('[data-region="中部"]') as HTMLElement);
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('region')).toBe('central'));
@@ -772,7 +776,7 @@ describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', 
 
     fireEvent.click(btn);
     expect(menu.hidden).toBe(false);
-    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
     await waitFor(() => expect(menu.hidden).toBe(true));
     expect(document.activeElement).toBe(btn);
   });
@@ -873,5 +877,58 @@ describe('ActivitiesPage 頂部：整片液態玻璃的 DOM 結構（2026-11-13 
     // 返回仍回首頁
     fireEvent.click(tools.querySelector('.back-btn') as HTMLElement);
     await waitFor(() => expect(window.location.pathname).toBe('/'));
+  });
+});
+
+describe('ActivitiesPage 地區下拉鍵盤操作（Grok 初審 P2，照運動下拉 U-004）', () => {
+  it('上下鍵／Home／End 移動焦點，Enter 選取後收起、焦點回地區鈕；Space 選尋找附近活動會提示並收起', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+    const item = (region: string) => menu.querySelector(`[data-region="${region}"]`) as HTMLElement;
+    const nearby = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(document.activeElement).toBe(item('全部')));
+    // 打開時只有目前地區可 Tab 進入（roving tabindex）
+    expect(item('全部').tabIndex).toBe(0);
+    expect(item('中部').tabIndex).toBe(-1);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item('中部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(item('全部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(nearby);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    expect(document.activeElement).toBe(item('全部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    expect(document.activeElement).toBe(nearby);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item('北部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('region')).toBe('north'));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(btn);
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(document.activeElement).toBe(item('北部')));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    toast.clear();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: ' ' });
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
+    await waitFor(() => expect(menu.hidden).toBe(true));
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it('滑鼠選取後焦點也回地區鈕（不掉到 body）', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    fireEvent.click(btn);
+    fireEvent.click(container.querySelector('#activity-region-menu [data-region="南部"]') as HTMLElement);
+    await waitFor(() => expect(document.activeElement).toBe(btn));
   });
 });

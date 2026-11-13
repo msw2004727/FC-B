@@ -129,4 +129,10 @@ describe('activity-list-extra.css：底層與黏頂列', () => {
   it('不自創 CSS 變數', () => {
     expect(/(^|[;{\s])--[\w-]+\s*:/.test(raw.replace(/\/\*[\s\S]*?\*\//g, ''))).toBe(false);
   });
+
+  it('已結束收合鈕的玻璃底色只套活動頁（Grok 初審 P3）', () => {
+    expect(find(list, '.legacy-ui .tl-ended-fold-btn').decls.background).toBe('transparent');
+    expect(find(list, '.legacy-ui #page-activities .tl-ended-fold-btn').decls.background).toBe('rgba(255,255,255,.45)');
+    expect(find(list, '[data-theme="dark"] .legacy-ui #page-activities .tl-ended-fold-btn').decls.background).toBe('rgba(255,255,255,.04)');
+  });
 });

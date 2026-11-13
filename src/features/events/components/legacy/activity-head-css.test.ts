@@ -145,6 +145,11 @@ describe('activity-head.css：整片液態玻璃＋分隔線', () => {
     expect(find(rules, `${S} .activity-region-label`).decls).toMatchObject({ overflow: 'hidden', 'text-overflow': 'ellipsis', 'min-width': '0' });
     expect(find(rules, `${S} .activity-region-btn svg`).decls.flex).toBe('0 0 auto');
     expect(find(rules, `${S} .activity-region-item`).decls).toMatchObject({ 'min-height': '44px', 'white-space': 'nowrap' });
+    // 短視窗：選單停在底部導覽上方、選單內捲動（Grok 初審 P2）；dvh 前有 vh 退路（postcss 讀到的是後寫的 dvh）
+    const menu = find(rules, `${S} .activity-region-menu`);
+    expect(menu.decls['max-height']).toBe('min(332px, calc(100dvh - var(--topbar-h) - var(--bottombar-h) - 110px))');
+    expect(menu.decls).toMatchObject({ 'overflow-y': 'auto', 'overscroll-behavior': 'contain', 'z-index': '2' });
+    expect(readFileSync(FILE, 'utf8')).toContain('max-height: min(332px, calc(100vh - var(--topbar-h) - var(--bottombar-h) - 110px));');
   });
 
   it('標題列可換行：「我要開團」放不下時整顆換到第二行靠右；開團鈕四角 10px、高 36px，後面墊 44px 的 label 補點擊範圍', () => {

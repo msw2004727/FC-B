@@ -83,8 +83,7 @@
   padding: .42rem .65rem;
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
-  /* 液態光澤：虛線框配半透明底，與玻璃卡同一語言 */
-  background: rgba(255,255,255,.45);
+  background: transparent;
   color: var(--text-muted);
   font: inherit;
   font-size: .72rem;
@@ -92,7 +91,11 @@
   white-space: nowrap;
   cursor: pointer;
 }
-[data-theme="dark"] .tl-ended-fold-btn {
+/* 液態光澤：虛線框配半透明底，與玻璃卡同一語言；同玻璃卡只套活動頁（Grok 初審 P3） */
+#page-activities .tl-ended-fold-btn {
+  background: rgba(255,255,255,.45);
+}
+[data-theme="dark"] #page-activities .tl-ended-fold-btn {
   background: rgba(255,255,255,.04);
 }
 /* R-UI-027：不讓瀏覽器自動斷行；各語系文案已縮短到 360px 一行放得下，超出時以省略號收尾（最後防線）。 */

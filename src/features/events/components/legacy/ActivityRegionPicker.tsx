@@ -7,6 +7,8 @@ import { lt, useT } from '@/i18n/i18n';
  * 點開是直式選單（全部、中部、北部、南部、東部&外島），最下面是「尋找附近活動」。
  * 取代原本整列的地區頁籤；值仍是 A 的中文地區名，網址同步與篩選邏輯都在 ActivitiesPage，這裡不動。
  * 顯示文字走 events.regionPicker.*（七語系），原本地區頁籤直接寫中文、不跟語系。
+ * 鍵盤與讀屏照同站運動下拉（src/ui/TopBar.tsx，U-004）：listbox／option、上下鍵／Home／End／Enter／Space、
+ * 打開時焦點進目前地區，選取或 Esc 後焦點回地區鈕（Grok 初審 P2，2026-11-13）。
  */
 export const ACTIVITY_REGION_OPTIONS = ['全部', '中部', '北部', '南部', '東部&外島'] as const;
 
@@ -29,40 +31,89 @@ export function ActivityRegionPicker(props: Props): JSX.Element {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const label = (region: string): string => {
     const key = REGION_KEYS[region];
     return key ? t(`events.regionPicker.${key}`) : region;
   };
 
-  // 開著時：點選單外任何地方或按 Esc 就收起（黏頂列有 backdrop-filter，fixed 遮罩會被限制在列內，所以不用遮罩）。
+  const close = (returnFocus: boolean): void => {
+    setOpen(false);
+    if (returnFocus) buttonRef.current?.focus();
+  };
+
+  // 開著時：點選單外任何地方就收起（不搶焦點）。
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (e: Event): void => {
       if (rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target)) return;
       setOpen(false);
     };
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
     document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('keydown', onKeyDown);
-    };
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [open]);
+
+  // 打開時焦點移到目前選中的地區（同運動下拉）。
+  useEffect(() => {
+    if (!open || !menuRef.current) return;
+    const current = menuRef.current.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
+      ?? menuRef.current.querySelector<HTMLButtonElement>('.activity-region-item');
+    current?.focus();
+  }, [open]);
+
+  const select = (region: string): void => {
+    props.onChange(region);
+    close(true);
+  };
+
+  const nearby = (e?: MouseEvent): void => {
+    close(true);
+    props.onNearby(e);
+  };
+
+  // 上下鍵移動、Home／End、Enter／Space 選取、Esc 收起（焦點回地區鈕）。
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (!open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close(true);
+      return;
+    }
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('.activity-region-item') ?? []);
+    if (items.length === 0) return;
+    const index = items.findIndex((el) => el === document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[index < 0 ? 0 : (index + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[index <= 0 ? items.length - 1 : index - 1]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      const focused = items[index];
+      if (!focused) return;
+      e.preventDefault();
+      const region = focused.getAttribute('data-region');
+      if (region) select(region);
+      else nearby();
+    }
+  };
 
   const current = label(props.value);
 
   return (
-    <div class="activity-region-pick" id="activity-region-tabs" ref={rootRef}>
+    <div class="activity-region-pick" id="activity-region-tabs" ref={rootRef} onKeyDown={onKeyDown}>
       <button
         type="button"
         ref={buttonRef}
         class={`activity-region-btn${props.value !== '全部' ? ' active' : ''}`}
+        aria-haspopup="listbox"
         aria-expanded={open ? 'true' : 'false'}
         aria-controls="activity-region-menu"
         aria-label={`${t('events.regionPicker.label')} ${current}`}
@@ -77,33 +128,35 @@ export function ActivityRegionPicker(props: Props): JSX.Element {
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      <div class="activity-region-menu" id="activity-region-menu" hidden={!open}>
-        {ACTIVITY_REGION_OPTIONS.map((region) => (
-          <button
-            key={region}
-            type="button"
-            class={`activity-region-item${props.value === region ? ' active' : ''}`}
-            data-region={region}
-            aria-pressed={props.value === region ? 'true' : 'false'}
-            onClick={() => {
-              props.onChange(region);
-              setOpen(false);
-            }}
-          >
-            {label(region)}
-          </button>
-        ))}
+      <div class="activity-region-menu" id="activity-region-menu" ref={menuRef} hidden={!open}>
+        <div role="listbox" aria-label={t('events.regionPicker.label')}>
+          {ACTIVITY_REGION_OPTIONS.map((region) => {
+            const selected = props.value === region;
+            return (
+              <button
+                key={region}
+                type="button"
+                class={`activity-region-item${selected ? ' active' : ''}`}
+                data-region={region}
+                role="option"
+                aria-selected={selected ? 'true' : 'false'}
+                tabIndex={open ? (selected ? 0 : -1) : -1}
+                onClick={() => select(region)}
+              >
+                {label(region)}
+              </button>
+            );
+          })}
+        </div>
         {/* M-073：附近活動地圖在 B 一律停用外觀，title/點擊照 A 停用分支 */}
         <button
           type="button"
           class="activity-region-item activity-region-nearby"
           id="region-tab-nearby-activity"
           aria-disabled="true"
+          tabIndex={-1}
           title={lt('附近活動地圖尚未開啟', '附近活動地圖尚未開啟')}
-          onClick={(e) => {
-            setOpen(false);
-            props.onNearby(e);
-          }}
+          onClick={(e) => nearby(e)}
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7l5-2 5 2 5-2v12l-5 2-5-2-5 2z" opacity="0.55" />
