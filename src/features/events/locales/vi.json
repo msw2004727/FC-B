@@ -228,5 +228,14 @@
         "other": "{count} xong/hủy"
       }
     }
+  },
+  "regionPicker": {
+    "label": "Khu vực",
+    "all": "Tất cả",
+    "central": "Miền Trung",
+    "north": "Miền Bắc",
+    "south": "Miền Nam",
+    "east": "Miền Đông & đảo",
+    "nearby": "Tìm hoạt động gần đây"
   }
 }

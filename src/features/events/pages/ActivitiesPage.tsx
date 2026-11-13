@@ -55,6 +55,8 @@ import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
 import '../components/legacy/activity-list-extra.css';
+import '../components/legacy/activity-head.css';
+import { ActivityRegionPicker } from '../components/legacy/ActivityRegionPicker';
 import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
 
 /** 表單 chunk 還沒到：沿用建立活動彈窗殼與列表的 `.reg-loading`，不另做樣式。 */
@@ -115,7 +117,6 @@ interface DayGroup {
 }
 
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
-const REGIONS = ['中部', '北部', '南部', '東部&外島', '全部'] as const;
 // U-020：共用 core/unavailable 的提示文字。
 const UNAVAILABLE_MSG = UNAVAILABLE_FEATURE_MSG;
 
@@ -832,6 +833,8 @@ export default function ActivitiesPage(): JSX.Element {
               data-i18n-aria-label="＋我要開團"
               onClick={handleOpenCreateEvent}
             >
+              {/* 2026-11-13 液態光澤：上半光澤＋頂緣亮線（activity-head.css），疊在金框內的藍底上、文字下 */}
+              <span class="activity-create-gloss" aria-hidden="true" />
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -905,7 +908,7 @@ export default function ActivitiesPage(): JSX.Element {
           </div>
         )}
 
-        {/* 2026-11-13：頁籤列＋地區列捲動時黏在頂欄下方（activity-list-extra.css） */}
+        {/* 2026-11-13：頁籤列＋地區下拉同一列，捲動時黏在頂欄下方（activity-list-extra.css、activity-head.css） */}
         <div class="activity-sticky-filters" ref={stickyFiltersRef}>
         <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
           <button
@@ -994,54 +997,8 @@ export default function ActivitiesPage(): JSX.Element {
           </button>
         </div>
 
-        <div class="region-tabs" id="activity-region-tabs">
-          {REGIONS.map((region) => (
-            <button
-              key={region}
-              type="button"
-              class={`region-tab${regionTab === region ? ' active' : ''}`}
-              data-region={region}
-              data-i18n={region}
-              onClick={() => setRegionTab(region)}
-            >
-              {region}
-            </button>
-          ))}
-          {/* M-073：附近活動地圖在 B 一律停用外觀，title/點擊照 A 停用分支 */}
-          <button
-            type="button"
-            class="region-tab region-tab-nearby region-tab-disabled"
-            id="region-tab-nearby-activity"
-            aria-disabled="true"
-            title={lt('附近活動地圖尚未開啟', '附近活動地圖尚未開啟')}
-            data-i18n-title="附近活動地圖尚未開啟"
-            onClick={handleNearbyActivity}
-          >
-            <svg
-              class="region-tab-icon"
-              viewBox="0 0 24 24"
-              width="13"
-              height="13"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M3 7l5-2 5 2 5-2v12l-5 2-5-2-5 2z" opacity="0.55" />
-              <line x1="8" y1="5" x2="8" y2="19" opacity="0.55" />
-              <line x1="13" y1="7" x2="13" y2="21" opacity="0.55" />
-              <path
-                d="M12 8c-1.5 0-2.7 1.2-2.7 2.7 0 1.8 2.7 4 2.7 4s2.7-2.2 2.7-4c0-1.5-1.2-2.7-2.7-2.7z"
-                fill="currentColor"
-                stroke="none"
-              />
-              <circle cx="12" cy="10.7" r="0.8" fill="#fff" stroke="none" />
-            </svg>
-            尋找附近活動
-          </button>
-        </div>
+        {/* 2026-11-13 C 方案：地區由整列頁籤改成右側固定的下拉（含尋找附近活動） */}
+        <ActivityRegionPicker value={regionTab} onChange={setRegionTab} onNearby={handleNearbyActivity} />
         </div>
 
         <div

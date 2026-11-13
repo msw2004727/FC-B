@@ -620,7 +620,9 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     fireEvent.click(container.querySelector('.tl-ended-fold-btn') as HTMLElement);
     await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('true'));
 
-    fireEvent.click(container.querySelector('.region-tab[data-region="北部"]') as HTMLElement);
+    // 測試同步更新：2026-11-13 C 方案地區改為下拉，先打開地區鈕再選。
+    fireEvent.click(container.querySelector('.activity-region-btn') as HTMLElement);
+    fireEvent.click(container.querySelector('.activity-region-item[data-region="北部"]') as HTMLElement);
     await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸'));
     expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('[data-event-id="ended-north"]')).toBeNull();
@@ -717,5 +719,102 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     // 收合鈕不讓瀏覽器自動斷行，caret 不縮
     expect(decl(ruleFor(file, '.tl-ended-fold-btn'), 'white-space')).toBe('nowrap');
     expect(decl(ruleFor(file, '.tl-ended-fold-caret'), 'flex-shrink')).toBe('0');
+  });
+});
+
+describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', () => {
+  const central: SportEvent = { ...pickleball, id: 'central-only', title: 'Central only', regionEnabled: true, region: '中部' };
+  const north: SportEvent = { ...football, id: 'north-only', title: 'North only', regionEnabled: true, region: '北部' };
+
+  it('地區鈕在頁籤同一列右側；點開是直式選單（全部、中部、北部、南部、東部&外島，最下面尋找附近活動），選了寫網址並收起', async () => {
+    active = [central, north];
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('[data-event-id="north-only"]')).toBeTruthy());
+
+    const sticky = container.querySelector('#page-activities > .activity-sticky-filters')!;
+    const btn = sticky.querySelector('.activity-region-btn') as HTMLButtonElement;
+    expect(sticky.lastElementChild?.contains(btn)).toBe(true);
+    expect(btn.textContent).toBe('全部');
+    expect(btn.getAttribute('aria-label')).toBe('地區 全部');
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+    expect(menu.hidden).toBe(true);
+    // 舊的整列地區頁籤已拿掉
+    expect(container.querySelector('.region-tab')).toBeNull();
+
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.hidden).toBe(false);
+    const items = [...menu.querySelectorAll('.activity-region-item')].map((el) => el.textContent);
+    expect(items).toEqual(['全部', '中部', '北部', '南部', '東部&外島', '尋找附近活動']);
+    expect(menu.querySelector('[data-region="全部"]')?.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(menu.querySelector('[data-region="中部"]') as HTMLElement);
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('region')).toBe('central'));
+    expect(menu.hidden).toBe(true);
+    expect(btn.textContent).toBe('中部');
+    expect(btn.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(container.querySelector('[data-event-id="north-only"]')).toBeNull());
+    expect(container.querySelector('[data-event-id="central-only"]')).toBeTruthy();
+  });
+
+  it('點選單外或按 Esc 收起；Esc 後焦點回地區鈕', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+
+    fireEvent.click(btn);
+    fireEvent.pointerDown(menu.querySelector('[data-region="北部"]') as HTMLElement);
+    expect(menu.hidden).toBe(false);
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(menu.hidden).toBe(true));
+
+    fireEvent.click(btn);
+    expect(menu.hidden).toBe(false);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(menu.hidden).toBe(true));
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it('網址帶 region 進站時鈕上顯示該地區；尋找附近活動點了收起並提示未開啟', async () => {
+    history.replaceState(null, '', '/activities?region=east-islands');
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.activity-region-btn')?.textContent).toBe('東部&外島'));
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    fireEvent.click(btn);
+    toast.clear();
+    fireEvent.click(container.querySelector('#region-tab-nearby-activity') as HTMLElement);
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
+    expect((container.querySelector('#activity-region-menu') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('地區鈕與選單跟語系翻譯（英文）', async () => {
+    await setLocale('en');
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    expect(btn.textContent).toBe('All');
+    expect(btn.getAttribute('aria-label')).toBe('Region All');
+    const items = [...container.querySelectorAll('#activity-region-menu .activity-region-item')].map((el) => el.textContent);
+    expect(items).toEqual(['All', 'Central', 'North', 'South', 'East & Islands', 'Find nearby activities']);
+  });
+
+  it('我要開團加一層光澤（不攔點擊、讀屏略過）', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      uid: 'viewer',
+      teamIds: new Set(),
+      roleLevel: 0,
+      role: 'user',
+      displayName: 'Viewer',
+      pictureUrl: null,
+      capabilities: ['user.activity.basic_create'],
+      hasPermission: () => false,
+    });
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const gloss = container.querySelector('#activity-create-btn > .activity-create-gloss');
+    expect(gloss).toBeTruthy();
+    expect(gloss?.getAttribute('aria-hidden')).toBe('true');
   });
 });

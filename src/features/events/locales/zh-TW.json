@@ -287,5 +287,14 @@
         "other": "已結束或取消 {count} 場"
       }
     }
+  },
+  "regionPicker": {
+    "label": "地區",
+    "all": "全部",
+    "central": "中部",
+    "north": "北部",
+    "south": "南部",
+    "east": "東部&外島",
+    "nearby": "尋找附近活動"
   }
 }

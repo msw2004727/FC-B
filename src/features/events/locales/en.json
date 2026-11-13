@@ -232,5 +232,14 @@
         "other": "{count} ended/cancelled"
       }
     }
+  },
+  "regionPicker": {
+    "label": "Region",
+    "all": "All",
+    "central": "Central",
+    "north": "North",
+    "south": "South",
+    "east": "East & Islands",
+    "nearby": "Find nearby activities"
   }
 }

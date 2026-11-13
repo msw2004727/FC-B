@@ -226,5 +226,14 @@
         "other": "종료·취소 {count}건"
       }
     }
+  },
+  "regionPicker": {
+    "label": "지역",
+    "all": "전체",
+    "central": "중부",
+    "north": "북부",
+    "south": "남부",
+    "east": "동부 및 외딴섬",
+    "nearby": "근처 활동 찾기"
   }
 }

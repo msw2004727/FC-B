@@ -1,0 +1,362 @@
+/* 活動頁頂部精簡（2026-11-13 站長選定 C 方案「地區下拉」）＋頂部按鈕液態光澤（同日站長補充）。B 新增，不加進 A 的 activity.css。
+ * 本檔路徑含 /legacy/，打包時 legacy-css-scope 自動加上 .legacy-ui；選擇器都帶 #page-activities，權重高於 A 的 activity.css、layout.css。
+ * 光澤語言同 timeline-card-extra.css 的活動卡：頂緣亮線、上半光澤、底部內光、柔和投影；不用 backdrop-filter、不自創 CSS 變數、
+ * 不用 color-mix（舊 iOS／LINE WebView 沒有退路，健檢 B4-10）。主色寫死同 --accent（淺 #0d9488、深 #34d399），同活動卡做法。
+ * 點擊範圍：視覺 34px，以透明 ::after（開團鈕用透明上下框）補到 44px，外觀不變。
+ * 順序：淺色預設 → 深色預設 → 淺色已選 → 深色已選 → 女生專屬（淺、深）→ 未開放；同權重靠後者覆蓋，css 測試守住。 */
+
+/* ── 標題列：變薄；放不下時「我要開團」整顆換到第二行靠右，不疊到分享鈕上（英／越／泰 360） ── */
+#page-activities .activity-page-header {
+  flex-wrap: wrap;
+  gap: 10px .35rem;
+  padding: .3rem .2rem;
+}
+#page-activities .activity-page-heading {
+  flex: 1 0 auto;
+  gap: 10px;
+}
+
+/* ── 篩選列：一列 45px（膠囊 34px＋上下 5px 點擊延伸＋底線 1px）；左邊頁籤可左右滑，右邊固定地區鈕 ── */
+#page-activities.page > .activity-sticky-filters {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: 0 .2rem;
+  margin-bottom: .45rem;
+  border-bottom: 1px solid var(--border);
+}
+#page-activities #activity-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin: 0;
+  padding: 5px 24px 5px 2px;
+  border-radius: 0;
+  background: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+#page-activities .activity-tab-separator {
+  padding: 0;
+  margin: 0 -.05rem;
+}
+#page-activities .activity-region-pick {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 5px 0;
+}
+
+/* ── 膠囊（頁籤、地區鈕）：淺色預設 ── */
+#page-activities #activity-tabs .tab,
+#page-activities .activity-region-btn {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem;
+  height: 34px;
+  margin: 0;
+  padding: 0 .72rem;
+  border: 1px solid rgba(190,200,214,.9);
+  border-top-color: #fff;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -4px 8px -4px rgba(100,116,139,.24), 0 2px 4px -2px rgba(15,23,42,.28);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* 34px（含框）→ 上下各補 5px＝44px；頁籤列上下留 5px，延伸區不會被橫捲裁掉 */
+#page-activities #activity-tabs .tab::after,
+#page-activities .activity-region-btn::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 0;
+  bottom: -6px;
+  left: 0;
+}
+#page-activities .activity-region-btn {
+  max-width: 10.5rem;
+  padding: 0 .55rem 0 .6rem;
+}
+#page-activities .activity-region-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#page-activities .activity-region-caret {
+  flex: 0 0 auto;
+  opacity: .7;
+}
+
+/* 深色預設 */
+[data-theme="dark"] #page-activities #activity-tabs .tab,
+[data-theme="dark"] #page-activities .activity-region-btn {
+  border-color: rgba(255,255,255,.06);
+  border-top-color: rgba(255,255,255,.18);
+  border-bottom-color: rgba(0,0,0,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 8px -4px rgba(0,0,0,.5), 0 2px 4px -2px rgba(0,0,0,.75);
+}
+
+/* 已選（目前頁籤、已選地區）：主色玻璃，比未選明顯 */
+#page-activities #activity-tabs .tab.active,
+#page-activities .activity-region-btn.active {
+  color: var(--accent);
+  font-weight: 700;
+  border-color: rgba(13,148,136,.55);
+  border-top-color: rgba(255,255,255,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #effaf8 0%, #c9ece7 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -5px 10px -5px rgba(13,148,136,.45), 0 2px 5px -2px rgba(13,148,136,.55);
+}
+[data-theme="dark"] #page-activities #activity-tabs .tab.active,
+[data-theme="dark"] #page-activities .activity-region-btn.active {
+  color: var(--accent);
+  border-color: rgba(52,211,153,.5);
+  border-top-color: rgba(167,243,208,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #1d4a42 0%, #12302b 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 -5px 10px -5px rgba(52,211,153,.4), 0 2px 5px -2px rgba(0,0,0,.8);
+}
+
+/* 女生專屬：站長 2026-11-13 要求保留粉色漸層底色並加光澤；未選淡粉、已選沿用 A 的粉紅漸層（白字），已選明顯得多 */
+#page-activities #activity-tabs .tab.activity-tab-female {
+  color: #be185d;
+  border-color: rgba(236,72,153,.42);
+  border-top-color: #fff;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -4px 8px -4px rgba(236,72,153,.38), 0 2px 4px -2px rgba(236,72,153,.42);
+}
+#page-activities #activity-tabs .tab.activity-tab-female.active {
+  color: #fff;
+  font-weight: 700;
+  border-color: #db2777;
+  border-top-color: rgba(255,255,255,.7);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.45) 0%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #f472b6, #ec4899);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -5px 10px -5px rgba(157,23,77,.55), 0 2px 5px -2px rgba(236,72,153,.75);
+}
+[data-theme="dark"] #page-activities #activity-tabs .tab.activity-tab-female {
+  color: #f9a8d4;
+  border-color: rgba(236,72,153,.38);
+  border-top-color: rgba(255,255,255,.18);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #4a1d33 0%, #34122a 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 8px -4px rgba(236,72,153,.42), 0 2px 4px -2px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities #activity-tabs .tab.activity-tab-female.active {
+  color: #fff;
+  border-color: #ec4899;
+  border-top-color: rgba(255,255,255,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,.08) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #be185d, #ec4899);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 -5px 10px -5px rgba(80,7,36,.6), 0 2px 5px -2px rgba(236,72,153,.6);
+}
+
+/* 未開放（新手友善、高強度）：維持 A 的灰色，不加光澤 */
+#page-activities #activity-tabs .tab.activity-tab-unavailable,
+[data-theme="dark"] #page-activities #activity-tabs .tab.activity-tab-unavailable {
+  color: var(--text-muted);
+  border-color: transparent;
+  background: rgba(148,163,184,.12);
+  box-shadow: none;
+  opacity: .46;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+
+/* ── 地區選單：直式，每列 44px；最下面「尋找附近活動」（停用外觀，點了提示未開啟） ── */
+#page-activities .activity-region-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 0;
+  z-index: 2;
+  min-width: 176px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  box-shadow: 0 12px 32px rgba(15,23,42,.18);
+}
+#page-activities .activity-region-menu[hidden] {
+  display: none;
+}
+[data-theme="dark"] #page-activities .activity-region-menu {
+  box-shadow: 0 12px 32px rgba(0,0,0,.55);
+}
+#page-activities .activity-region-item {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 .8rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: .86rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#page-activities .activity-region-item.active {
+  color: var(--accent);
+  font-weight: 700;
+  background: rgba(13,148,136,.10);
+}
+[data-theme="dark"] #page-activities .activity-region-item.active {
+  background: rgba(52,211,153,.12);
+}
+#page-activities .activity-region-nearby {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+  color: var(--text-secondary);
+}
+
+/* ── 標題列圓鈕（返回、搜尋、分享）：液態光澤，點擊範圍補到 44px ── */
+#page-activities .activity-page-header .back-btn,
+#page-activities .activity-page-header .page-search-toggle-btn {
+  position: relative;
+  border-color: rgba(190,200,214,.9);
+  border-top-color: #fff;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -4px 8px -4px rgba(100,116,139,.24), 0 4px 10px -5px rgba(15,23,42,.3);
+}
+#page-activities .activity-page-header .back-btn::after,
+#page-activities .activity-page-header .page-search-toggle-btn::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  bottom: -6px;
+  left: -6px;
+}
+[data-theme="dark"] #page-activities .activity-page-header .back-btn,
+[data-theme="dark"] #page-activities .activity-page-header .page-search-toggle-btn {
+  border-color: rgba(255,255,255,.06);
+  border-top-color: rgba(255,255,255,.18);
+  border-bottom-color: rgba(0,0,0,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 8px -4px rgba(0,0,0,.5), 0 4px 10px -5px rgba(0,0,0,.75);
+}
+/* 搜尋展開或有關鍵字／類別時亮起；有滑鼠時 hover 同色（觸控不留 hover 殘影） */
+#page-activities .activity-page-header .page-search-toggle-btn.active {
+  color: var(--accent);
+  border-color: rgba(13,148,136,.55);
+  border-top-color: rgba(255,255,255,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #effaf8 0%, #c9ece7 100%);
+}
+[data-theme="dark"] #page-activities .activity-page-header .page-search-toggle-btn.active {
+  color: var(--accent);
+  border-color: rgba(52,211,153,.5);
+  border-top-color: rgba(167,243,208,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #1d4a42 0%, #12302b 100%);
+}
+@media (hover: hover) {
+  #page-activities .activity-page-header .back-btn:hover,
+  #page-activities .activity-page-header .page-search-toggle-btn:hover {
+    color: var(--accent);
+    border-color: rgba(13,148,136,.55);
+  }
+  [data-theme="dark"] #page-activities .activity-page-header .back-btn:hover,
+  [data-theme="dark"] #page-activities .activity-page-header .page-search-toggle-btn:hover {
+    color: var(--accent);
+    border-color: rgba(52,211,153,.5);
+  }
+}
+
+/* ── 我要開團：外觀照 A（金色流光框＋藍底），加一層光澤；點擊高度補到 44px ──
+ * A 的金框是按鈕本身 overflow:hidden 裁出來的，::before／::after 都用掉了：改以上下各 5px 透明框撐出 44px 點擊區
+ * （overflow 只裁到 padding 邊，框不會畫出金色），負 margin 抵銷，版面高度仍 34px。
+ * A 的呼吸光暈是按鈕的 box-shadow，會畫在透明框外而離開按鈕面，改成 filter: drop-shadow（只沿著畫出來的按鈕面）。 */
+#page-activities #activity-create-btn {
+  box-sizing: border-box;
+  height: 44px;
+  margin: -5px 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  animation-name: activity-head-create-glow;
+}
+[data-theme="dark"] #page-activities #activity-create-btn {
+  animation-name: activity-head-create-glow-dark;
+}
+#page-activities #activity-create-btn .activity-create-gloss {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  left: 2px;
+  z-index: 3;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -4px 8px -4px rgba(15,23,42,.3);
+  pointer-events: none;
+}
+[data-theme="dark"] #page-activities #activity-create-btn .activity-create-gloss {
+  background: linear-gradient(180deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), inset 0 -4px 8px -4px rgba(0,0,0,.4);
+}
+/* 個人資料未填完的灰色鎖定樣式不呼吸（照 A） */
+#page-activities #activity-create-btn.activity-create-profile-locked,
+[data-theme="dark"] #page-activities #activity-create-btn.activity-create-profile-locked {
+  animation: none;
+}
+@keyframes activity-head-create-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255,215,0,.35)) drop-shadow(0 0 0 rgba(37,99,235,0)); }
+  50% { filter: drop-shadow(0 0 5px rgba(255,215,0,.55)) drop-shadow(0 0 9px rgba(37,99,235,.25)); }
+}
+@keyframes activity-head-create-glow-dark {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(200,145,29,.25)) drop-shadow(0 0 0 rgba(30,64,175,0)); }
+  50% { filter: drop-shadow(0 0 4px rgba(200,145,29,.35)) drop-shadow(0 0 7px rgba(30,64,175,.2)); }
+}
+
+/* ── 搜尋面板：手機也維持一列（類別＋關鍵字）；輸入框 16px，避免 iPhone 聚焦時自動放大 ── */
+#page-activities .activity-filter-panel {
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  margin: 0 0 .35rem;
+  padding: .4rem;
+}
+#page-activities .activity-filter-panel input,
+#page-activities .activity-filter-panel select {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 16px;
+}

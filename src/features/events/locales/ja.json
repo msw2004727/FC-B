@@ -228,5 +228,14 @@
         "other": "終了・中止 {count} 件"
       }
     }
+  },
+  "regionPicker": {
+    "label": "地域",
+    "all": "すべて",
+    "central": "中部",
+    "north": "北部",
+    "south": "南部",
+    "east": "東部・離島",
+    "nearby": "近くの活動を探す"
   }
 }
