@@ -107,9 +107,19 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     'existing-no-lastLogin-empty-name': ['displayName'],
   };
 
+  /**
+   * 與 A 的刻意差異（健檢 C1-03）：legacy 遷移時舊文件沒有俱樂部欄位，B 補 teamId: null、teamIds: []，
+   * 符合現行 Rules 建立條件（A 不補，同一路徑會被 Rules 拒絕）。差異必須剛好是 A 沒有、B 多出這些鍵與值。
+   */
+  const DELIBERATE_ADDITIONS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+    'legacy-no-createdAt': { teamId: null, teamIds: [] },
+    'legacy-with-createdAt': { teamId: null, teamIds: [] },
+  };
+
   it('刻意差異清單只列 fixture 裡真的存在的案例', () => {
     const ids = new Set(fixture.cases.map((c) => c.id));
     expect(Object.keys(DELIBERATE_OMISSIONS).filter((id) => !ids.has(id))).toEqual([]);
+    expect(Object.keys(DELIBERATE_ADDITIONS).filter((id) => !ids.has(id))).toEqual([]);
   });
 
   it.each(fixture.cases.map((c) => [c.id, c] as const))('%s：B 寫入與 A 逐欄相同（刻意差異明列）', (_id, c) => {
@@ -131,6 +141,10 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     for (const key of omitted) {
       expect(Object.prototype.hasOwnProperty.call(a.payload, key)).toBe(true);
       delete expected[key];
+    }
+    for (const [key, value] of Object.entries(DELIBERATE_ADDITIONS[c.id] ?? {})) {
+      expect(Object.prototype.hasOwnProperty.call(a.payload, key)).toBe(false);
+      expected[key] = value;
     }
     expect(encode(write!.payload)).toEqual(expected);
     // 鍵的集合也要一樣（toEqual 不在乎 undefined 鍵，另外比一次）。
@@ -160,11 +174,15 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     expect(legacy.createdAt).toBe(TS);
   });
 
-  it('legacy：沒有 createdAt 的舊文件可遷移；A 照抄舊 createdAt／非 user 角色的 payload 會被 Rules 擋，B 不送', () => {
+  it('legacy：沒有 createdAt 的舊文件 B 可遷移（A 的 payload 缺 teamId 會被現行 Rules 擋）；A 照抄舊 createdAt／非 user 角色的 payload 會被 Rules 擋，B 不送', () => {
     const ok = fixture.cases.find((c) => c.id === 'legacy-no-createdAt')!;
     expect(() => assertUserRootCreate(
-      ok.expected.writes[0]!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
+      bWrite(ok)!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
     )).not.toThrow();
+    // 健檢 C1-03：A 原樣展開舊文件、不補 teamId，現行 Rules（teamId 必須存在且為 null）拒絕。
+    expect(() => assertUserRootCreate(
+      ok.expected.writes[0]!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
+    )).toThrow(/create-values-not-allowed:teamId$/);
 
     const blocked = fixture.cases.find((c) => c.id === 'legacy-with-createdAt')!;
     const payload = decode(blocked.expected.writes[0]!.payload) as Record<string, unknown>;

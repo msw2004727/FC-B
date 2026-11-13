@@ -126,6 +126,25 @@ describe('syncUserDoc：文件不存在', () => {
     const [, payload, options] = fs.setDoc.mock.calls[0]!;
     expect(options).toEqual({ merge: true });
     expect(payload).toMatchObject({ uid: 'U1', lineUserId: 'U1', displayName: '小明', gender: '男', createdAt: TS, lastLogin: TS });
+    // 健檢 C1-03：舊文件沒有 teamId／teamIds 欄位時補成 Rules 建立條件要求的 null／[]。
+    expect(payload).toMatchObject({ teamId: null, teamIds: [] });
+  });
+
+  it.each([
+    ['teamId 是字串', { teamId: 'club-1', teamName: '甲隊' }],
+    ['teamIds 非空', { teamId: null, teamIds: ['club-1'], teamNames: ['甲隊'] }],
+  ])('健檢 C1-03：legacy 文件帶俱樂部（%s）：不丟俱樂部硬建，判定不可遷移、不送寫入、寫失敗記號（24 小時退避）', async (_label, team) => {
+    liffState.ready = liff();
+    fs.getDoc.mockResolvedValue(missing);
+    fs.getDocs.mockResolvedValue({ docs: [{ id: 'old', data: () => ({ lineUserId: 'U1', displayName: '舊', ...team }) }] });
+    await expect(syncUserDoc('U1')).rejects.toMatchObject({ reason: 'legacy-not-migratable:has-team' });
+    expect(fs.setDoc).not.toHaveBeenCalled();
+    expect(localStorage.getItem(USER_DOC_FAILED_KEY_PREFIX + 'U1')).toBe(String(NOW));
+    expect(localStorage.getItem(USER_DOC_SYNCED_KEY)).toBeNull();
+    // 退避期間再進站不再重讀、不重送。
+    fs.getDoc.mockClear();
+    await expect(syncUserDoc('U1')).resolves.toBe('backoff');
+    expect(fs.getDoc).not.toHaveBeenCalled();
   });
 
   it('legacy 文件帶舊 createdAt／非 user 角色：Rules 一定擋，不送寫入、拋錯', async () => {

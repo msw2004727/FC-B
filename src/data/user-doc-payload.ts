@@ -82,7 +82,20 @@ export function buildNewUserDoc(uid: string, profile: LineLoginProfile, ts: unkn
   };
 }
 
-/** A legacy 遷移分支的 payload（set merge）。 */
+/**
+ * 舊文件帶俱樂部（teamId 是非空字串，或 teamIds 是非空陣列）。Rules 建立條件要求 teamId 為 null、teamIds 為空，
+ * 前端自動遷移不能丟掉俱樂部資料硬建，判定不可自動遷移（健檢 C1-03；帶俱樂部的由後端代遷另案）。
+ */
+export function legacyHasTeam(legacy: Data): boolean {
+  return (typeof legacy.teamId === 'string' && legacy.teamId !== '')
+    || (Array.isArray(legacy.teamIds) && legacy.teamIds.length > 0);
+}
+
+/**
+ * A legacy 遷移分支的 payload（set merge）。
+ * 與 A 的刻意差異（健檢 C1-03）：舊文件沒有俱樂部時（teamId 缺欄／null／空字串、teamIds 缺欄／null／空陣列）
+ * 補 `teamId: null`、`teamIds: []`，符合 Rules 建立條件；帶俱樂部的值照抄，由守門（legacyHasTeam／assertUserRootCreate）擋下。
+ */
 export function buildLegacyMigration(legacy: Data, uid: string, profile: LineLoginProfile, ts: unknown): Data {
   const n = normalizeLineProfile(profile);
   const payload: Data = {
@@ -93,6 +106,9 @@ export function buildLegacyMigration(legacy: Data, uid: string, profile: LineLog
     lastLogin: ts,
   };
   if (!legacy.createdAt) payload.createdAt = ts;
+  if (legacy.teamId === undefined || legacy.teamId === null || legacy.teamId === '') payload.teamId = null;
+  if (legacy.teamIds === undefined || legacy.teamIds === null
+    || (Array.isArray(legacy.teamIds) && legacy.teamIds.length === 0)) payload.teamIds = [];
   return payload;
 }
 
@@ -154,6 +170,8 @@ export function assertUserRootCreate(payload: Data, uid: string, ts: unknown, al
   if (has('exp') && payload.exp !== 0) bad.push('exp');
   if (has('level') && payload.level !== 1) bad.push('level');
   if (payload.createdAt !== ts) bad.push('createdAt');
+  // Rules `request.resource.data.teamId == null` 直接取欄位：缺欄也被拒，所以必填（值另由 CREATE_TYPE_RULES 檢查）。
+  if (!has('teamId')) bad.push('teamId');
   for (const key of ['lastLogin', 'updatedAt']) {
     if (has(key) && payload[key] !== ts) bad.push(key);
   }
@@ -168,12 +186,17 @@ const isMap = (v: unknown): boolean =>
 const isStringOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
 const isListOrNull = (v: unknown): boolean => v === null || Array.isArray(v);
 
-/** 逐欄對照 Rules `isSafeUserRootCreate()` 的型別條件（欄位有出現才檢查，同 Rules 的 `!(k in data) || …`）。 */
+/**
+ * 逐欄對照 Rules `isSafeUserRootCreate()` 的型別條件（欄位有出現才檢查，同 Rules 的 `!(k in data) || …`）。
+ * teamId 只能是 null（缺欄另由 assertUserRootCreate 擋）、teamIds 只能是空陣列：對照 Rules `teamId == null`、`teamIds == []`
+ * （取代原本的「字串或 null／list 或 null」，健檢 C1-03：Rules 已收緊、前端守門落後）。
+ */
 const CREATE_TYPE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
   photoURL: isStringOrNull, pictureUrl: isStringOrNull, phone: isStringOrNull, email: isStringOrNull,
   gender: isStringOrNull, birthday: isStringOrNull, region: isStringOrNull, sports: isStringOrNull,
-  teamId: isStringOrNull, teamName: isStringOrNull, titleBig: isStringOrNull, titleNormal: isStringOrNull,
-  teamIds: isListOrNull, teamNames: isListOrNull, companions: isListOrNull, eduChildren: isListOrNull,
+  teamId: (v) => v === null, teamName: isStringOrNull, titleBig: isStringOrNull, titleNormal: isStringOrNull,
+  teamIds: (v) => Array.isArray(v) && v.length === 0,
+  teamNames: isListOrNull, companions: isListOrNull, eduChildren: isListOrNull,
   totalGames: Number.isInteger, completedGames: Number.isInteger, badgeCount: Number.isInteger,
   attendanceRate: (v) => typeof v === 'number',
   profileCompleted: (v) => typeof v === 'boolean',

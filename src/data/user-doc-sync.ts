@@ -28,6 +28,7 @@ import {
   buildNewUserDoc,
   isNoopLoginUpdate,
   LAST_LOGIN_REFRESH_MS,
+  legacyHasTeam,
   USER_DOC_CREATE_FIELDS,
   USER_DOC_LOGIN_UPDATE_FIELDS,
   USER_ROOT_CREATE_RULES_FIELDS,
@@ -286,7 +287,10 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
     } else {
       // A 用 set merge；目標文件不存在，Rules 走 create，必須通過 isSafeUserRootCreate。
       // 舊文件只要有一個欄位不在 Rules 白名單、值或型別不符，就判定不可自動遷移，不送寫入（Flash 審查 P2-2）。
-      const payload = buildLegacyMigration((legacyDoc.data() ?? {}) as Data, uid, profile, ts);
+      // 帶俱樂部的舊文件：Rules 建立只允許 teamId null、teamIds 空，前端不丟俱樂部硬建，判定不可遷移（健檢 C1-03）。
+      const legacyData = (legacyDoc.data() ?? {}) as Data;
+      if (legacyHasTeam(legacyData)) throw new UserDocSyncError('legacy-not-migratable:has-team');
+      const payload = buildLegacyMigration(legacyData, uid, profile, ts);
       try {
         assertUserRootCreate(payload, uid, ts, USER_ROOT_CREATE_RULES_FIELDS);
       } catch (err) {

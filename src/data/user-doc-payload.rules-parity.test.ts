@@ -3,11 +3,18 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertUserRootCreate,
+  buildLegacyMigration,
+  buildNewUserDoc,
   findCreateTypeViolations,
+  legacyHasTeam,
   USER_DOC_CREATE_FIELDS,
   USER_DOC_LOGIN_UPDATE_FIELDS,
   USER_ROOT_CREATE_RULES_FIELDS,
+  type LineLoginProfile,
 } from './user-doc-payload';
+
+const profile: LineLoginProfile = { userId: 'U1', displayName: '小明', pictureUrl: null, email: null };
 
 // 會員文件寫入欄位 × 同步 Rules（emulator/firestore.rules，來源 FC firestore.rules，hash 由 user-grant-parity.test.ts 核對）。
 // Rules 不改（共用 lane）；這裡只確認 B 的白名單常數與 Rules 字面清單一致，Rules 一改就會失敗、要求重審。
@@ -109,6 +116,50 @@ describe('會員文件欄位白名單 × Rules users 區塊', () => {
       sports: ['足球'], teamIds: 'a', totalGames: 1.5, attendanceRate: '1', profileCompleted: null,
       socialLinks: [], lineNotify: new Date(0),
     }).sort()).toEqual(['attendanceRate', 'lineNotify', 'profileCompleted', 'socialLinks', 'sports', 'teamIds', 'totalGames']);
+  });
+
+  it('健檢 C1-03：Rules 建立條件 teamId 必須存在且為 null、teamIds 缺欄或空陣列（前端守門照此實作）', () => {
+    const block = usersBlock();
+    const start = block.indexOf('function isSafeUserRootCreate()');
+    const body = block.slice(start, block.indexOf('function existingSecondaryAvatarUrlMatches', start));
+    // teamId 沒有「缺欄放行」的前綴，缺欄就被拒。
+    expect(body).toMatch(/&& request\.resource\.data\.teamId == null\r?\n/);
+    expect(body).not.toContain("!('teamId' in request.resource.data)");
+    expect(body).toContain("(!('teamIds' in request.resource.data) || request.resource.data.teamIds == [])");
+  });
+
+  it('健檢 C1-03 三案：帶 teamId 字串、缺 teamId、teamIds 非空', () => {
+    const TS = Symbol('ts');
+    const base = { lineUserId: 'U1', displayName: '舊', gender: '男' };
+    const check = (legacy: Record<string, unknown>): void => {
+      assertUserRootCreate(buildLegacyMigration(legacy, 'U1', profile, TS), 'U1', TS, USER_ROOT_CREATE_RULES_FIELDS);
+    };
+    // 缺 teamId（與 teamIds）：補 null／[] 後可遷移；null、空字串、空陣列一樣。
+    const migrated = buildLegacyMigration(base, 'U1', profile, TS);
+    expect(migrated).toMatchObject({ teamId: null, teamIds: [] });
+    expect(legacyHasTeam(base)).toBe(false);
+    expect(() => check(base)).not.toThrow();
+    for (const empty of [{ teamId: null }, { teamId: '' }, { teamIds: null }, { teamId: null, teamIds: [] }]) {
+      expect(legacyHasTeam({ ...base, ...empty })).toBe(false);
+      expect(() => check({ ...base, ...empty })).not.toThrow();
+    }
+    // 帶 teamId 字串：判定帶俱樂部，且守門型別檢查也擋（不會丟掉俱樂部硬建）。
+    const withTeamId = { ...base, teamId: 'club-1', teamName: '甲隊' };
+    expect(legacyHasTeam(withTeamId)).toBe(true);
+    expect(buildLegacyMigration(withTeamId, 'U1', profile, TS).teamId).toBe('club-1');
+    expect(() => check(withTeamId)).toThrow(/create-types-not-allowed:teamId$/);
+    // teamIds 非空：同上。
+    const withTeamIds = { ...base, teamId: null, teamIds: ['club-1'], teamNames: ['甲隊'] };
+    expect(legacyHasTeam(withTeamIds)).toBe(true);
+    expect(buildLegacyMigration(withTeamIds, 'U1', profile, TS).teamIds).toEqual(['club-1']);
+    expect(() => check(withTeamIds)).toThrow(/create-types-not-allowed:teamIds$/);
+    // 守門本身：缺 teamId 的 payload 被擋（對照 Rules 直接取欄位）。
+    const noTeamId = { ...buildNewUserDoc('U1', profile, TS) };
+    delete noTeamId.teamId;
+    expect(() => assertUserRootCreate(noTeamId, 'U1', TS, USER_DOC_CREATE_FIELDS)).toThrow(/create-values-not-allowed:teamId$/);
+    expect(findCreateTypeViolations({ teamId: null, teamIds: [] })).toEqual([]);
+    expect(findCreateTypeViolations({ teamId: 'x', teamIds: ['x'] }).sort()).toEqual(['teamId', 'teamIds']);
+    expect(findCreateTypeViolations({ teamIds: null })).toEqual(['teamIds']);
   });
 
   it('parser 對非純字串清單拒絕，不默認空集合', () => {
