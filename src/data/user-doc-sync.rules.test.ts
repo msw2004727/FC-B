@@ -75,10 +75,10 @@ describe.skipIf(!enabled)('會員文件寫入 × 未修改的 Firestore Rules', 
     await testing.assertFails(sdk.setDoc(sdk.doc(db, 'users', UID), buildNewUserDoc(UID, profile, sdk.serverTimestamp())));
   });
 
-  it('legacy 遷移：無 createdAt 的一般舊文件允許；帶舊 createdAt 或非 user 角色拒絕（與 payload 守門一致）', async () => {
+  it('legacy 遷移：無 createdAt 且未帶 teamId 的一般舊文件拒絕；帶舊 createdAt 或非 user 角色拒絕（與 payload 守門一致）', async () => {
     const db = ownDb();
     const ts = sdk.serverTimestamp();
-    await testing.assertSucceeds(sdk.setDoc(
+    await testing.assertFails(sdk.setDoc(
       sdk.doc(db, 'users', UID),
       buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男' }, UID, profile, ts),
       { merge: true },

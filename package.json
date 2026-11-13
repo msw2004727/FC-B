@@ -18,6 +18,7 @@
     "emulators": "firebase emulators:start --only firestore,auth,storage --config emulator/firebase.json",
     "sync:rules": "node scripts/sync-rules.mjs",
     "check:rules-sync": "node scripts/check-rules-sync.mjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fcb-rules --config emulator/firebase.json \"node scripts/run-rules-tests.mjs\"",
     "check:parity": "node scripts/check-permission-parity.mjs ../FC",
     "seed:emulator": "node scripts/seed-emulator.mjs --reset",
     "e2e:shots": "node scripts/e2e-shots.mjs e2e-out",
@@ -33,6 +34,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.59.1",
     "@preact/preset-vite": "^2.10.6",
     "@testing-library/preact": "^3.2.4",

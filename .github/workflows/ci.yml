@@ -1,11 +1,12 @@
-# FC-B CI：型別檢查＋vitest 全套＋i18n 檢查（T-051），另加首頁 gzip 預算。
-# 只有 bundle-budget 這個 job 會建置。建置輸出只拿來量大小：不部署、不上傳 artifact、不用 secret、
-# 不連網路服務（建置不連 Firestore，只是把 PROD 設定寫進檔案）。其餘 job 不建置。不用第三方 action。
+# FC-B CI：型別檢查＋vitest 全套＋i18n 檢查（T-051），另加首頁 gzip 預算與規則測試（emulator）。
+# 只有 bundle-budget 這個 job 會建置。建置輸出只拿來量大小：不部署、不上傳 artifact、不用 secret。
+# 建置不連 Firestore，只是把 PROD 設定寫進檔案。除了規則測試（emulator），其餘 job 不建置、不連網路服務。不用第三方 action。
+# 規則測試（emulator）會連 raw.githubusercontent.com 讀公開正本、不用 secret。
 # 本機（Windows）不再跑全測，Playwright 與速度量測仍在本機。
 name: CI
 
 # 2026-11-12 CI 省時（ci-cost-trim）：取代原本「任何分支 push 都跑全套」。
-# - push 只在 main 觸發完整 CI（上線證據 8 項＝本檔 7 個 job＋Cloudflare Pages，數量不變）。
+# - push 只在 main 觸發完整 CI（上線證據 9 項＝本檔 8 個 job＋Cloudflare Pages，多「規則測試（emulator）」）。
 #   其他分支 push 改走 ci-lite.yml 輕量檢查；backup/**、promo 分支完全不跑。
 # - PR 照跑完整 CI；要在分支上跑全套，用 Actions 頁 workflow_dispatch 選分支。
 # - 只改 Markdown／docs／.claude 的 push 或 PR 不觸發；同一次 push 只要有任一檔不在清單內就照跑全套。
@@ -73,6 +74,10 @@ jobs:
       - name: i18n 檢查（7 語系）
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node scripts/check-i18n.mjs
+
+      - name: 規則副本檢查
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node scripts/check-rules-sync.mjs
 
   # T-054c／Q-7：正式 UTC 全套守門；只跑 vitest，不另跑型別或 i18n 檢查。
   utc-full:
@@ -158,3 +163,33 @@ jobs:
       # 超過寬鬆上限才失敗。正式門檻等這段日誌再由 PM 收緊，不要另寫第二支腳本。
       - name: 檢查首頁 gzip 預算（入口 60KB；入口＋modulepreload 寬鬆上限）
         run: node scripts/check-bundle-budget.mjs dist
+
+  # 規則副本對公開正本，並在 Firestore emulator 跑 *.rules.test.*。
+  # 會連 raw.githubusercontent.com 讀公開正本、不用 secret。不另加 permissions。
+  rules:
+    name: 規則測試（emulator）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      - name: 規則副本對正本
+        run: node scripts/check-rules-sync.mjs --upstream-url https://raw.githubusercontent.com/msw2004727/FC/main
+
+      - name: 規則測試
+        run: npm run test:rules
