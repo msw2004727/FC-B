@@ -73,7 +73,20 @@
       "reset": "不具合？リセットして再ログイン",
       "resetTitle": "リセットして再ログイン？",
       "resetBody": "ログアウトし、この端末の一時データを\n消去してから再読み込みします。",
-      "resetConfirm": "リセット"
+      "resetConfirm": "リセット",
+      "guestName": "未ログイン",
+      "loginChecking": "ログイン確認中…",
+      "syncing": "同期中…",
+      "role": {
+        "guest": "ゲスト",
+        "pending": "確認中",
+        "user": "一般ユーザー",
+        "coach": "コーチ",
+        "captain": "キャプテン",
+        "venue_owner": "施設オーナー",
+        "admin": "管理者",
+        "super_admin": "最高管理者"
+      }
     },
     "badge": { "empty": "未設定" },
     "chip": { "empty": "未分類", "remove": "「{label}」を削除" },

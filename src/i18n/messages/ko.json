@@ -73,7 +73,20 @@
       "reset": "문제가 있나요? 재설정 후 재로그인",
       "resetTitle": "재설정 후 다시 로그인할까요?",
       "resetBody": "로그아웃되고 이 기기의 임시 데이터가 삭제된 뒤 다시 불러옵니다.",
-      "resetConfirm": "재설정"
+      "resetConfirm": "재설정",
+      "guestName": "로그인 안 됨",
+      "loginChecking": "로그인 확인 중…",
+      "syncing": "동기화 중…",
+      "role": {
+        "guest": "게스트",
+        "pending": "확인 중",
+        "user": "일반 회원",
+        "coach": "코치",
+        "captain": "주장",
+        "venue_owner": "시설 소유자",
+        "admin": "관리자",
+        "super_admin": "최고 관리자"
+      }
     },
     "badge": { "empty": "미설정" },
     "chip": { "empty": "미분류", "remove": "“{label}” 삭제" },

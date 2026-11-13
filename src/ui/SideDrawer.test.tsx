@@ -266,8 +266,9 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     const guestAvatar = document.getElementById('drawer-avatar');
     expect(guestAvatar?.querySelector('svg.guest-avatar-icon')).not.toBeNull();
     expect(guestAvatar?.textContent).not.toBe('?');
-    expect(document.getElementById('drawer-name')?.textContent).toBe('未登入');
-    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('未登入');
+    // 測試同步更新（B4-01）：「未登入」名字與角色標籤改走七語系（本檔 useT 回傳 key）
+    expect(document.getElementById('drawer-name')?.textContent).toBe('ui.sideDrawer.guestName');
+    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('ui.sideDrawer.role.guest');
     expect(document.querySelector('#side-drawer .line-login-btn')).toBeNull();
     guestView.unmount();
 
@@ -294,7 +295,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(document.querySelector('#drawer-avatar svg.identity-crown')).toBeTruthy();
 
     const roleTag = document.getElementById('drawer-role-tag')!;
-    expect(roleTag.textContent).toBe('管理員');
+    expect(roleTag.textContent).toBe('ui.sideDrawer.role.admin');
     fireEvent.click(roleTag);
     expect(getToasts().some((t) => t.message === '已開啟隱身模式')).toBe(true);
     expect(roleTag.style.opacity).toBe('0.45');
@@ -364,6 +365,31 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     } finally {
       gateSpy.mockRestore();
     }
+  });
+
+  it('重設確認框：Tab／Shift+Tab 只在框內兩顆按鈕間循環，不跑到後面的抽屜', () => {
+    render(<Harness />);
+    openDrawer();
+    act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
+    const cancel = document.getElementById('app-confirm-cancel')!;
+    const ok = document.getElementById('app-confirm-ok')!;
+    expect(document.activeElement).toBe(cancel);
+    // 最後一顆按 Tab 回到第一顆；第一顆按 Shift+Tab 跳到最後一顆
+    ok.focus();
+    const tab = fireEvent.keyDown(ok, { key: 'Tab' });
+    expect(tab).toBe(false);
+    expect(document.activeElement).toBe(cancel);
+    const shiftTab = fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(shiftTab).toBe(false);
+    expect(document.activeElement).toBe(ok);
+    // 框內中間的 Tab 交給瀏覽器（不攔）
+    cancel.focus();
+    expect(fireEvent.keyDown(cancel, { key: 'Tab' })).toBe(true);
+    // 焦點已在框外（例如點到後面）時，Tab 拉回框內
+    (document.querySelector('.drawer-reset-btn') as HTMLButtonElement).focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+    expect(document.activeElement).toBe(cancel);
+    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
   });
 
   it('重設確認框：實體返回鍵（popstate）只關框、不執行、抽屜仍開', () => {

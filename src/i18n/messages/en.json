@@ -76,7 +76,20 @@
       "reset": "Trouble? Reset & sign in again",
       "resetTitle": "Reset and sign in again?",
       "resetBody": "You'll be signed out, temporary data on this device will be cleared, and the app will reload.",
-      "resetConfirm": "Reset"
+      "resetConfirm": "Reset",
+      "guestName": "Not signed in",
+      "loginChecking": "Checking sign-in…",
+      "syncing": "Syncing…",
+      "role": {
+        "guest": "Guest",
+        "pending": "Checking",
+        "user": "Member",
+        "coach": "Coach",
+        "captain": "Captain",
+        "venue_owner": "Venue owner",
+        "admin": "Admin",
+        "super_admin": "Super admin"
+      }
     },
     "badge": { "empty": "Not set" },
     "chip": { "empty": "Uncategorized", "remove": "Remove “{label}”" },

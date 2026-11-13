@@ -33,6 +33,8 @@ import { clearAccountLocalState, getLastKnownAuthUid } from '@/data/auth';
 import { markAutoLoginSuppressed } from '@/data/login-redirect';
 import { toast } from '@/ui/Toast';
 import {
+  BASE_ROLES,
+  BUILTIN_ROLE_KEYS,
   buildDrawerRenderNodes,
   drawerItemStatus,
   getMiniAppShareUrl,
@@ -272,6 +274,7 @@ export function SideDrawer({
   drawerOpenRef.current = open;
   const resetBtnRef = useRef<HTMLButtonElement>(null);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
+  const confirmBoxRef = useRef<HTMLDivElement>(null);
   const themeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dragOffsetX, setDragOffsetX] = useState<number | null>(null);
 
@@ -294,10 +297,25 @@ export function SideDrawer({
   }, [open]);
 
   // 重設確認框（比照 AppConfirm）：開框焦點放「取消」；Esc 與實體返回鍵同一路徑「只關框、不執行」；關框把焦點還給重設鈕。
+  // Tab／Shift+Tab 只在框內兩顆按鈕間循環（aria-modal 不會自己擋 Tab，原本會跑到後面的抽屜）。
   useLayoutEffect(() => {
     if (!showClearCacheConfirm) return undefined;
     confirmCancelRef.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Tab') {
+        const box = confirmBoxRef.current;
+        const items = box ? [...box.querySelectorAll<HTMLElement>('button:not([disabled])')] : [];
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!box || !first || !last) return;
+        const active = document.activeElement;
+        const inside = active instanceof Node && box.contains(active);
+        if (event.shiftKey ? (!inside || active === first) : (!inside || active === last)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus({ preventScroll: true });
+        }
+        return;
+      }
       if (event.key !== 'Escape') return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -589,8 +607,8 @@ export function SideDrawer({
   // M-009 & M-010：抽屜頭部名字與頭像來源（優先 identity → Firestore viewer → AuthUser）
   const isSecondaryIdentity = identity?.identityId === 'secondary';
   const resolvedName = isSignedIn
-    ? (identity?.displayName || routeAccess?.displayName || user?.displayName || '同步中...')
-    : (loginPending ? '登入確認中...' : '未登入');
+    ? (identity?.displayName || routeAccess?.displayName || user?.displayName || t('ui.sideDrawer.syncing'))
+    : t(loginPending ? 'ui.sideDrawer.loginChecking' : 'ui.sideDrawer.guestName');
 
   const candidateUrls: string[] = [];
   if (isSignedIn) {
@@ -616,6 +634,11 @@ export function SideDrawer({
 
   // M-014 & M-015 & M-016：角色標籤文字、顏色與隱身切換
   const roleInfo = resolveDrawerRoleInfo(effectiveRoleKey, isSignedIn, customRoles, loginPending);
+  // 內建角色與未登入／確認中走七語系（B4-01）；自訂角色名稱是後台資料，照原樣顯示。
+  const roleI18nKey = !isSignedIn
+    ? (loginPending ? 'pending' : 'guest')
+    : BUILTIN_ROLE_KEYS.find((key) => BASE_ROLES[key] === roleInfo);
+  const roleLabel = roleI18nKey ? t(`ui.sideDrawer.role.${roleI18nKey}`) : roleInfo.label;
   const roleTagStyle: Record<string, string> = {
     background: `${roleInfo.color}22`,
     color: roleInfo.color,
@@ -696,7 +719,7 @@ export function SideDrawer({
                 title={isAdminOrSuper && stealth ? '隱身模式（點擊恢復）' : undefined}
                 onClick={isAdminOrSuper ? handleRoleTagClick : undefined}
               >
-                {roleInfo.label}
+                {roleLabel}
               </div>
             </div>
             <div class="drawer-actions">
@@ -931,6 +954,7 @@ export function SideDrawer({
           }}
         >
           <div
+            ref={confirmBoxRef}
             class="app-confirm-box drawer-reset-confirm"
             role="alertdialog"
             aria-modal="true"

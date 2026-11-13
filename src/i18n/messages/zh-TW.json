@@ -73,7 +73,20 @@
       "reset": "遇到問題？重設並重新登入",
       "resetTitle": "重設並重新登入？",
       "resetBody": "會登出並清除這台裝置的暫存資料，\n然後重新載入。",
-      "resetConfirm": "重設"
+      "resetConfirm": "重設",
+      "guestName": "未登入",
+      "loginChecking": "登入確認中...",
+      "syncing": "同步中...",
+      "role": {
+        "guest": "未登入",
+        "pending": "確認中",
+        "user": "一般用戶",
+        "coach": "教練",
+        "captain": "領隊",
+        "venue_owner": "場主",
+        "admin": "管理員",
+        "super_admin": "總管"
+      }
     },
     "badge": { "empty": "未設定" },
     "chip": { "empty": "未分類", "remove": "移除「{label}」" },

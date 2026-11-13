@@ -73,7 +73,20 @@
       "reset": "Gặp sự cố? Đặt lại & đăng nhập lại",
       "resetTitle": "Đặt lại và đăng nhập lại?",
       "resetBody": "Bạn sẽ bị đăng xuất, dữ liệu tạm trên thiết bị này sẽ bị xóa và ứng dụng sẽ tải lại.",
-      "resetConfirm": "Đặt lại"
+      "resetConfirm": "Đặt lại",
+      "guestName": "Chưa đăng nhập",
+      "loginChecking": "Đang đăng nhập…",
+      "syncing": "Đang đồng bộ…",
+      "role": {
+        "guest": "Khách",
+        "pending": "Đang kiểm tra",
+        "user": "Thành viên",
+        "coach": "HLV",
+        "captain": "Đội trưởng",
+        "venue_owner": "Chủ sân",
+        "admin": "Quản trị viên",
+        "super_admin": "Quản trị cấp cao"
+      }
     },
     "badge": { "empty": "Chưa thiết lập" },
     "chip": { "empty": "Chưa phân loại", "remove": "Xóa “{label}”" },

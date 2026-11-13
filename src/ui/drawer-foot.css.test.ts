@@ -55,14 +55,22 @@ describe('抽屜底部方案一：不換行（泰、越文不撐出抽屜）', (
     expect(decls('.legacy-ui .drawer-reset-confirm-title')['white-space']).toBe('nowrap');
   });
 
-  it('頂部角色標籤不換行、放不下才省略號（不撐出抽屜），間距收窄讓英文「未登入」放得下', () => {
+  // 測試同步更新（DRAWER-POLISH）：間距與內距再收，最大字級 360 寬時資訊欄留得下「字＋省略號」
+  it('頂部角色標籤不換行、放不下才省略號（不撐出抽屜），間距與內距收窄讓省略號看得到', () => {
     const tag = decls(`${P} .drawer-role-tag`);
     expect(tag['white-space']).toBe('nowrap');
     expect(tag['max-width']).toBe('100%');
     expect(tag['text-overflow']).toBe('ellipsis');
     expect(tag.overflow).toBe('hidden');
-    expect(decls(`${P} .drawer-user`).gap).toBe('.6rem');
-    expect(decls(`${P} .drawer-actions`).gap).toBe('.35rem');
+    expect(tag.padding).toBe('.15rem .4rem');
+    expect(decls(`${P} .drawer-user`).gap).toBe('.5rem');
+    expect(decls(`${P} .drawer-actions`).gap).toBe('.3rem');
+    expect(decls(`${P} .drawer-pwa-btn`).padding).toBe('0 .45rem');
+  });
+
+  it('底部聲明與重設小字：淺色用 --text-secondary（達 WCAG AA），深色維持 --text-muted', () => {
+    expect(decls(`${P} .drawer-foot-link, ${P} .drawer-reset-btn`).color).toBe('var(--text-secondary)');
+    expect(decls(`[data-theme="dark"] ${P} .drawer-foot-link, [data-theme="dark"] ${P} .drawer-reset-btn`).color).toBe('var(--text-muted)');
   });
 
   it('確認框說明用 pre-line（中、日文逗號後語意換行），確定鈕紅色', () => {
