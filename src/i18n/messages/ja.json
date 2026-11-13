@@ -74,7 +74,7 @@
       "resetTitle": "リセットして再ログイン？",
       "resetBody": "ログアウトし、この端末の一時データを\n消去してから再読み込みします。",
       "resetConfirm": "リセット",
-      "guestName": "未ログイン",
+      "guestName": "ゲスト",
       "loginChecking": "ログイン確認中…",
       "syncing": "同期中…",
       "role": {
