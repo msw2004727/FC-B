@@ -158,7 +158,8 @@
   padding: 0 .3rem;
   border: 0;
   background: none;
-  color: var(--text-muted);
+  /* 淺色加深一階：--text-muted（#8892a4）在白底只有約 3.1:1，泰文細字更淡；--text-secondary（#5a6478）約 6:1，達 WCAG AA。深色維持 --text-muted（約 11:1）。 */
+  color: var(--text-secondary);
   font: inherit;
   font-size: .7rem;
   font-weight: 500;
@@ -168,6 +169,8 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-foot-link,
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-reset-btn { color: var(--text-muted); }
 .legacy-ui #side-drawer .drawer-foot-dot { color: var(--text-muted); opacity: .6; font-size: .7rem; padding: 0 .05rem; }
 .legacy-ui #side-drawer .drawer-reset-icon { width: 12px; height: 12px; flex: 0 0 auto; opacity: .75; }
 @media (hover: hover) {
@@ -197,12 +200,16 @@
 .legacy-ui #app-confirm-modal .drawer-reset-confirm .drawer-reset-confirm-ok { background: #dc2626; color: #fff; }
 
 /* ── 頂部角色標籤不斷行（英文「Download App」較寬時，「未登入」曾被擠成兩行）：
- *    標籤不換行、真的放不下（如日文長鈕＋最大字級）才以省略號收尾，絕不撐出抽屜；
- *    頭像與資訊欄、兩顆動作鈕的間距各收 2～3px，讓英文「未登入」完整放得下 ── */
-.legacy-ui #side-drawer .drawer-user { gap: .6rem; }
-.legacy-ui #side-drawer .drawer-actions { gap: .35rem; }
+ *    標籤不換行、真的放不下才以省略號收尾，絕不撐出抽屜。
+ *    DRAWER-POLISH（2026-11-14）：360 寬＋最大字級時資訊欄只剩約 23px，標籤左右內距就吃掉 18px，省略號被裁掉看不到；
+ *    頭像與資訊欄間距 .6→.5rem、兩顆動作鈕間距 .35→.3rem、下載鈕與標籤左右內距 .55／.5→.45／.4rem，
+ *    多出約 11px 給資訊欄（另把英文下載鈕縮成「Get App」、日文縮成「アプリを入手」，見 legacy 翻譯包）。 ── */
+.legacy-ui #side-drawer .drawer-user { gap: .5rem; }
+.legacy-ui #side-drawer .drawer-actions { gap: .3rem; }
+.legacy-ui #side-drawer .drawer-pwa-btn { padding: 0 .45rem; }
 .legacy-ui #side-drawer .drawer-role-tag {
   max-width: 100%;
+  padding: .15rem .4rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -73,7 +73,20 @@
       "reset": "遇到问题？重置并重新登录",
       "resetTitle": "重置并重新登录？",
       "resetBody": "会退出登录并清除这台设备的缓存数据，\n然后重新加载。",
-      "resetConfirm": "重置"
+      "resetConfirm": "重置",
+      "guestName": "未登录",
+      "loginChecking": "登录确认中...",
+      "syncing": "同步中...",
+      "role": {
+        "guest": "未登录",
+        "pending": "确认中",
+        "user": "普通用户",
+        "coach": "教练",
+        "captain": "领队",
+        "venue_owner": "场主",
+        "admin": "管理员",
+        "super_admin": "总管"
+      }
     },
     "badge": { "empty": "未设置" },
     "chip": { "empty": "未分类", "remove": "移除“{label}”" },
