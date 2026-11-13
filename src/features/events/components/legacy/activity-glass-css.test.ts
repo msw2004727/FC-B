@@ -277,8 +277,7 @@ describe('timeline-card-extra.css：運動圖示欄（留言徽章移位）', ()
     expect(find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge svg').decls.width).toBe('11px');
   });
 
-  it('沒留言但有人數標籤時留空位（visibility: hidden，不是 display: none），運動圖示固定靠上與狀態標籤同列', () => {
-    const empty = find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge.is-empty');
-    expect(empty.decls).toEqual({ visibility: 'hidden' });
+  it('沒留言時不留空位：不得有 is-empty 佔位規則（站長 11-13 追加，運動圖示置中）', () => {
+    expect(() => find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge.is-empty')).toThrow();
   });
 });

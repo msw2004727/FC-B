@@ -574,9 +574,9 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     const sport = icons.querySelector('.tl-event-sport-corner')!;
     const badge = icons.querySelector('.tl-comment-badge')!;
     expect(sport.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // 未登入沒有留言數：留同尺寸空位（不 hidden），運動圖示固定與狀態標籤同一列
-    expect(badge.classList.contains('is-empty')).toBe(true);
-    expect(badge.hasAttribute('hidden')).toBe(false);
+    // 未登入沒有留言數：不留空位（hidden），運動圖示在欄內置中（站長 11-13 追加）
+    expect(badge.classList.contains('is-empty')).toBe(false);
+    expect(badge.hasAttribute('hidden')).toBe(true);
     expect(badge.getAttribute('aria-hidden')).toBe('true');
 
     // 額滿＋候補：口徑同計量條（實際正取 23，不含團隊保留未報），狀態為候補

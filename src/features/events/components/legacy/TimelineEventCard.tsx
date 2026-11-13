@@ -422,12 +422,12 @@ export function TimelineEventCard({
           <span class="sport-emoji">{symbol}</span>
         </span>
         {/* M-076：留言數徽章（可見才載入）；DOM 照 A `_activityCommentBadgeHtml`。
-          * 2026-11-13 站長定案：移到運動圖示下方。沒留言但有人數標籤時留同尺寸空位（is-empty），
-          * 運動圖示固定和狀態標籤同一列（靠上對齊）；兩者都沒有才整個隱藏。 */}
+          * 2026-11-13 站長定案：移到運動圖示下方；沒留言時不留空位（站長追加：取代先前 is-empty 空位），
+          * 運動圖示在運動欄內置中（activity.css .tl-event-icons justify-content: center）。 */}
         <span
-          class={hasComment || !capModel ? 'tl-comment-badge' : 'tl-comment-badge is-empty'}
+          class="tl-comment-badge"
           data-comment-badge-for={event.id || ''}
-          hidden={!hasComment && !capModel}
+          hidden={!hasComment}
           aria-hidden={hasComment ? 'false' : 'true'}
           aria-label={hasComment ? commentLabel : undefined}
           title={hasComment ? commentLabel : undefined}
