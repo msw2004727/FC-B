@@ -74,6 +74,15 @@ export function isLineSessionExpiredError(err: unknown): boolean {
  */
 const LINE_LOGIN_RETRY_KEY = '_lineLoginRetryCount';
 
+/** 只讀不寫：這個分頁還能自動重試嗎（讀不到算不能）。 */
+function lineLoginRetryAvailable(): boolean {
+  try {
+    return Number(sessionStorage.getItem(LINE_LOGIN_RETRY_KEY) || 0) < 1;
+  } catch {
+    return false;
+  }
+}
+
 function claimLineLoginRetry(): boolean {
   try {
     const count = Number(sessionStorage.getItem(LINE_LOGIN_RETRY_KEY) || 0);
@@ -306,8 +315,14 @@ async function runSignIn(interactive: boolean): Promise<AuthUser> {
 
 type LiffClient = Awaited<ReturnType<typeof ensureLiffInit>>;
 
-/** LIFF 未登入且是互動式登入：導向 LINE 登入（原 runSignIn 內的同一段，B1-02 自動重新登入共用）。 */
-async function redirectToLineLogin(liff: LiffClient): Promise<never> {
+/**
+ * LIFF 未登入且是互動式登入：導向 LINE 登入（原 runSignIn 內的同一段，B1-02 自動重新登入共用）。
+ * claimRetry：B1-02 自動重新登入時在導向／顯示提示前一刻佔用重試次數，佔不到就改顯示「LINE 登入已過期」；一般登入恆為 true。
+ */
+async function redirectToLineLogin(
+  liff: LiffClient,
+  claimRetry: () => boolean = () => true,
+): Promise<never> {
   // M-036：手機外部瀏覽器先顯示 LINE 登入提示框（照 A `js/line-auth.js` login 的同一段檢查）
   let inClient = false;
   try {
@@ -316,6 +331,7 @@ async function redirectToLineLogin(liff: LiffClient): Promise<never> {
     inClient = false;
   }
   if (!mobileHintAcknowledged && isMobileExternalBrowser(inClient, navigator.userAgent)) {
+    if (!claimRetry()) return lineSessionExpired();
     emit('auth:mobile-login-hint', {});
     throw new LoginRedirectingError('[auth] 等待手機外部瀏覽器登入提示確認');
   }
@@ -324,6 +340,7 @@ async function redirectToLineLogin(liff: LiffClient): Promise<never> {
   if (await currentSignedInUid() !== null || signingOut) {
     throw new LoginRedirectingError('[auth] 已有登入者，不導向 LINE');
   }
+  if (!claimRetry()) return lineSessionExpired();
   // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
   // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
   const redirectUri = buildCleanLoginRedirectUri(location.href);
@@ -342,16 +359,25 @@ function isUnauthenticatedError(err: unknown): boolean {
 
 /**
  * 用同一顆權杖向 LINE 取個人資料，判斷權杖本身是否有效。
- * LIFF 對 HTTP 401 拋 code '401'，本機沒有權杖時拋 'UNAUTHORIZED'：這兩種才算明確失效；
- * 其他錯誤（網路、逾時、5xx、未知代碼）一律 unknown，不登出。
+ * LIFF 2.31.2 的 getProfile 先經權限檢查打 oauth2/v2.1/verify：過期或無效權杖是 HTTP 400、code 'invalid_request'；
+ * 通過後打 v2/profile，401 拋 code '401'；本機沒有權杖拋 'UNAUTHORIZED'＋「Need access_token…」。
+ * 只有這三種算明確失效。同意視窗被取消（'UNAUTHORIZED'＋「user didn't allow the agreement」）、
+ * 逾時、網路、403、429、5xx 與其他代碼一律 unknown，不登出。
+ * （取代 471dbcd 只認 '401'／'UNAUTHORIZED'：過期權杖實際走 400 invalid_request，會判成 unknown，Grok 初審 P1。）
  */
 async function probeLineAccessToken(liff: LiffClient): Promise<'valid' | 'invalid' | 'unknown'> {
   try {
     await withTimeout(liff.getProfile(), LIFF_STEP_TIMEOUT_MS, '確認 LINE 權杖');
     return 'valid';
   } catch (err) {
-    const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
-    return code === '401' || code === 'UNAUTHORIZED' ? 'invalid' : 'unknown';
+    const { code, message } = err && typeof err === 'object'
+      ? (err as { code?: unknown; message?: unknown })
+      : { code: undefined, message: undefined };
+    if (code === '401' || code === 'invalid_request') return 'invalid';
+    if (code === 'UNAUTHORIZED' && typeof message === 'string' && message.includes('Need access_token')) {
+      return 'invalid';
+    }
+    return 'unknown';
   }
 }
 
@@ -380,9 +406,14 @@ async function recoverInvalidLineSession(
   } catch {
     inClient = true;
   }
-  if (interactive && !inClient && claimLineLoginRetry()) {
-    return redirectToLineLogin(liff);
+  if (interactive && !inClient && lineLoginRetryAvailable()) {
+    // 計數在真正導向（或顯示手機登入提示）前一刻才寫：中途發現已有登入者或開始登出就不白用這一次（Grok 初審 P3）。
+    return redirectToLineLogin(liff, claimLineLoginRetry);
   }
+  return lineSessionExpired();
+}
+
+function lineSessionExpired(): never {
   emit('auth:line-session-expired', {});
   throw new LineSessionExpiredError();
 }

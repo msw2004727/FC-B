@@ -585,6 +585,93 @@ describe('LINE 權杖失效的自動復原（B1-02）', () => {
     expect(sessionStorage.getItem(RETRY_KEY)).toBe('1');
   });
 
+  it('過期權杖（LIFF 權限檢查打 verify 回 400 invalid_request）：登出 LINE 並最多導向一次（Grok 初審 P1）', async () => {
+    h.callFn.mockRejectedValue(unauthenticated());
+    h.liff.getProfile.mockRejectedValue(
+      Object.assign(new Error('access token expired'), { code: 'invalid_request' }),
+    );
+
+    const first = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLoginRedirectingError(first)).toBe(true);
+    expect(h.liff.logout).toHaveBeenCalledOnce();
+    expect(h.liff.login).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBe('1');
+
+    const second = await auth.signIn().catch((e: unknown) => e);
+    expect(auth.isLineSessionExpiredError(second)).toBe(true);
+    expect(h.liff.login).toHaveBeenCalledOnce();
+  });
+
+  it('本機沒有權杖（UNAUTHORIZED＋Need access_token）：算失效，登出並導向一次', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    h.liff.getProfile.mockRejectedValue(Object.assign(
+      new Error('Need access_token for api call, Please login first'), { code: 'UNAUTHORIZED' },
+    ));
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.logout).toHaveBeenCalledOnce();
+    expect(h.liff.login).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['LINE 5xx', Object.assign(new Error('Internal Server Error'), { code: '500' })],
+    ['LINE 403', Object.assign(new Error('Forbidden'), { code: '403' })],
+    ['LINE 429', Object.assign(new Error('Too Many Requests'), { code: '429' })],
+    ['沒有代碼的逾時錯誤', new Error('[auth] 確認 LINE 權杖 逾時（8000ms）')],
+    ['同意視窗被取消', Object.assign(new Error("user didn't allow the agreement"), { code: 'UNAUTHORIZED' })],
+  ])('確認權杖時遇到%s：不登出、不導向、不重試，照原錯誤拋出', async (_label, probeError) => {
+    const original = unauthenticated();
+    h.callFn.mockRejectedValueOnce(original);
+    h.liff.getProfile.mockRejectedValue(probeError);
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(err).toBe(original);
+    expect(h.callFn).toHaveBeenCalledTimes(1);
+    expect(h.liff.logout).not.toHaveBeenCalled();
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('失效後發現 Firebase 已有登入者：不導向，也不佔用重試次數（Grok 初審 P3）', async () => {
+    h.callFn.mockRejectedValueOnce(unauthenticated());
+    lineRejects('401');
+    h.currentUser = { uid: 'U-other', getIdTokenResult: async () => ({ claims: {} }) };
+
+    const err = await auth.signIn().catch((e: unknown) => e);
+
+    expect(auth.isLoginRedirectingError(err)).toBe(true);
+    expect(h.liff.login).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RETRY_KEY)).toBeNull();
+  });
+
+  it('手機外部瀏覽器：第一次失效顯示登入提示並佔用次數；第二次只顯示文案、不再跳提示', async () => {
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari',
+    );
+    h.callFn.mockRejectedValue(unauthenticated());
+    lineRejects('401');
+    const events = await import('@/core/events');
+    const hints: number[] = [];
+    const stop = events.on('auth:mobile-login-hint', () => { hints.push(1); });
+    try {
+      const first = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLoginRedirectingError(first)).toBe(true);
+      expect(hints).toEqual([1]);
+      expect(sessionStorage.getItem(RETRY_KEY)).toBe('1');
+
+      const second = await auth.signIn().catch((e: unknown) => e);
+      expect(auth.isLineSessionExpiredError(second)).toBe(true);
+      expect(hints).toEqual([1]);
+      expect(h.liff.login).not.toHaveBeenCalled();
+    } finally {
+      stop();
+      ua.mockRestore();
+    }
+  });
+
   it('同一分頁第二次失效：不再導向，改拋專屬錯誤並通知 App 顯示文案', async () => {
     sessionStorage.setItem(RETRY_KEY, '1');
     h.callFn.mockRejectedValueOnce(unauthenticated('unauthenticated'));
