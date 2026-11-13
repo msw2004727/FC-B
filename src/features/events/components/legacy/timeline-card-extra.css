@@ -190,53 +190,43 @@
 /* 2026-11-13 站長回報：正取、不公開印章看不清楚，且大小要相同。
  * 根因：A 的印章（activity.css .tl-stamp-*）用 mix-blend-mode: multiply＋.72 透明度；深色卡底相乘後幾乎與卡底同色，
  * 淺色也只剩細框淡字。A 的尺寸是不公開 52px、正取／候補 46px。
- * 這裡只在活動頁：三種印章統一成 A 不公開的 52px（框 3px、字 12px）；淺色加深到 .9，深色改正常混合＋亮色。
- * 仍是透明底的圓框印章，層級沿用 A 的 3（低於月份標題 6）。A 的 activity.css 不改。 */
-#page-activities .tl-event-row > .tl-stamp-private,
-#page-activities .tl-event-row > .tl-stamp-confirmed,
-#page-activities .tl-event-row > .tl-stamp-waitlisted {
-  bottom: -10px;
+ * 三種印章統一成 A 不公開的 52px（框 3px、字 12px）；淺色加深到 .9，深色改正常混合＋亮色。仍是透明底圓框印章，
+ * 層級沿用 A 的 3（低於月份標題 6）；位置沿用 A（下一張卡另行搬位置）。A 的 activity.css 不改。
+ * 不限活動頁：.tl-stamp-* 只出現在活動卡元件（TimelineEventCard），之後個人頁、俱樂部頁共用該元件時一起套用（PM 11-13）。 */
+.tl-event-row > .tl-stamp-private,
+.tl-event-row > .tl-stamp-confirmed,
+.tl-event-row > .tl-stamp-waitlisted {
   width: 52px;
   height: 52px;
   border-width: 3px;
   font-size: 12px;
 }
-#page-activities .tl-event-row > .tl-stamp-private {
+.tl-event-row > .tl-stamp-private {
   border-color: rgba(200,30,30,.9);
   color: rgba(200,30,30,.9);
 }
-#page-activities .tl-event-row > .tl-stamp-confirmed {
+.tl-event-row > .tl-stamp-confirmed {
   border-color: rgba(37,99,235,.9);
   color: rgba(37,99,235,.9);
 }
-#page-activities .tl-event-row > .tl-stamp-waitlisted {
+.tl-event-row > .tl-stamp-waitlisted {
   border-color: rgba(124,58,237,.9);
   color: rgba(124,58,237,.9);
 }
-/* 同時有不公開章時，正取／候補章緊貼不公開章右側（間距 4px），窄螢幕不重疊；寬版正取章同 A 往左靠 */
-#page-activities .tl-event-row > .tl-stamp-private ~ .tl-stamp-confirmed,
-#page-activities .tl-event-row > .tl-stamp-private ~ .tl-stamp-waitlisted {
-  right: calc(28% - 56px);
-}
-@media (min-width: 641px) {
-  #page-activities .tl-event-row > .tl-stamp-confirmed {
-    right: calc(28% - 56px);
-  }
-}
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-private,
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-confirmed,
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-waitlisted {
+[data-theme="dark"] .tl-event-row > .tl-stamp-private,
+[data-theme="dark"] .tl-event-row > .tl-stamp-confirmed,
+[data-theme="dark"] .tl-event-row > .tl-stamp-waitlisted {
   mix-blend-mode: normal;
 }
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-private {
+[data-theme="dark"] .tl-event-row > .tl-stamp-private {
   border-color: rgba(248,113,113,.9);
   color: rgba(248,113,113,.9);
 }
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-confirmed {
+[data-theme="dark"] .tl-event-row > .tl-stamp-confirmed {
   border-color: rgba(96,165,250,.9);
   color: rgba(96,165,250,.9);
 }
-[data-theme="dark"] #page-activities .tl-event-row > .tl-stamp-waitlisted {
+[data-theme="dark"] .tl-event-row > .tl-stamp-waitlisted {
   border-color: rgba(167,139,250,.9);
   color: rgba(167,139,250,.9);
 }

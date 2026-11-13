@@ -93,7 +93,8 @@ describe('timeline-card-extra.css：液態光澤卡片', () => {
 });
 
 // 2026-11-13 站長回報：正取、不公開印章看不清楚、大小要相同。A 的印章用 multiply 混合，深色卡底上幾乎看不見；
-// A 原本不公開 52px、正取／候補 46px。活動頁覆寫成同一尺寸、淺色加深、深色改正常混合。
+// A 原本不公開 52px、正取／候補 46px。覆寫成同一尺寸、淺色加深、深色改正常混合；位置沿用 A（下一張卡另搬）。
+// 不限活動頁：.tl-stamp-* 只在活動卡元件，之後個人頁、俱樂部頁共用該元件時一起套用（PM 11-13）。
 describe('timeline-card-extra.css：活動卡印章（正取／候補／不公開）', () => {
   const card = scoped('timeline-card-extra.css');
   const activity = (() => {
@@ -109,19 +110,20 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     return out;
   })();
   const STAMPS = ['.tl-stamp-private', '.tl-stamp-confirmed', '.tl-stamp-waitlisted'];
-  /** 同一選擇器（不含 @media）依序合併的宣告：A 的基底＋活動頁覆寫（覆寫權重較高，後蓋前）。 */
+  const OVERRIDE = (s: string) => `.legacy-ui .tl-event-row > ${s}`;
+  const OVERRIDE_DARK = (s: string) => `[data-theme="dark"] .legacy-ui .tl-event-row > ${s}`;
+  /** 同一選擇器（不含 @media）依序合併的宣告：A 的基底＋覆寫（覆寫權重較高，後蓋前）。 */
   const merged = (stamp: string, dark = false): Record<string, string> => {
-    const sel = `${dark ? '[data-theme="dark"] ' : ''}.legacy-ui #page-activities .tl-event-row > ${stamp}`;
     const base = activity.filter((r) => r.selector === `.legacy-ui ${stamp}`);
-    const light = card.filter((r) => r.selector === `.legacy-ui #page-activities .tl-event-row > ${stamp}` && r.atrule === null);
-    const darkRules = dark ? card.filter((r) => r.selector === sel && r.atrule === null) : [];
+    const light = card.filter((r) => r.selector === OVERRIDE(stamp) && r.atrule === null);
+    const darkRules = dark ? card.filter((r) => r.selector === OVERRIDE_DARK(stamp) && r.atrule === null) : [];
     return Object.assign({}, ...base.map((r) => r.decls), ...light.map((r) => r.decls), ...darkRules.map((r) => r.decls));
   };
 
   it('三種印章同一尺寸（照 A 不公開章 52px、框 3px），仍是透明底圓框', () => {
     const sizes = STAMPS.map((s) => {
       const d = merged(s);
-      return [d.width, d.height, d['border-width'] ?? d.border?.split(' ')[0], d['font-size'], d.bottom, d['border-radius']].join('|');
+      return [d.width, d.height, d['border-width'], d['font-size'], d['letter-spacing'], d['border-radius'], d.transform].join('|');
     });
     expect(new Set(sizes).size).toBe(1);
     const d = merged('.tl-stamp-confirmed');
@@ -129,13 +131,14 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     for (const s of STAMPS) expect(merged(s).background, s).toBeUndefined();
   });
 
-  it('覆寫只套活動頁，且權重高於 A 的印章規則', () => {
+  it('權重高於 A 的印章規則（含 A 寬版的 @media）；不改位置（right／bottom 沿用 A）', () => {
+    for (const s of STAMPS) {
+      expect(gt(specificity(OVERRIDE(s)), specificity(`.legacy-ui ${s}`))).toBe(true);
+      expect(gt(specificity(OVERRIDE_DARK(s)), specificity(OVERRIDE(s)))).toBe(true);
+    }
     const touching = card.filter((r) => STAMPS.some((s) => r.selector.includes(s)));
     expect(touching.length).toBeGreaterThan(0);
-    expect(touching.every((r) => r.selector.includes('#page-activities'))).toBe(true);
-    for (const s of STAMPS) {
-      expect(gt(specificity(`.legacy-ui #page-activities .tl-event-row > ${s}`), specificity(`.legacy-ui ${s}`))).toBe(true);
-    }
+    expect(touching.some((r) => ['right', 'left', 'top', 'bottom', 'position'].some((p) => p in r.decls) || r.atrule)).toBe(false);
   });
 
   it('淺色仍用 multiply（墨水感）但不透明度提高；深色改正常混合並換亮色，不再相乘成卡底同色', () => {
@@ -154,8 +157,8 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     }
   });
 
-  it('印章在光澤層之上：光澤只畫在卡片自己的背景（活動頁卡片沒有 ::before／::after 疊層），印章層級高於性別緞帶', () => {
-    expect(card.some((r) => /#page-activities \.tl-event-row[^ >]*::(before|after)/.test(r.selector))).toBe(false);
+  it('印章在光澤層之上：光澤只畫在卡片自己的背景（卡片沒有 ::before／::after 疊層），印章層級高於性別緞帶', () => {
+    expect(card.some((r) => /\.tl-event-row[^ >]*::(before|after)/.test(r.selector))).toBe(false);
     const ribbon = activity.find((r) => r.selector === '.legacy-ui .tl-event-gender-ribbon');
     for (const s of STAMPS) {
       const d = merged(s);
@@ -163,15 +166,6 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
       expect(Number(d['z-index']), s).toBeGreaterThan(Number(ribbon?.decls['z-index']));
       expect(d['pointer-events'], s).toBe('none');
     }
-  });
-
-  it('同時有不公開章時正取／候補章緊貼其右側不重疊；寬版正取章同 A 往左靠（52px＋間距 4px）', () => {
-    for (const s of ['.tl-stamp-confirmed', '.tl-stamp-waitlisted']) {
-      expect(find(card, `.legacy-ui #page-activities .tl-event-row > .tl-stamp-private ~ ${s}`).decls.right).toBe('calc(28% - 56px)');
-    }
-    expect(find(card, '.legacy-ui #page-activities .tl-event-row > .tl-stamp-confirmed', '@media (min-width: 641px)').decls.right)
-      .toBe('calc(28% - 56px)');
-    expect(merged('.tl-stamp-private').right).toBe('28%');
   });
 });
 
