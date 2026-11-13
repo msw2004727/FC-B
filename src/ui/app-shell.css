@@ -33,6 +33,14 @@ body.fcb-update-open .ui-app-shell .app-main {
   padding-bottom: calc(var(--bottombar-h, 64px) + 55px + 68px + env(safe-area-inset-bottom, 0px));
 }
 
+/* 登入失敗提示（App.tsx，在各頁內容之前）：活動、首頁、俱樂部、賽事的頁面底層是 position: fixed 的整片 ::before，
+   畫在定位層（z-index 0／auto）；提示原本沒定位、畫在一般流程層，會被底層整片蓋住（2026-11-13 Opus 交叉審 P2）。
+   加 z-index 1 讓提示高於各頁底層；頂部列、底部導覽（900）仍在它之上。 */
+.ui-app-shell .app-main > .app-login-alert {
+  position: relative;
+  z-index: 1;
+}
+
 .legacy-ui.legacy-chrome {
   padding: 0;
   min-height: 0;

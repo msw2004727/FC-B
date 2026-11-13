@@ -461,7 +461,7 @@ export function App({
         <SyncStatusBar />
         <main class="app-main">
           {loginError && !drawerOpen && (
-            <div role="alert">
+            <div class="app-login-alert" role="alert">
               <Text>{t(loginError === 'expired' ? 'ui.shell.loginExpired' : 'ui.shell.loginError')}</Text>
             </div>
           )}

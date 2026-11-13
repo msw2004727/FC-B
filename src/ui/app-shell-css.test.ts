@@ -17,6 +17,35 @@ function rulesFor(css: string, selector: string): string[] {
   return out;
 }
 
+describe('app-shell.css：登入失敗提示高於各頁頁面底層（2026-11-13 Opus 交叉審 P2）', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/ui/app-shell.css'), 'utf8');
+
+  it('.app-login-alert 是定位元素且 z-index 1（各頁 position: fixed 的 ::before 底層畫在 0／auto）', () => {
+    const bodies = rulesFor(css, '.ui-app-shell .app-main > .app-login-alert');
+    expect(bodies.some((b) => /position\s*:\s*relative/.test(b) && /z-index\s*:\s*1\s*(;|$)/.test(b))).toBe(true);
+  });
+
+  it('App.tsx 的登入失敗提示帶 app-login-alert，且直接放在 main.app-main 底下', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/app/App.tsx'), 'utf8');
+    expect(app).toMatch(/<main class="app-main">\s*\{loginError[^\n]*\n\s*<div class="app-login-alert" role="alert">/);
+  });
+
+  it('四頁底層都是 fixed 的 ::before，且不高於 z-index 0（提示的 1 蓋得過）', () => {
+    const layers: [string, RegExp][] = [
+      ['src/features/events/components/legacy/activity-list-extra.css', /\.legacy-ui\.activities-root::before\s*\{([^}]*)\}/],
+      ['src/features/home/legacy/home-glass.css', /\.legacy-ui\.home-root::before\s*\{([^}]*)\}/],
+      ['src/features/clubs/legacy/teams-glass.css', /\.legacy-ui\.teams-root::before\s*\{([^}]*)\}/],
+      ['src/features/tournaments/legacy/tournaments-glass.css', /\.legacy-ui\.tournaments-root::before\s*\{([^}]*)\}/],
+    ];
+    for (const [file, re] of layers) {
+      const body = readFileSync(resolve(process.cwd(), file), 'utf8').match(re)?.[1] ?? '';
+      expect(body, file).toMatch(/position\s*:\s*fixed/);
+      const z = body.match(/z-index\s*:\s*(-?\d+)/)?.[1];
+      expect(z === undefined || Number(z) <= 0, file).toBe(true);
+    }
+  });
+});
+
 describe('app-shell.css：外框不是捲動容器', () => {
   const css = readFileSync(resolve(process.cwd(), 'src/ui/app-shell.css'), 'utf8');
 
