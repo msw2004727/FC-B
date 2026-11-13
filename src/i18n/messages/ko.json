@@ -74,7 +74,7 @@
       "resetTitle": "재설정 후 다시 로그인할까요?",
       "resetBody": "로그아웃되고 이 기기의 임시 데이터가 삭제된 뒤 다시 불러옵니다.",
       "resetConfirm": "재설정",
-      "guestName": "로그인 안 됨",
+      "guestName": "비로그인",
       "loginChecking": "로그인 확인 중…",
       "syncing": "동기화 중…",
       "role": {

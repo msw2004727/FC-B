@@ -77,7 +77,7 @@
       "resetTitle": "Reset and sign in again?",
       "resetBody": "You'll be signed out, temporary data on this device will be cleared, and the app will reload.",
       "resetConfirm": "Reset",
-      "guestName": "Not signed in",
+      "guestName": "Guest",
       "loginChecking": "Checking sign-in…",
       "syncing": "Syncing…",
       "role": {
