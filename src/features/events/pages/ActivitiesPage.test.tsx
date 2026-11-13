@@ -284,6 +284,35 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(overlay.parentElement?.parentElement).toBe(document.body);
   });
 
+  it('中繼卡 portal 開→關→再開不疊加、頁面卸載後 body 不留節點且 overflow 不變', async () => {
+    active.push({ ...football, id: 'ext-1', title: 'External one', type: 'external', externalUrl: 'https://example.com/' } as SportEvent);
+    const overflowBefore = document.body.style.overflow;
+    const wrappers = (): number => [...document.body.children]
+      .filter((el) => el.classList.contains('legacy-ui') && el.querySelector('#ext-transit-overlay')).length;
+    const { container, unmount } = mount();
+    const card = await waitFor(() => {
+      const el = container.querySelector('.tl-event-row[data-event-id="ext-1"]');
+      if (!el) throw new Error('card not ready');
+      return el as HTMLElement;
+    });
+
+    fireEvent.click(card);
+    await waitFor(() => expect(document.getElementById('ext-transit-close')).toBeTruthy());
+    fireEvent.click(document.getElementById('ext-transit-close') as HTMLElement);
+    // 關閉動畫：transitionend 或保險 400ms 後才卸載
+    await waitFor(() => expect(document.getElementById('ext-transit-overlay')).toBeNull());
+    expect(wrappers()).toBe(0);
+
+    fireEvent.click(card);
+    await waitFor(() => expect(document.querySelectorAll('#ext-transit-overlay').length).toBe(1));
+    expect(wrappers()).toBe(1);
+
+    unmount();
+    expect(document.getElementById('ext-transit-overlay')).toBeNull();
+    expect(wrappers()).toBe(0);
+    expect(document.body.style.overflow).toBe(overflowBefore);
+  });
+
   // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
   // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
   // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
