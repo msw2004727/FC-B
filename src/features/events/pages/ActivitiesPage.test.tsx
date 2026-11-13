@@ -210,6 +210,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
     expect(container.querySelector('[data-event-id="owned"]')).toBeTruthy();
     expect(container.querySelector('[data-event-id="owned"] .tl-stamp-private')?.textContent).toBe('不公開');
+    // 印章樣式（timeline-card-extra.css）以 .tl-event-row > .tl-stamp-* 選取，印章必須是卡片的直接子層
+    expect(container.querySelector('.tl-event-row[data-event-id="owned"] > .tl-stamp-private')).toBeTruthy();
     expect(screen.queryByText('Hidden private')).toBeNull();
     expect(screen.queryByText('Hidden team')).toBeNull();
     expect(screen.queryByText('Hidden blocked')).toBeNull();
