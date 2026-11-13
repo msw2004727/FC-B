@@ -30,9 +30,10 @@ describe('buildCapacityTagModel（人數標籤口徑，同計量條）', () => {
     expect(buildCapacityTagModel(ev({ max: 20, current: 12 }), 'full')?.state).toBe('full');
   });
 
-  it('尚未開放報名為灰色；不限人數（max 0）只帶已報數、灰色', () => {
+  it('尚未開放報名為灰色；不限人數（max 0）只帶已報數、沿用報名中的綠；不限人數但未開放仍是未開放', () => {
     expect(buildCapacityTagModel(base, 'upcoming')?.state).toBe('upcoming');
     expect(buildCapacityTagModel(ev({ max: 0, current: 6 }), 'open')).toEqual({ confirmed: 6, max: 0, state: 'nomax', long: false });
+    expect(buildCapacityTagModel(ev({ max: 0, current: 0 }), 'upcoming')?.state).toBe('upcoming');
   });
 
   it('已結束、已取消、外部活動不顯示', () => {

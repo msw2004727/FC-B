@@ -70,10 +70,12 @@ describe('capacity-tag.css（風格三：狀態變色玻璃膠囊）', () => {
   });
 
   it('五種狀態淺、深色都有顏色；候補用專案候補紫並帶柔光', () => {
-    for (const st of ['is-full', 'is-wait', 'is-upcoming', 'is-nomax']) {
+    for (const st of ['is-full', 'is-wait', 'is-upcoming']) {
       expect(get(`.legacy-ui .tl-cap-tag.${st}`).color, st).toBeTruthy();
       expect(get(`[data-theme="dark"] .legacy-ui .tl-cap-tag.${st}`)['border-color'], st).toBeTruthy();
     }
+    // 不限人數沿用報名中的綠（看圖審查 P2：灰色會被誤認成未開放），不得另有灰色規則。
+    expect(() => get('.legacy-ui .tl-cap-tag.is-nomax')).toThrow();
     expect(get('.legacy-ui .tl-cap-tag').color).toBe('var(--accent)');
     expect(get('.legacy-ui .tl-cap-tag.is-wait').color).toBe('var(--color-waitlist)');
     expect(get('.legacy-ui .tl-cap-tag.is-wait')['box-shadow']).toMatch(/0 0 8px/);

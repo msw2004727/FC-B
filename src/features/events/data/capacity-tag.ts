@@ -38,10 +38,11 @@ export function buildCapacityTagModel(event: EventDoc, effectiveStatus: string):
   const confirmed = actualConfirmedCount(event as DetailEvent);
   const max = stats.maxCount;
   const full = effectiveStatus === 'full' || (max > 0 && confirmed + stats.reservedRemainingCount >= max);
+  // 未開放優先於不限人數（看圖審查 P2：不限人數報名中原本是灰色，會被誤認成未開放；改由 CSS 讓 nomax 用報名中的綠）。
   const state: CapacityTagState = stats.waitlistCount > 0 ? 'wait'
     : full ? 'full'
-      : max <= 0 ? 'nomax'
-        : effectiveStatus === 'upcoming' ? 'upcoming'
+      : effectiveStatus === 'upcoming' ? 'upcoming'
+        : max <= 0 ? 'nomax'
           : 'open';
   const text = max > 0 ? `${confirmed}/${max}` : String(confirmed);
   return { confirmed, max, state, long: text.length >= CAPACITY_TAG_LONG_CHARS };
