@@ -732,6 +732,9 @@ export default function ActivitiesPage(): JSX.Element {
           aria-hidden="true"
         />
         <div class="page-header activity-page-header">
+          <div class="activity-page-heading">
+          {/* 2026-11-13 站長：返回、搜尋、分享做成一整片液態玻璃（分隔線區分），標題接在後面 */}
+          <div class="activity-head-tools">
           <button
             class="back-btn"
             type="button"
@@ -750,10 +753,6 @@ export default function ActivitiesPage(): JSX.Element {
               />
             </svg>
           </button>
-          <div class="activity-page-heading">
-            <h2 class="page-header-title" data-i18n="活動行事曆">
-              {lt('活動行事曆', '活動行事曆')}
-            </h2>
             {/* 照 A theme.js#bindFilterToggle：展開或有篩選時加 active、開啟時焦點到關鍵字；面板靠 .visible 才顯示（layout.css） */}
             <button
               type="button"
@@ -811,6 +810,10 @@ export default function ActivitiesPage(): JSX.Element {
                 <path d="m8.6 13.5 6.8 4" />
               </svg>
             </button>
+          </div>
+            <h2 class="page-header-title" data-i18n="活動行事曆">
+              {lt('活動行事曆', '活動行事曆')}
+            </h2>
           </div>
           <div class="activity-page-actions">
             <button
@@ -928,6 +931,8 @@ export default function ActivitiesPage(): JSX.Element {
 
         {/* 2026-11-13：頁籤列＋地區下拉同一列，捲動時黏在頂欄下方（activity-list-extra.css、activity-head.css） */}
         <div class="activity-sticky-filters" ref={stickyFiltersRef}>
+        {/* 2026-11-13 站長：頁籤＋地區做成一整片液態玻璃，按鈕之間以分隔線區分（activity-head.css） */}
+        <div class="activity-filter-slab">
         <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
           <button
             type="button"
@@ -1017,6 +1022,7 @@ export default function ActivitiesPage(): JSX.Element {
 
         {/* 2026-11-13 C 方案：地區由整列頁籤改成右側固定的下拉（含尋找附近活動） */}
         <ActivityRegionPicker value={regionTab} onChange={setRegionTab} onNearby={handleNearbyActivity} />
+        </div>
         </div>
 
         <div
