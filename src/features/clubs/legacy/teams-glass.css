@@ -52,16 +52,16 @@
     linear-gradient(180deg, #fdfefe 0%, #f3efe6 100%);
   box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(217,119,6,.2), 0 8px 18px -10px rgba(217,119,6,.45);
 }
-/* 光跡（注意力效果）卡：轉動的光框不動，內層原本是 --bg-card 實色，改成同一組玻璃 */
+/* 光跡（吸睛效果）卡：轉動的光框不動，內層原本是 --bg-card 實色，改成同一組玻璃底（不另畫亮線，避免看起來像兩層框）；
+ * 外框色與外光暈見本檔末段 */
 #page-teams .tc-card.tc-row.tc-attention-effect::after {
   background:
     linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
-  box-shadow: inset 0 1px 0 #fff;
 }
 /* 滑鼠移過：維持原本只變框色（活動卡也沒有浮起） */
 @media (hover: hover) {
-  #page-teams .tc-card.tc-row:hover {
+  #page-teams .tc-card.tc-row:not(.tc-attention-effect):hover {
     border-color: rgba(13,148,136,.55);
     border-top-color: #fff;
   }
@@ -91,10 +91,9 @@
   background:
     linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #262e40 0%, #171c27 100%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
 }
 @media (hover: hover) {
-  [data-theme="dark"] #page-teams .tc-card.tc-row:hover {
+  [data-theme="dark"] #page-teams .tc-card.tc-row:not(.tc-attention-effect):hover {
     border-color: rgba(52,211,153,.45);
     border-top-color: rgba(255,255,255,.18);
   }
@@ -301,4 +300,12 @@
 }
 [data-theme="dark"] #page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::after {
   opacity: .5;
+}
+
+/* ── 光跡（吸睛效果，既有功能）卡：外框維持光跡色與外光暈（同 team.css .tc-card.tc-attention-effect），
+ *    不被上面的玻璃框色、投影（含置頂、深色）蓋掉；看圖審查 P2-3：玻璃框色＋轉動光框＋內層亮線看起來像兩層框。放在檔尾讓淺深色都勝出。 ── */
+#page-teams .tc-card.tc-row.tc-attention-effect,
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-attention-effect {
+  border-color: var(--tc-attention-color);
+  box-shadow: 0 0 10px var(--tc-attention-color);
 }

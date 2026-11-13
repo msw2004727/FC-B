@@ -42,12 +42,12 @@ describe('teams-glass.css：俱樂部列表液態光澤', () => {
     for (const r of rules) expect(r.selector, r.selector).toMatch(/#page-teams|\.legacy-ui\.teams-root/);
   });
 
-  it('不自創 CSS 變數、不用 color-mix、不用 backdrop-filter（主題色只讀 LegacyTeamCard 既有的 --team-theme-color）', () => {
+  it('不自創 CSS 變數、不用 color-mix、不用 backdrop-filter（只讀既有的 --accent、--team-theme-color、--tc-attention-color）', () => {
     expect(raw).not.toMatch(/(^|[;{\s])--[\w-]+\s*:/m);
     expect(raw).not.toMatch(/color-mix/);
     expect(raw).not.toMatch(/backdrop-filter/);
     const vars = new Set(raw.match(/var\(--[\w-]+/g) ?? []);
-    expect([...vars].sort()).toEqual(['var(--accent', 'var(--team-theme-color'].sort());
+    expect([...vars].sort()).toEqual(['var(--accent', 'var(--tc-attention-color', 'var(--team-theme-color'].sort());
   });
 
   it('卡片間距與活動卡同一天的間距相同（activity.css .tl-events-col gap）', () => {
@@ -83,6 +83,23 @@ describe('teams-glass.css：俱樂部列表液態光澤', () => {
       if ('content' in r.decls) expect(r.decls['pointer-events']).toBe('none');
     }
     expect(Number(get(rules, `[data-theme="dark"] .legacy-ui #page-teams ${THEMED}::after`).decls.opacity)).toBeGreaterThan(0);
+  });
+
+  it('光跡（吸睛效果）卡：外框與外光暈維持光跡色、淺深色都蓋過玻璃框色與置頂；內層不另畫亮線、滑過不改框色（看圖審查 P2-3）', () => {
+    const order = (sel: string) => rules.map((r) => r.selector).lastIndexOf(sel);
+    const light = '.legacy-ui #page-teams .tc-card.tc-row.tc-attention-effect';
+    const dark = '[data-theme="dark"] .legacy-ui #page-teams .tc-card.tc-row.tc-attention-effect';
+    for (const sel of [light, dark]) {
+      expect(get(rules, sel).decls).toMatchObject({ 'border-color': 'var(--tc-attention-color)', 'box-shadow': '0 0 10px var(--tc-attention-color)' });
+    }
+    for (const other of ['.legacy-ui #page-teams .tc-card.tc-row.tc-pinned', '[data-theme="dark"] .legacy-ui #page-teams .tc-card.tc-row']) {
+      expect(order(light), other).toBeGreaterThan(order(other));
+    }
+    expect(order(dark)).toBeGreaterThan(order('[data-theme="dark"] .legacy-ui #page-teams .tc-card.tc-row.tc-pinned'));
+    for (const sel of [`${light}::after`, `${dark}::after`]) expect(get(rules, sel).decls['box-shadow'], sel).toBeUndefined();
+    const hovers = rules.filter((r) => /\.tc-row(:not\([^)]*\))?:hover$/.test(r.selector));
+    expect(hovers.length).toBe(2);
+    for (const r of hovers) expect(r.selector).toContain(':not(.tc-attention-effect)');
   });
 
   it('返回／搜尋鈕改 position: relative 時把 A .back-btn 的 top／left 歸零（預覽時曾因此位移）', () => {
