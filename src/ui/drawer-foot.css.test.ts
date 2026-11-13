@@ -55,12 +55,14 @@ describe('抽屜底部方案一：不換行（泰、越文不撐出抽屜）', (
     expect(decls('.legacy-ui .drawer-reset-confirm-title')['white-space']).toBe('nowrap');
   });
 
-  it('頂部角色標籤不換行，資訊欄最小寬改由角色標籤決定、名字不撐寬', () => {
-    expect(decls(`${P} .drawer-role-tag`)['white-space']).toBe('nowrap');
-    expect(decls(`${P} .drawer-user-info`)['min-width']).toBe('auto');
-    const name = decls(`${P} .drawer-name`);
-    expect(name.width).toBe('0');
-    expect(name['min-width']).toBe('100%');
+  it('頂部角色標籤不換行、放不下才省略號（不撐出抽屜），間距收窄讓英文「未登入」放得下', () => {
+    const tag = decls(`${P} .drawer-role-tag`);
+    expect(tag['white-space']).toBe('nowrap');
+    expect(tag['max-width']).toBe('100%');
+    expect(tag['text-overflow']).toBe('ellipsis');
+    expect(tag.overflow).toBe('hidden');
+    expect(decls(`${P} .drawer-user`).gap).toBe('.6rem');
+    expect(decls(`${P} .drawer-actions`).gap).toBe('.35rem');
   });
 
   it('確認框說明用 pre-line（中、日文逗號後語意換行），確定鈕紅色', () => {

@@ -2,10 +2,11 @@
  * 光澤同 activity-head.css 的整片液態玻璃：頂緣亮線、上半光澤、底部內光、柔和投影；不用 backdrop-filter、不自創 CSS 變數、
  * 不用 color-mix（舊 iOS／LINE WebView 沒有退路）。主色寫死同 --accent（淺 #0d9488、深 #34d399），同活動頁頂部做法。
  * 點擊區一律 44px：片內按鈕高 44px、比 40px 玻璃片上下各超出 2px（外觀不變）；小字列連結本身就是 44px 高。
+ * 底部內距與列距用整數 px：避免 rem 小數讓小字列落在半像素、實際點得到的高度少 1px。
  * 每段文字都不換行；最長的泰、越、韓文在 280px 抽屜、最大字級下實測放得下（docs/previews/2026-11-13-drawer）。 */
 
 .legacy-ui #side-drawer .drawer-foot {
-  padding: .65rem 1rem .35rem;
+  padding: 10px 16px 6px;
   border-top: 1px solid var(--border);
 }
 
@@ -146,7 +147,7 @@
   min-height: 44px;
   white-space: nowrap;
 }
-.legacy-ui #side-drawer .drawer-foot-slab + .drawer-foot-fine { margin-top: .15rem; }
+.legacy-ui #side-drawer .drawer-foot-slab + .drawer-foot-fine { margin-top: 4px; }
 .legacy-ui #side-drawer .drawer-foot-link,
 .legacy-ui #side-drawer .drawer-reset-btn {
   display: inline-flex;
@@ -196,7 +197,14 @@
 .legacy-ui #app-confirm-modal .drawer-reset-confirm .drawer-reset-confirm-ok { background: #dc2626; color: #fff; }
 
 /* ── 頂部角色標籤不斷行（英文「Download App」較寬時，「未登入」曾被擠成兩行）：
- *    名字寬度不計入最小寬（width:0＋min-width:100%），資訊欄最小寬＝角色標籤寬；名字仍以省略號收尾 ── */
-.legacy-ui #side-drawer .drawer-user-info { flex: 1 1 auto; min-width: auto; }
-.legacy-ui #side-drawer .drawer-name { width: 0; min-width: 100%; }
-.legacy-ui #side-drawer .drawer-role-tag { white-space: nowrap; }
+ *    標籤不換行、真的放不下（如日文長鈕＋最大字級）才以省略號收尾，絕不撐出抽屜；
+ *    頭像與資訊欄、兩顆動作鈕的間距各收 2～3px，讓英文「未登入」完整放得下 ── */
+.legacy-ui #side-drawer .drawer-user { gap: .6rem; }
+.legacy-ui #side-drawer .drawer-actions { gap: .35rem; }
+.legacy-ui #side-drawer .drawer-role-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
