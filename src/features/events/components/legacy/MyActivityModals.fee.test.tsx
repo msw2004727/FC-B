@@ -35,6 +35,13 @@ describe('MyActivityDetailModal 應收（實際正取）', () => {
     expect(text).not.toContain('$3600');
   });
 
+  it('realCurrent 與「current 扣團隊未報」不同時以 realCurrent 為準', async () => {
+    const text = await renderFee({ fee: 100, current: 18, realCurrent: 10, teamReservationSummaries: [team(8, 4)] });
+    expect(text).toContain('應收 $1000');
+    expect(text).not.toContain('$1400');
+    expect(text).not.toContain('$1800');
+  });
+
   it('缺 realCurrent：current 扣團隊未報', async () => {
     const text = await renderFee({ fee: 100, current: 18, teamReservationSummaries: [team(8, 4)] });
     expect(text).toContain('應收 $1400');
