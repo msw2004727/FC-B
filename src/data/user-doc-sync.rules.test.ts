@@ -75,9 +75,17 @@ describe.skipIf(!enabled)('會員文件寫入 × 未修改的 Firestore Rules', 
     await testing.assertFails(sdk.setDoc(sdk.doc(db, 'users', UID), buildNewUserDoc(UID, profile, sdk.serverTimestamp())));
   });
 
-  it('legacy 遷移：無 createdAt 且未帶 teamId 的一般舊文件拒絕；帶舊 createdAt 或非 user 角色拒絕（與 payload 守門一致）', async () => {
+  // 現況記錄（健檢 C1-03，另卡修）：正本 create 要求 teamId 存在且為 null，前端守門仍放行「沒有 teamId」的舊文件，
+  // 這種帳號遷移會被 Rules 拒絕。修好後第一段應改為允許。
+  it('legacy 遷移：無 createdAt 且未帶 teamId 的一般舊文件目前被拒（C1-03）；帶舊 createdAt 或非 user 角色拒絕', async () => {
     const db = ownDb();
     const ts = sdk.serverTimestamp();
+    await testing.assertSucceeds(sdk.setDoc(
+      sdk.doc(db, 'users', UID),
+      buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男', teamId: null, teamIds: [] }, UID, profile, ts),
+      { merge: true },
+    ));
+    await env.clearFirestore();
     await testing.assertFails(sdk.setDoc(
       sdk.doc(db, 'users', UID),
       buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男' }, UID, profile, ts),
