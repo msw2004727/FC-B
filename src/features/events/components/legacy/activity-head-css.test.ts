@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error 純 JS 建置工具，與 vite.config.ts 使用同一個 scope 外掛。
 import { legacyCssScope } from '../../../../../scripts/legacy-css-scope.mjs';
 
-// 2026-11-13 活動頁頂部精簡 C 方案＋按鈕液態光澤：jsdom 不套 CSS，這裡以打包後（legacy-css-scope 改寫後）的選擇器靜態守住
-// 點擊範圍 44px、女生專屬粉色漸層（未選／已選、淺／深）、各狀態覆蓋順序、相容寫法。
+// 2026-11-13 活動頁頂部精簡 C 方案＋「整片液態玻璃、分隔線區分按鈕」（站長看 g2 預覽定案）：jsdom 不套 CSS，
+// 這裡以打包後（legacy-css-scope 改寫後）的選擇器靜態守住玻璃片、分隔線、選中狀態、女生專屬、點擊範圍 44px 與相容寫法。
 
 const FILE = resolve(process.cwd(), 'src/features/events/components/legacy/activity-head.css');
 
@@ -31,16 +31,20 @@ function find(rules: Flat[], selector: string): Flat {
   return hit;
 }
 
-/** 簡易權重 [id, class/attr/pseudo-class, element]（本檔選擇器不含 :not 等函式）。 */
+/** 同一選擇器可能出現在多條規則：取最後一條有宣告該屬性的值（後者覆蓋前者）。 */
+function last(rules: Flat[], selector: string, prop: string): string | undefined {
+  return rules.filter((r) => r.selector === selector && r.atrule === null && prop in r.decls).at(-1)?.decls[prop];
+}
+
+/** 簡易權重 [id, class/attr/pseudo-class, element]；:not(...) 以括號內權重計。 */
 function specificity(selector: string): [number, number, number] {
-  const s = selector.replace(/::[\w-]+/g, '');
+  const s = selector.replace(/::[\w-]+/g, '').replace(/:not\(([^)]*)\)/g, ' $1');
   const ids = (s.match(/#[\w-]+/g) ?? []).length;
   const classes = (s.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g) ?? []).length;
   const elements = (s.replace(/\[[^\]]+\]/g, '').match(/(^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
   return [ids, classes, elements];
 }
 const cmp = (a: [number, number, number], b: [number, number, number]) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
-
 /** 同一元素同時符合 a、b 時，b 是否勝出（權重高，或同權重且在後）。 */
 function wins(b: Flat, a: Flat): boolean {
   const c = cmp(specificity(b.selector), specificity(a.selector));
@@ -49,110 +53,110 @@ function wins(b: Flat, a: Flat): boolean {
 
 const S = '.legacy-ui #page-activities';
 const D = '[data-theme="dark"] .legacy-ui #page-activities';
-const TAB = '#activity-tabs .tab';
+const TAB = '#activity-tabs > .tab';
+const GLOSS = /^linear-gradient\(180deg, rgba\(255,255,255,\.\d+\) 0%, rgba\(255,255,255,\.\d+\) 46%, rgba\(255,255,255,0\) 54%\)/;
 
-describe('activity-head.css：頂部精簡＋液態光澤', () => {
+describe('activity-head.css：整片液態玻璃＋分隔線', () => {
   const rules = scoped();
   const raw = readFileSync(FILE, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
-  it('點擊範圍：膠囊、圓鈕 34px 以透明 ::after 補到 44px；頁籤列上下留 5px 不裁掉延伸區；開團鈕後面墊 44px 的 label', () => {
-    for (const sel of [`${S} ${TAB}::after`, `${S} .activity-region-btn::after`]) {
-      expect(find(rules, sel).decls).toMatchObject({ position: 'absolute', top: '-6px', bottom: '-6px' });
+  it('兩片玻璃（返回／搜尋／分享、頁籤＋地區）：四角 12px，上半光澤、inset 外框與頂緣亮線、底部內光、投影；淺深色都有', () => {
+    for (const slab of ['.activity-head-tools', '.activity-filter-slab']) {
+      for (const sel of [`${S} ${slab}`, `${D} ${slab}`]) {
+        const r = find(rules, sel);
+        expect(r.decls.background, sel).toMatch(GLOSS);
+        expect(r.decls['box-shadow'], sel).toMatch(/^inset 0 0 0 1px rgba\([^)]*\), inset 0 2px 0 -1px (?:#[0-9a-f]+|rgba\([^)]*\)), inset 0 -6px 12px -6px rgba\([^)]*\), 0 6px 14px -10px /);
+      }
+      expect(find(rules, `${S} ${slab}`).decls['border-radius']).toBe('12px');
     }
-    expect(find(rules, `${S} ${TAB}`).decls.height).toBe('34px');
-    expect(find(rules, `${S} #activity-tabs`).decls.padding).toBe('5px 24px 5px 2px');
-    expect(find(rules, `${S} .activity-region-pick`).decls.padding).toBe('5px 0');
-    for (const btn of ['.back-btn', '.page-search-toggle-btn']) {
-      // 34px 含 1px 框：padding box 32＋上 7＋下 5＝44；往下只延伸 4px，不會被黏頂列蓋住
-      expect(find(rules, `${S} .activity-page-header ${btn}::after`).decls)
-        .toMatchObject({ top: '-7px', right: '-6px', bottom: '-5px', left: '-6px' });
-    }
-    // A 的 .back-btn 帶 top／left .8rem，改 relative 時必須歸零
-    expect(find(rules, `${S} .activity-page-header .back-btn`).decls).toMatchObject({ position: 'relative', top: '0', left: '0' });
-    expect(find(rules, `${S} .activity-region-item`).decls['min-height']).toBe('44px');
-    expect(find(rules, `${S} .activity-create-hit`).decls).toMatchObject({ position: 'absolute', height: '44px', 'margin-top': '-23px', 'z-index': '0' });
-    // 換行時第二行也是 34px 高：label 上緣 17−23＝−6px，加上列距 10px，不會碰到第一行圓鈕往下的 4px
-    expect(find(rules, `${S} .activity-page-actions`).decls['min-height']).toBe('34px');
-    expect(find(rules, `${S} .activity-page-header`).decls.gap).toBe('10px .35rem');
-    expect(find(rules, `${S} #activity-create-btn`).decls['z-index']).toBe('1');
+    expect(last(rules, `${S} .activity-head-tools`, 'height')).toBe('36px');
+    expect(last(rules, `${S} .activity-filter-slab`, 'height')).toBe('40px');
   });
 
-  it('長語系：標題列可換行，標題區不縮，「我要開團」放不下時整顆換到第二行（不重疊）', () => {
-    expect(find(rules, `${S} .activity-page-header`).decls['flex-wrap']).toBe('wrap');
-    expect(find(rules, `${S} .activity-page-heading`).decls.flex).toBe('1 0 auto');
-    expect(find(rules, `${S} .activity-region-btn`).decls['white-space']).toBe('nowrap');
-    expect(find(rules, `${S} .activity-region-item`).decls['white-space']).toBe('nowrap');
-    // 地區鈕最寬 7.5rem，長地區名以省略號收尾，不把頁籤擠掉（看圖審查 P3）
-    const regionMax = rules.filter((r) => r.selector === `${S} .activity-region-btn` && r.decls['max-width']);
-    expect(regionMax.at(-1)?.decls['max-width']).toBe('7.5rem');
+  it('片內按鈕不各自畫框與陰影、四角不圓；高 44px（比玻璃片高，點擊範圍 ≥44px）', () => {
+    for (const sel of [`${S} .activity-head-tools > button`, `${S} ${TAB}`, `${S} .activity-region-btn`]) {
+      expect(find(rules, sel).decls, sel).toMatchObject({
+        height: '44px', border: '0', 'border-radius': '0', background: 'none', 'box-shadow': 'none', 'white-space': 'nowrap',
+      });
+    }
+    // 標題列片 36px：按鈕 44×44，上下各超出 4px（標題列上下留白 4.8px，不被黏頂列蓋住）
+    const tool = `${S} .activity-head-tools > button`;
+    expect([last(rules, tool, 'width'), last(rules, tool, 'margin')]).toEqual(['44px', '-4px 0']);
+    // 篩選列片 40px：頁籤捲動區與地區鈕各 44px、上下各超出 2px（黏頂列上下留 2px）
+    expect(find(rules, `${S} #activity-tabs`).decls).toMatchObject({ height: '44px', margin: '-2px 0', 'overflow-x': 'auto' });
+    expect(find(rules, `${S} .activity-region-pick`).decls).toMatchObject({ height: '44px', margin: '-2px 0' });
+    expect(last(rules, `${S}.page > .activity-sticky-filters`, 'padding')).toBe('2px .2rem');
+    // A 的 .back-btn 帶 absolute 與 top／left .8rem，必須歸零
+    expect([last(rules, tool, 'position'), last(rules, tool, 'top'), last(rules, tool, 'left')]).toEqual(['relative', '0', '0']);
+  });
+
+  it('分隔線：第一顆以外的按鈕左側 1px 細線（頁籤可捲時跟著捲）；地區鈕以分隔線與頁籤隔開；A 的「|」不顯示', () => {
+    for (const sel of [
+      `${S} .activity-head-tools > button + button::before`,
+      `${S} ${TAB}:not(:first-child)::before`,
+      `${S} .activity-region-pick::before`,
+    ]) {
+      expect(find(rules, sel).decls, sel).toMatchObject({ content: "''", position: 'absolute', left: '0', width: '1px', 'pointer-events': 'none' });
+      expect(find(rules, `[data-theme="dark"] ${sel}`).decls.background).toBe('rgba(255,255,255,.14)');
+    }
+    expect(find(rules, `${S} #activity-tabs > .activity-tab-separator`).decls.display).toBe('none');
+  });
+
+  it('選中：片內淡色圓角填底（::after 在文字下）＋主色字；深色另一組', () => {
+    const fill = find(rules, `${S} .activity-head-tools > button::after`);
+    expect(fill.decls).toMatchObject({ position: 'absolute', 'z-index': '-1', 'border-radius': '8px', 'pointer-events': 'none' });
+    for (const btn of [TAB, '.activity-region-btn']) {
+      expect(find(rules, `${S} ${btn}.active`).decls.color).toBe('var(--accent)');
+      expect(find(rules, `${S} ${btn}.active::after`).decls.background).toContain('rgba(13,148,136,.14)');
+      expect(find(rules, `${D} ${btn}.active::after`).decls.background).toContain('rgba(52,211,153,.16)');
+    }
+    expect(find(rules, `${S} .activity-head-tools > .page-search-toggle-btn.active::after`).decls.background).toBe('rgba(13,148,136,.13)');
+    // 按鈕本身 z-index 0 形成堆疊，填底的 -1 才會在文字下、玻璃片上
+    expect(find(rules, `${S} ${TAB}`).decls['z-index']).toBe('0');
+  });
+
+  it('女生專屬：未選粉色字；選中片內粉紅漸層＋光澤、白字；淺深色都有，且蓋過一般選中樣式', () => {
+    const female = `${TAB}.activity-tab-female`;
+    expect(find(rules, `${S} ${female}`).decls.color).toBe('#db2777');
+    expect(find(rules, `${D} ${female}`).decls.color).toBe('#f9a8d4');
+    expect(find(rules, `${S} ${female}.active`).decls.color).toBe('#fff');
+    const onLight = find(rules, `${S} ${female}.active::after`);
+    const onDark = find(rules, `${D} ${female}.active::after`);
+    expect(onLight.decls.background).toMatch(GLOSS);
+    expect(onLight.decls.background).toContain('linear-gradient(135deg, #f472b6, #ec4899)');
+    expect(onDark.decls.background).toMatch(GLOSS);
+    expect(onDark.decls.background).toContain('linear-gradient(135deg, #be185d, #ec4899)');
+    expect(wins(onLight, find(rules, `${S} ${TAB}.active::after`))).toBe(true);
+    expect(wins(onDark, find(rules, `${D} ${TAB}.active::after`))).toBe(true);
+    expect(wins(onDark, onLight)).toBe(true);
+    expect(wins(find(rules, `${S} ${female}.active`), find(rules, `${S} ${TAB}.active`))).toBe(true);
+    expect(wins(find(rules, `${S} ${female}.active`), find(rules, `${D} ${female}`))).toBe(true);
+  });
+
+  it('未開放（新手友善、高強度）灰字、不填底，淺深色都蓋過一般與女生樣式', () => {
+    const off = find(rules, `${S} ${TAB}.activity-tab-unavailable`);
+    expect(off.decls).toMatchObject({ color: 'var(--text-muted)', cursor: 'not-allowed' });
+    expect(wins(off, find(rules, `${S} ${TAB}`))).toBe(true);
+    expect(wins(find(rules, `${D} ${TAB}.activity-tab-unavailable`), find(rules, `${D} ${TAB}.activity-tab-female`))).toBe(true);
+  });
+
+  it('地區鈕最寬 7.5rem，長地區名以省略號收尾、圖示不縮；選單每列 44px、不折行', () => {
+    expect(last(rules, `${S} .activity-region-btn`, 'max-width')).toBe('7.5rem');
     expect(find(rules, `${S} .activity-region-label`).decls).toMatchObject({ overflow: 'hidden', 'text-overflow': 'ellipsis', 'min-width': '0' });
     expect(find(rules, `${S} .activity-region-btn svg`).decls.flex).toBe('0 0 auto');
+    expect(find(rules, `${S} .activity-region-item`).decls).toMatchObject({ 'min-height': '44px', 'white-space': 'nowrap' });
   });
 
-  it('形狀：頂部按鈕一律圓角矩形 10px（站長 11-13：不要膠囊與正圓，要四角圓弧的一片玻璃）', () => {
-    for (const sel of [`${S} ${TAB}`, `${S} .activity-region-btn`, `${S} .activity-page-header .back-btn`, `${S} .activity-page-header .page-search-toggle-btn`, `${S} #activity-create-btn`]) {
-      const withRadius = rules.filter((r) => r.selector === sel && r.decls['border-radius']);
-      expect(withRadius.at(-1)?.decls['border-radius'], sel).toBe('10px');
-    }
-    expect(rules.some((r) => /999px|50%/.test(r.decls['border-radius'] ?? ''))).toBe(false);
-  });
-
-  it('框線四邊同色（上框不另設白色，避免圓鈕右上角兩色交接像缺口）', () => {
-    expect(rules.some((r) => 'border-top-color' in r.decls || 'border-bottom-color' in r.decls)).toBe(false);
-  });
-
-  it('女生專屬：未選、已選都是粉色漸層並帶光澤（淺、深色），已選白字；覆蓋一般膠囊與已選樣式', () => {
-    const female = `${TAB}.activity-tab-female`;
-    const lightOff = find(rules, `${S} ${female}`);
-    const lightOn = find(rules, `${S} ${female}.active`);
-    const darkOff = find(rules, `${D} ${female}`);
-    const darkOn = find(rules, `${D} ${female}.active`);
-    for (const r of [lightOff, lightOn, darkOff, darkOn]) {
-      expect(r.decls.background, r.selector).toMatch(/^linear-gradient\(180deg, rgba\(255,255,255,\.\d+\) 0%[\s\S]*linear-gradient\(135deg, #/);
-      expect(r.decls['box-shadow'], r.selector).toMatch(/^inset 0 1px 0 /);
-    }
-    expect(lightOn.decls.background).toContain('#f472b6, #ec4899');
-    expect(darkOn.decls.background).toContain('#be185d, #ec4899');
-    expect(lightOn.decls.color).toBe('#fff');
-    expect(darkOn.decls.color).toBe('#fff');
-    // 一般膠囊、已選、深色同名規則都被女生專屬蓋過
-    const generic = [`${S} ${TAB}`, `${D} ${TAB}`, `${S} ${TAB}.active`, `${D} ${TAB}.active`].map((s) => find(rules, s));
-    for (const g of generic) {
-      expect(wins(lightOff, g) || wins(darkOff, g), g.selector).toBe(true);
-      expect(wins(darkOn, g), g.selector).toBe(true);
-    }
-    expect(wins(lightOn, find(rules, `${S} ${TAB}.active`))).toBe(true);
-    expect(wins(darkOn, darkOff)).toBe(true); // 深色已選蓋過深色未選
-    expect(wins(darkOn, lightOn)).toBe(true);
-  });
-
-  it('狀態覆蓋：深色預設蓋過淺色預設；已選蓋過預設；未開放（灰）在淺、深色都蓋過一般膠囊', () => {
-    const lightBase = find(rules, `${S} ${TAB}`);
-    const darkBase = find(rules, `${D} ${TAB}`);
-    const lightOn = find(rules, `${S} ${TAB}.active`);
-    const darkOn = find(rules, `${D} ${TAB}.active`);
-    expect(wins(darkBase, lightBase)).toBe(true);
-    expect(wins(lightOn, darkBase)).toBe(true);
-    expect(wins(darkOn, lightOn)).toBe(true);
-    const unavailable = find(rules, `${S} ${TAB}.activity-tab-unavailable`);
-    const darkUnavailable = find(rules, `${D} ${TAB}.activity-tab-unavailable`);
-    expect(wins(unavailable, lightBase)).toBe(true);
-    expect(wins(darkUnavailable, darkBase)).toBe(true);
-    expect(unavailable.decls['box-shadow']).toBe('none');
-    // 地區鈕同一套
-    expect(wins(find(rules, `${D} .activity-region-btn.active`), find(rules, `${S} .activity-region-btn.active`))).toBe(true);
-    expect(wins(find(rules, `${S} .activity-region-btn.active`), find(rules, `${D} .activity-region-btn`))).toBe(true);
-  });
-
-  it('光澤：膠囊、圓鈕、開團鈕都有上半光澤與頂緣亮線；開團鈕外框與呼吸光暈仍照 A（本檔不覆寫）', () => {
-    for (const sel of [`${S} ${TAB}`, `${D} ${TAB}`, `${S} .activity-region-btn`, `${S} .activity-page-header .back-btn`, `${D} .activity-page-header .page-search-toggle-btn`]) {
-      const r = find(rules, sel);
-      expect(r.decls.background, sel).toMatch(/^linear-gradient\(180deg, rgba\(255,255,255,\.\d+\) 0%/);
-      expect(r.decls['box-shadow'], sel).toMatch(/^inset 0 1px 0 /);
-    }
+  it('標題列可換行：「我要開團」放不下時整顆換到第二行靠右；開團鈕四角 10px、高 36px，後面墊 44px 的 label 補點擊範圍', () => {
+    expect(find(rules, `${S} .activity-page-header`).decls).toMatchObject({ 'flex-wrap': 'wrap', gap: '10px .35rem' });
+    expect(find(rules, `${S} .activity-page-heading`).decls.flex).toBe('1 0 auto');
+    expect(find(rules, `${S} .activity-page-actions`).decls['min-height']).toBe('36px');
+    expect(find(rules, `${S} .activity-create-hit`).decls).toMatchObject({ position: 'absolute', height: '44px', 'margin-top': '-22px', 'z-index': '0' });
+    expect(find(rules, `${S} #activity-create-btn`).decls).toMatchObject({ 'z-index': '1', height: '36px', 'border-radius': '10px' });
     expect(find(rules, `${S} #activity-create-btn .activity-create-gloss`).decls).toMatchObject({ 'pointer-events': 'none', 'z-index': '3' });
+    // 開團鈕外框與呼吸光暈照 A，本檔不覆寫
     const createRules = rules.filter((r) => /#activity-create-btn$/.test(r.selector));
-    expect(createRules.some((r) => ['animation', 'animation-name', 'border', 'border-top', 'filter', 'box-shadow'].some((p) => p in r.decls))).toBe(false);
+    expect(createRules.some((r) => ['animation', 'animation-name', 'border', 'filter', 'box-shadow'].some((p) => p in r.decls))).toBe(false);
   });
 
   it('搜尋面板輸入框 16px（iPhone 不自動放大）', () => {
@@ -160,8 +164,12 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
     expect(find(rules, `${S} .activity-filter-panel select`).decls['font-size']).toBe('16px');
   });
 
-  it('不用 backdrop-filter、不用 color-mix、不自創 CSS 變數', () => {
-    expect(/backdrop-filter|color-mix\(/.test(raw)).toBe(false);
+  it('相容與規範：不用 backdrop-filter（只把 A 返回鈕的模糊關掉）、不用 color-mix、不自創 CSS 變數、沒有膠囊與正圓', () => {
+    const blur = rules.flatMap((r) => Object.entries(r.decls).filter(([p]) => /backdrop-filter/.test(p)).map(([, v]) => v));
+    expect(blur.every((v) => v === 'none')).toBe(true);
+    expect(/color-mix\(/.test(raw)).toBe(false);
     expect(/(^|[;{\s])--[\w-]+\s*:/.test(raw)).toBe(false);
+    expect(rules.some((r) => /999px|50%/.test(r.decls['border-radius'] ?? ''))).toBe(false);
+    expect(rules.some((r) => 'border-top-color' in r.decls)).toBe(false);
   });
 });

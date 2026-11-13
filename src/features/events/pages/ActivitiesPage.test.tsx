@@ -859,3 +859,19 @@ describe('ActivitiesPage 頂部：目前頁籤捲進可見範圍（2026-11-13 �
     }
   });
 });
+
+describe('ActivitiesPage 頂部：整片液態玻璃的 DOM 結構（2026-11-13 站長定案 g2）', () => {
+  it('返回、搜尋、分享同一片在左、標題接在後面；頁籤與地區同一片在黏頂列內', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const tools = container.querySelector('.activity-page-heading > .activity-head-tools')!;
+    expect([...tools.children].map((el) => el.id || el.className.split(' ')[0])).toEqual(['back-btn', 'filter-toggle', 'activity-share-url-btn']);
+    expect(tools.nextElementSibling?.tagName).toBe('H2');
+    const slab = container.querySelector('#page-activities > .activity-sticky-filters > .activity-filter-slab')!;
+    expect(slab.querySelector('#activity-tabs')).toBeTruthy();
+    expect(slab.lastElementChild?.id).toBe('activity-region-tabs');
+    // 返回仍回首頁
+    fireEvent.click(tools.querySelector('.back-btn') as HTMLElement);
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+  });
+});
