@@ -70,7 +70,10 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
     // A 的 .back-btn 帶 top／left .8rem，改 relative 時必須歸零
     expect(find(rules, `${S} .activity-page-header .back-btn`).decls).toMatchObject({ position: 'relative', top: '0', left: '0' });
     expect(find(rules, `${S} .activity-region-item`).decls['min-height']).toBe('44px');
-    expect(find(rules, `${S} .activity-create-hit`).decls).toMatchObject({ position: 'absolute', height: '44px', 'z-index': '0' });
+    expect(find(rules, `${S} .activity-create-hit`).decls).toMatchObject({ position: 'absolute', height: '44px', 'margin-top': '-23px', 'z-index': '0' });
+    // 換行時第二行也是 34px 高：label 上緣 17−23＝−6px，加上列距 10px，不會碰到第一行圓鈕往下的 4px
+    expect(find(rules, `${S} .activity-page-actions`).decls['min-height']).toBe('34px');
+    expect(find(rules, `${S} .activity-page-header`).decls.gap).toBe('10px .35rem');
     expect(find(rules, `${S} #activity-create-btn`).decls['z-index']).toBe('1');
   });
 

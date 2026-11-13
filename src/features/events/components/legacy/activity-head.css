@@ -307,8 +307,10 @@
 /* ── 我要開團：外觀照 A（金色流光框＋藍底、呼吸光暈），加一層光澤；點擊高度補到 44px ──
  * A 的金框是按鈕本身 overflow:hidden 裁出來的，::before／::after 都用掉了，按鈕自己無法往外延伸點擊區；
  * 改在按鈕後面墊一個 <label for="activity-create-btn">（點 label 等於點按鈕），高 44px、上 6px 下 4px，外觀不變。 */
+/* 列高固定 34px（同圓鈕）：換到第二行時 label 往上只延伸 6px，與第一行圓鈕往下的 4px 之間仍隔開，不互相搶點擊 */
 #page-activities .activity-page-actions {
   position: relative;
+  min-height: 34px;
 }
 #page-activities .activity-create-hit {
   position: absolute;
