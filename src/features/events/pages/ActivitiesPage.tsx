@@ -1211,12 +1211,17 @@ export default function ActivitiesPage(): JSX.Element {
           />
         )}
 
-        {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}
-        {transitEvent && (
-          <ExternalTransitCard
-            event={transitEvent}
-            onClose={handleCloseTransitCard}
-          />
+        {/* M-078：外部活動中繼卡，照 A `event-external-transit.js`。
+            照 A 掛到 body：留在 #page-activities 裡會被 `#page-activities > :not(...)` 改成 relative 而跑出畫面，
+            且被 .activities-root 的 isolation 壓在頂部列／底部導覽（900）之下。 */}
+        {transitEvent && createPortal(
+          <div class="legacy-ui">
+            <ExternalTransitCard
+              event={transitEvent}
+              onClose={handleCloseTransitCard}
+            />
+          </div>,
+          document.body,
         )}
       </section>
     </div>

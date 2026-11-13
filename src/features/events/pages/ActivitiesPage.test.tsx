@@ -260,6 +260,30 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
   });
 
+  // EXT-TRANSIT-Z：中繼卡照 A 掛在 body。留在 #page-activities 會被
+  // `#page-activities > :not(.activity-female-petals)` 改成 relative 跑出畫面，
+  // 也會被 .activities-root 的 isolation 壓在頂部列／底部導覽之下（瀏覽器實測）。
+  it('外部活動中繼卡掛在 body 底下的 .legacy-ui，不在 #page-activities／.activities-root 裡', async () => {
+    active.push({ ...football, id: 'ext-1', title: 'External one', type: 'external', externalUrl: 'https://example.com/' } as SportEvent);
+    const { container } = mount();
+    const card = await waitFor(() => {
+      const el = container.querySelector('.tl-event-row[data-event-id="ext-1"]');
+      if (!el) throw new Error('card not ready');
+      return el as HTMLElement;
+    });
+
+    fireEvent.click(card);
+    const overlay = await waitFor(() => {
+      const el = document.getElementById('ext-transit-overlay');
+      if (!el) throw new Error('overlay not ready');
+      return el;
+    });
+    expect(overlay.closest('#page-activities')).toBeNull();
+    expect(overlay.closest('.activities-root')).toBeNull();
+    expect(overlay.parentElement?.classList.contains('legacy-ui')).toBe(true);
+    expect(overlay.parentElement?.parentElement).toBe(document.body);
+  });
+
   // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
   // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
   // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
