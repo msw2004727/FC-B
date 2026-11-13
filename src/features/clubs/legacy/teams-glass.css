@@ -1,0 +1,304 @@
+/* 俱樂部列表「液態光澤」（2026-11-13 站長：與活動頁同一風格；位置與資訊不動，只改外觀）。
+ * 色值、光澤與投影照 events/components/legacy/timeline-card-extra.css（活動卡）與 activity-head.css（整片玻璃）；
+ * 不用 backdrop-filter、不自創 CSS 變數、不用 color-mix。本檔路徑含 /legacy/，打包時自動加上 .legacy-ui。
+ * 只套俱樂部列表（#page-teams）；俱樂部詳情、管理頁不受影響。
+ * 卡片內光：站長 11-13 選 B 案＝有設主題色（.tc-themed）的俱樂部用自己的主題色，沒設的退回主色綠（同活動頁預設）；
+ * 置頂卡維持琥珀、光跡卡維持原本的轉動光框。
+ * 例外（站長 11-13 補充）：卡片之間的間距改成與活動列表同一天的卡片間距一樣（.tl-events-col 的 gap .4rem）。 */
+
+/* ── 頁面底層：同活動頁（固定在視窗的淡漸層）。新增俱樂部表單用 portal 畫在 body，不受影響；
+ *    不用 isolation，改成 ::before 與 #page-teams 都是定位元素、依文件順序畫（同首頁做法）。 */
+.legacy-ui.teams-root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
+}
+[data-theme="dark"].teams-root::before {
+  background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
+}
+.legacy-ui.teams-root > #page-teams {
+  position: relative;
+}
+
+/* ── 卡片間距：同活動列表同一天卡片（activity.css .tl-events-col gap .4rem，實測 6px）。
+ *    原本 .5rem 再加上賽事頁 .tc-card { margin-bottom: 12px } 外溢（既有 bug，已在 tournaments.css 限定頁面），實測 19.5px。 ── */
+#page-teams .team-grid {
+  gap: .4rem;
+}
+
+/* ── 俱樂部卡：同活動卡的液態光澤（預設＝主色綠，也是沒設主題色時的退路；置頂＝琥珀；有主題色見下方） ── */
+#page-teams .tc-card.tc-row {
+  border-top-color: #fff;
+  border-right-color: rgba(206,214,226,.9);
+  border-bottom-color: rgba(190,200,214,.9);
+  border-left-color: rgba(206,214,226,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.07), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(13,148,136,.16), 0 8px 18px -10px rgba(13,148,136,.38);
+}
+#page-teams .tc-card.tc-row.tc-pinned {
+  border-color: rgba(217,119,6,.58);
+  border-top-color: #fff;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(217,119,6,.09), rgba(217,119,6,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #f3efe6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(217,119,6,.2), 0 8px 18px -10px rgba(217,119,6,.45);
+}
+/* 光跡（注意力效果）卡：轉動的光框不動，內層原本是 --bg-card 實色，改成同一組玻璃 */
+#page-teams .tc-card.tc-row.tc-attention-effect::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff;
+}
+/* 滑鼠移過：維持原本只變框色（活動卡也沒有浮起） */
+@media (hover: hover) {
+  #page-teams .tc-card.tc-row:hover {
+    border-color: rgba(13,148,136,.55);
+    border-top-color: #fff;
+  }
+}
+
+[data-theme="dark"] #page-teams .tc-card.tc-row {
+  border-top-color: rgba(255,255,255,.18);
+  border-right-color: rgba(255,255,255,.06);
+  border-bottom-color: rgba(0,0,0,.45);
+  border-left-color: rgba(255,255,255,.06);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.13), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(13,148,136,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-pinned {
+  border-color: rgba(251,191,36,.44);
+  border-top-color: rgba(255,255,255,.18);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(251,191,36,.12), rgba(251,191,36,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(251,191,36,.3), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-attention-effect::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+@media (hover: hover) {
+  [data-theme="dark"] #page-teams .tc-card.tc-row:hover {
+    border-color: rgba(52,211,153,.45);
+    border-top-color: rgba(255,255,255,.18);
+  }
+}
+
+/* 縮圖：加一道頂緣亮線與上半光澤（主題色底不變） */
+#page-teams .tc-row .tc-row-thumb {
+  position: relative;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -6px 10px -6px rgba(0,0,0,.25), 0 4px 10px -6px rgba(15,23,42,.45);
+}
+#page-teams .tc-row .tc-row-thumb::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,.08) 46%, rgba(255,255,255,0) 54%);
+  pointer-events: none;
+}
+
+/* ── 頂部：返回鈕、搜尋鈕＝玻璃圓鈕；點擊區由 40px 補到 44px（外觀不變） ── */
+#page-teams .page-header .back-btn,
+#page-teams .team-filter-toggle-btn {
+  position: relative;
+  /* A 的 .back-btn（activity.css 詳情頁用）帶 top／left .8rem，position 改 relative 後要歸零（同 activity-head.css） */
+  top: 0;
+  left: 0;
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+#page-teams .page-header .back-btn::after,
+#page-teams .team-filter-toggle-btn::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  bottom: -3px;
+  left: -3px;
+  border-radius: 50%;
+}
+#page-teams .team-filter-toggle-btn.active {
+  color: var(--accent);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%),
+    rgba(13,148,136,.14),
+    #fdfefe;
+  box-shadow: inset 0 0 0 1px rgba(13,148,136,.36), inset 0 2px 0 -1px #fff, 0 6px 14px -10px rgba(13,148,136,.5);
+}
+[data-theme="dark"] #page-teams .page-header .back-btn,
+[data-theme="dark"] #page-teams .team-filter-toggle-btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+[data-theme="dark"] #page-teams .team-filter-toggle-btn.active {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%),
+    rgba(52,211,153,.16),
+    #1d2433;
+  box-shadow: inset 0 0 0 1px rgba(52,211,153,.4), inset 0 2px 0 -1px rgba(255,255,255,.14), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+@media (hover: hover) {
+  #page-teams .page-header .back-btn:hover,
+  #page-teams .team-filter-toggle-btn:hover {
+    color: var(--accent);
+  }
+}
+
+/* 新增俱樂部（主按鈕）：加一道上半光澤，底色不變 */
+#page-teams #team-page-create-btn {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.36) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -8px rgba(13,148,136,.55);
+}
+
+/* ── 搜尋與篩選面板：整片玻璃（取代 color-mix 底，健檢 B4-10） ── */
+#page-teams .team-search-bar {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-teams .team-search-bar {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+
+/* ── 類型頁籤（全部／一般／競技／教學／休閒）：整片玻璃＋分隔線（同活動頁篩選列）；
+ *    原本的底線拿掉，選中改片內淡綠圓角填底。頁籤位置、大小、圖示與字不變。 ── */
+#page-teams .team-type-tabs {
+  position: relative;
+  border-bottom: 0;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+#page-teams .team-type-tab {
+  position: relative;
+  z-index: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+  /* 底線 2.5px 拿掉後補回同高，頁籤高度不變 */
+  padding-bottom: calc(.5rem + 2.5px);
+}
+#page-teams .team-type-tab + .team-type-tab::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 1px;
+  background: rgba(148,163,184,.45);
+  pointer-events: none;
+}
+#page-teams .team-type-tab::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  bottom: 5px;
+  left: 4px;
+  z-index: -1;
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+}
+#page-teams .team-type-tab.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%),
+    rgba(13,148,136,.14);
+  box-shadow: inset 0 0 0 1px rgba(13,148,136,.32);
+}
+#page-teams .team-type-tab:focus-visible {
+  outline: none;
+}
+#page-teams .team-type-tab:focus-visible::after {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+[data-theme="dark"] #page-teams .team-type-tabs {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+[data-theme="dark"] #page-teams .team-type-tab + .team-type-tab::before {
+  background: rgba(255,255,255,.14);
+}
+[data-theme="dark"] #page-teams .team-type-tab.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%),
+    rgba(52,211,153,.16);
+  box-shadow: inset 0 0 0 1px rgba(52,211,153,.36);
+}
+
+/* ── 有設主題色的俱樂部卡（B 案）：左側淡色與底部內光改用該俱樂部主題色。
+ *    主題色是 LegacyTeamCard 寫在行內的 #RRGGBB（--team-theme-color，既有變數），不能用 color-mix 調透明度，
+ *    改由 ::before（左側淡色）、::after（底部內光）畫色，再用 opacity 調淡；卡片自身 isolation 讓兩層畫在底色之上、內容之下。
+ *    置頂卡（琥珀）與光跡卡（::before／::after 已用於轉動光框）不套用。 ── */
+#page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned) {
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 8px 18px -10px rgba(15,23,42,.35);
+}
+#page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::before,
+#page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+#page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::before {
+  background: linear-gradient(90deg, var(--team-theme-color), transparent 65%);
+  opacity: .08;
+}
+#page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::after {
+  box-shadow: inset 0 -6px 12px -6px var(--team-theme-color);
+  opacity: .3;
+}
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned) {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::before {
+  opacity: .14;
+}
+[data-theme="dark"] #page-teams .tc-card.tc-row.tc-themed:not(.tc-attention-effect):not(.tc-pinned)::after {
+  opacity: .5;
+}

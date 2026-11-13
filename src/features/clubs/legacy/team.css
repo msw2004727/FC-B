@@ -36,11 +36,17 @@
   width: 17px;
   height: 17px;
 }
+/* color-mix 在舊版 iOS／LINE 內建瀏覽器沒有退路（健檢 B4-10），2026-11-13 改成 --accent 的等效 rgba（淺 #0d9488、深 #34d399）。 */
 .team-filter-toggle-btn:hover,
 .team-filter-toggle-btn.active {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  border-color: rgba(13, 148, 136, .45);
+  background: rgba(13, 148, 136, .12);
+}
+[data-theme="dark"] .team-filter-toggle-btn:hover,
+[data-theme="dark"] .team-filter-toggle-btn.active {
+  border-color: rgba(52, 211, 153, .45);
+  background: rgba(52, 211, 153, .12);
 }
 .team-filter-toggle-btn:active { transform: scale(.96); }
 .team-search-bar {
@@ -821,6 +827,7 @@
   font-size: .78rem;
   font-weight: 900;
   box-shadow: 0 10px 26px rgba(15, 23, 42, .18);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 .td-floating-top-btn:active { transform: scale(.97); }

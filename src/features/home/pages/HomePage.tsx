@@ -48,6 +48,8 @@ import { addNextActivityToCalendar, preloadCalendarModule } from '../data/home-c
 // 維持和 main 相同的層疊順序（同權重規則由 home.css 勝出）。T-041 退修 1 P1-1。
 import '@/features/events/legacy/activity.css';
 import '../legacy/home.css';
+// 液態光澤（2026-11-13，與活動頁同一風格）：放在 home.css 之後，同權重時勝出；隨入口載入，避免首屏先畫舊樣式再換新。
+import '../legacy/home-glass.css';
 
 const HOME_ACTIVITY_REGION_KEY = 'toosterx_home_activity_region';
 const HOME_ACTIVITY_REGIONS = ['全部', '北部', '中部', '南部', '東部&外島'] as const;
@@ -342,7 +344,7 @@ export default function HomePage(): JSX.Element {
   );
 
   return (
-    <div class="legacy-ui">
+    <div class="legacy-ui home-root">
       <section class="page active" id="page-home">
         {/* Banner Carousel */}
         <HomeBannerCarousel

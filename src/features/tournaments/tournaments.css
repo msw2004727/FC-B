@@ -97,7 +97,21 @@
 .tc-status .outline-btn { margin-top: .5rem; }
 
 /* 卡片：點整張開連結；已結束灰階並降低不透明度 */
-.tc-card { position: relative; margin-bottom: 12px; }
+/* 2026-11-13 修既有跨頁外溢：俱樂部列表卡（team.css）也叫 .tc-card。首頁閒置時兩頁樣式都會預先下載（core/route-prefetch.ts），
+ * 原本未限定頁面的 .tc-card { margin-bottom: 12px } 讓俱樂部卡間距變 19.5px；反過來 team.css 的 .tc-card 框線、底色、圓角、
+ * 裁切與滑過浮起也會套到賽事卡外層（多一圈 1px 框）。兩邊都只在賽事頁（#page-tournaments）處理：本頁規則限定本頁，
+ * 並把 team.css 外溢的屬性在本頁還原（#page-tournaments 權重高於 .legacy-ui .tc-card:hover）。取代原本不限定頁面的 .tc-card 規則。 */
+#page-tournaments .tc-card {
+  position: relative;
+  margin-bottom: 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+  transform: none;
+  content-visibility: visible;
+}
 .tc-card-link {
   display: block;
   background: var(--bg-card);

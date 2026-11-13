@@ -1,4 +1,6 @@
 import '../tournaments.css';
+// 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
+import '../legacy/tournaments-glass.css';
 import '@/styles/legacy/reg-loading.css';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -180,7 +182,7 @@ export default function TournamentsPage(): JSX.Element {
   };
 
   return (
-    <div class="legacy-ui">
+    <div class="legacy-ui tournaments-root">
       <section class="page active tc-page" id="page-tournaments">
         <div class="page-header">
           <button

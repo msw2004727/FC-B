@@ -1,0 +1,263 @@
+/* 首頁「液態光澤」（2026-11-13 站長：首頁、俱樂部、賽事與活動頁同一風格；位置與資訊不動，只改外觀）。
+ * 色值、光澤與投影照 events/components/legacy/timeline-card-extra.css（活動卡）與 activity-head.css（整片玻璃）；
+ * 不用 backdrop-filter、不自創 CSS 變數、不用 color-mix。本檔路徑含 /legacy/，打包時自動加上 .legacy-ui。
+ * 高的區塊（下一場活動卡、運動快速入口）光澤帶改用固定 34～40px（約等於活動卡的上半），落在標題列，不橫切內容。
+ * 載入：HomePage 靜態引入（入口 CSS 多約 1.5KB gzip、入口 JS 不變）。預覽版曾用 import() 延遲載入，
+ * 但首頁是第一個畫面，延遲會先畫舊樣式再換新（閃一下），PM 11-13 裁定改隨入口載入，取代延遲載入做法。 */
+
+/* ── 頁面底層：固定在視窗的淡漸層（同活動頁 .activities-root::before）。
+ *    不用 isolation：首頁找活動對話框（z-index 1250）在頁內，堆疊層一建就會被頂部列（900）壓住；
+ *    改用「::before 是定位元素、#page-home 也是定位元素」，兩者都在同一層、依文件順序畫，底層在下、頁面在上。 */
+.legacy-ui.home-root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
+}
+[data-theme="dark"].home-root::before {
+  background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
+}
+.legacy-ui.home-root > #page-home {
+  position: relative;
+}
+
+/* ── 輪播：外框加頂緣亮線與玻璃邊（圖片本身不蓋光澤，避免洗白） ── */
+#page-home .banner-carousel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 0 0 1px rgba(255,255,255,.14);
+  pointer-events: none;
+}
+[data-theme="dark"] #page-home .banner-carousel::after {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+/* 輪播上的「找活動」「我要開團」：加一道上半光澤（底色不變） */
+#page-home .banner-find-btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.36) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #18c978 0%, #0b9a59 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 12px 26px rgba(16,185,129,.30);
+}
+#page-home .banner-create-event-btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%),
+    rgba(15,23,42,.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 12px 24px rgba(37,99,235,.20);
+}
+
+/* ── 我的下一場活動（有活動）：玻璃卡，右上保留原本的綠色（暗色琥珀）光暈 ── */
+#page-home .home-next-card {
+  border-top-color: #fff;
+  border-right-color: rgba(206,214,226,.9);
+  border-bottom-color: rgba(190,200,214,.9);
+  border-left-color: rgba(206,214,226,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(circle at 95% 0%, rgba(34,197,94,.13), rgba(34,197,94,0) 32%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(22,163,74,.16), 0 8px 18px -10px rgba(22,163,74,.38);
+}
+[data-theme="dark"] #page-home .home-next-card {
+  border-top-color: rgba(255,255,255,.18);
+  border-right-color: rgba(255,255,255,.06);
+  border-bottom-color: rgba(0,0,0,.45);
+  border-left-color: rgba(255,255,255,.06);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(circle at 95% 0%, rgba(251,191,36,.18), rgba(251,191,36,0) 34%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(251,191,36,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+/* 時間、地點小框：淡玻璃底 */
+#page-home .home-next-meta {
+  background: linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(255,255,255,.45) 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.7), inset 0 1px 0 #fff;
+}
+[data-theme="dark"] #page-home .home-next-meta {
+  background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.03) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), inset 0 1px 0 rgba(255,255,255,.1);
+}
+
+/* 沒有下一場（銅金色空狀態，站長 11-10 選定）：保留金色，加上半光澤、頂緣亮線與金色內光 */
+#page-home .home-next-card.is-empty {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0, rgba(255,255,255,.2) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(120% 90% at 0% 0%, var(--hne-glow), transparent 55%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--hne-a), var(--hne-b)),
+    linear-gradient(180deg, #fdfefe 0%, #f3efe6 100%);
+  border-color: var(--hne-line);
+  border-top-color: rgba(255,255,255,.95);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(176,122,46,.28), 0 8px 18px -10px rgba(176,122,46,.45);
+}
+[data-theme="dark"] #page-home .home-next-card.is-empty {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(120% 90% at 0% 0%, var(--hne-glow), transparent 55%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--hne-a), var(--hne-b)),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  border-color: var(--hne-line);
+  border-top-color: rgba(255,255,255,.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(224,177,90,.3), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+
+/* ── 「查看全部」：片內玻璃膠囊（畫在 ::before，按鈕本身大小與位置不變）；點擊區以 ::after 補到 44px 高 ── */
+#page-home .home-next-view-all {
+  position: relative;
+  isolation: isolate;
+}
+#page-home .home-next-view-all::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -7px;
+  bottom: -3px;
+  left: -3px;
+  z-index: -1;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, 0 4px 10px -6px rgba(15,23,42,.35);
+  pointer-events: none;
+}
+[data-theme="dark"] #page-home .home-next-view-all::before {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), 0 4px 10px -6px rgba(0,0,0,.8);
+}
+#page-home .home-next-view-all::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  left: -3px;
+  height: 44px;
+  margin-top: -22px;
+}
+/* 空狀態的「查看全部」：金色玻璃 */
+#page-home .home-next-card.is-empty .home-next-view-all::before {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.75) 0%, rgba(255,255,255,.2) 46%, rgba(255,255,255,0) 54%),
+    rgba(255,255,255,.35);
+  box-shadow: inset 0 0 0 1px rgba(176,122,46,.4), inset 0 2px 0 -1px rgba(255,255,255,.9);
+}
+[data-theme="dark"] #page-home .home-next-card.is-empty .home-next-view-all::before {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    rgba(0,0,0,.18);
+  box-shadow: inset 0 0 0 1px rgba(224,177,90,.4), inset 0 2px 0 -1px rgba(255,255,255,.14);
+}
+
+/* ── 卡內按鈕：主按鈕加光澤；外框按鈕改玻璃底（取代 color-mix，健檢 B4-10） ── */
+#page-home .home-next-card:not(.is-empty) .home-next-primary {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.36) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #16b35b, #079447);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 8px 18px -8px rgba(22,163,74,.5);
+}
+#page-home .home-next-card:not(.is-empty) .home-next-outline {
+  border-color: rgba(37,99,235,.55);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -4px 8px -4px rgba(37,99,235,.18), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-home .home-next-card:not(.is-empty) .home-next-outline {
+  border-color: rgba(251,191,36,.48);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 8px -4px rgba(251,191,36,.25), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+#page-home .home-next-card.is-empty .home-next-primary {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.4) 0%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, var(--hne-g1), var(--hne-g2));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -4px 8px -4px rgba(90,56,10,.35), 0 6px 14px -6px rgba(176,122,46,.45);
+}
+#page-home .home-next-card.is-empty .home-next-outline {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.75) 0%, rgba(255,255,255,.2) 46%, rgba(255,255,255,0) 54%),
+    rgba(255,255,255,.4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 4px 10px -6px rgba(176,122,46,.4);
+}
+[data-theme="dark"] #page-home .home-next-card.is-empty .home-next-outline {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    rgba(0,0,0,.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 10px -6px rgba(0,0,0,.6);
+}
+
+/* ── 運動快速入口（及目前資訊）外框：整片玻璃（取代暗色的 color-mix 光暈，健檢 B4-10） ── */
+#page-home .home-dashboard-section {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(circle at 95% 0%, rgba(34,197,94,.08), rgba(34,197,94,0) 30%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-home .home-dashboard-section {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px),
+    radial-gradient(circle at 95% 0%, rgba(251,191,36,.10), rgba(251,191,36,0) 32%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+
+/* 運動小卡：各自一顆小玻璃（片內選中照活動頁頁籤的淡綠填底） */
+#page-home .home-sport-chip {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -5px 10px -6px rgba(100,116,139,.22), 0 5px 12px -9px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-home .home-sport-chip {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -5px 10px -6px rgba(0,0,0,.5), 0 5px 12px -9px rgba(0,0,0,.8);
+}
+#page-home .home-sport-chip.active {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, rgba(13,148,136,.16) 0%, rgba(13,148,136,.1) 100%),
+    #fdfefe;
+  box-shadow: inset 0 0 0 1px rgba(13,148,136,.38), inset 0 2px 0 -1px #fff, 0 6px 14px -9px rgba(13,148,136,.5);
+}
+[data-theme="dark"] #page-home .home-sport-chip.active {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%),
+    rgba(52,211,153,.16),
+    #1d2433;
+  box-shadow: inset 0 0 0 1px rgba(52,211,153,.4), inset 0 2px 0 -1px rgba(255,255,255,.14), 0 6px 14px -9px rgba(0,0,0,.8);
+}
+
+/* ── 公告跑馬燈（目前 SHOW_ANNOUNCEMENTS=false 不顯示；開啟時同一整片玻璃） ── */
+#page-home .announce-marquee-wrap {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-home .announce-marquee-wrap {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
