@@ -10,6 +10,7 @@
 
 import { getFirebase, getFirebaseCore } from '@/data/firebase';
 import { teams as teamsCollection, users as usersCollection } from '@/data/paths';
+import { isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
 import { getTeamStaffIdentity } from './team-detail-model';
 import type { TeamDoc, TeamMember } from './types';
 
@@ -112,7 +113,9 @@ export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
  *      `users where teamId == teamId`（legacy）。
  *   3. 以 `getDoc(users/{uid})` 補齊幹部 UID（可能不在上兩查詢結果內）。
  *      缺席的幹部同時讀，不循序等。讀取筆數不變。
- *   4. 以 uid 去重。順序仍是查詢結果，再依隊長、領隊、教練補上。
+ *   4. 以同一人鍵（uid → lineUserId → 文件 ID）去重，舊文件與正本並存時取正本。
+ *      順序仍是查詢結果，再依隊長、領隊、教練補上。
+ *      已知未處理：只剩舊文件帶此隊（正本已退隊）的人仍會列出，與後端人數重算一致（健檢 N-01）。
  *
  * `users` 的 Rules 是 `allow read: if isAuth()`，所以這支維持 `getFirebase()`，
  * 等 auth 註冊後再查。公開的俱樂部文件不走這支。
@@ -146,14 +149,16 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
 
   const byUid = new Map<string, TeamMember>();
 
+  // 同一人（uid → lineUserId → 文件 ID）只留一列；舊文件與正本並存時用正本的資料（位置不變）。
   const addSnapshot = (snapshot: {
     id: string;
     data: () => unknown;
   }): void => {
     const data = (snapshot.data() ?? {}) as Record<string, unknown>;
-    const uid = String((data.uid ?? snapshot.id) ?? '').trim();
+    const uid = userIdentityKey(snapshot.id, data);
     if (!uid) return;
-    if (byUid.has(uid)) return;
+    const existing = byUid.get(uid);
+    if (existing && (isCanonicalUserDoc(existing._docId ?? '', uid) || !isCanonicalUserDoc(snapshot.id, uid))) return;
     byUid.set(uid, { ...(data as TeamMember), uid, _docId: snapshot.id });
   };
 
@@ -166,7 +171,11 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
   for (const uid of staff.leaderUids) staffUids.add(uid);
   for (const uid of staff.coachUids) staffUids.add(uid);
 
-  const missingStaffUids = [...staffUids].filter((uid) => !byUid.has(uid));
+  // 幹部只由舊文件列出時也補讀正本：正本存在就以正本為準，不存在保留舊文件那列。
+  const missingStaffUids = [...staffUids].filter((uid) => {
+    const existing = byUid.get(uid);
+    return !existing || !isCanonicalUserDoc(existing._docId ?? '', uid);
+  });
   if (missingStaffUids.length > 0) {
     const snaps = await Promise.all(
       missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid))),
@@ -177,6 +186,7 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
         throw new Error('[loadTeamMembers] staff read missing');
       }
       if (!snap.exists()) {
+        if (byUid.has(uid)) return;
         // ASSUMPTION: 幹部 UID 沒有對應 user doc 時仍輸出 stub，
         // 讓呼叫端可顯示佔位列；`buildTeamRoster` 亦會處理 `user = null`。
         byUid.set(uid, { uid, _docId: uid });

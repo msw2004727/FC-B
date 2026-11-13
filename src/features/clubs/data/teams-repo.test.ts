@@ -310,6 +310,58 @@ describe('loadTeamMembers', () => {
 
     await expect(loadTeamMembers(team)).rejects.toThrow('staff-read-failed');
   });
+
+  describe('同一人有舊文件（文件 ID ≠ uid、缺 uid 欄位）＋正本', () => {
+    const legacy = (over: Record<string, unknown> = {}) => ({
+      id: 'legacyDoc1',
+      data: () => ({ lineUserId: 'Ualice', name: '舊名', teamId: 't1', role: 'coach', ...over }),
+    });
+    const canon = { id: 'Ualice', data: () => ({ uid: 'Ualice', lineUserId: 'Ualice', name: 'Alice', teamIds: ['t1'], role: 'user' }) };
+
+    it('兩份都查到：名單一列，用正本資料（舊文件先到也一樣）', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamIds: [legacy({ teamIds: ['t1'] })], teamId: [canon] });
+      getDocMock.mockResolvedValue({ exists: () => false, id: 'cap', data: () => ({}) });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({ uid: 'Ualice', _docId: 'Ualice', name: 'Alice', role: 'user' });
+    });
+
+    it('正本先到時舊文件不覆蓋', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamIds: [canon], teamId: [legacy()] });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({ _docId: 'Ualice', role: 'user' });
+    });
+
+    it('只有正本的一般情況不受影響', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamIds: [canon, { id: 'u2', data: () => ({ uid: 'u2', teamIds: ['t1'] }) }] });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members.map((m) => [m.uid, m._docId])).toEqual([['Ualice', 'Ualice'], ['u2', 'u2']]);
+      expect(getDocMock).not.toHaveBeenCalled();
+    });
+
+    it('幹部只由舊文件列出：補讀正本，存在就換成正本；不存在保留舊文件那列', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamId: [legacy()] });
+      getDocMock.mockResolvedValueOnce({ exists: () => true, id: 'Ualice', data: () => canon.data() });
+
+      const members = (await loadTeamMembers({ id: 't1', captainUid: 'Ualice' })) as TeamMember[];
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({ _docId: 'Ualice', name: 'Alice' });
+
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      getDocMock.mockResolvedValueOnce({ exists: () => false, id: 'Ualice', data: () => ({}) });
+      const again = (await loadTeamMembers({ id: 't1', captainUid: 'Ualice' })) as TeamMember[];
+      expect(again).toHaveLength(1);
+      expect(again[0]).toMatchObject({ uid: 'Ualice', _docId: 'legacyDoc1', name: '舊名' });
+    });
+  });
 });
 
 describe('公開讀取與成員讀取的 Firebase 入口', () => {

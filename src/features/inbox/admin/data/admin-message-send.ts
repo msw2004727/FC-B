@@ -12,13 +12,17 @@
  * - 角色群發：`users where role in [...]` limit 501。
  * - 多讀 1 筆判斷「真的超過」：剛好 200／500 人照推；超過才整批不推並回報（不挑一部分人送），站內信照送。
  * - 全體用戶：只送站內信，不推 LINE。
+ * - 同一人有舊文件＋正本時只推一次、以正本的俱樂部／角色為準（`canonicalRecipientUids`）。
  * 與 A 差異：A 先讀整個 users 集合再逐人推播（讀取與每日推播上限都會爆）。
  */
 
+import type { CollectionReference } from 'firebase/firestore';
+
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
-import { loadFirestoreSdk } from '@/data/firestore-sdk';
+import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
+import { isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
 
 import { CATEGORY_NAMES, ROLE_TARGETS, type AdminMessage, type MsgCategory, type MsgTargetType } from './admin-message-model';
 
@@ -68,6 +72,35 @@ export async function deliverAdminMessage(
 
 type RecipientResult = { uids: string[] } | { overLimit: number };
 
+/** `where(documentId(), 'in', …)` 一次最多 30 個值。 */
+const DOC_ID_IN_CHUNK = 30;
+
+/**
+ * 查詢結果 → 收件人 uid（每人一位）。
+ * 同一人以 uid → lineUserId → 文件 ID 合併；結果內有正本（文件 ID == 鍵）就直接收。
+ * 只命中舊文件的人補查正本：正本存在卻沒被查到＝正本已不屬此俱樂部／角色，不收（舊文件殘留不算數）；
+ * 正本不存在＝尚未遷移的人，照 A（`_mapUserDoc` 的 uid＝uid||lineUserId）以鍵收信。
+ */
+async function canonicalRecipientUids(
+  fs: FirestoreSdk,
+  users: CollectionReference,
+  docs: ReadonlyArray<{ id: string; data: () => unknown }>,
+): Promise<string[]> {
+  const hasCanonical = new Map<string, boolean>();
+  for (const d of docs) {
+    const key = userIdentityKey(d.id, d.data());
+    if (!key) continue;
+    hasCanonical.set(key, hasCanonical.get(key) === true || isCanonicalUserDoc(d.id, key));
+  }
+  const legacyOnly = [...hasCanonical].filter(([, c]) => !c).map(([key]) => key);
+  for (let i = 0; i < legacyOnly.length; i += DOC_ID_IN_CHUNK) {
+    const chunk = legacyOnly.slice(i, i + DOC_ID_IN_CHUNK);
+    const snap = await fs.getDocs(fs.query(users, fs.where(fs.documentId(), 'in', chunk), fs.limit(chunk.length)));
+    for (const d of snap.docs) hasCanonical.delete(d.id);
+  }
+  return [...hasCanonical.keys()];
+}
+
 async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
   const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const users = fs.collection(db, 'users');
@@ -78,29 +111,17 @@ async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
   if (byTeamIds.docs.length > LINE_PUSH_TEAM_LIMIT || byTeamId.docs.length > LINE_PUSH_TEAM_LIMIT) {
     return { overLimit: LINE_PUSH_TEAM_LIMIT };
   }
-  const uids = new Set<string>();
-  for (const d of [...byTeamIds.docs, ...byTeamId.docs]) {
-    const data = d.data() as { uid?: unknown };
-    const uid = String(data.uid ?? d.id).trim();
-    if (uid) uids.add(uid);
-  }
-  if (uids.size > LINE_PUSH_TEAM_LIMIT) return { overLimit: LINE_PUSH_TEAM_LIMIT };
-  return { uids: [...uids] };
+  const uids = await canonicalRecipientUids(fs, users, [...byTeamIds.docs, ...byTeamId.docs]);
+  if (uids.length > LINE_PUSH_TEAM_LIMIT) return { overLimit: LINE_PUSH_TEAM_LIMIT };
+  return { uids };
 }
 
 async function loadRoleRecipientUids(roles: readonly string[]): Promise<RecipientResult> {
   const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
-  const snap = await fs.getDocs(
-    fs.query(fs.collection(db, 'users'), fs.where('role', 'in', [...roles]), fs.limit(LINE_PUSH_ROLE_LIMIT + 1)),
-  );
+  const users = fs.collection(db, 'users');
+  const snap = await fs.getDocs(fs.query(users, fs.where('role', 'in', [...roles]), fs.limit(LINE_PUSH_ROLE_LIMIT + 1)));
   if (snap.docs.length > LINE_PUSH_ROLE_LIMIT) return { overLimit: LINE_PUSH_ROLE_LIMIT };
-  const uids = new Set<string>();
-  for (const d of snap.docs) {
-    const data = d.data() as { uid?: unknown };
-    const uid = String(data.uid ?? d.id).trim();
-    if (uid) uids.add(uid);
-  }
-  return { uids: [...uids] };
+  return { uids: await canonicalRecipientUids(fs, users, snap.docs) };
 }
 
 /** 依對象決定 LINE 推播名單；全體用戶回空名單（不推）。 */
