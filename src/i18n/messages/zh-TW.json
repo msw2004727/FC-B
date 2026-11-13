@@ -67,7 +67,13 @@
       "theme_light": "淺色",
       "theme_dark": "深色",
       "theme_system": "跟隨系統",
-      "themeAction": "目前為{current}，切換為{next}"
+      "themeAction": "目前為{current}，切換為{next}",
+      "privacyShort": "隱私權政策",
+      "termsShort": "服務條款",
+      "reset": "遇到問題？重設並重新登入",
+      "resetTitle": "重設並重新登入？",
+      "resetBody": "會登出並清除這台裝置的暫存資料，\n然後重新載入。",
+      "resetConfirm": "重設"
     },
     "badge": { "empty": "未設定" },
     "chip": { "empty": "未分類", "remove": "移除「{label}」" },

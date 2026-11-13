@@ -67,7 +67,13 @@
       "theme_light": "Sáng",
       "theme_dark": "Tối",
       "theme_system": "Theo hệ thống",
-      "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}"
+      "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}",
+      "privacyShort": "Bảo mật",
+      "termsShort": "Điều khoản",
+      "reset": "Gặp sự cố? Đặt lại & đăng nhập lại",
+      "resetTitle": "Đặt lại và đăng nhập lại?",
+      "resetBody": "Bạn sẽ bị đăng xuất, dữ liệu tạm trên thiết bị này sẽ bị xóa và ứng dụng sẽ tải lại.",
+      "resetConfirm": "Đặt lại"
     },
     "badge": { "empty": "Chưa thiết lập" },
     "chip": { "empty": "Chưa phân loại", "remove": "Xóa “{label}”" },

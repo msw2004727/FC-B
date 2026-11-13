@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { useRef, useState } from 'preact/hooks';
 import { LocationProvider } from 'preact-iso';
 import { SideDrawer, type SideDrawerProps } from './SideDrawer';
@@ -8,6 +8,7 @@ import { _resetForTest } from '@/core/feature-registry';
 import { _resetOpenExternalForTest, _setLocationAssignForTest } from '@/core/open-external';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
+import { setLocale } from '@/i18n/i18n';
 import { getToasts, toast } from './Toast';
 import * as authMod from '@/data/auth';
 
@@ -141,8 +142,8 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
     fireEvent.click(document.querySelector('[data-action="apply-role"]') as HTMLElement);
     fireEvent.click(screen.getByRole('button', { name: '了解，前往聯繫' }));
     openDrawer();
-    fireEvent.click(screen.getByRole('link', { name: '隱私權政策' }));
-    fireEvent.click(screen.getByRole('link', { name: '服務條款' }));
+    fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }));
+    fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }));
     expect(location.pathname).toBe('/events/ce_1');
     const paths = ['/manual.html', '/roles/', '/privacy', '/terms'];
     if (kind === 'browser') {
@@ -155,13 +156,14 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
   });
 });
 
+// 測試同步更新（站長 2026-11-13 方案一）：聲明改小字連結，顯示文字用 ui.sideDrawer.privacyShort／termsShort（外語用短名，泰、越不撐出抽屜）。
 describe('SideDrawer 隱私權政策與服務條款連結', () => {
   it('用根目錄絕對路徑：在 /events/xxx 這種兩層路徑點開不會變成 /events/privacy.html（Opus 終審 P2）', () => {
     history.replaceState(null, '', '/events/ce_1');
     render(<Harness />);
     openDrawer();
-    expect(screen.getByRole('link', { name: '隱私權政策' }).getAttribute('href')).toBe('/privacy');
-    expect(screen.getByRole('link', { name: '服務條款' }).getAttribute('href')).toBe('/terms');
+    expect(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }).getAttribute('href')).toBe('/privacy');
+    expect(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }).getAttribute('href')).toBe('/terms');
   });
 });
 
@@ -316,16 +318,30 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     ]);
   });
 
-  it('M-011：點擊清除快取跳出紅字 Warning 確認框', () => {
-    render(<Harness />);
-    openDrawer();
-    const clearBtn = document.querySelector('.drawer-clear-btn') as HTMLButtonElement;
-    fireEvent.click(clearBtn);
-    const modal = document.getElementById('app-confirm-modal');
-    expect(modal).not.toBeNull();
-    expect(modal?.querySelector('.app-confirm-warning')?.textContent).toBe('⚠ Warning');
-    fireEvent.click(document.getElementById('app-confirm-cancel')!);
-    expect(document.getElementById('app-confirm-modal')).toBeNull();
+  // 測試同步更新（站長 2026-11-13 方案一）：清除快取改名「遇到問題？重設並重新登入」小字鈕，確認框說清楚會登出、會重新載入。
+  it('M-011：點「重設並重新登入」先跳確認框（標題、說明、取消／重設），取消不執行', () => {
+    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
+    try {
+      render(<Harness />);
+      openDrawer();
+      const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
+      expect(resetBtn.textContent).toBe('ui.sideDrawer.reset');
+      expect(document.querySelector('.drawer-clear-btn')).toBeNull();
+      fireEvent.click(resetBtn);
+      const modal = document.getElementById('app-confirm-modal')!;
+      expect(modal).not.toBeNull();
+      const box = modal.querySelector('[role="alertdialog"]')!;
+      expect(box.getAttribute('aria-labelledby')).toBe('drawer-reset-title');
+      expect(document.getElementById('drawer-reset-title')?.textContent).toBe('ui.sideDrawer.resetTitle');
+      expect(document.getElementById('app-confirm-msg')?.textContent).toBe('ui.sideDrawer.resetBody');
+      expect(document.getElementById('app-confirm-ok')?.textContent).toBe('ui.sideDrawer.resetConfirm');
+      expect(document.getElementById('app-confirm-ok')?.classList.contains('drawer-reset-confirm-ok')).toBe(true);
+      fireEvent.click(document.getElementById('app-confirm-cancel')!);
+      expect(document.getElementById('app-confirm-modal')).toBeNull();
+      expect(gateSpy).not.toHaveBeenCalled();
+    } finally {
+      gateSpy.mockRestore();
+    }
   });
 
   // 測試同步更新（Grok 第三輪 P2）：登出段改走 signOutForCacheClear（同一道閘、失敗就停），
@@ -341,7 +357,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
-      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -365,7 +381,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
-      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -389,7 +405,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
-      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
+      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -432,18 +448,72 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(localStorage.getItem('sporthub_font_size')).toBeNull();
   });
 
-  it('toggles theme via #theme-toggle', () => {
+  // 測試同步更新（站長 2026-11-13 方案一）：深色模式開關改成三段（淺色／深色／跟隨系統），只用圖示、以 aria-label／title 說明。
+  it('主題三段：淺色／深色／跟隨系統，圖示鈕帶 aria-label 與 title，選中以 aria-checked 表示', () => {
     setTheme('light');
     render(<Harness />);
     openDrawer();
-    const toggle = document.getElementById('theme-toggle')!;
-    act(() => {
-      fireEvent.click(toggle);
-    });
+    const group = screen.getByRole('radiogroup', { name: 'ui.sideDrawer.theme' });
+    const radios = Array.from(group.querySelectorAll('[role="radio"]')) as HTMLButtonElement[];
+    expect(radios.map((r) => r.getAttribute('data-theme-choice'))).toEqual(['light', 'dark', 'system']);
+    for (const r of radios) {
+      const mode = r.getAttribute('data-theme-choice');
+      expect(r.getAttribute('aria-label')).toBe(`ui.sideDrawer.theme_${mode}`);
+      expect(r.getAttribute('title')).toBe(`ui.sideDrawer.theme_${mode}`);
+      expect(r.querySelector('svg')).not.toBeNull();
+    }
+    const checked = (): string[] => radios.filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('data-theme-choice')!);
+    expect(checked()).toEqual(['light']);
+
+    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_dark' })); });
     expect(getTheme()).toBe('dark');
-    act(() => {
-      fireEvent.click(toggle);
-    });
+    expect(localStorage.getItem('sporthub_theme')).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(checked()).toEqual(['dark']);
+
+    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_system' })); });
+    expect(getTheme()).toBe('system');
+    expect(localStorage.getItem('sporthub_theme')).toBeNull();
+    expect(checked()).toEqual(['system']);
+
+    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_light' })); });
     expect(getTheme()).toBe('light');
+    expect(checked()).toEqual(['light']);
+    expect(document.getElementById('theme-toggle')).toBeNull();
+  });
+
+  it('語言鈕：地球＋目前語言縮寫，原生下拉蓋在同一顆上；切成英文後縮寫變 EN', async () => {
+    render(<Harness />);
+    openDrawer();
+    const select = document.getElementById('lang-select') as HTMLSelectElement;
+    const pick = select.closest('label.drawer-lang')!;
+    expect(pick.closest('.drawer-foot-slab')).not.toBeNull();
+    expect(pick.querySelector('.drawer-lang-globe')).not.toBeNull();
+    expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('繁中');
+    expect(select.getAttribute('aria-label')).toBe('ui.sideDrawer.language');
+    try {
+      await act(async () => {
+        select.value = 'en';
+        // @testing-library/preact 的 fireEvent.change 實際送 input 事件；下拉的 onChange 要真的 change 事件
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await waitFor(() => expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('EN'), { timeout: 3000 });
+    } finally {
+      await act(async () => { await setLocale('zh-TW'); });
+    }
+  });
+
+  it('聲明與重設在玻璃片下方兩行小字；舊的深色開關、粉紅膠囊、清除快取鈕都拿掉', () => {
+    render(<Harness />);
+    openDrawer();
+    const footer = document.querySelector('#side-drawer .drawer-foot')!;
+    const rows = Array.from(footer.children).map((el) => el.className);
+    expect(rows.slice(0, 3)).toEqual(['drawer-foot-slab', 'drawer-foot-fine drawer-foot-legal', 'drawer-foot-fine']);
+    const privacy = screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' });
+    expect(privacy.classList.contains('drawer-foot-link')).toBe(true);
+    expect(privacy.closest('.drawer-foot-legal')).not.toBeNull();
+    expect(privacy.getAttribute('title')).toBe('隱私權政策');
+    expect(footer.querySelector('.drawer-foot-fine:not(.drawer-foot-legal) .drawer-reset-btn')).not.toBeNull();
+    expect(document.querySelector('.drawer-legal-btn, .drawer-clear-btn, #theme-toggle, .toggle-switch')).toBeNull();
   });
 });

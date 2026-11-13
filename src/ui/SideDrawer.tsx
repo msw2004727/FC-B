@@ -1,11 +1,12 @@
 import './drawer-extra.css';
+import './drawer-foot.css';
 import '@/styles/legacy/version-tag.css';
 import type { RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { getCurrentLocale, lt, setLocale, useT } from '@/i18n/i18n';
-import { DRAWER_LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
+import { DRAWER_LOCALES, LOCALE_LABELS, LOCALE_SHORT_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
 import {
   getFontSize,
@@ -53,6 +54,7 @@ import {
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
 import { GuestAvatarIcon } from './GuestAvatarIcon';
 import { IdentityCrownSvg } from './IdentityCrown';
+import { CaretIcon, GlobeIcon, ResetIcon, ThemeIcon } from './drawer-foot-icons';
 
 export interface SideDrawerIdentity {
   readonly identityId?: 'primary' | 'secondary' | string;
@@ -83,28 +85,13 @@ export interface SideDrawerProps {
 
 const SWIPE_MIN_DX = 12;
 
+const THEME_CHOICES: readonly ThemeMode[] = ['light', 'dark', 'system'];
+
 // 字級存取統一走 core/font-size（照 A sporthub_font_size 存 15／16.5／18 數字，開站腳本才讀得懂）。
 function fontBtnClass(size: FontSize): string {
   if (size === 'medium') return 'drawer-font-btn font-m';
   if (size === 'large') return 'drawer-font-btn font-l';
   return 'drawer-font-btn';
-}
-
-function isEffectiveDark(mode: ThemeMode): boolean {
-  if (typeof document !== 'undefined') {
-    const attr = document.documentElement.getAttribute('data-theme');
-    if (attr === 'dark') return true;
-    if (attr === 'light') return false;
-  }
-  if (mode === 'dark') return true;
-  if (mode === 'light') return false;
-  try {
-    return typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  } catch {
-    return false;
-  }
 }
 
 interface BodyLock {
@@ -378,11 +365,6 @@ export function SideDrawer({
     setFontSize(nextFontSize(getFontSize()));
   };
 
-  const handleToggleTheme = (): void => {
-    const dark = isEffectiveDark(theme);
-    setTheme(dark ? 'light' : 'dark');
-  };
-
   const handleRoleTagClick = (): void => {
     if (!isAdminOrSuper) return;
     const next = toggleAdminStealth(signedInUid, stealth);
@@ -550,7 +532,6 @@ export function SideDrawer({
 
   if (typeof document === 'undefined') return null;
 
-  const isDark = isEffectiveDark(theme);
   const isSignedIn = Boolean(user || routeAccess?.uid);
 
   // M-009 & M-010：抽屜頭部名字與頭像來源（優先 identity → Firestore viewer → AuthUser）
@@ -751,33 +732,37 @@ export function SideDrawer({
           })}
         </div>
 
-        <div class="drawer-footer">
-          <div class="drawer-theme-row">
-            <button
-              id="theme-toggle"
-              type="button"
-              onClick={handleToggleTheme}
-            >
-              <span data-i18n="深色模式">{lt('深色模式', '深色模式')}</span>
-              <div class={`toggle-switch${isDark ? ' active' : ''}`}>
-                <div class="toggle-knob" />
-              </div>
-            </button>
-            <div class="drawer-legal-row">
-              <a class="drawer-legal-btn" href="/privacy" onClick={(event) => handleStaticLink(event, '/privacy')}>
-                <span data-i18n="隱私權政策">{lt('隱私權政策', '隱私權政策')}</span>
-              </a>
-              <a class="drawer-legal-btn" href="/terms" onClick={(event) => handleStaticLink(event, '/terms')}>
-                <span data-i18n="服務條款">{lt('服務條款', '服務條款')}</span>
-              </a>
+        {/* 站長 2026-11-13 選方案一「單片收納」：主題三段（圖示）與語言同一片玻璃；下兩行小字：聲明、重設。
+            取代 A 的深色模式開關＋粉紅膠囊＋語言下拉＋清除快取鈕（泰、越文聲明膠囊會撐出抽屜、從畫面左緣露出）。 */}
+        <div class="drawer-footer drawer-foot">
+          <div class="drawer-foot-slab">
+            <div class="drawer-theme-seg" role="radiogroup" aria-label={t('ui.sideDrawer.theme')}>
+              {THEME_CHOICES.map((mode) => {
+                const label = t(`ui.sideDrawer.theme_${mode}`);
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    class="drawer-theme-btn"
+                    data-theme-choice={mode}
+                    aria-checked={theme === mode ? 'true' : 'false'}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => setTheme(mode)}
+                  >
+                    <ThemeIcon mode={mode} />
+                  </button>
+                );
+              })}
             </div>
-          </div>
-          <div class="drawer-footer-bottom">
-            <div id="lang-switcher" class="lang-switcher">
-              <span class="lang-label" data-i18n="語言">{lt('語言', '語言')}</span>
+            <label id="lang-switcher" class="drawer-lang" title={t('ui.sideDrawer.language')}>
+              <GlobeIcon />
+              <span class="drawer-lang-code">{LOCALE_SHORT_LABELS[locale]}</span>
+              <CaretIcon />
               <select
                 id="lang-select"
-                aria-label="語言"
+                aria-label={t('ui.sideDrawer.language')}
                 value={locale}
                 disabled={loading}
                 aria-busy={loading ? 'true' : undefined}
@@ -791,31 +776,31 @@ export function SideDrawer({
                   </option>
                 ))}
               </select>
-            </div>
-            <button
-              type="button"
-              class="drawer-clear-btn"
-              title={lt('清除快取', '清除快取')}
-              data-i18n-title="清除快取"
-              onClick={() => setShowClearCacheConfirm(true)}
+            </label>
+          </div>
+          <div class="drawer-foot-fine drawer-foot-legal">
+            <a
+              class="drawer-foot-link"
+              href="/privacy"
+              title={lt('隱私權政策', '隱私權政策')}
+              onClick={(event) => handleStaticLink(event, '/privacy')}
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M3 6h18" />
-                <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                <path d="M19 6l-.867 12.142A2 2 0 0116.138 20H7.862a2 2 0 01-1.995-1.858L5 6" />
-                <path d="M10 11v5" />
-                <path d="M14 11v5" />
-              </svg>
-              <span data-i18n="清除快取">{lt('清除快取', '清除快取')}</span>
+              {t('ui.sideDrawer.privacyShort')}
+            </a>
+            <span class="drawer-foot-dot" aria-hidden="true">·</span>
+            <a
+              class="drawer-foot-link"
+              href="/terms"
+              title={lt('服務條款', '服務條款')}
+              onClick={(event) => handleStaticLink(event, '/terms')}
+            >
+              {t('ui.sideDrawer.termsShort')}
+            </a>
+          </div>
+          <div class="drawer-foot-fine">
+            <button type="button" class="drawer-reset-btn" onClick={() => setShowClearCacheConfirm(true)}>
+              <ResetIcon cls="drawer-reset-icon" />
+              <span>{t('ui.sideDrawer.reset')}</span>
             </button>
           </div>
           {loading && <div role="status">{t('ui.sideDrawer.loading')}</div>}
@@ -872,7 +857,7 @@ export function SideDrawer({
         </div>
       )}
 
-      {/* M-011：清除快取紅字 Warning 確認框（照 A `confirmClearCache`） */}
+      {/* M-011：重設確認框（站長 2026-11-13：說清楚會登出、會重新載入；取代 A 的「⚠ Warning」長文）。執行邏輯照 A `confirmClearCache` 不變。 */}
       {showClearCacheConfirm && (
         <div
           id="app-confirm-modal"
@@ -881,15 +866,16 @@ export function SideDrawer({
             if (e.target === e.currentTarget) setShowClearCacheConfirm(false);
           }}
         >
-          <div class="app-confirm-box" role="alertdialog" aria-modal="true" aria-describedby="app-confirm-msg">
-            <div class="app-confirm-msg" id="app-confirm-msg">
-              <div class="app-confirm-warning">⚠ Warning</div>
-              確定要清除所有快取並重新登入嗎？
-              <br />
-              這會回到最乾淨的狀態，或許可解決白屏或異常問題，但若您的網路狀態與手機性能不佳時可能會讓問題更嚴重。
-              <br />
-              建議您先使用關閉分頁並重新登入的方式試試看。
-            </div>
+          <div
+            class="app-confirm-box drawer-reset-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="drawer-reset-title"
+            aria-describedby="app-confirm-msg"
+          >
+            <div class="drawer-reset-confirm-icon"><ResetIcon cls="drawer-reset-confirm-svg" /></div>
+            <div class="drawer-reset-confirm-title" id="drawer-reset-title">{t('ui.sideDrawer.resetTitle')}</div>
+            <div class="drawer-reset-confirm-msg" id="app-confirm-msg">{t('ui.sideDrawer.resetBody')}</div>
             <div class="app-confirm-btns">
               <button
                 type="button"
@@ -901,14 +887,14 @@ export function SideDrawer({
               </button>
               <button
                 type="button"
-                class="app-confirm-ok"
+                class="app-confirm-ok drawer-reset-confirm-ok"
                 id="app-confirm-ok"
                 onClick={() => {
                   setShowClearCacheConfirm(false);
                   executeClearCache().catch(() => undefined);
                 }}
               >
-                {t('common.ok')}
+                {t('ui.sideDrawer.resetConfirm')}
               </button>
             </div>
           </div>

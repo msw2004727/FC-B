@@ -67,7 +67,13 @@
       "theme_light": "浅色",
       "theme_dark": "深色",
       "theme_system": "跟随系统",
-      "themeAction": "当前为{current}，切换为{next}"
+      "themeAction": "当前为{current}，切换为{next}",
+      "privacyShort": "隐私政策",
+      "termsShort": "服务条款",
+      "reset": "遇到问题？重置并重新登录",
+      "resetTitle": "重置并重新登录？",
+      "resetBody": "会退出登录并清除这台设备的缓存数据，\n然后重新加载。",
+      "resetConfirm": "重置"
     },
     "badge": { "empty": "未设置" },
     "chip": { "empty": "未分类", "remove": "移除“{label}”" },

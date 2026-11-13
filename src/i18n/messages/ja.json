@@ -67,7 +67,13 @@
       "theme_light": "ライト",
       "theme_dark": "ダーク",
       "theme_system": "システム設定",
-      "themeAction": "現在は{current}です。{next}に切り替える"
+      "themeAction": "現在は{current}です。{next}に切り替える",
+      "privacyShort": "プライバシー",
+      "termsShort": "利用規約",
+      "reset": "不具合？リセットして再ログイン",
+      "resetTitle": "リセットして再ログイン？",
+      "resetBody": "ログアウトし、この端末の一時データを\n消去してから再読み込みします。",
+      "resetConfirm": "リセット"
     },
     "badge": { "empty": "未設定" },
     "chip": { "empty": "未分類", "remove": "「{label}」を削除" },

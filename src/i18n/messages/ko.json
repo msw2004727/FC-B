@@ -67,7 +67,13 @@
       "theme_light": "라이트",
       "theme_dark": "다크",
       "theme_system": "시스템 설정",
-      "themeAction": "현재 모드: {current}. {next}(으)로 전환"
+      "themeAction": "현재 모드: {current}. {next}(으)로 전환",
+      "privacyShort": "개인정보처리방침",
+      "termsShort": "이용약관",
+      "reset": "문제가 있나요? 재설정 후 재로그인",
+      "resetTitle": "재설정 후 다시 로그인할까요?",
+      "resetBody": "로그아웃되고 이 기기의 임시 데이터가 삭제된 뒤 다시 불러옵니다.",
+      "resetConfirm": "재설정"
     },
     "badge": { "empty": "미설정" },
     "chip": { "empty": "미분류", "remove": "“{label}” 삭제" },

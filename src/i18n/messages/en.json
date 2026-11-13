@@ -70,7 +70,13 @@
       "theme_light": "Light",
       "theme_dark": "Dark",
       "theme_system": "System",
-      "themeAction": "Current mode: {current}. Switch to {next}"
+      "themeAction": "Current mode: {current}. Switch to {next}",
+      "privacyShort": "Privacy",
+      "termsShort": "Terms",
+      "reset": "Trouble? Reset & sign in again",
+      "resetTitle": "Reset and sign in again?",
+      "resetBody": "You'll be signed out, temporary data on this device will be cleared, and the app will reload.",
+      "resetConfirm": "Reset"
     },
     "badge": { "empty": "Not set" },
     "chip": { "empty": "Uncategorized", "remove": "Remove “{label}”" },

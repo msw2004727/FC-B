@@ -26,3 +26,14 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   th: '🇹🇭 ไทย',
   vi: '🇻🇳 Tiếng Việt',
 };
+
+/** 側邊抽屜底部語言鈕的目前語言縮寫（地球圖示旁；站長 2026-11-13 選方案一）。 */
+export const LOCALE_SHORT_LABELS: Record<Locale, string> = {
+  'zh-TW': '繁中',
+  'zh-CN': '简中',
+  en: 'EN',
+  ja: '日本語',
+  ko: '한국어',
+  th: 'ไทย',
+  vi: 'VI',
+};

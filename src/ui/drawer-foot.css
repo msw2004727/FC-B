@@ -1,0 +1,202 @@
+/* 側邊抽屜底部（站長 2026-11-13 選方案一「單片收納」）＋重設確認框＋頂部角色標籤不斷行。B 新增，不加進 A 的 layout.css。
+ * 光澤同 activity-head.css 的整片液態玻璃：頂緣亮線、上半光澤、底部內光、柔和投影；不用 backdrop-filter、不自創 CSS 變數、
+ * 不用 color-mix（舊 iOS／LINE WebView 沒有退路）。主色寫死同 --accent（淺 #0d9488、深 #34d399），同活動頁頂部做法。
+ * 點擊區一律 44px：片內按鈕高 44px、比 40px 玻璃片上下各超出 2px（外觀不變）；小字列連結本身就是 44px 高。
+ * 每段文字都不換行；最長的泰、越、韓文在 280px 抽屜、最大字級下實測放得下（docs/previews/2026-11-13-drawer）。 */
+
+.legacy-ui #side-drawer .drawer-foot {
+  padding: .65rem 1rem .35rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ── 一整片液態玻璃：主題三段＋語言 ── */
+.legacy-ui #side-drawer .drawer-foot-slab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-foot-slab {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+
+.legacy-ui #side-drawer .drawer-theme-seg {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+}
+.legacy-ui #side-drawer .drawer-theme-btn {
+  position: relative;
+  z-index: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  margin: -2px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.legacy-ui #side-drawer .drawer-theme-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+/* 片內分隔線：主題第 2、3 段與語言鈕左側 */
+.legacy-ui #side-drawer .drawer-theme-btn + .drawer-theme-btn::before,
+.legacy-ui #side-drawer .drawer-lang::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 0;
+  width: 1px;
+  background: rgba(148,163,184,.45);
+  pointer-events: none;
+}
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-theme-btn + .drawer-theme-btn::before,
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-lang::before {
+  background: rgba(255,255,255,.14);
+}
+/* 選中：片內淡色圓角填底＋主色（同活動頁頁籤） */
+.legacy-ui #side-drawer .drawer-theme-btn::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 4px;
+  bottom: 7px;
+  left: 4px;
+  z-index: -1;
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+}
+.legacy-ui #side-drawer .drawer-theme-btn[aria-checked="true"] { color: #0d9488; }
+.legacy-ui #side-drawer .drawer-theme-btn[aria-checked="true"]::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%),
+    rgba(13,148,136,.14);
+  box-shadow: inset 0 0 0 1px rgba(13,148,136,.32);
+}
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-theme-btn[aria-checked="true"] { color: #34d399; }
+[data-theme="dark"] .legacy-ui #side-drawer .drawer-theme-btn[aria-checked="true"]::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%),
+    rgba(52,211,153,.16);
+  box-shadow: inset 0 0 0 1px rgba(52,211,153,.36);
+}
+.legacy-ui #side-drawer .drawer-theme-btn:focus-visible { outline: none; }
+.legacy-ui #side-drawer .drawer-theme-btn:focus-visible::after { box-shadow: inset 0 0 0 2px var(--accent) !important; }
+
+/* 語言：地球＋目前語言縮寫；原生下拉透明蓋在整顆上（點開是手機原生選單，選項照舊） */
+.legacy-ui #side-drawer .drawer-lang {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  height: 44px;
+  margin: -2px 0;
+  padding: 0 .65rem 0 .7rem;
+  color: var(--text-primary);
+  font-size: .76rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.legacy-ui #side-drawer .drawer-lang-globe { width: 15px; height: 15px; flex: 0 0 auto; color: var(--text-secondary); }
+.legacy-ui #side-drawer .drawer-lang-caret { width: 12px; height: 12px; flex: 0 0 auto; opacity: .6; }
+.legacy-ui #side-drawer #lang-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  /* 16px：iOS 點下拉不自動放大頁面 */
+  font-size: 16px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.legacy-ui #side-drawer .drawer-lang:focus-within { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }
+
+/* ── 小字兩行：聲明、重設 ── */
+.legacy-ui #side-drawer .drawer-foot-fine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  white-space: nowrap;
+}
+.legacy-ui #side-drawer .drawer-foot-slab + .drawer-foot-fine { margin-top: .15rem; }
+.legacy-ui #side-drawer .drawer-foot-link,
+.legacy-ui #side-drawer .drawer-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  height: 44px;
+  margin: 0;
+  padding: 0 .3rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.legacy-ui #side-drawer .drawer-foot-dot { color: var(--text-muted); opacity: .6; font-size: .7rem; padding: 0 .05rem; }
+.legacy-ui #side-drawer .drawer-reset-icon { width: 12px; height: 12px; flex: 0 0 auto; opacity: .75; }
+@media (hover: hover) {
+  .legacy-ui #side-drawer .drawer-foot-link:hover,
+  .legacy-ui #side-drawer .drawer-lang:hover { color: var(--accent); }
+  .legacy-ui #side-drawer .drawer-reset-btn:hover { color: var(--danger, #dc2626); }
+}
+
+/* ── 重設確認框 ── */
+.legacy-ui .drawer-reset-confirm { padding: 1.35rem 1.2rem 1.1rem; }
+.legacy-ui .drawer-reset-confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto .6rem;
+  border-radius: 50%;
+  background: rgba(220,38,38,.1);
+  color: #dc2626;
+}
+[data-theme="dark"] .legacy-ui .drawer-reset-confirm-icon { background: rgba(248,113,113,.14); color: #f87171; }
+.legacy-ui .drawer-reset-confirm-svg { width: 20px; height: 20px; }
+.legacy-ui .drawer-reset-confirm-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: .45rem; white-space: nowrap; }
+/* pre-line：中、日文在逗號後語意換行（文案內含 \n） */
+.legacy-ui .drawer-reset-confirm-msg { font-size: .84rem; line-height: 1.55; color: var(--text-secondary); margin-bottom: 1.15rem; white-space: pre-line; }
+.legacy-ui #app-confirm-modal .drawer-reset-confirm .drawer-reset-confirm-ok { background: #dc2626; color: #fff; }
+
+/* ── 頂部角色標籤不斷行（英文「Download App」較寬時，「未登入」曾被擠成兩行）：
+ *    名字寬度不計入最小寬（width:0＋min-width:100%），資訊欄最小寬＝角色標籤寬；名字仍以省略號收尾 ── */
+.legacy-ui #side-drawer .drawer-user-info { flex: 1 1 auto; min-width: auto; }
+.legacy-ui #side-drawer .drawer-name { width: 0; min-width: 100%; }
+.legacy-ui #side-drawer .drawer-role-tag { white-space: nowrap; }
