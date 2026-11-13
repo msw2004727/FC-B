@@ -142,11 +142,7 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     expect(touching.some((r) => r.atrule)).toBe(false);
     const px = (v: string | undefined) => Number.parseFloat(String(v));
     const rem = (v: string | undefined) => Number.parseFloat(String(v)) * 16;
-    for (const s of STAMPS) {
-      const d = merged(s);
-      expect(d.bottom, s).toBe('-12px');
-      expect(d.right, s).toBe(merged(STAMPS[0]!).right);
-    }
+    for (const s of STAMPS) expect(merged(s).bottom, s).toBe('-12px');
     // 右緣要在狀態欄左緣之外：卡片右內距＋運動圖示欄＋狀態欄最小寬＋兩段間距（箭頭約 4.5px 另計，留 ≥6px 給箭頭與空隙）
     const rowRule = activity.find((r) => r.selector === '.legacy-ui .tl-event-row')!;
     const padRight = rem(rowRule.decls.padding!.split(' ')[1]);
@@ -155,15 +151,31 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     const stackMin = px(activity.find((r) => r.selector === '.legacy-ui .tl-event-status-stack')!.decls['min-width']);
     const right = px(merged('.tl-stamp-confirmed').right);
     expect(right - (padRight + gap * 2 + iconsW + stackMin)).toBeGreaterThanOrEqual(6);
-    // 同時有不公開章：報名章再往左一個印章寬，不互疊
+  });
+
+  // 站長 11-13 追加：「正取 候補的位置都要固定，不公開則是放在正取位置的左側，不要把正取擠開」。
+  // 三種組合（只有報名章、只有不公開、兩者都有）每個印章的座標都只由自己的 class 決定，不看兄弟元素。
+  it('印章座標固定：正取＝候補同一格；不公開固定在其左側一格；任何組合都不推擠、不補位', () => {
+    const px = (v: string | undefined) => Number.parseFloat(String(v));
+    const regRight = px(merged('.tl-stamp-confirmed').right);
+    expect(merged('.tl-stamp-waitlisted').right).toBe(merged('.tl-stamp-confirmed').right);
+    const privRight = px(merged('.tl-stamp-private').right);
     const size = px(merged('.tl-stamp-confirmed').width);
-    for (const s of ['.tl-stamp-confirmed', '.tl-stamp-waitlisted']) {
-      const sel = `.legacy-ui .tl-event-row > .tl-stamp-private ~ ${s}`;
-      const sib = card.find((r) => r.selector === sel);
-      expect(sib, sel).toBeTruthy();
-      expect(px(sib!.decls.right) - right).toBeGreaterThanOrEqual(size);
-      expect(gt(specificity(sel), specificity(OVERRIDE(s)))).toBe(true);
-    }
+    expect(privRight - regRight).toBeGreaterThanOrEqual(size); // 兩章並排不互疊
+    // 沒有任何會依兄弟／組合改變印章位置的規則（~、+、:has、:only-child 之類）
+    const positional = ['right', 'left', 'top', 'bottom', 'inset', 'transform', 'margin', 'margin-right', 'margin-left'];
+    const combo = card.filter((r) => STAMPS.some((s) => r.selector.includes(s))
+      && /[~+]|:has|:only|:first|:last|:nth/.test(r.selector)
+      && positional.some((p) => p in r.decls));
+    expect(combo.map((r) => r.selector)).toEqual([]);
+    // 三種組合的座標表（每格只看自己）
+    const coords = (present: string[]) => Object.fromEntries(present.map((s) => [s, merged(s).right]));
+    expect(coords(['.tl-stamp-confirmed'])).toEqual({ '.tl-stamp-confirmed': `${regRight}px` });
+    expect(coords(['.tl-stamp-waitlisted'])).toEqual({ '.tl-stamp-waitlisted': `${regRight}px` });
+    expect(coords(['.tl-stamp-private'])).toEqual({ '.tl-stamp-private': `${privRight}px` });
+    expect(coords(['.tl-stamp-private', '.tl-stamp-confirmed'])).toEqual({
+      '.tl-stamp-private': `${privRight}px`, '.tl-stamp-confirmed': `${regRight}px`,
+    });
   });
 
   it('淺色仍用 multiply（墨水感）但不透明度提高；深色改正常混合並換亮色，不再相乘成卡底同色', () => {

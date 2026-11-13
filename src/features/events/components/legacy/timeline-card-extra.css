@@ -253,15 +253,16 @@
   flex-basis: 11px;
 }
 .tl-event-row .tl-event-icons .tl-comment-badge.is-empty { visibility: hidden; }
-/* 印章右緣＝卡片右內距＋箭頭＋運動圖示欄＋狀態欄（56px）＋三段間距，約 110px，再留一點空隙。 */
-.tl-event-row > .tl-stamp-private,
+/* 站長 11-13 追加：位置都固定、不互相推擠。
+ * 正取／候補：固定在狀態標籤左側那格（右緣＝卡片右內距＋箭頭＋運動圖示欄＋狀態欄 56px＋兩段間距，約 110px，再留空隙）。
+ * 不公開：固定在正取格再左一格（52px＋2px）；只有不公開時也留在自己的位置，不補位到正取格。
+ * 取代先前「有不公開時把報名章往左推」的兄弟選擇器寫法（會讓正取座標跟著變）。 */
 .tl-event-row > .tl-stamp-confirmed,
 .tl-event-row > .tl-stamp-waitlisted {
   right: 114px;
   bottom: -12px;
 }
-/* 不公開＋正取／候補同時出現：報名章再往左一格（52px＋2px），兩章並排 */
-.tl-event-row > .tl-stamp-private ~ .tl-stamp-confirmed,
-.tl-event-row > .tl-stamp-private ~ .tl-stamp-waitlisted {
+.tl-event-row > .tl-stamp-private {
   right: 168px;
+  bottom: -12px;
 }
