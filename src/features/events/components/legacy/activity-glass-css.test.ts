@@ -93,7 +93,7 @@ describe('timeline-card-extra.css：液態光澤卡片', () => {
 });
 
 // 2026-11-13 站長回報：正取、不公開印章看不清楚、大小要相同。A 的印章用 multiply 混合，深色卡底上幾乎看不見；
-// A 原本不公開 52px、正取／候補 46px。覆寫成同一尺寸、淺色加深、深色改正常混合；位置沿用 A（下一張卡另搬）。
+// A 原本不公開 52px、正取／候補 46px。覆寫成同一尺寸、淺色加深、深色改正常混合；位置 11-13 移到狀態標籤左側。
 // 不限活動頁：.tl-stamp-* 只在活動卡元件，之後個人頁、俱樂部頁共用該元件時一起套用（PM 11-13）。
 describe('timeline-card-extra.css：活動卡印章（正取／候補／不公開）', () => {
   const card = scoped('timeline-card-extra.css');
@@ -131,14 +131,39 @@ describe('timeline-card-extra.css：活動卡印章（正取／候補／不公�
     for (const s of STAMPS) expect(merged(s).background, s).toBeUndefined();
   });
 
-  it('權重高於 A 的印章規則（含 A 寬版的 @media）；不改位置（right／bottom 沿用 A）', () => {
+  // 2026-11-13 站長定案（卡片人數標籤＋留言移位）：印章移到狀態標籤左側，取代 A 的右下角位置（stamp-fix 時沿用 A）。
+  it('權重高於 A 的印章規則（含 A 寬版的 @media）；位置在狀態標籤左側，不公開＋報名章並排不互疊', () => {
     for (const s of STAMPS) {
       expect(gt(specificity(OVERRIDE(s)), specificity(`.legacy-ui ${s}`))).toBe(true);
       expect(gt(specificity(OVERRIDE_DARK(s)), specificity(OVERRIDE(s)))).toBe(true);
     }
+    // 覆寫不放在 @media 裡：任何寬度都蓋過 A 寬版的 right: calc(28% - 50px)
     const touching = card.filter((r) => STAMPS.some((s) => r.selector.includes(s)));
-    expect(touching.length).toBeGreaterThan(0);
-    expect(touching.some((r) => ['right', 'left', 'top', 'bottom', 'position'].some((p) => p in r.decls) || r.atrule)).toBe(false);
+    expect(touching.some((r) => r.atrule)).toBe(false);
+    const px = (v: string | undefined) => Number.parseFloat(String(v));
+    const rem = (v: string | undefined) => Number.parseFloat(String(v)) * 16;
+    for (const s of STAMPS) {
+      const d = merged(s);
+      expect(d.bottom, s).toBe('-12px');
+      expect(d.right, s).toBe(merged(STAMPS[0]!).right);
+    }
+    // 右緣要在狀態欄左緣之外：卡片右內距＋運動圖示欄＋狀態欄最小寬＋兩段間距（箭頭約 4.5px 另計，留 ≥6px 給箭頭與空隙）
+    const rowRule = activity.find((r) => r.selector === '.legacy-ui .tl-event-row')!;
+    const padRight = rem(rowRule.decls.padding!.split(' ')[1]);
+    const gap = rem(rowRule.decls.gap);
+    const iconsW = px(card.find((r) => r.selector === '.legacy-ui .tl-event-row .tl-event-icons')!.decls.width);
+    const stackMin = px(activity.find((r) => r.selector === '.legacy-ui .tl-event-status-stack')!.decls['min-width']);
+    const right = px(merged('.tl-stamp-confirmed').right);
+    expect(right - (padRight + gap * 2 + iconsW + stackMin)).toBeGreaterThanOrEqual(6);
+    // 同時有不公開章：報名章再往左一個印章寬，不互疊
+    const size = px(merged('.tl-stamp-confirmed').width);
+    for (const s of ['.tl-stamp-confirmed', '.tl-stamp-waitlisted']) {
+      const sel = `.legacy-ui .tl-event-row > .tl-stamp-private ~ ${s}`;
+      const sib = card.find((r) => r.selector === sel);
+      expect(sib, sel).toBeTruthy();
+      expect(px(sib!.decls.right) - right).toBeGreaterThanOrEqual(size);
+      expect(gt(specificity(sel), specificity(OVERRIDE(s)))).toBe(true);
+    }
   });
 
   it('淺色仍用 multiply（墨水感）但不透明度提高；深色改正常混合並換亮色，不再相乘成卡底同色', () => {
@@ -211,5 +236,37 @@ describe('activity-list-extra.css：底層與黏頂列', () => {
     expect(find(list, '.legacy-ui .tl-ended-fold-btn').decls.background).toBe('transparent');
     expect(find(list, '.legacy-ui #page-activities .tl-ended-fold-btn').decls.background).toBe('rgba(255,255,255,.45)');
     expect(find(list, '[data-theme="dark"] .legacy-ui #page-activities .tl-ended-fold-btn').decls.background).toBe('rgba(255,255,255,.04)');
+  });
+});
+
+// 2026-11-13 站長定案：留言徽章移到運動圖示下方、沒留言時靠上對齊；運動圖示欄固定寬，標題可見寬度不變。
+describe('timeline-card-extra.css：運動圖示欄（留言徽章移位）', () => {
+  const card = scoped('timeline-card-extra.css');
+  const activityPath = resolve(process.cwd(), 'src/features/events/legacy/activity.css');
+  const activity = postcss([legacyCssScope()])
+    .process(readFileSync(activityPath, 'utf8'), { from: activityPath })
+    .sync().root;
+  const aDecl = (selector: string, prop: string): string | undefined => {
+    let value: string | undefined;
+    activity.walkRules((rule: Rule) => {
+      if (rule.parent?.type === 'atrule' || !rule.selectors.includes(selector)) return;
+      rule.walkDecls(prop, (d) => { value = d.value; });
+    });
+    return value;
+  };
+
+  it('欄寬固定為運動圖示寬（徽章較寬時往兩側間距溢出，不撐寬欄位、不擠標題），間距與狀態欄相同', () => {
+    const icons = find(card, '.legacy-ui .tl-event-row .tl-event-icons');
+    expect(icons.decls.width).toBe(aDecl('.legacy-ui .tl-event-sport-corner', 'width'));
+    expect(icons.decls.gap).toBe(aDecl('.legacy-ui .tl-event-status-stack', 'gap'));
+    // 徽章收窄：「99+」最寬約 37px，置中後單邊溢出 (37-20)/2 < 卡片間距 .55rem（8.8px）
+    const badge = find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge');
+    expect(badge.decls.padding).toBe('0 .16rem');
+    expect(find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge svg').decls.width).toBe('11px');
+  });
+
+  it('沒留言但有人數標籤時留空位（visibility: hidden，不是 display: none），運動圖示固定靠上與狀態標籤同列', () => {
+    const empty = find(card, '.legacy-ui .tl-event-row .tl-event-icons .tl-comment-badge.is-empty');
+    expect(empty.decls).toEqual({ visibility: 'hidden' });
   });
 });

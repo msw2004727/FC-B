@@ -168,6 +168,37 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     expect(screen.queryByRole('button', { name: '編輯活動' })).toBeNull();
   });
 
+  // 2026-11-13 站長定案：個人頁「相關活動」卡也在狀態標籤下方顯示人數標籤（與活動頁同口徑、同風格）。
+  it('人數標籤疊在狀態標籤下方（實際正取／上限、讀屏完整句子）；已結束不顯示', async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW'); // 讀屏句子用 events 字典
+    canEditMock.mockReturnValue(false);
+    canCancelMock.mockReturnValue(false);
+    setReady({
+      hosted: [
+        {
+          event: {
+            id: 'e1', title: '活動A', status: 'full', max: 27, current: 27, realCurrent: 23, waitlist: 2,
+            teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+          },
+          effectiveStatus: 'full',
+        },
+        { event: { id: 'e2', title: '活動B', status: 'ended', max: 10, current: 10 }, effectiveStatus: 'ended' },
+      ],
+    });
+    const { container } = render(<Section section="hosted" />);
+    const right = container.querySelector('.profile-related-event-card[data-event-id="e1"] .profile-related-card-right')!;
+    const stack = right.querySelector(':scope > .profile-related-status-stack')!;
+    expect([...stack.children].map((el) => el.className)).toEqual(['tl-event-status full', 'tl-cap-tag is-wait']);
+    const tag = stack.querySelector('.tl-cap-tag')!;
+    expect(tag.querySelector('.tl-cap-n')?.textContent).toBe('23');
+    expect(tag.querySelector('.tl-cap-max')?.textContent).toBe('/27');
+    expect(tag.querySelector('.fcb-sr-only')?.textContent).toBe('已報 23／27 人');
+    const ended = container.querySelector('.profile-related-event-card[data-event-id="e2"] .profile-related-card-right')!;
+    expect(ended.querySelector('.tl-cap-tag')).toBeNull();
+    expect(ended.querySelector(':scope > .tl-event-status.ended')).toBeTruthy();
+  });
+
   it('我開的團：terminal 活動不出現取消活動鈕', () => {
     setReady({
       hosted: [{

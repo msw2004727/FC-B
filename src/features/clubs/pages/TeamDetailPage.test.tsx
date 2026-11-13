@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamDetailPage from './TeamDetailPage';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
@@ -880,6 +881,8 @@ describe('TeamDetailPage (Legacy V2)', () => {
   });
 
   it('renders 14-day week calendar and navigates on event card click', async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW'); // 人數標籤讀屏句子用 events 字典
     const futureEvent: EventDoc = {
       id: 'ev1',
       title: '週六友誼賽',
@@ -909,7 +912,14 @@ describe('TeamDetailPage (Legacy V2)', () => {
     const cards = container.querySelectorAll('.td-v2-panel-events .td-v2-event-card');
     expect(cards[0]?.textContent).toContain('週六友誼賽');
     expect(cards[0]?.textContent).toContain('報名中');
-    expect(cards[0]?.textContent).toContain('8/16 名');
+    // 2026-11-13 站長定案：「N/M 名」文字改成與活動頁同款人數標籤（時間行尾），讀屏唸完整句子
+    expect(cards[0]?.textContent).not.toContain('8/16 名');
+    const tag = cards[0]?.querySelector('.td-v2-event-main em .tl-cap-tag');
+    expect(tag?.className).toBe('tl-cap-tag is-open');
+    expect(tag?.querySelector('.tl-cap-n')?.textContent).toBe('8');
+    expect(tag?.querySelector('.tl-cap-max')?.textContent).toBe('/16');
+    expect(tag?.querySelector('.fcb-sr-only')?.textContent).toBe('已報 8／16 人');
+    expect(cards[0]?.querySelector('.td-v2-event-main em')?.firstChild?.textContent).toBe('14:00~16:00');
 
     fireEvent.click(cards[0]!);
     expect(routeState.route).toHaveBeenCalledWith('/events/ev1');
@@ -1817,6 +1827,24 @@ describe('join pending persistence (M-117)', () => {
 
 
 describe('T-054c V1／V2：俱樂部活動日期與週條', () => {
+  it('人數標籤口徑同活動頁：實際正取（不含團隊保留未報），額滿有候補為候補色；不限人數只顯示已報數', async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW');
+    const { container } = render(renderEventRows([
+      {
+        id: 'evFull', date: '2999/06/15 14:00~16:00', status: 'full', max: 27, current: 27, realCurrent: 23, waitlist: 4,
+        teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+      },
+      { id: 'evNoMax', date: '2999/06/16 14:00~16:00', status: 'open', max: 0, current: 5 },
+    ] as unknown as EventDoc[], 2, vi.fn()));
+    const tags = container.querySelectorAll('.td-v2-event-main em .tl-cap-tag');
+    expect(tags[0]?.className).toBe('tl-cap-tag is-wait');
+    expect(tags[0]?.querySelector('.tl-cap-n')?.textContent).toBe('23');
+    expect(tags[1]?.className).toBe('tl-cap-tag is-nomax');
+    expect(tags[1]?.querySelector('.tl-cap-max')).toBeNull();
+    expect(tags[1]?.querySelector('.fcb-sr-only')?.textContent).toBe('已報 5 人');
+  });
+
   it('V1：台北 00:30 的活動卡顯示 10 月 19 日', () => {
     const { container } = render(renderEventRows([
       { id: 'evtA', date: '2026/10/19 00:30~02:00' },

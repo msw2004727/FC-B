@@ -4,8 +4,10 @@ import { formatTaipei, taipeiParts } from '@/core/taipei-time';
 import { useMemo } from 'preact/hooks';
 import { TeamDetailWeekStrip } from './TeamDetailWeekStrip';
 import { openHttpAnchor } from '@/core/open-external';
-import { useT } from '@/i18n/i18n';
+import { t as translate, useT } from '@/i18n/i18n';
 import { effectiveEventStatus } from '@/features/events/data/my-activities-model';
+import { buildCapacityTagModel } from '@/features/events/data/capacity-tag';
+import { CapacityTag } from '@/features/events/components/legacy/CapacityTag';
 import { UserTag } from '@/ui/UserTag';
 // 俱樂部活動／成員載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
 import '@/styles/legacy/reg-loading.css';
@@ -25,12 +27,6 @@ import {
 
 function getDateKey(ms: number | null): string {
   return ms === null ? '' : formatTaipei(ms, 'YYYY-MM-DD');
-}
-
-/** A `_buildTeamDetailV2EventRows` 直接讀活動文件的 `current`／`max`。 */
-function readEventCount(event: EventDoc, key: 'current' | 'max'): number {
-  const value = Number((event as Record<string, unknown>)[key] ?? 0);
-  return Number.isFinite(value) ? value : 0;
 }
 
 function getEventCoverImage(event: EventDoc): string {
@@ -66,13 +62,18 @@ export function renderEventRows(
         const statusKey = effectiveEventStatus(e);
         const status =
           statusKey === 'full' ? '已額滿' : statusKey === 'upcoming' ? '即將開放' : '報名中';
-        const max = readEventCount(e, 'max');
-        const current = readEventCount(e, 'current');
-        const countText = max > 0 ? `${current}/${max} 名` : '';
+        // 2026-11-13 站長定案：「N/M 名」文字改成與活動頁同款人數標籤（風格三），口徑改用實際正取
+        // （原本讀 current，含團隊保留未報；同健檢 B2-01），放在時間行尾。
+        const capModel = buildCapacityTagModel(e, statusKey);
+        const capSr = capModel
+          ? (capModel.max > 0
+            ? translate('events.listCard.barConfirmed', { confirmed: capModel.confirmed, max: capModel.max })
+            : translate('events.listCard.barConfirmedNoMax', { confirmed: capModel.confirmed }))
+          : '';
         const image = getEventCoverImage(e);
         // C1（R-UI-027）：原本「時間 · 地點 · 人數」一行在 375px 會被折行；改在語意斷點分兩行：
-        // 時間 · 人數／地點（地點過長以「…」收尾），人數不會被截掉。
-        const timeText = [dateStr.split(' ')[1] || '', countText].filter(Boolean).join(' · ');
+        // 時間＋人數標籤／地點（地點過長以「…」收尾），人數不會被截掉。
+        const timeText = dateStr.split(' ')[1] || '';
         const locationText = String(e.location ?? '').trim();
         return (
           <button
@@ -105,7 +106,12 @@ export function renderEventRows(
                   {e.title || '未命名活動'}
                   <i class={statusKey === 'full' ? 'full' : ''}>{status}</i>
                 </strong>
-                {timeText ? <em>{timeText}</em> : null}
+                {timeText || capModel ? (
+                  <em>
+                    {timeText}
+                    {capModel ? <CapacityTag model={capModel} srText={capSr} /> : null}
+                  </em>
+                ) : null}
                 {locationText ? <em>{locationText}</em> : null}
               </span>
               <b>›</b>

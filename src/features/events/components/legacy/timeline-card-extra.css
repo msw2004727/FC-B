@@ -191,7 +191,7 @@
  * 根因：A 的印章（activity.css .tl-stamp-*）用 mix-blend-mode: multiply＋.72 透明度；深色卡底相乘後幾乎與卡底同色，
  * 淺色也只剩細框淡字。A 的尺寸是不公開 52px、正取／候補 46px。
  * 三種印章統一成 A 不公開的 52px（框 3px、字 12px）；淺色加深到 .9，深色改正常混合＋亮色。仍是透明底圓框印章，
- * 層級沿用 A 的 3（低於月份標題 6）；位置沿用 A（下一張卡另行搬位置）。A 的 activity.css 不改。
+ * 層級沿用 A 的 3（低於月份標題 6）；位置見本檔末段（11-13 移到狀態標籤左側，取代 A 右下角）。A 的 activity.css 不改。
  * 不限活動頁：.tl-stamp-* 只出現在活動卡元件（TimelineEventCard），之後個人頁、俱樂部頁共用該元件時一起套用（PM 11-13）。 */
 .tl-event-row > .tl-stamp-private,
 .tl-event-row > .tl-stamp-confirmed,
@@ -229,4 +229,39 @@
 [data-theme="dark"] .tl-event-row > .tl-stamp-waitlisted {
   border-color: rgba(167,139,250,.9);
   color: rgba(167,139,250,.9);
+}
+
+/* 2026-11-13 站長定案（卡片人數標籤＋留言移位）：
+ * ① 狀態標籤下方是人數標籤（CapacityTag，capacity-tag.css），運動圖示下方是留言徽章；兩欄上下對齊。
+ * ② 運動圖示欄固定 20px（＝圖示寬）：留言徽章比欄寬時往兩側間距置中溢出（「99+」約 37px，左右各約 8.5px，
+ *    小於 .55rem 間距），標題可見寬度不變。沒留言但有人數標籤時徽章留空位（is-empty），運動圖示固定靠上對齊。
+ * ③ 正取／候補／不公開印章移到狀態標籤左側，不再蓋住狀態標籤、人數標籤與留言徽章；同時有兩個章時並排不互疊。
+ *    取代 A 的右下角位置（含寬版 right: calc(28% - 50px)）。 */
+.tl-event-row .tl-event-icons {
+  width: 20px;
+  gap: .24rem; /* 與 .tl-event-status-stack 同間距，兩欄上下對齊 */
+}
+.tl-event-row .tl-event-icons .tl-comment-badge {
+  flex-shrink: 0;
+  min-width: 26px;
+  padding: 0 .16rem;
+  gap: 1px;
+}
+.tl-event-row .tl-event-icons .tl-comment-badge svg {
+  width: 11px;
+  height: 11px;
+  flex-basis: 11px;
+}
+.tl-event-row .tl-event-icons .tl-comment-badge.is-empty { visibility: hidden; }
+/* 印章右緣＝卡片右內距＋箭頭＋運動圖示欄＋狀態欄（56px）＋三段間距，約 110px，再留一點空隙。 */
+.tl-event-row > .tl-stamp-private,
+.tl-event-row > .tl-stamp-confirmed,
+.tl-event-row > .tl-stamp-waitlisted {
+  right: 114px;
+  bottom: -12px;
+}
+/* 不公開＋正取／候補同時出現：報名章再往左一格（52px＋2px），兩章並排 */
+.tl-event-row > .tl-stamp-private ~ .tl-stamp-confirmed,
+.tl-event-row > .tl-stamp-private ~ .tl-stamp-waitlisted {
+  right: 168px;
 }

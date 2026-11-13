@@ -178,7 +178,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     const card = container.querySelector('.tl-event-row[data-event-id="public-football"]');
     expect(card).toBeTruthy();
     expect(card?.querySelector('.tl-event-title')?.textContent).toContain('Visible football');
-    expect(card?.querySelector('.tl-event-meta')?.textContent).toContain('友誼 · 18:00~20:00 · 青埔足球場 · 6/12人');
+    // 2026-11-13 站長定案：「N/M人」移到狀態標籤下方的人數標籤，卡片下方那行不再重複
+    expect(card?.querySelector('.tl-event-meta')?.textContent).toBe('友誼 · 18:00~20:00 · 青埔足球場');
     expect(card?.querySelector('.tl-event-status.open')?.textContent).toBe('報名中');
     expect(card?.querySelector('.fav-heart')).toBeTruthy();
     expect(card?.querySelector('.tl-event-sport-corner')).toBeTruthy();
@@ -523,8 +524,8 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     expect(sr.classList.contains('fcb-sr-only')).toBe(true);
     expect(sr.textContent).toBe('已報 6／12 人');
     expect(wrap.textContent).toBe('已報 6／12 人');
-    // 條下方那行不動
-    expect(withThumb.querySelector('.tl-event-meta')?.textContent).toContain('6/12人');
+    // 條下方那行不再寫人數（改由人數標籤顯示）
+    expect(withThumb.querySelector('.tl-event-meta')?.textContent).not.toContain('6/12');
 
     const noThumb = container.querySelector('.tl-event-row[data-event-id="public-pickleball"]')!;
     expect(noThumb.querySelector('.tl-event-thumb')).toBeNull();
@@ -544,12 +545,63 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     expect(decl(ruleFor(cardCss, '.tl-gbar'), 'flex')).toBe('1 1 auto');
   });
 
+  it('人數標籤在狀態標籤下方、留言徽章在運動圖示下方；沒留言時留空位讓兩欄對齊；額滿有候補變紫', async () => {
+    const full = {
+      ...football,
+      id: 'full-team',
+      title: 'Full with team',
+      status: 'full',
+      current: 27,
+      max: 27,
+      realCurrent: 23,
+      waitlist: 7,
+      teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+    } as SportEvent;
+    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended', date: ENDED_MORNING };
+    const { container } = mountWith([football, full, ended]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="full-team"]')).toBeTruthy());
+
+    const open = container.querySelector('.tl-event-row[data-event-id="public-football"]')!;
+    const stack = open.querySelector('.tl-event-status-stack')!;
+    expect([...stack.children].map((el) => el.className)).toEqual(['tl-event-status open', 'tl-cap-tag is-open']);
+    const tag = stack.querySelector('.tl-cap-tag')!;
+    expect(tag.textContent).toBe('6/12');
+    // 讀屏人數已在計量條，標籤只給眼睛看
+    expect(tag.getAttribute('aria-hidden')).toBe('true');
+    // 留言徽章不在狀態欄，在運動圖示下方（同一欄、圖示在上）
+    expect(stack.querySelector('.tl-comment-badge')).toBeNull();
+    const icons = open.querySelector('.tl-event-icons')!;
+    const sport = icons.querySelector('.tl-event-sport-corner')!;
+    const badge = icons.querySelector('.tl-comment-badge')!;
+    expect(sport.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 未登入沒有留言數：留同尺寸空位（不 hidden），運動圖示固定與狀態標籤同一列
+    expect(badge.classList.contains('is-empty')).toBe(true);
+    expect(badge.hasAttribute('hidden')).toBe(false);
+    expect(badge.getAttribute('aria-hidden')).toBe('true');
+
+    // 額滿＋候補：口徑同計量條（實際正取 23，不含團隊保留未報），狀態為候補
+    const fullTag = container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-event-status-stack .tl-cap-tag')!;
+    expect(fullTag.className).toBe('tl-cap-tag is-wait');
+    expect(fullTag.textContent).toBe('23/27');
+
+    // 已結束：沒有計量條也沒有人數標籤，留言空位也不留
+    (container.querySelector('.tl-ended-fold-btn') as HTMLButtonElement | null)?.click();
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="ended-1"]')).toBeTruthy());
+    const endedRow = container.querySelector('.tl-event-row[data-event-id="ended-1"]')!;
+    expect(endedRow.querySelector('.tl-cap-tag')).toBeNull();
+    expect(endedRow.querySelector('.tl-comment-badge')?.hasAttribute('hidden')).toBe(true);
+  });
+
   it('沒有上限（max＝0）：條只剩軌道、讀屏只讀已報人數', async () => {
     const noMax: SportEvent = { ...football, id: 'no-max', title: 'No max', current: 3, max: 0 };
     const { container } = mountWith([noMax]);
     await waitFor(() => expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')).toBeTruthy());
     expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')?.getAttribute('style')).toBeFalsy();
     expect(container.querySelector('[data-event-id="no-max"] .tl-gbar-sr')?.textContent).toBe('已報 3 人');
+    // 人數標籤同口徑：只顯示已報數、不寫上限
+    const tag = container.querySelector('[data-event-id="no-max"] .tl-cap-tag');
+    expect(tag?.className).toBe('tl-cap-tag is-nomax');
+    expect(tag?.textContent).toBe('3');
   });
 
   it('已結束／已取消以日期群組收成一行，點開才畫卡片；aria-controls 指向展開區；語系切換跟著換', async () => {

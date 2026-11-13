@@ -1,0 +1,113 @@
+/* 2026-11-13 站長定案：活動卡人數標籤「XX/XX」用風格三（狀態變色玻璃膠囊）。
+ * 報名中綠、額滿琥珀、有候補紫＋柔光、未開放／不限人數灰；上半一道光澤配合卡片液態光澤。
+ * 活動頁、個人頁「相關活動」、俱樂部頁活動卡共用（元件 CapacityTag）。只用既有變數，不新增 CSS 變數；
+ * 不用 backdrop-filter、沒有動畫。高度 20px 與狀態標籤同高。 */
+.tl-cap-tag {
+  height: 20px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 .36rem;
+  border: 1px solid rgba(13,148,136,.36);
+  border-radius: 999px;
+  color: var(--accent);
+  background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 48%, rgba(255,255,255,0) 56%), rgba(13,148,136,.13);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 5px -2px rgba(13,148,136,.45);
+  font-size: .62rem;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.tl-cap-ico {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tl-cap-tag.is-long .tl-cap-ico { display: none; }
+.tl-cap-max { opacity: .72; }
+.tl-cap-tag.is-full {
+  border-color: rgba(217,119,6,.4);
+  color: var(--warning);
+  background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 48%, rgba(255,255,255,0) 56%), rgba(217,119,6,.15);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 5px -2px rgba(217,119,6,.5);
+}
+.tl-cap-tag.is-wait {
+  border-color: rgba(109,40,217,.38);
+  color: var(--color-waitlist);
+  background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 48%, rgba(255,255,255,0) 56%), rgba(109,40,217,.13);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 0 8px -1px rgba(109,40,217,.45);
+}
+.tl-cap-tag.is-upcoming,
+.tl-cap-tag.is-nomax {
+  border-color: rgba(100,116,139,.32);
+  color: var(--text-secondary);
+  background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 48%, rgba(255,255,255,0) 56%), rgba(100,116,139,.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 5px -2px rgba(15,23,42,.25);
+}
+[data-theme="dark"] .tl-cap-tag {
+  border-color: rgba(52,211,153,.38);
+  background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 48%, rgba(255,255,255,0) 56%), rgba(52,211,153,.15);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 2px 6px -2px rgba(0,0,0,.7);
+}
+[data-theme="dark"] .tl-cap-tag.is-full {
+  border-color: rgba(251,191,36,.4);
+  background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 48%, rgba(255,255,255,0) 56%), rgba(251,191,36,.16);
+}
+[data-theme="dark"] .tl-cap-tag.is-wait {
+  border-color: rgba(167,139,250,.45);
+  background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 48%, rgba(255,255,255,0) 56%), rgba(167,139,250,.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 0 9px -1px rgba(167,139,250,.55);
+}
+[data-theme="dark"] .tl-cap-tag.is-upcoming,
+[data-theme="dark"] .tl-cap-tag.is-nomax {
+  border-color: rgba(255,255,255,.14);
+  background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 48%, rgba(255,255,255,0) 56%), rgba(148,163,184,.12);
+}
+
+/* 付款狀態外觀（預留接點，目前無呼叫端）：右上角小圓點，絕對定位，不改標籤寬度與卡片版面。 */
+.tl-cap-tag.has-pay { position: relative; }
+.tl-cap-pay {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--bg-card);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.tl-cap-tag.is-pay-pending .tl-cap-pay { background: var(--warning); }
+.tl-cap-tag.is-pay-paid .tl-cap-pay { background: var(--success); }
+
+/* 個人頁「相關活動」：狀態標籤下方疊人數標籤。收起人形圖示（不限人數保留，免得只剩一個數字）、左右負邊距，
+ * 標籤不撐寬狀態欄（標題寬度不變），超出部分落在欄間距內。 */
+.profile-related-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .2rem;
+}
+.profile-related-status-stack .tl-cap-tag {
+  margin: 0 -.3rem;
+  padding: 0 .3rem;
+}
+.profile-related-status-stack .tl-cap-tag:not(.is-nomax) .tl-cap-ico { display: none; }
+
+/* 俱樂部頁活動卡：人數標籤取代時間行尾的「N/M 名」文字（行高不變，標籤垂直置中於文字行）。 */
+.td-v2-event-main em .tl-cap-tag {
+  height: 18px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
