@@ -57,3 +57,132 @@
   background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 70%);
 }
 /* 條旁不寫人數；讀屏人數用專案既有的 .fcb-sr-only（signup-a11y.css） */
+
+/* 2026-11-13 站長選定「液態光澤」：活動列表卡片像一顆有厚度的玻璃——圓角加大、上半一道光澤、頂緣亮線、
+ * 底部帶類型色的內光與投影。不用 backdrop-filter、沒有動畫（LINE WebView／Safari 皆可，prefers-reduced-motion 不受影響）。
+ * 只套活動頁（#page-activities）：個人頁「相關活動」、俱樂部活動列表也用 .tl-event-row，維持原樣。
+ * 計量條、卡片下方那行、灰色標籤不動。左側 3px 類型色邊框沿用 activity.css。
+ * FC-B 不自創 CSS 變數（預覽用的 --gl-t／--gl-a 已逐類型展開成寫死的值）；圓角用 A 既有的 --radius（14px）。
+ * 權重：#page-activities 讓卡片底色高於 activity.css 的 .tl-event-row:hover 與類型底色；
+ * 類型規則放在預設之後、女生專屬放最後（可與其他類型或球隊限定並存，蓋過它們）；暗色另一組放在全部淺色之後。 */
+/* 預設＝友誼／未知類型 */
+#page-activities .tl-event-row {
+  border-radius: var(--radius);
+  border-top-color: #fff;
+  border-right-color: rgba(206,214,226,.9);
+  border-bottom-color: rgba(190,200,214,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.07), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(13,148,136,.16), 0 8px 18px -10px rgba(13,148,136,.38);
+}
+#page-activities .tl-event-row.tl-type-camp {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.07), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(236,72,153,.16), 0 8px 18px -10px rgba(236,72,153,.38);
+}
+#page-activities .tl-event-row.tl-type-play {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(124,58,237,.07), rgba(124,58,237,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(124,58,237,.16), 0 8px 18px -10px rgba(124,58,237,.38);
+}
+#page-activities .tl-event-row.tl-type-watch {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(245,158,11,.07), rgba(245,158,11,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(245,158,11,.16), 0 8px 18px -10px rgba(245,158,11,.38);
+}
+#page-activities .tl-event-row.tl-type-course {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(2,132,199,.07), rgba(2,132,199,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(2,132,199,.16), 0 8px 18px -10px rgba(2,132,199,.38);
+}
+#page-activities .tl-event-row.tl-type-external {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(156,163,175,.07), rgba(156,163,175,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(156,163,175,.16), 0 8px 18px -10px rgba(156,163,175,.38);
+}
+#page-activities .tl-event-row.tl-type-teamonly {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(225,29,72,.09), rgba(225,29,72,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(225,29,72,.16), 0 8px 18px -10px rgba(225,29,72,.38);
+}
+#page-activities .tl-event-row.tl-type-female-only {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.15), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(236,72,153,.16), 0 8px 18px -10px rgba(236,72,153,.38);
+}
+/* 暗色 */
+[data-theme="dark"] #page-activities .tl-event-row {
+  border-top-color: rgba(255,255,255,.18);
+  border-right-color: rgba(255,255,255,.06);
+  border-bottom-color: rgba(0,0,0,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.13), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(13,148,136,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-camp {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.13), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(236,72,153,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-play {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(124,58,237,.13), rgba(124,58,237,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(124,58,237,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-watch {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(245,158,11,.13), rgba(245,158,11,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(245,158,11,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-course {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(2,132,199,.13), rgba(2,132,199,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(2,132,199,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-external {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(156,163,175,.13), rgba(156,163,175,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(156,163,175,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-teamonly {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(225,29,72,.18), rgba(225,29,72,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(225,29,72,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-female-only {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.24), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(236,72,153,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}

@@ -32,6 +32,45 @@
   z-index: 6;
 }
 
+/* 2026-11-13 站長選定「液態光澤」：頁面底層＋黏頂列半透明。卡片本身在 timeline-card-extra.css。
+ * 底層：固定在視窗的一層淡漸層（只畫一次，捲動不重繪），畫在 .activities-root 自己的堆疊層最底下（isolation 不需要 z-index、
+ * 不改定位基準）。頂部列、底部導覽與 QR 鈕（900）、更新提示框（100000）、吐司（10001）都在 .activities-root 之外且 z-index 為正，
+ * 不會被蓋住；頁內內容原本就各自包在 #page-activities 子層（z-index 1）裡，相對順序不變。 */
+.legacy-ui.activities-root {
+  isolation: isolate;
+}
+.legacy-ui.activities-root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
+}
+/* 寫成同一元素的形式：legacy-css-scope 改寫成 [data-theme="dark"] .legacy-ui.activities-root::before（測試守住）。 */
+[data-theme="dark"].activities-root::before {
+  background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
+}
+
+/* 篩選列與月份標題：支援背景模糊時改半透明（底色同 --bg-root，淺 .66／深 .68）＋模糊 18px，捲動時隱約透出底下卡片；
+ * 只有篩選列與各月份標題加模糊（與月份數相同），不隨卡片數增加。不支援時維持上面的 var(--bg-root) 實色，文字不受背後卡片干擾。
+ * 色值寫死：--bg-root 沒有透明版，color-mix 在舊 iOS（＜16.2）不支援、與 -webkit-backdrop-filter 支援範圍不同。 */
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  #page-activities.page > .activity-sticky-filters,
+  #page-activities .tl-month-header {
+    background: rgba(244,246,249,.66);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+  [data-theme="dark"] #page-activities.page > .activity-sticky-filters,
+  [data-theme="dark"] #page-activities .tl-month-header {
+    background: rgba(13,16,23,.68);
+  }
+}
+
 /* 已結束／已取消收合列 */
 .tl-ended-fold {
   display: flex;
@@ -48,13 +87,17 @@
   padding: .42rem .65rem;
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
-  background: transparent;
+  /* 液態光澤：虛線框配半透明底，與玻璃卡同一語言 */
+  background: rgba(255,255,255,.45);
   color: var(--text-muted);
   font: inherit;
   font-size: .72rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
+}
+[data-theme="dark"] .tl-ended-fold-btn {
+  background: rgba(255,255,255,.04);
 }
 /* R-UI-027：不讓瀏覽器自動斷行；各語系文案已縮短到 360px 一行放得下，超出時以省略號收尾（最後防線）。 */
 .tl-ended-fold-label {
