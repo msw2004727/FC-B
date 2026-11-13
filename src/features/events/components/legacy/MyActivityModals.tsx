@@ -160,7 +160,8 @@ export function MyActivityDetailModal({
   ) as RegExtra[];
   const waitlistedRegs = regs.filter((r) => r.status === 'waitlisted') as RegExtra[];
 
-  // 應收人數用實際正取（detail-model#actualConfirmedCount，不含團隊未報），與詳情頁一致；
+  // 應收人數用實際正取（detail-model#actualConfirmedCount，不含團隊未報）；為 0 時退回本彈窗的正取名單人數（計數過期時與「正取名單（N）」標題一致，照 A 彈窗 event-manage.js:580）。
+  // 卡片應收（manage-fee-summary）是名單人數優先，計數過期時兩者可能差 1～2 人；此彈窗目前無入口，不另統一。
   // A `_renderDetailFeeSummary` 用 e.current（Functions 寫入的 current＝realCurrent＋團隊未報）會多算，B 不照搬（顧問 §3.136 ②）。
   const actualCount = event ? actualConfirmedCount(event as DetailEvent) : 0;
   const confirmedCount = actualCount > 0 ? actualCount : confirmedRegs.length;
