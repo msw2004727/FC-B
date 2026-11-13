@@ -185,14 +185,16 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
     // 測試同步更新（2026-11-13）：ActivitiesPage 新增篩選列黏頂量測，該行由 642 移到 658。
-    line: 658,
+    // 測試同步更新（2026-11-13 頂部 C 方案）：新增兩行 import、刪一行常數，658 移到 659。
+    line: 659,
     source: "const dateObj = new Date(y, m - 1, day);",
     reason: '純日曆算術：由活動日期的年月日建構日曆值，只供星期標籤。',
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
     // 測試同步更新（2026-11-13）：同上，643 移到 659。
-    line: 659,
+    // 測試同步更新（2026-11-13 頂部 C 方案）：659 移到 660。
+    line: 660,
     source: "const dayName = DAY_NAMES[dateObj.getDay()] ?? '日';",
     reason: '純日曆算術：讀取活動日期的星期；今天判斷另用台北欄位。',
   },
