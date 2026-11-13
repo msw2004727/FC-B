@@ -220,6 +220,22 @@ describe('LINE 推播名單與讀取預算', () => {
       expect(fakeState.reads).toHaveLength(2);
     });
 
+    it('鍵不是合法文件 ID（含 / 、 . 、 .. 、 __x__）：不放進補查（避免整批拋錯），照 A 以鍵送', async () => {
+      const bad = ['a/b', '.', '..', '__x__'].map((k, i) => ({ id: `bad${i}`, data: { lineUserId: k, role: 'admin' } }));
+      route({ role: [...bad, LEGACY] }, []);
+      fakeState.docsHandler = ((orig) => (q: Parameters<typeof orig>[0]) => {
+        const w = q.constraints.find((c) => c.type === 'where')?.args ?? [];
+        if (w[0] === '__name__' && (w[2] as string[]).some((k) => k.includes('/') || k === '.' || k === '..' || /^__.*__$/.test(k))) {
+          throw new Error('invalid document id');
+        }
+        return orig(q);
+      })(fakeState.docsHandler);
+      const out = await queueLinePushByTarget(msg({ targetType: 'admin' }));
+      expect(out).toEqual({ status: 'queued', total: 5, failed: 0 });
+      const verify = fakeState.reads.filter((r) => r.q?.constraints.some((c) => c.args[0] === '__name__'));
+      expect(verify.map((r) => r.q?.constraints.find((c) => c.type === 'where')?.args[2])).toEqual([['Ualice']]);
+    });
+
     it('補查正本每次最多 30 個', async () => {
       const legacy = Array.from({ length: 31 }, (_, i) => ({ id: `old${i}`, data: { lineUserId: `L${i}`, role: 'admin' } }));
       route({ role: legacy }, []);

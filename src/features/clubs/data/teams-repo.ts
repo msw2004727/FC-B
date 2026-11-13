@@ -10,7 +10,7 @@
 
 import { getFirebase, getFirebaseCore } from '@/data/firebase';
 import { teams as teamsCollection, users as usersCollection } from '@/data/paths';
-import { isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
+import { findCanonicalUserIds, isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
 import { getTeamStaffIdentity } from './team-detail-model';
 import type { TeamDoc, TeamMember } from './types';
 
@@ -115,7 +115,8 @@ export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
  *      缺席的幹部同時讀，不循序等。讀取筆數不變。
  *   4. 以同一人鍵（uid → lineUserId → 文件 ID）去重，舊文件與正本並存時取正本。
  *      順序仍是查詢結果，再依隊長、領隊、教練補上。
- *      已知未處理：只剩舊文件帶此隊（正本已退隊）的人仍會列出，與後端人數重算一致（健檢 N-01）。
+ *      非幹部只由舊文件列出時補查正本（`documentId in`，每批 30）：正本存在＝已退隊，不列出。
+ *      正本不存在（尚未遷移）照舊列出。注意後端人數重算目前仍會算到已退隊的舊文件（健檢 N-01）。
  *
  * `users` 的 Rules 是 `allow read: if isAuth()`，所以這支維持 `getFirebase()`，
  * 等 auth 註冊後再查。公開的俱樂部文件不走這支。
@@ -171,15 +172,24 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
   for (const uid of staff.leaderUids) staffUids.add(uid);
   for (const uid of staff.coachUids) staffUids.add(uid);
 
+  // 非幹部只由舊文件列出：補查正本，正本存在卻沒被查到＝已退隊，剔除（否則可被選為領隊／教練，T-090）。
+  const legacyOnlyMembers = [...byUid]
+    .filter(([uid, member]) => !staffUids.has(uid) && !isCanonicalUserDoc(member._docId ?? '', uid))
+    .map(([uid]) => uid);
+
   // 幹部只由舊文件列出時也補讀正本：正本存在就以正本為準，不存在保留舊文件那列。
   const missingStaffUids = [...staffUids].filter((uid) => {
     const existing = byUid.get(uid);
     return !existing || !isCanonicalUserDoc(existing._docId ?? '', uid);
   });
+
+  const [leftTeam, snaps] = await Promise.all([
+    findCanonicalUserIds(firestoreMod, usersRef, legacyOnlyMembers),
+    Promise.all(missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid)))),
+  ]);
+  for (const uid of leftTeam) byUid.delete(uid);
+
   if (missingStaffUids.length > 0) {
-    const snaps = await Promise.all(
-      missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid))),
-    );
     missingStaffUids.forEach((uid, index) => {
       const snap = snaps[index];
       if (!snap) {

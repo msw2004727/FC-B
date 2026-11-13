@@ -26,6 +26,7 @@ vi.mock('firebase/firestore', () => ({
   }),
   where: (field: string, op: string, value: unknown) => ({ type: 'where', field, op, value }),
   limit: (n: number) => ({ type: 'limit', n }),
+  documentId: () => '__name__',
   getDocs: getDocsMock,
   getDoc: getDocMock,
 }));
@@ -156,9 +157,16 @@ describe('loadTeamMembers', () => {
   function routeGetDocs(handlers: {
     teamIds?: SnapshotDoc[];
     teamId?: SnapshotDoc[];
+    /** `documentId in` 補查正本時存在的文件 ID。 */
+    existingIds?: string[];
   }) {
-    return getDocsMock.mockImplementation((q: { wheres?: Array<{ field: string }> }) => {
+    return getDocsMock.mockImplementation((q: { wheres?: Array<{ field: string; value?: unknown }> }) => {
       const fields = (q.wheres ?? []).map((w) => w.field);
+      if (fields.includes('__name__')) {
+        const ids = (q.wheres?.find((w) => w.field === '__name__')?.value ?? []) as string[];
+        const hit = ids.filter((id) => (handlers.existingIds ?? []).includes(id));
+        return Promise.resolve(makeSnapshotDocs(hit.map((id) => ({ id, data: () => ({ uid: id }) }))));
+      }
       if (fields.includes('teamIds')) {
         return Promise.resolve(makeSnapshotDocs(handlers.teamIds ?? []));
       }
@@ -360,6 +368,50 @@ describe('loadTeamMembers', () => {
       const again = (await loadTeamMembers({ id: 't1', captainUid: 'Ualice' })) as TeamMember[];
       expect(again).toHaveLength(1);
       expect(again[0]).toMatchObject({ uid: 'Ualice', _docId: 'legacyDoc1', name: '舊名' });
+    });
+
+    // 名單是 T-090「新增領隊／教練必須是成員」的依據（team-form-actions），不列出＝不能被選為幹部。
+    it('已退隊者只剩舊文件掛隊（正本存在但不在此隊）：不列出', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamId: [legacy()], teamIds: [{ id: 'u2', data: () => ({ uid: 'u2' }) }], existingIds: ['Ualice'] });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members.map((m) => m.uid)).toEqual(['u2']);
+      const verify = getDocsMock.mock.calls
+        .map((c) => c[0] as { wheres: Array<{ field: string; op?: string; value?: unknown; n?: number }> })
+        .find((q) => q.wheres.some((w) => w.field === '__name__'));
+      expect(verify?.wheres).toEqual([
+        { type: 'where', field: '__name__', op: 'in', value: ['Ualice'] },
+        { type: 'limit', n: 1 },
+      ]);
+    });
+
+    it('只有舊文件、沒有正本（尚未遷移）：照舊列出', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({ teamId: [legacy()], existingIds: [] });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({ uid: 'Ualice', _docId: 'legacyDoc1' });
+    });
+
+    it('鍵不是合法文件 ID（含 / 或 . ..）：不放進補查、照舊列出', async () => {
+      getCurrentUserMock.mockResolvedValueOnce({ uid: 'me' });
+      routeGetDocs({
+        teamId: [
+          { id: 'old1', data: () => ({ lineUserId: 'a/b', teamId: 't1' }) },
+          { id: 'old2', data: () => ({ lineUserId: '..', teamId: 't1' }) },
+          legacy(),
+        ],
+        existingIds: [],
+      });
+
+      const members = (await loadTeamMembers({ id: 't1' })) as TeamMember[];
+      expect(members.map((m) => m.uid)).toEqual(['a/b', '..', 'Ualice']);
+      const verify = getDocsMock.mock.calls
+        .map((c) => c[0] as { wheres: Array<{ field: string; value?: unknown }> })
+        .filter((q) => q.wheres.some((w) => w.field === '__name__'));
+      expect(verify.map((q) => q.wheres[0]?.value)).toEqual([['Ualice']]);
     });
   });
 });

@@ -22,7 +22,7 @@ import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
-import { isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
+import { findCanonicalUserIds, isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
 
 import { CATEGORY_NAMES, ROLE_TARGETS, type AdminMessage, type MsgCategory, type MsgTargetType } from './admin-message-model';
 
@@ -72,14 +72,12 @@ export async function deliverAdminMessage(
 
 type RecipientResult = { uids: string[] } | { overLimit: number };
 
-/** `where(documentId(), 'in', …)` 一次最多 30 個值。 */
-const DOC_ID_IN_CHUNK = 30;
-
 /**
  * 查詢結果 → 收件人 uid（每人一位）。
  * 同一人以 uid → lineUserId → 文件 ID 合併；結果內有正本（文件 ID == 鍵）就直接收。
  * 只命中舊文件的人補查正本：正本存在卻沒被查到＝正本已不屬此俱樂部／角色，不收（舊文件殘留不算數）；
  * 正本不存在＝尚未遷移的人，照 A（`_mapUserDoc` 的 uid＝uid||lineUserId）以鍵收信。
+ * 鍵不是合法文件 ID 時不可能有正本，不查、照 A 以鍵收（伺服器依 uid／lineUserId 找不到人就不送）。
  */
 async function canonicalRecipientUids(
   fs: FirestoreSdk,
@@ -93,12 +91,8 @@ async function canonicalRecipientUids(
     hasCanonical.set(key, hasCanonical.get(key) === true || isCanonicalUserDoc(d.id, key));
   }
   const legacyOnly = [...hasCanonical].filter(([, c]) => !c).map(([key]) => key);
-  for (let i = 0; i < legacyOnly.length; i += DOC_ID_IN_CHUNK) {
-    const chunk = legacyOnly.slice(i, i + DOC_ID_IN_CHUNK);
-    const snap = await fs.getDocs(fs.query(users, fs.where(fs.documentId(), 'in', chunk), fs.limit(chunk.length)));
-    for (const d of snap.docs) hasCanonical.delete(d.id);
-  }
-  return [...hasCanonical.keys()];
+  const leftElsewhere = await findCanonicalUserIds(fs, users, legacyOnly);
+  return [...hasCanonical.keys()].filter((key) => !leftElsewhere.has(key));
 }
 
 async function loadTeamRecipientUids(teamId: string): Promise<RecipientResult> {
