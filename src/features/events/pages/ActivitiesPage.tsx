@@ -308,7 +308,7 @@ export default function ActivitiesPage(): JSX.Element {
     ? urlFilters.sport
     : (globalSport || getActiveSport() || 'all');
 
-  // 2026-11-13 頂部 C 方案：頁籤列可左右滑，右邊地區鈕會隨地區名變寬；切頁籤或地區後把目前頁籤捲進可見範圍（右緣 24px 淡出不算）。
+  // 2026-11-13 頂部 C 方案：頁籤列可左右滑，右邊地區鈕會隨地區名變寬；切頁籤或地區後把目前頁籤捲進可見範圍（右緣 16px 淡出不算）。
   useEffect(() => {
     const box = activityTabsRef.current;
     const current = box?.querySelector<HTMLElement>('.tab.active');
@@ -317,7 +317,7 @@ export default function ActivitiesPage(): JSX.Element {
       const b = box.getBoundingClientRect();
       const a = current.getBoundingClientRect();
       if (a.left < b.left) box.scrollLeft -= b.left - a.left + 4;
-      else if (a.right > b.right - 24) box.scrollLeft += a.right - (b.right - 24) + 4;
+      else if (a.right > b.right - 16) box.scrollLeft += a.right - (b.right - 16) + 4;
     });
     return () => cancelAnimationFrame(raf);
   }, [activeTab, regionTab]);
@@ -717,6 +717,42 @@ export default function ActivitiesPage(): JSX.Element {
       if (key === 'beginner' || key === 'high-intensity') return null;
       return key;
     },
+  });
+
+  // 看圖審查 P2（2026-11-13）：頁籤列右緣被裁掉或落在 16px 淡出區、看不到字的頁籤，不畫它左側的分隔線，
+  // 免得兩條線之間一段空白像空按鈕（activity-head.css [data-divider-off]）。捲動、尺寸改變、每次重繪後重算。
+  const dividerSyncRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const box = activityTabsRef.current;
+    if (!box) return undefined;
+    let raf = 0;
+    const update = (): void => {
+      raf = 0;
+      const edge = box.getBoundingClientRect().right - 16;
+      box.querySelectorAll<HTMLElement>('.tab').forEach((tab) => {
+        if (tab.getBoundingClientRect().left + 20 > edge) tab.setAttribute('data-divider-off', '');
+        else tab.removeAttribute('data-divider-off');
+      });
+    };
+    const schedule = (): void => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    dividerSyncRef.current = schedule;
+    schedule();
+    box.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    observer?.observe(box);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      box.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      observer?.disconnect();
+      dividerSyncRef.current = () => undefined;
+    };
+  }, []);
+  useEffect(() => {
+    dividerSyncRef.current();
   });
 
   return (

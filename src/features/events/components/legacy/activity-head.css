@@ -86,6 +86,19 @@
   pointer-events: none;
 }
 
+/* 鍵盤焦點：與片內填底同圓角、內縮的主色框（看圖審查 P3：瀏覽器預設直角外框會超出玻璃圓角、上緣被捲動區切掉） */
+#page-activities .activity-head-tools > button:focus-visible,
+#page-activities #activity-tabs > .tab:focus-visible,
+#page-activities .activity-region-btn:focus-visible {
+  outline: none;
+}
+#page-activities .activity-head-tools > button:focus-visible::after,
+#page-activities #activity-tabs > .tab:focus-visible::after,
+#page-activities .activity-region-btn:focus-visible::after {
+  /* !important：選中與女生專屬的填底也有 box-shadow，焦點框要蓋過它們 */
+  box-shadow: inset 0 0 0 2px var(--accent) !important;
+}
+
 /* ── 標題列：返回／搜尋／分享一整片（36px 高，按鈕 44×44 上下各超出 4px），標題接在後面；
  *    放不下時「我要開團」整顆換到第二行靠右，不疊到按鈕上（英／越／泰 360） ── */
 #page-activities .activity-page-header {
@@ -138,6 +151,13 @@
   }
 }
 
+/* 女生專屬花瓣（A 的 .activity-female-petals，z-index 4）只在列表區飄：標題列與搜尋面板抬到 5（同黏頂列），蓋在花瓣上面；
+ *    列表與其他區塊維持 A 的 z-index 1（看圖審查 P2） */
+#page-activities.page > .activity-page-header,
+#page-activities.page > #filter-bar {
+  z-index: 5;
+}
+
 /* ── 篩選列：一整片玻璃（40px 高），頁籤區可左右滑、分隔線跟著捲；地區鈕固定右端、以分隔線隔開。
  *    黏頂列本身實色底（看圖審查 P2，見 activity-list-extra.css），整列 44px ── */
 #page-activities.page > .activity-sticky-filters {
@@ -155,20 +175,25 @@
   gap: 0;
   height: 44px;
   margin: -2px 0;
-  padding: 0 24px 0 0;
+  padding: 0 16px 0 0;
   border-radius: 12px 0 0 12px;
   background: none;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
-  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+  /* 右緣淡出 16px（看圖審查 P2：原 24px 會把下一顆頁籤整顆吃掉，只剩分隔線） */
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent);
 }
 #page-activities #activity-tabs > .tab {
   padding: 0 .78rem;
 }
 /* 分隔線已區分位置，A 的「|」分隔字不顯示 */
+/* 看不到字的那顆頁籤（被右緣裁掉或落在淡出區）不畫左側分隔線，免得兩條線之間一段空白像空按鈕；由 ActivitiesPage 依位置標記 */
+#page-activities #activity-tabs > .tab[data-divider-off]::before {
+  display: none;
+}
 #page-activities #activity-tabs > .activity-tab-separator {
   display: none;
 }

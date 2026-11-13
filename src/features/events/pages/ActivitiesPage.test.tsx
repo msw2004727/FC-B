@@ -856,8 +856,8 @@ describe('ActivitiesPage 頂部：目前頁籤捲進可見範圍（2026-11-13 �
       Object.defineProperty(tabs, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => { left = v; } });
       fireEvent.click(container.querySelector('.activity-region-btn') as HTMLElement);
       fireEvent.click(container.querySelector('.activity-region-item[data-region="東部&外島"]') as HTMLElement);
-      // 頁籤右緣 330 − 可見右緣（200 − 淡出 24）＋ 4
-      await waitFor(() => expect(left).toBe(158));
+      // 測試同步更新（看圖審查 P2：淡出 24→16px）：頁籤右緣 330 − 可見右緣（200 − 淡出 16）＋ 4
+      await waitFor(() => expect(left).toBe(150));
     } finally {
       rect.mockRestore();
     }
@@ -930,5 +930,36 @@ describe('ActivitiesPage 地區下拉鍵盤操作（Grok 初審 P2，照運動�
     fireEvent.click(btn);
     fireEvent.click(container.querySelector('#activity-region-menu [data-region="南部"]') as HTMLElement);
     await waitFor(() => expect(document.activeElement).toBe(btn));
+  });
+});
+
+describe('ActivitiesPage 頁籤分隔線：看不到字的頁籤不畫分隔線（2026-11-13 看圖審查 P2）', () => {
+  it('落在右緣淡出區或被裁掉的頁籤標記 data-divider-off；捲回可見後拿掉', async () => {
+    let shift = 0;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const r = (left: number, right: number) => ({ x: left, y: 0, top: 0, left, right, bottom: 44, width: right - left, height: 44, toJSON: () => ({}) }) as DOMRect;
+      if (this.id === 'activity-tabs') return r(0, 200);
+      const key = this.dataset.atab;
+      const lefts: Record<string, number> = { calendar: 0, normal: 70, female: 150, beginner: 175, 'high-intensity': 250 };
+      if (key && key in lefts) return r(lefts[key]! - shift, lefts[key]! - shift + 70);
+      return r(0, 0);
+    });
+    try {
+      const { container } = mount();
+      await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+      const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+      // 可見右緣 200 − 淡出 16 ＝ 184；頁籤左緣＋20 超過就看不到字
+      await waitFor(() => expect(tab('beginner').hasAttribute('data-divider-off')).toBe(true));
+      expect(tab('high-intensity').hasAttribute('data-divider-off')).toBe(true);
+      expect(tab('female').hasAttribute('data-divider-off')).toBe(false);
+      expect(tab('normal').hasAttribute('data-divider-off')).toBe(false);
+
+      shift = 60;
+      fireEvent.scroll(container.querySelector('#activity-tabs') as HTMLElement);
+      await waitFor(() => expect(tab('beginner').hasAttribute('data-divider-off')).toBe(false));
+      expect(tab('high-intensity').hasAttribute('data-divider-off')).toBe(true);
+    } finally {
+      rect.mockRestore();
+    }
   });
 });

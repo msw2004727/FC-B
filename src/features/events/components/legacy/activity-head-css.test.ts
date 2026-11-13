@@ -100,6 +100,48 @@ describe('activity-head.css：整片液態玻璃＋分隔線', () => {
       expect(find(rules, `[data-theme="dark"] ${sel}`).decls.background).toBe('rgba(255,255,255,.14)');
     }
     expect(find(rules, `${S} #activity-tabs > .activity-tab-separator`).decls.display).toBe('none');
+    // 看不到字的頁籤不畫分隔線（看圖審查 P2），權重與順序要蓋過一般分隔線
+    const off = find(rules, `${S} ${TAB}[data-divider-off]::before`);
+    expect(off.decls.display).toBe('none');
+    expect(wins(off, find(rules, `${S} ${TAB}:not(:first-child)::before`))).toBe(true);
+    expect(wins(off, find(rules, `${D} ${TAB}:not(:first-child)::before`)) || !('display' in find(rules, `${D} ${TAB}:not(:first-child)::before`).decls)).toBe(true);
+    // 右緣淡出 16px，捲動區右側留同寬
+    expect(find(rules, `${S} #activity-tabs`).decls).toMatchObject({
+      padding: '0 16px 0 0',
+      'mask-image': 'linear-gradient(90deg, #000 calc(100% - 16px), transparent)',
+      '-webkit-mask-image': 'linear-gradient(90deg, #000 calc(100% - 16px), transparent)',
+    });
+  });
+
+  it('鍵盤焦點：拿掉直角外框，改成與片內填底同圓角的內縮主色框，蓋過選中與女生專屬的填底陰影', () => {
+    for (const btn of ['.activity-head-tools > button', TAB, '.activity-region-btn']) {
+      expect(find(rules, `${S} ${btn}:focus-visible`).decls.outline).toBe('none');
+      expect(find(rules, `${S} ${btn}:focus-visible::after`).decls['box-shadow']).toBe('inset 0 0 0 2px var(--accent)');
+    }
+    // postcss 的值不含 !important，直接看原始碼（要蓋過選中、女生專屬填底的 box-shadow）
+    expect(raw).toContain('box-shadow: inset 0 0 0 2px var(--accent) !important;');
+  });
+
+  it('女生專屬花瓣只在列表區飄：標題列與搜尋面板層級（5）高於花瓣（A 的 4），列表維持 A 的 1', () => {
+    const activity = postcss([legacyCssScope()]).process(
+      readFileSync(resolve(process.cwd(), 'src/features/events/legacy/activity.css'), 'utf8'),
+      { from: resolve(process.cwd(), 'src/features/events/legacy/activity.css') },
+    ).root;
+    let petalsZ = '';
+    let pageChildZ = '';
+    activity.walkRules((r) => {
+      r.walkDecls('z-index', (d) => {
+        if (r.selector === '.legacy-ui .activity-female-petals') petalsZ = d.value;
+        if (r.selector === '.legacy-ui #page-activities > :not(.activity-female-petals)') pageChildZ = d.value;
+      });
+    });
+    expect([petalsZ, pageChildZ]).toEqual(['4', '1']);
+    for (const sel of [`${S}.page > .activity-page-header`, `${S}.page > #filter-bar`]) {
+      const r = find(rules, sel);
+      expect(Number(r.decls['z-index'])).toBeGreaterThan(Number(petalsZ));
+      // 權重高於 A 的「頁內子層一律 z-index 1」
+      expect(cmp(specificity(sel), specificity('.legacy-ui #page-activities > :not(.activity-female-petals)'))).toBeGreaterThan(0);
+    }
   });
 
   it('選中：片內淡色圓角填底（::after 在文字下）＋主色字；深色另一組', () => {
