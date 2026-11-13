@@ -109,19 +109,18 @@ describe('activity-list-extra.css：底層與黏頂列', () => {
       .toBe('linear-gradient(180deg, #0b0f16 0%, #10151f 100%)');
   });
 
-  it('篩選列與月份標題：預設實色 --bg-root；支援模糊時半透明＋18px（帶 -webkit-），淺 .66、深 .68', () => {
+  // 測試同步更新（2026-11-13 看圖審查 P2）：半透明＋模糊會透出捲到後面的卡片字，改成實色底、不再用 backdrop-filter。
+  it('篩選列與月份標題：實色底（淺 #eef1f6、深 #0b0f16），不透出背後卡片', () => {
     const sticky = '.legacy-ui #page-activities.page > .activity-sticky-filters';
     const month = '.legacy-ui #page-activities .tl-month-header';
     expect(find(list, sticky).decls.background).toBe('var(--bg-root)');
     for (const sel of [sticky, month]) {
-      const r = find(list, sel, SUPPORTS);
-      expect(r.decls).toMatchObject({
-        background: 'rgba(244,246,249,.66)',
-        '-webkit-backdrop-filter': 'blur(18px)',
-        'backdrop-filter': 'blur(18px)',
-      });
-      expect(find(list, `[data-theme="dark"] ${sel}`, SUPPORTS).decls.background).toBe('rgba(13,16,23,.68)');
+      const all = list.filter((r) => r.selector === sel && r.decls.background);
+      expect(all.at(-1)?.decls.background).toBe('#eef1f6');
+      expect(find(list, `[data-theme="dark"] ${sel}`).decls.background).toBe('#0b0f16');
     }
+    expect(list.some((r) => Object.keys(r.decls).some((p) => /backdrop-filter/.test(p)))).toBe(false);
+    expect(list.some((r) => r.atrule === SUPPORTS)).toBe(false);
     // 月份標題的實色退路在 A 的 activity.css
     const activity = readFileSync(resolve(process.cwd(), 'src/features/events/legacy/activity.css'), 'utf8');
     expect(activity).toMatch(/\.tl-month-header \{[^}]*background: var\(--bg-root\);/);

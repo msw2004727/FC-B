@@ -82,6 +82,23 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
     expect(find(rules, `${S} .activity-page-heading`).decls.flex).toBe('1 0 auto');
     expect(find(rules, `${S} .activity-region-btn`).decls['white-space']).toBe('nowrap');
     expect(find(rules, `${S} .activity-region-item`).decls['white-space']).toBe('nowrap');
+    // 地區鈕最寬 7.5rem，長地區名以省略號收尾，不把頁籤擠掉（看圖審查 P3）
+    const regionMax = rules.filter((r) => r.selector === `${S} .activity-region-btn` && r.decls['max-width']);
+    expect(regionMax.at(-1)?.decls['max-width']).toBe('7.5rem');
+    expect(find(rules, `${S} .activity-region-label`).decls).toMatchObject({ overflow: 'hidden', 'text-overflow': 'ellipsis', 'min-width': '0' });
+    expect(find(rules, `${S} .activity-region-btn svg`).decls.flex).toBe('0 0 auto');
+  });
+
+  it('形狀：頂部按鈕一律圓角矩形 10px（站長 11-13：不要膠囊與正圓，要四角圓弧的一片玻璃）', () => {
+    for (const sel of [`${S} ${TAB}`, `${S} .activity-region-btn`, `${S} .activity-page-header .back-btn`, `${S} .activity-page-header .page-search-toggle-btn`, `${S} #activity-create-btn`]) {
+      const withRadius = rules.filter((r) => r.selector === sel && r.decls['border-radius']);
+      expect(withRadius.at(-1)?.decls['border-radius'], sel).toBe('10px');
+    }
+    expect(rules.some((r) => /999px|50%/.test(r.decls['border-radius'] ?? ''))).toBe(false);
+  });
+
+  it('框線四邊同色（上框不另設白色，避免圓鈕右上角兩色交接像缺口）', () => {
+    expect(rules.some((r) => 'border-top-color' in r.decls || 'border-bottom-color' in r.decls)).toBe(false);
   });
 
   it('女生專屬：未選、已選都是粉色漸層並帶光澤（淺、深色），已選白字；覆蓋一般膠囊與已選樣式', () => {

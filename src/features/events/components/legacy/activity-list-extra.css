@@ -55,20 +55,16 @@
   background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
 }
 
-/* 篩選列與月份標題：支援背景模糊時改半透明（底色同 --bg-root，淺 .66／深 .68）＋模糊 18px，捲動時隱約透出底下卡片；
- * 只有篩選列與各月份標題加模糊（與月份數相同），不隨卡片數增加。不支援時維持上面的 var(--bg-root) 實色，文字不受背後卡片干擾。
- * 色值寫死：--bg-root 沒有透明版，color-mix 在舊 iOS（＜16.2）不支援、與 -webkit-backdrop-filter 支援範圍不同。 */
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  #page-activities.page > .activity-sticky-filters,
-  #page-activities .tl-month-header {
-    background: rgba(244,246,249,.66);
-    -webkit-backdrop-filter: blur(18px);
-    backdrop-filter: blur(18px);
-  }
-  [data-theme="dark"] #page-activities.page > .activity-sticky-filters,
-  [data-theme="dark"] #page-activities .tl-month-header {
-    background: rgba(13,16,23,.68);
-  }
+/* 篩選列與月份標題：實色底，完全遮住捲到後面的卡片與日期（2026-11-13 看圖審查 P2：原本半透明＋模糊 18px，
+ * 捲動時卡片標題與日期「16」透出、和月份字疊在一起，取代原半透明做法）。底色取頁面底層漸層的頂端色，與背景接得上；
+ * 色值寫死同活動卡做法（--bg-root 比底層漸層亮，接縫會看得出來）。 */
+#page-activities.page > .activity-sticky-filters,
+#page-activities .tl-month-header {
+  background: #eef1f6;
+}
+[data-theme="dark"] #page-activities.page > .activity-sticky-filters,
+[data-theme="dark"] #page-activities .tl-month-header {
+  background: #0b0f16;
 }
 
 /* 已結束／已取消收合列 */

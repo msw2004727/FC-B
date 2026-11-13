@@ -1,7 +1,9 @@
 /* 活動頁頂部精簡（2026-11-13 站長選定 C 方案「地區下拉」）＋頂部按鈕液態光澤（同日站長補充）。B 新增，不加進 A 的 activity.css。
  * 本檔路徑含 /legacy/，打包時 legacy-css-scope 自動加上 .legacy-ui；選擇器都帶 #page-activities，權重高於 A 的 activity.css、layout.css。
+ * 形狀：站長 2026-11-13 要「四個角圓弧的一片液態玻璃」，頂部按鈕一律圓角矩形 10px（卡片 14px 同系、略小），不用膠囊與正圓。
  * 光澤語言同 timeline-card-extra.css 的活動卡：頂緣亮線、上半光澤、底部內光、柔和投影；不用 backdrop-filter、不自創 CSS 變數、
  * 不用 color-mix（舊 iOS／LINE WebView 沒有退路，健檢 B4-10）。主色寫死同 --accent（淺 #0d9488、深 #34d399），同活動卡做法。
+ * 框線四邊同色、頂緣亮線只靠 inset 0 1px 0（看圖審查 P3：上框另設白色時，圓鈕與膠囊右上角兩色交接處看起來像缺口）。
  * 點擊範圍：視覺 34px，以透明 ::after（開團鈕用墊在後面的 label）補到 44px，外觀不變。
  * 順序：淺色預設 → 深色預設 → 淺色已選 → 深色已選 → 女生專屬（淺、深）→ 未開放；同權重靠後者覆蓋，css 測試守住。 */
 
@@ -65,8 +67,7 @@
   margin: 0;
   padding: 0 .72rem;
   border: 1px solid rgba(190,200,214,.9);
-  border-top-color: #fff;
-  border-radius: 999px;
+  border-radius: 10px;
   background:
     linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
@@ -89,8 +90,9 @@
   bottom: -6px;
   left: 0;
 }
+/* 最寬 7.5rem（120px）：中文最長的「東部&外島」放得下；外語長地區名以省略號收尾，360 寬時頁籤區仍留得下目前頁籤（看圖審查 P3） */
 #page-activities .activity-region-btn {
-  max-width: 10.5rem;
+  max-width: 7.5rem;
   padding: 0 .55rem 0 .6rem;
 }
 #page-activities .activity-region-label {
@@ -98,17 +100,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#page-activities .activity-region-caret {
+#page-activities .activity-region-btn svg {
   flex: 0 0 auto;
+}
+#page-activities .activity-region-caret {
   opacity: .7;
 }
 
 /* 深色預設 */
 [data-theme="dark"] #page-activities #activity-tabs .tab,
 [data-theme="dark"] #page-activities .activity-region-btn {
-  border-color: rgba(255,255,255,.06);
-  border-top-color: rgba(255,255,255,.18);
-  border-bottom-color: rgba(0,0,0,.45);
+  border-color: rgba(255,255,255,.1);
   background:
     linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #262e40 0%, #171c27 100%);
@@ -121,7 +123,6 @@
   color: var(--accent);
   font-weight: 700;
   border-color: rgba(13,148,136,.55);
-  border-top-color: rgba(255,255,255,.9);
   background:
     linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #effaf8 0%, #c9ece7 100%);
@@ -131,7 +132,6 @@
 [data-theme="dark"] #page-activities .activity-region-btn.active {
   color: var(--accent);
   border-color: rgba(52,211,153,.5);
-  border-top-color: rgba(167,243,208,.45);
   background:
     linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #1d4a42 0%, #12302b 100%);
@@ -142,7 +142,6 @@
 #page-activities #activity-tabs .tab.activity-tab-female {
   color: #be185d;
   border-color: rgba(236,72,153,.42);
-  border-top-color: #fff;
   background:
     linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%);
@@ -152,7 +151,6 @@
   color: #fff;
   font-weight: 700;
   border-color: #db2777;
-  border-top-color: rgba(255,255,255,.7);
   background:
     linear-gradient(180deg, rgba(255,255,255,.45) 0%, rgba(255,255,255,.12) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(135deg, #f472b6, #ec4899);
@@ -161,7 +159,6 @@
 [data-theme="dark"] #page-activities #activity-tabs .tab.activity-tab-female {
   color: #f9a8d4;
   border-color: rgba(236,72,153,.38);
-  border-top-color: rgba(255,255,255,.18);
   background:
     linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(135deg, #4a1d33 0%, #34122a 100%);
@@ -170,7 +167,6 @@
 [data-theme="dark"] #page-activities #activity-tabs .tab.activity-tab-female.active {
   color: #fff;
   border-color: #ec4899;
-  border-top-color: rgba(255,255,255,.45);
   background:
     linear-gradient(180deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,.08) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(135deg, #be185d, #ec4899);
@@ -240,15 +236,15 @@
   color: var(--text-secondary);
 }
 
-/* ── 標題列圓鈕（返回、搜尋、分享）：液態光澤，點擊範圍補到 44px ── */
+/* ── 標題列方鈕（返回、搜尋、分享）：圓角方塊一片玻璃（10px），液態光澤，點擊範圍補到 44px ── */
 #page-activities .activity-page-header .back-btn,
 #page-activities .activity-page-header .page-search-toggle-btn {
   /* A 的 .back-btn（activity.css 詳情頁用）帶 top／left .8rem，改 relative 時歸零，否則返回鈕會位移 */
   position: relative;
   top: 0;
   left: 0;
+  border-radius: 10px;
   border-color: rgba(190,200,214,.9);
-  border-top-color: #fff;
   background:
     linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
@@ -266,9 +262,7 @@
 }
 [data-theme="dark"] #page-activities .activity-page-header .back-btn,
 [data-theme="dark"] #page-activities .activity-page-header .page-search-toggle-btn {
-  border-color: rgba(255,255,255,.06);
-  border-top-color: rgba(255,255,255,.18);
-  border-bottom-color: rgba(0,0,0,.45);
+  border-color: rgba(255,255,255,.1);
   background:
     linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #262e40 0%, #171c27 100%);
@@ -278,7 +272,6 @@
 #page-activities .activity-page-header .page-search-toggle-btn.active {
   color: var(--accent);
   border-color: rgba(13,148,136,.55);
-  border-top-color: rgba(255,255,255,.9);
   background:
     linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #effaf8 0%, #c9ece7 100%);
@@ -286,7 +279,6 @@
 [data-theme="dark"] #page-activities .activity-page-header .page-search-toggle-btn.active {
   color: var(--accent);
   border-color: rgba(52,211,153,.5);
-  border-top-color: rgba(167,243,208,.45);
   background:
     linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 46%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, #1d4a42 0%, #12302b 100%);
@@ -325,6 +317,7 @@
 }
 #page-activities #activity-create-btn {
   z-index: 1;
+  border-radius: 10px;
 }
 #page-activities #activity-create-btn .activity-create-gloss {
   position: absolute;

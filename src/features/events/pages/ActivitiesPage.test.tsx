@@ -835,3 +835,27 @@ describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', 
     expect(clicks).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ActivitiesPage 頂部：目前頁籤捲進可見範圍（2026-11-13 看圖審查 P3）', () => {
+  it('切地區後地區鈕變寬，目前頁籤被擠到淡出區時把頁籤列往右捲', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const r = (left: number, right: number) => ({ x: left, y: 0, top: 0, left, right, bottom: 34, width: right - left, height: 34, toJSON: () => ({}) }) as DOMRect;
+      if (this.id === 'activity-tabs') return r(0, 200);
+      if (this.classList.contains('tab') && this.classList.contains('active')) return r(250, 330);
+      return r(0, 0);
+    });
+    try {
+      const { container } = mount();
+      await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+      const tabs = container.querySelector('#activity-tabs') as HTMLElement;
+      let left = 0;
+      Object.defineProperty(tabs, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => { left = v; } });
+      fireEvent.click(container.querySelector('.activity-region-btn') as HTMLElement);
+      fireEvent.click(container.querySelector('.activity-region-item[data-region="東部&外島"]') as HTMLElement);
+      // 頁籤右緣 330 − 可見右緣（200 − 淡出 24）＋ 4
+      await waitFor(() => expect(left).toBe(158));
+    } finally {
+      rect.mockRestore();
+    }
+  });
+});

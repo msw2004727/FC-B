@@ -308,6 +308,20 @@ export default function ActivitiesPage(): JSX.Element {
     ? urlFilters.sport
     : (globalSport || getActiveSport() || 'all');
 
+  // 2026-11-13 頂部 C 方案：頁籤列可左右滑，右邊地區鈕會隨地區名變寬；切頁籤或地區後把目前頁籤捲進可見範圍（右緣 24px 淡出不算）。
+  useEffect(() => {
+    const box = activityTabsRef.current;
+    const current = box?.querySelector<HTMLElement>('.tab.active');
+    if (!box || !current) return undefined;
+    const raf = requestAnimationFrame(() => {
+      const b = box.getBoundingClientRect();
+      const a = current.getBoundingClientRect();
+      if (a.left < b.left) box.scrollLeft -= b.left - a.left + 4;
+      else if (a.right > b.right - 24) box.scrollLeft += a.right - (b.right - 24) + 4;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeTab, regionTab]);
+
   const petalsCanvasRef = useRef<HTMLCanvasElement>(null);
   // M-074：切到女生專屬頁籤時在既有 canvas 上飄花瓣（照 A `_startActivityFemalePetals`）。
   useFemalePetals(petalsCanvasRef, activeTab === 'female');
