@@ -821,6 +821,10 @@ export default function ActivitiesPage(): JSX.Element {
                 <path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
               </svg>
             </button>
+            {/* 2026-11-13：開團鈕點擊高度補到 44px（點這塊等於點按鈕；外觀不變，activity-head.css） */}
+            {showCreateButton && (
+              <label class="activity-create-hit" for="activity-create-btn" aria-hidden="true" />
+            )}
             <button
               type="button"
               class={`primary-btn small${createEntry.buttonProps.lockedClass ? ` ${createEntry.buttonProps.lockedClass}` : ''}`}

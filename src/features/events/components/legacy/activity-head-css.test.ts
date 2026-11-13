@@ -55,7 +55,7 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
   const rules = scoped();
   const raw = readFileSync(FILE, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
-  it('點擊範圍：膠囊、圓鈕 34px 以透明 ::after 補到 44px；頁籤列上下留 5px 不裁掉延伸區；開團鈕以透明上下框撐到 44px', () => {
+  it('點擊範圍：膠囊、圓鈕 34px 以透明 ::after 補到 44px；頁籤列上下留 5px 不裁掉延伸區；開團鈕後面墊 44px 的 label', () => {
     for (const sel of [`${S} ${TAB}::after`, `${S} .activity-region-btn::after`]) {
       expect(find(rules, sel).decls).toMatchObject({ position: 'absolute', top: '-6px', bottom: '-6px' });
     }
@@ -63,18 +63,15 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
     expect(find(rules, `${S} #activity-tabs`).decls.padding).toBe('5px 24px 5px 2px');
     expect(find(rules, `${S} .activity-region-pick`).decls.padding).toBe('5px 0');
     for (const btn of ['.back-btn', '.page-search-toggle-btn']) {
+      // 34px 含 1px 框：padding box 32＋上 7＋下 5＝44；往下只延伸 4px，不會被黏頂列蓋住
       expect(find(rules, `${S} .activity-page-header ${btn}::after`).decls)
-        .toMatchObject({ top: '-6px', right: '-6px', bottom: '-6px', left: '-6px' });
+        .toMatchObject({ top: '-7px', right: '-6px', bottom: '-5px', left: '-6px' });
     }
+    // A 的 .back-btn 帶 top／left .8rem，改 relative 時必須歸零
+    expect(find(rules, `${S} .activity-page-header .back-btn`).decls).toMatchObject({ position: 'relative', top: '0', left: '0' });
     expect(find(rules, `${S} .activity-region-item`).decls['min-height']).toBe('44px');
-    const create = find(rules, `${S} #activity-create-btn`).decls;
-    expect(create).toMatchObject({
-      height: '44px',
-      margin: '-5px 0',
-      'border-top': '5px solid transparent',
-      'border-bottom': '5px solid transparent',
-      'box-sizing': 'border-box',
-    });
+    expect(find(rules, `${S} .activity-create-hit`).decls).toMatchObject({ position: 'absolute', height: '44px', 'z-index': '0' });
+    expect(find(rules, `${S} #activity-create-btn`).decls['z-index']).toBe('1');
   });
 
   it('長語系：標題列可換行，標題區不縮，「我要開團」放不下時整顆換到第二行（不重疊）', () => {
@@ -127,17 +124,15 @@ describe('activity-head.css：頂部精簡＋液態光澤', () => {
     expect(wins(find(rules, `${S} .activity-region-btn.active`), find(rules, `${D} .activity-region-btn`))).toBe(true);
   });
 
-  it('光澤：膠囊、圓鈕、開團鈕都有上半光澤與頂緣亮線；鎖定的開團鈕不呼吸', () => {
+  it('光澤：膠囊、圓鈕、開團鈕都有上半光澤與頂緣亮線；開團鈕外框與呼吸光暈仍照 A（本檔不覆寫）', () => {
     for (const sel of [`${S} ${TAB}`, `${D} ${TAB}`, `${S} .activity-region-btn`, `${S} .activity-page-header .back-btn`, `${D} .activity-page-header .page-search-toggle-btn`]) {
       const r = find(rules, sel);
       expect(r.decls.background, sel).toMatch(/^linear-gradient\(180deg, rgba\(255,255,255,\.\d+\) 0%/);
       expect(r.decls['box-shadow'], sel).toMatch(/^inset 0 1px 0 /);
     }
     expect(find(rules, `${S} #activity-create-btn .activity-create-gloss`).decls).toMatchObject({ 'pointer-events': 'none', 'z-index': '3' });
-    const locked = find(rules, `${S} #activity-create-btn.activity-create-profile-locked`);
-    expect(locked.decls.animation).toBe('none');
-    expect(wins(locked, find(rules, `${D} #activity-create-btn`))).toBe(true);
-    expect(wins(find(rules, `${D} #activity-create-btn.activity-create-profile-locked`), find(rules, `${D} #activity-create-btn`))).toBe(true);
+    const createRules = rules.filter((r) => /#activity-create-btn$/.test(r.selector));
+    expect(createRules.some((r) => ['animation', 'animation-name', 'border', 'border-top', 'filter', 'box-shadow'].some((p) => p in r.decls))).toBe(false);
   });
 
   it('搜尋面板輸入框 16px（iPhone 不自動放大）', () => {

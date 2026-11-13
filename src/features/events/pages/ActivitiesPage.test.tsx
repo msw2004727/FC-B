@@ -800,7 +800,13 @@ describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', 
     expect(items).toEqual(['All', 'Central', 'North', 'South', 'East & Islands', 'Find nearby activities']);
   });
 
-  it('我要開團加一層光澤（不攔點擊、讀屏略過）', async () => {
+  it('沒有開團權限時不放點擊延伸區', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    expect(container.querySelector('.activity-create-hit')).toBeNull();
+  });
+
+  it('我要開團加一層光澤（不攔點擊、讀屏略過）；點擊延伸區（label）等於點按鈕', async () => {
     vi.mocked(useViewer).mockReturnValue({
       uid: 'viewer',
       teamIds: new Set(),
@@ -816,5 +822,16 @@ describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', 
     const gloss = container.querySelector('#activity-create-btn > .activity-create-gloss');
     expect(gloss).toBeTruthy();
     expect(gloss?.getAttribute('aria-hidden')).toBe('true');
+
+    const btn = container.querySelector('#activity-create-btn') as HTMLButtonElement;
+    const hit = container.querySelector('label.activity-create-hit') as HTMLLabelElement;
+    expect(hit).toBeTruthy();
+    expect(hit.htmlFor).toBe('activity-create-btn');
+    expect(hit.getAttribute('aria-hidden')).toBe('true');
+    expect(hit.control).toBe(btn);
+    const clicks = vi.fn();
+    btn.addEventListener('click', clicks);
+    fireEvent.click(hit);
+    expect(clicks).toHaveBeenCalledTimes(1);
   });
 });
