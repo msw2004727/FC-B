@@ -191,7 +191,7 @@ jobs:
       # 只警示不擋：FC 正本改規則後 FC-B 未同步前，不擋不相干的前端上線（Opus 審 P2）；副本自身雜湊與規則測試照擋。
       - name: 規則副本對正本
         continue-on-error: true
-        run:node scripts/check-rules-sync.mjs --upstream-url https://raw.githubusercontent.com/msw2004727/FC/main
+        run: node scripts/check-rules-sync.mjs --upstream-url https://raw.githubusercontent.com/msw2004727/FC/main
 
       - name: 規則測試
         run: npm run test:rules
