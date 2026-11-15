@@ -427,7 +427,6 @@ function RosterSlab({
       aria-labelledby={nameId}
       aria-describedby={descId}
       aria-label={described}
-      aria-expanded="false"
       disabled={disabled}
       onPointerDown={prefetch}
       onClick={open}
