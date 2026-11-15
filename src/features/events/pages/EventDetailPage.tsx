@@ -30,7 +30,7 @@ import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
-import { useUserRoles } from '@/data/user-roles';
+import { getCachedUserGender, useUserRoles } from '@/data/user-roles';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
 import { resolveOperator } from '../data/event-lifecycle';
@@ -2313,6 +2313,16 @@ function EventDetailSession({
                       disabled={busy || reservation.busy || refreshFailed}
                       onOpen={handleOpenDetailAttendanceRecords}
                       onPrefetch={prefetchDetailAttendanceRecords}
+                      confirmedPeople={guestEventPeople(event, 'participants')}
+                      waitlistPeople={guestEventPeople(event, 'waitlistNames')}
+                      roles={roles}
+                      genderOf={(uid) => {
+                        try {
+                          return getCachedUserGender(uid);
+                        } catch {
+                          return undefined;
+                        }
+                      }}
                     />
                   ) : rosterPhase === 'loading' ? (
                     <DetailAttendanceLoading

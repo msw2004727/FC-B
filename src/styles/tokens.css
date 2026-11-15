@@ -209,6 +209,42 @@
   --shadow-md: 0 4px 24px rgba(0,0,0,.12);
   --shadow-lg: 0 8px 32px rgba(0,0,0,.15);
 
+  /* 出席名單收合卡（v6，2026-11-15）。頭像色：層級＞性別＞一般。一般色跟 uc-user。 */
+  --color-roster-av-user-bg: var(--color-bg-elevated);
+  --color-roster-av-user-fg: var(--color-text-secondary);
+  --color-roster-av-user-bd: var(--color-border);
+  --color-roster-av-male-bg: #cffafe;
+  --color-roster-av-male-fg: #0e7490;
+  --color-roster-av-male-bd: #a5f3fc;
+  --color-roster-av-female-bg: #fce7f3;
+  --color-roster-av-female-fg: #be185d;
+  --color-roster-av-female-bd: #fbcfe8;
+  --color-roster-av-coach-bg: #fef3c7;
+  --color-roster-av-coach-fg: #92400e;
+  --color-roster-av-coach-bd: #fde68a;
+  --color-roster-av-captain-bg: #ede9fe;
+  --color-roster-av-captain-fg: #5b21b6;
+  --color-roster-av-captain-bd: #ddd6fe;
+  --color-roster-av-lead-bg: #dbeafe;
+  --color-roster-av-lead-fg: #1d4ed8;
+  --color-roster-av-lead-bd: #bfdbfe;
+  --color-roster-av-venue-bg: #ffedd5;
+  --color-roster-av-venue-fg: #9a3412;
+  --color-roster-av-venue-bd: #fed7aa;
+  --color-roster-av-admin-bg: #dbeafe;
+  --color-roster-av-admin-fg: #1e40af;
+  --color-roster-av-admin-bd: #bfdbfe;
+  --color-roster-av-super-bg: #fee2e2;
+  --color-roster-av-super-fg: #991b1b;
+  --color-roster-av-super-bd: #fecaca;
+  --color-roster-slab-bg: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%), linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  --color-roster-slab-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+  --color-roster-slab-waitlist: #7c3aed;
+  --color-roster-slab-sep: rgba(120,134,156,.32);
+  --color-roster-slab-ring: #f4f7fa;
+  --color-roster-slab-knob-bg: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0) 60%), var(--accent-bg);
+  --color-roster-slab-knob-shadow: inset 0 0 0 1px rgba(13,148,136,.28), inset 0 -4px 6px -4px rgba(13,148,136,.25);
+
   /* ── Typography ── */
   --font-sans:
     -apple-system, BlinkMacSystemFont,
@@ -342,6 +378,42 @@
   --shadow-sm: 0 2px 12px rgba(0,0,0,.4);
   --shadow-md: 0 4px 24px rgba(0,0,0,.45);
   --shadow-lg: 0 8px 32px rgba(0,0,0,.5);
+
+  /* 出席名單收合卡（v6 深色）。頭像底不透明。 */
+  --color-roster-av-user-bg: var(--color-bg-elevated);
+  --color-roster-av-user-fg: var(--color-text-secondary);
+  --color-roster-av-user-bd: var(--color-border);
+  --color-roster-av-male-bg: #1e4353;
+  --color-roster-av-male-fg: #67e8f9;
+  --color-roster-av-male-bd: rgba(34,211,238,.38);
+  --color-roster-av-female-bg: #462a46;
+  --color-roster-av-female-fg: #f9a8d4;
+  --color-roster-av-female-bd: rgba(236,72,153,.4);
+  --color-roster-av-coach-bg: #49422e;
+  --color-roster-av-coach-fg: #fcd34d;
+  --color-roster-av-coach-bd: rgba(251,191,36,.4);
+  --color-roster-av-captain-bg: #332e58;
+  --color-roster-av-captain-fg: #c4b5fd;
+  --color-roster-av-captain-bd: rgba(139,92,246,.4);
+  --color-roster-av-lead-bg: #223454;
+  --color-roster-av-lead-fg: #93c5fd;
+  --color-roster-av-lead-bd: rgba(59,130,246,.35);
+  --color-roster-av-venue-bg: #433428;
+  --color-roster-av-venue-fg: #fbbf24;
+  --color-roster-av-venue-bd: rgba(217,119,6,.4);
+  --color-roster-av-admin-bg: #233658;
+  --color-roster-av-admin-fg: #93bbfc;
+  --color-roster-av-admin-bd: rgba(59,130,246,.4);
+  --color-roster-av-super-bg: #472a35;
+  --color-roster-av-super-fg: #fca5a5;
+  --color-roster-av-super-bd: rgba(239,68,68,.4);
+  --color-roster-slab-bg: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%), linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  --color-roster-slab-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+  --color-roster-slab-waitlist: #a78bfa;
+  --color-roster-slab-sep: rgba(120,134,156,.32);
+  --color-roster-slab-ring: #1f2636;
+  --color-roster-slab-knob-bg: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,0) 60%), var(--accent-bg);
+  --color-roster-slab-knob-shadow: inset 0 0 0 1px rgba(52,211,153,.35), inset 0 -4px 6px -4px rgba(0,0,0,.4);
 }
 
 /* ── DARK via system preference (when user has not explicitly chosen) ── */
@@ -416,6 +488,42 @@
     --shadow-sm: 0 2px 12px rgba(0,0,0,.4);
     --shadow-md: 0 4px 24px rgba(0,0,0,.45);
     --shadow-lg: 0 8px 32px rgba(0,0,0,.5);
+
+    /* 出席名單收合卡（v6 深色，跟系統深色）。頭像底不透明。 */
+    --color-roster-av-user-bg: var(--color-bg-elevated);
+    --color-roster-av-user-fg: var(--color-text-secondary);
+    --color-roster-av-user-bd: var(--color-border);
+    --color-roster-av-male-bg: #1e4353;
+    --color-roster-av-male-fg: #67e8f9;
+    --color-roster-av-male-bd: rgba(34,211,238,.38);
+    --color-roster-av-female-bg: #462a46;
+    --color-roster-av-female-fg: #f9a8d4;
+    --color-roster-av-female-bd: rgba(236,72,153,.4);
+    --color-roster-av-coach-bg: #49422e;
+    --color-roster-av-coach-fg: #fcd34d;
+    --color-roster-av-coach-bd: rgba(251,191,36,.4);
+    --color-roster-av-captain-bg: #332e58;
+    --color-roster-av-captain-fg: #c4b5fd;
+    --color-roster-av-captain-bd: rgba(139,92,246,.4);
+    --color-roster-av-lead-bg: #223454;
+    --color-roster-av-lead-fg: #93c5fd;
+    --color-roster-av-lead-bd: rgba(59,130,246,.35);
+    --color-roster-av-venue-bg: #433428;
+    --color-roster-av-venue-fg: #fbbf24;
+    --color-roster-av-venue-bd: rgba(217,119,6,.4);
+    --color-roster-av-admin-bg: #233658;
+    --color-roster-av-admin-fg: #93bbfc;
+    --color-roster-av-admin-bd: rgba(59,130,246,.4);
+    --color-roster-av-super-bg: #472a35;
+    --color-roster-av-super-fg: #fca5a5;
+    --color-roster-av-super-bd: rgba(239,68,68,.4);
+    --color-roster-slab-bg: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%), linear-gradient(180deg, #262e40 0%, #171c27 100%);
+    --color-roster-slab-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+    --color-roster-slab-waitlist: #a78bfa;
+    --color-roster-slab-sep: rgba(120,134,156,.32);
+    --color-roster-slab-ring: #1f2636;
+    --color-roster-slab-knob-bg: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,0) 60%), var(--accent-bg);
+    --color-roster-slab-knob-shadow: inset 0 0 0 1px rgba(52,211,153,.35), inset 0 -4px 6px -4px rgba(0,0,0,.4);
   }
 }
 
