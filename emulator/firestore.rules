@@ -734,16 +734,6 @@ service cloud.firestore {
         ));
     }
 
-    function isUserFieldOwnerResource() {
-      return isResourceOwnerByField('uid')
-        || isResourceOwnerByField('userId');
-    }
-
-    function isUserFieldOwnerRequest() {
-      return isRequestOwnerByField('uid')
-        || isRequestOwnerByField('userId');
-    }
-
     function isOpLogOwnerResource() {
       return isResourceOwnerByField('actorUid')
         || isResourceOwnerByField('uid')
@@ -1892,10 +1882,11 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
-      // ── GrowthGames 互動收件匣（任何已登入用戶可建立，自己可讀刪） ──
+      // ── GrowthGames 互動收件匣（用戶端不可建立，自己可讀可刪） ──
       match /gameInbox/{msgId} {
         allow read: if isOwner(userId);
-        allow create: if isAuth();
+        // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
+        allow create: if false;
         allow delete: if isOwner(userId);
         allow update: if false;
       }
@@ -2560,46 +2551,36 @@ service cloud.firestore {
     }
     // ═══════════════════════════════════════════
     //  Activity Records（活動紀錄）
-    //  登入可讀可建立；update 限 status 欄位或 admin
+    //  登入可讀；建立與更新只限管理員（仍拒絕 course-linked）；刪除仍限管理員
     // ═══════════════════════════════════════════
     match /activityRecords/{recordId} {
-      function isActivityStatusOnly() {
-        let changed = request.resource.data.diff(resource.data).affectedKeys();
-        return changed.hasOnly(['status', 'updatedAt']);
-      }
-
       allow read: if isAuth();
-      allow create: if isAuth()
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
+      allow create: if isAdmin()
         && !hasCourseLinkedSideEffectData(request.resource.data);
-      allow update: if isAuth()
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
+      allow update: if isAdmin()
         && !hasCourseLinkedSideEffectData(resource.data)
-        && !hasCourseLinkedSideEffectData(request.resource.data)
-        && (isUserFieldOwnerResource() || isAdmin() || isActivityStatusOnly());
+        && !hasCourseLinkedSideEffectData(request.resource.data);
       allow delete: if !hasCourseLinkedSideEffectData(resource.data)
         && isAdmin();
     }
 
     // ═══════════════════════════════════════════
     //  Attendance Records（簽到簽退）
-    //  登入可讀可建立；update 限狀態欄位或 admin；禁止刪除（審計軌跡）
+    //  登入可讀；建立與更新只限管理員（仍拒絕 course-linked／私人課程活動）；禁止刪除
     // ═══════════════════════════════════════════
     match /attendanceRecords/{recordId} {
-      function isAttendanceStatusUpdate() {
-        let changed = request.resource.data.diff(resource.data).affectedKeys();
-        return changed.hasOnly([
-          'status', 'checkOutTime', 'removedAt', 'removedByUid', 'updatedAt'
-        ]);
-      }
-
       allow read: if isAuth();
-      allow create: if isAuth()
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
+      allow create: if isAdmin()
         && !hasCourseLinkedSideEffectData(request.resource.data)
         && !isPrivateCourseLinkedEventData(eventDataForDataEventId(request.resource.data));
-      allow update: if isAuth()
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
+      allow update: if isAdmin()
         && !hasCourseLinkedSideEffectData(resource.data)
         && !hasCourseLinkedSideEffectData(request.resource.data)
-        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(resource.data))
-        && (isAdmin() || isAttendanceStatusUpdate());
+        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(resource.data));
       allow delete: if false;
     }
 
@@ -2783,17 +2764,20 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════
-    //  Logs（日誌）— 登入可讀可新增
-    //  放寬 create 給所有登入用戶（auto-exp 等功能需要）
+    //  Logs（日誌）— 登入可讀
+    //  expLogs／teamExpLogs：用戶端不可新增（Functions 用 Admin SDK，不受此限）
+    //  operationLogs 等其餘日誌仍見各自 match
     // ═══════════════════════════════════════════
     match /expLogs/{logId} {
       allow read: if isAuth();
-      allow create: if isAuth();
+      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
+      allow create: if false;
       allow update, delete: if false;
     }
     match /teamExpLogs/{logId} {
       allow read: if isAuth();
-      allow create: if isAuth();
+      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
+      allow create: if false;
       allow update, delete: if false;
     }
     match /operationLogs/{logId} {
@@ -3389,22 +3373,12 @@ service cloud.firestore {
     }
 
     match /events/{eventId}/registrationLocks/{lockId} {
-      function isLockOwnerRequest() {
-        return request.auth != null
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.key == lockId
-          && request.resource.data.eventId is string
-          && request.resource.data.registrationDocId is string
-          && request.resource.data.status == 'active';
-      }
-      function isLockOwnerResource() {
-        return request.auth != null && resource.data.userId == request.auth.uid;
-      }
-
       allow read: if isAuth();
-      allow create: if isAdmin() || isLockOwnerRequest();
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本本人可寫自己的鎖。
+      allow create: if isAdmin();
       allow update: if false;
-      allow delete: if isAdmin() || isLockOwnerResource();
+      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本本人可寫自己的鎖。
+      allow delete: if isAdmin();
     }
 
     match /events/{eventId}/attendanceRecords/{recId} {
@@ -3451,13 +3425,15 @@ service cloud.firestore {
       }
 
       allow read: if isAuth();
+      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
       allow create: if !hasCourseLinkedSideEffectData(request.resource.data)
         && requestEventIdMatchesPath(eventId)
-        && (isUserFieldOwnerRequest() || isEventSiteOperatorForPath(eventId));
+        && isEventSiteOperatorForPath(eventId);
+      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
       allow update: if isAuth()
         && !hasCourseLinkedSideEffectData(resource.data)
         && !hasCourseLinkedSideEffectData(request.resource.data)
-        && (isUserFieldOwnerResource() || isAdmin() || (isSubActivityStatusOnly() && isEventSiteOperatorForPath(eventId)));
+        && (isAdmin() || (isSubActivityStatusOnly() && isEventSiteOperatorForPath(eventId)));
       allow delete: if !hasCourseLinkedSideEffectData(resource.data)
         && isAdmin();
     }
