@@ -138,3 +138,25 @@ describe('useErrorLogRange - 競態', () => {
     expect(screen.getByTestId('first-p').textContent).toBe('B');
   });
 });
+
+describe('useErrorLogRange - 強制重抓後舊請求晚失敗（第二批審查 Flash P2，PM 補）', () => {
+  it('舊的那份失敗時不得刪掉 refresh 放進快取的新那份', async () => {
+    let rejectOld: (e: Error) => void = () => undefined;
+    const oldP = new Promise<ErrorLogsRangeResult>((_, reject) => { rejectOld = reject; });
+    const fetcher = vi.fn()
+      .mockReturnValueOnce(oldP)
+      .mockResolvedValueOnce(mockResult(['new'])) as unknown as ErrorRangeFetcher;
+
+    render(<Probe range={RANGE_A} fetcher={fetcher} label="x" />);
+    fireEvent.click(screen.getByText('重新整理'));
+    await waitFor(() => expect(screen.getByTestId('first-x').textContent).toBe('new'));
+
+    await act(async () => { rejectOld(new Error('late')); await Promise.resolve(); });
+    cleanup();
+
+    // 新掛載同一區間：快取應仍是新的那份，不再呼叫 fetcher。
+    render(<Probe range={RANGE_A} fetcher={fetcher} label="y" />);
+    await waitFor(() => expect(screen.getByTestId('first-y').textContent).toBe('new'));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});

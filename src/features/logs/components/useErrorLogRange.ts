@@ -27,7 +27,9 @@ export function useErrorLogRange(range: LogRange, fetcher: ErrorRangeFetcher = f
     if (!p) {
       p = fetcher(range.startMs, range.endMs);
       cache.set(key, p);
-      p.catch(() => cache.delete(key));
+      const mine = p;
+      // 只刪自己放進去的那一份；強制重抓後舊的晚失敗不得刪掉新的（第二批審查 Flash P2）。
+      p.catch(() => { if (cache.get(key) === mine) cache.delete(key); });
     }
     try {
       const res = await p;

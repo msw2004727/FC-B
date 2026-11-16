@@ -195,6 +195,7 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
                       <dt>{t('logs.error.where')}</dt><dd class="is-mono" data-no-translate>{g.where || '-'}</dd>
                     </dl>
                     <div class="lc-sublist">{g.logs.slice(0, 5).map((d, i) => renderLog(d, `${g.key}#${i}`, true))}</div>
+                    {g.logs.length > 5 ? <div class="pma-note">{t('logs.error.restN', { n: g.logs.length - 5 })}</div> : null}
                     <button type="button" class="pma-copy" onClick={() => { copy(buildErrorGroupDiagnostic(g)).catch(() => undefined); }}>{t('logs.error.copyGroup')}</button>
                   </div>
                 ) : null}

@@ -154,6 +154,7 @@ export function UserPromptPanel(props: UserPromptPanelProps): JSX.Element {
                         </div>
                       ))}
                     </div>
+                    {g.logs.length > 8 ? <div class="pma-note">{t('logs.error.restN', { n: g.logs.length - 8 })}</div> : null}
                   </div>
                 ) : null}
               </div>

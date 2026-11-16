@@ -59,7 +59,9 @@ export function AuditLogPanel(props: AuditLogPanelProps): JSX.Element {
   const seq = useRef(0);
   const ref = useRef(pages);
   ref.current = pages;
-  const dayKeys = useMemo(() => dayKeysDesc(range.startMs, range.endMs, nowMs), [range.startMs, range.endMs]);
+  // 依賴含「今天」日鍵：頁面開過午夜時，新的一天會納入（第二批審查 Flash P2）。
+  const todayKey = taipeiDayKey(nowMs);
+  const dayKeys = useMemo(() => dayKeysDesc(range.startMs, range.endMs, nowMs), [range.startMs, range.endMs, todayKey]);
   const want = pageSize === 'infinite' ? INFINITE_CHUNK : pageSize;
 
   async function load(first: boolean): Promise<boolean> {
@@ -70,7 +72,9 @@ export function AuditLogPanel(props: AuditLogPanelProps): JSX.Element {
     ref.current = next;
     setPages(next);
     try {
-      const res = await fetchAuditPage(dayKeys, first ? START.cursor : cur.cursor, want, taipeiDayKey(nowMs), readDay);
+      // 區間累計上限 500：最後一批只抓剩餘額度，剛好停在上限（第二批審查 Flash P1）。
+      const loaded = first ? 0 : cur.chunks.reduce((n, c) => n + c.length, 0);
+      const res = await fetchAuditPage(dayKeys, first ? START.cursor : cur.cursor, Math.max(1, Math.min(want, AUDIT_RANGE_CAP - loaded)), taipeiDayKey(nowMs), readDay);
       if (mySeq !== seq.current) return false;
       const chunks = first ? [res.entries] : cur.chunks.concat([res.entries]);
       const total = chunks.reduce((n, c) => n + c.length, 0);
