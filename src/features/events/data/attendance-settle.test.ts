@@ -24,6 +24,7 @@ const {
 
 const expGrant = vi.hoisted(() => ({ enabled: true }));
 vi.mock('@/core/exp-display', () => ({
+  SHOW_EXP: false,
   get EXP_GRANT_ENABLED() {
     return expGrant.enabled;
   },

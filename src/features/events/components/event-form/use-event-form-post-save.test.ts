@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 const expState = vi.hoisted(() => ({ enabled: true }));
 vi.mock('@/core/exp-display', () => ({
+  SHOW_EXP: false,
   get EXP_GRANT_ENABLED() {
     return expState.enabled;
   },

@@ -29,7 +29,8 @@ import { useViewer, type ViewerView } from './data/viewer';
 import { useUserRoles } from '@/data/user-roles';
 
 // 這組測試驗證「顯示經驗值」時的畫面；新版預設關閉（src/core/exp-display.ts），關閉時的行為另有測試。
-vi.mock('@/core/exp-display', () => ({ SHOW_EXP: true }));
+vi.mock('@/core/exp-display', () => ({
+  SHOW_EXP: false, SHOW_EXP: true }));
 
 // 測試同步更新：照 A（M-121）成就/稱號快捷改導頁，需 stub useLocation().route 供斷言。
 const { routeMock } = vi.hoisted(() => ({ routeMock: vi.fn() }));
