@@ -157,3 +157,8 @@
 [data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-cancel {
   color: #cbd5e1;
 }
+
+/* Opus 終審 P2：標題列透明，與液態玻璃本體一致（legacy .modal-header 自帶實色底）。 */
+#mobile-line-login-hint-modal .modal-header {
+  background: transparent;
+}
