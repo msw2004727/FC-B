@@ -126,6 +126,21 @@
     linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
   box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(236,72,153,.16), 0 8px 18px -10px rgba(236,72,153,.38);
 }
+/* 新手友善（綠）、高強度（紫）：2026-11-16 站長定色，強度同女生專屬；同時是女生專屬時卡片用粉色 */
+#page-activities .tl-event-row.tl-type-beginner {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(16,185,129,.15), rgba(16,185,129,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(16,185,129,.16), 0 8px 18px -10px rgba(16,185,129,.38);
+}
+#page-activities .tl-event-row.tl-type-high-intensity {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(139,92,246,.15), rgba(139,92,246,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(139,92,246,.16), 0 8px 18px -10px rgba(139,92,246,.38);
+}
 /* 暗色 */
 [data-theme="dark"] #page-activities .tl-event-row {
   border-top-color: rgba(255,255,255,.18);
@@ -185,6 +200,21 @@
     linear-gradient(90deg, rgba(236,72,153,.24), rgba(236,72,153,0) 65%),
     linear-gradient(180deg, #262e40 0%, #171c27 100%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(236,72,153,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-beginner {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(16,185,129,.24), rgba(16,185,129,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(16,185,129,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-activities .tl-event-row.tl-type-high-intensity {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(139,92,246,.24), rgba(139,92,246,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(139,92,246,.30), 0 8px 18px -10px rgba(0,0,0,.75);
 }
 
 /* 2026-11-13 站長回報：正取、不公開印章看不清楚，且大小要相同。

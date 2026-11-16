@@ -265,14 +265,39 @@
   box-shadow: inset 0 0 0 1px rgba(236,72,153,.6), 0 2px 6px -2px rgba(236,72,153,.5);
 }
 
-/* 未開放（新手友善、高強度）：灰字、不填底，仍保留分隔線 */
-#page-activities #activity-tabs > .tab.activity-tab-unavailable,
-[data-theme="dark"] #page-activities #activity-tabs > .tab.activity-tab-unavailable {
-  color: var(--text-muted);
-  background: none;
-  opacity: .5;
-  filter: grayscale(1);
-  cursor: not-allowed;
+/* 新手友善（綠）、高強度（紫）：2026-11-16 站長定色，做法同女生專屬（未選彩色字，選中片內漸層白字） */
+#page-activities #activity-tabs > .tab.activity-tab-beginner { color: #059669; }
+[data-theme="dark"] #page-activities #activity-tabs > .tab.activity-tab-beginner { color: #6ee7b7; }
+#page-activities #activity-tabs > .tab.activity-tab-high-intensity { color: #7c3aed; }
+[data-theme="dark"] #page-activities #activity-tabs > .tab.activity-tab-high-intensity { color: #c4b5fd; }
+#page-activities #activity-tabs > .tab.activity-tab-beginner.active,
+#page-activities #activity-tabs > .tab.activity-tab-high-intensity.active {
+  color: #fff;
+  font-weight: 700;
+}
+#page-activities #activity-tabs > .tab.activity-tab-beginner.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #34d399, #059669);
+  box-shadow: inset 0 0 0 1px rgba(5,150,105,.55), 0 2px 6px -2px rgba(16,185,129,.6);
+}
+[data-theme="dark"] #page-activities #activity-tabs > .tab.activity-tab-beginner.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #047857, #10b981);
+  box-shadow: inset 0 0 0 1px rgba(16,185,129,.6), 0 2px 6px -2px rgba(16,185,129,.5);
+}
+#page-activities #activity-tabs > .tab.activity-tab-high-intensity.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #a78bfa, #7c3aed);
+  box-shadow: inset 0 0 0 1px rgba(124,58,237,.55), 0 2px 6px -2px rgba(139,92,246,.6);
+}
+[data-theme="dark"] #page-activities #activity-tabs > .tab.activity-tab-high-intensity.active::after {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(135deg, #6d28d9, #8b5cf6);
+  box-shadow: inset 0 0 0 1px rgba(139,92,246,.6), 0 2px 6px -2px rgba(139,92,246,.5);
 }
 
 /* ── 地區選單：直式，每列 44px；最下面「尋找附近活動」（停用外觀，點了提示未開啟） ── */

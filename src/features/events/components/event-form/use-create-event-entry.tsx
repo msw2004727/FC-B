@@ -7,6 +7,8 @@ import type { UserProfile } from '@/features/profile/data/profile-model';
 import { canCreateEvent } from '../../data/event-create-guard';
 import { createEventContextFromViewer } from '../../data/event-create-context';
 import { CreateEventTypeSheet } from './CreateEventTypeSheet';
+import { IntensityPickSheet } from './IntensityPickSheet';
+import type { IntensityChoice } from '../../data/activity-categories';
 import type { EventFormPreset } from '../EventFormModal';
 import {
   invalidateEventFormPostSave,
@@ -40,6 +42,8 @@ export interface CreateEventEntry {
   onClickCustom(preset: EventFormPreset): void;
   /** 目前表單要套用的 preset；一般入口（onClick）開啟時為 null。 */
   preset: EventFormPreset | null;
+  /** 建立彈窗選的分類；俱樂部詳情直接開表單時為 ''（一般）。 */
+  intensity: IntensityChoice;
   formOpen: boolean;
   closeForm(): void;
   overlays: JSX.Element | null;
@@ -52,6 +56,8 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
   const [editorOpen, setEditorOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [preset, setPreset] = useState<EventFormPreset | null>(null);
+  const [intensitySheetOpen, setIntensitySheetOpen] = useState(false);
+  const [intensity, setIntensity] = useState<IntensityChoice>('');
 
   const mounted = useRef(false);
   const generation = useRef(0);
@@ -260,6 +266,22 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
             return;
           }
           setPreset(null);
+          setIntensitySheetOpen(true);
+        }}
+      />
+    );
+  } else if (intensitySheetOpen) {
+    overlays = (
+      <IntensityPickSheet
+        open
+        onClose={() => setIntensitySheetOpen(false)}
+        onPick={(level) => {
+          if (!mounted.current) return;
+          if (!allowed()) {
+            deny();
+            return;
+          }
+          setIntensity(level);
           setFormOpen(true);
         }}
       />
@@ -281,10 +303,12 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
     onClick,
     onClickCustom,
     preset,
+    intensity,
     formOpen,
     closeForm: () => {
       setFormOpen(false);
       setPreset(null);
+      setIntensity('');
     },
     overlays,
   };

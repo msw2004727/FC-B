@@ -40,6 +40,7 @@ import {
 import { publicEventHref } from '../data/presentation';
 import { SPORTS, eventSportTag } from '../data/sports';
 import { isEventInEndedTab, normalizeListTab } from '../data/terminal';
+import { VISIBLE_ACTIVITY_CATEGORIES, getEventIntensity, isIntensityLevel, type IntensityLevel } from '../data/activity-categories';
 import type { RegistrationDoc } from '../data/types';
 import { useEvents } from '../data/use-events';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
@@ -150,12 +151,19 @@ function normalizeActivityUrlType(value: string | null | undefined): string {
   return (ACTIVITY_URL_TYPES as readonly string[]).includes(raw) ? raw : '';
 }
 
+type ActivityListTab = 'normal' | 'female' | 'calendar' | IntensityLevel;
+
+/** 已開放的頁籤；分類頁籤由 activity-categories 設定表決定（預留未顯示的不算）。 */
+function isKnownActivityTab(tab: string): tab is ActivityListTab {
+  return tab === 'normal' || tab === 'female' || tab === 'calendar' || isIntensityLevel(tab);
+}
+
 function readUrlFilters(urlStr: string): {
   hasExplicit: boolean;
   hasSportParam: boolean;
   region: string;
   sport: string;
-  tab: 'normal' | 'female' | 'calendar';
+  tab: ActivityListTab;
   type: string;
 } {
   const parsed = new URL(urlStr || '/activities', 'https://toosterx.invalid');
@@ -169,7 +177,7 @@ function readUrlFilters(urlStr: string): {
     hasSportParam,
     region: normalizeActivityUrlRegion(params.get('region')),
     sport: normalizeActiveSport(params.get('sport')),
-    tab: normalizedTab === 'calendar' ? 'calendar' : normalizedTab === 'female' ? 'female' : 'normal',
+    tab: isKnownActivityTab(normalizedTab) ? normalizedTab : 'normal',
     type: normalizeActivityUrlType(params.get('type')),
   };
 }
@@ -368,10 +376,9 @@ export default function ActivitiesPage(): JSX.Element {
     const parsed = readUrlFilters(location.url);
     const current = new URL(location.url, 'https://toosterx.invalid');
     const requestedTab = current.searchParams.get('tab');
-    if (requestedTab !== null && requestedTab !== 'normal'
-      && requestedTab !== 'female' && requestedTab !== 'calendar') {
+    if (requestedTab !== null && !isKnownActivityTab(requestedTab)) {
       const nextTab = normalizeListTab(requestedTab);
-      current.searchParams.set('tab', nextTab === 'female' ? 'female' : 'normal');
+      current.searchParams.set('tab', isKnownActivityTab(nextTab) ? nextTab : 'normal');
       location.route(`${current.pathname}${current.search}${current.hash}`, true);
       return;
     }
@@ -479,11 +486,6 @@ export default function ActivitiesPage(): JSX.Element {
 
   function switchActivityTab(nextTab: string, e?: MouseEvent): void {
     if (e) e.stopPropagation();
-    // 下一批補：新手友善、高強度篩選
-    if (nextTab === 'beginner' || nextTab === 'high-intensity') {
-      toast.show({ message: UNAVAILABLE_MSG });
-      return;
-    }
     // 照 A _setActivityTab：切到月曆捲回頂端
     if (nextTab === 'calendar') {
       try { window.scrollTo(0, 0); } catch { /* 環境未提供捲動。 */ }
@@ -616,6 +618,9 @@ export default function ActivitiesPage(): JSX.Element {
     list = list.filter((e) => !isEventInEndedTab(e, nowMs));
     if (activeTab === 'female') {
       list = list.filter((e) => getEventAllowedGender(e) === '女');
+    } else if (isIntensityLevel(activeTab)) {
+      // 在已載入清單上篩，不另查詢（顧問 §3.183）。
+      list = list.filter((e) => getEventIntensity(e as { intensityLevel?: unknown }) === activeTab);
     }
     if (filterType) {
       list = list.filter((e) => e.type === filterType);
@@ -706,7 +711,7 @@ export default function ActivitiesPage(): JSX.Element {
     );
   }
 
-  // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；活動頁 getKey 排除未開放頁籤（beginner、high-intensity）
+  // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；分類頁籤 2026-11-16 開放後一併可滑
   useSwipeTabs({
     contentRef: activityListRef,
     tabsRef: activityTabsRef,
@@ -714,7 +719,6 @@ export default function ActivitiesPage(): JSX.Element {
     getKey: (btn) => {
       const key = btn.dataset.atab;
       if (!key) return null;
-      if (key === 'beginner' || key === 'high-intensity') return null;
       return key;
     },
   });
@@ -1028,32 +1032,18 @@ export default function ActivitiesPage(): JSX.Element {
           >
             {lt('女生專屬', '女生專屬')}
           </button>
-          {/* 下一批補：新手友善 */}
-          <button
-            type="button"
-            class="tab activity-tab-unavailable"
-            data-atab="beginner"
-            aria-disabled="true"
-            title={lt('功能未開放', '功能未開放')}
-            data-i18n-title="功能未開放"
-            data-i18n="新手友善"
-            onClick={(e) => switchActivityTab('beginner', e)}
-          >
-            {lt('新手友善', '新手友善')}
-          </button>
-          {/* 下一批補：高強度 */}
-          <button
-            type="button"
-            class="tab activity-tab-unavailable"
-            data-atab="high-intensity"
-            aria-disabled="true"
-            title={lt('功能未開放', '功能未開放')}
-            data-i18n-title="功能未開放"
-            data-i18n="高強度"
-            onClick={(e) => switchActivityTab('high-intensity', e)}
-          >
-            {lt('高強度', '高強度')}
-          </button>
+          {VISIBLE_ACTIVITY_CATEGORIES.map((cat) => (
+            <button
+              key={cat.key}
+              type="button"
+              class={`tab activity-tab-${cat.key}${activeTab === cat.key ? ' active' : ''}`}
+              data-atab={cat.key}
+              data-i18n={cat.label}
+              onClick={(e) => switchActivityTab(cat.key, e)}
+            >
+              {lt(cat.label, cat.label)}
+            </button>
+          ))}
         </div>
 
         {/* 2026-11-13 C 方案：地區由整列頁籤改成右側固定的下拉（含尋找附近活動） */}
@@ -1205,6 +1195,7 @@ export default function ActivitiesPage(): JSX.Element {
           <FormModal
             open={createEntry.formOpen}
             mode="create"
+            initialIntensity={createEntry.intensity}
             viewer={viewer}
             onClose={createEntry.closeForm}
             onSaved={onFormSaved}

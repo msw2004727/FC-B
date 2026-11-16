@@ -1,3 +1,4 @@
+import { getEventIntensity } from '../../data/activity-categories';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
@@ -266,7 +267,11 @@ export function TimelineEventCard({
   }
 
   const rowBaseClass = event.teamOnly ? 'tl-type-teamonly' : `tl-type-${typeKey}`;
-  const rowClass = isFemaleOnly ? `${rowBaseClass} tl-type-female-only` : rowBaseClass;
+  const intensity = !isExternal ? getEventIntensity(event as { intensityLevel?: unknown }) : '';
+  // 女生專屬優先用粉色；其他依活動分類上綠／紫。
+  const rowClass = isFemaleOnly
+    ? `${rowBaseClass} tl-type-female-only`
+    : intensity ? `${rowBaseClass} tl-type-${intensity}` : rowBaseClass;
   const rowStyle = event.pinned
     ? (isFemaleOnly
       ? 'box-shadow:0 0 0 1px rgba(236,72,153,.16)'

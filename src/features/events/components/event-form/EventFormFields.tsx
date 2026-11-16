@@ -24,6 +24,9 @@ import { TEAM_RESERVATION_RELEASE_HOURS } from '../../data/team-reservation-rele
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
+import { IntensityIcon } from './IntensityIcon';
+import { VISIBLE_ACTIVITY_CATEGORIES, type IntensityChoice } from '../../data/activity-categories';
+import './intensity-field.css';
 import { EventFormAddons, type EventFormAddonsProps } from './EventFormAddons';
 import type { EventTemplatesView } from './use-event-templates';
 import type { MultiDateView } from './use-multi-date';
@@ -386,6 +389,33 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
           )}
         </select>
       </div>
+
+      {/* 活動分類（2026-11-16）：只在建立時可選，編輯不顯示也不送出（顧問 §3.183） */}
+      {props.mode === 'create' && (
+        <div class="ce-row" id="ce-intensity-row">
+          <div class="ce-label-row">
+            <label id="ce-intensity-label">{lt('活動分類', '活動分類')}</label>
+          </div>
+          <div class="ce-intensity-seg" role="radiogroup" aria-labelledby="ce-intensity-label">
+            {([{ key: '' as IntensityChoice, label: '一般' }, ...VISIBLE_ACTIVITY_CATEGORIES]).map((opt) => {
+              const checked = state.intensityLevel === opt.key;
+              return (
+                <button
+                  key={opt.key || 'normal'}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  class={`ce-intensity-opt ce-intensity-${opt.key || 'normal'}${checked ? ' active' : ''}`}
+                  onClick={() => onPatch({ intensityLevel: opt.key })}
+                >
+                  <IntensityIcon level={opt.key} />
+                  <span>{lt(opt.label, opt.label)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 活動地區（A #ce-region-row） */}
       <div class="ce-row" id="ce-region-row">
