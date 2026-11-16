@@ -202,8 +202,10 @@ export function OperationLogPanel(props: OperationLogPanelProps): JSX.Element {
               })}
             </div>
           )}
-          {infinite ? (
-            <InfiniteSentinel enabled={shown < paged.sorted.length} onReach={() => setShown((n) => n + INFINITE_CHUNK)} />
+          {infinite && shown < paged.sorted.length ? (
+            <div class="pm-audit-load-more-row">
+              <button type="button" class="pma-more" onClick={() => setShown((n) => n + INFINITE_CHUNK)}>{t('logs.chat.loadMore')}</button>
+            </div>
           ) : null}
           {!infinite ? (
             <LogPager
@@ -216,6 +218,14 @@ export function OperationLogPanel(props: OperationLogPanelProps): JSX.Element {
             />
           ) : null}
         </>
+      ) : null}
+      {/* 觸發點放在讀取狀態分支外：重新整理時不卸載重掛，避免重整後自動多顯示一批（第三輪 Flash P2）；
+          清單太短、觸發點一直在畫面內時改由上方「加載更多」手動接。 */}
+      {infinite ? (
+        <InfiniteSentinel
+          enabled={load.status === 'ready' && shown < paged.sorted.length}
+          onReach={() => setShown((n) => n + INFINITE_CHUNK)}
+        />
       ) : null}
     </div>
   );

@@ -98,7 +98,7 @@ export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
     } catch {
       if (alive.current && mySeq === convoSeq.current) setConvo({ status: 'error', uids });
     } finally {
-      openingRef.current = false;
+      if (mySeq === convoSeq.current) openingRef.current = false;
     }
   }
 
@@ -267,7 +267,9 @@ export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
         box={convo}
         names={names}
         onClose={() => {
+          // 關閉時放開防連點鎖：舊請求晚到會被序號丟棄，不會蓋掉新開的對話（第三輪 Flash P2）。
           convoSeq.current += 1;
+          openingRef.current = false;
           setConvo({ status: 'closed' });
         }}
       />
