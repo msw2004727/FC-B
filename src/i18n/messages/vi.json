@@ -28,8 +28,10 @@
   "internalTest.badge": "ToosterX bản dùng thử sớm {version}",
   "swUpdate": { "title": "Có bản mới", "forcedTitle": "Vui lòng cập nhật", "now": "Cập nhật", "later": "Để sau", "busy": "Thao tác chưa hoàn tất, vui lòng cập nhật sau" },
   "lineLoginHint": {
-    "openInLine": "Mở trong ứng dụng LINE",
-    "newTabNote": "Sau khi đăng nhập xong sẽ mở ở thẻ mới. Có thể đóng thẻ cũ."
+    "openInLine": "Đăng nhập trong ứng dụng LINE",
+    "openInLineNote": "Từ giờ dùng trong LINE",
+    "browserLogin": "Đăng nhập bằng trình duyệt này",
+    "browserLoginNote": "LINE xác nhận rồi quay lại đây"
   },
   "ui": {
     "shell": {

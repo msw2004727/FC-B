@@ -28,8 +28,10 @@
   "internalTest.badge": "ToosterX 얼리 액세스 {version}",
   "swUpdate": { "title": "새 버전", "forcedTitle": "업데이트 필요", "now": "업데이트", "later": "나중에", "busy": "작업이 아직 끝나지 않았습니다. 나중에 업데이트하세요" },
   "lineLoginHint": {
-    "openInLine": "LINE 앱에서 열기",
-    "newTabNote": "로그인이 끝나면 새 탭에서 열립니다. 이전 탭은 닫아도 됩니다."
+    "openInLine": "LINE 앱에서 로그인",
+    "openInLineNote": "이제 LINE에서 사용합니다",
+    "browserLogin": "현재 브라우저로 로그인",
+    "browserLoginNote": "LINE 확인 후 이 브라우저로 돌아옵니다"
   },
   "ui": {
     "shell": {

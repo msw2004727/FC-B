@@ -5,12 +5,24 @@ import { useEffect } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { lt, useT } from '@/i18n/i18n';
 import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
+import { isStandalonePwa } from '@/features/pwa/pwa-install';
 import './MobileLineLoginHintModal.css';
 
 export interface MobileLineLoginHintModalProps {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+/** iOS 主畫面 PWA 模式不顯示瀏覽器登入，避免登入結果回不到 App。 */
+export function shouldHideBrowserLogin(
+  ua: string,
+  standalone: boolean,
+  maxTouchPoints: number,
+): boolean {
+  const isIOS = /iPhone|iPad|iPod/.test(ua)
+    || (/Macintosh/.test(ua) && maxTouchPoints > 1);
+  return isIOS && standalone;
 }
 
 function hintLabel(
@@ -40,8 +52,16 @@ export function MobileLineLoginHintModal({
   if (!open) return null;
 
   const miniAppUrl = getMiniAppShareUrl();
-  const openInLine = hintLabel(translate, 'lineLoginHint.openInLine', '在 LINE App 開啟');
-  const newTabNote = hintLabel(translate, 'lineLoginHint.newTabNote', '登入完成會開在新分頁，舊分頁可關閉');
+  const openInLine = hintLabel(translate, 'lineLoginHint.openInLine', '在 LINE App 中登入');
+  const openInLineNote = hintLabel(translate, 'lineLoginHint.openInLineNote', '之後都在 LINE 裡使用');
+  const browserLogin = hintLabel(translate, 'lineLoginHint.browserLogin', '用目前瀏覽器登入');
+  const browserLoginNote = hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
+
+  const hideBrowserLogin = shouldHideBrowserLogin(
+    typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    isStandalonePwa(),
+    typeof navigator === 'undefined' ? 0 : (navigator.maxTouchPoints ?? 0),
+  );
 
   // A 的 data-no-backdrop-close="1"：點背景不關閉。
   return (
@@ -83,20 +103,47 @@ export function MobileLineLoginHintModal({
             </svg>
             {openInLine}
           </a>
-          <div class="line-login-hint-or" data-i18n="lineLoginHint.or">
-            {lt('lineLoginHint.or', '或')}
-          </div>
-          <button
-            class="line-login-hint-action line-login-hint-login"
-            type="button"
-            data-i18n="lineLoginHint.loginPage"
-            onClick={onConfirm}
+          <p
+            class="line-login-hint-note line-login-hint-open-note"
+            data-i18n="lineLoginHint.openInLineNote"
           >
-            {lt('lineLoginHint.loginPage', '前往 LINE 登入頁')}
-          </button>
-          <p class="line-login-hint-note" data-i18n="lineLoginHint.newTabNote">
-            {newTabNote}
+            {openInLineNote}
           </p>
+          {!hideBrowserLogin && (
+            <>
+              <div class="line-login-hint-or" data-i18n="lineLoginHint.or">
+                {lt('lineLoginHint.or', '或')}
+              </div>
+              <button
+                class="line-login-hint-action line-login-hint-login"
+                type="button"
+                data-i18n="lineLoginHint.browserLogin"
+                onClick={onConfirm}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <ellipse cx="12" cy="12" rx="3.8" ry="9" />
+                  <path d="M3 12h18" />
+                </svg>
+                {browserLogin}
+              </button>
+              <p
+                class="line-login-hint-note line-login-hint-browser-note"
+                data-i18n="lineLoginHint.browserLoginNote"
+              >
+                {browserLoginNote}
+              </p>
+            </>
+          )}
           <button
             class="line-login-hint-cancel"
             type="button"

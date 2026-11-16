@@ -28,8 +28,10 @@
   "internalTest.badge": "ToosterX รุ่นทดลองใช้ก่อน {version}",
   "swUpdate": { "title": "มีเวอร์ชันใหม่", "forcedTitle": "โปรดอัปเดต", "now": "อัปเดต", "later": "ไว้ทีหลัง", "busy": "การดำเนินการยังไม่เสร็จ โปรดอัปเดตภายหลัง" },
   "lineLoginHint": {
-    "openInLine": "เปิดในแอป LINE",
-    "newTabNote": "เมื่อเข้าสู่ระบบเสร็จ จะเปิดในแท็บใหม่ แท็บเดิมปิดได้"
+    "openInLine": "เข้าสู่ระบบในแอป LINE",
+    "openInLineNote": "จะใช้ใน LINE ต่อไป",
+    "browserLogin": "เข้าสู่ระบบด้วยเบราว์เซอร์นี้",
+    "browserLoginNote": "LINE ยืนยันแล้วกลับมาที่นี่"
   },
   "ui": {
     "shell": {
