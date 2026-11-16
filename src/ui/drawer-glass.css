@@ -46,6 +46,10 @@
   height: 1px;
   background: var(--color-roster-slab-sep);
 }
+/* 卡內列底由卡色表達；須寫在選中／滑過規則之前（同權重，後者才能蓋上選中底色）。 */
+.legacy-ui #side-drawer .dg-group .drawer-role-admin,
+.legacy-ui #side-drawer .dg-group .drawer-role-super,
+.legacy-ui #side-drawer .dg-group .drawer-role-yellow { background: transparent; }
 .legacy-ui #side-drawer .drawer-item.active,
 .legacy-ui #side-drawer .drawer-item:hover,
 .legacy-ui #side-drawer .drawer-item:active {
@@ -57,9 +61,6 @@
 .legacy-ui #side-drawer .dg-group.dg-admin { background: var(--color-drawer-group-admin-bg); }
 .legacy-ui #side-drawer .dg-group.dg-super { background: var(--color-drawer-group-super-bg); }
 .legacy-ui #side-drawer .dg-group.dg-admin + .dg-group.dg-super { margin-top: 8px; }
-.legacy-ui #side-drawer .dg-group .drawer-role-admin,
-.legacy-ui #side-drawer .dg-group .drawer-role-super,
-.legacy-ui #side-drawer .dg-group .drawer-role-yellow { background: transparent; }
 
 .legacy-ui #side-drawer .dg-ico {
   flex: 0 0 auto;
