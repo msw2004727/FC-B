@@ -2,7 +2,6 @@ import { Timestamp, collection, getDocs, limit, orderBy, query, where } from 'fi
 import { getFirebase } from '@/data/firebase';
 
 export const OPERATION_LOGS_COLLECTION = 'operationLogs' as const;
-export const OPERATION_LOGS_FETCH_LIMIT = 200;
 
 export interface FirestoreTimestampLike {
   toDate?: () => Date;
@@ -52,25 +51,6 @@ export interface DiagnosticTextLabels {
   uncategorized?: string;
   unmarked?: string;
   none?: string;
-}
-
-/** 照 A `_buildCollectionQuery('operationLogs')`：collection('operationLogs') + orderBy('createdAt','desc') + limit(200) 一次讀取。 */
-export async function fetchOperationLogs(): Promise<OperationLogDoc[]> {
-  const { db } = await getFirebase();
-  const q = query(
-    collection(db, OPERATION_LOGS_COLLECTION),
-    orderBy('createdAt', 'desc'),
-    limit(OPERATION_LOGS_FETCH_LIMIT),
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((docSnap) => {
-    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
-    return {
-      ...data,
-      _docId: docSnap.id,
-      id: typeof data.id === 'string' && data.id.trim() ? data.id : docSnap.id,
-    } as OperationLogDoc;
-  });
 }
 
 /** 時間區間查詢上限：超過時只取最新的這些筆，畫面提示縮小區間。 */
