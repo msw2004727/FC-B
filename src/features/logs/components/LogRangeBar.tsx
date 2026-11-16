@@ -1,6 +1,7 @@
 /**
  * 日誌中心共用：時間區間（日／週／月＋前後切換）與每頁筆數（10／20／30／無限）。
  * 一列排完：[日|週|月] ‹ 區間 › [每頁]；窄螢幕也一列（字短、按鈕固定寬）。
+ * 切換單位時：目前區間含「現在」就以現在為準（本週→日＝今天），否則以目前區間起點為準。
  */
 import type { JSX } from 'preact';
 
@@ -39,7 +40,7 @@ export function LogRangeBar(props: LogRangeBarProps): JSX.Element {
             type="button"
             class={`lc-seg-btn${props.range.unit === unit ? ' is-on' : ''}`}
             aria-pressed={props.range.unit === unit}
-            onClick={() => props.onRange(rangeContaining(unit, Math.min(props.range.startMs, props.nowMs)))}
+            onClick={() => props.onRange(rangeContaining(unit, latest ? props.nowMs : props.range.startMs))}
           >
             {t(`logs.range.${unit}`)}
           </button>
