@@ -20,7 +20,13 @@ const mock = registerMock as unknown as (name: string, handler: (req: Record<str
 import { setLocale, t } from '@/i18n/i18n';
 import type { Locale } from '@/i18n/locales';
 import { ToastHost } from '@/ui/ToastHost';
+import { AuditLogPanel } from '@/features/logs/components/AuditLogPanel';
+import { ErrorLogPanel } from '@/features/logs/components/ErrorLogPanel';
 import { OperationLogPanel } from '@/features/logs/components/OperationLogPanel';
+import { UserPromptPanel } from '@/features/logs/components/UserPromptPanel';
+import { taipeiDayKey } from '@/features/logs/data/audit-log-model';
+import type { ErrorLogDoc } from '@/features/logs/data/error-log-model';
+import FAKE from './logcenter-fake.json';
 import { PmAuditPanel } from '@/features/logs/components/PmAuditPanel';
 
 const params = new URLSearchParams(location.search);
@@ -139,7 +145,27 @@ const fakeOps = async (startMs: number, endMs: number) => ({
   truncated: false,
 });
 const NOW = Date.parse('2026-11-16T14:00:00Z');
-const tab = params.get('tab') === 'op' ? 'op' : 'chat';
+const tab = (['op', 'audit', 'error', 'prompt'] as const).find((k) => k === params.get('tab')) ?? 'chat';
+// 第二批三頁：假資料時間在 2026-11-19（台北週四 12:00），本週 11/16～11/22。
+const NOW2: number = FAKE.now;
+type FakeAudit = (typeof FAKE.audit)[number];
+const auditSorted: FakeAudit[] = [...FAKE.audit].sort((a, b) => b.createdAtMs - a.createdAtMs);
+const fakeReadDay = async (dayKey: string, lastDoc: unknown, limit: number) => {
+  const day = auditSorted.filter((a) => taipeiDayKey(a.createdAtMs) === dayKey);
+  const start = lastDoc ? day.indexOf(lastDoc as FakeAudit) + 1 : 0;
+  const slice = day.slice(start, start + limit + 1);
+  return {
+    docs: slice.slice(0, limit).map((a) => ({ id: a._docId, snap: a, data: { ...a, createdAt: { seconds: a.createdAtMs / 1000 } } as Record<string, unknown> })),
+    hasMore: slice.length > limit,
+  };
+};
+const fakeErrors = async (startMs: number, endMs: number) => ({
+  docs: FAKE.errors
+    .filter((e) => e.createdAtMs >= startMs && e.createdAtMs < endMs)
+    .sort((a, b) => b.createdAtMs - a.createdAtMs)
+    .map(({ createdAtMs, ...e }) => ({ ...e, createdAt: { seconds: createdAtMs / 1000 } }) as ErrorLogDoc),
+  truncated: false,
+});
 const pageSizeParam = params.get('size');
 
 const fakeNames = async (uids: readonly string[]) => Object.fromEntries(uids.map((u) => [u, NAMES[u] ?? '']));
@@ -158,6 +184,10 @@ function Screen() {
     if (scene === 'settings') later(() => click('.pma-toolbar .pma-icon-btn'), 300);
     if (scene === 'all') later(() => click('.pma-toggle'), 300);
     if (scene === 'opopen') later(() => click('.olc-row', 4), 300);
+    if (scene === 'open') later(() => click('.olc-row', 0), 500);
+    if (scene === 'open2') later(() => click('.olc-row', 1), 500);
+    if (scene === 'each') later(() => click('.pma-toolbar .lc-seg-btn', 1), 500);
+    if (scene === 'more') later(() => click('.pma-filters .pma-chip', 0), 500);
     if (scene === 'opactor') later(() => click('.olc-row .pma-person', 0), 300);
     if (scene === 'day') later(() => click('.lc-seg-btn', 0), 300);
     if (scene === 'month') later(() => click('.lc-seg-btn', 2), 300);
@@ -187,12 +217,19 @@ function Screen() {
           <h2>{t('logs.centerTitle')}</h2>
         </div>
         <div class="tab-bar admin-log-tabs" role="tablist">
-          <button type="button" role="tab" class={`tab${tab === 'op' ? ' active' : ''}`}>{t('logs.tabs.operation.title')}</button>
-          <button type="button" role="tab" class={`tab${tab === 'chat' ? ' active' : ''}`}>{t('logs.tabs.chat.title')}</button>
+          {(['op', 'audit', 'error', 'prompt', 'chat'] as const).map((k) => (
+            <button key={k} type="button" role="tab" class={`tab${tab === k ? ' active' : ''}`}>
+              {t(`logs.tabs.${k === 'op' ? 'operation' : k}.title`)}
+            </button>
+          ))}
         </div>
         <div class="admin-log-panels">
           <section class="admin-log-panel">
-            {tab === 'op' ? <OperationLogPanel fetchRange={fakeOps} nowMs={NOW} /> : <PmAuditPanel resolveNames={fakeNames} nowMs={NOW} />}
+            {tab === 'op' ? <OperationLogPanel fetchRange={fakeOps} nowMs={NOW} /> : null}
+            {tab === 'audit' ? <AuditLogPanel readDay={fakeReadDay} resolveNames={fakeNames} nowMs={NOW2} /> : null}
+            {tab === 'error' ? <ErrorLogPanel fetchRange={fakeErrors} nowMs={NOW2} /> : null}
+            {tab === 'prompt' ? <UserPromptPanel fetchRange={fakeErrors} nowMs={NOW2} /> : null}
+            {tab === 'chat' ? <PmAuditPanel resolveNames={fakeNames} nowMs={NOW} /> : null}
           </section>
         </div>
       </section>

@@ -1,5 +1,5 @@
-/* 選擇器一律加 :is(.legacy-ui, body) 前綴（2026-11-17 熱修，站長回報日期列被每頁筆數下拉撐開蓋住）：正式站 .legacy-ui 內的舊站通用樣式
- * （select／input 寬 100%、button 清框）經 legacy-css-scope 變成 (0,1,1) 優先度，會蓋過單一 class；前綴後為 (0,2,0)，抽屜（畫在 body）同樣適用。
+/* 選擇器一律加 :is(.legacy-ui, body) 前綴（2026-11-17）：正式站 .legacy-ui 內的舊站通用樣式（select／input 100% 寬、button 清框）
+ * 經 legacy-css-scope 變成 (0,1,1) 優先度，會蓋過單一 class；前綴後為 (0,2,0)，抽屜（畫在 body）同樣適用。
  * 聊天室稽核（2026-11-16 改版）：後台工具維持一般風格（站長 11-16：後台不用液態玻璃，取代同日預覽的玻璃版），
  * 版面排緊、少留白（站長 11-16）：每筆 log 一張細卡，動作標籤與人名同一行流排，時間與「›」靠右。
  * 只用既有變數（--bg-card、--bg-elevated、--border、--radius-sm、--accent、--accent-bg、--text-*）；不自創變數。
@@ -185,3 +185,26 @@
 :is(.legacy-ui, body) .olc-detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
 :is(.legacy-ui, body) .olc-detail dd.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 :is(.legacy-ui, body) .olc-detail .pma-copy { justify-self: start; margin-left: 0; }
+
+/* ── 第二批：稽核／錯誤／用戶提示（2026-11-16） ── */
+:is(.legacy-ui, body) .pma-tag-bad, :is(.legacy-ui, body) .lc-sev-critical { color: #b91c1c; background: rgba(220,38,38,.12); }
+:is(.legacy-ui, body) .lc-sev-warn, :is(.legacy-ui, body) .lc-sev-prompt { color: #b45309; background: rgba(217,119,6,.12); }
+:is(.legacy-ui, body) .lc-sev-info { color: var(--text-secondary); background: rgba(100,116,139,.12); }
+[data-theme="dark"] :is(.legacy-ui, body) .pma-tag-bad, [data-theme="dark"] :is(.legacy-ui, body) .lc-sev-critical { color: #fca5a5; background: rgba(220,38,38,.22); }
+[data-theme="dark"] :is(.legacy-ui, body) .lc-sev-warn, [data-theme="dark"] :is(.legacy-ui, body) .lc-sev-prompt { color: #fbbf24; background: rgba(217,119,6,.2); }
+[data-theme="dark"] :is(.legacy-ui, body) .lc-sev-info { background: rgba(148,163,184,.14); }
+:is(.legacy-ui, body) .lc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: .3rem; }
+:is(.legacy-ui, body) .lc-dot.is-ok { background: var(--accent); }
+:is(.legacy-ui, body) .lc-dot.is-bad { background: #dc2626; }
+:is(.legacy-ui, body) .lc-dot.is-warn { background: #d97706; }
+:is(.legacy-ui, body) .lc-summary { flex-wrap: nowrap; overflow: hidden; }
+:is(.legacy-ui, body) .lc-summary > * { flex: 0 0 auto; }
+:is(.legacy-ui, body) .lc-count { flex: 0 0 auto; white-space: nowrap; color: var(--text-muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
+:is(.legacy-ui, body) .lc-sublist { display: grid; gap: .2rem; }
+:is(.legacy-ui, body) .olc-row.is-sub { padding: .2rem .35rem; background: var(--bg-elevated); }
+:is(.legacy-ui, body) .lc-subrow { padding: .2rem .35rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated); }
+:is(.legacy-ui, body) .lc-subrow .pma-copy { margin-left: 0; height: 24px; padding: 0 .4rem; }
+:is(.legacy-ui, body) .lc-subrow .lc-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+:is(.legacy-ui, body) .pma-chip.is-on { color: var(--accent); border-color: var(--accent); }
+:is(.legacy-ui, body) .pma-toolbar .lc-seg { height: 34px; }
+:is(.legacy-ui, body) .pma-toolbar .lc-seg-btn { height: 32px; }

@@ -180,5 +180,61 @@
     "pageNum": "第 {n} 頁",
     "total": "共 {n} 筆",
     "truncated": "超過 500 筆，請縮小區間"
+  },
+  "audit": {
+    "search": "搜尋操作者、UID、對象、內容",
+    "allActions": "全部行為",
+    "loadFailed": "讀取稽核日誌失敗",
+    "empty": "這段時間沒有符合條件的稽核日誌",
+    "okCount": "成功 {n}",
+    "badCount": "失敗 {n}",
+    "result": "結果",
+    "source": "來源",
+    "actor": "操作者",
+    "targetId": "對象 ID",
+    "copied": "已複製稽核診斷包",
+    "copyFailed": "複製稽核診斷包失敗"
+  },
+  "error": {
+    "search": "搜尋用戶、UID、訊息、頁面",
+    "view": "檢視方式",
+    "grouped": "分組",
+    "each": "逐筆",
+    "allSev": "全部嚴重度",
+    "allTypes": "全部類型",
+    "more": "更多",
+    "all_page": "全部頁面",
+    "all_device": "全部裝置",
+    "all_version": "全部版本",
+    "loadFailed": "讀取錯誤日誌失敗",
+    "empty": "這段時間沒有符合條件的錯誤",
+    "criticalN": "嚴重 {n}",
+    "warnN": "警告 {n}",
+    "times": "×{n}",
+    "people": "{n} 人",
+    "where": "發生位置",
+    "page": "頁面",
+    "device": "裝置",
+    "user": "用戶",
+    "raw": "原始訊息",
+    "url": "網址",
+    "copyGroup": "複製整組診斷包",
+    "copied": "已複製錯誤診斷包",
+    "copyFailed": "複製失敗",
+    "sev": {
+      "critical": "嚴重",
+      "warn": "警告",
+      "info": "一般",
+      "prompt": "提示"
+    }
+  },
+  "prompt": {
+    "search": "搜尋提示內容、用戶、頁面",
+    "allSurface": "全部來源",
+    "allCategory": "全部分類",
+    "summary": "共 {n} 筆・{g} 種提示",
+    "empty": "這段時間沒有用戶提示",
+    "copied": "已複製用戶提示診斷包",
+    "copyShort": "診斷包"
   }
 }
