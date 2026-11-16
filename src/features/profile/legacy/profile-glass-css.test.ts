@@ -95,6 +95,15 @@ describe('profile-glass.css / profile-modal-glass.css：相容寫法與變數', 
 });
 
 describe('PROFILE-GLASS：權重', () => {
+  // 先確認比較的選擇器真的在打包後的 CSS 裡（審查 P3-1：只比字串常數，選擇器被改弱也抓不到）
+  it('比較用的選擇器確實存在於打包後的 CSS', () => {
+    const page = scoped('profile-glass.css').map((r) => r.selector);
+    const modal = scopedModal('profile-modal-glass.css').map((r) => r.selector);
+    expect(page).toContain('.legacy-ui #page-profile .page-header .back-btn');
+    expect(modal).toContain('.legacy-ui #first-login-modal.modal.profile-complete-modal');
+    expect(modal).toContain('.legacy-ui #companion-modal-overlay .modal');
+  });
+
   it('個人頁返回鈕規則高於 A 的 .page-header .back-btn:hover', () => {
     expect(gt(
       specificity('.legacy-ui #page-profile .page-header .back-btn'),
@@ -172,6 +181,21 @@ describe('UidQrModal：卡面與關閉鈕改由 CSS 提供', () => {
   it('卡面加上 .uid-qr-card、關閉鈕加上 .uid-qr-close', () => {
     expect(src).toContain('class="uid-qr-card"');
     expect(src).toContain('class="uid-qr-close"');
+  });
+
+  it('同行者彈窗的定位與圓角不再寫在行內（亮線要貼卡片上緣）', () => {
+    const companion = readRaw(MODAL_DIR, 'CompanionModal.tsx');
+    expect(companion).toContain('max-width:340px;position:relative;transform:none');
+    expect(companion).not.toContain('border-radius:var(--radius)');
+    const rule = scopedModal('profile-modal-glass.css').filter((r) => r.selector === '.legacy-ui #companion-modal-overlay .modal');
+    expect(rule.some((r) => r.decls['border-radius'] === '20px')).toBe(true);
+  });
+
+  it('已設定的社群鈕不被壓成灰色（只壓 :not(.active)）', () => {
+    const rules = scoped('profile-glass.css');
+    const colored = rules.filter((r) => /\.social-btn(?![\w-])/.test(r.selector) && 'color' in r.decls && !r.selector.includes(':hover'));
+    expect(colored.length).toBeGreaterThan(0);
+    expect(colored.every((r) => r.selector.includes(':not(.active)'))).toBe(true);
   });
 
   it('不再硬寫卡面底色與關閉鈕字級/顏色', () => {

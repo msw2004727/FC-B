@@ -18,6 +18,13 @@
 #page-profile .page-header .back-btn:hover,
 #page-profile .player-card-lock:hover,
 #page-profile .profile-record-refresh-btn:hover { color: var(--accent); }
+@media (hover: hover) {
+  #page-profile .social-btn:not(.active):hover,
+  #page-profile .outline-btn:hover,
+  #page-profile .player-card-share-btn:hover,
+  #page-profile #profile-uid-wrap > button:hover,
+  #page-profile .profile-quick-btn:hover { color: var(--accent); }
+}
 #page-profile .player-card-share-btn {
   padding: 0 1rem;
   border: 0;
@@ -38,8 +45,9 @@
   border: 0;
   background: var(--color-roster-slab-bg);
   box-shadow: var(--color-roster-slab-shadow);
-  color: var(--text-muted);
 }
+/* 只壓未設定的顏色；已設定的品牌色沿用 A 的 .social-btn.active[data-platform]（審查 P2-1：原寫法把品牌色一併蓋成灰） */
+#page-profile .social-btn:not(.active) { color: var(--text-muted); }
 #page-profile .social-btn.active { box-shadow: inset 0 0 0 1.5px currentColor, var(--color-roster-slab-shadow); background: var(--color-roster-slab-bg); }
 /* 卡片：抽屜分卡同款 */
 #page-profile .pfi-card,

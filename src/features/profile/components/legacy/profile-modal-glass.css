@@ -17,9 +17,12 @@
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
   pointer-events: none;
 }
-#companion-modal-overlay .modal-header,
-#social-link-modal .modal-header,
+/* 完善個人資料可捲動、標題列是 sticky：維持不透明（玻璃底色），捲動時欄位不從標題下透出（審查 P2-3） */
 .profile-complete-modal .modal-header {
+  background: var(--color-roster-slab-bg);
+}
+#companion-modal-overlay .modal-header,
+#social-link-modal .modal-header {
   background: transparent;
   border-bottom-color: var(--color-roster-slab-sep);
 }
@@ -29,6 +32,14 @@
   background: var(--color-roster-slab-bg);
   box-shadow: var(--color-roster-slab-shadow);
   color: var(--text-primary);
+}
+@media (hover: hover) {
+  #companion-modal-overlay .modal-close:hover,
+  #social-link-modal .modal-close:hover,
+  #companion-modal-overlay .outline-btn:hover,
+  #social-link-modal .outline-btn:hover,
+  .profile-complete-modal .outline-btn:hover,
+  #uid-qr-modal .uid-qr-close:hover { color: var(--accent); }
 }
 #companion-modal-overlay .outline-btn,
 #social-link-modal .outline-btn,
@@ -44,7 +55,7 @@
   background-image: linear-gradient(180deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -10px rgba(15,23,42,.6);
 }
-/* 同行者彈窗是置中浮卡：四角都圓 */
+/* 同行者彈窗是置中浮卡：四角都圓。圓角原本寫在行內、改由這裡提供；行內 position 由 static 改 relative，亮線才貼卡片上緣（審查 P1-1、P2-2） */
 #companion-modal-overlay .modal { border-radius: 20px; }
 
 /* 我的 QR：卡面與關閉鈕（UidQrModal 加上 .uid-qr-card／.uid-qr-close，原本寫在行內的底色、關閉鈕外觀改由這裡提供） */

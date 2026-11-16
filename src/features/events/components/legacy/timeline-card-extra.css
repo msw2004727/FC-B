@@ -60,7 +60,7 @@
 
 /* 2026-11-13 站長選定「液態光澤」：活動列表卡片像一顆有厚度的玻璃——圓角加大、上半一道光澤、頂緣亮線、
  * 底部帶類型色的內光與投影。不用 backdrop-filter、沒有動畫（LINE WebView／Safari 皆可，prefers-reduced-motion 不受影響）。
- * 只套活動頁（#page-activities）：個人頁「相關活動」、俱樂部活動列表也用 .tl-event-row，維持原樣。
+ * 只套活動頁（#page-activities）：俱樂部活動列表也用 .tl-event-row，維持原樣；個人頁的同款光澤在 profile/legacy/profile-glass.css（2026-11-16 PROFILE-GLASS）。
  * 計量條、卡片下方那行、灰色標籤不動。左側 3px 類型色邊框沿用 activity.css。
  * FC-B 不自創 CSS 變數（預覽用的 --gl-t／--gl-a 已逐類型展開成寫死的值）；圓角用 A 既有的 --radius（14px）。
  * 權重：#page-activities 讓卡片底色高於 activity.css 的 .tl-event-row:hover 與類型底色；
