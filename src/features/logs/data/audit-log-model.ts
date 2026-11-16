@@ -34,6 +34,27 @@ export function auditActionLabel(action: string): string {
   return AUDIT_ACTIONS.find(([k]) => k === action)?.[1] || action || '未知行為';
 }
 
+const AUDIT_META_KEY_LABELS: Record<string, string> = {
+  reason: '原因',
+  liff: 'LINE 內開啟',
+  from: '原角色',
+  to: '新角色',
+  fields: '變更欄位',
+  ip: 'IP',
+  device: '裝置',
+  method: '登入方式',
+  eventId: '活動 ID',
+  teamId: '俱樂部 ID',
+  role: '角色',
+  count: '數量',
+  code: '代碼',
+};
+
+/** 為什麼：稽核 meta 欄名顯示中文，診斷包仍用原始 key（顧問 §3.200 第 1 項）。 */
+export function auditMetaKeyLabel(key: string): string {
+  return AUDIT_META_KEY_LABELS[key] || key;
+}
+
 export function auditResultLabel(result: string): string {
   if (result === 'success') return '成功';
   if (result === 'failure') return '失敗';

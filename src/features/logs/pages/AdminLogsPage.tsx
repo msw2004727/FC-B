@@ -9,12 +9,16 @@ import { useViewer } from '@/features/profile/data/viewer';
 import { useT } from '@/i18n/i18n';
 import { EmptyState } from '@/ui/EmptyState';
 import { PageSpinner } from '@/ui/PageSpinner';
+// 為什麼：日誌中心五頁接線，稽核／錯誤／用戶提示面板（顧問 §3.200 第 6 項）。
+import { AuditLogPanel } from '../components/AuditLogPanel';
+import { ErrorLogPanel } from '../components/ErrorLogPanel';
 import { OperationLogPanel } from '../components/OperationLogPanel';
 import { PmAuditPanel } from '../components/PmAuditPanel';
+import { UserPromptPanel } from '../components/UserPromptPanel';
 import { getAvailableAdminLogTabs, type AdminLogTabKey } from '../data/log-center-model';
 
-/** 目前 B 已做好的頁籤（稽核日誌、錯誤日誌、用戶提示尚未搬，頁籤列不顯示它們）。 */
-const BUILT_LOG_TABS: readonly AdminLogTabKey[] = ['operation', 'chat'];
+/** 為什麼：五個頁籤都已接線；稽核／錯誤／用戶提示依權限顯示（顧問 §3.200 第 6 項）。 */
+const BUILT_LOG_TABS: readonly AdminLogTabKey[] = ['operation', 'audit', 'error', 'prompt', 'chat'];
 
 /**
  * 後台「日誌中心」頁面（路由 `/admin/logs`），外框照 A `pages/admin-system.html` 的 `#page-admin-logs`。
@@ -32,13 +36,21 @@ export default function AdminLogsPage(): JSX.Element {
   // L-43：最小 viewer 權限全 false。到位前先轉圈，不閃「權限不足」、不讀資料。
   const waiting = !viewer.uid ? getLastKnownAuthUid() !== null : !isViewerPermissionsLoaded(viewer);
   const canAccessPage = !waiting && viewer.hasPermission('admin.logs.entry');
+  // 為什麼：稽核／錯誤／用戶提示頁籤依 Rules 權限顯示（顧問 §3.200 第 6 項）。
+  const canReadAuditLogs = viewer.role === 'super_admin' || viewer.hasPermission('admin.logs.audit_read');
+  const canReadErrorLogs = viewer.role === 'super_admin' || viewer.hasPermission('admin.logs.error_read');
   const tabs = useMemo(
-    () => getAvailableAdminLogTabs(viewer.role).filter((tab) => BUILT_LOG_TABS.includes(tab.key)),
-    [viewer.role],
+    () => getAvailableAdminLogTabs(viewer.role).filter((tab) => BUILT_LOG_TABS.includes(tab.key)).filter((tab) => {
+      if (tab.key === 'audit') return canReadAuditLogs;
+      if (tab.key === 'error' || tab.key === 'prompt') return canReadErrorLogs;
+      return true;
+    }),
+    [viewer.role, canReadAuditLogs, canReadErrorLogs],
   );
   const showTabs = tabs.length > 1;
   const [activeTab, setActiveTab] = useState<AdminLogTabKey>('operation');
-  const [chatMounted, setChatMounted] = useState(false);
+  // 為什麼：新頁籤第一次點才掛載，切走用 hidden 保留（顧問 §3.200 第 6 項）。
+  const [mountedTabs, setMountedTabs] = useState<ReadonlySet<AdminLogTabKey>>(() => new Set());
   const safeTab: AdminLogTabKey = tabs.some((tab) => tab.key === activeTab) ? activeTab : 'operation';
   // 照 A `goBackFromAdminLogs`：沒有上一頁時回數據儀表板（能進才回），否則回首頁。
   const goBack = useGoBack(viewer.hasPermission('admin.dashboard.entry') ? '/admin/ops' : '/');
@@ -97,7 +109,15 @@ export default function AdminLogsPage(): JSX.Element {
                 data-admin-log-tab={tab.key}
                 onClick={() => {
                   setActiveTab(tab.key);
-                  if (tab.key === 'chat') setChatMounted(true);
+                  // 為什麼：非操作日誌頁籤首次點擊才掛載（顧問 §3.200 第 6 項）。
+                  if (tab.key !== 'operation') {
+                    setMountedTabs((prev) => {
+                      if (prev.has(tab.key)) return prev;
+                      const next = new Set(prev);
+                      next.add(tab.key);
+                      return next;
+                    });
+                  }
                 }}
               >
                 {t(tab.titleKey)}
@@ -110,7 +130,22 @@ export default function AdminLogsPage(): JSX.Element {
           <section class="admin-log-panel" data-admin-log-panel="operation" hidden={safeTab !== 'operation'}>
             <OperationLogPanel />
           </section>
-          {showTabs && chatMounted ? (
+          {showTabs && mountedTabs.has('audit') ? (
+            <section class="admin-log-panel" data-admin-log-panel="audit" hidden={safeTab !== 'audit'}>
+              <AuditLogPanel />
+            </section>
+          ) : null}
+          {showTabs && mountedTabs.has('error') ? (
+            <section class="admin-log-panel" data-admin-log-panel="error" hidden={safeTab !== 'error'}>
+              <ErrorLogPanel />
+            </section>
+          ) : null}
+          {showTabs && mountedTabs.has('prompt') ? (
+            <section class="admin-log-panel" data-admin-log-panel="prompt" hidden={safeTab !== 'prompt'}>
+              <UserPromptPanel />
+            </section>
+          ) : null}
+          {showTabs && mountedTabs.has('chat') ? (
             <section class="admin-log-panel" data-admin-log-panel="chat" hidden={safeTab !== 'chat'}>
               <PmAuditPanel />
             </section>

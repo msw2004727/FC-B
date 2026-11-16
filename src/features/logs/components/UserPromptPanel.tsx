@@ -15,6 +15,8 @@ import { toast } from '@/ui/Toast';
 
 import { errorMs, isUserPrompt, promptCategory, promptMessage, promptSurface, type ErrorLogDoc } from '../data/error-log-model';
 import { buildErrorDiagnostic } from '../data/log-diagnostics';
+// 為什麼：展開列頁面顯示中文名（顧問 §3.200 第 5 項）。
+import { pageLabel } from '../data/page-names';
 import { INFINITE_CHUNK, rangeContaining, type LogRange, type PageSizeOption } from '../data/log-range';
 import { copyDiagnosticTextToClipboard } from '../data/operation-logs';
 import { pmFormatTime } from '../data/pm-audit';
@@ -145,7 +147,8 @@ export function UserPromptPanel(props: UserPromptPanelProps): JSX.Element {
                         <div key={`${g.key}#${i}`} class="olc-line lc-subrow">
                           <span class={`pma-person-name${d.userName ? '' : ' is-unknown'}`} data-no-translate>{d.userName || t('logs.chat.unknownUser')}</span>
                           <span class="pma-uid" data-no-translate>{shortUid(String(d.uid || ''))}</span>
-                          <span class="lc-count" data-no-translate>{`${String(d.page || 'unknown')} · ${promptSurface(d).label}`}</span>
+                          {/* 為什麼：展開列只留頁面名且顯示中文，讓暱稱有寬度（顧問 §3.200 第 3、5 項）。 */}
+                          <span class="lc-count lc-subrow-page" data-no-translate>{pageLabel(String(d.page || 'unknown'))}</span>
                           <small class="pma-time">{pmFormatTime(errorMs(d))}</small>
                           <button type="button" class="pma-copy" onClick={() => { copy(d).catch(() => undefined); }}>{t('logs.prompt.copyShort')}</button>
                         </div>

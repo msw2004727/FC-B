@@ -208,3 +208,34 @@
 :is(.legacy-ui, body) .pma-chip.is-on { color: var(--accent); border-color: var(--accent); }
 :is(.legacy-ui, body) .pma-toolbar .lc-seg { height: 34px; }
 :is(.legacy-ui, body) .pma-toolbar .lc-seg-btn { height: 32px; }
+
+/* 為什麼：用戶提示展開列讓暱稱限寬、頁面欄吃剩餘寬度（顧問 §3.200 第 3 項）。 */
+:is(.legacy-ui, body) .lc-subrow .pma-person-name {
+  max-width: 7em;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:is(.legacy-ui, body) .lc-subrow .lc-subrow-page {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 為什麼：錯誤逐筆列的類型不截斷、暱稱縮短（顧問 §3.200 第 4 項）。 */
+:is(.legacy-ui, body) .olc-type.lc-type-full {
+  flex: 0 0 auto;
+  max-width: none;
+}
+:is(.legacy-ui, body) .pma-person-name.lc-name-short {
+  max-width: 5em;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

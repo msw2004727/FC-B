@@ -44,6 +44,13 @@ export function shortUid(uid: string): string {
   return text.length > 12 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
 }
 
+/** 為什麼：逐筆錯誤列 UID 只顯示末四碼（顧問 §3.200 第 4 項）。 */
+export function uidTail(uid: string): string {
+  const text = String(uid || '').trim();
+  if (!text) return '';
+  return `…${text.slice(-4)}`;
+}
+
 export function splitTargetUids(log: Pick<PmAuditLog, 'action' | 'targetUid'>): string[] {
   const raw = String(log.targetUid || '').trim();
   if (!raw) return [];

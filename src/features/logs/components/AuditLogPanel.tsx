@@ -13,7 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 
-import { AUDIT_ACTIONS, auditActionLabel, auditMetaPairs, auditResultLabel, auditSearchText, auditSourceLabel, auditTargetLabel, taipeiDayKey, dayKeysDesc, type AuditEntry } from '../data/audit-log-model';
+// 為什麼：稽核 meta 欄名改中文（顧問 §3.200 第 1 項）。
+import { AUDIT_ACTIONS, auditActionLabel, auditMetaKeyLabel, auditMetaPairs, auditResultLabel, auditSearchText, auditSourceLabel, auditTargetLabel, taipeiDayKey, dayKeysDesc, type AuditEntry } from '../data/audit-log-model';
 import { AUDIT_RANGE_CAP, fetchAuditPage, readAuditDay, type AuditCursor, type AuditDayReader } from '../data/audit-logs';
 import { buildAuditDiagnostic } from '../data/log-diagnostics';
 import { INFINITE_CHUNK, rangeContaining, type LogRange, type PageSizeOption } from '../data/log-range';
@@ -143,7 +144,8 @@ export function AuditLogPanel(props: AuditLogPanelProps): JSX.Element {
       {pages.status === 'error' ? (
         <div class="pma-note" role="alert"><span>{t('logs.audit.loadFailed')}</span><button type="button" class="pma-chip-clear" onClick={() => { load(true).catch(() => undefined); }}>{t('logs.chat.retry')}</button></div>
       ) : null}
-      {pages.status === 'ready' ? (
+      {/* 為什麼：成功／失敗統計只在區間全部讀完時顯示（顧問 §3.200 第 2 項）。 */}
+      {pages.status === 'ready' && pages.done && !pages.paused && !pages.truncated ? (
         <div class="lc-summary"><span class="lc-dot is-ok" />{t('logs.audit.okCount', { n: ok })}<span class="lc-dot is-bad" />{t('logs.audit.badCount', { n: bad })}</div>
       ) : null}
       {pages.status === 'ready' && rows.length === 0 && !pages.busy ? <div class="pma-note">{t('logs.audit.empty')}</div> : null}
@@ -171,7 +173,8 @@ export function AuditLogPanel(props: AuditLogPanelProps): JSX.Element {
                       <dt>{t('logs.audit.source')}</dt><dd>{auditSourceLabel(e.source)}</dd>
                       <dt>{t('logs.audit.actor')}</dt><dd data-no-translate>{`${name || t('logs.chat.unknownUser')} / ${e.actorUid || '-'}`}</dd>
                       {e.targetId ? (<><dt>{t('logs.audit.targetId')}</dt><dd class="is-mono">{e.targetId}</dd></>) : null}
-                      {meta.map(([k, v]) => (<Fragment key={k}><dt>{k}</dt><dd data-no-translate>{v}</dd></Fragment>))}
+                      {/* 為什麼：meta 欄名與 true／false 值顯示中文（顧問 §3.200 第 1 項）。 */}
+                      {meta.map(([k, v]) => (<Fragment key={k}><dt>{auditMetaKeyLabel(k)}</dt><dd data-no-translate>{v === 'true' ? '是' : v === 'false' ? '否' : v}</dd></Fragment>))}
                       <dt>{t('logs.operation.detail.docId')}</dt><dd class="is-mono">{e._docId}</dd>
                     </dl>
                     <button type="button" class="pma-copy" onClick={() => { copy(e).catch(() => undefined); }}>{t('logs.operation.copyDiagnostic')}</button>

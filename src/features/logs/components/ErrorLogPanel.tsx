@@ -18,7 +18,9 @@ import { buildErrorDiagnostic, buildErrorGroupDiagnostic } from '../data/log-dia
 import { INFINITE_CHUNK, rangeContaining, type LogRange, type PageSizeOption } from '../data/log-range';
 import { copyDiagnosticTextToClipboard } from '../data/operation-logs';
 import { pmFormatTime } from '../data/pm-audit';
-import { shortUid } from '../data/pm-audit-view';
+// 為什麼：逐筆列 UID 改後四碼、頁面顯示中文名（顧問 §3.200 第 4、5 項）。
+import { pageLabel } from '../data/page-names';
+import { shortUid, uidTail } from '../data/pm-audit-view';
 import { InfiniteSentinel } from './InfiniteSentinel';
 import { LogPager, LogRangeBar } from './LogRangeBar';
 import { useErrorLogRange, type ErrorRangeFetcher } from './useErrorLogRange';
@@ -84,13 +86,17 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
 
   function renderLog(d: ErrorLogDoc, key: string, inGroup: boolean): JSX.Element {
     const open = openKey === key;
+    // 為什麼：逐筆列 UID 顯示末四碼，群組內列仍用短碼（顧問 §3.200 第 4 項）。
+    const displayUid = inGroup ? shortUid(String(d.uid || '')) : uidTail(String(d.uid || ''));
     return (
       <div key={key} class={`olc-row${open ? ' is-open' : ''}${inGroup ? ' is-sub' : ''}`} onClick={(e) => { e.stopPropagation(); setOpenKey(open ? '' : key); }}>
         <div class="olc-line">
           {inGroup ? null : sevTag(severityOf(d))}
-          {inGroup ? null : <span class="olc-type">{codeLabel(d)}</span>}
-          <span class={`pma-person-name${d.userName ? '' : ' is-unknown'}`} data-no-translate>{d.userName || t('logs.chat.unknownUser')}</span>
-          <span class="pma-uid" data-no-translate>{shortUid(String(d.uid || ''))}</span>
+          {/* 為什麼：逐筆列類型不可截斷（顧問 §3.200 第 4 項）。 */}
+          {inGroup ? null : <span class="olc-type lc-type-full">{codeLabel(d)}</span>}
+          {/* 為什麼：逐筆列暱稱限寬、UID 顯示末四碼（顧問 §3.200 第 4 項）。 */}
+          <span class={`pma-person-name${inGroup ? '' : ' lc-name-short'}${d.userName ? '' : ' is-unknown'}`} data-no-translate>{d.userName || t('logs.chat.unknownUser')}</span>
+          <span class="pma-uid" data-no-translate>{displayUid}</span>
           <small class="pma-time">{pmFormatTime(errorMs(d))}</small>
           <span class="olc-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
         </div>
@@ -98,8 +104,9 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
         {open ? (
           <div class="olc-detail" onClick={(e) => e.stopPropagation()}>
             <dl>
-              <dt>{t('logs.error.where')}</dt><dd data-no-translate>{errorWhere(d) || '-'}</dd>
-              <dt>{t('logs.error.page')}</dt><dd data-no-translate>{String(d.page || 'unknown')}</dd>
+              {/* 為什麼：發生位置保留原字並用等寬、頁面顯示中文（顧問 §3.200 第 5 項）。 */}
+              <dt>{t('logs.error.where')}</dt><dd class="is-mono" data-no-translate>{errorWhere(d) || '-'}</dd>
+              <dt>{t('logs.error.page')}</dt><dd data-no-translate>{pageLabel(String(d.page || 'unknown'))}</dd>
               <dt>{t('logs.error.device')}</dt><dd data-no-translate>{`${deviceLabel(d)}${d.appVersion ? ` · ${d.appVersion}` : ''}`}</dd>
               <dt>{t('logs.error.user')}</dt><dd data-no-translate>{`${d.userName || t('logs.chat.unknownUser')} / ${d.uid || '-'}`}</dd>
               <dt>{t('logs.error.raw')}</dt><dd class="is-mono" data-no-translate>{d.errorMessage || '-'}</dd>
@@ -143,7 +150,8 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
           {(['page', 'device', 'version'] as const).map((k) => (
             <select key={k} class="pma-select" value={f[k]} aria-label={t(`logs.error.all_${k}`)} onChange={(e) => set(k, e.currentTarget.value)}>
               <option value="">{t(`logs.error.all_${k}`)}</option>
-              {uniq(errors.map((d) => (k === 'page' ? String(d.page || 'unknown') : k === 'device' ? deviceLabel(d) : String(d.appVersion || '')))).map((v) => <option key={v} value={v}>{v}</option>)}
+              {/* 為什麼：頁面下拉選項顯示中文名，value 仍保留原始代碼（顧問 §3.200 第 5 項）。 */}
+              {uniq(errors.map((d) => (k === 'page' ? String(d.page || 'unknown') : k === 'device' ? deviceLabel(d) : String(d.appVersion || '')))).map((v) => <option key={v} value={v}>{k === 'page' ? pageLabel(v) : v}</option>)}
             </select>
           ))}
         </div>
@@ -182,8 +190,9 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
                 {open ? (
                   <div class="olc-detail" onClick={(e) => e.stopPropagation()}>
                     <dl>
-                      <dt>{t('logs.error.page')}</dt><dd data-no-translate>{g.page}</dd>
-                      <dt>{t('logs.error.where')}</dt><dd data-no-translate>{g.where || '-'}</dd>
+                      {/* 為什麼：分組展開的頁面顯示中文名、發生位置保留原字並用等寬（顧問 §3.200 第 5 項）。 */}
+                      <dt>{t('logs.error.page')}</dt><dd data-no-translate>{pageLabel(g.page)}</dd>
+                      <dt>{t('logs.error.where')}</dt><dd class="is-mono" data-no-translate>{g.where || '-'}</dd>
                     </dl>
                     <div class="lc-sublist">{g.logs.slice(0, 5).map((d, i) => renderLog(d, `${g.key}#${i}`, true))}</div>
                     <button type="button" class="pma-copy" onClick={() => { copy(buildErrorGroupDiagnostic(g)).catch(() => undefined); }}>{t('logs.error.copyGroup')}</button>
