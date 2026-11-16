@@ -26,6 +26,7 @@ import {
 import type { ConfirmedRosterPerson } from './attendance-roster-model';
 import { parseEventStartMs } from '@/core/event-time';
 import { taipeiStartOfDay } from '@/core/taipei-time';
+import { EXP_GRANT_ENABLED } from '@/core/exp-display';
 
 export const CONFIRM_ATTENDANCE_TIMEOUT_MS = 30_000;
 export const ADJUST_EXP_TIMEOUT_MS = 15_000;
@@ -417,7 +418,8 @@ export async function settleAttendance(
     failed: [],
   };
 
-  if (targets.length === 0) return result;
+  // 2026-11-16 站長定案停發經驗值（顧問 §3.185）：關閉時不讀 autoExpRules、不查 expLogs、不呼叫 adjustExp。
+  if (!EXP_GRANT_ENABLED || targets.length === 0) return result;
 
   const amountResult = await loadCompleteActivityExpAmount();
   if (!amountResult.ok) {

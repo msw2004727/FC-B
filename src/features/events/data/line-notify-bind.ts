@@ -8,6 +8,7 @@
 // 積分或 opLog 失敗只 console.warn；綁定本身視為成功（A 同）。
 
 import { formatTaipei } from '@/core/taipei-time';
+import { EXP_GRANT_ENABLED } from '@/core/exp-display';
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { writeOpLog } from '@/data/op-log';
@@ -98,6 +99,8 @@ export async function bindLineNotify(
 }
 
 async function grantLineBindingExp(uid: string, displayName?: string): Promise<void> {
+  // 2026-11-16 站長定案停發經驗值（顧問 §3.185）：關閉時不讀 autoExpRules、不呼叫 adjustExp、不寫自動 EXP 日誌。
+  if (!EXP_GRANT_ENABLED) return;
   const [{ doc, getDoc }, { db }] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
