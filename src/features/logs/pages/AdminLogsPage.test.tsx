@@ -36,22 +36,41 @@ vi.mock('../components/PmAuditPanel', () => ({
   PmAuditPanel: () => <div data-testid="pm-audit-panel">聊天室稽核面板</div>,
 }));
 
-vi.mock('../data/log-center-model', () => ({
-  getAvailableAdminLogTabs: (role: string) =>
-    role === 'super_admin'
-      ? [
-          { key: 'operation', titleKey: 'logs.tabs.operation.title' },
-          { key: 'chat', titleKey: 'logs.tabs.chat.title' },
-        ]
-      : [{ key: 'operation', titleKey: 'logs.tabs.operation.title' }],
+vi.mock('../components/AuditLogPanel', () => ({
+  AuditLogPanel: () => <div data-testid="audit-panel">稽核面板</div>,
 }));
+
+vi.mock('../components/ErrorLogPanel', () => ({
+  ErrorLogPanel: () => <div data-testid="error-panel">錯誤面板</div>,
+}));
+
+vi.mock('../components/UserPromptPanel', () => ({
+  UserPromptPanel: () => <div data-testid="prompt-panel">提示面板</div>,
+}));
+
+vi.mock('../data/log-center-model', () => {
+  const all = [
+    { key: 'operation', titleKey: 'logs.tabs.operation.title' },
+    { key: 'audit', titleKey: 'logs.tabs.audit.title' },
+    { key: 'error', titleKey: 'logs.tabs.error.title' },
+    { key: 'prompt', titleKey: 'logs.tabs.prompt.title' },
+    { key: 'chat', titleKey: 'logs.tabs.chat.title' },
+  ];
+  return {
+    getAvailableAdminLogTabs: (role: string) => {
+      if (role === 'super_admin') return all;
+      if (role === 'admin') return all.filter((tab) => tab.key !== 'chat');
+      return [{ key: 'operation', titleKey: 'logs.tabs.operation.title' }];
+    },
+  };
+});
 
 vi.mock('@/i18n/i18n', () => ({
   useT: () => (key: string, params?: Record<string, unknown>) => {
     let tmpl = dictHolder.dict[key] ?? key;
     if (params) {
       for (const [k, v] of Object.entries(params)) {
-        tmpl = tmpl.replace(`{${k}}`, String(v));
+        tmpl = tmpl.split(`{${k}}`).join(String(v));
       }
     }
     return tmpl;
@@ -162,48 +181,153 @@ describe('AdminLogsPage：日誌中心外框', () => {
   });
 
   describe('頁首與頁籤', () => {
-    it('admin：頁首只有返回鍵與「操作日誌」，沒有頁籤與一鍵清除，操作面板預設掛載', () => {
-      mocks.mockUseViewer.mockReturnValue(makeViewer({ role: 'admin' }));
-      render(<AdminLogsPage />);
-
-      const page = document.getElementById('page-admin-logs') as HTMLElement;
-      expect(page.parentElement?.classList.contains('legacy-ui')).toBe(true);
-      const header = page.querySelector('.page-header') as HTMLElement;
-      expect(Array.from(header.children).map((el) => el.tagName)).toEqual(['BUTTON', 'H2']);
-      expect(header.querySelector('.back-btn')?.getAttribute('aria-label')).toBe('返回');
-      expect(header.querySelector('h2')?.textContent).toBe('操作日誌');
-
-      expect(screen.queryByText('一鍵清除')).toBeNull();
-      expect(screen.queryByText('清空資料')).toBeNull();
-      expect(page.querySelector('#admin-log-tabs')).toBeNull();
-      expect(screen.queryByRole('tab')).toBeNull();
-      expect(screen.getByTestId('operation-panel')).toBeTruthy();
-      expect(screen.queryByTestId('pm-audit-panel')).toBeNull();
-    });
-
-    it('super_admin：標題「日誌中心」與兩頁籤；聊天室稽核點頁籤前不掛載，切換後隱藏但不卸載', () => {
+    it('super_admin：標題「日誌中心」與五頁籤，順序為操作日誌、稽核日誌、錯誤日誌、用戶提示、聊天室稽核', () => {
       render(<AdminLogsPage />);
 
       const page = document.getElementById('page-admin-logs') as HTMLElement;
       expect(page.querySelector('.page-header h2')?.textContent).toBe('日誌中心');
       expect(page.querySelector('#admin-log-tabs')?.className).toBe('tab-bar admin-log-tabs');
-      expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual(['操作日誌', '聊天室稽核']);
+      expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
+        '操作日誌',
+        '稽核日誌',
+        '錯誤日誌',
+        '用戶提示',
+        '聊天室稽核',
+      ]);
       expect(screen.getByTestId('operation-panel')).toBeTruthy();
+      expect(screen.queryByTestId('audit-panel')).toBeNull();
+      expect(screen.queryByTestId('error-panel')).toBeNull();
+      expect(screen.queryByTestId('prompt-panel')).toBeNull();
       expect(screen.queryByTestId('pm-audit-panel')).toBeNull();
+    });
 
+    it('admin 只有 admin.logs.entry：只有操作日誌，無頁籤列', () => {
+      mocks.mockUseViewer.mockReturnValue(
+        makeViewer({
+          role: 'admin',
+          hasPermission: (code: string) => code === 'admin.logs.entry',
+        }),
+      );
+
+      render(<AdminLogsPage />);
+
+      const page = document.getElementById('page-admin-logs') as HTMLElement;
+      expect(page.querySelector('.page-header h2')?.textContent).toBe('操作日誌');
+      expect(page.querySelector('#admin-log-tabs')).toBeNull();
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+      expect(screen.getByTestId('operation-panel')).toBeTruthy();
+      expect(screen.queryByTestId('audit-panel')).toBeNull();
+      expect(screen.queryByTestId('error-panel')).toBeNull();
+      expect(screen.queryByTestId('prompt-panel')).toBeNull();
+      expect(screen.queryByTestId('pm-audit-panel')).toBeNull();
+    });
+
+    it('admin＋admin.logs.audit_read：操作日誌＋稽核日誌；稽核第一次點才掛載', () => {
+      mocks.mockUseViewer.mockReturnValue(
+        makeViewer({
+          role: 'admin',
+          hasPermission: (code: string) =>
+            code === 'admin.logs.entry' || code === 'admin.logs.audit_read',
+        }),
+      );
+
+      render(<AdminLogsPage />);
+
+      expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual(['操作日誌', '稽核日誌']);
+      expect(screen.getByTestId('operation-panel')).toBeTruthy();
+      expect(screen.queryByTestId('audit-panel')).toBeNull();
+
+      fireEvent.click(screen.getByRole('tab', { name: '稽核日誌' }));
+      expect(screen.getByTestId('audit-panel')).toBeTruthy();
+    });
+
+    it('admin＋admin.logs.error_read：操作日誌＋錯誤日誌＋用戶提示', () => {
+      mocks.mockUseViewer.mockReturnValue(
+        makeViewer({
+          role: 'admin',
+          hasPermission: (code: string) =>
+            code === 'admin.logs.entry' || code === 'admin.logs.error_read',
+        }),
+      );
+
+      render(<AdminLogsPage />);
+
+      expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
+        '操作日誌',
+        '錯誤日誌',
+        '用戶提示',
+      ]);
+      expect(screen.getByTestId('operation-panel')).toBeTruthy();
+      expect(screen.queryByTestId('error-panel')).toBeNull();
+      expect(screen.queryByTestId('prompt-panel')).toBeNull();
+
+      fireEvent.click(screen.getByRole('tab', { name: '錯誤日誌' }));
+      expect(screen.getByTestId('error-panel')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('tab', { name: '用戶提示' }));
+      expect(screen.getByTestId('prompt-panel')).toBeTruthy();
+    });
+
+    it('viewer 權限未到位（waiting）時不顯示任何頁籤、不掛任何面板 stub', () => {
+      mocks.authState.lastUid = 'u_admin';
+      mocks.mockUseViewer.mockReturnValue(createMinimalViewer('u_admin'));
+
+      render(<AdminLogsPage />);
+
+      expect(document.querySelector('.ui-page-spinner[role="status"]')).not.toBeNull();
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+      expect(screen.queryByTestId('operation-panel')).toBeNull();
+      expect(screen.queryByTestId('audit-panel')).toBeNull();
+      expect(screen.queryByTestId('error-panel')).toBeNull();
+      expect(screen.queryByTestId('prompt-panel')).toBeNull();
+      expect(screen.queryByTestId('pm-audit-panel')).toBeNull();
+    });
+
+    it('新頁籤第一次點才掛載、切走 hidden 不卸載', () => {
+      render(<AdminLogsPage />);
+
+      const page = document.getElementById('page-admin-logs') as HTMLElement;
       const operationSection = page.querySelector('[data-admin-log-panel="operation"]') as HTMLElement;
       expect(operationSection.hidden).toBe(false);
+      expect(page.querySelector('[data-admin-log-panel="audit"]')).toBeNull();
+
+      fireEvent.click(screen.getByRole('tab', { name: '稽核日誌' }));
+      const auditSection = page.querySelector('[data-admin-log-panel="audit"]') as HTMLElement;
+      expect(auditSection).not.toBeNull();
+      expect(auditSection.hidden).toBe(false);
+      expect(operationSection.hidden).toBe(true);
+      expect(screen.getByTestId('audit-panel')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('tab', { name: '錯誤日誌' }));
+      const errorSection = page.querySelector('[data-admin-log-panel="error"]') as HTMLElement;
+      expect(errorSection).not.toBeNull();
+      expect(errorSection.hidden).toBe(false);
+      expect(auditSection.hidden).toBe(true);
+      expect(screen.getByTestId('error-panel')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('tab', { name: '用戶提示' }));
+      const promptSection = page.querySelector('[data-admin-log-panel="prompt"]') as HTMLElement;
+      expect(promptSection).not.toBeNull();
+      expect(promptSection.hidden).toBe(false);
+      expect(auditSection.hidden).toBe(true);
+      expect(errorSection.hidden).toBe(true);
+      expect(screen.getByTestId('prompt-panel')).toBeTruthy();
 
       fireEvent.click(screen.getByRole('tab', { name: '聊天室稽核' }));
       const chatSection = page.querySelector('[data-admin-log-panel="chat"]') as HTMLElement;
       expect(chatSection).not.toBeNull();
       expect(chatSection.hidden).toBe(false);
-      expect(operationSection.hidden).toBe(true);
       expect(screen.getByTestId('pm-audit-panel')).toBeTruthy();
 
       fireEvent.click(screen.getByRole('tab', { name: '操作日誌' }));
-      expect(chatSection.hidden).toBe(true);
       expect(operationSection.hidden).toBe(false);
+      expect(auditSection.hidden).toBe(true);
+      expect(errorSection.hidden).toBe(true);
+      expect(promptSection.hidden).toBe(true);
+      expect(chatSection.hidden).toBe(true);
+      expect(screen.getByTestId('audit-panel')).toBeTruthy();
+      expect(screen.getByTestId('error-panel')).toBeTruthy();
+      expect(screen.getByTestId('prompt-panel')).toBeTruthy();
       expect(screen.getByTestId('pm-audit-panel')).toBeTruthy();
     });
   });
@@ -250,7 +374,6 @@ describe('AdminLogsPage：日誌中心外框', () => {
 
     for (const rel of contractFiles) {
       const source = readFileSync(new URL(rel, import.meta.url), 'utf8');
-      // 契約看的是可執行原始碼；註解中的說明（例如「不實作 clearAllData」）不列入。
       const code = source
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/\/\/.*$/gm, '');
