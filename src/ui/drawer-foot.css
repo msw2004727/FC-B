@@ -179,6 +179,10 @@
   border-radius: 14px;
   background: var(--color-roster-slab-bg);
   box-shadow: var(--color-roster-slab-shadow), var(--color-drawer-pop-drop);
+  /* 100vh 給不支援 dvh 的 WebView；下一行蓋過。矮視窗時小卡可捲，不裁上緣。 */
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
 }
 .legacy-ui #side-drawer .dg-more-pop a,
 .legacy-ui #side-drawer .dg-more-pop button {
@@ -203,6 +207,14 @@
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+/* 文字自己做省略號。列是 flex，text-overflow 寫在列上不會出現 …。 */
+.legacy-ui #side-drawer .dg-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .legacy-ui #side-drawer .dg-more-pop .dg-danger { color: var(--danger); }
 .legacy-ui #side-drawer .dg-more-pop hr {

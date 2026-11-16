@@ -59,11 +59,24 @@ describe('抽屜底部方案 C：點擊區 44px', () => {
     const pop = decls(`${P} .dg-more-pop`);
     expect(pop.left).toBe('10px');
     expect(pop.right).toBe('10px');
+    expect(pop['overflow-y']).toBe('auto');
+    const popRule = css.slice(css.indexOf(`${P} .dg-more-pop {`), css.indexOf(`${P} .dg-more-pop {`) + 800);
+    const vh = popRule.indexOf('max-height: calc(100vh - 80px)');
+    const dvh = popRule.indexOf('max-height: calc(100dvh - 80px)');
+    expect(vh).toBeGreaterThan(-1);
+    expect(dvh).toBeGreaterThan(vh);
+    const label = decls(`${P} .dg-label`);
+    expect(label['min-width']).toBe('0');
+    expect(label.flex).toBe('1 1 auto');
+    expect(label.overflow).toBe('hidden');
+    expect(label['text-overflow']).toBe('ellipsis');
+    expect(label['white-space']).toBe('nowrap');
   });
 
-  it('選單列至少 44px 高', () => {
+  it('選單列至少 44px 高，圖示不縮', () => {
     const row = declsIn(glass, `${P} .drawer-item`, 'drawer-glass.css');
     expect(row['min-height']).toBe('44px');
+    expect(declsIn(glass, `${P} .dg-ico`, 'drawer-glass.css').flex).toBe('0 0 auto');
   });
 });
 
@@ -97,5 +110,10 @@ describe('抽屜底部方案 C：不換行（泰、越文不撐出抽屜）', ()
   it('確認框說明用 pre-line（中、日文逗號後語意換行），確定鈕紅色', () => {
     expect(decls('.legacy-ui .drawer-reset-confirm-msg')['white-space']).toBe('pre-line');
     expect(decls('.legacy-ui #app-confirm-modal .drawer-reset-confirm .drawer-reset-confirm-ok').background).toBe('#dc2626');
+  });
+
+  it('drawer-foot.css、drawer-glass.css 不含 backdrop-filter、color-mix', () => {
+    expect(css).not.toMatch(/backdrop-filter|color-mix/);
+    expect(glass).not.toMatch(/backdrop-filter|color-mix/);
   });
 });

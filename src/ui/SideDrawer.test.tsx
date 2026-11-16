@@ -630,7 +630,11 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(terms.getAttribute('href')).toBe('/terms');
     expect(terms.getAttribute('title')).toBe('服務條款');
     expect(footer.querySelector('.dg-more-pop .drawer-reset-btn.dg-danger')).not.toBeNull();
+    expect(privacy.querySelector(':scope > .dg-label')?.textContent).toBe('ui.sideDrawer.privacyShort');
+    expect(terms.querySelector(':scope > .dg-label')?.textContent).toBe('ui.sideDrawer.termsShort');
+    expect(footer.querySelector('.drawer-reset-btn > .dg-label')?.textContent).toBe('ui.sideDrawer.reset');
     expect(document.querySelector('.drawer-legal-btn, .drawer-clear-btn, #theme-toggle, .toggle-switch, .drawer-foot-fine')).toBeNull();
+    expect(document.querySelector('.drawer-foot-link, .drawer-foot-fine')).toBeNull();
   });
 
   it('選單依權限收成卡，每一列前面有專屬圖示（不是狀態圖示）', () => {
@@ -647,25 +651,38 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
       const ico = item.querySelector(':scope > .dg-ico svg');
       expect(ico?.getAttribute('viewBox')).toBe('0 0 24 24');
       expect(ico?.classList.contains('drawer-status')).toBe(false);
+      const label = item.querySelector(':scope > .dg-label');
+      expect(label?.textContent?.trim().length).toBeGreaterThan(0);
     }
     expect(menu.querySelector('.drawer-section-label')).toBeNull();
     expect(menu.querySelector('.drawer-divider')).toBeNull();
   });
 
-  it('「⋯」：Enter／Space 開關、點外面關、Esc 關並把焦點還回「⋯」；確認框開著時點外面不關小卡', () => {
+  it('「⋯」：Enter／Space 各只切換一次、點外面關、焦點在小卡內時 Esc 還回「⋯」；確認框開著時點外面不關小卡', () => {
     render(<Harness />);
     const menuBtn = openDrawer();
     const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
     expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
+    expect(more.hasAttribute('aria-controls')).toBe(false);
     expect(document.getElementById('drawer-more-pop')).toBeNull();
 
-    act(() => { fireEvent.keyDown(more, { key: 'Enter' }); });
+    // 原生按鈕：Enter 在 keydown 後合成 click；Space 在 keyup 後合成 click。兩段都送，只切換一次。
+    more.focus();
+    act(() => {
+      fireEvent.keyDown(more, { key: 'Enter' });
+      fireEvent.click(more);
+    });
     expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
     expect(document.getElementById('drawer-more-pop')).not.toBeNull();
 
-    act(() => { fireEvent.keyDown(more, { key: ' ' }); });
+    act(() => {
+      fireEvent.keyDown(more, { key: ' ' });
+      fireEvent.keyUp(more, { key: ' ' });
+      fireEvent.click(more);
+    });
     expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(more.hasAttribute('aria-controls')).toBe(false);
     expect(document.getElementById('drawer-more-pop')).toBeNull();
     expect(document.activeElement).toBe(more);
 
@@ -673,16 +690,22 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     act(() => { fireEvent.pointerDown(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' })); });
     expect(document.getElementById('drawer-more-pop')).not.toBeNull();
 
+    const panel = document.getElementById('side-drawer')!;
+    panel.focus();
+    const menuFocus = vi.spyOn(more, 'focus');
     act(() => { fireEvent.pointerDown(document.getElementById('drawer-menu')!); });
     expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(document.activeElement).toBe(more);
-    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+    expect(menuFocus).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(panel);
+    expect(panel.classList.contains('open')).toBe(true);
+    menuFocus.mockRestore();
 
     act(() => { fireEvent.click(more); });
+    screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }).focus();
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
     expect(document.getElementById('drawer-more-pop')).toBeNull();
     expect(document.activeElement).toBe(more);
-    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+    expect(panel.classList.contains('open')).toBe(true);
 
     act(() => { fireEvent.click(more); });
     act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn')!); });
@@ -700,5 +723,23 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
     expect(document.getElementById('drawer-more-pop')).toBeNull();
     expect(document.activeElement).toBe(menuBtn);
+  });
+
+  it('點語言選單關掉小卡時不把焦點搶回「⋯」', () => {
+    render(<Harness />);
+    openDrawer();
+    const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
+    more.focus();
+    act(() => { fireEvent.click(more); });
+    expect(document.activeElement).toBe(more);
+    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
+    const lang = document.getElementById('lang-select') as HTMLSelectElement;
+    const focusSpy = vi.spyOn(more, 'focus');
+    act(() => { fireEvent.pointerDown(lang); });
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+    expect(focusSpy).not.toHaveBeenCalled();
+    lang.focus();
+    expect(document.activeElement).toBe(lang);
+    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
   });
 });

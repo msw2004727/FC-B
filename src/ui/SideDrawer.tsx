@@ -281,6 +281,8 @@ export function SideDrawer({
   const resetBtnRef = useRef<HTMLButtonElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const morePopRef = useRef<HTMLDivElement>(null);
+  /** 小卡關掉的那次要不要把焦點拉回「⋯」。在卸載前寫下，cleanup 時小卡已不在。 */
+  const restoreMoreFocusRef = useRef(false);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
   const confirmBoxRef = useRef<HTMLDivElement>(null);
   const themeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -301,6 +303,7 @@ export function SideDrawer({
       setDragOffsetX(null);
       // 抽屜因換頁等原因關掉時，確認框與「⋯」小卡不留在畫面上，焦點仍還給選單鈕
       setShowClearCacheConfirm(false);
+      restoreMoreFocusRef.current = false;
       setMoreOpen(false);
     }
   }, [open]);
@@ -345,7 +348,8 @@ export function SideDrawer({
   }, [showClearCacheConfirm]);
 
   // 「⋯」小卡：點外面關。確認框開著時不關（重設鈕還在小卡裡，關框要把焦點還給它）。
-  // 關掉之後焦點回「⋯」；抽屜已關則不搶選單鈕的焦點。
+  // 焦點拉回「⋯」只在關閉前焦點在小卡內或在「⋯」上（Esc、再點「⋯」）。
+  // 點抽屜其他元素（語言選單等）關掉時不搶焦點。抽屜已關則不搶選單鈕的焦點。
   useLayoutEffect(() => {
     if (!moreOpen) return undefined;
     const onPointerDown = (event: PointerEvent): void => {
@@ -354,13 +358,16 @@ export function SideDrawer({
       if (!(target instanceof Node)) return;
       if (moreBtnRef.current?.contains(target)) return;
       if (morePopRef.current?.contains(target)) return;
+      restoreMoreFocusRef.current = false;
       setMoreOpen(false);
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
+      const restore = restoreMoreFocusRef.current;
+      restoreMoreFocusRef.current = false;
       const btn = moreBtnRef.current;
-      if (drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
+      if (restore && drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
     };
   }, [moreOpen]);
 
@@ -428,8 +435,13 @@ export function SideDrawer({
       if (confirmOpenRef.current) return;
       event.preventDefault();
       event.stopPropagation();
-      // 小卡開著：只關小卡，焦點回「⋯」（收尾在 moreOpen 的 layout effect）
+      // 小卡開著：只關小卡。焦點在小卡內或在「⋯」上才拉回去（收尾在 moreOpen 的 layout effect）。
       if (moreOpenRef.current) {
+        const active = document.activeElement;
+        restoreMoreFocusRef.current = Boolean(
+          active instanceof Node
+          && (morePopRef.current?.contains(active) || moreBtnRef.current?.contains(active)),
+        );
         setMoreOpen(false);
         return;
       }
@@ -831,7 +843,7 @@ export function SideDrawer({
                       onClick={() => handleMenuItemClick(entry)}
                     >
                       <DrawerMenuIcon page={entry.page} action={entry.action} />
-                      {displayLabel}
+                      <span class="dg-label">{displayLabel}</span>
                       {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
                       {locked && (
                         <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
@@ -901,15 +913,18 @@ export function SideDrawer({
               class="dg-more-btn"
               ref={moreBtnRef}
               aria-expanded={moreOpen ? 'true' : 'false'}
-              aria-controls="drawer-more-pop"
+              aria-controls={moreOpen ? 'drawer-more-pop' : undefined}
               aria-label={t('ui.sideDrawer.more')}
-              onKeyDown={(event) => {
-                // Enter／Space 會再合成一次 click；先 preventDefault，只切換一次。
-                if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
-                event.preventDefault();
-                setMoreOpen((open) => !open);
+              onClick={() => {
+                if (moreOpenRef.current) {
+                  const active = document.activeElement;
+                  restoreMoreFocusRef.current = Boolean(
+                    active instanceof Node
+                    && (morePopRef.current?.contains(active) || moreBtnRef.current?.contains(active)),
+                  );
+                }
+                setMoreOpen((isOpen) => !isOpen);
               }}
-              onClick={() => setMoreOpen((open) => !open)}
             >
               <MoreIcon />
             </button>
@@ -921,14 +936,14 @@ export function SideDrawer({
                 title={lt('隱私權政策', '隱私權政策')}
                 onClick={(event) => handleStaticLink(event, '/privacy')}
               >
-                {t('ui.sideDrawer.privacyShort')}
+                <span class="dg-label">{t('ui.sideDrawer.privacyShort')}</span>
               </a>
               <a
                 href="/terms"
                 title={lt('服務條款', '服務條款')}
                 onClick={(event) => handleStaticLink(event, '/terms')}
               >
-                {t('ui.sideDrawer.termsShort')}
+                <span class="dg-label">{t('ui.sideDrawer.termsShort')}</span>
               </a>
               <hr />
               <button
@@ -938,7 +953,7 @@ export function SideDrawer({
                 onClick={() => setShowClearCacheConfirm(true)}
               >
                 <ResetIcon cls="drawer-reset-icon" />
-                <span>{t('ui.sideDrawer.reset')}</span>
+                <span class="dg-label">{t('ui.sideDrawer.reset')}</span>
               </button>
             </div>
           )}
