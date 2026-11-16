@@ -175,11 +175,28 @@ describe('activity-head.css：整片液態玻璃＋分隔線', () => {
     expect(wins(find(rules, `${S} ${female}.active`), find(rules, `${D} ${female}`))).toBe(true);
   });
 
-  it('未開放（新手友善、高強度）灰字、不填底，淺深色都蓋過一般與女生樣式', () => {
-    const off = find(rules, `${S} ${TAB}.activity-tab-unavailable`);
-    expect(off.decls).toMatchObject({ color: 'var(--text-muted)', cursor: 'not-allowed' });
-    expect(wins(off, find(rules, `${S} ${TAB}`))).toBe(true);
-    expect(wins(find(rules, `${D} ${TAB}.activity-tab-unavailable`), find(rules, `${D} ${TAB}.activity-tab-female`))).toBe(true);
+  it('新手友善綠、高強度紫：未選彩色字；選中片內漸層＋光澤、白字；淺深色都有，且蓋過一般選中樣式', () => {
+    expect(rules.some((r) => r.selector.includes('activity-tab-unavailable'))).toBe(false);
+    const tones = [
+      { key: 'beginner', light: '#059669', dark: '#6ee7b7', fill: '#34d399, #059669', darkFill: '#047857, #10b981' },
+      { key: 'high-intensity', light: '#7c3aed', dark: '#c4b5fd', fill: '#a78bfa, #7c3aed', darkFill: '#6d28d9, #8b5cf6' },
+    ] as const;
+    for (const tone of tones) {
+      const tab = `${TAB}.activity-tab-${tone.key}`;
+      expect(find(rules, `${S} ${tab}`).decls.color).toBe(tone.light);
+      expect(find(rules, `${D} ${tab}`).decls.color).toBe(tone.dark);
+      expect(find(rules, `${S} ${tab}.active`).decls).toMatchObject({ color: '#fff', 'font-weight': '700' });
+      const onLight = find(rules, `${S} ${tab}.active::after`);
+      const onDark = find(rules, `${D} ${tab}.active::after`);
+      expect(onLight.decls.background).toMatch(GLOSS);
+      expect(onLight.decls.background).toContain(`linear-gradient(135deg, ${tone.fill})`);
+      expect(onDark.decls.background).toMatch(GLOSS);
+      expect(onDark.decls.background).toContain(`linear-gradient(135deg, ${tone.darkFill})`);
+      expect(wins(onLight, find(rules, `${S} ${TAB}.active::after`))).toBe(true);
+      expect(wins(onDark, find(rules, `${D} ${TAB}.active::after`))).toBe(true);
+      expect(wins(onDark, onLight)).toBe(true);
+      expect(wins(find(rules, `${S} ${tab}.active`), find(rules, `${S} ${TAB}.active`))).toBe(true);
+    }
   });
 
   it('地區鈕最寬 7.5rem，長地區名以省略號收尾、圖示不縮；選單每列 44px、不折行', () => {

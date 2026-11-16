@@ -129,6 +129,8 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
     clickBusy.current = false;
     setLoaded(null);
     setSheetOpen(false);
+    setIntensitySheetOpen(false);
+    setIntensity('');
     setEditorOpen(false);
     setFormOpen(false);
     setPreset(null);
@@ -146,6 +148,8 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
       cached.current = null;
       clickBusy.current = false;
       setPreset(null);
+      setIntensitySheetOpen(false);
+      setIntensity('');
     };
   }, [viewer.uid]);
 
@@ -203,6 +207,8 @@ export function useCreateEventEntry(viewer: ViewerView): CreateEventEntry {
           return;
         }
         setPreset(next);
+        // 社團詳情直接開表單，沒有分類彈窗；值留 ''，表單裡仍可選。
+        setIntensity('');
         setFormOpen(true);
       }
     })()

@@ -43,7 +43,7 @@ function specificity(selector: string): [number, number, number] {
 const gt = (a: [number, number, number], b: [number, number, number]) =>
   a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
 
-const TYPES = ['', '.tl-type-camp', '.tl-type-play', '.tl-type-watch', '.tl-type-course', '.tl-type-external', '.tl-type-teamonly', '.tl-type-female-only'];
+const TYPES = ['', '.tl-type-camp', '.tl-type-play', '.tl-type-watch', '.tl-type-course', '.tl-type-external', '.tl-type-teamonly', '.tl-type-beginner', '.tl-type-high-intensity', '.tl-type-female-only'];
 const LIGHT = (t: string) => `.legacy-ui #page-activities .tl-event-row${t}`;
 const DARK = (t: string) => `[data-theme="dark"] .legacy-ui #page-activities .tl-event-row${t}`;
 
@@ -58,7 +58,7 @@ describe('timeline-card-extra.css：液態光澤卡片', () => {
     expect(touching.every((r) => r.selector.includes('#page-activities'))).toBe(true);
   });
 
-  it('八種類型淺色、深色都有底色與光影；圓角用 A 既有的 --radius', () => {
+  it('十種類型（含新手友善、高強度）淺色、深色都有底色與光影；圓角用 A 既有的 --radius', () => {
     for (const t of TYPES) {
       for (const sel of [LIGHT(t), DARK(t)]) {
         const r = find(card, sel);

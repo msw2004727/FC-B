@@ -691,6 +691,7 @@ export default function MyActivitiesPage(): JSX.Element {
           open={createEntry.formOpen}
           mode="create"
           viewer={viewer}
+          initialIntensity={createEntry.intensity}
           onClose={createEntry.closeForm}
           onSaved={onCreateSaved}
         />

@@ -857,6 +857,7 @@ function TeamDetailContent({
                 mode="create"
                 viewer={viewer}
                 preset={createEntry.preset}
+                initialIntensity={createEntry.intensity}
                 onClose={createEntry.closeForm}
                 onSaved={onFormSaved}
               />

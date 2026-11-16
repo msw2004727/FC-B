@@ -52,7 +52,28 @@ type SportEvent = EventDoc & {
   region?: string;
   regionEnabled?: boolean;
   allowedGender?: string;
+  genderRestrictionEnabled?: boolean;
+  intensityLevel?: unknown;
 };
+
+function makeTouchEvent(
+  type: string,
+  opts: { touches?: { clientX: number; clientY: number }[]; changedTouches?: { clientX: number; clientY: number }[] },
+): Event {
+  const ev = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+    touches: { clientX: number; clientY: number }[];
+    changedTouches: { clientX: number; clientY: number }[];
+  };
+  ev.touches = opts.touches ?? [];
+  ev.changedTouches = opts.changedTouches ?? [];
+  return ev;
+}
+
+function swipeLeft(content: HTMLElement): void {
+  content.dispatchEvent(makeTouchEvent('touchstart', { touches: [{ clientX: 200, clientY: 80 }] }));
+  content.dispatchEvent(makeTouchEvent('touchmove', { touches: [{ clientX: 140, clientY: 80 }] }));
+  content.dispatchEvent(makeTouchEvent('touchend', { changedTouches: [{ clientX: 140, clientY: 80 }] }));
+}
 
 const football: SportEvent = {
   id: 'public-football',
@@ -334,7 +355,7 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     }, { timeout: 10_000 });
   }, 15_000);
 
-  it('shows toast when clicking unavailable features (share, beginner tab, nearby)', async () => {
+  it('shows toast when clicking unavailable features (share, nearby)', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
@@ -345,11 +366,6 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     await waitFor(() => {
       expect(getToasts().at(-1)?.message).toBe('複製失敗，請手動複製');
     });
-
-    toast.clear();
-    const beginnerTab = container.querySelector('[data-atab="beginner"]') as HTMLElement;
-    fireEvent.click(beginnerTab);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
 
     toast.clear();
     const nearbyBtn = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
@@ -363,6 +379,100 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(window.location.pathname).toBe('/activities');
     await waitFor(() => {
       expect(getToasts().at(-1)?.message).toBe('已加入收藏');
+    });
+  });
+
+  it('分類頁籤沒有停用屬性；點了只列該分類，缺值與亂值留在報名中', async () => {
+    const plain: SportEvent = { ...football, id: 'plain', title: 'Plain' };
+    const garbage: SportEvent = { ...pickleball, id: 'garbage', title: 'Garbage', intensityLevel: 'BEGINNER' };
+    const beginner: SportEvent = { ...football, id: 'beg', title: 'Beginner match', intensityLevel: 'beginner' };
+    const high: SportEvent = { ...pickleball, id: 'high', title: 'High match', intensityLevel: 'high-intensity' };
+    const missing: SportEvent = { ...football, id: 'missing', title: 'Missing' };
+    const nulled: SportEvent = { ...pickleball, id: 'nulled', title: 'Nulled', intensityLevel: null };
+    const numbered: SportEvent = { ...football, id: 'numbered', title: 'Numbered', intensityLevel: 2 };
+    active = [plain, garbage, beginner, high, missing, nulled, numbered];
+    const { container } = mount();
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLButtonElement;
+    const ids = () => [...container.querySelectorAll('.tl-event-row')].map((el) => el.getAttribute('data-event-id'));
+
+    await waitFor(() => expect(ids().sort()).toEqual(['beg', 'garbage', 'high', 'missing', 'nulled', 'numbered', 'plain']));
+    for (const key of ['beginner', 'high-intensity']) {
+      expect(tab(key).hasAttribute('aria-disabled')).toBe(false);
+      expect(tab(key).hasAttribute('title')).toBe(false);
+      expect(tab(key).classList.contains('activity-tab-unavailable')).toBe(false);
+    }
+
+    fireEvent.click(tab('beginner'));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('beginner');
+      expect(tab('beginner').classList.contains('active')).toBe(true);
+    });
+    expect(getToasts()).toEqual([]);
+    expect(ids()).toEqual(['beg']);
+
+    fireEvent.click(tab('high-intensity'));
+    await waitFor(() => expect(tab('high-intensity').classList.contains('active')).toBe(true));
+    expect(ids()).toEqual(['high']);
+
+    fireEvent.click(tab('normal'));
+    await waitFor(() => expect(tab('normal').classList.contains('active')).toBe(true));
+    expect(ids().sort()).toEqual(['beg', 'garbage', 'high', 'missing', 'nulled', 'numbered', 'plain']);
+  });
+
+  it('女生專屬且新手友善同時出現在兩個頁籤', async () => {
+    const both: SportEvent = {
+      ...football,
+      id: 'both',
+      title: 'Both',
+      intensityLevel: 'beginner',
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+    };
+    const onlyFemale: SportEvent = {
+      ...pickleball,
+      id: 'only-f',
+      title: 'Only female',
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+    };
+    const onlyBeginner: SportEvent = { ...football, id: 'only-b', title: 'Only beginner', intensityLevel: 'beginner' };
+    active = [both, onlyFemale, onlyBeginner];
+    const { container } = mount();
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+    await waitFor(() => expect(container.querySelector('[data-event-id="both"]')).toBeTruthy());
+
+    fireEvent.click(tab('female'));
+    await waitFor(() => expect(container.querySelector('[data-event-id="only-f"]')).toBeTruthy());
+    expect(container.querySelector('[data-event-id="both"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="only-b"]')).toBeNull();
+
+    fireEvent.click(tab('beginner'));
+    await waitFor(() => expect(container.querySelector('[data-event-id="only-b"]')).toBeTruthy());
+    expect(container.querySelector('[data-event-id="both"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="only-f"]')).toBeNull();
+  });
+
+  it('左右滑的 getKey 放行新手友善與高強度', async () => {
+    history.replaceState(null, '', '/activities?tab=female');
+    const { container } = mount();
+    const list = container.querySelector('#activity-list') as HTMLElement;
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+    await waitFor(() => {
+      expect(list.dataset['swipeBound']).toBe('1');
+      expect(tab('female').classList.contains('active')).toBe(true);
+    });
+
+    await act(async () => { swipeLeft(list); });
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('beginner');
+      expect(tab('beginner').classList.contains('active')).toBe(true);
+      expect(list.style.transform).toBe('');
+    });
+
+    await act(async () => { swipeLeft(list); });
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('high-intensity');
+      expect(tab('high-intensity').classList.contains('active')).toBe(true);
     });
   });
 
@@ -777,9 +887,6 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
       expect(sticky.querySelector('#activity-region-tabs')).toBeTruthy();
       expect(container.querySelector('.legacy-ui.activities-root')).toBeTruthy();
       await waitFor(() => expect(container.querySelector('.tl-month-header')?.getAttribute('style') ?? '').toContain('78px'));
-      // 新手友善／高強度維持灰色未開放
-      expect(container.querySelector('[data-atab="beginner"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
-      expect(container.querySelector('[data-atab="high-intensity"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
     } finally {
       rect.mockRestore();
     }

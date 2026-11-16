@@ -632,7 +632,7 @@ export default function ActivitiesPage(): JSX.Element {
     return list;
   }, [data.events, viewer, registrations, regionTab, effectiveSport, activeTab, filterType, filterKeyword]);
 
-  // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬。
+  // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬，也不套活動分類。
   const calendarVisibleEvents = useMemo(
     () => getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[],
     [data.events, viewer, registrations],

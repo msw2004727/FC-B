@@ -680,5 +680,7 @@ export function toCreateEventForm(
     teamReservationReleaseHours: resolveTeamReservationReleaseHours(
       state, state.dateVal.trim(), extras?.nowMs ?? Date.now(),
     ),
+    // 含 ''。建立 payload 才決定要不要寫鍵；多日期沿用 ...base。
+    intensityLevel: state.intensityLevel,
   };
 }

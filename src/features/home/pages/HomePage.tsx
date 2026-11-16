@@ -726,6 +726,7 @@ export default function HomePage(): JSX.Element {
             open={createEntry.formOpen}
             mode="create"
             viewer={viewer}
+            initialIntensity={createEntry.intensity}
             onClose={createEntry.closeForm}
             onSaved={onFormSaved}
           />
