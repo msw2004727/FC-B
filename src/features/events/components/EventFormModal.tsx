@@ -574,6 +574,7 @@ export function EventFormModal({
             if (!isCurrent()) return;
             await notifyEventChanged({
               eventId: existingForEdit.id,
+              relationEventId: typeof before.id === 'string' && before.id.trim() ? before.id : undefined,
               title: payloadForm.title,
               date: String(changes.date ?? existing.date ?? ''),
               location: payloadForm.location,

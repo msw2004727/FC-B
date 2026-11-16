@@ -454,4 +454,85 @@ describe('sendTemplateNotification', () => {
     expect(vi.mocked(deliverInboxMessage).mock.calls[1]![0]).not.toHaveProperty('source');
     expect((vi.mocked(callFn).mock.calls[1]![1] as { source: string }).source).toBe('   ');
   });
+
+  it('非白名單 source 時站內信不帶 source，LINE 照舊', async () => {
+    const nonAllowlistKeys = [
+      'welcome',
+      'signup_success',
+      'cancel_signup',
+      'role_application',
+      'role_upgrade',
+      'waitlist_promoted',
+      'waitlist_demoted',
+    ];
+    for (const key of nonAllowlistKeys) {
+      mockNoCustomTemplate();
+      mockNoToggles();
+      vi.mocked(deliverInboxMessage).mockResolvedValueOnce({ dedupeKey: `k-${key}` } as never);
+      vi.mocked(callFn).mockResolvedValueOnce({} as never);
+
+      await sendTemplateNotification({
+        key,
+        vars: {
+          userName: 'User',
+          eventName: 'Event',
+          date: 'Date',
+          location: 'Loc',
+          status: 'Status',
+          roleName: 'Role',
+        },
+        targetUid: 'U-recipient',
+        category: 'system',
+        categoryName: '系統',
+        senderUid: 'U-sender',
+      });
+
+      expect(vi.mocked(deliverInboxMessage).mock.calls.at(-1)![0]).not.toHaveProperty('source');
+      const payload = vi.mocked(callFn).mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(payload['source']).toBe(`template:${key}`);
+    }
+  });
+
+  it('event_changed 搭配非白名單 lineOptions.source 時站內信不帶 source，LINE 用覆寫值', async () => {
+    mockNoCustomTemplate();
+    mockNoToggles();
+    vi.mocked(deliverInboxMessage).mockResolvedValueOnce({ dedupeKey: 'k-override' } as never);
+    vi.mocked(callFn).mockResolvedValueOnce({} as never);
+
+    await sendTemplateNotification({
+      ...baseInput,
+      lineOptions: { source: 'template:welcome' },
+    });
+
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0]).not.toHaveProperty('source');
+    const payload = vi.mocked(callFn).mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload['source']).toBe('template:welcome');
+  });
+
+  it('R1 白名單 key 照舊帶 source', async () => {
+    const allowlistKeys = ['event_changed', 'event_cancelled', 'event_relisted'];
+    for (const key of allowlistKeys) {
+      mockNoCustomTemplate();
+      mockNoToggles();
+      vi.mocked(deliverInboxMessage).mockResolvedValueOnce({ dedupeKey: `k-${key}` } as never);
+      vi.mocked(callFn).mockResolvedValueOnce({} as never);
+
+      await sendTemplateNotification({
+        key,
+        vars: {
+          eventName: 'Event',
+          date: 'Date',
+          location: 'Loc',
+        },
+        targetUid: 'U-recipient',
+        category: 'activity',
+        categoryName: '活動',
+        senderUid: 'U-sender',
+      });
+
+      expect(vi.mocked(deliverInboxMessage).mock.calls.at(-1)![0]).toHaveProperty('source', `template:${key}`);
+      const payload = vi.mocked(callFn).mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(payload['source']).toBe(`template:${key}`);
+    }
+  });
 });

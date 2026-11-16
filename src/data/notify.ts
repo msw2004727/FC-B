@@ -16,7 +16,6 @@ import { callFn, type RequestOf } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
 import {
-  isKnownNotificationSource,
   pickRelationKeys,
   RELATION_KEY_NAMES,
   type NotificationRelationKeys,
@@ -230,6 +229,17 @@ export async function loadNotificationToggles(): Promise<Record<string, unknown>
 
 // ── 範本通知發送 ──────────────────────────────────
 
+/**
+ * 伺服器把 welcome／signup_success／cancel_signup 分在 R0（只能通知自己、強制擋），
+ * role_application 在 R7；若站內信帶這些 source 發給他人會被拒並連帶不送 LINE。
+ * 只對已用真查詢對照過的 R1 三種開放（2026-11-16 S2 查核，A2-01-2c2-S2-inbox-source-查核.md）。
+ */
+const INBOX_SOURCE_ALLOWLIST: ReadonlySet<string> = new Set([
+  'template:event_changed',
+  'template:event_cancelled',
+  'template:event_relisted',
+]);
+
 export interface SendTemplateNotificationInput {
   key: string;
   vars: Record<string, unknown>;
@@ -285,7 +295,8 @@ export async function sendTemplateNotification(
   // 站內信只在 trim 後屬於已知 source 時才寫 message.source。
   const source = input.lineOptions?.source || `template:${input.key}`;
   const relationKeys = pickRelationKeys(input.relationKeys);
-  const inboxSource = isKnownNotificationSource(source.trim()) ? source.trim() : '';
+  const trimmedSource = source.trim();
+  const inboxSource = INBOX_SOURCE_ALLOWLIST.has(trimmedSource) ? trimmedSource : '';
 
   // 2. 收件匣（A `_deliverMessageToInbox`）：失敗只 warn。
   let deliveredMsg: Record<string, unknown> | null;
