@@ -14,6 +14,7 @@
 import { collection, getDocs } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
+import { pickRelationKeys } from '@/data/notification-relation-keys';
 import { sendTemplateNotification } from '@/data/notify';
 import { registrations } from '@/data/paths';
 
@@ -181,6 +182,7 @@ export async function notifyEventChanged(
   for (const uid of recipientUids) {
     try {
       const dedupeKey = getEventChangeNotificationDedupeKey(eventId, uid, eventData);
+      const relationKeys = pickRelationKeys({ eventId });
       const result = await sendTemplateNotification({
         key: 'event_changed',
         vars: { eventName: title, date, location },
@@ -189,6 +191,7 @@ export async function notifyEventChanged(
         categoryName: '活動',
         senderUid,
         extra: { dedupeKey },
+        ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
       });
       if (result.delivered) successCount += 1;
     } catch (err) {

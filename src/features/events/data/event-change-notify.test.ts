@@ -153,6 +153,63 @@ describe('notifyEventChanged', () => {
     // dedupeKey 走 getEventChangeNotificationDedupeKey（比對字串開頭即可）
     const extra = first![0].extra as { dedupeKey: string };
     expect(extra.dedupeKey.startsWith('event_changed:e-1:U1:')).toBe(true);
+    expect(first![0].source).toBe('template:event_changed');
+    expect(first![0].relationKeys).toEqual({ eventId: 'e-1' });
+    expect(second![0].relationKeys).toEqual({ eventId: 'e-1' });
+    const lineCalls = vi.mocked(callFn).mock.calls.filter(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    );
+    expect(lineCalls).toHaveLength(1);
+    expect(lineCalls[0]![1]).toEqual({
+      uid: 'U2',
+      category: 'activity',
+      title: '活動變更通知',
+      body: '您報名的活動資訊有所變更，請留意：\n\n活動名稱：測試活動\n活動時間：2026/05/09\n活動地點：台北\n\n如因變更需要取消報名，請至活動頁面操作。',
+      source: 'template:event_changed',
+      dedupeKey: 'k-ok',
+      eventId: 'e-1',
+    });
+  });
+
+  it('eventId 空白不帶鍵；前後空白會 trim 後再送', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    vi.mocked(deliverInboxMessage).mockResolvedValue({ dedupeKey: 'k-blank' } as never);
+    vi.mocked(callFn).mockResolvedValue({} as never);
+
+    await notifyEventChanged({
+      eventId: '   ',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0]).not.toHaveProperty('relationKeys');
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0].source).toBe('template:event_changed');
+    const blankLine = vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as Record<string, unknown>;
+    expect(blankLine).not.toHaveProperty('eventId');
+    expect(Object.keys(blankLine).sort()).toEqual(
+      ['body', 'category', 'dedupeKey', 'source', 'title', 'uid'],
+    );
+
+    vi.mocked(deliverInboxMessage).mockClear();
+    vi.mocked(callFn).mockClear();
+    await notifyEventChanged({
+      eventId: ' e-2 ',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0].relationKeys).toEqual({ eventId: 'e-2' });
+    expect((vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as { eventId: string }).eventId).toBe('e-2');
   });
 
   it('sendTemplateNotification 整批失敗仍回 0，不拋出', async () => {

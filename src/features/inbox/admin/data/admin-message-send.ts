@@ -67,6 +67,7 @@ export async function deliverAdminMessage(
     senderUid,
     extra,
     messageId: inboxMessageIdOf(m),
+    source: `target:${m.targetType || 'all'}`,
   });
 }
 

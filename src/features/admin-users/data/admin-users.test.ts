@@ -354,6 +354,8 @@ describe('sendRoleUpgradeInbox（只寫站內信，不發 LINE）', () => {
       title: '身份變更通知', category: 'private', categoryName: '私訊', targetUid: 'uid-1', senderName: '系統', senderUid: 'actor-1',
     });
     expect(arg['body']).toContain('恭喜 小明！您的身份已變更為「教練」');
+    expect(arg).not.toHaveProperty('source');
+    expect(arg).not.toHaveProperty('relationKeys');
   });
 
   it('Firestore 有自訂範本（title、body 都有）時優先採用；缺 body 退回內建', async () => {

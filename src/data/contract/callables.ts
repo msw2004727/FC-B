@@ -643,6 +643,31 @@ export interface DeliverToInboxRequest {
    * @source request.data || {} 解構
    */
   targetType?: unknown;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  eventId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  teamId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  tournamentId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  applicantUid?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  assignmentRole?: string;
 }
 
 export interface DeliverToInboxResponse {
@@ -712,6 +737,31 @@ export interface EnqueuePrivilegedLineNotificationRequest {
    * @source const dedupeKey = normalizeLineNotificationText(request.data?.dedupeKey, 160);
    */
   dedupeKey?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  eventId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  teamId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  tournamentId?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  applicantUid?: string;
+  /**
+   * @validation 可省略。非空字串才送；trim 後空值省略，最長 128（notification-relation-log.js relationKeysFromData）
+   * @source notification-relation-log.js relationKeysFromData（Callable 請求頂層）
+   */
+  assignmentRole?: string;
 }
 
 export interface EnqueuePrivilegedLineNotificationResponse {

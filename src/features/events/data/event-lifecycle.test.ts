@@ -167,6 +167,10 @@ describe('cancelEvent', () => {
         date: '2099/06/01 07:00~09:00',
         location: '公園',
       });
+      expect(call.relationKeys).toEqual({ eventId: 'evt-1' });
+      expect(Object.keys(call).sort()).toEqual([
+        'category', 'categoryName', 'key', 'relationKeys', 'senderUid', 'targetUid', 'vars',
+      ]);
     }
 
     // Op log
@@ -501,11 +505,37 @@ describe('relistEvent', () => {
     expect(first.key).toBe('event_relisted');
     expect(first.category).toBe('activity');
     expect(first.categoryName).toBe('活動');
+    expect(first.relationKeys).toEqual({ eventId: 'evt-1' });
+    expect(Object.keys(first).sort()).toEqual([
+      'category', 'categoryName', 'key', 'relationKeys', 'senderUid', 'targetUid', 'vars',
+    ]);
 
     const logData = mockSetDoc.mock.calls[0]![1] as unknown as Record<string, unknown>;
     expect(logData.type).toBe('event_relist');
     expect(logData.typeName).toBe('重新上架');
     expect(logData.content).toBe('重新上架「X」');
+  });
+
+  it('event.id 空白或不是字串時不傳 relationKeys', async () => {
+    mockLoadRecipients.mockResolvedValue(['u1']);
+    await cancelEvent({
+      event: ev({ id: '   ' }),
+      eventDocId: 'doc-1',
+      viewer: adminViewer(),
+      now: new Date(),
+    });
+    expect(mockSendNotify.mock.calls[0]![0]).not.toHaveProperty('relationKeys');
+    expect(mockSendNotify.mock.calls[0]![0].key).toBe('event_cancelled');
+
+    mockSendNotify.mockClear();
+    await relistEvent({
+      event: ev({ id: undefined, date: '2099/06/01 10:00', status: 'ended', max: 10 }),
+      eventDocId: 'doc-1',
+      viewer: adminViewer(),
+      now: new Date(Date.parse('2026-05-09T00:00:00+08:00')),
+    });
+    expect(mockSendNotify.mock.calls[0]![0]).not.toHaveProperty('relationKeys');
+    expect(mockSendNotify.mock.calls[0]![0].key).toBe('event_relisted');
   });
 
   it('throws START_PASSED when start date has passed', async () => {

@@ -56,6 +56,25 @@ describe('deliverAdminMessage（A _deliverMessageToInbox 的 extra）', () => {
     expect(req['targetRoles']).toEqual(['coach', 'admin', 'super_admin']);
     const message = req['message'] as Record<string, unknown>;
     expect(message).toMatchObject({ adminMsgId: 'mg_1', title: '公告', body: '內容', type: 'system', typeName: '系統', senderName: '站長' });
+    expect(message['source']).toBe('target:coach');
+    expect(Object.keys(req).sort()).toEqual(
+      ['message', 'targetRoles', 'targetTeamId', 'targetType', 'targetUid'],
+    );
+  });
+
+  it('targetType 空白時 source 為 target:all；大寫或含非小寫的對象不寫 source，也不帶關聯鍵', async () => {
+    await deliverAdminMessage(msg({ targetType: '' }), 'U-admin');
+    const allMessage = (callFn.mock.calls[0]?.[1] as { message: Record<string, unknown> }).message;
+    expect(allMessage['source']).toBe('target:all');
+
+    _resetRecentInboxDeliveryForTest();
+    callFn.mockClear();
+    await deliverAdminMessage(msg({ targetType: 'Coach', _docId: 'mg_coach', id: 'mg_coach' }), 'U-admin');
+    const unknownReq = callFn.mock.calls[0]?.[1] as { message: Record<string, unknown> };
+    expect(unknownReq.message).not.toHaveProperty('source');
+    expect(Object.keys(unknownReq).sort()).toEqual(
+      ['message', 'targetRoles', 'targetTeamId', 'targetType', 'targetUid'],
+    );
   });
 
   it('信件 ID 由 adminMsg 推導固定（msg_<id>）、dedupeKey＝admin:<id>：重送寫同一份', async () => {
