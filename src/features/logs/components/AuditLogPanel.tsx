@@ -74,7 +74,14 @@ export function AuditLogPanel(props: AuditLogPanelProps): JSX.Element {
     try {
       // 區間累計上限 500：最後一批只抓剩餘額度，剛好停在上限（第二批審查 Flash P1）。
       const loaded = first ? 0 : cur.chunks.reduce((n, c) => n + c.length, 0);
-      const res = await fetchAuditPage(dayKeys, first ? START.cursor : cur.cursor, Math.max(1, Math.min(want, AUDIT_RANGE_CAP - loaded)), taipeiDayKey(nowMs), readDay);
+      if (loaded >= AUDIT_RANGE_CAP) {
+        // 已達上限：不再讀（正常情況 capped 已標 done，這裡是明確防線；第二批確認 MiMo P2）。
+        const stop: Pages = { ...cur, busy: false, done: true, truncated: true };
+        ref.current = stop;
+        setPages(stop);
+        return false;
+      }
+      const res = await fetchAuditPage(dayKeys, first ? START.cursor : cur.cursor, Math.min(want, AUDIT_RANGE_CAP - loaded), taipeiDayKey(nowMs), readDay);
       if (mySeq !== seq.current) return false;
       const chunks = first ? [res.entries] : cur.chunks.concat([res.entries]);
       const total = chunks.reduce((n, c) => n + c.length, 0);
