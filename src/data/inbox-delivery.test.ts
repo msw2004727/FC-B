@@ -207,7 +207,7 @@ describe('deliverInboxMessage', () => {
       },
     });
 
-    expect(msg['source']).toBe('team_join_request');
+    expect(msg?.['source']).toBe('team_join_request');
     expect(msg).not.toHaveProperty('teamId');
     expect(msg).not.toHaveProperty('applicantUid');
     expect(msg).not.toHaveProperty('assignmentRole');
