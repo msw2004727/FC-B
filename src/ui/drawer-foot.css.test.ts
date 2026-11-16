@@ -1,16 +1,17 @@
-// 抽屜底部（方案一）版面契約：jsdom 不排版，改讀 CSS 原檔鎖住「點擊區 44px」與「不換行」這兩條防線。
-// 實際排版（七語系 × 360／390／1280 × 最大字級不斷行、不超出抽屜、點擊高度）由副機截圖量測驗證（docs/previews/2026-11-13-drawer/final）。
+// 抽屜底部（方案 C）版面契約：jsdom 不排版，改讀 CSS 原檔鎖住「點擊區 44px」與「不換行」這兩條防線。
+// 「⋯」小卡字級鎖在 .84rem（站長核可預覽）；小卡左右貼齊抽屜內距，超長文案省略號收尾。
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(join(process.cwd(), 'src/ui/drawer-foot.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const glass = readFileSync(join(process.cwd(), 'src/ui/drawer-glass.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** 取出選擇器清單恰好等於 selector（逗號分隔、忽略空白）的規則宣告。 */
-function decls(selector: string): Record<string, string> {
+function declsIn(source: string, selector: string, file: string): Record<string, string> {
   const want = selector.split(',').map((s) => s.trim()).join(',');
   const re = /([^{}]+)\{([^{}]*)\}/g;
-  for (let m = re.exec(css); m; m = re.exec(css)) {
+  for (let m = re.exec(source); m; m = re.exec(source)) {
     const sel = m[1]!.split(',').map((s) => s.trim()).join(',');
     if (sel !== want) continue;
     const out: Record<string, string> = {};
@@ -20,12 +21,16 @@ function decls(selector: string): Record<string, string> {
     }
     return out;
   }
-  throw new Error(`drawer-foot.css 找不到規則：${selector}`);
+  throw new Error(`${file} 找不到規則：${selector}`);
+}
+
+function decls(selector: string): Record<string, string> {
+  return declsIn(css, selector, 'drawer-foot.css');
 }
 
 const P = '.legacy-ui #side-drawer';
 
-describe('抽屜底部方案一：點擊區 44px', () => {
+describe('抽屜底部方案 C：點擊區 44px', () => {
   it('主題三段鈕 44px 高（比 40px 玻璃片上下各超出 2px）', () => {
     expect(decls(`${P} .drawer-foot-slab`).height).toBe('40px');
     const btn = decls(`${P} .drawer-theme-btn`);
@@ -41,18 +46,34 @@ describe('抽屜底部方案一：點擊區 44px', () => {
     expect(sel.opacity).toBe('0');
   });
 
-  it('聲明連結與重設鈕本身 44px 高', () => {
-    expect(decls(`${P} .drawer-foot-link, ${P} .drawer-reset-btn`).height).toBe('44px');
-    expect(decls(`${P} .drawer-foot-fine`)['min-height']).toBe('44px');
+  it('「⋯」鈕 44×44，小卡每一列 44px 高且字級 .84rem', () => {
+    const more = decls(`${P} .dg-more-btn`);
+    expect(more.width).toBe('44px');
+    expect(more.height).toBe('44px');
+    expect(more.margin).toBe('-2px 0');
+    const row = decls(`${P} .dg-more-pop a, ${P} .dg-more-pop button`);
+    expect(row.height).toBe('44px');
+    expect(row['font-size']).toBe('.84rem');
+    expect(row.overflow).toBe('hidden');
+    expect(row['text-overflow']).toBe('ellipsis');
+    const pop = decls(`${P} .dg-more-pop`);
+    expect(pop.left).toBe('10px');
+    expect(pop.right).toBe('10px');
+  });
+
+  it('選單列至少 44px 高', () => {
+    const row = declsIn(glass, `${P} .drawer-item`, 'drawer-glass.css');
+    expect(row['min-height']).toBe('44px');
   });
 });
 
-describe('抽屜底部方案一：不換行（泰、越文不撐出抽屜）', () => {
-  it('語言鈕、小字列、聲明連結、重設鈕、確認框標題都不換行', () => {
+describe('抽屜底部方案 C：不換行（泰、越文不撐出抽屜）', () => {
+  it('語言鈕、小卡列、確認框標題都不換行', () => {
     expect(decls(`${P} .drawer-lang`)['white-space']).toBe('nowrap');
-    expect(decls(`${P} .drawer-foot-fine`)['white-space']).toBe('nowrap');
-    expect(decls(`${P} .drawer-foot-link, ${P} .drawer-reset-btn`)['white-space']).toBe('nowrap');
+    expect(decls(`${P} .drawer-lang`).padding).toBe('0 .5rem 0 .6rem');
+    expect(decls(`${P} .dg-more-pop a, ${P} .dg-more-pop button`)['white-space']).toBe('nowrap');
     expect(decls('.legacy-ui .drawer-reset-confirm-title')['white-space']).toBe('nowrap');
+    expect(declsIn(glass, `${P} .drawer-item`, 'drawer-glass.css')['white-space']).toBe('nowrap');
   });
 
   // 測試同步更新（DRAWER-POLISH）：間距與內距再收，最大字級 360 寬時資訊欄留得下「字＋省略號」
@@ -68,9 +89,9 @@ describe('抽屜底部方案一：不換行（泰、越文不撐出抽屜）', (
     expect(decls(`${P} .drawer-pwa-btn`).padding).toBe('0 .45rem');
   });
 
-  it('底部聲明與重設小字：淺色用 --text-secondary（達 WCAG AA），深色維持 --text-muted', () => {
-    expect(decls(`${P} .drawer-foot-link, ${P} .drawer-reset-btn`).color).toBe('var(--text-secondary)');
-    expect(decls(`[data-theme="dark"] ${P} .drawer-foot-link, [data-theme="dark"] ${P} .drawer-reset-btn`).color).toBe('var(--text-muted)');
+  it('小卡文字用 --text-primary，重設列用 --danger', () => {
+    expect(decls(`${P} .dg-more-pop a, ${P} .dg-more-pop button`).color).toBe('var(--text-primary)');
+    expect(decls(`${P} .dg-more-pop .dg-danger`).color).toBe('var(--danger)');
   });
 
   it('確認框說明用 pre-line（中、日文逗號後語意換行），確定鈕紅色', () => {

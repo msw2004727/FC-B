@@ -61,6 +61,7 @@
       "navigation": "其他功能",
       "admin": "管理",
       "language": "语言",
+      "more": "更多",
       "loading": "正在加载语言",
       "localeError": "目前无法切换语言，请稍后重试。",
       "theme": "显示模式",

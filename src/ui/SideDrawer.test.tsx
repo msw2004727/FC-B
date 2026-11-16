@@ -50,6 +50,12 @@ function openDrawer(): HTMLElement {
   return button;
 }
 
+function openMore(): HTMLElement {
+  const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
+  fireEvent.click(more);
+  return more;
+}
+
 beforeEach(() => {
   _resetForTest();
   toast.clear();
@@ -142,6 +148,7 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
     fireEvent.click(document.querySelector('[data-action="apply-role"]') as HTMLElement);
     fireEvent.click(screen.getByRole('button', { name: '了解，前往聯繫' }));
     openDrawer();
+    openMore();
     fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }));
     fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }));
     expect(location.pathname).toBe('/events/ce_1');
@@ -156,12 +163,13 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
   });
 });
 
-// 測試同步更新（站長 2026-11-13 方案一）：聲明改小字連結，顯示文字用 ui.sideDrawer.privacyShort／termsShort（外語用短名，泰、越不撐出抽屜）。
+// 測試同步更新（站長 2026-11-16 方案 C）：聲明在「⋯」小卡裡，顯示文字仍用 ui.sideDrawer.privacyShort／termsShort。
 describe('SideDrawer 隱私權政策與服務條款連結', () => {
   it('用根目錄絕對路徑：在 /events/xxx 這種兩層路徑點開不會變成 /events/privacy.html（Opus 終審 P2）', () => {
     history.replaceState(null, '', '/events/ce_1');
     render(<Harness />);
     openDrawer();
+    openMore();
     expect(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }).getAttribute('href')).toBe('/privacy');
     expect(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }).getAttribute('href')).toBe('/terms');
   });
@@ -325,6 +333,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      openMore();
       const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
       expect(resetBtn.textContent).toBe('ui.sideDrawer.reset');
       expect(document.querySelector('.drawer-clear-btn')).toBeNull();
@@ -351,6 +360,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      const moreBtn = openMore();
       const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
       act(() => { fireEvent.click(resetBtn); });
       expect(document.activeElement?.id).toBe('app-confirm-cancel');
@@ -358,8 +368,13 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
       expect(document.getElementById('app-confirm-modal')).toBeNull();
       expect(gateSpy).not.toHaveBeenCalled();
       expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+      expect(document.getElementById('drawer-more-pop')).not.toBeNull();
       expect(document.activeElement).toBe(resetBtn);
-      // 框關了之後再按 Esc 才關抽屜
+      // 框關了之後再按 Esc 先關「⋯」小卡（焦點回「⋯」），再按一次才關抽屜
+      act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
+      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+      expect(document.getElementById('drawer-more-pop')).toBeNull();
+      expect(document.activeElement).toBe(moreBtn);
       act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
       expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
     } finally {
@@ -370,6 +385,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
   it('重設確認框：Tab／Shift+Tab 只在框內兩顆按鈕間循環，不跑到後面的抽屜', () => {
     render(<Harness />);
     openDrawer();
+    openMore();
     act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
     const cancel = document.getElementById('app-confirm-cancel')!;
     const ok = document.getElementById('app-confirm-ok')!;
@@ -397,6 +413,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      openMore();
       act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
       expect(document.getElementById('app-confirm-modal')).not.toBeNull();
       act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
@@ -446,6 +463,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      openMore();
       fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
@@ -470,6 +488,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      openMore();
       fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
@@ -494,6 +513,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
+      openMore();
       fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
@@ -592,17 +612,93 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     }
   });
 
-  it('聲明與重設在玻璃片下方兩行小字；舊的深色開關、粉紅膠囊、清除快取鈕都拿掉', () => {
+  it('聲明與重設收在「⋯」小卡；舊的深色開關、粉紅膠囊、清除快取鈕、底部小字列都拿掉', () => {
     render(<Harness />);
     openDrawer();
     const footer = document.querySelector('#side-drawer .drawer-foot')!;
-    const rows = Array.from(footer.children).map((el) => el.className);
-    expect(rows.slice(0, 3)).toEqual(['drawer-foot-slab', 'drawer-foot-fine drawer-foot-legal', 'drawer-foot-fine']);
+    expect(footer.querySelector('.dg-more-btn')).not.toBeNull();
+    expect(footer.querySelector('.dg-more-pop')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'ui.sideDrawer.privacyShort' })).toBeNull();
+    const more = openMore();
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
     const privacy = screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' });
-    expect(privacy.classList.contains('drawer-foot-link')).toBe(true);
-    expect(privacy.closest('.drawer-foot-legal')).not.toBeNull();
+    expect(privacy.closest('.dg-more-pop')).not.toBeNull();
+    expect(privacy.getAttribute('href')).toBe('/privacy');
     expect(privacy.getAttribute('title')).toBe('隱私權政策');
-    expect(footer.querySelector('.drawer-foot-fine:not(.drawer-foot-legal) .drawer-reset-btn')).not.toBeNull();
-    expect(document.querySelector('.drawer-legal-btn, .drawer-clear-btn, #theme-toggle, .toggle-switch')).toBeNull();
+    const terms = screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' });
+    expect(terms.getAttribute('href')).toBe('/terms');
+    expect(terms.getAttribute('title')).toBe('服務條款');
+    expect(footer.querySelector('.dg-more-pop .drawer-reset-btn.dg-danger')).not.toBeNull();
+    expect(document.querySelector('.drawer-legal-btn, .drawer-clear-btn, #theme-toggle, .toggle-switch, .drawer-foot-fine')).toBeNull();
+  });
+
+  it('選單依權限收成卡，每一列前面有專屬圖示（不是狀態圖示）', () => {
+    render(<Harness />);
+    openDrawer();
+    const menu = document.getElementById('drawer-menu')!;
+    const groups = menu.querySelectorAll(':scope > .dg-group');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.classList.contains('dg-admin')).toBe(false);
+    expect(groups[0]!.classList.contains('dg-super')).toBe(false);
+    const items = groups[0]!.querySelectorAll(':scope > .drawer-item');
+    expect(items).toHaveLength(5);
+    for (const item of items) {
+      const ico = item.querySelector(':scope > .dg-ico svg');
+      expect(ico?.getAttribute('viewBox')).toBe('0 0 24 24');
+      expect(ico?.classList.contains('drawer-status')).toBe(false);
+    }
+    expect(menu.querySelector('.drawer-section-label')).toBeNull();
+    expect(menu.querySelector('.drawer-divider')).toBeNull();
+  });
+
+  it('「⋯」：Enter／Space 開關、點外面關、Esc 關並把焦點還回「⋯」；確認框開著時點外面不關小卡', () => {
+    render(<Harness />);
+    const menuBtn = openDrawer();
+    const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+
+    act(() => { fireEvent.keyDown(more, { key: 'Enter' }); });
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
+
+    act(() => { fireEvent.keyDown(more, { key: ' ' }); });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+    expect(document.activeElement).toBe(more);
+
+    act(() => { fireEvent.click(more); });
+    act(() => { fireEvent.pointerDown(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' })); });
+    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
+
+    act(() => { fireEvent.pointerDown(document.getElementById('drawer-menu')!); });
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+    expect(document.activeElement).toBe(more);
+    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+
+    act(() => { fireEvent.click(more); });
+    act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+    expect(document.activeElement).toBe(more);
+    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
+
+    act(() => { fireEvent.click(more); });
+    act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn')!); });
+    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
+    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
+    act(() => { fireEvent.pointerDown(document.getElementById('drawer-menu')!); });
+    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
+    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
+
+    act(() => { fireEvent.click(document.getElementById('app-confirm-cancel')!); });
+    act(() => {
+      fireEvent.pointerDown(document.getElementById('drawer-overlay')!);
+      fireEvent.click(document.getElementById('drawer-overlay')!);
+    });
+    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
+    expect(document.getElementById('drawer-more-pop')).toBeNull();
+    expect(document.activeElement).toBe(menuBtn);
   });
 });

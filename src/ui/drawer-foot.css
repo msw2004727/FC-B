@@ -1,13 +1,14 @@
-/* 側邊抽屜底部（站長 2026-11-13 選方案一「單片收納」）＋重設確認框＋頂部角色標籤不斷行。B 新增，不加進 A 的 layout.css。
- * 光澤同 activity-head.css 的整片液態玻璃：頂緣亮線、上半光澤、底部內光、柔和投影；不用 backdrop-filter、不自創 CSS 變數、
- * 不用 color-mix（舊 iOS／LINE WebView 沒有退路）。主色寫死同 --accent（淺 #0d9488、深 #34d399），同活動頁頂部做法。
- * 點擊區一律 44px：片內按鈕高 44px、比 40px 玻璃片上下各超出 2px（外觀不變）；小字列連結本身就是 44px 高。
- * 底部內距與列距用整數 px：避免 rem 小數讓小字列落在半像素、實際點得到的高度少 1px。
- * 每段文字都不換行；最長的泰、越、韓文在 280px 抽屜、最大字級下實測放得下（docs/previews/2026-11-13-drawer）。 */
+/* 側邊抽屜底部（站長 2026-11-16 選方案 C）＋重設確認框＋頂部角色標籤不斷行。B 新增，不加進 A 的 layout.css。
+ * 玻璃片＝主題三段＋語言＋「⋯」。隱私權政策、服務條款、重設收進「⋯」小卡。
+ * 不用 backdrop-filter、不用 color-mix。新色值在 tokens.css（--color-drawer-*、--color-roster-slab-*）。
+ * 點擊區高 44px：「⋯」鈕 44×44，比 40px 玻璃片上下各超出 2px；小卡每一列高 44px。
+ * 小卡字級照站長核可預覽 0.84rem；小卡左右貼齊抽屜內距（約 252px 寬），極端字級下超長文案以省略號收尾、不換行不溢出。
+ * （PM 驗收取代施工稿的 0.64rem：10px 字太小、偏離核可預覽。） */
 
 .legacy-ui #side-drawer .drawer-foot {
-  padding: 10px 16px 6px;
-  border-top: 1px solid var(--border);
+  position: relative;
+  padding: 6px 10px calc(4px + env(safe-area-inset-bottom, 0px));
+  border-top: 0;
 }
 
 /* ── 一整片液態玻璃：主題三段＋語言 ── */
@@ -63,12 +64,8 @@
   bottom: 13px;
   left: 0;
   width: 1px;
-  background: rgba(148,163,184,.45);
+  background: var(--color-drawer-hairline);
   pointer-events: none;
-}
-[data-theme="dark"] .legacy-ui #side-drawer .drawer-theme-btn + .drawer-theme-btn::before,
-[data-theme="dark"] .legacy-ui #side-drawer .drawer-lang::before {
-  background: rgba(255,255,255,.14);
 }
 /* 選中：片內淡色圓角填底＋主色（同活動頁頁籤） */
 .legacy-ui #side-drawer .drawer-theme-btn::after {
@@ -109,7 +106,7 @@
   gap: .25rem;
   height: 44px;
   margin: -2px 0;
-  padding: 0 .65rem 0 .7rem;
+  padding: 0 .5rem 0 .6rem;
   color: var(--text-primary);
   font-size: .76rem;
   font-weight: 600;
@@ -138,45 +135,90 @@
 }
 .legacy-ui #side-drawer .drawer-lang:focus-within { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }
 
-/* ── 小字兩行：聲明、重設 ── */
-.legacy-ui #side-drawer .drawer-foot-fine {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: 44px;
-  white-space: nowrap;
-}
-.legacy-ui #side-drawer .drawer-foot-slab + .drawer-foot-fine { margin-top: 4px; }
-.legacy-ui #side-drawer .drawer-foot-link,
-.legacy-ui #side-drawer .drawer-reset-btn {
+/* ── 「⋯」與小卡：聲明、重設 ── */
+.legacy-ui #side-drawer .dg-more-btn {
+  position: relative;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: .25rem;
+  justify-content: center;
+  width: 44px;
   height: 44px;
-  margin: 0;
-  padding: 0 .3rem;
+  margin: -2px 0;
+  padding: 0;
   border: 0;
   background: none;
-  /* 淺色加深一階：--text-muted（#8892a4）在白底只有約 3.1:1，泰文細字更淡；--text-secondary（#5a6478）約 6:1，達 WCAG AA。深色維持 --text-muted（約 11:1）。 */
   color: var(--text-secondary);
-  font: inherit;
-  font-size: .7rem;
-  font-weight: 500;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-[data-theme="dark"] .legacy-ui #side-drawer .drawer-foot-link,
-[data-theme="dark"] .legacy-ui #side-drawer .drawer-reset-btn { color: var(--text-muted); }
-.legacy-ui #side-drawer .drawer-foot-dot { color: var(--text-muted); opacity: .6; font-size: .7rem; padding: 0 .05rem; }
-.legacy-ui #side-drawer .drawer-reset-icon { width: 12px; height: 12px; flex: 0 0 auto; opacity: .75; }
+.legacy-ui #side-drawer .dg-more-btn::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 0;
+  width: 1px;
+  background: var(--color-drawer-hairline);
+  pointer-events: none;
+}
+.legacy-ui #side-drawer .dg-more-btn svg { width: 18px; height: 18px; }
+.legacy-ui #side-drawer .dg-more-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+.legacy-ui #side-drawer .dg-more-pop {
+  position: absolute;
+  right: 10px;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  box-sizing: border-box;
+  left: 10px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow), var(--color-drawer-pop-drop);
+}
+.legacy-ui #side-drawer .dg-more-pop a,
+.legacy-ui #side-drawer .dg-more-pop button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: .84rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.legacy-ui #side-drawer .dg-more-pop .dg-danger { color: var(--danger); }
+.legacy-ui #side-drawer .dg-more-pop hr {
+  margin: 2px 10px;
+  border: 0;
+  height: 1px;
+  background: var(--color-roster-slab-sep);
+}
+.legacy-ui #side-drawer .dg-more-pop .drawer-reset-icon { width: 14px; height: 14px; flex: 0 0 auto; }
+.legacy-ui #side-drawer .dg-more-pop a:focus-visible,
+.legacy-ui #side-drawer .dg-more-pop button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 @media (hover: hover) {
-  .legacy-ui #side-drawer .drawer-foot-link:hover,
   .legacy-ui #side-drawer .drawer-lang:hover { color: var(--accent); }
-  .legacy-ui #side-drawer .drawer-reset-btn:hover { color: var(--danger, #dc2626); }
 }
 
 /* ── 重設確認框 ── */

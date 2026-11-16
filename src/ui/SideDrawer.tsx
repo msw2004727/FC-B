@@ -1,5 +1,6 @@
 import './drawer-extra.css';
 import './drawer-foot.css';
+import './drawer-glass.css';
 import '@/styles/legacy/version-tag.css';
 import type { RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
@@ -57,7 +58,8 @@ import {
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
 import { GuestAvatarIcon } from './GuestAvatarIcon';
 import { IdentityCrownSvg } from './IdentityCrown';
-import { CaretIcon, GlobeIcon, ResetIcon, ThemeIcon } from './drawer-foot-icons';
+import { CaretIcon, GlobeIcon, MoreIcon, ResetIcon, ThemeIcon } from './drawer-foot-icons';
+import { DrawerMenuIcon } from './drawer-menu-icons';
 
 export interface SideDrawerIdentity {
   readonly identityId?: 'primary' | 'secondary' | string;
@@ -267,12 +269,18 @@ export function SideDrawer({
   const internalTest = useMemo(() => isInternalTestMode(), []);
   const [showApplyNotice, setShowApplyNotice] = useState(false);
   const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   /** 抽屜的 Esc 先看確認框：開著就交給確認框只關框（Grok 初審 P2）。 */
   const confirmOpenRef = useRef(false);
   confirmOpenRef.current = showClearCacheConfirm;
+  /** 「⋯」小卡開著時，下一層 Esc 只關小卡，不關抽屜。 */
+  const moreOpenRef = useRef(false);
+  moreOpenRef.current = moreOpen;
   const drawerOpenRef = useRef(open);
   drawerOpenRef.current = open;
   const resetBtnRef = useRef<HTMLButtonElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const morePopRef = useRef<HTMLDivElement>(null);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
   const confirmBoxRef = useRef<HTMLDivElement>(null);
   const themeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -291,8 +299,9 @@ export function SideDrawer({
   useEffect(() => {
     if (!open) {
       setDragOffsetX(null);
-      // 抽屜因換頁等原因關掉時，確認框不留在畫面上
+      // 抽屜因換頁等原因關掉時，確認框與「⋯」小卡不留在畫面上，焦點仍還給選單鈕
       setShowClearCacheConfirm(false);
+      setMoreOpen(false);
     }
   }, [open]);
 
@@ -334,6 +343,26 @@ export function SideDrawer({
       if (drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
     };
   }, [showClearCacheConfirm]);
+
+  // 「⋯」小卡：點外面關。確認框開著時不關（重設鈕還在小卡裡，關框要把焦點還給它）。
+  // 關掉之後焦點回「⋯」；抽屜已關則不搶選單鈕的焦點。
+  useLayoutEffect(() => {
+    if (!moreOpen) return undefined;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (confirmOpenRef.current) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (moreBtnRef.current?.contains(target)) return;
+      if (morePopRef.current?.contains(target)) return;
+      setMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      const btn = moreBtnRef.current;
+      if (drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
+    };
+  }, [moreOpen]);
 
   useEffect(() => {
     const unsubscribe = on('locale:changed', ({ locale: next }) => {
@@ -394,13 +423,17 @@ export function SideDrawer({
     panel.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        // 確認框開著：交給確認框自己的 Esc（只關框），抽屜不動
-        if (confirmOpenRef.current) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onCloseRef.current();
+      if (event.key !== 'Escape') return;
+      // 確認框開著：交給確認框自己的 Esc（只關框），抽屜與小卡都不動
+      if (confirmOpenRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      // 小卡開著：只關小卡，焦點回「⋯」（收尾在 moreOpen 的 layout effect）
+      if (moreOpenRef.current) {
+        setMoreOpen(false);
+        return;
       }
+      onCloseRef.current();
     };
 
     document.addEventListener('keydown', handleKeyDown, true);
@@ -765,9 +798,6 @@ export function SideDrawer({
 
         <div class="drawer-menu" id="drawer-menu">
           {renderNodes.map((node) => {
-            if (node.kind === 'divider') {
-              return <div key={node.key} class="drawer-divider" />;
-            }
             if (node.kind === 'section') {
               const sectionText = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
               return (
@@ -776,39 +806,46 @@ export function SideDrawer({
                 </div>
               );
             }
-            const { entry, bgClass, locked } = node;
-            const displayLabel = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
-            const isActive = Boolean(!locked && entry.routePath && path === entry.routePath);
-            const itemClass = `drawer-item${bgClass ? ` ${bgClass}` : ''}${isActive ? ' active' : ''}`;
-            const lockedStyle = locked
-              ? { opacity: '.55', display: 'flex', alignItems: 'center' }
-              : undefined;
-
+            const toneClass = node.tone === 'admin' ? ' dg-admin' : node.tone === 'super' ? ' dg-super' : '';
             return (
-              <div
-                key={node.key}
-                class={itemClass}
-                style={lockedStyle}
-                data-page={entry.page}
-                data-action={entry.action}
-                aria-current={isActive ? 'page' : undefined}
-                onPointerDown={() => {
-                  if (!locked && entry.routePath) prefetchRouteByPath(entry.routePath);
-                }}
-                onClick={() => handleMenuItemClick(entry)}
-              >
-                {displayLabel}
-                {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
-                {locked && (
-                  <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
-                )}
+              <div key={node.key} class={`dg-group${toneClass}`}>
+                {node.items.map((item) => {
+                  const { entry, bgClass, locked } = item;
+                  const displayLabel = item.i18nKey ? lt(item.i18nKey, item.label) : item.label;
+                  const isActive = Boolean(!locked && entry.routePath && path === entry.routePath);
+                  const itemClass = `drawer-item${bgClass ? ` ${bgClass}` : ''}${isActive ? ' active' : ''}`;
+                  const lockedStyle = locked
+                    ? { opacity: '.55', display: 'flex', alignItems: 'center' }
+                    : undefined;
+                  return (
+                    <div
+                      key={item.key}
+                      class={itemClass}
+                      style={lockedStyle}
+                      data-page={entry.page}
+                      data-action={entry.action}
+                      aria-current={isActive ? 'page' : undefined}
+                      onPointerDown={() => {
+                        if (!locked && entry.routePath) prefetchRouteByPath(entry.routePath);
+                      }}
+                      onClick={() => handleMenuItemClick(entry)}
+                    >
+                      <DrawerMenuIcon page={entry.page} action={entry.action} />
+                      {displayLabel}
+                      {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
+                      {locked && (
+                        <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
         </div>
 
-        {/* 站長 2026-11-13 選方案一「單片收納」：主題三段（圖示）與語言同一片玻璃；下兩行小字：聲明、重設。
-            取代 A 的深色模式開關＋粉紅膠囊＋語言下拉＋清除快取鈕（泰、越文聲明膠囊會撐出抽屜、從畫面左緣露出）。 */}
+        {/* 站長 2026-11-16 選方案 C：玻璃片＝主題三段＋語言＋「⋯」。聲明與重設收進「⋯」小卡。
+            重設仍走確認框與 executeClearCache。 */}
         <div class="drawer-footer drawer-foot">
           <div class="drawer-foot-slab">
             <div
@@ -859,37 +896,52 @@ export function SideDrawer({
                 ))}
               </select>
             </label>
-          </div>
-          <div class="drawer-foot-fine drawer-foot-legal">
-            <a
-              class="drawer-foot-link"
-              href="/privacy"
-              title={lt('隱私權政策', '隱私權政策')}
-              onClick={(event) => handleStaticLink(event, '/privacy')}
-            >
-              {t('ui.sideDrawer.privacyShort')}
-            </a>
-            <span class="drawer-foot-dot" aria-hidden="true">·</span>
-            <a
-              class="drawer-foot-link"
-              href="/terms"
-              title={lt('服務條款', '服務條款')}
-              onClick={(event) => handleStaticLink(event, '/terms')}
-            >
-              {t('ui.sideDrawer.termsShort')}
-            </a>
-          </div>
-          <div class="drawer-foot-fine">
             <button
               type="button"
-              class="drawer-reset-btn"
-              ref={resetBtnRef}
-              onClick={() => setShowClearCacheConfirm(true)}
+              class="dg-more-btn"
+              ref={moreBtnRef}
+              aria-expanded={moreOpen ? 'true' : 'false'}
+              aria-controls="drawer-more-pop"
+              aria-label={t('ui.sideDrawer.more')}
+              onKeyDown={(event) => {
+                // Enter／Space 會再合成一次 click；先 preventDefault，只切換一次。
+                if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+                event.preventDefault();
+                setMoreOpen((open) => !open);
+              }}
+              onClick={() => setMoreOpen((open) => !open)}
             >
-              <ResetIcon cls="drawer-reset-icon" />
-              <span>{t('ui.sideDrawer.reset')}</span>
+              <MoreIcon />
             </button>
           </div>
+          {moreOpen && (
+            <div id="drawer-more-pop" class="dg-more-pop" ref={morePopRef}>
+              <a
+                href="/privacy"
+                title={lt('隱私權政策', '隱私權政策')}
+                onClick={(event) => handleStaticLink(event, '/privacy')}
+              >
+                {t('ui.sideDrawer.privacyShort')}
+              </a>
+              <a
+                href="/terms"
+                title={lt('服務條款', '服務條款')}
+                onClick={(event) => handleStaticLink(event, '/terms')}
+              >
+                {t('ui.sideDrawer.termsShort')}
+              </a>
+              <hr />
+              <button
+                type="button"
+                class="drawer-reset-btn dg-danger"
+                ref={resetBtnRef}
+                onClick={() => setShowClearCacheConfirm(true)}
+              >
+                <ResetIcon cls="drawer-reset-icon" />
+                <span>{t('ui.sideDrawer.reset')}</span>
+              </button>
+            </div>
+          )}
           {loading && <div role="status">{t('ui.sideDrawer.loading')}</div>}
           {loadError && (
             <div id="drawer-locale-error" role="alert">

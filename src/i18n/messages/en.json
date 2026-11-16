@@ -64,6 +64,7 @@
       "navigation": "More features",
       "admin": "Administration",
       "language": "Language",
+      "more": "More",
       "loading": "Loading language",
       "localeError": "Unable to change language right now. Please try again later.",
       "theme": "Appearance",

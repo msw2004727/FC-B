@@ -1,0 +1,86 @@
+/* 側邊抽屜液態玻璃（DRAWER-GLASS，方案 C 的抽屜本體）。
+ * 不用 backdrop-filter、不用 color-mix。深色底色是不透明色塊（token）。
+ * 色值都走 tokens.css 的 --color-drawer-* 與既有 --color-roster-slab-*。 */
+
+.legacy-ui #side-drawer {
+  background: var(--color-drawer-shell-bg);
+  border-right: 0;
+  box-shadow: var(--color-drawer-shell-shadow);
+}
+.legacy-ui #side-drawer .drawer-header {
+  margin: 10px 10px 0;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+}
+.legacy-ui #side-drawer .drawer-menu { padding: 10px 10px 8px; }
+.legacy-ui #side-drawer .drawer-divider { display: none; }
+.legacy-ui #side-drawer .dg-group {
+  position: relative;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--color-drawer-group-bg);
+  box-shadow: var(--color-drawer-group-shadow);
+  overflow: hidden;
+}
+.legacy-ui #side-drawer .dg-group + .dg-group,
+.legacy-ui #side-drawer .dg-group + .drawer-section-label { margin-top: 12px; }
+.legacy-ui #side-drawer .drawer-section-label { padding: 0 8px 5px; font-size: .68rem; letter-spacing: .04em; }
+.legacy-ui #side-drawer .drawer-item {
+  position: relative;
+  min-height: 44px;
+  gap: 10px;
+  padding: 0 10px 0 8px;
+  border-radius: 10px;
+  font-size: .88rem;
+  white-space: nowrap;
+}
+.legacy-ui #side-drawer .dg-group .drawer-item + .drawer-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 46px;
+  right: 10px;
+  height: 1px;
+  background: var(--color-roster-slab-sep);
+}
+.legacy-ui #side-drawer .drawer-item.active,
+.legacy-ui #side-drawer .drawer-item:hover,
+.legacy-ui #side-drawer .drawer-item:active {
+  background: var(--color-roster-slab-knob-bg);
+  box-shadow: var(--color-roster-slab-knob-shadow);
+}
+.legacy-ui #side-drawer .drawer-item.active::before,
+.legacy-ui #side-drawer .drawer-item.active + .drawer-item::before { display: none; }
+.legacy-ui #side-drawer .dg-group.dg-admin { background: var(--color-drawer-group-admin-bg); }
+.legacy-ui #side-drawer .dg-group.dg-super { background: var(--color-drawer-group-super-bg); }
+.legacy-ui #side-drawer .dg-group.dg-admin + .dg-group.dg-super { margin-top: 8px; }
+.legacy-ui #side-drawer .dg-group .drawer-role-admin,
+.legacy-ui #side-drawer .dg-group .drawer-role-super,
+.legacy-ui #side-drawer .dg-group .drawer-role-yellow { background: transparent; }
+
+.legacy-ui #side-drawer .dg-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--color-drawer-ico-fg);
+  background: var(--color-drawer-ico-bg);
+  box-shadow: var(--color-drawer-ico-shadow);
+}
+.legacy-ui #side-drawer .dg-ico svg { width: 16px; height: 16px; display: block; }
+.legacy-ui #side-drawer .dg-admin .dg-ico {
+  color: var(--color-drawer-ico-admin-fg);
+  background: var(--color-drawer-ico-admin-bg);
+  box-shadow: var(--color-drawer-ico-admin-shadow);
+}
+.legacy-ui #side-drawer .dg-super .dg-ico {
+  color: var(--color-drawer-ico-super-fg);
+  background: var(--color-drawer-ico-super-bg);
+  box-shadow: var(--color-drawer-ico-super-shadow);
+}
