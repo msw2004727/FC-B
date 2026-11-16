@@ -33,7 +33,9 @@
   justify-content: center;
   gap: .45rem;
   width: 100%;
-  height: 44px;
+  height: auto;
+  padding-block: .55rem;
+  text-align: center;
   min-height: 44px;
   box-sizing: border-box;
   border: 0;
@@ -44,7 +46,7 @@
   font-weight: 700;
   line-height: 1.2;
   text-decoration: none;
-  white-space: nowrap;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
   cursor: pointer;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .4),
@@ -70,7 +72,9 @@
   justify-content: center;
   gap: .45rem;
   width: 100%;
-  height: 44px;
+  height: auto;
+  padding-block: .55rem;
+  text-align: center;
   min-height: 44px;
   box-sizing: border-box;
   border: 0;
@@ -80,7 +84,7 @@
   font-size: .9rem;
   font-weight: 700;
   line-height: 1.2;
-  white-space: nowrap;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
   box-shadow: 0 6px 14px -8px rgba(43, 92, 224, .8);
 }
 
@@ -139,7 +143,7 @@
   font-size: .74rem;
   line-height: 1.5;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
 }
 
 [data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-note {
