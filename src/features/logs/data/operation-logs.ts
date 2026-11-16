@@ -1,4 +1,4 @@
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { Timestamp, collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 
 export const OPERATION_LOGS_COLLECTION = 'operationLogs' as const;
@@ -70,6 +70,50 @@ export async function fetchOperationLogs(): Promise<OperationLogDoc[]> {
       _docId: docSnap.id,
       id: typeof data.id === 'string' && data.id.trim() ? data.id : docSnap.id,
     } as OperationLogDoc;
+  });
+}
+
+/** 時間區間查詢上限：超過時只取最新的這些筆，畫面提示縮小區間。 */
+export const OPERATION_LOGS_RANGE_CAP = 500;
+
+export interface OperationLogsRangeResult {
+  docs: OperationLogDoc[];
+  /** 區間內超過上限（只拿到最新 OPERATION_LOGS_RANGE_CAP 筆）。 */
+  truncated: boolean;
+}
+
+/**
+ * 2026-11-16 日誌中心改版：依時間區間讀取（台北日／週／月），取代「一開就讀最新 200 筆」。
+ * 只用 `createdAt` 單欄範圍＋排序（Firestore 自動單欄索引，不需新增複合索引）；類型與關鍵字在前端篩。
+ * 沒有 `createdAt` 的極舊日誌（只有 `time` 字串）不在任何區間內，與原本 orderBy(createdAt) 的行為相同。
+ */
+export async function fetchOperationLogsInRange(startMs: number, endMs: number): Promise<OperationLogsRangeResult> {
+  const { db } = await getFirebase();
+  const q = query(
+    collection(db, OPERATION_LOGS_COLLECTION),
+    where('createdAt', '>=', Timestamp.fromMillis(startMs)),
+    where('createdAt', '<', Timestamp.fromMillis(endMs)),
+    orderBy('createdAt', 'desc'),
+    limit(OPERATION_LOGS_RANGE_CAP + 1),
+  );
+  const snap = await getDocs(q);
+  const docs = snap.docs.slice(0, OPERATION_LOGS_RANGE_CAP).map((docSnap) => {
+    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+    return {
+      ...data,
+      _docId: docSnap.id,
+      id: typeof data.id === 'string' && data.id.trim() ? data.id : docSnap.id,
+    } as OperationLogDoc;
+  });
+  return { docs, truncated: snap.docs.length > OPERATION_LOGS_RANGE_CAP };
+}
+
+/** 列表用短時間 `MM/DD HH:mm`（台北，24 小時制）；沒有 createdAt 時退回 `time` 字串。 */
+export function formatOperationLogShortTime(log: OperationLogDoc | null | undefined): string {
+  const date = parseCreatedAtDate(log?.createdAt);
+  if (!date) return String(log?.time || '').trim();
+  return date.toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   });
 }
 

@@ -113,7 +113,8 @@
       "ann_toggle": "お知らせ公開切替",
       "ann_delete": "お知らせ削除",
       "system_clear": "システム消去"
-    }
+    },
+    "searchShort": "搜尋操作者、UID、內容"
   },
   "chat": {
     "settingTitle": "所有角色互相私訊",
@@ -127,7 +128,7 @@
     "settingSaved": "私訊設定已更新",
     "settingSaveToastFailed": "私訊設定儲存失敗",
     "searchTitle": "搜尋用戶對話",
-    "searchPlaceholder": "輸入暱稱或識別碼",
+    "searchPlaceholder": "搜尋暱稱或 UID",
     "search": "搜尋",
     "searchRequired": "請輸入暱稱或識別碼",
     "searching": "搜尋中...",
@@ -160,7 +161,42 @@
       "audit_view_thread": "查看對話列表",
       "audit_view_conversation": "查看對話內容",
       "audit_search_logs": "查詢 log",
-      "settings_update": "設定更新"
-    }
+      "settings_update": "設定更新",
+      "settings_view": "查看設定",
+      "other": "其他"
+    },
+    "unknownUser": "未知用戶",
+    "filterByActor": "只看此人操作",
+    "filterByTarget": "只看對此人",
+    "openConversation": "看對話",
+    "copyUid": "複製 UID",
+    "uidCopied": "已複製 UID",
+    "uidCopyFailed": "複製失敗",
+    "expired": "已超過保存期限",
+    "edited": "已編輯",
+    "settingsTitle": "私訊設定",
+    "hideSelfAudit": "隱藏稽核查詢",
+    "filterActorChip": "操作者：{name}",
+    "filterTargetChip": "對象：{name}",
+    "clearFilter": "清除",
+    "retry": "重試",
+    "hiddenCount": "已隱藏 {count} 筆稽核查詢",
+    "clearSearch": "清除搜尋"
+  },
+  "range": {
+    "unit": "時間單位",
+    "day": "日",
+    "week": "週",
+    "month": "月",
+    "prev": "上一段",
+    "next": "下一段",
+    "pageSize": "每頁筆數",
+    "infinite": "無限",
+    "perPage": "{n} 筆",
+    "prevPage": "上一頁",
+    "nextPage": "下一頁",
+    "pageNum": "第 {n} 頁",
+    "total": "共 {n} 筆",
+    "truncated": "超過 500 筆，請縮小區間"
   }
 }
