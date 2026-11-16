@@ -13,12 +13,14 @@
   box-shadow: var(--color-roster-slab-shadow);
   color: var(--text-primary);
 }
-/* 返回鈕：比照活動頁標題列玻璃片（四角 12px、36px 高） */
-#page-profile .page-header .back-btn { width: 44px; height: 36px; border-radius: 12px; }
-#page-profile .page-header .back-btn:hover,
-#page-profile .player-card-lock:hover,
-#page-profile .profile-record-refresh-btn:hover { color: var(--accent); }
+/* 返回鈕：比照活動頁標題列玻璃片改圓角方形（四角 12px、高 36px；寬沿用 A 的 34px，與核可預覽一致） */
+#page-profile .page-header .back-btn { height: 36px; border-radius: 12px; }
+/* 球員卡鎖定時保留 A 的反白（player-card.css .player-card-lock.is-locked），鎖定狀態一眼可辨（終審 P2） */
+#page-profile .player-card-lock.is-locked { background: var(--text-primary); color: var(--bg-card); }
 @media (hover: hover) {
+  #page-profile .page-header .back-btn:hover,
+  #page-profile .player-card-lock:not(.is-locked):hover,
+  #page-profile .profile-record-refresh-btn:hover,
   #page-profile .social-btn:not(.active):hover,
   #page-profile .outline-btn:hover,
   #page-profile .player-card-share-btn:hover,

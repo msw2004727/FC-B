@@ -57,6 +57,10 @@
 }
 /* 同行者彈窗是置中浮卡：四角都圓。圓角原本寫在行內、改由這裡提供；行內 position 由 static 改 relative，亮線才貼卡片上緣（審查 P1-1、P2-2） */
 #companion-modal-overlay .modal { border-radius: 20px; }
+/* 行內改 relative 後，A 在寬螢幕（base.css @media min-width:800px）給 .modal 的 left:50%／right:auto 會生效、把彈窗推出畫面；歸零（終審 P1） */
+#companion-modal-overlay .modal { left: auto; right: auto; bottom: auto; }
+/* 社群連結「清除」：玻璃鈕拿掉了邊框，用內框還原 A 的紅框警示（終審 P3） */
+#social-link-modal #social-clear-btn { box-shadow: inset 0 0 0 1px var(--danger), var(--color-roster-slab-shadow); }
 
 /* 我的 QR：卡面與關閉鈕（UidQrModal 加上 .uid-qr-card／.uid-qr-close，原本寫在行內的底色、關閉鈕外觀改由這裡提供） */
 #uid-qr-modal .uid-qr-card {

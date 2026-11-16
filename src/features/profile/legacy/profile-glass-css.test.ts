@@ -189,6 +189,8 @@ describe('UidQrModal：卡面與關閉鈕改由 CSS 提供', () => {
     expect(companion).not.toContain('border-radius:var(--radius)');
     const rule = scopedModal('profile-modal-glass.css').filter((r) => r.selector === '.legacy-ui #companion-modal-overlay .modal');
     expect(rule.some((r) => r.decls['border-radius'] === '20px')).toBe(true);
+    // 寬螢幕 A 會給 .modal left:50%；relative 後必須歸零，否則彈窗被推出畫面（終審 P1）
+    expect(rule.some((r) => r.decls.left === 'auto' && r.decls.right === 'auto')).toBe(true);
   });
 
   it('已設定的社群鈕不被壓成灰色（只壓 :not(.active)）', () => {
