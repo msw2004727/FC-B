@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 // 相對路徑放變數：Vite 會把 new URL 的字面相對路徑改寫成開發資源網址（同 AdminLogsPage.test.tsx；PM 修正）。
 const zhTwRelativePath = '../locales/zh-TW.json';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetErrorRangeCacheForTest } from './useErrorLogRange';
 import { ErrorLogPanel } from './ErrorLogPanel';
@@ -249,7 +249,9 @@ describe('UserPromptPanel：用戶提示面板', () => {
     fireEvent.click(document.querySelector('.olc-row') as HTMLElement);
     expect(screen.getByText('小明')).toBeTruthy();
     expect(screen.getByText('U111')).toBeTruthy();
-    expect(screen.getByText('活動')).toBeTruthy();
+    const firstSubrow = document.querySelector('.lc-subrow') as HTMLElement;
+    expect(firstSubrow).toBeTruthy();
+    expect(within(firstSubrow).getByText('活動')).toBeTruthy();
     expect(screen.queryByText('提示訊息')).toBeNull();
 
     const copyButtons = screen.getAllByText('診斷包');

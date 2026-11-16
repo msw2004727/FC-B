@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 // 相對路徑放變數：Vite 會把 new URL 的字面相對路徑改寫成開發資源網址（同 AdminLogsPage.test.tsx；PM 修正）。
 const zhTwRelativePath = '../locales/zh-TW.json';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditLogPanel } from './AuditLogPanel';
 
@@ -169,7 +169,9 @@ describe('AuditLogPanel：稽核日誌面板', () => {
 
     expect(screen.getAllByText('登入').length).toBeGreaterThan(0);
     expect(screen.getByText('用戶0')).toBeTruthy();
-    expect(screen.getByText('U111')).toBeTruthy();
+    const firstRow = document.querySelector('.olc-row') as HTMLElement;
+    expect(firstRow).toBeTruthy();
+    expect(within(firstRow).getByText('U111')).toBeTruthy();
     expect(screen.getByText('時間-1000')).toBeTruthy();
   });
 
@@ -178,7 +180,10 @@ describe('AuditLogPanel：稽核日誌面板', () => {
       doc('doc-1', entry({ actorName: '小明', actorUid: 'U11111111111111111111111111111111' })),
       doc('doc-2', entry({ actorName: '', actorUid: 'U22222222222222222222222222222222' })),
     ];
-    mocks.readDay.mockImplementation(async () => ({ docs, hasMore: false }));
+    mocks.readDay.mockImplementation(async (dayKey: string) => {
+      if (dayKey === '20261119') return { docs, hasMore: false };
+      return { docs: [], hasMore: false };
+    });
     mocks.resolveNames.mockResolvedValue({});
 
     render(<AuditLogPanel readDay={mocks.readDay as never} resolveNames={mocks.resolveNames as never} nowMs={NOW} />);
@@ -186,7 +191,7 @@ describe('AuditLogPanel：稽核日誌面板', () => {
     await waitFor(() => expect(mocks.resolveNames).toHaveBeenCalledTimes(1));
     expect(mocks.resolveNames).toHaveBeenCalledWith(['U22222222222222222222222222222222']);
     expect(screen.getByText('小明')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText('未知用戶')).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText('未知用戶').length).toBeGreaterThan(0));
   });
 
   it('行為下拉與關鍵字在已讀資料中篩選；清除恢復', async () => {
@@ -222,7 +227,10 @@ describe('AuditLogPanel：稽核日誌面板', () => {
 
   it('點列展開顯示中文鍵名、文件 ID；複製診斷包呼叫剪貼簿函式', async () => {
     const docs = [doc('doc-1', entry({ meta: { reason: '測試原因', flag: 'true' } }))];
-    mocks.readDay.mockImplementation(async () => ({ docs, hasMore: false }));
+    mocks.readDay.mockImplementation(async (dayKey: string) => {
+      if (dayKey === '20261119') return { docs, hasMore: false };
+      return { docs: [], hasMore: false };
+    });
 
     render(<AuditLogPanel readDay={mocks.readDay as never} resolveNames={mocks.resolveNames as never} nowMs={NOW} />);
     await waitFor(() => expect(document.querySelectorAll('.olc-row').length).toBe(1));
@@ -250,8 +258,8 @@ describe('AuditLogPanel：稽核日誌面板', () => {
     expect(screen.queryByText('失敗 1')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '日' }));
-    await waitFor(() => expect(screen.getByText('成功 1')).toBeTruthy());
-    expect(screen.getByText('失敗 1')).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('.lc-summary')?.textContent).toContain('成功 1'));
+    expect(document.querySelector('.lc-summary')?.textContent).toContain('失敗 1');
   });
 
   it('查滿 7 天未湊滿時出現「加載更多」，按下才繼續查', async () => {

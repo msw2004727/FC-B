@@ -206,9 +206,9 @@ describe('ErrorLogPanel：錯誤日誌面板', () => {
 
     render(<ErrorLogPanel fetchRange={fetchRange as never} nowMs={NOW} />);
 
-    await waitFor(() => expect(screen.getByText('嚴重 2')).toBeTruthy());
-    expect(screen.getByText('警告 1')).toBeTruthy();
-    expect(screen.getByText('共 4 筆')).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('.lc-summary')?.textContent).toContain('嚴重 2'));
+    expect(document.querySelector('.lc-summary')?.textContent).toContain('警告 1');
+    expect(document.querySelector('.lc-summary')?.textContent).toContain('共 4 筆');
   });
 
   it('預設分組：同類一列顯示 ×次數與 N 人', async () => {
