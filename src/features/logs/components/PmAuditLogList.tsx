@@ -71,7 +71,7 @@ export function PmAuditLogList(props: PmAuditLogListProps): JSX.Element {
                 <span class="pma-person-name is-unknown">{t('logs.chat.unknownUser')}</span>
               )}
               {targets.map((uid, i) => (
-                <span key={uid} class="pma-unit">
+                <span key={`${uid}-${i}`} class="pma-unit">
                   <span class="pma-arrow" aria-hidden="true">{i === 0 ? '→' : '↔'}</span>
                   <Person uid={uid} names={props.names} role="target" onPick={props.onFilterTarget} />
                 </span>

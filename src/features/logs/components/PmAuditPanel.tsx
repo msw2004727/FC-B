@@ -142,12 +142,19 @@ export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
   const personUid = filter.kind === 'actor' || filter.kind === 'target' ? filter.uid : '';
   const personLabel = personUid ? `${names[personUid] || t('logs.chat.unknownUser')} ${shortUid(personUid)}` : '';
 
-  function nextPage(): void {
-    if (pageIdx + 1 < state.chunks.length) setPageIdx(pageIdx + 1);
-    else if (!state.done) {
-      setPageIdx(pageIdx + 1);
-      pages.more();
+  async function nextPage(): Promise<void> {
+    const target = pageIdx + 1;
+    if (target < state.chunks.length) {
+      setPageIdx(target);
+      return;
     }
+    if (state.done) return;
+    // 抓成功才換頁；失敗留在原頁（顧問 §3.196：原型先換頁、失敗會頁碼錯位）。
+    if (await pages.more()) setPageIdx(target);
+  }
+
+  function loadMore(): void {
+    pages.more().catch(() => undefined);
   }
 
   return (
@@ -235,9 +242,9 @@ export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
 
       {state.status === 'ready' && infinite && !state.done ? (
         <>
-          <InfiniteSentinel enabled={!state.loadingMore && lastChunkVisible} onReach={pages.more} />
+          <InfiniteSentinel enabled={!state.loadingMore && lastChunkVisible} onReach={loadMore} />
           <div class="pm-audit-load-more-row">
-            <button type="button" class="pma-more" disabled={state.loadingMore} onClick={pages.more}>
+            <button type="button" class="pma-more" disabled={state.loadingMore} onClick={loadMore}>
               {state.loadingMore ? t('logs.chat.loading') : t('logs.chat.loadMore')}
             </button>
           </div>
@@ -250,10 +257,11 @@ export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
           hasNext={hasNextPage}
           busy={state.loadingMore}
           onPrev={() => setPageIdx(Math.max(0, pageIdx - 1))}
-          onNext={nextPage}
+          onNext={() => { nextPage().catch(() => undefined); }}
         />
       ) : null}
-      {state.status === 'ready' && infinite && state.done && visible.length > 0 ? <div class="pma-note">{t('logs.chat.logsEnd')}</div> : null}
+      {state.status === 'ready' && state.truncated ? <div class="pma-note lc-warn">{t('logs.range.truncated')}</div> : null}
+      {state.status === 'ready' && infinite && state.done && !state.truncated && visible.length > 0 ? <div class="pma-note">{t('logs.chat.logsEnd')}</div> : null}
 
       <PmConversationSheet
         box={convo}

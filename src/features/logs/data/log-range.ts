@@ -60,11 +60,12 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** 區間標籤：日 `2026/11/16`；週 `11/10–11/16`；月 `2026/11`。 */
+/** 區間標籤：日 `2026/11/16`；週 `11/10–11/16`（跨年兩端帶年份）；月 `2026/11`。 */
 export function formatRangeLabel(range: LogRange): string {
   const s = taipeiParts(range.startMs);
   if (range.unit === 'day') return `${s.y}/${pad(s.m + 1)}/${pad(s.d)}`;
   if (range.unit === 'month') return `${s.y}/${pad(s.m + 1)}`;
   const e = taipeiParts(range.endMs - 1);
+  if (s.y !== e.y) return `${s.y}/${pad(s.m + 1)}/${pad(s.d)}–${e.y}/${pad(e.m + 1)}/${pad(e.d)}`;
   return `${pad(s.m + 1)}/${pad(s.d)}–${pad(e.m + 1)}/${pad(e.d)}`;
 }

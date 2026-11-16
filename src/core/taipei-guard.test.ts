@@ -35,6 +35,8 @@ const GUARDED_FILES = [
   'src/features/events/pages/EventDetailPage.tsx',
   'src/features/events/data/detail-model.ts',
   'src/features/events/components/legacy/event-lifecycle-action.ts',
+  // 2026-11-16 日誌中心時間區間（顧問 §3.196 硬條件 6）：只用 UTC 欄位＋固定 +8 小時。
+  'src/features/logs/data/log-range.ts',
 ] as const;
 
 type GuardedFile = (typeof GUARDED_FILES)[number];

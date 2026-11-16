@@ -202,8 +202,8 @@ export function OperationLogPanel(props: OperationLogPanelProps): JSX.Element {
               })}
             </div>
           )}
-          {infinite && shown < paged.sorted.length ? (
-            <InfiniteSentinel key={shown} enabled onReach={() => setShown((n) => n + INFINITE_CHUNK)} />
+          {infinite ? (
+            <InfiniteSentinel enabled={shown < paged.sorted.length} onReach={() => setShown((n) => n + INFINITE_CHUNK)} />
           ) : null}
           {!infinite ? (
             <LogPager

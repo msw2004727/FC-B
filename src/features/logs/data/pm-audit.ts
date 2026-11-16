@@ -6,7 +6,7 @@
 
 import { CallableError, callFn } from '@/data/callables';
 
-import { filterToPayload, type PmAuditFilter } from './pm-audit-view';
+import { filterToPayload, shortUid, type PmAuditFilter } from './pm-audit-view';
 
 export const PM_AUDIT_LOG_PAGE_SIZE = 50;
 export const PM_AUDIT_CONVERSATION_LIMIT = 100;
@@ -35,23 +35,14 @@ export function pmLogMs(log: { createdAtIso?: unknown; createdAt?: unknown }): n
   return toMillis(log.createdAtIso) ?? toMillis(log.createdAt);
 }
 
-const ZH_TW_SHORT: Intl.DateTimeFormatOptions = {
-  timeZone: 'Asia/Taipei',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-};
-
-/**
- * A `_pmFormatTime`／`_pmAuditShortTime`；2026-11-16 改 24 小時制 `MM/DD HH:mm`（日誌中心改版：字短、不佔版面）。
- * 與 A 差異：固定台北時區；也認得 Callable 回傳的 `{ _seconds }`（A 會顯示空白）。
- */
+/** 稽核列與對話的短時間 `MM/DD HH:mm`（台北，24 小時制）；也認得 Callable 回傳的 `{ _seconds }`。2026-11-16 改：取代 A 的 `上午hh:mm`。 */
 export function pmFormatTime(value: unknown): string {
   const ms = toMillis(value);
   if (ms === null) return typeof value === 'string' ? value.slice(0, 16) : '';
-  return new Date(ms).toLocaleString('zh-TW', ZH_TW_SHORT);
+  // 固定 +8 小時後取 UTC 欄位（台北無日光節約）；不經 toLocaleString，避免瀏覽器差異與不可見字元。
+  const t = new Date(ms + 8 * 60 * 60 * 1000);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${p2(t.getUTCMonth() + 1)}/${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`;
 }
 
 export interface PmAuditUser {
@@ -129,10 +120,11 @@ export async function listPmThreads(uid: string): Promise<PmAuditThread[]> {
       : {}) as Record<string, unknown>;
     const participants = Array.isArray(thread['participants']) ? (thread['participants'] as unknown[]) : [];
     const id = String(thread['conversationId'] || thread['id'] || '');
-    const title = participants.map((pid) => String(names[String(pid)] || pid)).join(' / ');
+    // 缺暱稱時用 UID 短碼，不在標題露出完整 UID（顧問 §3.196；A 原樣是完整 UID）。
+    const title = participants.map((pid) => String(names[String(pid)] || shortUid(String(pid || '')))).join(' / ');
     return {
       id,
-      title: title || String(thread['id'] || ''),
+      title: title || shortUid(id),
       participants: participants.map((pid) => String(pid || '')).filter(Boolean),
       lastMessageBody: String(thread['lastMessageBody'] || ''),
       lastMessageAt: thread['lastMessageAt'],

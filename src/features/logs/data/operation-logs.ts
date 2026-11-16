@@ -92,9 +92,10 @@ export async function fetchOperationLogsInRange(startMs: number, endMs: number):
 export function formatOperationLogShortTime(log: OperationLogDoc | null | undefined): string {
   const date = parseCreatedAtDate(log?.createdAt);
   if (!date) return String(log?.time || '').trim();
-  return date.toLocaleString('zh-TW', {
-    timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  });
+  // 固定 +8 小時後取 UTC 欄位（不經 toLocaleString，避免不同瀏覽器插入不可見字元或 24:00 寫法）。
+  const t = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${p2(t.getUTCMonth() + 1)}/${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`;
 }
 
 /**
