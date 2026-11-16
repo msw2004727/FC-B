@@ -46,6 +46,8 @@ import { readLineNotify } from '../data/line-notify-settings';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
 import '../legacy/profile.css';
+// 2026-11-16 站長選定液態玻璃（PROFILE-GLASS），寫在 A 的 profile.css 之後。
+import '../legacy/profile-glass.css';
 
 // M-128：移除 eduChildren；M-127：companions 改成就地展開的 LegacyCompanionsCard，
 // 不再走 B 既有 PeopleEditor。

@@ -1,0 +1,269 @@
+/* 2026-11-16 站長選定「我的」頁面液態玻璃（PROFILE-GLASS：頁籤方案 A，預覽 docs/previews/2026-11-16-profile-glass）。
+ * B 新增，不改 A 的 profile.css。本檔路徑含 /legacy/，打包時 legacy-css-scope 自動加上 .legacy-ui。
+ * 選擇器都帶 #page-profile，只作用在個人頁，其他頁不受影響；四個彈窗的樣式在 components/legacy/profile-modal-glass.css。
+ * 色值只用既有 token（--color-roster-slab-*、--color-drawer-group-*，抽屜與出席名單同款）；活動卡光澤照 timeline-card-extra.css 的寫死值；
+ * 不用 backdrop-filter、不用 color-mix（舊 iOS／LINE WebView 沒有退路）。球員卡本體、「？」說明鈕、身分標籤、輸入框不動。 */
+
+/* ── 按鈕與卡片 ── */
+#page-profile .page-header .back-btn,
+#page-profile .player-card-lock,
+#page-profile .profile-record-refresh-btn {
+  border: 0;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+/* 返回鈕：比照活動頁標題列玻璃片（四角 12px、36px 高） */
+#page-profile .page-header .back-btn { width: 44px; height: 36px; border-radius: 12px; }
+#page-profile .page-header .back-btn:hover,
+#page-profile .player-card-lock:hover,
+#page-profile .profile-record-refresh-btn:hover { color: var(--accent); }
+#page-profile .player-card-share-btn {
+  padding: 0 1rem;
+  border: 0;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+#page-profile #profile-uid-wrap > button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 10px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+/* 社群：未設定＝玻璃圓＋淡色圖示；已設定＝品牌色圖示＋品牌色內框 */
+#page-profile .social-btn {
+  border: 0;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-muted);
+}
+#page-profile .social-btn.active { box-shadow: inset 0 0 0 1.5px currentColor, var(--color-roster-slab-shadow); background: var(--color-roster-slab-bg); }
+/* 卡片：抽屜分卡同款 */
+#page-profile .pfi-card,
+#page-profile #profile-activity-records.info-card {
+  border: 0;
+  background: var(--color-drawer-group-bg);
+  box-shadow: var(--color-drawer-group-shadow);
+}
+#page-profile .pfi-fact {
+  background: linear-gradient(180deg, rgba(255,255,255,.75) 0%, rgba(255,255,255,0) 70%), var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.6);
+}
+[data-theme="dark"] #page-profile .pfi-fact {
+  background: linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,0) 70%), var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.07);
+}
+/* 一般按鈕（編輯、新增同行者、取消）：玻璃鈕 */
+#page-profile .outline-btn {
+  border: 0;
+  border-radius: 10px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+/* 實心主按鈕加一層光澤 */
+#page-profile .primary-btn,
+#page-profile .line-login-btn {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -10px rgba(15,23,42,.6);
+}
+/* 報名紀錄內頁籤：同活動頁一整片玻璃＋分隔線 */
+#page-profile #record-tabs {
+  gap: 0; padding: 0; border-radius: 12px; height: 40px; align-items: center;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+}
+#page-profile #record-tabs > .tab {
+  position: relative; z-index: 0; flex: 1 1 0; height: 40px; border: 0; border-radius: 0;
+  background: none; box-shadow: none; color: var(--text-secondary); font-weight: 600; white-space: nowrap;
+}
+#page-profile #record-tabs > .tab:not(:first-child)::before {
+  content: ''; position: absolute; top: 12px; bottom: 12px; left: 0; width: 1px; background: var(--color-roster-slab-sep);
+}
+#page-profile #record-tabs > .tab::after {
+  content: ''; position: absolute; top: 5px; right: 4px; bottom: 5px; left: 4px; z-index: -1; border-radius: 8px; background: transparent;
+}
+#page-profile #record-tabs > .tab.active { color: var(--accent); font-weight: 700; background: none; box-shadow: none; }
+#page-profile #record-tabs > .tab.active::after { background: var(--color-roster-slab-knob-bg); box-shadow: var(--color-roster-slab-knob-shadow); }
+#page-profile #record-tabs > .tab.active::before,
+#page-profile #record-tabs > .tab.active + .tab::before { display: none; }
+
+/* ── 報名／開團清單的活動卡：照活動頁液態光澤（timeline-card-extra.css，選擇器改成 #page-profile） ── */
+/* 預設＝友誼／未知類型 */
+#page-profile .tl-event-row {
+  border-radius: var(--radius);
+  border-top-color: #fff;
+  border-right-color: rgba(206,214,226,.9);
+  border-bottom-color: rgba(190,200,214,.9);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.07), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(13,148,136,.16), 0 8px 18px -10px rgba(13,148,136,.38);
+}
+#page-profile .tl-event-row.tl-type-camp {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.07), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(236,72,153,.16), 0 8px 18px -10px rgba(236,72,153,.38);
+}
+#page-profile .tl-event-row.tl-type-play {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(124,58,237,.07), rgba(124,58,237,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(124,58,237,.16), 0 8px 18px -10px rgba(124,58,237,.38);
+}
+#page-profile .tl-event-row.tl-type-watch {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(245,158,11,.07), rgba(245,158,11,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(245,158,11,.16), 0 8px 18px -10px rgba(245,158,11,.38);
+}
+#page-profile .tl-event-row.tl-type-course {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(2,132,199,.07), rgba(2,132,199,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(2,132,199,.16), 0 8px 18px -10px rgba(2,132,199,.38);
+}
+#page-profile .tl-event-row.tl-type-external {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(156,163,175,.07), rgba(156,163,175,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(156,163,175,.16), 0 8px 18px -10px rgba(156,163,175,.38);
+}
+#page-profile .tl-event-row.tl-type-teamonly {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(225,29,72,.09), rgba(225,29,72,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(225,29,72,.16), 0 8px 18px -10px rgba(225,29,72,.38);
+}
+/* 新手友善（綠）、高強度（紫）：2026-11-16 站長定色，強度同女生專屬；寫在女生專屬之前，同時有兩種 class 時粉色蓋過 */
+#page-profile .tl-event-row.tl-type-beginner {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(16,185,129,.15), rgba(16,185,129,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(16,185,129,.16), 0 8px 18px -10px rgba(16,185,129,.38);
+}
+#page-profile .tl-event-row.tl-type-high-intensity {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(139,92,246,.15), rgba(139,92,246,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(139,92,246,.16), 0 8px 18px -10px rgba(139,92,246,.38);
+}
+#page-profile .tl-event-row.tl-type-female-only {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.15), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 12px -6px rgba(236,72,153,.16), 0 8px 18px -10px rgba(236,72,153,.38);
+}
+/* 暗色 */
+[data-theme="dark"] #page-profile .tl-event-row {
+  border-top-color: rgba(255,255,255,.18);
+  border-right-color: rgba(255,255,255,.06);
+  border-bottom-color: rgba(0,0,0,.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(13,148,136,.13), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(13,148,136,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-camp {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.13), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(236,72,153,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-play {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(124,58,237,.13), rgba(124,58,237,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(124,58,237,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-watch {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(245,158,11,.13), rgba(245,158,11,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(245,158,11,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-course {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(2,132,199,.13), rgba(2,132,199,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(2,132,199,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-external {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(156,163,175,.13), rgba(156,163,175,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(156,163,175,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-teamonly {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(225,29,72,.18), rgba(225,29,72,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(225,29,72,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-beginner {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(16,185,129,.24), rgba(16,185,129,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(16,185,129,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-high-intensity {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(139,92,246,.24), rgba(139,92,246,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(139,92,246,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-profile .tl-event-row.tl-type-female-only {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(90deg, rgba(236,72,153,.24), rgba(236,72,153,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -6px 12px -6px rgba(236,72,153,.30), 0 8px 18px -10px rgba(0,0,0,.75);
+}
+
+/* ── 六顆頁籤（方案 A）── */
+/* 方案 A：圖示在上、字在下，頁籤包成一整片玻璃，分隔線區分；選中＝片內淡色圓角填底＋主色 */
+#page-profile .profile-quick-sep { display: none; }
+#page-profile .profile-quick-bar { margin: 12px 0 8px; padding: 2px 0 8px; }
+#page-profile .profile-quick-bar-in {
+  gap: 0; padding: 2px; border-radius: 14px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+}
+#page-profile .profile-quick-btn { z-index: 0; width: auto; min-width: 46px; min-height: 60px; padding: 8px 4px 0; color: var(--text-secondary); }
+#page-profile .profile-quick-lb { white-space: nowrap; }
+#page-profile .profile-quick-btn + .profile-quick-btn::before {
+  content: ''; position: absolute; top: 14px; bottom: 14px; left: 0; width: 1px; background: var(--color-roster-slab-sep);
+}
+#page-profile .profile-quick-btn::after {
+  content: ''; position: absolute; top: 2px; right: 2px; bottom: 2px; left: 2px; z-index: -1; border-radius: 10px; background: transparent;
+}
+#page-profile .profile-quick-btn[aria-expanded="true"] { color: var(--accent); }
+#page-profile .profile-quick-btn[aria-expanded="true"]::after { background: var(--color-roster-slab-knob-bg); box-shadow: var(--color-roster-slab-knob-shadow); }
+#page-profile .profile-quick-btn[aria-expanded="true"]::before,
+#page-profile .profile-quick-btn[aria-expanded="true"] + .profile-quick-btn::before { display: none; }
+#page-profile .profile-quick-lb::after { display: none; }
+#page-profile .profile-quick-badge { top: 3px; left: calc(50% + 8px); }
+#page-profile .profile-quick-dot { top: 7px; left: calc(50% + 10px); }

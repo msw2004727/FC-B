@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import './profile-modal-glass.css';
 
 /**
  * M-127：同行者新增／編輯彈窗（照 A `pages/modals.html#companion-modal-overlay`、

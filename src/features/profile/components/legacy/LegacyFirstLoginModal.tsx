@@ -11,6 +11,7 @@ import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
 import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
+import './profile-modal-glass.css';
 
 export interface FirstLoginInitial {
   gender: string;
