@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ErrorLogsRangeResult } from '../data/error-logs';
@@ -48,6 +48,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup(); // 每條測試後卸載，避免上一條的元件殘留（PM 修正）
   vi.clearAllMocks();
 });
 

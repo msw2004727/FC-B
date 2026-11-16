@@ -1,5 +1,5 @@
-import { act, render, screen, waitFor } from '@testing-library/preact';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LogRange, PageSizeOption } from '../data/log-range';
 import type { PmAuditFilter } from '../data/pm-audit-view';
@@ -49,6 +49,10 @@ function Probe({
     </div>
   );
 }
+
+afterEach(() => {
+  cleanup(); // 每條測試後卸載，避免上一條的元件殘留（PM 修正）
+});
 
 beforeEach(() => {
   loadMock.mockReset();

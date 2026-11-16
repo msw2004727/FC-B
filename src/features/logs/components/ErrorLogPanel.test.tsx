@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs';
+
+// 相對路徑放變數：Vite 會把 new URL 的字面相對路徑改寫成開發資源網址（同 AdminLogsPage.test.tsx；PM 修正）。
+const zhTwRelativePath = '../locales/zh-TW.json';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetErrorRangeCacheForTest } from './useErrorLogRange';
@@ -125,7 +128,7 @@ function flattenDict(
 }
 
 const zhTwDict = flattenDict(
-  JSON.parse(readFileSync(new URL('../locales/zh-TW.json', import.meta.url), 'utf8')) as Record<string, unknown>,
+  JSON.parse(readFileSync(new URL(zhTwRelativePath, import.meta.url), 'utf8')) as Record<string, unknown>,
   'logs.',
 );
 dictHolder.dict = zhTwDict;
