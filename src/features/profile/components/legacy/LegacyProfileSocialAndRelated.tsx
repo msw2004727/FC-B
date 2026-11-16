@@ -481,7 +481,23 @@ export function LegacyRelatedActivities({
       toast.show({ message: '您只能管理自己的活動', tone: 'error' });
       return;
     }
-    setEditing(event as unknown as EventDoc);
+    // T-062 S2 Opus 終審 P2：比照取消流程先重讀活動，取得原始文件資料（不把文件 id 塞進 id、補 `_docId`），
+    // 避免編輯後的異動通知帶錯活動關聯鍵而被伺服器拒絕。
+    const publicId = String(event.id ?? '').trim();
+    if (!publicId) return;
+    void (async () => {
+      try {
+        const detail = await loadEventDetail(publicId);
+        if (!mountedRef.current) return;
+        if (!detail) {
+          toast.show({ message: '找不到此活動', tone: 'error' });
+          return;
+        }
+        setEditing(detail.event as unknown as EventDoc);
+      } catch {
+        // L-12：獨立非同步流程自行吞錯。
+      }
+    })();
   };
 
   const handleCancelHosted = async (event: EventRecord, ring: ActionRingControl): Promise<void> => {
