@@ -25,12 +25,12 @@
 
 /*
  * 下列欄位原本把字級寫在行內 style（行內權重高過上面的 iOS 規則，iPhone 點了仍會放大），
- * 已從行內拿掉；非 iOS 用原字級照舊，iOS 交給上面那條拉到 16px。
+ * 已從行內拿掉；非 iOS 改用最接近原字級的 token（ui-typography.md：.85rem→body-sm、小於 0.8rem 升 caption），iOS 交給上面那條拉到 16px。
  */
 @supports not (-webkit-touch-callout: none) {
-  #scan-manual-uid { font-size: .85rem; }
-  #ct-team-sport-tag { font-size: .85rem; }
-  #ce-template-name { font-size: .78rem; }
-  #my-activity-creator-input { font-size: .72rem; }
-  #fav-sort { font-size: .7rem; }
+  #scan-manual-uid,
+  #ct-team-sport-tag { font-size: var(--font-size-body-sm); }
+  #ce-template-name,
+  #my-activity-creator-input,
+  #fav-sort { font-size: var(--font-size-caption); }
 }

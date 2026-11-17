@@ -1,5 +1,5 @@
 /* 2026-11-17 站長：個人資訊頁「夥伴」一人一張卡片。路徑含 /legacy/，打包時自動加 .legacy-ui。
- * 只用既有主題 token；編輯／刪除鈕尺寸沿用身分頁籤的 .profile-action-btn（profile.css）。 */
+ * 只用既有主題 token（字級照 .claude/rules/ui-typography.md）；編輯／刪除鈕尺寸沿用身分頁籤的 .profile-action-btn（profile.css）。 */
 #my-companions-card .pmate-list {
   display: grid;
   gap: .55rem;
@@ -25,8 +25,8 @@
   border-radius: 50%;
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: .95rem;
-  font-weight: 800;
+  font-size: var(--font-size-body);
+  font-weight: 600;
 }
 #my-companions-card .pmate-main {
   flex: 1;
@@ -37,8 +37,8 @@
   line-height: 1.35;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 1.02rem;
-  font-weight: 800;
+  font-size: var(--font-size-body-lg);
+  font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -48,8 +48,8 @@
   border-radius: var(--radius-full);
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  font-size: .74rem;
-  font-weight: 700;
+  font-size: var(--font-size-caption);
+  font-weight: 600;
   white-space: nowrap;
 }
 #my-companions-card .pmate-sub {
@@ -63,7 +63,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: .8rem;
+  font-size: var(--font-size-body-sm);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -77,18 +77,18 @@
   border: 1px dashed var(--border);
   border-radius: 14px;
   color: var(--text-muted);
-  font-size: .88rem;
+  font-size: var(--font-size-body-sm);
   text-align: center;
 }
 #my-companions-card .pmate-hint {
   color: var(--text-muted);
-  font-size: .74rem;
+  font-size: var(--font-size-caption);
 }
 #my-companions-card .pmate-add {
   width: 100%;
   min-height: 44px;
   margin-top: .6rem;
   border-radius: 12px;
-  font-size: .9rem;
-  font-weight: 800;
+  font-size: var(--font-size-body);
+  font-weight: 600;
 }
