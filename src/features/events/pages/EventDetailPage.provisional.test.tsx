@@ -216,6 +216,19 @@ describe('活動詳情回訪：列表快取先畫', () => {
     expect(mock.history).toHaveBeenCalledTimes(1);
   });
 
+  it('先畫時可報名，伺服器回已結束：按鈕換成伺服器的狀態', async () => {
+    signIn('member');
+    writeListCache('uid:member');
+    const pending = deferred<ReturnType<typeof serverDetail>>();
+    mock.detail.mockReturnValue(pending.promise);
+    render(<EventDetailPage id="public-event" />);
+    expect(await screen.findByTestId('primary')).toBeTruthy();
+    expect(screen.getByTestId('primary').textContent).toBe(SYNCING);
+    await act(async () => { pending.resolve(serverDetail({ status: 'ended' })); });
+    await waitFor(() => expect(screen.getByTestId('primary').textContent).toBe('已結束'));
+    expect((screen.getByTestId('primary') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('沒有列表快取：照舊畫載入外殼，等伺服器', async () => {
     signIn('member');
     const pending = deferred<ReturnType<typeof serverDetail>>();

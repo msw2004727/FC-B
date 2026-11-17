@@ -341,6 +341,7 @@ function EventDetailSession({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   // 畫面上的快照來自列表快取、伺服器資料還沒到齊（只顯示）。provisionalUid 記先畫時的帳號，換帳號這一幀就改畫載入外殼。
+  // 注意：先畫期間 phase 已是 'ready'。新增只看 phase／snapshot 的 effect 或 handler 時，必須同時看 visible（先畫時為 false）或 rosterAutoHold。
   const [provisional, setProvisional] = useState(false);
   const provisionalUid = useRef<string | null>(null);
   const [rosterState, setRosterState] = useState<RosterState>({ expanded: false, phase: 'idle' });
@@ -564,7 +565,8 @@ function EventDetailSession({
         return;
       }
 
-      // 本場報名與活動文件並行：只在先畫時已知 docId 才提早讀；伺服器 docId 不同才改讀（讀取次數不增加）。
+      // 本場報名與活動文件並行：只在先畫時已知 docId 才提早讀；docId 相同就共用這一次。
+      // 例外（Opus 終審 P3-1，接受）：伺服器回活動已不存在，或 docId 與快取不同時，會比原本多讀一次本場報名。
       let historyTask: Promise<RegistrationDoc[]> | null = null;
       let historyDocId = '';
       if (reload === 0) cached = readCachedDetail(publicId, currentViewer.current);
@@ -1340,7 +1342,8 @@ function EventDetailSession({
   const noShowEnabled = Boolean(visible && rosterExpanded && rosterPhase === 'ready'
     && canViewNoShow && NO_SHOW_FEATURE_ENABLED && viewer.uid && snapshot?.eventDocId);
   // 展開跨過 TTL 時，仍由既有完整 UID 批次更新角色及統計，不另開 users 查詢。
-  const roles = useUserRoles(viewer.uid ? roleUids : [], noShowEnabled);
+  // 先畫期間不查角色（Opus 終審 P3-2）：名單來自快取，等伺服器資料到齊再讀。
+  const roles = useUserRoles(viewer.uid && !provisional ? roleUids : [], noShowEnabled);
   const noShowData = useRosterNoShow({
     viewerUid: viewer.uid,
     eventDocId: snapshot?.eventDocId,
