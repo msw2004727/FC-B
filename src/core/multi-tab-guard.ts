@@ -266,6 +266,10 @@ export function initMultiTabGuard(): () => void {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (multiTabCloseTimer !== null) {
+        clearTimeout(multiTabCloseTimer);
+        multiTabCloseTimer = null;
+      }
       try {
         multiTabChannel?.close();
       } catch {
