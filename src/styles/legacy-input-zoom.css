@@ -22,3 +22,15 @@
     font-size: max(16px, 1rem);
   }
 }
+
+/*
+ * 下列欄位原本把字級寫在行內 style（行內權重高過上面的 iOS 規則，iPhone 點了仍會放大），
+ * 已從行內拿掉；非 iOS 用原字級照舊，iOS 交給上面那條拉到 16px。
+ */
+@supports not (-webkit-touch-callout: none) {
+  #scan-manual-uid { font-size: .85rem; }
+  #ct-team-sport-tag { font-size: .85rem; }
+  #ce-template-name { font-size: .78rem; }
+  #my-activity-creator-input { font-size: .72rem; }
+  #fav-sort { font-size: .7rem; }
+}

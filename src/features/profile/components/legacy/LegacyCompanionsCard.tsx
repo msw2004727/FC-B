@@ -196,13 +196,16 @@ export function LegacyCompanionsCard(
                   <div key={c.id || String(idx)} class="pmate-card">
                     <span class="pmate-no" aria-hidden="true">{number}</span>
                     <div class="pmate-main">
-                      <div class="pmate-name-row">
-                        <span class="pmate-name">{c.name}</span>
-                        {c.gender ? (
-                          <span class="pmate-gender">{`${icon}${c.gender}`}</span>
-                        ) : null}
-                      </div>
-                      {c.notes ? <div class="pmate-note">{c.notes}</div> : null}
+                      {/* 顧問 §3.226：姓名獨佔一行（360 寬 8 個中文字內完整顯示），性別與備註移到第二行 */}
+                      <div class="pmate-name">{c.name}</div>
+                      {c.gender || c.notes ? (
+                        <div class="pmate-sub">
+                          {c.gender ? (
+                            <span class="pmate-gender">{`${icon}${c.gender}`}</span>
+                          ) : null}
+                          {c.notes ? <span class="pmate-note">{c.notes}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
                     <div class="pmate-actions">
                       <button

@@ -974,7 +974,7 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
             id="ce-template-name"
             placeholder={lt('範本名稱（例：週六友誼賽）', '範本名稱（例：週六友誼賽）')}
             maxLength={20}
-            style="flex:1;min-width:0;font-size:.78rem;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)"
+            style="flex:1;min-width:0;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)"
             value={props.templates?.saveName ?? ''}
             onInput={(event) => props.templates?.onSaveNameChange(event.currentTarget.value)}
           />
