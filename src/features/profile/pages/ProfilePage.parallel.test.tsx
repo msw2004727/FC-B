@@ -23,8 +23,19 @@ vi.mock('@/data/firebase', () => ({
 vi.mock('preact-iso', () => ({
   useLocation: () => ({ route: vi.fn() }),
 }));
+const viewerState = vi.hoisted(() => ({ pending: false }));
 vi.mock('../data/viewer', () => ({
-  useViewer: () => ({
+  useViewer: () => (viewerState.pending ? {
+    uid: null,
+    authPending: true,
+    role: 'guest',
+    roleLevel: 0,
+    teamIds: new Set<string>(),
+    capabilities: [],
+    displayName: null,
+    pictureUrl: null,
+    hasPermission: () => false,
+  } : {
     uid: 'U-me',
     role: 'user',
     roleLevel: 1,
@@ -98,6 +109,7 @@ describe('ProfilePage：統計類讀取與個人資料並行', () => {
     firestore.getDocs.mockReset();
     summary.load.mockReset();
     related.calls.length = 0;
+    viewerState.pending = false;
   });
 
   afterEach(() => {
@@ -160,5 +172,14 @@ describe('ProfilePage：統計類讀取與個人資料並行', () => {
     fireEvent.click(await screen.findByRole('button', { name: RETRY }));
     await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
     await waitFor(() => expect(summary.load).toHaveBeenCalledTimes(2));
+  });
+
+  it('登入狀態尚未確定（authPending）：不提早讀統計與相關活動（顧問 §3.234）', async () => {
+    viewerState.pending = true;
+    render(<ProfilePage />);
+    await act(async () => { await new Promise((done) => setTimeout(done, 50)); });
+    expect(summary.load).not.toHaveBeenCalled();
+    expect(related.calls).toEqual([]);
+    expect(firestore.getDoc).not.toHaveBeenCalled();
   });
 });
