@@ -30,6 +30,7 @@ import {
   LegacyRelatedActivities,
   LegacySocialGrid,
   useRelatedActivitiesData,
+  type RelatedActivitiesData,
 } from '../components/legacy/LegacyProfileSocialAndRelated';
 import { LegacyIdentityCard } from '../components/legacy/LegacyIdentityCard';
 import { LegacyLineNotifyCard } from '../components/legacy/LegacyLineNotifyCard';
@@ -98,10 +99,14 @@ function ProfileContent({
   uid,
   initial,
   viewer,
+  related,
+  summaryTask,
 }: {
   uid: string;
   initial: UserProfile;
   viewer: ViewerView;
+  related: RelatedActivitiesData;
+  summaryTask: Promise<UserAttendanceSummary | null>;
 }): JSX.Element {
   const [profile, setProfile] = useState(initial);
   const [dismissed, setDismissed] = useState(false);
@@ -113,7 +118,7 @@ function ProfileContent({
   const canEditIdentity = viewer.hasPermission('profile.secondary_identity');
 
   // 11-06 改版：徽章與「申請」是否顯示要在收合時就知道，資料由頁面讀一次、展開區共用（讀取次數同改版前）。
-  const related = useRelatedActivitiesData(uid);
+  // related 由外層與個人資料同時開始讀（顧問 §3.233 ③甲）。
   const applications = useMyTeamApplications(uid, profile);
   const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
@@ -127,7 +132,8 @@ function ProfileContent({
     let active = true;
     setSummary(null);
     const token = summarySeq.issue();
-    loadUserAttendanceSummary(uid)
+    // 外層與個人資料同時發出的那一次讀取（不再等個人資料回來才讀；讀取次數不變）。
+    summaryTask
       .then((res) => {
         // 與卡片同一規則：讀取失敗（null）不推進已套用序號，也不覆蓋既有 summary（起始的清空由上面的 setSummary(null) 負責）。
         if (active && res !== null && summarySeq.accept(token)) setSummary(res);
@@ -136,7 +142,7 @@ function ProfileContent({
     return () => {
       active = false;
     };
-  }, [uid, summarySeq]);
+  }, [uid, summarySeq, summaryTask]);
 
   // 卡片刷新成功後交來的 summary 一定比掛載時發出的讀取新：發新序號套用，之後晚到的舊讀取會被丟棄。
   function summaryRefreshed(next: UserAttendanceSummary): void {
@@ -295,6 +301,10 @@ function AuthenticatedProfile({
   viewer: ViewerView;
 }): JSX.Element {
   const { state, retry } = useRemote(uid, loadOwnUserProfile);
+  // 顧問 §3.233 ③甲：出席統計與相關活動只需要 uid，和個人資料同時開始讀，不顯示舊資料。
+  // 兩者失敗只影響各自的數字（統計回 null 顯示 --），不影響個人資料；個人資料（含私密四欄）失敗仍是整頁失敗＋重試。
+  const related = useRelatedActivitiesData(uid);
+  const [summaryTask] = useState(() => loadUserAttendanceSummary(uid).catch(() => null));
   // 剛登入時會員文件可能還在建立（data/user-doc-sync.ts 完成後發 viewer:refresh）：查無資料時收到就重讀一次。
   const missing = state.status === 'ready' && !state.data;
   useEffect(() => (missing ? on('viewer:refresh', () => retry()) : undefined), [missing]);
@@ -304,7 +314,15 @@ function AuthenticatedProfile({
   // null 也可能是網路暫時失敗，所以必須有重試；不同時顯示「目前無法載入」那塊（退修 1 #6、退修 2 P2-1）。
   if (!state.data) return <Missing retry={retry} />;
 
-  return <ProfileContent uid={uid} initial={state.data} viewer={viewer} />;
+  return (
+    <ProfileContent
+      uid={uid}
+      initial={state.data}
+      viewer={viewer}
+      related={related}
+      summaryTask={summaryTask}
+    />
+  );
 }
 
 export default function ProfilePage(): JSX.Element {
