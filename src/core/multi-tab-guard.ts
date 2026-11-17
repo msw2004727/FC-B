@@ -2,10 +2,14 @@
 // 使用 BroadcastChannel('toosterx-tab-guard') 偵測多分頁，顯示「我知道了／關閉其他分頁」。
 // 視覺特效在 multi-tab-fx（動態 import）。載入失敗就維持這份舊外觀，不得讓提示框消失。
 
+import { toast } from '@/ui/Toast';
+
 let multiTabId: string | null = null;
 let multiTabChannel: BroadcastChannel | null = null;
 let multiTabOthers: Set<string> | null = null;
 let multiTabWarningShown = false;
+let multiTabDisabledShown = false;
+let multiTabCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let multiTabFxCleanup: (() => void) | undefined;
 
 function dropMultiTabFx(): void {
@@ -18,72 +22,22 @@ function dismissMultiTabWarning(): void {
   if (typeof document === 'undefined') return;
   dropMultiTabFx();
   const el = document.getElementById('multi-tab-warning');
-  if (el) el.remove();
-}
-
-function requestCloseOthers(): void {
-  try {
-    multiTabChannel?.postMessage({ type: 'close-others', tabId: multiTabId });
-  } catch {
-    /* ignore */
-  }
-  dismissMultiTabWarning();
-}
-
-function handleCloseRequest(): void {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  try {
-    window.close();
-  } catch {
-    /* ignore */
-  }
-  // 若瀏覽器不允許自動 window.close()，顯示已關閉提示或關閉對話框
-  dismissMultiTabWarning();
-}
-
-export function showMultiTabWarning(): void {
-  if (multiTabWarningShown) return;
-  if (typeof document === 'undefined' || !document.body) return;
-  if (document.getElementById('multi-tab-warning')) return;
-  multiTabWarningShown = true;
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'legacy-ui';
-  const overlay = document.createElement('div');
-  overlay.id = 'multi-tab-warning';
-  overlay.className = 'multi-tab-overlay';
-  // 先藏起來。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
-  overlay.style.opacity = '0';
-  overlay.innerHTML =
-    '<div class="multi-tab-modal">' +
-      '<div class="multi-tab-title">偵測到多個分頁開啟</div>' +
-      '<div class="multi-tab-body">' +
-        '為了穩定的登入與資料同步體驗，<br>' +
-        '建議只保留一個分頁。' +
-        '<div class="multi-tab-divider"></div>' +
-        '點下方按鈕可請其他舊分頁自動關閉<br>' +
-        '<span style="font-size:.78rem;color:var(--text-muted)">（手動開的分頁可能要自行關閉）</span>' +
-      '</div>' +
-      '<div class="multi-tab-actions">' +
-        '<button type="button" class="outline-btn" id="multi-tab-dismiss">我知道了</button>' +
-        '<button type="button" class="primary-btn" id="multi-tab-close">關閉其他分頁</button>' +
-      '</div>' +
-    '</div>';
-  wrapper.appendChild(overlay);
-  document.body.appendChild(wrapper);
-
-  const dismissBtn = document.getElementById('multi-tab-dismiss');
-  const closeBtn = document.getElementById('multi-tab-close');
-  dismissBtn?.addEventListener('click', () => {
-    dropMultiTabFx();
+  if (!el) return;
+  const wrapper = el.parentElement;
+  el.remove();
+  if (wrapper && wrapper.classList.contains('legacy-ui') && !wrapper.querySelector('.multi-tab-overlay')) {
     wrapper.remove();
-  });
-  closeBtn?.addEventListener('click', () => {
-    dropMultiTabFx();
-    requestCloseOthers();
-    wrapper.remove();
-  });
+  }
+}
 
+function isMultiTabDisabled(): boolean {
+  return (
+    multiTabDisabledShown ||
+    (typeof document !== 'undefined' && document.getElementById('multi-tab-disabled') !== null)
+  );
+}
+
+function applyMultiTabFxToOverlay(overlay: HTMLElement): void {
   void import('./multi-tab-fx').then(
     (m) => {
       if (!overlay.isConnected) return;
@@ -97,6 +51,141 @@ export function showMultiTabWarning(): void {
       if (overlay.isConnected) overlay.style.opacity = '1';
     },
   );
+}
+
+interface MultiTabOverlayContent {
+  id: string;
+  title: string;
+  bodyHtml: string;
+  actionsHtml: string;
+}
+
+function createMultiTabOverlay(content: MultiTabOverlayContent): {
+  wrapper: HTMLDivElement;
+  overlay: HTMLDivElement;
+} {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'legacy-ui';
+  const overlay = document.createElement('div');
+  overlay.id = content.id;
+  overlay.className = 'multi-tab-overlay';
+  // 先藏起來。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
+  overlay.style.opacity = '0';
+  overlay.innerHTML =
+    '<div class="multi-tab-modal">' +
+      '<div class="multi-tab-title">' + content.title + '</div>' +
+      '<div class="multi-tab-body">' + content.bodyHtml + '</div>' +
+      '<div class="multi-tab-actions">' + content.actionsHtml + '</div>' +
+    '</div>';
+  wrapper.appendChild(overlay);
+  document.body.appendChild(wrapper);
+  applyMultiTabFxToOverlay(overlay);
+  return { wrapper, overlay };
+}
+
+let reloadPage: () => void = () => window.location.reload();
+/** 測試用：替換重新整理（jsdom 的 location.reload 不可攔截）。 */
+export function _setReloadForTest(fn: () => void): void {
+  reloadPage = fn;
+}
+
+function requestCloseOthers(): void {
+  try {
+    multiTabChannel?.postMessage({ type: 'close-others', tabId: multiTabId });
+  } catch {
+    /* ignore */
+  }
+  try {
+    toast.show('已通知其他分頁，關不掉的會顯示停用');
+  } catch {
+    /* ignore */
+  }
+  dismissMultiTabWarning();
+}
+
+function showMultiTabDisabled(): void {
+  if (multiTabDisabledShown) return;
+  if (typeof document === 'undefined' || !document.body) return;
+  if (document.getElementById('multi-tab-disabled')) {
+    multiTabDisabledShown = true;
+    return;
+  }
+  dismissMultiTabWarning();
+  multiTabDisabledShown = true;
+
+  createMultiTabOverlay({
+    id: 'multi-tab-disabled',
+    title: '這個分頁已停用',
+    bodyHtml: '你已在另一個分頁繼續使用',
+    actionsHtml:
+      '<button type="button" class="outline-btn" id="multi-tab-disabled-use">改在這裡使用</button>' +
+      '<button type="button" class="primary-btn" id="multi-tab-disabled-close">關閉這個分頁</button>',
+  });
+
+  const useBtn = document.getElementById('multi-tab-disabled-use');
+  const closeBtn = document.getElementById('multi-tab-disabled-close');
+  useBtn?.addEventListener('click', () => {
+    try {
+      reloadPage();
+    } catch {
+      /* ignore */
+    }
+  });
+  closeBtn?.addEventListener('click', () => {
+    try {
+      window.close();
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function handleCloseRequest(): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  try {
+    window.close();
+  } catch {
+    /* ignore */
+  }
+  if (isMultiTabDisabled()) return;
+  dismissMultiTabWarning();
+  if (multiTabCloseTimer !== null) return;
+  multiTabCloseTimer = setTimeout(() => {
+    multiTabCloseTimer = null;
+    if (window.closed === true) return;
+    showMultiTabDisabled();
+  }, 200);
+}
+
+export function showMultiTabWarning(): void {
+  if (multiTabWarningShown) return;
+  if (isMultiTabDisabled()) return;
+  if (typeof document === 'undefined' || !document.body) return;
+  if (document.getElementById('multi-tab-warning') || document.getElementById('multi-tab-disabled')) return;
+  multiTabWarningShown = true;
+
+  createMultiTabOverlay({
+    id: 'multi-tab-warning',
+    title: '偵測到多個分頁開啟',
+    bodyHtml:
+      '為了穩定的登入與資料同步體驗，<br>' +
+      '建議只保留一個分頁。' +
+      '<div class="multi-tab-divider"></div>' +
+      '點下方按鈕可請其他舊分頁自動關閉<br>' +
+      '<span style="font-size:.78rem;color:var(--text-muted)">（手動開的分頁可能要自行關閉）</span>',
+    actionsHtml:
+      '<button type="button" class="outline-btn" id="multi-tab-dismiss">我知道了</button>' +
+      '<button type="button" class="primary-btn" id="multi-tab-close">關閉其他分頁</button>',
+  });
+
+  const dismissBtn = document.getElementById('multi-tab-dismiss');
+  const closeBtn = document.getElementById('multi-tab-close');
+  dismissBtn?.addEventListener('click', () => {
+    dismissMultiTabWarning();
+  });
+  closeBtn?.addEventListener('click', () => {
+    requestCloseOthers();
+  });
 }
 
 export function initMultiTabGuard(): () => void {
@@ -116,6 +205,10 @@ export function initMultiTabGuard(): () => void {
     multiTabChannel.onmessage = (e: MessageEvent) => {
       const data = e.data as { type?: string; tabId?: string } | null;
       if (!data || !data.tabId || data.tabId === multiTabId) return;
+      if (isMultiTabDisabled()) {
+        if (data.type === 'close-others') handleCloseRequest();
+        return;
+      }
       if (data.type === 'ping') {
         try {
           multiTabChannel?.postMessage({ type: 'pong', tabId: multiTabId });
@@ -166,6 +259,10 @@ export function initMultiTabGuard(): () => void {
 }
 
 export function _resetMultiTabGuardForTest(): void {
+  if (multiTabCloseTimer !== null) {
+    clearTimeout(multiTabCloseTimer);
+    multiTabCloseTimer = null;
+  }
   try {
     multiTabChannel?.close();
   } catch {
@@ -175,10 +272,14 @@ export function _resetMultiTabGuardForTest(): void {
   multiTabChannel = null;
   multiTabOthers = null;
   multiTabWarningShown = false;
+  multiTabDisabledShown = false;
   dropMultiTabFx();
   if (typeof document !== 'undefined') {
-    document.getElementById('multi-tab-warning')?.parentElement?.remove();
-    document.getElementById('multi-tab-warning')?.remove();
+    for (const id of ['multi-tab-warning', 'multi-tab-disabled']) {
+      const el = document.getElementById(id);
+      el?.parentElement?.remove();
+      el?.remove();
+    }
     document.querySelectorAll('style[data-multi-tab-fx-instance]').forEach((node) => {
       node.remove();
     });
