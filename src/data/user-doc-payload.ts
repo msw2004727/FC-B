@@ -3,18 +3,18 @@
 
 import { assertAllowedFields } from './write-guard';
 
-/** A 新會員文件的欄位（順序照 A `userData`）；必須是 Rules `userRootCreateAllowedKeys()` 的子集合。 */
+/** 會員資料讀取強化：A 新會員文件欄位（順序照 A `userData`），私密欄位改寫私密子文件不落根；仍是 Rules `userRootCreateAllowedKeys()` 的子集合。 */
 export const USER_DOC_CREATE_FIELDS = [
-  'uid', 'lineUserId', 'displayName', 'pictureUrl', 'email',
+  'uid', 'lineUserId', 'displayName', 'pictureUrl',
   'role', 'exp', 'level',
-  'gender', 'birthday', 'region', 'sports', 'teamId', 'teamName', 'phone', 'titleBig', 'titleNormal',
+  'gender', 'birthday', 'region', 'sports', 'teamId', 'teamName', 'titleBig', 'titleNormal',
   'totalGames', 'completedGames', 'attendanceRate', 'badgeCount',
   'createdAt', 'lastLogin',
 ] as const;
 
-/** 逐字對照 FC firestore.rules `userRootCreateAllowedKeys()`（legacy 遷移是建立文件，受這份清單限制）。 */
+/** 會員資料讀取強化：四欄改寫私密子文件，本清單為更嚴的子集合；其餘逐字對照 FC firestore.rules `userRootCreateAllowedKeys()`（legacy 遷移是建立文件，受這份清單限制）。 */
 export const USER_ROOT_CREATE_RULES_FIELDS = [
-  'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl', 'phone', 'email',
+  'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl',
   'role', 'exp', 'level',
   'gender', 'birthday', 'region', 'sports',
   'teamId', 'teamName', 'teamIds', 'teamNames',
@@ -23,7 +23,7 @@ export const USER_ROOT_CREATE_RULES_FIELDS = [
   'profileCompleted',
   'createdAt', 'lastLogin', 'updatedAt',
   'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
-  'favorites', 'socialLinks', 'lineNotify', 'companions', 'eduChildren', 'stealth',
+  'favorites', 'socialLinks', 'lineNotify', 'stealth',
 ] as const;
 
 /** 已存在文件的登入更新欄位；逐字對照 Rules `isSafeLoginUpdate()` 的 hasOnly。 */
@@ -71,12 +71,13 @@ export function normalizeLineProfile(profile: LineLoginProfile): {
 /** A 新建分支的 payload（createdAt／lastLogin 為 serverTimestamp）。 */
 export function buildNewUserDoc(uid: string, profile: LineLoginProfile, ts: unknown): Data {
   const n = normalizeLineProfile(profile);
+  // 會員資料讀取強化：建檔 payload 不含私密欄位；LINE email 由 user-doc-sync 寫入私密子文件。
   return {
     uid, lineUserId: profile.userId,
-    displayName: n.displayName, pictureUrl: n.pictureUrl, email: n.email,
+    displayName: n.displayName, pictureUrl: n.pictureUrl,
     role: 'user', exp: 0, level: 1,
     gender: null, birthday: null, region: null, sports: null,
-    teamId: null, teamName: null, phone: null, titleBig: null, titleNormal: null,
+    teamId: null, teamName: null, titleBig: null, titleNormal: null,
     totalGames: 0, completedGames: 0, attendanceRate: 0, badgeCount: 0,
     createdAt: ts, lastLogin: ts,
   };
@@ -102,9 +103,14 @@ export function buildLegacyMigration(legacy: Data, uid: string, profile: LineLog
     ...legacy,
     uid, lineUserId: profile.userId,
     displayName: n.displayName || legacy.displayName || uid,
-    pictureUrl: n.pictureUrl, email: n.email,
+    pictureUrl: n.pictureUrl,
     lastLogin: ts,
   };
+  // 會員資料讀取強化：遷移時私密欄位不寫回根文件，改由 user-doc-sync 寫入私密子文件。
+  delete payload['email'];
+  delete payload['phone'];
+  delete payload['companions'];
+  delete payload['eduChildren'];
   if (!legacy.createdAt) payload.createdAt = ts;
   if (legacy.teamId === undefined || legacy.teamId === null || legacy.teamId === '') payload.teamId = null;
   if (legacy.teamIds === undefined || legacy.teamIds === null

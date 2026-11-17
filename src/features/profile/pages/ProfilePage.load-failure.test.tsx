@@ -118,7 +118,8 @@ describe('ProfilePage：個人資料讀取失敗／查無資料（真的 loadUse
 
     fireEvent.click(await screen.findByRole('button', { name: RETRY }));
     await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
-    expect(firestore.getDoc).toHaveBeenCalledTimes(2);
+    // 會員資料讀取強化：每次載入＝根文件＋私密子文件各一次 getDoc；重試一次共 4 次。
+    expect(firestore.getDoc).toHaveBeenCalledTimes(4);
     expect(screen.queryByText(UNAVAILABLE)).toBeNull();
     expect(screen.queryByRole('button', { name: RETRY })).toBeNull();
   });

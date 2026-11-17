@@ -30,8 +30,10 @@ function usersBlock(): string {
 
 /** 只解析純字串清單；清單裡出現字串以外的東西就丟錯（不默認為空）。 */
 function stringList(body: string): string[] {
-  const strings = [...body.matchAll(/'([^'\\]*)'/g)].map((m) => m[1]!);
-  if (!strings.length || body.replace(/'([^'\\]*)'/g, '').replace(/[\s,]/g, '')) {
+  // Rules 清單可能帶行註解（例如說明四欄已移到私密子文件）；先剝除再解析，不默認空集合。
+  const withoutComments = body.replace(/\/\/[^\n\r]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const strings = [...withoutComments.matchAll(/'([^'\\]*)'/g)].map((m) => m[1]!);
+  if (!strings.length || withoutComments.replace(/'([^'\\]*)'/g, '').replace(/[\s,]/g, '')) {
     throw new Error('清單必須只有字串');
   }
   return strings;

@@ -77,7 +77,7 @@ describe('loadOwnUserProfile', () => {
     vi.resetAllMocks();
     vi.mocked(getFirebase).mockResolvedValue({ db: {} } as never);
     vi.mocked(mergePrivateFields).mockImplementation(
-      ((root, priv) => (
+      ((root: Record<string, unknown>, priv: Record<string, unknown> | null) => (
         priv
           ? { ...root, ...Object.fromEntries(
               Object.entries(priv).filter(([, v]) => v !== undefined),

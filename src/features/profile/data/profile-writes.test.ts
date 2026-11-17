@@ -110,13 +110,14 @@ describe('write guardrails', () => {
     expect(() => assertNoDerivedFields({ realCurrent: 0 })).toThrow(/衍生欄位/);
   });
 
-  it('saveCompanions 的 payload 只含 companions 與 updatedAt', async () => {
+  it('會員資料讀取強化：saveCompanions 只寫私密，不 update 根文件', async () => {
     await saveCompanions('u1', [{ name: 'x' }]);
-    expect(batch.update).toHaveBeenCalledTimes(1);
-    expect(batch.update).toHaveBeenCalledWith(
-      { __doc: 'users/u1' },
-      { companions: [{ name: 'x' }], updatedAt: SERVER_TS },
-    );
+    expect(batch.update).not.toHaveBeenCalled();
+    expect(batch.set).toHaveBeenCalledTimes(1);
+    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
+    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
+    expect(setPayload).toEqual({ companions: [{ name: 'x' }], updatedAt: SERVER_TS });
+    expect(options).toEqual({ merge: true });
     expect(batch.commit).toHaveBeenCalledTimes(1);
     expect(callFn).not.toHaveBeenCalled();
   });
@@ -138,12 +139,9 @@ describe('A29 updateProfileFields（golden payload）', () => {
     expect(callFn).not.toHaveBeenCalled();
   });
 
-  it('改 phone 時私密子文件同寫 phone', async () => {
+  it('會員資料讀取強化：只有四欄時不 update 根文件，只寫私密子文件', async () => {
     await updateProfileFields('u1', { phone: '0912345678' });
-    expect(batch.update).toHaveBeenCalledWith(
-      { __doc: 'users/u1' },
-      { phone: '0912345678', updatedAt: SERVER_TS },
-    );
+    expect(batch.update).not.toHaveBeenCalled();
     expect(batch.set).toHaveBeenCalledTimes(1);
     const [ref, payload, options] = batch.set.mock.calls[0]!;
     expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
@@ -203,7 +201,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
     vi.useRealTimers();
   });
 
-  it('帶 email 時寫 4 欄、A 的法律同意欄位與 updatedAt，不持久化 legalConsent', async () => {
+  it('會員資料讀取強化：email 只寫私密，根文件不含 email；法務欄位與其餘欄位照寫根', async () => {
     await saveFirstLoginProfile('u1', firstLogin());
     expect(batch.update).toHaveBeenCalledTimes(1);
     expect(batch.update).toHaveBeenCalledWith(
@@ -213,7 +211,6 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender: '女',
         birthday: '1990/01/01',
         region: 'TW',
-        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -250,7 +247,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
     },
   );
 
-  it('只修剪 region 與 email，維持既有 birthday 字串格式', async () => {
+  it('會員資料讀取強化：只修剪 region；email 走私密，根文件不含 email', async () => {
     await saveFirstLoginProfile('u1', firstLogin({
       region: '  臺中市  ',
       email: '  a@example.com  ',
@@ -262,7 +259,6 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender: '女',
         birthday: '1990/01/01',
         region: '臺中市',
-        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -348,7 +344,6 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender,
         birthday: '1990/01/01',
         region: 'TW',
-        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -373,7 +368,6 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender: '女',
         birthday: '2000/02/29',
         region: 'TW',
-        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -412,44 +406,43 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender: '女',
         birthday: '1990/01/01',
         region: 'TW',
-        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
   });
 });
 
-describe('A31 saveCompanions / A32 saveEduChildren（golden）', () => {
-  it('companions 只寫 companions 與 updatedAt', async () => {
+describe('A31 saveCompanions / A32 saveEduChildren（會員資料讀取強化：只寫私密）', () => {
+  it('companions 只寫私密，不 update 根文件', async () => {
     const companions = [{ name: 'A' }, { name: 'B' }];
     await saveCompanions('u1', companions);
-    expect(batch.update).toHaveBeenCalledTimes(1);
-    expect(batch.update).toHaveBeenCalledWith(
-      { __doc: 'users/u1' },
-      { companions, updatedAt: SERVER_TS },
-    );
+    expect(batch.update).not.toHaveBeenCalled();
+    expect(batch.set).toHaveBeenCalledTimes(1);
+    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
+    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
+    expect(setPayload).toEqual({ companions, updatedAt: SERVER_TS });
+    expect(options).toEqual({ merge: true });
     expect(batch.commit).toHaveBeenCalledTimes(1);
   });
 
-  it('saveCompanions([]) 私密寫 companions: []', async () => {
+  it('saveCompanions([]) 私密寫 companions: []，不 update 根文件', async () => {
     await saveCompanions('u1', []);
+    expect(batch.update).not.toHaveBeenCalled();
     expect(batch.set).toHaveBeenCalledTimes(1);
     const [, setPayload] = batch.set.mock.calls[0]!;
     expect(setPayload).toEqual({ companions: [], updatedAt: SERVER_TS });
     expect(batch.commit).toHaveBeenCalledTimes(1);
   });
 
-  it('eduChildren 只寫 eduChildren 與 updatedAt', async () => {
+  it('eduChildren 只寫私密，不 update 根文件', async () => {
     const children = [{ name: 'K' }];
     await saveEduChildren('u1', children);
-    expect(batch.update).toHaveBeenCalledTimes(1);
-    expect(batch.update).toHaveBeenCalledWith(
-      { __doc: 'users/u1' },
-      { eduChildren: children, updatedAt: SERVER_TS },
-    );
+    expect(batch.update).not.toHaveBeenCalled();
     expect(batch.set).toHaveBeenCalledTimes(1);
-    const [, setPayload] = batch.set.mock.calls[0]!;
+    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
+    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
     expect(setPayload).toEqual({ eduChildren: children, updatedAt: SERVER_TS });
+    expect(options).toEqual({ merge: true });
     expect(batch.commit).toHaveBeenCalledTimes(1);
   });
 });

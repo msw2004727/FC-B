@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TS = { __sentinel: 'serverTimestamp' };
 const fs = vi.hoisted(() => ({
-  doc: vi.fn((_db: unknown, col: string, id: string) => ({ path: `${col}/${id}` })),
+  doc: vi.fn((_db: unknown, col: string, id: string, ...rest: string[]) => ({ path: [col, id, ...rest].join('/') })),
   collection: vi.fn((_db: unknown, col: string) => ({ col })),
   where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
   limit: vi.fn((n: number) => ({ limit: n })),
@@ -62,6 +62,8 @@ const missing = { exists: () => false, data: () => undefined };
 const existing = (data: Record<string, unknown>) => ({ exists: () => true, data: () => data });
 const ts = (ms: number) => ({ toMillis: () => ms });
 const noLegacy = { docs: [] };
+const rootSetDocCalls = () => fs.setDoc.mock.calls.filter(([ref]) => (ref as { path?: string }).path === 'users/U1');
+const privateSetDocCalls = () => fs.setDoc.mock.calls.filter(([ref]) => String((ref as { path?: string }).path).includes('profilePrivate'));
 
 let refreshes = 0;
 let stopRefresh: () => void;
@@ -97,15 +99,23 @@ describe('syncUserDoc：文件不存在', () => {
 
     expect(fs.where).toHaveBeenCalledWith('lineUserId', '==', 'U1');
     expect(fs.limit).toHaveBeenCalledWith(1);
-    expect(fs.setDoc).toHaveBeenCalledTimes(1);
-    const [ref, payload, options] = fs.setDoc.mock.calls[0]!;
+    const rootCalls = rootSetDocCalls();
+    expect(rootCalls).toHaveLength(1);
+    const [ref, payload, options] = rootCalls[0]!;
     expect(ref).toEqual({ path: 'users/U1' });
     expect(options).toBeUndefined();
     expect(Object.keys(payload).sort()).toEqual([...USER_DOC_CREATE_FIELDS].sort());
     expect(payload).toMatchObject({
-      uid: 'U1', lineUserId: 'U1', displayName: '小明', pictureUrl: 'https://p/1', email: 'a@example.test',
+      uid: 'U1', lineUserId: 'U1', displayName: '小明', pictureUrl: 'https://p/1',
       role: 'user', exp: 0, level: 1, createdAt: TS, lastLogin: TS,
     });
+    expect(payload).not.toHaveProperty('email');
+    const privateCalls = privateSetDocCalls();
+    expect(privateCalls).toHaveLength(1);
+    const [privateRef, privatePayload, privateOptions] = privateCalls[0]!;
+    expect(privateRef).toEqual({ path: 'users/U1/profilePrivate/profile' });
+    expect(privateOptions).toEqual({ merge: true });
+    expect(privatePayload).toMatchObject({ email: 'a@example.test' });
     expect(refreshes).toBe(1);
     expect(localStorage.getItem(USER_DOC_SYNCED_KEY)).toBe(`U1|${NOW}`);
   });
@@ -115,7 +125,16 @@ describe('syncUserDoc：文件不存在', () => {
     fs.getDoc.mockResolvedValue(missing);
     await expect(syncUserDoc('U1')).resolves.toBe('created');
     expect(liffState.ensure).toHaveBeenCalledTimes(1);
-    expect(fs.setDoc).toHaveBeenCalledTimes(1);
+    expect(rootSetDocCalls()).toHaveLength(1);
+    expect(privateSetDocCalls()).toHaveLength(1);
+  });
+
+  it('LINE 未提供 email：只寫根文件，不寫私密子文件', async () => {
+    liffState.ready = liff({ userId: 'U1', displayName: ' 小明 ', pictureUrl: 'https://p/1' }, null);
+    fs.getDoc.mockResolvedValue(missing);
+    await expect(syncUserDoc('U1')).resolves.toBe('created');
+    expect(rootSetDocCalls()).toHaveLength(1);
+    expect(privateSetDocCalls()).toHaveLength(0);
   });
 
   it('legacy 文件（無 createdAt）：照 A merge 遷移', async () => {
@@ -264,7 +283,8 @@ describe('syncUserDoc：拒絕寫入與失敗處理', () => {
     expect(refreshes).toBe(0);
 
     await expect(startUserDocSync('U1')).resolves.toBe('created');
-    expect(fs.setDoc).toHaveBeenCalledTimes(2);
+    expect(rootSetDocCalls()).toHaveLength(2);
+    expect(privateSetDocCalls()).toHaveLength(1);
     warn.mockRestore();
   });
 
@@ -274,7 +294,8 @@ describe('syncUserDoc：拒絕寫入與失敗處理', () => {
     const [a, b] = [syncUserDoc('U1'), syncUserDoc('U1')];
     await expect(Promise.all([a, b])).resolves.toEqual(['created', 'created']);
     expect(fs.getDoc).toHaveBeenCalledTimes(1);
-    expect(fs.setDoc).toHaveBeenCalledTimes(1);
+    expect(rootSetDocCalls()).toHaveLength(1);
+    expect(privateSetDocCalls()).toHaveLength(1);
   });
 });
 

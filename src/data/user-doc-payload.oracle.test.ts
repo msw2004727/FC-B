@@ -105,6 +105,13 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
    */
   const DELIBERATE_OMISSIONS: Readonly<Record<string, readonly string[]>> = {
     'existing-no-lastLogin-empty-name': ['displayName'],
+    // 會員資料讀取強化：新建與 legacy 遷移的根文件刻意不寫 email／phone（改寫私密子文件）。
+    'new-basic': ['email', 'phone'],
+    'new-empty-name': ['email', 'phone'],
+    'new-blank-name-no-picture': ['email', 'phone'],
+    'new-null-name': ['email', 'phone'],
+    'legacy-no-createdAt': ['email'],
+    'legacy-with-createdAt': ['email'],
   };
 
   /**
@@ -154,8 +161,11 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
   it('新建：A 的欄位正好是 USER_DOC_CREATE_FIELDS，且通過 Rules 建立條件', () => {
     for (const c of fixture.cases.filter((x) => x.id.startsWith('new-'))) {
       const payload = c.expected.writes[0]!.payload;
-      expect(Object.keys(payload).sort()).toEqual([...USER_DOC_CREATE_FIELDS].sort());
-      expect(() => assertUserRootCreate(payload, c.input.authUid, TS, USER_DOC_CREATE_FIELDS)).not.toThrow();
+      const omitted = new Set(DELIBERATE_OMISSIONS[c.id] ?? []);
+      const expectedPayload = { ...payload };
+      for (const key of omitted) delete expectedPayload[key];
+      expect(Object.keys(expectedPayload).sort()).toEqual([...USER_DOC_CREATE_FIELDS].sort());
+      expect(() => assertUserRootCreate(expectedPayload, c.input.authUid, TS, USER_DOC_CREATE_FIELDS)).not.toThrow();
     }
   });
 
@@ -180,12 +190,17 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
       bWrite(ok)!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
     )).not.toThrow();
     // 健檢 C1-03：A 原樣展開舊文件、不補 teamId，現行 Rules（teamId 必須存在且為 null）拒絕。
+    const aPayloadWithoutPrivate = { ...ok.expected.writes[0]!.payload };
+    delete aPayloadWithoutPrivate.email;
+    delete aPayloadWithoutPrivate.phone;
     expect(() => assertUserRootCreate(
-      ok.expected.writes[0]!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
+      aPayloadWithoutPrivate, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
     )).toThrow(/create-values-not-allowed:teamId$/);
 
     const blocked = fixture.cases.find((c) => c.id === 'legacy-with-createdAt')!;
     const payload = decode(blocked.expected.writes[0]!.payload) as Record<string, unknown>;
+    delete payload.email;
+    delete payload.phone;
     expect(() => assertUserRootCreate(payload, blocked.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS))
       .toThrow(/create-values-not-allowed:role,exp,createdAt/);
   });
