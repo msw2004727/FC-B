@@ -35,20 +35,29 @@ export function profilePrivateDocRef(
   );
 }
 
+/**
+ * 嚴格版：文件不存在回 null；其他錯誤（斷線、逾時、權限）一律拋出。
+ * 本人頁用它，讓畫面走既有的載入失敗＋重試，不拿根文件的過期值當編輯底稿（同行者是整份覆寫，頂替會蓋掉資料）。
+ */
+export async function loadPrivateProfileStrict(uid: string): Promise<ProfilePrivateData | null> {
+  const firebase = await getFirebase();
+  const db = firebase.db as unknown as Firestore;
+  const snap = await getDoc(profilePrivateDocRef(db, uid));
+  if (!snap.exists()) return null;
+  const data = snap.data() as Record<string, unknown>;
+  const out: ProfilePrivateData = {};
+  for (const field of PROFILE_PRIVATE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      out[field] = data[field];
+    }
+  }
+  return out;
+}
+
+/** 靜默版：任何錯誤回 null。只給唯讀、不得擋流程的地方用（他人名片、報名同行者清單）。 */
 export async function loadPrivateProfile(uid: string): Promise<ProfilePrivateData | null> {
   try {
-    const firebase = await getFirebase();
-    const db = firebase.db as unknown as Firestore;
-    const snap = await getDoc(profilePrivateDocRef(db, uid));
-    if (!snap.exists()) return null;
-    const data = snap.data() as Record<string, unknown>;
-    const out: ProfilePrivateData = {};
-    for (const field of PROFILE_PRIVATE_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(data, field)) {
-        out[field] = data[field];
-      }
-    }
-    return out;
+    return await loadPrivateProfileStrict(uid);
   } catch (err) {
     const code = (err as { code?: string } | null | undefined)?.code ?? 'unknown';
     // eslint-disable-next-line no-console

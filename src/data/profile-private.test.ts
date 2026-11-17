@@ -17,6 +17,7 @@ import { getDoc, serverTimestamp } from 'firebase/firestore';
 import {
   addPrivateWrite,
   loadPrivateProfile,
+  loadPrivateProfileStrict,
   mergePrivateFields,
   pickPrivatePatch,
   profilePrivateDocRef,
@@ -40,6 +41,18 @@ describe('profilePrivateDocRef', () => {
     expect(() => profilePrivateDocRef({} as Firestore, '')).toThrow();
     expect(() => profilePrivateDocRef({} as Firestore, '   ')).toThrow();
     expect(() => profilePrivateDocRef({} as Firestore, 'a/b')).toThrow();
+  });
+});
+
+describe('loadPrivateProfileStrict', () => {
+  it('文件不存在回 null', async () => {
+    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
+    expect(await loadPrivateProfileStrict('uidA')).toBeNull();
+  });
+
+  it('unavailable 等錯誤一律拋出（不吞成 null）', async () => {
+    vi.mocked(getDoc).mockRejectedValue({ code: 'unavailable' });
+    await expect(loadPrivateProfileStrict('uidA')).rejects.toMatchObject({ code: 'unavailable' });
   });
 });
 
