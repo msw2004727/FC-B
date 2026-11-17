@@ -65,8 +65,8 @@ async function shownWarning(): Promise<HTMLElement> {
 }
 
 function disabledEl(): HTMLElement {
-  const el = document.getElementById('multi-tab-disabled');
-  if (!el) throw new Error('缺少停用畫面');
+  const el = document.querySelector('#multi-tab-warning[data-multi-tab-disabled]');
+  if (!(el instanceof HTMLElement)) throw new Error('缺少停用畫面');
   return el;
 }
 
@@ -292,6 +292,13 @@ describe('applyMultiTabFx 尺寸改變重算', () => {
 });
 
 describe('多分頁停用畫面', () => {
+  it('單一分頁（沒有 pong 回來）時不顯示提示框', () => {
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+    const stop = initMultiTabGuard();
+    expect(document.querySelector('#multi-tab-warning')).toBeNull();
+    stop();
+  });
+
   it('window.close 成功（closed true）時不顯示停用畫面', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
@@ -303,28 +310,35 @@ describe('多分頁停用畫面', () => {
     other.postMessage({ type: 'close-others', tabId: 'other-1' });
     await vi.advanceTimersByTimeAsync(200);
     expect(closeSpy).toHaveBeenCalled();
-    expect(document.getElementById('multi-tab-disabled')).toBeNull();
+    expect(document.querySelector('#multi-tab-warning[data-multi-tab-disabled]')).toBeNull();
     stop();
   });
 
   it('關不掉時顯示停用畫面，有標題、內文與兩顆按鈕', async () => {
     const { stop, other } = await triggerDisabled();
     const overlay = disabledEl();
+    expect(overlay.id).toBe('multi-tab-warning');
+    expect(overlay.hasAttribute('data-multi-tab-disabled')).toBe(true);
     expect(overlay.classList.contains('multi-tab-overlay')).toBe(true);
-    expect(overlay.querySelector('.multi-tab-modal')).toBeTruthy();
-    expect(overlay.querySelector('.multi-tab-title')?.textContent).toBe('這個分頁已停用');
-    expect(overlay.textContent).toContain('你已在另一個分頁繼續使用');
-    const use = overlay.querySelector('#multi-tab-disabled-use') as HTMLButtonElement | null;
-    const close = overlay.querySelector('#multi-tab-disabled-close') as HTMLButtonElement | null;
+
+    const modal = overlay.querySelector('.multi-tab-modal');
+    expect(modal).toBeTruthy();
+    expect(modal?.querySelector('.multi-tab-title')?.textContent).toBe('這個分頁已停用');
+    expect(modal?.querySelector('.multi-tab-body')?.textContent).toContain('你已在另一個分頁繼續使用');
+    expect(modal?.querySelector('.multi-tab-actions')).toBeTruthy();
+
+    const use = overlay.querySelector('#multi-tab-dismiss') as HTMLButtonElement | null;
+    const close = overlay.querySelector('#multi-tab-close') as HTMLButtonElement | null;
     expect(use?.textContent).toBe('改在這裡使用');
     expect(close?.textContent).toBe('關閉這個分頁');
     expect(use?.classList.contains('outline-btn')).toBe(true);
     expect(close?.classList.contains('primary-btn')).toBe(true);
-    expect(document.getElementById('multi-tab-warning')).toBeNull();
+    expect(document.getElementById('multi-tab-warning')).toBe(overlay);
 
     other.postMessage({ type: 'close-others', tabId: 'other-1' });
     await vi.advanceTimersByTimeAsync(200);
-    expect(document.querySelectorAll('#multi-tab-disabled')).toHaveLength(1);
+    expect(document.querySelectorAll('#multi-tab-warning[data-multi-tab-disabled]')).toHaveLength(1);
+    expect(disabledEl()).toBe(overlay);
     stop();
   });
 
@@ -332,9 +346,9 @@ describe('多分頁停用畫面', () => {
     const { stop, closeSpy } = await triggerDisabled();
     closeSpy.mockClear();
     const overlay = disabledEl();
-    (overlay.querySelector('#multi-tab-disabled-close') as HTMLButtonElement).click();
+    (overlay.querySelector('#multi-tab-close') as HTMLButtonElement).click();
     expect(closeSpy).toHaveBeenCalledTimes(1);
-    expect(document.getElementById('multi-tab-disabled')).toBe(overlay);
+    expect(disabledEl()).toBe(overlay);
     stop();
   });
 
@@ -342,21 +356,44 @@ describe('多分頁停用畫面', () => {
     const { stop } = await triggerDisabled();
     const reloadSpy = vi.fn();
     _setReloadForTest(reloadSpy);
-    (disabledEl().querySelector('#multi-tab-disabled-use') as HTMLButtonElement).click();
+    (disabledEl().querySelector('#multi-tab-dismiss') as HTMLButtonElement).click();
     expect(reloadSpy).toHaveBeenCalled();
     stop();
   });
 
   it('停用中收到 ping 不顯示提示框也不回 pong', async () => {
     const { stop, other } = await triggerDisabled();
+    const overlay = disabledEl();
     const messages: unknown[] = [];
     other.onmessage = (ev) => {
       messages.push(ev.data);
     };
     other.postMessage({ type: 'ping', tabId: 'other-2' });
     expect(messages.some((m) => (m as { type?: string }).type === 'pong')).toBe(false);
-    expect(document.getElementById('multi-tab-warning')).toBeNull();
-    expect(document.getElementById('multi-tab-disabled')).toBeTruthy();
+    expect(document.querySelectorAll('#multi-tab-warning')).toHaveLength(1);
+    expect(disabledEl()).toBe(overlay);
+    stop();
+  });
+
+  it('停用中連收兩次 close-others 不增加計時器、畫面只有一個且不被移除', async () => {
+    const { stop, other } = await triggerDisabled();
+    const overlay = disabledEl();
+    expect(vi.getTimerCount()).toBe(0);
+    other.postMessage({ type: 'close-others', tabId: 'other-1' });
+    other.postMessage({ type: 'close-others', tabId: 'other-1' });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(document.querySelectorAll('#multi-tab-warning[data-multi-tab-disabled]')).toHaveLength(1);
+    expect(disabledEl()).toBe(overlay);
+    stop();
+  });
+
+  it('停用中收到 ping/pong 不會移除或覆蓋停用畫面', async () => {
+    const { stop, other } = await triggerDisabled();
+    const overlay = disabledEl();
+    other.postMessage({ type: 'ping', tabId: 'other-2' });
+    other.postMessage({ type: 'pong', tabId: 'other-3' });
+    expect(disabledEl()).toBe(overlay);
+    expect(document.querySelectorAll('#multi-tab-warning[data-multi-tab-disabled]')).toHaveLength(1);
     stop();
   });
 

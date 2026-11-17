@@ -20,20 +20,36 @@ function dropMultiTabFx(): void {
 
 function dismissMultiTabWarning(): void {
   if (typeof document === 'undefined') return;
-  dropMultiTabFx();
   const el = document.getElementById('multi-tab-warning');
+  // 停用畫面與原提示框共用 id；一般流程不得把停用畫面關掉。
+  if (el?.hasAttribute('data-multi-tab-disabled')) return;
+  dropMultiTabFx();
   if (!el) return;
   const wrapper = el.parentElement;
   el.remove();
-  if (wrapper && wrapper.classList.contains('legacy-ui') && !wrapper.querySelector('.multi-tab-overlay')) {
+  if (wrapper && wrapper.dataset.multiTabWrapper === '1' && !wrapper.querySelector('.multi-tab-overlay')) {
     wrapper.remove();
   }
+}
+
+/** 強制移除所有多分頁提示（含停用畫面）；只給停用流程與測試重置使用。 */
+function removeMultiTabWarningDom(): void {
+  if (typeof document === 'undefined') return;
+  dropMultiTabFx();
+  document.querySelectorAll<HTMLElement>('#multi-tab-warning').forEach((el) => {
+    const wrapper = el.parentElement;
+    el.remove();
+    if (wrapper && wrapper.dataset.multiTabWrapper === '1' && !wrapper.querySelector('.multi-tab-overlay')) {
+      wrapper.remove();
+    }
+  });
 }
 
 function isMultiTabDisabled(): boolean {
   return (
     multiTabDisabledShown ||
-    (typeof document !== 'undefined' && document.getElementById('multi-tab-disabled') !== null)
+    (typeof document !== 'undefined' &&
+      document.querySelector('#multi-tab-warning[data-multi-tab-disabled]') !== null)
   );
 }
 
@@ -42,6 +58,7 @@ function applyMultiTabFxToOverlay(overlay: HTMLElement): void {
     (m) => {
       if (!overlay.isConnected) return;
       try {
+        dropMultiTabFx();
         multiTabFxCleanup = m.applyMultiTabFx(overlay);
       } catch {
         overlay.style.opacity = '1';
@@ -66,6 +83,7 @@ function createMultiTabOverlay(content: MultiTabOverlayContent): {
 } {
   const wrapper = document.createElement('div');
   wrapper.className = 'legacy-ui';
+  wrapper.dataset.multiTabWrapper = '1';
   const overlay = document.createElement('div');
   overlay.id = content.id;
   overlay.className = 'multi-tab-overlay';
@@ -106,24 +124,27 @@ function requestCloseOthers(): void {
 function showMultiTabDisabled(): void {
   if (multiTabDisabledShown) return;
   if (typeof document === 'undefined' || !document.body) return;
-  if (document.getElementById('multi-tab-disabled')) {
+  if (document.querySelector('#multi-tab-warning[data-multi-tab-disabled]')) {
     multiTabDisabledShown = true;
     return;
   }
+  // 先收掉原提示框，避免它的點擊處理器綁到稍後同 id 的停用按鈕。
   dismissMultiTabWarning();
+  removeMultiTabWarningDom();
   multiTabDisabledShown = true;
 
-  createMultiTabOverlay({
-    id: 'multi-tab-disabled',
+  const { overlay } = createMultiTabOverlay({
+    id: 'multi-tab-warning',
     title: '這個分頁已停用',
     bodyHtml: '你已在另一個分頁繼續使用',
     actionsHtml:
-      '<button type="button" class="outline-btn" id="multi-tab-disabled-use">改在這裡使用</button>' +
-      '<button type="button" class="primary-btn" id="multi-tab-disabled-close">關閉這個分頁</button>',
+      '<button type="button" class="outline-btn" id="multi-tab-dismiss">改在這裡使用</button>' +
+      '<button type="button" class="primary-btn" id="multi-tab-close">關閉這個分頁</button>',
   });
+  overlay.dataset.multiTabDisabled = '1';
 
-  const useBtn = document.getElementById('multi-tab-disabled-use');
-  const closeBtn = document.getElementById('multi-tab-disabled-close');
+  const useBtn = overlay.querySelector('#multi-tab-dismiss');
+  const closeBtn = overlay.querySelector('#multi-tab-close');
   useBtn?.addEventListener('click', () => {
     try {
       reloadPage();
@@ -161,7 +182,7 @@ export function showMultiTabWarning(): void {
   if (multiTabWarningShown) return;
   if (isMultiTabDisabled()) return;
   if (typeof document === 'undefined' || !document.body) return;
-  if (document.getElementById('multi-tab-warning') || document.getElementById('multi-tab-disabled')) return;
+  if (document.getElementById('multi-tab-warning')) return;
   multiTabWarningShown = true;
 
   createMultiTabOverlay({
@@ -273,13 +294,8 @@ export function _resetMultiTabGuardForTest(): void {
   multiTabOthers = null;
   multiTabWarningShown = false;
   multiTabDisabledShown = false;
-  dropMultiTabFx();
+  removeMultiTabWarningDom();
   if (typeof document !== 'undefined') {
-    for (const id of ['multi-tab-warning', 'multi-tab-disabled']) {
-      const el = document.getElementById(id);
-      el?.parentElement?.remove();
-      el?.remove();
-    }
     document.querySelectorAll('style[data-multi-tab-fx-instance]').forEach((node) => {
       node.remove();
     });
