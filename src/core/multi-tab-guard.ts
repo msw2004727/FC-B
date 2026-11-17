@@ -10,6 +10,7 @@ let multiTabOthers: Set<string> | null = null;
 let multiTabWarningShown = false;
 let multiTabDisabledShown = false;
 let multiTabCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let multiTabCloseHintTimer: ReturnType<typeof setTimeout> | null = null;
 let multiTabFxCleanup: (() => void) | undefined;
 
 function dropMultiTabFx(): void {
@@ -158,6 +159,24 @@ function showMultiTabDisabled(): void {
     } catch {
       /* ignore */
     }
+    // 停用畫面中的關閉按鈕一定會被瀏覽器拒絕；稍後確認是否真的關閉，沒有就顯示提示。
+    if (overlay.querySelector('#multi-tab-close-hint')) return;
+    if (multiTabCloseHintTimer !== null) return;
+    multiTabCloseHintTimer = setTimeout(() => {
+      multiTabCloseHintTimer = null;
+      if (window.closed === true) return;
+      const modal = overlay.querySelector('.multi-tab-modal');
+      if (!modal) return;
+      if (modal.querySelector('#multi-tab-close-hint')) return;
+      const actions = modal.querySelector('.multi-tab-actions');
+      if (!actions) return;
+      const hint = document.createElement('div');
+      hint.className = 'multi-tab-body';
+      hint.id = 'multi-tab-close-hint';
+      hint.setAttribute('role', 'status');
+      hint.textContent = '瀏覽器不允許網頁自動關閉這個分頁，請直接關閉它';
+      actions.insertAdjacentElement('afterend', hint);
+    }, 200);
   });
 }
 
@@ -270,6 +289,10 @@ export function initMultiTabGuard(): () => void {
         clearTimeout(multiTabCloseTimer);
         multiTabCloseTimer = null;
       }
+      if (multiTabCloseHintTimer !== null) {
+        clearTimeout(multiTabCloseHintTimer);
+        multiTabCloseHintTimer = null;
+      }
       try {
         multiTabChannel?.close();
       } catch {
@@ -287,6 +310,10 @@ export function _resetMultiTabGuardForTest(): void {
   if (multiTabCloseTimer !== null) {
     clearTimeout(multiTabCloseTimer);
     multiTabCloseTimer = null;
+  }
+  if (multiTabCloseHintTimer !== null) {
+    clearTimeout(multiTabCloseHintTimer);
+    multiTabCloseHintTimer = null;
   }
   try {
     multiTabChannel?.close();

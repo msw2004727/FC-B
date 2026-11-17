@@ -408,4 +408,48 @@ describe('多分頁停用畫面', () => {
     expect(toast.show).toHaveBeenCalledWith('已通知其他分頁，關不掉的會顯示停用');
     stop();
   });
+
+  it('「關閉這個分頁」被拒時顯示無法自動關閉的提示', async () => {
+    const { stop } = await triggerDisabled();
+    const overlay = disabledEl();
+    (overlay.querySelector('#multi-tab-close') as HTMLButtonElement).click();
+    expect(document.getElementById('multi-tab-close-hint')).toBeNull();
+    await vi.advanceTimersByTimeAsync(200);
+    const hint = document.getElementById('multi-tab-close-hint');
+    expect(hint).toBeTruthy();
+    expect(hint?.textContent).toBe('瀏覽器不允許網頁自動關閉這個分頁，請直接關閉它');
+    expect(hint?.getAttribute('role')).toBe('status');
+    expect(hint?.classList.contains('multi-tab-body')).toBe(true);
+    const modal = overlay.querySelector('.multi-tab-modal');
+    expect(hint?.parentElement).toBe(modal);
+    expect(overlay.querySelector('.multi-tab-actions')?.nextElementSibling).toBe(hint);
+    stop();
+  });
+
+  it('連按兩次「關閉這個分頁」只建立一個提示', async () => {
+    const { stop } = await triggerDisabled();
+    const close = disabledEl().querySelector('#multi-tab-close') as HTMLButtonElement;
+    close.click();
+    close.click();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(document.querySelectorAll('#multi-tab-close-hint')).toHaveLength(1);
+    stop();
+  });
+
+  it('window.closed 為 true 時不顯示關閉提示', async () => {
+    const { stop } = await triggerDisabled();
+    vi.stubGlobal('closed', true);
+    (disabledEl().querySelector('#multi-tab-close') as HTMLButtonElement).click();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(document.getElementById('multi-tab-close-hint')).toBeNull();
+    stop();
+  });
+
+  it('stop 後關閉提示的計時器不觸發', async () => {
+    const { stop } = await triggerDisabled();
+    (disabledEl().querySelector('#multi-tab-close') as HTMLButtonElement).click();
+    stop();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(document.getElementById('multi-tab-close-hint')).toBeNull();
+  });
 });
