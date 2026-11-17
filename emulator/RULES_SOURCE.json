@@ -1,7 +1,7 @@
 {
-  "sha256": "dbdb196966db11526de7435e3cdd354274a9f54c1563c52e1831a49928094c61",
+  "sha256": "86ab0caf26a4f1e155f01779c6159bb8dc28c627d432630d9c6c9a5f40c0ded3",
   "storageSha256": "c239ba0ea8484372bd44d5060a0de417117c2a0cf887f6318259eb34b1236d9a",
-  "copiedAt": "2026-11-15T23:11:21.817Z",
-  "fcRef": "origin/main",
-  "fcHead": "65f90b2dbe32447b1aae69beebde506630de277e"
+  "copiedAt": "2026-11-17T02:16:11.415Z",
+  "fcRef": "member-data-read-s1",
+  "fcHead": "03e9ff65f123d5c3712e7388fd7e6e8c2944d3a0"
 }
