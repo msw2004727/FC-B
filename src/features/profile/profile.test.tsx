@@ -796,7 +796,7 @@ describe('我的個人頁（A 版結構）', () => {
       expect(await screen.findByText('王小明')).toBeTruthy();
       const mate = quickBtn('mate');
       fireEvent.click(mate);
-      const addBtn = screen.getByRole('button', { name: '+ 新增同行者' });
+      const addBtn = screen.getByRole('button', { name: '+ 新增運動夥伴' });
       addBtn.focus();
       fireEvent.keyDown(addBtn, { key: 'Escape' });
       expect(mate.getAttribute('aria-expanded')).toBe('false');
@@ -1161,7 +1161,7 @@ describe('我的個人頁（A 版結構）', () => {
     await screen.findByText('王小明');
     fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     await act(async () => {
       fireEvent.input(
@@ -1175,7 +1175,7 @@ describe('我的個人頁（A 版結構）', () => {
     await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     await act(async () => {
       fireEvent.input(
@@ -1217,7 +1217,7 @@ describe('我的個人頁（A 版結構）', () => {
     render(<ProfilePage />);
     await screen.findByText('王小明');
     fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     expectNoWrites();

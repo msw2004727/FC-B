@@ -81,8 +81,8 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
           <div class="modal-header">
             <h3 id="companion-modal-title">
               {mode === 'edit'
-                ? lt('編輯同行者', '編輯同行者')
-                : lt('新增同行者', '新增同行者')}
+                ? lt('編輯運動夥伴', '編輯運動夥伴')
+                : lt('新增運動夥伴', '新增運動夥伴')}
             </h3>
             <button
               type="button"

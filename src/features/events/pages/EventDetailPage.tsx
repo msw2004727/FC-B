@@ -1804,7 +1804,7 @@ function EventDetailSession({
     const available = await loadSignupCompanions(uid);
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (!available.length) {
-      toast.show({ message: '請先到個人資訊新增同行者' });
+      toast.show({ message: '請先到個人資訊頁新增運動夥伴', highlight: '新增運動夥伴' });
       return;
     }
     companionsRef.current = available;
@@ -1821,7 +1821,7 @@ function EventDetailSession({
     if (!current || !uid || !visible || refreshFailed || !alive.current) return;
     const { addCompanionIds, cancelRegistrationIds } = selection;
     if (!addCompanionIds.length && !cancelRegistrationIds.length) {
-      toast.show({ message: '沒有需要調整的同行者' });
+      toast.show({ message: '沒有需要調整的夥伴' });
       return;
     }
     const chosen = companionsRef.current.filter(item => addCompanionIds.includes(item.id));
@@ -1944,7 +1944,7 @@ function EventDetailSession({
         EVENT_ENDED: '活動已開始，無法調整',
         EVENT_CANCELLED: '活動已取消',
         REG_NOT_OPEN: '報名尚未開放',
-        GENDER_RESTRICTED: '同行者不符合性別限制',
+        GENDER_RESTRICTED: '夥伴不符合性別限制',
         TEAM_RESTRICTED: '不符合球隊限定',
         PROFILE_INCOMPLETE: '請先補齊個人資料',
         ALREADY_CANCELLED: '報名狀態已更新',

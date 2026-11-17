@@ -43,6 +43,14 @@
   text-align: center;
 }
 
+/* 訊息內的強調片段（例：引導去新增運動夥伴）：主題強調色、加粗、不斷行 */
+.ui-toast__em,
+.ui-toast__em.ui-text {
+  color: var(--accent, currentColor);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ui-toast,
   .toast {

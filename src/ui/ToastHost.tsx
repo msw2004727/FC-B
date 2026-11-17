@@ -78,6 +78,7 @@ export function ToastHost({ label }: ToastHostProps) {
           key={current.id}
           message={current.message}
           tone={current.tone}
+          highlight={current.highlight}
           duration={current.duration}
           onClose={() => toast.dismiss(current.id)}
         />
