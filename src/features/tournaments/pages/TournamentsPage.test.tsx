@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
 import type { TournamentCard } from '../data/card-model';
-import TournamentsPage from './TournamentsPage';
+import TournamentsPage, { TOURNAMENTS_LOAD_TIMEOUT_MS } from './TournamentsPage';
+import { resetCardsCacheForTest } from '../data/cards-cache';
 
 // ── i18n：直接用 zh-TW 字典 ────────────────────────────
 function flatten(obj: Record<string, unknown>, prefix: string, out: Record<string, string> = {}) {
@@ -108,6 +109,7 @@ async function renderLoaded(): Promise<void> {
 }
 
 beforeEach(() => {
+  resetCardsCacheForTest();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
   sdk.getDocs.mockResolvedValue({ docs: DOCS.map((d) => ({ id: d.id, data: () => d.data })) });
@@ -406,5 +408,101 @@ describe('新增、編輯、刪除', () => {
     await waitFor(() => expect(names()).not.toContain('FEDA CUP 2026 飛達盃'));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('回訪先顯示（記憶體快取，顧問 §3.233 ①）', () => {
+  function pendingDocs(): (value: { docs: Array<{ id: string; data: () => unknown }> }) => void {
+    let release!: (value: { docs: Array<{ id: string; data: () => unknown }> }) => void;
+    sdk.getDocs.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+    return release;
+  }
+  const docsOf = (list: typeof DOCS) => ({ docs: list.map((d) => ({ id: d.id, data: () => d.data })) });
+
+  it('伺服器還沒回：回訪先顯示上次的卡片、不顯示載入中；讀取次數與首次相同', async () => {
+    await renderLoaded();
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    const release = pendingDocs();
+    render(<TournamentsPage />);
+    expect(names()).toEqual(['2027 春季聯賽', '週末友誼賽', 'FEDA CUP 2026 飛達盃']);
+    expect(document.querySelector('.reg-loading')).toBeNull();
+    await waitFor(() => expect(sdk.getDocs).toHaveBeenCalledTimes(2));
+
+    await act(async () => { release(docsOf([DOCS[0]!])); });
+    await waitFor(() => expect(names()).toEqual(['2027 春季聯賽']));
+    expect(sdk.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('先顯示期間不出現管理入口，伺服器回來且有權限才出現', async () => {
+    mockUseViewer.mockReturnValue(MANAGER);
+    await renderLoaded();
+    expect(screen.getByText('＋ 新增賽事')).toBeTruthy();
+    cleanup();
+
+    const release = pendingDocs();
+    render(<TournamentsPage />);
+    expect(names().length).toBe(3);
+    expect(screen.queryByText('＋ 新增賽事')).toBeNull();
+    expect(document.querySelectorAll('.tc-edit').length).toBe(0);
+
+    await act(async () => { release(docsOf(DOCS)); });
+    await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
+    expect(document.querySelectorAll('.tc-edit').length).toBe(3);
+  });
+
+  it('換帳號不用前一個帳號的快取', async () => {
+    await renderLoaded();
+    cleanup();
+    mockUseViewer.mockReturnValue(viewer({ uid: 'u_other' }));
+    pendingDocs();
+    render(<TournamentsPage />);
+    expect(names()).toEqual([]);
+    expect(document.querySelector('.reg-loading')).toBeTruthy();
+  });
+
+  it('伺服器回來刪掉的卡片立即消失；寫入後的本機更新也回寫快取', async () => {
+    mockUseViewer.mockReturnValue(MANAGER);
+    await renderLoaded();
+    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .tc-edit') as HTMLElement);
+    fireEvent.click(await screen.findByText('刪除'));
+    await waitFor(() => expect(names()).not.toContain('FEDA CUP 2026 飛達盃'));
+    cleanup();
+
+    pendingDocs();
+    render(<TournamentsPage />);
+    expect(names()).toEqual(['2027 春季聯賽', '週末友誼賽']);
+  });
+
+  it('逾時：約 8 秒沒回來顯示既有的錯誤與重試，快取內容保留；晚到的結果照常收尾', async () => {
+    await renderLoaded();
+    cleanup();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
+    const release = pendingDocs();
+    render(<TournamentsPage />);
+    await act(async () => { vi.advanceTimersByTime(TOURNAMENTS_LOAD_TIMEOUT_MS - 1); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(screen.getByRole('alert').textContent).toContain('載入失敗，請稍後重試');
+    expect(names().length).toBe(3);
+
+    await act(async () => { release(docsOf([DOCS[2]!])); });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(names()).toEqual(['週末友誼賽']);
+  });
+
+  it('沒有快取時伺服器不回：約 8 秒後走既有錯誤與重試，不無限載入', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
+    sdk.getDocs.mockReturnValueOnce(new Promise(() => undefined));
+    render(<TournamentsPage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('.reg-loading')).toBeTruthy();
+    await act(async () => { vi.advanceTimersByTime(TOURNAMENTS_LOAD_TIMEOUT_MS); });
+    expect(screen.getByRole('alert').textContent).toContain('載入失敗，請稍後重試');
+    expect(document.querySelector('.reg-loading')).toBeNull();
   });
 });

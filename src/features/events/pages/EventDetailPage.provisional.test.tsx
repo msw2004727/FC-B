@@ -10,6 +10,8 @@ const mock = vi.hoisted(() => ({
   history: vi.fn(async () => [] as unknown[]),
   loadComments: vi.fn(async () => [] as unknown[]),
   toast: vi.fn(),
+  signIn: vi.fn(async () => undefined),
+  syncOverride: null as null | Record<string, unknown>,
   lastKnown: undefined as string | null | undefined,
   viewer: {
     uid: null as string | null,
@@ -31,7 +33,15 @@ vi.mock('@/features/profile/data/viewer', () => ({ useViewer: () => ({ ...mock.v
 vi.mock('@/data/auth', async (original) => ({
   ...(await original<typeof import('@/data/auth')>()),
   getLastKnownAuthUid: () => mock.lastKnown,
+  signIn: mock.signIn,
 }));
+vi.mock('../data/signup-state', async (original) => {
+  const actual = await original<typeof import('../data/signup-state')>();
+  return {
+    ...actual,
+    syncIssueButtonState: () => ({ ...actual.syncIssueButtonState(), ...(mock.syncOverride ?? {}) }),
+  };
+});
 vi.mock('@/data/user-roles', () => ({
   useUserRoles: () => ({}),
   getCachedUserLevel: () => 0,
@@ -173,6 +183,7 @@ beforeEach(() => {
   mock.viewer.role = 'guest';
   mock.viewer.roleLevel = 0;
   mock.lastKnown = undefined;
+  mock.syncOverride = null;
   mock.history.mockResolvedValue([]);
   delete window.__fcbEarlyEvent;
 });
@@ -427,5 +438,20 @@ describe('活動詳情回訪：列表快取先畫', () => {
     await waitFor(() => expect(screen.getByTestId('primary').textContent).not.toBe(SYNCING));
     expect(screen.getByTestId('guest-roster')).toBeTruthy();
     expect(mock.history).not.toHaveBeenCalled();
+  });
+
+  it('先畫期間主按鈕處理函式直接返回：即使按鈕狀態被改成可按（登入），按下也不動作（顧問 §3.231 P3）', async () => {
+    mock.lastKnown = null;
+    writeListCache('guest');
+    mock.syncOverride = { action: 'login', disabled: false, label: '測試可按' };
+    mock.detail.mockReturnValue(new Promise(() => undefined));
+    render(<EventDetailPage id="public-event" />);
+    const primary = await screen.findByTestId('primary') as HTMLButtonElement;
+    expect(primary.textContent).toBe('測試可按');
+    expect(primary.disabled).toBe(false);
+    fireEvent.click(primary);
+    // login() 內有動態 import，給足時間讓它若被呼叫就會走到 signIn。
+    await act(async () => { await new Promise((done) => setTimeout(done, 100)); });
+    expect(mock.signIn).not.toHaveBeenCalled();
   });
 });

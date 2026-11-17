@@ -33,6 +33,10 @@ import {
   type UploadedImage,
 } from '../data/cards-repo';
 import { openCardLink } from '../data/open-card-link';
+import { readCardsCache, writeCardsCache } from '../data/cards-cache';
+
+/** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
+export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -52,10 +56,10 @@ export default function TournamentsPage(): JSX.Element {
   const t = useT();
   const location = useLocation();
   const viewer = useViewer();
-  const canManage = canManageTournamentCards(viewer);
-
-  const [cards, setCards] = useState<TournamentCard[]>([]);
+  const [cards, setCards] = useState<TournamentCard[]>(() => readCardsCache(viewer.uid ?? null) ?? []);
   const [state, setState] = useState<LoadState>('loading');
+  // 管理入口等伺服器結果與權限都到齊才出現（§3.232 (d)）；先顯示的快取期間不出現。
+  const canManage = state === 'ready' && canManageTournamentCards(viewer);
   const [tab, setTab] = useState<TournamentCardTab>('all');
   const [showEnded, setShowEnded] = useState(true);
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -69,9 +73,14 @@ export default function TournamentsPage(): JSX.Element {
   const load = useCallback(async (): Promise<void> => {
     const seq = ++loadSeq.current;
     setState('loading');
+    const timer = setTimeout(() => {
+      if (seq === loadSeq.current) setState('error');
+    }, TOURNAMENTS_LOAD_TIMEOUT_MS);
     try {
       const list = await loadTournamentCards();
       if (seq !== loadSeq.current) return;
+      // 只有伺服器確認過的清單（與之後寫入的本機更新）才寫進快取。
+      writeCardsCache(viewerRef.current.uid ?? null, list);
       setCards(list);
       setState('ready');
     } catch (err) {
@@ -79,6 +88,8 @@ export default function TournamentsPage(): JSX.Element {
       console.error('[tournaments] load failed', err);
       if (seq !== loadSeq.current) return;
       setState('error');
+    } finally {
+      clearTimeout(timer);
     }
   }, []);
 
@@ -132,7 +143,11 @@ export default function TournamentsPage(): JSX.Element {
         { existing: target.card, id: target.id, write, image },
         actor,
       );
-      setCards((prev) => sortTournamentCards([saved, ...prev.filter((card) => card.id !== saved.id)]));
+      setCards((prev) => {
+        const next = sortTournamentCards([saved, ...prev.filter((card) => card.id !== saved.id)]);
+        writeCardsCache(viewerRef.current.uid ?? null, next);
+        return next;
+      });
       toast.show({ message: t('tournaments.toast.saved'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);
@@ -161,7 +176,11 @@ export default function TournamentsPage(): JSX.Element {
     setBusy(true);
     try {
       await deleteTournamentCard(card, actor);
-      setCards((prev) => prev.filter((item) => item.id !== card.id));
+      setCards((prev) => {
+        const next = prev.filter((item) => item.id !== card.id);
+        writeCardsCache(viewerRef.current.uid ?? null, next);
+        return next;
+      });
       toast.show({ message: t('tournaments.toast.deleted'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);

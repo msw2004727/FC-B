@@ -2322,6 +2322,8 @@ function EventDetailSession({
                   onClick: () => reservation.open(reservation.action?.preferredTeamId),
                 } : null}
                 onClick={() => {
+                  // 列表快取先畫期間一律不動作（顧問 §3.231 P3；平常已由 disabled 擋，這裡多一層保險）。
+                  if (provisional) return;
                   if (state.action === 'cancel') {
                     const current = snapshot;
                     if (current) {
