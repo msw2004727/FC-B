@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import TeamDetailPage from './TeamDetailPage';
+import TeamDetailPage, { TEAM_DETAIL_PROVISIONAL_TIMEOUT_MS } from './TeamDetailPage';
+import { resetTeamDetailCacheForTest } from '../data/team-detail-cache';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import type {
@@ -349,6 +350,7 @@ const snapshot = vi.fn<() => { active: EventDoc[]; terminal: EventDoc[] }>();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetTeamDetailCacheForTest();
   // 測試同步更新：每個案例獨立清除頁籤記憶並重設新增活動 hook。
   _resetTeamTabMemoryForTest();
   customMock.mockClear();
@@ -2264,5 +2266,118 @@ describe('活動讀取與俱樂部文件並行（顧問 §3.233 ②甲）', () =
     expect(loadEvents).toHaveBeenCalledTimes(1);
     expect(loadViewerRegistrations).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('tab', { name: /活動/ })).toBeNull();
+  });
+});
+
+describe('回訪先顯示（記憶體快取，顧問 §3.233 ④）', () => {
+  const captain = (): ViewerView => ({ ...viewer('captain', ['club']), role: 'coach' });
+
+  async function visitOnce(v: ViewerView): Promise<void> {
+    vi.mocked(useViewer).mockReturnValue(v);
+    authUid.value = v.uid;
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    cleanup();
+    vi.mocked(loadTeam).mockClear();
+    vi.mocked(loadTeamMembers).mockClear();
+  }
+
+  beforeEach(() => {
+    vi.mocked(peekCachedTeam).mockReturnValue(null);
+  });
+
+  it('伺服器還沒回：先顯示頁首與資訊，加入／邀請／設定／開團全鎖，成員名單不讀不畫', async () => {
+    await visitOnce(captain());
+    const pending = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+    const { container } = render(<TeamDetailPage />);
+
+    expect(screen.getByText('測試俱樂部')).toBeTruthy();
+    expect(document.querySelector('.ui-page-spinner')).toBeNull();
+    const cta = container.querySelector('.td-v2-cta-primary') as HTMLButtonElement;
+    expect(cta.disabled).toBe(true);
+    expect((container.querySelector('[data-td-v2-action="invite"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.querySelector('[data-td-v2-action="more"]')).toBeNull();
+    expect(container.querySelector('[data-td-v2-action="leave"]')?.hasAttribute('disabled') ?? true).toBe(true);
+    await act(async () => { await Promise.resolve(); });
+    expect(loadTeamMembers).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('legacy-members-card')).toBeNull();
+    expect(loadTeam).toHaveBeenCalledTimes(1);
+
+    await act(async () => { pending.resolve({ ...team, name: '測試俱樂部（新名）' }); });
+    await screen.findByText('測試俱樂部（新名）');
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+    await waitFor(() => expect(loadTeamMembers).toHaveBeenCalledTimes(1));
+    expect((container.querySelector('.td-v2-cta-primary') as HTMLButtonElement).disabled).toBe(false);
+    expect(container.querySelector('[data-td-v2-action="more"]')).toBeTruthy();
+    expect(loadTeam).toHaveBeenCalledTimes(1);
+  });
+
+  it('伺服器說查無此俱樂部（已刪除）：立刻撤掉快取內容，顯示找不到', async () => {
+    await visitOnce(viewer('u1'));
+    const pending = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+    render(<TeamDetailPage />);
+    expect(screen.getByText('測試俱樂部')).toBeTruthy();
+    await act(async () => { pending.resolve(null); });
+    expect(await screen.findByText('找不到此俱樂部')).toBeTruthy();
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+  });
+
+  it('伺服器讀取失敗：換成既有「載入失敗＋重試」，不留快取內容', async () => {
+    await visitOnce(viewer('u1'));
+    const pending = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+    render(<TeamDetailPage />);
+    await act(async () => { pending.reject(new Error('offline')); });
+    expect(await screen.findByText('載入失敗')).toBeTruthy();
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+  });
+
+  it('逾時：約 8 秒沒回來走既有「載入失敗＋重試」；晚到的結果照常收尾', async () => {
+    await visitOnce(viewer('u1'));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = deferred<TeamDoc | null>();
+      vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+      render(<TeamDetailPage />);
+      await act(async () => { vi.advanceTimersByTime(TEAM_DETAIL_PROVISIONAL_TIMEOUT_MS - 1); });
+      expect(screen.getByText('測試俱樂部')).toBeTruthy();
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(screen.getByText('載入失敗')).toBeTruthy();
+      await act(async () => { pending.resolve(team); });
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getByText('測試俱樂部')).toBeTruthy();
+      expect(screen.queryByText('載入失敗')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('換帳號不用前一個帳號的快取；登入狀態未確定也不用', async () => {
+    await visitOnce(viewer('u1'));
+    vi.mocked(loadTeam).mockReturnValueOnce(new Promise(() => undefined));
+    vi.mocked(useViewer).mockReturnValue(viewer('u2'));
+    authUid.value = 'u2';
+    render(<TeamDetailPage />);
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+    cleanup();
+
+    vi.mocked(loadTeam).mockReturnValueOnce(new Promise(() => undefined));
+    vi.mocked(useViewer).mockReturnValue(viewer('u1'));
+    authUid.value = undefined;
+    render(<TeamDetailPage />);
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+  });
+
+  it('先顯示期間按加入與邀請都不動作', async () => {
+    await visitOnce(viewer('u1'));
+    vi.mocked(loadTeam).mockReturnValueOnce(new Promise(() => undefined));
+    const { container } = render(<TeamDetailPage />);
+    fireEvent.click(container.querySelector('.td-v2-cta-primary') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-td-v2-action="invite"]') as HTMLElement);
+    await act(async () => { await Promise.resolve(); });
+    expect(appConfirm).not.toHaveBeenCalled();
+    expect(requestTeamJoin).not.toHaveBeenCalled();
   });
 });

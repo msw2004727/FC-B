@@ -24,6 +24,7 @@ import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import { copyToClipboard } from '@/features/events/data/activity-share';
 import { buildShareUrl } from '@/features/events/data/event-share-builders';
 import { loadTeam, loadTeamMembers, peekCachedTeam } from '../data/teams-repo';
+import { readTeamDetailCache, writeTeamDetailCache } from '../data/team-detail-cache';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import {
   buildTeamRoster,
@@ -83,6 +84,9 @@ interface EventResource {
   events: EventDoc[];
   registrations: RegistrationDoc[];
 }
+
+/** 先顯示快取後，伺服器俱樂部文件最多等這麼久；逾時走既有「載入失敗＋重試」。 */
+export const TEAM_DETAIL_PROVISIONAL_TIMEOUT_MS = 8_000;
 
 /** 俱樂部活動區的資料：進行中活動（30 秒內可沿用）＋本人報名。只需要 uid，不需要俱樂部文件。 */
 function fetchTeamEvents(uid: string | null, reuseActiveIfFresh: boolean): Promise<EventResource> {
@@ -191,7 +195,19 @@ function TeamDetailContent({
 }): JSX.Element {
   const t = useT();
   const location = useLocation();
-  const [teamState, setTeamState] = useState<Resource<TeamDoc | null>>({ status: 'loading' });
+  // §3.233 ④：同帳號上次讀到的俱樂部文件先顯示（只記憶體）；伺服器結果到齊前所有寫入、權限入口鎖住。
+  const [initialCached] = useState<TeamDoc | null>(() => {
+    const authUid = getLastKnownAuthUid();
+    const uid = viewer.uid ?? null;
+    if (authUid !== uid || resolveClubDetailAccess(viewer, authUid) !== 'allowed') return null;
+    return readTeamDetailCache(uid, id);
+  });
+  const [teamState, setTeamState] = useState<Resource<TeamDoc | null>>(
+    initialCached ? { status: 'ready', value: initialCached } : { status: 'loading' },
+  );
+  const [provisional, setProvisional] = useState(initialCached !== null);
+  const provisionalRef = useRef(provisional);
+  provisionalRef.current = provisional;
   const [membersState, setMembersState] = useState<Resource<TeamMember[] | null>>({
     status: 'loading',
   });
@@ -234,7 +250,18 @@ function TeamDetailContent({
     if (access !== 'allowed') return;
     const sequence = ++teamSequence.current;
     let cancelled = false;
-    setTeamState({ status: 'loading' });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (provisionalRef.current) {
+      // 先顯示快取時不打回載入中；8 秒沒回來走既有「載入失敗＋重試」，晚到的結果照常收尾。
+      timer = setTimeout(() => {
+        timer = null;
+        if (cancelled || sequence !== teamSequence.current || !provisionalRef.current) return;
+        setProvisional(false);
+        setTeamState({ status: 'error' });
+      }, TEAM_DETAIL_PROVISIONAL_TIMEOUT_MS);
+    } else {
+      setTeamState({ status: 'loading' });
+    }
     // 列表快取說這隊的活動區是開的，才提早讀活動；沒讀過列表（直接開連結）照舊等俱樂部文件。讀取次數不增加。
     // 俱樂部文件失敗後按重試（teamAttempt > 0）：沿用已發出的那一次，不重發也不丟（MiMo P1-1：避免多讀）。
     if (teamAttempt === 0) {
@@ -254,16 +281,22 @@ function TeamDetailContent({
           : null;
         // 伺服器說活動區關閉或查無俱樂部：丟掉提早讀，之後若在設定裡打開活動區要重新讀（MiMo P3-1）。
         if (!normalized || !isTeamDetailSectionVisible(normalized, 'events')) eventsPrefetch.current = null;
+        if (timer !== null) clearTimeout(timer);
+        writeTeamDetailCache(viewer.uid ?? null, id, normalized);
+        setProvisional(false);
         setTeamState({ status: 'ready', value: normalized });
       },
       () => {
         if (!cancelled && sequence === teamSequence.current) {
+          if (timer !== null) clearTimeout(timer);
+          setProvisional(false);
           setTeamState({ status: 'error' });
         }
       },
     );
     return () => {
       cancelled = true;
+      if (timer !== null) clearTimeout(timer);
     };
   }, [id, teamAttempt, access, viewer.uid]);
 
@@ -349,7 +382,8 @@ function TeamDetailContent({
     const sequence = ++memberSequence.current;
     let cancelled = false;
     setMembersState({ status: 'loading' });
-    if (!teamRef.current || !needMembers) return;
+    // 成員名單含他人資料：先顯示快取期間不讀也不畫，等伺服器的俱樂部文件回來（§3.233 ④）。
+    if (!teamRef.current || !needMembers || provisional) return;
 
     loadTeamMembers(teamRef.current).then(
       (members) => {
@@ -366,7 +400,7 @@ function TeamDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [membersKey, needMembers, viewer.uid, memberAttempt]);
+  }, [membersKey, needMembers, viewer.uid, memberAttempt, provisional]);
 
   useEffect(() => {
     const sequence = ++eventSequence.current;
@@ -423,6 +457,7 @@ function TeamDetailContent({
 
   // C1：「⋯」只給可編輯者（開設定）；其他人頂欄不出「⋯」。
   function handleMore(): void {
+    if (provisional) return;
     if (team && canEditTeamSettings(viewer, team)) setTeamOverlay('settings');
   }
 
@@ -468,12 +503,12 @@ function TeamDetailContent({
     try {
       const loaded = await loadTeam(id);
       if (sequence !== teamSequence.current || !alive.current) return;
-      setTeamState({
-        status: 'ready',
-        value: loaded
-          ? { ...loaded, id: String(loaded.id || loaded._docId || id).trim() }
-          : null,
-      });
+      const normalized = loaded
+        ? { ...loaded, id: String(loaded.id || loaded._docId || id).trim() }
+        : null;
+      writeTeamDetailCache(viewer.uid ?? null, id, normalized);
+      setProvisional(false);
+      setTeamState({ status: 'ready', value: normalized });
     } catch (error) {
       console.error('[TeamDetailPage.reloadTeamSilently]', error);
     }
@@ -488,6 +523,7 @@ function TeamDetailContent({
   }
 
   function handleCreateEvent(): void {
+    if (provisional) return;
     if (!team || !canCreateClubEvent(viewer, team)) {
       toast.show({ message: '只有俱樂部職員可以新增俱樂部活動' });
       return;
@@ -500,7 +536,7 @@ function TeamDetailContent({
   }
 
   function handleInvite(): void {
-    if (!team || !canShowInviteQr(viewer, team)) return;
+    if (provisional || !team || !canShowInviteQr(viewer, team)) return;
     setInviteOpen(true);
   }
 
@@ -609,7 +645,8 @@ function TeamDetailContent({
 
   const teamName = team.name || '未命名俱樂部';
   const themeColor = getTeamThemeColor(team);
-  const canEdit = canEditTeamSettings(viewer, team);
+  // 先顯示快取期間：編輯、設定、換圖、開團、加入、退出、邀請一律鎖住，等伺服器資料與權限到齊。
+  const canEdit = !provisional && canEditTeamSettings(viewer, team);
   const joinState = getSessionJoinState(teamId, viewer.uid);
   const primaryAction = getTeamPrimaryAction(team, viewer, joinState);
 
@@ -649,6 +686,7 @@ function TeamDetailContent({
     : getRememberedTeamTab(teamId, tabs.map((item) => item.key));
 
   function handleJoinPending(): void {
+    if (provisional) return;
     const state = getSessionJoinState(teamId, viewer.uid);
     if (state?.status === 'pending') {
       const hours = getSessionJoinHoursLeft(teamId, viewer.uid) ?? 24;
@@ -665,7 +703,7 @@ function TeamDetailContent({
   }
 
   async function handleJoin(): Promise<void> {
-    if (actionLock.current || !team) return;
+    if (actionLock.current || !team || provisional) return;
     if (!viewer.uid) {
       await login();
       return;
@@ -712,7 +750,7 @@ function TeamDetailContent({
   }
 
   async function handleLeave(): Promise<void> {
-    if (actionLock.current || !team || !viewer.uid) return;
+    if (actionLock.current || !team || !viewer.uid || provisional) return;
     const uid = viewer.uid;
     // C1（P-09）：經理、領隊先擋，不必先按確認框才被告知不能退。
     const staff = getTeamStaffIdentity(team);
@@ -749,7 +787,7 @@ function TeamDetailContent({
 
   /** T-090d：自建俱樂部擁有者刪除。確認框與文案沿用管理頁；只走 Callable deleteTeam，成功導回列表並重讀 viewer。 */
   async function handleOwnerDelete(): Promise<void> {
-    if (actionLock.current || !team || !canOwnerDeleteUserTeam(viewer, team)) return;
+    if (actionLock.current || !team || provisional || !canOwnerDeleteUserTeam(viewer, team)) return;
     actionLock.current = true;
     setBusy(true);
     try {
@@ -801,7 +839,8 @@ function TeamDetailContent({
               viewer={viewer}
               canEdit={canEdit}
               primaryAction={primaryAction}
-              busy={busy}
+              busy={busy || provisional}
+              locked={provisional}
               memberCount={memberCount}
               courseCount={courseCount}
               eventCount={eventCount}
@@ -833,7 +872,7 @@ function TeamDetailContent({
 
             <TeamDetailV2Panels
               team={team}
-              courseSlot={COURSES_ENABLED && tabKeys.has('courses') && activeTab === 'courses' ? (
+              courseSlot={!provisional && COURSES_ENABLED && tabKeys.has('courses') && activeTab === 'courses' ? (
                 <LazyCourseTab
                   team={team}
                   viewer={viewer}
@@ -853,9 +892,9 @@ function TeamDetailContent({
               viewer={viewer}
               onTeamChanged={() => reloadTeamSilently()}
               onMemberRemoved={handleMemberRemoved}
-              canCreateEvent={canCreateEvent}
+              canCreateEvent={!provisional && canCreateEvent}
               onCreateEvent={handleCreateEvent}
-              busy={busy}
+              busy={busy || provisional}
               onSelectTab={selectTab}
               onSelectEvent={(eventId) =>
                 location.route(`/events/${encodeURIComponent(eventId)}`)
