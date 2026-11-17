@@ -133,7 +133,9 @@ function ProfileContent({
     setSummary(null);
     const token = summarySeq.issue();
     // 外層與個人資料同時發出的那一次讀取（不再等個人資料回來才讀；讀取次數不變）。
+    // 那一次失敗（回 null，例如開頁時離線）才在這裡補讀一次，免得重試成功後頁首永遠停在 --（MiMo P1）。
     summaryTask
+      .then((early) => (early !== null ? early : loadUserAttendanceSummary(uid)))
       .then((res) => {
         // 與卡片同一規則：讀取失敗（null）不推進已套用序號，也不覆蓋既有 summary（起始的清空由上面的 setSummary(null) 負責）。
         if (active && res !== null && summarySeq.accept(token)) setSummary(res);

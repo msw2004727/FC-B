@@ -1,9 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// 退修 2 P2-1：這組測試走「真的 loadUserProfile」——它會吞掉 getDoc／getDocs 的 I/O 錯誤並回 null
-// （profile-model.ts），所以網路暫時失敗時畫面拿到的是 null，不是 status==='error'。
-// 因此只 mock Firestore 與 Firebase 入口，不 mock loadUserProfile，也不用 mockRejectedValue 把「loader 會丟錯」鎖進測試。
+// 只 mock Firestore 與 Firebase 入口，走真的 loadOwnUserProfile（私密子文件嚴格讀取：讀取失敗＝整頁「無法載入」＋重試）。
 const related = vi.hoisted(() => ({ calls: [] as string[] }));
 const firestore = vi.hoisted(() => ({
   getDoc: vi.fn(),
@@ -151,5 +149,16 @@ describe('ProfilePage：統計類讀取與個人資料並行', () => {
     fireEvent.click(await screen.findByRole('button', { name: RETRY }));
     await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
     expect(summary.load).toHaveBeenCalledTimes(1);
+  });
+
+  it('開頁時統計也失敗（離線）：重試成功後補讀一次統計，不永遠停在 --', async () => {
+    firestore.getDoc.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(existingDoc());
+    firestore.getDocs.mockRejectedValue(new Error('offline'));
+    summary.load.mockResolvedValueOnce(null).mockResolvedValue(SUMMARY);
+    render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: RETRY }));
+    await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
+    await waitFor(() => expect(summary.load).toHaveBeenCalledTimes(2));
   });
 });
