@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamDetailPage, { TEAM_DETAIL_PROVISIONAL_TIMEOUT_MS } from './TeamDetailPage';
-import { resetTeamDetailCacheForTest } from '../data/team-detail-cache';
+import { readTeamDetailCache, resetTeamDetailCacheForTest } from '../data/team-detail-cache';
 import { useCreateEventEntry } from '@/features/events/components/event-form/use-create-event-entry';
 import { useEventFormPostSave } from '@/features/events/components/event-form/use-event-form-post-save';
 import type {
@@ -2298,7 +2298,11 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ④）', () => {
     expect(cta.disabled).toBe(true);
     expect((container.querySelector('[data-td-v2-action="invite"]') as HTMLButtonElement).disabled).toBe(true);
     expect(container.querySelector('[data-td-v2-action="more"]')).toBeNull();
-    expect(container.querySelector('[data-td-v2-action="leave"]')?.hasAttribute('disabled') ?? true).toBe(true);
+    expect(container.querySelector('[data-td-v2-action="edit-cover"]')).toBeNull();
+    expect(container.querySelector('[data-td-v2-action="edit-avatar"]')).toBeNull();
+    expect(container.querySelector('[data-td-v2-action="create-event"]')).toBeNull();
+    const leave = container.querySelector('[data-td-v2-action="leave"]') as HTMLButtonElement | null;
+    if (leave) expect(leave.disabled).toBe(true);
     await act(async () => { await Promise.resolve(); });
     expect(loadTeamMembers).not.toHaveBeenCalled();
     expect(screen.queryByTestId('legacy-members-card')).toBeNull();
@@ -2322,6 +2326,7 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ④）', () => {
     await act(async () => { pending.resolve(null); });
     expect(await screen.findByText('找不到此俱樂部')).toBeTruthy();
     expect(screen.queryByText('測試俱樂部')).toBeNull();
+    expect(readTeamDetailCache('u1', 'club')).toBeNull();
   });
 
   it('伺服器讀取失敗：換成既有「載入失敗＋重試」，不留快取內容', async () => {
@@ -2332,6 +2337,22 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ④）', () => {
     await act(async () => { pending.reject(new Error('offline')); });
     expect(await screen.findByText('載入失敗')).toBeTruthy();
     expect(screen.queryByText('測試俱樂部')).toBeNull();
+    expect(readTeamDetailCache('u1', 'club')).toBeNull();
+  });
+
+  it('快取只在伺服器成功後寫入，並以帳號區隔', async () => {
+    await visitOnce(viewer('u1'));
+    expect(readTeamDetailCache('u1', 'club')?.name).toBe('測試俱樂部');
+    expect(readTeamDetailCache('u2', 'club')).toBeNull();
+    expect(readTeamDetailCache(null, 'club')).toBeNull();
+  });
+
+  it('先顯示期間按「聯繫負責人」不導頁（負責人可能已換人）', async () => {
+    await visitOnce(viewer('u1'));
+    vi.mocked(loadTeam).mockReturnValueOnce(new Promise(() => undefined));
+    const { container } = render(<TeamDetailPage />);
+    fireEvent.click(container.querySelector('[data-td-v2-action="contact"]') as HTMLElement);
+    expect(routeState.route).not.toHaveBeenCalled();
   });
 
   it('逾時：約 8 秒沒回來走既有「載入失敗＋重試」；晚到的結果照常收尾', async () => {

@@ -289,6 +289,8 @@ function TeamDetailContent({
       () => {
         if (!cancelled && sequence === teamSequence.current) {
           if (timer !== null) clearTimeout(timer);
+          // 讀取失敗也撤掉快取（MiMo P1-1，保守處理）：下次回訪改等伺服器，不再先顯示可能已失效的內容。
+          writeTeamDetailCache(viewer.uid ?? null, id, null);
           setProvisional(false);
           setTeamState({ status: 'error' });
         }
@@ -545,6 +547,8 @@ function TeamDetailContent({
   };
 
   function handleContact(): void {
+    // 先顯示快取期間負責人可能已換人（Opus P3-2）：等伺服器資料到齊。
+    if (provisional) return;
     const captainUid = String(team?.captainUid ?? '').trim();
     if (!captainUid) {
       toast.show({ message: '此俱樂部尚未設定負責人' });
@@ -771,6 +775,8 @@ function TeamDetailContent({
       const self: TeamMember = { uid, displayName: viewer.displayName ?? '' };
       await leaveTeam({ team, self });
       clearPendingJoin(teamId, uid);
+      // 退出成功：撤掉會員時期讀到的快取（MiMo P2-1）。
+      writeTeamDetailCache(uid, id, null);
       requestViewerRefresh();
       if (alive.current) {
         setMemberAttempt((v) => v + 1);
@@ -799,6 +805,7 @@ function TeamDetailContent({
         if (alive.current) toast.show({ message: '部分成員資料尚未清除，請再按一次刪除', tone: 'error' });
         return;
       }
+      writeTeamDetailCache(viewer.uid ?? null, id, null);
       requestViewerRefresh();
       toast.show({ message: `已刪除「${team.name ?? ''}」` });
       location.route('/teams', true);

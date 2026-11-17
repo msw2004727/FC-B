@@ -12,11 +12,14 @@ function keyOf(uid: string | null, teamId: string): string {
 }
 
 export function readTeamDetailCache(uid: string | null, teamId: string): TeamDoc | null {
+  // 詳情需登入；沒有帳號時不讀不寫，避免所有未登入工作階段共用一格（MiMo P3-1）。
+  if (!uid) return null;
   const hit = cache.get(keyOf(uid, teamId));
   return hit ? { ...hit } : null;
 }
 
 export function writeTeamDetailCache(uid: string | null, teamId: string, team: TeamDoc | null): void {
+  if (!uid) return;
   if (team) cache.set(keyOf(uid, teamId), team);
   else cache.delete(keyOf(uid, teamId));
 }
