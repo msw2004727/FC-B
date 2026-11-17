@@ -128,7 +128,8 @@ describe('selectEarlyEventShellText', () => {
     expect(read('early-event-shell.ts')).not.toContain('setPhase');
     expect(read('../components/legacy/EventDetailLoadingShell.tsx')).not.toContain('setPhase');
     const page = read('../pages/EventDetailPage.tsx');
-    expect(page.match(/setPhase\('ready'\)/g)).toHaveLength(1);
+    // 第二處是列表快取先畫（顧問 §3.230，只顯示）；早取外殼仍不碰 phase。
+    expect(page.match(/setPhase\('ready'\)/g)).toHaveLength(2);
   });
 
   it('黑名單超過解碼上限（101 筆）時一律不畫，不當成空黑名單放行', () => {
