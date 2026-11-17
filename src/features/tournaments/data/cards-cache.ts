@@ -8,7 +8,7 @@ import type { TournamentCard } from './card-model';
 let cached: { uid: string | null; cards: TournamentCard[] } | null = null;
 
 export function readCardsCache(uid: string | null): TournamentCard[] | null {
-  return cached && cached.uid === uid ? cached.cards : null;
+  return cached && cached.uid === uid ? cached.cards.slice() : null;
 }
 
 export function writeCardsCache(uid: string | null, cards: TournamentCard[]): void {

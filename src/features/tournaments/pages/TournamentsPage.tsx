@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -56,7 +57,11 @@ export default function TournamentsPage(): JSX.Element {
   const t = useT();
   const location = useLocation();
   const viewer = useViewer();
-  const [cards, setCards] = useState<TournamentCard[]>(() => readCardsCache(viewer.uid ?? null) ?? []);
+  // 只在登入狀態已確定、且與畫面帳號一致時才用快取（同活動詳情先畫的規則）。
+  const [cards, setCards] = useState<TournamentCard[]>(() => {
+    const uid = viewer.uid ?? null;
+    return getLastKnownAuthUid() === uid ? readCardsCache(uid) ?? [] : [];
+  });
   const [state, setState] = useState<LoadState>('loading');
   // 管理入口等伺服器結果與權限都到齊才出現（§3.232 (d)）；先顯示的快取期間不出現。
   const canManage = state === 'ready' && canManageTournamentCards(viewer);
@@ -69,9 +74,14 @@ export default function TournamentsPage(): JSX.Element {
   viewerRef.current = viewer;
   const busyRef = useRef(false);
   const loadSeq = useRef(0);
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
+  // 目前這份清單是替哪個帳號讀的；寫快取一律用它，不用寫入當下的帳號（避免換帳號後寫錯格）。
+  const loadedUid = useRef<string | null>(viewer.uid ?? null);
 
   const load = useCallback(async (): Promise<void> => {
     const seq = ++loadSeq.current;
+    const uid = viewerRef.current.uid ?? null;
     setState('loading');
     const timer = setTimeout(() => {
       if (seq === loadSeq.current) setState('error');
@@ -80,7 +90,9 @@ export default function TournamentsPage(): JSX.Element {
       const list = await loadTournamentCards();
       if (seq !== loadSeq.current) return;
       // 只有伺服器確認過的清單（與之後寫入的本機更新）才寫進快取。
-      writeCardsCache(viewerRef.current.uid ?? null, list);
+      // 進頁後立刻離開時，晚到的結果被序號丟棄、也不寫快取；下次進頁照常重讀（顧問 §3.233 ① MiMo P3-5，接受）。
+      loadedUid.current = uid;
+      writeCardsCache(uid, list);
       setCards(list);
       setState('ready');
     } catch (err) {
@@ -99,6 +111,16 @@ export default function TournamentsPage(): JSX.Element {
       loadSeq.current += 1;
     };
   }, [load]);
+
+  // 停在頁面上時換帳號或登出：清掉前一個帳號的清單並重讀（只有換帳號時才多這一次讀取）。
+  const mountedUid = useRef(viewer.uid ?? null);
+  useEffect(() => {
+    const uid = viewer.uid ?? null;
+    if (uid === mountedUid.current) return;
+    mountedUid.current = uid;
+    setCards([]);
+    void load();
+  }, [viewer.uid, load]);
 
   const todayKey = taipeiTodayKey(Date.now());
   const visible = useMemo(
@@ -143,11 +165,9 @@ export default function TournamentsPage(): JSX.Element {
         { existing: target.card, id: target.id, write, image },
         actor,
       );
-      setCards((prev) => {
-        const next = sortTournamentCards([saved, ...prev.filter((card) => card.id !== saved.id)]);
-        writeCardsCache(viewerRef.current.uid ?? null, next);
-        return next;
-      });
+      const next = sortTournamentCards([saved, ...cardsRef.current.filter((card) => card.id !== saved.id)]);
+      writeCardsCache(loadedUid.current, next);
+      setCards(next);
       toast.show({ message: t('tournaments.toast.saved'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);
@@ -176,11 +196,9 @@ export default function TournamentsPage(): JSX.Element {
     setBusy(true);
     try {
       await deleteTournamentCard(card, actor);
-      setCards((prev) => {
-        const next = prev.filter((item) => item.id !== card.id);
-        writeCardsCache(viewerRef.current.uid ?? null, next);
-        return next;
-      });
+      const next = cardsRef.current.filter((item) => item.id !== card.id);
+      writeCardsCache(loadedUid.current, next);
+      setCards(next);
       toast.show({ message: t('tournaments.toast.deleted'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);
