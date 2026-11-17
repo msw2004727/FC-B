@@ -12,7 +12,7 @@ import { getSportKeySafe } from '@/features/events/data/sports';
 import { _resetTeamTabMemoryForTest } from '../components/legacy/team-detail-tab-memory';
 import { renderEventRows, TeamDetailV2Panels, type TeamDetailV2PanelsProps } from '../components/legacy/TeamDetailV2Panels';
 import type { TeamDetailWeekStripProps } from '../components/legacy/TeamDetailWeekStrip';
-import { loadTeam, loadTeamMembers } from '../data/teams-repo';
+import { loadTeam, loadTeamMembers, peekCachedTeam } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import { deleteTeamViaCallable } from '../data/teams-admin-write';
 import { useViewer, requestViewerRefresh, type ViewerView } from '@/features/profile/data/viewer';
@@ -148,6 +148,7 @@ vi.mock('preact-iso', () => ({
 vi.mock('../data/teams-repo', () => ({
   loadTeam: vi.fn(),
   loadTeamMembers: vi.fn(),
+  peekCachedTeam: vi.fn(() => null),
 }));
 
 vi.mock('../data/membership', () => ({
@@ -2170,5 +2171,75 @@ describe('TeamDetailPage owner transfer (T-090h)', () => {
     await openSettings();
     await waitFor(() => expect(settingsModalMock.latestProps?.transfer?.loadFailed).toBe(true));
     expect(settingsModalMock.latestProps?.transfer?.candidates).toEqual([]);
+  });
+});
+
+describe('活動讀取與俱樂部文件並行（顧問 §3.233 ②甲）', () => {
+  beforeEach(() => {
+    vi.mocked(peekCachedTeam).mockReturnValue(null);
+  });
+
+  it('列表快取說活動區是開的：俱樂部文件還沒回就開始讀活動，讀取次數不增加', async () => {
+    vi.mocked(peekCachedTeam).mockReturnValue(team);
+    const pending = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+    render(<TeamDetailPage />);
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(1));
+    expect(loadViewerRegistrations).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+
+    await act(async () => { pending.resolve(team); });
+    await screen.findByText('測試俱樂部');
+    await act(async () => { await Promise.resolve(); });
+    expect(loadEvents).toHaveBeenCalledTimes(1);
+    expect(loadEvents).toHaveBeenCalledWith({ terminalMode: 'none', reuseActiveIfFresh: true });
+    expect(loadViewerRegistrations).toHaveBeenCalledTimes(1);
+  });
+
+  it('沒有列表快取（直接開連結）：照舊等俱樂部文件回來才讀活動', async () => {
+    const pending = deferred<TeamDoc | null>();
+    vi.mocked(loadTeam).mockReturnValueOnce(pending.promise);
+    render(<TeamDetailPage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(loadEvents).not.toHaveBeenCalled();
+    await act(async () => { pending.resolve(team); });
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(1));
+  });
+
+  it('列表快取說活動區關閉：不提早讀；伺服器也說關閉時全程不讀活動', async () => {
+    const hidden = { ...team, detailVisibility: { events: false } } as TeamDoc;
+    vi.mocked(peekCachedTeam).mockReturnValue(hidden);
+    vi.mocked(loadTeam).mockResolvedValueOnce(hidden);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    await act(async () => { await Promise.resolve(); });
+    expect(loadEvents).not.toHaveBeenCalled();
+    expect(loadViewerRegistrations).not.toHaveBeenCalled();
+  });
+
+  it('俱樂部文件讀取失敗：畫面與現在相同（載入失敗＋重試），提早的活動讀取不影響', async () => {
+    vi.mocked(peekCachedTeam).mockReturnValue(team);
+    vi.mocked(loadTeam).mockRejectedValueOnce(new Error('offline'));
+    render(<TeamDetailPage />);
+    expect(await screen.findByText('載入失敗')).toBeTruthy();
+    expect(screen.queryByText('測試俱樂部')).toBeNull();
+  });
+
+  it('提早的活動讀取失敗：活動區照舊顯示重試，重試時不沿用 30 秒快照', async () => {
+    vi.mocked(peekCachedTeam).mockReturnValue(team);
+    loadEvents.mockReset();
+    loadEvents.mockRejectedValueOnce(new Error('fail'));
+    loadEvents.mockResolvedValue(['events']);
+    vi.mocked(useViewer).mockReturnValue({ ...viewer('captain', ['club']), role: 'coach' });
+    const { container } = render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    fireEvent.click(screen.getByRole('tab', { name: /活動/ }));
+    const panel = container.querySelector('.td-v2-panel-events');
+    if (!panel) throw new Error('缺少活動面板');
+    const retry = await within(panel as HTMLElement).findByRole('button', { name: '重試' });
+    expect(loadEvents).toHaveBeenCalledTimes(1);
+    fireEvent.click(retry);
+    await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(2));
+    expect(loadEvents).toHaveBeenLastCalledWith({ terminalMode: 'none' });
   });
 });

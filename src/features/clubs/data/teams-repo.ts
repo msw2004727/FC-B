@@ -42,6 +42,16 @@ export function patchCachedTeamWith(
   cachedTeams = cachedTeams.map((team) => (isSameTeam(team, key) ? { ...team, ...buildPatch(team) } : team));
 }
 
+/**
+ * 列表記憶體快取裡的這一隊；沒讀過列表就回 null。
+ * 只給詳情頁判斷「要不要提早開始讀活動」，不拿來顯示（顧問 §3.233 ②：甲不顯示舊資料）。
+ */
+export function peekCachedTeam(teamKey: string): TeamDoc | null {
+  const key = teamKey.trim();
+  if (!cachedTeams || !key) return null;
+  return cachedTeams.find((team) => isSameTeam(team, key)) ?? null;
+}
+
 /** 刪除成功後從快取移除該俱樂部，不重讀整集合。 */
 export function removeCachedTeam(teamKey: string): void {
   const key = teamKey.trim();

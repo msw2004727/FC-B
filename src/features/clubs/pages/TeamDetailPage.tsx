@@ -23,7 +23,7 @@ import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 import { copyToClipboard } from '@/features/events/data/activity-share';
 import { buildShareUrl } from '@/features/events/data/event-share-builders';
-import { loadTeam, loadTeamMembers } from '../data/teams-repo';
+import { loadTeam, loadTeamMembers, peekCachedTeam } from '../data/teams-repo';
 import { leaveTeam, requestTeamJoin } from '../data/membership';
 import {
   buildTeamRoster,
@@ -82,6 +82,18 @@ type Resource<T> =
 interface EventResource {
   events: EventDoc[];
   registrations: RegistrationDoc[];
+}
+
+/** 俱樂部活動區的資料：進行中活動（30 秒內可沿用）＋本人報名。只需要 uid，不需要俱樂部文件。 */
+function fetchTeamEvents(uid: string | null, reuseActiveIfFresh: boolean): Promise<EventResource> {
+  const repo = getEventsRepo();
+  return Promise.all([
+    repo.loadEventsStatic({
+      terminalMode: 'none',
+      ...(reuseActiveIfFresh ? { reuseActiveIfFresh: true } : {}),
+    }).then(() => repo.getSnapshot().active),
+    uid ? loadViewerRegistrations(uid) : Promise.resolve<RegistrationDoc[]>([]),
+  ]).then(([events, registrations]) => ({ events, registrations }));
 }
 
 /**
@@ -204,6 +216,8 @@ function TeamDetailContent({
   const teamSequence = useRef(0);
   const memberSequence = useRef(0);
   const eventSequence = useRef(0);
+  // 提早開始的活動讀取（顧問 §3.233 ②甲）：只在列表快取已知這隊顯示活動區時，與 loadTeam 同時發；不顯示任何舊資料。
+  const eventsPrefetch = useRef<{ key: string; promise: Promise<EventResource> } | null>(null);
   // M-119：照 A team-detail.js:997-1000。存取只走 resolveClubDetailAccess。
   // pending：不讀資料、不要求登入（含 auth 已是字串但 viewer 還沒 uid）。login-required 才出閘門。
   const access = resolveClubDetailAccess(viewer, getLastKnownAuthUid());
@@ -221,6 +235,14 @@ function TeamDetailContent({
     const sequence = ++teamSequence.current;
     let cancelled = false;
     setTeamState({ status: 'loading' });
+    // 列表快取說這隊的活動區是開的，才提早讀活動；沒讀過列表（直接開連結）照舊等俱樂部文件。讀取次數不增加。
+    eventsPrefetch.current = null;
+    const cachedTeam = teamAttempt === 0 ? peekCachedTeam(id) : null;
+    if (cachedTeam && isTeamDetailSectionVisible(cachedTeam, 'events')) {
+      const promise = fetchTeamEvents(viewer.uid, true);
+      promise.catch(() => undefined);
+      eventsPrefetch.current = { key: `${id}|${viewer.uid ?? ''}`, promise };
+    }
     loadTeam(id).then(
       (loaded) => {
         if (cancelled || sequence !== teamSequence.current) return;
@@ -347,20 +369,18 @@ function TeamDetailContent({
     setEventsState({ status: 'loading' });
     if (!teamId || !showEvents) return;
 
-    const repo = getEventsRepo();
     // 第一次載入沿用 30 秒內已成功的 active（上限 200 筆），避免從首頁或列表再查一次。
     // 重試與開團後刷新（eventAttempt > 0）不沿用，新活動才不會被快取擋到。
     const reuseActiveIfFresh = eventAttempt === 0;
-    Promise.all([
-      repo.loadEventsStatic({
-        terminalMode: 'none',
-        ...(reuseActiveIfFresh ? { reuseActiveIfFresh: true } : {}),
-      }).then(() => repo.getSnapshot().active),
-      viewer.uid ? loadViewerRegistrations(viewer.uid) : Promise.resolve<RegistrationDoc[]>([]),
-    ]).then(
-      ([events, registrations]) => {
+    const prefetched = eventsPrefetch.current;
+    eventsPrefetch.current = null;
+    const task = reuseActiveIfFresh && prefetched && prefetched.key === `${id}|${viewer.uid ?? ''}`
+      ? prefetched.promise
+      : fetchTeamEvents(viewer.uid, reuseActiveIfFresh);
+    task.then(
+      (value) => {
         if (!cancelled && sequence === eventSequence.current) {
-          setEventsState({ status: 'ready', value: { events, registrations } });
+          setEventsState({ status: 'ready', value });
         }
       },
       () => {
