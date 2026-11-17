@@ -174,6 +174,7 @@ function showMultiTabDisabled(): void {
       hint.className = 'multi-tab-body';
       hint.id = 'multi-tab-close-hint';
       hint.setAttribute('role', 'status');
+      hint.style.marginTop = '12px';
       hint.textContent = '瀏覽器不允許網頁自動關閉這個分頁，請直接關閉它';
       actions.insertAdjacentElement('afterend', hint);
     }, 200);
