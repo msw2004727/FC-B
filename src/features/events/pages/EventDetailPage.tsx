@@ -507,6 +507,7 @@ function EventDetailSession({
       keepForUid.current = null;
       setPhase('loading');
       setProvisional(false);
+      provisionalUid.current = null;
       setRosterState({ expanded: false, phase: 'idle' });
       setHistoryFailed(false);
       setSnapshot(null);
@@ -547,6 +548,7 @@ function EventDetailSession({
       provisionalTimer = null;
       if (!cached) return;
       cached = null;
+      provisionalUid.current = null;
       setProvisional(false);
       setSnapshot(null);
     }

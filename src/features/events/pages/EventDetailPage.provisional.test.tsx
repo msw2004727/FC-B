@@ -370,6 +370,48 @@ describe('活動詳情回訪：列表快取先畫', () => {
     expect(screen.getByTestId('primary').textContent).not.toBe(SYNCING);
   });
 
+  it('逾時後按重試：不再先畫、改畫載入外殼，活動與本場報名各重讀一次', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    signIn('member');
+    writeListCache('uid:member');
+    const first = deferred<ReturnType<typeof serverDetail>>();
+    const second = deferred<ReturnType<typeof serverDetail>>();
+    mock.detail.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    render(<EventDetailPage id="public-event" />);
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(PROVISIONAL_DETAIL_TIMEOUT_MS); });
+    expect(mock.history).toHaveBeenCalledTimes(1);
+
+    await act(async () => { fireEvent.click(screen.getByText('events.retry')); });
+    expect(screen.getByText(LOADING_TEXT)).toBeTruthy();
+    expect(screen.queryByTestId('primary')).toBeNull();
+    expect(mock.detail).toHaveBeenCalledTimes(2);
+
+    await act(async () => { second.resolve(serverDetail({ current: 6 })); });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('info').textContent).toBe('current:6');
+    expect(mock.history).toHaveBeenCalledTimes(2);
+  });
+
+  it('訪客先畫期間登入：這一幀改畫載入外殼，之後以登入者重讀', async () => {
+    mock.lastKnown = null;
+    writeListCache('guest');
+    const guestRead = deferred<ReturnType<typeof serverDetail>>();
+    mock.detail.mockReturnValue(guestRead.promise);
+    const view = render(<EventDetailPage id="public-event" />);
+    expect(await screen.findByTestId('primary')).toBeTruthy();
+
+    signIn('member');
+    view.rerender(<EventDetailPage id="public-event" />);
+    expect(screen.queryByTestId('primary')).toBeNull();
+    expect(screen.getByText(LOADING_TEXT)).toBeTruthy();
+
+    await act(async () => { guestRead.resolve(serverDetail({ current: 8 })); });
+    await waitFor(() => expect(screen.getByTestId('info').textContent).toBe('current:8'));
+    await waitFor(() => expect(screen.getByTestId('primary').textContent).not.toBe(SYNCING));
+    expect(mock.history).toHaveBeenCalledWith('member', 'doc-1');
+  });
+
   it('訪客：先畫時按鈕也是同步中（不出現登入報名），伺服器回來才換', async () => {
     mock.lastKnown = null;
     writeListCache('guest');
