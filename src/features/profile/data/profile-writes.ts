@@ -5,12 +5,13 @@
 // L-32／L-33：逐動作白名單；serverTimestamp 僅用於 updatedAt。
 
 import type { Firestore } from 'firebase/firestore';
-import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 
 import { callFn } from '@/data/callables';
 import type { CommitIdentitySettingsRequest } from '@/data/contract/callables';
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
+import { addPrivateWrite, pickPrivatePatch } from '@/data/profile-private';
 import { assertAllowedFields, assertNoDerivedFields } from '@/data/write-guard';
 
 export const PROFILE_FIELD_ALLOWLIST = [
@@ -76,10 +77,13 @@ export async function updateProfileFields(
   assertNoDerivedFields(patch);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
+  const batch = writeBatch(db);
+  batch.update(doc(db, users, safeUid), {
     ...patch,
     updatedAt: serverTimestamp(),
   });
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(patch));
+  await batch.commit();
 }
 
 /** A 生日格式：`YYYY/MM/DD`（補零）。驗證通過後才呼叫。 */
@@ -181,7 +185,10 @@ export async function saveFirstLoginProfile(
   const legal = buildFirstLoginLegalUpdates(current, 'profile_completion_submit', new Date().toISOString());
   const payload = { ...legal, ...patch, updatedAt: serverTimestamp() };
   assertAllowedFields('saveFirstLoginProfile', payload, FIRST_LOGIN_ALLOWLIST);
-  await updateDoc(doc(db, users, safeUid), payload);
+  const batch = writeBatch(db);
+  batch.update(doc(db, users, safeUid), payload);
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(patch));
+  await batch.commit();
 }
 
 export async function saveCompanions(
@@ -194,10 +201,13 @@ export async function saveCompanions(
   assertNoDerivedFields(payload);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
+  const batch = writeBatch(db);
+  batch.update(doc(db, users, safeUid), {
     companions: payload.companions,
     updatedAt: serverTimestamp(),
   });
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(payload));
+  await batch.commit();
 }
 
 export async function saveEduChildren(
@@ -210,10 +220,13 @@ export async function saveEduChildren(
   assertNoDerivedFields(payload);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
+  const batch = writeBatch(db);
+  batch.update(doc(db, users, safeUid), {
     eduChildren: payload.eduChildren,
     updatedAt: serverTimestamp(),
   });
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(payload));
+  await batch.commit();
 }
 
 async function readExistingSocialLinks(

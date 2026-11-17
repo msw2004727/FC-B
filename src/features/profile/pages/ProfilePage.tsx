@@ -7,7 +7,7 @@ import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
 import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { useViewer, type ViewerView } from '../data/viewer';
-import { loadUserProfile, type UserProfile } from '../data/profile-model';
+import { loadOwnUserProfile, type UserProfile } from '../data/profile-model';
 import {
   loadUserAttendanceSummary,
   type UserAttendanceSummary,
@@ -294,7 +294,7 @@ function AuthenticatedProfile({
   uid: string;
   viewer: ViewerView;
 }): JSX.Element {
-  const { state, retry } = useRemote(uid, loadUserProfile);
+  const { state, retry } = useRemote(uid, loadOwnUserProfile);
   // 剛登入時會員文件可能還在建立（data/user-doc-sync.ts 完成後發 viewer:refresh）：查無資料時收到就重讀一次。
   const missing = state.status === 'ready' && !state.data;
   useEffect(() => (missing ? on('viewer:refresh', () => retry()) : undefined), [missing]);

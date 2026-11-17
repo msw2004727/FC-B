@@ -14,10 +14,16 @@ vi.mock('firebase/firestore', () => ({
   where: vi.fn((field, op, value) => ({ __where: { field, op, value } })),
 }));
 
+vi.mock('@/data/profile-private', () => ({
+  loadPrivateProfile: vi.fn(),
+  mergePrivateFields: vi.fn(),
+}));
+
 import { getFirebase } from '@/data/firebase';
 import { getDoc, getDocs } from 'firebase/firestore';
+import { loadPrivateProfile, mergePrivateFields } from '@/data/profile-private';
 
-import { loadUserProfile, mapUserProfileDoc } from './profile-model';
+import { loadOwnUserProfile, loadUserProfile, mapUserProfileDoc } from './profile-model';
 
 describe('mapUserProfileDoc', () => {
   it('null / undefined → null', () => {
@@ -63,6 +69,56 @@ describe('mapUserProfileDoc', () => {
     const r = mapUserProfileDoc({ displayName: 'A', role: 'user', exp: 9 }, 'x');
     expect(r?.['role']).toBe('user');
     expect(r?.['exp']).toBe(9);
+  });
+});
+
+describe('loadOwnUserProfile', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(getFirebase).mockResolvedValue({ db: {} } as never);
+    vi.mocked(mergePrivateFields).mockImplementation(
+      ((root, priv) => (
+        priv
+          ? { ...root, ...Object.fromEntries(
+              Object.entries(priv).filter(([, v]) => v !== undefined),
+            ) }
+          : { ...root }
+      )) as unknown as typeof mergePrivateFields,
+    );
+  });
+
+  it('併行讀根與私密並合併', async () => {
+    vi.mocked(getDoc).mockResolvedValue({
+      exists: () => true,
+      id: 'u1',
+      data: () => ({ displayName: 'Alice', uid: 'u1', phone: 'root-phone' }),
+    } as never);
+    vi.mocked(loadPrivateProfile).mockResolvedValue({ phone: 'priv-phone' });
+
+    const r = await loadOwnUserProfile('u1');
+    expect(r).not.toBeNull();
+    expect(r?.phone).toBe('priv-phone');
+    expect(r?.name).toBe('Alice');
+  });
+
+  it('私密讀取失敗退回根', async () => {
+    vi.mocked(getDoc).mockResolvedValue({
+      exists: () => true,
+      id: 'u1',
+      data: () => ({ displayName: 'Alice', uid: 'u1', phone: 'root-phone' }),
+    } as never);
+    vi.mocked(loadPrivateProfile).mockResolvedValue(null);
+
+    const r = await loadOwnUserProfile('u1');
+    expect(r?.phone).toBe('root-phone');
+  });
+
+  it('profile 不存在回 null', async () => {
+    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    vi.mocked(loadPrivateProfile).mockResolvedValue({ phone: 'priv-phone' });
+
+    expect(await loadOwnUserProfile('u1')).toBeNull();
   });
 });
 
