@@ -2242,4 +2242,27 @@ describe('活動讀取與俱樂部文件並行（顧問 §3.233 ②甲）', () =
     await waitFor(() => expect(loadEvents).toHaveBeenCalledTimes(2));
     expect(loadEvents).toHaveBeenLastCalledWith({ terminalMode: 'none' });
   });
+
+  it('俱樂部文件失敗後按重試：沿用已發出的活動讀取，不重讀（讀取次數不增加）', async () => {
+    vi.mocked(peekCachedTeam).mockReturnValue(team);
+    vi.mocked(loadTeam).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(team);
+    render(<TeamDetailPage />);
+    expect(await screen.findByText('載入失敗')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    await screen.findByText('測試俱樂部');
+    await act(async () => { await Promise.resolve(); });
+    expect(loadEvents).toHaveBeenCalledTimes(1);
+    expect(loadViewerRegistrations).toHaveBeenCalledTimes(1);
+  });
+
+  it('列表快取說開、伺服器說關：提早讀最多一組且不顯示（已知成本，送顧問裁定）', async () => {
+    vi.mocked(peekCachedTeam).mockReturnValue(team);
+    vi.mocked(loadTeam).mockResolvedValueOnce({ ...team, detailVisibility: { events: false } } as TeamDoc);
+    render(<TeamDetailPage />);
+    await screen.findByText('測試俱樂部');
+    await act(async () => { await Promise.resolve(); });
+    expect(loadEvents).toHaveBeenCalledTimes(1);
+    expect(loadViewerRegistrations).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('tab', { name: /活動/ })).toBeNull();
+  });
 });

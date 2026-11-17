@@ -236,12 +236,15 @@ function TeamDetailContent({
     let cancelled = false;
     setTeamState({ status: 'loading' });
     // 列表快取說這隊的活動區是開的，才提早讀活動；沒讀過列表（直接開連結）照舊等俱樂部文件。讀取次數不增加。
-    eventsPrefetch.current = null;
-    const cachedTeam = teamAttempt === 0 ? peekCachedTeam(id) : null;
-    if (cachedTeam && isTeamDetailSectionVisible(cachedTeam, 'events')) {
-      const promise = fetchTeamEvents(viewer.uid, true);
-      promise.catch(() => undefined);
-      eventsPrefetch.current = { key: `${id}|${viewer.uid ?? ''}`, promise };
+    // 俱樂部文件失敗後按重試（teamAttempt > 0）：沿用已發出的那一次，不重發也不丟（MiMo P1-1：避免多讀）。
+    if (teamAttempt === 0) {
+      eventsPrefetch.current = null;
+      const cachedTeam = peekCachedTeam(id);
+      if (cachedTeam && isTeamDetailSectionVisible(cachedTeam, 'events')) {
+        const promise = fetchTeamEvents(viewer.uid, true);
+        promise.catch(() => undefined);
+        eventsPrefetch.current = { key: `${id}|${viewer.uid ?? ''}`, promise };
+      }
     }
     loadTeam(id).then(
       (loaded) => {
@@ -249,6 +252,8 @@ function TeamDetailContent({
         const normalized = loaded
           ? { ...loaded, id: String(loaded.id || loaded._docId || id).trim() }
           : null;
+        // 伺服器說活動區關閉或查無俱樂部：丟掉提早讀，之後若在設定裡打開活動區要重新讀（MiMo P3-1）。
+        if (!normalized || !isTeamDetailSectionVisible(normalized, 'events')) eventsPrefetch.current = null;
         setTeamState({ status: 'ready', value: normalized });
       },
       () => {
