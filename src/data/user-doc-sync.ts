@@ -291,7 +291,7 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
             profilePrivateDocRef(db, uid),
             {
               email: profile.email,
-              createdAt: fs.serverTimestamp(),
+              // 不帶 createdAt：私密文件已存在時 merge 會變成 update，Rules 不允許改 createdAt。
               updatedAt: fs.serverTimestamp(),
             },
             { merge: true },
@@ -325,7 +325,7 @@ async function runSync(uid: string): Promise<UserDocSyncResult> {
             profilePrivateDocRef(db, uid),
             {
               ...legacyPrivate,
-              createdAt: fs.serverTimestamp(),
+              // 不帶 createdAt：私密文件已存在時 merge 會變成 update，Rules 不允許改 createdAt。
               updatedAt: fs.serverTimestamp(),
             },
             { merge: true },
