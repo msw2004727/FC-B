@@ -12,6 +12,7 @@
  */
 import {
   collection,
+  collectionGroup,
   documentId,
   getCountFromServer,
   getDocs,
@@ -28,6 +29,11 @@ import { getFirebase } from '@/data/firebase';
 import { deliverInboxMessage } from '@/data/inbox-delivery';
 import { DEFAULT_NOTIF_TEMPLATES, loadNotifTemplate, renderTemplate } from '@/data/notify';
 import { writeOpLog } from '@/data/op-log';
+import {
+  PROFILE_PRIVATE_COLLECTION,
+  PROFILE_PRIVATE_DOC_ID,
+  type ProfilePrivateData,
+} from '@/data/profile-private';
 import { assertAllowedFields } from '@/data/write-guard';
 import type { CustomRoleInput } from '@/ui/drawer-menu';
 
@@ -139,6 +145,42 @@ export async function loadMoreAdminUsers(prev: AdminUsersLoad): Promise<AdminUse
     done: chunk.done,
     partial: !chunk.done,
   };
+}
+
+/**
+ * 用戶管理頁專用：以 `collectionGroup('profilePrivate')` 一次讀完私密文件，做成
+ * 「根文件 id → { email?, phone? }」的 Map，由頁面放在記憶體、逐欄覆蓋 `AdminUser.email`／`phone`
+ * （清根後根上沒有這兩欄）。
+ *
+ * - Rules 只准 `isAdmin()` 讀；非 admin 或任何錯誤（含 `permission-denied`）都靜默回空 Map，
+ *   不 throw、不 toast、不擋住名單顯示。
+ * - 黑名單頁／授權頁共用 `loadAdminUsers`，所以讀取不放進那裡，只在用戶管理頁呼叫一次。
+ * - 只收 `id === PROFILE_PRIVATE_DOC_ID` 且父集合是 `users` 的文件，避免同名子集合混入；
+ *   key 用根文件 id（`docSnap.ref.parent.parent.id`），值只留 `email`／`phone` 中有自有屬性的鍵。
+ */
+export async function loadAdminPrivateProfiles(): Promise<Map<string, ProfilePrivateData>> {
+  const result = new Map<string, ProfilePrivateData>();
+  try {
+    const { db } = await getFirebase();
+    const snap = await getDocs(collectionGroup(db, PROFILE_PRIVATE_COLLECTION));
+    for (const docSnap of snap.docs) {
+      if (docSnap.id !== PROFILE_PRIVATE_DOC_ID) continue;
+      const userDocRef = docSnap.ref.parent.parent;
+      if (!userDocRef) continue;
+      if (userDocRef.parent?.id !== USERS_COLLECTION) continue;
+      const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+      const priv: ProfilePrivateData = {};
+      if (Object.prototype.hasOwnProperty.call(data, 'email')) priv.email = data['email'];
+      if (Object.prototype.hasOwnProperty.call(data, 'phone')) priv.phone = data['phone'];
+      result.set(userDocRef.id, priv);
+    }
+  } catch (err: unknown) {
+    const raw = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+    const code = typeof raw === 'string' ? raw : 'unknown';
+    // eslint-disable-next-line no-console
+    console.debug('[admin-users] private profiles skipped', code);
+  }
+  return result;
 }
 
 /** 自訂角色（影響角色選單與標籤）；失敗回空陣列，只剩內建角色。 */

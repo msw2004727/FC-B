@@ -15,9 +15,11 @@ const mockLimit = vi.fn((value: unknown) => ({ limit: value }));
 const mockOrderBy = vi.fn((value: unknown) => ({ orderBy: value }));
 const mockQuery = vi.fn((...args: unknown[]) => ({ query: args }));
 const mockCollection = vi.fn((_db: unknown, name: string) => ({ collection: name }));
+const mockCollectionGroup = vi.fn((_db: unknown, name: string) => ({ collectionGroup: name }));
 
 vi.mock('firebase/firestore', () => ({
   collection: (db: unknown, name: string) => mockCollection(db, name),
+  collectionGroup: (db: unknown, name: string) => mockCollectionGroup(db, name),
   documentId: () => '__name__',
   getCountFromServer: (...args: unknown[]) => mockGetCount(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
@@ -69,6 +71,7 @@ import {
   buildManageUserRequest,
   classifyAdminUserError,
   fetchCustomRoles,
+  loadAdminPrivateProfiles,
   loadAdminUsers,
   loadMoreAdminUsers,
   manageAdminUser,
@@ -94,7 +97,7 @@ const ADMIN_ALL = actor('admin', 'all');
 beforeEach(() => {
   vi.clearAllMocks();
   // clearAllMocks 不清「永久」實作與未用完的 Once；逐一 reset，避免前一案的設定漏進下一案。
-  for (const fn of [mockGetDocs, mockGetCount, mockDeliver, mockLoadTemplate, mockWriteOpLog, mockCallFn, mockGetIdToken]) fn.mockReset();
+  for (const fn of [mockGetDocs, mockGetCount, mockCollectionGroup, mockDeliver, mockLoadTemplate, mockWriteOpLog, mockCallFn, mockGetIdToken]) fn.mockReset();
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   mockCallFn.mockResolvedValue({ success: true, targetUid: 'uid-1' });
   mockGetIdToken.mockResolvedValue('token');
@@ -529,5 +532,77 @@ describe('讀取名單（一次性、聚合 count、降級分批）', () => {
     ]);
     mockGetDocs.mockRejectedValueOnce(new Error('x'));
     expect(await fetchCustomRoles()).toEqual([]);
+  });
+});
+
+describe('loadAdminPrivateProfiles（collectionGroup，僅用戶管理頁使用）', () => {
+  interface FakeRef { parent: { id: string; parent: { id: string; parent: { id: string } } } }
+  interface FakeDoc { id: string; data: () => Record<string, unknown> | undefined; ref: FakeRef }
+
+  // 模擬 users/{parentDocId}/profilePrivate/{docId}：ref.parent = profilePrivate（CollectionReference）、
+  // ref.parent.parent = users/{parentDocId}（DocumentReference）、ref.parent.parent.parent = 根集合（CollectionReference）。
+  function fakeDoc(
+    docId: string,
+    data: Record<string, unknown> | undefined,
+    rootCollId: string,
+    parentDocId: string,
+  ): FakeDoc {
+    const usersCollRef = { id: rootCollId };
+    const parentDocRef = { id: parentDocId, parent: usersCollRef };
+    const privateCollRef = { id: 'profilePrivate', parent: parentDocRef };
+    return { id: docId, data: () => data, ref: { parent: privateCollRef } };
+  }
+
+  it('正常回 Map（key 為根文件 id；值只留 email、phone 自有屬性）', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        fakeDoc('profile', { email: 'a@b', phone: '123', companions: ['x'], eduChildren: [] }, 'users', 'uid-1'),
+        fakeDoc('profile', { email: 'c@d' }, 'users', 'uid-2'),
+        fakeDoc('profile', { phone: '456' }, 'users', 'uid-3'),
+        fakeDoc('profile', { companions: ['y'] }, 'users', 'uid-4'),
+      ],
+    });
+    const map = await loadAdminPrivateProfiles();
+    expect(mockCollectionGroup).toHaveBeenCalledTimes(1);
+    expect(mockCollectionGroup).toHaveBeenCalledWith(expect.anything(), 'profilePrivate');
+    expect(map.size).toBe(4);
+    expect(map.get('uid-1')).toEqual({ email: 'a@b', phone: '123' });
+    expect(map.get('uid-2')).toEqual({ email: 'c@d' });
+    expect(map.get('uid-3')).toEqual({ phone: '456' });
+    expect(map.get('uid-4')).toEqual({});
+  });
+
+  it('排除同名子集合：doc id 不是 profile、父集合不是 users 都不收', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        fakeDoc('profile', { email: 'a@b' }, 'users', 'uid-1'),       // 收
+        fakeDoc('not-profile', { email: 'c@d' }, 'users', 'uid-2'),   // doc id 錯
+        fakeDoc('profile', { email: 'e@f' }, 'orders', 'ord-1'),      // 父集合錯
+      ],
+    });
+    const map = await loadAdminPrivateProfiles();
+    expect(map.size).toBe(1);
+    expect(map.has('uid-1')).toBe(true);
+    expect(map.has('uid-2')).toBe(false);
+    expect(map.has('ord-1')).toBe(false);
+  });
+
+  it('permission-denied：靜默回空 Map、不 throw、console.debug 參數不含 uid', async () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    const err = Object.assign(new Error('User uid-9 denied'), { code: 'permission-denied' });
+    mockGetDocs.mockRejectedValueOnce(err);
+    await expect(loadAdminPrivateProfiles()).resolves.toBeInstanceOf(Map);
+    expect(debugSpy).toHaveBeenCalled();
+    const flat = (debugSpy.mock.calls[0] ?? [])
+      .map((v) => (typeof v === 'string' ? v : ''))
+      .join(' ');
+    expect(flat).toContain('permission-denied');
+    expect(flat).not.toContain('uid-9');
+    debugSpy.mockRestore();
+  });
+
+  it('其他錯誤（如 network）也只回空 Map，不 throw', async () => {
+    mockGetDocs.mockRejectedValueOnce(new Error('network'));
+    await expect(loadAdminPrivateProfiles()).resolves.toBeInstanceOf(Map);
   });
 });
