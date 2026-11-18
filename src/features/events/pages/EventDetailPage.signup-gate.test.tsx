@@ -322,3 +322,25 @@ describe('早鳥＋個人資料讀不到（Grok 初審 P1）', () => {
     expect(mocks.register.mock.calls[0]?.[0]).toMatchObject({ earlyBirdAccepted: true, earlyBirdExpectedCost: 50 });
   });
 });
+
+describe('Opus 終審補測', () => {
+  it('送出前預檢回小寫 profile_incomplete 也直達完善資料彈窗', async () => {
+    rejectWith('failed-precondition', 'profile_incomplete', 'event.signup.error.profileIncomplete');
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    expect(await screen.findByRole('dialog', { name: '完善個人資料' })).toBeTruthy();
+  });
+
+  it('取消報名遇網路錯誤顯示網路提示', async () => {
+    mocks.history.mockResolvedValue([{
+      _docId: 'self-document', eventId: 'public-event', userId: 'u1', userName: '小明',
+      participantType: 'self', status: 'confirmed',
+    }]);
+    mocks.cancel.mockRejectedValue(new SignupError({
+      code: 'unavailable', originalCode: 'unavailable', messageKey: 'event.cancel.error.unknown', message: 'x',
+    }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    expect(await screen.findByText('events.cancel.error.network')).toBeTruthy();
+  });
+});

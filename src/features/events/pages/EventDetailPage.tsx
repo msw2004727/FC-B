@@ -901,7 +901,9 @@ function EventDetailSession({
           'EVENT_ENDED', 'EVENT_STARTED',
         ].includes(error.originalCode)) {
           toast.show({ message: error.message });
-        } else if (error instanceof SignupError && error.originalCode === 'PROFILE_INCOMPLETE') {
+        } else if (error instanceof SignupError
+          // 大寫＝伺服器拒絕；小寫＝signup.ts 送出前預檢（profileComplete 不再寫死 true 後會觸發）（Opus 終審 P3）。
+          && (error.originalCode === 'PROFILE_INCOMPLETE' || error.originalCode === 'profile_incomplete')) {
           // 伺服器仍判定資料不完整（例如別的裝置剛改過）：提示並直達完善資料（顧問 §3.268 條件 3）。
           show('events.signup.error.profileIncomplete');
           void openProfileEditor();
@@ -2192,8 +2194,9 @@ function EventDetailSession({
         : errorCode === 'unauthenticated'
           ? '登入已過期，請重新登入後再試'
           : `夥伴報名沒有成功，請稍後再試（代碼：${error instanceof SignupError ? displayErrorCode(error) : 'unknown'}）`;
-      toast.show({ message: messages[code] || fallback });
-      if (code === 'PROFILE_INCOMPLETE') void openProfileEditor();
+      const profileIncomplete = code === 'PROFILE_INCOMPLETE' || code === 'profile_incomplete';
+      toast.show({ message: (profileIncomplete ? messages.PROFILE_INCOMPLETE : messages[code]) || fallback });
+      if (profileIncomplete) void openProfileEditor();
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);
