@@ -756,7 +756,8 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   private handleRetry = (): void => {
     // 顧問 §3.268：程式檔載入失敗時，同一頁再 import() 會沿用失敗結果（staging 演練 D12／D13，Chromium 與 WebKit 皆然），
     // 頁內重試沒有作用，改整頁重新整理；使用者自己按的，不受 60 秒窗限制。送出中不重整，退回頁內重試。
-    if (isModuleLoadFailure(this.state.error) && !isSubmitting() && !document.querySelector('[data-submitting="true"]')) {
+    // isSubmitting() 與 <html data-submitting> 由 submit-guard 同步維護，只查前者即可。
+    if (isModuleLoadFailure(this.state.error) && !isSubmitting()) {
       routeReloadPage();
       return;
     }

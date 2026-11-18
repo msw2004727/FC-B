@@ -38,20 +38,10 @@ export interface ChunkReloadDeps {
 export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
   const storage = deps.storage;
   if (!storage) return false;
-  let now: number;
-  try {
-    const last = Number(storage.getItem(RELOAD_AT_KEY) || 0);
-    now = deps.now();
-    if (last && now - last < RELOAD_WINDOW_MS) {
-      // 顧問 §3.268 乙：60 秒內再失敗不自動重載（防迴圈），但仍出中性提示讓使用者自己按「重新載入」；
-      // 不寫時間戳、不 preventDefault。取代：原本窗內直接回 false、畫面只剩錯誤畫面。
-      deps.onBlocked?.(deps.reload);
-      return false;
-    }
-  } catch {
-    return false;
-  }
-  if (deps.canReload && !deps.canReload()) {
+  const now = deps.now();
+  // 顧問 §3.268 乙：60 秒內再失敗不自動重載（防迴圈），但和「不能重載」一樣出中性提示讓使用者自己按「重新載入」；
+  // 不寫時間戳、不 preventDefault。取代：原本窗內直接回 false、畫面只剩錯誤畫面。
+  if (isWithinChunkReloadWindow(storage, now) || (deps.canReload && !deps.canReload())) {
     deps.onBlocked?.(deps.reload);
     return false;
   }
