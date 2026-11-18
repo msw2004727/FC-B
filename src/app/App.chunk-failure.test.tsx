@@ -107,3 +107,89 @@ describe('③ 自動重載保留網址的 query 與 hash', () => {
     expect(src).not.toMatch(/location\.(href\s*=|assign\(|replace\()/);
   });
 });
+
+// 顧問 §3.262 P3-1、P3-2：從列表點進詳情時 chunk 失敗；守門決定重載時路由拿到 undefined。
+describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
+  let attempts = 0;
+  let mode: 'reject-once' | 'empty' = 'reject-once';
+
+  function Home(): preact.JSX.Element {
+    return <a href="/events/e1" data-testid="go-detail">go</a>;
+  }
+
+  /** 每個測試一個新的 load 函式：App 的 lazyCache 以 load 函式為鍵，共用會沿用上一個測試載好的元件。 */
+  function navManifests(): FeatureManifest[] {
+    // 第一次照 Vite 失敗行為（沒被擋就丟、被擋回 undefined）；mode=empty 時一律回 undefined（守門已排重載）。之後成功。
+    const detailLoad = (): Promise<{ default: () => preact.JSX.Element }> => {
+      attempts += 1;
+      if (mode === 'empty') return Promise.resolve(undefined as unknown as { default: () => preact.JSX.Element });
+      if (attempts === 1) return failingLoad();
+      return Promise.resolve({ default: () => <p data-testid="detail">detail page</p> });
+    };
+    return [
+      { id: 'home', status: 'enabled', routes: [{ path: '/', load: () => Promise.resolve({ default: Home }), titleKey: 'home.title' }], nav: [{ path: '/', labelKey: 'home.nav', icon: 'home', order: 0 }] },
+      { id: 'events', status: 'enabled', routes: [{ path: '/events/:id', load: detailLoad, titleKey: 'events.detail' }] },
+    ];
+  }
+
+  beforeEach(async () => {
+    const { toast } = await import('@/ui/Toast');
+    vi.spyOn(toast, 'show');
+    attempts = 0;
+    mode = 'reject-once';
+    _resetForTest();
+    registerFeatures(navManifests());
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reported.mockClear();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  afterEach(() => {
+    cleanup();
+    _resetSubmitGuardForTest();
+    _resetReloadSafetyForTest();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  async function toastCalls(): Promise<number> {
+    const { toast } = await import('@/ui/Toast');
+    return vi.mocked(toast.show).mock.calls.length;
+  }
+
+  for (const variant of ['60 秒窗內', '送出中被擋下'] as const) {
+    it(`P3-2 ${variant}：留在列表、吐司一次、上報一次；再點一次可以恢復`, async () => {
+      let end: (() => void) | undefined;
+      if (variant === '60 秒窗內') sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+      else end = beginSubmitting('signup');
+      const { findByTestId } = render(<App />);
+      (await findByTestId('go-detail')).click();
+      await waitFor(() => expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(1));
+      await waitFor(() => expect(window.location.pathname).toBe('/'));
+      expect(await findByTestId('go-detail')).toBeTruthy();
+      expect(await toastCalls()).toBe(1);
+      end?.();
+      (await findByTestId('go-detail')).click();
+      expect(await findByTestId('detail')).toBeTruthy();
+      expect(window.location.pathname).toBe('/events/e1');
+      expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(1);
+      expect(attempts).toBe(2);
+    });
+  }
+
+  it('P3-1 守門已排重載（路由 load 拿到 undefined）：不上報、不跳吐司、不導回上一頁、不卡死', async () => {
+    mode = 'empty';
+    const { findByTestId, container } = render(<App />);
+    (await findByTestId('go-detail')).click();
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, 500);
+    });
+    expect(window.location.pathname).toBe('/events/e1');
+    expect(reported).not.toHaveBeenCalled();
+    expect(await toastCalls()).toBe(0);
+    expect(container.querySelector('.error-fallback, [role="alert"]')).toBeNull();
+    expect(attempts).toBe(1);
+  });
+});
