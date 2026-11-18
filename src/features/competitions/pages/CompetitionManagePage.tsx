@@ -1,7 +1,7 @@
 // 主辦管理：待審／已核准／已拒絕。審核、繳費、鎖定只給主辦方或管理員。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { appConfirm } from '@/ui/AppConfirm';
@@ -75,6 +75,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [rejectError, setRejectError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [unlockError, setUnlockError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 聯絡文字儲存用 lock。只看 busy 的話，連點會在重繪前再送一次。
+  const contactLock = useRef(false);
   const [category, setCategory] = useState<CompetitionCategory>(env.bundle?.competition?.category ?? 'league');
   const [contactDraft, setContactDraft] = useState(env.bundle?.competition?.contactNote ?? '');
   const now = env.now ?? Date.now();
@@ -298,13 +300,14 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   }
 
   async function saveContact(): Promise<void> {
-    if (!hostOps || busy) return;
+    if (!hostOps || contactLock.current) return;
     const problem = contactNoteProblem(contactDraft);
     if (problem) {
       setError({ reason: problem, params: problem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined });
       return;
     }
     const text = contactDraft.trim();
+    contactLock.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -316,6 +319,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     } catch (err) {
       setError(errorOf(err));
     } finally {
+      contactLock.current = false;
       setBusy(false);
     }
   }

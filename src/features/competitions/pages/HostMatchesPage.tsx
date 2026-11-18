@@ -385,6 +385,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   function openReschedule(match: MatchDoc): void {
     if (lock.current) return;
     const draft = rescheduleDraft(match, comp.venues.length);
+    // 打開改期時清掉上一則「已自動發布公告」，避免看起來像這次已經成功。
+    setPosted(false);
     setReschedClash(null);
     setPanel({ kind: 'reschedule', mtId: match.id, ...draft });
     setHold({
@@ -675,6 +677,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           busy={busy}
           onShift={runShift}
           onSwap={runSwap}
+          onOpen={() => setPosted(false)}
         />
       ) : null}
       {showEnd ? (

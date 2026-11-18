@@ -19,6 +19,7 @@ import { liveCpActions } from '../actions';
 import { useInjectedEnv, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
+import { contactNoteProblem } from '../data/flex-schedule';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
 import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
@@ -171,7 +172,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const [done, setDone] = useState(preview?.wizardStep === 'done');
   const [cid, setCid] = useState('');
   const [form, setForm] = useState<FormState>(() => formFromEnv(env));
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(
+  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'contactNote' } | null>(
     preview?.wizardError ? { reason: 'BANNED_WORD' } : null,
   );
   const [busy, setBusy] = useState(false);
@@ -263,6 +264,17 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   async function create(): Promise<void> {
+    // 輸入框會去掉換行並截斷。預填或其他路徑仍可能帶進不合法聯絡文字，送出前再驗一次。
+    const noteProblem = contactNoteProblem(form.contactNote);
+    if (noteProblem) {
+      setStep(1);
+      setError({
+        reason: noteProblem,
+        field: 'contactNote',
+        params: noteProblem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined,
+      });
+      return;
+    }
     const problem = step1Reason() ?? step2Reason();
     const draft = toDraft(form, env.actor.displayName ?? '');
     if (problem || !draft || busy) {
@@ -341,7 +353,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 required
                 value={form.name}
                 maxLength={60}
-                error={error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1)
+                error={error?.field !== 'contactNote' && (error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1))
                   ? reasonText(ct, error.reason, error.params)
                   : undefined}
                 onValueChange={(name) => { patch({ name }); setError(null); }}
@@ -402,7 +414,11 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 hint={ct('publicHint')}
                 value={form.contactNote}
                 maxLength={60}
-                onValueChange={(value) => patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) })}
+                error={error?.field === 'contactNote' ? reasonText(ct, error.reason, error.params) : undefined}
+                onValueChange={(value) => {
+                  patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) });
+                  setError((current) => (current?.field === 'contactNote' ? null : current));
+                }}
               />
               {form.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
             </div>
@@ -601,7 +617,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         </>
       ) : null}
 
-      {error && !(step === 1 && (error.reason === 'BANNED_WORD' || error.reason === 'FIELD_LENGTH'))
+      {error && error.field !== 'contactNote' && !(step === 1 && (error.reason === 'BANNED_WORD' || error.reason === 'FIELD_LENGTH'))
         ? <CpError reason={error.reason} params={error.params} />
         : null}
 

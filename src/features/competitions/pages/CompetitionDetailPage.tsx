@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
+import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
@@ -143,6 +144,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const fullCache = useRef<SummaryEntry[] | null>(null);
   const fullInflight = useRef<Promise<boolean> | null>(null);
   const mounted = useRef(true);
+  // 公告發送與刪除共用這把鎖。busy 要等重繪才擋得住，連點會在那之前重入。
+  const noticeLock = useRef(false);
   const pageCid = useRef(cid);
   pageCid.current = cid;
   const now = env.now ?? Date.now();
@@ -425,14 +428,19 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       toast.show({ message: reasonText(ct, 'NOTICE_LIMIT', { max: HOST_NOTICE_MAX }), tone: 'error' });
       return false;
     }
+    if (noticeLock.current) return false;
+    noticeLock.current = true;
     setBusy(true);
     try {
-      const result = await env.actions.postNotice({ cid, text: text.trim() });
+      const trimmed = text.trim();
+      const result = await env.actions.postNotice({ cid, text: trimmed });
+      // 成功當下再取時間。渲染時的 now 可能較舊，新公告會被排到舊公告後面。
+      const at = env.now ?? Date.now();
       const notice = {
         id: result.noticeId,
-        text: text.trim(),
+        text: trimmed,
         kind: 'host' as const,
-        at: now,
+        at,
         by: null,
       };
       setBundle((current) => (current?.competition ? {
@@ -445,13 +453,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
       return false;
     } finally {
+      noticeLock.current = false;
       setBusy(false);
     }
   }
 
   async function removeNotice(noticeId: string): Promise<void> {
+    if (noticeLock.current) return;
+    noticeLock.current = true;
     setBusy(true);
     try {
+      // 系統公告後端也允許刪。確認文字要讓主辦知道這則是系統發的。
+      const kind = competition?.notices.find((notice) => notice.id === noticeId)?.kind;
+      const ok = await appConfirm(
+        kind === 'system' ? ct('noticeDeleteSystem') : ct('noticeDeleteConfirm'),
+        { okText: ct('noticeDelete'), danger: true },
+      );
+      if (!ok) return;
       await env.actions.deleteNotice({ cid, noticeId });
       setBundle((current) => (current?.competition ? {
         ...current,
@@ -464,6 +482,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       const info = errorOf(err);
       toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
     } finally {
+      noticeLock.current = false;
       setBusy(false);
     }
   }

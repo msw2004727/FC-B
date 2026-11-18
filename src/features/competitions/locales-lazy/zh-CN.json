@@ -283,6 +283,8 @@
   "posted": "已發 {n}／{max} 則",
   "publishNotice": "發布公告",
   "noticeDelete": "刪除",
+  "noticeDeleteConfirm": "確定要刪除這則公告？",
+  "noticeDeleteSystem": "這是系統公告，確定要刪除？",
   "contactHost": "聯絡主辦",
   "pmHost": "私訊主辦",
   "contactField": "聯絡文字",

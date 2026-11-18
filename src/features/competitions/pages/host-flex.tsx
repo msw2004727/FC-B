@@ -52,6 +52,7 @@ export function HostFlexCards({
   busy,
   onShift,
   onSwap,
+  onOpen,
 }: {
   ct: CompetitionsT;
   matches: readonly MatchDoc[];
@@ -59,6 +60,8 @@ export function HostFlexCards({
   busy: boolean;
   onShift: (input: ShiftRequest) => Promise<ScheduleClash | null>;
   onSwap: (input: SwapRequest) => Promise<ScheduleClash | null>;
+  /** 點進順延或對調卡片。這兩張卡一直開著，父層用來清掉上一則成功公告。 */
+  onOpen?: () => void;
 }): JSX.Element {
   const choices = shiftDayChoices(matches);
   const rows = swappableMatches(matches);
@@ -79,6 +82,13 @@ export function HostFlexCards({
   const matchB = rows.find((match) => match.id === idB) ?? null;
   const shiftHit = shiftClash ? matches.find((match) => match.id === shiftClash.mtId) : undefined;
   const swapHit = swapClash ? matches.find((match) => match.id === swapClash.mtId) : undefined;
+
+  // 送出鈕不算「打開面板」。成功後那一下點擊不該把剛發布的公告提示清掉。
+  function opened(event: { target: EventTarget | null }): void {
+    const node = event.target;
+    if (node instanceof Element && node.closest('button')) return;
+    onOpen?.();
+  }
 
   async function sendShift(force: boolean): Promise<void> {
     if (busy || !fromDate) return;
@@ -129,6 +139,7 @@ export function HostFlexCards({
   return (
     <>
       {choices.length > 0 ? (
+        <div onClick={opened} onFocusCapture={opened}>
         <CpCard>
           <h3 class="cpm-h">{ct('shiftDay')}</h3>
           <div class="cps-fields">
@@ -184,8 +195,10 @@ export function HostFlexCards({
             </div>
           </div>
         </CpCard>
+        </div>
       ) : null}
       {rows.length >= 2 ? (
+        <div onClick={opened} onFocusCapture={opened}>
         <CpCard>
           <h3 class="cpm-h">{ct('swapTwo')}</h3>
           <div class="cps-fields">
@@ -241,6 +254,7 @@ export function HostFlexCards({
             </div>
           </div>
         </CpCard>
+        </div>
       ) : null}
     </>
   );
