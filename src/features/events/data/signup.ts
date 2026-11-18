@@ -474,26 +474,43 @@ function extractOriginalCode(error: CallableError): string {
   return error.code;
 }
 
-/** 同一頁最多上報幾筆通用失敗（顧問 §3.267：限流）。 */
+/** 同一頁（同一次頁面載入）最多上報幾筆通用失敗；報名與取消共用，避免單頁洗版（顧問 §3.267：限流）。 */
 const UNKNOWN_REPORT_LIMIT = 3;
 let unknownReports = 0;
+const unknownReportKeys = new Set<string>();
+
+/** 只放行「像錯誤碼」的字串（例如 PROFILE_INCOMPLETE、functions/internal），其餘不送原文。 */
+const CODE_LIKE = /^[A-Za-z0-9_./:-]{1,64}$/;
+
+/** 非 Callable 錯誤的訊息：遮掉 email 與 8 位以上數字串後只留前 120 字（憑證類由上報器的 scrubSecrets 再遮一次）。 */
+export function redactFreeText(text: string): string {
+  return text
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+    .replace(/\d{8,}/g, '[num]')
+    .slice(0, 120);
+}
 
 /**
  * 落到通用文案（「報名失敗／取消失敗，請稍後重試」）時上報一筆（顧問 §3.267）：類別 register-unknown／cancel-unknown，
- * 訊息帶錯誤碼、是否逾時、原始訊息前 200 字；版號、時間與 uid 由上報器照常帶，不另帶其他個資。
+ * 帶錯誤碼、是否逾時，以及白名單過的訊息（Callable 只送像錯誤碼的原始碼；其他錯誤送錯誤類型與遮罩後的前段）；
+ * 版號、時間與 uid 由上報器照常帶，不另帶其他個資。同內容重複不扣額度（上報器本來就會去重）。
  * 已知錯誤（對照表內）與載入失敗（signup-module-load）不走這裡。只加上報，不改文案、交易、重試與送出守門。
  * 取代：原本通用失敗被畫面接住後不寫錯誤日誌，後台看不到原因。
  */
-function reportUnknownFailure(scope: 'register' | 'cancel', code: string, message: string, timeout: boolean): void {
-  if (unknownReports >= UNKNOWN_REPORT_LIMIT) return;
+function reportUnknownFailure(scope: 'register' | 'cancel', code: string, detail: string, timeout: boolean): void {
+  const safeCode = CODE_LIKE.test(code) ? code : 'unknown';
+  const key = `${scope}|${safeCode}|${detail}|${timeout ? 1 : 0}`;
+  if (unknownReportKeys.has(key) || unknownReports >= UNKNOWN_REPORT_LIMIT) return;
+  unknownReportKeys.add(key);
   unknownReports += 1;
-  const err = new Error(`${scope} unknown: code=${code || '-'} timeout=${timeout ? 1 : 0} msg=${message.slice(0, 200)}`) as Error & { code: string };
-  err.code = code || 'unknown';
+  const err = new Error(`${scope} unknown: code=${safeCode} timeout=${timeout ? 1 : 0} detail=${detail}`) as Error & { code: string };
+  err.code = safeCode;
   reportClientError(`${scope}-unknown`, err);
 }
 
 export function _resetUnknownFailureReportsForTest(): void {
   unknownReports = 0;
+  unknownReportKeys.clear();
 }
 
 function toSignupError(
@@ -521,7 +538,9 @@ function toSignupError(
     const originalCode = extractOriginalCode(error);
     const known = map[originalCode];
     if (!known) {
-      reportUnknownFailure(scope, error.code, originalCode === error.message ? error.message : `${originalCode} | ${error.message}`, false);
+      // 結構化錯誤碼優先用伺服器的原始碼（像錯誤碼才用），傳輸層代碼放在 detail；伺服器自由文字不送。
+      const serverCode = CODE_LIKE.test(originalCode) ? originalCode : '';
+      reportUnknownFailure(scope, serverCode || error.code, `transport=${CODE_LIKE.test(error.code) ? error.code : 'unknown'}${serverCode ? '' : ' message-omitted'}`, false);
     }
     return new SignupError({
       code: error.code,
@@ -530,7 +549,7 @@ function toSignupError(
       message: error.message,
     });
   }
-  reportUnknownFailure(scope, error instanceof Error ? error.name : typeof error, message, false);
+  reportUnknownFailure(scope, error instanceof Error ? error.name : typeof error, redactFreeText(message), false);
   return new SignupError({
     code: 'unknown',
     originalCode: '',

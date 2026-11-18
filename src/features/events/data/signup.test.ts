@@ -55,6 +55,7 @@ import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
   _resetUnknownFailureReportsForTest,
+  redactFreeText,
   buildCancelPayload,
   buildRegisterPayload,
   cancelRegistration,
@@ -1336,6 +1337,7 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
       expect(err).toMatchObject({ code: 'internal' });
       expect((err as Error).message).toContain('code=internal');
       expect((err as Error).message).toContain('timeout=0');
+      expect((err as Error).message).toContain('transport=internal');
     });
 
     it('取消落到通用文案：類別 cancel-unknown', async () => {
@@ -1347,7 +1349,9 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
       })).rejects.toMatchObject({ messageKey: 'event.cancel.error.unknown' });
       expect(reported).toHaveBeenCalledTimes(1);
       expect(reported.mock.calls[0]?.[0]).toBe('cancel-unknown');
-      expect((reported.mock.calls[0]?.[1] as Error).message).toContain('SOMETHING_NEW');
+      // 結構化 code 用伺服器原始碼，傳輸層代碼在 detail（Flash 初審 P3）。
+      expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'SOMETHING_NEW' });
+      expect((reported.mock.calls[0]?.[1] as Error).message).toContain('transport=unavailable');
     });
 
     it('已知錯誤（例如早鳥額滿、已報名）不上報', async () => {
@@ -1371,15 +1375,57 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
       expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
     });
 
-    it('限流：同一頁最多上報 3 筆通用失敗', async () => {
+    it('限流：同一頁最多上報 3 筆不同的通用失敗', async () => {
+      let i = 0;
       registerMock('registerForEvent', () => {
-        throw new CallableError('internal', 'internal');
+        i += 1;
+        throw new CallableError('internal', `NEW_CODE_${i}`);
       });
-      for (let i = 0; i < 5; i += 1) {
+      for (let k = 0; k < 5; k += 1) {
         const harness = signupContext({}, 'uidA');
         await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
       }
       expect(reported).toHaveBeenCalledTimes(3);
+    });
+
+    it('同內容重複不扣額度：同一錯誤連發後，不同的錯誤仍會上報（Flash 初審 P2）', async () => {
+      let code = 'SAME_CODE';
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', code);
+      });
+      for (let k = 0; k < 4; k += 1) {
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      code = 'OTHER_CODE';
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(2);
+      expect(reported.mock.calls.map(([, e]) => (e as { code: string }).code)).toEqual(['SAME_CODE', 'OTHER_CODE']);
+    });
+
+    it('個資：伺服器自由文字不送原文；其他錯誤的 email、長數字遮掉（Flash 初審 P1）', async () => {
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', 'alice@example.com 王小明 0912345678 已失敗');
+      });
+      const h1 = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(h1))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      registerMock('registerForEvent', () => {
+        throw new TypeError('bad value bob@example.org id 123456789012');
+      });
+      const h2 = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(h2))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      // mock 模式會把 TypeError 也包成 CallableError，兩筆都走「不送原文」。
+      const texts = reported.mock.calls.map(([, e]) => (e as Error).message).join(' || ');
+      expect(texts).not.toMatch(/alice@example\.com|王小明|0912345678|bob@example\.org|123456789012/);
+      expect(texts).toContain('message-omitted');
+      expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'internal' });
+    });
+
+    it('非 Callable 錯誤的訊息遮罩：email、8 位以上數字遮掉，只留前 120 字', () => {
+      expect(redactFreeText("undefined is not an object (evaluating 'e.httpsCallable')")).toBe("undefined is not an object (evaluating 'e.httpsCallable')");
+      expect(redactFreeText('bad value bob@example.org id 123456789012 tel 0912345678')).toBe('bad value [email] id [num] tel [num]');
+      expect(redactFreeText('x'.repeat(300))).toHaveLength(120);
     });
   });
 
