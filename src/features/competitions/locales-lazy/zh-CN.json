@@ -255,7 +255,7 @@
   "scoreMinus": "減一分",
   "scorePlus": "加一分",
   "retrySubmit": "重新送出",
-  "matchUpdated": "這場已被更新",
+  "matchUpdated": "這場已被更新，請關閉後重新操作",
   "divisionPick": "組別",
   "reason": {
     "INTERNAL_PERIOD": "內部測試期間，尚未對外開放",

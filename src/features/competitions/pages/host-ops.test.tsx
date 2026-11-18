@@ -538,15 +538,16 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
     fireEvent.click(buttonOf('登錄並確認'));
     await screen.findByRole('button', { name: '重新送出' });
     fireEvent.click(buttonOf('重新送出'));
-    expect(await screen.findByText('這場已被更新')).toBeTruthy();
+    expect(await screen.findByText('這場已被更新，請關閉後重新操作')).toBeTruthy();
     expect(document.body.textContent ?? '').toContain('09:00　示範球場　海風隊 1：0 山貓隊　已確認');
     expect(scoreText()).toEqual(['2', '0']);
     expect(screen.queryByRole('button', { name: '重新送出' })).toBeNull();
+    // 內容已被別人改成不同結果：送出鈕鎖住，不能用舊輸入覆蓋（Flash 初審 P2）
+    expect((buttonOf('登錄並確認') as HTMLButtonElement).disabled).toBe(true);
+    expect((buttonOf('先登錄，稍後確認') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(buttonOf('登錄並確認'));
-    await waitFor(() => expect(recordResult).toHaveBeenCalledTimes(3));
-    expect(recordResult).toHaveBeenNthCalledWith(3, {
-      cid: 'cup', mtId: 'mt_1', expectedRev: 8, score: { home: 2, away: 0 }, confirm: true,
-    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(recordResult).toHaveBeenCalledTimes(2);
   });
 
   it('契約錯誤只 toast 文案，不提供重新送出', async () => {
@@ -615,7 +616,7 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
       repo: other,
     }, HostMatchesPage);
     fireEvent.click(buttonOf('確認'));
-    expect(await screen.findByText('這場已被更新')).toBeTruthy();
+    expect(await screen.findByText('這場已被更新，請關閉後重新操作')).toBeTruthy();
     expect(screen.getByText('9：9')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '重新送出' })).toBeNull();
     expect(again).toHaveBeenCalledWith({ cid: 'cup', mtId: 'mt_ok', expectedRev: 4 });

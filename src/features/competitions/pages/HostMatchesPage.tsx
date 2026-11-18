@@ -426,6 +426,10 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     if (match) void submitConfirm(match);
   }
 
+  // Flash 初審 P2：重送遇 REV_CONFLICT 且這場已被別人改成不同內容時，鎖住面板的送出鈕，
+  // 要主辦關閉面板、看過最新內容後重新操作，避免用舊輸入覆蓋新結果。
+  const staleHold = hold?.updated != null;
+
   function notice(kind: Hold['kind'], mtId: string): JSX.Element | null {
     if (!hold || hold.kind !== kind || hold.mtId !== mtId) return null;
     if (!hold.message && !hold.updated && !hold.retrying) return null;
@@ -552,8 +556,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
               </div>
             </div>
             <div class="cp3-stack-btns">
-              <Button variant="primary" disabled={busy} onClick={() => { void submitScore(true); }}>{ct('saveConfirm')}</Button>
-              <Button variant="secondary" disabled={busy} onClick={() => { void submitScore(false); }}>{ct('saveLater')}</Button>
+              <Button variant="primary" disabled={busy || staleHold} onClick={() => { void submitScore(true); }}>{ct('saveConfirm')}</Button>
+              <Button variant="secondary" disabled={busy || staleHold} onClick={() => { void submitScore(false); }}>{ct('saveLater')}</Button>
             </div>
             <button type="button" class="cp3-textlink" disabled={busy} onClick={() => openForfeit(active)}>{ct('toForfeit')}</button>
             {notice('score', panel.mtId)}
@@ -569,7 +573,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('cancel')}</Button>
-              <Button variant="danger" disabled={busy} onClick={() => { void submitForfeit(); }}>{ct('forfeitOk')}</Button>
+              <Button variant="danger" disabled={busy || staleHold} onClick={() => { void submitForfeit(); }}>{ct('forfeitOk')}</Button>
             </div>
           )}
         >
@@ -606,7 +610,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('cancel')}</Button>
-              <Button variant="danger" disabled={busy} onClick={() => { void submitReset(); }}>{ct('resetMatch')}</Button>
+              <Button variant="danger" disabled={busy || staleHold} onClick={() => { void submitReset(); }}>{ct('resetMatch')}</Button>
             </div>
           )}
         >
@@ -632,7 +636,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('cancel')}</Button>
-              <Button variant="primary" disabled={busy} onClick={() => { void submitReschedule(); }}>{ct('reschedOk')}</Button>
+              <Button variant="primary" disabled={busy || staleHold} onClick={() => { void submitReschedule(); }}>{ct('reschedOk')}</Button>
             </div>
           )}
         >
