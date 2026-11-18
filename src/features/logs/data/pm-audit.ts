@@ -4,47 +4,12 @@
  * `_legacyLoadPmAuditLogs` 在 A 沒有呼叫端（死碼），不搬。
  */
 
-import { callFn } from '@/data/callables';
+import { CallableError, callFn } from '@/data/callables';
+
+import { filterToPayload, shortUid, type PmAuditFilter } from './pm-audit-view';
 
 export const PM_AUDIT_LOG_PAGE_SIZE = 50;
 export const PM_AUDIT_CONVERSATION_LIMIT = 100;
-
-/** A `pm-audit.js` 的 Log 篩選選項順序。 */
-export const PM_AUDIT_ACTIONS = [
-  'send',
-  'read',
-  'edit',
-  'recall',
-  'search_user',
-  'audit_view_thread',
-  'audit_view_conversation',
-  'audit_search_logs',
-  'settings_update',
-] as const;
-
-/** A `_pmAuditActionLabel`：Log 列的短標籤（A 原樣為英文代號）。 */
-export function pmAuditActionLabel(action: unknown): string {
-  const labels: Record<string, string> = {
-    send: 'send',
-    read: 'read',
-    edit: 'edit',
-    recall: 'recall',
-    search_user: 'search',
-    audit_view_thread: 'threads',
-    audit_view_conversation: 'view',
-    audit_search_logs: 'logs',
-    settings_update: 'settings',
-  };
-  const key = String(action || '');
-  return labels[key] || key || '-';
-}
-
-/** A `_pmAuditShortUid`。 */
-export function pmAuditShortUid(uid: unknown): string {
-  const text = String(uid || '').trim();
-  if (!text) return '-';
-  return text.length > 14 ? `${text.slice(0, 6)}...${text.slice(-4)}` : text;
-}
 
 function toMillis(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -65,22 +30,19 @@ function toMillis(value: unknown): number | null {
   return null;
 }
 
-const ZH_TW_SHORT: Intl.DateTimeFormatOptions = {
-  timeZone: 'Asia/Taipei',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-};
+/** 一筆稽核 log 的時間（毫秒）；`createdAtIso` 優先，退 `createdAt`。 */
+export function pmLogMs(log: { createdAtIso?: unknown; createdAt?: unknown }): number | null {
+  return toMillis(log.createdAtIso) ?? toMillis(log.createdAt);
+}
 
-/**
- * A `_pmFormatTime`／`_pmAuditShortTime`：`MM/DD 上午hh:mm`（zh-TW 慣例）。
- * 與 A 差異：固定台北時區；也認得 Callable 回傳的 `{ _seconds }`（A 會顯示空白）。
- */
+/** 稽核列與對話的短時間 `MM/DD HH:mm`（台北，24 小時制）；也認得 Callable 回傳的 `{ _seconds }`。2026-11-16 改：取代 A 的 `上午hh:mm`。 */
 export function pmFormatTime(value: unknown): string {
   const ms = toMillis(value);
   if (ms === null) return typeof value === 'string' ? value.slice(0, 16) : '';
-  return new Date(ms).toLocaleString('zh-TW', ZH_TW_SHORT);
+  // 固定 +8 小時後取 UTC 欄位（台北無日光節約）；不經 toLocaleString，避免瀏覽器差異與不可見字元。
+  const t = new Date(ms + 8 * 60 * 60 * 1000);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${p2(t.getUTCMonth() + 1)}/${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`;
 }
 
 export interface PmAuditUser {
@@ -93,6 +55,7 @@ export interface PmAuditUser {
 export interface PmAuditThread {
   id: string;
   title: string;
+  participants: string[];
   lastMessageBody: string;
   lastMessageAt: unknown;
 }
@@ -100,9 +63,19 @@ export interface PmAuditThread {
 export interface PmAuditMessage {
   key: string;
   senderLabel: string;
+  fromUid: string;
   createdAt: unknown;
   body: string;
   recalled: boolean;
+  edited: boolean;
+}
+
+export interface PmAuditConversation {
+  /** 稽核複本已過保存期（後端回 not-found）。 */
+  expired: boolean;
+  participants: string[];
+  participantNames: Record<string, string>;
+  messages: PmAuditMessage[];
 }
 
 export interface PmAuditLog {
@@ -110,6 +83,7 @@ export interface PmAuditLog {
   action: string;
   actorUid: string;
   targetUid: string;
+  conversationId: string;
   createdAtIso: string;
   createdAt: unknown;
 }
@@ -146,26 +120,55 @@ export async function listPmThreads(uid: string): Promise<PmAuditThread[]> {
       : {}) as Record<string, unknown>;
     const participants = Array.isArray(thread['participants']) ? (thread['participants'] as unknown[]) : [];
     const id = String(thread['conversationId'] || thread['id'] || '');
-    const title = participants.map((pid) => String(names[String(pid)] || pid)).join(' / ');
+    // 缺暱稱時用 UID 短碼，不在標題露出完整 UID（顧問 §3.196；A 原樣是完整 UID）。
+    const title = participants.map((pid) => String(names[String(pid)] || shortUid(String(pid || '')))).join(' / ');
     return {
       id,
-      title: title || String(thread['id'] || ''),
+      title: title || shortUid(id),
+      participants: participants.map((pid) => String(pid || '')).filter(Boolean),
       lastMessageBody: String(thread['lastMessageBody'] || ''),
       lastMessageAt: thread['lastMessageAt'],
     };
   });
 }
 
-export async function loadPmConversation(conversationId: string): Promise<PmAuditMessage[]> {
-  const resp = await callFn('getPmAuditConversation', { conversationId, limit: PM_AUDIT_CONVERSATION_LIMIT });
+export async function loadPmConversation(conversationId: string): Promise<PmAuditConversation> {
+  let resp;
+  try {
+    resp = await callFn('getPmAuditConversation', { conversationId, limit: PM_AUDIT_CONVERSATION_LIMIT });
+  } catch (err) {
+    // 稽核複本由排程依保存期刪除；not-found 是「已超過保存期限」，不是錯誤。
+    if (err instanceof CallableError && /not-found/.test(err.code)) {
+      return { expired: true, participants: [], participantNames: {}, messages: [] };
+    }
+    throw err;
+  }
+  const thread = (resp?.thread ?? {}) as Record<string, unknown>;
+  const rawNames = thread['participantNames'] && typeof thread['participantNames'] === 'object'
+    ? (thread['participantNames'] as Record<string, unknown>)
+    : {};
+  const participantNames: Record<string, string> = {};
+  for (const [uid, name] of Object.entries(rawNames)) {
+    if (typeof name === 'string' && name.trim()) participantNames[uid] = name.trim();
+  }
+  const participants = Array.isArray(thread['participants'])
+    ? (thread['participants'] as unknown[]).map((p) => String(p || '')).filter(Boolean)
+    : [];
   const messages = Array.isArray(resp?.messages) ? (resp.messages as Record<string, unknown>[]) : [];
-  return messages.map((m, index) => ({
-    key: String(m['id'] || index),
-    senderLabel: String(m['senderName'] || m['fromUid'] || ''),
-    createdAt: m['createdAt'],
-    body: String(m['body'] || ''),
-    recalled: m['status'] === 'recalled',
-  }));
+  return {
+    expired: false,
+    participants,
+    participantNames,
+    messages: messages.map((m, index) => ({
+      key: String(m['id'] || index),
+      senderLabel: String(m['senderName'] || ''),
+      fromUid: String(m['fromUid'] || ''),
+      createdAt: m['createdAt'],
+      body: String(m['body'] || ''),
+      recalled: m['status'] === 'recalled',
+      edited: m['status'] === 'edited',
+    })),
+  };
 }
 
 export interface PmAuditLogPage {
@@ -174,10 +177,12 @@ export interface PmAuditLogPage {
   hasMore: boolean;
 }
 
-export async function loadPmAuditLogs(action: string, cursorMs: number | null): Promise<PmAuditLogPage> {
-  const payload: { action: string; limit: number; cursorCreatedAtMs?: number } = {
-    action,
-    limit: PM_AUDIT_LOG_PAGE_SIZE,
+/** 篩選一次只送一個鍵（顧問 §3.195 硬條件 1），見 `filterToPayload`。 */
+/** 時間區間：`cursorMs` 第一頁傳區間終點（後端 startAfter＝早於該時間），之後傳上一頁的 nextCursor；`limit` 即每頁筆數（1～100）。 */
+export async function loadPmAuditLogs(filter: PmAuditFilter, cursorMs: number | null, limit: number = PM_AUDIT_LOG_PAGE_SIZE): Promise<PmAuditLogPage> {
+  const payload: { action?: string; actorUid?: string; targetUid?: string; limit: number; cursorCreatedAtMs?: number } = {
+    ...filterToPayload(filter),
+    limit: Math.min(Math.max(Math.floor(limit), 1), 100),
   };
   if (cursorMs) payload.cursorCreatedAtMs = cursorMs;
   const resp = await callFn('getPmAuditLogs', payload);
@@ -192,6 +197,7 @@ export async function loadPmAuditLogs(action: string, cursorMs: number | null): 
         action: String(row['action'] || ''),
         actorUid: String(row['actorUid'] || ''),
         targetUid: String(row['targetUid'] || ''),
+        conversationId: String(row['conversationId'] || ''),
         createdAtIso: String(row['createdAtIso'] || ''),
         createdAt: row['createdAt'],
       };

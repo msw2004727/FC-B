@@ -38,6 +38,7 @@ import {
   ROUTE_STEP_TIMEOUT,
   ROUTE_TIMEOUT_MS,
 } from '@/core/route-loading';
+import { beginRouteLoad } from '@/core/route-load-pending';
 import { applyRouteMeta } from '@/core/route-meta';
 import { initMultiTabGuard } from '@/core/multi-tab-guard';
 import {
@@ -85,7 +86,7 @@ import {
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { LazySideDrawer } from './LazySideDrawer';
 import { SyncStatusBar } from './SyncStatusBar';
-import { DiagLoadsBadge } from './DiagLoadsBadge';
+import { LazyDiagLoadsBadge } from './LazyDiagLoadsBadge';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 // M-139：全站私訊即時泡泡與浮層外框一律 lazy 載入，避免首屏帶入 firestore。
@@ -110,18 +111,33 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
   // M-047：載入超過 10 秒照 A 提示「網路較慢…」，但不中斷下載（晚到仍會顯示，不把頁面卡在失敗）；
   // L-08：失敗時從快取移除以便重試。
   const wrappedLoad = (): ReturnType<FeatureRoute['load']> => {
+    // 顧問 §3.263：load 進行中才算「路由正在載入」；任何落定（成功、失敗、回 undefined）都移除。
+    const settled = beginRouteLoad();
     const timer = setTimeout(() => {
       toast.show({ message: getRouteFailureToast(routePath, { code: ROUTE_STEP_TIMEOUT }) });
     }, ROUTE_TIMEOUT_MS);
     const p = Promise.resolve().then(() => load());
     p.then(
-      () => clearTimeout(timer),
+      (mod) => {
+        clearTimeout(timer);
+        // 守門已排重載時 Vite 回 undefined：不把這個停在載入中的 lazy 留在快取，重載沒生效時換頁回來可重新載入（Flash 差異審 P2）。
+        if (!mod) lazyCache.delete(load);
+        settled();
+      },
       () => {
         clearTimeout(timer);
         lazyCache.delete(load);
+        settled();
       },
     );
-    return p;
+    // preact-iso 的 lazy 在 load 被拒絕時不會重繪、也不會把錯誤丟給錯誤邊界，主內容會一直空白。
+    // 改成 render 時丟出原錯誤，讓 RouteErrorBoundary 顯示錯誤畫面、吐司並上報一次（顧問 §3.260 第②項）。
+    // 取代：直接回傳會被拒絕的 p（實測主內容空白、錯誤變成沒人接的 rejection）。
+    return p.catch((error: unknown) => ({
+      default: () => {
+        throw error;
+      },
+    })) as ReturnType<FeatureRoute['load']>;
   };
   const component = lazy(wrappedLoad);
   lazyCache.set(load, component);
@@ -154,7 +170,8 @@ export function App({
   const [authKnown, setAuthKnown] = useState(false);
   const expectSignedIn = useMemo(() => readAuthHint(), []);
   const [loginPending, setLoginPending] = useState(false);
-  const [loginError, setLoginError] = useState(false);
+  // 'expired'＝LINE 權杖已失效（B1-02），顯示專屬文案；true＝一般登入失敗。
+  const [loginError, setLoginError] = useState<boolean | 'expired'>(false);
   const [mobileHintOpen, setMobileHintOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -240,6 +257,10 @@ export function App({
     const stopMobileHint = on('auth:mobile-login-hint', () => {
       if (!cancelled) setMobileHintOpen(true);
     });
+    // 各頁按鈕直接呼叫 signIn() 時也顯示專屬文案（B1-02）。
+    const stopLineExpired = on('auth:line-session-expired', () => {
+      if (!cancelled && currentUid.current === null) setLoginError('expired');
+    });
 
     // 開在首頁且沒有登入旗標（真訪客）時，等首頁的公開讀取（events／banners／announcements）處理完才還原登入狀態：
     // Auth 一註冊進 Firestore，Firestore 的非同步佇列就會停到 Auth 初始化完成（T-041，見 data/firebase.ts）。
@@ -264,6 +285,7 @@ export function App({
       loginSequence.current += 1;
       stopEvents();
       stopMobileHint();
+      stopLineExpired();
       stopAuth?.();
       stopMultiTab();
       stopOfflineGuard();
@@ -315,7 +337,10 @@ export function App({
         }
         if (mounted.current && sequence === loginSequence.current &&
           currentUid.current === null) {
-          setLoginError(true);
+          // 不從 @/data/auth 靜態匯入判斷函式：既有測試的 auth mock 沒有這個匯出（同 isLineSessionExpiredError 的判斷）。
+          const expired = Boolean(err && typeof err === 'object' &&
+            (err as { isLineSessionExpired?: unknown }).isLineSessionExpired === true);
+          setLoginError(expired ? 'expired' : true);
         }
       } finally {
         if (sequence === loginSequence.current) {
@@ -452,7 +477,9 @@ export function App({
         <SyncStatusBar />
         <main class="app-main">
           {loginError && !drawerOpen && (
-            <div role="alert"><Text>{t('ui.shell.loginError')}</Text></div>
+            <div class="app-login-alert" role="alert">
+              <Text>{t(loginError === 'expired' ? 'ui.shell.loginExpired' : 'ui.shell.loginError')}</Text>
+            </div>
           )}
           <RouteArea routes={routes} isRestricted={isRestricted} />
         </main>
@@ -470,7 +497,7 @@ export function App({
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}
           </div>
         )}
-        <DiagLoadsBadge />
+        <LazyDiagLoadsBadge />
       </div>
       <LazySideDrawer
         open={drawerOpen}
@@ -642,6 +669,13 @@ function RouteArea({
       path={location.path}
       previousPath={prevPathRef.current}
       onReset={() => lazyCache.clear()}
+      // 「重新嘗試」要讓 App 重繪、重新呼叫 getRouteComponent 拿新的 lazy：<Route component> 是上一次 render 算好的，
+      // 只清 lazyCache 會沿用已存了「丟錯元件」的舊 lazy，按了沒有作用（Opus 審 P2-1）。同內容卡住重試的做法。
+      // 只給重試按鈕用；自動退回上一頁與換頁重設仍只清快取，不遞增 key（Flash 差異審 P2：避免與導航競爭）。
+      onRetry={() => {
+        lazyCache.clear();
+        setStallRetryKey((k) => k + 1);
+      }}
       onNavigateBack={(fallback) => {
         endRouteLoading(loadingSeqRef.current);
         location.route(fallback, true);
@@ -675,6 +709,8 @@ interface RouteErrorBoundaryProps {
   path: string;
   previousPath?: string;
   onReset: () => void;
+  /** 錯誤畫面「重新嘗試」：清快取並讓 App 重繪。沒給時退回 onReset。 */
+  onRetry?: () => void;
   onNavigateBack?: (targetPath: string) => void;
   children: ComponentChildren;
 }
@@ -716,6 +752,11 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 
   private handleRetry = (): void => {
+    if (this.props.onRetry) {
+      this.props.onRetry();
+      this.setState({ error: null, resetKey: this.state.resetKey + 1 });
+      return;
+    }
     this.reset();
   };
 

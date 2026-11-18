@@ -28,6 +28,8 @@ import type { TeamDoc } from '../data/types';
 import { getClubListFilters, saveClubListFilters } from './clubs-list-session';
 import { loginForClubs } from './clubs-session';
 import '../legacy/team.css';
+// 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-teams）
+import '../legacy/teams-glass.css';
 
 /** M-114：照 A `filterTeams`，最後一次變動起算 300ms 才套到列表。 */
 const FILTER_APPLY_MS = 300;
@@ -400,7 +402,7 @@ export default function TeamsPage(): JSX.Element {
     : '此類型尚無俱樂部';
 
   return (
-    <div class="legacy-ui">
+    <div class="legacy-ui teams-root">
       <section class="page active" id="page-teams">
         <div class="page-header">
           <button

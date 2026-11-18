@@ -31,6 +31,12 @@ vi.mock('./visibility', () => ({
   isEventVisibleToUser: vi.fn(),
 }));
 
+// 顧問 §3.259 報名載入失敗卡：只換掉上報，判斷訊息的函式用真的。
+vi.mock('@/core/error-report', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/error-report')>()),
+  reportClientError: vi.fn(),
+}));
+
 import * as firestore from 'firebase/firestore';
 import {
   CallableError,
@@ -44,6 +50,8 @@ import type {
   RegisterForEventResponse,
 } from '@/data/contract/callables';
 import { on } from '@/core/events';
+import { reportClientError } from '@/core/error-report';
+import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
   buildCancelPayload,
@@ -1222,6 +1230,80 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     pending.resolve({ success: true });
     await flushMicrotasks();
     expect(calls).toBe(1);
+  });
+
+  it('報名途中程式檔載入失敗：專屬文案、上報、只呼叫一次不重試（§3.259）', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    let calls = 0;
+    registerMock('registerForEvent', () => {
+      calls += 1;
+      throw new TypeError('Importing a module script failed.');
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.signup.error.loadFailed',
+      message: 'Importing a module script failed.',
+    });
+    expect(calls).toBe(1);
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    expect(String((reported.mock.calls[0]?.[1] as Error).message)).toContain('Importing a module script failed');
+  });
+
+  it('載入結果為空（MODULE_LOAD_FAILED 標記）：專屬文案、上報一次、類別碼正確（§3.260）', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    let calls = 0;
+    registerMock('registerForEvent', () => {
+      calls += 1;
+      throw moduleLoadFailedError('firebase/functions');
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.signup.error.loadFailed',
+    });
+    expect(calls).toBe(1);
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'MODULE_LOAD_FAILED' });
+  });
+
+  it('取消途中程式檔載入失敗（Chromium 訊息）：專屬文案並上報', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    registerMock('cancelRegistration', () => {
+      throw new TypeError('Failed to fetch dynamically imported module: https://x/assets/a.js');
+    });
+    await expect(cancelRegistration({
+      eventId: 'evtA',
+      userId: 'uidA',
+      registrationIds: ['targetA'],
+      kind: 'self',
+      context: cancelContext({}, 'uidA').context,
+    })).rejects.toMatchObject({
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.cancel.error.loadFailed',
+    });
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('cancel-module-load');
+  });
+
+  it('其他未知錯誤照舊：「報名失敗，請稍後重試」、不上報', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    registerMock('registerForEvent', () => {
+      throw new TypeError("undefined is not an object (evaluating 'e.httpsCallable')");
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      messageKey: 'event.signup.error.unknown',
+    });
+    expect(reported).not.toHaveBeenCalled();
   });
 
   it('Callable 在逾時前完成：計時器清掉', async () => {

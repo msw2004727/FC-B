@@ -340,7 +340,7 @@ function TeamFormModalBody(props: TeamFormProps & { open: boolean }): JSX.Elemen
               <select
                 id="ct-team-sport-tag"
                 aria-required="true"
-                style="width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.85rem;background:var(--surface);color:var(--text-primary)"
+                style="width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text-primary)"
                 value={api.values.sportTag}
                 onChange={(event) => api.setValue('sportTag', event.currentTarget.value)}
               >

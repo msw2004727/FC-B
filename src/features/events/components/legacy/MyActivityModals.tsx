@@ -5,6 +5,7 @@ import '@/styles/legacy/edu-info-btn.css';
 import { STATUS_CONFIG } from './TimelineEventCard';
 import { getEventCreatorName } from './MyActivityCard';
 import { loadEventRegistrations } from '../../data/event-detail';
+import { actualConfirmedCount, type DetailEvent } from '../../data/detail-model';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
 
@@ -141,7 +142,7 @@ export function MyActivityDetailModal({
     };
   }, [eventDocId]);
 
-  const ext = event as (EventDoc & { fee?: unknown; feeEnabled?: unknown; current?: unknown }) | null;
+  const ext = event as (EventDoc & { fee?: unknown; feeEnabled?: unknown }) | null;
   const effStatus = event ? effectiveEventStatus(event, nowMs) : 'open';
   const statusConf = STATUS_CONFIG[effStatus] ?? STATUS_CONFIG.open!;
   const feeNum = Number(ext?.fee || 0);
@@ -159,8 +160,11 @@ export function MyActivityDetailModal({
   ) as RegExtra[];
   const waitlistedRegs = regs.filter((r) => r.status === 'waitlisted') as RegExtra[];
 
-  const currentCount = Number(ext?.current || 0);
-  const confirmedCount = currentCount > 0 ? currentCount : confirmedRegs.length;
+  // 應收人數用實際正取（detail-model#actualConfirmedCount，不含團隊未報）；為 0 時退回本彈窗的正取名單人數（計數過期時與「正取名單（N）」標題一致，照 A 彈窗 event-manage.js:580）。
+  // 卡片應收（manage-fee-summary）是名單人數優先，計數過期時兩者可能差 1～2 人；此彈窗目前無入口，不另統一。
+  // A `_renderDetailFeeSummary` 用 e.current（Functions 寫入的 current＝realCurrent＋團隊未報）會多算，B 不照搬（顧問 §3.136 ②）。
+  const actualCount = event ? actualConfirmedCount(event as DetailEvent) : 0;
+  const confirmedCount = actualCount > 0 ? actualCount : confirmedRegs.length;
   // 下一批補：簽到/簽退/未報名掃碼紀錄讀取（目前無既有讀取函式，checkoutCount 暫為 0）
   const checkoutCount = 0;
   const feeExpected = fee * confirmedCount;

@@ -1,0 +1,94 @@
+/* 2026-11-17 站長：個人資訊頁「夥伴」一人一張卡片。路徑含 /legacy/，打包時自動加 .legacy-ui。
+ * 只用既有主題 token（字級照 .claude/rules/ui-typography.md）；編輯／刪除鈕尺寸沿用身分頁籤的 .profile-action-btn（profile.css）。 */
+#my-companions-card .pmate-list {
+  display: grid;
+  gap: .55rem;
+}
+#my-companions-card .pmate-card {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  min-width: 0;
+  padding: .75rem .75rem .75rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  box-shadow: 0 6px 16px -12px rgba(15, 23, 42, .45);
+}
+#my-companions-card .pmate-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+}
+#my-companions-card .pmate-main {
+  flex: 1;
+  min-width: 0;
+}
+#my-companions-card .pmate-name {
+  min-width: 0;
+  line-height: 1.35;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-body-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#my-companions-card .pmate-gender {
+  flex-shrink: 0;
+  padding: .08rem .45rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+#my-companions-card .pmate-sub {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  min-width: 0;
+  margin-top: .25rem;
+}
+#my-companions-card .pmate-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-body-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#my-companions-card .pmate-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: .4rem;
+}
+#my-companions-card .pmate-empty {
+  padding: 1.1rem .5rem;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--text-muted);
+  font-size: var(--font-size-body-sm);
+  text-align: center;
+}
+#my-companions-card .pmate-hint {
+  color: var(--text-muted);
+  font-size: var(--font-size-caption);
+}
+#my-companions-card .pmate-add {
+  width: 100%;
+  min-height: 44px;
+  margin-top: .6rem;
+  border-radius: 12px;
+  font-size: var(--font-size-body);
+  font-weight: 600;
+}

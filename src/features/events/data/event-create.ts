@@ -36,6 +36,7 @@ import {
 import { normalizeReleaseHours } from './team-reservation-release';
 import { EventCreateError, assertCreateAllowed, toOperateContext } from './event-create-guard';
 import { invalidateViewerRegistrations } from './viewer-registrations-cache';
+import { isIntensityLevel, type IntensityLevel } from './activity-categories';
 
 // 開團權限判斷（canCreateEvent／assertCreateAllowed）與 EventCreateError 原樣搬到 event-create-guard.ts：
 // 首頁開團入口只需要權限判斷，不必為它把整個資料層（Callable、封面上傳）帶進首屏。這裡照舊轉出。
@@ -140,6 +141,11 @@ export interface CreateEventForm {
   mapLocationUpdatedAt?: string | null;
   /** 團隊預留自動釋出時數（0／3／6／12／24／48／72；0＝不自動釋出）；建立與編輯一律明寫。 */
   teamReservationReleaseHours: number;
+  /**
+   * 活動分類。表單狀態含 ''（一般）。只有 `isIntensityLevel` 為真才寫進建立文件；
+   * 編輯更新不得帶此鍵。unknown：垃圾值由建立 payload 擋下，不寫鍵。
+   */
+  intensityLevel?: unknown;
 }
 
 export interface CreateEventContext {
@@ -227,6 +233,8 @@ export interface EventCreatePayload {
   mapProvider?: 'google' | 'manual' | null;
   mapLocationConfirmed?: boolean;
   mapLocationUpdatedAt?: string | null;
+  /** 只在 beginner／high-intensity 時出現；一般不寫此鍵。 */
+  intensityLevel?: IntensityLevel;
 }
 
 export interface EventEditUpdates {
@@ -529,6 +537,9 @@ export function buildCreateEventPayload(
 
   if (form.mapPickerEnabled) Object.assign(payload, buildLocationPayload(form));
 
+  // 一般（''）與非開放值都不寫鍵（顧問 §3.183）。選「一般」等於沒有這個欄位。
+  if (isIntensityLevel(form.intensityLevel)) payload.intensityLevel = form.intensityLevel;
+
   return payload;
 }
 
@@ -703,6 +714,8 @@ const CREATE_CONTENT_IGNORED_KEYS = new Set([
 /** buildCreateEventPayload 視條件才寫的建立欄位：本次沒寫時，既有文件也必須沒有實際內容（雙向比對）。 */
 const CREATE_OPTIONAL_CONTENT_KEYS = [
   'teamSplit', 'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed',
+  // ASSUMPTION: 重送若拿掉分類，既有文件已寫的 intensityLevel 不得當成同一請求。
+  'intensityLevel',
 ];
 
 function normalizeForCompare(value: unknown): unknown {

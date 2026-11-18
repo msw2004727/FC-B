@@ -23,6 +23,13 @@ import { getCurrentUser } from '@/data/auth';
 import { emit, on } from '@/core/events';
 import type { ViewerContext } from '@/features/events/data/types';
 import { getStaffTeams, type StaffTeamCandidate, type StaffTeamOption } from '@/features/events/data/team-staff';
+import {
+  rememberViewerTeamScan,
+  clearViewerTeamScan,
+  type ViewerTeamQueryField,
+  type ViewerTeamScan,
+  type ViewerTeamScanDoc,
+} from './viewer-team-scan';
 
 import {
   buildPermissionCheckerInput,
@@ -228,20 +235,33 @@ async function loadTeamsForUser(
   db: Firestore,
   uid: string,
   userDoc: VisibilityUserDoc | null,
-): Promise<{ teamIds: Set<string>; staffTeams: StaffTeamOption[] }> {
+): Promise<{ teamIds: Set<string>; staffTeams: StaffTeamOption[]; scan: ViewerTeamScan }> {
   const { collection, getDocs, query, where } = fs;
-  if (!userDoc) return { teamIds: computeVisibleTeamIds(uid, null, []), staffTeams: [] };
+  const emptyScan: ViewerTeamScan = { fields: new Set(), docs: [] };
+  if (!userDoc) return { teamIds: computeVisibleTeamIds(uid, null, []), staffTeams: [], scan: emptyScan };
+
+  // 成功的查詢才算「已查過」。失敗的欄位留給代表清單自己補查。
+  const fields = new Set<ViewerTeamQueryField>();
+  const docs: ViewerTeamScanDoc[] = [];
+  const seen = new Set<string>();
 
   const runTeamQuery = async (
     label: string,
+    field: ViewerTeamQueryField,
     teamQuery: Query,
   ): Promise<StaffTeamCandidate[]> => {
     try {
       const snap = await getDocs(teamQuery);
+      fields.add(field);
       return snap.docs.map((snapshot): StaffTeamCandidate => {
         const data = snapshot.data() as Record<string, unknown>;
+        if (!seen.has(snapshot.id)) {
+          seen.add(snapshot.id);
+          docs.push({ docId: snapshot.id, data });
+        }
         return {
           // 保留 public id；沒有 id 欄位時才使用 Firestore document ID。
+          // 代表清單不走這個 id，改讀 scan 裡的文件路徑 id。
           id: data.id ?? snapshot.id,
           name: data.name,
           teamName: data.teamName,
@@ -260,18 +280,22 @@ async function loadTeamsForUser(
   const [captains, legacyLeaders, leaders, coaches] = await Promise.all([
     runTeamQuery(
       'teams.captainUid',
+      'captainUid',
       query(collection(db, 'teams'), where('captainUid', '==', uid)),
     ),
     runTeamQuery(
       'teams.leaderUid',
+      'leaderUid',
       query(collection(db, 'teams'), where('leaderUid', '==', uid)),
     ),
     runTeamQuery(
       'teams.leaderUids',
+      'leaderUids',
       query(collection(db, 'teams'), where('leaderUids', 'array-contains', uid)),
     ),
     runTeamQuery(
       'teams.coachUids',
+      'coachUids',
       query(collection(db, 'teams'), where('coachUids', 'array-contains', uid)),
     ),
   ]);
@@ -282,7 +306,7 @@ async function loadTeamsForUser(
     userDoc,
     candidates,
   );
-  return { teamIds: ids, staffTeams: getStaffTeams(uid, candidates) };
+  return { teamIds: ids, staffTeams: getStaffTeams(uid, candidates), scan: { fields, docs } };
 }
 
 /**
@@ -291,7 +315,10 @@ async function loadTeamsForUser(
  * 角色非內建角色時讀 customRoles。
  * 可見性 roleLevel 用 getPrivateListRoleLevel(role, customRoles)，與 A 的 ROLE_LEVEL_MAP Proxy 一致。
  */
-export async function loadViewer(uid: string): Promise<ViewerView> {
+export async function loadViewer(
+  uid: string,
+  scanOut?: { current: ViewerTeamScan | null },
+): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
 
   const [firebase, fs] = await Promise.all([getFirebase(), import('firebase/firestore')]);
@@ -333,6 +360,7 @@ export async function loadViewer(uid: string): Promise<ViewerView> {
     customRolesPromise,
     loadTeamsForUser(fs, db, uid, visibilityUser),
   ]);
+  if (scanOut) scanOut.current = teams.scan;
 
   if (!roleRes.ok) warnOnce('rolePermissions', roleRes.error);
   if (!grantRes.ok) warnOnce('userPermissionGrants', grantRes.error);
@@ -464,6 +492,7 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
     viewerInflight = null;
     viewerInflightUid = null;
     viewerLoadFailed = false;
+    clearViewerTeamScan();
     // 判定未登入：之前是別人或還在「尚未判定」都要發一次確定的訪客快照，頁面才會從載入中換成未登入畫面。
     if (viewerUid !== null || viewerSnapshot.authPending) publishViewer(createGuestViewer());
     return;
@@ -471,6 +500,7 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
 
   if (uid !== viewerUid) {
     viewerLoadFailed = false;
+    clearViewerTeamScan();
     publishViewer(createMinimalViewer(uid));
   }
 
@@ -479,12 +509,15 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
 
   const generation = ++viewerGeneration;
   viewerLoadFailed = false;
-  const run = loadViewer(uid).then(
+  // 晚到的上一個人的查詢不得寫進這次的 scan。序號對不上就丟掉。
+  const scanOut: { current: ViewerTeamScan | null } = { current: null };
+  const run = loadViewer(uid, scanOut).then(
     (next) => {
       settleViewerInflight(run);
       if (generation !== viewerGeneration) return;
       if (!viewerLive || viewerLive.knownUid !== uid) return;
       if (next.uid !== uid) return;
+      if (scanOut.current) rememberViewerTeamScan(uid, scanOut.current);
       viewerLoadFailed = false;
       publishViewer(next);
     },
@@ -578,6 +611,7 @@ function resetViewerIdle(): void {
   viewerSnapshot = createAuthPendingViewer();
   viewerUid = null;
   viewerLoadFailed = false;
+  clearViewerTeamScan();
 }
 
 function releaseViewerSubscription(): void {

@@ -1,5 +1,7 @@
 // 側邊抽屜選單設定、角色資訊與權限判斷（M-002～M-008、M-014～M-015）。
-// 完全對齊 A `js/config.js`（ROLES、DRAWER_MENUS）與 `js/modules/role.js`（_canAccessDrawerItem、renderDrawerMenu）。
+// 角色表與 canAccessDrawerItem 對齊 A。DRAWER_MENUS 的順序與分卡是 B 刻意不同
+//（DRAWER-GLASS 2026-11-16，見 memory project_b_intentional_diffs_from_a）：
+// 權限由低到高，管理員與總管各自一張卡，不再照 A 的分隔線穿插。
 
 import type { RouteAccessContext } from '@/core/feature-types';
 import { drawerByRolePermission, drawerOwnActivityManage, drawerTeamManage } from '@/core/drawer-access';
@@ -184,7 +186,8 @@ export interface DrawerMenuEntry {
 }
 
 /**
- * 照 A `js/config.js#DRAWER_MENUS` 完整順序與設定。
+ * B 的抽屜順序（DRAWER-GLASS，站長 2026-11-16）：權限由低到高，不再照 A 把黑名單插在總管項目中間。
+ * ①所有人 ②教練／領隊 ③管理員（含黑名單）④總管。誰看得到仍只看 canAccessDrawerItem。
  * routePath 對照 `b_routes-summary.txt`（B 已註冊的後台／管理路由）：
  * - page-my-activities → /my-activities
  * - page-admin-dashboard → /admin/ops
@@ -202,20 +205,18 @@ export const DRAWER_MENUS: readonly DrawerMenuEntry[] = [
   { icon: '', label: '使用手冊', i18nKey: 'drawer.manual', action: 'manual', minRole: 'user' },
   { icon: '', label: '分享網頁', i18nKey: 'drawer.share', action: 'share', minRole: 'user' },
   { icon: '', label: '申請（俱樂部/場主/教練）', i18nKey: 'drawer.applyRole', action: 'apply-role', minRole: 'user' },
-  { divider: true },
   { icon: '', label: '活動管理', i18nKey: 'drawer.activityManage', page: 'page-my-activities', routePath: '/my-activities', minRole: 'coach', permissionCode: 'activity.manage.entry' },
   { icon: '', label: '俱樂部管理', i18nKey: 'drawer.teamManage', page: 'page-team-manage', routePath: '/team-manage', minRole: 'captain', permissionCode: 'team.manage.entry' },
-  { divider: true, minRole: 'admin' },
   { sectionLabel: '後台管理', i18nKey: 'drawer.backendManage', minRole: 'admin' },
   { icon: '', label: '用戶管理', i18nKey: 'admin.userManage', page: 'page-admin-users', routePath: '/admin/users', minRole: 'admin', permissionCode: 'admin.users.entry' },
   { icon: '', label: '首頁管理', i18nKey: 'admin.adManage', page: 'page-admin-banners', routePath: '/admin/banners', minRole: 'admin', permissionCode: 'admin.banners.entry' },
   { icon: '', label: '站內信管理', i18nKey: 'admin.messageManage', page: 'page-admin-messages', routePath: '/admin/messages', minRole: 'admin', permissionCode: 'admin.messages.entry' },
+  { icon: '', label: '黑名單管理', i18nKey: 'admin.repair', page: 'page-admin-repair', routePath: '/admin/repair', minRole: 'admin', permissionCode: 'admin.repair.entry', highlight: 'red' },
   { icon: '', label: '數據儀表板', i18nKey: 'admin.dashboard', page: 'page-admin-dashboard', routePath: '/admin/ops', minRole: 'super_admin', permissionCode: 'admin.dashboard.entry' },
   { icon: '', label: '推播通知設定', i18nKey: 'admin.notifSettings', page: 'page-admin-notif', routePath: '/admin/notif', minRole: 'super_admin', permissionCode: 'admin.notif.entry' },
   { icon: '', label: '系統公告管理', i18nKey: 'admin.announcements', page: 'page-admin-announcements', routePath: null, minRole: 'super_admin', permissionCode: 'admin.announcements.entry' },
   { icon: '', label: '權限管理', i18nKey: 'admin.roles', page: 'page-admin-roles', routePath: '/admin/roles', minRole: 'super_admin' },
   { icon: '', label: '日誌中心', i18nKey: 'admin.logs', page: 'page-admin-logs', routePath: '/admin/logs', minRole: 'super_admin', permissionCode: 'admin.logs.entry' },
-  { icon: '', label: '黑名單管理', i18nKey: 'admin.repair', page: 'page-admin-repair', routePath: '/admin/repair', minRole: 'admin', permissionCode: 'admin.repair.entry', highlight: 'red' },
   { icon: '', label: '無效資料查詢', i18nKey: 'admin.inactive', page: 'page-admin-inactive', routePath: '/admin/inactive', minRole: 'super_admin', permissionCode: 'admin.inactive.entry' },
 ];
 
@@ -308,25 +309,42 @@ export function getDrawerItemBgClass(
   return '';
 }
 
+export type DrawerGroupTone = 'user' | 'staff' | 'admin' | 'super';
+
+export interface DrawerRenderItem {
+  readonly key: string;
+  readonly entry: DrawerMenuEntry;
+  readonly label: string;
+  readonly i18nKey?: string;
+  readonly bgClass: '' | 'drawer-role-admin' | 'drawer-role-super' | 'drawer-role-yellow';
+  readonly locked: boolean;
+}
+
 export type DrawerRenderNode =
-  | { readonly kind: 'divider'; readonly key: string }
-  | { readonly kind: 'section'; readonly key: string; readonly label: string; readonly i18nKey?: string }
   | {
-      readonly kind: 'item';
+      readonly kind: 'group';
       readonly key: string;
-      readonly entry: DrawerMenuEntry;
-      readonly label: string;
-      readonly i18nKey?: string;
-      readonly bgClass: '' | 'drawer-role-admin' | 'drawer-role-super' | 'drawer-role-yellow';
-      readonly locked: boolean;
-    };
+      readonly tone: DrawerGroupTone;
+      readonly items: readonly DrawerRenderItem[];
+    }
+  | { readonly kind: 'section'; readonly key: string; readonly label: string; readonly i18nKey?: string };
+
+/** 分卡只看 minRole 等級（黑名單 minRole 是 admin，所以在管理員卡；highlight 不決定分卡）。 */
+function drawerGroupTone(
+  item: DrawerMenuEntry,
+  levelMap: Readonly<Record<string, number>>,
+): DrawerGroupTone {
+  const minLevel = levelMap[item.minRole || 'user'] ?? 0;
+  if (minLevel >= 5) return 'super';
+  if (minLevel >= 4) return 'admin';
+  if (minLevel >= 1) return 'staff';
+  return 'user';
+}
 
 /**
- * 照 A `js/modules/role.js#renderDrawerMenu` 完整演算法產生渲染節點：
- * - 先過濾出可見項目
- * - divider：前面必須已畫過實際項目，且後面還有實際項目才畫
- * - sectionLabel：後面還有實際項目才畫
- * - 後台區跨角色等級（admin ↔ super_admin，minLevel >= 4）且非連續兩個紅底（drawer-role-super）時自動插入分隔線
+ * 可見項目收成四張卡（一般 → 教練／領隊 → 管理員 → 總管）。
+ * 空卡不畫。分隔線與舊的 auto-divider 不再產出。
+ * 「後台管理」只在管理員卡或總管卡至少一張有項目時畫一次，放在這兩張卡前面。
  */
 export function buildDrawerRenderNodes(
   access?: RouteAccessContext | null,
@@ -334,58 +352,50 @@ export function buildDrawerRenderNodes(
   customRoles?: readonly CustomRoleInput[] | null,
 ): DrawerRenderNode[] {
   const levelMap = buildRuntimeRoleLevelMap(customRoles);
-  const visibleMenus = menus.filter(
-    (item) => item.divider || item.sectionLabel || canAccessDrawerItem(item, access, customRoles),
-  );
+  const buckets: Record<DrawerGroupTone, DrawerRenderItem[]> = {
+    user: [],
+    staff: [],
+    admin: [],
+    super: [],
+  };
+  let section: { label: string; i18nKey?: string } | null = null;
+
+  for (let index = 0; index < menus.length; index += 1) {
+    const item = menus[index]!;
+    if (item.divider) continue;
+    if (item.sectionLabel) {
+      section = { label: item.sectionLabel, i18nKey: item.i18nKey };
+      continue;
+    }
+    if (!canAccessDrawerItem(item, access, customRoles)) continue;
+    const tone = drawerGroupTone(item, levelMap);
+    buckets[tone].push({
+      key: item.page || item.action || `item-${index}`,
+      entry: item,
+      label: item.label || '',
+      i18nKey: item.i18nKey,
+      bgClass: getDrawerItemBgClass(item, customRoles),
+      locked: Boolean(item.locked),
+    });
+  }
 
   const nodes: DrawerRenderNode[] = [];
-  let lastMinRole: string | null = null;
-  let lastBgClass = '';
-  let hasRenderedActionItem = false;
-
-  visibleMenus.forEach((item, index) => {
-    if (item.divider) {
-      const hasNextActionItem = visibleMenus
-        .slice(index + 1)
-        .some((entry) => !entry.divider && !entry.sectionLabel);
-      if (!hasRenderedActionItem || !hasNextActionItem) return;
-      nodes.push({ kind: 'divider', key: `div-${index}` });
-    } else if (item.sectionLabel) {
-      const hasNextActionItem = visibleMenus
-        .slice(index + 1)
-        .some((entry) => !entry.divider && !entry.sectionLabel);
-      if (!hasNextActionItem) return;
+  const order: readonly DrawerGroupTone[] = ['user', 'staff', 'admin', 'super'];
+  let sectionEmitted = false;
+  for (const tone of order) {
+    const items = buckets[tone];
+    if (items.length === 0) continue;
+    if ((tone === 'admin' || tone === 'super') && !sectionEmitted && section) {
       nodes.push({
         kind: 'section',
-        key: `sec-${index}`,
-        label: item.sectionLabel,
-        i18nKey: item.i18nKey,
+        key: 'sec-backend',
+        label: section.label,
+        i18nKey: section.i18nKey,
       });
-    } else {
-      const role = item.minRole || 'user';
-      const minLevel = levelMap[role] ?? 0;
-      const bgClass = getDrawerItemBgClass(item, customRoles);
-      if (lastMinRole !== role && minLevel >= 4) {
-        const bothRed = bgClass === 'drawer-role-super' && lastBgClass === 'drawer-role-super';
-        if (lastMinRole && (levelMap[lastMinRole] ?? 0) >= 4 && !bothRed) {
-          nodes.push({ kind: 'divider', key: `auto-div-${index}` });
-        }
-        lastMinRole = role;
-      }
-      lastBgClass = bgClass;
-      nodes.push({
-        kind: 'item',
-        key: item.page || item.action || `item-${index}`,
-        entry: item,
-        label: item.label || '',
-        i18nKey: item.i18nKey,
-        bgClass,
-        locked: Boolean(item.locked),
-      });
-      hasRenderedActionItem = true;
+      sectionEmitted = true;
     }
-  });
-
+    nodes.push({ kind: 'group', key: `group-${tone}`, tone, items });
+  }
   return nodes;
 }
 

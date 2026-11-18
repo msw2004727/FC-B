@@ -3,18 +3,18 @@
 
 import { assertAllowedFields } from './write-guard';
 
-/** A 新會員文件的欄位（順序照 A `userData`）；必須是 Rules `userRootCreateAllowedKeys()` 的子集合。 */
+/** 會員資料讀取強化：A 新會員文件欄位（順序照 A `userData`），私密欄位改寫私密子文件不落根；仍是 Rules `userRootCreateAllowedKeys()` 的子集合。 */
 export const USER_DOC_CREATE_FIELDS = [
-  'uid', 'lineUserId', 'displayName', 'pictureUrl', 'email',
+  'uid', 'lineUserId', 'displayName', 'pictureUrl',
   'role', 'exp', 'level',
-  'gender', 'birthday', 'region', 'sports', 'teamId', 'teamName', 'phone', 'titleBig', 'titleNormal',
+  'gender', 'birthday', 'region', 'sports', 'teamId', 'teamName', 'titleBig', 'titleNormal',
   'totalGames', 'completedGames', 'attendanceRate', 'badgeCount',
   'createdAt', 'lastLogin',
 ] as const;
 
-/** 逐字對照 FC firestore.rules `userRootCreateAllowedKeys()`（legacy 遷移是建立文件，受這份清單限制）。 */
+/** 會員資料讀取強化：四欄改寫私密子文件，本清單為更嚴的子集合；其餘逐字對照 FC firestore.rules `userRootCreateAllowedKeys()`（legacy 遷移是建立文件，受這份清單限制）。 */
 export const USER_ROOT_CREATE_RULES_FIELDS = [
-  'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl', 'phone', 'email',
+  'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl',
   'role', 'exp', 'level',
   'gender', 'birthday', 'region', 'sports',
   'teamId', 'teamName', 'teamIds', 'teamNames',
@@ -23,7 +23,7 @@ export const USER_ROOT_CREATE_RULES_FIELDS = [
   'profileCompleted',
   'createdAt', 'lastLogin', 'updatedAt',
   'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
-  'favorites', 'socialLinks', 'lineNotify', 'companions', 'eduChildren', 'stealth',
+  'favorites', 'socialLinks', 'lineNotify', 'stealth',
 ] as const;
 
 /** 已存在文件的登入更新欄位；逐字對照 Rules `isSafeLoginUpdate()` 的 hasOnly。 */
@@ -71,28 +71,50 @@ export function normalizeLineProfile(profile: LineLoginProfile): {
 /** A 新建分支的 payload（createdAt／lastLogin 為 serverTimestamp）。 */
 export function buildNewUserDoc(uid: string, profile: LineLoginProfile, ts: unknown): Data {
   const n = normalizeLineProfile(profile);
+  // 會員資料讀取強化：建檔 payload 不含私密欄位；LINE email 由 user-doc-sync 寫入私密子文件。
   return {
     uid, lineUserId: profile.userId,
-    displayName: n.displayName, pictureUrl: n.pictureUrl, email: n.email,
+    displayName: n.displayName, pictureUrl: n.pictureUrl,
     role: 'user', exp: 0, level: 1,
     gender: null, birthday: null, region: null, sports: null,
-    teamId: null, teamName: null, phone: null, titleBig: null, titleNormal: null,
+    teamId: null, teamName: null, titleBig: null, titleNormal: null,
     totalGames: 0, completedGames: 0, attendanceRate: 0, badgeCount: 0,
     createdAt: ts, lastLogin: ts,
   };
 }
 
-/** A legacy 遷移分支的 payload（set merge）。 */
+/**
+ * 舊文件帶俱樂部（teamId 是非空字串，或 teamIds 是非空陣列）。Rules 建立條件要求 teamId 為 null、teamIds 為空，
+ * 前端自動遷移不能丟掉俱樂部資料硬建，判定不可自動遷移（健檢 C1-03；帶俱樂部的由後端代遷另案）。
+ */
+export function legacyHasTeam(legacy: Data): boolean {
+  return (typeof legacy.teamId === 'string' && legacy.teamId !== '')
+    || (Array.isArray(legacy.teamIds) && legacy.teamIds.length > 0);
+}
+
+/**
+ * A legacy 遷移分支的 payload（set merge）。
+ * 與 A 的刻意差異（健檢 C1-03）：舊文件沒有俱樂部時（teamId 缺欄／null／空字串、teamIds 缺欄／null／空陣列）
+ * 補 `teamId: null`、`teamIds: []`，符合 Rules 建立條件；帶俱樂部的值照抄，由守門（legacyHasTeam／assertUserRootCreate）擋下。
+ */
 export function buildLegacyMigration(legacy: Data, uid: string, profile: LineLoginProfile, ts: unknown): Data {
   const n = normalizeLineProfile(profile);
   const payload: Data = {
     ...legacy,
     uid, lineUserId: profile.userId,
     displayName: n.displayName || legacy.displayName || uid,
-    pictureUrl: n.pictureUrl, email: n.email,
+    pictureUrl: n.pictureUrl,
     lastLogin: ts,
   };
+  // 會員資料讀取強化：遷移時私密欄位不寫回根文件，改由 user-doc-sync 寫入私密子文件。
+  delete payload['email'];
+  delete payload['phone'];
+  delete payload['companions'];
+  delete payload['eduChildren'];
   if (!legacy.createdAt) payload.createdAt = ts;
+  if (legacy.teamId === undefined || legacy.teamId === null || legacy.teamId === '') payload.teamId = null;
+  if (legacy.teamIds === undefined || legacy.teamIds === null
+    || (Array.isArray(legacy.teamIds) && legacy.teamIds.length === 0)) payload.teamIds = [];
   return payload;
 }
 
@@ -154,6 +176,8 @@ export function assertUserRootCreate(payload: Data, uid: string, ts: unknown, al
   if (has('exp') && payload.exp !== 0) bad.push('exp');
   if (has('level') && payload.level !== 1) bad.push('level');
   if (payload.createdAt !== ts) bad.push('createdAt');
+  // Rules `request.resource.data.teamId == null` 直接取欄位：缺欄也被拒，所以必填（值另由 CREATE_TYPE_RULES 檢查）。
+  if (!has('teamId')) bad.push('teamId');
   for (const key of ['lastLogin', 'updatedAt']) {
     if (has(key) && payload[key] !== ts) bad.push(key);
   }
@@ -168,12 +192,17 @@ const isMap = (v: unknown): boolean =>
 const isStringOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
 const isListOrNull = (v: unknown): boolean => v === null || Array.isArray(v);
 
-/** 逐欄對照 Rules `isSafeUserRootCreate()` 的型別條件（欄位有出現才檢查，同 Rules 的 `!(k in data) || …`）。 */
+/**
+ * 逐欄對照 Rules `isSafeUserRootCreate()` 的型別條件（欄位有出現才檢查，同 Rules 的 `!(k in data) || …`）。
+ * teamId 只能是 null（缺欄另由 assertUserRootCreate 擋）、teamIds 只能是空陣列：對照 Rules `teamId == null`、`teamIds == []`
+ * （取代原本的「字串或 null／list 或 null」，健檢 C1-03：Rules 已收緊、前端守門落後）。
+ */
 const CREATE_TYPE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
   photoURL: isStringOrNull, pictureUrl: isStringOrNull, phone: isStringOrNull, email: isStringOrNull,
   gender: isStringOrNull, birthday: isStringOrNull, region: isStringOrNull, sports: isStringOrNull,
-  teamId: isStringOrNull, teamName: isStringOrNull, titleBig: isStringOrNull, titleNormal: isStringOrNull,
-  teamIds: isListOrNull, teamNames: isListOrNull, companions: isListOrNull, eduChildren: isListOrNull,
+  teamId: (v) => v === null, teamName: isStringOrNull, titleBig: isStringOrNull, titleNormal: isStringOrNull,
+  teamIds: (v) => Array.isArray(v) && v.length === 0,
+  teamNames: isListOrNull, companions: isListOrNull, eduChildren: isListOrNull,
   totalGames: Number.isInteger, completedGames: Number.isInteger, badgeCount: Number.isInteger,
   attendanceRate: (v) => typeof v === 'number',
   profileCompleted: (v) => typeof v === 'boolean',

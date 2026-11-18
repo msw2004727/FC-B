@@ -26,10 +26,12 @@
   "feature.reserved": "This feature is coming soon",
   "feature.external": "External system coming soon",
   "internalTest.badge": "ToosterX Early Access {version}",
-  "swUpdate": { "title": "New version", "forcedTitle": "Please update", "now": "Update now", "later": "Later", "busy": "Action in progress. Please update later." },
+  "swUpdate": { "title": "New version", "forcedTitle": "Please update", "now": "Update now", "later": "Later", "busy": "Action in progress. Please update later.", "loadFailed": "Failed to load", "reload": "Reload" },
   "lineLoginHint": {
-    "openInLine": "Open in LINE app",
-    "newTabNote": "After sign-in finishes, a new tab opens. You can close the old tab."
+    "openInLine": "Sign in with LINE app",
+    "openInLineNote": "Stay in LINE from now on",
+    "browserLogin": "Sign in with this browser",
+    "browserLoginNote": "Back here after LINE confirms"
   },
   "ui": {
     "shell": {
@@ -42,7 +44,8 @@
       "font_medium": "Medium",
       "font_large": "Large",
       "fontAction": "Text size: {current}. Switch to {next}",
-      "loginError": "Unable to complete LINE login. Please try again."
+      "loginError": "Unable to complete LINE login. Please try again.",
+      "loginExpired": "LINE login has expired. Please refresh and log in again."
     },
     "topBar": {
       "label": "Top navigation",
@@ -63,13 +66,33 @@
       "navigation": "More features",
       "admin": "Administration",
       "language": "Language",
+      "more": "More",
       "loading": "Loading language",
       "localeError": "Unable to change language right now. Please try again later.",
       "theme": "Appearance",
       "theme_light": "Light",
       "theme_dark": "Dark",
       "theme_system": "System",
-      "themeAction": "Current mode: {current}. Switch to {next}"
+      "themeAction": "Current mode: {current}. Switch to {next}",
+      "privacyShort": "Privacy",
+      "termsShort": "Terms",
+      "reset": "Trouble? Reset & sign in again",
+      "resetTitle": "Reset and sign in again?",
+      "resetBody": "You'll be signed out, temporary data on this device will be cleared, and the app will reload.",
+      "resetConfirm": "Reset",
+      "guestName": "Guest",
+      "loginChecking": "Checking sign-in…",
+      "syncing": "Syncing…",
+      "role": {
+        "guest": "Guest",
+        "pending": "Checking",
+        "user": "Member",
+        "coach": "Coach",
+        "captain": "Captain",
+        "venue_owner": "Venue owner",
+        "admin": "Admin",
+        "super_admin": "Super admin"
+      }
     },
     "badge": { "empty": "Not set" },
     "chip": { "empty": "Uncategorized", "remove": "Remove “{label}”" },

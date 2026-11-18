@@ -53,13 +53,13 @@ describe('LegacyCompanionsCard', () => {
     vi.clearAllMocks();
   });
 
-  it('空清單顯示「尚無同行者」且 count=0', () => {
+  it('空清單顯示「尚無運動夥伴」且 count=0', () => {
     render(
       <LegacyCompanionsCard uid="U-me" profile={emptyProfile()} onSaved={vi.fn()} />,
     );
     expect(document.getElementById('companions-count')?.textContent).toBe('0');
     fireEvent.click(screen.getByText('我的運動夥伴'));
-    expect(screen.getByText('尚無同行者')).toBeTruthy();
+    expect(screen.getByText('尚無運動夥伴')).toBeTruthy();
   });
 
   it('標題點擊就地展開、aria-expanded 隨之切換', () => {
@@ -72,7 +72,7 @@ describe('LegacyCompanionsCard', () => {
     expect(title.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('有同行者時渲染序號、性別圖示、備註與底部說明', () => {
+  it('有運動夥伴時渲染序號、性別圖示、備註與底部說明', () => {
     render(
       <LegacyCompanionsCard
         uid="U-me"
@@ -84,8 +84,9 @@ describe('LegacyCompanionsCard', () => {
       />,
     );
     fireEvent.click(screen.getByText('我的運動夥伴'));
-    expect(screen.getByText('①')).toBeTruthy();
-    expect(screen.getByText('②')).toBeTruthy();
+    // 2026-11-17 改卡片：序號改成圓形徽章內的數字（取代 ①②）。
+    const cards = document.querySelectorAll('.pmate-card .pmate-no');
+    expect(Array.from(cards, (el) => el.textContent)).toEqual(['1', '2']);
     expect(screen.getByText('李四')).toBeTruthy();
     expect(screen.getByText('♂男')).toBeTruthy();
     expect(screen.getByText('♀女')).toBeTruthy();
@@ -95,7 +96,7 @@ describe('LegacyCompanionsCard', () => {
     ).toBeTruthy();
   });
 
-  it('超過 10 位時序號以數字顯示', () => {
+  it('超過 10 位時序號照樣以數字顯示', () => {
     const companions = Array.from({ length: 11 }, (_, i) => ({
       id: `comp_${i}`,
       name: `人${i + 1}`,
@@ -110,21 +111,21 @@ describe('LegacyCompanionsCard', () => {
       />,
     );
     fireEvent.click(screen.getByText('我的運動夥伴'));
-    expect(screen.getByText('⑩')).toBeTruthy();
+    expect(within(document.getElementById('companions-inner-list')!).getByText('10')).toBeTruthy();
     // 測試同步更新：照 A（M-127）外層 #companions-count 徽章也是 11，改以列表容器限定。
     const list = document.getElementById('companions-inner-list');
     if (!list) throw new Error('Expected #companions-inner-list');
     expect(within(list).getByText('11')).toBeTruthy();
   });
 
-  it('新增同行者：saveCompanions 收到完整陣列、onSaved、toast 皆對', async () => {
+  it('新增運動夥伴：saveCompanions 收到完整陣列、onSaved、toast 皆對', async () => {
     vi.mocked(saveCompanions).mockResolvedValue(undefined);
     const onSaved = vi.fn();
     render(
       <LegacyCompanionsCard uid="U-me" profile={emptyProfile()} onSaved={onSaved} />,
     );
     fireEvent.click(screen.getByText('我的運動夥伴'));
-    fireEvent.click(screen.getByText('+ 新增同行者'));
+    fireEvent.click(screen.getByText('+ 新增運動夥伴'));
 
     const nameInput = document.getElementById('companion-modal-name');
     expect(nameInput).not.toBeNull();
@@ -151,7 +152,7 @@ describe('LegacyCompanionsCard', () => {
     });
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith({ companions: next });
-      expect(toast.show).toHaveBeenCalledWith({ message: '同行者已新增' });
+      expect(toast.show).toHaveBeenCalledWith({ message: '運動夥伴已新增' });
     });
   });
 
@@ -160,13 +161,13 @@ describe('LegacyCompanionsCard', () => {
       <LegacyCompanionsCard uid="U-me" profile={emptyProfile()} onSaved={vi.fn()} />,
     );
     fireEvent.click(screen.getByText('我的運動夥伴'));
-    fireEvent.click(screen.getByText('+ 新增同行者'));
+    fireEvent.click(screen.getByText('+ 新增運動夥伴'));
     fireEvent.click(screen.getByText('儲存'));
     expect(toast.show).toHaveBeenCalledWith({ message: '請填寫姓名' });
     expect(saveCompanions).not.toHaveBeenCalled();
   });
 
-  it('編輯同行者：保留 id 並送出更新值', async () => {
+  it('編輯運動夥伴：保留 id 並送出更新值', async () => {
     vi.mocked(saveCompanions).mockResolvedValue(undefined);
     const onSaved = vi.fn();
     render(
@@ -195,14 +196,14 @@ describe('LegacyCompanionsCard', () => {
 
     await waitFor(() => {
       expect(saveCompanions).toHaveBeenCalledTimes(1);
-      expect(toast.show).toHaveBeenCalledWith({ message: '同行者已更新' });
+      expect(toast.show).toHaveBeenCalledWith({ message: '運動夥伴已更新' });
     });
     const call = vi.mocked(saveCompanions).mock.calls[0];
     const next = call![1] as Array<Record<string, unknown>>;
     expect(next[0]).toMatchObject({ id: 'comp_a', name: '李四（改）' });
   });
 
-  it('刪除：確認後呼叫 saveCompanions 並 toast「同行者已刪除」', async () => {
+  it('刪除：確認後呼叫 saveCompanions 並 toast「運動夥伴已刪除」', async () => {
     vi.mocked(saveCompanions).mockResolvedValue(undefined);
     vi.mocked(appConfirm).mockResolvedValue(true);
     const onSaved = vi.fn();
@@ -222,11 +223,11 @@ describe('LegacyCompanionsCard', () => {
     });
 
     await waitFor(() => {
-      expect(appConfirm).toHaveBeenCalledWith('確定要刪除此同行者？');
+      expect(appConfirm).toHaveBeenCalledWith('確定要刪除此運動夥伴？');
     });
     await waitFor(() => {
       expect(saveCompanions).toHaveBeenCalledTimes(1);
-      expect(toast.show).toHaveBeenCalledWith({ message: '同行者已刪除' });
+      expect(toast.show).toHaveBeenCalledWith({ message: '運動夥伴已刪除' });
     });
     expect(onSaved).toHaveBeenCalledWith({ companions: [] });
   });
@@ -252,6 +253,6 @@ describe('LegacyCompanionsCard', () => {
       expect(appConfirm).toHaveBeenCalledTimes(1);
     });
     expect(saveCompanions).not.toHaveBeenCalled();
-    expect(toast.show).not.toHaveBeenCalledWith({ message: '同行者已刪除' });
+    expect(toast.show).not.toHaveBeenCalledWith({ message: '運動夥伴已刪除' });
   });
 });

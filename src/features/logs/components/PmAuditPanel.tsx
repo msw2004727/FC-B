@@ -1,391 +1,278 @@
 /**
- * 日誌中心「聊天室稽核」頁籤（站長 2026-11-02 Q5：照舊站放日誌中心）。
- * DOM／class／文案照 A `js/modules/message/pm-audit.js#renderPmAuditPanel` 與 `css/message.css` 的 `.pm-audit-*`。
- * - 只限 super_admin（A `_isPmAuditAllowed`；頁籤本身也只對 super_admin 顯示）。
- * - 全部走既有 Callable，前端 Firestore 讀取 0。
- * - 設定卡說明段落照 A 保留（R-UI-026：照 A 搬的畫面文案仍照 A；站長 Q11 拿掉說明只針對小遊戲與頭像檢測）。
- * - 與 A 差異：頭像只接受 https 網址；晚到的回應不覆蓋較新的操作結果。
+ * 日誌中心「聊天室稽核」頁籤（2026-11-16 改版，站長：log 要 UID＋暱稱、點了直接看對話、時間區間與每頁筆數；顧問 §3.195 案 A）。
+ * - 只限 super_admin（頁籤本身只對 super_admin 顯示；資料全走既有 super_admin Callable，權限不放寬）。
+ * - Log 為主列表：每列暱稱＋UID 短碼，可點列直接開唯讀對話抽屜；點暱稱篩「操作者」或「對象」（一次一個鍵）。
+ * - 時間區間（日／週／月）與每頁筆數（10／20／30／無限）見 usePmAuditPages。
+ * - 「隱藏稽核查詢紀錄」只在前端藏管理員自查紀錄；藏完不足一頁也不自動抓下一頁。
+ * - 私訊設定收進齒輪抽屜，打開時才讀；看完對話不自動重載 log。
+ * - 暱稱查詢見 `pm-audit-names.ts`（只放記憶體）；完整 UID 只在抽屜內複製，不進網址／console。
  */
 import '@/styles/legacy/message.css';
-// 四段查詢載入沿用 .reg-loading。不整檔引入 activity.css（.back-btn 等副作用）。
 import '@/styles/legacy/reg-loading.css';
+import './pm-audit.css';
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { useT } from '@/i18n/i18n';
-import { toast } from '@/ui/Toast';
 
+import { rangeContaining, type LogRange, type PageSizeOption } from '../data/log-range';
 import {
-  PM_AUDIT_ACTIONS,
   listPmThreads,
-  loadPmAuditLogs,
   loadPmConversation,
-  loadPmSettings,
-  pmAuditActionLabel,
-  pmAuditShortUid,
-  pmFormatTime,
-  savePmSettings,
   searchPmUsers,
   type PmAuditLog,
-  type PmAuditMessage,
   type PmAuditThread,
   type PmAuditUser,
 } from '../data/pm-audit';
+import { PM_AUDIT_FILTER_ACTIONS } from '../data/pm-audit-actions';
+import { resolvePmUserNames, type NameResolver } from '../data/pm-audit-names';
+import { collectLogUids, isSelfAudit, shortUid, splitTargetUids, type PmAuditFilter } from '../data/pm-audit-view';
+import { InfiniteSentinel } from './InfiniteSentinel';
+import { LogPager, LogRangeBar } from './LogRangeBar';
+import { PmAuditFinder, type FinderBox } from './PmAuditFinder';
+import { PmAuditLogList } from './PmAuditLogList';
+import { PmAuditSettingsControl } from './PmAuditSettingsControl';
+import { PmConversationSheet, type ConversationBox } from './PmConversationSheet';
+import { usePmAuditPages } from './usePmAuditPages';
 
-type Box<T> = { status: 'idle' } | { status: 'loading' } | { status: 'error' } | { status: 'ready'; items: T[] };
-
-interface LogState {
-  status: 'loading' | 'error' | 'ready';
-  items: PmAuditLog[];
-  nextCursorMs: number | null;
-  hasMore: boolean;
-  loadingMore: boolean;
+export interface PmAuditPanelProps {
+  /** 測試／harness 注入；預設查 Firestore `users`。 */
+  resolveNames?: NameResolver;
+  /** 測試／harness 注入「現在」。 */
+  nowMs?: number;
 }
 
-function safeAvatar(url: string): string | null {
-  return /^https:\/\//i.test(url) ? url : null;
-}
-
-function loadingLine(text: string): JSX.Element {
-  return (
-    <>
-      <div class="reg-loading" role="status" style="white-space:nowrap">{text}</div>
-      <div class="reg-loading-skeleton" aria-hidden="true">
-        <div class="reg-loading-skeleton-row" />
-        <div class="reg-loading-skeleton-row" />
-        <div class="reg-loading-skeleton-row" />
-      </div>
-    </>
-  );
-}
-
-export function PmAuditPanel(): JSX.Element {
+export function PmAuditPanel(props: PmAuditPanelProps): JSX.Element {
   const t = useT();
-  const [allowPm, setAllowPm] = useState(false);
-  const [settingStatus, setSettingStatus] = useState<'loading' | 'on' | 'off' | 'loadFailed' | 'saving' | 'saveFailed'>('loading');
-  const [settingBusy, setSettingBusy] = useState(true);
-  const [query, setQuery] = useState('');
-  const [users, setUsers] = useState<Box<PmAuditUser>>({ status: 'idle' });
-  const [threads, setThreads] = useState<Box<PmAuditThread>>({ status: 'idle' });
-  const [conversation, setConversation] = useState<Box<PmAuditMessage>>({ status: 'idle' });
-  const [action, setAction] = useState('');
-  const [logs, setLogs] = useState<LogState>({ status: 'loading', items: [], nextCursorMs: null, hasMore: false, loadingMore: false });
+  const resolveNames = props.resolveNames ?? resolvePmUserNames;
+  const nowMs = props.nowMs ?? Date.now();
+  const [filter, setFilter] = useState<PmAuditFilter>({ kind: 'all' });
+  const [range, setRange] = useState<LogRange>(() => rangeContaining('week', nowMs));
+  const [pageSize, setPageSize] = useState<PageSizeOption>(10);
+  const [pageIdx, setPageIdx] = useState(0);
+  const [hideSelf, setHideSelf] = useState(true);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [convo, setConvo] = useState<ConversationBox>({ status: 'closed' });
+  const [users, setUsers] = useState<FinderBox<PmAuditUser>>({ status: 'idle' });
+  const [threads, setThreads] = useState<FinderBox<PmAuditThread>>({ status: 'idle' });
 
   const alive = useRef(true);
-  const userSeq = useRef(0);
-  const threadSeq = useRef(0);
   const convoSeq = useRef(0);
-  const logSeq = useRef(0);
-  const savingRef = useRef(false);
-  const logsRef = useRef(logs);
-  logsRef.current = logs;
-  const actionRef = useRef(action);
-  actionRef.current = action;
-
-  async function reloadLogs(nextAction: string): Promise<void> {
-    const seq = ++logSeq.current;
-    setAction(nextAction);
-    actionRef.current = nextAction;
-    setLogs({ status: 'loading', items: [], nextCursorMs: null, hasMore: false, loadingMore: false });
-    try {
-      const page = await loadPmAuditLogs(nextAction, null);
-      if (!alive.current || seq !== logSeq.current) return;
-      setLogs({ status: 'ready', items: page.logs, nextCursorMs: page.nextCursorMs, hasMore: page.hasMore, loadingMore: false });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[loadPmAuditLogs]', err);
-      if (alive.current && seq === logSeq.current) {
-        setLogs({ status: 'error', items: [], nextCursorMs: null, hasMore: false, loadingMore: false });
-      }
-    }
-  }
-
-  async function loadMoreLogs(): Promise<void> {
-    const current = logsRef.current;
-    if (current.status !== 'ready' || !current.nextCursorMs || current.loadingMore) return;
-    const seq = logSeq.current;
-    setLogs({ ...current, loadingMore: true });
-    try {
-      const page = await loadPmAuditLogs(actionRef.current, current.nextCursorMs);
-      if (!alive.current || seq !== logSeq.current) return;
-      setLogs((prev) => ({
-        status: 'ready',
-        items: prev.items.concat(page.logs),
-        nextCursorMs: page.nextCursorMs,
-        hasMore: page.hasMore,
-        loadingMore: false,
-      }));
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[loadPmAuditLogs]', err);
-      if (alive.current && seq === logSeq.current) setLogs((prev) => ({ ...prev, loadingMore: false }));
-    }
-  }
+  const finderSeq = useRef(0);
+  const openingRef = useRef(false);
 
   useEffect(() => {
     alive.current = true;
-    (async () => {
-      try {
-        const allow = await loadPmSettings();
-        if (!alive.current) return;
-        setAllowPm(allow);
-        setSettingStatus(allow ? 'on' : 'off');
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[loadPmAuditSettings]', err);
-        if (alive.current) setSettingStatus('loadFailed');
-      } finally {
-        if (alive.current) setSettingBusy(false);
-      }
-    })().catch(() => {
-      // 已於內部處理。
-    });
-    void reloadLogs('');
     return () => {
       alive.current = false;
     };
   }, []);
 
-  async function saveSettings(next: boolean): Promise<void> {
-    if (savingRef.current) return;
-    savingRef.current = true;
-    setSettingBusy(true);
-    setAllowPm(next);
-    setSettingStatus('saving');
+  function addNames(logs: PmAuditLog[]): void {
+    const uids = collectLogUids(logs);
+    if (uids.length === 0) return;
+    resolveNames(uids)
+      .then((found) => {
+        if (alive.current) setNames((prev) => ({ ...prev, ...found }));
+      })
+      .catch(() => undefined); // 查不到暱稱不影響 log；不把 UID 印進 console
+  }
+
+  const pages = usePmAuditPages(filter, range, pageSize, addNames);
+  const { state } = pages;
+
+  function applyFilter(next: PmAuditFilter): void {
+    setPageIdx(0);
+    setFilter(next);
+  }
+
+  async function openConversation(conversationId: string, uids: string[]): Promise<void> {
+    if (openingRef.current) return; // 防連點：每次呼叫後端都會寫一筆稽核
+    openingRef.current = true;
+    const mySeq = ++convoSeq.current;
+    setConvo({ status: 'loading', uids });
     try {
-      const saved = await savePmSettings(next);
-      if (!alive.current) return;
-      setAllowPm(saved);
-      setSettingStatus(saved ? 'on' : 'off');
-      toast.show({ message: t('logs.chat.settingSaved'), tone: 'success' });
-      void reloadLogs('settings_update');
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[savePmAuditSettings]', err);
-      if (alive.current) {
-        setAllowPm(!next);
-        setSettingStatus('saveFailed');
-      }
-      toast.show({ message: t('logs.chat.settingSaveToastFailed'), tone: 'error' });
+      const data = await loadPmConversation(conversationId);
+      if (alive.current && mySeq === convoSeq.current) setConvo({ status: 'ready', uids, data });
+    } catch {
+      if (alive.current && mySeq === convoSeq.current) setConvo({ status: 'error', uids });
     } finally {
-      savingRef.current = false;
-      if (alive.current) setSettingBusy(false);
+      if (mySeq === convoSeq.current) openingRef.current = false;
     }
   }
 
-  async function searchUsers(): Promise<void> {
-    const q = query.trim();
-    if (!q) {
-      toast.show({ message: t('logs.chat.searchRequired'), tone: 'warning' });
-      return;
-    }
-    const seq = ++userSeq.current;
+  function openFromLog(log: PmAuditLog): void {
+    const targets = splitTargetUids(log);
+    const uids = log.action === 'audit_view_conversation' ? targets : [log.actorUid, ...targets].filter(Boolean);
+    openConversation(log.conversationId, uids).catch(() => undefined);
+  }
+
+  async function searchUsers(q: string): Promise<void> {
+    const mySeq = ++finderSeq.current;
     setUsers({ status: 'loading' });
+    setThreads({ status: 'idle' });
     try {
       const found = await searchPmUsers(q);
-      if (alive.current && seq === userSeq.current) setUsers({ status: 'ready', items: found });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[searchPmAuditUsers]', err);
-      if (alive.current && seq === userSeq.current) setUsers({ status: 'error' });
+      if (alive.current && mySeq === finderSeq.current) setUsers({ status: 'ready', items: found });
+    } catch {
+      if (alive.current && mySeq === finderSeq.current) setUsers({ status: 'error' });
     }
   }
 
-  async function openThreads(uid: string): Promise<void> {
-    const seq = ++threadSeq.current;
-    convoSeq.current += 1;
+  async function showThreads(uid: string): Promise<void> {
+    const mySeq = ++finderSeq.current;
     setThreads({ status: 'loading' });
-    setConversation({ status: 'idle' });
     try {
       const list = await listPmThreads(uid);
-      if (alive.current && seq === threadSeq.current) setThreads({ status: 'ready', items: list });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[loadPmAuditThreads]', err);
-      if (alive.current && seq === threadSeq.current) setThreads({ status: 'error' });
+      if (alive.current && mySeq === finderSeq.current) setThreads({ status: 'ready', items: list });
+    } catch {
+      if (alive.current && mySeq === finderSeq.current) setThreads({ status: 'error' });
     }
   }
 
-  async function openConversation(conversationId: string): Promise<void> {
-    const seq = ++convoSeq.current;
-    setConversation({ status: 'loading' });
-    try {
-      const messages = await loadPmConversation(conversationId);
-      if (!alive.current || seq !== convoSeq.current) return;
-      setConversation({ status: 'ready', items: messages });
-      void reloadLogs('audit_view_conversation');
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[loadPmAuditConversation]', err);
-      if (alive.current && seq === convoSeq.current) setConversation({ status: 'error' });
+  const infinite = pageSize === 'infinite';
+  const byAction = filter.kind === 'action';
+  const raw = infinite ? state.chunks.flat() : (state.chunks[pageIdx] ?? []);
+  const visible = hideSelf && !byAction ? raw.filter((log) => !isSelfAudit(log, false)) : raw;
+  const hiddenCount = raw.length - visible.length;
+  const lastChunk = state.chunks[state.chunks.length - 1] ?? [];
+  const lastChunkVisible = hideSelf && !byAction ? lastChunk.some((log) => !isSelfAudit(log, false)) : lastChunk.length > 0;
+  const hasNextPage = pageIdx + 1 < state.chunks.length || !state.done;
+  const personUid = filter.kind === 'actor' || filter.kind === 'target' ? filter.uid : '';
+  const personLabel = personUid ? `${names[personUid] || t('logs.chat.unknownUser')} ${shortUid(personUid)}` : '';
+
+  async function nextPage(): Promise<void> {
+    const target = pageIdx + 1;
+    if (target < state.chunks.length) {
+      setPageIdx(target);
+      return;
     }
+    if (state.done) return;
+    // 抓成功才換頁；失敗留在原頁（顧問 §3.196：原型先換頁、失敗會頁碼錯位）。
+    if (await pages.more()) setPageIdx(target);
   }
 
-  const settingText: Record<typeof settingStatus, string> = {
-    loading: t('logs.chat.settingLoading'),
-    on: t('logs.chat.settingOn'),
-    off: t('logs.chat.settingOff'),
-    loadFailed: t('logs.chat.settingLoadFailed'),
-    saving: t('logs.chat.settingSaving'),
-    saveFailed: t('logs.chat.settingSaveFailed'),
-  };
-
-  const muted = (text: string): JSX.Element => <div class="muted">{text}</div>;
+  function loadMore(): void {
+    pages.more().catch(() => undefined);
+  }
 
   return (
-    <div class="pm-audit-layout">
-      <section class="pm-audit-card pm-audit-settings-card">
-        <div class="pm-audit-setting-row">
-          <div class="pm-audit-setting-copy">
-            <h3>{t('logs.chat.settingTitle')}</h3>
-            <p>{t('logs.chat.settingDesc')}</p>
+    <div class="pma-layout">
+      <div class="pma-toolbar">
+        <PmAuditFinder
+          users={users}
+          threads={threads}
+          onSearch={(q) => { searchUsers(q).catch(() => undefined); }}
+          onPickUser={(uid) => { showThreads(uid).catch(() => undefined); }}
+          onPickThread={(thread) => { openConversation(thread.id, thread.participants).catch(() => undefined); }}
+          onClear={() => {
+            finderSeq.current += 1;
+            setUsers({ status: 'idle' });
+            setThreads({ status: 'idle' });
+          }}
+        />
+        <PmAuditSettingsControl />
+      </div>
+
+      <div class="pma-filters">
+        <select
+          id="pm-audit-action"
+          class="pma-select"
+          value={byAction ? filter.action : ''}
+          aria-label={t('logs.chat.allActions')}
+          onChange={(e) => {
+            const v = e.currentTarget.value;
+            applyFilter(v ? { kind: 'action', action: v } : { kind: 'all' });
+          }}
+        >
+          <option value="">{t('logs.chat.allActions')}</option>
+          {PM_AUDIT_FILTER_ACTIONS.map((key) => (
+            <option key={key} value={key}>{t(`logs.chat.actions.${key}`)}</option>
+          ))}
+        </select>
+        <label class={`pma-chip pma-toggle${hideSelf && !byAction ? ' is-on' : ''}${byAction ? ' is-disabled' : ''}`}>
+          <input type="checkbox" checked={hideSelf && !byAction} disabled={byAction} onChange={(e) => setHideSelf(e.currentTarget.checked)} />
+          <span>{t('logs.chat.hideSelfAudit')}</span>
+        </label>
+        <button type="button" class="pma-icon-btn" aria-label={t('logs.chat.refresh')} onClick={() => { setPageIdx(0); pages.reload(); }}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      <LogRangeBar
+        range={range}
+        pageSize={pageSize}
+        nowMs={nowMs}
+        onRange={(next) => { setPageIdx(0); setRange(next); }}
+        onPageSize={(next) => { setPageIdx(0); setPageSize(next); }}
+      />
+
+      {personUid ? (
+        <div class="pma-active-filter">
+          <span class="pma-chip is-active" data-no-translate>
+            {t(filter.kind === 'actor' ? 'logs.chat.filterActorChip' : 'logs.chat.filterTargetChip', { name: personLabel })}
+          </span>
+          <button type="button" class="pma-chip-clear" onClick={() => applyFilter({ kind: 'all' })}>{t('logs.chat.clearFilter')}</button>
+        </div>
+      ) : null}
+
+      {state.status === 'loading' || (state.loadingMore && !infinite && raw.length === 0) ? (
+        <div class="reg-loading" role="status">{t('logs.chat.loading')}</div>
+      ) : null}
+      {state.status === 'error' ? (
+        <div class="pma-note" role="alert">
+          <span>{t('logs.chat.logsFailed')}</span>
+          <button type="button" class="pma-chip-clear" onClick={pages.reload}>{t('logs.chat.retry')}</button>
+        </div>
+      ) : null}
+      {state.status === 'ready' && visible.length === 0 && !state.loadingMore ? <div class="pma-note">{t('logs.chat.logsEmpty')}</div> : null}
+      {state.status === 'ready' && visible.length > 0 ? (
+        <PmAuditLogList
+          logs={visible}
+          names={names}
+          onFilterActor={(uid) => applyFilter({ kind: 'actor', uid })}
+          onFilterTarget={(uid) => applyFilter({ kind: 'target', uid })}
+          onOpenConversation={openFromLog}
+        />
+      ) : null}
+      {state.status === 'ready' && hiddenCount > 0 ? <div class="pma-note">{t('logs.chat.hiddenCount', { count: hiddenCount })}</div> : null}
+
+      {state.status === 'ready' && infinite && !state.done ? (
+        <>
+          <InfiniteSentinel enabled={!state.loadingMore && lastChunkVisible} onReach={loadMore} />
+          <div class="pm-audit-load-more-row">
+            <button type="button" class="pma-more" disabled={state.loadingMore} onClick={loadMore}>
+              {state.loadingMore ? t('logs.chat.loading') : t('logs.chat.loadMore')}
+            </button>
           </div>
-          <label class="pm-audit-switch" aria-label={t('logs.chat.settingTitle')}>
-            <input
-              id="pm-user-pm-toggle"
-              type="checkbox"
-              checked={allowPm}
-              disabled={settingBusy}
-              onChange={(e) => {
-                void saveSettings(e.currentTarget.checked);
-              }}
-            />
-            <span />
-          </label>
-        </div>
-        <div id="pm-audit-settings-status" class="pm-audit-setting-status muted">{settingText[settingStatus]}</div>
-      </section>
+        </>
+      ) : null}
+      {state.status === 'ready' && !infinite ? (
+        <LogPager
+          page={pageIdx + 1}
+          hasPrev={pageIdx > 0}
+          hasNext={hasNextPage}
+          busy={state.loadingMore}
+          onPrev={() => setPageIdx(Math.max(0, pageIdx - 1))}
+          onNext={() => { nextPage().catch(() => undefined); }}
+        />
+      ) : null}
+      {state.status === 'ready' && state.truncated ? <div class="pma-note lc-warn">{t('logs.range.truncated')}</div> : null}
+      {state.status === 'ready' && infinite && state.done && !state.truncated && visible.length > 0 ? <div class="pma-note">{t('logs.chat.logsEnd')}</div> : null}
 
-      <section class="pm-audit-card">
-        <h3>{t('logs.chat.searchTitle')}</h3>
-        <div class="pm-audit-row">
-          <input
-            id="pm-audit-user-query"
-            type="text"
-            placeholder={t('logs.chat.searchPlaceholder')}
-            aria-label={t('logs.chat.searchPlaceholder')}
-            value={query}
-            onInput={(e) => setQuery(e.currentTarget.value)}
-          />
-          <button type="button" class="primary-btn small" onClick={() => void searchUsers()}>
-            {t('logs.chat.search')}
-          </button>
-        </div>
-        <div id="pm-audit-users" class="pm-audit-results">
-          {users.status === 'loading' ? loadingLine(t('logs.chat.searching')) : null}
-          {users.status === 'error' ? muted(t('logs.chat.searchFailed')) : null}
-          {users.status === 'ready' && users.items.length === 0 ? muted(t('logs.chat.noUsers')) : null}
-          {users.status === 'ready'
-            ? users.items.map((u) => {
-              const avatar = safeAvatar(u.pictureUrl);
-              return (
-                <button key={u.uid} type="button" class="pm-audit-user" data-uid={u.uid} onClick={() => void openThreads(u.uid)}>
-                  {avatar ? <img src={avatar} alt="" /> : <span />}
-                  <strong data-no-translate>{u.name || u.uid || t('logs.chat.unnamed')}</strong>
-                  <small data-no-translate>{[u.uid, u.role || 'user'].filter(Boolean).join(' · ')}</small>
-                </button>
-              );
-            })
-            : null}
-        </div>
-      </section>
-
-      <section class="pm-audit-card">
-        <h3>{t('logs.chat.threadsTitle')}</h3>
-        <div id="pm-audit-threads" class={`pm-audit-results${threads.status === 'idle' ? ' muted' : ''}`}>
-          {threads.status === 'idle' ? t('logs.chat.threadsIdle') : null}
-          {threads.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
-          {threads.status === 'error' ? muted(t('logs.chat.threadsFailed')) : null}
-          {threads.status === 'ready' && threads.items.length === 0 ? muted(t('logs.chat.threadsEmpty')) : null}
-          {threads.status === 'ready'
-            ? threads.items.map((thread) => (
-              <button key={thread.id} type="button" class="pm-audit-thread" data-cid={thread.id} onClick={() => void openConversation(thread.id)}>
-                <strong data-no-translate>{thread.title}</strong>
-                <span>{thread.lastMessageBody}</span>
-                <small>{pmFormatTime(thread.lastMessageAt)}</small>
-              </button>
-            ))
-            : null}
-        </div>
-      </section>
-
-      <section class="pm-audit-card pm-audit-conversation-card">
-        <h3>{t('logs.chat.conversationTitle')}</h3>
-        <div id="pm-audit-conversation" class={`pm-audit-conversation${conversation.status === 'idle' ? ' muted' : ''}`}>
-          {conversation.status === 'idle' ? t('logs.chat.conversationIdle') : null}
-          {conversation.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
-          {conversation.status === 'error' ? muted(t('logs.chat.conversationFailed')) : null}
-          {conversation.status === 'ready' && conversation.items.length === 0 ? muted(t('logs.chat.conversationEmpty')) : null}
-          {conversation.status === 'ready'
-            ? conversation.items.map((m) => (
-              <article key={m.key} class="pm-audit-message">
-                <div>
-                  <strong data-no-translate>{m.senderLabel}</strong>
-                  <small>{pmFormatTime(m.createdAt)}</small>
-                </div>
-                <p>{m.recalled ? t('logs.chat.recalled') : m.body}</p>
-              </article>
-            ))
-            : null}
-        </div>
-      </section>
-
-      <section class="pm-audit-card">
-        <h3>{t('logs.chat.logTitle')}</h3>
-        <div class="pm-audit-row">
-          <select
-            id="pm-audit-action"
-            value={action}
-            aria-label={t('logs.chat.allActions')}
-            onChange={(e) => setAction(e.currentTarget.value)}
-          >
-            <option value="">{t('logs.chat.allActions')}</option>
-            {PM_AUDIT_ACTIONS.map((key) => (
-              <option key={key} value={key}>{t(`logs.chat.actions.${key}`)}</option>
-            ))}
-          </select>
-          <button type="button" class="outline-btn small" onClick={() => void reloadLogs(actionRef.current)}>
-            {t('logs.chat.refresh')}
-          </button>
-        </div>
-        <div id="pm-audit-logs" class="pm-audit-results">
-          {logs.status === 'loading' ? loadingLine(t('logs.chat.loading')) : null}
-          {logs.status === 'error' ? muted(t('logs.chat.logsFailed')) : null}
-          {logs.status === 'ready' && logs.items.length === 0 ? muted(t('logs.chat.logsEmpty')) : null}
-          {logs.status === 'ready' && logs.items.length > 0 ? (
-            <>
-              {logs.items.map((log) => {
-                const actor = pmAuditShortUid(log.actorUid);
-                const target = pmAuditShortUid(log.targetUid);
-                const route = target && target !== '-' ? `${actor} -> ${target}` : actor;
-                const fullRoute = [log.actorUid, log.targetUid].filter(Boolean).join(' -> ');
-                return (
-                  <div key={log.key} class="pm-audit-log" title={fullRoute}>
-                    <strong>{pmAuditActionLabel(log.action)}</strong>
-                    <span data-no-translate>{route}</span>
-                    <small>{pmFormatTime(log.createdAtIso) || pmFormatTime(log.createdAt)}</small>
-                  </div>
-                );
-              })}
-              {logs.hasMore || logs.loadingMore ? (
-                <div class="pm-audit-load-more-row">
-                  <button
-                    type="button"
-                    class="outline-btn small pm-audit-load-more"
-                    disabled={logs.loadingMore}
-                    onClick={() => void loadMoreLogs()}
-                  >
-                    {logs.loadingMore ? t('logs.chat.loading') : t('logs.chat.loadMore')}
-                  </button>
-                </div>
-              ) : (
-                <div class="pm-audit-log-end muted">{t('logs.chat.logsEnd')}</div>
-              )}
-            </>
-          ) : null}
-        </div>
-      </section>
+      <PmConversationSheet
+        box={convo}
+        names={names}
+        onClose={() => {
+          // 關閉時放開防連點鎖：舊請求晚到會被序號丟棄，不會蓋掉新開的對話（第三輪 Flash P2）。
+          convoSeq.current += 1;
+          openingRef.current = false;
+          setConvo({ status: 'closed' });
+        }}
+      />
     </div>
   );
 }

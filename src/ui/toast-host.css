@@ -26,5 +26,5 @@
 
 /* 吐司掛進開啟中的 <dialog> 時仍在 body 底下，這條同樣有效。 */
 body.fcb-update-open .ui-toast-host {
-  bottom: calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px + 68px);
+  bottom: calc(var(--bottombar-h, var(--bottomnav-h, 64px)) + 16px + 68px + env(safe-area-inset-bottom, 0px));
 }

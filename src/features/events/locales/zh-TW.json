@@ -75,7 +75,7 @@
     "waitlisted": "候補名單",
     "emptyRoster": "尚無報名",
     "unnamed": "用戶",
-    "companion": "同行者",
+    "companion": "運動夥伴",
     "self": "（本人）",
     "registered": "（已報名）",
     "companionSignup": "幫夥伴報名",
@@ -85,7 +85,7 @@
     "cancelHint": "請選擇要取消的對象，確認後才會取消。",
     "confirmCancel": "確認取消",
     "selectSomeone": "請至少選擇一位參加者",
-    "noCompanions": "尚無已儲存的同行者",
+    "noCompanions": "尚無已儲存的運動夥伴",
     "selected": "已選 {count} 人",
     "remaining": "剩餘名額 {count}",
     "totalFee": "預計費用 NT${fee}",
@@ -133,6 +133,7 @@
       "birthdayRequired": "請先補齊生日資料後再報名",
       "requestIdConflict": "請重新整理後再試",
       "participantNotAllowed": "無權限執行此操作",
+      "loadFailed": "頁面載入不完整，請重新載入後再報名",
       "unknown": "報名失敗，請稍後重試"
     }
   },
@@ -145,6 +146,7 @@
       "eventEnded": "活動已開始，無法再取消報名",
       "eventStarted": "活動已於開始時間結束，無法取消報名",
       "requestIdConflict": "請重新整理後再試",
+      "loadFailed": "頁面載入不完整，請重新載入後再取消",
       "unknown": "取消失敗，請稍後重試"
     }
   },
@@ -204,7 +206,7 @@
     "promotePending": "...",
     "promoteAria": "將 {name} 正取",
     "demoteConfirm": "確定將 {name} 下放到候補嗎？",
-    "demoteConfirmWithCompanions": "確定將 {name}（含 {count} 位同行者）下放到候補嗎？",
+    "demoteConfirmWithCompanions": "確定將 {name}（含 {count} 位運動夥伴）下放到候補嗎？",
     "overCapacityConfirm": "正取後將超過名額上限（{after}/{max}），確定要繼續嗎？",
     "overCapacityConfirmNoCount": "正取後將超過名額上限，確定要繼續嗎？",
     "demoteDone": "已將 {name} 下放至候補",
@@ -287,5 +289,14 @@
         "other": "已結束或取消 {count} 場"
       }
     }
+  },
+  "regionPicker": {
+    "label": "地區",
+    "all": "全部",
+    "central": "中部",
+    "north": "北部",
+    "south": "南部",
+    "east": "東部&外島",
+    "nearby": "尋找附近活動"
   }
 }

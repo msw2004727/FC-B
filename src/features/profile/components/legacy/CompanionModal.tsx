@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { useLegacyT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import './profile-modal-glass.css';
 
 /**
  * M-127：同行者新增／編輯彈窗（照 A `pages/modals.html#companion-modal-overlay`、
@@ -75,13 +76,13 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
       >
         <div
           class="modal"
-          style="width:calc(100% - 2rem);max-width:340px;position:static;border-radius:var(--radius);transform:none"
+          style="width:calc(100% - 2rem);max-width:340px;position:relative;transform:none"
         >
           <div class="modal-header">
             <h3 id="companion-modal-title">
               {mode === 'edit'
-                ? lt('編輯同行者', '編輯同行者')
-                : lt('新增同行者', '新增同行者')}
+                ? lt('編輯運動夥伴', '編輯運動夥伴')
+                : lt('新增運動夥伴', '新增運動夥伴')}
             </h3>
             <button
               type="button"

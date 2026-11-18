@@ -136,6 +136,7 @@ describe('notifyEventChanged', () => {
 
     const count = await notifyEventChanged({
       eventId: 'e-1',
+      relationEventId: 'e-1',
       title: '測試活動',
       date: '2026/05/09',
       location: '台北',
@@ -153,6 +154,64 @@ describe('notifyEventChanged', () => {
     // dedupeKey 走 getEventChangeNotificationDedupeKey（比對字串開頭即可）
     const extra = first![0].extra as { dedupeKey: string };
     expect(extra.dedupeKey.startsWith('event_changed:e-1:U1:')).toBe(true);
+    expect(first![0].source).toBe('template:event_changed');
+    expect(first![0].relationKeys).toEqual({ eventId: 'e-1' });
+    expect(second![0].relationKeys).toEqual({ eventId: 'e-1' });
+    const lineCalls = vi.mocked(callFn).mock.calls.filter(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    );
+    expect(lineCalls).toHaveLength(1);
+    expect(lineCalls[0]![1]).toEqual({
+      uid: 'U2',
+      category: 'activity',
+      title: '活動變更通知',
+      body: '您報名的活動資訊有所變更，請留意：\n\n活動名稱：測試活動\n活動時間：2026/05/09\n活動地點：台北\n\n如因變更需要取消報名，請至活動頁面操作。',
+      source: 'template:event_changed',
+      dedupeKey: 'k-ok',
+      eventId: 'e-1',
+    });
+  });
+
+  it('eventId 空白不帶鍵；前後空白會 trim 後再送', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    vi.mocked(deliverInboxMessage).mockResolvedValue({ dedupeKey: 'k-blank' } as never);
+    vi.mocked(callFn).mockResolvedValue({} as never);
+
+    await notifyEventChanged({
+      eventId: '   ',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0]).not.toHaveProperty('relationKeys');
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0].source).toBe('template:event_changed');
+    const blankLine = vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as Record<string, unknown>;
+    expect(blankLine).not.toHaveProperty('eventId');
+    expect(Object.keys(blankLine).sort()).toEqual(
+      ['body', 'category', 'dedupeKey', 'source', 'title', 'uid'],
+    );
+
+    vi.mocked(deliverInboxMessage).mockClear();
+    vi.mocked(callFn).mockClear();
+    await notifyEventChanged({
+      eventId: ' e-2 ',
+      relationEventId: ' e-2 ',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+    expect(vi.mocked(deliverInboxMessage).mock.calls[0]![0].relationKeys).toEqual({ eventId: 'e-2' });
+    expect((vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as { eventId: string }).eventId).toBe('e-2');
   });
 
   it('sendTemplateNotification 整批失敗仍回 0，不拋出', async () => {
@@ -171,5 +230,56 @@ describe('notifyEventChanged', () => {
     });
 
     expect(count).toBe(0);
+  });
+
+  it('缺資料欄位 id 時不帶 eventId 鍵，dedupeKey 照舊', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
+    vi.mocked(deliverInboxMessage).mockResolvedValueOnce({ dedupeKey: 'k-no-id' } as never);
+    vi.mocked(callFn).mockResolvedValueOnce({} as never);
+
+    await notifyEventChanged({
+      eventId: 'e-1',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+
+    const inboxCall = vi.mocked(deliverInboxMessage).mock.calls[0]![0];
+    expect(inboxCall).not.toHaveProperty('relationKeys');
+    const extra = inboxCall.extra as { dedupeKey: string };
+    expect(extra.dedupeKey).toBe(getEventChangeNotificationDedupeKey('e-1', 'U1', { title: 'T' }));
+    const lineCall = vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as Record<string, unknown>;
+    expect(lineCall).not.toHaveProperty('eventId');
+  });
+
+  it('有資料欄位 id 時帶 eventId 鍵', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
+    vi.mocked(deliverInboxMessage).mockResolvedValueOnce({ dedupeKey: 'k-with-id' } as never);
+    vi.mocked(callFn).mockResolvedValueOnce({} as never);
+
+    await notifyEventChanged({
+      eventId: 'e-1',
+      relationEventId: 'e-1',
+      title: 'T',
+      date: 'D',
+      location: 'L',
+      recipientUids: ['U1'],
+      eventData: { title: 'T' },
+      senderUid: 'U-sender',
+    });
+
+    const inboxCall = vi.mocked(deliverInboxMessage).mock.calls[0]![0];
+    expect(inboxCall.relationKeys).toEqual({ eventId: 'e-1' });
+    const lineCall = vi.mocked(callFn).mock.calls.find(
+      (c) => c[0] === 'enqueuePrivilegedLineNotification',
+    )![1] as Record<string, unknown>;
+    expect(lineCall.eventId).toBe('e-1');
   });
 });

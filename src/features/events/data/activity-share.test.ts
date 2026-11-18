@@ -36,11 +36,14 @@ describe('activity-share normalizers', () => {
     expect(normalizeShareRegion(null)).toBe('全部');
   });
 
-  it('normalizes tab: ended / empty -> normal; calendar / female kept', () => {
+  it('normalizes tab: ended / empty -> normal; calendar / female / intensity kept', () => {
     expect(normalizeShareTab('ended')).toBe('normal');
     expect(normalizeShareTab('female')).toBe('female');
     expect(normalizeShareTab('calendar')).toBe('calendar');
     expect(normalizeShareTab('')).toBe('normal');
+    expect(normalizeShareTab('beginner')).toBe('beginner');
+    expect(normalizeShareTab('high-intensity')).toBe('high-intensity');
+    expect(normalizeShareTab('BEGINNER')).toBe('BEGINNER');
   });
 
   it('normalizes type to allowed set', () => {
@@ -73,6 +76,15 @@ describe('composeActivityRoutePath', () => {
     expect(
       composeActivityRoutePath({ region: '全部', sport: 'all', tab: 'calendar', type: '' }),
     ).toBe('/activities?region=all&sport=all&tab=calendar');
+  });
+
+  it('writes beginner and high-intensity tabs so the share URL opens that tab', () => {
+    expect(
+      composeActivityRoutePath({ region: '全部', sport: 'all', tab: 'beginner', type: '' }),
+    ).toBe('/activities?region=all&sport=all&tab=beginner');
+    expect(
+      composeActivityRoutePath({ region: '北部', sport: 'football', tab: 'high-intensity', type: '' }),
+    ).toBe('/activities?region=north&sport=football&tab=high-intensity');
   });
 });
 

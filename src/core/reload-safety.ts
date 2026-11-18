@@ -8,9 +8,12 @@
 
 import { t } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import { isRouteLoadPending } from './route-load-pending';
 import { isSubmitting } from './submit-guard';
 
 const SAFE_PATHS = new Set(['/', '/activities', '/teams', '/profile']);
+/** 只給 chunk 載入失敗路徑：活動詳情是唯讀瀏覽，重載一次最可靠（顧問 §3.255 C′）。id 形狀同 share-link PUBLIC_ID。 */
+const CHUNK_RELOAD_EXTRA_PATH = /^\/events\/[A-Za-z0-9_-]{1,120}$/;
 
 const MODAL_OPEN_SELECTOR = [
   '.modal.open',
@@ -43,6 +46,8 @@ export interface ReloadSafetyOptions {
   ignorePageSafety?: boolean;
   doc?: Document | null;
   currentPath?: string;
+  /** chunk 載入失敗路徑專用：`/events/<id>` 也算安全頁。SW 更新路徑不得帶這個選項。 */
+  chunkFailure?: boolean;
 }
 
 /** 照 A `_canSafelyReloadForSwUpdate`（`app.js:1140-1200`）檢查目前是否可安全重載。 */
@@ -93,7 +98,13 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
       (typeof window !== 'undefined' ? window.location.pathname : '/');
     const cleanPath = rawPath.split('?')[0]?.split('#')[0] || '/';
     if (!SAFE_PATHS.has(cleanPath)) {
-      return { safe: false, reason: 'unsafe-page' };
+      if (!(options.chunkFailure && CHUNK_RELOAD_EXTRA_PATH.test(cleanPath))) {
+        return { safe: false, reason: 'unsafe-page' };
+      }
+      // 活動詳情只在「路由正在載入」時放行：背景預載或其他動態載入失敗不整頁重載（顧問 §3.263 甲）。
+      if (!isRouteLoadPending()) return { safe: false, reason: 'background-load' };
+      // 只看 false 那一側：onLine 為 true 不代表真的有網路，但為 false 時重載多半落到瀏覽器離線頁。
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return { safe: false, reason: 'offline' };
     }
   }
 
@@ -109,6 +120,8 @@ let promptCleanup: (() => void) | undefined;
 export interface SwReloadPromptOptions {
   /** 強制更新：不提供「稍後」。已顯示的一般提示框會被升級，已是強制則維持強制。 */
   forced?: boolean;
+  /** chunk 載入失敗：中性文案「載入失敗｜重新載入」，不說有新版本（顧問 §3.255 C′）。已有提示框時不換掉它。 */
+  chunk?: boolean;
 }
 
 /** 提示框顯示期間掛在 body 上；app-shell.css 依此加大主內容底部空白、toast-host.css 把吐司往上移。 */
@@ -153,6 +166,8 @@ const COPY_ZH_TW = {
   now: '現在更新',
   later: '稍後',
   busy: '目前操作尚未完成，稍後再更新',
+  loadFailed: '載入失敗',
+  reload: '重新載入',
 } as const;
 
 function copy(name: keyof typeof COPY_ZH_TW): string {
@@ -202,6 +217,17 @@ function upgradeToForced(prompt: HTMLElement): void {
   });
   const title = prompt.querySelector('[data-sw-reload-title]');
   if (title) title.textContent = copy('forcedTitle');
+  const now = prompt.querySelector('[data-sw-reload-now]');
+  if (now) now.textContent = copy('now');
+}
+
+/** 載入失敗提示被 SW 一般提示接手：換回「有新版本可用／現在更新」。 */
+function chunkToUpdate(prompt: HTMLElement): void {
+  delete prompt.dataset.mode;
+  const title = prompt.querySelector('[data-sw-reload-title]');
+  if (title) title.textContent = copy('title');
+  const now = prompt.querySelector('[data-sw-reload-now]');
+  if (now) now.textContent = copy('now');
 }
 
 /** 照 A `_showSwReloadPrompt`（`app.js:1203-1264`）顯示底部新版本更新提示框。 */
@@ -213,18 +239,23 @@ export function showSwReloadPrompt(
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || !doc.body) return;
   const wantForced = opts?.forced === true;
+  const wantChunk = !wantForced && opts?.chunk === true;
   const existing = doc.getElementById('sw-reload-deferred-prompt');
   if (promptShown && existing) {
+    // 已有提示框（更新或強制）時它的按鈕也會重載，不換掉 SW 的重載函式。
+    if (wantChunk) return;
     if (existing.dataset.mode === 'forced' && !wantForced) {
       // 強制提示框已顯示：一般（SW 等待中）呼叫不得換掉強制路徑的重載函式，記下待還原。
       deferredSwReloadFn = onReload;
       return;
     }
     // 一般提示升級成強制：舊的重載函式留著，強制提示收掉時還原。
-    if (wantForced && existing.dataset.mode !== 'forced' && pendingReloadFn) deferredSwReloadFn = pendingReloadFn;
+    // 載入失敗提示的函式只是單純重載，不必留著還原。
+    if (wantForced && existing.dataset.mode !== 'forced' && existing.dataset.mode !== 'chunk' && pendingReloadFn) deferredSwReloadFn = pendingReloadFn;
     pendingReloadFn = onReload;
     // 強制優先：後來的一般呼叫不得把「稍後」加回去。
     if (wantForced || existing.dataset.mode === 'forced') upgradeToForced(existing);
+    else if (existing.dataset.mode === 'chunk') chunkToUpdate(existing);
     return;
   }
   pendingReloadFn = onReload;
@@ -236,6 +267,7 @@ export function showSwReloadPrompt(
   prompt.setAttribute('aria-live', 'polite');
   if (reason) prompt.dataset.reason = reason;
   if (wantForced) prompt.dataset.mode = 'forced';
+  else if (wantChunk) prompt.dataset.mode = 'chunk';
   const bare = !doc.getElementById('bottom-tabs');
   if (bare) prompt.dataset.dock = 'bare';
   // 先用舊外觀、opacity 0。特效套上後才淡入；import 失敗則把 opacity 還原，舊外觀留著。
@@ -245,8 +277,8 @@ export function showSwReloadPrompt(
   const title = doc.createElement('div');
   title.setAttribute('data-sw-reload-title', '');
   title.style.cssText = TITLE_CSS;
-  title.textContent = copy(wantForced ? 'forcedTitle' : 'title');
-  prompt.append(title, promptButton(doc, 'data-sw-reload-now', copy('now'), '#0d9488'));
+  title.textContent = copy(wantForced ? 'forcedTitle' : wantChunk ? 'loadFailed' : 'title');
+  prompt.append(title, promptButton(doc, 'data-sw-reload-now', copy(wantChunk ? 'reload' : 'now'), '#0d9488'));
   if (!wantForced) {
     prompt.append(promptButton(doc, 'data-sw-reload-later', copy('later'), 'rgba(255,255,255,.12)'));
   }
@@ -287,18 +319,14 @@ export function showSwReloadPrompt(
   );
 }
 
-/** 若目前安全則立即執行 reload，否則顯示「有新版本可用」提示框延後更新。 */
-export function requestSafeReload(
-  reload: () => void,
-  options: ReloadSafetyOptions = {},
-): { reloaded: boolean; reason?: string } {
-  const decision = evaluateReloadSafety(options);
-  if (decision.safe) {
-    reload();
-    return { reloaded: true };
-  }
-  showSwReloadPrompt(reload, decision.reason);
-  return { reloaded: false, reason: decision.reason };
+/** chunk 載入失敗時能否自動重載：同 SW 路徑的判斷，另放行 `/events/<id>`。 */
+export function canReloadAfterChunkFailure(options: Omit<ReloadSafetyOptions, 'chunkFailure'> = {}): ReloadSafetyDecision {
+  return evaluateReloadSafety({ ...options, chunkFailure: true });
+}
+
+/** chunk 載入失敗但不能自動重載：顯示中性「載入失敗｜重新載入」，讓使用者自己按。 */
+export function showChunkFailurePrompt(onReload: () => void, reason?: string): void {
+  showSwReloadPrompt(onReload, reason, { chunk: true });
 }
 
 export function _resetReloadSafetyForTest(): void {

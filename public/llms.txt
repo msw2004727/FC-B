@@ -119,7 +119,7 @@ sports pickup games Taiwan, sports signup platform, LINE mini app sports, basket
 - LINE Mini App：https://miniapp.line.me/2009525300-AuPGQ0sh
 - GitHub：https://github.com/msw2004727/FC
 - Sitemap：https://toosterx.com/sitemap.xml
-- 聯絡與合作洽談：LINE 官方帳號 @830utvza
+- 聯絡與合作洽談：LINE 官方帳號 @toosterx
 
 ## AI 爬蟲備註
 

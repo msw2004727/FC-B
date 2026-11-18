@@ -241,7 +241,7 @@ describe('詳情資格 helper', () => {
     expect(detailCompanionGenderMessage(event, '小花'))
       .toBe('小花 不符合此活動的女性限制');
     expect(detailCompanionGenderMessage(event, ''))
-      .toBe('所選同行者不符合此活動的女性限制');
+      .toBe('所選夥伴不符合此活動的女性限制');
   });
 });
 

@@ -85,10 +85,9 @@ describe.skipIf(!enabled)(`K1 出缺席讀取 × ${scoped ? 'PR #27 收斂後' :
     expect(snap.size).toBe(1);
   });
 
-  it(scoped ? '無關會員查別人學員被擋（PR #27 收斂）' : '無關會員查別人學員：現行 Rules 允許（isAuth，PR #27 要收的缺口）', async () => {
+  it(scoped ? '無關會員查別人學員被擋（PR #27 收斂）' : '無關會員查別人學員被擋（正本讀取已收斂）', async () => {
     const q = query(env.authenticatedContext('other').firestore(), 'stu_kid');
-    if (scoped) await testing.assertFails(q);
-    else await testing.assertSucceeds(q);
+    await testing.assertFails(q);
   });
 
   it('未登入被擋', async () => {

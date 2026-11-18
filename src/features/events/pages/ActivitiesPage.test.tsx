@@ -52,7 +52,28 @@ type SportEvent = EventDoc & {
   region?: string;
   regionEnabled?: boolean;
   allowedGender?: string;
+  genderRestrictionEnabled?: boolean;
+  intensityLevel?: unknown;
 };
+
+function makeTouchEvent(
+  type: string,
+  opts: { touches?: { clientX: number; clientY: number }[]; changedTouches?: { clientX: number; clientY: number }[] },
+): Event {
+  const ev = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+    touches: { clientX: number; clientY: number }[];
+    changedTouches: { clientX: number; clientY: number }[];
+  };
+  ev.touches = opts.touches ?? [];
+  ev.changedTouches = opts.changedTouches ?? [];
+  return ev;
+}
+
+function swipeLeft(content: HTMLElement): void {
+  content.dispatchEvent(makeTouchEvent('touchstart', { touches: [{ clientX: 200, clientY: 80 }] }));
+  content.dispatchEvent(makeTouchEvent('touchmove', { touches: [{ clientX: 140, clientY: 80 }] }));
+  content.dispatchEvent(makeTouchEvent('touchend', { changedTouches: [{ clientX: 140, clientY: 80 }] }));
+}
 
 const football: SportEvent = {
   id: 'public-football',
@@ -178,7 +199,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     const card = container.querySelector('.tl-event-row[data-event-id="public-football"]');
     expect(card).toBeTruthy();
     expect(card?.querySelector('.tl-event-title')?.textContent).toContain('Visible football');
-    expect(card?.querySelector('.tl-event-meta')?.textContent).toContain('友誼 · 18:00~20:00 · 青埔足球場 · 6/12人');
+    // 2026-11-13 站長定案：「N/M人」移到狀態標籤下方的人數標籤，卡片下方那行不再重複
+    expect(card?.querySelector('.tl-event-meta')?.textContent).toBe('友誼 · 18:00~20:00 · 青埔足球場');
     expect(card?.querySelector('.tl-event-status.open')?.textContent).toBe('報名中');
     expect(card?.querySelector('.fav-heart')).toBeTruthy();
     expect(card?.querySelector('.tl-event-sport-corner')).toBeTruthy();
@@ -210,6 +232,8 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
     expect(container.querySelector('[data-event-id="owned"]')).toBeTruthy();
     expect(container.querySelector('[data-event-id="owned"] .tl-stamp-private')?.textContent).toBe('不公開');
+    // 印章樣式（timeline-card-extra.css）以 .tl-event-row > .tl-stamp-* 選取，印章必須是卡片的直接子層
+    expect(container.querySelector('.tl-event-row[data-event-id="owned"] > .tl-stamp-private')).toBeTruthy();
     expect(screen.queryByText('Hidden private')).toBeNull();
     expect(screen.queryByText('Hidden team')).toBeNull();
     expect(screen.queryByText('Hidden blocked')).toBeNull();
@@ -257,6 +281,59 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     });
   });
 
+  // EXT-TRANSIT-Z：中繼卡照 A 掛在 body。留在 #page-activities 會被
+  // `#page-activities > :not(.activity-female-petals)` 改成 relative 跑出畫面，
+  // 也會被 .activities-root 的 isolation 壓在頂部列／底部導覽之下（瀏覽器實測）。
+  it('外部活動中繼卡掛在 body 底下的 .legacy-ui，不在 #page-activities／.activities-root 裡', async () => {
+    active.push({ ...football, id: 'ext-1', title: 'External one', type: 'external', externalUrl: 'https://example.com/' } as SportEvent);
+    const { container } = mount();
+    const card = await waitFor(() => {
+      const el = container.querySelector('.tl-event-row[data-event-id="ext-1"]');
+      if (!el) throw new Error('card not ready');
+      return el as HTMLElement;
+    });
+
+    fireEvent.click(card);
+    const overlay = await waitFor(() => {
+      const el = document.getElementById('ext-transit-overlay');
+      if (!el) throw new Error('overlay not ready');
+      return el;
+    });
+    expect(overlay.closest('#page-activities')).toBeNull();
+    expect(overlay.closest('.activities-root')).toBeNull();
+    expect(overlay.parentElement?.classList.contains('legacy-ui')).toBe(true);
+    expect(overlay.parentElement?.parentElement).toBe(document.body);
+  });
+
+  it('中繼卡 portal 開→關→再開不疊加、頁面卸載後 body 不留節點且 overflow 不變', async () => {
+    active.push({ ...football, id: 'ext-1', title: 'External one', type: 'external', externalUrl: 'https://example.com/' } as SportEvent);
+    const overflowBefore = document.body.style.overflow;
+    const wrappers = (): number => [...document.body.children]
+      .filter((el) => el.classList.contains('legacy-ui') && el.querySelector('#ext-transit-overlay')).length;
+    const { container, unmount } = mount();
+    const card = await waitFor(() => {
+      const el = container.querySelector('.tl-event-row[data-event-id="ext-1"]');
+      if (!el) throw new Error('card not ready');
+      return el as HTMLElement;
+    });
+
+    fireEvent.click(card);
+    await waitFor(() => expect(document.getElementById('ext-transit-close')).toBeTruthy());
+    fireEvent.click(document.getElementById('ext-transit-close') as HTMLElement);
+    // 關閉動畫：transitionend 或保險 400ms 後才卸載
+    await waitFor(() => expect(document.getElementById('ext-transit-overlay')).toBeNull());
+    expect(wrappers()).toBe(0);
+
+    fireEvent.click(card);
+    await waitFor(() => expect(document.querySelectorAll('#ext-transit-overlay').length).toBe(1));
+    expect(wrappers()).toBe(1);
+
+    unmount();
+    expect(document.getElementById('ext-transit-overlay')).toBeNull();
+    expect(wrappers()).toBe(0);
+    expect(document.body.style.overflow).toBe(overflowBefore);
+  });
+
   // 測試同步更新：照 A（M-073、M-075、M-078 未涵蓋部分不動）；
   // 分享鈕改走 shareCurrentActivityUrl（jsdom 無 navigator.share／clipboard → 顯示複製失敗）；
   // 附近活動地圖在 B 一律停用外觀 → 顯示「附近活動地圖尚未開啟」。
@@ -278,7 +355,7 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     }, { timeout: 10_000 });
   }, 15_000);
 
-  it('shows toast when clicking unavailable features (share, beginner tab, nearby)', async () => {
+  it('shows toast when clicking unavailable features (share, nearby)', async () => {
     const { container } = mount();
     await waitFor(() => {
       expect(container.querySelector('.tl-event-row')).toBeTruthy();
@@ -289,11 +366,6 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     await waitFor(() => {
       expect(getToasts().at(-1)?.message).toBe('複製失敗，請手動複製');
     });
-
-    toast.clear();
-    const beginnerTab = container.querySelector('[data-atab="beginner"]') as HTMLElement;
-    fireEvent.click(beginnerTab);
-    expect(getToasts().at(-1)?.message).toBe('此功能尚未開放，請先使用舊版');
 
     toast.clear();
     const nearbyBtn = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
@@ -307,6 +379,100 @@ describe('ActivitiesPage (Legacy A DOM & CSS)', () => {
     expect(window.location.pathname).toBe('/activities');
     await waitFor(() => {
       expect(getToasts().at(-1)?.message).toBe('已加入收藏');
+    });
+  });
+
+  it('分類頁籤沒有停用屬性；點了只列該分類，缺值與亂值留在報名中', async () => {
+    const plain: SportEvent = { ...football, id: 'plain', title: 'Plain' };
+    const garbage: SportEvent = { ...pickleball, id: 'garbage', title: 'Garbage', intensityLevel: 'BEGINNER' };
+    const beginner: SportEvent = { ...football, id: 'beg', title: 'Beginner match', intensityLevel: 'beginner' };
+    const high: SportEvent = { ...pickleball, id: 'high', title: 'High match', intensityLevel: 'high-intensity' };
+    const missing: SportEvent = { ...football, id: 'missing', title: 'Missing' };
+    const nulled: SportEvent = { ...pickleball, id: 'nulled', title: 'Nulled', intensityLevel: null };
+    const numbered: SportEvent = { ...football, id: 'numbered', title: 'Numbered', intensityLevel: 2 };
+    active = [plain, garbage, beginner, high, missing, nulled, numbered];
+    const { container } = mount();
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLButtonElement;
+    const ids = () => [...container.querySelectorAll('.tl-event-row')].map((el) => el.getAttribute('data-event-id'));
+
+    await waitFor(() => expect(ids().sort()).toEqual(['beg', 'garbage', 'high', 'missing', 'nulled', 'numbered', 'plain']));
+    for (const key of ['beginner', 'high-intensity']) {
+      expect(tab(key).hasAttribute('aria-disabled')).toBe(false);
+      expect(tab(key).hasAttribute('title')).toBe(false);
+      expect(tab(key).classList.contains('activity-tab-unavailable')).toBe(false);
+    }
+
+    fireEvent.click(tab('beginner'));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('beginner');
+      expect(tab('beginner').classList.contains('active')).toBe(true);
+    });
+    expect(getToasts()).toEqual([]);
+    expect(ids()).toEqual(['beg']);
+
+    fireEvent.click(tab('high-intensity'));
+    await waitFor(() => expect(tab('high-intensity').classList.contains('active')).toBe(true));
+    expect(ids()).toEqual(['high']);
+
+    fireEvent.click(tab('normal'));
+    await waitFor(() => expect(tab('normal').classList.contains('active')).toBe(true));
+    expect(ids().sort()).toEqual(['beg', 'garbage', 'high', 'missing', 'nulled', 'numbered', 'plain']);
+  });
+
+  it('女生專屬且新手友善同時出現在兩個頁籤', async () => {
+    const both: SportEvent = {
+      ...football,
+      id: 'both',
+      title: 'Both',
+      intensityLevel: 'beginner',
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+    };
+    const onlyFemale: SportEvent = {
+      ...pickleball,
+      id: 'only-f',
+      title: 'Only female',
+      genderRestrictionEnabled: true,
+      allowedGender: '女',
+    };
+    const onlyBeginner: SportEvent = { ...football, id: 'only-b', title: 'Only beginner', intensityLevel: 'beginner' };
+    active = [both, onlyFemale, onlyBeginner];
+    const { container } = mount();
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+    await waitFor(() => expect(container.querySelector('[data-event-id="both"]')).toBeTruthy());
+
+    fireEvent.click(tab('female'));
+    await waitFor(() => expect(container.querySelector('[data-event-id="only-f"]')).toBeTruthy());
+    expect(container.querySelector('[data-event-id="both"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="only-b"]')).toBeNull();
+
+    fireEvent.click(tab('beginner'));
+    await waitFor(() => expect(container.querySelector('[data-event-id="only-b"]')).toBeTruthy());
+    expect(container.querySelector('[data-event-id="both"]')).toBeTruthy();
+    expect(container.querySelector('[data-event-id="only-f"]')).toBeNull();
+  });
+
+  it('左右滑的 getKey 放行新手友善與高強度', async () => {
+    history.replaceState(null, '', '/activities?tab=female');
+    const { container } = mount();
+    const list = container.querySelector('#activity-list') as HTMLElement;
+    const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+    await waitFor(() => {
+      expect(list.dataset['swipeBound']).toBe('1');
+      expect(tab('female').classList.contains('active')).toBe(true);
+    });
+
+    await act(async () => { swipeLeft(list); });
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('beginner');
+      expect(tab('beginner').classList.contains('active')).toBe(true);
+      expect(list.style.transform).toBe('');
+    });
+
+    await act(async () => { swipeLeft(list); });
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('high-intensity');
+      expect(tab('high-intensity').classList.contains('active')).toBe(true);
     });
   });
 
@@ -521,8 +687,8 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     expect(sr.classList.contains('fcb-sr-only')).toBe(true);
     expect(sr.textContent).toBe('已報 6／12 人');
     expect(wrap.textContent).toBe('已報 6／12 人');
-    // 條下方那行不動
-    expect(withThumb.querySelector('.tl-event-meta')?.textContent).toContain('6/12人');
+    // 條下方那行不再寫人數（改由人數標籤顯示）
+    expect(withThumb.querySelector('.tl-event-meta')?.textContent).not.toContain('6/12');
 
     const noThumb = container.querySelector('.tl-event-row[data-event-id="public-pickleball"]')!;
     expect(noThumb.querySelector('.tl-event-thumb')).toBeNull();
@@ -542,12 +708,63 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     expect(decl(ruleFor(cardCss, '.tl-gbar'), 'flex')).toBe('1 1 auto');
   });
 
+  it('人數標籤在狀態標籤下方、留言徽章在運動圖示下方；沒留言時留空位讓兩欄對齊；額滿有候補變紫', async () => {
+    const full = {
+      ...football,
+      id: 'full-team',
+      title: 'Full with team',
+      status: 'full',
+      current: 27,
+      max: 27,
+      realCurrent: 23,
+      waitlist: 7,
+      teamReservationSummaries: [{ teamId: 't', reservedSlots: 8, usedSlots: 4, remainingSlots: 4 }],
+    } as SportEvent;
+    const ended: SportEvent = { ...football, id: 'ended-1', title: 'Ended one', status: 'ended', date: ENDED_MORNING };
+    const { container } = mountWith([football, full, ended]);
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="full-team"]')).toBeTruthy());
+
+    const open = container.querySelector('.tl-event-row[data-event-id="public-football"]')!;
+    const stack = open.querySelector('.tl-event-status-stack')!;
+    expect([...stack.children].map((el) => el.className)).toEqual(['tl-event-status open', 'tl-cap-tag is-open']);
+    const tag = stack.querySelector('.tl-cap-tag')!;
+    expect(tag.textContent).toBe('6/12');
+    // 讀屏人數已在計量條，標籤只給眼睛看
+    expect(tag.getAttribute('aria-hidden')).toBe('true');
+    // 留言徽章不在狀態欄，在運動圖示下方（同一欄、圖示在上）
+    expect(stack.querySelector('.tl-comment-badge')).toBeNull();
+    const icons = open.querySelector('.tl-event-icons')!;
+    const sport = icons.querySelector('.tl-event-sport-corner')!;
+    const badge = icons.querySelector('.tl-comment-badge')!;
+    expect(sport.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 未登入沒有留言數：不留空位（hidden），運動圖示在欄內置中（站長 11-13 追加）
+    expect(badge.classList.contains('is-empty')).toBe(false);
+    expect(badge.hasAttribute('hidden')).toBe(true);
+    expect(badge.getAttribute('aria-hidden')).toBe('true');
+
+    // 額滿＋候補：口徑同計量條（實際正取 23，不含團隊保留未報），狀態為候補
+    const fullTag = container.querySelector('.tl-event-row[data-event-id="full-team"] .tl-event-status-stack .tl-cap-tag')!;
+    expect(fullTag.className).toBe('tl-cap-tag is-wait');
+    expect(fullTag.textContent).toBe('23/27');
+
+    // 已結束：沒有計量條也沒有人數標籤，留言空位也不留
+    (container.querySelector('.tl-ended-fold-btn') as HTMLButtonElement | null)?.click();
+    await waitFor(() => expect(container.querySelector('.tl-event-row[data-event-id="ended-1"]')).toBeTruthy());
+    const endedRow = container.querySelector('.tl-event-row[data-event-id="ended-1"]')!;
+    expect(endedRow.querySelector('.tl-cap-tag')).toBeNull();
+    expect(endedRow.querySelector('.tl-comment-badge')?.hasAttribute('hidden')).toBe(true);
+  });
+
   it('沒有上限（max＝0）：條只剩軌道、讀屏只讀已報人數', async () => {
     const noMax: SportEvent = { ...football, id: 'no-max', title: 'No max', current: 3, max: 0 };
     const { container } = mountWith([noMax]);
     await waitFor(() => expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')).toBeTruthy());
     expect(container.querySelector('[data-event-id="no-max"] .tl-gbar')?.getAttribute('style')).toBeFalsy();
     expect(container.querySelector('[data-event-id="no-max"] .tl-gbar-sr')?.textContent).toBe('已報 3 人');
+    // 人數標籤同口徑：只顯示已報數、不寫上限
+    const tag = container.querySelector('[data-event-id="no-max"] .tl-cap-tag');
+    expect(tag?.className).toBe('tl-cap-tag is-nomax');
+    expect(tag?.textContent).toBe('3');
   });
 
   it('已結束／已取消以日期群組收成一行，點開才畫卡片；aria-controls 指向展開區；語系切換跟著換', async () => {
@@ -620,7 +837,9 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     fireEvent.click(container.querySelector('.tl-ended-fold-btn') as HTMLElement);
     await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('true'));
 
-    fireEvent.click(container.querySelector('.region-tab[data-region="北部"]') as HTMLElement);
+    // 測試同步更新：2026-11-13 C 方案地區改為下拉，先打開地區鈕再選。
+    fireEvent.click(container.querySelector('.activity-region-btn') as HTMLElement);
+    fireEvent.click(container.querySelector('.activity-region-item[data-region="北部"]') as HTMLElement);
     await waitFor(() => expect(container.querySelector('.tl-ended-fold-btn')?.textContent).toBe('已結束 1 場▸'));
     expect(container.querySelector('.tl-ended-fold-btn')?.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('[data-event-id="ended-north"]')).toBeNull();
@@ -668,9 +887,6 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
       expect(sticky.querySelector('#activity-region-tabs')).toBeTruthy();
       expect(container.querySelector('.legacy-ui.activities-root')).toBeTruthy();
       await waitFor(() => expect(container.querySelector('.tl-month-header')?.getAttribute('style') ?? '').toContain('78px'));
-      // 新手友善／高強度維持灰色未開放
-      expect(container.querySelector('[data-atab="beginner"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
-      expect(container.querySelector('[data-atab="high-intensity"]')?.classList.contains('activity-tab-unavailable')).toBe(true);
     } finally {
       rect.mockRestore();
     }
@@ -717,5 +933,247 @@ describe('ActivitiesPage 計量條／已結束收合／黏頂（2026-11-13）', 
     // 收合鈕不讓瀏覽器自動斷行，caret 不縮
     expect(decl(ruleFor(file, '.tl-ended-fold-btn'), 'white-space')).toBe('nowrap');
     expect(decl(ruleFor(file, '.tl-ended-fold-caret'), 'flex-shrink')).toBe('0');
+  });
+});
+
+describe('ActivitiesPage 頂部精簡 C 方案：地區下拉（2026-11-13）', () => {
+  const central: SportEvent = { ...pickleball, id: 'central-only', title: 'Central only', regionEnabled: true, region: '中部' };
+  const north: SportEvent = { ...football, id: 'north-only', title: 'North only', regionEnabled: true, region: '北部' };
+
+  it('地區鈕在頁籤同一列右側；點開是直式選單（全部、中部、北部、南部、東部&外島，最下面尋找附近活動），選了寫網址並收起', async () => {
+    active = [central, north];
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('[data-event-id="north-only"]')).toBeTruthy());
+
+    const sticky = container.querySelector('#page-activities > .activity-sticky-filters')!;
+    const btn = sticky.querySelector('.activity-region-btn') as HTMLButtonElement;
+    expect(sticky.lastElementChild?.contains(btn)).toBe(true);
+    expect(btn.textContent).toBe('全部');
+    expect(btn.getAttribute('aria-label')).toBe('地區 全部');
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+    expect(menu.hidden).toBe(true);
+    // 舊的整列地區頁籤已拿掉
+    expect(container.querySelector('.region-tab')).toBeNull();
+
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.hidden).toBe(false);
+    const items = [...menu.querySelectorAll('.activity-region-item')].map((el) => el.textContent);
+    expect(items).toEqual(['全部', '中部', '北部', '南部', '東部&外島', '尋找附近活動']);
+    // 測試同步更新（Grok 初審 P2）：改成 listbox／option，打開時焦點進目前地區
+    expect(btn.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(menu.querySelector('[role="listbox"]')?.querySelectorAll('[role="option"]').length).toBe(5);
+    expect(menu.querySelector('[data-region="全部"]')?.getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(menu.querySelector('[data-region="全部"]')));
+
+    fireEvent.click(menu.querySelector('[data-region="中部"]') as HTMLElement);
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('region')).toBe('central'));
+    expect(menu.hidden).toBe(true);
+    expect(btn.textContent).toBe('中部');
+    expect(btn.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(container.querySelector('[data-event-id="north-only"]')).toBeNull());
+    expect(container.querySelector('[data-event-id="central-only"]')).toBeTruthy();
+  });
+
+  it('點選單外或按 Esc 收起；Esc 後焦點回地區鈕', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+
+    fireEvent.click(btn);
+    fireEvent.pointerDown(menu.querySelector('[data-region="北部"]') as HTMLElement);
+    expect(menu.hidden).toBe(false);
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(menu.hidden).toBe(true));
+
+    fireEvent.click(btn);
+    expect(menu.hidden).toBe(false);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    await waitFor(() => expect(menu.hidden).toBe(true));
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it('網址帶 region 進站時鈕上顯示該地區；尋找附近活動點了收起並提示未開啟', async () => {
+    history.replaceState(null, '', '/activities?region=east-islands');
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.activity-region-btn')?.textContent).toBe('東部&外島'));
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    fireEvent.click(btn);
+    toast.clear();
+    fireEvent.click(container.querySelector('#region-tab-nearby-activity') as HTMLElement);
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
+    expect((container.querySelector('#activity-region-menu') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('地區鈕與選單跟語系翻譯（英文）', async () => {
+    await setLocale('en');
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    expect(btn.textContent).toBe('All');
+    expect(btn.getAttribute('aria-label')).toBe('Region All');
+    const items = [...container.querySelectorAll('#activity-region-menu .activity-region-item')].map((el) => el.textContent);
+    expect(items).toEqual(['All', 'Central', 'North', 'South', 'East & Islands', 'Find nearby activities']);
+  });
+
+  it('沒有開團權限時不放點擊延伸區', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    expect(container.querySelector('.activity-create-hit')).toBeNull();
+  });
+
+  it('我要開團加一層光澤（不攔點擊、讀屏略過）；點擊延伸區（label）等於點按鈕', async () => {
+    vi.mocked(useViewer).mockReturnValue({
+      uid: 'viewer',
+      teamIds: new Set(),
+      roleLevel: 0,
+      role: 'user',
+      displayName: 'Viewer',
+      pictureUrl: null,
+      capabilities: ['user.activity.basic_create'],
+      hasPermission: () => false,
+    });
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const gloss = container.querySelector('#activity-create-btn > .activity-create-gloss');
+    expect(gloss).toBeTruthy();
+    expect(gloss?.getAttribute('aria-hidden')).toBe('true');
+
+    const btn = container.querySelector('#activity-create-btn') as HTMLButtonElement;
+    const hit = container.querySelector('label.activity-create-hit') as HTMLLabelElement;
+    expect(hit).toBeTruthy();
+    expect(hit.htmlFor).toBe('activity-create-btn');
+    expect(hit.getAttribute('aria-hidden')).toBe('true');
+    expect(hit.control).toBe(btn);
+    const clicks = vi.fn();
+    btn.addEventListener('click', clicks);
+    fireEvent.click(hit);
+    expect(clicks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ActivitiesPage 頂部：目前頁籤捲進可見範圍（2026-11-13 看圖審查 P3）', () => {
+  it('切地區後地區鈕變寬，目前頁籤被擠到淡出區時把頁籤列往右捲', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const r = (left: number, right: number) => ({ x: left, y: 0, top: 0, left, right, bottom: 34, width: right - left, height: 34, toJSON: () => ({}) }) as DOMRect;
+      if (this.id === 'activity-tabs') return r(0, 200);
+      if (this.classList.contains('tab') && this.classList.contains('active')) return r(250, 330);
+      return r(0, 0);
+    });
+    try {
+      const { container } = mount();
+      await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+      const tabs = container.querySelector('#activity-tabs') as HTMLElement;
+      let left = 0;
+      Object.defineProperty(tabs, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => { left = v; } });
+      fireEvent.click(container.querySelector('.activity-region-btn') as HTMLElement);
+      fireEvent.click(container.querySelector('.activity-region-item[data-region="東部&外島"]') as HTMLElement);
+      // 測試同步更新（看圖審查 P2：淡出 24→16px）：頁籤右緣 330 − 可見右緣（200 − 淡出 16）＋ 4
+      await waitFor(() => expect(left).toBe(150));
+    } finally {
+      rect.mockRestore();
+    }
+  });
+});
+
+describe('ActivitiesPage 頂部：整片液態玻璃的 DOM 結構（2026-11-13 站長定案 g2）', () => {
+  it('返回、搜尋、分享同一片在左、標題接在後面；頁籤與地區同一片在黏頂列內', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const tools = container.querySelector('.activity-page-heading > .activity-head-tools')!;
+    expect([...tools.children].map((el) => el.id || el.className.split(' ')[0])).toEqual(['back-btn', 'filter-toggle', 'activity-share-url-btn']);
+    expect(tools.nextElementSibling?.tagName).toBe('H2');
+    const slab = container.querySelector('#page-activities > .activity-sticky-filters > .activity-filter-slab')!;
+    expect(slab.querySelector('#activity-tabs')).toBeTruthy();
+    expect(slab.lastElementChild?.id).toBe('activity-region-tabs');
+    // 返回仍回首頁
+    fireEvent.click(tools.querySelector('.back-btn') as HTMLElement);
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+  });
+});
+
+describe('ActivitiesPage 地區下拉鍵盤操作（Grok 初審 P2，照運動下拉 U-004）', () => {
+  it('上下鍵／Home／End 移動焦點，Enter 選取後收起、焦點回地區鈕；Space 選尋找附近活動會提示並收起', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    const menu = container.querySelector('#activity-region-menu') as HTMLElement;
+    const item = (region: string) => menu.querySelector(`[data-region="${region}"]`) as HTMLElement;
+    const nearby = container.querySelector('#region-tab-nearby-activity') as HTMLElement;
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(document.activeElement).toBe(item('全部')));
+    // 打開時只有目前地區可 Tab 進入（roving tabindex）
+    expect(item('全部').tabIndex).toBe(0);
+    expect(item('中部').tabIndex).toBe(-1);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item('中部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(item('全部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(nearby);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    expect(document.activeElement).toBe(item('全部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    expect(document.activeElement).toBe(nearby);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item('北部'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('region')).toBe('north'));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(btn);
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(document.activeElement).toBe(item('北部')));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    toast.clear();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: ' ' });
+    expect(getToasts().at(-1)?.message).toBe('附近活動地圖尚未開啟');
+    await waitFor(() => expect(menu.hidden).toBe(true));
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it('滑鼠選取後焦點也回地區鈕（不掉到 body）', async () => {
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+    const btn = container.querySelector('.activity-region-btn') as HTMLButtonElement;
+    fireEvent.click(btn);
+    fireEvent.click(container.querySelector('#activity-region-menu [data-region="南部"]') as HTMLElement);
+    await waitFor(() => expect(document.activeElement).toBe(btn));
+  });
+});
+
+describe('ActivitiesPage 頁籤分隔線：看不到字的頁籤不畫分隔線（2026-11-13 看圖審查 P2）', () => {
+  it('落在右緣淡出區或被裁掉的頁籤標記 data-divider-off；捲回可見後拿掉', async () => {
+    let shift = 0;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const r = (left: number, right: number) => ({ x: left, y: 0, top: 0, left, right, bottom: 44, width: right - left, height: 44, toJSON: () => ({}) }) as DOMRect;
+      if (this.id === 'activity-tabs') return r(0, 200);
+      const key = this.dataset.atab;
+      const lefts: Record<string, number> = { calendar: 0, normal: 70, female: 150, beginner: 175, 'high-intensity': 250 };
+      if (key && key in lefts) return r(lefts[key]! - shift, lefts[key]! - shift + 70);
+      return r(0, 0);
+    });
+    try {
+      const { container } = mount();
+      await waitFor(() => expect(container.querySelector('.tl-event-row')).toBeTruthy());
+      const tab = (key: string) => container.querySelector(`[data-atab="${key}"]`) as HTMLElement;
+      // 可見右緣 200 − 淡出 16 ＝ 184；頁籤左緣＋20 超過就看不到字
+      await waitFor(() => expect(tab('beginner').hasAttribute('data-divider-off')).toBe(true));
+      expect(tab('high-intensity').hasAttribute('data-divider-off')).toBe(true);
+      expect(tab('female').hasAttribute('data-divider-off')).toBe(false);
+      expect(tab('normal').hasAttribute('data-divider-off')).toBe(false);
+
+      shift = 60;
+      fireEvent.scroll(container.querySelector('#activity-tabs') as HTMLElement);
+      await waitFor(() => expect(tab('beginner').hasAttribute('data-divider-off')).toBe(false));
+      expect(tab('high-intensity').hasAttribute('data-divider-off')).toBe(true);
+    } finally {
+      rect.mockRestore();
+    }
   });
 });

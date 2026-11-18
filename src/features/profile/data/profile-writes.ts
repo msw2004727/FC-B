@@ -5,12 +5,13 @@
 // L-32／L-33：逐動作白名單；serverTimestamp 僅用於 updatedAt。
 
 import type { Firestore } from 'firebase/firestore';
-import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 
 import { callFn } from '@/data/callables';
 import type { CommitIdentitySettingsRequest } from '@/data/contract/callables';
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
+import { addPrivateWrite, pickPrivatePatch, PROFILE_PRIVATE_FIELDS } from '@/data/profile-private';
 import { assertAllowedFields, assertNoDerivedFields } from '@/data/write-guard';
 
 export const PROFILE_FIELD_ALLOWLIST = [
@@ -53,6 +54,16 @@ async function getUsersDb(): Promise<Firestore> {
   return firebase.db as unknown as Firestore;
 }
 
+/** 會員資料讀取強化：把 patch 拆成「四欄（只寫私密）」與「其餘欄位（寫根）」。 */
+function pickRootPatch(patch: Record<string, unknown>): Record<string, unknown> {
+  const privateSet = new Set<string>(PROFILE_PRIVATE_FIELDS);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (!privateSet.has(key)) out[key] = value;
+  }
+  return out;
+}
+
 export function normalizeLineContactUrl(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -76,10 +87,17 @@ export async function updateProfileFields(
   assertNoDerivedFields(patch);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
-    ...patch,
-    updatedAt: serverTimestamp(),
-  });
+  const batch = writeBatch(db);
+  const rootPatch = pickRootPatch(patch);
+  // 會員資料讀取強化：四欄只寫私密子文件，根文件只寫其餘欄位。
+  if (Object.keys(rootPatch).length > 0) {
+    batch.update(doc(db, users, safeUid), {
+      ...rootPatch,
+      updatedAt: serverTimestamp(),
+    });
+  }
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(patch));
+  await batch.commit();
 }
 
 /** A 生日格式：`YYYY/MM/DD`（補零）。驗證通過後才呼叫。 */
@@ -179,9 +197,19 @@ export async function saveFirstLoginProfile(
   const currentSnap = await getDoc(doc(db, users, safeUid));
   const current = currentSnap.exists() ? (currentSnap.data() as Record<string, unknown>) : null;
   const legal = buildFirstLoginLegalUpdates(current, 'profile_completion_submit', new Date().toISOString());
-  const payload = { ...legal, ...patch, updatedAt: serverTimestamp() };
+  const ts = serverTimestamp();
+  const payload = { ...legal, ...patch, updatedAt: ts };
   assertAllowedFields('saveFirstLoginProfile', payload, FIRST_LOGIN_ALLOWLIST);
-  await updateDoc(doc(db, users, safeUid), payload);
+  const batch = writeBatch(db);
+  const rootPatch = pickRootPatch(patch);
+  // 會員資料讀取強化：法務欄位照舊寫根、四欄（例如 email）只寫私密子文件。
+  batch.update(doc(db, users, safeUid), {
+    ...legal,
+    ...rootPatch,
+    updatedAt: ts,
+  });
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(patch));
+  await batch.commit();
 }
 
 export async function saveCompanions(
@@ -194,10 +222,10 @@ export async function saveCompanions(
   assertNoDerivedFields(payload);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
-    companions: payload.companions,
-    updatedAt: serverTimestamp(),
-  });
+  const batch = writeBatch(db);
+  // 會員資料讀取強化：companions 只寫私密子文件，不再 update 根文件。
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(payload));
+  await batch.commit();
 }
 
 export async function saveEduChildren(
@@ -210,10 +238,10 @@ export async function saveEduChildren(
   assertNoDerivedFields(payload);
 
   const db = await getUsersDb();
-  await updateDoc(doc(db, users, safeUid), {
-    eduChildren: payload.eduChildren,
-    updatedAt: serverTimestamp(),
-  });
+  const batch = writeBatch(db);
+  // 會員資料讀取強化：eduChildren 只寫私密子文件，不再 update 根文件。
+  addPrivateWrite(batch, db, safeUid, pickPrivatePatch(payload));
+  await batch.commit();
 }
 
 async function readExistingSocialLinks(

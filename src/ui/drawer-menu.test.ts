@@ -43,23 +43,20 @@ describe('黑名單管理入口', () => {
 });
 
 describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
-  it('訪客與一般用戶只看到前 5 個基本入口（含 2 個上鎖入口與 3 個動作入口；二手商品區已移除），不畫多餘分隔線與後台標題', () => {
+  it('訪客與一般用戶只看到一張一般卡（5 個基本入口，含 2 個上鎖入口與 3 個動作入口；二手商品區已移除），不畫後台標題', () => {
     const guestNodes = buildDrawerRenderNodes(null);
-    const labels = guestNodes.filter((n) => n.kind === 'item').map((n) => n.label);
-    expect(labels).toEqual([
+    expect(guestNodes.map((n) => (n.kind === 'group' ? n.tone : n.kind))).toEqual(['user']);
+    const group = guestNodes[0];
+    if (!group || group.kind !== 'group') throw new Error('expected user group');
+    expect(group.items.map((n) => n.label)).toEqual([
       '個人數據',
       '排行榜',
       '使用手冊',
       '分享網頁',
       '申請（俱樂部/場主/教練）',
     ]);
-    expect(guestNodes.some((n) => n.kind === 'divider')).toBe(false);
     expect(guestNodes.some((n) => n.kind === 'section')).toBe(false);
-
-    const lockedItems = guestNodes.filter(
-      (n): n is Extract<typeof n, { kind: 'item' }> => n.kind === 'item' && n.locked === true,
-    );
-    expect(lockedItems.map((n) => n.label)).toEqual(['個人數據', '排行榜']);
+    expect(group.items.filter((n) => n.locked).map((n) => n.label)).toEqual(['個人數據', '排行榜']);
   });
 
   it('活動管理入口遵循 _canAccessOwnActivityManageEntry：coach 以上或具 own_manage_entry 能力的一般用戶可見', () => {
@@ -104,7 +101,7 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
     expect(canAccessDrawerItem(rolesEntry, superAdmin)).toBe(true);
   });
 
-  it('總管（super_admin）看到完整選單、後台管理分組標題、權限底色（藍／紅）與跨段分隔線', () => {
+  it('總管（super_admin）看到完整選單：四張卡、後台管理只出現一次、黑名單在管理員卡', () => {
     const superAdmin = makeAccess({
       role: 'super_admin',
       roleLevel: 5,
@@ -112,19 +109,36 @@ describe('drawer-menu (M-002 ~ M-008, M-014 ~ M-015)', () => {
     });
     const nodes = buildDrawerRenderNodes(superAdmin);
 
-    const sections = nodes.filter((n) => n.kind === 'section');
-    expect(sections.map((s) => s.label)).toEqual(['後台管理']);
+    expect(nodes.map((n) => (n.kind === 'group' ? `group:${n.tone}` : `section:${n.label}`))).toEqual([
+      'group:user',
+      'group:staff',
+      'section:後台管理',
+      'group:admin',
+      'group:super',
+    ]);
+    expect(nodes.filter((n) => n.kind === 'section')).toHaveLength(1);
+
+    const labelsOf = (tone: 'user' | 'staff' | 'admin' | 'super'): string[] => {
+      const group = nodes.find((n) => n.kind === 'group' && n.tone === tone);
+      if (!group || group.kind !== 'group') throw new Error(tone);
+      return group.items.map((item) => item.label);
+    };
+    expect(labelsOf('user')).toEqual(['個人數據', '排行榜', '使用手冊', '分享網頁', '申請（俱樂部/場主/教練）']);
+    expect(labelsOf('staff')).toEqual(['活動管理', '俱樂部管理']);
+    expect(labelsOf('admin')).toEqual(['用戶管理', '首頁管理', '站內信管理', '黑名單管理']);
+    expect(labelsOf('super')).toEqual(['數據儀表板', '推播通知設定', '系統公告管理', '權限管理', '日誌中心', '無效資料查詢']);
 
     const byLabel = new Map(
-      nodes.filter((n): n is Extract<typeof n, { kind: 'item' }> => n.kind === 'item').map((n) => [n.label, n]),
+      nodes.flatMap((n) => (n.kind === 'group' ? n.items.map((item) => [item.label, item] as const) : [])),
     );
-    // admin 入口為藍底
+    // admin 入口為藍底（列 class 仍在；卡色另由 tone 決定）
     expect(byLabel.get('用戶管理')?.bgClass).toBe('drawer-role-admin');
     expect(byLabel.get('首頁管理')?.bgClass).toBe('drawer-role-admin');
-    // super_admin 入口與 highlight: 'red'（黑名單管理）為紅底
+    // super_admin 入口與 highlight: 'red'（黑名單管理）列 class 仍是紅底，但黑名單人在管理員卡
     expect(byLabel.get('數據儀表板')?.bgClass).toBe('drawer-role-super');
     expect(byLabel.get('黑名單管理')?.bgClass).toBe('drawer-role-super');
     expect(byLabel.get('權限管理')?.bgClass).toBe('drawer-role-super');
+    expect(labelsOf('admin')).toContain('黑名單管理');
 
     const repairEntry = DRAWER_MENUS.find((m) => m.page === 'page-admin-repair')!;
     expect(getDrawerItemBgClass(repairEntry)).toBe('drawer-role-super');

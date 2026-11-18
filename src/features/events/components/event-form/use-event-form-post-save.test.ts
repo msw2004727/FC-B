@@ -21,6 +21,14 @@ const mocks = vi.hoisted(() => ({
   share: vi.fn(),
 }));
 
+const expState = vi.hoisted(() => ({ enabled: true }));
+vi.mock('@/core/exp-display', () => ({
+  SHOW_EXP: false,
+  get EXP_GRANT_ENABLED() {
+    return expState.enabled;
+  },
+}));
+
 vi.mock('@/ui/Toast', () => ({ toast: { show: mocks.show } }));
 vi.mock('@/ui/AppConfirm', () => ({ appConfirm: mocks.confirm }));
 vi.mock('@/data/op-log', () => ({ writeOpLog: mocks.log }));
@@ -65,6 +73,7 @@ beforeEach(() => {
   document.documentElement.lang = 'zh-TW';
   vi.useFakeTimers();
   vi.clearAllMocks();
+  expState.enabled = true;
   close.mockReset();
   refresh.mockReset();
   mocks.confirm.mockReset().mockResolvedValue(false);
@@ -107,6 +116,22 @@ describe('useEventFormPostSave', () => {
       operator: '主辦人',
     });
     expect(mocks.call).not.toHaveBeenCalled();
+  });
+
+  it('EXP_GRANT_ENABLED=false 時建立活動不讀 autoExpRules、不呼叫 adjustExp，分享照常', async () => {
+    expState.enabled = false;
+    render(createElement(HarnessFC, {}));
+    act(() => save(result));
+    await flush();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(mocks.show).toHaveBeenCalledWith({ message: '活動「週末足球」已建立！' });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.log).toHaveBeenCalledTimes(1);
+    expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ type: 'event_create' }));
+    expect(mocks.getDoc).not.toHaveBeenCalled();
+    expect(mocks.call).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
   });
 
   it('host_activity > 0 使用 A Callable 參數與 public id 分享', async () => {

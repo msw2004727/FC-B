@@ -15,6 +15,11 @@
 import { callFn, type RequestOf } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
 import { deliverInboxMessage, type InboxDeliveryExtra } from '@/data/inbox-delivery';
+import {
+  pickRelationKeys,
+  RELATION_KEY_NAMES,
+  type NotificationRelationKeys,
+} from '@/data/notification-relation-keys';
 
 // ── 內建範本（照 A `_getDefaultNotifTemplates` 逐字複製） ──
 
@@ -224,6 +229,17 @@ export async function loadNotificationToggles(): Promise<Record<string, unknown>
 
 // ── 範本通知發送 ──────────────────────────────────
 
+/**
+ * 伺服器把 welcome／signup_success／cancel_signup 分在 R0（只能通知自己、強制擋），
+ * role_application 在 R7；若站內信帶這些 source 發給他人會被拒並連帶不送 LINE。
+ * 只對已用真查詢對照過的 R1 三種開放（2026-11-16 S2 查核，A2-01-2c2-S2-inbox-source-查核.md）。
+ */
+const INBOX_SOURCE_ALLOWLIST: ReadonlySet<string> = new Set([
+  'template:event_changed',
+  'template:event_cancelled',
+  'template:event_relisted',
+]);
+
 export interface SendTemplateNotificationInput {
   key: string;
   vars: Record<string, unknown>;
@@ -236,6 +252,11 @@ export interface SendTemplateNotificationInput {
     source?: string;
     dedupeKey?: string;
   };
+  /**
+   * 關聯鍵，原樣轉到收件匣與 LINE 的 Callable 請求頂層。省略＝不帶鍵。
+   * 空白字串省略，不猜值。
+   */
+  relationKeys?: NotificationRelationKeys | null;
 }
 
 export interface SendTemplateNotificationResult {
@@ -270,6 +291,13 @@ export async function sendTemplateNotification(
   const category = input.category || 'system';
   const categoryName = input.categoryName || '系統';
 
+  // source 預設 template:${key}；lineOptions.source 不 trim（空白覆寫維持原樣）。
+  // 站內信只在 trim 後屬於已知 source 時才寫 message.source。
+  const source = input.lineOptions?.source || `template:${input.key}`;
+  const relationKeys = pickRelationKeys(input.relationKeys);
+  const trimmedSource = source.trim();
+  const inboxSource = INBOX_SOURCE_ALLOWLIST.has(trimmedSource) ? trimmedSource : '';
+
   // 2. 收件匣（A `_deliverMessageToInbox`）：失敗只 warn。
   let deliveredMsg: Record<string, unknown> | null;
   try {
@@ -282,6 +310,8 @@ export async function sendTemplateNotification(
       senderName: '系統',
       senderUid: input.senderUid,
       extra: input.extra ?? null,
+      ...(inboxSource ? { source: inboxSource } : {}),
+      ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -299,7 +329,6 @@ export async function sendTemplateNotification(
 
   // 3. LINE（A `_deliverMessageWithLinePush`＋`_queueLinePush`）：
   //    source 預設 template:${key}；toggles 判斷沿用 A；dedupeKey 優先用 lineOptions 的。
-  const source = input.lineOptions?.source || `template:${input.key}`;
 
   // A `_queueLinePush`：強制推播的來源不必讀開關。
   const toggles = isForcedLinePushSource(source) ? {} : await loadNotificationToggles();
@@ -321,6 +350,10 @@ export async function sendTemplateNotification(
     source,
   };
   if (lineDedupeKey) payload.dedupeKey = lineDedupeKey;
+  for (const name of RELATION_KEY_NAMES) {
+    const value = relationKeys[name];
+    if (value) payload[name] = value;
+  }
 
   try {
     await callFn('enqueuePrivilegedLineNotification', payload);

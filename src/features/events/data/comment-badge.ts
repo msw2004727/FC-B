@@ -5,6 +5,7 @@
  * 移植自 A `event-list-timeline.js` 260～482 行：可讀全部判斷、加總、快取、併發限制。
  * SPEED-2-11a：同一個 microtask 裡的徽章查詢收成一批；相同活動只讀一次。
  * 不改計數欄位、不放寬併發 2（不同活動仍各查各的子集合）。
+ * 健檢 B2-04（2026-11-13）：數法改 count() 聚合（每張卡 2 次讀取），整份讀取只留作備援，見 countVisibleComments。
  */
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
@@ -177,15 +178,79 @@ function cancelledError(): Error {
   return new Error('comment_badge_cancelled');
 }
 
-/** 照 A `_fetchActivityCommentBadgeCount`。 */
+type BadgeFs = BadgeSdk['fs'];
+type CommentsRef = ReturnType<BadgeFs['collection']>;
+
+/**
+ * 健檢 B2-04：改用 count() 聚合，不再把留言整份讀回來數。
+ * 「可見且未刪除」＝ count(可見範圍) − count(可見範圍 且 deleted == true)；
+ * 沒有 deleted 欄位的舊留言算未刪除，與 sumCommentSnapshot 相同。
+ * replyCount 不必再加：Rules 規定建立時只能是 0 或不帶、之後任何人都不能改（events/{id}/comments 的
+ * create／update 白名單），所以「1 + replyCount」恆等於 1。
+ * 一則聚合查詢每 1000 筆索引項算 1 次讀取（0 筆也算 1 次）：每張卡固定 2 次讀取，
+ * 取代原本最多 80（管理者）／90（一般：公開 60＋自己 30）次文件讀取；留言多時也不再被讀取上限截斷。
+ * 查詢只用等值條件（visibility／authorUid／deleted），單欄位索引合併即可，不需要新增複合索引；
+ * Rules 不變：一般人的 or(公開, 自己寫的) 每一支都符合 canReadCommentData。
+ */
+export async function countVisibleComments(
+  fs: BadgeFs,
+  commentsRef: CommentsRef,
+  viewerUid: string,
+  manage: boolean,
+): Promise<number> {
+  const visible = manage
+    ? null
+    : fs.or(fs.where('visibility', '==', 'public'), fs.where('authorUid', '==', viewerUid));
+  const deleted = fs.where('deleted', '==', true);
+  const allQuery = visible ? fs.query(commentsRef, visible) : fs.query(commentsRef);
+  const deletedQuery = visible ? fs.query(commentsRef, fs.and(visible, deleted)) : fs.query(commentsRef, deleted);
+  const [all, removed] = await Promise.all([
+    fs.getCountFromServer(allQuery),
+    fs.getCountFromServer(deletedQuery),
+  ]);
+  return Math.max(0, all.data().count - removed.data().count);
+}
+
+/**
+ * 聚合查詢被拒（例如正式環境要求索引、權限判斷與模擬器不同）時，本次載入改回原本的整份讀取，
+ * 數字照舊顯示；之後的卡片直接走原本做法，不再重試聚合。網路類錯誤不切換。
+ */
+let aggregateDisabled = false;
+const AGGREGATE_FALLBACK_CODES = new Set(['failed-precondition', 'permission-denied', 'unimplemented', 'invalid-argument']);
+
+function shouldFallbackFromAggregate(error: unknown): boolean {
+  const code = error && typeof error === 'object' ? String((error as { code?: unknown }).code || '') : '';
+  return AGGREGATE_FALLBACK_CODES.has(code.replace(/^firestore\//, ''));
+}
+
+/** 照 A `_fetchActivityCommentBadgeCount`（數法改聚合，見 countVisibleComments）。 */
 export async function fetchCommentCount(query: CommentBadgeQuery): Promise<number> {
   if (!query.viewerUid || !query.eventId) return 0;
   if (query.event.type === 'external') return 0;
   if (!query.eventDocId) return 0;
   const { firebase, fs } = await loadBadgeSdk();
   const commentsRef = fs.collection(firebase.db, 'events', query.eventDocId, 'comments');
+  const manage = canManageEventComments(query.event, query.viewerUid, query.viewerRoleLevel);
 
-  if (canManageEventComments(query.event, query.viewerUid, query.viewerRoleLevel)) {
+  if (!aggregateDisabled) {
+    try {
+      return await countVisibleComments(fs, commentsRef, query.viewerUid, manage);
+    } catch (error) {
+      if (!shouldFallbackFromAggregate(error)) throw error;
+      aggregateDisabled = true;
+    }
+  }
+  return fetchCommentCountByDocs(fs, commentsRef, query.viewerUid, manage);
+}
+
+/** 原本的整份讀取數法（聚合不可用時的備援）。 */
+async function fetchCommentCountByDocs(
+  fs: BadgeFs,
+  commentsRef: CommentsRef,
+  viewerUid: string,
+  manage: boolean,
+): Promise<number> {
+  if (manage) {
     const snap = await fs.getDocs(fs.query(commentsRef, fs.limit(COMMENT_LIMIT)));
     return sumCommentSnapshot(snap.docs.map((d) => ({ id: d.id, data: d.data() })));
   }
@@ -198,7 +263,7 @@ export async function fetchCommentCount(query: CommentBadgeQuery): Promise<numbe
     )),
     fs.getDocs(fs.query(
       commentsRef,
-      fs.where('authorUid', '==', query.viewerUid),
+      fs.where('authorUid', '==', viewerUid),
       fs.limit(Math.min(COMMENT_LIMIT, 30)),
     )),
   ]);
@@ -370,4 +435,5 @@ export function _resetCommentBadgeForTest(): void {
   inflight.clear();
   sdkFlight = null;
   activeCount = 0;
+  aggregateDisabled = false;
 }

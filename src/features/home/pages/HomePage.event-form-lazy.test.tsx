@@ -72,6 +72,7 @@ vi.mock('@/features/events/components/event-form/use-create-event-entry', () => 
     onClick: vi.fn(),
     onClickCustom: vi.fn(),
     preset: null,
+    intensity: '',
     formOpen: entry.formOpen,
     closeForm: entry.closeForm,
     overlays: null,

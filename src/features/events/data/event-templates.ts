@@ -2,6 +2,7 @@ import { getFirebase } from '@/data/firebase';
 import type { EventType } from './event-create';
 import type { EventFormState } from './event-form-model';
 import type { EventLocationValue } from '../components/event-form/use-event-location';
+import { getEventIntensity, isIntensityLevel, type IntensityLevel } from './activity-categories';
 import { getSportKeySafe } from './sports';
 import { normalizeEventSocialLinks } from './event-social-links';
 
@@ -40,6 +41,8 @@ export interface EventTemplateDoc {
   mapProvider?: EventLocationValue['mapProvider'];
   mapLocationConfirmed?: boolean;
   mapLocationUpdatedAt?: EventLocationValue['mapLocationUpdatedAt'];
+  /** 一般不寫；只有 beginner／high-intensity。 */
+  intensityLevel?: IntensityLevel;
   ownerUid: string;
   ownerName: string;
   _docId: string;
@@ -169,6 +172,8 @@ export async function saveEventTemplate(input: {
   if (template.feeEnabled !== undefined) writeData.feeEnabled = template.feeEnabled;
   if (template.image !== undefined) writeData.image = template.image;
   if (template.templateType !== undefined) writeData.templateType = template.templateType;
+  // 一般與垃圾值不寫鍵（與建立活動同一套 isIntensityLevel）。
+  if (isIntensityLevel(template.intensityLevel)) writeData.intensityLevel = template.intensityLevel;
 
   // 照 A _buildEventLocationTemplatePayload：旗標關閉時完全不寫地圖欄位。
   for (const key of LOCATION_KEYS) {
@@ -282,6 +287,9 @@ export function buildTemplateFromForm(input: {
     image: input.image || null,
   };
 
+  // 兩條回傳路徑都要帶。一般不寫鍵，複製／再開一團才沿用原分類。
+  if (isIntensityLevel(state.intensityLevel)) result.intensityLevel = state.intensityLevel;
+
   if (!location.mapPickerEnabled) return result;
 
   // ASSUMPTION: collect 的 EventLocationValue 已清除文字異動後的過期定位；
@@ -349,6 +357,8 @@ export function templateToFormPatch(
     regionEnabled: template.regionEnabled !== false,
     region: template.region || '',
     cities: [...(template.cities || [])],
+    // 缺值、null、大小寫或其他值都當一般（''）。
+    intensityLevel: getEventIntensity(template),
   };
 
   // 照 A setVal：空字串、null、undefined 不覆寫現有值。

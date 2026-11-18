@@ -4,6 +4,8 @@ vi.mock('./multi-tab-fx', () => {
   throw new Error('multi-tab chunk failed');
 });
 
+vi.mock('@/ui/Toast', () => ({ toast: vi.fn() }));
+
 import { _resetMultiTabGuardForTest, showMultiTabWarning } from './multi-tab-guard';
 
 describe('showMultiTabWarning 特效載入失敗', () => {
