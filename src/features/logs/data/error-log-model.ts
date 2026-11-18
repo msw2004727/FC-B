@@ -17,6 +17,9 @@ export interface ErrorLogDoc {
   url?: string;
   hash?: string;
   userAgent?: string;
+  /** 新站上報器寫入：程式檔載入失敗時的載入診斷 JSON（`core/error-report.ts#readModuleLoadDiag`）。 */
+  diag?: string;
+  errorCategory?: string;
   osName?: string;
   browserName?: string;
   time?: string;
@@ -44,6 +47,15 @@ export function errorContext(log: ErrorLogDoc): Record<string, unknown> | null {
 function isIndexedDbTransient(log: ErrorLogDoc): boolean {
   return normCode(log.errorCode) === 'firestore-indexeddb-transient'
     || String(log.errorMessage || '').toLowerCase().includes('attempt to get records from database without an in-progress transaction');
+}
+
+/** 與 `core/error-report.ts` 寫入的 errorCategory 同值。 */
+export const MODULE_LOAD_CATEGORY = 'network-load';
+const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
+
+/** 程式檔載入失敗（顧問 §3.255 E：歸「網路／載入」類）。舊紀錄沒有 errorCategory，另比對訊息。 */
+export function isModuleLoadFailure(log: ErrorLogDoc): boolean {
+  return log.errorCategory === MODULE_LOAD_CATEGORY || MODULE_LOAD_FAILURE_RE.test(String(log.errorMessage || ''));
 }
 
 function isProfileIncomplete(log: ErrorLogDoc): boolean {
@@ -92,6 +104,7 @@ export function severityOf(log: ErrorLogDoc): Severity {
   if (isIndexedDbTransient(log)) return 'info';
   if (isUserPrompt(log)) return 'prompt';
   if (isProfileIncomplete(log)) return 'info';
+  if (isModuleLoadFailure(log)) return 'warn';
   if (['permission-denied', 'unauthenticated', 'failed-precondition', 'internal', 'unknown', 'data-loss'].includes(code)
     || /permission|forbidden|auth|unauth|rules|insufficient permissions/.test(msg)) return 'critical';
   if (['deadline-exceeded', 'unavailable', 'resource-exhausted', 'aborted', 'cancelled', 'network-request-failed'].includes(code)
@@ -124,6 +137,7 @@ const CODE_LABEL: Record<string, string> = {
 export function displayCode(log: ErrorLogDoc): string {
   if (isUserPrompt(log)) return 'USER_PROMPT';
   if (isProfileIncomplete(log)) return 'PROFILE_INCOMPLETE';
+  if (isModuleLoadFailure(log)) return normCode(log.errorCode) || MODULE_LOAD_CATEGORY;
   return normCode(log.errorCode);
 }
 
@@ -131,6 +145,7 @@ export function displayCode(log: ErrorLogDoc): string {
 export function codeLabel(log: ErrorLogDoc): string {
   if (isUserPrompt(log)) return '用戶提示';
   if (isProfileIncomplete(log)) return '個人資料未補齊';
+  if (isModuleLoadFailure(log)) return '網路／載入';
   const code = normCode(log.errorCode);
   return CODE_LABEL[code] || code || '未分類';
 }
@@ -161,6 +176,7 @@ export function chineseMessage(log: ErrorLogDoc): string {
   if (isIndexedDbTransient(log)) return CODE_MSG['firestore-indexeddb-transient']!;
   if (isUserPrompt(log)) return promptMessage(log) || '用戶看到了系統提示，請展開技術細節確認提示內容。';
   if (isProfileIncomplete(log)) return '請先補齊個人資料（性別、生日、地區）後再報名。';
+  if (isModuleLoadFailure(log)) return '程式檔載入失敗，多半是網路不穩或剛好換版；重新載入通常可恢復。';
   if (CODE_MSG[code]) return CODE_MSG[code]!;
   if (/missing or insufficient permissions|the caller does not have permission|permission denied|insufficient permissions/.test(lower)) return CODE_MSG['permission-denied']!;
   if (/authentication required|requires authentication|auth token is expired|id token has expired|user token expired/.test(lower)) return CODE_MSG['unauthenticated']!;

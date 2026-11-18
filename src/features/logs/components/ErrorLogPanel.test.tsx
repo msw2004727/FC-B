@@ -269,6 +269,29 @@ describe('ErrorLogPanel：錯誤日誌面板', () => {
     expect(listText()).not.toContain('…');
   });
 
+  it('逐筆展開：有 diag 才顯示「載入診斷」與原文（顧問 §3.255 D）', async () => {
+    const fetchRange = vi.fn().mockResolvedValue({
+      docs: [
+        doc({ _docId: 'a1', _label: 'E1', _msg: '錯誤一', diag: '{"sw":"controlled","n":3}' }),
+        doc({ _docId: 'b1', _label: 'E2', _msg: '錯誤二' }),
+      ],
+      truncated: false,
+    });
+
+    render(<ErrorLogPanel fetchRange={fetchRange as never} nowMs={NOW} />);
+    await waitFor(() => expect(document.querySelectorAll('.olc-row').length).toBe(2));
+    fireEvent.click(screen.getByText('逐筆'));
+    await waitFor(() => expect(screen.getByText('錯誤一')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('錯誤一'));
+    await waitFor(() => expect(screen.getByText('載入診斷')).toBeTruthy());
+    expect(screen.getByText('{"sw":"controlled","n":3}')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('錯誤二'));
+    await waitFor(() => expect(screen.queryByText('{"sw":"controlled","n":3}')).toBeNull());
+    expect(screen.queryByText('載入診斷')).toBeNull();
+  });
+
   it('嚴重度、類型、更多展開頁面／裝置／版本下拉與清除', async () => {
     const fetchRange = vi.fn().mockResolvedValue({
       docs: [

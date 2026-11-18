@@ -306,6 +306,16 @@ describe('error-report', () => {
     expect(JSON.parse(String(payload.diag))).toMatchObject({ leaving: false });
   });
 
+  it('程式檔載入失敗照常上報，errorCategory 標 network-load（顧問 §3.255 E）', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    installErrorReporter();
+    reportClientError('unhandledrejection', new TypeError('Importing a module script failed.'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.errorCategory).toBe('network-load');
+    expect(payload.noise).toBe(false);
+  });
+
   it('程式檔載入失敗時附上診斷：只列同源 /assets，iOS 沒有 responseStatus 也照寫', async () => {
     currentUser = { uid: 'u1', displayName: '小明' };
     sessionStorage.setItem('fcb:chunk-reload-at', String(NOW - 3000));

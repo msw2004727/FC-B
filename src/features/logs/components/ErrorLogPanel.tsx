@@ -111,6 +111,7 @@ export function ErrorLogPanel(props: ErrorLogPanelProps): JSX.Element {
               <dt>{t('logs.error.user')}</dt><dd data-no-translate>{`${d.userName || t('logs.chat.unknownUser')} / ${d.uid || '-'}`}</dd>
               <dt>{t('logs.error.raw')}</dt><dd class="is-mono" data-no-translate>{d.errorMessage || '-'}</dd>
               {d.url ? (<><dt>{t('logs.error.url')}</dt><dd class="is-mono" data-no-translate>{d.url}</dd></>) : null}
+              {d.diag ? (<><dt>{t('logs.error.diag')}</dt><dd class="is-mono" data-no-translate>{d.diag}</dd></>) : null}
             </dl>
             <button type="button" class="pma-copy" onClick={() => { copy(buildErrorDiagnostic(d)).catch(() => undefined); }}>{t('logs.operation.copyDiagnostic')}</button>
           </div>
