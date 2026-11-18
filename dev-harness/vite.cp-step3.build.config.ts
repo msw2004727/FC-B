@@ -17,6 +17,8 @@ export default mergeConfig(base, defineConfig({
       list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)),
       rules: fileURLToPath(new URL('./cp-step3-rules.html', import.meta.url)),
       more: fileURLToPath(new URL('./cp-step3-more.html', import.meta.url)),
+      // 正式頁面＋假資料的截圖入口（cp-step3-real.html）
+      real: fileURLToPath(new URL('./cp-step3-real.html', import.meta.url)),
     } },
   },
 }));

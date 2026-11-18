@@ -241,6 +241,15 @@ describe('賽事第 2 步畫面', () => {
     expect(club.container.textContent ?? '').not.toContain('沒填的話觀眾無法聯絡你');
   });
 
+  it('整場取消、沒有冠軍時不出現「冠軍」卡；已結束有冠軍時照常顯示', async () => {
+    const cancelled = mount(CompetitionDetailPage, screenEnv('real-cancelled-comp'));
+    expect(await screen.findByText(/報名隊伍不足/)).toBeTruthy();
+    expect(cancelled.container.textContent ?? '').not.toContain('冠軍');
+    cleanup();
+    mount(CompetitionDetailPage, screenEnv('real-done'));
+    expect(await screen.findByText('冠軍')).toBeTruthy();
+  });
+
   it('線上支付鈕沒有行為；標示已繳費才呼叫 setPaymentStatus', async () => {
     const actions = spyActions();
     mount(CompetitionManagePage, { ...screenEnv('host-approved', actions) });

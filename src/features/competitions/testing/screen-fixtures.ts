@@ -1,15 +1,22 @@
 // harness 與頁面測試共用的假資料。人名、隊名都是示範，不是真實帳號。
 
 import type { CpActions } from '../actions';
+import { CpCallError } from '../data/cp-callables';
+import { summaryShardIdOf } from '../data/schedule-load';
 import type { CpActor, CpBundle, CpInjectedEnv, CpPreview, WizardSeed } from '../env';
 import { taipeiMs } from '../format';
 import type {
   CompetitionDoc,
+  CompetitionNotice,
   DivisionDoc,
   EntryDoc,
   EntryPrivateDoc,
+  MatchDoc,
   RosterPublicDoc,
   StaffDoc,
+  StandingDoc,
+  StandingRow,
+  SummaryEntry,
 } from '../data/types';
 import { createFakeCpRepo } from './fake-cp-repo';
 
@@ -387,6 +394,378 @@ export function manageBundle(staff: StaffDoc | null = { uid: 'uid_host', roles: 
   };
 }
 
+// 第 3 步截圖用的時間。形狀照 step3-ui／g1-ui／host-ops 測試，不改第 2 步的 NOW。
+const WARM_NOW = taipeiMs(2026, 12, 21, 12, 0);
+const LIVE_NOW = taipeiMs(2027, 1, 9, 12, 0);
+const DONE_NOW = taipeiMs(2027, 1, 11, 12, 0);
+const ENDED_AT = taipeiMs(2027, 1, 10, 18, 0);
+const HOST_STAFF: StaffDoc = { uid: 'uid_host', roles: ['host'] };
+
+function summaryEntry(partial: Partial<SummaryEntry> & Pick<SummaryEntry, 'id' | 'k' | 'st'>): SummaryEntry {
+  return {
+    dv: 'dv_adult',
+    r: 1,
+    no: 1,
+    v: '1號場',
+    h: { id: 'en_h', n: '海風隊' },
+    a: { id: 'en_a', n: '山貓隊' },
+    s: [0, 0],
+    wo: null,
+    ...partial,
+  };
+}
+
+function standingRow(partial: Partial<StandingRow> & Pick<StandingRow, 'teamId' | 'name' | 'points' | 'rank'>): StandingRow {
+  return {
+    played: 4,
+    win: 1,
+    draw: 1,
+    loss: 2,
+    goalsFor: 4,
+    goalsAgainst: 4,
+    goalDiff: 0,
+    hasUnresolvedTie: false,
+    tiedWith: [],
+    decidedBy: null,
+    ...partial,
+  };
+}
+
+function standingDoc(partial: Partial<StandingDoc> = {}): StandingDoc {
+  return {
+    id: 'dv_adult__group__A',
+    divisionId: 'dv_adult',
+    groupId: 'A',
+    rows: [],
+    version: 4,
+    hasUnresolvedTie: false,
+    manualOverride: null,
+    ranking: 'h2hFirst',
+    updatedAt: null,
+    ...partial,
+  };
+}
+
+function matchDoc(partial: Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>): MatchDoc {
+  return {
+    divisionId: 'dv_adult',
+    stageId: 'group',
+    groupId: 'A',
+    round: 1,
+    matchNo: 1,
+    label: null,
+    matchKey: null,
+    kickoffAt: taipeiMs(2027, 1, 9, 9, 0),
+    venueIdx: 0,
+    venueName: '1號場',
+    home: { teamId: 'en_h', name: '海風隊' },
+    away: { teamId: 'en_a', name: '山貓隊' },
+    teamIds: ['en_h', 'en_a'],
+    score: { home: 0, away: 0 },
+    penaltyScore: null,
+    rev: 3,
+    resetRev: 0,
+    lock: { locked: false },
+    clockBase: { startedAt: null, pausedSec: 0, running: false, period: 'pre' },
+    finishedAt: null,
+    confirmedAt: null,
+    walkoverSide: null,
+    result: null,
+    resultSource: null,
+    updatedAt: null,
+    cancelReason: null,
+    cancelledAt: null,
+    ...partial,
+  };
+}
+
+function notice(id: string, text: string, kind: CompetitionNotice['kind'], at: number): CompetitionNotice {
+  return { id, text, kind, at, by: null };
+}
+
+/** 詳情假資料加上賽程。第 2 步的 detail bundle 不動，這裡另組一份。 */
+function detailEnv(
+  who: CpActor,
+  now: number,
+  competitionPatch: Partial<CompetitionDoc>,
+  schedule: { summary: SummaryEntry[]; standings: StandingDoc[] },
+  staff: StaffDoc | null = null,
+  actions: CpActions = idleActions(),
+): CpInjectedEnv {
+  const bundle = detailBundle();
+  return {
+    ...base(actions, who, {
+      ...bundle,
+      staff,
+      competition: competition({ ...competitionPatch }),
+    }),
+    now,
+    schedule,
+  };
+}
+
+function hostEnv(
+  matches: readonly MatchDoc[],
+  actions: CpActions = idleActions(),
+  schedule?: { summary: SummaryEntry[]; standings: StandingDoc[] },
+): CpInjectedEnv {
+  return {
+    ...base(actions, hostActor, manageBundle(HOST_STAFF)),
+    now: LIVE_NOW,
+    matches,
+    schedule,
+  };
+}
+
+/** 站內清單：進行中有今天場數、預熱、招募，三種分類色封面。 */
+function listInEnv(actions: CpActions): CpInjectedEnv {
+  const liveAt = NOW - 60 * 60 * 1000;
+  const repo = createFakeCpRepo({
+    launch: { isPublic: true, bannedWords: [] },
+    competitions: [
+      competition({
+        id: 'live_cup',
+        name: '示範盃五人制足球賽',
+        category: 'cup',
+        hostType: 'personal',
+        hostTeamId: null,
+        feeNote: null,
+        regCloseAt: taipeiMs(2026, 12, 1, 23, 59),
+        firstMatchAt: liveAt,
+        lastMatchAt: NOW + 2 * 24 * 60 * 60 * 1000,
+        venues: [{ name: '示範運動公園' }],
+      }),
+      competition({
+        id: 'warm_lg',
+        name: '冬季聯賽',
+        category: 'league',
+        hostType: 'personal',
+        hostTeamId: null,
+        feeNote: null,
+        regCloseAt: taipeiMs(2026, 12, 9, 23, 59),
+        firstMatchAt: taipeiMs(2026, 12, 13, 9, 0),
+        lastMatchAt: taipeiMs(2026, 12, 14, 18, 0),
+        venues: [{ name: '河濱足球場' }],
+      }),
+      competition({
+        id: 'rec_fr',
+        name: '新春迎新友誼賽',
+        category: 'friendly',
+        hostType: 'personal',
+        hostTeamId: null,
+        feeNote: null,
+        venues: [{ name: '示範國小' }],
+      }),
+    ],
+    summary: {
+      live_cup: [{
+        id: summaryShardIdOf(NOW),
+        entries: [
+          summaryEntry({ id: 'a', k: taipeiMs(2026, 12, 10, 10, 0), st: 'finished', s: [1, 0] }),
+          summaryEntry({ id: 'b', k: taipeiMs(2026, 12, 10, 14, 30), st: 'scheduled' }),
+          summaryEntry({ id: 'c', k: taipeiMs(2026, 12, 10, 16, 0), st: 'scheduled', v: '2號場' }),
+        ],
+      }],
+    },
+  });
+  return { ...base(actions, memberActor), now: NOW, repo };
+}
+
+function warmSchedule(): SummaryEntry[] {
+  return [
+    summaryEntry({ id: 'w1', k: FIRST_MATCH, st: 'scheduled', no: 1 }),
+    summaryEntry({
+      id: 'w2',
+      k: taipeiMs(2027, 1, 9, 10, 0),
+      st: 'scheduled',
+      no: 2,
+      v: '2號場',
+      h: { id: 'en_b', n: '銀河隊' },
+      a: { id: 'en_c', n: '雷霆隊' },
+    }),
+  ];
+}
+
+/** 今天：待確認、棄權、已取消（含原因）、下一場。積分含未裁定同分與主辦裁定。 */
+function liveBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  return {
+    summary: [
+      summaryEntry({ id: 'fin', k: taipeiMs(2027, 1, 9, 9, 0), st: 'finished', s: [2, 1], no: 1 }),
+      summaryEntry({
+        id: 'wo',
+        k: taipeiMs(2027, 1, 9, 10, 30),
+        st: 'walkover',
+        wo: 'away',
+        s: [0, 2],
+        no: 2,
+        v: '2號場',
+        h: { id: 'en_b', n: '銀河隊' },
+        a: { id: 'en_c', n: '雷霆隊' },
+      }),
+      summaryEntry({
+        id: 'cx',
+        k: taipeiMs(2027, 1, 9, 11, 0),
+        st: 'cancelled',
+        cr: '大雨，場地無法使用',
+        no: 3,
+        v: '1號場',
+        h: { id: 'en_d', n: '青鳥隊' },
+        a: { id: 'en_e', n: '赤焰隊' },
+      }),
+      summaryEntry({
+        id: 'nx',
+        k: taipeiMs(2027, 1, 9, 14, 30),
+        st: 'scheduled',
+        no: 4,
+        v: '2號場',
+        h: { id: 'en_f', n: '晨光隊' },
+        a: { id: 'en_g', n: '北風隊' },
+      }),
+    ],
+    standings: [standingDoc({
+      hasUnresolvedTie: true,
+      manualOverride: { method: 'host', reason: '依對戰精神', at: taipeiMs(2027, 1, 8, 15, 0) },
+      rows: [
+        standingRow({
+          teamId: 'en_h', name: '海風隊', points: 10, rank: 1,
+          win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
+        }),
+        standingRow({
+          teamId: 'en_b', name: '銀河隊', points: 5, rank: 2,
+          hasUnresolvedTie: true, tiedWith: ['en_c'],
+        }),
+        standingRow({
+          teamId: 'en_c', name: '雷霆隊', points: 5, rank: 3,
+          goalsFor: 3, goalsAgainst: 6, goalDiff: -3,
+          hasUnresolvedTie: true, tiedWith: ['en_b'],
+        }),
+        standingRow({
+          teamId: 'en_d', name: '青鳥隊', points: 4, rank: 4,
+          decidedBy: 'host', hasUnresolvedTie: true, tiedWith: ['en_e'],
+        }),
+        standingRow({
+          teamId: 'en_e', name: '赤焰隊', points: 4, rank: 5,
+          decidedBy: 'host', hasUnresolvedTie: true, tiedWith: ['en_d'],
+        }),
+      ],
+    })],
+  };
+}
+
+function championBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  return {
+    summary: [summaryEntry({ id: 'final', k: LAST_MATCH, st: 'confirmed', s: [1, 0], no: 1 })],
+    standings: [standingDoc({
+      rows: [
+        standingRow({
+          teamId: 'en_h', name: '海風隊', points: 10, rank: 1,
+          win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
+        }),
+        standingRow({ teamId: 'en_a', name: '山貓隊', points: 4, rank: 2 }),
+      ],
+    })],
+  };
+}
+
+/** 同分逐項比較。回傳形狀照 g1-ui 測試的 explainTie。 */
+const TIE_EXPLAINED = {
+  dvId: 'dv_adult',
+  groupId: 'A',
+  naturalOrder: ['en_b', 'en_c'],
+  steps: [
+    {
+      criterion: 'points',
+      teamIds: ['en_b', 'en_c'],
+      values: [{ teamId: 'en_b', value: 5 }, { teamId: 'en_c', value: 5 }],
+      split: false,
+    },
+    {
+      criterion: 'goalDiff',
+      teamIds: ['en_b', 'en_c'],
+      values: [{ teamId: 'en_b', value: 2 }, { teamId: 'en_c', value: -1 }],
+      split: true,
+    },
+    {
+      criterion: 'goalsFor',
+      teamIds: ['en_b', 'en_c'],
+      values: [{ teamId: 'en_b', value: 8 }, { teamId: 'en_c', value: 5 }],
+      split: false,
+    },
+  ],
+  pending: false,
+  matchIds: ['mt_rel'],
+};
+
+function tieStandings(): StandingDoc {
+  return standingDoc({
+    hasUnresolvedTie: true,
+    rows: [
+      standingRow({
+        teamId: 'en_h', name: '海風隊', points: 10, rank: 1,
+        win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
+      }),
+      standingRow({
+        teamId: 'en_b', name: '銀河隊', points: 5, rank: 3,
+        hasUnresolvedTie: true, tiedWith: ['en_c'],
+      }),
+      standingRow({
+        teamId: 'en_c', name: '雷霆隊', points: 5, rank: 4,
+        goalsFor: 5, goalsAgainst: 6, goalDiff: -1,
+        hasUnresolvedTie: true, tiedWith: ['en_b'],
+      }),
+    ],
+  });
+}
+
+function statusMatches(): MatchDoc[] {
+  const rows: Array<Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>> = [
+    { id: 'mt_sched', status: 'scheduled', matchNo: 1, kickoffAt: taipeiMs(2027, 1, 9, 9, 0), home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' }, teamIds: ['en_h', 'en_a'] },
+    { id: 'mt_fin', status: 'finished', matchNo: 2, kickoffAt: taipeiMs(2027, 1, 9, 11, 0), score: { home: 2, away: 1 }, home: { teamId: 'en_b', name: '銀河隊' }, away: { teamId: 'en_c', name: '晨光隊' }, teamIds: ['en_b', 'en_c'] },
+    { id: 'mt_ok', status: 'confirmed', matchNo: 3, kickoffAt: taipeiMs(2027, 1, 9, 13, 0), score: { home: 1, away: 0 }, home: { teamId: 'en_d', name: '青鳥隊' }, away: { teamId: 'en_e', name: '赤焰隊' }, teamIds: ['en_d', 'en_e'] },
+    { id: 'mt_wo', status: 'walkover', matchNo: 4, kickoffAt: taipeiMs(2027, 1, 9, 15, 0), score: { home: 0, away: 2 }, walkoverSide: 'home', home: { teamId: 'en_f', name: '白浪隊' }, away: { teamId: 'en_g', name: '黑潮隊' }, teamIds: ['en_f', 'en_g'] },
+    { id: 'mt_live', status: 'live', matchNo: 5, kickoffAt: taipeiMs(2027, 1, 9, 17, 0), score: { home: 1, away: 1 }, home: { teamId: 'en_i', name: '綠洲隊' }, away: { teamId: 'en_j', name: '黃沙隊' }, teamIds: ['en_i', 'en_j'] },
+    { id: 'mt_half', status: 'halftime', matchNo: 6, kickoffAt: taipeiMs(2027, 1, 9, 18, 0), home: { teamId: 'en_k', name: '赤陽隊' }, away: { teamId: 'en_m', name: '青石隊' }, teamIds: ['en_k', 'en_m'] },
+    { id: 'mt_move', status: 'postponed', matchNo: 7, kickoffAt: null, venueIdx: null, venueName: null, home: { teamId: 'en_n', name: '北風隊' }, away: { teamId: 'en_p', name: '南風隊' }, teamIds: ['en_n', 'en_p'] },
+    {
+      id: 'mt_cx', status: 'cancelled', matchNo: 8, kickoffAt: taipeiMs(2027, 1, 9, 19, 0),
+      cancelReason: '大雨，場地無法使用', cancelledAt: taipeiMs(2027, 1, 9, 8, 0),
+      home: { teamId: 'en_q', name: '晨星隊' }, away: { teamId: 'en_r', name: '飛燕隊' }, teamIds: ['en_q', 'en_r'],
+    },
+  ];
+  return rows.map((row) => matchDoc(row));
+}
+
+/** 改期撞期用的兩場。句子照 host-ops：1/10 11:00 藍鯨隊對紅狐隊。 */
+function clashMatches(): MatchDoc[] {
+  return [
+    matchDoc({ id: 'mt_1', status: 'scheduled', rev: 3 }),
+    matchDoc({
+      id: 'mt_2',
+      status: 'scheduled',
+      rev: 4,
+      matchNo: 2,
+      kickoffAt: taipeiMs(2027, 1, 10, 11, 0),
+      venueIdx: 1,
+      venueName: '第二球場',
+      home: { teamId: 'en_b', name: '藍鯨隊' },
+      away: { teamId: 'en_c', name: '紅狐隊' },
+      teamIds: ['en_b', 'en_c'],
+    }),
+  ];
+}
+
+function clashActions(actions: CpActions): CpActions {
+  let times = 0;
+  return {
+    ...actions,
+    rescheduleMatch: async () => {
+      times += 1;
+      if (times === 1) throw new CpCallError('SCHEDULE_CONFLICT', { mtId: 'mt_2', type: 'team' });
+      return {};
+    },
+  };
+}
+
 const REPO = createFakeCpRepo();
 
 function base(actions: CpActions, who: CpActor, bundle?: CpBundle, preview?: CpPreview, seed?: WizardSeed): CpInjectedEnv {
@@ -462,6 +841,118 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, hostActor, manageBundle({ uid: 'uid_host', roles: ['host'] }, true), { unlockOpen: true });
     case 'position-measure':
       return base(actions, memberActor, rosterBundle(MEASURE_PLAYERS, false));
+    // 第 3 步正式頁截圖。下面每個 case 都是新 screen，不改上面既有 case 的資料。
+    case 'list-in':
+      return listInEnv(actions);
+    case 'real-recruit':
+      return detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+    case 'real-warm':
+      return detailEnv(memberActor, WARM_NOW, {}, { summary: warmSchedule(), standings: [] });
+    case 'real-live':
+    case 'real-live-stand':
+      return detailEnv(memberActor, LIVE_NOW, { category: 'cup' }, liveBoard());
+    case 'real-done':
+      return detailEnv(memberActor, DONE_NOW, {}, championBoard());
+    case 'real-ended-host':
+      return detailEnv(
+        adminActor,
+        DONE_NOW,
+        { endedAt: ENDED_AT, endedBy: 'host', endReason: '剩餘場次不再進行' },
+        championBoard(),
+      );
+    case 'real-postponed':
+      return detailEnv(
+        memberActor,
+        LIVE_NOW,
+        { status: 'postponed', statusReason: '場地整修，日期另行通知' },
+        { summary: [summaryEntry({ id: 'mt_1', k: taipeiMs(2027, 1, 9, 9, 0), st: 'scheduled' })], standings: [] },
+      );
+    case 'real-cancelled-comp':
+      return detailEnv(
+        memberActor,
+        DONE_NOW,
+        { status: 'cancelled', statusReason: '報名隊伍不足' },
+        { summary: [summaryEntry({ id: 'mt_1', k: taipeiMs(2027, 1, 9, 9, 0), st: 'scheduled' })], standings: [] },
+      );
+    case 'real-notices':
+      return detailEnv(memberActor, NOW, {
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: null,
+        notices: [
+          notice('nt_sys', '因雨延後一小時，請各隊留意集合時間', 'system', taipeiMs(2026, 12, 10, 9, 0)),
+          notice('nt_host', '領隊會議改在示範球場門口', 'host', taipeiMs(2026, 12, 9, 18, 0)),
+          notice('nt_sys2', '賽程摘要已更新', 'system', taipeiMs(2026, 12, 8, 12, 0)),
+        ],
+      }, { summary: [], standings: [] });
+    case 'real-contact-club':
+      return detailEnv(memberActor, NOW, { contactNote: '賽前群組' }, { summary: [], standings: [] });
+    case 'real-contact-personal':
+      return detailEnv(memberActor, NOW, {
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: '賽前到集合點找王示範',
+      }, { summary: [], standings: [] });
+    case 'real-contact-personal-empty':
+      return detailEnv(memberActor, NOW, {
+        name: '個人主辦（未留聯絡）',
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: null,
+      }, { summary: [], standings: [] });
+    case 'real-host-matches':
+      return hostEnv(statusMatches(), actions);
+    case 'real-host-schedule':
+      return { ...base(actions, hostActor, manageBundle(HOST_STAFF)), now: NOW };
+    case 'real-score-sheet':
+      return hostEnv([matchDoc({ id: 'mt_1', status: 'scheduled', home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' } })], actions);
+    case 'real-reschedule-clash':
+      return hostEnv(clashMatches(), clashActions(actions));
+    case 'real-shift-day':
+      return hostEnv(clashMatches(), actions);
+    case 'real-tie-panel':
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        {
+          summary: [summaryEntry({
+            id: 'mt_rel',
+            k: taipeiMs(2027, 1, 9, 9, 0),
+            st: 'confirmed',
+            s: [1, 1],
+            h: { id: 'en_b', n: '銀河隊' },
+            a: { id: 'en_c', n: '雷霆隊' },
+          })],
+          standings: [tieStandings()],
+        },
+        HOST_STAFF,
+        { ...actions, explainTie: async () => TIE_EXPLAINED },
+      );
+    case 'real-end-dialog':
+      return hostEnv(
+        [
+          matchDoc({ id: 'mt_1', status: 'scheduled' }),
+          matchDoc({ id: 'mt_2', status: 'finished', matchNo: 2, score: { home: 1, away: 0 } }),
+        ],
+        actions,
+        { summary: [], standings: [tieStandings()] },
+      );
+    case 'real-cancel-sheet':
+      return hostEnv([matchDoc({
+        id: 'mt_1',
+        status: 'scheduled',
+        home: { teamId: 'en_h', name: '晨星隊' },
+        away: { teamId: 'en_a', name: '飛燕隊' },
+      })], actions);
+    case 'real-wizard-personal':
+      return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
     default:
       return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
   }

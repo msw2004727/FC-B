@@ -424,30 +424,39 @@ export function DetailPhaseBody({
     const loadedRows = fullSchedule;
     const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now);
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
+    const champions = standings.flatMap((doc, index) => {
+      const result = championName(doc);
+      const value = result.pending ? ct('championPending') : result.name;
+      if (!value) return [];
+      const label = headingText(ct, standingHeading(doc, index, multiple));
+      return [{ id: doc.id, text: label ? `${label}　${value}` : value }];
+    });
     return (
       <>
-        <CpCard class="cps-card--ok">
-          <div class="cp3-row">
-            <div class="cp3-champ">
-              <TrophyIcon />
-              <div class="cp3-champ__t">
-                <span class="cp3-champ__k">{ct('champion')}</span>
-                {standings.map((doc, index) => {
-                  const result = championName(doc);
-                  const value = result.pending ? ct('championPending') : result.name;
-                  if (!value) return null;
-                  const label = headingText(ct, standingHeading(doc, index, multiple));
-                  return (
-                    <span class="cp3-champ__v" key={doc.id}>
-                      {label ? `${label}　${value}` : value}
-                    </span>
-                  );
-                })}
+        {champions.length > 0 ? (
+          <CpCard class="cps-card--ok">
+            <div class="cp3-row">
+              <div class="cp3-champ">
+                <TrophyIcon />
+                <div class="cp3-champ__t">
+                  <span class="cp3-champ__k">{ct('champion')}</span>
+                  {champions.map((c) => (
+                    <span class="cp3-champ__v" key={c.id}>{c.text}</span>
+                  ))}
+                </div>
               </div>
+              <Badge tone={badge.tone} label={badge.label} size="sm" />
             </div>
-            <Badge tone={badge.tone} label={badge.label} size="sm" />
-          </div>
-        </CpCard>
+          </CpCard>
+        ) : (
+          // 沒有冠軍（整場取消、沒有積分榜）時不畫獎盃與「冠軍」字樣，只留狀態標籤（PM 截圖驗收發現）
+          <CpCard>
+            <div class="cp3-row">
+              <span />
+              <Badge tone={badge.tone} label={badge.label} size="sm" />
+            </div>
+          </CpCard>
+        )}
         {standingsNode}
         <CpCard>
           <button
