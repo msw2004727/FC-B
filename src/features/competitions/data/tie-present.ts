@@ -57,6 +57,14 @@ export function rowNeedsRuling(row: Pick<StandingRow, 'hasUnresolvedTie' | 'deci
   return row.hasUnresolvedTie === true;
 }
 
+/**
+ * 還有列上的同分沒裁定。文件上的 hasUnresolvedTie 不單獨算：
+ * 列上 decidedBy 已寫（即使 hasUnresolvedTie 仍是 true）就不是待裁定。
+ */
+export function hasPendingTie(docs: readonly StandingDoc[]): boolean {
+  return docs.some((doc) => doc.rows.some(rowNeedsRuling));
+}
+
 /** 這一列積分與同表至少另一列相同。已分出名次的也算。 */
 export function samePointTeamIds(doc: StandingDoc, teamId: string): string[] {
   const self = doc.rows.find((row) => row.teamId === teamId);

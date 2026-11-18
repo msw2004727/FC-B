@@ -12,7 +12,7 @@ import type { CompetitionNotice, MatchDoc, MatchStatus, StaffDoc } from '../data
 import { CpEnvProvider, type CpActor, type CpBundle, type CpInjectedEnv } from '../env';
 import { taipeiMs } from '../format';
 import { loadCompetitionsDict } from '../i18n';
-import { createFakeCpRepo } from '../testing/fake-cp-repo';
+import { createFakeCpRepo, type FakeCpRepo } from '../testing/fake-cp-repo';
 import {
   adultDivision,
   adminActor,
@@ -847,6 +847,52 @@ describe('從賽事頁進入', () => {
     draw({ ...screenEnv('host-approved'), actor: clubRepActor, bundle: manageBundle(null) }, CompetitionManagePage);
     expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
     expect(screen.getByRole('heading', { name: '報隊管理' })).toBeTruthy();
+  });
+});
+
+describe('聯絡主辦', () => {
+  it('俱樂部主辦連到俱樂部頁，並顯示公開聯絡文字', () => {
+    const club = screenEnv('detail-rep');
+    if (club.bundle?.competition) {
+      club.bundle = {
+        ...club.bundle,
+        competition: { ...club.bundle.competition, contactNote: '賽前群組' },
+      };
+    }
+    draw(club, CompetitionDetailPage);
+    const link = screen.getByRole('link', { name: '聯絡主辦' });
+    expect(link.getAttribute('href')).toBe('/teams/club_host');
+    expect(screen.getAllByText('示範俱樂部').length).toBeGreaterThan(0);
+    expect(screen.getByText('賽前群組')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
+    expect((club.repo as FakeCpRepo).calls()).not.toContain('findHostUid');
+    const previous = `${window.location.pathname}${window.location.search}`;
+    fireEvent.click(link);
+    expect(window.location.pathname).toBe('/teams/club_host');
+    window.history.pushState(null, '', previous || '/');
+  });
+
+  it('個人主辦沒有聯絡文字就不顯示整區，有文字只顯示那一行', () => {
+    const personal = screenEnv('detail-personal');
+    const bare = draw(personal, CompetitionDetailPage);
+    expect(screen.queryByRole('heading', { name: '聯絡主辦' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
+    expect((personal.repo as FakeCpRepo).calls()).not.toContain('findHostUid');
+    bare.unmount();
+    cleanup();
+
+    if (personal.bundle?.competition) {
+      personal.bundle = {
+        ...personal.bundle,
+        competition: { ...personal.bundle.competition, contactNote: '賽前到集合點找王示範' },
+      };
+    }
+    draw(personal, CompetitionDetailPage);
+    expect(screen.getByRole('heading', { name: '聯絡主辦' })).toBeTruthy();
+    expect(screen.getByText('賽前到集合點找王示範')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
   });
 });
 

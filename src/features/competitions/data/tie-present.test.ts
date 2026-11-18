@@ -4,6 +4,7 @@ import {
   explainTieFromRaw,
   pendingGroupIds,
   rankingRuleKeys,
+  hasPendingTie,
   rowNeedsRuling,
   samePointTeamIds,
   tieStepViews,
@@ -46,6 +47,19 @@ describe('同分待裁定', () => {
     expect(rowNeedsRuling({ hasUnresolvedTie: true, decidedBy: 'host' })).toBe(false);
     expect(rowNeedsRuling({ hasUnresolvedTie: true, decidedBy: 'drawLots' })).toBe(false);
     expect(rowNeedsRuling({ hasUnresolvedTie: false, decidedBy: null })).toBe(false);
+  });
+
+  it('結束前提示只看還沒裁定的列，文件旗標或已裁定的列不算', () => {
+    const open = doc([
+      row({ teamId: 'b', points: 5, rank: 3, hasUnresolvedTie: true, tiedWith: ['c'] }),
+      row({ teamId: 'c', points: 5, rank: 4, hasUnresolvedTie: true, tiedWith: ['b'] }),
+    ]);
+    expect(hasPendingTie([open])).toBe(true);
+    const ruled = doc([
+      row({ teamId: 'b', points: 5, rank: 2, hasUnresolvedTie: true, decidedBy: 'host' }),
+    ]);
+    expect(hasPendingTie([ruled])).toBe(false);
+    expect(hasPendingTie([doc([])])).toBe(false);
   });
 
   it('同分群含已分出名次的隊伍；待裁定群只收還沒裁定的', () => {

@@ -482,6 +482,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               disabled={busy}
               onValueChange={(value) => setContactDraft(clipCodePoints(value.replace(/[\r\n]/g, ''), 60))}
             />
+            {competition?.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
             <div class="cps-actions">
               <Button variant="secondary" disabled={busy} onClick={() => { void saveContact(); }}>{ct('contactSave')}</Button>
             </div>

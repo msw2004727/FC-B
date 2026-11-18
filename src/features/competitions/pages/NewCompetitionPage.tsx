@@ -404,6 +404,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 maxLength={60}
                 onValueChange={(value) => patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) })}
               />
+              {form.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
             </div>
           </CpCard>
           <CpCard>

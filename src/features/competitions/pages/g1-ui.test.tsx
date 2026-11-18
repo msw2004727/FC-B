@@ -217,6 +217,7 @@ describe('取消單場與結束賽事', () => {
       { ...idleActions(), cancelMatch },
     ), HostMatchesPage);
     fireEvent.click(within(rowOf('晨星隊')).getByRole('button', { name: '取消這場' }));
+    expect(screen.getByText('取消原因會公開在場次、賽程摘要與公告')).toBeTruthy();
     expect(screen.getByText('取消的場次不計分，之後可用重置恢復')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '確認取消' }));
     expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ message: '還有必填項目沒填' }));
@@ -258,6 +259,54 @@ describe('取消單場與結束賽事', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
     expect(endCompetition).toHaveBeenCalledWith({ cid: 'cup', reason: '剩餘場次不再進行' });
     await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
+  });
+
+  it('結束確認框在還有同分待裁定時提示，已裁定就不提示', () => {
+    const hint = '還有同分尚未裁定，結束後就不能裁定同分';
+    const rows = [match({ id: 'mt_1', status: 'scheduled' })];
+    const pending = draw({
+      ...hostEnv(rows),
+      schedule: { summary: [], standings: [standing({ rows: TIE_ROWS })] },
+    }, HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.getByText(hint)).toBeTruthy();
+    pending.unmount();
+    cleanup();
+
+    draw({
+      ...hostEnv(rows),
+      schedule: {
+        summary: [],
+        standings: [standing({
+          hasUnresolvedTie: true,
+          rows: [standingRow({ teamId: 'en_b', name: '青鳥隊', points: 4, rank: 2, hasUnresolvedTie: true, decidedBy: 'drawLots' })],
+        })],
+      },
+    }, HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.queryByText(hint)).toBeNull();
+  });
+
+  it('已結束頁在同分待裁定時提示，已裁定就不提示', () => {
+    const hint = '還有同分尚未裁定，結束後就不能裁定同分';
+    const ended = { endedAt: taipeiMs(2027, 1, 10, 18, 0), endedBy: 'host' as const };
+    const pending = draw(detailEnv({
+      competitionPatch: ended,
+      standings: [standing({ rows: TIE_ROWS })],
+    }), CompetitionDetailPage);
+    expect(screen.getByText(hint)).toBeTruthy();
+    pending.unmount();
+    cleanup();
+
+    draw(detailEnv({
+      competitionPatch: ended,
+      standings: [standing({
+        hasUnresolvedTie: true,
+        rows: [standingRow({ teamId: 'en_b', name: '青鳥隊', points: 4, rank: 2, hasUnresolvedTie: true, decidedBy: 'host' })],
+      })],
+    }), CompetitionDetailPage);
+    expect(screen.getByText('主辦已於 2027/01/10 結束賽事')).toBeTruthy();
+    expect(screen.queryByText(hint)).toBeNull();
   });
 
   it('沒有場次、延期或草稿不顯示結束賽事', () => {

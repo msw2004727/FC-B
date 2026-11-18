@@ -46,6 +46,7 @@ import {
   type WriteIntent,
 } from '../data/host-write';
 import { formatKickoffClock } from '../data/schedule-present';
+import { hasPendingTie } from '../data/tie-present';
 import type { CompetitionDoc, EntryDoc, MatchDoc, MatchStatus, StaffDoc } from '../data/types';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -161,6 +162,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const [endOpen, setEndOpen] = useState(false);
   const [endReason, setEndReason] = useState('');
   const [endMessage, setEndMessage] = useState<string | null>(null);
+  const [endTie, setEndTie] = useState(false);
+  const endSeq = useRef(0);
   const lock = useRef(false);
   const scoreConfirmRef = useRef(true);
   const now = env.now ?? Date.now();
@@ -448,6 +451,24 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     await commit(panel.mtId, hold.rev, { kind: 'cancel', reason: panel.reason.trim() });
   }
 
+  function openEnd(): void {
+    setEndReason('');
+    setEndMessage(null);
+    setEndOpen(true);
+    endSeq.current += 1;
+    const seq = endSeq.current;
+    const known = env.schedule?.standings;
+    if (known) {
+      setEndTie(hasPendingTie(known));
+      return;
+    }
+    setEndTie(false);
+    void env.repo.listStandings(cid).then((rows) => {
+      if (endSeq.current !== seq) return;
+      setEndTie(hasPendingTie(rows));
+    }).catch(() => undefined);
+  }
+
   async function submitEnd(): Promise<void> {
     if (lock.current) return;
     const problem = boundedReason(endReason, 2, 100);
@@ -658,7 +679,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       ) : null}
       {showEnd ? (
         <div class="cps-actions" style="margin-top:0">
-          <Button variant="danger" disabled={busy || endOpen} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
+          <Button variant="danger" disabled={busy || endOpen} onClick={openEnd}>
             {ct('endTitle')}
           </Button>
         </div>
@@ -868,6 +889,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
               variant="fixed"
               onValueChange={(value) => patchPanel({ reason: value })}
             />
+            <p class="cpm-hint">{ct('cancelPublic')}</p>
             <p class="cpm-hint">{ct('cancelHint')}</p>
             {notice('cancel', panel.mtId)}
           </div>
@@ -888,6 +910,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         >
           <div class="cps-sheet-body">
             <p class="cpm-hint">{ct('endHint')}</p>
+            {endTie ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
             <p class="cpm-preview">{ct('unconfirmed', { n: unconfirmedCount(matches) })}</p>
             <Textarea
               label={ct('endReason')}

@@ -1,4 +1,5 @@
-// 詳情頁的公告與聯絡主辦。公告要進這頁才看得到。私訊沿用全站既有浮層。
+// 詳情頁的公告與聯絡主辦。公告要進這頁才看得到。
+// 俱樂部主辦連到既有俱樂部頁。個人主辦只顯示公開聯絡文字，不開站內私訊。
 
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
@@ -17,12 +18,9 @@ import type { CompetitionNotice } from '../data/types';
 import type { CompetitionsT } from '../i18n';
 import { CpCard } from './shell';
 
-function MsgIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M4 5h16v11H9l-5 4z" />
-    </svg>
-  );
+/** 俱樂部頁既有路由。id 照路徑編碼，避免斜線被當成下一層。 */
+export function clubPagePath(teamId: string): string {
+  return `/teams/${encodeURIComponent(teamId)}`;
 }
 
 export function PublicBoard({
@@ -32,9 +30,10 @@ export function PublicBoard({
   hostName,
   hostOps,
   busy,
+  clubTeamId,
+  onOpenClub,
   onPost,
   onDelete,
-  onMessage,
 }: {
   ct: CompetitionsT;
   notices: readonly CompetitionNotice[];
@@ -42,9 +41,11 @@ export function PublicBoard({
   hostName: string;
   hostOps: boolean;
   busy: boolean;
+  /** 俱樂部主辦且有 hostTeamId 才有值。沒有就不顯示連到俱樂部的連結。 */
+  clubTeamId: string | null;
+  onOpenClub: (teamId: string) => void;
   onPost: (text: string) => Promise<boolean>;
   onDelete: (noticeId: string) => Promise<void>;
-  onMessage: () => Promise<void>;
 }): JSX.Element {
   const [draft, setDraft] = useState('');
   const [showAll, setShowAll] = useState(false);
@@ -53,6 +54,9 @@ export function PublicBoard({
   const more = ordered.length > NOTICE_PREVIEW_COUNT && !showAll;
   const posted = hostNoticeCount(notices);
   const showNotices = ordered.length > 0 || hostOps;
+  const clubPath = clubTeamId ? clubPagePath(clubTeamId) : null;
+  // 個人主辦沒有公開文字時，整區不顯示。俱樂部主辦一定留連結（聯絡方式在俱樂部頁）。
+  const showContact = clubPath != null || contactNote != null;
 
   async function publish(): Promise<void> {
     const ok = await onPost(draft);
@@ -110,17 +114,27 @@ export function PublicBoard({
           ) : null}
         </CpCard>
       ) : null}
-      <CpCard>
-        <h2 class="cpm-h">{ct('contactHost')}</h2>
-        <div class="cpm-contact">
-          <span class="cpm-host">{hostName}</span>
-          <button type="button" class="cpm-pm" disabled={busy} onClick={() => { void onMessage(); }}>
-            <MsgIcon />
-            {ct('pmHost')}
-          </button>
-        </div>
-        {contactNote ? <p class="cpm-public">{contactNote}</p> : null}
-      </CpCard>
+      {showContact ? (
+        <CpCard>
+          <h2 class="cpm-h">{ct('contactHost')}</h2>
+          {clubPath && clubTeamId ? (
+            <div class="cpm-contact">
+              {hostName ? <span class="cpm-host">{hostName}</span> : null}
+              <a
+                class="cpm-pm"
+                href={clubPath}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenClub(clubTeamId);
+                }}
+              >
+                {ct('contactHost')}
+              </a>
+            </div>
+          ) : null}
+          {contactNote ? <p class="cpm-public">{contactNote}</p> : null}
+        </CpCard>
+      ) : null}
     </>
   );
 }

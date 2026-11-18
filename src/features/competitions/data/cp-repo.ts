@@ -68,11 +68,6 @@ export interface CompetitionsRepo {
   /** uid 為 null：不帶篩選，最多 100。有值則 where uid。 */
   listRosterPrivate(cid: string, uid: string | null): Promise<RosterPrivateDoc[]>;
   getStaff(cid: string, uid: string): Promise<StaffDoc | null>;
-  /**
-   * 主要主辦的 uid，給既有私訊入口用。
-   * 只在按下「私訊主辦」時查，不進詳情首屏。查 roles array-contains host，最多 1 筆。
-   */
-  findHostUid(cid: string): Promise<string | null>;
   /** 該賽事場次，最多 CP_READ_LIMIT.matches。不監聽。 */
   listMatches(cid: string): Promise<MatchDoc[]>;
   /** 一片摘要。沒有這片回空陣列。shardId 是 dYYYYMMDD 或 tbd。 */
@@ -750,20 +745,6 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       if (!snap.exists()) return null;
       const data = snap.data();
       return data ? staffFromDoc(uid, data) : null;
-    },
-
-    async findHostUid(cid) {
-      if (!isSafeId(cid)) return null;
-      const { db, sdk } = await ready();
-      const snap = await sdk.getDocs(sdk.query(
-        sdk.collection(db, `competitions/${cid}/staff`),
-        sdk.where('roles', 'array-contains', 'host'),
-        sdk.limit(1),
-      ));
-      const doc = snap.docs[0];
-      if (!doc) return null;
-      const staff = staffFromDoc(doc.id, doc.data() ?? {});
-      return staff?.roles.includes('host') ? staff.uid : null;
     },
 
     async listMatches(cid) {

@@ -231,6 +231,16 @@ describe('賽事第 2 步畫面', () => {
     expect(document.body.textContent ?? '').not.toMatch(/未繳費|已繳費/);
   });
 
+  it('聯絡文字（顧問 §3.292）：個人主辦建賽提示「沒填的話觀眾無法聯絡你」，俱樂部主辦不提示；都註明會公開顯示', () => {
+    const personal = mount(NewCompetitionPage, screenEnv('wizard-1'));
+    expect(personal.container.textContent ?? '').toContain('會公開顯示');
+    expect(personal.container.textContent ?? '').toContain('沒填的話觀眾無法聯絡你');
+    cleanup();
+    const club = mount(NewCompetitionPage, screenEnv('wizard-1-club'));
+    expect(club.container.textContent ?? '').toContain('會公開顯示');
+    expect(club.container.textContent ?? '').not.toContain('沒填的話觀眾無法聯絡你');
+  });
+
   it('線上支付鈕沒有行為；標示已繳費才呼叫 setPaymentStatus', async () => {
     const actions = spyActions();
     mount(CompetitionManagePage, { ...screenEnv('host-approved', actions) });

@@ -299,23 +299,6 @@ describe('假資料的第 3 步讀取與計數', () => {
     expect(empty.calls()).toEqual(['listEntriesForCrest']);
 
     const before = repo.readCount();
-    await expect(repo.findHostUid('cid_1')).resolves.toBeNull();
-    await expect(repo.findHostUid('a/b')).resolves.toBeNull();
-    expect(repo.calls().filter((name) => name === 'findHostUid')).toEqual([]);
-
-    const hosted = createFakeCpRepo({
-      staff: {
-        cid_1: [
-          { uid: 'uid_co', roles: ['coHost'] },
-          { uid: 'uid_host', roles: ['host', 'coHost'] },
-        ],
-      },
-    });
-    await expect(hosted.findHostUid('cid_1')).resolves.toBe('uid_host');
-    expect(hosted.calls()).toEqual(['findHostUid']);
-    await expect(hosted.findHostUid('a/b')).resolves.toBeNull();
-    expect(hosted.calls()).toEqual(['findHostUid']);
-
     await expect(repo.listEntriesForCrest('a/b')).resolves.toEqual([]);
     await expect(repo.listMatches('')).resolves.toEqual([]);
     await expect(repo.listSummary('..')).resolves.toEqual([]);

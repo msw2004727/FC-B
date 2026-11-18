@@ -3,9 +3,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
-import { emit } from '@/core/events';
 import { openHttpAnchor } from '@/core/open-external';
-import { openPmDialog } from '@/features/inbox/components/pm-dialog-store';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
@@ -26,6 +24,7 @@ import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '.
 import { LiveBoundary } from '../live';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
+import { hasPendingTie } from '../data/tie-present';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
@@ -414,6 +413,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   }
 
   async function publishNotice(text: string): Promise<boolean> {
+    // 閉包抓不到外層的縮小，這裡再確認一次賽事還在。
+    if (!competition) return false;
     const problem = noticeTextProblem(text);
     if (problem) {
       const params = problem === 'FIELD_LENGTH' ? { min: 1, max: 300 } : undefined;
@@ -467,18 +468,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
-  async function messageHost(): Promise<void> {
-    if (!env.actor.uid) {
-      emit('auth:login-request', {});
-      return;
-    }
-    const uid = await env.repo.findHostUid(cid);
-    if (!uid) {
-      toast.show({ message: ct('hostMissing'), tone: 'error' });
-      return;
-    }
-    const name = hostName(competition, env);
-    openPmDialog(name ? { uid, name } : { uid });
+  function openClub(teamId: string): void {
+    route(`/teams/${encodeURIComponent(teamId)}`);
   }
 
   async function sendRegister(): Promise<void> {
@@ -568,6 +559,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <CpCard>
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
           {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
+          {hasPendingTie(standings) ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
           {allowRestore ? (
             <div class="cpm-endact">
               <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
@@ -617,9 +609,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         hostName={hostName(competition, env)}
         hostOps={hostOps}
         busy={busy}
+        clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
+        onOpenClub={openClub}
         onPost={publishNotice}
         onDelete={removeNotice}
-        onMessage={messageHost}
       />
       {phase === 'recruit' ? (
       <>

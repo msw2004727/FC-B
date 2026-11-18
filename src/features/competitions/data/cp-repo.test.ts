@@ -325,25 +325,6 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
   });
 });
 
-describe('findHostUid', () => {
-  it('只查 roles 含 host 的一筆，文件 id 就是 uid', async () => {
-    const box = harness();
-    box.cols.set('competitions/cid_1/staff', [
-      { id: 'uid_host', data: { roles: ['host', 'coHost'] } },
-    ]);
-    await expect(box.repo.findHostUid('cid_1')).resolves.toBe('uid_host');
-    expect(box.queries.at(-1)).toEqual({
-      path: 'competitions/cid_1/staff',
-      clauses: [
-        { kind: 'where', field: 'roles', op: 'array-contains', value: 'host' },
-        { kind: 'limit', n: 1 },
-      ],
-    });
-    await expect(box.repo.findHostUid('a/b')).resolves.toBeNull();
-    await expect(box.repo.findHostUid('cid_1')).resolves.toBe('uid_host');
-  });
-});
-
 describe('CompetitionDoc 沒有 hostUid', () => {
   it('型別不含 hostUid', () => {
     const doc = competitionFromDoc('cid_1', rawComp()) as CompetitionDoc;

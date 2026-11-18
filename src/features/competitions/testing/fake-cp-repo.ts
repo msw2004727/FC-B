@@ -188,13 +188,6 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       return (staff[cid] ?? []).find((row) => row.uid === uid) ?? null;
     },
 
-    async findHostUid(cid) {
-      if (!isSafeId(cid)) return null;
-      const row = (staff[cid] ?? []).find((item) => item.roles.includes('host')) ?? null;
-      noteQuery('findHostUid', row ? 1 : 0);
-      return row?.uid ?? null;
-    },
-
     async listMatches(cid) {
       if (!isSafeId(cid)) return [];
       const rows = [...(matches[cid] ?? [])].sort(
