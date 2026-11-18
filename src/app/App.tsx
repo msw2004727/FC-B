@@ -659,7 +659,12 @@ function RouteArea({
       key={stallRetryKey}
       path={location.path}
       previousPath={prevPathRef.current}
-      onReset={() => lazyCache.clear()}
+      // 重試要讓 App 重繪、重新呼叫 getRouteComponent 拿新的 lazy：<Route component> 是上一次 render 算好的，
+      // 只清 lazyCache 會沿用已存了「丟錯元件」的舊 lazy，按重試沒有作用（Opus 審 P2-1）。同內容卡住重試的做法。
+      onReset={() => {
+        lazyCache.clear();
+        setStallRetryKey((k) => k + 1);
+      }}
       onNavigateBack={(fallback) => {
         endRouteLoading(loadingSeqRef.current);
         location.route(fallback, true);

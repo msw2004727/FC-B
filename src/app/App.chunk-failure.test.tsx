@@ -179,6 +179,18 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     });
   }
 
+  it('直接開網址失敗：錯誤畫面的「重新嘗試」會重新載入路由並恢復（Opus 審 P2-1）', async () => {
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+    window.history.replaceState({}, '', '/events/e1');
+    const { container, findByTestId } = render(<App />);
+    await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+    expect(attempts).toBe(1);
+    (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+    expect(await findByTestId('detail')).toBeTruthy();
+    expect(attempts).toBe(2);
+    expect(container.querySelector('.error-fallback')).toBeNull();
+  });
+
   it('P3-1 守門已排重載（路由 load 拿到 undefined）：不上報、不跳吐司、不導回上一頁、不卡死', async () => {
     mode = 'empty';
     const { findByTestId, container } = render(<App />);
