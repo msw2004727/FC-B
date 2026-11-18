@@ -1,5 +1,7 @@
 import type { JSX } from 'preact';
 import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT } from '../i18n';
+import { CpI18nPending } from './shell';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
 import { Input } from '@/ui/Input';
@@ -76,18 +78,20 @@ export function PositionField({
   text: string;
   onChange: (value: PositionChoice, text: string) => void;
 }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const labelOf = (choice: PositionChoice): string => {
-    if (choice === 'none') return t('competitions.positionNone');
-    if (choice === 'GK') return t('competitions.positionGK');
-    if (choice === 'DF') return t('competitions.positionDF');
-    if (choice === 'MF') return t('competitions.positionMF');
-    if (choice === 'FW') return t('competitions.positionFW');
-    return t('competitions.positionCustom');
+    if (choice === 'none') return ct('positionNone');
+    if (choice === 'GK') return ct('positionGK');
+    if (choice === 'DF') return ct('positionDF');
+    if (choice === 'MF') return ct('positionMF');
+    if (choice === 'FW') return ct('positionFW');
+    return ct('positionCustom');
   };
   return (
     <div>
-      <span class="cps-label">{t('competitions.position')}</span>
+      <span class="cps-label">{ct('position')}</span>
       <div class="cps-chips">
         {POSITIONS.map((choice) => (
           <Chip
@@ -102,7 +106,7 @@ export function PositionField({
       {value === 'custom' ? (
         <div style="margin-top:12px">
           <Input
-            label={t('competitions.positionCustom')}
+            label={ct('positionCustom')}
             value={text}
             maxLength={POSITION_TEXT_MAX}
             onValueChange={(next) => onChange('custom', next)}
@@ -115,19 +119,23 @@ export function PositionField({
 
 /** 金額旁的線上支付只是預留位置：停用，沒有 onClick，不接金流。 */
 export function PayButton(): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   return (
-    <Button variant="secondary" size="sm" disabled title={t('competitions.payComingSoon')}>
-      {t('competitions.payOnline')}
+    <Button variant="secondary" size="sm" disabled title={ct('payComingSoon')}>
+      {ct('payOnline')}
     </Button>
   );
 }
 
 export function FeeLine({ amount }: { amount: number }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   return (
     <div class="cps-fee">
-      <span class="cps-fee__amount">{formatFee(amount, t('competitions.feeFree'))}</span>
+      <span class="cps-fee__amount">{formatFee(amount, ct('feeFree'))}</span>
       <PayButton />
     </div>
   );

@@ -5,7 +5,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT } from '../i18n';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Input } from '@/ui/Input';
@@ -21,7 +21,7 @@ import { loadMyBirthday } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
 import { CpError, errorOf, RosterBlocked } from '../ui/feedback';
 import { POSITION_TEXT_MAX, PositionField } from '../ui/fields';
-import { CpCard, CpFrame } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
 async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   const [competition, divisions, entries] = await Promise.all([
@@ -37,7 +37,8 @@ function codePoints(value: string): number {
 }
 
 function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: string }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const prefill = env.preview?.prefillForm === true;
   const forcedMinor = env.preview?.selfMinor === true;
@@ -90,6 +91,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
     };
   }, [env.actor.uid, waitBirthday]);
 
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+
   const entry = bundle?.entries.find((row) => row.id === enId) ?? null;
   const division = bundle?.divisions.find((row) => row.dvId === entry?.dvId);
   const competition = bundle?.competition ?? null;
@@ -98,10 +101,10 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   const minor = forcedMinor || (profileBirthday != null && isMinorAt(profileBirthday, basis) === true);
   const masked = maskedPublicName(realName);
   const ackKey = !minor && nickname.trim()
-    ? 'competitions.ackNickname'
+    ? 'ackNickname'
     : !minor
-      ? 'competitions.ackDisplayName'
-      : 'competitions.ackMasked';
+      ? 'ackDisplayName'
+      : 'ackMasked';
 
   async function submit(): Promise<void> {
     if (number.trim() === '') {
@@ -157,11 +160,14 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (!competition || phase === 'error') {
     return (
-      <CpFrame title={t('competitions.joinTitle')}>
-        <p class="cps-note" role="alert">{t('competitions.loadFailed')}</p>
+      <CpFrame title={ct('joinTitle')}>
+        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
       </CpFrame>
     );
   }
+
+  // 代表清單還沒回來時，空陣列不代表「不是成員」。
+  if (env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
 
   const isMember = env.actor.memberClubIds.includes(entry?.teamId ?? '');
   const isRep = env.actor.repClubs.some((club) => club.id === entry?.teamId);
@@ -181,43 +187,43 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   }
 
   return (
-    <CpFrame title={t('competitions.joinTitle')} onBack={() => route(`/competitions/${cid}/entries/${enId}`)}>
+    <CpFrame title={ct('joinTitle')} onBack={() => route(`/competitions/${cid}/entries/${enId}`)}>
       <CpCard>
         <h2 class="cps-title">{entry?.name ?? ''}</h2>
-        {division ? <p class="cps-sub">{division.name}　{t('competitions.formatN', { n: division.playersOnField })}</p> : null}
+        {division ? <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p> : null}
       </CpCard>
       <CpCard>
         <div class="cps-fields">
           <div class="cps-grid2">
-            <Input label={t('competitions.number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
+            <Input label={ct('number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
             <div />
           </div>
           <PositionField value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
           {minor ? (
             <>
-              <Input label={t('competitions.realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
-              {masked ? <p class="cps-sub" data-public-name>{t('competitions.maskedPreview', { name: masked })}</p> : null}
-              <p class="cps-privacy cps-pre">{t('competitions.minorPublic')}{'\n'}{t('competitions.minorRealName')}</p>
-              <Checkbox label={t('competitions.guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
+              <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+              {masked ? <p class="cps-sub" data-public-name>{ct('maskedPreview', { name: masked })}</p> : null}
+              <p class="cps-privacy cps-pre">{ct('minorPublic')}{'\n'}{ct('minorRealName')}</p>
+              <Checkbox label={ct('guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
             </>
           ) : (
             <>
               {division?.requireRealName ? (
                 <>
-                  <Input label={t('competitions.realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
-                  <p class="cps-cap">{t('competitions.minorRealName')}</p>
+                  <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+                  <p class="cps-cap">{ct('minorRealName')}</p>
                 </>
               ) : null}
-              <Input label={t('competitions.nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
+              <Input label={ct('nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
             </>
           )}
-          <Checkbox label={t(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
+          <Checkbox label={ct(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>
       <div class="cps-actions">
-        <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{t('competitions.cancel')}</Button>
-        <Button variant="primary" loading={busy} onClick={() => { void submit(); }}>{t('competitions.submit')}</Button>
+        <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{ct('cancel')}</Button>
+        <Button variant="primary" loading={busy} onClick={() => { void submit(); }}>{ct('submit')}</Button>
       </div>
     </CpFrame>
   );

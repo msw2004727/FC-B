@@ -7,9 +7,11 @@
 // 正式頁等閘門通過才查代表俱樂部；沒過時 teams 一筆都不讀。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { useViewer } from '@/features/profile/data/viewer';
+import { ctOrKey, useCompetitionsT } from '../i18n';
+import { CpI18nPending } from '../ui/shell';
 import { Button } from '@/ui/Button';
 import { canSeeInAppSection, isCpAdmin } from '../access';
 import type { CompetitionsRepo } from '../data/cp-repo';
@@ -65,7 +67,8 @@ function SectionBody({
   /** 正式頁用來決定要不要查代表俱樂部。注入環境不傳。 */
   onGate?: (open: boolean) => void;
 }): JSX.Element | null {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [phase, setPhase] = useState<'loading' | 'hidden' | 'ready'>('loading');
   const [baseMine, setBaseMine] = useState<NamedComp[]>([]);
@@ -73,12 +76,23 @@ function SectionBody({
   const [publicSource, setPublicSource] = useState<NamedComp[]>([]);
   // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
   const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
+  // 換帳號的第一個畫面就要藏起上一個人的清單，不能等 effect。
+  const appliedUid = useRef(actor.uid);
+  const uidStale = appliedUid.current !== actor.uid;
   const repKey = representativeClubs(actor).map((club) => club.id).join('\n');
   const mine = dedupeNamed([...baseMine, ...hostedMine]);
   const publicRows = publicSource.filter((row) => !mine.some((item) => item.cid === row.cid));
 
   useEffect(() => {
     let alive = true;
+    if (appliedUid.current !== actor.uid) {
+      appliedUid.current = actor.uid;
+      setPhase('loading');
+      setBaseMine([]);
+      setHostedMine([]);
+      setPublicSource([]);
+      setHostQuery(null);
+    }
     void (async () => {
       const launch = await repo.getLaunch();
       const isPublic = launch ? launch.isPublic : null;
@@ -97,6 +111,8 @@ function SectionBody({
         return;
       }
       // 閘門過了才准查代表俱樂部。這段本身不讀 listByHostTeam。
+      // unmount 之後不得再通知外層去查俱樂部。
+      if (!alive) return;
       onGate?.(true);
       const [items, listed] = await Promise.all([
         actor.uid ? repo.listMine(actor.uid).catch(() => [] as CpMineItem[]) : Promise.resolve([] as CpMineItem[]),
@@ -147,7 +163,8 @@ function SectionBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostQuery, repKey, repo]);
 
-  if (phase !== 'ready') return null;
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  if (uidStale || phase !== 'ready') return null;
   const showCreate = !!actor.uid && !actor.authPending;
 
   function open(path: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>): void {
@@ -157,15 +174,15 @@ function SectionBody({
 
   return (
     <section class="cps-inapp" data-inapp="competitions">
-      <h3 class="cps-h">{t('competitions.inApp')}</h3>
+      <h3 class="cps-h">{ct('inApp')}</h3>
       {showCreate ? (
         <div class="cps-actions" style="margin-top:8px">
-          <Button variant="primary" onClick={() => route('/competitions/new')}>{t('competitions.createAction')}</Button>
+          <Button variant="primary" onClick={() => route('/competitions/new')}>{ct('createAction')}</Button>
         </div>
       ) : null}
       {mine.length > 0 ? (
         <div style="margin-top:12px">
-          <h4 class="cps-sub cps-nowrap">{t('competitions.mine')}</h4>
+          <h4 class="cps-sub cps-nowrap">{ct('mine')}</h4>
           <ul class="cps-list">
             {mine.map((item) => (
               <li class="cps-li" key={item.cid}>
@@ -179,7 +196,7 @@ function SectionBody({
       ) : null}
       {publicRows.length > 0 ? (
         <div style="margin-top:12px">
-          <h4 class="cps-sub cps-nowrap">{t('competitions.publicList')}</h4>
+          <h4 class="cps-sub cps-nowrap">{ct('publicList')}</h4>
           <ul class="cps-list">
             {publicRows.map((item) => (
               <li class="cps-li" key={item.cid}>
@@ -196,9 +213,17 @@ function SectionBody({
 }
 
 function LiveInApp(): JSX.Element {
+  const viewer = useViewer();
   const [loadClubs, setLoadClubs] = useState(false);
+  const clubsUid = useRef(viewer.uid);
+  const uidStale = clubsUid.current !== viewer.uid;
+  useEffect(() => {
+    if (clubsUid.current === viewer.uid) return;
+    clubsUid.current = viewer.uid;
+    setLoadClubs(false);
+  }, [viewer.uid]);
   return (
-    <LiveBoundary loadClubs={loadClubs}>
+    <LiveBoundary loadClubs={!uidStale && loadClubs}>
       {(actor, repo) => <SectionBody actor={actor} repo={repo} onGate={setLoadClubs} />}
     </LiveBoundary>
   );

@@ -4,8 +4,8 @@
 //
 // 代表欄位不能一次 OR。viewer 的 loadTeamsForUser 已經查過的欄位沿用文件，
 // 只補查缺的（通常是 creatorUid、ownerUid）。viewer 還沒查完就查全部代表欄位。
-// ASSUMPTION: 這份清單跟登入 session 走，不過期；登出或換帳號才清。同一 uid 進行中的請求合併成一筆。
-// 單一欄位查詢失敗就略過該欄，不把整份清單清成空的。
+// ASSUMPTION: 這份清單跟登入 session 走，不過期；登出、換帳號或 viewer:refresh 才清。同一 uid 進行中的請求合併成一筆。
+// 任一欄位查詢失敗：這次仍交回已查到的俱樂部，但不寫快取，下次重查。
 // 俱樂部 id 只用 Firestore 文件路徑 id。後端與 Rules 只信路徑 id，不讀欄位 id。
 
 import { on } from '@/core/events';
@@ -89,11 +89,15 @@ on('auth:changed', ({ uid }) => {
   }
 });
 
+on('viewer:refresh', () => {
+  invalidateRepClubs();
+});
+
 async function queryRepFields(
   uid: string,
   fields: ReadonlyArray<(typeof REP_QUERIES)[number]>,
-): Promise<Array<{ id: string; data: Record<string, unknown> }>> {
-  if (fields.length === 0) return [];
+): Promise<{ docs: Array<{ id: string; data: Record<string, unknown> }>; failed: boolean }> {
+  if (fields.length === 0) return { docs: [], failed: false };
   const [{ getFirebase }, fs] = await Promise.all([
     import('@/data/firebase'),
     import('firebase/firestore'),
@@ -102,24 +106,30 @@ async function queryRepFields(
   const groups = await Promise.all(fields.map(async ([field, op]) => {
     try {
       const snap = await fs.getDocs(fs.query(fs.collection(db, 'teams'), fs.where(field, op, uid)));
-      return snap.docs.map((doc) => ({
-        id: doc.id,
-        data: doc.data() as Record<string, unknown>,
-      }));
+      return {
+        failed: false,
+        docs: snap.docs.map((doc) => ({
+          id: doc.id,
+          data: doc.data() as Record<string, unknown>,
+        })),
+      };
     } catch {
-      return [];
+      return { failed: true, docs: [] as Array<{ id: string; data: Record<string, unknown> }> };
     }
   }));
-  return groups.flat();
+  return {
+    docs: groups.flatMap((group) => group.docs),
+    failed: groups.some((group) => group.failed),
+  };
 }
 
-async function fetchRepClubs(uid: string): Promise<CpClub[]> {
+async function fetchRepClubs(uid: string): Promise<{ clubs: CpClub[]; failed: boolean }> {
   const scan = peekViewerTeamScan(uid);
   const covered = new Set<string>(scan?.fields ?? []);
   const missing = REP_QUERIES.filter(([field]) => !covered.has(field));
-  const fetched = await queryRepFields(uid, missing);
+  const { docs, failed } = await queryRepFields(uid, missing);
   const reused = (scan?.docs ?? []).map((doc) => ({ id: doc.docId, data: doc.data }));
-  return collectRepClubs(uid, [...reused, ...fetched]);
+  return { clubs: collectRepClubs(uid, [...reused, ...docs]), failed };
 }
 
 export async function loadRepClubs(uid: string): Promise<CpClub[]> {
@@ -130,17 +140,19 @@ export async function loadRepClubs(uid: string): Promise<CpClub[]> {
   let request = repInflight.get(uid);
   if (!request) {
     const started = fetchRepClubs(uid);
-    request = started;
-    repInflight.set(uid, started);
-    started.then(
-      (clubs) => {
-        // 已被登出、換帳號或換成新請求：只交給原呼叫端，不寫入快取。
-        if (repInflight.get(uid) !== started) return;
+    const clubsPromise = started.then((result) => result.clubs);
+    request = clubsPromise;
+    repInflight.set(uid, clubsPromise);
+    void started.then(
+      (result) => {
+        // 已被登出、換帳號、viewer:refresh 或換成新請求：只交給原呼叫端，不寫入快取。
+        if (repInflight.get(uid) !== clubsPromise) return;
         repInflight.delete(uid);
-        repCache.set(uid, { clubs });
+        if (result.failed) return;
+        repCache.set(uid, { clubs: result.clubs });
       },
       () => {
-        if (repInflight.get(uid) === started) repInflight.delete(uid);
+        if (repInflight.get(uid) === clubsPromise) repInflight.delete(uid);
       },
     );
   }

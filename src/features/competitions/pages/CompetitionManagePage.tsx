@@ -3,7 +3,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
@@ -22,7 +22,7 @@ import { buildPaymentInput, buildReviewInput } from '../payload';
 import type { DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
-import { CpCard, CpFrame } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
 async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   const uid = env.actor.uid;
@@ -43,10 +43,10 @@ async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   return { competition, divisions, entries, roster: [], privates, staff };
 }
 
-function payLabel(t: (key: string) => string, status: PaymentStatus): { label: string; tone: 'success' | 'neutral' } {
-  if (status === 'paid') return { label: t('competitions.paid'), tone: 'success' };
-  if (status === 'refunded') return { label: t('competitions.refunded'), tone: 'neutral' };
-  return { label: t('competitions.unpaid'), tone: 'neutral' };
+function payLabel(ct: CompetitionsT, status: PaymentStatus): { label: string; tone: 'success' | 'neutral' } {
+  if (status === 'paid') return { label: ct('paid'), tone: 'success' };
+  if (status === 'refunded') return { label: ct('refunded'), tone: 'neutral' };
+  return { label: ct('unpaid'), tone: 'neutral' };
 }
 
 function privateOf(rows: readonly EntryPrivateDoc[], entry: EntryDoc): EntryPrivateDoc | null {
@@ -54,7 +54,8 @@ function privateOf(rows: readonly EntryPrivateDoc[], entry: EntryDoc): EntryPriv
 }
 
 function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [phase, setPhase] = useState(env.bundle ? 'ready' : 'loading');
@@ -106,14 +107,14 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const unconfirmed = approved.filter((entry) => !entry.rosterConfirmed).length;
 
   useEffect(() => {
-    if (!env.preview?.lockDialog) return;
-    void appConfirm(t('competitions.lockConfirm', { n: unconfirmed }), {
-      okText: t('competitions.lock'),
+    if (!env.preview?.lockDialog || !cpDict.ct) return;
+    void appConfirm(cpDict.ct('lockConfirm', { n: unconfirmed }), {
+      okText: cpDict.ct('lock'),
       danger: false,
     });
-    // 只為截圖把確認框打開，不在這裡鎖定。
+    // 只為截圖把確認框打開，不在這裡鎖定。字典晚到時補開一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cpDict.ct]);
 
   useEffect(() => {
     if (env.preview?.rejectOpen && rejectId === 'pending' && pending[0]) {
@@ -122,11 +123,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }, [env.preview?.rejectOpen, pending, rejectId]);
 
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (!competition) {
     return (
-      <CpFrame title={t('competitions.manageTitle')}>
-        <p class="cps-note" role="alert">{t('competitions.loadFailed')}</p>
+      <CpFrame title={ct('manageTitle')}>
+        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
       </CpFrame>
     );
   }
@@ -227,8 +229,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   async function lock(): Promise<void> {
     if (!manage || busy || locked) return;
-    const ok = await appConfirm(t('competitions.lockConfirm', { n: unconfirmed }), {
-      okText: t('competitions.lock'),
+    const ok = await appConfirm(ct('lockConfirm', { n: unconfirmed }), {
+      okText: ct('lock'),
       danger: false,
     });
     if (!ok) return;
@@ -292,16 +294,16 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <CpCard key={entry.id}>
             <div class="cps-head-row">
               <h3 class="cps-h">{entry.name}</h3>
-              <Badge tone="warning" label={t('competitions.pending')} size="sm" />
+              <Badge tone="warning" label={ct('pending')} size="sm" />
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {priv?.contactName ? (
-              <div class="cps-kv"><span>{t('competitions.contact')}</span><span>{priv.contactName}</span></div>
+              <div class="cps-kv"><span>{ct('contact')}</span><span>{priv.contactName}</span></div>
             ) : null}
             {manage ? (
               <div class="cps-actions">
-                <Button variant="secondary" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{t('competitions.reject')}</Button>
-                <Button variant="primary" onClick={() => { void approve(entry.id); }}>{t('competitions.approve')}</Button>
+                <Button variant="secondary" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{ct('reject')}</Button>
+                <Button variant="primary" onClick={() => { void approve(entry.id); }}>{ct('approve')}</Button>
               </div>
             ) : null}
           </CpCard>
@@ -315,7 +317,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {approved.map((entry) => {
         const division = divisionOf(entry.dvId);
         const priv = privateOf(bundle?.privates ?? [], entry);
-        const pay = payLabel(t, priv?.paymentStatus ?? 'none');
+        const pay = payLabel(ct, priv?.paymentStatus ?? 'none');
         return (
           <CpCard key={entry.id}>
             <div class="cps-head-row">
@@ -325,20 +327,20 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 </a>
               </h3>
               {entry.rosterConfirmed
-                ? <Badge tone="success" label={t('competitions.rosterConfirmed')} size="sm" />
-                : <Badge tone="warning" label={t('competitions.rosterUnconfirmed')} size="sm" />}
+                ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
+                : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {division ? <FeeLine amount={division.feePerTeam} /> : null}
             <div class="cps-kv">
-              <span>{t('competitions.rosterPeople')}</span>
-              <span>{t('competitions.rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
+              <span>{ct('rosterPeople')}</span>
+              <span>{ct('rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
             </div>
             {manage ? (
               <div class="cps-pay">
                 <Badge tone={pay.tone} label={pay.label} size="sm" />
                 <Switch
-                  label={t('competitions.markPaid')}
+                  label={ct('markPaid')}
                   checked={priv?.paymentStatus === 'paid'}
                   onCheckedChange={(checked) => { void markPaid(entry, checked); }}
                 />
@@ -349,12 +351,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       })}
       {manage && !locked ? (
         <div class="cps-actions cps-actions--col" style="margin-top:0">
-          <Button variant="danger" onClick={() => { void lock(); }}>{t('competitions.lockAll')}</Button>
+          <Button variant="danger" onClick={() => { void lock(); }}>{ct('lockAll')}</Button>
         </div>
       ) : null}
       {showUnlock ? (
         <div class="cps-actions">
-          <Button variant="secondary" onClick={() => { setUnlockError(null); setUnlockOpen(true); }}>{t('competitions.unlock')}</Button>
+          <Button variant="secondary" onClick={() => { setUnlockError(null); setUnlockOpen(true); }}>{ct('unlock')}</Button>
         </div>
       ) : null}
     </div>
@@ -368,11 +370,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <CpCard key={entry.id}>
             <div class="cps-head-row">
               <h3 class="cps-h">{entry.name}</h3>
-              <Badge tone="danger" label={t('competitions.rejected')} size="sm" />
+              <Badge tone="danger" label={ct('rejected')} size="sm" />
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {priv?.reviewNote ? (
-              <div class="cps-kv"><span>{t('competitions.rejectReason')}</span><span>{priv.reviewNote}</span></div>
+              <div class="cps-kv"><span>{ct('rejectReason')}</span><span>{priv.reviewNote}</span></div>
             ) : null}
           </CpCard>
         );
@@ -381,25 +383,25 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   );
 
   return (
-    <CpFrame title={t('competitions.manageTitle')}>
+    <CpFrame title={ct('manageTitle')}>
       <div>
         <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
         {(bundle?.divisions ?? []).map((division) => (
           <p class="cps-cap" key={division.dvId} data-approved-count={division.dvId}>
-            {division.name}　{t('competitions.approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}
+            {division.name}　{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}
           </p>
         ))}
         <Tabs
-          label={t('competitions.entryTabs')}
+          label={ct('entryTabs')}
           variant="segmented"
           value={tab}
           onValueChange={(id) => {
             if (id === 'pending' || id === 'approved' || id === 'rejected') setTab(id);
           }}
           items={[
-            { id: 'pending', label: t('competitions.tabPending', { n: pending.length }), panel: pendingPanel },
-            { id: 'approved', label: t('competitions.tabApproved', { n: approved.length }), panel: approvedPanel },
-            { id: 'rejected', label: t('competitions.tabRejected', { n: rejected.length }), panel: rejectedPanel },
+            { id: 'pending', label: ct('tabPending', { n: pending.length }), panel: pendingPanel },
+            { id: 'approved', label: ct('tabApproved', { n: approved.length }), panel: approvedPanel },
+            { id: 'rejected', label: ct('tabRejected', { n: rejected.length }), panel: rejectedPanel },
           ]}
         />
       </div>
@@ -407,23 +409,23 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {rejectEntry ? (
         <BottomSheet
           open
-          title={t('competitions.rejectTitle')}
+          title={ct('rejectTitle')}
           onClose={() => { setRejectId(null); setRejectError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => { setRejectId(null); setRejectError(null); }}>{t('competitions.cancel')}</Button>
-              <Button variant="danger" loading={busy} onClick={() => { void reject(); }}>{t('competitions.rejectSubmit')}</Button>
+              <Button variant="secondary" onClick={() => { setRejectId(null); setRejectError(null); }}>{ct('cancel')}</Button>
+              <Button variant="danger" loading={busy} onClick={() => { void reject(); }}>{ct('rejectSubmit')}</Button>
             </div>
           )}
         >
           <div class="cps-sheet-body">
             <p class="cps-note">{rejectEntry.name}　{divisionName(rejectEntry.dvId)}</p>
             <Textarea
-              label={t('competitions.rejectReason')}
+              label={ct('rejectReason')}
               required
               value={rejectReason}
               maxLength={200}
-              placeholder={t('competitions.rejectPlaceholder')}
+              placeholder={ct('rejectPlaceholder')}
               onValueChange={setRejectReason}
             />
             {rejectError ? <CpError reason={rejectError.reason} params={rejectError.params} /> : null}
@@ -433,18 +435,18 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {unlockOpen ? (
         <BottomSheet
           open
-          title={t('competitions.unlockTitle')}
+          title={ct('unlockTitle')}
           onClose={() => { setUnlockOpen(false); setUnlockError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => { setUnlockOpen(false); setUnlockError(null); }}>{t('competitions.cancel')}</Button>
-              <Button variant="primary" loading={busy} onClick={() => { void unlock(); }}>{t('competitions.unlockSubmit')}</Button>
+              <Button variant="secondary" onClick={() => { setUnlockOpen(false); setUnlockError(null); }}>{ct('cancel')}</Button>
+              <Button variant="primary" loading={busy} onClick={() => { void unlock(); }}>{ct('unlockSubmit')}</Button>
             </div>
           )}
         >
           <div class="cps-sheet-body">
             <Textarea
-              label={t('competitions.unlockReason')}
+              label={ct('unlockReason')}
               required
               value={unlockReason}
               maxLength={200}

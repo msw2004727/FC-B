@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/preact';
+import { cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompetitionsRepo } from './data/cp-repo';
@@ -26,7 +26,7 @@ const loadBox = vi.hoisted(() => ({
 const repoBox = vi.hoisted(() => ({
   getLaunch: vi.fn(async () => ({ isPublic: gateBox.isPublic, bannedWords: [] as string[] })),
   getLaunchTester: vi.fn(async (_uid: string) => false),
-  listMine: vi.fn(async (_uid: string) => []),
+  listMine: vi.fn(async (_uid: string): Promise<Array<{ id: string; cid: string; roles: string[]; host: boolean; name?: string }>> => []),
   listPublic: vi.fn(async (_includeInternal?: boolean) => []),
   listByHostTeam: vi.fn(async (_teamId: string, _publicOnly: boolean) => []),
 }));
@@ -92,5 +92,28 @@ describe('站內賽事閘門才查代表俱樂部', () => {
     await waitFor(() => expect(repoBox.listMine).toHaveBeenCalledTimes(1));
     expect(repoBox.listPublic).toHaveBeenCalledTimes(1);
     expect(repoBox.getLaunchTester).not.toHaveBeenCalled();
+  });
+
+  it('換 uid 立刻清掉上一個人的賽事，並改查新的人', async () => {
+    gateBox.isPublic = true;
+    repoBox.listMine.mockImplementation(async (uid: string) => (
+      uid === 'uid_user'
+        ? [{ id: 'm1', cid: 'c1', roles: ['host'], host: true, name: '舊人賽事' }]
+        : []
+    ));
+    const view = draw();
+    expect(await screen.findByText('舊人賽事')).toBeTruthy();
+    await waitFor(() => expect(loadBox.load).toHaveBeenCalledWith('uid_user'));
+
+    viewerBox.current = { ...viewerBox.current, uid: 'uid_next' };
+    view.rerender(
+      <LocationProvider>
+        <InAppSection />
+      </LocationProvider>,
+    );
+    expect(view.container.textContent ?? '').not.toContain('舊人賽事');
+    await waitFor(() => expect(loadBox.load).toHaveBeenCalledWith('uid_next'));
+    expect(view.container.textContent ?? '').not.toContain('舊人賽事');
+    repoBox.listMine.mockImplementation(async () => []);
   });
 });

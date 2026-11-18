@@ -6,7 +6,7 @@ import { CP_REASON_CODES, CP_REASON_FALLBACK_KEY, cpReasonKey } from './reasons'
 const LOCALES = ['zh-TW', 'zh-CN', 'en', 'ja', 'vi', 'th', 'ko'] as const;
 
 function readLocale(locale: string): string {
-  return readFileSync(resolve(__dirname, `../locales/${locale}.json`), 'utf8');
+  return readFileSync(resolve(__dirname, `../locales-lazy/${locale}.json`), 'utf8');
 }
 
 describe('cpReasonKey（契約 §5 全覆蓋）', () => {

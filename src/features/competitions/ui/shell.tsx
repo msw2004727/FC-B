@@ -1,7 +1,28 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useGoBack } from '@/core/back-guard';
 import { useT } from '@/i18n/i18n';
+import { Button } from '@/ui/Button';
+import { PageSpinner } from '@/ui/PageSpinner';
+import { ctOrKey, useCompetitionsT } from '../i18n';
 import '../competitions.css';
+
+/** 賽事字典還沒到。載入與失敗文案走核心字典，不依賴賽事懶載。 */
+export function CpI18nPending({ failed, retry }: { failed: boolean; retry: () => void }): JSX.Element {
+  const t = useT();
+  if (failed) {
+    return (
+      <div class="cps-root" role="alert">
+        <p class="cps-note">{t('common.error')}</p>
+        <Button variant="secondary" onClick={retry}>{t('common.retry')}</Button>
+      </div>
+    );
+  }
+  return (
+    <div class="cps-root">
+      <PageSpinner />
+    </div>
+  );
+}
 
 function BackIcon(): JSX.Element {
   return (
@@ -40,12 +61,14 @@ export function CpFrame({
   menu?: ComponentChildren;
   children: ComponentChildren;
 }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const goBack = useGoBack('/tournaments');
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   return (
     <div class="cps-root">
       <header class="cps-top">
-        <button type="button" class="cps-iconbtn" aria-label={t('competitions.back')} onClick={onBack ?? goBack}>
+        <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
           <BackIcon />
         </button>
         <h1>{title}</h1>

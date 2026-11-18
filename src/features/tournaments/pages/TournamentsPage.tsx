@@ -4,7 +4,7 @@ import '../legacy/tournaments-glass.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { isCompetitionsEnabled } from '@/features/competitions/load';
+import { COMPETITIONS_ENABLED } from '@/feature-overrides';
 import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
@@ -40,11 +40,15 @@ import { readCardsCache, writeCardsCache } from '../data/cards-cache';
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 
-/** 站內賽事整區。開關關閉時不載入那個 chunk。 */
+/** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
 function InAppCompetitionsSlot(): JSX.Element | null {
+  if (!COMPETITIONS_ENABLED) return null;
+  return <InAppCompetitionsLoader />;
+}
+
+function InAppCompetitionsLoader(): JSX.Element | null {
   const [Slot, setSlot] = useState<ComponentType | null>(null);
   useEffect(() => {
-    if (!isCompetitionsEnabled()) return;
     let alive = true;
     void import('@/features/competitions/components/InAppSection').then((mod) => {
       if (alive) setSlot(() => mod.InAppSection);

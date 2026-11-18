@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FEATURE_OVERRIDES } from '@/feature-overrides';
 import { ALL_FEATURES } from '@/features.config';
 import { _resetForTest, getActiveRoutes, registerFeatures } from '@/core/feature-registry';
@@ -29,7 +29,8 @@ import {
   wizardActor,
   wizardSeed,
 } from '../testing/screen-fixtures';
-import cpZh from '../locales/zh-TW.json';
+import { loadCompetitionsDict } from '../i18n';
+import cpZh from '../locales-lazy/zh-TW.json';
 import AddRosterPage from './AddRosterPage';
 import CompetitionDetailPage from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
@@ -46,6 +47,10 @@ function flatten(obj: Record<string, unknown>, prefix = '', out: Record<string, 
   }
   return out;
 }
+
+beforeAll(async () => {
+  await loadCompetitionsDict('zh-TW');
+});
 
 const dict = {
   ...flatten(coreZh as unknown as Record<string, unknown>),
@@ -871,6 +876,58 @@ describe('賽事第 2 步畫面', () => {
 
     const started = mount(JoinRosterPage, { ...screenEnv('form-self-adult'), now: FIRST_MATCH });
     expect(started.container.textContent ?? '').toContain('賽事已開始，不能再改');
+  });
+
+  it('代表不是成員時自己登錄看得到表單並能送出', async () => {
+    const actions = spyActions();
+    const env = screenEnv('form-self-adult', actions);
+    env.actor = { ...memberActor, memberClubIds: [], repClubs: [{ id: 'club_a', name: '示範隊A' }] };
+    const view = mount(JoinRosterPage, env);
+    expect(screen.getByLabelText('暱稱')).toBeTruthy();
+    expect(view.container.textContent ?? '').not.toContain('只有俱樂部成員可以做這個操作');
+    fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示暱稱與背號' }));
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await waitFor(() => expect(actions.joinRoster).toHaveBeenCalled());
+  });
+
+  it('代表清單還沒到時自己登錄先顯示載入中，不判成不是成員', () => {
+    const env = screenEnv('form-self-adult');
+    env.actor = { ...memberActor, memberClubIds: [], repClubs: [], repClubsPending: true };
+    const view = mount(JoinRosterPage, env);
+    expect(view.container.querySelector('.ui-page-spinner')).toBeTruthy();
+    expect(view.container.textContent ?? '').not.toContain('只有俱樂部成員可以做這個操作');
+    expect(screen.queryByLabelText('暱稱')).toBeNull();
+  });
+
+  it('換帳號時站內賽事不留下上一個人的名稱', async () => {
+    const repo = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      mine: {
+        uid_a: [{ id: 'mine_a', cid: 'cup_a', roles: ['host'], host: true, name: '甲的賽事' }],
+        uid_b: [{ id: 'mine_b', cid: 'cup_b', roles: ['host'], host: true, name: '乙的賽事' }],
+      },
+      competitions: [
+        competition({ id: 'cup_a', name: '甲的賽事', visibility: 'unlisted' }),
+        competition({ id: 'cup_b', name: '乙的賽事', visibility: 'unlisted' }),
+      ],
+    });
+    const actorA: CpActor = { ...repActor, uid: 'uid_a' };
+    const actorB: CpActor = { ...repActor, uid: 'uid_b', repClubs: [] };
+    const view = draw(
+      <CpEnvProvider value={{ actor: actorA, repo, actions: idleActions(), now: NOW }}>
+        <InAppSection />
+      </CpEnvProvider>,
+    );
+    expect(await screen.findByText('甲的賽事')).toBeTruthy();
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor: actorB, repo, actions: idleActions(), now: NOW }}>
+          <InAppSection />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(view.container.textContent ?? '').not.toContain('甲的賽事');
+    expect(await screen.findByText('乙的賽事')).toBeTruthy();
   });
 
   it('自訂位置超過 5 字、拒絕原因不足 2 字會擋下；底部面板重開會清掉自己的錯誤', async () => {

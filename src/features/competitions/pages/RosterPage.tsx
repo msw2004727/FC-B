@@ -3,7 +3,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
@@ -15,7 +15,7 @@ import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
-import { CpCard, CpFrame, TrashIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
 
 async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promise<CpBundle> {
   const uid = env.actor.uid;
@@ -30,13 +30,13 @@ async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promis
 }
 
 function entryStatusBadge(
-  t: (key: string) => string,
+  ct: CompetitionsT,
   status: EntryStatus,
 ): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  if (status === 'approved') return { label: t('competitions.approved'), tone: 'success' };
-  if (status === 'pending') return { label: t('competitions.pending'), tone: 'warning' };
-  if (status === 'rejected') return { label: t('competitions.rejected'), tone: 'danger' };
-  return { label: t('competitions.withdrawn'), tone: 'neutral' };
+  if (status === 'approved') return { label: ct('approved'), tone: 'success' };
+  if (status === 'pending') return { label: ct('pending'), tone: 'warning' };
+  if (status === 'rejected') return { label: ct('rejected'), tone: 'danger' };
+  return { label: ct('withdrawn'), tone: 'neutral' };
 }
 
 function PlayerRow({
@@ -48,23 +48,25 @@ function PlayerRow({
   canEdit: boolean;
   onRemove: () => void;
 }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const pos = positionLabel(player.position, player.positionText, {
-    none: t('competitions.positionNone'),
-    GK: t('competitions.positionGK'),
-    DF: t('competitions.positionDF'),
-    MF: t('competitions.positionMF'),
-    FW: t('competitions.positionFW'),
-    custom: t('competitions.positionCustom'),
+    none: ct('positionNone'),
+    GK: ct('positionGK'),
+    DF: ct('positionDF'),
+    MF: ct('positionMF'),
+    FW: ct('positionFW'),
+    custom: ct('positionCustom'),
   });
   return (
     <li class="cps-li cps-player" data-roster-row>
       <span class="cps-num">{player.number}</span>
       <span class="cps-player__name">{player.displayName}</span>
       <span class="cps-player__pos">{pos}</span>
-      {player.isMinor ? <Badge tone="warning" label={t('competitions.minor')} size="sm" /> : null}
+      {player.isMinor ? <Badge tone="warning" label={ct('minor')} size="sm" /> : null}
       {canEdit ? (
-        <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={t('competitions.removePlayer', { name: player.displayName })} onClick={onRemove}>
+        <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: player.displayName })} onClick={onRemove}>
           <TrashIcon />
         </button>
       ) : null}
@@ -73,7 +75,8 @@ function PlayerRow({
 }
 
 function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: string }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
@@ -96,14 +99,15 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, enId, env.actor.uid, env.bundle]);
 
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   const competition = bundle?.competition;
   const entry = bundle?.entries.find((row) => row.id === enId);
   const division = bundle?.divisions.find((row) => row.dvId === entry?.dvId);
   if (!competition || !entry || !division || phase === 'error') {
     return (
-      <CpFrame title={t('competitions.rosterTitle')}>
-        <p class="cps-note" role="alert">{t('competitions.loadFailed')}</p>
+      <CpFrame title={ct('rosterTitle')}>
+        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
       </CpFrame>
     );
   }
@@ -120,12 +124,12 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const canEdit = isRep && !locked && !started && entry.status === 'approved';
   const canAdd = isRep && !locked && !started;
   const canJoin = isMember && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
-  const statusBadge = entryStatusBadge(t, entry.status);
+  const statusBadge = entryStatusBadge(ct, entry.status);
 
   async function remove(player: RosterPublicDoc): Promise<void> {
     if (busy) return;
-    const ok = await appConfirm(t('competitions.removePlayerConfirm', { name: player.displayName }), {
-      okText: t('competitions.remove'),
+    const ok = await appConfirm(ct('removePlayerConfirm', { name: player.displayName }), {
+      okText: ct('remove'),
       danger: true,
     });
     if (!ok) return;
@@ -170,29 +174,29 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   }
 
   return (
-    <CpFrame title={t('competitions.rosterTitle')}>
+    <CpFrame title={ct('rosterTitle')}>
       <CpCard>
         <div class="cps-badges" style="margin-bottom:6px">
           <Badge tone={statusBadge.tone} label={statusBadge.label} size="sm" />
           {entry.rosterConfirmed || locked
-            ? <Badge tone="success" label={t('competitions.rosterConfirmed')} size="sm" />
-            : <Badge tone="warning" label={t('competitions.rosterUnconfirmed')} size="sm" />}
+            ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
+            : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
         </div>
         <h2 class="cps-title">{entry.name}</h2>
-        <p class="cps-sub">{division.name}　{t('competitions.formatN', { n: division.playersOnField })}</p>
+        <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p>
         <div class="cps-bar" aria-hidden="true">
           <i class={short ? 'low' : ''} style={`width:${Math.min(100, (players.length / max) * 100)}%`} />
         </div>
         <div class="cps-kv">
-          <span>{t('competitions.currentCount')}</span>
-          <span>{t('competitions.rosterCount', { n: players.length, max, min })}</span>
+          <span>{ct('currentCount')}</span>
+          <span>{ct('rosterCount', { n: players.length, max, min })}</span>
         </div>
-        {!locked && short ? <p class="cps-note cps-warn" style="margin-top:8px">{t('competitions.needMore', { n: min - players.length, min })}</p> : null}
-        {locked ? <p class="cps-note" style="margin-top:8px">{t('competitions.rosterLocked')}</p> : null}
+        {!locked && short ? <p class="cps-note cps-warn" style="margin-top:8px">{ct('needMore', { n: min - players.length, min })}</p> : null}
+        {locked ? <p class="cps-note" style="margin-top:8px">{ct('rosterLocked')}</p> : null}
         {error ? <CpError reason={error.reason} params={error.params} /> : null}
       </CpCard>
       <CpCard>
-        <h2 class="cps-h">{t('competitions.players')}</h2>
+        <h2 class="cps-h">{ct('players')}</h2>
         <ul class="cps-list">
           {players.map((player) => (
             <PlayerRow key={player.id} player={player} canEdit={canEdit} onRemove={() => { void remove(player); }} />
@@ -201,13 +205,13 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
       </CpCard>
       {canAdd ? (
         <div class="cps-actions cps-actions--col" style="margin-top:0">
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}/add`)}>{t('competitions.addPlayer')}</Button>
-          <Button variant="primary" disabled={short || entry.status !== 'approved'} onClick={() => { void confirm(); }}>{t('competitions.confirmRoster')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}/add`)}>{ct('addPlayer')}</Button>
+          <Button variant="primary" disabled={short || entry.status !== 'approved'} onClick={() => { void confirm(); }}>{ct('confirmRoster')}</Button>
         </div>
       ) : null}
       {canJoin ? (
         <div class="cps-actions">
-          <Button variant="primary" onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{t('competitions.joinAction')}</Button>
+          <Button variant="primary" onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{ct('joinAction')}</Button>
         </div>
       ) : null}
     </CpFrame>

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emit } from '@/core/events';
-import { seedViewerTeamScanForTest, resetViewerTeamScanForTest } from '@/features/profile/data/viewer-team-scan';
+import { peekViewerTeamScan, resetViewerTeamScanForTest, seedViewerTeamScanForTest } from '@/features/profile/data/viewer-team-scan';
 import { collectRepClubs, isClubRepresentative, loadRepClubs, representativeClubs, resetRepClubsCacheForTest } from './rep-clubs';
 
 const firebaseBox = vi.hoisted(() => ({
@@ -114,5 +114,69 @@ describe('代表俱樂部清單的讀取量', () => {
     await loadRepClubs('u1');
     expect(queried).toEqual([]);
     expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('換 uid 時代表清單與 viewer team scan 一起清掉', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    seedViewerTeamScanForTest('u1', {
+      fields: new Set(['captainUid', 'leaderUid', 'leaderUids', 'coachUids']),
+      docs: [],
+    });
+    await loadRepClubs('u1');
+    expect(peekViewerTeamScan('u1')).not.toBeNull();
+    expect(getDocs).toHaveBeenCalledTimes(2);
+
+    emit('auth:changed', { uid: 'u2' });
+    expect(peekViewerTeamScan('u1')).toBeNull();
+    await loadRepClubs('u1');
+    // scan 與快取都清掉後，五個代表欄位要全部重查。
+    expect(getDocs).toHaveBeenCalledTimes(7);
+  });
+
+  it('晚到的上一個 uid 查詢結果不寫入快取', async () => {
+    let resolveDocs: (value: { docs: unknown[] }) => void = () => {};
+    const pending = new Promise<{ docs: unknown[] }>((resolve) => {
+      resolveDocs = resolve;
+    });
+    vi.mocked(getDocs).mockImplementation(() => pending as never);
+    const first = loadRepClubs('u1');
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalled());
+    emit('auth:changed', { uid: 'u2' });
+    resolveDocs({
+      docs: [{ id: 'path_a', data: () => ({ name: '甲隊', captainUid: 'u1' }) }],
+    });
+    await expect(first).resolves.toEqual([{ id: 'path_a', name: '甲隊' }]);
+
+    vi.mocked(getDocs).mockReset();
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    await loadRepClubs('u1');
+    expect(getDocs).toHaveBeenCalled();
+  });
+
+  it('任一欄位查詢失敗不寫快取，下次重查', async () => {
+    vi.mocked(getDocs).mockImplementation(async (constraint) => {
+      const field = (constraint as unknown as { field: string }).field;
+      if (field === 'captainUid') {
+        return {
+          docs: [{ id: 'path_a', data: () => ({ name: '甲隊', captainUid: 'u1' }) }],
+        } as never;
+      }
+      if (field === 'ownerUid') throw new Error('boom');
+      return { docs: [] } as never;
+    });
+    await expect(loadRepClubs('u1')).resolves.toEqual([{ id: 'path_a', name: '甲隊' }]);
+    const calls = vi.mocked(getDocs).mock.calls.length;
+    expect(calls).toBe(5);
+    await loadRepClubs('u1');
+    expect(vi.mocked(getDocs).mock.calls.length).toBe(calls + 5);
+  });
+
+  it('viewer:refresh 清掉代表清單快取', async () => {
+    vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
+    await loadRepClubs('u1');
+    expect(getDocs).toHaveBeenCalledTimes(5);
+    emit('viewer:refresh', {});
+    await loadRepClubs('u1');
+    expect(getDocs).toHaveBeenCalledTimes(10);
   });
 });

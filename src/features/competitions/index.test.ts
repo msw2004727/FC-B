@@ -102,7 +102,7 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
 
   it('賽事頁只在開關通過後才動態載入站內賽事區', () => {
     const text = readFileSync(resolve(__dirname, '../tournaments/pages/TournamentsPage.tsx'), 'utf8');
-    const gate = text.indexOf('if (!isCompetitionsEnabled()) return');
+    const gate = text.indexOf('if (!COMPETITIONS_ENABLED) return null');
     const slotImport = text.indexOf("import('@/features/competitions/components/InAppSection')");
     expect(gate).toBeGreaterThan(-1);
     expect(slotImport).toBeGreaterThan(gate);

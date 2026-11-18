@@ -4,7 +4,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT } from '../i18n';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
@@ -23,7 +23,7 @@ import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft
 import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
-import { CpCard, CpFrame, CpRow, TrashIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, CpRow, TrashIcon } from '../ui/shell';
 
 const FORMATS = [5, 7, 8, 9, 11] as const;
 
@@ -153,7 +153,8 @@ function MapPicker({
 }
 
 function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const preview = env.preview;
   const [step, setStep] = useState<1 | 2 | 3>(preview?.wizardStep === 2 || preview?.wizardStep === 3 ? preview.wizardStep : 1);
@@ -186,6 +187,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     if (!first) return;
     setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
   }, [clubs, clubsPending, form.hostType, form.hostTeamId]);
+
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
 
   function patch(partial: Partial<FormState>): void {
     setForm((prev) => ({ ...prev, ...partial }));
@@ -283,22 +286,22 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }
   }
 
-  const stepName = step === 1 ? t('competitions.stepBasic') : step === 2 ? t('competitions.stepDivisions') : t('competitions.stepConfirm');
+  const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
   const hostName = form.hostType === 'club'
     ? (clubs.find((club) => club.id === form.hostTeamId)?.name ?? '')
     : (env.actor.displayName ?? '');
 
   if (done) {
     return (
-      <CpFrame title={t('competitions.createTitle')}>
+      <CpFrame title={ct('createTitle')}>
         <CpCard class="cps-success">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>
-          <h2 class="cps-title" style="margin:12px 0 4px">{t('competitions.createdDraft')}</h2>
+          <h2 class="cps-title" style="margin:12px 0 4px">{ct('createdDraft')}</h2>
           <p class="cps-sub">{form.name.trim()}</p>
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
           <div class="cps-actions cps-actions--col">
-            <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>{t('competitions.publish')}</Button>
-            <Button variant="secondary" onClick={() => route(cid ? `/competitions/${cid}` : '/tournaments')}>{t('competitions.publishLater')}</Button>
+            <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>{ct('publish')}</Button>
+            <Button variant="secondary" onClick={() => route(cid ? `/competitions/${cid}` : '/tournaments')}>{ct('publishLater')}</Button>
           </div>
         </CpCard>
       </CpFrame>
@@ -309,14 +312,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   return (
     <CpFrame
-      title={t('competitions.createTitle')}
+      title={ct('createTitle')}
       onBack={step === 1 ? undefined : () => { setError(null); setStep(step === 3 ? 2 : 1); }}
     >
       <div>
         <div class="cps-steps" aria-hidden="true">
           {[1, 2, 3].map((n) => <i key={n} class={n <= step ? 'on' : ''} />)}
         </div>
-        <div class="cps-stepname"><span>{t('competitions.stepOf', { step })}</span><b>{stepName}</b></div>
+        <div class="cps-stepname"><span>{ct('stepOf', { step })}</span><b>{stepName}</b></div>
       </div>
 
       {step === 1 ? (
@@ -324,17 +327,17 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <CpCard>
             <div class="cps-fields">
               <Input
-                label={t('competitions.name')}
+                label={ct('name')}
                 required
                 value={form.name}
                 maxLength={60}
                 error={error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1)
-                  ? reasonText(t, error.reason, error.params)
+                  ? reasonText(ct, error.reason, error.params)
                   : undefined}
                 onValueChange={(name) => { patch({ name }); setError(null); }}
               />
               <RadioGroup
-                label={t('competitions.hostKind')}
+                label={ct('hostKind')}
                 orientation="horizontal"
                 value={form.hostType}
                 onValueChange={(value) => {
@@ -345,13 +348,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   });
                 }}
                 options={[
-                  { value: 'personal', label: t('competitions.hostPersonalShort') },
-                  ...(clubs.length > 0 ? [{ value: 'club', label: t('competitions.hostClubOption') }] : []),
+                  { value: 'personal', label: ct('hostPersonalShort') },
+                  ...(clubs.length > 0 ? [{ value: 'club', label: ct('hostClubOption') }] : []),
                 ]}
               />
               {form.hostType === 'club' && clubs.length > 0 ? (
                 <Select
-                  label={t('competitions.club')}
+                  label={ct('club')}
                   value={form.hostTeamId}
                   onValueChange={(hostTeamId) => patch({ hostTeamId })}
                   options={clubs.map((club) => ({ value: club.id, label: club.name }))}
@@ -360,62 +363,62 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               {form.hostType === 'club' ? (
                 <div>
                   <Textarea
-                    label={t('competitions.feeNote')}
+                    label={ct('feeNote')}
                     value={form.feeNote}
                     maxLength={500}
                     onValueChange={(feeNote) => patch({ feeNote })}
                   />
                   <p class="cps-cap" style="margin-top:6px">
-                    <span class="cps-line">{t('competitions.feeHandledByHost')}</span>
-                    <span class="cps-line">{t('competitions.feeSiteDoesNotHandle')}</span>
+                    <span class="cps-line">{ct('feeHandledByHost')}</span>
+                    <span class="cps-line">{ct('feeSiteDoesNotHandle')}</span>
                   </p>
                 </div>
               ) : null}
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{t('competitions.regPeriod')}</h2>
+            <h2 class="cps-h">{ct('regPeriod')}</h2>
             <div class="cps-fields">
-              <DateTimeField id="cp-reg-open" label={t('competitions.regStart')} value={form.regOpen} onValueChange={(regOpen) => patch({ regOpen })} />
-              <DateTimeField id="cp-reg-close" label={t('competitions.regEnd')} value={form.regClose} onValueChange={(regClose) => patch({ regClose })} />
+              <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} onValueChange={(regOpen) => patch({ regOpen })} />
+              <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} onValueChange={(regClose) => patch({ regClose })} />
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{t('competitions.matchPeriod')}</h2>
+            <h2 class="cps-h">{ct('matchPeriod')}</h2>
             <div class="cps-fields">
-              <DateTimeField id="cp-first" label={t('competitions.firstMatch')} value={form.firstMatch} onValueChange={(firstMatch) => patch({ firstMatch })} />
-              <DateTimeField id="cp-last" label={t('competitions.lastMatch')} value={form.lastMatch} onValueChange={(lastMatch) => patch({ lastMatch })} />
+              <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} onValueChange={(firstMatch) => patch({ firstMatch })} />
+              <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} onValueChange={(lastMatch) => patch({ lastMatch })} />
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{t('competitions.venue')}</h2>
+            <h2 class="cps-h">{ct('venue')}</h2>
             <div class="cps-fields">
               {form.venues.map((venue, index) => (
                 <div class="cps-fields" key={index}>
                   <div class="cps-head-row">
                     <Input
-                      label={t('competitions.venueName')}
+                      label={ct('venueName')}
                       value={venue.name}
                       maxLength={40}
                       onValueChange={(name) => patchVenue(index, { name })}
                     />
                     {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={t('competitions.removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
+                      <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
                         <TrashIcon />
                       </button>
                     ) : null}
                   </div>
                   <Input
-                    label={t('competitions.venueAddress')}
+                    label={ct('venueAddress')}
                     value={venue.address}
                     maxLength={100}
                     onValueChange={(address) => patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' })}
                   />
-                  <Button variant="secondary" onClick={() => setMapIndex(index)}>{t('competitions.pickOnMap')}</Button>
+                  <Button variant="secondary" onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
                 </div>
               ))}
               {form.venues.length < 10 ? (
-                <Button variant="secondary" onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{t('competitions.addVenue')}</Button>
+                <Button variant="secondary" onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{ct('addVenue')}</Button>
               ) : null}
             </div>
           </CpCard>
@@ -427,12 +430,12 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           {form.divisions.map((division, index) => (
             <CpCard key={index}>
               <div class="cps-head-row" style="margin-bottom:12px">
-                <h2 class="cps-h">{t('competitions.divisionN', { n: index + 1 })}</h2>
+                <h2 class="cps-h">{ct('divisionN', { n: index + 1 })}</h2>
                 {form.divisions.length > 1 ? (
                   <button
                     type="button"
                     class="cps-iconbtn cps-iconbtn--flat"
-                    aria-label={t('competitions.removeDivision')}
+                    aria-label={ct('removeDivision')}
                     onClick={() => patch({ divisions: form.divisions.filter((_, i) => i !== index) })}
                   >
                     <TrashIcon />
@@ -440,14 +443,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 ) : null}
               </div>
               <div class="cps-fields">
-                <Input label={t('competitions.divisionName')} value={division.name} maxLength={30} onValueChange={(name) => patchDivision(index, { name })} />
+                <Input label={ct('divisionName')} value={division.name} maxLength={30} onValueChange={(name) => patchDivision(index, { name })} />
                 <div>
-                  <span class="cps-label">{t('competitions.playersOnField')}</span>
+                  <span class="cps-label">{ct('playersOnField')}</span>
                   <div class="cps-chips">
                     {FORMATS.map((count) => (
                       <Chip
                         key={count}
-                        label={t('competitions.formatN', { n: count })}
+                        label={ct('formatN', { n: count })}
                         size="sm"
                         selected={division.playersOnField === count}
                         onSelect={() => {
@@ -460,10 +463,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     ))}
                   </div>
                 </div>
-                <Stepper label={t('competitions.maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => patchDivision(index, { maxTeams })} />
-                <Stepper label={t('competitions.rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => patchDivision(index, { rosterMin })} />
+                <Stepper label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => patchDivision(index, { maxTeams })} />
+                <Stepper label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => patchDivision(index, { rosterMin })} />
                 <Stepper
-                  label={t('competitions.rosterMax')}
+                  label={ct('rosterMax')}
                   value={division.rosterMax}
                   min={division.playersOnField}
                   max={40}
@@ -473,7 +476,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   })}
                 />
                 <Switch
-                  label={t('competitions.limitAge')}
+                  label={ct('limitAge')}
                   checked={division.limitAge}
                   onCheckedChange={(limitAge) => patchDivision(index, {
                     limitAge,
@@ -482,17 +485,17 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 />
                 {division.limitAge ? (
                   <>
-                    <Stepper label={t('competitions.minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => patchDivision(index, { minAge })} />
-                    <Stepper label={t('competitions.maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => patchDivision(index, { maxAge })} />
+                    <Stepper label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => patchDivision(index, { minAge })} />
+                    <Stepper label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => patchDivision(index, { maxAge })} />
                   </>
                 ) : null}
                 <Switch
-                  label={t('competitions.requireRealName')}
+                  label={ct('requireRealName')}
                   checked={division.requireRealName}
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
                 <Input
-                  label={t('competitions.feePerTeam')}
+                  label={ct('feePerTeam')}
                   type="number"
                   value={String(division.feePerTeam)}
                   min={0}
@@ -507,7 +510,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             </CpCard>
           ))}
           {form.divisions.length < 8 ? (
-            <Button variant="secondary" onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{t('competitions.addDivision')}</Button>
+            <Button variant="secondary" onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{ct('addDivision')}</Button>
           ) : null}
         </>
       ) : null}
@@ -516,27 +519,27 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         <>
           <CpCard>
             <div class="cps-badges" style="margin-bottom:8px">
-              <Badge tone={form.hostType === 'club' ? 'info' : 'neutral'} label={form.hostType === 'club' ? t('competitions.hostClub') : t('competitions.hostPersonal')} size="sm" />
-              <Badge tone="warning" label={t('competitions.draft')} size="sm" />
+              <Badge tone={form.hostType === 'club' ? 'info' : 'neutral'} label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} size="sm" />
+              <Badge tone="warning" label={ct('draft')} size="sm" />
             </div>
             <h2 class="cps-title" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
-              <CpRow k={t('competitions.host')}>{hostName}</CpRow>
-              <CpRow k={t('competitions.regPeriod')}>
+              <CpRow k={ct('host')}>{hostName}</CpRow>
+              <CpRow k={ct('regPeriod')}>
                 <span class="cps-line">{formatTaipeiDateTime(draftTimes.regOpenAt)}</span>
-                <span class="cps-line">{t('competitions.until')} {formatTaipeiDateTime(draftTimes.regCloseAt)}</span>
+                <span class="cps-line">{ct('until')} {formatTaipeiDateTime(draftTimes.regCloseAt)}</span>
               </CpRow>
-              <CpRow k={t('competitions.matchPeriod')}>
+              <CpRow k={ct('matchPeriod')}>
                 <span class="cps-line">{formatTaipeiDateTime(draftTimes.firstMatchAt)}</span>
-                <span class="cps-line">{t('competitions.until')} {formatTaipeiDateTime(draftTimes.lastMatchAt)}</span>
+                <span class="cps-line">{ct('until')} {formatTaipeiDateTime(draftTimes.lastMatchAt)}</span>
               </CpRow>
-              <CpRow k={t('competitions.venue')}>
+              <CpRow k={ct('venue')}>
                 {form.venues.map((venue) => <span class="cps-line" key={venue.name}>{venue.name}</span>)}
               </CpRow>
             </dl>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{t('competitions.stepDivisions')}</h2>
+            <h2 class="cps-h">{ct('stepDivisions')}</h2>
             <ul class="cps-list">
               {form.divisions.map((division) => (
                 <li class="cps-li" key={division.name}>
@@ -544,13 +547,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     <span class="cps-li__name">{division.name}</span>
                     <div class="cps-li__meta">
                       <span class="cps-cap cps-nowrap">
-                        {t('competitions.divisionLine', {
-                          format: t('competitions.formatN', { n: division.playersOnField }),
+                        {ct('divisionLine', {
+                          format: ct('formatN', { n: division.playersOnField }),
                           teams: division.maxTeams,
                           min: division.rosterMin,
                           max: division.rosterMax,
                         })}
-                        {division.limitAge ? `　${t('competitions.ageLimit', { min: division.minAge, max: division.maxAge })}` : ''}
+                        {division.limitAge ? `　${ct('ageLimit', { min: division.minAge, max: division.maxAge })}` : ''}
                       </span>
                     </div>
                     <FeeLine amount={division.feePerTeam} />
@@ -559,7 +562,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               ))}
             </ul>
           </CpCard>
-          <p class="cps-note">{t('competitions.draftNote')}</p>
+          <p class="cps-note">{ct('draftNote')}</p>
         </>
       ) : null}
 
@@ -568,9 +571,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         : null}
 
       <div class="cps-actions">
-        {step > 1 ? <Button variant="secondary" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{t('competitions.prev')}</Button> : null}
-        {step < 3 ? <Button variant="primary" onClick={goNext}>{t('competitions.next')}</Button> : (
-          <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{t('competitions.createAction')}</Button>
+        {step > 1 ? <Button variant="secondary" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}
+        {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : (
+          <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
       </div>
 

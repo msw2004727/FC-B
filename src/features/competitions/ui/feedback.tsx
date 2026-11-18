@@ -1,9 +1,9 @@
 import type { JSX } from 'preact';
 import { useLocation } from 'preact-iso';
-import { useT } from '@/i18n/i18n';
+import { ctOrKey, useCompetitionsT } from '../i18n';
 import { CP_REASON_FALLBACK_KEY, cpReasonKey } from '../data/reasons';
 import { toCpCallError } from '../data/cp-callables';
-import { CpCard, CpFrame } from './shell';
+import { CpCard, CpFrame, CpI18nPending } from './shell';
 
 export function reasonParams(params: Record<string, unknown> | undefined): Record<string, string | number> {
   const out: Record<string, string | number> = {};
@@ -44,9 +44,11 @@ export function CpError({
   reason: string;
   params?: Record<string, unknown>;
 }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
-  const text = reasonText(t, reason, params);
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  const text = reasonText(ct, reason, params);
   if (reason === 'BIRTHDAY_REQUIRED') {
     return (
       <p class="cps-note cps-warn" role="alert">
@@ -60,7 +62,7 @@ export function CpError({
             route('/profile');
           }}
         >
-          {t('competitions.goBirthday')}
+          {ct('goBirthday')}
         </a>
       </p>
     );
@@ -78,14 +80,16 @@ export function RosterBlocked({
   cid: string;
   enId: string;
 }): JSX.Element {
-  const t = useT();
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
   const { route } = useLocation();
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const href = `/competitions/${cid}/entries/${enId}`;
   return (
-    <CpFrame title={t('competitions.rosterTitle')}>
+    <CpFrame title={ct('rosterTitle')}>
       <CpCard>
         {reason === 'ENTRY_STATUS'
-          ? <p class="cps-note cps-warn" role="alert">{t('competitions.rosterEntryClosed')}</p>
+          ? <p class="cps-note cps-warn" role="alert">{ct('rosterEntryClosed')}</p>
           : <CpError reason={reason} />}
         <p style="margin-top:12px">
           <a
@@ -96,7 +100,7 @@ export function RosterBlocked({
               route(href);
             }}
           >
-            {t('competitions.backToRoster')}
+            {ct('backToRoster')}
           </a>
         </p>
       </CpCard>
