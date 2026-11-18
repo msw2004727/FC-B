@@ -8,4 +8,8 @@
 // 任何引用註冊表的延遲載入 chunk（例如收件匣頁經 action-registry）都會靜態連到全部功能清單與首頁，
 // 打包器因此把首頁共用模組拆成許多額外的小 chunk，首屏要多下載十幾個檔案。本檔不得 import 任何功能模組。
 
-export const FEATURE_OVERRIDES: Record<string, boolean> = {};
+export const FEATURE_OVERRIDES: Record<string, boolean> = {
+  // 賽事第 2 步（建賽與名單）預設關閉。要打開改成 true（manifest 是 reserved，沒有這行 true 不會啟用）。
+  // 關閉時 competitions/load.ts 不會去載 asia-main／asia-east1。本檔仍然不得 import 功能模組。
+  competitions: false,
+};

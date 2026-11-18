@@ -144,5 +144,3 @@ html[data-theme="dark"], html[data-theme="dark"] body { background: #0b0f16; }
 .cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--color-success); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 .cps-pre { white-space: pre-line; }
-/* 停用的主要按鈕：深色下元件預設的字色幾乎看不見（R-UI-031），預覽先以可讀字色呈現；正式施工要在元件層修 */
-.cps-actions .ui-button:disabled, .cps-actions .ui-button[aria-disabled="true"] { color: var(--color-text-secondary); }
