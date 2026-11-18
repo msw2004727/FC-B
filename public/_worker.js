@@ -132,11 +132,12 @@ async function drillGate(request, env, url) {
       },
     });
   }
-  // 實機驗證專用 commit（顧問 §3.285）：詳情 chunk 的正常回應一律 no-store，避免被邊緣快取後 worker 不再執行、503 打不到。
+  // 實機驗證專用 commit（顧問 §3.285／§3.286）：詳情 chunk 的正常回應「邊緣不快取、瀏覽器照常快取」，
+  // 避免被邊緣快取後 worker 不再執行、503 打不到；瀏覽器端行為維持和正式站一樣可長期快取。
   if (DRILL_CHUNK_RE.test(url.pathname)) {
     const asset = await env.ASSETS.fetch(request);
     const res = new Response(asset.body, asset);
-    res.headers.set("Cache-Control", "no-store");
+    res.headers.set("Cache-Control", "private, max-age=31536000, immutable");
     res.headers.set("CDN-Cache-Control", "no-store");
     return res;
   }
