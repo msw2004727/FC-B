@@ -116,7 +116,8 @@ describe('代表俱樂部清單的讀取量', () => {
     expect(getDocs).toHaveBeenCalledTimes(2);
   });
 
-  it('換 uid 時代表清單與 viewer team scan 一起清掉', async () => {
+  // viewer team scan 換人時由 viewer.ts 的訂閱清掉（viewer-cache.test.tsx 驗證）；這裡只測代表清單快取。
+  it('換 uid 時代表清單清掉；scan 也清掉後五個代表欄位全部重查', async () => {
     vi.mocked(getDocs).mockResolvedValue({ docs: [] } as never);
     seedViewerTeamScanForTest('u1', {
       fields: new Set(['captainUid', 'leaderUid', 'leaderUids', 'coachUids']),
@@ -127,7 +128,7 @@ describe('代表俱樂部清單的讀取量', () => {
     expect(getDocs).toHaveBeenCalledTimes(2);
 
     emit('auth:changed', { uid: 'u2' });
-    expect(peekViewerTeamScan('u1')).toBeNull();
+    resetViewerTeamScanForTest();
     await loadRepClubs('u1');
     // scan 與快取都清掉後，五個代表欄位要全部重查。
     expect(getDocs).toHaveBeenCalledTimes(7);

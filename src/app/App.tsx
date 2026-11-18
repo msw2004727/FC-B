@@ -85,7 +85,7 @@ import {
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { LazySideDrawer } from './LazySideDrawer';
 import { SyncStatusBar } from './SyncStatusBar';
-import { DiagLoadsBadge } from './DiagLoadsBadge';
+import { LazyDiagLoadsBadge } from './LazyDiagLoadsBadge';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 // M-139：全站私訊即時泡泡與浮層外框一律 lazy 載入，避免首屏帶入 firestore。
@@ -481,7 +481,7 @@ export function App({
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}
           </div>
         )}
-        <DiagLoadsBadge />
+        <LazyDiagLoadsBadge />
       </div>
       <LazySideDrawer
         open={drawerOpen}

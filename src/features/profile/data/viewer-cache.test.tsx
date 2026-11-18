@@ -224,6 +224,16 @@ describe('viewer 全站共用快取', () => {
     expect(peekViewerTeamScan('u1')).toBeNull();
   });
 
+  it('所有 useViewer 卸載後 scan 清掉，之後換人不會讀到上一個人的隊伍', async () => {
+    const view = render(<Pair />);
+    await waitFor(() => expect(textOf('a')).toBe(FULL_U1));
+    expect(peekViewerTeamScan('u1')).not.toBeNull();
+    view.unmount();
+    await waitFor(() => expect(peekViewerTeamScan('u1')).toBeNull());
+    act(() => emit('auth:changed', { uid: 'u2' }));
+    expect(peekViewerTeamScan('u1')).toBeNull();
+  });
+
   it('登出立刻變成訪客，飛到一半的舊帳號結果不得把權限寫回來', async () => {
     render(<Pair />);
     await waitFor(() => expect(textOf('a')).toBe(FULL_U1));
@@ -234,6 +244,8 @@ describe('viewer 全站共用快取', () => {
     act(() => emit('auth:changed', { uid: null }));
     expect(textOf('a')).toBe(GUEST);
     expect(textOf('b')).toBe(GUEST);
+    // 入口瘦身後 scan 只由 viewer.ts 清（viewer-team-scan.ts 不再自己訂 auth:changed）。
+    expect(peekViewerTeamScan('u1')).toBeNull();
 
     stale.release();
     await settle();
