@@ -2201,8 +2201,11 @@ function EventDetailSession({
           ? '登入已過期，請重新登入後再試'
           : `夥伴報名沒有成功，請稍後再試（代碼：${error instanceof SignupError ? displayErrorCode(error) : 'unknown'}）`;
       const profileIncomplete = code === 'PROFILE_INCOMPLETE' || code === 'profile_incomplete';
-      toast.show({ message: (profileIncomplete ? messages.PROFILE_INCOMPLETE : messages[code]) || fallback });
-      if (profileIncomplete) void openProfileEditor(uid);
+      // 資料不完整是舊帳號的事：送出途中已換人就不提示、不開彈窗（Grok 初審 P3）。其他錯誤照舊提示。
+      if (!profileIncomplete || currentViewer.current.uid === uid) {
+        toast.show({ message: (profileIncomplete ? messages.PROFILE_INCOMPLETE : messages[code]) || fallback });
+        if (profileIncomplete) void openProfileEditor(uid);
+      }
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);

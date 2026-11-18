@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { LoadedEventDetail } from '../data/event-detail';
@@ -373,6 +373,47 @@ describe('送出途中換帳號（後續卡 2）', () => {
     }));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    expect(await screen.findByRole('dialog', { name: '完善個人資料' })).toBeTruthy();
+  });
+});
+
+describe('夥伴報名送出途中換帳號（Grok 初審 P3）', () => {
+  const MSG = '請先完善個人資料（性別、生日、地區），再報名';
+  async function submitCompanion() {
+    mocks.companions.mockResolvedValue([{ id: 'c1', name: '小花', gender: '女' }]);
+    fireEvent.click(await screen.findByRole('button', { name: '幫夥伴報名' }));
+    const confirm = await screen.findByRole('button', { name: '確認', exact: true });
+    const overlay = document.querySelector('#companion-select-overlay');
+    if (!(overlay instanceof HTMLElement)) throw new Error('缺少同行者彈窗');
+    const box = within(overlay).getAllByRole('checkbox')[0];
+    if (!box) throw new Error('缺少同行者');
+    if (!(box as HTMLInputElement).checked) fireEvent.click(box);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.selection).toHaveBeenCalledTimes(1));
+  }
+  const incompleteError = () => new SignupError({
+    code: 'failed-precondition', originalCode: 'PROFILE_INCOMPLETE',
+    messageKey: 'event.signup.error.profileIncomplete', message: 'PROFILE_INCOMPLETE',
+  });
+
+  it('換帳號後舊帳號的資料不完整：不跳提示、不開彈窗', async () => {
+    let reject!: (error: unknown) => void;
+    mocks.selection.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    const view = mount();
+    await submitCompanion();
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'u2' });
+    view.rerender(<LocationProvider><EventDetailPage id="public-event" /></LocationProvider>);
+    await act(async () => { reject(incompleteError()); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(mocks.toast).not.toHaveBeenCalledWith({ message: MSG });
+    expect(mocks.loadUserProfile).not.toHaveBeenCalled();
+  });
+
+  it('同帳號照常提示並開彈窗', async () => {
+    mocks.selection.mockRejectedValue(incompleteError());
+    mount();
+    await submitCompanion();
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ message: MSG }));
     expect(await screen.findByRole('dialog', { name: '完善個人資料' })).toBeTruthy();
   });
 });
