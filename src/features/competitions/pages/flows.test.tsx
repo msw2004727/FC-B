@@ -236,9 +236,9 @@ describe('賽事第 2 步畫面', () => {
     const minor = spyActions();
     const minorView = mount(JoinRosterPage, { ...screenEnv('form-self-minor', minor) });
     expect(minorView.container.textContent ?? '').toContain('公開顯示：歐陽O明');
-    expect(minorView.container.textContent ?? '').toContain('未成年球員公開時會遮住名字第一個字（例：王O明）。');
+    expect(minorView.container.textContent ?? '').toContain('未成年球員公開時會遮住名字第一個字，\n例：王O明。');
     expect(minorView.container.textContent ?? '').toContain('真實姓名僅供主辦核對資格，不會公開。');
-    expect(minorView.container.textContent ?? '').toContain('我了解名單會公開顯示遮字後的姓名與背號');
+    expect(minorView.container.textContent ?? '').toContain('我了解名單會公開遮字後的姓名與背號');
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
     await waitFor(() => expect(minor.joinRoster).toHaveBeenCalledWith({
       cid: 'cup', enId: 'en_a', number: 14, position: 'FW', privacyAck: true,
@@ -262,8 +262,8 @@ describe('賽事第 2 步畫面', () => {
     const repAdult = spyActions();
     const adultRep = mount(AddRosterPage, { ...screenEnv('form-rep-adult', repAdult) });
     expect(adultRep.container.textContent ?? '').toContain('公開顯示：王O範');
-    expect(adultRep.container.textContent ?? '').toContain('我了解名單會公開顯示遮字後的姓名與背號');
-    fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示遮字後的姓名與背號' }));
+    expect(adultRep.container.textContent ?? '').toContain('我了解名單會公開遮字後的姓名與背號');
+    fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開遮字後的姓名與背號' }));
     fireEvent.click(screen.getByRole('button', { name: '新增' }));
     await waitFor(() => expect(repAdult.addRosterByRep).toHaveBeenCalledWith({
       cid: 'cup', enId: 'en_a', number: 10, position: 'MF', privacyAck: true,
@@ -806,7 +806,7 @@ describe('賽事第 2 步畫面', () => {
     resolveBirthday('1990-05-20');
     expect(await screen.findByLabelText('暱稱')).toBeTruthy();
     expect(screen.queryByLabelText('真實姓名')).toBeNull();
-    expect(waiting.container.textContent ?? '').toContain('我了解名單會公開顯示我的顯示名稱與背號');
+    expect(waiting.container.textContent ?? '').toContain('我了解名單會公開我的顯示名稱與背號');
     waiting.unmount();
 
     let resolveMinor: (value: string | null) => void = () => {};
