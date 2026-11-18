@@ -230,3 +230,35 @@
 .cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .cp3-roster-head__t { min-width: 0; flex: 1 1 auto; }
 .cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; }
+
+/* 主辦排賽程、賽程管理、比分面板。class 對照預覽 harness。 */
+.cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.cp3-tags .ui-badge { white-space: nowrap; }
+.cp3-tags .ui-button { min-width: 0; }
+.cp3-m__act { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.cp3-m__act .ui-button { white-space: nowrap; }
+.cp3-dayform { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.cp3-dayform + .cp3-dayform { margin-top: var(--space-3); }
+.cp3-dayform__h { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); font-size: var(--font-size-body-sm); font-weight: 700; white-space: nowrap; }
+.cp3-dayform__h .ui-button { white-space: nowrap; }
+.cp3-checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.cp3-result { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
+.cp3-result--bad { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 700; color: var(--color-warning-fg); white-space: nowrap; }
+.cp3-sec-h { margin: 0 0 var(--space-3); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
+.cp3-ctx { margin: 0; text-align: center; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
+.cp3-score { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); align-items: start; }
+.cp3-score__team { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; }
+.cp3-score__name { max-width: 100%; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-score__num { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--font-size-display); line-height: var(--line-height-display); font-weight: 700; font-variant-numeric: tabular-nums; background: var(--color-bg-surface); }
+.cp3-score__btns { display: flex; gap: var(--space-2); }
+.cp3-score__colon { align-self: center; margin-top: 28px; text-align: center; font-size: var(--font-size-title); font-weight: 700; color: var(--color-text-muted); }
+.cp3-stepbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); color: var(--color-text-primary); font-size: var(--font-size-title); line-height: 1; cursor: pointer; }
+.cp3-stepbtn:disabled { opacity: 0.45; cursor: default; }
+.cp3-stack-btns { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
+.cp3-stack-btns .ui-button { width: 100%; white-space: nowrap; }
+.cp3-textlink { align-self: center; min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--color-text-secondary); font: inherit; font-size: var(--font-size-body-sm); text-decoration: underline; white-space: nowrap; cursor: pointer; }
+.cp3-textlink:disabled { opacity: 0.45; cursor: default; }
+.cp3-judge { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-warning-bg); color: var(--color-warning-fg); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 600; white-space: nowrap; }
+.cp3-modal-p { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: nowrap; }
+.cps-card--warn { border-left: 3px solid var(--color-warning); }
+.cps-actions .ui-button:disabled, .cps-actions .ui-button[aria-disabled="true"] { color: var(--color-text-secondary); }

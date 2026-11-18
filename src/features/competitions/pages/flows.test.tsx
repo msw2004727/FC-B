@@ -97,6 +97,13 @@ function spyActions() {
     setPaymentStatus: vi.fn(actions.setPaymentStatus),
     report: vi.fn(actions.report),
     update: vi.fn(actions.update),
+    generateSchedule: vi.fn(actions.generateSchedule),
+    clearSchedule: vi.fn(actions.clearSchedule),
+    rescheduleMatch: vi.fn(actions.rescheduleMatch),
+    recordResult: vi.fn(actions.recordResult),
+    confirmMatchResult: vi.fn(actions.confirmMatchResult),
+    setWalkover: vi.fn(actions.setWalkover),
+    resetMatch: vi.fn(actions.resetMatch),
   };
 }
 

@@ -10,11 +10,21 @@ import {
   cpEntryReview,
   cpEntrySetPaymentStatus,
   cpEntryUnlockRosters,
+  cpHostClearSchedule,
+  cpHostConfirmMatchResult,
   cpHostCreate,
+  cpHostGenerateSchedule,
   cpHostPublish,
+  cpHostRecordResult,
+  cpHostRescheduleMatch,
+  cpHostResetMatch,
+  cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
   type CpAddRosterByRepInput,
+  type CpForfeitSide,
+  type CpGenerateScheduleInput,
+  type CpGenerateScheduleResult,
   type CpHostCreateInput,
   type CpHostCreateResult,
   type CpHostUpdateInput,
@@ -41,6 +51,31 @@ export interface CpActions {
   unlockRosters(input: { cid: string; reason: string }): Promise<unknown>;
   setPaymentStatus(input: { cid: string; enId: string; paymentStatus: PaymentStatusWrite }): Promise<unknown>;
   report(input: CpReportInput): Promise<unknown>;
+  generateSchedule(input: CpGenerateScheduleInput): Promise<CpGenerateScheduleResult>;
+  clearSchedule(input: { cid: string; dvId: string }): Promise<unknown>;
+  rescheduleMatch(input: {
+    cid: string;
+    mtId: string;
+    expectedRev: number;
+    kickoffAt: number | null;
+    venueIdx: number | null;
+  }): Promise<unknown>;
+  recordResult(input: {
+    cid: string;
+    mtId: string;
+    expectedRev: number;
+    score: { home: number; away: number };
+    confirm: boolean;
+  }): Promise<unknown>;
+  confirmMatchResult(input: { cid: string; mtId: string; expectedRev: number }): Promise<unknown>;
+  setWalkover(input: {
+    cid: string;
+    mtId: string;
+    expectedRev: number;
+    forfeitSide: CpForfeitSide;
+    reason: string;
+  }): Promise<unknown>;
+  resetMatch(input: { cid: string; mtId: string; expectedRev: number; reason: string }): Promise<unknown>;
 }
 
 export const liveCpActions: CpActions = {
@@ -57,4 +92,11 @@ export const liveCpActions: CpActions = {
   unlockRosters: cpEntryUnlockRosters,
   setPaymentStatus: cpEntrySetPaymentStatus,
   report: cpParticipantReport,
+  generateSchedule: cpHostGenerateSchedule,
+  clearSchedule: cpHostClearSchedule,
+  rescheduleMatch: cpHostRescheduleMatch,
+  recordResult: cpHostRecordResult,
+  confirmMatchResult: cpHostConfirmMatchResult,
+  setWalkover: cpHostSetWalkover,
+  resetMatch: cpHostResetMatch,
 };

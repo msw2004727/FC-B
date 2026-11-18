@@ -15,6 +15,7 @@ import type {
   EntryPrivateDoc,
   RosterPublicDoc,
   StaffDoc,
+  MatchDoc,
   StandingDoc,
   SummaryEntry,
 } from './data/types';
@@ -95,6 +96,8 @@ export interface CpInjectedEnv {
   bundle?: CpBundle;
   /** 注入時詳情不打網路，賽程與積分榜用這份。省略當空。 */
   schedule?: CpScheduleSnapshot;
+  /** 主辦賽程管理。有注入就不打 listMatches。 */
+  matches?: readonly MatchDoc[];
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
 }

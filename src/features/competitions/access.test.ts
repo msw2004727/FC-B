@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
+import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -39,6 +39,13 @@ describe('賽事權限顯示', () => {
       repClubIds: ['club_other'],
       isAdmin: false,
     })).toBe(false);
+  });
+
+  it('排賽程只給主辦、共同主辦、管理員，俱樂部代表不算', () => {
+    expect(canHostOrCo({ staffRoles: ['host'], isAdmin: false })).toBe(true);
+    expect(canHostOrCo({ staffRoles: ['coHost'], isAdmin: false })).toBe(true);
+    expect(canHostOrCo({ staffRoles: [], isAdmin: true })).toBe(true);
+    expect(canHostOrCo({ staffRoles: [], isAdmin: false })).toBe(false);
   });
 
   it('以俱樂部報隊只給代表，而且要在公開報名期間', () => {

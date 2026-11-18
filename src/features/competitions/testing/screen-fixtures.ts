@@ -61,6 +61,22 @@ export function idleActions(): CpActions {
     setPaymentStatus: async () => ({}),
     report: async () => ({}),
     update: async () => ({ cid: 'cup' }),
+    generateSchedule: async () => ({
+      dvId: 'dv_adult',
+      seed: 1,
+      matchCount: 0,
+      unplacedCount: 0,
+      daysUsed: [],
+      perTeam: 0,
+      teamCount: 0,
+      dryRun: true,
+    }),
+    clearSchedule: async () => ({}),
+    rescheduleMatch: async () => ({}),
+    recordResult: async () => ({}),
+    confirmMatchResult: async () => ({}),
+    setWalkover: async () => ({}),
+    resetMatch: async () => ({}),
   };
 }
 

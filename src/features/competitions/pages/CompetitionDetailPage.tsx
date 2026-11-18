@@ -12,7 +12,7 @@ import { PageSpinner } from '@/ui/PageSpinner';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
-import { canManageCompetition, canRegisterClubEntry, isCpAdmin } from '../access';
+import { canHostOrCo, canManageCompetition, canRegisterClubEntry, isCpAdmin } from '../access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -247,6 +247,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
+  const hostOps = canHostOrCo({
+    staffRoles: bundle?.staff?.roles ?? [],
+    isAdmin: isCpAdmin(env.actor.role),
+  });
   const showRegister = canRegisterClubEntry({
     repClubIds: clubs.map((club) => club.id),
     status: competition.status,
@@ -348,6 +352,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </Button>
           ) : null}
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
+        </div>
+      ) : null}
+      {hostOps ? (
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
         </div>
       ) : null}
     </>

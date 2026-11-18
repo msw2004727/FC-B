@@ -39,6 +39,15 @@ export interface ManageInput {
   isAdmin: boolean;
 }
 
+/**
+ * 排賽程、賽程管理、登錄比分。對齊後端 assertHostOrCo：staff 的 host／coHost，或管理員。
+ * 俱樂部代表若不是 staff，不能進。這和 canManageCompetition 不同。
+ */
+export function canHostOrCo(input: { staffRoles: readonly StaffRole[]; isAdmin: boolean }): boolean {
+  if (input.isAdmin) return true;
+  return input.staffRoles.includes('host') || input.staffRoles.includes('coHost');
+}
+
 /** 審核、鎖定、解鎖、編輯、發布、標示繳費。 */
 export function canManageCompetition(input: ManageInput): boolean {
   if (input.isAdmin) return true;

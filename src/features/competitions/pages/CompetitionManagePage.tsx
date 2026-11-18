@@ -13,7 +13,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Switch } from '@/ui/Switch';
 import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
-import { canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
+import { canHostOrCo, canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import { representativeClubs } from '../rep-clubs';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -106,6 +106,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
+  const hostOps = canHostOrCo({
+    staffRoles: bundle?.staff?.roles ?? [],
+    isAdmin: isCpAdmin(env.actor.role),
+  });
   const locked = competition?.rostersLockedAt != null;
   const entries = bundle?.entries ?? [];
   const pending = entries.filter((entry) => entry.status === 'pending');
@@ -412,6 +416,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   return (
     <CpFrame title={ct('manageTitle')}>
+      {hostOps ? (
+        <div class="cps-actions" style="margin-top:0">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+        </div>
+      ) : null}
       {manage ? (
         <CpCard>
           {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。 */}

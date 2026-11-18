@@ -44,12 +44,14 @@ export function DateField({
   value,
   onValueChange,
   required = false,
+  disabled = false,
 }: {
   id: string;
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   required?: boolean;
+  disabled?: boolean;
 }): JSX.Element {
   const t = useT();
   return (
@@ -63,7 +65,10 @@ export function DateField({
         type="date"
         value={value}
         required={required}
-        onInput={(event) => onValueChange(event.currentTarget.value)}
+        disabled={disabled}
+        onInput={(event) => {
+          if (!disabled) onValueChange(event.currentTarget.value);
+        }}
       />
     </div>
   );
