@@ -1137,6 +1137,9 @@ describe('撞期警示與仍要送出', () => {
     fireEvent.input(inputOf('時間'), { target: { value: '15:00' } });
     fireEvent.click(buttonOf('確認改期'));
     await expectClash(teamClash);
+    expect(toastShow).not.toHaveBeenCalled();
+    expect(screen.queryByText('這個時間與其他場次撞期')).toBeNull();
+    expect(document.querySelectorAll('.cpm-warn')).toHaveLength(1);
     fireEvent.click(buttonOf('仍要改期'));
     const payload = {
       cid: 'cup',
@@ -1198,6 +1201,154 @@ describe('撞期警示與仍要送出', () => {
     await waitFor(() => expect(swapMatches).toHaveBeenCalledTimes(2));
     expect(swapMatches).toHaveBeenNthCalledWith(1, payload);
     expect(swapMatches).toHaveBeenNthCalledWith(2, { ...payload, force: true });
+  });
+
+  it('整天順延成功後清空表單，再按確認順延不會送出', async () => {
+    const shiftMatchDay = vi.fn(async () => ({}));
+    const [first, second] = flexMatches();
+    draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], {
+      ...idleActions(), shiftMatchDay,
+    }), HostMatchesPage);
+    fireEvent.input(inputOf('新日期'), { target: { value: '2027-01-12' } });
+    fireEvent.input(areaOf(/順延原因/), { target: { value: '雨天' } });
+    fireEvent.click(buttonOf('確認順延'));
+    await waitFor(() => expect(shiftMatchDay).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(inputOf('新日期').value).toBe('');
+      expect(areaOf(/順延原因/).value).toBe('');
+    });
+    fireEvent.click(buttonOf('確認順延'));
+    expect(shiftMatchDay).toHaveBeenCalledTimes(1);
+  });
+
+  it('對調成功後清空理由與選取，再按確認對調不會送出', async () => {
+    const swapMatches = vi.fn(async () => ({}));
+    const [first, second] = flexMatches();
+    const third = match({
+      id: 'mt_3',
+      status: 'scheduled',
+      rev: 5,
+      matchNo: 3,
+      kickoffAt: taipeiMs(2027, 1, 10, 15, 0),
+      venueIdx: 0,
+      venueName: '示範球場',
+      home: { teamId: 'en_d', name: '北風隊' },
+      away: { teamId: 'en_e', name: '南風隊' },
+      teamIds: ['en_d', 'en_e'],
+    });
+    draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second, third], {
+      ...idleActions(), swapMatches,
+    }), HostMatchesPage);
+    const secondPick = selectOf('第二場');
+    secondPick.value = 'mt_3';
+    secondPick.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => expect(selectOf('第二場').value).toBe('mt_3'));
+    fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
+    fireEvent.click(buttonOf('確認對調'));
+    await waitFor(() => expect(swapMatches).toHaveBeenCalledTimes(1));
+    expect(swapMatches).toHaveBeenCalledWith({
+      cid: 'cup',
+      mtIdA: 'mt_1',
+      mtIdB: 'mt_3',
+      expectedRevA: 3,
+      expectedRevB: 5,
+      reason: '場地對調',
+    });
+    await waitFor(() => {
+      expect(areaOf(/對調原因/).value).toBe('');
+      // 選取回到排序後的前兩場，不再停在剛對調的那一場。
+      expect(selectOf('第一場').value).not.toBe('mt_1');
+      expect(selectOf('第二場').value).not.toBe('mt_3');
+    });
+    fireEvent.click(buttonOf('確認對調'));
+    expect(swapMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('對調遇到 REV_CONFLICT 時重讀場次並更新畫面', async () => {
+    const [first, second] = flexMatches();
+    const swapMatches = vi.fn(async () => {
+      throw new CpCallError('REV_CONFLICT', {});
+    });
+    const repo = createFakeCpRepo();
+    const listMatches = vi.fn(async () => [
+      match({
+        id: 'mt_1',
+        status: 'scheduled',
+        rev: 9,
+        kickoffAt: taipeiMs(2027, 1, 12, 16, 0),
+        venueName: '新球場',
+      }),
+      match({
+        id: 'mt_2',
+        status: 'scheduled',
+        rev: 8,
+        matchNo: 2,
+        kickoffAt: taipeiMs(2027, 1, 12, 18, 0),
+        home: { teamId: 'en_b', name: '藍鯨隊' },
+        away: { teamId: 'en_c', name: '更新隊' },
+        teamIds: ['en_b', 'en_c'],
+      }),
+    ]);
+    repo.listMatches = listMatches;
+    draw({
+      ...matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], {
+        ...idleActions(), swapMatches,
+      }),
+      repo,
+    }, HostMatchesPage);
+    fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
+    fireEvent.click(buttonOf('確認對調'));
+    await screen.findByText('更新隊');
+    const list = [...document.querySelectorAll('.cp3-ml')].map((node) => node.textContent ?? '').join('');
+    expect(list).toContain('16:00');
+    expect(list).toContain('新球場');
+    expect(list).toContain('更新隊');
+    expect(list).toContain('18:00');
+    expect(listMatches).toHaveBeenCalledWith('cup');
+    expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({
+      message: '資料剛被改過，請重整後再試',
+      tone: 'error',
+    }));
+    expect(areaOf(/對調原因/).value).toBe('場地對調');
+    expect(swapMatches).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('順延與對調卡片', () => {
+  const hostStaff: StaffDoc = { uid: 'uid_host', roles: ['host'] };
+
+  function drawStatus(status: 'draft' | 'published' | 'postponed' | 'cancelled', endedAt: number | null, actor = hostActor, staff: StaffDoc | null = hostStaff): void {
+    const [first, second] = flexMatches();
+    draw(matchesEnv(actor, staff, [first, second], idleActions(), {
+      competition: competition({ status, endedAt }),
+    }), HostMatchesPage);
+  }
+
+  it('已發布且未結束才顯示；已結束只留管理員；草稿延期取消與沒場次都不顯示', () => {
+    drawStatus('published', null);
+    expect(screen.getByRole('heading', { name: '整天順延' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '兩場對調' })).toBeTruthy();
+    cleanup();
+
+    drawStatus('published', 1);
+    expect(screen.queryByRole('heading', { name: '整天順延' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '兩場對調' })).toBeNull();
+    cleanup();
+
+    drawStatus('published', 1, adminActor, null);
+    expect(screen.getByRole('heading', { name: '整天順延' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '兩場對調' })).toBeTruthy();
+    cleanup();
+
+    for (const status of ['draft', 'postponed', 'cancelled'] as const) {
+      drawStatus(status, null);
+      expect(screen.queryByRole('heading', { name: '整天順延' }), status).toBeNull();
+      cleanup();
+    }
+
+    draw(matchesEnv(hostActor, hostStaff, [], idleActions()), HostMatchesPage);
+    expect(screen.queryByRole('heading', { name: '整天順延' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '兩場對調' })).toBeNull();
   });
 });
 
@@ -1306,5 +1457,39 @@ describe('聯絡文字', () => {
     expect(create).not.toHaveBeenCalled();
     expect(fieldError('聯絡文字')).toBe('字數須介於 1 與 60 之間');
     expect(document.querySelectorAll('[data-field-error]')).toHaveLength(1);
+  });
+
+  it('建立失敗且後端指出聯絡文字時，跳回第 1 步並標在聯絡欄', async () => {
+    const create = vi.fn(async () => {
+      throw new CpCallError('BANNED_WORD', { field: 'contactNote' });
+    });
+    const view = draw({
+      ...screenEnv('wizard-3'),
+      actions: { ...idleActions(), create },
+      wizardSeed: { ...wizardSeed(), contactNote: '加賴報名' },
+    }, NewCompetitionPage);
+    expect(screen.getByText('步驟 3／3')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '建立賽事' }));
+    await waitFor(() => expect(screen.getByText('步驟 1／3')).toBeTruthy());
+    expect(screen.getByText('基本資料')).toBeTruthy();
+    expect(fieldError('聯絡文字')).toBe('名稱包含不允許的字詞');
+    expect(document.querySelectorAll('[data-field-error]')).toHaveLength(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    view.unmount();
+    cleanup();
+
+    const other = vi.fn(async () => {
+      throw new CpCallError('BANNED_WORD', { field: 'name' });
+    });
+    draw({
+      ...screenEnv('wizard-3'),
+      actions: { ...idleActions(), create: other },
+      wizardSeed: { ...wizardSeed(), contactNote: '賽前群組' },
+    }, NewCompetitionPage);
+    fireEvent.click(screen.getByRole('button', { name: '建立賽事' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('步驟 3／3')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent ?? '').toContain('名稱包含不允許的字詞');
   });
 });

@@ -105,13 +105,13 @@ export function shiftDayChoices(matches: readonly MatchDoc[]): ShiftDayChoice[] 
     .map(([date, count]) => ({ date, count }));
 }
 
-/** 1/9 週六　6 場。星期名稱由呼叫端傳入，順序週日到週六。 */
-export function shiftDayLabel(date: string, count: number, weekdays: readonly string[]): string {
+/** 1/9 週六　6 場。星期名稱與「場」由呼叫端傳入。星期順序週日到週六。 */
+export function shiftDayLabel(date: string, count: number, weekdays: readonly string[], matchUnit: string): string {
   const index = calendarWeekdayIndex(date);
   if (index == null) return date;
   const [, month, day] = date.split('-');
   const weekday = weekdays[index] ?? '';
-  return `${Number(month)}/${Number(day)} ${weekday}　${count} 場`;
+  return `${Number(month)}/${Number(day)} ${weekday}　${count} ${matchUnit}`;
 }
 
 /** 還沒開打的場次，含延期。已開始、已結束、已取消都不對調。 */
@@ -127,18 +127,18 @@ export function swappableMatches(matches: readonly MatchDoc[]): MatchDoc[] {
     });
 }
 
-/** 1/9 09:00 海風對山貓 */
-export function matchPickLabel(match: MatchDoc): string {
-  const names = `${match.home.name}對${match.away.name}`;
+/** 1/9 09:00 海風對山貓。「對」由呼叫端傳入。 */
+export function matchPickLabel(match: MatchDoc, versus: string): string {
+  const names = `${match.home.name}${versus}${match.away.name}`;
   if (match.kickoffAt == null) return names;
   return `${shortWhen(match.kickoffAt)} ${names}`;
 }
 
-/** 海風對山貓 → 1/10 09:00、2號場。這場會改成對方現在的時間與場地。 */
-export function swapPreview(from: MatchDoc, to: MatchDoc, tbd: string): string {
+/** 海風對山貓 → 1/10 09:00、2號場。這場會改成對方現在的時間與場地。「對」由呼叫端傳入。 */
+export function swapPreview(from: MatchDoc, to: MatchDoc, tbd: string, versus: string): string {
   const when = to.kickoffAt == null ? tbd : shortWhen(to.kickoffAt);
   const venue = to.venueName ? `、${to.venueName}` : '';
-  return `${from.home.name}對${from.away.name} → ${when}${venue}`;
+  return `${from.home.name}${versus}${from.away.name} → ${when}${venue}`;
 }
 
 export function parseConflict(params: Record<string, unknown>): ScheduleClash | null {
@@ -154,11 +154,12 @@ export function clashSentence(
   type: 'team' | 'venue',
   teamLabel: string,
   venueLabel: string,
+  versus: string,
 ): string {
   const head = type === 'venue' ? venueLabel : teamLabel;
   if (!match) return head;
   const when = match.kickoffAt == null ? '' : shortWhen(match.kickoffAt);
-  const names = `${match.home.name}對${match.away.name}`;
+  const names = `${match.home.name}${versus}${match.away.name}`;
   const place = type === 'venue' && match.venueName ? match.venueName : '';
   return [head, when, names, place].filter(Boolean).join('　');
 }

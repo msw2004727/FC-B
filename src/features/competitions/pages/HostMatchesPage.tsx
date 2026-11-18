@@ -14,7 +14,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canEndCompetition, canHostOrCo, isCpAdmin } from '../access';
+import { canEndCompetition, canHostOrCo, canShowFlexSchedule, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
   applyDayShift,
@@ -57,7 +57,7 @@ import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import { crestFromEntry, TeamCrest } from '../ui/TeamCrest';
-import { HostFlexCards, type ShiftRequest, type SwapRequest } from './host-flex';
+import { HostFlexCards, type FlexWriteResult, type ShiftRequest, type SwapRequest } from './host-flex';
 
 type Panel =
   | { kind: 'score'; mtId: string; home: number; away: number }
@@ -315,11 +315,13 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     } catch (err) {
       const info = errorOf(err);
       if (info.reason === 'SCHEDULE_CONFLICT' && intent.kind === 'reschedule') {
-        setReschedClash(parseConflict(info.params));
-        const message = reasonText(ct, info.reason, info.params);
-        toast.show({ message, tone: 'error' });
-        remember(intent, mtId, rev, false, message, null);
-        return;
+        const clash = parseConflict(info.params);
+        if (clash) {
+          // 撞期只留警示框。不要同時 toast，也不要把同一句放進 hold.message。
+          setReschedClash(clash);
+          remember(intent, mtId, rev, false, null, null);
+          return;
+        }
       }
       if (info.reason === 'REV_CONFLICT') {
         const latest = await reread(mtId);
@@ -543,8 +545,15 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     });
   }
 
-  async function runShift(input: ShiftRequest): Promise<ScheduleClash | null> {
-    if (lock.current) return null;
+  function flexFailure(err: unknown): FlexWriteResult {
+    const info = errorOf(err);
+    toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+    if (info.reason === 'SCHEDULE_CONFLICT') return { ok: false, clash: parseConflict(info.params) };
+    return { ok: false, clash: null };
+  }
+
+  async function runShift(input: ShiftRequest): Promise<FlexWriteResult> {
+    if (lock.current) return { ok: false, clash: null };
     setPosted(false);
     lock.current = true;
     setBusy(true);
@@ -560,20 +569,17 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       setMatches(next);
       rememberLast(next);
       setPosted(true);
-      return null;
+      return { ok: true };
     } catch (err) {
-      const info = errorOf(err);
-      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
-      if (info.reason === 'SCHEDULE_CONFLICT') return parseConflict(info.params);
-      return null;
+      return flexFailure(err);
     } finally {
       lock.current = false;
       setBusy(false);
     }
   }
 
-  async function runSwap(input: SwapRequest): Promise<ScheduleClash | null> {
-    if (lock.current) return null;
+  async function runSwap(input: SwapRequest): Promise<FlexWriteResult> {
+    if (lock.current) return { ok: false, clash: null };
     setPosted(false);
     lock.current = true;
     setBusy(true);
@@ -591,12 +597,19 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       setMatches(next);
       rememberLast(next);
       setPosted(true);
-      return null;
+      return { ok: true };
     } catch (err) {
-      const info = errorOf(err);
-      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
-      if (info.reason === 'SCHEDULE_CONFLICT') return parseConflict(info.params);
-      return null;
+      // 版次衝突時兩場都可能已被別人改過，比照其他寫入重讀整份場次再更新畫面。
+      if (errorOf(err).reason === 'REV_CONFLICT') {
+        try {
+          const rows = await env.repo.listMatches(cid);
+          setMatches(rows);
+          rememberLast(rows);
+        } catch {
+          // 讀不到最新場次時仍提示衝突，畫面留舊資料。
+        }
+      }
+      return flexFailure(err);
     } finally {
       lock.current = false;
       setBusy(false);
@@ -664,12 +677,14 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const active = panel ? matches.find((row) => row.id === panel.mtId) ?? null : null;
   // 已發布且已有場次才顯示結束賽事。延期、草稿、空賽程都不顯示。
   const showEnd = canEndCompetition(comp) && matches.length > 0;
+  // 順延／對調比照結束賽事，但已結束時管理員仍看得到。沒有場次不顯示。
+  const showFlex = canShowFlexSchedule(comp, isCpAdmin(env.actor.role)) && matches.length > 0;
 
   return (
     <CpFrame title={ct('hostListTitle')}>
       <p class="cps-sub" style="margin:0">{comp.name}</p>
       {posted ? <p class="cpm-ok" role="status">{ct('autoPost')}</p> : null}
-      {matches.length > 0 ? (
+      {showFlex ? (
         <HostFlexCards
           ct={ct}
           matches={matches}
@@ -999,6 +1014,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                   reschedClash.type,
                   ct('clashTeam'),
                   ct('clashVenue'),
+                  ct('vsWord'),
                 )}
               </p>
             ) : null}

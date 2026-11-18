@@ -41,6 +41,11 @@ export interface SwapRequest {
   force: boolean;
 }
 
+/** 順延、對調的結果。成功才清表單；撞期失敗把衝突帶回來畫警示。 */
+export type FlexWriteResult =
+  | { ok: true }
+  | { ok: false; clash: ScheduleClash | null };
+
 function reject(ct: CompetitionsT, reason: string, params?: Record<string, number>): void {
   toast.show({ message: reasonText(ct, reason, params), tone: 'error' });
 }
@@ -58,8 +63,8 @@ export function HostFlexCards({
   matches: readonly MatchDoc[];
   weekdays: readonly string[];
   busy: boolean;
-  onShift: (input: ShiftRequest) => Promise<ScheduleClash | null>;
-  onSwap: (input: SwapRequest) => Promise<ScheduleClash | null>;
+  onShift: (input: ShiftRequest) => Promise<FlexWriteResult>;
+  onSwap: (input: SwapRequest) => Promise<FlexWriteResult>;
   /** 點進順延或對調卡片。這兩張卡一直開著，父層用來清掉上一則成功公告。 */
   onOpen?: () => void;
 }): JSX.Element {
@@ -105,13 +110,21 @@ export function HostFlexCards({
       reject(ct, problem, problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined);
       return;
     }
-    const clash = await onShift({
+    const result = await onShift({
       fromDate,
       toDate,
       reason: shiftReason.trim(),
       force,
     });
-    setShiftClash(clash);
+    // 成功後清掉來源、目標日與理由。否則再按一次會把下一天搬到同一個目標日，並再發一則公告。
+    if (result.ok) {
+      setFromPick('');
+      setToDate('');
+      setShiftReason('');
+      setShiftClash(null);
+      return;
+    }
+    setShiftClash(result.clash);
   }
 
   async function sendSwap(force: boolean): Promise<void> {
@@ -125,7 +138,7 @@ export function HostFlexCards({
       reject(ct, problem, problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined);
       return;
     }
-    const clash = await onSwap({
+    const result = await onSwap({
       mtIdA: matchA.id,
       mtIdB: matchB.id,
       expectedRevA: matchA.rev,
@@ -133,7 +146,15 @@ export function HostFlexCards({
       reason: swapReason.trim(),
       force,
     });
-    setSwapClash(clash);
+    // 對調成功後清掉理由與選取，避免同一對再送一次。
+    if (result.ok) {
+      setPickA('');
+      setPickB('');
+      setSwapReason('');
+      setSwapClash(null);
+      return;
+    }
+    setSwapClash(result.clash);
   }
 
   return (
@@ -154,7 +175,7 @@ export function HostFlexCards({
               }}
               options={choices.map((choice) => ({
                 value: choice.date,
-                label: shiftDayLabel(choice.date, choice.count, weekdays),
+                label: shiftDayLabel(choice.date, choice.count, weekdays, ct('matchUnit')),
               }))}
             />
             <DateField
@@ -184,7 +205,7 @@ export function HostFlexCards({
             />
             {shiftClash ? (
               <p class="cpm-warn" role="alert">
-                {clashSentence(shiftHit, shiftClash.type, ct('clashTeam'), ct('clashVenue'))}
+                {clashSentence(shiftHit, shiftClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
               </p>
             ) : null}
             <div class="cps-actions">
@@ -210,7 +231,7 @@ export function HostFlexCards({
                 setPickA(value);
                 setSwapClash(null);
               }}
-              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match) }))}
+              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match, ct('vsWord')) }))}
             />
             <Select
               label={ct('swapSecond')}
@@ -220,12 +241,12 @@ export function HostFlexCards({
                 setPickB(value);
                 setSwapClash(null);
               }}
-              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match) }))}
+              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match, ct('vsWord')) }))}
             />
             {matchA && matchB && matchA.id !== matchB.id ? (
               <>
-                <p class="cpm-swap">{swapPreview(matchA, matchB, ct('timeTbd'))}</p>
-                <p class="cpm-swap">{swapPreview(matchB, matchA, ct('timeTbd'))}</p>
+                <p class="cpm-swap">{swapPreview(matchA, matchB, ct('timeTbd'), ct('vsWord'))}</p>
+                <p class="cpm-swap">{swapPreview(matchB, matchA, ct('timeTbd'), ct('vsWord'))}</p>
               </>
             ) : null}
             <Textarea
@@ -243,7 +264,7 @@ export function HostFlexCards({
             />
             {swapClash ? (
               <p class="cpm-warn" role="alert">
-                {clashSentence(swapHit, swapClash.type, ct('clashTeam'), ct('clashVenue'))}
+                {clashSentence(swapHit, swapClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
               </p>
             ) : null}
             <div class="cps-actions">

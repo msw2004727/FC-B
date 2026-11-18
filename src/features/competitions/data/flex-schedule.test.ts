@@ -6,12 +6,15 @@ import {
   clashSentence,
   dateAfterLast,
   hostNoticeCount,
+  matchPickLabel,
   noticesNewestFirst,
   noticeTextProblem,
   parseConflict,
   shiftDayChoices,
+  shiftDayLabel,
   shiftMovesLater,
   slashDate,
+  swapPreview,
 } from './flex-schedule';
 import type { CompetitionNotice, MatchDoc } from './types';
 
@@ -85,10 +88,30 @@ describe('順延與撞期', () => {
     });
     expect(parseConflict({ mtId: 'mt_2', type: 'team' })).toEqual({ mtId: 'mt_2', type: 'team' });
     expect(parseConflict({ mtId: 'mt_2', type: 'both' })).toBeNull();
-    expect(clashSentence(other, 'team', '同一隊同時段已有比賽', '同一場地同時段已有比賽'))
+    expect(clashSentence(other, 'team', '同一隊同時段已有比賽', '同一場地同時段已有比賽', '對'))
       .toBe('同一隊同時段已有比賽　1/11 14:30　北風對南風');
-    expect(clashSentence(other, 'venue', '同一隊同時段已有比賽', '同一場地同時段已有比賽'))
+    expect(clashSentence(other, 'venue', '同一隊同時段已有比賽', '同一場地同時段已有比賽', '對'))
       .toBe('同一場地同時段已有比賽　1/11 14:30　北風對南風　2號場');
+    expect(clashSentence(other, 'team', '同一隊同時段已有比賽', '同一場地同時段已有比賽', 'vs'))
+      .toBe('同一隊同時段已有比賽　1/11 14:30　北風vs南風');
+  });
+
+  it('對與場由呼叫端帶入', () => {
+    const weekdays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+    const row = match({ id: 'mt_1' });
+    const later = match({
+      id: 'mt_2',
+      kickoffAt: taipeiMs(2027, 1, 10, 9, 0),
+      venueName: '2號場',
+      home: { teamId: 'en_b', name: '北風' },
+      away: { teamId: 'en_c', name: '南風' },
+    });
+    expect(shiftDayLabel('2027-01-09', 6, weekdays, '場')).toBe('1/9 週六　6 場');
+    expect(shiftDayLabel('2027-01-09', 6, weekdays, 'G')).toBe('1/9 週六　6 G');
+    expect(matchPickLabel(row, '對')).toBe('1/9 09:00 海風對山貓');
+    expect(matchPickLabel(row, 'vs')).toBe('1/9 09:00 海風vs山貓');
+    expect(swapPreview(row, later, '時間待定', '對')).toBe('海風對山貓 → 1/10 09:00、2號場');
+    expect(swapPreview(row, { ...later, kickoffAt: null }, '時間待定', 'vs')).toBe('海風vs山貓 → 時間待定、2號場');
   });
 
   it('整天順延只搬那一天還沒開打的場次，兩場對調交換時間與場地', () => {

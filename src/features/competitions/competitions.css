@@ -473,6 +473,9 @@
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   font-weight: 600;
+  /* 公告可換行；長網址在 390px 寬不要撐出卡片。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .cpm-ann__time {
   display: block;

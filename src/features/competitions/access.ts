@@ -78,6 +78,19 @@ export function canEndCompetition(doc: { status: CompetitionStatus; endedAt: num
 }
 
 /**
+ * 整天順延與兩場對調。比照結束賽事：只有已發布才顯示。
+ * 還沒結束時主辦看得到；已結束只留管理員。賽程頁還要已有場次。
+ * 前端只藏卡片，伺服器仍會拒絕。
+ */
+export function canShowFlexSchedule(
+  doc: { status: CompetitionStatus; endedAt: number | null },
+  isAdmin: boolean,
+): boolean {
+  if (doc.status !== 'published') return false;
+  return doc.endedAt == null || isAdmin;
+}
+
+/**
  * 恢復賽事只給管理員，而且結束方式是主辦或自動。
  * endedBy 為 confirm 時不顯示（伺服器回 RESTORE_NOT_ALLOWED）。
  */

@@ -288,7 +288,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       setCid(result.cid);
       setDone(true);
     } catch (err) {
-      setError(errorOf(err));
+      const info = errorOf(err);
+      // 後端把禁用字標在 contactNote 時，錯誤要落在聯絡欄，並回到第 1 步才看得到。
+      if (info.params.field === 'contactNote') {
+        setStep(1);
+        setError({ reason: info.reason, params: info.params, field: 'contactNote' });
+        return;
+      }
+      setError(info);
     } finally {
       setBusy(false);
     }

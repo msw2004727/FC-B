@@ -270,6 +270,8 @@
   "swapTwo": "兩場對調",
   "newDate": "新日期",
   "affected": "受影響 {n} 場",
+  "vsWord": "對",
+  "matchUnit": "場",
   "shiftOk": "確認順延",
   "shiftReason": "順延原因",
   "swapFirst": "第一場",

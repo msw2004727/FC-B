@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
+import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canShowFlexSchedule, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -63,6 +63,15 @@ describe('賽事權限顯示', () => {
     expect(canEndCompetition({ status: 'postponed', endedAt: null })).toBe(false);
     expect(canEndCompetition({ status: 'draft', endedAt: null })).toBe(false);
     expect(canEndCompetition({ status: 'cancelled', endedAt: null })).toBe(false);
+  });
+
+  it('順延與對調只在已發布、且未結束或是管理員時顯示', () => {
+    expect(canShowFlexSchedule({ status: 'published', endedAt: null }, false)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, false)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, true)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'draft', endedAt: null }, true)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'postponed', endedAt: null }, false)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'cancelled', endedAt: null }, true)).toBe(false);
   });
 
   it('解鎖：未鎖定不顯示；首場前主辦可解，首場後只留管理員', () => {
