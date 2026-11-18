@@ -135,11 +135,6 @@
 .ui-button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: .6;
-  /*
-   * R-UI-031：停用底是 --color-brand-disabled。深色主題的 brand-fg 是近黑，
-   * 疊在近黑綠上幾乎看不見。改用 --color-text-primary（淺色、深色都會跟著主題換）。
-   */
-  color: var(--color-text-primary);
 }
 
 .ui-button[aria-disabled="true"]::before {
