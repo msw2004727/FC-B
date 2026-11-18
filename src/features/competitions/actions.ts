@@ -12,10 +12,12 @@ import {
   cpEntryUnlockRosters,
   cpHostCreate,
   cpHostPublish,
+  cpHostUpdate,
   cpParticipantReport,
   type CpAddRosterByRepInput,
   type CpHostCreateInput,
   type CpHostCreateResult,
+  type CpHostUpdateInput,
   type CpJoinRosterInput,
   type CpPublishResult,
   type CpRegisterEntryInput,
@@ -26,6 +28,8 @@ import type { PaymentStatusWrite } from './data/types';
 
 export interface CpActions {
   create(input: CpHostCreateInput): Promise<CpHostCreateResult>;
+  /** 編輯已建立的賽事。分類可以改，只送有改的鍵。 */
+  update(input: CpHostUpdateInput): Promise<{ cid: string }>;
   publish(input: { cid: string }): Promise<CpPublishResult>;
   registerEntry(input: CpRegisterEntryInput): Promise<unknown>;
   review(input: CpReviewEntryInput): Promise<unknown>;
@@ -41,6 +45,7 @@ export interface CpActions {
 
 export const liveCpActions: CpActions = {
   create: cpHostCreate,
+  update: cpHostUpdate,
   publish: cpHostPublish,
   registerEntry: cpEntryRegister,
   review: cpEntryReview,

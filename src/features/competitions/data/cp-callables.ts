@@ -124,7 +124,7 @@ interface CpHostCommon {
   venues: Venue[];
   liveLinks: string[];
   divisions: DivisionInput[];
-  /** 不送時伺服器把缺值當 league。建賽表單還沒有分類欄。 */
+  /** 建賽精靈步驟 1 會送。不送時伺服器把缺值當 league。 */
   category?: CompetitionCategory;
 }
 

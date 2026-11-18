@@ -20,6 +20,8 @@ import { useInjectedEnv, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
+import type { CompetitionCategory } from '../data/types';
+import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
@@ -48,6 +50,7 @@ function emptyVenue(): VenueDraft {
 
 interface FormState {
   name: string;
+  category: CompetitionCategory;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
@@ -62,6 +65,7 @@ interface FormState {
 function blankForm(): FormState {
   return {
     name: '',
+    category: 'league',
     hostType: 'personal',
     hostTeamId: '',
     feeNote: '',
@@ -79,6 +83,7 @@ function formFromEnv(env: CpInjectedEnv): FormState {
   if (!seed) return blankForm();
   return {
     name: seed.name,
+    category: seed.category ?? 'league',
     hostType: env.preview?.wizardClub ? 'club' : seed.hostType,
     hostTeamId: seed.hostTeamId,
     feeNote: seed.feeNote,
@@ -99,6 +104,7 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
   if (regOpenAt == null || regCloseAt == null || firstMatchAt == null || lastMatchAt == null) return null;
   return {
     name: form.name,
+    category: form.category,
     hostType: form.hostType,
     hostTeamId: form.hostTeamId,
     hostDisplay,
@@ -337,6 +343,19 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 onValueChange={(name) => { patch({ name }); setError(null); }}
               />
               <RadioGroup
+                label={ct('category')}
+                orientation="horizontal"
+                value={form.category}
+                onValueChange={(value) => {
+                  if (value === 'league' || value === 'cup' || value === 'friendly') patch({ category: value });
+                }}
+                options={[
+                  { value: 'league', label: ct('categoryLeague') },
+                  { value: 'cup', label: ct('categoryCup') },
+                  { value: 'friendly', label: ct('categoryFriendly') },
+                ]}
+              />
+              <RadioGroup
                 label={ct('hostKind')}
                 orientation="horizontal"
                 value={form.hostType}
@@ -527,6 +546,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             </div>
             <h2 class="cps-title" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
+              <CpRow k={ct('category')}>{categoryText(ct, form.category)}</CpRow>
               <CpRow k={ct('host')}>{hostName}</CpRow>
               <CpRow k={ct('regPeriod')}>
                 <span class="cps-line">{formatTaipeiDateTime(draftTimes.regOpenAt)}</span>

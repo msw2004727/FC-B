@@ -9,6 +9,7 @@ import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { RadioGroup } from '@/ui/RadioGroup';
 import { Switch } from '@/ui/Switch';
 import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
@@ -19,7 +20,7 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { buildPaymentInput, buildReviewInput } from '../payload';
-import type { DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
+import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
@@ -71,6 +72,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [rejectError, setRejectError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [unlockError, setUnlockError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [category, setCategory] = useState<CompetitionCategory>(env.bundle?.competition?.category ?? 'league');
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
 
@@ -90,6 +92,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // repClubs 晚到要補讀 entryPrivate，否則繳費、拒絕原因、聯絡人是空的。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.actor.role, env.bundle, repKey]);
+
+  useEffect(() => {
+    const next = bundle?.competition?.category;
+    if (next) setCategory(next);
+  }, [bundle?.competition?.category]);
 
   const competition = bundle?.competition;
   const manage = competition ? canManageCompetition({
@@ -278,6 +285,26 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  async function saveCategory(next: CompetitionCategory): Promise<void> {
+    if (!manage || busy || next === category) return;
+    const prev = category;
+    setCategory(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await env.actions.update({ cid, category: next });
+      setBundle((current) => current?.competition ? {
+        ...current,
+        competition: { ...current.competition, category: next },
+      } : current);
+    } catch (err) {
+      setCategory(prev);
+      setError(errorOf(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const showUnlock = canUnlockRosters({
     locked,
     canManage: manage,
@@ -385,6 +412,24 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   return (
     <CpFrame title={ct('manageTitle')}>
+      {manage ? (
+        <CpCard>
+          {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。 */}
+          <RadioGroup
+            label={ct('category')}
+            orientation="horizontal"
+            value={category}
+            onValueChange={(value) => {
+              if (value === 'league' || value === 'cup' || value === 'friendly') void saveCategory(value);
+            }}
+            options={[
+              { value: 'league', label: ct('categoryLeague') },
+              { value: 'cup', label: ct('categoryCup') },
+              { value: 'friendly', label: ct('categoryFriendly') },
+            ]}
+          />
+        </CpCard>
+      ) : null}
       <div>
         <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
         {(bundle?.divisions ?? []).map((division) => (

@@ -96,6 +96,7 @@ function spyActions() {
     unlockRosters: vi.fn(actions.unlockRosters),
     setPaymentStatus: vi.fn(actions.setPaymentStatus),
     report: vi.fn(actions.report),
+    update: vi.fn(actions.update),
   };
 }
 

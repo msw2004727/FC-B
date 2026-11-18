@@ -1,4 +1,4 @@
-// 第 3 步詳情首屏。還沒接進 CompetitionDetailPage（那會改第 2 步的讀取）。
+// 第 3 步詳情首屏。CompetitionDetailPage 用這支，不讀 matches 全集。
 // 招募／預熱：賽事根、組別、隊徽。不讀摘要、職員、積分。
 // 進行中：賽事根、當日一片摘要、積分、隊徽。不讀組別、職員、摘要全集。
 // 已結束：賽事根、積分、隊徽。摘要留到展開（loadFullSchedule）。

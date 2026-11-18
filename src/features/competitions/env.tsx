@@ -8,12 +8,15 @@ import type { CpActions } from './actions';
 import type { CpClub } from './access';
 import type { CompetitionsRepo } from './data/cp-repo';
 import type {
+  CompetitionCategory,
   CompetitionDoc,
   DivisionDoc,
   EntryDoc,
   EntryPrivateDoc,
   RosterPublicDoc,
   StaffDoc,
+  StandingDoc,
+  SummaryEntry,
 } from './data/types';
 import type { DivisionDraft, VenueDraft } from './payload';
 
@@ -62,11 +65,18 @@ export interface CpPreview {
   manageTab?: 'pending' | 'approved' | 'rejected';
 }
 
+export interface CpScheduleSnapshot {
+  summary: SummaryEntry[];
+  standings: StandingDoc[];
+}
+
 export interface WizardSeed {
   name: string;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
+  /** 省略＝聯賽。 */
+  category?: CompetitionCategory;
   regOpen: string;
   regClose: string;
   firstMatch: string;
@@ -83,6 +93,8 @@ export interface CpInjectedEnv {
   now?: number;
   route?: { cid?: string; enId?: string };
   bundle?: CpBundle;
+  /** 注入時詳情不打網路，賽程與積分榜用這份。省略當空。 */
+  schedule?: CpScheduleSnapshot;
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
 }

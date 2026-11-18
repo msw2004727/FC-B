@@ -60,6 +60,7 @@ export function idleActions(): CpActions {
     unlockRosters: async () => ({}),
     setPaymentStatus: async () => ({}),
     report: async () => ({}),
+    update: async () => ({ cid: 'cup' }),
   };
 }
 

@@ -3,6 +3,7 @@ import { buildAddInput, buildCreateInput, buildJoinInput, buildPaymentInput, bui
 
 const draft: WizardDraft = {
   name: ' 示範盃 ',
+  category: 'league',
   hostType: 'personal',
   hostTeamId: 'club_host',
   hostDisplay: '王示範',
@@ -51,6 +52,12 @@ describe('送出欄位只含契約的鍵', () => {
     expect(input.divisions[0]?.feePerTeam).toBe(0);
     expect(input.divisions[1]?.feePerTeam).toBe(0);
     expect(input.divisions[1]?.minAge).toBe(8);
+    expect(input.category).toBe('league');
+  });
+
+  it('盃賽分類送進 create', () => {
+    const input = buildCreateInput({ ...draft, category: 'cup' });
+    expect(input.category).toBe('cup');
   });
 
   it('俱樂部主辦不送 hostDisplay，有繳費說明才送', () => {

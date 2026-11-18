@@ -9,7 +9,7 @@ import type {
   CpReportInput,
   CpReviewEntryInput,
 } from './data/cp-callables';
-import type { DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
+import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
 
 export type PositionChoice = 'none' | RosterPositionCode;
 
@@ -37,6 +37,7 @@ export interface DivisionDraft {
 
 export interface WizardDraft {
   name: string;
+  category: CompetitionCategory;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   hostDisplay: string;
@@ -94,6 +95,7 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
     venues: draft.venues.map(venueOf),
     liveLinks: [] as string[],
     divisions: draft.divisions.map(divisionOf),
+    category: draft.category,
   };
   if (draft.hostType === 'club') {
     const feeNote = draft.feeNote.trim();

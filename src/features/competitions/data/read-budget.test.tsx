@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { InAppSection } from '../components/InAppSection';
 import { CpEnvProvider } from '../env';
 import { loadCompetitionsDict } from '../i18n';
+import CompetitionDetailPage from '../pages/CompetitionDetailPage';
 import { createFakeCpRepo, type FakeCpRepo } from '../testing/fake-cp-repo';
 import { idleActions, memberActor } from '../testing/screen-fixtures';
 import { loadFullSchedule, loadScheduleDetail, summaryShardIdOf } from './schedule-load';
@@ -352,6 +353,41 @@ describe('詳情讀取預算', () => {
   it('台北跨日時摘要片用台北日期', () => {
     expect(summaryShardIdOf(Date.parse('2026-12-05T00:30:00+08:00'))).toBe('d20261205');
     expect(summaryShardIdOf(Date.parse('2026-12-04T23:30:00+08:00'))).toBe('d20261204');
+  });
+
+  it('詳情頁用同一組讀取，不呼叫 listMatches 或 listEntries', async () => {
+    const recruit = repoFor(8, 1);
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor: memberActor, repo: recruit, actions: idleActions(), now: 150, route: { cid: 'cid_1' } }}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(recruit.calls()).toEqual([
+      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'listSummary',
+    ]));
+    expect(recruit.readCount()).toBeLessThanOrEqual(39);
+    expect(recruit.calls()).not.toContain('listMatches');
+    expect(recruit.calls()).not.toContain('listEntries');
+    expect(screen.getAllByText('招募中').length).toBeGreaterThan(0);
+
+    cleanup();
+    const live = repoFor(8, 1);
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor: memberActor, repo: live, actions: idleActions(), now: 350, route: { cid: 'cid_1' } }}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(live.calls()).toEqual([
+      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'listSummary', 'listStandings',
+    ]));
+    expect(live.readCount()).toBeLessThanOrEqual(41);
+    expect(live.calls()).not.toContain('listMatches');
+    expect(live.calls()).not.toContain('listEntries');
+    expect(await screen.findByText('進行中')).toBeTruthy();
   });
 
   it('沒有這場賽事就停，內部期仍只多那 3 筆', async () => {

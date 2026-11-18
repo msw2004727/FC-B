@@ -20,10 +20,14 @@ import { useInjectedEnv } from '../env';
 import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '../format';
 import { LiveBoundary } from '../live';
 import { buildRegisterInput, buildReportInput } from '../payload';
-import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason } from '../data/types';
+import { competitionPhase, type CompetitionPhase } from '../data/present';
+import { loadScheduleDetail } from '../data/schedule-load';
+import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
+import { CategoryCover, categoryText, DetailPhaseBody } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
+import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
 
@@ -40,6 +44,19 @@ function statusBadge(
   return { label: ct('recruiting'), tone: 'success' };
 }
 
+function phaseBadge(
+  ct: CompetitionsT,
+  competition: CompetitionDoc,
+  phase: Exclude<CompetitionPhase, 'recruit'>,
+): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' } {
+  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
+  if (competition.status === 'postponed') return { label: ct('postponed'), tone: 'warning' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
+  if (phase === 'warm') return { label: ct('phaseWarm'), tone: 'info' };
+  if (phase === 'live') return { label: ct('phaseLive'), tone: 'warning' };
+  return { label: ct('phaseDone'), tone: 'neutral' };
+}
+
 function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
   if (competition.hostDisplay) return competition.hostDisplay;
   // 俱樂部 id 一律用文件路徑 id 的 repClubs（顧問 §3.254：不再混用 viewer.staffTeams 的欄位 id）
@@ -47,15 +64,46 @@ function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
   return known?.name ?? '';
 }
 
-async function loadDetail(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
-  const uid = env.actor.uid;
-  const [competition, divisions, entries, staff] = await Promise.all([
-    env.repo.getCompetition(cid),
-    env.repo.listDivisions(cid),
-    env.repo.listEntries(cid),
-    uid ? env.repo.getStaff(cid, uid) : Promise.resolve(null),
-  ]);
-  return { competition, divisions, entries, roster: [], privates: [], staff };
+interface DetailData {
+  bundle: CpBundle;
+  summary: SummaryEntry[];
+  standings: StandingDoc[];
+}
+
+async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> {
+  // 隊徽走 listEntriesForCrest（repo 頁內快取，不監聽）。摘要每次呼叫都重讀。
+  // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
+  // ASSUMPTION: 計畫書 §8.1 不在工作樹。回前景重讀與首屏同一組讀取；內部期的 getLaunch 三筆留給列表閘門，詳情不另開。
+  const view = await loadScheduleDetail(env.repo, {
+    cid,
+    uid: env.actor.uid,
+    now: env.now ?? Date.now(),
+  });
+  return {
+    bundle: {
+      competition: view.competition,
+      divisions: view.divisions,
+      entries: view.crests,
+      roster: [],
+      privates: [],
+      staff: view.staff,
+    },
+    summary: view.summary,
+    standings: view.standings,
+  };
+}
+
+function applyDetail(
+  next: DetailData,
+  setBundle: (value: CpBundle | null) => void,
+  setSummary: (value: SummaryEntry[]) => void,
+  setStandings: (value: StandingDoc[]) => void,
+  setLoadState: (value: 'loading' | 'ready' | 'error') => void,
+): void {
+  setBundle(next.bundle);
+  setSummary(next.summary);
+  setStandings(next.standings);
+  setLoadState(next.bundle.competition ? 'ready' : 'error');
 }
 
 function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -63,7 +111,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
+  const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
+  const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
   const [reportOpen, setReportOpen] = useState(env.preview?.reportOpen === true);
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
@@ -87,13 +137,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   useEffect(() => {
     if (env.bundle) return;
     let alive = true;
-    setPhase('loading');
+    setLoadState('loading');
     void loadDetail(env, cid).then((next) => {
       if (!alive) return;
-      setBundle(next);
-      setPhase(next.competition ? 'ready' : 'error');
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
     }).catch(() => {
-      if (alive) setPhase('error');
+      if (alive) setLoadState('error');
     });
     return () => {
       alive = false;
@@ -102,21 +151,49 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.bundle]);
 
+  useEffect(() => {
+    if (env.bundle) return undefined;
+    let alive = true;
+    const reload = () => {
+      if (!alive || document.visibilityState === 'hidden') return;
+      void loadDetail(env, cid).then((next) => {
+        if (!alive || !next.bundle.competition) return;
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+      }).catch(() => {
+        // 回前景重讀失敗就留著目前畫面，不把詳情打成錯誤頁。
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    const onPageShow = (event: Event) => {
+      if ((event as PageTransitionEvent).persisted === true) reload();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+    // 回前景重讀摘要。隊徽由 repo 的 listEntriesForCrest 快取，不另開監聽。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.actor.uid, env.bundle]);
+
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  if (phase === 'loading') {
+  if (loadState === 'loading') {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || phase === 'error') {
+  if (!competition || loadState === 'error') {
     return (
       <CpFrame title={ct('detailTitle')}>
         <p class="cps-note" role="alert">{ct('loadFailed')}</p>
         <Button variant="secondary" onClick={() => {
-          setPhase('loading');
+          setLoadState('loading');
           void loadDetail(env, cid).then((next) => {
-            setBundle(next);
-            setPhase(next.competition ? 'ready' : 'error');
-          }).catch(() => setPhase('error'));
+            applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+          }).catch(() => setLoadState('error'));
         }}
         >{ct('retry')}</Button>
       </CpFrame>
@@ -138,7 +215,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     regCloseAt: competition.regCloseAt,
     now,
   });
-  const badge = statusBadge(ct, competition, now);
+  const phase: CompetitionPhase = competitionPhase(competition, now);
+  const badge = phase === 'recruit' ? statusBadge(ct, competition, now) : phaseBadge(ct, competition, phase);
   const divisions = bundle?.divisions ?? [];
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
@@ -150,11 +228,14 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     try {
       await env.actions.publish({ cid });
       const next = await loadDetail(env, cid);
-      setBundle((prev) => {
-        if (next.competition) return next;
-        if (!prev?.competition) return next;
-        return { ...prev, competition: { ...prev.competition, status: 'published' } };
-      });
+      if (next.bundle.competition) {
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+      } else {
+        setBundle((prev) => {
+          if (!prev?.competition) return next.bundle;
+          return { ...prev, competition: { ...prev.competition, status: 'published' } };
+        });
+      }
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -193,7 +274,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       setRegisterOpen(false);
       setRegisterError(null);
       const next = await loadDetail(env, cid);
-      setBundle(next);
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
     } catch (err) {
       setRegisterError(errorOf(err));
     } finally {
@@ -209,9 +290,32 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     other: ct('reportOther'),
   };
 
+  const manageActions = (
+    <>
+      {error ? <CpError reason={error.reason} params={error.params} /> : null}
+      {showRegister ? (
+        <div class="cps-actions">
+          <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
+            {ct('registerClub')}
+          </Button>
+        </div>
+      ) : null}
+      {manage ? (
+        <div class="cps-actions">
+          {competition.status === 'draft' ? (
+            <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
+              {ct('publish')}
+            </Button>
+          ) : null}
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
+        </div>
+      ) : null}
+    </>
+  );
+
   return (
     <CpFrame
-      title={ct('detailTitle')}
+      title={phase === 'recruit' ? ct('detailTitle') : competition.name}
       menu={(
         <>
           <button
@@ -233,6 +337,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
     >
+      <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
+      {phase === 'recruit' ? (
+      <>
       <CpCard>
         <div class="cps-badges" style="margin-bottom:8px">
           <Badge tone={badge.tone} label={badge.label} size="sm" />
@@ -283,29 +390,29 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </CpRow>
           ) : null}
         </dl>
-        {error ? <CpError reason={error.reason} params={error.params} /> : null}
-        {showRegister ? (
-          <div class="cps-actions">
-            <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
-              {ct('registerClub')}
-            </Button>
-          </div>
-        ) : null}
-        {manage ? (
-          <div class="cps-actions">
-            {competition.status === 'draft' ? (
-              <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
-                {ct('publish')}
-              </Button>
-            ) : null}
-            <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
-          </div>
-        ) : null}
+        {manageActions}
       </CpCard>
 
       {divisions.map((division) => (
         <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} competition={competition} now={now} />
       ))}
+      </>
+      ) : (
+        <>
+          <DetailPhaseBody
+            ct={ct}
+            phase={phase}
+            firstMatchAt={competition.firstMatchAt}
+            divisions={divisions}
+            crests={entries}
+            summary={summary}
+            standings={standings}
+            now={now}
+            badge={badge}
+          />
+          {manageActions}
+        </>
+      )}
 
       {registerOpen ? (
         <BottomSheet
@@ -419,7 +526,10 @@ function DivisionBlock({
           <li class="cps-li" key={entry.id}>
             <div class="cps-li__main">
               <a class="cps-li__name cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
-                {entry.name}
+                <span class="cp3-tn">
+                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
+                  <em>{entry.name}</em>
+                </span>
               </a>
             </div>
             <Badge tone="success" label={ct('approved')} size="sm" />
