@@ -1,7 +1,8 @@
-import { Timestamp, collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { getFirebase } from '@/data/firebase';
 
 export const OPERATION_LOGS_COLLECTION = 'operationLogs' as const;
+export const OPERATION_LOGS_FETCH_LIMIT = 200;
 
 export interface FirestoreTimestampLike {
   toDate?: () => Date;
@@ -53,31 +54,16 @@ export interface DiagnosticTextLabels {
   none?: string;
 }
 
-/** 時間區間查詢上限：超過時只取最新的這些筆，畫面提示縮小區間。 */
-export const OPERATION_LOGS_RANGE_CAP = 500;
-
-export interface OperationLogsRangeResult {
-  docs: OperationLogDoc[];
-  /** 區間內超過上限（只拿到最新 OPERATION_LOGS_RANGE_CAP 筆）。 */
-  truncated: boolean;
-}
-
-/**
- * 2026-11-16 日誌中心改版：依時間區間讀取（台北日／週／月），取代「一開就讀最新 200 筆」。
- * 只用 `createdAt` 單欄範圍＋排序（Firestore 自動單欄索引，不需新增複合索引）；類型與關鍵字在前端篩。
- * 沒有 `createdAt` 的極舊日誌（只有 `time` 字串）不在任何區間內，與原本 orderBy(createdAt) 的行為相同。
- */
-export async function fetchOperationLogsInRange(startMs: number, endMs: number): Promise<OperationLogsRangeResult> {
+/** 照 A `_buildCollectionQuery('operationLogs')`：collection('operationLogs') + orderBy('createdAt','desc') + limit(200) 一次讀取。 */
+export async function fetchOperationLogs(): Promise<OperationLogDoc[]> {
   const { db } = await getFirebase();
   const q = query(
     collection(db, OPERATION_LOGS_COLLECTION),
-    where('createdAt', '>=', Timestamp.fromMillis(startMs)),
-    where('createdAt', '<', Timestamp.fromMillis(endMs)),
     orderBy('createdAt', 'desc'),
-    limit(OPERATION_LOGS_RANGE_CAP + 1),
+    limit(OPERATION_LOGS_FETCH_LIMIT),
   );
   const snap = await getDocs(q);
-  const docs = snap.docs.slice(0, OPERATION_LOGS_RANGE_CAP).map((docSnap) => {
+  return snap.docs.map((docSnap) => {
     const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
     return {
       ...data,
@@ -85,17 +71,6 @@ export async function fetchOperationLogsInRange(startMs: number, endMs: number):
       id: typeof data.id === 'string' && data.id.trim() ? data.id : docSnap.id,
     } as OperationLogDoc;
   });
-  return { docs, truncated: snap.docs.length > OPERATION_LOGS_RANGE_CAP };
-}
-
-/** 列表用短時間 `MM/DD HH:mm`（台北，24 小時制）；沒有 createdAt 時退回 `time` 字串。 */
-export function formatOperationLogShortTime(log: OperationLogDoc | null | undefined): string {
-  const date = parseCreatedAtDate(log?.createdAt);
-  if (!date) return String(log?.time || '').trim();
-  // 固定 +8 小時後取 UTC 欄位（不經 toLocaleString，避免不同瀏覽器插入不可見字元或 24:00 寫法）。
-  const t = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  return `${p2(t.getUTCMonth() + 1)}/${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`;
 }
 
 /**

@@ -1,7 +1,6 @@
-import { callFn, type RequestOf } from '@/data/callables';
+import { callFn } from '@/data/callables';
 import { generateId, ID_PREFIX } from '@/data/ids';
 import { deliverInboxMessage } from '@/data/inbox-delivery';
-import { pickRelationKeys, RELATION_KEY_NAMES } from '@/data/notification-relation-keys';
 import { writeOpLog } from '@/data/op-log';
 import { t } from '@/i18n/i18n';
 import {
@@ -393,8 +392,6 @@ async function afterSave(
     const label = { captain: '俱樂部經理', leader: '領隊', coach: '教練' }[key];
     const title = '俱樂部職位指派';
     const body = `您已被設為「${fields.name}」的${label}。`;
-    const source = `team_role_assignment:${key}`;
-    const relationKeys = pickRelationKeys({ teamId, assignmentRole: key });
     tasks.push(bestEffort('deliverInboxMessage', () => deliverInboxMessage({
       title,
       body,
@@ -403,23 +400,15 @@ async function afterSave(
       targetUid: uid,
       senderName: '系統',
       senderUid: viewer.uid,
-      source,
-      ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
     })));
-    tasks.push(bestEffort('enqueuePrivilegedLineNotification', () => {
-      const request: RequestOf<'enqueuePrivilegedLineNotification'> = {
+    tasks.push(bestEffort('enqueuePrivilegedLineNotification', () =>
+      callFn('enqueuePrivilegedLineNotification', {
         uid,
         title,
         body,
         category: 'system',
-        source,
-      };
-      for (const name of RELATION_KEY_NAMES) {
-        const value = relationKeys[name];
-        if (value) request[name] = value;
-      }
-      return callFn('enqueuePrivilegedLineNotification', request);
-    }));
+        source: `team_role_assignment:${key}`,
+      })));
   };
 
   if (diff.notifyCaptain) notify(diff.notifyCaptain, 'captain');

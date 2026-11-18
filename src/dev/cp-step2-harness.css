@@ -1,5 +1,0 @@
-/* 預覽頁只補底色。玻璃卡片樣式在 competitions.css，避免兩份規則互相蓋掉。 */
-
-html, body { margin: 0; background: #eef1f6; }
-html[data-theme="dark"], html[data-theme="dark"] body { background: #0b0f16; }
-#app { min-height: 100vh; }

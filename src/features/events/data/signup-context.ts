@@ -76,7 +76,7 @@ export function detailCompanionGenderMessage(
   const label = allowedGender === '男' ? '男性限制' : '女性限制';
   return name
     ? `${name} 不符合此活動的${label}`
-    : `所選夥伴不符合此活動的${label}`;
+    : `所選同行者不符合此活動的${label}`;
 }
 
 /** 照 A handleSignup／_confirmCompanionRegisterUnlocked。 */

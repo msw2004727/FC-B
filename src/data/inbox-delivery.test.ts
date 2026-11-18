@@ -191,54 +191,6 @@ describe('deliverInboxMessage', () => {
       targetRoles: null,
       targetType: 'individual',
     });
-    expect(msg).not.toHaveProperty('source');
-  });
-
-  it('已知 source 寫進訊息，關聯鍵只放請求頂層', async () => {
-    const msg = await deliverInboxMessage({
-      ...base,
-      source: ' team_join_request ',
-      relationKeys: {
-        eventId: '  ',
-        teamId: ' tm_1 ',
-        tournamentId: '',
-        applicantUid: 'U-a',
-        assignmentRole: 'coach',
-      },
-    });
-
-    expect(msg?.['source']).toBe('team_join_request');
-    expect(msg).not.toHaveProperty('teamId');
-    expect(msg).not.toHaveProperty('applicantUid');
-    expect(msg).not.toHaveProperty('assignmentRole');
-    expect(msg).not.toHaveProperty('eventId');
-    expect(callFn).toHaveBeenCalledWith('deliverToInbox', {
-      message: msg,
-      targetUid: 'U-staff',
-      targetTeamId: null,
-      targetRoles: null,
-      targetType: 'individual',
-      teamId: 'tm_1',
-      applicantUid: 'U-a',
-      assignmentRole: 'coach',
-    });
-  });
-
-  it('未知 source 與空白鍵都不送', async () => {
-    const msg = await deliverInboxMessage({
-      ...base,
-      source: 'template:event_changed_override',
-      relationKeys: { eventId: '   ', teamId: '' },
-    });
-
-    expect(msg).not.toHaveProperty('source');
-    expect(callFn).toHaveBeenCalledWith('deliverToInbox', {
-      message: msg,
-      targetUid: 'U-staff',
-      targetTeamId: null,
-      targetRoles: null,
-      targetType: 'individual',
-    });
   });
 
   it('Callable 失敗往外拋', async () => {

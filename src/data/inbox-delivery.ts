@@ -9,11 +9,6 @@
 
 import { formatTaipei } from '@/core/taipei-time';
 import { callFn } from '@/data/callables';
-import {
-  isKnownNotificationSource,
-  pickRelationKeys,
-  type NotificationRelationKeys,
-} from '@/data/notification-relation-keys';
 
 export interface InboxDeliveryExtra {
   targetTeamId?: string | null;
@@ -47,16 +42,6 @@ export interface InboxDeliveryInput {
   /** 測試注入。 */
   now?: Date;
   random?: () => number;
-  /**
-   * 與同一流程 LINE 推播相同的已知 source。trim 後不在已知清單則不寫進訊息。
-   * 關聯鍵不放這裡。
-   */
-  source?: string | null;
-  /**
-   * Callable 請求頂層的關聯鍵（eventId／teamId／tournamentId／applicantUid／assignmentRole）。
-   * 不放進訊息物件。空白省略。
-   */
-  relationKeys?: NotificationRelationKeys | null;
 }
 
 /** A `_buildInboxDeliveryDedupeKey`。 */
@@ -138,11 +123,6 @@ export function isAlreadyExistsError(err: unknown): boolean {
  */
 export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Record<string, unknown> | null> {
   const message = buildInboxMessage(input);
-  const inboxSource = typeof input.source === 'string' ? input.source.trim() : '';
-  if (inboxSource && isKnownNotificationSource(inboxSource)) {
-    message['source'] = inboxSource;
-  }
-  const relationKeys = pickRelationKeys(input.relationKeys);
   // 內測模式：收件人必須在白名單內；廣播（targetUid 為 null）對象不明，一律擋。
   const dedupeKey = typeof message['dedupeKey'] === 'string' ? message['dedupeKey'] : '';
   const nowMs = (input.now ?? new Date()).getTime();
@@ -157,7 +137,6 @@ export async function deliverInboxMessage(input: InboxDeliveryInput): Promise<Re
       targetTeamId: message['targetTeamId'],
       targetRoles: message['targetRoles'],
       targetType: message['targetType'],
-      ...relationKeys,
     } as never);
   } catch (err) {
     if (isAlreadyExistsError(err)) return message;

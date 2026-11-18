@@ -6,7 +6,6 @@ import { useUserRoles } from '@/data/user-roles';
 import { toast } from '@/ui/Toast';
 import { buildIdentityQrPayload, renderQrToCanvas } from '../../data/qr';
 import { useViewer } from '../../data/viewer';
-import './profile-modal-glass.css';
 
 export interface UidQrModalProps {
   /** 由 App 傳入目前登入者（null 為訪客）；未傳時退回 viewer.uid。 */
@@ -72,7 +71,6 @@ function writeCachedQrDataUrl(uid: string, canvas: HTMLCanvasElement): void {
  * 全站 UID／簽到 QR Code 彈窗（M-025、M-026、M-027、M-029、U-005、U-006）。
  *
  * - DOM 結構與 inline style 照 A `pages/modals.html` `#uid-qr-modal` 與 `profile-card.js` `showUidQrCode`。
- * - 2026-11-16 PROFILE-GLASS：卡面底色與關閉鈕外觀改由 profile-modal-glass.css（.uid-qr-card／.uid-qr-close）提供。
  * - R-SHARE-004 / R-SHARE-013：只以本機 `qrcode` 產生 raw UID QR，失敗顯示錯誤，絕不呼叫任何外部網址。
  * - 一般用戶標題「我的簽到 QR Code」且不顯示 UID；admin / super_admin 標題「我的 UID QR Code」並顯示 UID 與「複製 UID」。
  * - 訪客顯示「登入後即可顯示簽到 QR Code」＋ LINE 登入按鈕（M-029 + U-006）。
@@ -250,14 +248,12 @@ export function UidQrModal({
         onClick={handleOverlayClick}
       >
         <div
-          class="uid-qr-card"
-          style="border-radius:var(--radius-lg);max-width:320px;width:85%;padding:1.5rem;text-align:center;position:relative"
+          style="background:var(--bg-card);border-radius:var(--radius-lg);max-width:320px;width:85%;padding:1.5rem;text-align:center;position:relative"
         >
           <button
             type="button"
             aria-label="關閉"
-            class="uid-qr-close"
-            style="position:absolute;top:.5rem;right:.7rem;border:none;cursor:pointer"
+            style="position:absolute;top:.5rem;right:.7rem;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text-muted)"
             onClick={handleClose}
           >
             ✕

@@ -30,18 +30,8 @@ ToosterX 運動活動報名平台的全新前端（B 版），為 A 版的接班
 | `npm run test` | 執行 Vitest |
 | `npm run check:i18n` | 檢查 7 語系 key 集合是否一致 |
 | `npm run check` | 依序執行 typecheck → test → check:i18n |
-| `npm run check:bundle` | 打包後檢查首頁 JS 大小預算 |
-| `npm run check:rules-sync` | 檢查 `emulator/` 規則副本與紀錄的雜湊一致 |
-| `npm run test:rules` | 啟動 Firestore emulator 跑規則測試 |
-| `npm run check:parity` | 角色權限對照（需要旁邊有 FC repo） |
-| `npm run emulators`／`npm run seed:emulator` | 啟動本機 emulator／灌測試資料 |
-| `npm run bump-version` | 每個上線批次推送前換版號並重產 sitemap |
-
-給 AI 的專案規則在 `CLAUDE.md`（入口）與 `.claude/rules/`；非 Claude Code 的 AI 先讀 `AGENTS.md`。
 
 ## 資料夾結構
-
-> 下面是專案初期的骨架，只列主幹；之後新增的 `src/data/`（資料層）、`src/core/` 其他模組、`src/ui/` 元件、`emulator/`、`public/`、`scripts/` 以實際檔案為準。
 
 ```
 src/

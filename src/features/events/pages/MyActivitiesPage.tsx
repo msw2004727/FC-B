@@ -518,7 +518,7 @@ export default function MyActivitiesPage(): JSX.Element {
               value={creatorQuery}
               placeholder={lt('篩選主辦人...', '篩選主辦人...')}
               autocomplete="off"
-              style="padding:.25rem 1.4rem .25rem .4rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);width:110px"
+              style="font-size:.72rem;padding:.25rem 1.4rem .25rem .4rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);width:110px"
               data-i18n-placeholder="篩選主辦人..."
               onInput={(ev) => handleCreatorInput(ev.currentTarget.value)}
             />
@@ -691,7 +691,6 @@ export default function MyActivitiesPage(): JSX.Element {
           open={createEntry.formOpen}
           mode="create"
           viewer={viewer}
-          initialIntensity={createEntry.intensity}
           onClose={createEntry.closeForm}
           onSaved={onCreateSaved}
         />

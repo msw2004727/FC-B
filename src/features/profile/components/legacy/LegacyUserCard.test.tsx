@@ -5,7 +5,6 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/preac
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/ui/Toast', () => ({ toast: { show: vi.fn() } }));
-vi.mock('@/data/profile-private', () => ({ loadPrivateProfile: vi.fn() }));
 vi.mock('../../data/profile-model', () => ({ loadUserProfile: vi.fn() }));
 vi.mock('../../data/activity-records', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../data/activity-records')>();
@@ -48,7 +47,6 @@ vi.mock('firebase/firestore', () => ({
 import { getDocs } from 'firebase/firestore';
 
 import { emit } from '@/core/events';
-import { loadPrivateProfile } from '@/data/profile-private';
 import { openPmDialog } from '@/features/inbox/components/pm-dialog-store';
 import { toast } from '@/ui/Toast';
 
@@ -135,7 +133,6 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     vi.mocked(useViewer).mockReturnValue(makeViewer());
     vi.mocked(loadProfilePopularityViews).mockResolvedValue(null);
     vi.mocked(scheduleProfileViewRecord).mockReturnValue(() => undefined);
-    vi.mocked(loadPrivateProfile).mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -680,85 +677,6 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     });
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
-  });
-
-  it('C4b 一般使用者看他人：loadPrivateProfile 未呼叫、電話列不輸出', async () => {
-    const { container } = await renderCard();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(loadPrivateProfile).not.toHaveBeenCalled();
-    expect(container.textContent).not.toContain('聯繫方式');
-  });
-
-  it('C4b 本人：私密文件 phone 有值 → 顯示私密值', async () => {
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
-    vi.mocked(loadPrivateProfile).mockResolvedValue({ phone: '0999999999' });
-    const { container } = await renderCard();
-    await waitFor(() => expect(loadPrivateProfile).toHaveBeenCalledWith(TARGET));
-    await waitFor(() => expect(container.textContent).toContain('0999999999'));
-    await waitFor(() => expect(container.textContent).not.toContain('0912345678'));
-  });
-
-  it('C4b 本人：私密文件 phone 為 null → 顯示 -', async () => {
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
-    vi.mocked(loadPrivateProfile).mockResolvedValue({ phone: null });
-    const { container } = await renderCard();
-    await waitFor(() => expect(loadPrivateProfile).toHaveBeenCalledWith(TARGET));
-    await waitFor(() => {
-      const row = Array.from(container.querySelectorAll('.pp-row')).find(
-        (el) => el.querySelector('span')?.textContent === '聯繫方式',
-      );
-      expect(row?.textContent?.replace('聯繫方式', '').trim()).toBe('-');
-    });
-    await waitFor(() => expect(container.textContent).not.toContain('0912345678'));
-  });
-
-  it('C4b 本人：私密讀取回 null → 退回根值', async () => {
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
-    vi.mocked(loadPrivateProfile).mockResolvedValue(null);
-    const { container } = await renderCard();
-    await waitFor(() => expect(loadPrivateProfile).toHaveBeenCalledWith(TARGET));
-    await waitFor(() => {
-      const row = Array.from(container.querySelectorAll('.pp-row')).find(
-        (el) => el.querySelector('span')?.textContent === '聯繫方式',
-      );
-      expect(row?.textContent?.replace('聯繫方式', '').trim()).toBe('0912345678');
-    });
-  });
-
-  it('C4b 管理員看他人：以 _docId 呼叫 loadPrivateProfile，顯示私密值', async () => {
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: 'admin-uid', role: 'admin' }));
-    vi.mocked(loadUserProfile).mockResolvedValue(makeProfile({ _docId: 'real-doc-id' }));
-    vi.mocked(loadPrivateProfile).mockResolvedValue({ phone: '0888888888' });
-    const { container } = await renderCard();
-    await waitFor(() => expect(loadPrivateProfile).toHaveBeenCalledWith('real-doc-id'));
-    await waitFor(() => expect(container.textContent).toContain('0888888888'));
-  });
-
-  it('C4b 本人但 _docId !== viewer.uid：不呼叫 loadPrivateProfile、顯示根值', async () => {
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
-    vi.mocked(loadUserProfile).mockResolvedValue(
-      makeProfile({ uid: TARGET, _docId: 'old-doc-id' }),
-    );
-    const { container } = await renderCard();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(loadPrivateProfile).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('0912345678');
-  });
-
-  it('C4b 切換目標使用者：前一位私密電話不殘留', async () => {
-    const uidA = `U${'1'.repeat(32)}`;
-    const uidB = `U${'2'.repeat(32)}`;
-    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: uidA }));
-    vi.mocked(loadUserProfile).mockImplementation(async (uid: string) =>
-      makeProfile({ uid, _docId: uid, name: uid, displayName: uid }),
-    );
-    vi.mocked(loadPrivateProfile).mockImplementation(async (uid: string) =>
-      uid === uidA ? { phone: '0111111111' } : null,
-    );
-    const { container, rerender } = render(<LegacyUserCard uid={uidA} />);
-    await waitFor(() => expect(container.textContent).toContain('0111111111'));
-    rerender(<LegacyUserCard uid={uidB} />);
-    await waitFor(() => expect(container.textContent).not.toContain('0111111111'));
   });
 
   it('公開頁星星 CSS 照規格，只在有資料時定位', () => {

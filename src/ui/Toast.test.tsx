@@ -103,30 +103,3 @@ describe('Toast', () => {
     }
   });
 });
-
-describe('Toast highlight（2026-11-17 引導文字強調）', () => {
-  afterEach(() => cleanup());
-
-  it('訊息含 highlight 時該片段包成 .ui-toast__em，前後文字照常', () => {
-    render(<Toast message="請先到個人資訊頁新增運動夥伴" highlight="新增運動夥伴" onClose={() => {}} />);
-    const em = document.querySelector('.ui-toast__em');
-    expect(em?.textContent).toBe('新增運動夥伴');
-    expect(document.querySelector('.ui-toast__message')?.textContent).toBe('請先到個人資訊頁新增運動夥伴');
-  });
-
-  it('訊息不含 highlight 時整句照常、不加強調', () => {
-    render(<Toast message="儲存成功" highlight="新增運動夥伴" onClose={() => {}} />);
-    expect(document.querySelector('.ui-toast__em')).toBeNull();
-    expect(document.querySelector('.ui-toast__message')?.textContent).toBe('儲存成功');
-  });
-
-  it('toast.show 帶 highlight 會傳到 ToastHost', () => {
-    render(<ToastHost />);
-    act(() => {
-      toast.show({ message: '請先到個人資訊頁新增運動夥伴', highlight: '新增運動夥伴' });
-    });
-    expect(getToasts()[0]?.highlight).toBe('新增運動夥伴');
-    expect(document.querySelector('.ui-toast__em')?.textContent).toBe('新增運動夥伴');
-    act(() => toast.clear());
-  });
-});

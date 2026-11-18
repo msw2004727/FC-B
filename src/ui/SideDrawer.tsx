@@ -1,13 +1,11 @@
 import './drawer-extra.css';
-import './drawer-foot.css';
-import './drawer-glass.css';
 import '@/styles/legacy/version-tag.css';
 import type { RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { getCurrentLocale, lt, setLocale, useT } from '@/i18n/i18n';
-import { DRAWER_LOCALES, LOCALE_LABELS, LOCALE_SHORT_LABELS, type Locale } from '@/i18n/locales';
+import { DRAWER_LOCALES, LOCALE_LABELS, type Locale } from '@/i18n/locales';
 import { setTheme, useTheme, type ThemeMode } from '@/core/theme';
 import {
   getFontSize,
@@ -19,7 +17,6 @@ import {
 import type { RouteAccessContext } from '@/core/feature-types';
 import { isAuthRequiredRoute } from '@/core/back-guard';
 import { emit, on } from '@/core/events';
-import { pushOverlay } from '@/core/overlay-back';
 import { openStaticPage, shouldLeaveAnchorClick } from '@/core/open-external';
 import { prefetchRouteByPath } from '@/core/route-prefetch';
 import {
@@ -30,12 +27,10 @@ import {
 import { readAppVersion } from '@/core/app-meta';
 import { isInternalTestMode } from '@/data/internal-test';
 import type { AuthUser } from '@/data/auth';
-import { clearAccountLocalState, getLastKnownAuthUid } from '@/data/auth';
+import { getLastKnownAuthUid } from '@/data/auth';
 import { markAutoLoginSuppressed } from '@/data/login-redirect';
 import { toast } from '@/ui/Toast';
 import {
-  BASE_ROLES,
-  BUILTIN_ROLE_KEYS,
   buildDrawerRenderNodes,
   drawerItemStatus,
   getMiniAppShareUrl,
@@ -58,8 +53,6 @@ import {
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
 import { GuestAvatarIcon } from './GuestAvatarIcon';
 import { IdentityCrownSvg } from './IdentityCrown';
-import { CaretIcon, GlobeIcon, MoreIcon, ResetIcon, ThemeIcon } from './drawer-foot-icons';
-import { DrawerMenuIcon } from './drawer-menu-icons';
 
 export interface SideDrawerIdentity {
   readonly identityId?: 'primary' | 'secondary' | string;
@@ -74,8 +67,7 @@ export interface SideDrawerProps {
   user?: AuthUser | null;
   onLogin?: (() => void) | undefined;
   loginPending?: boolean;
-  /** 'expired'＝LINE 權杖已失效（B1-02），顯示專屬文案。 */
-  loginError?: boolean | 'expired';
+  loginError?: boolean;
   /** 登入者權限與 Viewer 資料（含 Firestore displayName、pictureUrl、permissionSources）。 */
   routeAccess?: (RouteAccessContext & {
     displayName?: string | null;
@@ -90,13 +82,28 @@ export interface SideDrawerProps {
 
 const SWIPE_MIN_DX = 12;
 
-const THEME_CHOICES: readonly ThemeMode[] = ['light', 'dark', 'system'];
-
 // 字級存取統一走 core/font-size（照 A sporthub_font_size 存 15／16.5／18 數字，開站腳本才讀得懂）。
 function fontBtnClass(size: FontSize): string {
   if (size === 'medium') return 'drawer-font-btn font-m';
   if (size === 'large') return 'drawer-font-btn font-l';
   return 'drawer-font-btn';
+}
+
+function isEffectiveDark(mode: ThemeMode): boolean {
+  if (typeof document !== 'undefined') {
+    const attr = document.documentElement.getAttribute('data-theme');
+    if (attr === 'dark') return true;
+    if (attr === 'light') return false;
+  }
+  if (mode === 'dark') return true;
+  if (mode === 'light') return false;
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
 }
 
 interface BodyLock {
@@ -164,9 +171,24 @@ async function executeClearCache(): Promise<void> {
         /* ignore */
       }
     }
-    // B1-05：帳號相關 localStorage 與 sessionStorage `_lineLoginRetryCount` 改用登出共用的同一份清單，
-    // 取代原本這裡自己列的前綴（漏了活動列表快照等，兩份清單會漂移）；儲存空間不可用時內部靜默略過。
-    clearAccountLocalState();
+    try {
+      const lsKeys = Object.keys(localStorage);
+      for (const k of lsKeys) {
+        if (
+          k.startsWith('shub_c_')
+          || k.startsWith('shub_ts_')
+          || k.startsWith('shub_cache_')
+          || k.startsWith('LIFF')
+          || k.startsWith('toosterx:auth')
+        ) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.removeItem('sporthub_auto_exp_rules');
+      localStorage.removeItem('sporthub_auto_exp_logs');
+    } catch {
+      /* ignore */
+    }
     try {
       const idb = indexedDB as IDBFactory & {
         databases?: () => Promise<Array<{ name?: string }>>;
@@ -177,6 +199,11 @@ async function executeClearCache(): Promise<void> {
           if (db?.name) indexedDB.deleteDatabase(db.name);
         });
       }
+    } catch {
+      /* ignore */
+    }
+    try {
+      sessionStorage.removeItem('_lineLoginRetryCount');
     } catch {
       /* ignore */
     }
@@ -269,23 +296,6 @@ export function SideDrawer({
   const internalTest = useMemo(() => isInternalTestMode(), []);
   const [showApplyNotice, setShowApplyNotice] = useState(false);
   const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  /** 抽屜的 Esc 先看確認框：開著就交給確認框只關框（Grok 初審 P2）。 */
-  const confirmOpenRef = useRef(false);
-  confirmOpenRef.current = showClearCacheConfirm;
-  /** 「⋯」小卡開著時，下一層 Esc 只關小卡，不關抽屜。 */
-  const moreOpenRef = useRef(false);
-  moreOpenRef.current = moreOpen;
-  const drawerOpenRef = useRef(open);
-  drawerOpenRef.current = open;
-  const resetBtnRef = useRef<HTMLButtonElement>(null);
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const morePopRef = useRef<HTMLDivElement>(null);
-  /** 小卡關掉的那次要不要把焦點拉回「⋯」。在卸載前寫下，cleanup 時小卡已不在。 */
-  const restoreMoreFocusRef = useRef(false);
-  const confirmCancelRef = useRef<HTMLButtonElement>(null);
-  const confirmBoxRef = useRef<HTMLDivElement>(null);
-  const themeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dragOffsetX, setDragOffsetX] = useState<number | null>(null);
 
   const loadingRef = useRef(false);
@@ -299,77 +309,8 @@ export function SideDrawer({
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      setDragOffsetX(null);
-      // 抽屜因換頁等原因關掉時，確認框與「⋯」小卡不留在畫面上，焦點仍還給選單鈕
-      setShowClearCacheConfirm(false);
-      restoreMoreFocusRef.current = false;
-      setMoreOpen(false);
-    }
+    if (!open) setDragOffsetX(null);
   }, [open]);
-
-  // 重設確認框（比照 AppConfirm）：開框焦點放「取消」；Esc 與實體返回鍵同一路徑「只關框、不執行」；關框把焦點還給重設鈕。
-  // Tab／Shift+Tab 只在框內兩顆按鈕間循環（aria-modal 不會自己擋 Tab，原本會跑到後面的抽屜）。
-  useLayoutEffect(() => {
-    if (!showClearCacheConfirm) return undefined;
-    confirmCancelRef.current?.focus({ preventScroll: true });
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Tab') {
-        const box = confirmBoxRef.current;
-        const items = box ? [...box.querySelectorAll<HTMLElement>('button:not([disabled])')] : [];
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (!box || !first || !last) return;
-        const active = document.activeElement;
-        const inside = active instanceof Node && box.contains(active);
-        if (event.shiftKey ? (!inside || active === first) : (!inside || active === last)) {
-          event.preventDefault();
-          (event.shiftKey ? last : first).focus({ preventScroll: true });
-        }
-        return;
-      }
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      setShowClearCacheConfirm(false);
-    };
-    document.addEventListener('keydown', onKey, true);
-    const releaseBack = pushOverlay(() => {
-      setShowClearCacheConfirm(false);
-      return true;
-    });
-    return () => {
-      document.removeEventListener('keydown', onKey, true);
-      releaseBack();
-      // 抽屜已關（例如換頁）時焦點交給抽屜自己還給選單鈕，不搶回藏起來的重設鈕
-      const btn = resetBtnRef.current;
-      if (drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
-    };
-  }, [showClearCacheConfirm]);
-
-  // 「⋯」小卡：點外面關。確認框開著時不關（重設鈕還在小卡裡，關框要把焦點還給它）。
-  // 焦點拉回「⋯」只在關閉前焦點在小卡內或在「⋯」上（Esc、再點「⋯」）。
-  // 點抽屜其他元素（語言選單等）關掉時不搶焦點。抽屜已關則不搶選單鈕的焦點。
-  useLayoutEffect(() => {
-    if (!moreOpen) return undefined;
-    const onPointerDown = (event: PointerEvent): void => {
-      if (confirmOpenRef.current) return;
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (moreBtnRef.current?.contains(target)) return;
-      if (morePopRef.current?.contains(target)) return;
-      restoreMoreFocusRef.current = false;
-      setMoreOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      const restore = restoreMoreFocusRef.current;
-      restoreMoreFocusRef.current = false;
-      const btn = moreBtnRef.current;
-      if (restore && drawerOpenRef.current && btn?.isConnected) btn.focus({ preventScroll: true });
-    };
-  }, [moreOpen]);
 
   useEffect(() => {
     const unsubscribe = on('locale:changed', ({ locale: next }) => {
@@ -430,22 +371,11 @@ export function SideDrawer({
     panel.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      // 確認框開著：交給確認框自己的 Esc（只關框），抽屜與小卡都不動
-      if (confirmOpenRef.current) return;
-      event.preventDefault();
-      event.stopPropagation();
-      // 小卡開著：只關小卡。焦點在小卡內或在「⋯」上才拉回去（收尾在 moreOpen 的 layout effect）。
-      if (moreOpenRef.current) {
-        const active = document.activeElement;
-        restoreMoreFocusRef.current = Boolean(
-          active instanceof Node
-          && (morePopRef.current?.contains(active) || moreBtnRef.current?.contains(active)),
-        );
-        setMoreOpen(false);
-        return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current();
       }
-      onCloseRef.current();
     };
 
     document.addEventListener('keydown', handleKeyDown, true);
@@ -465,6 +395,11 @@ export function SideDrawer({
 
   const handleCycleFontSize = (): void => {
     setFontSize(nextFontSize(getFontSize()));
+  };
+
+  const handleToggleTheme = (): void => {
+    const dark = isEffectiveDark(theme);
+    setTheme(dark ? 'light' : 'dark');
   };
 
   const handleRoleTagClick = (): void => {
@@ -632,28 +567,16 @@ export function SideDrawer({
     }
   };
 
-  // 主題三段（radiogroup）：方向鍵移動選取並切換主題，焦點跟著走；選中項才在 Tab 順序（roving tabindex，Grok 初審 P3）。
-  const handleThemeKeyDown = (event: KeyboardEvent): void => {
-    const step = event.key === 'ArrowRight' || event.key === 'ArrowDown'
-      ? 1
-      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
-    if (step === 0) return;
-    event.preventDefault();
-    const current = Math.max(0, THEME_CHOICES.indexOf(theme));
-    const next = (current + step + THEME_CHOICES.length) % THEME_CHOICES.length;
-    setTheme(THEME_CHOICES[next]!);
-    themeBtnRefs.current[next]?.focus();
-  };
-
   if (typeof document === 'undefined') return null;
 
+  const isDark = isEffectiveDark(theme);
   const isSignedIn = Boolean(user || routeAccess?.uid);
 
   // M-009 & M-010：抽屜頭部名字與頭像來源（優先 identity → Firestore viewer → AuthUser）
   const isSecondaryIdentity = identity?.identityId === 'secondary';
   const resolvedName = isSignedIn
-    ? (identity?.displayName || routeAccess?.displayName || user?.displayName || t('ui.sideDrawer.syncing'))
-    : t(loginPending ? 'ui.sideDrawer.loginChecking' : 'ui.sideDrawer.guestName');
+    ? (identity?.displayName || routeAccess?.displayName || user?.displayName || '同步中...')
+    : (loginPending ? '登入確認中...' : '未登入');
 
   const candidateUrls: string[] = [];
   if (isSignedIn) {
@@ -679,11 +602,6 @@ export function SideDrawer({
 
   // M-014 & M-015 & M-016：角色標籤文字、顏色與隱身切換
   const roleInfo = resolveDrawerRoleInfo(effectiveRoleKey, isSignedIn, customRoles, loginPending);
-  // 內建角色與未登入／確認中走七語系（B4-01）；自訂角色名稱是後台資料，照原樣顯示。
-  const roleI18nKey = !isSignedIn
-    ? (loginPending ? 'pending' : 'guest')
-    : BUILTIN_ROLE_KEYS.find((key) => BASE_ROLES[key] === roleInfo);
-  const roleLabel = roleI18nKey ? t(`ui.sideDrawer.role.${roleI18nKey}`) : roleInfo.label;
   const roleTagStyle: Record<string, string> = {
     background: `${roleInfo.color}22`,
     color: roleInfo.color,
@@ -764,7 +682,7 @@ export function SideDrawer({
                 title={isAdminOrSuper && stealth ? '隱身模式（點擊恢復）' : undefined}
                 onClick={isAdminOrSuper ? handleRoleTagClick : undefined}
               >
-                {roleLabel}
+                {roleInfo.label}
               </div>
             </div>
             <div class="drawer-actions">
@@ -803,13 +721,16 @@ export function SideDrawer({
           </div>
           {loginError && (
             <div role="alert" style={{ marginTop: '.5rem', fontSize: '.78rem', color: 'var(--danger)' }}>
-              {t(loginError === 'expired' ? 'ui.shell.loginExpired' : 'ui.shell.loginError')}
+              {t('ui.shell.loginError')}
             </div>
           )}
         </div>
 
         <div class="drawer-menu" id="drawer-menu">
           {renderNodes.map((node) => {
+            if (node.kind === 'divider') {
+              return <div key={node.key} class="drawer-divider" />;
+            }
             if (node.kind === 'section') {
               const sectionText = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
               return (
@@ -818,82 +739,64 @@ export function SideDrawer({
                 </div>
               );
             }
-            const toneClass = node.tone === 'admin' ? ' dg-admin' : node.tone === 'super' ? ' dg-super' : '';
+            const { entry, bgClass, locked } = node;
+            const displayLabel = node.i18nKey ? lt(node.i18nKey, node.label) : node.label;
+            const isActive = Boolean(!locked && entry.routePath && path === entry.routePath);
+            const itemClass = `drawer-item${bgClass ? ` ${bgClass}` : ''}${isActive ? ' active' : ''}`;
+            const lockedStyle = locked
+              ? { opacity: '.55', display: 'flex', alignItems: 'center' }
+              : undefined;
+
             return (
-              <div key={node.key} class={`dg-group${toneClass}`}>
-                {node.items.map((item) => {
-                  const { entry, bgClass, locked } = item;
-                  const displayLabel = item.i18nKey ? lt(item.i18nKey, item.label) : item.label;
-                  const isActive = Boolean(!locked && entry.routePath && path === entry.routePath);
-                  const itemClass = `drawer-item${bgClass ? ` ${bgClass}` : ''}${isActive ? ' active' : ''}`;
-                  const lockedStyle = locked
-                    ? { opacity: '.55', display: 'flex', alignItems: 'center' }
-                    : undefined;
-                  return (
-                    <div
-                      key={item.key}
-                      class={itemClass}
-                      style={lockedStyle}
-                      data-page={entry.page}
-                      data-action={entry.action}
-                      aria-current={isActive ? 'page' : undefined}
-                      onPointerDown={() => {
-                        if (!locked && entry.routePath) prefetchRouteByPath(entry.routePath);
-                      }}
-                      onClick={() => handleMenuItemClick(entry)}
-                    >
-                      <DrawerMenuIcon page={entry.page} action={entry.action} />
-                      <span class="dg-label">{displayLabel}</span>
-                      {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
-                      {locked && (
-                        <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
-                      )}
-                    </div>
-                  );
-                })}
+              <div
+                key={node.key}
+                class={itemClass}
+                style={lockedStyle}
+                data-page={entry.page}
+                data-action={entry.action}
+                aria-current={isActive ? 'page' : undefined}
+                onPointerDown={() => {
+                  if (!locked && entry.routePath) prefetchRouteByPath(entry.routePath);
+                }}
+                onClick={() => handleMenuItemClick(entry)}
+              >
+                {displayLabel}
+                {internalTest && <DrawerStatusIcon status={drawerItemStatus(entry)} />}
+                {locked && (
+                  <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: '.5' }}>🔒</span>
+                )}
               </div>
             );
           })}
         </div>
 
-        {/* 站長 2026-11-16 選方案 C：玻璃片＝主題三段＋語言＋「⋯」。聲明與重設收進「⋯」小卡。
-            重設仍走確認框與 executeClearCache。 */}
-        <div class="drawer-footer drawer-foot">
-          <div class="drawer-foot-slab">
-            <div
-              class="drawer-theme-seg"
-              role="radiogroup"
-              aria-label={t('ui.sideDrawer.theme')}
-              onKeyDown={handleThemeKeyDown}
+        <div class="drawer-footer">
+          <div class="drawer-theme-row">
+            <button
+              id="theme-toggle"
+              type="button"
+              onClick={handleToggleTheme}
             >
-              {THEME_CHOICES.map((mode, index) => {
-                const label = t(`ui.sideDrawer.theme_${mode}`);
-                return (
-                  <button
-                    key={mode}
-                    ref={(el) => { themeBtnRefs.current[index] = el; }}
-                    type="button"
-                    role="radio"
-                    tabIndex={theme === mode ? 0 : -1}
-                    class="drawer-theme-btn"
-                    data-theme-choice={mode}
-                    aria-checked={theme === mode ? 'true' : 'false'}
-                    aria-label={label}
-                    title={label}
-                    onClick={() => setTheme(mode)}
-                  >
-                    <ThemeIcon mode={mode} />
-                  </button>
-                );
-              })}
+              <span data-i18n="深色模式">{lt('深色模式', '深色模式')}</span>
+              <div class={`toggle-switch${isDark ? ' active' : ''}`}>
+                <div class="toggle-knob" />
+              </div>
+            </button>
+            <div class="drawer-legal-row">
+              <a class="drawer-legal-btn" href="/privacy" onClick={(event) => handleStaticLink(event, '/privacy')}>
+                <span data-i18n="隱私權政策">{lt('隱私權政策', '隱私權政策')}</span>
+              </a>
+              <a class="drawer-legal-btn" href="/terms" onClick={(event) => handleStaticLink(event, '/terms')}>
+                <span data-i18n="服務條款">{lt('服務條款', '服務條款')}</span>
+              </a>
             </div>
-            <label id="lang-switcher" class="drawer-lang" title={t('ui.sideDrawer.language')}>
-              <GlobeIcon />
-              <span class="drawer-lang-code">{LOCALE_SHORT_LABELS[locale]}</span>
-              <CaretIcon />
+          </div>
+          <div class="drawer-footer-bottom">
+            <div id="lang-switcher" class="lang-switcher">
+              <span class="lang-label" data-i18n="語言">{lt('語言', '語言')}</span>
               <select
                 id="lang-select"
-                aria-label={t('ui.sideDrawer.language')}
+                aria-label="語言"
                 value={locale}
                 disabled={loading}
                 aria-busy={loading ? 'true' : undefined}
@@ -907,56 +810,33 @@ export function SideDrawer({
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
             <button
               type="button"
-              class="dg-more-btn"
-              ref={moreBtnRef}
-              aria-expanded={moreOpen ? 'true' : 'false'}
-              aria-controls={moreOpen ? 'drawer-more-pop' : undefined}
-              aria-label={t('ui.sideDrawer.more')}
-              onClick={() => {
-                if (moreOpenRef.current) {
-                  const active = document.activeElement;
-                  restoreMoreFocusRef.current = Boolean(
-                    active instanceof Node
-                    && (morePopRef.current?.contains(active) || moreBtnRef.current?.contains(active)),
-                  );
-                }
-                setMoreOpen((isOpen) => !isOpen);
-              }}
+              class="drawer-clear-btn"
+              title={lt('清除快取', '清除快取')}
+              data-i18n-title="清除快取"
+              onClick={() => setShowClearCacheConfirm(true)}
             >
-              <MoreIcon />
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M3 6h18" />
+                <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                <path d="M19 6l-.867 12.142A2 2 0 0116.138 20H7.862a2 2 0 01-1.995-1.858L5 6" />
+                <path d="M10 11v5" />
+                <path d="M14 11v5" />
+              </svg>
+              <span data-i18n="清除快取">{lt('清除快取', '清除快取')}</span>
             </button>
           </div>
-          {moreOpen && (
-            <div id="drawer-more-pop" class="dg-more-pop" ref={morePopRef}>
-              <a
-                href="/privacy"
-                title={lt('隱私權政策', '隱私權政策')}
-                onClick={(event) => handleStaticLink(event, '/privacy')}
-              >
-                <span class="dg-label">{t('ui.sideDrawer.privacyShort')}</span>
-              </a>
-              <a
-                href="/terms"
-                title={lt('服務條款', '服務條款')}
-                onClick={(event) => handleStaticLink(event, '/terms')}
-              >
-                <span class="dg-label">{t('ui.sideDrawer.termsShort')}</span>
-              </a>
-              <hr />
-              <button
-                type="button"
-                class="drawer-reset-btn dg-danger"
-                ref={resetBtnRef}
-                onClick={() => setShowClearCacheConfirm(true)}
-              >
-                <ResetIcon cls="drawer-reset-icon" />
-                <span class="dg-label">{t('ui.sideDrawer.reset')}</span>
-              </button>
-            </div>
-          )}
           {loading && <div role="status">{t('ui.sideDrawer.loading')}</div>}
           {loadError && (
             <div id="drawer-locale-error" role="alert">
@@ -1011,7 +891,7 @@ export function SideDrawer({
         </div>
       )}
 
-      {/* M-011：重設確認框（站長 2026-11-13：說清楚會登出、會重新載入；取代 A 的「⚠ Warning」長文）。執行邏輯照 A `confirmClearCache` 不變。 */}
+      {/* M-011：清除快取紅字 Warning 確認框（照 A `confirmClearCache`） */}
       {showClearCacheConfirm && (
         <div
           id="app-confirm-modal"
@@ -1020,37 +900,34 @@ export function SideDrawer({
             if (e.target === e.currentTarget) setShowClearCacheConfirm(false);
           }}
         >
-          <div
-            ref={confirmBoxRef}
-            class="app-confirm-box drawer-reset-confirm"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="drawer-reset-title"
-            aria-describedby="app-confirm-msg"
-          >
-            <div class="drawer-reset-confirm-icon"><ResetIcon cls="drawer-reset-confirm-svg" /></div>
-            <div class="drawer-reset-confirm-title" id="drawer-reset-title">{t('ui.sideDrawer.resetTitle')}</div>
-            <div class="drawer-reset-confirm-msg" id="app-confirm-msg">{t('ui.sideDrawer.resetBody')}</div>
+          <div class="app-confirm-box" role="alertdialog" aria-modal="true" aria-describedby="app-confirm-msg">
+            <div class="app-confirm-msg" id="app-confirm-msg">
+              <div class="app-confirm-warning">⚠ Warning</div>
+              確定要清除所有快取並重新登入嗎？
+              <br />
+              這會回到最乾淨的狀態，或許可解決白屏或異常問題，但若您的網路狀態與手機性能不佳時可能會讓問題更嚴重。
+              <br />
+              建議您先使用關閉分頁並重新登入的方式試試看。
+            </div>
             <div class="app-confirm-btns">
               <button
                 type="button"
                 class="app-confirm-cancel"
                 id="app-confirm-cancel"
-                ref={confirmCancelRef}
                 onClick={() => setShowClearCacheConfirm(false)}
               >
                 {t('common.cancel')}
               </button>
               <button
                 type="button"
-                class="app-confirm-ok drawer-reset-confirm-ok"
+                class="app-confirm-ok"
                 id="app-confirm-ok"
                 onClick={() => {
                   setShowClearCacheConfirm(false);
                   executeClearCache().catch(() => undefined);
                 }}
               >
-                {t('ui.sideDrawer.resetConfirm')}
+                {t('common.ok')}
               </button>
             </div>
           </div>

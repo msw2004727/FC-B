@@ -6,7 +6,6 @@
  * 不碰 Firestore、不碰 DOM；按鈕顯示（元件）與送出守衛（admin-users.ts 的 manageAdminUser）共用同一組判斷（R-IAM-011）。
  */
 import { formatTaipei, parseTaipei } from '@/core/taipei-time';
-import type { ProfilePrivateData } from '@/data/profile-private';
 import {
   BASE_ROLES,
   getRuntimeRoleLevel,
@@ -452,56 +451,6 @@ export function applyEditToUser(
   if ('phone' in profileUpdates) next.phone = profileUpdates.phone ?? '';
   if ('email' in profileUpdates) next.email = profileUpdates.email ?? '';
   if ('birthday' in profileUpdates) next.birthday = (profileUpdates.birthday ?? '').replace(/\//g, '-');
-  return next;
-}
-
-// ─── 私密 profilePrivate 合併（用戶管理頁專用） ───
-
-/** 用戶管理頁會覆蓋的私密欄位（companions／eduChildren 不在這頁顯示）。 */
-const ADMIN_PRIVATE_FIELDS = ['email', 'phone'] as const;
-
-/**
- * 用戶管理頁：把 `collectionGroup('profilePrivate')` 的 Map（根文件 id → `{ email?, phone? }`）
- * 逐欄覆蓋到已載入的 `AdminUser`。
- * - 私密有自有屬性才覆蓋；值非字串或 `null` 一律視為空字串（與 `mapUserDoc` 的 `text()` 一致）。
- * - 沒有對應項目時回原物件（同一參考），讓上層 memo／key 比對不受影響。
- */
-export function applyPrivateProfiles(
-  users: readonly AdminUser[],
-  privateByDocId: ReadonlyMap<string, ProfilePrivateData>,
-): AdminUser[] {
-  return users.map((user) => {
-    const priv = privateByDocId.get(user._docId);
-    if (!priv) return user;
-    const next: AdminUser = { ...user };
-    for (const field of ADMIN_PRIVATE_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(priv, field)) continue;
-      const raw = priv[field];
-      next[field] = typeof raw === 'string' ? raw : '';
-    }
-    return next;
-  });
-}
-
-/**
- * 用戶管理頁：編輯／儲存成功後把 `email`／`phone` 變更寫回記憶體中的私密 Map，
- * 避免下次重新套用時被舊值蓋回名單。`null` 保留 `null`（applyPrivateProfiles 才會轉成空字串）。
- * 只處理這兩個欄位；`profileUpdates` 不含它們時回新 Map（內容不變）。
- */
-export function patchPrivateProfileMap(
-  map: ReadonlyMap<string, ProfilePrivateData>,
-  docId: string,
-  profileUpdates: AdminProfileUpdates,
-): Map<string, ProfilePrivateData> {
-  const next = new Map(map);
-  const hasEmail = Object.prototype.hasOwnProperty.call(profileUpdates, 'email');
-  const hasPhone = Object.prototype.hasOwnProperty.call(profileUpdates, 'phone');
-  if (!hasEmail && !hasPhone) return next;
-  const existing = next.get(docId) ?? {};
-  const updated: ProfilePrivateData = { ...existing };
-  if (hasEmail) updated.email = profileUpdates.email;
-  if (hasPhone) updated.phone = profileUpdates.phone;
-  next.set(docId, updated);
   return next;
 }
 

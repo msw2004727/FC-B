@@ -1,14 +1,10 @@
 import '../tournaments.css';
-// 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
-import '../legacy/tournaments-glass.css';
 import '@/styles/legacy/reg-loading.css';
-import type { ComponentType, JSX } from 'preact';
+import type { JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { COMPETITIONS_ENABLED } from '@/feature-overrides';
 import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
-import { getLastKnownAuthUid } from '@/data/auth';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -35,34 +31,6 @@ import {
   type UploadedImage,
 } from '../data/cards-repo';
 import { openCardLink } from '../data/open-card-link';
-import { readCardsCache, writeCardsCache } from '../data/cards-cache';
-
-/** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
-export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
-
-/** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
-function InAppCompetitionsSlot(): JSX.Element | null {
-  if (!COMPETITIONS_ENABLED) return null;
-  return <InAppCompetitionsLoader />;
-}
-
-function InAppCompetitionsLoader(): JSX.Element | null {
-  const [Slot, setSlot] = useState<ComponentType | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void import('@/features/competitions/components/InAppSection').then((mod) => {
-      if (alive) setSlot(() => mod.InAppSection);
-    }).catch(() => {
-      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。
-      if (alive) setSlot(null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (!Slot) return null;
-  return <Slot />;
-}
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -82,14 +50,10 @@ export default function TournamentsPage(): JSX.Element {
   const t = useT();
   const location = useLocation();
   const viewer = useViewer();
-  // 只在登入狀態已確定、且與畫面帳號一致時才用快取（同活動詳情先畫的規則）。
-  const [cards, setCards] = useState<TournamentCard[]>(() => {
-    const uid = viewer.uid ?? null;
-    return getLastKnownAuthUid() === uid ? readCardsCache(uid) ?? [] : [];
-  });
+  const canManage = canManageTournamentCards(viewer);
+
+  const [cards, setCards] = useState<TournamentCard[]>([]);
   const [state, setState] = useState<LoadState>('loading');
-  // 管理入口等伺服器結果與權限都到齊才出現（§3.232 (d)）；先顯示的快取期間不出現。
-  const canManage = state === 'ready' && canManageTournamentCards(viewer);
   const [tab, setTab] = useState<TournamentCardTab>('all');
   const [showEnded, setShowEnded] = useState(true);
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -99,25 +63,13 @@ export default function TournamentsPage(): JSX.Element {
   viewerRef.current = viewer;
   const busyRef = useRef(false);
   const loadSeq = useRef(0);
-  const cardsRef = useRef(cards);
-  cardsRef.current = cards;
-  // 目前這份清單是替哪個帳號讀的；寫快取一律用它，不用寫入當下的帳號（避免換帳號後寫錯格）。
-  const loadedUid = useRef<string | null>(viewer.uid ?? null);
 
   const load = useCallback(async (): Promise<void> => {
     const seq = ++loadSeq.current;
-    const uid = viewerRef.current.uid ?? null;
     setState('loading');
-    const timer = setTimeout(() => {
-      if (seq === loadSeq.current) setState('error');
-    }, TOURNAMENTS_LOAD_TIMEOUT_MS);
     try {
       const list = await loadTournamentCards();
       if (seq !== loadSeq.current) return;
-      // 只有伺服器確認過的清單（與之後寫入的本機更新）才寫進快取。
-      // 進頁後立刻離開時，晚到的結果被序號丟棄、也不寫快取；下次進頁照常重讀（顧問 §3.233 ① MiMo P3-5，接受）。
-      loadedUid.current = uid;
-      writeCardsCache(uid, list);
       setCards(list);
       setState('ready');
     } catch (err) {
@@ -125,8 +77,6 @@ export default function TournamentsPage(): JSX.Element {
       console.error('[tournaments] load failed', err);
       if (seq !== loadSeq.current) return;
       setState('error');
-    } finally {
-      clearTimeout(timer);
     }
   }, []);
 
@@ -136,16 +86,6 @@ export default function TournamentsPage(): JSX.Element {
       loadSeq.current += 1;
     };
   }, [load]);
-
-  // 停在頁面上時換帳號或登出：清掉前一個帳號的清單並重讀（只有換帳號時才多這一次讀取）。
-  const mountedUid = useRef(viewer.uid ?? null);
-  useEffect(() => {
-    const uid = viewer.uid ?? null;
-    if (uid === mountedUid.current) return;
-    mountedUid.current = uid;
-    setCards([]);
-    void load();
-  }, [viewer.uid, load]);
 
   const todayKey = taipeiTodayKey(Date.now());
   const visible = useMemo(
@@ -190,9 +130,7 @@ export default function TournamentsPage(): JSX.Element {
         { existing: target.card, id: target.id, write, image },
         actor,
       );
-      const next = sortTournamentCards([saved, ...cardsRef.current.filter((card) => card.id !== saved.id)]);
-      writeCardsCache(loadedUid.current, next);
-      setCards(next);
+      setCards((prev) => sortTournamentCards([saved, ...prev.filter((card) => card.id !== saved.id)]));
       toast.show({ message: t('tournaments.toast.saved'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);
@@ -221,9 +159,7 @@ export default function TournamentsPage(): JSX.Element {
     setBusy(true);
     try {
       await deleteTournamentCard(card, actor);
-      const next = cardsRef.current.filter((item) => item.id !== card.id);
-      writeCardsCache(loadedUid.current, next);
-      setCards(next);
+      setCards((prev) => prev.filter((item) => item.id !== card.id));
       toast.show({ message: t('tournaments.toast.deleted'), tone: 'success' });
       busyRef.current = false;
       setEditing(null);
@@ -244,7 +180,7 @@ export default function TournamentsPage(): JSX.Element {
   };
 
   return (
-    <div class="legacy-ui tournaments-root">
+    <div class="legacy-ui">
       <section class="page active tc-page" id="page-tournaments">
         <div class="page-header">
           <button
@@ -267,8 +203,6 @@ export default function TournamentsPage(): JSX.Element {
           </button>
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
         </div>
-
-        <InAppCompetitionsSlot />
 
         <div class="tc-tabs" role="tablist">
           {TOURNAMENT_CARD_TABS.map((value) => (

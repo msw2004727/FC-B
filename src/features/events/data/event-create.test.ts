@@ -74,7 +74,6 @@ import {
   buildCreateEventPayload,
   buildEditEventUpdates,
   changeEventCapacity,
-  createContentMatches,
   createEvent,
   createEventsBatch,
   newEventId,
@@ -792,75 +791,6 @@ describe('buildCreateEventPayload', () => {
       'ce_reg_at',
     ).status).toBe('open');
   });
-
-  it('beginner／high-intensity 寫入 intensityLevel；空值與垃圾值不寫鍵', () => {
-    const beginner = buildCreateEventPayload(
-      buildForm({ intensityLevel: 'beginner' }),
-      buildCtx(),
-      'ce_intensity_beginner',
-    );
-    expect(beginner.intensityLevel).toBe('beginner');
-    expect(Object.hasOwn(beginner, 'intensityLevel')).toBe(true);
-
-    const high = buildCreateEventPayload(
-      buildForm({ intensityLevel: 'high-intensity' }),
-      buildCtx(),
-      'ce_intensity_high',
-    );
-    expect(high.intensityLevel).toBe('high-intensity');
-
-    for (const [id, intensityLevel] of [
-      ['ce_intensity_empty', ''],
-      ['ce_intensity_missing', undefined],
-      ['ce_intensity_garbage', 'BEGINNER'],
-      ['ce_intensity_number', 1],
-    ] as const) {
-      const payload = buildCreateEventPayload(
-        buildForm({ intensityLevel }),
-        buildCtx(),
-        id,
-      );
-      expect(Object.hasOwn(payload, 'intensityLevel')).toBe(false);
-    }
-  });
-
-  it('多日期每一場 payload 都帶 intensityLevel', () => {
-    const now = new Date('2030-04-01T00:00:00+08:00');
-    const state = {
-      ...createDefaultFormState(now),
-      title: '多日足球',
-      location: '球場',
-      sportTag: 'football',
-      dateVal: '2030-05-01',
-      startTime: '14:00',
-      endTime: '16:00',
-      intensityLevel: 'high-intensity' as const,
-    };
-    const base = toCreateEventForm(state, '教練', { nowMs: now.getTime() });
-    const forms = buildMultiDateForms(base, ['2030-05-01', '2030-05-02'], state, now.getTime());
-    expect(forms.map(form => form.intensityLevel)).toEqual(['high-intensity', 'high-intensity']);
-    forms.forEach((form, index) => {
-      const payload = buildCreateEventPayload(form, buildCtx({ now }), `ce_multi_intensity_${index}`);
-      expect(payload.intensityLevel).toBe('high-intensity');
-    });
-  });
-
-  it('重送拿掉分類時，既有 intensityLevel 不算同一請求', () => {
-    const withLevel = buildCreateEventPayload(
-      buildForm({ intensityLevel: 'beginner' }),
-      buildCtx(),
-      'ce_intensity_retry',
-    ) as unknown as Record<string, unknown>;
-    const withoutLevel = buildCreateEventPayload(
-      buildForm({ intensityLevel: '' }),
-      buildCtx(),
-      'ce_intensity_retry',
-    ) as unknown as Record<string, unknown>;
-    expect(createContentMatches(withLevel, withLevel)).toBe(true);
-    expect(createContentMatches(withoutLevel, withoutLevel)).toBe(true);
-    expect(createContentMatches(withLevel, withoutLevel)).toBe(false);
-    expect(createContentMatches({ ...withoutLevel }, withLevel)).toBe(false);
-  });
 });
 
 describe('寫入端台北 oracle（UTC+8 與舊本地實作逐位元相同）', () => {
@@ -1014,17 +944,6 @@ describe('buildEditEventUpdates', () => {
     for (const result of [zero, coach]) {
       expect(Object.keys(result.updates).filter(key => !allowed.has(key))).toEqual([]);
     }
-  });
-
-  it('既有活動有 intensityLevel 且表單改標題：updates 無 intensityLevel 鍵', () => {
-    const stored = { ...existing(), intensityLevel: 'beginner' as const };
-    const result = buildEditEventUpdates(
-      stored,
-      editForm({ title: '只改標題', intensityLevel: 'high-intensity' }),
-      ownCtx(),
-    );
-    expect(result.updates.title).toBe('只改標題');
-    expect(Object.hasOwn(result.updates, 'intensityLevel')).toBe(false);
   });
 
   it('不含 6 個 Rules 禁改欄位', () => {

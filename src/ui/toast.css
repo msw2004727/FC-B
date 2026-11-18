@@ -11,7 +11,7 @@
   max-width: min(360px, calc(100vw - 32px));
   padding: 0.65rem 1.2rem;
   border-radius: var(--radius-full, 999px);
-  font-size: var(--font-size-body-sm);
+  font-size: 0.82rem;
   font-weight: 500;
   line-height: 1.45;
   box-shadow: var(--shadow-lg);
@@ -35,20 +35,12 @@
 
 .ui-toast__message,
 .ui-toast__message.ui-text {
-  font-size: var(--font-size-body-sm);
+  font-size: 0.82rem;
   font-weight: 500;
   line-height: 1.45;
   white-space: pre-line;
   overflow-wrap: anywhere;
   text-align: center;
-}
-
-/* 訊息內的強調片段（例：引導去新增運動夥伴）：主題強調色、加粗、不斷行 */
-.ui-toast__em,
-.ui-toast__em.ui-text {
-  color: var(--accent, currentColor);
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

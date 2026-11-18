@@ -72,10 +72,6 @@ export function GuestRosterSections({
               canManage={false}
               canViewRecords={false}
               onOpen={onExpand}
-              confirmedPeople={confirmedPeople}
-              waitlistPeople={waitlistPeople}
-              roles={{}}
-              genderOf={() => ''}
             />
           ) : confirmedPeople.length === 0 ? (
             <div style="font-size:.8rem;color:var(--text-muted);padding:.3rem 0">

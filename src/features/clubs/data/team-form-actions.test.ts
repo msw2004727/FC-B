@@ -865,7 +865,6 @@ describe('submitCreateTeam', () => {
       expect(mocks.callFn).toHaveBeenCalledWith(
         'autoPromoteTeamRole', { targetUid: uid, teamId },
       );
-      // 測試同步更新：請求多了 source 與關聯鍵（teamId、assignmentRole）。
       expect(mocks.deliverInboxMessage).toHaveBeenCalledWith({
         title, body,
         category: 'system',
@@ -873,16 +872,12 @@ describe('submitCreateTeam', () => {
         targetUid: uid,
         senderName: '系統',
         senderUid: 'cap',
-        source: `team_role_assignment:${key}`,
-        relationKeys: { teamId, assignmentRole: key },
       });
       expect(mocks.callFn).toHaveBeenCalledWith(
         'enqueuePrivilegedLineNotification',
         {
           uid, title, body, category: 'system',
           source: `team_role_assignment:${key}`,
-          teamId,
-          assignmentRole: key,
         },
       );
     }
@@ -1152,36 +1147,6 @@ describe('submitEditTeam', () => {
     }))).toEqual({ ok: true, teamId, roleSyncOk: true });
     expect(editedFields()).not.toHaveProperty('image');
     expect(editedFields()).not.toHaveProperty('imageVariants');
-  });
-
-  it('teamId 只有空白時不把空字串放進通知請求', async () => {
-    const current = team();
-    current.id = '   ';
-    const input = editInput({ team: current });
-    input.values.coaches = [...input.values.coaches, { uid: 'nextCoach', name: '教練乙' }];
-
-    expect(await submitEditTeam(input)).toMatchObject({ ok: true });
-    const line = mocks.callFn.mock.calls.find(
-      ([name]) => name === 'enqueuePrivilegedLineNotification',
-    );
-    expect(line?.[1]).toEqual({
-      uid: 'nextCoach',
-      title: '俱樂部職位指派',
-      body: '您已被設為「測試俱樂部」的教練。',
-      category: 'system',
-      source: 'team_role_assignment:coach',
-      assignmentRole: 'coach',
-    });
-    expect(line?.[1]).not.toHaveProperty('teamId');
-    const inbox = mocks.deliverInboxMessage.mock.calls.find(
-      ([message]) => (message as { targetUid?: string }).targetUid === 'nextCoach',
-    );
-    expect(inbox?.[0]).toMatchObject({
-      source: 'team_role_assignment:coach',
-      relationKeys: { assignmentRole: 'coach' },
-    });
-    expect((inbox?.[0] as { relationKeys: Record<string, unknown> }).relationKeys)
-      .not.toHaveProperty('teamId');
   });
 
   it('缺少 public id 時 Storage 及角色同步採 _docId', async () => {

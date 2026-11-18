@@ -147,8 +147,6 @@ export interface TeamDetailV2HeaderProps {
   canEdit: boolean;
   primaryAction: TeamPrimaryAction;
   busy: boolean;
-  /** 先顯示快取、伺服器資料未到齊（§3.233 ④）：邀請 QR 也一併鎖住（加入、退出由 busy 鎖）。 */
-  locked?: boolean;
   memberCount: number;
   courseCount: number;
   eventCount: number;
@@ -181,7 +179,6 @@ export function TeamDetailV2Header({
   canEdit,
   primaryAction,
   busy,
-  locked = false,
   memberCount,
   courseCount,
   eventCount,
@@ -224,7 +221,7 @@ export function TeamDetailV2Header({
   ].filter(Boolean);
 
   const isMember = primaryAction === 'leave';
-  const canInvite = !locked && canInviteToTeam(team, viewer);
+  const canInvite = canInviteToTeam(team, viewer);
 
   // C1：數字列只留成員、活動、勝率，點了切到對應頁籤（頁籤沒開就不能點）。
   // 勝率只在戰績頁籤存在（有戰績資料）時顯示；T-090 自建俱樂部照舊不顯示勝率。

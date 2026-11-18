@@ -9,7 +9,6 @@ import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/
 
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
-import { loadPrivateProfileStrict, mergePrivateFields } from '@/data/profile-private';
 
 /**
  * 個人頁讀模型：由 A `_mapUserProfileDoc` 落下的正規化結果。
@@ -107,15 +106,4 @@ export async function loadUserProfile(uid: string): Promise<UserProfile | null> 
   }
 
   return null;
-}
-
-/** 只給本人頁用；他人名片仍用 `loadUserProfile`（讀他人私密文件會被拒）。 */
-export async function loadOwnUserProfile(uid: string): Promise<UserProfile | null> {
-  const [profile, priv] = await Promise.all([
-    loadUserProfile(uid),
-    // 嚴格版：私密讀取失敗就讓整個載入失敗（本人頁顯示重試），不退回根文件的過期值。
-    loadPrivateProfileStrict(uid),
-  ]);
-  if (!profile) return null;
-  return mergePrivateFields(profile, priv);
 }

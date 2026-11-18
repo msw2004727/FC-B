@@ -38,7 +38,6 @@ const mock = vi.hoisted(() => ({
   setDoc: vi.fn(),
   deleteDoc: vi.fn(),
   getDocs: vi.fn(),
-  getCountFromServer: vi.fn(),
   getDoc: vi.fn(),
   runTransaction: vi.fn(),
   txGet: vi.fn(),
@@ -59,8 +58,6 @@ vi.mock('firebase/firestore', () => ({
   }),
   query: (ref: { path: string }, ...constraints: unknown[]) => ({ ...ref, constraints }),
   where: (...args: unknown[]) => ({ where: args }),
-  or: (...args: unknown[]) => ({ or: args }),
-  and: (...args: unknown[]) => ({ and: args }),
   limit: (n: number) => ({ limit: n }),
   orderBy: (...args: unknown[]) => ({ orderBy: args }),
   serverTimestamp: () => 'server-time',
@@ -69,7 +66,6 @@ vi.mock('firebase/firestore', () => ({
   setDoc: mock.setDoc,
   deleteDoc: mock.deleteDoc,
   getDocs: mock.getDocs,
-  getCountFromServer: mock.getCountFromServer,
   getDoc: mock.getDoc,
   runTransaction: mock.runTransaction,
 }));
@@ -80,12 +76,6 @@ const context: CommentContext = {
   viewer: { uid: 'member', displayName: '小明', pictureUrl: '', roleLevel: 0 },
 };
 const author = getEventCommentAuthor(context.viewer);
-
-/** B2-04：徽章改 count() 聚合，一次徽章讀取＝兩筆聚合（可見範圍、其中已刪除）。 */
-function countSnap(count: number) {
-  return { data: () => ({ count }) };
-}
-const badgeReads = () => mock.getCountFromServer.mock.calls.length / 2;
 
 function snap(id: string, data: Record<string, unknown>) {
   return { id, data: () => data, exists: () => true };
@@ -101,7 +91,6 @@ beforeEach(() => {
   mock.setDoc.mockResolvedValue(undefined);
   mock.deleteDoc.mockResolvedValue(undefined);
   mock.getDocs.mockResolvedValue({ docs: [] });
-  mock.getCountFromServer.mockResolvedValue(countSnap(0));
   mock.getDoc.mockResolvedValue({ exists: () => false });
   mock.runTransaction.mockImplementation(async (
     _db: unknown,
@@ -348,22 +337,22 @@ describe('M-093 留言徽章失效', () => {
   it('移除事件全部範圍快取，下一次重新查詢', async () => {
     await requestCommentCount(query).promise;
     await requestCommentCount(query).promise;
-    expect(badgeReads()).toBe(1);
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
     clearCommentBadgeCacheForEvent('public-event');
     await requestCommentCount(query).promise;
-    expect(badgeReads()).toBe(2);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
   });
 
   it('清除期間尚未完成的查詢不能回填舊快取', async () => {
-    let resolve!: (value: ReturnType<typeof countSnap>) => void;
-    mock.getCountFromServer.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    let resolve!: (value: { docs: ReturnType<typeof snap>[] }) => void;
+    mock.getDocs.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
     const first = requestCommentCount(query).promise;
-    await vi.waitFor(() => expect(badgeReads()).toBe(1));
+    await vi.waitFor(() => expect(mock.getDocs).toHaveBeenCalledTimes(1));
     clearCommentBadgeCacheForEvent(query.eventId);
-    resolve(countSnap(1));
+    resolve({ docs: [snap('old', {})] });
     await first;
     await requestCommentCount(query).promise;
-    expect(badgeReads()).toBe(2);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -485,46 +474,50 @@ describe('SPEED-2-11a 徽章同頁批次', () => {
   }
 
   it('同一輪重複的活動只讀一次，空結果寫入快取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
     const query = badgeQuery('alpha');
     const first = requestCommentCount(query);
     const second = requestCommentCount(query);
     await expect(Promise.all([first.promise, second.promise])).resolves.toEqual([0, 0]);
-    expect(badgeReads()).toBe(1);
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
     await requestCommentCount(query).promise;
-    expect(badgeReads()).toBe(1);
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
   });
 
   it('同一輪不同活動各自讀取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [snap('a', { replyCount: 1 })] });
     await Promise.all([
       requestCommentCount(badgeQuery('alpha')).promise,
       requestCommentCount(badgeQuery('beta')).promise,
     ]);
-    expect(badgeReads()).toBe(2);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
   });
 
   it('取消後立刻再要只讀一次', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
     const query = badgeQuery('alpha');
     const first = requestCommentCount(query);
     const settled = first.promise.catch((error: unknown) => error);
     first.cancel();
     await requestCommentCount(query).promise;
     await expect(settled).resolves.toMatchObject({ message: 'comment_badge_cancelled' });
-    expect(badgeReads()).toBe(1);
+    expect(mock.getDocs).toHaveBeenCalledTimes(1);
   });
 
   it('失敗不寫入快取，重試會再讀（L-08）', async () => {
     const query = badgeQuery('alpha');
-    mock.getCountFromServer.mockRejectedValueOnce(new Error('offline'));
+    mock.getDocs.mockRejectedValueOnce(new Error('offline'));
     await expect(requestCommentCount(query).promise).rejects.toThrow('offline');
-    mock.getCountFromServer.mockResolvedValueOnce(countSnap(4)).mockResolvedValueOnce(countSnap(1));
+    mock.getDocs.mockResolvedValue({ docs: [snap('a', { replyCount: 2 })] });
     await expect(requestCommentCount(query).promise).resolves.toBe(3);
-    expect(badgeReads()).toBe(2);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
   });
 
   it('不同 uid 不共用快取', async () => {
+    mock.getDocs.mockResolvedValue({ docs: [] });
     await requestCommentCount(badgeQuery('alpha', 'u1')).promise;
     await requestCommentCount(badgeQuery('alpha', 'u2')).promise;
-    expect(badgeReads()).toBe(2);
+    expect(mock.getDocs).toHaveBeenCalledTimes(2);
   });
 
   it('還沒開始就全部取消時不讀', async () => {
@@ -534,7 +527,6 @@ describe('SPEED-2-11a 徽章同頁批次', () => {
     request.cancel();
     await expect(settled).resolves.toMatchObject({ message: 'comment_badge_cancelled' });
     await Promise.resolve();
-    expect(mock.getCountFromServer).not.toHaveBeenCalled();
     expect(mock.getDocs).not.toHaveBeenCalled();
   });
 });

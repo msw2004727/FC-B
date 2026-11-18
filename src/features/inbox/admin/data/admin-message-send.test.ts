@@ -56,25 +56,6 @@ describe('deliverAdminMessage（A _deliverMessageToInbox 的 extra）', () => {
     expect(req['targetRoles']).toEqual(['coach', 'admin', 'super_admin']);
     const message = req['message'] as Record<string, unknown>;
     expect(message).toMatchObject({ adminMsgId: 'mg_1', title: '公告', body: '內容', type: 'system', typeName: '系統', senderName: '站長' });
-    expect(message['source']).toBe('target:coach');
-    expect(Object.keys(req).sort()).toEqual(
-      ['message', 'targetRoles', 'targetTeamId', 'targetType', 'targetUid'],
-    );
-  });
-
-  it('targetType 空白時 source 為 target:all；大寫或含非小寫的對象不寫 source，也不帶關聯鍵', async () => {
-    await deliverAdminMessage(msg({ targetType: '' }), 'U-admin');
-    const allMessage = (callFn.mock.calls[0]?.[1] as { message: Record<string, unknown> }).message;
-    expect(allMessage['source']).toBe('target:all');
-
-    _resetRecentInboxDeliveryForTest();
-    callFn.mockClear();
-    await deliverAdminMessage(msg({ targetType: 'Coach', _docId: 'mg_coach', id: 'mg_coach' }), 'U-admin');
-    const unknownReq = callFn.mock.calls[0]?.[1] as { message: Record<string, unknown> };
-    expect(unknownReq.message).not.toHaveProperty('source');
-    expect(Object.keys(unknownReq).sort()).toEqual(
-      ['message', 'targetRoles', 'targetTeamId', 'targetType', 'targetUid'],
-    );
   });
 
   it('信件 ID 由 adminMsg 推導固定（msg_<id>）、dedupeKey＝admin:<id>：重送寫同一份', async () => {
@@ -187,81 +168,6 @@ describe('LINE 推播名單與讀取預算', () => {
       return { queued: true };
     });
     expect(await queueLinePushByTarget(msg({ targetType: 'admin' }))).toEqual({ status: 'queued', total: 3, failed: 1 });
-  });
-
-  describe('同一人有舊文件（文件 ID ≠ uid）＋正本（文件 ID == uid）', () => {
-    // 舊文件多半缺 uid 欄位、只有 lineUserId；保留遷移前的俱樂部／角色。
-    const LEGACY = { id: 'legacyDoc1', data: { lineUserId: 'Ualice', teamId: 'tm_1', role: 'coach' } };
-    const CANON_IN_TEAM = { id: 'Ualice', data: { uid: 'Ualice', lineUserId: 'Ualice', teamIds: ['tm_1'], role: 'coach' } };
-    const CANON_LEFT = { id: 'Ualice', data: { uid: 'Ualice', lineUserId: 'Ualice', teamIds: [], role: 'user' } };
-
-    function route(byField: Record<string, FakeDoc[]>, existing: FakeDoc[] = []): void {
-      fakeState.docsHandler = (q) => {
-        const w = q.constraints.find((c) => c.type === 'where')?.args ?? [];
-        if (w[0] === '__name__') return existing.filter((d) => (w[2] as string[]).includes(d.id));
-        return byField[String(w[0])] ?? [];
-      };
-    }
-
-    it('兩份都在俱樂部查詢結果：只推一位、用正本 uid，不多讀', async () => {
-      route({ teamIds: [CANON_IN_TEAM, { id: 'U2', data: { uid: 'U2' } }], teamId: [LEGACY] });
-      const out = await queueLinePushByTarget(msg({ targetType: 'team', targetTeamId: 'tm_1' }));
-      expect(out).toEqual({ status: 'queued', total: 2, failed: 0 });
-      expect(lineCalls().map((c) => (c as { uid: string }).uid).sort()).toEqual(['U2', 'Ualice']);
-      expect(fakeState.reads).toHaveLength(2);
-    });
-
-    it('舊文件殘留已退隊的俱樂部：正本存在但不在此隊 → 不推', async () => {
-      route({ teamIds: [{ id: 'U2', data: { uid: 'U2' } }], teamId: [LEGACY] }, [CANON_LEFT]);
-      const out = await queueLinePushByTarget(msg({ targetType: 'team', targetTeamId: 'tm_1' }));
-      expect(out).toEqual({ status: 'queued', total: 1, failed: 0 });
-      expect(lineCalls()).toEqual([expect.objectContaining({ uid: 'U2' })]);
-      const verify = fakeState.reads[2]?.q;
-      expect(verify?.constraints.find((c) => c.type === 'where')?.args).toEqual(['__name__', 'in', ['Ualice']]);
-      expect(limitOf(verify)).toBe(1);
-    });
-
-    it('舊文件殘留舊角色：正本已降級 → 角色群發不推', async () => {
-      route({ role: [LEGACY, { id: 'U2', data: { uid: 'U2', role: 'coach' } }] }, [CANON_LEFT]);
-      expect(await queueLinePushByTarget(msg({ targetType: 'coach' }))).toEqual({ status: 'queued', total: 1, failed: 0 });
-      expect(lineCalls()).toEqual([expect.objectContaining({ uid: 'U2' })]);
-    });
-
-    it('只有舊文件、沒有正本（尚未遷移）：照 A 以 lineUserId 收信', async () => {
-      route({ teamId: [LEGACY] }, []);
-      expect(await queueLinePushByTarget(msg({ targetType: 'team', targetTeamId: 'tm_1' }))).toEqual({ status: 'queued', total: 1, failed: 0 });
-      expect(lineCalls()).toEqual([expect.objectContaining({ uid: 'Ualice' })]);
-    });
-
-    it('只有正本的一般情況：不補查、照常推', async () => {
-      route({ teamIds: users(3) });
-      expect(await queueLinePushByTarget(msg({ targetType: 'team', targetTeamId: 'tm_1' }))).toEqual({ status: 'queued', total: 3, failed: 0 });
-      expect(fakeState.reads).toHaveLength(2);
-    });
-
-    it('鍵不是合法文件 ID（含 / 、 . 、 .. 、 __x__）：不放進補查（避免整批拋錯），照 A 以鍵送', async () => {
-      const bad = ['a/b', '.', '..', '__x__'].map((k, i) => ({ id: `bad${i}`, data: { lineUserId: k, role: 'admin' } }));
-      route({ role: [...bad, LEGACY] }, []);
-      fakeState.docsHandler = ((orig) => (q: Parameters<typeof orig>[0]) => {
-        const w = q.constraints.find((c) => c.type === 'where')?.args ?? [];
-        if (w[0] === '__name__' && (w[2] as string[]).some((k) => k.includes('/') || k === '.' || k === '..' || /^__.*__$/.test(k))) {
-          throw new Error('invalid document id');
-        }
-        return orig(q);
-      })(fakeState.docsHandler);
-      const out = await queueLinePushByTarget(msg({ targetType: 'admin' }));
-      expect(out).toEqual({ status: 'queued', total: 5, failed: 0 });
-      const verify = fakeState.reads.filter((r) => r.q?.constraints.some((c) => c.args[0] === '__name__'));
-      expect(verify.map((r) => r.q?.constraints.find((c) => c.type === 'where')?.args[2])).toEqual([['Ualice']]);
-    });
-
-    it('補查正本每次最多 30 個', async () => {
-      const legacy = Array.from({ length: 31 }, (_, i) => ({ id: `old${i}`, data: { lineUserId: `L${i}`, role: 'admin' } }));
-      route({ role: legacy }, []);
-      expect(await queueLinePushByTarget(msg({ targetType: 'admin' }))).toEqual({ status: 'queued', total: 31, failed: 0 });
-      const verifyLimits = fakeState.reads.slice(1).map((r) => limitOf(r.q));
-      expect(verifyLimits).toEqual([30, 1]);
-    });
   });
 
   it('從不使用 collectionGroup，也不讀無條件的 users 全集合', async () => {

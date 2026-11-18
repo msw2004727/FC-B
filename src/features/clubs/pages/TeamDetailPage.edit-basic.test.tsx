@@ -51,7 +51,6 @@ vi.mock('../data/teams-repo', () => ({
   loadTeam: vi.fn(),
   loadTeamMembers: vi.fn(),
   invalidateTeams: vi.fn(),
-  peekCachedTeam: vi.fn(() => null),
 }));
 
 vi.mock('@/features/events/data/events-repo', () => ({

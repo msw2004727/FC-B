@@ -9,17 +9,15 @@ vi.mock('@/data/callables', () => ({
 }));
 
 vi.mock('firebase/firestore', () => ({
-  doc: vi.fn((_db: unknown, ...segs: string[]) => ({ __doc: segs.join('/') })),
+  doc: vi.fn((_db, path, id) => ({ __doc: `${path}/${id}` })),
   getDoc: vi.fn(),
   updateDoc: vi.fn(),
   serverTimestamp: vi.fn(() => ({ __sv: 'SERVER_TIMESTAMP' })),
-  writeBatch: vi.fn(),
 }));
 
 import { callFn } from '@/data/callables';
 import { getFirebase } from '@/data/firebase';
-import type { Firestore } from 'firebase/firestore';
-import { doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import {
   buildIdentitySettingsRequest,
@@ -38,14 +36,6 @@ import {
 
 const SERVER_TS = { __sv: 'SERVER_TIMESTAMP' };
 
-type MockBatch = {
-  update: ReturnType<typeof vi.fn>;
-  set: ReturnType<typeof vi.fn>;
-  commit: ReturnType<typeof vi.fn>;
-};
-
-let batch: MockBatch;
-
 function firstLogin(overrides: Partial<FirstLoginInput> = {}): FirstLoginInput {
   return {
     gender: '女',
@@ -62,27 +52,20 @@ function expectNoDirectAccess(): void {
   expect(doc).not.toHaveBeenCalled();
   expect(getDoc).not.toHaveBeenCalled();
   expect(updateDoc).not.toHaveBeenCalled();
-  expect(writeBatch).not.toHaveBeenCalled();
   expect(serverTimestamp).not.toHaveBeenCalled();
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(doc).mockImplementation(
-    ((_db: unknown, ...segs: string[]) => ({
-      __doc: segs.join('/'),
+    ((_db: unknown, path: string, id: string) => ({
+      __doc: `${path}/${id}`,
     })) as unknown as typeof doc,
   );
   vi.mocked(getFirebase).mockResolvedValue({ db: {} } as never);
   vi.mocked(updateDoc).mockResolvedValue(undefined);
   vi.mocked(serverTimestamp).mockReturnValue(SERVER_TS as never);
   vi.mocked(callFn).mockResolvedValue(undefined as never);
-  batch = {
-    update: vi.fn(),
-    set: vi.fn(),
-    commit: vi.fn().mockResolvedValue(undefined),
-  };
-  vi.mocked(writeBatch).mockReturnValue(batch as never);
 });
 
 describe('write guardrails', () => {
@@ -110,15 +93,13 @@ describe('write guardrails', () => {
     expect(() => assertNoDerivedFields({ realCurrent: 0 })).toThrow(/衍生欄位/);
   });
 
-  it('會員資料讀取強化：saveCompanions 只寫私密，不 update 根文件', async () => {
+  it('saveCompanions 的 payload 只含 companions 與 updatedAt', async () => {
     await saveCompanions('u1', [{ name: 'x' }]);
-    expect(batch.update).not.toHaveBeenCalled();
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
-    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
-    expect(setPayload).toEqual({ companions: [{ name: 'x' }], updatedAt: SERVER_TS });
-    expect(options).toEqual({ merge: true });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
+      { __doc: 'users/u1' },
+      { companions: [{ name: 'x' }], updatedAt: SERVER_TS },
+    );
     expect(callFn).not.toHaveBeenCalled();
   });
 });
@@ -126,8 +107,8 @@ describe('write guardrails', () => {
 describe('A29 updateProfileFields（golden payload）', () => {
   it('payload = {...patch, updatedAt: serverTimestamp}', async () => {
     await updateProfileFields('u1', { gender: 'male', region: 'TW' });
-    expect(batch.update).toHaveBeenCalledTimes(1);
-    expect(batch.update).toHaveBeenCalledWith(
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         gender: 'male',
@@ -135,35 +116,8 @@ describe('A29 updateProfileFields（golden payload）', () => {
         updatedAt: SERVER_TS,
       },
     );
-    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(serverTimestamp).toHaveBeenCalledTimes(1);
     expect(callFn).not.toHaveBeenCalled();
-  });
-
-  it('會員資料讀取強化：只有四欄時不 update 根文件，只寫私密子文件', async () => {
-    await updateProfileFields('u1', { phone: '0912345678' });
-    expect(batch.update).not.toHaveBeenCalled();
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [ref, payload, options] = batch.set.mock.calls[0]!;
-    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
-    expect(payload).toEqual({ phone: '0912345678', updatedAt: SERVER_TS });
-    expect(options).toEqual({ merge: true });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
-  });
-
-  it('改非四欄（gender）不呼叫 batch.set', async () => {
-    await updateProfileFields('u1', { gender: 'male' });
-    expect(batch.update).toHaveBeenCalledWith(
-      { __doc: 'users/u1' },
-      { gender: 'male', updatedAt: SERVER_TS },
-    );
-    expect(batch.set).not.toHaveBeenCalled();
-    expect(batch.commit).toHaveBeenCalledTimes(1);
-  });
-
-  it('commit 失敗時 throw 原錯誤（不吞）', async () => {
-    const error = new Error('permission-denied');
-    batch.commit.mockRejectedValueOnce(error);
-    await expect(updateProfileFields('u1', { gender: 'male' })).rejects.toBe(error);
   });
 
   it('不允許 patch 夾帶 updatedAt', async () => {
@@ -201,38 +155,34 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
     vi.useRealTimers();
   });
 
-  it('會員資料讀取強化：email 只寫私密，根文件不含 email；法務欄位與其餘欄位照寫根', async () => {
+  it('帶 email 時寫 4 欄、A 的法律同意欄位與 updatedAt，不持久化 legalConsent', async () => {
     await saveFirstLoginProfile('u1', firstLogin());
-    expect(batch.update).toHaveBeenCalledTimes(1);
-    expect(batch.update).toHaveBeenCalledWith(
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         ...LEGAL_NEW,
         gender: '女',
         birthday: '1990/01/01',
         region: 'TW',
+        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
-    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
-    expect(setPayload).toEqual({ email: 'a@example.com', updatedAt: SERVER_TS });
-    expect(options).toEqual({ merge: true });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(serverTimestamp).toHaveBeenCalledTimes(1);
     expect(callFn).not.toHaveBeenCalled();
   });
 
   it.each(['', '   ', undefined])(
-    'email 為 %s 時不寫 email 欄也不寫私密',
+    'email 為 %s 時不寫 email 欄',
     async (email) => {
       const input = firstLogin();
       if (email === undefined) delete input.email;
       else input.email = email;
 
       await saveFirstLoginProfile('u1', input);
-      expect(batch.update).toHaveBeenCalledTimes(1);
-      expect(batch.update).toHaveBeenCalledWith(
+      expect(updateDoc).toHaveBeenCalledTimes(1);
+      expect(updateDoc).toHaveBeenCalledWith(
         { __doc: 'users/u1' },
         {
           ...LEGAL_NEW,
@@ -242,32 +192,28 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
           updatedAt: SERVER_TS,
         },
       );
-      expect(batch.set).not.toHaveBeenCalled();
-      expect(batch.commit).toHaveBeenCalledTimes(1);
     },
   );
 
-  it('會員資料讀取強化：只修剪 region；email 走私密，根文件不含 email', async () => {
+  it('只修剪 region 與 email，維持既有 birthday 字串格式', async () => {
     await saveFirstLoginProfile('u1', firstLogin({
       region: '  臺中市  ',
       email: '  a@example.com  ',
     }));
-    expect(batch.update).toHaveBeenCalledWith(
+    expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         ...LEGAL_NEW,
         gender: '女',
         birthday: '1990/01/01',
         region: '臺中市',
+        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [, setPayload] = batch.set.mock.calls[0]!;
-    expect(setPayload).toEqual({ email: 'a@example.com', updatedAt: SERVER_TS });
   });
 
-  it('已同意當前版本時不覆蓋同意時間（照 A）', async () => {
+    it('已同意當前版本時不覆蓋同意時間（照 A）', async () => {
     mockUserDoc({
       termsVersion: '2026-05-19',
       termsAcceptedAt: '2026-06-01T00:00:00.000Z',
@@ -275,7 +221,7 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
       privacyAcceptedAt: '2026-06-01T00:00:00.000Z',
     });
     await saveFirstLoginProfile('u1', firstLogin());
-    const payload = batch.update.mock.calls[0]?.[1] as unknown as Record<string, unknown>;
+    const payload = vi.mocked(updateDoc).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
     expect(payload).toMatchObject({
       termsVersion: '2026-05-19',
       privacyVersion: '2026-05-19',
@@ -288,15 +234,14 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
   it('舊版本同意時重寫同意時間；使用者文件不存在時視為未同意', async () => {
     mockUserDoc({ termsVersion: '2025-01-01', termsAcceptedAt: 'x', privacyVersion: '2026-05-19', privacyAcceptedAt: 'y' });
     await saveFirstLoginProfile('u1', firstLogin());
-    let payload = batch.update.mock.calls[0]?.[1] as unknown as Record<string, unknown>;
+    let payload = vi.mocked(updateDoc).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
     expect(payload['termsAcceptedAt']).toBe(NOW_ISO);
     expect(payload).not.toHaveProperty('privacyAcceptedAt');
 
-    vi.mocked(batch.update).mockClear();
-    vi.mocked(batch.commit).mockClear();
+    vi.mocked(updateDoc).mockClear();
     mockUserDoc(null);
     await saveFirstLoginProfile('u1', firstLogin());
-    payload = batch.update.mock.calls[0]?.[1] as unknown as Record<string, unknown>;
+    payload = vi.mocked(updateDoc).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
     expect(payload).toMatchObject(LEGAL_NEW);
   });
 
@@ -337,13 +282,14 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
 
   it.each(['男', '女', '其他'])('接受 A 性別選項 %s', async (gender) => {
     await saveFirstLoginProfile('u1', firstLogin({ gender }));
-    expect(batch.update).toHaveBeenCalledWith(
+    expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         ...LEGAL_NEW,
         gender,
         birthday: '1990/01/01',
         region: 'TW',
+        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -361,13 +307,14 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
 
   it('接受有效閏日', async () => {
     await saveFirstLoginProfile('u1', firstLogin({ birthday: '2000/02/29' }));
-    expect(batch.update).toHaveBeenCalledWith(
+    expect(updateDoc).toHaveBeenCalledWith(
       { __doc: 'users/u1' },
       {
         ...LEGAL_NEW,
         gender: '女',
         birthday: '2000/02/29',
         region: 'TW',
+        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
@@ -391,14 +338,14 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
     const input = firstLogin();
     const original = { ...input };
     const error = new Error('offline');
-    batch.commit.mockRejectedValueOnce(error);
+    vi.mocked(updateDoc).mockRejectedValueOnce(error);
 
     await expect(saveFirstLoginProfile('u1', input)).rejects.toBe(error);
     expect(input).toEqual(original);
 
     await saveFirstLoginProfile('u1', input);
-    expect(batch.update).toHaveBeenCalledTimes(2);
-    expect(batch.update).toHaveBeenNthCalledWith(
+    expect(updateDoc).toHaveBeenCalledTimes(2);
+    expect(updateDoc).toHaveBeenNthCalledWith(
       2,
       { __doc: 'users/u1' },
       {
@@ -406,44 +353,32 @@ describe('A29 saveFirstLoginProfile（golden payload 照 A）', () => {
         gender: '女',
         birthday: '1990/01/01',
         region: 'TW',
+        email: 'a@example.com',
         updatedAt: SERVER_TS,
       },
     );
   });
 });
 
-describe('A31 saveCompanions / A32 saveEduChildren（會員資料讀取強化：只寫私密）', () => {
-  it('companions 只寫私密，不 update 根文件', async () => {
+describe('A31 saveCompanions / A32 saveEduChildren（golden）', () => {
+  it('companions 只寫 companions 與 updatedAt', async () => {
     const companions = [{ name: 'A' }, { name: 'B' }];
     await saveCompanions('u1', companions);
-    expect(batch.update).not.toHaveBeenCalled();
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
-    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
-    expect(setPayload).toEqual({ companions, updatedAt: SERVER_TS });
-    expect(options).toEqual({ merge: true });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
+      { __doc: 'users/u1' },
+      { companions, updatedAt: SERVER_TS },
+    );
   });
 
-  it('saveCompanions([]) 私密寫 companions: []，不 update 根文件', async () => {
-    await saveCompanions('u1', []);
-    expect(batch.update).not.toHaveBeenCalled();
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [, setPayload] = batch.set.mock.calls[0]!;
-    expect(setPayload).toEqual({ companions: [], updatedAt: SERVER_TS });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
-  });
-
-  it('eduChildren 只寫私密，不 update 根文件', async () => {
+  it('eduChildren 只寫 eduChildren 與 updatedAt', async () => {
     const children = [{ name: 'K' }];
     await saveEduChildren('u1', children);
-    expect(batch.update).not.toHaveBeenCalled();
-    expect(batch.set).toHaveBeenCalledTimes(1);
-    const [ref, setPayload, options] = batch.set.mock.calls[0]!;
-    expect(ref).toEqual({ __doc: 'users/u1/profilePrivate/profile' });
-    expect(setPayload).toEqual({ eduChildren: children, updatedAt: SERVER_TS });
-    expect(options).toEqual({ merge: true });
-    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
+      { __doc: 'users/u1' },
+      { eduChildren: children, updatedAt: SERVER_TS },
+    );
   });
 });
 
@@ -491,7 +426,6 @@ describe('saveSocialLink / clearSocialLink（golden）', () => {
         updatedAt: SERVER_TS,
       },
     );
-    expect(writeBatch).not.toHaveBeenCalled();
   });
 
   it('clearSocialLink 覆寫為空字串', async () => {
@@ -532,6 +466,8 @@ describe('saveSocialLink / clearSocialLink（golden）', () => {
 });
 
 describe('A30 Callable 走 callFn（不直寫）', () => {
+  // golden 照 A profile-data-render.js saveIdentitySettings → firebase-crud.js _buildIdentitySettingsCallablePayload，
+  // 並符合 functions/index.js normalizeIdentitySettingsCommit 的欄位白名單。
   function wire(enabled: boolean, displayName: string) {
     return {
       profileActiveIdentityId: enabled ? 'secondary' : 'main',

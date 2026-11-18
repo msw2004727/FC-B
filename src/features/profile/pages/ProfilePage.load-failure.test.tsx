@@ -95,17 +95,20 @@ describe('ProfilePage：個人資料讀取失敗／查無資料（真的 loadUse
     cleanup();
   });
 
-  // 會員資料讀取強化：本人頁的私密子文件改用嚴格讀取，網路失敗時整個載入失敗，
-  // 顯示既有「無法載入」＋重試，不拿根文件的過期值頂替（同行者整份覆寫會蓋掉資料，顧問 §3.220 P1）。
-  it('網路暫時失敗（私密子文件讀取也丟錯）：顯示「無法載入」＋重試，不顯示個人頁', async () => {
+  it('網路暫時失敗（getDoc／getDocs 都丟錯，loader 吞掉回 null）：單一區塊＝找不到資料＋重試鈕，沒有「無法載入」alert', async () => {
     firestore.getDoc.mockRejectedValue(new Error('offline'));
     firestore.getDocs.mockRejectedValue(new Error('offline'));
     render(<ProfilePage />);
 
-    expect(await screen.findByText(LOAD_ERROR)).toBeTruthy();
+    expect(await screen.findByText(UNAVAILABLE)).toBeTruthy();
     expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
-    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
-    expect(document.getElementById('profile-content')).toBeNull();
+    expect(screen.queryByText(LOAD_ERROR)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.querySelectorAll('.profile-state')).toHaveLength(1);
+    // 文字與重試鈕在同一個區塊內
+    const block = document.querySelector('.profile-state');
+    expect(block?.textContent).toContain(UNAVAILABLE);
+    expect(block?.querySelector('button')?.textContent).toContain(RETRY);
   });
 
   it('點重試會再呼叫載入；這次讀得到就顯示個人頁（不再是找不到資料）', async () => {
@@ -115,8 +118,7 @@ describe('ProfilePage：個人資料讀取失敗／查無資料（真的 loadUse
 
     fireEvent.click(await screen.findByRole('button', { name: RETRY }));
     await waitFor(() => expect(document.getElementById('profile-content')).toBeTruthy());
-    // 會員資料讀取強化：每次載入＝根文件＋私密子文件各一次 getDoc；重試一次共 4 次。
-    expect(firestore.getDoc).toHaveBeenCalledTimes(4);
+    expect(firestore.getDoc).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(UNAVAILABLE)).toBeNull();
     expect(screen.queryByRole('button', { name: RETRY })).toBeNull();
   });

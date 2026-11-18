@@ -1,9 +1,7 @@
-import { getEventIntensity } from '../../data/activity-categories';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { useT } from '@/i18n/i18n';
-import { buildCapacityTagModel } from '../../data/capacity-tag';
 import { actualConfirmedCount, type DetailEvent } from '../../data/detail-model';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import { getEventParticipantStats } from '../../data/participant-stats';
@@ -12,7 +10,6 @@ import { SPORTS, eventSportTag, sportSymbol } from '../../data/sports';
 import { timelineBarStyle } from '../../data/timeline-capacity-bar';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
 import { getViewerEventRegState } from '../../data/viewer-reg-state';
-import { CapacityTag } from './CapacityTag';
 import './signup-a11y.css'; // 計量條讀屏人數用 .fcb-sr-only
 import './timeline-card-extra.css';
 
@@ -262,16 +259,11 @@ export function TimelineEventCard({
     const reservationTag = stats.reservedRemainingCount > 0
       ? ` · 預留 ${stats.reservedRemainingCount}`
       : '';
-    // 2026-11-13 站長定案：「N/M人」改由狀態標籤下方的人數標籤顯示，這行不再重複（預留、候補照舊）。
-    metaText = `${typeConf.label} · ${time} · ${locShort}${reservationTag}${waitlistTag}`;
+    metaText = `${typeConf.label} · ${time} · ${locShort} · ${stats.confirmedCount}/${stats.maxCount}人${reservationTag}${waitlistTag}`;
   }
 
   const rowBaseClass = event.teamOnly ? 'tl-type-teamonly' : `tl-type-${typeKey}`;
-  const intensity = !isExternal ? getEventIntensity(event as { intensityLevel?: unknown }) : '';
-  // 女生專屬優先用粉色；其他依活動分類上綠／紫。
-  const rowClass = isFemaleOnly
-    ? `${rowBaseClass} tl-type-female-only`
-    : intensity ? `${rowBaseClass} tl-type-${intensity}` : rowBaseClass;
+  const rowClass = isFemaleOnly ? `${rowBaseClass} tl-type-female-only` : rowBaseClass;
   const rowStyle = event.pinned
     ? (isFemaleOnly
       ? 'box-shadow:0 0 0 1px rgba(236,72,153,.16)'
@@ -312,9 +304,6 @@ export function TimelineEventCard({
     isEnded ? 'tl-past' : '',
     showPending ? 'tl-pending' : '',
   ].filter(Boolean).join(' ');
-
-  // 人數標籤（風格三）：與計量條同時出現（已結束／已取消／外部不顯示）；讀屏人數已在計量條，標籤 aria-hidden。
-  const capModel = showBar ? buildCapacityTagModel(event, effStatus) : null;
 
   const hasComment = commentCount > 0;
   const commentLabel = hasComment
@@ -391,7 +380,21 @@ export function TimelineEventCard({
         <span class={`tl-event-status ${statusCss}`}>
           {statusLabel}
         </span>
-        {capModel && <CapacityTag model={capModel} />}
+        {/* M-076：留言數徽章（可見才載入）；DOM 照 A `_activityCommentBadgeHtml` */}
+        <span
+          class="tl-comment-badge"
+          data-comment-badge-for={event.id || ''}
+          hidden={!hasComment}
+          aria-hidden={hasComment ? 'false' : 'true'}
+          aria-label={hasComment ? commentLabel : undefined}
+          title={hasComment ? commentLabel : undefined}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.6-.8L3 21l1.8-4.7A8.1 8.1 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z" />
+            <path d="M8 10h8M8 14h5" />
+          </svg>
+          <span class="tl-comment-badge-count">{commentCount > 99 ? '99+' : String(commentCount)}</span>
+        </span>
       </div>
       <div class="tl-event-icons">
         {/* M-076：收藏愛心（照 A `_favHeartHtml` 外觀）；U-022：擋冒泡避免開詳情 */}
@@ -425,23 +428,6 @@ export function TimelineEventCard({
           aria-label={sportLabel}
         >
           <span class="sport-emoji">{symbol}</span>
-        </span>
-        {/* M-076：留言數徽章（可見才載入）；DOM 照 A `_activityCommentBadgeHtml`。
-          * 2026-11-13 站長定案：移到運動圖示下方；沒留言時不留空位（站長追加：取代先前 is-empty 空位），
-          * 運動圖示在運動欄內置中（activity.css .tl-event-icons justify-content: center）。 */}
-        <span
-          class="tl-comment-badge"
-          data-comment-badge-for={event.id || ''}
-          hidden={!hasComment}
-          aria-hidden={hasComment ? 'false' : 'true'}
-          aria-label={hasComment ? commentLabel : undefined}
-          title={hasComment ? commentLabel : undefined}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.6-.8L3 21l1.8-4.7A8.1 8.1 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z" />
-            <path d="M8 10h8M8 14h5" />
-          </svg>
-          <span class="tl-comment-badge-count">{commentCount > 99 ? '99+' : String(commentCount)}</span>
         </span>
       </div>
       <span class="tl-event-arrow">›</span>

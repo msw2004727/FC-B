@@ -60,24 +60,6 @@ describe('event-form-model', () => {
     expect(state.minAge).toBe('0');
     expect(state.notes).toBe('');
     expect(state.sportTag).toBe('');
-    expect(state.intensityLevel).toBe('');
-  });
-
-  it('toCreateEventForm 帶上 intensityLevel（含空字串）；多日期每場沿用', () => {
-    expect(toCreateEventForm(makeValidState(), '主辦人').intensityLevel).toBe('');
-    expect(toCreateEventForm(makeValidState({ intensityLevel: 'beginner' }), '主辦人').intensityLevel)
-      .toBe('beginner');
-    expect(toCreateEventForm(makeValidState({ intensityLevel: 'high-intensity' }), '主辦人').intensityLevel)
-      .toBe('high-intensity');
-
-    const state = makeValidState({ intensityLevel: 'beginner' });
-    const forms = buildMultiDateForms(
-      toCreateEventForm(state, '主辦人', { nowMs: FIXED_NOW.getTime() }),
-      ['2026-06-10', '2026-06-11'],
-      state,
-      FIXED_NOW.getTime(),
-    );
-    expect(forms.map(form => form.intensityLevel)).toEqual(['beginner', 'beginner']);
   });
 
   describe('validateEventForm order and messages', () => {
@@ -255,7 +237,6 @@ describe('event-form-model', () => {
     expect(form.privateEvent).toBe(false);
     expect(form.delegates).toEqual([]);
     expect(form.image).toBe('');
-    expect(form.intensityLevel).toBe('');
   });
 });
 

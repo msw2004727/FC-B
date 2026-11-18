@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { RELOAD_AT_KEY } from '@/core/chunk-reload';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  BOOT_PRELOAD_SCRIPT_ID,
   preloadEventDetailChunks,
   shouldPreloadEventDetail,
   shouldPreloadFirestoreSdk,
@@ -51,112 +49,97 @@ describe('shouldPreloadFirestoreSdk', () => {
   });
 });
 
-const MAP = {
-  detail: { js: ['/assets/EventDetailPage-aaa.js', '/assets/dep-bbb.js'], css: ['/assets/EventDetailPage-ccc.css'] },
-  firestore: { js: ['/assets/index.esm-ddd.js'], css: [] },
-};
-
-function setMap(json: string): void {
-  const el = document.createElement('script');
-  el.type = 'application/json';
-  el.id = BOOT_PRELOAD_SCRIPT_ID;
-  el.textContent = json;
-  document.head.appendChild(el);
-}
-
-function links(rel: string): string[] {
-  return [...document.head.querySelectorAll<HTMLLinkElement>(`link[rel="${rel}"]`)].map((l) => l.getAttribute('href') ?? '');
-}
-
-describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不用 import()）', () => {
+describe('preloadEventDetailChunks', () => {
   afterEach(() => {
-    document.head.innerHTML = '';
-    sessionStorage.clear();
+    vi.restoreAllMocks();
   });
 
-  it('/events/x 插詳情與 SDK 的 modulepreload（crossorigin=""）與詳情 CSS', () => {
-    setMap(JSON.stringify(MAP));
-    preloadEventDetailChunks('/events/x');
-    expect(links('modulepreload')).toEqual(['/assets/EventDetailPage-aaa.js', '/assets/dep-bbb.js', '/assets/index.esm-ddd.js']);
-    expect(links('stylesheet')).toEqual(['/assets/EventDetailPage-ccc.css']);
-    for (const l of document.head.querySelectorAll('link')) expect(l.getAttribute('crossorigin')).toBe('');
+  it('/events/x 仍呼叫兩個載入器；首頁與列表只預載 SDK；其他路徑不呼叫', () => {
+    const loadPage = vi.fn(() => Promise.resolve('page'));
+    const loadFirestore = vi.fn(() => Promise.resolve('fs'));
+    preloadEventDetailChunks('/events/x', loadPage, loadFirestore);
+    expect(loadPage).toHaveBeenCalledOnce();
+    expect(loadFirestore).toHaveBeenCalledOnce();
+
+    loadPage.mockClear();
+    loadFirestore.mockClear();
+    for (const pathname of ['/', '/activities']) {
+      preloadEventDetailChunks(pathname, loadPage, loadFirestore);
+    }
+    expect(loadPage).not.toHaveBeenCalled();
+    expect(loadFirestore).toHaveBeenCalledTimes(2);
+
+    loadPage.mockClear();
+    loadFirestore.mockClear();
+    for (const pathname of ['/events', '/events/x/edit', '/teams/x']) {
+      preloadEventDetailChunks(pathname, loadPage, loadFirestore);
+    }
+    expect(loadPage).not.toHaveBeenCalled();
+    expect(loadFirestore).not.toHaveBeenCalled();
   });
 
-  it('首頁與列表只插 SDK；其他路徑什麼都不插', () => {
-    setMap(JSON.stringify(MAP));
-    preloadEventDetailChunks('/');
-    preloadEventDetailChunks('/activities');
-    expect(links('modulepreload')).toEqual(['/assets/index.esm-ddd.js', '/assets/index.esm-ddd.js']);
-    expect(links('stylesheet')).toEqual([]);
-    document.head.querySelectorAll('link').forEach((l) => l.remove());
-    for (const pathname of ['/events', '/events/x/edit', '/teams/x']) preloadEventDetailChunks(pathname);
-    expect(document.head.querySelectorAll('link')).toHaveLength(0);
-  });
-
-  it('沒有清單（dev）或清單壞掉：不插、不拋', () => {
-    expect(() => preloadEventDetailChunks('/events/x')).not.toThrow();
-    setMap('{not json');
-    expect(() => preloadEventDetailChunks('/events/x')).not.toThrow();
-    expect(document.head.querySelectorAll('link')).toHaveLength(0);
-  });
-
-  it('只接受同源 /assets/ 的 js／css 檔名，其他項目略過', () => {
-    setMap(JSON.stringify({
-      detail: { js: ['https://evil.example/x.js', '/assets/../x.js', '/assets/a b.js', 42, '/assets/ok-1.js'], css: ['javascript:x', '/assets/ok.css'] },
-      firestore: { js: 'nope' },
-    }));
-    preloadEventDetailChunks('/events/x');
-    expect(links('modulepreload')).toEqual(['/assets/ok-1.js']);
-    expect(links('stylesheet')).toEqual(['/assets/ok.css']);
-  });
-
-  it('預載失敗：不發 vite:preloadError、不寫 chunk-reload 時間戳、不留 unhandledrejection', async () => {
+  it('import 失敗不拋，也不留下 unhandledrejection', async () => {
     const reasons: unknown[] = [];
     const onUnhandled = (reason: unknown): void => {
       reasons.push(reason);
     };
-    let preloadErrors = 0;
-    const onPreloadError = (): void => {
-      preloadErrors += 1;
-    };
     process.on('unhandledRejection', onUnhandled);
-    window.addEventListener('vite:preloadError', onPreloadError);
     try {
-      setMap(JSON.stringify(MAP));
-      preloadEventDetailChunks('/events/x');
-      for (const l of document.head.querySelectorAll('link')) l.dispatchEvent(new Event('error'));
+      expect(() => preloadEventDetailChunks(
+        '/events/x',
+        () => Promise.reject(new Error('Importing a module script failed')),
+        () => Promise.reject(new Error('firestore chunk failed')),
+      )).not.toThrow();
       await new Promise((resolvePromise) => {
         setTimeout(resolvePromise, 0);
       });
-      expect(preloadErrors).toBe(0);
-      expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBeNull();
       expect(reasons).toEqual([]);
     } finally {
       process.off('unhandledRejection', onUnhandled);
-      window.removeEventListener('vite:preloadError', onPreloadError);
     }
+  });
+
+  it('首頁的 SDK 預載失敗不拋；不會下載詳情 chunk', async () => {
+    const reasons: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      reasons.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    const loadPage = vi.fn(() => Promise.reject(new Error('page should not run')));
+    const loadFirestore = vi.fn(() => Promise.reject(new Error('firestore chunk failed')));
+    try {
+      expect(() => preloadEventDetailChunks('/', loadPage, loadFirestore)).not.toThrow();
+      await new Promise((resolvePromise) => {
+        setTimeout(resolvePromise, 0);
+      });
+      expect(loadPage).not.toHaveBeenCalled();
+      expect(loadFirestore).toHaveBeenCalledOnce();
+      expect(reasons).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('其他路徑的載入器即使會拒絕也不會被呼叫', async () => {
+    const loadPage = vi.fn(() => Promise.reject(new Error('should not run')));
+    expect(() => preloadEventDetailChunks('/teams/x', loadPage, loadPage)).not.toThrow();
+    await Promise.resolve();
+    expect(loadPage).not.toHaveBeenCalled();
   });
 });
 
-describe('main.tsx 開機預載', () => {
+describe('main.tsx 預先 import', () => {
   const main = read('../main.tsx');
-  const self = read('./event-detail-preload.ts');
-  const plugin = read('../../scripts/boot-preload-html.ts');
+  const routes = read('../features/events/index.ts');
 
-  it('不再以 import() 預載詳情頁與 SDK；改讀建置注入的清單插 modulepreload', () => {
-    expect(main).toContain('preloadEventDetailChunks(location.pathname)');
-    expect(main).not.toContain("import('./features/events/pages/EventDetailPage')");
-    expect(main).not.toContain("import('firebase/firestore')");
-    expect(self).not.toMatch(/\bimport\(\s*['"`]/);
-    expect(self).toContain("'modulepreload'");
+  it('靜態 import 路徑與活動路由 load 是同一個 EventDetailPage 模組，並接住 rejection', () => {
+    expect(routes).toContain("import('./pages/EventDetailPage')");
+    expect(main).toContain("import('./features/events/pages/EventDetailPage')");
+    expect(main).toContain("import('firebase/firestore')");
+    expect(main).toContain('preloadEventDetailChunks(');
+    expect(read('./event-detail-preload.ts')).toContain('.catch(() => {})');
     expect(main).not.toContain('getFirebase');
     expect(main).not.toMatch(/from ['"]@\/data\/firebase['"]/);
     expect(main).not.toMatch(/from ['"]\.\/data\/firebase['"]/);
-  });
-
-  it('清單 id 與建置外掛同值；外掛找的詳情頁就是活動路由 load 的模組', () => {
-    expect(plugin).toContain(`BOOT_PRELOAD_SCRIPT_ID = '${BOOT_PRELOAD_SCRIPT_ID}'`);
-    expect(read('../features/events/index.ts')).toContain("import('./pages/EventDetailPage')");
-    expect(plugin).toContain(String.raw`EventDetailPage\.tsx$/`);
   });
 });

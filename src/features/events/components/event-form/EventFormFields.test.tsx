@@ -74,25 +74,6 @@ describe('EventFormFields', () => {
     expect(document.querySelector('#ce-region-toggle-row')).not.toBeNull();
   });
 
-  it('建立有分類列且可切換；編輯沒有分類列', () => {
-    const onPatch = vi.fn();
-    const created = renderFields({ mode: 'create', onPatch });
-    const row = document.getElementById('ce-intensity-row');
-    expect(row).not.toBeNull();
-    const labels = [...row!.querySelectorAll('[role="radio"]')].map((el) => el.textContent);
-    expect(labels).toEqual(['一般', '新手友善', '高強度']);
-    expect(row!.querySelector('.ce-intensity-normal')?.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(row!.querySelector('.ce-intensity-beginner') as HTMLElement);
-    expect(onPatch).toHaveBeenCalledWith({ intensityLevel: 'beginner' });
-    fireEvent.click(row!.querySelector('.ce-intensity-high-intensity') as HTMLElement);
-    expect(onPatch).toHaveBeenCalledWith({ intensityLevel: 'high-intensity' });
-    created.unmount();
-    cleanup();
-
-    renderFields({ mode: 'edit' });
-    expect(document.getElementById('ce-intensity-row')).toBeNull();
-  });
-
   it('各列順序照 A：範本 → 封面 → 名稱 → 類型 → 地區 → 地點 → 時間 → 開放報名 → 人數 → 年齡 → 委託人 → 注意事項 → 運動', () => {
     renderFields();
     const expectedIds = [

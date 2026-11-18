@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getByRole, queryByRole } from '@testing-library/preact';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -6,13 +6,11 @@ import {
   UPDATE_PROMPT_OPEN_CLASS,
   _resetReloadSafetyForTest,
   dismissForcedUpdatePrompt,
-  canReloadAfterChunkFailure,
   evaluateReloadSafety,
-  showChunkFailurePrompt,
+  requestSafeReload,
   showSwReloadPrompt,
 } from './reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
-import { ROUTE_LOAD_PENDING_MAX_AGE_MS, _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
 
 // UPD-3P：提示框文字改走 t()，測試先載入 zh-TW 字典（測試同步更新）。
 beforeAll(async () => {
@@ -31,7 +29,9 @@ describe('reload-safety（M-052 新版本安全重載）', () => {
 
   it('首頁、無彈窗、無編輯時可直接重載', () => {
     expect(evaluateReloadSafety({ currentPath: '/' })).toEqual({ safe: true });
-    expect(evaluateReloadSafety({ currentPath: '/activities' })).toEqual({ safe: true });
+    const reload = vi.fn();
+    expect(requestSafeReload(reload, { currentPath: '/activities' })).toEqual({ reloaded: true });
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('只有 data-submitting、沒有 aria-busy，也算寫入中；data-form-dirty 仍算', () => {
@@ -41,148 +41,18 @@ describe('reload-safety（M-052 新版本安全重載）', () => {
     expect(evaluateReloadSafety({ currentPath: '/' }).reason).toBe('write-pending');
   });
 
-  it('彈窗開著或非安全頁時不安全（SW 更新路徑：活動詳情仍不自動重載）', () => {
+  it('彈窗開著或非安全頁時不重載，改顯示「有新版本可用」', () => {
     document.body.innerHTML = '<div role="dialog" aria-modal="true"></div>';
     expect(evaluateReloadSafety({ currentPath: '/' }).reason).toBe('modal-open');
     document.body.innerHTML = '';
-    expect(evaluateReloadSafety({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'unsafe-page' });
-  });
-});
-
-describe('chunk 載入失敗路徑（顧問 §3.255 C′；以下皆在路由載入中）', () => {
-  beforeEach(() => {
-    beginRouteLoad();
-  });
-
-  afterEach(() => {
-    _resetReloadSafetyForTest();
-    _resetSubmitGuardForTest();
-    _resetRouteLoadPendingForTest();
-    document.body.innerHTML = '';
-  });
-
-  it('/events/<id> 在沒有彈窗、沒有輸入、沒有送出時可自動重載；SW 路徑同一頁仍不行', () => {
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/abc_DEF-1' })).toEqual({ safe: true });
-    expect(canReloadAfterChunkFailure({ currentPath: '/' })).toEqual({ safe: true });
-    expect(evaluateReloadSafety({ currentPath: '/events/abc_DEF-1' }).safe).toBe(false);
-  });
-
-  it('只放行活動詳情本頁：編輯、子路徑、其他詳情頁仍不自動重載', () => {
-    for (const path of ['/events/e1/edit', '/events/', '/events/a.b', '/teams/t1', '/admin/logs', `/events/${'a'.repeat(121)}`]) {
-      expect(canReloadAfterChunkFailure({ currentPath: path }), path).toEqual({ safe: false, reason: 'unsafe-page' });
-    }
-  });
-
-  it('/events/<id> 送出中（isSubmitting）不重載', () => {
-    const end = beginSubmitting('signup');
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'write-pending' });
-    end();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe).toBe(true);
-  });
-
-  it('/events/<id> 彈窗開著或輸入中不重載', () => {
-    document.body.innerHTML = '<div role="dialog" aria-modal="true"></div>';
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('modal-open');
-    document.body.innerHTML = '<input id="q" />';
-    (document.getElementById('q') as HTMLInputElement).focus();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('form-editing');
-  });
-
-  it('中性提示：「載入失敗｜重新載入」，不說有新版本；按下才重載', () => {
     const reload = vi.fn();
-    showChunkFailurePrompt(reload, 'chunk-load');
-    const prompt = promptEl();
-    expect(prompt.dataset.mode).toBe('chunk');
-    expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('載入失敗');
-    expect(prompt.querySelector('[data-sw-reload-now]')?.textContent).toBe('重新載入');
-    expect(prompt.textContent).not.toContain('有新版本');
+    const result = requestSafeReload(reload, { currentPath: '/events/e1' });
+    expect(result).toEqual({ reloaded: false, reason: 'unsafe-page' });
     expect(reload).not.toHaveBeenCalled();
-    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+    const prompt = document.getElementById('sw-reload-deferred-prompt');
+    expect(prompt?.textContent).toContain('有新版本可用');
+    (prompt?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
-  });
-
-  it('已有「有新版本」提示時，載入失敗不換掉它的文案與 SW 重載函式', () => {
-    const swReload = vi.fn();
-    const chunkReload = vi.fn();
-    showSwReloadPrompt(swReload, 'sw-waiting');
-    showChunkFailurePrompt(chunkReload);
-    const prompt = promptEl();
-    expect(prompt.dataset.mode).toBeUndefined();
-    expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('有新版本可用');
-    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
-    expect(swReload).toHaveBeenCalledTimes(1);
-    expect(chunkReload).not.toHaveBeenCalled();
-  });
-
-  it('載入失敗提示顯示中，SW 有新版：換成「有新版本可用／現在更新」並改用 SW 函式', () => {
-    const swReload = vi.fn();
-    const chunkReload = vi.fn();
-    showChunkFailurePrompt(chunkReload);
-    showSwReloadPrompt(swReload, 'sw-waiting');
-    const prompt = promptEl();
-    expect(prompt.dataset.mode).toBeUndefined();
-    expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('有新版本可用');
-    expect(prompt.querySelector('[data-sw-reload-now]')?.textContent).toBe('現在更新');
-    (prompt.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
-    expect(swReload).toHaveBeenCalledTimes(1);
-    expect(chunkReload).not.toHaveBeenCalled();
-  });
-
-  it('載入失敗提示升強制：強制文案、沒有稍後；收掉強制框不還原成「有新版本」', () => {
-    showChunkFailurePrompt(vi.fn());
-    showSwReloadPrompt(vi.fn(), 'min-build', { forced: true });
-    const prompt = promptEl();
-    expect(prompt.dataset.mode).toBe('forced');
-    expect(prompt.querySelector('[data-sw-reload-title]')?.textContent).toBe('請更新到新版');
-    expect(prompt.querySelector('[data-sw-reload-now]')?.textContent).toBe('現在更新');
-    expect(prompt.querySelector('[data-sw-reload-later]')).toBeNull();
-    dismissForcedUpdatePrompt();
-    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
-  });
-});
-
-describe('詳情頁只在路由載入中、且不是離線時放行（顧問 §3.263 甲）', () => {
-  afterEach(() => {
-    _resetRouteLoadPendingForTest();
-    vi.restoreAllMocks();
-  });
-
-  it('沒有路由在載入（背景預載或其他動態載入失敗）：不放行；安全頁與 SW 路徑不變', () => {
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'background-load' });
-    expect(canReloadAfterChunkFailure({ currentPath: '/' })).toEqual({ safe: true });
-    expect(evaluateReloadSafety({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'unsafe-page' });
-  });
-
-  it('路由載入中才放行；load 落定（成功或失敗都呼叫同一個 settled）之後立即不再放行', () => {
-    const settled = beginRouteLoad();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: true });
-    settled();
-    settled();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('background-load');
-  });
-
-  it('旗標殘留（load 超過時效沒落定）：背景失敗不放行', () => {
-    beginRouteLoad(Date.now() - ROUTE_LOAD_PENDING_MAX_AGE_MS - 1);
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('background-load');
-  });
-
-  it('換頁：舊路由 load 落定不影響新路由載入中的判斷', () => {
-    const oldSettled = beginRouteLoad();
-    const newSettled = beginRouteLoad();
-    oldSettled();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe).toBe(true);
-    newSettled();
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe).toBe(false);
-  });
-
-  it('navigator.onLine 為 false：路由載入中也不放行；為 true 照其他條件判斷；安全頁離線不受影響', () => {
-    beginRouteLoad();
-    const spy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'offline' });
-    expect(canReloadAfterChunkFailure({ currentPath: '/' })).toEqual({ safe: true });
-    spy.mockReturnValue(true);
-    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: true });
   });
 });
 

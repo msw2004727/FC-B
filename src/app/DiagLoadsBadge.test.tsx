@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DiagLoadsBadge } from './DiagLoadsBadge';
-import { LazyDiagLoadsBadge } from './LazyDiagLoadsBadge';
 
 const read = (rel: string): string => readFileSync(resolve(__dirname, rel), 'utf8');
 
@@ -85,34 +84,6 @@ describe('DiagLoadsBadge', () => {
     expect(source).not.toContain('location.search');
     expect(source).not.toContain('location.hash');
     expect(source).not.toContain('sessionStorage.setItem');
-    expect(read('App.tsx')).toMatch(/<LazyDiagLoadsBadge\s*\/>/);
-  });
-});
-
-describe('LazyDiagLoadsBadge（入口瘦身：只有內測主機才下載角標）', () => {
-  it('App 與延遲殼都不靜態 import DiagLoadsBadge', () => {
-    expect(read('App.tsx')).not.toMatch(/from ['"]\.\/DiagLoadsBadge['"]/);
-    expect(read('LazyDiagLoadsBadge.tsx')).not.toMatch(/from ['"]\.\/DiagLoadsBadge['"]/);
-    expect(read('LazyDiagLoadsBadge.tsx')).toContain("import('./DiagLoadsBadge')");
-  });
-
-  it('非內測主機不渲染（正式站行為不變）', async () => {
-    for (const hostname of ['localhost', 'toosterx.com', 'next.toosterx.com.evil.test']) {
-      const view = render(<LazyDiagLoadsBadge hostname={hostname} />);
-      await new Promise((resolvePromise) => {
-        setTimeout(resolvePromise, 20);
-      });
-      expect(view.container.querySelector('.fcb-diag-loads')).toBeNull();
-      view.unmount();
-    }
-  });
-
-  it('內測主機下載後顯示同一個角標', async () => {
-    sessionStorage.setItem('fcb:diag-loads', JSON.stringify([
-      { n: 3, path: '/', q: ['liff.state'], h: [], rewrote: false },
-    ]));
-    const view = render(<LazyDiagLoadsBadge hostname="next.toosterx.com" />);
-    await waitFor(() => expect(view.container.querySelector('.fcb-diag-loads')).not.toBeNull());
-    expect(view.container.textContent).toContain('liff.state');
+    expect(read('App.tsx')).toMatch(/<DiagLoadsBadge\s*\/>/);
   });
 });

@@ -40,7 +40,6 @@ import {
 import { publicEventHref } from '../data/presentation';
 import { SPORTS, eventSportTag } from '../data/sports';
 import { isEventInEndedTab, normalizeListTab } from '../data/terminal';
-import { VISIBLE_ACTIVITY_CATEGORIES, getEventIntensity, isIntensityLevel, type IntensityLevel } from '../data/activity-categories';
 import type { RegistrationDoc } from '../data/types';
 import { useEvents } from '../data/use-events';
 import { loadViewerRegistrations } from '../data/viewer-registrations';
@@ -56,8 +55,6 @@ import { useFemalePetals } from '../components/legacy/use-female-petals';
 import '../legacy/activity.css';
 import '../components/legacy/activity-search.css';
 import '../components/legacy/activity-list-extra.css';
-import '../components/legacy/activity-head.css';
-import { ActivityRegionPicker } from '../components/legacy/ActivityRegionPicker';
 import type { ActivityCalendarProps } from '../components/legacy/ActivityCalendar';
 
 /** 表單 chunk 還沒到：沿用建立活動彈窗殼與列表的 `.reg-loading`，不另做樣式。 */
@@ -118,6 +115,7 @@ interface DayGroup {
 }
 
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
+const REGIONS = ['中部', '北部', '南部', '東部&外島', '全部'] as const;
 // U-020：共用 core/unavailable 的提示文字。
 const UNAVAILABLE_MSG = UNAVAILABLE_FEATURE_MSG;
 
@@ -151,19 +149,12 @@ function normalizeActivityUrlType(value: string | null | undefined): string {
   return (ACTIVITY_URL_TYPES as readonly string[]).includes(raw) ? raw : '';
 }
 
-type ActivityListTab = 'normal' | 'female' | 'calendar' | IntensityLevel;
-
-/** 已開放的頁籤；分類頁籤由 activity-categories 設定表決定（預留未顯示的不算）。 */
-function isKnownActivityTab(tab: string): tab is ActivityListTab {
-  return tab === 'normal' || tab === 'female' || tab === 'calendar' || isIntensityLevel(tab);
-}
-
 function readUrlFilters(urlStr: string): {
   hasExplicit: boolean;
   hasSportParam: boolean;
   region: string;
   sport: string;
-  tab: ActivityListTab;
+  tab: 'normal' | 'female' | 'calendar';
   type: string;
 } {
   const parsed = new URL(urlStr || '/activities', 'https://toosterx.invalid');
@@ -177,7 +168,7 @@ function readUrlFilters(urlStr: string): {
     hasSportParam,
     region: normalizeActivityUrlRegion(params.get('region')),
     sport: normalizeActiveSport(params.get('sport')),
-    tab: isKnownActivityTab(normalizedTab) ? normalizedTab : 'normal',
+    tab: normalizedTab === 'calendar' ? 'calendar' : normalizedTab === 'female' ? 'female' : 'normal',
     type: normalizeActivityUrlType(params.get('type')),
   };
 }
@@ -316,20 +307,6 @@ export default function ActivitiesPage(): JSX.Element {
     ? urlFilters.sport
     : (globalSport || getActiveSport() || 'all');
 
-  // 2026-11-13 頂部 C 方案：頁籤列可左右滑，右邊地區鈕會隨地區名變寬；切頁籤或地區後把目前頁籤捲進可見範圍（右緣 16px 淡出不算）。
-  useEffect(() => {
-    const box = activityTabsRef.current;
-    const current = box?.querySelector<HTMLElement>('.tab.active');
-    if (!box || !current) return undefined;
-    const raf = requestAnimationFrame(() => {
-      const b = box.getBoundingClientRect();
-      const a = current.getBoundingClientRect();
-      if (a.left < b.left) box.scrollLeft -= b.left - a.left + 4;
-      else if (a.right > b.right - 16) box.scrollLeft += a.right - (b.right - 16) + 4;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [activeTab, regionTab]);
-
   const petalsCanvasRef = useRef<HTMLCanvasElement>(null);
   // M-074：切到女生專屬頁籤時在既有 canvas 上飄花瓣（照 A `_startActivityFemalePetals`）。
   useFemalePetals(petalsCanvasRef, activeTab === 'female');
@@ -376,9 +353,10 @@ export default function ActivitiesPage(): JSX.Element {
     const parsed = readUrlFilters(location.url);
     const current = new URL(location.url, 'https://toosterx.invalid');
     const requestedTab = current.searchParams.get('tab');
-    if (requestedTab !== null && !isKnownActivityTab(requestedTab)) {
+    if (requestedTab !== null && requestedTab !== 'normal'
+      && requestedTab !== 'female' && requestedTab !== 'calendar') {
       const nextTab = normalizeListTab(requestedTab);
-      current.searchParams.set('tab', isKnownActivityTab(nextTab) ? nextTab : 'normal');
+      current.searchParams.set('tab', nextTab === 'female' ? 'female' : 'normal');
       location.route(`${current.pathname}${current.search}${current.hash}`, true);
       return;
     }
@@ -486,6 +464,11 @@ export default function ActivitiesPage(): JSX.Element {
 
   function switchActivityTab(nextTab: string, e?: MouseEvent): void {
     if (e) e.stopPropagation();
+    // 下一批補：新手友善、高強度篩選
+    if (nextTab === 'beginner' || nextTab === 'high-intensity') {
+      toast.show({ message: UNAVAILABLE_MSG });
+      return;
+    }
     // 照 A _setActivityTab：切到月曆捲回頂端
     if (nextTab === 'calendar') {
       try { window.scrollTo(0, 0); } catch { /* 環境未提供捲動。 */ }
@@ -618,9 +601,6 @@ export default function ActivitiesPage(): JSX.Element {
     list = list.filter((e) => !isEventInEndedTab(e, nowMs));
     if (activeTab === 'female') {
       list = list.filter((e) => getEventAllowedGender(e) === '女');
-    } else if (isIntensityLevel(activeTab)) {
-      // 在已載入清單上篩，不另查詢（顧問 §3.183）。
-      list = list.filter((e) => getEventIntensity(e as { intensityLevel?: unknown }) === activeTab);
     }
     if (filterType) {
       list = list.filter((e) => e.type === filterType);
@@ -632,7 +612,7 @@ export default function ActivitiesPage(): JSX.Element {
     return list;
   }, [data.events, viewer, registrations, regionTab, effectiveSport, activeTab, filterType, filterKeyword]);
 
-  // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬，也不套活動分類。
+  // 照 A _groupEventsByDateForMonth：包含已結束活動，不套女生專屬。
   const calendarVisibleEvents = useMemo(
     () => getVisibleEvents(data.events, viewer, registrations) as LegacyEventDoc[],
     [data.events, viewer, registrations],
@@ -711,7 +691,7 @@ export default function ActivitiesPage(): JSX.Element {
     );
   }
 
-  // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；分類頁籤 2026-11-16 開放後一併可滑
+  // M-075：左右滑切頁籤，照 A `_bindSwipeTabs`；活動頁 getKey 排除未開放頁籤（beginner、high-intensity）
   useSwipeTabs({
     contentRef: activityListRef,
     tabsRef: activityTabsRef,
@@ -719,44 +699,9 @@ export default function ActivitiesPage(): JSX.Element {
     getKey: (btn) => {
       const key = btn.dataset.atab;
       if (!key) return null;
+      if (key === 'beginner' || key === 'high-intensity') return null;
       return key;
     },
-  });
-
-  // 看圖審查 P2（2026-11-13）：頁籤列右緣被裁掉或落在 16px 淡出區、看不到字的頁籤，不畫它左側的分隔線，
-  // 免得兩條線之間一段空白像空按鈕（activity-head.css [data-divider-off]）。捲動、尺寸改變、每次重繪後重算。
-  const dividerSyncRef = useRef<() => void>(() => undefined);
-  useEffect(() => {
-    const box = activityTabsRef.current;
-    if (!box) return undefined;
-    let raf = 0;
-    const update = (): void => {
-      raf = 0;
-      const edge = box.getBoundingClientRect().right - 16;
-      box.querySelectorAll<HTMLElement>('.tab').forEach((tab) => {
-        if (tab.getBoundingClientRect().left + 20 > edge) tab.setAttribute('data-divider-off', '');
-        else tab.removeAttribute('data-divider-off');
-      });
-    };
-    const schedule = (): void => {
-      if (!raf) raf = requestAnimationFrame(update);
-    };
-    dividerSyncRef.current = schedule;
-    schedule();
-    box.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
-    observer?.observe(box);
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      box.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
-      observer?.disconnect();
-      dividerSyncRef.current = () => undefined;
-    };
-  }, []);
-  useEffect(() => {
-    dividerSyncRef.current();
   });
 
   return (
@@ -772,9 +717,6 @@ export default function ActivitiesPage(): JSX.Element {
           aria-hidden="true"
         />
         <div class="page-header activity-page-header">
-          <div class="activity-page-heading">
-          {/* 2026-11-13 站長：返回、搜尋、分享做成一整片液態玻璃（分隔線區分），標題接在後面 */}
-          <div class="activity-head-tools">
           <button
             class="back-btn"
             type="button"
@@ -793,6 +735,10 @@ export default function ActivitiesPage(): JSX.Element {
               />
             </svg>
           </button>
+          <div class="activity-page-heading">
+            <h2 class="page-header-title" data-i18n="活動行事曆">
+              {lt('活動行事曆', '活動行事曆')}
+            </h2>
             {/* 照 A theme.js#bindFilterToggle：展開或有篩選時加 active、開啟時焦點到關鍵字；面板靠 .visible 才顯示（layout.css） */}
             <button
               type="button"
@@ -851,10 +797,6 @@ export default function ActivitiesPage(): JSX.Element {
               </svg>
             </button>
           </div>
-            <h2 class="page-header-title" data-i18n="活動行事曆">
-              {lt('活動行事曆', '活動行事曆')}
-            </h2>
-          </div>
           <div class="activity-page-actions">
             <button
               type="button"
@@ -878,10 +820,6 @@ export default function ActivitiesPage(): JSX.Element {
                 <path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
               </svg>
             </button>
-            {/* 2026-11-13：開團鈕點擊高度補到 44px（點這塊等於點按鈕；外觀不變，activity-head.css） */}
-            {showCreateButton && (
-              <label class="activity-create-hit" for="activity-create-btn" aria-hidden="true" />
-            )}
             <button
               type="button"
               class={`primary-btn small${createEntry.buttonProps.lockedClass ? ` ${createEntry.buttonProps.lockedClass}` : ''}`}
@@ -894,8 +832,6 @@ export default function ActivitiesPage(): JSX.Element {
               data-i18n-aria-label="＋我要開團"
               onClick={handleOpenCreateEvent}
             >
-              {/* 2026-11-13 液態光澤：上半光澤＋頂緣亮線（activity-head.css），疊在金框內的藍底上、文字下 */}
-              <span class="activity-create-gloss" aria-hidden="true" />
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -969,10 +905,8 @@ export default function ActivitiesPage(): JSX.Element {
           </div>
         )}
 
-        {/* 2026-11-13：頁籤列＋地區下拉同一列，捲動時黏在頂欄下方（activity-list-extra.css、activity-head.css） */}
+        {/* 2026-11-13：頁籤列＋地區列捲動時黏在頂欄下方（activity-list-extra.css） */}
         <div class="activity-sticky-filters" ref={stickyFiltersRef}>
-        {/* 2026-11-13 站長：頁籤＋地區做成一整片液態玻璃，按鈕之間以分隔線區分（activity-head.css） */}
-        <div class="activity-filter-slab">
         <div class="tab-bar" id="activity-tabs" ref={activityTabsRef}>
           <button
             type="button"
@@ -1032,22 +966,81 @@ export default function ActivitiesPage(): JSX.Element {
           >
             {lt('女生專屬', '女生專屬')}
           </button>
-          {VISIBLE_ACTIVITY_CATEGORIES.map((cat) => (
-            <button
-              key={cat.key}
-              type="button"
-              class={`tab activity-tab-${cat.key}${activeTab === cat.key ? ' active' : ''}`}
-              data-atab={cat.key}
-              data-i18n={cat.label}
-              onClick={(e) => switchActivityTab(cat.key, e)}
-            >
-              {lt(cat.label, cat.label)}
-            </button>
-          ))}
+          {/* 下一批補：新手友善 */}
+          <button
+            type="button"
+            class="tab activity-tab-unavailable"
+            data-atab="beginner"
+            aria-disabled="true"
+            title={lt('功能未開放', '功能未開放')}
+            data-i18n-title="功能未開放"
+            data-i18n="新手友善"
+            onClick={(e) => switchActivityTab('beginner', e)}
+          >
+            {lt('新手友善', '新手友善')}
+          </button>
+          {/* 下一批補：高強度 */}
+          <button
+            type="button"
+            class="tab activity-tab-unavailable"
+            data-atab="high-intensity"
+            aria-disabled="true"
+            title={lt('功能未開放', '功能未開放')}
+            data-i18n-title="功能未開放"
+            data-i18n="高強度"
+            onClick={(e) => switchActivityTab('high-intensity', e)}
+          >
+            {lt('高強度', '高強度')}
+          </button>
         </div>
 
-        {/* 2026-11-13 C 方案：地區由整列頁籤改成右側固定的下拉（含尋找附近活動） */}
-        <ActivityRegionPicker value={regionTab} onChange={setRegionTab} onNearby={handleNearbyActivity} />
+        <div class="region-tabs" id="activity-region-tabs">
+          {REGIONS.map((region) => (
+            <button
+              key={region}
+              type="button"
+              class={`region-tab${regionTab === region ? ' active' : ''}`}
+              data-region={region}
+              data-i18n={region}
+              onClick={() => setRegionTab(region)}
+            >
+              {region}
+            </button>
+          ))}
+          {/* M-073：附近活動地圖在 B 一律停用外觀，title/點擊照 A 停用分支 */}
+          <button
+            type="button"
+            class="region-tab region-tab-nearby region-tab-disabled"
+            id="region-tab-nearby-activity"
+            aria-disabled="true"
+            title={lt('附近活動地圖尚未開啟', '附近活動地圖尚未開啟')}
+            data-i18n-title="附近活動地圖尚未開啟"
+            onClick={handleNearbyActivity}
+          >
+            <svg
+              class="region-tab-icon"
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 7l5-2 5 2 5-2v12l-5 2-5-2-5 2z" opacity="0.55" />
+              <line x1="8" y1="5" x2="8" y2="19" opacity="0.55" />
+              <line x1="13" y1="7" x2="13" y2="21" opacity="0.55" />
+              <path
+                d="M12 8c-1.5 0-2.7 1.2-2.7 2.7 0 1.8 2.7 4 2.7 4s2.7-2.2 2.7-4c0-1.5-1.2-2.7-2.7-2.7z"
+                fill="currentColor"
+                stroke="none"
+              />
+              <circle cx="12" cy="10.7" r="0.8" fill="#fff" stroke="none" />
+            </svg>
+            尋找附近活動
+          </button>
         </div>
         </div>
 
@@ -1195,24 +1188,18 @@ export default function ActivitiesPage(): JSX.Element {
           <FormModal
             open={createEntry.formOpen}
             mode="create"
-            initialIntensity={createEntry.intensity}
             viewer={viewer}
             onClose={createEntry.closeForm}
             onSaved={onFormSaved}
           />
         )}
 
-        {/* M-078：外部活動中繼卡，照 A `event-external-transit.js`。
-            照 A 掛到 body：留在 #page-activities 裡會被 `#page-activities > :not(...)` 改成 relative 而跑出畫面，
-            且被 .activities-root 的 isolation 壓在頂部列／底部導覽（900）之下。 */}
-        {transitEvent && createPortal(
-          <div class="legacy-ui">
-            <ExternalTransitCard
-              event={transitEvent}
-              onClose={handleCloseTransitCard}
-            />
-          </div>,
-          document.body,
+        {/* M-078：外部活動中繼卡，照 A `event-external-transit.js` */}
+        {transitEvent && (
+          <ExternalTransitCard
+            event={transitEvent}
+            onClose={handleCloseTransitCard}
+          />
         )}
       </section>
     </div>

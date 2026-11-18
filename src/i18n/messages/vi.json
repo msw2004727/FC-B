@@ -26,12 +26,10 @@
   "feature.reserved": "Tính năng này sắp ra mắt",
   "feature.external": "Sắp kết nối hệ thống bên ngoài",
   "internalTest.badge": "ToosterX bản dùng thử sớm {version}",
-  "swUpdate": { "title": "Có bản mới", "forcedTitle": "Vui lòng cập nhật", "now": "Cập nhật", "later": "Để sau", "busy": "Thao tác chưa hoàn tất, vui lòng cập nhật sau", "loadFailed": "Không tải được", "reload": "Tải lại" },
+  "swUpdate": { "title": "Có bản mới", "forcedTitle": "Vui lòng cập nhật", "now": "Cập nhật", "later": "Để sau", "busy": "Thao tác chưa hoàn tất, vui lòng cập nhật sau" },
   "lineLoginHint": {
-    "openInLine": "Đăng nhập trong ứng dụng LINE",
-    "openInLineNote": "Từ giờ dùng trong LINE",
-    "browserLogin": "Đăng nhập bằng trình duyệt này",
-    "browserLoginNote": "LINE xác nhận rồi quay lại đây"
+    "openInLine": "Mở trong ứng dụng LINE",
+    "newTabNote": "Sau khi đăng nhập xong sẽ mở ở thẻ mới. Có thể đóng thẻ cũ."
   },
   "ui": {
     "shell": {
@@ -44,8 +42,7 @@
       "font_medium": "Vừa",
       "font_large": "Lớn",
       "fontAction": "Cỡ chữ hiện tại: {current}. Chuyển sang {next}",
-      "loginError": "Không thể hoàn tất đăng nhập LINE. Vui lòng thử lại.",
-      "loginExpired": "Phiên đăng nhập LINE đã hết hạn. Vui lòng tải lại trang rồi đăng nhập"
+      "loginError": "Không thể hoàn tất đăng nhập LINE. Vui lòng thử lại."
     },
     "topBar": {
       "label": "Điều hướng phía trên",
@@ -63,33 +60,13 @@
       "navigation": "Tính năng khác",
       "admin": "Quản trị",
       "language": "Ngôn ngữ",
-      "more": "Thêm",
       "loading": "Đang tải ngôn ngữ",
       "localeError": "Hiện không thể đổi ngôn ngữ. Vui lòng thử lại sau.",
       "theme": "Giao diện",
       "theme_light": "Sáng",
       "theme_dark": "Tối",
       "theme_system": "Theo hệ thống",
-      "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}",
-      "privacyShort": "Bảo mật",
-      "termsShort": "Điều khoản",
-      "reset": "Gặp sự cố? Đặt lại & đăng nhập lại",
-      "resetTitle": "Đặt lại và đăng nhập lại?",
-      "resetBody": "Bạn sẽ bị đăng xuất, dữ liệu tạm trên thiết bị này sẽ bị xóa và ứng dụng sẽ tải lại.",
-      "resetConfirm": "Đặt lại",
-      "guestName": "Khách",
-      "loginChecking": "Đang đăng nhập…",
-      "syncing": "Đang đồng bộ…",
-      "role": {
-        "guest": "Khách",
-        "pending": "Đang kiểm tra",
-        "user": "Thành viên",
-        "coach": "HLV",
-        "captain": "Đội trưởng",
-        "venue_owner": "Chủ sân",
-        "admin": "Quản trị viên",
-        "super_admin": "Quản trị cấp cao"
-      }
+      "themeAction": "Chế độ hiện tại: {current}. Chuyển sang {next}"
     },
     "badge": { "empty": "Chưa thiết lập" },
     "chip": { "empty": "Chưa phân loại", "remove": "Xóa “{label}”" },

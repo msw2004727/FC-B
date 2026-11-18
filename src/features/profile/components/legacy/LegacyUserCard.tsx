@@ -15,7 +15,6 @@ import { toast } from '@/ui/Toast';
 import { deriveAttendanceDisplay, type UserAttendanceSummary } from '../../data/attendance-summary';
 import { getFilteredRecords, type UserStatsSnapshot } from '../../data/activity-records';
 import { BASE_ROLE_LEVEL_MAP } from '../../data/permissions';
-import { loadPrivateProfile } from '@/data/profile-private';
 import { loadUserProfile, type UserProfile } from '../../data/profile-model';
 import { loadProfilePopularityViews } from '../../data/profile-popularity';
 import { popularityStars } from '../../data/popularity-tiers';
@@ -232,43 +231,6 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     };
   }, [isCustomRole, signedIn]);
 
-  // C4b：adminLevel / viewerLevel 提前計算，供私密資料讀取 effect 使用（計算方式不變）。
-  const adminLevel = BASE_ROLE_LEVEL_MAP['admin'] ?? 4;
-  const viewerLevel = BASE_ROLE_LEVEL_MAP[viewer.role] ?? 0;
-
-  // C4b：電話值改從私密文件讀取。條件全部成立才發請求（避免一般使用者看他人時徒增無權請求）；
-  // 本人比對用 _docId（Rules 只看路徑）；admin 走 role level。canSeePhone 為假一律不讀。
-  const [privatePhone, setPrivatePhone] = useState<string | null | undefined>(undefined);
-  useEffect(() => {
-    setPrivatePhone(undefined);
-    if (status !== 'ready' || !profile) return undefined;
-    const docId = profile._docId;
-    if (!docId) return undefined;
-    const viewerIsOwner = Boolean(viewer.uid && viewer.uid === docId);
-    const isAdmin = viewerLevel >= adminLevel;
-    const canReadPrivate = viewerIsOwner || isAdmin;
-    const canSeePhoneNow = Boolean(viewer.uid && viewer.uid === profile.uid) || isAdmin;
-    if (!canReadPrivate || !canSeePhoneNow) return undefined;
-    let cancelled = false;
-    loadPrivateProfile(docId)
-      .then((priv) => {
-        if (cancelled || !mountedRef.current) return;
-        if (priv && Object.prototype.hasOwnProperty.call(priv, 'phone')) {
-          const v = priv.phone;
-          if (typeof v === 'string') setPrivatePhone(v);
-          else if (v === null) setPrivatePhone(null);
-          else setPrivatePhone(undefined);
-        }
-      })
-      .catch(() => {
-        // 讀取失敗沿用根值；不打擾使用者。
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?._docId, profile?.uid, viewer.uid, viewer.role, status]);
-
   // 換看另一個人的那一個 render（effect 清狀態之前）：資料不是為目前 uid 載入的，一律當載入中，不顯示上一人。
   if (status === 'loading' || loadedFor !== targetUid) {
     return (
@@ -359,15 +321,14 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
     }
     return '-';
   })();
-  // C4b：有讀到私密文件的 phone（含 null）就用它；undefined 才退回根。null 時顯示 -，不退回根。
-  const phoneSource = privatePhone !== undefined ? privatePhone : profile['phone'];
-  const phone = typeof phoneSource === 'string' && phoneSource ? phoneSource : '-';
+  const phone = typeof profile['phone'] === 'string' ? profile['phone'] : '-';
   const joinDate = formatCreatedAt(profile['createdAt']);
 
   const teamEntries = getUserTeamEntries(profile);
 
   // 站長改良：只有本人或全域管理員（role level >= admin）看得到聯繫方式；其他人整列不輸出。
-  // adminLevel / viewerLevel 已於上方計算（C4b），判斷方式不變。
+  const adminLevel = BASE_ROLE_LEVEL_MAP['admin'] ?? 4;
+  const viewerLevel = BASE_ROLE_LEVEL_MAP[viewer.role] ?? 0;
   const canSeePhone = Boolean(viewer.uid && viewer.uid === profile.uid)
     || viewerLevel >= adminLevel;
 

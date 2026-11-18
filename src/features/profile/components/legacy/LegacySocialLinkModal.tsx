@@ -16,7 +16,6 @@ import {
   saveSocialLink,
 } from '../../data/profile-writes';
 import type { Platform } from '../../ui/shared';
-import './profile-modal-glass.css';
 
 // ASSUMPTION: A `_socialPlatforms` 定義未在附件中；依 SVG keys（threads/yt/twitter/line）與常見平台名推定。
 // 前綴固定走 https，不接受由使用者輸入推導；組出的 href 只出現在顯示層（socialHref）與此處 prefix。

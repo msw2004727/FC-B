@@ -1,7 +1,8 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { DIAG_HOST, readHostname } from './diag-host';
 
+/** 內測站角標只在這個主機出現。正式站 toosterx.com 不渲染、也不讀寫這份紀錄。 */
+const DIAG_HOST = 'next.toosterx.com';
 const DIAG_KEY = 'fcb:diag-loads';
 
 interface DiagLoad {
@@ -16,6 +17,14 @@ interface DiagLoad {
 interface DiagLoadsBadgeProps {
   /** 不傳就看 location.hostname。只有測試會傳。 */
   hostname?: string;
+}
+
+function readHostname(): string {
+  try {
+    return typeof location === 'undefined' ? '' : location.hostname;
+  } catch {
+    return '';
+  }
 }
 
 function namesOf(value: unknown): string[] {

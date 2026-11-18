@@ -30,7 +30,7 @@ export const PROFILE_INFO: Readonly<Record<ProfileInfoKey, { title: string; body
   },
   companions: {
     title: "我的運動夥伴",
-    body: "預先設定常一起參加活動的夥伴，報名時可一鍵帶入。<p style=\"margin:.4rem 0 .15rem;font-weight:600\">使用方式</p>• 點擊「新增運動夥伴」輸入名稱即可建立<br>• 報名活動時勾選夥伴，系統自動一起報名<br>• 夥伴佔用活動名額，取消報名時一併取消<p style=\"margin:.4rem 0 0;font-size:.78rem;color:var(--text-muted)\">適合家人、固定球友等經常同行的夥伴。</p>",
+    body: "預先設定常一起參加活動的夥伴，報名時可一鍵帶入。<p style=\"margin:.4rem 0 .15rem;font-weight:600\">使用方式</p>• 點擊「新增同行者」輸入名稱即可建立<br>• 報名活動時勾選同行者，系統自動一起報名<br>• 同行者佔用活動名額，取消報名時一併取消<p style=\"margin:.4rem 0 0;font-size:.78rem;color:var(--text-muted)\">適合家人、固定球友等經常同行的夥伴。</p>",
   },
   records: {
     title: "報名紀錄",

@@ -13,14 +13,6 @@ const h = vi.hoisted(() => ({
   loadSignupProfile: vi.fn(),
 }));
 
-const expGrant = vi.hoisted(() => ({ enabled: true }));
-vi.mock('@/core/exp-display', () => ({
-  SHOW_EXP: false,
-  get EXP_GRANT_ENABLED() {
-    return expGrant.enabled;
-  },
-}));
-
 vi.mock('firebase/firestore', () => ({
   doc: h.doc,
   updateDoc: h.updateDoc,
@@ -42,7 +34,6 @@ import {
 } from './line-notify-bind';
 
 beforeEach(() => {
-  expGrant.enabled = true;
   h.updateDoc.mockReset().mockResolvedValue(undefined);
   h.getDoc
     .mockReset()
@@ -214,24 +205,6 @@ describe('bindLineNotify（照 A bindLineNotify + _completeLineBinding + _reconc
         operator: '系統',
       });
       vi.advanceTimersByTime(1000);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('EXP_GRANT_ENABLED=false 時仍完成綁定與提示，但不讀 autoExpRules、不呼叫 adjustExp、不寫經驗值日誌', async () => {
-    expGrant.enabled = false;
-    vi.useFakeTimers();
-    try {
-      await bindLineNotify('U1', 'Alice');
-      expect(h.updateDoc).toHaveBeenCalledTimes(1);
-      expect(h.getDoc).not.toHaveBeenCalled();
-      expect(h.callFn).not.toHaveBeenCalled();
-      expect(h.writeOpLog).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(600);
-      expect(h.toastShow).toHaveBeenCalledWith({
-        message: '已啟用 LINE 通知，請確認已加入官方帳號好友',
-      });
     } finally {
       vi.useRealTimers();
     }

@@ -217,7 +217,7 @@ export function CompanionSelectModal({
                   />
                   <span class="companion-toggle-main">
                     <span class="companion-toggle-name">
-                      {item.name || '夥伴'}
+                      {item.name || '同行者'}
                       {item.gender ? (
                         <span class="companion-toggle-gender">{item.gender}</span>
                       ) : null}

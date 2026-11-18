@@ -840,7 +840,7 @@ export function ScanSession({ entry, context, mode }: SessionProps) {
               id="scan-manual-uid"
               placeholder={t('manualPlaceholder')}
               autoComplete="off"
-              style="flex:1;padding:.35rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text-primary)"
+              style="flex:1;padding:.35rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.85rem;background:var(--bg);color:var(--text-primary)"
               value={uid}
               onInput={(event) => setUid(event.currentTarget.value)}
               onKeyDown={(event) => {

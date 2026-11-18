@@ -108,15 +108,6 @@ function buttonState(
   };
 }
 
-/** 「報名狀態同步中」（不可按）。詳情頁以列表快取先畫、伺服器資料未到齊時，訪客與登入者都用這一顆。 */
-export function syncIssueButtonState(): SignupButtonState {
-  return buttonState('syncIssue', '報名狀態同步中', {
-    disabled: true,
-    bg: '#64748b',
-    color: '#fff',
-  });
-}
-
 /**
  * 照 A `showEventDetail` 第 1324～1386 行分支順序，逐字回傳按鈕狀態。
  * 訪客分支照 A `_buildGuestEventSignupButton`；早鳥照 A `_buildEventEarlyBirdSignupHtml`。
@@ -205,7 +196,13 @@ export function getSignupButtonState(input: SignupButtonInput): SignupButtonStat
   }
 
   // 3. 報名狀態同步中：照派工單 M-084／A `_buildEventSignupSyncIssueButton` 的 disabled 版。
-  if (historyFailed) return syncIssueButtonState();
+  if (historyFailed) {
+    return buttonState('syncIssue', '報名狀態同步中', {
+      disabled: true,
+      bg: '#64748b',
+      color: '#fff',
+    });
+  }
 
   // 4. 已結束／已取消／開始時間已過。
   if (isEnded) {

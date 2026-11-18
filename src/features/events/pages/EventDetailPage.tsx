@@ -23,8 +23,6 @@ import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staf
 import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
 import type { RegLogRegistration } from '../data/event-reg-log';
 import { readAuthHint } from '@/data/auth-hint';
-import { getLastKnownAuthUid } from '@/data/auth';
-import { readEventsSnapshot } from '../data/events-snapshot-cache';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
@@ -32,7 +30,7 @@ import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
-import { getCachedUserGender, useUserRoles } from '@/data/user-roles';
+import { useUserRoles } from '@/data/user-roles';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
 import { resolveOperator } from '../data/event-lifecycle';
@@ -48,7 +46,7 @@ import { isEventVisibleToUser } from '../data/visibility';
 import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
 import { registerSelection } from '../data/signup-selection';
 import { loadSignupCompanions, type SignupCompanion } from '../data/companions';
-import { getSignupButtonState, syncIssueButtonState } from '../data/signup-state';
+import { getSignupButtonState } from '../data/signup-state';
 import { loadSignupProfile, type SignupProfile } from '../data/signup-profile';
 import {
   canDetailCompanionSignup,
@@ -272,29 +270,6 @@ function earlyAuthWithheld(event: { blockedUids?: unknown }, uid: string | null)
   return Array.isArray(blocked) && blocked.length > 0;
 }
 
-/** 列表快取先畫後，伺服器活動文件與本場報名最多等這麼久；逾時走 historyFailed 的重試，按鈕不放開。 */
-export const PROVISIONAL_DETAIL_TIMEOUT_MS = 8_000;
-
-/**
- * 回訪時先用列表快取畫詳情（只顯示，顧問 §3.230）：同帳號且在有效期內的列表快取有這場、有 docId、
- * 通過可見性（無報名證據）且不涉黑名單才用。報名、取消、管理一律等伺服器資料到齊；不拿快取決定任何寫入。
- * 取代：原本每次進詳情都停在載入外殼，等 getDoc 經伺服器確認（Firestore 閒置 60 秒關連線後要重新握手）。
- */
-function readCachedDetail(
-  publicId: string,
-  viewer: ReturnType<typeof useViewer>,
-): LoadedEventDetail | null {
-  const uid = viewer.uid ?? null;
-  if (getLastKnownAuthUid() !== uid) return null;
-  const cached = readEventsSnapshot(uid)?.find((event) => event.id === publicId);
-  const docId = cached?._docId;
-  if (!cached || typeof docId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(docId)) return null;
-  if (earlyAuthWithheld(cached, uid)) return null;
-  if (uid && Array.isArray(cached.blockedUids) && cached.blockedUids.includes(uid)) return null;
-  if (!isEventVisibleToUser(cached, viewer, [])) return null;
-  return { event: cached, eventDocId: docId };
-}
-
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
   const location = useLocation();
   const routeId = id ?? location.path.split('/')[2] ?? '';
@@ -340,10 +315,6 @@ function EventDetailSession({
   const goBack = useGoBack('/activities');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
-  // 畫面上的快照來自列表快取、伺服器資料還沒到齊（只顯示）。provisionalUid 記先畫時的帳號，換帳號這一幀就改畫載入外殼。
-  // 注意：先畫期間 phase 已是 'ready'。新增只看 phase／snapshot 的 effect 或 handler 時，必須同時看 visible（先畫時為 false）或 rosterAutoHold。
-  const [provisional, setProvisional] = useState(false);
-  const provisionalUid = useRef<string | null>(null);
   const [rosterState, setRosterState] = useState<RosterState>({ expanded: false, phase: 'idle' });
   const { phase: rosterPhase, expanded: rosterExpanded } = rosterState;
   function setRosterPhase(update: RosterPhase | ((phase: RosterPhase) => RosterPhase)): void {
@@ -506,8 +477,6 @@ function EventDetailSession({
       paintedUid.current = undefined;
       keepForUid.current = null;
       setPhase('loading');
-      setProvisional(false);
-      provisionalUid.current = null;
       setRosterState({ expanded: false, phase: 'idle' });
       setHistoryFailed(false);
       setSnapshot(null);
@@ -540,19 +509,6 @@ function EventDetailSession({
       rosterAutoHold.current = false;
     }
 
-    // 列表快取先畫的那份；伺服器結果出來（成功、找不到、不可見、失敗）一律收掉，不留快取內容。
-    let cached: LoadedEventDetail | null = null;
-    let provisionalTimer: ReturnType<typeof setTimeout> | null = null;
-    function endProvisional(): void {
-      if (provisionalTimer !== null) clearTimeout(provisionalTimer);
-      provisionalTimer = null;
-      if (!cached) return;
-      cached = null;
-      provisionalUid.current = null;
-      setProvisional(false);
-      setSnapshot(null);
-    }
-
     async function load(): Promise<void> {
       if (keep && painted && uid) {
         await loadKept(painted, uid);
@@ -565,34 +521,6 @@ function EventDetailSession({
           setPhase('missing');
         }
         return;
-      }
-
-      // 本場報名與活動文件並行：只在先畫時已知 docId 才提早讀；docId 相同就共用這一次。
-      // 例外（Opus 終審 P3-1，接受）：伺服器回活動已不存在，或 docId 與快取不同時，會比原本多讀一次本場報名。
-      let historyTask: Promise<RegistrationDoc[]> | null = null;
-      let historyDocId = '';
-      if (reload === 0) cached = readCachedDetail(publicId, currentViewer.current);
-      if (cached) {
-        provisionalUid.current = uid;
-        setSnapshot({
-          event: { ...cached.event, id: cached.event.id ?? publicId },
-          eventDocId: cached.eventDocId,
-          viewerRegistrations: [],
-          registrations: [],
-          attendanceRecords: [],
-        });
-        setProvisional(true);
-        setPhase('ready');
-        if (uid) {
-          historyDocId = cached.eventDocId;
-          historyTask = loadViewerRegistrations(uid, historyDocId);
-          historyTask.catch(() => undefined);
-        }
-        // 逾時只標成同步失敗（出現既有的重試），快照仍是先畫的那份、按鈕不放開；晚到的結果照常收尾。
-        provisionalTimer = setTimeout(() => {
-          provisionalTimer = null;
-          if (current()) setHistoryFailed(true);
-        }, PROVISIONAL_DETAIL_TIMEOUT_MS);
       }
 
       let detail: LoadedEventDetail | null = null;
@@ -615,15 +543,11 @@ function EventDetailSession({
           );
         }
       } catch {
-        if (current()) {
-          endProvisional();
-          setPhase('error');
-        }
+        if (current()) setPhase('error');
         return;
       }
       if (!current()) return;
       if (!detail) {
-        endProvisional();
         paintedUid.current = uid;
         setPhase('missing');
         return;
@@ -633,9 +557,7 @@ function EventDetailSession({
       let failedHistory = false;
       if (uid) {
         try {
-          history = await (historyTask && historyDocId === detail.eventDocId
-            ? historyTask
-            : loadViewerRegistrations(uid, detail.eventDocId));
+          history = await loadViewerRegistrations(uid, detail.eventDocId);
         } catch {
           failedHistory = true;
         }
@@ -643,12 +565,10 @@ function EventDetailSession({
       }
 
       if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
-        endProvisional();
         paintedUid.current = uid;
         setPhase('missing');
         return;
       }
-      endProvisional();
 
       const next: Snapshot = {
         event: { ...detail.event, id: detail.event.id ?? publicId },
@@ -677,12 +597,10 @@ function EventDetailSession({
         setHistoryFailed(true);
         return;
       }
-      endProvisional();
       setPhase('error');
     });
     return () => {
       disposed = true;
-      if (provisionalTimer !== null) clearTimeout(provisionalTimer);
     };
   }, [publicId, viewer.uid, reload, detailCache]);
 
@@ -910,12 +828,8 @@ function EventDetailSession({
   // 只有 uid 在黑名單時，結論才需要等本場報名；這段期間畫載入外殼，不讓任何以 visible 為條件的 effect 觸發。
   const blockedPending = regsPending && uidNow !== null && snapshot !== null
     && Array.isArray(snapshot.event.blockedUids) && snapshot.event.blockedUids.includes(uidNow);
-  // 列表快取先畫時 visible 一律為 false：所有以 visible 為條件的讀寫與 effect 都等伺服器資料到齊。
-  const visible = snapshot !== null && !blockedPending && !provisional
+  const visible = snapshot !== null && !blockedPending
     && isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
-  // 先畫的那份只給同一個帳號、且當下仍通過可見性時顯示；否則改畫載入外殼（不閃找不到）。
-  const provisionalReady = provisional && snapshot !== null && provisionalUid.current === uidNow
-    && isEventVisibleToUser(snapshot.event, viewer, []);
   const event = snapshot?.event as LegacyDetailEvent | undefined;
   const active = sortRegistrations(snapshot?.registrations ?? []);
 
@@ -1344,8 +1258,7 @@ function EventDetailSession({
   const noShowEnabled = Boolean(visible && rosterExpanded && rosterPhase === 'ready'
     && canViewNoShow && NO_SHOW_FEATURE_ENABLED && viewer.uid && snapshot?.eventDocId);
   // 展開跨過 TTL 時，仍由既有完整 UID 批次更新角色及統計，不另開 users 查詢。
-  // 先畫期間不查角色（Opus 終審 P3-2）：名單來自快取，等伺服器資料到齊再讀。
-  const roles = useUserRoles(viewer.uid && !provisional ? roleUids : [], noShowEnabled);
+  const roles = useUserRoles(viewer.uid ? roleUids : [], noShowEnabled);
   const noShowData = useRosterNoShow({
     viewerUid: viewer.uid,
     eventDocId: snapshot?.eventDocId,
@@ -1891,7 +1804,7 @@ function EventDetailSession({
     const available = await loadSignupCompanions(uid);
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (!available.length) {
-      toast.show({ message: '請先到個人資訊頁新增運動夥伴', highlight: '新增運動夥伴' });
+      toast.show({ message: '請先到個人資訊新增同行者' });
       return;
     }
     companionsRef.current = available;
@@ -1908,7 +1821,7 @@ function EventDetailSession({
     if (!current || !uid || !visible || refreshFailed || !alive.current) return;
     const { addCompanionIds, cancelRegistrationIds } = selection;
     if (!addCompanionIds.length && !cancelRegistrationIds.length) {
-      toast.show({ message: '沒有需要調整的夥伴' });
+      toast.show({ message: '沒有需要調整的同行者' });
       return;
     }
     const chosen = companionsRef.current.filter(item => addCompanionIds.includes(item.id));
@@ -2031,7 +1944,7 @@ function EventDetailSession({
         EVENT_ENDED: '活動已開始，無法調整',
         EVENT_CANCELLED: '活動已取消',
         REG_NOT_OPEN: '報名尚未開放',
-        GENDER_RESTRICTED: '夥伴不符合性別限制',
+        GENDER_RESTRICTED: '同行者不符合性別限制',
         TEAM_RESTRICTED: '不符合球隊限定',
         PROFILE_INCOMPLETE: '請先補齊個人資料',
         ALREADY_CANCELLED: '報名狀態已更新',
@@ -2077,7 +1990,7 @@ function EventDetailSession({
     />
   );
 
-  if (phase === 'loading' || accountReset || blockedPending || (provisional && !provisionalReady)) {
+  if (phase === 'loading' || accountReset || blockedPending) {
     return (
       <EventDetailLoadingShell publicId={publicId} viewer={viewer} goBack={goBack}>
         {noticeToast}
@@ -2107,7 +2020,7 @@ function EventDetailSession({
     );
   }
 
-  if (phase === 'missing' || !snapshot || !event || !(visible || provisionalReady)) {
+  if (phase === 'missing' || !snapshot || !event || !visible) {
     return <EventDetailMissing goBack={goBack} />;
   }
 
@@ -2127,7 +2040,7 @@ function EventDetailSession({
     : confirmedCount;
   const summaryWaitlistCount = Math.max(0, count(event.waitlist));
 
-  const state = provisional ? syncIssueButtonState() : getSignupButtonState({
+  const state = getSignupButtonState({
     event: viewer.uid ? event : { ...event, current: confirmedCount },
     viewer,
     registrations: actionRegistrations,
@@ -2222,7 +2135,7 @@ function EventDetailSession({
                 </>
               )}
             </h2>
-            {!provisional && <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />}
+            <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />
           </div>
         </div>
 
@@ -2239,7 +2152,7 @@ function EventDetailSession({
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}
-            teamSplitSlot={provisional ? null : <>
+            teamSplitSlot={<>
               <TeamInfoCards event={event} registrations={teamDisplayRegistrations} />
               <TeamBatchButtons
                 event={event}
@@ -2260,8 +2173,7 @@ function EventDetailSession({
           />
 
           <div class="detail-action-zone">
-            {/* 列表快取先畫時只留主按鈕（同步中）與重試；夥伴、分享、掃碼、選隊、名單、管理等伺服器資料到齊才出現。 */}
-            {!provisional && <div class="detail-action-toolbar">
+            <div class="detail-action-toolbar">
               <div
                 class={`signup-glow-wrap${companionBusy ? ' loading' : ''}`}
                 style="--glow-c:#2563eb;--glow-c-light:#60a5fa"
@@ -2298,14 +2210,14 @@ function EventDetailSession({
                   location.route(`/checkin?eventId=${encodeURIComponent(eventId)}`);
                 }}
               />
-            </div>}
+            </div>
 
-            {!provisional && <TeamSelectUI
+            <TeamSelectUI
               event={event}
               registrations={teamDisplayRegistrations}
               selectedKey={selectedTeamKey}
               onSelect={setSelectedTeamKey}
-            />}
+            />
 
             <div class="detail-action-primary" id="detail-action-primary">
               <EventDetailPrimaryButton
@@ -2314,7 +2226,7 @@ function EventDetailSession({
                 busy={busy}
                 running={primaryBusy}
                 settle={settle}
-                teamReservation={reservation.action && !provisional ? {
+                teamReservation={reservation.action ? {
                   ...reservation.action,
                   busy: reservation.busy,
                   doneSerial: teamDoneSerial,
@@ -2322,8 +2234,6 @@ function EventDetailSession({
                   onClick: () => reservation.open(reservation.action?.preferredTeamId),
                 } : null}
                 onClick={() => {
-                  // 列表快取先畫期間一律不動作（顧問 §3.231 P3；平常已由 disabled 擋，這裡多一層保險）。
-                  if (provisional) return;
                   if (state.action === 'cancel') {
                     const current = snapshot;
                     if (current) {
@@ -2374,7 +2284,7 @@ function EventDetailSession({
             )}
           </div>
 
-          {provisional ? null : !viewer.uid ? (
+          {!viewer.uid ? (
             <GuestRosterSections
               event={event}
               eventId={eventId}
@@ -2403,16 +2313,6 @@ function EventDetailSession({
                       disabled={busy || reservation.busy || refreshFailed}
                       onOpen={handleOpenDetailAttendanceRecords}
                       onPrefetch={prefetchDetailAttendanceRecords}
-                      confirmedPeople={guestEventPeople(event, 'participants')}
-                      waitlistPeople={guestEventPeople(event, 'waitlistNames')}
-                      roles={roles}
-                      genderOf={(uid) => {
-                        try {
-                          return getCachedUserGender(uid);
-                        } catch {
-                          return undefined;
-                        }
-                      }}
                     />
                   ) : rosterPhase === 'loading' ? (
                     <DetailAttendanceLoading
@@ -2528,7 +2428,7 @@ function EventDetailSession({
                 event={event}
                 eventDocId={snapshot.eventDocId}
                 viewer={viewer}
-                canLoad={phase === 'ready' && !provisional}
+                canLoad={phase === 'ready'}
               />
             </Suspense>
           </div>

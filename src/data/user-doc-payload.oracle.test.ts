@@ -105,28 +105,11 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
    */
   const DELIBERATE_OMISSIONS: Readonly<Record<string, readonly string[]>> = {
     'existing-no-lastLogin-empty-name': ['displayName'],
-    // 會員資料讀取強化：新建與 legacy 遷移的根文件刻意不寫 email／phone（改寫私密子文件）。
-    'new-basic': ['email', 'phone'],
-    'new-empty-name': ['email', 'phone'],
-    'new-blank-name-no-picture': ['email', 'phone'],
-    'new-null-name': ['email', 'phone'],
-    'legacy-no-createdAt': ['email'],
-    'legacy-with-createdAt': ['email'],
-  };
-
-  /**
-   * 與 A 的刻意差異（健檢 C1-03）：legacy 遷移時舊文件沒有俱樂部欄位，B 補 teamId: null、teamIds: []，
-   * 符合現行 Rules 建立條件（A 不補，同一路徑會被 Rules 拒絕）。差異必須剛好是 A 沒有、B 多出這些鍵與值。
-   */
-  const DELIBERATE_ADDITIONS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
-    'legacy-no-createdAt': { teamId: null, teamIds: [] },
-    'legacy-with-createdAt': { teamId: null, teamIds: [] },
   };
 
   it('刻意差異清單只列 fixture 裡真的存在的案例', () => {
     const ids = new Set(fixture.cases.map((c) => c.id));
     expect(Object.keys(DELIBERATE_OMISSIONS).filter((id) => !ids.has(id))).toEqual([]);
-    expect(Object.keys(DELIBERATE_ADDITIONS).filter((id) => !ids.has(id))).toEqual([]);
   });
 
   it.each(fixture.cases.map((c) => [c.id, c] as const))('%s：B 寫入與 A 逐欄相同（刻意差異明列）', (_id, c) => {
@@ -149,10 +132,6 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
       expect(Object.prototype.hasOwnProperty.call(a.payload, key)).toBe(true);
       delete expected[key];
     }
-    for (const [key, value] of Object.entries(DELIBERATE_ADDITIONS[c.id] ?? {})) {
-      expect(Object.prototype.hasOwnProperty.call(a.payload, key)).toBe(false);
-      expected[key] = value;
-    }
     expect(encode(write!.payload)).toEqual(expected);
     // 鍵的集合也要一樣（toEqual 不在乎 undefined 鍵，另外比一次）。
     expect(Object.keys(write!.payload).sort()).toEqual(Object.keys(expected).sort());
@@ -161,11 +140,8 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
   it('新建：A 的欄位正好是 USER_DOC_CREATE_FIELDS，且通過 Rules 建立條件', () => {
     for (const c of fixture.cases.filter((x) => x.id.startsWith('new-'))) {
       const payload = c.expected.writes[0]!.payload;
-      const omitted = new Set(DELIBERATE_OMISSIONS[c.id] ?? []);
-      const expectedPayload = { ...payload };
-      for (const key of omitted) delete expectedPayload[key];
-      expect(Object.keys(expectedPayload).sort()).toEqual([...USER_DOC_CREATE_FIELDS].sort());
-      expect(() => assertUserRootCreate(expectedPayload, c.input.authUid, TS, USER_DOC_CREATE_FIELDS)).not.toThrow();
+      expect(Object.keys(payload).sort()).toEqual([...USER_DOC_CREATE_FIELDS].sort());
+      expect(() => assertUserRootCreate(payload, c.input.authUid, TS, USER_DOC_CREATE_FIELDS)).not.toThrow();
     }
   });
 
@@ -184,23 +160,14 @@ describe('會員文件 payload × A createOrUpdateUser（oracle）', () => {
     expect(legacy.createdAt).toBe(TS);
   });
 
-  it('legacy：沒有 createdAt 的舊文件 B 可遷移（A 的 payload 缺 teamId 會被現行 Rules 擋）；A 照抄舊 createdAt／非 user 角色的 payload 會被 Rules 擋，B 不送', () => {
+  it('legacy：沒有 createdAt 的舊文件可遷移；A 照抄舊 createdAt／非 user 角色的 payload 會被 Rules 擋，B 不送', () => {
     const ok = fixture.cases.find((c) => c.id === 'legacy-no-createdAt')!;
     expect(() => assertUserRootCreate(
-      bWrite(ok)!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
+      ok.expected.writes[0]!.payload, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
     )).not.toThrow();
-    // 健檢 C1-03：A 原樣展開舊文件、不補 teamId，現行 Rules（teamId 必須存在且為 null）拒絕。
-    const aPayloadWithoutPrivate = { ...ok.expected.writes[0]!.payload };
-    delete aPayloadWithoutPrivate.email;
-    delete aPayloadWithoutPrivate.phone;
-    expect(() => assertUserRootCreate(
-      aPayloadWithoutPrivate, ok.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS,
-    )).toThrow(/create-values-not-allowed:teamId$/);
 
     const blocked = fixture.cases.find((c) => c.id === 'legacy-with-createdAt')!;
     const payload = decode(blocked.expected.writes[0]!.payload) as Record<string, unknown>;
-    delete payload.email;
-    delete payload.phone;
     expect(() => assertUserRootCreate(payload, blocked.input.authUid, TS, USER_ROOT_CREATE_RULES_FIELDS))
       .toThrow(/create-values-not-allowed:role,exp,createdAt/);
   });

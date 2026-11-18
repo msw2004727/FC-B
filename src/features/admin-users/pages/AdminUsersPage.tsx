@@ -6,7 +6,6 @@ import { useLocation } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import type { AdminManageUserResponse } from '@/data/contract/callables';
 import { getLastKnownAuthUid } from '@/data/auth';
-import type { ProfilePrivateData } from '@/data/profile-private';
 import { useViewer } from '@/features/profile/data/viewer';
 import { isAdminPlusRole } from '@/features/profile/components/legacy/profile-legacy-helpers';
 import { useT } from '@/i18n/i18n';
@@ -26,7 +25,6 @@ import {
   PERM_USERS_RESTRICT,
   applyEditToUser,
   applyFilters,
-  applyPrivateProfiles,
   buildEditUpdates,
   buildProfileEditOpLog,
   buildRestrictionOpLog,
@@ -35,7 +33,6 @@ import {
   canToggleRestrictionOf,
   hasActiveFilters,
   normalizeFilters,
-  patchPrivateProfileMap,
   roleLabel,
   showsEditButton,
   sliceVisible,
@@ -48,7 +45,6 @@ import {
 import {
   classifyAdminUserError,
   fetchCustomRoles,
-  loadAdminPrivateProfiles,
   loadAdminUsers,
   loadMoreAdminUsers,
   manageAdminUser,
@@ -119,8 +115,6 @@ export default function AdminUsersPage({
   loadInfoRef.current = loadInfo;
   const usersRef = useRef<AdminUser[]>([]);
   usersRef.current = users;
-  // 私密 profilePrivate 只讀一次；後續（手動重新整理、reloadIfDocMismatch、載入更多）沿用這份記憶體。
-  const privateMapRef = useRef<Map<string, ProfilePrivateData> | null>(null);
   // 確認框（await）之後要用「現在」的操作者權限再驗一次，不能用點擊當下的舊閉包。
   const actorRef = useRef<AdminUserActor>(actor);
   actorRef.current = actor;
@@ -133,15 +127,10 @@ export default function AdminUsersPage({
     if (manual) setRefreshing(true);
     else setStatus('loading');
     try {
-      const [result, roles, privateMap] = await Promise.all([
-        loadAdminUsers(),
-        fetchCustomRoles(),
-        privateMapRef.current ? Promise.resolve(privateMapRef.current) : loadAdminPrivateProfiles(),
-      ]);
+      const [result, roles] = await Promise.all([loadAdminUsers(), fetchCustomRoles()]);
       if (seq !== loadSeqRef.current) return;
-      privateMapRef.current = privateMap;
       setLoadInfo(result);
-      setUsers(applyPrivateProfiles(result.users, privateMap));
+      setUsers(result.users);
       setCustomRoles(roles);
       setStatus('ready');
       if (manual) toast.show({ message: t('admin-users.toast.refreshed'), tone: 'success' });
@@ -288,9 +277,6 @@ export default function AdminUsersPage({
       return;
     }
 
-    if (privateMapRef.current) {
-      privateMapRef.current = patchPrivateProfileMap(privateMapRef.current, target._docId, built.profileUpdates);
-    }
     setUsers((prev) => prev.map((user) =>
       user._docId === target._docId ? applyEditToUser(user, built.profileUpdates, built.role) : user));
     setEditTarget(null);
@@ -438,9 +424,7 @@ export default function AdminUsersPage({
       // 只補「本機還沒有」的新用戶，不覆蓋已套用的本機變更（例如剛限制的人）。
       setUsers((prev) => {
         const known = new Set(prev.map((user) => user._docId));
-        const fresh = next.users.filter((user) => !known.has(user._docId));
-        const withPriv = privateMapRef.current ? applyPrivateProfiles(fresh, privateMapRef.current) : fresh;
-        return [...prev, ...withPriv];
+        return [...prev, ...next.users.filter((user) => !known.has(user._docId))];
       });
     } catch (err: unknown) {
       // eslint-disable-next-line no-console

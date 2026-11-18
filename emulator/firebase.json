@@ -20,5 +20,6 @@
     "ui": {
       "enabled": false
     }
-  }
+  },
+  "functions": {}
 }

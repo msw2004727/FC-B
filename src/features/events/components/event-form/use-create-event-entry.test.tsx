@@ -65,7 +65,6 @@ function Harness({ value = viewer }: { value?: ViewerView }) {
         我要開團
       </button>
       <output>{entry.formOpen ? '表單開啟' : '表單關閉'}</output>
-      <output data-testid="entry-intensity">{entry.intensity}</output>
       {entry.overlays}
     </>
   );
@@ -105,7 +104,6 @@ function PresetHarness({ value = viewer }: { value?: ViewerView }) {
       <button onClick={entry.closeForm}>關閉表單</button>
       <output data-testid="preset-form-open">{String(entry.formOpen)}</output>
       <output data-testid="entry-preset">{JSON.stringify(entry.preset)}</output>
-      <output data-testid="entry-intensity">{entry.intensity}</output>
       {entry.overlays}
     </>
   );
@@ -119,13 +117,8 @@ describe('useCreateEventEntry preset', () => {
     expect(screen.getByTestId('preset-form-open').textContent).toBe('false');
     expect(screen.getByTestId('entry-preset').textContent).toBe('null');
     fireEvent.click(screen.getByText('自訂活動'));
-    expect(screen.getByText('選擇活動分類')).toBeTruthy();
-    expect(screen.getByTestId('preset-form-open').textContent).toBe('false');
-    expect(screen.getByTestId('entry-preset').textContent).toBe('null');
-    fireEvent.click(screen.getByText('一般'));
     expect(screen.getByTestId('preset-form-open').textContent).toBe('true');
     expect(screen.getByTestId('entry-preset').textContent).toBe('null');
-    expect(screen.getByTestId('entry-intensity').textContent).toBe('');
   });
 
   it('俱樂部入口直接開表單並保存 preset，不開類型選擇', async () => {
@@ -177,11 +170,8 @@ describe('useCreateEventEntry preset', () => {
     await screen.findByText('選擇活動類型');
     expect(screen.getByTestId('entry-preset').textContent).toBe('null');
     fireEvent.click(screen.getByText('自訂活動'));
-    expect(screen.getByText('選擇活動分類')).toBeTruthy();
-    fireEvent.click(screen.getByText('一般'));
     expect(screen.getByTestId('preset-form-open').textContent).toBe('true');
     expect(screen.getByTestId('entry-preset').textContent).toBe('null');
-    expect(screen.getByTestId('entry-intensity').textContent).toBe('');
   });
 
   it('俱樂部入口連點只處理第一個 preset，並與一般入口共用 clickBusy', async () => {
@@ -280,26 +270,14 @@ describe('useCreateEventEntry', () => {
     expect(screen.queryByText('選擇活動類型')).toBeNull();
   });
 
-  it.each([
-    ['一般', ''],
-    ['新手友善', 'beginner'],
-    ['高強度', 'high-intensity'],
-  ] as const)('自訂活動 → 分類彈窗 → 表單，選「%s」時 intensity 為 %s', async (label, intensity) => {
+  it('完整資料先開 sheet，選自訂活動才開表單', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByText('我要開團'));
     await screen.findByText('選擇活動類型');
     expect(screen.getByText('表單關閉')).toBeTruthy();
     fireEvent.click(screen.getByText('自訂活動'));
-    expect(screen.queryByText('選擇活動類型')).toBeNull();
-    const dialog = screen.getByRole('dialog');
-    expect(dialog.id).toBe('create-event-intensity-sheet');
-    expect([...dialog.querySelectorAll('.cets-option b')].map((el) => el.textContent))
-      .toEqual(['一般', '新手友善', '高強度']);
-    expect(screen.getByText('表單關閉')).toBeTruthy();
-    fireEvent.click(screen.getByText(label));
-    expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('表單開啟')).toBeTruthy();
-    expect(screen.getByTestId('entry-intensity').textContent).toBe(intensity);
+    expect(screen.queryByText('選擇活動類型')).toBeNull();
   });
 
   it('讀取前不鎖；按下等待同一請求，再依結果守門', async () => {

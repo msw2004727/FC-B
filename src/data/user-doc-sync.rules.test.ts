@@ -12,13 +12,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 
 import {
-  assertUserRootCreate,
   buildLastLoginUpdate,
   buildLegacyMigration,
   buildLoginUpdate,
   buildNewUserDoc,
-  legacyHasTeam,
-  USER_ROOT_CREATE_RULES_FIELDS,
   type LineLoginProfile,
 } from './user-doc-payload';
 
@@ -78,46 +75,20 @@ describe.skipIf(!enabled)('會員文件寫入 × 未修改的 Firestore Rules', 
     await testing.assertFails(sdk.setDoc(sdk.doc(db, 'users', UID), buildNewUserDoc(UID, profile, sdk.serverTimestamp())));
   });
 
-  // 健檢 C1-03：正本 create 要求 teamId 存在且為 null、teamIds 缺欄或 []。
-  // 沒有俱樂部的舊文件經 buildLegacyMigration 補 teamId: null、teamIds: [] 後允許；帶俱樂部的由前端守門擋下、不送寫入。
-  it('legacy 遷移：無 createdAt 的一般舊文件（含缺 teamId）允許（C1-03）；帶舊 createdAt 或非 user 角色拒絕', async () => {
+  it('legacy 遷移：無 createdAt 的一般舊文件允許；帶舊 createdAt 或非 user 角色拒絕（與 payload 守門一致）', async () => {
     const db = ownDb();
     const ts = sdk.serverTimestamp();
     await testing.assertSucceeds(sdk.setDoc(
       sdk.doc(db, 'users', UID),
-      buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男', teamId: null, teamIds: [] }, UID, profile, ts),
+      buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男' }, UID, profile, ts),
       { merge: true },
     ));
-    await env.clearFirestore();
-    const noTeamField = buildLegacyMigration({ lineUserId: UID, displayName: '舊', gender: '男' }, UID, profile, ts);
-    expect(noTeamField).toMatchObject({ teamId: null, teamIds: [] });
-    await testing.assertSucceeds(sdk.setDoc(sdk.doc(db, 'users', UID), noTeamField, { merge: true }));
-    await env.clearFirestore();
-    // 對照：A 原樣展開、不補 teamId 的 payload 確實被現行 Rules 拒絕（前端守門要求 teamId 必填的依據）。
-    const { teamId: _omitTeamId, teamIds: _omitTeamIds, ...withoutTeamField } = noTeamField;
-    await testing.assertFails(sdk.setDoc(sdk.doc(db, 'users', UID), withoutTeamField, { merge: true }));
     await env.clearFirestore();
     await testing.assertFails(sdk.setDoc(
       sdk.doc(db, 'users', UID),
       buildLegacyMigration({ lineUserId: UID, role: 'coach', createdAt: sdk.Timestamp.fromMillis(1) }, UID, profile, ts),
       { merge: true },
     ));
-  });
-
-  it('legacy 遷移帶俱樂部（teamId 字串／teamIds 非空）：前端守門擋下不送；守門與 Rules 一致（照送也會被拒）（C1-03）', async () => {
-    const db = ownDb();
-    const ts = sdk.serverTimestamp();
-    const cases = [
-      { lineUserId: UID, displayName: '舊', teamId: 'club-1', teamName: '甲隊' },
-      { lineUserId: UID, displayName: '舊', teamId: null, teamIds: ['club-1'], teamNames: ['甲隊'] },
-    ];
-    for (const legacy of cases) {
-      expect(legacyHasTeam(legacy)).toBe(true);
-      const payload = buildLegacyMigration(legacy, UID, profile, ts);
-      expect(() => assertUserRootCreate(payload, UID, ts, USER_ROOT_CREATE_RULES_FIELDS)).toThrow(/create-types-not-allowed/);
-      await testing.assertFails(sdk.setDoc(sdk.doc(db, 'users', UID), payload, { merge: true }));
-      await env.clearFirestore();
-    }
   });
 
   it('已存在：登入更新（名稱／頭像／lastLogin）允許；只補 lastLogin 允許；夾帶 role 拒絕', async () => {

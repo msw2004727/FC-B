@@ -26,12 +26,10 @@
   "feature.reserved": "この機能は近日公開予定です",
   "feature.external": "外部システム連携準備中",
   "internalTest.badge": "ToosterX 先行体験版 {version}",
-  "swUpdate": { "title": "新バージョン", "forcedTitle": "更新してください", "now": "今すぐ更新", "later": "あとで", "busy": "操作が完了していません。あとで更新してください", "loadFailed": "読み込みに失敗", "reload": "再読み込み" },
+  "swUpdate": { "title": "新バージョン", "forcedTitle": "更新してください", "now": "今すぐ更新", "later": "あとで", "busy": "操作が完了していません。あとで更新してください" },
   "lineLoginHint": {
-    "openInLine": "LINE アプリでログイン",
-    "openInLineNote": "今後は LINE 内で利用します",
-    "browserLogin": "このブラウザでログイン",
-    "browserLoginNote": "LINE 確認後、このブラウザに戻ります"
+    "openInLine": "LINE アプリで開く",
+    "newTabNote": "ログインが完了すると新しいタブで開きます。元のタブは閉じて構いません。"
   },
   "ui": {
     "shell": {
@@ -44,8 +42,7 @@
       "font_medium": "中",
       "font_large": "大",
       "fontAction": "文字サイズ：{current}。{next}に切り替える",
-      "loginError": "LINEログインを完了できませんでした。もう一度お試しください。",
-      "loginExpired": "LINEログインの有効期限が切れました。再読み込みしてからログインしてください"
+      "loginError": "LINEログインを完了できませんでした。もう一度お試しください。"
     },
     "topBar": {
       "label": "上部ナビゲーション",
@@ -63,33 +60,13 @@
       "navigation": "その他の機能",
       "admin": "管理",
       "language": "言語",
-      "more": "その他",
       "loading": "言語を読み込み中",
       "localeError": "現在、言語を変更できません。しばらくしてからもう一度お試しください。",
       "theme": "表示モード",
       "theme_light": "ライト",
       "theme_dark": "ダーク",
       "theme_system": "システム設定",
-      "themeAction": "現在は{current}です。{next}に切り替える",
-      "privacyShort": "プライバシー",
-      "termsShort": "利用規約",
-      "reset": "不具合？リセットして再ログイン",
-      "resetTitle": "リセットして再ログイン？",
-      "resetBody": "ログアウトし、この端末の一時データを\n消去してから再読み込みします。",
-      "resetConfirm": "リセット",
-      "guestName": "ゲスト",
-      "loginChecking": "ログイン確認中…",
-      "syncing": "同期中…",
-      "role": {
-        "guest": "ゲスト",
-        "pending": "確認中",
-        "user": "一般ユーザー",
-        "coach": "コーチ",
-        "captain": "キャプテン",
-        "venue_owner": "施設オーナー",
-        "admin": "管理者",
-        "super_admin": "最高管理者"
-      }
+      "themeAction": "現在は{current}です。{next}に切り替える"
     },
     "badge": { "empty": "未設定" },
     "chip": { "empty": "未分類", "remove": "「{label}」を削除" },

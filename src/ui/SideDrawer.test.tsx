@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { useRef, useState } from 'preact/hooks';
 import { LocationProvider } from 'preact-iso';
 import { SideDrawer, type SideDrawerProps } from './SideDrawer';
@@ -8,7 +8,6 @@ import { _resetForTest } from '@/core/feature-registry';
 import { _resetOpenExternalForTest, _setLocationAssignForTest } from '@/core/open-external';
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
-import { setLocale } from '@/i18n/i18n';
 import { getToasts, toast } from './Toast';
 import * as authMod from '@/data/auth';
 
@@ -48,12 +47,6 @@ function openDrawer(): HTMLElement {
   button.focus();
   fireEvent.click(button);
   return button;
-}
-
-function openMore(): HTMLElement {
-  const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
-  fireEvent.click(more);
-  return more;
 }
 
 beforeEach(() => {
@@ -148,9 +141,8 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
     fireEvent.click(document.querySelector('[data-action="apply-role"]') as HTMLElement);
     fireEvent.click(screen.getByRole('button', { name: '了解，前往聯繫' }));
     openDrawer();
-    openMore();
-    fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }));
-    fireEvent.click(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }));
+    fireEvent.click(screen.getByRole('link', { name: '隱私權政策' }));
+    fireEvent.click(screen.getByRole('link', { name: '服務條款' }));
     expect(location.pathname).toBe('/events/ce_1');
     const paths = ['/manual.html', '/roles/', '/privacy', '/terms'];
     if (kind === 'browser') {
@@ -163,15 +155,13 @@ describe('SideDrawer 靜態頁（說明書、角色說明、隱私、條款）',
   });
 });
 
-// 測試同步更新（站長 2026-11-16 方案 C）：聲明在「⋯」小卡裡，顯示文字仍用 ui.sideDrawer.privacyShort／termsShort。
 describe('SideDrawer 隱私權政策與服務條款連結', () => {
   it('用根目錄絕對路徑：在 /events/xxx 這種兩層路徑點開不會變成 /events/privacy.html（Opus 終審 P2）', () => {
     history.replaceState(null, '', '/events/ce_1');
     render(<Harness />);
     openDrawer();
-    openMore();
-    expect(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }).getAttribute('href')).toBe('/privacy');
-    expect(screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' }).getAttribute('href')).toBe('/terms');
+    expect(screen.getByRole('link', { name: '隱私權政策' }).getAttribute('href')).toBe('/privacy');
+    expect(screen.getByRole('link', { name: '服務條款' }).getAttribute('href')).toBe('/terms');
   });
 });
 
@@ -274,9 +264,8 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     const guestAvatar = document.getElementById('drawer-avatar');
     expect(guestAvatar?.querySelector('svg.guest-avatar-icon')).not.toBeNull();
     expect(guestAvatar?.textContent).not.toBe('?');
-    // 測試同步更新（B4-01）：「未登入」名字與角色標籤改走七語系（本檔 useT 回傳 key）
-    expect(document.getElementById('drawer-name')?.textContent).toBe('ui.sideDrawer.guestName');
-    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('ui.sideDrawer.role.guest');
+    expect(document.getElementById('drawer-name')?.textContent).toBe('未登入');
+    expect(document.getElementById('drawer-role-tag')?.textContent).toBe('未登入');
     expect(document.querySelector('#side-drawer .line-login-btn')).toBeNull();
     guestView.unmount();
 
@@ -303,7 +292,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(document.querySelector('#drawer-avatar svg.identity-crown')).toBeTruthy();
 
     const roleTag = document.getElementById('drawer-role-tag')!;
-    expect(roleTag.textContent).toBe('ui.sideDrawer.role.admin');
+    expect(roleTag.textContent).toBe('管理員');
     fireEvent.click(roleTag);
     expect(getToasts().some((t) => t.message === '已開啟隱身模式')).toBe(true);
     expect(roleTag.style.opacity).toBe('0.45');
@@ -327,127 +316,16 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     ]);
   });
 
-  // 測試同步更新（站長 2026-11-13 方案一）：清除快取改名「遇到問題？重設並重新登入」小字鈕，確認框說清楚會登出、會重新載入。
-  it('M-011：點「重設並重新登入」先跳確認框（標題、說明、取消／重設），取消不執行', () => {
-    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
-    try {
-      render(<Harness />);
-      openDrawer();
-      openMore();
-      const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
-      expect(resetBtn.textContent).toBe('ui.sideDrawer.reset');
-      expect(document.querySelector('.drawer-clear-btn')).toBeNull();
-      fireEvent.click(resetBtn);
-      const modal = document.getElementById('app-confirm-modal')!;
-      expect(modal).not.toBeNull();
-      const box = modal.querySelector('[role="alertdialog"]')!;
-      expect(box.getAttribute('aria-labelledby')).toBe('drawer-reset-title');
-      expect(document.getElementById('drawer-reset-title')?.textContent).toBe('ui.sideDrawer.resetTitle');
-      expect(document.getElementById('app-confirm-msg')?.textContent).toBe('ui.sideDrawer.resetBody');
-      expect(document.getElementById('app-confirm-ok')?.textContent).toBe('ui.sideDrawer.resetConfirm');
-      expect(document.getElementById('app-confirm-ok')?.classList.contains('drawer-reset-confirm-ok')).toBe(true);
-      fireEvent.click(document.getElementById('app-confirm-cancel')!);
-      expect(document.getElementById('app-confirm-modal')).toBeNull();
-      expect(gateSpy).not.toHaveBeenCalled();
-    } finally {
-      gateSpy.mockRestore();
-    }
-  });
-
-  // Grok 初審 P2／P3：確認框焦點進框、Esc 與實體返回鍵只關框不執行、抽屜不跟著關，關框焦點回重設鈕。
-  it('重設確認框：開框焦點在取消鈕；Esc 只關框（不執行、抽屜仍開），焦點回重設鈕', () => {
-    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
-    try {
-      render(<Harness />);
-      openDrawer();
-      const moreBtn = openMore();
-      const resetBtn = document.querySelector('.drawer-reset-btn') as HTMLButtonElement;
-      act(() => { fireEvent.click(resetBtn); });
-      expect(document.activeElement?.id).toBe('app-confirm-cancel');
-      act(() => { fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); });
-      expect(document.getElementById('app-confirm-modal')).toBeNull();
-      expect(gateSpy).not.toHaveBeenCalled();
-      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
-      expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-      expect(document.activeElement).toBe(resetBtn);
-      // 框關了之後再按 Esc 先關「⋯」小卡（焦點回「⋯」），再按一次才關抽屜
-      act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
-      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
-      expect(document.getElementById('drawer-more-pop')).toBeNull();
-      expect(document.activeElement).toBe(moreBtn);
-      act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
-      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
-    } finally {
-      gateSpy.mockRestore();
-    }
-  });
-
-  it('重設確認框：Tab／Shift+Tab 只在框內兩顆按鈕間循環，不跑到後面的抽屜', () => {
+  it('M-011：點擊清除快取跳出紅字 Warning 確認框', () => {
     render(<Harness />);
     openDrawer();
-    openMore();
-    act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
-    const cancel = document.getElementById('app-confirm-cancel')!;
-    const ok = document.getElementById('app-confirm-ok')!;
-    expect(document.activeElement).toBe(cancel);
-    // 最後一顆按 Tab 回到第一顆；第一顆按 Shift+Tab 跳到最後一顆
-    ok.focus();
-    const tab = fireEvent.keyDown(ok, { key: 'Tab' });
-    expect(tab).toBe(false);
-    expect(document.activeElement).toBe(cancel);
-    const shiftTab = fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
-    expect(shiftTab).toBe(false);
-    expect(document.activeElement).toBe(ok);
-    // 框內中間的 Tab 交給瀏覽器（不攔）
-    cancel.focus();
-    expect(fireEvent.keyDown(cancel, { key: 'Tab' })).toBe(true);
-    // 焦點已在框外（例如點到後面）時，Tab 拉回框內
-    (document.querySelector('.drawer-reset-btn') as HTMLButtonElement).focus();
-    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
-    expect(document.activeElement).toBe(cancel);
-    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
-  });
-
-  it('重設確認框：實體返回鍵（popstate）只關框、不執行、抽屜仍開', () => {
-    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
-    try {
-      render(<Harness />);
-      openDrawer();
-      openMore();
-      act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement); });
-      expect(document.getElementById('app-confirm-modal')).not.toBeNull();
-      act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
-      expect(document.getElementById('app-confirm-modal')).toBeNull();
-      expect(gateSpy).not.toHaveBeenCalled();
-      expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
-    } finally {
-      gateSpy.mockRestore();
-    }
-  });
-
-  it('主題三段：選中項才在 Tab 順序；方向鍵移動選取、切換主題、焦點跟著走（循環）', () => {
-    setTheme('light');
-    render(<Harness />);
-    openDrawer();
-    const radios = Array.from(document.querySelectorAll('#side-drawer [role="radio"]')) as HTMLButtonElement[];
-    const tabs = (): number[] => radios.map((r) => r.tabIndex);
-    expect(tabs()).toEqual([0, -1, -1]);
-    radios[0]!.focus();
-    act(() => { fireEvent.keyDown(radios[0]!, { key: 'ArrowRight' }); });
-    expect(getTheme()).toBe('dark');
-    expect(document.activeElement).toBe(radios[1]);
-    expect(tabs()).toEqual([-1, 0, -1]);
-    act(() => { fireEvent.keyDown(radios[1]!, { key: 'ArrowDown' }); });
-    expect(getTheme()).toBe('system');
-    expect(document.activeElement).toBe(radios[2]);
-    act(() => { fireEvent.keyDown(radios[2]!, { key: 'ArrowRight' }); });
-    expect(getTheme()).toBe('light');
-    expect(document.activeElement).toBe(radios[0]);
-    act(() => { fireEvent.keyDown(radios[0]!, { key: 'ArrowLeft' }); });
-    expect(getTheme()).toBe('system');
-    act(() => { fireEvent.keyDown(radios[2]!, { key: 'ArrowUp' }); });
-    expect(getTheme()).toBe('dark');
-    expect(tabs()).toEqual([-1, 0, -1]);
+    const clearBtn = document.querySelector('.drawer-clear-btn') as HTMLButtonElement;
+    fireEvent.click(clearBtn);
+    const modal = document.getElementById('app-confirm-modal');
+    expect(modal).not.toBeNull();
+    expect(modal?.querySelector('.app-confirm-warning')?.textContent).toBe('⚠ Warning');
+    fireEvent.click(document.getElementById('app-confirm-cancel')!);
+    expect(document.getElementById('app-confirm-modal')).toBeNull();
   });
 
   // 測試同步更新（Grok 第三輪 P2）：登出段改走 signOutForCacheClear（同一道閘、失敗就停），
@@ -463,8 +341,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
-      openMore();
-      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
+      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -478,34 +355,6 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     }
   });
 
-  it('清除快取與登出清同一份帳號資料清單（B1-05）：含活動快照、本人 QR、隱身開關與重試計數，主題不動', async () => {
-    const seeded = ['fcb:events-snapshot:u1', 'shub_qr_uid', 'shub_qr_data', 'admin_stealth', 'shub_c_users'];
-    for (const key of seeded) localStorage.setItem(key, 'x');
-    localStorage.setItem('fcb-test-keep', 'keep');
-    sessionStorage.setItem('_lineLoginRetryCount', '1');
-    const gateSpy = vi.spyOn(authMod, 'signOutForCacheClear').mockResolvedValue(true);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    try {
-      render(<Harness />);
-      openDrawer();
-      openMore();
-      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
-      await act(async () => {
-        fireEvent.click(document.getElementById('app-confirm-ok')!);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      });
-      for (const key of seeded) expect(localStorage.getItem(key)).toBeNull();
-      expect(localStorage.getItem('fcb-test-keep')).toBe('keep');
-      expect(sessionStorage.getItem('_lineLoginRetryCount')).toBeNull();
-    } finally {
-      gateSpy.mockRestore();
-      error.mockRestore();
-      for (const key of seeded) localStorage.removeItem(key);
-      localStorage.removeItem('fcb-test-keep');
-      sessionStorage.removeItem('_lineLoginRetryCount');
-    }
-  });
-
   it('清除快取時 Firebase 登出失敗：不刪 LIFF*、不清快取（Grok 第三輪 P2）', async () => {
     localStorage.setItem('LIFF_STORE:test:accessToken', 'token');
     localStorage.setItem('shub_c_users', '[]');
@@ -513,8 +362,7 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     try {
       render(<Harness />);
       openDrawer();
-      openMore();
-      fireEvent.click(document.querySelector('.drawer-reset-btn') as HTMLButtonElement);
+      fireEvent.click(document.querySelector('.drawer-clear-btn') as HTMLButtonElement);
       await act(async () => {
         fireEvent.click(document.getElementById('app-confirm-ok')!);
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -557,189 +405,18 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
     expect(localStorage.getItem('sporthub_font_size')).toBeNull();
   });
 
-  // 測試同步更新（站長 2026-11-13 方案一）：深色模式開關改成三段（淺色／深色／跟隨系統），只用圖示、以 aria-label／title 說明。
-  it('主題三段：淺色／深色／跟隨系統，圖示鈕帶 aria-label 與 title，選中以 aria-checked 表示', () => {
+  it('toggles theme via #theme-toggle', () => {
     setTheme('light');
     render(<Harness />);
     openDrawer();
-    const group = screen.getByRole('radiogroup', { name: 'ui.sideDrawer.theme' });
-    const radios = Array.from(group.querySelectorAll('[role="radio"]')) as HTMLButtonElement[];
-    expect(radios.map((r) => r.getAttribute('data-theme-choice'))).toEqual(['light', 'dark', 'system']);
-    for (const r of radios) {
-      const mode = r.getAttribute('data-theme-choice');
-      expect(r.getAttribute('aria-label')).toBe(`ui.sideDrawer.theme_${mode}`);
-      expect(r.getAttribute('title')).toBe(`ui.sideDrawer.theme_${mode}`);
-      expect(r.querySelector('svg')).not.toBeNull();
-    }
-    const checked = (): string[] => radios.filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('data-theme-choice')!);
-    expect(checked()).toEqual(['light']);
-
-    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_dark' })); });
+    const toggle = document.getElementById('theme-toggle')!;
+    act(() => {
+      fireEvent.click(toggle);
+    });
     expect(getTheme()).toBe('dark');
-    expect(localStorage.getItem('sporthub_theme')).toBe('dark');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(checked()).toEqual(['dark']);
-
-    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_system' })); });
-    expect(getTheme()).toBe('system');
-    expect(localStorage.getItem('sporthub_theme')).toBeNull();
-    expect(checked()).toEqual(['system']);
-
-    act(() => { fireEvent.click(screen.getByRole('radio', { name: 'ui.sideDrawer.theme_light' })); });
+    act(() => {
+      fireEvent.click(toggle);
+    });
     expect(getTheme()).toBe('light');
-    expect(checked()).toEqual(['light']);
-    expect(document.getElementById('theme-toggle')).toBeNull();
-  });
-
-  it('語言鈕：地球＋目前語言縮寫，原生下拉蓋在同一顆上；切成英文後縮寫變 EN', async () => {
-    render(<Harness />);
-    openDrawer();
-    const select = document.getElementById('lang-select') as HTMLSelectElement;
-    const pick = select.closest('label.drawer-lang')!;
-    expect(pick.closest('.drawer-foot-slab')).not.toBeNull();
-    expect(pick.querySelector('.drawer-lang-globe')).not.toBeNull();
-    expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('繁中');
-    expect(select.getAttribute('aria-label')).toBe('ui.sideDrawer.language');
-    try {
-      await act(async () => {
-        select.value = 'en';
-        // @testing-library/preact 的 fireEvent.change 實際送 input 事件；下拉的 onChange 要真的 change 事件
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-      await waitFor(() => expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('EN'), { timeout: 3000 });
-    } finally {
-      await act(async () => { await setLocale('zh-TW'); });
-    }
-  });
-
-  it('聲明與重設收在「⋯」小卡；舊的深色開關、粉紅膠囊、清除快取鈕、底部小字列都拿掉', () => {
-    render(<Harness />);
-    openDrawer();
-    const footer = document.querySelector('#side-drawer .drawer-foot')!;
-    expect(footer.querySelector('.dg-more-btn')).not.toBeNull();
-    expect(footer.querySelector('.dg-more-pop')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'ui.sideDrawer.privacyShort' })).toBeNull();
-    const more = openMore();
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
-    const privacy = screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' });
-    expect(privacy.closest('.dg-more-pop')).not.toBeNull();
-    expect(privacy.getAttribute('href')).toBe('/privacy');
-    expect(privacy.getAttribute('title')).toBe('隱私權政策');
-    const terms = screen.getByRole('link', { name: 'ui.sideDrawer.termsShort' });
-    expect(terms.getAttribute('href')).toBe('/terms');
-    expect(terms.getAttribute('title')).toBe('服務條款');
-    expect(footer.querySelector('.dg-more-pop .drawer-reset-btn.dg-danger')).not.toBeNull();
-    expect(privacy.querySelector(':scope > .dg-label')?.textContent).toBe('ui.sideDrawer.privacyShort');
-    expect(terms.querySelector(':scope > .dg-label')?.textContent).toBe('ui.sideDrawer.termsShort');
-    expect(footer.querySelector('.drawer-reset-btn > .dg-label')?.textContent).toBe('ui.sideDrawer.reset');
-    expect(document.querySelector('.drawer-legal-btn, .drawer-clear-btn, #theme-toggle, .toggle-switch, .drawer-foot-fine')).toBeNull();
-    expect(document.querySelector('.drawer-foot-link, .drawer-foot-fine')).toBeNull();
-  });
-
-  it('選單依權限收成卡，每一列前面有專屬圖示（不是狀態圖示）', () => {
-    render(<Harness />);
-    openDrawer();
-    const menu = document.getElementById('drawer-menu')!;
-    const groups = menu.querySelectorAll(':scope > .dg-group');
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.classList.contains('dg-admin')).toBe(false);
-    expect(groups[0]!.classList.contains('dg-super')).toBe(false);
-    const items = groups[0]!.querySelectorAll(':scope > .drawer-item');
-    expect(items).toHaveLength(5);
-    for (const item of items) {
-      const ico = item.querySelector(':scope > .dg-ico svg');
-      expect(ico?.getAttribute('viewBox')).toBe('0 0 24 24');
-      expect(ico?.classList.contains('drawer-status')).toBe(false);
-      const label = item.querySelector(':scope > .dg-label');
-      expect(label?.textContent?.trim().length).toBeGreaterThan(0);
-    }
-    expect(menu.querySelector('.drawer-section-label')).toBeNull();
-    expect(menu.querySelector('.drawer-divider')).toBeNull();
-  });
-
-  it('「⋯」：Enter／Space 各只切換一次、點外面關、焦點在小卡內時 Esc 還回「⋯」；確認框開著時點外面不關小卡', () => {
-    render(<Harness />);
-    const menuBtn = openDrawer();
-    const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(more.hasAttribute('aria-controls')).toBe(false);
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-
-    // 原生按鈕：Enter 在 keydown 後合成 click；Space 在 keyup 後合成 click。兩段都送，只切換一次。
-    more.focus();
-    act(() => {
-      fireEvent.keyDown(more, { key: 'Enter' });
-      fireEvent.click(more);
-    });
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(more.getAttribute('aria-controls')).toBe('drawer-more-pop');
-    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-
-    act(() => {
-      fireEvent.keyDown(more, { key: ' ' });
-      fireEvent.keyUp(more, { key: ' ' });
-      fireEvent.click(more);
-    });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(more.hasAttribute('aria-controls')).toBe(false);
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(document.activeElement).toBe(more);
-
-    act(() => { fireEvent.click(more); });
-    act(() => { fireEvent.pointerDown(screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' })); });
-    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-
-    const panel = document.getElementById('side-drawer')!;
-    panel.focus();
-    const menuFocus = vi.spyOn(more, 'focus');
-    act(() => { fireEvent.pointerDown(document.getElementById('drawer-menu')!); });
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(menuFocus).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(panel);
-    expect(panel.classList.contains('open')).toBe(true);
-    menuFocus.mockRestore();
-
-    act(() => { fireEvent.click(more); });
-    screen.getByRole('link', { name: 'ui.sideDrawer.privacyShort' }).focus();
-    act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(document.activeElement).toBe(more);
-    expect(panel.classList.contains('open')).toBe(true);
-
-    act(() => { fireEvent.click(more); });
-    act(() => { fireEvent.click(document.querySelector('.drawer-reset-btn')!); });
-    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
-    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-    act(() => { fireEvent.pointerDown(document.getElementById('drawer-menu')!); });
-    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-    expect(document.getElementById('app-confirm-modal')).not.toBeNull();
-
-    act(() => { fireEvent.click(document.getElementById('app-confirm-cancel')!); });
-    act(() => {
-      fireEvent.pointerDown(document.getElementById('drawer-overlay')!);
-      fireEvent.click(document.getElementById('drawer-overlay')!);
-    });
-    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(false);
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(document.activeElement).toBe(menuBtn);
-  });
-
-  it('點語言選單關掉小卡時不把焦點搶回「⋯」', () => {
-    render(<Harness />);
-    openDrawer();
-    const more = screen.getByRole('button', { name: 'ui.sideDrawer.more' });
-    more.focus();
-    act(() => { fireEvent.click(more); });
-    expect(document.activeElement).toBe(more);
-    expect(document.getElementById('drawer-more-pop')).not.toBeNull();
-    const lang = document.getElementById('lang-select') as HTMLSelectElement;
-    const focusSpy = vi.spyOn(more, 'focus');
-    act(() => { fireEvent.pointerDown(lang); });
-    expect(document.getElementById('drawer-more-pop')).toBeNull();
-    expect(focusSpy).not.toHaveBeenCalled();
-    lang.focus();
-    expect(document.activeElement).toBe(lang);
-    expect(document.getElementById('side-drawer')?.classList.contains('open')).toBe(true);
   });
 });

@@ -100,35 +100,3 @@ describe('Request recorder', () => {
     expect(recorded[0]?.name).toBe('registerForEvent');
   });
 });
-
-describe('requireLoadedModule（顧問 §3.260：載入點回空值）', () => {
-  it('動態 import 結果為 undefined／null：丟出 MODULE_LOAD_FAILED 標記錯誤', async () => {
-    const { requireLoadedModule } = await importCallables();
-    for (const empty of [undefined, null]) {
-      let caught: unknown;
-      try {
-        requireLoadedModule(empty, 'firebase/functions');
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(Error);
-      expect(caught).toMatchObject({ name: 'MODULE_LOAD_FAILED', code: 'MODULE_LOAD_FAILED' });
-      expect((caught as Error).message).toContain('firebase/functions');
-    }
-  });
-
-  it('有值時原樣回傳', async () => {
-    const { requireLoadedModule } = await importCallables();
-    const mod = { httpsCallable: () => undefined };
-    expect(requireLoadedModule(mod, 'firebase/functions')).toBe(mod);
-  });
-
-  it('callFn 用 requireLoadedModule 接 firebase/functions，不直接解構 import 結果', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const src = readFileSync(resolve(__dirname, 'callables.ts'), 'utf8');
-    expect(src).toContain("requireLoadedModule(functionsMod, 'firebase/functions')");
-    // 只剩 QA 測試登入那條（整段包在 try/catch、一律轉成 QA login failed）還直接解構，刻意不動。
-    expect(src.match(/const \[\{ httpsCallable \}, ctx\] = await Promise\.all/g)).toHaveLength(1);
-  });
-});

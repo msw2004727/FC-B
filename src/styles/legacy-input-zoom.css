@@ -8,29 +8,3 @@
 .legacy-ui textarea {
   font-size: max(16px, 1rem);
 }
-
-/*
- * 2026-11-17 站長 iPhone 實測：完善個人資料彈窗點欄位仍會放大。實測上面那條對 input 有效（16px），
- * 但 select 被 `.legacy-ui .fl-field select`（0.9rem）等較高權重規則蓋回 13.5px；另有不在 .legacy-ui 內的彈窗。
- * 只在 iOS WebKit（會因聚焦自動放大的那一家）全站補一條：`:not(#\#)` 把權重拉到 ID 級，蓋過元件的小字級。
- * 全站 CSS 實查沒有大於 16px 的輸入框，所以這條不會把大字輸入框縮小。不動 viewport，保留雙指縮放。
- */
-@supports (-webkit-touch-callout: none) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="image"]):not([type="color"]):not([type="hidden"]):not(#\#),
-  select:not(#\#),
-  textarea:not(#\#) {
-    font-size: max(16px, 1rem);
-  }
-}
-
-/*
- * 下列欄位原本把字級寫在行內 style（行內權重高過上面的 iOS 規則，iPhone 點了仍會放大），
- * 已從行內拿掉；非 iOS 改用最接近原字級的 token（ui-typography.md：.85rem→body-sm、小於 0.8rem 升 caption），iOS 交給上面那條拉到 16px。
- */
-@supports not (-webkit-touch-callout: none) {
-  #scan-manual-uid,
-  #ct-team-sport-tag { font-size: var(--font-size-body-sm); }
-  #ce-template-name,
-  #my-activity-creator-input,
-  #fav-sort { font-size: var(--font-size-caption); }
-}

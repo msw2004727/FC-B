@@ -1,4 +1,4 @@
-:is(#create-event-type-sheet, #create-event-intensity-sheet) {
+#create-event-type-sheet {
   /* 站長 2026-11-10 選定 B 銅金；R-UI-005 例外 */
   --glow: rgba(240,196,110,.28);
   --g1: #f3c876;
@@ -14,7 +14,7 @@
   backdrop-filter: blur(10px);
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-panel {
+#create-event-type-sheet .cets-panel {
   position: relative;
   width: 100%;
   max-width: 440px;
@@ -35,7 +35,7 @@
   animation: cets-sheet-up .34s cubic-bezier(.2,.8,.2,1) backwards;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-panel::before {
+#create-event-type-sheet .cets-panel::before {
   content: "";
   position: absolute;
   left: 14%;
@@ -51,7 +51,7 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-grab {
+#create-event-type-sheet .cets-grab {
   width: 42px;
   height: 4px;
   border-radius: 2px;
@@ -59,7 +59,7 @@
   margin: 0 auto .75rem;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-title {
+#create-event-type-sheet .cets-title {
   text-align: center;
   font-size: 1.02rem;
   font-weight: 900;
@@ -68,7 +68,7 @@
   margin-bottom: .85rem;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option {
+#create-event-type-sheet .cets-option {
   position: relative;
   width: 100%;
   display: flex;
@@ -93,7 +93,7 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option-main {
+#create-event-type-sheet .cets-option-main {
   animation-delay: .10s;
   border-color: rgba(243,200,118,.60);
   box-shadow:
@@ -103,18 +103,18 @@
   background: linear-gradient(135deg, rgba(243,200,118,.22), rgba(255,255,255,.05));
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option-main:active {
+#create-event-type-sheet .cets-option-main:active {
   transform: scale(.985);
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option-lock {
+#create-event-type-sheet .cets-option-lock {
   animation-delay: .18s;
   opacity: .58;
   filter: saturate(.55);
   cursor: not-allowed;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-ico {
+#create-event-type-sheet .cets-ico {
   width: 46px;
   height: 46px;
   border-radius: 14px;
@@ -125,24 +125,24 @@
   box-shadow: 0 0 20px var(--glow), inset 0 1px 0 rgba(255,255,255,.45);
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-ico svg {
+#create-event-type-sheet .cets-ico svg {
   width: 24px;
   height: 24px;
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,.25));
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option-lock .cets-ico {
+#create-event-type-sheet .cets-option-lock .cets-ico {
   background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
   box-shadow: none;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-tx {
+#create-event-type-sheet .cets-tx {
   flex: 1;
   min-width: 0;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-tx b {
+#create-event-type-sheet .cets-tx b {
   display: block;
   font-size: .98rem;
   font-weight: 800;
@@ -150,7 +150,7 @@
   text-shadow: 0 1px 5px rgba(0,0,0,.3);
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-tx small {
+#create-event-type-sheet .cets-tx small {
   display: block;
   font-size: .74rem;
   font-weight: 400;
@@ -161,21 +161,21 @@
   text-overflow: ellipsis;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-chev {
+#create-event-type-sheet .cets-chev {
   width: 18px;
   height: 18px;
   color: rgba(255,255,255,.7);
   flex: 0 0 auto;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-lock {
+#create-event-type-sheet .cets-lock {
   width: 16px;
   height: 16px;
   color: rgba(255,255,255,.75);
   flex: 0 0 auto;
 }
 
-:is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-cancel {
+#create-event-type-sheet .cets-cancel {
   width: 100%;
   height: 44px;
   margin: .1rem 0 0;
@@ -190,41 +190,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-panel,
-  :is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-option {
+  #create-event-type-sheet .cets-panel,
+  #create-event-type-sheet .cets-option {
     animation: none !important;
   }
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :is(#create-event-type-sheet, #create-event-intensity-sheet) {
+  #create-event-type-sheet {
     background: rgba(0,0,0,.6);
   }
 
-  :is(#create-event-type-sheet, #create-event-intensity-sheet) .cets-panel {
+  #create-event-type-sheet .cets-panel {
     background: rgba(17,24,39,.95);
   }
-}
-
-/* 活動分類三選一（2026-11-16）：一般沿用銅金、新手友善綠、高強度紫 */
-#create-event-intensity-sheet .cets-option {
-  border-color: rgba(243,200,118,.45);
-  background: linear-gradient(135deg, rgba(243,200,118,.16), rgba(255,255,255,.04));
-}
-#create-event-intensity-sheet .cets-option:active {
-  transform: scale(.985);
-}
-#create-event-intensity-sheet .cets-tone-beginner {
-  --glow: rgba(52,211,153,.30);
-  --g1: #6ee7b7;
-  --g2: #059669;
-  border-color: rgba(110,231,183,.55);
-  background: linear-gradient(135deg, rgba(52,211,153,.20), rgba(255,255,255,.04));
-}
-#create-event-intensity-sheet .cets-tone-high-intensity {
-  --glow: rgba(167,139,250,.32);
-  --g1: #c4b5fd;
-  --g2: #7c3aed;
-  border-color: rgba(196,181,253,.55);
-  background: linear-gradient(135deg, rgba(139,92,246,.22), rgba(255,255,255,.04));
 }

@@ -378,7 +378,8 @@ export function LegacyLineNotifyCard({
           <div style="text-align:center;margin-top:.7rem">
             <button
               type="button"
-              class="outline-btn small profile-action-btn is-danger"
+              class="outline-btn"
+              style="color:var(--danger);border-color:var(--danger);font-size:.75rem;padding:.3rem .8rem"
               disabled={unbinding}
               data-i18n="解除綁定"
               onClick={() => {

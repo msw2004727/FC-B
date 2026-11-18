@@ -32,41 +32,6 @@
   z-index: 6;
 }
 
-/* 2026-11-13 站長選定「液態光澤」：頁面底層＋黏頂列半透明。卡片本身在 timeline-card-extra.css。
- * 底層：固定在視窗的一層淡漸層（只畫一次，捲動不重繪），畫在 .activities-root 自己的堆疊層最底下（isolation 不需要 z-index、
- * 不改定位基準）。頂部列、底部導覽與 QR 鈕（900）、更新提示框（100000）、吐司（10001）都在 .activities-root 之外且 z-index 為正，
- * 不會被蓋住；頁內內容原本就各自包在 #page-activities 子層（z-index 1）裡，相對順序不變。 */
-.legacy-ui.activities-root {
-  isolation: isolate;
-}
-.legacy-ui.activities-root::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
-}
-/* 寫成同一元素的形式：legacy-css-scope 改寫成 [data-theme="dark"] .legacy-ui.activities-root::before（測試守住）。 */
-[data-theme="dark"].activities-root::before {
-  background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
-}
-
-/* 篩選列與月份標題：實色底，完全遮住捲到後面的卡片與日期（2026-11-13 看圖審查 P2：原本半透明＋模糊 18px，
- * 捲動時卡片標題與日期「16」透出、和月份字疊在一起，取代原半透明做法）。底色取頁面底層漸層的頂端色，與背景接得上；
- * 色值寫死同活動卡做法（--bg-root 比底層漸層亮，接縫會看得出來）。 */
-#page-activities.page > .activity-sticky-filters,
-#page-activities .tl-month-header {
-  background: #eef1f6;
-}
-[data-theme="dark"] #page-activities.page > .activity-sticky-filters,
-[data-theme="dark"] #page-activities .tl-month-header {
-  background: #0b0f16;
-}
-
 /* 已結束／已取消收合列 */
 .tl-ended-fold {
   display: flex;
@@ -90,13 +55,6 @@
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-}
-/* 液態光澤：虛線框配半透明底，與玻璃卡同一語言；同玻璃卡只套活動頁（Grok 初審 P3） */
-#page-activities .tl-ended-fold-btn {
-  background: rgba(255,255,255,.45);
-}
-[data-theme="dark"] #page-activities .tl-ended-fold-btn {
-  background: rgba(255,255,255,.04);
 }
 /* R-UI-027：不讓瀏覽器自動斷行；各語系文案已縮短到 360px 一行放得下，超出時以省略號收尾（最後防線）。 */
 .tl-ended-fold-label {

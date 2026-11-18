@@ -9,9 +9,8 @@
  * 角色重算、通知與稽核均為 best-effort；
  * 備註補上 120 字硬上限，且不寫無對應 AuditAction 的備註 opLog。
  */
-import { callFn, type RequestOf } from '@/data/callables';
+import { callFn } from '@/data/callables';
 import { deliverInboxMessage } from '@/data/inbox-delivery';
-import { pickRelationKeys, RELATION_KEY_NAMES } from '@/data/notification-relation-keys';
 
 import {
   canChangeMemberRole,
@@ -170,8 +169,6 @@ export async function changeMemberRole(
   const { roleName } = getRoleChangeLabels(target);
   const title = '俱樂部層級調整';
   const body = `您在「${teamName}」的俱樂部層級已調整為${roleName}。`;
-  const source = `team_role_assignment:${target.key}`;
-  const relationKeys = pickRelationKeys({ teamId, assignmentRole: target.key });
 
   await Promise.allSettled([
     bestEffort('autoPromoteTeamRole', () => recalculateRole(targetUid, teamId)),
@@ -183,24 +180,16 @@ export async function changeMemberRole(
       targetUid,
       senderName: '系統',
       senderUid: viewer.uid,
-      source,
-      ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
     })),
     // 與站內信獨立；站內信失敗不阻止 LINE 排程。
-    bestEffort('enqueuePrivilegedLineNotification', () => {
-      const request: RequestOf<'enqueuePrivilegedLineNotification'> = {
+    bestEffort('enqueuePrivilegedLineNotification', () =>
+      callFn('enqueuePrivilegedLineNotification', {
         uid: targetUid,
         title,
         body,
         category: 'system',
-        source,
-      };
-      for (const name of RELATION_KEY_NAMES) {
-        const value = relationKeys[name];
-        if (value) request[name] = value;
-      }
-      return callFn('enqueuePrivilegedLineNotification', request);
-    }),
+        source: `team_role_assignment:${target.key}`,
+      })),
     // A 的 team_member_level_promote/demote opLog 對應 B AuditAction.role_change。
     bestEffort('writeAuditLog', () => callFn('writeAuditLog', {
       action: 'role_change',

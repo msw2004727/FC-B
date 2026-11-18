@@ -13,7 +13,6 @@ import type { Firestore } from 'firebase/firestore';
 import { RELOAD_AT_KEY } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
 import { readAppVersion } from './app-meta';
-import { MODULE_LOAD_FAILED_CODE, MODULE_LOAD_FAILURE_RE } from './module-load-error';
 
 const ERROR_LOGS = 'errorLogs';
 const BUDGET_KEY = 'fcb:errlog-budget';
@@ -211,8 +210,7 @@ function readLocation(): { page: string; url: string; hash: string } {
   }
 }
 
-/** 與後台 `features/logs/data/error-log-model.ts` 的 MODULE_LOAD_CATEGORY 同值。 */
-const MODULE_LOAD_CATEGORY = 'network-load';
+const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
 
 const DIAG_ASSET_LIMIT = 8;
 /** pagehide 之後才發生的錯誤多半是跳頁中斷，不是真的載入失敗。 */
@@ -316,7 +314,7 @@ async function readSignedIn(): Promise<SignedIn | null> {
   return { uid: user.uid, displayName, db: ctx.db };
 }
 
-async function persist(context: string, parsed: ParsedError, key: string, diag: string, moduleLoad: boolean): Promise<void> {
+async function persist(context: string, parsed: ParsedError, key: string, diag: string): Promise<void> {
   try {
     const session = await readSignedIn();
     if (!session) return;
@@ -341,8 +339,7 @@ async function persist(context: string, parsed: ParsedError, key: string, diag: 
       errorCode: parsed.errorCode,
       errorMessage: parsed.errorMessage,
       errorStack: parsed.errorStack,
-      // 顧問 §3.255 E：程式檔載入失敗歸「網路／載入」類（照常上報，不當雜訊）。
-      errorCategory: moduleLoad ? MODULE_LOAD_CATEGORY : '',
+      errorCategory: '',
       severityHint: '',
       noise: false,
       page: where.page,
@@ -374,9 +371,8 @@ function enqueue(context: string, err: unknown): void {
   seen.add(key);
   reserved += 1;
   // 出錯當下就讀：persist 前要等登入還原（最多 8 秒），那時頁面狀態已經變了。
-  const moduleLoad = MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) || parsed.errorCode === MODULE_LOAD_FAILED_CODE;
-  const diag = moduleLoad ? readModuleLoadDiag() : '';
-  const run = chain.then(() => persist(context, parsed, key, diag, moduleLoad));
+  const diag = MODULE_LOAD_FAILURE_RE.test(parsed.errorMessage) ? readModuleLoadDiag() : '';
+  const run = chain.then(() => persist(context, parsed, key, diag));
   chain = run.then(() => undefined, () => undefined);
   void run.finally(() => {
     reserved = Math.max(0, reserved - 1);

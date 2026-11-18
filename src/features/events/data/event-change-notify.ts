@@ -14,7 +14,6 @@
 import { collection, getDocs } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
-import { pickRelationKeys } from '@/data/notification-relation-keys';
 import { sendTemplateNotification } from '@/data/notify';
 import { registrations } from '@/data/paths';
 
@@ -161,11 +160,6 @@ export async function loadEventNotifyRecipientUids(eventDocId: string): Promise<
 
 export interface NotifyEventChangedInput {
   eventId: string;
-  /**
-   * 活動文件的資料欄位 id；用於關聯鍵。
-   * 若活動文件缺 `id` 資料欄位（被退成文件 id 的情況），呼叫端應省略此參數。
-   */
-  relationEventId?: string;
   title: string;
   date: string;
   location: string;
@@ -181,13 +175,12 @@ export interface NotifyEventChangedInput {
 export async function notifyEventChanged(
   input: NotifyEventChangedInput,
 ): Promise<number> {
-  const { eventId, relationEventId, title, date, location, recipientUids, eventData, senderUid } = input;
+  const { eventId, title, date, location, recipientUids, eventData, senderUid } = input;
   let successCount = 0;
 
   for (const uid of recipientUids) {
     try {
       const dedupeKey = getEventChangeNotificationDedupeKey(eventId, uid, eventData);
-      const relationKeys = pickRelationKeys({ eventId: relationEventId });
       const result = await sendTemplateNotification({
         key: 'event_changed',
         vars: { eventName: title, date, location },
@@ -196,7 +189,6 @@ export async function notifyEventChanged(
         categoryName: '活動',
         senderUid,
         extra: { dedupeKey },
-        ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
       });
       if (result.delivered) successCount += 1;
     } catch (err) {

@@ -33,12 +33,12 @@
     "fee": "费用", "free": "免费", "people": "人数", "host": "主办",
     "notes": "注意事项", "noNotes": "暂无说明", "noCover": "暂无活动图片",
     "confirmed": "正取名单", "waitlisted": "候补名单", "emptyRoster": "尚无报名",
-    "unnamed": "用户", "companion": "运动伙伴", "self": "（本人）",
+    "unnamed": "用户", "companion": "同行者", "self": "（本人）",
     "registered": "（已报名）", "companionSignup": "帮伙伴报名",
     "chooseParticipants": "选择报名对象", "confirmSignup": "确认报名",
     "cancelTitle": "取消报名", "cancelHint": "请选择要取消的对象，确认后才会取消。",
     "confirmCancel": "确认取消", "selectSomeone": "请至少选择一位参加者",
-    "noCompanions": "尚无已保存的运动伙伴", "selected": "已选 {count} 人",
+    "noCompanions": "尚无已保存的同行者", "selected": "已选 {count} 人",
     "remaining": "剩余名额 {count}", "totalFee": "预计费用 NT${fee}",
     "waitlistEstimate": "预计 {count} 人将列入候补，以提交结果为准。",
     "signupSuccess": "报名已提交", "cancelSuccess": "已取消所选报名",
@@ -67,7 +67,6 @@
       "eventUnavailable": "此活动目前无法报名", "ageRestricted": "此活动有年龄限制",
       "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
       "participantNotAllowed": "无权限执行此操作",
-      "loadFailed": "页面加载不完整，请重新加载后再报名",
       "unknown": "报名失败，请稍后重试"
     }
   },
@@ -77,7 +76,6 @@
       "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
       "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
       "requestIdConflict": "请重新整理后再试",
-      "loadFailed": "页面加载不完整，请重新加载后再取消",
       "unknown": "取消失败，请稍后重试"
     }
   },
@@ -137,7 +135,7 @@
     "promotePending": "...",
     "promoteAria": "将 {name} 正取",
     "demoteConfirm": "确定将 {name} 下放到候补吗？",
-    "demoteConfirmWithCompanions": "确定将 {name}（含 {count} 位运动伙伴）下放到候补吗？",
+    "demoteConfirmWithCompanions": "确定将 {name}（含 {count} 位同行者）下放到候补吗？",
     "overCapacityConfirm": "正取后将超过名额上限（{after}/{max}），确定要继续吗？",
     "overCapacityConfirmNoCount": "正取后将超过名额上限，确定要继续吗？",
     "demoteDone": "已将 {name} 下放至候补",
@@ -220,14 +218,5 @@
         "other": "已结束或取消 {count} 场"
       }
     }
-  },
-  "regionPicker": {
-    "label": "地区",
-    "all": "全部",
-    "central": "中部",
-    "north": "北部",
-    "south": "南部",
-    "east": "东部&外岛",
-    "nearby": "寻找附近活动"
   }
 }

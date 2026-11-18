@@ -32,11 +32,6 @@ import type {
   WriteAuditLogRequest,
 } from '@/data/contract/callables';
 import { deliverInboxMessage as deliverInbox, type InboxDeliveryExtra } from '@/data/inbox-delivery';
-import {
-  pickRelationKeys,
-  RELATION_KEY_NAMES,
-  type NotificationRelationKeys,
-} from '@/data/notification-relation-keys';
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
 import { t } from '@/i18n/i18n';
@@ -303,8 +298,6 @@ interface BuildInboxMessageInput {
   actionType?: string | null;
   actionStatus?: string | null;
   meta?: Record<string, unknown> | null;
-  source?: string;
-  relationKeys?: NotificationRelationKeys;
 }
 
 async function getDb(): Promise<Firestore> {
@@ -339,7 +332,6 @@ async function deliverInboxMessage(
   if (input.actionType != null) extra.actionType = input.actionType;
   if (input.actionStatus != null) extra.actionStatus = input.actionStatus;
   if (input.meta != null) extra.meta = input.meta;
-  const relationKeys = pickRelationKeys(input.relationKeys);
   return deliverInbox({
     title: input.title,
     body: input.body,
@@ -349,8 +341,6 @@ async function deliverInboxMessage(
     senderName: input.senderName,
     senderUid: null,
     extra,
-    ...(input.source ? { source: input.source } : {}),
-    ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
   });
 }
 
@@ -361,7 +351,6 @@ async function enqueuePrivilegedLine(input: {
   body: string;
   source: string;
   dedupeKey?: unknown;
-  relationKeys?: NotificationRelationKeys;
 }): Promise<unknown> {
   const request: EnqueuePrivilegedLineNotificationRequest = {
     uid: input.uid,
@@ -371,11 +360,6 @@ async function enqueuePrivilegedLine(input: {
     source: input.source,
   };
   if (typeof input.dedupeKey === 'string' && input.dedupeKey) request.dedupeKey = input.dedupeKey;
-  const relationKeys = pickRelationKeys(input.relationKeys);
-  for (const name of RELATION_KEY_NAMES) {
-    const value = relationKeys[name];
-    if (value) request[name] = value;
-  }
   return callFn('enqueuePrivilegedLineNotification', request);
 }
 
@@ -390,10 +374,7 @@ async function broadcastToOtherStaff(
   body: string,
   lineSource: 'approve' | 'reject',
   labelPrefix: string,
-  applicantUid: string,
 ): Promise<void> {
-  const source = `team_join_review:broadcast:${lineSource}`;
-  const relationKeys = pickRelationKeys({ teamId, applicantUid });
   const others = collectStaffUids(team).filter((uid) => uid && uid !== reviewerUid);
   for (const staffUid of others) {
     await runBestEffort(
@@ -402,8 +383,6 @@ async function broadcastToOtherStaff(
           title: '入隊申請審核通知',
           body,
           senderName: SYSTEM_SENDER,
-          source,
-          relationKeys,
         }),
       `${labelPrefix}.deliverBroadcast`,
       teamId,
@@ -414,8 +393,7 @@ async function broadcastToOtherStaff(
           uid: staffUid,
           title: '入隊申請審核通知',
           body,
-          source,
-          relationKeys,
+          source: `team_join_review:broadcast:${lineSource}`,
         }),
       `${labelPrefix}.enqueueLineBroadcast`,
       teamId,
@@ -506,7 +484,6 @@ export async function requestTeamJoin({
   const groupId = `tjr_${Date.now()}_${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
   const body = `${applicantName} 申請加入「${teamName}」俱樂部，請審核此申請。`;
   const meta = { teamId, teamName, applicantUid, applicantName, groupId };
-  const relationKeys = pickRelationKeys({ teamId, applicantUid });
 
   // 逐位幹部投遞；單一失敗只 warn；全部失敗視為主結果失敗。
   let successCount = 0;
@@ -521,8 +498,6 @@ export async function requestTeamJoin({
         actionType: 'team_join_request',
         actionStatus: 'pending',
         meta,
-        source: 'team_join_request',
-        relationKeys,
       });
       successCount += 1;
     } catch (err) {
@@ -541,7 +516,6 @@ export async function requestTeamJoin({
           body,
           source: 'team_join_request',
           dedupeKey: delivered?.['dedupeKey'],
-          relationKeys,
         }),
       'requestTeamJoin.enqueuePrivilegedLineNotification',
       teamId,
@@ -627,15 +601,12 @@ export async function approveTeamJoin({
     // 5. 通知 applicant
     const finalTeamName = result.update.teamName || teamName || result.update.teamId || '';
     const notifyBody = `恭喜！您已成功加入「${finalTeamName}」俱樂部，審核人：${reviewerName}。`;
-    const relationKeys = pickRelationKeys({ teamId, applicantUid: targetApplicantUid });
     await runBestEffort(
       () =>
         deliverInboxMessage(targetApplicantUid, {
           title: '俱樂部申請通過',
           body: notifyBody,
           senderName: SYSTEM_SENDER,
-          source: 'team_join_review:approve',
-          relationKeys,
         }),
       'approveTeamJoin.deliverApplicant',
       teamId,
@@ -647,7 +618,6 @@ export async function approveTeamJoin({
           title: '俱樂部申請通過',
           body: notifyBody,
           source: 'team_join_review:approve',
-          relationKeys,
         }),
       'approveTeamJoin.enqueueLineToApplicant',
       teamId,
@@ -693,7 +663,6 @@ export async function approveTeamJoin({
       `「${reviewerName}」已同意「${applicantName}」加入「${teamName}」的申請。`,
       'approve',
       'approveTeamJoin',
-      targetApplicantUid,
     );
   }
 
@@ -739,15 +708,12 @@ export async function rejectTeamJoin({
 
   // 2. 通知 applicant（best-effort，文案照 A）
   const body = `很抱歉，您申請加入「${teamName}」俱樂部未獲通過。如有疑問，請聯繫俱樂部職員。`;
-  const relationKeys = pickRelationKeys({ teamId, applicantUid: targetApplicantUid });
   await runBestEffort(
     () =>
       deliverInboxMessage(targetApplicantUid, {
         title: '俱樂部申請結果',
         body,
         senderName: SYSTEM_SENDER,
-        source: 'team_join_review:reject',
-        relationKeys,
       }),
     'rejectTeamJoin.deliverApplicant',
     teamId,
@@ -759,7 +725,6 @@ export async function rejectTeamJoin({
         title: '俱樂部申請結果',
         body,
         source: 'team_join_review:reject',
-        relationKeys,
       }),
     'rejectTeamJoin.enqueueLineToApplicant',
     teamId,
@@ -788,7 +753,6 @@ export async function rejectTeamJoin({
     `「${reviewerName}」已拒絕「${applicantName}」加入「${teamName}」的申請。`,
     'reject',
     'rejectTeamJoin',
-    targetApplicantUid,
   );
 }
 

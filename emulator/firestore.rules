@@ -190,6 +190,10 @@ service cloud.firestore {
       return isSuperAdmin() || hasEffectivePerm('admin.repair.no_show_adjust');
     }
 
+    function canManageEventBlocklist() {
+      return isSuperAdmin() || hasEffectivePerm('admin.repair.event_blocklist');
+    }
+
     function notificationToggleAllowedKeys() {
       return [
         'category_activity',
@@ -485,11 +489,6 @@ service cloud.firestore {
         && resource.data[field] == request.auth.uid;
     }
 
-    // T-090: immutable provenance, shared with Functions; legacy missing marker is managed-created.
-    function isUserCreatedTeam(teamData) {
-      return teamData.get('createdVia', '') == 'user_capability';
-    }
-
     function isTeamOwner() {
       return isResourceOwnerByField('captainUid')
         || isResourceOwnerByField('creatorUid')
@@ -728,6 +727,16 @@ service cloud.firestore {
             request.resource.data.hiddenBy is list
             && request.auth.uid in request.resource.data.hiddenBy
         ));
+    }
+
+    function isUserFieldOwnerResource() {
+      return isResourceOwnerByField('uid')
+        || isResourceOwnerByField('userId');
+    }
+
+    function isUserFieldOwnerRequest() {
+      return isRequestOwnerByField('uid')
+        || isRequestOwnerByField('userId');
     }
 
     function isOpLogOwnerResource() {
@@ -1046,8 +1055,6 @@ service cloud.firestore {
           );
       }
 
-      // teamReservationReleaseHours（團隊預留自動釋出時數）：值域由 Functions 兜底（非允許值視為 0），Rules 不檢查以省運算式預算；
-      // teamReservationReleasedAt／teamReservationReleasedSummary 只由 Functions 寫，不加入這兩個白名單。
       function eventUpdateBasicFieldsOnly(changed) {
         return changed.hasOnly([
           'title', 'type', 'location', 'date', 'startTimestamp', 'endTimestamp', 'externalUrl', 'max', 'minAge', 'notes', 'image', 'imageVariants',
@@ -1056,7 +1063,7 @@ service cloud.firestore {
           'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt',
           'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
           'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
-          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion', 'teamReservationReleaseHours',
+          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion',
           'updatedAt'
         ]);
       }
@@ -1069,7 +1076,7 @@ service cloud.firestore {
           'gpsEnabled', 'lat', 'lng', 'mapAddress', 'mapPlaceId', 'mapProvider', 'mapLocationConfirmed', 'mapLocationUpdatedAt',
           'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
           'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
-          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion', 'teamReservationReleaseHours',
+          'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion',
           'status', 'updatedAt'
         ]);
       }
@@ -1178,83 +1185,6 @@ service cloud.firestore {
           );
       }
 
-      // HC-A3-03：報名投影欄位（isSignupFieldsOnly）原本不檢查操作者，任何登入者都能改別人活動的人數、名單、額滿與俱樂部保留摘要。
-      // 收緊為 isEventSiteOperatorForData(resource.data) || isAdmin()（與 registrations 候補遞補同一組身分）；正式報名流程走 Callable（Admin SDK）不受影響。
-      // 本 helper 與上式逐條同義，只把角色算一次、rolePermissions／userPermissionGrants 各讀一次（比照 isPublicToggleGranted），以免撞 1000 運算式上限：
-      // admin／super_admin 一律可；owner／委託人另可憑 coach／captain／venue_owner 角色、user 委託人、user＋user.activity.site_operate，
-      // 或 event.scan／event.manual_checkin／activity.manage.entry／event.edit_all（角色權限，不含 user 角色；或個人授權）；
-      // 非 owner／委託人只能憑 event.edit_all 且活動非私密（canBroadManageEventData）。
-      function isSignupProjectionActorAllowed() {
-        let role = authRole();
-        let uid = request.auth.uid;
-        let isOwner = resource.data.get('creatorUid', null) == uid
-          || resource.data.get('ownerUid', null) == uid
-          || resource.data.get('captainUid', null) == uid;
-        let isDelegate = resource.data.get('delegateUids', null) is list
-          && uid in resource.data.get('delegateUids', []);
-        let codes = (isOwner || isDelegate)
-          ? ['event.edit_all', 'event.scan', 'event.manual_checkin', 'activity.manage.entry']
-          : ['event.edit_all'];
-        let rpPath = /databases/$(database)/documents/rolePermissions/$(role);
-        let grantPath = /databases/$(database)/documents/userPermissionGrants/$(uid);
-        return role in ['admin', 'super_admin']
-          || (
-            (isOwner || isDelegate)
-            && (
-              role in ['coach', 'captain', 'venue_owner']
-              || (role == 'user' && (isDelegate || capListHas(userActivityCapData(), 'user.activity.site_operate')))
-            )
-          )
-          || (
-            (isOwner || isDelegate || resource.data.get('privateEvent', false) != true)
-            && (
-              (
-                role != 'user'
-                && exists(rpPath)
-                && get(rpPath).data.get('permissions', null) is list
-                && get(rpPath).data.permissions.hasAny(codes)
-              )
-              || (
-                exists(grantPath)
-                && get(grantPath).data.get('permissions', null) is list
-                && get(grantPath).data.get('enabled', true) == true
-                && get(grantPath).data.permissions.hasAny(codes)
-              )
-            )
-          );
-      }
-
-      // HC-A3-04：黑名單兩欄的獨立 allow 用（取代原全域 canManageEventBlocklist()＝isSuperAdmin() || hasEffectivePerm('admin.repair.event_blocklist')，已無其他呼叫端故移除）。
-      // 與原 OR 分支 (isBlocklistFieldsOnly() && canManageEventBlocklist()) 及
-      // 「isEventOwner() && hasEffectivePerm('event.edit_self') && eventCourseLinkRootFieldsUnchanged()」分支在只改黑名單兩欄時允許的範圍同義
-      // （後者原本就允許任意非課程欄位，此處是其子集、不擴權）：super_admin，或 admin.repair.event_blocklist（角色權限，不含 user 角色；或個人授權）；
-      // owner 且無 courseLinkId 時另可憑 event.edit_self。角色只算一次、兩份權限文件各讀一次。
-      function isBlocklistActorAllowed() {
-        let role = authRole();
-        let uid = request.auth.uid;
-        let isOwner = resource.data.get('creatorUid', null) == uid
-          || resource.data.get('ownerUid', null) == uid
-          || resource.data.get('captainUid', null) == uid;
-        let codes = (isOwner && !('courseLinkId' in resource.data))
-          ? ['admin.repair.event_blocklist', 'event.edit_self']
-          : ['admin.repair.event_blocklist'];
-        let rpPath = /databases/$(database)/documents/rolePermissions/$(role);
-        let grantPath = /databases/$(database)/documents/userPermissionGrants/$(uid);
-        return role == 'super_admin'
-          || (
-            role != 'user'
-            && exists(rpPath)
-            && get(rpPath).data.get('permissions', null) is list
-            && get(rpPath).data.permissions.hasAny(codes)
-          )
-          || (
-            exists(grantPath)
-            && get(grantPath).data.get('permissions', null) is list
-            && get(grantPath).data.get('enabled', true) == true
-            && get(grantPath).data.permissions.hasAny(codes)
-          );
-      }
-
       function isUserOwnerBasicUpdate() {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
         return authRole() == 'user'
@@ -1304,14 +1234,6 @@ service cloud.firestore {
       // T-006：獨立一條 allow，排在既有 allow update 之前、不併入其 OR 清單（運算式預算說明見 isPublicOnlyVisibilityUpdate）。
       // hasOnly(['isPublic','updatedAt']) 使 courseLinked／courseLinkId／viewCount 等受保護欄位都不可能經此變更。
       allow update: if isAuth() && isPublicOnlyVisibilityUpdate();
-      // HC-A3-03／A3-04：報名投影欄位與黑名單兩欄各自獨立一條 allow，排在既有大條之前、外層先放 hasOnly（理由同 T-006）。
-      // 兩者原本是既有大條 OR 清單裡的分支（報名投影在一般與課程連結活動都有），搬出後大條不再含它們。
-      // 欄位白名單（hasOnly）已排除 viewCount／id／creatorUid／courseLinked 等受保護欄位與加值欄位，所以大條的共同前置條件在此恆成立。
-      allow update: if isAuth() && isSignupFieldsOnly() && isSignupProjectionActorAllowed();
-      allow update: if isAuth()
-        && isBlocklistFieldsOnly()
-        && resource.data.get('courseLinked', false) != true
-        && isBlocklistActorAllowed();
       allow update: if isAuth()
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'viewCount', 'id', 'clientRequestId', 'creatorUid', 'payloadRevision', 'payloadDigest'
@@ -1326,6 +1248,8 @@ service cloud.firestore {
               || isUserOwnerBasicUpdate()
               || canBroadManageEventUpdate()
               || (isEventOwner() && hasEffectivePerm('event.edit_self') && eventCourseLinkRootFieldsUnchanged())
+              || isSignupFieldsOnly()
+              || (isBlocklistFieldsOnly() && canManageEventBlocklist())
             )
           )
           || (
@@ -1339,6 +1263,10 @@ service cloud.firestore {
           || (
             resource.data.get('courseLinked', false) == true
             && isCourseLinkedManagerCancelUpdate()
+          )
+          || (
+            resource.data.get('courseLinked', false) == true
+            && isSignupFieldsOnly()
           )
         );
       allow delete: if isAdmin()
@@ -1395,8 +1323,7 @@ service cloud.firestore {
 
       function userRootCreateAllowedKeys() {
         return [
-          // 會員資料讀取強化：phone、email、companions、eduChildren 改存 users/{uid}/profilePrivate/profile，根文件不再接受。
-          'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl',
+          'uid', 'lineUserId', 'displayName', 'photoURL', 'pictureUrl', 'phone', 'email',
           'role', 'exp', 'level',
           'gender', 'birthday', 'region', 'sports',
           'teamId', 'teamName', 'teamIds', 'teamNames',
@@ -1405,7 +1332,7 @@ service cloud.firestore {
           'profileCompleted',
           'createdAt', 'lastLogin', 'updatedAt',
           'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
-          'favorites', 'socialLinks', 'lineNotify', 'stealth'
+          'favorites', 'socialLinks', 'lineNotify', 'companions', 'eduChildren', 'stealth'
         ];
       }
 
@@ -1428,9 +1355,9 @@ service cloud.firestore {
           && (!('birthday' in request.resource.data) || request.resource.data.birthday == null || request.resource.data.birthday is string)
           && (!('region' in request.resource.data) || request.resource.data.region == null || request.resource.data.region is string)
           && (!('sports' in request.resource.data) || request.resource.data.sports == null || request.resource.data.sports is string)
-          && request.resource.data.teamId == null
+          && (!('teamId' in request.resource.data) || request.resource.data.teamId == null || request.resource.data.teamId is string)
           && (!('teamName' in request.resource.data) || request.resource.data.teamName == null || request.resource.data.teamName is string)
-          && (!('teamIds' in request.resource.data) || request.resource.data.teamIds == [])
+          && (!('teamIds' in request.resource.data) || request.resource.data.teamIds == null || request.resource.data.teamIds is list)
           && (!('teamNames' in request.resource.data) || request.resource.data.teamNames == null || request.resource.data.teamNames is list)
           && (!('titleBig' in request.resource.data) || request.resource.data.titleBig == null || request.resource.data.titleBig is string)
           && (!('titleNormal' in request.resource.data) || request.resource.data.titleNormal == null || request.resource.data.titleNormal is string)
@@ -1537,13 +1464,14 @@ service cloud.firestore {
       function isSafeSelfProfileUpdate() {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
         return changed.hasOnly([
-            // 會員資料讀取強化：四欄改由 profilePrivate 寫入，根文件不再接受本人改。
-            'displayName', 'photoURL', 'pictureUrl', 'updatedAt',
+            'displayName', 'photoURL', 'pictureUrl', 'phone', 'email', 'updatedAt',
             'gender', 'birthday', 'region', 'sports',
             'termsAcceptedAt', 'privacyAcceptedAt', 'termsVersion', 'privacyVersion', 'legalAcceptedSource',
             'favorites', 'socialLinks',
             'titleBig', 'titleNormal',
             'lineNotify',
+            'companions',
+            'eduChildren',
             'stealth'
           ])
           && !changed.hasAny(['uid', 'lineUserId', 'role', 'claims', 'isAdmin', 'exp', 'level', 'createdAt', 'manualRole'])
@@ -1698,8 +1626,7 @@ service cloud.firestore {
 
       function isSafeSuperAdminUserUpdate() {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
-        // 會員資料讀取強化：super_admin 也不得把四欄寫回根文件。
-        return !changed.hasAny(['uid', 'lineUserId', 'createdAt', 'phone', 'email', 'companions', 'eduChildren']);
+        return !changed.hasAny(['uid', 'lineUserId', 'createdAt']);
       }
 
       function isSafeTeamMembershipUpdateByStaff() {
@@ -1710,134 +1637,6 @@ service cloud.firestore {
           && (!changed.hasAny(['teamIds']) || request.resource.data.teamIds == null || request.resource.data.teamIds is list)
           && (!changed.hasAny(['teamNames']) || request.resource.data.teamNames == null || request.resource.data.teamNames is list)
           && (!changed.hasAny(['updatedAt']) || request.resource.data.updatedAt == request.time);
-      }
-
-      // T-090k（顧問 11-06 §1.13 裁定）：users 文件的「有效隊伍清單」E：teamIds 是非空 list 就用 teamIds；否則 teamId 是字串就用 [teamId]；否則 []。
-      // 與後端 getUserTeamIds（只認非空 teamIds，空才退回 teamId）及 A／B 寫入（teamId＝teamIds[0]）一致。
-      // （取代 teamIds∪teamId 聯集：Grok 交叉審查 P1，聯集讓 teamId 掩護 teamIds 的第二筆增減，例如 [A]/A → [C]/A 會把 A 移出 teamIds。）
-      // 只給 coach 分支的 isTeamStaffMembershipDelta 使用。
-      function userTeamKeysOf(data) {
-        let ids = data.get('teamIds', null);
-        let primary = data.get('teamId', null);
-        return (ids is list && ids.size() > 0)
-          ? ids
-          : (primary is string ? [primary] : []);
-      }
-
-      // T-090k（審查修正）：與 isCurrentUserTeamStaff 同一組職員欄位，隊伍文件 exists＋get 各一次、欄位用 .get() 取。
-      // 只回 true／false、不產生錯誤值：teamKey 不是字串、不是合法單段文件 id（空字串、含 '/'、'.'、'..'、__x__）
-      // 或隊伍文件不存在時直接 false；leaderUids／coachUids 先驗 is list 再比對，型別壞的欄位只讓該項為 false。
-      // （取代前一版「get 錯誤值→拒」：錯誤值在 || 裡可能被下一個分支的 true 蓋過，也可能讓整條式子變錯誤值而誤擋其他分支。）
-      function isTeamStaffOfTeamKey(teamKey) {
-        return teamKey is string
-          && teamKey.matches('^[^/]+$')
-          && !teamKey.matches('^[.]{1,2}$|^__.*__$')
-          && (teamKey >= 'tm_1772098773535_xwom46' && teamKey <= 'tm_1775200536662_oruwll'
-            ? isTeamStaffOfLegacyRangeKey(teamKey, legacyTeamDocIds().get(teamKey, null))
-            : isTeamStaffAtPath(/databases/$(database)/documents/teams/$(teamKey)));
-      }
-
-      // T-090k legacy bridge：舊格式名單已凍結（createUserTeam 唯一入口＋tm_ 格式），不再新增（2026-11-05 盤點，顧問裁定 §1.9）。
-      // 舊格式俱樂部的文件 id（D）不等於 id 欄位（L），成員 users 存的是 L；這裡把 L 對到 D 才能找到隊伍文件。
-      // 只在 isTeamStaffOfTeamKey 解析時使用：未列的鍵原樣當文件 id（D 形式與新 tm_ 隊不受影響）；
-      // 被對照的鍵在同一次 get 驗 teams/D 的 id 欄位 == L，不符即 false（抄錯只會拒，不會授錯隊）。
-      // 預算：上面先用字串範圍（對照表最小～最大的 L，兩端都含）擋掉範圍外的鍵，範圍外不建對照表、走原本路徑；
-      // 範圍是對照表的上下界，只決定「要不要查表」，查不到仍原樣當文件 id，不影響結果。
-      // （取代 6114256a0「每個鍵都查表」：副機全套 1 案超過 1000 運算式。）改對照表時兩個界限要一起改（測試 41 會檢查）。
-      function legacyTeamDocIds() {
-        return {
-          'tm_1774590829557_m9igzv': 'G3WbDZAzmYADMvaCFc5g',
-          'tm_1772099699445_naajv3': 'Nh35tT1SLIiZz6nbVegE',
-          'tm_1774501575628_nox9py': 'QLW6HsCEtm9B8JxvooyS',
-          'tm_1772098773535_xwom46': 'fr1TOptgysV5HFYzChNa',
-          'tm_1775200536662_oruwll': 'pTB68IEojMZkhbsrR159'
-        };
-      }
-
-      function isTeamStaffOfLegacyRangeKey(teamKey, legacyDocId) {
-        return legacyDocId == null
-          ? isTeamStaffAtPath(/databases/$(database)/documents/teams/$(teamKey))
-          : isLegacyTeamStaffAtPath(/databases/$(database)/documents/teams/$(legacyDocId), teamKey);
-      }
-
-      function isTeamStaffAtPath(teamPath) {
-        return exists(teamPath) && isTeamStaffData(get(teamPath).data);
-      }
-
-      // 橋接鍵 L：隊伍文件 teams/D 的 id 欄位必須等於 L（與職員判斷共用同一次 get）。
-      function isLegacyTeamStaffAtPath(teamPath, legacyKey) {
-        return exists(teamPath) && isLegacyTeamStaffData(get(teamPath).data, legacyKey);
-      }
-
-      function isLegacyTeamStaffData(teamData, legacyKey) {
-        return teamData.get('id', null) == legacyKey && isTeamStaffData(teamData);
-      }
-
-      function isTeamStaffData(teamData) {
-        let leaders = teamData.get('leaderUids', null);
-        let coaches = teamData.get('coachUids', null);
-        return teamData.get('captainUid', null) == request.auth.uid
-          || teamData.get('creatorUid', null) == request.auth.uid
-          || teamData.get('ownerUid', null) == request.auth.uid
-          || teamData.get('leaderUid', null) == request.auth.uid
-          || (leaders is list && request.auth.uid in leaders)
-          || (coaches is list && request.auth.uid in coaches);
-      }
-
-      // T-090k：非 admin 的 coach 以上改他人隊伍欄位時，一次只能新增或移除「一支」隊，且自己必須是那支隊的職員
-      // （captainUid／creatorUid／ownerUid／leaderUid／leaderUids／coachUids），其他隊的條目不得增減。
-      // 取代原本「任何 coach 以上可改任意用戶任意隊」的寫法（S4 前複核 P2）；隊名欄位只驗型別，不比對內容。
-      function isTeamStaffMembershipDelta() {
-        let oldKeys = userTeamKeysOf(resource.data);
-        let newKeys = userTeamKeysOf(request.resource.data);
-        let added = newKeys.removeAll(oldKeys);
-        let removed = oldKeys.removeAll(newKeys);
-        let newPrimary = request.resource.data.get('teamId', null);
-        let newIds = request.resource.data.get('teamIds', null);
-        // 顧問 11-06 §1.14：新寫入必須是正規形狀——teamIds 非空時 teamId 是字串且在 teamIds 內；teamIds 空／null／缺時 teamId 必須是 null。
-        // （取代 §1.13 的「teamId 屬於新有效清單」：Grok 第二輪 P2，[A,B]/A 清成 []/A 或 null/A 會讓 E 退回 [A]、看似只移除 B。）
-        return ((newIds is list && newIds.size() > 0)
-            ? (newPrimary is string && newPrimary in newIds)
-            : newPrimary == null)
-          && added.toSet().size() + removed.toSet().size() == 1
-          && isTeamStaffOfTeamKey(added.size() > 0 ? added[0] : removed[0]);
-      }
-
-      // T-090k（精簡版）：coach 以上分支的角色只算一次（authRole 每次呼叫都重讀 users 文件），
-      // 等同原本 isCoachPlus() && … && (isAdmin() || …)：兩者都是 request.auth != null && authRole() in 清單。
-      // 顧問 11-06 §1.14：coach 以上且持 team.manage_all（rolePermissions 或個別授權）與 admin 同樣不受「自己那隊」與正規形狀限制；
-      // 放在職員判斷之後，只有職員判斷失敗才多讀權限文件。
-      // 同一次讀權限也收 admin.repair.team_join_repair：這是後面 (canRunTeamJoinRepair() && isSafeTeamMembershipUpdateByStaff())
-      // 的子集（canRunTeamJoinRepair＝isSuperAdmin() || hasEffectivePerm(該權限)，且本分支已含 isSafeTeamMembershipUpdateByStaff），不擴權；
-      // 目的是讓持入隊修復授權的 coach 在職員判斷失敗後就地放行，不必再跑後面分支而超過 1000 運算式（Opus 第三輪 P2）。
-      function isCoachPlusTeamMembershipUpdate(role) {
-        return request.auth != null
-          && role in ['coach', 'captain', 'venue_owner', 'admin', 'super_admin']
-          && !isOwner(userId)
-          && isSafeTeamMembershipUpdateByStaff()
-          && (role in ['admin', 'super_admin']
-            || isTeamStaffMembershipDelta()
-            || hasAnyEffectivePermForRole(role, ['team.manage_all', 'admin.repair.team_join_repair']));
-      }
-
-      // 持有 perms 其中任一個：允許結果同 hasEffectivePerm 逐一 OR（角色權限或個別授權；個別授權的 enabled 缺省視為 true，
-      // 同 hasUserPermissionGrantForUid），角色由呼叫端傳入，省掉 authRole 再讀一次 users 文件；兩份權限文件各讀一次。
-      // 只回 true／false：文件不存在、permissions 欄位缺或型別壞都是 false，不產生錯誤值（ed1816bb7 起；Grok 第三輪 P2 經 Opus 判讀
-      // 不構成回歸——錯誤值 || true＝true——但布林化保留，判斷較清楚）。
-      function hasAnyEffectivePermForRole(role, perms) {
-        let rpPath = /databases/$(database)/documents/rolePermissions/$(role);
-        let grantPath = /databases/$(database)/documents/userPermissionGrants/$(request.auth.uid);
-        return (role != 'user' && exists(rpPath) && isAnyPermInList(get(rpPath).data.get('permissions', null), perms))
-          || (exists(grantPath) && isEnabledGrantWithAnyPerm(get(grantPath).data, perms));
-      }
-
-      function isAnyPermInList(values, perms) {
-        return values is list && values.hasAny(perms);
-      }
-
-      function isEnabledGrantWithAnyPerm(grantData, perms) {
-        return grantData.get('enabled', true) == true
-          && isAnyPermInList(grantData.get('permissions', null), perms);
       }
 
       function isManagedAddedTeamAt(oldTeamIds, newTeamIds, index) {
@@ -1909,12 +1708,9 @@ service cloud.firestore {
       allow update: if (isOwner(userId) && isSafeSelfProfileUpdate())
         || (isOwner(userId) && isSafeLoginUpdate())
         || (isOwner(userId) && isTeamFieldShrinkOrClear())
-        // T-090k：admin／super_admin 維持原樣（A 入隊審核允許 admin、資料同步清無效隊伍）；其餘 coach 以上限自己當職員的那一隊。
-        // 這條排在 super_admin／入隊修復之前，省掉 coach 路徑先算的兩次權限判斷。它只回 true／false（職員判斷不產生錯誤值），
-        // 為 false 時照常往下評估後面的分支，所以不會擋掉 super_admin、入隊修復或個別授權原本允許的寫入。
-        || isCoachPlusTeamMembershipUpdate(authRole())
         || (isSuperAdmin() && isSafeSuperAdminUserUpdate())
         || (canRunTeamJoinRepair() && isSafeTeamMembershipUpdateByStaff())
+        || (isCoachPlus() && !isOwner(userId) && isSafeTeamMembershipUpdateByStaff())
         || isSafeGrantedTeamReviewJoinUpdate();
       allow delete: if false;
 
@@ -1924,46 +1720,6 @@ service cloud.firestore {
           && isSafeIdentityPrivateSettingsWrite(settingsId, false);
         allow update: if canWriteIdentityPrivateSettings()
           && isSafeIdentityPrivateSettingsWrite(settingsId, true);
-        allow delete: if false;
-      }
-
-      // 會員資料讀取強化：私密子文件（phone、email、companions、eduChildren）。過渡期根文件為準，本文件為鏡像。
-      // 讀取只給本人與 isAdmin()；寫入只給本人且限白名單；Functions／回填以 Admin SDK 寫入（含 backfilledAt）。
-      // collectionGroup 規則依子集合名稱全域生效：profilePrivate 只准用於 users/{uid}/profilePrivate/profile，其他集合不得建立同名子集合。
-      match /profilePrivate/{docId} {
-        function isProfilePrivateValueOk(data, field) {
-          return !(field in data)
-            || (field == 'phone' && (data[field] == null || data[field] is string))
-            || (field == 'email' && (data[field] == null || (data[field] is string && data[field].size() > 0 && data[field].size() <= 254)))
-            || ((field == 'companions' || field == 'eduChildren') && (data[field] == null || data[field] is list));
-        }
-
-        function isSafeProfilePrivateCreate() {
-          let data = request.resource.data;
-          return data.keys().hasOnly(['phone','email','companions','eduChildren','createdAt','updatedAt'])
-            && 'updatedAt' in data
-            && data.updatedAt == request.time
-            && (!('createdAt' in data) || data.createdAt == request.time)
-            && isProfilePrivateValueOk(data, 'phone')
-            && isProfilePrivateValueOk(data, 'email')
-            && isProfilePrivateValueOk(data, 'companions')
-            && isProfilePrivateValueOk(data, 'eduChildren');
-        }
-
-        function isSafeProfilePrivateUpdate() {
-          let changed = request.resource.data.diff(resource.data).affectedKeys();
-          return changed.hasOnly(['phone','email','companions','eduChildren','updatedAt'])
-            && request.resource.data.updatedAt == request.time
-            && (!changed.hasAny(['phone']) || isProfilePrivateValueOk(request.resource.data, 'phone'))
-            && (!changed.hasAny(['email']) || isProfilePrivateValueOk(request.resource.data, 'email'))
-            && (!changed.hasAny(['companions']) || isProfilePrivateValueOk(request.resource.data, 'companions'))
-            && (!changed.hasAny(['eduChildren']) || isProfilePrivateValueOk(request.resource.data, 'eduChildren'));
-        }
-
-        allow get: if docId == 'profile' && (isOwner(userId) || isAdmin());
-        allow list: if false;
-        allow create: if docId == 'profile' && isOwner(userId) && isSafeProfilePrivateCreate();
-        allow update: if docId == 'profile' && isOwner(userId) && isSafeProfilePrivateUpdate();
         allow delete: if false;
       }
 
@@ -1998,11 +1754,10 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
-      // ── GrowthGames 互動收件匣（用戶端不可建立，自己可讀可刪） ──
+      // ── GrowthGames 互動收件匣（任何已登入用戶可建立，自己可讀刪） ──
       match /gameInbox/{msgId} {
         allow read: if isOwner(userId);
-        // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
-        allow create: if false;
+        allow create: if isAuth();
         allow delete: if isOwner(userId);
         allow update: if false;
       }
@@ -2037,7 +1792,7 @@ service cloud.firestore {
 
     // ═══════════════════════════════════════════
     //  Registrations（報名）
-    //  登入可讀；報名／取消走 Callable（Admin SDK），前端只准管理員直寫與主辦遞補／降級／移除／分隊（2026-11-07 F4）
+    //  登入可讀寫（報名、取消報名、管理員代報名）
     //  候補遞補：取消正取時需同 batch 更新他人的 waitlisted→confirmed
     // ═══════════════════════════════════════════
     match /registrations/{regId} {
@@ -2141,15 +1896,13 @@ service cloud.firestore {
       }
 
       allow read: if isAuth();
-      // 2026-11-07 站長定案 F4：報名建立／取消／刪除只准系統（Callable Admin SDK）與管理員；
-      // 本人只留徽章與自選隊伍更新。取代原「本人可自建、自改取消、自刪」（可自填狀態與報名時間插隊）。
-      // isRegistrationOwnerRequest／isRegistrationOwnerSafeUpdate 因此暫無呼叫端，依 R-DATA-002 保留待另案清理。
       allow create: if !hasCourseLinkedRegistrationData(request.resource.data)
-        && isAdmin();
+        && (isAdmin() || isRegistrationOwnerRequest());
       allow update: if !hasCourseLinkedRegistrationData(resource.data)
         && !hasCourseLinkedRegistrationData(request.resource.data)
         && (
           isAdmin()
+          || (isRegistrationOwnerResource() && isRegistrationOwnerRequest() && isRegistrationOwnerSafeUpdate())
           || (isWaitlistPromotion() && isEventSiteOperatorForData(getRegEventData()))
           || (isWaitlistDemotion() && isEventOperatorForData(getRegEventData()))
           || (isManagerRegistrationRemoval() && isEventOperatorForData(getRegEventData()))
@@ -2158,7 +1911,7 @@ service cloud.firestore {
           || (isActiveRegistration() && isEventManagerTeamKeyUpdate())
         );
       allow delete: if !hasCourseLinkedRegistrationData(resource.data)
-        && isAdmin();
+        && (isAdmin() || isRegistrationOwnerResource());
     }
 
     // ═══════════════════════════════════════════
@@ -2184,90 +1937,23 @@ service cloud.firestore {
         return isSuperAdmin() || hasPerm('team.manage_all') || hasUserPermissionGrant('team.manage_all');
       }
 
-      // Existing signed-in +1-only path; user-created scoped edits cannot change viewCount.
       function isTeamViewCountIncrementOnly() {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
         return changed.hasOnly(['viewCount'])
           && request.resource.data.viewCount == resource.data.get('viewCount', 0) + 1;
       }
 
-      // T-090a F3: every non-canManageAnyTeam() create (team.create holders included) needs a fresh tm_ id.
-      // T-090a 顧問裁定（2026-11-04）：取代 isUserCapabilityTeamCreate 自建分支；一般用戶建俱樂部只走 Callable createUserTeam（Admin SDK），Rules 不再放行能力碼直寫。
-      function isFreshTeamCreateId() {
-        return request.resource.data.get('id', '') == teamId
-          && teamId.matches('^tm_[0-9]{13}_[a-z0-9]{1,8}$')
-          && math.abs(int(teamId.split('_')[1]) - request.time.toMillis()) < 3 * 86400000;
-      }
-
-      // T-090i：職員 UID 集合（coachUids／leaderUids／舊 leaderUid）。
-      function teamStaffUidSet(data) {
-        return data.get('coachUids', []).toSet()
-          .union(data.get('leaderUids', []).toSet())
-          .union([data.get('leaderUid', null)].toSet());
-      }
-
-      // T-090i：成員判斷沿用 currentUserHasTeamKey 的方式（users 文件 teamId／teamIds），只是對象換成被指派者；
-      // 只在自建隊新增「非本人」職員時才讀這一份 users 文件。
-      function isTeamMemberUid(uid) {
-        let userData = get(/databases/$(database)/documents/users/$(uid)).data;
-        return userData.get('teamId', null) == teamId
-          || userData.get('teamIds', []).hasAny([teamId]);
-      }
-
-      // T-090i（顧問 §6.4.2）：自建俱樂部擁有者不得把非成員掛成教練／領隊（冒名掛名會觸發指派通知、團隊名額等職員能力）。
-      // 新增的職員只能是本人，或一次一位、放在 coachUids／leaderUids 尾端且是本隊成員（對應 B buildMemberRoleUpdates 一次升一人）；
-      // 保留原值、移除、在既有職員間調整職位不受限。
-      function isUserCreatedStaffChangeSafe() {
-        let added = teamStaffUidSet(request.resource.data)
-          .difference(teamStaffUidSet(resource.data))
-          .difference([request.auth.uid, null].toSet());
-        let coaches = request.resource.data.get('coachUids', []);
-        let leaders = request.resource.data.get('leaderUids', []);
-        return added.size() == 0
-          || (added.size() == 1
-            && ((coaches.size() > 0 && added.hasOnly([coaches[coaches.size() - 1]]) && isTeamMemberUid(coaches[coaches.size() - 1]))
-              || (leaders.size() > 0 && added.hasOnly([leaders[leaders.size() - 1]]) && isTeamMemberUid(leaders[leaders.size() - 1]))));
-      }
-
-      function isScopedTeamUpdateSafe() {
-        let changed = request.resource.data.diff(resource.data).affectedKeys();
-        return !changed.hasAny(['id', 'creatorUid', 'ownerUid', 'createdVia'])
-          // Legacy/managed owners retain origin/main updates except immutable identity/provenance.
-          && (!isUserCreatedTeam(resource.data) || (
-            !changed.hasAny([
-              'captainUid', 'active', 'pinned', 'pinOrder', 'attentionEffectEnabled', 'attentionEffectColor',
-              'teamExp', 'viewCount', 'views', 'wins', 'draws', 'losses', 'gf', 'ga', 'history',
-              // T-090i：教學旗標與 createUserTeam 一致（建立時就拒絕 eduSettings），A 也會把 isTeaching／educationTag 當教學。
-              'eduSettings', 'isTeaching', 'educationTag'
-            ])
-            // Only user-created teams require count changes to use the count-only shape.
-            && (!changed.hasAny(['members']) || isTeamMemberCountOnly())
-            // T-090i：自建俱樂部不得改成教學分類或開啟教學（收 P3 education 半套）。
-            && request.resource.data.get('type', '') != 'education'
-            && request.resource.data.get('teachingEnabled', false) != true
-            && (!changed.hasAny(['coachUids', 'leaderUids', 'leaderUid']) || isUserCreatedStaffChangeSafe())
-          ));
-      }
-
       allow read: if true;
-      // T-090a P2-1（2026-11-04 顧問方向）：非 canManageAnyTeam() 建立不得帶 createdVia == 'user_capability'（此標記只由 Admin SDK createUserTeam 寫入），
-      // creatorUid 若出現須等於本人；取代原本只檢查 id 新鮮度，堵住持有者替他人佔滿 createUserTeam 每人 3 個自建名額。
       allow create: if isAuth()
         && hasString('name')
-        && (canManageAnyTeam()
-          || (isFreshTeamCreateId()
-            && request.resource.data.get('createdVia', '') != 'user_capability'
-            && requestFieldEqualsAuthOrAbsent('creatorUid')
-            && hasEffectivePerm('team.create')));
+        && (hasEffectivePerm('team.create') || canManageAnyTeam());
       allow update: if isAuth()
-        && (canManageAnyTeam()
-          || (isScopedTeamUpdateSafe()
-            && (isTeamOwner()
-              || (isCurrentUserTeamStaff(teamId) && isTeamStaffFieldsOnly())
-              || (isCurrentUserInTeam(teamId) && isTeamMemberCountOnly())))
+        && (isTeamOwner()
+          || canManageAnyTeam()
+          || (isCurrentUserTeamStaff(teamId) && isTeamStaffFieldsOnly())
+          || (isCurrentUserInTeam(teamId) && isTeamMemberCountOnly())
           || isTeamViewCountIncrementOnly());
-      // T-090a P2：自建俱樂部（createdVia == 'user_capability'）擁有者不得直刪，改走 deleteTeam Callable；legacy 擁有者直刪維持。
-      allow delete: if canManageAnyTeam() || (!isUserCreatedTeam(resource.data) && isTeamOwner());
+      allow delete: if canManageAnyTeam() || isTeamOwner();
 
       // ── Feed（留言板）──
       // Phase 3: create 收緊為成員才可發文；update/delete 限作者本人或幹部（含教練）
@@ -2293,10 +1979,7 @@ service cloud.firestore {
       // 公開可讀；俱樂部幹部（含教練）或管理員可 CUD
       match /coursePlans/{planId} {
         allow read: if true;
-        // B2: reuse the same parent team path already read by the staff check.
-        allow create: if (isCurrentUserTeamStaff(teamId) || canManageAnyTeam())
-          && !isUserCreatedTeam(get(/databases/$(database)/documents/teams/$(teamId)).data);
-        allow update, delete: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
+        allow create, update, delete: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam();
 
         // ── 堂數制課堂卡片（每一堂課）──
         function forbiddenCourseSessionLinkFields() {
@@ -2410,17 +2093,10 @@ service cloud.firestore {
       }
 
       // ── Education: Students（學員）──
-      // 該隊幹部、canManageAnyTeam、學員本人或家長可讀；一般用戶只能建 pending 學員；幹部（含教練）可建任意狀態+改刪
+      // 認證可讀；一般用戶只能建 pending 學員；幹部（含教練）可建任意狀態+改刪
       // 學員本人/代理人可退學（僅限 enrollStatus → inactive）
-      // 課程資料讀取權限收斂：取代原本「認證可讀」；非幹部的列表查詢要帶 where selfUid／parentUid == 自己
       match /students/{studentId} {
-        function isEduStudentOwnedByAuth(data) {
-          return isAuth()
-            && (data.get('selfUid', null) == request.auth.uid
-              || data.get('parentUid', null) == request.auth.uid);
-        }
-
-        allow read: if isCurrentUserTeamStaff(teamId) || canManageAnyTeam() || isEduStudentOwnedByAuth(resource.data);
+        allow read: if isAuth();
         allow create: if isAuth()
           && hasString('name')
           && (
@@ -2667,36 +2343,46 @@ service cloud.firestore {
     }
     // ═══════════════════════════════════════════
     //  Activity Records（活動紀錄）
-    //  登入可讀；建立與更新只限管理員（仍拒絕 course-linked）；刪除仍限管理員
+    //  登入可讀可建立；update 限 status 欄位或 admin
     // ═══════════════════════════════════════════
     match /activityRecords/{recordId} {
+      function isActivityStatusOnly() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly(['status', 'updatedAt']);
+      }
+
       allow read: if isAuth();
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
-      allow create: if isAdmin()
+      allow create: if isAuth()
         && !hasCourseLinkedSideEffectData(request.resource.data);
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
-      allow update: if isAdmin()
+      allow update: if isAuth()
         && !hasCourseLinkedSideEffectData(resource.data)
-        && !hasCourseLinkedSideEffectData(request.resource.data);
+        && !hasCourseLinkedSideEffectData(request.resource.data)
+        && (isUserFieldOwnerResource() || isAdmin() || isActivityStatusOnly());
       allow delete: if !hasCourseLinkedSideEffectData(resource.data)
         && isAdmin();
     }
 
     // ═══════════════════════════════════════════
     //  Attendance Records（簽到簽退）
-    //  登入可讀；建立與更新只限管理員（仍拒絕 course-linked／私人課程活動）；禁止刪除
+    //  登入可讀可建立；update 限狀態欄位或 admin；禁止刪除（審計軌跡）
     // ═══════════════════════════════════════════
     match /attendanceRecords/{recordId} {
+      function isAttendanceStatusUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return changed.hasOnly([
+          'status', 'checkOutTime', 'removedAt', 'removedByUid', 'updatedAt'
+        ]);
+      }
+
       allow read: if isAuth();
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
-      allow create: if isAdmin()
+      allow create: if isAuth()
         && !hasCourseLinkedSideEffectData(request.resource.data)
         && !isPrivateCourseLinkedEventData(eventDataForDataEventId(request.resource.data));
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本任何登入者可寫。
-      allow update: if isAdmin()
+      allow update: if isAuth()
         && !hasCourseLinkedSideEffectData(resource.data)
         && !hasCourseLinkedSideEffectData(request.resource.data)
-        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(resource.data));
+        && !isPrivateCourseLinkedEventData(eventDataForDataEventId(resource.data))
+        && (isAdmin() || isAttendanceStatusUpdate());
       allow delete: if false;
     }
 
@@ -2880,20 +2566,17 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════
-    //  Logs（日誌）— 登入可讀
-    //  expLogs／teamExpLogs：用戶端不可新增（Functions 用 Admin SDK，不受此限）
-    //  operationLogs 等其餘日誌仍見各自 match
+    //  Logs（日誌）— 登入可讀可新增
+    //  放寬 create 給所有登入用戶（auto-exp 等功能需要）
     // ═══════════════════════════════════════════
     match /expLogs/{logId} {
       allow read: if isAuth();
-      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
-      allow create: if false;
+      allow create: if isAuth();
       allow update, delete: if false;
     }
     match /teamExpLogs/{logId} {
       allow read: if isAuth();
-      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
-      allow create: if false;
+      allow create: if isAuth();
       allow update, delete: if false;
     }
     match /operationLogs/{logId} {
@@ -3140,7 +2823,7 @@ service cloud.firestore {
 
     // ═══════════════════════════════════════════
     //  Education Attendance（教育簽到）
-    //  職員、名冊代理、本人/家長可讀；職員可寫；本人/家長僅可建立與移除自己的請假
+    //  認證可讀；職員可寫；本人/家長僅可建立與移除自己的請假
     // ═══════════════════════════════════════════
     match /eduAttendance/{recordId} {
       function canManageEduAttendance(data) {
@@ -3208,12 +2891,7 @@ service cloud.firestore {
           && request.resource.data.status in ['active', 'removed'];
       }
 
-      // 課程資料讀取權限收斂：取代原本「認證可讀」，比照 coursePlans/{planId}/enrollments 的讀取寫法；
-      // canManageEduAttendance 已含名冊代理（isEduCourseRosterAgent）
-      allow read: if isAuth()
-        && (canManageEduAttendance(resource.data)
-          || isEduAttendanceOwnedByAuth(resource.data)
-          || isEduAttendanceStudentOwnedByAuth(resource.data));
+      allow read: if isAuth();
       allow create: if canManageEduAttendance(request.resource.data) || isOwnEduLeaveCreate();
       allow update: if canManageEduAttendance(resource.data) || isOwnEduLeaveStatusUpdate();
       allow delete: if canManageEduAttendance(resource.data);
@@ -3464,14 +3142,13 @@ service cloud.firestore {
       }
 
       allow read: if isAuth();
-      // 2026-11-07 站長定案 F4：同根集合，建立／取消／刪除只准系統與管理員；本人只留徽章與自選隊伍更新。
-      // isSubRegOwnerRequest／isSubRegOwnerSafeUpdate 因此暫無呼叫端，依 R-DATA-002 保留待另案清理。
       allow create: if !hasCourseLinkedRegistrationData(request.resource.data)
-        && isAdmin();
+        && (isAdmin() || isSubRegOwnerRequest());
       allow update: if !hasCourseLinkedRegistrationData(resource.data)
         && !hasCourseLinkedRegistrationData(request.resource.data)
         && (
           isAdmin()
+          || (isSubRegOwner() && isSubRegOwnerRequest() && isSubRegOwnerSafeUpdate())
           || (isSubWaitlistPromotion() && isEventSiteOperatorForData(getSubRegEventData()))
           || (isSubWaitlistDemotion() && isEventOperatorForData(getSubRegEventData()))
           || (isSubManagerRegistrationRemoval() && isEventOperatorForData(getSubRegEventData()))
@@ -3480,7 +3157,7 @@ service cloud.firestore {
           || (isSubActiveRegistration() && isSubEventManagerTeamKeyUpdate())
         );
       allow delete: if !hasCourseLinkedRegistrationData(resource.data)
-        && isAdmin();
+        && (isAdmin() || isSubRegOwner());
     }
 
     match /events/{eventId}/teamReservations/{reservationId} {
@@ -3489,12 +3166,22 @@ service cloud.firestore {
     }
 
     match /events/{eventId}/registrationLocks/{lockId} {
+      function isLockOwnerRequest() {
+        return request.auth != null
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.key == lockId
+          && request.resource.data.eventId is string
+          && request.resource.data.registrationDocId is string
+          && request.resource.data.status == 'active';
+      }
+      function isLockOwnerResource() {
+        return request.auth != null && resource.data.userId == request.auth.uid;
+      }
+
       allow read: if isAuth();
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本本人可寫自己的鎖。
-      allow create: if isAdmin();
+      allow create: if isAdmin() || isLockOwnerRequest();
       allow update: if false;
-      // HC-A3-08（2026-11-15）：報名與簽到改走系統後，一般用戶不再直寫此路徑，收緊為只限管理員；取代原本本人可寫自己的鎖。
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isLockOwnerResource();
     }
 
     match /events/{eventId}/attendanceRecords/{recId} {
@@ -3541,15 +3228,13 @@ service cloud.firestore {
       }
 
       allow read: if isAuth();
-      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
       allow create: if !hasCourseLinkedSideEffectData(request.resource.data)
         && requestEventIdMatchesPath(eventId)
-        && isEventSiteOperatorForPath(eventId);
-      // HC-A3-08 第二批（2026-11-15）：一般用戶不再直寫此路徑，收緊；取代原本任何登入者／本人可寫。
+        && (isUserFieldOwnerRequest() || isEventSiteOperatorForPath(eventId));
       allow update: if isAuth()
         && !hasCourseLinkedSideEffectData(resource.data)
         && !hasCourseLinkedSideEffectData(request.resource.data)
-        && (isAdmin() || (isSubActivityStatusOnly() && isEventSiteOperatorForPath(eventId)));
+        && (isUserFieldOwnerResource() || isAdmin() || (isSubActivityStatusOnly() && isEventSiteOperatorForPath(eventId)));
       allow delete: if !hasCourseLinkedSideEffectData(resource.data)
         && isAdmin();
     }
@@ -3895,30 +3580,11 @@ service cloud.firestore {
     match /userAttendanceStatsQueue/{uid} {
       allow read, write: if false;
     }
-    // 人氣指數：父文件只開放單筆讀取（get），不開放列舉（list，避免任何人列出所有被看過的 uid）；
-    // 觀看去重只由伺服器讀寫（不使用遞迴萬用字元）。
-    match /profilePopularity/{uid} {
-      allow get: if true;
-      allow list: if false;
-      allow write: if false;
-      match /viewers/{viewerUid} {
-        allow read, write: if false;
-      }
-    }
     // 通知發送授權強化：計數與去重標記只由 Admin SDK 讀寫
     match /notificationGuardCounters/{docId} {
       allow read, write: if false;
     }
     match /linePushDedupe/{docId} {
-      allow read, write: if false;
-    }
-    // 聯繫站長：根層集合，不參與 events 路徑，不增加活動規則運算式預算。
-    // 訊息只由 Callable（Admin SDK）寫入；super_admin 可讀。頻率計數客戶端不可讀寫。
-    match /contactMessages/{id} {
-      allow read: if isSuperAdmin();
-      allow write: if false;
-    }
-    match /contactMessageLimits/{uid} {
       allow read, write: if false;
     }
     // collectionGroup wildcard rules（僅 read，供 Phase 3 collectionGroup 查詢使用）
@@ -3930,29 +3596,6 @@ service cloud.firestore {
     }
     match /{path=**}/activityRecords/{recId} {
       allow read: if request.auth != null;
-    }
-
-    // 會員資料讀取強化：管理員名單一次讀取私密子文件。collectionGroup 依名稱全域生效，見 users/{userId}/profilePrivate 註解。
-    match /{path=**}/profilePrivate/{docId} {
-      allow list: if isAdmin();
-    }
-
-    // 營運儀表板彙總。只新增，不改既有 allow。opsDailyStats 含每場放鴿子，前端不可讀。
-    function canViewOpsDashboard() {
-      return isSuperAdmin() || hasEffectivePerm('admin.dashboard.entry');
-    }
-    match /opsSummary/{docId} {
-      allow get: if (docId == 'latest' && canViewOpsDashboard())
-        || (docId == 'noshow' && canViewOpsDashboard()
-            && (isSuperAdmin() || hasEffectivePerm('activity.view_noshow')));
-      allow list, create, update, delete: if false;
-    }
-    match /opsParticipantDays/{dateKey} {
-      allow get, list: if canViewOpsDashboard();
-      allow create, update, delete: if false;
-    }
-    match /opsDailyStats/{dateKey} {
-      allow read, write: if false;
     }
 
     // ═══════════════════════════════════════════

@@ -7,8 +7,6 @@ export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 export interface ToastProps {
   message: string;
   tone?: ToastTone;
-  /** 訊息中要用主題強調色標示的片段（第一次出現處）；找不到就整句照常顯示。 */
-  highlight?: string;
   /** 毫秒；未傳則照 A 規則依字數／換行計算（2500 / 3500 / 4000），0 表示保留到手動關閉。 */
   duration?: number;
   onClose: () => void;
@@ -17,8 +15,6 @@ export interface ToastProps {
 export interface ToastOptions {
   message: string;
   tone?: ToastTone;
-  /** 訊息中要用主題強調色標示的片段（第一次出現處）；找不到就整句照常顯示。 */
-  highlight?: string;
   duration?: number;
 }
 
@@ -26,7 +22,6 @@ export interface ToastEntry {
   id: number;
   message: string;
   tone: ToastTone;
-  highlight?: string;
   duration: number;
 }
 
@@ -104,7 +99,6 @@ export const toast = {
       id,
       message: normalized.message,
       tone: normalized.tone ?? 'info',
-      highlight: normalized.highlight,
       duration: computeToastDuration(normalized.message, normalized.duration),
     };
     lastShownMessage = normalized.message;
@@ -127,23 +121,9 @@ export const toast = {
   },
 };
 
-/** 有 highlight 且訊息含該片段時，把該片段包成強調色、不斷行；否則整句照常。 */
-function renderToastMessage(message: string, highlight?: string) {
-  const at = highlight ? message.indexOf(highlight) : -1;
-  if (!highlight || at < 0) return <Text class="ui-toast__message">{message}</Text>;
-  return (
-    <span class="ui-toast__message">
-      <Text>{message.slice(0, at)}</Text>
-      <Text class="ui-toast__em">{highlight}</Text>
-      <Text>{message.slice(at + highlight.length)}</Text>
-    </span>
-  );
-}
-
 export function Toast({
   message,
   tone = 'info',
-  highlight,
   duration,
   onClose,
 }: ToastProps) {
@@ -215,7 +195,7 @@ export function Toast({
       }}
     >
       <div class="ui-toast__content">
-        {renderToastMessage(message, highlight)}
+        <Text class="ui-toast__message">{message}</Text>
       </div>
     </div>
   );

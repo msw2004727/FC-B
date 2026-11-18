@@ -11,8 +11,6 @@ import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
 import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
-import './profile-modal-glass.css';
-import './profile-complete-viewport.css';
 
 export interface FirstLoginInitial {
   gender: string;
@@ -134,30 +132,6 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       syncScrollHint();
     });
   }
-
-  // 2026-11-17 站長 iPhone 實測：Safari 網址列展開時蓋住「稍後填寫」。彈窗原本用 88vh（大視窗高）貼 bottom:0，
-  // 網址列展開時可見區比 vh 小、底部被工具列蓋住。改以 visualViewport（實際可見區）算高度與底部被遮的距離，
-  // 交給 profile-complete-viewport.css 的 [data-vv] 規則；不支援 visualViewport 時退回 CSS 的 dvh／vh。
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    if (!el || !vv) return undefined;
-    const sync = (): void => {
-      // 使用者雙指放大時可見區會跟著縮，不跟著縮彈窗。
-      if (vv.scale > 1.01) return;
-      const hidden = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      el.style.setProperty('--fl-vv-h', `${Math.round(vv.height)}px`);
-      el.style.setProperty('--fl-vv-bottom', `${hidden}px`);
-      el.setAttribute('data-vv', '1');
-    };
-    sync();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => {
-      vv.removeEventListener('resize', sync);
-      vv.removeEventListener('scroll', sync);
-    };
-  }, []);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;

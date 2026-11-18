@@ -1,4 +1,3 @@
-import { getEventIntensity, type IntensityChoice } from './activity-categories';
 import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
 import type { CreateEventForm, DelegationEntry, EventImageVariants, EventType } from './event-create';
 import type { EventDoc } from './types';
@@ -86,8 +85,6 @@ export interface EventFormState extends EventFormAddonState {
   teamReservationReleaseAuto: boolean;
   /** 編輯既有活動且已有 teamReservationReleasedAt：下拉鎖住。 */
   teamReservationReleased: boolean;
-  /** 活動分類：'' 一般；只在建立時寫入（顧問 §3.183）。 */
-  intensityLevel: IntensityChoice;
 }
 
 const HOUR_MS = 3_600_000;
@@ -178,7 +175,6 @@ export function createDefaultFormState(_now: Date = new Date()): EventFormState 
     minAge: '0',
     notes: '',
     sportTag: '',
-    intensityLevel: '',
     feeEnabled: false,
     fee: '0',
     teamOnly: false,
@@ -386,7 +382,6 @@ export function formStateFromEvent(
     teamReservationReleaseHours: normalizeReleaseHours(event.teamReservationReleaseHours),
     teamReservationReleaseAuto: false,
     teamReservationReleased: hasTeamReservationReleasedAt(event.teamReservationReleasedAt),
-    intensityLevel: getEventIntensity(event as { intensityLevel?: unknown }),
   };
 }
 
@@ -680,7 +675,5 @@ export function toCreateEventForm(
     teamReservationReleaseHours: resolveTeamReservationReleaseHours(
       state, state.dateVal.trim(), extras?.nowMs ?? Date.now(),
     ),
-    // 含 ''。建立 payload 才決定要不要寫鍵；多日期沿用 ...base。
-    intensityLevel: state.intensityLevel,
   };
 }

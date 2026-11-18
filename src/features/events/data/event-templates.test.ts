@@ -287,28 +287,6 @@ describe('buildTemplateFromForm', () => {
     });
   });
 
-  it('beginner／high-intensity 寫進範本；一般與垃圾值不寫鍵（地圖開或關都一樣）', () => {
-    expect(build({
-      state: { ...createDefaultFormState(), intensityLevel: 'beginner' },
-    }).intensityLevel).toBe('beginner');
-    expect(build({
-      state: { ...createDefaultFormState(), intensityLevel: 'high-intensity' },
-      location: { ...location, mapPickerEnabled: false },
-    }).intensityLevel).toBe('high-intensity');
-
-    const empty = build({
-      state: { ...createDefaultFormState(), intensityLevel: '' },
-      location: { ...location, mapPickerEnabled: false },
-    });
-    expect(Object.hasOwn(empty, 'intensityLevel')).toBe(false);
-
-    const garbageState = createDefaultFormState();
-    (garbageState as { intensityLevel: unknown }).intensityLevel = 'BEGINNER';
-    expect(Object.hasOwn(build({ state: garbageState }), 'intensityLevel')).toBe(false);
-    (garbageState as { intensityLevel: unknown }).intensityLevel = 1;
-    expect(Object.hasOwn(build({ state: garbageState }), 'intensityLevel')).toBe(false);
-  });
-
   it('地圖功能關閉時不產生八個地圖欄位', () => {
     const result = build({ location: { ...location, mapPickerEnabled: false } });
     for (const key of [
@@ -425,41 +403,6 @@ describe('saveEventTemplate', () => {
     expect(result).not.toHaveProperty('image');
     expect(mocks.addDoc.mock.calls[0]?.[1]).not.toHaveProperty('image');
     expect(mocks.addDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it('儲存時只在有效分類寫入 intensityLevel', async () => {
-    await saveEventTemplate({
-      template: template({ intensityLevel: 'beginner' }),
-      ownerUid: 'u',
-      ownerName: '甲',
-    });
-    expect(mocks.addDoc.mock.calls[0]?.[1]).toMatchObject({ intensityLevel: 'beginner' });
-
-    mocks.addDoc.mockClear();
-    await saveEventTemplate({
-      template: template({ intensityLevel: 'high-intensity' }),
-      ownerUid: 'u',
-      ownerName: '甲',
-    });
-    expect(mocks.addDoc.mock.calls[0]?.[1]).toMatchObject({ intensityLevel: 'high-intensity' });
-
-    mocks.addDoc.mockClear();
-    await saveEventTemplate({
-      template: template(),
-      ownerUid: 'u',
-      ownerName: '甲',
-    });
-    expect(mocks.addDoc.mock.calls[0]?.[1]).not.toHaveProperty('intensityLevel');
-
-    mocks.addDoc.mockClear();
-    const garbage = template();
-    (garbage as { intensityLevel: unknown }).intensityLevel = 'BEGINNER';
-    await saveEventTemplate({
-      template: garbage,
-      ownerUid: 'u',
-      ownerName: '甲',
-    });
-    expect(mocks.addDoc.mock.calls[0]?.[1]).not.toHaveProperty('intensityLevel');
   });
 
   it('現有圖片網址不重傳', async () => {
@@ -620,18 +563,5 @@ describe('templateToFormPatch', () => {
       feeEnabled: true,
       fee: '120',
     });
-  });
-
-  it('從範本建立時把分類套回表單；缺值與垃圾值當一般', () => {
-    expect(templateToFormPatch(template({ intensityLevel: 'beginner' }), true).patch.intensityLevel)
-      .toBe('beginner');
-    expect(templateToFormPatch(template({ intensityLevel: 'high-intensity' }), false).patch.intensityLevel)
-      .toBe('high-intensity');
-    expect(templateToFormPatch(template(), true).patch.intensityLevel).toBe('');
-    const garbage = template();
-    (garbage as { intensityLevel: unknown }).intensityLevel = 'BEGINNER';
-    expect(templateToFormPatch(garbage, true).patch.intensityLevel).toBe('');
-    (garbage as { intensityLevel: unknown }).intensityLevel = null;
-    expect(templateToFormPatch(garbage, true).patch.intensityLevel).toBe('');
   });
 });
