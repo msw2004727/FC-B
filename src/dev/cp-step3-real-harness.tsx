@@ -142,8 +142,8 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('展開賽程', () => hasText('18:00') && hasText('海風隊'));
   },
   'real-cancelled-comp': async () => {
-    clickButton('賽程');
-    await until('已取消賽程', () => hasText('海風隊') && hasText('報名隊伍不足'));
+    // 假資料庫沒有這場的全部賽程（展開讀 loadFullSchedule），截圖只看頂部取消狀態與原因，不展開
+    await until('已取消賽程', () => hasText('報名隊伍不足'));
   },
   'real-score-sheet': async () => {
     clickButton('登錄比分');
