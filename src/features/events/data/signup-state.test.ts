@@ -486,3 +486,25 @@ describe('早鳥：讀不到個人資料不當 0 分（Grok 初審 P1）', () =>
     expect(run({ profile: { ...baseProfile, exp: 0 }, event: earlyBirdEvent }).kind).toBe('earlyBirdNoPoints');
   });
 });
+
+describe('團隊預留名額報名也先擋缺欄（後續卡 1 回歸）', () => {
+  // 用團隊預留名額報名走的是本人 registerForEvent（伺服器 Plan C 會擋）；團隊名額調整鈕走 adjustTeamReservation（伺服器無資料檢查），不在此擋。
+  const reservedEvent = {
+    ...baseEvent,
+    current: 10,
+    max: 10,
+    teamReservationSummaries: [{ teamId: 'team-a', reservedSlots: 5, usedSlots: 0 }],
+  };
+  it('資料完整：維持「立即報名」（teamReservedSignup）', () => {
+    expect(run({
+      event: reservedEvent, viewerTeamIds: new Set(['team-a']),
+      profile: { ...baseProfile, gender: '男', birthday: '2000/01/01', incomplete: false },
+    }).kind).toBe('teamReservedSignup');
+  });
+  it('缺欄：改「請先完善資料」', () => {
+    expect(run({
+      event: reservedEvent, viewerTeamIds: new Set(['team-a']),
+      profile: { ...baseProfile, incomplete: true },
+    })).toMatchObject({ kind: 'profileIncomplete', action: 'completeProfile' });
+  });
+});
