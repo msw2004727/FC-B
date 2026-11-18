@@ -29,13 +29,15 @@ describe('shouldPreloadEventDetail', () => {
       '/events/has space',
       '/events/a.b',
       `/events/${'a'.repeat(121)}`,
+      '/events/x\n',
     ]) {
       expect(shouldPreloadEventDetail(pathname), pathname).toBe(false);
     }
     const share = read('../app/share-link.ts');
     const self = read('./event-detail-preload.ts');
     expect(share).toContain('/^[A-Za-z0-9_-]{1,120}$/');
-    expect(self).toContain('/^[A-Za-z0-9_-]{1,120}$/');
+    // id 段與 share-link 的 PUBLIC_ID 同一個字元類與長度（合成單一 regex 後，§3.276 入口餘裕）。
+    expect(self).toContain(String.raw`/^\/events\/[A-Za-z0-9_-]{1,120}$/`);
   });
 });
 

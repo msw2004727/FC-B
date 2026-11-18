@@ -1,14 +1,15 @@
-/** 與 `share-link.ts` 的 PUBLIC_ID、活動路由 `/events/:id` 同一個 id 形狀。 */
-const EVENT_PUBLIC_ID = /^[A-Za-z0-9_-]{1,120}$/;
+/**
+ * `/events/<id>`，id 與 `share-link.ts` 的 PUBLIC_ID、活動路由 `/events/:id` 同一個形狀；與 reload-safety 的 CHUNK_RELOAD_EXTRA_PATH 同字面。
+ * 取代：原本先切出 id 再用第二個 regex 驗形狀，行為相同；合成一個是為了首頁入口 gzip 餘裕（顧問 §3.276 要求 ≥200 B）。
+ */
+const EVENT_DETAIL_PATH = /^\/events\/[A-Za-z0-9_-]{1,120}$/;
 
 /**
  * pathname 恰為 `/events/<PUBLIC_ID>` 才預先下載詳情 chunk。
  * 其他路徑（首頁、列表、多一段路徑）不下載詳情 chunk，避免跟首屏搶頻寬。
  */
 export function shouldPreloadEventDetail(pathname: string): boolean {
-  const match = /^\/events\/([^/]+)$/.exec(pathname);
-  const id = match?.[1];
-  return id !== undefined && EVENT_PUBLIC_ID.test(id);
+  return EVENT_DETAIL_PATH.test(pathname);
 }
 
 /**
