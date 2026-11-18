@@ -531,7 +531,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       <p class="cps-sub" style="margin:0">{comp.name}</p>
       {canEndCompetition(comp) ? (
         <div class="cps-actions" style="margin-top:0">
-          <Button variant="danger" disabled={busy} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
+          <Button variant="danger" disabled={busy || endOpen} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
             {ct('endTitle')}
           </Button>
         </div>
@@ -755,7 +755,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" disabled={busy} onClick={() => setEndOpen(false)}>{ct('cancel')}</Button>
-              <Button variant="danger" disabled={busy} onClick={() => { void submitEnd(); }}>{ct('endTitle')}</Button>
+              <Button variant="danger" disabled={busy} onClick={() => { void submitEnd(); }}>{ct('endOk')}</Button>
             </div>
           )}
         >

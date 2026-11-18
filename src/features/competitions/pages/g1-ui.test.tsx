@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import type { ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -204,7 +204,7 @@ function detailEnv(input: {
 }
 
 describe('取消單場與結束賽事', () => {
-  it('取消送出原因與版次；字數不足用欄位文案；取消後只剩重置', () => {
+  it('取消送出原因與版次；字數不足用欄位文案；取消後只剩重置', async () => {
     const cancelMatch = vi.fn(async () => ({}));
     const view = draw(hostEnv(
       [match({ id: 'mt_1', status: 'scheduled', home: { teamId: 'en_h', name: '晨星隊' }, away: { teamId: 'en_a', name: '飛燕隊' } })],
@@ -223,15 +223,18 @@ describe('取消單場與結束賽事', () => {
     expect(cancelMatch).toHaveBeenCalledWith({
       cid: 'cup', mtId: 'mt_1', expectedRev: 3, reason: '大雨，場地無法使用',
     });
-    const row = rowOf('晨星隊');
-    expect(row.textContent ?? '').toContain('已取消');
-    expect(row.textContent ?? '').toContain('原因');
-    expect(row.textContent ?? '').toContain('大雨，場地無法使用');
-    expect(within(row).queryAllByRole('button').map((node) => node.textContent)).toEqual(['重置']);
+    // 本地列更新在 await cancelMatch 之後，click 返回時還沒畫上。
+    await waitFor(() => {
+      const row = rowOf('晨星隊');
+      expect(row.textContent ?? '').toContain('已取消');
+      expect(row.textContent ?? '').toContain('原因');
+      expect(row.textContent ?? '').toContain('大雨，場地無法使用');
+      expect(within(row).queryAllByRole('button').map((node) => node.textContent)).toEqual(['重置']);
+    });
     expect(view.container.querySelector('.cpm-reason')).toBeTruthy();
   });
 
-  it('結束賽事列出未確認場數，原因必填，送出只有賽事 id 與原因', () => {
+  it('結束賽事列出未確認場數，原因必填，送出只有賽事 id 與原因', async () => {
     const endCompetition = vi.fn(async () => ({}));
     draw(hostEnv([
       match({ id: 'mt_1', status: 'scheduled' }),
@@ -243,12 +246,12 @@ describe('取消單場與結束賽事', () => {
     expect(screen.getByText('結束後不能再改比分；還沒確認的場次不計分')).toBeTruthy();
     expect(screen.getByText('未確認 2 場')).toBeTruthy();
     const dialog = screen.getByRole('dialog', { name: '結束賽事' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '結束賽事' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
     expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ message: '還有必填項目沒填' }));
     fireEvent.input(areaOf(/結束原因/), { target: { value: '剩餘場次不再進行' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '結束賽事' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
     expect(endCompetition).toHaveBeenCalledWith({ cid: 'cup', reason: '剩餘場次不再進行' });
-    expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
   });
 
   it('會員看不到取消；共同主辦與管理員看得到', () => {
@@ -345,7 +348,7 @@ describe('同分查詢、裁定與恢復', () => {
       reason: '依報名先後',
       expectedVersion: 4,
     });
-    expect(screen.getAllByText('已有裁定，請先撤銷原本的裁定').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('已有裁定，請先撤銷原本的裁定')).length).toBeGreaterThan(0);
     fireEvent.input(areaOf(/撤銷原因/), { target: { value: '登錯' } });
     fireEvent.click(screen.getByRole('button', { name: '撤銷裁定' }));
     expect(clearTieDecision).toHaveBeenCalledWith({

@@ -263,6 +263,7 @@
   "cancelHint": "取消的場次不計分，之後可用重置恢復",
   "reasonPrefix": "原因",
   "endTitle": "結束賽事",
+  "endOk": "確認結束",
   "endHint": "結束後不能再改比分；還沒確認的場次不計分",
   "endReason": "結束原因",
   "unconfirmed": "未確認 {n} 場",
