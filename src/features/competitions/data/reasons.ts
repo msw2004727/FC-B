@@ -68,6 +68,12 @@ export const CP_REASON_CODES = [
   'STATUS_NOT_EDITABLE',
   'MATCH_NOT_FOUND',
   'DIVISION_NOT_FOUND',
+  // Opus 複審 P3：使用者看得到的其餘 match-host 代碼（FIELD_TYPE／FIELD_FORMAT 走通用文案）
+  'COMPETITION_HIDDEN',
+  'COMPETITION_DELETING',
+  'MATCH_CORRUPT',
+  'SCHEDULE_REPLACE_TOO_LARGE',
+  'TIMELINE_TOO_LONG',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

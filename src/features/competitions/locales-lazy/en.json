@@ -215,6 +215,11 @@
     "STATUS_NOT_EDITABLE": "賽事目前的狀態不能修改",
     "MATCH_NOT_FOUND": "找不到這場比賽",
     "DIVISION_NOT_FOUND": "找不到這個組別",
+    "COMPETITION_HIDDEN": "這場賽事目前不公開",
+    "COMPETITION_DELETING": "這場賽事正在刪除中",
+    "MATCH_CORRUPT": "這場比賽的資料有誤，請聯絡管理員",
+    "SCHEDULE_REPLACE_TOO_LARGE": "場次太多，請先清除賽程再重新排",
+    "TIMELINE_TOO_LONG": "這場比賽的紀錄太多，請聯絡管理員",
     "UNKNOWN": "操作失敗，請稍後再試"
   }
 }
