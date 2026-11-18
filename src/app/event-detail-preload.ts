@@ -27,12 +27,13 @@ interface PreloadGroup {
   css?: unknown;
 }
 
+/** 只接受同源 `/assets/` 底下的雜湊檔名；格式不對的項目略過（顧問 §3.276：入口餘裕回到 200 B 以上後加回）。 */
+const ASSET_URL = /^\/assets\/[\w.-]+\.(?:js|css)$/;
+
 function addLinks(head: HTMLElement, list: unknown, rel: string): void {
   if (!Array.isArray(list)) return;
   for (const href of list) {
-    // 清單只來自建置時寫進自家 HTML 的 JSON（scripts/boot-preload-html.ts），只檢查型別。
-    // 取代：原本另以正規式限定 /assets/ 檔名；入口預算不足時拿掉（能改 HTML 的人這層也擋不住，顧問 §3.271 入口上限不調）。
-    if (typeof href !== 'string') continue;
+    if (typeof href !== 'string' || !ASSET_URL.test(href)) continue;
     const link = document.createElement('link');
     link.rel = rel;
     link.crossOrigin = '';

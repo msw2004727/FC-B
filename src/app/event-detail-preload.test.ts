@@ -100,15 +100,16 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     expect(document.head.querySelectorAll('link')).toHaveLength(0);
   });
 
-  it('清單項目不是字串就略過', () => {
+  it('只接受同源 /assets/ 的 js／css 檔名，其他項目略過', () => {
     setMap(JSON.stringify({
-      detail: { js: [42, null, '/assets/ok-1.js'], css: [{}, '/assets/ok.css'] },
+      detail: { js: ['https://evil.example/x.js', '/assets/../x.js', '/assets/a b.js', 42, '/assets/ok-1.js'], css: ['javascript:x', '/assets/ok.css'] },
       firestore: { js: 'nope' },
     }));
     preloadEventDetailChunks('/events/x');
     expect(links('modulepreload')).toEqual(['/assets/ok-1.js']);
     expect(links('stylesheet')).toEqual(['/assets/ok.css']);
   });
+
 
 
   it('預載失敗：不發 vite:preloadError、不寫 chunk-reload 時間戳、不留 unhandledrejection', async () => {
