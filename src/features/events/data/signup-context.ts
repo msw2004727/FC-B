@@ -192,8 +192,10 @@ export function createDetailSignupContexts(
           event,
           viewer,
           registrations,
-          // ASSUMPTION: A 首次登入補資料由 B 殼層處理。
-          profileComplete: true,
+          // 照伺服器 Plan C（FC functions/index.js registerForEvent）：缺 gender／birthday／region 任一欄就擋。
+          // 個人資料讀不到（null）時放行，交給伺服器裁定（顧問 §3.268 條件 2）。
+          // 取代原本寫死 true（「A 首次登入補資料由 B 殼層處理」，但 B 殼層只在個人頁才補，11-18 正式站因此 34 次被拒）。
+          profileComplete: deps.getProfile()?.incomplete !== true,
           participantCheck: checkParticipants(event, participants, deps, now),
           earlyBirdWindow: isEventEarlyBirdWindow(event, now),
           teamSignupAllowed: canDetailTeamSignup(event, viewer.teamIds),

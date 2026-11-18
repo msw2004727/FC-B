@@ -117,7 +117,7 @@ describe('getSignupButtonState', () => {
     const state = run({ viewer: guestViewer, event: { ...baseEvent, current: 10 } });
     expect(state).toMatchObject({
       kind: 'guestWaitlist',
-      label: '報名候補',
+      label: '登入後候補',
       disabled: false,
       action: 'login',
       bg: '#7c3aed',
@@ -128,17 +128,17 @@ describe('getSignupButtonState', () => {
     const state = run({ viewer: guestViewer });
     expect(state).toMatchObject({
       kind: 'guestSignup',
-      label: '立即報名',
+      label: '請先登入',
       disabled: false,
       action: 'login',
       variant: 'primary',
     });
   });
 
-  it('用戶資料同步中', () => {
+  it('資料載入中（原「用戶資料同步中」）', () => {
     expect(run({ profileLoading: true })).toMatchObject({
       kind: 'syncing',
-      label: '用戶資料同步中',
+      label: '資料載入中…',
       disabled: true,
       variant: 'syncing',
     });
@@ -399,5 +399,81 @@ describe('getSignupButtonState', () => {
     expect(run({
       event: { ...baseEvent, max: 0 },
     }).kind).toBe('signup');
+  });
+});
+
+describe('報名鈕就緒鎖與資料未完善（站長 11-18、顧問 §3.268）', () => {
+  const missing: SignupProfile = { ...baseProfile, gender: '男', birthday: '2000/01/01', incomplete: true };
+
+  it('登入還原中：LINE 登入中…，不可按', () => {
+    expect(run({ viewer: guestViewer, authPending: true })).toMatchObject({
+      kind: 'authPending', label: 'LINE 登入中…', disabled: true, variant: 'syncing',
+    });
+  });
+
+  it('已有 uid 時 authPending 不影響', () => {
+    expect(run({ authPending: true }).kind).toBe('signup');
+  });
+
+  it('缺欄：可報名狀態改成「請先完善資料」', () => {
+    expect(run({ profile: missing })).toMatchObject({
+      kind: 'profileIncomplete', label: '請先完善資料', action: 'completeProfile', disabled: false,
+    });
+  });
+
+  it('缺欄：候補與早鳥也改成「請先完善資料」', () => {
+    expect(run({ profile: missing, event: { ...baseEvent, current: 10 } }).kind).toBe('profileIncomplete');
+    expect(run({ profile: { ...missing, exp: 100 }, event: earlyBirdEvent }).kind).toBe('profileIncomplete');
+  });
+
+  it('缺欄：已結束、尚未開放、取消報名不受影響', () => {
+    expect(run({ profile: missing, event: { ...baseEvent, status: 'ended' } }).kind).toBe('ended');
+    expect(run({
+      profile: missing,
+      event: { ...baseEvent, status: 'upcoming', date: futureDate, regOpenTime: '2026-06-01T00:00:00.000Z' },
+    }).kind).toBe('notOpen');
+    expect(run({
+      profile: missing,
+      registrations: [{ eventId: 'event-a', userId: 'u1', participantType: 'self', status: 'confirmed' }],
+    }).kind).toBe('cancel');
+  });
+
+  it('個人資料讀不到（null）或未標缺欄：照原本，交給伺服器裁定', () => {
+    expect(run({ profile: null }).kind).toBe('signup');
+    expect(run({ profile: { ...missing, incomplete: false } }).kind).toBe('signup');
+  });
+});
+
+describe('報名／候補／取消三類按鈕在新狀態下顯示正確（站長 11-19）', () => {
+  const ok: SignupProfile = { ...baseProfile, gender: '男', birthday: '2000/01/01', incomplete: false };
+  const missing: SignupProfile = { ...ok, gender: '', incomplete: true };
+  const full = { ...baseEvent, current: 10 };
+  const mine = (status: 'confirmed' | 'waitlisted') => [{
+    eventId: 'event-a', userId: 'u1', participantType: 'self' as const, status,
+  }];
+
+  it('資料完整：未報名＝立即報名、額滿＝報名候補、已報名＝取消報名、候補中＝取消候補', () => {
+    expect(run({ profile: ok })).toMatchObject({ kind: 'signup', label: '立即報名', action: 'signup' });
+    expect(run({ profile: ok, event: full })).toMatchObject({ kind: 'waitlist', label: '報名候補', action: 'signup' });
+    expect(run({ profile: ok, registrations: mine('confirmed') })).toMatchObject({ kind: 'cancel', label: '取消報名', action: 'cancel' });
+    expect(run({ profile: ok, event: full, registrations: mine('waitlisted') })).toMatchObject({ kind: 'cancelWaitlist', label: '取消候補', action: 'cancel' });
+  });
+
+  it('資料不完整：報名與候補改「請先完善資料」，取消報名與取消候補照常', () => {
+    expect(run({ profile: missing }).kind).toBe('profileIncomplete');
+    expect(run({ profile: missing, event: full }).kind).toBe('profileIncomplete');
+    expect(run({ profile: missing, registrations: mine('confirmed') }).kind).toBe('cancel');
+    expect(run({ profile: missing, event: full, registrations: mine('waitlisted') }).kind).toBe('cancelWaitlist');
+  });
+
+  it('資料載入中：四種都先顯示「資料載入中…」不可按', () => {
+    for (const input of [{}, { event: full }, { registrations: mine('confirmed') }, { event: full, registrations: mine('waitlisted') }]) {
+      expect(run({ ...input, profileLoading: true })).toMatchObject({ kind: 'syncing', disabled: true });
+    }
+  });
+
+  it('訪客：未滿顯示「請先登入」、額滿顯示「登入後候補」，都走登入', () => {
+    expect(run({ viewer: guestViewer })).toMatchObject({ label: '請先登入', action: 'login' });
+    expect(run({ viewer: guestViewer, event: full })).toMatchObject({ label: '登入後候補', action: 'login', bg: '#7c3aed' });
   });
 });

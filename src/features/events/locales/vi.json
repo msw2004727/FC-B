@@ -78,7 +78,7 @@
       "birthdayRequired": "Vui lòng bổ sung ngày sinh trước khi đăng ký", "requestIdConflict": "Vui lòng tải lại trang rồi thử lại",
       "participantNotAllowed": "Bạn không có quyền thực hiện thao tác này",
       "loadFailed": "Trang chưa tải xong. Vui lòng tải lại trang rồi đăng ký lại.",
-      "unknown": "Đăng ký thất bại. Vui lòng thử lại."
+      "unknown": "Đăng ký chưa thành công. Vui lòng thử lại sau (mã: {code})", "network": "Kết nối không ổn định. Kiểm tra mạng rồi tải lại để xem đã đăng ký chưa", "loginExpired": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại"
     }
   },
   "cancel": {
@@ -88,7 +88,7 @@
       "eventEnded": "Sự kiện đã bắt đầu, không thể hủy đăng ký", "eventStarted": "Đã qua giờ bắt đầu, không thể hủy đăng ký",
       "requestIdConflict": "Vui lòng tải lại trang rồi thử lại",
       "loadFailed": "Trang chưa tải xong. Vui lòng tải lại trang rồi hủy lại.",
-      "unknown": "Hủy thất bại. Vui lòng thử lại."
+      "unknown": "Hủy chưa thành công. Vui lòng thử lại sau (mã: {code})", "network": "Kết nối không ổn định. Kiểm tra mạng rồi tải lại để xem đã hủy chưa"
     }
   },
   "form": {

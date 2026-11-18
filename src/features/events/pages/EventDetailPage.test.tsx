@@ -682,7 +682,7 @@ describe('EventDetailPage', () => {
     expect(mocks.registrations).not.toHaveBeenCalled();
     expect(mocks.history).not.toHaveBeenCalled();
 
-    const signup = screen.getByRole('button', { name: '立即報名' });
+    const signup = screen.getByRole('button', { name: '請先登入' });
     expect((signup as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(signup);
     await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
@@ -859,7 +859,7 @@ describe('EventDetailPage', () => {
   it('未登入點報名呼叫動態載入的 signIn', async () => {
     mocks.viewer.mockReturnValue({ ...viewer, uid: null });
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    fireEvent.click(await screen.findByRole('button', { name: '請先登入' }));
     await waitFor(() => expect(mocks.signIn).toHaveBeenCalledTimes(1));
     expect(mocks.register).not.toHaveBeenCalled();
     expect(mocks.registrations).not.toHaveBeenCalled();
@@ -1701,7 +1701,7 @@ describe('T-085 名單展開與進頁讀取', () => {
       },
     });
     const view = mount();
-    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: '請先登入' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: '提早標題' })).toBeTruthy();
     expect(screen.queryByText('活動資訊載入中...')).toBeNull();
     expect(view.container.querySelector('[data-detail-field="capacity-count"]')?.textContent)
@@ -1760,7 +1760,7 @@ describe('T-085 名單展開與進頁讀取', () => {
     mocks.detail.mockClear();
     window.__fcbEarlyEvent = Promise.resolve(early);
     mount();
-    expect(await screen.findByRole('button', { name: '立即報名' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: '請先登入' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '提早標題' })).toBeTruthy();
     expect(mocks.detail).not.toHaveBeenCalled();
     expect(mocks.history).not.toHaveBeenCalled();

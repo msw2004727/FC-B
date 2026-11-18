@@ -25,6 +25,8 @@ export type SignupButtonKind =
   | 'guestWaitlist'
   | 'guestSignup'
   | 'syncing'
+  | 'authPending'
+  | 'profileIncomplete'
   | 'syncIssue'
   | 'ended'
   | 'cancelWaitlist'
@@ -47,7 +49,7 @@ export interface SignupButtonState {
   /** 保留舊介面：`events.detailPage.button.${kind}`。 */
   labelKey: string;
   disabled: boolean;
-  action: 'none' | 'cancel' | 'signup' | 'earlyBird' | 'explain' | 'login';
+  action: 'none' | 'cancel' | 'signup' | 'earlyBird' | 'explain' | 'login' | 'completeProfile';
   tone: 'muted' | 'danger' | 'warning' | 'waitlist' | 'primary';
   variant: 'primary' | 'styled' | 'earlyBird' | 'syncing';
   bg?: string;
@@ -76,6 +78,11 @@ export interface SignupButtonInput {
   profileLoading: boolean;
   historyFailed: boolean;
   viewerTeamIds: ReadonlySet<string>;
+  /**
+   * 登入狀態還在還原（useViewer 的 authPending）：uid 為 null 不代表訪客。
+   * 頁面在逾時後要改傳 false（顧問 §3.268 條件 2：不得永久鎖住）。省略＝已判定。
+   */
+  authPending?: boolean;
 }
 
 // ASSUMPTION: DetailEvent 未列性別／年齡／早鳥／預留名額欄位，
@@ -118,10 +125,36 @@ export function syncIssueButtonState(): SignupButtonState {
 }
 
 /**
+ * 報名鈕就緒鎖與資料未完善引導（2026-11-18 站長指示、顧問 §3.268）：
+ * - 登入還原中先鎖「LINE 登入中…」，不把未判定當成訪客。
+ * - 已登入且個人資料缺 gender／birthday／region（與伺服器 Plan C 同一組）時，
+ *   可報名的狀態改成「請先完善資料」，按下開完善資料彈窗；取消、已結束、尚未開放等不受影響。
+ * 其餘照 baseSignupButtonState（A 原分支）。
+ */
+export function getSignupButtonState(input: SignupButtonInput): SignupButtonState {
+  if (!input.viewer.uid && input.authPending) {
+    return buttonState('authPending', 'LINE 登入中…', {
+      disabled: true,
+      variant: 'syncing',
+    });
+  }
+  const base = baseSignupButtonState(input);
+  if (!input.viewer.uid || input.profile?.incomplete !== true) return base;
+  const canBlockForProfile = base.action === 'signup' || base.action === 'earlyBird'
+    || base.kind === 'genderRestricted' || base.kind === 'ageRestricted';
+  if (!canBlockForProfile) return base;
+  return buttonState('profileIncomplete', '請先完善資料', {
+    action: 'completeProfile',
+    tone: 'primary',
+    variant: 'primary',
+  });
+}
+
+/**
  * 照 A `showEventDetail` 第 1324～1386 行分支順序，逐字回傳按鈕狀態。
  * 訪客分支照 A `_buildGuestEventSignupButton`；早鳥照 A `_buildEventEarlyBirdSignupHtml`。
  */
-export function getSignupButtonState(input: SignupButtonInput): SignupButtonState {
+function baseSignupButtonState(input: SignupButtonInput): SignupButtonState {
   const {
     event,
     viewer,
@@ -182,14 +215,16 @@ export function getSignupButtonState(input: SignupButtonInput): SignupButtonStat
       });
     }
     if (isMainFull) {
-      return buttonState('guestWaitlist', '報名候補', {
+      // 站長 11-19：額滿時訪客鈕寫「登入後候補」（原「報名候補」），一眼看出是候補；按了照舊走登入。
+    return buttonState('guestWaitlist', '登入後候補', {
         action: 'login',
         tone: 'waitlist',
         bg: '#7c3aed',
         color: '#fff',
       });
     }
-    return buttonState('guestSignup', '立即報名', {
+    // 站長 11-18：原「立即報名」。
+    return buttonState('guestSignup', '請先登入', {
       action: 'login',
       tone: 'primary',
       variant: 'primary',
@@ -198,7 +233,8 @@ export function getSignupButtonState(input: SignupButtonInput): SignupButtonStat
 
   // 2. 用戶資料同步中：照 A `_buildEventSignupLoadingButton`。
   if (profileLoading) {
-    return buttonState('syncing', '用戶資料同步中', {
+    // 站長 11-18：原「用戶資料同步中」。頁面逾時後改傳 profileLoading=false 放行（顧問 §3.268 條件 2）。
+    return buttonState('syncing', '資料載入中…', {
       disabled: true,
       variant: 'syncing',
     });

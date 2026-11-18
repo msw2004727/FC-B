@@ -68,7 +68,7 @@
       "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
       "participantNotAllowed": "无权限执行此操作",
       "loadFailed": "页面加载不完整，请重新加载后再报名",
-      "unknown": "报名失败，请稍后重试"
+      "unknown": "报名没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已报名", "loginExpired": "登录已过期，请重新登录后再试"
     }
   },
   "cancel": {
@@ -78,7 +78,7 @@
       "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
       "requestIdConflict": "请重新整理后再试",
       "loadFailed": "页面加载不完整，请重新加载后再取消",
-      "unknown": "取消失败，请稍后重试"
+      "unknown": "取消没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已取消"
     }
   },
   "form": {
