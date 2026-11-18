@@ -479,16 +479,35 @@ const UNKNOWN_REPORT_LIMIT = 3;
 let unknownReports = 0;
 const unknownReportKeys = new Set<string>();
 
-/** 只放行「像錯誤碼」的字串（例如 PROFILE_INCOMPLETE、functions/internal），其餘不送原文。 */
-const CODE_LIKE = /^[A-Za-z0-9_./:-]{1,64}$/;
+/** 伺服器業務錯誤碼：全大寫底線常數（例如 PROFILE_INCOMPLETE），至少一個字母；純數字電話、英文姓名都不會過。 */
+const SERVER_CODE = /^(?=[A-Z0-9_]*[A-Z])[A-Z][A-Z0-9_]{2,63}$/;
+/** Firebase Functions 傳輸層代碼（官方列舉，可帶 functions/ 前綴）。 */
+const TRANSPORT_CODES = new Set([
+  'ok', 'cancelled', 'unknown', 'invalid-argument', 'deadline-exceeded', 'not-found', 'already-exists',
+  'permission-denied', 'resource-exhausted', 'failed-precondition', 'aborted', 'out-of-range',
+  'unimplemented', 'internal', 'unavailable', 'data-loss', 'unauthenticated',
+]);
+function transportCode(code: string): string {
+  const bare = code.replace(/^functions\//, '');
+  return TRANSPORT_CODES.has(bare) ? bare : 'unknown';
+}
+/** 非 Callable 錯誤的類型名稱（TypeError 這類），不像識別字就不送。 */
+const ERROR_NAME = /^[A-Za-z][A-Za-z0-9]{0,40}$/;
 
-/** 非 Callable 錯誤的訊息：遮掉 email 與 8 位以上數字串後只留前 120 字（憑證類由上報器的 scrubSecrets 再遮一次）。 */
-export function redactFreeText(text: string): string {
+/**
+ * 非 Callable 錯誤的訊息（瀏覽器／程式丟的英文訊息）：含非 ASCII 字元（例如中文姓名、地址）就整段不送；
+ * 否則遮掉 email、含分隔線或 7 位以上的數字串後只留前 120 字（憑證類由上報器的 scrubSecrets 再遮一次）。
+ */
+function redactFreeText(text: string): string {
+  if (/[^\x20-\x7E]/.test(text)) return 'message-omitted';
   return text
     .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
-    .replace(/\d{8,}/g, '[num]')
+    .replace(/\+?\d[\d\s-]{5,}\d/g, '[num]')
     .slice(0, 120);
 }
+
+/** 測試用。 */
+export const _redactFreeTextForTest = redactFreeText;
 
 /**
  * 落到通用文案（「報名失敗／取消失敗，請稍後重試」）時上報一筆（顧問 §3.267）：類別 register-unknown／cancel-unknown，
@@ -498,7 +517,8 @@ export function redactFreeText(text: string): string {
  * 取代：原本通用失敗被畫面接住後不寫錯誤日誌，後台看不到原因。
  */
 function reportUnknownFailure(scope: 'register' | 'cancel', code: string, detail: string, timeout: boolean): void {
-  const safeCode = CODE_LIKE.test(code) ? code : 'unknown';
+  // 隱私優先：伺服器自由文字一律不送，不同的自由文字錯誤會得到同一個去重 key、只報第一筆（Flash 複審 P3，接受）。
+  const safeCode = SERVER_CODE.test(code) || TRANSPORT_CODES.has(code.replace(/^functions\//, '')) || ERROR_NAME.test(code) ? code : 'unknown';
   const key = `${scope}|${safeCode}|${detail}|${timeout ? 1 : 0}`;
   if (unknownReportKeys.has(key) || unknownReports >= UNKNOWN_REPORT_LIMIT) return;
   unknownReportKeys.add(key);
@@ -539,8 +559,8 @@ function toSignupError(
     const known = map[originalCode];
     if (!known) {
       // 結構化錯誤碼優先用伺服器的原始碼（像錯誤碼才用），傳輸層代碼放在 detail；伺服器自由文字不送。
-      const serverCode = CODE_LIKE.test(originalCode) ? originalCode : '';
-      reportUnknownFailure(scope, serverCode || error.code, `transport=${CODE_LIKE.test(error.code) ? error.code : 'unknown'}${serverCode ? '' : ' message-omitted'}`, false);
+      const serverCode = SERVER_CODE.test(originalCode) ? originalCode : '';
+      reportUnknownFailure(scope, serverCode || transportCode(error.code), `transport=${transportCode(error.code)}${serverCode ? '' : ' message-omitted'}`, false);
     }
     return new SignupError({
       code: error.code,
@@ -549,7 +569,8 @@ function toSignupError(
       message: error.message,
     });
   }
-  reportUnknownFailure(scope, error instanceof Error ? error.name : typeof error, redactFreeText(message), false);
+  const name = error instanceof Error && ERROR_NAME.test(error.name) ? error.name : 'unknown';
+  reportUnknownFailure(scope, name, redactFreeText(message), false);
   return new SignupError({
     code: 'unknown',
     originalCode: '',

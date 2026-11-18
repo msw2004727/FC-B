@@ -55,7 +55,7 @@ import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
   _resetUnknownFailureReportsForTest,
-  redactFreeText,
+  _redactFreeTextForTest as redactFreeText,
   buildCancelPayload,
   buildRegisterPayload,
   cancelRegistration,
@@ -1422,10 +1422,23 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
       expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'internal' });
     });
 
-    it('非 Callable 錯誤的訊息遮罩：email、8 位以上數字遮掉，只留前 120 字', () => {
+    it('非 Callable 錯誤的訊息遮罩：email、電話（含分隔線）遮掉；含中文等非 ASCII 整段不送；只留前 120 字', () => {
       expect(redactFreeText("undefined is not an object (evaluating 'e.httpsCallable')")).toBe("undefined is not an object (evaluating 'e.httpsCallable')");
-      expect(redactFreeText('bad value bob@example.org id 123456789012 tel 0912345678')).toBe('bad value [email] id [num] tel [num]');
+      expect(redactFreeText('bad value bob@example.org id 123456789012 tel 0912-345-678 or 2345678')).toBe('bad value [email] id [num] tel [num] or [num]');
+      expect(redactFreeText('王小明 台北市信義路')).toBe('message-omitted');
       expect(redactFreeText('x'.repeat(300))).toHaveLength(120);
+    });
+
+    it('錯誤碼白名單：純數字、含分隔線電話、英文姓名不會被當成錯誤碼送出（Flash 複審 P1）', async () => {
+      for (const text of ['0912345678', '0912-345-678', 'AliceWang']) {
+        registerMock('registerForEvent', () => {
+          throw new CallableError('internal', text);
+        });
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      const texts = reported.mock.calls.map(([, e]) => `${(e as { code: string }).code} ${(e as Error).message}`).join(' || ');
+      expect(texts).not.toMatch(/0912345678|0912-345-678|AliceWang/);
     });
   });
 
