@@ -253,6 +253,77 @@ describe('列表讀取預算', () => {
     await waitFor(() => expect(withClub.calls()).toEqual(['getLaunch', 'listMine', 'listPublic', 'listByHostTeam']));
     expect(withClub.calls().some((name) => NEW_READS.includes(name))).toBe(false);
   });
+
+  it('列表讀取＝改前查詢數＋畫面上進行中卡數；再出現不重讀', async () => {
+    const now = nowOf.live;
+    const live = (id: string, category: 'league' | 'cup'): CompetitionDoc => competition({
+      id,
+      name: id,
+      category,
+      hostType: 'personal',
+      hostTeamId: null,
+      ...SCHEDULE_TIMES,
+    });
+    const repo = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      competitions: [
+        live('live_a', 'league'),
+        live('live_b', 'cup'),
+        competition({
+          id: 'rec',
+          name: '招募',
+          hostType: 'personal',
+          hostTeamId: null,
+          regOpenAt: now - 1000,
+          regCloseAt: now + 1000,
+          firstMatchAt: now + 2000,
+          lastMatchAt: now + 3000,
+        }),
+      ],
+    });
+    const env = { actor: memberActor, repo, actions: idleActions(), now };
+    const { rerender } = render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="league" />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(repo.calls()).toEqual(['getLaunch', 'listMine', 'listPublic', 'getSummaryShard']));
+    expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
+
+    rerender(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="all" />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2));
+    expect(repo.calls()).toEqual([
+      'getLaunch', 'listMine', 'listPublic', 'getSummaryShard', 'getSummaryShard',
+    ]);
+    expect(repo.calls()).toHaveLength(3 + 2);
+
+    rerender(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="league" />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    rerender(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="all" />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(repo.calls()).toHaveLength(3 + 2);
+    for (const name of ['listSummary', 'listStandings', 'listMatches', 'listEntriesForCrest']) {
+      expect(repo.calls()).not.toContain(name);
+    }
+  });
 });
 
 describe('詳情讀取預算', () => {

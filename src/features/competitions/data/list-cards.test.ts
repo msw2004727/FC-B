@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { taipeiMs } from '../format';
 import { competition, NOW } from '../testing/screen-fixtures';
+import type { SummaryEntry } from './types';
 import {
   assembleInAppCards,
   daysUntilFirstMatch,
@@ -8,6 +9,7 @@ import {
   formatInAppWhenWhere,
   passesInAppStatus,
   statusLineFor,
+  todayFromShard,
 } from './list-cards';
 
 const IDE = '\u3000';
@@ -37,18 +39,47 @@ describe('站內卡片純函式', () => {
     expect(daysUntilFirstMatch(now, taipeiMs(2026, 12, 9, 8, 0))).toBe(0);
   });
 
-  it('狀態行：招募寫截止、預熱寫天數、進行中與冠軍沒有資料就留空', () => {
+  it('狀態行：招募寫截止、預熱寫天數、進行中沒資料留空、已結束不寫冠軍', () => {
     const doc = competition();
-    expect(statusLineFor(doc, 'recruit', NOW, undefined, undefined)).toEqual({ kind: 'deadline', date: '12/20 23:59' });
-    expect(statusLineFor(doc, 'warm', taipeiMs(2026, 12, 10, 12, 0), undefined, undefined)).toEqual({ kind: 'warm', days: 30 });
-    expect(statusLineFor(doc, 'live', NOW, undefined, undefined)).toBeNull();
-    expect(statusLineFor(doc, 'live', NOW, { count: 3, time: '14:30' }, undefined)).toEqual({
+    expect(statusLineFor(doc, 'recruit', NOW, undefined)).toEqual({ kind: 'deadline', date: '12/20 23:59' });
+    expect(statusLineFor(doc, 'warm', taipeiMs(2026, 12, 10, 12, 0), undefined)).toEqual({ kind: 'warm', days: 30 });
+    expect(statusLineFor(doc, 'live', NOW, undefined)).toBeNull();
+    expect(statusLineFor(doc, 'live', NOW, { count: 0, time: null })).toBeNull();
+    expect(statusLineFor(doc, 'live', NOW, { count: 3, time: '14:30' })).toEqual({
       kind: 'live', count: 3, time: '14:30',
     });
-    expect(statusLineFor(doc, 'live', NOW, { count: 3, time: '  ' }, undefined)).toBeNull();
-    expect(statusLineFor(doc, 'done', NOW, undefined, undefined)).toBeNull();
-    expect(statusLineFor(doc, 'done', NOW, undefined, '  ')).toBeNull();
-    expect(statusLineFor(doc, 'done', NOW, undefined, '海風隊')).toEqual({ kind: 'champion', name: '海風隊' });
+    expect(statusLineFor(doc, 'live', NOW, { count: 3, time: '  ' })).toEqual({ kind: 'today', count: 3 });
+    expect(statusLineFor(doc, 'live', NOW, { count: 3, time: null })).toEqual({ kind: 'today', count: 3 });
+    expect(statusLineFor(doc, 'done', NOW, { count: 2, time: '09:00' })).toBeNull();
+  });
+
+  it('當日摘要片：場數是片長；下一場是時間 ≥ now 且 scheduled 的最早一場', () => {
+    const now = taipeiMs(2026, 12, 10, 12, 0);
+    const row = (partial: Partial<SummaryEntry> & Pick<SummaryEntry, 'id'>): SummaryEntry => ({
+      dv: 'dv',
+      r: 1,
+      no: 1,
+      k: null,
+      v: null,
+      h: { id: 'h', n: '主' },
+      a: { id: 'a', n: '客' },
+      s: [0, 0],
+      st: 'scheduled',
+      wo: null,
+      ...partial,
+    });
+    expect(todayFromShard([], now)).toBeNull();
+    expect(todayFromShard([
+      row({ id: 'past', k: taipeiMs(2026, 12, 10, 9, 0) }),
+      row({ id: 'now', k: now }),
+      row({ id: 'later', k: taipeiMs(2026, 12, 10, 15, 0), st: 'confirmed' }),
+      row({ id: 'next', k: taipeiMs(2026, 12, 10, 14, 30) }),
+      row({ id: 'tbd', k: null }),
+    ], now)).toEqual({ count: 5, time: '12:00' });
+    expect(todayFromShard([
+      row({ id: 'past', k: taipeiMs(2026, 12, 10, 9, 0), st: 'finished' }),
+      row({ id: 'tbd', k: null }),
+    ], now)).toEqual({ count: 2, time: null });
   });
 
   it('合併去重、我的與主辦做記號、沒時間的排後面；未結束仍含未知階段', () => {
@@ -70,7 +101,6 @@ describe('站內卡片純函式', () => {
       ],
       now: NOW,
       todayByCid: new Map([['early', { count: 2, time: '09:00' }]]),
-      championByCid: new Map([['hosted', '海風隊']]),
     });
     expect(cards.map((card) => card.cid)).toEqual(['later', 'early', 'hosted', 'named']);
     expect(cards.map((card) => card.name)).toEqual(['較晚', '較早', '主辦盃', '只有名稱']);
@@ -82,7 +112,7 @@ describe('站內卡片純函式', () => {
     expect(cards.find((card) => card.cid === 'hosted')).toMatchObject({
       mine: true,
       ended: true,
-      line: { kind: 'champion', name: '海風隊' },
+      line: null,
     });
     expect(cards.find((card) => card.cid === 'named')).toMatchObject({ phase: null, mine: true, dates: '' });
 

@@ -49,6 +49,22 @@ import {
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 
+const EXTERNAL_CHIP = {
+  league: 'cpl-chip--league',
+  cup: 'cpl-chip--cup',
+  friendly: 'cpl-chip--friendly',
+} as const;
+
+/**
+ * 外部卡分類 class。只接受 league／cup／friendly。
+ * 其他類型不加分類 class，原字串不進 class。
+ */
+export function externalChipClass(type: unknown, themed: boolean): string {
+  if (!themed) return 'tc-chip';
+  if (type !== 'league' && type !== 'cup' && type !== 'friendly') return 'tc-chip cpl-chip';
+  return `tc-chip cpl-chip ${EXTERNAL_CHIP[type]}`;
+}
+
 interface InAppSlotProps {
   tab: TournamentCardTab;
   /** 閘門開著且目前選站內時才畫卡。外部來源時元件留著，避免重讀。 */
@@ -110,6 +126,7 @@ export default function TournamentsPage(): JSX.Element {
   const [showEnded, setShowEnded] = useState(true);
   // 閘門沒過維持 false：不畫來源切換，外部卡維持原本的小標。
   const [inAppOpen, setInAppOpen] = useState(false);
+  // 非法 ?src 只影響畫面預設，這裡不改網址。
   const source = competitionSourceFromQuery(location.query?.src);
   const showInApp = inAppOpen && source === 'in';
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -401,7 +418,7 @@ export default function TournamentsPage(): JSX.Element {
                       <div class="tc-card-name">{card.name}</div>
                       <div class="tc-card-dates">{formatCardDates(card)}</div>
                     </div>
-                    <span class={inAppOpen ? `tc-chip cpl-chip cpl-chip--${card.type}` : 'tc-chip'}>{t(`tournaments.tab.${card.type}`)}</span>
+                    <span class={externalChipClass(card.type, inAppOpen)}>{t(`tournaments.tab.${card.type}`)}</span>
                   </div>
                 </a>
                 {canManage ? (

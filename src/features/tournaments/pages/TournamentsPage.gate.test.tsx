@@ -3,7 +3,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
-import TournamentsPage from './TournamentsPage';
+import TournamentsPage, { externalChipClass } from './TournamentsPage';
 import { resetCardsCacheForTest } from '../data/cards-cache';
 
 function flatten(obj: Record<string, unknown>, prefix: string, out: Record<string, string> = {}) {
@@ -167,11 +167,40 @@ describe('開關打開時的來源與讀取', () => {
     history.replaceState(null, '', '/tournaments?src=nope&keep=1');
     draw();
     await waitFor(() => expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true'));
+    expect(location.search).toBe('?src=nope&keep=1');
     fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
     expect(location.search).toBe('?src=ext&keep=1');
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(location.search).toBe('?keep=1');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('模擬返回（popstate）後仍停在 ?src=ext', async () => {
+    draw();
+    await waitFor(() => expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true'));
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    expect(location.search).toBe('?src=ext');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(location.search).toBe('?src=ext');
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+  });
+
+  it('非法 type 不產生 cpl-chip--*', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const span = document.createElement('span');
+    host.append(span);
+    for (const type of ['playoff', 'league cup', '"><img', 'cpl-chip--x', '']) {
+      span.className = externalChipClass(type, true);
+      expect(span.className).not.toMatch(/cpl-chip--/);
+      expect(host.querySelector('[class*="cpl-chip--"]')).toBeNull();
+    }
+    span.className = externalChipClass('cup', true);
+    expect(span.classList.contains('cpl-chip--cup')).toBe(true);
+    expect(externalChipClass('league', true)).toBe('tc-chip cpl-chip cpl-chip--league');
+    expect(externalChipClass('friendly', false)).toBe('tc-chip');
+    host.remove();
   });
 
   it('直接打開 ?src=ext 停在外部，進頁仍只查一次', async () => {

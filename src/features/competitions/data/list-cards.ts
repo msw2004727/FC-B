@@ -1,14 +1,15 @@
-// 賽事列表 v2 的站內卡片。只吃已經讀回來的文件，自己不發查詢。
-// ASSUMPTION: 列表維持第 2 步的查詢，不讀摘要、積分榜、隊徽。
-// 進行中的「今天 N 場・下一場」與已結束的「冠軍」要有場次或冠軍才寫得出來；
-// 目前清單文件沒有這兩欄，呼叫端沒帶就留空，膠囊仍顯示階段。不另讀去補。
+// 賽事列表 v2 的站內卡片。組卡本身不發查詢。
+// 進行中的今天場次由呼叫端帶 todayByCid（頁面只對畫面上的進行中卡各讀一次當日摘要片）。
+// 已結束不顯示冠軍。沒有場次資料就留空，膠囊仍顯示階段。
+// ASSUMPTION: 同一場賽事公開清單與我的清單都有時，以公開文件為準
+// （公開文件是最新根文件，我的索引名稱可能過期）。
 // ASSUMPTION: 卡片日期用首場到末場（比賽期間）。同一年的結束日省略年份。地點用第一個有名稱的場地。
 // ASSUMPTION: 距開賽是台北日曆日差，不是滿 24 小時才算一天。
 // ASSUMPTION: 沒有時間的「我的賽事」階段未知。預設「未結束」仍列出（未知不是已結束）。指定階段不含未知。
 // ASSUMPTION: 只看我的關閉時是公開、cpMine、代表俱樂部主辦的聯集，以 cid 去重。打開時只留後兩者。
 // ASSUMPTION: 排序用首場時間新到舊；沒有時間的排後面，再用 cid 固定順序。
 
-import type { CompetitionCategory, CompetitionDoc } from './types';
+import type { CompetitionCategory, CompetitionDoc, SummaryEntry } from './types';
 import { categoryOf, competitionPhase, type CompetitionPhase } from './present';
 import { formatTaipeiShort, taipeiParts } from '../format';
 
@@ -25,7 +26,7 @@ export type InAppStatusLine =
   | { kind: 'deadline'; date: string }
   | { kind: 'warm'; days: number }
   | { kind: 'live'; count: number; time: string }
-  | { kind: 'champion'; name: string };
+  | { kind: 'today'; count: number };
 
 export interface InAppListCard {
   cid: string;
@@ -48,8 +49,9 @@ export interface MineListRow {
 }
 
 export interface TodayMatches {
+  /** 當日摘要片裡的場次數。 */
   count: number;
-  /** HH:MM。沒有下一場就不畫進行中那一行。 */
+  /** 下一場台北 HH:MM。今天沒有下一場是 null，仍可只顯示場數。 */
   time: string | null;
 }
 
@@ -86,12 +88,33 @@ export function formatInAppWhenWhere(
   return venue ? `${when}　${venue}` : when;
 }
 
+/** 台北 HH:MM。 */
+function taipeiClock(ms: number): string {
+  const p = taipeiParts(ms);
+  return `${pad(p.hour)}:${pad(p.minute)}`;
+}
+
+/**
+ * 當日摘要片 → 今天場數與下一場。
+ * N 是這一片的場次數。空片回 null（卡片留空）。
+ * 下一場是還沒開始（時間 ≥ now、狀態 scheduled）的最早一場，台北 HH:MM。
+ * 有場次但沒有下一場時 time 是 null，呼叫端只寫場數。
+ */
+export function todayFromShard(entries: readonly SummaryEntry[], now: number): TodayMatches | null {
+  if (entries.length === 0) return null;
+  let nextAt: number | null = null;
+  for (const entry of entries) {
+    if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
+    if (nextAt == null || entry.k < nextAt) nextAt = entry.k;
+  }
+  return { count: entries.length, time: nextAt == null ? null : taipeiClock(nextAt) };
+}
+
 export function statusLineFor(
   doc: Pick<CompetitionDoc, 'id' | 'regCloseAt' | 'firstMatchAt'>,
   phase: CompetitionPhase,
   now: number,
   today: TodayMatches | undefined,
-  champion: string | undefined,
 ): InAppStatusLine | null {
   if (phase === 'recruit') {
     return { kind: 'deadline', date: formatTaipeiShort(doc.regCloseAt) };
@@ -100,12 +123,12 @@ export function statusLineFor(
     return { kind: 'warm', days: daysUntilFirstMatch(now, doc.firstMatchAt) };
   }
   if (phase === 'live') {
-    const time = today?.time?.trim();
-    if (today && time) return { kind: 'live', count: today.count, time };
-    return null;
+    if (!today || today.count <= 0) return null;
+    const time = today.time?.trim() ?? '';
+    if (time) return { kind: 'live', count: today.count, time };
+    return { kind: 'today', count: today.count };
   }
-  const name = champion?.trim();
-  return name ? { kind: 'champion', name } : null;
+  return null;
 }
 
 function cardFromDoc(
@@ -113,7 +136,6 @@ function cardFromDoc(
   mine: boolean,
   now: number,
   today: TodayMatches | undefined,
-  champion: string | undefined,
 ): InAppListCard {
   const phase = competitionPhase(doc, now);
   return {
@@ -122,7 +144,7 @@ function cardFromDoc(
     category: categoryOf(doc),
     phase,
     dates: formatInAppWhenWhere(doc),
-    line: statusLineFor(doc, phase, now, today, champion),
+    line: statusLineFor(doc, phase, now, today),
     mine,
     ended: phase === 'done',
   };
@@ -144,7 +166,6 @@ export function assembleInAppCards(input: {
   mine: readonly MineListRow[];
   now: number;
   todayByCid?: ReadonlyMap<string, TodayMatches>;
-  championByCid?: ReadonlyMap<string, string>;
 }): InAppListCard[] {
   const mineIds = new Set(input.mine.map((row) => row.cid));
   const hostedIds = new Set(input.hosted.map((doc) => doc.id));
@@ -155,6 +176,7 @@ export function assembleInAppCards(input: {
     docs.set(doc.id, doc);
   }
 
+  // 公開文件先放。同一場後面的主辦或我的文件不覆蓋。
   for (const doc of input.publicDocs) remember(doc);
   for (const doc of input.hosted) remember(doc);
   for (const row of input.mine) {
@@ -170,7 +192,6 @@ export function assembleInAppCards(input: {
       mineIds.has(doc.id) || hostedIds.has(doc.id),
       input.now,
       input.todayByCid?.get(doc.id),
-      input.championByCid?.get(doc.id),
     ));
   }
 

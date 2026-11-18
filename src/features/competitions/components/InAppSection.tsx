@@ -3,10 +3,14 @@
 // 「只看我的」打開時只留 cpMine 與代表俱樂部主辦，不再另畫「我的賽事」區塊。
 // 俱樂部主辦清單是另一段：等代表俱樂部到齊才補讀 listByHostTeam 再合併。
 // launch、tester、listMine、listPublic 不因 repKey、分類、階段篩選變動重讀。
+// 進行中、而且此刻畫在畫面上的卡，各讀一次當日摘要片（getSummaryShard，不監聽）。
+// 同 cid 同日的成功結果留在這頁的記憶體；失敗不留，卡片再出現才重讀。
+// 不讀積分榜、隊徽、摘要全集。已結束卡不顯示冠軍。
 // ASSUMPTION: 沒有名稱的項目不顯示 id。單筆讀取失敗略過，不讓整區消失。
-// ASSUMPTION: 有名稱的 cpMine 不再讀賽事文件。公開或主辦清單裡已有同一場時，用那份文件畫卡。
+// ASSUMPTION: 有名稱的 cpMine 不再讀賽事文件。
+// ASSUMPTION: 同一場賽事公開清單與我的清單都有時，以公開文件為準
+// （公開文件是最新根文件，我的索引名稱可能過期）。
 // 正式頁等閘門通過才查代表俱樂部；沒過時 teams 一筆都不讀。
-// 列表不讀摘要、積分榜、隊徽。進行中與已結束的狀態行因此可能沒有場數或冠軍。
 
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -18,12 +22,15 @@ import { canSeeInAppSection, isCpAdmin } from '../access';
 import type { CompetitionsRepo } from '../data/cp-repo';
 import type { CompetitionDoc, CpMineItem } from '../data/types';
 import { categoryOf } from '../data/present';
+import { summaryShardIdOf } from '../data/schedule-load';
 import {
   assembleInAppCards,
   filterInAppCards,
+  todayFromShard,
   type InAppStatusFilter,
   type InAppTab,
   type MineListRow,
+  type TodayMatches,
 } from '../data/list-cards';
 import type { CpActor } from '../env';
 import { useInjectedEnv } from '../env';
@@ -95,8 +102,11 @@ function SectionBody({
   const [publicDocs, setPublicDocs] = useState<CompetitionDoc[]>([]);
   const [status, setStatus] = useState<InAppStatusFilter>('open');
   const [onlyMine, setOnlyMine] = useState(false);
+  const [todayByCid, setTodayByCid] = useState<ReadonlyMap<string, TodayMatches>>(() => new Map());
   // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
   const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
+  // 同 cid 同日只讀一次。失敗的 promise 會從這裡拿掉。不監聽。
+  const shardCache = useRef(new Map<string, Promise<TodayMatches | null>>());
   // 換帳號的第一個畫面就要藏起上一個人的清單，不能等 effect。
   const appliedUid = useRef(actor.uid);
   const uidStale = appliedUid.current !== actor.uid;
@@ -115,6 +125,8 @@ function SectionBody({
       setHostQuery(null);
       setStatus('open');
       setOnlyMine(false);
+      setTodayByCid(new Map());
+      shardCache.current.clear();
     }
     void (async () => {
       const launch = await repo.getLaunch();
@@ -184,13 +196,60 @@ function SectionBody({
   }, [hostQuery, repKey, repo]);
 
   const cards = useMemo(
-    () => assembleInAppCards({ publicDocs, hosted, mine: baseMine, now }),
-    [publicDocs, hosted, baseMine, now],
+    () => assembleInAppCards({ publicDocs, hosted, mine: baseMine, now, todayByCid }),
+    [publicDocs, hosted, baseMine, now, todayByCid],
   );
   const visible = useMemo(
     () => filterInAppCards(cards, tab, status, onlyMine),
     [cards, tab, status, onlyMine],
   );
+  // 空字串＝現在沒有畫在畫面上的進行中卡（含來源切到外部、字典未到）。
+  const liveKey = !uidStale && phase === 'ready' && active && cpDict.ct
+    ? visible.filter((card) => card.phase === 'live').map((card) => card.cid).join('\n')
+    : '';
+
+  useEffect(() => {
+    if (!liveKey) return;
+    const shardId = summaryShardIdOf(now);
+    const cids = liveKey.split('\n');
+    let alive = true;
+    for (const cid of cids) {
+      const key = `${cid}\n${shardId}`;
+      let pending = shardCache.current.get(key);
+      if (!pending) {
+        // 單次 get。失敗拿掉快取，不在這裡重試迴圈。
+        pending = Promise.resolve()
+          .then(() => repo.getSummaryShard(cid, shardId))
+          .then((entries) => todayFromShard(entries, now))
+          .catch((error: unknown) => {
+            shardCache.current.delete(key);
+            throw error;
+          });
+        shardCache.current.set(key, pending);
+      }
+      void pending.then((today) => {
+        if (!alive) return;
+        setTodayByCid((prev) => {
+          if (!today) {
+            if (!prev.has(cid)) return prev;
+            const next = new Map(prev);
+            next.delete(cid);
+            return next;
+          }
+          const old = prev.get(cid);
+          if (old && old.count === today.count && old.time === today.time) return prev;
+          const next = new Map(prev);
+          next.set(cid, today);
+          return next;
+        });
+      }).catch(() => {
+        // 失敗留空。快取已清，這張卡再出現時才重讀。
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [liveKey, now, repo]);
 
   if (uidStale || phase !== 'ready') return null;
   if (!active) return null;

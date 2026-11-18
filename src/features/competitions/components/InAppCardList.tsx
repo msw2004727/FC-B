@@ -2,6 +2,7 @@
 // 預覽沒有「建立賽事」。這顆鈕是第 2 步既有入口，留在篩選列下方，文案沿用建立賽事。
 
 import type { JSX } from 'preact';
+import { useId } from 'preact/hooks';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
 import { IN_APP_STATUS_FILTERS } from '../data/list-cards';
@@ -61,7 +62,7 @@ function lineText(ct: CompetitionsT, line: InAppStatusLine): string {
   if (line.kind === 'deadline') return ct('lineDeadline', { date: line.date });
   if (line.kind === 'warm') return ct('lineWarm', { n: line.days });
   if (line.kind === 'live') return ct('lineToday', { n: line.count, time: line.time });
-  return ct('lineChampion', { name: line.name });
+  return ct('lineTodayOnly', { n: line.count });
 }
 
 const FILTER_KEY: Record<InAppStatusFilter, 'statusOpen' | 'recruiting' | 'statusWarm' | 'statusLive' | 'statusDone' | 'filterAll'> = {
@@ -123,6 +124,8 @@ export function InAppCardList({
   onCreate: () => void;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
 }): JSX.Element {
+  const statusId = useId();
+  const onlyMineId = useId();
   return (
     <div data-inapp="competitions">
       {showCreate ? (
@@ -131,9 +134,10 @@ export function InAppCardList({
         </div>
       ) : null}
       <div class="tc-toolbar cpl-toolbar">
-        <label class="cpl-select">
+        <label class="cpl-select" for={statusId}>
           <select
-            id="cpl-status"
+            id={statusId}
+            aria-label={ct('statusLabel')}
             value={status}
             onChange={(event) => {
               const value = event.currentTarget.value as InAppStatusFilter;
@@ -146,12 +150,12 @@ export function InAppCardList({
           </select>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </label>
-        <label>
+        <label for={onlyMineId}>
           <span>{ct('onlyMine')}</span>
           <span class="toggle-switch">
             <input
               type="checkbox"
-              id="cpl-only-mine"
+              id={onlyMineId}
               checked={onlyMine}
               onChange={(event) => onOnlyMine(event.currentTarget.checked)}
             />
