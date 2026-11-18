@@ -72,10 +72,10 @@ function CatChip({ cat }: { cat: Cat }): JSX.Element {
 
 interface InComp { name: string; cat: Cat; st: St; dates: string; line: string; cover?: number }
 const IN: InComp[] = [
-  { name: '示範盃五人制足球賽', cat: 'league', st: 'live', dates: '2027/01/09 – 01/10　示範運動公園', line: '今天 3 場・下一場 14:30', cover: 150 },
+  { name: '示範盃五人制足球賽', cat: 'league', st: 'live', dates: '2027/01/09 – 01/10　示範運動公園', line: '今天 3 場・下一場 14:30' },
   { name: '冬季友誼盃', cat: 'cup', st: 'warm', dates: '2027/01/16 – 01/17　河濱足球場', line: '距開賽 3 天' },
   { name: '新春迎新友誼賽', cat: 'friendly', st: 'recruit', dates: '2027/02/06　示範國小', line: '報名截止　12/20 23:59' },
-  { name: '春季社區聯賽', cat: 'league', st: 'recruit', dates: '2027/03/06 – 04/24　示範運動公園', line: '報名截止　01/31 23:59', cover: 205 },
+  { name: '春季社區聯賽', cat: 'league', st: 'recruit', dates: '2027/03/06 – 04/24　示範運動公園', line: '報名截止　01/31 23:59' },
 ];
 const IN_DONE: InComp = { name: '秋季聯賽', cat: 'league', st: 'done', dates: '2026/10/03 – 11/21', line: '冠軍　海風隊' };
 

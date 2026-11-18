@@ -172,12 +172,12 @@ function TrophyIcon(): JSX.Element {
 }
 
 // ── 隊徽：圓形；沒上傳時用隊名第一個字＋固定色（依隊伍 id 雜湊，同隊永遠同色）──
-const CREST_COLORS = ['#0f766e', '#0e7490', '#7c2d12', '#9f1239', '#475569', '#3f6212', '#57534e', '#334155'];
+const CREST_COUNT = 8; // 底色 token --crest-0～7（深淺色各一組，對卡片底對比 ≥ 3:1）
 const HAS_LOGO = new Set(['海風隊', '山貓隊']);
-function crestColor(name: string): string {
+function crestIndex(name: string): number {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
-  return CREST_COLORS[h % CREST_COLORS.length] ?? '#475569';
+  return h % CREST_COUNT;
 }
 function logoUrl(name: string): string {
   const hue = name === '海風隊' ? 200 : 30;
@@ -187,8 +187,9 @@ function logoUrl(name: string): string {
 function Crest({ name, size = 24 }: { name: string; size?: number }): JSX.Element {
   const style = `width:${size}px;height:${size}px`;
   if (HAS_LOGO.has(name)) return <img class="cp3-crest" src={logoUrl(name)} alt="" style={style} />;
+  // 正式版：<img onError> 一律退回下面的首字＋底色
   const ch = [...name][0] ?? '?';
-  return <span class="cp3-crest cp3-crest--txt" aria-hidden="true" style={`${style};background:${crestColor(name)};font-size:${Math.round(size * 0.48)}px`}>{ch}</span>;
+  return <span class={`cp3-crest cp3-crest--txt cp3-crest--c${crestIndex(name)}`} aria-hidden="true" style={`${style};font-size:${Math.round(size * 0.48)}px`}>{ch}</span>;
 }
 let SHOW_CREST = false;
 
@@ -625,16 +626,18 @@ function RescheduleSheet({ tbd }: { tbd: boolean }): JSX.Element {
 
 
 // ── 封面＋隊徽（站長 2026-11-18 追加）─────────────────────────────────────
-function coverPhoto(): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(150,45%,62%)"/><stop offset="1" stop-color="hsl(150,55%,30%)"/></linearGradient></defs><rect width="800" height="300" fill="url(#g)"/><g fill="none" stroke="rgba(255,255,255,.55)" stroke-width="4"><rect x="40" y="150" width="720" height="140"/><line x1="400" y1="150" x2="400" y2="290"/><circle cx="400" cy="220" r="40"/></g><circle cx="640" cy="80" r="34" fill="rgba(255,255,255,.75)"/></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+const CAT_NAME = { league: '聯賽', cup: '盃賽', friendly: '友誼賽' } as const;
+function CoverGlyph({ cat }: { cat: keyof typeof CAT_NAME }): JSX.Element {
+  if (cat === 'cup') return <svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" /></svg>;
+  if (cat === 'friendly') return <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>;
+  return <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7l4 3-1.5 4.5h-5L8 10z" /><path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" /></svg>;
 }
-function DetailCover({ custom, tab }: { custom?: boolean; tab: 'sched' | 'stand' }): JSX.Element {
+function DetailCover({ cat, tab }: { cat: keyof typeof CAT_NAME; tab: 'sched' | 'stand' }): JSX.Element {
   return (
     <Frame title="示範盃五人制足球賽">
       <div class="cp3-cover">
-        {custom ? <img src={coverPhoto()} alt="" /> : <div class="cp3-cover__def cp3-cover__def--league" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7l4 3-1.5 4.5h-5L8 10z" /><path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" /></svg></div>}
-        <span class="cp3-cover__cat">聯賽</span>
+        <div class={`cp3-cover__def cp3-cover__def--${cat}`} aria-hidden="true"><CoverGlyph cat={cat} /></div>
+        <span class={`cp3-cover__cat cp3-cover__cat--${cat}`}>{CAT_NAME[cat]}</span>
       </div>
       <Card>
         <div class="cp3-strip">
@@ -686,8 +689,10 @@ function Screen(): JSX.Element {
     case 'reset-dialog': return <ResetDialog />;
     case 'reschedule': return <RescheduleSheet tbd={false} />;
     case 'reschedule-tbd': return <RescheduleSheet tbd />;
-    case 'cover-live': SHOW_CREST = true; return <DetailCover custom tab="sched" />;
-    case 'cover-default': SHOW_CREST = true; return <DetailCover tab="stand" />;
+    case 'cover-live': SHOW_CREST = true; return <DetailCover cat="league" tab="sched" />;
+    case 'cover-default': SHOW_CREST = true; return <DetailCover cat="league" tab="stand" />;
+    case 'cover-cup': SHOW_CREST = true; return <DetailCover cat="cup" tab="sched" />;
+    case 'cover-friendly': SHOW_CREST = true; return <DetailCover cat="friendly" tab="stand" />;
     case 'crest-sheet': return <CrestSheet />;
     default: return <ListScreen />;
   }

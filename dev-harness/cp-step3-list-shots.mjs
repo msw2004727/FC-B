@@ -21,6 +21,8 @@ const SCREENS = [
   ['list:gate-off', ONE, ['light'], false],
   ['main:cover-live', ALL, THEMES, true],
   ['main:cover-default', ALL, THEMES, true],
+  ['main:cover-cup', ALL, THEMES, true],
+  ['main:cover-friendly', ONE, THEMES, true],
   ['main:crest-sheet', ONE, THEMES, true],
 ];
 
