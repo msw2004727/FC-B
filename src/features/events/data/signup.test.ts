@@ -54,6 +54,7 @@ import { reportClientError } from '@/core/error-report';
 import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
+  _resetUnknownFailureReportsForTest,
   buildCancelPayload,
   buildRegisterPayload,
   cancelRegistration,
@@ -1193,9 +1194,15 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     expect(vi.getTimerCount()).toBe(2);
     await vi.advanceTimersByTimeAsync(14_999);
     expect(vi.getTimerCount()).toBe(2);
+    vi.mocked(reportClientError).mockClear();
+    _resetUnknownFailureReportsForTest();
     await vi.advanceTimersByTimeAsync(1);
     await assertion;
     expect(vi.getTimerCount()).toBe(0);
+    // §3.267：逾時落到通用文案，上報一筆、標明逾時。
+    expect(vi.mocked(reportClientError)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(reportClientError).mock.calls[0]?.[0]).toBe('register-unknown');
+    expect((vi.mocked(reportClientError).mock.calls[0]?.[1] as Error).message).toContain('timeout=1');
     pending.resolve({ success: true });
     await flushMicrotasks();
     expect(calls).toBe(1);
@@ -1293,9 +1300,10 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     expect(reported.mock.calls[0]?.[0]).toBe('cancel-module-load');
   });
 
-  it('其他未知錯誤照舊：「報名失敗，請稍後重試」、不上報', async () => {
+  it('其他未知錯誤：文案照舊「報名失敗，請稍後重試」，改為上報一筆 register-unknown（§3.267；取代原「不上報」）', async () => {
     const reported = vi.mocked(reportClientError);
     reported.mockClear();
+    _resetUnknownFailureReportsForTest();
     registerMock('registerForEvent', () => {
       throw new TypeError("undefined is not an object (evaluating 'e.httpsCallable')");
     });
@@ -1303,7 +1311,76 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
       messageKey: 'event.signup.error.unknown',
     });
-    expect(reported).not.toHaveBeenCalled();
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('register-unknown');
+    expect(String((reported.mock.calls[0]?.[1] as Error).message)).toContain('timeout=0');
+  });
+
+  describe('通用失敗一律上報（顧問 §3.267）', () => {
+    const reported = vi.mocked(reportClientError);
+
+    beforeEach(() => {
+      reported.mockClear();
+      _resetUnknownFailureReportsForTest();
+    });
+
+    it('伺服器回對照表沒有的錯誤：通用文案、上報一次、類別 register-unknown，帶錯誤碼與原始訊息', async () => {
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', 'internal');
+      });
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      const [context, err] = reported.mock.calls[0]!;
+      expect(context).toBe('register-unknown');
+      expect(err).toMatchObject({ code: 'internal' });
+      expect((err as Error).message).toContain('code=internal');
+      expect((err as Error).message).toContain('timeout=0');
+    });
+
+    it('取消落到通用文案：類別 cancel-unknown', async () => {
+      registerMock('cancelRegistration', () => {
+        throw new CallableError('unavailable', 'SOMETHING_NEW');
+      });
+      await expect(cancelRegistration({
+        eventId: 'evtA', userId: 'uidA', registrationIds: ['targetA'], kind: 'self', context: cancelContext({}, 'uidA').context,
+      })).rejects.toMatchObject({ messageKey: 'event.cancel.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls[0]?.[0]).toBe('cancel-unknown');
+      expect((reported.mock.calls[0]?.[1] as Error).message).toContain('SOMETHING_NEW');
+    });
+
+    it('已知錯誤（例如早鳥額滿、已報名）不上報', async () => {
+      for (const code of ['EARLY_BIRD_FULL', 'ALREADY_REGISTERED']) {
+        registerMock('registerForEvent', () => {
+          throw new CallableError('failed-precondition', code, code);
+        });
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ originalCode: code });
+      }
+      expect(reported).not.toHaveBeenCalled();
+    });
+
+    it('載入失敗只上報 signup-module-load 一筆，不再另報 unknown', async () => {
+      registerMock('registerForEvent', () => {
+        throw new TypeError('Importing a module script failed.');
+      });
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.loadFailed' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    });
+
+    it('限流：同一頁最多上報 3 筆通用失敗', async () => {
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', 'internal');
+      });
+      for (let i = 0; i < 5; i += 1) {
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      expect(reported).toHaveBeenCalledTimes(3);
+    });
   });
 
   it('Callable 在逾時前完成：計時器清掉', async () => {

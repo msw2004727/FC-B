@@ -474,6 +474,28 @@ function extractOriginalCode(error: CallableError): string {
   return error.code;
 }
 
+/** 同一頁最多上報幾筆通用失敗（顧問 §3.267：限流）。 */
+const UNKNOWN_REPORT_LIMIT = 3;
+let unknownReports = 0;
+
+/**
+ * 落到通用文案（「報名失敗／取消失敗，請稍後重試」）時上報一筆（顧問 §3.267）：類別 register-unknown／cancel-unknown，
+ * 訊息帶錯誤碼、是否逾時、原始訊息前 200 字；版號、時間與 uid 由上報器照常帶，不另帶其他個資。
+ * 已知錯誤（對照表內）與載入失敗（signup-module-load）不走這裡。只加上報，不改文案、交易、重試與送出守門。
+ * 取代：原本通用失敗被畫面接住後不寫錯誤日誌，後台看不到原因。
+ */
+function reportUnknownFailure(scope: 'register' | 'cancel', code: string, message: string, timeout: boolean): void {
+  if (unknownReports >= UNKNOWN_REPORT_LIMIT) return;
+  unknownReports += 1;
+  const err = new Error(`${scope} unknown: code=${code || '-'} timeout=${timeout ? 1 : 0} msg=${message.slice(0, 200)}`) as Error & { code: string };
+  err.code = code || 'unknown';
+  reportClientError(`${scope}-unknown`, err);
+}
+
+export function _resetUnknownFailureReportsForTest(): void {
+  unknownReports = 0;
+}
+
 function toSignupError(
   error: unknown,
   map: Record<string, string>,
@@ -497,13 +519,18 @@ function toSignupError(
   }
   if (error instanceof CallableError) {
     const originalCode = extractOriginalCode(error);
+    const known = map[originalCode];
+    if (!known) {
+      reportUnknownFailure(scope, error.code, originalCode === error.message ? error.message : `${originalCode} | ${error.message}`, false);
+    }
     return new SignupError({
       code: error.code,
       originalCode,
-      messageKey: map[originalCode] ?? fallbackKey,
+      messageKey: known ?? fallbackKey,
       message: error.message,
     });
   }
+  reportUnknownFailure(scope, error instanceof Error ? error.name : typeof error, message, false);
   return new SignupError({
     code: 'unknown',
     originalCode: '',
@@ -613,6 +640,7 @@ async function withCallableTimeout<T>(call: Promise<T>, scope: 'signup' | 'cance
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      reportUnknownFailure(scope === 'signup' ? 'register' : 'cancel', 'deadline-exceeded', 'CALLABLE_TIMEOUT', true);
       reject(new SignupError({
         code: 'deadline-exceeded',
         originalCode: 'CALLABLE_TIMEOUT',
