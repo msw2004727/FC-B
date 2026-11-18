@@ -104,6 +104,12 @@ function spyActions() {
     confirmMatchResult: vi.fn(actions.confirmMatchResult),
     setWalkover: vi.fn(actions.setWalkover),
     resetMatch: vi.fn(actions.resetMatch),
+    cancelMatch: vi.fn(actions.cancelMatch),
+    endCompetition: vi.fn(actions.endCompetition),
+    restoreCompetition: vi.fn(actions.restoreCompetition),
+    resolveTie: vi.fn(actions.resolveTie),
+    clearTieDecision: vi.fn(actions.clearTieDecision),
+    explainTie: vi.fn(actions.explainTie),
   };
 }
 

@@ -67,6 +67,27 @@ export interface RegisterInput {
   now: number;
 }
 
+/**
+ * 結束賽事。已寫 endedAt 不再顯示。草稿與整場取消不顯示。
+ * 前端只藏按鈕，伺服器仍會拒絕。
+ */
+export function canEndCompetition(doc: { status: CompetitionStatus; endedAt: number | null }): boolean {
+  if (doc.endedAt != null) return false;
+  return doc.status === 'published' || doc.status === 'postponed';
+}
+
+/**
+ * 恢復賽事只給管理員，而且結束方式是主辦或自動。
+ * endedBy 為 confirm 時不顯示（伺服器回 RESTORE_NOT_ALLOWED）。
+ */
+export function canRestoreCompetition(
+  doc: { endedAt: number | null; endedBy: 'confirm' | 'host' | 'auto' | null },
+  isAdmin: boolean,
+): boolean {
+  if (!isAdmin || doc.endedAt == null) return false;
+  return doc.endedBy === 'host' || doc.endedBy === 'auto';
+}
+
 /** 「以俱樂部報隊」：我是某俱樂部代表，且賽事公開招募中、正在報名期間。 */
 export function canRegisterClubEntry(input: RegisterInput): boolean {
   if (input.repClubIds.length === 0) return false;

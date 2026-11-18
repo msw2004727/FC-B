@@ -25,7 +25,12 @@ export type MatchStatus =
   | 'halftime'
   | 'finished'
   | 'confirmed'
-  | 'walkover';
+  | 'walkover'
+  | 'cancelled';
+/** 手動裁定或抽籤登錄。列上 decidedBy 與此相同。 */
+export type TieDecisionMethod = 'host' | 'drawLots';
+/** 積分排序捷徑。省略時畫面用對戰優先（h2hFirst）。 */
+export type StandingRanking = 'h2hFirst' | 'goalDiffFirst';
 export type MatchSideName = 'home' | 'away';
 
 export interface Venue {
@@ -67,6 +72,13 @@ export interface CompetitionDoc {
   firstMatchAt: number;
   lastMatchAt: number;
   endedAt: number | null;
+  /**
+   * confirm：全部場次解決後由觸發器寫，沒有 endReason。
+   * host：主辦手動結束。auto：每日自動結束（本步只允許管理員恢復）。
+   */
+  endedBy: 'confirm' | 'host' | 'auto' | null;
+  /** 只在手動結束時有原因。恢復時清成 null。 */
+  endReason: string | null;
   rostersLockedAt: number | null;
   ageBasisAt: number | null;
   timezone: string;
@@ -92,6 +104,11 @@ export interface DivisionDoc {
   entryCount: number;
   approvedCount: number;
   order: number;
+  /**
+   * divisions.schedule.ranking。沒有賽程、或缺欄，是 null。
+   * 進行中與已結束首屏不讀組別時，這個欄位不在手上。
+   */
+  ranking: StandingRanking | null;
 }
 
 export interface EntryDoc {
@@ -220,6 +237,9 @@ export interface MatchDoc {
   result: MatchResult | null;
   resultSource: 'host' | null;
   updatedAt: number | null;
+  /** 取消當下寫入。2～100 字。沒有取消是 null。 */
+  cancelReason: string | null;
+  cancelledAt: number | null;
 }
 
 /** 契約 §1.4／§7 的摘要條目。id 是摘要 map 的鍵。 */
@@ -235,6 +255,11 @@ export interface SummaryEntry {
   s: [number, number];
   st: string;
   wo: string | null;
+  /**
+   * 取消原因。契約摘要片不新增欄位，後端目前不寫。
+   * 讀得到（摘要自帶，或另讀場次後補上）才在公開列顯示。
+   */
+  reason?: string | null;
 }
 
 /**
@@ -259,6 +284,12 @@ export interface StandingRow {
   hasUnresolvedTie: boolean;
   /** 與這一列同分、尚未裁定的隊伍 id。欄位名照後端 StandingRow。 */
   tiedWith: string[];
+  /**
+   * 這一版名次真的照裁定排時才有。沒套用就不寫。
+   * 判斷「同分待裁定」以這個欄位優先：有值就不是待裁定，
+   * 即使 hasUnresolvedTie 或 tieBreakTrace 仍含 unresolved@manual。
+   */
+  decidedBy: TieDecisionMethod | null;
 }
 
 /** standings/{dvId}__group__A。契約 §1.3。 */
@@ -274,9 +305,22 @@ export interface StandingDoc {
    * 進行中／已結束不讀組別文件，組名只看這個欄位。
    */
   divisionName?: string;
-  /** 由文件 manualOverride.enabled === true 推得，不是後端那個物件。 */
-  manualOverride: boolean;
+  /**
+   * 尚未撤銷的裁定。enabled 不是 true 時是 null。
+   * 這一版有沒有套上名次，看列上的 decidedBy，不看這裡。
+   */
+  manualOverride: ManualOverride | null;
+  /** 積分文件若自帶 ranking 就用。沒有是 null，改看組別。 */
+  ranking: StandingRanking | null;
   updatedAt: number | null;
+}
+
+/** 積分文件 manualOverride。方式、原因、時間。by 不放到畫面上。 */
+export interface ManualOverride {
+  method: TieDecisionMethod | null;
+  reason: string | null;
+  /** decidedAt，沒有時退回 at。毫秒。 */
+  at: number | null;
 }
 
 /**

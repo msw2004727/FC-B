@@ -445,3 +445,58 @@ export function cpHostResetMatch(input: {
 export function cpHostRecalcStandings(input: { cid: string; dvId: string }): Promise<unknown> {
   return callAction('cpHost', payload('recalcStandings', { cid: input.cid, dvId: input.dvId }));
 }
+
+/** 原因 2～100。可取消：scheduled、postponed、finished。 */
+export function cpHostCancelMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('cancelMatch', { ...input }));
+}
+
+/** 原因 2～100。不改場次。已有 endedAt 時伺服器拒絕。 */
+export function cpHostEndCompetition(input: { cid: string; reason: string }): Promise<unknown> {
+  return callAction('cpHost', payload('endCompetition', { cid: input.cid, reason: input.reason }));
+}
+
+/** 只有管理員。原因 2～100。 */
+export function cpHostRestoreCompetition(input: { cid: string; reason: string }): Promise<unknown> {
+  return callAction('cpHost', payload('restoreCompetition', { cid: input.cid, reason: input.reason }));
+}
+
+export type TieMethod = 'host' | 'drawLots';
+
+/** 原因 1～200。order 必須剛好是目前某一群待裁定。 */
+export function cpHostResolveTie(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  order: string[];
+  method: TieMethod;
+  reason: string;
+  expectedVersion: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('resolveTie', { ...input }));
+}
+
+export function cpHostClearTieDecision(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  reason: string;
+  expectedVersion: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('clearTieDecision', { ...input }));
+}
+
+/** 唯讀。teamIds 至少兩隊，而且積分必須相同。 */
+export function cpHostExplainTie(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  teamIds: string[];
+}): Promise<unknown> {
+  return callAction('cpHost', payload('explainTie', { ...input }));
+}

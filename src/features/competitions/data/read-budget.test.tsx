@@ -28,6 +28,8 @@ function competition(partial: Partial<CompetitionDoc> & Pick<CompetitionDoc, 'id
     firstMatchAt: 300,
     lastMatchAt: 400,
     endedAt: null,
+    endedBy: null,
+    endReason: null,
     rostersLockedAt: null,
     ageBasisAt: null,
     timezone: 'Asia/Taipei',
@@ -54,6 +56,7 @@ const division: DivisionDoc = {
   entryCount: 8,
   approvedCount: 8,
   order: 0,
+  ranking: null,
 };
 
 function entry(i: number): EntryDoc {
@@ -114,6 +117,8 @@ function match(id: string): MatchDoc {
     result: null,
     resultSource: null,
     updatedAt: null,
+    cancelReason: null,
+    cancelledAt: null,
   };
 }
 
@@ -169,7 +174,8 @@ function standing(i: number): StandingDoc {
     rows: [],
     version: 0,
     hasUnresolvedTie: false,
-    manualOverride: false,
+    manualOverride: null,
+    ranking: null,
     updatedAt: null,
   };
 }

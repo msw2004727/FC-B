@@ -44,6 +44,7 @@ function row(partial: Partial<StandingRow> & Pick<StandingRow, 'teamId' | 'name'
     goalDiff: 0,
     hasUnresolvedTie: false,
     tiedWith: [],
+    decidedBy: null,
     ...partial,
   };
 }
@@ -56,7 +57,8 @@ function table(rows: StandingRow[], hasUnresolvedTie: boolean): StandingDoc {
     rows,
     version: 1,
     hasUnresolvedTie,
-    manualOverride: false,
+    manualOverride: null,
+    ranking: null,
     updatedAt: null,
   };
 }
@@ -166,7 +168,30 @@ describe('積分榜同分', () => {
     const decided = rows.map((item) => ({ ...item, hasUnresolvedTie: false, tiedWith: [] }));
     const lines = standingLines(table(decided, true));
     expect(lines.map((line) => [line.rank, line.tie])).toEqual([[1, false], [5, false], [6, false]]);
+    expect(lines.map((line) => line.samePoints)).toEqual([false, true, true]);
     expect(championName(table(decided, false))).toEqual({ name: '海風隊', pending: false });
+  });
+
+  it('decidedBy 優先：有裁定就不是待裁定，即使 hasUnresolvedTie 仍是 true', () => {
+    const ruled = rows.map((item) => (
+      item.teamId === 'a' ? item : { ...item, decidedBy: 'host' as const }
+    ));
+    const lines = standingLines(table(ruled, true));
+    expect(lines.map((line) => [line.name, line.tie, line.decidedBy, line.samePoints, line.rank])).toEqual([
+      ['海風隊', false, null, false, 1],
+      ['銀河隊', false, 'host', true, 5],
+      ['雷霆隊', false, 'host', true, 6],
+    ]);
+  });
+
+  it('已取消 0：0 畫 vs；有分數才顯示；原因留在列上', () => {
+    expect(showsScore(entry({ id: 'z', k: JAN9_AM, st: 'cancelled', s: [0, 0] }))).toBe(false);
+    expect(showsScore(entry({ id: 'z2', k: JAN9_AM, st: 'cancelled', s: [1, 0] }))).toBe(true);
+    const groups = groupSchedule([
+      entry({ id: 'off', k: JAN9_AM, st: 'cancelled', reason: '大雨，場地無法使用' }),
+    ], NOW_LIVE, LABELS);
+    expect(groups[0]?.days[0]?.matches[0]?.reason).toBe('大雨，場地無法使用');
+    expect(groups[0]?.days[0]?.matches[0]?.mark).toBe('cancelled');
   });
 
   it('第 1 名未裁定不寫冠軍名字；多組各算一位', () => {

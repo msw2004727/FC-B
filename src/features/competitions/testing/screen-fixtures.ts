@@ -77,6 +77,12 @@ export function idleActions(): CpActions {
     confirmMatchResult: async () => ({}),
     setWalkover: async () => ({}),
     resetMatch: async () => ({}),
+    cancelMatch: async () => ({}),
+    endCompetition: async () => ({}),
+    restoreCompetition: async () => ({}),
+    resolveTie: async () => ({}),
+    clearTieDecision: async () => ({}),
+    explainTie: async () => ({}),
   };
 }
 
@@ -151,6 +157,8 @@ export function competition(partial: Partial<CompetitionDoc> = {}): CompetitionD
     firstMatchAt: FIRST_MATCH,
     lastMatchAt: LAST_MATCH,
     endedAt: null,
+    endedBy: null,
+    endReason: null,
     rostersLockedAt: null,
     ageBasisAt: FIRST_MATCH,
     timezone: 'Asia/Taipei',
@@ -183,6 +191,7 @@ function division(partial: Partial<DivisionDoc> & Pick<DivisionDoc, 'dvId' | 'na
     entryCount: 0,
     approvedCount: 0,
     order: 0,
+    ranking: null,
     ...partial,
   };
 }

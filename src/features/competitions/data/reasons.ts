@@ -74,6 +74,21 @@ export const CP_REASON_CODES = [
   'MATCH_CORRUPT',
   'SCHEDULE_REPLACE_TOO_LARGE',
   'TIMELINE_TOO_LONG',
+  // §3.272 F1 取消、結束、恢復。
+  'NOT_ADMIN',
+  'COMPETITION_NOT_ENDED',
+  'RESTORE_NOT_ALLOWED',
+  // §3.272 F3 同分裁定與查詢。FIELD_FORMAT 以前走通用文案，契約有列，這裡改對到自己的句子。
+  'TIE_NOT_PENDING',
+  'TIE_DECISION_EXISTS',
+  'TIE_NOT_SAME_POINTS',
+  'TIE_NO_DECISION',
+  'STANDING_NOT_FOUND',
+  'STANDING_CORRUPT',
+  'TEAM_NOT_IN_STANDING',
+  'BAD_ID',
+  'FIELD_ENUM',
+  'FIELD_FORMAT',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

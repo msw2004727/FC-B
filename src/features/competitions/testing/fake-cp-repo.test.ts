@@ -18,6 +18,8 @@ function comp(partial: Partial<CompetitionDoc> & Pick<CompetitionDoc, 'id'>): Co
     firstMatchAt: 3,
     lastMatchAt: 4,
     endedAt: null,
+    endedBy: null,
+    endReason: null,
     rostersLockedAt: null,
     ageBasisAt: null,
     timezone: 'Asia/Taipei',
@@ -45,6 +47,7 @@ function division(dvId: string, order: number): DivisionDoc {
     entryCount: 0,
     approvedCount: 0,
     order,
+    ranking: null,
   };
 }
 
@@ -216,6 +219,8 @@ function matchDoc(id: string, round: number, matchNo: number) {
     result: null,
     resultSource: null,
     updatedAt: null,
+    cancelReason: null,
+    cancelledAt: null,
   };
 }
 
@@ -239,7 +244,8 @@ describe('假資料的第 3 步讀取與計數', () => {
           rows: [],
           version: 0,
           hasUnresolvedTie: false,
-          manualOverride: false,
+          manualOverride: null,
+          ranking: null,
           updatedAt: null,
         })),
       },

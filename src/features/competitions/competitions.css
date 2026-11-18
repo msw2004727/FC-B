@@ -262,3 +262,169 @@
 .cp3-modal-p { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: nowrap; }
 .cps-card--warn { border-left: 3px solid var(--color-warning); }
 .cps-actions .ui-button:disabled, .cps-actions .ui-button[aria-disabled="true"] { color: var(--color-text-secondary); }
+
+/* 卡 G 第一批：取消、結束、同分、排序說明。公告與聯絡留給下一批。 */
+.cpm-h {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+}
+.cpm-sec {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+.cpm-sec--first { margin-top: 0; }
+.cpm-reason {
+  margin: 4px 0 0;
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+}
+.cpm-reason b { color: var(--color-text-muted); font-weight: 600; }
+.cp3-row .cpm-reason { margin: 0; flex: 1 1 auto; }
+.cpm-ended {
+  margin: 0;
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+  font-weight: 700;
+}
+.cpm-endact { margin-top: var(--space-3); }
+.cpm-hint {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-warning-fg);
+}
+.cpm-preview {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+}
+.cpm-tiebtn {
+  display: inline;
+  margin: 0 0 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-warning-fg);
+  font: inherit;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.cpm-cmp { min-width: 0; }
+.cpm-cmp__r {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em 4.5em;
+  column-gap: var(--space-2);
+  align-items: center;
+  min-height: 28px;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+.cpm-cmp__r > span { min-width: 0; white-space: nowrap; }
+.cpm-cmp__r > span:nth-child(n + 2) { text-align: right; font-weight: 700; }
+.cpm-cmp__k { font-weight: 600; }
+.cpm-cmp__r--h { min-height: 22px; color: var(--color-text-muted); }
+.cpm-cmp__r--h > span:nth-child(n + 2) { font-weight: 600; }
+.cpm-cmp__r--hit {
+  border-radius: var(--radius-sm);
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+.cpm-cmp__r--skip { color: var(--color-text-muted); }
+.cpm-mark {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-success-fg);
+}
+.cpm-mark--wait { color: var(--color-warning-fg); }
+.cpm-rels { list-style: none; margin: 0; padding: 0; }
+.cpm-rel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cpm-rel__t {
+  flex: 0 0 auto;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-muted);
+}
+.cpm-rel__n {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+}
+.cpm-rel svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cpm-drag { list-style: none; margin: 0; padding: 0; }
+.cpm-drag__li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.cpm-drag__li:first-child { border-top: 0; }
+.cpm-grip { flex: 0 0 auto; display: inline-flex; color: var(--color-text-muted); }
+.cpm-grip svg { width: 16px; height: 16px; fill: currentColor; }
+.cpm-drag__i {
+  flex: 0 0 auto;
+  width: 1.5em;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cpm-drag__n {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+}
+.cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
+.cpm-rules li {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+.cpm-rules li:first-child { border-top: 0; padding-top: 0; }
+#page-tournaments .cpl-card .cpl-st--postponed i { background: #fbbf24; }
+#page-tournaments .cpl-card .cpl-st--cancelled i { background: #f87171; }

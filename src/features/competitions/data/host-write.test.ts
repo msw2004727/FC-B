@@ -13,8 +13,10 @@ import {
   parseReschedule,
   parseScheduleForm,
   previewFromResult,
+  boundedReason,
   reasonProblem,
   rescheduleDraft,
+  unconfirmedCount,
   stepScore,
   walkoverScore,
 } from './host-write';
@@ -47,6 +49,8 @@ function match(partial: Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>): Ma
     result: null,
     resultSource: null,
     updatedAt: null,
+    cancelReason: null,
+    cancelledAt: null,
     ...partial,
   };
 }
@@ -65,6 +69,7 @@ const adult: DivisionDoc = {
   entryCount: 2,
   approvedCount: 2,
   order: 0,
+  ranking: null,
 };
 
 describe('排賽程表單', () => {
@@ -115,11 +120,12 @@ describe('排賽程表單', () => {
 describe('場次按鈕與寫入結果', () => {
   it('四種狀態的按鈕，進行中沒有寫入按鈕', () => {
     const cases: Array<[MatchStatus, string[]]> = [
-      ['scheduled', ['reschedule', 'score']],
-      ['postponed', ['reschedule']],
-      ['finished', ['score', 'confirm']],
+      ['scheduled', ['reschedule', 'cancel', 'score']],
+      ['postponed', ['reschedule', 'cancel']],
+      ['finished', ['score', 'confirm', 'cancel']],
       ['confirmed', ['reset']],
       ['walkover', ['reset']],
+      ['cancelled', ['reset']],
       ['live', []],
       ['halftime', []],
     ];
@@ -129,6 +135,7 @@ describe('場次按鈕與寫入結果', () => {
     expect(hostBadgeKey('live')).toBe('live');
     expect(hostBadgeKey('halftime')).toBe('live');
     expect(hostBadgeKey('finished')).toBe('pending');
+    expect(hostBadgeKey('cancelled')).toBe('cancelled');
   });
 
   it('棄權比分是 0：2，加減分停在 0 與 99', () => {
@@ -139,6 +146,17 @@ describe('場次按鈕與寫入結果', () => {
     expect(reasonProblem('  ')).toBe('FIELD_REQUIRED');
     expect(reasonProblem('測'.repeat(200))).toBeNull();
     expect(reasonProblem('😀'.repeat(201))).toBe('FIELD_LENGTH');
+    expect(boundedReason(' ', 2, 100)).toBe('FIELD_REQUIRED');
+    expect(boundedReason('雨', 2, 100)).toBe('FIELD_LENGTH');
+    expect(boundedReason('  大雨  ', 2, 100)).toBeNull();
+    expect(boundedReason('雨'.repeat(101), 2, 100)).toBe('FIELD_LENGTH');
+    expect(unconfirmedCount([
+      match({ id: 'a', status: 'scheduled' }),
+      match({ id: 'b', status: 'finished' }),
+      match({ id: 'c', status: 'confirmed' }),
+      match({ id: 'd', status: 'walkover' }),
+      match({ id: 'e', status: 'cancelled' }),
+    ])).toBe(2);
   });
 
   it('待定改期送出 null，有開賽時間才要場地', () => {
@@ -184,6 +202,15 @@ describe('場次按鈕與寫入結果', () => {
     expect(moved.status).toBe('postponed');
     expect(outcomeMatches({ kind: 'reschedule', kickoffAt: null, venueIdx: null }, moved)).toBe(true);
     expect(outcomeMatches({ kind: 'reschedule', kickoffAt: null, venueIdx: 0 }, moved)).toBe(false);
+    const cancelled = applyWrite(match({ id: 'mt_1', status: 'scheduled' }), { kind: 'cancel', reason: '大雨' });
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.cancelReason).toBe('大雨');
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, cancelled)).toBe(true);
+    expect(outcomeMatches({ kind: 'cancel', reason: '別的' }, cancelled)).toBe(false);
+    const restored = applyWrite(cancelled, { kind: 'reset', reason: '恢復' });
+    expect(restored.status).toBe('scheduled');
+    expect(restored.cancelReason).toBeNull();
+    expect(restored.cancelledAt).toBeNull();
   });
 
   it('網路失敗才可原樣重送', () => {

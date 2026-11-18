@@ -2,6 +2,7 @@
 // 分組用台北日曆（format.taipeiParts）。文案裡的「今天」「時間待定」由呼叫端傳入。
 
 import { taipeiParts } from '../format';
+import { rowNeedsRuling } from './tie-present';
 import type { StandingDoc, SummaryEntry } from './types';
 
 export type PublicMark = 'pending' | 'forfeit' | 'moved' | 'cancelled';
@@ -18,6 +19,8 @@ export interface ScheduleMatch {
   /** null＝畫 vs，不把未賽的 [0,0] 當比分。 */
   score: [number, number] | null;
   mark: PublicMark | null;
+  /** 已取消場次的原因。沒有就不畫原因行。 */
+  reason: string | null;
 }
 
 export interface ScheduleDay {
@@ -44,6 +47,10 @@ export interface StandingLine {
   points: number;
   rank: number;
   tie: boolean;
+  /** 積分與同表另一列相同。已分出名次的也是 true。 */
+  samePoints: boolean;
+  /** 列上 decidedBy。有值就不是待裁定。 */
+  decidedBy: 'host' | 'drawLots' | null;
   /** 名次 1（含並列第一）用強調色。 */
   top: boolean;
 }
@@ -112,8 +119,10 @@ export function publicMark(entry: SummaryEntry): PublicMark | null {
 /**
  * ASSUMPTION: 摘要的 s 在未賽時也是 [0, 0]，不能拿來判斷有沒有比分。
  * 已登錄、已確認、進行中、中場、棄權才顯示比分。
+ * 已取消不改比分：兩邊都是 0 仍畫 vs；有分數才顯示。
  */
 export function showsScore(entry: SummaryEntry): boolean {
+  if (entry.st === 'cancelled') return entry.s[0] !== 0 || entry.s[1] !== 0;
   return entry.st === 'finished'
     || entry.st === 'confirmed'
     || entry.st === 'walkover'
@@ -149,6 +158,7 @@ function matchOf(entry: SummaryEntry): ScheduleMatch {
     awayName: entry.a.n,
     score: showsScore(entry) ? entry.s : null,
     mark: publicMark(entry),
+    reason: entry.st === 'cancelled' ? (entry.reason?.trim() || null) : null,
   };
 }
 
@@ -255,12 +265,15 @@ export function scheduleHeading(
 /**
  * 只看每一列自己的 hasUnresolvedTie。文件上的 hasUnresolvedTie 不拿來標。
  * hasUnresolvedTie === true 才標同分；這些列若積分相同，名次改成該群最小的名次。
- * 積分相同但該列已分出名次（hasUnresolvedTie 不是 true）不標、不改名次。
+ * 積分相同但該列已分出名次（hasUnresolvedTie 不是 true）不標、不改名次，但 samePoints 仍是 true。
+ * decidedBy 有值時不當待裁定，同分小標也不掛（改由裁定小標負責）。
  */
 export function standingLines(doc: StandingDoc): StandingLine[] {
   const rows = doc.rows.map((row, index) => ({ row, index }))
     .sort((a, b) => a.row.rank - b.row.rank || a.index - b.index)
     .map((item) => item.row);
+  const pointCount = new Map<number, number>();
+  for (const row of rows) pointCount.set(row.points, (pointCount.get(row.points) ?? 0) + 1);
   const lines: StandingLine[] = rows.map((row) => ({
     teamId: row.teamId,
     name: row.name,
@@ -273,7 +286,9 @@ export function standingLines(doc: StandingDoc): StandingLine[] {
     goalDiff: row.goalDiff,
     points: row.points,
     rank: row.rank,
-    tie: row.hasUnresolvedTie === true,
+    tie: rowNeedsRuling(row),
+    samePoints: (pointCount.get(row.points) ?? 0) >= 2,
+    decidedBy: row.decidedBy,
     top: false,
   }));
   const groups = new Map<number, number[]>();

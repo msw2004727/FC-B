@@ -17,7 +17,13 @@ import {
   cpHostPublish,
   cpHostRecordResult,
   cpHostRescheduleMatch,
+  cpHostCancelMatch,
+  cpHostClearTieDecision,
+  cpHostEndCompetition,
+  cpHostExplainTie,
   cpHostResetMatch,
+  cpHostResolveTie,
+  cpHostRestoreCompetition,
   cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
@@ -33,6 +39,7 @@ import {
   type CpRegisterEntryInput,
   type CpReportInput,
   type CpReviewEntryInput,
+  type TieMethod,
 } from './data/cp-callables';
 import type { PaymentStatusWrite } from './data/types';
 
@@ -76,6 +83,26 @@ export interface CpActions {
     reason: string;
   }): Promise<unknown>;
   resetMatch(input: { cid: string; mtId: string; expectedRev: number; reason: string }): Promise<unknown>;
+  cancelMatch(input: { cid: string; mtId: string; expectedRev: number; reason: string }): Promise<unknown>;
+  endCompetition(input: { cid: string; reason: string }): Promise<unknown>;
+  restoreCompetition(input: { cid: string; reason: string }): Promise<unknown>;
+  resolveTie(input: {
+    cid: string;
+    dvId: string;
+    groupId?: string;
+    order: string[];
+    method: TieMethod;
+    reason: string;
+    expectedVersion: number;
+  }): Promise<unknown>;
+  clearTieDecision(input: {
+    cid: string;
+    dvId: string;
+    groupId?: string;
+    reason: string;
+    expectedVersion: number;
+  }): Promise<unknown>;
+  explainTie(input: { cid: string; dvId: string; groupId?: string; teamIds: string[] }): Promise<unknown>;
 }
 
 export const liveCpActions: CpActions = {
@@ -99,4 +126,10 @@ export const liveCpActions: CpActions = {
   confirmMatchResult: cpHostConfirmMatchResult,
   setWalkover: cpHostSetWalkover,
   resetMatch: cpHostResetMatch,
+  cancelMatch: cpHostCancelMatch,
+  endCompetition: cpHostEndCompetition,
+  restoreCompetition: cpHostRestoreCompetition,
+  resolveTie: cpHostResolveTie,
+  clearTieDecision: cpHostClearTieDecision,
+  explainTie: cpHostExplainTie,
 };

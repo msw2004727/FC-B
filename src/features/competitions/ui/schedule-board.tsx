@@ -19,7 +19,8 @@ import {
   type PublicMark,
   type ScheduleGroup,
 } from '../data/schedule-present';
-import type { CompetitionCategory, DivisionDoc, EntryDoc, StandingDoc, SummaryEntry } from '../data/types';
+import { rankingRuleKeys } from '../data/tie-present';
+import type { CompetitionCategory, DivisionDoc, EntryDoc, StandingDoc, StandingRanking, SummaryEntry } from '../data/types';
 import type { CompetitionPhase } from '../data/present';
 import { crestFromEntry, TeamCrest } from './TeamCrest';
 import { CpCard } from './shell';
@@ -114,7 +115,7 @@ function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]
 function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; tone: BadgeTone } {
   if (mark === 'pending') return { label: ct('matchPending'), tone: 'warning' };
   if (mark === 'forfeit') return { label: ct('matchForfeit'), tone: 'danger' };
-  if (mark === 'cancelled') return { label: ct('matchCancelled'), tone: 'neutral' };
+  if (mark === 'cancelled') return { label: ct('matchCancelled'), tone: 'danger' };
   return { label: ct('matchMoved'), tone: 'info' };
 }
 
@@ -139,16 +140,24 @@ export function scheduleLabels(ct: CompetitionsT): { tbd: string; today: string;
   };
 }
 
+export type ScheduleClock = 'keep' | 'tbd' | 'cancelled';
+
+/**
+ * 整場延期把每一列的時間改成「待定」，整場取消改成「已取消」，並且不掛單場小標。
+ * keep 才畫原本的時間與小標。
+ */
 export function MatchSchedule({
   ct,
   groups,
   standings,
   crests,
+  clock = 'keep',
 }: {
   ct: CompetitionsT;
   groups: readonly ScheduleGroup[];
   standings: readonly StandingDoc[];
   crests: readonly EntryDoc[];
+  clock?: ScheduleClock;
 }): JSX.Element {
   const multiple = groups.length > 1;
   return (
@@ -164,11 +173,15 @@ export function MatchSchedule({
                 <CpCard>
                   <ul class="cp3-ml">
                     {day.matches.map((match) => {
-                      const badge = match.mark ? markBadge(ct, match.mark) : null;
+                      const badge = clock === 'keep' && match.mark ? markBadge(ct, match.mark) : null;
                       return (
                         <li class="cp3-m" key={match.id}>
                           <div class="cp3-m__top">
-                            {match.time == null ? (
+                            {clock === 'tbd' ? (
+                              <span class="cp3-m__when"><b>{ct('compTbd')}</b></span>
+                            ) : clock === 'cancelled' ? (
+                              <span class="cp3-m__when"><b>{ct('cancelled')}</b></span>
+                            ) : match.time == null ? (
                               <span class="cp3-m__when"><b>{ct('timeTbd')}</b></span>
                             ) : (
                               <span class="cp3-m__when">
@@ -191,6 +204,9 @@ export function MatchSchedule({
                               <SideName entryId={match.awayId} name={match.awayName} crests={crests} align="away" />
                             </span>
                           </div>
+                          {clock === 'keep' && match.reason ? (
+                            <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.reason}</p>
+                          ) : null}
                         </li>
                       );
                     })}
@@ -206,14 +222,28 @@ export function MatchSchedule({
   );
 }
 
+function rankingFor(doc: StandingDoc, divisions: readonly DivisionDoc[]): StandingRanking | null {
+  if (doc.ranking) return doc.ranking;
+  return divisions.find((division) => division.dvId === doc.divisionId)?.ranking ?? null;
+}
+
 export function StandingsTable({
   ct,
   docs,
   crests,
+  divisions = [],
+  canExplain = false,
+  onExplain,
+  onDecision,
 }: {
   ct: CompetitionsT;
   docs: readonly StandingDoc[];
   crests: readonly EntryDoc[];
+  divisions?: readonly DivisionDoc[];
+  /** 主辦／共同主辦／管理員才看得到可點的同分說明。觀眾維持小標。 */
+  canExplain?: boolean;
+  onExplain?: (doc: StandingDoc, teamId: string) => void;
+  onDecision?: (doc: StandingDoc) => void;
 }): JSX.Element {
   const multiple = docs.length > 1;
   return (
@@ -242,7 +272,12 @@ export function StandingsTable({
                   <div key={line.teamId} class={`cp3-st__r${line.top ? ' cp3-st__r--top' : ''}`}>
                     <span class="rk">
                       {line.rank}
-                      {line.tie ? <small>{ct('tie')}</small> : null}
+                      {line.samePoints && canExplain ? (
+                        <button type="button" class="cpm-tiebtn" onClick={() => onExplain?.(doc, line.teamId)}>{ct('tie')}</button>
+                      ) : line.tie ? <small>{ct('tie')}</small> : null}
+                      {line.decidedBy ? (
+                        <button type="button" class="cpm-tiebtn" onClick={() => onDecision?.(doc)}>{ct('hostRuling')}</button>
+                      ) : null}
                     </span>
                     <span class="t">
                       <span class="cp3-tn">
@@ -260,6 +295,12 @@ export function StandingsTable({
                   </div>
                 );
               })}
+            </CpCard>
+            <CpCard>
+              <h3 class="cpm-sec cpm-sec--first">{ct('rulesTitle')}</h3>
+              <ol class="cpm-rules">
+                {rankingRuleKeys(rankingFor(doc, divisions)).map((key) => <li key={key}>{ct(key)}</li>)}
+              </ol>
             </CpCard>
           </div>
         );
@@ -326,6 +367,9 @@ export function DetailPhaseBody({
   badge,
   fullSchedule,
   onRequestFull,
+  clock = 'keep',
+  renderStandings,
+  onOpenStandings,
 }: {
   ct: CompetitionsT;
   phase: Exclude<CompetitionPhase, 'recruit'>;
@@ -340,11 +384,19 @@ export function DetailPhaseBody({
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
   fullSchedule: readonly SummaryEntry[] | null;
   onRequestFull: () => boolean | Promise<boolean>;
+  clock?: ScheduleClock;
+  /** 省略就用內建積分榜（含排序說明）。同分面板由呼叫端塞進來。 */
+  renderStandings?: (docs: readonly StandingDoc[]) => JSX.Element;
+  /** 切到積分頁時才補讀組別（進行中首屏不讀）。 */
+  onOpenStandings?: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<'sched' | 'stand'>('sched');
   const [open, setOpen] = useState(false);
   const [foldError, setFoldError] = useState(false);
   const shown = scheduleGroups(ct, fullSchedule ?? summary, divisions, now);
+  const standingsNode = renderStandings
+    ? renderStandings(standings)
+    : <StandingsTable ct={ct} docs={standings} crests={crests} divisions={divisions} />;
 
   function openFold(): void {
     setFoldError(false);
@@ -396,7 +448,7 @@ export function DetailPhaseBody({
             <Badge tone={badge.tone} label={badge.label} size="sm" />
           </div>
         </CpCard>
-        <StandingsTable ct={ct} docs={standings} crests={crests} />
+        {standingsNode}
         <CpCard>
           <button
             type="button"
@@ -415,7 +467,7 @@ export function DetailPhaseBody({
           </button>
           {open && loadedRows ? (
             <div style="margin-top:12px">
-              <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} />
+              <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} clock={clock} />
             </div>
           ) : null}
           {foldError && !open ? (
@@ -446,7 +498,9 @@ export function DetailPhaseBody({
         variant="underline"
         value={tab}
         onValueChange={(id) => {
-          if (id === 'sched' || id === 'stand') setTab(id);
+          if (id !== 'sched' && id !== 'stand') return;
+          setTab(id);
+          if (id === 'stand') onOpenStandings?.();
         }}
         items={[
           {
@@ -454,7 +508,7 @@ export function DetailPhaseBody({
             label: ct('tabSchedule'),
             panel: (
               <div style="margin-top:12px">
-                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} />
+                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} />
                 <div class="cps-actions">
                   <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
                 </div>
@@ -466,7 +520,7 @@ export function DetailPhaseBody({
             label: ct('tabStandings'),
             panel: (
               <div style="margin-top:12px">
-                <StandingsTable ct={ct} docs={standings} crests={crests} />
+                {standingsNode}
               </div>
             ),
           },

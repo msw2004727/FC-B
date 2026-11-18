@@ -421,6 +421,7 @@ describe('第 3 步文件解析', () => {
       rank: 1,
       hasUnresolvedTie: false,
       tiedWith: [],
+      decidedBy: null,
     });
     // 只有短名、沒有 teamId：整列丟掉。有 teamId 但只有短名：數字是 0，name 不讀 n。
     expect(standingFromDoc('dv_1__group__A', {
@@ -442,6 +443,7 @@ describe('第 3 步文件解析', () => {
       rank: 0,
       hasUnresolvedTie: false,
       tiedWith: [],
+      decidedBy: null,
     }]);
     const tied = standingFromDoc('dv_1__group__A', {
       divisionName: ' 公開組 ',
@@ -476,18 +478,35 @@ describe('第 3 步文件解析', () => {
     expect(standingFromDoc('not-a-standing', { rows: [] })).toBeNull();
   });
 
-  it('manualOverride 只在 enabled 為 true 時是 true', () => {
+  it('manualOverride 在 enabled 為 true 時留下方式、原因、時間', () => {
     expect(standingFromDoc('dv_1__group__A', {
-      manualOverride: { enabled: true, by: 'uid_host', at: 1, reason: '手排' },
+      manualOverride: { enabled: true, by: 'uid_host', at: 1, reason: '手排', method: 'host' },
       rows: [],
-    })?.manualOverride).toBe(true);
+    })?.manualOverride).toEqual({ method: 'host', reason: '手排', at: 1 });
+    expect(standingFromDoc('dv_1__group__A', {
+      manualOverride: { enabled: true, method: 'drawLots', reason: '抽籤', decidedAt: 9, at: 1 },
+      rows: [],
+    })?.manualOverride).toEqual({ method: 'drawLots', reason: '抽籤', at: 9 });
     expect(standingFromDoc('dv_1__group__A', {
       manualOverride: { enabled: false, by: null, at: null, reason: null },
       rows: [],
-    })?.manualOverride).toBe(false);
-    expect(standingFromDoc('dv_1__group__A', { manualOverride: true, rows: [] })?.manualOverride).toBe(false);
-    expect(standingFromDoc('dv_1__group__A', { manualOverride: { enabled: 'true' }, rows: [] })?.manualOverride).toBe(false);
-    expect(standingFromDoc('dv_1__group__A', { rows: [] })?.manualOverride).toBe(false);
+    })?.manualOverride).toBeNull();
+    expect(standingFromDoc('dv_1__group__A', { manualOverride: true, rows: [] })?.manualOverride).toBeNull();
+    expect(standingFromDoc('dv_1__group__A', { manualOverride: { enabled: 'true' }, rows: [] })?.manualOverride).toBeNull();
+    expect(standingFromDoc('dv_1__group__A', { rows: [] })?.manualOverride).toBeNull();
+    expect(standingFromDoc('dv_1__group__A', { rows: [] })?.ranking).toBeNull();
+    expect(standingFromDoc('dv_1__group__A', {
+      ranking: 'goalDiffFirst',
+      rows: [{ teamId: 'en_h', decidedBy: 'host' }],
+    })?.ranking).toBe('goalDiffFirst');
+    expect(standingFromDoc('dv_1__group__A', {
+      rows: [{ teamId: 'en_h', decidedBy: 'host', hasUnresolvedTie: true }],
+    })?.rows[0]?.decidedBy).toBe('host');
+    expect(matchFromDoc('mt_1', rawMatch({ status: 'cancelled', cancelReason: '大雨', cancelledAt: 8 }))).toMatchObject({
+      status: 'cancelled',
+      cancelReason: '大雨',
+      cancelledAt: 8,
+    });
   });
 });
 

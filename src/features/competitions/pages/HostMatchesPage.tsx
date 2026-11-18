@@ -14,10 +14,11 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canHostOrCo, isCpAdmin } from '../access';
+import { canEndCompetition, canHostOrCo, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
   applyWrite,
+  boundedReason,
   groupHostMatches,
   hostActions,
   hostBadgeKey,
@@ -30,6 +31,7 @@ import {
   rescheduleDraft,
   sheetScore,
   stepScore,
+  unconfirmedCount,
   type HostBadgeKey,
   type WriteIntent,
 } from '../data/host-write';
@@ -49,7 +51,8 @@ type Panel =
   | { kind: 'score'; mtId: string; home: number; away: number }
   | { kind: 'forfeit'; mtId: string; side: 'home' | 'away'; reason: string }
   | { kind: 'reset'; mtId: string; reason: string }
-  | { kind: 'reschedule'; mtId: string; tbd: boolean; date: string; time: string; venueIdx: string };
+  | { kind: 'reschedule'; mtId: string; tbd: boolean; date: string; time: string; venueIdx: string }
+  | { kind: 'cancel'; mtId: string; reason: string };
 
 interface Hold {
   mtId: string;
@@ -90,7 +93,7 @@ function badgeTone(key: HostBadgeKey): BadgeTone {
   if (key === 'sched') return 'neutral';
   if (key === 'pending') return 'warning';
   if (key === 'confirmed') return 'success';
-  if (key === 'forfeit') return 'danger';
+  if (key === 'forfeit' || key === 'cancelled') return 'danger';
   if (key === 'moved') return 'info';
   return 'warning';
 }
@@ -102,6 +105,7 @@ function statusText(ct: CompetitionsT, status: MatchStatus): string {
   if (key === 'confirmed') return ct('matchConfirmed');
   if (key === 'forfeit') return ct('matchForfeit');
   if (key === 'moved') return ct('matchMoved');
+  if (key === 'cancelled') return ct('matchCancelled');
   if (key === 'live') return ct('phaseLive');
   return '';
 }
@@ -137,6 +141,9 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   };
   const [hold, setHold] = useState<Hold | null>(null);
   const [busy, setBusy] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
+  const [endReason, setEndReason] = useState('');
+  const [endMessage, setEndMessage] = useState<string | null>(null);
   const lock = useRef(false);
   const scoreConfirmRef = useRef(true);
   const now = env.now ?? Date.now();
@@ -240,6 +247,10 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       await env.actions.resetMatch({ cid, mtId, expectedRev: rev, reason: intent.reason });
       return;
     }
+    if (intent.kind === 'cancel') {
+      await env.actions.cancelMatch({ cid, mtId, expectedRev: rev, reason: intent.reason });
+      return;
+    }
     await env.actions.rescheduleMatch({
       cid, mtId, expectedRev: rev, kickoffAt: intent.kickoffAt, venueIdx: intent.venueIdx,
     });
@@ -322,6 +333,14 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     });
   }
 
+  function openCancel(match: MatchDoc): void {
+    if (lock.current) return;
+    setPanel({ kind: 'cancel', mtId: match.id, reason: '' });
+    setHold({
+      mtId: match.id, kind: 'cancel', rev: match.rev, retrying: false, message: null, updated: null, scoreConfirm: false,
+    });
+  }
+
   function openReschedule(match: MatchDoc): void {
     if (lock.current) return;
     const draft = rescheduleDraft(match, comp.venues.length);
@@ -377,6 +396,55 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     await commit(panel.mtId, hold.rev, { kind: 'reset', reason: panel.reason.trim() });
   }
 
+  async function submitCancel(): Promise<void> {
+    if (!panel || panel.kind !== 'cancel' || !hold) return;
+    const problem = boundedReason(panel.reason, 2, 100);
+    if (problem) {
+      const params = problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined;
+      const message = reasonText(ct, problem, params);
+      toast.show({ message, tone: 'error' });
+      setHold({ ...hold, retrying: false, message, updated: null });
+      return;
+    }
+    await commit(panel.mtId, hold.rev, { kind: 'cancel', reason: panel.reason.trim() });
+  }
+
+  async function submitEnd(): Promise<void> {
+    if (lock.current) return;
+    const problem = boundedReason(endReason, 2, 100);
+    if (problem) {
+      const params = problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined;
+      const message = reasonText(ct, problem, params);
+      toast.show({ message, tone: 'error' });
+      setEndMessage(message);
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    setEndMessage(null);
+    try {
+      const reason = endReason.trim();
+      await env.actions.endCompetition({ cid, reason });
+      setBundle((current) => {
+        if (!current?.competition) return current;
+        return {
+          ...current,
+          competition: { ...current.competition, endedAt: now, endedBy: 'host', endReason: reason },
+        };
+      });
+      setEndOpen(false);
+      setEndReason('');
+    } catch (err) {
+      const info = errorOf(err);
+      const message = reasonText(ct, info.reason, info.params);
+      toast.show({ message, tone: 'error' });
+      setEndMessage(message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
   async function submitReschedule(): Promise<void> {
     if (!panel || panel.kind !== 'reschedule' || !hold) return;
     const parsed = parseReschedule({
@@ -418,6 +486,10 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       void submitReset();
       return;
     }
+    if (hold.kind === 'cancel') {
+      void submitCancel();
+      return;
+    }
     if (hold.kind === 'reschedule') {
       void submitReschedule();
       return;
@@ -457,6 +529,13 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   return (
     <CpFrame title={ct('hostListTitle')}>
       <p class="cps-sub" style="margin:0">{comp.name}</p>
+      {canEndCompetition(comp) ? (
+        <div class="cps-actions" style="margin-top:0">
+          <Button variant="danger" disabled={busy} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
+            {ct('endTitle')}
+          </Button>
+        </div>
+      ) : null}
       {matches.length === 0 ? (
         <CpCard>
           <p class="cps-note">{ct('reason.SCHEDULE_REQUIRED')}</p>
@@ -499,13 +578,18 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                         </div>
                         <div class="cp3-m__vs">
                           <span class="h"><SideName entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" /></span>
-                          {hostShowsScore(match.status) ? (
+                          {(match.status === 'cancelled'
+                            ? match.score.home !== 0 || match.score.away !== 0
+                            : hostShowsScore(match.status)) ? (
                             <span class="s">{match.score.home}：{match.score.away}</span>
                           ) : (
                             <span class="s vs">vs</span>
                           )}
                           <span class="a"><SideName entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" /></span>
                         </div>
+                        {match.status === 'cancelled' && match.cancelReason ? (
+                          <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.cancelReason}</p>
+                        ) : null}
                         {rowActions.length > 0 ? (
                           <div class="cp3-m__act">
                             {rowActions.map((action) => {
@@ -514,6 +598,9 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                               }
                               if (action === 'score') {
                                 return <Button key={action} variant="secondary" size="sm" disabled={busy} onClick={() => openScore(match)}>{ct('enterScore')}</Button>;
+                              }
+                              if (action === 'cancel') {
+                                return <Button key={action} variant="danger" size="sm" disabled={busy} onClick={() => openCancel(match)}>{ct('cancelMatch')}</Button>;
                               }
                               return <Button key={action} variant="primary" size="sm" disabled={busy} onClick={() => { void submitConfirm(match); }}>{ct('confirmMatch')}</Button>;
                             })}
@@ -624,6 +711,67 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
               onValueChange={(value) => patchPanel({ reason: value })}
             />
             {notice('reset', panel.mtId)}
+          </div>
+        </Modal>
+      ) : null}
+      {panel?.kind === 'cancel' && active ? (
+        <BottomSheet
+          open
+          title={ct('cancelMatch')}
+          onClose={closePanel}
+          busy={busy}
+          footer={(
+            <div class="cps-footer">
+              <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('cancel')}</Button>
+              <Button variant="danger" disabled={busy || staleHold} onClick={() => { void submitCancel(); }}>{ct('cancelOk')}</Button>
+            </div>
+          )}
+        >
+          <div class="cps-sheet-body">
+            <p class="cp3-ctx">
+              {active.kickoffAt == null ? ct('timeTbd') : `${formatKickoffClock(active.kickoffAt)}${active.venueName ? `　${active.venueName}` : ''}`}
+            </p>
+            <p class="cp3-ctx">{active.home.name}　vs　{active.away.name}</p>
+            <Textarea
+              label={ct('cancelReason')}
+              required
+              value={panel.reason}
+              maxLength={100}
+              rows={2}
+              variant="fixed"
+              onValueChange={(value) => patchPanel({ reason: value })}
+            />
+            <p class="cpm-hint">{ct('cancelHint')}</p>
+            {notice('cancel', panel.mtId)}
+          </div>
+        </BottomSheet>
+      ) : null}
+      {endOpen ? (
+        <Modal
+          open
+          title={ct('endTitle')}
+          onClose={() => { if (!lock.current) setEndOpen(false); }}
+          busy={busy}
+          footer={(
+            <div class="cps-footer">
+              <Button variant="secondary" disabled={busy} onClick={() => setEndOpen(false)}>{ct('cancel')}</Button>
+              <Button variant="danger" disabled={busy} onClick={() => { void submitEnd(); }}>{ct('endTitle')}</Button>
+            </div>
+          )}
+        >
+          <div class="cps-sheet-body">
+            <p class="cpm-hint">{ct('endHint')}</p>
+            <p class="cpm-preview">{ct('unconfirmed', { n: unconfirmedCount(matches) })}</p>
+            <Textarea
+              label={ct('endReason')}
+              required
+              value={endReason}
+              maxLength={100}
+              rows={2}
+              variant="fixed"
+              onValueChange={setEndReason}
+            />
+            {endMessage ? <p class="cps-note cps-warn" role="alert">{endMessage}</p> : null}
           </div>
         </Modal>
       ) : null}

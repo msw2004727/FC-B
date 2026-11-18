@@ -45,8 +45,14 @@ import {
   cpHostDelete,
   cpHostGenerateSchedule,
   cpHostPublish,
+  cpHostCancelMatch,
+  cpHostClearTieDecision,
+  cpHostEndCompetition,
+  cpHostExplainTie,
   cpHostRecalcStandings,
   cpHostRecordResult,
+  cpHostResolveTie,
+  cpHostRestoreCompetition,
   cpHostRescheduleMatch,
   cpHostResetMatch,
   cpHostSetStatus,
@@ -422,6 +428,45 @@ describe('cp callables（欄位與錯誤轉換）', () => {
 
     await cpHostRecalcStandings({ cid: 'cid_1', dvId: 'dv_1' });
     expect(lastPayload()).toEqual({ action: 'recalcStandings', cid: 'cid_1', dvId: 'dv_1' });
+
+    await cpHostCancelMatch({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 8, reason: '大雨' });
+    expect(lastPayload()).toEqual({
+      action: 'cancelMatch', cid: 'cid_1', mtId: 'mt_1', expectedRev: 8, reason: '大雨',
+    });
+    await cpHostEndCompetition({ cid: 'cid_1', reason: '剩餘場次不再進行' });
+    expect(lastPayload()).toEqual({ action: 'endCompetition', cid: 'cid_1', reason: '剩餘場次不再進行' });
+    await cpHostRestoreCompetition({ cid: 'cid_1', reason: '誤按結束' });
+    expect(lastPayload()).toEqual({ action: 'restoreCompetition', cid: 'cid_1', reason: '誤按結束' });
+    await cpHostExplainTie({ cid: 'cid_1', dvId: 'dv_1', teamIds: ['en_a', 'en_b'] });
+    expect(lastPayload()).toEqual({
+      action: 'explainTie', cid: 'cid_1', dvId: 'dv_1', teamIds: ['en_a', 'en_b'],
+    });
+    expect(lastPayload()).not.toHaveProperty('groupId');
+    await cpHostResolveTie({
+      cid: 'cid_1', dvId: 'dv_1', groupId: 'A', order: ['en_b', 'en_a'],
+      method: 'host', reason: '依報名先後', expectedVersion: 3,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'resolveTie',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      groupId: 'A',
+      order: ['en_b', 'en_a'],
+      method: 'host',
+      reason: '依報名先後',
+      expectedVersion: 3,
+    });
+    await cpHostClearTieDecision({
+      cid: 'cid_1', dvId: 'dv_1', groupId: 'A', reason: '重算', expectedVersion: 4,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'clearTieDecision',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      groupId: 'A',
+      reason: '重算',
+      expectedVersion: 4,
+    });
 
     await cpHostCreate({ ...base, hostType: 'personal', category: 'cup' });
     expect(lastPayload()).toMatchObject({ action: 'create', category: 'cup', hostType: 'personal' });

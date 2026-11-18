@@ -38,6 +38,8 @@ export interface InAppListCard {
   /** cpMine 或代表俱樂部主辦。 */
   mine: boolean;
   ended: boolean;
+  /** 整場延期或取消時，列表膠囊改顯示這個，不再用階段。 */
+  statusMark: 'postponed' | 'cancelled' | null;
 }
 
 export interface MineListRow {
@@ -148,6 +150,7 @@ function cardFromDoc(
     line: statusLineFor(doc, phase, now, today),
     mine,
     ended: phase === 'done',
+    statusMark: doc.status === 'postponed' || doc.status === 'cancelled' ? doc.status : null,
   };
 }
 
@@ -208,6 +211,7 @@ export function assembleInAppCards(input: {
       line: null,
       mine: true,
       ended: false,
+      statusMark: null,
     });
   }
 

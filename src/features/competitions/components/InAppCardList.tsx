@@ -81,14 +81,19 @@ function InCard({ card, ct, onOpen }: {
 }): JSX.Element {
   const line = card.line ? lineText(ct, card.line) : '';
   const highlight = card.phase !== 'recruit' && card.phase !== null && line !== '';
+  const pill = card.statusMark === 'postponed'
+    ? { mark: 'postponed', label: ct('compPostponed') }
+    : card.statusMark === 'cancelled'
+      ? { mark: 'cancelled', label: ct('cancelled') }
+      : card.phase
+        ? { mark: card.phase, label: ct(statusKey(card.phase)) }
+        : null;
   return (
     <div class={`tc-card cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
       <a class="tc-card-link" href={`/competitions/${card.cid}`} onClick={(event) => onOpen(card.cid, event)}>
         <div class="cpl-cover-wrap">
           <DefaultCover cat={card.category} />
-          {card.phase ? (
-            <span class={`cpl-st cpl-st--${card.phase}`}><i />{ct(statusKey(card.phase))}</span>
-          ) : null}
+          {pill ? <span class={`cpl-st cpl-st--${pill.mark}`}><i />{pill.label}</span> : null}
         </div>
         <div class="tc-card-body">
           <div class="tc-card-text">

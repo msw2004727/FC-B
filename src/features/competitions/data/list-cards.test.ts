@@ -132,6 +132,18 @@ describe('站內卡片純函式', () => {
       now: NOW,
     });
     expect(sameTime.map((card) => card.cid)).toEqual(['b', 'later']);
+    const marked = assembleInAppCards({
+      publicDocs: [
+        competition({ id: 'late_comp', name: '延期盃', status: 'postponed' }),
+        competition({ id: 'stop_comp', name: '取消盃', status: 'cancelled' }),
+      ],
+      hosted: [],
+      mine: [],
+      now: NOW,
+    });
+    expect(marked.find((card) => card.cid === 'late_comp')?.statusMark).toBe('postponed');
+    expect(marked.find((card) => card.cid === 'stop_comp')?.statusMark).toBe('cancelled');
+    expect(marked.find((card) => card.cid === 'stop_comp')?.ended).toBe(true);
 
     const named = cards.find((card) => card.cid === 'named')!;
     expect(passesInAppStatus(named, 'open')).toBe(true);

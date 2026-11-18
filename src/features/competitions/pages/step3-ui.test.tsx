@@ -66,23 +66,24 @@ function standings(hasUnresolvedTie: boolean): StandingDoc {
     groupId: 'A',
     version: 1,
     hasUnresolvedTie,
-    manualOverride: false,
+    manualOverride: null,
+    ranking: null,
     updatedAt: null,
     rows: [
       {
         teamId: 'club_wind', name: '海風隊', played: 4, win: 3, draw: 1, loss: 0,
         goalsFor: 10, goalsAgainst: 3, goalDiff: 7, points: 10, rank: 1,
-        hasUnresolvedTie: false, tiedWith: [],
+        hasUnresolvedTie: false, tiedWith: [], decidedBy: null,
       },
       {
         teamId: 'club_b', name: '銀河隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 5, goalsAgainst: 5, goalDiff: 0, points: 5, rank: 5,
-        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_c'] : [],
+        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_c'] : [], decidedBy: null,
       },
       {
         teamId: 'club_c', name: '一二三四五六七八九十示範隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 4, goalsAgainst: 8, goalDiff: -4, points: 5, rank: 6,
-        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_b'] : [],
+        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_b'] : [], decidedBy: null,
       },
     ],
   };
@@ -218,18 +219,19 @@ describe('詳情四狀態', () => {
       groupId: 'A',
       version: 1,
       hasUnresolvedTie: true,
-      manualOverride: false,
+      manualOverride: null,
+      ranking: null,
       updatedAt: null,
       rows: [
         {
           teamId: 'club_b', name: '銀河隊', played: 4, win: 1, draw: 2, loss: 1,
           goalsFor: 5, goalsAgainst: 5, goalDiff: 0, points: 5, rank: 1,
-          hasUnresolvedTie: true, tiedWith: ['club_c'],
+          hasUnresolvedTie: true, tiedWith: ['club_c'], decidedBy: null,
         },
         {
           teamId: 'club_c', name: '山貓隊', played: 4, win: 1, draw: 2, loss: 1,
           goalsFor: 4, goalsAgainst: 8, goalDiff: -4, points: 5, rank: 2,
-          hasUnresolvedTie: true, tiedWith: ['club_b'],
+          hasUnresolvedTie: true, tiedWith: ['club_b'], decidedBy: null,
         },
       ],
     };

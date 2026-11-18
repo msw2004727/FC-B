@@ -32,6 +32,7 @@ import {
   type MatchSide,
   type MatchSideName,
   type MatchStatus,
+  type ManualOverride,
   type MineRole,
   type PaymentStatus,
   type PlayersOnField,
@@ -41,7 +42,9 @@ import {
   type StaffDoc,
   type StaffRole,
   type StandingDoc,
+  type StandingRanking,
   type StandingRow,
+  type TieDecisionMethod,
   type SummaryEntry,
   type Venue,
 } from './types';
@@ -115,8 +118,11 @@ const POSITIONS: readonly RosterPositionCode[] = ['GK', 'DF', 'MF', 'FW', 'custo
 const MINE_ROLES: readonly MineRole[] = ['host', 'rep', 'player'];
 const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost'];
 const MATCH_STATUSES: readonly MatchStatus[] = [
-  'scheduled', 'postponed', 'live', 'halftime', 'finished', 'confirmed', 'walkover',
+  'scheduled', 'postponed', 'live', 'halftime', 'finished', 'confirmed', 'walkover', 'cancelled',
 ];
+const ENDED_BY: readonly ('confirm' | 'host' | 'auto')[] = ['confirm', 'host', 'auto'];
+const TIE_METHODS: readonly TieDecisionMethod[] = ['host', 'drawLots'];
+const RANKINGS: readonly StandingRanking[] = ['h2hFirst', 'goalDiffFirst'];
 
 function isSafeId(id: string): boolean {
   return id.length > 0 && !id.includes('/') && id !== '.' && id !== '..';
@@ -204,6 +210,8 @@ export function competitionFromDoc(id: string, raw: Record<string, unknown>): Co
     firstMatchAt,
     lastMatchAt,
     endedAt: optNum(raw.endedAt),
+    endedBy: oneOf(raw.endedBy, ENDED_BY),
+    endReason: str(raw.endReason),
     rostersLockedAt: optNum(raw.rostersLockedAt),
     ageBasisAt: optNum(raw.ageBasisAt),
     timezone,
@@ -240,7 +248,14 @@ function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc 
     entryCount: num(raw.entryCount) ?? 0,
     approvedCount: num(raw.approvedCount) ?? 0,
     order: num(raw.order) ?? 0,
+    ranking: rankingOf(raw.schedule),
   };
+}
+
+/** generateSchedule 寫在 division.schedule.ranking。缺欄或不認得是 null。 */
+function rankingOf(schedule: unknown): StandingRanking | null {
+  if (!isRecord(schedule)) return null;
+  return oneOf(schedule.ranking, RANKINGS);
 }
 
 function entryFromDoc(id: string, raw: Record<string, unknown>): EntryDoc | null {
@@ -397,6 +412,8 @@ export function matchFromDoc(id: string, raw: Record<string, unknown>): MatchDoc
     result: matchResultOf(raw.result),
     resultSource: raw.resultSource === 'host' ? 'host' : null,
     updatedAt: optNum(raw.updatedAt),
+    cancelReason: str(raw.cancelReason),
+    cancelledAt: optNum(raw.cancelledAt),
   };
 }
 
@@ -428,6 +445,7 @@ function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
     s: [num(score[0]) ?? 0, num(score[1]) ?? 0],
     st: str(raw.st) ?? '',
     wo: str(raw.wo),
+    ...(str(raw.cancelReason) ? { reason: str(raw.cancelReason) } : {}),
   };
 }
 
@@ -477,6 +495,7 @@ function standingRowOf(value: unknown): StandingRow | null {
     rank: num(value.rank) ?? 0,
     hasUnresolvedTie: value.hasUnresolvedTie === true,
     tiedWith: tiedWithOf(value.tiedWith),
+    decidedBy: oneOf(value.decidedBy, TIE_METHODS),
   };
 }
 
@@ -488,9 +507,17 @@ function splitStandingId(id: string): { divisionId: string; groupId: string } | 
   return null;
 }
 
-/** 後端 manualOverride 是 { enabled, ... }。前端只留 enabled 是否為 true。 */
-function manualOverrideEnabled(value: unknown): boolean {
-  return isRecord(value) && value.enabled === true;
+/**
+ * enabled === true 才留下方式、原因、時間。
+ * decidedAt 優先，沒有才用舊欄位 at。method 不認得就當 null，紀錄仍留著。
+ */
+function manualOverrideOf(value: unknown): ManualOverride | null {
+  if (!isRecord(value) || value.enabled !== true) return null;
+  return {
+    method: oneOf(value.method, TIE_METHODS),
+    reason: str(value.reason),
+    at: num(value.decidedAt) ?? num(value.at),
+  };
 }
 
 /** 契約 §1.3。列可以是空的（產程先寫一份全 0）。 */
@@ -511,7 +538,8 @@ export function standingFromDoc(id: string, raw: Record<string, unknown>): Stand
     version: num(raw.version) ?? 0,
     hasUnresolvedTie: bool(raw.hasUnresolvedTie) ?? false,
     ...(divisionName ? { divisionName } : {}),
-    manualOverride: manualOverrideEnabled(raw.manualOverride),
+    manualOverride: manualOverrideOf(raw.manualOverride),
+    ranking: oneOf(raw.ranking, RANKINGS),
     updatedAt: optNum(raw.updatedAt),
   };
 }

@@ -154,6 +154,8 @@ function match(partial: Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>): Ma
     result: null,
     resultSource: null,
     updatedAt: null,
+    cancelReason: null,
+    cancelledAt: null,
     ...partial,
   };
 }
@@ -358,13 +360,13 @@ describe('排賽程', () => {
 
 describe('賽程管理按鈕', () => {
   const rows: Array<{ id: string; status: MatchStatus; home: string; away: string; score: [number, number]; kickoff: number | null; buttons: string[] }> = [
-    { id: 'mt_sched', status: 'scheduled', home: '海風隊', away: '山貓隊', score: [0, 0], kickoff: taipeiMs(2027, 1, 9, 9, 0), buttons: ['改期', '登錄比分'] },
-    { id: 'mt_fin', status: 'finished', home: '銀河隊', away: '晨光隊', score: [2, 1], kickoff: taipeiMs(2027, 1, 9, 11, 0), buttons: ['登錄比分', '確認'] },
+    { id: 'mt_sched', status: 'scheduled', home: '海風隊', away: '山貓隊', score: [0, 0], kickoff: taipeiMs(2027, 1, 9, 9, 0), buttons: ['改期', '取消這場', '登錄比分'] },
+    { id: 'mt_fin', status: 'finished', home: '銀河隊', away: '晨光隊', score: [2, 1], kickoff: taipeiMs(2027, 1, 9, 11, 0), buttons: ['登錄比分', '確認', '取消這場'] },
     { id: 'mt_ok', status: 'confirmed', home: '青鳥隊', away: '赤羽隊', score: [1, 0], kickoff: taipeiMs(2027, 1, 9, 13, 0), buttons: ['重置'] },
     { id: 'mt_wo', status: 'walkover', home: '白浪隊', away: '黑潮隊', score: [0, 2], kickoff: taipeiMs(2027, 1, 9, 15, 0), buttons: ['重置'] },
     { id: 'mt_live', status: 'live', home: '綠洲隊', away: '黃沙隊', score: [1, 1], kickoff: taipeiMs(2027, 1, 9, 17, 0), buttons: [] },
     { id: 'mt_half', status: 'halftime', home: '赤陽隊', away: '青石隊', score: [0, 0], kickoff: taipeiMs(2027, 1, 9, 18, 0), buttons: [] },
-    { id: 'mt_move', status: 'postponed', home: '北風隊', away: '南風隊', score: [0, 0], kickoff: null, buttons: ['改期'] },
+    { id: 'mt_move', status: 'postponed', home: '北風隊', away: '南風隊', score: [0, 0], kickoff: null, buttons: ['改期', '取消這場'] },
   ];
 
   function list(): MatchDoc[] {

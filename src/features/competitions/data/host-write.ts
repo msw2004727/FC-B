@@ -38,10 +38,11 @@ export type WriteIntent =
   | { kind: 'confirm'; score: { home: number; away: number } }
   | { kind: 'walkover'; forfeitSide: 'home' | 'away'; reason: string }
   | { kind: 'reset'; reason: string }
-  | { kind: 'reschedule'; kickoffAt: number | null; venueIdx: number | null };
+  | { kind: 'reschedule'; kickoffAt: number | null; venueIdx: number | null }
+  | { kind: 'cancel'; reason: string };
 
-export type HostAction = 'reschedule' | 'score' | 'confirm' | 'reset';
-export type HostBadgeKey = 'sched' | 'pending' | 'confirmed' | 'forfeit' | 'moved' | 'live';
+export type HostAction = 'reschedule' | 'score' | 'confirm' | 'reset' | 'cancel';
+export type HostBadgeKey = 'sched' | 'pending' | 'confirmed' | 'forfeit' | 'moved' | 'live' | 'cancelled';
 
 export interface HostDayGroup {
   key: string;
@@ -173,13 +174,30 @@ export function reasonProblem(value: string): 'FIELD_REQUIRED' | 'FIELD_LENGTH' 
   return null;
 }
 
+/** 去空白後以 Unicode 碼位計。空的是必填；短於 min 或長於 max 是字數。 */
+export function boundedReason(value: string, min: number, max: number): 'FIELD_REQUIRED' | 'FIELD_LENGTH' | null {
+  const text = value.trim();
+  const length = [...text].length;
+  if (length === 0) return 'FIELD_REQUIRED';
+  if (length < min || length > max) return 'FIELD_LENGTH';
+  return null;
+}
+
+/** 還沒確認、也不是棄權或已取消的場次。結束賽事對話框用這個數字。 */
+export function unconfirmedCount(matches: readonly MatchDoc[]): number {
+  return matches.filter((match) => (
+    match.status !== 'confirmed' && match.status !== 'walkover' && match.status !== 'cancelled'
+  )).length;
+}
+
 export function hostActions(status: MatchStatus): HostAction[] {
   switch (status) {
-    case 'scheduled': return ['reschedule', 'score'];
-    case 'postponed': return ['reschedule'];
-    case 'finished': return ['score', 'confirm'];
+    case 'scheduled': return ['reschedule', 'cancel', 'score'];
+    case 'postponed': return ['reschedule', 'cancel'];
+    case 'finished': return ['score', 'confirm', 'cancel'];
     case 'confirmed':
-    case 'walkover': return ['reset'];
+    case 'walkover':
+    case 'cancelled': return ['reset'];
     case 'live':
     case 'halftime': return [];
     default: return [];
@@ -193,6 +211,7 @@ export function hostBadgeKey(status: MatchStatus): HostBadgeKey | null {
     case 'confirmed': return 'confirmed';
     case 'walkover': return 'forfeit';
     case 'postponed': return 'moved';
+    case 'cancelled': return 'cancelled';
     case 'live':
     case 'halftime': return 'live';
     default: return null;
@@ -284,7 +303,12 @@ export function outcomeMatches(intent: WriteIntent, match: MatchDoc): boolean {
       && match.score.away === 0
       && match.walkoverSide == null
       && match.result == null
-      && match.resultSource == null;
+      && match.resultSource == null
+      && match.cancelReason == null
+      && match.cancelledAt == null;
+  }
+  if (intent.kind === 'cancel') {
+    return match.status === 'cancelled' && match.cancelReason === intent.reason;
   }
   if (intent.kickoffAt == null) {
     return intent.venueIdx == null
@@ -336,7 +360,12 @@ export function applyWrite(match: MatchDoc, intent: WriteIntent): MatchDoc {
       lock: { locked: false },
       finishedAt: null,
       confirmedAt: null,
+      cancelReason: null,
+      cancelledAt: null,
     };
+  }
+  if (intent.kind === 'cancel') {
+    return { ...match, rev, status: 'cancelled', cancelReason: intent.reason };
   }
   return {
     ...match,
