@@ -68,7 +68,7 @@ export const CP_REASON_CODES = [
   'STATUS_NOT_EDITABLE',
   'MATCH_NOT_FOUND',
   'DIVISION_NOT_FOUND',
-  // Opus 複審 P3：使用者看得到的其餘 match-host 代碼（FIELD_TYPE／FIELD_FORMAT 走通用文案）
+  // Opus 複審 P3：使用者看得到的其餘 match-host 代碼。FIELD_TYPE、FIELD_FORMAT 各自有句子。
   'COMPETITION_HIDDEN',
   'COMPETITION_DELETING',
   'MATCH_CORRUPT',
@@ -89,6 +89,13 @@ export const CP_REASON_CODES = [
   'BAD_ID',
   'FIELD_ENUM',
   'FIELD_FORMAT',
+  // §3.272 F2 賽程彈性、F4 公告與聯絡。對照契約錯誤表。
+  'SCHEDULE_CONFLICT',
+  'SCHEDULE_DAY_TOO_LARGE',
+  'NOTHING_TO_SHIFT',
+  'NOTICE_LIMIT',
+  'NOTICE_NOT_FOUND',
+  'FIELD_TYPE',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

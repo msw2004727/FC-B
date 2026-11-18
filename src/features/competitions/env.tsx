@@ -76,6 +76,8 @@ export interface WizardSeed {
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
+  /** 公開聯絡文字。省略當空白。 */
+  contactNote?: string;
   /** 省略＝聯賽。 */
   category?: CompetitionCategory;
   regOpen: string;

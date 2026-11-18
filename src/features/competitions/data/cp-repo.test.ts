@@ -131,6 +131,31 @@ describe('competitionFromDoc', () => {
     expect(doc && 'hostUid' in doc).toBe(false);
   });
 
+  it('公告與聯絡文字：缺欄是空，空白聯絡是 null，壞公告丟掉', () => {
+    const bare = competitionFromDoc('cid_1', rawComp());
+    expect(bare?.notices).toEqual([]);
+    expect(bare?.contactNote).toBeNull();
+    expect(bare?.lastMatchOriginAt).toBeNull();
+    expect(bare && 'hostUid' in bare).toBe(false);
+    const doc = competitionFromDoc('cid_1', rawComp({
+      contactNote: '  賽前群組  ',
+      lastMatchOriginAt: 9,
+      notices: [
+        { id: 'n1', text: '改期', kind: 'system', at: { toMillis: () => 20 }, by: 'hash' },
+        { id: '', text: '壞', kind: 'host', at: 1 },
+        { id: 'n2', text: '手寫', kind: 'host', at: 30, by: null },
+        { id: 'n3', text: '錯', kind: 'other', at: 1 },
+      ],
+    }));
+    expect(doc?.contactNote).toBe('賽前群組');
+    expect(doc?.lastMatchOriginAt).toBe(9);
+    expect(doc?.notices).toEqual([
+      { id: 'n1', text: '改期', kind: 'system', at: 20, by: 'hash' },
+      { id: 'n2', text: '手寫', kind: 'host', at: 30, by: null },
+    ]);
+    expect(competitionFromDoc('cid_1', rawComp({ contactNote: '   ' }))?.contactNote).toBeNull();
+  });
+
   it('運動不是 football、或缺必填，整筆丟掉', () => {
     expect(competitionFromDoc('cid_1', rawComp({ sport: 'basketball' }))).toBeNull();
     expect(competitionFromDoc('cid_1', rawComp({ name: 1 }))).toBeNull();
@@ -297,6 +322,25 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     expect(box.gets).toEqual([]);
     expect(box.queries).toEqual([]);
     expect(box.dbHits()).toBe(0);
+  });
+});
+
+describe('findHostUid', () => {
+  it('只查 roles 含 host 的一筆，文件 id 就是 uid', async () => {
+    const box = harness();
+    box.cols.set('competitions/cid_1/staff', [
+      { id: 'uid_host', data: { roles: ['host', 'coHost'] } },
+    ]);
+    await expect(box.repo.findHostUid('cid_1')).resolves.toBe('uid_host');
+    expect(box.queries.at(-1)).toEqual({
+      path: 'competitions/cid_1/staff',
+      clauses: [
+        { kind: 'where', field: 'roles', op: 'array-contains', value: 'host' },
+        { kind: 'limit', n: 1 },
+      ],
+    });
+    await expect(box.repo.findHostUid('a/b')).resolves.toBeNull();
+    await expect(box.repo.findHostUid('cid_1')).resolves.toBe('uid_host');
   });
 });
 

@@ -48,6 +48,8 @@ export interface WizardDraft {
   lastMatchAt: number;
   venues: VenueDraft[];
   divisions: DivisionDraft[];
+  /** 公開聯絡文字。空白不送。 */
+  contactNote?: string;
 }
 
 function venueOf(draft: VenueDraft): Venue {
@@ -84,6 +86,7 @@ function divisionOf(draft: DivisionDraft): DivisionInput {
 
 /** 個人不送 hostTeamId／feeNote；俱樂部不送 hostDisplay。liveLinks 這期畫面沒有，送空陣列。 */
 export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
+  const contactNote = draft.contactNote?.trim() ?? '';
   const common = {
     name: draft.name.trim(),
     sport: 'football' as const,
@@ -96,6 +99,7 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
     liveLinks: [] as string[],
     divisions: draft.divisions.map(divisionOf),
     category: draft.category,
+    ...(contactNote ? { contactNote } : {}),
   };
   if (draft.hostType === 'club') {
     const feeNote = draft.feeNote.trim();

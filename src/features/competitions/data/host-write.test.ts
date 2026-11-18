@@ -75,11 +75,11 @@ const adult: DivisionDoc = {
 describe('排賽程表單', () => {
   it('預設比賽日是首末場的台北日期，鐘點 09:00–18:00，場地全選', () => {
     expect(initialDays(taipeiMs(2027, 1, 9, 8, 0), taipeiMs(2027, 1, 9, 18, 0))).toEqual([
-      { date: '2027-01-09', start: '09:00', end: '18:00' },
+      { id: 'day-1', date: '2027-01-09', start: '09:00', end: '18:00' },
     ]);
     expect(initialDays(taipeiMs(2027, 1, 9, 8, 0), taipeiMs(2027, 1, 10, 18, 0))).toEqual([
-      { date: '2027-01-09', start: '09:00', end: '18:00' },
-      { date: '2027-01-10', start: '09:00', end: '18:00' },
+      { id: 'day-1', date: '2027-01-09', start: '09:00', end: '18:00' },
+      { id: 'day-2', date: '2027-01-10', start: '09:00', end: '18:00' },
     ]);
     expect(allVenueIdx(2)).toEqual([0, 1]);
   });

@@ -3,7 +3,9 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
+import { emit } from '@/core/events';
 import { openHttpAnchor } from '@/core/open-external';
+import { openPmDialog } from '@/features/inbox/components/pm-dialog-store';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
@@ -18,6 +20,7 @@ import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
+import { HOST_NOTICE_MAX, hostNoticeCount, noticeTextProblem } from '../data/flex-schedule';
 import { boundedReason } from '../data/host-write';
 import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '../format';
 import { LiveBoundary } from '../live';
@@ -29,6 +32,7 @@ import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { TieWorkspace } from '../ui/tie-panel';
+import { PublicBoard } from '../ui/public-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
@@ -409,6 +413,74 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  async function publishNotice(text: string): Promise<boolean> {
+    const problem = noticeTextProblem(text);
+    if (problem) {
+      const params = problem === 'FIELD_LENGTH' ? { min: 1, max: 300 } : undefined;
+      toast.show({ message: reasonText(ct, problem, params), tone: 'error' });
+      return false;
+    }
+    if (hostNoticeCount(competition.notices) >= HOST_NOTICE_MAX) {
+      toast.show({ message: reasonText(ct, 'NOTICE_LIMIT', { max: HOST_NOTICE_MAX }), tone: 'error' });
+      return false;
+    }
+    setBusy(true);
+    try {
+      const result = await env.actions.postNotice({ cid, text: text.trim() });
+      const notice = {
+        id: result.noticeId,
+        text: text.trim(),
+        kind: 'host' as const,
+        at: now,
+        by: null,
+      };
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: { ...current.competition, notices: [...current.competition.notices, notice] },
+      } : current));
+      return true;
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeNotice(noticeId: string): Promise<void> {
+    setBusy(true);
+    try {
+      await env.actions.deleteNotice({ cid, noticeId });
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: {
+          ...current.competition,
+          notices: current.competition.notices.filter((notice) => notice.id !== noticeId),
+        },
+      } : current));
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function messageHost(): Promise<void> {
+    if (!env.actor.uid) {
+      emit('auth:login-request', {});
+      return;
+    }
+    const uid = await env.repo.findHostUid(cid);
+    if (!uid) {
+      toast.show({ message: ct('hostMissing'), tone: 'error' });
+      return;
+    }
+    const name = hostName(competition, env);
+    openPmDialog(name ? { uid, name } : { uid });
+  }
+
   async function sendRegister(): Promise<void> {
     const chosenTeam = teamId || clubs[0]?.id || '';
     if (!chosenTeam || !dvId) {
@@ -538,6 +610,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </div>
         </CpCard>
       ) : null}
+      <PublicBoard
+        ct={ct}
+        notices={competition.notices}
+        contactNote={competition.contactNote}
+        hostName={hostName(competition, env)}
+        hostOps={hostOps}
+        busy={busy}
+        onPost={publishNotice}
+        onDelete={removeNotice}
+        onMessage={messageHost}
+      />
       {phase === 'recruit' ? (
       <>
       <CpCard>

@@ -8,12 +8,15 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
+import { Input } from '@/ui/Input';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Switch } from '@/ui/Switch';
 import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
 import { canHostOrCo, canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
+import { contactNoteProblem } from '../data/flex-schedule';
+import { clipCodePoints } from '../format';
 import { liveCpActions } from '../actions';
 import { representativeClubs } from '../rep-clubs';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -73,6 +76,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [unlockError, setUnlockError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [category, setCategory] = useState<CompetitionCategory>(env.bundle?.competition?.category ?? 'league');
+  const [contactDraft, setContactDraft] = useState(env.bundle?.competition?.contactNote ?? '');
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
 
@@ -97,6 +101,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     const next = bundle?.competition?.category;
     if (next) setCategory(next);
   }, [bundle?.competition?.category]);
+
+  useEffect(() => {
+    setContactDraft(bundle?.competition?.contactNote ?? '');
+  }, [bundle?.competition?.contactNote]);
 
   const competition = bundle?.competition;
   const manage = competition ? canManageCompetition({
@@ -289,6 +297,29 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  async function saveContact(): Promise<void> {
+    if (!hostOps || busy) return;
+    const problem = contactNoteProblem(contactDraft);
+    if (problem) {
+      setError({ reason: problem, params: problem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined });
+      return;
+    }
+    const text = contactDraft.trim();
+    setBusy(true);
+    setError(null);
+    try {
+      await env.actions.update({ cid, contactNote: text ? text : null });
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: { ...current.competition, contactNote: text || null },
+      } : current));
+    } catch (err) {
+      setError(errorOf(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveCategory(next: CompetitionCategory): Promise<void> {
     if (!manage || busy || next === category) return;
     const prev = category;
@@ -438,6 +469,23 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               { value: 'friendly', label: ct('categoryFriendly') },
             ]}
           />
+        </CpCard>
+      ) : null}
+      {hostOps ? (
+        <CpCard>
+          <div class="cps-fields">
+            <Input
+              label={ct('contactField')}
+              hint={ct('publicHint')}
+              value={contactDraft}
+              maxLength={60}
+              disabled={busy}
+              onValueChange={(value) => setContactDraft(clipCodePoints(value.replace(/[\r\n]/g, ''), 60))}
+            />
+            <div class="cps-actions">
+              <Button variant="secondary" disabled={busy} onClick={() => { void saveContact(); }}>{ct('contactSave')}</Button>
+            </div>
+          </div>
         </CpCard>
       ) : null}
       <div>

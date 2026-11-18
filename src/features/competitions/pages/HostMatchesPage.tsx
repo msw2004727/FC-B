@@ -17,6 +17,16 @@ import { toast } from '@/ui/Toast';
 import { canEndCompetition, canHostOrCo, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
+  applyDayShift,
+  applySwap,
+  clashSentence,
+  dateAfterLast,
+  extendLastMatchAt,
+  parseConflict,
+  slashDate,
+  type ScheduleClash,
+} from '../data/flex-schedule';
+import {
   applyWrite,
   boundedReason,
   groupHostMatches,
@@ -46,6 +56,7 @@ import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import { crestFromEntry, TeamCrest } from '../ui/TeamCrest';
+import { HostFlexCards, type ShiftRequest, type SwapRequest } from './host-flex';
 
 type Panel =
   | { kind: 'score'; mtId: string; home: number; away: number }
@@ -73,13 +84,17 @@ function allowedOf(env: CpInjectedEnv, staff: StaffDoc | null): boolean {
 
 async function loadBundle(env: CpInjectedEnv, cid: string): Promise<CpBundle | null> {
   const uid = env.actor.uid;
-  const [competition, divisions, staff, entries] = await Promise.all([
+  const [competition, divisions, staff] = await Promise.all([
     env.repo.getCompetition(cid),
     env.repo.listDivisions(cid),
     uid ? env.repo.getStaff(cid, uid) : Promise.resolve(null),
-    env.repo.listEntriesForCrest(cid),
   ]);
   if (!competition) return null;
+  // 無權限的人進這頁不讀隊徽。隊徽只在看得到場次時才需要。
+  if (!allowedOf(env, staff)) {
+    return { competition, divisions, entries: [], roster: [], privates: [], staff };
+  }
+  const entries = await env.repo.listEntriesForCrest(cid);
   return { competition, divisions, entries, roster: [], privates: [], staff };
 }
 
@@ -141,6 +156,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   };
   const [hold, setHold] = useState<Hold | null>(null);
   const [busy, setBusy] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const [reschedClash, setReschedClash] = useState<ScheduleClash | null>(null);
   const [endOpen, setEndOpen] = useState(false);
   const [endReason, setEndReason] = useState('');
   const [endMessage, setEndMessage] = useState<string | null>(null);
@@ -252,7 +269,12 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       return;
     }
     await env.actions.rescheduleMatch({
-      cid, mtId, expectedRev: rev, kickoffAt: intent.kickoffAt, venueIdx: intent.venueIdx,
+      cid,
+      mtId,
+      expectedRev: rev,
+      kickoffAt: intent.kickoffAt,
+      venueIdx: intent.venueIdx,
+      ...(intent.force ? { force: true } : {}),
     });
   }
 
@@ -281,22 +303,38 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         if (intent.kind === 'reschedule') next = withVenue(next, intent.venueIdx);
         replaceMatch(next);
       }
+      if (intent.kind === 'reschedule') {
+        setPosted(true);
+        setReschedClash(null);
+      }
       setPanel(null);
       setHold(null);
     } catch (err) {
       const info = errorOf(err);
+      if (info.reason === 'SCHEDULE_CONFLICT' && intent.kind === 'reschedule') {
+        setReschedClash(parseConflict(info.params));
+        const message = reasonText(ct, info.reason, info.params);
+        toast.show({ message, tone: 'error' });
+        remember(intent, mtId, rev, false, message, null);
+        return;
+      }
       if (info.reason === 'REV_CONFLICT') {
         const latest = await reread(mtId);
         if (wasRetry && latest && outcomeMatches(intent, latest)) {
           replaceMatch(latest);
+          if (intent.kind === 'reschedule') {
+            setPosted(true);
+            setReschedClash(null);
+          }
           setPanel(null);
           setHold(null);
           toast.show({ message: digest(latest), tone: 'success' });
           return;
         }
-        toast.show({ message: ct('matchUpdated'), tone: 'error' });
+        const lead = intent.kind === 'confirm' ? ct('matchUpdatedShort') : ct('matchUpdated');
+        toast.show({ message: lead, tone: 'error' });
         if (latest) replaceMatch(latest);
-        remember(intent, mtId, latest?.rev ?? rev, false, null, latest ? digest(latest) : ct('matchUpdated'));
+        remember(intent, mtId, latest?.rev ?? rev, false, null, latest ? digest(latest) : lead);
         return;
       }
       const message = reasonText(ct, info.reason, info.params);
@@ -344,6 +382,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   function openReschedule(match: MatchDoc): void {
     if (lock.current) return;
     const draft = rescheduleDraft(match, comp.venues.length);
+    setReschedClash(null);
     setPanel({ kind: 'reschedule', mtId: match.id, ...draft });
     setHold({
       mtId: match.id, kind: 'reschedule', rev: match.rev, retrying: false, message: null, updated: null, scoreConfirm: false,
@@ -373,7 +412,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       const params = problem === 'FIELD_LENGTH' ? { min: 1, max: 200 } : undefined;
       const message = reasonText(ct, problem, params);
       toast.show({ message, tone: 'error' });
-      setHold({ ...hold, retrying: false, message, updated: null });
+      setHold({ ...hold, message, updated: null });
       return;
     }
     await commit(panel.mtId, hold.rev, {
@@ -390,7 +429,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       const params = problem === 'FIELD_LENGTH' ? { min: 1, max: 200 } : undefined;
       const message = reasonText(ct, problem, params);
       toast.show({ message, tone: 'error' });
-      setHold({ ...hold, retrying: false, message, updated: null });
+      setHold({ ...hold, message, updated: null });
       return;
     }
     await commit(panel.mtId, hold.rev, { kind: 'reset', reason: panel.reason.trim() });
@@ -445,7 +484,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     }
   }
 
-  async function submitReschedule(): Promise<void> {
+  async function submitReschedule(force = false): Promise<void> {
     if (!panel || panel.kind !== 'reschedule' || !hold) return;
     const parsed = parseReschedule({
       tbd: panel.tbd,
@@ -460,11 +499,85 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       setHold({ ...hold, retrying: false, message, updated: null });
       return;
     }
+    setPosted(false);
     await commit(panel.mtId, hold.rev, {
       kind: 'reschedule',
       kickoffAt: parsed.kickoffAt,
       venueIdx: parsed.venueIdx,
+      force,
     });
+  }
+
+  function rememberLast(rows: readonly MatchDoc[]): void {
+    setBundle((current) => {
+      if (!current?.competition) return current;
+      const lastMatchAt = extendLastMatchAt(
+        current.competition.lastMatchAt,
+        rows.map((row) => row.kickoffAt),
+      );
+      if (lastMatchAt === current.competition.lastMatchAt) return current;
+      return { ...current, competition: { ...current.competition, lastMatchAt } };
+    });
+  }
+
+  async function runShift(input: ShiftRequest): Promise<ScheduleClash | null> {
+    if (lock.current) return null;
+    setPosted(false);
+    lock.current = true;
+    setBusy(true);
+    try {
+      await env.actions.shiftMatchDay({
+        cid,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        reason: input.reason,
+        ...(input.force ? { force: true } : {}),
+      });
+      const next = applyDayShift(matches, input.fromDate, input.toDate);
+      setMatches(next);
+      rememberLast(next);
+      setPosted(true);
+      return null;
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+      if (info.reason === 'SCHEDULE_CONFLICT') return parseConflict(info.params);
+      return null;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function runSwap(input: SwapRequest): Promise<ScheduleClash | null> {
+    if (lock.current) return null;
+    setPosted(false);
+    lock.current = true;
+    setBusy(true);
+    try {
+      await env.actions.swapMatches({
+        cid,
+        mtIdA: input.mtIdA,
+        mtIdB: input.mtIdB,
+        expectedRevA: input.expectedRevA,
+        expectedRevB: input.expectedRevB,
+        reason: input.reason,
+        ...(input.force ? { force: true } : {}),
+      });
+      const next = applySwap(matches, input.mtIdA, input.mtIdB);
+      setMatches(next);
+      rememberLast(next);
+      setPosted(true);
+      return null;
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+      if (info.reason === 'SCHEDULE_CONFLICT') return parseConflict(info.params);
+      return null;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
   }
 
   async function submitConfirm(match: MatchDoc): Promise<void> {
@@ -505,12 +618,13 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   function notice(kind: Hold['kind'], mtId: string): JSX.Element | null {
     if (!hold || hold.kind !== kind || hold.mtId !== mtId) return null;
     if (!hold.message && !hold.updated && !hold.retrying) return null;
+    const lead = hold.kind === 'confirm' ? ct('matchUpdatedShort') : ct('matchUpdated');
     return (
       <div>
         {hold.updated ? (
           <div role="status">
-            <p>{ct('matchUpdated')}</p>
-            <p>{hold.updated}</p>
+            <p>{lead}</p>
+            {hold.updated !== lead ? <p>{hold.updated}</p> : null}
           </div>
         ) : null}
         {hold.message ? <p class="cps-note cps-warn" role="alert">{hold.message}</p> : null}
@@ -531,6 +645,17 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   return (
     <CpFrame title={ct('hostListTitle')}>
       <p class="cps-sub" style="margin:0">{comp.name}</p>
+      {posted ? <p class="cpm-ok" role="status">{ct('autoPost')}</p> : null}
+      {matches.length > 0 ? (
+        <HostFlexCards
+          ct={ct}
+          matches={matches}
+          weekdays={scheduleLabels(ct).weekdays}
+          busy={busy}
+          onShift={runShift}
+          onSwap={runSwap}
+        />
+      ) : null}
       {showEnd ? (
         <div class="cps-actions" style="margin-top:0">
           <Button variant="danger" disabled={busy || endOpen} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
@@ -792,38 +917,69 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         >
           <div class="cps-sheet-body">
             <p class="cp3-ctx">{active.home.name}　vs　{active.away.name}</p>
+            <p class="cpm-cap">{ct('cap60')}</p>
             <Checkbox
               label={ct('reschedTbd')}
               checked={panel.tbd}
               disabled={busy}
-              onCheckedChange={(checked) => patchPanel({ tbd: checked })}
+              onCheckedChange={(checked) => {
+                patchPanel({ tbd: checked });
+                setReschedClash(null);
+              }}
             />
             <div class="cps-grid2">
               <DateField
                 id="cp-resched-date"
                 label={ct('schedDate')}
                 value={panel.date}
-                disabled={panel.tbd}
-                onValueChange={(value) => patchPanel({ date: value })}
+                disabled={panel.tbd || busy}
+                onValueChange={(value) => {
+                  patchPanel({ date: value });
+                  setReschedClash(null);
+                }}
               />
               <Input
                 label={ct('reschedTime')}
                 value={panel.time}
-                disabled={panel.tbd}
-                onValueChange={(value) => patchPanel({ time: value })}
+                disabled={panel.tbd || busy}
+                onValueChange={(value) => {
+                  patchPanel({ time: value });
+                  setReschedClash(null);
+                }}
               />
             </div>
+            {!panel.tbd && dateAfterLast(panel.date, comp.lastMatchAt) ? (
+              <p class="cpm-hint">{ct('delayHint', { date: slashDate(panel.date) ?? '' })}</p>
+            ) : null}
             {comp.venues.length > 0 ? (
               <Select
                 label={ct('venue')}
                 value={panel.venueIdx}
-                disabled={panel.tbd}
-                onValueChange={(value) => patchPanel({ venueIdx: value })}
+                disabled={panel.tbd || busy}
+                onValueChange={(value) => {
+                  patchPanel({ venueIdx: value });
+                  setReschedClash(null);
+                }}
                 options={comp.venues.map((venue, index) => ({
                   value: String(index),
                   label: venue.name || ct('venue'),
                 }))}
               />
+            ) : null}
+            {reschedClash ? (
+              <p class="cpm-warn" role="alert">
+                {clashSentence(
+                  matches.find((row) => row.id === reschedClash.mtId),
+                  reschedClash.type,
+                  ct('clashTeam'),
+                  ct('clashVenue'),
+                )}
+              </p>
+            ) : null}
+            {reschedClash ? (
+              <Button variant="secondary" disabled={busy || staleHold} onClick={() => { void submitReschedule(true); }}>
+                {ct('forceReschedule')}
+              </Button>
             ) : null}
             {notice('reschedule', panel.mtId)}
           </div>

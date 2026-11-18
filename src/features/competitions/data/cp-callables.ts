@@ -126,6 +126,8 @@ interface CpHostCommon {
   divisions: DivisionInput[];
   /** 建賽精靈步驟 1 會送。不送時伺服器把缺值當 league。 */
   category?: CompetitionCategory;
+  /** 公開聯絡文字。空白不送，伺服器寫 null。 */
+  contactNote?: string;
 }
 
 export type CpHostCreateInput = CpHostCommon & (
@@ -152,6 +154,7 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
     liveLinks: input.liveLinks,
     divisions: input.divisions,
     category: input.category,
+    contactNote: input.contactNote,
   };
   if (input.hostType === 'club') {
     return callAction('cpHost', payload('create', {
@@ -167,9 +170,10 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
   }));
 }
 
-// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions／category。
+// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions／category／contactNote。
 // 主辦類型、俱樂部、運動、時區建立後不能改，多帶會被整筆拒絕（Flash 交叉審 P2）。
 // category 是卡 A 新增的欄位；不送時不帶這個鍵。
+// contactNote 送 null 或空字串，伺服器寫 null。不送這個鍵就不動原本的文字。
 export interface CpHostUpdateInput {
   cid: string;
   name?: string;
@@ -180,6 +184,7 @@ export interface CpHostUpdateInput {
   liveLinks?: string[];
   divisions?: DivisionInput[];
   category?: CompetitionCategory;
+  contactNote?: string | null;
 }
 
 export interface CpCidResult {
@@ -394,15 +399,75 @@ export function cpHostClearSchedule(input: { cid: string; dvId: string }): Promi
   return callAction('cpHost', payload('clearSchedule', { cid: input.cid, dvId: input.dvId }));
 }
 
-/** kickoffAt 為 null 時伺服器把場次改成 postponed。 */
+/** kickoffAt 為 null 時伺服器把場次改成 postponed。force 只在真的要略過撞期時送 true。 */
 export function cpHostRescheduleMatch(input: {
   cid: string;
   mtId: string;
   expectedRev: number;
   kickoffAt: number | null;
   venueIdx: number | null;
+  force?: boolean;
 }): Promise<unknown> {
-  return callAction('cpHost', payload('rescheduleMatch', { ...input }));
+  return callAction('cpHost', payload('rescheduleMatch', {
+    cid: input.cid,
+    mtId: input.mtId,
+    expectedRev: input.expectedRev,
+    kickoffAt: input.kickoffAt,
+    venueIdx: input.venueIdx,
+    force: input.force ? true : undefined,
+  }));
+}
+
+/** 整天順延。fromDate／toDate 是台北 YYYY-MM-DD。原因只進稽核。 */
+export function cpHostShiftMatchDay(input: {
+  cid: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  force?: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('shiftMatchDay', {
+    cid: input.cid,
+    fromDate: input.fromDate,
+    toDate: input.toDate,
+    reason: input.reason,
+    force: input.force ? true : undefined,
+  }));
+}
+
+/** 兩場對調開賽時間與場地。同一場不送，由畫面先擋。 */
+export function cpHostSwapMatches(input: {
+  cid: string;
+  mtIdA: string;
+  mtIdB: string;
+  expectedRevA: number;
+  expectedRevB: number;
+  reason: string;
+  force?: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('swapMatches', {
+    cid: input.cid,
+    mtIdA: input.mtIdA,
+    mtIdB: input.mtIdB,
+    expectedRevA: input.expectedRevA,
+    expectedRevB: input.expectedRevB,
+    reason: input.reason,
+    force: input.force ? true : undefined,
+  }));
+}
+
+export interface CpPostNoticeResult {
+  noticeId: string;
+}
+
+/** 主辦公告。純文字，伺服器上限 300 個碼位。系統公告不走這支。 */
+export function cpHostPostNotice(input: { cid: string; text: string }): Promise<CpPostNoticeResult> {
+  return callAction('cpHost', payload('postNotice', { cid: input.cid, text: input.text }));
+}
+
+/** 依 id 刪除。手動與系統都可以刪。 */
+export function cpHostDeleteNotice(input: { cid: string; noticeId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('deleteNotice', { cid: input.cid, noticeId: input.noticeId }));
 }
 
 export function cpHostRecordResult(input: {

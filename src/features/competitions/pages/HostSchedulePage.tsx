@@ -6,6 +6,7 @@ import { useLocation, useRoute } from 'preact-iso';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Input } from '@/ui/Input';
+import { Modal } from '@/ui/Modal';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
@@ -66,16 +67,22 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   const [legs, setLegs] = useState<1 | 2>(1);
   const [minutes, setMinutes] = useState('40');
   const [buffer, setBuffer] = useState('10');
-  const [days, setDays] = useState<DayDraft[]>(() => (
-    competition ? initialDays(competition.firstMatchAt, competition.lastMatchAt) : []
-  ));
+  const daySerial = useRef(0);
+  const [days, setDays] = useState<DayDraft[]>(() => {
+    if (!competition) return [];
+    const rows = initialDays(competition.firstMatchAt, competition.lastMatchAt);
+    daySerial.current = rows.length;
+    return rows;
+  });
   const [venueOn, setVenueOn] = useState<number[]>(() => allVenueIdx(competition?.venues.length ?? 0));
   const [dvId, setDvId] = useState(divisions[0]?.dvId ?? '');
   const [held, setHeld] = useState<HeldPreview | null>(null);
   const [preview, setPreview] = useState<PreviewCard | null>(null);
   const [formError, setFormError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const lock = useRef(false);
+  const previewSeq = useRef(0);
   const seeded = useRef(Boolean(competition));
 
   useEffect(() => {
@@ -98,12 +105,15 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   useEffect(() => {
     if (!competition || seeded.current) return;
     seeded.current = true;
-    setDays(initialDays(competition.firstMatchAt, competition.lastMatchAt));
+    const rows = initialDays(competition.firstMatchAt, competition.lastMatchAt);
+    daySerial.current = Math.max(daySerial.current, rows.length);
+    setDays(rows);
     setVenueOn(allVenueIdx(competition.venues.length));
     setDvId(divisions[0]?.dvId ?? '');
   }, [competition, divisions]);
 
   function clearHeld(): void {
+    previewSeq.current += 1;
     setHeld(null);
     setPreview(null);
   }
@@ -124,6 +134,8 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       setPreview(null);
       return;
     }
+    const seq = previewSeq.current + 1;
+    previewSeq.current = seq;
     lock.current = true;
     setBusy(true);
     setFormError(null);
@@ -139,6 +151,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     };
     try {
       const result = await env.actions.generateSchedule(input);
+      if (previewSeq.current !== seq) return;
       const view = previewFromResult(result);
       if (view.kind === 'bad') {
         setPreview(view);
@@ -148,6 +161,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       setPreview({ kind: 'ok', m: view.m, d: view.d, p: view.p });
       setHeld({ value: parsed.value, seed: view.seed });
     } catch (err) {
+      if (previewSeq.current !== seq) return;
       const info = errorOf(err);
       const count = info.params.unplacedCount;
       if (info.reason === 'SCHEDULE_UNPLACED' && typeof count === 'number') {
@@ -211,6 +225,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     try {
       await env.actions.clearSchedule({ cid, dvId });
       setFormError(null);
+      setClearOpen(false);
       clearHeld();
     } catch (err) {
       const info = errorOf(err);
@@ -253,6 +268,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
             <Select
               label={ct('divisionPick')}
               value={dvId}
+              disabled={busy}
               onValueChange={(value) => { setDvId(value); clearHeld(); }}
               options={divisions.map((division) => ({ value: division.dvId, label: division.name }))}
             />
@@ -260,26 +276,28 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
           <RadioGroup
             label={ct('schedFormat')}
             value={legs === 2 ? '2' : '1'}
+            disabled={busy}
             onValueChange={(value) => { setLegs(value === '2' ? 2 : 1); clearHeld(); }}
             orientation="horizontal"
             options={[{ value: '1', label: ct('schedSingle') }, { value: '2', label: ct('schedDouble') }]}
           />
           <div class="cps-grid2">
-            <Input label={ct('schedMinutes')} type="number" value={minutes} onValueChange={(value) => { setMinutes(value); clearHeld(); }} />
-            <Input label={ct('schedBuffer')} type="number" value={buffer} onValueChange={(value) => { setBuffer(value); clearHeld(); }} />
+            <Input label={ct('schedMinutes')} type="number" value={minutes} disabled={busy} onValueChange={(value) => { setMinutes(value); clearHeld(); }} />
+            <Input label={ct('schedBuffer')} type="number" value={buffer} disabled={busy} onValueChange={(value) => { setBuffer(value); clearHeld(); }} />
           </div>
         </div>
       </CpCard>
       <CpCard>
         <h3 class="cp3-sec-h">{ct('schedMatchDay')}</h3>
         {days.map((day, index) => (
-          <div class="cp3-dayform" key={`${day.date}-${index}`}>
+          <div class="cp3-dayform" key={day.id ?? `idx-${index}`}>
             <div class="cp3-dayform__h">
               <span>{ct('schedDayN', { n: index + 1 })}</span>
               {index > 0 ? (
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={busy}
                   onClick={() => {
                     setDays((prev) => prev.filter((_, i) => i !== index));
                     clearHeld();
@@ -290,10 +308,10 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
               ) : null}
             </div>
             <div class="cps-fields">
-              <DateField id={`cp-day-${index}`} label={ct('schedDate')} value={day.date} onValueChange={(value) => patchDay(index, { date: value })} />
+              <DateField id={`cp-day-${day.id ?? index}`} label={ct('schedDate')} value={day.date} disabled={busy} onValueChange={(value) => patchDay(index, { date: value })} />
               <div class="cps-grid2">
-                <Input label={ct('schedStart')} value={day.start} onValueChange={(value) => patchDay(index, { start: value })} />
-                <Input label={ct('schedEnd')} value={day.end} onValueChange={(value) => patchDay(index, { end: value })} />
+                <Input label={ct('schedStart')} value={day.start} disabled={busy} onValueChange={(value) => patchDay(index, { start: value })} />
+                <Input label={ct('schedEnd')} value={day.end} disabled={busy} onValueChange={(value) => patchDay(index, { end: value })} />
               </div>
             </div>
           </div>
@@ -301,8 +319,11 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
         <div class="cps-actions">
           <Button
             variant="secondary"
+            disabled={busy}
             onClick={() => {
-              setDays((prev) => [...prev, { date: '', start: '09:00', end: '18:00' }]);
+              daySerial.current += 1;
+              const id = `day-${daySerial.current}`;
+              setDays((prev) => [...prev, { id, date: '', start: '09:00', end: '18:00' }]);
               clearHeld();
             }}
           >
@@ -318,6 +339,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
               key={`${venue.name}-${index}`}
               label={venue.name || ct('venue')}
               checked={venueOn.includes(index)}
+              disabled={busy}
               onCheckedChange={(checked) => {
                 setVenueOn((prev) => {
                   const next = prev.filter((item) => item !== index);
@@ -343,8 +365,24 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       {formError ? <CpError reason={formError.reason} params={formError.params} /> : null}
       {formError?.reason === 'SCHEDULE_REPLACE_TOO_LARGE' ? (
         <div class="cps-actions" style="margin-top:0">
-          <Button variant="danger" disabled={busy} onClick={() => { void clearSchedule(); }}>{ct('schedClear')}</Button>
+          <Button variant="danger" disabled={busy} onClick={() => setClearOpen(true)}>{ct('schedClear')}</Button>
         </div>
+      ) : null}
+      {clearOpen ? (
+        <Modal
+          open
+          title={ct('schedClear')}
+          onClose={() => { if (!lock.current) setClearOpen(false); }}
+          busy={busy}
+          footer={(
+            <div class="cps-footer">
+              <Button variant="secondary" disabled={busy} onClick={() => setClearOpen(false)}>{ct('cancel')}</Button>
+              <Button variant="danger" disabled={busy} onClick={() => { void clearSchedule(); }}>{ct('schedClear')}</Button>
+            </div>
+          )}
+        >
+          <p class="cp3-modal-p">{ct('schedClearConfirm')}</p>
+        </Modal>
       ) : null}
       <div class="cps-actions" style="margin-top:0">
         <Button variant="primary" disabled={busy || held == null} onClick={() => { void generate(); }}>{ct('schedGenerate')}</Button>

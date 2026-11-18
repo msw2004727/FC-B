@@ -55,6 +55,12 @@ describe('送出欄位只含契約的鍵', () => {
     expect(input.category).toBe('league');
   });
 
+  it('聯絡文字空白不送，有字才送', () => {
+    expect(buildCreateInput(draft)).not.toHaveProperty('contactNote');
+    expect(buildCreateInput({ ...draft, contactNote: '   ' })).not.toHaveProperty('contactNote');
+    expect(buildCreateInput({ ...draft, contactNote: ' 賽前群組 ' }).contactNote).toBe('賽前群組');
+  });
+
   it('盃賽分類送進 create', () => {
     const input = buildCreateInput({ ...draft, category: 'cup' });
     expect(input.category).toBe('cup');

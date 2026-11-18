@@ -37,6 +37,23 @@ describe('cpReasonKey（契約 §5 全覆蓋）', () => {
     expect(parsed.reason.BIRTHDAY_REQUIRED).toBe('請先補上生日');
   });
 
+  it('賽程彈性與公告的錯誤代碼都有對照', () => {
+    const expected: Record<string, string> = {
+      SCHEDULE_CONFLICT: '這個時間與其他場次撞期',
+      SCHEDULE_DAY_TOO_LARGE: '這一天的場次太多，無法檢查撞期',
+      NOTHING_TO_SHIFT: '這一天沒有可以順延的場次',
+      NOTICE_LIMIT: '公告已達 {max} 則上限',
+      NOTICE_NOT_FOUND: '找不到這則公告',
+      FIELD_TYPE: '欄位型別不正確',
+    };
+    const parsed = JSON.parse(readLocale('zh-TW')) as { reason: Record<string, string> };
+    for (const [code, text] of Object.entries(expected)) {
+      expect(CP_REASON_CODES, code).toContain(code);
+      expect(cpReasonKey(code)).toBe(`competitions.reason.${code}`);
+      expect(parsed.reason[code], code).toBe(text);
+    }
+  });
+
   it('match-host 每個錯誤代碼都有對照', () => {
     const expected: Record<string, string> = {
       RESULTS_EXIST: '已有比賽結果，不能重排賽程',

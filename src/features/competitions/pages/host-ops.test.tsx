@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { openPmDialog } from '@/features/inbox/components/pm-dialog-store';
+import { emit } from '@/core/events';
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +8,7 @@ import { getCurrentLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
 import type { CpActions } from '../actions';
 import { CpCallError, type CpGenerateScheduleInput, type CpGenerateScheduleResult } from '../data/cp-callables';
-import type { MatchDoc, MatchStatus, StaffDoc } from '../data/types';
+import type { CompetitionNotice, MatchDoc, MatchStatus, StaffDoc } from '../data/types';
 import { CpEnvProvider, type CpActor, type CpBundle, type CpInjectedEnv } from '../env';
 import { taipeiMs } from '../format';
 import { loadCompetitionsDict } from '../i18n';
@@ -28,6 +30,16 @@ import CompetitionDetailPage from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
 import HostMatchesPage from './HostMatchesPage';
 import HostSchedulePage from './HostSchedulePage';
+import NewCompetitionPage from './NewCompetitionPage';
+
+vi.mock('@/features/inbox/components/pm-dialog-store', () => ({
+  openPmDialog: vi.fn(),
+}));
+
+vi.mock('@/core/events', async () => {
+  const actual = await vi.importActual<typeof import('@/core/events')>('@/core/events');
+  return { ...actual, emit: vi.fn() };
+});
 
 beforeAll(async () => {
   await loadCompetitionsDict('zh-TW');
@@ -38,6 +50,8 @@ let toastShow: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   toastShow = vi.spyOn(toast, 'show').mockImplementation(() => 1);
+  if (vi.isMockFunction(openPmDialog)) openPmDialog.mockClear();
+  if (vi.isMockFunction(emit)) emit.mockClear();
 });
 
 afterEach(() => {
@@ -319,6 +333,14 @@ describe('排賽程', () => {
       tone: 'error',
     }));
     fireEvent.click(buttonOf('清除賽程'));
+    expect(clearSchedule).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: '清除賽程' });
+    expect(within(dialog).getByText('清除後這個組別的賽程會刪掉，確定要清除？')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(clearSchedule).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: '清除賽程' })).toBeNull();
+    fireEvent.click(buttonOf('清除賽程'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '清除賽程' })).getByRole('button', { name: '清除賽程' }));
     await waitFor(() => expect(clearSchedule).toHaveBeenCalledWith({ cid: 'cup', dvId: 'dv_adult' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: '清除賽程' })).toBeNull());
   });
@@ -618,7 +640,8 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
       repo: other,
     }, HostMatchesPage);
     fireEvent.click(buttonOf('確認'));
-    expect(await screen.findByText('這場已被更新，請關閉後重新操作')).toBeTruthy();
+    expect(await screen.findByText('這場已被更新')).toBeTruthy();
+    expect(screen.queryByText('這場已被更新，請關閉後重新操作')).toBeNull();
     expect(screen.getByText('9：9')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '重新送出' })).toBeNull();
     expect(again).toHaveBeenCalledWith({ cid: 'cup', mtId: 'mt_ok', expectedRev: 4 });

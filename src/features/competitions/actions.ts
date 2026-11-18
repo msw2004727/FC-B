@@ -14,9 +14,13 @@ import {
   cpHostConfirmMatchResult,
   cpHostCreate,
   cpHostGenerateSchedule,
+  cpHostDeleteNotice,
+  cpHostPostNotice,
   cpHostPublish,
   cpHostRecordResult,
   cpHostRescheduleMatch,
+  cpHostShiftMatchDay,
+  cpHostSwapMatches,
   cpHostCancelMatch,
   cpHostClearTieDecision,
   cpHostEndCompetition,
@@ -66,7 +70,26 @@ export interface CpActions {
     expectedRev: number;
     kickoffAt: number | null;
     venueIdx: number | null;
+    force?: boolean;
   }): Promise<unknown>;
+  shiftMatchDay(input: {
+    cid: string;
+    fromDate: string;
+    toDate: string;
+    reason: string;
+    force?: boolean;
+  }): Promise<unknown>;
+  swapMatches(input: {
+    cid: string;
+    mtIdA: string;
+    mtIdB: string;
+    expectedRevA: number;
+    expectedRevB: number;
+    reason: string;
+    force?: boolean;
+  }): Promise<unknown>;
+  postNotice(input: { cid: string; text: string }): Promise<{ noticeId: string }>;
+  deleteNotice(input: { cid: string; noticeId: string }): Promise<unknown>;
   recordResult(input: {
     cid: string;
     mtId: string;
@@ -122,6 +145,10 @@ export const liveCpActions: CpActions = {
   generateSchedule: cpHostGenerateSchedule,
   clearSchedule: cpHostClearSchedule,
   rescheduleMatch: cpHostRescheduleMatch,
+  shiftMatchDay: cpHostShiftMatchDay,
+  swapMatches: cpHostSwapMatches,
+  postNotice: cpHostPostNotice,
+  deleteNotice: cpHostDeleteNotice,
   recordResult: cpHostRecordResult,
   confirmMatchResult: cpHostConfirmMatchResult,
   setWalkover: cpHostSetWalkover,

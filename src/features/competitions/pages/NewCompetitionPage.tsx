@@ -54,6 +54,7 @@ interface FormState {
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
+  contactNote: string;
   regOpen: string;
   regClose: string;
   firstMatch: string;
@@ -69,6 +70,7 @@ function blankForm(): FormState {
     hostType: 'personal',
     hostTeamId: '',
     feeNote: '',
+    contactNote: '',
     regOpen: '',
     regClose: '',
     firstMatch: '',
@@ -87,6 +89,7 @@ function formFromEnv(env: CpInjectedEnv): FormState {
     hostType: env.preview?.wizardClub ? 'club' : seed.hostType,
     hostTeamId: seed.hostTeamId,
     feeNote: seed.feeNote,
+    contactNote: seed.contactNote ?? '',
     regOpen: seed.regOpen,
     regClose: seed.regClose,
     firstMatch: seed.firstMatch,
@@ -109,6 +112,7 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
     hostTeamId: form.hostTeamId,
     hostDisplay,
     feeNote: form.feeNote,
+    contactNote: form.contactNote,
     regOpenAt,
     regCloseAt,
     firstMatchAt,
@@ -393,6 +397,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   </p>
                 </div>
               ) : null}
+              <Input
+                label={ct('contactField')}
+                hint={ct('publicHint')}
+                value={form.contactNote}
+                maxLength={60}
+                onValueChange={(value) => patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) })}
+              />
             </div>
           </CpCard>
           <CpCard>

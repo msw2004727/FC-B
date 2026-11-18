@@ -32,6 +32,19 @@ export type TieDecisionMethod = 'host' | 'drawLots';
 /** 積分排序捷徑。省略時畫面用對戰優先（h2hFirst）。 */
 export type StandingRanking = 'h2hFirst' | 'goalDiffFirst';
 export type MatchSideName = 'home' | 'away';
+/** 公告作者。host 占主辦 20 則；system 另計，不占這 20 則。 */
+export type NoticeKind = 'host' | 'system';
+
+/** 賽事根文件 notices 的一則。沒有這個欄位時讀成空陣列。 */
+export interface CompetitionNotice {
+  id: string;
+  text: string;
+  kind: NoticeKind;
+  /** 伺服器時鐘，毫秒。 */
+  at: number;
+  /** 稽核雜湊。不寫 uid。 */
+  by: string | null;
+}
 
 export interface Venue {
   name: string;
@@ -85,6 +98,15 @@ export interface CompetitionDoc {
   venues: Venue[];
   feeNote: string | null;
   liveLinks: string[];
+  /** 公開聯絡文字。沒有或空白讀成 null。 */
+  contactNote: string | null;
+  /** 沒有這個欄位時是空陣列（舊賽事）。 */
+  notices: CompetitionNotice[];
+  /**
+   * 第一次把末場往後延之前的原本 lastMatchAt。
+   * 沒有時，60 天上限從目前 lastMatchAt 算。
+   */
+  lastMatchOriginAt: number | null;
   stateVersion: number;
   /** 缺值視為 league。讀取時已用 categoryOf 補上，不會是 undefined。 */
   category: CompetitionCategory;

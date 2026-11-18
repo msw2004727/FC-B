@@ -54,6 +54,10 @@ import {
   cpHostResolveTie,
   cpHostRestoreCompetition,
   cpHostRescheduleMatch,
+  cpHostShiftMatchDay,
+  cpHostSwapMatches,
+  cpHostPostNotice,
+  cpHostDeleteNotice,
   cpHostResetMatch,
   cpHostSetStatus,
   cpHostSetWalkover,
@@ -473,6 +477,60 @@ describe('cp callables（欄位與錯誤轉換）', () => {
 
     await cpHostUpdate({ cid: 'cid_1', category: 'friendly' });
     expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', category: 'friendly' });
+  });
+
+  it('改期 force、順延、對調、公告與聯絡文字只送有值的鍵', async () => {
+    await cpHostRescheduleMatch({
+      cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: true,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'rescheduleMatch', cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: true,
+    });
+
+    await cpHostRescheduleMatch({
+      cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: false,
+    });
+    expect(lastPayload()).not.toHaveProperty('force');
+
+    await cpHostShiftMatchDay({ cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天' });
+    expect(lastPayload()).toEqual({
+      action: 'shiftMatchDay', cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天',
+    });
+    await cpHostShiftMatchDay({
+      cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天', force: true,
+    });
+    expect(lastPayload().force).toBe(true);
+
+    await cpHostSwapMatches({
+      cid: 'cid_1', mtIdA: 'mt_1', mtIdB: 'mt_2', expectedRevA: 3, expectedRevB: 4, reason: '對調場地',
+    });
+    expect(lastPayload()).toEqual({
+      action: 'swapMatches',
+      cid: 'cid_1',
+      mtIdA: 'mt_1',
+      mtIdB: 'mt_2',
+      expectedRevA: 3,
+      expectedRevB: 4,
+      reason: '對調場地',
+    });
+    expect(lastPayload()).not.toHaveProperty('force');
+
+    await cpHostPostNotice({ cid: 'cid_1', text: '今晚改期' });
+    expect(lastPayload()).toEqual({ action: 'postNotice', cid: 'cid_1', text: '今晚改期' });
+    await cpHostDeleteNotice({ cid: 'cid_1', noticeId: 'nt_1' });
+    expect(lastPayload()).toEqual({ action: 'deleteNotice', cid: 'cid_1', noticeId: 'nt_1' });
+
+    await cpHostCreate({ ...base, hostType: 'personal', contactNote: '賽前群組' });
+    expect(lastPayload().contactNote).toBe('賽前群組');
+    await cpHostCreate({ ...base, hostType: 'personal' });
+    expect(lastPayload()).not.toHaveProperty('contactNote');
+
+    await cpHostUpdate({ cid: 'cid_1', contactNote: null });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', contactNote: null });
+    await cpHostUpdate({ cid: 'cid_1', contactNote: '賽前群組' });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', contactNote: '賽前群組' });
+    await cpHostUpdate({ cid: 'cid_1' });
+    expect(lastPayload()).not.toHaveProperty('contactNote');
   });
 
   it('generateSchedule 的 daysUsed 是日期陣列', () => {

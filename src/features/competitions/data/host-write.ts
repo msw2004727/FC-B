@@ -19,6 +19,8 @@ export function divisionHeading(divisionId: string, divisions: readonly Division
 }
 
 export interface DayDraft {
+  /** 穩定的 React key。改日期不換 id，輸入框才不會被卸載。不送進排賽程。 */
+  id?: string;
   date: string;
   start: string;
   end: string;
@@ -38,7 +40,7 @@ export type WriteIntent =
   | { kind: 'confirm'; score: { home: number; away: number } }
   | { kind: 'walkover'; forfeitSide: 'home' | 'away'; reason: string }
   | { kind: 'reset'; reason: string }
-  | { kind: 'reschedule'; kickoffAt: number | null; venueIdx: number | null }
+  | { kind: 'reschedule'; kickoffAt: number | null; venueIdx: number | null; force?: boolean }
   | { kind: 'cancel'; reason: string };
 
 export type HostAction = 'reschedule' | 'score' | 'confirm' | 'reset' | 'cancel';
@@ -99,9 +101,9 @@ function whole(value: string): number | null {
 export function initialDays(firstMatchAt: number, lastMatchAt: number): DayDraft[] {
   const first = dayKey(firstMatchAt);
   const last = dayKey(lastMatchAt);
-  const row: DayDraft = { date: first, start: '09:00', end: '18:00' };
+  const row: DayDraft = { id: 'day-1', date: first, start: '09:00', end: '18:00' };
   if (first === last) return [row];
-  return [row, { date: last, start: '09:00', end: '18:00' }];
+  return [row, { id: 'day-2', date: last, start: '09:00', end: '18:00' }];
 }
 
 export function allVenueIdx(count: number): number[] {
