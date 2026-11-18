@@ -121,7 +121,14 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
         lazyCache.delete(load);
       },
     );
-    return p;
+    // preact-iso 的 lazy 在 load 被拒絕時不會重繪、也不會把錯誤丟給錯誤邊界，主內容會一直空白。
+    // 改成 render 時丟出原錯誤，讓 RouteErrorBoundary 顯示錯誤畫面、吐司並上報一次（顧問 §3.260 第②項）。
+    // 取代：直接回傳會被拒絕的 p（實測主內容空白、錯誤變成沒人接的 rejection）。
+    return p.catch((error: unknown) => ({
+      default: () => {
+        throw error;
+      },
+    })) as ReturnType<FeatureRoute['load']>;
   };
   const component = lazy(wrappedLoad);
   lazyCache.set(load, component);
