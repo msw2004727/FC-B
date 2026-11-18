@@ -248,15 +248,16 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     });
 
     docs.set('cpConfig/launch', { isPublic: false, bannedWords: ['', 1] });
-    await expect(repo.getLaunch()).resolves.toEqual({ isPublic: false, bannedWords: [''] });
+    await expect(repo.getLaunch()).resolves.toEqual({ isPublic: false, bannedWords: [] });
     docs.set('cpConfig/launch/testers/uid_me', { ok: true });
     await expect(repo.getLaunchTester('uid_me')).resolves.toBe(true);
     await expect(repo.getLaunchTester('uid_no')).resolves.toBe(false);
 
     docs.set('competitions/cid_1/staff/uid_me', { roles: ['host', 'creator', 'fan'] });
+    // creator 不是角色，讀取出來會丢掉，只留 host／coHost。
     await expect(repo.getStaff('cid_1', 'uid_me')).resolves.toEqual({
       uid: 'uid_me',
-      roles: ['host', 'creator'],
+      roles: ['host'],
     });
     expect(gets).toContain('competitions/cid_1/staff/uid_me');
   });

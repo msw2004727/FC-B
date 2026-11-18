@@ -85,7 +85,7 @@ const PAYMENT_STATUSES: readonly PaymentStatus[] = ['none', 'pending', 'paid', '
 const PLAYERS: readonly PlayersOnField[] = [5, 7, 8, 9, 11];
 const POSITIONS: readonly RosterPositionCode[] = ['GK', 'DF', 'MF', 'FW', 'custom'];
 const MINE_ROLES: readonly MineRole[] = ['host', 'rep', 'player'];
-const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost', 'creator'];
+const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost'];
 
 function isSafeId(id: string): boolean {
   return id.length > 0 && !id.includes('/') && id !== '.' && id !== '..';
@@ -281,7 +281,8 @@ function launchFromDoc(raw: Record<string, unknown>): LaunchDoc | null {
   const isPublic = bool(raw.isPublic);
   if (isPublic == null) return null;
   const bannedWords = Array.isArray(raw.bannedWords)
-    ? raw.bannedWords.filter((word): word is string => typeof word === 'string')
+    // 去頭尾空白並丟掉空字串：設定混入 '' 時不得讓所有名稱都判為禁用（Flash 交叉審 P3）
+    ? raw.bannedWords.filter((word): word is string => typeof word === 'string').map(w => w.trim()).filter(w => w.length > 0)
     : [];
   return { isPublic, bannedWords };
 }

@@ -18,13 +18,34 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
     FEATURE_OVERRIDES.competitions = false;
   });
 
-  it('建置期開關預設關閉，manifest 為 reserved 且沒有路由', () => {
+  it('建置期開關預設關閉，manifest 為 reserved，路由先掛著但不啟用', () => {
     expect(FEATURE_OVERRIDES.competitions).toBe(false);
     expect(isCompetitionsEnabled()).toBe(false);
     expect(manifest.id).toBe('competitions');
     expect(manifest.status).toBe('reserved');
-    expect(manifest.routes).toEqual([]);
+    expect(manifest.routes.map((route) => route.path)).toEqual([
+      '/competitions/new',
+      '/competitions/:cid/manage',
+      '/competitions/:cid/entries/:enId/join',
+      '/competitions/:cid/entries/:enId/add',
+      '/competitions/:cid/entries/:enId',
+      '/competitions/:cid',
+    ]);
     expect(ALL_FEATURES).toContain(manifest);
+  });
+
+  it('開關打開後六條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
+    FEATURE_OVERRIDES.competitions = true;
+    registerFeatures(ALL_FEATURES);
+    const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
+    expect(paths).toEqual([
+      '/competitions/new',
+      '/competitions/:cid/manage',
+      '/competitions/:cid/entries/:enId/join',
+      '/competitions/:cid/entries/:enId/add',
+      '/competitions/:cid/entries/:enId',
+      '/competitions/:cid',
+    ]);
   });
 
   it('關閉時註冊後不啟用，也沒有賽事第 2 步路由', () => {
@@ -76,6 +97,17 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
       expect(text, file).not.toContain('cp-callables');
       expect(text, file).not.toContain('cp-repo');
     }
+  });
+
+  it('賽事頁只在開關通過後才動態載入站內賽事區', () => {
+    const text = readFileSync(resolve(__dirname, '../tournaments/pages/TournamentsPage.tsx'), 'utf8');
+    const gate = text.indexOf('if (!isCompetitionsEnabled()) return');
+    const slotImport = text.indexOf("import('@/features/competitions/components/InAppSection')");
+    expect(gate).toBeGreaterThan(-1);
+    expect(slotImport).toBeGreaterThan(gate);
+    expect(text).not.toContain("from '@/features/competitions/components/InAppSection'");
+    expect(text).not.toContain('cp-repo');
+    expect(text).not.toContain('asia-main');
   });
 
   it('載入器只在開關通過後才動態 import 資料層', () => {

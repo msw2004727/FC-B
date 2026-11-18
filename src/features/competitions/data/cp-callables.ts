@@ -165,14 +165,12 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
   }));
 }
 
+// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions；
+// 主辦類型、俱樂部、運動、時區建立後不能改，多帶會被整筆拒絕（Flash 交叉審 P2）。
 export interface CpHostUpdateInput {
   cid: string;
   name?: string;
-  hostType?: 'personal' | 'club';
-  hostTeamId?: string;
   hostDisplay?: string;
-  sport?: 'football';
-  timezone?: 'Asia/Taipei';
   schedule?: CpScheduleInput;
   venues?: Venue[];
   feeNote?: string;

@@ -1,10 +1,31 @@
-import type { FeatureManifest } from '@/core/feature-types';
+import type { FeatureManifest, FeatureRoute } from '@/core/feature-types';
 
-// 賽事第 2 步（建賽與名單）。畫面頁面是下一張卡，這裡先不掛路由。
-// 建置期開關在 feature-overrides.ts（competitions: false）。資料層只從 load.ts 動態載入，
-// 本檔不得 import 資料層，否則關閉時 asia 程式仍會進首頁入口。
+// 賽事第 2 步（建賽與名單）。status 維持 reserved，開關在 feature-overrides.ts。
+// 關閉時 getActiveRoutes 不會交出這些路徑，頁面 chunk 也不會被載入。
+// 本檔只動態 import 頁面入口，不得靜態 import 資料層。
+type PageName = 'NewCompetitionPage' | 'CompetitionManagePage' | 'JoinRosterPage' | 'AddRosterPage' | 'RosterPage' | 'CompetitionDetailPage';
+
+function loadPages() {
+  return import('./pages/entry');
+}
+
+function route(path: string, page: PageName, titleKey: string): FeatureRoute {
+  return {
+    path,
+    titleKey,
+    load: () => loadPages().then((mod) => ({ default: mod[page] })),
+  };
+}
+
 export const manifest: FeatureManifest = {
   id: 'competitions',
   status: 'reserved',
-  routes: [],
+  routes: [
+    route('/competitions/new', 'NewCompetitionPage', 'competitions.createTitle'),
+    route('/competitions/:cid/manage', 'CompetitionManagePage', 'competitions.manageTitle'),
+    route('/competitions/:cid/entries/:enId/join', 'JoinRosterPage', 'competitions.joinTitle'),
+    route('/competitions/:cid/entries/:enId/add', 'AddRosterPage', 'competitions.addTitle'),
+    route('/competitions/:cid/entries/:enId', 'RosterPage', 'competitions.rosterTitle'),
+    route('/competitions/:cid', 'CompetitionDetailPage', 'competitions.detailTitle'),
+  ],
 };

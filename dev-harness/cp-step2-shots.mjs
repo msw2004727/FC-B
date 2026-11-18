@@ -28,11 +28,14 @@ const SCREENS = [
   ['form-self-minor', ALL, THEMES_ALL, true],
   ['form-self-adult', ONE, ['light'], true],
   ['form-rep', ALL, THEMES_ALL, true],
+  ['form-rep-adult', ONE, ['light'], true],
   ['host-pending', ALL, THEMES_ALL, true],
   ['host-reject', ONE, THEMES_ALL, false],
   ['host-approved', ALL, THEMES_ALL, true],
   ['host-lock', ONE, ['light'], false],
   ['host-rejected', ONE, ['light'], true],
+  ['host-unlock', ONE, ['light'], false],
+  ['position-measure', [[360, 800]], ['light'], true],
 ];
 
 const SELECTORS = 'button, .ui-badge, .ui-chip, dt, .cps-line, .cps-li__name, .cps-cap, .cps-kv span, .cps-label, .ui-input label, .ui-checkbox label, .ui-switch label, h1, h2, h3, .cps-stepname span, .cps-stepname b, .ui-stepper label';
@@ -45,6 +48,14 @@ for (const [name, sizes, themes, full] of SCREENS) {
   for (const [w, h] of sizes) {
     for (const theme of themes) {
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+      // 只允許本機：任何對外連線（Firestore、Functions、地圖、字型 CDN）一律擋下並記錄，確保預覽不碰正式環境
+      await ctx.route('**/*', (route) => {
+        const u = new URL(route.request().url());
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.protocol === 'data:' || u.protocol === 'blob:') return route.continue();
+        report.blocked = report.blocked || [];
+        report.blocked.push(`${name}: ${u.hostname}`);
+        return route.abort();
+      });
       const page = await ctx.newPage();
       const tag = `${name}-${w}-${theme}`;
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });

@@ -13,7 +13,8 @@ export type PaymentStatus = 'none' | 'pending' | 'paid' | 'refunded';
 export type PaymentStatusWrite = 'none' | 'paid';
 export type RosterPositionCode = 'GK' | 'DF' | 'MF' | 'FW' | 'custom';
 export type ReportReason = 'impersonation' | 'fake' | 'inappropriate' | 'privacy' | 'other';
-export type StaffRole = 'host' | 'coHost' | 'creator';
+/** 主辦身分只有 host／coHost。沒有 creator 角色（契約 §4，站長選乙）。 */
+export type StaffRole = 'host' | 'coHost';
 export type MineRole = 'host' | 'rep' | 'player';
 
 export interface Venue {
@@ -136,6 +137,7 @@ export interface LaunchDoc {
 /**
  * 主辦身分。
  * ASSUMPTION: 契約 §3 寫在 staff/{uid}.roles，讀取表沒有獨立一列，仍做成一個讀取方法要用的型別。
+ * roles 只收 host／coHost；文件若帶 creator 會在讀取時濾掉。
  */
 export interface StaffDoc {
   uid: string;

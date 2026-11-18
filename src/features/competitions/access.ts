@@ -1,0 +1,79 @@
+// 權限顯示規則（契約 §4）。前端只決定按鈕出不出現，擋不住的操作仍由伺服器拒絕。
+// 沒有 creator 角色。主辦方＝staff 的 host／coHost，或俱樂部賽事的目前代表，或管理員。
+
+import type { CompetitionStatus, HostType, StaffRole } from './data/types';
+
+export interface CpClub {
+  id: string;
+  name: string;
+}
+
+/** claims 的 role。ASSUMPTION: 與 useViewer().role 相同，admin／super_admin 算管理員。 */
+export function isCpAdmin(role: string | null | undefined): boolean {
+  return role === 'admin' || role === 'super_admin';
+}
+
+export interface InAppGateInput {
+  /** 沒有 launch 文件視為尚未對外。 */
+  isPublic: boolean | null;
+  isTester: boolean;
+  isAdmin: boolean;
+}
+
+/**
+ * 站內賽事整區要不要出現。
+ * 對外公開：所有人。內部期：測試者或管理員。沒有開賽設定：只有管理員。
+ */
+export function canSeeInAppSection(input: InAppGateInput): boolean {
+  if (input.isAdmin) return true;
+  if (input.isPublic === true) return true;
+  if (input.isPublic === false) return input.isTester;
+  return false;
+}
+
+export interface ManageInput {
+  staffRoles: readonly StaffRole[];
+  hostType: HostType;
+  hostTeamId: string | null;
+  repClubIds: readonly string[];
+  isAdmin: boolean;
+}
+
+/** 審核、鎖定、解鎖、編輯、發布、標示繳費。 */
+export function canManageCompetition(input: ManageInput): boolean {
+  if (input.isAdmin) return true;
+  if (input.staffRoles.includes('host') || input.staffRoles.includes('coHost')) return true;
+  if (input.hostType === 'club' && input.hostTeamId && input.repClubIds.includes(input.hostTeamId)) {
+    return true;
+  }
+  return false;
+}
+
+export interface RegisterInput {
+  repClubIds: readonly string[];
+  status: CompetitionStatus;
+  hidden: boolean;
+  regOpenAt: number;
+  regCloseAt: number;
+  now: number;
+}
+
+/** 「以俱樂部報隊」：我是某俱樂部代表，且賽事公開招募中、正在報名期間。 */
+export function canRegisterClubEntry(input: RegisterInput): boolean {
+  if (input.repClubIds.length === 0) return false;
+  if (input.hidden || input.status !== 'published') return false;
+  return input.now >= input.regOpenAt && input.now <= input.regCloseAt;
+}
+
+/** 首場前主辦可解鎖；首場之後只留管理員。未鎖定不顯示。 */
+export function canUnlockRosters(input: {
+  locked: boolean;
+  canManage: boolean;
+  isAdmin: boolean;
+  firstMatchAt: number;
+  now: number;
+}): boolean {
+  if (!input.locked) return false;
+  if (input.isAdmin) return true;
+  return input.canManage && input.now < input.firstMatchAt;
+}
