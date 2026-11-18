@@ -231,8 +231,16 @@ describe('程式檔載入失敗歸「網路／載入」類（顧問 §3.255 E）
     expect(severityOf({ errorMessage: 'boom' })).toBe('info');
   });
 
-  it('同類分組：三種訊息同頁同位置歸成不同組但都標網路／載入', () => {
-    const groups = groupErrors(messages.map((errorMessage) => ({ errorMessage, page: '/events/e1' })));
-    expect(groups.every((g) => g.label === '網路／載入' && g.severity === 'warn')).toBe(true);
+  it('同類分組：三種訊息同頁同位置合成一組（網路／載入、警告）；權限錯誤不會被併入', () => {
+    const groups = groupErrors([
+      ...messages.map((errorMessage) => ({ errorMessage, page: '/events/e1' })),
+      { errorMessage: 'Importing a module script failed.', errorCategory: 'network-load', page: '/events/e1' },
+      { errorCode: 'permission-denied', errorMessage: 'Missing or insufficient permissions.', page: '/events/e1' },
+    ]);
+    expect(groups).toHaveLength(2);
+    const load = groups.find((g) => g.label === '網路／載入');
+    expect(load?.logs).toHaveLength(4);
+    expect(load?.severity).toBe('warn');
+    expect(groups.find((g) => g.label === '權限不足')?.severity).toBe('critical');
   });
 });

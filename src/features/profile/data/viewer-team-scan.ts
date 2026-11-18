@@ -28,6 +28,7 @@ export function peekViewerTeamScan(uid: string): ViewerTeamScan | null {
   return scan;
 }
 
+/** 只給 viewer.ts 在訂閱存在時呼叫（清除也由它負責）；其他模組不得寫入，否則換帳號時沒人清。 */
 export function rememberViewerTeamScan(uid: string, next: ViewerTeamScan): void {
   if (!uid) return;
   scanUid = uid;
