@@ -13,6 +13,7 @@ import type { Firestore } from 'firebase/firestore';
 import { RELOAD_AT_KEY } from './chunk-reload';
 import { formatTaipei } from './taipei-time';
 import { readAppVersion } from './app-meta';
+import { MODULE_LOAD_FAILED_CODE, MODULE_LOAD_FAILURE_RE } from './module-load-error';
 
 const ERROR_LOGS = 'errorLogs';
 const BUDGET_KEY = 'fcb:errlog-budget';
@@ -210,30 +211,6 @@ function readLocation(): { page: string; url: string; hash: string } {
   }
 }
 
-const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
-
-/**
- * 動態載入回空值時的標記錯誤碼（顧問 §3.260）：chunk-reload 守門 preventDefault 後 Vite 會回 undefined、原錯誤被吞掉，
- * 載入點在這時丟出帶這個 code／name 的錯誤，報名錯誤轉換與上報器才認得出是載入失敗。
- */
-export const MODULE_LOAD_FAILED_CODE = 'MODULE_LOAD_FAILED';
-
-export function moduleLoadFailedError(what: string): Error {
-  const err = new Error(`Module load returned empty: ${what}`) as Error & { code: string };
-  err.name = MODULE_LOAD_FAILED_CODE;
-  err.code = MODULE_LOAD_FAILED_CODE;
-  return err;
-}
-
-/**
- * 程式檔（模組）載入失敗：帶上面標記碼的錯誤（含被包成 CallableError 的），或三種瀏覽器原生訊息
- * （iOS WebKit、Chromium、Firefox）。只看標記與訊息，不把 TypeError 整類當成載入失敗。
- */
-export function isModuleLoadFailure(err: unknown): boolean {
-  if (err && typeof err === 'object' && (err as { code?: unknown }).code === MODULE_LOAD_FAILED_CODE) return true;
-  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
-  return MODULE_LOAD_FAILURE_RE.test(message);
-}
 /** 與後台 `features/logs/data/error-log-model.ts` 的 MODULE_LOAD_CATEGORY 同值。 */
 const MODULE_LOAD_CATEGORY = 'network-load';
 

@@ -50,7 +50,8 @@ import type {
   RegisterForEventResponse,
 } from '@/data/contract/callables';
 import { on } from '@/core/events';
-import { moduleLoadFailedError, reportClientError } from '@/core/error-report';
+import { reportClientError } from '@/core/error-report';
+import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
   buildCancelPayload,

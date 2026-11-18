@@ -151,7 +151,7 @@ import type {
 } from './contract/callables';
 import { CALLABLES, type CallableName } from './contract/callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
-import { moduleLoadFailedError } from '@/core/error-report';
+import { moduleLoadFailedError } from '@/core/module-load-error';
 
 // ── 名稱 → request/response 型別映射 ─────────────────
 

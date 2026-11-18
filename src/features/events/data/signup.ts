@@ -30,7 +30,8 @@ import type {
   RegisterForEventRequest,
   RegisterForEventResponse,
 } from '@/data/contract/callables';
-import { isModuleLoadFailure, reportClientError } from '@/core/error-report';
+import { reportClientError } from '@/core/error-report';
+import { isModuleLoadFailure } from '@/core/module-load-error';
 import { emit } from '@/core/events';
 import { parseEventStartMs } from '@/core/event-time';
 import { beginSubmitting } from '@/core/submit-guard';

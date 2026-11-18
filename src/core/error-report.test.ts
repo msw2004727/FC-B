@@ -29,12 +29,11 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   _resetErrorReporterForTest,
   installErrorReporter,
-  isModuleLoadFailure,
-  moduleLoadFailedError,
   redactHash,
   redactUrl,
   reportClientError,
 } from './error-report';
+import { isModuleLoadFailure, moduleLoadFailedError } from './module-load-error';
 
 const mockAddDoc = vi.mocked(addDoc);
 const mockCollection = vi.mocked(collection);
