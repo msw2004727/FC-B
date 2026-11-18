@@ -369,23 +369,106 @@ describe('第 3 步文件解析', () => {
     expect(summaryEntriesFromDoc({})).toEqual([]);
   });
 
-  it('積分榜吃短欄位名，空列保留，沒有組別就丟掉', () => {
+  it('積分列只讀後端欄位，短名與文件 id 不算', () => {
     const doc = standingFromDoc('dv_1__group__A', {
-      rows: [{ id: 'en_h', n: '主隊', p: 1, w: 1, d: 0, l: 0, gf: 2, ga: 0, pts: 3 }],
+      version: 3,
+      hasUnresolvedTie: true,
+      updatedAt: 9,
+      rows: [{
+        teamId: 'en_h',
+        name: '主隊',
+        played: 1,
+        win: 1,
+        draw: 0,
+        loss: 0,
+        goalsFor: 2,
+        goalsAgainst: 0,
+        goalDiff: 2,
+        points: 3,
+        rank: 1,
+        // 短名即使同時存在也不採用
+        w: 9,
+        d: 9,
+        l: 9,
+        gf: 9,
+        ga: 9,
+        gd: 9,
+        pts: 9,
+        p: 9,
+        n: '不採用',
+        id: 'en_other',
+      }],
     });
     expect(doc).toMatchObject({
       id: 'dv_1__group__A',
       divisionId: 'dv_1',
       groupId: 'A',
-      version: 0,
-      hasUnresolvedTie: false,
-      manualOverride: false,
+      version: 3,
+      hasUnresolvedTie: true,
+      updatedAt: 9,
     });
-    expect(doc?.rows[0]).toMatchObject({
-      teamId: 'en_h', name: '主隊', played: 1, won: 1, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3, rank: 1,
+    expect(doc?.rows[0]).toEqual({
+      teamId: 'en_h',
+      name: '主隊',
+      played: 1,
+      win: 1,
+      draw: 0,
+      loss: 0,
+      goalsFor: 2,
+      goalsAgainst: 0,
+      goalDiff: 2,
+      points: 3,
+      rank: 1,
+    });
+    // 只有短名、沒有 teamId：整列丟掉。有 teamId 但只有短名：數字是 0，name 不讀 n。
+    expect(standingFromDoc('dv_1__group__A', {
+      rows: [{ id: 'en_h', n: '主隊', p: 1, w: 1, d: 0, l: 0, gf: 2, ga: 0, gd: 2, pts: 3 }],
+    })?.rows).toEqual([]);
+    expect(standingFromDoc('dv_1__group__A', {
+      rows: [{ teamId: 'en_h', n: '主隊', w: 1, gf: 4, ga: 1, pts: 3, p: 1 }],
+    })?.rows).toEqual([{
+      teamId: 'en_h',
+      name: '',
+      played: 0,
+      win: 0,
+      draw: 0,
+      loss: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDiff: 0,
+      points: 0,
+      rank: 0,
+    }]);
+    // 缺 goalDiff 不拿得失球相減；缺 rank 不拿列序補。
+    expect(standingFromDoc('dv_1__group__B', {
+      rows: [{ teamId: 'en_a', name: '客隊', goalsFor: 1, goalsAgainst: 3 }],
+    })?.rows[0]).toMatchObject({
+      goalsFor: 1,
+      goalsAgainst: 3,
+      goalDiff: 0,
+      rank: 0,
+      played: 0,
+      win: 0,
+      draw: 0,
+      loss: 0,
+      points: 0,
     });
     expect(standingFromDoc('dv_1__group__A', { rows: [] })?.rows).toEqual([]);
     expect(standingFromDoc('not-a-standing', { rows: [] })).toBeNull();
+  });
+
+  it('manualOverride 只在 enabled 為 true 時是 true', () => {
+    expect(standingFromDoc('dv_1__group__A', {
+      manualOverride: { enabled: true, by: 'uid_host', at: 1, reason: '手排' },
+      rows: [],
+    })?.manualOverride).toBe(true);
+    expect(standingFromDoc('dv_1__group__A', {
+      manualOverride: { enabled: false, by: null, at: null, reason: null },
+      rows: [],
+    })?.manualOverride).toBe(false);
+    expect(standingFromDoc('dv_1__group__A', { manualOverride: true, rows: [] })?.manualOverride).toBe(false);
+    expect(standingFromDoc('dv_1__group__A', { manualOverride: { enabled: 'true' }, rows: [] })?.manualOverride).toBe(false);
+    expect(standingFromDoc('dv_1__group__A', { rows: [] })?.manualOverride).toBe(false);
   });
 });
 

@@ -367,7 +367,8 @@ export interface CpGenerateScheduleResult {
   seed: number;
   matchCount: number;
   unplacedCount: number;
-  daysUsed: number;
+  /** 用到的日期（YYYY-MM-DD）。後端是字串陣列，不是天數。 */
+  daysUsed: string[];
   perTeam: number;
   teamCount: number;
   dryRun: boolean;

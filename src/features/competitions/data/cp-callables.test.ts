@@ -55,6 +55,7 @@ import {
   cpParticipantReport,
   registerCpMock,
   toCpCallError,
+  type CpGenerateScheduleResult,
 } from './cp-callables';
 
 const times = {
@@ -427,5 +428,20 @@ describe('cp callables（欄位與錯誤轉換）', () => {
 
     await cpHostUpdate({ cid: 'cid_1', category: 'friendly' });
     expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', category: 'friendly' });
+  });
+
+  it('generateSchedule 的 daysUsed 是日期陣列', () => {
+    const preview = {
+      dvId: 'dv_1',
+      seed: 7,
+      matchCount: 6,
+      unplacedCount: 0,
+      daysUsed: ['2026-12-05', '2026-12-06'],
+      perTeam: 3,
+      teamCount: 4,
+      dryRun: true,
+    } satisfies CpGenerateScheduleResult;
+    expect(preview.daysUsed).toEqual(['2026-12-05', '2026-12-06']);
+    expect(preview.daysUsed.every((day) => typeof day === 'string')).toBe(true);
   });
 });

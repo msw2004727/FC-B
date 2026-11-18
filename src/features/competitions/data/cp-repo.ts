@@ -449,25 +449,23 @@ function compareSummary(a: SummaryEntry, b: SummaryEntry): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-function standingRowOf(value: unknown, index: number): StandingRow | null {
+/** 只讀引擎 StandingRow 的真實欄位。短名（w、d、l、gf、ga、gd、pts、p、n）與文件 id 不算。 */
+function standingRowOf(value: unknown): StandingRow | null {
   if (!isRecord(value)) return null;
-  const teamId = str(value.teamId) ?? str(value.id);
-  const name = str(value.name) ?? str(value.n);
-  if (!teamId || name == null) return null;
-  const goalsFor = num(value.goalsFor) ?? num(value.gf) ?? 0;
-  const goalsAgainst = num(value.goalsAgainst) ?? num(value.ga) ?? 0;
+  const teamId = str(value.teamId);
+  if (!teamId) return null;
   return {
     teamId,
-    name,
-    played: num(value.played) ?? num(value.p) ?? 0,
-    won: num(value.won) ?? num(value.w) ?? 0,
-    drawn: num(value.drawn) ?? num(value.d) ?? 0,
-    lost: num(value.lost) ?? num(value.l) ?? 0,
-    goalsFor,
-    goalsAgainst,
-    goalDiff: num(value.goalDiff) ?? num(value.gd) ?? (goalsFor - goalsAgainst),
-    points: num(value.points) ?? num(value.pts) ?? 0,
-    rank: num(value.rank) ?? index + 1,
+    name: str(value.name) ?? '',
+    played: num(value.played) ?? 0,
+    win: num(value.win) ?? 0,
+    draw: num(value.draw) ?? 0,
+    loss: num(value.loss) ?? 0,
+    goalsFor: num(value.goalsFor) ?? 0,
+    goalsAgainst: num(value.goalsAgainst) ?? 0,
+    goalDiff: num(value.goalDiff) ?? 0,
+    points: num(value.points) ?? 0,
+    rank: num(value.rank) ?? 0,
   };
 }
 
@@ -479,6 +477,11 @@ function splitStandingId(id: string): { divisionId: string; groupId: string } | 
   return null;
 }
 
+/** 後端 manualOverride 是 { enabled, ... }。前端只留 enabled 是否為 true。 */
+function manualOverrideEnabled(value: unknown): boolean {
+  return isRecord(value) && value.enabled === true;
+}
+
 /** 契約 §1.3。列可以是空的（產程先寫一份全 0）。 */
 export function standingFromDoc(id: string, raw: Record<string, unknown>): StandingDoc | null {
   const parsed = splitStandingId(id);
@@ -486,7 +489,7 @@ export function standingFromDoc(id: string, raw: Record<string, unknown>): Stand
   const groupId = str(raw.groupId) ?? parsed?.groupId ?? 'A';
   if (!divisionId) return null;
   const rows = Array.isArray(raw.rows)
-    ? raw.rows.map((row, index) => standingRowOf(row, index)).filter((row): row is StandingRow => row != null)
+    ? raw.rows.map((row) => standingRowOf(row)).filter((row): row is StandingRow => row != null)
     : [];
   return {
     id,
@@ -495,7 +498,7 @@ export function standingFromDoc(id: string, raw: Record<string, unknown>): Stand
     rows,
     version: num(raw.version) ?? 0,
     hasUnresolvedTie: bool(raw.hasUnresolvedTie) ?? false,
-    manualOverride: bool(raw.manualOverride) ?? false,
+    manualOverride: manualOverrideEnabled(raw.manualOverride),
     updatedAt: optNum(raw.updatedAt),
   };
 }

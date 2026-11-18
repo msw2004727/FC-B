@@ -4,6 +4,26 @@
 import type { CompetitionCategory, CompetitionStatus } from './types';
 
 const CREST_COUNT = 8;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * 末場那天的台北日結束（次日 00:00）絕對毫秒。
+ * hi = lastMatchAt - (lastMatchAt + 8h) % 1天 + 1天。now >= hi 才算已過那一天。
+ */
+export function taipeiDayEnd(lastMatchAt: number): number {
+  const intoDay = (lastMatchAt + TAIPEI_OFFSET_MS) % DAY_MS;
+  return lastMatchAt - intoDay + DAY_MS;
+}
+
+/** 台北日期 YYYYMMDD。摘要片 id 是 d + 這個字串。 */
+export function taipeiYmd(ms: number): string {
+  const date = new Date(ms + TAIPEI_OFFSET_MS);
+  const year = String(date.getUTCFullYear()).padStart(4, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
 
 export type CompetitionPhase = 'recruit' | 'warm' | 'live' | 'done';
 
@@ -18,8 +38,9 @@ export function categoryOf(source: { category?: unknown } | null | undefined): C
  * 招募、預熱、進行中、已結束。
  * recruit：報名截止（含）以前，也含還沒開報名。
  * warm：報名已截止、首場還沒到。
- * live：首場（含）到末場（含）。
- * done：已過末場，或已寫 endedAt，或狀態是 cancelled。
+ * live：首場（含）起，直到末場那天的台北日結束前。末場已過、午夜未到仍是 live。
+ * done：過了末場那天（台北日期）結束後（now >= 該日 24:00），或已寫 endedAt，或狀態是 cancelled。
+ * 末場日結束：hi = lastMatchAt - (lastMatchAt + 8h) % 1天 + 1天。
  * ASSUMPTION: 延期與草稿仍照時間走，不另開階段。有 endedAt 就是已結束，不管 now。
  * 回傳代碼對預覽 harness：recruit 招募中、warm 預熱中、live 進行中、done 已結束。
  */
@@ -35,7 +56,7 @@ export function competitionPhase(
   now: number,
 ): CompetitionPhase {
   if (doc.endedAt != null || doc.status === 'cancelled') return 'done';
-  if (now > doc.lastMatchAt) return 'done';
+  if (now >= taipeiDayEnd(doc.lastMatchAt)) return 'done';
   if (now >= doc.firstMatchAt) return 'live';
   if (now > doc.regCloseAt) return 'warm';
   return 'recruit';

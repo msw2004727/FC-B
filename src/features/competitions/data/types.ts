@@ -238,17 +238,17 @@ export interface SummaryEntry {
 }
 
 /**
- * 積分列。
- * ASSUMPTION: 引擎 buildStanding 的列欄位沒有附在本工作樹，先收畫面會用到的
- * teamId、name、場次、勝負和、得失球、積分、名次。缺數字視為 0。
+ * 積分列。對齊引擎 StandingRow：win／draw／loss。
+ * 只收 played、win、draw、loss、goalsFor、goalsAgainst、goalDiff、points、rank、teamId、name。
+ * 缺數字視為 0。name 不是字串時是空字串。
  */
 export interface StandingRow {
   teamId: string;
   name: string;
   played: number;
-  won: number;
-  drawn: number;
-  lost: number;
+  win: number;
+  draw: number;
+  loss: number;
   goalsFor: number;
   goalsAgainst: number;
   goalDiff: number;
@@ -264,15 +264,15 @@ export interface StandingDoc {
   rows: StandingRow[];
   version: number;
   hasUnresolvedTie: boolean;
+  /** 由文件 manualOverride.enabled === true 推得，不是後端那個物件。 */
   manualOverride: boolean;
   updatedAt: number | null;
 }
 
 /**
  * 契約 §3 的筆數上限，加上第 3 步。
- * ASSUMPTION: 計畫書 §8.1 不在本工作樹。場次沿用契約觸發器「該組 ≤ 240」
- * （16 隊雙循環）。摘要片 40（一天一片加 tbd，約一個多月）。
- * 積分榜對齊組別上限 8。隊徽對齊伺服器產程「報隊 ≤ 32」。
+ * 場次沿用契約觸發器「該組 ≤ 240」（16 隊雙循環）。
+ * 摘要片 ≤ 14 天（計畫書）。積分榜對齊組別上限 8。隊徽對齊報隊 ≤ 32。
  */
 export const CP_READ_LIMIT = {
   mine: 50,
@@ -283,7 +283,7 @@ export const CP_READ_LIMIT = {
   roster: 60,
   private: 100,
   matches: 240,
-  summary: 40,
+  summary: 14,
   standings: 8,
   crest: 32,
 } as const;

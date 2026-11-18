@@ -40,7 +40,26 @@ describe('competitionPhase', () => {
     expect(competitionPhase(times, 299)).toBe('warm');
     expect(competitionPhase(times, 300)).toBe('live');
     expect(competitionPhase(times, 400)).toBe('live');
-    expect(competitionPhase(times, 401)).toBe('done');
+    // 400、401 都還在末場那個台北日裡，過了末場時刻也不結束。
+    expect(competitionPhase(times, 401)).toBe('live');
+  });
+
+  it('末場當天晚於 lastMatchAt 但未過午夜仍是進行中，過午夜才結束', () => {
+    const lastMatchAt = Date.parse('2026-12-05T18:30:00+08:00');
+    const sameEvening = Date.parse('2026-12-05T23:59:00+08:00');
+    const midnight = Date.parse('2026-12-06T00:00:00+08:00');
+    const doc = {
+      ...times,
+      firstMatchAt: Date.parse('2026-12-05T09:00:00+08:00'),
+      lastMatchAt,
+    };
+    expect(competitionPhase(doc, lastMatchAt)).toBe('live');
+    expect(competitionPhase(doc, lastMatchAt + 60 * 60 * 1000)).toBe('live');
+    expect(competitionPhase(doc, sameEvening)).toBe('live');
+    expect(competitionPhase(doc, midnight - 1)).toBe('live');
+    expect(competitionPhase(doc, midnight)).toBe('done');
+    expect(competitionPhase({ ...doc, endedAt: lastMatchAt }, sameEvening)).toBe('done');
+    expect(competitionPhase({ ...doc, status: 'cancelled' }, sameEvening)).toBe('done');
   });
 
   it('已寫結束時間或已取消就是已結束；草稿與延期仍照時間', () => {

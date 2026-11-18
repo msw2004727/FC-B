@@ -220,7 +220,7 @@ function matchDoc(id: string, round: number, matchNo: number) {
 }
 
 describe('假資料的第 3 步讀取與計數', () => {
-  it('場次、摘要、積分榜排序並截斷；空查詢仍算 1 讀', async () => {
+  it('場次、摘要、積分榜排序並截斷；查詢另加 1 筆父文件，空查詢仍是 1', async () => {
     const matches = Array.from({ length: CP_READ_LIMIT.matches + 1 }, (_, i) => matchDoc(`mt_${i}`, 2, i));
     matches.push(matchDoc('mt_early', 1, 1));
     const repo = createFakeCpRepo({
@@ -247,14 +247,14 @@ describe('假資料的第 3 步讀取與計數', () => {
     const listed = await repo.listMatches('cid_1');
     expect(listed).toHaveLength(CP_READ_LIMIT.matches);
     expect(listed[0]?.id).toBe('mt_early');
-    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches);
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1);
 
     const shard = await repo.getSummaryShard('cid_1', 'missing');
     expect(shard).toEqual([]);
-    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1);
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1 + 1);
     const summary = await repo.listSummary('cid_1');
     expect(summary.map((row) => row.id)).toEqual(['mt_1', 'mt_tbd']);
-    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1 + 2);
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1 + 1 + 2 + 1);
 
     const standings = await repo.listStandings('cid_1');
     expect(standings).toHaveLength(CP_READ_LIMIT.standings);

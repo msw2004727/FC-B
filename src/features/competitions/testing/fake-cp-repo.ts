@@ -37,7 +37,7 @@ export interface FakeCpSeed {
   standings?: Readonly<Record<string, readonly StandingDoc[]>>;
 }
 
-/** 測試用計數。readCount 是文件讀數（查詢 0 筆仍算 1）。calls 不含快取命中與非法 id。 */
+/** 測試用計數。查詢是回傳文件數＋1（Rules 讀父文件；0 筆仍是 1）。單筆 get 不加。calls 不含快取命中與非法 id。 */
 export interface FakeCpRepo extends CompetitionsRepo {
   readCount(): number;
   calls(): readonly string[];
@@ -85,7 +85,8 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   }
 
   function noteQuery(name: string, returned: number): void {
-    note(name, Math.max(1, returned));
+    // 回傳幾筆算幾筆，另加 1（Rules 讀父文件）。0 筆仍是 1，不再多加一筆空查詢。
+    note(name, returned + 1);
   }
 
   return {
