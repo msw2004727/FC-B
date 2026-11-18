@@ -29,10 +29,11 @@ function bundle() {
 }
 
 describe('boot-preload-html（顧問 §3.255 B′）', () => {
-  it('詳情：目標 chunk 排第一，加上遞迴靜態 import，扣掉入口已載入的；CSS 一起列', () => {
+  it('詳情：目標 chunk 排第一，加上遞迴靜態 import，扣掉入口已載入的；CSS 照 Vite 依賴優先順序', () => {
     const map = computeBootPreload(bundle());
     expect(map.detail.js).toEqual(['/assets/EventDetailPage-D.js', '/assets/dep-A.js', '/assets/dep-B.js']);
-    expect(map.detail.css).toEqual(['/assets/EventDetailPage-C.css', '/assets/dep-A.css']);
+    // 依賴（dep-A）的 CSS 在前、頁面自己的在後：後插入的樣式表優先，跟路由載入時一樣。
+    expect(map.detail.css).toEqual(['/assets/dep-A.css', '/assets/EventDetailPage-C.css']);
     expect(map.firestore).toEqual({ js: ['/assets/index.esm-F.js', '/assets/fs-core-G.js'], css: [] });
   });
 

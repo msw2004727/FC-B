@@ -67,12 +67,41 @@ function groupFor(
   const targets = chunks.filter((c) => !c.isEntry && c.moduleIds.some((id) => pattern.test(id)));
   if (targets.length === 0) throw new Error(`boot-preload：找不到含 ${label} 的 chunk`);
   const files = [...staticClosure(targets.map((c) => c.fileName), byFile)].filter((f) => !loaded.has(f));
-  const css = new Set<string>();
-  for (const f of files) for (const c of byFile.get(f)?.viteMetadata?.importedCss ?? []) css.add(c);
   // 目標 chunk 排前面：網路壅塞時先抓最大的那個。
   const order = (f: string): number => (targets.some((c) => c.fileName === f) ? 0 : 1);
   files.sort((a, b) => order(a) - order(b) || a.localeCompare(b));
-  return { js: files.map((f) => base + f), css: [...css].sort().map((f) => base + f) };
+  return { js: files.map((f) => base + f), css: cssInDependencyOrder(targets, byFile, loaded).map((f) => base + f) };
+}
+
+/**
+ * CSS 照 Vite `getCssFilesForChunk` 的順序：先走 imports（依賴的 CSS 在前），再放這個 chunk 自己的 importedCss。
+ * 後插入的樣式表優先，順序必須跟路由載入時 Vite 插的一樣，否則 cascade 會變（Grok 初審 P2）。
+ * 入口已載入的 chunk 不走（它們的 CSS 已在 HTML 裡）。
+ * 取代：原本整份 CSS 依檔名字母排序。
+ */
+function cssInDependencyOrder(
+  targets: readonly BundleChunkLike[],
+  byFile: Map<string, BundleChunkLike>,
+  loaded: Set<string>,
+): string[] {
+  const seenChunks = new Set<string>();
+  const out: string[] = [];
+  const seenCss = new Set<string>();
+  const visit = (chunk: BundleChunkLike): void => {
+    if (seenChunks.has(chunk.fileName) || loaded.has(chunk.fileName)) return;
+    seenChunks.add(chunk.fileName);
+    for (const dep of chunk.imports) {
+      const next = byFile.get(dep);
+      if (next) visit(next);
+    }
+    for (const css of chunk.viteMetadata?.importedCss ?? []) {
+      if (seenCss.has(css)) continue;
+      seenCss.add(css);
+      out.push(css);
+    }
+  };
+  for (const target of targets) visit(target);
+  return out;
 }
 
 /** 純函式：從 bundle 算出預載清單。 */
