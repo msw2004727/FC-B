@@ -9,7 +9,7 @@ import {
   isFeatureEnabled,
   registerFeatures,
 } from '@/core/feature-registry';
-import { manifest } from './index';
+import { competitionRoutes, manifest } from './index';
 import { isCompetitionsEnabled, loadCompetitionsBackend } from './load';
 
 describe('competitions 功能開關（預設關閉，不載入 asia 程式）', () => {
@@ -18,12 +18,13 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
     FEATURE_OVERRIDES.competitions = false;
   });
 
-  it('建置期開關預設關閉，manifest 為 reserved，路由先掛著但不啟用', () => {
+  it('建置期開關預設關閉，manifest 為 reserved 且不帶路由（打包器刪掉，首頁入口包不增加）', () => {
     expect(FEATURE_OVERRIDES.competitions).toBe(false);
     expect(isCompetitionsEnabled()).toBe(false);
     expect(manifest.id).toBe('competitions');
     expect(manifest.status).toBe('reserved');
-    expect(manifest.routes.map((route) => route.path)).toEqual([
+    expect(manifest.routes).toEqual([]);
+    expect(competitionRoutes().map((route) => route.path)).toEqual([
       '/competitions/new',
       '/competitions/:cid/manage',
       '/competitions/:cid/entries/:enId/join',
@@ -36,7 +37,7 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
 
   it('開關打開後六條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
     FEATURE_OVERRIDES.competitions = true;
-    registerFeatures(ALL_FEATURES);
+    registerFeatures(ALL_FEATURES.map((f) => (f.id === 'competitions' ? { ...f, routes: competitionRoutes() } : f)));
     const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
     expect(paths).toEqual([
       '/competitions/new',
