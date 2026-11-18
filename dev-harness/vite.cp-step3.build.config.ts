@@ -12,6 +12,10 @@ export default mergeConfig(base, defineConfig({
   build: {
     outDir: 'dist-cp-step3-harness',
     emptyOutDir: true,
-    rollupOptions: { input: { main: fileURLToPath(new URL('./cp-step3.html', import.meta.url)), list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)) } },
+    rollupOptions: { input: {
+      main: fileURLToPath(new URL('./cp-step3.html', import.meta.url)),
+      list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)),
+      rules: fileURLToPath(new URL('./cp-step3-rules.html', import.meta.url)),
+    } },
   },
 }));
