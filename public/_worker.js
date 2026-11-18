@@ -56,90 +56,9 @@ async function handleOgShare(request, ctx, sharePath, functionPath) {
   return new Response(upstream.body, upstream);
 }
 
-// ── 1b 實機驗證開關（只存在 staging 演練 commit，顧問 §3.271／§3.276；不得進 main）──
-// 只在 next.toosterx.com 生效：
-//   /?fcb_drill=reset   回一頁小頁面：解除離線快取（SW）、清快取與演練 cookie（測試前先開）
-//   /events/<id>?fcb_drill=503   啟動（第一輪，關離線快取）：對活動詳情頁 chunk 的「第一次」請求回 503，之後一律放行
-//   /events/<id>?fcb_drill=503sw 啟動（第二輪，選做，不關離線快取）：同上，但不改 swEnabled
-//   /?fcb_drill=status  顯示是否已啟動、503 是否真的打到（時間）、目前是否有離線快取控制頁面
-// 啟動期間，這個瀏覽器拿到的 runtime-config 的 swEnabled 改為 false，避免離線快取直接供應程式檔、讓 503 打不到（測試假性顯示「不帶毒」）。
-const DRILL_HOST = "next.toosterx.com";
-const DRILL_CHUNK_RE = /^\/assets\/EventDetailPage-[^/]+\.js$/;
-const DRILL_COOKIE_MAX_AGE = 900;
-const DRILL_COOKIE_ATTRS = `Path=/; Max-Age=${DRILL_COOKIE_MAX_AGE}; Secure; SameSite=Lax`;
-const DRILL_CLEAR_ATTRS = "Path=/; Max-Age=0; Secure; SameSite=Lax";
-
-function drillCookie(cookie, name) {
-  const m = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return m ? decodeURIComponent(m[1]) : "";
-}
-
-function drillPage(title, body, script) {
-  return new Response(
-    `<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title>` +
-      `<style>body{font:18px/1.6 -apple-system,sans-serif;padding:20px;max-width:560px;margin:auto}b{font-size:22px}</style></head>` +
-      `<body><h1>${title}</h1>${body}<pre id="sw">檢查中…</pre><script>${script}</script></body></html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } },
-  );
-}
-
-const DRILL_SW_SCRIPT = `(async()=>{const el=document.getElementById('sw');try{const c=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);const rs=navigator.serviceWorker?await navigator.serviceWorker.getRegistrations():[];el.textContent='離線快取控制此頁：'+(c?'是':'否')+'；已註冊：'+rs.length;}catch(e){el.textContent='離線快取：無法檢查';}})();`;
-const DRILL_RESET_SCRIPT = `(async()=>{const el=document.getElementById('sw');try{const rs=navigator.serviceWorker?await navigator.serviceWorker.getRegistrations():[];await Promise.all(rs.map(r=>r.unregister()));if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}try{sessionStorage.clear();}catch(e){}el.textContent='已解除離線快取 '+rs.length+' 個、清除快取完成。可以進行下一步。';}catch(e){el.textContent='清除時發生問題：'+e;}})();`;
-
-async function drillGate(request, env, url) {
-  if (url.hostname !== DRILL_HOST) return null;
-  const cookie = request.headers.get("cookie") || "";
-  const mode = url.searchParams.get("fcb_drill");
-  const armMode = drillCookie(cookie, "fcb_drill");
-  const armed = armMode === "armed" || armMode === "armed-sw";
-  const hitAt = drillCookie(cookie, "fcb_drill_hit");
-  if (mode === "reset") {
-    const res = drillPage("演練重置", "<p><b>已重置</b></p>", DRILL_RESET_SCRIPT);
-    res.headers.append("Set-Cookie", `fcb_drill=; ${DRILL_CLEAR_ATTRS}`);
-    res.headers.append("Set-Cookie", `fcb_drill_hit=; ${DRILL_CLEAR_ATTRS}`);
-    return res;
-  }
-  if (mode === "status") {
-    const hitText = hitAt ? `是（${hitAt}）` : "否";
-    return drillPage(
-      "演練狀態",
-      `<p>已啟動：<b>${armed ? (armMode === "armed-sw" ? "是（第二輪，不關離線快取）" : "是（第一輪，關離線快取）") : "否"}</b></p><p>503 已打到：<b>${hitText}</b></p>`,
-      DRILL_SW_SCRIPT,
-    );
-  }
-  if ((mode === "503" || mode === "503sw") && url.pathname.startsWith("/events/") && !armed) {
-    const page = await env.ASSETS.fetch(request);
-    const res = new Response(page.body, page);
-    res.headers.append("Set-Cookie", `fcb_drill=${mode === "503sw" ? "armed-sw" : "armed"}; ${DRILL_COOKIE_ATTRS}`);
-    res.headers.set("Cache-Control", "no-store");
-    return res;
-  }
-  // 只改回應、不寫檔（顧問 §3.276 條件）；第二輪（armed-sw）不改。
-  if (url.pathname === "/runtime-config.json" && armMode === "armed") {
-    const original = await env.ASSETS.fetch(request);
-    const config = await original.json();
-    config.swEnabled = false;
-    return new Response(JSON.stringify(config), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
-  }
-  if (DRILL_CHUNK_RE.test(url.pathname) && armed && !hitAt) {
-    const at = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
-    return new Response("drill 503", {
-      status: 503,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Set-Cookie": `fcb_drill_hit=${encodeURIComponent(at)}; ${DRILL_COOKIE_ATTRS}`,
-      },
-    });
-  }
-  return null;
-}
-
 export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
-    const drilled = await drillGate(request, env, new URL(request.url));
-    if (drilled) return drilled;
     if (isSharePath(pathname, TEAM_SHARE_PATH)) return handleOgShare(request, ctx, TEAM_SHARE_PATH, TEAM_SHARE_OG_PATH);
     if (isSharePath(pathname, EVENT_SHARE_PATH)) return handleOgShare(request, ctx, EVENT_SHARE_PATH, EVENT_SHARE_OG_PATH);
     return env.ASSETS.fetch(request);

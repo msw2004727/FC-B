@@ -2334,7 +2334,7 @@ function EventDetailSession({
 
   return (
     <div class="legacy-ui">
-      <section class="page active" id="page-activity-detail">
+      <section class="page active" id="page-activity-detail" data-drill="v2">
         <div class="page-header">
           <button
             type="button"
