@@ -146,8 +146,14 @@ export function buildJoinInput(draft: JoinDraft): CpJoinRosterInput {
       ...(draft.guardianConsent ? { guardianConsent: true } : {}),
     };
   }
+  // 成年公開名仍是暱稱或主站顯示名。真名只在有填時才送（組別不要求時呼叫端傳空字串）。
   const nickname = draft.nickname.trim();
-  return nickname ? { ...base, nickname } : base;
+  const realName = draft.realName.trim();
+  return {
+    ...base,
+    ...(nickname ? { nickname } : {}),
+    ...(realName ? { realName } : {}),
+  };
 }
 
 export interface AddDraft extends JoinDraft {

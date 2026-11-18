@@ -76,6 +76,26 @@ describe('送出欄位只含契約的鍵', () => {
     expect(minor).not.toHaveProperty('nickname');
   });
 
+  it('成年自己登錄有真名才送 realName，空白不送，也不送 publicName', () => {
+    const withName = buildJoinInput({
+      cid: 'cup', enId: 'en_a', number: 14, position: 'FW', positionText: '',
+      minor: false, nickname: '阿範', realName: '王小範', guardianConsent: false,
+    });
+    expect(withName).toEqual({
+      cid: 'cup', enId: 'en_a', number: 14, position: 'FW', nickname: '阿範',
+      realName: '王小範', privacyAck: true,
+    });
+    expect(withName).not.toHaveProperty('publicName');
+
+    const blank = buildJoinInput({
+      cid: 'cup', enId: 'en_a', number: 10, position: 'none', positionText: '',
+      minor: false, nickname: '', realName: '   ', guardianConsent: false,
+    });
+    expect(blank).toEqual({ cid: 'cup', enId: 'en_a', number: 10, privacyAck: true });
+    expect(blank).not.toHaveProperty('realName');
+    expect(blank).not.toHaveProperty('nickname');
+  });
+
   it('代填：成年沒暱稱不送暱稱，有暱稱才送；未成年不送暱稱；都不送 publicName', () => {
     const adult = buildAddInput({
       cid: 'cup', enId: 'en_a', number: 10, position: 'MF', positionText: '',

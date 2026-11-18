@@ -166,14 +166,26 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
   const clubs = representativeClubs(env.actor);
+  // ASSUMPTION: repClubsPending 省略＝清單已定案。還在讀時空陣列不改回個人，晚到的俱樂部仍要補上。
+  const clubsPending = env.actor.repClubsPending === true;
 
   useEffect(() => {
     if (form.hostType !== 'club') return;
+    if (clubsPending) return;
+    if (clubs.length === 0) {
+      // 沒有可用俱樂部不能維持 club：後端 club 必填 hostTeamId。
+      setForm((prev) => (
+        prev.hostType === 'personal' && prev.hostTeamId === ''
+          ? prev
+          : { ...prev, hostType: 'personal', hostTeamId: '' }
+      ));
+      return;
+    }
     if (form.hostTeamId && clubs.some((club) => club.id === form.hostTeamId)) return;
     const first = clubs[0]?.id ?? '';
     if (!first) return;
     setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
-  }, [clubs, form.hostType, form.hostTeamId]);
+  }, [clubs, clubsPending, form.hostType, form.hostTeamId]);
 
   function patch(partial: Partial<FormState>): void {
     setForm((prev) => ({ ...prev, ...partial }));

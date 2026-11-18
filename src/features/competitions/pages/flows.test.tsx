@@ -283,6 +283,41 @@ describe('賽事第 2 步畫面', () => {
     }));
   });
 
+  it('成年自己登錄：組別要求真名才顯示並送出，不要求時不送', async () => {
+    const required = spyActions();
+    const env = screenEnv('form-self-adult', required);
+    if (env.bundle) {
+      env.bundle = {
+        ...env.bundle,
+        divisions: env.bundle.divisions.map((row) => ({ ...row, requireRealName: true })),
+      };
+    }
+    const view = mount(JoinRosterPage, env);
+    expect(screen.getByRole('textbox', { name: /真實姓名/ })).toBeTruthy();
+    expect(view.container.textContent ?? '').toContain('真實姓名僅供主辦核對資格，不會公開。');
+    expect(view.container.textContent ?? '').not.toContain('公開顯示：');
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('請填寫真實姓名');
+    expect(required.joinRoster).not.toHaveBeenCalled();
+    fireEvent.input(screen.getByRole('textbox', { name: /真實姓名/ }), { target: { value: '王小範' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示暱稱與背號' }));
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await waitFor(() => expect(required.joinRoster).toHaveBeenCalledWith({
+      cid: 'cup', enId: 'en_a', number: 14, position: 'FW', nickname: '阿範',
+      realName: '王小範', privacyAck: true,
+    }));
+    expect(required.joinRoster.mock.calls[0]?.[0]).not.toHaveProperty('publicName');
+
+    cleanup();
+    const optional = spyActions();
+    mount(JoinRosterPage, { ...screenEnv('form-self-adult', optional) });
+    expect(screen.queryByRole('textbox', { name: /真實姓名/ })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示暱稱與背號' }));
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await waitFor(() => expect(optional.joinRoster).toHaveBeenCalled());
+    expect(optional.joinRoster.mock.calls[0]?.[0]).not.toHaveProperty('realName');
+  });
+
   it('禁用字只顯示文案；缺生日連到個人資料', async () => {
     const view = mount(NewCompetitionPage, screenEnv('wizard-1-error'));
     const error = view.container.querySelector('[data-field-error]');
@@ -399,7 +434,7 @@ describe('賽事第 2 步畫面', () => {
     let clubs: { id: string; name: string }[] = [];
     const lateEnv = () => ({
       ...screenEnv('wizard-1'),
-      actor: { ...wizardActor, repClubs: clubs, managedClubs: [] },
+      actor: { ...wizardActor, repClubs: clubs, managedClubs: [], repClubsPending: clubs.length === 0 },
       preview: { wizardStep: 1 as const, wizardClub: true },
       wizardSeed: { ...wizardSeed(), hostType: 'club' as const, hostTeamId: '' },
     });
@@ -415,6 +450,22 @@ describe('賽事第 2 步畫面', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect((screen.getByLabelText('俱樂部') as HTMLSelectElement).value).toBe('late_club'));
+  });
+
+  it('建賽選了俱樂部但沒有可用俱樂部時改回個人', async () => {
+    mount(NewCompetitionPage, {
+      ...screenEnv('wizard-1'),
+      actor: { ...wizardActor, repClubs: [], managedClubs: [] },
+      preview: { wizardStep: 1, wizardClub: true },
+      wizardSeed: { ...wizardSeed(), hostType: 'club', hostTeamId: '' },
+    });
+    await waitFor(() => {
+      expect((screen.getByRole('radio', { name: '個人' }) as HTMLInputElement).checked).toBe(true);
+    });
+    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect(await screen.findByText('組別')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('詳情頁 repClubs 晚到仍能以第一個俱樂部報隊', async () => {
@@ -508,6 +559,73 @@ describe('賽事第 2 步畫面', () => {
     expect(await screen.findByText('存活盃')).toBeTruthy();
     expect(mixed.container.textContent ?? '').toContain('站內賽事');
     expect(mixed.container.textContent ?? '').not.toContain('bad');
+  });
+
+  it('俱樂部清單晚到只補讀主辦賽事，不重讀開賽、我的賽事、公開清單', async () => {
+    let clubs: { id: string; name: string }[] = [];
+    const base = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      competitions: [
+        competition({ id: 'draft_cup', name: '草稿盃', status: 'draft', hostTeamId: 'club_a', visibility: 'public' }),
+        competition({ id: 'open_cup', name: '公開示範盃', hostType: 'personal', hostTeamId: null, hostDisplay: '王示範', feeNote: null }),
+      ],
+    });
+    const counts = { launch: 0, tester: 0, mine: 0, public: 0, host: 0 };
+    const repo = {
+      ...base,
+      getLaunch: async () => {
+        counts.launch += 1;
+        return base.getLaunch();
+      },
+      getLaunchTester: async (uid: string) => {
+        counts.tester += 1;
+        return base.getLaunchTester(uid);
+      },
+      listMine: async (uid: string) => {
+        counts.mine += 1;
+        return base.listMine(uid);
+      },
+      listPublic: async (includeInternal?: boolean) => {
+        counts.public += 1;
+        return base.listPublic(includeInternal);
+      },
+      listByHostTeam: async (teamId: string, publicOnly: boolean) => {
+        counts.host += 1;
+        return base.listByHostTeam(teamId, publicOnly);
+      },
+    };
+    const envFor = () => ({
+      actor: { ...repActor, repClubs: clubs },
+      repo,
+      actions: idleActions(),
+      now: NOW,
+    });
+    const view = draw(
+      <CpEnvProvider value={envFor()}>
+        <InAppSection />
+      </CpEnvProvider>,
+    );
+    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    await waitFor(() => expect(counts.launch).toBe(1));
+    expect(counts.mine).toBe(1);
+    expect(counts.public).toBe(1);
+    expect(counts.tester).toBe(0);
+    expect(counts.host).toBe(0);
+
+    clubs = [{ id: 'club_a', name: '示範隊A' }];
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={envFor()}>
+          <InAppSection />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect((await screen.findByText('我的賽事')).parentElement?.textContent ?? '').toContain('草稿盃');
+    expect(counts.launch).toBe(1);
+    expect(counts.mine).toBe(1);
+    expect(counts.public).toBe(1);
+    expect(counts.tester).toBe(0);
+    expect(counts.host).toBe(1);
   });
 
   it('內部期的測試者與管理員看得到內部賽，一般會員看不到', async () => {
@@ -708,6 +826,13 @@ describe('賽事第 2 步畫面', () => {
   });
 
   it('登錄表單不符資格時顯示原因與回名單連結，不畫表單', () => {
+    const repOnly = screenEnv('form-self-adult');
+    repOnly.actor = { ...memberActor, memberClubIds: [], repClubs: [{ id: 'club_a', name: '示範隊A' }] };
+    const asRep = mount(JoinRosterPage, repOnly);
+    expect(screen.getByLabelText('暱稱')).toBeTruthy();
+    expect(asRep.container.textContent ?? '').not.toContain('只有俱樂部成員可以做這個操作');
+    asRep.unmount();
+
     const stranger = screenEnv('form-self-adult');
     stranger.actor = { ...memberActor, memberClubIds: [] };
     const blocked = mount(JoinRosterPage, stranger);

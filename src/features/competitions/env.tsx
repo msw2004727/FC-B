@@ -23,6 +23,11 @@ export interface CpActor {
   role: string;
   displayName: string | null;
   repClubs: readonly CpClub[];
+  /**
+   * true＝代表清單還在讀。空陣列這時不代表沒有俱樂部。
+   * ASSUMPTION: 省略＝已定案（測試與 harness 的清單是同步的）。
+   */
+  repClubsPending?: boolean;
   managedClubs: readonly CpClub[];
   /** 我所屬的俱樂部 id（含代表）。用來決定看不看得到「登錄名單」。 */
   memberClubIds: readonly string[];

@@ -1,7 +1,10 @@
 // 賽事頁「站內賽事」。整區先過開賽閘門；沒過就不渲染，也不留空標題。
 // 我的賽事＝cpMine 加上各代表俱樂部主辦的賽事（含草稿），以 cid 去重。
+// 俱樂部主辦清單是另一段：等代表俱樂部到齊才補讀 listByHostTeam 再合併。
+// launch、tester、listMine、listPublic 不因 repKey 變動重讀。
 // ASSUMPTION: 公開清單不重複列出已在「我的賽事」的 cid。沒有名稱的項目不顯示 id。
 // 單筆讀取失敗略過，不讓整區消失。
+// 正式頁等閘門通過才查代表俱樂部；沒過時 teams 一筆都不讀。
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -33,36 +36,46 @@ async function nameOfMine(repo: CompetitionsRepo, item: CpMineItem): Promise<Nam
   }
 }
 
-function mergeMine(
-  fromMine: ReadonlyArray<NamedComp | null>,
-  hosted: ReadonlyArray<readonly CompetitionDoc[]>,
-): NamedComp[] {
+function dedupeNamed(rows: ReadonlyArray<NamedComp | null>): NamedComp[] {
   const byId = new Map<string, NamedComp>();
-  for (const row of fromMine) {
+  for (const row of rows) {
     if (row && !byId.has(row.cid)) byId.set(row.cid, row);
   }
-  for (const list of hosted) {
+  return [...byId.values()];
+}
+
+function hostedRows(lists: ReadonlyArray<readonly CompetitionDoc[]>): NamedComp[] {
+  const rows: NamedComp[] = [];
+  for (const list of lists) {
     for (const doc of list) {
-      if (!doc.name || byId.has(doc.id)) continue;
-      byId.set(doc.id, { cid: doc.id, name: doc.name });
+      if (!doc.name || rows.some((row) => row.cid === doc.id)) continue;
+      rows.push({ cid: doc.id, name: doc.name });
     }
   }
-  return [...byId.values()];
+  return rows;
 }
 
 function SectionBody({
   actor,
   repo,
+  onGate,
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
+  /** 正式頁用來決定要不要查代表俱樂部。注入環境不傳。 */
+  onGate?: (open: boolean) => void;
 }): JSX.Element | null {
   const t = useT();
   const { route } = useLocation();
   const [phase, setPhase] = useState<'loading' | 'hidden' | 'ready'>('loading');
-  const [mine, setMine] = useState<NamedComp[]>([]);
-  const [publicRows, setPublicRows] = useState<NamedComp[]>([]);
+  const [baseMine, setBaseMine] = useState<NamedComp[]>([]);
+  const [hostedMine, setHostedMine] = useState<NamedComp[]>([]);
+  const [publicSource, setPublicSource] = useState<NamedComp[]>([]);
+  // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
+  const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
   const repKey = representativeClubs(actor).map((club) => club.id).join('\n');
+  const mine = dedupeNamed([...baseMine, ...hostedMine]);
+  const publicRows = publicSource.filter((row) => !mine.some((item) => item.cid === row.cid));
 
   useEffect(() => {
     let alive = true;
@@ -70,42 +83,69 @@ function SectionBody({
       const launch = await repo.getLaunch();
       const isPublic = launch ? launch.isPublic : null;
       const isAdmin = isCpAdmin(actor.role);
-      // 登入者尚未定案、又不是已公開：先不要判成「看不到」。
+      // 登入者尚未定案、又不是已公開：先不要判成「看不到」，也不要開始查俱樂部。
       if (actor.authPending && !isAdmin && isPublic !== true) return;
       let isTester = false;
       if (isPublic === false && actor.uid && !isAdmin) {
         isTester = await repo.getLaunchTester(actor.uid);
       }
       if (!canSeeInAppSection({ isPublic, isTester, isAdmin })) {
-        if (alive) setPhase('hidden');
+        if (!alive) return;
+        onGate?.(false);
+        setHostQuery(null);
+        setPhase('hidden');
         return;
       }
-      const clubs = representativeClubs(actor);
-      const publicOnly = !isTester && !isAdmin;
-      const [items, hosted, listed] = await Promise.all([
+      // 閘門過了才准查代表俱樂部。這段本身不讀 listByHostTeam。
+      onGate?.(true);
+      const [items, listed] = await Promise.all([
         actor.uid ? repo.listMine(actor.uid).catch(() => [] as CpMineItem[]) : Promise.resolve([] as CpMineItem[]),
-        Promise.all(clubs.map((club) => repo.listByHostTeam(club.id, publicOnly).catch(() => [] as CompetitionDoc[]))),
         repo.listPublic(isTester || isAdmin).catch(() => [] as CompetitionDoc[]),
       ]);
       const namedMine = await Promise.all(items.map((item) => nameOfMine(repo, item)));
-      const merged = mergeMine(namedMine, hosted);
-      const mineIds = new Set(merged.map((item) => item.cid));
       const pub = listed
-        .filter((doc) => !mineIds.has(doc.id) && doc.name)
+        .filter((doc) => doc.name)
         .map((doc) => ({ cid: doc.id, name: doc.name }));
       if (!alive) return;
-      setMine(merged);
-      setPublicRows(pub);
+      setBaseMine(dedupeNamed(namedMine));
+      setPublicSource(pub);
+      setHostQuery({ publicOnly: !isTester && !isAdmin });
       setPhase('ready');
     })().catch(() => {
-      if (alive) setPhase('hidden');
+      if (!alive) return;
+      onGate?.(false);
+      setHostQuery(null);
+      setPhase('hidden');
     });
     return () => {
       alive = false;
     };
-    // repKey 代表俱樂部 id。物件本身每輪可能是新的，不放進依賴。
+    // onGate 在正式頁是 useState setter，身分穩定。repKey 不在這裡，避免俱樂部到了就重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor.authPending, actor.role, actor.uid, repo, repKey]);
+  }, [actor.authPending, actor.role, actor.uid, repo]);
+
+  useEffect(() => {
+    if (!hostQuery) return;
+    const clubs = representativeClubs(actor);
+    if (clubs.length === 0) {
+      setHostedMine([]);
+      return;
+    }
+    let alive = true;
+    const publicOnly = hostQuery.publicOnly;
+    void Promise.all(clubs.map((club) => repo.listByHostTeam(club.id, publicOnly).catch(() => [] as CompetitionDoc[])))
+      .then((lists) => {
+        if (alive) setHostedMine(hostedRows(lists));
+      })
+      .catch(() => {
+        if (alive) setHostedMine([]);
+      });
+    return () => {
+      alive = false;
+    };
+    // repKey 變了才補讀俱樂部主辦。launch／listMine／listPublic 不在這個 effect。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostQuery, repKey, repo]);
 
   if (phase !== 'ready') return null;
   const showCreate = !!actor.uid && !actor.authPending;
@@ -155,12 +195,17 @@ function SectionBody({
   );
 }
 
+function LiveInApp(): JSX.Element {
+  const [loadClubs, setLoadClubs] = useState(false);
+  return (
+    <LiveBoundary loadClubs={loadClubs}>
+      {(actor, repo) => <SectionBody actor={actor} repo={repo} onGate={setLoadClubs} />}
+    </LiveBoundary>
+  );
+}
+
 export function InAppSection(): JSX.Element | null {
   const injected = useInjectedEnv();
   if (injected) return <SectionBody actor={injected.actor} repo={injected.repo} />;
-  return (
-    <LiveBoundary>
-      {(actor, repo) => <SectionBody actor={actor} repo={repo} />}
-    </LiveBoundary>
-  );
+  return <LiveInApp />;
 }

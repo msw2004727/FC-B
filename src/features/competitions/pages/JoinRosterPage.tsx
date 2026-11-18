@@ -1,4 +1,5 @@
-// 自己登錄。成年可填暱稱；未成年填真名，公開名由遮字即時算出，不送 publicName。
+// 自己登錄。成年可填暱稱；組別 requireRealName 時成年也要填真名（不公開）。
+// 未成年填真名，公開名由遮字即時算出，不送 publicName。
 // 生日還沒載入前只顯示載入中，不先畫成年欄位。
 
 import type { JSX } from 'preact';
@@ -117,7 +118,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
       setError({ reason: 'FIELD_LENGTH', params: { min: 1, max: POSITION_TEXT_MAX } });
       return;
     }
-    if (minor && !realName.trim()) {
+    const needRealName = minor || division?.requireRealName === true;
+    if (needRealName && !realName.trim()) {
       setError({ reason: 'REAL_NAME_REQUIRED' });
       return;
     }
@@ -140,7 +142,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
         positionText,
         minor,
         nickname,
-        realName,
+        // 組別不要求真名時不送。公開名仍是暱稱或主站顯示名。
+        realName: needRealName ? realName : '',
         guardianConsent: guardian,
       }));
       route(`/competitions/${cid}/entries/${enId}`);
@@ -160,11 +163,13 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
     );
   }
 
+  const isMember = env.actor.memberClubIds.includes(entry?.teamId ?? '');
+  const isRep = env.actor.repClubs.some((club) => club.id === entry?.teamId);
   const block = rosterFormBlock({
     kind: 'self',
-    // 自己登錄只認成員。代表要走代填，不能靠代表身分打開這張表。
-    isMember: env.actor.memberClubIds.includes(entry?.teamId ?? ''),
-    isRep: env.actor.repClubs.some((club) => club.id === entry?.teamId),
+    // 後端 joinRoster 接受成員或代表。代表也可以自己登錄。
+    isMember: isMember || isRep,
+    isRep,
     status: entry?.status ?? null,
     locked: competition.rostersLockedAt != null,
     started: now >= competition.firstMatchAt,
@@ -196,7 +201,15 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
               <Checkbox label={t('competitions.guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
             </>
           ) : (
-            <Input label={t('competitions.nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
+            <>
+              {division?.requireRealName ? (
+                <>
+                  <Input label={t('competitions.realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+                  <p class="cps-cap">{t('competitions.minorRealName')}</p>
+                </>
+              ) : null}
+              <Input label={t('competitions.nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
+            </>
           )}
           <Checkbox label={t(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
