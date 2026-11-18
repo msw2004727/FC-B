@@ -88,6 +88,6 @@ describe('tournaments-glass.css：賽事頁液態光澤', () => {
   it('TournamentsPage 引入本檔、外層帶 tournaments-root', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/features/tournaments/pages/TournamentsPage.tsx'), 'utf8');
     expect(src).toContain("import '../legacy/tournaments-glass.css';");
-    expect(src).toContain('<div class="legacy-ui tournaments-root">');
+    expect(src).toContain('<div class="legacy-ui tournaments-root"');
   });
 });

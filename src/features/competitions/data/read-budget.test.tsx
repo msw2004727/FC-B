@@ -226,7 +226,7 @@ describe('列表讀取預算', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect(withClub.calls()).toEqual(['getLaunch', 'listMine', 'listPublic']));
-    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    expect(await screen.findByText('只看我的')).toBeTruthy();
     rerender(
       <LocationProvider>
         <CpEnvProvider value={{

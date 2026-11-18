@@ -393,6 +393,7 @@ describe('賽事第 2 步畫面', () => {
       </CpEnvProvider>,
     );
     expect(first.container.textContent ?? '').not.toContain('站內賽事');
+    expect(first.container.textContent ?? '').not.toContain('只看我的');
     expect(first.container.textContent ?? '').not.toContain('尚未對外');
     first.unmount();
 
@@ -402,7 +403,8 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    expect(await screen.findByText('內部示範盃')).toBeTruthy();
+    expect(screen.getByText('只看我的')).toBeTruthy();
     expect(await screen.findByRole('button', { name: '建立賽事' })).toBeTruthy();
 
     cleanup();
@@ -419,13 +421,16 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('我的賽事')).toBeTruthy();
-    expect(await screen.findByText('公開清單')).toBeTruthy();
+    expect(await screen.findByText('示範盃')).toBeTruthy();
+    expect(screen.getByText('公開示範盃')).toBeTruthy();
     const mineLink = listed.container.querySelector('a[href="/competitions/cup"]');
     const publicLink = listed.container.querySelector('a[href="/competitions/open_cup"]');
     expect(mineLink?.textContent).toContain('示範盃');
     expect(publicLink?.textContent).toContain('公開示範盃');
     expect(listed.container.querySelectorAll('a[href="/competitions/cup"]').length).toBe(1);
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(listed.container.textContent ?? '').toContain('示範盃');
+    expect(listed.container.textContent ?? '').not.toContain('公開示範盃');
   });
 
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
@@ -526,9 +531,12 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect((await screen.findByText('我的賽事')).parentElement?.textContent ?? '').toContain('草稿盃');
-    expect(screen.getByText('公開清單').parentElement?.textContent ?? '').not.toContain('草稿盃');
-    expect(screen.getByText('公開清單').parentElement?.textContent ?? '').toContain('公開示範盃');
+    expect(await screen.findByText('草稿盃')).toBeTruthy();
+    expect(screen.getByText('公開示範盃')).toBeTruthy();
+    expect(drafted.container.querySelectorAll('a[href="/competitions/draft_cup"]').length).toBe(1);
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(drafted.container.textContent ?? '').toContain('草稿盃');
+    expect(drafted.container.textContent ?? '').not.toContain('公開示範盃');
     drafted.unmount();
 
     const namedBase = createFakeCpRepo({
@@ -575,7 +583,7 @@ describe('賽事第 2 步畫面', () => {
       </CpEnvProvider>,
     );
     expect(await screen.findByText('存活盃')).toBeTruthy();
-    expect(mixed.container.textContent ?? '').toContain('站內賽事');
+    expect(mixed.container.textContent ?? '').toContain('只看我的');
     expect(mixed.container.textContent ?? '').not.toContain('bad');
   });
 
@@ -623,7 +631,7 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    expect(await screen.findByText('公開示範盃')).toBeTruthy();
     await waitFor(() => expect(counts.launch).toBe(1));
     expect(counts.mine).toBe(1);
     expect(counts.public).toBe(1);
@@ -638,7 +646,9 @@ describe('賽事第 2 步畫面', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    expect((await screen.findByText('我的賽事')).parentElement?.textContent ?? '').toContain('草稿盃');
+    expect(await screen.findByText('草稿盃')).toBeTruthy();
+    expect(view.container.querySelectorAll('a[href="/competitions/draft_cup"]').length).toBe(1);
+    expect(view.container.textContent ?? '').toContain('公開示範盃');
     expect(counts.launch).toBe(1);
     expect(counts.mine).toBe(1);
     expect(counts.public).toBe(1);
@@ -682,6 +692,7 @@ describe('賽事第 2 步畫面', () => {
     await waitFor(() => expect(saw).toBe(true));
     await expect(screen.findByText('內部盃', {}, { timeout: 400 })).rejects.toThrow();
     expect(outsider.container.textContent ?? '').not.toContain('站內賽事');
+    expect(outsider.container.textContent ?? '').not.toContain('只看我的');
 
     cleanup();
     draw(
