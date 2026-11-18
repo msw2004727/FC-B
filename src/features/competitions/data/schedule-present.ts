@@ -158,7 +158,8 @@ function matchOf(entry: SummaryEntry): ScheduleMatch {
     awayName: entry.a.n,
     score: showsScore(entry) ? entry.s : null,
     mark: publicMark(entry),
-    reason: entry.st === 'cancelled' ? (entry.reason?.trim() || null) : null,
+    // 已取消的原因只看摘要 cr。當日公開列與全部賽程同一條，不另讀場次。
+    reason: entry.st === 'cancelled' ? (entry.cr?.trim() || null) : null,
   };
 }
 

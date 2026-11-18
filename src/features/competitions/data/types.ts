@@ -256,10 +256,10 @@ export interface SummaryEntry {
   st: string;
   wo: string | null;
   /**
-   * 取消原因。契約摘要片不新增欄位，後端目前不寫。
-   * 讀得到（摘要自帶，或另讀場次後補上）才在公開列顯示。
+   * 取消原因。摘要片欄位 cr。只有 st 為 cancelled 才有，最多 100 字。
+   * 沒有、空白、或不是已取消就不寫。公開賽程與全部賽程都讀這個欄位。
    */
-  reason?: string | null;
+  cr?: string;
 }
 
 /**

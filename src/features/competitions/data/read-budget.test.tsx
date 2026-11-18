@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { InAppSection } from '../components/InAppSection';
@@ -181,10 +181,10 @@ function standing(i: number): StandingDoc {
 }
 
 /** 組別、報隊、積分、摘要都塞到上限（摘要多 1 片，確認截斷後仍是上限＋父文件）。 */
-function repoFor(groups: number = CP_READ_LIMIT.divisions): FakeCpRepo {
+function repoFor(groups: number = CP_READ_LIMIT.divisions, todayExtra: readonly SummaryEntry[] = []): FakeCpRepo {
   const today = summaryShardIdOf(nowOf.live);
   const shards = [
-    { id: today, entries: [summaryEntry('mt_today', nowOf.live)] },
+    { id: today, entries: [summaryEntry('mt_today', nowOf.live), ...todayExtra] },
     ...Array.from({ length: CP_READ_LIMIT.summary }, (_, i) => ({
       id: `d202611${String(i).padStart(2, '0')}`,
       entries: [summaryEntry(`mt_extra_${i}`, i)],
@@ -522,6 +522,67 @@ describe('詳情讀取預算', () => {
     expect(live.calls()).not.toContain('listMatches');
     expect(live.calls()).not.toContain('listEntries');
     expect(await screen.findByText('進行中')).toBeTruthy();
+  });
+
+  it('摘要有已取消場次時詳情頁讀取數不變、不呼叫 listMatches', async () => {
+    const liveCalls = [
+      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff',
+    ];
+    const plain = repoFor(8);
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor: memberActor, repo: plain, actions: idleActions(), now: nowOf.live, route: { cid: 'cid_1' } }}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(plain.calls()).toEqual(liveCalls));
+    const baseline = plain.readCount();
+    cleanup();
+
+    const cancelled = repoFor(8, [
+      { ...summaryEntry('mt_off', nowOf.live), st: 'cancelled', cr: '大雨停賽' },
+      { ...summaryEntry('mt_bare', nowOf.live), st: 'cancelled' },
+    ]);
+    const view = render(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor: memberActor, repo: cancelled, actions: idleActions(), now: nowOf.live, route: { cid: 'cid_1' } }}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(view.container.textContent ?? '').toContain('大雨停賽'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(cancelled.calls()).toEqual(liveCalls);
+    expect(cancelled.readCount()).toBe(baseline);
+    expect(cancelled.calls()).not.toContain('listMatches');
+
+    const beforeFull = cancelled.readCount();
+    fireEvent.click(screen.getByRole('button', { name: '全部賽程' }));
+    await waitFor(() => expect(view.container.textContent ?? '').toContain('1月1日'));
+    expect(cancelled.calls().filter((name) => name === 'listSummary')).toHaveLength(1);
+    expect(cancelled.calls()).not.toContain('listMatches');
+    expect(cancelled.readCount()).toBe(beforeFull + CP_READ_LIMIT.summary + RULES_PARENT);
+    expect(view.container.textContent ?? '').toContain('大雨停賽');
+  });
+
+  it('全部賽程沿用摘要 cr，不另讀場次', async () => {
+    const repo = createFakeCpRepo({
+      summary: {
+        cid_1: [{
+          id: 'd20261205',
+          entries: [{ ...summaryEntry('mt_off', nowOf.live), st: 'cancelled', cr: '大雨停賽' }],
+        }],
+      },
+    });
+    const rows = await loadFullSchedule(repo, 'cid_1');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cr).toBe('大雨停賽');
+    expect(rows[0]?.st).toBe('cancelled');
+    expect(repo.calls()).toEqual(['listSummary']);
+    expect(repo.calls()).not.toContain('listMatches');
   });
 
   it('全部賽程按鈕只讀一次', async () => {

@@ -64,6 +64,12 @@ function rowOf(name: string): HTMLElement {
   return row;
 }
 
+function tieButton(name: string): HTMLElement {
+  const row = screen.getByText(name).closest('.cp3-st__r');
+  if (!(row instanceof HTMLElement)) throw new Error(`找不到 ${name}`);
+  return within(row).getByRole('button', { name: '同分' });
+}
+
 function match(partial: Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>): MatchDoc {
   return {
     divisionId: 'dv_adult',
@@ -254,6 +260,33 @@ describe('取消單場與結束賽事', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
   });
 
+  it('沒有場次、延期或草稿不顯示結束賽事', () => {
+    draw(hostEnv([]), HostMatchesPage);
+    expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull();
+    cleanup();
+
+    const postponed = hostEnv([match({ id: 'mt_1', status: 'scheduled' })]);
+    if (postponed.bundle) {
+      postponed.bundle = {
+        ...postponed.bundle,
+        competition: competition({ status: 'postponed' }),
+      };
+    }
+    draw(postponed, HostMatchesPage);
+    expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull();
+    cleanup();
+
+    const draft = hostEnv([match({ id: 'mt_1', status: 'scheduled' })]);
+    if (draft.bundle) {
+      draft.bundle = {
+        ...draft.bundle,
+        competition: competition({ status: 'draft' }),
+      };
+    }
+    draw(draft, HostMatchesPage);
+    expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull();
+  });
+
   it('會員看不到取消；共同主辦與管理員看得到', () => {
     const rows = [match({ id: 'mt_1', status: 'scheduled' })];
     draw(hostEnv(rows, idleActions(), memberActor), HostMatchesPage);
@@ -353,6 +386,39 @@ describe('同分查詢、裁定與恢復', () => {
     fireEvent.click(screen.getByRole('button', { name: '撤銷裁定' }));
     expect(clearTieDecision).toHaveBeenCalledWith({
       cid: 'cup', dvId: 'dv_adult', groupId: 'A', reason: '登錯', expectedVersion: 4,
+    });
+  });
+
+  it('換查另一群時裁定方式回到主辦裁定', async () => {
+    const explainTie = vi.fn(async () => ({
+      ...explained,
+      pending: true,
+      steps: explained.steps.map((step) => ({ ...step, split: false })),
+    }));
+    const other = standing({
+      id: 'dv_youth__group__B',
+      divisionId: 'dv_youth',
+      groupId: 'B',
+      rows: [
+        standingRow({ teamId: 'en_f', name: '北風隊', points: 3, rank: 1, hasUnresolvedTie: true, tiedWith: ['en_g'] }),
+        standingRow({ teamId: 'en_g', name: '南風隊', points: 3, rank: 2, hasUnresolvedTie: true, tiedWith: ['en_f'] }),
+      ],
+    });
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+      standings: [standing({ rows: TIE_ROWS }), other],
+    }), CompetitionDetailPage);
+    fireEvent.click(tieButton('銀河隊'));
+    const lots = await screen.findByRole('radio', { name: '抽籤結果登錄' });
+    fireEvent.click(lots);
+    expect((screen.getByRole('radio', { name: '抽籤結果登錄' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(tieButton('北風隊'));
+    expect((screen.getByRole('radio', { name: '主辦裁定' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('radio', { name: '抽籤結果登錄' }) as HTMLInputElement).checked).toBe(false);
+    expect(explainTie).toHaveBeenLastCalledWith({
+      cid: 'cup', dvId: 'dv_youth', groupId: 'B', teamIds: ['en_f', 'en_g'],
     });
   });
 

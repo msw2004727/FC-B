@@ -387,6 +387,8 @@ export function TieWorkspace({
     const pending = pendingGroupIds(doc, teamId) ?? [];
     setOrder(pending);
     setReason('');
+    // 換查另一群時方式回到主辦裁定，不沿用上一群選的抽籤。
+    setMethod('host');
     try {
       const raw = await actions.explainTie({ cid, dvId: doc.divisionId, ...groupField(doc.groupId), teamIds });
       const parsed = explainTieFromRaw(raw);

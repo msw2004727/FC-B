@@ -369,6 +369,25 @@ describe('第 3 步文件解析', () => {
     expect(summaryEntriesFromDoc({})).toEqual([]);
   });
 
+  it('摘要 cr 只有已取消才讀，空白丟掉，超過 100 字截斷', () => {
+    const side = { h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' } };
+    const rows = summaryEntriesFromDoc({
+      m: {
+        mt_off: { dv: 'dv_1', r: 1, no: 1, k: 10, ...side, s: [0, 0], st: 'cancelled', cr: ' 大雨 ' },
+        mt_live: { dv: 'dv_1', r: 1, no: 2, k: 20, ...side, s: [0, 0], st: 'scheduled', cr: '不該留下' },
+        mt_old: { dv: 'dv_1', r: 1, no: 3, k: 30, ...side, s: [0, 0], st: 'cancelled', cancelReason: '舊欄位' },
+        mt_long: { dv: 'dv_1', r: 1, no: 4, k: 40, ...side, s: [0, 0], st: 'cancelled', cr: `${'😀'.repeat(100)}多` },
+        mt_blank: { dv: 'dv_1', r: 1, no: 5, k: 50, ...side, s: [0, 0], st: 'cancelled', cr: '   ' },
+      },
+    });
+    expect(rows.find((row) => row.id === 'mt_off')?.cr).toBe('大雨');
+    expect(rows.find((row) => row.id === 'mt_live')?.cr).toBeUndefined();
+    expect(rows.find((row) => row.id === 'mt_old')?.cr).toBeUndefined();
+    expect(rows.find((row) => row.id === 'mt_long')?.cr).toBe('😀'.repeat(100));
+    expect([...'😀'.repeat(100)].length).toBe(100);
+    expect(rows.find((row) => row.id === 'mt_blank')?.cr).toBeUndefined();
+  });
+
   it('積分列只讀後端欄位，短名與文件 id 不算', () => {
     const doc = standingFromDoc('dv_1__group__A', {
       version: 3,

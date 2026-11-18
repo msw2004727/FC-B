@@ -10,6 +10,7 @@
 // ASSUMPTION: requireRealName 缺值時，有年齡限制則 true，否則 false（契約：預設＝有年齡限制）。
 // ASSUMPTION: getStaff 對應契約正文的 staff/{uid}.roles，讀取表沒有獨立一列。
 
+import { clipCodePoints } from '../format';
 import { getCpFirebase } from './cp-firebase';
 import { categoryOf } from './present';
 import {
@@ -425,6 +426,14 @@ function summarySide(value: unknown): { id: string; n: string } | null {
   return { id, n };
 }
 
+/** 摘要 cr：只有已取消才留。空白不算。超過 100 字以碼位截斷。 */
+function summaryCr(st: string, raw: unknown): string | undefined {
+  if (st !== 'cancelled') return undefined;
+  const text = str(raw)?.trim() ?? '';
+  if (!text) return undefined;
+  return clipCodePoints(text, 100);
+}
+
 function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
   if (!isRecord(raw)) return null;
   const dv = str(raw.dv);
@@ -433,6 +442,8 @@ function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
   const away = summarySide(raw.a);
   if (!dv || round == null || !home || !away) return null;
   const score = Array.isArray(raw.s) ? raw.s : [];
+  const st = str(raw.st) ?? '';
+  const cr = summaryCr(st, raw.cr);
   return {
     id,
     dv,
@@ -443,9 +454,9 @@ function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
     h: home,
     a: away,
     s: [num(score[0]) ?? 0, num(score[1]) ?? 0],
-    st: str(raw.st) ?? '',
+    st,
     wo: str(raw.wo),
-    ...(str(raw.cancelReason) ? { reason: str(raw.cancelReason) } : {}),
+    ...(cr ? { cr } : {}),
   };
 }
 

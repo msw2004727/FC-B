@@ -206,11 +206,21 @@ describe('場次按鈕與寫入結果', () => {
     expect(cancelled.status).toBe('cancelled');
     expect(cancelled.cancelReason).toBe('大雨');
     expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, cancelled)).toBe(true);
-    expect(outcomeMatches({ kind: 'cancel', reason: '別的' }, cancelled)).toBe(false);
+    expect(outcomeMatches({ kind: 'cancel', reason: '別的' }, cancelled)).toBe(true);
     const restored = applyWrite(cancelled, { kind: 'reset', reason: '恢復' });
     expect(restored.status).toBe('scheduled');
     expect(restored.cancelReason).toBeNull();
     expect(restored.cancelledAt).toBeNull();
+  });
+
+  it('取消重送只認狀態已取消，不比對原因內容', () => {
+    const cancelled = match({ id: 'mt_1', status: 'cancelled', cancelReason: '大雨' });
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, cancelled)).toBe(true);
+    expect(outcomeMatches({ kind: 'cancel', reason: '別的原因' }, cancelled)).toBe(true);
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, { ...cancelled, cancelReason: null })).toBe(true);
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, { ...cancelled, cancelReason: '大雨。' })).toBe(true);
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, match({ id: 'mt_1', status: 'scheduled' }))).toBe(false);
+    expect(outcomeMatches({ kind: 'cancel', reason: '大雨' }, match({ id: 'mt_1', status: 'finished' }))).toBe(false);
   });
 
   it('網路失敗才可原樣重送', () => {

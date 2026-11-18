@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
+import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -55,6 +55,14 @@ describe('賽事權限顯示', () => {
     expect(canRegisterClubEntry({ ...window, now: 21 })).toBe(false);
     expect(canRegisterClubEntry({ ...window, status: 'draft' })).toBe(false);
     expect(canRegisterClubEntry({ ...window, hidden: true })).toBe(false);
+  });
+
+  it('結束賽事只在已發布且尚未結束時顯示', () => {
+    expect(canEndCompetition({ status: 'published', endedAt: null })).toBe(true);
+    expect(canEndCompetition({ status: 'published', endedAt: 1 })).toBe(false);
+    expect(canEndCompetition({ status: 'postponed', endedAt: null })).toBe(false);
+    expect(canEndCompetition({ status: 'draft', endedAt: null })).toBe(false);
+    expect(canEndCompetition({ status: 'cancelled', endedAt: null })).toBe(false);
   });
 
   it('解鎖：未鎖定不顯示；首場前主辦可解，首場後只留管理員', () => {

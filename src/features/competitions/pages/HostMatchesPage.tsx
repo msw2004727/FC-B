@@ -525,11 +525,13 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
 
   const groups = groupHostMatches(matches, divisions, now, scheduleLabels(ct));
   const active = panel ? matches.find((row) => row.id === panel.mtId) ?? null : null;
+  // 已發布且已有場次才顯示結束賽事。延期、草稿、空賽程都不顯示。
+  const showEnd = canEndCompetition(comp) && matches.length > 0;
 
   return (
     <CpFrame title={ct('hostListTitle')}>
       <p class="cps-sub" style="margin:0">{comp.name}</p>
-      {canEndCompetition(comp) ? (
+      {showEnd ? (
         <div class="cps-actions" style="margin-top:0">
           <Button variant="danger" disabled={busy || endOpen} onClick={() => { setEndReason(''); setEndMessage(null); setEndOpen(true); }}>
             {ct('endTitle')}

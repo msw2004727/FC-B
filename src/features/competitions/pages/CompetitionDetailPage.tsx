@@ -137,7 +137,6 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreReason, setRestoreReason] = useState('');
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
-  const reasonOnce = useRef(false);
   const fullCache = useRef<SummaryEntry[] | null>(null);
   const fullInflight = useRef<Promise<boolean> | null>(null);
   const mounted = useRef(true);
@@ -159,33 +158,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   useEffect(() => {
     fullCache.current = null;
     fullInflight.current = null;
-    reasonOnce.current = false;
     setFullSchedule(null);
   }, [cid]);
-
-  // 摘要片沒有取消原因。只有畫面上真的有已取消、而且沒帶原因時，才補讀一次場次。
-  // 注入的測試不讀。沒有已取消列時也不讀，避免詳情首屏多一次 listMatches。
-  useEffect(() => {
-    if (env.bundle || reasonOnce.current) return undefined;
-    const need = summary.some((entry) => entry.st === 'cancelled' && !entry.reason?.trim());
-    if (!need) return undefined;
-    reasonOnce.current = true;
-    let alive = true;
-    void env.repo.listMatches(cid).then((rows) => {
-      if (!alive) return;
-      const reasons = new Map(rows.flatMap((row) => (
-        row.status === 'cancelled' && row.cancelReason ? [[row.id, row.cancelReason] as const] : []
-      )));
-      setSummary((current) => current.map((entry) => {
-        if (entry.st !== 'cancelled' || entry.reason?.trim()) return entry;
-        const reason = reasons.get(entry.id);
-        return reason ? { ...entry, reason } : entry;
-      }));
-    }).catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [cid, env.bundle, env.repo, summary]);
 
   // 排序說明：積分文件有 ranking 就用；沒有才看組別 schedule.ranking；都沒有用對戰優先。
   // 進行中首屏不讀組別。已結束會補讀一次。進行中改在切到積分頁時讀。
@@ -530,13 +504,6 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </div>
           ) : null}
         </CpCard>
-      ) : null}
-      {allowRestore && !showHostEnd ? (
-        <div class="cpm-endact">
-          <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
-            {ct('restore')}
-          </Button>
-        </div>
       ) : null}
       {restoreOpen ? (
         <CpCard>

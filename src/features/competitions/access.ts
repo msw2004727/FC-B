@@ -68,12 +68,13 @@ export interface RegisterInput {
 }
 
 /**
- * 結束賽事。已寫 endedAt 不再顯示。草稿與整場取消不顯示。
+ * 結束賽事。只有 status 為 published、而且還沒寫 endedAt 才顯示。
+ * 草稿、延期、整場取消都不顯示。主辦賽程頁還要已有場次。
  * 前端只藏按鈕，伺服器仍會拒絕。
  */
 export function canEndCompetition(doc: { status: CompetitionStatus; endedAt: number | null }): boolean {
   if (doc.endedAt != null) return false;
-  return doc.status === 'published' || doc.status === 'postponed';
+  return doc.status === 'published';
 }
 
 /**

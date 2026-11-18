@@ -277,6 +277,7 @@ export function parseReschedule(input: {
  * 重送遇到 REV_CONFLICT 時，伺服器狀態是否就是這次要寫的結果。
  * ASSUMPTION: 確認要比對按下時的比分，避免別人改分後確認被當成同一件事。
  * 棄權比對 walkoverSide 與 0：2（公開場次沒有原因欄）。重置比對歸零與狀態。
+ * 取消只比對狀態。伺服器會清理原因字串，不比對原因內容。
  */
 export function outcomeMatches(intent: WriteIntent, match: MatchDoc): boolean {
   if (intent.kind === 'record') {
@@ -308,7 +309,7 @@ export function outcomeMatches(intent: WriteIntent, match: MatchDoc): boolean {
       && match.cancelledAt == null;
   }
   if (intent.kind === 'cancel') {
-    return match.status === 'cancelled' && match.cancelReason === intent.reason;
+    return match.status === 'cancelled';
   }
   if (intent.kickoffAt == null) {
     return intent.venueIdx == null

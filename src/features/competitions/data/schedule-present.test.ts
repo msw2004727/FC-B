@@ -188,10 +188,16 @@ describe('積分榜同分', () => {
     expect(showsScore(entry({ id: 'z', k: JAN9_AM, st: 'cancelled', s: [0, 0] }))).toBe(false);
     expect(showsScore(entry({ id: 'z2', k: JAN9_AM, st: 'cancelled', s: [1, 0] }))).toBe(true);
     const groups = groupSchedule([
-      entry({ id: 'off', k: JAN9_AM, st: 'cancelled', reason: '大雨，場地無法使用' }),
+      entry({ id: 'off', k: JAN9_AM, st: 'cancelled', cr: '大雨，場地無法使用' }),
     ], NOW_LIVE, LABELS);
     expect(groups[0]?.days[0]?.matches[0]?.reason).toBe('大雨，場地無法使用');
     expect(groups[0]?.days[0]?.matches[0]?.mark).toBe('cancelled');
+    expect(groupSchedule([
+      entry({ id: 'keep', k: JAN9_AM, st: 'scheduled', cr: '不顯示' }),
+    ], NOW_LIVE, LABELS)[0]?.days[0]?.matches[0]?.reason).toBeNull();
+    expect(groupSchedule([
+      entry({ id: 'blank', k: JAN9_AM, st: 'cancelled', cr: '   ' }),
+    ], NOW_LIVE, LABELS)[0]?.days[0]?.matches[0]?.reason).toBeNull();
   });
 
   it('第 1 名未裁定不寫冠軍名字；多組各算一位', () => {

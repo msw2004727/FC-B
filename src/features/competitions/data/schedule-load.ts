@@ -116,7 +116,7 @@ export async function loadScheduleDetail(
   return { competition, phase, divisions: [], crests, summary: [], standings, staff };
 }
 
-/** 賽程分頁的「全部賽程」與已結束展開。摘要片最多 CP_READ_LIMIT.summary。 */
+/** 賽程分頁的「全部賽程」與已結束展開。摘要片最多 CP_READ_LIMIT.summary。取消原因在條目的 cr，不另讀場次。 */
 export async function loadFullSchedule(repo: CompetitionsRepo, cid: string): Promise<SummaryEntry[]> {
   return repo.listSummary(cid);
 }
