@@ -10,6 +10,7 @@ import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import type { FeatureManifest } from '@/core/feature-types';
 import { _resetReloadSafetyForTest } from '@/core/reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from '@/core/submit-guard';
+import { _resetRouteLoadPendingForTest, isRouteLoadPending } from '@/core/route-load-pending';
 
 // 顧問 §3.260 演練前補測：chunk 載入失敗走到路由時的畫面與上報（D2 加一輪、②、④）。
 vi.mock('@/core/error-report', async (importOriginal) => ({
@@ -203,5 +204,90 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     expect(await toastCalls()).toBe(0);
     expect(container.querySelector('.error-fallback, [role="alert"]')).toBeNull();
     expect(attempts).toBe(1);
+  });
+});
+
+// 顧問 §3.263 甲：詳情頁只在路由載入中才放行自動重載。
+describe('App：路由載入中旗標與背景載入失敗', () => {
+  let attempts = 0;
+
+  function Home(): preact.JSX.Element {
+    return <a href="/events/e1" data-testid="go-detail">go</a>;
+  }
+
+  function manifestsWith(detailLoad: () => Promise<{ default: () => preact.JSX.Element }>): FeatureManifest[] {
+    return [
+      { id: 'home', status: 'enabled', routes: [{ path: '/', load: () => Promise.resolve({ default: Home }), titleKey: 'home.title' }], nav: [{ path: '/', labelKey: 'home.nav', icon: 'home', order: 0 }] },
+      { id: 'events', status: 'enabled', routes: [{ path: '/events/:id', load: detailLoad, titleKey: 'events.detail' }] },
+    ];
+  }
+
+  beforeEach(() => {
+    attempts = 0;
+    _resetForTest();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reported.mockClear();
+    sessionStorage.clear();
+    _resetRouteLoadPendingForTest();
+  });
+
+  afterEach(() => {
+    cleanup();
+    _resetSubmitGuardForTest();
+    _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('詳情頁已顯示後背景預載失敗：不 preventDefault、不寫時間戳、出中性提示（不整頁重載）', async () => {
+    registerFeatures(manifestsWith(() => Promise.resolve({ default: () => <p data-testid="detail">detail</p> })));
+    window.history.replaceState({}, '', '/events/e1');
+    const { findByTestId } = render(<App />);
+    expect(await findByTestId('detail')).toBeTruthy();
+    await waitFor(() => expect(isRouteLoadPending()).toBe(false));
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBeNull();
+    expect(prompt()?.dataset.mode).toBe('chunk');
+  });
+
+  it('路由 load 的計數在成功、失敗、換頁後才落定時都會清掉', async () => {
+    // 成功
+    registerFeatures(manifestsWith(() => Promise.resolve({ default: () => <p data-testid="detail">detail</p> })));
+    window.history.replaceState({}, '', '/events/e1');
+    const ok = render(<App />);
+    expect(await ok.findByTestId('detail')).toBeTruthy();
+    await waitFor(() => expect(isRouteLoadPending()).toBe(false));
+    ok.unmount();
+
+    // 失敗（60 秒窗內，不重載）
+    _resetForTest();
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+    registerFeatures(manifestsWith(() => {
+      attempts += 1;
+      return failingLoad();
+    }));
+    const bad = render(<App />);
+    await waitFor(() => expect(bad.container.querySelector('.error-fallback')).not.toBeNull());
+    expect(isRouteLoadPending()).toBe(false);
+    bad.unmount();
+
+    // 換頁：詳情 load 還在等時就回首頁，之後才落定
+    _resetForTest();
+    sessionStorage.clear();
+    let release: (() => void) | undefined;
+    registerFeatures(manifestsWith(() => new Promise((resolvePromise) => {
+      release = () => resolvePromise({ default: () => <p data-testid="detail">detail</p> });
+    })));
+    window.history.replaceState({}, '', '/');
+    const nav = render(<App />);
+    (await nav.findByTestId('go-detail')).click();
+    await waitFor(() => expect(isRouteLoadPending()).toBe(true));
+    window.history.back();
+    release?.();
+    await waitFor(() => expect(isRouteLoadPending()).toBe(false));
   });
 });

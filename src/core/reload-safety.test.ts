@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getByRole, queryByRole } from '@testing-library/preact';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -12,6 +12,7 @@ import {
   showSwReloadPrompt,
 } from './reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
+import { ROUTE_LOAD_PENDING_MAX_AGE_MS, _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
 
 // UPD-3P：提示框文字改走 t()，測試先載入 zh-TW 字典（測試同步更新）。
 beforeAll(async () => {
@@ -48,10 +49,15 @@ describe('reload-safety（M-052 新版本安全重載）', () => {
   });
 });
 
-describe('chunk 載入失敗路徑（顧問 §3.255 C′）', () => {
+describe('chunk 載入失敗路徑（顧問 §3.255 C′；以下皆在路由載入中）', () => {
+  beforeEach(() => {
+    beginRouteLoad();
+  });
+
   afterEach(() => {
     _resetReloadSafetyForTest();
     _resetSubmitGuardForTest();
+    _resetRouteLoadPendingForTest();
     document.body.innerHTML = '';
   });
 
@@ -133,6 +139,50 @@ describe('chunk 載入失敗路徑（顧問 §3.255 C′）', () => {
     expect(prompt.querySelector('[data-sw-reload-later]')).toBeNull();
     dismissForcedUpdatePrompt();
     expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+  });
+});
+
+describe('詳情頁只在路由載入中、且不是離線時放行（顧問 §3.263 甲）', () => {
+  afterEach(() => {
+    _resetRouteLoadPendingForTest();
+    vi.restoreAllMocks();
+  });
+
+  it('沒有路由在載入（背景預載或其他動態載入失敗）：不放行；安全頁與 SW 路徑不變', () => {
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'background-load' });
+    expect(canReloadAfterChunkFailure({ currentPath: '/' })).toEqual({ safe: true });
+    expect(evaluateReloadSafety({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'unsafe-page' });
+  });
+
+  it('路由載入中才放行；load 落定（成功或失敗都呼叫同一個 settled）之後立即不再放行', () => {
+    const settled = beginRouteLoad();
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: true });
+    settled();
+    settled();
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('background-load');
+  });
+
+  it('旗標殘留（load 超過時效沒落定）：背景失敗不放行', () => {
+    beginRouteLoad(Date.now() - ROUTE_LOAD_PENDING_MAX_AGE_MS - 1);
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).reason).toBe('background-load');
+  });
+
+  it('換頁：舊路由 load 落定不影響新路由載入中的判斷', () => {
+    const oldSettled = beginRouteLoad();
+    const newSettled = beginRouteLoad();
+    oldSettled();
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe).toBe(true);
+    newSettled();
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe).toBe(false);
+  });
+
+  it('navigator.onLine 為 false：路由載入中也不放行；為 true 照其他條件判斷；安全頁離線不受影響', () => {
+    beginRouteLoad();
+    const spy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: false, reason: 'offline' });
+    expect(canReloadAfterChunkFailure({ currentPath: '/' })).toEqual({ safe: true });
+    spy.mockReturnValue(true);
+    expect(canReloadAfterChunkFailure({ currentPath: '/events/e1' })).toEqual({ safe: true });
   });
 });
 

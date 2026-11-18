@@ -8,6 +8,7 @@
 
 import { t } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import { isRouteLoadPending } from './route-load-pending';
 import { isSubmitting } from './submit-guard';
 
 const SAFE_PATHS = new Set(['/', '/activities', '/teams', '/profile']);
@@ -96,8 +97,14 @@ export function evaluateReloadSafety(options: ReloadSafetyOptions = {}): ReloadS
       options.currentPath ??
       (typeof window !== 'undefined' ? window.location.pathname : '/');
     const cleanPath = rawPath.split('?')[0]?.split('#')[0] || '/';
-    if (!SAFE_PATHS.has(cleanPath) && !(options.chunkFailure && CHUNK_RELOAD_EXTRA_PATH.test(cleanPath))) {
-      return { safe: false, reason: 'unsafe-page' };
+    if (!SAFE_PATHS.has(cleanPath)) {
+      if (!(options.chunkFailure && CHUNK_RELOAD_EXTRA_PATH.test(cleanPath))) {
+        return { safe: false, reason: 'unsafe-page' };
+      }
+      // 活動詳情只在「路由正在載入」時放行：背景預載或其他動態載入失敗不整頁重載（顧問 §3.263 甲）。
+      if (!isRouteLoadPending()) return { safe: false, reason: 'background-load' };
+      // 只看 false 那一側：onLine 為 true 不代表真的有網路，但為 false 時重載多半落到瀏覽器離線頁。
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return { safe: false, reason: 'offline' };
     }
   }
 

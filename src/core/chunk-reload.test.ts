@@ -1,8 +1,9 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/i18n/i18n';
 import { RELOAD_AT_KEY, handleChunkLoadFailure, installChunkReloadGuard } from './chunk-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
+import { _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   const map = new Map<string, string>();
@@ -42,11 +43,31 @@ describe('handleChunkLoadFailure', () => {
   });
 });
 
-describe('顧問 §3.255 C′：不能自動重載時', () => {
+describe('顧問 §3.255 C′：不能自動重載時（以下在路由載入中）', () => {
+  beforeEach(() => {
+    beginRouteLoad();
+  });
+
   afterEach(() => {
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
     document.body.innerHTML = '';
+  });
+
+  it('路由載入中剛好遇到背景預載失敗：判斷不分來源，會重載一次（預期內，顧問 §3.263）；60 秒內不再重載', () => {
+    const storage = memoryStorage();
+    const reload = vi.fn();
+    const deps = {
+      storage,
+      now: () => 1_000_000,
+      reload,
+      canReload: () => canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe,
+      onBlocked: vi.fn(),
+    };
+    expect(handleChunkLoadFailure(deps)).toBe(true);
+    expect(handleChunkLoadFailure(deps)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('送出中不重載：不寫時間戳、回傳 false（不 preventDefault）、改呼叫 onBlocked', () => {
@@ -132,5 +153,48 @@ describe('installChunkReloadGuard', () => {
     expect(prompt?.textContent).toContain('載入失敗');
     expect(prompt?.textContent).toContain('重新載入');
     expect(prompt?.textContent).not.toContain('有新版本');
+  });
+});
+
+describe('背景載入失敗（沒有路由在載入；顧問 §3.263 甲）', () => {
+  afterEach(() => {
+    _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    vi.restoreAllMocks();
+  });
+
+  it('詳情頁背景預載失敗：不重載、不寫時間戳、回傳 false（不 preventDefault）、出中性提示', () => {
+    const storage = memoryStorage();
+    const reload = vi.fn();
+    const onBlocked = vi.fn();
+    expect(handleChunkLoadFailure({
+      storage,
+      now: () => 1_000_000,
+      reload,
+      canReload: () => canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe,
+      onBlocked,
+    })).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(storage.getItem(RELOAD_AT_KEY)).toBeNull();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
+
+  it('離線時路由載入失敗：不重載、不寫時間戳、出中性提示', () => {
+    const settled = beginRouteLoad();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const storage = memoryStorage();
+    const reload = vi.fn();
+    const onBlocked = vi.fn();
+    expect(handleChunkLoadFailure({
+      storage,
+      now: () => 1_000_000,
+      reload,
+      canReload: () => canReloadAfterChunkFailure({ currentPath: '/events/e1' }).safe,
+      onBlocked,
+    })).toBe(false);
+    settled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(storage.getItem(RELOAD_AT_KEY)).toBeNull();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
   });
 });

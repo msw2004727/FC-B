@@ -38,6 +38,7 @@ import {
   ROUTE_STEP_TIMEOUT,
   ROUTE_TIMEOUT_MS,
 } from '@/core/route-loading';
+import { beginRouteLoad } from '@/core/route-load-pending';
 import { applyRouteMeta } from '@/core/route-meta';
 import { initMultiTabGuard } from '@/core/multi-tab-guard';
 import {
@@ -110,15 +111,21 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
   // M-047：載入超過 10 秒照 A 提示「網路較慢…」，但不中斷下載（晚到仍會顯示，不把頁面卡在失敗）；
   // L-08：失敗時從快取移除以便重試。
   const wrappedLoad = (): ReturnType<FeatureRoute['load']> => {
+    // 顧問 §3.263：load 進行中才算「路由正在載入」；任何落定（成功、失敗、回 undefined）都移除。
+    const settled = beginRouteLoad();
     const timer = setTimeout(() => {
       toast.show({ message: getRouteFailureToast(routePath, { code: ROUTE_STEP_TIMEOUT }) });
     }, ROUTE_TIMEOUT_MS);
     const p = Promise.resolve().then(() => load());
     p.then(
-      () => clearTimeout(timer),
+      () => {
+        clearTimeout(timer);
+        settled();
+      },
       () => {
         clearTimeout(timer);
         lazyCache.delete(load);
+        settled();
       },
     );
     // preact-iso 的 lazy 在 load 被拒絕時不會重繪、也不會把錯誤丟給錯誤邊界，主內容會一直空白。
