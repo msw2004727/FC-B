@@ -3,12 +3,15 @@
 import { defineConfig, mergeConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 import base from './vite.harness.config';
+import { legacyCssScope } from '../scripts/legacy-css-scope.mjs';
 
 export default mergeConfig(base, defineConfig({
   base: './',
+  // 與正式 build 相同：舊站 A 的 CSS 限定到 .legacy-ui（列表 v2 用正式賽事頁樣式）
+  css: { postcss: { plugins: [legacyCssScope()] } },
   build: {
     outDir: 'dist-cp-step3-harness',
     emptyOutDir: true,
-    rollupOptions: { input: fileURLToPath(new URL('./cp-step3.html', import.meta.url)) },
+    rollupOptions: { input: { main: fileURLToPath(new URL('./cp-step3.html', import.meta.url)), list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)) } },
   },
 }));

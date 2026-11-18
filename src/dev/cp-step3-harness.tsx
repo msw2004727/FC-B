@@ -171,6 +171,27 @@ function TrophyIcon(): JSX.Element {
   return (<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" /></svg>);
 }
 
+// ── 隊徽：圓形；沒上傳時用隊名第一個字＋固定色（依隊伍 id 雜湊，同隊永遠同色）──
+const CREST_COLORS = ['#0f766e', '#0e7490', '#7c2d12', '#9f1239', '#475569', '#3f6212', '#57534e', '#334155'];
+const HAS_LOGO = new Set(['海風隊', '山貓隊']);
+function crestColor(name: string): string {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  return CREST_COLORS[h % CREST_COLORS.length] ?? '#475569';
+}
+function logoUrl(name: string): string {
+  const hue = name === '海風隊' ? 200 : 30;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="hsl(${hue},60%,40%)"/><path d="M32 10l18 8v14c0 11-8 18-18 22-10-4-18-11-18-22V18z" fill="#fff" opacity=".9"/><path d="M32 18l10 4v9c0 6-4 10-10 13-6-3-10-7-10-13v-9z" fill="hsl(${hue},60%,40%)"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+function Crest({ name, size = 24 }: { name: string; size?: number }): JSX.Element {
+  const style = `width:${size}px;height:${size}px`;
+  if (HAS_LOGO.has(name)) return <img class="cp3-crest" src={logoUrl(name)} alt="" style={style} />;
+  const ch = [...name][0] ?? '?';
+  return <span class="cp3-crest cp3-crest--txt" aria-hidden="true" style={`${style};background:${crestColor(name)};font-size:${Math.round(size * 0.48)}px`}>{ch}</span>;
+}
+let SHOW_CREST = false;
+
 function Top({ title }: { title: string }): JSX.Element {
   return (
     <header class="cps-top">
@@ -230,9 +251,9 @@ function MatchRow({ m, host }: { m: M; host?: boolean }): JSX.Element {
           : (host ? hostBadge(m) : publicBadge(m))}
       </div>
       <div class="cp3-m__vs">
-        <span class="h">{m.h}</span>
+        <span class="h">{SHOW_CREST ? <span class="cp3-tn cp3-tn--h"><em>{m.h}</em><Crest name={m.h} size={22} /></span> : m.h}</span>
         {hasScore ? <span class="s">{m.hs}：{m.as}</span> : <span class="s vs">vs</span>}
-        <span class="a">{m.a}</span>
+        <span class="a">{SHOW_CREST ? <span class="cp3-tn"><Crest name={m.a} size={22} /><em>{m.a}</em></span> : m.a}</span>
       </div>
       {host && (m.st === 'sched' || m.st === 'moved') && (
         <div class="cp3-m__act">
@@ -281,7 +302,7 @@ function Standings({ rows }: { rows: Row[] }): JSX.Element {
         return (
           <div key={r.n} class={`cp3-st__r${i === 0 ? ' cp3-st__r--top' : ''}`}>
             <span class="rk">{rank(i)}{r.tie && <small>{T.tie()}</small>}</span>
-            <span class="t">{r.n}</span>
+            <span class="t">{SHOW_CREST ? <span class="cp3-tn"><Crest name={r.n} size={20} /><em>{r.n}</em></span> : r.n}</span>
             <span>{r.p}</span><span>{r.w}</span><span>{r.d}</span><span>{r.l}</span>
             <span>{r.gf}/{r.ga}</span>
             <span>{diff > 0 ? `+${diff}` : diff}</span>
@@ -602,6 +623,51 @@ function RescheduleSheet({ tbd }: { tbd: boolean }): JSX.Element {
   );
 }
 
+
+// ── 封面＋隊徽（站長 2026-11-18 追加）─────────────────────────────────────
+function coverPhoto(): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(150,45%,62%)"/><stop offset="1" stop-color="hsl(150,55%,30%)"/></linearGradient></defs><rect width="800" height="300" fill="url(#g)"/><g fill="none" stroke="rgba(255,255,255,.55)" stroke-width="4"><rect x="40" y="150" width="720" height="140"/><line x1="400" y1="150" x2="400" y2="290"/><circle cx="400" cy="220" r="40"/></g><circle cx="640" cy="80" r="34" fill="rgba(255,255,255,.75)"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+function DetailCover({ custom, tab }: { custom?: boolean; tab: 'sched' | 'stand' }): JSX.Element {
+  return (
+    <Frame title="示範盃五人制足球賽">
+      <div class="cp3-cover">
+        {custom ? <img src={coverPhoto()} alt="" /> : <div class="cp3-cover__def cp3-cover__def--league" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7l4 3-1.5 4.5h-5L8 10z" /><path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" /></svg></div>}
+        <span class="cp3-cover__cat">聯賽</span>
+      </div>
+      <Card>
+        <div class="cp3-strip">
+          <span class="cp3-strip__txt">{T.today(3, '14:30')}</span>
+          <StatusBadge s="live" />
+        </div>
+      </Card>
+      <DetailTabs days={DAYS_LIVE} value={tab} />
+    </Frame>
+  );
+}
+function CrestSheet(): JSX.Element {
+  const names = ['海風隊', '山貓隊', '青鳥隊', '赤焰隊', '銀河隊', '雷霆隊', '晨星隊', '飛燕隊', '示範市立第一高級中學足球隊'];
+  return (
+    <Frame title="隊徽與沒有隊徽時">
+      <Card>
+        <p class="cp3-sec-h">有上傳隊徽（圓形裁切）</p>
+        <div class="cp3-crest-row">{names.slice(0, 2).map((n) => <span key={n} class="cp3-crest-cell"><Crest name={n} size={48} /><small>{n}</small></span>)}</div>
+      </Card>
+      <Card>
+        <p class="cp3-sec-h">沒有隊徽：隊名第一個字＋固定底色</p>
+        <div class="cp3-crest-row">{names.slice(2).map((n) => <span key={n} class="cp3-crest-cell"><Crest name={n} size={48} /><small>{n}</small></span>)}</div>
+      </Card>
+      <Card>
+        <p class="cp3-sec-h">各處尺寸</p>
+        <div class="cp3-crest-row">
+          {[64, 48, 32, 22, 20].map((z) => <span key={z} class="cp3-crest-cell"><Crest name="青鳥隊" size={z} /><small>{z}px</small></span>)}
+        </div>
+      </Card>
+    </Frame>
+  );
+}
+
 // ── 畫面路由 ────────────────────────────────────────────────────────────
 function Screen(): JSX.Element {
   switch (screenName) {
@@ -620,6 +686,9 @@ function Screen(): JSX.Element {
     case 'reset-dialog': return <ResetDialog />;
     case 'reschedule': return <RescheduleSheet tbd={false} />;
     case 'reschedule-tbd': return <RescheduleSheet tbd />;
+    case 'cover-live': SHOW_CREST = true; return <DetailCover custom tab="sched" />;
+    case 'cover-default': SHOW_CREST = true; return <DetailCover tab="stand" />;
+    case 'crest-sheet': return <CrestSheet />;
     default: return <ListScreen />;
   }
 }
