@@ -408,6 +408,15 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, hostActor, manageBundle(), { manageTab: 'pending' });
     case 'host-approved':
       return base(actions, hostActor, manageBundle(), { manageTab: 'approved' });
+    case 'host-approved-personal': {
+      // 個人主辦：沒有報名費、繳費標籤、標示已繳費（顧問 §3.257）
+      const b = manageBundle();
+      return base(actions, hostActor, { ...b, competition: competition({ hostType: 'personal', hostTeamId: null }) }, { manageTab: 'approved' });
+    }
+    case 'detail-personal': {
+      const b = detailBundle();
+      return base(actions, memberActor, { ...b, competition: competition({ hostType: 'personal', hostTeamId: null, feeNote: null }) });
+    }
     case 'host-rejected':
       return base(actions, hostActor, manageBundle(), { manageTab: 'rejected' });
     case 'host-reject':

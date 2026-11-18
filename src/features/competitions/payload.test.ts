@@ -47,7 +47,8 @@ describe('送出欄位只含契約的鍵', () => {
     expect(input.liveLinks).toEqual([]);
     expect(input.venues[0]).toEqual({ name: '示範球場', mapPlaceId: 'place_demo', mapProvider: 'google' });
     expect(input.divisions[0]).not.toHaveProperty('minAge');
-    expect(input.divisions[0]?.feePerTeam).toBe(1500);
+    // 報名費只限俱樂部主辦（顧問 §3.257）：個人主辦一律送 0
+    expect(input.divisions[0]?.feePerTeam).toBe(0);
     expect(input.divisions[1]?.feePerTeam).toBe(0);
     expect(input.divisions[1]?.minAge).toBe(8);
   });
@@ -56,6 +57,7 @@ describe('送出欄位只含契約的鍵', () => {
     const input = buildCreateInput({ ...draft, hostType: 'club', hostDisplay: '不該出現' });
     expect(input).toMatchObject({ hostType: 'club', hostTeamId: 'club_host', feeNote: draft.feeNote });
     expect(input).not.toHaveProperty('hostDisplay');
+    expect(input.divisions[0]?.feePerTeam).toBe(1500);
   });
 
   it('自己登錄：成年送暱稱，未成年送真名與監護人同意，都不送 publicName', () => {

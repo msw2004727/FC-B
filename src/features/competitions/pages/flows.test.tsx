@@ -200,6 +200,19 @@ describe('賽事第 2 步畫面', () => {
     expect(screen.getByRole('menuitem', { name: '檢舉' })).toBeTruthy();
   });
 
+  it('報名費只限俱樂部主辦（顧問 §3.257）：個人主辦不顯示費用欄、線上支付鈕、繳費標籤與開關', () => {
+    const wizard = mount(NewCompetitionPage, screenEnv('wizard-2'));
+    expect(wizard.container.textContent ?? '').not.toContain('每隊報名費');
+    cleanup();
+    mount(CompetitionDetailPage, { ...screenEnv('detail-personal') });
+    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    cleanup();
+    mount(CompetitionManagePage, { ...screenEnv('host-approved-personal') });
+    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    expect(screen.queryAllByRole('switch', { name: '標示已繳費' })).toHaveLength(0);
+    expect(document.body.textContent ?? '').not.toMatch(/未繳費|已繳費/);
+  });
+
   it('線上支付鈕沒有行為；標示已繳費才呼叫 setPaymentStatus', async () => {
     const actions = spyActions();
     mount(CompetitionManagePage, { ...screenEnv('host-approved', actions) });

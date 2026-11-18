@@ -494,18 +494,21 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   checked={division.requireRealName}
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
-                <Input
-                  label={ct('feePerTeam')}
-                  type="number"
-                  value={String(division.feePerTeam)}
-                  min={0}
-                  max={1000000}
-                  onValueChange={(raw) => {
-                    const parsed = Number(raw);
-                    const feePerTeam = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.trunc(parsed))) : 0;
-                    patchDivision(index, { feePerTeam });
-                  }}
-                />
+                {/* 報名費只限俱樂部主辦（顧問 §3.257，站長親口）：個人主辦不顯示費用欄 */}
+                {form.hostType === 'club' ? (
+                  <Input
+                    label={ct('feePerTeam')}
+                    type="number"
+                    value={String(division.feePerTeam)}
+                    min={0}
+                    max={1000000}
+                    onValueChange={(raw) => {
+                      const parsed = Number(raw);
+                      const feePerTeam = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.trunc(parsed))) : 0;
+                      patchDivision(index, { feePerTeam });
+                    }}
+                  />
+                ) : null}
               </div>
             </CpCard>
           ))}
@@ -556,7 +559,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                         {division.limitAge ? `　${ct('ageLimit', { min: division.minAge, max: division.maxAge })}` : ''}
                       </span>
                     </div>
-                    <FeeLine amount={division.feePerTeam} />
+                    {form.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
                   </div>
                 </li>
               ))}

@@ -102,7 +102,8 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
       : { ...common, hostType: 'club', hostTeamId: draft.hostTeamId };
   }
   // 個人主辦不送 hostDisplay。後端用主站顯示名，並自己處理長度與禁用字。
-  return { ...common, hostType: 'personal' };
+  // 報名費只限俱樂部主辦（顧問 §3.257）：個人主辦一律送 0
+  return { ...common, hostType: 'personal', divisions: common.divisions.map((d) => ({ ...d, feePerTeam: 0 })) };
 }
 
 function positionFields(choice: PositionChoice, positionText: string): {

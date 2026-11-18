@@ -331,12 +331,13 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
-            {division ? <FeeLine amount={division.feePerTeam} /> : null}
+            {/* 報名費、繳費標籤、標示已繳費只限俱樂部主辦（顧問 §3.257） */}
+            {division && competition?.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
             <div class="cps-kv">
               <span>{ct('rosterPeople')}</span>
               <span>{ct('rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
             </div>
-            {manage ? (
+            {manage && competition?.hostType === 'club' ? (
               <div class="cps-pay">
                 <Badge tone={pay.tone} label={pay.label} size="sm" />
                 <Switch

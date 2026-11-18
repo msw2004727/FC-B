@@ -167,6 +167,8 @@
     "BANNED_WORD": "名稱包含不允許的字詞",
     "HOST_QUOTA_ACTIVE": "進行中的賽事已達上限",
     "HOST_QUOTA_30D": "30 天內建立的賽事已達上限",
+    "FEE_NOT_ALLOWED": "只有俱樂部主辦可以設定報名費",
+    "PAYMENT_NOT_ALLOWED": "只有俱樂部主辦的賽事有繳費狀態",
     "CLUB_QUOTA_ACTIVE": "這個俱樂部進行中的賽事已達上限",
     "REG_NOT_OPEN": "報名尚未開始",
     "REG_CLOSED": "報名已截止",

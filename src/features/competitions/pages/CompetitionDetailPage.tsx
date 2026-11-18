@@ -410,7 +410,8 @@ function DivisionBlock({
         <Badge tone={statusBadge(ct, competition, now).tone} label={statusBadge(ct, competition, now).label} size="sm" />
       </div>
       <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
-      <FeeLine amount={division.feePerTeam} />
+      {/* 報名費與停用的線上支付鈕只限俱樂部主辦（顧問 §3.257） */}
+      {competition.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
       <div class="cps-bar" aria-hidden="true"><i style={`width:${width}%`} /></div>
       <p class="cps-cap" style="margin-bottom:8px">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
       <ul class="cps-list">
