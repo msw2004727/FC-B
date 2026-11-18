@@ -72,9 +72,12 @@ export interface CompetitionsRepo {
   listStandings(cid: string): Promise<StandingDoc[]>;
   /**
    * 隊徽用的報名。同一 repo 實例、同一個 cid 只打一次網路（含空結果）。
+   * 只查 status == approved，上限仍是 CP_READ_LIMIT.crest。
    * 失敗不記住，下次可以重試。不得改成即時監聽。
    */
   listEntriesForCrest(cid: string): Promise<EntryDoc[]>;
+  /** 清掉這個賽事的隊徽快取。下次 listEntriesForCrest 會再查。 */
+  invalidateCrests(cid: string): void;
 }
 
 interface DocSnap {
@@ -449,6 +452,12 @@ function compareSummary(a: SummaryEntry, b: SummaryEntry): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** tiedWith 只留非空字串。不是陣列、或混進數字與空字串，都丟掉。 */
+function tiedWithOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
 /** 只讀引擎 StandingRow 的真實欄位。短名（w、d、l、gf、ga、gd、pts、p、n）與文件 id 不算。 */
 function standingRowOf(value: unknown): StandingRow | null {
   if (!isRecord(value)) return null;
@@ -466,6 +475,8 @@ function standingRowOf(value: unknown): StandingRow | null {
     goalDiff: num(value.goalDiff) ?? 0,
     points: num(value.points) ?? 0,
     rank: num(value.rank) ?? 0,
+    hasUnresolvedTie: value.hasUnresolvedTie === true,
+    tiedWith: tiedWithOf(value.tiedWith),
   };
 }
 
@@ -491,6 +502,7 @@ export function standingFromDoc(id: string, raw: Record<string, unknown>): Stand
   const rows = Array.isArray(raw.rows)
     ? raw.rows.map((row) => standingRowOf(row)).filter((row): row is StandingRow => row != null)
     : [];
+  const divisionName = str(raw.divisionName)?.trim() ?? '';
   return {
     id,
     divisionId,
@@ -498,6 +510,7 @@ export function standingFromDoc(id: string, raw: Record<string, unknown>): Stand
     rows,
     version: num(raw.version) ?? 0,
     hasUnresolvedTie: bool(raw.hasUnresolvedTie) ?? false,
+    ...(divisionName ? { divisionName } : {}),
     manualOverride: manualOverrideEnabled(raw.manualOverride),
     updatedAt: optNum(raw.updatedAt),
   };
@@ -724,6 +737,7 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         const { db, sdk } = await ready();
         const snap = await sdk.getDocs(sdk.query(
           sdk.collection(db, `competitions/${cid}/entries`),
+          sdk.where('status', '==', 'approved'),
           sdk.limit(CP_READ_LIMIT.crest),
         ));
         return snap.docs
@@ -737,6 +751,10 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         crestCache.delete(cid);
         throw err;
       }
+    },
+
+    invalidateCrests(cid) {
+      crestCache.delete(cid);
     },
   };
 }

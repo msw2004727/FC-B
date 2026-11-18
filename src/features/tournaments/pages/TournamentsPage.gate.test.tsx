@@ -24,6 +24,7 @@ vi.mock('@/feature-overrides', () => ({
 const slot = vi.hoisted(() => ({
   open: true,
   mounts: 0,
+  holdGate: false,
 }));
 
 vi.mock('@/features/competitions/components/InAppSection', async () => {
@@ -33,7 +34,7 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
     InAppSection: (props: { tab: string; active: boolean; onGate?: (open: boolean) => void }) => {
       useEffect(() => {
         slot.mounts += 1;
-        props.onGate?.(slot.open);
+        if (!slot.holdGate) props.onGate?.(slot.open);
       }, [props.onGate]);
       if (!slot.open) return null;
       return h('div', {
@@ -113,6 +114,7 @@ beforeEach(() => {
   resetCardsCacheForTest();
   slot.open = true;
   slot.mounts = 0;
+  slot.holdGate = false;
   history.replaceState(null, '', '/tournaments');
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
@@ -226,5 +228,33 @@ describe('開關打開時的來源與讀取', () => {
     expect(root?.textContent ?? '').not.toContain('站內賽事');
     expect(document.querySelector('.tc-chip')?.className).toBe('tc-chip');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('閘門判定中不先畫外部清單，改顯示載入骨架', async () => {
+    slot.holdGate = true;
+    draw();
+    await waitFor(() => expect(slot.mounts).toBe(1));
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(screen.queryByText('週末友誼賽')).toBeNull();
+    expect(document.querySelector('.cpl-src')).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(document.querySelector('.reg-loading-skeleton')).toBeTruthy();
+  });
+
+  it('來源切換有 aria-controls，左右鍵切換', async () => {
+    draw();
+    const inbound = await screen.findByRole('tab', { name: '站內賽事' });
+    const outbound = screen.getByRole('tab', { name: '外部賽事' });
+    expect(inbound.getAttribute('aria-controls')).toBe('tournaments-source-panel');
+    expect(outbound.getAttribute('aria-controls')).toBe('tournaments-source-panel');
+    expect(document.getElementById('tournaments-source-panel')).toBeTruthy();
+    expect(document.querySelector('.cpl-src')?.getAttribute('aria-label')).toBe('賽事來源');
+    inbound.focus();
+    fireEvent.keyDown(inbound, { key: 'ArrowRight' });
+    expect(outbound.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '外部賽事' }), { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
   });
 });

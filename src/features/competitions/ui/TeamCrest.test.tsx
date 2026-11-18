@@ -1,7 +1,11 @@
 import { fireEvent, render } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
+import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { crestIndex } from '../data/present';
-import { CREST_SIZES, TeamCrest } from './TeamCrest';
+import { CREST_SIZES, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
+
+const BUCKET = FIREBASE_CONFIG.storageBucket;
+const STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/crests%2Fa.png?alt=media&token=t`;
 
 describe('TeamCrest', () => {
   it('沒有網址時用首字與隊 id 的底色', () => {
@@ -22,12 +26,12 @@ describe('TeamCrest', () => {
     expect(classOf(first.container)).toContain(`cp3-crest--c${crestIndex('club_same')}`);
   });
 
-  it('有網址時用 lazy 圖片；載入失敗退回首字', () => {
-    const view = render(<TeamCrest teamId="club_wind" name="海風隊" teamLogo="#crest" size={48} />);
+  it('本專案 Storage 網址用 lazy 圖片；載入失敗退回首字', () => {
+    const view = render(<TeamCrest teamId="club_wind" name="海風隊" teamLogo={STORAGE_URL} size={48} />);
     const img = view.container.querySelector('img');
     expect(img?.getAttribute('loading')).toBe('lazy');
     expect(img?.getAttribute('alt')).toBe('');
-    expect(img?.getAttribute('src')).toBe('#crest');
+    expect(img?.getAttribute('src')).toBe(STORAGE_URL);
     if (!img) throw new Error('缺圖片');
     fireEvent.error(img);
     expect(view.container.querySelector('img')).toBeNull();
@@ -35,6 +39,26 @@ describe('TeamCrest', () => {
     expect(mark?.textContent).toBe('海');
     expect(mark?.className).toContain(`cp3-crest--c${crestIndex('club_wind')}`);
     expect(mark?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:48px');
+  });
+
+  it('其他網址直接用首字底色，不畫圖片', () => {
+    const foreign = [
+      '#crest',
+      'https://example.com/a.png',
+      'http://firebasestorage.googleapis.com/v0/b/' + BUCKET + '/o/a.png',
+      'https://firebasestorage.googleapis.com/v0/b/other-bucket/o/a.png',
+      'https://firebasestorage.googleapis.com.evil/v0/b/' + BUCKET + '/o/a.png',
+      'https://user:pw@firebasestorage.googleapis.com/v0/b/' + BUCKET + '/o/a.png',
+      'https://firebasestorage.googleapis.com:8443/v0/b/' + BUCKET + '/o/a.png',
+    ];
+    for (const url of foreign) {
+      expect(isProjectStorageDownloadUrl(url)).toBe(false);
+      const view = render(<TeamCrest teamId="club_wind" name="海風隊" teamLogo={url} size={32} />);
+      expect(view.container.querySelector('img')).toBeNull();
+      expect(view.container.querySelector('.cp3-crest')?.textContent).toBe('海');
+      view.unmount();
+    }
+    expect(isProjectStorageDownloadUrl(STORAGE_URL)).toBe(true);
   });
 
   it('五種尺寸都畫得出圓形框', () => {

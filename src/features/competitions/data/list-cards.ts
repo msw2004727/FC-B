@@ -96,18 +96,19 @@ function taipeiClock(ms: number): string {
 
 /**
  * 當日摘要片 → 今天場數與下一場。
- * N 是這一片的場次數。空片回 null（卡片留空）。
- * 下一場是還沒開始（時間 ≥ now、狀態 scheduled）的最早一場，台北 HH:MM。
+ * N 是這一片裡還沒取消的場次數。空片、或整片都是已取消，回 null（卡片留空）。
+ * 下一場只看 st === 'scheduled' 且時間 ≥ now 的最早一場，台北 HH:MM。改期不算。
  * 有場次但沒有下一場時 time 是 null，呼叫端只寫場數。
  */
 export function todayFromShard(entries: readonly SummaryEntry[], now: number): TodayMatches | null {
-  if (entries.length === 0) return null;
+  const active = entries.filter((entry) => entry.st !== 'cancelled');
+  if (active.length === 0) return null;
   let nextAt: number | null = null;
-  for (const entry of entries) {
+  for (const entry of active) {
     if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
     if (nextAt == null || entry.k < nextAt) nextAt = entry.k;
   }
-  return { count: entries.length, time: nextAt == null ? null : taipeiClock(nextAt) };
+  return { count: active.length, time: nextAt == null ? null : taipeiClock(nextAt) };
 }
 
 export function statusLineFor(

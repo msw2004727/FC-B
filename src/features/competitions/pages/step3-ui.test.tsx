@@ -19,7 +19,7 @@ import {
   memberActor,
   screenEnv,
 } from '../testing/screen-fixtures';
-import CompetitionDetailPage from './CompetitionDetailPage';
+import CompetitionDetailPage, { FOREGROUND_RELOAD_MIN_MS } from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
 import NewCompetitionPage from './NewCompetitionPage';
 import RosterPage from './RosterPage';
@@ -72,14 +72,17 @@ function standings(hasUnresolvedTie: boolean): StandingDoc {
       {
         teamId: 'club_wind', name: '海風隊', played: 4, win: 3, draw: 1, loss: 0,
         goalsFor: 10, goalsAgainst: 3, goalDiff: 7, points: 10, rank: 1,
+        hasUnresolvedTie: false, tiedWith: [],
       },
       {
         teamId: 'club_b', name: '銀河隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 5, goalsAgainst: 5, goalDiff: 0, points: 5, rank: 5,
+        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_c'] : [],
       },
       {
         teamId: 'club_c', name: '一二三四五六七八九十示範隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 4, goalsAgainst: 8, goalDiff: -4, points: 5, rank: 6,
+        hasUnresolvedTie, tiedWith: hasUnresolvedTie ? ['club_b'] : [],
       },
     ],
   };
@@ -192,6 +195,7 @@ describe('詳情四狀態', () => {
     expect([...ties].map((node) => node.textContent)).toEqual(['同分', '同分']);
     expect(view.container.textContent ?? '').toContain('5同分');
     expect(view.container.textContent ?? '').not.toContain('6同分');
+    expect(view.container.textContent ?? '').not.toContain('組別 1');
     const fold = screen.getByRole('button', { name: '賽程' });
     expect(fold.getAttribute('aria-expanded')).toBe('false');
     expect(view.container.textContent ?? '').not.toContain('18:00');
@@ -200,6 +204,85 @@ describe('詳情四狀態', () => {
     expect(screen.getByRole('button', { name: '賽程（1 場）' })).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('18:00　1號場');
     expect(view.container.textContent ?? '').toContain('1：0');
+  });
+
+  it('多組冠軍各列一位；第 1 名未裁定不寫隊名', () => {
+    const env = screenEnv('detail-rep');
+    const bundle = env.bundle;
+    if (!bundle?.competition) throw new Error('缺詳情');
+    const named = standings(false);
+    named.divisionName = '公開組';
+    const pending: StandingDoc = {
+      id: 'dv_u12__group__A',
+      divisionId: 'dv_u12',
+      groupId: 'A',
+      version: 1,
+      hasUnresolvedTie: true,
+      manualOverride: false,
+      updatedAt: null,
+      rows: [
+        {
+          teamId: 'club_b', name: '銀河隊', played: 4, win: 1, draw: 2, loss: 1,
+          goalsFor: 5, goalsAgainst: 5, goalDiff: 0, points: 5, rank: 1,
+          hasUnresolvedTie: true, tiedWith: ['club_c'],
+        },
+        {
+          teamId: 'club_c', name: '山貓隊', played: 4, win: 1, draw: 2, loss: 1,
+          goalsFor: 4, goalsAgainst: 8, goalDiff: -4, points: 5, rank: 2,
+          hasUnresolvedTie: true, tiedWith: ['club_b'],
+        },
+      ],
+    };
+    const view = draw({
+      ...env,
+      now: taipeiMs(2027, 1, 11, 12, 0),
+      bundle: { ...bundle, competition: competition(), entries: [...bundle.entries, ...crestRows] },
+      schedule: { summary: [], standings: [named, pending] },
+    }, CompetitionDetailPage);
+    expect([...view.container.querySelectorAll('.cp3-champ__v')].map((node) => node.textContent)).toEqual([
+      '公開組　海風隊',
+      '組別 2　冠軍待主辦裁定',
+    ]);
+    const headings = [...view.container.querySelectorAll('h3.cp3-day')].map((node) => node.textContent);
+    expect(headings).toEqual(['公開組', '組別 2']);
+  });
+
+  it('已結束展開失敗就收合，並顯示讀取失敗與重試', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      entries: { cup: crestRows },
+      standings: { cup: [standings(false)] },
+      summary: {
+        cup: [{ id: 'all', entries: [summary({ id: 'final', k: LAST_MATCH, st: 'confirmed', s: [1, 0] })] }],
+      },
+    });
+    const orig = repo.listSummary.bind(repo);
+    let fail = true;
+    repo.listSummary = async (cid) => {
+      if (fail) throw new Error('讀取失敗');
+      return orig(cid);
+    };
+    const view = draw({
+      actor: memberActor,
+      repo,
+      actions: idleActions(),
+      now: taipeiMs(2027, 1, 11, 12, 0),
+      route: { cid: 'cup' },
+    }, CompetitionDetailPage);
+    const fold = await screen.findByRole('button', { name: '賽程' });
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(fold);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('讀取失敗')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    expect(view.container.textContent ?? '').not.toContain('18:00');
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    expect(await screen.findByRole('button', { name: '賽程（1 場）' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '賽程（1 場）' }).getAttribute('aria-expanded')).toBe('true');
+    expect(view.container.textContent ?? '').toContain('18:00');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 
@@ -254,53 +337,101 @@ describe('回前景重讀', () => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => value });
   }
 
-  it('隱藏不重讀；回到前景重讀摘要，隊徽仍用頁內快取', async () => {
-    const repo = createFakeCpRepo({
-      competitions: [competition({ id: 'cup' })],
-      divisions: { cup: [adultDivision] },
-      entries: { cup: crestRows },
-      summary: {
-        cup: [{ id: summaryShardIdOf(FIRST_MATCH), entries: [summary({ id: 'm1', k: FIRST_MATCH, st: 'scheduled' })] }],
-      },
-    });
-    const view = draw({
-      actor: memberActor,
-      repo,
-      actions: idleActions(),
-      now: taipeiMs(2026, 12, 21, 12, 0),
-      route: { cid: 'cup' },
-    }, CompetitionDetailPage);
-    expect(await screen.findByText('距開賽 19 天')).toBeTruthy();
-    expect(repo.calls()).toEqual([
-      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard',
-    ]);
-    expect(repo.readCount()).toBeLessThanOrEqual(39);
-    expect(repo.calls()).not.toContain('listSummary');
-    expect(repo.calls()).not.toContain('listMatches');
-    expect(repo.calls()).not.toContain('listEntries');
+  it('60 秒內重回前景不讀；滿 60 秒才重讀摘要，隊徽仍用頁內快取', async () => {
+    const base = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base);
+    try {
+      const repo = createFakeCpRepo({
+        competitions: [competition({ id: 'cup' })],
+        divisions: { cup: [adultDivision] },
+        entries: { cup: crestRows },
+        summary: {
+          cup: [{ id: summaryShardIdOf(FIRST_MATCH), entries: [summary({ id: 'm1', k: FIRST_MATCH, st: 'scheduled' })] }],
+        },
+      });
+      const view = draw({
+        actor: memberActor,
+        repo,
+        actions: idleActions(),
+        now: taipeiMs(2026, 12, 21, 12, 0),
+        route: { cid: 'cup' },
+      }, CompetitionDetailPage);
+      expect(await screen.findByText('距開賽 19 天')).toBeTruthy();
+      expect(repo.calls()).toEqual([
+        'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard',
+      ]);
+      expect(repo.readCount()).toBeLessThanOrEqual(39);
+      expect(repo.calls()).not.toContain('listSummary');
+      expect(repo.calls()).not.toContain('listMatches');
+      expect(repo.calls()).not.toContain('listEntries');
 
-    setVisibility('hidden');
-    document.dispatchEvent(new Event('visibilitychange'));
-    const quiet = new Event('pageshow');
-    window.dispatchEvent(quiet);
-    await Promise.resolve();
-    expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
-    expect(repo.calls()).not.toContain('listSummary');
+      setVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('pageshow'));
+      await Promise.resolve();
+      expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
 
-    setVisibility('visible');
-    document.dispatchEvent(new Event('visibilitychange'));
-    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2));
-    expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
-    expect(repo.calls()).not.toContain('listSummary');
-    expect(repo.calls()).not.toContain('listMatches');
-    expect(repo.calls()).not.toContain('listEntries');
+      setVisibility('visible');
+      nowSpy.mockReturnValue(base + FOREGROUND_RELOAD_MIN_MS - 1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      const early = new Event('pageshow');
+      Object.defineProperty(early, 'persisted', { value: true });
+      window.dispatchEvent(early);
+      await Promise.resolve();
+      expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
+      expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
 
-    const back = new Event('pageshow');
-    Object.defineProperty(back, 'persisted', { value: true });
-    window.dispatchEvent(back);
-    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(3));
-    expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
-    expect(repo.calls()).not.toContain('listSummary');
-    expect(view.container.textContent ?? '').toContain('海風隊');
+      nowSpy.mockReturnValue(base + FOREGROUND_RELOAD_MIN_MS);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2));
+      expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
+      expect(repo.calls()).not.toContain('listSummary');
+      expect(repo.calls()).not.toContain('listMatches');
+      expect(repo.calls()).not.toContain('listEntries');
+
+      nowSpy.mockReturnValue(base + FOREGROUND_RELOAD_MIN_MS * 2);
+      const back = new Event('pageshow');
+      Object.defineProperty(back, 'persisted', { value: true });
+      window.dispatchEvent(back);
+      await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(3));
+      expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
+      expect(repo.calls()).not.toContain('listSummary');
+      expect(view.container.textContent ?? '').toContain('海風隊');
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('已結束重回前景不讀', async () => {
+    const base = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base);
+    try {
+      const repo = createFakeCpRepo({
+        competitions: [competition({ id: 'cup' })],
+        entries: { cup: crestRows },
+        standings: { cup: [standings(false)] },
+      });
+      draw({
+        actor: memberActor,
+        repo,
+        actions: idleActions(),
+        now: taipeiMs(2027, 1, 11, 12, 0),
+        route: { cid: 'cup' },
+      }, CompetitionDetailPage);
+      expect(await screen.findByText('已結束')).toBeTruthy();
+      const before = [...repo.calls()];
+      setVisibility('visible');
+      nowSpy.mockReturnValue(base + FOREGROUND_RELOAD_MIN_MS * 3);
+      document.dispatchEvent(new Event('visibilitychange'));
+      const back = new Event('pageshow');
+      Object.defineProperty(back, 'persisted', { value: true });
+      window.dispatchEvent(back);
+      await Promise.resolve();
+      expect(repo.calls()).toEqual(before);
+      expect(repo.calls()).not.toContain('getSummaryShard');
+      expect(repo.calls()).not.toContain('listSummary');
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

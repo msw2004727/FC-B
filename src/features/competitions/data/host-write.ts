@@ -4,7 +4,6 @@
 import { fromDatetimeLocalValue, taipeiParts } from '../format';
 import type { CpGenerateScheduleResult, CpScheduleDay } from './cp-callables';
 import {
-  divisionHeading,
   formatKickoffClock,
   scheduleDayLabel,
   taipeiDayKey,
@@ -12,6 +11,12 @@ import {
 import type { DivisionDoc, MatchDoc, MatchStatus } from './types';
 
 export const SCORE_MAX = 99;
+
+/** 主辦頁有組別文件，可直接用組名；只有一組時不顯示。對不到名稱時不顯示，避免畫出文件 id。 */
+export function divisionHeading(divisionId: string, divisions: readonly DivisionDoc[], multiple: boolean): string | null {
+  if (!multiple) return null;
+  return divisions.find((row) => row.dvId === divisionId)?.name ?? null;
+}
 
 export interface DayDraft {
   date: string;
@@ -374,7 +379,7 @@ export function groupHostMatches(
   matches: readonly MatchDoc[],
   divisions: readonly DivisionDoc[],
   now: number,
-  labels: { today: string; tbd: string },
+  labels: { today: string; tbd: string; weekdays: readonly string[] },
 ): HostDivisionGroup[] {
   const buckets = new Map<string, MatchDoc[]>();
   for (const match of matches) {
@@ -409,7 +414,7 @@ export function groupHostMatches(
     }
     const days: HostDayGroup[] = dayOrder.map((key) => {
       const sample = rows.find((row) => row.kickoffAt != null && taipeiDayKey(row.kickoffAt) === key);
-      const label = sample?.kickoffAt != null ? scheduleDayLabel(sample.kickoffAt, now, labels.today) : key;
+      const label = sample?.kickoffAt != null ? scheduleDayLabel(sample.kickoffAt, now, labels.today, labels.weekdays) : key;
       return { key, label, matches: dated.get(key) ?? [] };
     });
     if (tbd.length > 0) days.push({ key: 'tbd', label: labels.tbd, matches: tbd });

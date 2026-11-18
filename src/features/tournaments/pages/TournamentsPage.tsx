@@ -85,8 +85,10 @@ function InAppCompetitionsLoader(props: InAppSlotProps): JSX.Element | null {
     void import('@/features/competitions/components/InAppSection').then((mod) => {
       if (alive) setSlot(() => mod.InAppSection);
     }).catch(() => {
-      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。
-      if (alive) setSlot(null);
+      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。閘門視為沒過，避免一直空白。
+      if (!alive) return;
+      setSlot(null);
+      props.onGate?.(false);
     });
     return () => {
       alive = false;
@@ -124,8 +126,13 @@ export default function TournamentsPage(): JSX.Element {
   const canManage = state === 'ready' && canManageTournamentCards(viewer);
   const [tab, setTab] = useState<TournamentCardTab>('all');
   const [showEnded, setShowEnded] = useState(true);
-  // 閘門沒過維持 false：不畫來源切換，外部卡維持原本的小標。
-  const [inAppOpen, setInAppOpen] = useState(false);
+  // 開關打開時先等閘門。判定中不畫外部清單。沒過才回到原本的外部卡。
+  const [gate, setGate] = useState<'pending' | 'open' | 'closed'>(COMPETITIONS_ENABLED ? 'pending' : 'closed');
+  const inAppOpen = gate === 'open';
+  const gatePending = gate === 'pending';
+  const onGate = useCallback((open: boolean) => {
+    setGate(open ? 'open' : 'closed');
+  }, []);
   // 非法 ?src 只影響畫面預設，這裡不改網址。
   const source = competitionSourceFromQuery(location.query?.src);
   const showInApp = inAppOpen && source === 'in';
@@ -286,6 +293,15 @@ export default function TournamentsPage(): JSX.Element {
     if (typeof go === 'function') go(path, true);
   };
 
+  const onSourceKey = (event: JSX.TargetedKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const next: CompetitionSource = source === 'in' ? 'ext' : 'in';
+    chooseSource(next);
+    const nextId = next === 'in' ? 'tournaments-source-in' : 'tournaments-source-ext';
+    queueMicrotask(() => document.getElementById(nextId)?.focus());
+  };
+
   return (
     <div class="legacy-ui tournaments-root" data-v2={inAppOpen ? '1' : undefined}>
       <section class="page active tc-page" id="page-tournaments">
@@ -312,24 +328,30 @@ export default function TournamentsPage(): JSX.Element {
         </div>
 
         {inAppOpen ? (
-          <div class="cpl-src" role="tablist" aria-label="賽事來源">
+          <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
             <button
+              id="tournaments-source-in"
               type="button"
               role="tab"
               aria-selected={source === 'in'}
+              aria-controls="tournaments-source-panel"
               class={source === 'in' ? 'on' : ''}
               onClick={() => chooseSource('in')}
+              onKeyDown={onSourceKey}
             >
-              站內賽事
+              {t('tournaments.sourceIn')}
             </button>
             <button
+              id="tournaments-source-ext"
               type="button"
               role="tab"
               aria-selected={source === 'ext'}
+              aria-controls="tournaments-source-panel"
               class={source === 'ext' ? 'on' : ''}
               onClick={() => chooseSource('ext')}
+              onKeyDown={onSourceKey}
             >
-              外部賽事
+              {t('tournaments.sourceOut')}
             </button>
           </div>
         ) : null}
@@ -358,9 +380,18 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ) : null}
         </div>
-        <div class="tc-panel" role="tabpanel">
-          <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={setInAppOpen} />
-          {showInApp ? null : (
+        <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
+          <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} />
+          {gatePending ? (
+            <div aria-busy="true">
+              <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
+              <div class="reg-loading-skeleton" aria-hidden="true">
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+              </div>
+            </div>
+          ) : showInApp ? null : (
           <>
           <div class="tc-toolbar">
             <label>

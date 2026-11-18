@@ -2,11 +2,9 @@
 // 分組用台北日曆（format.taipeiParts）。文案裡的「今天」「時間待定」由呼叫端傳入。
 
 import { taipeiParts } from '../format';
-import type { DivisionDoc, StandingDoc, SummaryEntry } from './types';
+import type { StandingDoc, SummaryEntry } from './types';
 
-const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] as const;
-
-export type PublicMark = 'pending' | 'forfeit' | 'moved';
+export type PublicMark = 'pending' | 'forfeit' | 'moved' | 'cancelled';
 
 export interface ScheduleMatch {
   id: string;
@@ -82,23 +80,29 @@ export function formatKickoffClock(ms: number): string {
 }
 
 /**
- * 1月9日　週六。與現在同一台北日時加上（今天）。
- * ASSUMPTION: 星期用預覽 harness 的「週日…週六」，不另做語系表（賽事字典其餘語系目前也是同一份中文）。
+ * 1月9日　週六。與現在同一台北日時加上今天標記。
+ * 星期名稱由呼叫端從 i18n 傳入，順序是週日到週六（getUTCDay）。
  */
-export function scheduleDayLabel(ms: number, now: number, todayMark: string): string {
+export function scheduleDayLabel(
+  ms: number,
+  now: number,
+  todayMark: string,
+  weekdays: readonly string[],
+): string {
   const part = taipeiParts(ms);
-  const weekday = WEEKDAYS[new Date(Date.UTC(part.year, part.month - 1, part.day)).getUTCDay()] ?? '週日';
+  const weekday = weekdays[new Date(Date.UTC(part.year, part.month - 1, part.day)).getUTCDay()] ?? weekdays[0] ?? '';
   const base = `${part.month}月${part.day}日　${weekday}`;
   return taipeiDayKey(ms) === taipeiDayKey(now) ? `${base}${todayMark}` : base;
 }
 
 /**
  * 公開場次小標。
- * ASSUMPTION: 摘要 st 對齊場次狀態。finished＝已登錄還沒確認（待確認）；
- * walkover 或 wo 有值＝棄權；postponed＝改期。
+ * ASSUMPTION: 摘要 st 對齊場次狀態。cancelled＝已取消；
+ * finished＝已登錄還沒確認（待確認）；walkover 或 wo 有值＝棄權；postponed＝改期。
  * confirmed、scheduled、live、halftime 不掛公開小標。
  */
 export function publicMark(entry: SummaryEntry): PublicMark | null {
+  if (entry.st === 'cancelled') return 'cancelled';
   if (entry.wo || entry.st === 'walkover') return 'forfeit';
   if (entry.st === 'postponed') return 'moved';
   if (entry.st === 'finished') return 'pending';
@@ -119,17 +123,17 @@ export function showsScore(entry: SummaryEntry): boolean {
 }
 
 /**
- * 今天場數只算開賽時間落在台北今天的場次。時間待定不算今天。
- * ASSUMPTION: 下一場是開賽時間嚴格晚於 now 的最早一場（可以是今天稍後，或之後的日期）。
+ * 今天場數只算開賽時間落在台北今天、而且不是已取消的場次。時間待定不算今天。
+ * 下一場只看 st === 'scheduled' 且開賽時間 ≥ now 的最早一場（改期、已取消都不算）。
  */
 export function liveStrip(entries: readonly SummaryEntry[], now: number): LiveStrip {
   const todayKey = taipeiDayKey(now);
   let today = 0;
   let nextAt: number | null = null;
   for (const entry of entries) {
-    if (entry.k == null) continue;
-    if (taipeiDayKey(entry.k) === todayKey) today += 1;
-    if (entry.k > now && (nextAt == null || entry.k < nextAt)) nextAt = entry.k;
+    if (entry.k != null && entry.st !== 'cancelled' && taipeiDayKey(entry.k) === todayKey) today += 1;
+    if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
+    if (nextAt == null || entry.k < nextAt) nextAt = entry.k;
   }
   return { today, next: nextAt == null ? null : formatKickoffClock(nextAt) };
 }
@@ -164,7 +168,7 @@ function byKickoff(a: SummaryEntry, b: SummaryEntry): number {
 export function groupSchedule(
   entries: readonly SummaryEntry[],
   now: number,
-  labels: { tbd: string; today: string },
+  labels: { tbd: string; today: string; weekdays: readonly string[] },
   divisionOrder: readonly string[] = [],
 ): ScheduleGroup[] {
   const buckets = new Map<string, SummaryEntry[]>();
@@ -202,7 +206,7 @@ export function groupSchedule(
       const sample = rows.find((row) => row.k != null && taipeiDayKey(row.k) === key);
       return {
         key,
-        label: sample?.k != null ? scheduleDayLabel(sample.k, now, labels.today) : key,
+        label: sample?.k != null ? scheduleDayLabel(sample.k, now, labels.today, labels.weekdays) : key,
         matches: dated.get(key) ?? [],
       };
     });
@@ -211,15 +215,47 @@ export function groupSchedule(
   });
 }
 
-export function divisionHeading(divisionId: string, divisions: readonly DivisionDoc[], multiple: boolean): string | null {
-  if (!multiple) return null;
-  // ASSUMPTION: 對不到組別名稱時不顯示標題，避免把文件 id 畫出來。
-  return divisions.find((row) => row.dvId === divisionId)?.name ?? null;
+/** 多組才有標題。name 是積分文件的 divisionName；沒有時用 n（1 起算）套「組別 {n}」。 */
+export interface GroupHeading {
+  name: string | null;
+  n: number;
+}
+
+function divisionNameOf(doc: StandingDoc | undefined): string | null {
+  const text = doc?.divisionName?.trim() ?? '';
+  return text || null;
 }
 
 /**
- * 未裁定（hasUnresolvedTie）且積分相同的列，名次改成該群最小的名次，並標同分。
- * 主辦已裁定（hasUnresolvedTie 為 false）時，即使積分相同也沿用列上的名次、不標同分。
+ * 積分榜一組的標題。只有一份積分文件時不顯示組名。
+ * n 依呼叫端傳入的積分文件順序（0 起算），這裡不重排。
+ */
+export function standingHeading(doc: StandingDoc, index: number, multiple: boolean): GroupHeading | null {
+  if (!multiple) return null;
+  return { name: divisionNameOf(doc), n: index + 1 };
+}
+
+/**
+ * 賽程依摘要 dv 分組後的標題。只有一組不顯示。
+ * 組名用對到的積分文件 divisionName。缺名稱時，序號用該組在積分文件裡的順序。
+ * 對不到積分文件時，序號用賽程分組順序。不讀組別文件。
+ */
+export function scheduleHeading(
+  divisionId: string,
+  scheduleIndex: number,
+  multiple: boolean,
+  standings: readonly StandingDoc[],
+): GroupHeading | null {
+  if (!multiple) return null;
+  const at = standings.findIndex((doc) => doc.divisionId === divisionId);
+  if (at >= 0) return { name: divisionNameOf(standings[at]), n: at + 1 };
+  return { name: null, n: scheduleIndex + 1 };
+}
+
+/**
+ * 只看每一列自己的 hasUnresolvedTie。文件上的 hasUnresolvedTie 不拿來標。
+ * hasUnresolvedTie === true 才標同分；這些列若積分相同，名次改成該群最小的名次。
+ * 積分相同但該列已分出名次（hasUnresolvedTie 不是 true）不標、不改名次。
  */
 export function standingLines(doc: StandingDoc): StandingLine[] {
   const rows = doc.rows.map((row, index) => ({ row, index }))
@@ -237,38 +273,44 @@ export function standingLines(doc: StandingDoc): StandingLine[] {
     goalDiff: row.goalDiff,
     points: row.points,
     rank: row.rank,
-    tie: false,
+    tie: row.hasUnresolvedTie === true,
     top: false,
   }));
-  if (doc.hasUnresolvedTie) {
-    const groups = new Map<number, number[]>();
-    lines.forEach((line, index) => {
-      const bucket = groups.get(line.points) ?? [];
-      bucket.push(index);
-      groups.set(line.points, bucket);
-    });
-    for (const indexes of groups.values()) {
-      if (indexes.length < 2) continue;
-      const shared = Math.min(...indexes.map((index) => lines[index]?.rank ?? 0));
-      for (const index of indexes) {
-        const line = lines[index];
-        if (!line) continue;
-        line.rank = shared;
-        line.tie = true;
-      }
+  const groups = new Map<number, number[]>();
+  lines.forEach((line, index) => {
+    if (!line.tie) return;
+    const bucket = groups.get(line.points) ?? [];
+    bucket.push(index);
+    groups.set(line.points, bucket);
+  });
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const shared = Math.min(...indexes.map((index) => lines[index]?.rank ?? 0));
+    for (const index of indexes) {
+      const line = lines[index];
+      if (!line) continue;
+      line.rank = shared;
     }
   }
   for (const line of lines) line.top = line.rank === 1;
   return lines;
 }
 
-/** 冠軍取第一份積分榜裡名次 1 的第一列。沒有積分榜就沒有冠軍名字。 */
-export function championName(docs: readonly StandingDoc[]): string | null {
-  for (const doc of docs) {
-    const top = standingLines(doc).find((line) => line.rank === 1);
-    if (top) return top.name;
-  }
-  return null;
+export interface ChampionName {
+  /** 已裁定的第 1 名。未裁定或沒有第 1 名是 null。 */
+  name: string | null;
+  /** 第 1 名尚未裁定同分。這時不寫隊名。 */
+  pending: boolean;
+}
+
+/**
+ * 這一組的冠軍。第 1 名有未裁定同分時 pending，name 是 null。
+ * 多組時由呼叫端每份積分文件各算一次，每組一位。
+ */
+export function championName(doc: StandingDoc): ChampionName {
+  const top = standingLines(doc).filter((line) => line.rank === 1);
+  if (top.some((line) => line.tie)) return { name: null, pending: true };
+  return { name: top[0]?.name ?? null, pending: false };
 }
 
 export function formatGoalDiff(diff: number): string {

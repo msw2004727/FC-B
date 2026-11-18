@@ -31,6 +31,9 @@ import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
 
+/** 回前景重讀的最短間隔。未滿這段不讀。已結束不重讀。 */
+export const FOREGROUND_RELOAD_MIN_MS = 60_000;
+
 function statusBadge(
   ct: CompetitionsT,
   competition: CompetitionDoc,
@@ -73,7 +76,8 @@ interface DetailData {
 async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> {
   // 隊徽走 listEntriesForCrest（repo 頁內快取，不監聽）。摘要每次呼叫都重讀。
   // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
-  // ASSUMPTION: 計畫書 §8.1 不在工作樹。回前景重讀與首屏同一組讀取；內部期的 getLaunch 三筆留給列表閘門，詳情不另開。
+  // ASSUMPTION: 內部期 3 筆由列表閘門負責，詳情頁不重讀。
+  // 不傳 internal，所以這裡不會打 getLaunch、getLaunchTester、listMine。
   const view = await loadScheduleDetail(env.repo, {
     cid,
     uid: env.actor.uid,
@@ -128,7 +132,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
   const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
   const fullCache = useRef<SummaryEntry[] | null>(null);
-  const fullInflight = useRef<Promise<void> | null>(null);
+  const fullInflight = useRef<Promise<boolean> | null>(null);
   const mounted = useRef(true);
   const pageCid = useRef(cid);
   pageCid.current = cid;
@@ -151,31 +155,39 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     setFullSchedule(null);
   }, [cid]);
 
-  function requestFullSchedule(): void {
+  function requestFullSchedule(): boolean | Promise<boolean> {
     if (fullCache.current) {
       setFullSchedule(fullCache.current);
-      return;
+      return true;
     }
-    if (fullInflight.current) return;
+    if (fullInflight.current) return fullInflight.current;
     // 注入的賽程（harness、畫面測試）不打網路。正式頁按下才讀全集。
     if (env.bundle && env.schedule) {
       const rows = [...env.schedule.summary];
       fullCache.current = rows;
       setFullSchedule(rows);
-      return;
+      return true;
     }
     const requested = cid;
-    fullInflight.current = loadFullSchedule(env.repo, requested).then((rows) => {
-      if (!mounted.current || pageCid.current !== requested) return;
+    const task = loadFullSchedule(env.repo, requested).then((rows) => {
+      if (!mounted.current || pageCid.current !== requested) return false;
       fullCache.current = rows;
       setFullSchedule(rows);
+      return true;
     }).catch(() => {
       if (pageCid.current === requested) fullInflight.current = null;
+      return false;
     });
+    fullInflight.current = task;
+    return task;
   }
 
   useEffect(() => {
     if (env.bundle) return;
+    // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
+    // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
+    // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
+    env.repo.invalidateCrests(cid);
     let alive = true;
     setLoadState('loading');
     void loadDetail(env, cid).then((next) => {
@@ -191,11 +203,22 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.bundle]);
 
+  const phaseNow = bundle?.competition ? competitionPhase(bundle.competition, now) : null;
+  const phaseRef = useRef(phaseNow);
+  phaseRef.current = phaseNow;
+  const lastForegroundAt = useRef(0);
+
   useEffect(() => {
     if (env.bundle) return undefined;
     let alive = true;
+    // 進頁這次讀取算一次。未滿 60 秒回到前景不再讀。
+    lastForegroundAt.current = Date.now();
     const reload = () => {
       if (!alive || document.visibilityState === 'hidden') return;
+      if (phaseRef.current === 'done') return;
+      const at = Date.now();
+      if (at - lastForegroundAt.current < FOREGROUND_RELOAD_MIN_MS) return;
+      lastForegroundAt.current = at;
       void loadDetail(env, cid).then((next) => {
         if (!alive || !next.bundle.competition) return;
         applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
@@ -216,7 +239,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pageshow', onPageShow);
     };
-    // 回前景重讀摘要。隊徽由 repo 的 listEntriesForCrest 快取，不另開監聽。
+    // 回前景重讀摘要。隊徽快取不在這裡失效。已結束不重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.bundle]);
 

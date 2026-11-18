@@ -9,11 +9,13 @@ import type { CompetitionsT } from '../i18n';
 import {
   championName,
   daysUntilStart,
-  divisionHeading,
   formatGoalDiff,
   groupSchedule,
   liveStrip,
+  scheduleHeading,
+  standingHeading,
   standingLines,
+  type GroupHeading,
   type PublicMark,
   type ScheduleGroup,
 } from '../data/schedule-present';
@@ -112,25 +114,47 @@ function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]
 function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; tone: BadgeTone } {
   if (mark === 'pending') return { label: ct('matchPending'), tone: 'warning' };
   if (mark === 'forfeit') return { label: ct('matchForfeit'), tone: 'danger' };
+  if (mark === 'cancelled') return { label: ct('matchCancelled'), tone: 'neutral' };
   return { label: ct('matchMoved'), tone: 'info' };
+}
+
+function headingText(ct: CompetitionsT, heading: GroupHeading | null): string | null {
+  if (!heading) return null;
+  return heading.name ?? ct('divisionFallback', { n: heading.n });
+}
+
+export function scheduleLabels(ct: CompetitionsT): { tbd: string; today: string; weekdays: string[] } {
+  return {
+    tbd: ct('timeTbd'),
+    today: ct('todayMark'),
+    weekdays: [
+      ct('weekdaySun'),
+      ct('weekdayMon'),
+      ct('weekdayTue'),
+      ct('weekdayWed'),
+      ct('weekdayThu'),
+      ct('weekdayFri'),
+      ct('weekdaySat'),
+    ],
+  };
 }
 
 export function MatchSchedule({
   ct,
   groups,
-  divisions,
+  standings,
   crests,
 }: {
   ct: CompetitionsT;
   groups: readonly ScheduleGroup[];
-  divisions: readonly DivisionDoc[];
+  standings: readonly StandingDoc[];
   crests: readonly EntryDoc[];
 }): JSX.Element {
   const multiple = groups.length > 1;
   return (
     <div>
-      {groups.map((group) => {
-        const heading = divisionHeading(group.divisionId, divisions, multiple);
+      {groups.map((group, index) => {
+        const heading = headingText(ct, scheduleHeading(group.divisionId, index, multiple, standings));
         return (
           <div key={group.divisionId}>
             {heading ? <h3 class="cp3-day">{heading}</h3> : null}
@@ -185,20 +209,18 @@ export function MatchSchedule({
 export function StandingsTable({
   ct,
   docs,
-  divisions,
   crests,
 }: {
   ct: CompetitionsT;
   docs: readonly StandingDoc[];
-  divisions: readonly DivisionDoc[];
   crests: readonly EntryDoc[];
 }): JSX.Element {
   const multiple = docs.length > 1;
   return (
     <div class="cps-stack">
-      {docs.map((doc) => {
+      {docs.map((doc, index) => {
         const lines = standingLines(doc);
-        const heading = divisionHeading(doc.divisionId, divisions, multiple);
+        const heading = headingText(ct, standingHeading(doc, index, multiple));
         return (
           <div key={doc.id}>
             {heading ? <h3 class="cp3-day">{heading}</h3> : null}
@@ -255,7 +277,7 @@ function scheduleGroups(
   return groupSchedule(
     summary,
     now,
-    { tbd: ct('timeTbd'), today: '（今天）' },
+    scheduleLabels(ct),
     divisions.map((division) => division.dvId),
   );
 }
@@ -317,14 +339,36 @@ export function DetailPhaseBody({
   badge: { label: string; tone: BadgeTone };
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
   fullSchedule: readonly SummaryEntry[] | null;
-  onRequestFull: () => void;
+  onRequestFull: () => boolean | Promise<boolean>;
 }): JSX.Element {
   const [tab, setTab] = useState<'sched' | 'stand'>('sched');
   const [open, setOpen] = useState(false);
+  const [foldError, setFoldError] = useState(false);
   const shown = scheduleGroups(ct, fullSchedule ?? summary, divisions, now);
 
+  function openFold(): void {
+    setFoldError(false);
+    const result = onRequestFull();
+    if (result === true) {
+      setOpen(true);
+      return;
+    }
+    if (result === false) {
+      setOpen(false);
+      setFoldError(true);
+      return;
+    }
+    void result.then((ok) => {
+      if (ok) setOpen(true);
+      else {
+        setOpen(false);
+        setFoldError(true);
+      }
+    });
+  }
+
   if (phase === 'done') {
-    const name = championName(standings);
+    const multiple = standings.length > 1;
     const loadedRows = fullSchedule;
     const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now);
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
@@ -336,22 +380,34 @@ export function DetailPhaseBody({
               <TrophyIcon />
               <div class="cp3-champ__t">
                 <span class="cp3-champ__k">{ct('champion')}</span>
-                {name ? <span class="cp3-champ__v">{name}</span> : null}
+                {standings.map((doc, index) => {
+                  const result = championName(doc);
+                  const value = result.pending ? ct('championPending') : result.name;
+                  if (!value) return null;
+                  const label = headingText(ct, standingHeading(doc, index, multiple));
+                  return (
+                    <span class="cp3-champ__v" key={doc.id}>
+                      {label ? `${label}　${value}` : value}
+                    </span>
+                  );
+                })}
               </div>
             </div>
             <Badge tone={badge.tone} label={badge.label} size="sm" />
           </div>
         </CpCard>
-        <StandingsTable ct={ct} docs={standings} divisions={divisions} crests={crests} />
+        <StandingsTable ct={ct} docs={standings} crests={crests} />
         <CpCard>
           <button
             type="button"
             class={`cp3-fold${open ? ' cp3-fold--open' : ''}`}
             aria-expanded={open}
             onClick={() => {
-              const next = !open;
-              setOpen(next);
-              if (next) onRequestFull();
+              if (open) {
+                setOpen(false);
+                return;
+              }
+              openFold();
             }}
           >
             <span>{foldLabel}</span>
@@ -359,7 +415,15 @@ export function DetailPhaseBody({
           </button>
           {open && loadedRows ? (
             <div style="margin-top:12px">
-              <MatchSchedule ct={ct} groups={foldGroups} divisions={divisions} crests={crests} />
+              <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} />
+            </div>
+          ) : null}
+          {foldError && !open ? (
+            <div role="alert" style="margin-top:12px">
+              <p class="cps-note">{ct('loadFailed')}</p>
+              <div class="cps-actions">
+                <Button variant="secondary" onClick={openFold}>{ct('retry')}</Button>
+              </div>
             </div>
           ) : null}
         </CpCard>
@@ -390,7 +454,7 @@ export function DetailPhaseBody({
             label: ct('tabSchedule'),
             panel: (
               <div style="margin-top:12px">
-                <MatchSchedule ct={ct} groups={shown} divisions={divisions} crests={crests} />
+                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} />
                 <div class="cps-actions">
                   <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
                 </div>
@@ -402,7 +466,7 @@ export function DetailPhaseBody({
             label: ct('tabStandings'),
             panel: (
               <div style="margin-top:12px">
-                <StandingsTable ct={ct} docs={standings} divisions={divisions} crests={crests} />
+                <StandingsTable ct={ct} docs={standings} crests={crests} />
               </div>
             ),
           },

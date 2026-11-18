@@ -239,8 +239,9 @@ export interface SummaryEntry {
 
 /**
  * 積分列。對齊引擎 StandingRow：win／draw／loss。
- * 只收 played、win、draw、loss、goalsFor、goalsAgainst、goalDiff、points、rank、teamId、name。
+ * 欄位名照後端：另留每列的 hasUnresolvedTie、tiedWith。
  * 缺數字視為 0。name 不是字串時是空字串。
+ * hasUnresolvedTie 缺值或不是 true 就是 false。tiedWith 只留非空字串（隊伍 id），其他當空陣列。
  */
 export interface StandingRow {
   teamId: string;
@@ -254,6 +255,10 @@ export interface StandingRow {
   goalDiff: number;
   points: number;
   rank: number;
+  /** 後端這一列還沒裁定同分。只有 === true 才標「同分」。 */
+  hasUnresolvedTie: boolean;
+  /** 與這一列同分、尚未裁定的隊伍 id。欄位名照後端 StandingRow。 */
+  tiedWith: string[];
 }
 
 /** standings/{dvId}__group__A。契約 §1.3。 */
@@ -264,6 +269,11 @@ export interface StandingDoc {
   rows: StandingRow[];
   version: number;
   hasUnresolvedTie: boolean;
+  /**
+   * 後端寫在積分文件上的組名。可能缺。
+   * 進行中／已結束不讀組別文件，組名只看這個欄位。
+   */
+  divisionName?: string;
   /** 由文件 manualOverride.enabled === true 推得，不是後端那個物件。 */
   manualOverride: boolean;
   updatedAt: number | null;

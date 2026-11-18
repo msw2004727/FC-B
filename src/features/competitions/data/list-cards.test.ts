@@ -80,6 +80,14 @@ describe('站內卡片純函式', () => {
       row({ id: 'past', k: taipeiMs(2026, 12, 10, 9, 0), st: 'finished' }),
       row({ id: 'tbd', k: null }),
     ], now)).toEqual({ count: 2, time: null });
+    expect(todayFromShard([
+      row({ id: 'off', k: taipeiMs(2026, 12, 10, 13, 0), st: 'cancelled' }),
+      row({ id: 'moved', k: taipeiMs(2026, 12, 10, 13, 30), st: 'postponed' }),
+      row({ id: 'next', k: taipeiMs(2026, 12, 10, 14, 0), st: 'scheduled' }),
+    ], now)).toEqual({ count: 2, time: '14:00' });
+    expect(todayFromShard([
+      row({ id: 'off', k: now, st: 'cancelled' }),
+    ], now)).toBeNull();
   });
 
   it('合併去重、我的與主辦做記號、沒時間的排後面；未結束仍含未知階段', () => {

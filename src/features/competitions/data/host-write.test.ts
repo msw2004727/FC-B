@@ -199,7 +199,7 @@ describe('場次按鈕與寫入結果', () => {
       match({ id: 'late', status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 10, 9, 0), matchNo: 2 }),
       match({ id: 'tbd', status: 'postponed', kickoffAt: null, matchNo: 3 }),
       match({ id: 'today', status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 9, 9, 0), matchNo: 1 }),
-    ], [adult], now, { today: '（今天）', tbd: '時間待定' });
+    ], [adult], now, { today: '（今天）', tbd: '時間待定', weekdays: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] });
     const days = groups[0]?.days ?? [];
     expect(groups[0]?.heading).toBeNull();
     expect(days.map((day) => day.label)).toEqual(['1月9日　週六（今天）', '1月10日　週日', '時間待定']);

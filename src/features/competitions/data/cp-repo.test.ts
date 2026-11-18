@@ -419,6 +419,8 @@ describe('第 3 步文件解析', () => {
       goalDiff: 2,
       points: 3,
       rank: 1,
+      hasUnresolvedTie: false,
+      tiedWith: [],
     });
     // 只有短名、沒有 teamId：整列丟掉。有 teamId 但只有短名：數字是 0，name 不讀 n。
     expect(standingFromDoc('dv_1__group__A', {
@@ -438,7 +440,24 @@ describe('第 3 步文件解析', () => {
       goalDiff: 0,
       points: 0,
       rank: 0,
+      hasUnresolvedTie: false,
+      tiedWith: [],
     }]);
+    const tied = standingFromDoc('dv_1__group__A', {
+      divisionName: ' 公開組 ',
+      rows: [{
+        teamId: 'en_h',
+        name: '主隊',
+        hasUnresolvedTie: true,
+        tiedWith: ['en_a', 1, '', 'en_b'],
+      }],
+    });
+    expect(tied?.divisionName).toBe('公開組');
+    expect(tied?.rows[0]).toMatchObject({
+      hasUnresolvedTie: true,
+      tiedWith: ['en_a', 'en_b'],
+    });
+    expect(standingFromDoc('dv_1__group__A', { divisionName: '  ', rows: [] })?.divisionName).toBeUndefined();
     // 缺 goalDiff 不拿得失球相減；缺 rank 不拿列序補。
     expect(standingFromDoc('dv_1__group__B', {
       rows: [{ teamId: 'en_a', name: '客隊', goalsFor: 1, goalsAgainst: 3 }],
@@ -542,11 +561,27 @@ describe('第 3 步讀取', () => {
     expect(first[0]?.teamLogo).toBe('https://logo.invalid/a.png');
     expect(first[1]?.teamLogo).toBeNull();
     expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(1);
-    expect(box.queries[0]?.clauses).toEqual([{ kind: 'limit', n: CP_READ_LIMIT.crest }]);
+    expect(box.queries[0]?.clauses).toEqual([
+      { kind: 'where', field: 'status', op: '==', value: 'approved' },
+      { kind: 'limit', n: CP_READ_LIMIT.crest },
+    ]);
+
+    box.cols.set('competitions/cid_2/entries', [
+      { id: 'en_ok', data: { dvId: 'dv_1', teamId: 'team_ok', name: '核准隊', status: 'approved', teamLogo: null } },
+      { id: 'en_wait', data: { dvId: 'dv_1', teamId: 'team_wait', name: '待審隊', status: 'pending', teamLogo: null } },
+    ]);
+    const approvedOnly = await box.repo.listEntriesForCrest('cid_2');
+    expect(approvedOnly.map((row) => row.id)).toEqual(['en_ok']);
+
+    box.repo.invalidateCrests('cid_1');
+    const refreshed = await box.repo.listEntriesForCrest('cid_1');
+    expect(refreshed).toHaveLength(CP_READ_LIMIT.crest);
+    expect(refreshed).not.toBe(first);
+    expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(2);
 
     const listed = await box.repo.listEntries('cid_1');
     expect(listed).toHaveLength(40);
-    expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(2);
+    expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(3);
 
     await expect(box.repo.listEntriesForCrest('a/b')).resolves.toEqual([]);
     await expect(box.repo.listMatches('..')).resolves.toEqual([]);

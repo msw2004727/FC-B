@@ -41,6 +41,7 @@ import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
 import { errorOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
+import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import { crestFromEntry, TeamCrest } from '../ui/TeamCrest';
 
@@ -446,7 +447,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     );
   }
 
-  const groups = groupHostMatches(matches, divisions, now, { today: '（今天）', tbd: ct('timeTbd') });
+  const groups = groupHostMatches(matches, divisions, now, scheduleLabels(ct));
   const active = panel ? matches.find((row) => row.id === panel.mtId) ?? null : null;
 
   return (

@@ -224,11 +224,18 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       if (!isSafeId(cid)) return [];
       const hit = crestCache.get(cid);
       if (hit) return hit;
-      const rows = take(entries[cid] ?? [], CP_READ_LIMIT.crest);
+      const rows = take(
+        (entries[cid] ?? []).filter((row) => row.status === 'approved'),
+        CP_READ_LIMIT.crest,
+      );
       noteQuery('listEntriesForCrest', rows.length);
       const pending = Promise.resolve(rows);
       crestCache.set(cid, pending);
       return pending;
+    },
+
+    invalidateCrests(cid) {
+      crestCache.delete(cid);
     },
   };
 }
