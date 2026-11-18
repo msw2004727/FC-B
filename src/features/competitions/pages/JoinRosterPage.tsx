@@ -1,4 +1,5 @@
-// 自己登錄。成年填暱稱；未成年填真名、姓氏候選、監護人同意。兩種都要勾名單公開。
+// 自己登錄。成年可填暱稱；未成年填真名，公開名由遮字即時算出，不送 publicName。
+// 生日還沒載入前只顯示載入中，不先畫成年欄位。
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -8,17 +9,17 @@ import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Input } from '@/ui/Input';
 import { PageSpinner } from '@/ui/PageSpinner';
-import { RadioGroup } from '@/ui/RadioGroup';
+import { rosterFormBlock } from '../access';
 import { liveCpActions } from '../actions';
-import { minorPublicNameCandidates } from '../data/names';
+import { maskedPublicName } from '../data/names';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { loadMyBirthday } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
-import { CpError, errorOf } from '../ui/feedback';
-import { PositionField } from '../ui/fields';
+import { CpError, errorOf, RosterBlocked } from '../ui/feedback';
+import { POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame } from '../ui/shell';
 
 async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
@@ -30,22 +31,28 @@ async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   return { competition, divisions, entries, roster: [], privates: [], staff: null };
 }
 
+function codePoints(value: string): number {
+  return [...value].length;
+}
+
 function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: string }): JSX.Element {
   const t = useT();
   const { route } = useLocation();
   const prefill = env.preview?.prefillForm === true;
   const forcedMinor = env.preview?.selfMinor === true;
+  // 預覽與 harness 不打個人資料。正式頁要等生日回來才決定成年或未成年欄位。
+  const waitBirthday = env.preview == null && !!env.actor.uid;
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [phase, setPhase] = useState(env.bundle ? 'ready' : 'loading');
   const [number, setNumber] = useState(prefill ? '14' : '');
   const [position, setPosition] = useState<PositionChoice>(prefill ? 'FW' : 'none');
   const [positionText, setPositionText] = useState('');
   const [nickname, setNickname] = useState(prefill && !forcedMinor ? '阿範' : '');
-  const [realName, setRealName] = useState(prefill && forcedMinor ? '歐陽示範' : '');
-  const [publicName, setPublicName] = useState(prefill && forcedMinor ? '歐陽' : '');
+  const [realName, setRealName] = useState(prefill && forcedMinor ? '歐陽小明' : '');
   const [guardian, setGuardian] = useState(forcedMinor && prefill);
   const [privacy, setPrivacy] = useState(forcedMinor && prefill);
   const [profileBirthday, setProfileBirthday] = useState<string | null>(null);
+  const [birthdayReady, setBirthdayReady] = useState(!waitBirthday);
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,26 +73,34 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   }, [cid, env.bundle]);
 
   useEffect(() => {
-    if (env.preview || !env.actor.uid) return;
+    if (!waitBirthday || !env.actor.uid) return;
     let alive = true;
     void loadMyBirthday(env.actor.uid).then((value) => {
-      if (alive) setProfileBirthday(value);
+      if (!alive) return;
+      setProfileBirthday(value);
+      setBirthdayReady(true);
     }).catch(() => {
-      if (alive) setProfileBirthday(null);
+      if (!alive) return;
+      setProfileBirthday(null);
+      setBirthdayReady(true);
     });
     return () => {
       alive = false;
     };
-  }, [env.actor.uid, env.preview]);
+  }, [env.actor.uid, waitBirthday]);
 
-  const entry = bundle?.entries.find((row) => row.id === enId);
+  const entry = bundle?.entries.find((row) => row.id === enId) ?? null;
   const division = bundle?.divisions.find((row) => row.dvId === entry?.dvId);
-  const competition = bundle?.competition;
-  const basis = competition?.ageBasisAt ?? competition?.firstMatchAt ?? env.now ?? Date.now();
+  const competition = bundle?.competition ?? null;
+  const now = env.now ?? Date.now();
+  const basis = competition?.ageBasisAt ?? competition?.firstMatchAt ?? now;
   const minor = forcedMinor || (profileBirthday != null && isMinorAt(profileBirthday, basis) === true);
-  const candidates = minorPublicNameCandidates(realName);
-
-  if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  const masked = maskedPublicName(realName);
+  const ackKey = !minor && nickname.trim()
+    ? 'competitions.ackNickname'
+    : !minor
+      ? 'competitions.ackDisplayName'
+      : 'competitions.ackMasked';
 
   async function submit(): Promise<void> {
     if (number.trim() === '') {
@@ -97,16 +112,13 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
       setError({ reason: 'FIELD_RANGE' });
       return;
     }
-    if (position === 'custom' && (positionText.trim().length < 1 || positionText.trim().length > 6)) {
-      setError({ reason: 'FIELD_LENGTH', params: { min: 1, max: 6 } });
+    const customLen = codePoints(positionText.trim());
+    if (position === 'custom' && (customLen < 1 || customLen > POSITION_TEXT_MAX)) {
+      setError({ reason: 'FIELD_LENGTH', params: { min: 1, max: POSITION_TEXT_MAX } });
       return;
     }
     if (minor && !realName.trim()) {
       setError({ reason: 'REAL_NAME_REQUIRED' });
-      return;
-    }
-    if (minor && !publicName.trim()) {
-      setError({ reason: 'MINOR_PUBLIC_NAME' });
       return;
     }
     if (minor && !guardian) {
@@ -129,7 +141,6 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
         minor,
         nickname,
         realName,
-        publicName,
         guardianConsent: guardian,
       }));
       route(`/competitions/${cid}/entries/${enId}`);
@@ -138,6 +149,30 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
     } finally {
       setBusy(false);
     }
+  }
+
+  if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  if (!competition || phase === 'error') {
+    return (
+      <CpFrame title={t('competitions.joinTitle')}>
+        <p class="cps-note" role="alert">{t('competitions.loadFailed')}</p>
+      </CpFrame>
+    );
+  }
+
+  const block = rosterFormBlock({
+    kind: 'self',
+    // 自己登錄只認成員。代表要走代填，不能靠代表身分打開這張表。
+    isMember: env.actor.memberClubIds.includes(entry?.teamId ?? ''),
+    isRep: env.actor.repClubs.some((club) => club.id === entry?.teamId),
+    status: entry?.status ?? null,
+    locked: competition.rostersLockedAt != null,
+    started: now >= competition.firstMatchAt,
+  });
+  if (block) return <RosterBlocked reason={block} cid={cid} enId={enId} />;
+  if (!birthdayReady) return <div class="cps-root"><PageSpinner /></div>;
+  if (!env.preview && (profileBirthday == null || isMinorAt(profileBirthday, basis) == null)) {
+    return <RosterBlocked reason="BIRTHDAY_REQUIRED" cid={cid} enId={enId} />;
   }
 
   return (
@@ -156,26 +191,14 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
           {minor ? (
             <>
               <Input label={t('competitions.realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
-              {candidates.length > 0 ? (
-                <RadioGroup
-                  label={t('competitions.publicSurname')}
-                  value={publicName}
-                  orientation="horizontal"
-                  onValueChange={setPublicName}
-                  options={candidates.map((name) => ({ value: name, label: name }))}
-                />
-              ) : null}
+              {masked ? <p class="cps-sub" data-public-name>{t('competitions.maskedPreview', { name: masked })}</p> : null}
               <p class="cps-privacy cps-pre">{t('competitions.minorPublic')}{'\n'}{t('competitions.minorRealName')}</p>
               <Checkbox label={t('competitions.guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
             </>
           ) : (
             <Input label={t('competitions.nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
           )}
-          <Checkbox
-            label={minor ? t('competitions.ackSurname') : t('competitions.ackNickname')}
-            checked={privacy}
-            onCheckedChange={setPrivacy}
-          />
+          <Checkbox label={t(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>

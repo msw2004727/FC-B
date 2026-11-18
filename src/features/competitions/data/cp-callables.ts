@@ -127,7 +127,7 @@ interface CpHostCommon {
 }
 
 export type CpHostCreateInput = CpHostCommon & (
-  | { hostType: 'personal'; hostDisplay?: string }
+  | { hostType: 'personal' }
   | { hostType: 'club'; hostTeamId: string; feeNote?: string }
 );
 
@@ -136,7 +136,7 @@ export interface CpHostCreateResult {
   dvIds: string[];
 }
 
-/** cpHost create。個人主辦不送 hostTeamId／feeNote；俱樂部不送 hostDisplay。 */
+/** cpHost create。個人主辦不送 hostTeamId／feeNote／hostDisplay；俱樂部不送 hostDisplay。 */
 export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResult> {
   const common = {
     name: input.name,
@@ -161,7 +161,6 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
   return callAction('cpHost', payload('create', {
     ...common,
     hostType: 'personal',
-    hostDisplay: input.hostDisplay,
   }));
 }
 
@@ -275,7 +274,6 @@ export interface CpJoinRosterInput {
   positionText?: string;
   nickname?: string;
   realName?: string;
-  publicName?: string;
   guardianConsent?: boolean;
   privacyAck: true;
 }

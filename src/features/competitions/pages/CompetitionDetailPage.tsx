@@ -13,6 +13,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { canManageCompetition, canRegisterClubEntry, isCpAdmin } from '../access';
+import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -26,10 +27,16 @@ import { CpCard, CpFrame, CpRow, MoreIcon } from '../ui/shell';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
 
-function statusBadge(t: (key: string) => string, competition: CompetitionDoc): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
+function statusBadge(
+  t: (key: string) => string,
+  competition: CompetitionDoc,
+  now: number,
+): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
   if (competition.status === 'draft') return { label: t('competitions.draft'), tone: 'warning' };
   if (competition.status === 'postponed') return { label: t('competitions.postponed'), tone: 'warning' };
   if (competition.status === 'cancelled') return { label: t('competitions.cancelled'), tone: 'danger' };
+  if (now < competition.regOpenAt) return { label: t('competitions.reason.REG_NOT_OPEN'), tone: 'neutral' };
+  if (now > competition.regCloseAt) return { label: t('competitions.reason.REG_CLOSED'), tone: 'neutral' };
   return { label: t('competitions.recruiting'), tone: 'success' };
 }
 
@@ -60,11 +67,20 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
   const [reportDetail, setReportDetail] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [teamId, setTeamId] = useState(env.actor.repClubs[0]?.id ?? '');
+  const [teamId, setTeamId] = useState(representativeClubs(env.actor)[0]?.id ?? '');
   const [dvId, setDvId] = useState('');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  const [reportError, setReportError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
   const now = env.now ?? Date.now();
+  const clubs = representativeClubs(env.actor);
+
+  useEffect(() => {
+    if (teamId) return;
+    const first = clubs[0]?.id ?? '';
+    if (first) setTeamId(first);
+  }, [clubs, teamId]);
 
   useEffect(() => {
     if (env.bundle) return;
@@ -108,32 +124,34 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     staffRoles: bundle?.staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
-    repClubIds: env.actor.repClubs.map((club) => club.id),
+    repClubIds: clubs.map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
   const showRegister = canRegisterClubEntry({
-    repClubIds: env.actor.repClubs.map((club) => club.id),
+    repClubIds: clubs.map((club) => club.id),
     status: competition.status,
     hidden: competition.hidden,
     regOpenAt: competition.regOpenAt,
     regCloseAt: competition.regCloseAt,
     now,
   });
-  const badge = statusBadge(t, competition);
+  const badge = statusBadge(t, competition, now);
   const divisions = bundle?.divisions ?? [];
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
-  async function sendReport(): Promise<void> {
-    if (reportReason === 'other' && reportDetail.trim().length < 1) {
-      setError({ reason: 'FIELD_REQUIRED' });
-      return;
-    }
+  async function publish(): Promise<void> {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await env.actions.report(buildReportInput({ cid, reason: reportReason, detail: reportDetail }));
-      setReportOpen(false);
+      await env.actions.publish({ cid });
+      const next = await loadDetail(env, cid);
+      setBundle((prev) => {
+        if (next.competition) return next;
+        if (!prev?.competition) return next;
+        return { ...prev, competition: { ...prev.competition, status: 'published' } };
+      });
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -141,20 +159,40 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
-  async function sendRegister(): Promise<void> {
-    if (!teamId || !dvId) {
-      setError({ reason: 'FIELD_REQUIRED' });
+  async function sendReport(): Promise<void> {
+    if (reportReason === 'other' && reportDetail.trim().length < 1) {
+      setReportError({ reason: 'FIELD_REQUIRED' });
       return;
     }
     setBusy(true);
-    setError(null);
+    setReportError(null);
     try {
-      await env.actions.registerEntry(buildRegisterInput({ cid, dvId, teamId }));
+      await env.actions.report(buildReportInput({ cid, reason: reportReason, detail: reportDetail }));
+      setReportOpen(false);
+      setReportError(null);
+    } catch (err) {
+      setReportError(errorOf(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendRegister(): Promise<void> {
+    const chosenTeam = teamId || clubs[0]?.id || '';
+    if (!chosenTeam || !dvId) {
+      setRegisterError({ reason: 'FIELD_REQUIRED' });
+      return;
+    }
+    setBusy(true);
+    setRegisterError(null);
+    try {
+      await env.actions.registerEntry(buildRegisterInput({ cid, dvId, teamId: chosenTeam }));
       setRegisterOpen(false);
+      setRegisterError(null);
       const next = await loadDetail(env, cid);
       setBundle(next);
     } catch (err) {
-      setError(errorOf(err));
+      setRegisterError(errorOf(err));
     } finally {
       setBusy(false);
     }
@@ -184,7 +222,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </button>
           {menuOpen ? (
             <div class="cps-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setReportOpen(true); }}>
+              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setReportError(null); setReportOpen(true); }}>
                 {t('competitions.report')}
               </button>
             </div>
@@ -242,9 +280,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </CpRow>
           ) : null}
         </dl>
+        {error ? <CpError reason={error.reason} params={error.params} /> : null}
         {showRegister ? (
           <div class="cps-actions">
-            <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterOpen(true); }}>
+            <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
               {t('competitions.registerClub')}
             </Button>
           </div>
@@ -252,7 +291,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         {manage ? (
           <div class="cps-actions">
             {competition.status === 'draft' ? (
-              <Button variant="primary" onClick={() => { void env.actions.publish({ cid }).then(() => route(`/competitions/${cid}`)); }}>
+              <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
                 {t('competitions.publish')}
               </Button>
             ) : null}
@@ -262,28 +301,28 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       </CpCard>
 
       {divisions.map((division) => (
-        <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} />
+        <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} competition={competition} now={now} />
       ))}
 
       {registerOpen ? (
         <BottomSheet
           open
           title={t('competitions.registerClub')}
-          onClose={() => setRegisterOpen(false)}
+          onClose={() => { setRegisterOpen(false); setRegisterError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => setRegisterOpen(false)}>{t('competitions.cancel')}</Button>
+              <Button variant="secondary" onClick={() => { setRegisterOpen(false); setRegisterError(null); }}>{t('competitions.cancel')}</Button>
               <Button variant="primary" loading={busy} onClick={() => { void sendRegister(); }}>{t('competitions.submitRegister')}</Button>
             </div>
           )}
         >
           <div class="cps-sheet-body">
-            {env.actor.repClubs.length > 1 ? (
+            {clubs.length > 1 ? (
               <Select
                 label={t('competitions.club')}
                 value={teamId}
                 onValueChange={setTeamId}
-                options={env.actor.repClubs.map((club) => ({ value: club.id, label: club.name }))}
+                options={clubs.map((club) => ({ value: club.id, label: club.name }))}
               />
             ) : null}
             <RadioGroup
@@ -292,7 +331,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               onValueChange={setDvId}
               options={divisions.map((division) => ({ value: division.dvId, label: division.name }))}
             />
-            {error ? <CpError reason={error.reason} params={error.params} /> : null}
+            {registerError ? <CpError reason={registerError.reason} params={registerError.params} /> : null}
           </div>
         </BottomSheet>
       ) : null}
@@ -301,10 +340,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <BottomSheet
           open
           title={t('competitions.reportTitle')}
-          onClose={() => setReportOpen(false)}
+          onClose={() => { setReportOpen(false); setReportError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => setReportOpen(false)}>{t('competitions.cancel')}</Button>
+              <Button variant="secondary" onClick={() => { setReportOpen(false); setReportError(null); }}>{t('competitions.cancel')}</Button>
               <Button variant="primary" loading={busy} onClick={() => { void sendReport(); }}>{t('competitions.reportSubmit')}</Button>
             </div>
           )}
@@ -324,7 +363,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               placeholder={t('competitions.reportDetailPlaceholder')}
               onValueChange={setReportDetail}
             />
-            {error ? <CpError reason={error.reason} params={error.params} /> : null}
+            {reportError ? <CpError reason={reportError.reason} params={reportError.params} /> : null}
           </div>
         </BottomSheet>
       ) : null}
@@ -336,10 +375,14 @@ function DivisionBlock({
   division,
   entries,
   cid,
+  competition,
+  now,
 }: {
   division: DivisionDoc;
   entries: EntryDoc[];
   cid: string;
+  competition: CompetitionDoc;
+  now: number;
 }): JSX.Element {
   const t = useT();
   const { route } = useLocation();
@@ -359,7 +402,7 @@ function DivisionBlock({
     <CpCard>
       <div class="cps-head-row">
         <h3 class="cps-h">{division.name}</h3>
-        <Badge tone="success" label={t('competitions.recruiting')} size="sm" />
+        <Badge tone={statusBadge(t, competition, now).tone} label={statusBadge(t, competition, now).label} size="sm" />
       </div>
       <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
       <FeeLine amount={division.feePerTeam} />

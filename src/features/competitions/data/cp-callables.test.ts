@@ -115,13 +115,11 @@ describe('cp callables（欄位與錯誤轉換）', () => {
   });
 
   it('每個動作只送契約列出的鍵', async () => {
-    await cpHostCreate({ ...base, hostType: 'personal', hostDisplay: '主辦' });
+    await cpHostCreate({ ...base, hostType: 'personal' });
     expect(h.calls.at(-1)?.name).toBe('cpHost');
-    expect(lastPayload()).toEqual({ action: 'create', ...base, hostType: 'personal', hostDisplay: '主辦' });
+    expect(lastPayload()).toEqual({ action: 'create', ...base, hostType: 'personal' });
     expect(lastPayload()).not.toHaveProperty('hostTeamId');
     expect(lastPayload()).not.toHaveProperty('feeNote');
-
-    await cpHostCreate({ ...base, hostType: 'personal' });
     expect(lastPayload()).not.toHaveProperty('hostDisplay');
 
     await cpHostCreate({ ...base, hostType: 'club', hostTeamId: 'team_1', feeNote: '現場繳' });
@@ -201,11 +199,11 @@ describe('cp callables（欄位與錯誤轉換）', () => {
       positionText: '自由',
       nickname: '小七',
       realName: '王小明',
-      publicName: '王',
       guardianConsent: true,
       privacyAck: true,
     });
     expect(lastPayload()).toMatchObject({ position: 'custom', positionText: '自由', guardianConsent: true });
+    expect(lastPayload()).not.toHaveProperty('publicName');
 
     await cpEntryAddRosterByRep({
       cid: 'cid_1',

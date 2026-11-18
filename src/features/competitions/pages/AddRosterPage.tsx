@@ -1,5 +1,5 @@
-// 代表代填。生日只送去判斷年齡，不留在畫面上的其他地方。
-// 未成年只能選姓氏候選。成年預設姓氏，也可以改填暱稱。
+// 代表代填。生日只用來判斷年齡。
+// 未成年公開名遮字、不收暱稱。成年暱稱選填；沒填就顯示遮字結果。都不送 publicName。
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -10,16 +10,16 @@ import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Input } from '@/ui/Input';
 import { PageSpinner } from '@/ui/PageSpinner';
-import { RadioGroup } from '@/ui/RadioGroup';
+import { rosterFormBlock } from '../access';
 import { liveCpActions } from '../actions';
-import { minorPublicNameCandidates } from '../data/names';
+import { maskedPublicName } from '../data/names';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { buildAddInput, type PositionChoice } from '../payload';
-import { CpError, errorOf } from '../ui/feedback';
-import { DateField, PositionField } from '../ui/fields';
+import { CpError, errorOf, RosterBlocked } from '../ui/feedback';
+import { DateField, POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame } from '../ui/shell';
 
 async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
@@ -31,20 +31,24 @@ async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   return { competition, divisions, entries, roster: [], privates: [], staff: null };
 }
 
+function codePoints(value: string): number {
+  return [...value].length;
+}
+
 function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: string }): JSX.Element {
   const t = useT();
   const { route } = useLocation();
   const prefill = env.preview?.prefillForm === true;
-  const adultSeed = env.preview?.repAdult === true;
+  const adultSeed = env.preview?.repAdult === true || env.preview?.repNick === true;
+  const nickSeed = env.preview?.repNick === true;
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [phase, setPhase] = useState(env.bundle ? 'ready' : 'loading');
-  const [realName, setRealName] = useState(prefill ? (adultSeed ? '王示範' : '歐陽示範') : '');
+  const [realName, setRealName] = useState(prefill ? (adultSeed ? '王小範' : '歐陽小明') : '');
   const [birthday, setBirthday] = useState(prefill ? (adultSeed ? '1990-05-20' : '2016-05-20') : '');
   const [number, setNumber] = useState(prefill ? (adultSeed ? '10' : '14') : '');
   const [position, setPosition] = useState<PositionChoice>(prefill ? (adultSeed ? 'MF' : 'FW') : 'none');
   const [positionText, setPositionText] = useState('');
-  const [publicName, setPublicName] = useState(prefill ? (adultSeed ? '王' : '歐陽') : '');
-  const [nickname, setNickname] = useState('');
+  const [nickname, setNickname] = useState(nickSeed ? '阿範' : '');
   const [guardian, setGuardian] = useState(prefill && !adultSeed);
   const [privacy, setPrivacy] = useState(prefill && !adultSeed);
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
@@ -66,23 +70,28 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.bundle]);
 
-  const entry = bundle?.entries.find((row) => row.id === enId);
+  const entry = bundle?.entries.find((row) => row.id === enId) ?? null;
   const division = bundle?.divisions.find((row) => row.dvId === entry?.dvId);
-  const competition = bundle?.competition;
-  const basis = competition?.ageBasisAt ?? competition?.firstMatchAt ?? env.now ?? Date.now();
-  const minorFlag = birthday ? isMinorAt(birthday, basis) : null;
-  const minor = minorFlag === true;
-  const candidates = minorPublicNameCandidates(realName);
-
-  if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  const competition = bundle?.competition ?? null;
+  const now = env.now ?? Date.now();
+  const basis = competition?.ageBasisAt ?? competition?.firstMatchAt ?? now;
+  const ageFlag = birthday ? isMinorAt(birthday, basis) : null;
+  const minor = ageFlag === true;
+  const adult = ageFlag === false;
+  const shown = adult && nickname.trim() ? nickname.trim() : maskedPublicName(realName);
+  const ackKey = adult && nickname.trim() ? 'competitions.ackNickname' : 'competitions.ackMasked';
 
   async function submit(): Promise<void> {
     if (!realName.trim()) {
       setError({ reason: 'REAL_NAME_REQUIRED' });
       return;
     }
-    if (!birthday) {
+    if (!birthday.trim()) {
       setError({ reason: 'FIELD_REQUIRED' });
+      return;
+    }
+    if (isMinorAt(birthday, basis) == null) {
+      setError({ reason: 'BIRTHDAY_INVALID' });
       return;
     }
     if (number.trim() === '') {
@@ -94,16 +103,9 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
       setError({ reason: 'FIELD_RANGE' });
       return;
     }
-    if (position === 'custom' && (positionText.trim().length < 1 || positionText.trim().length > 6)) {
-      setError({ reason: 'FIELD_LENGTH', params: { min: 1, max: 6 } });
-      return;
-    }
-    if (!nickname.trim() && !publicName.trim()) {
-      setError({ reason: 'MINOR_PUBLIC_NAME' });
-      return;
-    }
-    if (minor && nickname.trim()) {
-      setError({ reason: 'MINOR_PUBLIC_NAME' });
+    const customLen = codePoints(positionText.trim());
+    if (position === 'custom' && (customLen < 1 || customLen > POSITION_TEXT_MAX)) {
+      setError({ reason: 'FIELD_LENGTH', params: { min: 1, max: POSITION_TEXT_MAX } });
       return;
     }
     if (minor && !guardian) {
@@ -124,12 +126,10 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
         position,
         positionText,
         minor,
-        nickname,
+        nickname: adult ? nickname : '',
         realName,
-        publicName,
         guardianConsent: guardian,
         birthday,
-        nicknameOverrides: !minor && nickname.trim().length > 0,
       }));
       route(`/competitions/${cid}/entries/${enId}`);
     } catch (err) {
@@ -138,6 +138,25 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
       setBusy(false);
     }
   }
+
+  if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  if (!competition || phase === 'error') {
+    return (
+      <CpFrame title={t('competitions.addTitle')}>
+        <p class="cps-note" role="alert">{t('competitions.loadFailed')}</p>
+      </CpFrame>
+    );
+  }
+
+  const block = rosterFormBlock({
+    kind: 'rep',
+    isMember: env.actor.memberClubIds.includes(entry?.teamId ?? ''),
+    isRep: env.actor.repClubs.some((club) => club.id === entry?.teamId),
+    status: entry?.status ?? null,
+    locked: competition.rostersLockedAt != null,
+    started: now >= competition.firstMatchAt,
+  });
+  if (block) return <RosterBlocked reason={block} cid={cid} enId={enId} />;
 
   return (
     <CpFrame title={t('competitions.addTitle')} onBack={() => route(`/competitions/${cid}/entries/${enId}`)}>
@@ -160,25 +179,13 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
             <div />
           </div>
           <PositionField value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
-          {candidates.length > 0 ? (
-            <RadioGroup
-              label={minor ? t('competitions.publicSurname') : t('competitions.publicName')}
-              value={publicName}
-              orientation="horizontal"
-              onValueChange={setPublicName}
-              options={candidates.map((name) => ({ value: name, label: name }))}
-            />
-          ) : null}
-          {minor ? null : (
+          {shown ? <p class="cps-sub" data-public-name>{t('competitions.maskedPreview', { name: shown })}</p> : null}
+          {adult ? (
             <Input label={t('competitions.nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
-          )}
+          ) : null}
           {minor ? <p class="cps-privacy cps-pre">{t('competitions.minorPublic')}{'\n'}{t('competitions.minorRealName')}</p> : null}
           {minor ? <Checkbox label={t('competitions.guardianConsent')} checked={guardian} onCheckedChange={setGuardian} /> : null}
-          <Checkbox
-            label={minor ? t('competitions.ackSurname') : t('competitions.ackNickname')}
-            checked={privacy}
-            onCheckedChange={setPrivacy}
-          />
+          <Checkbox label={t(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>

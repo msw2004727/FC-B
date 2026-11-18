@@ -145,6 +145,16 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     }]);
   });
 
+  it('測試者與管理員的公開列表不帶 visibility', async () => {
+    const { repo, queries } = harness();
+    await repo.listPublic(true);
+    expect(queries[0]?.clauses).toEqual([
+      { kind: 'where', field: 'hidden', op: '==', value: false },
+      { kind: 'where', field: 'status', op: 'in', value: ['published', 'postponed', 'cancelled'] },
+      { kind: 'limit', n: CP_READ_LIMIT.publicList },
+    ]);
+  });
+
   it('主辦俱樂部：有 publicOnly 才加 visibility，上限 50', async () => {
     const { repo, queries } = harness();
     await repo.listByHostTeam('team_1', true);

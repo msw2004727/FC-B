@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanLine, minorPublicNameCandidates, surnameOf } from './names';
+import { cleanLine, maskedPublicName, surnameOf } from './names';
 
 describe('cleanLine（照後端 text.ts）', () => {
   it('非字串回 null', () => {
@@ -33,46 +33,29 @@ describe('surnameOf（照後端 text.ts）', () => {
   });
 });
 
-describe('minorPublicNameCandidates（照後端 text.ts）', () => {
-  it('單詞外文名不得等於完整真名，退回首字母加點', () => {
-    expect(minorPublicNameCandidates('ChenXiaoming')).toEqual(['C.']);
+describe('maskedPublicName（照後端 text.ts）', () => {
+  it('漢字遮姓氏後第一個字', () => {
+    expect(maskedPublicName('王小明')).toBe('王O明');
+    expect(maskedPublicName('歐陽娜娜')).toBe('歐陽O娜');
+    expect(maskedPublicName('王明')).toBe('王O');
+    expect(maskedPublicName('林')).toBe('林O');
+    expect(maskedPublicName('Amy王小美')).toBe('王O美');
+    expect(maskedPublicName('歐陽小明')).toBe('歐陽O明');
+    expect(maskedPublicName('王小範')).toBe('王O範');
   });
 
-  it('漢字從第一個漢字起算，含姓氏與前兩字', () => {
-    expect(minorPublicNameCandidates('Amy王小美')).toEqual(['王', '王小']);
+  it('外文多詞留名字首字母，單詞只留首字母加點', () => {
+    expect(maskedPublicName('John Smith')).toBe('J. Smith');
+    expect(maskedPublicName('Mary Ann Lee')).toBe('M. Lee');
+    expect(maskedPublicName('ChenXiaoming')).toBe('C.');
   });
 
-  it('單字中文名退回該字加點', () => {
-    expect(minorPublicNameCandidates('林')).toEqual(['林.']);
-  });
-
-  it('候選不得等於完整真名', () => {
-    const samples = [
-      'ChenXiaoming',
-      'Amy王小美',
-      '林',
-      '歐陽娜娜',
-      '王小明',
-      'Amy Chen',
-      'A',
-      '陳',
-      '張簡大華',
-      'John',
-      '王小',
-      '',
-    ];
-    for (const name of samples) {
+  it('空字串回空字串，結果不等於完整真名', () => {
+    expect(maskedPublicName('')).toBe('');
+    expect(maskedPublicName('   ')).toBe('');
+    for (const name of ['王小明', '歐陽娜娜', '王明', '林', 'Amy王小美', 'John Smith', 'ChenXiaoming']) {
       const full = (cleanLine(name) ?? '').replace(/\s+/g, '');
-      for (const candidate of minorPublicNameCandidates(name)) {
-        expect(candidate, name).not.toBe(full);
-      }
+      expect(maskedPublicName(name), name).not.toBe(full);
     }
-  });
-
-  it('兩個詞的外文只留最後一個詞；複姓候選含兩字與第一字', () => {
-    expect(minorPublicNameCandidates('Amy Chen')).toEqual(['Chen']);
-    expect(minorPublicNameCandidates('歐陽娜娜')).toEqual(['歐陽', '歐']);
-    expect(minorPublicNameCandidates('王小')).toEqual(['王']);
-    expect(minorPublicNameCandidates('')).toEqual([]);
   });
 });

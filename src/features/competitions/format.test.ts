@@ -30,4 +30,16 @@ describe('賽事顯示格式', () => {
     expect(isMinorAt('1990-05-20', at)).toBe(false);
     expect(isMinorAt('bad', at)).toBe(null);
   });
+
+  it('一位數月日、閏日與不存在的日期', () => {
+    const before = taipeiMs(2034, 2, 28, 12, 0);
+    const onDay = taipeiMs(2034, 3, 1, 0, 0);
+    expect(isMinorAt('2016-2-29', before)).toBe(true);
+    expect(isMinorAt('2016/02/29', before)).toBe(true);
+    expect(isMinorAt('2016-02-29', onDay)).toBe(false);
+    expect(isMinorAt('2015-02-29', before)).toBe(null);
+    expect(isMinorAt('2016-02-31', before)).toBe(null);
+    expect(fromDatetimeLocalValue('2026-02-31T09:00')).toBeNull();
+    expect(fromDatetimeLocalValue('2024-02-29T09:00')).toBe(taipeiMs(2024, 2, 29, 9, 0));
+  });
 });

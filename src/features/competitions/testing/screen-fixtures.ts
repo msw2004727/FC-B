@@ -36,6 +36,7 @@ export const HARNESS_SCREENS = [
   'form-self-minor',
   'form-rep',
   'form-rep-adult',
+  'form-rep-adult-nick',
   'host-pending',
   'host-approved',
   'host-rejected',
@@ -115,6 +116,8 @@ export const wizardActor = actor({
   uid: 'uid_host',
   displayName: '王示範',
   managedClubs: [{ id: 'club_host', name: '示範俱樂部' }],
+  // 建賽下拉讀的是代表俱樂部，與 managedClubs（含教練的顯示用清單）分開。
+  repClubs: [{ id: 'club_host', name: '示範俱樂部' }],
 });
 
 export function competition(partial: Partial<CompetitionDoc> = {}): CompetitionDoc {
@@ -222,7 +225,7 @@ const SHORT_PLAYERS: RosterPublicDoc[] = [
   player('pl_1', 10, '王示範', 'GK', null),
   player('pl_2', 7, '林示範', 'DF', null),
   player('pl_3', 8, '黃示範', 'MF', null),
-  player('pl_4', 9, '歐陽示範', 'FW', null, true),
+  player('pl_4', 9, '歐陽O明', 'FW', null, true),
   player('pl_5', 11, '小示', null, null),
 ];
 
@@ -402,6 +405,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
     case 'form-rep-adult':
       return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true, repAdult: true });
+    case 'form-rep-adult-nick':
+      return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true, repAdult: true, repNick: true });
     case 'host-pending':
       return base(actions, hostActor, manageBundle(), { manageTab: 'pending' });
     case 'host-approved':

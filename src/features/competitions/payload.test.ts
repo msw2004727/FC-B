@@ -38,11 +38,12 @@ const draft: WizardDraft = {
 };
 
 describe('送出欄位只含契約的鍵', () => {
-  it('個人主辦不送 hostTeamId 與 feeNote', () => {
+  it('個人主辦不送 hostTeamId、feeNote、hostDisplay', () => {
     const input = buildCreateInput(draft);
     expect(input.hostType).toBe('personal');
     expect(input).not.toHaveProperty('hostTeamId');
     expect(input).not.toHaveProperty('feeNote');
+    expect(input).not.toHaveProperty('hostDisplay');
     expect(input.liveLinks).toEqual([]);
     expect(input.venues[0]).toEqual({ name: '示範球場', mapPlaceId: 'place_demo', mapProvider: 'google' });
     expect(input.divisions[0]).not.toHaveProperty('minAge');
@@ -57,50 +58,57 @@ describe('送出欄位只含契約的鍵', () => {
     expect(input).not.toHaveProperty('hostDisplay');
   });
 
-  it('自己登錄：成年送暱稱，未成年送姓氏與監護人同意', () => {
+  it('自己登錄：成年送暱稱，未成年送真名與監護人同意，都不送 publicName', () => {
     expect(buildJoinInput({
       cid: 'cup', enId: 'en_a', number: 14, position: 'FW', positionText: '',
-      minor: false, nickname: '阿範', realName: '', publicName: '', guardianConsent: false,
+      minor: false, nickname: '阿範', realName: '', guardianConsent: false,
     })).toEqual({ cid: 'cup', enId: 'en_a', number: 14, position: 'FW', nickname: '阿範', privacyAck: true });
 
-    expect(buildJoinInput({
+    const minor = buildJoinInput({
       cid: 'cup', enId: 'en_a', number: 14, position: 'FW', positionText: '',
-      minor: true, nickname: '阿範', realName: '歐陽示範', publicName: '歐陽', guardianConsent: true,
-    })).toEqual({
-      cid: 'cup', enId: 'en_a', number: 14, position: 'FW', privacyAck: true,
-      realName: '歐陽示範', publicName: '歐陽', guardianConsent: true,
+      minor: true, nickname: '阿範', realName: '歐陽小明', guardianConsent: true,
     });
+    expect(minor).toEqual({
+      cid: 'cup', enId: 'en_a', number: 14, position: 'FW', privacyAck: true,
+      realName: '歐陽小明', guardianConsent: true,
+    });
+    expect(minor).not.toHaveProperty('publicName');
+    expect(minor).not.toHaveProperty('nickname');
   });
 
-  it('代填：成年選姓氏送 publicName，改暱稱就不送 publicName；未成年不送暱稱', () => {
-    expect(buildAddInput({
+  it('代填：成年沒暱稱不送暱稱，有暱稱才送；未成年不送暱稱；都不送 publicName', () => {
+    const adult = buildAddInput({
       cid: 'cup', enId: 'en_a', number: 10, position: 'MF', positionText: '',
-      minor: false, nickname: '', realName: '王示範', publicName: '王', guardianConsent: false,
-      birthday: '1990-05-20', nicknameOverrides: false,
-    })).toEqual({
-      cid: 'cup', enId: 'en_a', number: 10, position: 'MF', privacyAck: true,
-      realName: '王示範', publicName: '王', birthday: '1990-05-20',
+      minor: false, nickname: '', realName: '王小範', guardianConsent: false,
+      birthday: '1990-05-20',
     });
+    expect(adult).toEqual({
+      cid: 'cup', enId: 'en_a', number: 10, position: 'MF', privacyAck: true,
+      realName: '王小範', birthday: '1990-05-20',
+    });
+    expect(adult).not.toHaveProperty('publicName');
+    expect(adult).not.toHaveProperty('nickname');
 
     expect(buildAddInput({
       cid: 'cup', enId: 'en_a', number: 10, position: 'MF', positionText: '',
-      minor: false, nickname: '阿範', realName: '王示範', publicName: '王', guardianConsent: false,
-      birthday: '1990-05-20', nicknameOverrides: true,
+      minor: false, nickname: '阿範', realName: '王小範', guardianConsent: false,
+      birthday: '1990-05-20',
     })).toEqual({
       cid: 'cup', enId: 'en_a', number: 10, position: 'MF', privacyAck: true,
-      realName: '王示範', nickname: '阿範', birthday: '1990-05-20',
+      realName: '王小範', nickname: '阿範', birthday: '1990-05-20',
     });
 
     const minor = buildAddInput({
       cid: 'cup', enId: 'en_a', number: 14, position: 'FW', positionText: '',
-      minor: true, nickname: '阿範', realName: '歐陽示範', publicName: '歐陽', guardianConsent: true,
-      birthday: '2016-05-20', nicknameOverrides: false,
+      minor: true, nickname: '阿範', realName: '歐陽小明', guardianConsent: true,
+      birthday: '2016-05-20',
     });
     expect(minor).toEqual({
       cid: 'cup', enId: 'en_a', number: 14, position: 'FW', privacyAck: true,
-      realName: '歐陽示範', publicName: '歐陽', guardianConsent: true, birthday: '2016-05-20',
+      realName: '歐陽小明', guardianConsent: true, birthday: '2016-05-20',
     });
     expect(minor).not.toHaveProperty('nickname');
+    expect(minor).not.toHaveProperty('publicName');
   });
 
   it('報隊、審核、繳費只送允許的鍵', () => {

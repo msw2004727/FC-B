@@ -65,7 +65,17 @@ export function fromDatetimeLocalValue(value: string): number | null {
   const hour = Number(match[4]);
   const minute = Number(match[5]);
   if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  // 月份天數：2/31、非閏年 2/29 不接受。
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
   return Date.UTC(year, month - 1, day, hour, minute) - TAIPEI_OFFSET_MS;
+}
+
+/** 以 Unicode code point 截斷。地址上限 100 字用這個，避免代理對被切半。 */
+export function clipCodePoints(value: string, max: number): string {
+  const chars = [...value];
+  if (chars.length <= max) return value;
+  return chars.slice(0, max).join('');
 }
 
 export function fromDateValue(value: string): string | null {
@@ -105,19 +115,44 @@ export function positionLabel(
   return labels[position];
 }
 
+interface DateParts {
+  year: number;
+  month: number;
+  day: number;
+}
+
 /**
- * 未滿 18 歲算未成年。生日接受 YYYY-MM-DD 或 YYYY/MM/DD。
- * 比較的是台北日期，基準毫秒換算成台北日曆日。
+ * 與後端 age.ts parseBirthdayParts 相同：YYYY-MM-DD 或 YYYY/MM/DD，月日可一位數，
+ * 並用 UTC 日期檢查月份天數（2/29 只在閏年合法）。
  */
-export function isMinorAt(birthday: string, atMs: number): boolean | null {
-  const match = /^(\d{4})[-/](\d{2})[-/](\d{2})$/.exec(birthday.trim());
+function parseBirthdayParts(value: string): DateParts | null {
+  const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(value.trim());
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  return { year, month, day };
+}
+
+/** 與後端 ageOn 相同：未過生日減 1，0～129 以外視為不合法。 */
+function ageOn(birth: DateParts, ref: DateParts): number | null {
+  let age = ref.year - birth.year;
+  if (ref.month < birth.month || (ref.month === birth.month && ref.day < birth.day)) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+/**
+ * 未滿 18 歲算未成年。生日接受 YYYY-MM-DD 或 YYYY/MM/DD（月日可一位數）。
+ * 比較的是台北日期，未過生日減 1。不合法回 null。
+ */
+export function isMinorAt(birthday: string, atMs: number): boolean | null {
+  const birth = parseBirthdayParts(birthday);
+  if (!birth) return null;
   const at = taipeiParts(atMs);
-  const atDay = Date.UTC(at.year, at.month - 1, at.day);
-  const adultDay = Date.UTC(year + 18, month - 1, day);
-  return atDay < adultDay;
+  const age = ageOn(birth, at);
+  if (age == null) return null;
+  return age < 18;
 }

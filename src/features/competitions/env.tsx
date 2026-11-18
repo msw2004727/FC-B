@@ -52,6 +52,8 @@ export interface CpPreview {
   prefillForm?: boolean;
   selfMinor?: boolean;
   repAdult?: boolean;
+  /** 代填成年而且已經填了暱稱。 */
+  repNick?: boolean;
   /** 主辦管理一開始顯示的分頁。鎖定／解鎖預覽仍強制已核准。 */
   manageTab?: 'pending' | 'approved' | 'rejected';
 }

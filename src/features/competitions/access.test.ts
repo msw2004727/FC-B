@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin } from './access';
+import { canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -55,5 +55,18 @@ describe('賽事權限顯示', () => {
     expect(canUnlockRosters({ locked: true, canManage: true, isAdmin: false, firstMatchAt: 100, now: 50 })).toBe(true);
     expect(canUnlockRosters({ locked: true, canManage: true, isAdmin: false, firstMatchAt: 100, now: 100 })).toBe(false);
     expect(canUnlockRosters({ locked: true, canManage: false, isAdmin: true, firstMatchAt: 100, now: 200 })).toBe(true);
+  });
+
+  it('登錄表單：自己要是成員、代填要是代表，而且限 pending 或 approved、未鎖、首場前', () => {
+    const open = { isMember: true, isRep: false, status: 'pending' as const, locked: false, started: false };
+    expect(rosterFormBlock({ ...open, kind: 'self' })).toBeNull();
+    expect(rosterFormBlock({ ...open, kind: 'self', status: 'approved' })).toBeNull();
+    expect(rosterFormBlock({ ...open, kind: 'self', isMember: false })).toBe('NOT_CLUB_MEMBER');
+    expect(rosterFormBlock({ ...open, kind: 'rep', isRep: true })).toBeNull();
+    expect(rosterFormBlock({ ...open, kind: 'rep', isRep: false, isMember: true })).toBe('NOT_CLUB_REP');
+    expect(rosterFormBlock({ ...open, kind: 'self', status: 'rejected' })).toBe('ENTRY_STATUS');
+    expect(rosterFormBlock({ ...open, kind: 'self', status: null })).toBe('ENTRY_STATUS');
+    expect(rosterFormBlock({ ...open, kind: 'self', locked: true })).toBe('ROSTERS_LOCKED');
+    expect(rosterFormBlock({ ...open, kind: 'self', started: true })).toBe('COMPETITION_STARTED');
   });
 });

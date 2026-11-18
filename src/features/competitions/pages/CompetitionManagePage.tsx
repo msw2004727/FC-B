@@ -14,6 +14,7 @@ import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
 import { canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
+import { representativeClubs } from '../rep-clubs';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
@@ -35,7 +36,7 @@ async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
     staffRoles: staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
-    repClubIds: env.actor.repClubs.map((club) => club.id),
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
   const privates = manage ? await env.repo.listEntryPrivate(cid, null) : [];
@@ -66,8 +67,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [unlockOpen, setUnlockOpen] = useState(env.preview?.unlockOpen === true);
   const [unlockReason, setUnlockReason] = useState('');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  const [rejectError, setRejectError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  const [unlockError, setUnlockError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
   const now = env.now ?? Date.now();
+  const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
 
   useEffect(() => {
     if (env.bundle) return;
@@ -82,15 +86,16 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     return () => {
       alive = false;
     };
+    // repClubs 晚到要補讀 entryPrivate，否則繳費、拒絕原因、聯絡人是空的。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.bundle]);
+  }, [cid, env.actor.uid, env.actor.role, env.bundle, repKey]);
 
   const competition = bundle?.competition;
   const manage = competition ? canManageCompetition({
     staffRoles: bundle?.staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
-    repClubIds: env.actor.repClubs.map((club) => club.id),
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
   const locked = competition?.rostersLockedAt != null;
@@ -136,10 +141,19 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     setError(null);
     try {
       await env.actions.review(buildReviewInput({ cid, enId, decision: 'approve' }));
-      setBundle((prev) => prev ? {
-        ...prev,
-        entries: prev.entries.map((row) => row.id === enId ? { ...row, status: 'approved' } : row),
-      } : prev);
+      setBundle((prev) => {
+        if (!prev) return prev;
+        const entry = prev.entries.find((row) => row.id === enId);
+        return {
+          ...prev,
+          entries: prev.entries.map((row) => row.id === enId ? { ...row, status: 'approved' } : row),
+          divisions: prev.divisions.map((division) => (
+            entry && division.dvId === entry.dvId
+              ? { ...division, approvedCount: division.approvedCount + 1 }
+              : division
+          )),
+        };
+      });
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -150,12 +164,17 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   async function reject(): Promise<void> {
     if (!manage || !rejectEntry) return;
     const reason = rejectReason.trim();
-    if (reason.length < 1) {
-      setError({ reason: 'FIELD_REQUIRED' });
+    const reasonLen = [...reason].length;
+    if (!reason) {
+      setRejectError({ reason: 'FIELD_REQUIRED' });
+      return;
+    }
+    if (reasonLen < 2 || reasonLen > 200) {
+      setRejectError({ reason: 'FIELD_LENGTH', params: { min: 2, max: 200 } });
       return;
     }
     setBusy(true);
-    setError(null);
+    setRejectError(null);
     try {
       await env.actions.review(buildReviewInput({ cid, enId: rejectEntry.id, decision: 'reject', reason }));
       setBundle((prev) => prev ? {
@@ -167,8 +186,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       } : prev);
       setRejectId(null);
       setRejectReason('');
+      setRejectError(null);
     } catch (err) {
-      setError(errorOf(err));
+      setRejectError(errorOf(err));
     } finally {
       setBusy(false);
     }
@@ -229,12 +249,17 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   async function unlock(): Promise<void> {
     const reason = unlockReason.trim();
+    const reasonLen = [...reason].length;
     if (!reason) {
-      setError({ reason: 'FIELD_REQUIRED' });
+      setUnlockError({ reason: 'FIELD_REQUIRED' });
+      return;
+    }
+    if (reasonLen < 2 || reasonLen > 200) {
+      setUnlockError({ reason: 'FIELD_LENGTH', params: { min: 2, max: 200 } });
       return;
     }
     setBusy(true);
-    setError(null);
+    setUnlockError(null);
     try {
       await env.actions.unlockRosters({ cid, reason });
       setBundle((prev) => prev && prev.competition ? {
@@ -243,8 +268,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       } : prev);
       setUnlockOpen(false);
       setUnlockReason('');
+      setUnlockError(null);
     } catch (err) {
-      setError(errorOf(err));
+      setUnlockError(errorOf(err));
     } finally {
       setBusy(false);
     }
@@ -274,7 +300,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             ) : null}
             {manage ? (
               <div class="cps-actions">
-                <Button variant="secondary" onClick={() => { setRejectId(entry.id); setError(null); }}>{t('competitions.reject')}</Button>
+                <Button variant="secondary" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{t('competitions.reject')}</Button>
                 <Button variant="primary" onClick={() => { void approve(entry.id); }}>{t('competitions.approve')}</Button>
               </div>
             ) : null}
@@ -328,7 +354,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       ) : null}
       {showUnlock ? (
         <div class="cps-actions">
-          <Button variant="secondary" onClick={() => setUnlockOpen(true)}>{t('competitions.unlock')}</Button>
+          <Button variant="secondary" onClick={() => { setUnlockError(null); setUnlockOpen(true); }}>{t('competitions.unlock')}</Button>
         </div>
       ) : null}
     </div>
@@ -358,6 +384,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     <CpFrame title={t('competitions.manageTitle')}>
       <div>
         <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
+        {(bundle?.divisions ?? []).map((division) => (
+          <p class="cps-cap" key={division.dvId} data-approved-count={division.dvId}>
+            {division.name}　{t('competitions.approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}
+          </p>
+        ))}
         <Tabs
           label={t('competitions.entryTabs')}
           variant="segmented"
@@ -372,15 +403,15 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           ]}
         />
       </div>
-      {error && !rejectEntry && !unlockOpen ? <CpError reason={error.reason} params={error.params} /> : null}
+      {error ? <CpError reason={error.reason} params={error.params} /> : null}
       {rejectEntry ? (
         <BottomSheet
           open
           title={t('competitions.rejectTitle')}
-          onClose={() => setRejectId(null)}
+          onClose={() => { setRejectId(null); setRejectError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => setRejectId(null)}>{t('competitions.cancel')}</Button>
+              <Button variant="secondary" onClick={() => { setRejectId(null); setRejectError(null); }}>{t('competitions.cancel')}</Button>
               <Button variant="danger" loading={busy} onClick={() => { void reject(); }}>{t('competitions.rejectSubmit')}</Button>
             </div>
           )}
@@ -395,7 +426,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               placeholder={t('competitions.rejectPlaceholder')}
               onValueChange={setRejectReason}
             />
-            {error ? <CpError reason={error.reason} params={error.params} /> : null}
+            {rejectError ? <CpError reason={rejectError.reason} params={rejectError.params} /> : null}
           </div>
         </BottomSheet>
       ) : null}
@@ -403,10 +434,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <BottomSheet
           open
           title={t('competitions.unlockTitle')}
-          onClose={() => setUnlockOpen(false)}
+          onClose={() => { setUnlockOpen(false); setUnlockError(null); }}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" onClick={() => setUnlockOpen(false)}>{t('competitions.cancel')}</Button>
+              <Button variant="secondary" onClick={() => { setUnlockOpen(false); setUnlockError(null); }}>{t('competitions.cancel')}</Button>
               <Button variant="primary" loading={busy} onClick={() => { void unlock(); }}>{t('competitions.unlockSubmit')}</Button>
             </div>
           )}
@@ -419,7 +450,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               maxLength={200}
               onValueChange={setUnlockReason}
             />
-            {error ? <CpError reason={error.reason} params={error.params} /> : null}
+            {unlockError ? <CpError reason={unlockError.reason} params={unlockError.params} /> : null}
           </div>
         </BottomSheet>
       ) : null}

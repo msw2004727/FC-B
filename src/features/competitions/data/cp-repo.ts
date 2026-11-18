@@ -39,7 +39,8 @@ export interface CompetitionsRepo {
   getLaunch(): Promise<LaunchDoc | null>;
   getLaunchTester(uid: string): Promise<boolean>;
   listMine(uid: string): Promise<CpMineItem[]>;
-  listPublic(): Promise<CompetitionDoc[]>;
+  /** includeInternal：測試者／管理員不帶 visibility，才能看到內部賽。一般會員維持只查公開。 */
+  listPublic(includeInternal?: boolean): Promise<CompetitionDoc[]>;
   listByHostTeam(teamId: string, publicOnly: boolean): Promise<CompetitionDoc[]>;
   getCompetition(cid: string): Promise<CompetitionDoc | null>;
   listDivisions(cid: string): Promise<DivisionDoc[]>;
@@ -262,11 +263,13 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
   const roles = Array.isArray(raw.roles)
     ? raw.roles.filter((role): role is MineRole => oneOf(role, MINE_ROLES) != null)
     : [];
+  const name = str(raw.name)?.trim();
   return {
     id,
     cid: str(raw.cid) ?? id,
     roles,
     host: bool(raw.host) ?? false,
+    ...(name ? { name } : {}),
   };
 }
 
@@ -321,15 +324,17 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         .filter((item): item is CpMineItem => item != null);
     },
 
-    async listPublic() {
+    async listPublic(includeInternal = false) {
       const { db, sdk } = await ready();
-      const snap = await sdk.getDocs(sdk.query(
-        sdk.collection(db, 'competitions'),
-        sdk.where('visibility', '==', 'public'),
+      const clauses: unknown[] = [];
+      // Rules：isPubLike && internalGate。測試者／管理員不帶 visibility，內部賽才查得到。
+      if (!includeInternal) clauses.push(sdk.where('visibility', '==', 'public'));
+      clauses.push(
         sdk.where('hidden', '==', false),
         sdk.where('status', 'in', [...PUBLIC_STATUSES]),
         sdk.limit(CP_READ_LIMIT.publicList),
-      ));
+      );
+      const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'competitions'), ...clauses));
       return snap.docs
         .map((doc) => competitionFromDoc(doc.id, doc.data() ?? {}))
         .filter((doc): doc is CompetitionDoc => doc != null);

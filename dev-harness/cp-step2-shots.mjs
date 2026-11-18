@@ -29,6 +29,7 @@ const SCREENS = [
   ['form-self-adult', ONE, ['light'], true],
   ['form-rep', ALL, THEMES_ALL, true],
   ['form-rep-adult', ONE, ['light'], true],
+  ['form-rep-adult-nick', ONE, ['light'], true],
   ['host-pending', ALL, THEMES_ALL, true],
   ['host-reject', ONE, THEMES_ALL, false],
   ['host-approved', ALL, THEMES_ALL, true],

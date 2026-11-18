@@ -127,6 +127,8 @@ export interface CpMineItem {
   cid: string;
   roles: MineRole[];
   host: boolean;
+  /** 有名稱就不用再讀賽事文件。舊文件可能沒有這個欄。 */
+  name?: string;
 }
 
 export interface LaunchDoc {

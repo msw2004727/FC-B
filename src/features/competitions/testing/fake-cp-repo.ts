@@ -66,9 +66,9 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): CompetitionsRepo {
       return take(mine[uid] ?? [], CP_READ_LIMIT.mine);
     },
 
-    async listPublic() {
+    async listPublic(includeInternal = false) {
       const rows = competitions.filter((doc) =>
-        doc.visibility === 'public' && doc.hidden === false
+        (includeInternal || doc.visibility === 'public') && doc.hidden === false
         && (doc.status === 'published' || doc.status === 'postponed' || doc.status === 'cancelled'));
       return take(rows, CP_READ_LIMIT.publicList);
     },

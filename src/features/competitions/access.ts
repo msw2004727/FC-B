@@ -1,7 +1,7 @@
 // 權限顯示規則（契約 §4）。前端只決定按鈕出不出現，擋不住的操作仍由伺服器拒絕。
 // 沒有 creator 角色。主辦方＝staff 的 host／coHost，或俱樂部賽事的目前代表，或管理員。
 
-import type { CompetitionStatus, HostType, StaffRole } from './data/types';
+import type { CompetitionStatus, EntryStatus, HostType, StaffRole } from './data/types';
 
 export interface CpClub {
   id: string;
@@ -63,6 +63,31 @@ export function canRegisterClubEntry(input: RegisterInput): boolean {
   if (input.repClubIds.length === 0) return false;
   if (input.hidden || input.status !== 'published') return false;
   return input.now >= input.regOpenAt && input.now <= input.regCloseAt;
+}
+
+/**
+ * 登錄表單能不能出現。
+ * 自己登錄要是該隊成員；代填要是代表。
+ * 報隊須為 pending 或 approved、名單未鎖、首場前。
+ * ENTRY_STATUS 不是伺服器代碼，畫面改顯示「這份報隊目前不能登錄名單」。
+ */
+export function rosterFormBlock(input: {
+  kind: 'self' | 'rep';
+  isMember: boolean;
+  isRep: boolean;
+  status: EntryStatus | null;
+  locked: boolean;
+  started: boolean;
+}): 'NOT_CLUB_MEMBER' | 'NOT_CLUB_REP' | 'ROSTERS_LOCKED' | 'COMPETITION_STARTED' | 'ENTRY_STATUS' | null {
+  if (input.kind === 'rep') {
+    if (!input.isRep) return 'NOT_CLUB_REP';
+  } else if (!input.isMember) {
+    return 'NOT_CLUB_MEMBER';
+  }
+  if (input.status !== 'pending' && input.status !== 'approved') return 'ENTRY_STATUS';
+  if (input.locked) return 'ROSTERS_LOCKED';
+  if (input.started) return 'COMPETITION_STARTED';
+  return null;
 }
 
 /** 首場前主辦可解鎖；首場之後只留管理員。未鎖定不顯示。 */

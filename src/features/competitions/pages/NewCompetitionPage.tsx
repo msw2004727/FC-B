@@ -18,8 +18,9 @@ import type { EventLocationSelection } from '@/features/events/components/event-
 import { liveCpActions } from '../actions';
 import { useInjectedEnv, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
-import { fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
+import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
+import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpRow, TrashIcon } from '../ui/shell';
@@ -164,7 +165,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   );
   const [busy, setBusy] = useState(false);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
-  const clubs = env.actor.managedClubs;
+  const clubs = representativeClubs(env.actor);
+
+  useEffect(() => {
+    if (form.hostType !== 'club') return;
+    if (form.hostTeamId && clubs.some((club) => club.id === form.hostTeamId)) return;
+    const first = clubs[0]?.id ?? '';
+    if (!first) return;
+    setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
+  }, [clubs, form.hostType, form.hostTeamId]);
 
   function patch(partial: Partial<FormState>): void {
     setForm((prev) => ({ ...prev, ...partial }));
@@ -193,6 +202,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     if (!(draft.regOpenAt < draft.regCloseAt && draft.regCloseAt <= draft.firstMatchAt && draft.firstMatchAt <= draft.lastMatchAt)) {
       return { reason: 'SCHEDULE_ORDER' };
     }
+    if (draft.firstMatchAt <= (env.now ?? Date.now())) return { reason: 'SCHEDULE_PAST' };
     if (form.venues.length < 1 || form.venues.some((venue) => {
       const nameLen = venue.name.trim().length;
       return nameLen < 1 || nameLen > 40;
@@ -315,13 +325,19 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 label={t('competitions.hostKind')}
                 orientation="horizontal"
                 value={form.hostType}
-                onValueChange={(value) => patch({ hostType: value === 'club' ? 'club' : 'personal' })}
+                onValueChange={(value) => {
+                  const hostType = value === 'club' ? 'club' : 'personal';
+                  patch({
+                    hostType,
+                    hostTeamId: hostType === 'club' ? (form.hostTeamId || clubs[0]?.id || '') : form.hostTeamId,
+                  });
+                }}
                 options={[
                   { value: 'personal', label: t('competitions.hostPersonalShort') },
-                  { value: 'club', label: t('competitions.hostClubOption') },
+                  ...(clubs.length > 0 ? [{ value: 'club', label: t('competitions.hostClubOption') }] : []),
                 ]}
               />
-              {form.hostType === 'club' ? (
+              {form.hostType === 'club' && clubs.length > 0 ? (
                 <Select
                   label={t('competitions.club')}
                   value={form.hostTeamId}
@@ -551,12 +567,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           venue={form.venues[mapIndex] ?? emptyVenue()}
           onClose={() => setMapIndex(null)}
           onConfirm={(selection) => {
+            const picked = form.venues[mapIndex]?.address || selection.mapAddress;
             patchVenue(mapIndex, {
               lat: selection.lat,
               lng: selection.lng,
               mapPlaceId: selection.mapPlaceId,
               mapProvider: selection.mapProvider,
-              address: form.venues[mapIndex]?.address || selection.mapAddress,
+              address: clipCodePoints(picked, 100),
             });
             setMapIndex(null);
           }}

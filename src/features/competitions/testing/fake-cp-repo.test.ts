@@ -62,6 +62,18 @@ describe('createFakeCpRepo', () => {
     expect(rows[0]?.id).toBe('cid_0');
   });
 
+  it('includeInternal 才列出非公開，草稿仍然排除', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [
+        comp({ id: 'cid_pub' }),
+        comp({ id: 'cid_inner', visibility: 'internal' }),
+        comp({ id: 'cid_draft', status: 'draft', visibility: 'internal' }),
+      ],
+    });
+    await expect(repo.listPublic().then((rows) => rows.map((row) => row.id))).resolves.toEqual(['cid_pub']);
+    await expect(repo.listPublic(true).then((rows) => rows.map((row) => row.id))).resolves.toEqual(['cid_pub', 'cid_inner']);
+  });
+
   it('主辦俱樂部：publicOnly 才要求公開，上限 50；找不到回 null', async () => {
     const published = comp({ id: 'cid_pub', hostTeamId: 'team_1', visibility: 'public' });
     const unlisted = comp({ id: 'cid_draft_team', hostTeamId: 'team_1', visibility: 'unlisted', status: 'draft' });

@@ -48,6 +48,9 @@ function InAppCompetitionsSlot(): JSX.Element | null {
     let alive = true;
     void import('@/features/competitions/components/InAppSection').then((mod) => {
       if (alive) setSlot(() => mod.InAppSection);
+    }).catch(() => {
+      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。
+      if (alive) setSlot(null);
     });
     return () => {
       alive = false;

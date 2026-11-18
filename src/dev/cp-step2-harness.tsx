@@ -41,6 +41,7 @@ const PAGES: Record<string, ComponentType> = {
   'form-self-minor': JoinRosterPage,
   'form-rep': AddRosterPage,
   'form-rep-adult': AddRosterPage,
+  'form-rep-adult-nick': AddRosterPage,
   'host-pending': CompetitionManagePage,
   'host-approved': CompetitionManagePage,
   'host-rejected': CompetitionManagePage,

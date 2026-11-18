@@ -101,10 +101,8 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
       ? { ...common, hostType: 'club', hostTeamId: draft.hostTeamId, feeNote }
       : { ...common, hostType: 'club', hostTeamId: draft.hostTeamId };
   }
-  const hostDisplay = draft.hostDisplay.trim();
-  return hostDisplay
-    ? { ...common, hostType: 'personal', hostDisplay }
-    : { ...common, hostType: 'personal' };
+  // 個人主辦不送 hostDisplay。後端用主站顯示名，並自己處理長度與禁用字。
+  return { ...common, hostType: 'personal' };
 }
 
 function positionFields(choice: PositionChoice, positionText: string): {
@@ -128,7 +126,6 @@ export interface JoinDraft {
   minor: boolean;
   nickname: string;
   realName: string;
-  publicName: string;
   guardianConsent: boolean;
 }
 
@@ -141,12 +138,11 @@ export function buildJoinInput(draft: JoinDraft): CpJoinRosterInput {
     privacyAck: true,
   };
   if (draft.minor) {
+    // 未成年公開名由後端遮字，不送 publicName、不送暱稱。
     const realName = draft.realName.trim();
-    const publicName = draft.publicName.trim();
     return {
       ...base,
       ...(realName ? { realName } : {}),
-      ...(publicName ? { publicName } : {}),
       ...(draft.guardianConsent ? { guardianConsent: true } : {}),
     };
   }
@@ -156,18 +152,12 @@ export function buildJoinInput(draft: JoinDraft): CpJoinRosterInput {
 
 export interface AddDraft extends JoinDraft {
   birthday: string;
-  /** 成年代填：有暱稱就送暱稱、不送 publicName；沒有就送姓氏候選。 */
-  nicknameOverrides: boolean;
 }
 
 export function buildAddInput(draft: AddDraft): CpAddRosterByRepInput {
-  // 成年代填若只選姓氏，不能走自己登錄的暱稱路徑，否則 publicName 會被丟掉。
-  const surnameOnly = draft.minor || !draft.nicknameOverrides;
   const joined = buildJoinInput({
     ...draft,
-    minor: surnameOnly,
-    nickname: surnameOnly ? '' : draft.nickname,
-    publicName: surnameOnly ? draft.publicName : '',
+    nickname: draft.minor ? '' : draft.nickname,
     guardianConsent: draft.minor ? draft.guardianConsent : false,
   });
   return {
