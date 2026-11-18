@@ -29,6 +29,8 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   _resetErrorReporterForTest,
   installErrorReporter,
+  isModuleLoadFailure,
+  moduleLoadFailedError,
   redactHash,
   redactUrl,
   reportClientError,
@@ -314,6 +316,29 @@ describe('error-report', () => {
     const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(payload.errorCategory).toBe('network-load');
     expect(payload.noise).toBe(false);
+  });
+
+  it('載入點回空值的 MODULE_LOAD_FAILED 標記錯誤：一樣歸 network-load 並附 diag（§3.260）', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    installErrorReporter();
+    reportClientError('signup-module-load', moduleLoadFailedError('firebase/functions'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.errorCategory).toBe('network-load');
+    expect(payload.errorCode).toBe('MODULE_LOAD_FAILED');
+    expect(typeof payload.diag).toBe('string');
+    expect(mockAddDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('isModuleLoadFailure：認標記與三種原生訊息，一般 TypeError 不算', () => {
+    expect(isModuleLoadFailure(moduleLoadFailedError('x'))).toBe(true);
+    expect(isModuleLoadFailure(Object.assign(new Error('wrapped'), { code: 'MODULE_LOAD_FAILED' }))).toBe(true);
+    expect(isModuleLoadFailure(new TypeError('Importing a module script failed.'))).toBe(true);
+    expect(isModuleLoadFailure(new TypeError('Failed to fetch dynamically imported module: https://x/a.js'))).toBe(true);
+    expect(isModuleLoadFailure(new TypeError('error loading dynamically imported module: https://x/a.js'))).toBe(true);
+    expect(isModuleLoadFailure(new TypeError("undefined is not an object (evaluating 'e.httpsCallable')"))).toBe(false);
+    expect(isModuleLoadFailure(new TypeError("Cannot destructure property 'httpsCallable' of 'undefined'"))).toBe(false);
+    expect(isModuleLoadFailure(undefined)).toBe(false);
   });
 
   it('程式檔載入失敗時附上診斷：只列同源 /assets，iOS 沒有 responseStatus 也照寫', async () => {

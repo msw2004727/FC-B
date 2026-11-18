@@ -30,7 +30,7 @@ import type {
   RegisterForEventRequest,
   RegisterForEventResponse,
 } from '@/data/contract/callables';
-import { isModuleLoadFailureMessage, reportClientError } from '@/core/error-report';
+import { isModuleLoadFailure, reportClientError } from '@/core/error-report';
 import { emit } from '@/core/events';
 import { parseEventStartMs } from '@/core/event-time';
 import { beginSubmitting } from '@/core/submit-guard';
@@ -483,9 +483,9 @@ function toSignupError(
   const message = error instanceof Error ? error.message : String(error);
   // 報名／取消途中程式檔載入失敗（例如按下才載入的 firebase/functions；iOS LINE 常見）：
   // 改用專屬文案，並上報（上報器會附載入診斷 diag）。只改分類與顯示，不重試、不改送出守門。
-  // 原始 TypeError 與被包成 CallableError 的同一訊息都認。
+  // 認三種原生訊息（原始 TypeError 或被包成 CallableError），以及載入點回空值時的 MODULE_LOAD_FAILED 標記（§3.260）。
   // 取代：原本一律「報名失敗，請稍後重試」，而且畫面接住後不寫錯誤日誌（顧問 §3.259）。
-  if (isModuleLoadFailureMessage(message)) {
+  if (isModuleLoadFailure(error)) {
     reportClientError(scope === 'register' ? 'signup-module-load' : 'cancel-module-load', error);
     return new SignupError({
       code: 'unknown',

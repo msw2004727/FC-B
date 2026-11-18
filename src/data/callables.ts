@@ -151,6 +151,7 @@ import type {
 } from './contract/callables';
 import { CALLABLES, type CallableName } from './contract/callables';
 import { getFirebase, shouldUseEmulator } from './firebase';
+import { moduleLoadFailedError } from '@/core/error-report';
 
 // ── 名稱 → request/response 型別映射 ─────────────────
 
@@ -329,6 +330,12 @@ function toCallableError(err: unknown): CallableError {
   return new CallableError('unknown', String(err));
 }
 
+/** 動態 import 結果為空（chunk-reload 守門 preventDefault 後 Vite 回 undefined）時丟出載入失敗標記錯誤。 */
+export function requireLoadedModule<T>(mod: T | null | undefined, what: string): T {
+  if (mod == null) throw moduleLoadFailedError(what);
+  return mod;
+}
+
 // ── Mock 註冊表 ───────────────────────────────────────
 
 type AnyMockHandler = (req: unknown) => unknown | Promise<unknown>;
@@ -448,10 +455,12 @@ export async function callFn<N extends CallableName>(
     throw new Error(`[callFn] emulator 模式下禁止呼叫正式環境的 Functions：${name}（請改用 VITE_CALLABLE_MODE=mock）`);
   }
 
-  const [{ httpsCallable }, ctx] = await Promise.all([
+  const [functionsMod, ctx] = await Promise.all([
     import('firebase/functions'),
     getFirebase(),
   ]);
+  // 守門吞掉原錯誤時 Vite 回 undefined：在載入點標成載入失敗，免得解構變成看不出原因的 TypeError（顧問 §3.260）。
+  const { httpsCallable } = requireLoadedModule(functionsMod, 'firebase/functions');
 
   const region = CALLABLES[name].region;
   const functions =
