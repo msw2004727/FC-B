@@ -3,6 +3,7 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { Badge, type BadgeTone } from '@/ui/Badge';
+import { Button } from '@/ui/Button';
 import { Tabs } from '@/ui/Tabs';
 import type { CompetitionsT } from '../i18n';
 import {
@@ -228,9 +229,9 @@ export function StandingsTable({
                       </span>
                     </span>
                     <span>{line.played}</span>
-                    <span>{line.won}</span>
-                    <span>{line.drawn}</span>
-                    <span>{line.lost}</span>
+                    <span>{line.win}</span>
+                    <span>{line.draw}</span>
+                    <span>{line.loss}</span>
                     <span>{line.goalsFor}/{line.goalsAgainst}</span>
                     <span>{formatGoalDiff(line.goalDiff)}</span>
                     <span class="pt">{line.points}</span>
@@ -301,23 +302,32 @@ export function DetailPhaseBody({
   standings,
   now,
   badge,
+  fullSchedule,
+  onRequestFull,
 }: {
   ct: CompetitionsT;
   phase: Exclude<CompetitionPhase, 'recruit'>;
   firstMatchAt: number;
   divisions: readonly DivisionDoc[];
   crests: readonly EntryDoc[];
+  /** 預熱＝首場那天；進行中＝今天。已結束首屏是空的。 */
   summary: readonly SummaryEntry[];
   standings: readonly StandingDoc[];
   now: number;
   badge: { label: string; tone: BadgeTone };
+  /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
+  fullSchedule: readonly SummaryEntry[] | null;
+  onRequestFull: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<'sched' | 'stand'>('sched');
   const [open, setOpen] = useState(false);
-  const groups = scheduleGroups(ct, summary, divisions, now);
+  const shown = scheduleGroups(ct, fullSchedule ?? summary, divisions, now);
 
   if (phase === 'done') {
     const name = championName(standings);
+    const loadedRows = fullSchedule;
+    const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now);
+    const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
     return (
       <>
         <CpCard class="cps-card--ok">
@@ -338,14 +348,18 @@ export function DetailPhaseBody({
             type="button"
             class={`cp3-fold${open ? ' cp3-fold--open' : ''}`}
             aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => {
+              const next = !open;
+              setOpen(next);
+              if (next) onRequestFull();
+            }}
           >
-            <span>{ct('foldSchedule', { n: summary.length })}</span>
+            <span>{foldLabel}</span>
             <ChevronIcon />
           </button>
-          {open ? (
+          {open && loadedRows ? (
             <div style="margin-top:12px">
-              <MatchSchedule ct={ct} groups={groups} divisions={divisions} crests={crests} />
+              <MatchSchedule ct={ct} groups={foldGroups} divisions={divisions} crests={crests} />
             </div>
           ) : null}
         </CpCard>
@@ -376,7 +390,10 @@ export function DetailPhaseBody({
             label: ct('tabSchedule'),
             panel: (
               <div style="margin-top:12px">
-                <MatchSchedule ct={ct} groups={groups} divisions={divisions} crests={crests} />
+                <MatchSchedule ct={ct} groups={shown} divisions={divisions} crests={crests} />
+                <div class="cps-actions">
+                  <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
+                </div>
               </div>
             ),
           },

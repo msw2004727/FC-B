@@ -4,6 +4,7 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CpCallError } from '../data/cp-callables';
+import { summaryShardIdOf } from '../data/schedule-load';
 import type { EntryDoc, StandingDoc, SummaryEntry } from '../data/types';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { taipeiMs } from '../format';
@@ -69,15 +70,15 @@ function standings(hasUnresolvedTie: boolean): StandingDoc {
     updatedAt: null,
     rows: [
       {
-        teamId: 'club_wind', name: '海風隊', played: 4, won: 3, drawn: 1, lost: 0,
+        teamId: 'club_wind', name: '海風隊', played: 4, win: 3, draw: 1, loss: 0,
         goalsFor: 10, goalsAgainst: 3, goalDiff: 7, points: 10, rank: 1,
       },
       {
-        teamId: 'club_b', name: '銀河隊', played: 4, won: 1, drawn: 2, lost: 1,
+        teamId: 'club_b', name: '銀河隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 5, goalsAgainst: 5, goalDiff: 0, points: 5, rank: 5,
       },
       {
-        teamId: 'club_c', name: '一二三四五六七八九十示範隊', played: 4, won: 1, drawn: 2, lost: 1,
+        teamId: 'club_c', name: '一二三四五六七八九十示範隊', played: 4, win: 1, draw: 2, loss: 1,
         goalsFor: 4, goalsAgainst: 8, goalDiff: -4, points: 5, rank: 6,
       },
     ],
@@ -191,11 +192,12 @@ describe('詳情四狀態', () => {
     expect([...ties].map((node) => node.textContent)).toEqual(['同分', '同分']);
     expect(view.container.textContent ?? '').toContain('5同分');
     expect(view.container.textContent ?? '').not.toContain('6同分');
-    const fold = screen.getByRole('button', { name: '賽程（1 場）' });
+    const fold = screen.getByRole('button', { name: '賽程' });
     expect(fold.getAttribute('aria-expanded')).toBe('false');
     expect(view.container.textContent ?? '').not.toContain('18:00');
     fireEvent.click(fold);
     expect(fold.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: '賽程（1 場）' })).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('18:00　1號場');
     expect(view.container.textContent ?? '').toContain('1：0');
   });
@@ -258,7 +260,7 @@ describe('回前景重讀', () => {
       divisions: { cup: [adultDivision] },
       entries: { cup: crestRows },
       summary: {
-        cup: [{ id: 's1', entries: [summary({ id: 'm1', k: FIRST_MATCH, st: 'scheduled' })] }],
+        cup: [{ id: summaryShardIdOf(FIRST_MATCH), entries: [summary({ id: 'm1', k: FIRST_MATCH, st: 'scheduled' })] }],
       },
     });
     const view = draw({
@@ -270,9 +272,10 @@ describe('回前景重讀', () => {
     }, CompetitionDetailPage);
     expect(await screen.findByText('距開賽 19 天')).toBeTruthy();
     expect(repo.calls()).toEqual([
-      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'listSummary',
+      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard',
     ]);
     expect(repo.readCount()).toBeLessThanOrEqual(39);
+    expect(repo.calls()).not.toContain('listSummary');
     expect(repo.calls()).not.toContain('listMatches');
     expect(repo.calls()).not.toContain('listEntries');
 
@@ -281,20 +284,23 @@ describe('回前景重讀', () => {
     const quiet = new Event('pageshow');
     window.dispatchEvent(quiet);
     await Promise.resolve();
-    expect(repo.calls().filter((name) => name === 'listSummary')).toHaveLength(1);
+    expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
+    expect(repo.calls()).not.toContain('listSummary');
 
     setVisibility('visible');
     document.dispatchEvent(new Event('visibilitychange'));
-    await waitFor(() => expect(repo.calls().filter((name) => name === 'listSummary')).toHaveLength(2));
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2));
     expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
+    expect(repo.calls()).not.toContain('listSummary');
     expect(repo.calls()).not.toContain('listMatches');
     expect(repo.calls()).not.toContain('listEntries');
 
     const back = new Event('pageshow');
     Object.defineProperty(back, 'persisted', { value: true });
     window.dispatchEvent(back);
-    await waitFor(() => expect(repo.calls().filter((name) => name === 'listSummary')).toHaveLength(3));
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(3));
     expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toHaveLength(1);
+    expect(repo.calls()).not.toContain('listSummary');
     expect(view.container.textContent ?? '').toContain('海風隊');
   });
 });

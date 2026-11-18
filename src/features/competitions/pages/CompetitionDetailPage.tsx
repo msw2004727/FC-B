@@ -1,7 +1,7 @@
 // 賽事詳情。報隊鈕只給代表且在報名期間；檢舉在右上選單。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
@@ -21,7 +21,7 @@ import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '.
 import { LiveBoundary } from '../live';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
-import { loadScheduleDetail } from '../data/schedule-load';
+import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
@@ -125,6 +125,13 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [reportError, setReportError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
+  const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
+  const fullCache = useRef<SummaryEntry[] | null>(null);
+  const fullInflight = useRef<Promise<void> | null>(null);
+  const mounted = useRef(true);
+  const pageCid = useRef(cid);
+  pageCid.current = cid;
   const now = env.now ?? Date.now();
   const clubs = representativeClubs(env.actor);
 
@@ -133,6 +140,39 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     const first = clubs[0]?.id ?? '';
     if (first) setTeamId(first);
   }, [clubs, teamId]);
+
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
+
+  useEffect(() => {
+    fullCache.current = null;
+    fullInflight.current = null;
+    setFullSchedule(null);
+  }, [cid]);
+
+  function requestFullSchedule(): void {
+    if (fullCache.current) {
+      setFullSchedule(fullCache.current);
+      return;
+    }
+    if (fullInflight.current) return;
+    // 注入的賽程（harness、畫面測試）不打網路。正式頁按下才讀全集。
+    if (env.bundle && env.schedule) {
+      const rows = [...env.schedule.summary];
+      fullCache.current = rows;
+      setFullSchedule(rows);
+      return;
+    }
+    const requested = cid;
+    fullInflight.current = loadFullSchedule(env.repo, requested).then((rows) => {
+      if (!mounted.current || pageCid.current !== requested) return;
+      fullCache.current = rows;
+      setFullSchedule(rows);
+    }).catch(() => {
+      if (pageCid.current === requested) fullInflight.current = null;
+    });
+  }
 
   useEffect(() => {
     if (env.bundle) return;
@@ -409,6 +449,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             standings={standings}
             now={now}
             badge={badge}
+            fullSchedule={fullSchedule}
+            onRequestFull={requestFullSchedule}
           />
           {manageActions}
         </>

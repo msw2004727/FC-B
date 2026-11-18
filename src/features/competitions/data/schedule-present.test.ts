@@ -31,9 +31,9 @@ function entry(partial: Partial<SummaryEntry> & Pick<SummaryEntry, 'id' | 'k' | 
 function row(partial: Partial<StandingRow> & Pick<StandingRow, 'teamId' | 'name' | 'points' | 'rank'>): StandingRow {
   return {
     played: 4,
-    won: 1,
-    drawn: 1,
-    lost: 2,
+    win: 1,
+    draw: 1,
+    loss: 2,
     goalsFor: 5,
     goalsAgainst: 5,
     goalDiff: 0,
@@ -120,7 +120,7 @@ describe('場次小標與進行中條', () => {
 
 describe('積分榜同分', () => {
   const rows = [
-    row({ teamId: 'a', name: '海風隊', points: 10, rank: 1, won: 3, drawn: 1, lost: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7 }),
+    row({ teamId: 'a', name: '海風隊', points: 10, rank: 1, win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7 }),
     row({ teamId: 'b', name: '銀河隊', points: 5, rank: 5, goalsFor: 5, goalsAgainst: 5, goalDiff: 0 }),
     row({ teamId: 'c', name: '雷霆隊', points: 5, rank: 6, goalsFor: 5, goalsAgainst: 5, goalDiff: 0 }),
   ];

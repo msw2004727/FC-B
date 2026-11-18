@@ -37,9 +37,9 @@ export interface StandingLine {
   teamId: string;
   name: string;
   played: number;
-  won: number;
-  drawn: number;
-  lost: number;
+  win: number;
+  draw: number;
+  loss: number;
   goalsFor: number;
   goalsAgainst: number;
   goalDiff: number;
@@ -229,9 +229,9 @@ export function standingLines(doc: StandingDoc): StandingLine[] {
     teamId: row.teamId,
     name: row.name,
     played: row.played,
-    won: row.won,
-    drawn: row.drawn,
-    lost: row.lost,
+    win: row.win,
+    draw: row.draw,
+    loss: row.loss,
     goalsFor: row.goalsFor,
     goalsAgainst: row.goalsAgainst,
     goalDiff: row.goalDiff,
