@@ -253,6 +253,43 @@ describe('排賽程', () => {
     }));
   });
 
+  it('雙循環、場間緩衝、新增與移除比賽日都進預覽', async () => {
+    const generate = vi.fn(async (input: CpGenerateScheduleInput) => previewResult(input.dryRun === true));
+    draw(scheduleEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, { ...idleActions(), generateSchedule: generate }), HostSchedulePage);
+    fireEvent.click(screen.getByRole('radio', { name: '雙循環' }));
+    fireEvent.input(inputOf('場間緩衝（分鐘）'), { target: { value: '15' } });
+    fireEvent.click(buttonOf('新增比賽日'));
+    const dates = screen.getAllByLabelText('日期') as HTMLInputElement[];
+    expect(dates).toHaveLength(3);
+    const added = dates[2];
+    if (!(added instanceof HTMLInputElement)) throw new Error('找不到新比賽日');
+    fireEvent.input(added, { target: { value: '2027-01-11' } });
+    fireEvent.click(buttonOf('預覽'));
+    await waitFor(() => expect(generate).toHaveBeenCalledWith({
+      cid: 'cup',
+      dvId: 'dv_adult',
+      legs: 2,
+      matchMinutes: 40,
+      bufferMinutes: 15,
+      days: [...PREVIEW_DAYS, { date: '2027-01-11', start: '09:00', end: '18:00' }],
+      venueIdx: [0],
+      dryRun: true,
+    }));
+    fireEvent.click(buttonOf('移除', 1));
+    expect(screen.getAllByLabelText('日期')).toHaveLength(2);
+    fireEvent.click(buttonOf('預覽'));
+    await waitFor(() => expect(generate).toHaveBeenLastCalledWith({
+      cid: 'cup',
+      dvId: 'dv_adult',
+      legs: 2,
+      matchMinutes: 40,
+      bufferMinutes: 15,
+      days: PREVIEW_DAYS,
+      venueIdx: [0],
+      dryRun: true,
+    }));
+  });
+
   it('排不下時顯示剩餘場次，產生賽程維持停用', async () => {
     const generate = vi.fn(async () => previewResult(true, 4));
     draw(scheduleEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, { ...idleActions(), generateSchedule: generate }), HostSchedulePage);
@@ -692,13 +729,15 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
     // 等前面輸入造成的重繪完成，再取最新的選單元素（避免對已被替換的舊節點發事件）
     await new Promise((resolve) => setTimeout(resolve, 0));
     const venue = selectOf('場地');
-    fireEvent.change(venue, { target: { value: '1' } });
-    expect({
-      value: venue.value,
-      options: [...venue.options].map((option) => `${option.value}:${option.label}`),
-    }).toEqual({ value: '1', options: ['0:示範球場', '1:第二球場'] });
-    // Preact 狀態更新是非同步的：等畫面重繪後再送出（真實操作兩個動作之間一定會重繪）
-    await waitFor(() => expect(selectOf('場地').value).toBe('1'));
+    // 面板在 preact/compat 的 portal 裡，@testing-library/preact 會把 fireEvent.change 改送成 input，
+    // 但 compat 不會把 <select> 的 onChange 改接 input。真實瀏覽器選下拉一定發 change，這裡直接發原生 change。
+    venue.value = '1';
+    venue.dispatchEvent(new Event('change', { bubbles: true }));
+    // Select 是受控元件：先退回舊值，父層重繪後才顯示新值；等重繪後再檢查與送出
+    await waitFor(() => expect({
+      value: selectOf('場地').value,
+      options: [...selectOf('場地').options].map((option) => `${option.value}:${option.label}`),
+    }).toEqual({ value: '1', options: ['0:示範球場', '1:第二球場'] }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     fireEvent.click(buttonOf('確認改期'));
     await waitFor(() => expect(rescheduleMatch).toHaveBeenCalledWith({
