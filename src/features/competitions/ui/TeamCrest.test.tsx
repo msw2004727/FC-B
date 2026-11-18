@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { crestIndex } from '../data/present';
-import { CREST_SIZES, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
+import { CREST_SIZES, crestFromEntry, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
 
 const BUCKET = FIREBASE_CONFIG.storageBucket;
 const STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/crests%2Fa.png?alt=media&token=t`;
@@ -67,5 +67,12 @@ describe('TeamCrest', () => {
       expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain(`width:${size}px`);
       view.unmount();
     }
+  });
+
+  it('首字跟畫面顯示的隊名一致；報隊資料只補隊徽與隊 id', () => {
+    const entries = [{ id: 'en_b', teamId: 'club_g', name: '舊隊名', teamLogo: null }] as unknown as Parameters<typeof crestFromEntry>[2];
+    expect(crestFromEntry('en_b', '銀河隊', entries)).toEqual({ teamId: 'club_g', name: '銀河隊', teamLogo: null });
+    expect(crestFromEntry('en_b', '', entries).name).toBe('舊隊名');
+    expect(crestFromEntry('en_x', '雷霆隊', entries)).toEqual({ teamId: 'en_x', name: '雷霆隊', teamLogo: null });
   });
 });

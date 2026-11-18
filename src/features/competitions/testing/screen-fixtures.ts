@@ -504,6 +504,20 @@ function detailEnv(
   };
 }
 
+/** 撞期截圖用：賽事多一個「第二球場」，改期表單才選得到撞期那場的場地。 */
+function withSecondVenue(env: CpInjectedEnv): CpInjectedEnv {
+  const bundle = env.bundle;
+  if (!bundle?.competition) return env;
+  const first = bundle.competition.venues[0];
+  return {
+    ...env,
+    bundle: {
+      ...bundle,
+      competition: { ...bundle.competition, venues: [...bundle.competition.venues, { ...first, name: '第二球場', address: '示範路 2 號' }] },
+    },
+  };
+}
+
 function hostEnv(
   matches: readonly MatchDoc[],
   actions: CpActions = idleActions(),
@@ -635,8 +649,7 @@ function liveBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
           hasUnresolvedTie: true, tiedWith: ['en_c'],
         }),
         standingRow({
-          teamId: 'en_c', name: '雷霆隊', points: 5, rank: 3,
-          goalsFor: 3, goalsAgainst: 6, goalDiff: -3,
+          teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2,
           hasUnresolvedTie: true, tiedWith: ['en_b'],
         }),
         standingRow({
@@ -760,7 +773,7 @@ function clashActions(actions: CpActions): CpActions {
     ...actions,
     rescheduleMatch: async () => {
       times += 1;
-      if (times === 1) throw new CpCallError('SCHEDULE_CONFLICT', { mtId: 'mt_2', type: 'team' });
+      if (times === 1) throw new CpCallError('SCHEDULE_CONFLICT', { mtId: 'mt_2', type: 'venue' }); // 截圖改期到 1/10 11:00，跟 mt_2 同時段
       return {};
     },
   };
@@ -913,7 +926,7 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
     case 'real-score-sheet':
       return hostEnv([matchDoc({ id: 'mt_1', status: 'scheduled', home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' } })], actions);
     case 'real-reschedule-clash':
-      return hostEnv(clashMatches(), clashActions(actions));
+      return withSecondVenue(hostEnv(clashMatches(), clashActions(actions)));
     case 'real-shift-day':
       return hostEnv(clashMatches(), actions);
     case 'real-tie-panel':

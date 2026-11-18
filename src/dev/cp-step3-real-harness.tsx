@@ -119,6 +119,14 @@ async function until(label: string, ready: () => boolean): Promise<void> {
   throw new Error(`畫面未出現：${label}`);
 }
 
+function setField(selector: string, value: string): void {
+  const node = [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(selector)].pop();
+  if (!node) throw new Error(`找不到欄位：${selector}`);
+  node.value = value;
+  node.dispatchEvent(new Event('input', { bubbles: true }));
+  node.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 function hasText(text: string): boolean {
   return (document.body.textContent ?? '').includes(text);
 }
@@ -138,8 +146,18 @@ const OPEN: Record<string, () => Promise<void>> = {
     });
   },
   'real-done': async () => {
-    clickButton('賽程');
-    await until('展開賽程', () => hasText('18:00') && hasText('海風隊'));
+    // 首屏資料還在補讀時按展開可能被擋（正式畫面會出「再試一次」）；截圖這邊最多重按 5 次
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const fold = document.querySelector<HTMLButtonElement>('button.cp3-fold[aria-expanded="false"]');
+      fold?.click();
+      try {
+        await until('展開賽程', () => hasText('18:00') && hasText('海風隊'));
+        return;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    throw new Error('畫面未出現：展開賽程');
   },
   'real-cancelled-comp': async () => {
     // 假資料庫沒有這場的全部賽程（展開讀 loadFullSchedule），截圖只看頂部取消狀態與原因，不展開
@@ -153,6 +171,11 @@ const OPEN: Record<string, () => Promise<void>> = {
     // 改期底頁要等這次點擊畫完才有「確認改期」。同一輪接著點會找不到按鈕。
     clickButton('改期');
     await until('確認改期', () => buttonsNamed('確認改期').length > 0);
+    // 把新時間、場地改到撞期那場（1/10 11:00、第二球場），警示內容才跟表單一致
+    setField('#cp-resched-date', '2027-01-10');
+    setField('.cps-grid2 input:not(#cp-resched-date)', '11:00');
+    setField('select', '1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
     clickButton('確認改期');
     await until('仍要改期', () => hasText('仍要改期') && !!document.querySelector('.cpm-warn')?.textContent?.includes('藍鯨隊'));
   },

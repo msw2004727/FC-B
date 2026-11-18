@@ -109,7 +109,8 @@ function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]
   // ASSUMPTION: 積分列的 teamId 可能是報名文件 id，也可能是俱樂部 id。兩種都試。
   const found = crests.find((row) => row.id === teamId || row.teamId === teamId);
   if (!found) return { teamId, name, teamLogo: null };
-  return { teamId: found.teamId || teamId, name: found.name || name, teamLogo: found.teamLogo };
+  // 首字跟畫面上顯示的隊名一致；報隊資料只用來取隊徽圖片（截圖驗收：兩個來源名稱不一致時首字會對不上）
+  return { teamId: found.teamId || teamId, name: name || found.name, teamLogo: found.teamLogo };
 }
 
 function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; tone: BadgeTone } {

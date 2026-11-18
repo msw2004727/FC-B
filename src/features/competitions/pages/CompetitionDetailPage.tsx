@@ -161,7 +161,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     mounted.current = false;
   }, []);
 
+  // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
+  // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
+  const fullCid = useRef(cid);
   useEffect(() => {
+    if (fullCid.current === cid) return;
+    fullCid.current = cid;
     fullCache.current = null;
     fullInflight.current = null;
     setFullSchedule(null);

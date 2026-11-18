@@ -84,7 +84,8 @@ export function crestFromEntry(entryId: string, name: string, crests: readonly E
   const found = crests.find((row) => row.id === entryId);
   return {
     teamId: found?.teamId || entryId,
-    name: found?.name || name,
+    // 首字跟旁邊顯示的隊名一致；報隊資料只補隊徽圖片（截圖驗收：兩個來源名稱不一致時首字對不上）
+    name: name || found?.name || '',
     teamLogo: found?.teamLogo ?? null,
   };
 }

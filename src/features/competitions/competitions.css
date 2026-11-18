@@ -445,6 +445,8 @@
   font-weight: 700;
 }
 .cpm-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+/* 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
+.cpm-warn { word-break: keep-all; overflow-wrap: anywhere; }
 .cpm-ok { background: var(--color-success-bg); color: var(--color-success-fg); }
 .cpm-swap {
   margin: 0;
