@@ -93,6 +93,16 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     expect(document.head.querySelectorAll('link')).toHaveLength(0);
   });
 
+  it('60 秒內剛因 chunk 失敗重整過：不插預載，讓路由自己 import()（顧問 §3.268 甲）', () => {
+    setMap(JSON.stringify(MAP));
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 3_000));
+    preloadEventDetailChunks('/events/x');
+    expect(document.head.querySelectorAll('link')).toHaveLength(0);
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 61_000));
+    preloadEventDetailChunks('/events/x');
+    expect(links('modulepreload').length).toBeGreaterThan(0);
+  });
+
   it('沒有清單（dev）或清單壞掉：不插、不拋', () => {
     expect(() => preloadEventDetailChunks('/events/x')).not.toThrow();
     setMap('{not json');

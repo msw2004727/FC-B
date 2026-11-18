@@ -1,3 +1,5 @@
+import { isWithinChunkReloadWindow } from '@/core/chunk-reload';
+
 /** 與 `share-link.ts` 的 PUBLIC_ID、活動路由 `/events/:id` 同一個 id 形狀。 */
 const EVENT_PUBLIC_ID = /^[A-Za-z0-9_-]{1,120}$/;
 
@@ -54,6 +56,9 @@ function addLinks(head: HTMLElement, list: unknown, rel: string): void {
  */
 export function preloadEventDetailChunks(pathname: string): void {
   try {
+    // 顧問 §3.268 甲：60 秒內剛因 chunk 失敗重整過就不插預載，讓路由自己 import()。
+    // WebKit 會把 modulepreload 的失敗結果帶過 location.reload()（不發請求直接失敗），import() 則會重抓（staging 演練 probe5／6）。
+    if (isWithinChunkReloadWindow(sessionStorage)) return;
     const raw = document.getElementById(BOOT_PRELOAD_SCRIPT_ID)?.textContent;
     if (!raw) return;
     const map = JSON.parse(raw) as { detail?: PreloadGroup; firestore?: PreloadGroup };

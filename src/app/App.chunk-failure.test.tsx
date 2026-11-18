@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/preact';
-import { App } from '@/app/App';
+import { App, _setRouteReloadPageForTest } from '@/app/App';
 import { RELOAD_AT_KEY, installChunkReloadGuard } from '@/core/chunk-reload';
 import { reportClientError } from '@/core/error-report';
 import { isModuleLoadFailure } from '@/core/module-load-error';
@@ -82,13 +82,13 @@ describe('App：活動詳情 chunk 載入失敗（自動重載被擋或已用過
     expect(moduleReports).toHaveLength(1);
   });
 
-  it('D2 加一輪：重載後 60 秒內同一個 chunk 再失敗 → 停住、錯誤畫面、不再重載、不出提示', async () => {
+  it('D2 加一輪：重載後 60 秒內同一個 chunk 再失敗 → 不再自動重載、錯誤畫面＋中性提示（顧問 §3.268 乙）', async () => {
     const at = String(Date.now() - 5_000);
     sessionStorage.setItem(RELOAD_AT_KEY, at);
     const { container } = render(<App />);
     await waitFor(() => expect(container.querySelector('.error-fallback, [role="alert"]')).not.toBeNull());
     expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBe(at);
-    expect(prompt()).toBeNull();
+    expect(prompt()?.dataset.mode).toBe('chunk');
     expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(1);
   });
 
@@ -114,7 +114,7 @@ describe('③ 自動重載保留網址的 query 與 hash', () => {
 // 顧問 §3.262 P3-1、P3-2：從列表點進詳情時 chunk 失敗；守門決定重載時路由拿到 undefined。
 describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
   let attempts = 0;
-  let mode: 'reject-once' | 'empty' = 'reject-once';
+  let mode: 'reject-once' | 'empty' | 'boom-once' = 'reject-once';
 
   function Home(): preact.JSX.Element {
     return <a href="/events/e1" data-testid="go-detail">go</a>;
@@ -126,6 +126,7 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     const detailLoad = (): Promise<{ default: () => preact.JSX.Element }> => {
       attempts += 1;
       if (mode === 'empty') return Promise.resolve(undefined as unknown as { default: () => preact.JSX.Element });
+      if (mode === 'boom-once' && attempts === 1) return Promise.reject(new Error('boom: not a module load failure'));
       if (attempts === 1) return failingLoad();
       return Promise.resolve({ default: () => <p data-testid="detail">detail page</p> });
     };
@@ -163,7 +164,8 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
   }
 
   for (const variant of ['60 秒窗內', '送出中被擋下'] as const) {
-    it(`P3-2 ${variant}：留在列表、吐司一次、上報一次；再點一次可以恢復`, async () => {
+    // 顧問 §3.268：原本的「再點一次可以恢復」與真實瀏覽器不符（staging 演練 D12：同一網址載入失敗後，同一頁再 import() 會沿用失敗結果），已刪除。
+    it(`P3-2 ${variant}：留在列表、吐司一次、上報一次`, async () => {
       let end: (() => void) | undefined;
       if (variant === '60 秒窗內') sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
       else end = beginSubmitting('signup');
@@ -176,26 +178,63 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
       // 上報總數也只有 1（不只過濾載入失敗那類；Opus 差異審 P3-a）；退回上一頁時沒有多載一次（Flash 差異審 P2）。
       expect(reported).toHaveBeenCalledTimes(1);
       expect(attempts).toBe(1);
-      if (variant === '送出中被擋下') expect(prompt()?.dataset.mode).toBe('chunk');
+      // 兩種都出中性提示（60 秒窗內也出，顧問 §3.268 乙），讓使用者能整頁重新載入。
+      expect(prompt()?.dataset.mode).toBe('chunk');
       end?.();
-      (await findByTestId('go-detail')).click();
-      expect(await findByTestId('detail')).toBeTruthy();
-      expect(window.location.pathname).toBe('/events/e1');
-      expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(1);
-      expect(attempts).toBe(2);
     });
   }
 
-  it('直接開網址失敗：錯誤畫面的「重新嘗試」會重新載入路由並恢復（Opus 審 P2-1）', async () => {
-    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
-    window.history.replaceState({}, '', '/events/e1');
-    const { container, findByTestId } = render(<App />);
-    await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
-    expect(attempts).toBe(1);
-    (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
-    expect(await findByTestId('detail')).toBeTruthy();
-    expect(attempts).toBe(2);
-    expect(container.querySelector('.error-fallback')).toBeNull();
+  // 顧問 §3.268：程式檔載入失敗時，頁內重試在真實瀏覽器沒有作用（staging 演練 D13），「重新嘗試」改整頁重新整理；
+  // 原本「重新嘗試會重新載入路由並恢復」的斷言與真實瀏覽器不符，改寫成下面三條。
+  it('直接開網址、程式檔載入失敗：「重新嘗試」整頁重新整理（不受 60 秒窗限制），不做頁內重試', async () => {
+    const reloadPage = vi.fn();
+    _setRouteReloadPageForTest(reloadPage);
+    try {
+      sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+      window.history.replaceState({}, '', '/events/e1');
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+      expect(attempts).toBe(1);
+    } finally {
+      _setRouteReloadPageForTest();
+    }
+  });
+
+  it('送出中按「重新嘗試」：不整頁重整，退回頁內重試', async () => {
+    const reloadPage = vi.fn();
+    _setRouteReloadPageForTest(reloadPage);
+    const end = beginSubmitting('signup');
+    try {
+      sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+      window.history.replaceState({}, '', '/events/e1');
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      await waitFor(() => expect(attempts).toBe(2));
+      expect(reloadPage).not.toHaveBeenCalled();
+    } finally {
+      end();
+      _setRouteReloadPageForTest();
+    }
+  });
+
+  it('不是程式檔載入失敗的錯誤：「重新嘗試」維持頁內重試（Opus 審 P2-1）', async () => {
+    const reloadPage = vi.fn();
+    _setRouteReloadPageForTest(reloadPage);
+    try {
+      mode = 'boom-once';
+      window.history.replaceState({}, '', '/events/e1');
+      const { container, findByTestId } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      expect(await findByTestId('detail')).toBeTruthy();
+      expect(attempts).toBe(2);
+      expect(reloadPage).not.toHaveBeenCalled();
+    } finally {
+      _setRouteReloadPageForTest();
+    }
   });
 
   it('P3-1 守門已排重載（路由 load 拿到 undefined）：不上報、不跳吐司、不導回上一頁、不卡死', async () => {
@@ -210,12 +249,11 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     expect(await toastCalls()).toBe(0);
     expect(container.querySelector('.error-fallback, [role="alert"]')).toBeNull();
     expect(attempts).toBe(1);
-    // 重載沒生效、使用者回列表再點進來：停在載入中的 lazy 沒留在快取，會重新載入（Flash 差異審 P2）。
-    mode = 'reject-once';
+    // 重載沒生效、使用者回列表再點進來：停在載入中的 lazy 沒留在快取，會再呼叫一次 load（Flash 差異審 P2）。
+    // 只驗「會再呼叫」；真實瀏覽器裡這次是否成功取決於同一網址的失敗結果是否被沿用（演練 D12），這裡不宣稱。
     window.history.back();
     (await findByTestId('go-detail')).click();
-    expect(await findByTestId('detail')).toBeTruthy();
-    expect(attempts).toBe(2);
+    await waitFor(() => expect(attempts).toBe(2));
   });
 });
 

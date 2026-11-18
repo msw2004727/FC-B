@@ -107,7 +107,7 @@ describe('顧問 §3.255 C′：不能自動重載時（以下在路由載入中
     expect(storage.getItem(RELOAD_AT_KEY)).toBe('1000000');
   });
 
-  it('/events/<id> 安全時自動重載並寫時間戳；60 秒內第二次不重載、不提示', () => {
+  it('/events/<id> 安全時自動重載並寫時間戳；60 秒內第二次不重載、改出中性提示（顧問 §3.268 乙）', () => {
     const storage = memoryStorage();
     const reload = vi.fn();
     const onBlocked = vi.fn();
@@ -123,7 +123,22 @@ describe('顧問 §3.255 C′：不能自動重載時（以下在路由載入中
     now += 30_000;
     expect(handleChunkLoadFailure(deps)).toBe(false);
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(onBlocked).not.toHaveBeenCalled();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+    expect(onBlocked).toHaveBeenCalledWith(reload);
+    expect(storage.getItem(RELOAD_AT_KEY)).toBe('1000000');
+  });
+});
+
+describe('isWithinChunkReloadWindow（顧問 §3.268 甲）', () => {
+  it('60 秒內為真、超過或沒有紀錄為假、storage 丟錯視為假', async () => {
+    const { isWithinChunkReloadWindow } = await import('./chunk-reload');
+    const storage = memoryStorage();
+    expect(isWithinChunkReloadWindow(storage, 1_000_000)).toBe(false);
+    storage.setItem(RELOAD_AT_KEY, '1000000');
+    expect(isWithinChunkReloadWindow(storage, 1_030_000)).toBe(true);
+    expect(isWithinChunkReloadWindow(storage, 1_060_001)).toBe(false);
+    expect(isWithinChunkReloadWindow({ getItem: () => { throw new Error('denied'); } }, 1)).toBe(false);
+    expect(isWithinChunkReloadWindow(null, 1)).toBe(false);
   });
 });
 

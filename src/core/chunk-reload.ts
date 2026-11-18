@@ -11,6 +11,19 @@ import { canReloadAfterChunkFailure, showChunkFailurePrompt } from './reload-saf
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
 
+/** 60 秒內剛因 chunk 失敗自動重整過（讀不到 storage 視為否）。 */
+export function isWithinChunkReloadWindow(
+  storage: Pick<Storage, 'getItem'> | null,
+  now: number = Date.now(),
+): boolean {
+  try {
+    const last = Number(storage?.getItem(RELOAD_AT_KEY) || 0);
+    return !!last && now - last < RELOAD_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
 export interface ChunkReloadDeps {
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   now: () => number;
@@ -29,7 +42,12 @@ export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
   try {
     const last = Number(storage.getItem(RELOAD_AT_KEY) || 0);
     now = deps.now();
-    if (last && now - last < RELOAD_WINDOW_MS) return false;
+    if (last && now - last < RELOAD_WINDOW_MS) {
+      // 顧問 §3.268 乙：60 秒內再失敗不自動重載（防迴圈），但仍出中性提示讓使用者自己按「重新載入」；
+      // 不寫時間戳、不 preventDefault。取代：原本窗內直接回 false、畫面只剩錯誤畫面。
+      deps.onBlocked?.(deps.reload);
+      return false;
+    }
   } catch {
     return false;
   }
