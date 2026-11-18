@@ -129,18 +129,29 @@ describe('顧問 §3.255 C′：不能自動重載時（以下在路由載入中
   });
 });
 
-describe('isWithinChunkReloadWindow（顧問 §3.268 甲）', () => {
-  it('60 秒內為真、超過或沒有紀錄為假、storage 丟錯視為假', async () => {
-    const { isWithinChunkReloadWindow } = await import('./chunk-reload');
-    const storage = memoryStorage();
-    expect(isWithinChunkReloadWindow(storage, 1_000_000)).toBe(false);
-    storage.setItem(RELOAD_AT_KEY, '1000000');
-    expect(isWithinChunkReloadWindow(storage, 1_030_000)).toBe(true);
-    expect(isWithinChunkReloadWindow(storage, 1_060_001)).toBe(false);
-    expect(isWithinChunkReloadWindow({ getItem: () => { throw new Error('denied'); } }, 1)).toBe(false);
-    expect(isWithinChunkReloadWindow(null, 1)).toBe(false);
+describe('sessionStorage 讀取丟錯（Flash 差異審 P2）', () => {
+  it('讀不到時間戳、寫入卻成功的 storage：連續失敗都不自動重載、不寫入（fail-closed）', () => {
+    const map = new Map<string, string>();
+    const storage = {
+      getItem: () => { throw new Error('read denied'); },
+      setItem: (k: string, v: string) => { map.set(k, v); },
+    };
+    const reload = vi.fn();
+    const onBlocked = vi.fn();
+    const deps = { storage, now: () => 1_000_000, reload, canReload: () => true, onBlocked };
+    expect(handleChunkLoadFailure(deps)).toBe(false);
+    expect(handleChunkLoadFailure(deps)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(map.size).toBe(0);
+  });
+
+  it('deps.now 丟錯：不重載、不拋', () => {
+    const reload = vi.fn();
+    expect(handleChunkLoadFailure({ storage: memoryStorage(), now: () => { throw new Error('clock'); }, reload })).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
   });
 });
+
 
 describe('installChunkReloadGuard', () => {
   beforeAll(async () => {

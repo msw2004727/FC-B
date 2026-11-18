@@ -202,18 +202,23 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     }
   });
 
-  it('送出中按「重新嘗試」：不整頁重整，退回頁內重試', async () => {
+  it('送出中按「重新嘗試」：不整頁重整、不做頁內重試，跳「操作尚未完成」吐司（顧問 §3.271）', async () => {
     const reloadPage = vi.fn();
     _setRouteReloadPageForTest(reloadPage);
+    const { toast } = await import('@/ui/Toast');
+    const toastSpy = vi.spyOn(toast, 'show');
     const end = beginSubmitting('signup');
     try {
       sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
       window.history.replaceState({}, '', '/events/e1');
       const { container } = render(<App />);
       await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+      toastSpy.mockClear();
       (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
-      await waitFor(() => expect(attempts).toBe(2));
       expect(reloadPage).not.toHaveBeenCalled();
+      expect(attempts).toBe(1);
+      expect(toastSpy).toHaveBeenCalledTimes(1);
+      expect(String((toastSpy.mock.calls[0]?.[0] as { message?: string } | undefined)?.message)).toContain('目前操作尚未完成');
     } finally {
       end();
       _setRouteReloadPageForTest();

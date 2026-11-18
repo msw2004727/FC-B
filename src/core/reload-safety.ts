@@ -286,7 +286,7 @@ export function showSwReloadPrompt(
   prompt.querySelector('[data-sw-reload-now]')?.addEventListener('click', () => {
     // 使用者主動點「現在更新」：送出中不重載。
     if (isSubmitting() || doc.querySelector('[data-submitting="true"]')) {
-      toast.show({ message: copy('busy'), duration: 3000 });
+      showReloadBusyToast();
       return;
     }
     const fn = pendingReloadFn ?? (() => location.reload());
@@ -317,6 +317,11 @@ export function showSwReloadPrompt(
       if (prompt.isConnected) prompt.style.opacity = '1';
     },
   );
+}
+
+/** 送出中不重整時的吐司「目前操作尚未完成，稍後再更新」（提示框與錯誤畫面「重新嘗試」共用）。 */
+export function showReloadBusyToast(): void {
+  toast.show({ message: copy('busy'), duration: 3000 });
 }
 
 /** chunk 載入失敗時能否自動重載：同 SW 路徑的判斷，另放行 `/events/<id>`。 */

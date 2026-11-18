@@ -11,19 +11,6 @@ import { canReloadAfterChunkFailure, showChunkFailurePrompt } from './reload-saf
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
 
-/** 60 秒內剛因 chunk 失敗自動重整過（讀不到 storage 視為否）。 */
-export function isWithinChunkReloadWindow(
-  storage: Pick<Storage, 'getItem'> | null,
-  now: number = Date.now(),
-): boolean {
-  try {
-    const last = Number(storage?.getItem(RELOAD_AT_KEY) || 0);
-    return !!last && now - last < RELOAD_WINDOW_MS;
-  } catch {
-    return false;
-  }
-}
-
 export interface ChunkReloadDeps {
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   now: () => number;
@@ -38,10 +25,19 @@ export interface ChunkReloadDeps {
 export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
   const storage = deps.storage;
   if (!storage) return false;
-  const now = deps.now();
+  let now: number;
+  let inWindow: boolean;
+  try {
+    now = deps.now();
+    const last = Number(storage.getItem(RELOAD_AT_KEY) || 0);
+    inWindow = !!last && now - last < RELOAD_WINDOW_MS;
+  } catch {
+    // 讀不到時間戳（或時鐘丟錯）一律不自動重載、不寫入（fail-closed）：防止「讀不到卻寫得進去」的異常 storage 連續重整（Flash 差異審 P2）。
+    return false;
+  }
   // 顧問 §3.268 乙：60 秒內再失敗不自動重載（防迴圈），但和「不能重載」一樣出中性提示讓使用者自己按「重新載入」；
   // 不寫時間戳、不 preventDefault。取代：原本窗內直接回 false、畫面只剩錯誤畫面。
-  if (isWithinChunkReloadWindow(storage, now) || (deps.canReload && !deps.canReload())) {
+  if (inWindow || (deps.canReload && !deps.canReload())) {
     deps.onBlocked?.(deps.reload);
     return false;
   }

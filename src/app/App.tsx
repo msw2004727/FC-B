@@ -21,6 +21,7 @@ import { ToastHost } from '@/ui/ToastHost';
 import { toast } from '@/ui/Toast';
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { isSubmitting } from '@/core/submit-guard';
+import { showReloadBusyToast } from '@/core/reload-safety';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
@@ -755,10 +756,12 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 
   private handleRetry = (): void => {
     // 顧問 §3.268：程式檔載入失敗時，同一頁再 import() 會沿用失敗結果（staging 演練 D12／D13，Chromium 與 WebKit 皆然），
-    // 頁內重試沒有作用，改整頁重新整理；使用者自己按的，不受 60 秒窗限制。送出中不重整，退回頁內重試。
+    // 頁內重試沒有作用，改整頁重新整理；使用者自己按的，不受 60 秒窗限制。
+    // 送出中不重整，改跳「操作尚未完成」吐司（顧問 §3.271；取代：原本退回頁內重試，但真實瀏覽器沒有作用）。
     // isSubmitting() 與 <html data-submitting> 由 submit-guard 同步維護，只查前者即可。
-    if (isModuleLoadFailure(this.state.error) && !isSubmitting()) {
-      routeReloadPage();
+    if (isModuleLoadFailure(this.state.error)) {
+      if (isSubmitting()) showReloadBusyToast();
+      else routeReloadPage();
       return;
     }
     if (this.props.onRetry) {
