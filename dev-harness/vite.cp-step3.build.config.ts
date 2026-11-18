@@ -16,6 +16,7 @@ export default mergeConfig(base, defineConfig({
       main: fileURLToPath(new URL('./cp-step3.html', import.meta.url)),
       list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)),
       rules: fileURLToPath(new URL('./cp-step3-rules.html', import.meta.url)),
+      more: fileURLToPath(new URL('./cp-step3-more.html', import.meta.url)),
     } },
   },
 }));
