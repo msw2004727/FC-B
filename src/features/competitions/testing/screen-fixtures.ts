@@ -69,7 +69,6 @@ function actor(partial: Partial<CpActor> & Pick<CpActor, 'uid'>): CpActor {
     role: 'user',
     displayName: '王示範',
     repClubs: [],
-    managedClubs: [],
     memberClubIds: [],
     ...partial,
   };
@@ -91,7 +90,6 @@ export const memberActor = actor({
 export const hostActor = actor({
   uid: 'uid_host',
   displayName: '王示範',
-  managedClubs: [{ id: 'club_host', name: '示範俱樂部' }],
 });
 
 export const coHostActor = actor({
@@ -115,8 +113,7 @@ export const clubRepActor = actor({
 export const wizardActor = actor({
   uid: 'uid_host',
   displayName: '王示範',
-  managedClubs: [{ id: 'club_host', name: '示範俱樂部' }],
-  // 建賽下拉讀的是代表俱樂部，與 managedClubs（含教練的顯示用清單）分開。
+  // 建賽下拉讀的是代表俱樂部（文件路徑 id）。
   repClubs: [{ id: 'club_host', name: '示範俱樂部' }],
 });
 

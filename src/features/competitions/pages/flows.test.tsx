@@ -418,7 +418,7 @@ describe('賽事第 2 步畫面', () => {
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
     const only = mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
-      actor: { ...wizardActor, repClubs: [{ id: 'only_club', name: '唯一隊' }], managedClubs: [] },
+      actor: { ...wizardActor, repClubs: [{ id: 'only_club', name: '唯一隊' }] },
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
@@ -429,7 +429,7 @@ describe('賽事第 2 步畫面', () => {
 
     const none = mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
-      actor: { ...wizardActor, repClubs: [], managedClubs: [] },
+      actor: { ...wizardActor, repClubs: [] },
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
@@ -439,7 +439,7 @@ describe('賽事第 2 步畫面', () => {
     let clubs: { id: string; name: string }[] = [];
     const lateEnv = () => ({
       ...screenEnv('wizard-1'),
-      actor: { ...wizardActor, repClubs: clubs, managedClubs: [], repClubsPending: clubs.length === 0 },
+      actor: { ...wizardActor, repClubs: clubs, repClubsPending: clubs.length === 0 },
       preview: { wizardStep: 1 as const, wizardClub: true },
       wizardSeed: { ...wizardSeed(), hostType: 'club' as const, hostTeamId: '' },
     });
@@ -460,7 +460,7 @@ describe('賽事第 2 步畫面', () => {
   it('建賽選了俱樂部但沒有可用俱樂部時改回個人', async () => {
     mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
-      actor: { ...wizardActor, repClubs: [], managedClubs: [] },
+      actor: { ...wizardActor, repClubs: [] },
       preview: { wizardStep: 1, wizardClub: true },
       wizardSeed: { ...wizardSeed(), hostType: 'club', hostTeamId: '' },
     });

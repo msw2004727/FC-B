@@ -42,7 +42,8 @@ function statusBadge(
 
 function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
   if (competition.hostDisplay) return competition.hostDisplay;
-  const known = [...env.actor.repClubs, ...env.actor.managedClubs].find((club) => club.id === competition.hostTeamId);
+  // 俱樂部 id 一律用文件路徑 id 的 repClubs（顧問 §3.254：不再混用 viewer.staffTeams 的欄位 id）
+  const known = env.actor.repClubs.find((club) => club.id === competition.hostTeamId);
   return known?.name ?? '';
 }
 

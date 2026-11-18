@@ -58,7 +58,6 @@ export function LiveBoundary({
     displayName: viewer.displayName,
     repClubs,
     repClubsPending,
-    managedClubs: (viewer.staffTeams ?? []).map((team) => ({ id: team.id, name: team.name })),
     memberClubIds: [...viewer.teamIds],
   };
 

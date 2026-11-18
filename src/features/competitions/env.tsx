@@ -28,7 +28,6 @@ export interface CpActor {
    * ASSUMPTION: 省略＝已定案（測試與 harness 的清單是同步的）。
    */
   repClubsPending?: boolean;
-  managedClubs: readonly CpClub[];
   /** 我所屬的俱樂部 id（含代表）。用來決定看不看得到「登錄名單」。 */
   memberClubIds: readonly string[];
 }
