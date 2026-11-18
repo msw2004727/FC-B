@@ -477,3 +477,12 @@ describe('報名／候補／取消三類按鈕在新狀態下顯示正確（站�
     expect(run({ viewer: guestViewer, event: full })).toMatchObject({ label: '登入後候補', action: 'login', bg: '#7c3aed' });
   });
 });
+
+describe('早鳥：讀不到個人資料不當 0 分（Grok 初審 P1）', () => {
+  it('profile 為 null 時顯示可按的早鳥報名，交給伺服器裁定積分', () => {
+    expect(run({ profile: null, event: earlyBirdEvent })).toMatchObject({ kind: 'earlyBird', action: 'earlyBird', disabled: false });
+  });
+  it('已讀到且積分不足維持「積分不足」', () => {
+    expect(run({ profile: { ...baseProfile, exp: 0 }, event: earlyBirdEvent }).kind).toBe('earlyBirdNoPoints');
+  });
+});

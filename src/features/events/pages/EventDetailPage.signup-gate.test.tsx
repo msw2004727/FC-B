@@ -105,7 +105,7 @@ vi.mock('@/features/profile/ui/editors', () => ({
 }));
 vi.mock('@/features/profile/data/profile-model', () => ({ loadUserProfile: mocks.loadUserProfile }));
 
-import EventDetailPage from './EventDetailPage';
+import EventDetailPage, { _displayErrorCodeForTest } from './EventDetailPage';
 import { SignupError } from '../data/signup';
 
 const viewer: ViewerView = {
@@ -289,5 +289,36 @@ describe('錯誤提示：講清楚原因', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
     expect(await screen.findByText('events.signup.error.loginExpired')).toBeTruthy();
+  });
+});
+
+describe('錯誤代碼只顯示安全字串', () => {
+  const err = (code: string, originalCode: string) =>
+    new SignupError({ code, originalCode, messageKey: 'event.signup.error.unknown', message: 'x' });
+  it('伺服器原因碼與傳輸類別照顯示；自由文字一律 unknown', () => {
+    expect(_displayErrorCodeForTest(err('failed-precondition', 'SOME_NEW_CODE'))).toBe('SOME_NEW_CODE');
+    expect(_displayErrorCodeForTest(err('functions/internal', 'internal'))).toBe('internal');
+    expect(_displayErrorCodeForTest(err('permission-denied', 'First participant must be the caller'))).toBe('permission-denied');
+    expect(_displayErrorCodeForTest(err('unknown', '王小明 台北市'))).toBe('unknown');
+  });
+});
+
+describe('早鳥＋個人資料讀不到（Grok 初審 P1）', () => {
+  it('讀取失敗時早鳥鈕可按，略過本地積分檢查直接送出', async () => {
+    mocks.profile.mockRejectedValue(new Error('offline'));
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      event: {
+        ...detail.event,
+        status: 'upcoming',
+        regOpenTime: '2099-10-18T12:00:00+08:00',
+        earlyBirdEnabled: true,
+        earlyBirdCost: 50,
+      },
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /早鳥報名/ }));
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    expect(mocks.register.mock.calls[0]?.[0]).toMatchObject({ earlyBirdAccepted: true, earlyBirdExpectedCost: 50 });
   });
 });

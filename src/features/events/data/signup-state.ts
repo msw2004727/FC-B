@@ -293,7 +293,8 @@ function baseSignupButtonState(input: SignupButtonInput): SignupButtonState {
           subtext: '正式開放後可依活動狀態候補報名',
         });
       }
-      if ((profile?.exp ?? 0) < cost) {
+      // 個人資料讀不到（null）時不當成 0 分，放行交給伺服器裁定積分（顧問 §3.268 條件 2；Grok 初審 P1）。
+      if (profile !== null && profile.exp < cost) {
         return buttonState('earlyBirdNoPoints', `積分不足 · 需 ${cost} 分`, {
           disabled: true,
           variant: 'earlyBird',
