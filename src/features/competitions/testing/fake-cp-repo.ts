@@ -11,9 +11,12 @@ import {
   type EntryDoc,
   type EntryPrivateDoc,
   type LaunchDoc,
+  type MatchDoc,
   type RosterPrivateDoc,
   type RosterPublicDoc,
   type StaffDoc,
+  type StandingDoc,
+  type SummaryEntry,
 } from '../data/types';
 
 export interface FakeCpSeed {
@@ -28,6 +31,16 @@ export interface FakeCpSeed {
   rosterPrivate?: Readonly<Record<string, readonly RosterPrivateDoc[]>>;
   /** key 是 cid。 */
   staff?: Readonly<Record<string, readonly StaffDoc[]>>;
+  matches?: Readonly<Record<string, readonly MatchDoc[]>>;
+  /** key 是 cid。每片是一筆 summary 文件。 */
+  summary?: Readonly<Record<string, readonly { id: string; entries: readonly SummaryEntry[] }[]>>;
+  standings?: Readonly<Record<string, readonly StandingDoc[]>>;
+}
+
+/** 測試用計數。readCount 是文件讀數（查詢 0 筆仍算 1）。calls 不含快取命中與非法 id。 */
+export interface FakeCpRepo extends CompetitionsRepo {
+  readCount(): number;
+  calls(): readonly string[];
 }
 
 function take<T>(items: readonly T[], limit: number): T[] {
@@ -38,8 +51,17 @@ function isSafeId(id: string): boolean {
   return id.length > 0 && !id.includes('/') && id !== '.' && id !== '..';
 }
 
+function compareSummary(a: SummaryEntry, b: SummaryEntry): number {
+  if (a.k == null && b.k != null) return 1;
+  if (a.k != null && b.k == null) return -1;
+  if (a.k != null && b.k != null && a.k !== b.k) return a.k - b.k;
+  const no = (a.no ?? 0) - (b.no ?? 0);
+  if (no !== 0) return no;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** 實作 CompetitionsRepo。回傳的物件可當 CompetitionsRepo 用。 */
-export function createFakeCpRepo(seed: FakeCpSeed = {}): CompetitionsRepo {
+export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   const launch = seed.launch ?? null;
   const testers = new Set(seed.testers ?? []);
   const mine = seed.mine ?? {};
@@ -50,38 +72,70 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): CompetitionsRepo {
   const entryPrivate = seed.entryPrivate ?? {};
   const rosterPrivate = seed.rosterPrivate ?? {};
   const staff = seed.staff ?? {};
+  const matches = seed.matches ?? {};
+  const summary = seed.summary ?? {};
+  const standings = seed.standings ?? {};
+  const calls: string[] = [];
+  let reads = 0;
+  const crestCache = new Map<string, Promise<EntryDoc[]>>();
+
+  function note(name: string, docs: number): void {
+    calls.push(name);
+    reads += docs;
+  }
+
+  function noteQuery(name: string, returned: number): void {
+    note(name, Math.max(1, returned));
+  }
 
   return {
+    readCount() {
+      return reads;
+    },
+
+    calls() {
+      return calls;
+    },
+
     async getLaunch() {
+      note('getLaunch', 1);
       return launch;
     },
 
     async getLaunchTester(uid) {
       if (!isSafeId(uid)) return false;
+      note('getLaunchTester', 1);
       return testers.has(uid);
     },
 
     async listMine(uid) {
       if (!isSafeId(uid)) return [];
-      return take(mine[uid] ?? [], CP_READ_LIMIT.mine);
+      const rows = take(mine[uid] ?? [], CP_READ_LIMIT.mine);
+      noteQuery('listMine', rows.length);
+      return rows;
     },
 
     async listPublic(includeInternal = false) {
       const rows = competitions.filter((doc) =>
         (includeInternal || doc.visibility === 'public') && doc.hidden === false
         && (doc.status === 'published' || doc.status === 'postponed' || doc.status === 'cancelled'));
-      return take(rows, CP_READ_LIMIT.publicList);
+      const taken = take(rows, CP_READ_LIMIT.publicList);
+      noteQuery('listPublic', taken.length);
+      return taken;
     },
 
     async listByHostTeam(teamId, publicOnly) {
       if (!isSafeId(teamId)) return [];
       const rows = competitions.filter((doc) =>
         doc.hostTeamId === teamId && (!publicOnly || doc.visibility === 'public'));
-      return take(rows, CP_READ_LIMIT.hostTeam);
+      const taken = take(rows, CP_READ_LIMIT.hostTeam);
+      noteQuery('listByHostTeam', taken.length);
+      return taken;
     },
 
     async getCompetition(cid) {
       if (!isSafeId(cid)) return null;
+      note('getCompetition', 1);
       return competitions.find((doc) => doc.id === cid) ?? null;
     },
 
@@ -90,36 +144,90 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): CompetitionsRepo {
       const rows = [...(divisions[cid] ?? [])].sort(
         (a, b) => a.order - b.order || (a.dvId < b.dvId ? -1 : a.dvId > b.dvId ? 1 : 0),
       );
-      return take(rows, CP_READ_LIMIT.divisions);
+      const taken = take(rows, CP_READ_LIMIT.divisions);
+      noteQuery('listDivisions', taken.length);
+      return taken;
     },
 
     async listEntries(cid) {
       if (!isSafeId(cid)) return [];
-      return take(entries[cid] ?? [], CP_READ_LIMIT.entries);
+      const rows = take(entries[cid] ?? [], CP_READ_LIMIT.entries);
+      noteQuery('listEntries', rows.length);
+      return rows;
     },
 
     async listRoster(cid, enId) {
       if (!isSafeId(cid) || !isSafeId(enId)) return [];
-      return take((roster[cid] ?? []).filter((row) => row.enId === enId), CP_READ_LIMIT.roster);
+      const rows = take((roster[cid] ?? []).filter((row) => row.enId === enId), CP_READ_LIMIT.roster);
+      noteQuery('listRoster', rows.length);
+      return rows;
     },
 
     async listEntryPrivate(cid, teamId) {
       if (!isSafeId(cid) || (teamId != null && !isSafeId(teamId))) return [];
       const rows = entryPrivate[cid] ?? [];
       const filtered = teamId == null ? rows : rows.filter((row) => row.teamId === teamId);
-      return take(filtered, CP_READ_LIMIT.private);
+      const taken = take(filtered, CP_READ_LIMIT.private);
+      noteQuery('listEntryPrivate', taken.length);
+      return taken;
     },
 
     async listRosterPrivate(cid, uid) {
       if (!isSafeId(cid) || (uid != null && !isSafeId(uid))) return [];
       const rows = rosterPrivate[cid] ?? [];
       const filtered = uid == null ? rows : rows.filter((row) => row.uid === uid);
-      return take(filtered, CP_READ_LIMIT.private);
+      const taken = take(filtered, CP_READ_LIMIT.private);
+      noteQuery('listRosterPrivate', taken.length);
+      return taken;
     },
 
     async getStaff(cid, uid) {
       if (!isSafeId(cid) || !isSafeId(uid)) return null;
+      note('getStaff', 1);
       return (staff[cid] ?? []).find((row) => row.uid === uid) ?? null;
+    },
+
+    async listMatches(cid) {
+      if (!isSafeId(cid)) return [];
+      const rows = [...(matches[cid] ?? [])].sort(
+        (a, b) => a.round - b.round || a.matchNo - b.matchNo || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      );
+      const taken = take(rows, CP_READ_LIMIT.matches);
+      noteQuery('listMatches', taken.length);
+      return taken;
+    },
+
+    async getSummaryShard(cid, shardId) {
+      if (!isSafeId(cid) || !isSafeId(shardId)) return [];
+      note('getSummaryShard', 1);
+      const shard = (summary[cid] ?? []).find((row) => row.id === shardId);
+      return shard ? [...shard.entries].sort(compareSummary) : [];
+    },
+
+    async listSummary(cid) {
+      if (!isSafeId(cid)) return [];
+      const shards = take(summary[cid] ?? [], CP_READ_LIMIT.summary);
+      noteQuery('listSummary', shards.length);
+      return shards.flatMap((shard) => [...shard.entries]).sort(compareSummary);
+    },
+
+    async listStandings(cid) {
+      if (!isSafeId(cid)) return [];
+      const rows = [...(standings[cid] ?? [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const taken = take(rows, CP_READ_LIMIT.standings);
+      noteQuery('listStandings', taken.length);
+      return taken;
+    },
+
+    async listEntriesForCrest(cid) {
+      if (!isSafeId(cid)) return [];
+      const hit = crestCache.get(cid);
+      if (hit) return hit;
+      const rows = take(entries[cid] ?? [], CP_READ_LIMIT.crest);
+      noteQuery('listEntriesForCrest', rows.length);
+      const pending = Promise.resolve(rows);
+      crestCache.set(cid, pending);
+      return pending;
     },
   };
 }

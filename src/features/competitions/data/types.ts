@@ -16,6 +16,17 @@ export type ReportReason = 'impersonation' | 'fake' | 'inappropriate' | 'privacy
 /** 主辦身分只有 host／coHost。沒有 creator 角色（契約 §4，站長選乙）。 */
 export type StaffRole = 'host' | 'coHost';
 export type MineRole = 'host' | 'rep' | 'player';
+/** 根文件 category。缺值視為 league（categoryOf）。 */
+export type CompetitionCategory = 'league' | 'cup' | 'friendly';
+export type MatchStatus =
+  | 'scheduled'
+  | 'postponed'
+  | 'live'
+  | 'halftime'
+  | 'finished'
+  | 'confirmed'
+  | 'walkover';
+export type MatchSideName = 'home' | 'away';
 
 export interface Venue {
   name: string;
@@ -63,6 +74,8 @@ export interface CompetitionDoc {
   feeNote: string | null;
   liveLinks: string[];
   stateVersion: number;
+  /** 缺值視為 league。讀取時已用 categoryOf 補上，不會是 undefined。 */
+  category: CompetitionCategory;
 }
 
 export interface DivisionDoc {
@@ -89,6 +102,8 @@ export interface EntryDoc {
   status: EntryStatus;
   rosterCount: number;
   rosterConfirmed: boolean;
+  /** https 網址或 null。不是 https 的值讀成 null。沒有 coverImage。 */
+  teamLogo: string | null;
 }
 
 export interface EntryPrivateDoc {
@@ -129,6 +144,8 @@ export interface CpMineItem {
   host: boolean;
   /** 有名稱就不用再讀賽事文件。舊文件可能沒有這個欄。 */
   name?: string;
+  /** 缺值視為 league。讀取時已用 categoryOf 補上。 */
+  category: CompetitionCategory;
 }
 
 export interface LaunchDoc {
@@ -146,7 +163,117 @@ export interface StaffDoc {
   roles: StaffRole[];
 }
 
-/** 契約 §3 的筆數上限。 */
+export interface MatchSide {
+  teamId: string;
+  name: string;
+}
+
+export interface MatchScore {
+  home: number;
+  away: number;
+}
+
+/** 契約 §1.2 的 result。winner／method 伺服器沒有逐項列舉，先照字串收。 */
+export interface MatchResult {
+  winner: string | null;
+  method: string | null;
+  homePoints: number;
+  awayPoints: number;
+}
+
+export interface MatchClock {
+  startedAt: number | null;
+  pausedSec: number;
+  running: boolean;
+  period: string;
+}
+
+/**
+ * 公開場次。時間是毫秒。penaltyScore 第 3 步一律 null（循環賽不收 PK）。
+ * id 是文件 id（mt_…）。
+ */
+export interface MatchDoc {
+  id: string;
+  divisionId: string;
+  stageId: string;
+  groupId: string;
+  round: number;
+  matchNo: number;
+  label: string | null;
+  matchKey: string | null;
+  kickoffAt: number | null;
+  venueIdx: number | null;
+  venueName: string | null;
+  home: MatchSide;
+  away: MatchSide;
+  teamIds: [string, string];
+  score: MatchScore;
+  penaltyScore: null;
+  status: MatchStatus;
+  rev: number;
+  resetRev: number;
+  lock: { locked: boolean };
+  clockBase: MatchClock;
+  finishedAt: number | null;
+  confirmedAt: number | null;
+  walkoverSide: MatchSideName | null;
+  result: MatchResult | null;
+  resultSource: 'host' | null;
+  updatedAt: number | null;
+}
+
+/** 契約 §1.4／§7 的摘要條目。id 是摘要 map 的鍵。 */
+export interface SummaryEntry {
+  id: string;
+  dv: string;
+  r: number;
+  no: number | null;
+  k: number | null;
+  v: string | null;
+  h: { id: string; n: string };
+  a: { id: string; n: string };
+  s: [number, number];
+  st: string;
+  wo: string | null;
+}
+
+/**
+ * 積分列。
+ * ASSUMPTION: 引擎 buildStanding 的列欄位沒有附在本工作樹，先收畫面會用到的
+ * teamId、name、場次、勝負和、得失球、積分、名次。缺數字視為 0。
+ */
+export interface StandingRow {
+  teamId: string;
+  name: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  points: number;
+  rank: number;
+}
+
+/** standings/{dvId}__group__A。契約 §1.3。 */
+export interface StandingDoc {
+  id: string;
+  divisionId: string;
+  groupId: string;
+  rows: StandingRow[];
+  version: number;
+  hasUnresolvedTie: boolean;
+  manualOverride: boolean;
+  updatedAt: number | null;
+}
+
+/**
+ * 契約 §3 的筆數上限，加上第 3 步。
+ * ASSUMPTION: 計畫書 §8.1 不在本工作樹。場次沿用契約觸發器「該組 ≤ 240」
+ * （16 隊雙循環）。摘要片 40（一天一片加 tbd，約一個多月）。
+ * 積分榜對齊組別上限 8。隊徽對齊伺服器產程「報隊 ≤ 32」。
+ */
 export const CP_READ_LIMIT = {
   mine: 50,
   publicList: 30,
@@ -155,4 +282,8 @@ export const CP_READ_LIMIT = {
   entries: 100,
   roster: 60,
   private: 100,
+  matches: 240,
+  summary: 40,
+  standings: 8,
+  crest: 32,
 } as const;

@@ -197,6 +197,11 @@
     "FIELD_REQUIRED": "還有必填項目沒填",
     "FIELD_LENGTH": "字數須介於 {min} 與 {max} 之間",
     "FIELD_RANGE": "數值超出允許範圍",
+    "SCHEDULE_UNPLACED": "有場次排不進所選日期，賽程沒有寫入",
+    "REV_CONFLICT": "資料剛被改過，請重整後再試",
+    "COMPETITION_ENDED": "賽事已結束，不能再改比分",
+    "SCHEDULE_EXISTS": "已經有賽程，不能解鎖名單",
+    "SCORE_MISMATCH": "比分與進球紀錄不一致",
     "UNKNOWN": "操作失敗，請稍後再試"
   }
 }

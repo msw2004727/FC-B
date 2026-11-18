@@ -408,7 +408,7 @@ describe('賽事第 2 步畫面', () => {
     cleanup();
     const publicRepo = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
-      mine: { uid_rep: [{ id: 'mine_cup', cid: 'cup', roles: ['rep'], host: false }] },
+      mine: { uid_rep: [{ id: 'mine_cup', cid: 'cup', roles: ['rep'], host: false, category: 'league' }] },
       competitions: [
         competition({ id: 'cup', name: '示範盃' }),
         competition({ id: 'open_cup', name: '公開示範盃', hostType: 'personal', hostTeamId: null, hostDisplay: '王示範', feeNote: null }),
@@ -533,7 +533,7 @@ describe('賽事第 2 步畫面', () => {
 
     const namedBase = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
-      mine: { uid_rep: [{ id: 'm1', cid: 'named', roles: ['host'], host: true, name: '已有名稱盃' }] },
+      mine: { uid_rep: [{ id: 'm1', cid: 'named', roles: ['host'], host: true, name: '已有名稱盃', category: 'league' }] },
     });
     let reads = 0;
     const namedRepo = {
@@ -556,8 +556,8 @@ describe('賽事第 2 步畫面', () => {
       launch: { isPublic: true, bannedWords: [] },
       mine: {
         uid_rep: [
-          { id: 'a', cid: 'good', roles: ['player'], host: false },
-          { id: 'b', cid: 'bad', roles: ['player'], host: false },
+          { id: 'a', cid: 'good', roles: ['player'], host: false, category: 'league' },
+          { id: 'b', cid: 'bad', roles: ['player'], host: false, category: 'league' },
         ],
       },
       competitions: [competition({ id: 'good', name: '存活盃' })],
@@ -699,7 +699,7 @@ describe('賽事第 2 步畫面', () => {
       entries: {
         cup: [{
           id: 'en_pa', name: '示範隊A', status: 'pending', dvId: 'dv_adult', teamId: 'club_1',
-          rosterCount: 0, rosterConfirmed: false,
+          rosterCount: 0, rosterConfirmed: false, teamLogo: null,
         }],
       },
       entryPrivate: {
@@ -916,8 +916,8 @@ describe('賽事第 2 步畫面', () => {
     const repo = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
       mine: {
-        uid_a: [{ id: 'mine_a', cid: 'cup_a', roles: ['host'], host: true, name: '甲的賽事' }],
-        uid_b: [{ id: 'mine_b', cid: 'cup_b', roles: ['host'], host: true, name: '乙的賽事' }],
+        uid_a: [{ id: 'mine_a', cid: 'cup_a', roles: ['host'], host: true, name: '甲的賽事', category: 'league' }],
+        uid_b: [{ id: 'mine_b', cid: 'cup_b', roles: ['host'], host: true, name: '乙的賽事', category: 'league' }],
       },
       competitions: [
         competition({ id: 'cup_a', name: '甲的賽事', visibility: 'unlisted' }),

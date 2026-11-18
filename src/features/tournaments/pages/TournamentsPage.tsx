@@ -1,6 +1,8 @@
 import '../tournaments.css';
 // 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
 import '../legacy/tournaments-glass.css';
+// 分類色與隊徽底色。只在賽事頁這個 chunk，不進首頁入口。
+import '@/styles/category-tokens.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';

@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CP_READ_LIMIT, type CompetitionDoc } from './types';
 import {
   competitionFromDoc,
   createCompetitionsRepo,
+  matchFromDoc,
+  standingFromDoc,
+  summaryEntriesFromDoc,
   type CpFirestoreSdk,
 } from './cp-repo';
 
@@ -42,6 +47,7 @@ function harness() {
   const queries: QueryRec[] = [];
   const gets: string[] = [];
   let dbHits = 0;
+  let docsFail = 0;
 
   const sdk: CpFirestoreSdk = {
     doc(_db, path) {
@@ -71,6 +77,10 @@ function harness() {
     async getDocs(query) {
       const rec = query as QueryRec;
       queries.push({ path: rec.path, clauses: rec.clauses });
+      if (docsFail > 0) {
+        docsFail -= 1;
+        throw new Error('讀取失敗');
+      }
       let rows = [...(cols.get(rec.path) ?? [])];
       for (const clause of rec.clauses) {
         if (clause.kind === 'where' && clause.op === '==') {
@@ -101,6 +111,9 @@ function harness() {
     queries,
     gets,
     dbHits: () => dbHits,
+    failDocs(n: number) {
+      docsFail = n;
+    },
   };
 }
 
@@ -251,7 +264,7 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
       { id: 'cid_1', data: { roles: ['host', 'nope'], host: true } },
     ]);
     const mine = await repo.listMine('uid_me');
-    expect(mine).toEqual([{ id: 'cid_1', cid: 'cid_1', roles: ['host'], host: true }]);
+    expect(mine).toEqual([{ id: 'cid_1', cid: 'cid_1', roles: ['host'], host: true, category: 'league' }]);
     expect(queries.at(-1)).toMatchObject({
       path: 'cpMine/uid_me/items',
       clauses: [{ kind: 'limit', n: CP_READ_LIMIT.mine }],
@@ -292,5 +305,184 @@ describe('CompetitionDoc 沒有 hostUid', () => {
     const doc = competitionFromDoc('cid_1', rawComp()) as CompetitionDoc;
     const keys = Object.keys(doc);
     expect(keys).not.toContain('hostUid');
+  });
+});
+
+function rawMatch(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    divisionId: 'dv_1',
+    round: 1,
+    matchNo: 1,
+    home: { teamId: 'en_h', name: '主隊' },
+    away: { teamId: 'en_a', name: '客隊' },
+    score: { home: 2, away: 1 },
+    penaltyScore: { home: 4, away: 3 },
+    status: 'scheduled',
+    rev: 3,
+    ...over,
+  };
+}
+
+describe('第 3 步文件解析', () => {
+  it('分類缺值是 league，只收三種', () => {
+    expect(competitionFromDoc('cid_1', rawComp())?.category).toBe('league');
+    expect(competitionFromDoc('cid_1', rawComp({ category: 'cup' }))?.category).toBe('cup');
+    expect(competitionFromDoc('cid_1', rawComp({ category: 'friendly' }))?.category).toBe('friendly');
+    expect(competitionFromDoc('cid_1', rawComp({ category: 'knockout' }))?.category).toBe('league');
+  });
+
+  it('場次丟掉壞列，penaltyScore 一律是 null，缺省補 group／A', () => {
+    const doc = matchFromDoc('mt_1', rawMatch());
+    expect(doc).toMatchObject({
+      id: 'mt_1',
+      divisionId: 'dv_1',
+      stageId: 'group',
+      groupId: 'A',
+      teamIds: ['en_h', 'en_a'],
+      score: { home: 2, away: 1 },
+      penaltyScore: null,
+      status: 'scheduled',
+      rev: 3,
+      lock: { locked: false },
+      walkoverSide: null,
+      resultSource: null,
+    });
+    expect(matchFromDoc('mt_x', rawMatch({ status: 'void' }))).toBeNull();
+    expect(matchFromDoc('mt_x', rawMatch({ home: { name: '沒有 id' } }))).toBeNull();
+    expect(matchFromDoc('mt_x', rawMatch({ divisionId: '' }))).toBeNull();
+    expect(matchFromDoc('doc_id', rawMatch({ matchId: 'mt_named' }))?.id).toBe('mt_named');
+  });
+
+  it('摘要依開賽時間、場次號、id 排，沒有開賽時間的排最後', () => {
+    const rows = summaryEntriesFromDoc({
+      updatedAt: 9,
+      m: {
+        mt_late: { dv: 'dv_1', r: 1, no: 2, k: 50, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 1], st: 'scheduled' },
+        mt_tbd: { dv: 'dv_1', r: 1, no: 1, k: null, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 0], st: 'postponed' },
+        mt_early: { dv: 'dv_1', r: 1, no: 3, k: 10, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [1, 0], st: 'confirmed', wo: 'away' },
+        mt_bad: { dv: 'dv_1' },
+      },
+    });
+    expect(rows.map((row) => row.id)).toEqual(['mt_early', 'mt_late', 'mt_tbd']);
+    expect(rows[0]).toMatchObject({ no: 3, k: 10, s: [1, 0], wo: 'away' });
+    expect(rows[2]?.k).toBeNull();
+    expect(summaryEntriesFromDoc({})).toEqual([]);
+  });
+
+  it('積分榜吃短欄位名，空列保留，沒有組別就丟掉', () => {
+    const doc = standingFromDoc('dv_1__group__A', {
+      rows: [{ id: 'en_h', n: '主隊', p: 1, w: 1, d: 0, l: 0, gf: 2, ga: 0, pts: 3 }],
+    });
+    expect(doc).toMatchObject({
+      id: 'dv_1__group__A',
+      divisionId: 'dv_1',
+      groupId: 'A',
+      version: 0,
+      hasUnresolvedTie: false,
+      manualOverride: false,
+    });
+    expect(doc?.rows[0]).toMatchObject({
+      teamId: 'en_h', name: '主隊', played: 1, won: 1, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3, rank: 1,
+    });
+    expect(standingFromDoc('dv_1__group__A', { rows: [] })?.rows).toEqual([]);
+    expect(standingFromDoc('not-a-standing', { rows: [] })).toBeNull();
+  });
+});
+
+describe('第 3 步讀取', () => {
+  it('場次、摘要、積分榜的路徑與上限，記憶體排序', async () => {
+    const { repo, docs, cols, queries, gets } = harness();
+    cols.set('competitions/cid_1/matches', [
+      { id: 'mt_2', data: rawMatch({ round: 1, matchNo: 2 }) },
+      { id: 'mt_1', data: rawMatch({ round: 1, matchNo: 1 }) },
+      { id: 'mt_bad', data: rawMatch({ status: 'void' }) },
+    ]);
+    const matches = await repo.listMatches('cid_1');
+    expect(matches.map((row) => row.id)).toEqual(['mt_1', 'mt_2']);
+    expect(queries.at(-1)).toMatchObject({
+      path: 'competitions/cid_1/matches',
+      clauses: [{ kind: 'limit', n: CP_READ_LIMIT.matches }],
+    });
+
+    docs.set('competitions/cid_1/summary/d20261205', {
+      m: {
+        mt_2: { dv: 'dv_1', r: 1, no: 2, k: 20, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 0], st: 'scheduled' },
+        mt_1: { dv: 'dv_1', r: 1, no: 1, k: 10, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 0], st: 'scheduled' },
+      },
+    });
+    const shard = await repo.getSummaryShard('cid_1', 'd20261205');
+    expect(shard.map((row) => row.id)).toEqual(['mt_1', 'mt_2']);
+    expect(gets).toContain('competitions/cid_1/summary/d20261205');
+    await expect(repo.getSummaryShard('cid_1', 'tbd')).resolves.toEqual([]);
+
+    cols.set('competitions/cid_1/summary', [
+      { id: 'tbd', data: { m: { mt_tbd: { dv: 'dv_1', r: 2, no: 1, k: null, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 0], st: 'postponed' } } } },
+      { id: 'd20261205', data: { m: { mt_1: { dv: 'dv_1', r: 1, no: 1, k: 10, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [1, 0], st: 'confirmed' } } } },
+    ]);
+    const summary = await repo.listSummary('cid_1');
+    expect(summary.map((row) => row.id)).toEqual(['mt_1', 'mt_tbd']);
+    expect(queries.at(-1)).toMatchObject({
+      path: 'competitions/cid_1/summary',
+      clauses: [{ kind: 'limit', n: CP_READ_LIMIT.summary }],
+    });
+
+    cols.set('competitions/cid_1/standings', [
+      { id: 'dv_b__group__A', data: { rows: [] } },
+      { id: 'dv_a__group__A', data: { rows: [{ teamId: 'en_h', name: '主隊', points: 3 }] } },
+    ]);
+    const standings = await repo.listStandings('cid_1');
+    expect(standings.map((row) => row.id)).toEqual(['dv_a__group__A', 'dv_b__group__A']);
+    expect(standings[0]?.rows[0]?.points).toBe(3);
+    expect(queries.at(-1)).toMatchObject({
+      path: 'competitions/cid_1/standings',
+      clauses: [{ kind: 'limit', n: CP_READ_LIMIT.standings }],
+    });
+  });
+
+  it('隊徽只查一次，上限 32；失敗不記住；不是 https 的圖當沒有', async () => {
+    const box = harness();
+    const entries = Array.from({ length: 40 }, (_, i) => ({
+      id: `en_${i}`,
+      data: {
+        dvId: 'dv_1',
+        teamId: `team_${i}`,
+        name: `隊${i}`,
+        status: 'approved',
+        teamLogo: i === 0 ? 'https://logo.invalid/a.png' : 'http://logo.invalid/b.png',
+      },
+    }));
+    box.cols.set('competitions/cid_1/entries', entries);
+    const first = await box.repo.listEntriesForCrest('cid_1');
+    const second = await box.repo.listEntriesForCrest('cid_1');
+    expect(first).toHaveLength(CP_READ_LIMIT.crest);
+    expect(second).toBe(first);
+    expect(first[0]?.teamLogo).toBe('https://logo.invalid/a.png');
+    expect(first[1]?.teamLogo).toBeNull();
+    expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(1);
+    expect(box.queries[0]?.clauses).toEqual([{ kind: 'limit', n: CP_READ_LIMIT.crest }]);
+
+    const listed = await box.repo.listEntries('cid_1');
+    expect(listed).toHaveLength(40);
+    expect(box.queries.filter((query) => query.path === 'competitions/cid_1/entries')).toHaveLength(2);
+
+    await expect(box.repo.listEntriesForCrest('a/b')).resolves.toEqual([]);
+    await expect(box.repo.listMatches('..')).resolves.toEqual([]);
+    await expect(box.repo.getSummaryShard('cid_1', '')).resolves.toEqual([]);
+    await expect(box.repo.listSummary('.')).resolves.toEqual([]);
+    await expect(box.repo.listStandings('a/b')).resolves.toEqual([]);
+    expect(box.queries.filter((query) => query.path.includes('/matches') || query.path.endsWith('/summary') || query.path.endsWith('/standings'))).toEqual([]);
+
+    const again = harness();
+    again.cols.set('competitions/cid_1/entries', entries.slice(0, 1));
+    again.failDocs(1);
+    await expect(again.repo.listEntriesForCrest('cid_1')).rejects.toThrow('讀取失敗');
+    const retried = await again.repo.listEntriesForCrest('cid_1');
+    expect(retried).toHaveLength(1);
+    expect(again.queries).toHaveLength(2);
+  });
+
+  it('沒有 onSnapshot', () => {
+    const src = readFileSync(resolve(__dirname, 'cp-repo.ts'), 'utf8');
+    expect(src).not.toContain('onSnapshot');
   });
 });

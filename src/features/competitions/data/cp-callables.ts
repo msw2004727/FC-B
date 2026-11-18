@@ -1,4 +1,4 @@
-// 賽事第 2 步 Callable。三支：cpHost、cpEntry、cpParticipant。每個動作一支有型別的函式。
+// 賽事第 2 步與第 3 步 Callable。三支：cpHost、cpEntry、cpParticipant。每個動作一支有型別的函式。
 // 欄位照契約 §2、§6。多送的鍵伺服器會回 UNKNOWN_FIELD，所以這裡只組契約列出的鍵，略過 undefined。
 // 錯誤從 details.reason 轉成 { reason, params }；沒有 reason 時 reason 為 UNKNOWN。
 //
@@ -7,7 +7,7 @@
 // 「emulator 一律禁止」擋板。那道擋板是為了避免打到正式 Functions；這裡的實例在模擬器模式已接到本機。
 // ASSUMPTION: 更新的四個時間在型別裡包成 schedule，送出時攤成四個欄位，不送 schedule 這個鍵。
 
-import type { DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
+import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
 import { getCpFirebase } from './cp-firebase';
 
 export type CpCallableName = 'cpHost' | 'cpEntry' | 'cpParticipant';
@@ -124,6 +124,8 @@ interface CpHostCommon {
   venues: Venue[];
   liveLinks: string[];
   divisions: DivisionInput[];
+  /** 不送時伺服器把缺值當 league。建賽表單還沒有分類欄。 */
+  category?: CompetitionCategory;
 }
 
 export type CpHostCreateInput = CpHostCommon & (
@@ -149,6 +151,7 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
     venues: input.venues,
     liveLinks: input.liveLinks,
     divisions: input.divisions,
+    category: input.category,
   };
   if (input.hostType === 'club') {
     return callAction('cpHost', payload('create', {
@@ -164,8 +167,9 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
   }));
 }
 
-// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions；
+// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions／category。
 // 主辦類型、俱樂部、運動、時區建立後不能改，多帶會被整筆拒絕（Flash 交叉審 P2）。
+// category 是卡 A 新增的欄位；不送時不帶這個鍵。
 export interface CpHostUpdateInput {
   cid: string;
   name?: string;
@@ -175,6 +179,7 @@ export interface CpHostUpdateInput {
   feeNote?: string;
   liveLinks?: string[];
   divisions?: DivisionInput[];
+  category?: CompetitionCategory;
 }
 
 export interface CpCidResult {
@@ -328,4 +333,114 @@ export type CpReportInput = {
 
 export function cpParticipantReport(input: CpReportInput): Promise<unknown> {
   return callAction('cpParticipant', payload('reportCompetition', { ...input }));
+}
+
+export type CpRanking = 'h2hFirst' | 'goalDiffFirst';
+export type CpForfeitSide = 'home' | 'away';
+
+export interface CpScheduleDay {
+  date: string;
+  start: string;
+  end: string;
+}
+
+/** generateSchedule。dryRun 只預覽，不寫。seed 相同則伺服器排出的賽程相同。 */
+export interface CpGenerateScheduleInput {
+  cid: string;
+  dvId: string;
+  legs: 1 | 2;
+  ranking?: CpRanking;
+  matchMinutes: number;
+  bufferMinutes?: number;
+  minRestMinutes?: number;
+  days: CpScheduleDay[];
+  venueIdx: number[];
+  seed?: number;
+  dryRun?: boolean;
+}
+
+/** dryRun 回預覽（場數、天數、未排數）。正式寫入的其他欄位由呼叫端另外看。 */
+/** 與後端 match-host.ts generateSchedule 回傳一致（預覽與正式都回同一形狀，dryRun 標示是否寫入）。 */
+export interface CpGenerateScheduleResult {
+  dvId: string;
+  /** 正式產生時帶回這個 seed，結果與預覽相同 */
+  seed: number;
+  matchCount: number;
+  unplacedCount: number;
+  daysUsed: number;
+  perTeam: number;
+  teamCount: number;
+  dryRun: boolean;
+}
+
+export function cpHostGenerateSchedule(input: CpGenerateScheduleInput): Promise<CpGenerateScheduleResult> {
+  return callAction('cpHost', payload('generateSchedule', {
+    cid: input.cid,
+    dvId: input.dvId,
+    legs: input.legs,
+    ranking: input.ranking,
+    matchMinutes: input.matchMinutes,
+    bufferMinutes: input.bufferMinutes,
+    minRestMinutes: input.minRestMinutes,
+    days: input.days,
+    venueIdx: input.venueIdx,
+    seed: input.seed,
+    dryRun: input.dryRun,
+  }));
+}
+
+export function cpHostClearSchedule(input: { cid: string; dvId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('clearSchedule', { cid: input.cid, dvId: input.dvId }));
+}
+
+/** kickoffAt 為 null 時伺服器把場次改成 postponed。 */
+export function cpHostRescheduleMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  kickoffAt: number | null;
+  venueIdx: number | null;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('rescheduleMatch', { ...input }));
+}
+
+export function cpHostRecordResult(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  score: { home: number; away: number };
+  confirm: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('recordResult', { ...input }));
+}
+
+export function cpHostConfirmMatchResult(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('confirmMatchResult', { ...input }));
+}
+
+export function cpHostSetWalkover(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  forfeitSide: CpForfeitSide;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('setWalkover', { ...input }));
+}
+
+export function cpHostResetMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('resetMatch', { ...input }));
+}
+
+export function cpHostRecalcStandings(input: { cid: string; dvId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('recalcStandings', { cid: input.cid, dvId: input.dvId }));
 }

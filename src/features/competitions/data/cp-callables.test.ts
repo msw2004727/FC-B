@@ -39,10 +39,18 @@ import {
   cpEntrySetPaymentStatus,
   cpEntryUnlockRosters,
   cpEntryWithdraw,
+  cpHostClearSchedule,
+  cpHostConfirmMatchResult,
   cpHostCreate,
   cpHostDelete,
+  cpHostGenerateSchedule,
   cpHostPublish,
+  cpHostRecalcStandings,
+  cpHostRecordResult,
+  cpHostRescheduleMatch,
+  cpHostResetMatch,
   cpHostSetStatus,
+  cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
   registerCpMock,
@@ -285,5 +293,139 @@ describe('cp callables（欄位與錯誤轉換）', () => {
 
     const existing = new CpCallError('ROSTERS_LOCKED', { n: 1 });
     expect(toCpCallError(existing)).toBe(existing);
+  });
+
+  it('第 3 步動作只送契約列出的鍵，null 與 0 與 false 都留著', async () => {
+    const days = [{ date: '2027-01-09', start: '09:00', end: '18:00' }];
+    await cpHostGenerateSchedule({
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 1,
+      matchMinutes: 20,
+      days,
+      venueIdx: [0],
+    });
+    expect(h.calls.at(-1)?.name).toBe('cpHost');
+    expect(lastPayload()).toEqual({
+      action: 'generateSchedule',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 1,
+      matchMinutes: 20,
+      days,
+      venueIdx: [0],
+    });
+    expect(lastPayload()).not.toHaveProperty('ranking');
+    expect(lastPayload()).not.toHaveProperty('bufferMinutes');
+    expect(lastPayload()).not.toHaveProperty('minRestMinutes');
+    expect(lastPayload()).not.toHaveProperty('seed');
+    expect(lastPayload()).not.toHaveProperty('dryRun');
+    expect(lastPayload()).not.toHaveProperty('penaltyScore');
+
+    await cpHostGenerateSchedule({
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 2,
+      ranking: 'goalDiffFirst',
+      matchMinutes: 25,
+      bufferMinutes: 5,
+      minRestMinutes: 0,
+      days,
+      venueIdx: [0, 1],
+      seed: 0,
+      dryRun: false,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'generateSchedule',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 2,
+      ranking: 'goalDiffFirst',
+      matchMinutes: 25,
+      bufferMinutes: 5,
+      minRestMinutes: 0,
+      days,
+      venueIdx: [0, 1],
+      seed: 0,
+      dryRun: false,
+    });
+
+    await cpHostClearSchedule({ cid: 'cid_1', dvId: 'dv_1' });
+    expect(lastPayload()).toEqual({ action: 'clearSchedule', cid: 'cid_1', dvId: 'dv_1' });
+
+    await cpHostRescheduleMatch({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 3,
+      kickoffAt: null,
+      venueIdx: null,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'rescheduleMatch',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 3,
+      kickoffAt: null,
+      venueIdx: null,
+    });
+
+    await cpHostRecordResult({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 4,
+      score: { home: 2, away: 1 },
+      confirm: true,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'recordResult',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 4,
+      score: { home: 2, away: 1 },
+      confirm: true,
+    });
+    expect(lastPayload()).not.toHaveProperty('penaltyScore');
+
+    await cpHostConfirmMatchResult({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 5 });
+    expect(lastPayload()).toEqual({
+      action: 'confirmMatchResult',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 5,
+    });
+
+    await cpHostSetWalkover({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 6,
+      forfeitSide: 'away',
+      reason: '未到場',
+    });
+    expect(lastPayload()).toEqual({
+      action: 'setWalkover',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 6,
+      forfeitSide: 'away',
+      reason: '未到場',
+    });
+
+    await cpHostResetMatch({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 7, reason: '記錯' });
+    expect(lastPayload()).toEqual({
+      action: 'resetMatch',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 7,
+      reason: '記錯',
+    });
+
+    await cpHostRecalcStandings({ cid: 'cid_1', dvId: 'dv_1' });
+    expect(lastPayload()).toEqual({ action: 'recalcStandings', cid: 'cid_1', dvId: 'dv_1' });
+
+    await cpHostCreate({ ...base, hostType: 'personal', category: 'cup' });
+    expect(lastPayload()).toMatchObject({ action: 'create', category: 'cup', hostType: 'personal' });
+
+    await cpHostUpdate({ cid: 'cid_1', category: 'friendly' });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', category: 'friendly' });
   });
 });

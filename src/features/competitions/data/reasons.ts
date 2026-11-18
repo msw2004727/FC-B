@@ -48,6 +48,12 @@ export const CP_REASON_CODES = [
   'FIELD_REQUIRED',
   'FIELD_LENGTH',
   'FIELD_RANGE',
+  // 第 3 步（契約 §2）。UNKNOWN_FIELD 仍走通用失敗鍵，不另列。
+  'SCHEDULE_UNPLACED',
+  'REV_CONFLICT',
+  'COMPETITION_ENDED',
+  'SCHEDULE_EXISTS',
+  'SCORE_MISMATCH',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

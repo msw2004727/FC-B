@@ -25,6 +25,7 @@ function comp(partial: Partial<CompetitionDoc> & Pick<CompetitionDoc, 'id'>): Co
     feeNote: null,
     liveLinks: [],
     stateVersion: 1,
+    category: 'league',
     ...partial,
   };
 }
@@ -103,6 +104,7 @@ describe('createFakeCpRepo', () => {
       status: 'pending' as const,
       rosterCount: 0,
       rosterConfirmed: false,
+      teamLogo: null,
     }));
     const roster = [
       ...Array.from({ length: 61 }, (_, i) => ({
@@ -156,6 +158,7 @@ describe('createFakeCpRepo', () => {
       cid: `cid_${i}`,
       roles: ['player' as const],
       host: false,
+      category: 'league' as const,
     }));
     const repo = createFakeCpRepo({
       entryPrivate: { cid_1: entryPrivate },
@@ -181,5 +184,117 @@ describe('createFakeCpRepo', () => {
     const repo = createFakeCpRepo({ competitions: [comp({ id: 'cid_1' })] });
     const doc = await repo.getCompetition('cid_1');
     expect(doc && 'hostUid' in doc).toBe(false);
+  });
+});
+
+function matchDoc(id: string, round: number, matchNo: number) {
+  return {
+    id,
+    divisionId: 'dv_1',
+    stageId: 'group',
+    groupId: 'A',
+    round,
+    matchNo,
+    label: null,
+    matchKey: null,
+    kickoffAt: null,
+    venueIdx: null,
+    venueName: null,
+    home: { teamId: 'en_h', name: '主隊' },
+    away: { teamId: 'en_a', name: '客隊' },
+    teamIds: ['en_h', 'en_a'] as [string, string],
+    score: { home: 0, away: 0 },
+    penaltyScore: null,
+    status: 'scheduled' as const,
+    rev: 0,
+    resetRev: 0,
+    lock: { locked: false },
+    clockBase: { startedAt: null, pausedSec: 0, running: false, period: 'pre' },
+    finishedAt: null,
+    confirmedAt: null,
+    walkoverSide: null,
+    result: null,
+    resultSource: null,
+    updatedAt: null,
+  };
+}
+
+describe('假資料的第 3 步讀取與計數', () => {
+  it('場次、摘要、積分榜排序並截斷；空查詢仍算 1 讀', async () => {
+    const matches = Array.from({ length: CP_READ_LIMIT.matches + 1 }, (_, i) => matchDoc(`mt_${i}`, 2, i));
+    matches.push(matchDoc('mt_early', 1, 1));
+    const repo = createFakeCpRepo({
+      matches: { cid_1: matches },
+      summary: {
+        cid_1: [
+          { id: 'tbd', entries: [{ id: 'mt_tbd', dv: 'dv_1', r: 1, no: 1, k: null, v: null, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [0, 0], st: 'postponed', wo: null }] },
+          { id: 'd20261205', entries: [{ id: 'mt_1', dv: 'dv_1', r: 1, no: 2, k: 10, v: null, h: { id: 'en_h', n: '主' }, a: { id: 'en_a', n: '客' }, s: [1, 0], st: 'confirmed', wo: null }] },
+        ],
+      },
+      standings: {
+        cid_1: Array.from({ length: CP_READ_LIMIT.standings + 1 }, (_, i) => ({
+          id: `dv_${String.fromCharCode(122 - i)}__group__A`,
+          divisionId: `dv_${i}`,
+          groupId: 'A',
+          rows: [],
+          version: 0,
+          hasUnresolvedTie: false,
+          manualOverride: false,
+          updatedAt: null,
+        })),
+      },
+    });
+    const listed = await repo.listMatches('cid_1');
+    expect(listed).toHaveLength(CP_READ_LIMIT.matches);
+    expect(listed[0]?.id).toBe('mt_early');
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches);
+
+    const shard = await repo.getSummaryShard('cid_1', 'missing');
+    expect(shard).toEqual([]);
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1);
+    const summary = await repo.listSummary('cid_1');
+    expect(summary.map((row) => row.id)).toEqual(['mt_1', 'mt_tbd']);
+    expect(repo.readCount()).toBe(CP_READ_LIMIT.matches + 1 + 2);
+
+    const standings = await repo.listStandings('cid_1');
+    expect(standings).toHaveLength(CP_READ_LIMIT.standings);
+    const firstId = standings[0]?.id ?? '';
+    const secondId = standings[1]?.id ?? '';
+    expect(firstId < secondId).toBe(true);
+  });
+
+  it('隊徽同一 cid 只讀一次，含空結果；非法 id 不計', async () => {
+    const entries = Array.from({ length: CP_READ_LIMIT.crest + 5 }, (_, i) => ({
+      id: `en_${i}`,
+      dvId: 'dv_1',
+      teamId: `team_${i}`,
+      name: `隊${i}`,
+      status: 'approved' as const,
+      rosterCount: 0,
+      rosterConfirmed: false,
+      teamLogo: null,
+    }));
+    const repo = createFakeCpRepo({ entries: { cid_1: entries } });
+    const first = await repo.listEntriesForCrest('cid_1');
+    const reads = repo.readCount();
+    const second = await repo.listEntriesForCrest('cid_1');
+    expect(first).toHaveLength(CP_READ_LIMIT.crest);
+    expect(second).toBe(first);
+    expect(repo.readCount()).toBe(reads);
+    expect(repo.calls().filter((name) => name === 'listEntriesForCrest')).toEqual(['listEntriesForCrest']);
+
+    const empty = createFakeCpRepo();
+    await empty.listEntriesForCrest('cid_none');
+    await empty.listEntriesForCrest('cid_none');
+    expect(empty.readCount()).toBe(1);
+    expect(empty.calls()).toEqual(['listEntriesForCrest']);
+
+    const before = repo.readCount();
+    await expect(repo.listEntriesForCrest('a/b')).resolves.toEqual([]);
+    await expect(repo.listMatches('')).resolves.toEqual([]);
+    await expect(repo.listSummary('..')).resolves.toEqual([]);
+    await expect(repo.listStandings('.')).resolves.toEqual([]);
+    await expect(repo.getSummaryShard('cid_1', 'a/b')).resolves.toEqual([]);
+    expect(repo.readCount()).toBe(before);
   });
 });

@@ -148,6 +148,7 @@ export function competition(partial: Partial<CompetitionDoc> = {}): CompetitionD
     feeNote: '每隊報名費 3,000 元，賽前於領隊會議現場繳交。',
     liveLinks: [],
     stateVersion: 1,
+    category: 'league',
     ...partial,
   };
 }
@@ -203,6 +204,7 @@ function entry(partial: Partial<EntryDoc> & Pick<EntryDoc, 'id' | 'name' | 'stat
     teamId: 'club_a',
     rosterCount: 0,
     rosterConfirmed: false,
+    teamLogo: null,
     ...partial,
   };
 }

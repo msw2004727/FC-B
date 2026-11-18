@@ -11,6 +11,7 @@
 // ASSUMPTION: getStaff 對應契約正文的 staff/{uid}.roles，讀取表沒有獨立一列。
 
 import { getCpFirebase } from './cp-firebase';
+import { categoryOf } from './present';
 import {
   CP_READ_LIMIT,
   type CompetitionDoc,
@@ -24,6 +25,13 @@ import {
   type HostType,
   type LaunchDoc,
   type MapProvider,
+  type MatchClock,
+  type MatchDoc,
+  type MatchResult,
+  type MatchScore,
+  type MatchSide,
+  type MatchSideName,
+  type MatchStatus,
   type MineRole,
   type PaymentStatus,
   type PlayersOnField,
@@ -32,6 +40,9 @@ import {
   type RosterPublicDoc,
   type StaffDoc,
   type StaffRole,
+  type StandingDoc,
+  type StandingRow,
+  type SummaryEntry,
   type Venue,
 } from './types';
 
@@ -51,6 +62,19 @@ export interface CompetitionsRepo {
   /** uid 為 null：不帶篩選，最多 100。有值則 where uid。 */
   listRosterPrivate(cid: string, uid: string | null): Promise<RosterPrivateDoc[]>;
   getStaff(cid: string, uid: string): Promise<StaffDoc | null>;
+  /** 該賽事場次，最多 CP_READ_LIMIT.matches。不監聽。 */
+  listMatches(cid: string): Promise<MatchDoc[]>;
+  /** 一片摘要。沒有這片回空陣列。shardId 是 dYYYYMMDD 或 tbd。 */
+  getSummaryShard(cid: string, shardId: string): Promise<SummaryEntry[]>;
+  /** 摘要片攤平後的條目，片數最多 CP_READ_LIMIT.summary。 */
+  listSummary(cid: string): Promise<SummaryEntry[]>;
+  /** 積分榜，最多 CP_READ_LIMIT.standings。 */
+  listStandings(cid: string): Promise<StandingDoc[]>;
+  /**
+   * 隊徽用的報名。同一 repo 實例、同一個 cid 只打一次網路（含空結果）。
+   * 失敗不記住，下次可以重試。不得改成即時監聽。
+   */
+  listEntriesForCrest(cid: string): Promise<EntryDoc[]>;
 }
 
 interface DocSnap {
@@ -87,6 +111,9 @@ const PLAYERS: readonly PlayersOnField[] = [5, 7, 8, 9, 11];
 const POSITIONS: readonly RosterPositionCode[] = ['GK', 'DF', 'MF', 'FW', 'custom'];
 const MINE_ROLES: readonly MineRole[] = ['host', 'rep', 'player'];
 const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost'];
+const MATCH_STATUSES: readonly MatchStatus[] = [
+  'scheduled', 'postponed', 'live', 'halftime', 'finished', 'confirmed', 'walkover',
+];
 
 function isSafeId(id: string): boolean {
   return id.length > 0 && !id.includes('/') && id !== '.' && id !== '..';
@@ -181,6 +208,7 @@ export function competitionFromDoc(id: string, raw: Record<string, unknown>): Co
     feeNote: str(raw.feeNote),
     liveLinks,
     stateVersion: num(raw.stateVersion) ?? 0,
+    category: categoryOf(raw),
   };
 }
 
@@ -226,7 +254,16 @@ function entryFromDoc(id: string, raw: Record<string, unknown>): EntryDoc | null
     status,
     rosterCount: num(raw.rosterCount) ?? 0,
     rosterConfirmed: bool(raw.rosterConfirmed) ?? false,
+    teamLogo: teamLogoOf(raw.teamLogo),
   };
+}
+
+/** 只收 https。http、空白、其他方案都當沒有隊徽。 */
+function teamLogoOf(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('https://') || /\s/.test(trimmed)) return null;
+  return trimmed;
 }
 
 function entryPrivateFromDoc(id: string, raw: Record<string, unknown>): EntryPrivateDoc | null {
@@ -270,6 +307,7 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
     roles,
     host: bool(raw.host) ?? false,
     ...(name ? { name } : {}),
+    category: categoryOf(raw),
   };
 }
 
@@ -278,6 +316,192 @@ function staffFromDoc(uid: string, raw: Record<string, unknown>): StaffDoc | nul
     ? raw.roles.filter((role): role is StaffRole => oneOf(role, STAFF_ROLES) != null)
     : [];
   return { uid, roles };
+}
+
+function sideOf(value: unknown): MatchSide | null {
+  if (!isRecord(value)) return null;
+  const teamId = str(value.teamId);
+  const name = str(value.name);
+  if (!teamId || name == null) return null;
+  return { teamId, name };
+}
+
+function matchResultOf(value: unknown): MatchResult | null {
+  if (!isRecord(value)) return null;
+  return {
+    winner: str(value.winner),
+    method: str(value.method),
+    homePoints: num(value.homePoints) ?? 0,
+    awayPoints: num(value.awayPoints) ?? 0,
+  };
+}
+
+function clockOf(value: unknown): MatchClock {
+  const raw = isRecord(value) ? value : {};
+  return {
+    startedAt: optNum(raw.startedAt),
+    pausedSec: num(raw.pausedSec) ?? 0,
+    running: bool(raw.running) ?? false,
+    period: str(raw.period) ?? 'pre',
+  };
+}
+
+/** 契約 §1.2。壞掉的場次整筆丟掉。penaltyScore 一律不收。 */
+export function matchFromDoc(id: string, raw: Record<string, unknown>): MatchDoc | null {
+  const divisionId = str(raw.divisionId);
+  const status = oneOf(raw.status, MATCH_STATUSES);
+  const home = sideOf(raw.home);
+  const away = sideOf(raw.away);
+  if (!divisionId || !status || !home || !away) return null;
+  const scoreRaw = isRecord(raw.score) ? raw.score : {};
+  const score: MatchScore = {
+    home: num(scoreRaw.home) ?? 0,
+    away: num(scoreRaw.away) ?? 0,
+  };
+  const teamIds = Array.isArray(raw.teamIds)
+    ? raw.teamIds.filter((item): item is string => typeof item === 'string')
+    : [];
+  const pair: [string, string] = teamIds.length >= 2
+    ? [teamIds[0] ?? home.teamId, teamIds[1] ?? away.teamId]
+    : [home.teamId, away.teamId];
+  const lockRaw = isRecord(raw.lock) ? raw.lock : {};
+  const walkover = oneOf<MatchSideName>(raw.walkoverSide, ['home', 'away']);
+  return {
+    id: str(raw.matchId) ?? id,
+    divisionId,
+    stageId: str(raw.stageId) ?? 'group',
+    groupId: str(raw.groupId) ?? 'A',
+    round: num(raw.round) ?? 0,
+    matchNo: num(raw.matchNo) ?? 0,
+    label: str(raw.label),
+    matchKey: str(raw.matchKey),
+    kickoffAt: optNum(raw.kickoffAt),
+    venueIdx: optNum(raw.venueIdx),
+    venueName: str(raw.venueName),
+    home,
+    away,
+    teamIds: pair,
+    score,
+    penaltyScore: null,
+    status,
+    rev: num(raw.rev) ?? 0,
+    resetRev: num(raw.resetRev) ?? 0,
+    lock: { locked: bool(lockRaw.locked) ?? false },
+    clockBase: clockOf(raw.clockBase),
+    finishedAt: optNum(raw.finishedAt),
+    confirmedAt: optNum(raw.confirmedAt),
+    walkoverSide: walkover,
+    result: matchResultOf(raw.result),
+    resultSource: raw.resultSource === 'host' ? 'host' : null,
+    updatedAt: optNum(raw.updatedAt),
+  };
+}
+
+function summarySide(value: unknown): { id: string; n: string } | null {
+  if (!isRecord(value)) return null;
+  const id = str(value.id);
+  const n = str(value.n);
+  if (!id || n == null) return null;
+  return { id, n };
+}
+
+function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
+  if (!isRecord(raw)) return null;
+  const dv = str(raw.dv);
+  const round = num(raw.r);
+  const home = summarySide(raw.h);
+  const away = summarySide(raw.a);
+  if (!dv || round == null || !home || !away) return null;
+  const score = Array.isArray(raw.s) ? raw.s : [];
+  return {
+    id,
+    dv,
+    r: round,
+    no: optNum(raw.no),
+    k: optNum(raw.k),
+    v: str(raw.v),
+    h: home,
+    a: away,
+    s: [num(score[0]) ?? 0, num(score[1]) ?? 0],
+    st: str(raw.st) ?? '',
+    wo: str(raw.wo),
+  };
+}
+
+/** 摘要文件的 m 對照表。鍵是場次 id。 */
+export function summaryEntriesFromDoc(raw: Record<string, unknown>): SummaryEntry[] {
+  const map = raw.m;
+  if (!isRecord(map)) return [];
+  const rows: SummaryEntry[] = [];
+  for (const [id, value] of Object.entries(map)) {
+    const entry = summaryEntryOf(id, value);
+    if (entry) rows.push(entry);
+  }
+  return rows.sort(compareSummary);
+}
+
+function compareSummary(a: SummaryEntry, b: SummaryEntry): number {
+  if (a.k == null && b.k != null) return 1;
+  if (a.k != null && b.k == null) return -1;
+  if (a.k != null && b.k != null && a.k !== b.k) return a.k - b.k;
+  const no = (a.no ?? 0) - (b.no ?? 0);
+  if (no !== 0) return no;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+function standingRowOf(value: unknown, index: number): StandingRow | null {
+  if (!isRecord(value)) return null;
+  const teamId = str(value.teamId) ?? str(value.id);
+  const name = str(value.name) ?? str(value.n);
+  if (!teamId || name == null) return null;
+  const goalsFor = num(value.goalsFor) ?? num(value.gf) ?? 0;
+  const goalsAgainst = num(value.goalsAgainst) ?? num(value.ga) ?? 0;
+  return {
+    teamId,
+    name,
+    played: num(value.played) ?? num(value.p) ?? 0,
+    won: num(value.won) ?? num(value.w) ?? 0,
+    drawn: num(value.drawn) ?? num(value.d) ?? 0,
+    lost: num(value.lost) ?? num(value.l) ?? 0,
+    goalsFor,
+    goalsAgainst,
+    goalDiff: num(value.goalDiff) ?? num(value.gd) ?? (goalsFor - goalsAgainst),
+    points: num(value.points) ?? num(value.pts) ?? 0,
+    rank: num(value.rank) ?? index + 1,
+  };
+}
+
+function splitStandingId(id: string): { divisionId: string; groupId: string } | null {
+  const parts = id.split('__');
+  if (parts.length >= 3 && parts[1] === 'group' && parts[0]) {
+    return { divisionId: parts[0], groupId: parts.slice(2).join('__') || 'A' };
+  }
+  return null;
+}
+
+/** 契約 §1.3。列可以是空的（產程先寫一份全 0）。 */
+export function standingFromDoc(id: string, raw: Record<string, unknown>): StandingDoc | null {
+  const parsed = splitStandingId(id);
+  const divisionId = str(raw.divisionId) ?? parsed?.divisionId ?? '';
+  const groupId = str(raw.groupId) ?? parsed?.groupId ?? 'A';
+  if (!divisionId) return null;
+  const rows = Array.isArray(raw.rows)
+    ? raw.rows.map((row, index) => standingRowOf(row, index)).filter((row): row is StandingRow => row != null)
+    : [];
+  return {
+    id,
+    divisionId,
+    groupId,
+    rows,
+    version: num(raw.version) ?? 0,
+    hasUnresolvedTie: bool(raw.hasUnresolvedTie) ?? false,
+    manualOverride: bool(raw.manualOverride) ?? false,
+    updatedAt: optNum(raw.updatedAt),
+  };
+}
+
+function compareMatch(a: MatchDoc, b: MatchDoc): number {
+  return a.round - b.round || a.matchNo - b.matchNo || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 function launchFromDoc(raw: Record<string, unknown>): LaunchDoc | null {
@@ -295,6 +519,9 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
     const [db, sdk] = await Promise.all([deps.getDb(), deps.loadSdk()]);
     return { db, sdk };
   }
+
+  // 頁內記憶體。這個 repo 實例活多久，快取就活多久。成功（含空清單）才記住。
+  const crestCache = new Map<string, Promise<EntryDoc[]>>();
 
   return {
     async getLaunch() {
@@ -435,6 +662,78 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       if (!snap.exists()) return null;
       const data = snap.data();
       return data ? staffFromDoc(uid, data) : null;
+    },
+
+    async listMatches(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/matches`),
+        sdk.limit(CP_READ_LIMIT.matches),
+      ));
+      return snap.docs
+        .map((doc) => matchFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is MatchDoc => doc != null)
+        .sort(compareMatch);
+    },
+
+    async getSummaryShard(cid, shardId) {
+      if (!isSafeId(cid) || !isSafeId(shardId)) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `competitions/${cid}/summary/${shardId}`));
+      if (!snap.exists()) return [];
+      const data = snap.data();
+      return data ? summaryEntriesFromDoc(data) : [];
+    },
+
+    async listSummary(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/summary`),
+        sdk.limit(CP_READ_LIMIT.summary),
+      ));
+      const rows: SummaryEntry[] = [];
+      for (const doc of snap.docs) {
+        rows.push(...summaryEntriesFromDoc(doc.data() ?? {}));
+      }
+      return rows.sort(compareSummary);
+    },
+
+    async listStandings(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/standings`),
+        sdk.limit(CP_READ_LIMIT.standings),
+      ));
+      return snap.docs
+        .map((doc) => standingFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is StandingDoc => doc != null)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+
+    async listEntriesForCrest(cid) {
+      if (!isSafeId(cid)) return [];
+      const cached = crestCache.get(cid);
+      if (cached) return cached;
+      const pending = (async () => {
+        const { db, sdk } = await ready();
+        const snap = await sdk.getDocs(sdk.query(
+          sdk.collection(db, `competitions/${cid}/entries`),
+          sdk.limit(CP_READ_LIMIT.crest),
+        ));
+        return snap.docs
+          .map((doc) => entryFromDoc(doc.id, doc.data() ?? {}))
+          .filter((doc): doc is EntryDoc => doc != null);
+      })();
+      crestCache.set(cid, pending);
+      try {
+        return await pending;
+      } catch (err) {
+        crestCache.delete(cid);
+        throw err;
+      }
     },
   };
 }

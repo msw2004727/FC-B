@@ -1,4 +1,6 @@
+@import '../../styles/category-tokens.css';
 /* 賽事第 2 步前台。玻璃色值照活動卡液態光澤與賽事頁；其餘只用 tokens。字級只用字級 token。
+ * 分類色與隊徽底色從 category-tokens 進來（站內賽事 chunk），不從 tokens.css 進首頁。
  * 手機輸入框字級用 max(16px, 1rem)，避免聚焦時被瀏覽器放大。 */
 
 .cps-root {

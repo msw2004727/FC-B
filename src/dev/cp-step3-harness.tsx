@@ -290,7 +290,12 @@ function Schedule({ days, host }: { days: Day[]; host?: boolean }): JSX.Element 
 function Standings({ rows }: { rows: Row[] }): JSX.Element {
   const rank = (i: number): number => {
     let r = i;
-    while (r > 0 && rows[r - 1].pts === rows[i].pts && rows[r - 1].tie && rows[i].tie) r -= 1;
+    while (r > 0) {
+      const prev = rows[r - 1];
+      const cur = rows[i];
+      if (!prev || !cur || prev.pts !== cur.pts || !prev.tie || !cur.tie) break;
+      r -= 1;
+    }
     return r + 1;
   };
   return (
