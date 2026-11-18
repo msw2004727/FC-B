@@ -133,6 +133,7 @@
       "birthdayRequired": "請先補齊生日資料後再報名",
       "requestIdConflict": "請重新整理後再試",
       "participantNotAllowed": "無權限執行此操作",
+      "loadFailed": "頁面載入不完整，請重新載入後再報名",
       "unknown": "報名失敗，請稍後重試"
     }
   },
@@ -145,6 +146,7 @@
       "eventEnded": "活動已開始，無法再取消報名",
       "eventStarted": "活動已於開始時間結束，無法取消報名",
       "requestIdConflict": "請重新整理後再試",
+      "loadFailed": "頁面載入不完整，請重新載入後再取消",
       "unknown": "取消失敗，請稍後重試"
     }
   },

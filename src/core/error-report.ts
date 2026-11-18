@@ -211,6 +211,11 @@ function readLocation(): { page: string; url: string; hash: string } {
 }
 
 const MODULE_LOAD_FAILURE_RE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
+
+/** 程式檔（模組）載入失敗的三種瀏覽器訊息（iOS WebKit、Chromium、Firefox）。 */
+export function isModuleLoadFailureMessage(message: string): boolean {
+  return MODULE_LOAD_FAILURE_RE.test(message);
+}
 /** 與後台 `features/logs/data/error-log-model.ts` 的 MODULE_LOAD_CATEGORY 同值。 */
 const MODULE_LOAD_CATEGORY = 'network-load';
 

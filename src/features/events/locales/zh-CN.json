@@ -67,6 +67,7 @@
       "eventUnavailable": "此活动目前无法报名", "ageRestricted": "此活动有年龄限制",
       "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
       "participantNotAllowed": "无权限执行此操作",
+      "loadFailed": "页面加载不完整，请重新加载后再报名",
       "unknown": "报名失败，请稍后重试"
     }
   },
@@ -76,6 +77,7 @@
       "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
       "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
       "requestIdConflict": "请重新整理后再试",
+      "loadFailed": "页面加载不完整，请重新加载后再取消",
       "unknown": "取消失败，请稍后重试"
     }
   },
