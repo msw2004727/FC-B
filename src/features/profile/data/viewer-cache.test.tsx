@@ -4,6 +4,7 @@ import { emit } from '@/core/events';
 import { getCurrentUser } from '@/data/auth';
 import { getFirebase } from '@/data/firebase';
 import { getDoc, getDocs } from 'firebase/firestore';
+import { peekViewerTeamScan } from './viewer-team-scan';
 import { requestViewerRefresh, resetViewerCacheForTest, useViewer } from './viewer';
 
 vi.mock('@/data/auth', () => ({ getCurrentUser: vi.fn() }));
@@ -204,6 +205,23 @@ describe('viewer 全站共用快取', () => {
     expect(screen.queryByText(/alpha/)).toBeNull();
     const u2Reads = userReadIds().filter((id) => id === 'u2');
     expect(u2Reads).toEqual(['u2']);
+  });
+
+  it('generation 對不上時不記住上一個人的 viewer team scan', async () => {
+    render(<Pair />);
+    await waitFor(() => expect(textOf('a')).toBe(FULL_U1));
+    expect(peekViewerTeamScan('u1')).not.toBeNull();
+
+    const staleU1 = holdNext('u1');
+    act(() => requestViewerRefresh());
+    await waitFor(() => expect(userReadIds()).toEqual(['u1', 'u1']));
+
+    act(() => emit('auth:changed', { uid: 'u2' }));
+    expect(peekViewerTeamScan('u1')).toBeNull();
+
+    staleU1.release();
+    await settle();
+    expect(peekViewerTeamScan('u1')).toBeNull();
   });
 
   it('登出立刻變成訪客，飛到一半的舊帳號結果不得把權限寫回來', async () => {

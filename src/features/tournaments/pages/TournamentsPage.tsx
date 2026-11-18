@@ -2,8 +2,9 @@ import '../tournaments.css';
 // 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
 import '../legacy/tournaments-glass.css';
 import '@/styles/legacy/reg-loading.css';
-import type { JSX } from 'preact';
+import type { ComponentType, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { COMPETITIONS_ENABLED } from '@/feature-overrides';
 import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
@@ -38,6 +39,30 @@ import { readCardsCache, writeCardsCache } from '../data/cards-cache';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
+
+/** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
+function InAppCompetitionsSlot(): JSX.Element | null {
+  if (!COMPETITIONS_ENABLED) return null;
+  return <InAppCompetitionsLoader />;
+}
+
+function InAppCompetitionsLoader(): JSX.Element | null {
+  const [Slot, setSlot] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void import('@/features/competitions/components/InAppSection').then((mod) => {
+      if (alive) setSlot(() => mod.InAppSection);
+    }).catch(() => {
+      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。
+      if (alive) setSlot(null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!Slot) return null;
+  return <Slot />;
+}
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -242,6 +267,8 @@ export default function TournamentsPage(): JSX.Element {
           </button>
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
         </div>
+
+        <InAppCompetitionsSlot />
 
         <div class="tc-tabs" role="tablist">
           {TOURNAMENT_CARD_TABS.map((value) => (
