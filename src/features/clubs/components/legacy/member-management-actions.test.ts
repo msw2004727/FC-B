@@ -257,6 +257,7 @@ describe('變更成員職務', () => {
       targetUid: 'U-mem',
       teamId: 'tm_test_1',
     });
+    // 測試同步更新：請求多了 source 與關聯鍵（teamId、assignmentRole）。
     expect(mocks.deliverInboxMessage).toHaveBeenCalledExactlyOnceWith({
       title: '俱樂部層級調整',
       body: '您在「測試俱樂部」的俱樂部層級已調整為教練。',
@@ -265,6 +266,8 @@ describe('變更成員職務', () => {
       targetUid: 'U-mem',
       senderName: '系統',
       senderUid: 'U-cap',
+      source: 'team_role_assignment:coach',
+      relationKeys: { teamId: 'tm_test_1', assignmentRole: 'coach' },
     });
     expect(mocks.callFn).toHaveBeenCalledWith('enqueuePrivilegedLineNotification', {
       uid: 'U-mem',
@@ -272,6 +275,8 @@ describe('變更成員職務', () => {
       body: '您在「測試俱樂部」的俱樂部層級已調整為教練。',
       category: 'system',
       source: 'team_role_assignment:coach',
+      teamId: 'tm_test_1',
+      assignmentRole: 'coach',
     });
     expect(mocks.callFn).toHaveBeenCalledWith('writeAuditLog', {
       action: 'role_change',
@@ -508,8 +513,16 @@ describe('變更成員職務', () => {
     });
     expect(mocks.callFn).toHaveBeenCalledWith(
       'enqueuePrivilegedLineNotification',
-      expect.objectContaining({ source: 'team_role_assignment:member' }),
+      expect.objectContaining({
+        source: 'team_role_assignment:member',
+        teamId: 'tm_test_1',
+        assignmentRole: 'member',
+      }),
     );
+    expect(mocks.deliverInboxMessage).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'team_role_assignment:member',
+      relationKeys: { teamId: 'tm_test_1', assignmentRole: 'member' },
+    }));
     expect(mocks.callFn).toHaveBeenCalledWith(
       'writeAuditLog',
       expect.objectContaining({
@@ -520,6 +533,40 @@ describe('變更成員職務', () => {
         },
       }),
     );
+  });
+
+  it('team.id 前後空白時關聯鍵用 trim 後的值，稽核仍用原字串', async () => {
+    const team = makeTeam();
+    team.id = ' tm_test_1 ';
+    await expect(changeMemberRole(roleInput({ team }))).resolves.toMatchObject({ ok: true });
+    expect(mocks.callFn).toHaveBeenCalledWith('enqueuePrivilegedLineNotification', {
+      uid: 'U-mem',
+      title: '俱樂部層級調整',
+      body: '您在「測試俱樂部」的俱樂部層級已調整為教練。',
+      category: 'system',
+      source: 'team_role_assignment:coach',
+      teamId: 'tm_test_1',
+      assignmentRole: 'coach',
+    });
+    expect(mocks.callFn).toHaveBeenCalledWith('writeAuditLog', expect.objectContaining({
+      meta: { teamId: ' tm_test_1 ', statusFrom: 'member', statusTo: 'coach' },
+    }));
+    expect(mocks.callFn).toHaveBeenCalledWith('autoPromoteTeamRole', {
+      targetUid: 'U-mem',
+      teamId: ' tm_test_1 ',
+    });
+  });
+
+  it('沒有可用的隊伍 id 時不送通知，也不送空字串', async () => {
+    const team = makeTeam();
+    delete team.id;
+    delete team._docId;
+    await expect(changeMemberRole(roleInput({ team }))).resolves.toEqual({
+      ok: false,
+      reason: 'no-target',
+    });
+    expect(mocks.callFn).not.toHaveBeenCalled();
+    expect(mocks.deliverInboxMessage).not.toHaveBeenCalled();
   });
 });
 

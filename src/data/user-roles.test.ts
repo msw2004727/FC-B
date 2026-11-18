@@ -18,6 +18,7 @@ vi.mock('@/data/firebase', () => ({
 import { getDocs } from 'firebase/firestore';
 import {
   _resetUserRolesCacheForTest,
+  getCachedUserGender,
   getCachedUserLevel,
   getCachedUserNoShowStats,
   loadUserNoShowStats,
@@ -493,5 +494,43 @@ describe('放鴿子統計共用角色快取', () => {
   it('空名單零查詢', async () => {
     expect(await loadUserNoShowStats(['', ' '])).toEqual({});
     expect(getDocsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getCachedUserGender', () => {
+  it('男、女、其他值進同一份快取；沒有或過期回 undefined，且不另查', async () => {
+    expect(getCachedUserGender('m')).toBeUndefined();
+    expect(getDocsMock).not.toHaveBeenCalled();
+
+    getDocsMock.mockResolvedValue({
+      docs: [
+        { id: 'm', data: () => ({ role: 'coach', gender: '男' }) },
+        { id: 'f', data: () => ({ gender: '女' }) },
+        { id: 'x', data: () => ({ gender: '其他' }) },
+        { id: 'n', data: () => ({ gender: 1 }) },
+        { id: 'blank', data: () => ({ gender: ' 男 ' }) },
+        { id: 'empty', data: () => ({}) },
+      ],
+    } as never);
+
+    await loadUserRoles(['m', 'f', 'x', 'n', 'blank', 'empty']);
+    expect(getCachedUserGender('m')).toBe('男');
+    expect(getCachedUserGender('f')).toBe('女');
+    expect(getCachedUserGender('x')).toBe('');
+    expect(getCachedUserGender('n')).toBe('');
+    expect(getCachedUserGender('blank')).toBe('');
+    expect(getCachedUserGender('empty')).toBe('');
+    expect(getCachedUserGender('missing')).toBeUndefined();
+    expect(getCachedUserGender(' m ')).toBe('男');
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
+    expect(getDocsMock.mock.calls[0]?.[0]).toMatchObject({
+      parts: [{ path: 'users' }, { field: { kind: 'documentId' }, op: 'in' }],
+    });
+
+    const later = Date.now() + 10 * 60 * 1000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    expect(getCachedUserGender('m')).toBeUndefined();
+    expect(getCachedUserGender('f')).toBeUndefined();
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
   });
 });

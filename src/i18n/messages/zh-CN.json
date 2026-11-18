@@ -26,10 +26,12 @@
   "feature.reserved": "此功能即将推出",
   "feature.external": "即将接入外部系统",
   "internalTest.badge": "ToosterX抢先试用版 {version}",
-  "swUpdate": { "title": "有新版本可用", "forcedTitle": "请更新到新版", "now": "立即更新", "later": "稍后", "busy": "当前操作尚未完成，稍后再更新" },
+  "swUpdate": { "title": "有新版本可用", "forcedTitle": "请更新到新版", "now": "立即更新", "later": "稍后", "busy": "当前操作尚未完成，稍后再更新", "loadFailed": "加载失败", "reload": "重新加载" },
   "lineLoginHint": {
-    "openInLine": "在 LINE App 打开",
-    "newTabNote": "登录完成会开在新标签页，旧标签页可关闭"
+    "openInLine": "在 LINE App 中登录",
+    "openInLineNote": "之后都在 LINE 里使用",
+    "browserLogin": "用当前浏览器登录",
+    "browserLoginNote": "LINE 确认后回到这个浏览器"
   },
   "ui": {
     "shell": {
@@ -42,7 +44,8 @@
       "font_medium": "中",
       "font_large": "大",
       "fontAction": "当前字号为{current}，切换为{next}",
-      "loginError": "无法完成 LINE 登录，请重试。"
+      "loginError": "无法完成 LINE 登录，请重试。",
+      "loginExpired": "LINE 登录已过期，请刷新后再登录"
     },
     "topBar": {
       "label": "顶部导航",
@@ -60,13 +63,33 @@
       "navigation": "其他功能",
       "admin": "管理",
       "language": "语言",
+      "more": "更多",
       "loading": "正在加载语言",
       "localeError": "目前无法切换语言，请稍后重试。",
       "theme": "显示模式",
       "theme_light": "浅色",
       "theme_dark": "深色",
       "theme_system": "跟随系统",
-      "themeAction": "当前为{current}，切换为{next}"
+      "themeAction": "当前为{current}，切换为{next}",
+      "privacyShort": "隐私政策",
+      "termsShort": "服务条款",
+      "reset": "遇到问题？重置并重新登录",
+      "resetTitle": "重置并重新登录？",
+      "resetBody": "会退出登录并清除这台设备的缓存数据，\n然后重新加载。",
+      "resetConfirm": "重置",
+      "guestName": "未登录",
+      "loginChecking": "登录确认中...",
+      "syncing": "同步中...",
+      "role": {
+        "guest": "未登录",
+        "pending": "确认中",
+        "user": "普通用户",
+        "coach": "教练",
+        "captain": "领队",
+        "venue_owner": "场主",
+        "admin": "管理员",
+        "super_admin": "总管"
+      }
     },
     "badge": { "empty": "未设置" },
     "chip": { "empty": "未分类", "remove": "移除“{label}”" },

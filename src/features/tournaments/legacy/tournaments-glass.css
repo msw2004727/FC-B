@@ -1,0 +1,167 @@
+/* 賽事卡片清單「液態光澤」（2026-11-13 站長：與活動頁同一風格；位置與資訊不動，只改外觀）。
+ * 色值、光澤與投影照 events/components/legacy/timeline-card-extra.css（活動卡）與 activity-head.css（整片玻璃）；
+ * 不用 backdrop-filter、不自創 CSS 變數、不用 color-mix。本檔路徑含 /legacy/，打包時自動加上 .legacy-ui。
+ * 資料夾頁籤（站長同意的示意 A）形狀不變：選中頁籤與內容區仍連成一體，接縫色取內容區頂端的玻璃色（淺 #fff、深 #3e4555）。 */
+
+/* ── 頁面底層：同活動頁；新增／編輯表單用 portal 畫在 body，不受影響（做法同首頁、俱樂部） ── */
+.legacy-ui.tournaments-root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
+}
+[data-theme="dark"].tournaments-root::before {
+  background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
+}
+.legacy-ui.tournaments-root > #page-tournaments {
+  position: relative;
+}
+
+/* ── 返回鈕：玻璃圓鈕；點擊區由 34px 補到 44px（外觀不變） ── */
+#page-tournaments .page-header .back-btn {
+  position: relative;
+  /* A 的 .back-btn（activity.css 詳情頁用）帶 top／left .8rem，position 改 relative 後要歸零（同 activity-head.css） */
+  top: 0;
+  left: 0;
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+#page-tournaments .page-header .back-btn::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  bottom: -5px;
+  left: -5px;
+  border-radius: 50%;
+}
+[data-theme="dark"] #page-tournaments .page-header .back-btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+
+/* ── 資料夾頁籤：未選灰色頁籤加光澤；選中與內容區同一片玻璃 ── */
+#page-tournaments .tc-tab {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.6) 0%, rgba(255,255,255,.15) 46%, rgba(255,255,255,0) 54%),
+    #dfe3ea;
+  box-shadow: -3px -1px 6px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.85);
+}
+[data-theme="dark"] #page-tournaments .tc-tab {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
+    #2b3445;
+  box-shadow: -3px -1px 6px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.1);
+}
+#page-tournaments .tc-tab.active {
+  background: #fff;
+  box-shadow: 0 -2px 6px rgba(15,23,42,.10), inset 0 1px 0 #fff, inset 1px 0 0 rgba(190,200,214,.85), inset -1px 0 0 rgba(190,200,214,.85), inset 0 2px 0 -1px rgba(190,200,214,.85);
+}
+#page-tournaments .tc-tab.active::after {
+  background: #fff;
+}
+[data-theme="dark"] #page-tournaments .tc-tab.active {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,0) 100%),
+    #3e4555;
+  box-shadow: 0 -2px 6px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.16), inset 1px 0 0 rgba(255,255,255,.09), inset -1px 0 0 rgba(255,255,255,.09);
+}
+[data-theme="dark"] #page-tournaments .tc-tab.active::after {
+  background: #3e4555;
+}
+/* 新增賽事（主按鈕）：加一道上半光澤，底色不變 */
+#page-tournaments .tc-tabs .tc-add-btn {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.36) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -8px rgba(13,148,136,.55);
+}
+
+/* ── 內容區：整片玻璃（光澤帶固定 34～40px，落在「顯示已結束」那一列） ── */
+#page-tournaments .tc-panel {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+}
+[data-theme="dark"] #page-tournaments .tc-panel {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+}
+
+/* ── 賽事卡：圖片照舊；外框圓角 14px、頂緣亮線（畫在圖上方的 ::after）、文字列上半光澤、底部主色內光與投影 ── */
+#page-tournaments .tc-card-link {
+  position: relative;
+  border-radius: var(--radius);
+  border-color: rgba(190,200,214,.9);
+  background:
+    linear-gradient(90deg, rgba(13,148,136,.07), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  box-shadow: 0 8px 18px -10px rgba(13,148,136,.38);
+}
+#page-tournaments .tc-card-link::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), inset 0 -6px 12px -6px rgba(13,148,136,.16);
+  pointer-events: none;
+}
+#page-tournaments .tc-card-body {
+  background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%);
+}
+#page-tournaments .tc-chip {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%),
+    rgba(13,148,136,.12);
+  box-shadow: inset 0 0 0 1px rgba(13,148,136,.3);
+}
+[data-theme="dark"] #page-tournaments .tc-card-link {
+  border-color: rgba(255,255,255,.06);
+  border-bottom-color: rgba(0,0,0,.45);
+  background:
+    linear-gradient(90deg, rgba(13,148,136,.13), rgba(13,148,136,0) 65%),
+    linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  box-shadow: 0 8px 18px -10px rgba(0,0,0,.75);
+}
+[data-theme="dark"] #page-tournaments .tc-card-link::after {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -6px 12px -6px rgba(13,148,136,.30);
+}
+[data-theme="dark"] #page-tournaments .tc-card-body {
+  background: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%);
+}
+[data-theme="dark"] #page-tournaments .tc-chip {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%),
+    rgba(52,211,153,.16);
+  box-shadow: inset 0 0 0 1px rgba(52,211,153,.36);
+}
+
+/* 編輯鈕（管理員才看得到）：深色玻璃圓鈕；點擊區由 36px 補到 44px（外觀不變） */
+#page-tournaments .tc-edit {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%),
+    rgba(0,0,0,.45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px -4px rgba(0,0,0,.5);
+}
+#page-tournaments .tc-edit::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  bottom: -4px;
+  left: -4px;
+  border-radius: 50%;
+}

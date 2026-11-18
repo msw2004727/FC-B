@@ -50,7 +50,7 @@ export function normalizeShareType(value: string): string {
   return (ACTIVITY_URL_TYPES as readonly string[]).includes(raw) ? raw : '';
 }
 
-// 照 A `_normalizeActivityTab`（hidden tab 收斂回 normal）；calendar 照原值保留
+// 照 A `_normalizeActivityTab`：ended 收成 normal，beginner／high-intensity 與其餘非隱藏值照原樣保留。
 export function normalizeShareTab(value: string): string {
   const raw = String(value ?? '').trim();
   if (!raw || raw === 'ended') return 'normal';

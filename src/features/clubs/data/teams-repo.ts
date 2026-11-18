@@ -10,6 +10,7 @@
 
 import { getFirebase, getFirebaseCore } from '@/data/firebase';
 import { teams as teamsCollection, users as usersCollection } from '@/data/paths';
+import { findCanonicalUserIds, isCanonicalUserDoc, userIdentityKey } from '@/data/user-identity-key';
 import { getTeamStaffIdentity } from './team-detail-model';
 import type { TeamDoc, TeamMember } from './types';
 
@@ -39,6 +40,16 @@ export function patchCachedTeamWith(
   const key = teamKey.trim();
   if (!cachedTeams || !key) return;
   cachedTeams = cachedTeams.map((team) => (isSameTeam(team, key) ? { ...team, ...buildPatch(team) } : team));
+}
+
+/**
+ * 列表記憶體快取裡的這一隊；沒讀過列表就回 null。
+ * 只給詳情頁判斷「要不要提早開始讀活動」，不拿來顯示（顧問 §3.233 ②：甲不顯示舊資料）。
+ */
+export function peekCachedTeam(teamKey: string): TeamDoc | null {
+  const key = teamKey.trim();
+  if (!cachedTeams || !key) return null;
+  return cachedTeams.find((team) => isSameTeam(team, key)) ?? null;
 }
 
 /** 刪除成功後從快取移除該俱樂部，不重讀整集合。 */
@@ -112,7 +123,10 @@ export async function loadTeam(teamId: string): Promise<TeamDoc | null> {
  *      `users where teamId == teamId`（legacy）。
  *   3. 以 `getDoc(users/{uid})` 補齊幹部 UID（可能不在上兩查詢結果內）。
  *      缺席的幹部同時讀，不循序等。讀取筆數不變。
- *   4. 以 uid 去重。順序仍是查詢結果，再依隊長、領隊、教練補上。
+ *   4. 以同一人鍵（uid → lineUserId → 文件 ID）去重，舊文件與正本並存時取正本。
+ *      順序仍是查詢結果，再依隊長、領隊、教練補上。
+ *      非幹部只由舊文件列出時補查正本（`documentId in`，每批 30）：正本存在＝已退隊，不列出。
+ *      正本不存在（尚未遷移）照舊列出。注意後端人數重算目前仍會算到已退隊的舊文件（健檢 N-01）。
  *
  * `users` 的 Rules 是 `allow read: if isAuth()`，所以這支維持 `getFirebase()`，
  * 等 auth 註冊後再查。公開的俱樂部文件不走這支。
@@ -146,14 +160,16 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
 
   const byUid = new Map<string, TeamMember>();
 
+  // 同一人（uid → lineUserId → 文件 ID）只留一列；舊文件與正本並存時用正本的資料（位置不變）。
   const addSnapshot = (snapshot: {
     id: string;
     data: () => unknown;
   }): void => {
     const data = (snapshot.data() ?? {}) as Record<string, unknown>;
-    const uid = String((data.uid ?? snapshot.id) ?? '').trim();
+    const uid = userIdentityKey(snapshot.id, data);
     if (!uid) return;
-    if (byUid.has(uid)) return;
+    const existing = byUid.get(uid);
+    if (existing && (isCanonicalUserDoc(existing._docId ?? '', uid) || !isCanonicalUserDoc(snapshot.id, uid))) return;
     byUid.set(uid, { ...(data as TeamMember), uid, _docId: snapshot.id });
   };
 
@@ -166,17 +182,31 @@ export async function loadTeamMembers(team: TeamDoc): Promise<TeamMember[] | nul
   for (const uid of staff.leaderUids) staffUids.add(uid);
   for (const uid of staff.coachUids) staffUids.add(uid);
 
-  const missingStaffUids = [...staffUids].filter((uid) => !byUid.has(uid));
+  // 非幹部只由舊文件列出：補查正本，正本存在卻沒被查到＝已退隊，剔除（否則可被選為領隊／教練，T-090）。
+  const legacyOnlyMembers = [...byUid]
+    .filter(([uid, member]) => !staffUids.has(uid) && !isCanonicalUserDoc(member._docId ?? '', uid))
+    .map(([uid]) => uid);
+
+  // 幹部只由舊文件列出時也補讀正本：正本存在就以正本為準，不存在保留舊文件那列。
+  const missingStaffUids = [...staffUids].filter((uid) => {
+    const existing = byUid.get(uid);
+    return !existing || !isCanonicalUserDoc(existing._docId ?? '', uid);
+  });
+
+  const [leftTeam, snaps] = await Promise.all([
+    findCanonicalUserIds(firestoreMod, usersRef, legacyOnlyMembers),
+    Promise.all(missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid)))),
+  ]);
+  for (const uid of leftTeam) byUid.delete(uid);
+
   if (missingStaffUids.length > 0) {
-    const snaps = await Promise.all(
-      missingStaffUids.map((uid) => getDoc(doc(ctx.db, usersCollection, uid))),
-    );
     missingStaffUids.forEach((uid, index) => {
       const snap = snaps[index];
       if (!snap) {
         throw new Error('[loadTeamMembers] staff read missing');
       }
       if (!snap.exists()) {
+        if (byUid.has(uid)) return;
         // ASSUMPTION: 幹部 UID 沒有對應 user doc 時仍輸出 stub，
         // 讓呼叫端可顯示佔位列；`buildTeamRoster` 亦會處理 `user = null`。
         byUid.set(uid, { uid, _docId: uid });

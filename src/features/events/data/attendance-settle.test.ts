@@ -22,6 +22,14 @@ const {
   mockGetDocs: vi.fn(),
 }));
 
+const expGrant = vi.hoisted(() => ({ enabled: true }));
+vi.mock('@/core/exp-display', () => ({
+  SHOW_EXP: false,
+  get EXP_GRANT_ENABLED() {
+    return expGrant.enabled;
+  },
+}));
+
 vi.mock('@/data/callables', async () => {
   const actual = await vi.importActual<typeof import('@/data/callables')>('@/data/callables');
   return { ...actual, callFn: mockCallFn };
@@ -140,6 +148,7 @@ function adjustCalls() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  expGrant.enabled = true;
   mockGetFirebase.mockResolvedValue({ db: { __fakeDb: true } });
   mockDoc.mockImplementation((_db: unknown, coll: string, id: string) => ({
     kind: 'doc',
@@ -486,6 +495,31 @@ describe('hasPriorCompleteActivityGrant', () => {
 });
 
 describe('settleAttendance', () => {
+  it('EXP_GRANT_ENABLED=false 時不讀 autoExpRules、不查 expLogs、不呼叫 adjustExp，其餘照常', async () => {
+    expGrant.enabled = false;
+    mockCallFn.mockResolvedValueOnce(confirm(['U123', 'U456']));
+
+    const result = await settleAttendance(input());
+
+    expectOk(result);
+    expect(result.targets).toEqual(['U123', 'U456']);
+    expect(result.granted).toEqual([]);
+    expect(result.skippedAlready).toEqual([]);
+    expect(result.skippedZeroAmount).toBe(false);
+    expect(result.failed).toEqual([]);
+    expect(mockCallFn).toHaveBeenCalledTimes(1);
+    expect(mockCallFn).toHaveBeenCalledWith('confirmEventAttendance', {
+      eventId: 'ce_100',
+      desired: {
+        U123: { checkin: true, checkout: true, note: ' 已確認 ' },
+      },
+    });
+    expect(mockWriteOpLog).toHaveBeenCalledTimes(1);
+    expect(mockGetDoc).not.toHaveBeenCalled();
+    expect(mockGetDocs).not.toHaveBeenCalled();
+    expect(adjustCalls()).toHaveLength(0);
+  });
+
   it('逐字送出 confirm、adjustExp 與操作紀錄 payload', async () => {
     const result = await settleAttendance(input());
 

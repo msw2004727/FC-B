@@ -546,11 +546,12 @@ describe('EventFormFields 範本 DOM', () => {
     }
 
     // 使用同一 DOM CSS parser 正規化，逐項保留原本全部樣式斷言。
+    // 2026-11-17：字級 .78rem 移到 src/styles/legacy-input-zoom.css（非 iOS 照舊、iOS 16px 防聚焦放大），行內不再帶 font-size。
     const expectedStyles: Array<[HTMLElement, string]> = [
       [selector, 'display:flex;gap:.3rem;flex-wrap:wrap;align-items:center'],
       [
         input,
-        'flex:1;min-width:0;font-size:.78rem;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)',
+        'flex:1;min-width:0;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)',
       ],
     ];
     for (const [element, cssText] of expectedStyles) {

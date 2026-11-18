@@ -1,4 +1,5 @@
 import { getFirebase } from '@/data/firebase';
+import { loadPrivateProfile } from '@/data/profile-private';
 
 export interface SignupCompanion {
   id: string;
@@ -9,20 +10,24 @@ export interface SignupCompanion {
 }
 
 /**
- * ASSUMPTION: 未附 B 同行者讀取契約；採 users/{uid}.companions
- * 唯讀陣列（id/name 必填，A 彈窗會用到的 gender/notes 為選填字串）。
- * 集中於此 adapter，沒有 fallback 路徑或任何寫入。
+ * 讀取來源：私密子文件（users/{uid}/profilePrivate/profile）有 companions 時優先，
+ * 否則退回根文件 users/{uid}.companions。id/name 必填、gender/notes 選填字串。
  * 必填欄位缺漏仍視為無效名單 throw；選填欄位型別錯誤直接忽略。
  */
 export async function loadSignupCompanions(uid: string): Promise<SignupCompanion[]> {
-  const [{ doc, getDoc }, { db }] = await Promise.all([
+  const [{ doc, getDoc }, { db }, priv] = await Promise.all([
     import('firebase/firestore'),
     getFirebase(),
+    loadPrivateProfile(uid),
   ]);
   const snapshot = await getDoc(doc(db, 'users', uid));
-  if (!snapshot.exists()) return [];
-  const raw: unknown = snapshot.data().companions;
-  if (raw === undefined) return [];
+  let raw: unknown;
+  if (priv && Object.prototype.hasOwnProperty.call(priv, 'companions')) {
+    raw = priv['companions'];
+  } else {
+    raw = snapshot.exists() ? snapshot.data().companions : undefined;
+  }
+  if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw new Error('Invalid companion list');
 
   const ids = new Set<string>();

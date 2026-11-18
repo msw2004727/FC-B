@@ -5,6 +5,7 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import type { EventFormSavedResult } from '../EventFormModal';
+import { EXP_GRANT_ENABLED } from '@/core/exp-display';
 import { roleLabelOf } from '../../data/role-label';
 
 /** 照 A ApiService._writeOpLog：暱稱 → 角色名稱（含自訂角色）→「系統」（Codex 第二審 P3）。 */
@@ -119,7 +120,8 @@ export function useEventFormPostSave(
 
     if (mode !== 'create') return;
 
-    if (uid) {
+    // 2026-11-16 站長定案停發經驗值（顧問 §3.185）：關閉時不讀 autoExpRules、不呼叫 adjustExp、不寫自動 EXP 日誌。
+    if (uid && EXP_GRANT_ENABLED) {
       (async () => {
         try {
           const [{ doc, getDoc }, { getFirebase }, { callFn }] = await Promise.all([

@@ -1,6 +1,31 @@
-/* LINE 登入提示改版（站長 11-08 預覽）。
-   legacy `line-login-hint` 不改；這裡只覆寫這個彈窗的按鈕與「或」。
-   設計 token 沒有 LINE 綠，品牌色 #06C755 寫在本元件。 */
+/* LINE 登入提示 C3b-1：液態玻璃外框、實心按鈕、細線「或」。
+   所有選擇器都限定在 #mobile-line-login-hint-modal，避免影響其他彈窗或 /admin/*。 */
+
+#mobile-line-login-hint-modal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .55) 0, rgba(255, 255, 255, 0) 40px),
+    rgba(255, 255, 255, .72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .7),
+    inset 0 1px 0 rgba(255, 255, 255, .9),
+    0 18px 40px -14px rgba(15, 23, 42, .45);
+}
+
+[data-theme="dark"] #mobile-line-login-hint-modal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .12) 0, rgba(255, 255, 255, 0) 40px),
+    rgba(24, 29, 39, .7);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .22),
+    0 18px 40px -14px rgba(0, 0, 0, .7);
+}
+
+#mobile-line-login-hint-modal .modal-header {
+  border-bottom-color: rgba(148, 163, 184, .3);
+}
 
 #mobile-line-login-hint-modal .line-login-hint-open {
   display: flex;
@@ -8,7 +33,9 @@
   justify-content: center;
   gap: .45rem;
   width: 100%;
-  height: 44px;
+  height: auto;
+  padding-block: .55rem;
+  text-align: center;
   min-height: 44px;
   box-sizing: border-box;
   border: 0;
@@ -19,7 +46,12 @@
   font-weight: 700;
   line-height: 1.2;
   text-decoration: none;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
   cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .4),
+    inset 0 0 0 1px rgba(255, 255, 255, .18),
+    0 8px 16px -8px rgba(6, 199, 85, .7);
 }
 
 #mobile-line-login-hint-modal .line-login-hint-open:hover,
@@ -38,45 +70,95 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: .45rem;
   width: 100%;
-  height: 44px;
+  height: auto;
+  padding-block: .55rem;
+  text-align: center;
   min-height: 44px;
   box-sizing: border-box;
-  border: 1.5px solid var(--border);
+  border: 0;
   border-radius: 12px;
-  background: transparent;
-  color: var(--text-primary);
+  background: #2B5CE0;
+  color: #fff;
   font-size: .9rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.2;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
+  box-shadow: 0 6px 14px -8px rgba(43, 92, 224, .8);
+}
+
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-login {
+  background: #4468CC;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .3),
+    0 6px 14px -8px rgba(0, 0, 0, .7);
 }
 
 #mobile-line-login-hint-modal .line-login-hint-login:hover,
 #mobile-line-login-hint-modal .line-login-hint-login:active {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-primary);
+  background: #2B5CE0;
+  color: #fff;
   transform: none;
 }
 
-#mobile-line-login-hint-modal .line-login-hint-or {
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-login:hover,
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-login:active {
+  background: #4468CC;
+  color: #fff;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-login svg {
   display: block;
-  margin: .55rem 0;
-  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-or {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  margin: .9rem 0 .8rem;
+  color: #5b6577;
   font-size: .72rem;
+  line-height: 1.2;
   text-align: center;
+}
+
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-or {
+  color: #aab3c5;
 }
 
 #mobile-line-login-hint-modal .line-login-hint-or::before,
 #mobile-line-login-hint-modal .line-login-hint-or::after {
-  content: none;
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(100, 116, 139, .4);
   border: 0;
 }
 
 #mobile-line-login-hint-modal .line-login-hint-note {
-  margin: .35rem 0 .2rem;
-  color: var(--text-muted);
+  margin: .4rem 0 0;
+  color: #5b6577;
   font-size: .74rem;
   line-height: 1.5;
   text-align: center;
+  white-space: normal; /* MiMo P2：英／泰／越文 360 寬可能溢出，允許必要時換行；中文仍單行 */
+}
+
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-note {
+  color: #aab3c5;
+}
+
+#mobile-line-login-hint-modal .line-login-hint-cancel {
+  color: #475569;
+}
+
+[data-theme="dark"] #mobile-line-login-hint-modal .line-login-hint-cancel {
+  color: #cbd5e1;
+}
+
+/* Opus 終審 P2：標題列透明，與液態玻璃本體一致（legacy .modal-header 自帶實色底）。 */
+#mobile-line-login-hint-modal .modal-header {
+  background: transparent;
 }

@@ -295,7 +295,7 @@ export function LegacyFavoritesCard(props: LegacyFavoritesCardProps): JSX.Elemen
             id="fav-sort"
             value={sortMode}
             onChange={handleSortChange}
-            style="font-size:.7rem;padding:.15rem .35rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);cursor:pointer"
+            style="padding:.15rem .35rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);cursor:pointer"
           >
             <option value="time">{lt('fav.sortTime', '按時間')}</option>
             <option value="status">{lt('fav.sortStatus', '按狀態')}</option>

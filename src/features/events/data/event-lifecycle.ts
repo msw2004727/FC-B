@@ -21,6 +21,7 @@ import { withSubmitting } from '@/core/submit-guard';
 
 import { parseEventStartMs } from '@/core/event-time';
 import { getFirebase } from '@/data/firebase';
+import { pickRelationKeys } from '@/data/notification-relation-keys';
 import { sendTemplateNotification } from '@/data/notify';
 import { writeOpLog } from '@/data/op-log';
 import type { ViewerView } from '@/features/profile/data/viewer';
@@ -132,6 +133,7 @@ async function notifyRecipients(
     date: event.date ?? '',
     location: event.location ?? '',
   };
+  const relationKeys = pickRelationKeys(typeof event.id === 'string' ? { eventId: event.id } : null);
   const sendOne = async (uid: string): Promise<void> => {
     try {
       await sendTemplateNotification({
@@ -141,6 +143,7 @@ async function notifyRecipients(
         category: 'activity',
         categoryName: '活動',
         senderUid,
+        ...(Object.keys(relationKeys).length > 0 ? { relationKeys } : {}),
       });
     } catch (err) {
       // eslint-disable-next-line no-console

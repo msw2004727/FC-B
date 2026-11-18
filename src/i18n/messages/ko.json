@@ -26,10 +26,12 @@
   "feature.reserved": "이 기능은 곧 제공될 예정입니다",
   "feature.external": "외부 시스템 연동 준비 중",
   "internalTest.badge": "ToosterX 얼리 액세스 {version}",
-  "swUpdate": { "title": "새 버전", "forcedTitle": "업데이트 필요", "now": "업데이트", "later": "나중에", "busy": "작업이 아직 끝나지 않았습니다. 나중에 업데이트하세요" },
+  "swUpdate": { "title": "새 버전", "forcedTitle": "업데이트 필요", "now": "업데이트", "later": "나중에", "busy": "작업이 아직 끝나지 않았습니다. 나중에 업데이트하세요", "loadFailed": "불러오기 실패", "reload": "새로고침" },
   "lineLoginHint": {
-    "openInLine": "LINE 앱에서 열기",
-    "newTabNote": "로그인이 끝나면 새 탭에서 열립니다. 이전 탭은 닫아도 됩니다."
+    "openInLine": "LINE 앱에서 로그인",
+    "openInLineNote": "이제 LINE에서 사용합니다",
+    "browserLogin": "현재 브라우저로 로그인",
+    "browserLoginNote": "LINE 확인 후 이 브라우저로 돌아옵니다"
   },
   "ui": {
     "shell": {
@@ -42,7 +44,8 @@
       "font_medium": "보통",
       "font_large": "크게",
       "fontAction": "현재 글자 크기: {current}. {next}(으)로 변경",
-      "loginError": "LINE 로그인을 완료하지 못했습니다. 다시 시도해 주세요."
+      "loginError": "LINE 로그인을 완료하지 못했습니다. 다시 시도해 주세요.",
+      "loginExpired": "LINE 로그인이 만료되었습니다. 새로고침 후 다시 로그인해 주세요"
     },
     "topBar": {
       "label": "상단 탐색",
@@ -60,13 +63,33 @@
       "navigation": "기타 기능",
       "admin": "관리",
       "language": "언어",
+      "more": "더보기",
       "loading": "언어 불러오는 중",
       "localeError": "지금은 언어를 변경할 수 없습니다. 나중에 다시 시도해 주세요.",
       "theme": "화면 모드",
       "theme_light": "라이트",
       "theme_dark": "다크",
       "theme_system": "시스템 설정",
-      "themeAction": "현재 모드: {current}. {next}(으)로 전환"
+      "themeAction": "현재 모드: {current}. {next}(으)로 전환",
+      "privacyShort": "개인정보처리방침",
+      "termsShort": "이용약관",
+      "reset": "문제가 있나요? 재설정 후 재로그인",
+      "resetTitle": "재설정 후 다시 로그인할까요?",
+      "resetBody": "로그아웃되고 이 기기의 임시 데이터가 삭제된 뒤 다시 불러옵니다.",
+      "resetConfirm": "재설정",
+      "guestName": "비로그인",
+      "loginChecking": "로그인 확인 중…",
+      "syncing": "동기화 중…",
+      "role": {
+        "guest": "게스트",
+        "pending": "확인 중",
+        "user": "일반 회원",
+        "coach": "코치",
+        "captain": "주장",
+        "venue_owner": "시설 소유자",
+        "admin": "관리자",
+        "super_admin": "최고 관리자"
+      }
     },
     "badge": { "empty": "미설정" },
     "chip": { "empty": "미분류", "remove": "“{label}” 삭제" },

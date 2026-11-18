@@ -36,12 +36,12 @@
     "fee": "参加費", "free": "無料", "people": "人数", "host": "主催者",
     "notes": "注意事項", "noNotes": "説明はありません", "noCover": "イベント画像なし",
     "confirmed": "参加確定者", "waitlisted": "キャンセル待ち", "emptyRoster": "申込者はいません",
-    "unnamed": "ユーザー", "companion": "同行者", "self": "（本人）",
-    "registered": "（申込済み）", "companionSignup": "同行者の申込",
+    "unnamed": "ユーザー", "companion": "スポーツ仲間", "self": "（本人）",
+    "registered": "（申込済み）", "companionSignup": "仲間の申込",
     "chooseParticipants": "参加者を選択", "confirmSignup": "申込を確定",
     "cancelTitle": "申込取消", "cancelHint": "取り消す参加者を選び、確定してください。",
     "confirmCancel": "取消を確定", "selectSomeone": "参加者を1人以上選択してください",
-    "noCompanions": "登録済みの同行者はいません", "selected": "{count}人を選択",
+    "noCompanions": "登録済みのスポーツ仲間はいません", "selected": "{count}人を選択",
     "remaining": "残り枠：{count}", "totalFee": "予定参加費：NT${fee}",
     "waitlistEstimate": "約{count}人がキャンセル待ちになる見込みです。送信結果をご確認ください。",
     "signupSuccess": "申込を送信しました", "cancelSuccess": "選択した申込を取り消しました",
@@ -64,20 +64,21 @@
       "earlyBirdNotAvailable": "先行申込は利用できません",
       "earlyBirdConfirmRequired": "先行申込を確認してください",
       "earlyBirdSelfOnly": "先行申込は本人のみ利用できます",
-      "earlyBirdCostChanged": "先行申込の必要ポイントが変更されました",
+      "earlyBirdCostChanged": "早割に必要なポイントが変更されました。再読み込みして確認してから申し込んでください",
       "earlyBirdInsufficientExp": "先行申込のポイントが不足しています",
       "earlyBirdFull": "先行申込枠は満員です",
       "genderRestricted": "性別の参加条件を満たしていません",
       "teamRestricted": "チームの参加条件を満たしていません",
       "courseLinkedPrivate": "この講座イベントは個別申込できません",
       "courseLinkedManaged": "講座から申込を管理してください",
-      "profileIncomplete": "プロフィールを完成させてください",
+      "profileIncomplete": "申し込む前にプロフィール（性別・生年月日・地域）を完成させてください",
       "teamReservationDenied": "このチーム予約枠は利用できません",
       "teamReservationUnavailable": "チーム予約枠は現在利用できません",
       "eventUnavailable": "このイベントは現在申込できません", "ageRestricted": "このイベントには年齢制限があります",
-      "birthdayRequired": "申込前に生年月日を登録してください", "requestIdConflict": "再読み込みしてからもう一度お試しください",
+      "birthdayRequired": "申込前に生年月日を登録してください", "requestIdConflict": "申し込み状況が変わりました。ページを再読み込みしてご確認ください",
       "participantNotAllowed": "この操作を行う権限がありません",
-      "unknown": "申込に失敗しました。再試行してください。"
+      "loadFailed": "ページの読み込みが完了していません。再読み込みしてから申し込んでください。",
+      "unknown": "申し込みできませんでした。しばらくしてから再度お試しください（コード：{code}）", "network": "通信が不安定です。接続を確認し、再読み込みして申し込み状況をご確認ください", "loginExpired": "ログインの有効期限が切れました。再度ログインしてください"
     }
   },
   "cancel": {
@@ -85,8 +86,9 @@
       "alreadyCancelled": "申込は取消済みです", "regNotFound": "申込が見つかりません",
       "eventNotFound": "イベントが見つかりません", "permissionDenied": "この申込は取り消せません",
       "eventEnded": "イベントが開始したため、申込を取り消せません", "eventStarted": "開始時刻を過ぎたため、申込を取り消せません",
-      "requestIdConflict": "再読み込みしてからもう一度お試しください",
-      "unknown": "取消に失敗しました。再試行してください。"
+      "requestIdConflict": "申し込み状況が変わりました。ページを再読み込みしてご確認ください",
+      "loadFailed": "ページの読み込みが完了していません。再読み込みしてから取り消してください。",
+      "unknown": "キャンセルできませんでした。しばらくしてから再度お試しください（コード：{code}）", "network": "通信が不安定です。接続を確認し、再読み込みしてキャンセル状況をご確認ください"
     }
   },
   "form": {
@@ -145,7 +147,7 @@
     "promotePending": "...",
     "promoteAria": "{name} の参加を確定する",
     "demoteConfirm": "{name} をキャンセル待ちに戻しますか？",
-    "demoteConfirmWithCompanions": "{name}（同伴者 {count} 名を含む）をキャンセル待ちに戻しますか？",
+    "demoteConfirmWithCompanions": "{name}（スポーツ仲間 {count} 名を含む）をキャンセル待ちに戻しますか？",
     "overCapacityConfirm": "参加を確定すると定員を超えます（{after}/{max}），続行しますか？",
     "overCapacityConfirmNoCount": "参加を確定すると定員を超えます，続行しますか？",
     "demoteDone": "{name} をキャンセル待ちに戻しました",
@@ -228,5 +230,14 @@
         "other": "終了・中止 {count} 件"
       }
     }
+  },
+  "regionPicker": {
+    "label": "地域",
+    "all": "すべて",
+    "central": "中部",
+    "north": "北部",
+    "south": "南部",
+    "east": "東部・離島",
+    "nearby": "近くの活動を探す"
   }
 }

@@ -24,6 +24,8 @@ export interface AppEvents {
   'auth:login-request': { auto?: boolean };
   /** M-036：手機外部瀏覽器顯示 LINE 登入提示框。 */
   'auth:mobile-login-hint': Record<string, never>;
+  /** B1-02：LINE 權杖已失效且這次不自動重新登入，App 顯示「LINE 登入已過期」文案。 */
+  'auth:line-session-expired': Record<string, never>;
   /** M-049：更新頂部同步／離線狀態條。 */
   'sync:state': {
     state: 'idle' | 'syncing' | 'done' | 'error' | 'offline';

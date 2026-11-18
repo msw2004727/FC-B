@@ -23,6 +23,8 @@ import { getEventLimitedTeamIds, loadEventStaffTeamIds } from '../data/team-staf
 import { incrementEventViewCount, mergeViewCount } from '../data/event-view-count';
 import type { RegLogRegistration } from '../data/event-reg-log';
 import { readAuthHint } from '@/data/auth-hint';
+import { getLastKnownAuthUid } from '@/data/auth';
+import { readEventsSnapshot } from '../data/events-snapshot-cache';
 import { useGoBack } from '@/core/back-guard';
 import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
@@ -30,7 +32,7 @@ import { Toast, toast } from '@/ui/Toast';
 import { appConfirm } from '@/ui/AppConfirm';
 import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
-import { useUserRoles } from '@/data/user-roles';
+import { getCachedUserGender, useUserRoles } from '@/data/user-roles';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
 import { resolveOperator } from '../data/event-lifecycle';
@@ -46,8 +48,13 @@ import { isEventVisibleToUser } from '../data/visibility';
 import { precheckSignup, registerForEvent, cancelRegistration, SignupError } from '../data/signup';
 import { registerSelection } from '../data/signup-selection';
 import { loadSignupCompanions, type SignupCompanion } from '../data/companions';
-import { getSignupButtonState } from '../data/signup-state';
-import { loadSignupProfile, type SignupProfile } from '../data/signup-profile';
+import { getSignupButtonState, syncIssueButtonState } from '../data/signup-state';
+import {
+  isSignupProfileIncomplete,
+  loadSignupProfile,
+  type SignupProfile,
+} from '../data/signup-profile';
+import type { UserProfile } from '@/features/profile/data/profile-model';
 import {
   canDetailCompanionSignup,
   createDetailSignupContexts,
@@ -225,6 +232,24 @@ const DetailLineNotifyPrompt = lazy(() =>
     .then(module => ({ default: module.LineNotifyPrompt })));
 
 let nextSignupGeneration = 0;
+// 報名鈕就緒鎖的等待上限（顧問 §3.268 條件 2：不得永久鎖住，逾時放行交給伺服器裁定）。
+// 登入還原本身在 viewer.ts 有 10 秒上限，這裡多留 2 秒當保險。
+const SIGNUP_AUTH_WAIT_MS = 12_000;
+const SIGNUP_PROFILE_WAIT_MS = 8_000;
+
+type ProfileEditors = typeof import('@/features/profile/ui/editors');
+
+/**
+ * 錯誤提示裡的「代碼」：只顯示伺服器原因碼（大寫底線）或傳輸類別（小寫連字號），
+ * 伺服器自由文字一律顯示 unknown（與 signup.ts 通用失敗上報同一口徑：自由文字不外露）。
+ */
+function displayErrorCode(error: SignupError): string {
+  const original = String(error.originalCode || '');
+  if (/^[A-Z][A-Z0-9_]{1,39}$/.test(original)) return original;
+  const transport = String(error.code || '').replace(/^functions\//, '');
+  return /^[a-z][a-z-]{1,29}$/.test(transport) ? transport : 'unknown';
+}
+export const _displayErrorCodeForTest = displayErrorCode;
 type RosterPhase = 'idle' | 'loading' | 'ready' | 'error';
 // T-074：展開與讀取共用一份狀態；已展開不可能仍是 idle。
 type RosterState =
@@ -268,6 +293,29 @@ function earlyAuthWithheld(event: { blockedUids?: unknown }, uid: string | null)
   if (uid || !readAuthHint()) return false;
   const blocked = event.blockedUids;
   return Array.isArray(blocked) && blocked.length > 0;
+}
+
+/** 列表快取先畫後，伺服器活動文件與本場報名最多等這麼久；逾時走 historyFailed 的重試，按鈕不放開。 */
+export const PROVISIONAL_DETAIL_TIMEOUT_MS = 8_000;
+
+/**
+ * 回訪時先用列表快取畫詳情（只顯示，顧問 §3.230）：同帳號且在有效期內的列表快取有這場、有 docId、
+ * 通過可見性（無報名證據）且不涉黑名單才用。報名、取消、管理一律等伺服器資料到齊；不拿快取決定任何寫入。
+ * 取代：原本每次進詳情都停在載入外殼，等 getDoc 經伺服器確認（Firestore 閒置 60 秒關連線後要重新握手）。
+ */
+function readCachedDetail(
+  publicId: string,
+  viewer: ReturnType<typeof useViewer>,
+): LoadedEventDetail | null {
+  const uid = viewer.uid ?? null;
+  if (getLastKnownAuthUid() !== uid) return null;
+  const cached = readEventsSnapshot(uid)?.find((event) => event.id === publicId);
+  const docId = cached?._docId;
+  if (!cached || typeof docId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(docId)) return null;
+  if (earlyAuthWithheld(cached, uid)) return null;
+  if (uid && Array.isArray(cached.blockedUids) && cached.blockedUids.includes(uid)) return null;
+  if (!isEventVisibleToUser(cached, viewer, [])) return null;
+  return { event: cached, eventDocId: docId };
 }
 
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
@@ -315,6 +363,10 @@ function EventDetailSession({
   const goBack = useGoBack('/activities');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  // 畫面上的快照來自列表快取、伺服器資料還沒到齊（只顯示）。provisionalUid 記先畫時的帳號，換帳號這一幀就改畫載入外殼。
+  // 注意：先畫期間 phase 已是 'ready'。新增只看 phase／snapshot 的 effect 或 handler 時，必須同時看 visible（先畫時為 false）或 rosterAutoHold。
+  const [provisional, setProvisional] = useState(false);
+  const provisionalUid = useRef<string | null>(null);
   const [rosterState, setRosterState] = useState<RosterState>({ expanded: false, phase: 'idle' });
   const { phase: rosterPhase, expanded: rosterExpanded } = rosterState;
   function setRosterPhase(update: RosterPhase | ((phase: RosterPhase) => RosterPhase)): void {
@@ -333,6 +385,14 @@ function EventDetailSession({
   const [companionBusy, setCompanionBusy] = useState(false);
   const [signupProfile, setSignupProfile] = useState<SignupProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(viewer.uid));
+  const [authWaitExpired, setAuthWaitExpired] = useState(false);
+  // 「完善個人資料」彈窗（現有元件，動態載入）；存好後留在本活動頁。
+  const [profileEditor, setProfileEditor] = useState<{
+    uid: string;
+    profile: UserProfile;
+    editors: ProfileEditors;
+  } | null>(null);
+  const profileEditorOpening = useRef(false);
   const [settle, setSettle] = useState<SignupSettle>({ serial: 0, pending: false });
   // 主按鈕自己的動作進行中（進度環只跟這個走；幫夥伴報名等其他忙碌不變形）。
   const [primaryBusy, setPrimaryBusy] = useState(false);
@@ -405,6 +465,10 @@ function EventDetailSession({
     setSignupProfile(null);
     profileRef.current = null;
     if (!uid) return;
+    // 逾時放行：按鈕不再等，交給伺服器裁定；晚到的結果照樣套用（顧問 §3.268 條件 2）。
+    const waitTimer = setTimeout(() => {
+      if (alive.current && request === profileSequence.current) setProfileLoading(false);
+    }, SIGNUP_PROFILE_WAIT_MS);
     loadSignupProfile(uid).then(
       value => {
         if (!alive.current || request !== profileSequence.current) return;
@@ -417,10 +481,85 @@ function EventDetailSession({
         setSignupProfile(null);
       },
     ).finally(() => {
+      clearTimeout(waitTimer);
       if (alive.current && request === profileSequence.current) setProfileLoading(false);
     });
-    return () => { profileSequence.current += 1; };
+    return () => {
+      clearTimeout(waitTimer);
+      profileSequence.current += 1;
+    };
   }, [viewer.uid]);
+
+  // 登入還原中鎖「LINE 登入中…」，逾時後當作已判定（訪客按鈕可按、走登入）。
+  useEffect(() => {
+    setAuthWaitExpired(false);
+    if (viewer.authPending !== true) return;
+    const timer = setTimeout(() => setAuthWaitExpired(true), SIGNUP_AUTH_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [viewer.authPending]);
+
+  // 打開「完善個人資料」彈窗（與個人頁、建立活動同一個 FirstLoginEditor）。
+  // expectedUid：由送出流程傳入送出當下的 uid；送出途中換了帳號就不替新帳號開彈窗（Opus 終審 P3／後續卡 2）。
+  async function openProfileEditor(expectedUid?: string | null): Promise<void> {
+    const uid = currentViewer.current.uid;
+    if (expectedUid !== undefined && expectedUid !== uid) return;
+    if (!uid || profileEditorOpening.current || !alive.current) return;
+    profileEditorOpening.current = true;
+    try {
+      const [editors, model] = await Promise.all([
+        import('@/features/profile/ui/editors'),
+        import('@/features/profile/data/profile-model'),
+      ]);
+      if (!editors?.FirstLoginEditor || !model?.loadUserProfile) throw new Error('profile editor not loaded');
+      // 讀不到完整資料時用手上的欄位開空白表單（使用者填完即可）。
+      // 等待上限同報名鈕；讀不到或逾時就用手上的欄位開表單，不讓「請先完善資料」按了沒反應（Grok 初審 P3）。
+      let waitTimer: ReturnType<typeof setTimeout> | undefined;
+      const loaded = await Promise.race([
+        model.loadUserProfile(uid).catch(() => null),
+        new Promise<null>((resolve) => { waitTimer = setTimeout(() => resolve(null), SIGNUP_PROFILE_WAIT_MS); }),
+      ]).finally(() => clearTimeout(waitTimer));
+      if (!alive.current || currentViewer.current.uid !== uid) return;
+      const known = profileRef.current;
+      setProfileEditor({
+        uid,
+        profile: loaded ?? {
+          uid,
+          name: '',
+          _docId: uid,
+          lastActive: null,
+          gender: known?.gender ?? '',
+          birthday: known?.birthday ?? '',
+        },
+        editors,
+      });
+    } catch {
+      if (alive.current) toast.show({ message: '完善資料畫面載入失敗，請重新整理後再試' });
+    } finally {
+      profileEditorOpening.current = false;
+    }
+  }
+
+  function afterProfileSaved(uid: string, patch: Record<string, unknown>): void {
+    if (!alive.current || currentViewer.current.uid !== uid) return;
+    const base = profileRef.current ?? { gender: '', birthday: '', exp: 0, lineNotifyBound: false };
+    const next: SignupProfile = {
+      ...base,
+      gender: typeof patch.gender === 'string' ? patch.gender : base.gender,
+      birthday: typeof patch.birthday === 'string' ? patch.birthday : base.birthday,
+      incomplete: isSignupProfileIncomplete(patch),
+    };
+    profileRef.current = next;
+    setSignupProfile(next);
+    // 存檔會讓初次載入的序號失效，它的逾時／finally 就不會再清載入旗標：這裡直接結束載入（Grok 初審 P2）。
+    setProfileLoading(false);
+    // 背景重讀一次對齊伺服器資料；失敗保留上面的值，送出時由伺服器裁定。
+    const request = ++profileSequence.current;
+    loadSignupProfile(uid).then(value => {
+      if (!alive.current || request !== profileSequence.current) return;
+      profileRef.current = value;
+      setSignupProfile(value);
+    }, () => {});
+  }
 
   useEffect(() => {
     alive.current = true;
@@ -444,6 +583,26 @@ function EventDetailSession({
     if (e) e.stopPropagation();
     // 下一批補：瀏覽次數、重新整理、報名紀錄、公開切換、分享、行事曆、留言、收藏、聯繫主辦
     toast.show({ message: UNAVAILABLE_MSG });
+  }
+
+  /**
+   * 落到通用「報名／取消失敗」時改成看得懂的提示（站長 11-18）：網路不穩、登入過期分開講，
+   * 其餘附錯誤代碼方便回報。只改顯示，不改送出、重試與上報（上報在 signup.ts）。
+   */
+  function genericFailureNotice(
+    error: unknown,
+  ): { key: string; params?: Record<string, string> } | null {
+    if (!(error instanceof SignupError)) return null;
+    const scope = error.messageKey === 'event.signup.error.unknown' ? 'signup'
+      : error.messageKey === 'event.cancel.error.unknown' ? 'cancel' : null;
+    if (!scope) return null;
+    const code = String(error.code || '').replace(/^functions\//, '');
+    if (code === 'unavailable' || code === 'deadline-exceeded'
+      || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      return { key: `events.${scope}.error.network` };
+    }
+    if (code === 'unauthenticated') return { key: 'events.signup.error.loginExpired' };
+    return { key: `events.${scope}.error.unknown`, params: { code: displayErrorCode(error) } };
   }
 
   function errorKey(error: unknown, fallback: string): string {
@@ -477,6 +636,8 @@ function EventDetailSession({
       paintedUid.current = undefined;
       keepForUid.current = null;
       setPhase('loading');
+      setProvisional(false);
+      provisionalUid.current = null;
       setRosterState({ expanded: false, phase: 'idle' });
       setHistoryFailed(false);
       setSnapshot(null);
@@ -509,6 +670,19 @@ function EventDetailSession({
       rosterAutoHold.current = false;
     }
 
+    // 列表快取先畫的那份；伺服器結果出來（成功、找不到、不可見、失敗）一律收掉，不留快取內容。
+    let cached: LoadedEventDetail | null = null;
+    let provisionalTimer: ReturnType<typeof setTimeout> | null = null;
+    function endProvisional(): void {
+      if (provisionalTimer !== null) clearTimeout(provisionalTimer);
+      provisionalTimer = null;
+      if (!cached) return;
+      cached = null;
+      provisionalUid.current = null;
+      setProvisional(false);
+      setSnapshot(null);
+    }
+
     async function load(): Promise<void> {
       if (keep && painted && uid) {
         await loadKept(painted, uid);
@@ -521,6 +695,34 @@ function EventDetailSession({
           setPhase('missing');
         }
         return;
+      }
+
+      // 本場報名與活動文件並行：只在先畫時已知 docId 才提早讀；docId 相同就共用這一次。
+      // 例外（Opus 終審 P3-1，接受）：伺服器回活動已不存在，或 docId 與快取不同時，會比原本多讀一次本場報名。
+      let historyTask: Promise<RegistrationDoc[]> | null = null;
+      let historyDocId = '';
+      if (reload === 0) cached = readCachedDetail(publicId, currentViewer.current);
+      if (cached) {
+        provisionalUid.current = uid;
+        setSnapshot({
+          event: { ...cached.event, id: cached.event.id ?? publicId },
+          eventDocId: cached.eventDocId,
+          viewerRegistrations: [],
+          registrations: [],
+          attendanceRecords: [],
+        });
+        setProvisional(true);
+        setPhase('ready');
+        if (uid) {
+          historyDocId = cached.eventDocId;
+          historyTask = loadViewerRegistrations(uid, historyDocId);
+          historyTask.catch(() => undefined);
+        }
+        // 逾時只標成同步失敗（出現既有的重試），快照仍是先畫的那份、按鈕不放開；晚到的結果照常收尾。
+        provisionalTimer = setTimeout(() => {
+          provisionalTimer = null;
+          if (current()) setHistoryFailed(true);
+        }, PROVISIONAL_DETAIL_TIMEOUT_MS);
       }
 
       let detail: LoadedEventDetail | null = null;
@@ -543,11 +745,15 @@ function EventDetailSession({
           );
         }
       } catch {
-        if (current()) setPhase('error');
+        if (current()) {
+          endProvisional();
+          setPhase('error');
+        }
         return;
       }
       if (!current()) return;
       if (!detail) {
+        endProvisional();
         paintedUid.current = uid;
         setPhase('missing');
         return;
@@ -557,7 +763,9 @@ function EventDetailSession({
       let failedHistory = false;
       if (uid) {
         try {
-          history = await loadViewerRegistrations(uid, detail.eventDocId);
+          history = await (historyTask && historyDocId === detail.eventDocId
+            ? historyTask
+            : loadViewerRegistrations(uid, detail.eventDocId));
         } catch {
           failedHistory = true;
         }
@@ -565,10 +773,12 @@ function EventDetailSession({
       }
 
       if (!isEventVisibleToUser(detail.event, currentViewer.current, history)) {
+        endProvisional();
         paintedUid.current = uid;
         setPhase('missing');
         return;
       }
+      endProvisional();
 
       const next: Snapshot = {
         event: { ...detail.event, id: detail.event.id ?? publicId },
@@ -597,10 +807,12 @@ function EventDetailSession({
         setHistoryFailed(true);
         return;
       }
+      endProvisional();
       setPhase('error');
     });
     return () => {
       disposed = true;
+      if (provisionalTimer !== null) clearTimeout(provisionalTimer);
     };
   }, [publicId, viewer.uid, reload, detailCache]);
 
@@ -680,6 +892,8 @@ function EventDetailSession({
     if (operation.current || reservation.isPending() || !alive.current) return;
     operation.current = true;
     setBusy(true);
+    // 送出當下的帳號；錯誤回來時已換帳號就不顯示資料不完整提示、不開彈窗。
+    const startUid = currentViewer.current.uid;
     try {
       await work();
     } catch (error) {
@@ -691,8 +905,18 @@ function EventDetailSession({
           'EVENT_ENDED', 'EVENT_STARTED',
         ].includes(error.originalCode)) {
           toast.show({ message: error.message });
+        } else if (error instanceof SignupError
+          // 大寫＝伺服器拒絕；小寫＝signup.ts 送出前預檢（profileComplete 不再寫死 true 後會觸發）（Opus 終審 P3）。
+          && (error.originalCode === 'PROFILE_INCOMPLETE' || error.originalCode === 'profile_incomplete')) {
+          // 伺服器仍判定資料不完整（例如別的裝置剛改過）：提示並直達完善資料（顧問 §3.268 條件 3）。
+          if (currentViewer.current.uid === startUid) {
+            show('events.signup.error.profileIncomplete');
+            void openProfileEditor(startUid);
+          }
         } else {
-          show(errorKey(error, 'events.detailPage.actionError'));
+          const generic = genericFailureNotice(error);
+          if (generic) show(generic.key, generic.params);
+          else show(errorKey(error, 'events.detailPage.actionError'));
         }
       }
     } finally {
@@ -828,8 +1052,12 @@ function EventDetailSession({
   // 只有 uid 在黑名單時，結論才需要等本場報名；這段期間畫載入外殼，不讓任何以 visible 為條件的 effect 觸發。
   const blockedPending = regsPending && uidNow !== null && snapshot !== null
     && Array.isArray(snapshot.event.blockedUids) && snapshot.event.blockedUids.includes(uidNow);
-  const visible = snapshot !== null && !blockedPending
+  // 列表快取先畫時 visible 一律為 false：所有以 visible 為條件的讀寫與 effect 都等伺服器資料到齊。
+  const visible = snapshot !== null && !blockedPending && !provisional
     && isEventVisibleToUser(snapshot.event, viewer, snapshot.viewerRegistrations);
+  // 先畫的那份只給同一個帳號、且當下仍通過可見性時顯示；否則改畫載入外殼（不閃找不到）。
+  const provisionalReady = provisional && snapshot !== null && provisionalUid.current === uidNow
+    && isEventVisibleToUser(snapshot.event, viewer, []);
   const event = snapshot?.event as LegacyDetailEvent | undefined;
   const active = sortRegistrations(snapshot?.registrations ?? []);
 
@@ -1258,7 +1486,8 @@ function EventDetailSession({
   const noShowEnabled = Boolean(visible && rosterExpanded && rosterPhase === 'ready'
     && canViewNoShow && NO_SHOW_FEATURE_ENABLED && viewer.uid && snapshot?.eventDocId);
   // 展開跨過 TTL 時，仍由既有完整 UID 批次更新角色及統計，不另開 users 查詢。
-  const roles = useUserRoles(viewer.uid ? roleUids : [], noShowEnabled);
+  // 先畫期間不查角色（Opus 終審 P3-2）：名單來自快取，等伺服器資料到齊再讀。
+  const roles = useUserRoles(viewer.uid && !provisional ? roleUids : [], noShowEnabled);
   const noShowData = useRosterNoShow({
     viewerUid: viewer.uid,
     eventDocId: snapshot?.eventDocId,
@@ -1621,6 +1850,11 @@ function EventDetailSession({
         event_team_only_restricted: '俱樂部限定活動，僅限該隊成員報名',
         already_registered: '你已經報名這場活動',
       };
+      if (result.reason === 'profile_incomplete') {
+        show('events.signup.error.profileIncomplete');
+        void openProfileEditor(uid);
+        return;
+      }
       if (result.message || messages[result.reason]) {
         toast.show({ message: result.message || messages[result.reason] || '' });
       } else {
@@ -1639,7 +1873,8 @@ function EventDetailSession({
         toast.show({ message: '早鳥名額已滿，正式開放後可依活動狀態候補報名' });
         return;
       }
-      if ((profileRef.current?.exp ?? 0) < cost) {
+      // 讀不到個人資料時略過本地積分檢查，由伺服器裁定（EARLY_BIRD_INSUFFICIENT_EXP）（Grok 初審 P1）。
+      if (profileRef.current !== null && profileRef.current.exp < cost) {
         toast.show({ message: '目前積分不足，可等正式開放後報名' });
         return;
       }
@@ -1804,7 +2039,7 @@ function EventDetailSession({
     const available = await loadSignupCompanions(uid);
     if (!alive.current || currentViewer.current.uid !== uid) return;
     if (!available.length) {
-      toast.show({ message: '請先到個人資訊新增同行者' });
+      toast.show({ message: '請先到個人資訊頁新增運動夥伴', highlight: '新增運動夥伴' });
       return;
     }
     companionsRef.current = available;
@@ -1821,7 +2056,7 @@ function EventDetailSession({
     if (!current || !uid || !visible || refreshFailed || !alive.current) return;
     const { addCompanionIds, cancelRegistrationIds } = selection;
     if (!addCompanionIds.length && !cancelRegistrationIds.length) {
-      toast.show({ message: '沒有需要調整的同行者' });
+      toast.show({ message: '沒有需要調整的夥伴' });
       return;
     }
     const chosen = companionsRef.current.filter(item => addCompanionIds.includes(item.id));
@@ -1944,9 +2179,9 @@ function EventDetailSession({
         EVENT_ENDED: '活動已開始，無法調整',
         EVENT_CANCELLED: '活動已取消',
         REG_NOT_OPEN: '報名尚未開放',
-        GENDER_RESTRICTED: '同行者不符合性別限制',
+        GENDER_RESTRICTED: '夥伴不符合性別限制',
         TEAM_RESTRICTED: '不符合球隊限定',
-        PROFILE_INCOMPLETE: '請先補齊個人資料',
+        PROFILE_INCOMPLETE: '請先完善個人資料（性別、生日、地區），再報名',
         ALREADY_CANCELLED: '報名狀態已更新',
         // T-087a 伺服器檢查；文案同伺服器 message（A 原文）
         EVENT_STARTED: '活動已於開始時間結束，無法取消報名',
@@ -1957,7 +2192,20 @@ function EventDetailSession({
         TEAM_RESERVATION_TEAM_DENIED: t('events.signup.error.teamReservationDenied'),
         TEAM_RESERVATION_TEAM_NOT_AVAILABLE: t('events.signup.error.teamReservationUnavailable'),
       };
-      toast.show({ message: messages[code] || '夥伴報名調整失敗，請稍後再試' });
+      const errorCode = error instanceof SignupError ? String(error.code || '').replace(/^functions\//, '') : '';
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      // 站長 11-18：通用失敗改成講清楚原因；原「夥伴報名調整失敗，請稍後再試」。
+      const fallback = errorCode === 'unavailable' || errorCode === 'deadline-exceeded' || offline
+        ? '網路連線不穩，請確認網路後重新整理，確認夥伴報名狀態'
+        : errorCode === 'unauthenticated'
+          ? '登入已過期，請重新登入後再試'
+          : `夥伴報名沒有成功，請稍後再試（代碼：${error instanceof SignupError ? displayErrorCode(error) : 'unknown'}）`;
+      const profileIncomplete = code === 'PROFILE_INCOMPLETE' || code === 'profile_incomplete';
+      // 資料不完整是舊帳號的事：送出途中已換人就不提示、不開彈窗（Grok 初審 P3）。其他錯誤照舊提示。
+      if (!profileIncomplete || currentViewer.current.uid === uid) {
+        toast.show({ message: (profileIncomplete ? messages.PROFILE_INCOMPLETE : messages[code]) || fallback });
+        if (profileIncomplete) void openProfileEditor(uid);
+      }
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);
@@ -1990,7 +2238,7 @@ function EventDetailSession({
     />
   );
 
-  if (phase === 'loading' || accountReset || blockedPending) {
+  if (phase === 'loading' || accountReset || blockedPending || (provisional && !provisionalReady)) {
     return (
       <EventDetailLoadingShell publicId={publicId} viewer={viewer} goBack={goBack}>
         {noticeToast}
@@ -2020,7 +2268,7 @@ function EventDetailSession({
     );
   }
 
-  if (phase === 'missing' || !snapshot || !event || !visible) {
+  if (phase === 'missing' || !snapshot || !event || !(visible || provisionalReady)) {
     return <EventDetailMissing goBack={goBack} />;
   }
 
@@ -2040,7 +2288,7 @@ function EventDetailSession({
     : confirmedCount;
   const summaryWaitlistCount = Math.max(0, count(event.waitlist));
 
-  const state = getSignupButtonState({
+  const state = provisional ? syncIssueButtonState() : getSignupButtonState({
     event: viewer.uid ? event : { ...event, current: confirmedCount },
     viewer,
     registrations: actionRegistrations,
@@ -2049,6 +2297,7 @@ function EventDetailSession({
     profileLoading,
     historyFailed: historyFailed || regsPending,
     viewerTeamIds: viewer.teamIds,
+    authPending: viewer.authPending === true && !authWaitExpired,
   });
   const maximum = count(event.max);
   const companionStats = getEventParticipantStats(
@@ -2135,7 +2384,7 @@ function EventDetailSession({
                 </>
               )}
             </h2>
-            <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />
+            {!provisional && <EventDetailHeaderActions context={operateCtx} event={event} eventDocId={snapshot.eventDocId} staffTeamIds={staffTeamIds} viewCount={mergeViewCount(viewCountNum, detailViewCount)} onReload={() => setReload(value => value + 1)} onRefresh={refreshDetailHeader} onOpenLog={openDetailLog} />}
           </div>
         </div>
 
@@ -2152,7 +2401,7 @@ function EventDetailSession({
             waitlistCount={waitlistCount}
             nowMs={now}
             roles={roles}
-            teamSplitSlot={<>
+            teamSplitSlot={provisional ? null : <>
               <TeamInfoCards event={event} registrations={teamDisplayRegistrations} />
               <TeamBatchButtons
                 event={event}
@@ -2173,7 +2422,8 @@ function EventDetailSession({
           />
 
           <div class="detail-action-zone">
-            <div class="detail-action-toolbar">
+            {/* 列表快取先畫時只留主按鈕（同步中）與重試；夥伴、分享、掃碼、選隊、名單、管理等伺服器資料到齊才出現。 */}
+            {!provisional && <div class="detail-action-toolbar">
               <div
                 class={`signup-glow-wrap${companionBusy ? ' loading' : ''}`}
                 style="--glow-c:#2563eb;--glow-c-light:#60a5fa"
@@ -2187,7 +2437,11 @@ function EventDetailSession({
                     disabled={busy || refreshFailed}
                     aria-busy={companionBusy ? 'true' : undefined}
                     aria-disabled={companionBusy ? 'true' : undefined}
-                    onClick={() => startCompanion(openCompanionSelect)}
+                    onClick={() => {
+                      // 伺服器同樣會以 PROFILE_INCOMPLETE 擋夥伴報名：先開完善資料。
+                      if (viewer.uid && signupProfile?.incomplete === true) void openProfileEditor();
+                      else startCompanion(openCompanionSelect);
+                    }}
                   >
                     幫夥伴報名
                     {companionBusy && <span class="fcb-sr-only">（處理中）</span>}
@@ -2210,14 +2464,14 @@ function EventDetailSession({
                   location.route(`/checkin?eventId=${encodeURIComponent(eventId)}`);
                 }}
               />
-            </div>
+            </div>}
 
-            <TeamSelectUI
+            {!provisional && <TeamSelectUI
               event={event}
               registrations={teamDisplayRegistrations}
               selectedKey={selectedTeamKey}
               onSelect={setSelectedTeamKey}
-            />
+            />}
 
             <div class="detail-action-primary" id="detail-action-primary">
               <EventDetailPrimaryButton
@@ -2226,7 +2480,7 @@ function EventDetailSession({
                 busy={busy}
                 running={primaryBusy}
                 settle={settle}
-                teamReservation={reservation.action ? {
+                teamReservation={reservation.action && !provisional ? {
                   ...reservation.action,
                   busy: reservation.busy,
                   doneSerial: teamDoneSerial,
@@ -2234,6 +2488,8 @@ function EventDetailSession({
                   onClick: () => reservation.open(reservation.action?.preferredTeamId),
                 } : null}
                 onClick={() => {
+                  // 列表快取先畫期間一律不動作（顧問 §3.231 P3；平常已由 disabled 擋，這裡多一層保險）。
+                  if (provisional) return;
                   if (state.action === 'cancel') {
                     const current = snapshot;
                     if (current) {
@@ -2248,6 +2504,7 @@ function EventDetailSession({
                   else if (state.action === 'earlyBird') {
                     startPrimary(() => beginSelfSignup({ earlyBird: true }));
                   } else if (state.action === 'login') start(login);
+                  else if (state.action === 'completeProfile') void openProfileEditor();
                   else if (state.action === 'explain' && state.messageText) {
                     toast.show({ message: state.messageText });
                   }
@@ -2284,7 +2541,7 @@ function EventDetailSession({
             )}
           </div>
 
-          {!viewer.uid ? (
+          {provisional ? null : !viewer.uid ? (
             <GuestRosterSections
               event={event}
               eventId={eventId}
@@ -2313,6 +2570,16 @@ function EventDetailSession({
                       disabled={busy || reservation.busy || refreshFailed}
                       onOpen={handleOpenDetailAttendanceRecords}
                       onPrefetch={prefetchDetailAttendanceRecords}
+                      confirmedPeople={guestEventPeople(event, 'participants')}
+                      waitlistPeople={guestEventPeople(event, 'waitlistNames')}
+                      roles={roles}
+                      genderOf={(uid) => {
+                        try {
+                          return getCachedUserGender(uid);
+                        } catch {
+                          return undefined;
+                        }
+                      }}
                     />
                   ) : rosterPhase === 'loading' ? (
                     <DetailAttendanceLoading
@@ -2428,7 +2695,7 @@ function EventDetailSession({
                 event={event}
                 eventDocId={snapshot.eventDocId}
                 viewer={viewer}
-                canLoad={phase === 'ready'}
+                canLoad={phase === 'ready' && !provisional}
               />
             </Suspense>
           </div>
@@ -2509,6 +2776,15 @@ function EventDetailSession({
               )}
             </EventFormPostSaveBoundary>
           </Suspense>
+        )}
+        {profileEditor && currentViewer.current.uid === profileEditor.uid && (
+          <profileEditor.editors.FirstLoginEditor
+            key={profileEditor.uid}
+            uid={profileEditor.uid}
+            profile={profileEditor.profile}
+            onClose={() => setProfileEditor(null)}
+            onSaved={patch => afterProfileSaved(profileEditor.uid, patch)}
+          />
         )}
         {noticeToast}
       </section>

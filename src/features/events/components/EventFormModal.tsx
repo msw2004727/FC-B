@@ -1,3 +1,4 @@
+import type { IntensityChoice } from '../data/activity-categories';
 import '../legacy/activity.css';
 import '@/styles/legacy/edu-info-btn.css';
 import type { JSX } from 'preact';
@@ -71,6 +72,8 @@ export interface EventFormModalProps {
   mode: 'create' | 'edit';
   existing?: EventDoc;
   preset?: EventFormPreset | null;
+  /** 建立彈窗選的分類（只用於 mode=create）。 */
+  initialIntensity?: IntensityChoice;
   viewer: ViewerView;
   onClose(): void;
   onSaved(result: EventFormSavedResult): void;
@@ -128,6 +131,7 @@ export function EventFormModal({
   mode,
   existing,
   preset,
+  initialIntensity = '',
   viewer,
   onClose,
   onSaved,
@@ -322,9 +326,10 @@ export function EventFormModal({
           teamOnly: true,
           teamOnlyTeamIds: [...createPreset.teamIds],
           sportTag: createPreset.sportTag,
+          intensityLevel: initialIntensity,
         });
       } else {
-        setFormState(createDefaultFormState(now));
+        setFormState({ ...createDefaultFormState(now), intensityLevel: initialIntensity });
       }
       cover.reset({ image: '' });
       location.reset(null);
@@ -351,7 +356,7 @@ export function EventFormModal({
     }
     // 照 A openCreateEventModal／重設表單欄位：清空範本名稱並重新載入範本（編輯也顯示範本列）。
     latestRef.current.templates.reset();
-  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons, preset]);
+  }, [open, mode, existing, viewer, cover.reset, delegates.reset, teamOnly.reset, location.reset, canUseAddons, preset, initialIntensity]);
 
   // 照 A 委託人送出驗證：等待重繪後讀取 hook 更新的最新名稱，避免使用舊 render 快照。
   useLayoutEffect(() => {
@@ -569,6 +574,7 @@ export function EventFormModal({
             if (!isCurrent()) return;
             await notifyEventChanged({
               eventId: existingForEdit.id,
+              relationEventId: typeof before.id === 'string' && before.id.trim() ? before.id : undefined,
               title: payloadForm.title,
               date: String(changes.date ?? existing.date ?? ''),
               location: payloadForm.location,

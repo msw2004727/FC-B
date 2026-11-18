@@ -31,6 +31,12 @@ vi.mock('./visibility', () => ({
   isEventVisibleToUser: vi.fn(),
 }));
 
+// 顧問 §3.259 報名載入失敗卡：只換掉上報，判斷訊息的函式用真的。
+vi.mock('@/core/error-report', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/error-report')>()),
+  reportClientError: vi.fn(),
+}));
+
 import * as firestore from 'firebase/firestore';
 import {
   CallableError,
@@ -44,8 +50,12 @@ import type {
   RegisterForEventResponse,
 } from '@/data/contract/callables';
 import { on } from '@/core/events';
+import { reportClientError } from '@/core/error-report';
+import { moduleLoadFailedError } from '@/core/module-load-error';
 
 import {
+  _resetUnknownFailureReportsForTest,
+  _redactFreeTextForTest as redactFreeText,
   buildCancelPayload,
   buildRegisterPayload,
   cancelRegistration,
@@ -1185,9 +1195,15 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     expect(vi.getTimerCount()).toBe(2);
     await vi.advanceTimersByTimeAsync(14_999);
     expect(vi.getTimerCount()).toBe(2);
+    vi.mocked(reportClientError).mockClear();
+    _resetUnknownFailureReportsForTest();
     await vi.advanceTimersByTimeAsync(1);
     await assertion;
     expect(vi.getTimerCount()).toBe(0);
+    // §3.267：逾時落到通用文案，上報一筆、標明逾時。
+    expect(vi.mocked(reportClientError)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(reportClientError).mock.calls[0]?.[0]).toBe('register-unknown');
+    expect((vi.mocked(reportClientError).mock.calls[0]?.[1] as Error).message).toContain('timeout=1');
     pending.resolve({ success: true });
     await flushMicrotasks();
     expect(calls).toBe(1);
@@ -1222,6 +1238,211 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
     pending.resolve({ success: true });
     await flushMicrotasks();
     expect(calls).toBe(1);
+  });
+
+  it('報名途中程式檔載入失敗：專屬文案、上報、只呼叫一次不重試（§3.259）', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    let calls = 0;
+    registerMock('registerForEvent', () => {
+      calls += 1;
+      throw new TypeError('Importing a module script failed.');
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.signup.error.loadFailed',
+      message: 'Importing a module script failed.',
+    });
+    expect(calls).toBe(1);
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    expect(String((reported.mock.calls[0]?.[1] as Error).message)).toContain('Importing a module script failed');
+  });
+
+  it('載入結果為空（MODULE_LOAD_FAILED 標記）：專屬文案、上報一次、類別碼正確（§3.260）', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    let calls = 0;
+    registerMock('registerForEvent', () => {
+      calls += 1;
+      throw moduleLoadFailedError('firebase/functions');
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      name: 'SignupError',
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.signup.error.loadFailed',
+    });
+    expect(calls).toBe(1);
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'MODULE_LOAD_FAILED' });
+  });
+
+  it('取消途中程式檔載入失敗（Chromium 訊息）：專屬文案並上報', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    registerMock('cancelRegistration', () => {
+      throw new TypeError('Failed to fetch dynamically imported module: https://x/assets/a.js');
+    });
+    await expect(cancelRegistration({
+      eventId: 'evtA',
+      userId: 'uidA',
+      registrationIds: ['targetA'],
+      kind: 'self',
+      context: cancelContext({}, 'uidA').context,
+    })).rejects.toMatchObject({
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: 'event.cancel.error.loadFailed',
+    });
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('cancel-module-load');
+  });
+
+  it('其他未知錯誤：文案照舊「報名失敗，請稍後重試」，改為上報一筆 register-unknown（§3.267；取代原「不上報」）', async () => {
+    const reported = vi.mocked(reportClientError);
+    reported.mockClear();
+    _resetUnknownFailureReportsForTest();
+    registerMock('registerForEvent', () => {
+      throw new TypeError("undefined is not an object (evaluating 'e.httpsCallable')");
+    });
+    const harness = signupContext({}, 'uidA');
+    await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({
+      messageKey: 'event.signup.error.unknown',
+    });
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(reported.mock.calls[0]?.[0]).toBe('register-unknown');
+    expect(String((reported.mock.calls[0]?.[1] as Error).message)).toContain('timeout=0');
+  });
+
+  describe('通用失敗一律上報（顧問 §3.267）', () => {
+    const reported = vi.mocked(reportClientError);
+
+    beforeEach(() => {
+      reported.mockClear();
+      _resetUnknownFailureReportsForTest();
+    });
+
+    it('伺服器回對照表沒有的錯誤：通用文案、上報一次、類別 register-unknown，帶錯誤碼與原始訊息', async () => {
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', 'internal');
+      });
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      const [context, err] = reported.mock.calls[0]!;
+      expect(context).toBe('register-unknown');
+      expect(err).toMatchObject({ code: 'internal' });
+      expect((err as Error).message).toContain('code=internal');
+      expect((err as Error).message).toContain('timeout=0');
+      expect((err as Error).message).toContain('transport=internal');
+    });
+
+    it('取消落到通用文案：類別 cancel-unknown', async () => {
+      registerMock('cancelRegistration', () => {
+        throw new CallableError('unavailable', 'SOMETHING_NEW');
+      });
+      await expect(cancelRegistration({
+        eventId: 'evtA', userId: 'uidA', registrationIds: ['targetA'], kind: 'self', context: cancelContext({}, 'uidA').context,
+      })).rejects.toMatchObject({ messageKey: 'event.cancel.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls[0]?.[0]).toBe('cancel-unknown');
+      // 結構化 code 用伺服器原始碼，傳輸層代碼在 detail（Flash 初審 P3）。
+      expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'SOMETHING_NEW' });
+      expect((reported.mock.calls[0]?.[1] as Error).message).toContain('transport=unavailable');
+    });
+
+    it('已知錯誤（例如早鳥額滿、已報名）不上報', async () => {
+      for (const code of ['EARLY_BIRD_FULL', 'ALREADY_REGISTERED']) {
+        registerMock('registerForEvent', () => {
+          throw new CallableError('failed-precondition', code, code);
+        });
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ originalCode: code });
+      }
+      expect(reported).not.toHaveBeenCalled();
+    });
+
+    it('載入失敗只上報 signup-module-load 一筆，不再另報 unknown', async () => {
+      registerMock('registerForEvent', () => {
+        throw new TypeError('Importing a module script failed.');
+      });
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.loadFailed' });
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls[0]?.[0]).toBe('signup-module-load');
+    });
+
+    it('限流：同一頁最多上報 3 筆不同的通用失敗', async () => {
+      let i = 0;
+      registerMock('registerForEvent', () => {
+        i += 1;
+        throw new CallableError('internal', `NEW_CODE_${i}`);
+      });
+      for (let k = 0; k < 5; k += 1) {
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      expect(reported).toHaveBeenCalledTimes(3);
+    });
+
+    it('同內容重複不扣額度：同一錯誤連發後，不同的錯誤仍會上報（Flash 初審 P2）', async () => {
+      let code = 'SAME_CODE';
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', code);
+      });
+      for (let k = 0; k < 4; k += 1) {
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      code = 'OTHER_CODE';
+      const harness = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      expect(reported).toHaveBeenCalledTimes(2);
+      expect(reported.mock.calls.map(([, e]) => (e as { code: string }).code)).toEqual(['SAME_CODE', 'OTHER_CODE']);
+    });
+
+    it('個資：伺服器自由文字不送原文；其他錯誤的 email、長數字遮掉（Flash 初審 P1）', async () => {
+      registerMock('registerForEvent', () => {
+        throw new CallableError('internal', 'alice@example.com 王小明 0912345678 已失敗');
+      });
+      const h1 = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(h1))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      registerMock('registerForEvent', () => {
+        throw new TypeError('bad value bob@example.org id 123456789012');
+      });
+      const h2 = signupContext({}, 'uidA');
+      await expect(registerForEvent(selfInput(h2))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      // mock 模式會把 TypeError 也包成 CallableError，兩筆都走「不送原文」。
+      const texts = reported.mock.calls.map(([, e]) => (e as Error).message).join(' || ');
+      expect(texts).not.toMatch(/alice@example\.com|王小明|0912345678|bob@example\.org|123456789012/);
+      expect(texts).toContain('message-omitted');
+      expect(reported.mock.calls[0]?.[1]).toMatchObject({ code: 'internal' });
+    });
+
+    it('非 Callable 錯誤的訊息遮罩：email、電話（含分隔線）遮掉；含中文等非 ASCII 整段不送；只留前 120 字', () => {
+      expect(redactFreeText("undefined is not an object (evaluating 'e.httpsCallable')")).toBe("undefined is not an object (evaluating 'e.httpsCallable')");
+      expect(redactFreeText('bad value bob@example.org id 123456789012 tel 0912-345-678 or 2345678')).toBe('bad value [email] id [num] tel [num] or [num]');
+      expect(redactFreeText('王小明 台北市信義路')).toBe('message-omitted');
+      expect(redactFreeText('x'.repeat(300))).toHaveLength(120);
+    });
+
+    it('錯誤碼白名單：純數字、含分隔線電話、英文姓名不會被當成錯誤碼送出（Flash 複審 P1）', async () => {
+      for (const text of ['0912345678', '0912-345-678', 'AliceWang']) {
+        registerMock('registerForEvent', () => {
+          throw new CallableError('internal', text);
+        });
+        const harness = signupContext({}, 'uidA');
+        await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
+      }
+      // 正面斷言（Flash 複審 P3）：三筆都是伺服器自由文字，code 一律退回傳輸層代碼、內容合併去重，只上報一筆。
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls.every(([, e]) => (e as { code: string }).code === 'internal')).toBe(true);
+      const texts = reported.mock.calls.map(([, e]) => `${(e as { code: string }).code} ${(e as Error).message}`).join(' || ');
+      expect(texts).not.toMatch(/0912345678|0912-345-678|AliceWang/);
+    });
   });
 
   it('Callable 在逾時前完成：計時器清掉', async () => {

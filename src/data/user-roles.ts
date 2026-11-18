@@ -44,16 +44,22 @@ export interface UserNoShowStats {
   lastEventWasNoShow: boolean;
 }
 
+/** 只接受 users.gender 的這兩個字；其他值（含缺欄）存空字串。 */
+export type UserGender = '男' | '女' | '';
+
 interface CacheEntry extends UserNoShowStats {
   role: UserRole;
   /** users.exp，給使用者膠囊算等級（A `_calcLevelFromExp`）。 */
   exp: number;
+  /** 與角色同一份 users 文件；不另開查詢。 */
+  gender: UserGender;
   expiresAt: number;
 }
 
 interface UserSummary extends UserNoShowStats {
   role: UserRole;
   exp: number;
+  gender: UserGender;
 }
 
 type FetchOutcome = { failed: false } | { failed: true; error: unknown };
@@ -97,6 +103,11 @@ function readExp(data: Record<string, unknown> | undefined): number {
   return Math.max(0, Number(data?.exp || 0) || 0);
 }
 
+function readGender(data: Record<string, unknown> | undefined): UserGender {
+  const value = data?.gender;
+  return value === '男' || value === '女' ? value : '';
+}
+
 function readNoShowStats(data: Record<string, unknown> | undefined): UserNoShowStats {
   return {
     noShowCount: Number(data?.noShowCount || 0) || 0,
@@ -129,6 +140,16 @@ export function getCachedUserLevel(uid: string): number | undefined {
   return userLevelFromExp(entry.exp);
 }
 
+/**
+ * 已載入（未過期）的性別。沒有快取或過期回 undefined，絕不觸發查詢。
+ * 文件已讀但性別不是「男」「女」時回空字串。
+ */
+export function getCachedUserGender(uid: string): UserGender | undefined {
+  const entry = cache.get(String(uid || '').trim());
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  return entry.gender;
+}
+
 /** 未過期的統計副本；未載入或過期回 undefined，絕不觸發查詢。 */
 export function getCachedUserNoShowStats(uid: string): UserNoShowStats | undefined {
   const entry = cache.get(String(uid || '').trim());
@@ -149,7 +170,12 @@ async function fetchRoles(uids: readonly string[]): Promise<void> {
     const result: Record<string, UserSummary> = {};
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as Record<string, unknown> | undefined;
-      result[docSnap.id] = { role: readRole(data), exp: readExp(data), ...readNoShowStats(data) };
+      result[docSnap.id] = {
+        role: readRole(data),
+        exp: readExp(data),
+        gender: readGender(data),
+        ...readNoShowStats(data),
+      };
     }
     // 每批成功後才寫入快取；後續批次失敗不丟棄已取得的資料。
     const expiresAt = Date.now() + CACHE_TTL_MS;
@@ -157,6 +183,7 @@ async function fetchRoles(uids: readonly string[]): Promise<void> {
       cache.set(uid, {
         role: result[uid]?.role ?? DEFAULT_ROLE,
         exp: result[uid]?.exp ?? 0,
+        gender: result[uid]?.gender ?? '',
         ...copyNoShowStats(result[uid]),
         expiresAt,
       });

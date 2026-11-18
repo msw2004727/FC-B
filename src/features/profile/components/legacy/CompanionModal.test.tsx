@@ -21,8 +21,8 @@ describe('CompanionModal', () => {
     expect(modal).toBeTruthy();
     expect(modal?.style.width).toBe('calc(100% - 2rem)');
     expect(modal?.style.maxWidth).toBe('340px');
-    // 其餘照 A：static 定位、無位移
-    expect(modal?.style.position).toBe('static');
+    // 其餘照 A：留在置中流裡、無位移。2026-11-16 PROFILE-GLASS：static 改 relative（在置中 flex 裡位置不變），上緣亮線才貼卡片
+    expect(modal?.style.position).toBe('relative');
     expect(modal?.style.transform).toBe('none');
   });
 });

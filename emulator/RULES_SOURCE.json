@@ -1,5 +1,7 @@
 {
-  "sha256": "d0032eb78cd2d4439f54d33eb8d80dbf5e80bd6247597ed5b64c1c0e99cbc3cd",
-  "copiedAt": "2026-11-02T12:00:48.308Z",
-  "fcHead": "90be65ae96b0ede62d9c64cb20d4cbe126c27a35"
+  "sha256": "5b3af5e5239849972af0d1b6c9cbb9cd3c85ebc926b3bd27be45009be0d7db52",
+  "storageSha256": "c239ba0ea8484372bd44d5060a0de417117c2a0cf887f6318259eb34b1236d9a",
+  "copiedAt": "2026-11-17T03:07:56.337Z",
+  "fcRef": "member-data-read-v2rules",
+  "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196"
 }

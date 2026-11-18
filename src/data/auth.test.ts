@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildUnsignedCustomToken } from './auth';
+import {
+  LineSessionExpiredError,
+  buildUnsignedCustomToken,
+  isLineSessionExpiredError,
+  isLoginRedirectingError,
+} from './auth';
 
 interface DecodedToken {
   header: Record<string, unknown>;
@@ -76,5 +81,19 @@ describe('buildUnsignedCustomToken（emulator）', () => {
     for (const part of parts.slice(0, 2)) {
       expect(part).not.toMatch(/=/);
     }
+  });
+});
+
+describe('LineSessionExpiredError（B1-02）', () => {
+  it('可被 isLineSessionExpiredError 辨識，且不是重導向（App 要顯示文案）', () => {
+    const err = new LineSessionExpiredError();
+    expect(isLineSessionExpiredError(err)).toBe(true);
+    expect(isLoginRedirectingError(err)).toBe(false);
+  });
+
+  it('跨模組實例（只帶旗標的物件）也能辨識；一般錯誤不算', () => {
+    expect(isLineSessionExpiredError({ isLineSessionExpired: true })).toBe(true);
+    expect(isLineSessionExpiredError(new Error('x'))).toBe(false);
+    expect(isLineSessionExpiredError(null)).toBe(false);
   });
 });

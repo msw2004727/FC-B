@@ -23,6 +23,7 @@ import { manifest as siteTheme } from './features/site-theme/index';
 import { manifest as leaderboard } from './features/leaderboard/index';
 import { manifest as miniGames } from './features/mini-games/index';
 import { manifest as tournaments } from './features/tournaments/index';
+import { manifest as competitions } from './features/competitions/index';
 import { manifest as qaLogin } from './features/qa-login/index';
 import { manifest as adminInactive } from './features/admin-inactive/index';
 import { manifest as adminNotif } from './features/admin-notif/index';
@@ -50,6 +51,7 @@ export const ALL_FEATURES: FeatureManifest[] = [
   leaderboard,
   miniGames,
   tournaments,
+  competitions,
   qaLogin,
   adminInactive,
   adminNotif,

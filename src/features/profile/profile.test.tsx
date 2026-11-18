@@ -11,7 +11,7 @@ import ProfilePage from './pages/ProfilePage';
 import PublicProfilePage from './pages/PublicProfilePage';
 import QrPage from './pages/QrPage';
 import { manifest } from './index';
-import { loadUserProfile, type UserProfile } from './data/profile-model';
+import { loadUserProfile, loadOwnUserProfile, type UserProfile } from './data/profile-model';
 import { loadRelatedActivities, type RelatedActivities } from './data/related-activities';
 import { loadUserAttendanceSummary } from './data/attendance-summary';
 import { buildIdentityQrPayload, renderQrToCanvas } from './data/qr';
@@ -49,7 +49,7 @@ vi.mock('preact-iso', async () => {
 });
 
 vi.mock('./data/viewer', () => ({ useViewer: vi.fn() }));
-vi.mock('./data/profile-model', () => ({ loadUserProfile: vi.fn() }));
+vi.mock('./data/profile-model', () => ({ loadUserProfile: vi.fn(), loadOwnUserProfile: vi.fn() }));
 vi.mock('./data/related-activities', () => ({ loadRelatedActivities: vi.fn() }));
 // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：球員卡改用 deriveAttendanceDisplay，部分 mock 要保留真實匯出。
 vi.mock('./data/attendance-summary', async (importOriginal) => ({
@@ -331,6 +331,7 @@ beforeEach(async () => {
   vi.mocked(useViewer).mockReturnValue(viewer());
   vi.mocked(useUserRoles).mockReturnValue({});
   vi.mocked(loadUserProfile).mockResolvedValue(profile());
+  vi.mocked(loadOwnUserProfile).mockResolvedValue(profile());
   vi.mocked(loadRelatedActivities).mockResolvedValue({
     registered: [],
     hosted: [],
@@ -368,7 +369,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-login-prompt')).toBeTruthy();
     expect(screen.getByText('尚未登入')).toBeTruthy();
     expect(screen.getByText('LINE 登入')).toBeTruthy();
-    expect(loadUserProfile).not.toHaveBeenCalled();
+    expect(loadOwnUserProfile).not.toHaveBeenCalled();
     expect(loadRelatedActivities).not.toHaveBeenCalled();
     expect(loadUserAttendanceSummary).not.toHaveBeenCalled();
     expectNoWrites();
@@ -381,7 +382,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect(document.getElementById('profile-login-prompt')).toBeNull();
     expect(screen.queryByText('尚未登入')).toBeNull();
     expect(document.querySelector('.ui-page-spinner')).toBeTruthy();
-    expect(loadUserProfile).not.toHaveBeenCalled();
+    expect(loadOwnUserProfile).not.toHaveBeenCalled();
 
     vi.mocked(useViewer).mockReturnValue(viewer(null));
     view.rerender(<ProfilePage />);
@@ -397,7 +398,7 @@ describe('我的個人頁（A 版結構）', () => {
     vi.mocked(useViewer).mockReturnValue(viewer('U-me'));
     view.rerender(<ProfilePage />);
     expect(document.getElementById('profile-login-prompt')).toBeNull();
-    await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('U-me'));
+    await waitFor(() => expect(loadOwnUserProfile).toHaveBeenCalledWith('U-me'));
     expect(document.getElementById('profile-login-prompt')).toBeNull();
   });
 
@@ -433,7 +434,7 @@ describe('我的個人頁（A 版結構）', () => {
     }));
     await setLocale('zh-TW');
     let resolveLoad: (value: UserProfile | null) => void = () => {};
-    vi.mocked(loadUserProfile).mockReturnValue(new Promise((resolve) => {
+    vi.mocked(loadOwnUserProfile).mockReturnValue(new Promise((resolve) => {
       resolveLoad = resolve;
     }));
     render(<ProfilePage />);
@@ -449,7 +450,7 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('載入失敗沿用既有失敗畫面，不再轉圈', async () => {
-    vi.mocked(loadUserProfile).mockRejectedValue(new Error('boom'));
+    vi.mocked(loadOwnUserProfile).mockRejectedValue(new Error('boom'));
     render(<ProfilePage />);
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText(zh.loadError)).toBeTruthy();
@@ -458,7 +459,7 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('輸出 A 主要 id/class、等級計算、UID 權限控制與出席統計', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({
       exp: 350, // Lv.2: baseExp = 300, progress = 50, needed = 300, width = 17%
     }));
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue({
@@ -795,7 +796,7 @@ describe('我的個人頁（A 版結構）', () => {
       expect(await screen.findByText('王小明')).toBeTruthy();
       const mate = quickBtn('mate');
       fireEvent.click(mate);
-      const addBtn = screen.getByRole('button', { name: '+ 新增同行者' });
+      const addBtn = screen.getByRole('button', { name: '+ 新增運動夥伴' });
       addBtn.focus();
       fireEvent.keyDown(addBtn, { key: 'Escape' });
       expect(mate.getAttribute('aria-expanded')).toBe('false');
@@ -809,7 +810,7 @@ describe('我的個人頁（A 版結構）', () => {
     });
 
     it('審查 P2-1：推播開關寫入中切到別的圖示，寫入完成後仍更新頁面資料（不會把舊 lineNotify 整包寫回）', async () => {
-      vi.mocked(loadUserProfile).mockResolvedValue(profile({
+      vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({
         lineNotify: { bound: true, boundAt: '2025/03/14', settings: { activity: false, system: true } },
       }));
       const pending = deferred<void>();
@@ -861,7 +862,7 @@ describe('我的個人頁（A 版結構）', () => {
         hosted: [{ event: { id: 'e3', title: 'C' }, effectiveStatus: 'open' }],
         counts: { registered: 2, hosted: 1 },
       });
-      vi.mocked(loadUserProfile).mockResolvedValue(profile({
+      vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({
         lineNotify: { bound: true, boundAt: '2025/03/14', settings: { activity: true } },
       }));
       render(<ProfilePage />);
@@ -879,7 +880,7 @@ describe('我的個人頁（A 版結構）', () => {
       }
 
       cleanup();
-      vi.mocked(loadUserProfile).mockResolvedValue(profile());
+      vi.mocked(loadOwnUserProfile).mockResolvedValue(profile());
       vi.mocked(loadRelatedActivities).mockResolvedValue({ registered: [], hosted: [], counts: { registered: 0, hosted: 0 } });
       render(<ProfilePage />);
       expect(await screen.findByText('王小明')).toBeTruthy();
@@ -992,21 +993,21 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('第一次失敗後重試會重新呼叫 loader', async () => {
-    vi.mocked(loadUserProfile)
+    vi.mocked(loadOwnUserProfile)
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce(profile());
     render(<ProfilePage />);
     expect(await screen.findByRole('alert')).toBeTruthy();
     await clickButton(zh.retry);
     expect(await screen.findByText('王小明')).toBeTruthy();
-    expect(loadUserProfile).toHaveBeenCalledTimes(2);
+    expect(loadOwnUserProfile).toHaveBeenCalledTimes(2);
   });
 
   // 「查無資料／讀取失敗」的畫面測試在 pages/ProfilePage.load-failure.test.tsx：
   // 要走真的 loadUserProfile（它會吞掉 I/O 錯誤回 null），這個檔把 loadUserProfile 整個 mock 掉，無法表達那個行為（退修 2 P2-1）。
 
   it('首次表單只提交白名單；保留失敗輸入，允許重試', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({
       gender: '',
       birthday: '',
       region: '',
@@ -1058,7 +1059,7 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('首次表單未勾法律同意不能送出；email 可留白', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '', email: '' }));
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({ region: '', email: '' }));
     render(<ProfilePage />);
     await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     await fillFirstLogin('');
@@ -1090,7 +1091,7 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('月份變更會清除不存在的日期，未補日期不得提交', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '' }));
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({ region: '' }));
     render(<ProfilePage />);
     await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     await fillFirstLogin('');
@@ -1112,7 +1113,7 @@ describe('我的個人頁（A 版結構）', () => {
   });
 
   it('首次表單可稍後填寫，不呼叫任何寫入', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({ region: '' }));
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({ region: '' }));
     render(<ProfilePage />);
     await waitFor(() => expect(document.getElementById('first-login-modal')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '稍後填寫' }));
@@ -1122,7 +1123,7 @@ describe('我的個人頁（A 版結構）', () => {
 
   // 測試同步更新：照 A（M-127）夥伴卡改就地展開＋CompanionModal；編輯保留既有 id 與未修改欄位。
   it('同行者可編輯，保留既有 ID 與未修改欄位', async () => {
-    vi.mocked(loadUserProfile).mockResolvedValue(profile({
+    vi.mocked(loadOwnUserProfile).mockResolvedValue(profile({
       companions: [
         { id: 'c1', name: '小一', birthday: '2010/01/01', gender: '男', notes: '家人' },
       ],
@@ -1160,7 +1161,7 @@ describe('我的個人頁（A 版結構）', () => {
     await screen.findByText('王小明');
     fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     await act(async () => {
       fireEvent.input(
@@ -1174,7 +1175,7 @@ describe('我的個人頁（A 版結構）', () => {
     await waitFor(() => expect(saveCompanions).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     await act(async () => {
       fireEvent.input(
@@ -1216,7 +1217,7 @@ describe('我的個人頁（A 版結構）', () => {
     render(<ProfilePage />);
     await screen.findByText('王小明');
     fireEvent.click(screen.getByRole('button', { name: '我的運動夥伴' }));
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增同行者' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增運動夥伴' }));
     await waitFor(() => expect(document.getElementById('companion-modal-name')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     expectNoWrites();
@@ -1257,16 +1258,16 @@ describe('我的個人頁（A 版結構）', () => {
   it('切換帳號立即隱藏舊資料，舊請求晚到不覆蓋新資料', async () => {
     const first = deferred<UserProfile | null>();
     const second = deferred<UserProfile | null>();
-    vi.mocked(loadUserProfile).mockImplementation((uid) =>
+    vi.mocked(loadOwnUserProfile).mockImplementation((uid) =>
       uid === 'U-one' ? first.promise : second.promise);
 
     vi.mocked(useViewer).mockReturnValue(viewer('U-one'));
     const result = render(<ProfilePage />);
-    await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('U-one'));
+    await waitFor(() => expect(loadOwnUserProfile).toHaveBeenCalledWith('U-one'));
 
     vi.mocked(useViewer).mockReturnValue(viewer('U-two'));
     result.rerender(<ProfilePage />);
-    await waitFor(() => expect(loadUserProfile).toHaveBeenCalledWith('U-two'));
+    await waitFor(() => expect(loadOwnUserProfile).toHaveBeenCalledWith('U-two'));
 
     await act(async () => {
       second.resolve(profile({ uid: 'U-two', name: '新帳號' }));

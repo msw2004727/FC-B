@@ -79,6 +79,7 @@ export const fakeSdk = {
   orderBy: vi.fn((...args: unknown[]) => ({ type: 'orderBy', args }) as Constraint),
   limit: vi.fn((...args: unknown[]) => ({ type: 'limit', args }) as Constraint),
   startAfter: vi.fn((...args: unknown[]) => ({ type: 'startAfter', args }) as Constraint),
+  documentId: vi.fn(() => '__name__'),
   getDocs: vi.fn(async (target: unknown) => {
     const q = asQuery(target);
     const docs = fakeState.docsHandler(q);

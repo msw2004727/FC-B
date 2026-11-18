@@ -88,7 +88,7 @@ describe('名單狀態調整錯誤結果', () => {
       input.confirm = vi.fn(async () => false); input.flush = vi.fn();
       await adjustRosterStatus(input);
       expect(input.confirm).toHaveBeenCalledWith(companions
-        ? '確定將 小明（含 2 位同行者）下放到候補嗎？' : '確定將 小明 下放到候補嗎？');
+        ? '確定將 小明（含 2 位運動夥伴）下放到候補嗎？' : '確定將 小明 下放到候補嗎？');
       expect(input.flush).not.toHaveBeenCalled();
     }
     expect(stopRecording()).toHaveLength(0);

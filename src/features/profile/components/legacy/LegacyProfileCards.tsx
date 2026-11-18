@@ -283,7 +283,18 @@ export function LegacyProfileInfoCard({
           <section class="pfi-card">
             <div class="pfi-hd">
               <span class="pfi-title">{t('profile.dataTab.basic')}</span>
-              {embedded ? <ProfileInfoButton infoKey="myProfile" /> : null}
+              <span class="pfi-hd-tools">
+                {embedded ? <ProfileInfoButton infoKey="myProfile" /> : null}
+                <button
+                  type="button"
+                  class="outline-btn small profile-action-btn"
+                  id="profile-edit-btn"
+                  data-i18n="編輯"
+                  onClick={startEdit}
+                >
+                  {lt('編輯', '編輯')}
+                </button>
+              </span>
             </div>
             <div class="pfi-facts">
               <div class="pfi-fact">
@@ -334,18 +345,6 @@ export function LegacyProfileInfoCard({
               </button>
             ) : null}
           </section>
-          <div class="pfi-actions">
-            <button
-              type="button"
-              class="outline-btn"
-              style="font-size:.7rem;padding:.2rem .6rem"
-              id="profile-edit-btn"
-              data-i18n="編輯"
-              onClick={startEdit}
-            >
-              {lt('編輯', '編輯')}
-            </button>
-          </div>
         </div>
 
         <div id="profile-info-edit" style={editing ? undefined : 'display:none'}>

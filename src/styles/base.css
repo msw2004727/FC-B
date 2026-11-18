@@ -118,9 +118,53 @@ textarea {
   color: var(--color-text-secondary);
 }
 
+/* 找不到頁面的回首頁連結（原 App.tsx inline style 照搬）。 */
+.not-found__home {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 多分頁提示的灰字（原 multi-tab-guard.ts inline style 照搬）。 */
+.multi-tab-note {
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+
 /* ── 減少動態 ── */
 @media (prefers-reduced-motion: reduce) {
   .ui-icon-button {
     transition: none;
   }
 }
+
+/* 內容卡住提示（src/core/content-stall.ts）：原 inline style 照搬，數值不變。 */
+#content-stall-hint {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, .85);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  z-index: 9999;
+  text-align: center;
+  max-width: 420px;
+  white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, .3);
+}
+#content-stall-hint .stall-msg { margin-bottom: 8px; }
+#content-stall-hint #stall-reload-btn {
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  padding: 8px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#content-stall-hint .stall-note { margin-top: 6px; font-size: 11px; opacity: .7; }

@@ -12,6 +12,7 @@ import type { UserProfile } from '../../data/profile-model';
 import { saveCompanions } from '../../data/profile-writes';
 import { CompanionModal, type CompanionDraft } from './CompanionModal';
 import { ProfileInfoButton } from './ProfileInfoButton';
+import './profile-mates.css';
 
 /**
  * M-127：我的運動夥伴（就地展開）。
@@ -22,7 +23,6 @@ import { ProfileInfoButton } from './ProfileInfoButton';
  * A 與 Functions 辨識同行者的依據（isCompanionPseudoUid）。
  */
 
-const CIRCLED_NUMS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 const GENDER_ICONS: Record<string, string> = { 男: '♂', 女: '♀' };
 
 interface Companion {
@@ -108,7 +108,7 @@ export function LegacyCompanionsCard(
           ? { ...c, name: draft.name, gender: draft.gender, notes: draft.notes }
           : c,
       );
-      performSave(next, lt('同行者已更新', '同行者已更新')).catch(() => {
+      performSave(next, lt('運動夥伴已更新', '運動夥伴已更新')).catch(() => {
         /* 已於 performSave 內處理 */
       });
     } else {
@@ -119,7 +119,7 @@ export function LegacyCompanionsCard(
         gender: draft.gender,
         notes: draft.notes,
       };
-      performSave([...companions, newCompanion], lt('同行者已新增', '同行者已新增')).catch(
+      performSave([...companions, newCompanion], lt('運動夥伴已新增', '運動夥伴已新增')).catch(
         () => {
           /* 已於 performSave 內處理 */
         },
@@ -129,8 +129,8 @@ export function LegacyCompanionsCard(
 
   async function handleDelete(companionId: string): Promise<void> {
     if (pendingRef.current) return;
-    // 照 A deleteCompanion：先 appConfirm('確定要刪除此同行者？')。
-    const ok = await appConfirm(lt('確定要刪除此同行者？', '確定要刪除此同行者？'));
+    // 照 A deleteCompanion：先 appConfirm 確認（2026-11-17 文案改「運動夥伴」）。
+    const ok = await appConfirm(lt('確定要刪除此運動夥伴？', '確定要刪除此運動夥伴？'));
     if (!ok) return;
     pendingRef.current = true;
     setPending(true);
@@ -138,7 +138,7 @@ export function LegacyCompanionsCard(
       const next = companions.filter((c) => c.id !== companionId);
       await saveCompanions(uid, next);
       onSaved({ companions: next });
-      toast.show({ message: lt('同行者已刪除', '同行者已刪除') });
+      toast.show({ message: lt('運動夥伴已刪除', '運動夥伴已刪除') });
     } catch {
       // 失敗保持現狀；錯誤由底層處理。
     } finally {
@@ -183,66 +183,56 @@ export function LegacyCompanionsCard(
         id="companions-list"
         style={open ? 'display:block' : 'display:none'}
       >
-        <div id="companions-inner-list">
+        {/* 2026-11-17 站長：夥伴改成一人一張卡片，名稱與編輯／刪除鈕放大（取代原本一行一列的小字清單）。 */}
+        <div id="companions-inner-list" class="pmate-list">
           {companions.length === 0 ? (
-            <div style="font-size:.8rem;color:var(--text-muted);padding:.3rem 0">
-              {lt('尚無同行者', '尚無同行者')}
-            </div>
+            <div class="pmate-empty">{lt('尚無運動夥伴', '尚無運動夥伴')}</div>
           ) : (
             <>
               {companions.map((c, idx) => {
-                const number =
-                  CIRCLED_NUMS[idx] ?? String(idx + 1);
+                const number = String(idx + 1);
                 const icon = GENDER_ICONS[c.gender] ?? '';
                 return (
-                  <div
-                    key={c.id || String(idx)}
-                    style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--border)"
-                  >
-                    <div style="flex:1">
-                      <span style="font-size:.85rem;font-weight:600">
-                        <span style="color:var(--text-muted);margin-right:.2rem">
-                          {number}
-                        </span>
-                        {c.name}
-                      </span>
-                      {c.gender ? (
-                        <span style="font-size:.72rem;color:var(--text-muted);margin-left:.3rem">
-                          {`${icon}${c.gender}`}
-                        </span>
-                      ) : null}
-                      {c.notes ? (
-                        <div style="font-size:.72rem;color:var(--text-muted)">
-                          {c.notes}
+                  <div key={c.id || String(idx)} class="pmate-card">
+                    <span class="pmate-no" aria-hidden="true">{number}</span>
+                    <div class="pmate-main">
+                      {/* 顧問 §3.226：姓名獨佔一行（360 寬 8 個中文字內完整顯示），性別與備註移到第二行 */}
+                      <div class="pmate-name">{c.name}</div>
+                      {c.gender || c.notes ? (
+                        <div class="pmate-sub">
+                          {c.gender ? (
+                            <span class="pmate-gender">{`${icon}${c.gender}`}</span>
+                          ) : null}
+                          {c.notes ? <span class="pmate-note">{c.notes}</span> : null}
                         </div>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      class="outline-btn"
-                      style="font-size:.7rem;padding:.15rem .45rem"
-                      disabled={pending}
-                      onClick={() => setModal({ mode: 'edit', companion: c })}
-                    >
-                      {lt('編輯', '編輯')}
-                    </button>
-                    <button
-                      type="button"
-                      class="outline-btn"
-                      style="font-size:.7rem;padding:.15rem .45rem;color:var(--danger);border-color:var(--danger)"
-                      disabled={pending}
-                      onClick={() => {
-                        handleDelete(c.id).catch(() => {
-                          /* 已於 handleDelete 內處理 */
-                        });
-                      }}
-                    >
-                      {lt('刪除', '刪除')}
-                    </button>
+                    <div class="pmate-actions">
+                      <button
+                        type="button"
+                        class="outline-btn small profile-action-btn"
+                        disabled={pending}
+                        onClick={() => setModal({ mode: 'edit', companion: c })}
+                      >
+                        {lt('編輯', '編輯')}
+                      </button>
+                      <button
+                        type="button"
+                        class="outline-btn small profile-action-btn is-danger"
+                        disabled={pending}
+                        onClick={() => {
+                          handleDelete(c.id).catch(() => {
+                            /* 已於 handleDelete 內處理 */
+                          });
+                        }}
+                      >
+                        {lt('刪除', '刪除')}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
-              <div style="font-size:.7rem;color:var(--text-muted);margin-top:.3rem">
+              <div class="pmate-hint">
                 {lt(
                   '※ 序號為幫夥伴報名時的候補遞補順序',
                   '※ 序號為幫夥伴報名時的候補遞補順序',
@@ -253,12 +243,11 @@ export function LegacyCompanionsCard(
         </div>
         <button
           type="button"
-          class="outline-btn"
-          style="width:100%;margin-top:.5rem;font-size:.8rem"
+          class="outline-btn pmate-add"
           disabled={pending}
           onClick={() => setModal({ mode: 'add' })}
         >
-          {lt('+ 新增同行者', '+ 新增同行者')}
+          {lt('+ 新增運動夥伴', '+ 新增運動夥伴')}
         </button>
       </div>
       {modal && (

@@ -1072,7 +1072,8 @@
 .fl-alert {
   margin: 0 0 .85rem;
   padding: .65rem .75rem;
-  color: #b45309;
+  /* 2026-11-19 對比達 4.5:1（R-UI 對比）：原 #b45309 淺色實測 4.48～4.53 壓線、深色只有 1.83 */
+  color: #92400e;
   background: rgba(245, 158, 11, .12);
   border: 1px solid rgba(245, 158, 11, .28);
   border-radius: 8px;
@@ -1080,6 +1081,7 @@
   font-weight: 700;
   line-height: 1.55;
 }
+[data-theme="dark"] .fl-alert { color: #fcd34d; }
 .fl-form { gap: .72rem; }
 .fl-field {
   padding: .68rem .72rem;

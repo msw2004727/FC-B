@@ -59,6 +59,9 @@ const CLEARED_KEYS = [
   'fcb:events-snapshot:v1',
   'sporthub_auto_exp_rules',
   'sporthub_auto_exp_logs',
+  // 測試同步更新（B1-05）：清單補本人 QR 快取前綴與隱身開關。
+  'shub_qr_uid',
+  'admin_stealth',
 ] as const;
 
 const consoleMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;

@@ -9,6 +9,8 @@ import { Text } from '@/ui/Text';
 import { toast } from '@/ui/Toast';
 import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
 import { STATUS_CONFIG, TYPE_CONFIG } from '@/features/events/components/legacy/TimelineEventCard';
+import { CapacityTag } from '@/features/events/components/legacy/CapacityTag';
+import { buildCapacityTagModel } from '@/features/events/data/capacity-tag';
 import { runEventLifecycleAction } from '@/features/events/components/legacy/event-lifecycle-action';
 import {
   useCancelRegistration,
@@ -212,6 +214,9 @@ function RelatedActivityCardRow({
   const metaParts = [typeLabel, timeText, locationText].filter(Boolean);
   const isWaitlisted = registrationStatus === 'waitlisted';
   const cancelEventRing = useActionRingControl();
+  const t = useT();
+  // 2026-11-13 站長定案：人數標籤（風格三）放在狀態標籤下方，與活動頁同口徑；已結束／已取消不顯示。
+  const capModel = buildCapacityTagModel(event as EventDoc, effectiveStatus);
 
   // 照 A `_renderProfileRelatedActivityActions` / `_profileRelatedActionIcon`
   const actions: JSX.Element[] = [];
@@ -323,7 +328,19 @@ function RelatedActivityCardRow({
         </div>
       </div>
       <div class="profile-related-card-right">
-        <span class={`tl-event-status ${statusConf.css}`}>{statusConf.label}</span>
+        {capModel ? (
+          <div class="profile-related-status-stack">
+            <span class={`tl-event-status ${statusConf.css}`}>{statusConf.label}</span>
+            <CapacityTag
+              model={capModel}
+              srText={capModel.max > 0
+                ? t('events.listCard.barConfirmed', { confirmed: capModel.confirmed, max: capModel.max })
+                : t('events.listCard.barConfirmedNoMax', { confirmed: capModel.confirmed })}
+            />
+          </div>
+        ) : (
+          <span class={`tl-event-status ${statusConf.css}`}>{statusConf.label}</span>
+        )}
         <div class="profile-related-event-actions">{actions}</div>
         <span class="tl-event-arrow">›</span>
       </div>
@@ -464,7 +481,23 @@ export function LegacyRelatedActivities({
       toast.show({ message: '您只能管理自己的活動', tone: 'error' });
       return;
     }
-    setEditing(event as unknown as EventDoc);
+    // T-062 S2 Opus 終審 P2：比照取消流程先重讀活動，取得原始文件資料（不把文件 id 塞進 id、補 `_docId`），
+    // 避免編輯後的異動通知帶錯活動關聯鍵而被伺服器拒絕。
+    const publicId = String(event.id ?? '').trim();
+    if (!publicId) return;
+    void (async () => {
+      try {
+        const detail = await loadEventDetail(publicId);
+        if (!mountedRef.current) return;
+        if (!detail) {
+          toast.show({ message: '找不到此活動', tone: 'error' });
+          return;
+        }
+        setEditing(detail.event as unknown as EventDoc);
+      } catch {
+        // L-12：獨立非同步流程自行吞錯。
+      }
+    })();
   };
 
   const handleCancelHosted = async (event: EventRecord, ring: ActionRingControl): Promise<void> => {

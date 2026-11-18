@@ -1,0 +1,82 @@
+/* 2026-11-16 站長選定個人頁彈窗液態玻璃（PROFILE-GLASS，預覽 docs/previews/2026-11-16-profile-glass）：
+ * 新增同行者、社群連結、完善個人資料、我的 QR。四個彈窗各自 import 本檔：完善個人資料也會從開團流程開、我的 QR 由 App 延遲載入，
+ * 樣式要跟著彈窗走，不能只靠個人頁載入。本檔路徑含 /legacy/，打包時自動加上 .legacy-ui（四個彈窗外層都有 .legacy-ui）。
+ * 只用既有 token（--color-roster-slab-*），不用 backdrop-filter、不用 color-mix；欄位、輸入框與文字不動。 */
+#companion-modal-overlay .modal,
+#social-link-modal,
+#first-login-modal.modal.profile-complete-modal {
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow), 0 -14px 40px -18px rgba(15,23,42,.55);
+  border-radius: 20px 20px 0 0;
+}
+/* 上緣一道主色亮線（同開團分類彈窗的做法，顏色改主色） */
+#companion-modal-overlay .modal::before,
+#social-link-modal::before,
+#first-login-modal.modal.profile-complete-modal::before {
+  content: ''; position: absolute; left: 14%; right: 14%; top: 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  pointer-events: none;
+}
+/* 完善個人資料可捲動、標題列是 sticky：維持不透明（玻璃底色），捲動時欄位不從標題下透出（審查 P2-3） */
+.profile-complete-modal .modal-header {
+  background: var(--color-roster-slab-bg);
+}
+#companion-modal-overlay .modal-header,
+#social-link-modal .modal-header {
+  background: transparent;
+  border-bottom-color: var(--color-roster-slab-sep);
+}
+#companion-modal-overlay .modal-close,
+#social-link-modal .modal-close {
+  width: 32px; height: 32px; border: 0;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+@media (hover: hover) {
+  #companion-modal-overlay .modal-close:hover,
+  #social-link-modal .modal-close:hover,
+  #companion-modal-overlay .outline-btn:hover,
+  #social-link-modal .outline-btn:hover,
+  .profile-complete-modal .outline-btn:hover,
+  #uid-qr-modal .uid-qr-close:hover { color: var(--accent); }
+}
+#companion-modal-overlay .outline-btn,
+#social-link-modal .outline-btn,
+.profile-complete-modal .outline-btn {
+  border: 0; border-radius: 10px;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+}
+#companion-modal-overlay .primary-btn,
+#social-link-modal .primary-btn,
+.profile-complete-modal .primary-btn {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -10px rgba(15,23,42,.6);
+}
+/* 同行者彈窗是置中浮卡：四角都圓。圓角原本寫在行內、改由這裡提供；行內 position 由 static 改 relative，亮線才貼卡片上緣（審查 P1-1、P2-2） */
+#companion-modal-overlay .modal { border-radius: 20px; }
+/* 行內改 relative 後，A 在寬螢幕（base.css @media min-width:800px）給 .modal 的 left:50%／right:auto 會生效、把彈窗推出畫面；歸零（終審 P1） */
+#companion-modal-overlay .modal { left: auto; right: auto; bottom: auto; }
+/* 社群連結「清除」：玻璃鈕拿掉了邊框，用內框還原 A 的紅框警示（終審 P3） */
+#social-link-modal #social-clear-btn { box-shadow: inset 0 0 0 1px var(--danger), var(--color-roster-slab-shadow); }
+
+/* 我的 QR：卡面與關閉鈕（UidQrModal 加上 .uid-qr-card／.uid-qr-close，原本寫在行內的底色、關閉鈕外觀改由這裡提供） */
+#uid-qr-modal .uid-qr-card {
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow), 0 18px 40px -16px rgba(15,23,42,.6);
+}
+#uid-qr-modal .uid-qr-close {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow);
+  color: var(--text-primary);
+  font-size: .95rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+#uid-qr-modal .uid-qr-card::before {
+  content: ''; position: absolute; left: 14%; right: 14%; top: 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  pointer-events: none;
+}

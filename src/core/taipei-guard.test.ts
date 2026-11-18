@@ -35,6 +35,8 @@ const GUARDED_FILES = [
   'src/features/events/pages/EventDetailPage.tsx',
   'src/features/events/data/detail-model.ts',
   'src/features/events/components/legacy/event-lifecycle-action.ts',
+  // 2026-11-16 日誌中心時間區間（顧問 §3.196 硬條件 6）：只用 UTC 欄位＋固定 +8 小時。
+  'src/features/logs/data/log-range.ts',
 ] as const;
 
 type GuardedFile = (typeof GUARDED_FILES)[number];
@@ -185,14 +187,18 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
     // 測試同步更新（2026-11-13）：ActivitiesPage 新增篩選列黏頂量測，該行由 642 移到 658。
-    line: 658,
+    // 測試同步更新（2026-11-13 頂部 C 方案）：新增兩行 import、刪一行常數、頁籤捲動 effect 14 行，658 移到 673。
+    // 測試同步更新（2026-11-16 活動分類）：新增分類頁籤型別與篩選共 5 行，673 移到 678。
+    line: 678,
     source: "const dateObj = new Date(y, m - 1, day);",
     reason: '純日曆算術：由活動日期的年月日建構日曆值，只供星期標籤。',
   },
   {
     file: 'src/features/events/pages/ActivitiesPage.tsx',
     // 測試同步更新（2026-11-13）：同上，643 移到 659。
-    line: 659,
+    // 測試同步更新（2026-11-13 頂部 C 方案）：659 移到 674。
+    // 測試同步更新（2026-11-16 活動分類）：674 移到 679。
+    line: 679,
     source: "const dayName = DAY_NAMES[dateObj.getDay()] ?? '日';",
     reason: '純日曆算術：讀取活動日期的星期；今天判斷另用台北欄位。',
   },

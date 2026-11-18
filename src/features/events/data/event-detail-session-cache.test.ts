@@ -94,6 +94,7 @@ describe('loadEventDetailThroughSessionCache', () => {
     expect(page).toContain("setRosterPhase('ready')");
     expect(page).toContain('rosterAutoHold.current = true');
     expect(page).toContain('useState(Boolean(viewer.uid))');
-    expect(page.match(/setPhase\('ready'\)/g)).toHaveLength(1);
+    // 第二處是列表快取先畫（顧問 §3.230，只顯示，按鈕等伺服器資料到齊）。
+    expect(page.match(/setPhase\('ready'\)/g)).toHaveLength(2);
   });
 });

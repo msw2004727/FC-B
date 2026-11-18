@@ -1,5 +1,4 @@
 import {
-  getOperationLogDocId,
   getOperationLogSortMs,
   getVisibleOperationLogs,
   matchesOperationLogKeyword,
@@ -195,16 +194,4 @@ export function paginateOperationLogs(
     totalPages,
     totalCount: sorted.length,
   };
-}
-
-/** A `_findOperationLogByDocId` */
-export function findOperationLogByDocId(
-  docId: string,
-  filteredLogs: readonly OperationLogDoc[],
-  allLogs: readonly OperationLogDoc[] = [],
-): OperationLogDoc | null {
-  const targetId = String(docId || '').trim();
-  if (!targetId) return null;
-  const source = [...filteredLogs, ...getVisibleOperationLogs(allLogs)];
-  return source.find((log) => getOperationLogDocId(log) === targetId) || null;
 }

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OPERATION_LOGS_COLLECTION,
-  OPERATION_LOGS_FETCH_LIMIT,
+  OPERATION_LOGS_RANGE_CAP,
   buildOperationLogDiagnosticText,
   copyDiagnosticTextToClipboard,
-  fetchOperationLogs,
+  fetchOperationLogsInRange,
+  formatOperationLogShortTime,
   formatOperationLogCreatedAt,
   getOperationLogDocId,
   getOperationLogToneClass,
@@ -16,7 +17,6 @@ import {
   ADMIN_LOG_TABS,
   OPLOG_TYPE_GROUPS,
   filterOperationLogsList,
-  findOperationLogByDocId,
   getAvailableAdminLogTabs,
   normalizeAdminLogTab,
   paginateOperationLogs,
@@ -27,6 +27,7 @@ const mockOrderBy = vi.fn();
 const mockLimit = vi.fn();
 const mockQuery = vi.fn();
 const mockGetDocs = vi.fn();
+const mockWhere = vi.fn();
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
@@ -34,6 +35,8 @@ vi.mock('firebase/firestore', () => ({
   limit: (...args: unknown[]) => mockLimit(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
+  Timestamp: { fromMillis: (ms: number) => ({ ms }) },
 }));
 
 const mockDb = { name: 'mock-db' };
@@ -48,9 +51,10 @@ describe('operation-logs data & log-center-model', () => {
     mockOrderBy.mockReturnValue('order-clause');
     mockLimit.mockReturnValue('limit-clause');
     mockQuery.mockReturnValue('query-ref');
+    mockWhere.mockImplementation((field: string, op: string) => `where:${field}${op}`);
   });
 
-  it('fetchOperationLogs builds query with operationLogs, orderBy createdAt desc, limit 200', async () => {
+  it('fetchOperationLogsInRange 只用 createdAt 範圍＋排序（不需複合索引），上限 500＋1 判斷是否超過', async () => {
     mockGetDocs.mockResolvedValue({
       docs: [
         {
@@ -68,12 +72,16 @@ describe('operation-logs data & log-center-model', () => {
       ],
     });
 
-    const result = await fetchOperationLogs();
+    const { docs: result, truncated } = await fetchOperationLogsInRange(1000, 2000);
 
     expect(mockCollection).toHaveBeenCalledWith(mockDb, OPERATION_LOGS_COLLECTION);
+    expect(mockWhere).toHaveBeenCalledWith('createdAt', '>=', { ms: 1000 });
+    expect(mockWhere).toHaveBeenCalledWith('createdAt', '<', { ms: 2000 });
+    expect(mockWhere).toHaveBeenCalledTimes(2);
     expect(mockOrderBy).toHaveBeenCalledWith('createdAt', 'desc');
-    expect(mockLimit).toHaveBeenCalledWith(OPERATION_LOGS_FETCH_LIMIT);
-    expect(mockQuery).toHaveBeenCalledWith('col-ref', 'order-clause', 'limit-clause');
+    expect(mockLimit).toHaveBeenCalledWith(OPERATION_LOGS_RANGE_CAP + 1);
+    expect(mockQuery).toHaveBeenCalledWith('col-ref', 'where:createdAt>=', 'where:createdAt<', 'order-clause', 'limit-clause');
+    expect(truncated).toBe(false);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       _docId: 'op_1001',
@@ -85,6 +93,23 @@ describe('operation-logs data & log-center-model', () => {
       content: '週五夜跑',
       eventId: 'ev_1',
     });
+  });
+
+  it('fetchOperationLogsInRange 超過上限時只回最新 500 筆並標 truncated', async () => {
+    const docs = Array.from({ length: OPERATION_LOGS_RANGE_CAP + 1 }, (_, i) => ({ id: `op_${i}`, data: () => ({ type: 'event_edit' }) }));
+    mockGetDocs.mockResolvedValue({ docs });
+    const res = await fetchOperationLogsInRange(0, 1);
+    expect(res.truncated).toBe(true);
+    expect(res.docs).toHaveLength(OPERATION_LOGS_RANGE_CAP);
+    expect(res.docs[0]?._docId).toBe('op_0');
+  });
+
+  it('formatOperationLogShortTime：台北 24 小時制 MM/DD HH:mm，缺 createdAt 退 time 字串', () => {
+    // 2026-11-16T12:31:00Z ＝ 台北 11/16 20:31
+    const seconds = Date.parse('2026-11-16T12:31:00Z') / 1000;
+    expect(formatOperationLogShortTime({ createdAt: { seconds } })).toBe('11/16 20:31');
+    expect(formatOperationLogShortTime({ time: '05/01 18:00' })).toBe('05/01 18:00');
+    expect(formatOperationLogShortTime(null)).toBe('');
   });
 
   it('formats createdAt from Timestamp, seconds, Date, or falls back to time/unmarked', () => {
@@ -217,7 +242,7 @@ describe('operation-logs data & log-center-model', () => {
     expect(writeText).toHaveBeenCalledWith('diagnostic-payload');
   });
 
-  it('validates tabs order, role visibility, tone class, and findOperationLogByDocId', () => {
+  it('validates tabs order, role visibility and tone class', () => {
     expect(ADMIN_LOG_TABS.map((t) => t.key)).toEqual([
       'operation',
       'audit',
@@ -247,8 +272,5 @@ describe('operation-logs data & log-center-model', () => {
     const totalOptions = OPLOG_TYPE_GROUPS.reduce((sum, g) => sum + g.options.length, 0);
     expect(totalOptions).toBe(29);
 
-    const found = findOperationLogByDocId('op_2', [{ _docId: 'op_1' }], [{ id: 'op_2' }]);
-    expect(found).toEqual({ id: 'op_2' });
-    expect(findOperationLogByDocId('missing', [{ _docId: 'op_1' }])).toBeNull();
   });
 });

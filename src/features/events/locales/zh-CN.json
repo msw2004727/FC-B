@@ -33,12 +33,12 @@
     "fee": "费用", "free": "免费", "people": "人数", "host": "主办",
     "notes": "注意事项", "noNotes": "暂无说明", "noCover": "暂无活动图片",
     "confirmed": "正取名单", "waitlisted": "候补名单", "emptyRoster": "尚无报名",
-    "unnamed": "用户", "companion": "同行者", "self": "（本人）",
+    "unnamed": "用户", "companion": "运动伙伴", "self": "（本人）",
     "registered": "（已报名）", "companionSignup": "帮伙伴报名",
     "chooseParticipants": "选择报名对象", "confirmSignup": "确认报名",
     "cancelTitle": "取消报名", "cancelHint": "请选择要取消的对象，确认后才会取消。",
     "confirmCancel": "确认取消", "selectSomeone": "请至少选择一位参加者",
-    "noCompanions": "尚无已保存的同行者", "selected": "已选 {count} 人",
+    "noCompanions": "尚无已保存的运动伙伴", "selected": "已选 {count} 人",
     "remaining": "剩余名额 {count}", "totalFee": "预计费用 NT${fee}",
     "waitlistEstimate": "预计 {count} 人将列入候补，以提交结果为准。",
     "signupSuccess": "报名已提交", "cancelSuccess": "已取消所选报名",
@@ -58,16 +58,17 @@
       "eventEnded": "活动已结束", "eventCancelled": "活动已取消",
       "regNotOpen": "报名尚未开放", "earlyBirdNotAvailable": "目前无法早鸟报名",
       "earlyBirdConfirmRequired": "请先确认早鸟报名", "earlyBirdSelfOnly": "早鸟报名仅限本人",
-      "earlyBirdCostChanged": "早鸟费用已变更", "earlyBirdInsufficientExp": "早鸟报名积分不足",
+      "earlyBirdCostChanged": "早鸟所需积分已调整，请刷新确认后再报名", "earlyBirdInsufficientExp": "早鸟报名积分不足",
       "earlyBirdFull": "早鸟名额已满", "genderRestricted": "不符合活动性别限制",
       "teamRestricted": "不符合活动球队限制", "courseLinkedPrivate": "此课程活动不开放个别报名",
-      "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完成个人资料",
+      "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完善个人资料（性别、生日、地区）后再报名",
       "teamReservationDenied": "无法使用此球队预留名额",
       "teamReservationUnavailable": "球队预留名额目前不可用",
       "eventUnavailable": "此活动目前无法报名", "ageRestricted": "此活动有年龄限制",
-      "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
+      "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "报名状态刚有变动，请刷新页面确认",
       "participantNotAllowed": "无权限执行此操作",
-      "unknown": "报名失败，请稍后重试"
+      "loadFailed": "页面加载不完整，请重新加载后再报名",
+      "unknown": "报名没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已报名", "loginExpired": "登录已过期，请重新登录后再试"
     }
   },
   "cancel": {
@@ -75,8 +76,9 @@
       "alreadyCancelled": "报名已取消", "regNotFound": "找不到此报名",
       "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
       "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
-      "requestIdConflict": "请重新整理后再试",
-      "unknown": "取消失败，请稍后重试"
+      "requestIdConflict": "报名状态刚有变动，请刷新页面确认",
+      "loadFailed": "页面加载不完整，请重新加载后再取消",
+      "unknown": "取消没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已取消"
     }
   },
   "form": {
@@ -135,7 +137,7 @@
     "promotePending": "...",
     "promoteAria": "将 {name} 正取",
     "demoteConfirm": "确定将 {name} 下放到候补吗？",
-    "demoteConfirmWithCompanions": "确定将 {name}（含 {count} 位同行者）下放到候补吗？",
+    "demoteConfirmWithCompanions": "确定将 {name}（含 {count} 位运动伙伴）下放到候补吗？",
     "overCapacityConfirm": "正取后将超过名额上限（{after}/{max}），确定要继续吗？",
     "overCapacityConfirmNoCount": "正取后将超过名额上限，确定要继续吗？",
     "demoteDone": "已将 {name} 下放至候补",
@@ -218,5 +220,14 @@
         "other": "已结束或取消 {count} 场"
       }
     }
+  },
+  "regionPicker": {
+    "label": "地区",
+    "all": "全部",
+    "central": "中部",
+    "north": "北部",
+    "south": "南部",
+    "east": "东部&外岛",
+    "nearby": "寻找附近活动"
   }
 }
