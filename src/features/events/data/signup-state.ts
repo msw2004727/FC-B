@@ -216,7 +216,7 @@ function baseSignupButtonState(input: SignupButtonInput): SignupButtonState {
     }
     if (isMainFull) {
       // 站長 11-19：額滿時訪客鈕寫「登入後候補」（原「報名候補」），一眼看出是候補；按了照舊走登入。
-    return buttonState('guestWaitlist', '登入後候補', {
+      return buttonState('guestWaitlist', '登入後候補', {
         action: 'login',
         tone: 'waitlist',
         bg: '#7c3aed',
