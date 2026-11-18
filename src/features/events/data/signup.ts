@@ -491,8 +491,11 @@ function transportCode(code: string): string {
   const bare = code.replace(/^functions\//, '');
   return TRANSPORT_CODES.has(bare) ? bare : 'unknown';
 }
-/** 非 Callable 錯誤的類型名稱（TypeError 這類），不像識別字就不送。 */
-const ERROR_NAME = /^[A-Za-z][A-Za-z0-9]{0,40}$/;
+/** 非 Callable 錯誤的類型名稱：只認已知的錯誤類型，其餘一律 unknown（Flash 複審 P2：不放行像英文姓名的字串）。 */
+const ERROR_NAMES = new Set([
+  'Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'EvalError', 'URIError', 'AggregateError',
+  'FirebaseError', 'AbortError', 'NetworkError', 'SecurityError', 'TimeoutError', 'QuotaExceededError',
+]);
 
 /**
  * 非 Callable 錯誤的訊息（瀏覽器／程式丟的英文訊息）：含非 ASCII 字元（例如中文姓名、地址）就整段不送；
@@ -518,7 +521,7 @@ export const _redactFreeTextForTest = redactFreeText;
  */
 function reportUnknownFailure(scope: 'register' | 'cancel', code: string, detail: string, timeout: boolean): void {
   // 隱私優先：伺服器自由文字一律不送，不同的自由文字錯誤會得到同一個去重 key、只報第一筆（Flash 複審 P3，接受）。
-  const safeCode = SERVER_CODE.test(code) || TRANSPORT_CODES.has(code.replace(/^functions\//, '')) || ERROR_NAME.test(code) ? code : 'unknown';
+  const safeCode = SERVER_CODE.test(code) || TRANSPORT_CODES.has(code.replace(/^functions\//, '')) || ERROR_NAMES.has(code) ? code : 'unknown';
   const key = `${scope}|${safeCode}|${detail}|${timeout ? 1 : 0}`;
   if (unknownReportKeys.has(key) || unknownReports >= UNKNOWN_REPORT_LIMIT) return;
   unknownReportKeys.add(key);
@@ -569,7 +572,7 @@ function toSignupError(
       message: error.message,
     });
   }
-  const name = error instanceof Error && ERROR_NAME.test(error.name) ? error.name : 'unknown';
+  const name = error instanceof Error && ERROR_NAMES.has(error.name) ? error.name : 'unknown';
   reportUnknownFailure(scope, name, redactFreeText(message), false);
   return new SignupError({
     code: 'unknown',

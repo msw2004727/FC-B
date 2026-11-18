@@ -1437,6 +1437,9 @@ describe('T-086a：快照重用、逾時與 requestId', () => {
         const harness = signupContext({}, 'uidA');
         await expect(registerForEvent(selfInput(harness))).rejects.toMatchObject({ messageKey: 'event.signup.error.unknown' });
       }
+      // 正面斷言（Flash 複審 P3）：三筆都是伺服器自由文字，code 一律退回傳輸層代碼、內容合併去重，只上報一筆。
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls.every(([, e]) => (e as { code: string }).code === 'internal')).toBe(true);
       const texts = reported.mock.calls.map(([, e]) => `${(e as { code: string }).code} ${(e as Error).message}`).join(' || ');
       expect(texts).not.toMatch(/0912345678|0912-345-678|AliceWang/);
     });
