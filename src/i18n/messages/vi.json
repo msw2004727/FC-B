@@ -26,7 +26,7 @@
   "feature.reserved": "Tính năng này sắp ra mắt",
   "feature.external": "Sắp kết nối hệ thống bên ngoài",
   "internalTest.badge": "ToosterX bản dùng thử sớm {version}",
-  "swUpdate": { "title": "Có bản mới", "forcedTitle": "Vui lòng cập nhật", "now": "Cập nhật", "later": "Để sau", "busy": "Thao tác chưa hoàn tất, vui lòng cập nhật sau" },
+  "swUpdate": { "title": "Có bản mới", "forcedTitle": "Vui lòng cập nhật", "now": "Cập nhật", "later": "Để sau", "busy": "Thao tác chưa hoàn tất, vui lòng cập nhật sau", "loadFailed": "Không tải được", "reload": "Tải lại" },
   "lineLoginHint": {
     "openInLine": "Đăng nhập trong ứng dụng LINE",
     "openInLineNote": "Từ giờ dùng trong LINE",

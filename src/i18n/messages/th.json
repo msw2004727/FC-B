@@ -26,7 +26,7 @@
   "feature.reserved": "ฟีเจอร์นี้จะเปิดให้ใช้เร็วๆ นี้",
   "feature.external": "กำลังเชื่อมต่อระบบภายนอก",
   "internalTest.badge": "ToosterX รุ่นทดลองใช้ก่อน {version}",
-  "swUpdate": { "title": "มีเวอร์ชันใหม่", "forcedTitle": "โปรดอัปเดต", "now": "อัปเดต", "later": "ไว้ทีหลัง", "busy": "การดำเนินการยังไม่เสร็จ โปรดอัปเดตภายหลัง" },
+  "swUpdate": { "title": "มีเวอร์ชันใหม่", "forcedTitle": "โปรดอัปเดต", "now": "อัปเดต", "later": "ไว้ทีหลัง", "busy": "การดำเนินการยังไม่เสร็จ โปรดอัปเดตภายหลัง", "loadFailed": "โหลดไม่สำเร็จ", "reload": "โหลดใหม่" },
   "lineLoginHint": {
     "openInLine": "เข้าสู่ระบบในแอป LINE",
     "openInLineNote": "จะใช้ใน LINE ต่อไป",
