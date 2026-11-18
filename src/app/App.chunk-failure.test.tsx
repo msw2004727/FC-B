@@ -45,10 +45,12 @@ function prompt(): HTMLElement | null {
   return document.getElementById('sw-reload-deferred-prompt');
 }
 
+// 守門整個檔案裝一次：單獨用 -t 跑任一條也成立（Opus 差異審 P3-b）。
+beforeAll(() => {
+  installChunkReloadGuard();
+});
+
 describe('App：活動詳情 chunk 載入失敗（自動重載被擋或已用過）', () => {
-  beforeAll(() => {
-    installChunkReloadGuard();
-  });
 
   beforeEach(() => {
     _resetForTest();
@@ -171,6 +173,10 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
       await waitFor(() => expect(window.location.pathname).toBe('/'));
       expect(await findByTestId('go-detail')).toBeTruthy();
       expect(await toastCalls()).toBe(1);
+      // 上報總數也只有 1（不只過濾載入失敗那類；Opus 差異審 P3-a）；退回上一頁時沒有多載一次（Flash 差異審 P2）。
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(attempts).toBe(1);
+      if (variant === '送出中被擋下') expect(prompt()?.dataset.mode).toBe('chunk');
       end?.();
       (await findByTestId('go-detail')).click();
       expect(await findByTestId('detail')).toBeTruthy();
@@ -204,6 +210,12 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     expect(await toastCalls()).toBe(0);
     expect(container.querySelector('.error-fallback, [role="alert"]')).toBeNull();
     expect(attempts).toBe(1);
+    // 重載沒生效、使用者回列表再點進來：停在載入中的 lazy 沒留在快取，會重新載入（Flash 差異審 P2）。
+    mode = 'reject-once';
+    window.history.back();
+    (await findByTestId('go-detail')).click();
+    expect(await findByTestId('detail')).toBeTruthy();
+    expect(attempts).toBe(2);
   });
 });
 

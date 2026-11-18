@@ -118,8 +118,10 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
     }, ROUTE_TIMEOUT_MS);
     const p = Promise.resolve().then(() => load());
     p.then(
-      () => {
+      (mod) => {
         clearTimeout(timer);
+        // 守門已排重載時 Vite 回 undefined：不把這個停在載入中的 lazy 留在快取，重載沒生效時換頁回來可重新載入（Flash 差異審 P2）。
+        if (!mod) lazyCache.delete(load);
         settled();
       },
       () => {
@@ -666,9 +668,11 @@ function RouteArea({
       key={stallRetryKey}
       path={location.path}
       previousPath={prevPathRef.current}
-      // 重試要讓 App 重繪、重新呼叫 getRouteComponent 拿新的 lazy：<Route component> 是上一次 render 算好的，
-      // 只清 lazyCache 會沿用已存了「丟錯元件」的舊 lazy，按重試沒有作用（Opus 審 P2-1）。同內容卡住重試的做法。
-      onReset={() => {
+      onReset={() => lazyCache.clear()}
+      // 「重新嘗試」要讓 App 重繪、重新呼叫 getRouteComponent 拿新的 lazy：<Route component> 是上一次 render 算好的，
+      // 只清 lazyCache 會沿用已存了「丟錯元件」的舊 lazy，按了沒有作用（Opus 審 P2-1）。同內容卡住重試的做法。
+      // 只給重試按鈕用；自動退回上一頁與換頁重設仍只清快取，不遞增 key（Flash 差異審 P2：避免與導航競爭）。
+      onRetry={() => {
         lazyCache.clear();
         setStallRetryKey((k) => k + 1);
       }}
@@ -705,6 +709,8 @@ interface RouteErrorBoundaryProps {
   path: string;
   previousPath?: string;
   onReset: () => void;
+  /** 錯誤畫面「重新嘗試」：清快取並讓 App 重繪。沒給時退回 onReset。 */
+  onRetry?: () => void;
   onNavigateBack?: (targetPath: string) => void;
   children: ComponentChildren;
 }
@@ -746,6 +752,11 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 
   private handleRetry = (): void => {
+    if (this.props.onRetry) {
+      this.props.onRetry();
+      this.setState({ error: null, resetKey: this.state.resetKey + 1 });
+      return;
+    }
     this.reset();
   };
 
