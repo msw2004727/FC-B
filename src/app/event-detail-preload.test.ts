@@ -74,11 +74,13 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     sessionStorage.clear();
   });
 
-  it('/events/x 插詳情與 SDK 的 modulepreload（crossorigin=""）與詳情 CSS', () => {
+  it('/events/x 插詳情與 SDK 的 modulepreload（crossorigin=""）與詳情 CSS 的 preload（as=style，不插 stylesheet）', () => {
     setMap(JSON.stringify(MAP));
     preloadEventDetailChunks('/events/x');
     expect(links('modulepreload')).toEqual(['/assets/EventDetailPage-aaa.js', '/assets/dep-bbb.js', '/assets/index.esm-ddd.js']);
-    expect(links('stylesheet')).toEqual(['/assets/EventDetailPage-ccc.css']);
+    expect(links('preload')).toEqual(['/assets/EventDetailPage-ccc.css']);
+    expect(links('stylesheet')).toEqual([]);
+    expect(document.head.querySelector<HTMLLinkElement>('link[rel="preload"]')?.as).toBe('style'); // jsdom 不把 as 反映到屬性，驗 property
     for (const l of document.head.querySelectorAll('link')) expect(l.getAttribute('crossorigin')).toBe('');
   });
 
@@ -87,7 +89,7 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     preloadEventDetailChunks('/');
     preloadEventDetailChunks('/activities');
     expect(links('modulepreload')).toEqual(['/assets/index.esm-ddd.js', '/assets/index.esm-ddd.js']);
-    expect(links('stylesheet')).toEqual([]);
+    expect(links('preload')).toEqual([]);
     document.head.querySelectorAll('link').forEach((l) => l.remove());
     for (const pathname of ['/events', '/events/x/edit', '/teams/x']) preloadEventDetailChunks(pathname);
     expect(document.head.querySelectorAll('link')).toHaveLength(0);
@@ -107,7 +109,7 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     }));
     preloadEventDetailChunks('/events/x');
     expect(links('modulepreload')).toEqual(['/assets/ok-1.js']);
-    expect(links('stylesheet')).toEqual(['/assets/ok.css']);
+    expect(links('preload')).toEqual(['/assets/ok.css']);
   });
 
 

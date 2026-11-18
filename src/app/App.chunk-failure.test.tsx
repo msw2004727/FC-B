@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/preact';
 import { App, _setRouteReloadPageForTest } from '@/app/App';
-import { RELOAD_AT_KEY, installChunkReloadGuard } from '@/core/chunk-reload';
+import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, installChunkReloadGuard } from '@/core/chunk-reload';
 import { reportClientError } from '@/core/error-report';
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
@@ -65,6 +65,8 @@ describe('App：活動詳情 chunk 載入失敗（自動重載被擋或已用過
     cleanup();
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
     vi.restoreAllMocks();
     sessionStorage.clear();
     window.history.replaceState({}, '', '/');
@@ -122,7 +124,7 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
 
   /** 每個測試一個新的 load 函式：App 的 lazyCache 以 load 函式為鍵，共用會沿用上一個測試載好的元件。 */
   function navManifests(): FeatureManifest[] {
-    // 第一次照 Vite 失敗行為（沒被擋就丟、被擋回 undefined）；mode=empty 時一律回 undefined（守門已排重載）。之後成功。
+    // 第一次照 Vite 失敗行為（沒被擋就丟、被擋回 undefined）；mode=empty 時一律回 undefined（模擬守門已排重載後 Vite 回的值；守門本身的判斷另見 chunk-reload.test）。之後成功。
     const detailLoad = (): Promise<{ default: () => preact.JSX.Element }> => {
       attempts += 1;
       if (mode === 'empty') return Promise.resolve(undefined as unknown as { default: () => preact.JSX.Element });
@@ -153,6 +155,8 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
     cleanup();
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
     vi.restoreAllMocks();
     sessionStorage.clear();
     window.history.replaceState({}, '', '/');
@@ -174,7 +178,7 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
       await waitFor(() => expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(1));
       await waitFor(() => expect(window.location.pathname).toBe('/'));
       expect(await findByTestId('go-detail')).toBeTruthy();
-      expect(await toastCalls()).toBe(1);
+      await waitFor(async () => expect(await toastCalls()).toBe(1));
       // 上報總數也只有 1（不只過濾載入失敗那類；Opus 差異審 P3-a）；退回上一頁時沒有多載一次（Flash 差異審 P2）。
       expect(reported).toHaveBeenCalledTimes(1);
       expect(attempts).toBe(1);
@@ -291,6 +295,7 @@ describe('App：路由載入中旗標與背景載入失敗', () => {
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
     _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
     vi.restoreAllMocks();
     sessionStorage.clear();
     window.history.replaceState({}, '', '/');

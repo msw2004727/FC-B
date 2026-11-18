@@ -50,20 +50,39 @@ export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
   return true;
 }
 
+/** 本頁排重載的時間（頁面真的重載後模組重新載入，自然歸零）。 */
+let scheduledAt = 0;
+
+export function _resetChunkReloadGuardForTest(): void {
+  scheduledAt = 0;
+}
+
 export function installChunkReloadGuard(): void {
   if (typeof window === 'undefined') return;
   window.addEventListener('vite:preloadError', (event) => {
+    const storage = (() => {
+      try { return sessionStorage; } catch { return null; }
+    })();
+    const now = Date.now();
+    // Opus 終審 P3-1：同一次載入會連發多個事件（Vite 對每個失敗的 CSS 依賴各發一次，模組本身再一次）。
+    // 本頁已排重載、而且未過 60 秒時，後續事件一律攔下，不再出錯誤畫面、提示與上報。
+    // 取代：原本第二個事件落在 60 秒窗內，被當成「重載後又失敗」丟出原錯誤。
+    if (now - scheduledAt < RELOAD_WINDOW_MS) {
+      event.preventDefault();
+      return;
+    }
     const handled = handleChunkLoadFailure({
-      storage: (() => {
-        try { return sessionStorage; } catch { return null; }
-      })(),
-      now: () => Date.now(),
+      storage,
+      now: () => now,
       reload: () => location.reload(),
       canReload: () => canReloadAfterChunkFailure().safe,
       onBlocked: (reload) => {
         showChunkFailurePrompt(reload, 'chunk-load');
       },
     });
-    if (handled) event.preventDefault();
+    if (handled) {
+      scheduledAt = now;
+      event.preventDefault();
+    }
   });
 }

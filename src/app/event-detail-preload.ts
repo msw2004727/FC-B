@@ -36,6 +36,7 @@ function addLinks(head: HTMLElement, list: unknown, rel: string): void {
     if (typeof href !== 'string' || !ASSET_URL.test(href)) continue;
     const link = document.createElement('link');
     link.rel = rel;
+    if (rel === 'preload') link.as = 'style';
     link.crossOrigin = '';
     link.href = href;
     head.appendChild(link);
@@ -46,7 +47,9 @@ function addLinks(head: HTMLElement, list: unknown, rel: string): void {
  * 只下載模組，不執行、不初始化 Firestore、不讀資料（顧問 §3.255 B′）。
  * 用 `<link rel="modulepreload">` 而不是 `import()`：失敗只觸發 link 的 error，不發 `vite:preloadError`、
  * 不寫 chunk-reload 時間戳，路由真正載入失敗時仍有那一次重載機會。網址由 `scripts/boot-preload-html.ts` 建置時注入，
- * 屬性照 Vite 自己插的預載 link（crossorigin=""），路由 load 會沿用同一份下載；CSS 照 Vite 路由載入時的做法插 stylesheet。
+ * 屬性照 Vite 自己插的預載 link（crossorigin=""），路由 load 會沿用同一份下載。
+ * CSS 只插 `rel="preload" as="style"`：路由載入時 Vite 仍會自己插 stylesheet 並等它載完，失敗會照常發事件、交給守門；
+ * 若開機就插 stylesheet，Vite 看到同網址已存在會跳過也不等，失敗時詳情頁沒有樣式又沒有提示（Opus 終審 P3-2；取代：原本插 stylesheet）。
  * 不支援 modulepreload 的瀏覽器（iOS 16 以下）只是不預載，路由照常載入。dev 沒有清單，不預載。
  * 取代：原本以 `import()` 預載並 `.catch(() => {})`，但 Vite 的事件在 catch 之前已發出。
  */
@@ -61,7 +64,7 @@ export function preloadEventDetailChunks(pathname: string): void {
     ];
     for (const group of groups) {
       if (!group) continue;
-      addLinks(document.head, group.css, 'stylesheet');
+      addLinks(document.head, group.css, 'preload');
       addLinks(document.head, group.js, 'modulepreload');
     }
   } catch {

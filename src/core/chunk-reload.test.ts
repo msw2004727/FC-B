@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/i18n/i18n';
-import { RELOAD_AT_KEY, handleChunkLoadFailure, installChunkReloadGuard } from './chunk-reload';
+import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, handleChunkLoadFailure, installChunkReloadGuard } from './chunk-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 import { _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
@@ -145,10 +145,13 @@ describe('sessionStorage 讀取丟錯（Flash 差異審 P2）', () => {
     expect(map.size).toBe(0);
   });
 
-  it('deps.now 丟錯：不重載、不拋', () => {
+  it('deps.now 丟錯：不重載、不寫入、不拋', () => {
     const reload = vi.fn();
-    expect(handleChunkLoadFailure({ storage: memoryStorage(), now: () => { throw new Error('clock'); }, reload })).toBe(false);
+    const setItem = vi.fn();
+    const storage = { getItem: () => null, setItem };
+    expect(handleChunkLoadFailure({ storage, now: () => { throw new Error('clock'); }, reload, canReload: () => true })).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
   });
 });
 
@@ -161,6 +164,8 @@ describe('installChunkReloadGuard', () => {
   afterEach(() => {
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
+    _resetChunkReloadGuardForTest();
+    vi.restoreAllMocks();
     sessionStorage.clear();
     history.replaceState(null, '', '/');
   });
@@ -179,6 +184,32 @@ describe('installChunkReloadGuard', () => {
     expect(prompt?.textContent).toContain('載入失敗');
     expect(prompt?.textContent).toContain('重新載入');
     expect(prompt?.textContent).not.toContain('有新版本');
+  });
+
+  it('已排重載後同頁連發的失敗事件（多個 CSS、模組本身）：都 preventDefault、不出提示（Opus 終審 P3-1）', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {}); // jsdom 的 location.reload 未實作
+    installChunkReloadGuard();
+    const fire = () => {
+      const event = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(fire()).toBe(true);
+    const at = sessionStorage.getItem(RELOAD_AT_KEY);
+    expect(at).not.toBeNull();
+    expect(fire()).toBe(true);
+    expect(fire()).toBe(true);
+    expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBe(at);
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+  });
+
+  it('本頁沒有排過重載（例如重載後的新頁）：60 秒窗內再失敗照常不攔、出提示', () => {
+    installChunkReloadGuard();
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
   });
 });
 
