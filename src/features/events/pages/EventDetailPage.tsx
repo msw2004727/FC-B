@@ -122,6 +122,9 @@ import '../legacy/activity.css';
 import '../legacy/tournament-td-img-placeholder.css';
 import { EventFormPostSaveBoundary } from '../components/event-form/use-event-form-post-save';
 
+// 1b 演練 D4 V_bad：模組一執行就丟錯（只在 staging 演練 commit，不得進 main）
+if (typeof window !== 'undefined') throw new Error('drill V_bad: EventDetailPage broken on purpose');
+
 // 照 A _renderDetailCommentsLoadFailure，chunk 失敗只影響留言區。
 const EventCommentsSection = lazy(() =>
   import('../components/legacy/EventCommentsSection')
@@ -2334,7 +2337,7 @@ function EventDetailSession({
 
   return (
     <div class="legacy-ui">
-      <section class="page active" id="page-activity-detail" data-drill="v2">
+      <section class="page active" id="page-activity-detail">
         <div class="page-header">
           <button
             type="button"
