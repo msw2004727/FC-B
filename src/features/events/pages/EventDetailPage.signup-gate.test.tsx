@@ -344,3 +344,35 @@ describe('Opus 終審補測', () => {
     expect(await screen.findByText('events.cancel.error.network')).toBeTruthy();
   });
 });
+
+describe('送出途中換帳號（後續卡 2）', () => {
+  it('舊帳號的 PROFILE_INCOMPLETE 回來時已換人：不提示、不開彈窗', async () => {
+    let reject!: (error: unknown) => void;
+    mocks.register.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    mocks.viewer.mockReturnValue({ ...viewer, uid: 'u2' });
+    view.rerender(<LocationProvider><EventDetailPage id="public-event" /></LocationProvider>);
+    await act(async () => {
+      reject(new SignupError({
+        code: 'failed-precondition', originalCode: 'PROFILE_INCOMPLETE',
+        messageKey: 'event.signup.error.profileIncomplete', message: 'PROFILE_INCOMPLETE',
+      }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.queryByRole('dialog', { name: '完善個人資料' })).toBeNull();
+    expect(screen.queryByText('events.signup.error.profileIncomplete')).toBeNull();
+    expect(mocks.loadUserProfile).not.toHaveBeenCalled();
+  });
+
+  it('同一帳號仍照常提示並開彈窗', async () => {
+    mocks.register.mockRejectedValue(new SignupError({
+      code: 'failed-precondition', originalCode: 'PROFILE_INCOMPLETE',
+      messageKey: 'event.signup.error.profileIncomplete', message: 'PROFILE_INCOMPLETE',
+    }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '立即報名' }));
+    expect(await screen.findByRole('dialog', { name: '完善個人資料' })).toBeTruthy();
+  });
+});

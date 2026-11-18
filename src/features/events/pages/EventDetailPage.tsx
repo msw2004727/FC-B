@@ -499,8 +499,10 @@ function EventDetailSession({
   }, [viewer.authPending]);
 
   // 打開「完善個人資料」彈窗（與個人頁、建立活動同一個 FirstLoginEditor）。
-  async function openProfileEditor(): Promise<void> {
+  // expectedUid：由送出流程傳入送出當下的 uid；送出途中換了帳號就不替新帳號開彈窗（Opus 終審 P3／後續卡 2）。
+  async function openProfileEditor(expectedUid?: string | null): Promise<void> {
     const uid = currentViewer.current.uid;
+    if (expectedUid !== undefined && expectedUid !== uid) return;
     if (!uid || profileEditorOpening.current || !alive.current) return;
     profileEditorOpening.current = true;
     try {
@@ -890,6 +892,8 @@ function EventDetailSession({
     if (operation.current || reservation.isPending() || !alive.current) return;
     operation.current = true;
     setBusy(true);
+    // 送出當下的帳號；錯誤回來時已換帳號就不顯示資料不完整提示、不開彈窗。
+    const startUid = currentViewer.current.uid;
     try {
       await work();
     } catch (error) {
@@ -905,8 +909,10 @@ function EventDetailSession({
           // 大寫＝伺服器拒絕；小寫＝signup.ts 送出前預檢（profileComplete 不再寫死 true 後會觸發）（Opus 終審 P3）。
           && (error.originalCode === 'PROFILE_INCOMPLETE' || error.originalCode === 'profile_incomplete')) {
           // 伺服器仍判定資料不完整（例如別的裝置剛改過）：提示並直達完善資料（顧問 §3.268 條件 3）。
-          show('events.signup.error.profileIncomplete');
-          void openProfileEditor();
+          if (currentViewer.current.uid === startUid) {
+            show('events.signup.error.profileIncomplete');
+            void openProfileEditor(startUid);
+          }
         } else {
           const generic = genericFailureNotice(error);
           if (generic) show(generic.key, generic.params);
@@ -1846,7 +1852,7 @@ function EventDetailSession({
       };
       if (result.reason === 'profile_incomplete') {
         show('events.signup.error.profileIncomplete');
-        void openProfileEditor();
+        void openProfileEditor(uid);
         return;
       }
       if (result.message || messages[result.reason]) {
@@ -2196,7 +2202,7 @@ function EventDetailSession({
           : `夥伴報名沒有成功，請稍後再試（代碼：${error instanceof SignupError ? displayErrorCode(error) : 'unknown'}）`;
       const profileIncomplete = code === 'PROFILE_INCOMPLETE' || code === 'profile_incomplete';
       toast.show({ message: (profileIncomplete ? messages.PROFILE_INCOMPLETE : messages[code]) || fallback });
-      if (profileIncomplete) void openProfileEditor();
+      if (profileIncomplete) void openProfileEditor(uid);
       // 照 A：部分成功後重讀，避免用舊勾選狀態重送已成功的加報。
       if (writeAttempted) {
         setCompanionOpen(false);
