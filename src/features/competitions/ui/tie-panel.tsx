@@ -51,12 +51,6 @@ function Grip(): JSX.Element {
   );
 }
 
-function Chevron(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-  );
-}
-
 function nameOf(doc: StandingDoc, teamId: string): string {
   return doc.rows.find((row) => row.teamId === teamId)?.name ?? teamId;
 }
@@ -173,11 +167,11 @@ function CompareCard({
       <ul class="cpm-rels">
         {rels.map((rel) => (
           <li key={rel.id}>
-            <button type="button" class="cpm-rel">
+            {/* 相關場次目前只列出、不連到單場頁（Flash 初審 P3：避免看起來可點卻沒反應） */}
+            <div class="cpm-rel">
               <span class="cpm-rel__t">{rel.when}</span>
               <span class="cpm-rel__n">{rel.line}</span>
-              <Chevron />
-            </button>
+            </div>
           </li>
         ))}
       </ul>
@@ -380,6 +374,8 @@ export function TieWorkspace({
   }
 
   async function explain(doc: StandingDoc, teamId: string): Promise<void> {
+    // Flash 初審 P2：查詢中不重複送出
+    if (busy) return;
     const teamIds = samePointTeamIds(doc, teamId);
     if (teamIds.length < 2) return;
     setBusy(true);

@@ -341,7 +341,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     : competition.status === 'postponed'
       ? 'tbd'
       : 'keep';
-  const showHostEnd = competition.endedAt != null && competition.endedBy === 'host';
+  // 手動結束與自動結束都顯示結束狀態卡（Flash 初審 P3：自動結束時管理員要看得到結束來源）
+  const showHostEnd = competition.endedAt != null && (competition.endedBy === 'host' || competition.endedBy === 'auto');
   const allowRestore = canRestoreCompetition(competition, isCpAdmin(env.actor.role));
   const divisions = bundle?.divisions ?? [];
   const entries = bundle?.entries ?? [];
@@ -519,7 +520,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
         <CpCard>
-          <p class="cpm-ended">{ct('endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
+          <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
           {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
           {allowRestore ? (
             <div class="cpm-endact">
