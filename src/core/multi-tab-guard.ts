@@ -213,7 +213,7 @@ export function showMultiTabWarning(): void {
       '建議只保留一個分頁。' +
       '<div class="multi-tab-divider"></div>' +
       '點下方按鈕可請其他舊分頁自動關閉<br>' +
-      '<span style="font-size:.78rem;color:var(--text-muted)">（手動開的分頁可能要自行關閉）</span>',
+      '<span class="multi-tab-note">（手動開的分頁可能要自行關閉）</span>',
     actionsHtml:
       '<button type="button" class="outline-btn" id="multi-tab-dismiss">我知道了</button>' +
       '<button type="button" class="primary-btn" id="multi-tab-close">關閉其他分頁</button>',

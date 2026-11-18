@@ -778,13 +778,12 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 }
 
-let routeReloadPage = (): void => {
-  location.reload();
-};
+const reloadPageDefault = (): void => location.reload();
+let routeReloadPage = reloadPageDefault;
 
 /** 測試用：換掉錯誤畫面「重新嘗試」的整頁重整（jsdom 不能真的重整）。 */
-export function _setRouteReloadPageForTest(fn?: () => void): void {
-  routeReloadPage = fn ?? (() => location.reload());
+export function _setRouteReloadPageForTest(fn: () => void = reloadPageDefault): void {
+  routeReloadPage = fn;
 }
 
 function NotFound(): preact.JSX.Element {
@@ -793,12 +792,7 @@ function NotFound(): preact.JSX.Element {
     <section class="not-found">
       <Text as="h1">{t('notFound.title')}</Text>
       <Text as="p">{t('notFound.body')}</Text>
-      <a href="/" style={{
-        minWidth: '44px',
-        minHeight: '44px',
-        display: 'inline-flex',
-        alignItems: 'center',
-      }}>
+      <a href="/" class="not-found__home">
         <Text>{t('nav.home')}</Text>
       </a>
     </section>

@@ -36,24 +36,16 @@ export function showContentStallHint(
   el.id = 'content-stall-hint';
   if (homeRetry) el.dataset.homeRetry = 'true';
   el.setAttribute('role', 'alert');
-  el.setAttribute(
-    'style',
-    'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
-      'background:rgba(0,0,0,.85);color:#fff;padding:12px 20px;border-radius:12px;' +
-      'font-size:14px;z-index:9999;text-align:center;max-width:420px;white-space:nowrap;' +
-      'box-shadow:0 4px 20px rgba(0,0,0,.3);',
-  );
+  // 外觀在 src/styles/base.css（#content-stall-hint），數值與原 inline style 相同。
+  // 取代：原本整段 inline style 字串，搬到 CSS 以縮小首頁入口 JS（1b 入口預算，顧問 §3.276）。
   el.innerHTML =
-    '<div style="margin-bottom:8px">' +
+    '<div class="stall-msg">' +
     (homeRetry ? '首頁載入尚未完成' : '連線暫時不穩定') +
     '</div>' +
-    '<button id="stall-reload-btn" type="button" style="' +
-    'background:#0d9488;color:#fff;border:none;padding:8px 24px;' +
-    'border-radius:8px;font-size:14px;font-weight:600;cursor:pointer' +
-    '">' +
+    '<button id="stall-reload-btn" type="button">' +
     (homeRetry ? '重試載入首頁' : '再試一次') +
     '</button>' +
-    (homeRetry ? '' : '<div style="margin-top:6px;font-size:11px;opacity:.7">或稍後再開啟 APP</div>');
+    (homeRetry ? '' : '<div class="stall-note">或稍後再開啟 APP</div>');
 
   document.body.appendChild(el);
   const btn = document.getElementById('stall-reload-btn');

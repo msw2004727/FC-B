@@ -15,10 +15,8 @@ export function shouldPreloadEventDetail(pathname: string): boolean {
  * 會用到 Firestore 的路徑才預先下載 SDK：首頁、活動列表、活動詳情。
  * `/teams` 之類不下載。詳情頁的頁面 chunk 仍只在 `/events/<id>`。
  */
-const FIRESTORE_SDK_EXACT_PATHS = new Set(['/', '/activities']);
-
 export function shouldPreloadFirestoreSdk(pathname: string): boolean {
-  return FIRESTORE_SDK_EXACT_PATHS.has(pathname) || shouldPreloadEventDetail(pathname);
+  return pathname === '/' || pathname === '/activities' || shouldPreloadEventDetail(pathname);
 }
 
 /** 與 `scripts/boot-preload-html.ts` 的 BOOT_PRELOAD_SCRIPT_ID 同值。 */
