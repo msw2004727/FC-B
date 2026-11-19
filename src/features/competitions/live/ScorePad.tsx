@@ -32,6 +32,7 @@ import {
   undoWithin,
 } from './copy';
 import { EventSheet } from './EventSheet';
+import { PendingTag, PkConfirmDialog } from './score-states';
 import { PlayerSheet } from './PlayerSheet';
 import {
   EVENT_MAX,
@@ -117,6 +118,42 @@ export interface ScorePadProps {
   onReapply?: (id: string) => void;
   onDiscard?: (id: string) => void;
   onTakeover?: () => void;
+  /** 正式頁：全部記分按鈕停用。預設不關。 */
+  scoringDisabled?: boolean;
+  /** 正式頁：分頁提示。預設不顯示。 */
+  topBanner?: string | null;
+  /** 正式頁：儲存不可用時也顯示既有警告，即使目前有網路。 */
+  storageBanner?: boolean;
+  /** 正式頁：時鐘只回呼，不改記分板自己的預覽時鐘。 */
+  clockControlled?: boolean;
+  /** 正式頁：球隊暫停只回呼，不跑預覽倒數。 */
+  timeoutControlled?: boolean;
+  onTimeout?: (side: MatchSideName) => void;
+  /** 有傳才改次數判斷。沒傳維持預覽的每半場 1 次。 */
+  timeoutRule?: { enabled: boolean; per: 'half' | 'match'; count: number; seconds: number; stopsClock: boolean };
+  timeoutUses?: { home: number; away: number };
+  /** 有傳就取代 shootoutOffered。沒傳維持預覽。 */
+  pkCanStart?: boolean;
+  /** 正式頁先開確認框。預設按了就送。 */
+  confirmPk?: boolean;
+  /** PK 開始後，一般進球的復原與改判停用。 */
+  lockRegularGoals?: boolean;
+  /** 正式頁的事件列（含待送）。沒傳就用 events 畫預覽列。 */
+  feed?: readonly ScoreFeedRow[];
+  /** 正式頁的 PK 比分（含還沒落地的腳）。沒傳就從 events 算。 */
+  pkDigits?: { home: number; away: number } | null;
+}
+
+export interface ScoreFeedRow {
+  key: string;
+  seq: number;
+  pending: boolean;
+  text: string;
+  label: string;
+  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  secondYellow: boolean;
+  pkScored?: boolean;
+  voided: boolean;
 }
 
 type Phase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
@@ -204,9 +241,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const atMax = eventCount >= EVENT_MAX;
   const nearCap = eventCount >= EVENT_WARN && eventCount < EVENT_RESERVE;
   const pauseBlocked = pauseHeldForScoring(eventCount);
-  const goalOff = atMax || reserved || phase !== 'play';
-  const cardOff = atMax || reserved || (phase !== 'play' && phase !== 'ht');
-  const flowOff = atMax;
+  const padOff = props.scoringDisabled === true;
+  const goalOff = padOff || atMax || reserved || phase !== 'play';
+  const cardOff = padOff || atMax || reserved || (phase !== 'play' && phase !== 'ht');
+  const flowOff = padOff || atMax;
   const phaseOpen = phase === 'play' || phase === 'ht';
   /** 190 起或不是進行中／中場，復原與改判都不可按。 */
   const blocked = reserved || !phaseOpen;
@@ -223,13 +261,14 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const reading = clockFromBase(clockBase, now);
   const rawPeriod = reading.period;
   const pk = rawPeriod === 'pk';
-  const pkReady = shootoutOffered({
+  const offered = shootoutOffered({
     live: phase === 'play',
     running: clockBase.running,
     period: rawPeriod,
     home: match.score.home,
     away: match.score.away,
   });
+  const pkReady = props.pkCanStart == null ? offered : props.pkCanStart;
   const period = rawPeriod === 'pk' ? 'pk' : asPeriod(rawPeriod);
   const holdLive = !clockBase.running && clockBase.startedAt != null && (phase === 'play' || phase === 'ht');
   useEffect(() => {
@@ -270,7 +309,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const pending = unappliedEntries([...actionLog, ...localLog]);
   const cards = seenCards(events, voids, [...actionLog, ...localLog]);
   const remain = phase === 'undo' ? undoClock(match.finishedAt, nowMs) : null;
-  const shoot = pkScore(events, voids);
+  const shoot = props.pkDigits ?? pkScore(events, voids);
+  const [pkConfirm, setPkConfirm] = useState(false);
 
   const [picker, setPicker] = useState<{ side: MatchSideName; action: RecordAction } | null>(null);
   const [goalKind, setGoalKind] = useState<GoalKind>('normal');
@@ -341,14 +381,22 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
 
   function timeoutLeft(side: MatchSideName): number {
+    if (props.timeoutRule) {
+      const used = side === 'home' ? (props.timeoutUses?.home ?? 0) : (props.timeoutUses?.away ?? 0);
+      return Math.max(0, props.timeoutRule.count - used);
+    }
     const used = side === 'home' ? timeoutUses.home : timeoutUses.away;
     return Math.max(0, TEAM_TIMEOUT_PER_HALF - used);
+  }
+
+  function timeoutSideOff(side: MatchSideName): boolean {
+    return props.timeoutRule?.enabled === true && timeoutLeft(side) <= 0;
   }
 
   function openPicker(side: MatchSideName, action: RecordAction): void {
     const pkAction = action === 'pk-in' || action === 'pk-miss';
     if (pkAction) {
-      if (atMax || reserved) return;
+      if (padOff || atMax || reserved) return;
     } else if (action === 'goal' ? goalOff : cardOff) return;
     rememberFocus();
     setGoalKind('normal');
@@ -405,12 +453,19 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       startedAt: now,
       pausedSec: elapsed,
     };
-    if (clockBase.running) setPauseUses((value) => value + 1);
-    setClockBase(next);
+    if (!props.clockControlled) {
+      if (clockBase.running) setPauseUses((value) => value + 1);
+      setClockBase(next);
+    }
     props.onClock?.(next);
   }
 
   function startTimeout(side: MatchSideName): void {
+    if (props.timeoutControlled) {
+      props.onTimeout?.(side);
+      setTimeoutOpen(false);
+      return;
+    }
     const over = timeoutLeft(side) <= 0;
     setTimeoutUses((prev) => ({ ...prev, [side]: prev[side] + 1 }));
     setTeamTimeout({
@@ -424,7 +479,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
 
   function openEvent(seq: number): void {
-    if (!phaseOpen) return;
+    if (!phaseOpen || padOff) return;
     const event = events.find((item) => item.seq === seq);
     if (!event || (event.type !== 'goal' && event.type !== 'card' && event.type !== 'pk')) return;
     if (event.type === 'goal') {
@@ -438,7 +493,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     setMenuOpen(false);
   }
 
-  const openLine = lines.find((line) => line.seq === eventSeq) ?? null;
+  const feedOpen = props.feed?.find((row) => row.seq === eventSeq && !row.pending);
+  const lineOpen = lines.find((line) => line.seq === eventSeq);
+  const openLine = props.feed
+    ? (feedOpen ? { seq: feedOpen.seq, label: feedOpen.label } : null)
+    : lineOpen;
   const openEventDoc = events.find((item) => item.seq === eventSeq) ?? null;
 
   function undoSeq(seq: number): void {
@@ -569,13 +628,17 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     : '';
 
   const alerts: JSX.Element[] = [];
+  if (props.topBanner) {
+    alerts.push(<p key="tab" class="s4-banner" role="status">{props.topBanner}</p>);
+  }
   if (pauseBlocked) {
     alerts.push(<p key="pause" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.pauseReserved}</p>);
   }
   if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
   if (reserved) alerts.push(<p key="cap" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.atCap}</p>);
   if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
-  if (!link.online && link.storageUnavailable) {
+  const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
+  if (storageDanger) {
     alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
   } else if (!link.online) {
     alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
@@ -608,12 +671,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const goals = pk ? (
     <div key="goals" class="s4-goals s4-goals--pk">
       <div class="s4-pkpair">
-        <Hit team={match.home.name} action="pk-in" tone="home" disabled={atMax || reserved} onClick={() => openPicker('home', 'pk-in')} />
-        <Hit team={match.home.name} action="pk-miss" tone="miss" disabled={atMax || reserved} onClick={() => openPicker('home', 'pk-miss')} />
+        <Hit team={match.home.name} action="pk-in" tone="home" disabled={padOff || atMax || reserved} onClick={() => openPicker('home', 'pk-in')} />
+        <Hit team={match.home.name} action="pk-miss" tone="miss" disabled={padOff || atMax || reserved} onClick={() => openPicker('home', 'pk-miss')} />
       </div>
       <div class="s4-pkpair">
-        <Hit team={match.away.name} action="pk-in" tone="away" disabled={atMax || reserved} onClick={() => openPicker('away', 'pk-in')} />
-        <Hit team={match.away.name} action="pk-miss" tone="miss" disabled={atMax || reserved} onClick={() => openPicker('away', 'pk-miss')} />
+        <Hit team={match.away.name} action="pk-in" tone="away" disabled={padOff || atMax || reserved} onClick={() => openPicker('away', 'pk-in')} />
+        <Hit team={match.away.name} action="pk-miss" tone="miss" disabled={padOff || atMax || reserved} onClick={() => openPicker('away', 'pk-miss')} />
       </div>
     </div>
   ) : (
@@ -638,7 +701,35 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
 
   const log = (
     <div key="log" class="s4-feed">
-      {lines.length > 0 ? (
+      {props.feed ? (
+        props.feed.length > 0 ? (
+          <ul class="s4-events">
+            {props.feed.map((row) => (
+              <li key={row.key} class={row.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
+                <Mark kind={row.kind} second={row.secondYellow} scored={row.pkScored} />
+                {row.pending || row.voided || !phaseOpen ? (
+                  <>
+                    <div class="s4-ev__main">{row.text}</div>
+                    <span class="s4-sr">{row.label}</span>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    class="s4-ev__main"
+                    aria-label={row.label}
+                    disabled={padOff}
+                    onClick={() => openEvent(row.seq)}
+                  >
+                    {row.text}
+                  </button>
+                )}
+                {row.voided ? <span class="s4-ev__tag">{LIVE_COPY.undone}</span> : null}
+                {row.pending ? <PendingTag /> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null
+      ) : lines.length > 0 ? (
         <ul class="s4-events">
           {lines.map((line) => (
             <li key={line.seq} class={line.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
@@ -653,6 +744,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
                   type="button"
                   class="s4-ev__main"
                   aria-label={line.label}
+                  disabled={padOff}
                   onClick={() => openEvent(line.seq)}
                 >
                   {shownText(line)}
@@ -666,10 +758,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {pending.length > 0 || takeoverOffered ? (
         <div class="s4-extra">
           {pending.length > 0 ? (
-            <Button variant="secondary" onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
+            <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
           ) : null}
           {takeoverOffered ? (
-            <Button variant="secondary" onClick={() => setTakeoverOpen(true)}>{LIVE_COPY.takeoverEntry}</Button>
+            <Button variant="secondary" disabled={padOff} onClick={() => setTakeoverOpen(true)}>{LIVE_COPY.takeoverEntry}</Button>
           ) : null}
         </div>
       ) : null}
@@ -736,7 +828,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <Button disabled={flowOff} onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
           ) : null}
           {pkReady ? (
-            <Button disabled={flowOff} onClick={() => props.onStartPk?.()}>{LIVE_COPY.pkStart}</Button>
+            <Button
+              disabled={flowOff}
+              onClick={() => {
+                if (props.confirmPk) {
+                  setPkConfirm(true);
+                  return;
+                }
+                props.onStartPk?.();
+              }}
+            >
+              {LIVE_COPY.pkStart}
+            </Button>
           ) : null}
           {showPause ? (
             <Button variant="secondary" disabled={pauseDisabled} onClick={togglePause}>
@@ -759,7 +862,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
               <div id="s4-clock-menu" class="s4-menu">
                 <Button
                   variant="ghost"
-                  disabled={reserved}
+                  disabled={padOff || reserved}
                   onClick={() => {
                     setMenuOpen(false);
                     props.onCorrectClock?.();
@@ -832,10 +935,20 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onCardChoice={setAmendCard}
           onPlayer={setAmendPl}
           onUnspecified={() => setAmendPl(null)}
+          goalLocked={props.lockRegularGoals === true && openEventDoc.type === 'goal'}
           onUndo={() => undoSeq(openLine.seq)}
           onAmend={submitAmend}
           onShowCard={showOpenCard}
           onClose={() => setEventSeq(null)}
+        />
+      ) : null}
+      {pkConfirm ? (
+        <PkConfirmDialog
+          onCancel={() => setPkConfirm(false)}
+          onConfirm={() => {
+            setPkConfirm(false);
+            props.onStartPk?.();
+          }}
         />
       ) : null}
       {confirmPair ? (
@@ -863,8 +976,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <p class="s4-note">{LIVE_COPY.timeoutOver}</p>
           ) : null}
           <div class="s4-timeout-picks">
-            <Button onClick={() => startTimeout('home')}>{timeoutTeamChoice(match.home.name, homeTimeoutLeft)}</Button>
-            <Button onClick={() => startTimeout('away')}>{timeoutTeamChoice(match.away.name, awayTimeoutLeft)}</Button>
+            <Button disabled={timeoutSideOff('home')} onClick={() => startTimeout('home')}>{timeoutTeamChoice(match.home.name, homeTimeoutLeft)}</Button>
+            <Button disabled={timeoutSideOff('away')} onClick={() => startTimeout('away')}>{timeoutTeamChoice(match.away.name, awayTimeoutLeft)}</Button>
           </div>
         </BottomSheet>
       ) : null}

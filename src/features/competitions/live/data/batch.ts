@@ -106,11 +106,42 @@ export function buildBatch(input: BuildBatchInput): BatchPlan {
       score[input.target.side] -= 1;
       plan.match.score = score;
     }
+    if (input.target?.type === 'pk' && input.target.scored && input.target.side) {
+      const current = match.penaltyScore ?? { home: 0, away: 0 };
+      const penalty = { home: current.home, away: current.away };
+      penalty[input.target.side] = Math.max(0, penalty[input.target.side] - 1);
+      plan.match.penaltyScore = penalty;
+    }
     return plan;
   }
 
   if (intent.kind === 'clock') {
     plan.match.clockBase = clockMark(intent.clock);
+    return plan;
+  }
+
+  if (intent.kind === 'timeout') {
+    event.side = intent.side;
+    if (intent.stopClock && intent.clock) plan.match.clockBase = clockMark(intent.clock);
+    return plan;
+  }
+
+  if (intent.kind === 'pkStart') {
+    plan.match.penaltyScore = { home: 0, away: 0 };
+    plan.match.clockBase = clockMark(intent.clock);
+    return plan;
+  }
+
+  if (intent.kind === 'pk') {
+    event.side = intent.side;
+    event.scored = intent.scored;
+    if (intent.plId) event.plId = intent.plId;
+    if (intent.scored) {
+      const current = match.penaltyScore ?? { home: 0, away: 0 };
+      const penalty = { home: current.home, away: current.away };
+      penalty[intent.side] += 1;
+      plan.match.penaltyScore = penalty;
+    }
     return plan;
   }
 
@@ -154,6 +185,9 @@ export function applyPlanLocal(
   if ('finishedAt' in plan.match) {
     match.finishedAt = plan.match.finishedAt == null ? null : nowMs;
   }
+  if (plan.match.penaltyScore) {
+    match.penaltyScore = { home: plan.match.penaltyScore.home, away: plan.match.penaltyScore.away };
+  }
   const ev = plan.event;
   const row: ServerEvent = {
     seq: plan.seq,
@@ -171,6 +205,7 @@ export function applyPlanLocal(
   if (typeof ev.targetSeq === 'number') row.targetSeq = ev.targetSeq;
   if (typeof ev.inPlId === 'string') row.inPlId = ev.inPlId;
   if (typeof ev.outPlId === 'string') row.outPlId = ev.outPlId;
+  if (typeof ev.scored === 'boolean') row.scored = ev.scored;
   const existing = events.findIndex((item) => item.seq === row.seq);
   if (existing >= 0) events[existing] = row;
   else events.push(row);

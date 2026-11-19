@@ -142,15 +142,42 @@ function goalSideOf(entry: LogEntry, events: readonly ServerEvent[], entries: re
   return null;
 }
 
+function pkScoredSideOf(entry: LogEntry, events: readonly ServerEvent[], entries: readonly LogEntry[]): Side | null {
+  const intent = entry.intent;
+  if (intent.kind !== 'void') return null;
+  const targetSeq = intent.targetSeq;
+  const targetOp = intent.targetOp;
+  if (targetSeq != null) {
+    const found = events.find((event) => event.seq === targetSeq);
+    if (found?.type === 'pk' && found.scored && found.side) return found.side;
+    const logged = entries.find((item) => item.seq === targetSeq && item.intent.kind === 'pk');
+    if (logged?.intent.kind === 'pk' && logged.intent.scored) return logged.intent.side;
+  }
+  if (targetOp) {
+    const logged = entries.find((item) => item.op === targetOp);
+    if (logged?.intent.kind === 'pk' && logged.intent.scored) return logged.intent.side;
+  }
+  return null;
+}
+
 export function overlayScore(
-  match: Pick<ServerMatch, 'score' | 'clockBase' | 'rev'> & { resetRev?: number },
+  match: Pick<ServerMatch, 'score' | 'clockBase' | 'rev'> & {
+    resetRev?: number;
+    penaltyScore?: { home: number; away: number } | null;
+  },
   events: readonly ServerEvent[],
   entries: readonly LogEntry[],
-): { score: { home: number; away: number }; clockBase: ServerClock; pendingCount: number } {
+): {
+  score: { home: number; away: number };
+  clockBase: ServerClock;
+  pendingCount: number;
+  penalty: { home: number; away: number } | null;
+} {
   const resetRev = match.resetRev ?? 0;
   const fresh = (entry: LogEntry) => entryInEpoch(entry, resetRev);
   const score = { home: match.score.home, away: match.score.away };
   let clockBase: ServerClock = { ...match.clockBase };
+  let penalty = match.penaltyScore ? { home: match.penaltyScore.home, away: match.penaltyScore.away } : null;
   // 快照 rev 還沒追上的已套用項目仍要疊加，避免比分或時鐘先退回去。
   const ahead = entries
     .filter((entry) => fresh(entry) && entry.state === 'applied' && entry.seq != null && entry.seq > match.rev)
@@ -163,8 +190,20 @@ export function overlayScore(
     if (entry.intent.kind === 'void') {
       const side = goalSideOf(entry, events, entries);
       if (side) score[side] -= 1;
+      const pkSide = pkScoredSideOf(entry, events, entries);
+      if (pkSide && penalty) penalty[pkSide] = Math.max(0, penalty[pkSide] - 1);
     }
     if (entry.intent.kind === 'clock') clockBase = { ...entry.intent.clock };
+    if (entry.intent.kind === 'timeout' && entry.intent.clock) clockBase = { ...entry.intent.clock };
+    if (entry.intent.kind === 'pkStart') {
+      penalty = { home: 0, away: 0 };
+      clockBase = { ...entry.intent.clock };
+    }
+    if (entry.intent.kind === 'pk' && entry.intent.scored) {
+      const base = penalty ?? { home: 0, away: 0 };
+      penalty = { home: base.home, away: base.away };
+      penalty[entry.intent.side] += 1;
+    }
     if (
       entry.intent.kind === 'kickoff'
       || entry.intent.kind === 'halftime'
@@ -175,7 +214,7 @@ export function overlayScore(
       clockBase = { ...entry.intent.clock };
     }
   }
-  return { score, clockBase, pendingCount: pending.length };
+  return { score, clockBase, pendingCount: pending.length, penalty };
 }
 
 export function scoreView(match: ServerMatch, events: readonly ServerEvent[], entries: readonly LogEntry[]): ScoreView {
@@ -262,6 +301,9 @@ export function unappliedSummary(entry: LogEntry): string {
   if (intent.kind === 'halftime') return '半場';
   if (intent.kind === 'resume') return '下半場開始';
   if (intent.kind === 'fulltime') return '終場';
+  if (intent.kind === 'timeout') return `${side} 暫停`;
+  if (intent.kind === 'pkStart') return '開始 PK';
+  if (intent.kind === 'pk') return `${side} ${intent.scored ? 'PK 進' : 'PK 沒進'}`;
   return '撤回終場';
 }
 
@@ -339,6 +381,12 @@ export function eventFromApplied(entry: LogEntry): ServerEvent | null {
     base.outPlId = intent.outPlId;
   } else if (intent.kind === 'void' && intent.targetSeq != null) {
     base.targetSeq = intent.targetSeq;
+  } else if (intent.kind === 'timeout') {
+    base.side = intent.side;
+  } else if (intent.kind === 'pk') {
+    base.side = intent.side;
+    base.scored = intent.scored;
+    if (intent.plId) base.plId = intent.plId;
   }
   return base;
 }

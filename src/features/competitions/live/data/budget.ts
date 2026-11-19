@@ -22,20 +22,36 @@ export function eventUsed(rev: number, resetRev: number, inflightLocal: number):
   return Math.max(0, rev - resetRev) + Math.max(0, inflightLocal);
 }
 
-/** 伺服器 clock 事件（seq > resetRev）每兩筆算一次，再加上本機還沒落地的停錶。 */
-export function pauseUseCount(events: readonly ServerEvent[], entries: readonly LogEntry[], resetRev: number): number {
+/**
+ * 伺服器 clock 事件（seq > resetRev）每兩筆算一次，再加上本機還沒落地的停錶。
+ * stopsClock 為真時，伺服器上的 timeout 也各算一次（事件本身沒有停錶旗標，只能看當下規則）。
+ * 本機待送且帶 stopClock 的 timeout 一律算，跟這個旗標無關。
+ */
+export function pauseUseCount(
+  events: readonly ServerEvent[],
+  entries: readonly LogEntry[],
+  resetRev: number,
+  stopsClock = false,
+): number {
   let clocks = 0;
+  let serverTimeouts = 0;
   for (const event of events) {
-    if (event.type === 'clock' && event.seq > resetRev) clocks += 1;
+    if (event.seq <= resetRev) continue;
+    if (event.type === 'clock') clocks += 1;
+    if (stopsClock && event.type === 'timeout') serverTimeouts += 1;
   }
   let pendingPauses = 0;
   for (const entry of entries) {
     if (!entryInEpoch(entry, resetRev)) continue;
-    if (entry.kind !== 'clock') continue;
     if (entry.state !== 'pending' && entry.state !== 'sending') continue;
-    if (entry.intent.kind === 'clock' && entry.intent.clockAction === 'pause') pendingPauses += 1;
+    if (entry.kind === 'clock' && entry.intent.kind === 'clock' && entry.intent.clockAction === 'pause') {
+      pendingPauses += 1;
+    }
+    if (entry.kind === 'timeout' && entry.intent.kind === 'timeout' && entry.intent.stopClock) {
+      pendingPauses += 1;
+    }
   }
-  return Math.floor(clocks / 2) + pendingPauses;
+  return Math.floor(clocks / 2) + pendingPauses + serverTimeouts;
 }
 
 export function localInflightCount(entries: readonly LogEntry[], resetRev = 0): number {
@@ -52,9 +68,10 @@ export function budgetView(
   resetRev: number,
   entries: readonly LogEntry[],
   events: readonly ServerEvent[],
+  stopsClock = false,
 ): BudgetView {
   const used = eventUsed(rev, resetRev, localInflightCount(entries, resetRev));
-  const pauseUses = pauseUseCount(events, entries, resetRev);
+  const pauseUses = pauseUseCount(events, entries, resetRev, stopsClock);
   const pauseEnabled = used <= EVENT_MAX - SCORING_RESERVE && pauseUses < PAUSE_MAX;
   return {
     used,
@@ -96,6 +113,7 @@ export function groupWithinBudget(intents: readonly Intent[], budget: BudgetView
   let pauses = 0;
   for (const intent of intents) {
     if (intent.kind === 'clock' && intent.clockAction === 'pause') pauses += 1;
+    if (intent.kind === 'timeout' && intent.stopClock) pauses += 1;
   }
   if (pauses === 0) return true;
   if (budget.used > EVENT_MAX - SCORING_RESERVE) return false;

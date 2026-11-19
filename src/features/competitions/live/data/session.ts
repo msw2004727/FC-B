@@ -2,14 +2,17 @@
 
 import { LIVE_COPY } from '../copy';
 import { clockFromBase, type ClockReading } from '../clock';
+import { pkCanStart } from '../present';
 import type { RosterPublicDoc } from '../../data/types';
 import { ACTION_LOG_MAX_AGE_MS, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { actionAllowed, budgetView, groupWithinBudget } from './budget';
 import {
+  entryInEpoch,
   findOpenYellow,
   fulltimeBlocked,
   groupViews,
   liveSecondYellow,
+  mergedEvents,
   overlayScore,
   scoreView,
   unappliedSummary,
@@ -20,6 +23,7 @@ import type { ScoringBackend } from './live-repo';
 import { memorySidStore, type SidStore } from './sid';
 import { isOfflineError, Sender } from './sender';
 import { acquireTabLock, TAB_HINT, type LockManager, type TabChannel } from './tab-lock';
+import { defaultTimeoutRule, readTimeoutRule, type TimeoutRule } from './timeout-rule';
 import { bindWakeLock, type WakeHandle } from './wake-lock';
 import type {
   ActionGroup,
@@ -35,6 +39,7 @@ import type {
   Intent,
   LogEntry,
   PhaseIntent,
+  PkIntent,
   ScoreView,
   ScoringPhase,
   ServerEvent,
@@ -42,6 +47,7 @@ import type {
   Side,
   StorageMode,
   TabRole,
+  TimeoutIntent,
   UnappliedView,
   VoidIntent,
   WakeState,
@@ -66,7 +72,19 @@ export interface ScoringActions {
   reapply(op: string): Promise<ActionResult>;
   discard(op: string): Promise<ActionResult>;
   takeover(): Promise<ActionResult>;
+  timeout(input: { side: Side; stopClock?: boolean }): Promise<ActionResult>;
+  pkStart(): Promise<ActionResult>;
+  pk(input: { side: Side; plId?: string; scored: boolean }): Promise<ActionResult>;
 }
+
+export interface ScoringStaff {
+  roles: string[];
+  matchIds: string[];
+  expiresAt: number | null;
+}
+
+/** 畫面上的分頁角色。鎖住的那一頁對外叫 reader，內部仍是 blocked。 */
+export type ScoringTab = 'owner' | 'reader' | 'unknown';
 
 export interface ScoringView {
   match: ServerMatch | null;
@@ -88,10 +106,13 @@ export interface ScoringView {
   unapplied: UnappliedView[];
   groups: GroupView[];
   fulltimeBlocked: boolean;
-  tab: TabRole;
+  tab: ScoringTab;
   tabHint: string | null;
   score: ScoreView;
   staffRoles: string[];
+  staff: ScoringStaff;
+  pk: { started: boolean; score: { home: number; away: number } | null; canStart: boolean };
+  timeoutRule: TimeoutRule;
   loading: boolean;
   actions: ScoringActions;
 }
@@ -135,6 +156,7 @@ function inertActions(): ScoringActions {
     goal: no, card: no, sub: no, kickoff: no, halftime: no, resume: no, fulltime: no,
     undoFinish: no, pauseClock: no, resumeClock: no, correctClock: no, voidEvent: no,
     amend: no, undoFirstYellow: no, reapply: no, discard: no, takeover: no,
+    timeout: no, pkStart: no, pk: no,
   };
 }
 
@@ -161,6 +183,9 @@ export function loadingView(): ScoringView {
     tabHint: null,
     score: { home: 0, away: 0, pendingCount: 0, server: { home: 0, away: 0 } },
     staffRoles: [],
+    staff: { roles: [], matchIds: [], expiresAt: null },
+    pk: { started: false, score: null, canStart: false },
+    timeoutRule: defaultTimeoutRule(),
     loading: true,
     actions: inertActions(),
   };
@@ -211,6 +236,8 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   let events: ServerEvent[] = [];
   let roster = { home: [] as RosterPublicDoc[], away: [] as RosterPublicDoc[] };
   let staffRoles: string[] = [];
+  let staff: ScoringStaff = { roles: [], matchIds: [], expiresAt: null };
+  let timeoutRule: TimeoutRule = defaultTimeoutRule();
   let entries: LogEntry[] = [];
   let online = options.online ? options.online() : true;
   let visible = options.visible ? options.visible() : true;
@@ -250,16 +277,22 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     const base = match;
     const over = base ? overlayScore(base, events, entries) : null;
     const shown = base && over
-      ? { ...base, score: { ...over.score }, clockBase: { ...over.clockBase } }
+      ? { ...base, score: { ...over.score }, clockBase: { ...over.clockBase }, penaltyScore: over.penalty }
       : base;
-    const budget = budgetView(base?.rev ?? 0, base?.resetRev ?? 0, entries, events);
+    const floor = base?.resetRev ?? 0;
+    // 已套用但監聽還沒跟上的事件留在清單，待送小標拿掉時同一列不閃。
+    const shownEvents = mergedEvents(
+      events,
+      entries.filter((entry) => entryInEpoch(entry, floor) && (entry.seq == null || entry.seq > floor)),
+    );
+    const budget = budgetView(base?.rev ?? 0, base?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
     const score = base ? scoreView(base, events, entries) : loadingView().score;
     const needsTakeover = current?.needsTakeover ?? !localSid;
     return {
       match: shown,
       roster,
-      events,
-      voids: voidsAsMarks(events),
+      events: shownEvents,
+      voids: voidsAsMarks(shownEvents),
       control: {
         uid: control?.uid ?? null,
         sid: control?.sid ?? null,
@@ -286,12 +319,44 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         })),
       groups: groupViews(entries),
       fulltimeBlocked: fulltimeBlocked(entries),
-      tab,
+      tab: tab === 'blocked' ? 'reader' : tab,
       tabHint: tab === 'blocked' ? TAB_HINT : null,
       score,
       staffRoles,
+      staff,
+      pk: pkView(base, over),
+      timeoutRule,
       loading: false,
       actions,
+    };
+  }
+
+  function pendingPkStart(): boolean {
+    const resetRev = match?.resetRev ?? 0;
+    return entries.some((entry) => entryInEpoch(entry, resetRev)
+      && (entry.state === 'pending' || entry.state === 'sending')
+      && entry.kind === 'pkStart');
+  }
+
+  function pkView(
+    base: ServerMatch | null,
+    over: ReturnType<typeof overlayScore> | null,
+  ): ScoringView['pk'] {
+    const penalty = over?.penalty ?? null;
+    const period = over?.clockBase.period;
+    const canStart = !!(base && over && pkCanStart({
+      status: base.status,
+      running: over.clockBase.running,
+      period: over.clockBase.period,
+      home: over.score.home,
+      away: over.score.away,
+      penalty,
+      pendingPkStart: pendingPkStart(),
+    }));
+    return {
+      started: penalty != null || period === 'pk',
+      score: penalty,
+      canStart,
     };
   }
 
@@ -345,14 +410,80 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
 
   function allow(kind: ActionKind, clockAction?: ClockActionName): boolean {
     if (tab === 'blocked') return false;
-    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events);
+    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
     return actionAllowed(kind, budget, clockAction);
   }
 
   function allowGroup(intents: readonly Intent[]): boolean {
     if (tab === 'blocked') return false;
-    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events);
+    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
     return groupWithinBudget(intents, budget);
+  }
+
+  function overNow(): ReturnType<typeof overlayScore> | null {
+    if (!match) return null;
+    return overlayScore(match, events, entries);
+  }
+
+  function pkActive(): boolean {
+    const over = overNow();
+    if (!over) return false;
+    return over.penalty != null || over.clockBase.period === 'pk';
+  }
+
+  function describedTarget(target: { seq?: number; op?: string }): { type: string } | null {
+    if (target.seq != null) {
+      const found = events.find((event) => event.seq === target.seq);
+      if (found) return { type: found.type };
+      const logged = entries.find((entry) => entry.seq === target.seq);
+      if (logged) return { type: logged.kind };
+    }
+    if (target.op) {
+      const logged = entries.find((entry) => entry.op === target.op);
+      if (logged) return { type: logged.kind };
+    }
+    return null;
+  }
+
+  function pkStartOk(): boolean {
+    if (!match) return false;
+    const over = overlayScore(match, events, entries);
+    return pkCanStart({
+      status: match.status,
+      running: over.clockBase.running,
+      period: over.clockBase.period,
+      home: over.score.home,
+      away: over.score.away,
+      penalty: over.penalty,
+      pendingPkStart: pendingPkStart(),
+    });
+  }
+
+  function pkKickOk(): boolean {
+    if (!match || match.status !== 'live') return false;
+    const over = overlayScore(match, events, entries);
+    return over.penalty != null && over.clockBase.period === 'pk';
+  }
+
+  /** 規則不允許的意圖。回 true 時呼叫端不得寫日誌。 */
+  function intentForbidden(intent: Intent): boolean {
+    if (intent.kind === 'goal') return pkActive();
+    if (intent.kind === 'pkStart') return !pkStartOk();
+    if (intent.kind === 'pk') return !pkKickOk();
+    if (intent.kind === 'void') {
+      const target = describedTarget({ seq: intent.targetSeq, op: intent.targetOp });
+      if (!target) return false;
+      if (target.type === 'timeout' || target.type === 'pkStart') return true;
+      if (target.type === 'goal' && pkActive()) return true;
+      return false;
+    }
+    if (intent.kind === 'kickoff' || intent.kind === 'halftime' || intent.kind === 'resume') return pkActive();
+    if (!pkActive()) return false;
+    if (intent.kind === 'clock' || intent.kind === 'fulltime' || intent.kind === 'undoFinish') {
+      return intent.clock.period !== 'pk';
+    }
+    if (intent.kind === 'timeout') return !!intent.clock && intent.clock.period !== 'pk';
+    return false;
   }
 
   async function finish(ops: string[], kinds: readonly ActionKind[] = []): Promise<ActionResult> {
@@ -406,8 +537,10 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     emit();
   }
 
-  async function one(intent: Intent, group?: ActionGroup): Promise<ActionResult> {
-    if (!allow(intent.kind, intent.kind === 'clock' ? intent.clockAction : undefined)) {
+  async function one(intent: Intent, group?: ActionGroup, clockAction?: ClockActionName): Promise<ActionResult> {
+    if (intentForbidden(intent)) return rejected('rules');
+    const action = clockAction ?? (intent.kind === 'clock' ? intent.clockAction : undefined);
+    if (!allow(intent.kind, action)) {
       return rejected(tab === 'blocked' ? 'rules' : 'limit');
     }
     if (intent.kind === 'fulltime' && fulltimeBlocked(entries)) return rejected('rules');
@@ -476,27 +609,31 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       });
     },
     kickoff: () => one({ kind: 'kickoff', matchSecond: second(), clock: phaseClock('kickoff', elapsedSec(), now(), 'pre') }),
-    halftime: () => one({ kind: 'halftime', matchSecond: second(), clock: phaseClock('halftime', elapsedSec(), now(), match?.clockBase.period ?? 'h1') }),
+    halftime: () => one({ kind: 'halftime', matchSecond: second(), clock: phaseClock('halftime', elapsedSec(), now(), livePeriod()) }),
     resume: () => one({ kind: 'resume', matchSecond: second(), clock: phaseClock('resume', elapsedSec(), now(), 'ht') }),
-    fulltime: () => one({ kind: 'fulltime', matchSecond: second(), clock: phaseClock('fulltime', elapsedSec(), now(), match?.clockBase.period ?? 'h2') }),
-    undoFinish: () => one({ kind: 'undoFinish', matchSecond: second(), clock: phaseClock('undoFinish', elapsedSec(), now(), match?.clockBase.period ?? 'ft') }),
+    fulltime: () => one({
+      kind: 'fulltime',
+      matchSecond: second(),
+      clock: pkActive()
+        ? stoppedClock('pk')
+        : phaseClock('fulltime', elapsedSec(), now(), livePeriod()),
+    }),
+    undoFinish: () => one({ kind: 'undoFinish', matchSecond: second(), clock: phaseClock('undoFinish', elapsedSec(), now(), livePeriod()) }),
     pauseClock() {
-      const period = match?.clockBase.period ?? 'h1';
       const intent: Intent = {
         kind: 'clock',
         matchSecond: second(),
         clockAction: 'pause',
-        clock: { running: false, period, pausedSec: Math.floor(elapsedSec()), startedAt: now() },
+        clock: { running: false, period: livePeriod(), pausedSec: Math.floor(elapsedSec()), startedAt: now() },
       };
       return one(intent);
     },
     resumeClock() {
-      const period = match?.clockBase.period ?? 'h1';
       return one({
         kind: 'clock',
         matchSecond: second(),
         clockAction: 'resume',
-        clock: { running: true, period, pausedSec: Math.floor(elapsedSec()), startedAt: now() },
+        clock: { running: true, period: livePeriod(), pausedSec: Math.floor(elapsedSec()), startedAt: now() },
       });
     },
     correctClock(clock) {
@@ -518,6 +655,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       if (secondYellow) intents.push(voidOf(secondYellow));
       intents.push(voidOf(target));
       intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond || second() } : { ...next });
+      if (intents.some((intent) => intentForbidden(intent))) return rejected('rules');
       if (!allowGroup(intents)) return rejected('limit');
       const label: GroupLabel = secondYellow ? 'amendFirstYellow' : 'amend';
       const rows = groupRows(label, intents);
@@ -550,7 +688,12 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         emit();
         return rejected('reset');
       }
-      const clockAction = entry.intent.kind === 'clock' ? entry.intent.clockAction : undefined;
+      const clockAction = entry.intent.kind === 'clock'
+        ? entry.intent.clockAction
+        : entry.intent.kind === 'timeout' && entry.intent.stopClock
+          ? 'pause'
+          : undefined;
+      if (intentForbidden(entry.intent)) return rejected('rules');
       if (!allow(entry.kind, clockAction)) return rejected('limit');
       await log.patch(op, { state: 'pending', rejectReason: null, autoRetried: false });
       return finish([op], [entry.kind]);
@@ -598,7 +741,67 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       emit();
       return { status: 'applied' };
     },
+    timeout(input) {
+      const over = overNow();
+      const running = over?.clockBase.running === true;
+      const wantStop = input.stopClock === undefined ? timeoutRule.stopsClock : input.stopClock;
+      const stop = wantStop && running;
+      const period = over?.clockBase.period ?? livePeriod();
+      const intent: TimeoutIntent = {
+        kind: 'timeout',
+        side: input.side,
+        matchSecond: second(),
+        ...(stop ? {
+          stopClock: true,
+          clock: {
+            running: false,
+            period,
+            pausedSec: Math.max(0, Math.min(10800, Math.floor(elapsedSec()))),
+            startedAt: now(),
+          },
+        } : {}),
+      };
+      return one(intent, undefined, stop ? 'pause' : undefined);
+    },
+    pkStart() {
+      const over = overNow();
+      const base = over?.clockBase;
+      const intent: Intent = {
+        kind: 'pkStart',
+        matchSecond: second(),
+        clock: {
+          running: false,
+          period: 'pk',
+          pausedSec: Math.max(0, Math.min(10800, Math.floor(base?.pausedSec ?? elapsedSec()))),
+          startedAt: base && !base.running ? base.startedAt : null,
+        },
+      };
+      return one(intent);
+    },
+    pk(input) {
+      const intent: PkIntent = {
+        kind: 'pk',
+        side: input.side,
+        scored: input.scored,
+        matchSecond: second(),
+        ...(input.plId ? { plId: input.plId } : {}),
+      };
+      return one(intent);
+    },
   };
+
+  function livePeriod(): string {
+    return overNow()?.clockBase.period ?? match?.clockBase.period ?? 'h1';
+  }
+
+  function stoppedClock(period: string): ClockTarget {
+    return {
+      running: false,
+      period,
+      pausedSec: Math.max(0, Math.min(10800, Math.floor(elapsedSec()))),
+      startedAt: null,
+    };
+  }
 
   function voidOf(target: { seq?: number; op?: string }): VoidIntent {
     return {
@@ -741,6 +944,12 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       events = aboveReset(opened.events, match?.resetRev ?? 0);
       roster = { home: opened.home, away: opened.away };
       staffRoles = opened.staffRoles;
+      staff = {
+        roles: opened.staffRoles,
+        matchIds: opened.matchIds ?? [],
+        expiresAt: opened.expiresAt ?? null,
+      };
+      timeoutRule = readTimeoutRule(opened.timeoutRaw ?? null);
       openedStop = opened.stop;
       openedVisible = opened.setVisible;
       syncTakeover();

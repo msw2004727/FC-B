@@ -4,6 +4,7 @@ import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
 import type { RosterPublicDoc } from '../data/types';
 import { LIVE_COPY, withEvent } from './copy';
+import { PkGoalLock } from './score-states';
 import { RosterGrid } from './PlayerSheet';
 import type { GoalKind } from './types';
 
@@ -18,6 +19,7 @@ export function EventSheet({
   playerId,
   blocked,
   undoOnly = false,
+  goalLocked = false,
   onGoalKind,
   onCardChoice,
   onPlayer,
@@ -37,6 +39,8 @@ export function EventSheet({
   blocked: boolean;
   /** PK 的一腳只復原，不改判。 */
   undoOnly?: boolean;
+  /** PK 已經開始時，一般進球不能復原或改判。 */
+  goalLocked?: boolean;
   onGoalKind: (kind: GoalKind) => void;
   onCardChoice: (choice: 'yellow' | 'red') => void;
   onPlayer: (plId: string) => void;
@@ -55,6 +59,7 @@ export function EventSheet({
     { id: 'yellow', label: LIVE_COPY.yellow },
     { id: 'red', label: LIVE_COPY.red },
   ];
+  const lockGoal = goalLocked && kind === 'goal' && !undoOnly;
 
   return (
     <BottomSheet open class="s4-sheet" title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend} onClose={onClose}>
@@ -63,7 +68,7 @@ export function EventSheet({
       <div class="s4-amend-act">
         <Button
           variant="ghost"
-          disabled={blocked}
+          disabled={blocked || lockGoal}
           aria-label={withEvent(LIVE_COPY.undo, label)}
           onClick={onUndo}
         >
@@ -71,7 +76,7 @@ export function EventSheet({
         </Button>
         {undoOnly ? null : (
           <Button
-            disabled={blocked || (kind === 'card' && playerId == null)}
+            disabled={blocked || lockGoal || (kind === 'card' && playerId == null)}
             aria-label={withEvent(LIVE_COPY.amend, label)}
             onClick={onAmend}
           >
@@ -124,6 +129,7 @@ export function EventSheet({
         ) : null}
       </div>
       )}
+      {lockGoal ? <PkGoalLock /> : null}
     </BottomSheet>
   );
 }

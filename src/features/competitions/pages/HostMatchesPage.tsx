@@ -51,6 +51,7 @@ import type { CompetitionDoc, EntryDoc, MatchDoc, MatchStatus, StaffDoc } from '
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
+import { undoClock } from '../live/clock';
 import { LiveBoundary } from '../live';
 import { errorOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
@@ -74,6 +75,12 @@ interface Hold {
   message: string | null;
   updated: string | null;
   scoreConfirm: boolean;
+}
+
+function showScoreEntry(match: MatchDoc, nowMs: number): boolean {
+  if (match.status === 'scheduled' || match.status === 'live' || match.status === 'halftime') return true;
+  if (match.status === 'finished') return undoClock(match.finishedAt, nowMs) != null;
+  return false;
 }
 
 function allowedOf(env: CpInjectedEnv, staff: StaffDoc | null): boolean {
@@ -723,6 +730,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                     const badge = hostBadgeKey(match.status);
                     const reset = actions.includes('reset');
                     const rowActions = actions.filter((action) => action !== 'reset');
+                    const scoreEntry = showScoreEntry(match, now);
                     return (
                       <li class="cp3-m" key={match.id}>
                         <div class="cp3-m__top">
@@ -756,7 +764,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                         {match.status === 'cancelled' && match.cancelReason ? (
                           <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.cancelReason}</p>
                         ) : null}
-                        {rowActions.length > 0 ? (
+                        {rowActions.length > 0 || scoreEntry ? (
                           <div class="cp3-m__act">
                             {rowActions.map((action) => {
                               if (action === 'reschedule') {
@@ -770,6 +778,9 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                               }
                               return <Button key={action} variant="primary" size="sm" disabled={busy} onClick={() => { void submitConfirm(match); }}>{ct('confirmMatch')}</Button>;
                             })}
+                            {scoreEntry ? (
+                              <Button key="score-live" variant="secondary" size="sm" disabled={busy} onClick={() => route(`/competitions/${cid}/matches/${match.id}/score`)}>{ct('scoreTitle')}</Button>
+                            ) : null}
                           </div>
                         ) : null}
                         {notice('confirm', match.id)}

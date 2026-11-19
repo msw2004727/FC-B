@@ -120,7 +120,7 @@ let rulesBackup: Buffer | null = null;
 function useSnapshotRules(): void {
   const content = readFileSync('emulator/asia-main.rules');
   const hash = createHash('sha256').update(content).digest('hex');
-  expect(hash.slice(0, 16)).toBe('68faebd1df8912d9');
+  expect(hash.slice(0, 16)).toBe('17068d4b6bd9e908');
   if (!rulesBackup) rulesBackup = readFileSync(RULES_TARGET);
   writeFileSync(RULES_TARGET, content);
 }
@@ -739,5 +739,117 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     expect(trips).toBe(0);
     const stored = await rows(log);
     expect(stored.some((row) => row.kind === 'void' && row.state === 'applied')).toBe(true);
+  });
+
+  it('15. 停錶型暫停會停錶，再按繼續計時', async () => {
+    await patchDoc(`competitions/${CID}/matches/${MT}`, {
+      status: 'live',
+      clockBase: {
+        startedAt: new Ts(new Date(Date.now() - 4000).toISOString()),
+        pausedSec: 40,
+        running: true,
+        period: 'h2',
+      },
+    });
+    const live = await startLive('s15');
+    expect((await live.session.getState().actions.timeout({ side: 'home' })).status).toBe('applied');
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    const clock = (match?.clockBase ?? {}) as { running?: boolean; period?: string; pausedSec?: number; startedAt?: unknown };
+    expect(clock.running).toBe(false);
+    expect(clock.period).toBe('h2');
+    expect(Number(clock.pausedSec)).toBeGreaterThanOrEqual(40);
+    expect(clock.startedAt).toBeTruthy();
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const timeout = events.find((event) => event.type === 'timeout');
+    expect(timeout?.side).toBe('home');
+    expect(timeout).not.toHaveProperty('stopClock');
+    expect((await live.session.getState().actions.resumeClock()).status).toBe('applied');
+    const after = await readDoc(`competitions/${CID}/matches/${MT}`);
+    const next = (after?.clockBase ?? {}) as { running?: boolean; period?: string };
+    expect(next.running).toBe(true);
+    expect(next.period).toBe('h2');
+  });
+
+  it('16. 不停錶的暫停只寫事件', async () => {
+    await createDoc(`competitions/${CID}/divisions`, 'dv1', {
+      rules: {
+        timeout: { enabled: true, per: 'match', count: 2, seconds: 90, stopsClock: false },
+      },
+    });
+    const live = await startLive('s16');
+    const before = await readDoc(`competitions/${CID}/matches/${MT}`);
+    const beforeClock = before?.clockBase;
+    expect((await live.session.getState().actions.timeout({ side: 'away' })).status).toBe('applied');
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(match?.clockBase).toEqual(beforeClock);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.filter((event) => event.type === 'timeout')).toHaveLength(1);
+    expect(events[0]?.side).toBe('away');
+  });
+
+  it('17. pkStart、進、沒進、作廢進的那腳', async () => {
+    await patchDoc(`competitions/${CID}/matches/${MT}`, {
+      status: 'live',
+      score: { home: 1, away: 1 },
+      clockBase: { startedAt: null, pausedSec: 2700, running: false, period: 'h2' },
+      penaltyScore: null,
+    });
+    const live = await startLive('s17');
+    const actions = live.session.getState().actions;
+    expect((await actions.pkStart()).status).toBe('applied');
+    expect((await actions.pk({ side: 'home', scored: true, plId: 'pl_h1' })).status).toBe('applied');
+    expect((await actions.pk({ side: 'away', scored: false })).status).toBe('applied');
+    const scored = (await rows(live.log)).find((row) => row.kind === 'pk' && row.intent.kind === 'pk' && row.intent.scored);
+    expect(scored?.seq).toBeGreaterThan(0);
+    expect((await live.session.getState().actions.voidEvent({ seq: scored?.seq })).status).toBe('applied');
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(match?.penaltyScore).toEqual({ home: 0, away: 0 });
+    expect(match?.score).toEqual({ home: 1, away: 1 });
+    expect((match?.clockBase as { period?: string } | undefined)?.period).toBe('pk');
+  });
+
+  it('18. PK 期間一般進球與作廢一般進球不寫入', async () => {
+    await patchDoc(`competitions/${CID}/matches/${MT}`, {
+      rev: 2,
+      status: 'live',
+      score: { home: 1, away: 1 },
+      clockBase: { startedAt: null, pausedSec: 2700, running: false, period: 'h2' },
+      penaltyScore: null,
+    });
+    const stamp = new Ts('2026-01-01T00:00:00.000Z');
+    await createDoc(`competitions/${CID}/matches/${MT}/timeline`, 'e1', {
+      seq: 1, type: 'goal', side: 'home', goalKind: 'normal', plId: 'pl_h1', matchSecond: 10,
+      createdAt: stamp, sid: SID, op: 'goalhomeopgoalhome01',
+    });
+    await createDoc(`competitions/${CID}/matches/${MT}/timeline`, 'e2', {
+      seq: 2, type: 'goal', side: 'away', goalKind: 'normal', plId: 'pl_a1', matchSecond: 20,
+      createdAt: stamp, sid: SID, op: 'goalawayopgoalaway01',
+    });
+    const live = await startLive('s18');
+    expect(live.session.getState().events.some((event) => event.type === 'goal' && event.seq === 1)).toBe(true);
+    expect((await live.session.getState().actions.pkStart()).status).toBe('applied');
+    const commits = live.commits.length;
+    const timeline = (await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).length;
+    expect(await live.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await live.session.getState().actions.voidEvent({ seq: 1 })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(live.commits).toHaveLength(commits);
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).toHaveLength(timeline);
+    const logged = await rows(live.log);
+    expect(logged.some((row) => row.kind === 'goal' || row.kind === 'void')).toBe(false);
+  });
+
+  it('19. 正規比分不平手時 pkStart 不產生', async () => {
+    await patchDoc(`competitions/${CID}/matches/${MT}`, {
+      status: 'live',
+      score: { home: 1, away: 0 },
+      clockBase: { startedAt: null, pausedSec: 100, running: false, period: 'h2' },
+      penaltyScore: null,
+    });
+    const live = await startLive('s19');
+    expect(await live.session.getState().actions.pkStart()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(live.commits).toHaveLength(0);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.some((event) => event.type === 'pkStart')).toBe(false);
+    expect(await rows(live.log)).toHaveLength(0);
   });
 });

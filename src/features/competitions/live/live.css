@@ -932,3 +932,28 @@ button.s4-ev__main:active { opacity: 0.7; }
   .s4-pl:active,
   .s4-flash:active { transform: none; }
 }
+
+/* 待送小標。列距已是 6px，再留 2px 才到 8px。名字仍由 .s4-ev__main 省略。 */
+.s4-pending {
+  flex: 0 0 auto;
+  margin-inline-start: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-2, var(--color-bg-elevated));
+  color: var(--text-muted, var(--color-text-muted));
+  font-size: var(--font-size-caption);
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* PK 期間一般進球不能復原或改判。不改既有 .s4-note 的顏色。 */
+.s4-goal-lock {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}

@@ -15,7 +15,10 @@ export type ActionKind =
   | 'fulltime'
   | 'undoFinish'
   | 'clock'
-  | 'void';
+  | 'void'
+  | 'timeout'
+  | 'pkStart'
+  | 'pk';
 export type LogState = 'pending' | 'sending' | 'applied' | 'rejected' | 'discarded';
 export type RejectReason = 'conflict' | 'takenOver' | 'locked' | 'limit' | 'rules' | 'unknown' | 'reset';
 export type GroupLabel = 'amend' | 'undoFirstYellow' | 'amendFirstYellow';
@@ -86,7 +89,39 @@ export interface VoidIntent {
   targetSeq?: number;
 }
 
-export type Intent = GoalIntent | CardIntent | SubIntent | PhaseIntent | ClockIntent | VoidIntent;
+/** stopClock 只留在意圖。規則的事件鍵不收它；要停錶時才帶 clock。 */
+export interface TimeoutIntent {
+  kind: 'timeout';
+  side: Side;
+  matchSecond: number;
+  stopClock?: boolean;
+  clock?: ClockTarget;
+}
+
+export interface PkStartIntent {
+  kind: 'pkStart';
+  matchSecond: number;
+  clock: ClockTarget;
+}
+
+export interface PkIntent {
+  kind: 'pk';
+  side: Side;
+  scored: boolean;
+  plId?: string;
+  matchSecond: number;
+}
+
+export type Intent =
+  | GoalIntent
+  | CardIntent
+  | SubIntent
+  | PhaseIntent
+  | ClockIntent
+  | VoidIntent
+  | TimeoutIntent
+  | PkStartIntent
+  | PkIntent;
 
 export interface LogEntry {
   op: string;
@@ -141,6 +176,8 @@ export interface BatchPlan {
       running: boolean;
       period: string;
     };
+    /** 省略表示這筆不改 PK 比分。 */
+    penaltyScore?: { home: number; away: number };
   };
   /** 事件正文。createdAt 是 TimeMark，寫入時才換成 serverTimestamp。 */
   event: Record<string, unknown>;
@@ -173,6 +210,8 @@ export interface ServerMatch {
   home: ServerSide;
   away: ServerSide;
   divisionId: string;
+  /** 缺欄與 null 都是還沒開始 PK。舊測試可以不填。 */
+  penaltyScore?: { home: number; away: number } | null;
 }
 
 export interface ServerControl {
@@ -194,6 +233,8 @@ export interface ServerEvent {
   targetSeq?: number;
   inPlId?: string;
   outPlId?: string;
+  /** pk 進或沒進。其他事件沒有這個欄。 */
+  scored?: boolean;
   matchSecond: number;
   createdAt: number;
 }

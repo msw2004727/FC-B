@@ -40,6 +40,29 @@ export function shootoutOffered(input: {
   return input.live && !input.running && input.home === input.away && SHOOTOUT_PERIOD.has(input.period);
 }
 
+/**
+ * 可以按「PK 大戰」。跟 shootoutOffered 同一組時鐘與比分條件，
+ * 另外要求還沒有 PK 比分、也沒有還沒落地的 pkStart。
+ */
+export function pkCanStart(input: {
+  status: string;
+  running: boolean;
+  period: string;
+  home: number;
+  away: number;
+  penalty: { home: number; away: number } | null;
+  pendingPkStart: boolean;
+}): boolean {
+  if (input.penalty != null || input.pendingPkStart) return false;
+  return shootoutOffered({
+    live: input.status === 'live',
+    running: input.running,
+    period: input.period,
+    home: input.home,
+    away: input.away,
+  });
+}
+
 /** 未作廢的「進」腳數。沒進與已復原的不計，也不進場上比分。 */
 export function pkScore(
   events: readonly TimelineEvent[],

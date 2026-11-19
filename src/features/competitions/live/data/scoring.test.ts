@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { LIVE_COPY } from '../copy';
 import { IndexedDbActionLog, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { applyPlanLocal, buildBatch } from './batch';
-import { budgetView, pauseUseCount } from './budget';
+import { budgetView, groupWithinBudget, pauseUseCount } from './budget';
 import { activeYellowRefs, findOpenYellow, groupMessage, liveSecondYellow, overlayScore, scoreView, voidsFromTimeline } from './derive';
 import { memorySidStore } from './sid';
 import { classifyReject, decideRetry, Sender } from './sender';
@@ -209,6 +209,92 @@ describe('buildBatch', () => {
     expect(kick.match.status).toBe('live');
     expect(kick.match.clockBase?.period).toBe('h1');
   });
+
+  it('暫停、pkStart、pk 的鍵，以及作廢進了的 pk 扣回', () => {
+    const stopped = baseMatch({
+      score: { home: 1, away: 1 },
+      clockBase: { startedAt: 1000, pausedSec: 80, running: false, period: 'h2' },
+      penaltyScore: { home: 2, away: 1 },
+    });
+    const timeout = buildBatch({
+      entry: entry({
+        op: 'timeouttimeouttimeou',
+        intent: {
+          kind: 'timeout', side: 'home', matchSecond: 80, stopClock: true,
+          clock: { running: false, period: 'h2', pausedSec: 90, startedAt: 2000 },
+        },
+      }),
+      seq: 4, match: stopped, sid: SID,
+    });
+    expect(keysOf(timeout)).toEqual(['createdAt', 'matchSecond', 'op', 'seq', 'sid', 'side', 'type']);
+    expect(timeout.event).not.toHaveProperty('stopClock');
+    expect(timeout.match.clockBase?.running).toBe(false);
+    expect(timeout.match.clockBase?.period).toBe('h2');
+
+    const quiet = buildBatch({
+      entry: entry({
+        op: 'timeoutquiettimeoutq',
+        intent: { kind: 'timeout', side: 'away', matchSecond: 80 },
+      }),
+      seq: 5, match: stopped, sid: SID,
+    });
+    expect(quiet.match.clockBase).toBeUndefined();
+    expect(quiet.event.side).toBe('away');
+
+    const start = buildBatch({
+      entry: entry({
+        op: 'pkstartpkstartpkstar',
+        intent: { kind: 'pkStart', matchSecond: 80, clock: { running: false, period: 'pk', pausedSec: 80, startedAt: 1000 } },
+      }),
+      seq: 6, match: baseMatch({ penaltyScore: null, score: { home: 1, away: 1 } }), sid: SID,
+    });
+    expect(keysOf(start)).toEqual(['createdAt', 'matchSecond', 'op', 'seq', 'sid', 'type']);
+    expect(start.match.penaltyScore).toEqual({ home: 0, away: 0 });
+    expect(start.match.clockBase?.period).toBe('pk');
+
+    const scored = buildBatch({
+      entry: entry({
+        op: 'pkscoredpkscoredpksco',
+        intent: { kind: 'pk', side: 'home', scored: true, matchSecond: 80, plId: 'pl_a' },
+      }),
+      seq: 7, match: stopped, sid: SID,
+    });
+    expect(scored.match.penaltyScore).toEqual({ home: 3, away: 1 });
+    expect(scored.event.scored).toBe(true);
+    expect(keysOf(scored)).toEqual(['createdAt', 'matchSecond', 'op', 'plId', 'scored', 'seq', 'sid', 'side', 'type']);
+
+    const missed = buildBatch({
+      entry: entry({
+        op: 'pkmissedpkmissedpkmis',
+        intent: { kind: 'pk', side: 'away', scored: false, matchSecond: 81 },
+      }),
+      seq: 8, match: stopped, sid: SID,
+    });
+    expect(missed.match.penaltyScore).toBeUndefined();
+    expect(missed.event.scored).toBe(false);
+    expect(keysOf(missed)).toEqual(['createdAt', 'matchSecond', 'op', 'scored', 'seq', 'sid', 'side', 'type']);
+
+    const wiped = buildBatch({
+      entry: entry({ op: 'voidpkvoidpkvoidpkvoi', intent: { kind: 'void', matchSecond: 82, targetSeq: 7 } }),
+      seq: 9,
+      match: stopped,
+      sid: SID,
+      targetSeq: 7,
+      target: { seq: 7, type: 'pk', op: 'pkscoredpkscoredpksco', sid: SID, side: 'home', scored: true, matchSecond: 80, createdAt: 7 },
+    });
+    expect(wiped.match.penaltyScore).toEqual({ home: 1, away: 1 });
+    expect(wiped.match.score).toBeUndefined();
+
+    const missVoid = buildBatch({
+      entry: entry({ op: 'voidmissvoidmissvoid', intent: { kind: 'void', matchSecond: 83, targetSeq: 8 } }),
+      seq: 10,
+      match: stopped,
+      sid: SID,
+      targetSeq: 8,
+      target: { seq: 8, type: 'pk', op: 'pkmissedpkmissedpkmis', sid: SID, side: 'away', scored: false, matchSecond: 81, createdAt: 8 },
+    });
+    expect(missVoid.match.penaltyScore).toBeUndefined();
+  });
 });
 
 describe('額度', () => {
@@ -239,6 +325,28 @@ describe('額度', () => {
     });
     expect(pauseUseCount([], [pending], 0)).toBe(1);
     expect(pauseUseCount([pause, correction], [pending], 0)).toBe(2);
+  });
+
+  it('停錶型暫停計入停錶次數，不停錶的不計', () => {
+    const serverTimeout = { seq: 3, type: 'timeout', op: 'timeout-server-0001', sid: SID, side: 'home' as const, matchSecond: 1, createdAt: 3 };
+    expect(pauseUseCount([serverTimeout], [], 0)).toBe(0);
+    expect(pauseUseCount([serverTimeout], [], 0, true)).toBe(1);
+    const stopping = entry({
+      op: 'timeout-pending-0001',
+      intent: {
+        kind: 'timeout', side: 'away', matchSecond: 2, stopClock: true,
+        clock: { running: false, period: 'h1', pausedSec: 2, startedAt: 2 },
+      },
+    });
+    const quiet = entry({
+      op: 'timeout-pending-0002',
+      intent: { kind: 'timeout', side: 'home', matchSecond: 3 },
+    });
+    expect(pauseUseCount([], [stopping], 0)).toBe(1);
+    expect(pauseUseCount([], [quiet], 0)).toBe(0);
+    const budget = budgetView(0, 0, [], [], true);
+    expect(groupWithinBudget([stopping.intent], { ...budget, pauseUses: 20 })).toBe(false);
+    expect(groupWithinBudget([quiet.intent], { ...budget, pauseUses: 20 })).toBe(true);
   });
 });
 
@@ -1417,5 +1525,131 @@ describe('分頁鎖與螢幕鎖定', () => {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(state).toBe('unsupported');
     bad.stop();
+  });
+});
+
+describe('暫停與 PK 意圖層', () => {
+  function ready(h: Harness, patch?: Partial<ServerMatch>): void {
+    h.match.status = 'live';
+    h.match.score = patch?.score ?? { home: 0, away: 0 };
+    h.match.clockBase = patch?.clockBase ?? { startedAt: null, pausedSec: 90, running: false, period: 'h2' };
+    h.match.penaltyScore = patch?.penaltyScore ?? null;
+    h.listener.onMatch(snapshotOf(h.match));
+  }
+
+  it('時鐘在走才停錶；已停只送事件；事件沒有 stopClock', async () => {
+    const running = await openHarness();
+    const stoppedClock = await running.session.getState().actions.timeout({ side: 'home' });
+    expect(stoppedClock.status).toBe('applied');
+    expect(running.commits[0]?.event.side).toBe('home');
+    expect(running.commits[0]?.event).not.toHaveProperty('stopClock');
+    expect(running.commits[0]?.match.clockBase).toMatchObject({ running: false, period: 'h1' });
+    expect(running.match.clockBase.running).toBe(false);
+
+    const parked = await openHarness({
+      match: baseMatch({ clockBase: { startedAt: null, pausedSec: 40, running: false, period: 'h2' } }),
+    });
+    const quiet = await parked.session.getState().actions.timeout({ side: 'away' });
+    expect(quiet.status).toBe('applied');
+    expect(parked.commits[0]?.match.clockBase).toBeUndefined();
+    expect(parked.match.clockBase.running).toBe(false);
+    expect(parked.match.clockBase.pausedSec).toBe(40);
+  });
+
+  it('額度超過 130 時停錶型暫停被擋且不寫日誌，不停錶的仍可記', async () => {
+    const h = await openHarness();
+    h.match.rev = 131;
+    h.listener.onMatch(snapshotOf(h.match));
+    const blocked = await h.session.getState().actions.timeout({ side: 'home' });
+    expect(blocked).toEqual({ status: 'rejected', reason: 'limit' });
+    expect(h.commits).toHaveLength(0);
+    expect(await h.log.list(CID, MT)).toHaveLength(0);
+    const quiet = await h.session.getState().actions.timeout({ side: 'away', stopClock: false });
+    expect(quiet.status).toBe('applied');
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0]?.match.clockBase).toBeUndefined();
+  });
+
+  it('比分不平、時鐘還在走、或已開始時 pkStart 不寫日誌', async () => {
+    const uneven = await openHarness();
+    ready(uneven, { score: { home: 1, away: 0 } });
+    expect(await uneven.session.getState().actions.pkStart()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(uneven.commits).toHaveLength(0);
+    expect(await uneven.log.list(CID, MT)).toHaveLength(0);
+
+    const running = await openHarness();
+    ready(running, { clockBase: { startedAt: 1, pausedSec: 10, running: true, period: 'h2' } });
+    expect(await running.session.getState().actions.pkStart()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await running.log.list(CID, MT)).toHaveLength(0);
+
+    const begun = await openHarness();
+    ready(begun, { penaltyScore: { home: 0, away: 0 }, clockBase: { startedAt: null, pausedSec: 90, running: false, period: 'pk' } });
+    expect(begun.session.getState().pk.canStart).toBe(false);
+    expect(begun.session.getState().pk.started).toBe(true);
+    expect(await begun.session.getState().actions.pkStart()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await begun.log.list(CID, MT)).toHaveLength(0);
+  });
+
+  it('pkStart 之後進、沒進、作廢進的那腳，正規比分不變', async () => {
+    const h = await openHarness();
+    ready(h, { score: { home: 1, away: 1 } });
+    expect(h.session.getState().pk.canStart).toBe(true);
+    expect((await h.session.getState().actions.pkStart()).status).toBe('applied');
+    expect(h.match.penaltyScore).toEqual({ home: 0, away: 0 });
+    expect(h.match.clockBase.period).toBe('pk');
+    expect(h.match.score).toEqual({ home: 1, away: 1 });
+    expect(h.session.getState().pk.canStart).toBe(false);
+    expect((await h.session.getState().actions.pk({ side: 'home', scored: true, plId: 'pl_a' })).status).toBe('applied');
+    expect(h.match.penaltyScore).toEqual({ home: 1, away: 0 });
+    expect((await h.session.getState().actions.pk({ side: 'away', scored: false })).status).toBe('applied');
+    expect(h.match.penaltyScore).toEqual({ home: 1, away: 0 });
+    expect(h.commits.at(-1)?.match.penaltyScore).toBeUndefined();
+    const scored = h.events.find((event) => event.type === 'pk' && event.scored);
+    expect((await h.session.getState().actions.voidEvent({ seq: scored?.seq })).status).toBe('applied');
+    expect(h.match.penaltyScore).toEqual({ home: 0, away: 0 });
+    expect(h.match.score).toEqual({ home: 1, away: 1 });
+  });
+
+  it('PK 期間一般進球、作廢一般進球、改判進球與離開 pk 的時鐘都不寫日誌', async () => {
+    const h = await openHarness();
+    expect((await h.session.getState().actions.goal({ side: 'home' })).status).toBe('applied');
+    expect((await h.session.getState().actions.goal({ side: 'away' })).status).toBe('applied');
+    h.match.clockBase = { startedAt: null, pausedSec: 200, running: false, period: 'h2' };
+    h.listener.onMatch(snapshotOf(h.match));
+    expect((await h.session.getState().actions.pkStart()).status).toBe('applied');
+    const before = h.commits.length;
+    const logged = (await h.log.list(CID, MT)).length;
+    const goal = h.events.find((event) => event.type === 'goal');
+    expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.session.getState().actions.voidEvent({ seq: goal?.seq })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.session.getState().actions.amend(
+      { seq: goal?.seq },
+      { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 12 },
+    )).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.session.getState().actions.halftime()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.session.getState().actions.correctClock({
+      running: false, period: 'ft', pausedSec: 200, startedAt: null,
+    })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(h.commits).toHaveLength(before);
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect((await h.session.getState().actions.fulltime()).status).toBe('applied');
+    expect(h.commits.at(-1)?.match.clockBase?.period).toBe('pk');
+    expect(h.match.status).toBe('finished');
+  });
+
+  it('暫停與 pkStart 不能作廢；牌在 PK 期間仍可作廢', async () => {
+    const h = await openHarness();
+    ready(h);
+    expect((await h.session.getState().actions.timeout({ side: 'home' })).status).toBe('applied');
+    const timeoutSeq = h.events.find((event) => event.type === 'timeout')?.seq;
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.voidEvent({ seq: timeoutSeq })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect((await h.session.getState().actions.pkStart()).status).toBe('applied');
+    const startSeq = h.events.find((event) => event.type === 'pkStart')?.seq;
+    expect(await h.session.getState().actions.voidEvent({ seq: startSeq })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect((await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).status).toBe('applied');
+    const cardSeq = h.events.find((event) => event.type === 'card')?.seq;
+    expect((await h.session.getState().actions.voidEvent({ seq: cardSeq })).status).toBe('applied');
   });
 });

@@ -47,6 +47,12 @@ export interface LiveOpened {
   away: RosterPublicDoc[];
   /** 自己的 staff.roles。沒有文件就是空陣列。 */
   staffRoles: string[];
+  /** 指派的場次。舊的假後端可以不填，工作階段當成空陣列。 */
+  matchIds?: string[];
+  /** 指派到期。null 是沒有期限。 */
+  expiresAt?: number | null;
+  /** 組別文件上的 rules.timeout 原值。讀不到就是 null，由讀取函式套預設。 */
+  timeoutRaw?: unknown;
   setVisible: (visible: boolean) => void;
   stop: () => void;
 }
@@ -121,7 +127,15 @@ export function parseMatch(id: string, data: DocumentData | undefined): ServerMa
     home,
     away,
     divisionId: str(raw.divisionId) ?? '',
+    penaltyScore: penaltyOf(raw.penaltyScore),
   };
+}
+
+function penaltyOf(value: unknown): { home: number; away: number } | null {
+  const raw = record(value);
+  if (!raw) return null;
+  if (typeof raw.home !== 'number' || typeof raw.away !== 'number') return null;
+  return { home: raw.home, away: raw.away };
 }
 
 export function parseControl(data: DocumentData | undefined): ServerControl | null {
@@ -152,6 +166,7 @@ export function parseEvent(data: DocumentData | undefined): ServerEvent | null {
   if (typeof raw.targetSeq === 'number') event.targetSeq = raw.targetSeq;
   if (typeof raw.inPlId === 'string') event.inPlId = raw.inPlId;
   if (typeof raw.outPlId === 'string') event.outPlId = raw.outPlId;
+  if (typeof raw.scored === 'boolean') event.scored = raw.scored;
   return event;
 }
 
@@ -298,6 +313,7 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
           period: plan.match.clockBase.period,
         };
       }
+      if (plan.match.penaltyScore) patch.penaltyScore = plan.match.penaltyScore;
       batch.update(matchRef, patch as never);
       batch.set(doc(db, `${matchPath(cid, mtId)}/timeline/e${plan.seq}`), eventPayload(plan) as never);
       if (plan.voidDoc) {
@@ -338,8 +354,24 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
       const home = match ? await readRoster(db, cid, match.home.teamId) : [];
       const away = match ? await readRoster(db, cid, match.away.teamId) : [];
       const staffSnap = await getDoc(doc(db, `competitions/${cid}/staff/${uid}`));
-      const staffRaw = staffSnap.exists() ? staffSnap.data().roles : [];
+      const staffData = staffSnap.exists() ? staffSnap.data() : null;
+      const staffRaw = staffData ? staffData.roles : [];
       const staffRoles = Array.isArray(staffRaw) ? staffRaw.filter((role): role is string => typeof role === 'string') : [];
+      const matchIds = staffData && Array.isArray(staffData.matchIds)
+        ? staffData.matchIds.filter((item): item is string => typeof item === 'string')
+        : [];
+      const expiresAt = staffData ? millisOf(staffData.expiresAt) : null;
+      let timeoutRaw: unknown = null;
+      const divisionId = match?.divisionId ?? '';
+      if (divisionId) {
+        try {
+          const divisionSnap = await getDoc(doc(db, `competitions/${cid}/divisions/${divisionId}`));
+          const rules = divisionSnap.exists() ? record(divisionSnap.data().rules) : null;
+          timeoutRaw = rules ? (rules.timeout ?? null) : null;
+        } catch {
+          timeoutRaw = null;
+        }
+      }
       let lastRev = match?.rev ?? -1;
       let unsubs: Array<() => void> = [];
       let stopped = false;
@@ -382,6 +414,9 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
         home,
         away,
         staffRoles,
+        matchIds,
+        expiresAt,
+        timeoutRaw,
         setVisible(next) {
           if (stopped) return;
           if (!next) {

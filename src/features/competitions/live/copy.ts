@@ -77,6 +77,15 @@ export const LIVE_COPY = {
   pkStart: 'PK 大戰',
   pkIn: '進',
   pkMiss: '沒進',
+  pkConfirmTitle: '開始 PK 大戰？',
+  pkConfirmLine1: '開始後不能再記一般進球。',
+  pkConfirmLine2: 'PK 開始後不能取消，要取消須由主辦重置整場。',
+  pkConfirmGo: '開始 PK',
+  pkConfirmCancel: '取消',
+  pkGoalLocked: 'PK 期間不能復原或改判一般進球',
+  noScorePermission: '你沒有這場的記分權限',
+  backToSchedule: '回賽程',
+  assignScorerHint: '請先在指派頁把自己指派為記分員',
 } as const;
 
 export function offlineChip(pending: number): string {

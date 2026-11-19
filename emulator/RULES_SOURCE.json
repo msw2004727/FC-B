@@ -6,10 +6,10 @@
   "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196",
   "asiaMainRules": {
     "file": "asia-main.rules",
-    "sha256": "68faebd1df8912d98dbbadf8978c814baad7acada4698460dc053ad61105d96d",
-    "fcCommit": "dfa70fb23",
-    "source": ".grok-input/asia-main.rules.k1-dfa70fb23",
+    "sha256": "17068d4b6bd9e90871ee1dff73e2d500d49a8f6e53b80d467d11f5c45eb43320",
+    "fcCommit": "c096dfd43",
+    "source": ".grok-input/asia-main.rules.integ-c096dfd43",
     "copiedAt": "2026-11-19T00:00:00.000Z",
-    "note": "規則本文與 K1 凍結快照逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
+    "note": "規則本文與整合版快照逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
   }
 }
