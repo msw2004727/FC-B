@@ -40,9 +40,14 @@ export const waitHandlers: WaitHandlers = {
   onClose() { pressClose(); },
 };
 
+/** 畫等待框、綁 visibilitychange、設逾時計時。不冷開 claim：接著要離開頁面，回前景才由 onVis 打。 */
+export async function armWaitForPending(): Promise<boolean> {
+  return arm();
+}
+
 /** 畫出等待框並在前景冷開一次。不保證等網路回來。 */
 export async function showWaitForPending(): Promise<boolean> {
-  const ready = await arm();
+  const ready = await armWaitForPending();
   if (!ready || !loop || loop.stopped) return ready;
   if (!firstPromise && !loop.coldStarted && document.visibilityState === 'visible') {
     loop.coldStarted = true;

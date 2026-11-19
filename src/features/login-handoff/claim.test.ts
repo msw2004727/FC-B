@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { beginClaim, _resetClaimForTest } from './claim';
 import { LOGIN_HANDOFF_STORAGE_KEY } from '@/data/login-redirect';
 import { _setReplaceForTest } from './nav';
-import { writePending } from './pending';
+import { pairingNumber, sha256Hex } from './pairing';
+import { HANDOFF_TTL_MS, writePending } from './pending';
+import { beginLoginHandoff } from './start';
 import { renderWait, type WaitHandlers, type WaitView } from './view';
 
 const callFn = vi.hoisted(() => vi.fn());
@@ -287,5 +289,68 @@ describe('claim', () => {
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toContain(SECRET);
     await vi.advanceTimersByTimeAsync(6000);
     expect(callFn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('armWaitForPending', () => {
+  it('beginLoginHandoff 不冷開；回前景才 claim，not-found 後 6 秒再打', async () => {
+    localStorage.clear();
+    vi.mocked(renderWait).mockClear();
+    callFn.mockReset();
+    const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      const bytes = array as Uint8Array;
+      bytes.fill(1);
+      return array;
+    });
+    try {
+      const uri = await beginLoginHandoff('https://toosterx.com/events/e?tab=1');
+      const secret = '01'.repeat(32);
+      const handoffId = await sha256Hex(secret);
+      expect(uri).toBe(`https://toosterx.com/events/e?tab=1&fcbHandoff=${handoffId}`);
+      expect(callFn).not.toHaveBeenCalled();
+      expect(lastView()).toMatchObject({
+        kind: 'wait',
+        number: await pairingNumber(handoffId),
+        busy: false,
+      });
+
+      visibility = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(callFn).not.toHaveBeenCalled();
+
+      callFn.mockRejectedValue(codeError('not-found'));
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await untilCalls(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(callFn).toHaveBeenCalledTimes(1);
+      expect(callFn.mock.calls[0]).toEqual([
+        'lineLoginHandoff',
+        { op: 'claim', handoffSecret: secret },
+      ]);
+      await vi.advanceTimersByTimeAsync(5999);
+      expect(callFn).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(callFn).toHaveBeenCalledTimes(2);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('beginLoginHandoff 不切前景，5 分鐘逾時並清掉 pending', async () => {
+    localStorage.clear();
+    vi.mocked(renderWait).mockClear();
+    callFn.mockReset();
+    await beginLoginHandoff('https://toosterx.com/');
+    expect(callFn).not.toHaveBeenCalled();
+    expect(lastView()).toMatchObject({ kind: 'wait' });
+    await vi.advanceTimersByTimeAsync(HANDOFF_TTL_MS - 1);
+    expect(lastView()?.kind).not.toBe('timeout');
+    expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(lastView()).toEqual({ kind: 'timeout' });
+    expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toBeNull();
+    expect(callFn).not.toHaveBeenCalled();
   });
 });

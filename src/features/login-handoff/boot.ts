@@ -41,7 +41,6 @@ export async function bootLoginHandoff(deps: BootDeps): Promise<void> {
       }
     }
     deps.cleanParams();
-    return;
   }
 
   const pending = readPending();

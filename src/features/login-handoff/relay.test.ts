@@ -110,7 +110,7 @@ describe('relay', () => {
     expect(lastView()).toMatchObject({ kind: 'pick', tryLater: true, busy: false });
   });
 
-  it('網路錯誤留在選數字，其他錯誤是 wrong', async () => {
+  it('無 code 的網路錯誤留在選數字，invalid-argument 是 wrong', async () => {
     callFn.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     await beginRelay(input());
     const pick = pickOptions()[0] ?? 10;
@@ -124,6 +124,34 @@ describe('relay', () => {
     await beginRelay(input());
     const again = pickOptions()[0] ?? 10;
     handlers().onPick(again);
+    await flush();
+    expect(lastView()).toEqual({ kind: 'wrong' });
+  });
+
+  it.each([
+    'internal',
+    'deadline-exceeded',
+    'unknown',
+  ])('%s → 稍後再試，重試沿用同一數字', async (name) => {
+    callFn.mockRejectedValueOnce(codeError(`functions/${name}`));
+    await beginRelay(input());
+    const pick = pickOptions()[0] ?? 10;
+    handlers().onPick(pick);
+    await flush();
+    expect(lastView()).toMatchObject({ kind: 'pick', busy: false, tryLater: true });
+    expect(callFn.mock.calls[0]?.[1]).toMatchObject({ pick: String(pick) });
+
+    callFn.mockRejectedValueOnce(codeError(`functions/${name}`));
+    handlers().onRetry();
+    await flush();
+    expect(callFn.mock.calls[1]?.[1]).toMatchObject({ pick: String(pick) });
+    expect(lastView()).toMatchObject({ kind: 'pick', tryLater: true, busy: false });
+  });
+
+  it('invalid-argument → wrong', async () => {
+    callFn.mockRejectedValueOnce(codeError('invalid-argument'));
+    await beginRelay(input());
+    handlers().onPick(pickOptions()[0] ?? 10);
     await flush();
     expect(lastView()).toEqual({ kind: 'wrong' });
   });

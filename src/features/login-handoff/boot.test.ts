@@ -208,15 +208,17 @@ describe('boot 分流', () => {
     expect(callFn).not.toHaveBeenCalled();
   });
 
-  it('iOS 主畫面落到不符的轉交網址：只清參數，pending 留著', async () => {
+  it('iOS 主畫面落到不符的轉交網址：清參數並對既有 pending 開始等待', async () => {
     armReplace();
+    callFn.mockRejectedValue(Object.assign(new Error('nf'), { code: 'not-found' }));
     writePending({ secret: OTHER, createdAt: Date.now() });
     setPlatform(IPHONE, 5, true);
     openHandoff('11'.repeat(32));
     await runBoot();
     expect(location.search).toBe('?tab=2');
     expect(renderRelay).not.toHaveBeenCalled();
-    expect(renderWait).not.toHaveBeenCalled();
+    expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toMatchObject({ kind: 'wait' });
+    expect(callFn).toHaveBeenCalledWith('lineLoginHandoff', { op: 'claim', handoffSecret: OTHER });
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toContain(OTHER);
   });
 

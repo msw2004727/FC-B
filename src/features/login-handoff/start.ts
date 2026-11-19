@@ -1,7 +1,6 @@
-import { showWaitForPending, waitHandlers } from './claim';
+import { armWaitForPending, showWaitForPending } from './claim';
 import { HANDOFF_TTL_MS, readPending, writePending } from './pending';
-import { pairingNumber, sha256Hex } from './pairing';
-import { renderWait } from './view';
+import { sha256Hex } from './pairing';
 
 export async function beginLoginHandoff(cleanRedirectUri: string): Promise<string | null> {
   const existing = readPending();
@@ -15,12 +14,7 @@ export async function beginLoginHandoff(cleanRedirectUri: string): Promise<strin
   const handoffId = await sha256Hex(secret);
   const createdAt = Date.now();
   writePending({ secret, createdAt });
-  renderWait({
-    kind: 'wait',
-    number: await pairingNumber(handoffId),
-    expiresAt: createdAt + HANDOFF_TTL_MS,
-    busy: false,
-  }, waitHandlers);
+  await armWaitForPending();
   const url = new URL(cleanRedirectUri);
   url.searchParams.set('fcbHandoff', handoffId);
   return url.toString();

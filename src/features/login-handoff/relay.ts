@@ -102,13 +102,18 @@ async function send(n: number): Promise<void> {
       renderRelay({ kind: 'sentOrExpired' }, relayHandlers);
       return;
     }
-    if (code === 'resource-exhausted' || code === 'unavailable' || code === 'network') {
-      relay.tryLater = true;
-      paint();
+    // 只有 invalid-argument 當成數字不符。其餘錯誤（internal、deadline-exceeded、unknown、
+    // 無 code、resource-exhausted、unavailable）都留同一個數字可重試：網路失敗時 Firebase
+    // 回 internal、逾時回 deadline-exceeded，伺服器可能根本沒收到。
+    // 重試安全：伺服器用 create()。同一個正確數字再送得到 failed-precondition（畫面
+    // sentOrExpired）；同一個錯誤數字再送得到 mismatch（畫面 wrong）。
+    if (code === 'invalid-argument') {
+      relay = null;
+      renderRelay({ kind: 'wrong' }, relayHandlers);
       return;
     }
-    relay = null;
-    renderRelay({ kind: 'wrong' }, relayHandlers);
+    relay.tryLater = true;
+    paint();
   }
 }
 

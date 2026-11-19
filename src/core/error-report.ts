@@ -154,7 +154,7 @@ function tryConsumeBudget(now: number): 'ok' | 'full' | 'broken' {
 const SECRET_PARAM_RE = /token|code|state|secret|challenge|client_id|password|key|handoff/i;
 
 /** 文字裡任何 `?key=` `&key=` `#key=` `;key=`（或開頭、空白、引號後）且 key 像憑證的值都遮掉；JWT 形狀的字串也遮（errorMessage／errorStack 用）。 */
-const SECRET_WORDS = 'token|code|state|secret|challenge|client_id|password|key';
+const SECRET_WORDS = 'token|code|state|secret|challenge|client_id|password|key|handoff';
 const SECRET_IN_TEXT_RE = new RegExp(String.raw`((?:^|[?&#;\s'"(])[\w.%-]*(?:${SECRET_WORDS})=)[^&#;\s'"<>)]*`, 'gi');
 /** 非 Error 的 rejection 經 JSON.stringify 後是 "access_token":"…"。 */
 const SECRET_IN_JSON_RE = new RegExp(String.raw`("[\w.-]*(?:${SECRET_WORDS})"\s*:\s*")[^"]*`, 'gi');
