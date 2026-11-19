@@ -31,8 +31,7 @@
     "openInLine": "เข้าสู่ระบบในแอป LINE",
     "openInLineNote": "จะใช้ใน LINE ต่อไป",
     "browserLogin": "เข้าสู่ระบบด้วยเบราว์เซอร์นี้",
-    "browserLoginNote": "LINE ยืนยันแล้วกลับมาที่นี่",
-    "browserLoginNoteApp": "ยืนยันในเบราว์เซอร์ แล้วกลับมาที่แอป"
+    "browserLoginNote": "LINE ยืนยันแล้วกลับมาที่นี่"
   },
   "ui": {
     "shell": {

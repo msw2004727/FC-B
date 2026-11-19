@@ -2,11 +2,6 @@
 // 外部瀏覽器走完 liff.login 會帶 code＋liffClientId 回到原頁；從 liff.line.me 開啟會帶 liff.state。
 // 只有這兩種情況開頁時才載入 LIFF 接手登入（照 A 開頁 liff.init 的效果），一般開頁仍不載 LIFF（T-041 首頁速度）。
 
-/** 改成 false 即整條轉交路徑關閉，回到原本只顯示在 LINE App 中登入的行為。 */
-export const LOGIN_HANDOFF_ENABLED = true;
-
-export const LOGIN_HANDOFF_STORAGE_KEY = 'fcb:login-handoff';
-
 /**
  * 保守判斷 LINE Mini App（LIFF 瀏覽器）。
  * 既有程式只把 UA 的 Line/ 當成「可能在 LINE」（內建瀏覽器與 Mini App 都會中）。
@@ -16,42 +11,10 @@ export function isLikelyMiniAppUserAgent(userAgent: string): boolean {
   return /\bLine\//i.test(userAgent) && /\bLIFF\b/.test(userAgent);
 }
 
-/**
- * iPhone／iPad／iPod，或 Macintosh 且觸控點 >1，且 standalone。
- * 邏輯與原本應隱藏瀏覽器登入的判斷相同。
- */
-export function isIosStandalone(ua: string, standalone: boolean, maxTouchPoints: number): boolean {
-  const isIOS = /iPhone|iPad|iPod/.test(ua)
-    || (/Macintosh/.test(ua) && maxTouchPoints > 1);
-  return isIOS && standalone;
-}
-
-/** 此刻是否為 iOS／iPadOS 主畫面 App。無 navigator（SSR）或讀取失敗回 false。 */
-export function isIosStandaloneNow(): boolean {
-  try {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    const touch = navigator.maxTouchPoints ?? 0;
-    let standalone = false;
-    if (
-      typeof matchMedia === 'function'
-      && matchMedia('(display-mode: standalone)').matches
-    ) {
-      standalone = true;
-    }
-    const nav = navigator as Navigator & { standalone?: boolean };
-    if (nav.standalone === true) standalone = true;
-    return isIosStandalone(ua, standalone, touch);
-  } catch {
-    return false;
-  }
-}
-
-/** 網址是否帶 LINE 授權回跳參數。帶 fcbHandoff 的轉交回跳不是本機接手。 */
+/** 網址是否帶 LINE 授權回跳參數。 */
 export function hasLoginRedirectParams(href: string): boolean {
   try {
     const params = new URL(href).searchParams;
-    if (params.has('fcbHandoff')) return false;
     return (params.has('code') && params.has('liffClientId')) || params.has('liff.state');
   } catch {
     return false;
@@ -80,7 +43,6 @@ const LOGIN_REDIRECT_PARAM_KEYS = [
   'error',
   'error_description',
   'liff.state',
-  'fcbHandoff',
 ] as const;
 
 /** M-036：照 A `js/line-auth.js:595-605` 清理 OAuth 查詢參數並組出回跳網址。 */

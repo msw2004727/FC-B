@@ -7,7 +7,6 @@ import {
   hasLoginCancelParams,
   hasLoginRedirectParams,
   isAutoLoginSuppressedThisPage,
-  isIosStandalone,
   isLikelyMiniAppUserAgent,
   markAutoLoginSuppressed,
 } from './login-redirect';
@@ -96,31 +95,8 @@ describe('hasLoginRedirectParams（LINE 授權回跳網址）', () => {
     ['https://x.test/?code=a', false],
     ['https://x.test/?event=abc123', false],
     ['https://x.test/?error=access_denied&state=b', false],
-    ['https://x.test/?code=a&liffClientId=c&fcbHandoff=ab', false],
-    ['https://x.test/?fcbHandoff=ab', false],
     ['not a url', false],
   ])('%s → %s', (href, expected) => {
     expect(hasLoginRedirectParams(href)).toBe(expected);
-  });
-});
-
-describe('fcbHandoff 清理與 carry', () => {
-  it('清理會拿掉 fcbHandoff，其他參數留下', () => {
-    expect(buildCleanLoginRedirectUri('https://x.test/events/e1?code=a&fcbHandoff=ab&tab=2'))
-      .toBe('https://x.test/events/e1?tab=2');
-  });
-
-  it('carry 會把 fcbHandoff 帶到目的網址', () => {
-    expect(carryLoginRedirectParams('/?event=abc&fcbHandoff=ab&code=c', '/events/abc'))
-      .toBe('/events/abc?code=c&fcbHandoff=ab');
-  });
-});
-
-describe('isIosStandalone', () => {
-  it('iPhone／iPad／iPod 或觸控 Macintosh，且 standalone', () => {
-    expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', true, 5)).toBe(true);
-    expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 5)).toBe(true);
-    expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 0)).toBe(false);
-    expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', false, 5)).toBe(false);
   });
 });

@@ -84,8 +84,6 @@ import type {
   ListPmAuditThreadsResponse,
   ListUserDirectoryRequest,
   ListUserDirectoryResponse,
-  LineLoginHandoffRequest,
-  LineLoginHandoffResponse,
   ManageCourseLinkedRegistrationStatusRequest,
   ManageCourseLinkedRegistrationStatusResponse,
   MarkPrivateConversationReadRequest,
@@ -216,7 +214,6 @@ export interface CallableMap {
     res: IncrementEventViewCountResponse;
   };
   issueQaTestToken: { req: IssueQaTestTokenRequest; res: IssueQaTestTokenResponse };
-  lineLoginHandoff: { req: LineLoginHandoffRequest; res: LineLoginHandoffResponse };
   listEduCourseEnrollmentSummaries: {
     req: ListEduCourseEnrollmentSummariesRequest;
     res: ListEduCourseEnrollmentSummariesResponse;
