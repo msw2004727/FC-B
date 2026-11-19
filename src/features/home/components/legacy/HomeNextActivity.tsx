@@ -121,10 +121,12 @@ export function HomeNextActivity({
     : [];
   const confirmedEvent = visibleList[0] ?? null;
 
-  // 上次內容可用的條件：帳號已確認且 owner 相同（讀取中或讀取失敗）；或帳號還在還原、但「上次已登入」旗標在。
-  const snapshotUsable = snapshot !== null && !confirmed && (
-    viewer.uid ? snapshot.owner === viewer.uid : authPending && readAuthHint()
-  );
+  // 上次內容可用的條件：活動還沒開始（頁面開著期間也要再檢查），且帳號已確認、owner 相同（讀取中或讀取失敗）；
+  // 或帳號還在還原、但「上次已登入」旗標在——這段刻意不比對 owner（還不知道是誰），是站長 2026-11-19 同意的放寬，
+  // 帳號一確認就改比對 owner，不符立刻撤掉。
+  const snapshotUsable = snapshot !== null && !confirmed
+    && (parseEventDateRange(snapshot.result.event.date)?.startMs ?? 0) > Date.now()
+    && (viewer.uid ? snapshot.owner === viewer.uid : authPending && readAuthHint());
   const shown = confirmed ? candidate : snapshotUsable ? snapshot.result : null;
   const visibleEvent = confirmed ? confirmedEvent : snapshotUsable ? snapshot.result.event : null;
   const stale = !confirmed && snapshotUsable;
@@ -133,12 +135,21 @@ export function HomeNextActivity({
   // 讀完確定的結果才更新快照：畫面要顯示的那場就存，確定沒有就刪。讀取失敗不動。
   // 寫入端延遲載入（首頁入口 JS 預算），見 loadSnapshotWriter。
   const confirmedUid = confirmed ? viewer.uid : null;
+  // 寫入端還在載入時帳號已換（登出、換帳號）或元件已卸載：取消這次寫入／刪除，避免把前一個帳號的結果寫成快照、或刪掉新帳號的快照。
   useEffect(() => {
-    if (!confirmedUid) return;
+    if (!confirmedUid) return undefined;
+    let live = true;
     const save = candidate && confirmedEvent ? candidate : null;
     loadSnapshotWriter()
-      .then((m) => (save ? m.writeNextActivitySnapshot(confirmedUid, save) : m.removeNextActivitySnapshot()))
+      .then((m) => {
+        if (!live) return;
+        if (save) m.writeNextActivitySnapshot(confirmedUid, save);
+        else m.removeNextActivitySnapshot();
+      })
       .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, [confirmedUid, candidate, confirmedEvent]);
 
   const rawImage =

@@ -110,6 +110,25 @@ describe('首頁我的下一場：登入還原中', () => {
   });
 });
 
+describe('首頁我的下一場：上次內容的活動在頁面開著期間開始', () => {
+  it('下一次重新 render 就不再畫上次內容（改顯示骨架）', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.parse('2099-06-01T10:50:00Z'));
+      writeNextActivitySnapshot('u1', resultOf(eventOf('e1', '快開始的活動', '2099/06/01 19:00~21:00')));
+      resolveNextActivity.mockReturnValue(new Promise(() => undefined));
+      const view = render(<HomeNextActivity viewer={createMinimalViewer('u1')} {...handlers} />);
+      expect(view.getByText('快開始的活動')).toBeTruthy();
+      vi.setSystemTime(Date.parse('2099-06-01T11:01:00Z'));
+      view.rerender(<HomeNextActivity viewer={createMinimalViewer('u1')} {...handlers} />);
+      expect(view.queryByText('快開始的活動')).toBeNull();
+      expect(view.container.querySelector('.home-next-loading')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('首頁我的下一場：uid 延後出現（L-43）', () => {
   it('同一帳號：讀取中沿用上次內容；新資料到了換掉、「更新中」消失、行事曆可按，快照換成新的', async () => {
     localStorage.setItem(AUTH_HINT_KEY, '1');

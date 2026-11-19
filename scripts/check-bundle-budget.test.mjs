@@ -90,7 +90,7 @@ describe('check-bundle-budget', () => {
     }
   });
 
-  it('上限以 1000 bytes 為 1KB，預設 60.5KB；第二條省略時用 250KB', () => {
+  it('上限以 1000 bytes 為 1KB，預設 61KB；第二條省略時用 250KB', () => {
     expect(parseLimit('60KB')).toBe(60_000);
     expect(parseLimit('1KB')).toBe(1_000);
     expect(parseLimit(undefined)).toBe(61_000);
