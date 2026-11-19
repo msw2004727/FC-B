@@ -1,5 +1,5 @@
-import type { S4ConfirmedMatch, S4Person } from '../testing/step4-fixtures';
 import { publicRosterName } from './public-name';
+import type { ConfirmedMatch, PublicPerson } from './types';
 
 export interface ScorerRow {
   rank: number;
@@ -37,8 +37,8 @@ interface Tally {
  * 同進球數同名次（下一名次跳號）。同名次的次序用 plId，不再分高下。
  */
 export function derivePublicTable(
-  matches: readonly S4ConfirmedMatch[],
-  people: readonly S4Person[],
+  matches: readonly ConfirmedMatch[],
+  people: readonly PublicPerson[],
 ): { scorers: ScorerRow[]; cards: CardStatRow[] } {
   const byId = new Map<string, Tally>();
   for (const person of people) {

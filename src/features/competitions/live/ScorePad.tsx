@@ -1,30 +1,42 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
-import type { MatchDoc, MatchSideName, RosterPublicDoc } from '../data/types';
-import type { ActionLogEntry, GoalKind, TimelineEvent, VoidMark } from '../testing/step4-fixtures';
+import { Modal } from '@/ui/Modal';
+import type { EntryDoc, MatchClock, MatchDoc, MatchSideName, RosterPublicDoc } from '../data/types';
 import { CardFlash } from './CardFlash';
 import {
   type LiveClock,
   type LiveLink,
+  asPeriod,
+  clockFromBase,
   formatMatchClock,
   recordMinute,
   stageLabel,
   undoClock,
 } from './clock';
-import { LIVE_COPY, offlineChip, offlineSaved, teamAction, undoWithin } from './copy';
+import { LIVE_COPY, offlineChip, offlineSaved, pausedFor, restedFor, teamAction, undoWithin } from './copy';
+import { EventSheet } from './EventSheet';
 import { PlayerSheet } from './PlayerSheet';
 import {
+  EVENT_MAX,
+  EVENT_RESERVE,
+  EVENT_WARN,
   type FlashCard,
   type RecordAction,
   eventLines,
   findPlayer,
   flashForNewCard,
   flashFromCard,
+  linkedSecondSeq,
+  openYellowSeq,
+  recordIntent,
+  seenCards,
   unappliedEntries,
 } from './present';
 import { TakeoverDialog } from './TakeoverDialog';
+import { TeamLockup } from './TeamLockup';
+import type { ActionLogEntry, GoalKind, TimelineEvent, VoidMark } from './types';
 import { UnappliedSheet } from './UnappliedSheet';
 import './live.css';
 
@@ -34,6 +46,8 @@ export interface ScorePick {
   plId: string | null;
   goalKind: GoalKind | null;
   minute: number;
+  /** 第二張黃牌指向的第一張黃牌。一般黃牌與直紅是 null。進球不帶這個欄。 */
+  refSeq?: number | null;
 }
 
 export interface ScorePadProps {
@@ -43,12 +57,17 @@ export interface ScorePadProps {
   events: readonly TimelineEvent[];
   voids: readonly VoidMark[];
   actionLog: readonly ActionLogEntry[];
+  /** 沒傳就用 rev − resetRev。 */
+  eventCount?: number;
+  crests?: readonly EntryDoc[];
   link: LiveLink;
   clock: LiveClock;
   nowMs: number;
   takeoverOffered: boolean;
-  onRecord?: (pick: ScorePick) => void;
-  onUndo?: (seq: number) => void;
+  onRecord?: (pick: ScorePick) => void | boolean;
+  onUndo?: (seq: number) => void | boolean;
+  /** 暫停／繼續只改 clockBase，不改狀態與比分。 */
+  onClock?: (clockBase: MatchClock) => void;
   onKickoff?: () => void;
   onHalftime?: () => void;
   onFulltime?: () => void;
@@ -65,9 +84,10 @@ type Phase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
 function phaseOf(match: MatchDoc, nowMs: number): Phase {
   if (match.status === 'scheduled' || match.status === 'postponed') return 'pre';
   if (match.status === 'halftime') return 'ht';
-  if (match.status === 'finished' || match.status === 'confirmed') {
+  if (match.status === 'finished') {
     return undoClock(match.finishedAt, nowMs) ? 'undo' : 'locked';
   }
+  if (match.status === 'confirmed') return 'locked';
   return 'play';
 }
 
@@ -76,13 +96,57 @@ function Mark({ kind, second }: { kind: 'goal' | 'yellow' | 'red'; second: boole
   return <i class={`s4-mark s4-mark--${tone}`} aria-hidden="true" />;
 }
 
+function shownText(line: { minute: string; team: string; number: number | null; name: string }): string {
+  return line.number == null
+    ? `${line.minute} ${line.team}`
+    : `${line.minute} ${line.team} ${line.number} ${line.name}`;
+}
+
 export function ScorePad(props: ScorePadProps): JSX.Element {
   const {
     match, homeRoster, awayRoster, events, voids, actionLog, link, clock, nowMs, takeoverOffered,
+    crests = [],
   } = props;
+  const eventCount = props.eventCount ?? Math.max(0, match.rev - match.resetRev);
   const phase = phaseOf(match, nowMs);
-  const canRecord = phase === 'play' || phase === 'ht';
+  const reserved = eventCount >= EVENT_RESERVE;
+  const atMax = eventCount >= EVENT_MAX;
+  const nearCap = eventCount >= EVENT_WARN && eventCount < EVENT_RESERVE;
+  const goalOff = atMax || reserved || phase !== 'play';
+  const cardOff = atMax || reserved || (phase !== 'play' && phase !== 'ht');
+  const flowOff = atMax;
+
+  const [clockBase, setClockBase] = useState(match.clockBase);
+  const [now, setNow] = useState(nowMs);
+  useEffect(() => {
+    setClockBase(match.clockBase);
+  }, [match.clockBase]);
+  useEffect(() => {
+    setNow(nowMs);
+  }, [nowMs]);
+
+  const reading = clockFromBase(clockBase, now);
+  const period = asPeriod(reading.period);
+  const holdLive = !clockBase.running && clockBase.startedAt != null && (phase === 'play' || phase === 'ht');
+  useEffect(() => {
+    if (!holdLive) return;
+    const id = window.setInterval(() => {
+      setNow((value) => value + 1000);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [holdLive]);
+
+  const stageClock: LiveClock = {
+    elapsedSec: reading.elapsedSec,
+    period,
+    addedMin: clock.addedMin,
+    periodBaseMin: clock.periodBaseMin ?? null,
+  };
   const showStage = phase === 'play' || phase === 'ht';
+  const holdText = holdLive && reading.holdSec != null
+    ? (phase === 'ht' ? restedFor(formatMatchClock(reading.holdSec)) : pausedFor(formatMatchClock(reading.holdSec)))
+    : null;
+  const showPause = phase === 'play';
   const lines = eventLines({
     events,
     voids,
@@ -92,8 +156,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     awayRoster,
     hideVoided: false,
     limit: 5,
+    order: 'recent',
   });
-  const pending = unappliedEntries(actionLog);
+  const [localLog, setLocalLog] = useState<ActionLogEntry[]>([]);
+  const pending = unappliedEntries([...actionLog, ...localLog]);
+  const cards = seenCards(events, voids, [...actionLog, ...localLog]);
   const remain = phase === 'undo' ? undoClock(match.finishedAt, nowMs) : null;
 
   const [picker, setPicker] = useState<{ side: MatchSideName; action: RecordAction } | null>(null);
@@ -102,9 +169,41 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [unappliedOpen, setUnappliedOpen] = useState(false);
   const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [eventSeq, setEventSeq] = useState<number | null>(null);
+  const [amendKind, setAmendKind] = useState<GoalKind>('normal');
+  const [amendCard, setAmendCard] = useState<'yellow' | 'red'>('yellow');
+  const [amendPl, setAmendPl] = useState<string | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState<{ first: number; second: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const restoreFocus = useRef<HTMLElement | null>(null);
+
+  function rememberFocus(): void {
+    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+
+  function closeFlash(): void {
+    setFlash(null);
+    const back = restoreFocus.current;
+    restoreFocus.current = null;
+    queueMicrotask(() => {
+      if (back?.isConnected) back.focus();
+    });
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   function openPicker(side: MatchSideName, action: RecordAction): void {
-    if (!canRecord) return;
+    if (action === 'goal' ? goalOff : cardOff) return;
+    rememberFocus();
     setGoalKind('normal');
     setPicker({ side, action });
     setMenuOpen(false);
@@ -112,41 +211,156 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
 
   function choose(plId: string | null): void {
     if (!picker) return;
-    const minute = recordMinute(clock.elapsedSec);
-    props.onRecord?.({
-      side: picker.side,
-      action: picker.action,
-      plId,
-      goalKind: picker.action === 'goal' ? goalKind : null,
-      minute,
-    });
-    if (picker.action !== 'goal' && plId) {
-      const player = findPlayer(homeRoster, awayRoster, plId);
-      setFlash(flashForNewCard(picker.action, player, events, voids));
+    const minute = recordMinute(reading.elapsedSec);
+    if (picker.action === 'goal') {
+      props.onRecord?.({
+        side: picker.side,
+        action: 'goal',
+        plId,
+        goalKind,
+        minute,
+      });
+    } else {
+      const player = plId ? findPlayer(homeRoster, awayRoster, plId) : undefined;
+      const flashCard = flashForNewCard(picker.action, player, events, voids, [...actionLog, ...localLog]);
+      props.onRecord?.({
+        side: picker.side,
+        action: picker.action,
+        plId,
+        goalKind: null,
+        minute,
+        refSeq: flashCard.refSeq,
+      });
+      if (plId) setFlash(flashCard);
     }
     setPicker(null);
   }
 
-  function showExisting(seq: number): void {
+  function togglePause(): void {
+    if (flowOff) return;
+    const elapsed = Math.floor(clockFromBase(clockBase, now).elapsedSec);
+    const next: MatchClock = {
+      ...clockBase,
+      running: !clockBase.running,
+      startedAt: now,
+      pausedSec: elapsed,
+    };
+    setClockBase(next);
+    props.onClock?.(next);
+  }
+
+  function openEvent(seq: number): void {
     const event = events.find((item) => item.seq === seq);
-    if (!event || event.type !== 'card') return;
-    setFlash(flashFromCard(event.cardType, findPlayer(homeRoster, awayRoster, event.plId)));
+    if (!event || (event.type !== 'goal' && event.type !== 'card')) return;
+    if (event.type === 'goal') {
+      setAmendKind(event.goalKind);
+      setAmendPl(event.plId ?? null);
+    } else {
+      setAmendCard(event.cardType === 'yellow' ? 'yellow' : 'red');
+      setAmendPl(event.plId);
+    }
+    setEventSeq(seq);
+    setMenuOpen(false);
+  }
+
+  const openLine = lines.find((line) => line.seq === eventSeq) ?? null;
+  const openEventDoc = events.find((item) => item.seq === eventSeq) ?? null;
+
+  function undoSeq(seq: number): void {
+    if (reserved) return;
+    const second = linkedSecondSeq(cards, seq);
+    if (second != null) {
+      setConfirmUndo({ first: seq, second });
+      return;
+    }
+    props.onUndo?.(seq);
+    setEventSeq(null);
+  }
+
+  function runConfirmUndo(): void {
+    if (!confirmUndo) return;
+    const { first, second } = confirmUndo;
+    const secondOk = props.onUndo?.(second) !== false;
+    if (!secondOk) {
+      setConfirmUndo(null);
+      return;
+    }
+    const firstOk = props.onUndo?.(first) !== false;
+    setConfirmUndo(null);
+    setEventSeq(null);
+    if (!firstOk) setNotice(LIVE_COPY.undoHalf);
+  }
+
+  function submitAmend(): void {
+    if (!openEventDoc || reserved) return;
+    if (openEventDoc.type !== 'goal' && openEventDoc.type !== 'card') return;
+    const minute = Math.floor(openEventDoc.matchSecond / 60);
+    const side = openEventDoc.side;
+    const team = side === 'home' ? match.home.name : match.away.name;
+    let pick: ScorePick;
+    if (openEventDoc.type === 'goal') {
+      pick = { side, action: 'goal', plId: amendPl, goalKind: amendKind, minute };
+    } else {
+      if (amendPl == null) return;
+      const refSeq = amendCard === 'yellow' ? openYellowSeq(cards, amendPl, openEventDoc.seq) : null;
+      pick = {
+        side,
+        action: amendCard === 'yellow' ? 'yellow' : 'red',
+        plId: amendPl,
+        goalKind: null,
+        minute,
+        refSeq,
+      };
+    }
+    const voidOk = props.onUndo?.(openEventDoc.seq) !== false;
+    if (!voidOk) return;
+    const recorded = props.onRecord?.(pick) !== false;
+    if (!recorded) {
+      const player = findPlayer(homeRoster, awayRoster, pick.plId ?? undefined);
+      setNotice(LIVE_COPY.amendHalf);
+      setLocalLog((rows) => [
+        ...rows,
+        {
+          id: `amend-${openEventDoc.seq}`,
+          intent: recordIntent(team, pick, player),
+          state: 'pending',
+          at: now,
+          card: pick.action !== 'goal' && pick.plId
+            ? {
+              plId: pick.plId,
+              cardType: pick.refSeq != null ? 'second_yellow' : pick.action === 'yellow' ? 'yellow' : 'red',
+              seq: match.rev + rows.length + 1,
+              refSeq: pick.refSeq ?? undefined,
+            }
+            : undefined,
+        },
+      ]);
+    }
+    setEventSeq(null);
+  }
+
+  function showOpenCard(): void {
+    if (!openEventDoc || openEventDoc.type !== 'card') return;
+    rememberFocus();
+    setFlash(flashFromCard(openEventDoc.cardType, findPlayer(homeRoster, awayRoster, openEventDoc.plId)));
   }
 
   const pickerRoster = picker?.side === 'away' ? awayRoster : homeRoster;
   const pickerTeam = picker?.side === 'away' ? match.away.name : match.home.name;
+  const amendRoster = openEventDoc && 'side' in openEventDoc && openEventDoc.side === 'away' ? awayRoster : homeRoster;
 
   return (
     <section class="s4-root">
       <header>
         <div class="s4-board">
-          <span class="s4-team">{match.home.name}</span>
+          <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
           <span class="s4-score">{match.score.home}:{match.score.away}</span>
-          <span class="s4-team s4-team--away">{match.away.name}</span>
+          <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
         </div>
         <div class="s4-clockrow">
-          <span class="s4-clock">{formatMatchClock(clock.elapsedSec)}</span>
-          {showStage ? <span class="s4-stage">{stageLabel(clock)}</span> : null}
+          <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
+          {holdText ? <span class="s4-hold">{holdText}</span> : null}
+          {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
         </div>
         <div class="s4-meta">
           <Badge
@@ -156,6 +370,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           />
         </div>
       </header>
+
+      {nearCap ? <p class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p> : null}
+      {reserved ? <p class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.atCap}</p> : null}
+      {notice ? <p class="s4-banner s4-banner--saved" role="alert">{notice}</p> : null}
 
       {!link.online && link.storageUnavailable ? (
         <p class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>
@@ -169,40 +387,46 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         <TeamColumn
           side="home"
           team={match.home.name}
-          disabled={!canRecord}
+          entryId={match.home.teamId}
+          crests={crests}
+          goalDisabled={goalOff}
+          cardDisabled={cardOff}
           onAction={openPicker}
         />
         <TeamColumn
           side="away"
           team={match.away.name}
-          disabled={!canRecord}
+          entryId={match.away.teamId}
+          crests={crests}
+          goalDisabled={goalOff}
+          cardDisabled={cardOff}
           onAction={openPicker}
         />
       </div>
 
       {lines.length > 0 ? (
         <ul class="s4-events">
-          {lines.map((line) => {
-            const shown = line.number == null
-              ? `${line.minute} ${line.team}`
-              : `${line.minute} ${line.team} ${line.number} ${line.name}`;
-            return (
-              <li key={line.seq} class={line.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
-                <Mark kind={line.kind} second={line.secondYellow} />
-                {line.showLabel ? (
-                  <button type="button" class="s4-ev__main" aria-label={line.showLabel} onClick={() => showExisting(line.seq)}>
-                    {shown}
-                  </button>
-                ) : (
-                  <div class="s4-ev__main">{shown}</div>
-                )}
-                {line.voided ? <span class="s4-ev__tag">{LIVE_COPY.undone}</span> : null}
-                {!line.voided && (line.kind === 'goal' || line.kind === 'yellow' || line.kind === 'red') ? (
-                  <Button variant="ghost" size="sm" onClick={() => props.onUndo?.(line.seq)}>{LIVE_COPY.undo}</Button>
-                ) : null}
-              </li>
-            );
-          })}
+          {lines.map((line) => (
+            <li key={line.seq} class={line.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
+              <Mark kind={line.kind} second={line.secondYellow} />
+              {line.voided ? (
+                <>
+                  <div class="s4-ev__main">{shownText(line)}</div>
+                  <span class="s4-sr">{line.label}</span>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  class="s4-ev__main"
+                  aria-label={line.label}
+                  onClick={() => openEvent(line.seq)}
+                >
+                  {shownText(line)}
+                </button>
+              )}
+              {line.voided ? <span class="s4-ev__tag">{LIVE_COPY.undone}</span> : null}
+            </li>
+          ))}
         </ul>
       ) : null}
 
@@ -221,38 +445,41 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         <div class="s4-sent">
           <p class="s4-sent__st">{LIVE_COPY.fulltimeSent}</p>
           <p class="s4-sent__cd">{undoWithin(remain)}</p>
-          <Button variant="danger" onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
+          <Button variant="danger" disabled={flowOff} onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
         </div>
       ) : null}
 
       {phase === 'pre' || phase === 'play' || phase === 'ht' ? (
         <div class="s4-ctrl">
           {phase === 'pre' ? (
-            <Button size="lg" onClick={() => props.onKickoff?.()}>{LIVE_COPY.kickoff}</Button>
+            <Button size="lg" disabled={flowOff} onClick={() => props.onKickoff?.()}>{LIVE_COPY.kickoff}</Button>
           ) : null}
           {phase === 'play' ? (
-            <Button variant="secondary" onClick={() => props.onHalftime?.()}>{LIVE_COPY.halftime}</Button>
+            <Button variant="secondary" disabled={flowOff} onClick={() => props.onHalftime?.()}>{LIVE_COPY.halftime}</Button>
           ) : null}
           {phase === 'play' ? (
-            <Button variant="danger" onClick={() => props.onFulltime?.()}>{LIVE_COPY.fulltime}</Button>
+            <Button variant="danger" disabled={flowOff} onClick={() => props.onFulltime?.()}>{LIVE_COPY.fulltime}</Button>
           ) : null}
           {phase === 'ht' ? (
-            <Button size="lg" onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
+            <Button size="lg" disabled={flowOff} onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
           ) : null}
           <div class="s4-menu-wrap">
             <Button
               class="s4-menu-btn"
               variant="ghost"
+              disabled={flowOff}
               aria-expanded={menuOpen}
+              aria-controls="s4-clock-menu"
               aria-label={LIVE_COPY.matchMenu}
               onClick={() => setMenuOpen((open) => !open)}
             >
               {LIVE_COPY.matchMenu}
             </Button>
             {menuOpen ? (
-              <div class="s4-menu" role="menu">
+              <div id="s4-clock-menu" class="s4-menu">
                 <Button
                   variant="ghost"
+                  disabled={reserved}
                   onClick={() => {
                     setMenuOpen(false);
                     props.onCorrectClock?.();
@@ -265,13 +492,20 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           </div>
         </div>
       ) : null}
+      {showPause ? (
+        <div class="s4-pause">
+          <Button variant="secondary" disabled={flowOff} onClick={togglePause}>
+            {clockBase.running ? LIVE_COPY.pauseClock : LIVE_COPY.resumeClock}
+          </Button>
+        </div>
+      ) : null}
 
       {picker ? (
         <PlayerSheet
           open
           teamName={pickerTeam}
           action={picker.action}
-          minute={recordMinute(clock.elapsedSec)}
+          minute={recordMinute(reading.elapsedSec)}
           roster={pickerRoster}
           goalKind={goalKind}
           onGoalKind={setGoalKind}
@@ -279,7 +513,43 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onClose={() => setPicker(null)}
         />
       ) : null}
-      {flash ? <CardFlash {...flash} onClose={() => setFlash(null)} /> : null}
+      {openLine && openEventDoc && (openEventDoc.type === 'goal' || openEventDoc.type === 'card') ? (
+        <EventSheet
+          summary={openLine.label}
+          label={openLine.label}
+          kind={openEventDoc.type === 'goal' ? 'goal' : 'card'}
+          roster={amendRoster}
+          goalKind={amendKind}
+          cardChoice={amendCard}
+          playerId={amendPl}
+          blocked={reserved}
+          onGoalKind={setAmendKind}
+          onCardChoice={setAmendCard}
+          onPlayer={setAmendPl}
+          onUnspecified={() => setAmendPl(null)}
+          onUndo={() => undoSeq(openLine.seq)}
+          onAmend={submitAmend}
+          onShowCard={showOpenCard}
+          onClose={() => setEventSeq(null)}
+        />
+      ) : null}
+      {confirmUndo ? (
+        <Modal
+          open
+          class="s4-dialog"
+          title={LIVE_COPY.undo}
+          onClose={() => setConfirmUndo(null)}
+          footer={(
+            <>
+              <Button onClick={runConfirmUndo}>{LIVE_COPY.undoBothConfirm}</Button>
+              <Button variant="secondary" onClick={() => setConfirmUndo(null)}>{LIVE_COPY.takeoverLater}</Button>
+            </>
+          )}
+        >
+          <p class="s4-note">{LIVE_COPY.undoBoth}</p>
+        </Modal>
+      ) : null}
+      {flash ? <CardFlash {...flash} onClose={closeFlash} /> : null}
       <UnappliedSheet
         open={unappliedOpen}
         entries={pending}
@@ -302,21 +572,28 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
 function TeamColumn({
   side,
   team,
-  disabled,
+  entryId,
+  crests,
+  goalDisabled,
+  cardDisabled,
   onAction,
 }: {
   side: MatchSideName;
   team: string;
-  disabled: boolean;
+  entryId: string;
+  crests: readonly EntryDoc[];
+  goalDisabled: boolean;
+  cardDisabled: boolean;
   onAction: (side: MatchSideName, action: RecordAction) => void;
 }): JSX.Element {
   return (
     <div class={side === 'home' ? 's4-col s4-col--home' : 's4-col s4-col--away'}>
-      <span class="s4-col__name">{team}</span>
+      <TeamLockup entryId={entryId} name={team} crests={crests} align={side} place="column" />
       <button
         type="button"
         class="s4-hit s4-hit--goal"
-        disabled={disabled}
+        disabled={goalDisabled}
+        aria-disabled={goalDisabled ? 'true' : undefined}
         aria-label={teamAction(team, LIVE_COPY.goal)}
         onClick={() => onAction(side, 'goal')}
       >
@@ -326,7 +603,8 @@ function TeamColumn({
         <button
           type="button"
           class="s4-hit s4-hit--card s4-hit--yellow"
-          disabled={disabled}
+          disabled={cardDisabled}
+          aria-disabled={cardDisabled ? 'true' : undefined}
           aria-label={teamAction(team, LIVE_COPY.yellow)}
           onClick={() => onAction(side, 'yellow')}
         >
@@ -335,7 +613,8 @@ function TeamColumn({
         <button
           type="button"
           class="s4-hit s4-hit--card s4-hit--red"
-          disabled={disabled}
+          disabled={cardDisabled}
+          aria-disabled={cardDisabled ? 'true' : undefined}
           aria-label={teamAction(team, LIVE_COPY.red)}
           onClick={() => onAction(side, 'red')}
         >

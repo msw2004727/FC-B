@@ -20,6 +20,27 @@
 .s4-root,
 .s4-page {
   padding: 8px 8px 12px;
+  --crest-0: #0f766e;
+  --crest-1: #0e7490;
+  --crest-2: #c2410c;
+  --crest-3: #be123c;
+  --crest-4: #475569;
+  --crest-5: #4d7c0f;
+  --crest-6: #57534e;
+  --crest-7: #047857;
+  --crest-fg: #fff;
+}
+[data-theme="dark"] .s4-root,
+[data-theme="dark"] .s4-page {
+  --crest-0: #2dd4bf;
+  --crest-1: #22d3ee;
+  --crest-2: #fb923c;
+  --crest-3: #fb7185;
+  --crest-4: #94a3b8;
+  --crest-5: #a3e635;
+  --crest-6: #a8a29e;
+  --crest-7: #34d399;
+  --crest-fg: #0b0f16;
 }
 .s4-root {
   display: flex;
@@ -44,6 +65,44 @@
   text-overflow: ellipsis;
 }
 .s4-team--away { text-align: end; }
+.s4-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.s4-board .s4-side { width: 100%; }
+.s4-side--away { flex-direction: row-reverse; }
+.s4-side--col { justify-content: center; }
+.s4-side .s4-team,
+.s4-side .s4-col__name { flex: 1 1 auto; min-width: 0; }
+.s4-side--col .s4-col__name { flex: 0 1 auto; }
+.s4-root .cp3-crest,
+.s4-page .cp3-crest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1;
+}
+.s4-root .cp3-crest--txt,
+.s4-page .cp3-crest--txt {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  color: var(--crest-fg);
+}
+.s4-root .cp3-crest--c0, .s4-page .cp3-crest--c0 { background: var(--crest-0); }
+.s4-root .cp3-crest--c1, .s4-page .cp3-crest--c1 { background: var(--crest-1); }
+.s4-root .cp3-crest--c2, .s4-page .cp3-crest--c2 { background: var(--crest-2); }
+.s4-root .cp3-crest--c3, .s4-page .cp3-crest--c3 { background: var(--crest-3); }
+.s4-root .cp3-crest--c4, .s4-page .cp3-crest--c4 { background: var(--crest-4); }
+.s4-root .cp3-crest--c5, .s4-page .cp3-crest--c5 { background: var(--crest-5); }
+.s4-root .cp3-crest--c6, .s4-page .cp3-crest--c6 { background: var(--crest-6); }
+.s4-root .cp3-crest--c7, .s4-page .cp3-crest--c7 { background: var(--crest-7); }
 .s4-score {
   font-size: 40px;
   line-height: 1;
@@ -65,12 +124,14 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.s4-stage {
+.s4-stage,
+.s4-hold {
   font-size: var(--font-size-body-lg);
   line-height: 1;
   font-weight: 700;
   white-space: nowrap;
 }
+.s4-hold { font-variant-numeric: tabular-nums; }
 .s4-meta {
   display: flex;
   justify-content: center;
@@ -194,11 +255,23 @@
   min-width: 0;
 }
 .s4-ev {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   min-height: 44px;
+}
+.s4-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .s4-mark {
   flex: 0 0 auto;
@@ -272,7 +345,9 @@ button.s4-ev__main:active { opacity: 0.7; }
   min-inline-size: 0;
   max-width: 100%;
 }
-.s4-ctrl .ui-button { flex: 1 1 0; min-height: 56px; }
+.s4-ctrl .ui-button,
+.s4-pause .ui-button { flex: 1 1 0; min-height: 56px; }
+.s4-pause { display: flex; min-width: 0; }
 .s4-ctrl .s4-menu-btn { flex: 0 0 auto; min-width: 56px; }
 .s4-menu-wrap { position: relative; flex: 0 0 auto; }
 .s4-menu {
@@ -422,6 +497,7 @@ button.s4-ev__main:active { opacity: 0.7; }
   outline-offset: 2px;
 }
 .s4-pl:active { transform: scale(0.97); background: var(--color-bg-active); }
+.s4-pl--on { box-shadow: inset 0 0 0 3px var(--color-focus-ring); }
 .s4-pl__no {
   display: block;
   font-size: 40px;
@@ -440,7 +516,25 @@ button.s4-ev__main:active { opacity: 0.7; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.s4-unspecified { width: 100%; min-height: 56px; margin-top: 12px; }
+.s4-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.s4-unspecified { width: 100%; min-height: 56px; margin-top: 0; }
+.s4-amend-act {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.s4-amend-act .ui-button { flex: 1 1 0; min-height: 56px; min-inline-size: 0; }
+.s4-evsum {
+  margin: 4px 0 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
 .s4-hint {
   margin: 0 0 8px;
   font-size: var(--font-size-body-sm);

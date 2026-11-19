@@ -3,9 +3,41 @@ import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
 import type { RosterPublicDoc } from '../data/types';
-import type { GoalKind } from '../testing/step4-fixtures';
 import { LIVE_COPY, minuteMark, playerChoiceLabel } from './copy';
 import type { RecordAction } from './present';
+import type { GoalKind } from './types';
+
+export function RosterGrid({
+  roster,
+  selectedId,
+  onPick,
+}: {
+  roster: readonly RosterPublicDoc[];
+  /** 有傳才標出目前選到的人。記分選人是點了就送出，不標。 */
+  selectedId?: string | null;
+  onPick: (plId: string) => void;
+}): JSX.Element {
+  return (
+    <div class="s4-grid">
+      {roster.map((player) => {
+        const on = selectedId === player.id;
+        return (
+          <button
+            key={player.id}
+            type="button"
+            class={on ? 's4-pl s4-pl--on' : 's4-pl'}
+            aria-label={playerChoiceLabel(player.number, player.displayName)}
+            aria-pressed={selectedId !== undefined ? on : undefined}
+            onClick={() => onPick(player.id)}
+          >
+            <span class="s4-pl__no">{player.number}</span>
+            <span class="s4-pl__name">{player.displayName}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function PlayerSheet({
   open,
@@ -55,25 +87,14 @@ export function PlayerSheet({
           ))}
         </div>
       ) : null}
-      <div class="s4-grid">
-        {roster.map((player) => (
-          <button
-            key={player.id}
-            type="button"
-            class="s4-pl"
-            aria-label={playerChoiceLabel(player.number, player.displayName)}
-            onClick={() => onPick(player.id)}
-          >
-            <span class="s4-pl__no">{player.number}</span>
-            <span class="s4-pl__name">{player.displayName}</span>
-          </button>
-        ))}
+      <div class="s4-pick">
+        <RosterGrid roster={roster} onPick={onPick} />
+        {action === 'goal' ? (
+          <Button class="s4-unspecified" variant="secondary" onClick={() => onPick(null)}>
+            {LIVE_COPY.unspecified}
+          </Button>
+        ) : null}
       </div>
-      {action === 'goal' ? (
-        <Button class="s4-unspecified" variant="secondary" onClick={() => onPick(null)}>
-          {LIVE_COPY.unspecified}
-        </Button>
-      ) : null}
     </BottomSheet>
   );
 }

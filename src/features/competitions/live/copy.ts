@@ -22,12 +22,24 @@ export const LIVE_COPY = {
   fulltime: '終場',
   resume: '下半場開始',
   correctClock: '修正時鐘',
+  pauseClock: '暫停計時',
+  resumeClock: '繼續計時',
   matchMenu: '選單',
+  amend: '改判',
+  amendNote: '會先復原原紀錄，再記新的',
+  amendHalf: '原紀錄已復原，新紀錄未送出',
+  undoBoth: '會一併復原第二張黃牌',
+  undoBothConfirm: '確定復原',
+  undoHalf: '第二張黃牌已復原，第一張黃牌仍在',
+  showCard: '看這張牌',
+  nearCap: '本場紀錄接近上限',
+  atCap: '紀錄已達上限，請由主辦在賽後登錄比分',
   fulltimeSent: '終場已送出',
   undoFulltime: '撤回終場',
   unappliedTitle: '未套用的動作',
   unappliedHint: '另一支裝置可能也在記這場',
   pending: '待送',
+  rejected: '被拒',
   rejectedTakenOver: '被拒：已被接手',
   rejectedConflict: '被拒：比分版本衝突',
   rejectedLocked: '被拒：場次已鎖',
@@ -80,4 +92,17 @@ export function minuteMark(minute: number): string {
 
 export function addedClock(baseMin: number, addedMin: number): string {
   return `${baseMin}+${addedMin}'`;
+}
+
+export function pausedFor(clock: string): string {
+  return `已暫停 ${clock}`;
+}
+
+export function restedFor(clock: string): string {
+  return `已休息 ${clock}`;
+}
+
+/** 復原、重新套用、捨棄的無障礙名稱，帶上那一筆的內容。 */
+export function withEvent(action: string, detail: string): string {
+  return `${action} ${detail}`;
 }

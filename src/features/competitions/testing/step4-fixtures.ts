@@ -1,11 +1,21 @@
-// 賽事第 4 步預覽（U0）假資料骨架。人名、隊名都是示範，不是真實帳號。
-// 只放「不受顧問 Q1～Q12 裁定影響」的形狀：事件、作廢標記、接手文件照現行 firestore.asia-main.rules。
-// 尚未加入（等裁定）：事件 sid／op（Q1、對帳）、clock 事件（Q3）、作廢牌（Q2）、stats 文件正式形狀（Q6）。
-// 正式型別在後端契約凍結後才搬進 data/types.ts；這裡的型別只給預覽與假資料一致性測試用。
+// 賽事第 4 步預覽（U0）假資料。人名、隊名都是示範，不是真實帳號。
+// 事件型別在 live/types.ts。這裡只組畫面要用的假資料。
 
+import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { taipeiMs } from '../format';
 import type { LiveClock, LiveLink } from '../live/clock';
-import type { MatchDoc, MatchSideName, RosterPositionCode, RosterPublicDoc } from '../data/types';
+import type {
+  ActionLogEntry,
+  ConfirmedMatch,
+  PublicPerson,
+  TimelineEvent,
+  VoidMark,
+} from '../live/types';
+import type { EntryDoc, MatchDoc, RosterPositionCode, RosterPublicDoc } from '../data/types';
+
+export type { ActionLogEntry, CardType, ConfirmedMatch, GoalKind, PublicPerson, TimelineEvent, VoidMark } from '../live/types';
+export type S4Person = PublicPerson;
+export type S4ConfirmedMatch = ConfirmedMatch;
 
 export const S4_NOW = taipeiMs(2027, 1, 9, 9, 34);
 export const S4_KICKOFF = taipeiMs(2027, 1, 9, 9, 0);
@@ -23,6 +33,10 @@ export const STEP4_SCREENS = [
   'score-unapplied',
   'score-takeover',
   'score-offline',
+  'score-paused',
+  'score-amend',
+  'score-cap',
+  'score-undo-half',
   // 2 指派與邀請
   'staff-list',
   'staff-assign',
@@ -50,40 +64,6 @@ export const STEP4_SCREENS = [
   'schedule-midnight',
 ] as const;
 export type Step4Screen = (typeof STEP4_SCREENS)[number];
-
-// ── 事件與作廢（照現行 Rules evShapeOk）─────────────────────────────
-export type GoalKind = 'normal' | 'penalty' | 'own';
-export type CardType = 'yellow' | 'second_yellow' | 'red';
-
-interface EventBase {
-  seq: number;
-  /** 本機比賽時鐘秒數 0～10800（發生時間）。 */
-  matchSecond: number;
-  /** 伺服器時間（送達時間），毫秒。 */
-  createdAt: number;
-}
-export type TimelineEvent =
-  | (EventBase & { type: 'goal'; side: MatchSideName; plId?: string; goalKind: GoalKind })
-  | (EventBase & { type: 'card'; side: MatchSideName; plId: string; cardType: CardType })
-  | (EventBase & { type: 'sub'; side: MatchSideName; inPlId: string; outPlId: string })
-  | (EventBase & { type: 'kickoff' | 'halftime' | 'resume' | 'fulltime' | 'undoFinish' })
-  | (EventBase & { type: 'void'; targetSeq: number });
-
-/** voids/{targetSeq}，公開、不含 uid。 */
-export interface VoidMark {
-  targetSeq: number;
-  seq: number;
-  createdAt: number;
-}
-
-/** 本機動作日誌（U1，IndexedDB）一筆的預覽形狀。對帳欄位等 Q1 裁定後補。 */
-export interface ActionLogEntry {
-  id: string;
-  intent: string;
-  state: 'pending' | 'applied' | 'rejected';
-  rejectReason?: 'conflict' | 'takenOver' | 'locked';
-  at: number;
-}
 
 // ── 球員 ─────────────────────────────────────────────────────────
 type P = [number, string, RosterPositionCode];
@@ -126,7 +106,7 @@ export const S4_LIVE_EVENTS: TimelineEvent[] = [
   { seq: 4, type: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 18 * 60 + 5, createdAt: at(1085) },
   { seq: 5, type: 'goal', side: 'home', plId: 'pl_th7', goalKind: 'normal', matchSecond: 25 * 60 + 30, createdAt: at(1530) },
   { seq: 6, type: 'void', targetSeq: 5, matchSecond: 25 * 60 + 58, createdAt: at(1558) },
-  { seq: 7, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'second_yellow', matchSecond: 31 * 60 + 2, createdAt: at(1862) },
+  { seq: 7, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'second_yellow', refSeq: 3, matchSecond: 31 * 60 + 2, createdAt: at(1862) },
 ];
 export const S4_LIVE_VOIDS: VoidMark[] = [{ targetSeq: 5, seq: 6, createdAt: at(1558) }];
 
@@ -169,7 +149,7 @@ export function s4Match(partial: Partial<MatchDoc> = {}): MatchDoc {
 export const S4_ACTION_LOG: ActionLogEntry[] = [
   { id: 'a1', intent: '海風 4 號 31\' 第二張黃牌', state: 'applied', at: at(1862) },
   { id: 'a2', intent: '雷霆 10 號 33\' 進球', state: 'pending', at: at(1990) },
-  { id: 'a3', intent: '雷霆 5 號 34\' 黃牌', state: 'pending', at: at(2040) },
+  { id: 'a3', intent: '雷霆 5 號 34\' 黃牌', state: 'pending', at: S4_NOW - 30_000, card: { plId: 'pl_th5', cardType: 'yellow', seq: 8 } },
   { id: 'a4', intent: '雷霆 9 號 32\' 進球', state: 'rejected', rejectReason: 'takenOver', at: at(1930) },
 ];
 
@@ -185,15 +165,19 @@ export function deriveScore(events: TimelineEvent[], voids: VoidMark[], resetRev
   return out;
 }
 
-/** 回傳違規說明（空陣列＝一致）：second_yellow 前必須同人已有一張未作廢黃牌。 */
+/** 回傳違規說明（空陣列＝一致）：第二黃的 refSeq 必須指向同人未作廢的黃牌。 */
 export function cardIssues(events: TimelineEvent[], voids: VoidMark[]): string[] {
   const voided = new Set(voids.map((v) => v.targetSeq));
-  const yellows = new Map<string, number>();
   const issues: string[] = [];
   for (const ev of events) {
-    if (ev.type !== 'card' || voided.has(ev.seq)) continue;
-    if (ev.cardType === 'yellow') yellows.set(ev.plId, (yellows.get(ev.plId) ?? 0) + 1);
-    if (ev.cardType === 'second_yellow' && (yellows.get(ev.plId) ?? 0) < 1) issues.push(`e${ev.seq} ${ev.plId} 沒有前一張黃牌`);
+    if (ev.type !== 'card' || ev.cardType !== 'second_yellow' || voided.has(ev.seq)) continue;
+    const first = events.find((item) => item.seq === ev.refSeq);
+    const ok = first
+      && first.type === 'card'
+      && first.cardType === 'yellow'
+      && first.plId === ev.plId
+      && !voided.has(first.seq);
+    if (!ok) issues.push(`e${ev.seq} ${ev.plId} 的 refSeq 沒有對上未作廢的第一張黃牌`);
   }
   return issues;
 }
@@ -220,24 +204,35 @@ export interface S4ScoreScene {
   events: readonly TimelineEvent[];
   voids: readonly VoidMark[];
   actionLog: readonly ActionLogEntry[];
+  /** 有傳就優先於 rev − resetRev。上限畫面用。 */
+  eventCount?: number;
+  crests: readonly EntryDoc[];
   clock: LiveClock;
   link: LiveLink;
   nowMs: number;
   takeoverOffered: boolean;
 }
 
-export interface S4Person {
-  plId: string;
-  displayName: string;
-  teamName: string;
-  isMinor: boolean;
+/** 雷霆隊有通過專案 Storage 檢查的隊徽網址；海風隊沒有，顯示首字。 */
+export const S4_CREST_URL = `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_CONFIG.storageBucket}/o/crest.png?alt=media`;
+
+function crestEntry(id: string, teamId: string, name: string, teamLogo: string | null): EntryDoc {
+  return {
+    id,
+    dvId: 'dv_adult',
+    teamId,
+    name,
+    status: 'approved',
+    rosterCount: 8,
+    rosterConfirmed: true,
+    teamLogo,
+  };
 }
 
-export interface S4ConfirmedMatch {
-  id: string;
-  events: readonly TimelineEvent[];
-  voids: readonly VoidMark[];
-}
+export const S4_CRESTS: readonly EntryDoc[] = [
+  crestEntry(S4_HOME.teamId, 'club_thunder', S4_HOME.name, S4_CREST_URL),
+  crestEntry(S4_AWAY.teamId, 'club_wind', S4_AWAY.name, null),
+];
 
 const S4_LINK_ON: LiveLink = { online: true, pendingCount: 0, storageUnavailable: false, wakeLock: true };
 const S4_CLOCK_LIVE: LiveClock = { elapsedSec: 34 * 60, period: 'h1', addedMin: null };
@@ -257,6 +252,7 @@ export const S4_SCENE_PRE: S4ScoreScene = {
   events: [],
   voids: [],
   actionLog: [],
+  crests: S4_CRESTS,
   clock: { elapsedSec: 0, period: 'h1', addedMin: null },
   link: S4_LINK_ON,
   nowMs: S4_NOW,
@@ -271,6 +267,7 @@ export const S4_SCENE_LIVE: S4ScoreScene = {
   events: S4_LIVE_EVENTS,
   voids: S4_LIVE_VOIDS,
   actionLog: [],
+  crests: S4_CRESTS,
   clock: S4_CLOCK_LIVE,
   link: S4_LINK_ON,
   nowMs: S4_NOW,
@@ -281,7 +278,7 @@ export const S4_SCENE_HT: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   match: s4Match({
     status: 'halftime',
-    clockBase: { startedAt: S4_KICKOFF, pausedSec: 45 * 60, running: false, period: 'ht' },
+    clockBase: { startedAt: S4_NOW - 8 * 60 * 1000, pausedSec: 45 * 60, running: false, period: 'ht' },
   }),
   clock: { elapsedSec: 45 * 60, period: 'ht', addedMin: null },
 };
@@ -298,7 +295,7 @@ export const S4_SCENE_FT: S4ScoreScene = {
     status: 'finished',
     rev: 8,
     finishedAt: S4_FT_AT,
-    clockBase: { startedAt: S4_KICKOFF, pausedSec: 0, running: false, period: 'h2' },
+    clockBase: { startedAt: S4_FT_AT, pausedSec: 90 * 60, running: false, period: 'h2' },
     updatedAt: S4_FT_AT,
   }),
   events: S4_FT_EVENTS,
@@ -308,8 +305,8 @@ export const S4_SCENE_FT: S4ScoreScene = {
 /** 既有日誌再補兩種被拒，畫面上才看得到三種被拒狀態。 */
 export const S4_UNAPPLIED_LOG: ActionLogEntry[] = [
   ...S4_ACTION_LOG,
-  { id: 'a5', intent: "海風 10 號 35' 進球", state: 'rejected', rejectReason: 'conflict', at: S4_KICKOFF + 2100 * 1000 },
-  { id: 'a6', intent: "雷霆 8 號 36' 黃牌", state: 'rejected', rejectReason: 'locked', at: S4_KICKOFF + 2160 * 1000 },
+  { id: 'a5', intent: "海風 10 號 33' 進球", state: 'rejected', rejectReason: 'conflict', at: S4_NOW - 10_000 },
+  { id: 'a6', intent: "雷霆 8 號 33' 黃牌", state: 'rejected', rejectReason: 'locked', at: S4_NOW - 5_000 },
 ];
 export const S4_SCENE_UNAPPLIED: S4ScoreScene = {
   ...S4_SCENE_LIVE,
@@ -327,6 +324,22 @@ export const S4_SCENE_OFFLINE: S4ScoreScene = {
   link: { online: false, pendingCount: 2, storageUnavailable: true, wakeLock: false },
 };
 
+/** 進行中但時鐘已暫停 83 秒。主時鐘停在 34:00，旁邊是已暫停 01:23。 */
+export const S4_SCENE_PAUSED: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({
+    clockBase: { startedAt: S4_NOW - 83_000, pausedSec: 34 * 60, running: false, period: 'h1' },
+  }),
+  clock: { elapsedSec: 34 * 60, period: 'h1', addedMin: null },
+};
+
+/** 96 筆：已過 95，進球／牌／換人／修正時鐘停用，比賽控制還在。 */
+export const S4_SCENE_CAP: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({ rev: 96, resetRev: 0 }),
+  eventCount: 96,
+};
+
 export const S4_SCORE_SCENES = {
   'score-pre': S4_SCENE_PRE,
   'score-live': S4_SCENE_LIVE,
@@ -338,6 +351,10 @@ export const S4_SCORE_SCENES = {
   'score-unapplied': S4_SCENE_UNAPPLIED,
   'score-takeover': S4_SCENE_TAKEOVER,
   'score-offline': S4_SCENE_OFFLINE,
+  'score-paused': S4_SCENE_PAUSED,
+  'score-amend': S4_SCENE_LIVE,
+  'score-cap': S4_SCENE_CAP,
+  'score-undo-half': S4_SCENE_LIVE,
 } as const;
 
 /** 詳情頁：兩場進行中、一場比分已更正。長隊名用來確認省略號仍看得出開頭。 */
@@ -347,7 +364,7 @@ export const S4_DETAIL_ROWS = [
   { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
 ] as const;
 
-/** 這 13 個是 U0a 要拍的畫面。名稱對齊 harness 與截圖腳本。 */
+/** U0a 再加上暫停、改判、上限、復原半成功。名稱對齊 harness 與截圖腳本。 */
 export const S4A_SCREENS = [
   'score-pre',
   'score-live',
@@ -359,6 +376,10 @@ export const S4A_SCREENS = [
   'score-unapplied',
   'score-takeover',
   'score-offline',
+  'score-paused',
+  'score-amend',
+  'score-cap',
+  'score-undo-half',
   'live-detail',
   'live-match',
   'live-scorers',
@@ -389,7 +410,7 @@ export const S4_CONFIRMED: readonly S4ConfirmedMatch[] = [
       { seq: 3, type: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: sec(30), createdAt: sec(30) },
       { seq: 4, type: 'goal', side: 'home', plId: 'pl_th10', goalKind: 'normal', matchSecond: sec(40), createdAt: sec(40) },
       { seq: 5, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'yellow', matchSecond: sec(50), createdAt: sec(50) },
-      { seq: 6, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'second_yellow', matchSecond: sec(55), createdAt: sec(55) },
+      { seq: 6, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'second_yellow', refSeq: 5, matchSecond: sec(55), createdAt: sec(55) },
     ],
   },
   {

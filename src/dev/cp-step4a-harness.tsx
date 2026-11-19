@@ -36,12 +36,30 @@ const ANCHORS: Record<string, string> = {
   'score-unapplied': '另一支裝置可能也在記這場',
   'score-takeover': '接手記分',
   'score-offline': '重整後會消失',
+  'score-paused': '繼續計時',
+  'score-amend': '會先復原原紀錄，再記新的',
+  'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
 };
 
+/** 復原半成功：第一筆（第二張黃牌）成功，第二筆（第一張黃牌）失敗。計數放元件外，重繪不會歸零。 */
+let undoHalfCalls = 0;
+
 function Screen() {
+  if (screenName === 'score-undo-half') {
+    return (
+      <ScorePad
+        {...S4_SCENE_LIVE}
+        onUndo={() => {
+          undoHalfCalls += 1;
+          return undoHalfCalls === 1;
+        }}
+      />
+    );
+  }
   if (screenName in S4_SCORE_SCENES) {
     const scene = S4_SCORE_SCENES[screenName as keyof typeof S4_SCORE_SCENES];
     return <ScorePad {...scene} />;
@@ -57,6 +75,7 @@ function Screen() {
         voids={scene.voids}
         homeRoster={scene.homeRoster}
         awayRoster={scene.awayRoster}
+        crests={scene.crests}
       />
     );
   }
@@ -104,11 +123,27 @@ const OPEN: Record<string, () => Promise<void>> = {
   },
   'score-card-yellow': async () => {
     clickLabel("12' 黃牌");
+    await until('事件面板', () => hasText('看這張牌'));
+    clickButton('看這張牌');
     await until('黃牌亮牌', () => hasText('點一下關閉') && !!document.querySelector('.s4-flash--yellow'));
   },
   'score-card-red-auto': async () => {
     clickLabel('第二張黃牌');
+    await until('事件面板', () => hasText('看這張牌'));
+    clickButton('看這張牌');
     await until('第二張黃牌', () => hasText('第二張黃牌 → 紅牌') && !!document.querySelector('.s4-flash--red'));
+  },
+  'score-amend': async () => {
+    clickLabel("5' 進球");
+    await until('改判', () => hasText('會先復原原紀錄，再記新的') && hasText('復原') && hasText('改判'));
+  },
+  'score-undo-half': async () => {
+    clickLabel("12' 黃牌");
+    await until('事件面板', () => hasText('會先復原原紀錄，再記新的'));
+    clickButton('復原');
+    await until('確認', () => hasText('會一併復原第二張黃牌'));
+    clickButton('確定復原');
+    await until('半成功', () => hasText('第二張黃牌已復原，第一張黃牌仍在'));
   },
   'score-unapplied': async () => {
     clickButton('未套用的動作');

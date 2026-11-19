@@ -22,6 +22,10 @@ const ANCHORS = {
   'score-unapplied': '另一支裝置可能也在記這場',
   'score-takeover': '接手記分',
   'score-offline': '重整後會消失',
+  'score-paused': '繼續計時',
+  'score-amend': '會先復原原紀錄，再記新的',
+  'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
@@ -38,12 +42,16 @@ const SCREENS = [
   ['score-unapplied', ALL, THEMES, false],
   ['score-takeover', ALL, THEMES, false],
   ['score-offline', ALL, THEMES, true],
+  ['score-paused', ALL, THEMES, true],
+  ['score-amend', ALL, THEMES, false],
+  ['score-cap', ALL, THEMES, true],
+  ['score-undo-half', ALL, THEMES, false],
   ['live-detail', ALL, THEMES, true],
   ['live-match', ALL, THEMES, true],
   ['live-scorers', ALL, THEMES, true],
 ];
 
-const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, th';
+const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, th';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
@@ -74,7 +82,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
       // 區塊內部溢出（被 overflow:hidden 吃掉的內容）也要抓
       const clipped = await page.evaluate(() => {
         const out = [];
-        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-pitch, .s4-ctrl, .s4-ev, .s4-cardrow, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid')) {
+        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-pitch, .s4-ctrl, .s4-pause, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-cardrow, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid')) {
           if (el.scrollWidth - el.clientWidth > 1) out.push(`${el.className} ${el.scrollWidth}>${el.clientWidth}`);
         }
         return out;

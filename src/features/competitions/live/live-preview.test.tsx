@@ -1,8 +1,12 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
 import {
+  S4_ACTION_LOG,
   S4_CONFIRMED,
+  S4_CREST_URL,
   S4_DETAIL_ROWS,
   S4_NOW,
   S4_PEOPLE,
@@ -10,8 +14,10 @@ import {
   S4_SCENE_HT,
   S4_SCENE_LIVE,
   S4_SCENE_OFFLINE,
+  S4_SCENE_PAUSED,
   S4_SCENE_PRE,
   S4_SCENE_UNAPPLIED,
+  s4Match,
   type S4ScoreScene,
 } from '../testing/step4-fixtures';
 import { CardFlash } from './CardFlash';
@@ -19,15 +25,28 @@ import { stageLabel } from './clock';
 import { LiveDetailList } from './LiveDetailList';
 import { LiveMatchView } from './LiveMatchView';
 import { LiveScoreBadge } from './LiveScoreBadge';
+import { eventLines, linesIfOpen, rejectText } from './present';
 import { ScorePad, type ScorePadProps } from './ScorePad';
 import { ScorersTable } from './ScorersTable';
 import { derivePublicTable } from './stats';
+import type { TimelineEvent } from './types';
 
 installUi4TestLocale();
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
+
+function button(name: string | RegExp): HTMLButtonElement {
+  return screen.getByRole('button', { name }) as HTMLButtonElement;
+}
+
+function expectOff(name: string | RegExp, off: boolean): void {
+  const node = button(name);
+  expect(node.disabled).toBe(off);
+  expect(node.getAttribute('aria-disabled')).toBe(off ? 'true' : null);
+}
 
 function pad(scene: S4ScoreScene, extra: Partial<ScorePadProps> = {}) {
   return render(<ScorePad {...scene} {...extra} />);
@@ -82,6 +101,10 @@ describe('第 4 步預覽元件', () => {
     const onRecord = vi.fn();
     pad(S4_SCENE_LIVE, { onRecord });
     fireEvent.click(screen.getByRole('button', { name: '雷霆隊 進球' }));
+    const pick = document.querySelector('.s4-pick');
+    expect(pick?.querySelector('.s4-grid')?.nextElementSibling?.classList.contains('s4-unspecified')).toBe(true);
+    const css = readFileSync(join(process.cwd(), 'src/features/competitions/live/live.css'), 'utf8');
+    expect(css).toMatch(/\.s4-pick\s*\{[^}]*gap:\s*16px/);
     fireEvent.click(screen.getByRole('button', { name: '9 劉冠廷' }));
     expect(onRecord).toHaveBeenCalledTimes(1);
     expect(onRecord).toHaveBeenCalledWith({
@@ -95,15 +118,18 @@ describe('第 4 步預覽元件', () => {
 
   it('亮牌顯示事件裡的背號與名字；第二張黃牌是紅底', () => {
     const view = pad(S4_SCENE_LIVE);
-    fireEvent.click(screen.getByRole('button', { name: "12' 黃牌 4 周子維" }));
+    fireEvent.click(screen.getByRole('button', { name: "12' 黃牌 海風隊 4 周子維" }));
+    fireEvent.click(screen.getByRole('button', { name: /^看這張牌/ }));
     const yellow = view.container.querySelector('.s4-flash');
     expect(yellow?.classList.contains('s4-flash--yellow')).toBe(true);
+    expect(yellow?.getAttribute('role')).toBe('dialog');
     expect(yellow?.textContent).toContain('4');
     expect(yellow?.textContent).toContain('周子維');
     expect(yellow?.textContent).toContain('黃牌');
     expect(yellow?.textContent).not.toContain('第二張黃牌');
 
-    fireEvent.click(screen.getByRole('button', { name: "31' 第二張黃牌 4 周子維" }));
+    fireEvent.click(screen.getByRole('button', { name: "31' 第二張黃牌 海風隊 4 周子維" }));
+    fireEvent.click(screen.getByRole('button', { name: /^看這張牌/ }));
     const red = view.container.querySelector('.s4-flash');
     expect(red?.classList.contains('s4-flash--red')).toBe(true);
     expect(red?.textContent).toContain('4');
@@ -120,20 +146,27 @@ describe('第 4 步預覽元件', () => {
     expect(flash?.textContent).toContain('第二張黃牌 → 紅牌');
   });
 
-  it('未套用清單的重新套用與捨棄各觸發一次', () => {
+  it('未套用清單的重新套用與捨棄各觸發一次，場次已鎖不能重新套用', () => {
     const onReapply = vi.fn();
     const onDiscard = vi.fn();
     pad(S4_SCENE_UNAPPLIED, { onReapply, onDiscard });
     fireEvent.click(screen.getByRole('button', { name: '未套用的動作' }));
-    const reapply = screen.getAllByRole('button', { name: '重新套用' });
-    const discard = screen.getAllByRole('button', { name: '捨棄' });
+    const reapply = screen.getAllByRole('button', { name: /^重新套用/ });
+    const discard = screen.getAllByRole('button', { name: /^捨棄/ });
+    expect(reapply).toHaveLength(2);
+    expect(discard).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: "重新套用 雷霆 8 號 33' 黃牌" })).toBeNull();
+    expect(screen.getByRole('button', { name: "重新套用 海風 10 號 33' 進球" })).toBeTruthy();
+    expect(screen.getByRole('button', { name: "捨棄 雷霆 8 號 33' 黃牌" })).toBeTruthy();
     const firstReapply = reapply[0];
     const firstDiscard = discard[0];
     if (!firstReapply || !firstDiscard) throw new Error('找不到重新套用或捨棄');
     fireEvent.click(firstReapply);
     fireEvent.click(firstDiscard);
     expect(onReapply).toHaveBeenCalledTimes(1);
+    expect(onReapply).toHaveBeenCalledWith('a5');
     expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledWith('a6');
   });
 
   it('撤回倒數由 finishedAt 算出', () => {
@@ -154,7 +187,7 @@ describe('第 4 步預覽元件', () => {
     render(<LiveMatchView match={match} clock={clock} events={events} voids={voids} homeRoster={homeRoster} awayRoster={awayRoster} />);
     expect(screen.queryByText(/劉冠廷/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '比賽紀錄' }));
-    expect(screen.getByText(/劉冠廷/)).toBeTruthy();
+    expect(screen.getAllByText(/劉冠廷/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/張宇軒/)).toBeNull();
   });
 
@@ -184,17 +217,395 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText('離線中，已存 2 筆，恢復網路會自動送出')).toBeTruthy();
   });
 
-  it('補時階段顯示 20+2\'', () => {
-    expect(stageLabel({ elapsedSec: 20 * 60, period: 'h1', addedMin: 2 })).toBe("20+2'");
-    pad(S4_SCENE_LIVE);
-    cleanup();
+  it('補時基準固定，秒數再走階段文字也不變', () => {
+    expect(stageLabel({ elapsedSec: 20 * 60, period: 'h1', addedMin: 2 })).toBe("45+2'");
+    expect(stageLabel({ elapsedSec: 46 * 60 + 10, period: 'h1', addedMin: 2 })).toBe("45+2'");
+    expect(stageLabel({ elapsedSec: 20 * 60 + 30, period: 'h1', addedMin: 2, periodBaseMin: 20 })).toBe("20+2'");
     render(
       <ScorePad
         {...S4_SCENE_LIVE}
-        clock={{ elapsedSec: 20 * 60 + 30, period: 'h1', addedMin: 2 }}
+        match={{
+          ...S4_SCENE_LIVE.match,
+          clockBase: {
+            startedAt: S4_NOW - (20 * 60 + 30) * 1000,
+            pausedSec: 0,
+            running: true,
+            period: 'h1',
+          },
+        }}
+        clock={{ elapsedSec: 20 * 60 + 30, period: 'h1', addedMin: 2, periodBaseMin: 20 }}
       />,
     );
     expect(screen.getByText("20+2'")).toBeTruthy();
     expect(screen.getByText('20:30')).toBeTruthy();
+  });
+
+  it('比分列與兩隊欄位：有網址的隊顯示圖，沒有的顯示首字', () => {
+    const view = pad(S4_SCENE_LIVE);
+    const imgs = [...view.container.querySelectorAll('img.cp3-crest')];
+    expect(imgs).toHaveLength(2);
+    expect(imgs.every((img) => img.getAttribute('src') === S4_CREST_URL)).toBe(true);
+    const initials = [...view.container.querySelectorAll('.cp3-crest--txt')].map((node) => node.textContent);
+    expect(initials.filter((text) => text === '海')).toHaveLength(2);
+    expect(initials.includes('雷')).toBe(false);
+    cleanup();
+
+    const { match, clock, events, voids, homeRoster, awayRoster, crests } = S4_SCENE_LIVE;
+    const page = render(
+      <LiveMatchView
+        match={match}
+        clock={clock}
+        events={events}
+        voids={voids}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+        crests={crests}
+      />,
+    );
+    expect(page.container.querySelectorAll('img.cp3-crest')).toHaveLength(1);
+    expect(page.container.querySelector('.cp3-crest--txt')?.textContent).toBe('海');
+  });
+
+  it('暫停凍結主時鐘，已暫停每秒加 1，繼續只改 clockBase', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const onClock = vi.fn();
+    const onRecord = vi.fn();
+    pad(S4_SCENE_LIVE, { onClock, onRecord });
+    fireEvent.click(button('暫停計時'));
+    expect(onClock).toHaveBeenCalledWith({
+      startedAt: S4_NOW,
+      pausedSec: 34 * 60,
+      running: false,
+      period: 'h1',
+    });
+    expect(onRecord).not.toHaveBeenCalled();
+    expect(screen.getByText('34:00')).toBeTruthy();
+    expect(screen.getByText('已暫停 00:00')).toBeTruthy();
+    expect(button('繼續計時')).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText('34:00')).toBeTruthy();
+    expect(screen.getByText('已暫停 00:01')).toBeTruthy();
+  });
+
+  it('暫停中畫面是 34:00 與已暫停 01:23，繼續後恢復走時', () => {
+    const onClock = vi.fn();
+    pad(S4_SCENE_PAUSED, { onClock });
+    expect(screen.getByText('34:00')).toBeTruthy();
+    expect(screen.getByText('已暫停 01:23')).toBeTruthy();
+    expect(screen.queryByText(/已休息/)).toBeNull();
+    fireEvent.click(button('繼續計時'));
+    expect(onClock).toHaveBeenCalledWith({
+      startedAt: S4_NOW,
+      pausedSec: 34 * 60,
+      running: true,
+      period: 'h1',
+    });
+    expect(button('暫停計時')).toBeTruthy();
+    expect(screen.queryByText(/已暫停/)).toBeNull();
+  });
+
+  it('中場進球停用、牌可按，並顯示已休息', () => {
+    pad(S4_SCENE_HT);
+    expect(screen.getByText('45:00')).toBeTruthy();
+    expect(screen.getByText('已休息 08:00')).toBeTruthy();
+    expectOff('雷霆隊 進球', true);
+    expectOff('海風隊 進球', true);
+    expectOff('雷霆隊 黃牌', false);
+    expectOff('雷霆隊 紅牌', false);
+    fireEvent.click(button('雷霆隊 進球'));
+    expect(screen.queryByText('不指定球員')).toBeNull();
+    fireEvent.click(button('雷霆隊 黃牌'));
+    expect(screen.getByRole('button', { name: '4 林志遠' })).toBeTruthy();
+  });
+
+  it('改判先復原再記新的；只成功一半就列入未套用', () => {
+    const onUndo = vi.fn(() => true);
+    const onRecord = vi.fn(() => false);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord });
+    fireEvent.click(button("5' 進球 雷霆隊 9 劉冠廷"));
+    expect(screen.getByText('會先復原原紀錄，再記新的')).toBeTruthy();
+    fireEvent.click(button('點球'));
+    fireEvent.click(button('10 蔡明哲'));
+    fireEvent.click(button(/^改判/));
+    expect(onUndo).toHaveBeenCalledWith(2);
+    expect(onRecord).toHaveBeenCalledWith({
+      side: 'home',
+      action: 'goal',
+      plId: 'pl_th10',
+      goalKind: 'penalty',
+      minute: 5,
+    });
+    expect(screen.getByRole('alert').textContent).toContain('原紀錄已復原，新紀錄未送出');
+    fireEvent.click(button('未套用的動作'));
+    expect(screen.getByText("雷霆隊 10 號 5' 點球")).toBeTruthy();
+  });
+
+  it('牌可改黃紅，分鐘沿用原事件', () => {
+    const onUndo = vi.fn(() => true);
+    const onRecord = vi.fn(() => true);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord });
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button('紅牌'));
+    fireEvent.click(button(/^改判/));
+    expect(onUndo).toHaveBeenCalledWith(3);
+    expect(onRecord).toHaveBeenCalledWith({
+      side: 'away',
+      action: 'red',
+      plId: 'pl_hf4',
+      goalKind: null,
+      minute: 12,
+      refSeq: null,
+    });
+  });
+
+  it('同人還有未被引用的黃牌才亮第二張黃牌，並帶回 refSeq', () => {
+    const pending = S4_ACTION_LOG.find((entry) => entry.id === 'a3');
+    const onRecord = vi.fn();
+    pad(S4_SCENE_LIVE, { onRecord, actionLog: pending ? [pending] : [] });
+    fireEvent.click(button('雷霆隊 黃牌'));
+    fireEvent.click(button('5 黃柏翰'));
+    expect(onRecord).toHaveBeenCalledWith({
+      side: 'home',
+      action: 'yellow',
+      plId: 'pl_th5',
+      goalKind: null,
+      minute: 34,
+      refSeq: 8,
+    });
+    const flash = document.querySelector('.s4-flash');
+    expect(flash?.classList.contains('s4-flash--red')).toBe(true);
+    expect(flash?.textContent).toContain('第二張黃牌 → 紅牌');
+    cleanup();
+
+    const onRecordPlain = vi.fn();
+    pad(S4_SCENE_LIVE, { onRecord: onRecordPlain });
+    fireEvent.click(button('海風隊 黃牌'));
+    fireEvent.click(button('4 周子維'));
+    expect(onRecordPlain).toHaveBeenCalledWith({
+      side: 'away',
+      action: 'yellow',
+      plId: 'pl_hf4',
+      goalKind: null,
+      minute: 34,
+      refSeq: null,
+    });
+    expect(document.querySelector('.s4-flash')?.classList.contains('s4-flash--yellow')).toBe(true);
+  });
+
+  it('復原被引用的第一張黃牌先確認，依序復原第二黃再第一黃', () => {
+    const onUndo = vi.fn();
+    pad(S4_SCENE_LIVE, { onUndo });
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button(/^復原/));
+    expect(screen.getByText('會一併復原第二張黃牌')).toBeTruthy();
+    expect(onUndo).not.toHaveBeenCalled();
+    fireEvent.click(button('確定復原'));
+    expect(onUndo.mock.calls).toEqual([[7], [3]]);
+    cleanup();
+
+    const onUndoHalf = vi.fn((seq: number) => seq === 7);
+    pad(S4_SCENE_LIVE, { onUndo: onUndoHalf });
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button(/^復原/));
+    fireEvent.click(button('確定復原'));
+    expect(onUndoHalf.mock.calls).toEqual([[7], [3]]);
+    expect(screen.getByRole('alert').textContent).toContain('第二張黃牌已復原，第一張黃牌仍在');
+  });
+
+  it('89／90／94 可記，95 起只留比賽控制，100 全部停用', () => {
+    pad(S4_SCENE_LIVE, { eventCount: 89 });
+    expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
+    expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
+    expectOff('雷霆隊 進球', false);
+    fireEvent.click(button('選單'));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expectOff('修正時鐘', false);
+    cleanup();
+
+    pad(S4_SCENE_LIVE, { eventCount: 90 });
+    expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
+    expectOff('雷霆隊 進球', false);
+    expectOff('雷霆隊 黃牌', false);
+    cleanup();
+
+    pad(S4_SCENE_LIVE, { eventCount: 94 });
+    expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
+    expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
+    expectOff('海風隊 紅牌', false);
+    cleanup();
+
+    pad(S4_SCENE_LIVE, { eventCount: 95 });
+    expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
+    expect(screen.getByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeTruthy();
+    expectOff('雷霆隊 進球', true);
+    expectOff('雷霆隊 黃牌', true);
+    expectOff('雷霆隊 紅牌', true);
+    expectOff('半場', false);
+    expectOff('終場', false);
+    expectOff('暫停計時', false);
+    fireEvent.click(button('選單'));
+    expectOff('修正時鐘', true);
+    fireEvent.click(button("5' 進球 雷霆隊 9 劉冠廷"));
+    expectOff(/^復原/, true);
+    expectOff(/^改判/, true);
+    cleanup();
+
+    pad(S4_SCENE_LIVE, { eventCount: 100 });
+    expectOff('半場', true);
+    expectOff('終場', true);
+    expectOff('暫停計時', true);
+    expectOff('選單', true);
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    expectOff(/^看這張牌/, false);
+    cleanup();
+
+    pad(S4_SCENE_PRE, { eventCount: 100 });
+    expectOff('開賽', true);
+    cleanup();
+
+    pad(S4_SCENE_FT, { eventCount: 95 });
+    expectOff('撤回終場', false);
+    cleanup();
+    pad(S4_SCENE_FT, { eventCount: 100 });
+    expectOff('撤回終場', true);
+    cleanup();
+
+    pad(S4_SCENE_LIVE, { match: s4Match({ rev: 100, resetRev: 10 }) });
+    expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
+  });
+
+  it('已確認場次不能撤回終場', () => {
+    pad(S4_SCENE_FT, { match: { ...S4_SCENE_FT.match, status: 'confirmed' } });
+    expect(screen.queryByRole('button', { name: '撤回終場' })).toBeNull();
+    expect(screen.queryByText('終場已送出')).toBeNull();
+    cleanup();
+    pad(S4_SCENE_FT);
+    expect(button('撤回終場')).toBeTruthy();
+  });
+
+  it('選單是 disclosure，Esc 關閉', () => {
+    pad(S4_SCENE_LIVE);
+    const menu = button('選單');
+    expect(menu.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(menu);
+    expect(menu.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(button('修正時鐘')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: '修正時鐘' })).toBeNull();
+    expect(button('選單').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('亮牌是對話框，Esc 關閉後焦點回到原按鈕', async () => {
+    pad(S4_SCENE_LIVE);
+    const yellow = button('雷霆隊 黃牌');
+    yellow.focus();
+    fireEvent.click(yellow);
+    fireEvent.click(button('4 林志遠'));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-label')).toContain('黃牌');
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(yellow);
+  });
+
+  it('未知拒因顯示被拒', () => {
+    expect(rejectText('mystery')).toBe('被拒');
+    expect(rejectText(undefined)).toBe('被拒');
+    pad(S4_SCENE_LIVE, {
+      actionLog: [{
+        id: 'ax',
+        intent: "雷霆 8 號 33' 黃牌",
+        state: 'rejected',
+        rejectReason: 'mystery',
+        at: S4_NOW - 1000,
+      }],
+    });
+    fireEvent.click(button('未套用的動作'));
+    expect(screen.getByText('被拒')).toBeTruthy();
+    expect(screen.queryByText('被拒：已被接手')).toBeNull();
+  });
+
+  it('觀眾時間軸依比賽秒數再依 seq；收起時不計算', () => {
+    const events: TimelineEvent[] = [
+      { seq: 1, type: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: 10 * 60, createdAt: 1 },
+      { seq: 2, type: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 20 * 60, createdAt: 2 },
+      { seq: 3, type: 'goal', side: 'home', plId: 'pl_th10', goalKind: 'normal', matchSecond: 60, createdAt: 3 },
+    ];
+    const recent = eventLines({
+      events,
+      voids: [],
+      homeName: '雷霆隊',
+      awayName: '海風隊',
+      homeRoster: S4_SCENE_LIVE.homeRoster,
+      awayRoster: S4_SCENE_LIVE.awayRoster,
+      hideVoided: false,
+      order: 'recent',
+    }).map((line) => line.seq);
+    expect(recent).toEqual([3, 2, 1]);
+    const timeline = eventLines({
+      events,
+      voids: [],
+      homeName: '雷霆隊',
+      awayName: '海風隊',
+      homeRoster: S4_SCENE_LIVE.homeRoster,
+      awayRoster: S4_SCENE_LIVE.awayRoster,
+      hideVoided: true,
+      order: 'timeline',
+    }).map((line) => line.seq);
+    expect(timeline).toEqual([3, 1, 2]);
+
+    const { match, clock, homeRoster, awayRoster } = S4_SCENE_LIVE;
+    const view = render(
+      <LiveMatchView
+        match={match}
+        clock={clock}
+        events={events}
+        voids={[]}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+      />,
+    );
+    expect(screen.queryByText(/蔡明哲/)).toBeNull();
+    fireEvent.click(button('比賽紀錄'));
+    const rows = [...view.container.querySelectorAll('.s4-ev__main')].map((node) => node.textContent);
+    expect(rows.map((text) => text?.includes('蔡明哲'))).toEqual([true, false, false]);
+    expect(rows.map((text) => text?.includes('劉冠廷'))).toEqual([false, true, false]);
+    expect(rows.map((text) => text?.includes('謝東霖'))).toEqual([false, false, true]);
+    expect(view.container.querySelector('.s4-sr')?.textContent).toContain('進球');
+    cleanup();
+
+    const trap = new Proxy([] as TimelineEvent[], {
+      get() {
+        throw new Error('收起時不該讀事件');
+      },
+    });
+    expect(linesIfOpen(false, {
+      events: trap,
+      voids: [],
+      homeName: '雷霆隊',
+      awayName: '海風隊',
+      homeRoster: [],
+      awayRoster: [],
+      hideVoided: true,
+      order: 'timeline',
+    })).toEqual([]);
+    expect(() => render(
+      <LiveMatchView
+        match={match}
+        clock={clock}
+        events={trap}
+        voids={[]}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+      />,
+    )).not.toThrow();
   });
 });

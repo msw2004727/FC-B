@@ -1,9 +1,9 @@
 import type { JSX } from 'preact';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
-import type { ActionLogEntry } from '../testing/step4-fixtures';
-import { LIVE_COPY } from './copy';
-import { rejectText } from './present';
+import { LIVE_COPY, withEvent } from './copy';
+import { canReapply, rejectText } from './present';
+import type { ActionLogEntry } from './types';
 
 export function UnappliedSheet({
   open,
@@ -28,8 +28,21 @@ export function UnappliedSheet({
             <span class="s4-log__st">{entry.state === 'pending' ? LIVE_COPY.pending : rejectText(entry.rejectReason)}</span>
             {entry.state === 'rejected' ? (
               <span class="s4-log__act">
-                <Button onClick={() => onReapply(entry.id)}>{LIVE_COPY.reapply}</Button>
-                <Button variant="ghost" onClick={() => onDiscard(entry.id)}>{LIVE_COPY.discard}</Button>
+                {canReapply(entry) ? (
+                  <Button
+                    aria-label={withEvent(LIVE_COPY.reapply, entry.intent)}
+                    onClick={() => onReapply(entry.id)}
+                  >
+                    {LIVE_COPY.reapply}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  aria-label={withEvent(LIVE_COPY.discard, entry.intent)}
+                  onClick={() => onDiscard(entry.id)}
+                >
+                  {LIVE_COPY.discard}
+                </Button>
               </span>
             ) : null}
           </li>

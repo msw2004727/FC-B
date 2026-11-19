@@ -1,16 +1,17 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
-import type { MatchDoc, RosterPublicDoc } from '../data/types';
-import type { TimelineEvent, VoidMark } from '../testing/step4-fixtures';
+import type { EntryDoc, MatchDoc, RosterPublicDoc } from '../data/types';
 import { type LiveClock, formatMatchClock, stageLabel } from './clock';
 import { LIVE_COPY } from './copy';
-import { eventLines } from './present';
+import { linesIfOpen } from './present';
+import { TeamLockup } from './TeamLockup';
+import type { TimelineEvent, VoidMark } from './types';
 import './live.css';
 
 /**
- * 單場即時頁。事件預設收起，按「比賽紀錄」才展開。
- * 作廢的事件不顯示（裁判頁才留刪除線）。
+ * 單場即時頁。事件預設收起，按「比賽紀錄」才展開、才計算事件列。
+ * 作廢的事件不顯示（裁判頁才留刪除線）。時間軸依比賽秒數，再依 seq。
  */
 export function LiveMatchView({
   match,
@@ -19,6 +20,7 @@ export function LiveMatchView({
   voids,
   homeRoster,
   awayRoster,
+  crests = [],
 }: {
   match: MatchDoc;
   clock: LiveClock;
@@ -26,9 +28,10 @@ export function LiveMatchView({
   voids: readonly VoidMark[];
   homeRoster: readonly RosterPublicDoc[];
   awayRoster: readonly RosterPublicDoc[];
+  crests?: readonly EntryDoc[];
 }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const lines = eventLines({
+  const lines = linesIfOpen(open, {
     events,
     voids,
     homeName: match.home.name,
@@ -36,14 +39,15 @@ export function LiveMatchView({
     homeRoster,
     awayRoster,
     hideVoided: true,
+    order: 'timeline',
   });
 
   return (
     <section class="s4-page">
       <div class="s4-board">
-        <span class="s4-team">{match.home.name}</span>
+        <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
         <span class="s4-score">{match.score.home}:{match.score.away}</span>
-        <span class="s4-team s4-team--away">{match.away.name}</span>
+        <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
       </div>
       <div class="s4-clockrow">
         <span class="s4-clock">{formatMatchClock(clock.elapsedSec)}</span>
@@ -63,6 +67,7 @@ export function LiveMatchView({
               <li key={line.seq} class="s4-ev">
                 <i class={`s4-mark s4-mark--${tone}`} aria-hidden="true" />
                 <div class="s4-ev__main">{who}</div>
+                <span class="s4-sr">{line.label}</span>
               </li>
             );
           })}

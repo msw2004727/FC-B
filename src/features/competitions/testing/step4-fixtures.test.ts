@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { undoClock } from '../live/clock';
+import { clockFromBase, formatMatchClock, undoClock } from '../live/clock';
 import { derivePublicTable } from '../live/stats';
 import {
   S4_ACTION_LOG,
   S4_CONFIRMED,
+  S4_CRESTS,
+  S4_CREST_URL,
   S4_DETAIL_ROWS,
   S4_FT_AT,
   S4_FT_EVENTS,
@@ -17,6 +19,7 @@ import {
   S4_SCENE_HT,
   S4_SCENE_LIVE,
   S4_SCENE_OFFLINE,
+  S4_SCENE_PAUSED,
   S4_SCENE_PRE,
   S4_SCENE_UNAPPLIED,
   S4_SCORE_SCENES,
@@ -28,6 +31,7 @@ import {
   s4Match,
   sequenceIssues,
 } from './step4-fixtures';
+import { isProjectStorageDownloadUrl } from '../ui/TeamCrest';
 
 describe('第 4 步預覽假資料一致性', () => {
   it('進行中場次比分等於有效進球', () => {
@@ -86,13 +90,20 @@ describe('第 4 步預覽假資料一致性', () => {
     const yellow = S4_LIVE_EVENTS.find((event) => event.type === 'card' && event.cardType === 'yellow');
     const second = S4_LIVE_EVENTS.find((event) => event.type === 'card' && event.cardType === 'second_yellow');
     expect(yellow && yellow.type === 'card' ? yellow.plId : '').toBe('pl_hf4');
+    expect(yellow && yellow.type === 'card' ? yellow.refSeq : 0).toBeUndefined();
     expect(second && second.type === 'card' ? second.plId : '').toBe('pl_hf4');
+    expect(second && second.type === 'card' ? second.refSeq : 0).toBe(3);
   });
 
   it('中場時鐘階段是 ht', () => {
     expect(S4_SCENE_HT.match.status).toBe('halftime');
     expect(S4_SCENE_HT.match.clockBase.period).toBe('ht');
     expect(S4_SCENE_HT.clock.period).toBe('ht');
+    expect(clockFromBase(S4_SCENE_HT.match.clockBase, S4_NOW)).toEqual({
+      elapsedSec: 45 * 60,
+      holdSec: 8 * 60,
+      period: 'ht',
+    });
     expect(deriveScore([...S4_SCENE_HT.events], [...S4_SCENE_HT.voids])).toEqual(S4_SCENE_HT.match.score);
   });
 
@@ -101,6 +112,9 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(S4_SCENE_FT.match.finishedAt).toBe(S4_FT_AT);
     expect(S4_NOW - S4_FT_AT).toBe(19_000);
     expect(undoClock(S4_SCENE_FT.match.finishedAt, S4_NOW)).toBe('2:41');
+    expect(clockFromBase(S4_SCENE_FT.match.clockBase, S4_NOW).elapsedSec).toBe(90 * 60);
+    expect(formatMatchClock(clockFromBase(S4_SCENE_FT.match.clockBase, S4_NOW).elapsedSec)).toBe('90:00');
+    expect(S4_SCENE_FT.clock.elapsedSec).toBe(90 * 60);
     expect(sequenceIssues(S4_FT_EVENTS, S4_SCENE_FT.match.rev)).toEqual([]);
     expect(deriveScore(S4_FT_EVENTS, [...S4_SCENE_FT.voids])).toEqual({ home: 1, away: 1 });
   });
@@ -116,13 +130,27 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(S4_SCENE_OFFLINE.link.online).toBe(false);
     expect(S4_SCENE_OFFLINE.link.storageUnavailable).toBe(true);
     expect(S4_SCENE_OFFLINE.link.wakeLock).toBe(false);
+    for (const entry of S4_UNAPPLIED_LOG) expect(entry.at).toBeLessThanOrEqual(S4_NOW);
   });
 
   it('詳情列是兩場進行中加一場已更正', () => {
     expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
     expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    expect(S4A_SCREENS).toHaveLength(13);
+    expect(S4A_SCREENS).toHaveLength(17);
+    expect(S4A_SCREENS).toEqual(expect.arrayContaining([
+      'score-paused',
+      'score-amend',
+      'score-cap',
+      'score-undo-half',
+    ]));
+    expect(isProjectStorageDownloadUrl(S4_CREST_URL)).toBe(true);
+    expect(S4_CRESTS.map((row) => row.teamLogo)).toEqual([S4_CREST_URL, null]);
+    expect(clockFromBase(S4_SCENE_PAUSED.match.clockBase, S4_NOW)).toEqual({
+      elapsedSec: 34 * 60,
+      holdSec: 83,
+      period: 'h1',
+    });
   });
 
   it('射手榜與紅黃牌數字可由已確認場次推出', () => {
