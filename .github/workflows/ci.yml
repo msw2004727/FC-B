@@ -159,9 +159,9 @@ jobs:
       - name: 建置（只為量首頁 JS gzip）
         run: npx vite build
 
-      # 同一支腳本：第一條只算入口 index-*.js（60KB）；第二條印出入口＋modulepreload 合計，
+      # 同一支腳本：第一條只算入口 index-*.js（60.5KB）；第二條印出入口＋modulepreload 合計，
       # 超過寬鬆上限才失敗。正式門檻等這段日誌再由 PM 收緊，不要另寫第二支腳本。
-      - name: 檢查首頁 gzip 預算（入口 60KB；入口＋modulepreload 寬鬆上限）
+      - name: 檢查首頁 gzip 預算（入口 60.5KB；入口＋modulepreload 寬鬆上限）
         run: node scripts/check-bundle-budget.mjs dist
 
   # 規則副本對公開正本，並在 Firestore emulator 跑 *.rules.test.*。

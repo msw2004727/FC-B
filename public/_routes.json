@@ -4,7 +4,11 @@
     "/event-share",
     "/event-share/*",
     "/team-share",
-    "/team-share/*"
+    "/team-share/*",
+    "/",
+    "/events/*",
+    "/assets/*",
+    "/runtime-config.json"
   ],
   "exclude": []
 }

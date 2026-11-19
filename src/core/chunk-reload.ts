@@ -6,10 +6,13 @@
 // 而且不 preventDefault：讓原錯誤照常丟給呼叫端，避免 Vite 回 undefined 讓呼叫端解構再出另一種錯。
 // 取代：原本不能重載時顯示「有新版本可用」並 preventDefault，文案誤導且呼叫端拿到 undefined。
 
-import { canReloadAfterChunkFailure, showChunkFailurePrompt } from './reload-safety';
+import { REFRESH_TIMEOUT_MS, refreshThenReload } from './refresh-reload';
+import { canReloadAfterChunkFailure, evaluateReloadSafety, showChunkFailurePrompt, showReloadBusyToast } from './reload-safety';
 
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
+/** 真的呼叫 reload 之後，留給頁面換掉的時間（新頁面接手前計時器仍在）。 */
+export const RELOAD_STALL_MS = 10_000;
 
 export interface ChunkReloadDeps {
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
@@ -52,9 +55,68 @@ export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
 
 /** 本頁排重載的時間（頁面真的重載後模組重新載入，自然歸零）。 */
 let scheduledAt = 0;
+/** 等「已排的重整被取消」的 resolve。取消或測試重置時清空。 */
+let cancelWaiters: Array<() => void> = [];
+/** 已排重整但頁面可能沒換掉時的停滯計時器。測試重置要清掉。 */
+let stallTimer: ReturnType<typeof setTimeout> | undefined;
+/** 這次排程已經出過提示。到點只取消，不再出第二次。 */
+let prompted = false;
 
+/** 測試重置：清掉停滯計時器，先叫醒還沒結束的等待再清空，避免 promise 留到下一個測試（Flash P3）。 */
 export function _resetChunkReloadGuardForTest(): void {
+  if (stallTimer !== undefined) {
+    clearTimeout(stallTimer);
+    stallTimer = undefined;
+  }
   scheduledAt = 0;
+  prompted = false;
+  for (const resolve of cancelWaiters) resolve();
+  cancelWaiters = [];
+}
+
+/** 守門已排重整、而且還沒被取消（scheduledAt 在 60 秒窗內）。 */
+export function isChunkReloadScheduled(): boolean {
+  return Date.now() - scheduledAt < RELOAD_WINDOW_MS;
+}
+
+/** 等「已排的重整被取消」（等待後不能重整）；已經沒有排程時立刻 resolve。頁面真的重整就永遠不會 resolve（沒關係）。 */
+export function waitForChunkReloadCancelled(): Promise<void> {
+  if (!isChunkReloadScheduled()) return Promise.resolve();
+  return new Promise((resolve) => {
+    cancelWaiters.push(resolve);
+  });
+}
+
+/**
+ * 取消本頁排程並叫醒等待中的路由。
+ * sessionStorage 時間戳不回滾：沒回滾時，60 秒內再失敗走「不能自動重整、出提示」的保守路徑，
+ * 避免使用者正在操作時又被自動重整打斷、也避免迴圈；使用者仍可按提示框或錯誤畫面「重新嘗試」自己重整。
+ */
+function cancelScheduledReload(): void {
+  scheduledAt = 0;
+  const waiters = cancelWaiters;
+  cancelWaiters = [];
+  for (const resolve of waiters) resolve();
+}
+
+/**
+ * 已排重整後若頁面沒換掉，到點取消排程；這次已出過提示就不再出，否則出手動提示。
+ * 被擋且已 cancelScheduledReload 時，scheduledAt 不是這次的 now，到點什麼都不做。
+ * 延遲是刷新上限＋停滯：reload 一定在排程後 REFRESH_TIMEOUT_MS 內被呼叫
+ *（刷新最多 3 秒，之後同步判斷立刻呼叫；合併到手動那一輪時那一輪開始得更早），
+ * 所以從 reload 起至少再等 RELOAD_STALL_MS。
+ * 也涵蓋合併後守門自己的 reload 沒被呼叫；若改成那時才起算，計時器不會啟動，路由會卡住。
+ */
+function armReloadStallTimer(now: number, manualReload: () => void): void {
+  prompted = false;
+  if (stallTimer !== undefined) clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => {
+    stallTimer = undefined;
+    if (scheduledAt !== now) return;
+    cancelScheduledReload();
+    if (prompted) return;
+    showChunkFailurePrompt(manualReload, 'chunk-load');
+  }, REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
 }
 
 export function installChunkReloadGuard(): void {
@@ -71,17 +133,44 @@ export function installChunkReloadGuard(): void {
       event.preventDefault();
       return;
     }
+    const path = location.pathname;
+    // 提示框一律手動重整：預設 canReload 只擋送出中。被擋時出吐司，並把剛才按掉的提示框放回。
+    const manualReload = (): void => {
+      void refreshThenReload({
+        onBlocked: () => {
+          showReloadBusyToast();
+          prompted = true;
+          showChunkFailurePrompt(manualReload, 'chunk-load');
+        },
+      });
+    };
     const handled = handleChunkLoadFailure({
       storage,
       now: () => now,
-      reload: () => location.reload(),
+      // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
+      // §3.295(a)：等待後重整前再查一次。頁面與路由條件失敗當下已查過。
+      reload: () => {
+        void refreshThenReload({
+          // 等待後重查：同一頁、而且沒有彈窗／輸入中／送出中等（頁面與路由條件失敗當下已查過，路由計數此時已落定，不能再查）。
+          canReload: () => location.pathname === path && evaluateReloadSafety({ ignorePageSafety: true }).safe,
+          onBlocked: () => {
+            // §3.297 P2：等待後不能重整 → 取消排程，之後的失敗回到正常處理；並通知停在載入中的路由改顯示錯誤畫面。
+            cancelScheduledReload();
+            prompted = true;
+            showChunkFailurePrompt(manualReload, 'chunk-load');
+          },
+        });
+      },
       canReload: () => canReloadAfterChunkFailure().safe,
-      onBlocked: (reload) => {
-        showChunkFailurePrompt(reload, 'chunk-load');
+      onBlocked: () => {
+        prompted = true;
+        showChunkFailurePrompt(manualReload, 'chunk-load');
       },
     });
     if (handled) {
       scheduledAt = now;
+      // 重整函式被呼叫不代表頁面已換掉（beforeunload 取消、瀏覽器異常，或手動那一輪被擋卻沒取消排程）。
+      armReloadStallTimer(now, manualReload);
       event.preventDefault();
     }
   });

@@ -1,16 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, render, waitFor } from '@testing-library/preact';
 import { App, _setRouteReloadPageForTest } from '@/app/App';
-import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, installChunkReloadGuard } from '@/core/chunk-reload';
+import { RELOAD_AT_KEY, RELOAD_STALL_MS, _resetChunkReloadGuardForTest, installChunkReloadGuard, isChunkReloadScheduled } from '@/core/chunk-reload';
+import { _resetContentStallForTest } from '@/core/content-stall';
 import { reportClientError } from '@/core/error-report';
+import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from '@/core/failed-preloads';
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import type { FeatureManifest } from '@/core/feature-types';
-import { _resetReloadSafetyForTest } from '@/core/reload-safety';
+import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from '@/core/refresh-reload';
+import { _resetReloadSafetyForTest, showChunkFailurePrompt, showReloadBusyToast } from '@/core/reload-safety';
+import { _resetRouteLoadingForTest } from '@/core/route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from '@/core/submit-guard';
 import { _resetRouteLoadPendingForTest, isRouteLoadPending } from '@/core/route-load-pending';
+import { setLocale } from '@/i18n/i18n';
+import { toast } from '@/ui/Toast';
 
 // 顧問 §3.260 演練前補測：chunk 載入失敗走到路由時的畫面與上報（D2 加一輪、②、④）。
 vi.mock('@/core/error-report', async (importOriginal) => ({
@@ -32,6 +38,30 @@ function failingLoad(): Promise<{ default: () => preact.JSX.Element }> {
 
 function Fine(): preact.JSX.Element {
   return <p data-testid="fine">fine page</p>;
+}
+
+function recordFailedAsset(href: string): string {
+  const link = document.createElement('link');
+  link.rel = 'modulepreload';
+  link.href = href;
+  document.head.appendChild(link);
+  link.dispatchEvent(new Event('error', { bubbles: false }));
+  return link.href;
+}
+
+function holdFetch(): { fetchMock: ReturnType<typeof vi.fn<typeof fetch>>; resolveAll: () => void } {
+  const pending: Array<(value: Response) => void> = [];
+  const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+    pending.push(resolve);
+  }));
+  return {
+    fetchMock,
+    resolveAll: () => {
+      const batch = pending.splice(0, pending.length);
+      if (batch.length === 0) throw new Error('沒有等待中的刷新');
+      for (const resolve of batch) resolve(new Response(''));
+    },
+  };
 }
 
 const manifests: FeatureManifest[] = [
@@ -108,8 +138,33 @@ describe('App：活動詳情 chunk 載入失敗（自動重載被擋或已用過
 describe('③ 自動重載保留網址的 query 與 hash', () => {
   it('重載用 location.reload()（原網址重新載入），不改 location.href／assign／replace', () => {
     const src = readFileSync(resolve(__dirname, '../core/chunk-reload.ts'), 'utf8');
-    expect(src).toContain('reload: () => location.reload()');
+    const refreshSrc = readFileSync(resolve(__dirname, '../core/refresh-reload.ts'), 'utf8');
+    const srcCode = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    // 比對程式碼裡的呼叫，不比對註解。真正換頁仍是 location.reload()，query 與 hash 留著。
+    expect(srcCode).toMatch(/refreshThenReload\(\{/);
+    expect(srcCode).toMatch(/\bmanualReload\b/);
+    expect(refreshSrc).toContain('location.reload()');
     expect(src).not.toMatch(/location\.(href\s*=|assign\(|replace\()/);
+    expect(refreshSrc).not.toMatch(/location\.(href\s*=|assign\(|replace\()/);
+  });
+
+  it('reloadPageDefault 的實作走 refreshThenReload，被擋時只出吐司（M9）', () => {
+    const appSrc = readFileSync(resolve(__dirname, './App.tsx'), 'utf8');
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const impl = code.match(/const reloadPageDefault = \(\): void => \{[\s\S]*?\};/);
+    expect(impl?.[0] ?? '').toMatch(/refreshThenReload\(/);
+    expect(impl?.[0] ?? '').toMatch(/showReloadBusyToast\(\)/);
+    expect(impl?.[0] ?? '').not.toMatch(/location\.reload\(/);
+  });
+
+  it('main.tsx 先裝失敗預載記錄器，再預載詳情 chunk（M8）', () => {
+    const main = readFileSync(resolve(__dirname, '../main.tsx'), 'utf8');
+    // 先剝掉註解再比對呼叫順序：整行改成 `// installFailedPreloadRecorder();` 時必須失敗（Opus 突變 M8b）。
+    const code = main.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const recorderAt = code.indexOf('installFailedPreloadRecorder()');
+    const preloadAt = code.indexOf('preloadEventDetailChunks(');
+    expect(recorderAt).toBeGreaterThanOrEqual(0);
+    expect(preloadAt).toBeGreaterThan(recorderAt);
   });
 });
 
@@ -248,6 +303,10 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
 
   it('P3-1 守門已排重載（路由 load 拿到 undefined）：不上報、不跳吐司、不導回上一頁、不卡死', async () => {
     mode = 'empty';
+    // 先在安全頁排定重整。沒排程時 undefined 會立刻丟載入失敗（§3.297）；已排程才等頁面重整、維持不上報。
+    const scheduled = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(scheduled);
+    expect(scheduled.defaultPrevented).toBe(true);
     const { findByTestId, container } = render(<App />);
     (await findByTestId('go-detail')).click();
     await new Promise((resolvePromise) => {
@@ -349,5 +408,351 @@ describe('App：路由載入中旗標與背景載入失敗', () => {
     window.history.back();
     release?.();
     await waitFor(() => expect(isRouteLoadPending()).toBe(false));
+  });
+});
+
+// 顧問 §3.297 P2：自動重整已排程，刷新等待中變成不能重整。按提示框「稍後」後，主內容要出錯誤畫面，不能停在載入中。
+describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
+  beforeEach(async () => {
+    await setLocale('zh-TW');
+    _resetForTest();
+    registerFeatures(manifests);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reported.mockClear();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/events/e1');
+  });
+
+  afterEach(() => {
+    cleanup();
+    _setRouteReloadPageForTest();
+    _resetSubmitGuardForTest();
+    _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
+    _resetRefreshReloadForTest();
+    _resetFailedPreloadsForTest();
+    _resetRouteLoadingForTest();
+    document.querySelectorAll('link').forEach((node) => node.remove());
+    document.querySelectorAll('.modal.open').forEach((node) => node.remove());
+    toast.clear();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('冷開 /events/<id>：等待中變成不能重整，按「稍後」顯示錯誤畫面，再按「重新嘗試」整頁重整', async () => {
+    installFailedPreloadRecorder();
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = '/assets/x.js';
+    document.head.appendChild(link);
+    link.dispatchEvent(new Event('error', { bubbles: false }));
+
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reloadPage = vi.fn();
+    _setRouteReloadPageForTest(reloadPage);
+    let end: (() => void) | undefined;
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      // 一開始 canReload 為真才會走上自動重整；刷新還沒結束就改成不能重整。
+      end = beginSubmitting('signup');
+      resolveFetch(new Response(''));
+      await waitFor(() => expect(prompt()?.dataset.mode).toBe('chunk'));
+      expect(isChunkReloadScheduled()).toBe(false);
+      const again = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(again);
+      expect(again.defaultPrevented).toBe(false);
+      (prompt()?.querySelector('[data-sw-reload-later]') as HTMLButtonElement).click();
+      await waitFor(() => {
+        const alert = container.querySelector('.error-fallback[role="alert"]');
+        expect(alert).not.toBeNull();
+        expect(alert?.querySelector('.error-fallback__retry')?.textContent).toContain('重新嘗試');
+      });
+      // 送出中按「重新嘗試」會跳吐司；先結束送出，再確認走整頁重整。
+      end();
+      end = undefined;
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    } finally {
+      end?.();
+    }
+  });
+
+  it('冷開 /events/<id>：preventDefault、寫時間戳、no-cache 刷新後重整一次，沒有錯誤畫面與提示', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    const assetUrl = recordFailedAsset('/assets/detail.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    let preloadEvent: Event | undefined;
+    const capture = (event: Event): void => {
+      preloadEvent ??= event;
+    };
+    window.addEventListener('vite:preloadError', capture);
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      // (a) 事件被擋下。
+      expect(preloadEvent?.defaultPrevented).toBe(true);
+      // (b) 時間戳已寫。
+      expect(Number(sessionStorage.getItem(RELOAD_AT_KEY))).toBeGreaterThan(0);
+      // (c) 對記到的 /assets/ 網址刷新，參數含 cache:'no-cache'。
+      expect(fetchMock).toHaveBeenCalledWith(assetUrl, expect.objectContaining({ cache: 'no-cache' }));
+      // 路由計數這時已落定（Vite 回 undefined 後 settled），舊判斷會把它當成背景載入。
+      expect(isRouteLoadPending()).toBe(false);
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+      expect(prompt()).toBeNull();
+      resolveAll();
+      // (d) fetch resolve 後 reload 剛好 1 次。
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      // (e) 再等一段刷新逾時，確認不是立刻斷言造成的假綠（Opus P3-5）。不推進到刷新上限＋RELOAD_STALL_MS。
+      await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+      expect(prompt()).toBeNull();
+      expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(0);
+    } finally {
+      window.removeEventListener('vite:preloadError', capture);
+      vi.useRealTimers();
+    }
+  });
+
+  it('冷開 /events/<id>：等待中開啟彈窗就取消排程，之後的失敗不再被默默 preventDefault，按稍後出現錯誤畫面', async () => {
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/modal.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    const modal = document.createElement('div');
+    modal.className = 'modal open';
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(isChunkReloadScheduled()).toBe(true);
+      document.body.appendChild(modal);
+      resolveAll();
+      await waitFor(() => expect(isChunkReloadScheduled()).toBe(false));
+      expect(reload).not.toHaveBeenCalled();
+      const again = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(again);
+      expect(again.defaultPrevented).toBe(false);
+      expect(prompt()?.dataset.mode).toBe('chunk');
+      (prompt()?.querySelector('[data-sw-reload-later]') as HTMLButtonElement).click();
+      await waitFor(() => {
+        const alert = container.querySelector('.error-fallback[role="alert"]');
+        expect(alert).not.toBeNull();
+        expect(alert?.querySelector('.error-fallback__retry')?.textContent).toContain('重新嘗試');
+      });
+    } finally {
+      modal.remove();
+    }
+  });
+
+  it('等待中被彈窗擋下後，提示框重新載入走手動重整', async () => {
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/manual.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    const modal = document.createElement('div');
+    modal.className = 'modal open';
+    try {
+      render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      document.body.appendChild(modal);
+      resolveAll();
+      await waitFor(() => expect(prompt()?.dataset.mode).toBe('chunk'));
+      expect(reload).not.toHaveBeenCalled();
+      const before = fetchMock.mock.calls.length;
+      (prompt()?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+      await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
+      resolveAll();
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(prompt()).toBeNull();
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      modal.remove();
+    }
+  });
+
+  it('錯誤畫面重新嘗試在刷新途中送出：只出吐司，畫面與按鈕留著；結束後再按才重整', async () => {
+    installFailedPreloadRecorder();
+    const assetUrl = recordFailedAsset('/assets/retry.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    const toastSpy = vi.spyOn(toast, 'show');
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now() - 5_000));
+    let end: (() => void) | undefined;
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.error-fallback__retry')).not.toBeNull());
+      toastSpy.mockClear();
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(assetUrl, expect.objectContaining({ cache: 'no-cache' })));
+      end = beginSubmitting('signup');
+      resolveAll();
+      await waitFor(() => {
+        const busy = toastSpy.mock.calls.filter((call) => String((call[0] as { message?: string } | undefined)?.message).includes('目前操作尚未完成'));
+        expect(busy).toHaveLength(1);
+      });
+      expect(reload).not.toHaveBeenCalled();
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(container.querySelector('.error-fallback__retry')).not.toBeNull();
+      end();
+      end = undefined;
+      toastSpy.mockClear();
+      const before = fetchMock.mock.calls.length;
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
+      resolveAll();
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(toastSpy).not.toHaveBeenCalled();
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(container.querySelector('.error-fallback__retry')).not.toBeNull();
+    } finally {
+      end?.();
+    }
+  });
+
+  it('冷開 /events/<id>：刷新成功、reload 替身不導航，推進總延遲後主內容顯示錯誤畫面', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/stall-nav.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
+      resolveAll();
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(prompt()).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      });
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      _resetContentStallForTest();
+      vi.useRealTimers();
+    }
+  });
+
+  it('手動刷新進行中，守門接手後被送出中擋下：推進總延遲後離開載入中（Opus P3-2）', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/merge.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    let end: (() => void) | undefined;
+    try {
+      // 手動那一輪的 onBlocked 不出 cancelScheduledReload；守門若併進這一輪，被擋後排程會留著。
+      const manual = refreshThenReload({
+        onBlocked: () => {
+          showReloadBusyToast();
+          showChunkFailurePrompt(() => {
+            void refreshThenReload();
+          }, 'chunk-load');
+        },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(isChunkReloadScheduled()).toBe(true));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
+
+      end = beginSubmitting('signup');
+      resolveAll();
+      await manual;
+      expect(reload).not.toHaveBeenCalled();
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      });
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      end?.();
+      _resetContentStallForTest();
+      vi.useRealTimers();
+    }
+  });
+
+  it('合併後被擋已出提示，按稍後再推進總延遲不再跳提示，錯誤畫面出現', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/later.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    let end: (() => void) | undefined;
+    try {
+      // 送出中先失敗：只出提示、不排程。按「重新載入」走進守門的手動那一輪（刷新停在半路）。
+      end = beginSubmitting('signup');
+      window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(prompt()?.dataset.mode).toBe('chunk');
+      end();
+      end = undefined;
+
+      (prompt()?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(prompt()).toBeNull();
+      expect(reload).not.toHaveBeenCalled();
+
+      // 路由載入失敗併進上面那一輪。被送出中擋下時提示已出，排程仍留著。
+      const { container } = render(<App />);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
+
+      end = beginSubmitting('signup');
+      resolveAll();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(prompt()?.dataset.mode).toBe('chunk');
+      expect(reload).not.toHaveBeenCalled();
+      expect(isChunkReloadScheduled()).toBe(true);
+
+      (prompt()?.querySelector('[data-sw-reload-later]') as HTMLButtonElement).click();
+      expect(prompt()).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      });
+      expect(prompt()).toBeNull();
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      end?.();
+      _resetContentStallForTest();
+      vi.useRealTimers();
+    }
   });
 });

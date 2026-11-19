@@ -5,7 +5,7 @@
  *   只算 dist/index.html 裡 <script type="module" src> 的入口，檔名須為 index-*.js。
  *   不含 modulepreload、不含 CSS、不含 inline script。
  *   gzip = zlib.gzipSync(buf, { level: 9 }) 的位元組數；KB = 1000 bytes（不是 1024）。
- *   預設上限 60KB = 60000 bytes。大於上限才失敗，等於上限通過。
+ *   預設上限 60.5KB = 60500 bytes（2026-11-19 由 60000 調高）。大於上限才失敗，等於上限通過。
  *
  * 理由：交接文件記載的「首頁主程式約 54.88KB、上限 60KB」只對得上入口檔這個口徑
  *   （2026-11-10、基底 ee2581c 實測：入口約 54.5KB；加上全部 modulepreload 約 111.7KB，
@@ -35,7 +35,8 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 export const KB = 1000;
-export const DEFAULT_LIMIT_BYTES = 60 * KB;
+// 2026-11-19 由 60,000 調到 60,500：站長 11-19 在顧問對話同意（§3.293 補）；取代原 60 * KB。
+export const DEFAULT_LIMIT_BYTES = 60_500;
 /** 第二條寬鬆上限。正式門檻見檔頭，不要把第一條的 60KB 拿來套這條。 */
 export const DEFAULT_PRELOAD_SUM_LIMIT_BYTES = 250 * KB;
 
