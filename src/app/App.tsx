@@ -19,7 +19,8 @@ import { ErrorFallback } from '@/ui/ErrorFallback';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
 import { toast } from '@/ui/Toast';
-import { isModuleLoadFailure } from '@/core/module-load-error';
+import { isChunkReloadScheduled, waitForChunkReloadCancelled } from '@/core/chunk-reload';
+import { isModuleLoadFailure, moduleLoadFailedError } from '@/core/module-load-error';
 import { isSubmitting } from '@/core/submit-guard';
 import { showReloadBusyToast } from '@/core/reload-safety';
 import { refreshThenReload } from '@/core/refresh-reload';
@@ -155,11 +156,20 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
     // preact-iso 的 lazy 在 load 被拒絕時不會重繪、也不會把錯誤丟給錯誤邊界，主內容會一直空白。
     // 改成 render 時丟出原錯誤，讓 RouteErrorBoundary 顯示錯誤畫面、吐司並上報一次（顧問 §3.260 第②項）。
     // 取代：直接回傳會被拒絕的 p（實測主內容空白、錯誤變成沒人接的 rejection）。
-    return p.catch((error: unknown) => ({
-      default: () => {
-        throw error;
-      },
-    })) as ReturnType<FeatureRoute['load']>;
+    // 守門回 undefined 時也不能把 promise 停在載入中：已排重整就等頁面重整，沒排程或重整被擋就改丟載入失敗。
+    const resolveRoute = async (): Promise<Awaited<ReturnType<FeatureRoute['load']>>> => {
+      try {
+        const mod = await p;
+        if (mod) return mod;
+        // 守門已排重整時 Vite 回 undefined：等頁面重整；若重整被擋（§3.297 P2），改丟載入失敗交給 RouteErrorBoundary。
+        if (isChunkReloadScheduled()) await waitForChunkReloadCancelled();
+        const error = moduleLoadFailedError(routePath || 'route');
+        return { default: () => { throw error; } } as Awaited<ReturnType<FeatureRoute['load']>>;
+      } catch (error: unknown) {
+        return { default: () => { throw error; } } as Awaited<ReturnType<FeatureRoute['load']>>;
+      }
+    };
+    return resolveRoute() as ReturnType<FeatureRoute['load']>;
   };
   const component = lazy(wrappedLoad);
   lazyCache.set(load, component);

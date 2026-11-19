@@ -1,6 +1,13 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/i18n/i18n';
-import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, handleChunkLoadFailure, installChunkReloadGuard } from './chunk-reload';
+import {
+  RELOAD_AT_KEY,
+  _resetChunkReloadGuardForTest,
+  handleChunkLoadFailure,
+  installChunkReloadGuard,
+  isChunkReloadScheduled,
+  waitForChunkReloadCancelled,
+} from './chunk-reload';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
 import { _resetRefreshReloadForTest } from './refresh-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
@@ -250,6 +257,65 @@ describe('installChunkReloadGuard', () => {
     });
     const navErrors = errorSpy.mock.calls.filter((args) => args.some((arg) => String(arg).includes('Not implemented: navigation')));
     expect(navErrors).toHaveLength(0);
+    end();
+  });
+
+  it('等待後被擋：取消排程、時間戳不回滾，之後的失敗回到正常處理（§3.297 P2）', async () => {
+    // 沒有排程時立刻 resolve。
+    await expect(waitForChunkReloadCancelled()).resolves.toBeUndefined();
+
+    installFailedPreloadRecorder();
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = '/assets/x.js';
+    document.head.appendChild(link);
+    link.dispatchEvent(new Event('error', { bubbles: false }));
+
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/');
+    sessionStorage.clear();
+
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(isChunkReloadScheduled()).toBe(true);
+    expect(fetchMock).toHaveBeenCalled();
+
+    let cancelled = false;
+    const pending = (async () => {
+      await waitForChunkReloadCancelled();
+      cancelled = true;
+    })();
+    await Promise.resolve();
+    expect(cancelled).toBe(false);
+
+    const end = beginSubmitting('signup');
+    resolveFetch(new Response(''));
+    await vi.waitFor(() => {
+      expect(isChunkReloadScheduled()).toBe(false);
+    });
+    await pending;
+    expect(cancelled).toBe(true);
+
+    const at = sessionStorage.getItem(RELOAD_AT_KEY);
+    expect(at).not.toBeNull();
+
+    const again = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(again);
+    // 窗內不再默默 preventDefault，回到正常處理：出提示。
+    expect(again.defaultPrevented).toBe(false);
+    expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+    expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBe(at);
+
+    // 取消之後沒有排程，再等也立刻 resolve。
+    await expect(waitForChunkReloadCancelled()).resolves.toBeUndefined();
     end();
   });
 });

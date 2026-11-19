@@ -5,12 +5,16 @@ import { cleanup, render, waitFor } from '@testing-library/preact';
 import { App, _setRouteReloadPageForTest } from '@/app/App';
 import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, installChunkReloadGuard } from '@/core/chunk-reload';
 import { reportClientError } from '@/core/error-report';
+import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from '@/core/failed-preloads';
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import type { FeatureManifest } from '@/core/feature-types';
+import { _resetRefreshReloadForTest } from '@/core/refresh-reload';
 import { _resetReloadSafetyForTest } from '@/core/reload-safety';
+import { _resetRouteLoadingForTest } from '@/core/route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from '@/core/submit-guard';
 import { _resetRouteLoadPendingForTest, isRouteLoadPending } from '@/core/route-load-pending';
+import { setLocale } from '@/i18n/i18n';
 
 // 顧問 §3.260 演練前補測：chunk 載入失敗走到路由時的畫面與上報（D2 加一輪、②、④）。
 vi.mock('@/core/error-report', async (importOriginal) => ({
@@ -252,6 +256,10 @@ describe('App：從首頁點進活動詳情時 chunk 失敗', () => {
 
   it('P3-1 守門已排重載（路由 load 拿到 undefined）：不上報、不跳吐司、不導回上一頁、不卡死', async () => {
     mode = 'empty';
+    // 先在安全頁排定重整。沒排程時 undefined 會立刻丟載入失敗（§3.297）；已排程才等頁面重整、維持不上報。
+    const scheduled = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(scheduled);
+    expect(scheduled.defaultPrevented).toBe(true);
     const { findByTestId, container } = render(<App />);
     (await findByTestId('go-detail')).click();
     await new Promise((resolvePromise) => {
@@ -353,5 +361,75 @@ describe('App：路由載入中旗標與背景載入失敗', () => {
     window.history.back();
     release?.();
     await waitFor(() => expect(isRouteLoadPending()).toBe(false));
+  });
+});
+
+// 顧問 §3.297 P2：自動重整已排程，刷新等待中變成不能重整。按提示框「稍後」後，主內容要出錯誤畫面，不能停在載入中。
+describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
+  beforeEach(async () => {
+    await setLocale('zh-TW');
+    _resetForTest();
+    registerFeatures(manifests);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reported.mockClear();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/events/e1');
+  });
+
+  afterEach(() => {
+    cleanup();
+    _setRouteReloadPageForTest();
+    _resetSubmitGuardForTest();
+    _resetReloadSafetyForTest();
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
+    _resetRefreshReloadForTest();
+    _resetFailedPreloadsForTest();
+    _resetRouteLoadingForTest();
+    document.querySelectorAll('link').forEach((node) => node.remove());
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('冷開 /events/<id>：等待中變成不能重整，按「稍後」顯示錯誤畫面，再按「重新嘗試」整頁重整', async () => {
+    installFailedPreloadRecorder();
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = '/assets/x.js';
+    document.head.appendChild(link);
+    link.dispatchEvent(new Event('error', { bubbles: false }));
+
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reloadPage = vi.fn();
+    _setRouteReloadPageForTest(reloadPage);
+    let end: (() => void) | undefined;
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      // 一開始 canReload 為真才會走上自動重整；刷新還沒結束就改成不能重整。
+      end = beginSubmitting('signup');
+      resolveFetch(new Response(''));
+      await waitFor(() => expect(prompt()?.dataset.mode).toBe('chunk'));
+      (prompt()?.querySelector('[data-sw-reload-later]') as HTMLButtonElement).click();
+      await waitFor(() => {
+        const alert = container.querySelector('.error-fallback[role="alert"]');
+        expect(alert).not.toBeNull();
+        expect(alert?.querySelector('.error-fallback__retry')?.textContent).toContain('重新嘗試');
+      });
+      // 送出中按「重新嘗試」會跳吐司；先結束送出，再確認走整頁重整。
+      end();
+      end = undefined;
+      (container.querySelector('.error-fallback__retry') as HTMLButtonElement).click();
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    } finally {
+      end?.();
+    }
   });
 });

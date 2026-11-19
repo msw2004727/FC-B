@@ -53,9 +53,42 @@ export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
 
 /** 本頁排重載的時間（頁面真的重載後模組重新載入，自然歸零）。 */
 let scheduledAt = 0;
+/** 等「已排的重整被取消」的 resolve。取消或測試重置時清空。 */
+let cancelWaiters: Array<() => void> = [];
 
 export function _resetChunkReloadGuardForTest(): void {
   scheduledAt = 0;
+  cancelWaiters = [];
+}
+
+/** 守門已排重整、而且還沒被取消（scheduledAt 在 60 秒窗內）。 */
+export function isChunkReloadScheduled(): boolean {
+  return Date.now() - scheduledAt < RELOAD_WINDOW_MS;
+}
+
+/** 等「已排的重整被取消」（等待後不能重整）；已經沒有排程時立刻 resolve。頁面真的重整就永遠不會 resolve（沒關係）。 */
+export function waitForChunkReloadCancelled(): Promise<void> {
+  if (!isChunkReloadScheduled()) return Promise.resolve();
+  return new Promise((resolve) => {
+    // 排程可能在建立 promise 的同時被取消：沒排程就直接 resolve，不要推進清單。
+    if (!isChunkReloadScheduled()) {
+      resolve();
+      return;
+    }
+    cancelWaiters.push(resolve);
+  });
+}
+
+/**
+ * 取消本頁排程並叫醒等待中的路由。
+ * sessionStorage 時間戳不回滾：沒回滾時，60 秒內再失敗走「不能自動重整、出提示」的保守路徑，
+ * 避免使用者正在操作時又被自動重整打斷、也避免迴圈；使用者仍可按提示框或錯誤畫面「重新嘗試」自己重整。
+ */
+function cancelScheduledReload(): void {
+  scheduledAt = 0;
+  const waiters = cancelWaiters;
+  cancelWaiters = [];
+  for (const resolve of waiters) resolve();
 }
 
 export function installChunkReloadGuard(): void {
@@ -77,9 +110,16 @@ export function installChunkReloadGuard(): void {
       now: () => now,
       // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
       // §3.295(a)：等待後重整前再查一次
-      // 仍走 void refreshThenReload()，只多傳 canReload；真正換頁是 location.reload()，query 與 hash 留著。
+      // 仍走 void refreshThenReload()，多傳 canReload 與 onBlocked；真正換頁是 location.reload()，query 與 hash 留著。
       reload: () => {
-        void refreshThenReload({ canReload: () => canReloadAfterChunkFailure().safe });
+        void refreshThenReload({
+          canReload: () => canReloadAfterChunkFailure().safe,
+          onBlocked: (retry) => {
+            // §3.297 P2：等待後不能重整 → 取消排程，之後的失敗回到正常處理；並通知停在載入中的路由改顯示錯誤畫面。
+            cancelScheduledReload();
+            showChunkFailurePrompt(retry, 'chunk-load');
+          },
+        });
       },
       canReload: () => canReloadAfterChunkFailure().safe,
       onBlocked: (reload) => {
