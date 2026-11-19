@@ -27,8 +27,9 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
 }
 
 describe('停滯計時器常數界限', () => {
-  it('RELOAD_STALL_MS >= 5 秒，且 REFRESH_TIMEOUT_MS + RELOAD_STALL_MS < 60 秒窗', () => {
+  it('RELOAD_STALL_MS >= 5 秒、REFRESH_TIMEOUT_MS > 0，且兩者相加 < 60 秒窗', () => {
     expect(RELOAD_STALL_MS).toBeGreaterThanOrEqual(5_000);
+    expect(REFRESH_TIMEOUT_MS).toBeGreaterThan(0);
     expect(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS).toBeLessThan(60_000);
   });
 });
@@ -698,6 +699,61 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
       expect(promptSpy).toHaveBeenCalledTimes(1);
       expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
       expect(reload).not.toHaveBeenCalled();
+      expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      end?.();
+      vi.useRealTimers();
+    }
+  });
+
+  it('送出中只出提示後，新的排程卡住到點仍再出提示（prompted 歸零）', async () => {
+    // 前一次失敗因送出中只出提示、不排程，prompted 留在 true。
+    // 使用者按「稍後」只收提示框，不會把 prompted 清掉。
+    // 之後新的排程若頁面沒換掉，到點必須再出提示；armReloadStallTimer 開頭要把 prompted 歸零。
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const reload = vi.fn();
+    let end: (() => void) | undefined;
+    try {
+      installChunkReloadGuard();
+      history.replaceState(null, '', '/');
+      end = beginSubmitting('signup');
+
+      const blocked = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(blocked);
+      expect(blocked.defaultPrevented).toBe(false);
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBeNull();
+      expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+
+      const later = document.querySelector<HTMLButtonElement>('#sw-reload-deferred-prompt [data-sw-reload-later]');
+      expect(later).not.toBeNull();
+      later?.click();
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+
+      end();
+      end = undefined;
+
+      // 被擋的那次不會寫時間戳。仍明確清掉，讓下一次失敗不受 60 秒窗限制、可以排程
+      //（不把時鐘推進超過 60 秒）。
+      sessionStorage.removeItem(RELOAD_AT_KEY);
+
+      recordModulepreload('/assets/prompted-reset.js');
+      const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(new Response('')));
+      vi.stubGlobal('fetch', fetchMock);
+      _setRefreshReloadForTest(reload);
+
+      const scheduled = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(scheduled);
+      expect(scheduled.defaultPrevented).toBe(true);
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(fetchMock).toHaveBeenCalled();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      // 刷新成功、reload 被呼叫，但替身不導航，頁面留在原地。
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
       expect(isChunkReloadScheduled()).toBe(false);
     } finally {
       end?.();
