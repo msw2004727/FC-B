@@ -37,11 +37,18 @@ export function voidedSeqs(events: readonly ServerEvent[]): Set<number> {
  * 還沒作廢的第二黃指向的第一黃 seq。
  * 第二黃自己被作廢後，第一黃就不再算被引用。
  */
-export function activeYellowRefs(events: readonly ServerEvent[]): Map<number, number> {
+/** 項目建立時的重置線不低於目前 resetRev，才屬於這一場。缺 baseResetRev 視為 0。 */
+export function entryInEpoch(entry: LogEntry, resetRev: number): boolean {
+  return (entry.baseResetRev ?? 0) >= resetRev;
+}
+
+export function activeYellowRefs(events: readonly ServerEvent[], resetRev = 0): Map<number, number> {
   const voided = voidedSeqs(events);
   const refs = new Map<number, number>();
   for (const event of events) {
+    if (event.seq <= resetRev) continue;
     if (event.type !== 'card' || event.cardType !== 'second_yellow' || event.refSeq == null) continue;
+    if (event.refSeq <= resetRev) continue;
     if (voided.has(event.seq)) continue;
     refs.set(event.refSeq, event.seq);
   }
@@ -76,7 +83,10 @@ export function findOpenYellow(
   side: Side,
   events: readonly ServerEvent[],
   entries: readonly LogEntry[],
+  resetRev = 0,
 ): OpenYellow | null {
+  events = events.filter((event) => event.seq > resetRev);
+  entries = entries.filter((entry) => entryInEpoch(entry, resetRev));
   const voided = voidedSeqs(events);
   const pendingVoids = pendingVoidTargets(entries);
   const refs = activeYellowRefs(events);
@@ -133,16 +143,22 @@ function goalSideOf(entry: LogEntry, events: readonly ServerEvent[], entries: re
 }
 
 export function overlayScore(
-  match: Pick<ServerMatch, 'score' | 'clockBase'>,
+  match: Pick<ServerMatch, 'score' | 'clockBase' | 'rev'> & { resetRev?: number },
   events: readonly ServerEvent[],
   entries: readonly LogEntry[],
 ): { score: { home: number; away: number }; clockBase: ServerClock; pendingCount: number } {
+  const resetRev = match.resetRev ?? 0;
+  const fresh = (entry: LogEntry) => entryInEpoch(entry, resetRev);
   const score = { home: match.score.home, away: match.score.away };
   let clockBase: ServerClock = { ...match.clockBase };
+  // 快照 rev 還沒追上的已套用項目仍要疊加，避免比分或時鐘先退回去。
+  const ahead = entries
+    .filter((entry) => fresh(entry) && entry.state === 'applied' && entry.seq != null && entry.seq > match.rev)
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || compareEntries(a, b));
   const pending = entries
-    .filter((entry) => entry.state === 'pending' || entry.state === 'sending')
+    .filter((entry) => fresh(entry) && (entry.state === 'pending' || entry.state === 'sending'))
     .sort(compareEntries);
-  for (const entry of pending) {
+  for (const entry of [...ahead, ...pending]) {
     if (entry.intent.kind === 'goal') score[entry.intent.side] += 1;
     if (entry.intent.kind === 'void') {
       const side = goalSideOf(entry, events, entries);
@@ -189,9 +205,15 @@ export function groupMessage(list: readonly LogEntry[]): string | null {
     if (step(0)?.state === 'applied' && open(step(1))) return LIVE_COPY.amendHalf;
     return null;
   }
-  if (label === 'undoFirstYellow' || label === 'amendFirstYellow') {
+  if (label === 'undoFirstYellow') {
     if (step(0)?.state === 'rejected') return LIVE_COPY.undoSecondFailed;
     if (step(0)?.state === 'applied' && open(step(1))) return LIVE_COPY.undoHalf;
+  }
+  if (label === 'amendFirstYellow') {
+    if (step(0)?.state === 'rejected') return LIVE_COPY.undoSecondFailed;
+    if (step(0)?.state === 'applied' && open(step(1))) return LIVE_COPY.undoHalf;
+    // 兩張黃牌都已復原，新紀錄這一步被拒或還沒送出。
+    if (step(1)?.state === 'applied' && open(step(2))) return LIVE_COPY.amendHalf;
   }
   return null;
 }
@@ -241,6 +263,37 @@ export function unappliedSummary(entry: LogEntry): string {
   if (intent.kind === 'resume') return '下半場開始';
   if (intent.kind === 'fulltime') return '終場';
   return '撤回終場';
+}
+
+/**
+ * 仍然有效的第二黃。事件軸用 activeYellowRefs（已排除作廢），
+ * 日誌裡的第二黃同樣排除已作廢與待送作廢。
+ */
+export function liveSecondYellow(
+  target: { seq?: number; op?: string },
+  events: readonly ServerEvent[],
+  entries: readonly LogEntry[],
+  resetRev = 0,
+): { seq?: number; op?: string } | null {
+  const lineEvents = events.filter((event) => event.seq > resetRev);
+  const lineEntries = entries.filter((entry) => entryInEpoch(entry, resetRev));
+  const voided = voidedSeqs(lineEvents);
+  const pending = pendingVoidTargets(lineEntries);
+  if (target.seq != null && target.seq > resetRev) {
+    const secondSeq = activeYellowRefs(lineEvents, resetRev).get(target.seq);
+    if (secondSeq != null && !pending.seqs.has(secondSeq)) return { seq: secondSeq };
+  }
+  for (const entry of lineEntries) {
+    if (entry.state !== 'pending' && entry.state !== 'sending' && entry.state !== 'applied') continue;
+    if (entry.intent.kind !== 'card' || entry.intent.cardType !== 'second_yellow') continue;
+    if (entry.seq != null && (voided.has(entry.seq) || pending.seqs.has(entry.seq))) continue;
+    if (pending.ops.has(entry.op)) continue;
+    const hitSeq = target.seq != null && entry.intent.refSeq === target.seq;
+    const hitOp = !!target.op && entry.intent.refOp === target.op;
+    if (!hitSeq && !hitOp) continue;
+    return { seq: entry.seq, op: entry.op };
+  }
+  return null;
 }
 
 export function linkModeFor(

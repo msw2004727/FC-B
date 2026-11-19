@@ -17,10 +17,13 @@ import type {
 
 /**
  * S1：已取號就沿用原 seq。
+ * 重置分界排在 S2 之前：伺服器 resetRev 比項目建立時的 baseResetRev 大，一律丟棄，不換號、不重送。
  * S2：只有 rev >= seq 且 e{seq} 不存在或 op 不是自己，才換新 seq。
  * S3：原 commit 還沒結束就 inflight，不得重送。已經對到自己的 op 則直接 applied。
  */
 export function decideRetry(entry: DecideEntry, server: DecideServer, inflight: boolean): RetryDecision {
+  const resetRev = server.resetRev ?? 0;
+  if (resetRev > (entry.baseResetRev ?? 0)) return { kind: 'discard', reason: 'reset' };
   if (server.matchedSeq != null) return { kind: 'applied', seq: server.matchedSeq };
   if (entry.seq != null && server.eventAtSeq?.op === entry.op) return { kind: 'applied', seq: entry.seq };
   if (inflight) return { kind: 'inflight' };
@@ -125,6 +128,8 @@ export class Sender {
   /** 第一次發現 sid 不符的時間。這之後新記的動作維持 pending，不標被拒。 */
   blockedAt: number | null = null;
   needsTakeover = false;
+  /** 最近一次讀到的伺服器 resetRev。丟棄重置前項目時用。 */
+  private serverResetRev = 0;
 
   constructor(private readonly options: SenderOptions) {}
 
@@ -160,6 +165,10 @@ export class Sender {
       try {
         const view = await this.look(entry, server.match);
         const decision = decideRetry(entry, view, true);
+        if (decision.kind === 'discard') {
+          await this.markDiscarded(entry.op);
+          continue;
+        }
         if (decision.kind === 'applied') await this.markApplied(entry.op, decision.seq);
       } catch {
         // 讀取失敗就留給原 commit。
@@ -176,7 +185,9 @@ export class Sender {
     } catch {
       return;
     }
+    this.noteServer(server.match);
     this.noteControl(server.control);
+    await this.discardReset(server.match.resetRev);
     const entries = await this.options.log.list(this.options.cid, this.options.mtId);
     for (const entry of entries) {
       if (this.dead) return;
@@ -190,6 +201,10 @@ export class Sender {
         continue;
       }
       const decision = decideRetry(entry, view, false);
+      if (decision.kind === 'discard') {
+        await this.markDiscarded(entry.op);
+        continue;
+      }
       if (decision.kind === 'applied') {
         await this.markApplied(entry.op, decision.seq);
         continue;
@@ -199,6 +214,22 @@ export class Sender {
         continue;
       }
       await this.options.log.patch(entry.op, { state: 'pending' });
+    }
+  }
+
+  private noteServer(match: ServerMatch): void {
+    this.serverResetRev = match.resetRev;
+  }
+
+  /** 重置線以下的項目一律 discarded，原因 reset。已丟棄的不重寫。 */
+  private async discardReset(resetRev: number): Promise<void> {
+    this.serverResetRev = resetRev;
+    if (resetRev <= 0) return;
+    const entries = await this.options.log.list(this.options.cid, this.options.mtId);
+    for (const entry of entries) {
+      if (this.dead) return;
+      if (entry.state === 'discarded') continue;
+      if (resetRev > (entry.baseResetRev ?? 0)) await this.markDiscarded(entry.op);
     }
   }
 
@@ -234,13 +265,16 @@ export class Sender {
     } catch {
       return 'queued';
     }
+    this.noteServer(server.match);
+    await this.discardReset(server.match.resetRev);
     this.noteControl(server.control);
+    let working = (await this.options.log.get(entry.op)) ?? entry;
+    if (working.state === 'discarded') return 'continue';
     if (this.needsTakeover) {
       await this.rejectStaleTakenOver();
       return 'stop';
     }
 
-    let working = (await this.options.log.get(entry.op)) ?? entry;
     if (working.seq != null) {
       let view: DecideServer;
       try {
@@ -254,6 +288,10 @@ export class Sender {
         return 'continue';
       }
       if (decision.kind === 'inflight' || decision.kind === 'wait') return 'wait';
+      if (decision.kind === 'discard') {
+        await this.markDiscarded(working.op);
+        return 'continue';
+      }
       if (decision.kind === 'resequence') {
         const cleared = await this.options.log.patch(working.op, { seq: null, state: 'pending' });
         if (cleared) working = cleared;
@@ -261,6 +299,11 @@ export class Sender {
           server = await this.options.port.loadServer();
         } catch {
           return 'queued';
+        }
+        this.noteServer(server.match);
+        if (server.match.resetRev > (working.baseResetRev ?? 0)) {
+          await this.markDiscarded(working.op);
+          return 'continue';
         }
       }
     }
@@ -299,7 +342,15 @@ export class Sender {
       } catch {
         return 'queued';
       }
-      const decision = decideRetry({ op: saved.op, seq }, looked, false);
+      const decision = decideRetry(
+        { op: saved.op, seq, baseResetRev: saved.baseResetRev },
+        looked,
+        false,
+      );
+      if (decision.kind === 'discard') {
+        await this.markDiscarded(saved.op);
+        return 'continue';
+      }
       if (decision.kind === 'applied') {
         await this.markApplied(saved.op, decision.seq);
         return 'continue';
@@ -378,13 +429,14 @@ export class Sender {
 
   private async look(entry: DecideEntry, match: ServerMatch): Promise<DecideServer> {
     if (entry.seq == null) {
-      return { rev: match.rev, eventAtSeq: null, matchedSeq: null };
+      return { rev: match.rev, resetRev: match.resetRev, eventAtSeq: null, matchedSeq: null };
     }
     const events = await this.options.port.loadTimelineFrom(entry.seq, match.resetRev);
     const at = events.find((event) => event.seq === entry.seq) ?? null;
     const matched = events.find((event) => event.op === entry.op) ?? null;
     return {
       rev: match.rev,
+      resetRev: match.resetRev,
       eventAtSeq: at ? { op: at.op } : null,
       matchedSeq: matched ? matched.seq : null,
     };
@@ -395,6 +447,11 @@ export class Sender {
     await this.options.log.patch(op, { state: 'applied', seq, rejectReason: null });
   }
 
+  private async markDiscarded(op: string): Promise<void> {
+    if (this.dead) return;
+    await this.options.log.patch(op, { state: 'discarded', rejectReason: 'reset' });
+  }
+
   private async rejectStaleTakenOver(): Promise<void> {
     this.needsTakeover = true;
     if (this.blockedAt == null) this.blockedAt = this.options.now();
@@ -402,8 +459,12 @@ export class Sender {
     const entries = await this.options.log.list(this.options.cid, this.options.mtId);
     for (const entry of entries) {
       if (entry.state !== 'pending' && entry.state !== 'sending') continue;
-      if (entry.createdAt >= blockedAt) continue;
       if (this.inflight.has(entry.op)) continue;
+      if (this.serverResetRev > (entry.baseResetRev ?? 0)) {
+        await this.markDiscarded(entry.op);
+        continue;
+      }
+      if (entry.createdAt >= blockedAt) continue;
       await this.options.log.patch(entry.op, { state: 'rejected', rejectReason: 'takenOver' });
     }
   }

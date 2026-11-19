@@ -241,11 +241,159 @@ export class IndexedDbActionLog implements ActionLog {
     const db = await this.database();
     const tx = db.transaction(ACTION_STORE, 'readwrite');
     const store = tx.objectStore(ACTION_STORE);
-    const rows = await requestToPromise(store.getAll());
     const cut = nowMs - maxAgeMs;
-    for (const row of rows as LogEntry[]) {
-      if (row.createdAt < cut) store.delete(row.op);
-    }
+    // 刪除必須留在 cursor 的 success 回呼裡。await 之後交易已經 inactive。
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const row = cursor.value as LogEntry;
+      if (row.createdAt < cut) cursor.delete();
+      cursor.continue();
+    };
     await txDone(tx);
+  }
+}
+
+/**
+ * IndexedDB 任何操作拋錯就改走記憶體日誌，並把已經讀到的項目搬過去。
+ * 內層不拋錯時行為與內層相同。
+ */
+export class ResilientActionLog implements ActionLog {
+  private memory: MemoryActionLog | null = null;
+  private readonly seen = new Map<string, LogEntry>();
+  private switched = false;
+
+  constructor(
+    private readonly inner: ActionLog,
+    private readonly onUnavailable: () => void,
+  ) {}
+
+  private remember(entry: LogEntry | null): void {
+    if (!entry || entry.op === '__probe__') return;
+    this.seen.set(entry.op, cloneEntry(entry));
+  }
+
+  private async failOver(): Promise<MemoryActionLog> {
+    if (this.memory) return this.memory;
+    const memory = new MemoryActionLog();
+    for (const row of this.seen.values()) await memory.put(row);
+    this.memory = memory;
+    if (!this.switched) {
+      this.switched = true;
+      this.onUnavailable();
+    }
+    return memory;
+  }
+
+  async probe(): Promise<boolean> {
+    if (this.memory) return this.memory.probe();
+    try {
+      return await this.inner.probe();
+    } catch {
+      const memory = await this.failOver();
+      return memory.probe();
+    }
+  }
+
+  async put(entry: LogEntry): Promise<void> {
+    if (this.memory) {
+      await this.memory.put(entry);
+      this.remember(entry);
+      return;
+    }
+    try {
+      await this.inner.put(entry);
+      this.remember(entry);
+    } catch {
+      const memory = await this.failOver();
+      await memory.put(entry);
+      this.remember(entry);
+    }
+  }
+
+  async get(op: string): Promise<LogEntry | null> {
+    if (this.memory) return this.memory.get(op);
+    try {
+      const row = await this.inner.get(op);
+      this.remember(row);
+      return row;
+    } catch {
+      const memory = await this.failOver();
+      return memory.get(op);
+    }
+  }
+
+  async list(cid: string, mtId: string): Promise<LogEntry[]> {
+    if (this.memory) return this.memory.list(cid, mtId);
+    try {
+      const rows = await this.inner.list(cid, mtId);
+      for (const row of rows) this.remember(row);
+      return rows;
+    } catch {
+      const memory = await this.failOver();
+      return memory.list(cid, mtId);
+    }
+  }
+
+  async patch(op: string, patch: LogPatch): Promise<LogEntry | null> {
+    if (this.memory) {
+      const next = await this.memory.patch(op, patch);
+      this.remember(next);
+      return next;
+    }
+    try {
+      const next = await this.inner.patch(op, patch);
+      this.remember(next);
+      return next;
+    } catch {
+      const memory = await this.failOver();
+      const next = await memory.patch(op, patch);
+      this.remember(next);
+      return next;
+    }
+  }
+
+  async remove(op: string): Promise<void> {
+    this.seen.delete(op);
+    if (this.memory) {
+      await this.memory.remove(op);
+      return;
+    }
+    try {
+      await this.inner.remove(op);
+    } catch {
+      const memory = await this.failOver();
+      await memory.remove(op);
+    }
+  }
+
+  async removeMatch(cid: string, mtId: string): Promise<void> {
+    for (const row of this.seen.values()) {
+      if (row.cid === cid && row.mtId === mtId) this.seen.delete(row.op);
+    }
+    if (this.memory) {
+      await this.memory.removeMatch(cid, mtId);
+      return;
+    }
+    try {
+      await this.inner.removeMatch(cid, mtId);
+    } catch {
+      const memory = await this.failOver();
+      await memory.removeMatch(cid, mtId);
+    }
+  }
+
+  async purgeOlderThan(nowMs: number, maxAgeMs?: number): Promise<void> {
+    if (this.memory) {
+      await this.memory.purgeOlderThan(nowMs, maxAgeMs);
+      return;
+    }
+    try {
+      await this.inner.purgeOlderThan(nowMs, maxAgeMs);
+    } catch {
+      const memory = await this.failOver();
+      await memory.purgeOlderThan(nowMs, maxAgeMs);
+    }
   }
 }

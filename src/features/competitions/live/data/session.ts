@@ -3,13 +3,13 @@
 import { LIVE_COPY } from '../copy';
 import { clockFromBase, type ClockReading } from '../clock';
 import type { RosterPublicDoc } from '../../data/types';
-import { MemoryActionLog, type ActionLog } from './action-log';
+import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { actionAllowed, budgetView } from './budget';
 import {
-  activeYellowRefs,
   findOpenYellow,
   fulltimeBlocked,
   groupViews,
+  liveSecondYellow,
   overlayScore,
   scoreView,
   unappliedSummary,
@@ -300,6 +300,27 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     for (const listener of listeners) listener(next);
   }
 
+  function aboveReset(list: ServerEvent[], resetRev: number): ServerEvent[] {
+    return list.filter((event) => event.seq > resetRev);
+  }
+
+  async function discardStale(resetRev: number): Promise<void> {
+    if (resetRev <= 0) return;
+    let changed = false;
+    for (const entry of entries) {
+      if (entry.state === 'discarded') continue;
+      if (resetRev <= (entry.baseResetRev ?? 0)) continue;
+      await log.patch(entry.op, { state: 'discarded', rejectReason: 'reset' });
+      changed = true;
+    }
+    if (changed) await reloadEntries();
+  }
+
+  function terminalMatch(current: ServerMatch | null): boolean {
+    if (!current) return false;
+    return current.status === 'finished' || current.status === 'confirmed' || current.lock.locked;
+  }
+
   async function maybeClear(): Promise<void> {
     if (!match) return;
     const terminal = match.status === 'confirmed' || match.lock.locked;
@@ -328,6 +349,10 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     return actionAllowed(kind, budget, clockAction);
   }
 
+  function allowIntent(intent: Intent): boolean {
+    return allow(intent.kind, intent.kind === 'clock' ? intent.clockAction : undefined);
+  }
+
   async function finish(ops: string[]): Promise<ActionResult> {
     await reloadEntries();
     emit();
@@ -346,6 +371,10 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       return { status: 'rejected', reason: hit?.rejectReason ?? 'unknown' };
     }
     if (rows.every((entry) => entry?.state === 'applied')) return { status: 'applied' };
+    // 終場寫入落地後日誌可能已被清掉，get 會是 null。場次已是終場就視為已套用。
+    if (ops.length > 0 && terminalMatch(match) && rows.every((entry) => entry == null || entry.state === 'applied')) {
+      return { status: 'applied' };
+    }
     return { status: 'queued' };
   }
 
@@ -362,6 +391,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       state: 'pending',
       createdAt: createdAt ?? now(),
       attempts: 0,
+      baseResetRev: match?.resetRev ?? 0,
     };
   }
 
@@ -386,18 +416,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   }
 
   function linkedSecond(target: { seq?: number; op?: string }): { seq?: number; op?: string } | null {
-    if (target.seq != null) {
-      const refs = activeYellowRefs(events);
-      const secondSeq = refs.get(target.seq);
-      if (secondSeq != null) return { seq: secondSeq };
-    }
-    for (const entry of entries) {
-      if (entry.state !== 'pending' && entry.state !== 'sending' && entry.state !== 'applied') continue;
-      if (entry.intent.kind !== 'card' || entry.intent.cardType !== 'second_yellow') continue;
-      if (target.seq != null && entry.intent.refSeq === target.seq) return { seq: entry.seq, op: entry.op };
-      if (target.op && entry.intent.refOp === target.op) return { op: entry.op, seq: entry.seq };
-    }
-    return null;
+    return liveSecondYellow(target, events, entries, match?.resetRev ?? 0);
   }
 
   function groupRows(label: GroupLabel, intents: Intent[]): LogEntry[] {
@@ -431,7 +450,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         matchSecond: input.matchSecond ?? second(),
       };
       if (input.cardType === 'yellow') {
-        const open = findOpenYellow(input.plId, input.side, events, entries);
+        const open = findOpenYellow(input.plId, input.side, events, entries, match?.resetRev ?? 0);
         if (open?.seq != null) {
           intent.cardType = 'second_yellow';
           intent.refSeq = open.seq;
@@ -488,19 +507,21 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       return one(intent);
     },
     async amend(target, next) {
+      if (tab === 'blocked') return rejected('rules');
       const secondYellow = linkedSecond(target);
       const intents: Intent[] = [];
       if (secondYellow) intents.push(voidOf(secondYellow));
       intents.push(voidOf(target));
       intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond || second() } : { ...next });
+      if (intents.some((intent) => !allowIntent(intent))) return rejected('limit');
       const label: GroupLabel = secondYellow ? 'amendFirstYellow' : 'amend';
-      if (tab === 'blocked') return rejected('rules');
       const rows = groupRows(label, intents);
       await putAll(rows);
       return finish(rows.map((row) => row.op));
     },
     async undoFirstYellow(target) {
       if (tab === 'blocked') return rejected('rules');
+      if (!allow('void')) return rejected('limit');
       const secondYellow = linkedSecond(target);
       if (!secondYellow) return actions.voidEvent(target);
       const rows = groupRows('undoFirstYellow', [voidOf(secondYellow), voidOf(target)]);
@@ -514,6 +535,16 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       const entry = await log.get(op);
       if (!entry) return rejected();
       if (entry.state === 'applied') return { status: 'applied' };
+      if ((match?.resetRev ?? 0) > (entry.baseResetRev ?? 0) || (entry.state === 'discarded' && entry.rejectReason === 'reset')) {
+        if (entry.state !== 'discarded') {
+          await log.patch(op, { state: 'discarded', rejectReason: 'reset' });
+          await reloadEntries();
+          emit();
+        }
+        return rejected('reset');
+      }
+      const clockAction = entry.intent.kind === 'clock' ? entry.intent.clockAction : undefined;
+      if (!allow(entry.kind, clockAction)) return rejected('limit');
       await log.patch(op, { state: 'pending', rejectReason: null, autoRetried: false });
       return finish([op]);
     },
@@ -589,20 +620,48 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       if (tickTimer != null) clearInterval(tickTimer);
     },
     async start() {
+      log = new ResilientActionLog(log, () => {
+        storage = 'unavailable';
+      });
       const probed = await log.probe();
       if (!probed) {
         log = new MemoryActionLog();
         sids = memorySidStore();
         storage = 'unavailable';
       }
-      await log.purgeOlderThan(now());
-      localSid = await sids.get(cid, mtId, uid);
+      try {
+        await log.purgeOlderThan(now());
+      } catch {
+        let kept: LogEntry[] = [];
+        try {
+          kept = await log.list(cid, mtId);
+        } catch {
+          kept = [];
+        }
+        log = new MemoryActionLog();
+        for (const row of kept) await log.put(row);
+        storage = 'unavailable';
+      }
+      try {
+        localSid = await sids.get(cid, mtId, uid);
+      } catch {
+        sids = memorySidStore();
+        localSid = null;
+        storage = 'unavailable';
+      }
       const held = await acquireTabLock({
         name: `cp-scoring-${cid}-${mtId}`,
         locks: options.locks === undefined ? null : options.locks,
         channel: options.channel === undefined ? null : options.channel,
         tabId: createOp(randomBytes),
         wait: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+        random: Math.random,
+        onRole: (role) => {
+          if (stopped) return;
+          tab = role;
+          emit();
+          if (role === 'owner' && sender && localSid && !sender.needsTakeover) void sender.flush();
+        },
       });
       tab = held.role;
       tabRelease = held.release;
@@ -617,8 +676,15 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       });
       const opened = await options.backend.open({
         onMatch: (next) => {
+          const prevReset = match?.resetRev ?? -1;
           match = next;
-          void reloadEntries().then(() => maybeClear()).then(() => {
+          if (next && prevReset >= 0 && next.resetRev > prevReset) {
+            events = aboveReset(events, next.resetRev);
+          }
+          void reloadEntries().then(async () => {
+            if (next && prevReset >= 0 && next.resetRev > prevReset) await discardStale(next.resetRev);
+            await maybeClear();
+          }).then(() => {
             emit();
             if (sender && localSid && !sender.needsTakeover && tab !== 'blocked') void sender.flush();
           });
@@ -630,10 +696,12 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
           if (sender?.needsTakeover) void sender.flush();
         },
         onEvents: (added, mode) => {
-          if (mode === 'replace') events = added;
+          const floor = match?.resetRev ?? 0;
+          const incoming = added.filter((event) => event.seq > floor);
+          if (mode === 'replace') events = incoming;
           else {
-            const map = new Map(events.map((event) => [event.seq, event]));
-            for (const event of added) map.set(event.seq, event);
+            const map = new Map(aboveReset(events, floor).map((event) => [event.seq, event]));
+            for (const event of incoming) map.set(event.seq, event);
             events = [...map.values()].sort((a, b) => a.seq - b.seq);
           }
           emit();
@@ -649,13 +717,14 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       }
       match = opened.match;
       control = opened.control;
-      events = opened.events;
+      events = aboveReset(opened.events, match?.resetRev ?? 0);
       roster = { home: opened.home, away: opened.away };
       staffRoles = opened.staffRoles;
       openedStop = opened.stop;
       openedVisible = opened.setVisible;
       syncTakeover();
       await reloadEntries();
+      if (match) await discardStale(match.resetRev);
       await maybeClear();
       const wakeBind = bindWakeLock({
         request: options.wakeRequest === undefined ? null : options.wakeRequest,

@@ -17,7 +17,7 @@ export type ActionKind =
   | 'clock'
   | 'void';
 export type LogState = 'pending' | 'sending' | 'applied' | 'rejected' | 'discarded';
-export type RejectReason = 'conflict' | 'takenOver' | 'locked' | 'limit' | 'rules' | 'unknown';
+export type RejectReason = 'conflict' | 'takenOver' | 'locked' | 'limit' | 'rules' | 'unknown' | 'reset';
 export type GroupLabel = 'amend' | 'undoFirstYellow' | 'amendFirstYellow';
 export type ClockActionName = 'pause' | 'resume' | 'correct';
 export type ScoringPhase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
@@ -103,6 +103,8 @@ export interface LogEntry {
   rejectReason?: RejectReason;
   createdAt: number;
   attempts: number;
+  /** 建立當下本機已知的 match.resetRev。舊資料沒有這個欄位時視為 0。 */
+  baseResetRev?: number;
   /** 這一次使用者嘗試裡，自動換號重送已經用過。重新套用會清掉。 */
   autoRetried?: boolean;
 }
@@ -199,14 +201,18 @@ export interface ServerEvent {
 export interface DecideEntry {
   op: string;
   seq?: number;
+  /** 缺值視為 0。伺服器 resetRev 比這個大，項目就屬於重置前。 */
+  baseResetRev?: number;
 }
 
 /**
  * eventAtSeq：e{項目.seq}。null 是確定不存在。
  * matchedSeq：時間軸上 op 相同的事件。沒有就是 null。
+ * resetRev 缺值視為 0。
  */
 export interface DecideServer {
   rev: number;
+  resetRev?: number;
   eventAtSeq: { op: string } | null;
   matchedSeq: number | null;
 }
@@ -217,7 +223,8 @@ export type RetryDecision =
   | { kind: 'inflight' }
   | { kind: 'wait' }
   | { kind: 'reuse' }
-  | { kind: 'resequence' };
+  | { kind: 'resequence' }
+  | { kind: 'discard'; reason: 'reset' };
 
 export interface ScoringPort {
   commit(plan: BatchPlan): Promise<void>;

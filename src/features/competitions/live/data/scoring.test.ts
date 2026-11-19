@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LIVE_COPY } from '../copy';
-import { IndexedDbActionLog, MemoryActionLog, type ActionLog } from './action-log';
+import { IndexedDbActionLog, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { applyPlanLocal, buildBatch } from './batch';
 import { budgetView, pauseUseCount } from './budget';
-import { activeYellowRefs, findOpenYellow, scoreView, voidsFromTimeline } from './derive';
+import { activeYellowRefs, findOpenYellow, groupMessage, liveSecondYellow, overlayScore, scoreView, voidsFromTimeline } from './derive';
 import { memorySidStore } from './sid';
 import { classifyReject, decideRetry, Sender } from './sender';
 import type { LiveListener } from './live-repo';
@@ -13,6 +13,7 @@ import { acquireTabLock, TAB_HINT, type LockManager, type TabChannel } from './t
 import type {
   BatchPlan,
   LogEntry,
+  LogPatch,
   ScoringPort,
   ServerControl,
   ServerEvent,
@@ -88,6 +89,17 @@ describe('decideRetry（S1／S2／S3）', () => {
 
   it('還沒取號就 assign', () => {
     expect(decideRetry({ op: 'op-1' }, { rev: 4, eventAtSeq: null, matchedSeq: null }, false)).toEqual({ kind: 'assign' });
+  });
+
+  it('resetRev 比 baseResetRev 大就丟棄，而且排在換號之前', () => {
+    const server = { rev: 9, resetRev: 4, eventAtSeq: null, matchedSeq: null };
+    expect(decideRetry({ op: 'op-1', seq: 5, baseResetRev: 0 }, server, false)).toEqual({ kind: 'discard', reason: 'reset' });
+    expect(decideRetry({ op: 'op-1', seq: 5 }, { ...server, resetRev: 1 }, false)).toEqual({ kind: 'discard', reason: 'reset' });
+    expect(decideRetry(
+      { op: 'op-1', seq: 5, baseResetRev: 4 },
+      { rev: 4, resetRev: 4, eventAtSeq: null, matchedSeq: null },
+      false,
+    )).toEqual({ kind: 'reuse' });
   });
 });
 
@@ -245,6 +257,19 @@ describe('時間軸推出作廢與第二黃', () => {
       { seq: 5, type: 'void', op: 'v2', sid: SID, targetSeq: 3, matchSecond: 5, createdAt: 5 },
     ];
     expect(activeYellowRefs(voidedSecond).has(2)).toBe(false);
+    const appliedSecond = entry({
+      op: 'applied-second-yellow',
+      state: 'applied',
+      seq: 3,
+      intent: { kind: 'card', side: 'home', plId: 'pl_a', cardType: 'second_yellow', matchSecond: 3, refSeq: 2 },
+    });
+    expect(liveSecondYellow({ seq: 2 }, voidedSecond, [appliedSecond])).toBeNull();
+    const pendingVoid = entry({
+      op: 'pending-void-second01',
+      state: 'pending',
+      intent: { kind: 'void', matchSecond: 6, targetSeq: 3 },
+    });
+    expect(liveSecondYellow({ seq: 2 }, events, [appliedSecond, pendingVoid])).toBeNull();
     expect(findOpenYellow('pl_a', 'home', events, [])).toBeNull();
     const src = readFileSync('src/features/competitions/live/data/live-repo.ts', 'utf8');
     expect(src).not.toMatch(/collection\([^)]*voids/);
@@ -276,6 +301,39 @@ describe('比分疊加', () => {
       intent: { kind: 'void', matchSecond: 5, targetSeq: 1 },
     });
     expect(scoreView(match, events, [wiping]).home).toBe(0);
+  });
+
+  it('已套用但快照 rev 還沒追上時，進球與時鐘仍疊加', () => {
+    const match = baseMatch({
+      rev: 3,
+      score: { home: 0, away: 0 },
+      clockBase: { startedAt: null, pausedSec: 0, running: true, period: 'h1' },
+    });
+    const goal = entry({
+      op: 'applied-ahead-goal01',
+      state: 'applied',
+      seq: 4,
+      createdAt: 4,
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 8 },
+    });
+    const clock = entry({
+      op: 'applied-ahead-clock1',
+      state: 'applied',
+      seq: 5,
+      createdAt: 5,
+      intent: {
+        kind: 'clock',
+        matchSecond: 9,
+        clockAction: 'pause',
+        clock: { running: false, period: 'h1', pausedSec: 40, startedAt: 9 },
+      },
+    });
+    const view = scoreView(match, [], [goal, clock]);
+    expect(view.home).toBe(1);
+    expect(view.pendingCount).toBe(0);
+    expect(overlayScore(match, [], [goal, clock]).clockBase).toMatchObject({ pausedSec: 40, running: false });
+    const caught = scoreView(baseMatch({ rev: 5, score: { home: 1, away: 0 } }), [], [goal, clock]);
+    expect(caught.home).toBe(1);
   });
 });
 
@@ -762,6 +820,250 @@ describe('送出與工作階段', () => {
     expect(queued.status).toBe('queued');
     expect(h.session.getState().unapplied.some((row) => row.kind === 'goal')).toBe(true);
   });
+
+  it('重置後舊日誌丟棄且不重送，重新套用也被拒', async () => {
+    const log = new MemoryActionLog();
+    await log.put(entry({
+      op: 'old-goal-old-goal01',
+      baseResetRev: 0,
+      seq: 1,
+      state: 'pending',
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 },
+    }));
+    await log.put(entry({
+      op: 'old-goal-old-goal02',
+      seq: 2,
+      state: 'sending',
+      intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 2 },
+    }));
+    const h = await openHarness({
+      log,
+      match: baseMatch({ rev: 6, resetRev: 5, score: { home: 0, away: 0 } }),
+      events: [goalEvent(1, 'home', 'old-goal-old-goal01'), goalEvent(6, 'away', 'kept-goal')],
+    });
+    const rows = await log.list(CID, MT);
+    expect(rows.every((row) => row.state === 'discarded' && row.rejectReason === 'reset')).toBe(true);
+    expect(h.commits).toHaveLength(0);
+    expect(h.session.getState().events.map((event) => event.seq)).toEqual([6]);
+    expect(await h.session.getState().actions.reapply('old-goal-old-goal01')).toEqual({ status: 'rejected', reason: 'reset' });
+    expect(h.commits).toHaveLength(0);
+  });
+
+  it('改判、復原第一黃、重新套用都先過額度', async () => {
+    const h = await openHarness();
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    h.failBefore = () => { throw { code: 'permission-denied' }; };
+    expect((await h.session.getState().actions.goal({ side: 'home' })).status).toBe('rejected');
+    h.failBefore = null;
+    const op = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected')?.op ?? '';
+    h.match.rev = 190;
+    h.listener.onMatch(snapshotOf(h.match));
+    const before = h.commits.length;
+    expect(await h.session.getState().actions.reapply(op)).toEqual({ status: 'rejected', reason: 'limit' });
+    expect((await h.log.get(op))?.state).toBe('rejected');
+    expect(await h.session.getState().actions.amend(
+      { seq: 1 },
+      { kind: 'card', side: 'home', plId: 'pl_a', cardType: 'red', matchSecond: 12 },
+    )).toEqual({ status: 'rejected', reason: 'limit' });
+    expect(await h.session.getState().actions.undoFirstYellow({ seq: 1 })).toEqual({ status: 'rejected', reason: 'limit' });
+    expect(h.commits).toHaveLength(before);
+
+    const pause = await openHarness();
+    await pause.log.put(entry({
+      op: 'rejected-pause-00001',
+      state: 'rejected',
+      rejectReason: 'rules',
+      intent: {
+        kind: 'clock',
+        matchSecond: 1,
+        clockAction: 'pause',
+        clock: { running: false, period: 'h1', pausedSec: 1, startedAt: 1 },
+      },
+    }));
+    pause.match.rev = 131;
+    pause.listener.onMatch(snapshotOf(pause.match));
+    expect(await pause.session.getState().actions.reapply('rejected-pause-00001')).toEqual({ status: 'rejected', reason: 'limit' });
+  });
+
+  it('已作廢的第二黃不會讓改判變成改判第一黃', async () => {
+    const h = await openHarness();
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    expect((await h.session.getState().actions.voidEvent({ seq: 2 })).status).toBe('applied');
+    const before = h.commits.length;
+    const amended = await h.session.getState().actions.amend(
+      { seq: 1 },
+      { kind: 'card', side: 'home', plId: 'pl_a', cardType: 'red', matchSecond: 20 },
+    );
+    expect(amended.status).toBe('applied');
+    expect(h.session.getState().groups.some((group) => group.label === 'amendFirstYellow')).toBe(false);
+    expect(h.commits.slice(before).filter((plan) => plan.event.type === 'void')).toHaveLength(1);
+  });
+
+  it('改判第一黃的新紀錄被拒時說明原紀錄已復原', async () => {
+    const h = await openHarness();
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'card' && plan.event.cardType === 'red') throw { code: 'permission-denied' };
+    };
+    const result = await h.session.getState().actions.amend(
+      { seq: 1 },
+      { kind: 'card', side: 'home', plId: 'pl_a', cardType: 'red', matchSecond: 30 },
+    );
+    expect(result.status).toBe('rejected');
+    expect(h.session.getState().groups[0]?.message).toBe(LIVE_COPY.amendHalf);
+    const steps = (await h.log.list(CID, MT)).filter((row) => row.group?.label === 'amendFirstYellow');
+    expect(groupMessage(steps)).toBe(LIVE_COPY.amendHalf);
+  });
+
+  it('終場日誌被清掉時仍回 applied', async () => {
+    const inner = new MemoryActionLog();
+    const log: ActionLog = {
+      probe: () => inner.probe(),
+      put: (row) => inner.put(row),
+      get: (op) => inner.get(op),
+      list: (cid, mtId) => inner.list(cid, mtId),
+      async patch(op, patch: LogPatch) {
+        const next = await inner.patch(op, patch);
+        if (next?.state === 'applied' && next.kind === 'fulltime') await inner.removeMatch(CID, MT);
+        return next;
+      },
+      remove: (op) => inner.remove(op),
+      removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
+      purgeOlderThan: (nowMs, maxAgeMs) => inner.purgeOlderThan(nowMs, maxAgeMs),
+    };
+    const h = await openHarness({ log });
+    const result = await h.session.getState().actions.fulltime();
+    expect(result).toEqual({ status: 'applied' });
+    expect(h.match.status).toBe('finished');
+    expect(await inner.get((h.commits.at(-1)?.op) ?? '')).toBeNull();
+  });
+});
+
+describe('韌性日誌與清除', () => {
+  it('拋錯後改走記憶體並搬走已讀到的項目', async () => {
+    const inner = new MemoryActionLog();
+    let throwPatch = false;
+    const flaky: ActionLog = {
+      probe: () => inner.probe(),
+      put: (row) => inner.put(row),
+      get: (op) => inner.get(op),
+      list: (cid, mtId) => inner.list(cid, mtId),
+      patch: async (op, patch) => {
+        if (throwPatch) throw new Error('quota');
+        return inner.patch(op, patch);
+      },
+      remove: (op) => inner.remove(op),
+      removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
+      purgeOlderThan: (nowMs, maxAgeMs) => inner.purgeOlderThan(nowMs, maxAgeMs),
+    };
+    let trips = 0;
+    const log = new ResilientActionLog(flaky, () => { trips += 1; });
+    const row = entry({ op: 'kept-row-kept-row01', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 } });
+    await log.put(row);
+    await log.list(CID, MT);
+    throwPatch = true;
+    const patched = await log.patch(row.op, { state: 'rejected', rejectReason: 'limit' });
+    expect(trips).toBe(1);
+    expect(patched?.state).toBe('rejected');
+    throwPatch = true;
+    await log.put(entry({ op: 'after-switch-row001', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 2 } }));
+    const listed = await log.list(CID, MT);
+    expect(listed.map((item) => item.op).sort()).toEqual(['after-switch-row001', 'kept-row-kept-row01']);
+    expect(await inner.get('after-switch-row001')).toBeNull();
+  });
+
+  it('清除用 cursor，在同一個請求鏈裡刪', async () => {
+    const rows = new Map<string, LogEntry>();
+    const oldRow = entry({ op: 'old-row-old-row0001', createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 } });
+    const newRow = entry({ op: 'new-row-new-row0001', createdAt: 20_000, intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 2 } });
+    rows.set(oldRow.op, oldRow);
+    rows.set(newRow.op, newRow);
+    const db = {
+      transaction() {
+        let finished = false;
+        const tx = {
+          error: null,
+          oncomplete: null as null | (() => void),
+          onerror: null as null | (() => void),
+          onabort: null as null | (() => void),
+          objectStore() {
+            return {
+              openCursor() {
+                const keys = [...rows.keys()];
+                let index = 0;
+                const req = {
+                  result: null as { value: LogEntry; delete: () => void; continue: () => void } | null,
+                  onsuccess: null as null | (() => void),
+                  onerror: null as null | (() => void),
+                };
+                const finish = () => {
+                  if (finished) return;
+                  finished = true;
+                  queueMicrotask(() => tx.oncomplete?.());
+                };
+                const step = () => {
+                  if (index >= keys.length) {
+                    req.result = null;
+                    req.onsuccess?.();
+                    finish();
+                    return;
+                  }
+                  const key = keys[index] ?? '';
+                  const value = rows.get(key);
+                  if (!value) {
+                    index += 1;
+                    step();
+                    return;
+                  }
+                  let inside = true;
+                  req.result = {
+                    value,
+                    delete() {
+                      if (!inside) throw new Error('TransactionInactiveError');
+                      rows.delete(key);
+                    },
+                    continue() {
+                      if (!inside) throw new Error('TransactionInactiveError');
+                      index += 1;
+                      queueMicrotask(step);
+                    },
+                  };
+                  req.onsuccess?.();
+                  inside = false;
+                };
+                queueMicrotask(step);
+                return req;
+              },
+            };
+          },
+        };
+        return tx;
+      },
+    };
+    const log = new IndexedDbActionLog(async () => db as unknown as IDBDatabase);
+    await log.purgeOlderThan(10_000, 1000);
+    expect([...rows.keys()]).toEqual([newRow.op]);
+  });
+
+  it('purge 拋錯不會讓工作階段起不來', async () => {
+    const inner = new MemoryActionLog();
+    const log: ActionLog = {
+      probe: async () => true,
+      put: (row) => inner.put(row),
+      get: (op) => inner.get(op),
+      list: (cid, mtId) => inner.list(cid, mtId),
+      patch: (op, patch) => inner.patch(op, patch),
+      remove: (op) => inner.remove(op),
+      removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
+      purgeOlderThan: async () => { throw new Error('TransactionInactiveError'); },
+    };
+    const h = await openHarness({ log });
+    expect(h.session.getState().storage).toBe('unavailable');
+    expect(h.session.getState().loading).toBe(false);
+  });
 });
 
 describe('分頁鎖與螢幕鎖定', () => {
@@ -782,6 +1084,27 @@ describe('分頁鎖與螢幕鎖定', () => {
     blocked.release();
     const alone = await acquireTabLock({ name: 'n', locks: null, channel: null, tabId: 'z', wait });
     expect(alone.role).toBe('owner');
+  });
+
+  it('同時啟動的兩個分頁只會有一個擁有者', async () => {
+    const link = (left: TabChannel, right: TabChannel) => {
+      left.postMessage = (data) => { right.onmessage?.({ data }); };
+      right.postMessage = (data) => { left.onmessage?.({ data }); };
+    };
+    const a: TabChannel = { postMessage() {}, onmessage: null, close() {} };
+    const b: TabChannel = { postMessage() {}, onmessage: null, close() {} };
+    link(a, b);
+    const wait = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+    const [left, right] = await Promise.all([
+      acquireTabLock({ name: 'cp-scoring-c-m', locks: null, channel: a, tabId: 'id-a', wait, random: () => 0 }),
+      acquireTabLock({ name: 'cp-scoring-c-m', locks: null, channel: b, tabId: 'id-b', wait, random: () => 0 }),
+    ]);
+    const roles = [left.role, right.role].sort();
+    expect(roles).toEqual(['blocked', 'owner']);
+    expect(right.role).toBe('owner');
+    expect(left.role).toBe('blocked');
+    left.release();
+    right.release();
   });
 
   it('要得到鎖就標持有；失敗就標不支援', async () => {

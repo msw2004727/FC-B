@@ -29,9 +29,15 @@ export async function acquireTabLock(input: {
   channel: TabChannel | null;
   tabId: string;
   wait: (ms: number) => Promise<void>;
+  /** 0 到 1。退讓時間用。沒給就用 Math.random。 */
+  random?: () => number;
+  /** 選完之後角色再變（owner 心跳消失、重新競爭贏了）才會呼叫。 */
+  onRole?: (role: 'owner' | 'blocked') => void;
 }): Promise<HeldTab> {
   if (input.locks) return holdWebLock(input.locks, input.name);
-  if (input.channel) return holdChannel(input.channel, input.tabId, input.wait);
+  if (input.channel) {
+    return holdChannel(input.channel, input.tabId, input.wait, input.random ?? Math.random, input.onRole);
+  }
   return { role: 'owner', release() {} };
 }
 
@@ -61,37 +67,143 @@ function holdWebLock(locks: LockManager, name: string): Promise<HeldTab> {
   });
 }
 
-async function holdChannel(channel: TabChannel, tabId: string, wait: (ms: number) => Promise<void>): Promise<HeldTab> {
-  let sawOwner = false;
-  let owner = false;
-  const timer = { beat: 0 as ReturnType<typeof setInterval> | 0 };
-  channel.onmessage = (event) => {
-    const data = event.data;
-    if (!data || typeof data !== 'object') return;
-    const msg = data as { type?: string; tabId?: string };
-    if (!msg.tabId || msg.tabId === tabId) return;
-    if (msg.type === 'owner' || msg.type === 'beat') sawOwner = true;
-    if (msg.type === 'hello' && owner) channel.postMessage({ type: 'owner', tabId });
-  };
-  channel.postMessage({ type: 'hello', tabId });
-  await wait(60);
-  if (sawOwner) {
-    return {
-      role: 'blocked',
-      release() {
-        channel.onmessage = null;
-        channel.close();
-      },
-    };
+const HEARTBEAT_MS = 1000;
+const SILENCE_MS = 3000;
+
+function readClaim(data: unknown): { type: 'claim' | 'owner' | 'beat'; tabId: string } | null {
+  if (!data || typeof data !== 'object') return null;
+  const msg = data as { type?: unknown; tabId?: unknown };
+  if (msg.type !== 'claim' && msg.type !== 'owner' && msg.type !== 'beat') return null;
+  if (typeof msg.tabId !== 'string' || msg.tabId.length === 0) return null;
+  return { type: msg.type, tabId: msg.tabId };
+}
+
+function highestId(ids: Iterable<string>): string {
+  let best = '';
+  for (const id of ids) {
+    if (best === '' || id > best) best = id;
   }
-  owner = true;
-  channel.postMessage({ type: 'owner', tabId });
-  timer.beat = setInterval(() => channel.postMessage({ type: 'beat', tabId }), 1000);
+  return best;
+}
+
+/**
+ * 沒有 Web Locks 時：先宣告，隨機退讓，再用 id 大小定誰當 owner。
+ * 已經在心跳的 owner 不會被較大的 id 拉下來；心跳消失才重新競爭。
+ * 同時啟動的兩個分頁只會有一個 owner。
+ */
+async function holdChannel(
+  channel: TabChannel,
+  tabId: string,
+  wait: (ms: number) => Promise<void>,
+  random: () => number,
+  onRole?: (role: 'owner' | 'blocked') => void,
+): Promise<HeldTab> {
+  const claims = new Set<string>([tabId]);
+  let foreignOwner: string | null = null;
+  let owner = false;
+  let released = false;
+  let settled = false;
+  let lastOwnerAt = 0;
+  let blockedAt = 0;
+  let generation = 0;
+  let beatTimer: ReturnType<typeof setInterval> | 0 = 0;
+  let silenceTimer: ReturnType<typeof setInterval> | 0 = 0;
+
+  const post = (type: 'claim' | 'owner' | 'beat') => {
+    if (released) return;
+    channel.postMessage({ type, tabId });
+  };
+  const stopBeat = () => {
+    if (beatTimer) clearInterval(beatTimer);
+    beatTimer = 0;
+  };
+  const stopSilence = () => {
+    if (silenceTimer) clearInterval(silenceTimer);
+    silenceTimer = 0;
+  };
+
+  const becomeOwner = () => {
+    if (released || owner) return;
+    owner = true;
+    foreignOwner = null;
+    stopSilence();
+    post('owner');
+    beatTimer = setInterval(() => post('beat'), HEARTBEAT_MS);
+    if (settled) onRole?.('owner');
+  };
+
+  const armSilence = () => {
+    if (silenceTimer || released) return;
+    silenceTimer = setInterval(() => {
+      if (released || owner) return;
+      const heard = foreignOwner != null && Date.now() - lastOwnerAt < SILENCE_MS;
+      const waiting = foreignOwner == null && Date.now() - blockedAt < SILENCE_MS;
+      if (heard || waiting) return;
+      foreignOwner = null;
+      claims.clear();
+      claims.add(tabId);
+      void elect();
+    }, HEARTBEAT_MS);
+  };
+
+  const becomeBlocked = () => {
+    if (released || owner) return;
+    blockedAt = Date.now();
+    armSilence();
+    if (settled) onRole?.('blocked');
+  };
+
+  channel.onmessage = (event) => {
+    const msg = readClaim(event.data);
+    if (!msg || msg.tabId === tabId) return;
+    if (msg.type === 'claim') {
+      claims.add(msg.tabId);
+      if (owner) post('owner');
+      return;
+    }
+    if (!owner) {
+      foreignOwner = msg.tabId;
+      lastOwnerAt = Date.now();
+    }
+  };
+
+  const elect = async (): Promise<void> => {
+    if (released || owner) return;
+    const ticket = ++generation;
+    const unit = Math.min(0.999, Math.max(0, random()));
+    const backoff = 40 + Math.floor(unit * 40);
+    post('claim');
+    await wait(backoff);
+    if (released || owner || ticket !== generation) return;
+    if (foreignOwner) {
+      becomeBlocked();
+      return;
+    }
+    post('claim');
+    await wait(80);
+    if (released || owner || ticket !== generation) return;
+    if (foreignOwner) {
+      becomeBlocked();
+      return;
+    }
+    if (highestId(claims) !== tabId) {
+      becomeBlocked();
+      return;
+    }
+    becomeOwner();
+  };
+
+  await elect();
+  settled = true;
+
   return {
-    role: 'owner',
+    role: owner ? 'owner' : 'blocked',
     release() {
+      released = true;
       owner = false;
-      clearInterval(timer.beat);
+      generation += 1;
+      stopBeat();
+      stopSilence();
       channel.onmessage = null;
       channel.close();
     },

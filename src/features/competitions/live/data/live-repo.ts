@@ -237,6 +237,27 @@ async function readRoster(db: Firestore, cid: string, enId: string): Promise<Ros
 export function createFirestoreBackend(db: Firestore, cid: string, mtId: string, uid: string): ScoringBackend {
   let cache: ServerEvent[] = [];
   let matchCache: ServerMatch | null = null;
+  let maxSeq = 0;
+
+  /**
+   * 三處讀到的事件都走這裡：併入 cache，必要時再把 maxSeq 往前推。
+   * advanceSeq 為 false 時只更新 cache（對帳讀取），避免監聽因此跳過還沒通知畫面的事件。
+   */
+  function appendKnown(added: readonly ServerEvent[], advanceSeq: boolean): void {
+    const floor = matchCache?.resetRev ?? 0;
+    const map = new Map<number, ServerEvent>();
+    for (const event of cache) {
+      if (event.seq > floor) map.set(event.seq, event);
+    }
+    for (const event of added) {
+      if (event.seq > floor) map.set(event.seq, event);
+    }
+    cache = [...map.values()].sort((a, b) => a.seq - b.seq);
+    if (!advanceSeq) return;
+    let next = floor;
+    for (const event of cache) if (event.seq > next) next = event.seq;
+    maxSeq = next;
+  }
 
   const port: ScoringPort = {
     knownEvents: () => cache,
@@ -253,9 +274,7 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
     },
     async loadTimelineFrom(minSeq, resetRev) {
       const events = await readTimeline(db, cid, mtId, minSeq, resetRev);
-      const map = new Map(cache.map((event) => [event.seq, event]));
-      for (const event of events) map.set(event.seq, event);
-      cache = [...map.values()].sort((a, b) => a.seq - b.seq);
+      appendKnown(events, false);
       return events;
     },
     async commit(plan) {
@@ -314,13 +333,13 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
       const controlSnap = await getDoc(doc(db, `${matchPath(cid, mtId)}/control/scorer`));
       const control = controlSnap.exists() ? parseControl(controlSnap.data()) : null;
       const events = match ? await readTimeline(db, cid, mtId, match.resetRev + 1, match.resetRev) : [];
-      cache = events;
+      cache = [];
+      appendKnown(events, true);
       const home = match ? await readRoster(db, cid, match.home.teamId) : [];
       const away = match ? await readRoster(db, cid, match.away.teamId) : [];
       const staffSnap = await getDoc(doc(db, `competitions/${cid}/staff/${uid}`));
       const staffRaw = staffSnap.exists() ? staffSnap.data().roles : [];
       const staffRoles = Array.isArray(staffRaw) ? staffRaw.filter((role): role is string => typeof role === 'string') : [];
-      let maxSeq = events.reduce((max, event) => Math.max(max, event.seq), match?.resetRev ?? 0);
       let lastRev = match?.rev ?? -1;
       let unsubs: Array<() => void> = [];
       let stopped = false;
@@ -334,18 +353,19 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
         if (stopped || unsubs.length > 0) return;
         unsubs.push(onSnapshot(doc(db, matchPath(cid, mtId)), (snap) => {
           const next = snap.exists() ? parseMatch(snap.id, snap.data()) : null;
+          const prevReset = matchCache?.resetRev ?? -1;
           matchCache = next;
           listener.onMatch(next);
+          if (next && prevReset >= 0 && next.resetRev > prevReset) appendKnown([], true);
           if (next && next.rev !== lastRev) {
             const from = maxSeq + 1;
             lastRev = next.rev;
-            void readTimeline(db, cid, mtId, from, next.resetRev).then((added) => {
-              if (added.length === 0) return;
-              for (const event of added) maxSeq = Math.max(maxSeq, event.seq);
-              const map = new Map(cache.map((event) => [event.seq, event]));
-              for (const event of added) map.set(event.seq, event);
-              cache = [...map.values()].sort((a, b) => a.seq - b.seq);
-              listener.onEvents(added, 'append');
+            const resetRev = next.resetRev;
+            void readTimeline(db, cid, mtId, from, resetRev).then((added) => {
+              appendKnown(added, true);
+              const visible = added.filter((event) => event.seq > resetRev);
+              if (visible.length === 0) return;
+              listener.onEvents(visible, 'append');
             }).catch((err) => listener.onError(err));
           }
         }, (err) => listener.onError(err)));
@@ -370,10 +390,13 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
           }
           subscribe();
           if (!matchCache) return;
-          void readTimeline(db, cid, mtId, maxSeq + 1, matchCache.resetRev).then((added) => {
-            if (added.length === 0) return;
-            for (const event of added) maxSeq = Math.max(maxSeq, event.seq);
-            listener.onEvents(added, 'append');
+          const resetRev = matchCache.resetRev;
+          const from = maxSeq + 1;
+          void readTimeline(db, cid, mtId, from, resetRev).then((added) => {
+            appendKnown(added, true);
+            const visible = added.filter((event) => event.seq > resetRev);
+            if (visible.length === 0) return;
+            listener.onEvents(visible, 'append');
           }).catch((err) => listener.onError(err));
         },
         stop() {

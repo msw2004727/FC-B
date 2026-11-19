@@ -7,6 +7,7 @@ import {
   PAUSE_MAX,
   SCORING_RESERVE,
 } from '../present';
+import { entryInEpoch } from './derive';
 import type { ActionKind, BudgetView, ClockActionName, LogEntry, ServerEvent } from './types';
 
 const CONTROL: ReadonlySet<ActionKind> = new Set([
@@ -29,6 +30,7 @@ export function pauseUseCount(events: readonly ServerEvent[], entries: readonly 
   }
   let pendingPauses = 0;
   for (const entry of entries) {
+    if (!entryInEpoch(entry, resetRev)) continue;
     if (entry.kind !== 'clock') continue;
     if (entry.state !== 'pending' && entry.state !== 'sending') continue;
     if (entry.intent.kind === 'clock' && entry.intent.clockAction === 'pause') pendingPauses += 1;
@@ -36,9 +38,10 @@ export function pauseUseCount(events: readonly ServerEvent[], entries: readonly 
   return Math.floor(clocks / 2) + pendingPauses;
 }
 
-export function localInflightCount(entries: readonly LogEntry[]): number {
+export function localInflightCount(entries: readonly LogEntry[], resetRev = 0): number {
   let n = 0;
   for (const entry of entries) {
+    if (!entryInEpoch(entry, resetRev)) continue;
     if (entry.state === 'pending' || entry.state === 'sending') n += 1;
   }
   return n;
@@ -50,7 +53,7 @@ export function budgetView(
   entries: readonly LogEntry[],
   events: readonly ServerEvent[],
 ): BudgetView {
-  const used = eventUsed(rev, resetRev, localInflightCount(entries));
+  const used = eventUsed(rev, resetRev, localInflightCount(entries, resetRev));
   const pauseUses = pauseUseCount(events, entries, resetRev);
   const pauseEnabled = used <= EVENT_MAX - SCORING_RESERVE && pauseUses < PAUSE_MAX;
   return {

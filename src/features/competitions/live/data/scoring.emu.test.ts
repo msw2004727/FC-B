@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { LIVE_COPY } from '../copy';
-import { MemoryActionLog } from './action-log';
+import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { createFirestoreBackend } from './live-repo';
 import { createScoringSession, type ScoringSession } from './session';
 import { memorySidStore, type SidStore } from './sid';
@@ -159,6 +159,27 @@ async function patchDoc(path: string, data: Record<string, unknown>): Promise<vo
   if (res.status < 200 || res.status >= 300) throw new Error(`更新 ${path} 失敗 ${res.status} ${res.text.slice(0, 400)}`);
 }
 
+/** 主辦重置：把 rev、resetRev 推到既有事件之上，比分歸零，並刪掉 control/scorer。回傳新的重置線。 */
+async function hostReset(): Promise<number> {
+  const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+  const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+  const top = events.reduce((max, event) => Math.max(max, Number(event.seq) || 0), Number(match?.rev ?? 0));
+  const rev = top + 1;
+  await patchDoc(`competitions/${CID}/matches/${MT}`, {
+    rev,
+    resetRev: rev,
+    status: 'live',
+    lock: { locked: false },
+    score: { home: 0, away: 0 },
+    finishedAt: null,
+  });
+  const removed = await rest('DELETE', root(`competitions/${CID}/matches/${MT}/control/scorer`));
+  if (removed.status >= 300 && removed.status !== 404) {
+    throw new Error(`刪除記分權失敗 ${removed.status} ${removed.text.slice(0, 240)}`);
+  }
+  return rev;
+}
+
 async function readDoc(path: string): Promise<Record<string, unknown> | null> {
   const res = await rest('GET', root(path));
   if (res.status === 404) return null;
@@ -249,10 +270,12 @@ interface Live {
   app: FirebaseApp;
   db: Firestore;
   session: ScoringSession;
-  log: MemoryActionLog;
+  log: ActionLog;
   sids: SidStore;
   online: { value: boolean };
   notify: (online: boolean) => void;
+  visible: { value: boolean };
+  notifyVisible: () => void;
   commits: BatchPlan[];
   release: () => Promise<void>;
 }
@@ -260,10 +283,11 @@ interface Live {
 const opened: Live[] = [];
 
 async function startLive(name: string, options?: {
-  log?: MemoryActionLog;
+  log?: ActionLog;
   sids?: SidStore;
   beforeCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
   afterCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
+  visible?: { value: boolean };
 }): Promise<Live> {
   const app = initializeApp({ apiKey: 'demo', projectId: PROJECT, appId: 'demo-u1' }, `${name}-${Date.now()}-${Math.random()}`);
   const db = initializeFirestore(app, {
@@ -287,7 +311,9 @@ async function startLive(name: string, options?: {
     if (options?.afterCommit) await options.afterCommit(plan, commits.length);
   };
   const online = { value: true };
+  const visible = options?.visible ?? { value: true };
   let notify = (_next: boolean) => {};
+  let notifyVisible = () => {};
   const session = createScoringSession({
     cid: CID,
     mtId: MT,
@@ -300,13 +326,20 @@ async function startLive(name: string, options?: {
       notify = cb;
       return () => {};
     },
+    visible: () => visible.value,
+    watchVisible: (cb) => {
+      notifyVisible = cb;
+      return () => {};
+    },
     locks: null,
     channel: null,
     wakeRequest: null,
     tick: false,
   });
   const live: Live = {
-    app, db, session, log, sids, online, notify, commits,
+    app, db, session, log, sids, online, notify, visible,
+    notifyVisible: () => notifyVisible(),
+    commits,
     release: async () => {
       session.stop();
       await deleteApp(app);
@@ -333,20 +366,20 @@ async function goOnline(live: Live): Promise<void> {
   live.notify(true);
 }
 
-async function waitUntil(label: string, pred: () => Promise<boolean> | boolean): Promise<void> {
-  for (let i = 0; i < 40; i += 1) {
+async function waitUntil(label: string, pred: () => Promise<boolean> | boolean, rounds = 40): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) {
     if (await pred()) return;
     await new Promise((resolve) => { setTimeout(resolve, 25); });
   }
   throw new Error(label);
 }
 
-async function goalOps(log: MemoryActionLog): Promise<string[]> {
+async function goalOps(log: ActionLog): Promise<string[]> {
   const rows = await log.list(CID, MT);
   return rows.filter((row) => row.kind === 'goal').map((row) => row.op);
 }
 
-async function rows(log: MemoryActionLog): Promise<LogEntry[]> {
+async function rows(log: ActionLog): Promise<LogEntry[]> {
   return log.list(CID, MT);
 }
 
@@ -387,8 +420,18 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     await live.release();
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     restoreStartupRules();
+    // 還原規則會讓模擬器再載一次。先等它載完，腳本關機時才不會撞上 securityRules。
+    const restored = readFileSync(RULES_TARGET).toString('utf8');
+    for (let i = 0; i < 25; i += 1) {
+      try {
+        const res = await fetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
+        const text = await res.text();
+        if (res.ok && text.includes(restored.slice(0, 60))) return;
+      } catch { /* 模擬器還在套用 */ }
+      await new Promise((resolve) => { setTimeout(resolve, 200); });
+    }
   });
 
   beforeEach(async () => {
@@ -615,5 +658,86 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events).toHaveLength(1);
     expect(Number(events[0]?.seq)).toBeGreaterThan(1);
+  });
+
+  it('12. 離線兩筆後主辦重置，恢復並重新接手，兩筆都丟棄', async () => {
+    const live = await startLive('s12');
+    await goOffline(live);
+    const first = await live.session.getState().actions.goal({ side: 'home' });
+    const second = await live.session.getState().actions.goal({ side: 'away' });
+    expect(first.status).toBe('queued');
+    expect(second.status).toBe('queued');
+    const ops = await goalOps(live.log);
+    expect(ops).toHaveLength(2);
+    const line = await hostReset();
+    await goOnline(live);
+    await live.session.whenIdle();
+    const taken = await live.session.getState().actions.takeover();
+    expect(taken.status).toBe('applied');
+    await live.session.whenIdle();
+    await waitUntil('重置後兩筆都丟棄', async () => {
+      const goals = (await rows(live.log)).filter((row) => row.kind === 'goal');
+      return goals.length === 2 && goals.every((row) => row.state === 'discarded' && row.rejectReason === 'reset');
+    }, 80);
+    const sent = live.commits.length;
+    await live.session.whenIdle();
+    expect(live.commits).toHaveLength(sent);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const above = events.filter((event) => Number(event.seq) > line);
+    for (const op of ops) expect(above.some((event) => event.op === op)).toBe(false);
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(match?.score).toEqual({ home: 0, away: 0 });
+    expect(Number(match?.resetRev)).toBe(line);
+  });
+
+  it('13. 送出成功但回應遺失，主辦重置後恢復且不重送', async () => {
+    let line = 0;
+    const live = await startLive('s13', {
+      afterCommit: async (_plan, nth) => {
+        if (nth !== 1) return;
+        line = await hostReset();
+        throw { code: 'unavailable' };
+      },
+    });
+    const result = await live.session.getState().actions.goal({ side: 'home' });
+    expect(live.commits).toHaveLength(1);
+    await live.session.whenIdle();
+    await waitUntil('遺失回應後標成重置丟棄', async () => {
+      const goals = (await rows(live.log)).filter((row) => row.kind === 'goal');
+      return goals.length === 1 && goals[0]?.state === 'discarded' && goals[0]?.rejectReason === 'reset';
+    }, 80);
+    expect(result.status).not.toBe('applied');
+    const op = (await goalOps(live.log))[0];
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.some((event) => event.op === op && Number(event.seq) <= line)).toBe(true);
+    expect(events.some((event) => event.op === op && Number(event.seq) > line)).toBe(false);
+    expect(live.commits).toHaveLength(1);
+  });
+
+  it('14. 隱藏期間另一裝置進球，恢復可見後作廢成功', async () => {
+    let trips = 0;
+    const log = new ResilientActionLog(new MemoryActionLog(), () => { trips += 1; });
+    const sids = memorySidStore();
+    await sids.set(CID, MT, UID, SID);
+    const visible = { value: true };
+    const first = await startLive('s14a', { log, sids, visible });
+    visible.value = false;
+    first.notifyVisible();
+    const other = await startLive('s14b', { sids });
+    expect((await other.session.getState().actions.goal({ side: 'home' })).status).toBe('applied');
+    await expectBoard({ home: 1, away: 0 });
+    visible.value = true;
+    first.notifyVisible();
+    await waitUntil('恢復可見後看得到那一球', () => {
+      const state = first.session.getState();
+      return state.events.some((event) => event.type === 'goal') && (state.match?.rev ?? 0) >= 1;
+    }, 80);
+    const goal = first.session.getState().events.find((event) => event.type === 'goal');
+    expect(goal?.seq).toBeGreaterThan(0);
+    expect((await first.session.getState().actions.voidEvent({ seq: goal?.seq })).status).toBe('applied');
+    await expectBoard({ home: 0, away: 0 });
+    expect(trips).toBe(0);
+    const stored = await rows(log);
+    expect(stored.some((row) => row.kind === 'void' && row.state === 'applied')).toBe(true);
   });
 });
