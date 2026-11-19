@@ -31,7 +31,8 @@
     "openInLine": "Đăng nhập trong ứng dụng LINE",
     "openInLineNote": "Từ giờ dùng trong LINE",
     "browserLogin": "Đăng nhập bằng trình duyệt này",
-    "browserLoginNote": "LINE xác nhận rồi quay lại đây"
+    "browserLoginNote": "LINE xác nhận rồi quay lại đây",
+    "browserLoginNoteApp": "Xác nhận trong trình duyệt rồi quay lại ứng dụng"
   },
   "ui": {
     "shell": {

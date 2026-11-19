@@ -92,7 +92,7 @@ describe('MobileLineLoginHintModal', () => {
     expect(screen.getByText('之後都在 LINE 裡使用')).toBeTruthy();
     expect(screen.getByRole('button', { name: '用目前瀏覽器登入' })).toBeTruthy();
     expect(screen.getByText('或')).toBeTruthy();
-    expect(screen.getByText('LINE 確認後回到這個瀏覽器')).toBeTruthy();
+    expect(screen.getByText('在瀏覽器確認後回到 App')).toBeTruthy();
     expect(screen.getByRole('button', { name: '取消' })).toBeTruthy();
   });
 
@@ -123,5 +123,25 @@ describe('MobileLineLoginHintModal', () => {
     expect(isIosStandalone('Mozilla/5.0 (Linux; Android 13)', true, 5)).toBe(false);
     expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', false, 5)).toBe(false);
     expect(isIosStandalone('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', false, 0)).toBe(false);
+  });
+});
+
+describe('主畫面 App 的瀏覽器登入小字（顧問 §3.339）', () => {
+  it('iOS 主畫面模式顯示「回到 App」的小字，不寫「回到這個瀏覽器」', () => {
+    setNavigator({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', maxTouchPoints: 5 });
+    vi.mocked(isStandalonePwa).mockReturnValue(true);
+    renderOpen();
+    expect(screen.getByText('用目前瀏覽器登入')).toBeTruthy();
+    const note = screen.getByText('在瀏覽器確認後回到 App');
+    expect(note.getAttribute('data-i18n')).toBe('lineLoginHint.browserLoginNoteApp');
+    expect(screen.queryByText('LINE 確認後回到這個瀏覽器')).toBeNull();
+  });
+
+  it('一般瀏覽器維持原本的小字', () => {
+    setNavigator({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', maxTouchPoints: 5 });
+    vi.mocked(isStandalonePwa).mockReturnValue(false);
+    renderOpen();
+    expect(screen.getByText('LINE 確認後回到這個瀏覽器')).toBeTruthy();
+    expect(screen.queryByText('在瀏覽器確認後回到 App')).toBeNull();
   });
 });

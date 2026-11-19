@@ -45,13 +45,16 @@ export function MobileLineLoginHintModal({
   const openInLine = hintLabel(translate, 'lineLoginHint.openInLine', '在 LINE App 中登入');
   const openInLineNote = hintLabel(translate, 'lineLoginHint.openInLineNote', '之後都在 LINE 裡使用');
   const browserLogin = hintLabel(translate, 'lineLoginHint.browserLogin', '用目前瀏覽器登入');
-  const browserLoginNote = hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
-
-  const hideBrowserLogin = !LOGIN_HANDOFF_ENABLED && isIosStandalone(
+  const iosApp = isIosStandalone(
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
     isStandalonePwa(),
     typeof navigator === 'undefined' ? 0 : (navigator.maxTouchPoints ?? 0),
   );
+  const hideBrowserLogin = !LOGIN_HANDOFF_ENABLED && iosApp;
+  // 主畫面 App 的瀏覽器登入會轉交回 App，小字不能寫「回到這個瀏覽器」（顧問 §3.339，文案待站長定）。
+  const browserLoginNote = iosApp
+    ? hintLabel(translate, 'lineLoginHint.browserLoginNoteApp', '在瀏覽器確認後回到 App')
+    : hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
 
   // A 的 data-no-backdrop-close="1"：點背景不關閉。
   return (
@@ -128,7 +131,7 @@ export function MobileLineLoginHintModal({
               </button>
               <p
                 class="line-login-hint-note line-login-hint-browser-note"
-                data-i18n="lineLoginHint.browserLoginNote"
+                data-i18n={iosApp ? 'lineLoginHint.browserLoginNoteApp' : 'lineLoginHint.browserLoginNote'}
               >
                 {browserLoginNote}
               </p>

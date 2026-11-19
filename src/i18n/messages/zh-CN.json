@@ -31,7 +31,8 @@
     "openInLine": "在 LINE App 中登录",
     "openInLineNote": "之后都在 LINE 里使用",
     "browserLogin": "用当前浏览器登录",
-    "browserLoginNote": "LINE 确认后回到这个浏览器"
+    "browserLoginNote": "LINE 确认后回到这个浏览器",
+    "browserLoginNoteApp": "在浏览器确认后回到 App"
   },
   "ui": {
     "shell": {

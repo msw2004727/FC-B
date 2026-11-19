@@ -1,0 +1,137 @@
+/* 轉交畫面（站長同意的預覽 v2）。外框、主按鈕、次按鈕沿用 MobileLineLoginHintModal.css 的
+   #mobile-line-login-hint-modal 液態玻璃樣式；這裡只放轉交專用元素，全部限定在 .login-handoff 內。 */
+
+.login-handoff .login-handoff-warn {
+  display: flex;
+  gap: .5rem;
+  align-items: flex-start;
+  margin-bottom: .9rem;
+  padding: .6rem .75rem;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, .14);
+  color: #92400e;
+  font-size: .85rem;
+  line-height: 1.45;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, .35);
+}
+
+[data-theme="dark"] .login-handoff .login-handoff-warn {
+  background: rgba(245, 158, 11, .16);
+  color: #fcd34d;
+}
+
+.login-handoff .login-handoff-prompt {
+  margin: .2rem 0 .7rem;
+  color: var(--text-primary);
+  font-size: .92rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.login-handoff .login-handoff-nums {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .6rem;
+  margin-bottom: .55rem;
+}
+
+.login-handoff .login-handoff-num {
+  min-height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .7);
+  color: var(--text-primary);
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(148, 163, 184, .45),
+    inset 0 1px 0 rgba(255, 255, 255, .9),
+    0 6px 14px -8px rgba(15, 23, 42, .35);
+}
+
+[data-theme="dark"] .login-handoff .login-handoff-num {
+  background: rgba(255, 255, 255, .08);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .2),
+    0 6px 14px -8px rgba(0, 0, 0, .7);
+}
+
+.login-handoff .login-handoff-num:disabled,
+.login-handoff .line-login-hint-open:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.login-handoff .login-handoff-note {
+  margin: .1rem 0 .4rem;
+  color: var(--text-secondary);
+  font-size: .78rem;
+  text-align: center;
+}
+
+.login-handoff .login-handoff-trylater {
+  color: #b45309;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .login-handoff .login-handoff-trylater {
+  color: #fcd34d;
+}
+
+.login-handoff .login-handoff-big {
+  margin: .3rem 0 .4rem;
+  color: var(--text-primary);
+  font-size: 3.2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: .08em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-handoff .login-handoff-icon {
+  display: flex;
+  justify-content: center;
+  margin: .2rem 0 .6rem;
+}
+
+.login-handoff .login-handoff-body {
+  margin: 0 0 .7rem;
+  color: var(--text-primary);
+  font-size: .92rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.login-handoff .login-handoff-remain {
+  display: block;
+  width: max-content;
+  margin: 0 auto .8rem;
+  padding: .15rem .6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .18);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-handoff .login-handoff-stack {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-bottom: .4rem;
+}
+
+.login-handoff button.line-login-hint-open {
+  font-family: inherit;
+}
+
+/* 360 寬時中文長句會斷出孤字（例如「頁。」「成登入。」），平均分配各行長度；不支援的瀏覽器維持一般換行。 */
+.login-handoff .login-handoff-warn span,
+.login-handoff .login-handoff-body,
+.login-handoff .login-handoff-note,
+.login-handoff .login-handoff-prompt {
+  text-wrap: balance;
+}

@@ -31,7 +31,8 @@
     "openInLine": "Sign in with LINE app",
     "openInLineNote": "Stay in LINE from now on",
     "browserLogin": "Sign in with this browser",
-    "browserLoginNote": "Back here after LINE confirms"
+    "browserLoginNote": "Back here after LINE confirms",
+    "browserLoginNoteApp": "Confirm in the browser, then come back to the app"
   },
   "ui": {
     "shell": {
