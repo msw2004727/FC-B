@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AUTH_HINT_KEY } from '@/data/auth-hint';
 import type { NextActivityResult } from './next-activity';
 import {
   NEXT_ACTIVITY_SNAPSHOT_FORMAT_V,
@@ -26,6 +27,10 @@ function result(extra: Record<string, unknown> = {}, reg: Record<string, unknown
     managedRole: '',
   };
 }
+
+beforeEach(() => {
+  localStorage.setItem(AUTH_HINT_KEY, '1');
+});
 
 afterEach(() => {
   localStorage.clear();
@@ -92,6 +97,14 @@ describe('首頁我的下一場：本機快照', () => {
     writeNextActivitySnapshot('u1', result({ id: '' }), NOW);
     expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).toBeNull();
     writeNextActivitySnapshot('', result(), NOW);
+    expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('已登出（「上次已登入」旗標不在）：晚到的寫入不寫，並刪掉殘留的快照', () => {
+    writeNextActivitySnapshot('u1', result(), NOW);
+    expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).not.toBeNull();
+    localStorage.removeItem(AUTH_HINT_KEY);
+    writeNextActivitySnapshot('u1', result(), NOW);
     expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).toBeNull();
   });
 

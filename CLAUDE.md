@@ -24,7 +24,7 @@
   - 每個功能要有 `index.test.ts` 與 7 個語系檔。
 - 資料寫入遵守 FC 的動作級資料契約：有 Callable 一律走 Callable，不實作 A 的 fallback，不移植鎖定邏輯；直接寫 Firestore 的動作必須有 Rules emulator 測試。細則見 `data-permissions.md`。
 - 7 語系必須同時更新，`npm run check:i18n` 失敗不得交付（它檢查 7 個語系檔都在、鍵一致、值非空）。管理／後台畫面只做繁體中文（R-UI-037）：鍵仍要 7 檔齊全，其他語系放繁中原文或既有譯文即可，免的是翻譯與驗收，不是鍵。
-- **性能預算**：首頁入口 JS gzip ≤ 60,000 bytes（`npm run check:bundle`，另有「入口＋預先載入」的第二條上限）。新功能先估入口增量，能延遲載入就延遲載入。
+- **性能預算**：首頁入口 JS gzip ≤ 61,000 bytes（2026-11-19 站長同意由 60,000 經 60,500 調到 61,000，數字以 `scripts/check-bundle-budget.mjs` 為準；`npm run check:bundle`，另有「入口＋預先載入」的第二條上限）。新功能先估入口增量，能延遲載入就延遲載入。
 - 版號規則與舊版 A 相同（`0.YYYYMMDD{suffix}`，台北日期；當日第一次無後綴，同日再上線 a…z、za…，跨日重置）：每個上線批次在推送前執行一次 `npm run bump-version`（改 `src/version.ts`，並一併重產 `public/sitemap-events.xml`；讀取失敗保留舊檔不擋上線，最後一行「sitemap：重產 N 筆／沿用舊檔」貼進上線紀錄），不得手改；版號顯示在側邊選單底部（同 A 的 `#home-version-tag`）。只改 CI、測試、文件，或不參與打包的腳本，才不必換版號；被 `vite.config.ts` 引用的腳本（`scripts/legacy-css-scope.mjs`、`early-banners-html.ts`、`early-event-html.ts`、`build-meta.mjs`、`robots-public.txt`）算前端改動，要換版號。
 
 ## 3. 交付前必跑

@@ -15,6 +15,17 @@ import { readNextActivitySnapshot } from '../../data/next-activity-snapshot';
 import '../../legacy/home-stale.css';
 
 const FALLBACK_IMAGE = 'LOGO/Nocoverimage%20set.png';
+
+// 快照寫入端延遲載入（首頁入口 JS 預算）。共用同一個模組 promise，後續寫入／刪除都接在它後面，先後順序才不會錯亂；
+// 載入失敗就清掉，下次再試（L-08）。
+let snapshotWriter: Promise<typeof import('../../data/next-activity-snapshot-write')> | null = null;
+function loadSnapshotWriter(): Promise<typeof import('../../data/next-activity-snapshot-write')> {
+  snapshotWriter ??= import('../../data/next-activity-snapshot-write').catch((err: unknown) => {
+    snapshotWriter = null;
+    throw err;
+  });
+  return snapshotWriter;
+}
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
 
 function pad2(num: number): string {
@@ -120,12 +131,12 @@ export function HomeNextActivity({
   const showLoading = loading && !stale;
 
   // 讀完確定的結果才更新快照：畫面要顯示的那場就存，確定沒有就刪。讀取失敗不動。
-  // 寫入端延遲載入（首頁入口 JS 預算）；同一個模組 promise 上依序 then，先後順序不變。
+  // 寫入端延遲載入（首頁入口 JS 預算），見 loadSnapshotWriter。
   const confirmedUid = confirmed ? viewer.uid : null;
   useEffect(() => {
     if (!confirmedUid) return;
     const save = candidate && confirmedEvent ? candidate : null;
-    import('../../data/next-activity-snapshot-write')
+    loadSnapshotWriter()
       .then((m) => (save ? m.writeNextActivitySnapshot(confirmedUid, save) : m.removeNextActivitySnapshot()))
       .catch(() => undefined);
   }, [confirmedUid, candidate, confirmedEvent]);

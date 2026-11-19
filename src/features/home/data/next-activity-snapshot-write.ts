@@ -2,9 +2,10 @@
  * 首頁「我的下一場活動」本機快照的寫入端（延遲載入：讀完資料後才需要，不佔首頁入口 JS）。
  * 只有「這次向伺服器讀完、畫面確定要顯示這場」才寫；確定沒有下一場就刪掉。讀取端與格式說明見 `next-activity-snapshot.ts`。
  * 寫入當下逐欄白名單投影：每欄檢查型別與長度上限，圖片只收 http(s)，報名者名單、黑名單等其他欄位一律不會進快照。
- * 寫入失敗（容量滿、被停用）就盡量刪掉舊的，免得留著比剛取得的資料還舊的快照。
+ * 「上次已登入」旗標不在（已登出）就不寫、只刪。寫入失敗（容量滿、被停用）就盡量刪掉舊的，免得留著比剛取得的資料還舊的快照。
  */
 import type { EventDoc } from '@/features/events/data/types';
+import { readAuthHint } from '@/data/auth-hint';
 import type { NextActivityResult } from './next-activity';
 import {
   NEXT_ACTIVITY_SNAPSHOT_FORMAT_V,
@@ -52,6 +53,11 @@ export function removeNextActivitySnapshot(): void {
 
 /** 寫快照；格式不符（例如沒有日期字串或公開 id）就刪掉舊的、不存。 */
 export function writeNextActivitySnapshot(owner: string, result: NextActivityResult, nowMs: number = Date.now()): void {
+  // 登出（或帳號失效）時旗標已先清掉：晚到的寫入不得把剛清掉的快照寫回來。
+  if (!readAuthHint()) {
+    removeNextActivitySnapshot();
+    return;
+  }
   const safeOwner = String(owner ?? '').trim();
   const event = result?.event ? projectEvent(result.event) : null;
   if (!safeOwner || safeOwner.length > MAX_ID || !event) {

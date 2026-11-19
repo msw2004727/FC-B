@@ -56,6 +56,8 @@ const calendarBtn = (c: Element): HTMLButtonElement | null =>
 
 beforeEach(() => {
   localStorage.clear();
+  // 已登入過的裝置；快照寫入端只在旗標在時才寫（登出後晚到的寫入不寫回）。
+  localStorage.setItem(AUTH_HINT_KEY, '1');
 });
 
 afterEach(() => {
@@ -91,6 +93,7 @@ describe('首頁我的下一場：登入還原中', () => {
 
   it('沒有「上次已登入」旗標：不畫上次內容，只顯示骨架', () => {
     writeNextActivitySnapshot('u1', resultOf(eventOf('e1', '上次的活動')));
+    localStorage.removeItem(AUTH_HINT_KEY);
     const view = render(<HomeNextActivity viewer={pendingViewer()} {...handlers} />);
     expect(view.queryByText('上次的活動')).toBeNull();
     expect(view.container.querySelector('.home-next-loading')).not.toBeNull();
@@ -168,6 +171,7 @@ describe('首頁我的下一場：uid 延後出現（L-43）', () => {
     cleanup();
 
     localStorage.clear();
+    localStorage.setItem(AUTH_HINT_KEY, '1');
     resolveNextActivity.mockRejectedValue(new Error('offline'));
     const bare = render(<HomeNextActivity viewer={createMinimalViewer('u1')} {...handlers} />);
     await bare.findByText('你目前還沒有報名活動');
