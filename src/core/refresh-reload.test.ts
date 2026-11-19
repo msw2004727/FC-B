@@ -76,6 +76,8 @@ describe('refreshThenReload', () => {
   });
 
   it('沒記到：100ms 內一直沒記到才 fetch 全部 modulepreload／preload／stylesheet 的 /assets/ 網址', async () => {
+    // 固定等待時間：涵蓋實測 10～30ms 的事件先後差，改小（例如 40）會失去餘裕（Opus 差異審 P3）。
+    expect(FAILED_WAIT_MS).toBe(100);
     const js = addLink('modulepreload', '/assets/a.js').href;
     const pre = addLink('preload', '/assets/b.js').href;
     const css = addLink('stylesheet', '/assets/c.css').href;
