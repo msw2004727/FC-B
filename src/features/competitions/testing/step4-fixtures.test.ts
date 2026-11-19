@@ -1,10 +1,27 @@
 import { describe, expect, it } from 'vitest';
+import { undoClock } from '../live/clock';
+import { derivePublicTable } from '../live/stats';
 import {
   S4_ACTION_LOG,
+  S4_CONFIRMED,
+  S4_DETAIL_ROWS,
+  S4_FT_AT,
+  S4_FT_EVENTS,
   S4_LIVE_EVENTS,
   S4_LIVE_VOIDS,
+  S4_NOW,
+  S4_PEOPLE,
   S4_ROSTER_AWAY,
   S4_ROSTER_HOME,
+  S4_SCENE_FT,
+  S4_SCENE_HT,
+  S4_SCENE_LIVE,
+  S4_SCENE_OFFLINE,
+  S4_SCENE_PRE,
+  S4_SCENE_UNAPPLIED,
+  S4_SCORE_SCENES,
+  S4_UNAPPLIED_LOG,
+  S4A_SCREENS,
   STEP4_SCREENS,
   cardIssues,
   deriveScore,
@@ -51,5 +68,88 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(new Set(STEP4_SCREENS).size).toBe(STEP4_SCREENS.length);
     expect(S4_ACTION_LOG.some((a) => a.state === 'pending')).toBe(true);
     expect(S4_ACTION_LOG.some((a) => a.state === 'rejected')).toBe(true);
+  });
+
+  it('未開賽是 0:0、rev 0、沒有事件', () => {
+    expect(S4_SCENE_PRE.match.score).toEqual({ home: 0, away: 0 });
+    expect(S4_SCENE_PRE.match.rev).toBe(0);
+    expect(S4_SCENE_PRE.match.status).toBe('scheduled');
+    expect(S4_SCENE_PRE.events).toEqual([]);
+    expect(deriveScore([...S4_SCENE_PRE.events], [...S4_SCENE_PRE.voids])).toEqual(S4_SCENE_PRE.match.score);
+    expect(sequenceIssues([...S4_SCENE_PRE.events], S4_SCENE_PRE.match.rev)).toEqual([]);
+  });
+
+  it('背號選擇與兩張亮牌沿用進行中事件，黃牌與第二張黃牌都在', () => {
+    expect(S4_SCORE_SCENES['score-pick-player']).toBe(S4_SCENE_LIVE);
+    expect(S4_SCORE_SCENES['score-card-yellow']).toBe(S4_SCENE_LIVE);
+    expect(S4_SCORE_SCENES['score-card-red-auto']).toBe(S4_SCENE_LIVE);
+    const yellow = S4_LIVE_EVENTS.find((event) => event.type === 'card' && event.cardType === 'yellow');
+    const second = S4_LIVE_EVENTS.find((event) => event.type === 'card' && event.cardType === 'second_yellow');
+    expect(yellow && yellow.type === 'card' ? yellow.plId : '').toBe('pl_hf4');
+    expect(second && second.type === 'card' ? second.plId : '').toBe('pl_hf4');
+  });
+
+  it('中場時鐘階段是 ht', () => {
+    expect(S4_SCENE_HT.match.status).toBe('halftime');
+    expect(S4_SCENE_HT.match.clockBase.period).toBe('ht');
+    expect(S4_SCENE_HT.clock.period).toBe('ht');
+    expect(deriveScore([...S4_SCENE_HT.events], [...S4_SCENE_HT.voids])).toEqual(S4_SCENE_HT.match.score);
+  });
+
+  it('終場在現在前 19 秒，撤回倒數是 2:41', () => {
+    expect(S4_SCENE_FT.match.status).toBe('finished');
+    expect(S4_SCENE_FT.match.finishedAt).toBe(S4_FT_AT);
+    expect(S4_NOW - S4_FT_AT).toBe(19_000);
+    expect(undoClock(S4_SCENE_FT.match.finishedAt, S4_NOW)).toBe('2:41');
+    expect(sequenceIssues(S4_FT_EVENTS, S4_SCENE_FT.match.rev)).toEqual([]);
+    expect(deriveScore(S4_FT_EVENTS, [...S4_SCENE_FT.voids])).toEqual({ home: 1, away: 1 });
+  });
+
+  it('未套用與離線畫面都含既有動作日誌', () => {
+    for (const entry of S4_ACTION_LOG) {
+      expect(S4_SCENE_UNAPPLIED.actionLog.some((item) => item.id === entry.id)).toBe(true);
+      expect(S4_SCENE_OFFLINE.actionLog.some((item) => item.id === entry.id)).toBe(true);
+    }
+    expect(S4_UNAPPLIED_LOG.map((item) => item.rejectReason).filter(Boolean).sort()).toEqual(['conflict', 'locked', 'takenOver']);
+    const pending = S4_ACTION_LOG.filter((item) => item.state === 'pending').length;
+    expect(S4_SCENE_OFFLINE.link.pendingCount).toBe(pending);
+    expect(S4_SCENE_OFFLINE.link.online).toBe(false);
+    expect(S4_SCENE_OFFLINE.link.storageUnavailable).toBe(true);
+    expect(S4_SCENE_OFFLINE.link.wakeLock).toBe(false);
+  });
+
+  it('詳情列是兩場進行中加一場已更正', () => {
+    expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
+    expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
+    expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
+    expect(S4A_SCREENS).toHaveLength(13);
+  });
+
+  it('射手榜與紅黃牌數字可由已確認場次推出', () => {
+    for (const match of S4_CONFIRMED) {
+      expect(sequenceIssues([...match.events], match.events.length)).toEqual([]);
+      expect(cardIssues([...match.events], [...match.voids])).toEqual([]);
+    }
+    expect(deriveScore([...S4_CONFIRMED[0]!.events], [...S4_CONFIRMED[0]!.voids])).toEqual({ home: 3, away: 1 });
+    expect(deriveScore([...S4_CONFIRMED[1]!.events], [...S4_CONFIRMED[1]!.voids])).toEqual({ home: 2, away: 1 });
+    expect(deriveScore([...S4_CONFIRMED[2]!.events], [...S4_CONFIRMED[2]!.voids])).toEqual({ home: 3, away: 0 });
+
+    const table = derivePublicTable(S4_CONFIRMED, S4_PEOPLE);
+    expect(table.scorers.map((row) => [row.displayName, row.teamName, row.goals, row.rank])).toEqual([
+      ['劉冠廷', '雷霆隊', 3, 1],
+      ['謝東霖', '海風隊', 2, 2],
+      ['蔡明哲', '雷霆隊', 2, 2],
+      ['陳', '山貓隊', 1, 4],
+      ['郭建宏', '海風隊', 1, 4],
+    ]);
+    expect(table.scorers.some((row) => row.displayName.includes('小弟'))).toBe(false);
+    expect(table.cards.map((row) => [row.displayName, row.teamName, row.yellow, row.red])).toEqual([
+      ['周子維', '海風隊', 2, 1],
+      ['陳', '山貓隊', 0, 1],
+      ['鄭凱文', '海風隊', 1, 0],
+      ['黃柏翰', '雷霆隊', 1, 0],
+    ]);
+    expect(table.scorers.find((row) => row.plId === 'pl_cat7')).toBeUndefined();
+    expect(table.cards.find((row) => row.plId === 'pl_cat7')).toBeUndefined();
   });
 });

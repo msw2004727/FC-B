@@ -4,6 +4,7 @@
 // 正式型別在後端契約凍結後才搬進 data/types.ts；這裡的型別只給預覽與假資料一致性測試用。
 
 import { taipeiMs } from '../format';
+import type { LiveClock, LiveLink } from '../live/clock';
 import type { MatchDoc, MatchSideName, RosterPositionCode, RosterPublicDoc } from '../data/types';
 
 export const S4_NOW = taipeiMs(2027, 1, 9, 9, 34);
@@ -210,3 +211,209 @@ export function sequenceIssues(events: TimelineEvent[], rev: number): string[] {
   if (events.length !== rev) issues.push(`事件數 ${events.length} ≠ rev ${rev}`);
   return issues;
 }
+
+// ── 各畫面假資料（只加，不改上面的匯出）──────────────────────────
+export interface S4ScoreScene {
+  match: MatchDoc;
+  homeRoster: readonly RosterPublicDoc[];
+  awayRoster: readonly RosterPublicDoc[];
+  events: readonly TimelineEvent[];
+  voids: readonly VoidMark[];
+  actionLog: readonly ActionLogEntry[];
+  clock: LiveClock;
+  link: LiveLink;
+  nowMs: number;
+  takeoverOffered: boolean;
+}
+
+export interface S4Person {
+  plId: string;
+  displayName: string;
+  teamName: string;
+  isMinor: boolean;
+}
+
+export interface S4ConfirmedMatch {
+  id: string;
+  events: readonly TimelineEvent[];
+  voids: readonly VoidMark[];
+}
+
+const S4_LINK_ON: LiveLink = { online: true, pendingCount: 0, storageUnavailable: false, wakeLock: true };
+const S4_CLOCK_LIVE: LiveClock = { elapsedSec: 34 * 60, period: 'h1', addedMin: null };
+
+export const S4_SCENE_PRE: S4ScoreScene = {
+  match: s4Match({
+    id: 'mt_pre0000000000000001',
+    status: 'scheduled',
+    score: { home: 0, away: 0 },
+    rev: 0,
+    clockBase: { startedAt: null, pausedSec: 0, running: false, period: 'h1' },
+    finishedAt: null,
+    updatedAt: S4_KICKOFF,
+  }),
+  homeRoster: S4_ROSTER_HOME,
+  awayRoster: S4_ROSTER_AWAY,
+  events: [],
+  voids: [],
+  actionLog: [],
+  clock: { elapsedSec: 0, period: 'h1', addedMin: null },
+  link: S4_LINK_ON,
+  nowMs: S4_NOW,
+  takeoverOffered: false,
+};
+
+/** score-live、背號選擇、兩張亮牌共用這份進行中資料。 */
+export const S4_SCENE_LIVE: S4ScoreScene = {
+  match: s4Match(),
+  homeRoster: S4_ROSTER_HOME,
+  awayRoster: S4_ROSTER_AWAY,
+  events: S4_LIVE_EVENTS,
+  voids: S4_LIVE_VOIDS,
+  actionLog: [],
+  clock: S4_CLOCK_LIVE,
+  link: S4_LINK_ON,
+  nowMs: S4_NOW,
+  takeoverOffered: false,
+};
+
+export const S4_SCENE_HT: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({
+    status: 'halftime',
+    clockBase: { startedAt: S4_KICKOFF, pausedSec: 45 * 60, running: false, period: 'ht' },
+  }),
+  clock: { elapsedSec: 45 * 60, period: 'ht', addedMin: null },
+};
+
+/** 終場在現在之前 19 秒，3 分鐘撤回窗剩下 2:41。 */
+export const S4_FT_AT = S4_NOW - 19_000;
+export const S4_FT_EVENTS: TimelineEvent[] = [
+  ...S4_LIVE_EVENTS,
+  { seq: 8, type: 'fulltime', matchSecond: 90 * 60, createdAt: S4_FT_AT },
+];
+export const S4_SCENE_FT: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({
+    status: 'finished',
+    rev: 8,
+    finishedAt: S4_FT_AT,
+    clockBase: { startedAt: S4_KICKOFF, pausedSec: 0, running: false, period: 'h2' },
+    updatedAt: S4_FT_AT,
+  }),
+  events: S4_FT_EVENTS,
+  clock: { elapsedSec: 90 * 60, period: 'h2', addedMin: null },
+};
+
+/** 既有日誌再補兩種被拒，畫面上才看得到三種被拒狀態。 */
+export const S4_UNAPPLIED_LOG: ActionLogEntry[] = [
+  ...S4_ACTION_LOG,
+  { id: 'a5', intent: "海風 10 號 35' 進球", state: 'rejected', rejectReason: 'conflict', at: S4_KICKOFF + 2100 * 1000 },
+  { id: 'a6', intent: "雷霆 8 號 36' 黃牌", state: 'rejected', rejectReason: 'locked', at: S4_KICKOFF + 2160 * 1000 },
+];
+export const S4_SCENE_UNAPPLIED: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  actionLog: S4_UNAPPLIED_LOG,
+};
+
+export const S4_SCENE_TAKEOVER: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  takeoverOffered: true,
+};
+
+export const S4_SCENE_OFFLINE: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  actionLog: S4_ACTION_LOG,
+  link: { online: false, pendingCount: 2, storageUnavailable: true, wakeLock: false },
+};
+
+export const S4_SCORE_SCENES = {
+  'score-pre': S4_SCENE_PRE,
+  'score-live': S4_SCENE_LIVE,
+  'score-pick-player': S4_SCENE_LIVE,
+  'score-card-yellow': S4_SCENE_LIVE,
+  'score-card-red-auto': S4_SCENE_LIVE,
+  'score-halftime': S4_SCENE_HT,
+  'score-fulltime-undo': S4_SCENE_FT,
+  'score-unapplied': S4_SCENE_UNAPPLIED,
+  'score-takeover': S4_SCENE_TAKEOVER,
+  'score-offline': S4_SCENE_OFFLINE,
+} as const;
+
+/** 詳情頁：兩場進行中、一場比分已更正。長隊名用來確認省略號仍看得出開頭。 */
+export const S4_DETAIL_ROWS = [
+  { id: 'd1', when: '09:00', home: '雷霆隊', away: '海風隊', score: '1:1', live: true, corrected: false },
+  { id: 'd2', when: '09:00', home: '山貓隊', away: '銀河隊', score: '0:2', live: true, corrected: false },
+  { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
+] as const;
+
+/** 這 13 個是 U0a 要拍的畫面。名稱對齊 harness 與截圖腳本。 */
+export const S4A_SCREENS = [
+  'score-pre',
+  'score-live',
+  'score-pick-player',
+  'score-card-yellow',
+  'score-card-red-auto',
+  'score-halftime',
+  'score-fulltime-undo',
+  'score-unapplied',
+  'score-takeover',
+  'score-offline',
+  'live-detail',
+  'live-match',
+  'live-scorers',
+] as const;
+
+// ── 已確認場次（射手榜／紅黃牌的數字從這裡推）────────────────
+const sec = (n: number) => n * 60;
+export const S4_PEOPLE: readonly S4Person[] = [
+  { plId: 'pl_th9', displayName: '劉冠廷', teamName: '雷霆隊', isMinor: false },
+  { plId: 'pl_th10', displayName: '蔡明哲', teamName: '雷霆隊', isMinor: false },
+  { plId: 'pl_th5', displayName: '黃柏翰', teamName: '雷霆隊', isMinor: false },
+  { plId: 'pl_hf10', displayName: '謝東霖', teamName: '海風隊', isMinor: false },
+  { plId: 'pl_hf11', displayName: '郭建宏', teamName: '海風隊', isMinor: false },
+  { plId: 'pl_hf4', displayName: '周子維', teamName: '海風隊', isMinor: false },
+  { plId: 'pl_hf6', displayName: '鄭凱文', teamName: '海風隊', isMinor: false },
+  { plId: 'pl_cat7', displayName: '林小山', teamName: '山貓隊', isMinor: false },
+  // 公開榜只顯示姓氏。displayName 故意放全名，讓推出的結果證明有遮。
+  { plId: 'pl_cat15', displayName: '陳小弟', teamName: '山貓隊', isMinor: true },
+];
+
+export const S4_CONFIRMED: readonly S4ConfirmedMatch[] = [
+  {
+    id: 'mt_c1000000000000001',
+    voids: [],
+    events: [
+      { seq: 1, type: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: sec(5), createdAt: sec(5) },
+      { seq: 2, type: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: sec(20), createdAt: sec(20) },
+      { seq: 3, type: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: sec(30), createdAt: sec(30) },
+      { seq: 4, type: 'goal', side: 'home', plId: 'pl_th10', goalKind: 'normal', matchSecond: sec(40), createdAt: sec(40) },
+      { seq: 5, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'yellow', matchSecond: sec(50), createdAt: sec(50) },
+      { seq: 6, type: 'card', side: 'away', plId: 'pl_hf4', cardType: 'second_yellow', matchSecond: sec(55), createdAt: sec(55) },
+    ],
+  },
+  {
+    id: 'mt_c2000000000000002',
+    voids: [{ targetSeq: 2, seq: 3, createdAt: sec(12) }],
+    events: [
+      { seq: 1, type: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: sec(8), createdAt: sec(8) },
+      { seq: 2, type: 'goal', side: 'away', plId: 'pl_cat7', goalKind: 'normal', matchSecond: sec(11), createdAt: sec(11) },
+      { seq: 3, type: 'void', targetSeq: 2, matchSecond: sec(12), createdAt: sec(12) },
+      { seq: 4, type: 'goal', side: 'away', plId: 'pl_cat15', goalKind: 'normal', matchSecond: sec(22), createdAt: sec(22) },
+      { seq: 5, type: 'card', side: 'home', plId: 'pl_th5', cardType: 'yellow', matchSecond: sec(33), createdAt: sec(33) },
+      { seq: 6, type: 'card', side: 'away', plId: 'pl_cat15', cardType: 'red', matchSecond: sec(40), createdAt: sec(40) },
+      { seq: 7, type: 'goal', side: 'home', plId: 'pl_th10', goalKind: 'normal', matchSecond: sec(44), createdAt: sec(44) },
+    ],
+  },
+  {
+    id: 'mt_c3000000000000003',
+    voids: [],
+    events: [
+      { seq: 1, type: 'goal', side: 'home', plId: 'pl_hf10', goalKind: 'normal', matchSecond: sec(6), createdAt: sec(6) },
+      { seq: 2, type: 'goal', side: 'home', plId: 'pl_hf11', goalKind: 'normal', matchSecond: sec(18), createdAt: sec(18) },
+      // 林小山烏龍算海風的進球，不算他自己的射手。
+      { seq: 3, type: 'goal', side: 'home', plId: 'pl_cat7', goalKind: 'own', matchSecond: sec(27), createdAt: sec(27) },
+      { seq: 4, type: 'card', side: 'home', plId: 'pl_hf6', cardType: 'yellow', matchSecond: sec(36), createdAt: sec(36) },
+    ],
+  },
+];
