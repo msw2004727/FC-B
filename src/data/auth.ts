@@ -176,6 +176,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 function emitAuth(uid: string | null): void {
   lastKnownAuthUid = uid;
   writeAuthHint(uid !== null);
+  // 登入狀態變成無人（主動登出、帳號被動失效）：首頁「我的下一場活動」快照（含 owner 與活動）一起清，
+  // 不留到下一位在同裝置登入的人（顧問 §3.342，2026-11-19）。主動登出另由 clearAccountLocalState 清。
+  if (uid === null) {
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('fcb:home-next:')) localStorage.removeItem(key);
+      }
+    } catch {
+      /* 儲存空間不可用就略過 */
+    }
+  }
   try {
     emit('auth:changed', { uid });
   } catch (err) {

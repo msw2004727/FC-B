@@ -27,7 +27,7 @@
  *
  * 用法：
  *   node scripts/check-bundle-budget.mjs [dist 目錄] [入口上限] [第二條上限]
- *   上限例：60KB（入口預設）、250KB（第二條預設）、1KB。純數字也當 KB。
+ *   上限例：61KB（入口預設）、250KB（第二條預設）、1KB。純數字也當 KB。
  */
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -39,7 +39,7 @@ export const KB = 1000;
 // 2026-11-19 再由 60,500 調到 61,000：首頁「先畫上次內容」（下一場活動快照＋運動入口 7 天）入口增加約 290 bytes，
 // main 原本只剩 33 bytes 空間；站長 11-19 本人同意（取代 60,500）。
 export const DEFAULT_LIMIT_BYTES = 61_000;
-/** 第二條寬鬆上限。正式門檻見檔頭，不要把第一條的 60KB 拿來套這條。 */
+/** 第二條寬鬆上限。正式門檻見檔頭，不要把第一條的 61KB 拿來套這條。 */
 export const DEFAULT_PRELOAD_SUM_LIMIT_BYTES = 250 * KB;
 
 function attr(tagAttrs, name) {
@@ -113,7 +113,7 @@ export function exceedsBudget(gzipBytes, limitBytes) {
   return gzipBytes > limitBytes;
 }
 
-/** 解析上限。省略時用 fallback（入口預設 60KB）。`60`、`60KB`、`1KB` 皆以 1000 bytes = 1KB。 */
+/** 解析上限。省略時用 fallback（入口預設 61KB）。`60`、`60KB`、`1KB` 皆以 1000 bytes = 1KB。 */
 export function parseLimit(raw, fallback = DEFAULT_LIMIT_BYTES) {
   if (raw == null || String(raw).trim() === '') return fallback;
   const m = /^(\d+(?:\.\d+)?)(?:\s*kb)?$/i.exec(String(raw).trim());

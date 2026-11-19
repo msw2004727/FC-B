@@ -73,6 +73,23 @@ describe('登入旗標的寫入與清除（fcb:signed-in）', () => {
     expect(localStorage.getItem(FLAG_KEY)).toBeNull();
   });
 
+  it('帳號被動失效（狀態事件為 null）→ 首頁「我的下一場活動」快照一起清，其他本機資料不動（顧問 §3.342）', () => {
+    emitState(user('U1'));
+    localStorage.setItem('fcb:home-next:v1', '{"v":1,"owner":"U1"}');
+    localStorage.setItem('fcb:home-next:v0', 'old');
+    localStorage.setItem('sporthub_theme', 'dark');
+    emitState(null);
+    expect(localStorage.getItem('fcb:home-next:v1')).toBeNull();
+    expect(localStorage.getItem('fcb:home-next:v0')).toBeNull();
+    expect(localStorage.getItem('sporthub_theme')).toBe('dark');
+  });
+
+  it('登入者的狀態事件不清首頁快照', () => {
+    localStorage.setItem('fcb:home-next:v1', '{"v":1,"owner":"U1"}');
+    emitState(user('U1'));
+    expect(localStorage.getItem('fcb:home-next:v1')).not.toBeNull();
+  });
+
   it('旗標只存 1，不存 UID', () => {
     emitState(user('U-secret-uid'));
     expect(localStorage.getItem(FLAG_KEY)).toBe('1');

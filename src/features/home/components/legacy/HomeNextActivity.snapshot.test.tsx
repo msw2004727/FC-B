@@ -156,6 +156,31 @@ describe('首頁我的下一場：uid 延後出現（L-43）', () => {
     expect(readNextActivitySnapshot()?.owner).toBe('u1');
   });
 
+  it('帳號一確認、快照屬於別人：不等讀取結果就刪掉；讀取失敗後快照也已不在（顧問 §3.342）', async () => {
+    writeNextActivitySnapshot('someone-else', resultOf(eventOf('e1', '別人的活動')));
+    const pending = deferred<NextActivityResult | null>();
+    resolveNextActivity.mockReturnValue(pending.promise);
+    const view = render(<HomeNextActivity viewer={createMinimalViewer('u1')} {...handlers} />);
+    expect(view.queryByText('別人的活動')).toBeNull();
+    await waitFor(() => expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).toBeNull());
+    await act(async () => {
+      pending.reject(new Error('offline'));
+    });
+    await view.findByText('你目前還沒有報名活動');
+    expect(localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('帳號確認且快照是自己的：不刪', async () => {
+    writeNextActivitySnapshot('u1', resultOf(eventOf('e1', '自己的活動')));
+    resolveNextActivity.mockReturnValue(new Promise(() => undefined));
+    const view = render(<HomeNextActivity viewer={createMinimalViewer('u1')} {...handlers} />);
+    expect(view.getByText('自己的活動')).toBeTruthy();
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    });
+    expect(readNextActivitySnapshot()?.owner).toBe('u1');
+  });
+
   it('帳號不符：不沿用別人的上次內容，讀取中顯示骨架', () => {
     localStorage.setItem(AUTH_HINT_KEY, '1');
     writeNextActivitySnapshot('someone-else', resultOf(eventOf('e1', '別人的活動')));

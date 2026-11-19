@@ -51,6 +51,23 @@ export function removeNextActivitySnapshot(): void {
   }
 }
 
+/** 帳號已確認：本機快照屬於別的帳號就刪掉（不等這次讀取結果，讀取失敗也不會留下別人的快照）。 */
+export function removeNextActivitySnapshotOfOthers(uid: string): void {
+  try {
+    const raw = localStorage.getItem(NEXT_ACTIVITY_SNAPSHOT_KEY);
+    if (!raw) return;
+    let owner: unknown = null;
+    try {
+      owner = (JSON.parse(raw) as { owner?: unknown } | null)?.owner;
+    } catch {
+      /* 壞掉的內容視為不屬於這個帳號 */
+    }
+    if (owner !== uid) removeNextActivitySnapshot();
+  } catch {
+    /* 忽略 */
+  }
+}
+
 /** 寫快照；格式不符（例如沒有日期字串或公開 id）就刪掉舊的、不存。 */
 export function writeNextActivitySnapshot(owner: string, result: NextActivityResult, nowMs: number = Date.now()): void {
   // 登出（或帳號失效）時旗標已先清掉：晚到的寫入不得把剛清掉的快照寫回來。
