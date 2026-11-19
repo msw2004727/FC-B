@@ -12,7 +12,7 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { Suspense, lazy as lazyComponent } from 'preact/compat';
 import { LocationProvider, Router, Route, lazy, useLocation } from 'preact-iso';
 import { TopBar } from '@/ui/TopBar';
-import { QaBanner } from '@/features/qa-login/components/QaBanner';
+import { useQaSession } from '@/features/qa-login/data/qa-session';
 import { BottomNav } from '@/ui/BottomNav';
 import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
@@ -103,6 +103,24 @@ const LazyPmDialogHost = lazyComponent(() =>
 const LazyInboxStoreHost = lazyComponent(() =>
   import('@/features/inbox/components/InboxStoreHost').then((m) => ({ default: m.InboxStoreHost })),
 );
+// 入口瘦身 C 案（顧問 §3.290／§3.293）：QA 橫幅只在 QA 身分時才載入，一般使用者不下載。
+// 載入失敗退回不顯示，不讓殼層進錯誤畫面。取代：原本直接 import QaBanner 進入口。
+const LazyQaBanner = lazyComponent(() =>
+  import('@/features/qa-login/components/QaBanner').then(
+    (m) => ({ default: m.QaBanner }),
+    () => ({ default: () => null }),
+  ),
+);
+
+function QaBannerGate({ uid }: { uid: string | null }): preact.JSX.Element | null {
+  const session = useQaSession(uid);
+  if (session == null) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyQaBanner uid={uid} />
+    </Suspense>
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
@@ -465,7 +483,7 @@ export function App({
   return (
     <LocationProvider>
       <div ref={shellRef} class="app-shell ui-app-shell">
-        <QaBanner uid={routeAccess?.uid ?? null} />
+        <QaBannerGate uid={routeAccess?.uid ?? null} />
         <TopBar
           menuRef={menuRef}
           drawerOpen={drawerOpen}
