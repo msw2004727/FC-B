@@ -98,7 +98,8 @@ function useNow(active: boolean): number {
 
 export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitHandlers }): JSX.Element {
   const text = handoffText(getCurrentLocale());
-  const now = useNow(view.kind !== 'timeout');
+  // 只有④等待畫面顯示倒數；⑤⑥不必每秒重畫（Flash 交叉審 P3）。
+  const now = useNow(view.kind === 'wait');
   if (view.kind === 'timeout') {
     return (
       <Shell title={text.timeoutTitle} closeLabel={text.close} onClose={handlers.onClose}>
