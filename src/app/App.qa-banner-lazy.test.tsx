@@ -1,9 +1,9 @@
 // App 層：QA 橫幅只在 QA 身分才載入模組（入口瘦身 C 案）。
 // 照 App.qa-switch.test.tsx 的部分 mock 與啟動方式，不另做一套 Auth／Firestore 假實作。
 //
-// 隔離：vi.mock 工廠只在 QaBanner 第一次被 import 時執行，兩個案例共用同一份模組快取。
-// 一般 LINE 身分的案例必須先跑（本檔第一個 it）。它不該觸發 lazy import，count 維持 0。
-// QA 案例接著跑，橫幅出現時 count >= 1。不用 vi.resetModules()：App 與範本一樣在檔首靜態 import。
+// 隔離：vi.mock 工廠只在 QaBanner 第一次被 import 時執行。一般身分與 QA 身分拆成兩個測試檔，
+// 各自有乾淨的模組快取，計數不受執行順序影響（Flash 初審 P2、Opus 交叉審 P3-1；取代原本「同檔、一般身分必須先跑」）。
+// 本檔只測QA 身分：經 QaBannerGate 延後載入後橫幅顯示、模組已 import。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { AuthUser, QaClaims } from '@/data/auth';
@@ -76,6 +76,8 @@ vi.mock('firebase/firestore', () => ({
   }),
   query: vi.fn((ref: { _collection: string }) => ({ _collection: ref._collection })),
   where: vi.fn(() => ({})),
+  orderBy: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
 }));
 
 vi.mock('@/features/inbox/components/PmBubbleHost', () => ({ PmBubbleHost: () => null }));
@@ -158,24 +160,6 @@ afterEach(() => {
   _setDictLoaderForTest(null);
 });
 
-async function flushRender(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  });
-}
-
-async function loginAsLine(): Promise<void> {
-  render(<App />);
-  await waitFor(() => expect(auth.onAuthChanged).toHaveBeenCalled());
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: t('ui.topBar.login') }));
-  });
-  await waitFor(() => expect(lineAvatarShown()).toBe(true));
-  expect(document.querySelector('.user-menu-name')?.textContent).toBe(LINE_NAME);
-}
-
 async function loginAsQa(): Promise<void> {
   auth.signIn.mockImplementation(async () => {
     state.currentAuth = { uid: QA_UID, displayName: QA_NAME, pictureUrl: null };
@@ -190,19 +174,6 @@ async function loginAsQa(): Promise<void> {
 }
 
 describe('App QA 橫幅延後載入', () => {
-  it('一般 LINE 身分：橫幅不顯示，且沒有載入 QaBanner 模組', async () => {
-    await loginAsLine();
-    await waitFor(() => {
-      expect(auth.readQaClaims).toHaveBeenCalledWith(LINE_UID);
-    });
-    // claims 已回 null。再沖兩輪，若 gate 有掛上 lazy 元件，動態 import 應已跑完。
-    await flushRender();
-    await flushRender();
-    expect(qaBanner()).toBeNull();
-    expect(screen.queryByRole('button', { name: t('qa-login.banner.signOut') })).toBeNull();
-    expect(qaBannerImported.count).toBe(0);
-  });
-
   it('QA 身分：登入後顯示橫幅，且已載入 QaBanner 模組', async () => {
     await loginAsQa();
     await waitFor(() => {
