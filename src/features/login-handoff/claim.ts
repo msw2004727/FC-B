@@ -1,5 +1,6 @@
 import { callFn } from '@/data/callables';
 
+import { unwrapPageUrl } from './handoff-url';
 import { replacePage } from './nav';
 import { sha256Hex, pairingNumber } from './pairing';
 import { HANDOFF_TTL_MS, PENDING_DISCARD_MS, clearPending, readPending, type PendingHandoff } from './pending';
@@ -263,19 +264,13 @@ function readClaimPayload(res: unknown): { code: string; liffClientId: string; l
 }
 
 function successUrl(payload: { code: string; liffClientId: string; liffRedirectUri: string }): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(payload.liffRedirectUri);
-  } catch {
-    return null;
-  }
-  if (parsed.origin !== location.origin) return null;
-  const original = payload.liffRedirectUri;
-  parsed.searchParams.delete('fcbHandoff');
-  parsed.searchParams.set('code', payload.code);
-  parsed.searchParams.set('liffClientId', payload.liffClientId);
-  parsed.searchParams.set('liffRedirectUri', original);
-  return parsed.toString();
+  // liffRedirectUri 可能是 liff.state 包過的形式：還原成真正頁面，換 token 用的 liffRedirectUri 則原樣帶回。
+  const target = unwrapPageUrl(payload.liffRedirectUri);
+  if (!target || target.origin !== location.origin) return null;
+  target.searchParams.set('code', payload.code);
+  target.searchParams.set('liffClientId', payload.liffClientId);
+  target.searchParams.set('liffRedirectUri', payload.liffRedirectUri);
+  return target.toString();
 }
 
 function finishSuccess(url: string): void {

@@ -25,6 +25,7 @@ import { _resetLiffInitForTest, ensureLiffInit, isLiffSdkLoadError } from './lif
 import {
   buildCleanLoginRedirectUri,
   cleanLoginParamsFromUrl,
+  hasHandoffParam,
   hasLoginRedirectParams,
   isIosStandaloneNow,
   LOGIN_HANDOFF_ENABLED,
@@ -206,8 +207,8 @@ function emitAuth(uid: string | null): void {
  * 改拋 LoginRedirectingError（呼叫端不顯示錯誤）。
  */
 export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
-  // Safari 轉交頁不能消耗 code。
-  if (typeof location !== 'undefined' && location.search.includes('fcbHandoff')) {
+  // 瀏覽器轉交頁不能消耗 code（fcbHandoff 在最外層或 liff.state 內都算）。
+  if (typeof location !== 'undefined' && hasHandoffParam(location.href)) {
     throw new LoginRedirectingError();
   }
   // 登出進行中（等 LIFF 登出或重整前）：不登入，頁面自動要求登入會在這裡停住（Opus P3-4）。

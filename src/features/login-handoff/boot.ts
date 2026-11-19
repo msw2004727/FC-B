@@ -1,4 +1,5 @@
 import { beginClaim } from './claim';
+import { readHandoffParams, unwrapPageUrl } from './handoff-url';
 import { replacePage } from './nav';
 import { sha256Hex } from './pairing';
 import { PENDING_DISCARD_MS, clearPending, readPending } from './pending';
@@ -12,16 +13,16 @@ export interface BootDeps {
 }
 
 export async function bootLoginHandoff(deps: BootDeps): Promise<void> {
-  const params = readParams();
-  if (params.handoffId) {
-    if (params.code && params.liffClientId) {
+  const params = readHandoffParams(location.href);
+  if (params.present) {
+    if (params.handoffId && params.code && params.liffClientId) {
       const pending = readPending();
       if (pending && (await sha256Hex(pending.secret)) === params.handoffId) {
         clearPending();
+        // 還原 liff.state 包裹、拿掉 fcbHandoff，code 等留著，整頁重載走既有接手。
+        const target = unwrapPageUrl(location.href);
         try {
-          const url = new URL(location.href);
-          url.searchParams.delete('fcbHandoff');
-          replacePage(url.toString());
+          if (target) replacePage(target.toString());
         } catch {
           /* 換頁失敗仍已清 pending，避免再 claim */
         }
@@ -52,24 +53,6 @@ export async function bootLoginHandoff(deps: BootDeps): Promise<void> {
   if (deps.isIosStandalone()) await beginClaim();
 }
 
-function readParams(): {
-  handoffId: string | null;
-  code: string | null;
-  liffClientId: string | null;
-  liffRedirectUri: string | null;
-} {
-  try {
-    const params = new URL(location.href).searchParams;
-    return {
-      handoffId: params.get('fcbHandoff'),
-      code: params.get('code'),
-      liffClientId: params.get('liffClientId'),
-      liffRedirectUri: params.get('liffRedirectUri'),
-    };
-  } catch {
-    return { handoffId: null, code: null, liffClientId: null, liffRedirectUri: null };
-  }
-}
 
 function device(): { ua: string; touch: number } {
   const ua = typeof navigator === 'undefined' ? '' : (navigator.userAgent || '');

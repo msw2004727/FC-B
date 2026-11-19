@@ -68,6 +68,7 @@ import {
   carryLoginRedirectParams,
   cleanLoginParamsFromUrl,
   consumeAutoLoginSuppressed,
+  hasHandoffParam,
   hasLoginCancelParams,
   isAutoLoginSuppressedThisPage,
   isIosStandaloneNow,
@@ -260,7 +261,7 @@ export function App({
     if (LOGIN_HANDOFF_ENABLED) {
       let pending = false;
       try { pending = localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY) !== null; } catch { /* ignore */ }
-      if (pending || (typeof location !== 'undefined' && location.search.includes('fcbHandoff'))) {
+      if (pending || (typeof location !== 'undefined' && hasHandoffParam(location.href))) {
         const load = (again: boolean): void => {
           void import('@/features/login-handoff/boot').then(
             (m) => {

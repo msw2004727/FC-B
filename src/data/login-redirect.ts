@@ -47,11 +47,24 @@ export function isIosStandaloneNow(): boolean {
   }
 }
 
-/** 網址是否帶 LINE 授權回跳參數。帶 fcbHandoff 的轉交回跳不是本機接手。 */
+/**
+ * 轉交回跳：fcbHandoff 在最外層，或被 LIFF 包進 liff.state（跳 LINE App 授權再回瀏覽器時，站長 11-20 實機截圖）。
+ * 只看這兩處，不看其他參數值：主畫面 App 接手時 liffRedirectUri 的值裡也有 fcbHandoff 字樣，不能算。
+ */
+export function hasHandoffParam(href: string): boolean {
+  try {
+    const params = new URL(href).searchParams;
+    return params.has('fcbHandoff') || /[?&]fcbHandoff=/.test(params.get('liff.state') ?? '');
+  } catch {
+    return false;
+  }
+}
+
+/** 網址是否帶 LINE 授權回跳參數。轉交回跳（hasHandoffParam）不是本機接手。 */
 export function hasLoginRedirectParams(href: string): boolean {
   try {
     const params = new URL(href).searchParams;
-    if (params.has('fcbHandoff')) return false;
+    if (hasHandoffParam(href)) return false;
     return (params.has('code') && params.has('liffClientId')) || params.has('liff.state');
   } catch {
     return false;

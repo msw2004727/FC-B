@@ -240,6 +240,19 @@ describe('claim', () => {
     expect(callFn.mock.calls.length).toBe(count);
   });
 
+  it('成功（liff.state 包裹的 liffRedirectUri，LINE App 路徑）：還原頁面、不帶 liff.state，liffRedirectUri 原樣帶回', async () => {
+    const wrapped = `${location.origin}/?liff.state=${encodeURIComponent(`/events/e?tab=1&fcbHandoff=${'ab'.repeat(32)}`)}`;
+    callFn.mockResolvedValue({ code: 'abc.def', liffClientId: '2009084941', liffRedirectUri: wrapped });
+    await beginClaim();
+    const next = new URL(replaced[0] ?? 'http://invalid.test/');
+    expect(next.pathname).toBe('/events/e');
+    expect(next.searchParams.get('tab')).toBe('1');
+    expect(next.searchParams.has('liff.state')).toBe(false);
+    expect(next.searchParams.has('fcbHandoff')).toBe(false);
+    expect(next.searchParams.get('code')).toBe('abc.def');
+    expect(next.searchParams.get('liffRedirectUri')).toBe(wrapped);
+  });
+
   it('不同源當成失敗：不換頁、顯示逾時、清掉 pending', async () => {
     callFn.mockResolvedValue({
       code: 'abc.def',

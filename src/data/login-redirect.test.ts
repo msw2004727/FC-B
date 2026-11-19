@@ -10,6 +10,7 @@ import {
   isIosStandalone,
   isLikelyMiniAppUserAgent,
   markAutoLoginSuppressed,
+  hasHandoffParam,
 } from './login-redirect';
 
 describe('Mini App UA（預先初始化用，判斷不出就不算）', () => {
@@ -122,5 +123,25 @@ describe('isIosStandalone', () => {
     expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 5)).toBe(true);
     expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 0)).toBe(false);
     expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', false, 5)).toBe(false);
+  });
+});
+
+describe('hasHandoffParam（顧問 §3.355 b）', () => {
+  const O = 'https://next.toosterx.com';
+  const ID = 'abababababababababababababababababababababababababababababababab';
+  it('最外層或 liff.state 內有 fcbHandoff 都算', () => {
+    expect(hasHandoffParam(`${O}/?fcbHandoff=${ID}&code=c&liffClientId=1`)).toBe(true);
+    expect(hasHandoffParam(`${O}/?liff.state=${encodeURIComponent(`?fcbHandoff=${ID}`)}&code=c&liffClientId=1`)).toBe(true);
+  });
+
+  it('主畫面 App 接手網址：liffRedirectUri 的值裡有 fcbHandoff 字樣也不算（否則接手登入會被自己擋掉）', () => {
+    const wrapped = `${O}/?liff.state=${encodeURIComponent(`?fcbHandoff=${ID}`)}`;
+    const href = `${O}/?code=c&liffClientId=1&liffRedirectUri=${encodeURIComponent(wrapped)}`;
+    expect(hasHandoffParam(href)).toBe(false);
+    expect(hasLoginRedirectParams(href)).toBe(true);
+  });
+
+  it('轉交回跳不算本機接手', () => {
+    expect(hasLoginRedirectParams(`${O}/?liff.state=${encodeURIComponent(`?fcbHandoff=${ID}`)}&code=c&liffClientId=1`)).toBe(false);
   });
 });

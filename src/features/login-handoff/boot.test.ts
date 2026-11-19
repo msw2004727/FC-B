@@ -72,6 +72,20 @@ function openHandoff(handoffId: string, extra: Record<string, string> = {}): voi
   history.replaceState(null, '', `/?${params.toString()}`);
 }
 
+/** LINE App 路徑的實際回跳形式（站長 11-20 截圖）：fcbHandoff 包在 liff.state，liffRedirectUri 也是包過的。 */
+function openWrapped(handoffId: string): string {
+  const wrappedRedirect = `${location.origin}/?liff.state=${encodeURIComponent(`?fcbHandoff=${handoffId}`)}`;
+  const params = new URLSearchParams({
+    'liff.state': `?fcbHandoff=${handoffId}`,
+    state: 'xyz',
+    liffClientId: '2009084941',
+    liffRedirectUri: wrappedRedirect,
+    code: 'auth-code',
+  });
+  history.replaceState(null, '', `/?${params.toString()}`);
+  return wrappedRedirect;
+}
+
 function lastRelay(): RelayView | null | undefined {
   return vi.mocked(renderRelay).mock.calls.at(-1)?.[0];
 }
@@ -261,5 +275,51 @@ describe('boot 分流', () => {
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toBeNull();
     expect(renderWait).not.toHaveBeenCalled();
     expect(renderRelay).not.toHaveBeenCalled();
+  });
+});
+
+describe('liff.state 包裹的回跳（LINE App 路徑，顧問 §3.355 b）', () => {
+  it('iOS Safari：進轉交頁、清掉網址（含 liff.state）、relay 帶原樣的包裹 liffRedirectUri', async () => {
+    armReplace();
+    setPlatform(IPHONE, 5, false);
+    const id = await sha256Hex(SECRET);
+    const wrapped = openWrapped(id);
+    callFn.mockResolvedValue({ ok: true });
+    await runBoot();
+    expect(lastRelay()?.kind).toBe('pick');
+    expect(location.search).toBe('');
+    expect(isAutoLoginSuppressedThisPage()).toBe(true);
+    const options = (lastRelay() as { options: number[] }).options;
+    const handlers = vi.mocked(renderRelay).mock.calls.at(-1)?.[1];
+    handlers?.onPick(options[0] ?? 0);
+    await vi.waitFor(() => expect(callFn).toHaveBeenCalled());
+    expect(callFn.mock.calls[0]?.[1]).toMatchObject({
+      op: 'relay', handoffId: id, code: 'auth-code', liffClientId: '2009084941', liffRedirectUri: wrapped,
+    });
+  });
+
+  it('發起端（主畫面 App 自己收到回跳）：換頁到還原後的網址，不帶 liff.state／fcbHandoff，code 與包裹 liffRedirectUri 保留', async () => {
+    armReplace();
+    const id = await sha256Hex(SECRET);
+    writePending({ secret: SECRET, createdAt: Date.now() });
+    setPlatform(IPHONE, 5, true);
+    const wrapped = openWrapped(id);
+    await runBoot();
+    expect(renderRelay).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toBeNull();
+    const next = new URL(replaced[0] ?? 'http://invalid.test/');
+    expect(next.pathname).toBe('/');
+    expect(next.searchParams.has('liff.state')).toBe(false);
+    expect(next.searchParams.has('fcbHandoff')).toBe(false);
+    expect(next.searchParams.get('code')).toBe('auth-code');
+    expect(next.searchParams.get('liffRedirectUri')).toBe(wrapped);
+  });
+
+  it('liff.state 裡的 fcbHandoff 格式不對：只清參數，不進轉交頁', async () => {
+    setPlatform(IPHONE, 5, false);
+    history.replaceState(null, '', `/?liff.state=${encodeURIComponent('?fcbHandoff=zzz')}&code=c&liffClientId=1`);
+    await runBoot();
+    expect(renderRelay).not.toHaveBeenCalled();
+    expect(location.search).toBe('');
   });
 });
