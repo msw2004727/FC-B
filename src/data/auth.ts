@@ -596,7 +596,8 @@ export interface QaClaims {
 // 出處：SideDrawer.tsx executeClearCache；限清帳號相關資料，避免影響離線資源與主題等與帳號無關的設定。
 // 'fcb:events-snapshot:'：活動列表快照以登入者 uid 分隔，內含他人的 blockedUids／creatorUid 等欄位，登出（整頁重載後是訪客）時不會再被讀到也不會被覆寫，必須在這裡清掉（顧問 §3.106，L-43）。
 // B1-05：補 'shub_qr_'（UidQrModal 的本人 QR 快取）與 admin_stealth（stealth.ts 的隱身開關），登出與清除快取共用這份清單。
-const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:'];
+// 'fcb:home-next:'：首頁「我的下一場活動」快照（含 owner uid 與報名活動），登出與清除快取一起清（2026-11-19）。
+const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:', 'fcb:home-next:'];
 const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs', 'admin_stealth'];
 
 /** 換帳號前拍下的帳號相關 localStorage（key → 當時的值）。 */

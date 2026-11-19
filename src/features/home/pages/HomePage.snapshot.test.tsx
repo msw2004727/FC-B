@@ -21,7 +21,7 @@ import {
 import { resolveNextActivity } from '../data/next-activity';
 import HomePage from './HomePage';
 
-// T-042 首屏快照：回訪時第一次 render 就畫橫幅與運動統計；過期／格式版本不同只留骨架（橫幅 24 小時、運動統計 30 分鐘，掛載後跨過該段期限也要撤掉）；
+// T-042 首屏快照：回訪時第一次 render 就畫橫幅與運動統計；過期／格式版本不同只留骨架（橫幅 24 小時、運動統計 7 天且超過 30 分鐘用舊資訊樣式，掛載後跨過該段期限也要撤掉）；
 // 背景讀取照常進行；只有「確認向伺服器新取得」的結果才更新快照；快照為訪客視角的公開資料、沒有帳號歸屬，登入者的最終畫面一律以正式資料取代快照。
 
 let capturedRefresh: (() => void) | null = null;
@@ -431,7 +431,8 @@ describe('HomePage 首屏快照：掛載後跨過該段期限就撤掉（時間�
 
   it('運動統計：計時器在到期那一刻就撤掉「N 活動」，活動一直讀不回來也不再顯示舊統計', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 5 * MIN + 17_000);
+    // 到期時間 = T0 + 25 分 17 秒（期限 7 天，2026-11-19 由 30 分鐘改）。
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - HOME_SNAPSHOT_MAX_AGE_MS + 25 * MIN + 17_000);
     mockEvents(() => new Promise(() => undefined));
 
     const { container } = render(<HomePage />);
@@ -448,9 +449,9 @@ describe('HomePage 首屏快照：掛載後跨過該段期限就撤掉（時間�
     expect(container.querySelector('#home-sport-entry')?.textContent ?? '').not.toMatch(/\d+\s*活動/);
   });
 
-  it('運動統計：讀取失敗的頁面跨過 30 分鐘後，回到可見（visibilitychange）立刻撤掉', async () => {
+  it('運動統計：讀取失敗的頁面跨過 7 天期限後，回到可見（visibilitychange）立刻撤掉', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 29 * MIN);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - HOME_SNAPSHOT_MAX_AGE_MS + MIN);
     mockEvents(() => Promise.reject(new Error('offline')));
 
     const { container } = render(<HomePage />);
@@ -656,7 +657,7 @@ describe('HomePage 首屏快照：運動統計', () => {
     expect(raw).not.toContain('tennis');
   });
 
-  it('超過 30 分鐘的快照只留骨架：不顯示任何「N 活動」', () => {
+  it('超過 7 天的快照只留骨架：不顯示任何「N 活動」', () => {
     writeSportsSnapshot(guestRowsOf({ football: 7 }), staleSportsAt());
     mockEvents(() => new Promise(() => undefined));
 
@@ -664,6 +665,57 @@ describe('HomePage 首屏快照：運動統計', () => {
 
     expect(footballChip(container)).toBeNull();
     expect(container.querySelector('#home-sport-entry')?.textContent ?? '').not.toMatch(/\d+\s*活動/);
+  });
+
+  it('30 分鐘內的快照照一般樣式顯示：數字不變淡、沒有「更新中」', () => {
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 29 * MIN);
+    mockEvents(() => new Promise(() => undefined));
+
+    const { container } = render(<HomePage />);
+
+    expect(footballCount(container)).toBe('7 活動');
+    expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(false);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
+  });
+
+  it('超過 30 分鐘（7 天內）的快照：照樣顯示上次數字，但數字變淡、讀取中顯示「更新中」；新資料到了換掉並恢復一般樣式', async () => {
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 3 * 24 * 60 * MIN);
+    const calls: Array<(value: unknown) => void> = [];
+    mockEvents(() => new Promise((resolve) => {
+      calls.push(resolve);
+    }), [ev('n1'), ev('n2')]);
+
+    const { container } = render(<HomePage />);
+    expect(footballCount(container)).toBe('7 活動');
+    expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(true);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')?.textContent).toBe('更新中');
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => {
+      calls[0]?.(['events']);
+    });
+    await waitFor(() => expect(footballCount(container)).toBe('2 活動'));
+    expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(false);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
+  });
+
+  it('超過 30 分鐘的快照、活動讀取失敗：保留上次數字的舊資訊樣式，不再顯示「更新中」', async () => {
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 2 * 60 * MIN);
+    let result!: Promise<unknown>;
+    mockEvents(() => {
+      result = Promise.reject(new Error('offline'));
+      return result;
+    });
+
+    const { container } = render(<HomePage />);
+    await waitFor(() => expect(result).toBeDefined());
+    await act(async () => {
+      await result.catch(() => undefined);
+    });
+
+    expect(footballCount(container)).toBe('7 活動');
+    expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(true);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
   });
 
   it('確認「目前沒有活動」後不再沿用快照；之後重試（讀取中或失敗）也不會又退回舊統計', async () => {

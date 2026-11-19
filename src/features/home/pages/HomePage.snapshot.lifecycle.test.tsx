@@ -62,6 +62,8 @@ vi.mock('@/features/home/data/announcements', async (importOriginal) => ({
 vi.mock('@/features/events/components/EventFormModal', () => ({ EventFormModal: () => null }));
 
 const MIN = 60 * 1000;
+/** 下面幾案讓快照只剩 30 分鐘壽命（運動統計期限 2026-11-19 改 7 天後，用寫入時間往前扣，不把假時鐘推進 7 天）。 */
+const REMAIN = 30 * MIN;
 const T0 = Date.UTC(2026, 9, 27, 3, 0, 0);
 
 function makeViewer(uid: string | null): ViewerView {
@@ -148,7 +150,8 @@ afterEach(() => {
 describe('選用快照當下的期限檢查', () => {
   it('時鐘往前跳、計時器還沒醒（也沒有 visibilitychange）：之後任何一次重新 render 都不能再選到已過期的統計快照', async () => {
     vi.useFakeTimers({ now: T0, toFake: ['Date'] });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - 5 * MIN);
+    // 到期時間 = T0 + 25 分（期限 7 天，寫入時間往前扣）。
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - HOME_SNAPSHOT_MAX_AGE_MS + 25 * MIN);
     mockEvents(() => new Promise(() => undefined));
     const { container } = render(<HomePage />);
     expect(footballCount(container)).toBe('7 活動');
@@ -182,7 +185,7 @@ describe('正式資料取代快照與舊到期時間交錯', () => {
   it('橫幅：正式資料在快照到期前一刻取代它；舊的到期時間之後到了，不會把正式資料清掉', async () => {
     vi.useFakeTimers({ now: T0 });
     // 剩餘壽命維持 30 分鐘：既有的 advance 仍落在真正到期前，不必把假時鐘推進 24 小時。
-    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + HOME_SNAPSHOT_MAX_AGE_MS);
+    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + REMAIN);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;
@@ -192,7 +195,7 @@ describe('正式資料取代快照與舊到期時間交錯', () => {
     render(<HomePage />);
 
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS - 1000);
+      vi.advanceTimersByTime(REMAIN - 1000);
     });
     expect(screen.getByText('快照橫幅')).toBeTruthy();
     await act(async () => {
@@ -211,14 +214,14 @@ describe('正式資料取代快照與舊到期時間交錯', () => {
 
   it('運動統計：同上——正式資料取代後，舊的到期時間到了也不會清掉', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - HOME_SNAPSHOT_MAX_AGE_MS + REMAIN);
     const pending = deferred<unknown>();
     mockEvents(() => pending.promise, [ev('e1'), ev('e2')]);
     const { container } = render(<HomePage />);
     expect(footballCount(container)).toBe('7 活動');
 
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS - 1000);
+      vi.advanceTimersByTime(REMAIN - 1000);
     });
     await act(async () => {
       pending.resolve(['events']);
@@ -242,7 +245,7 @@ describe('正式資料在快照到期前一刻取代它（臨界時間點）', (
   it('橫幅：到期前 5 ms 正式資料取代快照，之後不會被舊到期時間清掉', async () => {
     vi.useFakeTimers({ now: T0 });
     // 剩餘壽命維持 30 分鐘：既有的 advance 仍落在真正到期前，不必把假時鐘推進 24 小時。
-    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + HOME_SNAPSHOT_MAX_AGE_MS);
+    seedBanners([banner({ id: 'snap', title: '快照橫幅' })], T0 - BANNERS_SNAPSHOT_MAX_AGE_MS + REMAIN);
     const pending = deferred<BannerDoc[]>();
     vi.mocked(loadActiveBanners).mockImplementation(async (deps) => {
       const list = await pending.promise;
@@ -251,7 +254,7 @@ describe('正式資料在快照到期前一刻取代它（臨界時間點）', (
     });
     render(<HomePage />);
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS - 5);
+      vi.advanceTimersByTime(REMAIN - 5);
     });
 
     pending.resolve([banner({ id: 'server', title: '正式橫幅' })]);
@@ -263,12 +266,12 @@ describe('正式資料在快照到期前一刻取代它（臨界時間點）', (
 
   it('運動統計：到期前 5 ms 正式資料取代快照，之後不會被舊到期時間清掉', async () => {
     vi.useFakeTimers({ now: T0 });
-    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0);
+    writeSportsSnapshot(guestRowsOf({ football: 7 }), T0 - HOME_SNAPSHOT_MAX_AGE_MS + REMAIN);
     const pending = deferred<unknown>();
     mockEvents(() => pending.promise, [ev('e1'), ev('e2')]);
     const { container } = render(<HomePage />);
     await act(async () => {
-      vi.advanceTimersByTime(HOME_SNAPSHOT_MAX_AGE_MS - 5);
+      vi.advanceTimersByTime(REMAIN - 5);
     });
 
     pending.resolve(['events']);

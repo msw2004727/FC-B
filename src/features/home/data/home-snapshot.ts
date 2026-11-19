@@ -20,8 +20,9 @@
  *
  * 新鮮度守門：只看資料格式版本 `v` 與 `savedAt`，不看 app 版號（改版不清快照；格式或語意改變時把
  * `HOME_SNAPSHOT_FORMAT_V` 加 1，舊快照自動作廢）。橫幅可沿用 24 小時（站長 2026-11-10）；
- * 運動統計（「N 活動」）維持 30 分鐘（沿用 A 的 `publicBootSnapshotMaxAgeMs`）。超過期限一律視為沒有快照——
- * 畫面維持原本的骨架／空白，**不拿舊資料顯示任何活動狀態文字**。
+ * 運動統計（「N 活動」）可沿用 7 天，超過 30 分鐘（A 的 `publicBootSnapshotMaxAgeMs`）以舊資訊樣式顯示（站長 2026-11-19；
+ * 取代原「運動統計 30 分鐘後不拿舊資料顯示任何活動狀態文字」，因為隔久再開首頁時運動入口整塊空白）。超過期限一律視為沒有快照——
+ * 畫面維持原本的骨架／空白。
  * 讀取結果帶 `expiresAt`（寫入時間＋該段自己的期限），頁面掛載後要自己在到期時撤掉（見 `use-snapshot-expiry.ts`），
  * 選用快照當下也要再檢查一次期限，不能只在第一次讀取時檢查。
  *
@@ -43,6 +44,7 @@ import {
   HOME_SNAPSHOT_FORMAT_V,
   HOME_SNAPSHOT_FUTURE_SKEW_MS,
   HOME_SNAPSHOT_MAX_AGE_MS,
+  SPORTS_SNAPSHOT_FRESH_MS,
   SPORTS_SNAPSHOT_MAX_AGE_MS,
 } from './home-snapshot-ttl';
 import { isGuestSportRows, type GuestSportRows, type SportRow } from './sport-rows';
@@ -52,6 +54,7 @@ export {
   HOME_SNAPSHOT_FORMAT_V,
   HOME_SNAPSHOT_FUTURE_SKEW_MS,
   HOME_SNAPSHOT_MAX_AGE_MS,
+  SPORTS_SNAPSHOT_FRESH_MS,
   SPORTS_SNAPSHOT_MAX_AGE_MS,
 };
 
@@ -127,6 +130,8 @@ export const SPORT_SNAPSHOT_FIELDS = exactFields<SportSnapshotItem>()(['key', 'c
 export interface SnapshotRead<T> {
   items: T[];
   expiresAt: number;
+  /** 寫入時間（判斷要不要用舊資訊樣式）。 */
+  savedAt: number;
 }
 
 function isFresh(entry: Partial<HomeSnapshotSection<unknown>>, nowMs: number, maxAgeMs: number): boolean {
@@ -147,6 +152,7 @@ function readSection(key: string, nowMs: number, maxAgeMs: number): SnapshotRead
     return {
       items: parsed.items.slice(0, MAX_ITEMS),
       expiresAt: (parsed.savedAt as number) + maxAgeMs,
+      savedAt: parsed.savedAt as number,
     };
   } catch {
     return null;
@@ -272,7 +278,7 @@ export function readBannersSnapshot(nowMs: number = Date.now()): SnapshotRead<Ba
     // 讀取端相容舊格式（缺 status 視為 active），但特殊文件仍然要排除。
     if (banner && isHomeCarouselBanner(banner)) items.push(banner);
   }
-  return items.length > 0 ? { items, expiresAt: section.expiresAt } : null;
+  return items.length > 0 ? { items, expiresAt: section.expiresAt, savedAt: section.savedAt } : null;
 }
 
 /**
@@ -299,7 +305,7 @@ export function invalidateBannersSnapshot(): void {
   removeSection(BANNERS_SNAPSHOT_KEY);
 }
 
-/** 讀運動統計快照：沒有、超過 30 分鐘、格式版本不同或格式不符都回 null；未知的運動 key 略過。版號不同仍可用。 */
+/** 讀運動統計快照：沒有、超過 7 天、格式版本不同或格式不符都回 null；未知的運動 key 略過。版號不同仍可用。 */
 export function readSportsSnapshot(nowMs: number = Date.now()): SnapshotRead<SportRow> | null {
   const section = readSection(SPORTS_SNAPSHOT_KEY, nowMs, SPORTS_SNAPSHOT_MAX_AGE_MS);
   if (!section) return null;
@@ -309,7 +315,7 @@ export function readSportsSnapshot(nowMs: number = Date.now()): SnapshotRead<Spo
     const sport = projected ? SPORTS.find((s) => s.key === projected.key) : undefined;
     if (projected && sport) items.push({ key: sport.key, label: sport.label, symbol: sport.symbol, count: projected.count });
   }
-  return items.length > 0 ? { items, expiresAt: section.expiresAt } : null;
+  return items.length > 0 ? { items, expiresAt: section.expiresAt, savedAt: section.savedAt } : null;
 }
 
 /**

@@ -241,9 +241,11 @@ describe('運動統計快照', () => {
     expect(stored).not.toHaveProperty('appVersion');
   });
 
-  it('剛好 30 分鐘仍可用；超過 30 分鐘不回任何統計。app 版號不同仍可用，格式版本不同則沒有', () => {
+  it('剛好 7 天仍可用（帶寫入時間供舊資訊樣式判斷）；超過 7 天不回任何統計。app 版號不同仍可用，格式版本不同則沒有', () => {
     writeSportsSnapshot(rows, NOW);
+    expect(SPORTS_SNAPSHOT_MAX_AGE_MS).toBe(7 * 24 * 60 * 60 * 1000);
     expect(readSportsSnapshot(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS)?.items).toEqual(rows);
+    expect(readSportsSnapshot(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS)?.savedAt).toBe(NOW);
     expect(readSportsSnapshot(NOW + SPORTS_SNAPSHOT_MAX_AGE_MS + 1)).toBeNull();
 
     putRaw(SPORTS_SNAPSHOT_KEY, {
@@ -296,8 +298,9 @@ describe('運動統計快照', () => {
 
   it('兩段快照各有各的時間戳：只更新橫幅不會讓舊的運動統計變新', () => {
     writeSportsSnapshot(rows, NOW);
-    putBanners([banner({ id: 'b1', title: 'x' })], NOW + 25 * 60 * 1000);
-    const later = NOW + 31 * 60 * 1000;
+    putBanners([banner({ id: 'b1', title: 'x' })], NOW + SPORTS_SNAPSHOT_MAX_AGE_MS - 60 * 60 * 1000);
+    expect(readSportsSnapshot(NOW + 1000)?.savedAt).toBe(NOW);
+    const later = NOW + SPORTS_SNAPSHOT_MAX_AGE_MS + 1;
     expect(readBannersSnapshot(later)?.items).toHaveLength(1);
     expect(readSportsSnapshot(later)).toBeNull();
   });
