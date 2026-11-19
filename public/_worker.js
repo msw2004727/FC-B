@@ -84,7 +84,21 @@ function drillPage(title, body, script) {
 }
 
 const DRILL_SW_SCRIPT = `(async()=>{const el=document.getElementById('sw');try{const c=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);const rs=navigator.serviceWorker?await navigator.serviceWorker.getRegistrations():[];el.textContent='離線快取控制此頁：'+(c?'是':'否')+'；已註冊：'+rs.length;}catch(e){el.textContent='離線快取：無法檢查';}})();`;
-const DRILL_RESET_SCRIPT = `(async()=>{const el=document.getElementById('sw');try{const rs=navigator.serviceWorker?await navigator.serviceWorker.getRegistrations():[];await Promise.all(rs.map(r=>r.unregister()));if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}try{sessionStorage.clear();}catch(e){}el.textContent='已解除離線快取 '+rs.length+' 個、清除快取完成。可以進行下一步。';}catch(e){el.textContent='清除時發生問題：'+e;}})();`;
+const DRILL_RESET_SCRIPT = `(async()=>{const el=document.getElementById('sw');try{const rs=navigator.serviceWorker?await navigator.serviceWorker.getRegistrations():[];await Promise.all(rs.map(r=>r.unregister()));if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}try{sessionStorage.clear();}catch(e){}try{localStorage.removeItem('fcb_drill_timing');}catch(e){}el.textContent='已解除離線快取 '+rs.length+' 個、清除快取完成。可以進行下一步。';}catch(e){el.textContent='清除時發生問題：'+e;}})();`;
+
+// 甲案修正版演練（顧問 §3.323 P3）：只在演練啟動時注入詳情頁 HTML 的 <head> 最前面，記下 vite:preloadError 與失敗 link error 的時間（ms，頁面開始起算），
+// 存 localStorage（跨分頁可讀），狀態頁顯示最近 4 次頁面的紀錄；用來讀回 iPhone 實機的「preloadError → link error」時間差。只在演練開關內，不進上線樹。
+const DRILL_TIMING_SCRIPT = `<script>(function(){var t0=performance.now(),K='fcb_drill_timing',all=[];try{all=JSON.parse(localStorage.getItem(K)||'[]')}catch(e){}var rec={at:new Date().toISOString(),ua:navigator.userAgent.slice(0,80),sw:!!(navigator.serviceWorker&&navigator.serviceWorker.controller),ev:[]};all.push(rec);all=all.slice(-4);function save(){try{localStorage.setItem(K,JSON.stringify(all))}catch(e){}}function ms(){return Math.round(performance.now()-t0)}addEventListener('vite:preloadError',function(){rec.ev.push(['preloadError',ms()]);save()},true);document.addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='LINK'){rec.ev.push(['link-error '+t.rel+' '+String(t.href||'').split('/assets/')[1],ms()]);save()}},true);addEventListener('pagehide',function(){rec.ev.push(['pagehide',ms()]);save()});save()})();</script>`;
+const DRILL_TIMING_VIEW = `(function(){var el=document.getElementById('timing');try{var all=JSON.parse(localStorage.getItem('fcb_drill_timing')||'[]');if(!all.length){el.textContent='時間紀錄：無';return;}el.textContent=all.map(function(r,i){return '#'+(i+1)+' '+r.at+' 離線快取控制：'+(r.sw?'是':'否')+'\\n  '+r.ev.map(function(e){return e[0]+' @'+e[1]+'ms'}).join('\\n  ')}).join('\\n');}catch(e){el.textContent='時間紀錄：無法讀取';}})();`;
+
+async function drillHtml(request, env) {
+  const page = await env.ASSETS.fetch(request);
+  const html = (await page.text()).replace("<head>", "<head>" + DRILL_TIMING_SCRIPT);
+  const res = new Response(html, page);
+  res.headers.delete("Content-Length");
+  res.headers.set("Cache-Control", "no-store");
+  return res;
+}
 
 async function drillGate(request, env, url) {
   if (url.hostname !== DRILL_HOST) return null;
@@ -103,16 +117,18 @@ async function drillGate(request, env, url) {
     const hitText = hitAt ? `是（${hitAt}）` : "否";
     return drillPage(
       "演練狀態",
-      `<p>已啟動：<b>${armed ? (armMode === "armed-sw" ? "是（第二輪，不關離線快取）" : "是（第一輪，關離線快取）") : "否"}</b></p><p>503 已打到：<b>${hitText}</b></p>`,
-      DRILL_SW_SCRIPT,
+      `<p>已啟動：<b>${armed ? (armMode === "armed-sw" ? "是（第二輪，不關離線快取）" : "是（第一輪，關離線快取）") : "否"}</b></p><p>503 已打到：<b>${hitText}</b></p><pre id="timing">時間紀錄：讀取中…</pre>`,
+      DRILL_SW_SCRIPT + DRILL_TIMING_VIEW,
     );
   }
   if ((mode === "503" || mode === "503sw") && url.pathname.startsWith("/events/") && !armed) {
-    const page = await env.ASSETS.fetch(request);
-    const res = new Response(page.body, page);
+    const res = await drillHtml(request, env);
     res.headers.append("Set-Cookie", `fcb_drill=${mode === "503sw" ? "armed-sw" : "armed"}; ${DRILL_COOKIE_ATTRS}`);
-    res.headers.set("Cache-Control", "no-store");
     return res;
+  }
+  // 啟動後的詳情頁（含自動重整那一次）也注入時間紀錄。
+  if (armed && url.pathname.startsWith("/events/") && (request.headers.get("accept") || "").includes("text/html")) {
+    return drillHtml(request, env);
   }
   // 只改回應、不寫檔（顧問 §3.276 條件）；第二輪（armed-sw）不改。
   if (url.pathname === "/runtime-config.json" && armMode === "armed") {

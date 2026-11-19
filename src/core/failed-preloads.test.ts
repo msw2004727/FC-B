@@ -142,23 +142,27 @@ describe('allPreloadAssetUrls', () => {
     addLink('stylesheet', '/vendor/app.css');
     addLink('preload', '/assets/nested/app.js');
     addLink('modulepreload', '/assets/app.js');
-    expect(allPreloadAssetUrls()).toEqual([js, css, pre]);
+    // 後插入優先：最後的重複 app.js 先收下，接著 chunk.js、app.css。
+    expect(allPreloadAssetUrls()).toEqual([js, pre, css]);
   });
 
-  it('80 個合格 link 全回；81 個整批不刷新', () => {
+  it('80 個合格 link 全回；81 個回後插入的 80 個', () => {
     expect(MAX_ALL).toBe(80);
-    const eighty: string[] = [];
+    const hrefs: string[] = [];
     for (let i = 0; i < 80; i += 1) {
-      eighty.push(addLink('stylesheet', `/assets/s${i}.css`).href);
+      hrefs.push(addLink('stylesheet', `/assets/s${i}.css`).href);
     }
-    // 不合格與重複不計入上限。
+    // 不合格不計入上限。
     addLink('icon', '/assets/icon.js');
     addLink('stylesheet', 'https://cdn.example.com/assets/ext.css');
-    addLink('stylesheet', '/assets/s0.css');
-    expect(allPreloadAssetUrls()).toEqual(eighty);
+    expect(allPreloadAssetUrls()).toEqual([...hrefs].reverse());
     expect(allPreloadAssetUrls()).toHaveLength(80);
 
-    addLink('modulepreload', '/assets/overflow.js');
-    expect(allPreloadAssetUrls()).toEqual([]);
+    const last = addLink('modulepreload', '/assets/overflow.js').href;
+    const got = allPreloadAssetUrls();
+    expect(got).toHaveLength(80);
+    expect(got[0]).toBe(last);
+    expect(got).not.toContain(hrefs[0]);
+    expect(got).toEqual([last, ...hrefs.slice(1).reverse()]);
   });
 });
