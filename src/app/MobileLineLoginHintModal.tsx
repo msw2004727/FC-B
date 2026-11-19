@@ -5,8 +5,7 @@ import { useEffect } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { lt, useT } from '@/i18n/i18n';
 import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
-import { isIosStandalone } from '@/data/login-redirect';
-import { LOGIN_HANDOFF_ENABLED } from '@/features/login-handoff/flag';
+import { isIosStandalone, LOGIN_HANDOFF_ENABLED } from '@/data/login-redirect';
 import { isStandalonePwa } from '@/features/pwa/pwa-install';
 import './MobileLineLoginHintModal.css';
 

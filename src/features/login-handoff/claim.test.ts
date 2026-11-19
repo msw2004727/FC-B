@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { beginClaim, _resetClaimForTest } from './claim';
-import { LOGIN_HANDOFF_STORAGE_KEY } from './flag';
+import { LOGIN_HANDOFF_STORAGE_KEY } from '@/data/login-redirect';
 import { _setReplaceForTest } from './nav';
 import { writePending } from './pending';
 import { renderWait, type WaitHandlers, type WaitView } from './view';

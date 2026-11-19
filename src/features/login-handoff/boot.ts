@@ -1,17 +1,17 @@
-import {
-  cleanLoginParamsFromUrl,
-  isIosStandalone,
-  suppressAutoLoginThisPage,
-} from '@/data/login-redirect';
-import { isStandalonePwa } from '@/features/pwa/pwa-install';
-
 import { beginClaim } from './claim';
 import { replacePage } from './nav';
 import { sha256Hex } from './pairing';
 import { PENDING_DISCARD_MS, clearPending, readPending } from './pending';
 import { beginRelay } from './relay';
 
-export async function bootLoginHandoff(): Promise<void> {
+export interface BootDeps {
+  isIosStandalone(): boolean;
+  isStandalone(): boolean;
+  cleanParams(): void;
+  suppressAutoLogin(): void;
+}
+
+export async function bootLoginHandoff(deps: BootDeps): Promise<void> {
   const params = readParams();
   if (params.handoffId) {
     if (params.code && params.liffClientId) {
@@ -27,20 +27,20 @@ export async function bootLoginHandoff(): Promise<void> {
         }
         return;
       }
-      if (iosBrowserTab()) {
+      if (iosBrowserTab(deps)) {
         const saved = {
           handoffId: params.handoffId,
           code: params.code,
           liffClientId: params.liffClientId,
           liffRedirectUri: params.liffRedirectUri,
         };
-        cleanLoginParamsFromUrl();
-        suppressAutoLoginThisPage();
+        deps.cleanParams();
+        deps.suppressAutoLogin();
         await beginRelay(saved);
         return;
       }
     }
-    cleanLoginParamsFromUrl();
+    deps.cleanParams();
     return;
   }
 
@@ -50,7 +50,7 @@ export async function bootLoginHandoff(): Promise<void> {
     clearPending();
     return;
   }
-  if (iosHomeApp()) await beginClaim();
+  if (deps.isIosStandalone()) await beginClaim();
 }
 
 function readParams(): {
@@ -82,15 +82,10 @@ function iosFamily(ua: string, touch: number): boolean {
   return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && touch > 1);
 }
 
-function iosBrowserTab(): boolean {
+function iosBrowserTab(deps: BootDeps): boolean {
   const { ua, touch } = device();
   if (!iosFamily(ua, touch)) return false;
   if (ua.includes('Line/')) return false;
-  if (isStandalonePwa()) return false;
+  if (deps.isStandalone()) return false;
   return true;
-}
-
-function iosHomeApp(): boolean {
-  const { ua, touch } = device();
-  return isIosStandalone(ua, isStandalonePwa(), touch);
 }

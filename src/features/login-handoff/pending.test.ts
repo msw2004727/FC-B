@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LOGIN_HANDOFF_STORAGE_KEY } from './flag';
-import { PENDING_DISCARD_MS, clearPending, readPending, writePending } from './pending';
+import { LOGIN_HANDOFF_STORAGE_KEY } from '@/data/login-redirect';
+import { PENDING_DISCARD_MS, STORAGE_KEY, clearPending, readPending, writePending } from './pending';
 
 const SECRET = 'ab'.repeat(32);
 
@@ -11,6 +11,10 @@ afterEach(() => {
 });
 
 describe('pending', () => {
+  it('STORAGE_KEY 與 LOGIN_HANDOFF_STORAGE_KEY 相等', () => {
+    expect(STORAGE_KEY).toBe(LOGIN_HANDOFF_STORAGE_KEY);
+  });
+
   it('寫入後讀得回', () => {
     const createdAt = Date.now();
     writePending({ secret: SECRET, createdAt });

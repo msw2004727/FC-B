@@ -1,4 +1,4 @@
-import { LOGIN_HANDOFF_STORAGE_KEY } from './flag';
+export const STORAGE_KEY = 'fcb:login-handoff';
 
 export const HANDOFF_TTL_MS = 5 * 60 * 1000;
 export const PENDING_DISCARD_MS = 6 * 60 * 1000;
@@ -13,7 +13,7 @@ export interface PendingHandoff {
 export function readPending(): PendingHandoff | null {
   let raw: string | null;
   try {
-    raw = localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY);
+    raw = localStorage.getItem(STORAGE_KEY);
   } catch {
     return null;
   }
@@ -28,7 +28,7 @@ export function readPending(): PendingHandoff | null {
 
 export function writePending(pending: PendingHandoff): void {
   try {
-    localStorage.setItem(LOGIN_HANDOFF_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
       secret: pending.secret,
       createdAt: pending.createdAt,
     }));
@@ -39,7 +39,7 @@ export function writePending(pending: PendingHandoff): void {
 
 export function clearPending(): void {
   try {
-    localStorage.removeItem(LOGIN_HANDOFF_STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }

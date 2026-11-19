@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isStandalonePwa } from '@/features/pwa/pwa-install';
 import {
   _resetAutoLoginSuppressForTest,
+  cleanLoginParamsFromUrl,
   isAutoLoginSuppressedThisPage,
+  isIosStandaloneNow,
+  LOGIN_HANDOFF_STORAGE_KEY,
+  suppressAutoLoginThisPage,
 } from '@/data/login-redirect';
 
 import { bootLoginHandoff } from './boot';
 import { _resetClaimForTest } from './claim';
-import { LOGIN_HANDOFF_STORAGE_KEY } from './flag';
 import { _setReplaceForTest } from './nav';
 import { sha256Hex } from './pairing';
 import { PENDING_DISCARD_MS, writePending } from './pending';
@@ -88,6 +92,15 @@ afterEach(() => {
   history.replaceState(null, '', '/');
 });
 
+function runBoot(): Promise<void> {
+  return bootLoginHandoff({
+    isIosStandalone: isIosStandaloneNow,
+    isStandalone: isStandalonePwa,
+    cleanParams: cleanLoginParamsFromUrl,
+    suppressAutoLogin: suppressAutoLoginThisPage,
+  });
+}
+
 function armReplace(): void {
   replaced.length = 0;
   _setReplaceForTest((url) => { replaced.push(url); });
@@ -113,7 +126,7 @@ describe('boot 分流', () => {
     armReplace();
     setPlatform(ua, touch, standalone);
     openHandoff('ee'.repeat(32));
-    await bootLoginHandoff();
+    await runBoot();
     expect(location.search).toBe('?tab=2');
     expect(callFn).not.toHaveBeenCalled();
     expect(replaced).toEqual([]);
@@ -134,7 +147,7 @@ describe('boot 分流', () => {
     writePending({ secret: SECRET, createdAt: Date.now() });
     setPlatform(IPHONE, 5, true);
     openHandoff(id);
-    await bootLoginHandoff();
+    await runBoot();
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toBeNull();
     expect(renderRelay).not.toHaveBeenCalled();
     expect(renderWait).not.toHaveBeenCalled();
@@ -153,7 +166,7 @@ describe('boot 分流', () => {
     writePending({ secret: OTHER, createdAt: Date.now() });
     setPlatform(IPHONE, 5, false);
     openHandoff(await sha256Hex(SECRET));
-    await bootLoginHandoff();
+    await runBoot();
     expect(lastRelay()?.kind).toBe('pick');
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toContain(OTHER);
     expect(callFn).not.toHaveBeenCalled();
@@ -166,7 +179,7 @@ describe('boot 分流', () => {
     writePending({ secret: SECRET, createdAt: Date.now() });
     setPlatform(IPHONE, 5, true);
     history.replaceState(null, '', '/');
-    await bootLoginHandoff();
+    await runBoot();
     expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toMatchObject({ kind: 'wait' });
     expect(callFn).toHaveBeenCalledWith('lineLoginHandoff', { op: 'claim', handoffSecret: SECRET });
     expect(renderRelay).not.toHaveBeenCalled();
@@ -178,7 +191,7 @@ describe('boot 分流', () => {
     writePending({ secret: SECRET, createdAt: Date.now() });
     setPlatform(MAC, 5, true);
     history.replaceState(null, '', '/');
-    await bootLoginHandoff();
+    await runBoot();
     expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toMatchObject({ kind: 'wait' });
     expect(callFn).toHaveBeenCalledWith('lineLoginHandoff', expect.objectContaining({ op: 'claim' }));
   });
@@ -188,7 +201,7 @@ describe('boot 分流', () => {
     writePending({ secret: SECRET, createdAt: Date.now() });
     setPlatform(ANDROID, 5, false);
     history.replaceState(null, '', '/');
-    await bootLoginHandoff();
+    await runBoot();
     expect(renderWait).not.toHaveBeenCalled();
     expect(renderRelay).not.toHaveBeenCalled();
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toContain(SECRET);
@@ -200,7 +213,7 @@ describe('boot 分流', () => {
     writePending({ secret: OTHER, createdAt: Date.now() });
     setPlatform(IPHONE, 5, true);
     openHandoff('11'.repeat(32));
-    await bootLoginHandoff();
+    await runBoot();
     expect(location.search).toBe('?tab=2');
     expect(renderRelay).not.toHaveBeenCalled();
     expect(renderWait).not.toHaveBeenCalled();
@@ -211,7 +224,7 @@ describe('boot 分流', () => {
     armReplace();
     setPlatform(IPHONE, 5, false);
     history.replaceState(null, '', `/?fcbHandoff=${'aa'.repeat(32)}&tab=2`);
-    await bootLoginHandoff();
+    await runBoot();
     expect(location.search).toBe('?tab=2');
     expect(renderRelay).not.toHaveBeenCalled();
     expect(renderWait).not.toHaveBeenCalled();
@@ -228,7 +241,7 @@ describe('boot 分流', () => {
       tab: '2',
     });
     history.replaceState(null, '', `/?${params.toString()}`);
-    await bootLoginHandoff();
+    await runBoot();
     expect(lastRelay()).toEqual({ kind: 'wrong' });
     expect(callFn).not.toHaveBeenCalled();
     expect(location.search).toBe('?tab=2');
@@ -242,7 +255,7 @@ describe('boot 分流', () => {
     writePending({ secret: SECRET, createdAt: Date.now() - PENDING_DISCARD_MS - 1 });
     setPlatform(IPHONE, 5, true);
     history.replaceState(null, '', '/');
-    await bootLoginHandoff();
+    await runBoot();
     expect(localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY)).toBeNull();
     expect(renderWait).not.toHaveBeenCalled();
     expect(renderRelay).not.toHaveBeenCalled();

@@ -55,8 +55,7 @@ import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
 import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
-import { LOGIN_HANDOFF_ENABLED, LOGIN_HANDOFF_STORAGE_KEY } from '@/features/login-handoff/flag';
-import { initPwaInstallListener } from '@/features/pwa/pwa-install';
+import { initPwaInstallListener, isStandalonePwa } from '@/features/pwa/pwa-install';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
 import {
@@ -71,8 +70,12 @@ import {
   consumeAutoLoginSuppressed,
   hasLoginCancelParams,
   isAutoLoginSuppressedThisPage,
+  isIosStandaloneNow,
+  LOGIN_HANDOFF_ENABLED,
+  LOGIN_HANDOFF_STORAGE_KEY,
   markAutoLoginSuppressed,
   hasLoginRedirectParams,
+  suppressAutoLoginThisPage,
 } from '@/data/login-redirect';
 import { resolveShareLink } from './share-link';
 import { readAppVersion } from '@/core/app-meta';
@@ -256,28 +259,32 @@ export function App({
     let retryHandoff: (() => void) | undefined;
     if (LOGIN_HANDOFF_ENABLED) {
       let pending = false;
-      try {
-        pending = localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY) !== null;
-      } catch { /* ignore */ }
+      try { pending = localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY) !== null; } catch { /* ignore */ }
       if (pending || (typeof location !== 'undefined' && location.search.includes('fcbHandoff'))) {
-        let once = false;
-        const load = (): void => {
+        const load = (again: boolean): void => {
           void import('@/features/login-handoff/boot').then(
-            (m) => { void m.bootLoginHandoff().catch(() => undefined); },
+            (m) => {
+              void m.bootLoginHandoff({
+                isIosStandalone: isIosStandaloneNow,
+                isStandalone: isStandalonePwa,
+                cleanParams: cleanLoginParamsFromUrl,
+                suppressAutoLogin: suppressAutoLoginThisPage,
+              }).catch(() => undefined);
+            },
             () => {
-              if (once) return;
-              retryHandoff = () => {
+              if (!again) return;
+              const onVisible = (): void => {
                 if (document.visibilityState !== 'visible') return;
-                document.removeEventListener('visibilitychange', retryHandoff as () => void);
+                document.removeEventListener('visibilitychange', onVisible);
                 retryHandoff = undefined;
-                once = true;
-                load();
+                load(false);
               };
-              document.addEventListener('visibilitychange', retryHandoff);
+              retryHandoff = onVisible;
+              document.addEventListener('visibilitychange', onVisible);
             },
           );
         };
-        load();
+        load(true);
       }
     }
 

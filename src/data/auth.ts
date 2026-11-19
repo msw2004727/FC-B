@@ -17,8 +17,6 @@
 
 import { emit } from '@/core/events';
 import { toast } from '@/ui/Toast';
-import { LOGIN_HANDOFF_ENABLED, LOGIN_HANDOFF_STORAGE_KEY } from '@/features/login-handoff/flag';
-import { isStandalonePwa } from '@/features/pwa/pwa-install';
 
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
@@ -28,7 +26,9 @@ import {
   buildCleanLoginRedirectUri,
   cleanLoginParamsFromUrl,
   hasLoginRedirectParams,
-  isIosStandalone,
+  isIosStandaloneNow,
+  LOGIN_HANDOFF_ENABLED,
+  LOGIN_HANDOFF_STORAGE_KEY,
   markAutoLoginSuppressed,
   suppressAutoLoginThisPage,
 } from './login-redirect';
@@ -362,11 +362,7 @@ async function redirectToLineLogin(
   // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
   // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
   const redirectUri = buildCleanLoginRedirectUri(location.href);
-  if (LOGIN_HANDOFF_ENABLED && isIosStandalone(
-    navigator.userAgent,
-    isStandalonePwa(),
-    navigator.maxTouchPoints ?? 0,
-  )) {
+  if (LOGIN_HANDOFF_ENABLED && isIosStandaloneNow()) {
     // 這次之後要再經過提示框；B1-02 不會自己發起轉交。載入失敗不退回一般 liff.login。
     mobileHintAcknowledged = false;
     const handoff = await import('@/features/login-handoff/start');
