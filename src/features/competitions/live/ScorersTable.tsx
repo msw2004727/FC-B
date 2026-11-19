@@ -14,18 +14,37 @@ function shown(name: string, isMinor: boolean): string {
 export function ScorersTable({
   scorers,
   cards,
+  stalled = false,
+  stalledLabel = LIVE_COPY.scorersStalled,
+  empty = false,
+  emptyLabel = LIVE_COPY.scorersEmpty,
+  capNote = null,
+  initialTab = 'goals',
 }: {
   scorers: readonly ScorerRow[];
   cards: readonly CardStatRow[];
+  /** 停更橫幅。沿用 s4-banner，次要色。 */
+  stalled?: boolean;
+  stalledLabel?: string;
+  empty?: boolean;
+  emptyLabel?: string;
+  /** 超過 50 名時的底部一行。沒有就不畫。 */
+  capNote?: string | null;
+  /** 截圖要直接打開紅黃牌。預設仍是射手榜。 */
+  initialTab?: 'goals' | 'cards';
 }): JSX.Element {
-  const [tab, setTab] = useState('goals');
+  const [tab, setTab] = useState(initialTab);
   return (
     <section class="s4-page">
-      <Tabs
+      {stalled ? <p class="s4-banner s4-banner--quiet">{stalledLabel}</p> : null}
+      {empty ? <p class="s4-note">{emptyLabel}</p> : null}
+      {empty ? null : <Tabs
         label={LIVE_COPY.tablistLabel}
         variant="segmented"
         value={tab}
-        onValueChange={setTab}
+        onValueChange={(id) => {
+          if (id === 'goals' || id === 'cards') setTab(id);
+        }}
         items={[
           {
             id: 'goals',
@@ -80,7 +99,8 @@ export function ScorersTable({
             ),
           },
         ]}
-      />
+      />}
+      {capNote ? <p class="s4-note">{capNote}</p> : null}
     </section>
   );
 }

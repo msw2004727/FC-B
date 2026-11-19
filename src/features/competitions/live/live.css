@@ -219,6 +219,10 @@
   background: var(--color-warning-bg);
   color: var(--color-warning-fg);
 }
+/* 停更橫幅：沿用 12px，只改次要色。不加字級、不寫死色碼。 */
+.s4-banner--quiet {
+  color: var(--color-text-secondary);
+}
 /* 儲存不可用：固定亮紅＋黑字，深色模式也維持對比，不跟主題走暗。 */
 .s4-banner--danger {
   background: #ff2d2d;

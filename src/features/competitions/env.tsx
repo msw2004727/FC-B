@@ -6,6 +6,7 @@ import { useContext } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { CpActions } from './actions';
 import type { CpClub } from './access';
+import type { AudiencePorts } from './data/audience';
 import type { CompetitionsRepo } from './data/cp-repo';
 import type {
   CompetitionCategory,
@@ -94,7 +95,9 @@ export interface CpInjectedEnv {
   actions: CpActions;
   /** 權限判斷用的現在。省略則用 Date.now()。 */
   now?: number;
-  route?: { cid?: string; enId?: string; uid?: string };
+  route?: { cid?: string; enId?: string; uid?: string; mtId?: string };
+  /** 觀眾監聽與射手榜。省略且沒有 bundle 時，正式頁才連 Firestore。 */
+  audience?: AudiencePorts;
   bundle?: CpBundle;
   /** 注入時詳情不打網路，賽程與積分榜用這份。省略當空。 */
   schedule?: CpScheduleSnapshot;

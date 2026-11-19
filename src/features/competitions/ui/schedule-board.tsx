@@ -20,8 +20,12 @@ import {
   type ScheduleGroup,
 } from '../data/schedule-present';
 import { rankingRuleKeys } from '../data/tie-present';
+import { scorerDivisions, type ScorerTables } from '../data/audience';
 import type { CompetitionCategory, DivisionDoc, EntryDoc, StandingDoc, StandingRanking, SummaryEntry } from '../data/types';
+import { ScorersTable } from '../live/ScorersTable';
 import type { CompetitionPhase } from '../data/present';
+import { pkScoreLabel } from '../live/copy';
+import { LiveScoreBadge } from '../live/LiveScoreBadge';
 import { crestFromEntry, TeamCrest } from './TeamCrest';
 import { CpCard } from './shell';
 
@@ -87,14 +91,17 @@ function SideName({
   name,
   crests,
   align,
+  logo,
 }: {
   entryId: string;
   name: string;
   crests: readonly EntryDoc[];
   align: 'home' | 'away';
+  /** 摘要 h.l／a.l。有值就用這張；沒有才用報名隊徽或字首。 */
+  logo?: string | null;
 }): JSX.Element {
   const crest = crestFromEntry(entryId, name, crests);
-  const mark = <TeamCrest teamId={crest.teamId} name={crest.name} teamLogo={crest.teamLogo} size={22} />;
+  const mark = <TeamCrest teamId={crest.teamId} name={crest.name} teamLogo={logo || crest.teamLogo} size={22} />;
   if (align === 'home') {
     return <span class="cp3-tn cp3-tn--h"><em>{name}</em>{mark}</span>;
   }
@@ -125,10 +132,16 @@ function headingText(ct: CompetitionsT, heading: GroupHeading | null): string | 
   return heading.name ?? ct('divisionFallback', { n: heading.n });
 }
 
-export function scheduleLabels(ct: CompetitionsT): { tbd: string; today: string; weekdays: string[] } {
+export function scheduleLabels(ct: CompetitionsT): {
+  tbd: string;
+  today: string;
+  weekdays: string[];
+  nextDay: (time: string) => string;
+} {
   return {
     tbd: ct('timeTbd'),
     today: ct('todayMark'),
+    nextDay: (time) => ct('nextDayTime', { time }),
     weekdays: [
       ct('weekdaySun'),
       ct('weekdayMon'),
@@ -153,12 +166,15 @@ export function MatchSchedule({
   standings,
   crests,
   clock = 'keep',
+  onOpenMatch,
 }: {
   ct: CompetitionsT;
   groups: readonly ScheduleGroup[];
   standings: readonly StandingDoc[];
   crests: readonly EntryDoc[];
   clock?: ScheduleClock;
+  /** 每一場都能進單場頁，含未開賽。 */
+  onOpenMatch?: (mtId: string) => void;
 }): JSX.Element {
   const multiple = groups.length > 1;
   return (
@@ -176,7 +192,11 @@ export function MatchSchedule({
                     {day.matches.map((match) => {
                       const badge = clock === 'keep' && match.mark ? markBadge(ct, match.mark) : null;
                       return (
-                        <li class="cp3-m" key={match.id}>
+                        <li
+                          class="cp3-m"
+                          key={match.id}
+                          onClick={onOpenMatch ? () => onOpenMatch(match.id) : undefined}
+                        >
                           <div class="cp3-m__top">
                             {clock === 'tbd' ? (
                               <span class="cp3-m__when"><b>{ct('compTbd')}</b></span>
@@ -191,18 +211,23 @@ export function MatchSchedule({
                               </span>
                             )}
                             {badge ? <Badge tone={badge.tone} label={badge.label} size="sm" /> : null}
+                            {clock === 'keep' && match.live ? <LiveScoreBadge kind="live" /> : null}
+                            {clock === 'keep' && match.corrected ? <LiveScoreBadge kind="corrected" /> : null}
                           </div>
                           <div class="cp3-m__vs">
                             <span class="h">
-                              <SideName entryId={match.homeId} name={match.homeName} crests={crests} align="home" />
+                              <SideName entryId={match.homeId} name={match.homeName} crests={crests} align="home" logo={match.homeLogo} />
                             </span>
                             {match.score ? (
-                              <span class="s">{match.score[0]}：{match.score[1]}</span>
+                              <span class="s">
+                                {match.score[0]}：{match.score[1]}
+                                {match.pk ? <span class="s4-pk">{pkScoreLabel(match.pk[0], match.pk[1])}</span> : null}
+                              </span>
                             ) : (
                               <span class="s vs">vs</span>
                             )}
                             <span class="a">
-                              <SideName entryId={match.awayId} name={match.awayName} crests={crests} align="away" />
+                              <SideName entryId={match.awayId} name={match.awayName} crests={crests} align="away" logo={match.awayLogo} />
                             </span>
                           </div>
                           {clock === 'keep' && match.reason ? (
@@ -316,12 +341,14 @@ function scheduleGroups(
   summary: readonly SummaryEntry[],
   divisions: readonly DivisionDoc[],
   now: number,
+  venues?: readonly { name?: string | null }[],
 ): ScheduleGroup[] {
   return groupSchedule(
     summary,
     now,
     scheduleLabels(ct),
     divisions.map((division) => division.dvId),
+    venues,
   );
 }
 
@@ -357,6 +384,48 @@ function PhaseStrip({
   );
 }
 
+function ScorerBlock({
+  ct,
+  choices,
+  state,
+  onPick,
+}: {
+  ct: CompetitionsT;
+  choices: readonly { id: string; name: string }[];
+  state: { dvId: string; tables: ScorerTables | null } | null;
+  onPick: (id: string) => void;
+}): JSX.Element {
+  const tables = state?.tables ?? null;
+  return (
+    <div style="margin-top:12px">
+      {choices.length > 1 ? (
+        <div class="cps-actions">
+          {choices.map((choice) => (
+            <Button
+              key={choice.id}
+              variant={state?.dvId === choice.id ? 'primary' : 'secondary'}
+              onClick={() => onPick(choice.id)}
+            >
+              {choice.name}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      {tables ? (
+        <ScorersTable
+          scorers={tables.scorers}
+          cards={tables.cards}
+          stalled={tables.stalled}
+          stalledLabel={ct('scorersStalled')}
+          empty={tables.empty}
+          emptyLabel={ct('scorersEmpty')}
+          capNote={tables.capped ? ct('scorersCap') : null}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function DetailPhaseBody({
   ct,
   phase,
@@ -373,6 +442,10 @@ export function DetailPhaseBody({
   clock = 'keep',
   renderStandings,
   onOpenStandings,
+  venues,
+  onOpenMatch,
+  scorerState = null,
+  onOpenScorers,
 }: {
   ct: CompetitionsT;
   phase: Exclude<CompetitionPhase, 'recruit'>;
@@ -394,11 +467,19 @@ export function DetailPhaseBody({
   renderStandings?: (docs: readonly StandingDoc[]) => JSX.Element;
   /** 切到積分頁時才補讀組別（進行中首屏不讀）。 */
   onOpenStandings?: () => void;
+  /** 場地序號對到賽事 venues。省略時只用摘要 v。 */
+  venues?: readonly { name?: string | null }[];
+  onOpenMatch?: (mtId: string) => void;
+  /** 打開射手榜或切換組別才讀。null 表示這次還沒回來。 */
+  scorerState?: { dvId: string; tables: ScorerTables | null } | null;
+  onOpenScorers?: (dvId: string) => void;
 }): JSX.Element {
-  const [tab, setTab] = useState<'sched' | 'stand'>('sched');
+  const [tab, setTab] = useState<'sched' | 'stand' | 'scorers'>('sched');
+  const [doneScorers, setDoneScorers] = useState(false);
   const [open, setOpen] = useState(false);
   const [foldError, setFoldError] = useState(false);
-  const shown = scheduleGroups(ct, fullSchedule ?? summary, divisions, now);
+  const shown = scheduleGroups(ct, fullSchedule ?? summary, divisions, now, venues);
+  const divisionChoices = scorerDivisions(divisions, standings, fullSchedule ?? summary);
   const standingsNode = renderStandings
     ? renderStandings(standings)
     : <StandingsTable ct={ct} docs={standings} crests={crests} divisions={divisions} />;
@@ -427,7 +508,7 @@ export function DetailPhaseBody({
   if (phase === 'done') {
     const multiple = standings.length > 1;
     const loadedRows = fullSchedule;
-    const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now);
+    const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now, venues);
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
     const champions = standings.flatMap((doc, index) => {
       const result = championName(doc);
@@ -465,6 +546,22 @@ export function DetailPhaseBody({
         )}
         {standingsNode}
         <CpCard>
+          <div class="cps-actions">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const id = scorerState?.dvId || divisionChoices[0]?.id || '';
+                if (!id) return;
+                setDoneScorers(true);
+                onOpenScorers?.(id);
+              }}
+            >{ct('tabScorers')}</Button>
+          </div>
+          {doneScorers ? (
+            <ScorerBlock ct={ct} choices={divisionChoices} state={scorerState} onPick={(id) => onOpenScorers?.(id)} />
+          ) : null}
+        </CpCard>
+        <CpCard>
           <button
             type="button"
             class={`cp3-fold${open ? ' cp3-fold--open' : ''}`}
@@ -482,7 +579,7 @@ export function DetailPhaseBody({
           </button>
           {open && loadedRows ? (
             <div style="margin-top:12px">
-              <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} clock={clock} />
+              <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} clock={clock} onOpenMatch={onOpenMatch} />
             </div>
           ) : null}
           {foldError && !open ? (
@@ -513,9 +610,13 @@ export function DetailPhaseBody({
         variant="underline"
         value={tab}
         onValueChange={(id) => {
-          if (id !== 'sched' && id !== 'stand') return;
+          if (id !== 'sched' && id !== 'stand' && id !== 'scorers') return;
           setTab(id);
           if (id === 'stand') onOpenStandings?.();
+          if (id === 'scorers') {
+            const next = scorerState?.dvId || divisionChoices[0]?.id || '';
+            if (next) onOpenScorers?.(next);
+          }
         }}
         items={[
           {
@@ -523,7 +624,7 @@ export function DetailPhaseBody({
             label: ct('tabSchedule'),
             panel: (
               <div style="margin-top:12px">
-                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} />
+                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} onOpenMatch={onOpenMatch} />
                 <div class="cps-actions">
                   <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
                 </div>
@@ -537,6 +638,13 @@ export function DetailPhaseBody({
               <div style="margin-top:12px">
                 {standingsNode}
               </div>
+            ),
+          },
+          {
+            id: 'scorers',
+            label: ct('tabScorers'),
+            panel: (
+              <ScorerBlock ct={ct} choices={divisionChoices} state={scorerState} onPick={(id) => onOpenScorers?.(id)} />
             ),
           },
         ]}

@@ -30,6 +30,7 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
       '/competitions/:cid/schedule',
       '/competitions/:cid/matches',
       '/competitions/:cid/matches/:mtId/score',
+      '/competitions/:cid/matches/:mtId/live',
       '/competitions/:cid/entries/:enId/join',
       '/competitions/:cid/entries/:enId/add',
       '/competitions/:cid/entries/:enId',
@@ -41,7 +42,7 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
     expect(ALL_FEATURES).toContain(manifest);
   });
 
-  it('開關打開後十二條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
+  it('開關打開後十三條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
     FEATURE_OVERRIDES.competitions = true;
     registerFeatures(ALL_FEATURES.map((f) => (f.id === 'competitions' ? { ...f, routes: competitionRoutes() } : f)));
     const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
@@ -51,6 +52,7 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
       '/competitions/:cid/schedule',
       '/competitions/:cid/matches',
       '/competitions/:cid/matches/:mtId/score',
+      '/competitions/:cid/matches/:mtId/live',
       '/competitions/:cid/entries/:enId/join',
       '/competitions/:cid/entries/:enId/add',
       '/competitions/:cid/entries/:enId',

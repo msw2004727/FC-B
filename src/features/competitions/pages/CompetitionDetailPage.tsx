@@ -27,6 +27,16 @@ import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
 import { hasPendingTie } from '../data/tie-present';
 import { hasScoreRole } from '../data/staff-assign';
+import {
+  bindVisible,
+  hasLiveOnMatchDay,
+  mergeSummaryShard,
+  scorerTables,
+  teamNameByEnId,
+  type ScorerTables,
+} from '../data/audience';
+import { createAudiencePorts } from '../data/audience-watch';
+import { matchDayOf } from '../data/match-day';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
@@ -194,6 +204,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [busy, setBusy] = useState(false);
   // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
   const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
+  const [scorerState, setScorerState] = useState<{ dvId: string; tables: ScorerTables | null } | null>(null);
+  const scorerToken = useRef(0);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreReason, setRestoreReason] = useState('');
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
@@ -336,6 +348,55 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // 回前景重讀摘要。隊徽快取不在這裡失效。已結束不重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.bundle]);
+
+  // 今天比賽日有 live／halftime 才監聽當日摘要片。隱藏時解除，回前景重掛。
+  // 依賴用布林與片 id，摘要內容更新不會拆掉監聽。注入 bundle 不打網路。
+  const liveToday = hasLiveOnMatchDay(summary, now);
+  const liveShard = matchDayOf(now).shardId;
+  useEffect(() => {
+    if (env.bundle || !liveToday) return undefined;
+    const nowMs = env.now ?? Date.now();
+    const ports = env.audience ?? createAudiencePorts();
+    return bindVisible(() => ports.watchSummary({ cid, shardId: liveShard }, (rows) => {
+      if (!mounted.current || pageCid.current !== cid) return;
+      setSummary((current) => mergeSummaryShard(current, rows, nowMs));
+      setFullSchedule((current) => {
+        if (!current) return current;
+        const next = mergeSummaryShard(current, rows, nowMs);
+        fullCache.current = next;
+        return next;
+      });
+    }));
+  }, [cid, env.audience, env.bundle, env.now, liveShard, liveToday]);
+
+  function openScorers(dvId: string): void {
+    if (!dvId) return;
+    const token = scorerToken.current + 1;
+    scorerToken.current = token;
+    setScorerState({ dvId, tables: null });
+    if (env.bundle && !env.audience) {
+      setScorerState({
+        dvId,
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+      });
+      return;
+    }
+    const ports = env.audience ?? createAudiencePorts();
+    const entries = bundle?.entries ?? [];
+    void ports.getStats(cid, dvId).then((stats) => {
+      if (!mounted.current || scorerToken.current !== token || pageCid.current !== cid) return;
+      setScorerState({
+        dvId,
+        tables: scorerTables(stats, (enId) => teamNameByEnId(enId, entries)),
+      });
+    }).catch(() => {
+      if (!mounted.current || scorerToken.current !== token) return;
+      setScorerState({
+        dvId,
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+      });
+    });
+  }
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
@@ -777,6 +838,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             onRequestFull={requestFullSchedule}
             clock={clock}
             onOpenStandings={needRanking}
+            venues={competition.venues}
+            onOpenMatch={(mtId) => route(`/competitions/${cid}/matches/${mtId}/live`)}
+            scorerState={scorerState}
+            onOpenScorers={openScorers}
             renderStandings={(docs) => (
               <TieWorkspace
                 ct={ct}

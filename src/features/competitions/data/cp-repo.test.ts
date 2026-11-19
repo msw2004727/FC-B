@@ -510,6 +510,36 @@ describe('第 3 步文件解析', () => {
     expect(rows.find((row) => row.id === 'mt_blank')?.cr).toBeUndefined();
   });
 
+  it('摘要有 l、vi、cx、p 才掛上，缺欄的物件不多出鍵', () => {
+    const side = { id: 'en_h', n: '主' };
+    const away = { id: 'en_a', n: '客' };
+    const rows = summaryEntriesFromDoc({
+      m: {
+        mt_plain: { dv: 'dv_1', r: 1, k: 10, h: side, a: away, s: [0, 0], st: 'scheduled' },
+        mt_full: {
+          dv: 'dv_1', r: 1, k: 20,
+          h: { ...side, l: ' https://crest/h ' },
+          a: { ...away, l: '   ' },
+          s: [1, 1], st: 'confirmed', vi: 1, cx: 50, p: [4, 3],
+        },
+        mt_bad: { dv: 'dv_1', r: 1, k: 30, h: side, a: away, s: [0, 0], st: 'scheduled', vi: -1, cx: 'x', p: [1] },
+      },
+    });
+    const plain = rows.find((row) => row.id === 'mt_plain');
+    expect(plain && 'vi' in plain).toBe(false);
+    expect(plain && 'cx' in plain).toBe(false);
+    expect(plain && 'p' in plain).toBe(false);
+    expect(plain?.h).not.toHaveProperty('l');
+    const full = rows.find((row) => row.id === 'mt_full');
+    expect(full?.h.l).toBe('https://crest/h');
+    expect(full?.a).not.toHaveProperty('l');
+    expect(full).toMatchObject({ vi: 1, cx: 50, p: [4, 3] });
+    const bad = rows.find((row) => row.id === 'mt_bad');
+    expect(bad && 'vi' in bad).toBe(false);
+    expect(bad && 'cx' in bad).toBe(false);
+    expect(bad && 'p' in bad).toBe(false);
+  });
+
   it('積分列只讀後端欄位，短名與文件 id 不算', () => {
     const doc = standingFromDoc('dv_1__group__A', {
       version: 3,

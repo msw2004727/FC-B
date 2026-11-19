@@ -293,11 +293,17 @@ export interface SummaryEntry {
   no: number | null;
   k: number | null;
   v: string | null;
-  h: { id: string; n: string };
-  a: { id: string; n: string };
+  h: { id: string; n: string; /** 摘要隊徽。沒有就不寫。 */ l?: string };
+  a: { id: string; n: string; l?: string };
   s: [number, number];
   st: string;
   wo: string | null;
+  /** 場地序號。沒有、或不是非負整數就不寫。 */
+  vi?: number;
+  /** 確認後改分時間（毫秒）。沒有就不寫。 */
+  cx?: number;
+  /** PK 比分。沒有就不寫。 */
+  p?: [number, number];
   /**
    * 取消原因。摘要片欄位 cr。只有 st 為 cancelled 才有，最多 100 字。
    * 沒有、空白、或不是已取消就不寫。公開賽程與全部賽程都讀這個欄位。

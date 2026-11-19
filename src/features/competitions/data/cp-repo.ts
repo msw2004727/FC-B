@@ -488,12 +488,27 @@ export function matchFromDoc(id: string, raw: Record<string, unknown>): MatchDoc
   };
 }
 
-function summarySide(value: unknown): { id: string; n: string } | null {
+function summaryLogo(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  return text || undefined;
+}
+
+function summarySide(value: unknown): { id: string; n: string; l?: string } | null {
   if (!isRecord(value)) return null;
   const id = str(value.id);
   const n = str(value.n);
   if (!id || n == null) return null;
-  return { id, n };
+  const logo = summaryLogo(value.l);
+  return logo ? { id, n, l: logo } : { id, n };
+}
+
+function summaryPk(value: unknown): [number, number] | undefined {
+  if (!Array.isArray(value) || value.length < 2) return undefined;
+  const home = num(value[0]);
+  const away = num(value[1]);
+  if (home == null || away == null) return undefined;
+  return [home, away];
 }
 
 /** 摘要 cr：只有已取消才留。空白不算。超過 100 字以碼位截斷。 */
@@ -514,6 +529,9 @@ function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
   const score = Array.isArray(raw.s) ? raw.s : [];
   const st = str(raw.st) ?? '';
   const cr = summaryCr(st, raw.cr);
+  const vi = optNum(raw.vi);
+  const cx = optNum(raw.cx);
+  const pk = summaryPk(raw.p);
   return {
     id,
     dv,
@@ -527,6 +545,10 @@ function summaryEntryOf(id: string, raw: unknown): SummaryEntry | null {
     st,
     wo: str(raw.wo),
     ...(cr ? { cr } : {}),
+    // 選填只在有值時掛上。缺欄的物件與既有斷言相同。
+    ...(vi != null && Number.isInteger(vi) && vi >= 0 ? { vi } : {}),
+    ...(cx != null ? { cx } : {}),
+    ...(pk ? { p: pk } : {}),
   };
 }
 

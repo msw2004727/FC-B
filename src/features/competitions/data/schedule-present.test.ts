@@ -227,6 +227,33 @@ describe('積分榜同分', () => {
   });
 });
 
+describe('比賽日分組與場地', () => {
+  it('凌晨場歸前一日，時刻寫隔日，標題用比賽日', () => {
+    const early = taipeiMs(2027, 1, 10, 1, 30);
+    const groups = groupSchedule([
+      entry({ id: 'night', k: early, st: 'scheduled' }),
+      entry({ id: 'day', k: JAN9_AM, st: 'confirmed', s: [1, 0] }),
+    ], NOW_LIVE, LABELS);
+    expect(groups[0]?.days.map((day) => day.label)).toEqual(['1月9日　週六（今天）']);
+    expect(groups[0]?.days[0]?.matches.map((match) => match.time)).toEqual(['09:00', '隔日 01:30']);
+  });
+
+  it('未確認用場地序號，已確認與棄權用 v', () => {
+    const venues = [{ name: '主場' }, { name: '副場' }];
+    const groups = groupSchedule([
+      entry({ id: 'open', k: JAN9_AM, st: 'scheduled', v: '舊名', vi: 1 }),
+      entry({ id: 'done', k: JAN9_PM, st: 'confirmed', v: '確認場', vi: 0 }),
+      entry({ id: 'wo', k: JAN10, st: 'walkover', v: '棄權場', vi: 1, wo: 'home' }),
+      entry({ id: 'miss', k: JAN10, st: 'live', v: '超出', vi: 9, no: 2 }),
+    ], NOW_LIVE, LABELS, [], venues);
+    const rows = groups[0]?.days.flatMap((day) => day.matches) ?? [];
+    expect(rows.find((row) => row.id === 'open')).toMatchObject({ venue: '副場', live: false, corrected: false });
+    expect(rows.find((row) => row.id === 'done')?.venue).toBe('確認場');
+    expect(rows.find((row) => row.id === 'wo')?.venue).toBe('棄權場');
+    expect(rows.find((row) => row.id === 'miss')).toMatchObject({ venue: '超出', live: true });
+  });
+});
+
 describe('組別名稱', () => {
   it('只有一組不顯示；多組用 divisionName，缺了依積分文件順序', () => {
     const named = table([], false);

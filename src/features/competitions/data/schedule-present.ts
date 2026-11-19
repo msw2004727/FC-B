@@ -2,6 +2,8 @@
 // 分組用台北日曆（format.taipeiParts）。文案裡的「今天」「時間待定」由呼叫端傳入。
 
 import { taipeiParts } from '../format';
+import { pkPair, showsCorrected, summaryVenue } from './audience';
+import { kickoffTimeLabel, matchDayNoon, matchDayOf } from './match-day';
 import { rowNeedsRuling } from './tie-present';
 import type { StandingDoc, SummaryEntry } from './types';
 
@@ -21,6 +23,15 @@ export interface ScheduleMatch {
   mark: PublicMark | null;
   /** 已取消場次的原因。沒有就不畫原因行。 */
   reason: string | null;
+  /** live／halftime 才為真。 */
+  live: boolean;
+  /** 有 cx 且已有結果才為真。 */
+  corrected: boolean;
+  /** 摘要 p。沒有是 null。 */
+  pk: [number, number] | null;
+  /** 摘要 h.l。沒有是 null，畫面改用報名隊徽或字首。 */
+  homeLogo: string | null;
+  awayLogo: string | null;
 }
 
 export interface ScheduleDay {
@@ -147,11 +158,15 @@ export function liveStrip(entries: readonly SummaryEntry[], now: number): LiveSt
   return { today, next: nextAt == null ? null : formatKickoffClock(nextAt) };
 }
 
-function matchOf(entry: SummaryEntry): ScheduleMatch {
+function matchOf(
+  entry: SummaryEntry,
+  venues: readonly { name?: string | null }[] | undefined,
+  nextDay: ((time: string) => string) | undefined,
+): ScheduleMatch {
   return {
     id: entry.id,
-    time: entry.k == null ? null : formatKickoffClock(entry.k),
-    venue: entry.v ?? '',
+    time: entry.k == null ? null : kickoffTimeLabel(entry.k, nextDay),
+    venue: summaryVenue(entry, venues),
     homeId: entry.h.id,
     homeName: entry.h.n,
     awayId: entry.a.id,
@@ -160,6 +175,11 @@ function matchOf(entry: SummaryEntry): ScheduleMatch {
     mark: publicMark(entry),
     // 已取消的原因只看摘要 cr。當日公開列與全部賽程同一條，不另讀場次。
     reason: entry.st === 'cancelled' ? (entry.cr?.trim() || null) : null,
+    live: entry.st === 'live' || entry.st === 'halftime',
+    corrected: showsCorrected(entry),
+    pk: pkPair(entry.p),
+    homeLogo: entry.h.l ?? null,
+    awayLogo: entry.a.l ?? null,
   };
 }
 
@@ -173,14 +193,17 @@ function byKickoff(a: SummaryEntry, b: SummaryEntry): number {
 }
 
 /**
- * 依組別、再依台北日期分組。時間未定的場次收在該組最後，標題用呼叫端給的「時間待定」。
+ * 依組別、再依比賽日分組。時間未定的場次收在該組最後，標題用呼叫端給的「時間待定」。
+ * 白天場的比賽日與日曆日相同。凌晨場歸前一日，時刻由 kickoffTimeLabel 寫「隔日」。
  * divisionOrder 用組別文件的順序；沒列到的組別排在後面。
+ * venues 省略時場地只用 v。
  */
 export function groupSchedule(
   entries: readonly SummaryEntry[],
   now: number,
-  labels: { tbd: string; today: string; weekdays: readonly string[] },
+  labels: { tbd: string; today: string; weekdays: readonly string[]; nextDay?: (time: string) => string },
   divisionOrder: readonly string[] = [],
+  venues?: readonly { name?: string | null }[],
 ): ScheduleGroup[] {
   const buckets = new Map<string, SummaryEntry[]>();
   for (const entry of entries) {
@@ -199,25 +222,28 @@ export function groupSchedule(
     const rows = [...(buckets.get(divisionId) ?? [])].sort(byKickoff);
     const dated = new Map<string, ScheduleMatch[]>();
     const dayOrder: string[] = [];
+    const dayAt = new Map<string, number>();
     const tbd: ScheduleMatch[] = [];
     for (const entry of rows) {
-      const match = matchOf(entry);
+      const match = matchOf(entry, venues, labels.nextDay);
       if (entry.k == null) {
         tbd.push(match);
         continue;
       }
-      const key = taipeiDayKey(entry.k);
-      if (!dated.has(key)) {
-        dated.set(key, []);
-        dayOrder.push(key);
+      // 分組用比賽日。標題用該日中午，凌晨場不會被標成下一個日曆日。
+      const day = matchDayOf(entry.k);
+      if (!dated.has(day.key)) {
+        dated.set(day.key, []);
+        dayOrder.push(day.key);
+        dayAt.set(day.key, matchDayNoon(entry.k));
       }
-      dated.get(key)?.push(match);
+      dated.get(day.key)?.push(match);
     }
     const days: ScheduleDay[] = dayOrder.map((key) => {
-      const sample = rows.find((row) => row.k != null && taipeiDayKey(row.k) === key);
+      const at = dayAt.get(key);
       return {
         key,
-        label: sample?.k != null ? scheduleDayLabel(sample.k, now, labels.today, labels.weekdays) : key,
+        label: at != null ? scheduleDayLabel(at, now, labels.today, labels.weekdays) : key,
         matches: dated.get(key) ?? [],
       };
     });
