@@ -26,7 +26,7 @@ const ANCHORS = {
   'score-paused': '繼續計時',
   'score-amend': '會先復原原紀錄，再記新的',
   'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
-  'score-pause-reserved': '為保留記分額度，暫停計時已停用',
+  'score-pause-reserved': '為保留記分額度，停錶已停用',
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'score-timeout': '雷霆隊暫停 0:47',
   'score-timeout-collapsed': '雷霆隊暫停 0:47',

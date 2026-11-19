@@ -23,9 +23,9 @@ export const LIVE_COPY = {
   fulltime: '終場',
   resume: '下半場開始',
   correctClock: '修正時鐘',
-  pauseClock: '暫停計時',
+  pauseClock: '停錶',
   resumeClock: '繼續計時',
-  pauseReserved: '為保留記分額度，暫停計時已停用',
+  pauseReserved: '為保留記分額度，停錶已停用',
   matchMenu: '選單',
   amend: '改判',
   amendNote: '會先復原原紀錄，再記新的',
@@ -108,16 +108,17 @@ export function addedClock(baseMin: number, addedMin: number): string {
 }
 
 export function pausedFor(clock: string): string {
-  return `已暫停 ${clock}`;
+  return `已停錶 ${clock}`;
 }
 
 /**
- * 底欄剩餘次數，例「暫停・剩18」。
- * 不寫「暫停 18」：那個寫法在計時旁邊會被讀成 18 秒。
+ * 底欄剩餘次數，例「停錶・剩18」。
+ * 用「停錶」跟選單裡的「球隊暫停」分開。
+ * 不寫「停錶 18」：那個寫法在計時旁邊會被讀成 18 秒。
  * 中間點把動作和「剩」分開；不寫「次」是為了 360 寬底欄不換行。
  */
 export function pauseRemain(left: number): string {
-  return `暫停・剩${left}`;
+  return `停錶・剩${left}`;
 }
 
 /** 球隊暫停倒數，例「雷霆隊暫停 0:47」。分不補零，跟比賽時鐘的 00:47 分開。 */

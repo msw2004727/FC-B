@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clockFromBase, formatMatchClock, undoClock } from '../live/clock';
-import { pkScore } from '../live/present';
+import { eventLines, pkScore } from '../live/present';
 import { derivePublicTable } from '../live/stats';
 import {
   S4_ACTION_LOG,
@@ -189,6 +189,51 @@ describe('第 4 步預覽假資料一致性', () => {
       holdSec: 83,
       period: 'h1',
     });
+  });
+
+  it('PK 依主客交替踢，第 4 輪晚於第 3 輪客隊，比分仍是未作廢的進', () => {
+    const kicks = S4_PK_EVENTS.filter((event) => event.type === 'pk');
+    expect(kicks.map((event) => `${event.side}:${event.round}:${event.scored}`)).toEqual([
+      'home:1:true',
+      'away:1:true',
+      'home:2:true',
+      'away:2:false',
+      'home:3:true',
+      'away:3:true',
+      'home:4:true',
+    ]);
+    const awayRound3 = kicks.find((event) => event.side === 'away' && event.round === 3);
+    const homeRound4 = kicks.find((event) => event.side === 'home' && event.round === 4);
+    expect(awayRound3 && homeRound4 && homeRound4.seq > awayRound3.seq).toBe(true);
+    expect(S4_PK_VOIDS).toEqual([{ targetSeq: homeRound4?.seq, seq: 8, createdAt: S4_NOW + 8 }]);
+    expect(pkScore(S4_PK_EVENTS, S4_PK_VOIDS)).toEqual({ home: 3, away: 2 });
+
+    const recent = eventLines({
+      events: S4_PK_EVENTS,
+      voids: S4_PK_VOIDS,
+      homeName: '雷霆隊',
+      awayName: '海風隊',
+      homeRoster: S4_ROSTER_HOME,
+      awayRoster: S4_ROSTER_AWAY,
+      hideVoided: false,
+      order: 'recent',
+    });
+    const labels = recent.map((line) => line.label.replace(/ 已復原$/, ''));
+    expect(labels).toEqual([
+      '第4輪 雷霆隊 8 吳承恩 進',
+      '第3輪 海風隊 1 王大同 進',
+      '第3輪 雷霆隊 7 張宇軒 進',
+      '第2輪 海風隊 11 郭建宏 沒進',
+      '第2輪 雷霆隊 10 蔡明哲 進',
+      '第1輪 海風隊 10 謝東霖 進',
+      '第1輪 雷霆隊 9 劉冠廷 進',
+    ]);
+    const round4At = labels.findIndex((label) => label.startsWith('第4輪'));
+    const away3At = labels.findIndex((label) => label.startsWith('第3輪') && label.includes('海風隊'));
+    expect(round4At).toBeGreaterThanOrEqual(0);
+    expect(away3At).toBeGreaterThan(round4At);
+    expect(recent[round4At]?.voided).toBe(true);
+    expect(recent[away3At]?.voided).toBe(false);
   });
 
   it('射手榜與紅黃牌數字可由已確認場次推出', () => {

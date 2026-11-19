@@ -5,14 +5,14 @@ import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from
 /**
  * 本場事件數（rev − resetRev）。
  * 180 提醒、190 起只留比賽控制、200 連比賽控制也停。
- * 已用超過 EVENT_MAX − SCORING_RESERVE（130）時先停用暫停計時。
+ * 已用超過 EVENT_MAX − SCORING_RESERVE（130）時先停用停錶。
  */
 export const EVENT_WARN = 180;
 export const EVENT_RESERVE = 190;
 export const EVENT_MAX = 200;
-/** 要留給記分的筆數。已用 > 130 就先停暫停計時。 */
+/** 要留給記分的筆數。已用 > 130 就先停停錶。 */
 export const SCORING_RESERVE = 70;
-/** 暫停計時每場最多幾次。 */
+/** 停錶每場最多幾次。 */
 export const PAUSE_MAX = 20;
 /**
  * 球隊暫停預覽。契約還沒寫次數與秒數，先用每隊每半場 1 次、倒數 60 秒。
@@ -23,7 +23,7 @@ export const TEAM_TIMEOUT_SEC = 60;
 /** 下半場或延長已結束（時鐘停著）且比分相同，才提供 PK。 */
 const SHOOTOUT_PERIOD = new Set(['h2', 'et', 'et1', 'et2']);
 
-/** 已用超過 130（EVENT_MAX − SCORING_RESERVE）時，暫停計時要先讓路給記分。 */
+/** 已用超過 130（EVENT_MAX − SCORING_RESERVE）時，停錶要先讓路給記分。 */
 export function pauseHeldForScoring(eventCount: number): boolean {
   return eventCount > EVENT_MAX - SCORING_RESERVE;
 }

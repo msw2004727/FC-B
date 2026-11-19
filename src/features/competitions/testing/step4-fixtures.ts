@@ -347,7 +347,7 @@ export const S4_SCENE_OFFLINE: S4ScoreScene = {
   link: { online: false, pendingCount: 2, storageUnavailable: true, wakeLock: false },
 };
 
-/** 進行中但時鐘已暫停 83 秒。主時鐘停在 34:00，旁邊是已暫停 01:23。 */
+/** 進行中但時鐘已停錶 83 秒。主時鐘停在 34:00，旁邊是已停錶 01:23。 */
 export const S4_SCENE_PAUSED: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   match: s4Match({
@@ -356,14 +356,14 @@ export const S4_SCENE_PAUSED: S4ScoreScene = {
   clock: { elapsedSec: 34 * 60, period: 'h1', addedMin: null },
 };
 
-/** 192 筆：已過 190，進球／牌／改判／修正時鐘停用，比賽控制還在。暫停計時在超過 130 時已停。 */
+/** 192 筆：已過 190，進球／牌／改判／修正時鐘停用，比賽控制還在。停錶在超過 130 時已停。 */
 export const S4_SCENE_CAP: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   match: s4Match({ rev: 192, resetRev: 0 }),
   eventCount: 192,
 };
 
-/** 135 筆：已超過 130，暫停計時停用；記分與比賽控制都還在。 */
+/** 135 筆：已超過 130，停錶停用；記分與比賽控制都還在。 */
 export const S4_SCENE_PAUSE_RESERVED: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   match: s4Match({ rev: 135, resetRev: 0 }),
@@ -410,7 +410,9 @@ export const S4_SCENE_PK_START: S4ScoreScene = {
 
 /**
  * PK 進行中。場上仍是 2:2。
- * 主隊進 4 腳，其中 1 腳已復原，有效 3；客隊進 2、沒進 1。畫面上 PK 3:2。
+ * 踢球順序是主、客交替：第 1～3 輪都是主→客，最後才是主隊第 4 輪。
+ * 主隊進 4 腳，第 4 輪那腳已復原，有效 3；客隊進 2、沒進 1。畫面上 PK 3:2。
+ * 第 4 輪的 seq 比第 3 輪客隊大，新到舊時它在上面，不會以更早的紀錄插在第 3 輪客隊前面。
  */
 export const S4_PK_EVENTS: TimelineEvent[] = [
   { seq: 1, type: 'pk', side: 'home', plId: 'pl_th9', scored: true, round: 1, matchSecond: 40 * 60, createdAt: S4_NOW + 1 },
@@ -418,11 +420,11 @@ export const S4_PK_EVENTS: TimelineEvent[] = [
   { seq: 3, type: 'pk', side: 'home', plId: 'pl_th10', scored: true, round: 2, matchSecond: 40 * 60, createdAt: S4_NOW + 3 },
   { seq: 4, type: 'pk', side: 'away', plId: 'pl_hf11', scored: false, round: 2, matchSecond: 40 * 60, createdAt: S4_NOW + 4 },
   { seq: 5, type: 'pk', side: 'home', plId: 'pl_th7', scored: true, round: 3, matchSecond: 40 * 60, createdAt: S4_NOW + 5 },
-  { seq: 6, type: 'pk', side: 'home', plId: 'pl_th8', scored: true, round: 4, matchSecond: 40 * 60, createdAt: S4_NOW + 6 },
-  { seq: 7, type: 'void', targetSeq: 6, matchSecond: 40 * 60, createdAt: S4_NOW + 7 },
-  { seq: 8, type: 'pk', side: 'away', plId: 'pl_hf1', scored: true, round: 3, matchSecond: 40 * 60, createdAt: S4_NOW + 8 },
+  { seq: 6, type: 'pk', side: 'away', plId: 'pl_hf1', scored: true, round: 3, matchSecond: 40 * 60, createdAt: S4_NOW + 6 },
+  { seq: 7, type: 'pk', side: 'home', plId: 'pl_th8', scored: true, round: 4, matchSecond: 40 * 60, createdAt: S4_NOW + 7 },
+  { seq: 8, type: 'void', targetSeq: 7, matchSecond: 40 * 60, createdAt: S4_NOW + 8 },
 ];
-export const S4_PK_VOIDS: VoidMark[] = [{ targetSeq: 6, seq: 7, createdAt: S4_NOW + 7 }];
+export const S4_PK_VOIDS: VoidMark[] = [{ targetSeq: 7, seq: 8, createdAt: S4_NOW + 8 }];
 export const S4_SCENE_PK: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   match: s4Match({

@@ -93,7 +93,7 @@ export interface ScorePadProps {
   actionLog: readonly ActionLogEntry[];
   /** 沒傳就用 rev − resetRev。 */
   eventCount?: number;
-  /** 這場已經按過幾次暫停。沒傳當 0，每場最多 PAUSE_MAX 次。 */
+  /** 這場已經按過幾次停錶。沒傳當 0，每場最多 PAUSE_MAX 次。 */
   pauseUses?: number;
   /** 截圖：倒數進行到這一秒。不從選單點。 */
   timeoutView?: TimeoutView;
@@ -104,7 +104,7 @@ export interface ScorePadProps {
   takeoverOffered: boolean;
   onRecord?: (pick: ScorePick) => void | boolean;
   onUndo?: (seq: number) => void | boolean;
-  /** 暫停／繼續只改 clockBase，不改狀態與比分。 */
+  /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
   onClock?: (clockBase: MatchClock) => void;
   onKickoff?: () => void;
   onHalftime?: () => void;
