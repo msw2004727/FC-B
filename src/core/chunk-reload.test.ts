@@ -10,7 +10,7 @@ import {
   waitForChunkReloadCancelled,
 } from './chunk-reload';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
-import { _resetRefreshReloadForTest, _setRefreshReloadForTest } from './refresh-reload';
+import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest } from './refresh-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
 import * as reloadSafety from './reload-safety';
 import { _resetRouteLoadingForTest } from './route-loading';
@@ -25,6 +25,13 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
     setItem: (key, value) => { map.set(key, value); },
   };
 }
+
+describe('停滯計時器常數界限', () => {
+  it('RELOAD_STALL_MS >= 5 秒，且 REFRESH_TIMEOUT_MS + RELOAD_STALL_MS < 60 秒窗', () => {
+    expect(RELOAD_STALL_MS).toBeGreaterThanOrEqual(5_000);
+    expect(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS).toBeLessThan(60_000);
+  });
+});
 
 describe('handleChunkLoadFailure', () => {
   it('第一次失敗：重載並回傳 true', () => {
@@ -584,7 +591,7 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
     expect(isChunkReloadScheduled()).toBe(false);
   });
 
-  it('已排重整、reload 被呼叫但頁面沒換：推進 RELOAD_STALL_MS 後取消排程、叫醒等待、提示框一次，之後的失敗不再被默默 preventDefault', async () => {
+  it('已排重整、reload 已呼叫但不導航：總延遲前不出提示，到點才取消、叫醒等待、提示框一次，之後的失敗不再被默默 preventDefault', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const reload = vi.fn();
     _setRefreshReloadForTest(reload);
@@ -606,7 +613,13 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
       await Promise.resolve();
       expect(cancelled).toBe(false);
 
-      await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+      const total = REFRESH_TIMEOUT_MS + RELOAD_STALL_MS;
+      await vi.advanceTimersByTimeAsync(total - 1);
+      expect(cancelled).toBe(false);
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
       expect(cancelled).toBe(true);
       await pending;
       expect(isChunkReloadScheduled()).toBe(false);
@@ -623,7 +636,38 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
     }
   });
 
-  it('被擋路徑已取消時，推進 RELOAD_STALL_MS 不會再多出提示或多呼叫（已取消不重複出提示）', async () => {
+  it('測試重置會叫醒等待並清掉停滯計時器', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    try {
+      installChunkReloadGuard();
+      history.replaceState(null, '', '/');
+      window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(reload).toHaveBeenCalledTimes(1);
+
+      let cancelled = false;
+      const pending = waitForChunkReloadCancelled().then(() => {
+        cancelled = true;
+      });
+      await Promise.resolve();
+      expect(cancelled).toBe(false);
+
+      _resetChunkReloadGuardForTest();
+      await Promise.resolve();
+      expect(cancelled).toBe(true);
+      await pending;
+
+      await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+      expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('被擋路徑已取消時，推進總延遲不會再多出提示或多呼叫（已取消不重複出提示）', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const promptSpy = vi.spyOn(reloadSafety, 'showChunkFailurePrompt');
     recordModulepreload('/assets/stall-blocked.js');
@@ -650,7 +694,7 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
       expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
       expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
 
-      await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+      await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
       expect(promptSpy).toHaveBeenCalledTimes(1);
       expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
       expect(reload).not.toHaveBeenCalled();

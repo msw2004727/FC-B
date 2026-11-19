@@ -516,7 +516,7 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
       resolveAll();
       // (d) fetch resolve 後 reload 剛好 1 次。
       await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
-      // (e) 再等一段刷新逾時，確認不是立刻斷言造成的假綠（Opus P3-5）。不推進到 RELOAD_STALL_MS。
+      // (e) 再等一段刷新逾時，確認不是立刻斷言造成的假綠（Opus P3-5）。不推進到刷新上限＋RELOAD_STALL_MS。
       await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS);
       expect(reload).toHaveBeenCalledTimes(1);
       expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -629,7 +629,7 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
     }
   });
 
-  it('冷開 /events/<id>：刷新成功、reload 替身不導航，推進 RELOAD_STALL_MS 後主內容顯示錯誤畫面', async () => {
+  it('冷開 /events/<id>：刷新成功、reload 替身不導航，推進總延遲後主內容顯示錯誤畫面', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     installFailedPreloadRecorder();
     recordFailedAsset('/assets/stall-nav.js');
@@ -646,7 +646,7 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
       expect(isChunkReloadScheduled()).toBe(true);
       expect(prompt()).toBeNull();
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
       });
       expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
       expect(isChunkReloadScheduled()).toBe(false);
@@ -656,7 +656,7 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
     }
   });
 
-  it('手動刷新進行中，守門接手後被送出中擋下：推進 RELOAD_STALL_MS 後離開載入中（Opus P3-2）', async () => {
+  it('手動刷新進行中，守門接手後被送出中擋下：推進總延遲後離開載入中（Opus P3-2）', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     installFailedPreloadRecorder();
     recordFailedAsset('/assets/merge.js');
@@ -690,10 +690,65 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
       expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
       });
       expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
       expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      end?.();
+      _resetContentStallForTest();
+      vi.useRealTimers();
+    }
+  });
+
+  it('合併後被擋已出提示，按稍後再推進總延遲不再跳提示，錯誤畫面出現', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    recordFailedAsset('/assets/later.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    let end: (() => void) | undefined;
+    try {
+      // 送出中先失敗：只出提示、不排程。按「重新載入」走進守門的手動那一輪（刷新停在半路）。
+      end = beginSubmitting('signup');
+      window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(prompt()?.dataset.mode).toBe('chunk');
+      end();
+      end = undefined;
+
+      (prompt()?.querySelector('[data-sw-reload-now]') as HTMLButtonElement).click();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(prompt()).toBeNull();
+      expect(reload).not.toHaveBeenCalled();
+
+      // 路由載入失敗併進上面那一輪。被送出中擋下時提示已出，排程仍留著。
+      const { container } = render(<App />);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.error-fallback[role="alert"]')).toBeNull();
+
+      end = beginSubmitting('signup');
+      resolveAll();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(prompt()?.dataset.mode).toBe('chunk');
+      expect(reload).not.toHaveBeenCalled();
+      expect(isChunkReloadScheduled()).toBe(true);
+
+      (prompt()?.querySelector('[data-sw-reload-later]') as HTMLButtonElement).click();
+      expect(prompt()).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS + RELOAD_STALL_MS);
+      });
+      expect(prompt()).toBeNull();
+      expect(container.querySelector('.error-fallback[role="alert"]')).not.toBeNull();
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(reload).not.toHaveBeenCalled();
     } finally {
       end?.();
       _resetContentStallForTest();
