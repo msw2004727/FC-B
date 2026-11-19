@@ -16,10 +16,10 @@ const THEMES = ['light', 'dark'];
 const ANCHORS = {
   'list-in': '建立賽事', 'real-warm': '距開賽', 'real-live': '下一場', 'real-live-stand': '主辦裁定',
   'real-host-matches': '登錄比分', 'real-score-sheet': '登錄並確認', 'real-reschedule-clash': '仍要改期',
-  'real-tie-panel': '裁定原因', 'real-end-dialog': '還有同分尚未裁定', 'real-cancel-sheet': '取消原因會公開',
+  'real-tie-panel': '名次排列', 'real-end-dialog': '還有同分尚未裁定', 'real-cancel-sheet': '取消原因會公開',
   'real-recruit': '報名', 'real-done': '18:00', 'real-ended-host': '剩餘場次不再進行', 'real-postponed': '場地整修',
   'real-cancelled-comp': '報名隊伍不足', 'real-notices': '領隊會議', 'real-contact-club': '聯絡主辦',
-  'real-contact-personal': '聯絡主辦', 'real-host-schedule': '賽程', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
+  'real-contact-personal': '聯絡主辦', 'real-host-schedule': '每場分鐘數', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
 };
 const SCREENS = [
   ['real:list-in', ALL, THEMES, true],
