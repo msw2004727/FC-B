@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { setLocale } from '@/i18n/i18n';
 import {
   RELOAD_AT_KEY,
+  RELOAD_STALL_MS,
   _resetChunkReloadGuardForTest,
   handleChunkLoadFailure,
   installChunkReloadGuard,
@@ -11,6 +12,7 @@ import {
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
 import { _resetRefreshReloadForTest, _setRefreshReloadForTest } from './refresh-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
+import * as reloadSafety from './reload-safety';
 import { _resetRouteLoadingForTest } from './route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 import { _resetRouteLoadPendingForTest, beginRouteLoad, isRouteLoadPending } from './route-load-pending';
@@ -427,6 +429,7 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
     document.querySelectorAll('.modal.open').forEach((node) => node.remove());
     document.body.innerHTML = '';
     toast.clear();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     sessionStorage.clear();
@@ -579,5 +582,82 @@ describe('甲案：等待後只重查同一頁與使用者正在做的事', () =
     await vi.waitFor(() => expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk'));
     expect(reload).not.toHaveBeenCalled();
     expect(isChunkReloadScheduled()).toBe(false);
+  });
+
+  it('已排重整、reload 被呼叫但頁面沒換：推進 RELOAD_STALL_MS 後取消排程、叫醒等待、提示框一次，之後的失敗不再被默默 preventDefault', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    try {
+      installChunkReloadGuard();
+      history.replaceState(null, '', '/');
+      const event = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+
+      let cancelled = false;
+      const pending = (async () => {
+        await waitForChunkReloadCancelled();
+        cancelled = true;
+      })();
+      await Promise.resolve();
+      expect(cancelled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+      expect(cancelled).toBe(true);
+      await pending;
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(reload).toHaveBeenCalledTimes(1);
+      const prompts = document.querySelectorAll('#sw-reload-deferred-prompt');
+      expect(prompts).toHaveLength(1);
+      expect((prompts[0] as HTMLElement).dataset.mode).toBe('chunk');
+
+      const again = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(again);
+      expect(again.defaultPrevented).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('被擋路徑已取消時，推進 RELOAD_STALL_MS 不會再多出提示或多呼叫（已取消不重複出提示）', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const promptSpy = vi.spyOn(reloadSafety, 'showChunkFailurePrompt');
+    recordModulepreload('/assets/stall-blocked.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    let end: (() => void) | undefined;
+    try {
+      installChunkReloadGuard();
+      history.replaceState(null, '', '/');
+      const event = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(fetchMock).toHaveBeenCalled();
+
+      end = beginSubmitting('signup');
+      resolveAll();
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      expect(isChunkReloadScheduled()).toBe(false);
+      expect(reload).not.toHaveBeenCalled();
+      expect(promptSpy).toHaveBeenCalledTimes(1);
+      expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
+      expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+
+      await vi.advanceTimersByTimeAsync(RELOAD_STALL_MS);
+      expect(promptSpy).toHaveBeenCalledTimes(1);
+      expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
+      expect(reload).not.toHaveBeenCalled();
+      expect(isChunkReloadScheduled()).toBe(false);
+    } finally {
+      end?.();
+      vi.useRealTimers();
+    }
   });
 });

@@ -11,6 +11,8 @@ import { canReloadAfterChunkFailure, evaluateReloadSafety, showChunkFailurePromp
 
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
+/** 刷新最多 3 秒＋重整導航的餘裕；頁面真的重整時計時器隨頁面消失，不會觸發。 */
+export const RELOAD_STALL_MS = 10_000;
 
 export interface ChunkReloadDeps {
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
@@ -55,9 +57,17 @@ export function handleChunkLoadFailure(deps: ChunkReloadDeps): boolean {
 let scheduledAt = 0;
 /** 等「已排的重整被取消」的 resolve。取消或測試重置時清空。 */
 let cancelWaiters: Array<() => void> = [];
+/** 已排重整但頁面可能沒換掉時的停滯計時器。測試重置要清掉。 */
+let stallTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** 測試重置：清掉停滯計時器，先叫醒還沒結束的等待再清空，避免 promise 留到下一個測試（Flash P3）。 */
 export function _resetChunkReloadGuardForTest(): void {
+  if (stallTimer !== undefined) {
+    clearTimeout(stallTimer);
+    stallTimer = undefined;
+  }
   scheduledAt = 0;
+  for (const resolve of cancelWaiters) resolve();
   cancelWaiters = [];
 }
 
@@ -70,11 +80,6 @@ export function isChunkReloadScheduled(): boolean {
 export function waitForChunkReloadCancelled(): Promise<void> {
   if (!isChunkReloadScheduled()) return Promise.resolve();
   return new Promise((resolve) => {
-    // 排程可能在建立 promise 的同時被取消：沒排程就直接 resolve，不要推進清單。
-    if (!isChunkReloadScheduled()) {
-      resolve();
-      return;
-    }
     cancelWaiters.push(resolve);
   });
 }
@@ -89,6 +94,20 @@ function cancelScheduledReload(): void {
   const waiters = cancelWaiters;
   cancelWaiters = [];
   for (const resolve of waiters) resolve();
+}
+
+/**
+ * 已排重整後若頁面沒有真的換掉，到點取消排程並出手動重整提示。
+ * 被擋路徑已呼叫 cancelScheduledReload 時，scheduledAt 不再是這次的 now，到點什麼都不做。
+ */
+function armReloadStallTimer(now: number, manualReload: () => void): void {
+  if (stallTimer !== undefined) clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => {
+    stallTimer = undefined;
+    if (scheduledAt !== now) return;
+    cancelScheduledReload();
+    showChunkFailurePrompt(manualReload, 'chunk-load');
+  }, RELOAD_STALL_MS);
 }
 
 export function installChunkReloadGuard(): void {
@@ -138,6 +157,8 @@ export function installChunkReloadGuard(): void {
     });
     if (handled) {
       scheduledAt = now;
+      // 重整函式被呼叫不代表頁面已換掉（beforeunload 取消、瀏覽器異常，或手動那一輪被擋卻沒取消排程）。
+      armReloadStallTimer(now, manualReload);
       event.preventDefault();
     }
   });
