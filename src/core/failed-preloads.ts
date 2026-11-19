@@ -3,9 +3,9 @@
 // iOS／桌面 WebKit 會把 5xx 的失敗結果帶過 location.reload()；重載前要先刷新這些網址。
 
 export const MAX_FAILED = 30;
-// 冷開 `/events/<id>` 的同源 /assets/ 預載約 57 個（index.html 24＋開機預載），80 留餘裕；
-// 超過代表已在站內換頁很久、累積大量 link，全部刷新成本高且不一定刷到真兇，直接重整較穩。
-// 只收同源 /assets/*.js|css。合格候選超過 MAX_ALL 就整批不刷新（回空陣列），不再取前 N 個。
+// 冷開 `/events/<id>` 的同源 /assets/ 預載約 57 個（index.html 24＋開機預載），80 留餘裕。
+// 只收同源 /assets/*.js|css。合格候選超過 MAX_ALL 時回後插入的前 80 個，不回空陣列。
+// 顧問 §3.320 不接受整批不刷：不刷就直接重整，正在載入的路由預載（在文件最後）也得不到刷新。
 export const MAX_ALL = 80;
 
 /** 同源、路徑符合這條才刷新。new URL 失敗回 false。 */
@@ -59,17 +59,19 @@ export function getFailedPreloads(): string[] {
   return failedUrls.slice();
 }
 
-/** 退回用：文件中所有 rel=modulepreload／preload／stylesheet 且通過 isRefreshableAssetUrl 的 link.href，去重。合格候選超過 MAX_ALL 就回空陣列（整批不刷新）。 */
+/** 退回用：rel=modulepreload／preload／stylesheet 且通過 isRefreshableAssetUrl 的 link.href，去重，後插入優先，最多 MAX_ALL 個。 */
 export function allPreloadAssetUrls(doc?: Document): string[] {
   const targetDoc = doc ?? (typeof document === 'undefined' ? undefined : document);
   if (!targetDoc) return [];
   const out: string[] = [];
-  for (const link of targetDoc.querySelectorAll('link')) {
+  const links = targetDoc.querySelectorAll('link');
+  // 後插入優先：失敗當下 Vite 為正在載入的路由插的預載 link 在最後面，其次是開機預載（本頁路由），最前面是 index.html 的靜態預載。
+  for (let i = links.length - 1; i >= 0 && out.length < MAX_ALL; i -= 1) {
+    const link = links[i]!;
     if (!relAllowed(link.rel)) continue;
     const href = link.href;
     if (!href || out.includes(href) || !isRefreshableAssetUrl(href)) continue;
     out.push(href);
-    if (out.length > MAX_ALL) return [];
   }
   return out;
 }

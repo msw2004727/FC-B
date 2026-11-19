@@ -1,4 +1,5 @@
 // 顧問 §3.290／§3.293 甲案：重載前只刷新記到的失敗程式檔（只刷新同源 /assets/）。
+// §3.320：vite:preloadError 比 link error 早 10～30ms。記錄是空、文件已有候選時先等 FAILED_WAIT_MS 再讀，仍空才刷全部；這段等待算在 REFRESH_TIMEOUT_MS 內。
 // §3.295(a)：等待後重整前再查一次。離線或沒有網址而直接重整的路徑不查（呼叫端剛同步查過）。
 
 import { allPreloadAssetUrls, getFailedPreloads } from './failed-preloads';
@@ -8,6 +9,8 @@ import { beginRouteLoading, endRouteLoading } from './route-loading';
 import { isSubmitting } from './submit-guard';
 
 export const REFRESH_TIMEOUT_MS = 3000;
+// 涵蓋實測 10～30 ms 的事件先後差。
+export const FAILED_WAIT_MS = 100;
 
 export interface RefreshReloadDeps {
   reload?: () => void; // 預設 () => location.reload()
@@ -88,15 +91,29 @@ async function run(
       const fetchImpl = deps?.fetchImpl ?? (typeof fetch === 'function' ? (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init) : undefined);
       const timeoutMs = deps?.timeoutMs ?? REFRESH_TIMEOUT_MS;
       const online = deps?.online ?? (() => navigator.onLine !== false);
-      const canFetch = typeof fetchImpl === 'function' && online() !== false;
-      const urls = canFetch ? pickUrls() : [];
-      if (!canFetch || urls.length === 0) {
+      // 離線或沒有 fetch：直接重整，不等。
+      if (typeof fetchImpl !== 'function' || online() === false) {
         callReload();
         return;
       }
-      // 沿用換頁載入提示（自身 220ms 才顯示，刷新很快就重載時不會閃）。
+      // 截止時間從這輪開始算。等待與刷新共用，到 reload 或 onBlocked 仍 ≤ timeoutMs。
+      const deadline = Date.now() + timeoutMs;
+      // 沿用換頁載入提示（自身 220ms 才顯示，等待與刷新很快時不會閃）。
       loadingSeq = beginRouteLoading({ path: location.pathname });
-      await refreshUrls(fetchImpl, urls, timeoutMs);
+      // 記錄是空、文件有候選時先等一下（link error 晚 10～30ms 才到）再讀。
+      if (!getFailedPreloads().length && allPreloadAssetUrls().length) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, FAILED_WAIT_MS);
+        });
+      }
+      let urls = getFailedPreloads();
+      if (!urls.length) urls = allPreloadAssetUrls();
+      if (!urls.length) {
+        endRouteLoading(loadingSeq);
+        callReload();
+        return;
+      }
+      await refreshUrls(fetchImpl, urls, Math.max(0, deadline - Date.now()));
     } catch {
       callReload();
       return;
@@ -139,12 +156,6 @@ function defaultCanReload(): boolean {
 
 function defaultOnBlocked(): void {
   showReloadBusyToast();
-}
-
-function pickUrls(): string[] {
-  const failed = getFailedPreloads();
-  if (failed.length > 0) return failed;
-  return allPreloadAssetUrls();
 }
 
 async function refreshUrls(fetchImpl: typeof fetch, urls: readonly string[], timeoutMs: number): Promise<void> {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { beginRouteLoading, endRouteLoading } from './route-loading';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
 import { _resetReloadSafetyForTest } from './reload-safety';
-import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from './refresh-reload';
+import { FAILED_WAIT_MS, REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from './refresh-reload';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 import { getToasts, toast } from '@/ui/Toast';
 
@@ -75,7 +75,7 @@ describe('refreshThenReload', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('沒記到：fetch 全部 modulepreload／preload／stylesheet 的 /assets/ 網址', async () => {
+  it('沒記到：100ms 內一直沒記到才 fetch 全部 modulepreload／preload／stylesheet 的 /assets/ 網址', async () => {
     const js = addLink('modulepreload', '/assets/a.js').href;
     const pre = addLink('preload', '/assets/b.js').href;
     const css = addLink('stylesheet', '/assets/c.css').href;
@@ -86,10 +86,79 @@ describe('refreshThenReload', () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
     const reload = vi.fn();
     const pending = refreshThenReload({ fetchImpl, reload, online: () => true });
-    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([js, pre, css]);
+    // 載入提示在等待之前就開始，這時還沒 fetch。
+    expect(vi.mocked(beginRouteLoading)).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(FAILED_WAIT_MS - 1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    // 後插入優先：最後的重複 a.js、再 c.css、再 b.js。
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toEqual([js, css, pre]);
     await pending;
     expect(reload).toHaveBeenCalledTimes(1);
     expect(vi.mocked(beginRouteLoading)).toHaveBeenCalledWith({ path: location.pathname });
+  });
+
+  it('開始記錄是空的，30ms 後才記到失敗網址：只 fetch 那一個', async () => {
+    installFailedPreloadRecorder();
+    const other = addLink('modulepreload', '/assets/other.js').href;
+    const late = addLink('modulepreload', '/assets/late.js');
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn();
+    const pending = refreshThenReload({ fetchImpl, reload, online: () => true });
+    expect(vi.mocked(beginRouteLoading)).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(30);
+    late.dispatchEvent(new Event('error', { bubbles: false }));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(FAILED_WAIT_MS - 30);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(late.href, { cache: 'no-cache', credentials: 'same-origin' });
+    expect(fetchImpl).not.toHaveBeenCalledWith(other, expect.anything());
+    await pending;
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('等待算在 3 秒內：fetch 永不 resolve，從開始算 3000ms 呼叫 reload 剛好 1 次', async () => {
+    addLink('modulepreload', '/assets/hang-all.js');
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
+    const reload = vi.fn();
+    const pending = refreshThenReload({ fetchImpl, reload, online: () => true });
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(FAILED_WAIT_MS);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(REFRESH_TIMEOUT_MS - FAILED_WAIT_MS - 1);
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(FAILED_WAIT_MS);
+    expect(reload).toHaveBeenCalledTimes(1);
+    await pending;
+  });
+
+  it('一開始就有記錄：不等，立刻 fetch', async () => {
+    const href = recordFailure('modulepreload', '/assets/now.js');
+    const other = addLink('stylesheet', '/assets/other-now.css').href;
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
+    const reload = vi.fn();
+    refreshThenReload({ fetchImpl, reload, online: () => true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(href, { cache: 'no-cache', credentials: 'same-origin' });
+    expect(fetchImpl).not.toHaveBeenCalledWith(other, expect.anything());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('離線且記錄是空的：不等、不 fetch、直接 reload', async () => {
+    addLink('modulepreload', '/assets/off-all.js');
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn();
+    const pending = refreshThenReload({ fetchImpl, reload, online: () => false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(beginRouteLoading)).not.toHaveBeenCalled();
+    await pending;
   });
 
   it('fetch 永不 resolve：3000ms 時 reload 剛好 1 次', async () => {
@@ -184,7 +253,9 @@ describe('refreshThenReload', () => {
     await refreshThenReload({ fetchImpl, reload, online: () => true });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(beginRouteLoading)).not.toHaveBeenCalled();
+    // 載入提示一律在等待前開始；名單是空時開始後立刻收掉（提示 220ms 後才顯示，畫面不會閃）。
+    expect(vi.mocked(beginRouteLoading)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(endRouteLoading)).toHaveBeenCalledWith(1);
   });
 
   it('等待後 canReload 回 false：reload 0 次、onBlocked 1 次；retry 再 fetch，改回 true 後 reload 1 次', async () => {

@@ -10,7 +10,7 @@ import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from '@/cor
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import type { FeatureManifest } from '@/core/feature-types';
-import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from '@/core/refresh-reload';
+import { FAILED_WAIT_MS, REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from '@/core/refresh-reload';
 import { _resetReloadSafetyForTest, showChunkFailurePrompt, showReloadBusyToast } from '@/core/reload-safety';
 import { _resetRouteLoadingForTest } from '@/core/route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from '@/core/submit-guard';
@@ -524,6 +524,45 @@ describe('App：等待後不能重整，路由改顯示錯誤畫面', () => {
       expect(reported.mock.calls.filter(([, err]) => isModuleLoadFailure(err))).toHaveLength(0);
     } finally {
       window.removeEventListener('vite:preloadError', capture);
+      vi.useRealTimers();
+    }
+  });
+
+  it('冷開 /events/<id>：守門先觸發、link error 稍後才到，只刷新失敗的那一個', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    installFailedPreloadRecorder();
+    const other = document.createElement('link');
+    other.rel = 'modulepreload';
+    other.href = '/assets/other.js';
+    document.head.appendChild(other);
+    const late = document.createElement('link');
+    late.rel = 'modulepreload';
+    late.href = '/assets/late.js';
+    document.head.appendChild(late);
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    try {
+      render(<App />);
+      await act(async () => {
+        for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      });
+      expect(isChunkReloadScheduled()).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(30);
+      late.dispatchEvent(new Event('error', { bubbles: false }));
+      expect(fetchMock).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(FAILED_WAIT_MS - 30);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(late.href, expect.objectContaining({ cache: 'no-cache' }));
+      expect(fetchMock.mock.calls.map((call) => String(call[0]))).not.toContain(other.href);
+      resolveAll();
+      await act(async () => {
+        for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      });
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
       vi.useRealTimers();
     }
   });
