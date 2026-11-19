@@ -1,4 +1,5 @@
-// 指派畫面的純規則。staff 文件沒有名字，顯示用角色與 uid 編號。
+// 指派畫面的純規則。staff 文件沒有名字。
+// 編號用文件上的 memberNo（K10 配發、不回收），不依 uid 現算。
 // 比賽日沿用預覽的 05:00 邊界，避免清單與指派頁分叉。
 
 import { competitionDay, weekdayIndex } from '../testing/step4b-fixtures';
@@ -78,39 +79,57 @@ export function matchVenueName(
 export interface StaffNameInput {
   uid: string;
   roles: readonly string[];
+  memberNo?: number;
 }
 
-/** 自己是「我自己」。其他人依角色分組，同角色兩人以上才依 uid 編號。 */
+/** 顯示用編號。只接受正整數，其餘當缺值。 */
+export function shownMemberNo(value: number | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return null;
+  return value;
+}
+
+/**
+ * 清單順序：memberNo 由小到大。缺編號的排最後，再依 uid。
+ * 自己不另外插到最前，號碼小的在前。
+ */
+export function compareStaffOrder(
+  a: { uid: string; memberNo?: number },
+  b: { uid: string; memberNo?: number },
+): number {
+  const an = shownMemberNo(a.memberNo);
+  const bn = shownMemberNo(b.memberNo);
+  if (an != null && bn != null && an !== bn) return an - bn;
+  if (an != null && bn == null) return -1;
+  if (an == null && bn != null) return 1;
+  if (a.uid < b.uid) return -1;
+  if (a.uid > b.uid) return 1;
+  return 0;
+}
+
+function memberLabel(memberNo: number | undefined, labels: StaffNameLabels): string {
+  const n = shownMemberNo(memberNo);
+  return n == null ? labels.member : labels.memberN(n);
+}
+
+/** 自己是「我自己」。其他人是「成員 {memberNo}」；缺編號是「成員」。 */
 export function staffDisplayNames(
   rows: readonly StaffNameInput[],
   selfUid: string,
   labels: StaffNameLabels = NAME_LABELS,
 ): Map<string, string> {
   const names = new Map<string, string>();
-  const groups = new Map<StaffAssignmentRole, string[]>();
   for (const row of rows) {
     if (row.uid === selfUid) {
       names.set(row.uid, labels.me);
       continue;
     }
-    const role = rowRole(row.roles);
-    if (!role) continue;
-    const list = groups.get(role);
-    if (list) list.push(row.uid);
-    else groups.set(role, [row.uid]);
-  }
-  for (const uids of groups.values()) {
-    const sorted = [...uids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    if (sorted.length === 1) {
-      names.set(sorted[0] ?? '', labels.member);
-      continue;
-    }
-    sorted.forEach((uid, index) => names.set(uid, labels.memberN(index + 1)));
+    if (!rowRole(row.roles)) continue;
+    names.set(row.uid, memberLabel(row.memberNo, labels));
   }
   return names;
 }
 
-/** 下拉：我自己在最前，其餘依 uid。自己不重複。 */
+/** 下拉：我自己在最前，其餘依 memberNo（缺值最後，再依 uid）。自己不重複。 */
 export function assignPeople(
   rows: readonly StaffNameInput[],
   selfUid: string,
@@ -119,8 +138,8 @@ export function assignPeople(
   const names = staffDisplayNames(rows, selfUid, labels);
   const others = rows
     .filter((row) => row.uid !== selfUid && names.has(row.uid))
-    .map((row) => ({ uid: row.uid, name: names.get(row.uid) ?? labels.member }))
-    .sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+    .sort(compareStaffOrder)
+    .map((row) => ({ uid: row.uid, name: names.get(row.uid) ?? labels.member }));
   return [{ uid: selfUid, name: labels.me }, ...others];
 }
 

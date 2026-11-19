@@ -4,6 +4,7 @@ import { render } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import '../styles/tokens.css';
 import '../styles/base.css';
+import '@/ui/app-shell.css';
 import { setLocale } from '@/i18n/i18n';
 import { loadCompetitionsDict } from '@/features/competitions/i18n';
 import {
@@ -65,27 +66,29 @@ function assignDays(): AssignDayGroup[] {
   }));
 }
 
+// 名稱照正式規則：自己「我自己」，其他人「成員 {memberNo}」（K10 配發、不回收）。
+// 假資料：主辦 1、共同主辦 2、記分員 3、5（4 號已移除，不重排）、裁判 6。
 const HOST_ROWS: StaffListRow[] = [
   { id: 'me', name: '我自己', role: 'host', roleLabel: '主辦', countLabel: '0 場', removable: false },
-  { id: 'co', name: '成員', role: 'coHost', roleLabel: '共同主辦', countLabel: '0 場', removable: true },
-  { id: 's1', name: '成員 1', role: 'scorer', roleLabel: '記分員', countLabel: '4 場', removable: true },
-  { id: 's2', name: '成員 2', role: 'scorer', roleLabel: '記分員', countLabel: '1 場', removable: true },
-  { id: 'ref', name: '成員', role: 'referee', roleLabel: '裁判', countLabel: '1 場', removable: true },
+  { id: 'co', name: '成員 2', role: 'coHost', roleLabel: '共同主辦', countLabel: '0 場', removable: true },
+  { id: 's1', name: '成員 3', role: 'scorer', roleLabel: '記分員', countLabel: '4 場', removable: true },
+  { id: 's2', name: '成員 5', role: 'scorer', roleLabel: '記分員', countLabel: '1 場', removable: true },
+  { id: 'ref', name: '成員 6', role: 'referee', roleLabel: '裁判', countLabel: '1 場', removable: true },
 ];
 
 const COHOST_ROWS: StaffListRow[] = [
-  { id: 'host', name: '成員', role: 'host', roleLabel: '主辦', countLabel: '0 場', removable: false },
+  { id: 'host', name: '成員 1', role: 'host', roleLabel: '主辦', countLabel: '0 場', removable: false },
   { id: 'me', name: '我自己', role: 'coHost', roleLabel: '共同主辦', countLabel: '0 場', removable: false },
-  { id: 's1', name: '成員 1', role: 'scorer', roleLabel: '記分員', countLabel: '4 場', removable: true },
-  { id: 's2', name: '成員 2', role: 'scorer', roleLabel: '記分員', countLabel: '1 場', removable: true },
-  { id: 'ref', name: '成員', role: 'referee', roleLabel: '裁判', countLabel: '1 場', removable: true },
+  { id: 's1', name: '成員 3', role: 'scorer', roleLabel: '記分員', countLabel: '4 場', removable: true },
+  { id: 's2', name: '成員 5', role: 'scorer', roleLabel: '記分員', countLabel: '1 場', removable: true },
+  { id: 'ref', name: '成員 6', role: 'referee', roleLabel: '裁判', countLabel: '1 場', removable: true },
 ];
 
 const PEOPLE = [
   { id: 'me', name: '我自己' },
-  { id: 's1', name: '成員 1' },
-  { id: 's2', name: '成員 2' },
-  { id: 'ref', name: '成員' },
+  { id: 's1', name: '成員 3' },
+  { id: 's2', name: '成員 5' },
+  { id: 'ref', name: '成員 6' },
 ];
 
 function hasText(text: string): boolean {
@@ -153,7 +156,15 @@ async function start(): Promise<void> {
     if (!(U3_SCREENS as readonly string[]).includes(screenName)) {
       throw new Error(`沒有這個 screen：${screenName}`);
     }
-    render(<LocationProvider>{screenOf(screenName)}</LocationProvider>, root);
+    // 與正式 App 相同的內容容器（ui-app-shell 的 max-width）。U2 記分頁不走這支 harness。
+    render(
+      <LocationProvider>
+        <div class="app-shell ui-app-shell">
+          <main class="app-main">{screenOf(screenName)}</main>
+        </div>
+      </LocationProvider>,
+      root,
+    );
     const anchor = ANCHORS[screenName] ?? '';
     const startAt = Date.now();
     while (!hasText(anchor)) {

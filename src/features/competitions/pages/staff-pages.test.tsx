@@ -19,7 +19,7 @@ import {
   memberActor,
   screenEnv,
 } from '../testing/screen-fixtures';
-import CompetitionDetailPage from './CompetitionDetailPage';
+import CompetitionDetailPage, { FOREGROUND_RELOAD_MIN_MS } from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
 import ScorerMatchesPage from './ScorerMatchesPage';
 import StaffAssignPage from './StaffAssignPage';
@@ -74,10 +74,10 @@ const STAFF_SEED = {
 
 const ASSIGNMENTS = {
   cup: [
-    { uid: 'uid_host', roles: ['host' as const], matchIds: ['mt_1'], expiresAt: null },
-    { uid: 'uid_co', roles: ['coHost' as const], matchIds: [] as string[], expiresAt: null },
-    { uid: 'uid_a', roles: ['scorer' as const], matchIds: ['mt_1'], expiresAt: null },
-    { uid: 'uid_b', roles: ['scorer' as const], matchIds: ['mt_1', 'mt_2'], expiresAt: null },
+    { uid: 'uid_host', roles: ['host' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 1 },
+    { uid: 'uid_co', roles: ['coHost' as const], matchIds: [] as string[], expiresAt: null, memberNo: 2 },
+    { uid: 'uid_b', roles: ['scorer' as const], matchIds: ['mt_1', 'mt_2'], expiresAt: null, memberNo: 4 },
+    { uid: 'uid_a', roles: ['scorer' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 3 },
     { uid: 'uid_ref', roles: ['referee' as const], matchIds: [] as string[], expiresAt: null },
   ],
 };
@@ -111,6 +111,10 @@ function rowOf(view: { container: Element }, name: string): Element | null {
 function removeIn(row: Element | null): HTMLButtonElement | null {
   if (!row) return null;
   return [...row.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim() === '移除') ?? null;
+}
+
+function staffNames(view: { container: Element }): string[] {
+  return [...view.container.querySelectorAll('.s4b-staff__name')].map((el) => el.textContent ?? '');
 }
 
 beforeAll(async () => {
@@ -171,15 +175,14 @@ describe('指派頁與我的場次', () => {
     expect(await screen.findByText('我自己')).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('指派記分員');
     expect(view.container.textContent ?? '').not.toContain('產生邀請連結');
+    expect(staffNames(view)).toEqual(['我自己', '成員 2', '成員 3', '成員 4', '成員']);
     const self = rowOf(view, '我自己');
     expect(self?.textContent ?? '').toContain('主辦');
     expect(removeIn(self)).toBeNull();
     const co = [...view.container.querySelectorAll('.s4b-li')].find((el) => (el.textContent ?? '').includes('共同主辦'));
     expect(removeIn(co ?? null)).not.toBeNull();
-    expect(view.container.textContent ?? '').toContain('成員 1');
-    expect(view.container.textContent ?? '').toContain('成員 2');
     expect(view.container.textContent ?? '').toContain('2 場');
-    const scorer = rowOf(view, '成員 1');
+    const scorer = rowOf(view, '成員 3');
     const button = removeIn(scorer);
     if (!button) throw new Error('記分員應有移除鈕');
     fireEvent.click(button);
@@ -207,7 +210,57 @@ describe('指派頁與我的場次', () => {
     expect(removeIn(self)).toBeNull();
     const host = [...view.container.querySelectorAll('.s4b-li')].find((el) => (el.textContent ?? '').includes('主辦') && !(el.textContent ?? '').includes('共同'));
     expect(removeIn(host ?? null)).toBeNull();
-    expect(removeIn(rowOf(view, '成員 1'))).not.toBeNull();
+    expect(removeIn(rowOf(view, '成員 3'))).not.toBeNull();
+  });
+
+  it('移除成員 2 後成員 3 仍是 3，重新整理號碼不變', async () => {
+    const rows = ASSIGNMENTS.cup.map((row) => ({
+      ...row,
+      roles: [...row.roles],
+      matchIds: [...row.matchIds],
+    }));
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      staff: STAFF_SEED,
+      assignments: { cup: rows },
+      matches: {
+        cup: [
+          match('mt_1'),
+          match('mt_2', { kickoffAt: taipeiMs(2027, 1, 10, 5, 0), venueName: '2號場' }),
+        ],
+      },
+    });
+    const removeStaff = vi.fn<CpActions['removeStaff']>(async ({ uid }) => {
+      const index = rows.findIndex((row) => row.uid === uid);
+      if (index >= 0) rows.splice(index, 1);
+      return {};
+    });
+    const env = {
+      actor: hostActor,
+      repo,
+      actions: { ...idleActions(), removeStaff },
+      route: { cid: 'cup' },
+    };
+    const view = draw(env, <StaffPage />);
+    expect(await screen.findByText('成員 3')).toBeTruthy();
+    expect(staffNames(view)).toEqual(['我自己', '成員 2', '成員 3', '成員 4', '成員']);
+    const button = removeIn(rowOf(view, '成員 2'));
+    if (!button) throw new Error('成員 2 應有移除鈕');
+    fireEvent.click(button);
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent ?? '').toContain('移除記分角色？');
+    expect(staffNames(view)).toEqual(['我自己', '成員 2', '成員 3', '成員 4', '成員']);
+    const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
+    if (!confirm) throw new Error('確認框應有移除');
+    fireEvent.click(confirm);
+    await waitFor(() => expect(removeStaff).toHaveBeenCalledWith({ cid: 'cup', uid: 'uid_co' }));
+    await waitFor(() => expect(staffNames(view)).toEqual(['我自己', '成員 3', '成員 4', '成員']));
+    view.unmount();
+    const again = draw(env, <StaffPage />);
+    expect(await screen.findByText('成員 3')).toBeTruthy();
+    expect(staffNames(again)).toEqual(['我自己', '成員 3', '成員 4', '成員']);
+    expect(again.container.textContent ?? '').not.toContain('成員 1');
+    expect(again.container.textContent ?? '').not.toContain('成員 2');
   });
 
   it('管理員沒有 staff 文件仍可進清單', async () => {
@@ -234,6 +287,13 @@ describe('指派頁與我的場次', () => {
     }, <StaffAssignPage />);
     const select = await screen.findByLabelText('人員') as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe('uid_a'));
+    expect([...select.options].map((option) => option.label)).toEqual([
+      '我自己',
+      '成員 2',
+      '成員 3',
+      '成員 4',
+      '成員',
+    ]);
     await waitFor(() => {
       const box = screen.getByRole('checkbox', { name: /09:00/ }) as HTMLInputElement;
       expect(box.checked).toBe(true);
@@ -396,6 +456,72 @@ describe('指派頁與我的場次', () => {
     expect(guest.calls()).not.toContain('getStaff');
     expect(guest.calls()).not.toContain('getStaffAssignment');
     expect(screen.queryByRole('button', { name: '我的場次' })).toBeNull();
+  });
+
+  it('詳情頁登入才讀自己的 staff，重新渲染與切換分頁不重讀', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      assignments: {
+        cup: [{ uid: 'uid_member', roles: ['scorer'], matchIds: ['mt_1'], expiresAt: null, memberNo: 4 }],
+      },
+    });
+    const base = {
+      actor: memberActor,
+      repo,
+      actions: idleActions(),
+      now: taipeiMs(2027, 1, 9, 12, 0),
+      route: { cid: 'cup' as const },
+    };
+    const clock = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(clock);
+    const view = draw(base, <CompetitionDetailPage />);
+    try {
+      expect(await screen.findByRole('tab', { name: '積分' })).toBeTruthy();
+      const assignment = () => repo.calls().filter((name) => name === 'getStaffAssignment');
+      expect(assignment()).toHaveLength(1);
+
+      const again = (env: CpInjectedEnv) => {
+        view.rerender(
+          <LocationProvider>
+            <CpEnvProvider value={env}>
+              <CompetitionDetailPage />
+            </CpEnvProvider>
+          </LocationProvider>,
+        );
+      };
+      again(base);
+      again({ ...base, now: base.now });
+      fireEvent.click(screen.getByRole('tab', { name: '積分' }));
+      fireEvent.click(screen.getByRole('tab', { name: '賽程' }));
+      expect(assignment()).toHaveLength(1);
+
+      nowSpy.mockReturnValue(clock + FOREGROUND_RELOAD_MIN_MS);
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() => expect(repo.calls().filter((name) => name === 'getCompetition').length).toBeGreaterThan(1));
+      expect(assignment()).toHaveLength(1);
+
+      again({ ...base, actor: { ...memberActor, uid: 'uid_other' } });
+      await waitFor(() => expect(assignment()).toHaveLength(2));
+      again({ ...base, route: { cid: 'other' } });
+      await waitFor(() => expect(assignment()).toHaveLength(3));
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('詳情頁未登入不讀自己的 staff', async () => {
+    const guest = createFakeCpRepo({ competitions: [competition({ id: 'cup' })] });
+    draw({
+      actor: { ...memberActor, uid: null },
+      repo: guest,
+      actions: idleActions(),
+      now: taipeiMs(2027, 1, 9, 12, 0),
+      route: { cid: 'cup' },
+    }, <CompetitionDetailPage />);
+    expect(await screen.findByText('示範盃')).toBeTruthy();
+    expect(guest.calls().filter((name) => name === 'getStaffAssignment')).toHaveLength(0);
+    expect(guest.calls().filter((name) => name === 'getStaff')).toHaveLength(0);
   });
 
   it('管理頁有指派記分員連結', async () => {

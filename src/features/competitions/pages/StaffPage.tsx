@@ -8,6 +8,7 @@ import { canHostOrCo, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
   canRemoveStaffRow,
+  compareStaffOrder,
   rowRole,
   staffDisplayNames,
   viewerKind,
@@ -35,13 +36,14 @@ function toRows(
   selfUid: string,
   viewer: StaffViewerKind,
 ): StaffListRow[] {
-  const names = staffDisplayNames(list, selfUid, {
+  const ordered = [...list].sort(compareStaffOrder);
+  const names = staffDisplayNames(ordered, selfUid, {
     me: ct('staffMe'),
     member: ct('staffMember'),
     memberN: (n) => ct('staffMemberN', { n }),
   });
   const rows: StaffListRow[] = [];
-  for (const item of list) {
+  for (const item of ordered) {
     const role = rowRole(item.roles);
     if (!role) continue;
     rows.push({

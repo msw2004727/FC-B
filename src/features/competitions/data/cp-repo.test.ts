@@ -368,6 +368,45 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     await expect(repo.getMatch('.', 'mt_1')).resolves.toBeNull();
   });
 
+  it('memberNo 只留正整數，缺欄與壞值不帶號碼', async () => {
+    const { repo, docs, cols } = harness();
+    cols.set('competitions/cid_1/staff', [
+      { id: 'uid_b', data: { roles: ['scorer'], memberNo: 3 } },
+      { id: 'uid_a', data: { roles: ['referee'], memberNo: 0 } },
+      { id: 'uid_c', data: { roles: ['coHost'], memberNo: 1.5 } },
+      { id: 'uid_d', data: { roles: ['host'], memberNo: '2' } },
+      { id: 'uid_e', data: { roles: ['scorer'], memberNo: -4 } },
+      { id: 'uid_f', data: { roles: ['host'], memberNo: 8 } },
+    ]);
+    const list = await repo.listStaff('cid_1');
+    const byId = new Map(list.map((row) => [row.uid, row.memberNo]));
+    expect(byId.get('uid_b')).toBe(3);
+    expect(byId.get('uid_f')).toBe(8);
+    expect(byId.get('uid_a')).toBeUndefined();
+    expect(byId.get('uid_c')).toBeUndefined();
+    expect(byId.get('uid_d')).toBeUndefined();
+    expect(byId.get('uid_e')).toBeUndefined();
+
+    docs.set('competitions/cid_1/staff/uid_me', { roles: ['host', 'creator'], memberNo: 1 });
+    await expect(repo.getStaff('cid_1', 'uid_me')).resolves.toEqual({
+      uid: 'uid_me',
+      roles: ['host'],
+      memberNo: 1,
+    });
+    await expect(repo.getStaffAssignment('cid_1', 'uid_me')).resolves.toMatchObject({
+      uid: 'uid_me',
+      roles: ['host'],
+      memberNo: 1,
+    });
+    docs.set('competitions/cid_1/staff/uid_me', { roles: ['scorer'], memberNo: Number.NaN });
+    const bad = await repo.getStaffAssignment('cid_1', 'uid_me');
+    expect(bad?.memberNo).toBeUndefined();
+    await expect(repo.getStaff('cid_1', 'uid_me')).resolves.toEqual({
+      uid: 'uid_me',
+      roles: [],
+    });
+  });
+
   it('id 含斜線或為 . / .. 時不查詢', async () => {
     const box = harness();
     await expect(box.repo.getCompetition('a/b')).resolves.toBeNull();

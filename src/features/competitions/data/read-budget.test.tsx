@@ -163,7 +163,12 @@ const doneMax = ROOT
   + STAFF;
 const fullMax = CP_READ_LIMIT.summary + RULES_PARENT;
 // 當日摘要是單筆 get，不加父文件，所以比 liveMax 少父文件那 1 筆。職員另計。
-/** 詳情頁在 loadScheduleDetail 之後，登入者多 get 一次自己的指派文件。 */
+/**
+ * 詳情頁預算表
+ * - 沿用 loadScheduleDetail（已登入的 getStaff 算在 STAFF）
+ * - 登入 +1（自己的 staff）：getStaffAssignment。同一次開頁只讀一次
+ * - 未登入不加
+ */
 const DETAIL_ASSIGNMENT = 1;
 const liveExact = ROOT
   + 1

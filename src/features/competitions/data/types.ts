@@ -200,6 +200,11 @@ export interface LaunchDoc {
 export interface StaffDoc {
   uid: string;
   roles: StaffRole[];
+  /**
+   * 後端 K10 依加入先後配發，不回收。建賽主辦為 1。
+   * 讀取只留正整數；缺欄、0、負數、小數、非數字都丟掉。
+   */
+  memberNo?: number;
 }
 
 /** 指派讀取用。含記分角色。與 StaffDoc 分開，既有 getStaff 仍只留 host／coHost。 */
@@ -211,6 +216,11 @@ export interface StaffAssignment {
   matchIds: string[];
   /** 沒有到期是 null。毫秒。 */
   expiresAt: number | null;
+  /**
+   * 後端 K10 依加入先後配發，不回收。建賽主辦為 1。
+   * 讀取只留正整數；缺欄、0、負數、小數、非數字都丟掉。
+   */
+  memberNo?: number;
 }
 
 export interface MatchSide {

@@ -4,6 +4,7 @@ import {
   assignPeople,
   assignStaffFields,
   canRemoveStaffRow,
+  compareStaffOrder,
   groupByCompetitionDay,
   showScoreEntry,
   staffDisplayNames,
@@ -27,30 +28,70 @@ describe('指派規則', () => {
     }
   });
 
-  it('自己顯示我自己；同角色依 uid 編號，自己不占號', () => {
+  it('編號用 memberNo；移除成員 2 後成員 3 仍是 3；缺號不帶號碼', () => {
     const rows = [
-      { uid: 'uid_self', roles: ['host', 'scorer'] },
-      { uid: 'uid_b', roles: ['scorer'] },
-      { uid: 'uid_a', roles: ['scorer'] },
-      { uid: 'uid_ref', roles: ['referee'] },
+      { uid: 'uid_self', roles: ['host', 'scorer'], memberNo: 1 },
+      { uid: 'uid_b', roles: ['scorer'], memberNo: 2 },
+      { uid: 'uid_c', roles: ['referee'], memberNo: 3 },
+      { uid: 'uid_old', roles: ['coHost'] },
+      { uid: 'uid_zero', roles: ['scorer'], memberNo: 0 },
+      { uid: 'uid_neg', roles: ['scorer'], memberNo: -2 },
+      { uid: 'uid_frac', roles: ['scorer'], memberNo: 1.5 },
     ];
     const names = staffDisplayNames(rows, 'uid_self');
     expect(names.get('uid_self')).toBe('我自己');
-    expect(names.get('uid_a')).toBe('成員 1');
     expect(names.get('uid_b')).toBe('成員 2');
-    expect(names.get('uid_ref')).toBe('成員');
+    expect(names.get('uid_c')).toBe('成員 3');
+    expect(names.get('uid_old')).toBe('成員');
+    expect(names.get('uid_zero')).toBe('成員');
+    expect(names.get('uid_neg')).toBe('成員');
+    expect(names.get('uid_frac')).toBe('成員');
 
-    const alone = staffDisplayNames([{ uid: 'uid_x', roles: ['coHost'] }], 'uid_self');
-    expect(alone.get('uid_x')).toBe('成員');
+    const left = rows.filter((row) => row.uid !== 'uid_b');
+    expect(staffDisplayNames(left, 'uid_self').get('uid_c')).toBe('成員 3');
+    // 重新計算（重建畫面）仍是文件上的號碼，不依剩下的人數重編。
+    expect(staffDisplayNames(left, 'uid_self').get('uid_c')).toBe('成員 3');
+    expect(staffDisplayNames(left, 'uid_self').get('uid_self')).toBe('我自己');
 
     expect(assignPeople(rows, 'uid_self').map((row) => row.name)).toEqual([
       '我自己',
-      '成員 1',
       '成員 2',
+      '成員 3',
+      '成員',
+      '成員',
+      '成員',
       '成員',
     ]);
-    expect(assignPeople([{ uid: 'uid_self', roles: ['scorer'] }], 'uid_self')).toEqual([
+    expect(assignPeople(rows, 'uid_self').map((row) => row.uid)).toEqual([
+      'uid_self',
+      'uid_b',
+      'uid_c',
+      'uid_frac',
+      'uid_neg',
+      'uid_old',
+      'uid_zero',
+    ]);
+    expect(assignPeople([{ uid: 'uid_self', roles: ['scorer'], memberNo: 1 }], 'uid_self')).toEqual([
       { uid: 'uid_self', name: '我自己' },
+    ]);
+  });
+
+  it('列表依 memberNo 由小到大，缺值排最後再依 uid', () => {
+    const rows = [
+      { uid: 'uid_z', memberNo: 3 },
+      { uid: 'uid_b' },
+      { uid: 'uid_a' },
+      { uid: 'uid_m', memberNo: 1 },
+      { uid: 'uid_n', memberNo: 1 },
+      { uid: 'uid_bad', memberNo: 0 },
+    ];
+    expect([...rows].sort(compareStaffOrder).map((row) => row.uid)).toEqual([
+      'uid_m',
+      'uid_n',
+      'uid_z',
+      'uid_a',
+      'uid_b',
+      'uid_bad',
     ]);
   });
 

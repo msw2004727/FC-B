@@ -83,7 +83,54 @@ interface DetailData {
   myAssignment: StaffAssignment | null;
 }
 
-async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> {
+/**
+ * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只打一次 getStaffAssignment。
+ * 重新渲染、切分頁、回前景、重試都不重讀。換賽事或換登入者才再讀。
+ */
+interface MineReadCache {
+  readyKey: string;
+  value: StaffAssignment | null;
+  flight: { key: string; task: Promise<StaffAssignment | null> } | null;
+  token: number;
+}
+
+function mineKey(cid: string, uid: string): string {
+  return `${cid}\0${uid}`;
+}
+
+async function readMyAssignment(
+  env: CpInjectedEnv,
+  cid: string,
+  cache: MineReadCache,
+): Promise<StaffAssignment | null> {
+  const uid = env.actor.uid;
+  if (!uid) return null;
+  const key = mineKey(cid, uid);
+  if (cache.readyKey === key) {
+    // 作廢還在飛的另一個 cid／uid，避免晚到的結果蓋掉目前這筆。
+    cache.token += 1;
+    cache.flight = null;
+    return cache.value;
+  }
+  if (cache.flight?.key === key) return cache.flight.task;
+  const token = cache.token + 1;
+  cache.token = token;
+  const task = env.repo.getStaffAssignment(cid, uid).then((row) => {
+    if (cache.token === token) {
+      cache.readyKey = key;
+      cache.value = row;
+      cache.flight = null;
+    }
+    return row;
+  }, (err: unknown) => {
+    if (cache.flight?.task === task) cache.flight = null;
+    throw err;
+  });
+  cache.flight = { key, task };
+  return task;
+}
+
+async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache): Promise<DetailData> {
   // 隊徽走 listEntriesForCrest（repo 頁內快取，不監聽）。摘要每次呼叫都重讀。
   // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
   // ASSUMPTION: 內部期 3 筆由列表閘門負責，詳情頁不重讀。
@@ -93,10 +140,8 @@ async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> 
     uid: env.actor.uid,
     now: env.now ?? Date.now(),
   });
-  // 登入才多讀自己的 staff，這次保留 scorer／referee。未登入不讀。
-  const myAssignment = env.actor.uid
-    ? await env.repo.getStaffAssignment(cid, env.actor.uid)
-    : null;
+  // 登入才多讀自己的 staff（保留 scorer／referee）。未登入不讀。同一次開頁只讀一次。
+  const myAssignment = await readMyAssignment(env, cid, mine);
   return {
     bundle: {
       competition: view.competition,
@@ -154,6 +199,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
   const fullCache = useRef<SummaryEntry[] | null>(null);
   const fullInflight = useRef<Promise<boolean> | null>(null);
+  const mineCache = useRef<MineReadCache>({ readyKey: '', value: null, flight: null, token: 0 });
   const mounted = useRef(true);
   // 公告發送與刪除共用這把鎖。busy 要等重繪才擋得住，連點會在那之前重入。
   const noticeLock = useRef(false);
@@ -238,7 +284,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     env.repo.invalidateCrests(cid);
     let alive = true;
     setLoadState('loading');
-    void loadDetail(env, cid).then((next) => {
+    void loadDetail(env, cid, mineCache.current).then((next) => {
       if (!alive) return;
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     }).catch(() => {
@@ -267,7 +313,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       const at = Date.now();
       if (at - lastForegroundAt.current < FOREGROUND_RELOAD_MIN_MS) return;
       lastForegroundAt.current = at;
-      void loadDetail(env, cid).then((next) => {
+      void loadDetail(env, cid, mineCache.current).then((next) => {
         if (!alive || !next.bundle.competition) return;
         applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       }).catch(() => {
@@ -302,7 +348,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <p class="cps-note" role="alert">{ct('loadFailed')}</p>
         <Button variant="secondary" onClick={() => {
           setLoadState('loading');
-          void loadDetail(env, cid).then((next) => {
+          void loadDetail(env, cid, mineCache.current).then((next) => {
             applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
           }).catch(() => setLoadState('error'));
         }}
@@ -351,7 +397,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     setError(null);
     try {
       await env.actions.publish({ cid });
-      const next = await loadDetail(env, cid);
+      const next = await loadDetail(env, cid, mineCache.current);
       if (next.bundle.competition) {
         applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       } else {
@@ -417,7 +463,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           };
         });
       } else {
-        const next = await loadDetail(env, cid);
+        const next = await loadDetail(env, cid, mineCache.current);
         applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       }
       setRestoreOpen(false);
@@ -520,7 +566,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.registerEntry(buildRegisterInput({ cid, dvId, teamId: chosenTeam }));
       setRegisterOpen(false);
       setRegisterError(null);
-      const next = await loadDetail(env, cid);
+      const next = await loadDetail(env, cid, mineCache.current);
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     } catch (err) {
       setRegisterError(errorOf(err));

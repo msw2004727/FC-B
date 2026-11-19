@@ -97,7 +97,16 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   }
 
   function copyAssignment(row: StaffAssignment): StaffAssignment {
-    return { uid: row.uid, roles: [...row.roles], matchIds: [...row.matchIds], expiresAt: row.expiresAt };
+    const next: StaffAssignment = {
+      uid: row.uid,
+      roles: [...row.roles],
+      matchIds: [...row.matchIds],
+      expiresAt: row.expiresAt,
+    };
+    if (typeof row.memberNo === 'number' && Number.isInteger(row.memberNo) && row.memberNo >= 1) {
+      next.memberNo = row.memberNo;
+    }
+    return next;
   }
 
   function staffRows(cid: string): readonly StaffAssignment[] {

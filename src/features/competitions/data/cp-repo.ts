@@ -171,6 +171,12 @@ function optNum(value: unknown): number | null {
   return value == null ? null : num(value);
 }
 
+/** staff.memberNo。只收正整數。0、負數、小數、非數字丟掉，不把字串轉成數字。 */
+function memberNoOf(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return undefined;
+  return value;
+}
+
 function venueOf(value: unknown): Venue | null {
   if (!isRecord(value)) return null;
   const name = str(value.name);
@@ -373,7 +379,8 @@ function staffFromDoc(uid: string, raw: Record<string, unknown>): StaffDoc | nul
   const roles = Array.isArray(raw.roles)
     ? raw.roles.filter((role): role is StaffRole => oneOf(role, STAFF_ROLES) != null)
     : [];
-  return { uid, roles };
+  const memberNo = memberNoOf(raw.memberNo);
+  return memberNo == null ? { uid, roles } : { uid, roles, memberNo };
 }
 
 /** 指派文件。已知角色依文件順序去重。matchIds 去重，最多 100。 */
@@ -393,7 +400,11 @@ function assignmentFromDoc(uid: string, raw: Record<string, unknown>): StaffAssi
       if (matchIds.length >= STAFF_LIST_LIMIT) break;
     }
   }
-  return { uid, roles, matchIds, expiresAt: optNum(raw.expiresAt) };
+  const memberNo = memberNoOf(raw.memberNo);
+  const expiresAt = optNum(raw.expiresAt);
+  return memberNo == null
+    ? { uid, roles, matchIds, expiresAt }
+    : { uid, roles, matchIds, expiresAt, memberNo };
 }
 
 function sideOf(value: unknown): MatchSide | null {
