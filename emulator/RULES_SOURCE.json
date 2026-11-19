@@ -3,5 +3,13 @@
   "storageSha256": "c239ba0ea8484372bd44d5060a0de417117c2a0cf887f6318259eb34b1236d9a",
   "copiedAt": "2026-11-17T03:07:56.337Z",
   "fcRef": "member-data-read-v2rules",
-  "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196"
+  "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196",
+  "asiaMainRules": {
+    "file": "asia-main.rules",
+    "sha256": "68faebd1df8912d98dbbadf8978c814baad7acada4698460dc053ad61105d96d",
+    "fcCommit": "dfa70fb23",
+    "source": ".grok-input/asia-main.rules.k1-dfa70fb23",
+    "copiedAt": "2026-11-19T00:00:00.000Z",
+    "note": "規則本文與 K1 凍結快照逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
+  }
 }
