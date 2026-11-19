@@ -108,8 +108,12 @@ describe('App：活動詳情 chunk 載入失敗（自動重載被擋或已用過
 describe('③ 自動重載保留網址的 query 與 hash', () => {
   it('重載用 location.reload()（原網址重新載入），不改 location.href／assign／replace', () => {
     const src = readFileSync(resolve(__dirname, '../core/chunk-reload.ts'), 'utf8');
-    expect(src).toContain('reload: () => location.reload()');
+    const refreshSrc = readFileSync(resolve(__dirname, '../core/refresh-reload.ts'), 'utf8');
+    // 守門改經 refreshThenReload（先刷新再重載）。真正換頁仍是 location.reload()，query 與 hash 留著。
+    expect(src).toContain('void refreshThenReload()');
+    expect(refreshSrc).toContain('location.reload()');
     expect(src).not.toMatch(/location\.(href\s*=|assign\(|replace\()/);
+    expect(refreshSrc).not.toMatch(/location\.(href\s*=|assign\(|replace\()/);
   });
 });
 

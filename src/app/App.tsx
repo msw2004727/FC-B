@@ -22,6 +22,7 @@ import { toast } from '@/ui/Toast';
 import { isModuleLoadFailure } from '@/core/module-load-error';
 import { isSubmitting } from '@/core/submit-guard';
 import { showReloadBusyToast } from '@/core/reload-safety';
+import { refreshThenReload } from '@/core/refresh-reload';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
@@ -796,7 +797,8 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 }
 
-const reloadPageDefault = (): void => location.reload();
+// 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
+const reloadPageDefault = (): void => { void refreshThenReload(); };
 let routeReloadPage = reloadPageDefault;
 
 /** 測試用：換掉錯誤畫面「重新嘗試」的整頁重整（jsdom 不能真的重整）。 */

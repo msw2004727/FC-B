@@ -6,6 +6,7 @@
 // 而且不 preventDefault：讓原錯誤照常丟給呼叫端，避免 Vite 回 undefined 讓呼叫端解構再出另一種錯。
 // 取代：原本不能重載時顯示「有新版本可用」並 preventDefault，文案誤導且呼叫端拿到 undefined。
 
+import { refreshThenReload } from './refresh-reload';
 import { canReloadAfterChunkFailure, showChunkFailurePrompt } from './reload-safety';
 
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
@@ -74,7 +75,8 @@ export function installChunkReloadGuard(): void {
     const handled = handleChunkLoadFailure({
       storage,
       now: () => now,
-      reload: () => location.reload(),
+      // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
+      reload: () => { void refreshThenReload(); },
       canReload: () => canReloadAfterChunkFailure().safe,
       onBlocked: (reload) => {
         showChunkFailurePrompt(reload, 'chunk-load');

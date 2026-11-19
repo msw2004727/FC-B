@@ -16,10 +16,14 @@ import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
 import { installChunkReloadGuard } from './core/chunk-reload';
+import { installFailedPreloadRecorder } from './core/failed-preloads';
 import { installErrorReporter, reportClientError } from './core/error-report';
 import { runLegacyMigrationOnce } from './core/legacy-migration';
 import { initServiceWorker } from './core/sw-control';
 import { preloadEventDetailChunks } from './app/event-detail-preload';
+
+// 要早於開機預載與任何路由載入。
+installFailedPreloadRecorder();
 
 // T-093：分享網址落在 /events/<id> 時先下載詳情頁與 Firestore 模組（與路由 load 同一個 chunk）。
 // 首頁與 /activities 只預載 Firestore SDK，不下載詳情 chunk。
