@@ -8,7 +8,7 @@ import {
   SCORING_RESERVE,
 } from '../present';
 import { entryInEpoch } from './derive';
-import type { ActionKind, BudgetView, ClockActionName, LogEntry, ServerEvent } from './types';
+import type { ActionKind, BudgetView, ClockActionName, Intent, LogEntry, ServerEvent } from './types';
 
 const CONTROL: ReadonlySet<ActionKind> = new Set([
   'kickoff',
@@ -80,4 +80,25 @@ export function actionAllowed(
 
 export function isControlKind(kind: ActionKind): boolean {
   return CONTROL.has(kind);
+}
+
+/**
+ * 多步動作先加總整組筆數。已用含本機待送。
+ * 投影超過 200 整組不寫；非比賽控制且投影超過 190 整組不寫；停錶次數加上整組停錶超過 20 也不寫。
+ */
+export function groupWithinBudget(intents: readonly Intent[], budget: BudgetView): boolean {
+  const count = intents.length;
+  if (count === 0) return true;
+  const projected = budget.used + count;
+  if (projected > EVENT_MAX) return false;
+  const needsScore = intents.some((intent) => !CONTROL.has(intent.kind));
+  if (needsScore && projected > EVENT_RESERVE) return false;
+  let pauses = 0;
+  for (const intent of intents) {
+    if (intent.kind === 'clock' && intent.clockAction === 'pause') pauses += 1;
+  }
+  if (pauses === 0) return true;
+  if (budget.used > EVENT_MAX - SCORING_RESERVE) return false;
+  if (budget.pauseUses + pauses > PAUSE_MAX) return false;
+  return true;
 }

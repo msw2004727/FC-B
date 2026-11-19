@@ -7,6 +7,7 @@ import type {
   DecideEntry,
   DecideServer,
   LogEntry,
+  LogPatch,
   RejectReason,
   RetryDecision,
   ScoringPort,
@@ -210,10 +211,10 @@ export class Sender {
         continue;
       }
       if (decision.kind === 'resequence') {
-        await this.options.log.patch(entry.op, { state: 'pending', seq: null });
+        await this.patchOpen(entry.op, { state: 'pending', seq: null });
         continue;
       }
-      await this.options.log.patch(entry.op, { state: 'pending' });
+      await this.patchOpen(entry.op, { state: 'pending' });
     }
   }
 
@@ -293,7 +294,7 @@ export class Sender {
         return 'continue';
       }
       if (decision.kind === 'resequence') {
-        const cleared = await this.options.log.patch(working.op, { seq: null, state: 'pending' });
+        const cleared = await this.patchOpen(working.op, { seq: null, state: 'pending' });
         if (cleared) working = cleared;
         try {
           server = await this.options.port.loadServer();
@@ -321,7 +322,9 @@ export class Sender {
       sid,
       intent,
     });
-    if (!saved || this.dead) return 'stop';
+    if (!saved || saved.state === 'discarded' || this.dead) {
+      return saved?.state === 'discarded' ? 'continue' : 'stop';
+    }
 
     const commitP = this.options.port.commit(plan);
     this.inflight.add(saved.op);
@@ -334,6 +337,7 @@ export class Sender {
       if (this.dead) return 'stop';
       const current = await this.options.log.get(saved.op);
       if (current?.state === 'applied') return 'continue';
+      if (current?.state === 'discarded') return 'continue';
       let looked: DecideServer | null = null;
       try {
         const fresh = await this.options.port.loadServer();
@@ -364,11 +368,11 @@ export class Sender {
         control: server.control,
       });
       if (reason === 'conflict' && decision.kind === 'wait') {
-        await this.options.log.patch(saved.op, { state: 'pending', seq });
+        await this.patchOpen(saved.op, { state: 'pending', seq });
         return 'wait';
       }
       if (reason === 'conflict' && !saved.autoRetried && (decision.kind === 'resequence' || decision.kind === 'reuse')) {
-        await this.options.log.patch(saved.op, {
+        await this.patchOpen(saved.op, {
           state: 'pending',
           autoRetried: true,
           seq: decision.kind === 'resequence' ? null : seq,
@@ -378,7 +382,7 @@ export class Sender {
       if (reason === 'rules') {
         console.error('[live-scoring] 規則拒絕', { op: saved.op, seq, rev: server.match.rev });
       }
-      await this.options.log.patch(saved.op, { state: 'rejected', rejectReason: reason, seq });
+      await this.patchOpen(saved.op, { state: 'rejected', rejectReason: reason, seq });
       if (reason === 'takenOver') await this.rejectStaleTakenOver();
       return 'stop';
     } finally {
@@ -442,14 +446,34 @@ export class Sender {
     };
   }
 
+  /** 已是 discarded 就不動。重置後原 commit 成功，狀態維持 discarded。 */
   private async markApplied(op: string, seq: number): Promise<void> {
     if (this.dead) return;
+    const current = await this.options.log.get(op);
+    if (!current || current.state === 'discarded') return;
+    if (this.serverResetRev > (current.baseResetRev ?? 0)) {
+      await this.markDiscarded(op);
+      return;
+    }
     await this.options.log.patch(op, { state: 'applied', seq, rejectReason: null });
   }
 
   private async markDiscarded(op: string): Promise<void> {
     if (this.dead) return;
+    const current = await this.options.log.get(op);
+    if (!current || current.state === 'discarded') return;
     await this.options.log.patch(op, { state: 'discarded', rejectReason: 'reset' });
+  }
+
+  /** 改狀態前再看一次。discarded 或已過重置線就不覆寫。 */
+  private async patchOpen(op: string, patch: LogPatch): Promise<LogEntry | null> {
+    const current = await this.options.log.get(op);
+    if (!current || current.state === 'discarded') return current;
+    if (patch.state !== undefined && patch.state !== 'discarded' && this.serverResetRev > (current.baseResetRev ?? 0)) {
+      await this.markDiscarded(op);
+      return this.options.log.get(op);
+    }
+    return this.options.log.patch(op, patch);
   }
 
   private async rejectStaleTakenOver(): Promise<void> {
@@ -465,7 +489,7 @@ export class Sender {
         continue;
       }
       if (entry.createdAt >= blockedAt) continue;
-      await this.options.log.patch(entry.op, { state: 'rejected', rejectReason: 'takenOver' });
+      await this.patchOpen(entry.op, { state: 'rejected', rejectReason: 'takenOver' });
     }
   }
 }

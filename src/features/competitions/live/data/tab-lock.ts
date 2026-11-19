@@ -88,8 +88,8 @@ function highestId(ids: Iterable<string>): string {
 
 /**
  * 沒有 Web Locks 時：先宣告，隨機退讓，再用 id 大小定誰當 owner。
- * 已經在心跳的 owner 不會被較大的 id 拉下來；心跳消失才重新競爭。
- * 同時啟動的兩個分頁只會有一個 owner。
+ * owner 看到優先權較高（id 較大）的 owner 宣告或心跳就立刻讓位並重新選舉。
+ * 心跳消失才重新競爭。同時啟動的兩個分頁只會有一個 owner。
  */
 async function holdChannel(
   channel: TabChannel,
@@ -153,12 +153,28 @@ async function holdChannel(
     if (settled) onRole?.('blocked');
   };
 
+  const stepDown = (otherId: string) => {
+    foreignOwner = otherId;
+    lastOwnerAt = Date.now();
+    if (!owner) return;
+    owner = false;
+    stopBeat();
+    generation += 1;
+    if (settled) onRole?.('blocked');
+    armSilence();
+    void elect();
+  };
+
   channel.onmessage = (event) => {
     const msg = readClaim(event.data);
     if (!msg || msg.tabId === tabId) return;
     if (msg.type === 'claim') {
       claims.add(msg.tabId);
       if (owner) post('owner');
+      return;
+    }
+    if (owner && msg.tabId > tabId) {
+      stepDown(msg.tabId);
       return;
     }
     if (!owner) {

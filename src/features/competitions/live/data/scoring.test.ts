@@ -635,6 +635,46 @@ describe('送出與工作階段', () => {
     expect(again.match.score.home).toBe(2);
   });
 
+  it('inflight 中重置標成 discarded，原 commit 成功後仍是 discarded', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({
+      op: 'inflight-goal-000001',
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 },
+    });
+    await log.put(goal);
+    const match = baseMatch();
+    const events: ServerEvent[] = [];
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started = 0;
+    const port: ScoringPort = {
+      async commit() {
+        started += 1;
+        await gate;
+      },
+      async loadServer() {
+        return { match: snapshotOf(match), control: { uid: UID, sid: SID, takenAt: 1 } };
+      },
+      async loadTimelineFrom() {
+        return events.filter((event) => event.seq > match.resetRev);
+      },
+      knownEvents: () => events,
+      async takeover() {},
+    };
+    const first = new Sender({ log, port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 50 });
+    const flushing = first.flush();
+    for (let i = 0; i < 30 && started < 1; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(started).toBe(1);
+    match.resetRev = 4;
+    match.rev = 4;
+    const other = new Sender({ log, port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 60 });
+    await other.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'discarded', rejectReason: 'reset' });
+    release();
+    await flushing;
+    expect(await log.get(goal.op)).toMatchObject({ state: 'discarded', rejectReason: 'reset' });
+  });
+
   it('兩個 Sender 搶同一個已取號項目，只留下一筆', async () => {
     const log = new MemoryActionLog();
     const goal = entry({ op: 'shared-op-shared-op1', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 } });
@@ -849,6 +889,37 @@ describe('送出與工作階段', () => {
     expect(h.commits).toHaveLength(0);
   });
 
+  it('剩 1 筆額度時兩步改判被拒、單步動作可過', async () => {
+    const near = await openHarness();
+    near.match.rev = 189;
+    near.listener.onMatch(snapshotOf(near.match));
+    expect(await near.session.getState().actions.amend(
+      { seq: 1 },
+      { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 12 },
+    )).toEqual({ status: 'rejected', reason: 'limit' });
+    expect(near.commits).toHaveLength(0);
+    expect(await near.log.list(CID, MT)).toHaveLength(0);
+    expect((await near.session.getState().actions.goal({ side: 'home' })).status).toBe('applied');
+
+    const yellows = await openHarness();
+    await yellows.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    await yellows.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    yellows.match.rev = 189;
+    yellows.listener.onMatch(snapshotOf(yellows.match));
+    const commits = yellows.commits.length;
+    expect(await yellows.session.getState().actions.undoFirstYellow({ seq: 1 })).toEqual({ status: 'rejected', reason: 'limit' });
+    expect(yellows.commits).toHaveLength(commits);
+
+    const cap = await openHarness();
+    cap.match.rev = 199;
+    cap.listener.onMatch(snapshotOf(cap.match));
+    expect(await cap.session.getState().actions.amend(
+      { seq: 1 },
+      { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 8 },
+    )).toEqual({ status: 'rejected', reason: 'limit' });
+    expect((await cap.session.getState().actions.fulltime()).status).toBe('applied');
+  });
+
   it('改判、復原第一黃、重新套用都先過額度', async () => {
     const h = await openHarness();
     await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
@@ -916,6 +987,31 @@ describe('送出與工作階段', () => {
     expect(h.session.getState().groups[0]?.message).toBe(LIVE_COPY.amendHalf);
     const steps = (await h.log.list(CID, MT)).filter((row) => row.group?.label === 'amendFirstYellow');
     expect(groupMessage(steps)).toBe(LIVE_COPY.amendHalf);
+  });
+
+  it('非終場動作日誌被清掉時不視為已套用', async () => {
+    const inner = new MemoryActionLog();
+    const log: ActionLog = {
+      probe: () => inner.probe(),
+      put: (row) => inner.put(row),
+      get: (op) => inner.get(op),
+      list: (cid, mtId) => inner.list(cid, mtId),
+      async patch(op, patch: LogPatch) {
+        const next = await inner.patch(op, patch);
+        if (next?.state === 'applied') await inner.remove(op);
+        return next;
+      },
+      remove: (op) => inner.remove(op),
+      removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
+      purgeOlderThan: (nowMs, maxAgeMs) => inner.purgeOlderThan(nowMs, maxAgeMs),
+    };
+    const h = await openHarness({
+      log,
+      match: baseMatch({ status: 'confirmed', lock: { locked: true }, rev: 3 }),
+    });
+    const result = await h.session.getState().actions.goal({ side: 'home' });
+    expect(result).toEqual({ status: 'queued' });
+    expect(h.commits).toHaveLength(1);
   });
 
   it('終場日誌被清掉時仍回 applied', async () => {
@@ -1048,6 +1144,131 @@ describe('韌性日誌與清除', () => {
     expect([...rows.keys()]).toEqual([newRow.op]);
   });
 
+  it('假 IndexedDB 拋錯後 pending 都在，已清項目不復活', async () => {
+    const rows = new Map<string, LogEntry>();
+    let broken = false;
+    const done = (tx: { oncomplete: null | (() => void); settled: boolean }) => {
+      if (tx.settled) return;
+      tx.settled = true;
+      setTimeout(() => tx.oncomplete?.(), 0);
+    };
+    const request = <T>(value: T) => {
+      const req = {
+        result: value,
+        error: null,
+        onsuccess: null as null | (() => void),
+        onerror: null as null | (() => void),
+      };
+      queueMicrotask(() => req.onsuccess?.());
+      return req;
+    };
+    const db = {
+      transaction() {
+        if (broken) throw new Error('TransactionInactiveError');
+        const tx = {
+          error: null,
+          settled: false,
+          oncomplete: null as null | (() => void),
+          onerror: null as null | (() => void),
+          onabort: null as null | (() => void),
+          objectStore() {
+            return {
+              put(value: LogEntry) { rows.set(value.op, value); },
+              delete(op: string) { rows.delete(op); },
+              get(op: string) { return request(rows.get(op)); },
+              getAll() { return request([...rows.values()]); },
+              index() {
+                return {
+                  getAll(range: IDBKeyRange) {
+                    const key = range.lower as [string, string];
+                    return request([...rows.values()].filter((row) => row.cid === key[0] && row.mtId === key[1]));
+                  },
+                };
+              },
+              openCursor() {
+                const keys = [...rows.keys()];
+                let index = 0;
+                const req = {
+                  result: null as { value: LogEntry; delete: () => void; continue: () => void } | null,
+                  onsuccess: null as null | (() => void),
+                  onerror: null as null | (() => void),
+                };
+                const step = () => {
+                  if (index >= keys.length) {
+                    req.result = null;
+                    req.onsuccess?.();
+                    return;
+                  }
+                  const key = keys[index] ?? '';
+                  const value = rows.get(key);
+                  if (!value) {
+                    index += 1;
+                    step();
+                    return;
+                  }
+                  let inside = true;
+                  req.result = {
+                    value,
+                    delete() {
+                      if (!inside) throw new Error('TransactionInactiveError');
+                      rows.delete(key);
+                    },
+                    continue() {
+                      if (!inside) throw new Error('TransactionInactiveError');
+                      index += 1;
+                      queueMicrotask(step);
+                    },
+                  };
+                  req.onsuccess?.();
+                  inside = false;
+                };
+                queueMicrotask(step);
+                return req;
+              },
+            };
+          },
+        };
+        setTimeout(() => done(tx), 0);
+        return tx;
+      },
+    };
+    const inner = new IndexedDbActionLog(async () => db as unknown as IDBDatabase);
+    let trips = 0;
+    const log = new ResilientActionLog(inner, () => { trips += 1; });
+    const here = entry({
+      op: 'pending-here-000001',
+      createdAt: 20_000,
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 },
+    });
+    const there = entry({
+      op: 'pending-there-00001',
+      cid: 'c2',
+      mtId: 'm2',
+      createdAt: 20_000,
+      intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 2 },
+    });
+    const old = entry({
+      op: 'purged-old-row0001',
+      createdAt: 1,
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 3 },
+    });
+    await log.put(here);
+    await log.put(there);
+    await log.put(old);
+    await log.purgeOlderThan(10_000, 1000);
+    expect(rows.has(old.op)).toBe(false);
+    broken = true;
+    await log.put(entry({
+      op: 'after-break-row0001',
+      createdAt: 21_000,
+      intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 4 },
+    }));
+    expect(trips).toBe(1);
+    expect((await log.list(CID, MT)).map((row) => row.op).sort()).toEqual(['after-break-row0001', here.op]);
+    expect((await log.list('c2', 'm2')).map((row) => row.op)).toEqual([there.op]);
+    expect(rows.has('after-break-row0001')).toBe(false);
+  });
+
   it('purge 拋錯不會讓工作階段起不來', async () => {
     const inner = new MemoryActionLog();
     const log: ActionLog = {
@@ -1063,6 +1284,32 @@ describe('韌性日誌與清除', () => {
     const h = await openHarness({ log });
     expect(h.session.getState().storage).toBe('unavailable');
     expect(h.session.getState().loading).toBe(false);
+  });
+
+  it('start 的 purge 失敗不會丟掉既有 pending', async () => {
+    const inner = new MemoryActionLog();
+    const pending = entry({
+      op: 'kept-pending-000001',
+      state: 'pending',
+      createdAt: 50_000,
+      intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 1 },
+    });
+    await inner.put(pending);
+    const log: ActionLog = {
+      probe: async () => true,
+      put: (row) => inner.put(row),
+      get: (op) => inner.get(op),
+      list: (cid, mtId) => inner.list(cid, mtId),
+      listAll: () => inner.listAll(),
+      patch: (op, patch) => inner.patch(op, patch),
+      remove: (op) => inner.remove(op),
+      removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
+      purgeOlderThan: async () => { throw new Error('TransactionInactiveError'); },
+    };
+    const h = await openHarness({ log });
+    expect(h.session.getState().storage).toBe('unavailable');
+    expect(h.commits.map((plan) => plan.op)).toEqual([pending.op]);
+    expect(h.events.some((event) => event.op === pending.op)).toBe(true);
   });
 });
 
@@ -1105,6 +1352,47 @@ describe('分頁鎖與螢幕鎖定', () => {
     expect(left.role).toBe('blocked');
     left.release();
     right.release();
+  });
+
+  it('延遲讓兩邊都當上 owner 後，一次心跳只留下優先的那個', async () => {
+    const a: TabChannel = { postMessage() {}, onmessage: null, close() {} };
+    const b: TabChannel = { postMessage() {}, onmessage: null, close() {} };
+    let delay = true;
+    const queued: Array<() => void> = [];
+    const send = (to: TabChannel, data: unknown) => {
+      const deliver = () => to.onmessage?.({ data });
+      if (delay) queued.push(deliver);
+      else deliver();
+    };
+    a.postMessage = (data) => send(b, data);
+    b.postMessage = (data) => send(a, data);
+    const wait = () => Promise.resolve();
+    let roleA = '';
+    let roleB = '';
+    const [left, right] = await Promise.all([
+      acquireTabLock({
+        name: 'cp-scoring-c-m', locks: null, channel: a, tabId: 'id-a', wait, random: () => 0,
+        onRole: (role) => { roleA = role; },
+      }),
+      acquireTabLock({
+        name: 'cp-scoring-c-m', locks: null, channel: b, tabId: 'id-b', wait, random: () => 0,
+        onRole: (role) => { roleB = role; },
+      }),
+    ]);
+    roleA = left.role;
+    roleB = right.role;
+    expect(roleA).toBe('owner');
+    expect(roleB).toBe('owner');
+    delay = false;
+    b.onmessage?.({ data: { type: 'beat', tabId: 'id-a' } });
+    a.onmessage?.({ data: { type: 'beat', tabId: 'id-b' } });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(roleA).toBe('blocked');
+    expect(roleB).toBe('owner');
+    left.release();
+    right.release();
+    expect(queued.length).toBeGreaterThan(0);
   });
 
   it('要得到鎖就標持有；失敗就標不支援', async () => {

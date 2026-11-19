@@ -3,8 +3,8 @@
 import { LIVE_COPY } from '../copy';
 import { clockFromBase, type ClockReading } from '../clock';
 import type { RosterPublicDoc } from '../../data/types';
-import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
-import { actionAllowed, budgetView } from './budget';
+import { ACTION_LOG_MAX_AGE_MS, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { actionAllowed, budgetView, groupWithinBudget } from './budget';
 import {
   findOpenYellow,
   fulltimeBlocked,
@@ -349,11 +349,13 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     return actionAllowed(kind, budget, clockAction);
   }
 
-  function allowIntent(intent: Intent): boolean {
-    return allow(intent.kind, intent.kind === 'clock' ? intent.clockAction : undefined);
+  function allowGroup(intents: readonly Intent[]): boolean {
+    if (tab === 'blocked') return false;
+    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events);
+    return groupWithinBudget(intents, budget);
   }
 
-  async function finish(ops: string[]): Promise<ActionResult> {
+  async function finish(ops: string[], kinds: readonly ActionKind[] = []): Promise<ActionResult> {
     await reloadEntries();
     emit();
     const current = senderOrThrow();
@@ -371,8 +373,11 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       return { status: 'rejected', reason: hit?.rejectReason ?? 'unknown' };
     }
     if (rows.every((entry) => entry?.state === 'applied')) return { status: 'applied' };
-    // 終場寫入落地後日誌可能已被清掉，get 會是 null。場次已是終場就視為已套用。
-    if (ops.length > 0 && terminalMatch(match) && rows.every((entry) => entry == null || entry.state === 'applied')) {
+    // 終場寫入落地後日誌可能已被清掉，get 會是 null。只對終場類（fulltime）視為已套用。
+    const terminalAction = ops.length > 0
+      && kinds.length === ops.length
+      && kinds.every((kind) => kind === 'fulltime');
+    if (terminalAction && terminalMatch(match) && rows.every((entry) => entry == null || entry.state === 'applied')) {
       return { status: 'applied' };
     }
     return { status: 'queued' };
@@ -408,7 +413,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     if (intent.kind === 'fulltime' && fulltimeBlocked(entries)) return rejected('rules');
     const row = make(intent, group);
     await putAll([row]);
-    return finish([row.op]);
+    return finish([row.op], [intent.kind]);
   }
 
   function second(): number {
@@ -513,20 +518,21 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       if (secondYellow) intents.push(voidOf(secondYellow));
       intents.push(voidOf(target));
       intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond || second() } : { ...next });
-      if (intents.some((intent) => !allowIntent(intent))) return rejected('limit');
+      if (!allowGroup(intents)) return rejected('limit');
       const label: GroupLabel = secondYellow ? 'amendFirstYellow' : 'amend';
       const rows = groupRows(label, intents);
       await putAll(rows);
-      return finish(rows.map((row) => row.op));
+      return finish(rows.map((row) => row.op), rows.map((row) => row.kind));
     },
     async undoFirstYellow(target) {
       if (tab === 'blocked') return rejected('rules');
-      if (!allow('void')) return rejected('limit');
       const secondYellow = linkedSecond(target);
       if (!secondYellow) return actions.voidEvent(target);
-      const rows = groupRows('undoFirstYellow', [voidOf(secondYellow), voidOf(target)]);
+      const intents: Intent[] = [voidOf(secondYellow), voidOf(target)];
+      if (!allowGroup(intents)) return rejected('limit');
+      const rows = groupRows('undoFirstYellow', intents);
       await putAll(rows);
-      return finish(rows.map((row) => row.op));
+      return finish(rows.map((row) => row.op), rows.map((row) => row.kind));
     },
     async reapply(op) {
       if (tab === 'blocked') return rejected('rules');
@@ -535,18 +541,19 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       const entry = await log.get(op);
       if (!entry) return rejected();
       if (entry.state === 'applied') return { status: 'applied' };
-      if ((match?.resetRev ?? 0) > (entry.baseResetRev ?? 0) || (entry.state === 'discarded' && entry.rejectReason === 'reset')) {
-        if (entry.state !== 'discarded') {
-          await log.patch(op, { state: 'discarded', rejectReason: 'reset' });
-          await reloadEntries();
-          emit();
-        }
+      if (entry.state === 'discarded') {
+        return rejected(entry.rejectReason === 'reset' ? 'reset' : 'rules');
+      }
+      if ((match?.resetRev ?? 0) > (entry.baseResetRev ?? 0)) {
+        await log.patch(op, { state: 'discarded', rejectReason: 'reset' });
+        await reloadEntries();
+        emit();
         return rejected('reset');
       }
       const clockAction = entry.intent.kind === 'clock' ? entry.intent.clockAction : undefined;
       if (!allow(entry.kind, clockAction)) return rejected('limit');
       await log.patch(op, { state: 'pending', rejectReason: null, autoRetried: false });
-      return finish([op]);
+      return finish([op], [entry.kind]);
     },
     async discard(op) {
       const all = await log.list(cid, mtId);
@@ -629,18 +636,32 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         sids = memorySidStore();
         storage = 'unavailable';
       }
+      let kept: LogEntry[] = [];
+      try {
+        kept = await log.list(cid, mtId);
+      } catch {
+        kept = [];
+      }
       try {
         await log.purgeOlderThan(now());
       } catch {
-        let kept: LogEntry[] = [];
-        try {
-          kept = await log.list(cid, mtId);
-        } catch {
-          kept = [];
-        }
-        log = new MemoryActionLog();
-        for (const row of kept) await log.put(row);
+        const memory = new MemoryActionLog();
+        for (const row of kept) await memory.put(row);
+        log = memory;
         storage = 'unavailable';
+      }
+      try {
+        const after = await log.list(cid, mtId);
+        const live = new Set(after.map((row) => row.op));
+        const cut = now() - ACTION_LOG_MAX_AGE_MS;
+        for (const row of kept) {
+          if (row.state !== 'pending' && row.state !== 'sending') continue;
+          if (live.has(row.op)) continue;
+          if (row.createdAt < cut) continue;
+          await log.put(row);
+        }
+      } catch {
+        // 列不出來就維持清除後的日誌，不把已過期項目救回。
       }
       try {
         localSid = await sids.get(cid, mtId, uid);

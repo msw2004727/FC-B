@@ -8,13 +8,15 @@ const ACTION_STORE = 'actions';
 const META_STORE = 'meta';
 export const SID_STORE = 'sids';
 const MATCH_INDEX = 'match';
-const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+export const ACTION_LOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface ActionLog {
   probe(): Promise<boolean>;
   put(entry: LogEntry): Promise<void>;
   get(op: string): Promise<LogEntry | null>;
   list(cid: string, mtId: string): Promise<LogEntry[]>;
+  /** 所有場次。韌性日誌切換前用來找出本場與其他場，再逐場 list。 */
+  listAll?(): Promise<LogEntry[]>;
   patch(op: string, patch: LogPatch): Promise<LogEntry | null>;
   remove(op: string): Promise<void>;
   removeMatch(cid: string, mtId: string): Promise<void>;
@@ -35,6 +37,10 @@ function cloneEntry(entry: LogEntry): LogEntry {
 }
 
 function applyPatch(entry: LogEntry, patch: LogPatch): LogEntry {
+  // 已作廢的項目不再改狀態。重置先落地、原寫入隨後成功時，不能被標回 applied。
+  if (entry.state === 'discarded' && patch.state !== undefined && patch.state !== 'discarded') {
+    return entry;
+  }
   const { seq, rejectReason, group, ...rest } = patch;
   const next: LogEntry = { ...entry, ...rest, intent: patch.intent ?? entry.intent };
   if (seq === null) delete next.seq;
@@ -95,7 +101,17 @@ export class MemoryActionLog implements ActionLog {
     }
   }
 
-  async purgeOlderThan(nowMs: number, maxAgeMs = SEVEN_DAYS): Promise<void> {
+  async listAll(): Promise<LogEntry[]> {
+    const out: LogEntry[] = [];
+    for (const row of this.rows.values()) {
+      if (row.op === '__probe__') continue;
+      out.push(cloneEntry(row));
+    }
+    out.sort(compareEntries);
+    return out;
+  }
+
+  async purgeOlderThan(nowMs: number, maxAgeMs = ACTION_LOG_MAX_AGE_MS): Promise<void> {
     const cut = nowMs - maxAgeMs;
     for (const row of [...this.rows.values()]) {
       if (row.op === '__probe__') continue;
@@ -213,10 +229,25 @@ export class IndexedDbActionLog implements ActionLog {
   }
 
   async patch(op: string, patch: LogPatch): Promise<LogEntry | null> {
-    const current = await this.get(op);
-    if (!current) return null;
-    const next = applyPatch(current, patch);
-    await this.put(next);
+    const db = await this.database();
+    const tx = db.transaction(ACTION_STORE, 'readwrite');
+    const store = tx.objectStore(ACTION_STORE);
+    // get 與 put 留在同一個 success 回呼，避免交易中途讓出後被覆寫。
+    const next = await new Promise<LogEntry | null>((resolve, reject) => {
+      const request = store.get(op);
+      request.onerror = () => reject(request.error ?? new Error('IndexedDB 請求失敗'));
+      request.onsuccess = () => {
+        const row = request.result as LogEntry | undefined;
+        if (!row) {
+          resolve(null);
+          return;
+        }
+        const updated = applyPatch(row, patch);
+        if (updated !== row) store.put(cloneEntry(updated));
+        resolve(cloneEntry(updated));
+      };
+    });
+    await txDone(tx);
     return next;
   }
 
@@ -237,7 +268,18 @@ export class IndexedDbActionLog implements ActionLog {
     await txDone(tx);
   }
 
-  async purgeOlderThan(nowMs: number, maxAgeMs = SEVEN_DAYS): Promise<void> {
+  async listAll(): Promise<LogEntry[]> {
+    const db = await this.database();
+    const tx = db.transaction(ACTION_STORE, 'readonly');
+    const rows = await requestToPromise(tx.objectStore(ACTION_STORE).getAll());
+    await txDone(tx);
+    return (rows as LogEntry[])
+      .filter((row) => row.op !== '__probe__')
+      .map(cloneEntry)
+      .sort(compareEntries);
+  }
+
+  async purgeOlderThan(nowMs: number, maxAgeMs = ACTION_LOG_MAX_AGE_MS): Promise<void> {
     const db = await this.database();
     const tx = db.transaction(ACTION_STORE, 'readwrite');
     const store = tx.objectStore(ACTION_STORE);
@@ -256,7 +298,8 @@ export class IndexedDbActionLog implements ActionLog {
 }
 
 /**
- * IndexedDB 任何操作拋錯就改走記憶體日誌，並把已經讀到的項目搬過去。
+ * IndexedDB 任何操作拋錯就改走記憶體日誌。
+ * 切換前先以內層 list 讀出本場與其他場；讀不到才用已見集合。
  * 內層不拋錯時行為與內層相同。
  */
 export class ResilientActionLog implements ActionLog {
@@ -274,11 +317,61 @@ export class ResilientActionLog implements ActionLog {
     this.seen.set(entry.op, cloneEntry(entry));
   }
 
+  private forgetOp(op: string): void {
+    this.seen.delete(op);
+  }
+
+  private forgetMatch(cid: string, mtId: string): void {
+    for (const row of this.seen.values()) {
+      if (row.cid === cid && row.mtId === mtId) this.seen.delete(row.op);
+    }
+  }
+
+  private forgetOlderThan(cut: number): void {
+    for (const row of this.seen.values()) {
+      if (row.createdAt < cut) this.seen.delete(row.op);
+    }
+  }
+
+  /** 先找出場次，再逐場 list。任一步讀不到就回 null，呼叫端改用已見集合。 */
+  private async dumpInner(): Promise<LogEntry[] | null> {
+    const pairs = new Map<string, { cid: string; mtId: string }>();
+    const add = (cid: string, mtId: string) => {
+      if (!cid || cid === '_') return;
+      pairs.set(`${cid}\0${mtId}`, { cid, mtId });
+    };
+    for (const row of this.seen.values()) add(row.cid, row.mtId);
+    if (typeof this.inner.listAll === 'function') {
+      try {
+        for (const row of await this.inner.listAll()) add(row.cid, row.mtId);
+      } catch {
+        // 全量索引失敗時仍用已見場次。
+      }
+    }
+    if (pairs.size === 0) return null;
+    try {
+      const all: LogEntry[] = [];
+      for (const pair of pairs.values()) {
+        all.push(...await this.inner.list(pair.cid, pair.mtId));
+      }
+      return all;
+    } catch {
+      return null;
+    }
+  }
+
   private async failOver(): Promise<MemoryActionLog> {
     if (this.memory) return this.memory;
     const memory = new MemoryActionLog();
-    for (const row of this.seen.values()) await memory.put(row);
+    const dumped = await this.dumpInner();
+    const source = dumped ?? [...this.seen.values()];
+    for (const row of source) {
+      if (row.op === '__probe__') continue;
+      await memory.put(row);
+    }
     this.memory = memory;
+    this.seen.clear();
+    for (const row of source) this.remember(row);
     if (!this.switched) {
       this.switched = true;
       this.onUnavailable();
@@ -355,45 +448,51 @@ export class ResilientActionLog implements ActionLog {
   }
 
   async remove(op: string): Promise<void> {
-    this.seen.delete(op);
     if (this.memory) {
       await this.memory.remove(op);
+      this.forgetOp(op);
       return;
     }
     try {
       await this.inner.remove(op);
+      this.forgetOp(op);
     } catch {
       const memory = await this.failOver();
       await memory.remove(op);
+      this.forgetOp(op);
     }
   }
 
   async removeMatch(cid: string, mtId: string): Promise<void> {
-    for (const row of this.seen.values()) {
-      if (row.cid === cid && row.mtId === mtId) this.seen.delete(row.op);
-    }
     if (this.memory) {
       await this.memory.removeMatch(cid, mtId);
+      this.forgetMatch(cid, mtId);
       return;
     }
     try {
       await this.inner.removeMatch(cid, mtId);
+      this.forgetMatch(cid, mtId);
     } catch {
       const memory = await this.failOver();
       await memory.removeMatch(cid, mtId);
+      this.forgetMatch(cid, mtId);
     }
   }
 
   async purgeOlderThan(nowMs: number, maxAgeMs?: number): Promise<void> {
+    const cut = nowMs - (maxAgeMs ?? ACTION_LOG_MAX_AGE_MS);
     if (this.memory) {
       await this.memory.purgeOlderThan(nowMs, maxAgeMs);
+      this.forgetOlderThan(cut);
       return;
     }
     try {
       await this.inner.purgeOlderThan(nowMs, maxAgeMs);
+      this.forgetOlderThan(cut);
     } catch {
       const memory = await this.failOver();
       await memory.purgeOlderThan(nowMs, maxAgeMs);
+      this.forgetOlderThan(cut);
     }
   }
 }
