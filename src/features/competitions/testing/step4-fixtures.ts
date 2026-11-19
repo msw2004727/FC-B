@@ -25,7 +25,6 @@ export const STEP4_SCREENS = [
   // 1 記分頁（裁判模式）
   'score-pre',
   'score-live',
-  'score-live-thumb',
   'score-pick-player',
   'score-pick-player-long',
   'score-card-yellow',
@@ -40,6 +39,10 @@ export const STEP4_SCREENS = [
   'score-cap',
   'score-pause-reserved',
   'score-undo-half',
+  'score-timeout',
+  'score-timeout-collapsed',
+  'score-pk-start',
+  'score-pk',
   // 2 指派與邀請
   'staff-list',
   'staff-assign',
@@ -224,6 +227,13 @@ export interface S4ScoreScene {
   link: LiveLink;
   nowMs: number;
   takeoverOffered: boolean;
+  /** 截圖：球隊暫停倒數已經在走。 */
+  timeoutView?: {
+    side: 'home' | 'away';
+    leftSec: number;
+    collapsed?: boolean;
+    over?: boolean;
+  };
 }
 
 /** 雷霆隊有通過專案 Storage 檢查的隊徽網址；海風隊沒有，顯示首字。 */
@@ -366,10 +376,71 @@ export const S4_SCENE_PICK_LONG: S4ScoreScene = {
   homeRoster: S4_ROSTER_HOME_LONG,
 };
 
+/** 倒數進行到 0:47。橫幅在紀錄上方，進球與牌仍可按。 */
+export const S4_SCENE_TIMEOUT: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  timeoutView: { side: 'home', leftSec: 47 },
+};
+
+export const S4_SCENE_TIMEOUT_COLLAPSED: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  timeoutView: { side: 'home', leftSec: 47, collapsed: true },
+};
+
+/** 下半場結束、2:2、時鐘停在 40:00。底欄出現 PK。 */
+const S4_PK_START_EVENTS: TimelineEvent[] = [
+  { seq: 1, type: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: 5 * 60, createdAt: S4_NOW },
+  { seq: 2, type: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 12 * 60, createdAt: S4_NOW },
+  { seq: 3, type: 'goal', side: 'home', plId: 'pl_th10', goalKind: 'penalty', matchSecond: 20 * 60, createdAt: S4_NOW },
+  { seq: 4, type: 'goal', side: 'away', plId: 'pl_hf11', goalKind: 'normal', matchSecond: 30 * 60, createdAt: S4_NOW },
+];
+export const S4_SCENE_PK_START: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({
+    id: 'mt_pkstart00000000001',
+    score: { home: 2, away: 2 },
+    rev: 4,
+    clockBase: { startedAt: null, pausedSec: 40 * 60, running: false, period: 'h2' },
+    updatedAt: S4_NOW,
+  }),
+  events: S4_PK_START_EVENTS,
+  voids: [],
+  clock: { elapsedSec: 40 * 60, period: 'h2', addedMin: null },
+};
+
+/**
+ * PK 進行中。場上仍是 2:2。
+ * 主隊進 4 腳，其中 1 腳已復原，有效 3；客隊進 2、沒進 1。畫面上 PK 3:2。
+ */
+export const S4_PK_EVENTS: TimelineEvent[] = [
+  { seq: 1, type: 'pk', side: 'home', plId: 'pl_th9', scored: true, round: 1, matchSecond: 40 * 60, createdAt: S4_NOW + 1 },
+  { seq: 2, type: 'pk', side: 'away', plId: 'pl_hf10', scored: true, round: 1, matchSecond: 40 * 60, createdAt: S4_NOW + 2 },
+  { seq: 3, type: 'pk', side: 'home', plId: 'pl_th10', scored: true, round: 2, matchSecond: 40 * 60, createdAt: S4_NOW + 3 },
+  { seq: 4, type: 'pk', side: 'away', plId: 'pl_hf11', scored: false, round: 2, matchSecond: 40 * 60, createdAt: S4_NOW + 4 },
+  { seq: 5, type: 'pk', side: 'home', plId: 'pl_th7', scored: true, round: 3, matchSecond: 40 * 60, createdAt: S4_NOW + 5 },
+  { seq: 6, type: 'pk', side: 'home', plId: 'pl_th8', scored: true, round: 4, matchSecond: 40 * 60, createdAt: S4_NOW + 6 },
+  { seq: 7, type: 'void', targetSeq: 6, matchSecond: 40 * 60, createdAt: S4_NOW + 7 },
+  { seq: 8, type: 'pk', side: 'away', plId: 'pl_hf1', scored: true, round: 3, matchSecond: 40 * 60, createdAt: S4_NOW + 8 },
+];
+export const S4_PK_VOIDS: VoidMark[] = [{ targetSeq: 6, seq: 7, createdAt: S4_NOW + 7 }];
+export const S4_SCENE_PK: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({
+    id: 'mt_pk0000000000000001',
+    score: { home: 2, away: 2 },
+    rev: 8,
+    penaltyScore: null,
+    clockBase: { startedAt: null, pausedSec: 40 * 60, running: false, period: 'pk' },
+    updatedAt: S4_NOW,
+  }),
+  events: S4_PK_EVENTS,
+  voids: S4_PK_VOIDS,
+  clock: { elapsedSec: 40 * 60, period: 'pk', addedMin: null },
+};
+
 export const S4_SCORE_SCENES = {
   'score-pre': S4_SCENE_PRE,
   'score-live': S4_SCENE_LIVE,
-  'score-live-thumb': S4_SCENE_LIVE,
   'score-pick-player': S4_SCENE_LIVE,
   'score-pick-player-long': S4_SCENE_PICK_LONG,
   'score-card-yellow': S4_SCENE_LIVE,
@@ -384,6 +455,10 @@ export const S4_SCORE_SCENES = {
   'score-cap': S4_SCENE_CAP,
   'score-pause-reserved': S4_SCENE_PAUSE_RESERVED,
   'score-undo-half': S4_SCENE_LIVE,
+  'score-timeout': S4_SCENE_TIMEOUT,
+  'score-timeout-collapsed': S4_SCENE_TIMEOUT_COLLAPSED,
+  'score-pk-start': S4_SCENE_PK_START,
+  'score-pk': S4_SCENE_PK,
 } as const;
 
 /** 詳情頁：兩場進行中、一場比分已更正。長隊名用來確認省略號仍看得出開頭。 */
@@ -393,11 +468,10 @@ export const S4_DETAIL_ROWS = [
   { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
 ] as const;
 
-/** U0a-fix2：拇指排法、18 人背號、暫停額度。名稱對齊 harness 與截圖腳本。 */
+/** U0a-fix3：紀錄在進球上方、球隊暫停、PK。名稱對齊 harness 與截圖腳本。 */
 export const S4A_SCREENS = [
   'score-pre',
   'score-live',
-  'score-live-thumb',
   'score-pick-player',
   'score-pick-player-long',
   'score-card-yellow',
@@ -412,6 +486,10 @@ export const S4A_SCREENS = [
   'score-cap',
   'score-pause-reserved',
   'score-undo-half',
+  'score-timeout',
+  'score-timeout-collapsed',
+  'score-pk-start',
+  'score-pk',
   'live-detail',
   'live-match',
   'live-scorers',

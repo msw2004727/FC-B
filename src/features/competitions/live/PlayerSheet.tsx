@@ -7,6 +7,19 @@ import { LIVE_COPY, minuteMark, playerChoiceLabel } from './copy';
 import type { RecordAction } from './present';
 import type { GoalKind } from './types';
 
+/** 背號由小到大。這次不分成先發／替補，名單上也沒有先發標記。 */
+function byNumber(a: RosterPublicDoc, b: RosterPublicDoc): number {
+  return a.number - b.number || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+function actionLabel(action: RecordAction): string {
+  if (action === 'goal') return LIVE_COPY.goal;
+  if (action === 'yellow') return LIVE_COPY.yellow;
+  if (action === 'red') return LIVE_COPY.red;
+  if (action === 'pk-in') return LIVE_COPY.pkIn;
+  return LIVE_COPY.pkMiss;
+}
+
 export function RosterGrid({
   roster,
   selectedId,
@@ -17,9 +30,10 @@ export function RosterGrid({
   selectedId?: string | null;
   onPick: (plId: string) => void;
 }): JSX.Element {
+  const ordered = [...roster].sort(byNumber);
   return (
     <div class="s4-grid">
-      {roster.map((player) => {
+      {ordered.map((player) => {
         const on = selectedId === player.id;
         return (
           <button
@@ -60,7 +74,8 @@ export function PlayerSheet({
   onPick: (plId: string | null) => void;
   onClose: () => void;
 }): JSX.Element {
-  const actionLabel = action === 'goal' ? LIVE_COPY.goal : action === 'yellow' ? LIVE_COPY.yellow : LIVE_COPY.red;
+  const label = actionLabel(action);
+  const allowSkip = action === 'goal' || action === 'pk-in' || action === 'pk-miss';
   const kinds: { id: GoalKind; label: string }[] = [
     { id: 'normal', label: LIVE_COPY.goalNormal },
     { id: 'penalty', label: LIVE_COPY.goalPenalty },
@@ -71,7 +86,7 @@ export function PlayerSheet({
     <BottomSheet
       open={open}
       class={roster.length > 8 ? 's4-sheet s4-sheet--long' : 's4-sheet'}
-      title={`${teamName} ${actionLabel} ${minuteMark(minute)}`}
+      title={`${teamName} ${label} ${minuteMark(minute)}`}
       onClose={onClose}
     >
       {action === 'goal' ? (
@@ -89,7 +104,7 @@ export function PlayerSheet({
       ) : null}
       <div class="s4-pick">
         <RosterGrid roster={roster} onPick={onPick} />
-        {action === 'goal' ? (
+        {allowSkip ? (
           <Button class="s4-unspecified" variant="secondary" onClick={() => onPick(null)}>
             {LIVE_COPY.unspecified}
           </Button>

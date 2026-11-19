@@ -17,6 +17,7 @@ export function EventSheet({
   cardChoice,
   playerId,
   blocked,
+  undoOnly = false,
   onGoalKind,
   onCardChoice,
   onPlayer,
@@ -34,6 +35,8 @@ export function EventSheet({
   cardChoice: 'yellow' | 'red';
   playerId: string | null;
   blocked: boolean;
+  /** PK 的一腳只復原，不改判。 */
+  undoOnly?: boolean;
   onGoalKind: (kind: GoalKind) => void;
   onCardChoice: (choice: 'yellow' | 'red') => void;
   onPlayer: (plId: string) => void;
@@ -54,8 +57,8 @@ export function EventSheet({
   ];
 
   return (
-    <BottomSheet open class="s4-sheet" title={LIVE_COPY.amend} onClose={onClose}>
-      <p class="s4-note">{LIVE_COPY.amendNote}</p>
+    <BottomSheet open class="s4-sheet" title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend} onClose={onClose}>
+      {undoOnly ? null : <p class="s4-note">{LIVE_COPY.amendNote}</p>}
       <p class="s4-evsum">{summary}</p>
       <div class="s4-amend-act">
         <Button
@@ -66,20 +69,22 @@ export function EventSheet({
         >
           {LIVE_COPY.undo}
         </Button>
-        <Button
-          disabled={blocked || (kind === 'card' && playerId == null)}
-          aria-label={withEvent(LIVE_COPY.amend, label)}
-          onClick={onAmend}
-        >
-          {LIVE_COPY.amend}
-        </Button>
+        {undoOnly ? null : (
+          <Button
+            disabled={blocked || (kind === 'card' && playerId == null)}
+            aria-label={withEvent(LIVE_COPY.amend, label)}
+            onClick={onAmend}
+          >
+            {LIVE_COPY.amend}
+          </Button>
+        )}
       </div>
-      {kind === 'card' ? (
+      {undoOnly ? null : kind === 'card' ? (
         <Button variant="secondary" aria-label={withEvent(LIVE_COPY.showCard, label)} onClick={onShowCard}>
           {LIVE_COPY.showCard}
         </Button>
       ) : null}
-      {kind === 'goal' ? (
+      {undoOnly ? null : kind === 'goal' ? (
         <div class="s4-kinds">
           {goalKinds.map((item) => (
             <Chip
@@ -104,6 +109,7 @@ export function EventSheet({
           ))}
         </div>
       )}
+      {undoOnly ? null : (
       <div class="s4-pick">
         <RosterGrid roster={roster} selectedId={playerId} onPick={onPlayer} />
         {kind === 'goal' ? (
@@ -117,6 +123,7 @@ export function EventSheet({
           </Button>
         ) : null}
       </div>
+      )}
     </BottomSheet>
   );
 }

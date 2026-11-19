@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
+import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
 import type { EntryDoc, MatchClock, MatchDoc, MatchSideName, RosterPublicDoc } from '../data/types';
@@ -15,7 +16,21 @@ import {
   stageLabel,
   undoClock,
 } from './clock';
-import { LIVE_COPY, offlineChip, offlineSaved, pauseRemain, pausedFor, restedFor, teamAction, undoWithin } from './copy';
+import {
+  LIVE_COPY,
+  offlineChip,
+  offlineSaved,
+  pauseRemain,
+  pausedFor,
+  pkKickLine,
+  pkScoreLabel,
+  restedFor,
+  teamAction,
+  teamTimeoutText,
+  timeoutClock,
+  timeoutTeamChoice,
+  undoWithin,
+} from './copy';
 import { EventSheet } from './EventSheet';
 import { PlayerSheet } from './PlayerSheet';
 import {
@@ -23,6 +38,8 @@ import {
   EVENT_RESERVE,
   EVENT_WARN,
   PAUSE_MAX,
+  TEAM_TIMEOUT_PER_HALF,
+  TEAM_TIMEOUT_SEC,
   type FlashCard,
   type RecordAction,
   eventLines,
@@ -30,10 +47,13 @@ import {
   flashForNewCard,
   flashFromCard,
   linkedSecondSeq,
+  nextPkRound,
   openYellowSeq,
   pauseHeldForScoring,
+  pkScore,
   recordIntent,
   seenCards,
+  shootoutOffered,
   unappliedEntries,
 } from './present';
 import { TakeoverDialog } from './TakeoverDialog';
@@ -50,6 +70,18 @@ export interface ScorePick {
   minute: number;
   /** 第二張黃牌指向的第一張黃牌。一般黃牌與直紅是 null。進球不帶這個欄。 */
   refSeq?: number | null;
+  /** 改判沿用原事件的比賽秒，含不足 1 分鐘的餘秒。新記的不帶。 */
+  matchSecond?: number;
+  /** PK 這一腳是該隊第幾輪。 */
+  round?: number;
+}
+
+/** 預覽用：進來時倒數已經在走。正式操作從選單「球隊暫停」開始。 */
+export interface TimeoutView {
+  side: MatchSideName;
+  leftSec: number;
+  collapsed?: boolean;
+  over?: boolean;
 }
 
 export interface ScorePadProps {
@@ -63,8 +95,8 @@ export interface ScorePadProps {
   eventCount?: number;
   /** 這場已經按過幾次暫停。沒傳當 0，每場最多 PAUSE_MAX 次。 */
   pauseUses?: number;
-  /** default：進球在上。thumb：紀錄在上、進球與牌集中在下半屏。 */
-  layout?: 'default' | 'thumb';
+  /** 截圖：倒數進行到這一秒。不從選單點。 */
+  timeoutView?: TimeoutView;
   crests?: readonly EntryDoc[];
   link: LiveLink;
   clock: LiveClock;
@@ -80,12 +112,32 @@ export interface ScorePadProps {
   onResume?: () => void;
   onUndoFulltime?: () => void;
   onCorrectClock?: () => void;
+  /** 下半場或延長結束且平手時，按下「PK 大戰」。不在這裡改節次。 */
+  onStartPk?: () => void;
   onReapply?: (id: string) => void;
   onDiscard?: (id: string) => void;
   onTakeover?: () => void;
 }
 
 type Phase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
+
+interface TeamTimeoutState {
+  side: MatchSideName;
+  leftSec: number;
+  collapsed: boolean;
+  over: boolean;
+  done: boolean;
+}
+
+interface TimeoutUses {
+  period: string;
+  home: number;
+  away: number;
+}
+
+type ConfirmPair =
+  | { mode: 'undo'; first: number; second: number }
+  | { mode: 'amend'; first: number; second: number; pick: ScorePick };
 
 function phaseOf(match: MatchDoc, nowMs: number): Phase {
   if (match.status === 'scheduled' || match.status === 'postponed') return 'pre';
@@ -97,12 +149,45 @@ function phaseOf(match: MatchDoc, nowMs: number): Phase {
   return 'play';
 }
 
-function Mark({ kind, second }: { kind: 'goal' | 'yellow' | 'red'; second: boolean }): JSX.Element {
+function previewTimeout(view: TimeoutView | undefined): TeamTimeoutState | null {
+  if (!view) return null;
+  return {
+    side: view.side,
+    leftSec: Math.max(0, view.leftSec),
+    collapsed: view.collapsed ?? false,
+    over: view.over ?? false,
+    done: view.leftSec <= 0,
+  };
+}
+
+function Mark({
+  kind,
+  second,
+  scored,
+}: {
+  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  second: boolean;
+  scored?: boolean;
+}): JSX.Element {
+  if (kind === 'pk') {
+    return <i class={scored ? 's4-mark s4-mark--goal' : 's4-mark s4-mark--miss'} aria-hidden="true" />;
+  }
   const tone = kind === 'goal' ? 'goal' : second || kind === 'red' ? 'red' : 'yellow';
   return <i class={`s4-mark s4-mark--${tone}`} aria-hidden="true" />;
 }
 
-function shownText(line: { minute: string; team: string; number: number | null; name: string }): string {
+function shownText(line: {
+  minute: string;
+  team: string;
+  number: number | null;
+  name: string;
+  pkRound?: number;
+  pkScored?: boolean;
+}): string {
+  if (line.pkRound != null) {
+    const who = line.number == null ? LIVE_COPY.unspecified : `${line.number} ${line.name}`;
+    return pkKickLine(line.pkRound, line.team, who, line.pkScored === true);
+  }
   return line.number == null
     ? `${line.minute} ${line.team}`
     : `${line.minute} ${line.team} ${line.number} ${line.name}`;
@@ -122,6 +207,9 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const goalOff = atMax || reserved || phase !== 'play';
   const cardOff = atMax || reserved || (phase !== 'play' && phase !== 'ht');
   const flowOff = atMax;
+  const phaseOpen = phase === 'play' || phase === 'ht';
+  /** 190 起或不是進行中／中場，復原與改判都不可按。 */
+  const blocked = reserved || !phaseOpen;
 
   const [clockBase, setClockBase] = useState(match.clockBase);
   const [now, setNow] = useState(nowMs);
@@ -133,7 +221,16 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }, [nowMs]);
 
   const reading = clockFromBase(clockBase, now);
-  const period = asPeriod(reading.period);
+  const rawPeriod = reading.period;
+  const pk = rawPeriod === 'pk';
+  const pkReady = shootoutOffered({
+    live: phase === 'play',
+    running: clockBase.running,
+    period: rawPeriod,
+    home: match.score.home,
+    away: match.score.away,
+  });
+  const period = rawPeriod === 'pk' ? 'pk' : asPeriod(rawPeriod);
   const holdLive = !clockBase.running && clockBase.startedAt != null && (phase === 'play' || phase === 'ht');
   useEffect(() => {
     if (!holdLive) return;
@@ -153,7 +250,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const holdText = holdLive && reading.holdSec != null
     ? (phase === 'ht' ? restedFor(formatMatchClock(reading.holdSec)) : pausedFor(formatMatchClock(reading.holdSec)))
     : null;
-  const showPause = phase === 'play' || phase === 'ht';
+  const showPause = phase === 'play' && !pk && !pkReady;
   const lines = eventLines({
     events,
     voids,
@@ -173,6 +270,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const pending = unappliedEntries([...actionLog, ...localLog]);
   const cards = seenCards(events, voids, [...actionLog, ...localLog]);
   const remain = phase === 'undo' ? undoClock(match.finishedAt, nowMs) : null;
+  const shoot = pkScore(events, voids);
 
   const [picker, setPicker] = useState<{ side: MatchSideName; action: RecordAction } | null>(null);
   const [goalKind, setGoalKind] = useState<GoalKind>('normal');
@@ -180,13 +278,39 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [unappliedOpen, setUnappliedOpen] = useState(false);
   const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [timeoutOpen, setTimeoutOpen] = useState(false);
+  const [teamTimeout, setTeamTimeout] = useState<TeamTimeoutState | null>(() => previewTimeout(props.timeoutView));
+  const [timeoutUses, setTimeoutUses] = useState<TimeoutUses>({
+    period: match.clockBase.period,
+    home: 0,
+    away: 0,
+  });
   const [eventSeq, setEventSeq] = useState<number | null>(null);
   const [amendKind, setAmendKind] = useState<GoalKind>('normal');
   const [amendCard, setAmendCard] = useState<'yellow' | 'red'>('yellow');
   const [amendPl, setAmendPl] = useState<string | null>(null);
-  const [confirmUndo, setConfirmUndo] = useState<{ first: number; second: number } | null>(null);
+  const [confirmPair, setConfirmPair] = useState<ConfirmPair | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
+  const timeoutLive = teamTimeout != null && !teamTimeout.done;
+
+  useEffect(() => {
+    setTimeoutUses((prev) => (
+      prev.period === clockBase.period ? prev : { period: clockBase.period, home: 0, away: 0 }
+    ));
+  }, [clockBase.period]);
+
+  useEffect(() => {
+    if (!timeoutLive) return;
+    const id = window.setInterval(() => {
+      setTeamTimeout((current) => {
+        if (!current || current.done) return current;
+        if (current.leftSec <= 1) return { ...current, leftSec: 0, done: true };
+        return { ...current, leftSec: current.leftSec - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [timeoutLive]);
 
   function rememberFocus(): void {
     restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -212,8 +336,20 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     return () => document.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
+  function sideName(side: MatchSideName): string {
+    return side === 'home' ? match.home.name : match.away.name;
+  }
+
+  function timeoutLeft(side: MatchSideName): number {
+    const used = side === 'home' ? timeoutUses.home : timeoutUses.away;
+    return Math.max(0, TEAM_TIMEOUT_PER_HALF - used);
+  }
+
   function openPicker(side: MatchSideName, action: RecordAction): void {
-    if (action === 'goal' ? goalOff : cardOff) return;
+    const pkAction = action === 'pk-in' || action === 'pk-miss';
+    if (pkAction) {
+      if (atMax || reserved) return;
+    } else if (action === 'goal' ? goalOff : cardOff) return;
     rememberFocus();
     setGoalKind('normal');
     setPicker({ side, action });
@@ -223,6 +359,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   function choose(plId: string | null): void {
     if (!picker) return;
     const minute = recordMinute(reading.elapsedSec);
+    if (picker.action === 'pk-in' || picker.action === 'pk-miss') {
+      props.onRecord?.({
+        side: picker.side,
+        action: picker.action,
+        plId,
+        goalKind: null,
+        minute,
+        round: nextPkRound(events, voids, picker.side),
+      });
+      setPicker(null);
+      return;
+    }
     if (picker.action === 'goal') {
       props.onRecord?.({
         side: picker.side,
@@ -233,7 +381,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       });
     } else {
       const player = plId ? findPlayer(homeRoster, awayRoster, plId) : undefined;
-      const flashCard = flashForNewCard(picker.action, player, events, voids, [...actionLog, ...localLog]);
+      const flashCard = flashForNewCard(picker.action === 'red' ? 'red' : 'yellow', player, events, voids, [...actionLog, ...localLog]);
       props.onRecord?.({
         side: picker.side,
         action: picker.action,
@@ -262,13 +410,27 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     props.onClock?.(next);
   }
 
+  function startTimeout(side: MatchSideName): void {
+    const over = timeoutLeft(side) <= 0;
+    setTimeoutUses((prev) => ({ ...prev, [side]: prev[side] + 1 }));
+    setTeamTimeout({
+      side,
+      leftSec: TEAM_TIMEOUT_SEC,
+      collapsed: false,
+      over,
+      done: false,
+    });
+    setTimeoutOpen(false);
+  }
+
   function openEvent(seq: number): void {
+    if (!phaseOpen) return;
     const event = events.find((item) => item.seq === seq);
-    if (!event || (event.type !== 'goal' && event.type !== 'card')) return;
+    if (!event || (event.type !== 'goal' && event.type !== 'card' && event.type !== 'pk')) return;
     if (event.type === 'goal') {
       setAmendKind(event.goalKind);
       setAmendPl(event.plId ?? null);
-    } else {
+    } else if (event.type === 'card') {
       setAmendCard(event.cardType === 'yellow' ? 'yellow' : 'red');
       setAmendPl(event.plId);
     }
@@ -280,61 +442,41 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const openEventDoc = events.find((item) => item.seq === eventSeq) ?? null;
 
   function undoSeq(seq: number): void {
-    if (reserved) return;
+    if (blocked) return;
     const second = linkedSecondSeq(cards, seq);
     if (second != null) {
-      setConfirmUndo({ first: seq, second });
+      setConfirmPair({ mode: 'undo', first: seq, second });
       return;
     }
     props.onUndo?.(seq);
     setEventSeq(null);
   }
 
-  function runConfirmUndo(): void {
-    if (!confirmUndo) return;
-    const { first, second } = confirmUndo;
-    const secondOk = props.onUndo?.(second) !== false;
-    if (!secondOk) {
-      setConfirmUndo(null);
+  function finishAmend(first: number, pick: ScorePick, second?: number): void {
+    if (second != null) {
+      const secondOk = props.onUndo?.(second) !== false;
+      if (!secondOk) {
+        setConfirmPair(null);
+        setNotice(LIVE_COPY.undoSecondFailed);
+        return;
+      }
+    }
+    const voidOk = props.onUndo?.(first) !== false;
+    if (!voidOk) {
+      setConfirmPair(null);
+      setEventSeq(null);
+      if (second != null) setNotice(LIVE_COPY.undoHalf);
       return;
     }
-    const firstOk = props.onUndo?.(first) !== false;
-    setConfirmUndo(null);
-    setEventSeq(null);
-    if (!firstOk) setNotice(LIVE_COPY.undoHalf);
-  }
-
-  function submitAmend(): void {
-    if (!openEventDoc || reserved) return;
-    if (openEventDoc.type !== 'goal' && openEventDoc.type !== 'card') return;
-    const minute = Math.floor(openEventDoc.matchSecond / 60);
-    const side = openEventDoc.side;
-    const team = side === 'home' ? match.home.name : match.away.name;
-    let pick: ScorePick;
-    if (openEventDoc.type === 'goal') {
-      pick = { side, action: 'goal', plId: amendPl, goalKind: amendKind, minute };
-    } else {
-      if (amendPl == null) return;
-      const refSeq = amendCard === 'yellow' ? openYellowSeq(cards, amendPl, openEventDoc.seq) : null;
-      pick = {
-        side,
-        action: amendCard === 'yellow' ? 'yellow' : 'red',
-        plId: amendPl,
-        goalKind: null,
-        minute,
-        refSeq,
-      };
-    }
-    const voidOk = props.onUndo?.(openEventDoc.seq) !== false;
-    if (!voidOk) return;
     const recorded = props.onRecord?.(pick) !== false;
     if (!recorded) {
       const player = findPlayer(homeRoster, awayRoster, pick.plId ?? undefined);
+      const team = sideName(pick.side);
       setNotice(LIVE_COPY.amendHalf);
       setLocalLog((rows) => [
         ...rows,
         {
-          id: `amend-${openEventDoc.seq}`,
+          id: `amend-${first}`,
           intent: recordIntent(team, pick, player),
           state: 'pending',
           at: now,
@@ -349,7 +491,64 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         },
       ]);
     }
+    setConfirmPair(null);
     setEventSeq(null);
+  }
+
+  function submitAmend(): void {
+    if (!openEventDoc || blocked) return;
+    if (openEventDoc.type !== 'goal' && openEventDoc.type !== 'card') return;
+    const minute = Math.floor(openEventDoc.matchSecond / 60);
+    const side = openEventDoc.side;
+    let pick: ScorePick;
+    if (openEventDoc.type === 'goal') {
+      pick = {
+        side,
+        action: 'goal',
+        plId: amendPl,
+        goalKind: amendKind,
+        minute,
+        matchSecond: openEventDoc.matchSecond,
+      };
+    } else {
+      if (amendPl == null) return;
+      const refSeq = amendCard === 'yellow' ? openYellowSeq(cards, amendPl, openEventDoc.seq) : null;
+      pick = {
+        side,
+        action: amendCard === 'yellow' ? 'yellow' : 'red',
+        plId: amendPl,
+        goalKind: null,
+        minute,
+        refSeq,
+        matchSecond: openEventDoc.matchSecond,
+      };
+    }
+    const second = openEventDoc.type === 'card' && openEventDoc.cardType === 'yellow'
+      ? linkedSecondSeq(cards, openEventDoc.seq)
+      : null;
+    if (second != null) {
+      setConfirmPair({ mode: 'amend', first: openEventDoc.seq, second, pick });
+      return;
+    }
+    finishAmend(openEventDoc.seq, pick);
+  }
+
+  function runConfirm(): void {
+    if (!confirmPair) return;
+    if (confirmPair.mode === 'undo') {
+      const secondOk = props.onUndo?.(confirmPair.second) !== false;
+      if (!secondOk) {
+        setConfirmPair(null);
+        setNotice(LIVE_COPY.undoSecondFailed);
+        return;
+      }
+      const firstOk = props.onUndo?.(confirmPair.first) !== false;
+      setConfirmPair(null);
+      setEventSeq(null);
+      if (!firstOk) setNotice(LIVE_COPY.undoHalf);
+      return;
+    }
+    finishAmend(confirmPair.first, confirmPair.pick, confirmPair.second);
   }
 
   function showOpenCard(): void {
@@ -359,11 +558,15 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
 
   const pickerRoster = picker?.side === 'away' ? awayRoster : homeRoster;
-  const pickerTeam = picker?.side === 'away' ? match.away.name : match.home.name;
+  const pickerTeam = picker ? sideName(picker.side) : '';
   const amendRoster = openEventDoc && 'side' in openEventDoc && openEventDoc.side === 'away' ? awayRoster : homeRoster;
   const pauseDisabled = flowOff || (clockBase.running && (pauseBlocked || pauseUses >= PAUSE_MAX));
   const showCtrl = phase === 'pre' || phase === 'play' || phase === 'ht';
-  const thumb = props.layout === 'thumb';
+  const timeoutLabel = teamTimeout
+    ? (teamTimeout.done
+      ? LIVE_COPY.resumeClock
+      : teamTimeoutText(sideName(teamTimeout.side), timeoutClock(teamTimeout.leftSec)))
+    : '';
 
   const alerts: JSX.Element[] = [];
   if (pauseBlocked) {
@@ -383,7 +586,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     <header key="top" class="s4-top">
       <div class="s4-board">
         <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
-        <span class="s4-score">{match.score.home}:{match.score.away}</span>
+        <span class="s4-scoreline">
+          <span class="s4-score">{match.score.home}:{match.score.away}</span>
+          {pk ? <span class="s4-pk">{pkScoreLabel(shoot.home, shoot.away)}</span> : null}
+        </span>
         <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
       </div>
       <div class="s4-clockrow">
@@ -399,7 +605,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     </header>
   );
 
-  const goals = (
+  const goals = pk ? (
+    <div key="goals" class="s4-goals s4-goals--pk">
+      <div class="s4-pkpair">
+        <Hit team={match.home.name} action="pk-in" tone="home" disabled={atMax || reserved} onClick={() => openPicker('home', 'pk-in')} />
+        <Hit team={match.home.name} action="pk-miss" tone="miss" disabled={atMax || reserved} onClick={() => openPicker('home', 'pk-miss')} />
+      </div>
+      <div class="s4-pkpair">
+        <Hit team={match.away.name} action="pk-in" tone="away" disabled={atMax || reserved} onClick={() => openPicker('away', 'pk-in')} />
+        <Hit team={match.away.name} action="pk-miss" tone="miss" disabled={atMax || reserved} onClick={() => openPicker('away', 'pk-miss')} />
+      </div>
+    </div>
+  ) : (
     <div key="goals" class="s4-goals">
       <Hit team={match.home.name} action="goal" tone="home" disabled={goalOff} onClick={() => openPicker('home', 'goal')} />
       <Hit team={match.away.name} action="goal" tone="away" disabled={goalOff} onClick={() => openPicker('away', 'goal')} />
@@ -425,8 +642,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         <ul class="s4-events">
           {lines.map((line) => (
             <li key={line.seq} class={line.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
-              <Mark kind={line.kind} second={line.secondYellow} />
-              {line.voided ? (
+              <Mark kind={line.kind} second={line.secondYellow} scored={line.pkScored} />
+              {line.voided || !phaseOpen ? (
                 <>
                   <div class="s4-ev__main">{shownText(line)}</div>
                   <span class="s4-sr">{line.label}</span>
@@ -459,6 +676,37 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     </div>
   );
 
+  const timeoutBanner = teamTimeout ? (
+    <div key="timeout" class={teamTimeout.collapsed ? 's4-timeout s4-timeout--mini' : 's4-timeout'} role="status">
+      {teamTimeout.collapsed ? (
+        <button
+          type="button"
+          class="s4-timeout__mini"
+          aria-expanded="false"
+          onClick={() => setTeamTimeout({ ...teamTimeout, collapsed: false })}
+        >
+          {timeoutLabel}
+        </button>
+      ) : (
+        <>
+          <div class="s4-timeout__row">
+            <span class="s4-timeout__text">{timeoutLabel}</span>
+            <button type="button" class="s4-timeout__btn" onClick={() => setTeamTimeout(null)}>{LIVE_COPY.endTimeout}</button>
+            <button
+              type="button"
+              class="s4-timeout__btn"
+              aria-expanded="true"
+              onClick={() => setTeamTimeout({ ...teamTimeout, collapsed: true })}
+            >
+              {LIVE_COPY.collapseTimeout}
+            </button>
+          </div>
+          {teamTimeout.over && !teamTimeout.done ? <p class="s4-timeout__over">{LIVE_COPY.timeoutOver}</p> : null}
+        </>
+      )}
+    </div>
+  ) : null;
+
   const bar = (
     <div key="bar" class="s4-dock">
       {phase === 'undo' && remain ? (
@@ -468,16 +716,27 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           <Button variant="danger" disabled={flowOff} onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
         </div>
       ) : null}
+      {phase === 'pre' ? (
+        <button
+          type="button"
+          class="s4-kickoff"
+          disabled={flowOff}
+          aria-disabled={flowOff ? 'true' : undefined}
+          onClick={() => props.onKickoff?.()}
+        >
+          {LIVE_COPY.kickoff}
+        </button>
+      ) : null}
       {showCtrl ? (
         <div class="s4-ctrl">
-          {phase === 'pre' ? (
-            <Button disabled={flowOff} onClick={() => props.onKickoff?.()}>{LIVE_COPY.kickoff}</Button>
-          ) : null}
-          {phase === 'play' ? (
+          {phase === 'play' && !pk && !pkReady ? (
             <Button variant="secondary" disabled={flowOff} onClick={() => props.onHalftime?.()}>{LIVE_COPY.halftime}</Button>
           ) : null}
           {phase === 'ht' ? (
             <Button disabled={flowOff} onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
+          ) : null}
+          {pkReady ? (
+            <Button disabled={flowOff} onClick={() => props.onStartPk?.()}>{LIVE_COPY.pkStart}</Button>
           ) : null}
           {showPause ? (
             <Button variant="secondary" disabled={pauseDisabled} onClick={togglePause}>
@@ -508,6 +767,17 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
                 >
                   {LIVE_COPY.correctClock}
                 </Button>
+                {phase === 'play' && !pk ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setTimeoutOpen(true);
+                    }}
+                  >
+                    {LIVE_COPY.teamTimeout}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -521,13 +791,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   );
 
   const alertBlock = alerts.length > 0 ? <div key="alerts" class="s4-alerts">{alerts}</div> : null;
-  const parts = thumb
-    ? [top, alertBlock, log, goals, cardRow, bar]
-    : [top, alertBlock, goals, cardRow, log, bar];
+  const homeTimeoutLeft = timeoutLeft('home');
+  const awayTimeoutLeft = timeoutLeft('away');
 
   return (
-    <section class={thumb ? 's4-root s4-root--thumb' : 's4-root'}>
-      {parts}
+    <section class="s4-root">
+      {top}
+      {alertBlock}
+      {timeoutBanner}
+      {log}
+      {goals}
+      {cardRow}
+      {bar}
 
       {picker ? (
         <PlayerSheet
@@ -542,16 +817,17 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onClose={() => setPicker(null)}
         />
       ) : null}
-      {openLine && openEventDoc && (openEventDoc.type === 'goal' || openEventDoc.type === 'card') ? (
+      {openLine && openEventDoc && (openEventDoc.type === 'goal' || openEventDoc.type === 'card' || openEventDoc.type === 'pk') ? (
         <EventSheet
           summary={openLine.label}
           label={openLine.label}
-          kind={openEventDoc.type === 'goal' ? 'goal' : 'card'}
+          kind={openEventDoc.type === 'card' ? 'card' : 'goal'}
+          undoOnly={openEventDoc.type === 'pk'}
           roster={amendRoster}
           goalKind={amendKind}
           cardChoice={amendCard}
           playerId={amendPl}
-          blocked={reserved}
+          blocked={blocked}
           onGoalKind={setAmendKind}
           onCardChoice={setAmendCard}
           onPlayer={setAmendPl}
@@ -562,21 +838,35 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onClose={() => setEventSeq(null)}
         />
       ) : null}
-      {confirmUndo ? (
+      {confirmPair ? (
         <Modal
           open
           class="s4-dialog"
-          title={LIVE_COPY.undo}
-          onClose={() => setConfirmUndo(null)}
+          title={confirmPair.mode === 'amend' ? LIVE_COPY.amend : LIVE_COPY.undo}
+          onClose={() => setConfirmPair(null)}
           footer={(
             <>
-              <Button onClick={runConfirmUndo}>{LIVE_COPY.undoBothConfirm}</Button>
-              <Button variant="secondary" onClick={() => setConfirmUndo(null)}>{LIVE_COPY.takeoverLater}</Button>
+              <Button onClick={runConfirm}>
+                {confirmPair.mode === 'amend' ? LIVE_COPY.amendConfirm : LIVE_COPY.undoBothConfirm}
+              </Button>
+              <Button variant="secondary" onClick={() => setConfirmPair(null)}>{LIVE_COPY.takeoverLater}</Button>
             </>
           )}
         >
           <p class="s4-note">{LIVE_COPY.undoBoth}</p>
         </Modal>
+      ) : null}
+      {timeoutOpen ? (
+        <BottomSheet open class="s4-sheet" title={LIVE_COPY.teamTimeout} onClose={() => setTimeoutOpen(false)}>
+          <p class="s4-note">{LIVE_COPY.timeoutRule}</p>
+          {homeTimeoutLeft <= 0 || awayTimeoutLeft <= 0 ? (
+            <p class="s4-note">{LIVE_COPY.timeoutOver}</p>
+          ) : null}
+          <div class="s4-timeout-picks">
+            <Button onClick={() => startTimeout('home')}>{timeoutTeamChoice(match.home.name, homeTimeoutLeft)}</Button>
+            <Button onClick={() => startTimeout('away')}>{timeoutTeamChoice(match.away.name, awayTimeoutLeft)}</Button>
+          </div>
+        </BottomSheet>
       ) : null}
       {flash ? <CardFlash {...flash} onClose={closeFlash} /> : null}
       <UnappliedSheet
@@ -607,12 +897,20 @@ function Hit({
 }: {
   team: string;
   action: RecordAction;
-  tone: 'home' | 'away' | 'yellow' | 'red';
+  tone: 'home' | 'away' | 'yellow' | 'red' | 'miss';
   disabled: boolean;
   onClick: () => void;
 }): JSX.Element {
-  const label = action === 'goal' ? LIVE_COPY.goal : action === 'yellow' ? LIVE_COPY.yellow : LIVE_COPY.red;
-  const kind = action === 'goal' ? 's4-hit--goal' : 's4-hit--card';
+  const label = action === 'goal'
+    ? LIVE_COPY.goal
+    : action === 'yellow'
+      ? LIVE_COPY.yellow
+      : action === 'red'
+        ? LIVE_COPY.red
+        : action === 'pk-in'
+          ? LIVE_COPY.pkIn
+          : LIVE_COPY.pkMiss;
+  const kind = action === 'goal' ? 's4-hit--goal' : action === 'pk-in' || action === 'pk-miss' ? 's4-hit--pk' : 's4-hit--card';
   return (
     <button
       type="button"

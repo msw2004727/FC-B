@@ -17,6 +17,31 @@ export function CardFlash({ number, name, tone, secondYellow, onClose }: CardFla
 
   useEffect(() => {
     panelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const root = panelRef.current;
+      if (!root) return;
+      const focusable = [...root.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]')].filter(
+        (element) => element.tabIndex >= 0 && !element.hasAttribute('disabled'),
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!first || !last) {
+        event.preventDefault();
+        root.focus();
+        return;
+      }
+      if (event.shiftKey && (active === first || active === root || !root.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || active === root || !root.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, []);
 
   return (

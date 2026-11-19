@@ -127,8 +127,23 @@
 .s4-root .cp3-crest--c5, .s4-page .cp3-crest--c5 { background: var(--crest-5); }
 .s4-root .cp3-crest--c6, .s4-page .cp3-crest--c6 { background: var(--crest-6); }
 .s4-root .cp3-crest--c7, .s4-page .cp3-crest--c7 { background: var(--crest-7); }
+.s4-scoreline {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
 .s4-score {
   font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-pk {
+  font-size: 14px;
   line-height: 1;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -224,6 +239,7 @@
 .s4-dock {
   display: flex;
   flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 .s4-goals {
@@ -240,13 +256,15 @@
   gap: 12px;
   min-width: 0;
 }
-.s4-cardpair {
+.s4-cardpair,
+.s4-pkpair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
-  height: 56px;
   min-width: 0;
 }
+.s4-cardpair { height: 56px; }
+.s4-pkpair { height: 104px; }
 .s4-feed {
   flex: 1 1 auto;
   min-height: 0;
@@ -285,10 +303,13 @@
 }
 .s4-hit:active { transform: scale(0.98); filter: brightness(0.92); }
 .s4-hit:disabled { cursor: not-allowed; opacity: 0.45; }
-.s4-hit--goal {
+.s4-hit--goal,
+.s4-hit--pk {
   height: 104px;
   min-height: 104px;
   max-height: 104px;
+  min-width: 0;
+  padding: 0 4px;
   font-size: 22px;
   line-height: 1;
 }
@@ -307,6 +328,37 @@
 }
 .s4-hit--yellow { background: #ffe14a; color: #141414; }
 .s4-hit--red { background: #ff2d2d; color: #141414; }
+.s4-hit--miss {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 2px var(--color-border);
+}
+.s4-kickoff {
+  appearance: none;
+  width: 100%;
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: #0b6b4e;
+  color: #fff;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-kickoff:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-kickoff:active { transform: scale(0.98); filter: brightness(0.92); }
+.s4-kickoff:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .s4-events {
   display: flex;
@@ -344,6 +396,11 @@
   border-radius: 3px;
 }
 .s4-mark--goal { border-radius: 50%; background: #0b6b4e; }
+.s4-mark--miss {
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--color-text-muted);
+}
 .s4-mark--yellow { background: #ffe14a; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4); }
 .s4-mark--red { background: #ff2d2d; }
 .s4-ev__main {
@@ -451,6 +508,96 @@ button.s4-ev__main:active { opacity: 0.7; }
   box-shadow: var(--shadow-md);
 }
 .s4-menu .ui-button { width: 100%; min-height: 44px; }
+
+/* 球隊暫停：在紀錄上方佔一列，不蓋住進球、牌、底欄與紀錄。 */
+.s4-timeout {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+.s4-timeout--mini {
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+.s4-timeout__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 0;
+}
+.s4-timeout__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.s4-timeout__over {
+  margin: 0 0 4px;
+  height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.s4-timeout__btn,
+.s4-timeout__mini {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-timeout__btn {
+  flex: 0 0 auto;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1;
+}
+.s4-timeout__mini {
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  font-weight: 700;
+  text-align: start;
+}
+.s4-timeout__btn:focus-visible,
+.s4-timeout__mini:focus-visible,
+.s4-kickoff:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-timeout-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.s4-timeout-picks .ui-button {
+  width: 100%;
+  min-height: 56px;
+}
 
 .s4-sent {
   display: flex;

@@ -4,6 +4,7 @@ export const LIVE_COPY = {
   periodH1: '上半場',
   periodHt: '中場休息',
   periodH2: '下半場',
+  periodPk: 'PK',
   connected: '已連線',
   goal: '進球',
   yellow: '黃牌',
@@ -31,7 +32,9 @@ export const LIVE_COPY = {
   amendHalf: '原紀錄已復原，新紀錄未送出',
   undoBoth: '會一併復原第二張黃牌',
   undoBothConfirm: '確定復原',
+  amendConfirm: '確定改判',
   undoHalf: '第二張黃牌已復原，第一張黃牌仍在',
+  undoSecondFailed: '第二張黃牌沒有復原',
   showCard: '看這張牌',
   nearCap: '本場紀錄接近上限',
   atCap: '紀錄已達上限，請由主辦在賽後登錄比分',
@@ -65,6 +68,15 @@ export const LIVE_COPY = {
   colYellow: '黃牌數',
   colRed: '紅牌數',
   tablistLabel: '射手榜與紅黃牌',
+  teamTimeout: '球隊暫停',
+  endTimeout: '結束暫停',
+  collapseTimeout: '收合',
+  expandTimeout: '展開',
+  timeoutOver: '已超過規則次數（由主辦現場判斷）',
+  timeoutRule: '每半場重新計算',
+  pkStart: 'PK 大戰',
+  pkIn: '進',
+  pkMiss: '沒進',
 } as const;
 
 export function offlineChip(pending: number): string {
@@ -99,9 +111,38 @@ export function pausedFor(clock: string): string {
   return `已暫停 ${clock}`;
 }
 
-/** 暫停鈕上的剩餘次數，例「暫停 18」。 */
+/**
+ * 底欄剩餘次數，例「暫停・剩18」。
+ * 不寫「暫停 18」：那個寫法在計時旁邊會被讀成 18 秒。
+ * 中間點把動作和「剩」分開；不寫「次」是為了 360 寬底欄不換行。
+ */
 export function pauseRemain(left: number): string {
-  return `暫停 ${left}`;
+  return `暫停・剩${left}`;
+}
+
+/** 球隊暫停倒數，例「雷霆隊暫停 0:47」。分不補零，跟比賽時鐘的 00:47 分開。 */
+export function teamTimeoutText(team: string, clock: string): string {
+  return `${team}暫停 ${clock}`;
+}
+
+export function timeoutClock(leftSec: number): string {
+  const sec = Math.max(0, Math.floor(leftSec));
+  const minute = Math.floor(sec / 60);
+  const rest = sec % 60;
+  return `${minute}:${String(rest).padStart(2, '0')}`;
+}
+
+/** 選隊鈕，例「雷霆隊 剩 1 次」。 */
+export function timeoutTeamChoice(team: string, left: number): string {
+  return `${team} 剩 ${left} 次`;
+}
+
+export function pkScoreLabel(home: number, away: number): string {
+  return `PK ${home}:${away}`;
+}
+
+export function pkKickLine(round: number, team: string, who: string, scored: boolean): string {
+  return `第${round}輪 ${team} ${who} ${scored ? LIVE_COPY.pkIn : LIVE_COPY.pkMiss}`;
 }
 
 export function restedFor(clock: string): string {

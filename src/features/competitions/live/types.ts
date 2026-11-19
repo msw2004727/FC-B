@@ -25,7 +25,15 @@ export type TimelineEvent =
   })
   | (EventBase & { type: 'sub'; side: MatchSideName; inPlId: string; outPlId: string })
   | (EventBase & { type: 'kickoff' | 'halftime' | 'resume' | 'fulltime' | 'undoFinish' })
-  | (EventBase & { type: 'void'; targetSeq: number });
+  | (EventBase & { type: 'void'; targetSeq: number })
+  | (EventBase & {
+    /** PK 的一腳。只記在時間軸，不進比分、不進積分。 */
+    type: 'pk';
+    side: MatchSideName;
+    plId?: string;
+    scored: boolean;
+    round: number;
+  });
 
 /** voids/{targetSeq}，公開、不含 uid。 */
 export interface VoidMark {

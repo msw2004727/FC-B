@@ -1,5 +1,5 @@
 import type { MatchSideName, RosterPublicDoc } from '../data/types';
-import { LIVE_COPY, minuteMark } from './copy';
+import { LIVE_COPY, minuteMark, pkKickLine } from './copy';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
 
 /**
@@ -14,13 +14,59 @@ export const EVENT_MAX = 200;
 export const SCORING_RESERVE = 70;
 /** 暫停計時每場最多幾次。 */
 export const PAUSE_MAX = 20;
+/**
+ * 球隊暫停預覽。契約還沒寫次數與秒數，先用每隊每半場 1 次、倒數 60 秒。
+ * 換半場（節次字串變了）就把已用次數歸零。超過仍可記。
+ */
+export const TEAM_TIMEOUT_PER_HALF = 1;
+export const TEAM_TIMEOUT_SEC = 60;
+/** 下半場或延長已結束（時鐘停著）且比分相同，才提供 PK。 */
+const SHOOTOUT_PERIOD = new Set(['h2', 'et', 'et1', 'et2']);
 
 /** 已用超過 130（EVENT_MAX − SCORING_RESERVE）時，暫停計時要先讓路給記分。 */
 export function pauseHeldForScoring(eventCount: number): boolean {
   return eventCount > EVENT_MAX - SCORING_RESERVE;
 }
 
-export type RecordAction = 'goal' | 'yellow' | 'red';
+export type RecordAction = 'goal' | 'yellow' | 'red' | 'pk-in' | 'pk-miss';
+
+export function shootoutOffered(input: {
+  live: boolean;
+  running: boolean;
+  period: string;
+  home: number;
+  away: number;
+}): boolean {
+  return input.live && !input.running && input.home === input.away && SHOOTOUT_PERIOD.has(input.period);
+}
+
+/** 未作廢的「進」腳數。沒進與已復原的不計，也不進場上比分。 */
+export function pkScore(
+  events: readonly TimelineEvent[],
+  voids: readonly VoidMark[],
+): { home: number; away: number } {
+  const voided = new Set(voids.map((mark) => mark.targetSeq));
+  const out = { home: 0, away: 0 };
+  for (const event of events) {
+    if (event.type !== 'pk' || !event.scored || voided.has(event.seq)) continue;
+    out[event.side] += 1;
+  }
+  return out;
+}
+
+/** 這一隊下一腳是第幾輪。已復原的腳不占輪次。 */
+export function nextPkRound(
+  events: readonly TimelineEvent[],
+  voids: readonly VoidMark[],
+  side: MatchSideName,
+): number {
+  const voided = new Set(voids.map((mark) => mark.targetSeq));
+  let count = 0;
+  for (const event of events) {
+    if (event.type === 'pk' && event.side === side && !voided.has(event.seq)) count += 1;
+  }
+  return count + 1;
+}
 
 export interface FlashCard {
   number: number | null;
@@ -34,8 +80,11 @@ export interface FlashCard {
 export interface EventLine {
   seq: number;
   minute: string;
-  kind: 'goal' | 'yellow' | 'red';
+  kind: 'goal' | 'yellow' | 'red' | 'pk';
   secondYellow: boolean;
+  /** PK 才有。第幾輪，以及這一腳有沒有進。 */
+  pkRound?: number;
+  pkScored?: boolean;
   team: string;
   number: number | null;
   name: string;
@@ -201,6 +250,30 @@ export function eventLines(options: {
       : b.seq - a.seq
   ));
   for (const event of ordered) {
+    if (event.type === 'pk') {
+      const isVoided = voided.has(event.seq);
+      if (isVoided && options.hideVoided) continue;
+      const side: MatchSideName = event.side;
+      const player = findPlayer(options.homeRoster, options.awayRoster, event.plId);
+      const team = side === 'home' ? options.homeName : options.awayName;
+      const who = player ? `${player.number} ${player.displayName}` : LIVE_COPY.unspecified;
+      const base = pkKickLine(event.round, team, who, event.scored);
+      lines.push({
+        seq: event.seq,
+        minute: `第${event.round}輪`,
+        kind: 'pk',
+        secondYellow: false,
+        pkRound: event.round,
+        pkScored: event.scored,
+        team,
+        number: player?.number ?? null,
+        name: player?.displayName ?? '',
+        voided: isVoided,
+        label: isVoided ? `${base} ${LIVE_COPY.undone}` : base,
+      });
+      if (options.limit != null && lines.length >= options.limit) break;
+      continue;
+    }
     if (event.type !== 'goal' && event.type !== 'card') continue;
     const kind = event.type === 'goal' ? 'goal' : event.cardType === 'yellow' ? 'yellow' : 'red';
     const isVoided = voided.has(event.seq);

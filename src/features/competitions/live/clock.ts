@@ -7,7 +7,7 @@ export const FINISH_UNDO_MS = 3 * 60 * 1000;
 export interface LiveClock {
   /** 比賽時鐘已走秒數。 */
   elapsedSec: number;
-  period: 'h1' | 'ht' | 'h2';
+  period: 'h1' | 'ht' | 'h2' | 'pk';
   /** 有值且大於 0 時，階段改顯示 `45+2'`，不再寫上半場／下半場。 */
   addedMin: number | null;
   /**
@@ -79,6 +79,7 @@ export function addedBaseMin(clock: LiveClock): number {
 
 /** 階段文字。補時優先於上／中／下半場，基準分鐘不跟秒數跳動。 */
 export function stageLabel(clock: LiveClock): string {
+  if (clock.period === 'pk') return LIVE_COPY.periodPk;
   if (clock.addedMin != null && clock.addedMin > 0) {
     return addedClock(addedBaseMin(clock), clock.addedMin);
   }

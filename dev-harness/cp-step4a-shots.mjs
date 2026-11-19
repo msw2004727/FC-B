@@ -14,7 +14,6 @@ const THEMES = ['light', 'dark'];
 const ANCHORS = {
   'score-pre': '開賽',
   'score-live': '34:00',
-  'score-live-thumb': '34:00',
   'score-pick-player': '不指定球員',
   'score-pick-player-long': '不指定球員',
   'score-card-yellow': '點一下關閉',
@@ -29,6 +28,10 @@ const ANCHORS = {
   'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
   'score-pause-reserved': '為保留記分額度，暫停計時已停用',
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
+  'score-timeout': '雷霆隊暫停 0:47',
+  'score-timeout-collapsed': '雷霆隊暫停 0:47',
+  'score-pk-start': 'PK 大戰',
+  'score-pk': 'PK 3:2',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
@@ -37,7 +40,6 @@ const ANCHORS = {
 const SCREENS = [
   ['score-pre', ALL, THEMES, true],
   ['score-live', ALL, THEMES, true],
-  ['score-live-thumb', ALL, THEMES, true],
   ['score-pick-player', ALL, THEMES, false],
   ['score-pick-player-long', ALL, THEMES, false],
   ['score-card-yellow', ALL, THEMES, false],
@@ -52,6 +54,10 @@ const SCREENS = [
   ['score-cap', ALL, THEMES, true],
   ['score-pause-reserved', ALL, THEMES, true],
   ['score-undo-half', ALL, THEMES, false],
+  ['score-timeout', ALL, THEMES, true],
+  ['score-timeout-collapsed', ALL, THEMES, true],
+  ['score-pk-start', ALL, THEMES, true],
+  ['score-pk', ALL, THEMES, true],
   ['live-detail', ALL, THEMES, true],
   ['live-match', ALL, THEMES, true],
   ['live-scorers', ALL, THEMES, true],
@@ -88,7 +94,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
       // 區塊內部溢出（被 overflow:hidden 吃掉的內容）也要抓
       const clipped = await page.evaluate(() => {
         const out = [];
-        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-top, .s4-goals, .s4-cards, .s4-cardpair, .s4-ctrl, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid')) {
+        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-top, .s4-goals, .s4-cards, .s4-cardpair, .s4-pkpair, .s4-ctrl, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid, .s4-timeout, .s4-timeout__row, .s4-scoreline')) {
           if (el.scrollWidth - el.clientWidth > 1) out.push(`${el.className} ${el.scrollWidth}>${el.clientWidth}`);
         }
         return out;
@@ -216,7 +222,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
   }
 }
 // 顧問 §3.308：360×640 第一屏。標籤用 360x640，避免蓋掉既有 360×780 的 s4-*-360-*。
-const FIRST = ['score-live', 'score-offline', 'score-cap', 'score-pause-reserved'];
+const FIRST = ['score-live', 'score-offline', 'score-cap', 'score-pause-reserved', 'score-timeout', 'score-pk'];
 for (const name of FIRST) {
   for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 1.5 });
@@ -236,7 +242,7 @@ for (const name of FIRST) {
     }
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
-    const missing = await page.evaluate(() => {
+    const missing = await page.evaluate((screen) => {
       const vh = window.innerHeight;
       const vw = window.innerWidth;
       const missing = [];
@@ -265,9 +271,19 @@ for (const name of FIRST) {
       need(document.querySelector('.s4-score'), '比分');
       need(document.querySelector('.s4-clock'), '計時');
       need(document.querySelector('.s4-stage'), '節次');
-      const goals = [...document.querySelectorAll('.s4-goals .s4-hit--goal')];
-      if (goals.length !== 2) missing.push(`進球應有 2 顆，實際 ${goals.length}`);
-      goals.forEach((el, i) => need(el, `進球 ${i + 1} ${labelOf(el)}`));
+      // PK 進行中沒有一般進球鈕：四顆進／沒進，頂列要有 PK 比分。
+      if (screen === 'score-pk') {
+        if (!document.querySelector('.s4-pk')) missing.push('頂列沒有 PK 比分');
+        const hits = [...document.querySelectorAll('.s4-goals .s4-hit')];
+        if (hits.length !== 4) missing.push(`PK 應有 4 顆進／沒進，實際 ${hits.length}`);
+        if (hits.some((el) => (el.textContent || '').includes('進球'))) missing.push('PK 期間出現進球鈕');
+        hits.forEach((el, i) => need(el, `PK ${i + 1} ${labelOf(el)}`));
+      } else {
+        const goals = [...document.querySelectorAll('.s4-goals .s4-hit--goal')];
+        if (goals.length !== 2) missing.push(`進球應有 2 顆，實際 ${goals.length}`);
+        goals.forEach((el, i) => need(el, `進球 ${i + 1} ${labelOf(el)}`));
+      }
+      if (screen === 'score-timeout') need(document.querySelector('.s4-timeout'), '球隊暫停橫幅');
       const cards = [...document.querySelectorAll('.s4-cards .s4-hit--card')];
       if (cards.length !== 4) missing.push(`牌應有 4 顆，實際 ${cards.length}`);
       cards.forEach((el, i) => need(el, `牌 ${i + 1} ${labelOf(el)}`));
@@ -278,7 +294,7 @@ for (const name of FIRST) {
       const visible = rows.filter((el) => !clipped(el));
       if (visible.length < 4) missing.push(`紀錄列只完整露出 ${visible.length} 列`);
       return missing;
-    });
+    }, name);
     report.firstScreen.push({ tag, missing });
     const file = `${tag}.png`;
     await page.screenshot({ path: join(OUT, file), fullPage: false });

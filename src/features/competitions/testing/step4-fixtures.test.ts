@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clockFromBase, formatMatchClock, undoClock } from '../live/clock';
+import { pkScore } from '../live/present';
 import { derivePublicTable } from '../live/stats';
 import {
   S4_ACTION_LOG,
@@ -23,7 +24,11 @@ import {
   S4_SCENE_OFFLINE,
   S4_SCENE_PAUSE_RESERVED,
   S4_SCENE_PAUSED,
+  S4_PK_EVENTS,
+  S4_PK_VOIDS,
   S4_SCENE_PICK_LONG,
+  S4_SCENE_PK,
+  S4_SCENE_PK_START,
   S4_SCENE_PRE,
   S4_SCENE_UNAPPLIED,
   S4_SCORE_SCENES,
@@ -141,26 +146,44 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
     expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    expect(S4A_SCREENS).toHaveLength(20);
+    expect(S4A_SCREENS).toHaveLength(23);
     expect(S4A_SCREENS).toEqual(expect.arrayContaining([
       'score-paused',
       'score-amend',
       'score-cap',
       'score-undo-half',
-      'score-live-thumb',
       'score-pick-player-long',
       'score-pause-reserved',
+      'score-timeout',
+      'score-timeout-collapsed',
+      'score-pk-start',
+      'score-pk',
     ]));
+    expect(S4A_SCREENS).not.toContain('score-live-thumb');
     expect(S4_ROSTER_HOME_LONG).toHaveLength(18);
     expect(new Set(S4_ROSTER_HOME_LONG.map((player) => player.number)).size).toBe(18);
     expect(S4_SCENE_CAP.eventCount).toBe(192);
     expect(S4_SCENE_PAUSE_RESERVED.eventCount).toBe(135);
     expect(S4_SCENE_PICK_LONG.homeRoster).toHaveLength(18);
-    expect(S4_SCORE_SCENES['score-live-thumb']).toBe(S4_SCENE_LIVE);
+    expect(S4_SCORE_SCENES['score-timeout'].timeoutView).toEqual({ side: 'home', leftSec: 47 });
+    expect(S4_SCORE_SCENES['score-timeout-collapsed'].timeoutView?.collapsed).toBe(true);
     expect(S4_SCORE_SCENES['score-pick-player-long']).toBe(S4_SCENE_PICK_LONG);
     expect(S4_SCORE_SCENES['score-pause-reserved']).toBe(S4_SCENE_PAUSE_RESERVED);
     expect(isProjectStorageDownloadUrl(S4_CREST_URL)).toBe(true);
     expect(S4_CRESTS.map((row) => row.teamLogo)).toEqual([S4_CREST_URL, null]);
+    expect(pkScore(S4_PK_EVENTS, S4_PK_VOIDS)).toEqual({ home: 3, away: 2 });
+    expect(S4_SCENE_PK.match.score).toEqual({ home: 2, away: 2 });
+    expect(S4_SCENE_PK.match.status).toBe('live');
+    expect(S4_SCENE_PK.match.penaltyScore).toBeNull();
+    expect(S4_SCENE_PK.match.clockBase).toMatchObject({ running: false, pausedSec: 40 * 60, period: 'pk' });
+    expect(deriveScore(S4_PK_EVENTS, S4_PK_VOIDS)).toEqual({ home: 0, away: 0 });
+    expect(deriveScore([...S4_SCENE_PK_START.events], [...S4_SCENE_PK_START.voids])).toEqual({ home: 2, away: 2 });
+    expect(S4_SCENE_PK_START.match.score).toEqual({ home: 2, away: 2 });
+    expect(S4_SCENE_PK_START.match.clockBase).toMatchObject({ running: false, pausedSec: 40 * 60, period: 'h2' });
+    const scored = S4_PK_EVENTS.filter((event) => event.type === 'pk' && event.scored);
+    const voided = new Set(S4_PK_VOIDS.map((mark) => mark.targetSeq));
+    expect(scored.filter((event) => !voided.has(event.seq) && event.type === 'pk' && event.side === 'home')).toHaveLength(3);
+    expect(scored.filter((event) => !voided.has(event.seq) && event.type === 'pk' && event.side === 'away')).toHaveLength(2);
     expect(clockFromBase(S4_SCENE_PAUSED.match.clockBase, S4_NOW)).toEqual({
       elapsedSec: 34 * 60,
       holdSec: 83,

@@ -28,7 +28,6 @@ document.documentElement.setAttribute('data-theme', theme);
 const ANCHORS: Record<string, string> = {
   'score-pre': '開賽',
   'score-live': '34:00',
-  'score-live-thumb': '34:00',
   'score-pick-player': '不指定球員',
   'score-pick-player-long': '不指定球員',
   'score-card-yellow': '點一下關閉',
@@ -43,6 +42,10 @@ const ANCHORS: Record<string, string> = {
   'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
   'score-pause-reserved': '為保留記分額度，暫停計時已停用',
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
+  'score-timeout': '雷霆隊暫停 0:47',
+  'score-timeout-collapsed': '雷霆隊暫停 0:47',
+  'score-pk-start': 'PK 大戰',
+  'score-pk': 'PK 3:2',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
@@ -52,9 +55,6 @@ const ANCHORS: Record<string, string> = {
 let undoHalfCalls = 0;
 
 function Screen() {
-  if (screenName === 'score-live-thumb') {
-    return <ScorePad {...S4_SCENE_LIVE} layout="thumb" />;
-  }
   if (screenName === 'score-undo-half') {
     return (
       <ScorePad
