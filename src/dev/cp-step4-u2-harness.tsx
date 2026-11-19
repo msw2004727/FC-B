@@ -83,16 +83,32 @@ function match(partial: Partial<ServerMatch> = {}): ServerMatch {
   };
 }
 
-function goalEvent(): ServerEvent {
+function goalAt(seq: number, side: 'home' | 'away', minute: number): ServerEvent {
+  const home = side === 'home';
   return {
-    seq: 1,
+    seq,
     type: 'goal',
-    op: 'goal-op-000000000001',
+    op: `${home ? 'goal-home' : 'goal-away'}-${String(seq).padStart(4, '0')}`,
     sid: SID,
-    side: 'home',
-    plId: 'pl_th9',
+    side,
+    plId: home ? 'pl_th9' : 'pl_hf10',
     goalKind: 'normal',
-    matchSecond: 12 * 60,
+    matchSecond: minute * 60,
+    createdAt: NOW - (90 - minute) * 1000,
+  };
+}
+
+function pkKick(seq: number, side: 'home' | 'away', scored: boolean): ServerEvent {
+  const home = side === 'home';
+  return {
+    seq,
+    type: 'pk',
+    op: `pk-${home ? 'home' : 'away'}-${String(seq).padStart(4, '0')}`,
+    sid: SID,
+    side,
+    plId: home ? 'pl_th9' : 'pl_hf10',
+    scored,
+    matchSecond: 90 * 60,
     createdAt: NOW,
   };
 }
@@ -150,11 +166,19 @@ function seedOf(name: string): Seed {
     return { match: match({ status: 'scheduled', clockBase: clock(0, 'pre', false, null) }) };
   }
   if (name === 'u2-live') {
-    return { match: match({ status: 'live', score: { home: 1, away: 1 }, clockBase: clock(34 * 60, 'h1', true) }) };
+    return {
+      match: match({
+        status: 'live',
+        rev: 2,
+        score: { home: 1, away: 1 },
+        clockBase: clock(34 * 60, 'h1', true),
+      }),
+      events: [goalAt(1, 'home', 12), goalAt(2, 'away', 28)],
+    };
   }
   if (name === 'u2-pending') {
     return {
-      match: match({ status: 'live', score: { home: 1, away: 0 }, clockBase: clock(12 * 60, 'h1', true) }),
+      match: match({ status: 'live', score: { home: 0, away: 0 }, clockBase: clock(12 * 60, 'h1', true) }),
       online: false,
       pending: [
         pendingGoal('pend-goal-home-00001', 'home', 'pl_th9', NOW - 20_000),
@@ -166,51 +190,66 @@ function seedOf(name: string): Seed {
     return {
       match: match({
         status: 'live',
+        rev: 2,
         score: { home: 1, away: 1 },
         clockBase: clock(90 * 60, 'h2', false, null),
         penaltyScore: null,
       }),
+      events: [goalAt(1, 'home', 24), goalAt(2, 'away', 81)],
     };
   }
   if (name === 'u2-pk-live') {
     return {
       match: match({
         status: 'live',
+        rev: 7,
         score: { home: 1, away: 1 },
         clockBase: clock(0, 'pk', false, null),
         penaltyScore: { home: 3, away: 2 },
       }),
+      events: [
+        goalAt(1, 'home', 19),
+        goalAt(2, 'away', 63),
+        pkKick(3, 'home', true),
+        pkKick(4, 'away', true),
+        pkKick(5, 'home', true),
+        pkKick(6, 'away', true),
+        pkKick(7, 'home', true),
+      ],
     };
   }
   if (name === 'u2-pk-goal-locked') {
     return {
       match: match({
         status: 'live',
-        rev: 1,
+        rev: 2,
         score: { home: 1, away: 1 },
         clockBase: clock(0, 'pk', false, null),
         penaltyScore: { home: 0, away: 0 },
       }),
-      events: [goalEvent()],
+      events: [goalAt(1, 'home', 12), goalAt(2, 'away', 48)],
     };
   }
   if (name === 'u2-timeout-stop') {
     return {
       match: match({
         status: 'live',
-        rev: 1,
+        rev: 2,
         score: { home: 1, away: 0 },
         clockBase: clock(10 * 60, 'h2', false, NOW - 8_000),
       }),
-      events: [{
-        seq: 1,
-        type: 'timeout',
-        op: 'timeout-op-00000001',
-        sid: SID,
-        side: 'home',
-        matchSecond: 600,
-        createdAt: NOW - 13_000,
-      }],
+      events: [
+        goalAt(1, 'home', 8),
+        {
+          seq: 2,
+          type: 'timeout',
+          op: 'timeout-op-00000001',
+          sid: SID,
+          side: 'home',
+          matchSecond: 600,
+          createdAt: NOW - 13_000,
+        },
+      ],
     };
   }
   if (name === 'u2-reader-tab') {
