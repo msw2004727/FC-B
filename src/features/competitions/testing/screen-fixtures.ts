@@ -645,11 +645,11 @@ function liveBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
           win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
         }),
         standingRow({
-          teamId: 'en_b', name: '銀河隊', points: 5, rank: 2,
+          teamId: 'en_b', name: '銀河隊', points: 5, rank: 2, win: 1, draw: 2, loss: 1,
           hasUnresolvedTie: true, tiedWith: ['en_c'],
         }),
         standingRow({
-          teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2,
+          teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2, win: 1, draw: 2, loss: 1,
           hasUnresolvedTie: true, tiedWith: ['en_b'],
         }),
         standingRow({
@@ -706,11 +706,11 @@ function tieStandings(): StandingDoc {
         win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
       }),
       standingRow({
-        teamId: 'en_b', name: '銀河隊', points: 5, rank: 2,
+        teamId: 'en_b', name: '銀河隊', points: 5, rank: 2, win: 1, draw: 2, loss: 1,
         hasUnresolvedTie: true, tiedWith: ['en_c'],
       }),
       standingRow({
-        teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2,
+        teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2, win: 1, draw: 2, loss: 1,
         hasUnresolvedTie: true, tiedWith: ['en_b'],
       }),
     ],

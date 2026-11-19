@@ -425,6 +425,8 @@
 }
 /* 上移／下移用內容寬度：全站按鈕最小 120px，這列放兩顆會把隊名擠成一字一行、按鈕超出卡片（補拍發現） */
 .cpm-drag .cpm-drag__li .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; white-space: nowrap; }
+/* 停用的上移／下移不畫底色，免得比可按的更像按鈕（Opus 終審 P3；只限這一列，不動全站 token） */
+.cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: transparent; border-color: transparent; }
 .cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
 .cpm-rules li {
   padding: 8px 0;
