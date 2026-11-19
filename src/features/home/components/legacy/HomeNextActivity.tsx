@@ -4,14 +4,28 @@ import { useEffect, useState } from 'preact/hooks';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc } from '@/features/events/data/types';
 import type { ViewerView } from '@/features/profile/data/viewer';
+import { readAuthHint } from '@/data/auth-hint';
 import {
   parseEventDateRange,
   registrationStatusMeta,
   resolveNextActivity,
   type NextActivityResult,
 } from '../../data/next-activity';
+import { readNextActivitySnapshot } from '../../data/next-activity-snapshot';
+import '../../legacy/home-stale.css';
 
 const FALLBACK_IMAGE = 'LOGO/Nocoverimage%20set.png';
+
+// 快照寫入端延遲載入（首頁入口 JS 預算）。共用同一個模組 promise，後續寫入／刪除都接在它後面，先後順序才不會錯亂；
+// 載入失敗就清掉，下次再試（L-08）。
+let snapshotWriter: Promise<typeof import('../../data/next-activity-snapshot-write')> | null = null;
+function loadSnapshotWriter(): Promise<typeof import('../../data/next-activity-snapshot-write')> {
+  snapshotWriter ??= import('../../data/next-activity-snapshot-write').catch((err: unknown) => {
+    snapshotWriter = null;
+    throw err;
+  });
+  return snapshotWriter;
+}
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const;
 
 function pad2(num: number): string {
@@ -51,34 +65,39 @@ export function HomeNextActivity({
   const [state, setState] = useState<{
     uid: string | null;
     loading: boolean;
+    /** 這次讀取失敗（不是「確定沒有下一場」）：不刪快照、畫面保留上次內容。 */
+    failed: boolean;
     result: NextActivityResult | null;
   }>(() => ({
     uid: viewer.uid,
     loading: Boolean(viewer.uid),
+    failed: false,
     result: null,
   }));
+  // 上次的內容（站長 2026-11-19）：開頁讀一次；帳號確認後 owner 不符就不用，讀到新結果後換掉。
+  const [snapshot] = useState(() => readNextActivitySnapshot());
 
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const uid = viewer.uid;
     if (!uid) {
-      setState({ uid: null, loading: false, result: null });
+      setState({ uid: null, loading: false, failed: false, result: null });
       return;
     }
 
     let current = true;
-    setState({ uid, loading: true, result: null });
+    setState({ uid, loading: true, failed: false, result: null });
 
     resolveNextActivity({}, uid)
       .then((next) => {
         if (!current) return;
-        setState({ uid, loading: false, result: next });
+        setState({ uid, loading: false, failed: false, result: next });
       })
       .catch(() => {
         if (!current) return;
-        // 照 A home-next-activity.js#refreshHomeNextActivity：發生錯誤時 renderEmpty(host)
-        setState({ uid, loading: false, result: null });
+        // 照 A home-next-activity.js#refreshHomeNextActivity：發生錯誤時 renderEmpty(host)；有上次內容時改保留上次內容。
+        setState({ uid, loading: false, failed: true, result: null });
       });
 
     return () => {
@@ -87,8 +106,11 @@ export function HomeNextActivity({
   }, [viewer.uid]);
 
   const isCurrentUid = state.uid === viewer.uid;
-  const loading = Boolean(viewer.uid) && (!isCurrentUid || state.loading);
-  const candidate = isCurrentUid ? state.result : null;
+  // L-43：登入狀態還在還原（authPending）時不是訪客，顯示載入中，不得先顯示「還沒有報名活動」。
+  const authPending = !viewer.uid && viewer.authPending === true;
+  const loading = authPending || (Boolean(viewer.uid) && (!isCurrentUid || state.loading));
+  const confirmed = Boolean(viewer.uid) && isCurrentUid && !state.loading && !state.failed;
+  const candidate = confirmed ? state.result : null;
 
   const visibleList = candidate
     ? getVisibleEvents(
@@ -97,7 +119,49 @@ export function HomeNextActivity({
         candidate.registration ? [candidate.registration] : [],
       )
     : [];
-  const visibleEvent = visibleList[0] ?? null;
+  const confirmedEvent = visibleList[0] ?? null;
+
+  // 上次內容可用的條件：活動還沒開始（每次 render 都重新判斷，頁面開著期間活動開始後，下一次 render 就撤掉），且帳號已確認、owner 相同（讀取中或讀取失敗）；
+  // 或帳號還在還原、但「上次已登入」旗標在——這段刻意不比對 owner（還不知道是誰），是站長 2026-11-19 同意的放寬，
+  // 帳號一確認就改比對 owner，不符立刻撤掉。
+  const snapshotUsable = snapshot !== null && !confirmed
+    && (parseEventDateRange(snapshot.result.event.date)?.startMs ?? 0) > Date.now()
+    && (viewer.uid ? snapshot.owner === viewer.uid : authPending && readAuthHint());
+  const shown = confirmed ? candidate : snapshotUsable ? snapshot.result : null;
+  const visibleEvent = confirmed ? confirmedEvent : snapshotUsable ? snapshot.result.event : null;
+  const stale = !confirmed && snapshotUsable;
+  const showLoading = loading && !stale;
+
+  // 讀完確定的結果才更新快照：畫面要顯示的那場就存，確定沒有就刪。讀取失敗不動。
+  // 寫入端延遲載入（首頁入口 JS 預算），見 loadSnapshotWriter。
+  const confirmedUid = confirmed ? viewer.uid : null;
+  // 帳號一確認、本機快照屬於別的帳號就刪掉，不等讀取結果（顧問 §3.342）。刪除放在延遲載入的寫入端（入口 JS 預算），
+  // 寫入端內再讀一次 owner 才刪，不會誤刪同帳號剛寫入的快照。
+  const foreignSnapshot = Boolean(viewer.uid) && snapshot !== null && snapshot.owner !== viewer.uid;
+  useEffect(() => {
+    const uid = viewer.uid;
+    if (!uid || !foreignSnapshot) return;
+    loadSnapshotWriter()
+      .then((m) => m.removeNextActivitySnapshotOfOthers(uid))
+      .catch(() => undefined);
+  }, [viewer.uid, foreignSnapshot]);
+
+  // 寫入端還在載入時帳號已換（登出、換帳號）或元件已卸載：取消這次寫入／刪除，避免把前一個帳號的結果寫成快照、或刪掉新帳號的快照。
+  useEffect(() => {
+    if (!confirmedUid) return undefined;
+    let live = true;
+    const save = candidate && confirmedEvent ? candidate : null;
+    loadSnapshotWriter()
+      .then((m) => {
+        if (!live) return;
+        if (save) m.writeNextActivitySnapshot(confirmedUid, save);
+        else m.removeNextActivitySnapshot();
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [confirmedUid, candidate, confirmedEvent]);
 
   const rawImage =
     (visibleEvent?.imageVariants as { homeNext?: string; cover?: string } | undefined)?.homeNext
@@ -108,7 +172,7 @@ export function HomeNextActivity({
   const imgSrc = brokenUrl === rawImage ? FALLBACK_IMAGE : rawImage;
 
   const statusMeta = registrationStatusMeta(
-    candidate?.registration ?? (candidate?.managedRole ? { managedRole: candidate.managedRole } : null),
+    shown?.registration ?? (shown?.managedRole ? { managedRole: shown.managedRole } : null),
   );
 
   return (
@@ -116,6 +180,7 @@ export function HomeNextActivity({
       <div class={!loading && !visibleEvent ? 'home-next-card is-empty' : 'home-next-card'}>
         <div class="home-next-head">
           <h3>我的下一場活動</h3>
+          {stale && loading ? <span class="home-refresh-pill" role="status">更新中</span> : null}
           <button
             class="home-next-view-all"
             type="button"
@@ -137,7 +202,7 @@ export function HomeNextActivity({
           </button>
         </div>
 
-        {loading ? (
+        {showLoading ? (
           <div class="home-next-loading" role="status" aria-label="載入中">
             <div class="home-next-loading-img skeleton" />
             <div class="home-next-loading-lines">
@@ -217,10 +282,14 @@ export function HomeNextActivity({
                 查看活動
               </button>
               <button
-                class="home-next-outline"
+                class={stale ? 'home-next-outline is-pending' : 'home-next-outline'}
                 type="button"
                 data-home-next-action="calendar"
-                onClick={() => onAddToCalendar(visibleEvent)}
+                aria-disabled={stale ? 'true' : undefined}
+                onClick={() => {
+                  // 上次內容的時間可能已改：讀到新資料前不寫行事曆。
+                  if (!stale) onAddToCalendar(visibleEvent);
+                }}
               >
                 <span>加入行事曆</span>
               </button>

@@ -1,0 +1,49 @@
+/* 首頁「先畫上次內容」的舊資訊樣式（站長 2026-11-19 預覽定案：方案 B 輕提示）。
+ * 標題旁小轉圈「更新中」；運動數字變淡；「加入行事曆」在新資料確認前顯示讀取動畫、暫不能按。
+ * 本檔路徑含 /legacy/，打包時自動加上 .legacy-ui；只用 legacy-vars.css 既有變數。 */
+
+.home-refresh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .32rem;
+  margin: 0 auto 0 -.3rem;
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.home-refresh-pill::before,
+.home-next-outline.is-pending::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: home-stale-spin .8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.home-next-outline.is-pending {
+  opacity: .62;
+  cursor: default;
+}
+
+.home-sport-entry.is-stale .home-sport-chip-count {
+  opacity: .5;
+}
+
+@keyframes home-stale-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-refresh-pill::before,
+  .home-next-outline.is-pending::before {
+    animation-duration: 2.4s;
+  }
+}
