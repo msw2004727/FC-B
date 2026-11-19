@@ -9,11 +9,12 @@ import {
   waitForChunkReloadCancelled,
 } from './chunk-reload';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
-import { _resetRefreshReloadForTest } from './refresh-reload';
+import { _resetRefreshReloadForTest, _setRefreshReloadForTest } from './refresh-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
 import { _resetRouteLoadingForTest } from './route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
-import { _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
+import { _resetRouteLoadPendingForTest, beginRouteLoad, isRouteLoadPending } from './route-load-pending';
+import { getToasts, toast } from '@/ui/Toast';
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   const map = new Map<string, string>();
@@ -360,5 +361,223 @@ describe('背景載入失敗（沒有路由在載入；顧問 §3.263 甲）', (
     expect(reload).not.toHaveBeenCalled();
     expect(storage.getItem(RELOAD_AT_KEY)).toBeNull();
     expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
+});
+
+function recordModulepreload(href: string): string {
+  installFailedPreloadRecorder();
+  const link = document.createElement('link');
+  link.rel = 'modulepreload';
+  link.href = href;
+  document.head.appendChild(link);
+  link.dispatchEvent(new Event('error', { bubbles: false }));
+  return link.href;
+}
+
+function holdFetch(): { fetchMock: ReturnType<typeof vi.fn<typeof fetch>>; resolveAll: () => void } {
+  const pending: Array<(value: Response) => void> = [];
+  const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+    pending.push(resolve);
+  }));
+  return {
+    fetchMock,
+    resolveAll: () => {
+      const batch = pending.splice(0, pending.length);
+      if (batch.length === 0) throw new Error('沒有等待中的刷新');
+      for (const resolve of batch) resolve(new Response(''));
+    },
+  };
+}
+
+function clickReloadNow(): void {
+  const button = document.querySelector<HTMLButtonElement>('#sw-reload-deferred-prompt [data-sw-reload-now]');
+  if (!button) throw new Error('沒有重新載入按鈕');
+  button.click();
+}
+
+describe('甲案：等待後只重查同一頁與使用者正在做的事', () => {
+  beforeAll(async () => {
+    await setLocale('zh-TW');
+  });
+
+  beforeEach(() => {
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
+    _resetRefreshReloadForTest();
+    _resetFailedPreloadsForTest();
+    _resetReloadSafetyForTest();
+    _resetSubmitGuardForTest();
+    _resetRouteLoadingForTest();
+    sessionStorage.clear();
+    document.body.innerHTML = '';
+    document.querySelectorAll('link').forEach((node) => node.remove());
+    history.replaceState(null, '', '/');
+    toast.clear();
+  });
+
+  afterEach(() => {
+    _resetRouteLoadPendingForTest();
+    _resetChunkReloadGuardForTest();
+    _resetRefreshReloadForTest();
+    _resetFailedPreloadsForTest();
+    _resetReloadSafetyForTest();
+    _resetSubmitGuardForTest();
+    _resetRouteLoadingForTest();
+    document.querySelectorAll('link').forEach((node) => node.remove());
+    document.querySelectorAll('.modal.open').forEach((node) => node.remove());
+    document.body.innerHTML = '';
+    toast.clear();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    history.replaceState(null, '', '/');
+  });
+
+  it('詳情頁單元：beginRouteLoad 後失敗，立刻 settle，等待後仍重整一次', async () => {
+    const assetUrl = recordModulepreload('/assets/detail-unit.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const settled = beginRouteLoad();
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/events/e1');
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    // (a)(b) 失敗當下已放行並寫下時間戳。刷新在下一個回合才發出。
+    expect(event.defaultPrevented).toBe(true);
+    expect(Number(sessionStorage.getItem(RELOAD_AT_KEY))).toBeGreaterThan(0);
+    settled();
+    expect(isRouteLoadPending()).toBe(false);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(assetUrl, expect.objectContaining({ cache: 'no-cache' })));
+    expect(isRouteLoadPending()).toBe(false);
+    resolveAll();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    // (d)(e)
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+  });
+
+  it('等待中換頁：不重整、出提示', async () => {
+    recordModulepreload('/assets/leave.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    const settled = beginRouteLoad();
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/events/e1');
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    history.replaceState(null, '', '/teams/t1');
+    settled();
+    resolveAll();
+    await vi.waitFor(() => expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk'));
+    expect(reload).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
+  });
+
+  it('不安全頁的提示框手動重整：刷新後 reload 一次，提示不重複', async () => {
+    const assetUrl = recordModulepreload('/assets/unsafe.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/teams/t1');
+    // 彈窗開著：守門那次 reload 的等待後判斷會擋，手動路徑只擋送出中，所以仍要重整。
+    const modal = document.createElement('div');
+    modal.className = 'modal open';
+    document.body.appendChild(modal);
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+    clickReloadNow();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(assetUrl, expect.objectContaining({ cache: 'no-cache' })));
+    resolveAll();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('詳情頁背景載入失敗：出提示，按重新載入後 reload 一次', async () => {
+    recordModulepreload('/assets/bg.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/events/e1');
+    expect(isRouteLoadPending()).toBe(false);
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(sessionStorage.getItem(RELOAD_AT_KEY)).toBeNull();
+    expect(document.getElementById('sw-reload-deferred-prompt')?.textContent).toContain('重新載入');
+    clickReloadNow();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    resolveAll();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+  });
+
+  it('提示框手動重整遇到送出中：不重整、吐司一次、提示框還在；結束後再按才重整', async () => {
+    recordModulepreload('/assets/busy.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/teams/t1');
+    window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+    expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1);
+    clickReloadNow();
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const end = beginSubmitting('signup');
+    try {
+      resolveAll();
+      await vi.waitFor(() => expect(document.querySelectorAll('#sw-reload-deferred-prompt')).toHaveLength(1));
+      expect(reload).not.toHaveBeenCalled();
+      const busy = getToasts().filter((item) => item.message.includes('目前操作尚未完成'));
+      expect(busy).toHaveLength(1);
+      expect(document.querySelector('#sw-reload-deferred-prompt [data-sw-reload-now]')).not.toBeNull();
+    } finally {
+      end();
+    }
+    clickReloadNow();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    resolveAll();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('等待中開啟彈窗：不重整、出提示（M7）', async () => {
+    recordModulepreload('/assets/modal.js');
+    const { fetchMock, resolveAll } = holdFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const reload = vi.fn();
+    _setRefreshReloadForTest(reload);
+    const settled = beginRouteLoad();
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/events/e1');
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const modal = document.createElement('div');
+    modal.className = 'modal open';
+    document.body.appendChild(modal);
+    settled();
+    resolveAll();
+    await vi.waitFor(() => expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk'));
+    expect(reload).not.toHaveBeenCalled();
+    expect(isChunkReloadScheduled()).toBe(false);
   });
 });

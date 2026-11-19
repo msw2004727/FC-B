@@ -7,7 +7,7 @@
 // 取代：原本不能重載時顯示「有新版本可用」並 preventDefault，文案誤導且呼叫端拿到 undefined。
 
 import { refreshThenReload } from './refresh-reload';
-import { canReloadAfterChunkFailure, showChunkFailurePrompt } from './reload-safety';
+import { canReloadAfterChunkFailure, evaluateReloadSafety, showChunkFailurePrompt, showReloadBusyToast } from './reload-safety';
 
 export const RELOAD_AT_KEY = 'fcb:chunk-reload-at';
 const RELOAD_WINDOW_MS = 60_000;
@@ -105,25 +105,35 @@ export function installChunkReloadGuard(): void {
       event.preventDefault();
       return;
     }
+    const path = location.pathname;
+    // 提示框一律手動重整：預設 canReload 只擋送出中。被擋時出吐司，並把剛才按掉的提示框放回。
+    const manualReload = (): void => {
+      void refreshThenReload({
+        onBlocked: () => {
+          showReloadBusyToast();
+          showChunkFailurePrompt(manualReload, 'chunk-load');
+        },
+      });
+    };
     const handled = handleChunkLoadFailure({
       storage,
       now: () => now,
       // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
-      // §3.295(a)：等待後重整前再查一次
-      // 仍走 void refreshThenReload()，多傳 canReload 與 onBlocked；真正換頁是 location.reload()，query 與 hash 留著。
+      // §3.295(a)：等待後重整前再查一次。頁面與路由條件失敗當下已查過。
       reload: () => {
         void refreshThenReload({
-          canReload: () => canReloadAfterChunkFailure().safe,
-          onBlocked: (retry) => {
+          // 等待後重查：同一頁、而且沒有彈窗／輸入中／送出中等（頁面與路由條件失敗當下已查過，路由計數此時已落定，不能再查）。
+          canReload: () => location.pathname === path && evaluateReloadSafety({ ignorePageSafety: true }).safe,
+          onBlocked: () => {
             // §3.297 P2：等待後不能重整 → 取消排程，之後的失敗回到正常處理；並通知停在載入中的路由改顯示錯誤畫面。
             cancelScheduledReload();
-            showChunkFailurePrompt(retry, 'chunk-load');
+            showChunkFailurePrompt(manualReload, 'chunk-load');
           },
         });
       },
       canReload: () => canReloadAfterChunkFailure().safe,
-      onBlocked: (reload) => {
-        showChunkFailurePrompt(reload, 'chunk-load');
+      onBlocked: () => {
+        showChunkFailurePrompt(manualReload, 'chunk-load');
       },
     });
     if (handled) {

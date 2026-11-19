@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { beginRouteLoading, endRouteLoading } from './route-loading';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
 import { _resetReloadSafetyForTest } from './reload-safety';
-import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, refreshThenReload } from './refresh-reload';
+import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, _setRefreshReloadForTest, refreshThenReload } from './refresh-reload';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
+import { getToasts, toast } from '@/ui/Toast';
 
 vi.mock('./route-loading', () => ({
   beginRouteLoading: vi.fn(() => 1),
@@ -38,6 +39,7 @@ afterEach(() => {
   document.querySelectorAll('link').forEach((node) => node.remove());
   document.body.innerHTML = '';
   history.replaceState(null, '', '/');
+  toast.clear();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
@@ -244,29 +246,37 @@ describe('refreshThenReload', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('預設 canReload：beginSubmitting 期間被擋，結束後 retry 會重整', async () => {
+  it('預設 canReload：beginSubmitting 期間被擋，出吐司、不重整、不出提示框', async () => {
     recordFailure('modulepreload', '/assets/sub.js');
-    let markReloaded: () => void = () => {};
-    const reloaded = new Promise<void>((resolve) => {
-      markReloaded = resolve;
-    });
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
-    const reload = vi.fn(() => {
-      markReloaded();
-    });
+    const reload = vi.fn();
     const pending = refreshThenReload({ fetchImpl, reload, online: () => true });
     const end = beginSubmitting('signup');
-    await pending;
-    expect(reload).not.toHaveBeenCalled();
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const prompt = document.getElementById('sw-reload-deferred-prompt');
-    expect(prompt?.dataset.mode).toBe('chunk');
-    expect(prompt?.dataset.reason).toBe('chunk-load-deferred');
-    end();
-    prompt?.querySelector<HTMLButtonElement>('[data-sw-reload-now]')?.click();
-    await reloaded;
-    expect(reload).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    try {
+      await pending;
+      expect(reload).not.toHaveBeenCalled();
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('sw-reload-deferred-prompt')).toBeNull();
+      const busy = getToasts().filter((item) => item.message.includes('目前操作尚未完成'));
+      expect(busy).toHaveLength(1);
+    } finally {
+      end();
+    }
+  });
+
+  it('沒傳 reload 時改走測試掛勾；有傳則仍用傳入的', async () => {
+    const hooked = vi.fn();
+    _setRefreshReloadForTest(hooked);
+    await refreshThenReload({ online: () => true });
+    expect(hooked).toHaveBeenCalledTimes(1);
+
+    _resetRefreshReloadForTest();
+    const hookedAgain = vi.fn();
+    const explicit = vi.fn();
+    _setRefreshReloadForTest(hookedAgain);
+    await refreshThenReload({ reload: explicit, online: () => true });
+    expect(explicit).toHaveBeenCalledTimes(1);
+    expect(hookedAgain).not.toHaveBeenCalled();
   });
 
   it('離線路徑不呼叫 canReload', async () => {

@@ -808,8 +808,14 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 }
 
 // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
-// §3.295(a)：等待後重整前再查一次
-const reloadPageDefault = (): void => { void refreshThenReload(); };
+// §3.295(a)：等待後重整前再查一次。手動只在送出中擋下；被擋時出吐司，錯誤畫面與按鈕留著。
+const reloadPageDefault = (): void => {
+  void refreshThenReload({
+    onBlocked: () => {
+      showReloadBusyToast();
+    },
+  });
+};
 let routeReloadPage = reloadPageDefault;
 
 /** 測試用：換掉錯誤畫面「重新嘗試」的整頁重整（jsdom 不能真的重整）。 */

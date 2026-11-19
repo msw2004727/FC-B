@@ -90,6 +90,32 @@ describe('installFailedPreloadRecorder', () => {
     expect(getFailedPreloads()).toHaveLength(MAX_FAILED);
   });
 
+  it('多 token 與大寫 rel 會記到；跨源與跳出 /assets/ 的路徑不記', () => {
+    installFailedPreloadRecorder();
+    const multi = addLink('preload modulepreload', '/assets/multi.js');
+    const upper = addLink('ModulePreload', '/assets/upper.js');
+    multi.dispatchEvent(new Event('error', { bubbles: false }));
+    upper.dispatchEvent(new Event('error', { bubbles: false }));
+    expect(multi.rel).toBe('preload modulepreload');
+    expect(upper.rel).toBe('ModulePreload');
+    expect(getFailedPreloads()).toEqual([multi.href, upper.href]);
+
+    // new URL 會先正規化再套路徑規則。
+    const evil = new URL('//evil.example/assets/x.js', location.href);
+    expect(evil.origin).toBe(`${location.protocol}//evil.example`);
+    expect(evil.origin).not.toBe(location.origin);
+    expect(isRefreshableAssetUrl('//evil.example/assets/x.js')).toBe(false);
+    expect(new URL('/assets/../x.js', location.href).pathname).toBe('/x.js');
+    expect(isRefreshableAssetUrl('/assets/../x.js')).toBe(false);
+    expect(new URL('/assets/%2e%2e/x.js', location.href).pathname).toBe('/x.js');
+    expect(isRefreshableAssetUrl('/assets/%2e%2e/x.js')).toBe(false);
+
+    for (const href of ['//evil.example/assets/x.js', '/assets/../x.js', '/assets/%2e%2e/x.js']) {
+      addLink('modulepreload', href).dispatchEvent(new Event('error', { bubbles: false }));
+    }
+    expect(getFailedPreloads()).toEqual([multi.href, upper.href]);
+  });
+
   it('重複 install 不重掛、不重複記錄', () => {
     const add = vi.spyOn(document, 'addEventListener');
     installFailedPreloadRecorder();
