@@ -1,0 +1,5 @@
+/* 預覽頁自己帶 competitions.css。這裡只補截圖底色。 */
+
+html, body { margin: 0; background: var(--color-bg-root, #eef1f6); }
+html[data-theme="dark"], html[data-theme="dark"] body { background: var(--color-bg-root, #0b0f16); }
+#app { min-height: 100vh; }
