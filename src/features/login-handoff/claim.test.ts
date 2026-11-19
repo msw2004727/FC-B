@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { hasHandoffParam, hasLoginRedirectParams } from '@/data/login-redirect';
 import { beginClaim, _resetClaimForTest } from './claim';
 import { LOGIN_HANDOFF_STORAGE_KEY } from '@/data/login-redirect';
 import { _setReplaceForTest } from './nav';
@@ -251,6 +252,9 @@ describe('claim', () => {
     expect(next.searchParams.has('fcbHandoff')).toBe(false);
     expect(next.searchParams.get('code')).toBe('abc.def');
     expect(next.searchParams.get('liffRedirectUri')).toBe(wrapped);
+    // 換頁後要走一般接手登入，不能再被當成轉交回跳（Flash 交叉審 P3）。
+    expect(hasLoginRedirectParams(next.toString())).toBe(true);
+    expect(hasHandoffParam(next.toString())).toBe(false);
   });
 
   it('不同源當成失敗：不換頁、顯示逾時、清掉 pending', async () => {

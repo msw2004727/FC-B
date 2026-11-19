@@ -101,4 +101,18 @@ describe('beginLoginHandoff', () => {
     expect(armWaitForPending).toHaveBeenCalledOnce();
     expect(showWaitForPending).not.toHaveBeenCalled();
   });
+
+  it('停在記數字畫面超過 5 分鐘才按前往：顯示逾時、清 pending、回 null', async () => {
+    vi.mocked(renderWait).mockImplementation(() => undefined);
+    const p = beginLoginHandoff('https://toosterx.com/');
+    await vi.waitFor(() => expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toMatchObject({ kind: 'ready' }));
+    const handlers = vi.mocked(renderWait).mock.calls[0]?.[1];
+    const realNow = Date.now;
+    vi.spyOn(Date, 'now').mockReturnValue(realNow() + HANDOFF_TTL_MS + 1000);
+    handlers?.onGo?.();
+    await expect(p).resolves.toBeNull();
+    expect(readPending()).toBeNull();
+    expect(vi.mocked(renderWait).mock.calls.at(-1)?.[0]).toEqual({ kind: 'timeout' });
+    expect(armWaitForPending).not.toHaveBeenCalled();
+  });
 });
