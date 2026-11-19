@@ -235,7 +235,8 @@
 .cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .cp3-tags .ui-badge { white-space: nowrap; }
 .cp3-tags .ui-button { min-width: 0; }
-.cp3-m__act { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+/* 顧問 §3.294 P2-1：窄螢幕三、四顆按鈕放不下時換行，不得被卡片裁掉（取代原本單行 nowrap 不換行） */
+.cp3-m__act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .cp3-m__act .ui-button { white-space: nowrap; }
 .cp3-dayform { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .cp3-dayform + .cp3-dayform { margin-top: var(--space-3); }
@@ -417,7 +418,13 @@
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   font-weight: 600;
+  /* 補拍同分面板發現：隊名被擠成一字一行；改成一行、太長省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* 上移／下移用內容寬度：全站按鈕最小 120px，這列放兩顆會把隊名擠成一字一行、按鈕超出卡片（補拍發現） */
+.cpm-drag .cpm-drag__li .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; white-space: nowrap; }
 .cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
 .cpm-rules li {
   padding: 8px 0;
@@ -494,6 +501,9 @@
   margin-top: var(--space-3);
 }
 .cpm-ann__foot .ui-button { flex: 0 0 auto; }
+/* 顧問 §3.294 P3：深色停用的「發布公告」幾乎看不見；只在公告列提高對比，不動全站按鈕 token */
+[data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"] { opacity: 1; color: var(--color-text-muted); }
+[data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"]::before { background: var(--color-bg-hover); border-color: var(--color-border); }
 .cpm-ann__foot .cpm-meta { margin: 0; }
 .cpm-contact {
   display: flex;

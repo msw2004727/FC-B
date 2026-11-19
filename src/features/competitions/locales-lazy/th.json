@@ -312,6 +312,7 @@
   "restore": "恢復賽事",
   "restoreReason": "恢復原因",
   "hostRuling": "主辦裁定",
+  "hostRulingShort": "裁定",
   "drawLog": "抽籤結果登錄",
   "tieMethod": "方式",
   "rankOrder": "名次排列",

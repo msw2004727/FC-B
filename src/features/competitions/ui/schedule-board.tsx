@@ -276,8 +276,9 @@ export function StandingsTable({
                       {line.samePoints && canExplain ? (
                         <button type="button" class="cpm-tiebtn" onClick={() => onExplain?.(doc, line.teamId)}>{ct('tie')}</button>
                       ) : line.tie ? <small>{ct('tie')}</small> : null}
+                      {/* 名次欄只有 28px：畫面顯示短標「裁定」，讀屏與提示用完整「主辦裁定」（顧問 §3.294 P3：360 寬四個字貼到隊徽） */}
                       {line.decidedBy ? (
-                        <button type="button" class="cpm-tiebtn" onClick={() => onDecision?.(doc)}>{ct('hostRuling')}</button>
+                        <button type="button" class="cpm-tiebtn" aria-label={ct('hostRuling')} title={ct('hostRuling')} onClick={() => onDecision?.(doc)}>{ct('hostRulingShort')}</button>
                       ) : null}
                     </span>
                     <span class="t">
@@ -366,6 +367,7 @@ export function DetailPhaseBody({
   standings,
   now,
   badge,
+  statusShownAbove = false,
   fullSchedule,
   onRequestFull,
   clock = 'keep',
@@ -382,6 +384,8 @@ export function DetailPhaseBody({
   standings: readonly StandingDoc[];
   now: number;
   badge: { label: string; tone: BadgeTone };
+  /** 頁面上方已經有狀態卡（整場取消／延期附原因）時為 true；沒有冠軍就不再畫只剩狀態標籤的卡。 */
+  statusShownAbove?: boolean;
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
   fullSchedule: readonly SummaryEntry[] | null;
   onRequestFull: () => boolean | Promise<boolean>;
@@ -449,8 +453,9 @@ export function DetailPhaseBody({
               <Badge tone={badge.tone} label={badge.label} size="sm" />
             </div>
           </CpCard>
-        ) : (
-          // 沒有冠軍（整場取消、沒有積分榜）時不畫獎盃與「冠軍」字樣，只留狀態標籤（PM 截圖驗收發現）
+        ) : statusShownAbove ? null : (
+          // 沒有冠軍（整場取消、沒有積分榜）時不畫獎盃與「冠軍」字樣，只留狀態標籤（PM 截圖驗收發現）；
+          // 上方已有狀態卡時整張省略，避免空卡只剩標籤（顧問 §3.294 P3）
           <CpCard>
             <div class="cp3-row">
               <span />

@@ -3,6 +3,7 @@
 
 import type { JSX } from 'preact';
 import { useId } from 'preact/hooks';
+import { Button } from '@/ui/Button';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
 import { IN_APP_STATUS_FILTERS } from '../data/list-cards';
@@ -135,7 +136,8 @@ export function InAppCardList({
     <div data-inapp="competitions">
       {showCreate ? (
         <div class="cpl-create">
-          <button type="button" class="primary-btn small" onClick={onCreate}>{ct('createAction')}</button>
+          {/* 顧問 §3.294 P2-3：改用站內按鈕元件（原本 primary-btn 是舊站樣式，B 前台沒有，顯示成瀏覽器原生灰框） */}
+          <Button variant="primary" size="sm" onClick={onCreate}>{ct('createAction')}</Button>
         </div>
       ) : null}
       <div class="tc-toolbar cpl-toolbar">

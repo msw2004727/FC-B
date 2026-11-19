@@ -188,6 +188,8 @@ describe('站內清單篩選不重讀', () => {
     expect(live?.querySelector('img')).toBeNull();
     expect(screen.getByText('只屬於我')).toBeTruthy();
     expect(screen.getByRole('button', { name: '建立賽事' })).toBeTruthy();
+    // 站內按鈕元件，不是舊站 primary-btn（B 前台沒有那套樣式，會變瀏覽器原生灰框；顧問 §3.294 P2-3）
+    expect(screen.getByRole('button', { name: '建立賽事' }).className).toContain('ui-button');
 
     await waitFor(() => {
       expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);

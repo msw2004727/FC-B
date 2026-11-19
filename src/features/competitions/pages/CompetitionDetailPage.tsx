@@ -709,6 +709,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             standings={standings}
             now={now}
             badge={badge}
+            statusShownAbove={(competition.status === 'postponed' || competition.status === 'cancelled') && !!competition.statusReason}
             fullSchedule={fullSchedule}
             onRequestFull={requestFullSchedule}
             clock={clock}

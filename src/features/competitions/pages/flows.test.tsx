@@ -245,6 +245,8 @@ describe('賽事第 2 步畫面', () => {
     const cancelled = mount(CompetitionDetailPage, screenEnv('real-cancelled-comp'));
     expect(await screen.findByText(/報名隊伍不足/)).toBeTruthy();
     expect(cancelled.container.textContent ?? '').not.toContain('冠軍');
+    // 上方原因卡已標「已取消」，下面不再多一張只剩標籤的空卡（顧問 §3.294 P3）
+    expect(screen.getAllByText('已取消')).toHaveLength(1);
     cleanup();
     mount(CompetitionDetailPage, screenEnv('real-done'));
     expect(await screen.findByText('冠軍')).toBeTruthy();

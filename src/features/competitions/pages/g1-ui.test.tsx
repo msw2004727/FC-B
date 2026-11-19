@@ -483,6 +483,8 @@ describe('同分查詢、裁定與恢復', () => {
     });
     draw(detailEnv({ standings: [ruled] }), CompetitionDetailPage);
     expect(screen.queryByText('同分')).toBeNull();
+    // 名次欄畫面顯示短標「裁定」，無障礙名稱仍是完整「主辦裁定」（顧問 §3.294 P3）
+    expect(screen.getAllByRole('button', { name: '主辦裁定' })[0]!.textContent).toBe('裁定');
     fireEvent.click(screen.getAllByRole('button', { name: '主辦裁定' })[0]!);
     expect(screen.getByText('抽籤結果登錄')).toBeTruthy();
     expect(screen.getByText('公開抽籤')).toBeTruthy();

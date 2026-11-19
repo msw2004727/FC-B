@@ -181,7 +181,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   },
   'real-tie-panel': async () => {
     clickButton('同分');
-    await until('同分比較', () => hasText('在這一項分出高下') && hasText('裁定原因'));
+    await until('同分比較', () => hasText('全部相同，待主辦裁定') && hasText('裁定原因'));
   },
   'real-end-dialog': async () => {
     clickButton('結束賽事');

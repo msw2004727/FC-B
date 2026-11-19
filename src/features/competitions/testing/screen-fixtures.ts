@@ -681,31 +681,19 @@ function championBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } 
 }
 
 /** 同分逐項比較。回傳形狀照 g1-ui 測試的 explainTie。 */
+// 跟 tieStandings 一致：兩隊每一項都相同（對戰 1：1、全組淨勝 0、進球 4），待主辦裁定（顧問 §3.294 截圖驗收：數字要跟積分表對得上）
 const TIE_EXPLAINED = {
   dvId: 'dv_adult',
   groupId: 'A',
   naturalOrder: ['en_b', 'en_c'],
   steps: [
-    {
-      criterion: 'points',
-      teamIds: ['en_b', 'en_c'],
-      values: [{ teamId: 'en_b', value: 5 }, { teamId: 'en_c', value: 5 }],
-      split: false,
-    },
-    {
-      criterion: 'goalDiff',
-      teamIds: ['en_b', 'en_c'],
-      values: [{ teamId: 'en_b', value: 2 }, { teamId: 'en_c', value: -1 }],
-      split: true,
-    },
-    {
-      criterion: 'goalsFor',
-      teamIds: ['en_b', 'en_c'],
-      values: [{ teamId: 'en_b', value: 8 }, { teamId: 'en_c', value: 5 }],
-      split: false,
-    },
+    { criterion: 'points', teamIds: ['en_b', 'en_c'], values: [{ teamId: 'en_b', value: 5 }, { teamId: 'en_c', value: 5 }], split: false },
+    { criterion: 'headToHeadPoints', teamIds: ['en_b', 'en_c'], values: [{ teamId: 'en_b', value: 1 }, { teamId: 'en_c', value: 1 }], split: false },
+    { criterion: 'headToHeadGoalDiff', teamIds: ['en_b', 'en_c'], values: [{ teamId: 'en_b', value: 0 }, { teamId: 'en_c', value: 0 }], split: false },
+    { criterion: 'goalDiff', teamIds: ['en_b', 'en_c'], values: [{ teamId: 'en_b', value: 0 }, { teamId: 'en_c', value: 0 }], split: false },
+    { criterion: 'goalsFor', teamIds: ['en_b', 'en_c'], values: [{ teamId: 'en_b', value: 4 }, { teamId: 'en_c', value: 4 }], split: false },
   ],
-  pending: false,
+  pending: true,
   matchIds: ['mt_rel'],
 };
 
@@ -718,12 +706,11 @@ function tieStandings(): StandingDoc {
         win: 3, draw: 1, loss: 0, goalsFor: 10, goalsAgainst: 3, goalDiff: 7,
       }),
       standingRow({
-        teamId: 'en_b', name: '銀河隊', points: 5, rank: 3,
+        teamId: 'en_b', name: '銀河隊', points: 5, rank: 2,
         hasUnresolvedTie: true, tiedWith: ['en_c'],
       }),
       standingRow({
-        teamId: 'en_c', name: '雷霆隊', points: 5, rank: 4,
-        goalsFor: 5, goalsAgainst: 6, goalDiff: -1,
+        teamId: 'en_c', name: '雷霆隊', points: 5, rank: 2,
         hasUnresolvedTie: true, tiedWith: ['en_b'],
       }),
     ],
