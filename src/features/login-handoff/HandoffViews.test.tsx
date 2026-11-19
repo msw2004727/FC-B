@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetOverlayBackForTest } from '@/core/overlay-back';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { LOCALES } from '@/i18n/locales';
-import { RelayScreen, WaitScreen } from './HandoffViews';
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { RelayScreen, WaitScreen, splitSegments } from './HandoffViews';
 import { HANDOFF_TEXT_FOR_TEST } from './messages';
 import { renderRelay, renderWait } from './view';
 import type { RelayHandlers, WaitHandlers } from './view-types';
@@ -146,6 +148,38 @@ describe('斷行', () => {
     const alert = screen.getByRole('alert');
     expect(alert.querySelectorAll('.login-handoff-seg').length).toBe(1);
     expect(alert.textContent).toBe('Connection unstable. Please try again.');
+  });
+});
+
+describe('切段相容性（顧問 §3.351）', () => {
+  it('七語所有文案：新切法與原本後行斷言切法結果完全相同', () => {
+    // 原本的切法只在測試裡用字串建構重現（測試不隨網站打包）。
+    const legacy = new RegExp('(?<=[，。、！？；：])');
+    for (const locale of LOCALES) {
+      for (const value of Object.values(HANDOFF_TEXT_FOR_TEST[locale])) {
+        const expected = value.split(legacy).filter((part: string) => part !== '');
+        expect(splitSegments(value)).toEqual(expected);
+      }
+    }
+    expect(splitSegments('')).toEqual(['']);
+    expect(splitSegments('，開頭')).toEqual(['，', '開頭']);
+  });
+
+  it('src 非測試原始碼不得出現後行斷言（舊 iOS Safari 解析即失敗）', () => {
+    const root = resolve(__dirname, '../..');
+    const bad: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx|js|mjs)$/.test(entry.name) && !entry.name.includes('.test.')) {
+          const src = readFileSync(full, 'utf8');
+          if (src.includes('(?<=') || src.includes('(?<!')) bad.push(full);
+        }
+      }
+    };
+    walk(root);
+    expect(bad).toEqual([]);
   });
 });
 

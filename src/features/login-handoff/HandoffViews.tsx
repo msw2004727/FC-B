@@ -14,10 +14,13 @@ const LINE_PATH = 'M12 3C6.48 3 2 6.58 2 11c0 3.96 3.6 7.27 8.46 7.9.33.07.78.22
 // 只在全形標點後換行（站長規則：文字不被動斷行；顧問 §3.350）。每段 inline-block，段內不拆字；
 // 單段比畫面寬時仍會在段內換行，不會溢出。只認全形標點：英、韓、越等以空格分詞的語言照一般換行，
 // 若連半形標點也切，下一段開頭的空格會被 inline-block 吃掉（「unstable.Please」）。
-const BREAK_AFTER = /(?<=[，。、！？；：])/;
+// 不用後行斷言（lookbehind 要 Safari 16.4；build target 是 safari14，打包工具不轉寫正規式，舊 iOS 會整檔語法錯誤；顧問 §3.351）。
+const SEGMENT = /[^，。、！？；：]+[，。、！？；：]*|[，。、！？；：]+/g;
+export function splitSegments(text: string): string[] {
+  return text.match(SEGMENT) ?? [text];
+}
 function Seg({ text }: { text: string }): JSX.Element {
-  const parts = text.split(BREAK_AFTER).filter((part) => part !== '');
-  return <>{parts.map((part, i) => <span key={i} class="login-handoff-seg">{part}</span>)}</>;
+  return <>{splitSegments(text).map((part, i) => <span key={i} class="login-handoff-seg">{part}</span>)}</>;
 }
 
 function useOverlayBack(onClose: () => void): void {
